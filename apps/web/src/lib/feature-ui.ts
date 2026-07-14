@@ -82,6 +82,7 @@ export type PrimaryActionKind =
   | 'startGrill'
   | 'openGrill'
   | 'reviewTickets'
+  | 'startBurn'
   | 'watchRun'
   | 'testDrive'
   | 'merge'
@@ -117,7 +118,13 @@ export function primaryAction(full: FeatureFull, driving: boolean): PrimaryActio
       return { kind: 'reviewTickets', label: 'Review tickets' }
     case 'implementation': {
       const run = latestRun(runs)
-      return { kind: 'watchRun', label: 'Watch run', runId: run?.id }
+      // A live run → watch it. No active run means the burn was cancelled or
+      // crashed (or G3 was overridden without starting one): offer to (re)start
+      // the burn so the feature never dead-ends at `implementation`.
+      if (run && run.status === 'running') {
+        return { kind: 'watchRun', label: 'Watch run', runId: run.id }
+      }
+      return { kind: 'startBurn', label: 'Start burn' }
     }
     case 'review':
       return driving
@@ -130,7 +137,7 @@ export function primaryAction(full: FeatureFull, driving: boolean): PrimaryActio
 
 /** One-line state summary shown above the primary action (UI-SPEC §3). */
 export function stateSummary(full: FeatureFull, driving: boolean): string {
-  const { feature, tickets, sessions } = full
+  const { feature, tickets, sessions, runs } = full
   const live = sessions.some((s) => s.status === 'live')
   const t = tickets.length
   const done = tickets.filter((x) => x.status === 'done').length
@@ -144,8 +151,18 @@ export function stateSummary(full: FeatureFull, driving: boolean): string {
       return live ? 'Writing the spec beside the conversation.' : 'Spec in progress.'
     case 'tickets':
       return `${t} ticket${t === 1 ? '' : 's'} ready — review, then burn.`
-    case 'implementation':
-      return `Burning ${t} ticket${t === 1 ? '' : 's'} — ${done} done${failed ? `, ${failed} failed` : ''}.`
+    case 'implementation': {
+      const run = latestRun(runs)
+      // Only claim a burn is in progress when a run is actually running —
+      // otherwise be honest that it hasn't started / was cancelled.
+      if (!run) return `Burn not started — ${t} ticket${t === 1 ? '' : 's'} ready. Start the burn.`
+      if (run.status === 'running') {
+        return `Burning ${t} ticket${t === 1 ? '' : 's'} — ${done} done${failed ? `, ${failed} failed` : ''}.`
+      }
+      if (run.status === 'cancelled') return 'Run cancelled — start the burn to retry.'
+      if (run.status === 'failed') return 'Run failed — start the burn to retry.'
+      return `Burn not started — ${t} ticket${t === 1 ? '' : 's'} ready. Start the burn.`
+    }
     case 'review':
       if (driving) return 'Test driving the branch — merge when it looks right.'
       return failed
