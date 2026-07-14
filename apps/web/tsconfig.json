@@ -1,0 +1,12 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ESNext", "DOM", "DOM.Iterable"],
+    "types": ["node", "vite/client"],
+    "jsx": "react-jsx",
+    "paths": {
+      "@runcastle/server": ["../../packages/server/src/trpc/router.ts"]
+    }
+  },
+  "include": ["src", "vite.config.ts"]
+}

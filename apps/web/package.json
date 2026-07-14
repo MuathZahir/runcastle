@@ -3,8 +3,27 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit"
+  },
   "dependencies": {
     "@runcastle/core": "workspace:*",
-    "@runcastle/server": "workspace:*"
+    "@runcastle/server": "workspace:*",
+    "@tanstack/react-query": "5.101.2",
+    "@trpc/client": "11.18.0",
+    "@trpc/react-query": "11.18.0",
+    "@trpc/server": "11.18.0",
+    "react": "19.2.7",
+    "react-dom": "19.2.7"
+  },
+  "devDependencies": {
+    "@types/node": "26.1.1",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "@vitejs/plugin-react": "6.0.3",
+    "vite": "8.1.4"
   }
 }
