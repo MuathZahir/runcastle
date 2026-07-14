@@ -10,12 +10,21 @@ burn the tickets in sandboxes → you test-drive and merge. It is a local web ap
 (Bun server + browser UI) that dogfoods first; see `CONTEXT.md` for the vision
 and locked decisions, and `docs/SPEC.md` for the M1 contracts.
 
+**Status: M1 — smoke-passing.** All waves landed and integrated; `bun run
+typecheck` + `bun run test` (109 tests) are green, and `bun run scripts/smoke.ts`
+drives the full pipeline end-to-end in-process against a throwaway repo and a real
+host `claude` (project.init, feature.create, ideation session, hooks, MCP
+emit_tickets/complete_phase, a real noSandbox burn, test-drive, merge). Remaining
+before the demo: a live run with a real Claude Code terminal and the docker
+sandbox (`docs/SPEC.md` §11, task #7).
+
 **Dev commands** (Bun only — never npm/pnpm/yarn):
 
 - `bun install` — install the workspace.
 - `bun run dev` — server (port 4512) + web (port 4513) concurrently.
 - `bun run typecheck` — `tsc --noEmit` across the typed packages.
-- `bun run test` — Vitest suite (currently `@runcastle/core` contracts).
+- `bun run test` — Vitest suite (core contracts + server services/git/hooks/mcp/burner).
+- `bun run scripts/smoke.ts` — scripted end-to-end smoke (real host `claude` burn).
 
 **Package map** (Bun workspaces, TypeScript strict, ESM only):
 
