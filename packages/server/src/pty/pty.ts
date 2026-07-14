@@ -1,18 +1,32 @@
 import { createRequire } from 'node:module'
+import { createSidecarPtySession } from './pty-sidecar'
 
 /**
  * The single PTY interface (UI-SPEC §5). Everything above this line — registry,
  * WebSocket transport, launcher — talks to `createPtySession` and never imports
- * `node-pty` directly, so the backend implementation (bun-native `node-pty`
- * here; a `node` sidecar if the native module ever fails under Bun) stays
- * swappable behind this one function.
+ * `node-pty` directly, so the backend implementation stays swappable behind this
+ * one function.
  *
- * SHIPPED PATH: bun-native `node-pty` (v1.1.0). A runtime probe confirmed a real
- * ConPTY spawn + data roundtrip works under Bun 1.3 on Windows, so no sidecar is
- * needed. `node-pty` is a native CommonJS addon; it is loaded lazily via
- * `createRequire` on first spawn (not at import time) so that merely importing
- * the launcher/index — as the unit tests and `buildApp` do — never touches the
- * native binding. This mirrors the lazy `bun:sqlite` load in `launcher/runtime`.
+ * SHIPPED PATH — TWO BACKENDS, selected at spawn time (`selectBackend`):
+ *
+ * - **sidecar** (`pty-sidecar.ts` + `pty-host.cjs` under system `node`): the
+ *   default under **Bun on win32**. node-pty v1.1.0's Windows ConPTY backend
+ *   writes keystrokes to the child through a Node `net.Socket` input pipe; under
+ *   Bun that socket is unusable and `write()` throws `ERR_SOCKET_CLOSED`, so
+ *   INPUT is silently dropped (OUTPUT works — it uses a different read path).
+ *   Hosting node-pty in a real `node` process restores input. Reproduced: under
+ *   Bun `write()` threw and echo delta was 0; under Node the same write echoed.
+ *
+ * - **native** (bun/node-native `node-pty`, below): used off-win32, and under a
+ *   `node` runtime (e.g. the vitest suite) where the input pipe works fine. Kept
+ *   present and exercised by tests so it never bit-rots.
+ *
+ * Selection is deterministic (no async probe — the write failure is not flaky
+ * but a fixed Bun↔node-pty incompatibility) and overridable via
+ * `RUNCASTLE_PTY_BACKEND=sidecar|native`. `node-pty` is a native CommonJS addon
+ * loaded lazily via `createRequire` on first native spawn (not at import time),
+ * so importing the launcher/index — as the tests and `buildApp` do — never
+ * touches the binding.
  */
 
 export interface PtySession {
@@ -88,13 +102,65 @@ function cleanEnv(env: Record<string, string | undefined>): Record<string, strin
   return out
 }
 
+type Backend = 'native' | 'sidecar'
+
+function isBun(): boolean {
+  return typeof (globalThis as { Bun?: unknown }).Bun !== 'undefined'
+}
+
+const BACKEND_LOGGED = Symbol.for('runcastle.pty.backend.logged')
+
+/**
+ * Pick a PTY backend. Sidecar is the default under Bun on win32 (node-pty's
+ * ConPTY input pipe is unusable there — see the file header); native everywhere
+ * else. `RUNCASTLE_PTY_BACKEND` overrides for tests / escape hatch. The choice is
+ * logged exactly once per process (survives `bun --hot` via a global symbol).
+ */
+function selectBackend(): Backend {
+  const override = process.env.RUNCASTLE_PTY_BACKEND
+  let backend: Backend
+  let why: string
+  if (override === 'sidecar' || override === 'native') {
+    backend = override
+    why = 'RUNCASTLE_PTY_BACKEND override'
+  } else if (isBun() && process.platform === 'win32') {
+    backend = 'sidecar'
+    why = 'Bun+win32: node-pty ConPTY input pipe (node:net socket) unusable under Bun'
+  } else {
+    backend = 'native'
+    why = isBun() ? 'Bun off-win32' : 'node runtime'
+  }
+  const g = globalThis as typeof globalThis & { [BACKEND_LOGGED]?: boolean }
+  if (!g[BACKEND_LOGGED]) {
+    g[BACKEND_LOGGED] = true
+    console.error(`[pty] backend=${backend} (${why})`)
+  }
+  return backend
+}
+
 /**
  * Spawn a process inside a pseudo-terminal and return the runcastle PTY handle.
- * Output listeners always receive a `Buffer` (node-pty is spawned WITHOUT an
- * encoding so bytes pass through untouched — the consumer's UTF-8 decoder owns
- * reassembly).
+ * Dispatches to the sidecar or native backend (`selectBackend`); both honour the
+ * same interface so registry / WS / launcher are backend-agnostic.
  */
 export function createPtySession(
+  cmd: string,
+  args: string[],
+  opts: CreatePtyOptions,
+): PtySession {
+  return selectBackend() === 'sidecar'
+    ? createSidecarPtySession(cmd, args, opts)
+    : createNativePtySession(cmd, args, opts)
+}
+
+/**
+ * Native (in-process `node-pty`) backend. Output listeners always receive a
+ * `Buffer` (node-pty is spawned WITHOUT an encoding so bytes pass through
+ * untouched — the consumer's UTF-8 decoder owns reassembly). Works fully under a
+ * `node` runtime; under Bun on win32 its `write()` throws `ERR_SOCKET_CLOSED`,
+ * which is why `selectBackend` routes Bun+win32 to the sidecar instead.
+ */
+export function createNativePtySession(
   cmd: string,
   args: string[],
   opts: CreatePtyOptions,

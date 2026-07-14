@@ -5,7 +5,13 @@
  * - `endSession` — kill + mark-ended service backing `feature.endSession`.
  * - `tryUpgradeTerminal` / `terminalWebSocket` — Bun WS wiring for index.ts.
  */
-export { createPtySession, type CreatePtyOptions, type PtySession } from './pty'
+export {
+  createPtySession,
+  createNativePtySession,
+  type CreatePtyOptions,
+  type PtySession,
+} from './pty'
+export { createSidecarPtySession } from './pty-sidecar'
 export { RingBuffer } from './ring-buffer'
 export {
   ptyRegistry,
