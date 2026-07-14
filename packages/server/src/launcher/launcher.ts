@@ -26,6 +26,18 @@ export { endSession, type EndSessionResult } from '../pty/end-session'
  * line (the env-propagation caveat in SPEC §5.4).
  */
 
+/**
+ * Human-readable `session.pty_exited` message. The backend hands us a numeric
+ * exit code (`{ exitCode }` from the native/sidecar PTY, sourced from node-pty's
+ * `onExit` / the sidecar's `{ t:'exit', code }` frame). If a code is genuinely
+ * absent (e.g. a host that died without reporting one), render `unknown` rather
+ * than the literal string `undefined`.
+ */
+export function ptyExitMessage(exitCode: number | undefined | null): string {
+  const label = typeof exitCode === 'number' ? String(exitCode) : 'unknown'
+  return `terminal exited (code ${label})`
+}
+
 export interface LaunchSessionInput {
   featureId: string
   kind: SessionKind
@@ -286,8 +298,8 @@ function spawnEmbeddedPty(
         markSessionEnded(ctx, session.id)
         emit(ctx, feature.id, {
           type: 'session.pty_exited',
-          message: `terminal exited (code ${exitCode})`,
-          data: { sessionId: session.id, exitCode },
+          message: ptyExitMessage(exitCode),
+          data: { sessionId: session.id, exitCode: exitCode ?? null },
         })
       },
     })

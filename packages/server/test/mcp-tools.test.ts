@@ -15,7 +15,8 @@ import mcpApp, {
   toolRecordEvent,
 } from '../src/mcp/server'
 import { listAfter } from '../src/services/events'
-import { listByFeature } from '../src/services/tickets'
+import { getFeatureRow } from '../src/services/repo'
+import { listByFeature, storeTickets } from '../src/services/tickets'
 import { makeTestCtx } from './helpers/db'
 import { seedFeature, seedProject, tmpRepo } from './helpers/fixtures'
 
@@ -55,9 +56,13 @@ describe('mcp tools', () => {
     expect(stored.map((t) => t.title)).toEqual(['one', 'two'])
     expect(stored[1].blockedBy).toEqual([1]) // batch position 1 -> global seq 1
 
-    // event emitted for the UI timeline
+    // exactly ONE store event for the UI timeline (the tool no longer double-logs
+    // a redundant `tickets.emitted` alongside the service's `tickets.stored`)
     const types = listAfter(ctx, featureId, 0).map((e) => e.type)
-    expect(types).toContain('tickets.emitted')
+    expect(types).toContain('tickets.stored')
+    expect(types.filter((t) => t === 'tickets.stored' || t === 'tickets.emitted')).toEqual([
+      'tickets.stored',
+    ])
   })
 
   it('emit_tickets rejects an out-of-range blockedBy position', () => {
@@ -103,6 +108,25 @@ describe('mcp tools', () => {
     const out = toolCompletePhase(ctx, session, { phase: 'ideation' })
     expect(out.ok).toBe(false)
     if (!out.ok) expect(out.reason).toMatch(/decisions/i)
+  })
+
+  it('complete_phase(tickets) records completion but does NOT cross G3 — parks at tickets for the human Burn', () => {
+    // G3 (tickets → implementation) is the human Burn gate: only feature.burn
+    // may cross it (CONTEXT.md two-click covenant). complete_phase must park.
+    const project = seedProject(ctx, repoPath)
+    const feat = seedFeature(ctx, project.id, { slug: 'burn-me', phase: 'tickets', size: 'full' })
+    const s = createSessionRow(ctx, { featureId: feat.id, kind: 'ideation', worktreePath: repoPath })
+    storeTickets(ctx, feat.id, [ticket('only')])
+
+    const out = toolCompletePhase(ctx, s, { phase: 'tickets' })
+    expect(out).toEqual({ ok: true, nextPhase: 'implementation', waitingOn: 'human burn' })
+
+    // the feature stays at `tickets` — the run has NOT started
+    expect(getFeatureRow(ctx, feat.id).phase).toBe('tickets')
+
+    // an "awaiting burn" note lands on the timeline
+    const types = listAfter(ctx, feat.id, 0).map((e) => e.type)
+    expect(types).toContain('tickets.awaiting_burn')
   })
 })
 

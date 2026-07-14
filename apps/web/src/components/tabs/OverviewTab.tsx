@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { trpc } from '../../trpc'
 import { useToast } from '../../lib/toast'
 import { useEventLog } from '../../lib/events'
-import { primaryAction, stateSummary } from '../../lib/feature-ui'
+import { PHASE_ORDER, primaryAction, stateSummary } from '../../lib/feature-ui'
 import type { DriveState, Tab } from '../../lib/tabs'
 import { relTime } from '../../lib/format'
 import { Button, DimLine, PhaseTag } from '../../ui'
@@ -61,8 +61,15 @@ export function OverviewTab({
     },
     onError: (e) => toast.push(e.message),
   })
+  const burn = trpc.feature.burn.useMutation({
+    onSuccess: ({ runId }) => {
+      invalidate()
+      onOpenTab({ kind: 'run', featureId, runId })
+    },
+    onError: (e) => toast.push(e.message),
+  })
 
-  const busy = launch.isPending || testDrive.isPending || merge.isPending
+  const busy = launch.isPending || testDrive.isPending || merge.isPending || burn.isPending
 
   if (full.isLoading) {
     return (
@@ -102,6 +109,9 @@ export function OverviewTab({
       case 'reviewTickets':
         onOpenTab({ kind: 'tickets', featureId })
         break
+      case 'startBurn':
+        burn.mutate({ featureId })
+        break
       case 'watchRun':
         if (action.runId) onOpenTab({ kind: 'run', featureId, runId: action.runId })
         else toast.push('no run to watch yet')
@@ -140,6 +150,11 @@ export function OverviewTab({
               }
             >
               Open terminal
+            </button>
+          )}
+          {PHASE_ORDER.indexOf(data.feature.phase) >= PHASE_ORDER.indexOf('tickets') && (
+            <button className="ghost-link" onClick={() => onOpenTab({ kind: 'tickets', featureId })}>
+              Tickets
             </button>
           )}
           {data.feature.phase !== 'shipped' && data.feature.status !== 'shipped' && (
