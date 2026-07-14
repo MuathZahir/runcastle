@@ -33,6 +33,7 @@ export function loadConfig(
   if (env.RUNCASTLE_SANDBOX) overrides.sandbox = env.RUNCASTLE_SANDBOX
   if (env.RUNCASTLE_MAIN_BRANCH) overrides.mainBranch = env.RUNCASTLE_MAIN_BRANCH
   if (env.RUNCASTLE_SANDBOX_IMAGE) overrides.sandboxImage = env.RUNCASTLE_SANDBOX_IMAGE
+  if (env.RUNCASTLE_LAUNCH_MODE) overrides.launchMode = env.RUNCASTLE_LAUNCH_MODE
 
   const base = typeof fileConfig === 'object' && fileConfig !== null ? fileConfig : {}
   return RuncastleConfig.parse({ ...base, ...overrides })

@@ -20,5 +20,12 @@ export const RuncastleConfig = z.object({
    * demo image is tagged `sandcastle:runcastle-demo`. Ignored for `noSandbox`.
    */
   sandboxImage: z.string().optional(),
+  /**
+   * How `launchSession` opens a Claude Code terminal (UI-SPEC §5). `embedded`
+   * (default) spawns the session as a PTY the server owns and streams to the
+   * in-app xterm view over `/ws/terminal/:sessionId`; `window` keeps the legacy
+   * path that opens a fresh Windows Terminal tab via `wt.exe`.
+   */
+  launchMode: z.enum(['embedded', 'window']).default('embedded'),
 })
 export type RuncastleConfig = z.infer<typeof RuncastleConfig>

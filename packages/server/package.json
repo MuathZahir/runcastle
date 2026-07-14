@@ -18,6 +18,7 @@
     "@trpc/server": "11.18.0",
     "drizzle-orm": "0.45.2",
     "hono": "4.12.30",
+    "node-pty": "^1.1.0",
     "simple-git": "^3.36.0",
     "zod": "4.4.3"
   },

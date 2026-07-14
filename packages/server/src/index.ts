@@ -7,6 +7,8 @@ import { runMigrations } from './db/migrate'
 import type { AppCtx } from './db/types'
 import { setRuntimeCtx } from './launcher/runtime'
 import mcpApp from './mcp/server'
+import { ptyRegistry } from './pty/registry'
+import { terminalWebSocket, tryUpgradeTerminal } from './pty/ws'
 import hooksApp from './routes/hooks'
 import { appRouter } from './trpc/router'
 
@@ -54,8 +56,36 @@ async function main(): Promise<void> {
   runMigrations(db)
 
   const app = buildApp({ db, config })
-  Bun.serve({ port: config.serverPort, fetch: app.fetch })
+
+  // Embedded-terminal WebSocket (UI-SPEC §5/§6, W1). The `/ws/terminal/:sessionId`
+  // upgrade is attempted BEFORE Hono's fetch fallthrough; every other path is
+  // handled by the Hono app unchanged. `buildApp` stays a pure Hono factory so
+  // tests mount it without a socket — the WS lives only on this real listener.
+  const server = Bun.serve({
+    port: config.serverPort,
+    fetch(req, srv) {
+      if (tryUpgradeTerminal(req, srv)) return undefined
+      return app.fetch(req, srv)
+    },
+    websocket: terminalWebSocket,
+  })
   console.log(`runcastle server listening on http://localhost:${config.serverPort}`)
+
+  // Kill every live PTY on shutdown so no orphaned claude processes survive.
+  // Registered once even across `bun --hot` reloads (which re-run `main`) to
+  // avoid piling up signal listeners.
+  const SHUTDOWN_KEY = Symbol.for('runcastle.shutdown.wired')
+  const g = globalThis as typeof globalThis & { [SHUTDOWN_KEY]?: boolean }
+  if (!g[SHUTDOWN_KEY]) {
+    g[SHUTDOWN_KEY] = true
+    const shutdown = (): void => {
+      ptyRegistry().killAll()
+      server.stop()
+      process.exit(0)
+    }
+    process.on('SIGINT', shutdown)
+    process.on('SIGTERM', shutdown)
+  }
 }
 
 if (import.meta.main) {
