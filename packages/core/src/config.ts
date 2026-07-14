@@ -1,11 +1,11 @@
-import { existsSync, readFileSync } from 'node:fs'
 import * as z from 'zod'
-import { configPath } from './paths'
 
 /**
- * Runtime configuration. `loadConfig` merges `~/.runcastle/config.json` with a
- * handful of env overrides. The file read is lazy (inside the function) so that
- * importing core performs no IO — only calling `loadConfig()` touches disk.
+ * Runtime configuration schema. This module is PURE — no IO and no `node:`
+ * imports — so it is safe to include in the browser-facing core barrel
+ * (`index.ts`). The file-reading loader (`loadConfig`) lives in `./config-load`,
+ * which pulls in `node:fs` + `./paths` and is therefore node-only; import it
+ * directly via `@runcastle/core/config-load`, never through the barrel.
  */
 
 export const RuncastleConfig = z.object({
@@ -22,32 +22,3 @@ export const RuncastleConfig = z.object({
   sandboxImage: z.string().optional(),
 })
 export type RuncastleConfig = z.infer<typeof RuncastleConfig>
-
-/**
- * Load config from `~/.runcastle/config.json` (if present) merged with env
- * overrides. Missing/invalid file falls back to schema defaults.
- */
-export function loadConfig(
-  env: Record<string, string | undefined> = process.env,
-): RuncastleConfig {
-  let fileConfig: unknown = {}
-  const path = configPath()
-  if (existsSync(path)) {
-    try {
-      fileConfig = JSON.parse(readFileSync(path, 'utf8'))
-    } catch {
-      fileConfig = {}
-    }
-  }
-
-  const overrides: Record<string, unknown> = {}
-  if (env.RUNCASTLE_SERVER_PORT) overrides.serverPort = Number(env.RUNCASTLE_SERVER_PORT)
-  if (env.RUNCASTLE_MODEL) overrides.model = env.RUNCASTLE_MODEL
-  if (env.RUNCASTLE_SMOKE_MODEL) overrides.smokeModel = env.RUNCASTLE_SMOKE_MODEL
-  if (env.RUNCASTLE_SANDBOX) overrides.sandbox = env.RUNCASTLE_SANDBOX
-  if (env.RUNCASTLE_MAIN_BRANCH) overrides.mainBranch = env.RUNCASTLE_MAIN_BRANCH
-  if (env.RUNCASTLE_SANDBOX_IMAGE) overrides.sandboxImage = env.RUNCASTLE_SANDBOX_IMAGE
-
-  const base = typeof fileConfig === 'object' && fileConfig !== null ? fileConfig : {}
-  return RuncastleConfig.parse({ ...base, ...overrides })
-}

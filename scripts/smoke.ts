@@ -52,7 +52,8 @@ process.env.HOME = SMOKE_HOME
 
 // --- dynamic imports (after env is set so lazy homedir() reads the temp home) --
 
-const core = await import('../packages/core/src/index.ts')
+const paths = await import('../packages/core/src/paths.ts')
+const { loadConfig } = await import('../packages/core/src/config-load.ts')
 const { createDb } = await import('../packages/server/src/db/client.ts')
 const { runMigrations } = await import('../packages/server/src/db/migrate.ts')
 const { buildApp } = await import('../packages/server/src/index.ts')
@@ -86,15 +87,15 @@ function git(cwd: string, ...args: string[]): string {
 
 // --- boot the app -------------------------------------------------------------
 
-mkdirSync(core.dataDir(), { recursive: true })
-const db = createDb(core.dbPath())
+mkdirSync(paths.dataDir(), { recursive: true })
+const db = createDb(paths.dbPath())
 runMigrations(db)
-const config = core.loadConfig()
+const config = loadConfig()
 const ctx = { db, config } as { db: typeof db; config: typeof config }
 const app = buildApp(ctx as never)
 const trpc = createCallerFactory(appRouter)(ctx as never)
 
-log(`runcastle smoke — data dir: ${core.dataDir()}`)
+log(`runcastle smoke — data dir: ${paths.dataDir()}`)
 log(`smokeModel = ${config.smokeModel}`)
 
 // --- HTTP helpers over the in-process app ------------------------------------
@@ -204,7 +205,7 @@ async function main(): Promise<void> {
   banner('STEP 4 — fabricate ideation session (launchSession spawn:false) + decisions.md')
   const { sessionId } = await launchSession(ctx as never, { featureId, kind: 'ideation' }, { spawn: false })
   assert(!!sessionId, 'sessionId returned')
-  const worktree = core.worktreeDir(project.id, slug)
+  const worktree = paths.worktreeDir(project.id, slug)
   assert(existsSync(worktree), `talk worktree exists at ${worktree}`)
   assert(
     git(worktree, 'rev-parse', '--abbrev-ref', 'HEAD') === 'feature/health-check-file',
@@ -212,7 +213,7 @@ async function main(): Promise<void> {
   )
   // A real grill writes decisions incrementally into the talk worktree; write a
   // 2-line decisions.md so the ideation→tickets gate (G1) is satisfiable.
-  const docsDir = join(worktree, ...core.featureDocsRel(slug).split('/'))
+  const docsDir = join(worktree, ...paths.featureDocsRel(slug).split('/'))
   mkdirSync(docsDir, { recursive: true })
   writeFileSync(
     join(docsDir, 'decisions.md'),

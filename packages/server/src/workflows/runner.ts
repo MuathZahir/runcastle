@@ -1,5 +1,6 @@
 import type { RunStatus, WorkflowCtx } from '@runcastle/core'
-import { newId, nextGate, nextPhase, worktreeDir } from '@runcastle/core'
+import { newId, nextGate, nextPhase } from '@runcastle/core'
+import { worktreeDir } from '@runcastle/core/paths'
 import { eq } from 'drizzle-orm'
 import type { AppCtx } from '../db/types'
 import { runs } from '../db/schema'

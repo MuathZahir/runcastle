@@ -1,7 +1,8 @@
 import { mkdirSync } from 'node:fs'
 import { join } from 'node:path'
-import { dataDir, loadConfig, logsDir } from '@runcastle/core'
 import type { RuncastleConfig } from '@runcastle/core'
+import { loadConfig } from '@runcastle/core/config-load'
+import { dataDir, logsDir } from '@runcastle/core/paths'
 
 /**
  * Server-side config surface. The actual parsing/merging lives in

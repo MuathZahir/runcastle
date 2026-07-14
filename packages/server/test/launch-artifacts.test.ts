@@ -1,5 +1,5 @@
 import { readFileSync, rmSync } from 'node:fs'
-import { sessionDir } from '@runcastle/core'
+import { sessionDir } from '@runcastle/core/paths'
 import { afterEach, describe, expect, it } from 'vitest'
 import type { Feature, RuncastleConfig, SessionRow } from '@runcastle/core'
 import { RuncastleConfig as ConfigSchema } from '@runcastle/core'

@@ -1,7 +1,7 @@
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import type { Feature, Project } from '@runcastle/core'
-import { featureDocsRel, worktreeDir } from '@runcastle/core'
+import { featureDocsRel, worktreeDir } from '@runcastle/core/paths'
 
 /**
  * Single source of truth for *where* a feature's knowledge docs live on disk,

@@ -1,5 +1,5 @@
 import { trpcServer } from '@hono/trpc-server'
-import { dbPath } from '@runcastle/core'
+import { dbPath } from '@runcastle/core/paths'
 import { Hono } from 'hono'
 import { ensureDataDir, loadConfig } from './config'
 import { createDb } from './db/client'

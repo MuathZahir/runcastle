@@ -2,7 +2,7 @@ import { mkdirSync, writeFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { join } from 'node:path'
 import type { Feature, Project, RuncastleConfig, SessionKind, SessionRow } from '@runcastle/core'
-import { featureDocsRel, sessionDir } from '@runcastle/core'
+import { featureDocsRel, sessionDir } from '@runcastle/core/paths'
 
 /**
  * Session launch artifacts (SPEC §5.2). Writes `system-prompt.md`,

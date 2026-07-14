@@ -9,7 +9,8 @@ import type {
   WorkflowCtx,
   WorkflowDef,
 } from '@runcastle/core'
-import { envPath, featureDocsRel, loadConfig, logsDir, worktreeDir } from '@runcastle/core'
+import { loadConfig } from '@runcastle/core/config-load'
+import { envPath, featureDocsRel, logsDir, worktreeDir } from '@runcastle/core/paths'
 import type {
   AgentCommandOptions,
   AgentProvider,

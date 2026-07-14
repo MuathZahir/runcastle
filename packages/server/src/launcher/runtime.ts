@@ -42,11 +42,12 @@ export function clearRuntimeCtx(): void {
 export async function getRuntimeCtx(): Promise<AppCtx> {
   if (current) return current
   // Dynamic import: keeps `bun:sqlite` (via db/client) out of the vitest graph.
-  const [{ createDb }, core] = await Promise.all([
+  const [{ createDb }, { dbPath }, { loadConfig }] = await Promise.all([
     import('../db/client'),
-    import('@runcastle/core'),
+    import('@runcastle/core/paths'),
+    import('@runcastle/core/config-load'),
   ])
-  const db = createDb(core.dbPath())
-  current = { db, config: core.loadConfig() }
+  const db = createDb(dbPath())
+  current = { db, config: loadConfig() }
   return current
 }
