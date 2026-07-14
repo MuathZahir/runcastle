@@ -10,7 +10,15 @@ import type {
   WorkflowDef,
 } from '@runcastle/core'
 import { envPath, featureDocsRel, loadConfig, logsDir, worktreeDir } from '@runcastle/core'
-import type { AgentStreamEvent, RunOptions, RunResult } from '@ai-hero/sandcastle'
+import type {
+  AgentCommandOptions,
+  AgentProvider,
+  AgentStreamEvent,
+  ClaudeCodeOptions,
+  PrintCommand,
+  RunOptions,
+  RunResult,
+} from '@ai-hero/sandcastle'
 import { claudeCode, run } from '@ai-hero/sandcastle'
 import { docker } from '@ai-hero/sandcastle/sandboxes/docker'
 import { noSandbox } from '@ai-hero/sandcastle/sandboxes/no-sandbox'
@@ -533,6 +541,48 @@ function readBlockedFile(dirs: (string | undefined)[]): string | undefined {
 }
 
 /**
+ * Build the sandcastle claude agent for a burn, working around two host/Windows
+ * gaps in `@ai-hero/sandcastle` 0.12.0's `noSandbox` provider (docker is
+ * unaffected — it runs inside a Linux container with a POSIX shell):
+ *
+ * 1. **Permissions.** For `noSandbox`, sandcastle forces
+ *    `dangerouslySkipPermissions=false` (never auto-skip on the host) and passes
+ *    NO `--permission-mode`, so the `claude --print` agent runs in the default
+ *    mode and cannot apply edits — every ticket makes zero commits. We pass
+ *    `permissionMode: 'bypassPermissions'` for noSandbox (the same effect docker
+ *    gets from `--dangerously-skip-permissions` inside its container) so the AFK
+ *    agent can actually write files; the noSandbox user has opted into host
+ *    execution. Docker keeps sandcastle's default.
+ * 2. **Windows model quoting.** sandcastle POSIX-single-quotes the `--model`
+ *    value (`shellEscape`), but its noSandbox exec runs through
+ *    `cmd.exe /d /s /c` with verbatim args on Windows, and cmd.exe does NOT strip
+ *    single quotes — so `claude` receives a quoted, invalid model name ("issue
+ *    with the selected model"). We de-quote the (shell-safe `[a-z0-9-]`) model in
+ *    the print command on win32+noSandbox.
+ */
+function buildBurnAgent(config: RuncastleConfig, token: string | undefined): AgentProvider {
+  const noSandbox = config.sandbox !== 'docker'
+  const opts: ClaudeCodeOptions = {
+    ...(token ? { env: { CLAUDE_CODE_OAUTH_TOKEN: token } } : {}),
+    ...(noSandbox ? { permissionMode: 'bypassPermissions' as const } : {}),
+  }
+  const agent = claudeCode(config.model, opts)
+
+  if (noSandbox && process.platform === 'win32') {
+    const quoted = `--model '${config.model}'`
+    const unquoted = `--model ${config.model}`
+    return {
+      ...agent,
+      buildPrintCommand: (o: AgentCommandOptions): PrintCommand => {
+        const built = agent.buildPrintCommand(o)
+        return { ...built, command: built.command.split(quoted).join(unquoted) }
+      },
+    }
+  }
+  return agent
+}
+
+/**
  * Run one ticket through sandcastle. Renders the prompt, builds the `run()`
  * options (branch strategy targeting `feature/<slug>`, throttled stream
  * forwarding, abort wiring), interprets commits/BLOCKED.md, and maps a merge
@@ -559,7 +609,7 @@ async function realExecuteTicketRun(
   const throttle = createStreamThrottle((e) => ctx.emitEvent({ ...e, ticketId: ticket.id }))
 
   const runOptions: RunOptions = {
-    agent: claudeCode(config.model, token ? { env: { CLAUDE_CODE_OAUTH_TOKEN: token } } : {}),
+    agent: buildBurnAgent(config, token),
     sandbox:
       config.sandbox === 'docker'
         ? docker(config.sandboxImage ? { imageName: config.sandboxImage } : {})
