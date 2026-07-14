@@ -1,0 +1,17 @@
+{
+  "pkg": "@runcastle/design-system",
+  "globalName": "Runcastle",
+  "projectId": "e3ec89ac-f456-48cb-bd03-01bfd5d96c1b",
+  "shape": "package",
+  "buildCmd": "bunx tsc -p packages/design-system/tsconfig.json",
+  "cssEntry": "src/styles.css",
+  "extraFonts": "src/fonts/fonts.css",
+  "readmeHeader": ".design-sync/conventions.md",
+  "overrides": {
+    "DimLine": { "cardMode": "column" },
+    "Panel": { "cardMode": "column" },
+    "Tabs": { "cardMode": "column" },
+    "Toast": { "cardMode": "column" },
+    "Toolbar": { "cardMode": "column" }
+  }
+}

@@ -1,0 +1,33 @@
+/* JetBrains Mono — the runcastle mono family ("mono for every identifier").
+   SIL Open Font License 1.1. Latin subset, weights 400/500/600/700.
+   Vendored woff2 sit alongside this file; the design-sync converter copies
+   them into the uploaded bundle's fonts/ and rewrites these url()s. */
+
+@font-face {
+  font-family: "JetBrains Mono";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("./jetbrains-mono-latin-400-normal.woff2") format("woff2");
+}
+@font-face {
+  font-family: "JetBrains Mono";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("./jetbrains-mono-latin-500-normal.woff2") format("woff2");
+}
+@font-face {
+  font-family: "JetBrains Mono";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("./jetbrains-mono-latin-600-normal.woff2") format("woff2");
+}
+@font-face {
+  font-family: "JetBrains Mono";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("./jetbrains-mono-latin-700-normal.woff2") format("woff2");
+}

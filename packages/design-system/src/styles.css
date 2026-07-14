@@ -1,0 +1,426 @@
+/* runcastle design system — the single stylesheet (UI-SPEC §4).
+   Extracted verbatim from the runcastle app's shipped atom CSS, then decoupled
+   from app-shell layout. Grammar: VS Code, not a marketing dashboard. Hairlines
+   everywhere, NO shadows/cards/elevation, exactly one solid violet button per
+   view, mono for every identifier.
+
+   Structure: design TOKENS first (the :root block below — the source of truth,
+   restyle the whole system by editing these values), then component rules that
+   consume them. Import this one file at your app root. */
+
+/* ============================================================================
+   DESIGN TOKENS
+   ========================================================================== */
+:root {
+  /* ---- surfaces (near-black, layered by hairlines not shadows) ---- */
+  --bg: #0a0c0f;        /* app canvas — the darkest layer */
+  --panel: #0e1116;     /* raised bars / panels (title bar, toolbars) */
+  --panel-2: #0c0f14;   /* sunken rails (sidebar, inspector) */
+
+  /* ---- hairlines (the only separators; 1px) ---- */
+  --hairline: #1a2028;      /* standard 1px divider / control border */
+  --hairline-soft: #141a21; /* fainter internal divider */
+
+  /* ---- text ramp (high -> low emphasis) ---- */
+  --text: #c9d1d9;    /* primary text, active identifiers */
+  --text-2: #8b949e;  /* secondary text, labels */
+  --text-3: #6e7681;  /* tertiary / dim, timestamps, glyphs */
+
+  /* ---- violet accent (exactly one solid accent surface per view) ---- */
+  --accent: #8b5cf6;     /* solid button / active markers */
+  --accent-hi: #a78bfa;  /* hover / links / headings */
+  --accent-ink: #0a0413; /* text on a solid accent surface */
+
+  /* ---- phase palette (feature lifecycle) ---- */
+  --ph-ideation: #8b5cf6;
+  --ph-spec: #6e7681;
+  --ph-tickets: #d29922;
+  --ph-implementation: #f0883e;
+  --ph-review: #58a6ff;
+  --ph-shipped: #3fb950;
+
+  /* ---- status ---- */
+  --danger: #f85149;  /* error / destructive */
+  --needs: #d29922;   /* needs-attention / warning (amber) */
+  --ok: #3fb950;      /* success / healthy */
+
+  /* ---- type ---- */
+  --mono: "JetBrains Mono", ui-monospace, Consolas, monospace;
+  --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+
+  /* ---- shared metrics ---- */
+  --radius: 5px;
+  --radius-sm: 4px;
+  --radius-pill: 999px;
+  --control-h: 26px;
+}
+
+/* ============================================================================
+   COMPONENTS
+   ========================================================================== */
+
+/* ---- canvas / base ---- */
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: 13px;
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+}
+.mono {
+  font-family: var(--mono);
+  font-size: 12.5px;
+}
+.dim {
+  color: var(--text-3);
+}
+
+/* ---- section title / dim line ---- */
+.section-title {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-2);
+  font-weight: 600;
+  padding: 4px 0;
+}
+.dim-line {
+  color: var(--text-3);
+  font-family: var(--mono);
+  font-size: 12.5px;
+  padding: 2px 0;
+}
+
+/* ---- buttons (exactly one .btn-solid visible per view) ---- */
+.btn {
+  height: var(--control-h);
+  padding: 0 12px;
+  border-radius: var(--radius);
+  border: 1px solid var(--hairline);
+  background: transparent;
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: 12.5px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: border-color 0.1s, background 0.1s, opacity 0.1s;
+}
+.btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.btn-ghost:hover:not(:disabled) {
+  border-color: var(--text-3);
+  background: var(--panel);
+}
+.btn-solid {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+  font-weight: 600;
+}
+.btn-solid:hover:not(:disabled) {
+  background: var(--accent-hi);
+  border-color: var(--accent-hi);
+}
+.btn-danger {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+.btn-danger:hover:not(:disabled) {
+  background: rgba(248, 81, 73, 0.12);
+}
+.btn-xs {
+  height: 22px;
+  padding: 0 8px;
+  font-size: 11.5px;
+  border-radius: var(--radius-sm);
+}
+
+/* ---- ghost link (borderless text action) ---- */
+.ghost-link {
+  background: none;
+  border: none;
+  color: var(--text-2);
+  font-family: var(--sans);
+  font-size: 12.5px;
+  cursor: pointer;
+  padding: 2px 0;
+  transition: color 0.1s, opacity 0.1s;
+}
+.ghost-link:hover:not(:disabled) {
+  color: var(--accent-hi);
+}
+.ghost-link:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* ---- input ---- */
+.input {
+  height: var(--control-h);
+  background: var(--bg);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  padding: 0 8px;
+  font-family: var(--sans);
+  font-size: 12.5px;
+}
+.input::placeholder {
+  color: var(--text-3);
+}
+.input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+.input-invalid {
+  border-color: var(--danger);
+}
+.input-mono {
+  font-family: var(--mono);
+}
+
+/* ---- segmented control (mono, one active segment) ---- */
+.segmented {
+  display: inline-flex;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+.segmented button {
+  background: none;
+  border: none;
+  color: var(--text-3);
+  font-family: var(--mono);
+  font-size: 11px;
+  padding: 3px 8px;
+  cursor: pointer;
+  transition: color 0.1s, background 0.1s;
+}
+.segmented button:hover:not(.is-on) {
+  color: var(--text);
+}
+.segmented button.is-on {
+  background: var(--accent);
+  color: #fff;
+}
+
+/* ---- tag (phase-coloured lowercase identifier) ---- */
+.tag {
+  font-family: var(--mono);
+  font-size: 12px;
+  text-transform: lowercase;
+  font-weight: 600;
+  color: var(--text-2);
+}
+.tag-ideation { color: var(--ph-ideation); }
+.tag-spec { color: var(--ph-spec); }
+.tag-tickets { color: var(--ph-tickets); }
+.tag-implementation { color: var(--ph-implementation); }
+.tag-review { color: var(--ph-review); }
+.tag-shipped { color: var(--ph-shipped); }
+
+/* ---- chip (pill status token) ---- */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  height: 18px;
+  padding: 0 8px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--hairline);
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-2);
+  white-space: nowrap;
+}
+.chip-neutral { color: var(--text-2); }
+.chip-pending { color: var(--text-3); }
+.chip-active { color: var(--ph-implementation); border-color: var(--ph-implementation); }
+.chip-done { color: var(--ok); border-color: var(--ok); }
+.chip-failed { color: var(--danger); border-color: var(--danger); }
+.chip-blocked { color: var(--needs); border-color: var(--needs); }
+
+/* ---- status dot ---- */
+.status-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--text-3);
+  flex: 0 0 auto;
+}
+.dot-idle { background: var(--text-3); }
+.dot-ok { background: var(--ok); }
+.dot-warn { background: var(--needs); }
+.dot-danger { background: var(--danger); }
+.dot-active { background: var(--ph-implementation); }
+
+/* generic pulse modifier — any pulsing token opts in */
+.is-pulsing { animation: pulse 1.3s ease-in-out infinite; }
+
+/* ---- spinner ---- */
+.spinner {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 1.5px solid var(--ph-implementation);
+  border-top-color: transparent;
+  display: inline-block;
+  animation: spin 0.7s linear infinite;
+}
+
+/* ---- panel (bordered hairline surface — no shadow, no elevation) ---- */
+.panel {
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius);
+  background: var(--panel-2);
+  overflow: hidden;
+}
+.panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--hairline);
+}
+.panel-title {
+  color: var(--text);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+.panel-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.panel-body {
+  padding: 12px;
+}
+
+/* ---- toolbar (horizontal bar: raised panel bg + bottom hairline) ---- */
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--hairline);
+  background: var(--panel);
+  font-size: 12.5px;
+}
+.toolbar-title {
+  color: var(--text);
+  font-size: 12.5px;
+}
+.toolbar-spacer {
+  flex: 1;
+}
+
+/* ---- tabs (typed tab strip, VS Code grammar) ---- */
+.tabstrip {
+  height: 32px;
+  display: flex;
+  align-items: stretch;
+  border-bottom: 1px solid var(--hairline);
+  background: var(--panel);
+  overflow-x: auto;
+}
+.tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 10px;
+  border-right: 1px solid var(--hairline);
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--text-2);
+  white-space: nowrap;
+  position: relative;
+}
+.tab:hover { background: var(--panel-2); }
+.tab.is-active {
+  background: var(--bg);
+  color: var(--text);
+}
+.tab.is-active::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -1px;
+  height: 1px;
+  background: var(--accent);
+}
+.tab-icon { color: var(--text-3); font-size: 11px; font-family: var(--mono); }
+.tab.is-active .tab-icon { color: var(--accent); }
+.tab-dot { color: var(--text-3); }
+.tab-type { color: var(--text-3); }
+.tab-close {
+  background: none;
+  border: none;
+  color: var(--text-3);
+  cursor: pointer;
+  font-size: 11px;
+  padding: 0 2px;
+  border-radius: 3px;
+}
+.tab-close:hover { color: var(--text); background: var(--hairline); }
+
+/* ---- stepper (vertical lifecycle steps) ---- */
+.stepper {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.step {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 0 3px 4px;
+  position: relative;
+}
+.step-mark {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.4;
+  flex: 0 0 auto;
+}
+.step-label {
+  color: var(--text-3);
+  font-size: 12px;
+}
+.step-done .step-mark { opacity: 1; }
+.step-done .step-label { color: var(--text-2); }
+.step-current .step-mark { opacity: 1; box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.18); }
+.step-current .step-label { color: var(--text); font-weight: 600; }
+.step-skipped .step-label { color: var(--text-3); text-decoration: line-through; opacity: 0.6; }
+.step-skipped .step-mark { opacity: 0.2; }
+
+/* ---- toast ---- */
+.toast {
+  padding: 8px 12px;
+  border-radius: var(--radius);
+  font-size: 12.5px;
+  border: 1px solid var(--hairline);
+  background: var(--panel);
+  color: var(--text);
+  word-break: break-word;
+}
+.toast-error { border-color: var(--danger); color: var(--danger); }
+.toast-success { border-color: var(--ok); color: var(--ok); }
+.toast-info { color: var(--text-2); }
+
+/* ---- animations (the only motion, UI-SPEC §4) ---- */
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
