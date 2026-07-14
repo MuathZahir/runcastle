@@ -5,6 +5,7 @@ import { ensureDataDir, loadConfig } from './config'
 import { createDb } from './db/client'
 import { runMigrations } from './db/migrate'
 import type { AppCtx } from './db/types'
+import { setRuntimeCtx } from './launcher/runtime'
 import mcpApp from './mcp/server'
 import hooksApp from './routes/hooks'
 import { appRouter } from './trpc/router'
@@ -18,6 +19,14 @@ import { appRouter } from './trpc/router'
  */
 export function buildApp(ctx: AppCtx): Hono {
   const app = new Hono()
+
+  // Collapse the second db handle (docs/research/CORRECTIONS.md C2): the hooks
+  // (`/api/hooks`) and MCP (`/mcp`) sub-apps resolve their `AppCtx` from
+  // `launcher/runtime`, which otherwise lazily opens its own connection at boot.
+  // Injecting the boot handle here makes one connection serve the whole app.
+  // Tests that mount the sub-apps directly still inject their own ctx via
+  // `setRuntimeCtx` — this is the same mechanism, called at boot.
+  setRuntimeCtx(ctx)
 
   app.get('/health', (c) => c.json({ ok: true }))
 

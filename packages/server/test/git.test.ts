@@ -13,8 +13,10 @@ import {
   __resetTestDriveState,
   commitDocs,
   createFeatureBranch,
+  detachWorktree,
   ensureTalkWorktree,
   mergeFeature,
+  reattachWorktree,
   testDrive,
 } from '../src/services/git'
 import { makeTestCtx } from './helpers/db'
@@ -168,6 +170,112 @@ describe('ensureTalkWorktree', () => {
     expect(second).toBe(first)
     expect(existsSync(join(second, '.git'))).toBe(true)
     expect(await currentBranch(simpleGit(second))).toBe('feature/wt')
+  })
+})
+
+describe('detachWorktree / reattachWorktree', () => {
+  let ctx: AppCtx
+  let project: Project
+  let feature: Feature
+  let prevUserProfile: string | undefined
+  let prevHome: string | undefined
+
+  beforeEach(async () => {
+    const home = mkTmp('rc-home-')
+    prevUserProfile = process.env.USERPROFILE
+    prevHome = process.env.HOME
+    process.env.USERPROFILE = home
+    process.env.HOME = home
+
+    ctx = await makeTestCtx()
+    const repo = mkTmp('rc-detach-')
+    await initRepo(repo)
+    project = seedProject(ctx, repo)
+    feature = seedFeature(ctx, project.id, { slug: 'dt' })
+    await createFeatureBranch(project, feature.slug)
+  })
+
+  afterEach(() => {
+    process.env.USERPROFILE = prevUserProfile
+    process.env.HOME = prevHome
+  })
+
+  it('detaches the talk worktree, freeing the branch, then reattaches it', async () => {
+    const wt = await ensureTalkWorktree(project, feature)
+    expect(await currentBranch(simpleGit(wt))).toBe('feature/dt')
+
+    const detached = await detachWorktree(wt)
+    expect(detached).toBe(true)
+    expect(await currentBranch(simpleGit(wt))).toBe('HEAD') // detached
+    // feature docs / files remain present while detached
+    expect(existsSync(join(wt, '.git'))).toBe(true)
+
+    // the branch is now free: the MAIN checkout can switch onto it
+    const g = simpleGit(project.repoPath)
+    await g.checkout('feature/dt')
+    expect(await currentBranch(g)).toBe('feature/dt')
+    await g.checkout('main')
+
+    await reattachWorktree(wt, feature.branch)
+    expect(await currentBranch(simpleGit(wt))).toBe('feature/dt')
+  })
+
+  it('returns false for a missing path or an already-detached worktree', async () => {
+    expect(await detachWorktree(join(project.repoPath, 'nope'))).toBe(false)
+
+    const wt = await ensureTalkWorktree(project, feature)
+    expect(await detachWorktree(wt)).toBe(true)
+    expect(await detachWorktree(wt)).toBe(false) // already detached
+  })
+})
+
+describe('testDrive with a live talk worktree', () => {
+  let ctx: AppCtx
+  let project: Project
+  let feature: Feature
+  let prevUserProfile: string | undefined
+  let prevHome: string | undefined
+
+  beforeEach(async () => {
+    const home = mkTmp('rc-home-')
+    prevUserProfile = process.env.USERPROFILE
+    prevHome = process.env.HOME
+    process.env.USERPROFILE = home
+    process.env.HOME = home
+
+    ctx = await makeTestCtx()
+    const repo = mkTmp('rc-drive-wt-')
+    await initRepo(repo)
+    project = seedProject(ctx, repo)
+    feature = seedFeature(ctx, project.id, { slug: 'drivewt' })
+    await createFeatureBranch(project, feature.slug)
+    // A live talk worktree holds feature/drivewt checked out (the collision).
+    await ensureTalkWorktree(project, feature)
+  })
+
+  afterEach(() => {
+    __resetTestDriveState()
+    process.env.USERPROFILE = prevUserProfile
+    process.env.HOME = prevHome
+  })
+
+  it('start switches the main checkout onto the feature branch despite the talk worktree; stop restores + reattaches', async () => {
+    const g = simpleGit(project.repoPath)
+    const wt = worktreeDir(project.id, feature.slug)
+    expect(await currentBranch(g)).toBe('main')
+
+    const start = await testDrive(ctx, project, feature, 'start')
+    expect(start.ok).toBe(true)
+    expect(start.branch).toBe('feature/drivewt')
+    expect(await currentBranch(g)).toBe('feature/drivewt')
+    // talk worktree was detached to free the branch
+    expect(await currentBranch(simpleGit(wt))).toBe('HEAD')
+
+    const stop = await testDrive(ctx, project, feature, 'stop')
+    expect(stop.ok).toBe(true)
+    expect(await currentBranch(g)).toBe('main')
+    // talk worktree reattached to the feature branch
+    expect(await currentBranch(simpleGit(wt))).toBe('feature/drivewt')
   })
 })
 

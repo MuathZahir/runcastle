@@ -1,11 +1,12 @@
 import type { RunStatus, WorkflowCtx } from '@runcastle/core'
-import { newId, nextGate, nextPhase } from '@runcastle/core'
+import { newId, nextGate, nextPhase, worktreeDir } from '@runcastle/core'
 import { eq } from 'drizzle-orm'
 import type { AppCtx } from '../db/types'
 import { runs } from '../db/schema'
 import { NotFoundError } from '../errors'
 import { emit } from '../services/events'
 import { checkGate } from '../services/gates'
+import { detachWorktree, reattachWorktree } from '../services/git'
 import { getFeatureRow, requireProject, setPhase } from '../services/repo'
 import { listByFeature, updateTicket } from '../services/tickets'
 import { getWorkflow } from './registry'
@@ -64,6 +65,14 @@ export async function startRun(
   const controller = new AbortController()
   controllers.set(runId, controller)
 
+  // Free the feature branch for the workflow's own worktree (SPEC §8): a live
+  // talk worktree holds `feature/<slug>` checked out, which git refuses to let
+  // the sandcastle burner check out again ('already used by worktree'). Detach it
+  // for the duration of the run; reattach best-effort when the run finalizes.
+  // No-op when no talk worktree exists (non-burner workflows, headless runs).
+  const talkWorktree = worktreeDir(project.id, feature.slug)
+  const talkDetached = await detachWorktree(talkWorktree)
+
   const wctx: WorkflowCtx = {
     project,
     feature,
@@ -83,7 +92,9 @@ export async function startRun(
     signal: controller.signal,
   }
 
-  const done = executeRun(ctx, runId, featureId, def.run(wctx), controller)
+  const done = executeRun(ctx, runId, featureId, def.run(wctx), controller, async () => {
+    if (talkDetached) await reattachWorktree(talkWorktree, feature.branch)
+  })
   return { runId, done }
 }
 
@@ -98,6 +109,7 @@ async function executeRun(
   featureId: string,
   runPromise: Promise<{ status: 'succeeded' | 'failed'; summary: string }>,
   controller: AbortController,
+  cleanup?: () => Promise<void>,
 ): Promise<void> {
   let status: RunStatus = 'failed'
   let summary = 'run failed'
@@ -127,6 +139,14 @@ async function executeRun(
   })
 
   if (status === 'succeeded') maybeAutoAdvance(ctx, featureId)
+
+  if (cleanup) {
+    try {
+      await cleanup()
+    } catch {
+      // best-effort talk-worktree reattach — never fail a finalized run on it
+    }
+  }
 }
 
 /** After a succeeded run, advance to `review` if G4 (all-tickets-terminal). */

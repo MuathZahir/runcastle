@@ -25,6 +25,17 @@ export interface LaunchSessionInput {
   kind: SessionKind
 }
 
+export interface LaunchSessionOptions {
+  /**
+   * Open the Windows Terminal tab (default true). Set false to fabricate a
+   * session end-to-end MINUS the terminal spawn — the row, talk worktree and
+   * launch artifacts are all created for real; only `wt.exe` is skipped. Used by
+   * the scripted smoke (SPEC §11) so it can drive hooks/MCP against a real live
+   * session without opening a terminal.
+   */
+  spawn?: boolean
+}
+
 export interface LaunchSessionResult {
   sessionId: string
 }
@@ -130,6 +141,7 @@ async function ensureWorktree(
 export async function launchSession(
   ctx: AppCtx,
   input: LaunchSessionInput,
+  opts: LaunchSessionOptions = {},
 ): Promise<LaunchSessionResult> {
   const feature = getFeatureRow(ctx, input.featureId)
   const project = requireProject(ctx)
@@ -160,7 +172,15 @@ export async function launchSession(
     systemPromptPath: artifacts.systemPromptPath,
   })
 
-  spawnTerminal(ctx, feature.id, session.id, cmd)
+  if (opts.spawn === false) {
+    emit(ctx, feature.id, {
+      type: 'session.launched',
+      message: 'session prepared (terminal spawn skipped)',
+      data: { sessionId: session.id, command: cmd.display, spawned: false },
+    })
+  } else {
+    spawnTerminal(ctx, feature.id, session.id, cmd)
+  }
   return { sessionId: session.id }
 }
 

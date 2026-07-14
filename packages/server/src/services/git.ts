@@ -215,6 +215,52 @@ async function registeredWorktrees(g: SimpleGit): Promise<Set<string>> {
   return set
 }
 
+// --- worktree branch release (integration fix) ------------------------------
+
+/**
+ * Detach the git worktree at `path` from whatever branch it currently holds
+ * (`git checkout --detach`), FREEING that branch to be checked out elsewhere.
+ *
+ * The talk worktree keeps `feature/<slug>` checked out; git refuses to let a
+ * second worktree (the sandcastle burner's own `.sandcastle/worktrees/*`, or the
+ * main checkout during a test drive) check out the same branch. Detaching parks
+ * the talk worktree on the same commit as a detached HEAD, releasing the branch.
+ * Working-tree files are untouched (same commit), so the feature's docs stay on
+ * disk for the gate checks and the burner's docs digest.
+ *
+ * Returns `true` iff it actually detached (was on a branch); `false` when the
+ * path is absent or already detached — so the caller only reattaches what it
+ * itself detached.
+ */
+export async function detachWorktree(path: string): Promise<boolean> {
+  if (!existsSync(path)) return false
+  const g = git(path)
+  let head: string
+  try {
+    head = (await g.revparse(['--abbrev-ref', 'HEAD'])).trim()
+  } catch {
+    return false
+  }
+  if (head === 'HEAD') return false // already detached
+  await g.raw(['checkout', '--detach'])
+  return true
+}
+
+/**
+ * Re-checkout `branch` in the worktree at `path` — the inverse of
+ * `detachWorktree`. Best-effort: silently does nothing when the path is gone or
+ * the branch cannot be checked out right now (e.g. it is momentarily checked out
+ * elsewhere), since a detached worktree is still fully usable for reads.
+ */
+export async function reattachWorktree(path: string, branch: string): Promise<void> {
+  if (!existsSync(path)) return
+  try {
+    await git(path).checkout(branch)
+  } catch {
+    // best-effort — leaving the worktree detached keeps its files present
+  }
+}
+
 // --- docs checkpoint --------------------------------------------------------
 
 /**
@@ -240,8 +286,12 @@ export async function commitDocs(worktreePath: string, message: string): Promise
 
 // --- test drive -------------------------------------------------------------
 
-/** Module-level in-memory test-drive state (SPEC §7). At most one active. */
-let testDriveState: { featureId: string; previousBranch: string } | undefined
+/** Module-level in-memory test-drive state (SPEC §7). At most one active.
+ *  `detachedWorktree` records the talk worktree we detached to free the feature
+ *  branch for the main checkout, so `stop` reattaches exactly what it detached. */
+let testDriveState:
+  | { featureId: string; previousBranch: string; detachedWorktree?: string }
+  | undefined
 
 /** Test-only: clear the in-memory test-drive state (not called by any router). */
 export function __resetTestDriveState(): void {
@@ -265,7 +315,11 @@ export async function testDrive(
   if (action === 'stop') {
     if (!testDriveState) return { ok: false, deniedReason: DENY_NONE_ACTIVE }
     const previousBranch = testDriveState.previousBranch
+    const detachedWorktree = testDriveState.detachedWorktree
     await g.checkout(previousBranch)
+    // The main checkout has released the feature branch — restore the talk
+    // worktree to it (best-effort) so a resumed session picks up where it left.
+    if (detachedWorktree) await reattachWorktree(detachedWorktree, branch)
     testDriveState = undefined
     emit(ctx, feature.id, {
       type: 'testdrive.stopped',
@@ -281,9 +335,14 @@ export async function testDrive(
   if (testDriveState) return { ok: false, deniedReason: DENY_ACTIVE }
   if (hasActiveRun(ctx, feature.id)) return { ok: false, deniedReason: DENY_ACTIVE_RUN }
 
+  // Free the feature branch from the talk worktree (if any) so the main checkout
+  // can switch onto it — git refuses two worktrees on one branch. Reattached on stop.
+  const talkWorktree = worktreeDir(project.id, feature.slug)
+  const detachedWorktree = (await detachWorktree(talkWorktree)) ? talkWorktree : undefined
+
   const previousBranch = (await g.revparse(['--abbrev-ref', 'HEAD'])).trim()
   await g.checkout(branch)
-  testDriveState = { featureId: feature.id, previousBranch }
+  testDriveState = { featureId: feature.id, previousBranch, detachedWorktree }
 
   emit(ctx, feature.id, {
     type: 'testdrive.started',

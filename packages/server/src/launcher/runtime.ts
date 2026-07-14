@@ -10,17 +10,16 @@ import type { AppCtx } from '../db/types'
  *
  * - **Tests** call `setRuntimeCtx(testCtx)` before hitting `app.fetch`, so the
  *   sub-apps use the same in-memory sql.js db the test seeded.
- * - **Boot** never injects, so the first hook/MCP request lazily opens the real
- *   `~/.runcastle/runcastle.db` (a second WAL connection to the same file the
- *   tRPC app uses). WAL keeps cross-connection reads coherent, so a ticket the
- *   MCP tool writes is visible to the polling UI's connection. The `bun:sqlite`
- *   client is pulled in via a dynamic import so vitest's node runtime — which
- *   cannot load `bun:sqlite` — never touches it (the injected path returns
- *   first).
+ * - **Boot** injects the single boot handle: `index.ts#buildApp` calls
+ *   `setRuntimeCtx({ db, config })`, so the hooks/MCP sub-apps and the tRPC app
+ *   share ONE `bun:sqlite` connection (the second-connection era in
+ *   docs/research/CORRECTIONS.md C2 is over).
  *
- * NOTE for a future integrator: if `index.ts#buildApp` ever calls
- * `setRuntimeCtx({ db, config })`, the lazy second connection disappears and the
- * whole app shares one handle. Recorded in docs/research/CORRECTIONS.md.
+ * The lazy fallback below survives only for the degenerate case of a hook/MCP
+ * request arriving before any injection (no `buildApp`, no test setup): it opens
+ * the real `~/.runcastle/runcastle.db` via a dynamic import so vitest's node
+ * runtime — which cannot load `bun:sqlite` — never touches it (the injected path
+ * returns first).
  */
 
 let current: AppCtx | null = null
