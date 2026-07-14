@@ -2,7 +2,7 @@ import { StreamableHTTPTransport } from '@hono/mcp'
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js'
 import type { Phase as PhaseT, SessionRow, Ticket, TicketInput as TicketInputT } from '@runcastle/core'
-import { Phase, TicketInput } from '@runcastle/core'
+import { Phase, TicketInput, nextGate, nextPhase } from '@runcastle/core'
 import { Hono } from 'hono'
 import * as z from 'zod'
 import type { AppCtx } from '../db/types'
@@ -79,12 +79,10 @@ export function toolEmitTickets(
   input: { tickets: TicketInputT[] },
 ): { stored: number; ids: string[] } {
   const feature = getFeatureRow(ctx, session.featureId)
-  const stored = storeTickets(ctx, feature.id, input.tickets) // validates + emits tickets.stored
-  emit(ctx, feature.id, {
-    type: 'tickets.emitted',
-    message: `${stored.length} ticket(s) emitted from the ideation session`,
-    data: { count: stored.length, seqs: stored.map((t) => t.seq) },
-  })
+  // `storeTickets` is the mutation and emits the single `tickets.stored` event
+  // (one mutation → one event). This tool used to emit an additional
+  // `tickets.emitted` note, which double-logged the same action on the timeline.
+  const stored = storeTickets(ctx, feature.id, input.tickets)
   return { stored: stored.length, ids: stored.map((t) => t.id) }
 }
 
@@ -102,7 +100,7 @@ export function toolRecordEvent(
 }
 
 export type CompletePhaseResult =
-  | { ok: true; nextPhase: PhaseT }
+  | { ok: true; nextPhase: PhaseT; waitingOn?: string }
   | { ok: false; reason: string }
 
 export function toolCompletePhase(
@@ -116,8 +114,25 @@ export function toolCompletePhase(
     message: `session marked phase '${input.phase}' complete`,
     data: { phase: input.phase, currentPhase: feature.phase },
   })
+
+  // G3 (tickets → implementation) is THE human approval gate — the "Burn" click
+  // in CONTEXT.md's two-click covenant (#9). A session may mark the tickets
+  // phase's work complete, but it MUST NOT advance the feature past G3: only the
+  // `feature.burn` tRPC mutation (or an explicit `overrideGate`) may cross it.
+  // The feature parks at `tickets`, waiting on the human.
+  const gate = nextGate(feature)
+  if (gate?.id === 'G3') {
+    const next = nextPhase(feature) ?? 'implementation'
+    emit(ctx, feature.id, {
+      type: 'tickets.awaiting_burn',
+      message: 'tickets complete — waiting on the human Burn click (gate G3)',
+      data: { phase: feature.phase, nextPhase: next, waitingOn: 'human burn' },
+    })
+    return { ok: true, nextPhase: next, waitingOn: 'human burn' }
+  }
+
   try {
-    // Same code path as the `feature.advance` tRPC procedure.
+    // Non-G3 gates: same server-side check + advance as `feature.advance`.
     const updated = advance(ctx, feature.id)
     return { ok: true, nextPhase: updated.phase }
   } catch (e) {
@@ -228,7 +243,7 @@ export function buildMcpServer(): McpServer {
     {
       title: 'Complete phase',
       description:
-        'Mark the named phase complete. Runs the gate check server-side and advances the feature to the next phase, or returns { ok: false, reason }.',
+        'Mark the named phase complete. Runs the gate check server-side and advances the feature to the next phase, or returns { ok: false, reason }. The tickets → implementation gate (G3) is the human "Burn" approval: completing the tickets phase records the work as done and returns { ok: true, nextPhase: "implementation", waitingOn: "human burn" } WITHOUT advancing — the human must click Burn.',
       inputSchema: { phase: Phase },
     },
     async (args, extra) => {

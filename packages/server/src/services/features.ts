@@ -166,6 +166,15 @@ export function advance(ctx: AppCtx, featureId: string): Feature {
   const gate = nextGate(feature)
   if (!gate) throw new GateError('feature is already at the final phase')
 
+  // G3 (tickets → implementation) is the human "Burn" gate — the first click of
+  // CONTEXT.md's two-click covenant (#9). Even when its precondition
+  // (`tickets-approved`: ≥1 ticket) is met, a plain `advance` must NOT cross it;
+  // only `burn` (the human Burn click) or an explicit `overrideGate` may. This
+  // keeps `feature.burn` the single legitimate G3 crossing.
+  if (gate.id === 'G3') {
+    throw new GateError('G3 is the human Burn gate — click Burn to approve and burn the tickets')
+  }
+
   const result = checkGate(ctx, gate.check, feature)
   if (!result.satisfied) {
     throw new GateError(result.reason ?? `gate ${gate.id} not satisfied`)
@@ -176,18 +185,37 @@ export function advance(ctx: AppCtx, featureId: string): Feature {
   return setPhase(ctx, featureId, next, 'phase.advanced')
 }
 
-/** G3 burn: requires phase `tickets` + >=1 ticket; sets phase `implementation`
- *  and starts the ticket-burner run. */
+/**
+ * G3 burn — the human "Burn" click, the ONLY legitimate G3 crossing.
+ *
+ * From phase `tickets` (the normal case) this crosses G3: sets phase
+ * `implementation` and starts the ticket-burner run. It also accepts a feature
+ * already at `implementation` with NO active run — a run that was cancelled or
+ * crashed left the feature parked there — and (re)starts the burn without
+ * re-crossing any gate, so that state never dead-ends. Requires ≥1 ticket.
+ */
 export async function burn(ctx: AppCtx, featureId: string): Promise<{ runId: string }> {
   const feature = getFeatureRow(ctx, featureId)
-  if (feature.phase !== 'tickets') {
-    throw new GateError(`feature must be in the tickets phase to burn (currently ${feature.phase})`)
+  const restarting = feature.phase === 'implementation' && !hasActiveRun(ctx, featureId)
+  if (feature.phase !== 'tickets' && !restarting) {
+    const why =
+      feature.phase === 'implementation'
+        ? 'a run is already burning this feature'
+        : `feature must be in the tickets phase to burn (currently ${feature.phase})`
+    throw new GateError(why)
   }
   if (listByFeature(ctx, featureId).length < 1) {
     throw new GateError('no tickets to burn')
   }
 
-  setPhase(ctx, featureId, 'implementation', 'burn.started', 'burning tickets')
+  if (restarting) {
+    emit(ctx, featureId, {
+      type: 'burn.restarted',
+      message: 'restarting burn (previous run cancelled or crashed)',
+    })
+  } else {
+    setPhase(ctx, featureId, 'implementation', 'burn.started', 'burning tickets')
+  }
   const { runId } = await startRun(ctx, featureId, 'ticket-burner')
   return { runId }
 }

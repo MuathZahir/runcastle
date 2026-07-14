@@ -48,3 +48,32 @@ note wins; this file records why.
   opening a second WAL connection to `~/.runcastle/runcastle.db` (coherent across
   connections under WAL). A future integrator can collapse this to one handle by
   calling `setRuntimeCtx({ db, config })` inside `buildApp`.
+
+## C3 — G3 is the human Burn gate; `complete_phase`/`advance` must not cross it
+
+- **Where:** SPEC §4 (`feature.advance`), §6 (tools 2 + 4). The original prose had
+  `complete_phase` run "the gate check server-side and advance… (same code path as
+  `feature.advance`)". Applied literally, an ideation session's
+  `complete_phase({ phase: 'tickets' })` advanced the feature straight into
+  `implementation`.
+- **Conflict:** `CONTEXT.md` decision #9 (the two-click covenant) makes G3 —
+  `tickets → implementation` — a **human approval gate**: the human skims the
+  ticket review card and clicks **Burn**. Only `feature.burn` (the Burn click) may
+  cross G3. Letting `complete_phase` (an agent tool) or a plain `feature.advance`
+  cross it violates the covenant and strands the feature past the gate with no run
+  (`feature.burn` then rejects it, since it requires phase `tickets`). CONTEXT.md
+  is the higher law; the SPEC prose is corrected to match.
+- **Resolution:**
+  - `services/features.ts#advance` throws a `GateError` when the gate to cross is
+    G3 ("click Burn to approve and burn the tickets"). G3's precondition check
+    (`tickets-approved`: ≥1 ticket) is unchanged, so the UI still shows G3 as
+    *satisfiable* — it's simply crossed by Burn, not by Advance.
+  - `mcp/server.ts#toolCompletePhase` short-circuits when `nextGate` is G3:
+    it records `phase.complete_requested` + `tickets.awaiting_burn` and returns
+    `{ ok: true, nextPhase: 'implementation', waitingOn: 'human burn' }` **without**
+    advancing. All non-G3 gates keep the advance-on-satisfied behavior.
+  - `overrideGate` is unchanged — it may still cross G3 explicitly (recorded
+    reason), which is its purpose.
+- **Also (one mutation → one event):** `emit_tickets` used to emit a `tickets.emitted`
+  note *in addition to* `storeTickets`'s `tickets.stored`, double-logging one
+  action. The tool's extra emit is dropped; `tickets.stored` is the single event.

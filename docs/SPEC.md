@@ -113,9 +113,9 @@ Router `appRouter` in `trpc/router.ts`, context = `{ db, config }`. All inputs/o
 - `feature.list(): FeatureListItem[]` — Feature + ticket counts + activeRun boolean
 - `feature.get({ id }): { feature, tickets, sessions, runs, docs: {relPath, title}[], gate: { next: GateDef|null, satisfied: boolean, reason?: string } }`
 - `feature.launchSession({ featureId, kind }): { sessionId }` (B1 behavior)
-- `feature.advance({ featureId }): Feature` — attempt gate → next phase (server-side check; error with reason if unsatisfied)
-- `feature.overrideGate({ featureId, gate, reason }): Feature` — records override + advances
-- `feature.burn({ featureId }): { runId }` — G3: requires phase `tickets` + ≥1 ticket; sets phase `implementation`; `runner.startRun(...,'ticket-burner')`
+- `feature.advance({ featureId }): Feature` — attempt gate → next phase (server-side check; error with reason if unsatisfied). Refuses G3 (tickets→implementation): that human "Burn" gate is crossed only by `feature.burn` or `overrideGate` (see C3).
+- `feature.overrideGate({ featureId, gate, reason }): Feature` — records override + advances (may cross any gate, incl. G3)
+- `feature.burn({ featureId }): { runId }` — G3, the ONLY plain-crossing of it: requires phase `tickets` + ≥1 ticket; sets phase `implementation`; `runner.startRun(...,'ticket-burner')`. Also accepts phase `implementation` with no active run (cancelled/crashed run) and restarts the burn without re-crossing a gate.
 - `feature.testDrive({ featureId, action: 'start'|'stop' }): { ok: boolean, deniedReason?: string, branch?: string }` (B2)
 - `feature.merge({ featureId }): { ok: boolean, conflict?: boolean }` (B2; sets phase `shipped` on success)
 - `run.get({ runId }): Run`
@@ -143,9 +143,9 @@ Router `appRouter` in `trpc/router.ts`, context = `{ db, config }`. All inputs/o
 Mounted at `POST /mcp` (Streamable HTTP; use @hono/mcp if STACK-NOTES confirms, else raw SDK transport). Session identity: prefer header from mcp.json; fallback: singleton "most recent live session" (M1 has one live ideation session at a time — acceptable, note it).
 
 1. `get_feature_context() → { feature, phase, docs: {relPath, content}[], tickets: Ticket[] }`
-2. `emit_tickets({ tickets: TicketInput[] }) → { stored: number, ids: string[] }` — validates, stores; emits event `tickets.emitted`
+2. `emit_tickets({ tickets: TicketInput[] }) → { stored: number, ids: string[] }` — validates + stores via `storeTickets`, which emits the single event `tickets.stored` (one mutation → one event; see C3)
 3. `record_event({ type, message }) → { ok }` — timeline note from the session (decisions recorded, spec saved, etc.)
-4. `complete_phase({ phase }) → { ok, nextPhase } | { ok: false, reason }` — runs gate check server-side and advances (same code path as `feature.advance`)
+4. `complete_phase({ phase }) → { ok, nextPhase, waitingOn? } | { ok: false, reason }` — runs gate check server-side and advances (same code path as `feature.advance`), EXCEPT it never crosses G3: completing the `tickets` phase records the work done and returns `{ ok: true, nextPhase: 'implementation', waitingOn: 'human burn' }` without advancing (the human Burn click is the crossing). See C3.
 
 ## 7. Git service (B2) — `services/git.ts`, use `simple-git`
 
