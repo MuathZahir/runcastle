@@ -6,12 +6,22 @@
   "scripts": {
     "dev": "bun --hot src/index.ts",
     "start": "bun src/index.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "db:generate": "drizzle-kit generate"
   },
   "dependencies": {
-    "@runcastle/core": "workspace:*"
+    "@runcastle/core": "workspace:*",
+    "@hono/trpc-server": "0.4.2",
+    "@trpc/server": "11.18.0",
+    "drizzle-orm": "0.45.2",
+    "hono": "4.12.30",
+    "zod": "4.4.3"
   },
   "devDependencies": {
-    "bun-types": "1.3.14"
+    "@types/node": "26.1.1",
+    "@types/sql.js": "1.4.11",
+    "bun-types": "1.3.14",
+    "drizzle-kit": "0.31.10",
+    "sql.js": "1.14.1"
   }
 }
