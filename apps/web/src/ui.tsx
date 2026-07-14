@@ -1,97 +1,48 @@
 import type { ButtonHTMLAttributes, ReactNode } from 'react'
-import type { Phase, RunStatus, TicketStatus } from '@runcastle/core'
+import type { Phase, RunStatus, SessionStatus, TicketStatus } from '@runcastle/core'
 
-type Variant = 'primary' | 'danger' | 'ghost' | 'default'
+/**
+ * Primitive UI atoms for the IDE shell (UI-SPEC §4). Exactly one `solid` button
+ * is visible per view — everything else is `ghost`. No cards, no shadows.
+ */
+
+type Variant = 'solid' | 'ghost' | 'danger'
 
 export function Button({
-  variant = 'default',
+  variant = 'ghost',
   className,
   children,
   ...rest
 }: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: Variant }) {
   return (
-    <button
-      className={`btn btn-${variant}${className ? ` ${className}` : ''}`}
-      {...rest}
-    >
+    <button className={`btn btn-${variant}${className ? ` ${className}` : ''}`} {...rest}>
       {children}
     </button>
   )
 }
 
-export function PhaseBadge({ phase }: { phase: Phase }) {
-  return <span className={`badge phase-badge phase-${phase}`}>{phase}</span>
+/** 11px uppercase tracked section title (UI-SPEC §4). */
+export function SectionTitle({ children }: { children: ReactNode }) {
+  return <div className="section-title">{children}</div>
+}
+
+/** One dim mono line — the only empty/error state style (UI-SPEC §4/§5). */
+export function DimLine({ children }: { children: ReactNode }) {
+  return <div className="dim-line mono">{children}</div>
+}
+
+export function PhaseTag({ phase }: { phase: Phase }) {
+  return <span className={`tag phase-fg-${phase}`}>{phase}</span>
 }
 
 export function TicketStatusChip({ status }: { status: TicketStatus }) {
-  return <span className={`badge chip status-${status}`}>{status}</span>
+  return <span className={`chip chip-ticket-${status}`}>{status}</span>
 }
 
-export function RunStatusBadge({ status }: { status: RunStatus }) {
-  return <span className={`badge runstatus-${status}`}>{status}</span>
+export function RunStatusChip({ status }: { status: RunStatus }) {
+  return <span className={`chip chip-run-${status}`}>{status}</span>
 }
 
-export function Modal({
-  title,
-  wide,
-  onClose,
-  children,
-}: {
-  title: string
-  wide?: boolean
-  onClose: () => void
-  children: ReactNode
-}) {
-  return (
-    <div className="modal-backdrop" onClick={onClose}>
-      <div
-        className={`modal${wide ? ' modal-wide' : ''}`}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="modal-head">
-          <h3>{title}</h3>
-          <button className="icon-btn" onClick={onClose} aria-label="Close">
-            ×
-          </button>
-        </div>
-        <div className="modal-body">{children}</div>
-      </div>
-    </div>
-  )
-}
-
-export function ConfirmDialog({
-  title,
-  message,
-  confirmLabel = 'Confirm',
-  danger,
-  busy,
-  onConfirm,
-  onCancel,
-}: {
-  title: string
-  message: ReactNode
-  confirmLabel?: string
-  danger?: boolean
-  busy?: boolean
-  onConfirm: () => void
-  onCancel: () => void
-}) {
-  return (
-    <Modal title={title} onClose={onCancel}>
-      <div className="confirm-body">{message}</div>
-      <div className="modal-actions">
-        <Button variant="ghost" onClick={onCancel} disabled={busy}>
-          Cancel
-        </Button>
-        <Button
-          variant={danger ? 'danger' : 'primary'}
-          onClick={onConfirm}
-          disabled={busy}
-        >
-          {busy ? 'Working…' : confirmLabel}
-        </Button>
-      </div>
-    </Modal>
-  )
+export function SessionStatusDot({ status }: { status: SessionStatus }) {
+  return <span className={`status-dot sess-dot-${status}`} title={status} />
 }
