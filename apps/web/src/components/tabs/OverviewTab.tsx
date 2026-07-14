@@ -55,6 +55,9 @@ export function OverviewTab({
   })
   const merge = trpc.feature.merge.useMutation({
     onSuccess: (res) => {
+      // The server stops an active drive of this feature as part of merging, so
+      // clear the client-tracked drive state to match (a no-op when not driving).
+      onDriveChange(null)
       invalidate()
       if (res.ok) toast.push('merged — feature shipped', 'success')
       else toast.push('merge conflict — resolve and retry')
@@ -92,7 +95,7 @@ export function OverviewTab({
 
   const data = full.data
   const isDriving = driving?.featureId === featureId
-  const action = primaryAction(data, isDriving)
+  const action = primaryAction(data)
   const summary = stateSummary(data, isDriving)
   const latestSession = [...data.sessions].reverse()[0]
   const lastEvents = events.slice(-8).reverse()
@@ -142,6 +145,15 @@ export function OverviewTab({
         </Button>
 
         <div className="overview-secondary">
+          {data.feature.phase === 'review' && !isDriving && (
+            <button
+              className="ghost-link"
+              onClick={() => testDrive.mutate({ featureId, action: 'start' })}
+              disabled={busy}
+            >
+              Test drive
+            </button>
+          )}
           {latestSession && action.kind !== 'openGrill' && (
             <button
               className="ghost-link"

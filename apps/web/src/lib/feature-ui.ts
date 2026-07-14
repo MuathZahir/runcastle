@@ -100,11 +100,10 @@ export interface PrimaryAction {
 /**
  * The single solid button on the overview (UI-SPEC §3):
  * Start grilling → Open live grill → Review tickets → (Burn in tickets tab) →
- * Watch run → Test drive → Merge → Ask questions.
- *
- * `driving` = a client-tracked active test drive on this feature (status bar).
+ * Watch run → Merge → Ask questions. Test driving at `review` is optional and
+ * lives as a secondary action, so the primary here no longer depends on it.
  */
-export function primaryAction(full: FeatureFull, driving: boolean): PrimaryAction {
+export function primaryAction(full: FeatureFull): PrimaryAction {
   const { feature, sessions, runs } = full
   const liveSession = sessions.find((s) => s.status === 'live')
 
@@ -127,9 +126,10 @@ export function primaryAction(full: FeatureFull, driving: boolean): PrimaryActio
       return { kind: 'startBurn', label: 'Start burn' }
     }
     case 'review':
-      return driving
-        ? { kind: 'merge', label: 'Merge' }
-        : { kind: 'testDrive', label: 'Test drive' }
+      // Merge is the primary action whether or not a test drive is active — the
+      // server stops an active drive of this feature before merging. Test driving
+      // first is optional (offered as a secondary action on the overview).
+      return { kind: 'merge', label: 'Merge' }
     case 'shipped':
       return { kind: 'askQuestions', label: 'Ask questions' }
   }
@@ -167,7 +167,7 @@ export function stateSummary(full: FeatureFull, driving: boolean): string {
       if (driving) return 'Test driving the branch — merge when it looks right.'
       return failed
         ? `Run finished with ${failed} failed ticket${failed === 1 ? '' : 's'} — review, then ship.`
-        : 'Run complete — test drive, then merge.'
+        : 'Run complete — merge to ship, or test drive it first.'
     case 'shipped':
       return 'Shipped. Ask questions anytime.'
   }

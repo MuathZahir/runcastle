@@ -104,6 +104,19 @@ export async function createFeature(
   })
 
   scaffoldDocs(ctx, feature)
+
+  // Commit the scaffolded brief so it does not linger as an untracked file in the
+  // target repo's working tree. An untracked doc dirties the checkout and blocks
+  // the ship gates (test-drive and merge both require `git status` to be clean).
+  // Best-effort: a git stub (pre-B2) or a commit hiccup must never fail creation.
+  if (branchReady) {
+    try {
+      await git.commitDocs(project.repoPath, `runcastle: scaffold ${slug} docs`)
+    } catch {
+      // best-effort — the brief stays on disk; only the auto-commit is skipped
+    }
+  }
+
   return feature
 }
 

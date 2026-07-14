@@ -199,20 +199,55 @@ async function worktreeIsValid(
   }
 }
 
-/** Canonical paths of all worktrees git currently tracks for this repo. */
-async function registeredWorktrees(g: SimpleGit): Promise<Set<string>> {
-  const set = new Set<string>()
+/**
+ * Parse `git worktree list --porcelain` into `{ path, branch }` entries.
+ * `branch` is the short branch name (e.g. `feature/x`) or `undefined` when the
+ * worktree is detached or bare.
+ */
+async function listWorktrees(g: SimpleGit): Promise<Array<{ path: string; branch?: string }>> {
   let out = ''
   try {
     out = await g.raw(['worktree', 'list', '--porcelain'])
   } catch {
-    return set
+    return []
   }
+  const entries: Array<{ path: string; branch?: string }> = []
+  let cur: { path: string; branch?: string } | undefined
   for (const line of out.split('\n')) {
-    const m = line.match(/^worktree\s+(.+)$/)
-    if (m) set.add(canon(m[1].trim()))
+    const w = line.match(/^worktree\s+(.+)$/)
+    if (w) {
+      if (cur) entries.push(cur)
+      cur = { path: w[1].trim() }
+      continue
+    }
+    const b = line.match(/^branch\s+refs\/heads\/(.+)$/)
+    if (b && cur) cur.branch = b[1].trim()
   }
-  return set
+  if (cur) entries.push(cur)
+  return entries
+}
+
+/** Canonical paths of all worktrees git currently tracks for this repo. */
+async function registeredWorktrees(g: SimpleGit): Promise<Set<string>> {
+  return new Set((await listWorktrees(g)).map((e) => canon(e.path)))
+}
+
+/**
+ * Paths of worktrees — EXCLUDING the main checkout at `mainRepoPath` — that
+ * currently have `branch` checked out. git refuses to check the same branch out
+ * in a second worktree, so every one of these must be detached before the main
+ * checkout (test drive) or a merge can take the branch. Covers both the talk
+ * worktree and the sandcastle burner's `.sandcastle/worktrees/*` checkout.
+ */
+async function worktreesOnBranch(
+  g: SimpleGit,
+  branch: string,
+  mainRepoPath: string,
+): Promise<string[]> {
+  const main = canon(mainRepoPath)
+  return (await listWorktrees(g))
+    .filter((e) => e.branch === branch && canon(e.path) !== main)
+    .map((e) => e.path)
 }
 
 // --- worktree branch release (integration fix) ------------------------------
@@ -299,6 +334,15 @@ export function __resetTestDriveState(): void {
 }
 
 /**
+ * Feature id of the currently-active test drive, or `undefined` when none is
+ * active. The merge flow uses this to stop a drive of the SAME feature (which
+ * holds the main checkout on the feature branch) before merging.
+ */
+export function activeTestDriveFeatureId(): string | undefined {
+  return testDriveState?.featureId
+}
+
+/**
  * Guarded checkout-switch test drive of the feature branch on the MAIN checkout
  * (SPEC §7). `start` records the current branch and switches to the feature
  * branch after passing the deny checks; `stop` restores the recorded branch.
@@ -335,10 +379,18 @@ export async function testDrive(
   if (testDriveState) return { ok: false, deniedReason: DENY_ACTIVE }
   if (hasActiveRun(ctx, feature.id)) return { ok: false, deniedReason: DENY_ACTIVE_RUN }
 
-  // Free the feature branch from the talk worktree (if any) so the main checkout
-  // can switch onto it — git refuses two worktrees on one branch. Reattached on stop.
+  // Free the feature branch from EVERY worktree that currently holds it so the
+  // main checkout can switch onto it — git refuses two worktrees on one branch.
+  // This is the talk worktree AND the sandcastle burner's `.sandcastle/worktrees/*`
+  // checkout, which pins the branch after any burn. We remember only the talk
+  // worktree to reattach on stop; the burner's is left detached (its files stay on
+  // disk and it re-checks-out the branch itself on the next run).
   const talkWorktree = worktreeDir(project.id, feature.slug)
-  const detachedWorktree = (await detachWorktree(talkWorktree)) ? talkWorktree : undefined
+  let detachedWorktree: string | undefined
+  for (const holder of await worktreesOnBranch(g, branch, project.repoPath)) {
+    const didDetach = await detachWorktree(holder)
+    if (didDetach && canon(holder) === canon(talkWorktree)) detachedWorktree = holder
+  }
 
   const previousBranch = (await g.revparse(['--abbrev-ref', 'HEAD'])).trim()
   await g.checkout(branch)
@@ -379,6 +431,10 @@ function spawnDevTerminal(repoPath: string, devCommand: string): void {
  * `GateError` → PRECONDITION_FAILED) while a test drive is active or the main
  * checkout is dirty. On conflict it aborts and reports `{ ok: false, conflict:
  * true }`, leaving the checkout clean and on the main branch either way.
+ *
+ * The active-drive guard is a safety net: the merge tRPC handler already stops a
+ * drive of the SAME feature first (via `activeTestDriveFeatureId`), so in the
+ * normal flow this only fires when a DIFFERENT feature is being test-driven.
  */
 export async function mergeFeature(project: Project, feature: Feature): Promise<MergeResult> {
   if (testDriveState) {

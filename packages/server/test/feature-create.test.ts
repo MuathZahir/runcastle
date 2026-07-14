@@ -55,4 +55,15 @@ describe('feature.create', () => {
     // brief.md scaffolded into the target repo docs dir
     expect(existsSync(join(repoPath, 'docs', 'features', 'brancher', 'brief.md'))).toBe(true)
   })
+
+  it('commits the scaffolded brief so the working tree stays clean (ship gates)', async () => {
+    await createFeature(ctx, { title: 'Cleanly', oneLiner: 'z', size: 'full' })
+    const g = simpleGit(repoPath)
+
+    // The brief must be committed, not left untracked — an untracked doc would
+    // dirty the checkout and block test-drive / merge.
+    expect((await g.raw(['status', '--porcelain'])).trim()).toBe('')
+    const tracked = (await g.raw(['ls-files', 'docs/features/cleanly/brief.md'])).trim()
+    expect(tracked).toBe('docs/features/cleanly/brief.md')
+  })
 })

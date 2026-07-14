@@ -12,6 +12,7 @@ import { runs } from '../src/db/schema'
 import { listAfter } from '../src/services/events'
 import {
   __resetTestDriveState,
+  activeTestDriveFeatureId,
   commitDocs,
   createFeatureBranch,
   detachWorktree,
@@ -398,6 +399,25 @@ describe('testDrive', () => {
     expect(res.ok).toBe(false)
     expect(res.deniedReason).toBe('No test drive is active')
   })
+
+  it('start detaches a second worktree (e.g. the burner) that pins the branch', async () => {
+    const g = simpleGit(project.repoPath)
+    // Simulate sandcastle's `.sandcastle/worktrees/*`: a second worktree holding
+    // feature/drive, which pins the branch so a naive `checkout` on main fails.
+    const burnerWt = join(mkTmp('rc-burner-'), 'wt')
+    await g.raw(['worktree', 'add', burnerWt, 'feature/drive'])
+    expect(await currentBranch(simpleGit(burnerWt))).toBe('feature/drive')
+
+    const start = await testDrive(ctx, project, feature, 'start')
+    expect(start.ok).toBe(true)
+    expect(await currentBranch(g)).toBe('feature/drive')
+    // the pinning worktree was detached to free the branch for the main checkout
+    expect(await currentBranch(simpleGit(burnerWt))).toBe('HEAD')
+
+    const stop = await testDrive(ctx, project, feature, 'stop')
+    expect(stop.ok).toBe(true)
+    expect(await currentBranch(g)).toBe('main')
+  })
 })
 
 describe('mergeFeature', () => {
@@ -475,5 +495,37 @@ describe('mergeFeature', () => {
     const feature = seedFeature(ctx, project.id, { slug: 'dirtymerge' })
 
     await expect(mergeFeature(project, feature)).rejects.toThrow(/uncommitted changes/i)
+  })
+
+  it('activeTestDriveFeatureId reports the driven feature and clears on stop', async () => {
+    await createFeatureBranch(project, 'whichfeat')
+    const feature = seedFeature(ctx, project.id, { slug: 'whichfeat' })
+
+    expect(activeTestDriveFeatureId()).toBeUndefined()
+    await testDrive(ctx, project, feature, 'start')
+    expect(activeTestDriveFeatureId()).toBe(feature.id)
+    await testDrive(ctx, project, feature, 'stop')
+    expect(activeTestDriveFeatureId()).toBeUndefined()
+  })
+
+  it('ship flow: stopping the active drive first lets the merge proceed', async () => {
+    await createFeatureBranch(project, 'shipflow')
+    const g = simpleGit(project.repoPath)
+    await g.checkout('feature/shipflow')
+    writeFileSync(join(project.repoPath, 'feature.txt'), 'hi\n')
+    await g.add(['feature.txt'])
+    await g.commit('feat: work')
+    await g.checkout('main')
+
+    const feature = seedFeature(ctx, project.id, { slug: 'shipflow' })
+    await testDrive(ctx, project, feature, 'start')
+    // the merge handler stops this feature's active drive before merging:
+    expect(activeTestDriveFeatureId()).toBe(feature.id)
+    await testDrive(ctx, project, feature, 'stop')
+
+    const res = await mergeFeature(project, feature)
+    expect(res.ok).toBe(true)
+    expect(await currentBranch(g)).toBe('main')
+    expect(existsSync(join(project.repoPath, 'feature.txt'))).toBe(true)
   })
 })
