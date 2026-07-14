@@ -23,3 +23,28 @@ note wins; this file records why.
   `InvalidInputError`.
 - **Impact:** the ticket-burner (B3) topo-sorts by `seq` using `blockedBy` as a
   list of global `seq` numbers — no id lookup needed.
+
+## C2 — launcher/hooks/MCP format + wiring notes (B1)
+
+- **Where:** SPEC §5.2 (settings hooks) + §5/§6 (hooks route + MCP server).
+- **Settings hook timeouts:** SPEC §5.2 says "timeout 10" for every hook, but
+  `CC-INTEGRATION-NOTES.md §2` documents that `UserPromptSubmit` blocks model
+  processing and has a **30s** hard budget. Implemented (per B1's brief): the
+  `UserPromptSubmit` hook uses **timeout 5**, `SessionStart`/`SessionEnd` use 10.
+  `UserPromptSubmit`/`SessionEnd` carry **no `matcher`** (unsupported for those
+  events per the notes); `SessionStart` matches `startup`.
+- **`additionalContext` nesting:** both `session-start` and `user-prompt` hook
+  responses nest `additionalContext` inside `hookSpecificOutput` (verified shape,
+  CC-INTEGRATION-NOTES §3) — not top-level.
+- **`mcp.json` headers:** the `runcastle` http server entry carries
+  `headers: { "X-Runcastle-Session": "<sessionId>" }` — the verified http-type
+  format supports `headers` (CC-INTEGRATION-NOTES §4), so this is the primary MCP
+  session-identity mechanism (fallback = most-recent-live-session).
+- **Sub-app context wiring (architecture note, not a spec conflict):**
+  `index.ts#buildApp` (A1) mounts `hooksApp` (`/api/hooks`) and `mcpApp` (`/mcp`)
+  as bare Hono apps with NO DI context (unlike tRPC's `createContext`). B1 owns
+  neither `index.ts` nor a shared holder location, so `launcher/runtime.ts` holds
+  the `AppCtx`: tests inject it via `setRuntimeCtx`; boot falls back to lazily
+  opening a second WAL connection to `~/.runcastle/runcastle.db` (coherent across
+  connections under WAL). A future integrator can collapse this to one handle by
+  calling `setRuntimeCtx({ db, config })` inside `buildApp`.

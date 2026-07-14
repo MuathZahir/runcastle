@@ -1,15 +1,260 @@
+import { StreamableHTTPTransport } from '@hono/mcp'
+import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
+import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js'
+import type { Phase as PhaseT, SessionRow, Ticket, TicketInput as TicketInputT } from '@runcastle/core'
+import { Phase, TicketInput } from '@runcastle/core'
 import { Hono } from 'hono'
+import * as z from 'zod'
+import type { AppCtx } from '../db/types'
+import { GateError, isNotImplemented } from '../errors'
+import { getRuntimeCtx } from '../launcher/runtime'
+import { getSessionRow, mostRecentLiveSession } from '../launcher/sessions'
+import { advance } from '../services/features'
+import { emit } from '../services/events'
+import * as git from '../services/git'
+import { listDocs, readDoc } from '../services/knowledge'
+import { getFeatureRow } from '../services/repo'
+import { listByFeature, storeTickets } from '../services/tickets'
 
 /**
- * MCP server — WAVE B1 (SPEC §6): Streamable HTTP at `POST /mcp` exposing the 4
- * zod-validated tools (get_feature_context, emit_tickets, record_event,
- * complete_phase). Typed stub: a Hono sub-app returning 501 for every route, so
- * the `/mcp` mount exists and the app boots before B1 lands. B1 replaces this
- * with `@hono/mcp` (StreamableHTTPTransport) + `@modelcontextprotocol/sdk` per
- * docs/research/STACK-NOTES.md §5.
+ * runcastle MCP server (SPEC §6) — 4 zod-validated tools over Streamable HTTP
+ * (`@hono/mcp` + `@modelcontextprotocol/sdk` 1.29, per docs/research/STACK-NOTES §5).
+ *
+ * Session identity: the `X-Runcastle-Session` header set in each session's
+ * `mcp.json` (forwarded by `@hono/mcp` as `requestInfo.headers`). Fallback: the
+ * most recently created live session — acceptable in M1, where at most one live
+ * ideation session exists at a time (see `mostRecentLiveSession`).
+ *
+ * A fresh `McpServer` + transport is built per request (stateless mode,
+ * `enableJsonResponse`) so there is no cross-request shared transport state.
  */
+
+// --- session resolution -----------------------------------------------------
+
+interface HeaderCarrier {
+  requestInfo?: { headers?: Record<string, string | string[] | undefined> }
+}
+
+function headerSessionId(extra: HeaderCarrier): string | undefined {
+  const headers = extra.requestInfo?.headers
+  if (!headers) return undefined
+  const raw = headers['x-runcastle-session'] ?? headers['X-Runcastle-Session']
+  const value = Array.isArray(raw) ? raw[0] : raw
+  return typeof value === 'string' && value.length > 0 ? value : undefined
+}
+
+/** Resolve the session for a tool call: header first, else the live singleton. */
+export function resolveSession(ctx: AppCtx, sessionId: string | undefined): SessionRow | null {
+  if (sessionId) {
+    const byId = getSessionRow(ctx, sessionId)
+    if (byId) return byId
+  }
+  return mostRecentLiveSession(ctx)
+}
+
+// --- tool implementations (pure over AppCtx + session — unit-tested) ---------
+
+export interface FeatureContext {
+  feature: ReturnType<typeof getFeatureRow>
+  phase: PhaseT
+  docs: { relPath: string; content: string }[]
+  tickets: Ticket[]
+}
+
+export function toolGetFeatureContext(ctx: AppCtx, session: SessionRow): FeatureContext {
+  const feature = getFeatureRow(ctx, session.featureId)
+  const docs = listDocs(ctx, feature).map((d) => {
+    try {
+      return { relPath: d.relPath, content: readDoc(ctx, feature, d.relPath).content }
+    } catch {
+      return { relPath: d.relPath, content: '' }
+    }
+  })
+  return { feature, phase: feature.phase, docs, tickets: listByFeature(ctx, feature.id) }
+}
+
+export function toolEmitTickets(
+  ctx: AppCtx,
+  session: SessionRow,
+  input: { tickets: TicketInputT[] },
+): { stored: number; ids: string[] } {
+  const feature = getFeatureRow(ctx, session.featureId)
+  const stored = storeTickets(ctx, feature.id, input.tickets) // validates + emits tickets.stored
+  emit(ctx, feature.id, {
+    type: 'tickets.emitted',
+    message: `${stored.length} ticket(s) emitted from the ideation session`,
+    data: { count: stored.length, seqs: stored.map((t) => t.seq) },
+  })
+  return { stored: stored.length, ids: stored.map((t) => t.id) }
+}
+
+export function toolRecordEvent(
+  ctx: AppCtx,
+  session: SessionRow,
+  input: { type: string; message: string },
+): { ok: true } {
+  emit(ctx, session.featureId, {
+    type: input.type,
+    message: input.message,
+    data: { source: 'mcp' },
+  })
+  return { ok: true }
+}
+
+export type CompletePhaseResult =
+  | { ok: true; nextPhase: PhaseT }
+  | { ok: false; reason: string }
+
+export function toolCompletePhase(
+  ctx: AppCtx,
+  session: SessionRow,
+  input: { phase: PhaseT },
+): CompletePhaseResult {
+  const feature = getFeatureRow(ctx, session.featureId)
+  emit(ctx, feature.id, {
+    type: 'phase.complete_requested',
+    message: `session marked phase '${input.phase}' complete`,
+    data: { phase: input.phase, currentPhase: feature.phase },
+  })
+  try {
+    // Same code path as the `feature.advance` tRPC procedure.
+    const updated = advance(ctx, feature.id)
+    return { ok: true, nextPhase: updated.phase }
+  } catch (e) {
+    if (e instanceof GateError) return { ok: false, reason: e.message }
+    throw e
+  }
+}
+
+/**
+ * Checkpoint the feature's knowledge docs into the talk worktree (SPEC §6):
+ * best-effort, tolerating B2's `commitDocs` stub. Any failure is a warning
+ * event, never a tool error.
+ */
+async function commitDocsCheckpoint(
+  ctx: AppCtx,
+  session: SessionRow,
+  message: string,
+): Promise<void> {
+  try {
+    await git.commitDocs(session.worktreePath, message)
+  } catch (e) {
+    emit(ctx, session.featureId, {
+      type: 'git.commit_pending',
+      message: isNotImplemented(e)
+        ? 'docs checkpoint skipped (git service pending)'
+        : `docs checkpoint failed: ${e instanceof Error ? e.message : String(e)}`,
+      data: { message },
+    })
+  }
+}
+
+// --- MCP server assembly ----------------------------------------------------
+
+function ok(result: unknown): CallToolResult {
+  return { content: [{ type: 'text', text: JSON.stringify(result) }] }
+}
+
+function noSession(): CallToolResult {
+  return {
+    content: [
+      {
+        type: 'text',
+        text: 'No active runcastle session. Launch a session from the runcastle UI first.',
+      },
+    ],
+    isError: true,
+  }
+}
+
+async function resolveCtxSession(extra: HeaderCarrier): Promise<{ ctx: AppCtx; session: SessionRow } | null> {
+  const ctx = await getRuntimeCtx()
+  const session = resolveSession(ctx, headerSessionId(extra))
+  return session ? { ctx, session } : null
+}
+
+/** Build a fresh MCP server with the 4 runcastle tools registered. */
+export function buildMcpServer(): McpServer {
+  const server = new McpServer({ name: 'runcastle', version: '0.1.0' })
+
+  server.registerTool(
+    'get_feature_context',
+    {
+      title: 'Get feature context',
+      description:
+        'Full context for the current feature: the feature row, its phase, all docs/features/<slug>/*.md contents, and its tickets.',
+      inputSchema: {},
+    },
+    async (_args, extra) => {
+      const rs = await resolveCtxSession(extra)
+      if (!rs) return noSession()
+      return ok(toolGetFeatureContext(rs.ctx, rs.session))
+    },
+  )
+
+  server.registerTool(
+    'emit_tickets',
+    {
+      title: 'Emit tickets',
+      description:
+        'Store the ideation session\'s ticket batch. Each ticket: title, goal, context, acceptanceCriteria[], seams[], blockedBy[] (1-based positions within THIS batch).',
+      inputSchema: { tickets: z.array(TicketInput) },
+    },
+    async (args, extra) => {
+      const rs = await resolveCtxSession(extra)
+      if (!rs) return noSession()
+      const result = toolEmitTickets(rs.ctx, rs.session, args)
+      await commitDocsCheckpoint(rs.ctx, rs.session, `runcastle: tickets emitted (${result.stored})`)
+      return ok(result)
+    },
+  )
+
+  server.registerTool(
+    'record_event',
+    {
+      title: 'Record event',
+      description: 'Add a note to the feature timeline (decisions recorded, spec saved, milestones).',
+      inputSchema: { type: z.string(), message: z.string() },
+    },
+    async (args, extra) => {
+      const rs = await resolveCtxSession(extra)
+      if (!rs) return noSession()
+      return ok(toolRecordEvent(rs.ctx, rs.session, args))
+    },
+  )
+
+  server.registerTool(
+    'complete_phase',
+    {
+      title: 'Complete phase',
+      description:
+        'Mark the named phase complete. Runs the gate check server-side and advances the feature to the next phase, or returns { ok: false, reason }.',
+      inputSchema: { phase: Phase },
+    },
+    async (args, extra) => {
+      const rs = await resolveCtxSession(extra)
+      if (!rs) return noSession()
+      const result = toolCompletePhase(rs.ctx, rs.session, args)
+      if (result.ok) {
+        await commitDocsCheckpoint(rs.ctx, rs.session, `runcastle: phase '${args.phase}' complete`)
+      }
+      return ok(result)
+    },
+  )
+
+  return server
+}
+
+// --- Hono sub-app (mounted at /mcp) -----------------------------------------
+
 const mcp = new Hono()
 
-mcp.all('*', (c) => c.json({ error: 'not yet implemented (B1)', wave: 'B1' }, 501))
+mcp.all('*', async (c) => {
+  const server = buildMcpServer()
+  const transport = new StreamableHTTPTransport({ enableJsonResponse: true })
+  await server.connect(transport)
+  const res = await transport.handleRequest(c)
+  return res ?? c.body(null, 202)
+})
 
 export default mcp
