@@ -4,13 +4,14 @@ import { afterEach, describe, expect, it } from 'vitest'
 import type { Feature, RuncastleConfig, SessionRow } from '@runcastle/core'
 import { RuncastleConfig as ConfigSchema } from '@runcastle/core'
 import {
+  RUNCASTLE_MCP_ALLOW_RULES,
   hookClientPath,
   renderMcpConfig,
   renderSettings,
   renderSystemPrompt,
   writeSessionArtifacts,
 } from '../src/launcher/artifacts'
-import { buildLaunchCommand } from '../src/launcher/launcher'
+import { buildLaunchCommand, ptyExitMessage } from '../src/launcher/launcher'
 
 const config: RuncastleConfig = ConfigSchema.parse({})
 
@@ -42,6 +43,25 @@ function session(overrides: Partial<SessionRow> = {}): SessionRow {
 }
 
 describe('renderSettings', () => {
+  it('pre-allows the 4 runcastle MCP tools so our own tool calls never prompt', () => {
+    const s = renderSettings('C:\\hooks\\hook-client.ts')
+
+    // permissions.allow must cover every runcastle MCP tool, in the documented
+    // `mcp__<server>__<tool>` form (code.claude.com/docs/en/permissions.md).
+    expect(s.permissions.allow).toEqual(
+      expect.arrayContaining([
+        'mcp__runcastle__get_feature_context',
+        'mcp__runcastle__emit_tickets',
+        'mcp__runcastle__record_event',
+        'mcp__runcastle__complete_phase',
+      ]),
+    )
+    // the exported rule list is the single source and is fully included
+    expect(s.permissions.allow).toEqual(expect.arrayContaining([...RUNCASTLE_MCP_ALLOW_RULES]))
+    // every rule is anchored to our own server (no unanchored / cross-server globs)
+    for (const rule of s.permissions.allow) expect(rule.startsWith('mcp__runcastle__')).toBe(true)
+  })
+
   it('emits the verified hooks JSON shape with correct events + timeouts', () => {
     const s = renderSettings('C:\\hooks\\hook-client.ts')
 
@@ -63,6 +83,19 @@ describe('renderSettings', () => {
     expect(s.hooks.SessionEnd[0].hooks[0].command).toBe(
       'bun run "C:\\hooks\\hook-client.ts" session-end',
     )
+  })
+})
+
+describe('ptyExitMessage', () => {
+  it('renders a numeric exit code verbatim', () => {
+    expect(ptyExitMessage(0)).toBe('terminal exited (code 0)')
+    expect(ptyExitMessage(137)).toBe('terminal exited (code 137)')
+  })
+
+  it('renders a missing code as "unknown", never the string "undefined"', () => {
+    expect(ptyExitMessage(undefined)).toBe('terminal exited (code unknown)')
+    expect(ptyExitMessage(null)).toBe('terminal exited (code unknown)')
+    expect(ptyExitMessage(undefined)).not.toContain('undefined')
   })
 })
 
@@ -162,6 +195,7 @@ describe('writeSessionArtifacts', () => {
     const settings = JSON.parse(readFileSync(out.settingsPath, 'utf8'))
     expect(settings.hooks.SessionStart[0].matcher).toBe('startup')
     expect(settings.hooks.SessionStart[0].hooks[0].command).toContain(hookClientPath())
+    expect(settings.permissions.allow).toContain('mcp__runcastle__complete_phase')
 
     const mcp = JSON.parse(readFileSync(out.mcpConfigPath, 'utf8'))
     expect(mcp.mcpServers.runcastle.headers['X-Runcastle-Session']).toBe(sess.id)

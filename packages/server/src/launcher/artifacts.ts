@@ -92,7 +92,8 @@ interface CommandHook {
   timeout: number
 }
 
-export interface HooksSettings {
+export interface SessionSettings {
+  permissions: { allow: string[] }
   hooks: {
     SessionStart: { matcher: string; hooks: CommandHook[] }[]
     UserPromptSubmit: { hooks: CommandHook[] }[]
@@ -100,9 +101,31 @@ export interface HooksSettings {
   }
 }
 
+/** Kept as an alias so existing importers of the old name keep compiling. */
+export type HooksSettings = SessionSettings
+
 /**
- * The `settings.json` hooks block (CC-INTEGRATION-NOTES §2 verified shape).
+ * Our own MCP tools, as Claude Code permission-rule strings. Format is
+ * `mcp__<server>__<tool>` (double underscore between server and tool), verified
+ * against code.claude.com/docs/en/permissions.md — this is the most-specific
+ * documented form and suppresses the interactive permission prompt for each
+ * tool. The `<server>` segment is `runcastle`, matching `mcpServers.runcastle`
+ * in the generated `mcp.json` (`renderMcpConfig`); the tool names match the
+ * `registerTool` names in `mcp/server.ts`.
+ */
+export const RUNCASTLE_MCP_ALLOW_RULES: readonly string[] = [
+  'mcp__runcastle__get_feature_context',
+  'mcp__runcastle__emit_tickets',
+  'mcp__runcastle__record_event',
+  'mcp__runcastle__complete_phase',
+]
+
+/**
+ * The `settings.json` for a session (CC-INTEGRATION-NOTES §2 verified shape).
  *
+ * - `permissions.allow` pre-approves runcastle's own 4 MCP tools so a session's
+ *   `mcp__runcastle__*` tool calls never interrupt the user with a permission
+ *   prompt (they are the app's own trusted tools).
  * - `command` = `bun run "<abs hook-client.ts>" <route-event>` where the route
  *   event is the kebab-case `/api/hooks/:event` segment the client POSTs to.
  * - `SessionStart` matches `startup` (the source for a fresh `claude` launch).
@@ -110,13 +133,14 @@ export interface HooksSettings {
  * - Timeouts (seconds): SessionStart 10, UserPromptSubmit 5 (well inside its 30s
  *   hard budget), SessionEnd 10.
  */
-export function renderSettings(hookClient: string): HooksSettings {
+export function renderSettings(hookClient: string): SessionSettings {
   const cmd = (event: string): CommandHook => ({
     type: 'command',
     command: `bun run "${hookClient}" ${event}`,
     timeout: event === 'user-prompt' ? 5 : 10,
   })
   return {
+    permissions: { allow: [...RUNCASTLE_MCP_ALLOW_RULES] },
     hooks: {
       SessionStart: [{ matcher: 'startup', hooks: [cmd('session-start')] }],
       UserPromptSubmit: [{ hooks: [cmd('user-prompt')] }],
