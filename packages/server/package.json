@@ -10,11 +10,15 @@
     "db:generate": "drizzle-kit generate"
   },
   "dependencies": {
-    "@runcastle/core": "workspace:*",
+    "@ai-hero/sandcastle": "0.12.0",
+    "@hono/mcp": "0.3.1",
     "@hono/trpc-server": "0.4.2",
+    "@modelcontextprotocol/sdk": "1.29.0",
+    "@runcastle/core": "workspace:*",
     "@trpc/server": "11.18.0",
     "drizzle-orm": "0.45.2",
     "hono": "4.12.30",
+    "simple-git": "^3.36.0",
     "zod": "4.4.3"
   },
   "devDependencies": {

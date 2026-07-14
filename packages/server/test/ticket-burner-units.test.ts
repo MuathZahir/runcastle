@@ -1,0 +1,233 @@
+import type { AgentStreamEvent } from '@ai-hero/sandcastle'
+import type { Feature, Ticket } from '@runcastle/core'
+import { describe, expect, it } from 'vitest'
+import {
+  buildDocsDigest,
+  buildFeatureBrief,
+  buildTicketJson,
+  createStreamThrottle,
+  detectCycle,
+  indexBySeq,
+  interpretRunResult,
+  isMergeConflictError,
+  parseEnvFile,
+  renderTicketPrompt,
+} from '../src/workflows/ticket-burner'
+
+function ticket(seq: number, blockedBy: number[] = [], overrides: Partial<Ticket> = {}): Ticket {
+  return {
+    id: `tkt_${seq}`,
+    featureId: 'feat_1',
+    seq,
+    title: `Ticket ${seq}`,
+    goal: `goal ${seq}`,
+    context: `context ${seq}`,
+    acceptanceCriteria: [`criterion ${seq}`],
+    seams: [`seam ${seq}`],
+    blockedBy,
+    status: 'pending',
+    commits: [],
+    ...overrides,
+  }
+}
+
+const feature: Feature = {
+  id: 'feat_1',
+  projectId: 'proj_1',
+  slug: 'my-feature',
+  title: 'My Feature',
+  oneLiner: 'does a thing',
+  size: 'full',
+  phase: 'implementation',
+  branch: 'feature/my-feature',
+  status: 'active',
+  createdAt: 0,
+}
+
+function textEvent(message: string, iteration = 0): AgentStreamEvent {
+  return { type: 'text', message, iteration, timestamp: new Date() }
+}
+function toolEvent(name: string, formattedArgs: string, iteration = 0): AgentStreamEvent {
+  return { type: 'toolCall', name, formattedArgs, iteration, timestamp: new Date() }
+}
+
+describe('indexBySeq (seq→ticket resolution)', () => {
+  it('resolves each global seq to its ticket, and blockers via the index', () => {
+    const tickets = [ticket(1), ticket(2, [1]), ticket(3, [1, 2])]
+    const bySeq = indexBySeq(tickets)
+    expect(bySeq.get(2)?.id).toBe('tkt_2')
+    expect(tickets[2].blockedBy.map((s) => bySeq.get(s)?.id)).toEqual(['tkt_1', 'tkt_2'])
+    expect(bySeq.get(99)).toBeUndefined()
+  })
+})
+
+describe('detectCycle', () => {
+  it('returns null for an acyclic graph', () => {
+    expect(detectCycle([ticket(1), ticket(2, [1]), ticket(3, [1, 2])])).toBeNull()
+  })
+
+  it('detects a 2-cycle', () => {
+    const cycle = detectCycle([ticket(1, [2]), ticket(2, [1])])
+    expect(cycle).not.toBeNull()
+    expect(new Set(cycle)).toEqual(new Set([1, 2]))
+  })
+
+  it('detects a 3-cycle', () => {
+    const cycle = detectCycle([ticket(1, [3]), ticket(2, [1]), ticket(3, [2])])
+    expect(cycle).not.toBeNull()
+    expect(new Set(cycle)).toEqual(new Set([1, 2, 3]))
+  })
+
+  it('ignores edges to seqs outside the ticket set', () => {
+    expect(detectCycle([ticket(1, [99]), ticket(2, [1])])).toBeNull()
+  })
+})
+
+describe('renderTicketPrompt', () => {
+  const template = [
+    '# Ticket',
+    '```json',
+    '{{TICKET_JSON}}',
+    '```',
+    '## Brief',
+    '{{FEATURE_BRIEF}}',
+    '## Docs',
+    '{{DOCS_DIGEST}}',
+    'Commit: `{{COMMIT_CONVENTION}}`',
+  ].join('\n')
+
+  it('replaces every placeholder and leaves no stray {{ }}', () => {
+    const out = renderTicketPrompt(template, {
+      TICKET_JSON: buildTicketJson(ticket(4)),
+      FEATURE_BRIEF: buildFeatureBrief(feature),
+      DOCS_DIGEST: buildDocsDigest([{ name: 'spec.md', content: '# Spec\nbody' }]),
+      COMMIT_CONVENTION: 'ticket(4): <summary>',
+    })
+    expect(out).not.toContain('{{')
+    expect(out).not.toContain('}}')
+    expect(out).toContain('"seq": 4')
+    expect(out).toContain('My Feature')
+    expect(out).toContain('feature/my-feature')
+    expect(out).toContain('### spec.md')
+    expect(out).toContain('ticket(4): <summary>')
+  })
+
+  it('renders values containing $ and special chars safely', () => {
+    const out = renderTicketPrompt('{{TICKET_JSON}}', {
+      TICKET_JSON: 'cost is $5 & rising',
+      FEATURE_BRIEF: '',
+      DOCS_DIGEST: '',
+      COMMIT_CONVENTION: '',
+    })
+    expect(out).toBe('cost is $5 & rising')
+  })
+
+  it('buildDocsDigest notes when no docs are present', () => {
+    expect(buildDocsDigest([])).toMatch(/No feature docs/i)
+  })
+})
+
+describe('parseEnvFile', () => {
+  it('parses KEY=VALUE, skipping comments and blanks, stripping quotes and export', () => {
+    const env = parseEnvFile(
+      [
+        '# a comment',
+        '',
+        'CLAUDE_CODE_OAUTH_TOKEN=abc123',
+        'export QUOTED="hello world"',
+        "SINGLE='sq'",
+        'WITH_EQUALS=a=b=c',
+        '   # indented comment',
+        'SPACED = spaced value ',
+      ].join('\n'),
+    )
+    expect(env.CLAUDE_CODE_OAUTH_TOKEN).toBe('abc123')
+    expect(env.QUOTED).toBe('hello world')
+    expect(env.SINGLE).toBe('sq')
+    expect(env.WITH_EQUALS).toBe('a=b=c')
+    expect(env.SPACED).toBe('spaced value')
+  })
+
+  it('ignores lines without an =', () => {
+    expect(parseEnvFile('JUST_A_KEY\n=novalue')).toEqual({})
+  })
+})
+
+describe('createStreamThrottle', () => {
+  it('buffers text under the thresholds and flushes on demand', () => {
+    const emitted: { type: string; message: string }[] = []
+    const th = createStreamThrottle((e) => emitted.push(e), { now: () => 1000 })
+    th.onEvent(textEvent('aa'))
+    th.onEvent(textEvent('bb'))
+    expect(emitted).toHaveLength(0)
+    th.flush()
+    expect(emitted).toHaveLength(1)
+    expect(emitted[0]).toMatchObject({ type: 'burn.text', message: 'aabb' })
+  })
+
+  it('flushes text once it exceeds maxChars', () => {
+    const emitted: { type: string; message: string }[] = []
+    const th = createStreamThrottle((e) => emitted.push(e), { maxChars: 5, now: () => 0 })
+    th.onEvent(textEvent('123456'))
+    expect(emitted).toHaveLength(1)
+    expect(emitted[0].message).toBe('123456')
+  })
+
+  it('flushes text after the interval elapses', () => {
+    const emitted: { type: string; message: string }[] = []
+    let t = 0
+    const th = createStreamThrottle((e) => emitted.push(e), { intervalMs: 2000, now: () => t })
+    th.onEvent(textEvent('a'))
+    expect(emitted).toHaveLength(0)
+    t = 2001
+    th.onEvent(textEvent('b'))
+    expect(emitted).toHaveLength(1)
+    expect(emitted[0].message).toBe('ab')
+  })
+
+  it('emits a toolCall immediately, flushing pending text first (never per-token)', () => {
+    const emitted: { type: string; message: string }[] = []
+    const th = createStreamThrottle((e) => emitted.push(e), { now: () => 0 })
+    th.onEvent(textEvent('thinking'))
+    th.onEvent(toolEvent('Edit', '{"file":"a.ts"}'))
+    expect(emitted.map((e) => e.type)).toEqual(['burn.text', 'burn.tool'])
+    expect(emitted[1].message).toContain('Edit')
+  })
+})
+
+describe('interpretRunResult', () => {
+  it('marks done when commits landed', () => {
+    expect(interpretRunResult({ commits: [{ sha: 'a1' }, { sha: 'b2' }] }, undefined)).toEqual({
+      status: 'done',
+      commits: ['a1', 'b2'],
+    })
+  })
+
+  it('marks failed with BLOCKED.md content on zero commits', () => {
+    const out = interpretRunResult({ commits: [] }, 'need the API key')
+    expect(out.status).toBe('failed')
+    expect(out.status === 'failed' && out.error).toContain('need the API key')
+  })
+
+  it('marks failed "agent made no commits" on zero commits + no BLOCKED.md', () => {
+    expect(interpretRunResult({ commits: [] }, undefined)).toEqual({
+      status: 'failed',
+      error: 'agent made no commits',
+    })
+  })
+})
+
+describe('isMergeConflictError', () => {
+  it('recognises conflict-shaped error messages', () => {
+    expect(isMergeConflictError(new Error('CONFLICT (content): merge failed'))).toBe(true)
+    expect(isMergeConflictError(new Error('resolve then run: git branch -D sandcastle/x'))).toBe(
+      true,
+    )
+    expect(isMergeConflictError(new Error('Automatic merge failed; fix conflicts'))).toBe(true)
+  })
+
+  it('does not flag unrelated errors', () => {
+    expect(isMergeConflictError(new Error('image not found locally'))).toBe(false)
+    expect(isMergeConflictError('boom')).toBe(false)
+  })
+})

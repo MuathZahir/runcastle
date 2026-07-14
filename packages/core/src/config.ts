@@ -14,6 +14,12 @@ export const RuncastleConfig = z.object({
   smokeModel: z.string().default('claude-haiku-4-5-20251001'),
   sandbox: z.enum(['docker', 'noSandbox']).default('docker'),
   mainBranch: z.string().default('main'),
+  /**
+   * Docker image name for the sandcastle burner sandbox (B3 / SPEC §8). When
+   * unset, sandcastle derives its default (`sandcastle:<repo-dir-name>`). The
+   * demo image is tagged `sandcastle:runcastle-demo`. Ignored for `noSandbox`.
+   */
+  sandboxImage: z.string().optional(),
 })
 export type RuncastleConfig = z.infer<typeof RuncastleConfig>
 
@@ -40,6 +46,7 @@ export function loadConfig(
   if (env.RUNCASTLE_SMOKE_MODEL) overrides.smokeModel = env.RUNCASTLE_SMOKE_MODEL
   if (env.RUNCASTLE_SANDBOX) overrides.sandbox = env.RUNCASTLE_SANDBOX
   if (env.RUNCASTLE_MAIN_BRANCH) overrides.mainBranch = env.RUNCASTLE_MAIN_BRANCH
+  if (env.RUNCASTLE_SANDBOX_IMAGE) overrides.sandboxImage = env.RUNCASTLE_SANDBOX_IMAGE
 
   const base = typeof fileConfig === 'object' && fileConfig !== null ? fileConfig : {}
   return RuncastleConfig.parse({ ...base, ...overrides })
