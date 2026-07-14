@@ -1,0 +1,20 @@
+{
+  "name": "runcastle",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "dev": "bun run --filter '@runcastle/server' --filter '@runcastle/web' dev",
+    "typecheck": "bun run --filter '@runcastle/core' --filter '@runcastle/server' typecheck",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "devDependencies": {
+    "typescript": "7.0.2",
+    "vitest": "4.1.10"
+  }
+}
