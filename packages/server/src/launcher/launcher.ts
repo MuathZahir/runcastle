@@ -262,6 +262,18 @@ export async function launchSession(
       resumeSessionId = getSessionRow(ctx, before.lastSessionId)?.ccSessionId ?? undefined
     }
     try {
+      // Re-check "only one live HITL session per feature" here, synchronously
+      // adjacent to the claim itself (no `await` between the two). `workWaypoint`
+      // already checks this up front, but that check runs before this function's
+      // `await ensureWorktree` above — leaving a window where two concurrent Work
+      // calls on two DIFFERENT waypoints of the same feature both pass it before
+      // either claims. This recheck is the race-free, authoritative gate.
+      const live = claimedForFeature(ctx, feature.id)
+      if (live.length > 0) {
+        throw new GateError(
+          `a waypoint session is already live for ${feature.slug} (waypoint ${live[0].seq}) — only one at a time`,
+        )
+      }
       waypoint = claimWaypoint(ctx, input.waypointId, session.id)
     } catch (e) {
       markSessionEnded(ctx, session.id)

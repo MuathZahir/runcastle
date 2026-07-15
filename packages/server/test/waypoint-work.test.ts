@@ -9,7 +9,7 @@ import type { AppCtx } from '../src/db/types'
 import { GateError } from '../src/errors'
 import { workWaypoint } from '../src/launcher/launcher'
 import { createSessionRow, getSessionRow, markSessionLive } from '../src/launcher/sessions'
-import { createFeatureBranch } from '../src/services/git'
+import { createFeatureBranch, ensureTalkWorktree } from '../src/services/git'
 import { listAfter } from '../src/services/events'
 import {
   claim,
@@ -114,6 +114,29 @@ describe('workWaypoint — claim before spawn', () => {
     await expect(
       workWaypoint(ctx, { featureId: feature.id, waypointId: b.id }, { spawn: false }),
     ).rejects.toThrow(/already live/i)
+  })
+
+  it('enforces one-live-session under concurrent Work on two different frontier waypoints', async () => {
+    const feature = await mappedFeature('concurrent')
+    // Pre-create the talk worktree (as an earlier session would have) so both
+    // concurrent calls see it as already valid — otherwise they'd race on
+    // `git worktree add` instead, masking the waypoint-claim race this guards.
+    await ensureTalkWorktree(
+      { id: projectId, name: 't', repoPath, mainBranch: 'main' },
+      feature,
+    )
+    const [a, b] = storeWaypoints(ctx, feature.id, [wp('a'), wp('b')])
+
+    const results = await Promise.allSettled([
+      workWaypoint(ctx, { featureId: feature.id, waypointId: a.id }, { spawn: false }),
+      workWaypoint(ctx, { featureId: feature.id, waypointId: b.id }, { spawn: false }),
+    ])
+    for (const r of results) if (r.status === 'fulfilled') cleanup.push(sessionDir(r.value.sessionId))
+
+    const fulfilled = results.filter((r) => r.status === 'fulfilled')
+    expect(fulfilled).toHaveLength(1)
+    const rejected = results.find((r) => r.status === 'rejected') as PromiseRejectedResult
+    expect(rejected.reason?.message).toMatch(/already live/i)
   })
 
   it('refuses to work an unmapped feature', async () => {
