@@ -1,167 +1,190 @@
 import { useState } from 'react'
-import type { Phase } from '@runcastle/core'
 import { trpc } from '../trpc'
 import { useToast } from '../lib/toast'
 import { useEventLog } from '../lib/events'
-import { PHASE_ORDER } from '../lib/feature-ui'
-import type { FeatureFull } from '../lib/api'
+import type { DocSummary, GateState } from '../lib/api'
 import { relTime } from '../lib/format'
-import { DimLine, SectionTitle } from '../ui'
+import { Button, DimLine } from '../ui'
 import { DocPeek } from './DocPeek'
 
 /**
- * Inspector right rail (UI-SPEC §2), bound to the active tab's feature: three
- * stacked sections — Pipeline (vertical mini-stepper + gate + advance/override),
- * Knowledge (doc peeks), Activity (recent events).
+ * Inspector right rail for the pipeline-first shell. The vertical stepper now
+ * lives in the workspace, so this rail no longer advances the pipeline — it
+ * shows three stacked read-mostly sections: Current gate (with override-only
+ * escape hatch), Knowledge (doc peeks), and Activity (recent events).
  */
 export function Inspector({ featureId }: { featureId: string }) {
   const full = trpc.feature.get.useQuery({ id: featureId }, { refetchInterval: 1500 })
 
   if (full.isLoading)
-    return <div className="inspector"><DimLine>loading…</DimLine></div>
+    return (
+      <aside className="inspector">
+        <DimLine>loading…</DimLine>
+      </aside>
+    )
   if (full.error || !full.data)
-    return <div className="inspector"><DimLine>could not load inspector</DimLine></div>
+    return (
+      <aside className="inspector">
+        <DimLine>{full.error?.message ?? 'could not load inspector'}</DimLine>
+      </aside>
+    )
 
   return (
-    <div className="inspector">
-      <PipelineSection featureId={featureId} data={full.data} />
-      <KnowledgeSection featureId={featureId} data={full.data} />
-      <ActivitySection featureId={featureId} />
-    </div>
+    <aside className="inspector">
+      <CurrentGate featureId={featureId} gate={full.data.gate} />
+      <Knowledge featureId={featureId} docs={full.data.docs} />
+      <Activity featureId={featureId} />
+    </aside>
   )
 }
 
-function PipelineSection({ featureId, data }: { featureId: string; data: FeatureFull }) {
+const GATE_NAMES: Record<string, string> = {
+  G1: 'Decisions captured',
+  G2: 'Spec written',
+  G3: 'Tickets approved',
+  G4: 'Run clean',
+  G5: 'Merged',
+}
+
+function CurrentGate({ featureId, gate }: { featureId: string; gate: GateState }) {
   const toast = useToast()
   const utils = trpc.useUtils()
-  const [overriding, setOverriding] = useState(false)
+  const [open, setOpen] = useState(false)
   const [reason, setReason] = useState('')
 
-  const invalidate = () => {
-    utils.feature.get.invalidate({ id: featureId })
-    utils.feature.list.invalidate()
-  }
-  const advance = trpc.feature.advance.useMutation({
-    onSuccess: () => invalidate(),
-    onError: (e) => toast.push(e.message),
-  })
   const override = trpc.feature.overrideGate.useMutation({
     onSuccess: () => {
-      invalidate()
-      setOverriding(false)
       setReason('')
+      setOpen(false)
+      utils.feature.get.invalidate({ id: featureId })
+      utils.feature.list.invalidate()
     },
     onError: (e) => toast.push(e.message),
   })
 
-  const { feature, gate } = data
-  const currentIdx = PHASE_ORDER.indexOf(feature.phase)
-  const collapsed = feature.size === 'collapsed'
-
-  const rowState = (phase: Phase, idx: number): string => {
-    if (collapsed && phase === 'spec') return 'skipped'
-    if (idx < currentIdx) return 'done'
-    if (idx === currentIdx) return 'current'
-    return 'upcoming'
-  }
-
-  const busy = advance.isPending || override.isPending
-
   return (
     <section className="insp-section">
-      <SectionTitle>Pipeline</SectionTitle>
-      <div className="stepper">
-        {PHASE_ORDER.map((phase, idx) => {
-          const st = rowState(phase, idx)
-          return (
-            <div key={phase} className={`step step-${st}`}>
-              <span className={`step-mark phase-fg-${phase}`} />
-              <span className="step-label mono">{phase}</span>
-            </div>
-          )
-        })}
-      </div>
-
-      {gate.next ? (
-        <div className="gate">
-          <div className={`gate-line mono ${gate.satisfied ? 'gate-ok' : 'gate-block'}`}>
-            {gate.next.id} · {gate.satisfied ? 'satisfied' : `blocked — ${gate.reason ?? 'not satisfied'}`}
-          </div>
-          {overriding ? (
-            <form
-              className="override-form"
-              onSubmit={(e) => {
-                e.preventDefault()
-                if (!reason.trim()) {
-                  toast.push('override reason is required')
-                  return
-                }
-                override.mutate({ featureId, gate: gate.next!.id, reason: reason.trim() })
-              }}
-            >
-              <input
-                className="nf-input"
-                placeholder="override reason"
-                value={reason}
-                autoFocus
-                onChange={(e) => setReason(e.target.value)}
-              />
-              <div className="nf-actions">
-                <button
-                  type="button"
-                  className="btn btn-ghost btn-xs"
-                  onClick={() => setOverriding(false)}
-                  disabled={busy}
-                >
-                  Cancel
-                </button>
-                <button type="submit" className="btn btn-ghost btn-xs" disabled={busy}>
-                  Override
-                </button>
-              </div>
-            </form>
-          ) : (
-            <div className="gate-actions">
-              <button
-                className="btn btn-ghost btn-xs"
-                onClick={() => advance.mutate({ featureId })}
-                disabled={busy}
-              >
-                Advance
-              </button>
-              <button
-                className="btn btn-ghost btn-xs"
-                onClick={() => setOverriding(true)}
-                disabled={busy}
-              >
-                Override…
-              </button>
-            </div>
-          )}
-        </div>
+      <div className="insp-cap">Current gate</div>
+      {gate.next === null ? (
+        <div className="gate-empty">No gate — this feature is shipped.</div>
       ) : (
-        <div className="gate">
-          <div className="gate-line mono gate-ok">shipped — pipeline complete</div>
-        </div>
+        <GateCard
+          gateId={gate.next.id}
+          description={gate.next.description}
+          satisfied={gate.satisfied}
+          reason={gate.reason}
+          open={open}
+          reasonValue={reason}
+          pending={override.isPending}
+          onOpen={() => setOpen(true)}
+          onCancel={() => {
+            setOpen(false)
+            setReason('')
+          }}
+          onReasonChange={setReason}
+          onApply={() =>
+            override.mutate({ featureId, gate: gate.next!.id, reason: reason.trim() })
+          }
+        />
       )}
     </section>
   )
 }
 
-function KnowledgeSection({ featureId, data }: { featureId: string; data: FeatureFull }) {
+function GateCard({
+  gateId,
+  description,
+  satisfied,
+  reason,
+  open,
+  reasonValue,
+  pending,
+  onOpen,
+  onCancel,
+  onReasonChange,
+  onApply,
+}: {
+  gateId: string
+  description: string
+  satisfied: boolean
+  reason: string | undefined
+  open: boolean
+  reasonValue: string
+  pending: boolean
+  onOpen: () => void
+  onCancel: () => void
+  onReasonChange: (v: string) => void
+  onApply: () => void
+}) {
+  return (
+    <div className="gate-card">
+      <div className="gate-idrow">
+        <span className="gate-id">{gateId}</span>
+        <span className="gate-name">{GATE_NAMES[gateId] ?? gateId}</span>
+      </div>
+      <div className="gate-req">{description}</div>
+      <div className={`gate-state ${satisfied ? 'is-ok' : 'is-block'}`}>
+        <span className="gate-state-dot" />
+        <span>{satisfied ? 'ready to advance' : reason ?? 'blocked'}</span>
+      </div>
+
+      {open ? (
+        <div className="override-form">
+          <input
+            className="override-input"
+            placeholder="reason for override"
+            value={reasonValue}
+            autoFocus
+            onChange={(e) => onReasonChange(e.target.value)}
+          />
+          <div>
+            <Button
+              variant="solid"
+              className="btn-xs"
+              disabled={!reasonValue.trim() || pending}
+              onClick={onApply}
+            >
+              Apply
+            </Button>
+            <Button variant="ghost" className="btn-xs" onClick={onCancel}>
+              Cancel
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <Button variant="ghost" className="btn-xs" onClick={onOpen}>
+          Override with reason…
+        </Button>
+      )}
+
+      <div className="gate-hint">
+        The highlighted action in the workspace advances this gate.
+      </div>
+    </div>
+  )
+}
+
+function basename(relPath: string): string {
+  return relPath.split(/[\\/]/).pop() ?? relPath
+}
+
+function Knowledge({ featureId, docs }: { featureId: string; docs: DocSummary[] }) {
   const [peek, setPeek] = useState<{ relPath: string; title: string } | null>(null)
   return (
     <section className="insp-section">
-      <SectionTitle>Knowledge</SectionTitle>
-      {data.docs.length === 0 ? (
+      <div className="insp-cap">Knowledge</div>
+      {docs.length === 0 ? (
         <DimLine>no docs yet</DimLine>
       ) : (
         <ul className="doc-list">
-          {data.docs.map((d) => (
+          {docs.map((d) => (
             <li key={d.relPath}>
-              <button className="doc-link" onClick={() => setPeek({ relPath: d.relPath, title: d.title })}>
+              <button
+                className="doc-link"
+                onClick={() => setPeek({ relPath: d.relPath, title: d.title })}
+              >
                 <span className="doc-title">{d.title}</span>
-                <span className="doc-path mono dim">{d.relPath}</span>
+                <span className="doc-meta">{basename(d.relPath)}</span>
               </button>
             </li>
           ))}
@@ -179,21 +202,23 @@ function KnowledgeSection({ featureId, data }: { featureId: string; data: Featur
   )
 }
 
-function ActivitySection({ featureId }: { featureId: string }) {
+function Activity({ featureId }: { featureId: string }) {
   const events = useEventLog(featureId)
-  const recent = events.slice(-15).reverse()
+  const recent = events.slice(-12).reverse()
   return (
-    <section className="insp-section insp-activity">
-      <SectionTitle>Activity</SectionTitle>
+    <section className="insp-section">
+      <div className="insp-cap">Activity</div>
       {recent.length === 0 ? (
-        <DimLine>no activity</DimLine>
+        <DimLine>no activity yet</DimLine>
       ) : (
         <div className="activity-log">
           {recent.map((e) => (
-            <div key={e.id} className="act-line mono">
+            <div key={e.id} className="act-line">
               <span className="act-time">{relTime(e.ts)}</span>
-              <span className="act-type">{e.type}</span>
-              <span className="act-msg">{e.message}</span>
+              <div className="act-body">
+                <div className="act-type">{e.type}</div>
+                <div className="act-msg">{e.message}</div>
+              </div>
             </div>
           ))}
         </div>

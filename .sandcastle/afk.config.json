@@ -1,0 +1,36 @@
+{
+  "baseBranch": "main",
+  "maxParallel": 2,
+  "maxIssuesPerRun": 5,
+  "idleTimeoutMin": 10,
+  "absoluteTimeoutMin": 90,
+  "maxFixAttempts": 1,
+  "model": "opus",
+  "models": {
+    "implement": "opus",
+    "verify": "sonnet",
+    "fix": "opus",
+    "classify": "haiku",
+    "review": "claude-sonnet-4-6"
+  },
+  "setup": "rm -f package-lock.json && npm install --no-audit --no-fund --prefer-offline && git checkout -- package-lock.json 2>/dev/null; true",
+  "cache": true,
+  "verify": {
+    "enabled": false,
+    "backendOnly": false,
+    "timeoutSec": 1200,
+    "baseUrl": "",
+    "up": "",
+    "down": "",
+    "dbReset": "",
+    "appBoot": "",
+    "seed": "",
+    "secrets": ""
+  },
+  "pollSeconds": 60,
+  "dashboardPort": 7777,
+  "labels": {
+    "ready": "ready-for-agent",
+    "human": "ready-for-human"
+  }
+}

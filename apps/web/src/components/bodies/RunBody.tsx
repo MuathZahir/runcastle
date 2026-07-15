@@ -3,67 +3,67 @@ import type { EventRow, Ticket } from '@runcastle/core'
 import { trpc } from '../../trpc'
 import { useToast } from '../../lib/toast'
 import { useEventLog } from '../../lib/events'
-import { fmtDuration, shortSha } from '../../lib/format'
+import { fmtDuration, fmtTime, shortSha } from '../../lib/format'
 import { DimLine, RunStatusChip, TicketStatusChip } from '../../ui'
 
 /**
- * Run tab (UI-SPEC §3): 40/60 split — ticket lanes on the left, a live event
- * stream (auto-follow with pause-on-scroll) on the right. Header shows run
- * status + X/Y done + elapsed + a Cancel ghost button wired to `run.cancel`.
+ * Run / implementation phase-body for the pipeline-first workspace: a lanes|stream
+ * split — ticket lanes on the left, a live auto-following event stream on the
+ * right. No run header/cancel here (that moved to the workspace next-step bar);
+ * this body renders only the split. `readonly` is accepted but ignored (a log).
  */
-export function RunTab({ featureId, runId }: { featureId: string; runId: string }) {
-  const toast = useToast()
-  const utils = trpc.useUtils()
-  const run = trpc.run.get.useQuery({ runId }, { refetchInterval: 1500 })
-  const full = trpc.feature.get.useQuery({ id: featureId }, { refetchInterval: 1500 })
+export function RunBody({
+  featureId,
+  runId,
+  readonly = false,
+}: {
+  featureId: string
+  runId: string | null
+  readonly?: boolean
+}) {
+  void readonly
+  const feature = trpc.feature.get.useQuery({ id: featureId }, { refetchInterval: 1500 })
+  const run = trpc.run.get.useQuery(
+    { runId: runId as string },
+    { refetchInterval: 1500, enabled: !!runId },
+  )
   const events = useEventLog(featureId)
 
-  const cancel = trpc.run.cancel.useMutation({
-    onSuccess: () => {
-      utils.feature.get.invalidate({ id: featureId })
-      utils.feature.list.invalidate()
-      toast.push('cancel requested', 'info')
-    },
-    onError: (e) => toast.push(e.message),
-  })
-
+  const tickets = feature.data?.tickets ?? []
   const runEvents = useMemo(() => events.filter((e) => e.runId === runId), [events, runId])
-  const tickets = full.data?.tickets ?? []
-  const durations = useMemo(() => ticketDurations(events), [events])
+  const durations = useMemo(() => ticketDurations(runEvents), [runEvents])
 
-  const status = run.data?.status ?? 'running'
   const done = tickets.filter((t) => t.status === 'done').length
   const total = tickets.length
   const elapsed = run.data
     ? fmtDuration(run.data.startedAt, run.data.endedAt ?? Date.now())
-    : '—'
+    : ''
+
+  if (!runId) {
+    return <DimLine>no run yet — start the burn from the workspace.</DimLine>
+  }
 
   return (
-    <div className="run">
-      <div className="run-header">
-        <div className="run-header-left">
-          <RunStatusChip status={status} />
-          <span className="mono run-count">{done}/{total} done</span>
-          <span className="mono run-elapsed">{elapsed}</span>
-          {run.data?.summary && <span className="run-summary">{run.data.summary}</span>}
-        </div>
-        <button
-          className="btn btn-ghost btn-xs"
-          disabled={status !== 'running' || cancel.isPending}
-          onClick={() => cancel.mutate({ runId })}
-        >
-          {cancel.isPending ? 'Cancelling…' : 'Cancel'}
-        </button>
+    <div className="ws-body-inner">
+      <div className="body-title">
+        <span className="section-title">Run</span>
+        {run.data && <RunStatusChip status={run.data.status} />}
+        <span className="body-meta">
+          {done}/{total} done · {elapsed}
+        </span>
       </div>
 
       <div className="run-split">
-        <div className="run-lanes">
-          <div className="section-title">Lanes</div>
-          {tickets.length === 0 && <DimLine>no ticket lanes</DimLine>}
-          {tickets.map((t) => (
-            <Lane key={t.id} ticket={t} duration={durations.get(t.id)} />
-          ))}
+        <div className="run-lanes-panel">
+          <div className="panel-cap">Ticket lanes</div>
+          <div className="run-lanes">
+            {tickets.length === 0 && <DimLine>no ticket lanes</DimLine>}
+            {tickets.map((t) => (
+              <Lane key={t.id} ticket={t} duration={durations.get(t.id)} />
+            ))}
+          </div>
         </div>
+
         <EventStream events={runEvents} />
       </div>
     </div>
@@ -78,27 +78,35 @@ function Lane({ ticket, duration }: { ticket: Ticket; duration?: number }) {
       () => toast.push('copy failed'),
     )
   }
+  const mod = ['burning', 'done', 'failed'].includes(ticket.status)
+    ? ` status-${ticket.status}`
+    : ''
+  const hasCommits = ticket.commits.length > 0
+  const hasDuration = duration !== undefined
   return (
-    <div className={`lane status-${ticket.status}`}>
+    <div className={`lane${mod}`}>
       <div className="lane-head">
-        <span className="lane-seq mono">#{ticket.seq}</span>
+        <span className="lane-seq">#{ticket.seq}</span>
         <span className="lane-title">{ticket.title}</span>
         <TicketStatusChip status={ticket.status} />
       </div>
-      <div className="lane-foot mono">
-        {ticket.commits.length > 0 ? (
+      {(hasCommits || hasDuration) && (
+        <div className="lane-foot">
           <span className="lane-commits">
             {ticket.commits.map((c) => (
-              <button key={c} className="commit-sha" onClick={() => copy(c)} title="copy sha">
+              <button
+                key={c}
+                className="commit-sha"
+                onClick={() => copy(c)}
+                title="copy sha"
+              >
                 {shortSha(c)}
               </button>
             ))}
           </span>
-        ) : (
-          <span className="dim-line">no commits</span>
-        )}
-        {duration !== undefined && <span className="lane-dur">{fmtDuration(0, duration)}</span>}
-      </div>
+          {hasDuration && <span className="lane-dur">{fmtDuration(0, duration)}</span>}
+        </div>
+      )}
     </div>
   )
 }
@@ -121,19 +129,20 @@ function EventStream({ events }: { events: EventRow[] }) {
   }
 
   return (
-    <div className="run-stream">
+    <div className="run-stream-panel">
       <div className="stream-head">
-        <span className="section-title">Events</span>
+        <span className="panel-cap">Event stream</span>
         {!following && (
           <button className="follow-pill" onClick={() => setFollowing(true)}>
             Follow ⇣
           </button>
         )}
       </div>
-      <div className="stream-body mono" ref={scrollRef} onScroll={onScroll}>
+      <div className="stream-body" ref={scrollRef} onScroll={onScroll}>
         {events.length === 0 && <DimLine>waiting for events…</DimLine>}
         {events.map((e) => (
           <div key={e.id} className={`stream-line level-${eventLevel(e.type)}`}>
+            <span className="sl-time">{fmtTime(e.ts)}</span>
             <span className="sl-type">{e.type}</span>
             <span className="sl-msg">{e.message}</span>
           </div>

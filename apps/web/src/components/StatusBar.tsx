@@ -1,12 +1,12 @@
 import { trpc } from '../trpc'
 import { useToast } from '../lib/toast'
 import { SANDBOX_MODE, SERVER_PORT } from '../lib/env'
-import type { DriveState } from '../lib/tabs'
+import type { DriveState } from '../lib/workspace'
 
 /**
- * Status bar (UI-SPEC §2): active-feature branch (click = copy) · sandbox mode ·
- * test-drive state (off / driving — Stop) · server health dot + port · active
- * run count.
+ * Bottom status bar for the pipeline-first shell (app-redesign): active-feature
+ * branch (click = copy) · sandbox mode · test-drive state (driving — stop) ·
+ * active run count · server health dot + port.
  */
 export function StatusBar({
   activeFeatureId,
@@ -35,44 +35,40 @@ export function StatusBar({
 
   const copyBranch = () => {
     if (!active) return
-    navigator.clipboard?.writeText(active.branch).then(
+    navigator.clipboard.writeText(active.branch).then(
       () => toast.push(`copied ${active.branch}`, 'info'),
       () => toast.push('copy failed'),
     )
   }
 
   return (
-    <footer className="statusbar mono">
-      {active ? (
-        <button className="sb-item sb-branch" onClick={copyBranch} title="click to copy">
-          {active.branch}
+    <footer className="statusbar">
+      {active && (
+        <button className="sb-branch" onClick={copyBranch} title="copy branch">
+          ⎇ {active.branch}
         </button>
-      ) : (
-        <span className="sb-item dim">no feature</span>
       )}
-      <span className="sb-sep">·</span>
-      <span className="sb-item">sandbox: {SANDBOX_MODE}</span>
-      <span className="sb-sep">·</span>
-      {driving ? (
-        <span className="sb-item sb-driving">
-          driving {driving.branch}
+      <span className="sb-item">sandbox · {SANDBOX_MODE}</span>
+      {driving && (
+        <span className="sb-driving">
+          <span className="sb-driving-dot" />
+          driving <span className="mono">{driving.branch}</span>
           <button
             className="sb-stop"
             disabled={stopDrive.isPending}
             onClick={() => stopDrive.mutate({ featureId: driving.featureId, action: 'stop' })}
           >
-            Stop
+            stop
           </button>
         </span>
-      ) : (
-        <span className="sb-item">test drive: off</span>
       )}
       <span className="sb-spacer" />
-      <span className="sb-item">{runCount} run{runCount === 1 ? '' : 's'}</span>
-      <span className="sb-sep">·</span>
+      <span className="sb-item">
+        {runCount} run{runCount === 1 ? '' : 's'}
+      </span>
       <span className={`sb-item sb-health ${healthy ? 'is-ok' : 'is-down'}`}>
         <span className="health-dot" />
-        {SERVER_PORT} {healthy ? 'ok' : 'down'}
+        :{SERVER_PORT} {healthy ? 'ok' : 'down'}
       </span>
     </footer>
   )

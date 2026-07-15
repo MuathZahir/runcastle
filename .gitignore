@@ -14,3 +14,10 @@ coverage/
 ds-bundle/
 .design-sync/.cache/
 .design-sync/learnings/
+
+# AFK
+.afk/
+AFK-REPORT.md
+.sandcastle/.env
+.sandcastle/logs/
+.sandcastle/worktrees/

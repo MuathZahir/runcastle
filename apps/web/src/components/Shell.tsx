@@ -1,136 +1,112 @@
 import { useEffect, useState } from 'react'
 import { trpc } from '../trpc'
-import { useTabs, tabId, type DriveState, type Tab } from '../lib/tabs'
+import { useWorkspace, type DriveState } from '../lib/workspace'
+import { Titlebar } from './Titlebar'
 import { Sidebar } from './Sidebar'
-import { TabStrip } from './TabStrip'
 import { Inspector } from './Inspector'
 import { StatusBar } from './StatusBar'
-import { OverviewTab } from './tabs/OverviewTab'
-import { TicketsTab } from './tabs/TicketsTab'
-import { RunTab } from './tabs/RunTab'
-import { TerminalTab } from './tabs/TerminalTab'
-
-const INSPECTOR_KEY = 'runcastle.inspector.collapsed'
+import { Workspace } from './Workspace'
+import { NewFeatureForm } from './NewFeatureForm'
+import { CommandPalette } from './CommandPalette'
 
 /**
- * The IDE shell (UI-SPEC §2): 36px title bar, three columns (Features / tabs /
- * Inspector), 24px status bar. Owns the tab set, the active test-drive state,
- * and the inspector-collapse toggle. Every open tab stays mounted (hidden when
- * inactive) so switching features loses nothing — terminals stay attached,
- * scroll positions and event logs persist (S8).
+ * The runcastle IDE shell (app-redesign) — pipeline-first, no tabs. A title bar,
+ * a triage features rail, a single workspace bound to the selected feature (or
+ * the new-feature form), the inspector rail, and a status bar. ⌘K opens the
+ * command palette from anywhere. The active test drive (at most one globally) is
+ * shell state, shared by the workspace and the status bar.
  */
 export function Shell() {
-  const tabs = useTabs()
+  const ws = useWorkspace()
+  const { selectedFeatureId, select, setCmdk } = ws
   const [driving, setDriving] = useState<DriveState | null>(null)
-  const [inspectorCollapsed, setInspectorCollapsed] = useState(
-    () => localStorage.getItem(INSPECTOR_KEY) === '1',
-  )
-  useEffect(() => {
-    localStorage.setItem(INSPECTOR_KEY, inspectorCollapsed ? '1' : '0')
-  }, [inspectorCollapsed])
-
-  const project = trpc.project.get.useQuery(undefined, { refetchInterval: 5000 })
   const list = trpc.feature.list.useQuery(undefined, { refetchInterval: 1500 })
-  const runCount = list.data?.filter((f) => f.activeRun).length ?? 0
-  const healthy = !list.isError && list.data !== undefined
 
-  const activeFeatureId = tabs.activeTab?.featureId ?? null
+  // Land on a feature: select the first one once, if nothing is selected yet.
+  useEffect(() => {
+    if (!selectedFeatureId && list.data && list.data.length > 0) select(list.data[0].id)
+  }, [selectedFeatureId, list.data, select])
 
-  const openTab = (tab: Tab) => tabs.open(tab)
+  // Global ⌘K / Ctrl-K → command palette.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault()
+        setCmdk(true)
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [setCmdk])
+
+  const showInspector = !ws.inspectorCollapsed && !!ws.selectedFeatureId && !ws.creating
 
   return (
-    <div className={`shell${inspectorCollapsed ? ' inspector-collapsed' : ''}`}>
-      <header className="titlebar">
-        <div className="tb-brand">
-          <span className="tb-app mono">runcastle</span>
-          <span className="tb-arrow">▸</span>
-          <span className="tb-project mono">{project.data?.name ?? '…'}</span>
-          <span className="tb-dot">·</span>
-          <span className="tb-branch mono">{project.data?.mainBranch ?? 'main'}</span>
-        </div>
-        <div className="tb-right">
-          <span className="tb-runs mono">
-            {runCount} run{runCount === 1 ? '' : 's'}
-            {runCount > 0 && <span className="tb-run-spin" />}
-          </span>
-          <span className={`tb-health ${healthy ? 'is-ok' : 'is-down'}`} title={healthy ? 'server healthy' : 'server down'}>
-            <span className="health-dot" />
-          </span>
-          <button
-            className="tb-chevron"
-            title={inspectorCollapsed ? 'Show inspector' : 'Hide inspector'}
-            onClick={() => setInspectorCollapsed((v) => !v)}
-          >
-            {inspectorCollapsed ? '◀' : '▶'}
-          </button>
-        </div>
-      </header>
+    <div className={`shell${ws.inspectorCollapsed ? ' inspector-collapsed' : ''}`}>
+      <Titlebar
+        onOpenCmdk={() => ws.setCmdk(true)}
+        onToggleInspector={ws.toggleInspector}
+        inspectorCollapsed={ws.inspectorCollapsed}
+      />
 
       <div className="shell-body">
-        <Sidebar activeFeatureId={activeFeatureId} onSelect={tabs.openFeature} />
+        <Sidebar
+          selectedFeatureId={ws.selectedFeatureId}
+          onSelect={ws.select}
+          onNewFeature={ws.startCreate}
+        />
 
-        <main className="center">
-          <TabStrip
-            tabs={tabs.tabs}
-            activeId={tabs.activeId}
-            onFocus={tabs.focus}
-            onClose={tabs.close}
+        {ws.creating ? (
+          <section className="workspace">
+            <NewFeatureForm onCancel={ws.cancelCreate} onCreated={ws.select} />
+          </section>
+        ) : ws.selectedFeatureId ? (
+          <Workspace
+            key={`ws-${ws.selectedFeatureId}`}
+            featureId={ws.selectedFeatureId}
+            viewedPhase={ws.viewedPhase}
+            onViewPhase={ws.viewPhase}
+            guidance={ws.guidance}
+            driving={driving}
+            onDriveChange={setDriving}
           />
-          <div className="tab-content">
-            {tabs.tabs.length === 0 && (
-              <div className="workspace-empty">
-                <span className="dim-line mono">select a feature to begin</span>
-              </div>
-            )}
-            {tabs.tabs.map((tab) => {
-              const id = tabId(tab)
-              const active = id === tabs.activeId
-              return (
-                <div key={id} className="tab-pane" hidden={!active}>
-                  {renderTab(tab, { driving, setDriving, openTab })}
-                </div>
-              )
-            })}
-          </div>
-        </main>
+        ) : (
+          <section className="workspace">
+            <EmptyWorkspace onNewFeature={ws.startCreate} />
+          </section>
+        )}
 
-        {!inspectorCollapsed && activeFeatureId && (
-          <Inspector key={activeFeatureId} featureId={activeFeatureId} />
+        {showInspector && ws.selectedFeatureId && (
+          <Inspector key={`insp-${ws.selectedFeatureId}`} featureId={ws.selectedFeatureId} />
         )}
       </div>
 
       <StatusBar
-        activeFeatureId={activeFeatureId}
+        activeFeatureId={ws.selectedFeatureId}
         driving={driving}
         onDriveChange={setDriving}
+      />
+
+      <CommandPalette
+        open={ws.cmdkOpen}
+        onClose={() => ws.setCmdk(false)}
+        features={list.data ?? []}
+        selectedFeatureId={ws.selectedFeatureId}
+        onSelect={ws.select}
+        onNewFeature={ws.startCreate}
       />
     </div>
   )
 }
 
-function renderTab(
-  tab: Tab,
-  ctx: {
-    driving: DriveState | null
-    setDriving: (d: DriveState | null) => void
-    openTab: (tab: Tab) => void
-  },
-) {
-  switch (tab.kind) {
-    case 'overview':
-      return (
-        <OverviewTab
-          featureId={tab.featureId}
-          driving={ctx.driving}
-          onOpenTab={ctx.openTab}
-          onDriveChange={ctx.setDriving}
-        />
-      )
-    case 'terminal':
-      return <TerminalTab featureId={tab.featureId} sessionId={tab.sessionId} />
-    case 'tickets':
-      return <TicketsTab featureId={tab.featureId} onOpenTab={ctx.openTab} />
-    case 'run':
-      return <RunTab featureId={tab.featureId} runId={tab.runId} />
-  }
+function EmptyWorkspace({ onNewFeature }: { onNewFeature: () => void }) {
+  return (
+    <div className="ws-empty">
+      <div className="ws-empty-logo mono">r</div>
+      <span className="dim-line mono">select a feature to begin</span>
+      <button className="btn btn-ghost btn-xs" onClick={onNewFeature}>
+        + New feature
+      </button>
+    </div>
+  )
 }

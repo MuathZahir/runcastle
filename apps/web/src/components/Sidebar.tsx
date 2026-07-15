@@ -1,168 +1,106 @@
-import { useState } from 'react'
-import type { FeatureSize } from '@runcastle/core'
 import { trpc } from '../trpc'
-import { useToast } from '../lib/toast'
-import { needsMe, phaseGlyph, sortForSidebar } from '../lib/feature-ui'
-import type { FeatureListItem } from '../lib/api'
 import { DimLine } from '../ui'
+import type { FeatureListItem } from '../lib/api'
+import { miniSegments, needsMe, phaseGlyph, triage } from '../lib/feature-ui'
 
 /**
- * Features sidebar (UI-SPEC §2): one 28px row per feature — status glyph + slug
- * + right-aligned needs-me dot / burning spinner. Sorted needs-me → active →
- * shipped. Bottom: `+ New feature` ghost row expanding to an inline form.
+ * The features rail (app-redesign): a triage list, not a flat one. Features are
+ * grouped by who's blocked — Needs you (amber) · Agent working (spinner) ·
+ * In progress · Shipped (dimmed ✓). Each row carries a phase glyph, its mono
+ * slug, and a compact six-segment pipeline map so lifecycle is legible at a
+ * glance. Polls `feature.list` at 1.5s.
  */
 export function Sidebar({
-  activeFeatureId,
+  selectedFeatureId,
   onSelect,
+  onNewFeature,
 }: {
-  activeFeatureId: string | null
+  selectedFeatureId: string | null
   onSelect: (featureId: string) => void
+  onNewFeature: () => void
 }) {
   const list = trpc.feature.list.useQuery(undefined, { refetchInterval: 1500 })
-  const features = list.data ? sortForSidebar(list.data) : []
+  const groups = triage(list.data ?? [])
 
   return (
-    <aside className="sidebar">
-      <div className="pane-title">Features</div>
+    <nav className="sidebar">
+      <div className="sidebar-head">
+        <span className="pane-title">Features</span>
+        <button className="new-btn" onClick={onNewFeature}>
+          + New
+        </button>
+      </div>
+
       <div className="sidebar-list">
-        {list.isLoading && <DimLine>loading features…</DimLine>}
-        {list.data && features.length === 0 && (
-          <DimLine>no features yet — create one below</DimLine>
+        {list.isLoading && (
+          <div style={{ padding: '10px 8px' }}>
+            <DimLine>loading features…</DimLine>
+          </div>
         )}
-        {features.map((f) => (
-          <FeatureRow
-            key={f.id}
-            feature={f}
-            active={f.id === activeFeatureId}
-            onSelect={() => onSelect(f.id)}
-          />
+        {list.data && list.data.length === 0 && (
+          <div style={{ padding: '10px 8px' }}>
+            <DimLine>no features yet — + New to begin</DimLine>
+          </div>
+        )}
+        {groups.map((g) => (
+          <div key={g.key} className={`triage-group triage-${g.key}`}>
+            <div className="triage-label">
+              <span className="triage-name">{g.label}</span>
+              <span className="triage-count">{g.features.length}</span>
+            </div>
+            {g.features.map((f) => (
+              <FeatureRow
+                key={f.id}
+                f={f}
+                active={f.id === selectedFeatureId}
+                onSelect={onSelect}
+              />
+            ))}
+          </div>
         ))}
       </div>
-      <NewFeatureRow onCreated={onSelect} />
-    </aside>
+
+      <div className="sidebar-foot">
+        Every feature moves through the same six-phase pipeline. Amber means it's
+        waiting on you.
+      </div>
+    </nav>
   )
 }
 
 function FeatureRow({
-  feature,
+  f,
   active,
   onSelect,
 }: {
-  feature: FeatureListItem
+  f: FeatureListItem
   active: boolean
-  onSelect: () => void
+  onSelect: (id: string) => void
 }) {
-  const nm = needsMe(feature)
-  const shipped = feature.status === 'shipped'
+  const nm = needsMe(f)
+  const segs = miniSegments(f)
+  const cls = `feature-row${active ? ' is-active' : ''}${f.status === 'shipped' ? ' is-shipped' : ''}`
+
   return (
-    <button
-      className={`feature-row${active ? ' is-active' : ''}${shipped ? ' is-shipped' : ''}`}
-      onClick={onSelect}
-      title={feature.title}
-    >
-      <span className={`feature-glyph phase-fg-${feature.phase}`}>
-        {phaseGlyph(feature.phase)}
-      </span>
-      <span className="feature-slug mono">{feature.slug}</span>
+    <button className={cls} onClick={() => onSelect(f.id)} title={f.title}>
+      <span className={`feature-glyph phase-fg-${f.phase}`}>{phaseGlyph(f.phase)}</span>
+      <span className="feature-slug mono">{f.slug}</span>
       <span className="feature-flag">
-        {feature.activeRun ? (
-          <span className="spinner" title="burning" />
-        ) : nm ? (
-          <span className={`needs-dot needs-${nm.kind}`} title={nm.label} />
-        ) : null}
+        {f.activeRun ? (
+          <span className="spin-ring" title="agent working" />
+        ) : f.status === 'shipped' ? (
+          <span className="mini-check">✓</span>
+        ) : (
+          <>
+            {nm && <span className={`needs-dot needs-${nm.kind}`} title={nm.label} />}
+            <span className="mini-map">
+              {segs.map((s, i) => (
+                <span key={i} className={`mini-seg is-${s.state}`} />
+              ))}
+            </span>
+          </>
+        )}
       </span>
     </button>
-  )
-}
-
-function NewFeatureRow({ onCreated }: { onCreated: (featureId: string) => void }) {
-  const [open, setOpen] = useState(false)
-  const [title, setTitle] = useState('')
-  const [oneLiner, setOneLiner] = useState('')
-  const [size, setSize] = useState<FeatureSize>('full')
-  const toast = useToast()
-  const utils = trpc.useUtils()
-
-  const create = trpc.feature.create.useMutation({
-    onSuccess: (feature) => {
-      utils.feature.list.invalidate()
-      setTitle('')
-      setOneLiner('')
-      setSize('full')
-      setOpen(false)
-      onCreated(feature.id)
-    },
-    onError: (e) => toast.push(e.message),
-  })
-
-  if (!open) {
-    return (
-      <button className="new-feature-row" onClick={() => setOpen(true)}>
-        + New feature
-      </button>
-    )
-  }
-
-  const submit = () => {
-    if (!title.trim()) {
-      toast.push('title is required')
-      return
-    }
-    create.mutate({ title: title.trim(), oneLiner: oneLiner.trim(), size })
-  }
-
-  return (
-    <form
-      className="new-feature-form"
-      onSubmit={(e) => {
-        e.preventDefault()
-        submit()
-      }}
-    >
-      <input
-        className="nf-input"
-        placeholder="title"
-        value={title}
-        autoFocus
-        onChange={(e) => setTitle(e.target.value)}
-      />
-      <input
-        className="nf-input"
-        placeholder="one-liner"
-        value={oneLiner}
-        onChange={(e) => setOneLiner(e.target.value)}
-      />
-      <div className="nf-row">
-        <div className="size-toggle">
-          <button
-            type="button"
-            className={size === 'full' ? 'is-on' : ''}
-            onClick={() => setSize('full')}
-          >
-            full
-          </button>
-          <button
-            type="button"
-            className={size === 'collapsed' ? 'is-on' : ''}
-            onClick={() => setSize('collapsed')}
-          >
-            small
-          </button>
-        </div>
-        <div className="nf-actions">
-          <button
-            type="button"
-            className="btn btn-ghost btn-xs"
-            onClick={() => setOpen(false)}
-            disabled={create.isPending}
-          >
-            Cancel
-          </button>
-          <button type="submit" className="btn btn-solid btn-xs" disabled={create.isPending}>
-            {create.isPending ? 'Creating…' : 'Create'}
-          </button>
-        </div>
-      </div>
-    </form>
   )
 }
