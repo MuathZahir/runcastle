@@ -44,13 +44,26 @@ Keep `decisions.md` free of implementation minutiae — it is the record of *wha
 
 Every few locked decisions, `mcp__runcastle__record_event({ type: "decision.locked", message: "<n> decisions locked" })`.
 
-## 3. Converge
+## 3. Escalation branch — when the feature outgrows this window
+
+Some features are too big for one unbroken context. The tells: you are rabbit-holing into one corner while whole branches sit untouched; decisions keep hanging on material nobody has read yet (a prototype to build, a dependency to research, an area to grill on its own); the design tree has grown wider than you can hold and converge in this session. When that happens, **do not compact and do not grind on** — chart a map instead:
+
+1. `mcp__runcastle__escalate_to_map({ destination: "<the one-line north star>", notes: "<what's locked / constraints so far>" })`. This flips the feature to *mapped* and scaffolds `docs/features/<slug>/map.md`. If it warns that the feature is already mapped, that is fine — the map already exists; just proceed to chart the first batch.
+2. `mcp__runcastle__emit_waypoints({ waypoints: [...] })` for the **first batch** — the questions worth branching now. Each waypoint: `title`, `type` (`grilling` | `research` | `prototype` | `task`), `question` (what that session must answer), and `blockedBy` (1-based positions within this batch, and/or ids of already-stored waypoints) for ordering. Charting the first frontier is enough; later sessions branch the map further (any mapped session may `emit_waypoints`).
+3. `mcp__runcastle__record_event({ type: "map.charted", message: "<n> waypoints charted" })`.
+4. Tell the human plainly:
+
+   > This feature is bigger than one session. I've charted it into a map — its first waypoints are in the runcastle UI. Work them from there (each opens its own session); converge when the frontier clears. I'll stop here.
+
+5. **End the session.** Charting is one session's work — do **not** claim or work a waypoint yourself (claiming is never agent-driven), and do **not** carry on grilling. Stop.
+
+## 4. Converge
 
 When the human confirms shared understanding and the open questions are answered or explicitly deferred:
 
 `mcp__runcastle__complete_phase({ phase: "ideation" })` → returns `{ ok, nextPhase }`. If `ok: false`, it names what the gate wants (e.g. `decisions.md` missing) — fix it and retry. Then `record_event({ type: "phase.completed", message: "ideation" })`.
 
-## 4. Size branch — stay in this window
+## 5. Size branch — stay in this window
 
 Read `feature.size` from step 0:
 
@@ -59,7 +72,7 @@ Read `feature.size` from step 0:
 
 Do not open a new session for these. They run here, on top of everything you just learned.
 
-## 5. Close — hand off to the human
+## 6. Close — hand off to the human
 
 `/runcastle:tickets` ends by emitting tickets to the runcastle store. When it returns, your job is **done**. Tell the human plainly:
 

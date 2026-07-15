@@ -1,27 +1,34 @@
-import { mkdirSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { Hono } from 'hono'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import type { TicketInput } from '@runcastle/core'
+import type { TicketInput, WaypointInput } from '@runcastle/core'
 import type { AppCtx } from '../src/db/types'
-import { InvalidInputError } from '../src/errors'
+import { GateError, InvalidInputError } from '../src/errors'
 import { clearRuntimeCtx, setRuntimeCtx } from '../src/launcher/runtime'
 import { createSessionRow, markSessionLive } from '../src/launcher/sessions'
 import mcpApp, {
   resolveSession,
   toolCompletePhase,
   toolEmitTickets,
+  toolEmitWaypoints,
+  toolEscalateToMap,
   toolGetFeatureContext,
   toolRecordEvent,
 } from '../src/mcp/server'
 import { listAfter } from '../src/services/events'
 import { getFeatureRow } from '../src/services/repo'
 import { listByFeature, storeTickets } from '../src/services/tickets'
+import { listByFeature as listWaypoints } from '../src/services/waypoints'
 import { makeTestCtx } from './helpers/db'
 import { seedFeature, seedProject, tmpRepo } from './helpers/fixtures'
 
 function ticket(title: string, blockedBy: number[] = []): TicketInput {
   return { title, goal: 'g', context: 'c', acceptanceCriteria: ['a'], seams: ['s'], blockedBy }
+}
+
+function waypoint(title: string, blockedBy: (number | string)[] = []): WaypointInput {
+  return { title, type: 'grilling', question: `q: ${title}`, blockedBy }
 }
 
 describe('mcp tools', () => {
@@ -127,6 +134,109 @@ describe('mcp tools', () => {
     // an "awaiting burn" note lands on the timeline
     const types = listAfter(ctx, feat.id, 0).map((e) => e.type)
     expect(types).toContain('tickets.awaiting_burn')
+  })
+})
+
+describe('mcp mapped write path (ADR-0001 §13.3)', () => {
+  let ctx: AppCtx
+  let repoPath: string
+  let featureId: string
+  let slug: string
+  let session: ReturnType<typeof createSessionRow>
+
+  function mapPath(): string {
+    return join(repoPath, 'docs', 'features', slug, 'map.md')
+  }
+
+  beforeEach(async () => {
+    ctx = await makeTestCtx()
+    repoPath = tmpRepo()
+    const project = seedProject(ctx, repoPath)
+    slug = 'big-feature'
+    const feature = seedFeature(ctx, project.id, { slug, phase: 'ideation', size: 'full' })
+    featureId = feature.id
+    session = createSessionRow(ctx, { featureId, kind: 'ideation', worktreePath: repoPath })
+    markSessionLive(ctx, session.id)
+    setRuntimeCtx(ctx)
+  })
+
+  afterEach(() => clearRuntimeCtx())
+
+  it('escalate_to_map flips mapped, scaffolds map.md from args, and emits an event', () => {
+    const out = toolEscalateToMap(ctx, session, {
+      destination: 'a fully offline-capable editor',
+      notes: 'sync is out of scope for v1',
+    })
+    expect(out).toEqual({ ok: true })
+
+    expect(getFeatureRow(ctx, featureId).mapped).toBe(true)
+
+    expect(existsSync(mapPath())).toBe(true)
+    const body = readFileSync(mapPath(), 'utf8')
+    expect(body).toContain('## Destination')
+    expect(body).toContain('a fully offline-capable editor')
+    expect(body).toContain('## Notes')
+    expect(body).toContain('sync is out of scope for v1')
+    expect(body).toContain('## Not yet specified')
+    expect(body).toContain('## Out of scope')
+
+    const types = listAfter(ctx, featureId, 0).map((e) => e.type)
+    expect(types).toContain('feature.escalated')
+  })
+
+  it('escalate_to_map a second time warns and makes no side effects', () => {
+    toolEscalateToMap(ctx, session, { destination: 'first', notes: 'first notes' })
+    const firstBody = readFileSync(mapPath(), 'utf8')
+    const eventsAfterFirst = listAfter(ctx, featureId, 0).length
+
+    const out = toolEscalateToMap(ctx, session, { destination: 'second', notes: 'second notes' })
+    expect(out.ok).toBe(true)
+    expect(out.warning).toMatch(/already mapped/i)
+
+    // map.md untouched (first chart wins) and no new events
+    expect(readFileSync(mapPath(), 'utf8')).toBe(firstBody)
+    expect(readFileSync(mapPath(), 'utf8')).not.toContain('second')
+    expect(listAfter(ctx, featureId, 0).length).toBe(eventsAfterFirst)
+  })
+
+  it('emit_waypoints validates + stores via the waypoint service and returns ids', () => {
+    toolEscalateToMap(ctx, session, { destination: 'dest' })
+    const out = toolEmitWaypoints(ctx, session, {
+      waypoints: [waypoint('root'), waypoint('leaf', [1])],
+    })
+    expect(out.stored).toBe(2)
+    expect(out.ids).toHaveLength(2)
+
+    const stored = listWaypoints(ctx, featureId)
+    expect(stored.map((w) => w.title)).toEqual(['root', 'leaf'])
+    expect(stored[1].blockedBy).toEqual([1]) // batch position 1 -> global seq 1
+  })
+
+  it('emit_waypoints refuses a feature that has not been escalated', () => {
+    expect(() => toolEmitWaypoints(ctx, session, { waypoints: [waypoint('x')] })).toThrow(GateError)
+  })
+
+  it('emit_waypoints works from any session kind once mapped (qa can branch the map)', () => {
+    toolEscalateToMap(ctx, session, { destination: 'dest' })
+    const qa = createSessionRow(ctx, { featureId, kind: 'qa', worktreePath: repoPath })
+    const out = toolEmitWaypoints(ctx, qa, { waypoints: [waypoint('from-qa')] })
+    expect(out.stored).toBe(1)
+    expect(listWaypoints(ctx, featureId).map((w) => w.title)).toContain('from-qa')
+  })
+
+  it('get_feature_context exposes waypoints + frontier only when mapped', () => {
+    // unmapped: no map fields
+    const before = toolGetFeatureContext(ctx, session)
+    expect(before.waypoints).toBeUndefined()
+    expect(before.frontier).toBeUndefined()
+
+    toolEscalateToMap(ctx, session, { destination: 'dest' })
+    toolEmitWaypoints(ctx, session, { waypoints: [waypoint('a'), waypoint('b', [1])] })
+
+    const after = toolGetFeatureContext(ctx, session)
+    expect(after.waypoints).toHaveLength(2)
+    // only 'a' is unblocked → the sole frontier waypoint
+    expect(after.frontier?.map((w) => w.title)).toEqual(['a'])
   })
 })
 

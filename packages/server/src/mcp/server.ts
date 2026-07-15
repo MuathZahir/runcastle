@@ -1,23 +1,35 @@
 import { StreamableHTTPTransport } from '@hono/mcp'
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js'
-import type { Phase as PhaseT, SessionRow, Ticket, TicketInput as TicketInputT } from '@runcastle/core'
-import { Phase, TicketInput, nextGate, nextPhase } from '@runcastle/core'
+import type {
+  Phase as PhaseT,
+  SessionRow,
+  Ticket,
+  TicketInput as TicketInputT,
+  Waypoint as WaypointT,
+  WaypointInput as WaypointInputT,
+} from '@runcastle/core'
+import { Phase, TicketInput, WaypointInput, nextGate, nextPhase } from '@runcastle/core'
 import { Hono } from 'hono'
 import * as z from 'zod'
 import type { AppCtx } from '../db/types'
 import { GateError, isNotImplemented } from '../errors'
 import { getRuntimeCtx } from '../launcher/runtime'
 import { getSessionRow, mostRecentLiveSession } from '../launcher/sessions'
-import { advance } from '../services/features'
+import { advance, escalateToMap } from '../services/features'
 import { emit } from '../services/events'
 import * as git from '../services/git'
 import { listDocs, readDoc } from '../services/knowledge'
 import { getFeatureRow } from '../services/repo'
 import { listByFeature, storeTickets } from '../services/tickets'
+import {
+  frontier as waypointFrontier,
+  listByFeature as listWaypoints,
+  storeWaypoints,
+} from '../services/waypoints'
 
 /**
- * runcastle MCP server (SPEC §6) — 4 zod-validated tools over Streamable HTTP
+ * runcastle MCP server (SPEC §6 + §13.3) — zod-validated tools over Streamable HTTP
  * (`@hono/mcp` + `@modelcontextprotocol/sdk` 1.29, per docs/research/STACK-NOTES §5).
  *
  * Session identity: the `X-Runcastle-Session` header set in each session's
@@ -59,6 +71,10 @@ export interface FeatureContext {
   phase: PhaseT
   docs: { relPath: string; content: string }[]
   tickets: Ticket[]
+  /** Mapped features only (ADR-0001 §13.3): every waypoint on the map… */
+  waypoints?: WaypointT[]
+  /** …and the subset currently on the frontier (open, unclaimed, unblocked). */
+  frontier?: WaypointT[]
 }
 
 export function toolGetFeatureContext(ctx: AppCtx, session: SessionRow): FeatureContext {
@@ -70,7 +86,19 @@ export function toolGetFeatureContext(ctx: AppCtx, session: SessionRow): Feature
       return { relPath: d.relPath, content: '' }
     }
   })
-  return { feature, phase: feature.phase, docs, tickets: listByFeature(ctx, feature.id) }
+  const context: FeatureContext = {
+    feature,
+    phase: feature.phase,
+    docs,
+    tickets: listByFeature(ctx, feature.id),
+  }
+  // A mapped feature also exposes its map state so any session can read the
+  // waypoints and pick up the frontier (claiming stays a server-only effect).
+  if (feature.mapped) {
+    context.waypoints = listWaypoints(ctx, feature.id)
+    context.frontier = waypointFrontier(ctx, feature.id)
+  }
+  return context
 }
 
 export function toolEmitTickets(
@@ -84,6 +112,29 @@ export function toolEmitTickets(
   // `tickets.emitted` note, which double-logged the same action on the timeline.
   const stored = storeTickets(ctx, feature.id, input.tickets)
   return { stored: stored.length, ids: stored.map((t) => t.id) }
+}
+
+export function toolEscalateToMap(
+  ctx: AppCtx,
+  session: SessionRow,
+  input: { destination: string; notes?: string },
+): { ok: true; warning?: string } {
+  return escalateToMap(ctx, session.featureId, input)
+}
+
+export function toolEmitWaypoints(
+  ctx: AppCtx,
+  session: SessionRow,
+  input: { waypoints: WaypointInputT[] },
+): { stored: number; ids: string[] } {
+  const feature = getFeatureRow(ctx, session.featureId)
+  // Waypoints only exist on a map — every session on a mapped feature may branch
+  // it (the recursion), but an unmapped feature must escalate first.
+  if (!feature.mapped) {
+    throw new GateError('feature is not mapped — call escalate_to_map before emitting waypoints')
+  }
+  const stored = storeWaypoints(ctx, feature.id, input.waypoints)
+  return { stored: stored.length, ids: stored.map((w) => w.id) }
 }
 
 export function toolRecordEvent(
@@ -188,7 +239,7 @@ async function resolveCtxSession(extra: HeaderCarrier): Promise<{ ctx: AppCtx; s
   return session ? { ctx, session } : null
 }
 
-/** Build a fresh MCP server with the 4 runcastle tools registered. */
+/** Build a fresh MCP server with the runcastle tools registered. */
 export function buildMcpServer(): McpServer {
   const server = new McpServer({ name: 'runcastle', version: '0.1.0' })
 
@@ -221,6 +272,42 @@ export function buildMcpServer(): McpServer {
       const result = toolEmitTickets(rs.ctx, rs.session, args)
       await commitDocsCheckpoint(rs.ctx, rs.session, `runcastle: tickets emitted (${result.stored})`)
       return ok(result)
+    },
+  )
+
+  server.registerTool(
+    'escalate_to_map',
+    {
+      title: 'Escalate to map',
+      description:
+        'Escalate this grilling session into a map when the feature outgrows one context window. Flips the feature to mapped and scaffolds docs/features/<slug>/map.md, seeding Destination + Notes from your arguments (Not-yet-specified and Out-of-scope start empty). Idempotent: calling it on an already-mapped feature warns and changes nothing.',
+      inputSchema: { destination: z.string(), notes: z.string().optional() },
+    },
+    async (args, extra) => {
+      const rs = await resolveCtxSession(extra)
+      if (!rs) return noSession()
+      const result = toolEscalateToMap(rs.ctx, rs.session, args)
+      // Checkpoint the freshly-scaffolded map.md; skip when the call was a no-op
+      // warning (already mapped) so we don't churn an empty commit.
+      if (!result.warning) {
+        await commitDocsCheckpoint(rs.ctx, rs.session, 'runcastle: escalate to map')
+      }
+      return ok(result)
+    },
+  )
+
+  server.registerTool(
+    'emit_waypoints',
+    {
+      title: 'Emit waypoints',
+      description:
+        'Batch-create waypoints on the map (the feature must already be mapped — call escalate_to_map first). Each waypoint: title, type (grilling|research|prototype|task), question, blockedBy[] (1-based positions within THIS batch, and/or ids of already-stored waypoints). Available from any session once mapped — any session may branch the map.',
+      inputSchema: { waypoints: z.array(WaypointInput) },
+    },
+    async (args, extra) => {
+      const rs = await resolveCtxSession(extra)
+      if (!rs) return noSession()
+      return ok(toolEmitWaypoints(rs.ctx, rs.session, args))
     },
   )
 
