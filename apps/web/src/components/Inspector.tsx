@@ -46,6 +46,15 @@ const GATE_NAMES: Record<string, string> = {
   G5: 'Merged',
 }
 
+/**
+ * G1 is conditional on `mapped` (ADR-0001 §13.1): its check swaps to
+ * `all-waypoints-terminal`, so the short name follows the check, not the id.
+ */
+function gateName(gate: NonNullable<GateState['next']>): string {
+  if (gate.check === 'all-waypoints-terminal') return 'Waypoints resolved'
+  return GATE_NAMES[gate.id] ?? gate.id
+}
+
 function CurrentGate({ featureId, gate }: { featureId: string; gate: GateState }) {
   const toast = useToast()
   const utils = trpc.useUtils()
@@ -70,6 +79,7 @@ function CurrentGate({ featureId, gate }: { featureId: string; gate: GateState }
       ) : (
         <GateCard
           gateId={gate.next.id}
+          name={gateName(gate.next)}
           description={gate.next.description}
           satisfied={gate.satisfied}
           reason={gate.reason}
@@ -93,6 +103,7 @@ function CurrentGate({ featureId, gate }: { featureId: string; gate: GateState }
 
 function GateCard({
   gateId,
+  name,
   description,
   satisfied,
   reason,
@@ -105,6 +116,7 @@ function GateCard({
   onApply,
 }: {
   gateId: string
+  name: string
   description: string
   satisfied: boolean
   reason: string | undefined
@@ -120,7 +132,7 @@ function GateCard({
     <div className="gate-card">
       <div className="gate-idrow">
         <span className="gate-id">{gateId}</span>
-        <span className="gate-name">{GATE_NAMES[gateId] ?? gateId}</span>
+        <span className="gate-name">{name}</span>
       </div>
       <div className="gate-req">{description}</div>
       <div className={`gate-state ${satisfied ? 'is-ok' : 'is-block'}`}>

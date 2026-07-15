@@ -4,6 +4,7 @@ import type { Phase } from '../src/schemas'
 
 const full = (phase: Phase) => ({ phase, size: 'full' as const })
 const collapsed = (phase: Phase) => ({ phase, size: 'collapsed' as const })
+const mapped = (phase: Phase) => ({ phase, size: 'full' as const, mapped: true })
 
 describe('nextPhase — full features', () => {
   it('walks every phase in order', () => {
@@ -82,5 +83,28 @@ describe('nextGate', () => {
   it('returns null at the terminal phase', () => {
     expect(nextGate(full('shipped'))).toBeNull()
     expect(nextGate(collapsed('shipped'))).toBeNull()
+  })
+})
+
+describe('nextGate — mapped features (ADR-0001 §13.1)', () => {
+  it('mapped: leaving ideation swaps G1 to all-waypoints-terminal', () => {
+    expect(nextGate(mapped('ideation'))?.id).toBe('G1')
+    expect(nextGate(mapped('ideation'))?.check).toBe('all-waypoints-terminal')
+  })
+
+  it('unmapped: G1 stays decisions-file-exists (unchanged behaviour)', () => {
+    expect(nextGate(full('ideation'))?.check).toBe('decisions-file-exists')
+    expect(nextGate(collapsed('ideation'))?.check).toBe('decisions-file-exists')
+  })
+
+  it('mapping only affects G1 — every later gate is identical', () => {
+    expect(nextGate(mapped('spec'))?.id).toBe('G2')
+    expect(nextGate(mapped('spec'))?.check).toBe('spec-file-exists')
+    expect(nextGate(mapped('tickets'))?.id).toBe('G3')
+    expect(nextGate(mapped('review'))?.id).toBe('G5')
+  })
+
+  it('mapped features rejoin the normal pipeline at spec (nextPhase unchanged)', () => {
+    expect(nextPhase(mapped('ideation'))).toBe('spec')
   })
 })

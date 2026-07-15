@@ -7,6 +7,7 @@ import { checkGate } from '../src/services/gates'
 import { featureDocsDir } from '../src/services/feature-docs'
 import { storeTickets } from '../src/services/tickets'
 import { updateTicket } from '../src/services/tickets'
+import { resolve as resolveWaypoint, storeWaypoints } from '../src/services/waypoints'
 import { makeTestCtx } from './helpers/db'
 import { seedFeature, seedProject, tmpRepo } from './helpers/fixtures'
 
@@ -67,5 +68,25 @@ describe('gates service', () => {
   it('human-merge is always false (Merge click bypasses)', () => {
     const feature = seedFeature(ctx, project.id, { slug: 'g5', phase: 'review' })
     expect(checkGate(ctx, 'human-merge', feature).satisfied).toBe(false)
+  })
+
+  it('all-waypoints-terminal (mapped G1) is satisfied only when every waypoint is resolved/dropped', () => {
+    const feature = seedFeature(ctx, project.id, { slug: 'g1-mapped', mapped: true })
+    // no waypoints charted → not satisfiable (nothing to converge)
+    expect(checkGate(ctx, 'all-waypoints-terminal', feature).satisfied).toBe(false)
+
+    const [a, b] = storeWaypoints(ctx, feature.id, [
+      { title: 'a', type: 'grilling', question: 'qa', blockedBy: [] },
+      { title: 'b', type: 'grilling', question: 'qb', blockedBy: [] },
+    ])
+    // both open → refused while any waypoint is open
+    expect(checkGate(ctx, 'all-waypoints-terminal', feature).satisfied).toBe(false)
+
+    resolveWaypoint(ctx, a.id, 'resolved', 'answered')
+    expect(checkGate(ctx, 'all-waypoints-terminal', feature).satisfied).toBe(false)
+
+    // a drop counts as terminal exactly like a resolve
+    resolveWaypoint(ctx, b.id, 'dropped', 'out of scope')
+    expect(checkGate(ctx, 'all-waypoints-terminal', feature).satisfied).toBe(true)
   })
 })
