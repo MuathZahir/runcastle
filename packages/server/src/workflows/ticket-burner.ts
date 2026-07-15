@@ -561,7 +561,7 @@ function readBlockedFile(dirs: (string | undefined)[]): string | undefined {
  *    with the selected model"). We de-quote the (shell-safe `[a-z0-9-]`) model in
  *    the print command on win32+noSandbox.
  */
-function buildBurnAgent(config: RuncastleConfig, token: string | undefined): AgentProvider {
+export function buildBurnAgent(config: RuncastleConfig, token: string | undefined): AgentProvider {
   const noSandbox = config.sandbox !== 'docker'
   const opts: ClaudeCodeOptions = {
     ...(token ? { env: { CLAUDE_CODE_OAUTH_TOKEN: token } } : {}),

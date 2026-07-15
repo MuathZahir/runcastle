@@ -16,6 +16,7 @@ import {
   getWaypoint,
   releaseForSession,
 } from '../services/waypoints'
+import { startRun } from '../workflows/runner'
 import { serverUrlFor, writeSessionArtifacts } from './artifacts'
 import { createSessionRow, getSessionRow, markSessionEnded } from './sessions'
 
@@ -69,6 +70,11 @@ export interface LaunchSessionOptions {
 
 export interface LaunchSessionResult {
   sessionId: string
+}
+
+/** Working a research waypoint starts a headless run instead of a session. */
+export interface WorkRunResult {
+  runId: string
 }
 
 export interface BuildLaunchInput {
@@ -328,19 +334,21 @@ export async function launchSession(
 }
 
 /**
- * Work a waypoint (SPEC §13.2, backs `feature.workWaypoint`): claim the waypoint
- * transactionally, then open a kind=`waypoint` session on it. Refuses up front
- * when the feature is not mapped, the waypoint belongs to another feature, a
- * waypoint session is already live (only one live HITL session per feature), or
- * the waypoint is a `research` node (worked headlessly by a run, not this HITL
- * path). The claim inside `launchSession` is the transactional frontier gate — a
- * waypoint that is claimed/terminal/blocked can never be worked.
+ * Work a waypoint (SPEC §13.2, backs `feature.workWaypoint`). A `research`
+ * waypoint is worked AFK: it claims the waypoint for a headless `research` run
+ * and returns `{ runId }`. Every other type opens a kind=`waypoint` HITL session
+ * (claimed transactionally inside `launchSession`) and returns `{ sessionId }`.
+ * Refuses up front when the feature is not mapped, the waypoint belongs to
+ * another feature, or (HITL only) a waypoint session is already live (one live
+ * HITL session per feature). The claim — inside `launchSession` for HITL, inside
+ * `startRun` for research — is the transactional frontier gate, so a waypoint
+ * that is claimed/terminal/blocked can never be worked.
  */
 export async function workWaypoint(
   ctx: AppCtx,
   input: { featureId: string; waypointId: string },
   opts: LaunchSessionOptions = {},
-): Promise<LaunchSessionResult> {
+): Promise<LaunchSessionResult | WorkRunResult> {
   const feature = getFeatureRow(ctx, input.featureId)
   if (!feature.mapped) {
     throw new GateError(`feature ${feature.slug} is not mapped — it has no waypoints to work`)
@@ -350,8 +358,16 @@ export async function workWaypoint(
   if (wp.featureId !== feature.id) {
     throw new GateError(`waypoint ${wp.seq} does not belong to feature ${feature.slug}`)
   }
+
+  // Research waypoints run AFK (SPEC §13.2): claim the waypoint for the run (the
+  // transactional frontier gate lives in `startRun`) and hand it the waypoint as
+  // per-run input. Run failure/cancel auto-releases it back to the frontier.
   if (wp.type === 'research') {
-    throw new GateError(`waypoint ${wp.seq} is a research node — it is worked by a headless run, not a HITL session`)
+    const { runId } = await startRun(ctx, feature.id, 'research', {
+      input: wp,
+      claimWaypointId: wp.id,
+    })
+    return { runId }
   }
 
   const live = claimedForFeature(ctx, feature.id)
