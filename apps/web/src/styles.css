@@ -874,12 +874,73 @@ button {
   white-space: pre-wrap;
   word-break: break-word;
 }
-.map-waypoints {
-  margin-top: 14px;
+.map-waypoints { margin-top: 16px; }
+/* empty state keeps the dashed placeholder; groups replace it once seeded */
+.map-waypoints:has(.wp-group) { padding: 0; border: 0; }
+.map-waypoints > .dim-line {
   padding: 18px;
   border: 1px dashed var(--hairline);
   border-radius: var(--radius-lg);
   text-align: center;
+}
+
+.wp-group { margin-bottom: 14px; }
+.wp-group-title {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-3);
+  margin-bottom: 7px;
+}
+.wp-group-frontier .wp-group-title { color: var(--accent-hi); }
+.wp-group-claimed .wp-group-title { color: var(--drive); }
+details.wp-group-done { border-top: 1px solid var(--hairline-soft); padding-top: 12px; }
+details.wp-group-done > summary { cursor: pointer; list-style: revert; }
+
+.wp {
+  display: flex;
+  align-items: baseline;
+  gap: 9px;
+  flex-wrap: wrap;
+  padding: 9px 12px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-sm);
+  background: var(--panel-2);
+  margin-bottom: 6px;
+}
+.wp-frontier { border-color: var(--accent-line); }
+.wp-blocked { opacity: 0.55; }
+.wp-claimed { border-color: color-mix(in srgb, var(--drive) 45%, var(--hairline)); }
+.wp-done { opacity: 0.6; }
+
+.wp-type {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-2);
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius-sm);
+  padding: 1px 6px;
+  flex-shrink: 0;
+}
+.wp-title { color: var(--text); font-size: 13px; }
+.wp-blockers, .wp-lineage, .wp-resume, .wp-summary {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-3);
+}
+.wp-blockers { color: var(--needs); }
+.wp-lineage { flex-basis: 100%; }
+.wp-resume { color: var(--drive); }
+.wp-pulse {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--drive);
+  flex-shrink: 0;
+  animation: pulse 1.4s ease-in-out infinite;
 }
 
 /* ============================================================================
