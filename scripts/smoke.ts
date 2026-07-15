@@ -59,7 +59,7 @@ const { runMigrations } = await import('../packages/server/src/db/migrate.ts')
 const { buildApp } = await import('../packages/server/src/index.ts')
 const { appRouter } = await import('../packages/server/src/trpc/router.ts')
 const { createCallerFactory } = await import('../packages/server/src/trpc/context.ts')
-const { launchSession } = await import('../packages/server/src/launcher/launcher.ts')
+const { launchSession, converge } = await import('../packages/server/src/launcher/launcher.ts')
 const { cancelRun } = await import('../packages/server/src/workflows/runner.ts')
 
 // --- tiny harness -------------------------------------------------------------
@@ -374,6 +374,103 @@ async function main(): Promise<void> {
   assert(/\bok\b/.test(healthOnMain) && /\bchecked\b/.test(healthOnMain), 'HEALTH.md on main contains ok + checked')
   assert(existsSync(join(TARGET, 'HEALTH.md')), 'HEALTH.md present in main working tree after merge')
   record('feature.merge', `phase shipped; HEALTH.md on main = ${JSON.stringify(healthOnMain)}`)
+
+  // The mapped ideation path (ADR-0001), driven end-to-end alongside the unmapped
+  // burn above. No claude runs here — it exercises the map machinery only.
+  await mappedFlow(project.id)
+}
+
+/**
+ * The mapped-ideation smoke (issue #9): escalate a fresh feature into a map, emit
+ * two waypoints with a blocking edge, resolve both (watching the second cascade
+ * onto the frontier), then confirm G1 (`all-waypoints-terminal`) is satisfiable
+ * and that Converge crosses it. Runs against the SAME project/target repo as the
+ * unmapped flow — no burn, just the real /mcp + tRPC + converge surfaces.
+ */
+async function mappedFlow(projectId: string): Promise<void> {
+  // (10) mapped feature + a live ideation session so /mcp resolves it by header --
+  banner('STEP 10 — mapped path: feature.create + fabricate ideation session (spawn:false) → live')
+  const feature = await trpc.feature.create({
+    title: 'mapped playground',
+    oneLiner: 'a mapped feature to prove escalate → waypoints → converge end to end',
+    size: 'collapsed',
+  })
+  const featureId = feature.id
+  const slug = feature.slug
+  assert(feature.mapped === false, 'feature starts unmapped (it must escalate)')
+  const { sessionId } = await launchSession(ctx as never, { featureId, kind: 'ideation' }, { spawn: false })
+  const mapHook = await postHook('session-start', {
+    sessionId,
+    payload: {
+      session_id: 'cc-smoke-mapped-001',
+      transcript_path: '/tmp/smoke-mapped-transcript.jsonl',
+      hook_event_name: 'SessionStart',
+      source: 'startup',
+    },
+  })
+  assert(mapHook?.hookSpecificOutput?.hookEventName === 'SessionStart', 'mapped session-start acknowledged')
+  record('mapped feature', `${featureId} slug=${slug}; ideation session ${sessionId} live`)
+
+  // (11) MCP escalate_to_map → mapped flips + map.md scaffolded --------------------
+  banner('STEP 11 — MCP escalate_to_map → feature.mapped + map.md')
+  const escalate = await mcpToolCall(sessionId, 'escalate_to_map', {
+    destination: 'a fully mapped feature',
+    notes: 'charted across a couple of waypoints',
+  })
+  assert(!escalate.isError, `escalate_to_map not an error (${JSON.stringify(escalate.data)})`)
+  assert(escalate.data.ok === true, 'escalate_to_map returned ok')
+  const escalated = await trpc.feature.get({ id: featureId })
+  assert(escalated.feature.mapped === true, 'feature is now mapped')
+  const mapDoc = join(paths.worktreeDir(projectId, slug), ...paths.featureDocsRel(slug).split('/'), 'map.md')
+  assert(existsSync(mapDoc), `map.md scaffolded at ${mapDoc}`)
+  record('MCP escalate_to_map', 'feature mapped; map.md scaffolded into the talk worktree')
+
+  // (12) MCP emit_waypoints (2, wp2 blockedBy wp1) → only wp1 on the frontier ------
+  banner('STEP 12 — MCP emit_waypoints(2) with a blocking edge (wp2 blockedBy [1])')
+  const emit = await mcpToolCall(sessionId, 'emit_waypoints', {
+    waypoints: [
+      { title: 'root question', type: 'grilling', question: 'what shape should this take?', blockedBy: [] },
+      { title: 'follow-up', type: 'grilling', question: 'given the shape, what next?', blockedBy: [1] },
+    ],
+  })
+  assert(!emit.isError, `emit_waypoints not an error (${JSON.stringify(emit.data)})`)
+  assert(emit.data.stored === 2, `2 waypoints stored (got ${emit.data.stored})`)
+  assert(Array.isArray(emit.data.ids) && emit.data.ids.length === 2, 'emit_waypoints returned 2 ids')
+  const [wp1Id, wp2Id] = emit.data.ids as [string, string]
+  let mapped = await trpc.feature.get({ id: featureId })
+  assert(JSON.stringify(mapped.frontierIds) === JSON.stringify([wp1Id]), `only wp1 on the frontier (got ${JSON.stringify(mapped.frontierIds)})`)
+  assert(mapped.gate.next?.id === 'G1', 'the next gate is G1')
+  assert(mapped.gate.satisfied === false, 'G1 not satisfiable while waypoints are open')
+  record('MCP emit_waypoints', 'stored 2; wp2 blocked by wp1 → only wp1 on frontier')
+
+  // (13) resolve wp1 → cascade unblocks wp2; resolve wp2 → G1 satisfiable ----------
+  banner('STEP 13 — resolve wp1 (watch wp2 unblock) → resolve wp2 → G1 satisfiable')
+  const r1 = await mcpToolCall(sessionId, 'resolve_waypoint', { id: wp1Id, disposition: 'resolved', summary: 'shape settled' })
+  assert(!r1.isError && r1.data.ok === true, 'resolve_waypoint(wp1) ok')
+  const unblocked = (await trpc.events.list({ featureId, afterId: 0 })).find(
+    (e: any) => e.type === 'waypoint.unblocked' && e.data?.id === wp2Id,
+  )
+  assert(!!unblocked, 'a waypoint.unblocked event fired for wp2 as wp1 resolved')
+  mapped = await trpc.feature.get({ id: featureId })
+  assert(JSON.stringify(mapped.frontierIds) === JSON.stringify([wp2Id]), `wp2 cascaded onto the frontier (got ${JSON.stringify(mapped.frontierIds)})`)
+  assert(mapped.gate.satisfied === false, 'G1 still not satisfiable while wp2 is open')
+
+  const r2 = await mcpToolCall(sessionId, 'resolve_waypoint', { id: wp2Id, disposition: 'resolved', summary: 'plan set' })
+  assert(!r2.isError && r2.data.ok === true, 'resolve_waypoint(wp2) ok')
+  mapped = await trpc.feature.get({ id: featureId })
+  assert(JSON.stringify(mapped.frontierIds) === JSON.stringify([]), 'frontier empty once every waypoint is terminal')
+  assert(mapped.gate.satisfied === true, 'G1 (all-waypoints-terminal) is now satisfiable')
+  record('resolution cascade', 'wp1 resolved → wp2 unblocked → wp2 resolved → G1 satisfiable')
+
+  // (14) converge crosses the satisfied G1 into tickets (collapsed skips spec) ------
+  banner('STEP 14 — converge crosses G1 → phase advances + kind=converge session')
+  const conv = await converge(ctx as never, { featureId }, { spawn: false })
+  assert(!!conv.sessionId, 'converge returned a session id')
+  const converged = await trpc.feature.get({ id: featureId })
+  assert(converged.feature.phase === 'tickets', `converged into tickets (got ${converged.feature.phase})`)
+  const convSession = converged.sessions.find((s: any) => s.id === conv.sessionId)
+  assert(convSession?.kind === 'converge', `spawned a kind=converge session (got ${convSession?.kind})`)
+  record('feature.converge', 'G1 crossed → phase tickets; kind=converge session spawned')
 }
 
 // --- summary table ------------------------------------------------------------
