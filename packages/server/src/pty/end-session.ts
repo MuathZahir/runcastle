@@ -1,6 +1,7 @@
 import type { AppCtx } from '../db/types'
 import { getSessionRow, markSessionEnded } from '../launcher/sessions'
 import { emit } from '../services/events'
+import { releaseForSession } from '../services/waypoints'
 import { ptyRegistry } from './registry'
 
 export interface EndSessionResult {
@@ -27,6 +28,9 @@ export function endSession(ctx: AppCtx, sessionId: string): EndSessionResult {
 
   const session = markSessionEnded(ctx, sessionId)
   if (session) {
+    // Ending a waypoint session without resolving releases its waypoint back to
+    // the frontier (SPEC §13.2); no-op for non-waypoint / already-resolved.
+    releaseForSession(ctx, sessionId)
     emit(ctx, session.featureId, {
       type: 'session.ended',
       message: 'session ended by user',

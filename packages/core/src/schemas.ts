@@ -77,6 +77,10 @@ export type WaypointType = z.infer<typeof WaypointType>
 export const WaypointStatus = z.enum(['open', 'claimed', 'resolved', 'dropped'])
 export type WaypointStatus = z.infer<typeof WaypointStatus>
 
+/** How a waypoint terminates: `resolved` (answered) or `dropped` (out of scope). */
+export const WaypointDisposition = z.enum(['resolved', 'dropped'])
+export type WaypointDisposition = z.infer<typeof WaypointDisposition>
+
 /**
  * What any mapped session emits via MCP `emit_waypoints`. `blockedBy` mixes two
  * reference kinds resolved by `storeWaypoints`: 1-based positions within THIS

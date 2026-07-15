@@ -2,6 +2,7 @@ import type { Phase } from '@runcastle/core'
 import { trpc } from '../../trpc'
 import { DimLine, SectionTitle, SessionStatusDot } from '../../ui'
 import type { FeatureFull } from '../../lib/api'
+import { useToast } from '../../lib/toast'
 import { ErrorBoundary } from '../ErrorBoundary'
 import { TerminalView } from '../TerminalView'
 
@@ -126,7 +127,11 @@ function MapPanel({ full, relPath }: { full: FeatureFull; relPath?: string }) {
         </div>
       )}
 
-      <WaypointGroups waypoints={full.waypoints} frontierIds={full.frontierIds} />
+      <WaypointGroups
+        featureId={featureId}
+        waypoints={full.waypoints}
+        frontierIds={full.frontierIds}
+      />
     </div>
   )
 }
@@ -139,12 +144,26 @@ function MapPanel({ full, relPath }: { full: FeatureFull; relPath?: string }) {
  * carrying an `originWaypointId`.
  */
 function WaypointGroups({
+  featureId,
   waypoints,
   frontierIds,
 }: {
+  featureId: string
   waypoints: Waypoint[]
   frontierIds: string[]
 }) {
+  const utils = trpc.useUtils()
+  const toast = useToast()
+  const work = trpc.feature.workWaypoint.useMutation({
+    onSuccess: () => {
+      void utils.feature.get.invalidate({ id: featureId })
+      void utils.feature.list.invalidate()
+    },
+    onError: (e) => toast.push(e.message),
+  })
+  // Only one live HITL session per feature — disable Work while any is claimed.
+  const someClaimed = waypoints.some((w) => w.status === 'claimed')
+
   if (waypoints.length === 0) {
     return (
       <div className="map-waypoints">
@@ -176,14 +195,35 @@ function WaypointGroups({
       {frontier.length > 0 && (
         <section className="wp-group wp-group-frontier">
           <div className="wp-group-title">Frontier · {frontier.length}</div>
-          {frontier.map((w) => (
-            <div className="wp wp-frontier" key={w.id}>
-              <span className="wp-type">{w.type}</span>
-              <span className="wp-title">{w.title}</span>
-              {w.lastSessionId && <span className="wp-resume">resume</span>}
-              <Lineage w={w} />
-            </div>
-          ))}
+          {frontier.map((w) => {
+            // A research node is worked by a headless run, not this HITL Work path.
+            const workable = w.type !== 'research'
+            const resuming = !!w.lastSessionId
+            return (
+              <div className="wp wp-frontier" key={w.id}>
+                <span className="wp-type">{w.type}</span>
+                <span className="wp-title">{w.title}</span>
+                {workable && (
+                  <button
+                    type="button"
+                    className="btn btn-xs btn-solid wp-work"
+                    disabled={someClaimed || work.isPending}
+                    title={
+                      someClaimed
+                        ? 'a waypoint session is already live — resolve or close it first'
+                        : resuming
+                          ? 'resume the previous session on this waypoint'
+                          : 'claim this waypoint and open a session'
+                    }
+                    onClick={() => work.mutate({ featureId, waypointId: w.id })}
+                  >
+                    {resuming ? 'Resume' : 'Work'}
+                  </button>
+                )}
+                <Lineage w={w} />
+              </div>
+            )
+          })}
         </section>
       )}
 

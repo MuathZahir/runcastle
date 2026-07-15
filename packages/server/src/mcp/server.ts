@@ -9,7 +9,7 @@ import type {
   Waypoint as WaypointT,
   WaypointInput as WaypointInputT,
 } from '@runcastle/core'
-import { Phase, TicketInput, WaypointInput, nextGate, nextPhase } from '@runcastle/core'
+import { Phase, TicketInput, WaypointDisposition, WaypointInput, nextGate, nextPhase } from '@runcastle/core'
 import { Hono } from 'hono'
 import * as z from 'zod'
 import type { AppCtx } from '../db/types'
@@ -23,8 +23,10 @@ import { listDocs, readDoc } from '../services/knowledge'
 import { getFeatureRow } from '../services/repo'
 import { listByFeature, storeTickets } from '../services/tickets'
 import {
+  claimedForFeature,
   frontier as waypointFrontier,
   listByFeature as listWaypoints,
+  resolve as resolveWaypoint,
   storeWaypoints,
 } from '../services/waypoints'
 
@@ -75,6 +77,8 @@ export interface FeatureContext {
   waypoints?: WaypointT[]
   /** …and the subset currently on the frontier (open, unclaimed, unblocked). */
   frontier?: WaypointT[]
+  /** The waypoint THIS session claimed (kind=waypoint) — the one to work + resolve. */
+  assignedWaypoint?: WaypointT
 }
 
 export function toolGetFeatureContext(ctx: AppCtx, session: SessionRow): FeatureContext {
@@ -97,8 +101,24 @@ export function toolGetFeatureContext(ctx: AppCtx, session: SessionRow): Feature
   if (feature.mapped) {
     context.waypoints = listWaypoints(ctx, feature.id)
     context.frontier = waypointFrontier(ctx, feature.id)
+    // A waypoint session works exactly the waypoint it claimed — surface it so
+    // the entry skill knows its assignment without guessing from the frontier.
+    context.assignedWaypoint = claimedForFeature(ctx, feature.id).find(
+      (w) => w.claimedBy === session.id,
+    )
   }
   return context
+}
+
+export function toolResolveWaypoint(
+  ctx: AppCtx,
+  _session: SessionRow,
+  input: { id: string; disposition: 'resolved' | 'dropped'; summary: string },
+): { ok: true } {
+  // The prose answer is written to decisions.md/map.md by the session directly;
+  // this tool flips machinery only (status → terminal, cascade unblock events).
+  resolveWaypoint(ctx, input.id, input.disposition, input.summary)
+  return { ok: true }
 }
 
 export function toolEmitTickets(
@@ -308,6 +328,23 @@ export function buildMcpServer(): McpServer {
       const rs = await resolveCtxSession(extra)
       if (!rs) return noSession()
       return ok(toolEmitWaypoints(rs.ctx, rs.session, args))
+    },
+  )
+
+  server.registerTool(
+    'resolve_waypoint',
+    {
+      title: 'Resolve waypoint',
+      description:
+        'End the current waypoint: `resolved` (its question is answered) or `dropped` (no longer needed). Write the decision prose to decisions.md (or the gist to map.md Out-of-scope for a drop) FIRST — this tool flips machinery only (marks the waypoint terminal, frees any dependents on the frontier). `summary` is the one-line gist shown in the UI. Call this exactly once, as the last thing you do.',
+      inputSchema: { id: z.string(), disposition: WaypointDisposition, summary: z.string() },
+    },
+    async (args, extra) => {
+      const rs = await resolveCtxSession(extra)
+      if (!rs) return noSession()
+      const result = toolResolveWaypoint(rs.ctx, rs.session, args)
+      await commitDocsCheckpoint(rs.ctx, rs.session, `runcastle: waypoint ${args.disposition}`)
+      return ok(result)
     },
   )
 

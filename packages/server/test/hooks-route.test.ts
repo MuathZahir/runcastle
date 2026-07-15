@@ -5,6 +5,7 @@ import { clearRuntimeCtx, setRuntimeCtx } from '../src/launcher/runtime'
 import { createSessionRow, getSessionRow } from '../src/launcher/sessions'
 import hooksApp from '../src/routes/hooks'
 import { storeTickets } from '../src/services/tickets'
+import { claim, getWaypoint, storeWaypoints } from '../src/services/waypoints'
 import { makeTestCtx } from './helpers/db'
 import { seedFeature, seedProject } from './helpers/fixtures'
 
@@ -92,6 +93,22 @@ describe('hooks route', () => {
     })
     expect(json).toEqual({})
     expect(getSessionRow(ctx, sessionId)?.status).toBe('ended')
+  })
+
+  it('session-end auto-releases a waypoint the ending session had claimed', async () => {
+    const mapped = seedFeature(ctx, seedProject(ctx).id, { slug: 'big', mapped: true })
+    const s = createSessionRow(ctx, { featureId: mapped.id, kind: 'waypoint', worktreePath: 'C:\\wt' })
+    const [a] = storeWaypoints(ctx, mapped.id, [
+      { title: 'a', type: 'grilling', question: 'q', blockedBy: [] },
+    ])
+    claim(ctx, a.id, s.id)
+
+    await post(mount(), 'session-end', { sessionId: s.id, payload: { hook_event_name: 'SessionEnd' } })
+
+    // the waypoint is back on the frontier, remembering the session for Resume
+    const back = getWaypoint(ctx, a.id)
+    expect(back.status).toBe('open')
+    expect(back.lastSessionId).toBe(s.id)
   })
 
   it('returns {} for an unknown session id (never breaks a session)', async () => {

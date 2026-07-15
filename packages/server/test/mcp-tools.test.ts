@@ -15,11 +15,12 @@ import mcpApp, {
   toolEscalateToMap,
   toolGetFeatureContext,
   toolRecordEvent,
+  toolResolveWaypoint,
 } from '../src/mcp/server'
 import { listAfter } from '../src/services/events'
 import { getFeatureRow } from '../src/services/repo'
 import { listByFeature, storeTickets } from '../src/services/tickets'
-import { listByFeature as listWaypoints } from '../src/services/waypoints'
+import { claim, getWaypoint, listByFeature as listWaypoints } from '../src/services/waypoints'
 import { makeTestCtx } from './helpers/db'
 import { seedFeature, seedProject, tmpRepo } from './helpers/fixtures'
 
@@ -222,6 +223,50 @@ describe('mcp mapped write path (ADR-0001 §13.3)', () => {
     const out = toolEmitWaypoints(ctx, qa, { waypoints: [waypoint('from-qa')] })
     expect(out.stored).toBe(1)
     expect(listWaypoints(ctx, featureId).map((w) => w.title)).toContain('from-qa')
+  })
+
+  it('resolve_waypoint flips machinery (status + cascade) and reports ok', () => {
+    toolEscalateToMap(ctx, session, { destination: 'dest' })
+    toolEmitWaypoints(ctx, session, { waypoints: [waypoint('a'), waypoint('b', [1])] })
+    const [a, b] = listWaypoints(ctx, featureId)
+
+    const out = toolResolveWaypoint(ctx, session, {
+      id: a.id,
+      disposition: 'resolved',
+      summary: 'answered a',
+    })
+    expect(out).toEqual({ ok: true })
+
+    // a is terminal with its summary; resolving it freed b onto the frontier
+    const done = getWaypoint(ctx, a.id)
+    expect(done.status).toBe('resolved')
+    expect(done.summary).toBe('answered a')
+    const types = listAfter(ctx, featureId, 0).map((e) => e.type)
+    expect(types).toContain('waypoint.resolved')
+    expect(types).toContain('waypoint.unblocked')
+    expect(getWaypoint(ctx, b.id).status).toBe('open')
+  })
+
+  it('resolve_waypoint drops a waypoint (terminal, frees dependents like a resolve)', () => {
+    toolEscalateToMap(ctx, session, { destination: 'dest' })
+    toolEmitWaypoints(ctx, session, { waypoints: [waypoint('a')] })
+    const [a] = listWaypoints(ctx, featureId)
+    toolResolveWaypoint(ctx, session, { id: a.id, disposition: 'dropped', summary: 'out of scope' })
+    expect(getWaypoint(ctx, a.id).status).toBe('dropped')
+  })
+
+  it('get_feature_context surfaces the waypoint THIS session claimed as assignedWaypoint', () => {
+    toolEscalateToMap(ctx, session, { destination: 'dest' })
+    toolEmitWaypoints(ctx, session, { waypoints: [waypoint('a'), waypoint('b')] })
+    const [a] = listWaypoints(ctx, featureId)
+    // simulate the server-side claim performed when this session was launched
+    claim(ctx, a.id, session.id)
+
+    const out = toolGetFeatureContext(ctx, session)
+    expect(out.assignedWaypoint?.id).toBe(a.id)
+    // a session with no claim (e.g. the ideation session) has none
+    const other = createSessionRow(ctx, { featureId, kind: 'ideation', worktreePath: repoPath })
+    expect(toolGetFeatureContext(ctx, other).assignedWaypoint).toBeUndefined()
   })
 
   it('get_feature_context exposes waypoints + frontier only when mapped', () => {
