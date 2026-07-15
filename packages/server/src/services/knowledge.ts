@@ -63,16 +63,37 @@ export const MAP_SECTIONS = [
   'Out of scope',
 ] as const
 
-/** Seed `map.md` with the four empty prose sections (idempotent). */
-function scaffoldMapDoc(project: Project, feature: Feature): void {
+/** Prose to seed into `map.md` when escalating mid-grill (§13.3). */
+export interface MapSeed {
+  destination?: string
+  notes?: string
+}
+
+/**
+ * Seed `map.md` with the four prose sections (idempotent — never overwrites an
+ * existing map). Destination/Notes are filled from `seed` when escalating
+ * (`escalate_to_map`); Not-yet-specified and Out-of-scope always start empty.
+ * A feature that starts mapped scaffolds with no seed (all four empty).
+ */
+export function scaffoldMapDoc(project: Project, feature: Feature, seed?: MapSeed): void {
+  mkdirSync(featureDocsDir(project, feature), { recursive: true })
   const mapPath = featureDocPath(project, feature, 'map.md')
   if (existsSync(mapPath)) return
-  const body = [
-    `# ${feature.title} — map`,
-    '',
-    ...MAP_SECTIONS.flatMap((s) => [`## ${s}`, '']),
-  ].join('\n')
-  writeFileSync(mapPath, body, 'utf8')
+  writeFileSync(mapPath, mapDocBody(feature, seed), 'utf8')
+}
+
+function mapDocBody(feature: Feature, seed?: MapSeed): string {
+  const seeded: Partial<Record<(typeof MAP_SECTIONS)[number], string>> = {
+    Destination: seed?.destination?.trim(),
+    Notes: seed?.notes?.trim(),
+  }
+  const lines = [`# ${feature.title} — map`, '']
+  for (const section of MAP_SECTIONS) {
+    lines.push(`## ${section}`, '')
+    const body = seeded[section]
+    if (body) lines.push(body, '')
+  }
+  return lines.join('\n')
 }
 
 /** List `.md` docs for a feature (relPath within the docs dir + a title). */

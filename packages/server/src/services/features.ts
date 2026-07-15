@@ -16,7 +16,7 @@ import { GateError, isNotImplemented } from '../errors'
 import { emit } from './events'
 import { checkGate } from './gates'
 import * as git from './git'
-import { listDocs, scaffoldDocs } from './knowledge'
+import { listDocs, scaffoldDocs, scaffoldMapDoc } from './knowledge'
 import type { DocSummary } from './knowledge'
 import {
   getFeatureRow,
@@ -246,6 +246,42 @@ export async function burn(ctx: AppCtx, featureId: string): Promise<{ runId: str
   }
   const { runId } = await startRun(ctx, featureId, 'ticket-burner')
   return { runId }
+}
+
+export interface EscalateResult {
+  ok: true
+  /** Set (with no other effect) when the feature was already mapped. */
+  warning?: string
+}
+
+/**
+ * Escalate a grilling session into a map (ADR-0001 / SPEC §13.3): flip `mapped`,
+ * scaffold `map.md` seeded from the caller's Destination/Notes, emit an event.
+ *
+ * Idempotent: a second call on an already-mapped feature warns and makes NO
+ * changes — no re-scaffold (which would anyway be a no-op) and no event. The
+ * first chart wins, so re-escalating never clobbers the accumulated map.
+ */
+export function escalateToMap(
+  ctx: AppCtx,
+  featureId: string,
+  input: { destination: string; notes?: string },
+): EscalateResult {
+  const feature = getFeatureRow(ctx, featureId)
+  if (feature.mapped) {
+    return { ok: true, warning: `feature ${feature.slug} is already mapped — no changes made` }
+  }
+
+  const project = requireProject(ctx)
+  ctx.db.update(features).set({ mapped: true }).where(eq(features.id, featureId)).run()
+  scaffoldMapDoc(project, { ...feature, mapped: true }, input)
+
+  emit(ctx, featureId, {
+    type: 'feature.escalated',
+    message: `grilling escalated to a map (destination: ${input.destination})`,
+    data: { destination: input.destination },
+  })
+  return { ok: true }
 }
 
 function gateState(ctx: AppCtx, feature: Feature): FeatureGateState {
