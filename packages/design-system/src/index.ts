@@ -52,3 +52,33 @@ export type { StepperProps, Step } from './components/Stepper'
 
 export { Toast } from './components/Toast'
 export type { ToastProps } from './components/Toast'
+
+/* ── Screens — presentational, mock-data compositions of the primitives above.
+   The composed runcastle app: redesign these, then re-wire your data layer. ── */
+
+export { AppShell } from './screens/AppShell'
+export type { AppShellProps } from './screens/AppShell'
+
+export { Titlebar } from './screens/Titlebar'
+export type { TitlebarProps } from './screens/Titlebar'
+
+export { Sidebar } from './screens/Sidebar'
+export type { SidebarProps, SidebarFeature } from './screens/Sidebar'
+
+export { Inspector } from './screens/Inspector'
+export type { InspectorProps, InspectorDoc, InspectorEvent } from './screens/Inspector'
+
+export { StatusBar } from './screens/StatusBar'
+export type { StatusBarProps } from './screens/StatusBar'
+
+export { OverviewScreen } from './screens/OverviewScreen'
+export type { OverviewScreenProps, OverviewEvent } from './screens/OverviewScreen'
+
+export { TicketsScreen } from './screens/TicketsScreen'
+export type { TicketsScreenProps, TicketRowData } from './screens/TicketsScreen'
+
+export { RunScreen } from './screens/RunScreen'
+export type { RunScreenProps, RunLane, RunStreamLine } from './screens/RunScreen'
+
+export { TerminalScreen } from './screens/TerminalScreen'
+export type { TerminalScreenProps } from './screens/TerminalScreen'

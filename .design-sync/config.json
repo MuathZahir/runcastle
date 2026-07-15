@@ -12,6 +12,15 @@
     "Panel": { "cardMode": "column" },
     "Tabs": { "cardMode": "column" },
     "Toast": { "cardMode": "column" },
-    "Toolbar": { "cardMode": "column" }
+    "Toolbar": { "cardMode": "column" },
+    "AppShell": { "cardMode": "single", "primaryStory": "Overview", "viewport": "1220x800" },
+    "Titlebar": { "cardMode": "single", "viewport": "1060x120" },
+    "Sidebar": { "cardMode": "single", "viewport": "340x380" },
+    "Inspector": { "cardMode": "single", "viewport": "380x560" },
+    "StatusBar": { "cardMode": "column", "viewport": "1060x120" },
+    "OverviewScreen": { "cardMode": "single", "viewport": "900x680" },
+    "TicketsScreen": { "cardMode": "single", "viewport": "900x680" },
+    "RunScreen": { "cardMode": "single", "viewport": "1040x650" },
+    "TerminalScreen": { "cardMode": "single", "viewport": "900x500" }
   }
 }

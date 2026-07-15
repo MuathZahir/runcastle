@@ -46,6 +46,21 @@ Repo-specific gotchas for future syncs. Read this first.
 - `cfg.overrides` sets `cardMode: "column"` for DimLine, Panel, Tabs, Toast, Toolbar
   (wide bars/lists that overflow a grid cell). Keep these.
 
+## Screens group (composed app)
+
+- `src/screens/` holds 9 presentational, mock-data reconstructions of the runcastle
+  app (AppShell, Titlebar, Sidebar, Inspector, StatusBar, OverviewScreen,
+  TicketsScreen, RunScreen, TerminalScreen). They compose the primitives + the
+  "SCREENS — layout" CSS block in `styles.css`. The `src/screens/` path puts them
+  in the **screens** group; atoms stay in **general**.
+- Every screen prop is optional with realistic defaults, so `<AppShell />` renders
+  the whole populated IDE. `@category Screens` is on each as a grouping backstop.
+- `cfg.overrides` gives each screen `cardMode: "single"` (StatusBar `column`) + a
+  `viewport` sized to the screen — screens are large, single-story cards. Keep these.
+- Screen previews wrap the component in a **fixed-size** dark frame (screens use
+  `height:100%`, so the preview parent must have a definite height). Any new screen
+  preview must set an explicit width/height on the frame.
+
 ## Render check (playwright)
 
 - Playwright **1.61.1** pins chromium build **1228**, which is cached at
@@ -60,7 +75,11 @@ Repo-specific gotchas for future syncs. Read this first.
 
 - **The DS is a hand-extraction, not a live mirror.** If `apps/web/src/styles.css`
   changes runcastle's visual language (colours, type, hairlines), this DS will NOT
-  auto-track it — re-extract by hand and rebuild.
+  auto-track it — re-extract by hand and rebuild. The **Screens** especially: their
+  layout CSS and mock data were copied from the app's real components
+  (`apps/web/src/components/**`) at build time; a structural change to those screens
+  won't propagate here. A redesign done in Claude Design imports back by re-wiring
+  tRPC data/handlers into the new layout, not as a file swap.
 - The 15-component scope is curated. Adding a component means: author it in
   `packages/design-system/src/components/`, export it from `src/index.ts`, author a
   `.design-sync/previews/<Name>.tsx` (with a dark stage), rebuild, grade, re-upload.

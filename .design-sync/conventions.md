@@ -54,6 +54,24 @@ Glue example: `<div style={{ background: 'var(--panel-2)', border: '1px solid va
 
 Read each `<Name>.d.ts` for the exact props and `<Name>.prompt.md` for usage.
 
+## Screens (the composed app)
+
+A second group, **Screens**, holds presentational, mock-data reconstructions of
+runcastle's actual application — the thing to redesign, then re-wire your data
+layer back into:
+
+- `AppShell` — the whole IDE frame (title bar · features rail · typed tabs ·
+  inspector · status bar). Pass `activeTab` to choose the center body.
+- `Titlebar`, `Sidebar`, `Inspector`, `StatusBar` — the frame pieces on their own.
+- `OverviewScreen`, `TicketsScreen`, `RunScreen`, `TerminalScreen` — the four tab bodies.
+
+Each screen composes the primitives above plus the shell-layout classes
+(`.shell`, `.sidebar`, `.center`, `.overview`, `.tickets`, `.run`,
+`.terminal-tab`, `.inspector`, `.statusbar`). Every screen prop is optional with
+realistic defaults, so `<AppShell />` renders the full populated app. These are
+scaffolds for redesign, not the wired app — importing a redesign back means
+reconnecting the real tRPC data and handlers to the new layout.
+
 ## An idiomatic screen
 
 ```tsx
