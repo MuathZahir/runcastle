@@ -10,6 +10,7 @@ export type GateId = 'G1' | 'G2' | 'G3' | 'G4' | 'G5'
 
 export type GateCheckId =
   | 'decisions-file-exists'
+  | 'all-waypoints-terminal'
   | 'spec-file-exists'
   | 'tickets-approved'
   | 'all-tickets-terminal'
@@ -90,6 +91,13 @@ export function nextPhase(feature: { phase: Phase; size: FeatureSize }): Phase |
   return step
 }
 
+/** G1 as it appears on a mapped feature (ADR-0001 / SPEC §13.1). */
+const MAPPED_G1: GateDef = {
+  id: 'G1',
+  description: 'Every waypoint resolved or dropped before converging',
+  check: 'all-waypoints-terminal',
+}
+
 /**
  * The gate guarding the transition OUT of the feature's current phase.
  *
@@ -98,9 +106,20 @@ export function nextPhase(feature: { phase: Phase; size: FeatureSize }): Phase |
  * changes to `tickets` (see nextPhase) but the guarding gate stays G1, while
  * G2's `spec-file-exists` is auto-satisfied server-side. Returns null at the
  * terminal phase.
+ *
+ * G1 is conditional on `feature.mapped` (ADR-0001 / SPEC §13.1): a mapped
+ * feature converges only once every waypoint is terminal, so its G1 check is
+ * `all-waypoints-terminal` instead of `decisions-file-exists`. Every later gate
+ * is identical in both modes — mapping only changes how ideation ends.
  */
-export function nextGate(feature: { phase: Phase; size: FeatureSize }): GateDef | null {
+export function nextGate(feature: {
+  phase: Phase
+  size: FeatureSize
+  mapped?: boolean
+}): GateDef | null {
   const i = ORDER.indexOf(feature.phase)
   if (i < 0 || i >= ORDER.length - 1) return null
-  return PIPELINE[i + 1].gateToEnter ?? null
+  const gate = PIPELINE[i + 1].gateToEnter ?? null
+  if (feature.mapped && gate?.id === 'G1') return MAPPED_G1
+  return gate
 }

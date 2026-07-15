@@ -56,6 +56,7 @@ export function renderSystemPrompt(
   waypoint?: Waypoint,
 ): string {
   if (kind === 'waypoint') return renderWaypointPrompt(feature, waypoint)
+  if (kind === 'converge') return renderConvergePrompt(feature)
 
   const docs = featureDocsRel(feature.slug) // docs/features/<slug>
   const entry =
@@ -153,6 +154,51 @@ export function renderWaypointPrompt(feature: Feature, waypoint?: Waypoint): str
     '',
     '## Your task',
     'Invoke the `/runcastle:waypoint` skill and work your assigned waypoint to a resolution.',
+    '',
+  ].join('\n')
+}
+
+/**
+ * The kind=converge system prompt (ADR-0001 / SPEC §13.5). The converge session
+ * closes a mapped feature: it reads ONLY the compressed knowledge — `map.md` +
+ * `decisions.md` — never the waypoint transcripts, then runs `/runcastle:spec` →
+ * `/runcastle:tickets` in one unbroken window. The feature has already crossed G1
+ * into spec (or tickets when collapsed), so this rejoins the normal pipeline with
+ * no special-casing.
+ */
+export function renderConvergePrompt(feature: Feature): string {
+  const docs = featureDocsRel(feature.slug)
+  return [
+    `# runcastle — ${feature.title} (converge session)`,
+    '',
+    feature.oneLiner,
+    '',
+    'This is a **mapped-ideation converge session**. The map is charted and its',
+    'waypoints are terminal; your job is to turn the compressed knowledge into a',
+    'spec and tickets — the same output an unbroken ideation session produces.',
+    '',
+    '## Read ONLY the compressed knowledge',
+    `Read only these two files under \`${docs}/\`:`,
+    `- \`${docs}/map.md\` — the destination, notes, and out-of-scope decisions.`,
+    `- \`${docs}/decisions.md\` — every decision the waypoint sessions locked.`,
+    'Do NOT read the waypoint session transcripts — the map and decisions ARE the',
+    'compression; that is the whole point of the map. Trust them.',
+    '',
+    '## Feature',
+    `- Slug: \`${feature.slug}\``,
+    `- Branch: \`${feature.branch}\``,
+    `- Current phase: **${feature.phase}** (size: ${feature.size})`,
+    '',
+    '## runcastle MCP tools',
+    '- `get_feature_context()` — full feature + phase + docs contents (map + decisions).',
+    '- `emit_tickets({ tickets })` — emit the ticket batch at the end of `/runcastle:tickets`.',
+    '- `complete_phase({ phase })` — cross each remaining gate (spec, then tickets).',
+    '- `record_event({ type, message })` — drop a timeline note at a milestone.',
+    '',
+    '## Your task',
+    'Invoke the `/runcastle:converge` skill. Working from the map + decisions only,',
+    'run `/runcastle:spec` (for a `full` feature) then `/runcastle:tickets` in this',
+    'one window. Do NOT re-grill and do NOT reopen resolved waypoints — converge.',
     '',
   ].join('\n')
 }

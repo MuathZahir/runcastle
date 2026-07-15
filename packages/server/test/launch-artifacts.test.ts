@@ -154,6 +154,19 @@ describe('renderSystemPrompt', () => {
     // a waypoint session must NOT be told to converge / emit tickets
     expect(p).not.toContain('emit_tickets')
   })
+
+  it('directs a converge session to /runcastle:converge over ONLY the compressed knowledge', () => {
+    const p = renderSystemPrompt(feature({ mapped: true, phase: 'spec' }), 'converge')
+    expect(p).toContain('/runcastle:converge')
+    // reads only the compressed knowledge — map + decisions, never transcripts
+    expect(p).toContain('map.md')
+    expect(p).toContain('decisions.md')
+    expect(p).toMatch(/do not read the waypoint session transcripts/i)
+    // it runs the existing spec → tickets skills
+    expect(p).toContain('/runcastle:spec')
+    expect(p).toContain('/runcastle:tickets')
+    expect(p).toContain('emit_tickets')
+  })
 })
 
 describe('buildLaunchCommand', () => {

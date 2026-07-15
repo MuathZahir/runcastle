@@ -4,12 +4,14 @@ import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { Feature, Project, SessionKind, SessionRow, Waypoint } from '@runcastle/core'
 import { worktreeDir } from '@runcastle/core/paths'
+import { nextGate, nextPhase } from '@runcastle/core'
 import type { AppCtx } from '../db/types'
 import { GateError, isNotImplemented } from '../errors'
 import { ptyRegistry } from '../pty/registry'
 import { emit } from '../services/events'
+import { checkGate, overrideGate } from '../services/gates'
 import * as git from '../services/git'
-import { getFeatureRow, requireProject } from '../services/repo'
+import { getFeatureRow, requireProject, setPhase } from '../services/repo'
 import {
   claim as claimWaypoint,
   claimedForFeature,
@@ -362,6 +364,54 @@ export async function workWaypoint(
   }
 
   return launchSession(ctx, { featureId: feature.id, kind: 'waypoint', waypointId: wp.id }, opts)
+}
+
+/**
+ * Converge a mapped feature (ADR-0001 / SPEC §13.2, backs `feature.converge`).
+ *
+ * G1 for a mapped feature is `all-waypoints-terminal` (SPEC §13.1): convergence
+ * is refused while any waypoint is still open or claimed — UNLESS the caller
+ * supplies an `overrideReason`, exactly like every other gate (the seatbelt, not
+ * the cage). Remaining fog (`Not yet specified` prose) is never checked here — it
+ * is a soft UI warning, shown but never enforced.
+ *
+ * Crossing G1 advances the feature into `spec` (or `tickets` for a collapsed
+ * feature — nextPhase is unchanged), so the fresh kind=`converge` session it
+ * spawns rejoins the normal pipeline with NO downstream special-casing: it reads
+ * only the compressed knowledge (map + decisions) and runs the existing
+ * spec → tickets skills unbroken.
+ */
+export async function converge(
+  ctx: AppCtx,
+  input: { featureId: string; overrideReason?: string },
+  opts: LaunchSessionOptions = {},
+): Promise<LaunchSessionResult> {
+  const feature = getFeatureRow(ctx, input.featureId)
+  if (!feature.mapped) {
+    throw new GateError(`feature ${feature.slug} is not mapped — convergence is only for mapped features`)
+  }
+  if (feature.phase !== 'ideation') {
+    throw new GateError(`converge runs from ideation — feature ${feature.slug} is already at ${feature.phase}`)
+  }
+
+  const gate = nextGate(feature)
+  if (!gate) throw new GateError('feature is already at the final phase')
+  const result = checkGate(ctx, gate.check, feature)
+
+  if (result.satisfied) {
+    // Cross G1 into spec (or tickets for a collapsed feature — nextPhase is
+    // unchanged). G1 is never G3, so this plain crossing is legitimate.
+    const next = nextPhase(feature)
+    if (!next) throw new GateError('feature is already at the final phase')
+    setPhase(ctx, feature.id, next, 'phase.advanced', `converging (${next})`)
+  } else if (input.overrideReason) {
+    // The seatbelt, not the cage: record a G1 override and advance anyway.
+    overrideGate(ctx, feature.id, gate.id, input.overrideReason)
+  } else {
+    throw new GateError(result.reason ?? 'the map is not ready to converge — resolve its waypoints or override with a reason')
+  }
+
+  return launchSession(ctx, { featureId: feature.id, kind: 'converge' }, opts)
 }
 
 /**

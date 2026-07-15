@@ -1,6 +1,6 @@
 import { FeatureSize, SessionKind } from '@runcastle/core'
 import * as z from 'zod'
-import { endSession, launchSession, workWaypoint } from '../../launcher/launcher'
+import { converge, endSession, launchSession, workWaypoint } from '../../launcher/launcher'
 import { emit } from '../../services/events'
 import * as features from '../../services/features'
 import { overrideGate } from '../../services/gates'
@@ -39,6 +39,16 @@ export const featureRouter = router({
   workWaypoint: publicProcedure
     .input(z.object({ featureId: z.string(), waypointId: z.string() }))
     .mutation(({ ctx, input }) => workWaypoint(ctx, input)),
+
+  // Converge a mapped feature (ADR-0001 §13.2): crosses G1 (all-waypoints-
+  // terminal) into spec and spawns a fresh kind=converge session that runs the
+  // existing spec → tickets skills over the compressed knowledge. `overrideReason`
+  // forces convergence past open/claimed waypoints (records a G1 override).
+  converge: publicProcedure
+    .input(z.object({ featureId: z.string(), overrideReason: z.string().min(1).optional() }))
+    .mutation(({ ctx, input }) =>
+      converge(ctx, { featureId: input.featureId, overrideReason: input.overrideReason }),
+    ),
 
   // End a live session (End session button; terminal-tab close is detach only).
   // Route added by W2 (UI-SPEC §6); backed by W1's PTY-killing `endSession`
