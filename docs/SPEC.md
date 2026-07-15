@@ -200,3 +200,90 @@ Vite + React + @trpc/react-query + TanStack Query v5, plain CSS (one stylesheet,
 - Every service function that mutates emits an event (events are the UI's lifeblood).
 - Commit your own work when done: conventional message `feat(scope): ...` — repo is `runcastle/` itself.
 - When docs are needed, use `npx ctx7@latest library/docs` (≤3 calls per question) — do not trust training data for API shapes.
+
+## 13. Mapped ideation (post-M1 — ADR-0001)
+
+Multi-session ideation for features too big for one context window. **Built
+after the ship-path fixes and the workspace redesign land** (ADR-0001
+sequencing); specified here so names are law when it does. Self-contained:
+each item below states its amendment to the M1 sections explicitly.
+
+### 13.1 Core amendments (§1)
+
+- `src/schemas.ts` additions:
+  - `WaypointType = z.enum(['grilling','research','prototype','task'])`
+  - `WaypointStatus = z.enum(['open','claimed','resolved','dropped'])`
+  - `WaypointInput { title: string, type: WaypointType, question: string, blockedBy: number[] /* seq refs within batch */ | string[] /* existing waypoint ids */, originWaypointId?: string }`
+  - `Waypoint` = WaypointInput + `{ id, featureId, seq: number, status: WaypointStatus, claimedBy?: string /* sessionId | runId */, lastSessionId?: string, summary?: string }`
+  - `Feature` gains `mapped: boolean` (default false; set by creation toggle or `escalate_to_map`; independent of `size`).
+  - `SessionKind` gains `'waypoint' | 'converge'`.
+- `src/pipeline.ts`: G1's check becomes conditional on `feature.mapped`:
+  `decisions-file-exists` (unmapped, unchanged) | `all-waypoints-terminal`
+  (mapped: every waypoint `resolved` or `dropped`). Fog is NOT gate-checked.
+  `nextPhase()` unchanged.
+- `src/db-schema.ts`: new `waypoints` table mirroring the schema; `blockedBy`
+  + lineage as JSON columns like tickets.
+- `src/workflow.ts`: `WorkflowCtx` gains `input?: unknown` (per-run payload —
+  the research waypoint) and `resolveWaypoint(id: string, disposition: 'resolved'|'dropped', summary: string): void`.
+
+### 13.2 Server amendments (§3, §4)
+
+- New `services/waypoints.ts` (owner: the mapped-ideation feature): `storeWaypoints` (seq assign + blockedBy resolve + cycle rejection — same algorithm as `storeTickets`), `listByFeature`, `claim(id, claimedBy)` (transactional; fails if not open/frontier), `release(id)` (back to open, keeps `lastSessionId`), `resolve(id, disposition, summary)`, `frontier(featureId)` (derived: open ∧ unclaimed ∧ all blockers terminal — never stored). `resolve` emits `waypoint.resolved` plus one `waypoint.unblocked` event per newly-freed waypoint.
+- Session-end hook + run finalizer: auto-release any waypoint still claimed by the ending session/run.
+- New `workflows/research.ts`: `research` WorkflowDef registered alongside `ticket-burner`. Sandcastle run (same auth/sandbox config as §8) with prompt from `packages/skills/burner/research-waypoint.md`; the sandbox agent reads the waypoint question, researches (web + repo), writes `docs/features/<slug>/research/<waypoint-slug>.md`, commits to the feature branch; the workflow then calls `ctx.resolveWaypoint`.
+- tRPC additions (§4):
+  - `feature.create` input gains `mapped?: boolean`.
+  - `feature.get` response gains `waypoints: Waypoint[]` + `frontierIds: string[]` when mapped.
+  - `feature.workWaypoint({ featureId, waypointId }): { sessionId } | { runId }` — claims first (error if not on frontier), then spawns terminal (grilling/prototype/task → kind=`waypoint`) or starts the `research` run.
+  - `feature.converge({ featureId }): { sessionId }` — requires G1 satisfiable (or override); spawns kind=`converge` terminal.
+
+### 13.3 MCP amendments (§6) — 3 new tools (7 total)
+
+5. `escalate_to_map({ destination, notes }) → { ok }` — sets `mapped`, scaffolds `map.md` (Destination/Notes from args; empty Not-yet-specified / Out-of-scope), emits event. Idempotent warning if already mapped.
+6. `emit_waypoints({ waypoints: WaypointInput[] }) → { stored: number, ids: string[] }` — via `storeWaypoints`; available to every session once mapped (recursion: any session may branch the map).
+7. `resolve_waypoint({ id, disposition: 'resolved'|'dropped', summary }) → { ok }` — prose answer goes to `decisions.md` (dropped: gist to `map.md` Out-of-scope) by direct file write in the session; this tool flips machinery only.
+
+`get_feature_context` response gains `waypoints` + `frontier` when mapped.
+Claiming is NEVER agent-callable — it is a spawn-time server side effect.
+
+### 13.4 Knowledge amendments
+
+`docs/features/<slug>/map.md` scaffolded by `escalate_to_map` (or at create
+when the toggle is set): `## Destination`, `## Notes`, `## Not yet specified`,
+`## Out of scope`. Prose sections are edited by sessions via direct file
+writes (serial HITL makes this race-free); resolutions accumulate in the
+existing `decisions.md`. `research/` subdirectory holds research waypoint
+summaries.
+
+### 13.5 Skills amendments (§9)
+
+- `ideate` gains the escalation branch: when the feature outgrows the window
+  (rabbit holes, decisions hanging on unread material), call
+  `escalate_to_map`, `emit_waypoints` for the first batch, tell the user the
+  map is charted, and END the session (charting is one session's work).
+- New `waypoint` (entry for kind=waypoint): read map + assigned question from
+  injected context; mode by type (grill / prototype fork / task checklist);
+  write `decisions.md` + `map.md` directly; may `emit_waypoints`; ends with
+  `resolve_waypoint`.
+- New `converge` (entry for kind=converge): read `map.md` + `decisions.md`
+  ONLY (not transcripts), then run `/runcastle:spec` → `/runcastle:tickets`
+  unbroken (decision 9 relocated here).
+- New `burner/research-waypoint.md` prompt template (see §13.2).
+
+### 13.6 UI amendments (§10)
+
+`GrillBody` mapped variant: destination line; waypoint groups — frontier
+(Work button each), blocked (greyed, blocker *names*), claimed (live pulse;
+Resume when `lastSessionId`), resolved/dropped (collapsed count); fog rendered
+from `map.md`; Converge button when G1 satisfiable, remaining fog shown as a
+soft warning beside it. `NewFeatureForm`: start-mapped toggle. Lineage shown
+as one line per waypoint ("surfaced by <name>"); tree view deferred. No new
+routes, no new polling.
+
+### 13.7 Tests
+
+Vitest: waypoint seq/blockedBy resolve + cycle rejection (shared with ticket
+tests), frontier derivation (blocked→freed on resolve AND on drop), claim
+transactionality (double-claim fails), auto-release on session end, G1
+conditional check both modes. Smoke extension: escalate → emit 2 waypoints
+(one blocking the other) → resolve both → converge gate satisfiable.

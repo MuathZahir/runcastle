@@ -36,7 +36,7 @@ An opinionated programming system layered on Claude Code — the IDE to Claude C
    - Main checkout reserved for the human: **guarded checkout-switch test drive** (auto-stash → checkout → run dev server → restore; blocked with explanation while any live session has uncommitted work) and final merges.
    - Full-fat worktrees (with installs) deferred until actually needed.
 
-7. **Phases: Matt's flow, size-aware.** Ideation → Spec → Tickets → Implementation → Review → Shipped. Small features may collapse Spec+Tickets (explicit choice). Research/Prototype are detour activities available in any phase, not phases. Phases are **data** (pipeline definition) internally so custom pipelines can exist later.
+7. **Phases: Matt's flow, size-aware.** Ideation → Spec → Tickets → Implementation → Review → Shipped. Small features may collapse Spec+Tickets (explicit choice). Research/Prototype are detour activities available in any phase, not phases. Phases are **data** (pipeline definition) internally so custom pipelines can exist later. Big features get **mapped ideation** (ADR-0001, SPEC §13): the ideation phase becomes a wayfinder-style map of typed waypoints worked across many sessions, converging to the normal spec→tickets flow — the detour activities realized as structure.
 
 8. **Gates: enforced, override with reason.** Gates block by default; every gate has an override requiring a one-line reason, recorded in feature history. Seatbelt, not cage.
 
