@@ -12,7 +12,14 @@ const gateId = z.enum(['G1', 'G2', 'G3', 'G4', 'G5'])
 
 export const featureRouter = router({
   create: publicProcedure
-    .input(z.object({ title: z.string().min(1), oneLiner: z.string(), size: FeatureSize }))
+    .input(
+      z.object({
+        title: z.string().min(1),
+        oneLiner: z.string(),
+        size: FeatureSize,
+        mapped: z.boolean().optional(),
+      }),
+    )
     .mutation(({ ctx, input }) => features.createFeature(ctx, input)),
 
   list: publicProcedure.query(({ ctx }) => features.list(ctx)),

@@ -1,0 +1,1 @@
+ALTER TABLE `features` ADD `mapped` integer DEFAULT false NOT NULL;

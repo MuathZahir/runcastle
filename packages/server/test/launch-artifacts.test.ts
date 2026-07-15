@@ -23,6 +23,7 @@ function feature(overrides: Partial<Feature> = {}): Feature {
     title: 'Dark mode',
     oneLiner: 'a dark theme',
     size: 'full',
+    mapped: false,
     phase: 'ideation',
     branch: 'feature/dark-mode',
     status: 'active',

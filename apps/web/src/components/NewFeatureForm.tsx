@@ -19,6 +19,7 @@ export function NewFeatureForm({
 }) {
   const [title, setTitle] = useState('')
   const [size, setSize] = useState<FeatureSize>('full')
+  const [mapped, setMapped] = useState(false)
   const utils = trpc.useUtils()
   const toast = useToast()
 
@@ -40,7 +41,7 @@ export function NewFeatureForm({
   const busy = create.isPending || launch.isPending
   const submit = () => {
     const t = title.trim()
-    if (t) create.mutate({ title: t, oneLiner: '', size })
+    if (t) create.mutate({ title: t, oneLiner: '', size, mapped })
   }
 
   return (
@@ -83,6 +84,20 @@ export function NewFeatureForm({
               : 'Full runs the whole six-phase pipeline.'}
           </span>
         </div>
+
+        <label className="nf-mapped">
+          <input
+            type="checkbox"
+            checked={mapped}
+            onChange={(e) => setMapped(e.target.checked)}
+          />
+          <span className="nf-mapped-text">
+            <span className="nf-mapped-label">Start mapped</span>
+            <span className="size-hint">
+              Chart the idea as a waypoint map when it's too big for one grill — orthogonal to size.
+            </span>
+          </span>
+        </label>
 
         <div className="nf-branch">branch · feat/{slug || '…'}</div>
 
