@@ -30,6 +30,7 @@ export const features = sqliteTable('features', {
   title: text('title').notNull(),
   oneLiner: text('one_liner').notNull(),
   size: text('size').notNull().$type<FeatureSize>(),
+  mapped: integer('mapped', { mode: 'boolean' }).notNull().default(false),
   phase: text('phase').notNull().$type<Phase>(),
   branch: text('branch').notNull(),
   status: text('status').notNull().$type<FeatureStatus>(),

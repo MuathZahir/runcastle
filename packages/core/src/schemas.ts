@@ -83,6 +83,12 @@ export const Feature = z.object({
   title: z.string(),
   oneLiner: z.string(),
   size: FeatureSize,
+  /**
+   * Mapped ideation (ADR-0001 / SPEC §13): the feature's ideation phase runs as
+   * a shared waypoint map instead of a single grill. Orthogonal to `size`; set
+   * by the creation toggle or a mid-grill escalation. Defaults to false.
+   */
+  mapped: z.boolean(),
   phase: Phase,
   branch: z.string(),
   status: FeatureStatus,

@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { join, relative, resolve, sep } from 'node:path'
-import type { Feature } from '@runcastle/core'
+import type { Feature, Project } from '@runcastle/core'
 import type { AppCtx } from '../db/types'
 import { InvalidInputError, NotFoundError } from '../errors'
 import { emit } from './events'
@@ -39,10 +39,40 @@ export function scaffoldDocs(ctx: AppCtx, feature: Feature): void {
     writeFileSync(briefPath, brief, 'utf8')
   }
 
+  // Mapped features (ADR-0001 / SPEC §13.4) get a `map.md` from t=0: the prose
+  // sections sessions and humans edit while the waypoint machinery lives in the
+  // db. Same four headings `escalate_to_map` seeds mid-grill, so a feature that
+  // starts mapped and one that escalates share one map format.
+  if (feature.mapped) {
+    scaffoldMapDoc(project, feature)
+  }
+
   emit(ctx, feature.id, {
     type: 'docs.scaffolded',
-    message: `scaffolded docs/features/${feature.slug}/brief.md`,
+    message: feature.mapped
+      ? `scaffolded docs/features/${feature.slug}/{brief,map}.md`
+      : `scaffolded docs/features/${feature.slug}/brief.md`,
   })
+}
+
+/** The four `map.md` sections (ADR-0001 decision 2 / SPEC §13.4), in order. */
+export const MAP_SECTIONS = [
+  'Destination',
+  'Notes',
+  'Not yet specified',
+  'Out of scope',
+] as const
+
+/** Seed `map.md` with the four empty prose sections (idempotent). */
+function scaffoldMapDoc(project: Project, feature: Feature): void {
+  const mapPath = featureDocPath(project, feature, 'map.md')
+  if (existsSync(mapPath)) return
+  const body = [
+    `# ${feature.title} — map`,
+    '',
+    ...MAP_SECTIONS.flatMap((s) => [`## ${s}`, '']),
+  ].join('\n')
+  writeFileSync(mapPath, body, 'utf8')
 }
 
 /** List `.md` docs for a feature (relPath within the docs dir + a title). */

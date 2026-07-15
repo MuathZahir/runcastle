@@ -40,6 +40,7 @@ const feature: Feature = {
   title: 'Demo',
   oneLiner: 'x',
   size: 'full',
+  mapped: false,
   phase: 'implementation',
   branch: 'feature/demo',
   status: 'active',

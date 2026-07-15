@@ -68,6 +68,8 @@ export interface CreateFeatureInput {
   title: string
   oneLiner: string
   size: FeatureSize
+  /** Start the feature in mapped ideation (ADR-0001). Orthogonal to size. */
+  mapped?: boolean
 }
 
 export async function createFeature(
@@ -87,6 +89,7 @@ export async function createFeature(
     title: input.title,
     oneLiner: input.oneLiner,
     size: input.size,
+    mapped: input.mapped ?? false,
     phase: 'ideation' as const,
     branch,
     status: 'active' as const,
