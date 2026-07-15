@@ -71,6 +71,7 @@ function makeCtx(tickets: Ticket[], signal?: AbortSignal) {
       const t = tickets.find((x) => x.id === id)
       if (t) Object.assign(t, patch)
     },
+    resolveWaypoint: () => {},
     signal: signal ?? new AbortController().signal,
   }
   return { ctx, events, patches }

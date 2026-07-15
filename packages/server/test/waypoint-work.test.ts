@@ -146,13 +146,8 @@ describe('workWaypoint — claim before spawn', () => {
     ).rejects.toThrow(/not mapped/i)
   })
 
-  it('refuses a research waypoint (worked headlessly, not HITL)', async () => {
-    const feature = await mappedFeature('research')
-    const [r] = storeWaypoints(ctx, feature.id, [wp('dig', [], { type: 'research' })])
-    await expect(
-      workWaypoint(ctx, { featureId: feature.id, waypointId: r.id }, { spawn: false }),
-    ).rejects.toThrow(/research/i)
-  })
+  // A research waypoint is worked headlessly by a run, not a HITL session — the
+  // routing + run behaviour is covered in research.test.ts.
 
   it('resumes the remembered cc session when re-working a released waypoint', async () => {
     const feature = await mappedFeature('resume')
