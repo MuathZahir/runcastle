@@ -65,3 +65,17 @@ so typecheck + the UI work end-to-end before wave B lands.
 | `src/workflows/runner.ts`         | A1 | startRun: create run row, wire ctx, catch, finalize |
 
 Other dir owners: `packages/skills` = A2 (§9); `apps/web` = A3 (§10).
+
+## Agent skills
+
+### Issue tracker
+
+Issues and PRDs live in this repo's GitHub Issues, via the `gh` CLI. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Default five-role vocabulary (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`). See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context — root `CONTEXT.md` + `docs/adr/`. See `docs/agents/domain.md`.
