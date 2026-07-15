@@ -133,9 +133,10 @@ function MapPanel({ full, relPath }: { full: FeatureFull; relPath?: string }) {
 
 /**
  * The four waypoint status groups (SPEC §13.6). Frontier (open + all blockers
- * terminal), blocked (greyed, blocker *names*), claimed (live pulse; Resume
- * hint when `lastSessionId`), and a collapsed resolved/dropped tail. Lineage is
- * one "surfaced by <name>" line per waypoint carrying an `originWaypointId`.
+ * terminal; resume hint when a prior release left a `lastSessionId`), blocked
+ * (greyed, blocker *names*), claimed (live pulse), and a collapsed
+ * resolved/dropped tail. Lineage is one "surfaced by <name>" line per waypoint
+ * carrying an `originWaypointId`.
  */
 function WaypointGroups({
   waypoints,
@@ -179,6 +180,7 @@ function WaypointGroups({
             <div className="wp wp-frontier" key={w.id}>
               <span className="wp-type">{w.type}</span>
               <span className="wp-title">{w.title}</span>
+              {w.lastSessionId && <span className="wp-resume">resume</span>}
               <Lineage w={w} />
             </div>
           ))}
@@ -215,7 +217,6 @@ function WaypointGroups({
               <span className="wp-pulse" aria-hidden="true" />
               <span className="wp-type">{w.type}</span>
               <span className="wp-title">{w.title}</span>
-              {w.lastSessionId && <span className="wp-resume">resumable</span>}
               <Lineage w={w} />
             </div>
           ))}
