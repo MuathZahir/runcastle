@@ -7,6 +7,8 @@ import type {
   SessionKind,
   SessionStatus,
   TicketStatus,
+  WaypointStatus,
+  WaypointType,
 } from './schemas'
 
 /**
@@ -30,6 +32,7 @@ export const features = sqliteTable('features', {
   title: text('title').notNull(),
   oneLiner: text('one_liner').notNull(),
   size: text('size').notNull().$type<FeatureSize>(),
+  mapped: integer('mapped', { mode: 'boolean' }).notNull().default(false),
   phase: text('phase').notNull().$type<Phase>(),
   branch: text('branch').notNull(),
   status: text('status').notNull().$type<FeatureStatus>(),
@@ -61,6 +64,23 @@ export const tickets = sqliteTable('tickets', {
   status: text('status').notNull().$type<TicketStatus>(),
   commits: text('commits', { mode: 'json' }).notNull().$type<string[]>(),
   error: text('error'),
+})
+
+export const waypoints = sqliteTable('waypoints', {
+  id: text('id').primaryKey(),
+  featureId: text('feature_id').notNull(),
+  seq: integer('seq').notNull(),
+  title: text('title').notNull(),
+  type: text('type').notNull().$type<WaypointType>(),
+  question: text('question').notNull(),
+  // resolved global seqs (numeric batch positions + existing-waypoint ids both
+  // resolve to seq on store; see storeWaypoints)
+  blockedBy: text('blocked_by', { mode: 'json' }).notNull().$type<number[]>(),
+  originWaypointId: text('origin_waypoint_id'),
+  status: text('status').notNull().$type<WaypointStatus>(),
+  claimedBy: text('claimed_by'),
+  lastSessionId: text('last_session_id'),
+  summary: text('summary'),
 })
 
 export const runs = sqliteTable('runs', {

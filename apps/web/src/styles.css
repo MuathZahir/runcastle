@@ -846,6 +846,130 @@ button {
   word-break: break-word;
 }
 
+/* mapped-ideation map (ADR-0001 §13.6) */
+.map-panel { max-width: 780px; margin-bottom: 22px; }
+.map-sections {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  background: var(--hairline);
+}
+.map-section { background: var(--panel-2); padding: 14px 18px; }
+.map-section-title {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--accent-hi);
+  margin-bottom: 6px;
+}
+.map-section-body {
+  font-family: var(--mono);
+  font-size: 12.5px;
+  line-height: 1.7;
+  color: var(--text);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.map-waypoints { margin-top: 16px; }
+/* empty state keeps the dashed placeholder; groups replace it once seeded */
+.map-waypoints:has(.wp-group) { padding: 0; border: 0; }
+.map-waypoints > .dim-line {
+  padding: 18px;
+  border: 1px dashed var(--hairline);
+  border-radius: var(--radius-lg);
+  text-align: center;
+}
+
+.wp-group { margin-bottom: 14px; }
+.wp-group-title {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-3);
+  margin-bottom: 7px;
+}
+.wp-group-frontier .wp-group-title { color: var(--accent-hi); }
+.wp-group-claimed .wp-group-title { color: var(--drive); }
+details.wp-group-done { border-top: 1px solid var(--hairline-soft); padding-top: 12px; }
+details.wp-group-done > summary { cursor: pointer; list-style: revert; }
+
+.wp {
+  display: flex;
+  align-items: baseline;
+  gap: 9px;
+  flex-wrap: wrap;
+  padding: 9px 12px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-sm);
+  background: var(--panel-2);
+  margin-bottom: 6px;
+}
+.wp-frontier { border-color: var(--accent-line); }
+.wp-blocked { opacity: 0.55; }
+.wp-claimed { border-color: color-mix(in srgb, var(--drive) 45%, var(--hairline)); }
+.wp-done { opacity: 0.6; }
+
+.wp-type {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-2);
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius-sm);
+  padding: 1px 6px;
+  flex-shrink: 0;
+}
+.wp-title { color: var(--text); font-size: 13px; }
+.wp-blockers, .wp-lineage, .wp-resume, .wp-summary {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-3);
+}
+.wp-blockers { color: var(--needs); }
+.wp-lineage { flex-basis: 100%; }
+.wp-resume { color: var(--drive); }
+/* Work / Resume sits at the right edge of the frontier row. */
+.wp-work { margin-left: auto; align-self: center; flex-shrink: 0; }
+.wp-pulse {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--drive);
+  flex-shrink: 0;
+  animation: pulse 1.4s ease-in-out infinite;
+}
+
+/* Convergence control (ADR-0001 §13.6): Converge button + soft fog warning. */
+.converge-bar {
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid var(--hairline);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  align-items: flex-start;
+}
+.converge-fog {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-family: var(--mono);
+  font-size: 11.5px;
+  line-height: 1.6;
+  color: var(--needs);
+}
+.converge-fog-icon { flex-shrink: 0; }
+.converge-fog-text { color: color-mix(in srgb, var(--needs) 82%, var(--text)); }
+.converge-btn { min-width: 120px; }
+.converge-override { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.converge-blocked { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+
 /* ============================================================================
    PHASE BODY — tickets ledger
    ========================================================================== */
@@ -1146,6 +1270,16 @@ button {
 .size-hint { font-size: 12px; color: var(--text-3); }
 .nf-branch { margin-top: 16px; font-family: var(--mono); font-size: 11.5px; color: var(--text-3); }
 .nf-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 22px; }
+.nf-mapped {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-top: 16px;
+  cursor: pointer;
+}
+.nf-mapped input { margin-top: 3px; accent-color: var(--accent); }
+.nf-mapped-text { display: flex; flex-direction: column; gap: 2px; }
+.nf-mapped-label { font-size: 13px; color: var(--text); }
 
 /* ============================================================================
    INSPECTOR RAIL

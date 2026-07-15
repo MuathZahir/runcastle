@@ -377,6 +377,22 @@ export function nextStep(full: FeatureFull, ctx: { driving: boolean }): NextStep
 
   switch (feature.phase) {
     case 'ideation': {
+      // Mapped features converge instead of promoting: the map's Converge button
+      // (in the body, beside the fog) crosses G1 and spawns the converge session.
+      // The next-step bar just narrates — it never shows a plain `advance`, which
+      // would bump the phase without a session (ADR-0001 §13.6).
+      if (feature.mapped) {
+        return {
+          kick: 'MAP',
+          title: gate.satisfied ? 'Converge the map' : 'Work the frontier',
+          desc: gate.satisfied
+            ? 'Every waypoint is resolved — converge to draft the spec and tickets.'
+            : gate.reason ?? 'Resolve the open waypoints; converge once the frontier clears.',
+          primary: live ? { label: 'Jump to grill', kind: 'openGrill' } : undefined,
+          secondary: [],
+          busy: false,
+        }
+      }
       if (canAdvance) {
         return {
           kick: 'NEXT STEP',

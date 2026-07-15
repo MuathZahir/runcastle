@@ -7,6 +7,7 @@ import { emit } from './events'
 import { featureDocPath } from './feature-docs'
 import { getFeatureRow, requireProject, setPhase } from './repo'
 import { listByFeature } from './tickets'
+import { listByFeature as listWaypoints } from './waypoints'
 
 /**
  * Gate checks (SPEC §1 / §3). Core defines gates as identifiers only; here we
@@ -24,6 +25,24 @@ export function checkGate(ctx: AppCtx, check: GateCheckId, feature: Feature): Ga
   switch (check) {
     case 'decisions-file-exists':
       return fileGate(ctx, feature, 'decisions.md', 'run the ideation session to capture decisions first')
+
+    case 'all-waypoints-terminal': {
+      // G1 for a mapped feature (ADR-0001 / SPEC §13.1): converge only once
+      // every waypoint is terminal (resolved OR dropped). Remaining fog (the
+      // map's "Not yet specified" prose) is NOT checked here — it is a soft
+      // warning in the UI, shown but never enforced.
+      const wps = listWaypoints(ctx, feature.id)
+      if (wps.length === 0) {
+        return { satisfied: false, reason: 'no waypoints charted yet — chart the map before converging' }
+      }
+      const open = wps.filter((w) => w.status !== 'resolved' && w.status !== 'dropped')
+      return open.length === 0
+        ? { satisfied: true }
+        : {
+            satisfied: false,
+            reason: `${open.length} waypoint(s) still ${open.map((w) => w.status).join('/')}`,
+          }
+    }
 
     case 'spec-file-exists':
       // collapsed features skip the spec phase entirely — auto-satisfied.

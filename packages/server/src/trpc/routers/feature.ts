@@ -1,6 +1,6 @@
 import { FeatureSize, SessionKind } from '@runcastle/core'
 import * as z from 'zod'
-import { endSession, launchSession } from '../../launcher/launcher'
+import { converge, endSession, launchSession, workWaypoint } from '../../launcher/launcher'
 import { emit } from '../../services/events'
 import * as features from '../../services/features'
 import { overrideGate } from '../../services/gates'
@@ -12,7 +12,14 @@ const gateId = z.enum(['G1', 'G2', 'G3', 'G4', 'G5'])
 
 export const featureRouter = router({
   create: publicProcedure
-    .input(z.object({ title: z.string().min(1), oneLiner: z.string(), size: FeatureSize }))
+    .input(
+      z.object({
+        title: z.string().min(1),
+        oneLiner: z.string(),
+        size: FeatureSize,
+        mapped: z.boolean().optional(),
+      }),
+    )
     .mutation(({ ctx, input }) => features.createFeature(ctx, input)),
 
   list: publicProcedure.query(({ ctx }) => features.list(ctx)),
@@ -25,6 +32,23 @@ export const featureRouter = router({
   launchSession: publicProcedure
     .input(z.object({ featureId: z.string(), kind: SessionKind }))
     .mutation(({ ctx, input }) => launchSession(ctx, input)),
+
+  // Work a frontier waypoint (ADR-0001 §13.2): claim it transactionally, then
+  // open a kind=waypoint session on it. Refuses a waypoint not on the frontier,
+  // or when a waypoint session is already live (one HITL session per feature).
+  workWaypoint: publicProcedure
+    .input(z.object({ featureId: z.string(), waypointId: z.string() }))
+    .mutation(({ ctx, input }) => workWaypoint(ctx, input)),
+
+  // Converge a mapped feature (ADR-0001 §13.2): crosses G1 (all-waypoints-
+  // terminal) into spec and spawns a fresh kind=converge session that runs the
+  // existing spec → tickets skills over the compressed knowledge. `overrideReason`
+  // forces convergence past open/claimed waypoints (records a G1 override).
+  converge: publicProcedure
+    .input(z.object({ featureId: z.string(), overrideReason: z.string().min(1).optional() }))
+    .mutation(({ ctx, input }) =>
+      converge(ctx, { featureId: input.featureId, overrideReason: input.overrideReason }),
+    ),
 
   // End a live session (End session button; terminal-tab close is detach only).
   // Route added by W2 (UI-SPEC §6); backed by W1's PTY-killing `endSession`

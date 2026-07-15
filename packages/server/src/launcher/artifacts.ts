@@ -1,7 +1,14 @@
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { join } from 'node:path'
-import type { Feature, Project, RuncastleConfig, SessionKind, SessionRow } from '@runcastle/core'
+import type {
+  Feature,
+  Project,
+  RuncastleConfig,
+  SessionKind,
+  SessionRow,
+  Waypoint,
+} from '@runcastle/core'
 import { featureDocsRel, sessionDir } from '@runcastle/core/paths'
 
 /**
@@ -22,6 +29,8 @@ export interface WriteArtifactsInput {
   feature: Feature
   project: Project
   config: RuncastleConfig
+  /** The claimed waypoint (kind=waypoint sessions) — injected into the prompt. */
+  waypoint?: Waypoint
 }
 
 /** Absolute path to the standalone hook client (sibling of this module). */
@@ -39,8 +48,16 @@ export function serverUrlFor(config: RuncastleConfig): string {
 /**
  * The injected system prompt (feature brief). Directs the session to the pack's
  * entry skill, lists the on-disk knowledge paths and the MCP tool cheat-sheet.
+ * A kind=waypoint session gets a dedicated prompt carrying its assigned waypoint.
  */
-export function renderSystemPrompt(feature: Feature, kind: SessionKind): string {
+export function renderSystemPrompt(
+  feature: Feature,
+  kind: SessionKind,
+  waypoint?: Waypoint,
+): string {
+  if (kind === 'waypoint') return renderWaypointPrompt(feature, waypoint)
+  if (kind === 'converge') return renderConvergePrompt(feature)
+
   const docs = featureDocsRel(feature.slug) // docs/features/<slug>
   const entry =
     kind === 'ideation'
@@ -86,6 +103,106 @@ export function renderSystemPrompt(feature: Feature, kind: SessionKind): string 
   ].join('\n')
 }
 
+/**
+ * The kind=waypoint system prompt (SPEC §13.5). Injects the assigned waypoint —
+ * title, type, question — and the map/decisions paths, and directs the session to
+ * `/runcastle:waypoint`, whose mode is chosen by the waypoint `type`. The agent
+ * writes decision prose straight to `decisions.md`/`map.md`, may branch the map
+ * with `emit_waypoints`, and ends by calling `resolve_waypoint`.
+ */
+export function renderWaypointPrompt(feature: Feature, waypoint?: Waypoint): string {
+  const docs = featureDocsRel(feature.slug)
+  const assigned = waypoint
+    ? [
+        '## Your waypoint',
+        `- Title: **${waypoint.title}**`,
+        `- Type: \`${waypoint.type}\` — grill / prototype / task-checklist mode.`,
+        `- Question to answer: ${waypoint.question}`,
+        '',
+      ]
+    : ['## Your waypoint', 'The assigned waypoint is on the map — read it via `get_feature_context`.', '']
+
+  return [
+    `# runcastle — ${feature.title} (waypoint session)`,
+    '',
+    feature.oneLiner,
+    '',
+    'This is a **mapped-ideation waypoint session**. You are working ONE waypoint',
+    'on the feature map — not the whole feature. Answer its question, write the',
+    'decision prose to the docs, then resolve the waypoint. Do NOT converge, spec,',
+    'or emit tickets here.',
+    '',
+    ...assigned,
+    '## Feature',
+    `- Slug: \`${feature.slug}\``,
+    `- Branch: \`${feature.branch}\``,
+    `- Current phase: **${feature.phase}** (size: ${feature.size})`,
+    '',
+    '## Map + knowledge (versioned in the target repo)',
+    `Feature docs live at \`${docs}/\`:`,
+    `- \`${docs}/map.md\` — the map: destination, notes, open questions, out-of-scope.`,
+    `- \`${docs}/decisions.md\` — where your decision prose lands (append, do not batch).`,
+    'Write these files directly in THIS talk worktree — serial HITL makes it',
+    'race-free. A dropped waypoint gets its gist recorded under Out of scope in map.md.',
+    '',
+    '## runcastle MCP tools',
+    '- `get_feature_context()` — full feature + phase + docs + the map (waypoints + frontier).',
+    '- `emit_waypoints({ waypoints })` — branch the map when you discover new questions.',
+    '- `resolve_waypoint({ id, disposition, summary })` — END here: `resolved` (answered) or',
+    '  `dropped` (not needed). Flips machinery only — write the prose to the docs FIRST.',
+    '- `record_event({ type, message })` — drop a timeline note at a milestone.',
+    '',
+    '## Your task',
+    'Invoke the `/runcastle:waypoint` skill and work your assigned waypoint to a resolution.',
+    '',
+  ].join('\n')
+}
+
+/**
+ * The kind=converge system prompt (ADR-0001 / SPEC §13.5). The converge session
+ * closes a mapped feature: it reads ONLY the compressed knowledge — `map.md` +
+ * `decisions.md` — never the waypoint transcripts, then runs `/runcastle:spec` →
+ * `/runcastle:tickets` in one unbroken window. The feature has already crossed G1
+ * into spec (or tickets when collapsed), so this rejoins the normal pipeline with
+ * no special-casing.
+ */
+export function renderConvergePrompt(feature: Feature): string {
+  const docs = featureDocsRel(feature.slug)
+  return [
+    `# runcastle — ${feature.title} (converge session)`,
+    '',
+    feature.oneLiner,
+    '',
+    'This is a **mapped-ideation converge session**. The map is charted and its',
+    'waypoints are terminal; your job is to turn the compressed knowledge into a',
+    'spec and tickets — the same output an unbroken ideation session produces.',
+    '',
+    '## Read ONLY the compressed knowledge',
+    `Read only these two files under \`${docs}/\`:`,
+    `- \`${docs}/map.md\` — the destination, notes, and out-of-scope decisions.`,
+    `- \`${docs}/decisions.md\` — every decision the waypoint sessions locked.`,
+    'Do NOT read the waypoint session transcripts — the map and decisions ARE the',
+    'compression; that is the whole point of the map. Trust them.',
+    '',
+    '## Feature',
+    `- Slug: \`${feature.slug}\``,
+    `- Branch: \`${feature.branch}\``,
+    `- Current phase: **${feature.phase}** (size: ${feature.size})`,
+    '',
+    '## runcastle MCP tools',
+    '- `get_feature_context()` — full feature + phase + docs contents (map + decisions).',
+    '- `emit_tickets({ tickets })` — emit the ticket batch at the end of `/runcastle:tickets`.',
+    '- `complete_phase({ phase })` — cross each remaining gate (spec, then tickets).',
+    '- `record_event({ type, message })` — drop a timeline note at a milestone.',
+    '',
+    '## Your task',
+    'Invoke the `/runcastle:converge` skill. Working from the map + decisions only,',
+    'run `/runcastle:spec` (for a `full` feature) then `/runcastle:tickets` in this',
+    'one window. Do NOT re-grill and do NOT reopen resolved waypoints — converge.',
+    '',
+  ].join('\n')
+}
+
 interface CommandHook {
   type: 'command'
   command: string
@@ -118,12 +235,15 @@ export const RUNCASTLE_MCP_ALLOW_RULES: readonly string[] = [
   'mcp__runcastle__emit_tickets',
   'mcp__runcastle__record_event',
   'mcp__runcastle__complete_phase',
+  'mcp__runcastle__escalate_to_map',
+  'mcp__runcastle__emit_waypoints',
+  'mcp__runcastle__resolve_waypoint',
 ]
 
 /**
  * The `settings.json` for a session (CC-INTEGRATION-NOTES §2 verified shape).
  *
- * - `permissions.allow` pre-approves runcastle's own 4 MCP tools so a session's
+ * - `permissions.allow` pre-approves runcastle's own MCP tools so a session's
  *   `mcp__runcastle__*` tool calls never interrupt the user with a permission
  *   prompt (they are the app's own trusted tools).
  * - `command` = `bun run "<abs hook-client.ts>" <route-event>` where the route
@@ -181,7 +301,7 @@ export function renderMcpConfig(session: SessionRow, config: RuncastleConfig): M
 export async function writeSessionArtifacts(
   input: WriteArtifactsInput,
 ): Promise<SessionArtifacts> {
-  const { session, feature, config } = input
+  const { session, feature, config, waypoint } = input
   const dir = sessionDir(session.id)
   mkdirSync(dir, { recursive: true })
 
@@ -189,7 +309,7 @@ export async function writeSessionArtifacts(
   const settingsPath = join(dir, 'settings.json')
   const mcpConfigPath = join(dir, 'mcp.json')
 
-  writeFileSync(systemPromptPath, renderSystemPrompt(feature, session.kind), 'utf8')
+  writeFileSync(systemPromptPath, renderSystemPrompt(feature, session.kind, waypoint), 'utf8')
   writeFileSync(settingsPath, JSON.stringify(renderSettings(hookClientPath()), null, 2), 'utf8')
   writeFileSync(mcpConfigPath, JSON.stringify(renderMcpConfig(session, config), null, 2), 'utf8')
 

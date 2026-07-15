@@ -10,6 +10,7 @@ import {
 import { emit } from '../services/events'
 import { tryGetFeature } from '../services/repo'
 import { listByFeature } from '../services/tickets'
+import { releaseForSession } from '../services/waypoints'
 
 /**
  * Hook receiver (SPEC §5.6): `POST /api/hooks/:event` for `session-start`,
@@ -97,6 +98,9 @@ function handleUserPrompt(ctx: AppCtx, feature: Feature): unknown {
 
 function handleSessionEnd(ctx: AppCtx, sessionId: string, feature: Feature): unknown {
   markSessionEnded(ctx, sessionId)
+  // A waypoint session that ended without calling resolve_waypoint auto-releases
+  // its waypoint back to the frontier (SPEC §13.2); no-op otherwise.
+  releaseForSession(ctx, sessionId)
   emit(ctx, feature.id, {
     type: 'session.ended',
     message: 'session ended',

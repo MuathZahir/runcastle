@@ -10,6 +10,7 @@ import { checkGate } from '../services/gates'
 import { detachWorktree, reattachWorktree } from '../services/git'
 import { getFeatureRow, requireProject, setPhase } from '../services/repo'
 import { listByFeature, updateTicket } from '../services/tickets'
+import { claim as claimWaypoint, releaseForSession, resolve as resolveWaypoint } from '../services/waypoints'
 import { getWorkflow } from './registry'
 
 /**
@@ -31,10 +32,27 @@ export interface StartRunResult {
   done: Promise<void>
 }
 
+export interface StartRunOptions {
+  /**
+   * Per-run payload exposed to the workflow as `ctx.input` (SPEC §13.1). The
+   * research workflow receives the `Waypoint` it works here.
+   */
+  input?: unknown
+  /**
+   * Claim this waypoint for the run before it starts (SPEC §13.2 research path):
+   * the claim uses the fresh `runId` as claimant, is transactional (a waypoint no
+   * longer on the frontier throws), and is auto-released by the finalizer if the
+   * workflow does not resolve it. On a failed claim the run row is finalized as
+   * failed and the error rethrown, so no orphaned run lingers.
+   */
+  claimWaypointId?: string
+}
+
 export async function startRun(
   ctx: AppCtx,
   featureId: string,
   workflowId: string,
+  opts: StartRunOptions = {},
 ): Promise<StartRunResult> {
   const feature = getFeatureRow(ctx, featureId)
   const project = requireProject(ctx)
@@ -56,6 +74,20 @@ export async function startRun(
       summary: null,
     })
     .run()
+
+  // A research run claims its waypoint with the run id as claimant BEFORE any
+  // work starts (SPEC §13.2). A failed claim (no longer on the frontier) must not
+  // leave a dangling `running` row: finalize it failed and rethrow.
+  if (opts.claimWaypointId) {
+    try {
+      claimWaypoint(ctx, opts.claimWaypointId, runId)
+    } catch (e) {
+      const summary = e instanceof Error ? e.message : 'claim failed'
+      ctx.db.update(runs).set({ status: 'failed', endedAt: Date.now(), summary }).where(eq(runs.id, runId)).run()
+      throw e
+    }
+  }
+
   emit(ctx, featureId, {
     type: 'run.started',
     message: `run started (${workflowId})`,
@@ -89,6 +121,10 @@ export async function startRun(
     },
     updateTicket: (id, patch) => {
       updateTicket(ctx, id, patch)
+    },
+    input: opts.input,
+    resolveWaypoint: (id, disposition, summary) => {
+      resolveWaypoint(ctx, id, disposition, summary)
     },
     signal: controller.signal,
   }
@@ -132,6 +168,9 @@ async function executeRun(
   }
 
   ctx.db.update(runs).set({ status, endedAt: Date.now(), summary }).where(eq(runs.id, runId)).run()
+  // A run that worked a waypoint (research) auto-releases it if it did not resolve
+  // it itself (SPEC §13.2 run finalizer); no-op for ticket-burner runs.
+  releaseForSession(ctx, runId)
   emit(ctx, featureId, {
     type: 'run.finished',
     message: `run ${status}: ${summary}`,

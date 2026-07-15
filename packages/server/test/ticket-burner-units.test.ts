@@ -38,6 +38,7 @@ const feature: Feature = {
   title: 'My Feature',
   oneLiner: 'does a thing',
   size: 'full',
+  mapped: false,
   phase: 'implementation',
   branch: 'feature/my-feature',
   status: 'active',

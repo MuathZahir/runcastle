@@ -6,6 +6,7 @@ import type {
   Run,
   SessionRow,
   Ticket,
+  Waypoint,
 } from '@runcastle/core'
 import { newId, nextGate, nextPhase } from '@runcastle/core'
 import { desc, eq } from 'drizzle-orm'
@@ -15,7 +16,7 @@ import { GateError, isNotImplemented } from '../errors'
 import { emit } from './events'
 import { checkGate } from './gates'
 import * as git from './git'
-import { listDocs, scaffoldDocs } from './knowledge'
+import { listDocs, scaffoldDocs, scaffoldMapDoc } from './knowledge'
 import type { DocSummary } from './knowledge'
 import {
   getFeatureRow,
@@ -27,6 +28,7 @@ import {
   setPhase,
 } from './repo'
 import { listByFeature } from './tickets'
+import { frontier, listByFeature as listWaypoints } from './waypoints'
 import { startRun } from '../workflows/runner'
 
 /**
@@ -62,12 +64,18 @@ export interface FeatureFull {
   runs: Run[]
   docs: DocSummary[]
   gate: FeatureGateState
+  /** Mapped features only (empty otherwise): the map's waypoints (ADR-0001). */
+  waypoints: Waypoint[]
+  /** Ids of the waypoints currently on the frontier (derived; empty otherwise). */
+  frontierIds: string[]
 }
 
 export interface CreateFeatureInput {
   title: string
   oneLiner: string
   size: FeatureSize
+  /** Start the feature in mapped ideation (ADR-0001). Orthogonal to size. */
+  mapped?: boolean
 }
 
 export async function createFeature(
@@ -87,6 +95,7 @@ export async function createFeature(
     title: input.title,
     oneLiner: input.oneLiner,
     size: input.size,
+    mapped: input.mapped ?? false,
     phase: 'ideation' as const,
     branch,
     status: 'active' as const,
@@ -140,6 +149,10 @@ async function ensureFeatureBranch(
 
 export function getFeatureFull(ctx: AppCtx, id: string): FeatureFull {
   const feature = getFeatureRow(ctx, id)
+  // Waypoints are a mapped-feature concept; unmapped features carry none, so we
+  // skip the query entirely and return empty collections.
+  const waypoints = feature.mapped ? listWaypoints(ctx, id) : []
+  const frontierIds = feature.mapped ? frontier(ctx, id).map((w) => w.id) : []
   return {
     feature,
     tickets: listByFeature(ctx, id),
@@ -147,6 +160,8 @@ export function getFeatureFull(ctx: AppCtx, id: string): FeatureFull {
     runs: listRunsByFeature(ctx, id),
     docs: listDocs(ctx, feature),
     gate: gateState(ctx, feature),
+    waypoints,
+    frontierIds,
   }
 }
 
@@ -231,6 +246,42 @@ export async function burn(ctx: AppCtx, featureId: string): Promise<{ runId: str
   }
   const { runId } = await startRun(ctx, featureId, 'ticket-burner')
   return { runId }
+}
+
+export interface EscalateResult {
+  ok: true
+  /** Set (with no other effect) when the feature was already mapped. */
+  warning?: string
+}
+
+/**
+ * Escalate a grilling session into a map (ADR-0001 / SPEC §13.3): flip `mapped`,
+ * scaffold `map.md` seeded from the caller's Destination/Notes, emit an event.
+ *
+ * Idempotent: a second call on an already-mapped feature warns and makes NO
+ * changes — no re-scaffold (which would anyway be a no-op) and no event. The
+ * first chart wins, so re-escalating never clobbers the accumulated map.
+ */
+export function escalateToMap(
+  ctx: AppCtx,
+  featureId: string,
+  input: { destination: string; notes?: string },
+): EscalateResult {
+  const feature = getFeatureRow(ctx, featureId)
+  if (feature.mapped) {
+    return { ok: true, warning: `feature ${feature.slug} is already mapped — no changes made` }
+  }
+
+  const project = requireProject(ctx)
+  ctx.db.update(features).set({ mapped: true }).where(eq(features.id, featureId)).run()
+  scaffoldMapDoc(project, { ...feature, mapped: true }, input)
+
+  emit(ctx, featureId, {
+    type: 'feature.escalated',
+    message: `grilling escalated to a map (destination: ${input.destination})`,
+    data: { destination: input.destination },
+  })
+  return { ok: true }
 }
 
 function gateState(ctx: AppCtx, feature: Feature): FeatureGateState {

@@ -27,8 +27,12 @@ export type FeatureSize = z.infer<typeof FeatureSize>
 export const TicketStatus = z.enum(['pending', 'burning', 'done', 'failed'])
 export type TicketStatus = z.infer<typeof TicketStatus>
 
-/** `qa` = "come back and ask questions" — same injection, no phase writes. */
-export const SessionKind = z.enum(['ideation', 'qa'])
+/**
+ * `qa` = "come back and ask questions" — same injection, no phase writes.
+ * Mapped ideation (ADR-0001 / SPEC §13.1) adds `waypoint` (work one frontier
+ * waypoint) and `converge` (read map + decisions, then spec → tickets).
+ */
+export const SessionKind = z.enum(['ideation', 'qa', 'waypoint', 'converge'])
 export type SessionKind = z.infer<typeof SessionKind>
 
 export const RunStatus = z.enum(['running', 'succeeded', 'failed', 'cancelled'])
@@ -65,6 +69,52 @@ export const Ticket = TicketInput.extend({
 })
 export type Ticket = z.infer<typeof Ticket>
 
+// --- waypoints (mapped ideation, ADR-0001 / SPEC §13.1) --------------------
+
+export const WaypointType = z.enum(['grilling', 'research', 'prototype', 'task'])
+export type WaypointType = z.infer<typeof WaypointType>
+
+export const WaypointStatus = z.enum(['open', 'claimed', 'resolved', 'dropped'])
+export type WaypointStatus = z.infer<typeof WaypointStatus>
+
+/** How a waypoint terminates: `resolved` (answered) or `dropped` (out of scope). */
+export const WaypointDisposition = z.enum(['resolved', 'dropped'])
+export type WaypointDisposition = z.infer<typeof WaypointDisposition>
+
+/**
+ * What any mapped session emits via MCP `emit_waypoints`. `blockedBy` mixes two
+ * reference kinds resolved by `storeWaypoints`: 1-based positions within THIS
+ * batch (numbers) and ids of already-stored waypoints (strings). Both resolve
+ * to the referenced waypoints' global `seq` on store (mirroring tickets).
+ */
+export const WaypointInput = z.object({
+  title: z.string(),
+  type: WaypointType,
+  question: z.string(),
+  blockedBy: z.array(z.union([z.number(), z.string()])),
+  /** The waypoint whose session surfaced this one (lineage; "surfaced by"). */
+  originWaypointId: z.string().optional(),
+})
+export type WaypointInput = z.infer<typeof WaypointInput>
+
+/**
+ * A stored waypoint: WaypointInput plus persistence + lifecycle state.
+ * `blockedBy` is narrowed to resolved global `seq` numbers. `claimedBy` holds
+ * the claiming sessionId|runId while `claimed`; `lastSessionId` survives a
+ * release so the UI can offer "Resume".
+ */
+export const Waypoint = WaypointInput.extend({
+  id: z.string(),
+  featureId: z.string(),
+  seq: z.number(),
+  blockedBy: z.array(z.number()),
+  status: WaypointStatus,
+  claimedBy: z.string().optional(),
+  lastSessionId: z.string().optional(),
+  summary: z.string().optional(),
+})
+export type Waypoint = z.infer<typeof Waypoint>
+
 // --- core entities ---------------------------------------------------------
 
 export const Project = z.object({
@@ -83,6 +133,12 @@ export const Feature = z.object({
   title: z.string(),
   oneLiner: z.string(),
   size: FeatureSize,
+  /**
+   * Mapped ideation (ADR-0001 / SPEC §13): the feature's ideation phase runs as
+   * a shared waypoint map instead of a single grill. Orthogonal to `size`; set
+   * by the creation toggle or a mid-grill escalation. Defaults to false.
+   */
+  mapped: z.boolean(),
   phase: Phase,
   branch: z.string(),
   status: FeatureStatus,
