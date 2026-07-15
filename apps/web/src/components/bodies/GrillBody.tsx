@@ -5,6 +5,8 @@ import type { FeatureFull } from '../../lib/api'
 import { ErrorBoundary } from '../ErrorBoundary'
 import { TerminalView } from '../TerminalView'
 
+type Waypoint = FeatureFull['waypoints'][number]
+
 /**
  * The ideation / spec phase body (app-redesign). Embeds the real live Claude
  * Code grill session as an inline terminal (over the /ws PTY stream); in the
@@ -22,7 +24,7 @@ export function GrillBody({ full, effective }: { full: FeatureFull; effective: P
 
   return (
     <div className="grill">
-      {feature.mapped && <MapPanel featureId={feature.id} relPath={mapDoc?.relPath} />}
+      {feature.mapped && <MapPanel full={full} relPath={mapDoc?.relPath} />}
 
       {effective === 'spec' &&
         (specDoc ? (
@@ -81,11 +83,13 @@ export function GrillBody({ full, effective }: { full: FeatureFull; effective: P
 const MAP_SECTIONS = ['Destination', 'Notes', 'Not yet specified', 'Out of scope'] as const
 
 /**
- * The mapped-ideation variant of the ideation body (ADR-0001 §13.6): renders
- * the map doc's prose sections. The waypoint frontier lands in a later slice —
- * an empty waypoint area is expected here.
+ * The mapped-ideation variant of the ideation body (ADR-0001 §13.6): the map
+ * doc's prose sections above, the waypoint status groups below (frontier,
+ * blocked, claimed, resolved/dropped). The frontier is server-derived and
+ * cascades as blockers resolve.
  */
-function MapPanel({ featureId, relPath }: { featureId: string; relPath?: string }) {
+function MapPanel({ full, relPath }: { full: FeatureFull; relPath?: string }) {
+  const featureId = full.feature.id
   const q = trpc.docs.read.useQuery(
     { featureId, relPath: relPath ?? 'map.md' },
     { enabled: !!relPath },
@@ -122,9 +126,117 @@ function MapPanel({ featureId, relPath }: { featureId: string; relPath?: string 
         </div>
       )}
 
+      <WaypointGroups waypoints={full.waypoints} frontierIds={full.frontierIds} />
+    </div>
+  )
+}
+
+/**
+ * The four waypoint status groups (SPEC §13.6). Frontier (open + all blockers
+ * terminal; resume hint when a prior release left a `lastSessionId`), blocked
+ * (greyed, blocker *names*), claimed (live pulse), and a collapsed
+ * resolved/dropped tail. Lineage is one "surfaced by <name>" line per waypoint
+ * carrying an `originWaypointId`.
+ */
+function WaypointGroups({
+  waypoints,
+  frontierIds,
+}: {
+  waypoints: Waypoint[]
+  frontierIds: string[]
+}) {
+  if (waypoints.length === 0) {
+    return (
       <div className="map-waypoints">
         <DimLine>no waypoints yet — the frontier fills in as the map is charted</DimLine>
       </div>
+    )
+  }
+
+  const front = new Set(frontierIds)
+  const byId = new Map(waypoints.map((w) => [w.id, w]))
+  const bySeq = new Map(waypoints.map((w) => [w.seq, w]))
+  const nameOf = (w: Waypoint) => w.title
+  const surfacedBy = (w: Waypoint) =>
+    w.originWaypointId ? byId.get(w.originWaypointId)?.title : undefined
+  const isTerminal = (w: Waypoint) => w.status === 'resolved' || w.status === 'dropped'
+
+  const frontier = waypoints.filter((w) => front.has(w.id))
+  const blocked = waypoints.filter((w) => w.status === 'open' && !front.has(w.id))
+  const claimed = waypoints.filter((w) => w.status === 'claimed')
+  const done = waypoints.filter(isTerminal)
+
+  const Lineage = ({ w }: { w: Waypoint }) => {
+    const origin = surfacedBy(w)
+    return origin ? <div className="wp-lineage">surfaced by {origin}</div> : null
+  }
+
+  return (
+    <div className="map-waypoints">
+      {frontier.length > 0 && (
+        <section className="wp-group wp-group-frontier">
+          <div className="wp-group-title">Frontier · {frontier.length}</div>
+          {frontier.map((w) => (
+            <div className="wp wp-frontier" key={w.id}>
+              <span className="wp-type">{w.type}</span>
+              <span className="wp-title">{w.title}</span>
+              {w.lastSessionId && <span className="wp-resume">resume</span>}
+              <Lineage w={w} />
+            </div>
+          ))}
+        </section>
+      )}
+
+      {blocked.length > 0 && (
+        <section className="wp-group wp-group-blocked">
+          <div className="wp-group-title">Blocked · {blocked.length}</div>
+          {blocked.map((w) => {
+            const blockers = w.blockedBy
+              .map((seq) => bySeq.get(seq))
+              .filter((b): b is Waypoint => !!b && !isTerminal(b))
+              .map(nameOf)
+            return (
+              <div className="wp wp-blocked" key={w.id}>
+                <span className="wp-type">{w.type}</span>
+                <span className="wp-title">{w.title}</span>
+                {blockers.length > 0 && (
+                  <span className="wp-blockers">blocked by {blockers.join(', ')}</span>
+                )}
+                <Lineage w={w} />
+              </div>
+            )
+          })}
+        </section>
+      )}
+
+      {claimed.length > 0 && (
+        <section className="wp-group wp-group-claimed">
+          <div className="wp-group-title">Claimed · {claimed.length}</div>
+          {claimed.map((w) => (
+            <div className="wp wp-claimed" key={w.id}>
+              <span className="wp-pulse" aria-hidden="true" />
+              <span className="wp-type">{w.type}</span>
+              <span className="wp-title">{w.title}</span>
+              <Lineage w={w} />
+            </div>
+          ))}
+        </section>
+      )}
+
+      {done.length > 0 && (
+        <details className="wp-group wp-group-done">
+          <summary className="wp-group-title">
+            Resolved / dropped · {done.length}
+          </summary>
+          {done.map((w) => (
+            <div className={`wp wp-done wp-${w.status}`} key={w.id}>
+              <span className="wp-type">{w.status}</span>
+              <span className="wp-title">{w.title}</span>
+              {w.summary && <span className="wp-summary">{w.summary}</span>}
+            </div>
+          ))}
+        </details>
+      )}
     </div>
   )
 }

@@ -15,6 +15,13 @@
       "when": 1784012829568,
       "tag": "0001_mapped_feature_flag",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1784012829569,
+      "tag": "0002_waypoints",
+      "breakpoints": true
     }
   ]
 }

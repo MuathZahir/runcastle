@@ -6,8 +6,9 @@
  * positions within that batch**. This utility assigns each node a global `seq`
  * (continuing after any nodes the feature already has, via `startSeq`) and
  * resolves every batch-local position to the referenced node's assigned global
- * `seq`. Out-of-range, non-integer, and self-referencing (a degenerate cycle)
- * edges are rejected loudly with `BlockingEdgeError`.
+ * `seq`. Out-of-range, non-integer, self-referencing (a degenerate cycle), and
+ * multi-node dependency cycles (a→b→a) are rejected loudly with
+ * `BlockingEdgeError` — a cyclic batch can never be topologically ordered.
  *
  * NOTE: SPEC §3 phrases this as "seq→id"; the pinned core schema types
  * `blockedBy` as `number[]`, so we resolve to global seq (not id). Recorded in
@@ -66,9 +67,52 @@ export function resolveBatchBlocking(
     }
   })
 
+  const cycle = findCycle(nodes)
+  if (cycle) {
+    throw new BlockingEdgeError(
+      `${label} batch has a dependency cycle: ${cycle.map((p) => `#${p}`).join(' → ')}`,
+    )
+  }
+
   return nodes.map((node, i) => ({
     seq: startSeq + i,
     // batch position -> assigned global seq
     blockedBy: node.blockedBy.map((pos) => startSeq + (pos - 1)),
   }))
+}
+
+/**
+ * DFS over the batch-local dependency graph (1-based positions). Returns the
+ * cycle as a list of positions closing on its start, or `null` when acyclic.
+ * Assumes every edge is already range-validated.
+ */
+function findCycle(nodes: readonly BatchBlockingEdges[]): number[] | null {
+  const WHITE = 0
+  const GRAY = 1
+  const BLACK = 2
+  const color = new Array<number>(nodes.length + 1).fill(WHITE)
+  const stack: number[] = []
+
+  const dfs = (pos: number): number[] | null => {
+    color[pos] = GRAY
+    stack.push(pos)
+    for (const next of nodes[pos - 1].blockedBy) {
+      if (color[next] === GRAY) return [...stack.slice(stack.indexOf(next)), next]
+      if (color[next] === WHITE) {
+        const found = dfs(next)
+        if (found) return found
+      }
+    }
+    color[pos] = BLACK
+    stack.pop()
+    return null
+  }
+
+  for (let pos = 1; pos <= nodes.length; pos++) {
+    if (color[pos] === WHITE) {
+      const found = dfs(pos)
+      if (found) return found
+    }
+  }
+  return null
 }

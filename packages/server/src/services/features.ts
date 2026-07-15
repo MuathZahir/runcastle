@@ -6,6 +6,7 @@ import type {
   Run,
   SessionRow,
   Ticket,
+  Waypoint,
 } from '@runcastle/core'
 import { newId, nextGate, nextPhase } from '@runcastle/core'
 import { desc, eq } from 'drizzle-orm'
@@ -27,6 +28,7 @@ import {
   setPhase,
 } from './repo'
 import { listByFeature } from './tickets'
+import { frontier, listByFeature as listWaypoints } from './waypoints'
 import { startRun } from '../workflows/runner'
 
 /**
@@ -62,6 +64,10 @@ export interface FeatureFull {
   runs: Run[]
   docs: DocSummary[]
   gate: FeatureGateState
+  /** Mapped features only (empty otherwise): the map's waypoints (ADR-0001). */
+  waypoints: Waypoint[]
+  /** Ids of the waypoints currently on the frontier (derived; empty otherwise). */
+  frontierIds: string[]
 }
 
 export interface CreateFeatureInput {
@@ -143,6 +149,10 @@ async function ensureFeatureBranch(
 
 export function getFeatureFull(ctx: AppCtx, id: string): FeatureFull {
   const feature = getFeatureRow(ctx, id)
+  // Waypoints are a mapped-feature concept; unmapped features carry none, so we
+  // skip the query entirely and return empty collections.
+  const waypoints = feature.mapped ? listWaypoints(ctx, id) : []
+  const frontierIds = feature.mapped ? frontier(ctx, id).map((w) => w.id) : []
   return {
     feature,
     tickets: listByFeature(ctx, id),
@@ -150,6 +160,8 @@ export function getFeatureFull(ctx: AppCtx, id: string): FeatureFull {
     runs: listRunsByFeature(ctx, id),
     docs: listDocs(ctx, feature),
     gate: gateState(ctx, feature),
+    waypoints,
+    frontierIds,
   }
 }
 

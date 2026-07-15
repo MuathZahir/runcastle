@@ -46,4 +46,21 @@ describe('resolveBatchBlocking', () => {
       /waypoint 1 cannot block on itself/,
     )
   })
+
+  it('rejects a two-node dependency cycle loudly', () => {
+    // node 1 blocks on node 2, node 2 blocks on node 1
+    expect(() => resolveBatchBlocking(edges([2], [1]), { startSeq: 1 })).toThrow(/cycle/)
+  })
+
+  it('rejects a longer dependency cycle (a→b→c→a)', () => {
+    expect(() => resolveBatchBlocking(edges([2], [3], [1]), { startSeq: 1 })).toThrow(
+      BlockingEdgeError,
+    )
+  })
+
+  it('accepts a diamond (shared dependency, no cycle)', () => {
+    // 1←2, 1←3, 2←4, 3←4 : acyclic DAG
+    const out = resolveBatchBlocking(edges([], [1], [1], [2, 3]), { startSeq: 1 })
+    expect(out.map((n) => n.seq)).toEqual([1, 2, 3, 4])
+  })
 })

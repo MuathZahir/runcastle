@@ -6,6 +6,7 @@ import {
   runs,
   sessions,
   tickets,
+  waypoints,
 } from '@runcastle/core'
 
 /**
@@ -19,6 +20,7 @@ export const schema = {
   features,
   sessions,
   tickets,
+  waypoints,
   runs,
   events,
   gateOverrides,
@@ -26,4 +28,4 @@ export const schema = {
 
 export type Schema = typeof schema
 
-export { events, features, gateOverrides, projects, runs, sessions, tickets }
+export { events, features, gateOverrides, projects, runs, sessions, tickets, waypoints }
