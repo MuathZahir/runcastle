@@ -9,6 +9,7 @@
 
 export * from './ids'
 export * from './schemas'
+export * from './blocking'
 export * from './pipeline'
 export * from './db-schema'
 export * from './workflow'

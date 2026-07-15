@@ -1,5 +1,5 @@
 import type { Ticket, TicketInput } from '@runcastle/core'
-import { newId } from '@runcastle/core'
+import { BlockingEdgeError, newId, resolveBatchBlocking } from '@runcastle/core'
 import { asc, eq } from 'drizzle-orm'
 import type { AppCtx } from '../db/types'
 import { tickets } from '../db/schema'
@@ -32,6 +32,20 @@ function rowToTicket(row: TicketSelect): Ticket {
   }
 }
 
+/**
+ * Delegate to core's IO-free `resolveBatchBlocking`, mapping its
+ * transport-agnostic `BlockingEdgeError` onto the service's `InvalidInputError`
+ * (so the tRPC layer surfaces it as `BAD_REQUEST`, unchanged).
+ */
+function resolveBlocking(inputs: TicketInput[], startSeq: number) {
+  try {
+    return resolveBatchBlocking(inputs, { startSeq })
+  } catch (e) {
+    if (e instanceof BlockingEdgeError) throw new InvalidInputError(e.message)
+    throw e
+  }
+}
+
 export function listByFeature(ctx: AppCtx, featureId: string): Ticket[] {
   return ctx.db
     .select()
@@ -45,15 +59,11 @@ export function listByFeature(ctx: AppCtx, featureId: string): Ticket[] {
 /**
  * Store a batch of tickets for a feature.
  *
- * - **seq**: assigned globally per feature, continuing after any existing
- *   tickets (`max(existing.seq) + 1`, then +1 per ticket in array order).
- * - **blockedBy**: on input these are 1-based positions within *this batch*
- *   (`TicketInput.blockedBy` = "seq numbers of other tickets in the same
- *   batch"). We resolve each to the referenced ticket's assigned global `seq`
- *   and store it as `number[]`. NOTE: SPEC §3 phrases this as "seq→id"; the
- *   pinned core schema types `Ticket.blockedBy` as `number[]`, so we resolve to
- *   global seq (not id). Recorded in docs/research/CORRECTIONS.md.
- * - An out-of-range or self position throws `InvalidInputError`.
+ * seq is assigned globally per feature, continuing after any existing tickets
+ * (`max(existing.seq) + 1`); the batch-local `blockedBy` positions are resolved
+ * to global seqs — and out-of-range/self edges rejected — by core's
+ * `resolveBatchBlocking` (see that utility for the seq-vs-id note). An invalid
+ * edge surfaces as `InvalidInputError`.
  */
 export function storeTickets(
   ctx: AppCtx,
@@ -68,32 +78,19 @@ export function storeTickets(
     .where(eq(tickets.featureId, featureId))
     .all()
   const startSeq = existing.reduce((max, r) => Math.max(max, r.seq), 0) + 1
-  const n = inputs.length
 
-  inputs.forEach((t, i) => {
-    for (const pos of t.blockedBy) {
-      if (!Number.isInteger(pos) || pos < 1 || pos > n) {
-        throw new InvalidInputError(
-          `ticket ${i + 1} blockedBy references invalid batch position ${pos} (batch has ${n} ticket(s), positions 1..${n})`,
-        )
-      }
-      if (pos === i + 1) {
-        throw new InvalidInputError(`ticket ${i + 1} cannot block on itself`)
-      }
-    }
-  })
+  const resolved = resolveBlocking(inputs, startSeq)
 
   const rows = inputs.map((t, i) => ({
     id: newId('tkt'),
     featureId,
-    seq: startSeq + i,
+    seq: resolved[i].seq,
     title: t.title,
     goal: t.goal,
     context: t.context,
     acceptanceCriteria: t.acceptanceCriteria,
     seams: t.seams,
-    // batch position -> assigned global seq
-    blockedBy: t.blockedBy.map((pos) => startSeq + (pos - 1)),
+    blockedBy: resolved[i].blockedBy,
     status: 'pending' as const,
     commits: [] as string[],
     error: null,
