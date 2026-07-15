@@ -2,16 +2,22 @@ import { spawn } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import type { Feature, Project, SessionKind, SessionRow } from '@runcastle/core'
+import type { Feature, Project, SessionKind, SessionRow, Waypoint } from '@runcastle/core'
 import { worktreeDir } from '@runcastle/core/paths'
 import type { AppCtx } from '../db/types'
-import { isNotImplemented } from '../errors'
+import { GateError, isNotImplemented } from '../errors'
 import { ptyRegistry } from '../pty/registry'
 import { emit } from '../services/events'
 import * as git from '../services/git'
 import { getFeatureRow, requireProject } from '../services/repo'
+import {
+  claim as claimWaypoint,
+  claimedForFeature,
+  getWaypoint,
+  releaseForSession,
+} from '../services/waypoints'
 import { serverUrlFor, writeSessionArtifacts } from './artifacts'
-import { createSessionRow, markSessionEnded } from './sessions'
+import { createSessionRow, getSessionRow, markSessionEnded } from './sessions'
 
 // Re-exported so the `feature.endSession` router (W2) imports the real,
 // PTY-killing service from `../../launcher/launcher` per its coordination note —
@@ -41,6 +47,13 @@ export function ptyExitMessage(exitCode: number | undefined | null): string {
 export interface LaunchSessionInput {
   featureId: string
   kind: SessionKind
+  /**
+   * When set, claim this waypoint for the freshly-created session BEFORE spawning
+   * (kind=waypoint sessions). The claim re-checks the frontier transactionally
+   * and throws if the waypoint is no longer claimable; the session row is then
+   * marked ended and the error propagates, so no orphaned session lingers.
+   */
+  waypointId?: string
 }
 
 export interface LaunchSessionOptions {
@@ -68,6 +81,14 @@ export interface BuildLaunchInput {
   mcpConfigPath: string
   systemPromptPath: string
   permissionMode?: string
+  /**
+   * The Claude Code session id (`ccSessionId`) to `--resume`. Set when re-working
+   * a waypoint whose previous session was auto-released so the operator picks up
+   * the same conversation (SPEC §13.6 "Resume"). `--resume` is scoped to the
+   * project dir + its worktrees (CC-INTEGRATION-NOTES §7), which the talk worktree
+   * satisfies. Omitted → a fresh session.
+   */
+  resumeSessionId?: string
 }
 
 export interface LaunchCommand {
@@ -96,7 +117,9 @@ function quoteArg(a: string): string {
  */
 export function buildClaudeArgs(input: BuildLaunchInput): string[] {
   const permissionMode = input.permissionMode ?? 'acceptEdits'
+  const resume = input.resumeSessionId ? ['--resume', input.resumeSessionId] : []
   return [
+    ...resume,
     '--settings',
     input.settingsPath,
     '--mcp-config',
@@ -227,13 +250,50 @@ export async function launchSession(
     worktreePath,
   })
 
+  // A waypoint session claims its waypoint BEFORE spawning (SPEC §13.2). Capture
+  // the prior session's cc id first (claim overwrites `lastSessionId`) so a
+  // released-then-reworked waypoint resumes the same conversation. A failed claim
+  // (no longer on the frontier) ends the just-created session row and rethrows.
+  let waypoint: Waypoint | undefined
+  let resumeSessionId: string | undefined
+  if (input.waypointId) {
+    const before = getWaypoint(ctx, input.waypointId)
+    if (before.lastSessionId) {
+      resumeSessionId = getSessionRow(ctx, before.lastSessionId)?.ccSessionId ?? undefined
+    }
+    try {
+      // Re-check "only one live HITL session per feature" here, synchronously
+      // adjacent to the claim itself (no `await` between the two). `workWaypoint`
+      // already checks this up front, but that check runs before this function's
+      // `await ensureWorktree` above — leaving a window where two concurrent Work
+      // calls on two DIFFERENT waypoints of the same feature both pass it before
+      // either claims. This recheck is the race-free, authoritative gate.
+      const live = claimedForFeature(ctx, feature.id)
+      if (live.length > 0) {
+        throw new GateError(
+          `a waypoint session is already live for ${feature.slug} (waypoint ${live[0].seq}) — only one at a time`,
+        )
+      }
+      waypoint = claimWaypoint(ctx, input.waypointId, session.id)
+    } catch (e) {
+      markSessionEnded(ctx, session.id)
+      throw e
+    }
+  }
+
   emit(ctx, feature.id, {
     type: 'session.launching',
     message: `launching ${input.kind} session`,
-    data: { sessionId: session.id, kind: input.kind, worktreePath },
+    data: { sessionId: session.id, kind: input.kind, worktreePath, waypointId: waypoint?.id },
   })
 
-  const artifacts = await writeSessionArtifacts({ session, feature, project, config: ctx.config })
+  const artifacts = await writeSessionArtifacts({
+    session,
+    feature,
+    project,
+    config: ctx.config,
+    waypoint,
+  })
   const serverUrl = serverUrlFor(ctx.config)
 
   const buildInput: BuildLaunchInput = {
@@ -245,6 +305,7 @@ export async function launchSession(
     settingsPath: artifacts.settingsPath,
     mcpConfigPath: artifacts.mcpConfigPath,
     systemPromptPath: artifacts.systemPromptPath,
+    resumeSessionId,
   }
 
   // spawn:false fabricates a session MINUS any process (SPEC §11 smoke driver) —
@@ -264,6 +325,43 @@ export async function launchSession(
     spawnEmbeddedPty(ctx, feature, session, worktreePath, serverUrl, buildClaudeArgs(buildInput))
   }
   return { sessionId: session.id }
+}
+
+/**
+ * Work a waypoint (SPEC §13.2, backs `feature.workWaypoint`): claim the waypoint
+ * transactionally, then open a kind=`waypoint` session on it. Refuses up front
+ * when the feature is not mapped, the waypoint belongs to another feature, a
+ * waypoint session is already live (only one live HITL session per feature), or
+ * the waypoint is a `research` node (worked headlessly by a run, not this HITL
+ * path). The claim inside `launchSession` is the transactional frontier gate — a
+ * waypoint that is claimed/terminal/blocked can never be worked.
+ */
+export async function workWaypoint(
+  ctx: AppCtx,
+  input: { featureId: string; waypointId: string },
+  opts: LaunchSessionOptions = {},
+): Promise<LaunchSessionResult> {
+  const feature = getFeatureRow(ctx, input.featureId)
+  if (!feature.mapped) {
+    throw new GateError(`feature ${feature.slug} is not mapped — it has no waypoints to work`)
+  }
+
+  const wp = getWaypoint(ctx, input.waypointId)
+  if (wp.featureId !== feature.id) {
+    throw new GateError(`waypoint ${wp.seq} does not belong to feature ${feature.slug}`)
+  }
+  if (wp.type === 'research') {
+    throw new GateError(`waypoint ${wp.seq} is a research node — it is worked by a headless run, not a HITL session`)
+  }
+
+  const live = claimedForFeature(ctx, feature.id)
+  if (live.length > 0) {
+    throw new GateError(
+      `a waypoint session is already live for ${feature.slug} (waypoint ${live[0].seq}) — only one at a time`,
+    )
+  }
+
+  return launchSession(ctx, { featureId: feature.id, kind: 'waypoint', waypointId: wp.id }, opts)
 }
 
 /**
@@ -296,6 +394,10 @@ function spawnEmbeddedPty(
       opts: { cwd: worktreePath, env, cols: 80, rows: 24, useConpty: true },
       onExit: ({ exitCode }) => {
         markSessionEnded(ctx, session.id)
+        // Closing a waypoint terminal without resolving auto-releases its
+        // waypoint back to the frontier (SPEC §13.2); no-op for non-waypoint
+        // sessions or when the agent already resolved.
+        releaseForSession(ctx, session.id)
         emit(ctx, feature.id, {
           type: 'session.pty_exited',
           message: ptyExitMessage(exitCode),

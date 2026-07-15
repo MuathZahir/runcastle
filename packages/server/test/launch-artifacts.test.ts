@@ -11,7 +11,7 @@ import {
   renderSystemPrompt,
   writeSessionArtifacts,
 } from '../src/launcher/artifacts'
-import { buildLaunchCommand, ptyExitMessage } from '../src/launcher/launcher'
+import { buildClaudeArgs, buildLaunchCommand, ptyExitMessage } from '../src/launcher/launcher'
 
 const config: RuncastleConfig = ConfigSchema.parse({})
 
@@ -55,6 +55,13 @@ describe('renderSettings', () => {
         'mcp__runcastle__emit_tickets',
         'mcp__runcastle__record_event',
         'mcp__runcastle__complete_phase',
+      ]),
+    )
+    // the mapped-ideation tools are pre-allowed too (waypoint sessions use them)
+    expect(s.permissions.allow).toEqual(
+      expect.arrayContaining([
+        'mcp__runcastle__emit_waypoints',
+        'mcp__runcastle__resolve_waypoint',
       ]),
     )
     // the exported rule list is the single source and is fully included
@@ -125,6 +132,28 @@ describe('renderSystemPrompt', () => {
     expect(p).toContain('/runcastle:qa')
     expect(p).toMatch(/do not advance phases/i)
   })
+
+  it('injects the assigned waypoint + map state into a waypoint session', () => {
+    const wp = {
+      id: 'wpt_1',
+      featureId: 'feat_abc',
+      seq: 1,
+      title: 'auth model',
+      type: 'grilling' as const,
+      question: 'sessions or JWT?',
+      blockedBy: [],
+      status: 'claimed' as const,
+    }
+    const p = renderSystemPrompt(feature({ mapped: true }), 'waypoint', wp)
+    expect(p).toContain('/runcastle:waypoint')
+    expect(p).toContain('auth model')
+    expect(p).toContain('sessions or JWT?')
+    expect(p).toContain('resolve_waypoint')
+    expect(p).toContain('emit_waypoints')
+    expect(p).toContain('map.md')
+    // a waypoint session must NOT be told to converge / emit tickets
+    expect(p).not.toContain('emit_tickets')
+  })
 })
 
 describe('buildLaunchCommand', () => {
@@ -145,6 +174,24 @@ describe('buildLaunchCommand', () => {
         '--strict-mcp-config --plugin-dir "C:\\repo\\packages\\skills\\packs\\runcastle" ' +
         '--append-system-prompt-file "C:\\s\\system-prompt.md" --permission-mode acceptEdits',
     )
+  })
+
+  it('prepends --resume <ccSessionId> when resuming a released waypoint', () => {
+    const base = {
+      sessionId: 'sess_xyz',
+      serverUrl: 'http://localhost:4512',
+      featureTitle: 'Dark mode',
+      worktreePath: 'C:\\wt\\dark-mode',
+      pluginDir: 'C:\\repo\\pack',
+      settingsPath: 'C:\\s\\settings.json',
+      mcpConfigPath: 'C:\\s\\mcp.json',
+      systemPromptPath: 'C:\\s\\system-prompt.md',
+    }
+    // no resume → no --resume flag
+    expect(buildClaudeArgs(base)).not.toContain('--resume')
+    // with resume → the flag leads the argv, followed by the cc session id
+    const args = buildClaudeArgs({ ...base, resumeSessionId: 'cc-42' })
+    expect(args.slice(0, 2)).toEqual(['--resume', 'cc-42'])
   })
 
   it('opens a wt.exe tab with title + working dir', () => {

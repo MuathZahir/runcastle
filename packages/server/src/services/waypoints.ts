@@ -50,10 +50,19 @@ export function listByFeature(ctx: AppCtx, featureId: string): Waypoint[] {
     .map(rowToWaypoint)
 }
 
-function getWaypoint(ctx: AppCtx, id: string): Waypoint {
+export function getWaypoint(ctx: AppCtx, id: string): Waypoint {
   const row = ctx.db.select().from(waypoints).where(eq(waypoints.id, id)).get()
   if (!row) throw new NotFoundError(`waypoint ${id} not found`)
   return rowToWaypoint(row)
+}
+
+/**
+ * The waypoints currently claimed for a feature — i.e. its live HITL session(s).
+ * `feature.workWaypoint` uses this to enforce SPEC §13.7's "only one live HITL
+ * session per feature": Work is refused while any waypoint is claimed.
+ */
+export function claimedForFeature(ctx: AppCtx, featureId: string): Waypoint[] {
+  return listByFeature(ctx, featureId).filter((w) => w.status === 'claimed')
 }
 
 /**
@@ -204,6 +213,24 @@ export function release(ctx: AppCtx, id: string): Waypoint {
     data: { id, lastSessionId: wp.claimedBy ?? wp.lastSessionId },
   })
   return getWaypoint(ctx, id)
+}
+
+/**
+ * Auto-release every waypoint still claimed by an ending session or finalizing
+ * run (SPEC §13.2). Closing a waypoint terminal without calling `resolve_waypoint`
+ * must return the waypoint to the frontier so it can be re-worked (or resumed). A
+ * resolved/dropped waypoint already dropped its `claimedBy`, so it never matches
+ * here — only an unresolved claim is released. Idempotent: no claim → no-op, so
+ * it is safe to call from every session-end path (hook, End button, PTY exit).
+ */
+export function releaseForSession(ctx: AppCtx, claimant: string): Waypoint[] {
+  const held = ctx.db
+    .select()
+    .from(waypoints)
+    .where(and(eq(waypoints.claimedBy, claimant), eq(waypoints.status, 'claimed')))
+    .all()
+    .map(rowToWaypoint)
+  return held.map((w) => release(ctx, w.id))
 }
 
 /**

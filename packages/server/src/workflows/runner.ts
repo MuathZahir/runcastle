@@ -10,6 +10,7 @@ import { checkGate } from '../services/gates'
 import { detachWorktree, reattachWorktree } from '../services/git'
 import { getFeatureRow, requireProject, setPhase } from '../services/repo'
 import { listByFeature, updateTicket } from '../services/tickets'
+import { releaseForSession } from '../services/waypoints'
 import { getWorkflow } from './registry'
 
 /**
@@ -132,6 +133,9 @@ async function executeRun(
   }
 
   ctx.db.update(runs).set({ status, endedAt: Date.now(), summary }).where(eq(runs.id, runId)).run()
+  // A run that worked a waypoint (research) auto-releases it if it did not resolve
+  // it itself (SPEC §13.2 run finalizer); no-op for ticket-burner runs.
+  releaseForSession(ctx, runId)
   emit(ctx, featureId, {
     type: 'run.finished',
     message: `run ${status}: ${summary}`,

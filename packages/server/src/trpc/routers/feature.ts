@@ -1,6 +1,6 @@
 import { FeatureSize, SessionKind } from '@runcastle/core'
 import * as z from 'zod'
-import { endSession, launchSession } from '../../launcher/launcher'
+import { endSession, launchSession, workWaypoint } from '../../launcher/launcher'
 import { emit } from '../../services/events'
 import * as features from '../../services/features'
 import { overrideGate } from '../../services/gates'
@@ -32,6 +32,13 @@ export const featureRouter = router({
   launchSession: publicProcedure
     .input(z.object({ featureId: z.string(), kind: SessionKind }))
     .mutation(({ ctx, input }) => launchSession(ctx, input)),
+
+  // Work a frontier waypoint (ADR-0001 §13.2): claim it transactionally, then
+  // open a kind=waypoint session on it. Refuses a waypoint not on the frontier,
+  // or when a waypoint session is already live (one HITL session per feature).
+  workWaypoint: publicProcedure
+    .input(z.object({ featureId: z.string(), waypointId: z.string() }))
+    .mutation(({ ctx, input }) => workWaypoint(ctx, input)),
 
   // End a live session (End session button; terminal-tab close is detach only).
   // Route added by W2 (UI-SPEC §6); backed by W1's PTY-killing `endSession`
