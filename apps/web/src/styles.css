@@ -940,6 +940,13 @@ details.wp-group-done > summary { cursor: pointer; list-style: revert; }
 .wp-blockers { color: var(--needs); }
 .wp-lineage { flex-basis: 100%; }
 .wp-resume { color: var(--drive); }
+/* AFK research run in flight on a claimed waypoint. */
+.wp-run-note {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--drive);
+  font-style: italic;
+}
 /* Work / Resume sits at the right edge of the frontier row. */
 .wp-work { margin-left: auto; align-self: center; flex-shrink: 0; }
 .wp-pulse {
