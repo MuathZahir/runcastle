@@ -243,11 +243,36 @@ export const RUNCASTLE_MCP_ALLOW_RULES: readonly string[] = [
 ]
 
 /**
+ * Benign git commands the session skills actually run, pre-approved so
+ * `--permission-mode acceptEdits` sessions never stall on an interactive Bash
+ * approval prompt (E2E finding: `git rev-parse` during converge and doc commits
+ * during waypoint work each sat waiting for a human). Rule syntax is the
+ * documented `Bash(<prefix>:*)` trailing-wildcard form
+ * (code.claude.com/docs/en/permissions — ":* suffix can be used as a trailing
+ * wildcard"). Scoped reasoning: these sessions live in docs-only talk
+ * worktrees, so even `git add`/`git commit` can only touch the feature docs.
+ * Deliberately git-only — nothing here loosens beyond git + the runcastle MCP
+ * tools above.
+ */
+export const SESSION_BASH_ALLOW_RULES: readonly string[] = [
+  'Bash(git status:*)',
+  'Bash(git rev-parse:*)',
+  'Bash(git log:*)',
+  'Bash(git diff:*)',
+  'Bash(git add:*)',
+  'Bash(git commit:*)',
+  'Bash(git branch:*)',
+  'Bash(git show:*)',
+]
+
+/**
  * The `settings.json` for a session (CC-INTEGRATION-NOTES §2 verified shape).
  *
  * - `permissions.allow` pre-approves runcastle's own MCP tools so a session's
  *   `mcp__runcastle__*` tool calls never interrupt the user with a permission
- *   prompt (they are the app's own trusted tools).
+ *   prompt (they are the app's own trusted tools), plus the benign git commands
+ *   the skills run (`SESSION_BASH_ALLOW_RULES`) so docs-worktree sessions never
+ *   stall on a Bash approval prompt.
  * - `command` = `bun run "<abs hook-client.ts>" <route-event>` where the route
  *   event is the kebab-case `/api/hooks/:event` segment the client POSTs to.
  * - `SessionStart` matches `startup` (the source for a fresh `claude` launch).
@@ -262,7 +287,7 @@ export function renderSettings(hookClient: string): SessionSettings {
     timeout: event === 'user-prompt' ? 5 : 10,
   })
   return {
-    permissions: { allow: [...RUNCASTLE_MCP_ALLOW_RULES] },
+    permissions: { allow: [...RUNCASTLE_MCP_ALLOW_RULES, ...SESSION_BASH_ALLOW_RULES] },
     hooks: {
       SessionStart: [{ matcher: 'startup', hooks: [cmd('session-start')] }],
       UserPromptSubmit: [{ hooks: [cmd('user-prompt')] }],

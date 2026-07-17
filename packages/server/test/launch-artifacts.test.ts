@@ -5,6 +5,7 @@ import type { Feature, RuncastleConfig, SessionRow } from '@runcastle/core'
 import { RuncastleConfig as ConfigSchema } from '@runcastle/core'
 import {
   RUNCASTLE_MCP_ALLOW_RULES,
+  SESSION_BASH_ALLOW_RULES,
   hookClientPath,
   renderMcpConfig,
   renderSettings,
@@ -66,8 +67,39 @@ describe('renderSettings', () => {
     )
     // the exported rule list is the single source and is fully included
     expect(s.permissions.allow).toEqual(expect.arrayContaining([...RUNCASTLE_MCP_ALLOW_RULES]))
-    // every rule is anchored to our own server (no unanchored / cross-server globs)
-    for (const rule of s.permissions.allow) expect(rule.startsWith('mcp__runcastle__')).toBe(true)
+    // every rule is either anchored to our own MCP server or a scoped git Bash
+    // rule — no unanchored / cross-server globs, nothing beyond git + our tools
+    for (const rule of s.permissions.allow) {
+      expect(rule).toMatch(/^(mcp__runcastle__\w+|Bash\(git [a-z-]+:\*\))$/)
+    }
+  })
+
+  it('pre-allows the benign git commands the skills run (no Bash approval stalls)', () => {
+    const s = renderSettings('C:\\hooks\\hook-client.ts')
+
+    // the E2E-observed stalls: `git rev-parse` (converge) and doc add/commit
+    // (waypoint work) — plus the rest of the read-mostly git surface, in the
+    // documented `Bash(<prefix>:*)` trailing-wildcard form.
+    expect(s.permissions.allow).toEqual(
+      expect.arrayContaining([
+        'Bash(git status:*)',
+        'Bash(git rev-parse:*)',
+        'Bash(git log:*)',
+        'Bash(git diff:*)',
+        'Bash(git add:*)',
+        'Bash(git commit:*)',
+        'Bash(git branch:*)',
+        'Bash(git show:*)',
+      ]),
+    )
+    // the exported list is the single source and is fully included
+    expect(s.permissions.allow).toEqual(expect.arrayContaining([...SESSION_BASH_ALLOW_RULES]))
+    // git-only: no rule allows a non-git Bash command, and none is a bare glob
+    for (const rule of s.permissions.allow.filter((r) => r.startsWith('Bash('))) {
+      expect(rule).toMatch(/^Bash\(git /)
+    }
+    expect(s.permissions.allow).not.toContain('Bash')
+    expect(s.permissions.allow).not.toContain('Bash(*)')
   })
 
   it('emits the verified hooks JSON shape with correct events + timeouts', () => {
