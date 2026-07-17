@@ -4,6 +4,7 @@ import { trpc } from '../../trpc'
 import { DimLine, SectionTitle, SessionStatusDot } from '../../ui'
 import type { FeatureFull } from '../../lib/api'
 import { useToast } from '../../lib/toast'
+import { EndSessionButton } from '../EndSessionButton'
 import { ErrorBoundary } from '../ErrorBoundary'
 import { TerminalView } from '../TerminalView'
 
@@ -50,6 +51,9 @@ export function GrillBody({ full, effective }: { full: FeatureFull; effective: P
               <span className="grill-sid">{session.ccSessionId ?? session.id}</span>
               <SessionStatusDot status={session.status} />
               <span className="grill-strip-spacer" />
+              {(session.status === 'live' || session.status === 'launching') && (
+                <EndSessionButton featureId={feature.id} sessionId={session.id} />
+              )}
             </div>
             <div className="grill-term" id="grill-term">
               {session.status === 'ended' ? (

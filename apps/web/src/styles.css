@@ -811,6 +811,12 @@ button {
 }
 .grill-sid { font-family: var(--mono); font-size: 11px; color: var(--text-3); }
 .grill-strip-spacer { flex: 1; }
+/* End-session: quiet but reachable even over a blank/dead terminal. */
+.sess-end { color: color-mix(in srgb, var(--danger) 70%, var(--text-2)); }
+.sess-end:hover:not(:disabled) {
+  color: var(--danger);
+  border-color: color-mix(in srgb, var(--danger) 55%, var(--hairline));
+}
 .grill-term {
   height: 420px;
   min-height: 260px;
