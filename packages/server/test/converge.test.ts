@@ -7,10 +7,11 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { AppCtx } from '../src/db/types'
 import { GateError } from '../src/errors'
 import { converge } from '../src/launcher/launcher'
-import { getSessionRow } from '../src/launcher/sessions'
+import { getSessionRow, markSessionEnded } from '../src/launcher/sessions'
 import { listAfter } from '../src/services/events'
 import { getFeatureRow } from '../src/services/repo'
 import { createFeatureBranch } from '../src/services/git'
+import { storeTickets } from '../src/services/tickets'
 import { claim, resolve, storeWaypoints } from '../src/services/waypoints'
 import { makeTestCtx } from './helpers/db'
 import { seedFeature, seedProject } from './helpers/fixtures'
@@ -134,13 +135,74 @@ describe('converge — mapped feature G1', () => {
     )
   })
 
-  it('refuses to converge a feature that already left ideation', async () => {
+  // --- re-convergence after a mid-run crash (E2E finding 3) ------------------
+  // A converge session that dies leaves the feature past G1 (phase spec, or
+  // tickets when collapsed) with zero tickets. That state must be recoverable:
+  // a fresh kind=converge session may be spawned exactly there — and only there.
+
+  it('refuses a second converge while the first converge session is still open', async () => {
     const feature = await mappedFeature('late')
     const [a] = storeWaypoints(ctx, feature.id, [wp('a')])
     resolve(ctx, a.id, 'resolved', 'answered')
     const first = await converge(ctx, { featureId: feature.id }, { spawn: false }) // now in spec
     cleanup.push(sessionDir(first.sessionId))
 
+    // the first converge session row is still launching/live → no second terminal
+    await expect(converge(ctx, { featureId: feature.id }, { spawn: false })).rejects.toThrow(
+      /already live/i,
+    )
+  })
+
+  it('allows re-convergence at spec with zero tickets once the crashed session ended', async () => {
+    const feature = await mappedFeature('crashed')
+    const [a] = storeWaypoints(ctx, feature.id, [wp('a')])
+    resolve(ctx, a.id, 'resolved', 'answered')
+    const first = await converge(ctx, { featureId: feature.id }, { spawn: false })
+    cleanup.push(sessionDir(first.sessionId))
+    markSessionEnded(ctx, first.sessionId) // the converge session crashed/was closed
+
+    const second = await converge(ctx, { featureId: feature.id }, { spawn: false })
+    cleanup.push(sessionDir(second.sessionId))
+    expect(second.sessionId).not.toBe(first.sessionId)
+    expect(getSessionRow(ctx, second.sessionId)?.kind).toBe('converge')
+    // no double gate-crossing: the phase stays where G1 left it
+    expect(getFeatureRow(ctx, feature.id).phase).toBe('spec')
+    // the timeline says why this session exists
+    const resumed = listAfter(ctx, feature.id, 0).find((e) => e.type === 'converge.resumed')
+    expect(resumed).toBeTruthy()
+  })
+
+  it('allows re-convergence for a collapsed feature stranded at tickets with zero tickets', async () => {
+    const feature = await mappedFeature('stranded', 'collapsed')
+    const [a] = storeWaypoints(ctx, feature.id, [wp('a')])
+    resolve(ctx, a.id, 'resolved', 'answered')
+    const first = await converge(ctx, { featureId: feature.id }, { spawn: false }) // → tickets
+    cleanup.push(sessionDir(first.sessionId))
+    markSessionEnded(ctx, first.sessionId)
+
+    const second = await converge(ctx, { featureId: feature.id }, { spawn: false })
+    cleanup.push(sessionDir(second.sessionId))
+    expect(getFeatureRow(ctx, feature.id).phase).toBe('tickets')
+  })
+
+  it('refuses re-convergence once tickets exist (convergence completed)', async () => {
+    const feature = await mappedFeature('done')
+    const [a] = storeWaypoints(ctx, feature.id, [wp('a')])
+    resolve(ctx, a.id, 'resolved', 'answered')
+    const first = await converge(ctx, { featureId: feature.id }, { spawn: false })
+    cleanup.push(sessionDir(first.sessionId))
+    markSessionEnded(ctx, first.sessionId)
+    storeTickets(ctx, feature.id, [
+      { title: 't', goal: 'g', context: 'c', acceptanceCriteria: ['x'], seams: [], blockedBy: [] },
+    ])
+
+    await expect(converge(ctx, { featureId: feature.id }, { spawn: false })).rejects.toThrow(
+      /ticket/i,
+    )
+  })
+
+  it('refuses re-convergence at any later phase', async () => {
+    const feature = seedFeature(ctx, projectId, { slug: 'shipped-ish', mapped: true, phase: 'implementation' })
     await expect(converge(ctx, { featureId: feature.id }, { spawn: false })).rejects.toThrow(
       /ideation/i,
     )

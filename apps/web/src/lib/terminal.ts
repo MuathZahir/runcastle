@@ -6,9 +6,16 @@
  * - **control** frames are text JSON — `{t:'status',status,exitCode?}` inbound,
  *   `{t:'resize',cols,rows}` outbound.
  *
- * Handles reconnect with exponential backoff. When the server reports the
- * session `ended`, reconnection stops (the PTY is gone — a new session gets a new
- * id). `TerminalView` renders the status as the dim `reconnecting…` overlay.
+ * Handles reconnect with capped exponential backoff on close AND on the two
+ * silent-loss modes the E2E run hit: a socket that never finishes its handshake
+ * (connect timeout) and a half-open socket that stays `OPEN` while the peer is
+ * gone — detected by outbound bytes stalling in `bufferedAmount` after a send,
+ * then force-closed so the normal reconnect path takes over. Keystrokes are
+ * dropped (never queued) unless the socket is verifiably open; the view renders
+ * the disconnected state so that drop is obvious. On reconnect the server
+ * replays its scrollback ring, so `onReset` fires first to clear the stale
+ * screen. When the server reports the session `ended`, reconnection stops (the
+ * PTY is gone — a new session gets a new id).
  */
 
 export type TerminalStatus = 'connecting' | 'live' | 'reconnecting' | 'ended'
@@ -19,10 +26,20 @@ export interface TerminalClientOptions {
   wsBase?: string
   onData: (bytes: Uint8Array) => void
   onStatus: (status: TerminalStatus) => void
+  /**
+   * Fired when a RE-connected socket opens, before any replayed data arrives —
+   * the view clears its screen here so the server's scrollback replay doesn't
+   * duplicate what's already rendered.
+   */
+  onReset?: () => void
 }
 
 const BACKOFF_MIN = 250
 const BACKOFF_MAX = 5000
+/** Give a handshake this long before treating the attempt as dead. */
+const CONNECT_TIMEOUT = 8000
+/** Outbound bytes still buffered this long after a send ⇒ half-open socket. */
+const STALL_TIMEOUT = 3000
 
 /** Default WS origin: the runcastle server on 4512 (SPEC §0), same host. */
 function defaultWsBase(): string {
@@ -34,8 +51,12 @@ export class TerminalClient {
   private ws: WebSocket | null = null
   private backoff = BACKOFF_MIN
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null
+  private connectTimer: ReturnType<typeof setTimeout> | null = null
+  private stallTimer: ReturnType<typeof setTimeout> | null = null
   private disposed = false
   private ended = false
+  /** A previous socket delivered data — a fresh open must reset before replay. */
+  private receivedData = false
   private readonly url: string
 
   constructor(private readonly opts: TerminalClientOptions) {
@@ -52,16 +73,35 @@ export class TerminalClient {
     ws.binaryType = 'arraybuffer'
     this.ws = ws
 
+    // A handshake that hangs (server mid-restart, dead route) never fires
+    // onclose by itself in a useful timeframe — force it so backoff continues.
+    this.connectTimer = setTimeout(() => {
+      if (ws.readyState === WebSocket.CONNECTING) this.forceClose(ws)
+    }, CONNECT_TIMEOUT)
+
+    ws.onopen = () => {
+      this.clearConnectTimer()
+      // Reconnected: the server will replay its whole scrollback ring — clear
+      // the stale screen first so output isn't duplicated.
+      if (this.receivedData) {
+        this.receivedData = false
+        this.opts.onReset?.()
+      }
+    }
+
     ws.onmessage = (ev) => {
       if (typeof ev.data === 'string') {
         this.handleControl(ev.data)
       } else {
+        this.receivedData = true
         this.opts.onData(new Uint8Array(ev.data as ArrayBuffer))
       }
     }
 
     ws.onclose = () => {
       this.ws = null
+      this.clearConnectTimer()
+      this.clearStallTimer()
       if (this.disposed || this.ended) return
       this.opts.onStatus('reconnecting')
       this.scheduleReconnect()
@@ -69,18 +109,19 @@ export class TerminalClient {
 
     // Errors surface as a close; let onclose drive the reconnect.
     ws.onerror = () => {
-      try {
-        ws.close()
-      } catch {
-        // already closing
-      }
+      this.forceClose(ws)
     }
   }
 
-  /** Send keystroke data to the PTY (binary frame). */
+  /**
+   * Send keystroke data to the PTY (binary frame). Dropped — never queued —
+   * unless the socket is open; a send that then stalls in `bufferedAmount`
+   * marks the socket half-open and force-closes it into the reconnect path.
+   */
   send(data: string): void {
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
       this.ws.send(new TextEncoder().encode(data))
+      this.watchForStall()
     }
   }
 
@@ -88,13 +129,17 @@ export class TerminalClient {
   resize(cols: number, rows: number): void {
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify({ t: 'resize', cols, rows }))
+      this.watchForStall()
     }
   }
 
   dispose(): void {
     this.disposed = true
     this.clearTimer()
+    this.clearConnectTimer()
+    this.clearStallTimer()
     if (this.ws) {
+      this.ws.onopen = null
       this.ws.onclose = null
       this.ws.onerror = null
       this.ws.onmessage = null
@@ -124,6 +169,40 @@ export class TerminalClient {
     }
   }
 
+  /**
+   * Half-open detection: after an outbound frame, the bytes should drain to
+   * the kernel almost instantly. If they are still buffered `STALL_TIMEOUT`
+   * later the peer is gone without a close frame (server hard-restart, network
+   * drop) — force-close so onclose schedules the reconnect. One pending check
+   * at a time is enough; it re-arms itself while bytes remain.
+   */
+  private watchForStall(): void {
+    if (this.stallTimer !== null) return
+    this.stallTimer = setTimeout(() => {
+      this.stallTimer = null
+      const ws = this.ws
+      if (!ws || ws.readyState !== WebSocket.OPEN) return
+      if (ws.bufferedAmount > 0) this.forceClose(ws)
+    }, STALL_TIMEOUT)
+  }
+
+  private forceClose(ws: WebSocket): void {
+    try {
+      ws.close()
+    } catch {
+      // already closing
+    }
+    // Some agents fire neither onerror-close nor onclose for an aborted
+    // CONNECTING socket — drive the reconnect path by hand if it's ours.
+    if (this.ws === ws && ws.readyState === WebSocket.CLOSED) {
+      ws.onclose = null
+      this.ws = null
+      if (this.disposed || this.ended) return
+      this.opts.onStatus('reconnecting')
+      this.scheduleReconnect()
+    }
+  }
+
   private scheduleReconnect(): void {
     this.clearTimer()
     const delay = this.backoff
@@ -135,6 +214,20 @@ export class TerminalClient {
     if (this.reconnectTimer !== null) {
       clearTimeout(this.reconnectTimer)
       this.reconnectTimer = null
+    }
+  }
+
+  private clearConnectTimer(): void {
+    if (this.connectTimer !== null) {
+      clearTimeout(this.connectTimer)
+      this.connectTimer = null
+    }
+  }
+
+  private clearStallTimer(): void {
+    if (this.stallTimer !== null) {
+      clearTimeout(this.stallTimer)
+      this.stallTimer = null
     }
   }
 }

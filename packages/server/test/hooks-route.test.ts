@@ -102,7 +102,12 @@ describe('hooks route', () => {
       { title: 'a', type: 'grilling', question: 'q', blockedBy: [] },
     ])
     claim(ctx, a.id, s.id)
-
+    // the session actually starts (this is what promotes lastSessionId)...
+    await post(mount(), 'session-start', {
+      sessionId: s.id,
+      payload: { session_id: 'cc-wp-1', hook_event_name: 'SessionStart', source: 'startup' },
+    })
+    // ...and later ends without resolving
     await post(mount(), 'session-end', { sessionId: s.id, payload: { hook_event_name: 'SessionEnd' } })
 
     // the waypoint is back on the frontier, remembering the session for Resume

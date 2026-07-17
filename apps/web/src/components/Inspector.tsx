@@ -22,7 +22,10 @@ export function Inspector({ featureId }: { featureId: string }) {
         <DimLine>loading…</DimLine>
       </aside>
     )
-  if (full.error || !full.data)
+  // Hard error only when there was NEVER data — a refetch failure after data
+  // exists (server restart) keeps the last-good rail rendered instead of
+  // blanking it; the workspace's OFFLINE banner covers the outage story.
+  if (!full.data)
     return (
       <aside className="inspector">
         <DimLine>{full.error?.message ?? 'could not load inspector'}</DimLine>

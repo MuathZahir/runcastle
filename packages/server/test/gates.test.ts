@@ -7,7 +7,7 @@ import { checkGate } from '../src/services/gates'
 import { featureDocsDir } from '../src/services/feature-docs'
 import { storeTickets } from '../src/services/tickets'
 import { updateTicket } from '../src/services/tickets'
-import { resolve as resolveWaypoint, storeWaypoints } from '../src/services/waypoints'
+import { claim, resolve as resolveWaypoint, storeWaypoints } from '../src/services/waypoints'
 import { makeTestCtx } from './helpers/db'
 import { seedFeature, seedProject, tmpRepo } from './helpers/fixtures'
 
@@ -88,5 +88,44 @@ describe('gates service', () => {
     // a drop counts as terminal exactly like a resolve
     resolveWaypoint(ctx, b.id, 'dropped', 'out of scope')
     expect(checkGate(ctx, 'all-waypoints-terminal', feature).satisfied).toBe(true)
+  })
+
+  it('all-waypoints-terminal reason aggregates status counts (no per-item dump)', () => {
+    const feature = seedFeature(ctx, project.id, { slug: 'g1-reason', mapped: true })
+    const [a] = storeWaypoints(ctx, feature.id, [
+      { title: 'a', type: 'grilling', question: 'qa', blockedBy: [] },
+      { title: 'b', type: 'grilling', question: 'qb', blockedBy: [] },
+      { title: 'c', type: 'grilling', question: 'qc', blockedBy: [] },
+    ])
+    claim(ctx, a.id, 'sess_test')
+
+    expect(checkGate(ctx, 'all-waypoints-terminal', feature).reason).toBe(
+      '3 waypoints not yet terminal (2 open, 1 claimed)',
+    )
+  })
+
+  it('all-waypoints-terminal reason uses the singular for one remaining waypoint', () => {
+    const feature = seedFeature(ctx, project.id, { slug: 'g1-one', mapped: true })
+    storeWaypoints(ctx, feature.id, [
+      { title: 'only', type: 'grilling', question: 'q', blockedBy: [] },
+    ])
+
+    expect(checkGate(ctx, 'all-waypoints-terminal', feature).reason).toBe(
+      '1 waypoint not yet terminal (1 open)',
+    )
+  })
+
+  it('all-tickets-terminal reason aggregates status counts (no per-item dump)', () => {
+    const feature = seedFeature(ctx, project.id, { slug: 'g4-reason', phase: 'implementation' })
+    const [a] = storeTickets(ctx, feature.id, [
+      { title: 'a', goal: 'g', context: 'c', acceptanceCriteria: ['x'], seams: [], blockedBy: [] },
+      { title: 'b', goal: 'g', context: 'c', acceptanceCriteria: ['x'], seams: [], blockedBy: [] },
+      { title: 'c', goal: 'g', context: 'c', acceptanceCriteria: ['x'], seams: [], blockedBy: [] },
+    ])
+    updateTicket(ctx, a.id, { status: 'burning' })
+
+    expect(checkGate(ctx, 'all-tickets-terminal', feature).reason).toBe(
+      '3 tickets not yet terminal (2 pending, 1 burning)',
+    )
   })
 })

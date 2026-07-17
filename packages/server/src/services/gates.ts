@@ -40,7 +40,7 @@ export function checkGate(ctx: AppCtx, check: GateCheckId, feature: Feature): Ga
         ? { satisfied: true }
         : {
             satisfied: false,
-            reason: `${open.length} waypoint(s) still ${open.map((w) => w.status).join('/')}`,
+            reason: notYetTerminal('waypoint', open.map((w) => w.status), ['open', 'claimed']),
           }
     }
 
@@ -62,13 +62,37 @@ export function checkGate(ctx: AppCtx, check: GateCheckId, feature: Feature): Ga
       const open = tickets.filter((t) => t.status !== 'done' && t.status !== 'failed')
       return open.length === 0
         ? { satisfied: true }
-        : { satisfied: false, reason: `${open.length} ticket(s) still ${open.map((t) => t.status).join('/')}` }
+        : {
+            satisfied: false,
+            reason: notYetTerminal('ticket', open.map((t) => t.status), ['pending', 'burning']),
+          }
     }
 
     case 'human-merge':
       // G5 is the Merge click, which bypasses via its own code path.
       return { satisfied: false, reason: 'use the Merge button to ship' }
   }
+}
+
+/**
+ * Human gate copy for "not everything is terminal yet": aggregated status
+ * counts, e.g. `3 waypoints not yet terminal (2 open, 1 claimed)` — never a
+ * per-item `open/open/claimed` dump. `order` fixes the breakdown ordering;
+ * unknown statuses (future enum growth) are appended rather than dropped.
+ */
+export function notYetTerminal(
+  noun: string,
+  statuses: string[],
+  order: readonly string[],
+): string {
+  const counts = new Map<string, number>()
+  for (const s of statuses) counts.set(s, (counts.get(s) ?? 0) + 1)
+  const ordered = [
+    ...order.filter((s) => counts.has(s)),
+    ...[...counts.keys()].filter((s) => !order.includes(s)),
+  ]
+  const breakdown = ordered.map((s) => `${counts.get(s)} ${s}`).join(', ')
+  return `${statuses.length} ${statuses.length === 1 ? noun : `${noun}s`} not yet terminal (${breakdown})`
 }
 
 function fileGate(

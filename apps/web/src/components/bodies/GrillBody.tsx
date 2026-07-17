@@ -4,6 +4,7 @@ import { trpc } from '../../trpc'
 import { DimLine, SectionTitle, SessionStatusDot } from '../../ui'
 import type { FeatureFull } from '../../lib/api'
 import { useToast } from '../../lib/toast'
+import { EndSessionButton } from '../EndSessionButton'
 import { ErrorBoundary } from '../ErrorBoundary'
 import { TerminalView } from '../TerminalView'
 
@@ -23,6 +24,16 @@ export function GrillBody({ full, effective }: { full: FeatureFull; effective: P
   const session = ordered.find((s) => s.status === 'live' || s.status === 'launching') ?? ordered[0]
   const specDoc = docs.find((d) => d.relPath.endsWith('spec.md'))
   const mapDoc = feature.mapped ? docs.find((d) => d.relPath.endsWith('map.md')) : undefined
+  // Converge re-entry (recovery path): a mapped feature stranded at `spec` with
+  // no live session and zero tickets means the converge session died after
+  // crossing G1 — offer a subtle restart (feature.converge re-enters here).
+  const hasLive = sessions.some((s) => s.status === 'live' || s.status === 'launching')
+  const showConvergeResume =
+    feature.mapped &&
+    feature.phase === 'spec' &&
+    effective === 'spec' &&
+    !hasLive &&
+    full.tickets.length === 0
 
   return (
     <div className="grill">
@@ -50,6 +61,9 @@ export function GrillBody({ full, effective }: { full: FeatureFull; effective: P
               <span className="grill-sid">{session.ccSessionId ?? session.id}</span>
               <SessionStatusDot status={session.status} />
               <span className="grill-strip-spacer" />
+              {(session.status === 'live' || session.status === 'launching') && (
+                <EndSessionButton featureId={feature.id} sessionId={session.id} />
+              )}
             </div>
             <div className="grill-term" id="grill-term">
               {session.status === 'ended' ? (
@@ -72,6 +86,40 @@ export function GrillBody({ full, effective }: { full: FeatureFull; effective: P
           </div>
         )}
       </div>
+
+      {showConvergeResume && <ConvergeResume featureId={feature.id} />}
+    </div>
+  )
+}
+
+/**
+ * Subtle recovery affordance, not a primary CTA: restart the converge session
+ * for a mapped feature that crossed G1 but lost its converge session before any
+ * tickets were emitted (crash / kill). The server accepts `feature.converge`
+ * again at phase `spec` with no live session and zero tickets.
+ */
+function ConvergeResume({ featureId }: { featureId: string }) {
+  const utils = trpc.useUtils()
+  const toast = useToast()
+  const converge = trpc.feature.converge.useMutation({
+    onSuccess: () => {
+      void utils.feature.get.invalidate({ id: featureId })
+      void utils.feature.list.invalidate()
+    },
+    onError: (e) => toast.push(e.message),
+  })
+  return (
+    <div className="converge-resume">
+      <DimLine>the converge session ended before tickets were emitted</DimLine>
+      <button
+        type="button"
+        className="btn btn-xs btn-ghost"
+        disabled={converge.isPending}
+        title="restart the converge session over map.md + decisions.md"
+        onClick={() => converge.mutate({ featureId })}
+      >
+        {converge.isPending ? 'Resuming…' : 'Resume converge'}
+      </button>
     </div>
   )
 }
@@ -132,6 +180,7 @@ function MapPanel({ full, relPath }: { full: FeatureFull; relPath?: string }) {
         featureId={featureId}
         waypoints={full.waypoints}
         frontierIds={full.frontierIds}
+        sessions={full.sessions}
       />
 
       <ConvergeBar full={full} fog={sections['Not yet specified']?.trim()} />
@@ -236,19 +285,23 @@ function ConvergeBar({ full, fog }: { full: FeatureFull; fog?: string }) {
 
 /**
  * The four waypoint status groups (SPEC §13.6). Frontier (open + all blockers
- * terminal; resume hint when a prior release left a `lastSessionId`), blocked
- * (greyed, blocker *names*), claimed (live pulse), and a collapsed
- * resolved/dropped tail. Lineage is one "surfaced by <name>" line per waypoint
- * carrying an `originWaypointId`.
+ * terminal; every type gets a Work button — research starts an AFK run through
+ * `workWaypoint`, the rest spawn a terminal; resume hint when a prior release
+ * left a `lastSessionId`), blocked (greyed, blocker *names*), claimed (live
+ * pulse; run-claims read "researching…"), and a collapsed resolved/dropped
+ * tail. Lineage is one "surfaced by <name>" line per waypoint carrying an
+ * `originWaypointId`.
  */
 function WaypointGroups({
   featureId,
   waypoints,
   frontierIds,
+  sessions,
 }: {
   featureId: string
   waypoints: Waypoint[]
   frontierIds: string[]
+  sessions: FeatureFull['sessions']
 }) {
   const utils = trpc.useUtils()
   const toast = useToast()
@@ -259,8 +312,10 @@ function WaypointGroups({
     },
     onError: (e) => toast.push(e.message),
   })
-  // Only one live HITL session per feature — disable Work while any is claimed.
-  const someClaimed = waypoints.some((w) => w.status === 'claimed')
+  // Serial HITL per feature (ADR-0001): only a live/launching SESSION blocks
+  // spawning another terminal. A waypoint claimed by an AFK research RUN
+  // (`claimedBy` = run_…) must not disable anything — research runs in parallel.
+  const liveHitl = sessions.some((s) => s.status === 'live' || s.status === 'launching')
 
   if (waypoints.length === 0) {
     return (
@@ -294,30 +349,34 @@ function WaypointGroups({
         <section className="wp-group wp-group-frontier">
           <div className="wp-group-title">Frontier · {frontier.length}</div>
           {frontier.map((w) => {
-            // A research node is worked by a headless run, not this HITL Work path.
-            const workable = w.type !== 'research'
-            const resuming = !!w.lastSessionId
+            // Research is worked AFK (a run, spawned by the same workWaypoint
+            // mutation) — a live HITL session doesn't block it. HITL types
+            // (grilling/prototype/task) spawn a terminal, so they wait for the
+            // live session to end first.
+            const research = w.type === 'research'
+            const resuming = !research && !!w.lastSessionId
+            const blockedBySession = !research && liveHitl
             return (
               <div className="wp wp-frontier" key={w.id}>
                 <span className="wp-type">{w.type}</span>
                 <span className="wp-title">{w.title}</span>
-                {workable && (
-                  <button
-                    type="button"
-                    className="btn btn-xs btn-solid wp-work"
-                    disabled={someClaimed || work.isPending}
-                    title={
-                      someClaimed
-                        ? 'a waypoint session is already live — resolve or close it first'
+                <button
+                  type="button"
+                  className="btn btn-xs btn-solid wp-work"
+                  disabled={blockedBySession || work.isPending}
+                  title={
+                    research
+                      ? 'start an AFK research run on this waypoint'
+                      : blockedBySession
+                        ? 'a session is already live on this feature — end or finish it before starting another'
                         : resuming
                           ? 'resume the previous session on this waypoint'
                           : 'claim this waypoint and open a session'
-                    }
-                    onClick={() => work.mutate({ featureId, waypointId: w.id })}
-                  >
-                    {resuming ? 'Resume' : 'Work'}
-                  </button>
-                )}
+                  }
+                  onClick={() => work.mutate({ featureId, waypointId: w.id })}
+                >
+                  {resuming ? 'Resume' : 'Work'}
+                </button>
                 <Lineage w={w} />
               </div>
             )
@@ -350,14 +409,20 @@ function WaypointGroups({
       {claimed.length > 0 && (
         <section className="wp-group wp-group-claimed">
           <div className="wp-group-title">Claimed · {claimed.length}</div>
-          {claimed.map((w) => (
-            <div className="wp wp-claimed" key={w.id}>
-              <span className="wp-pulse" aria-hidden="true" />
-              <span className="wp-type">{w.type}</span>
-              <span className="wp-title">{w.title}</span>
-              <Lineage w={w} />
-            </div>
-          ))}
+          {claimed.map((w) => {
+            // A run-claim is an AFK research run in flight — say so, instead of
+            // presenting a dead row that looks like a hung session.
+            const byRun = w.claimedBy?.startsWith('run_') ?? false
+            return (
+              <div className="wp wp-claimed" key={w.id}>
+                <span className="wp-pulse" aria-hidden="true" />
+                <span className="wp-type">{w.type}</span>
+                <span className="wp-title">{w.title}</span>
+                {byRun && <span className="wp-run-note">researching…</span>}
+                <Lineage w={w} />
+              </div>
+            )
+          })}
         </section>
       )}
 

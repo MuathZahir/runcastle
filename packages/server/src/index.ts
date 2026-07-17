@@ -5,12 +5,14 @@ import { ensureDataDir, loadConfig } from './config'
 import { createDb } from './db/client'
 import { runMigrations } from './db/migrate'
 import type { AppCtx } from './db/types'
+import { reconcileStaleSessions } from './launcher/reconcile'
 import { setRuntimeCtx } from './launcher/runtime'
 import mcpApp from './mcp/server'
 import { ptyRegistry } from './pty/registry'
 import { terminalWebSocket, tryUpgradeTerminal } from './pty/ws'
 import hooksApp from './routes/hooks'
 import { appRouter } from './trpc/router'
+import { reconcileStaleRuns } from './workflows/reconcile-runs'
 
 /**
  * Server boot (SPEC §3, owner A1). `buildApp` is a pure function of the DI
@@ -31,6 +33,16 @@ export function buildApp(ctx: AppCtx): Hono {
   setRuntimeCtx(ctx)
 
   app.get('/health', (c) => c.json({ ok: true }))
+
+  // tRPC replies are UTF-8 but @hono/trpc-server omits the charset, so
+  // CP1252-defaulting clients (Windows PowerShell 5.1 et al.) mis-decode
+  // em-dashes and non-Latin text. The hooks/MCP sub-apps declare it themselves.
+  app.use('/api/trpc/*', async (c, next) => {
+    await next()
+    if (c.res.headers.get('content-type') === 'application/json') {
+      c.res.headers.set('content-type', 'application/json; charset=utf-8')
+    }
+  })
 
   app.use(
     '/api/trpc/*',
@@ -55,7 +67,24 @@ async function main(): Promise<void> {
   const db = createDb(dbPath())
   runMigrations(db)
 
-  const app = buildApp({ db, config })
+  const ctx: AppCtx = { db, config }
+  const app = buildApp(ctx)
+
+  // Boot reconciliation: sessions left `launching`/`live` by a previous server
+  // process are dead by definition (the PTY registry is in-memory) — end them
+  // and release their waypoint claims so the guard + frontier recover. Sessions
+  // with a PTY still alive in the registry (`bun --hot` reload) are skipped.
+  const reconciled = reconcileStaleSessions(ctx)
+  if (reconciled.length > 0) {
+    console.log(`reconciled ${reconciled.length} stale session(s) from a previous server run`)
+  }
+
+  // Same recovery for run rows: a crashed server leaves them `running`, which
+  // would wedge the branch-claiming launcher guard forever.
+  const staleRuns = await reconcileStaleRuns(ctx)
+  if (staleRuns.length > 0) {
+    console.log(`reconciled ${staleRuns.length} stale run(s) from a previous server run`)
+  }
 
   // Embedded-terminal WebSocket (UI-SPEC §5/§6, W1). The `/ws/terminal/:sessionId`
   // upgrade is attempted BEFORE Hono's fetch fallthrough; every other path is

@@ -29,6 +29,17 @@ Read `feature.size` from step 0:
 - **`full`** → invoke `/runcastle:spec` (it writes `spec.md` and completes the `spec` phase); when it returns, invoke `/runcastle:tickets`.
 - **`collapsed`** → skip spec entirely; invoke `/runcastle:tickets` directly (it works from `decisions.md` + `map.md`).
 
+**Re-convergence** — you may be a fresh session continuing a converge that crashed
+or was closed mid-way (the feature is past G1 but has no tickets). Pick up from
+whatever already exists on disk:
+
+- If `docs/features/<slug>/spec.md` **already exists**: read it, do **not**
+  rewrite it, and proceed straight to `/runcastle:tickets`. (If the current
+  `phase` is still `spec`, call `complete_phase` for spec first — the spec work
+  is already done.)
+- If it does not exist (or the feature is `collapsed`), run the size branch
+  above as normal.
+
 Do not open a new session for these. They run here, on top of the compressed knowledge you just read.
 
 ## 2. Close — hand off to the human

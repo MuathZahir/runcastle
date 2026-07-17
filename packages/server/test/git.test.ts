@@ -1,4 +1,4 @@
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync, existsSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync, existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { Feature, Project } from '@runcastle/core'
@@ -13,12 +13,15 @@ import { listAfter } from '../src/services/events'
 import {
   __resetTestDriveState,
   activeTestDriveFeatureId,
+  cleanupResearchBranches,
   commitDocs,
   createFeatureBranch,
   detachWorktree,
   ensureTalkWorktree,
   mergeFeature,
+  mergeResearchBranch,
   reattachWorktree,
+  researchBranchName,
   testDrive,
 } from '../src/services/git'
 import { makeTestCtx } from './helpers/db'
@@ -417,6 +420,174 @@ describe('testDrive', () => {
     const stop = await testDrive(ctx, project, feature, 'stop')
     expect(stop.ok).toBe(true)
     expect(await currentBranch(g)).toBe('main')
+  })
+})
+
+describe('mergeResearchBranch', () => {
+  let ctx: AppCtx
+  let project: Project
+  let feature: Feature
+  let prevUserProfile: string | undefined
+  let prevHome: string | undefined
+
+  beforeEach(async () => {
+    const home = mkTmp('rc-home-')
+    prevUserProfile = process.env.USERPROFILE
+    prevHome = process.env.HOME
+    process.env.USERPROFILE = home
+    process.env.HOME = home
+
+    ctx = await makeTestCtx()
+    const repo = mkTmp('rc-research-')
+    await initRepo(repo)
+    project = seedProject(ctx, repo)
+    feature = seedFeature(ctx, project.id, { slug: 'rsr' })
+    await createFeatureBranch(project, feature.slug)
+  })
+
+  afterEach(() => {
+    process.env.USERPROFILE = prevUserProfile
+    process.env.HOME = prevHome
+  })
+
+  /** Create `branch` from `from` and land one commit on it via a temp worktree
+   *  (simulating sandcastle's `.sandcastle/worktrees/<branch>` checkout). */
+  async function commitOnTempBranch(
+    branch: string,
+    from: string,
+    file: string,
+    content: string,
+    opts: { keepWorktree?: boolean } = {},
+  ): Promise<{ tip: string; worktreePath: string }> {
+    const g = simpleGit(project.repoPath)
+    await g.raw(['branch', branch, from])
+    const worktreePath = join(mkTmp('rc-scwt-'), 'wt')
+    await g.raw(['worktree', 'add', worktreePath, branch])
+    writeFileSync(join(worktreePath, file), content)
+    const gw = simpleGit(worktreePath)
+    await gw.add([file])
+    await gw.commit(`research: ${file}`)
+    const tip = (await g.revparse([branch])).trim()
+    if (!opts.keepWorktree) await g.raw(['worktree', 'remove', worktreePath, '--force'])
+    return { tip, worktreePath }
+  }
+
+  it('clean case: merges into the talk worktree, deletes the temp branch, detaches its leftover worktree', async () => {
+    const talkWt = await ensureTalkWorktree(project, feature)
+    const temp = researchBranchName(feature.slug, 1, 'abc123')
+    // keepWorktree simulates a preserved (dirty) sandcastle worktree pinning temp
+    const { tip, worktreePath } = await commitOnTempBranch(temp, feature.branch, 'research.md', 'findings\n', {
+      keepWorktree: true,
+    })
+
+    const res = await mergeResearchBranch(project.repoPath, feature.branch, temp)
+    expect(res).toEqual({ ok: true })
+
+    // feature branch fast-forwarded to the research commit; talk worktree stayed
+    // attached the whole time and now shows the doc
+    const g = simpleGit(project.repoPath)
+    expect((await g.revparse([feature.branch])).trim()).toBe(tip)
+    expect(await currentBranch(simpleGit(talkWt))).toBe('feature/rsr')
+    expect(existsSync(join(talkWt, 'research.md'))).toBe(true)
+    // temp branch is gone; the worktree that pinned it was detached first
+    expect((await g.branchLocal()).all).not.toContain(temp)
+    expect(await currentBranch(simpleGit(worktreePath))).toBe('HEAD')
+  })
+
+  it('no-holder case: fast-forwards the ref with no checkout and leaves the main checkout alone', async () => {
+    // no talk worktree — nobody holds feature/rsr
+    const temp = researchBranchName(feature.slug, 2, 'def456')
+    const { tip } = await commitOnTempBranch(temp, feature.branch, 'notes.md', 'notes\n')
+
+    const res = await mergeResearchBranch(project.repoPath, feature.branch, temp)
+    expect(res).toEqual({ ok: true })
+
+    const g = simpleGit(project.repoPath)
+    expect((await g.revparse([feature.branch])).trim()).toBe(tip)
+    expect(await currentBranch(g)).toBe('main') // main checkout untouched
+    expect((await g.branchLocal()).all).not.toContain(temp)
+  })
+
+  it('conflict case: aborts the merge, keeps the temp branch, leaves the talk worktree clean', async () => {
+    const talkWt = await ensureTalkWorktree(project, feature)
+    const temp = researchBranchName(feature.slug, 3, 'ghi789')
+    // temp edits README from the ORIGINAL feature tip…
+    await commitOnTempBranch(temp, feature.branch, 'README.md', 'research-line\n')
+    // …and the feature branch moves mid-run: an HITL session edits the same line
+    writeFileSync(join(talkWt, 'README.md'), 'hitl-line\n')
+    const gw = simpleGit(talkWt)
+    await gw.add(['README.md'])
+    await gw.commit('docs: hitl edit mid-run')
+
+    const res = await mergeResearchBranch(project.repoPath, feature.branch, temp)
+    expect(res.ok).toBe(false)
+    expect(res.conflict).toBe(true)
+
+    // merge aborted: talk worktree clean, still on the feature branch, HITL edit intact
+    expect((await gw.raw(['status', '--porcelain'])).trim()).toBe('')
+    expect(await currentBranch(gw)).toBe('feature/rsr')
+    expect(readFileSync(join(talkWt, 'README.md'), 'utf8')).toBe('hitl-line\n')
+    // temp branch preserved for manual recovery
+    expect((await simpleGit(project.repoPath).branchLocal()).all).toContain(temp)
+  })
+
+  it('reports missing branches instead of throwing', async () => {
+    const missing = await mergeResearchBranch(project.repoPath, feature.branch, 'runcastle/research/rsr/9-none')
+    expect(missing.ok).toBe(false)
+    expect(missing.conflict).toBeUndefined()
+    expect(missing.error).toMatch(/not found/)
+
+    const temp = researchBranchName(feature.slug, 4, 'jkl012')
+    await simpleGit(project.repoPath).raw(['branch', temp, feature.branch])
+    const noFeature = await mergeResearchBranch(project.repoPath, 'feature/ghost', temp)
+    expect(noFeature.ok).toBe(false)
+    expect(noFeature.error).toMatch(/not found/)
+  })
+})
+
+describe('cleanupResearchBranches', () => {
+  let ctx: AppCtx
+  let project: Project
+
+  beforeEach(async () => {
+    ctx = await makeTestCtx()
+    const repo = mkTmp('rc-sweep-')
+    await initRepo(repo)
+    project = seedProject(ctx, repo)
+    await createFeatureBranch(project, 'swp')
+  })
+
+  it('deletes merged temp branches, keeps unmerged ones, never touches foreign branches', async () => {
+    const g = simpleGit(project.repoPath)
+    // merged: points at the feature branch tip (an ancestor by definition)
+    const merged = researchBranchName('swp', 1, 'aaa111')
+    await g.raw(['branch', merged, 'feature/swp'])
+    // unmerged: one commit ahead of the feature branch
+    const unmerged = researchBranchName('swp', 2, 'bbb222')
+    await g.raw(['branch', unmerged, 'feature/swp'])
+    const wt = join(mkTmp('rc-sweepwt-'), 'wt')
+    await g.raw(['worktree', 'add', wt, unmerged])
+    writeFileSync(join(wt, 'orphan.md'), 'never landed\n')
+    const gw = simpleGit(wt)
+    await gw.add(['orphan.md'])
+    await gw.commit('research: orphan')
+    await g.raw(['worktree', 'remove', wt, '--force'])
+    // a user's own branch under a similar-but-not-ours prefix must survive
+    await g.raw(['branch', 'research/user-branch', 'main'])
+
+    const result = await cleanupResearchBranches(project.repoPath)
+    expect(result.deleted).toEqual([merged])
+    expect(result.kept).toEqual([unmerged])
+
+    const all = (await g.branchLocal()).all
+    expect(all).not.toContain(merged)
+    expect(all).toContain(unmerged)
+    expect(all).toContain('research/user-branch')
+  })
+
+  it('is a best-effort no-op on a directory that is not a git repo', async () => {
+    const notRepo = mkTmp('rc-notrepo-')
+    await expect(cleanupResearchBranches(notRepo)).resolves.toEqual({ deleted: [], kept: [] })
   })
 })
 

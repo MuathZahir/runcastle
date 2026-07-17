@@ -62,6 +62,9 @@ export function TerminalView({ sessionId, wsBase }: TerminalViewProps) {
       sessionId,
       wsBase,
       onData: (bytes) => term.write(bytes),
+      // A reconnected socket replays the server's whole scrollback ring —
+      // clear the stale screen first so nothing is duplicated.
+      onReset: () => term.reset(),
       onStatus: (s) => {
         setStatus(s)
         // Sync the server PTY to our current grid once the socket is live (the
@@ -88,7 +91,17 @@ export function TerminalView({ sessionId, wsBase }: TerminalViewProps) {
     }
   }, [sessionId, wsBase])
 
-  const showOverlay = status === 'connecting' || status === 'reconnecting'
+  // Anything but `live` gets a full-width strip — the E2E run showed the socket
+  // can die silently, so the down state must be unmissable (and it doubles as
+  // the "your keystrokes are being dropped" notice).
+  const strip: { text: string; tone: 'dim' | 'down' } | null =
+    status === 'connecting'
+      ? { text: 'connecting…', tone: 'dim' }
+      : status === 'reconnecting'
+        ? { text: 'disconnected — reconnecting… keystrokes are dropped until the stream is back', tone: 'down' }
+        : status === 'ended'
+          ? { text: 'session stream ended — relaunch or end the session above', tone: 'dim' }
+          : null
 
   return (
     <div
@@ -101,23 +114,23 @@ export function TerminalView({ sessionId, wsBase }: TerminalViewProps) {
       }}
     >
       <div ref={containerRef} style={{ width: '100%', height: '100%' }} data-session-id={sessionId} />
-      {showOverlay && (
+      {strip && (
         <div
           style={{
             position: 'absolute',
-            top: 8,
-            right: 10,
+            top: 0,
+            left: 0,
+            right: 0,
             fontFamily: '"Cascadia Code", "JetBrains Mono", Consolas, monospace',
             fontSize: 11,
-            color: '#8B949E',
-            background: 'rgba(14,17,22,0.85)',
-            border: '1px solid #1A2028',
-            borderRadius: 4,
-            padding: '2px 8px',
+            padding: '4px 10px',
             pointerEvents: 'none',
+            color: strip.tone === 'down' ? '#F4594E' : '#8B949E',
+            background: strip.tone === 'down' ? 'rgba(244,89,78,0.10)' : 'rgba(14,17,22,0.85)',
+            borderBottom: `1px solid ${strip.tone === 'down' ? 'rgba(244,89,78,0.4)' : '#1A2028'}`,
           }}
         >
-          reconnecting…
+          {strip.text}
         </div>
       )}
     </div>

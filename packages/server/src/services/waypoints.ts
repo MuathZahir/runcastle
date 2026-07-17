@@ -57,9 +57,11 @@ export function getWaypoint(ctx: AppCtx, id: string): Waypoint {
 }
 
 /**
- * The waypoints currently claimed for a feature — i.e. its live HITL session(s).
- * `feature.workWaypoint` uses this to enforce SPEC §13.7's "only one live HITL
- * session per feature": Work is refused while any waypoint is claimed.
+ * The waypoints currently claimed for a feature (by an HITL session OR an AFK
+ * run). The MCP server uses this to find a session's assigned waypoint. NOTE:
+ * this is NOT the one-live-session guard — a research run's claim must not block
+ * HITL work (ADR-0001 §7 "serial HITL, parallel AFK"), so the launcher guards on
+ * live session ROWS (`activeSessionsForFeature`), never on claims.
  */
 export function claimedForFeature(ctx: AppCtx, featureId: string): Waypoint[] {
   return listByFeature(ctx, featureId).filter((w) => w.status === 'claimed')
@@ -163,6 +165,12 @@ function isFrontier(w: Waypoint, bySeq: Map<number, Waypoint>): boolean {
  * update matches only while the row is still `open`, so a second concurrent
  * claim changes zero rows and throws — double-claim fails. Refuses a waypoint
  * that is not on the frontier (claimed, terminal, or still blocked).
+ *
+ * `lastSessionId` is deliberately NOT touched here: a claim is only an attempt.
+ * It is promoted by `promoteLastSession` once the claiming session actually goes
+ * live (session-start hook), so a resume attempt that dies before starting never
+ * clobbers the previous good, resumable session id (E2E finding, severity 4).
+ * Run claimants (`run_*`) are never promoted — a run is not resumable.
  */
 export function claim(ctx: AppCtx, id: string, claimedBy: string): Waypoint {
   const wp = getWaypoint(ctx, id)
@@ -175,7 +183,7 @@ export function claim(ctx: AppCtx, id: string, claimedBy: string): Waypoint {
 
   ctx.db
     .update(waypoints)
-    .set({ status: 'claimed', claimedBy, lastSessionId: claimedBy })
+    .set({ status: 'claimed', claimedBy })
     .where(and(eq(waypoints.id, id), eq(waypoints.status, 'open')))
     .run()
 
@@ -190,6 +198,23 @@ export function claim(ctx: AppCtx, id: string, claimedBy: string): Waypoint {
     data: { id, claimedBy },
   })
   return updated
+}
+
+/**
+ * Promote `lastSessionId` on every waypoint claimed by `claimant` — called once
+ * the claiming session actually goes LIVE (session-start hook →
+ * `markSessionLive`). Only a session that really started is worth resuming, so a
+ * failed resume (pty died before the hook) leaves the previous good id in place.
+ * Mutation event note: this is part of the session-start mutation; its timeline
+ * event (`session.started`) is emitted by the hook receiver, mirroring the
+ * `sessions.ts` helpers' no-double-event convention.
+ */
+export function promoteLastSession(ctx: AppCtx, claimant: string): void {
+  ctx.db
+    .update(waypoints)
+    .set({ lastSessionId: claimant })
+    .where(and(eq(waypoints.claimedBy, claimant), eq(waypoints.status, 'claimed')))
+    .run()
 }
 
 /**
@@ -210,7 +235,9 @@ export function release(ctx: AppCtx, id: string): Waypoint {
   emit(ctx, wp.featureId, {
     type: 'waypoint.released',
     message: `waypoint ${wp.seq} released (back to open)`,
-    data: { id, lastSessionId: wp.claimedBy ?? wp.lastSessionId },
+    // The resumable id is `lastSessionId` (set only when a session went live) —
+    // NOT `claimedBy`, which may be a dead-on-arrival session or a run id.
+    data: { id, lastSessionId: wp.lastSessionId },
   })
   return getWaypoint(ctx, id)
 }

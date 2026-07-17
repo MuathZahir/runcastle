@@ -7,8 +7,15 @@ import { workWaypoint } from '../src/launcher/launcher'
 import { listAfter } from '../src/services/events'
 import { getRunRow } from '../src/services/repo'
 import { frontier, getWaypoint, storeWaypoints } from '../src/services/waypoints'
+import type { AgentStreamEvent } from '@ai-hero/sandcastle'
 import type { ResearchDeps, ResearchOutcome } from '../src/workflows/research'
-import { research, researchDocRel, researchRun, waypointSlug } from '../src/workflows/research'
+import {
+  createResearchStreamThrottle,
+  research,
+  researchDocRel,
+  researchRun,
+  waypointSlug,
+} from '../src/workflows/research'
 import { workflowRegistry } from '../src/workflows/registry'
 import { cancelRun, startRun } from '../src/workflows/runner'
 import { makeTestCtx } from './helpers/db'
@@ -137,6 +144,43 @@ describe('researchRun — control flow (stubbed sandcastle)', () => {
   })
 })
 
+// --------------------------------------------------------------------------
+// Stream events — research runs must emit research.*, never burn.* (E2E fix)
+// --------------------------------------------------------------------------
+
+describe('createResearchStreamThrottle', () => {
+  function textEvent(message: string, iteration = 0): AgentStreamEvent {
+    return { type: 'text', message, iteration, timestamp: new Date() }
+  }
+  function toolEvent(name: string, formattedArgs: string, iteration = 0): AgentStreamEvent {
+    return { type: 'toolCall', name, formattedArgs, iteration, timestamp: new Date() }
+  }
+
+  it('renames burn.* stream types to research.* with identical payload shapes', () => {
+    const emitted: { type: string; message: string; data?: unknown }[] = []
+    const th = createResearchStreamThrottle((e) => emitted.push(e), { now: () => 0 })
+
+    th.onEvent(textEvent('reading the auth flow', 2))
+    th.onEvent(toolEvent('WebSearch', '{"query":"oauth refresh"}', 2))
+    th.flush()
+
+    expect(emitted.map((e) => e.type)).toEqual(['research.text', 'research.tool'])
+    // payload shapes stay byte-identical to the burner's (only `type` differs)
+    expect(emitted[0]).toEqual({
+      type: 'research.text',
+      message: 'reading the auth flow',
+      data: { iteration: 2 },
+    })
+    expect(emitted[1]).toEqual({
+      type: 'research.tool',
+      message: 'WebSearch {"query":"oauth refresh"}',
+      data: { name: 'WebSearch', args: '{"query":"oauth refresh"}', iteration: 2 },
+    })
+    // nothing burner-named leaks into a research timeline
+    expect(emitted.some((e) => e.type.startsWith('burn.'))).toBe(false)
+  })
+})
+
 describe('research doc paths', () => {
   it('slugifies the waypoint title with its seq prefix', () => {
     expect(waypointSlug({ seq: 3, title: 'How does OAuth 2 refresh?' })).toBe('3-how-does-oauth-2-refresh')
@@ -221,7 +265,9 @@ describe('research run through the runner (stubbed sandcastle)', () => {
     const back = getWaypoint(ctx, w.id)
     expect(back.status).toBe('open')
     expect(back.claimedBy).toBeUndefined()
-    expect(back.lastSessionId).toBe(runId) // remembered for Resume
+    // a run is not a resumable conversation — it must never become the resume
+    // pointer (lastSessionId is only promoted when an HITL session goes live)
+    expect(back.lastSessionId).toBeUndefined()
     expect(frontier(ctx, feature.id).map((f) => f.id)).toContain(w.id)
     expect(getRunRow(ctx, runId).status).toBe('failed')
   })

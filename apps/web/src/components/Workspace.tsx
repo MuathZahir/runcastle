@@ -1,6 +1,7 @@
-import { Fragment } from 'react'
-import type { Phase } from '@runcastle/core'
+import { Fragment, useEffect, useRef, useState } from 'react'
+import type { EventRow, Phase } from '@runcastle/core'
 import { trpc } from '../trpc'
+import { useEventLog } from '../lib/events'
 import { useToast } from '../lib/toast'
 import { Button, DimLine, PhaseTag } from '../ui'
 import type { FeatureFull } from '../lib/api'
@@ -47,6 +48,7 @@ export function Workspace({
   const utils = trpc.useUtils()
   const toast = useToast()
   const q = trpc.feature.get.useQuery({ id: featureId }, { refetchInterval: 1500 })
+  const resumeFailed = useResumeFailedAlert(featureId)
 
   const invalidate = () => {
     void utils.feature.get.invalidate({ id: featureId })
@@ -87,7 +89,14 @@ export function Workspace({
       </section>
     )
   }
-  if (q.error || !q.data) {
+  // Hard error ONLY when there was never data (first load failed). When a
+  // refetch fails AFTER data exists (server restart mid-session), TanStack Query
+  // keeps the last-good `data` alongside `error` — keep rendering it so the
+  // embedded terminal stays MOUNTED (its own reconnect strip + scrollback replay
+  // depend on surviving the outage) and show a slim banner instead. The 1.5s
+  // refetchInterval keeps polling through the error, so the banner self-clears
+  // the moment the server is back.
+  if (!q.data) {
     return (
       <section className="workspace">
         <div className="ws-body">
@@ -96,6 +105,7 @@ export function Workspace({
       </section>
     )
   }
+  const offline = !!q.error
 
   const full = q.data
   const feature = full.feature
@@ -205,6 +215,20 @@ export function Workspace({
         </div>
       ) : (
         <NextStepBar ns={ns} guidance={guidance} busy={busy} onAction={runAction} />
+      )}
+
+      {offline && (
+        <div className="ws-banner is-offline" role="status">
+          <span className="ws-banner-tag">OFFLINE</span>
+          <span>server unreachable — retrying…</span>
+        </div>
+      )}
+
+      {resumeFailed.message && (
+        <div className="ws-banner" role="alert" onClick={resumeFailed.dismiss} title="dismiss">
+          <span className="ws-banner-tag">RESUME FAILED</span>
+          <span>{resumeFailed.message}</span>
+        </div>
       )}
 
       <div className="ws-body">
@@ -325,6 +349,44 @@ function NextStepBar({
       </div>
     </div>
   )
+}
+
+/**
+ * Surface `session.resume_failed` events prominently (a Resume attempt died
+ * before going live — previously just a silent flicker-and-relabel). Watches
+ * the feature's event log and raises a banner for ~8s on each NEW failure;
+ * history replayed on mount is skipped so stale failures don't re-alert. The
+ * event also stays in the inspector's activity feed permanently.
+ */
+function useResumeFailedAlert(featureId: string): { message: string | null; dismiss: () => void } {
+  const events = useEventLog(featureId)
+  const [message, setMessage] = useState<string | null>(null)
+  // null until the first batch lands — everything in that batch is history.
+  const lastSeenRef = useRef<number | null>(null)
+
+  useEffect(() => {
+    if (events.length === 0) return
+    const maxId = events[events.length - 1].id
+    if (lastSeenRef.current === null) {
+      lastSeenRef.current = maxId
+      return
+    }
+    const cutoff = lastSeenRef.current
+    lastSeenRef.current = maxId
+    const failed = events.filter(
+      (e: EventRow) => e.id > cutoff && e.type === 'session.resume_failed',
+    )
+    const last = failed[failed.length - 1]
+    if (last) setMessage(last.message || 'session resume failed — relaunch to continue')
+  }, [events])
+
+  useEffect(() => {
+    if (!message) return
+    const t = setTimeout(() => setMessage(null), 8000)
+    return () => clearTimeout(t)
+  }, [message])
+
+  return { message, dismiss: () => setMessage(null) }
 }
 
 function copyText(text: string, toast: { push: (m: string, k?: 'error' | 'info' | 'success') => void }): void {
