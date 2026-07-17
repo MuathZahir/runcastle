@@ -25,6 +25,17 @@ import { releaseForSession } from '../services/waypoints'
  */
 const hooks = new Hono()
 
+// Declare the encoding of every JSON response explicitly. The bytes are always
+// UTF-8 (JS strings → UTF-8 on serialize), but a bare `application/json` lets
+// Latin-1/CP1252-defaulting HTTP clients (e.g. Windows PowerShell 5.1) misdecode
+// em-dashes into `â€"` mojibake — the E2E's observed symptom. Cheap insurance.
+hooks.use('*', async (c, next) => {
+  await next()
+  if (c.res.headers.get('content-type') === 'application/json') {
+    c.res.headers.set('content-type', 'application/json; charset=utf-8')
+  }
+})
+
 interface HookBody {
   event?: string
   sessionId?: string

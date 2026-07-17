@@ -388,6 +388,15 @@ export function buildMcpServer(): McpServer {
 
 const mcp = new Hono()
 
+// Declare UTF-8 on JSON responses (see routes/hooks.ts — bare `application/json`
+// invites CP1252 misdecoding by charset-less HTTP clients).
+mcp.use('*', async (c, next) => {
+  await next()
+  if (c.res.headers.get('content-type') === 'application/json') {
+    c.res.headers.set('content-type', 'application/json; charset=utf-8')
+  }
+})
+
 mcp.all('*', async (c) => {
   const server = buildMcpServer()
   const transport = new StreamableHTTPTransport({ enableJsonResponse: true })
