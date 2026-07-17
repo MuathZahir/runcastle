@@ -8,6 +8,7 @@ import type { RunOptions, RunResult } from '@ai-hero/sandcastle'
 import { run } from '@ai-hero/sandcastle'
 import { docker } from '@ai-hero/sandcastle/sandboxes/docker'
 import { noSandbox } from '@ai-hero/sandcastle/sandboxes/no-sandbox'
+import type { StreamThrottle, ThrottledEvent } from './ticket-burner'
 import {
   buildBurnAgent,
   buildDocsDigest,
@@ -117,6 +118,22 @@ function firstLine(s: string): string {
   return (i === -1 ? s : s.slice(0, i)).trim()
 }
 
+/**
+ * Stream throttle for research runs: identical batching + payload shapes to the
+ * burner's `createStreamThrottle`, but the emitted event types are `research.*`
+ * (`research.text`, `research.tool`) instead of `burn.*`, so a research
+ * timeline never carries ticket-burner naming.
+ */
+export function createResearchStreamThrottle(
+  emit: (e: ThrottledEvent) => void,
+  opts: Parameters<typeof createStreamThrottle>[1] = {},
+): StreamThrottle {
+  return createStreamThrottle(
+    (e) => emit({ ...e, type: e.type.replace(/^burn\./, 'research.') }),
+    opts,
+  )
+}
+
 // ---------------------------------------------------------------------------
 // Pure unit — prompt template rendering
 // ---------------------------------------------------------------------------
@@ -211,7 +228,7 @@ async function realExecuteResearchRun(
 
   mkdirSync(logsDir(), { recursive: true })
   const logFilePath = join(logsDir(), `research-${feature.id}-${waypoint.seq}.log`)
-  const throttle = createStreamThrottle((e) => ctx.emitEvent(e))
+  const throttle = createResearchStreamThrottle((e) => ctx.emitEvent(e))
 
   const runOptions: RunOptions = {
     agent: buildBurnAgent(config, token),
