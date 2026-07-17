@@ -609,6 +609,26 @@ export function handlePtyExit(
   })
 }
 
+/**
+ * CC nesting markers leaked from a parent Claude Code session (the server is
+ * routinely started from inside one during dogfooding). `CLAUDE_CODE_CHILD_SESSION`
+ * alone makes CC ≥ 2.1.211 skip writing the session transcript entirely —
+ * silently breaking `--resume` — and the rest cause related child-session
+ * artifacts (bridge frames, inherited session ids/effort). Scrubbed so embedded
+ * sessions are first-class no matter how the server was launched. Window mode
+ * needs no scrub: `wt.exe -w 0` tabs inherit the WT host's env, not ours.
+ */
+const CC_NESTING_ENV = [
+  'CLAUDE_CODE_CHILD_SESSION',
+  'CLAUDECODE',
+  'CLAUDE_CODE_SESSION_ID',
+  'CLAUDE_CODE_BRIDGE_SESSION_ID',
+  'CLAUDE_CODE_ENTRYPOINT',
+  'CLAUDE_CODE_EXECPATH',
+  'CLAUDE_EFFORT',
+  'CLAUDE_CODE_SSE_PORT',
+] as const
+
 function spawnEmbeddedPty(
   ctx: AppCtx,
   feature: Feature,
@@ -619,11 +639,12 @@ function spawnEmbeddedPty(
   meta: SpawnMeta = {},
 ): void {
   const { file, args } = claudeSpawnTarget(claudeArgs)
-  const env = {
+  const env: Record<string, string | undefined> = {
     ...process.env,
     RUNCASTLE_SESSION_ID: session.id,
     RUNCASTLE_SERVER_URL: serverUrl,
   }
+  for (const key of CC_NESTING_ENV) delete env[key]
   try {
     const entry = ptyRegistry().create({
       sessionId: session.id,

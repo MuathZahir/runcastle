@@ -33,6 +33,16 @@ export function buildApp(ctx: AppCtx): Hono {
 
   app.get('/health', (c) => c.json({ ok: true }))
 
+  // tRPC replies are UTF-8 but @hono/trpc-server omits the charset, so
+  // CP1252-defaulting clients (Windows PowerShell 5.1 et al.) mis-decode
+  // em-dashes and non-Latin text. The hooks/MCP sub-apps declare it themselves.
+  app.use('/api/trpc/*', async (c, next) => {
+    await next()
+    if (c.res.headers.get('content-type') === 'application/json') {
+      c.res.headers.set('content-type', 'application/json; charset=utf-8')
+    }
+  })
+
   app.use(
     '/api/trpc/*',
     trpcServer({
