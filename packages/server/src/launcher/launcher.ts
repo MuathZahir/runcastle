@@ -20,7 +20,7 @@ import {
   getWaypoint,
   releaseForSession,
 } from '../services/waypoints'
-import { startRun } from '../workflows/runner'
+import { startRun, workflowClaimsFeatureBranch } from '../workflows/runner'
 import { serverUrlFor, writeSessionArtifacts } from './artifacts'
 import {
   activeSessionsForFeature,
@@ -238,12 +238,11 @@ export function resolvePluginDir(): string {
 
 /**
  * The feature's currently-running AFK run, if any. Spawning an HITL terminal
- * during a run is refused because the runner detaches the talk worktree for the
- * run's whole duration (the feature branch must be free for the sandbox
- * worktree) — a session spawned mid-run would land on a detached HEAD and its
- * docs commits would be orphaned when the finalizer reattaches the branch. The
- * refusal message is honest about this (E2E finding 5): it names the run, and
- * run-claims themselves never block anything.
+ * is refused only while a BRANCH-CLAIMING run (e.g. ticket-burner) is in
+ * flight: the runner detaches the talk worktree for those, so a session
+ * spawned mid-run would land on a detached HEAD and orphan its docs commits.
+ * Research runs work on temp branches (ADR-0001 §7 "parallel AFK") and never
+ * block terminals; run-claims themselves never block anything.
  */
 function activeRunFor(ctx: AppCtx, featureId: string): Run | null {
   const row = ctx.db
@@ -272,9 +271,9 @@ function assertSpawnable(ctx: AppCtx, feature: Feature, excludeSessionId?: strin
     )
   }
   const running = activeRunFor(ctx, feature.id)
-  if (running) {
+  if (running && workflowClaimsFeatureBranch(running.workflow)) {
     throw new GateError(
-      `a ${running.workflow} run is in progress on ${feature.slug} — terminals are available when it finishes`,
+      `a ${running.workflow} run is in progress on ${feature.slug} — it holds the feature branch; terminals are available when it finishes`,
     )
   }
 }
@@ -535,7 +534,7 @@ async function reconverge(
     )
   }
   const running = activeRunFor(ctx, feature.id)
-  if (running) {
+  if (running && workflowClaimsFeatureBranch(running.workflow)) {
     throw new GateError(
       `a ${running.workflow} run is in progress on ${feature.slug} — converge when it finishes`,
     )

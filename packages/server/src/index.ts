@@ -12,6 +12,7 @@ import { ptyRegistry } from './pty/registry'
 import { terminalWebSocket, tryUpgradeTerminal } from './pty/ws'
 import hooksApp from './routes/hooks'
 import { appRouter } from './trpc/router'
+import { reconcileStaleRuns } from './workflows/reconcile-runs'
 
 /**
  * Server boot (SPEC §3, owner A1). `buildApp` is a pure function of the DI
@@ -76,6 +77,13 @@ async function main(): Promise<void> {
   const reconciled = reconcileStaleSessions(ctx)
   if (reconciled.length > 0) {
     console.log(`reconciled ${reconciled.length} stale session(s) from a previous server run`)
+  }
+
+  // Same recovery for run rows: a crashed server leaves them `running`, which
+  // would wedge the branch-claiming launcher guard forever.
+  const staleRuns = await reconcileStaleRuns(ctx)
+  if (staleRuns.length > 0) {
+    console.log(`reconciled ${staleRuns.length} stale run(s) from a previous server run`)
   }
 
   // Embedded-terminal WebSocket (UI-SPEC §5/§6, W1). The `/ws/terminal/:sessionId`

@@ -159,10 +159,10 @@ describe('one-live-session guard — sessions and runs, never claims', () => {
     if ('sessionId' in res) cleanup.push(sessionDir(res.sessionId))
   })
 
-  it('an ACTIVE run refuses HITL spawn with an honest message (worktree is detached)', async () => {
+  it('an ACTIVE branch-claiming run refuses HITL spawn with an honest message', async () => {
     const feature = await mappedFeature('busy')
     const [a] = storeWaypoints(ctx, feature.id, [wp('a')])
-    seedRunningRun(ctx, feature.id, 'research')
+    seedRunningRun(ctx, feature.id, 'ticket-burner')
 
     const err: unknown = await workWaypoint(
       ctx,
@@ -175,10 +175,21 @@ describe('one-live-session guard — sessions and runs, never claims', () => {
       (e: unknown) => e,
     )
     const message = err instanceof Error ? err.message : String(err)
-    expect(message).toMatch(/research run is in progress/)
+    expect(message).toMatch(/ticket-burner run is in progress/)
     expect(message).toMatch(/terminals are available when it finishes/)
     // and it never lies about a "waypoint session" being live
     expect(message).not.toMatch(/already live/)
+  })
+
+  it('an ACTIVE research run does NOT block HITL spawn (parallel AFK, ADR-0001 §7)', async () => {
+    const feature = await mappedFeature('parallel')
+    const [a, b] = storeWaypoints(ctx, feature.id, [wp('a'), wp('b')])
+    claim(ctx, a.id, 'run_live')
+    seedRunningRun(ctx, feature.id, 'research')
+
+    const res = await workWaypoint(ctx, { featureId: feature.id, waypointId: b.id }, { spawn: false })
+    expect('sessionId' in res && res.sessionId).toBeTruthy()
+    if ('sessionId' in res) cleanup.push(sessionDir(res.sessionId))
   })
 
   it('resolving a waypoint while its terminal is still open cannot sneak in a second session', async () => {
