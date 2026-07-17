@@ -109,22 +109,66 @@ export function markSessionLive(
  * SessionStart hook, so it cannot swallow this input). Best-effort by design:
  * no PTY entry (window mode / tests) or an exited PTY is a silent no-op, and the
  * worst failure mode is the line sitting unsubmitted in the input box.
+ *
+ * Submission is a SEPARATE `\r` keystroke, written a beat after the text
+ * (E2E regression: text+`\r` in ONE write left the line sitting unsubmitted in
+ * the input box — claude's TUI treats a carriage return arriving in the same
+ * chunk as pasted text, not as the Enter key; it must land as its own
+ * keystroke after the text has settled).
  */
-const CONVERGE_KICKOFF_DELAY_MS = 1500
-const CONVERGE_KICKOFF_LINE =
+export const CONVERGE_KICKOFF_DELAY_MS = 1500
+export const CONVERGE_KICKOFF_SUBMIT_DELAY_MS = 350
+export const CONVERGE_KICKOFF_LINE =
   'Proceed with your task: invoke /runcastle:converge and drive spec then tickets ' +
   'from map.md + decisions.md, per your system prompt.'
+
+/**
+ * The two-write kickoff sequence (exported seam, unit-tested): write the prompt
+ * TEXT alone, then — after `submitDelayMs` — write `\r` as its own keystroke.
+ * `alive()` is consulted before each write so a PTY that exits between the two
+ * never gets a stray carriage return; `onSubmitted` fires only after the `\r`
+ * actually went out (the launcher emits `session.kickoff` there — the event
+ * means "submitted", not "typed").
+ */
+export function writeKickoffSequence(
+  io: {
+    write: (data: string) => void
+    alive: () => boolean
+    onSubmitted?: () => void
+  },
+  submitDelayMs: number = CONVERGE_KICKOFF_SUBMIT_DELAY_MS,
+): void {
+  if (!io.alive()) return
+  io.write(CONVERGE_KICKOFF_LINE)
+  const submit = setTimeout(() => {
+    try {
+      if (!io.alive()) return
+      io.write('\r')
+      io.onSubmitted?.()
+    } catch {
+      // best-effort — a PTY that died between the two writes just misses Enter
+    }
+  }, submitDelayMs)
+  // Never hold the process open for a kickoff (tests, shutdown).
+  submit.unref?.()
+}
 
 function scheduleConvergeKickoff(ctx: AppCtx, session: SessionRow): void {
   const timer = setTimeout(() => {
     try {
-      const entry = ptyRegistry().get(session.id)
-      if (!entry || entry.exited) return
-      entry.pty.write(`${CONVERGE_KICKOFF_LINE}\r`)
-      emit(ctx, session.featureId, {
-        type: 'session.kickoff',
-        message: 'converge session kicked off automatically',
-        data: { sessionId: session.id },
+      writeKickoffSequence({
+        write: (data) => ptyRegistry().get(session.id)?.pty.write(data),
+        alive: () => {
+          const entry = ptyRegistry().get(session.id)
+          return !!entry && !entry.exited
+        },
+        onSubmitted: () => {
+          emit(ctx, session.featureId, {
+            type: 'session.kickoff',
+            message: 'converge session kicked off automatically',
+            data: { sessionId: session.id },
+          })
+        },
       })
     } catch {
       // best-effort — a failed kickoff just leaves the user to type
