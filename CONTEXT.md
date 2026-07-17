@@ -48,7 +48,7 @@ An opinionated programming system layered on Claude Code — the IDE to Claude C
 
 12. **M1 tracer bullet: one feature, full pipeline, minimal UI.** One repo, one feature at a time: create session → grilling terminal opens with injected context + vendored skills → spec/tickets land in app store → click "burn" → sandcastle runs implement+review per ticket on the feature branch → test-drive button → merge. Ugly UI, single project, no forking, no parallel features. M2 multiplies what M1 proves (parallelism).
 
-13. **Stack:** Bun + Hono + tRPC (live updates via subscription/SSE) + Vite/React + Drizzle + local SQLite. Sandcastle called directly as a TS lib. Terminal spawning via `wt.exe` (Windows first).
+13. **Stack:** Bun + Hono + tRPC (live updates via subscription/SSE) + Vite/React + Drizzle + local SQLite. Sandcastle called directly as a TS lib. Terminals are server-owned embedded PTYs streamed to the in-app xterm view — cross-platform (Windows/macOS/Linux); the legacy `wt.exe` window mode is removed.
 
 14. **Name: runcastle.** Takes the runcastle.dev domain and brand. The existing registry (castellan repo) becomes the product's marketplace section later.
 
@@ -64,7 +64,7 @@ An opinionated programming system layered on Claude Code — the IDE to Claude C
 - Sandcastle auth for AFK agents (`claude setup-token` → `CLAUDE_CODE_OAUTH_TOKEN` in `.sandcastle/.env`) — setup prerequisite.
 - Automated testing workflow (browser agents) to shrink human click #2.
 - Fork-a-feature mechanics (new session seeded from parent knowledge; CC `--fork-session` where applicable).
-- Multi-project registry (M2+; M1 is single-project).
+- Multi-project — in flight via the publish wayfinder map ([GH #12](https://github.com/MuathZahir/runcastle/issues/12)): full parallel multi-project UI.
 - Full-fat worktrees for side-by-side dev servers (only if the guarded switch proves annoying).
 - Registry integration (runcastle marketplace inside the app).
 - Live observation depth for AFK runs in M1: status + final diff + logs minimum; richer streaming later.
