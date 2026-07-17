@@ -2,25 +2,32 @@ import { spawn } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import type { Feature, Project, SessionKind, SessionRow, Waypoint } from '@runcastle/core'
+import type { Feature, Project, Run, SessionKind, SessionRow, Waypoint } from '@runcastle/core'
 import { worktreeDir } from '@runcastle/core/paths'
 import { nextGate, nextPhase } from '@runcastle/core'
+import { and, eq } from 'drizzle-orm'
 import type { AppCtx } from '../db/types'
+import { runs } from '../db/schema'
 import { GateError, isNotImplemented } from '../errors'
 import { ptyRegistry } from '../pty/registry'
 import { emit } from '../services/events'
 import { checkGate, overrideGate } from '../services/gates'
 import * as git from '../services/git'
-import { getFeatureRow, requireProject, setPhase } from '../services/repo'
+import { getFeatureRow, requireProject, rowToRun, setPhase } from '../services/repo'
+import { listByFeature as listTicketsByFeature } from '../services/tickets'
 import {
   claim as claimWaypoint,
-  claimedForFeature,
   getWaypoint,
   releaseForSession,
 } from '../services/waypoints'
 import { startRun } from '../workflows/runner'
 import { serverUrlFor, writeSessionArtifacts } from './artifacts'
-import { createSessionRow, getSessionRow, markSessionEnded } from './sessions'
+import {
+  activeSessionsForFeature,
+  createSessionRow,
+  getSessionRow,
+  markSessionEnded,
+} from './sessions'
 
 // Re-exported so the `feature.endSession` router (W2) imports the real,
 // PTY-killing service from `../../launcher/launcher` per its coordination note —
@@ -90,6 +97,12 @@ export interface BuildLaunchInput {
   systemPromptPath: string
   permissionMode?: string
   /**
+   * The model every embedded/window session runs (`--model`), from
+   * `RuncastleConfig.model` — sessions must honour the configured model, never
+   * the operator's global CLI default (E2E finding: model flag was missing).
+   */
+  model: string
+  /**
    * The Claude Code session id (`ccSessionId`) to `--resume`. Set when re-working
    * a waypoint whose previous session was auto-released so the operator picks up
    * the same conversation (SPEC §13.6 "Resume"). `--resume` is scoped to the
@@ -139,6 +152,8 @@ export function buildClaudeArgs(input: BuildLaunchInput): string[] {
     input.systemPromptPath,
     '--permission-mode',
     permissionMode,
+    '--model',
+    input.model,
   ]
 }
 
@@ -221,6 +236,49 @@ export function resolvePluginDir(): string {
   return join(root, rel)
 }
 
+/**
+ * The feature's currently-running AFK run, if any. Spawning an HITL terminal
+ * during a run is refused because the runner detaches the talk worktree for the
+ * run's whole duration (the feature branch must be free for the sandbox
+ * worktree) — a session spawned mid-run would land on a detached HEAD and its
+ * docs commits would be orphaned when the finalizer reattaches the branch. The
+ * refusal message is honest about this (E2E finding 5): it names the run, and
+ * run-claims themselves never block anything.
+ */
+function activeRunFor(ctx: AppCtx, featureId: string): Run | null {
+  const row = ctx.db
+    .select()
+    .from(runs)
+    .where(and(eq(runs.featureId, featureId), eq(runs.status, 'running')))
+    .limit(1)
+    .get()
+  return row ? rowToRun(row) : null
+}
+
+/**
+ * Throw when an HITL session must not spawn on this feature right now:
+ * - another session row is `launching`/`live` (one live HITL session per feature
+ *   — one talk worktree, git forbids two checkouts of one branch). Guarding on
+ *   session ROWS, not waypoint claims, means resolving a waypoint while its
+ *   terminal is still open can no longer sneak a second live session in.
+ * - an AFK run is in progress (see `activeRunFor` — worktree detached).
+ * `excludeSessionId` skips the caller's own just-created row.
+ */
+function assertSpawnable(ctx: AppCtx, feature: Feature, excludeSessionId?: string): void {
+  const live = activeSessionsForFeature(ctx, feature.id).filter((s) => s.id !== excludeSessionId)
+  if (live.length > 0) {
+    throw new GateError(
+      `a ${live[0].kind} session is already live for ${feature.slug} — only one terminal per feature; end or resume it first`,
+    )
+  }
+  const running = activeRunFor(ctx, feature.id)
+  if (running) {
+    throw new GateError(
+      `a ${running.workflow} run is in progress on ${feature.slug} — terminals are available when it finishes`,
+    )
+  }
+}
+
 /** Ensure the talk worktree, tolerating B2's stub (mirrors features.createFeature). */
 async function ensureWorktree(
   ctx: AppCtx,
@@ -258,30 +316,33 @@ export async function launchSession(
     worktreePath,
   })
 
-  // A waypoint session claims its waypoint BEFORE spawning (SPEC §13.2). Capture
-  // the prior session's cc id first (claim overwrites `lastSessionId`) so a
-  // released-then-reworked waypoint resumes the same conversation. A failed claim
-  // (no longer on the frontier) ends the just-created session row and rethrows.
+  // A waypoint session claims its waypoint BEFORE spawning (SPEC §13.2). The
+  // prior LIVE session's cc id (`lastSessionId` — promoted only when a session
+  // actually started) is captured so a released-then-reworked waypoint resumes
+  // the same conversation. A failed claim (no longer on the frontier) ends the
+  // just-created session row and rethrows.
   let waypoint: Waypoint | undefined
   let resumeSessionId: string | undefined
+  let resumeUnavailableFrom: string | undefined
   if (input.waypointId) {
     const before = getWaypoint(ctx, input.waypointId)
     if (before.lastSessionId) {
       resumeSessionId = getSessionRow(ctx, before.lastSessionId)?.ccSessionId ?? undefined
+      // No cc id recorded for the remembered session → nothing the CLI could
+      // `--resume`. Spawn fresh WITHOUT the flag (a bogus --resume makes claude
+      // exit with "No conversation found") and say so on the timeline.
+      if (!resumeSessionId) resumeUnavailableFrom = before.lastSessionId
     }
     try {
-      // Re-check "only one live HITL session per feature" here, synchronously
-      // adjacent to the claim itself (no `await` between the two). `workWaypoint`
-      // already checks this up front, but that check runs before this function's
-      // `await ensureWorktree` above — leaving a window where two concurrent Work
-      // calls on two DIFFERENT waypoints of the same feature both pass it before
-      // either claims. This recheck is the race-free, authoritative gate.
-      const live = claimedForFeature(ctx, feature.id)
-      if (live.length > 0) {
-        throw new GateError(
-          `a waypoint session is already live for ${feature.slug} (waypoint ${live[0].seq}) — only one at a time`,
-        )
-      }
+      // Re-check the one-live-session guard here, synchronously adjacent to the
+      // claim itself (no `await` between the two). `workWaypoint` already checks
+      // up front, but that check runs before this function's `await
+      // ensureWorktree` above — leaving a window where two concurrent Work calls
+      // on two DIFFERENT waypoints of the same feature both pass it before
+      // either claims. This recheck is the race-free, authoritative gate. It
+      // guards on live session ROWS (not claims), so a resolved-but-still-open
+      // terminal blocks a second spawn too (E2E finding 8).
+      assertSpawnable(ctx, feature, session.id)
       waypoint = claimWaypoint(ctx, input.waypointId, session.id)
     } catch (e) {
       markSessionEnded(ctx, session.id)
@@ -294,6 +355,14 @@ export async function launchSession(
     message: `launching ${input.kind} session`,
     data: { sessionId: session.id, kind: input.kind, worktreePath, waypointId: waypoint?.id },
   })
+
+  if (waypoint && resumeUnavailableFrom) {
+    emit(ctx, feature.id, {
+      type: 'session.resume_unavailable',
+      message: `waypoint ${waypoint.seq} has no resumable conversation — starting fresh`,
+      data: { sessionId: session.id, waypointId: waypoint.id, lastSessionId: resumeUnavailableFrom },
+    })
+  }
 
   const artifacts = await writeSessionArtifacts({
     session,
@@ -313,6 +382,7 @@ export async function launchSession(
     settingsPath: artifacts.settingsPath,
     mcpConfigPath: artifacts.mcpConfigPath,
     systemPromptPath: artifacts.systemPromptPath,
+    model: ctx.config.model,
     resumeSessionId,
   }
 
@@ -330,7 +400,10 @@ export async function launchSession(
   if (ctx.config.launchMode === 'window') {
     spawnTerminal(ctx, feature.id, session.id, buildLaunchCommand(buildInput))
   } else {
-    spawnEmbeddedPty(ctx, feature, session, worktreePath, serverUrl, buildClaudeArgs(buildInput))
+    spawnEmbeddedPty(ctx, feature, session, worktreePath, serverUrl, buildClaudeArgs(buildInput), {
+      waypoint,
+      resumeSessionId,
+    })
   }
   return { sessionId: session.id }
 }
@@ -372,12 +445,11 @@ export async function workWaypoint(
     return { runId }
   }
 
-  const live = claimedForFeature(ctx, feature.id)
-  if (live.length > 0) {
-    throw new GateError(
-      `a waypoint session is already live for ${feature.slug} (waypoint ${live[0].seq}) — only one at a time`,
-    )
-  }
+  // Fast-fail guard on live HITL SESSION rows + active runs (never on waypoint
+  // claims — a parallel research run's claim must not block HITL work, and a
+  // resolved claim must not unblock a second terminal while the first is live).
+  // The race-free authoritative recheck runs inside `launchSession`.
+  assertSpawnable(ctx, feature)
 
   return launchSession(ctx, { featureId: feature.id, kind: 'waypoint', waypointId: wp.id }, opts)
 }
@@ -407,7 +479,7 @@ export async function converge(
     throw new GateError(`feature ${feature.slug} is not mapped — convergence is only for mapped features`)
   }
   if (feature.phase !== 'ideation') {
-    throw new GateError(`converge runs from ideation — feature ${feature.slug} is already at ${feature.phase}`)
+    return reconverge(ctx, feature, opts)
   }
 
   const gate = nextGate(feature)
@@ -431,6 +503,53 @@ export async function converge(
 }
 
 /**
+ * RE-convergence (E2E finding 3): a converge session that crashed or was closed
+ * mid-way leaves the feature stranded — G1 was already crossed (phase `spec`, or
+ * `tickets` for a collapsed feature) but no tickets were emitted, and the
+ * ideation-only refusal made that state unrecoverable. Allow a fresh
+ * kind=converge session exactly in that window: mapped feature at its post-G1,
+ * pre-tickets phase with ZERO tickets and no live session. The new session
+ * continues from whatever exists on disk (an existing spec.md is read, not
+ * rewritten — see the converge skill). Every other phase keeps a clear refusal.
+ */
+async function reconverge(
+  ctx: AppCtx,
+  feature: Feature,
+  opts: LaunchSessionOptions,
+): Promise<LaunchSessionResult> {
+  if (feature.phase !== 'spec' && feature.phase !== 'tickets') {
+    throw new GateError(
+      `converge runs from ideation — feature ${feature.slug} is already at ${feature.phase}`,
+    )
+  }
+  const tickets = listTicketsByFeature(ctx, feature.id)
+  if (tickets.length > 0) {
+    throw new GateError(
+      `feature ${feature.slug} already has ${tickets.length} ticket(s) — convergence completed; work the tickets instead`,
+    )
+  }
+  const live = activeSessionsForFeature(ctx, feature.id)
+  if (live.length > 0) {
+    throw new GateError(
+      `a ${live[0].kind} session is already live for ${feature.slug} — resume or end it instead of re-converging`,
+    )
+  }
+  const running = activeRunFor(ctx, feature.id)
+  if (running) {
+    throw new GateError(
+      `a ${running.workflow} run is in progress on ${feature.slug} — converge when it finishes`,
+    )
+  }
+
+  emit(ctx, feature.id, {
+    type: 'converge.resumed',
+    message: `re-converging from ${feature.phase} — continuing to tickets from the existing docs`,
+    data: { phase: feature.phase },
+  })
+  return launchSession(ctx, { featureId: feature.id, kind: 'converge' }, opts)
+}
+
+/**
  * Embedded launch (UI-SPEC §5): spawn `claude` eagerly inside a server-owned PTY
  * with the EXACT same flags/artifacts as the window path (`buildClaudeArgs`),
  * `cwd` = talk worktree, and the two runcastle env vars inherited directly onto
@@ -438,6 +557,58 @@ export async function converge(
  * WS endpoint streams it. On process exit we mark the session ended and emit
  * `session.pty_exited`. A spawn failure is surfaced as an event, never thrown.
  */
+/** Spawn-time context the PTY exit handler needs to report honestly. */
+export interface SpawnMeta {
+  /** The waypoint this session claimed (kind=waypoint), if any. */
+  waypoint?: Waypoint
+  /** The cc session id this launch tried to `--resume`, if any. */
+  resumeSessionId?: string
+}
+
+/**
+ * PTY exit finalizer (exported for the vitest seam). Marks the session ended,
+ * auto-releases its waypoint (SPEC §13.2 — no-op when already resolved), and
+ * emits `session.pty_exited`. When a RESUME attempt dies before ever reaching
+ * `live` (the session-start hook never fired — e.g. claude exited with "No
+ * conversation found with session ID"), it additionally emits
+ * `session.resume_failed` so the UI can toast; the waypoint's `lastSessionId`
+ * still points at the previous good session (promotion happens only at live),
+ * so the next Resume targets the right conversation instead of silently
+ * spawning fresh.
+ */
+export function handlePtyExit(
+  ctx: AppCtx,
+  feature: Feature,
+  session: SessionRow,
+  meta: SpawnMeta,
+  exitCode: number | undefined | null,
+): void {
+  const diedBeforeLive = getSessionRow(ctx, session.id)?.status === 'launching'
+  markSessionEnded(ctx, session.id)
+  // Closing a waypoint terminal without resolving auto-releases its waypoint
+  // back to the frontier (SPEC §13.2); no-op for non-waypoint sessions or when
+  // the agent already resolved.
+  releaseForSession(ctx, session.id)
+  if (diedBeforeLive && meta.resumeSessionId) {
+    const label = meta.waypoint ? `waypoint ${meta.waypoint.seq} (${meta.waypoint.title})` : session.kind
+    emit(ctx, feature.id, {
+      type: 'session.resume_failed',
+      message: `resume failed for ${label} — the session exited before starting (code ${exitCode ?? 'unknown'}); the previous conversation is still resumable`,
+      data: {
+        sessionId: session.id,
+        waypointId: meta.waypoint?.id ?? null,
+        resumeSessionId: meta.resumeSessionId,
+        exitCode: exitCode ?? null,
+      },
+    })
+  }
+  emit(ctx, feature.id, {
+    type: 'session.pty_exited',
+    message: ptyExitMessage(exitCode),
+    data: { sessionId: session.id, exitCode: exitCode ?? null },
+  })
+}
+
 function spawnEmbeddedPty(
   ctx: AppCtx,
   feature: Feature,
@@ -445,6 +616,7 @@ function spawnEmbeddedPty(
   worktreePath: string,
   serverUrl: string,
   claudeArgs: string[],
+  meta: SpawnMeta = {},
 ): void {
   const { file, args } = claudeSpawnTarget(claudeArgs)
   const env = {
@@ -458,18 +630,7 @@ function spawnEmbeddedPty(
       cmd: file,
       args,
       opts: { cwd: worktreePath, env, cols: 80, rows: 24, useConpty: true },
-      onExit: ({ exitCode }) => {
-        markSessionEnded(ctx, session.id)
-        // Closing a waypoint terminal without resolving auto-releases its
-        // waypoint back to the frontier (SPEC §13.2); no-op for non-waypoint
-        // sessions or when the agent already resolved.
-        releaseForSession(ctx, session.id)
-        emit(ctx, feature.id, {
-          type: 'session.pty_exited',
-          message: ptyExitMessage(exitCode),
-          data: { sessionId: session.id, exitCode: exitCode ?? null },
-        })
-      },
+      onExit: ({ exitCode }) => handlePtyExit(ctx, feature, session, meta, exitCode),
     })
     emit(ctx, feature.id, {
       type: 'session.launched',
@@ -477,6 +638,11 @@ function spawnEmbeddedPty(
       data: { sessionId: session.id, mode: 'embedded', pid: entry.pty.pid },
     })
   } catch (err) {
+    // A session that never got a process must not linger `launching` — the
+    // one-live-session guard reads session rows, so a leaked row would block
+    // every future terminal on this feature until the next boot reconciliation.
+    markSessionEnded(ctx, session.id)
+    releaseForSession(ctx, session.id)
     emit(ctx, feature.id, {
       type: 'session.spawn_failed',
       message: `failed to spawn embedded terminal: ${err instanceof Error ? err.message : String(err)}`,
@@ -506,6 +672,10 @@ function spawnTerminal(
       windowsVerbatimArguments: true,
     })
     child.on('error', (err) => {
+      // Window never opened → no claude, no hooks: end the row + release its
+      // waypoint so the one-live-session guard is not wedged by a ghost.
+      markSessionEnded(ctx, sessionId)
+      releaseForSession(ctx, sessionId)
       emit(ctx, featureId, {
         type: 'session.spawn_failed',
         message: `failed to open terminal: ${err.message}`,
@@ -519,6 +689,8 @@ function spawnTerminal(
       data: { sessionId, command: cmd.display },
     })
   } catch (err) {
+    markSessionEnded(ctx, sessionId)
+    releaseForSession(ctx, sessionId)
     emit(ctx, featureId, {
       type: 'session.spawn_failed',
       message: `failed to open terminal: ${err instanceof Error ? err.message : String(err)}`,

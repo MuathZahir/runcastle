@@ -8,13 +8,14 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { AppCtx } from '../src/db/types'
 import { GateError } from '../src/errors'
 import { workWaypoint } from '../src/launcher/launcher'
-import { createSessionRow, getSessionRow, markSessionLive } from '../src/launcher/sessions'
+import { getSessionRow, markSessionEnded, markSessionLive } from '../src/launcher/sessions'
 import { createFeatureBranch, ensureTalkWorktree } from '../src/services/git'
 import { listAfter } from '../src/services/events'
 import {
   claim,
   frontier,
   getWaypoint,
+  promoteLastSession,
   releaseForSession,
   resolve,
   storeWaypoints,
@@ -80,12 +81,18 @@ describe('workWaypoint — claim before spawn', () => {
     const { sessionId } = await workWaypoint(ctx, { featureId: feature.id, waypointId: a.id }, { spawn: false })
     cleanup.push(sessionDir(sessionId))
 
-    // the waypoint is now claimed by the new session, off the frontier
+    // the waypoint is now claimed by the new session, off the frontier.
+    // lastSessionId is NOT set yet — it is promoted when the session goes live,
+    // so a spawn that dies on arrival never clobbers a previous resumable id.
     const claimed = getWaypoint(ctx, a.id)
     expect(claimed.status).toBe('claimed')
     expect(claimed.claimedBy).toBe(sessionId)
-    expect(claimed.lastSessionId).toBe(sessionId)
+    expect(claimed.lastSessionId).toBeUndefined()
     expect(frontier(ctx, feature.id)).toHaveLength(0)
+
+    // going live (session-start hook) promotes the resume pointer
+    markSessionLive(ctx, sessionId, { ccSessionId: 'cc-1' })
+    expect(getWaypoint(ctx, a.id).lastSessionId).toBe(sessionId)
 
     // the session is a waypoint-kind session on this feature
     const session = getSessionRow(ctx, sessionId)
@@ -157,7 +164,9 @@ describe('workWaypoint — claim before spawn', () => {
     const first = await workWaypoint(ctx, { featureId: feature.id, waypointId: a.id }, { spawn: false })
     cleanup.push(sessionDir(first.sessionId))
     markSessionLive(ctx, first.sessionId, { ccSessionId: 'cc-remembered' })
-    releaseForSession(ctx, first.sessionId) // simulate terminal close
+    // simulate terminal close (what the pty onExit / session-end hook does)
+    markSessionEnded(ctx, first.sessionId)
+    releaseForSession(ctx, first.sessionId)
 
     // back on the frontier, remembering the last session
     expect(frontier(ctx, feature.id).map((w) => w.id)).toContain(a.id)
@@ -188,6 +197,7 @@ describe('releaseForSession — auto-release', () => {
   it('releases a waypoint claimed by an ending session, keeping lastSessionId', () => {
     const [a] = storeWaypoints(ctx, featureId, [wp('a')])
     claim(ctx, a.id, 'sess_1')
+    promoteLastSession(ctx, 'sess_1') // the session reached live before ending
     const released = releaseForSession(ctx, 'sess_1')
     expect(released.map((w) => w.id)).toEqual([a.id])
 

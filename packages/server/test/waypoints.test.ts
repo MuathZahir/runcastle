@@ -7,7 +7,9 @@ import { getFeatureFull } from '../src/services/features'
 import {
   claim,
   frontier,
+  getWaypoint,
   listByFeature,
+  promoteLastSession,
   release,
   resolve,
   storeWaypoints,
@@ -123,12 +125,24 @@ describe('waypoints service', () => {
   })
 
   describe('claim — transactional', () => {
-    it('claims an open frontier waypoint, recording claimedBy + lastSessionId', () => {
+    it('claims an open frontier waypoint, recording claimedBy (lastSessionId waits for live)', () => {
       const [a] = storeWaypoints(ctx, featureId, [wp('a')])
       const claimed = claim(ctx, a.id, 'sess_1')
       expect(claimed.status).toBe('claimed')
       expect(claimed.claimedBy).toBe('sess_1')
-      expect(claimed.lastSessionId).toBe('sess_1')
+      // a claim is only an attempt — lastSessionId is promoted when the session
+      // actually goes live, so a dead-on-arrival resume never clobbers it
+      expect(claimed.lastSessionId).toBeUndefined()
+    })
+
+    it('promotes lastSessionId only once the claiming session goes live', () => {
+      const [a] = storeWaypoints(ctx, featureId, [wp('a')])
+      claim(ctx, a.id, 'sess_1')
+      promoteLastSession(ctx, 'sess_1')
+      expect(getWaypoint(ctx, a.id).lastSessionId).toBe('sess_1')
+      // a claimant holding nothing is a no-op
+      promoteLastSession(ctx, 'sess_nobody')
+      expect(getWaypoint(ctx, a.id).lastSessionId).toBe('sess_1')
     })
 
     it('fails a double-claim', () => {
@@ -147,6 +161,7 @@ describe('waypoints service', () => {
     it('returns the waypoint to open while keeping lastSessionId', () => {
       const [a] = storeWaypoints(ctx, featureId, [wp('a')])
       claim(ctx, a.id, 'sess_1')
+      promoteLastSession(ctx, 'sess_1') // the session went live before dying
       const released = release(ctx, a.id)
       expect(released.status).toBe('open')
       expect(released.claimedBy).toBeUndefined()

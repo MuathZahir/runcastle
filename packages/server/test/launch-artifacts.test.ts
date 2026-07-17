@@ -179,13 +179,15 @@ describe('buildLaunchCommand', () => {
     settingsPath: 'C:\\s\\settings.json',
     mcpConfigPath: 'C:\\s\\mcp.json',
     systemPromptPath: 'C:\\s\\system-prompt.md',
+    model: 'claude-sonnet-5',
   })
 
   it('assembles the claude invocation with the verified flags', () => {
     expect(cmd.claudeCommand).toBe(
       'claude --settings "C:\\s\\settings.json" --mcp-config "C:\\s\\mcp.json" ' +
         '--strict-mcp-config --plugin-dir "C:\\repo\\packages\\skills\\packs\\runcastle" ' +
-        '--append-system-prompt-file "C:\\s\\system-prompt.md" --permission-mode acceptEdits',
+        '--append-system-prompt-file "C:\\s\\system-prompt.md" --permission-mode acceptEdits ' +
+        '--model claude-sonnet-5',
     )
   })
 
@@ -199,12 +201,32 @@ describe('buildLaunchCommand', () => {
       settingsPath: 'C:\\s\\settings.json',
       mcpConfigPath: 'C:\\s\\mcp.json',
       systemPromptPath: 'C:\\s\\system-prompt.md',
+      model: 'claude-sonnet-5',
     }
     // no resume → no --resume flag
     expect(buildClaudeArgs(base)).not.toContain('--resume')
     // with resume → the flag leads the argv, followed by the cc session id
     const args = buildClaudeArgs({ ...base, resumeSessionId: 'cc-42' })
     expect(args.slice(0, 2)).toEqual(['--resume', 'cc-42'])
+  })
+
+  it('always carries --model from config so sessions never inherit the CLI default', () => {
+    const args = buildClaudeArgs({
+      sessionId: 'sess_xyz',
+      serverUrl: 'http://localhost:4512',
+      featureTitle: 'Dark mode',
+      worktreePath: 'C:\\wt\\dark-mode',
+      pluginDir: 'C:\\repo\\pack',
+      settingsPath: 'C:\\s\\settings.json',
+      mcpConfigPath: 'C:\\s\\mcp.json',
+      systemPromptPath: 'C:\\s\\system-prompt.md',
+      model: 'claude-sonnet-5',
+      resumeSessionId: 'cc-42',
+    })
+    // present on the resume path too (both spawn paths share buildClaudeArgs)
+    const at = args.indexOf('--model')
+    expect(at).toBeGreaterThan(-1)
+    expect(args[at + 1]).toBe('claude-sonnet-5')
   })
 
   it('opens a wt.exe tab with title + working dir', () => {
@@ -224,7 +246,7 @@ describe('buildLaunchCommand', () => {
     expect(cmd.display).toContain(
       'cmd /k "set RUNCASTLE_SESSION_ID=sess_xyz&& set RUNCASTLE_SERVER_URL=http://localhost:4512&& claude',
     )
-    expect(cmd.display.endsWith('acceptEdits"')).toBe(true)
+    expect(cmd.display.endsWith('--model claude-sonnet-5"')).toBe(true)
   })
 })
 

@@ -199,6 +199,8 @@ export function renderConvergePrompt(feature: Feature): string {
     'Invoke the `/runcastle:converge` skill. Working from the map + decisions only,',
     'run `/runcastle:spec` (for a `full` feature) then `/runcastle:tickets` in this',
     'one window. Do NOT re-grill and do NOT reopen resolved waypoints — converge.',
+    `If \`${docs}/spec.md\` already exists (a previous converge session wrote it`,
+    'before dying), read it, skip spec-writing, and proceed straight to tickets.',
     '',
   ].join('\n')
 }
