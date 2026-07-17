@@ -24,6 +24,16 @@ export function GrillBody({ full, effective }: { full: FeatureFull; effective: P
   const session = ordered.find((s) => s.status === 'live' || s.status === 'launching') ?? ordered[0]
   const specDoc = docs.find((d) => d.relPath.endsWith('spec.md'))
   const mapDoc = feature.mapped ? docs.find((d) => d.relPath.endsWith('map.md')) : undefined
+  // Converge re-entry (recovery path): a mapped feature stranded at `spec` with
+  // no live session and zero tickets means the converge session died after
+  // crossing G1 — offer a subtle restart (feature.converge re-enters here).
+  const hasLive = sessions.some((s) => s.status === 'live' || s.status === 'launching')
+  const showConvergeResume =
+    feature.mapped &&
+    feature.phase === 'spec' &&
+    effective === 'spec' &&
+    !hasLive &&
+    full.tickets.length === 0
 
   return (
     <div className="grill">
@@ -76,6 +86,40 @@ export function GrillBody({ full, effective }: { full: FeatureFull; effective: P
           </div>
         )}
       </div>
+
+      {showConvergeResume && <ConvergeResume featureId={feature.id} />}
+    </div>
+  )
+}
+
+/**
+ * Subtle recovery affordance, not a primary CTA: restart the converge session
+ * for a mapped feature that crossed G1 but lost its converge session before any
+ * tickets were emitted (crash / kill). The server accepts `feature.converge`
+ * again at phase `spec` with no live session and zero tickets.
+ */
+function ConvergeResume({ featureId }: { featureId: string }) {
+  const utils = trpc.useUtils()
+  const toast = useToast()
+  const converge = trpc.feature.converge.useMutation({
+    onSuccess: () => {
+      void utils.feature.get.invalidate({ id: featureId })
+      void utils.feature.list.invalidate()
+    },
+    onError: (e) => toast.push(e.message),
+  })
+  return (
+    <div className="converge-resume">
+      <DimLine>the converge session ended before tickets were emitted</DimLine>
+      <button
+        type="button"
+        className="btn btn-xs btn-ghost"
+        disabled={converge.isPending}
+        title="restart the converge session over map.md + decisions.md"
+        onClick={() => converge.mutate({ featureId })}
+      >
+        {converge.isPending ? 'Resuming…' : 'Resume converge'}
+      </button>
     </div>
   )
 }
