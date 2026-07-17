@@ -764,6 +764,17 @@ button {
   cursor: pointer;
   animation: fadeUp var(--dur-2) var(--ease-out);
 }
+/* offline variant: informational (server unreachable, auto-retrying) — not
+   clickable, softer than the danger alert */
+.ws-banner.is-offline {
+  cursor: default;
+  border-color: color-mix(in srgb, var(--warn, #d9a441) 45%, var(--hairline));
+  background: color-mix(in srgb, var(--warn, #d9a441) 7%, var(--panel-2));
+  color: var(--warn, #d9a441);
+}
+.ws-banner.is-offline .ws-banner-tag {
+  border-color: color-mix(in srgb, var(--warn, #d9a441) 40%, var(--hairline));
+}
 .ws-banner-tag {
   font-family: var(--mono);
   font-size: 10px;

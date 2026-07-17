@@ -31,7 +31,10 @@ export function TicketsBody({
   const [open, setOpen] = useState<Set<string>>(() => new Set())
 
   if (full.isLoading) return <DimLine>loading tickets…</DimLine>
-  if (full.error || !full.data)
+  // Hard error only when there was NEVER data. A refetch failure after data
+  // exists (server restart) keeps rendering the last-good ledger so the inline
+  // terminal stays mounted — the workspace-level OFFLINE banner tells the story.
+  if (!full.data)
     return <DimLine>could not load tickets: {full.error?.message ?? 'unknown'}</DimLine>
 
   const tickets = full.data.tickets

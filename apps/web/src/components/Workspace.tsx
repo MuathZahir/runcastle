@@ -89,7 +89,14 @@ export function Workspace({
       </section>
     )
   }
-  if (q.error || !q.data) {
+  // Hard error ONLY when there was never data (first load failed). When a
+  // refetch fails AFTER data exists (server restart mid-session), TanStack Query
+  // keeps the last-good `data` alongside `error` — keep rendering it so the
+  // embedded terminal stays MOUNTED (its own reconnect strip + scrollback replay
+  // depend on surviving the outage) and show a slim banner instead. The 1.5s
+  // refetchInterval keeps polling through the error, so the banner self-clears
+  // the moment the server is back.
+  if (!q.data) {
     return (
       <section className="workspace">
         <div className="ws-body">
@@ -98,6 +105,7 @@ export function Workspace({
       </section>
     )
   }
+  const offline = !!q.error
 
   const full = q.data
   const feature = full.feature
@@ -207,6 +215,13 @@ export function Workspace({
         </div>
       ) : (
         <NextStepBar ns={ns} guidance={guidance} busy={busy} onAction={runAction} />
+      )}
+
+      {offline && (
+        <div className="ws-banner is-offline" role="status">
+          <span className="ws-banner-tag">OFFLINE</span>
+          <span>server unreachable — retrying…</span>
+        </div>
       )}
 
       {resumeFailed.message && (
