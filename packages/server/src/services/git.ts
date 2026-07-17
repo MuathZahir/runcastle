@@ -296,6 +296,170 @@ export async function reattachWorktree(path: string, branch: string): Promise<vo
   }
 }
 
+// --- research temp branches (ADR-0001 §7: serial HITL, PARALLEL AFK) --------
+
+/**
+ * Namespace for research-run temp branches. Distinctively runcastle-owned so
+ * boot cleanup can never touch a user's own branches (a bare `research/*`
+ * prefix would be too easy to collide with).
+ */
+export const RESEARCH_BRANCH_PREFIX = 'runcastle/research/'
+
+/**
+ * Branch a research run commits to: `runcastle/research/<slug>/<seq>-<unique>`.
+ * Based on the feature branch tip (sandcastle `baseBranch`), merged back into
+ * it at run finalize, deleted after a clean merge. Encoding the feature slug
+ * lets boot cleanup map a leftover branch back to its feature branch.
+ */
+export function researchBranchName(slug: string, waypointSeq: number, unique: string): string {
+  return `${RESEARCH_BRANCH_PREFIX}${slug}/${waypointSeq}-${unique}`
+}
+
+export interface ResearchMergeResult {
+  ok: boolean
+  /** True when a real merge conflict was hit (merge aborted, temp branch kept). */
+  conflict?: boolean
+  error?: string
+}
+
+/**
+ * Land a research run's temp branch on the feature branch (run-finalize success
+ * path). The temp branch was created from the feature branch tip, so this is a
+ * fast-forward unless the feature branch moved mid-run (docs committed by an
+ * HITL session running in parallel) — then it is a plain merge, and on conflict
+ * we abort, keep the temp branch for manual recovery, and report `conflict`.
+ *
+ * Merge site: git only allows a merge inside a checkout of the target branch,
+ * so if any worktree (normally the talk worktree; the main checkout during a
+ * test drive) holds the feature branch, the merge runs THERE. When nobody holds
+ * it, `git fetch . <temp>:<feature>` fast-forwards the ref with no checkout at
+ * all (it refuses non-fast-forward, which is exactly the conflict-shaped case).
+ *
+ * After a successful merge the temp branch is deleted (best-effort — a
+ * preserved sandcastle worktree pinning it is detached first; a branch that
+ * still cannot be deleted is swept by boot cleanup once merged).
+ */
+export async function mergeResearchBranch(
+  repoPath: string,
+  featureBranchName: string,
+  tempBranch: string,
+): Promise<ResearchMergeResult> {
+  const g = git(repoPath)
+  let branches: Awaited<ReturnType<SimpleGit['branchLocal']>>
+  try {
+    branches = await g.branchLocal()
+  } catch (e) {
+    return { ok: false, error: errMsg(e) }
+  }
+  if (!branches.all.includes(tempBranch)) {
+    return { ok: false, error: `temp branch ${tempBranch} not found` }
+  }
+  if (!branches.all.includes(featureBranchName)) {
+    return { ok: false, error: `feature branch ${featureBranchName} not found` }
+  }
+
+  const holder = (await listWorktrees(g)).find((e) => e.branch === featureBranchName)
+
+  if (holder) {
+    const gw = git(holder.path)
+    try {
+      await gw.merge([tempBranch]) // plain merge: fast-forwards when it can
+    } catch (e) {
+      if (await mergeInProgress(gw)) {
+        await gw.raw(['merge', '--abort'])
+        return { ok: false, conflict: true, error: errMsg(e) }
+      }
+      return { ok: false, error: errMsg(e) }
+    }
+  } else {
+    try {
+      // No checkout holds the branch: fast-forward the ref in place. Refuses
+      // non-fast-forward (feature branch moved mid-run) rather than clobbering.
+      await g.raw(['fetch', '.', `${tempBranch}:${featureBranchName}`])
+    } catch (e) {
+      return { ok: false, error: errMsg(e) }
+    }
+  }
+
+  await deleteBranchDetachingWorktrees(g, repoPath, tempBranch)
+  return { ok: true }
+}
+
+/**
+ * Delete a local branch, first detaching any worktree that pins it (git refuses
+ * to delete a checked-out branch — a dirty sandcastle worktree survives its run
+ * and keeps the temp branch checked out). Best-effort: returns whether the
+ * branch is actually gone.
+ */
+async function deleteBranchDetachingWorktrees(
+  g: SimpleGit,
+  repoPath: string,
+  branch: string,
+): Promise<boolean> {
+  for (const holder of await worktreesOnBranch(g, branch, repoPath)) {
+    try {
+      await detachWorktree(holder)
+    } catch {
+      // best-effort — the delete below surfaces the pin if it remains
+    }
+  }
+  try {
+    await g.raw(['branch', '-D', branch])
+    return true
+  } catch {
+    return false
+  }
+}
+
+export interface ResearchBranchCleanup {
+  deleted: string[]
+  kept: string[]
+}
+
+/**
+ * Boot sweep of leftover research temp branches (server crashed mid-run, or a
+ * post-merge delete failed). Deletes ONLY branches fully merged into their
+ * feature branch (`merge-base --is-ancestor`): an unmerged branch holds either
+ * research commits that never landed or a conflict deliberately preserved for
+ * manual recovery — both are kept, never destroyed. Best-effort throughout.
+ */
+export async function cleanupResearchBranches(repoPath: string): Promise<ResearchBranchCleanup> {
+  const deleted: string[] = []
+  const kept: string[] = []
+  const g = git(repoPath)
+  let all: string[]
+  try {
+    all = (await g.branchLocal()).all
+  } catch {
+    return { deleted, kept }
+  }
+
+  for (const name of all) {
+    if (!name.startsWith(RESEARCH_BRANCH_PREFIX)) continue
+    const slug = name.slice(RESEARCH_BRANCH_PREFIX.length).split('/')[0]
+    const target = featureBranch(slug)
+    let merged = false
+    if (slug && all.includes(target)) {
+      try {
+        // NOT `merge-base --is-ancestor`: its "no" is a silent exit 1, which
+        // simple-git resolves (it only rejects on stderr). Compare tips instead:
+        // the branch is fully merged iff merge-base(branch, target) == its tip.
+        const tip = (await g.revparse([name])).trim()
+        const base = (await g.raw(['merge-base', name, target])).trim()
+        merged = tip.length > 0 && tip === base
+      } catch {
+        merged = false
+      }
+    }
+    if (merged && (await deleteBranchDetachingWorktrees(g, repoPath, name))) {
+      deleted.push(name)
+    } else {
+      kept.push(name)
+    }
+  }
+  return { deleted, kept }
+}
+
 // --- docs checkpoint --------------------------------------------------------
 
 /**

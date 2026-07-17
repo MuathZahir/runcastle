@@ -27,6 +27,34 @@ import { getWorkflow } from './registry'
 
 const controllers = new Map<string, AbortController>()
 
+/**
+ * Workflows that CLAIM the feature branch for the run's whole duration: their
+ * sandcastle branch strategy checks `feature/<slug>` out in its own worktree,
+ * so the talk worktree must be detached first (git forbids one branch in two
+ * worktrees) and HITL terminals are refused while such a run is live. The
+ * `research` workflow works on a per-run temp branch (`runcastle/research/...`)
+ * merged back at finalize, so it claims nothing — the talk worktree stays
+ * attached and HITL runs in parallel (ADR-0001 §7 "serial HITL, PARALLEL AFK").
+ *
+ * This flag arguably belongs on `WorkflowDef` itself (core-owned `workflow.ts`);
+ * kept as a server-side map until core can change.
+ */
+const BRANCH_CLAIMING = new Set(['ticket-burner'])
+
+/** Whether a workflow's run holds the feature branch (see `BRANCH_CLAIMING`). */
+export function workflowClaimsFeatureBranch(workflowId: string): boolean {
+  return BRANCH_CLAIMING.has(workflowId)
+}
+
+/**
+ * Whether a run is genuinely in flight IN THIS PROCESS (its AbortController is
+ * registered). Boot reconciliation uses this to skip runs still being driven
+ * across a `bun --hot` reload rather than falsely failing them.
+ */
+export function isRunActive(runId: string): boolean {
+  return controllers.has(runId)
+}
+
 export interface StartRunResult {
   runId: string
   done: Promise<void>
@@ -98,13 +126,18 @@ export async function startRun(
   const controller = new AbortController()
   controllers.set(runId, controller)
 
-  // Free the feature branch for the workflow's own worktree (SPEC §8): a live
-  // talk worktree holds `feature/<slug>` checked out, which git refuses to let
-  // the sandcastle burner check out again ('already used by worktree'). Detach it
-  // for the duration of the run; reattach best-effort when the run finalizes.
-  // No-op when no talk worktree exists (non-burner workflows, headless runs).
+  // Free the feature branch for the workflow's own worktree (SPEC §8) — ONLY
+  // for branch-claiming workflows: a live talk worktree holds `feature/<slug>`
+  // checked out, which git refuses to let the sandcastle burner check out again
+  // ('already used by worktree'). Detach it for the duration of the run;
+  // reattach best-effort when the run finalizes. Non-claiming workflows
+  // (research: per-run temp branch) skip the dance entirely, so the talk
+  // worktree — and any live HITL session inside it — is never yanked onto a
+  // detached HEAD by a run (ADR-0001 §7).
   const talkWorktree = worktreeDir(project.id, feature.slug)
-  const talkDetached = await detachWorktree(talkWorktree)
+  const talkDetached = workflowClaimsFeatureBranch(workflowId)
+    ? await detachWorktree(talkWorktree)
+    : false
 
   const wctx: WorkflowCtx = {
     project,
