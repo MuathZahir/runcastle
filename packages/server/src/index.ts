@@ -5,6 +5,7 @@ import { ensureDataDir, loadConfig } from './config'
 import { createDb } from './db/client'
 import { runMigrations } from './db/migrate'
 import type { AppCtx } from './db/types'
+import { reconcileStaleSessions } from './launcher/reconcile'
 import { setRuntimeCtx } from './launcher/runtime'
 import mcpApp from './mcp/server'
 import { ptyRegistry } from './pty/registry'
@@ -55,7 +56,17 @@ async function main(): Promise<void> {
   const db = createDb(dbPath())
   runMigrations(db)
 
-  const app = buildApp({ db, config })
+  const ctx: AppCtx = { db, config }
+  const app = buildApp(ctx)
+
+  // Boot reconciliation: sessions left `launching`/`live` by a previous server
+  // process are dead by definition (the PTY registry is in-memory) — end them
+  // and release their waypoint claims so the guard + frontier recover. Sessions
+  // with a PTY still alive in the registry (`bun --hot` reload) are skipped.
+  const reconciled = reconcileStaleSessions(ctx)
+  if (reconciled.length > 0) {
+    console.log(`reconciled ${reconciled.length} stale session(s) from a previous server run`)
+  }
 
   // Embedded-terminal WebSocket (UI-SPEC §5/§6, W1). The `/ws/terminal/:sessionId`
   // upgrade is attempted BEFORE Hono's fetch fallthrough; every other path is
