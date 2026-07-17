@@ -3,14 +3,19 @@ import { trpc } from '../../trpc'
 import { useToast } from '../../lib/toast'
 import { MODEL, SANDBOX_MODE } from '../../lib/env'
 import { shortSha } from '../../lib/format'
-import { DimLine, SectionTitle, TicketStatusChip } from '../../ui'
+import { DimLine, SectionTitle, SessionStatusDot, TicketStatusChip } from '../../ui'
+import { EndSessionButton } from '../EndSessionButton'
+import { ErrorBoundary } from '../ErrorBoundary'
+import { TerminalView } from '../TerminalView'
 
 /**
- * Tickets phase-body for the pipeline-first workspace: a read-only ledger of the
- * feature's tickets (ordered by seq) with a compact meta line and sandbox/model
- * chips. Rows expand in place to reveal goal / context / acceptance / seams /
- * commits / error. Burning lives in the workspace next-step bar, not here — so
- * this body carries no burn actions.
+ * Tickets phase-body for the pipeline-first workspace: the live session (when
+ * one is running — e.g. the emit-tickets grill this phase starts on) as an
+ * inline terminal, then a read-only ledger of the feature's tickets (ordered by
+ * seq) with a compact meta line and sandbox/model chips. Rows expand in place
+ * to reveal goal / context / acceptance / seams / commits / error. Burning
+ * lives in the workspace next-step bar, not here — so this body carries no burn
+ * actions.
  */
 export function TicketsBody({
   featureId,
@@ -30,6 +35,12 @@ export function TicketsBody({
     return <DimLine>could not load tickets: {full.error?.message ?? 'unknown'}</DimLine>
 
   const tickets = full.data.tickets
+  // Same pattern as GrillBody: an active session renders as an inline terminal.
+  // Without it the emit-tickets grill runs invisibly and the next-step bar's
+  // "Open grill to emit tickets" lands on a body with no terminal.
+  const session = [...full.data.sessions]
+    .reverse()
+    .find((s) => s.status === 'live' || s.status === 'launching')
   const total = tickets.length
   const done = tickets.filter((t) => t.status === 'done').length
   const failed = tickets.filter((t) => t.status === 'failed').length
@@ -55,6 +66,23 @@ export function TicketsBody({
 
   return (
     <>
+      {session && (
+        <div className="grill-panel tickets-session">
+          <div className="grill-strip">
+            <span className="grill-kind">{session.kind}</span>
+            <span className="grill-sid">{session.ccSessionId ?? session.id}</span>
+            <SessionStatusDot status={session.status} />
+            <span className="grill-strip-spacer" />
+            <EndSessionButton featureId={featureId} sessionId={session.id} />
+          </div>
+          <div className="grill-term" id="grill-term">
+            <ErrorBoundary label="terminal">
+              <TerminalView sessionId={session.id} />
+            </ErrorBoundary>
+          </div>
+        </div>
+      )}
+
       <div className="body-title">
         <SectionTitle>Tickets</SectionTitle>
         <span className="body-meta">{meta}</span>

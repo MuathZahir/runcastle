@@ -823,6 +823,8 @@ button {
   background: var(--bg);
   position: relative;
 }
+/* the live emit-tickets session shown above the ticket ledger */
+.tickets-session { max-width: 900px; margin-bottom: 18px; }
 .grill-empty {
   padding: 40px 24px;
   display: flex;
