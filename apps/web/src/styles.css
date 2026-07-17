@@ -1288,6 +1288,8 @@ details.wp-group-done > summary { cursor: pointer; list-style: revert; }
   transition: border-color var(--dur-1);
 }
 .nf-input:focus { border-color: var(--accent); }
+/* the optional one-liner sits tight under the title input, slightly quieter */
+.nf-oneliner { margin-top: 8px; height: 32px; font-size: 12.5px; }
 .nf-controls { display: flex; align-items: center; gap: 12px; margin-top: 14px; }
 .size-toggle {
   display: inline-flex;

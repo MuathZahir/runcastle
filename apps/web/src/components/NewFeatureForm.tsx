@@ -18,6 +18,7 @@ export function NewFeatureForm({
   onCreated: (featureId: string) => void
 }) {
   const [title, setTitle] = useState('')
+  const [oneLiner, setOneLiner] = useState('')
   const [size, setSize] = useState<FeatureSize>('full')
   const [mapped, setMapped] = useState(false)
   const utils = trpc.useUtils()
@@ -41,7 +42,7 @@ export function NewFeatureForm({
   const busy = create.isPending || launch.isPending
   const submit = () => {
     const t = title.trim()
-    if (t) create.mutate({ title: t, oneLiner: '', size, mapped })
+    if (t) create.mutate({ title: t, oneLiner: oneLiner.trim(), size, mapped })
   }
 
   return (
@@ -60,6 +61,17 @@ export function NewFeatureForm({
           onChange={(e) => setTitle(e.target.value)}
           placeholder="e.g. Slack notifications on failed runs"
           autoFocus
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') submit()
+            if (e.key === 'Escape') onCancel()
+          }}
+        />
+
+        <input
+          className="nf-input nf-oneliner"
+          value={oneLiner}
+          onChange={(e) => setOneLiner(e.target.value)}
+          placeholder="one-liner (optional) — what & why in a sentence"
           onKeyDown={(e) => {
             if (e.key === 'Enter') submit()
             if (e.key === 'Escape') onCancel()
