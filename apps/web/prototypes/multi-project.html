@@ -1,0 +1,685 @@
+<meta charset="utf-8" />
+<title>runcastle · multi-project UI prototype</title>
+<!--
+  THROWAWAY PROTOTYPE for wayfinder ticket #14 — "Multi-project: switcher +
+  cross-project overview UI". Four structurally-different variants of how
+  parallel multi-project (map decision #13, option c) surfaces in apps/web,
+  switchable from the floating bottom bar (← → or arrow keys, ?variant= in URL).
+
+  Uses runcastle's real design tokens + chrome CSS (apps/web/src/styles.css) with
+  MOCKED data — the #13 server model (project.open/close/list, cross-project
+  events.list) is a planning decision, not built yet. Read-only; no persistence.
+  Not wired to anything. Fold the winner into apps/web; bin the rest.
+
+  The three questions this answers, per variant:
+    1. Switcher home     — where you change / pick the active project
+    2. Cross-project state — how runs + needs-you across projects surface
+    3. Open-a-project     — the brand-new-install flow
+-->
+<style>
+  :root {
+    --bg: #090b10; --panel: #0e1117; --panel-2: #0b0e14; --panel-3: #12151d; --panel-inset: #07080b;
+    --hairline: #1c2230; --hairline-soft: #151a26; --hairline-strong: #2a3242;
+    --text: #dde3ed; --text-2: #96a0b0; --text-3: #5f6a7a; --text-4: #3a4354;
+    --accent: #7c6cf6; --accent-hi: #a49bff; --accent-2: #8f80f8; --accent-ink: #0d0722;
+    --accent-soft: #161329; --accent-line: #3d3670;
+    --ph-ideation: #8b7cf8; --ph-spec: #8a94a2; --ph-tickets: #d7a94a;
+    --ph-implementation: #f0883e; --ph-review: #58a6ff; --ph-shipped: #3fb950;
+    --danger: #f4594e; --needs: #d7a94a; --ok: #3fb950; --drive: #58a6ff;
+    --mono: "Cascadia Code", "JetBrains Mono", Consolas, ui-monospace, monospace;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --radius-sm: 5px; --radius: 6px; --radius-lg: 9px; --radius-pill: 999px;
+    --control-h: 26px; --sidebar-w: 250px; --inspector-w: 296px;
+    --dur-1: .12s; --dur-2: .19s; --dur-3: .32s;
+    --ease: cubic-bezier(.22,.61,.24,1); --ease-out: cubic-bezier(.16,1,.3,1);
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    background: var(--bg); color: var(--text); font-family: var(--sans);
+    font-size: 13px; line-height: 1.45; overflow: hidden;
+    -webkit-font-smoothing: antialiased;
+  }
+  .mono { font-family: var(--mono); font-size: 12.5px; }
+  .phase-fg-ideation { color: var(--ph-ideation); } .phase-fg-spec { color: var(--ph-spec); }
+  .phase-fg-tickets { color: var(--ph-tickets); } .phase-fg-implementation { color: var(--ph-implementation); }
+  .phase-fg-review { color: var(--ph-review); } .phase-fg-shipped { color: var(--ph-shipped); }
+  .phase-bg-ideation { background: var(--ph-ideation); } .phase-bg-spec { background: var(--ph-spec); }
+  .phase-bg-tickets { background: var(--ph-tickets); } .phase-bg-implementation { background: var(--ph-implementation); }
+  .phase-bg-review { background: var(--ph-review); } .phase-bg-shipped { background: var(--ph-shipped); }
+  .tb-healthbtn { color: var(--ok); border-color: var(--hairline); }
+  .fr-branch { color: var(--text); }
+
+  button { font-family: inherit; color: inherit; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .45; } }
+  @keyframes fadeUp { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+  .spin-ring { width: 12px; height: 12px; border-radius: 50%; border: 1.6px solid var(--ph-implementation);
+    border-top-color: transparent; display: inline-block; animation: spin .8s linear infinite; flex: 0 0 auto; }
+
+  /* ---- buttons ---- */
+  .btn { height: var(--control-h); padding: 0 12px; border-radius: var(--radius); border: 1px solid var(--hairline);
+    background: transparent; color: var(--text); font-size: 12.5px; cursor: pointer; display: inline-flex;
+    align-items: center; justify-content: center; gap: 6px; white-space: nowrap;
+    transition: border-color var(--dur-1), background var(--dur-1), color var(--dur-1); }
+  .btn-ghost:hover { border-color: var(--hairline-strong); background: var(--panel); }
+  .btn-solid { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+  .btn-solid:hover { background: var(--accent-2); border-color: var(--accent-2); }
+  .btn-lg { height: 32px; padding: 0 16px; font-size: 13px; }
+  .kbd { font-family: var(--mono); font-size: 10px; border: 1px solid var(--hairline-strong);
+    border-radius: 4px; padding: 1px 5px; color: var(--text-3); line-height: 1.4; }
+  .chip { display: inline-flex; align-items: center; gap: 5px; height: 19px; padding: 0 8px;
+    border-radius: var(--radius-pill); border: 1px solid var(--hairline); font-family: var(--mono);
+    font-size: 10.5px; color: var(--text-2); white-space: nowrap; }
+
+  /* ============================ SHELL FRAME ============================ */
+  .shell { height: 100%; display: grid; grid-template-rows: 42px 1fr 26px; }
+  .shell-body { display: grid; grid-template-columns: var(--sidebar-w) 1fr var(--inspector-w); min-height: 0; }
+  .shell-body.no-inspector { grid-template-columns: var(--sidebar-w) 1fr; }
+  .shell-body.full { grid-template-columns: 1fr; }
+
+  /* ---- titlebar ---- */
+  .titlebar { display: flex; align-items: center; gap: 9px; padding: 0 14px;
+    border-bottom: 1px solid var(--hairline); background: var(--panel); font-size: 13px; position: relative; }
+  .tb-logo { width: 18px; height: 18px; border-radius: var(--radius-sm); background: var(--accent);
+    display: flex; align-items: center; justify-content: center; color: var(--accent-ink);
+    font-family: var(--mono); font-size: 11px; font-weight: 700; flex: 0 0 auto; }
+  .tb-app { color: var(--text); font-weight: 600; letter-spacing: .02em; }
+  .tb-arrow, .tb-dot { color: var(--text-4); }
+  .tb-project { color: var(--text-2); }
+  .tb-branch { color: var(--text-3); font-family: var(--mono); font-size: 11.5px; }
+  .tb-spacer { flex: 1; }
+  .tb-search { display: flex; align-items: center; gap: 8px; height: 26px; padding: 0 10px;
+    background: var(--panel-inset); border: 1px solid var(--hairline); border-radius: var(--radius);
+    color: var(--text-3); font-size: 12px; cursor: pointer; min-width: 190px; }
+  .tb-search-spacer { flex: 1; }
+  .tb-runs { display: inline-flex; align-items: center; gap: 7px; height: 24px; padding: 0 10px;
+    border-radius: var(--radius-pill); border: 1px solid color-mix(in srgb, var(--ph-implementation) 30%, transparent);
+    background: color-mix(in srgb, var(--ph-implementation) 9%, transparent); color: var(--ph-implementation);
+    font-family: var(--mono); font-size: 11px; cursor: pointer; }
+  .health-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; background: var(--ok); }
+  .tb-icon-btn { width: 26px; height: 26px; display: inline-flex; align-items: center; justify-content: center;
+    background: transparent; border: 1px solid var(--hairline); border-radius: var(--radius); color: var(--text-3);
+    cursor: pointer; font-size: 12px; }
+
+  /* project switcher button (variant A) */
+  .tb-switcher { display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 8px 0 9px;
+    border: 1px solid var(--hairline); border-radius: var(--radius); background: var(--panel-inset);
+    color: var(--text); cursor: pointer; font-size: 13px; }
+  .tb-switcher:hover { border-color: var(--hairline-strong); }
+  .tb-switcher .caret { color: var(--text-3); font-size: 10px; }
+
+  /* switcher dropdown */
+  .switcher-menu { position: absolute; top: 38px; left: 44px; width: 320px; z-index: 30;
+    background: var(--panel); border: 1px solid var(--hairline-strong); border-radius: var(--radius-lg);
+    box-shadow: 0 16px 48px -16px rgba(0,0,0,.7); padding: 6px; animation: fadeUp var(--dur-2) var(--ease-out); }
+  .switcher-menu-label { font-size: 10px; text-transform: uppercase; letter-spacing: .09em; color: var(--text-3);
+    font-weight: 700; padding: 8px 8px 5px; }
+  .switcher-row { display: flex; align-items: center; gap: 9px; padding: 8px; border-radius: var(--radius);
+    cursor: pointer; }
+  .switcher-row:hover { background: var(--panel-3); }
+  .switcher-row.is-current { background: var(--accent-soft); }
+  .switcher-check { width: 14px; color: var(--accent-hi); font-size: 12px; flex: 0 0 auto; text-align: center; }
+  .switcher-name { flex: 1; min-width: 0; }
+  .switcher-name .n { color: var(--text); }
+  .switcher-name .b { color: var(--text-4); font-family: var(--mono); font-size: 10.5px; margin-left: 6px; }
+  .switcher-stats { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
+  .switcher-open { display: flex; align-items: center; gap: 8px; padding: 8px; margin-top: 4px;
+    border-top: 1px solid var(--hairline-soft); color: var(--text-2); cursor: pointer; border-radius: var(--radius); }
+  .switcher-open:hover { background: var(--panel-3); color: var(--text); }
+  .switcher-open .plus { width: 14px; text-align: center; color: var(--text-3); }
+  .mini-need { display: inline-flex; align-items: center; gap: 4px; font-family: var(--mono); font-size: 10.5px; color: var(--needs); }
+  .mini-need .d { width: 6px; height: 6px; border-radius: 50%; background: var(--needs); }
+  .mini-run { display: inline-flex; align-items: center; gap: 4px; font-family: var(--mono); font-size: 10.5px; color: var(--ph-implementation); }
+
+  /* ---- sidebar ---- */
+  .sidebar { border-right: 1px solid var(--hairline); background: var(--panel-2); display: flex; flex-direction: column; min-height: 0; }
+  .sidebar-head { height: 40px; flex: 0 0 40px; display: flex; align-items: center; justify-content: space-between;
+    padding: 0 12px; border-bottom: 1px solid var(--hairline-soft); }
+  .sidebar-head .pane-title { font-size: 11px; text-transform: uppercase; letter-spacing: .09em; color: var(--text-3); font-weight: 600; }
+  .new-btn { height: 22px; padding: 0 9px; background: transparent; border: 1px solid var(--hairline);
+    border-radius: var(--radius-sm); color: var(--text-2); font-size: 11.5px; cursor: pointer; }
+  .new-btn:hover { border-color: var(--hairline-strong); color: var(--text); }
+  .sidebar-list { flex: 1; overflow-y: auto; padding: 4px 6px 12px; min-height: 0; }
+  .triage-group + .triage-group { margin-top: 4px; }
+  .triage-label { display: flex; align-items: center; gap: 6px; padding: 11px 8px 5px; font-size: 10px;
+    font-weight: 700; letter-spacing: .09em; text-transform: uppercase; }
+  .triage-count { color: var(--text-4); font-family: var(--mono); font-weight: 500; }
+  .triage-needsYou .triage-name { color: var(--needs); }
+  .triage-agentWorking .triage-name { color: var(--ph-implementation); }
+  .triage-inProgress .triage-name { color: var(--text-3); }
+  .triage-shipped .triage-name { color: var(--ph-shipped); }
+  .feature-row { width: 100%; min-height: 30px; display: flex; align-items: center; gap: 8px;
+    padding: 0 8px 0 9px; border: none; background: none; border-radius: var(--radius-sm); cursor: pointer;
+    text-align: left; position: relative; }
+  .feature-row::before { content: ""; position: absolute; left: 1px; top: 6px; bottom: 6px; width: 2px;
+    border-radius: 2px; background: var(--accent); transform: scaleY(0); transition: transform var(--dur-2) var(--ease-out); }
+  .feature-row:hover { background: var(--panel-3); }
+  .feature-row.is-active { background: var(--panel-3); }
+  .feature-row.is-active::before { transform: scaleY(1); }
+  .feature-row.is-active .feature-slug { color: var(--text); }
+  .feature-row.is-shipped { opacity: .55; }
+  .feature-glyph { font-family: var(--mono); font-size: 12px; width: 14px; flex: 0 0 auto; text-align: center; }
+  .feature-slug { flex: 1; min-width: 0; color: var(--text-2); font-size: 12.5px; overflow: hidden;
+    text-overflow: ellipsis; white-space: nowrap; }
+  .feature-flag { flex: 0 0 auto; display: flex; align-items: center; gap: 3px; }
+  .needs-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--needs); }
+  .mini-check { color: var(--ph-shipped); font-family: var(--mono); font-size: 10px; }
+  .mini-map { display: flex; gap: 2px; align-items: center; }
+  .mini-seg { width: 6px; height: 6px; border-radius: 2px; background: var(--text-4); }
+  .mini-seg.is-done { background: var(--text-3); }
+  .mini-seg.is-current { background: var(--accent); box-shadow: 0 0 0 2px rgba(124,108,246,.22); }
+  .sidebar-foot { padding: 10px 12px; border-top: 1px solid var(--hairline-soft); font-size: 11px; color: var(--text-4); line-height: 1.5; }
+
+  /* project sections (variant B) */
+  .proj-section + .proj-section { margin-top: 2px; border-top: 1px solid var(--hairline-soft); }
+  .proj-head { width: 100%; display: flex; align-items: center; gap: 8px; padding: 9px 8px 7px 9px;
+    background: none; border: none; cursor: pointer; text-align: left; }
+  .proj-head:hover { background: var(--panel-3); border-radius: var(--radius-sm); }
+  .proj-chevron { color: var(--text-4); font-size: 9px; width: 10px; flex: 0 0 auto; }
+  .proj-name { flex: 1; min-width: 0; color: var(--text); font-weight: 600; font-size: 12.5px; letter-spacing: .01em; }
+  .proj-name.is-current { color: var(--accent-hi); }
+  .proj-badges { display: flex; align-items: center; gap: 7px; flex: 0 0 auto; }
+  .sidebar-open-btn { margin: 4px 6px 8px; height: 28px; display: flex; align-items: center; gap: 8px;
+    padding: 0 10px; border: 1px dashed var(--hairline-strong); border-radius: var(--radius); background: transparent;
+    color: var(--text-3); cursor: pointer; font-size: 12px; }
+  .sidebar-open-btn:hover { color: var(--text); border-color: var(--accent-line); }
+
+  /* ---- inspector (thin stub) ---- */
+  .inspector { border-left: 1px solid var(--hairline); background: var(--panel-2); padding: 14px 14px; overflow-y: auto; }
+  .insp-title { font-size: 11px; text-transform: uppercase; letter-spacing: .09em; color: var(--text-3); font-weight: 600; margin-bottom: 12px; }
+  .insp-row { display: flex; justify-content: space-between; padding: 7px 0; border-bottom: 1px solid var(--hairline-soft); font-size: 12px; }
+  .insp-row .k { color: var(--text-3); } .insp-row .v { color: var(--text-2); font-family: var(--mono); font-size: 11.5px; }
+
+  /* ---- workspace (compact but real) ---- */
+  .workspace { display: flex; flex-direction: column; min-width: 0; min-height: 0; background: var(--bg); overflow-y: auto; }
+  .ws-head { padding: 20px 26px 14px; border-bottom: 1px solid var(--hairline-soft); }
+  .ws-crumb { font-family: var(--mono); font-size: 11px; color: var(--text-4); margin-bottom: 8px; }
+  .ws-crumb .cur { color: var(--text-2); }
+  .ws-title { font-size: 19px; font-weight: 600; letter-spacing: -.01em; color: var(--text); }
+  .ws-sub { color: var(--text-3); margin-top: 4px; font-size: 12.5px; }
+  .stepper { display: flex; align-items: center; gap: 0; padding: 18px 26px; }
+  .step { display: flex; align-items: center; gap: 9px; }
+  .step-dot { width: 26px; height: 26px; border-radius: 50%; border: 1px solid var(--hairline-strong);
+    display: flex; align-items: center; justify-content: center; font-family: var(--mono); font-size: 12px; color: var(--text-3); }
+  .step.is-done .step-dot { border-color: var(--text-3); color: var(--text-3); }
+  .step.is-current .step-dot { border-color: var(--accent); color: var(--accent-hi); box-shadow: 0 0 0 3px rgba(124,108,246,.16); }
+  .step-label { font-size: 11.5px; color: var(--text-4); }
+  .step.is-current .step-label { color: var(--text); }
+  .step-bar { width: 34px; height: 1px; background: var(--hairline); margin: 0 8px; }
+  .step-bar.is-done { background: var(--text-4); }
+  .next-step { margin: 8px 26px 26px; border: 1px solid var(--hairline); border-left: 2px solid var(--accent);
+    border-radius: var(--radius-lg); background: var(--panel); padding: 18px 20px; max-width: 620px; }
+  .next-kick { font-size: 10px; text-transform: uppercase; letter-spacing: .1em; color: var(--accent-hi); font-weight: 700; margin-bottom: 8px; }
+  .next-title { font-size: 15px; font-weight: 600; color: var(--text); }
+  .next-desc { color: var(--text-2); margin: 6px 0 16px; font-size: 12.5px; max-width: 52ch; }
+  .next-actions { display: flex; gap: 10px; }
+
+  /* ============================ PORTFOLIO HOME (variant C) ============================ */
+  .home { grid-column: 1 / -1; background: var(--bg); overflow-y: auto; padding: 30px 34px 90px; }
+  .home-head { display: flex; align-items: baseline; gap: 12px; margin-bottom: 4px; }
+  .home-h1 { font-size: 20px; font-weight: 600; letter-spacing: -.01em; }
+  .home-count { color: var(--text-4); font-family: var(--mono); font-size: 12px; }
+  .home-sub { color: var(--text-3); margin-bottom: 24px; font-size: 13px; }
+  .home-agg { display: flex; gap: 10px; margin-bottom: 22px; flex-wrap: wrap; }
+  .agg-pill { display: inline-flex; align-items: center; gap: 8px; height: 30px; padding: 0 13px;
+    border-radius: var(--radius-pill); border: 1px solid var(--hairline); font-family: var(--mono); font-size: 11.5px; color: var(--text-2); }
+  .agg-pill.run { color: var(--ph-implementation); border-color: color-mix(in srgb, var(--ph-implementation) 30%, transparent); }
+  .agg-pill.need { color: var(--needs); border-color: color-mix(in srgb, var(--needs) 30%, transparent); }
+  .proj-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 14px; }
+  .proj-card { border: 1px solid var(--hairline); border-radius: var(--radius-lg); background: var(--panel);
+    padding: 16px 17px 15px; cursor: pointer; transition: border-color var(--dur-1), transform var(--dur-1); }
+  .proj-card:hover { border-color: var(--hairline-strong); transform: translateY(-1px); }
+  .proj-card-head { display: flex; align-items: center; gap: 9px; margin-bottom: 3px; }
+  .proj-card-name { font-size: 15px; font-weight: 600; color: var(--text); flex: 1; min-width: 0; }
+  .proj-card-branch { font-family: var(--mono); font-size: 11px; color: var(--text-4); }
+  .proj-card-meta { color: var(--text-3); font-size: 11.5px; margin-bottom: 14px; }
+  .health-bar { display: flex; gap: 3px; margin-bottom: 13px; }
+  .health-seg { flex: 1; height: 5px; border-radius: 2px; background: var(--text-4); }
+  .health-bar .health-seg.phase-bg-ideation { background: var(--ph-ideation); }
+  .health-bar .health-seg.phase-bg-spec { background: var(--ph-spec); }
+  .health-bar .health-seg.phase-bg-tickets { background: var(--ph-tickets); }
+  .health-bar .health-seg.phase-bg-implementation { background: var(--ph-implementation); }
+  .health-bar .health-seg.phase-bg-review { background: var(--ph-review); }
+  .health-bar .health-seg.phase-bg-shipped { background: var(--ph-shipped); }
+  .proj-card-foot { display: flex; align-items: center; gap: 14px; }
+  .card-stat { display: inline-flex; align-items: center; gap: 6px; font-family: var(--mono); font-size: 11.5px; color: var(--text-3); }
+  .card-stat.need { color: var(--needs); } .card-stat.run { color: var(--ph-implementation); }
+  .card-stat .d { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+  .card-stat-spacer { flex: 1; }
+  .proj-card.open-card { border-style: dashed; display: flex; flex-direction: column; align-items: center;
+    justify-content: center; color: var(--text-3); min-height: 148px; gap: 8px; }
+  .proj-card.open-card:hover { color: var(--text); border-color: var(--accent-line); }
+  .open-card .plus { font-size: 24px; font-weight: 300; }
+
+  /* ============================ FIRST RUN (variant D) ============================ */
+  .firstrun { grid-column: 1 / -1; background: var(--bg); display: flex; align-items: center; justify-content: center; }
+  .fr-card { width: 460px; border: 1px solid var(--hairline); border-radius: var(--radius-lg); background: var(--panel);
+    padding: 30px 30px 26px; animation: fadeUp var(--dur-3) var(--ease-out); }
+  .fr-logo { width: 40px; height: 40px; border-radius: var(--radius); background: var(--accent); display: flex;
+    align-items: center; justify-content: center; color: var(--accent-ink); font-family: var(--mono); font-size: 22px; font-weight: 700; margin-bottom: 18px; }
+  .fr-h1 { font-size: 20px; font-weight: 600; letter-spacing: -.01em; }
+  .fr-sub { color: var(--text-3); margin: 8px 0 22px; font-size: 13px; line-height: 1.55; }
+  .fr-field-label { font-size: 10px; text-transform: uppercase; letter-spacing: .09em; color: var(--text-3); font-weight: 700; margin-bottom: 7px; }
+  .fr-picker { display: flex; gap: 8px; margin-bottom: 12px; }
+  .fr-input { flex: 1; height: 34px; background: var(--panel-inset); border: 1px solid var(--hairline);
+    border-radius: var(--radius); padding: 0 11px; color: var(--text); font-family: var(--mono); font-size: 12px; display: flex; align-items: center; }
+  .fr-input .caret2 { color: var(--text-4); } .fr-input .path { color: var(--text-2); }
+  .fr-browse { height: 34px; padding: 0 13px; border: 1px solid var(--hairline); border-radius: var(--radius);
+    background: transparent; color: var(--text-2); cursor: pointer; font-size: 12.5px; }
+  .fr-detect { display: flex; align-items: center; gap: 8px; padding: 9px 11px; margin-bottom: 20px;
+    background: color-mix(in srgb, var(--ok) 7%, transparent); border: 1px solid color-mix(in srgb, var(--ok) 25%, transparent);
+    border-radius: var(--radius); font-size: 12px; color: var(--text-2); }
+  .fr-detect .ok-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--ok); }
+  .fr-actions { display: flex; align-items: center; justify-content: space-between; }
+  .fr-recent { color: var(--text-4); font-size: 11.5px; }
+
+  /* ---- status bar ---- */
+  .statusbar { display: flex; align-items: center; gap: 14px; padding: 0 14px; border-top: 1px solid var(--hairline);
+    background: var(--panel); font-size: 11px; color: var(--text-3); }
+  .sb-item { display: inline-flex; align-items: center; gap: 6px; }
+  .sb-branch { color: var(--text-3); font-family: var(--mono); font-size: 11px; }
+  .sb-spacer { flex: 1; }
+  .sb-health { display: inline-flex; align-items: center; gap: 6px; color: var(--ph-shipped); }
+  .sb-health .health-dot { width: 8px; height: 8px; }
+
+  /* ============================ PROTOTYPE SWITCHER ============================ */
+  .proto-bar { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); z-index: 100;
+    display: flex; align-items: stretch; background: #05060a; border: 1px solid var(--accent-line);
+    border-radius: var(--radius-lg); box-shadow: 0 12px 40px -10px rgba(0,0,0,.8), 0 0 0 1px rgba(124,108,246,.15);
+    overflow: hidden; font-family: var(--sans); }
+  .proto-arrow { width: 40px; background: transparent; border: none; color: var(--text-2); cursor: pointer;
+    font-size: 16px; display: flex; align-items: center; justify-content: center; }
+  .proto-arrow:hover { background: var(--accent-soft); color: var(--accent-hi); }
+  .proto-mid { padding: 8px 16px; text-align: center; min-width: 300px; border-left: 1px solid var(--hairline);
+    border-right: 1px solid var(--hairline); }
+  .proto-name { font-size: 12.5px; font-weight: 600; color: var(--text); }
+  .proto-name .vk { color: var(--accent-hi); font-family: var(--mono); margin-right: 7px; }
+  .proto-caption { font-size: 10.5px; color: var(--text-3); margin-top: 3px; line-height: 1.35; }
+  .proto-dots { display: flex; gap: 5px; justify-content: center; margin-top: 6px; }
+  .proto-dots .d { width: 5px; height: 5px; border-radius: 50%; background: var(--text-4); }
+  .proto-dots .d.on { background: var(--accent); }
+</style>
+
+<div id="app"></div>
+
+<div class="proto-bar" role="group" aria-label="Prototype variant switcher">
+  <button class="proto-arrow" id="prev" title="Previous variant (left arrow)">&lsaquo;</button>
+  <div class="proto-mid">
+    <div class="proto-name"><span class="vk" id="vk">A</span><span id="vname">Titlebar switcher</span></div>
+    <div class="proto-caption" id="vcap"></div>
+    <div class="proto-dots" id="vdots"></div>
+  </div>
+  <button class="proto-arrow" id="next" title="Next variant (right arrow)">&rsaquo;</button>
+</div>
+
+<script>
+// ---------------------------------------------------------------------------
+// Mock data — the #13 multi-project server model, faked. Read-only.
+// ---------------------------------------------------------------------------
+const PHASE_ORDER = ['ideation', 'spec', 'tickets', 'implementation', 'review', 'shipped'];
+const GLYPH = { ideation: '◉', spec: '◐', tickets: '▤', implementation: '⚙', review: '◆', shipped: '✓' };
+const PH_LABEL = { ideation: 'ideation', spec: 'spec', tickets: 'tickets', implementation: 'build', review: 'review', shipped: 'shipped' };
+
+const PROJECTS = [
+  { id: 'runcastle', name: 'runcastle', branch: 'main', features: [
+    { slug: 'events-projectid', title: 'Cross-project event stream', phase: 'implementation', run: true },
+    { slug: 'publish-prep', title: 'Publish-prep: MIT license + repo hygiene', phase: 'review' },
+    { slug: 'multi-project-ui', title: 'Multi-project switcher UI', phase: 'ideation' },
+    { slug: 'worktree-cleanup', title: 'Orphaned worktree cleanup', phase: 'tickets', tickets: 6 },
+    { slug: 'settings-overlay', title: 'Settings overlay + storage split', phase: 'spec' },
+    { slug: 'first-run-flow', title: 'Streamlined first-run', phase: 'shipped' },
+  ]},
+  { id: 'orchard', name: 'orchard', branch: 'main', features: [
+    { slug: 'checkout-redesign', title: 'Checkout redesign', phase: 'implementation', run: true },
+    { slug: 'auth-magiclink', title: 'Magic-link auth', phase: 'spec' },
+    { slug: 'pricing-page', title: 'Pricing page', phase: 'shipped' },
+  ]},
+  { id: 'ledger', name: 'ledger-cli', branch: 'trunk', features: [
+    { slug: 'csv-export', title: 'CSV export command', phase: 'tickets', tickets: 4 },
+    { slug: 'color-output', title: 'ANSI color output', phase: 'implementation' },
+  ]},
+];
+
+// derivations (mirror apps/web/src/lib/feature-ui.ts)
+function needsMe(f) {
+  if (f.phase === 'shipped') return null;
+  if (f.run) return null;
+  if (f.phase === 'ideation') return { kind: 'grill', label: 'needs grilling' };
+  if (f.phase === 'tickets' && (f.tickets || 0) > 0) return { kind: 'burn', label: 'review & burn' };
+  if (f.phase === 'review') return { kind: 'ship', label: 'test & merge' };
+  return null;
+}
+function triageOf(f) {
+  if (f.phase === 'shipped') return 'shipped';
+  if (f.run) return 'agentWorking';
+  if (needsMe(f)) return 'needsYou';
+  return 'inProgress';
+}
+const TRIAGE_ORDER = [
+  { key: 'needsYou', label: 'Needs you' }, { key: 'agentWorking', label: 'Agent working' },
+  { key: 'inProgress', label: 'In progress' }, { key: 'shipped', label: 'Shipped' },
+];
+function triage(features) {
+  return TRIAGE_ORDER.map(({ key, label }) => ({ key, label, features: features.filter((f) => triageOf(f) === key) }))
+    .filter((g) => g.features.length > 0);
+}
+function miniSegs(f) {
+  const ci = PHASE_ORDER.indexOf(f.phase);
+  return PHASE_ORDER.map((_, pi) => pi < ci ? 'is-done' : pi === ci ? 'is-current' : '');
+}
+function projStats(p) {
+  return {
+    running: p.features.filter((f) => f.run).length,
+    needsYou: p.features.filter((f) => needsMe(f)).length,
+    active: p.features.filter((f) => f.phase !== 'shipped').length,
+  };
+}
+const TOTAL = {
+  running: PROJECTS.reduce((n, p) => n + projStats(p).running, 0),
+  runProjects: PROJECTS.filter((p) => projStats(p).running > 0).length,
+  needsYou: PROJECTS.reduce((n, p) => n + projStats(p).needsYou, 0),
+  needProjects: PROJECTS.filter((p) => projStats(p).needsYou > 0).length,
+};
+
+// selection state per variant (mock)
+const sel = { A: { proj: 'runcastle', feat: 'multi-project-ui' }, B: { proj: 'orchard', feat: 'checkout-redesign' } };
+
+// ---------------------------------------------------------------------------
+// shared chrome fragments
+// ---------------------------------------------------------------------------
+const esc = (s) => String(s).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+
+function featureRow(f, activeSlug) {
+  const nm = needsMe(f);
+  const active = f.slug === activeSlug ? ' is-active' : '';
+  const shipped = f.phase === 'shipped' ? ' is-shipped' : '';
+  let flag;
+  if (f.run) flag = '<span class="spin-ring"></span>';
+  else if (f.phase === 'shipped') flag = '<span class="mini-check">✓</span>';
+  else flag = (nm ? '<span class="needs-dot"></span>' : '') + '<span class="mini-map">' + miniSegs(f).map((s) => '<span class="mini-seg ' + s + '"></span>').join('') + '</span>';
+  return '<button class="feature-row' + active + shipped + '" title="' + esc(f.title) + '">' +
+    '<span class="feature-glyph phase-fg-' + f.phase + '">' + GLYPH[f.phase] + '</span>' +
+    '<span class="feature-slug mono">' + esc(f.slug) + '</span>' +
+    '<span class="feature-flag">' + flag + '</span></button>';
+}
+
+function triageList(features, activeSlug) {
+  return triage(features).map((g) => '<div class="triage-group triage-' + g.key + '">' +
+    '<div class="triage-label"><span class="triage-name">' + g.label + '</span><span class="triage-count">' + g.features.length + '</span></div>' +
+    g.features.map((f) => featureRow(f, activeSlug)).join('') + '</div>').join('');
+}
+
+function stepper(phase) {
+  const ci = PHASE_ORDER.indexOf(phase);
+  return '<div class="stepper">' + PHASE_ORDER.map((ph, i) => {
+    const st = i < ci ? 'is-done' : i === ci ? 'is-current' : '';
+    const bar = i < PHASE_ORDER.length - 1 ? '<div class="step-bar ' + (i < ci ? 'is-done' : '') + '"></div>' : '';
+    return '<div class="step ' + st + '"><div class="step-dot phase-fg-' + ph + '">' + GLYPH[ph] + '</div><span class="step-label">' + PH_LABEL[ph] + '</span></div>' + bar;
+  }).join('') + '</div>';
+}
+
+const NEXT = {
+  ideation: { kick: 'NEXT STEP', title: 'Shape the idea with Claude', desc: 'Launch a grill session to shape the idea before any code is written.', primary: 'Start grill session' },
+  spec: { kick: 'NEXT STEP', title: 'Write the spec', desc: 'The spec takes shape beside the grill conversation.', primary: 'Resume grill' },
+  tickets: { kick: 'NEXT STEP', title: 'Review & burn the tickets', desc: 'Each ticket is one atomic task Claude implements. Review them, then burn.', primary: 'Burn 6 tickets' },
+  implementation: { kick: 'IN PROGRESS', title: 'Burning tickets', desc: 'Burning 6 tickets — 3 done. Claude is working in an isolated worktree.', primary: 'Cancel run', busy: true },
+  review: { kick: 'NEXT STEP', title: 'Test drive, then ship', desc: 'Checks are in. Test-drive the branch, then merge to ship.', primary: 'Merge & ship' },
+  shipped: { kick: 'SHIPPED', title: 'Shipped to main', desc: 'The branch is merged and the pipeline is complete.', primary: 'Ask a question' },
+};
+
+function workspace(project, feat) {
+  const f = project.features.find((x) => x.slug === feat) || project.features[0];
+  const ns = NEXT[f.phase];
+  return '<section class="workspace">' +
+    '<div class="ws-head">' +
+      '<div class="ws-crumb mono">' + project.name + ' / <span class="cur">' + esc(f.slug) + '</span></div>' +
+      '<div class="ws-title">' + esc(f.title) + '</div>' +
+      '<div class="ws-sub">Branch <span class="mono">rc/' + esc(f.slug) + '</span> · ' + PH_LABEL[f.phase] + ' phase</div>' +
+    '</div>' +
+    stepper(f.phase) +
+    '<div class="next-step">' +
+      '<div class="next-kick">' + ns.kick + '</div>' +
+      '<div class="next-title">' + ns.title + '</div>' +
+      '<div class="next-desc">' + ns.desc + '</div>' +
+      '<div class="next-actions">' +
+        '<button class="btn ' + (ns.busy ? 'btn-ghost' : 'btn-solid') + ' btn-lg">' + (ns.busy ? '<span class="spin-ring"></span> ' : '') + ns.primary + '</button>' +
+        (f.phase === 'review' ? '<button class="btn btn-ghost btn-lg">Start test drive</button>' : '') +
+      '</div>' +
+    '</div>' +
+  '</section>';
+}
+
+function inspector(project, feat) {
+  const f = project.features.find((x) => x.slug === feat) || project.features[0];
+  return '<aside class="inspector">' +
+    '<div class="insp-title">Inspector</div>' +
+    '<div class="insp-row"><span class="k">Project</span><span class="v">' + project.name + '</span></div>' +
+    '<div class="insp-row"><span class="k">Phase</span><span class="v">' + f.phase + '</span></div>' +
+    '<div class="insp-row"><span class="k">Branch</span><span class="v">rc/' + esc(f.slug) + '</span></div>' +
+    '<div class="insp-row"><span class="k">Sandbox</span><span class="v">docker</span></div>' +
+    '<div class="insp-row"><span class="k">Worktree</span><span class="v">proj_' + project.id + '</span></div>' +
+  '</aside>';
+}
+
+function statusbar(branchLabel) {
+  return '<footer class="statusbar">' +
+    '<span class="sb-branch">⎇ ' + branchLabel + '</span>' +
+    '<span class="sb-item">sandbox · docker</span>' +
+    '<span class="sb-spacer"></span>' +
+    '<span class="sb-item">' + TOTAL.running + ' run' + (TOTAL.running === 1 ? '' : 's') + ' · ' + TOTAL.runProjects + ' project' + (TOTAL.runProjects === 1 ? '' : 's') + '</span>' +
+    '<span class="sb-item sb-health"><span class="health-dot"></span>:4512 ok</span>' +
+  '</footer>';
+}
+
+const searchBtn = '<button class="tb-search"><span>Search or jump to…</span><span class="tb-search-spacer"></span><span class="kbd">⌘K</span></button>';
+const aggRunsPill = '<span class="tb-runs"><span class="spin-ring"></span>' + TOTAL.running + ' run' + (TOTAL.running === 1 ? '' : 's') + ' · ' + TOTAL.runProjects + ' project' + (TOTAL.runProjects === 1 ? '' : 's') + '</span>';
+const healthDotBtn = '<span class="tb-icon-btn tb-healthbtn">●</span>';
+
+// ---------------------------------------------------------------------------
+// VARIANT A — titlebar project switcher; one project in focus at a time.
+// ---------------------------------------------------------------------------
+function variantA() {
+  const project = PROJECTS.find((p) => p.id === sel.A.proj);
+  const menu = '<div class="switcher-menu">' +
+    '<div class="switcher-menu-label">Open projects · ' + PROJECTS.length + '</div>' +
+    PROJECTS.map((p) => {
+      const s = projStats(p);
+      return '<div class="switcher-row ' + (p.id === project.id ? 'is-current' : '') + '">' +
+        '<span class="switcher-check">' + (p.id === project.id ? '✓' : '') + '</span>' +
+        '<span class="switcher-name"><span class="n">' + p.name + '</span><span class="b mono">⎇ ' + p.branch + '</span></span>' +
+        '<span class="switcher-stats">' +
+          (s.running ? '<span class="mini-run"><span class="spin-ring"></span>' + s.running + '</span>' : '') +
+          (s.needsYou ? '<span class="mini-need"><span class="d"></span>' + s.needsYou + '</span>' : '') +
+        '</span></div>';
+    }).join('') +
+    '<div class="switcher-open"><span class="plus">+</span>Open project…<span class="tb-search-spacer"></span><span class="kbd">⌘O</span></div>' +
+  '</div>';
+  return '<div class="shell">' +
+    '<header class="titlebar">' +
+      '<span class="tb-logo mono">r</span><span class="tb-app">runcastle</span><span class="tb-arrow">/</span>' +
+      '<button class="tb-switcher">' + project.name + ' <span class="caret">▼</span></button>' +
+      '<span class="tb-branch">⎇ ' + project.branch + '</span>' +
+      '<span class="tb-spacer"></span>' + searchBtn + aggRunsPill + healthDotBtn +
+      '<button class="tb-icon-btn">▥</button>' +
+      menu +
+    '</header>' +
+    '<div class="shell-body">' +
+      '<nav class="sidebar">' +
+        '<div class="sidebar-head"><span class="pane-title">Features</span><button class="new-btn">+ New</button></div>' +
+        '<div class="sidebar-list">' + triageList(project.features, sel.A.feat) + '</div>' +
+        '<div class="sidebar-foot">One project in focus. Switch from the titlebar; runs keep going in the background.</div>' +
+      '</nav>' +
+      workspace(project, sel.A.feat) +
+      inspector(project, sel.A.feat) +
+    '</div>' +
+    statusbar(project.branch) +
+  '</div>';
+}
+
+// ---------------------------------------------------------------------------
+// VARIANT B — every project a collapsible section in one sidebar; all co-visible.
+// ---------------------------------------------------------------------------
+function variantB() {
+  const selProj = PROJECTS.find((p) => p.id === sel.B.proj);
+  const sections = PROJECTS.map((p) => {
+    const s = projStats(p);
+    const current = p.id === selProj.id;
+    const sorted = [...p.features].sort((a, b) => {
+      const r = (f) => f.phase === 'shipped' ? 2 : (f.run || needsMe(f)) ? 0 : 1;
+      return r(a) - r(b);
+    });
+    return '<div class="proj-section">' +
+      '<button class="proj-head">' +
+        '<span class="proj-chevron">▼</span>' +
+        '<span class="proj-name ' + (current ? 'is-current' : '') + '">' + p.name + '</span>' +
+        '<span class="proj-badges">' +
+          (s.running ? '<span class="mini-run"><span class="spin-ring"></span>' + s.running + '</span>' : '') +
+          (s.needsYou ? '<span class="mini-need"><span class="d"></span>' + s.needsYou + '</span>' : '') +
+        '</span>' +
+      '</button>' +
+      sorted.map((f) => featureRow(f, current ? sel.B.feat : null)).join('') +
+    '</div>';
+  }).join('');
+  return '<div class="shell">' +
+    '<header class="titlebar">' +
+      '<span class="tb-logo mono">r</span><span class="tb-app">runcastle</span>' +
+      '<span class="tb-arrow">/</span><span class="tb-project">' + selProj.name + '</span>' +
+      '<span class="tb-dot">·</span><span class="tb-branch">⎇ ' + selProj.branch + '</span>' +
+      '<span class="tb-spacer"></span>' + searchBtn + aggRunsPill + healthDotBtn +
+      '<button class="tb-icon-btn">▥</button>' +
+    '</header>' +
+    '<div class="shell-body">' +
+      '<nav class="sidebar">' +
+        '<div class="sidebar-head"><span class="pane-title">Projects · ' + PROJECTS.length + '</span><button class="new-btn">+ New</button></div>' +
+        '<div class="sidebar-list">' + sections + '</div>' +
+        '<button class="sidebar-open-btn">+ Open project…</button>' +
+      '</nav>' +
+      workspace(selProj, sel.B.feat) +
+      inspector(selProj, sel.B.feat) +
+    '</div>' +
+    statusbar(selProj.branch) +
+  '</div>';
+}
+
+// ---------------------------------------------------------------------------
+// VARIANT C — a first-class portfolio home; drill into a project's shell.
+// ---------------------------------------------------------------------------
+function variantC() {
+  const cards = PROJECTS.map((p) => {
+    const s = projStats(p);
+    const health = p.features.map((f) => '<span class="health-seg phase-bg-' + f.phase + '"></span>').join('');
+    return '<div class="proj-card">' +
+      '<div class="proj-card-head">' +
+        '<span class="proj-card-name">' + p.name + '</span>' +
+        '<span class="proj-card-branch mono">⎇ ' + p.branch + '</span>' +
+      '</div>' +
+      '<div class="proj-card-meta">' + p.features.length + ' features · ' + s.active + ' active</div>' +
+      '<div class="health-bar">' + health + '</div>' +
+      '<div class="proj-card-foot">' +
+        (s.needsYou ? '<span class="card-stat need"><span class="d"></span>' + s.needsYou + ' need you</span>' : '<span class="card-stat">nothing waiting</span>') +
+        (s.running ? '<span class="card-stat run"><span class="spin-ring"></span>' + s.running + ' running</span>' : '') +
+        '<span class="card-stat-spacer"></span>' +
+        '<span class="card-stat">2m ago</span>' +
+      '</div>' +
+    '</div>';
+  }).join('');
+  return '<div class="shell">' +
+    '<header class="titlebar">' +
+      '<span class="tb-logo mono">r</span><span class="tb-app">runcastle</span>' +
+      '<span class="tb-arrow">▸</span><span class="tb-project">Projects</span>' +
+      '<span class="tb-spacer"></span>' + searchBtn + aggRunsPill + healthDotBtn +
+    '</header>' +
+    '<div class="shell-body full">' +
+      '<div class="home">' +
+        '<div class="home-head"><span class="home-h1">Projects</span><span class="home-count mono">' + PROJECTS.length + ' open</span></div>' +
+        '<div class="home-sub">Everything you’re running, at a glance. Click a project to drill into its pipeline.</div>' +
+        '<div class="home-agg">' +
+          '<span class="agg-pill run"><span class="spin-ring"></span>' + TOTAL.running + ' runs across ' + TOTAL.runProjects + ' projects</span>' +
+          '<span class="agg-pill need"><span class="mini-need"><span class="d"></span></span>' + TOTAL.needsYou + ' need you across ' + TOTAL.needProjects + ' projects</span>' +
+        '</div>' +
+        '<div class="proj-grid">' +
+          cards +
+          '<div class="proj-card open-card"><span class="plus">+</span><span>Open a project</span></div>' +
+        '</div>' +
+      '</div>' +
+    '</div>' +
+    statusbar('—') +
+  '</div>';
+}
+
+// ---------------------------------------------------------------------------
+// VARIANT D — first run: brand-new install, the open-a-project flow.
+// ---------------------------------------------------------------------------
+function variantD() {
+  return '<div class="shell">' +
+    '<header class="titlebar">' +
+      '<span class="tb-logo mono">r</span><span class="tb-app">runcastle</span>' +
+      '<span class="tb-spacer"></span>' + healthDotBtn +
+    '</header>' +
+    '<div class="shell-body full">' +
+      '<div class="firstrun">' +
+        '<div class="fr-card">' +
+          '<div class="fr-logo mono">r</div>' +
+          '<div class="fr-h1">Open a project to begin</div>' +
+          '<div class="fr-sub">runcastle drives Claude through a six-phase pipeline against a git repo on this machine. Point it at a repo to start — nothing leaves your machine.</div>' +
+          '<div class="fr-field-label">Repository folder</div>' +
+          '<div class="fr-picker">' +
+            '<div class="fr-input"><span class="caret2">~/code/</span><span class="path">orchard</span></div>' +
+            '<button class="fr-browse">Browse…</button>' +
+          '</div>' +
+          '<div class="fr-detect"><span class="ok-dot"></span>Git repo detected · default branch <span class="mono fr-branch">main</span></div>' +
+          '<div class="fr-actions">' +
+            '<span class="fr-recent">No recent projects yet</span>' +
+            '<button class="btn btn-solid btn-lg">Open project</button>' +
+          '</div>' +
+        '</div>' +
+      '</div>' +
+    '</div>' +
+    statusbar('—') +
+  '</div>';
+}
+
+// ---------------------------------------------------------------------------
+// switcher wiring
+// ---------------------------------------------------------------------------
+const VARIANTS = [
+  { key: 'A', name: 'Titlebar switcher', cap: 'One project in focus · switch from the titlebar dropdown · aggregate runs pill', render: variantA },
+  { key: 'B', name: 'Sidebar sections', cap: 'All projects co-visible as sidebar sections · cross-project state is inherent', render: variantB },
+  { key: 'C', name: 'Portfolio home', cap: 'A first-class projects dashboard you drill in and out of', render: variantC },
+  { key: 'D', name: 'First run · open a project', cap: 'The brand-new-install flow (shared by whichever home wins)', render: variantD },
+];
+const KEYS = VARIANTS.map((v) => v.key);
+const app = document.getElementById('app');
+
+function current() {
+  const q = new URLSearchParams(location.search).get('variant');
+  const i = KEYS.indexOf((q || 'A').toUpperCase());
+  return i < 0 ? 0 : i;
+}
+function render() {
+  const i = current();
+  const v = VARIANTS[i];
+  app.innerHTML = v.render();
+  document.getElementById('vk').textContent = v.key;
+  document.getElementById('vname').textContent = v.name;
+  document.getElementById('vcap').textContent = v.cap;
+  document.getElementById('vdots').innerHTML = VARIANTS.map((_, j) => '<span class="d ' + (j === i ? 'on' : '') + '"></span>').join('');
+}
+function go(delta) {
+  const i = (current() + delta + VARIANTS.length) % VARIANTS.length;
+  const u = new URL(location.href);
+  u.searchParams.set('variant', KEYS[i]);
+  history.replaceState(null, '', u);
+  render();
+}
+document.getElementById('prev').onclick = () => go(-1);
+document.getElementById('next').onclick = () => go(1);
+document.addEventListener('keydown', (e) => {
+  const t = e.target;
+  if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+  if (e.key === 'ArrowLeft') go(-1);
+  else if (e.key === 'ArrowRight') go(1);
+});
+render();
+</script>
