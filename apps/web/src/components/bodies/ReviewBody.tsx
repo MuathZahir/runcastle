@@ -1,13 +1,18 @@
+import { useState } from 'react'
 import { SectionTitle } from '../../ui'
+import { trpc } from '../../trpc'
 import type { FeatureFull } from '../../lib/api'
 import type { DriveState } from '../../lib/workspace'
 import { latestRun } from '../../lib/feature-ui'
+import { ErrorBoundary } from '../ErrorBoundary'
+import { TerminalView } from '../TerminalView'
 
 /**
  * The review phase body (app-redesign): a summary of the finished run on the
  * left (ticket tally, run outcome, commit count, branch) and the test-drive
  * panel on the right. All figures come from real wire data — the start/stop and
- * merge actions live in the workspace next-step bar.
+ * merge actions live in the workspace next-step bar. While a drive is active the
+ * embedded dev pane + "Open app" link render full-width below the cards.
  */
 export function ReviewBody({ full, driving }: { full: FeatureFull; driving: DriveState | null }) {
   const { feature, tickets, runs } = full
@@ -27,7 +32,8 @@ export function ReviewBody({ full, driving }: { full: FeatureFull; driving: Driv
         : 'var(--text-3)'
 
   return (
-    <div className="review-grid">
+    <div className="review-body">
+      <div className="review-grid">
       <div className="review-card">
         <SectionTitle>Summary</SectionTitle>
         <div className="check-row">
@@ -76,6 +82,62 @@ export function ReviewBody({ full, driving }: { full: FeatureFull; driving: Driv
           </div>
         )}
       </div>
+      </div>
+
+      {isDriving && <DrivePane featureId={feature.id} />}
+    </div>
+  )
+}
+
+/**
+ * The test-drive dev pane: the project dev command runs in a drive-owned PTY the
+ * server streams over `/ws/terminal/:devPaneId`. Collapsed to a status strip by
+ * default (the terminal is only mounted — and only connects its WS — once
+ * expanded), so boot output/errors are one click away. The "Open app" link
+ * surfaces the moment the server sniffs a localhost URL from the output; both the
+ * pane and the link disappear when the drive stops (driveInfo → null). Nothing
+ * auto-opens — the human clicks the link.
+ */
+function DrivePane({ featureId }: { featureId: string }) {
+  const [expanded, setExpanded] = useState(false)
+  const info = trpc.feature.driveInfo.useQuery(undefined, { refetchInterval: 1500 })
+  const drive = info.data
+  // The drive is global (one at a time); only render for THIS feature's drive.
+  if (!drive || drive.featureId !== featureId) return null
+
+  return (
+    <div className="drive-pane">
+      <div className="drive-pane-strip">
+        <span className="drive-pane-kind">dev server</span>
+        <span className="drive-pane-loc">{drive.branch}</span>
+        <span className="drive-pane-spacer" />
+        {drive.devUrl && (
+          <a className="drive-open" href={drive.devUrl} target="_blank" rel="noreferrer noopener">
+            Open app ↗
+          </a>
+        )}
+        {drive.devPaneId && (
+          <button
+            type="button"
+            className="btn btn-xs btn-ghost drive-pane-toggle"
+            aria-expanded={expanded}
+            onClick={() => setExpanded((v) => !v)}
+          >
+            {expanded ? 'Hide output' : 'Show output'}
+          </button>
+        )}
+      </div>
+
+      {expanded &&
+        (drive.devPaneId ? (
+          <div className="drive-pane-term">
+            <ErrorBoundary label="dev terminal">
+              <TerminalView sessionId={drive.devPaneId} />
+            </ErrorBoundary>
+          </div>
+        ) : (
+          <div className="drive-pane-empty">no dev command configured for this project</div>
+        ))}
     </div>
   )
 }

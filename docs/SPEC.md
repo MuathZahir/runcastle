@@ -131,9 +131,7 @@ Router `appRouter` in `trpc/router.ts`, context = `{ db, config }`. All inputs/o
    - `mcp.json` — `{ "mcpServers": { "runcastle": { "type": "http", "url": "http://localhost:4512/mcp" } } }` (verify exact field names in research notes; if http-type needs headers for session identity, add `X-Runcastle-Session: <sessionId>`).
 3. Command (verify flags against research notes; `--append-system-prompt-file` fallback = inline `--append-system-prompt`):
    `claude --settings "<dir>/settings.json" --mcp-config "<dir>/mcp.json" --strict-mcp-config --plugin-dir "<packs>/runcastle" --append-system-prompt-file "<dir>/system-prompt.md" --permission-mode acceptEdits`
-4. **Env propagation caveat (important):** `wt.exe -w 0 nt` routes through an existing Windows Terminal process — child env vars set on our spawn do NOT reach the tab. Embed them in the command line instead:
-   `wt.exe -w 0 nt --title "runcastle: <feature title>" -d "<worktreePath>" cmd /k "set RUNCASTLE_SESSION_ID=<id>&& set RUNCASTLE_SERVER_URL=http://localhost:4512&& claude ..."`
-   (`cmd /k` keeps the tab open on exit so errors are readable. Mind `set` trailing-space gotcha: no space before `&&`.)
+4. **Spawn:** the session runs in a server-owned embedded PTY (UI-SPEC §5, cross-platform — no `wt.exe`). `claude` is spawned with `cwd` = talk worktree and `RUNCASTLE_SESSION_ID` / `RUNCASTLE_SERVER_URL` inherited directly onto the process env; the PTY is registered by session id and streamed to the in-app xterm view over `/ws/terminal/:sessionId`. (The legacy `window` launch mode + its `wt.exe -w 0 nt … cmd /k` command line is removed — see CONTEXT.md decision 13.)
 5. `hook-client.ts` (runs inside session): reads stdin JSON, POSTs `{ event, env: { sessionId: RUNCASTLE_SESSION_ID }, payload }` to `RUNCASTLE_SERVER_URL/api/hooks/<event>`, prints the server's JSON response verbatim to stdout, exit 0. 3s fetch timeout; on any error print `{}` and exit 0 (never break the user's session).
 6. `/api/hooks/session-start`: mark session live, store `ccSessionId` + `transcriptPath` from payload; respond with the context-injection JSON (exact shape per research notes) carrying: feature brief digest + current phase + "call get_feature_context for detail".
    `/api/hooks/user-prompt`: respond injecting one compact line: `[runcastle] feature=<slug> phase=<phase> tickets=<n>`. `/api/hooks/session-end`: mark ended.
@@ -154,8 +152,9 @@ Mounted at `POST /mcp` (Streamable HTTP; use @hono/mcp if STACK-NOTES confirms, 
 - `ensureTalkWorktree(project, feature) → worktreePath` — `git worktree add <dataDir path> feature/<slug>`; reuse if exists; prune stale on failure and retry once
 - `commitDocs(worktreePath, message)` — stage `docs/features/<slug>` only, commit if changes (used by MCP complete_phase to checkpoint knowledge)
 - Test drive (in-memory module state: `{ active?: { featureId, previousBranch } }`):
-  - `start`: deny (with reason) if: main checkout dirty (`status --porcelain` non-empty) | another test drive active | feature has an active run. Else record current branch, `checkout feature/<slug>`, return ok. If `project.devCommand` set, spawn `wt.exe` tab in repoPath running it (best-effort).
-  - `stop`: checkout `previousBranch`, clear state.
+  - `start`: deny (with reason) if: main checkout dirty (`status --porcelain` non-empty) | another test drive active | feature has an active run. Else record current branch, `checkout feature/<slug>`, return ok. If `project.devCommand` set, spawn it in a drive-owned embedded PTY pane (registry id `drive:<featureId>` — a NON-session id, so session guards / resume never touch it) via a generalized shell/cmd shim; sniff the first localhost URL from its output for the "Open app" link (sticky per drive). Best-effort — a spawn failure never fails the drive.
+  - `stop`: checkout `previousBranch`, clear state, and kill the dev pane's whole process tree (POSIX process-group signal / Windows ConPTY teardown) so its port is freed with no orphan; the sniffed URL is cleared.
+  - `activeDriveInfo()` → `{ featureId, branch, devPaneId?, devUrl? } | null` for the review-phase dev pane + Open app link (polled via `feature.driveInfo`).
 - `mergeFeature(project, feature)`: deny if test drive active or checkout dirty. `checkout mainBranch` → `merge --no-ff feature/<slug>` → on conflict `merge --abort`, return `{ ok: false, conflict: true }` + event; on success return ok (caller sets phase shipped, emits event). Stay on mainBranch after.
 
 ## 8. Ticket burner (B3) — `workflows/ticket-burner.ts` + `@ai-hero/sandcastle`

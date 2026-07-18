@@ -7,15 +7,15 @@ import { ptyRegistry } from './registry'
 export interface EndSessionResult {
   sessionId: string
   ok: boolean
-  /** Whether a live PTY was found and killed (false for window-mode / already-ended). */
+  /** Whether a live PTY was found and killed (false for an already-ended session). */
   killed: boolean
 }
 
 /**
  * End a session (UI-SPEC §5, backs `feature.endSession`): kill its PTY if one is
  * live, mark the session row `ended`, and drop a timeline event. Safe to call
- * for a session with no PTY (window mode, or one that already exited) — it still
- * marks the row ended idempotently.
+ * for a session with no PTY (one that already exited) — it still marks the row
+ * ended idempotently.
  *
  * Killing the PTY fires the registry's `onExit`, which emits `session.pty_exited`
  * via the launcher hook; this function additionally emits `session.ended` so the

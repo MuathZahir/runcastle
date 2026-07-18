@@ -12,7 +12,7 @@ import {
   renderSystemPrompt,
   writeSessionArtifacts,
 } from '../src/launcher/artifacts'
-import { buildClaudeArgs, buildLaunchCommand, ptyExitMessage } from '../src/launcher/launcher'
+import { buildClaudeArgs, ptyExitMessage } from '../src/launcher/launcher'
 
 const config: RuncastleConfig = ConfigSchema.parse({})
 
@@ -201,26 +201,34 @@ describe('renderSystemPrompt', () => {
   })
 })
 
-describe('buildLaunchCommand', () => {
-  const cmd = buildLaunchCommand({
-    sessionId: 'sess_xyz',
-    serverUrl: 'http://localhost:4512',
-    featureTitle: 'Dark mode',
-    worktreePath: 'C:\\wt\\dark-mode',
-    pluginDir: 'C:\\repo\\packages\\skills\\packs\\runcastle',
-    settingsPath: 'C:\\s\\settings.json',
-    mcpConfigPath: 'C:\\s\\mcp.json',
-    systemPromptPath: 'C:\\s\\system-prompt.md',
-    model: 'claude-sonnet-5',
-  })
-
-  it('assembles the claude invocation with the verified flags', () => {
-    expect(cmd.claudeCommand).toBe(
-      'claude --settings "C:\\s\\settings.json" --mcp-config "C:\\s\\mcp.json" ' +
-        '--strict-mcp-config --plugin-dir "C:\\repo\\packages\\skills\\packs\\runcastle" ' +
-        '--append-system-prompt-file "C:\\s\\system-prompt.md" --permission-mode acceptEdits ' +
-        '--model claude-sonnet-5',
-    )
+describe('buildClaudeArgs', () => {
+  it('assembles the claude argv with the verified flags (embedded PTY spawn)', () => {
+    const args = buildClaudeArgs({
+      sessionId: 'sess_xyz',
+      serverUrl: 'http://localhost:4512',
+      featureTitle: 'Dark mode',
+      worktreePath: 'C:\\wt\\dark-mode',
+      pluginDir: 'C:\\repo\\packages\\skills\\packs\\runcastle',
+      settingsPath: 'C:\\s\\settings.json',
+      mcpConfigPath: 'C:\\s\\mcp.json',
+      systemPromptPath: 'C:\\s\\system-prompt.md',
+      model: 'claude-sonnet-5',
+    })
+    expect(args).toEqual([
+      '--settings',
+      'C:\\s\\settings.json',
+      '--mcp-config',
+      'C:\\s\\mcp.json',
+      '--strict-mcp-config',
+      '--plugin-dir',
+      'C:\\repo\\packages\\skills\\packs\\runcastle',
+      '--append-system-prompt-file',
+      'C:\\s\\system-prompt.md',
+      '--permission-mode',
+      'acceptEdits',
+      '--model',
+      'claude-sonnet-5',
+    ])
   })
 
   it('prepends --resume <ccSessionId> when resuming a released waypoint', () => {
@@ -259,26 +267,6 @@ describe('buildLaunchCommand', () => {
     const at = args.indexOf('--model')
     expect(at).toBeGreaterThan(-1)
     expect(args[at + 1]).toBe('claude-sonnet-5')
-  })
-
-  it('opens a wt.exe tab with title + working dir', () => {
-    expect(cmd.display).toContain('wt.exe -w 0 nt --title "runcastle: Dark mode" -d "C:\\wt\\dark-mode" cmd /k ')
-  })
-
-  it('embeds the env vars in the command line with NO space before && (no trailing space in value)', () => {
-    expect(cmd.display).toContain(
-      'set RUNCASTLE_SESSION_ID=sess_xyz&& set RUNCASTLE_SERVER_URL=http://localhost:4512&& claude ',
-    )
-    // guard specifically against a leaked trailing space before &&
-    expect(cmd.display).not.toMatch(/RUNCASTLE_SESSION_ID=sess_xyz &&/)
-    expect(cmd.display).not.toMatch(/RUNCASTLE_SERVER_URL=http:\/\/localhost:4512 &&/)
-  })
-
-  it('wraps the whole cmd /k payload in one quoted argument', () => {
-    expect(cmd.display).toContain(
-      'cmd /k "set RUNCASTLE_SESSION_ID=sess_xyz&& set RUNCASTLE_SERVER_URL=http://localhost:4512&& claude',
-    )
-    expect(cmd.display.endsWith('--model claude-sonnet-5"')).toBe(true)
   })
 })
 
