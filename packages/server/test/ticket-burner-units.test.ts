@@ -12,7 +12,9 @@ import {
   isMergeConflictError,
   parseEnvFile,
   renderTicketPrompt,
+  selectSandbox,
 } from '../src/workflows/ticket-burner'
+import type { RuncastleConfig } from '@runcastle/core'
 
 function ticket(seq: number, blockedBy: number[] = [], overrides: Partial<Ticket> = {}): Ticket {
   return {
@@ -230,5 +232,21 @@ describe('isMergeConflictError', () => {
   it('does not flag unrelated errors', () => {
     expect(isMergeConflictError(new Error('image not found locally'))).toBe(false)
     expect(isMergeConflictError('boom')).toBe(false)
+  })
+})
+
+describe('selectSandbox — provider for the configured sandbox', () => {
+  const config = (sandbox: RuncastleConfig['sandbox']): RuncastleConfig => ({
+    serverPort: 4512,
+    model: 'm',
+    smokeModel: 's',
+    sandbox,
+    mainBranch: 'main',
+  })
+
+  it('maps each choice to its sandcastle provider', () => {
+    expect(selectSandbox(config('docker')).name).toBe('docker')
+    expect(selectSandbox(config('podman')).name).toBe('podman')
+    expect(selectSandbox(config('noSandbox')).name).toBe('no-sandbox')
   })
 })

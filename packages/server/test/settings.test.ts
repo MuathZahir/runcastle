@@ -167,13 +167,24 @@ describe('settings service (#46)', () => {
     expect(model.value).toBe('claude-opus-4-8')
   })
 
-  it('sandbox override only accepts the enum values', () => {
+  it('sandbox override accepts the three-way choice and rejects anything else', () => {
     const project = seedProject(ctx)
-    updateSettings(ctx, { projectId: project.id, key: 'sandbox', value: 'noSandbox' }, io())
-    expect(field(getSettings(ctx, project.id, io()), 'sandbox').value).toBe('noSandbox')
+    for (const choice of ['docker', 'podman', 'noSandbox']) {
+      updateSettings(ctx, { projectId: project.id, key: 'sandbox', value: choice }, io())
+      expect(field(getSettings(ctx, project.id, io()), 'sandbox').value).toBe(choice)
+    }
     expect(() =>
       updateSettings(ctx, { projectId: project.id, key: 'sandbox', value: 'vm' }, io()),
     ).toThrow(InvalidInputError)
+  })
+
+  it('the sandbox env override accepts podman and locks the field', () => {
+    const project = seedProject(ctx)
+    const withEnv = io({ RUNCASTLE_SANDBOX: 'podman' })
+    const sandbox = field(getSettings(ctx, project.id, withEnv), 'sandbox')
+    expect(sandbox.value).toBe('podman')
+    expect(sandbox.source).toBe('env')
+    expect(sandbox.editable).toBe(false)
   })
 
   it('a global settings mutation emits an event', () => {

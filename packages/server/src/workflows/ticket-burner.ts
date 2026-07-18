@@ -22,6 +22,7 @@ import type {
 } from '@ai-hero/sandcastle'
 import { claudeCode, run } from '@ai-hero/sandcastle'
 import { docker } from '@ai-hero/sandcastle/sandboxes/docker'
+import { podman } from '@ai-hero/sandcastle/sandboxes/podman'
 import { noSandbox } from '@ai-hero/sandcastle/sandboxes/no-sandbox'
 
 /**
@@ -68,7 +69,7 @@ export type TicketOutcome =
 
 export interface BurnDeps {
   config: RuncastleConfig
-  /** Whether a CLAUDE_CODE_OAUTH_TOKEN is available (docker requires it). */
+  /** Whether a CLAUDE_CODE_OAUTH_TOKEN is available (container sandboxes require it). */
   hasAuthToken: boolean
   /** Runs one ticket to a terminal outcome. Real impl calls sandcastle `run()`. */
   executeTicketRun: (ctx: WorkflowCtx, ticket: Ticket) => Promise<TicketOutcome>
@@ -477,8 +478,9 @@ export async function burnRun(
   const tickets = ctx.tickets
   const total = tickets.length
 
-  // Auth precheck: docker needs a token before we start any container.
-  if (deps.config.sandbox === 'docker' && !deps.hasAuthToken) {
+  // Auth precheck: container sandboxes (docker/podman) need a token before we
+  // start any container; noSandbox runs `claude` on the already-authed host.
+  if (deps.config.sandbox !== 'noSandbox' && !deps.hasAuthToken) {
     ctx.emitEvent({ type: AUTH_MISSING_EVENT, message: AUTH_MISSING_MESSAGE })
     return { status: 'failed', summary: 'burn aborted: auth token missing' }
   }
@@ -543,8 +545,9 @@ function readBlockedFile(dirs: (string | undefined)[]): string | undefined {
 
 /**
  * Build the sandcastle claude agent for a burn, working around two host/Windows
- * gaps in `@ai-hero/sandcastle` 0.12.0's `noSandbox` provider (docker is
- * unaffected — it runs inside a Linux container with a POSIX shell):
+ * gaps in `@ai-hero/sandcastle` 0.12.0's `noSandbox` provider (the container
+ * providers docker/podman are unaffected — they run inside a Linux container
+ * with a POSIX shell):
  *
  * 1. **Permissions.** For `noSandbox`, sandcastle forces
  *    `dangerouslySkipPermissions=false` (never auto-skip on the host) and passes
@@ -562,14 +565,14 @@ function readBlockedFile(dirs: (string | undefined)[]): string | undefined {
  *    the print command on win32+noSandbox.
  */
 export function buildBurnAgent(config: RuncastleConfig, token: string | undefined): AgentProvider {
-  const noSandbox = config.sandbox !== 'docker'
+  const onHost = config.sandbox === 'noSandbox'
   const opts: ClaudeCodeOptions = {
     ...(token ? { env: { CLAUDE_CODE_OAUTH_TOKEN: token } } : {}),
-    ...(noSandbox ? { permissionMode: 'bypassPermissions' as const } : {}),
+    ...(onHost ? { permissionMode: 'bypassPermissions' as const } : {}),
   }
   const agent = claudeCode(config.model, opts)
 
-  if (noSandbox && process.platform === 'win32') {
+  if (onHost && process.platform === 'win32') {
     const quoted = `--model '${config.model}'`
     const unquoted = `--model ${config.model}`
     return {
@@ -581,6 +584,24 @@ export function buildBurnAgent(config: RuncastleConfig, token: string | undefine
     }
   }
   return agent
+}
+
+/**
+ * Pick the sandcastle sandbox provider for the configured `sandbox`. The two
+ * container providers (docker/podman) take only the optional `imageName`;
+ * podman keeps sandcastle's rootless defaults (SELinux `:z` relabel + `keep-id`
+ * userns) — runcastle passes no volume-label/userns flags of its own.
+ */
+export function selectSandbox(config: RuncastleConfig) {
+  const imageOpts = config.sandboxImage ? { imageName: config.sandboxImage } : {}
+  switch (config.sandbox) {
+    case 'docker':
+      return docker(imageOpts)
+    case 'podman':
+      return podman(imageOpts)
+    default:
+      return noSandbox()
+  }
 }
 
 /**
@@ -611,10 +632,7 @@ async function realExecuteTicketRun(
 
   const runOptions: RunOptions = {
     agent: buildBurnAgent(config, token),
-    sandbox:
-      config.sandbox === 'docker'
-        ? docker(config.sandboxImage ? { imageName: config.sandboxImage } : {})
-        : noSandbox(),
+    sandbox: selectSandbox(config),
     cwd: project.repoPath,
     prompt,
     branchStrategy: { type: 'branch', branch: feature.branch, baseBranch: project.mainBranch },
