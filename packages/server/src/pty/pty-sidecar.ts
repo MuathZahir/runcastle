@@ -2,6 +2,7 @@ import { type ChildProcess, spawn } from 'node:child_process'
 import { createRequire } from 'node:module'
 import { existsSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
+import { ASSET_ENV, resolveAsset } from '../launcher/asset-paths'
 import { resolveExecutable } from '../util/resolve-executable'
 import type { CreatePtyOptions, PtySession } from './pty'
 
@@ -15,7 +16,13 @@ import type { CreatePtyOptions, PtySession } from './pty'
  * restores INPUT while keeping the exact same `createPtySession` interface.
  */
 
-const HOST_PATH = fileURLToPath(new URL('./pty-host.cjs', import.meta.url))
+// Spawned by system `node`, so the host must be a real file (never bundled). A
+// published install vendors it beside the bin and names it via RUNCASTLE_PTY_HOST
+// (issue #51); a checkout uses the sibling source file.
+const HOST_PATH = resolveAsset(
+  ASSET_ENV.ptyHost,
+  fileURLToPath(new URL('./pty-host.cjs', import.meta.url)),
+)
 
 function isBun(): boolean {
   return typeof (globalThis as { Bun?: unknown }).Bun !== 'undefined'

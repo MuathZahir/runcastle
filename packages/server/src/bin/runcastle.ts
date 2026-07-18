@@ -1,4 +1,7 @@
 #!/usr/bin/env bun
+import { dirname, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { applyInstalledAssetEnv } from '../launcher/asset-paths'
 import { runcastleVersion } from '../version'
 
 /**
@@ -44,6 +47,12 @@ Usage:
 `
 
 async function main(argv: string[]): Promise<number> {
+  // In a published install every runtime asset is vendored beside this bin (one
+  // dir up from `bin/`); point the asset env vars at those copies before any
+  // module resolves them. A contributor checkout has none of them beside the
+  // bin, so this is a no-op and the workspace source paths win (issue #51).
+  applyInstalledAssetEnv(resolve(dirname(fileURLToPath(import.meta.url)), '..'))
+
   const { command, args } = parseCommand(argv)
   switch (command) {
     case 'version':

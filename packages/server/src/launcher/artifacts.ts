@@ -10,6 +10,7 @@ import type {
   Waypoint,
 } from '@runcastle/core'
 import { featureDocsRel, sessionDir } from '@runcastle/core/paths'
+import { ASSET_ENV, resolveAsset } from './asset-paths'
 
 /**
  * Session launch artifacts (SPEC §5.2). Writes `system-prompt.md`,
@@ -33,9 +34,14 @@ export interface WriteArtifactsInput {
   waypoint?: Waypoint
 }
 
-/** Absolute path to the standalone hook client (sibling of this module). */
+/**
+ * Absolute path to the standalone hook client (sibling of this module in a
+ * checkout; vendored beside the bin and named by `RUNCASTLE_HOOK_CLIENT` in a
+ * published install — issue #51). It is spawned by a separate `bun`, so it must
+ * be a real file on disk, never bundled.
+ */
 export function hookClientPath(): string {
-  return fileURLToPath(new URL('./hook-client.ts', import.meta.url))
+  return resolveAsset(ASSET_ENV.hookClient, fileURLToPath(new URL('./hook-client.ts', import.meta.url)))
 }
 
 /** The base server URL for a session (honours `config.serverPort`, default 4512). */

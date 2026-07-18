@@ -18,7 +18,9 @@
     "start": "bun src/index.ts",
     "doctor": "bun src/doctor/cli.ts",
     "typecheck": "tsc --noEmit",
-    "db:generate": "drizzle-kit generate"
+    "db:generate": "drizzle-kit generate",
+    "build:pkg": "bun run scripts/build-package.ts",
+    "prepack": "bun run scripts/build-package.ts"
   },
   "dependencies": {
     "@ai-hero/sandcastle": "0.12.0",
