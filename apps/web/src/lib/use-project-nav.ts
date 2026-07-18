@@ -6,26 +6,10 @@ import type { Project } from './api'
 /**
  * Multi-project navigation state (issue #45). Owns the top-level view and the
  * currently-bound project. On the first list load it lands per {@link initialView}
- * (honoring a still-open persisted project), then follows explicit navigation.
- * Switching projects never touches the server, so background runs are undisturbed.
+ * — strictly by open-project count, every launch — then follows explicit
+ * navigation. Switching projects never touches the server, so background runs
+ * are undisturbed.
  */
-
-const CURRENT_KEY = 'runcastle.project.current.v1'
-
-function readLS(key: string): string | null {
-  try {
-    return localStorage.getItem(key)
-  } catch {
-    return null
-  }
-}
-function writeLS(key: string, value: string): void {
-  try {
-    localStorage.setItem(key, value)
-  } catch {
-    // storage may be unavailable (private mode) — non-fatal
-  }
-}
 
 export interface ProjectNavApi {
   /** Open projects (undefined while the first list load is in flight). */
@@ -49,27 +33,18 @@ export function useProjectNav(): ProjectNavApi {
   const projects = q.data
 
   const [view, setView] = useState<AppView>('home')
-  const [currentProjectId, setCurrentProjectId] = useState<string | null>(() =>
-    readLS(CURRENT_KEY),
-  )
+  const [currentProjectId, setCurrentProjectId] = useState<string | null>(null)
   const didInit = useRef(false)
 
-  // First successful load decides where to land.
+  // First successful load decides where to land, purely by project count
+  // (acceptance criteria): 0 → open flow, 1 → straight in, 2+ → home.
   useEffect(() => {
     if (didInit.current || !projects) return
     didInit.current = true
-    const persisted =
-      currentProjectId && projects.some((p) => p.id === currentProjectId)
-        ? currentProjectId
-        : null
-    if (persisted) {
-      setView('project')
-      return
-    }
     const init = initialView(projects)
     setView(init.view)
     setCurrentProjectId(init.projectId)
-  }, [projects, currentProjectId])
+  }, [projects])
 
   // If the bound project disappears (closed elsewhere), fall back gracefully.
   useEffect(() => {
@@ -80,10 +55,6 @@ export function useProjectNav(): ProjectNavApi {
       setCurrentProjectId(init.projectId)
     }
   }, [projects, view, currentProjectId])
-
-  useEffect(() => {
-    if (currentProjectId) writeLS(CURRENT_KEY, currentProjectId)
-  }, [currentProjectId])
 
   const goHome = useCallback(() => setView('home'), [])
   const enterProject = useCallback((projectId: string) => {
