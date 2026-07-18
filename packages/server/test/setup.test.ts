@@ -1,0 +1,159 @@
+import { describe, expect, it } from 'vitest'
+import type { ExecFn, ExecOutcome } from '../src/doctor/doctor'
+import {
+  runtimeInstallGuide,
+  saveAfkToken,
+  terminalSpec,
+  upsertEnvVar,
+  writeGitIdentity,
+  type AfkTokenIo,
+} from '../src/services/setup'
+
+/**
+ * Issue #50 — the first-run wizard + Enable-AFK card lean on a small, injected
+ * setup service: it writes git identity (the wizard's one hard step), captures
+ * the AFK token into the data-dir env file with a validity check, and hands the
+ * embedded-terminal flows their exact command. Everything IO is injected so the
+ * host is never touched.
+ */
+
+/** A stateful fake `git` exec: `config --global KEY V` writes, `--get KEY` reads. */
+function gitExec(seed: Record<string, string> = {}): ExecFn {
+  const store: Record<string, string> = { ...seed }
+  return async (command, args): Promise<ExecOutcome> => {
+    if (command !== 'git') return { ok: false, code: null, stdout: '', stderr: 'ENOENT' }
+    if (args[0] === 'config' && args[1] === '--global' && args.length === 4) {
+      store[args[2]] = args[3]
+      return { ok: true, code: 0, stdout: '', stderr: '' }
+    }
+    if (args[0] === 'config' && args[1] === '--get') {
+      const v = store[args[2]]
+      return v ? { ok: true, code: 0, stdout: v, stderr: '' } : { ok: true, code: 1, stdout: '', stderr: '' }
+    }
+    // git identity probe uses `-C cwd config --get KEY`
+    if (args[0] === '-C' && args[2] === 'config' && args[3] === '--get') {
+      const v = store[args[4]]
+      return v ? { ok: true, code: 0, stdout: v, stderr: '' } : { ok: true, code: 1, stdout: '', stderr: '' }
+    }
+    return { ok: true, code: 0, stdout: '', stderr: '' }
+  }
+}
+
+describe('writeGitIdentity', () => {
+  it('writes user.name and user.email globally and re-probes as ok', async () => {
+    const exec = gitExec()
+    const probe = await writeGitIdentity(exec, { name: 'Ada Lovelace', email: 'ada@example.com' })
+    expect(probe.id).toBe('git-identity')
+    expect(probe.status).toBe('ok')
+    expect(probe.detail).toContain('Ada Lovelace')
+    expect(probe.detail).toContain('ada@example.com')
+  })
+
+  it('trims whitespace before writing', async () => {
+    const exec = gitExec()
+    const probe = await writeGitIdentity(exec, { name: '  Grace  ', email: '  g@h.io  ' })
+    expect(probe.detail).toBe('Grace <g@h.io>')
+  })
+
+  it('rejects an empty name', async () => {
+    await expect(writeGitIdentity(gitExec(), { name: '   ', email: 'a@b.io' })).rejects.toThrow()
+  })
+
+  it('rejects an email without an @', async () => {
+    await expect(writeGitIdentity(gitExec(), { name: 'Nam', email: 'nope' })).rejects.toThrow()
+  })
+})
+
+describe('upsertEnvVar', () => {
+  it('appends to an empty file with a trailing newline', () => {
+    expect(upsertEnvVar('', 'CLAUDE_CODE_OAUTH_TOKEN', 'sk-1')).toBe('CLAUDE_CODE_OAUTH_TOKEN=sk-1\n')
+  })
+
+  it('replaces an existing value, preserving other lines', () => {
+    const before = '# comment\nOTHER=keep\nCLAUDE_CODE_OAUTH_TOKEN=old\n'
+    const after = upsertEnvVar(before, 'CLAUDE_CODE_OAUTH_TOKEN', 'new')
+    expect(after).toContain('OTHER=keep')
+    expect(after).toContain('CLAUDE_CODE_OAUTH_TOKEN=new')
+    expect(after).not.toContain('=old')
+    expect(after).not.toContain('# comment\n# comment')
+  })
+
+  it('tolerates a leading `export ` on the existing line', () => {
+    const after = upsertEnvVar('export CLAUDE_CODE_OAUTH_TOKEN=old\n', 'CLAUDE_CODE_OAUTH_TOKEN', 'new')
+    expect(after).toBe('export CLAUDE_CODE_OAUTH_TOKEN=new\n')
+  })
+
+  it('appends without duplicating the trailing newline', () => {
+    const after = upsertEnvVar('OTHER=1\n', 'CLAUDE_CODE_OAUTH_TOKEN', 'x')
+    expect(after).toBe('OTHER=1\nCLAUDE_CODE_OAUTH_TOKEN=x\n')
+  })
+})
+
+describe('saveAfkToken', () => {
+  function io(over: Partial<AfkTokenIo> & { seed?: string } = {}): AfkTokenIo & { written: () => string } {
+    let content = over.seed ?? ''
+    return {
+      read: over.read ?? (() => content),
+      write: over.write ?? ((c) => (content = c)),
+      verify: over.verify ?? (async () => ({ valid: true, detail: 'token accepted' })),
+      written: () => content,
+    }
+  }
+
+  it('captures the token into the env file and reports the validity result', async () => {
+    const deps = io()
+    const res = await saveAfkToken(deps, '  sk-ant-oat01-abc  ')
+    expect(deps.written()).toBe('CLAUDE_CODE_OAUTH_TOKEN=sk-ant-oat01-abc\n')
+    expect(res.valid).toBe(true)
+    expect(res.detail).toBe('token accepted')
+  })
+
+  it('still saves but reports invalid when the live check rejects it', async () => {
+    const deps = io({ verify: async () => ({ valid: false, detail: 'rejected by API' }) })
+    const res = await saveAfkToken(deps, 'sk-bad')
+    expect(deps.written()).toContain('CLAUDE_CODE_OAUTH_TOKEN=sk-bad')
+    expect(res.valid).toBe(false)
+    expect(res.detail).toBe('rejected by API')
+  })
+
+  it('rejects an empty token without touching the file', async () => {
+    let touched = false
+    const deps = io({ write: () => (touched = true) })
+    await expect(saveAfkToken(deps, '   ')).rejects.toThrow()
+    expect(touched).toBe(false)
+  })
+})
+
+describe('runtimeInstallGuide', () => {
+  it('gives winget for Windows and mentions the machine init', () => {
+    const g = runtimeInstallGuide('win32')
+    expect(g.command).toContain('winget')
+    expect(`${g.command} ${g.note}`).toContain('podman machine')
+  })
+
+  it('gives an apt/dnf command for Linux', () => {
+    const g = runtimeInstallGuide('linux')
+    expect(g.command.toLowerCase()).toMatch(/apt|dnf|pacman/)
+  })
+
+  it('gives a macOS install command', () => {
+    const g = runtimeInstallGuide('darwin')
+    expect(g.command.length).toBeGreaterThan(0)
+  })
+})
+
+describe('terminalSpec', () => {
+  it('runs `claude setup-token` for the token flow', () => {
+    expect(terminalSpec('setup-token', { runtime: 'docker', imageName: 'sandcastle:runcastle' })).toEqual({
+      cmd: 'claude',
+      args: ['setup-token'],
+    })
+  })
+
+  it('builds the image with the resolved runtime', () => {
+    expect(terminalSpec('build-image', { runtime: 'podman', imageName: 'sandcastle:runcastle' })).toEqual({
+      cmd: 'sandcastle',
+      args: ['podman', 'build-image'],
+    })
+  })
+})
