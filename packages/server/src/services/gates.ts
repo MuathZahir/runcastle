@@ -5,7 +5,7 @@ import type { AppCtx } from '../db/types'
 import { gateOverrides } from '../db/schema'
 import { emit } from './events'
 import { featureDocPath } from './feature-docs'
-import { getFeatureRow, requireProject, setPhase } from './repo'
+import { getFeatureRow, projectForFeature, setPhase } from './repo'
 import { listByFeature } from './tickets'
 import { listByFeature as listWaypoints } from './waypoints'
 
@@ -101,7 +101,7 @@ function fileGate(
   fileName: string,
   reason: string,
 ): GateResult {
-  const project = requireProject(ctx)
+  const project = projectForFeature(ctx, feature)
   return existsSync(featureDocPath(project, feature, fileName))
     ? { satisfied: true }
     : { satisfied: false, reason }

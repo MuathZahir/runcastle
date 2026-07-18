@@ -13,7 +13,7 @@ import { ptyRegistry } from '../pty/registry'
 import { emit } from '../services/events'
 import { checkGate, overrideGate } from '../services/gates'
 import * as git from '../services/git'
-import { getFeatureRow, requireProject, rowToRun, setPhase } from '../services/repo'
+import { getFeatureRow, projectForFeature, rowToRun, setPhase } from '../services/repo'
 import { listByFeature as listTicketsByFeature } from '../services/tickets'
 import {
   claim as claimWaypoint,
@@ -313,7 +313,7 @@ export async function launchSession(
   opts: LaunchSessionOptions = {},
 ): Promise<LaunchSessionResult> {
   const feature = getFeatureRow(ctx, input.featureId)
-  const project = requireProject(ctx)
+  const project = projectForFeature(ctx, feature)
 
   const worktreePath = await ensureWorktree(ctx, project, feature)
   const session = createSessionRow(ctx, {

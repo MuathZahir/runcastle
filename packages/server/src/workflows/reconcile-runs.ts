@@ -5,7 +5,7 @@ import type { AppCtx } from '../db/types'
 import { runs } from '../db/schema'
 import { emit } from '../services/events'
 import { cleanupResearchBranches, reattachWorktree } from '../services/git'
-import { getProjectRow, rowToRun, tryGetFeature } from '../services/repo'
+import { getProjectById, getProjectRow, rowToRun, tryGetFeature } from '../services/repo'
 import { releaseForSession } from '../services/waypoints'
 import { isRunActive, workflowClaimsFeatureBranch } from './runner'
 
@@ -53,7 +53,7 @@ export async function reconcileStaleRuns(ctx: AppCtx): Promise<Run[]> {
     // next HITL session lands on the feature branch, not a detached HEAD.
     if (workflowClaimsFeatureBranch(run.workflow)) {
       const feature = tryGetFeature(ctx, run.featureId)
-      const project = getProjectRow(ctx)
+      const project = feature ? getProjectById(ctx, feature.projectId) : null
       if (feature && project) {
         try {
           await reattachWorktree(worktreeDir(project.id, feature.slug), feature.branch)
@@ -78,7 +78,8 @@ export async function reconcileStaleRuns(ctx: AppCtx): Promise<Run[]> {
 
   // Sweep research temp branches orphaned by crashed runs (merged-only; see
   // `cleanupResearchBranches`). Best-effort: a missing/broken repo never
-  // blocks boot.
+  // blocks boot. Default-project shim (issue #36): this sweep is project-wide,
+  // not tied to one feature — the multi-project change iterates every project.
   const project = getProjectRow(ctx)
   if (project) {
     try {

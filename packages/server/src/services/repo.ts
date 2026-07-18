@@ -88,15 +88,35 @@ export function getFeatureRow(ctx: AppCtx, id: string): Feature {
   return feature
 }
 
-/** M1 is single-project: return the sole project row, or null before init. */
+/**
+ * Temporary default-project shim (issue #36): return the sole project row, or
+ * null before init. The multi-project change deletes this — every feature-scoped
+ * call site now resolves through `projectForFeature`; only project CRUD and the
+ * still-single "which project does a new/listed feature belong to?" spots lean
+ * on the singleton, and those become an explicit project id next.
+ */
 export function getProjectRow(ctx: AppCtx): Project | null {
   const row = ctx.db.select().from(projects).limit(1).get()
   return row ? rowToProject(row) : null
 }
 
+/** Throwing variant of the default-project shim. See `getProjectRow`. */
 export function requireProject(ctx: AppCtx): Project {
   const project = getProjectRow(ctx)
   if (!project) throw new NotFoundError('no project initialised')
+  return project
+}
+
+/** Resolve a project by explicit id (the multi-project lookup). */
+export function getProjectById(ctx: AppCtx, projectId: string): Project | null {
+  const row = ctx.db.select().from(projects).where(eq(projects.id, projectId)).get()
+  return row ? rowToProject(row) : null
+}
+
+/** Resolve the project that owns a feature — the feature is the source of truth. */
+export function projectForFeature(ctx: AppCtx, feature: Pick<Feature, 'projectId'>): Project {
+  const project = getProjectById(ctx, feature.projectId)
+  if (!project) throw new NotFoundError(`project ${feature.projectId} not found`)
   return project
 }
 
