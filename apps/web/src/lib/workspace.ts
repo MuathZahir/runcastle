@@ -24,6 +24,12 @@ const SELECTED_KEY = 'runcastle.selected.v1'
 const INSPECTOR_KEY = 'runcastle.inspector.collapsed'
 const GUIDANCE_KEY = 'runcastle.guidance'
 
+/** Per-project selected-feature key so switching projects never restores a
+ *  feature from another project (multi-project, issue #45). */
+function selectedKeyFor(projectId: string): string {
+  return `${SELECTED_KEY}:${projectId}`
+}
+
 function readLS(key: string): string | null {
   try {
     return localStorage.getItem(key)
@@ -66,8 +72,9 @@ export interface WorkspaceApi {
   toggleGuidance: () => void
 }
 
-export function useWorkspace(): WorkspaceApi {
-  const [selectedFeatureId, setSelected] = useState<string | null>(() => readLS(SELECTED_KEY))
+export function useWorkspace(projectId: string): WorkspaceApi {
+  const selectedKey = selectedKeyFor(projectId)
+  const [selectedFeatureId, setSelected] = useState<string | null>(() => readLS(selectedKey))
   const [viewedPhase, setViewedPhase] = useState<Phase | null>(null)
   const [creating, setCreating] = useState(false)
   const [inspectorCollapsed, setInspectorCollapsed] = useState(
@@ -77,8 +84,8 @@ export function useWorkspace(): WorkspaceApi {
   const [guidance, setGuidance] = useState(() => readLS(GUIDANCE_KEY) !== '0')
 
   useEffect(() => {
-    if (selectedFeatureId) writeLS(SELECTED_KEY, selectedFeatureId)
-  }, [selectedFeatureId])
+    if (selectedFeatureId) writeLS(selectedKey, selectedFeatureId)
+  }, [selectedFeatureId, selectedKey])
   useEffect(() => {
     writeLS(INSPECTOR_KEY, inspectorCollapsed ? '1' : '0')
   }, [inspectorCollapsed])
