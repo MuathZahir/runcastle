@@ -1,0 +1,294 @@
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { dirname } from 'node:path'
+import type { RuncastleConfig, SettingField, SettingsUpdateInput, SettingsView } from '@runcastle/core'
+import { RuncastleConfig as RuncastleConfigSchema } from '@runcastle/core'
+import { configPath } from '@runcastle/core/paths'
+import * as z from 'zod'
+import { eq } from 'drizzle-orm'
+import type { AppCtx } from '../db/types'
+import { projects } from '../db/schema'
+import { InvalidInputError } from '../errors'
+import { emitProject } from './events'
+import { requireProjectById } from './repo'
+
+/**
+ * Settings backend (issue #46, SPEC §4). Two stores: global defaults in the
+ * machine config file (`~/.runcastle/config.json`), per-project overrides
+ * (model, sandbox, devCommand) on project rows. Resolution is `project ??
+ * global`, with `env` always winning (it locks the field). A global write is
+ * write-through: it persists to the config file AND refreshes the in-memory
+ * `ctx.config` IN PLACE, so the next session launch (reads `ctx.config`) and the
+ * next run (fresh `loadConfig()` off the file) both pick up the change without a
+ * server restart — while in-flight work keeps the config snapshot it started
+ * with. Every mutation emits a `settings.updated` event.
+ */
+
+/**
+ * Global (non-project) settings writes are machine-wide and belong to no
+ * project, but issue #44 requires every event to carry a project id. They emit
+ * under this sentinel project id (their own timeline), leaving `featureId` null.
+ */
+const GLOBAL_EVENT_KEY = 'global'
+
+/** Which override column a project-overridable field maps to. */
+type ProjectColumn = 'model' | 'sandbox' | 'devCommand'
+
+interface FieldDescriptor {
+  key: string
+  /** Global backing in the config file / schema; absent for project-only fields (devCommand). */
+  configKey?: keyof RuncastleConfig
+  /** Env var that, when set, wins and locks the field. */
+  envVar?: string
+  /** Project override column; absent for global-only fields (serverPort, …). */
+  projectColumn?: ProjectColumn
+  restartRequired: boolean
+  /** Validates a written value; env strings are coerced first via `parseEnv`. */
+  valueSchema: z.ZodType
+  /** Coerce an env-var string to the field's value type (default: identity). */
+  parseEnv: (raw: string) => unknown
+}
+
+const idEnv = (raw: string): unknown => raw
+
+const DESCRIPTORS: FieldDescriptor[] = [
+  {
+    key: 'serverPort',
+    configKey: 'serverPort',
+    envVar: 'RUNCASTLE_SERVER_PORT',
+    restartRequired: true,
+    valueSchema: z.number().int().positive(),
+    parseEnv: (raw) => Number(raw),
+  },
+  {
+    key: 'model',
+    configKey: 'model',
+    envVar: 'RUNCASTLE_MODEL',
+    projectColumn: 'model',
+    restartRequired: false,
+    valueSchema: z.string().min(1),
+    parseEnv: idEnv,
+  },
+  {
+    key: 'smokeModel',
+    configKey: 'smokeModel',
+    envVar: 'RUNCASTLE_SMOKE_MODEL',
+    restartRequired: false,
+    valueSchema: z.string().min(1),
+    parseEnv: idEnv,
+  },
+  {
+    key: 'sandbox',
+    configKey: 'sandbox',
+    envVar: 'RUNCASTLE_SANDBOX',
+    projectColumn: 'sandbox',
+    restartRequired: false,
+    valueSchema: z.enum(['docker', 'noSandbox']),
+    parseEnv: idEnv,
+  },
+  {
+    key: 'sandboxImage',
+    configKey: 'sandboxImage',
+    envVar: 'RUNCASTLE_SANDBOX_IMAGE',
+    restartRequired: false,
+    valueSchema: z.string().min(1),
+    parseEnv: idEnv,
+  },
+  {
+    key: 'mainBranch',
+    configKey: 'mainBranch',
+    envVar: 'RUNCASTLE_MAIN_BRANCH',
+    restartRequired: false,
+    valueSchema: z.string().min(1),
+    parseEnv: idEnv,
+  },
+  {
+    key: 'devCommand',
+    projectColumn: 'devCommand',
+    restartRequired: false,
+    valueSchema: z.string().min(1),
+    parseEnv: idEnv,
+  },
+]
+
+const DEFAULTS = RuncastleConfigSchema.parse({})
+
+export interface SettingsIO {
+  /** Env source (default `process.env`); tests inject a fake map. */
+  env?: Record<string, string | undefined>
+  /** Config-file path (default `~/.runcastle/config.json`); tests inject a temp file. */
+  configFile?: string
+}
+
+function readRawConfig(configFile: string): Record<string, unknown> {
+  if (!existsSync(configFile)) return {}
+  try {
+    const parsed: unknown = JSON.parse(readFileSync(configFile, 'utf8'))
+    return typeof parsed === 'object' && parsed !== null ? (parsed as Record<string, unknown>) : {}
+  } catch {
+    return {}
+  }
+}
+
+/** The per-project override columns for one project (raw row, override-null = inherit). */
+function projectOverrides(ctx: AppCtx, projectId: string): Record<ProjectColumn, string | null> {
+  const row = ctx.db
+    .select({ model: projects.model, sandbox: projects.sandbox, devCommand: projects.devCommand })
+    .from(projects)
+    .where(eq(projects.id, projectId))
+    .get()
+  return {
+    model: row?.model ?? null,
+    sandbox: row?.sandbox ?? null,
+    devCommand: row?.devCommand ?? null,
+  }
+}
+
+function resolveField(
+  desc: FieldDescriptor,
+  layers: {
+    env: Record<string, string | undefined>
+    fileRaw: Record<string, unknown>
+    overrides: Record<ProjectColumn, string | null> | null
+  },
+): SettingField {
+  const scoped = layers.overrides !== null
+  const scope: SettingField['scope'] = scoped && desc.projectColumn ? 'project' : 'global'
+  const base = { key: desc.key, restartRequired: desc.restartRequired, scope }
+
+  // 1. env always wins and locks the field.
+  if (desc.envVar) {
+    const raw = layers.env[desc.envVar]
+    if (raw !== undefined && raw !== '') {
+      return { ...base, value: desc.parseEnv(raw), source: 'env', editable: false }
+    }
+  }
+
+  // 2. per-project override.
+  if (layers.overrides && desc.projectColumn) {
+    const ov = layers.overrides[desc.projectColumn]
+    if (ov !== null && ov !== '') {
+      return { ...base, value: ov, source: 'project', editable: true }
+    }
+  }
+
+  // 3. config-file value.
+  if (desc.configKey && Object.prototype.hasOwnProperty.call(layers.fileRaw, desc.configKey)) {
+    return { ...base, value: layers.fileRaw[desc.configKey], source: 'file', editable: true }
+  }
+
+  // 4. schema default (or null for a project-only field with no default).
+  const value = desc.configKey ? (DEFAULTS[desc.configKey] ?? null) : null
+  return { ...base, value, source: 'default', editable: true }
+}
+
+/**
+ * Resolve the settings surface. Without `projectId` returns the global defaults
+ * (project-only fields like devCommand are omitted); with a `projectId` returns
+ * every field resolved `project ?? global`.
+ */
+export function getSettings(ctx: AppCtx, projectId?: string, io: SettingsIO = {}): SettingsView {
+  const env = io.env ?? process.env
+  const fileRaw = readRawConfig(io.configFile ?? configPath())
+  const overrides = projectId !== undefined ? projectOverrides(ctx, projectId) : null
+
+  const visible = DESCRIPTORS.filter((d) => projectId !== undefined || d.configKey !== undefined)
+  const fields = visible.map((d) => resolveField(d, { env, fileRaw, overrides }))
+  return { projectId, fields }
+}
+
+/**
+ * Write a setting. With `projectId` (and a project-overridable field) writes the
+ * project override — a `null` value clears it; otherwise writes the global
+ * default write-through (config file + in-place `ctx.config` refresh). Rejects
+ * env-locked fields, unknown keys, and type-invalid values. Returns the resolved
+ * field after the write.
+ */
+export function updateSettings(
+  ctx: AppCtx,
+  input: SettingsUpdateInput,
+  io: SettingsIO = {},
+): SettingField {
+  const env = io.env ?? process.env
+  const configFile = io.configFile ?? configPath()
+
+  const desc = DESCRIPTORS.find((d) => d.key === input.key)
+  if (!desc) throw new InvalidInputError(`unknown setting: ${input.key}`)
+
+  // env always wins → the field is locked.
+  if (desc.envVar) {
+    const raw = env[desc.envVar]
+    if (raw !== undefined && raw !== '') {
+      throw new InvalidInputError(
+        `${desc.key} is set by environment variable ${desc.envVar}; unset it to edit`,
+      )
+    }
+  }
+
+  const toProject = input.projectId !== undefined && desc.projectColumn !== undefined
+
+  if (input.value === null) {
+    if (!toProject) throw new InvalidInputError(`${desc.key} cannot be cleared`)
+    const project = requireProjectById(ctx, input.projectId as string)
+    ctx.db
+      .update(projects)
+      .set({ [desc.projectColumn as ProjectColumn]: null })
+      .where(eq(projects.id, project.id))
+      .run()
+    emitProject(ctx, project.id, {
+      type: 'settings.updated',
+      message: `${desc.key} override cleared`,
+      data: { key: desc.key, scope: 'project', value: null },
+    })
+    return field(getSettings(ctx, input.projectId, io), desc.key)
+  }
+
+  const parsed = desc.valueSchema.safeParse(input.value)
+  if (!parsed.success) {
+    throw new InvalidInputError(`invalid value for ${desc.key}: ${parsed.error.issues[0]?.message}`)
+  }
+  const value = parsed.data
+
+  if (toProject) {
+    const project = requireProjectById(ctx, input.projectId as string)
+    ctx.db
+      .update(projects)
+      .set({ [desc.projectColumn as ProjectColumn]: String(value) })
+      .where(eq(projects.id, project.id))
+      .run()
+    emitProject(ctx, project.id, {
+      type: 'settings.updated',
+      message: `${desc.key} override set to ${String(value)}`,
+      data: { key: desc.key, scope: 'project', value },
+    })
+    return field(getSettings(ctx, input.projectId, io), desc.key)
+  }
+
+  // Global write. Project-only fields (devCommand) have no global store.
+  if (!desc.configKey) {
+    throw new InvalidInputError(`${desc.key} is a per-project setting; provide a projectId`)
+  }
+  writeGlobal(configFile, desc.configKey, value)
+  // In-place refresh: `ctx.config` is the shared object the launcher reads at
+  // each launch, so the next launch sees the new value with no restart.
+  ;(ctx.config as Record<string, unknown>)[desc.configKey] = value
+  emitProject(ctx, GLOBAL_EVENT_KEY, {
+    type: 'settings.updated',
+    message: `${desc.key} set to ${String(value)}`,
+    data: { key: desc.key, scope: 'global', value },
+  })
+  return field(getSettings(ctx, input.projectId, io), desc.key)
+}
+
+/** Merge one key into the config file, preserving the rest. */
+function writeGlobal(configFile: string, configKey: keyof RuncastleConfig, value: unknown): void {
+  const raw = readRawConfig(configFile)
+  raw[configKey] = value
+  mkdirSync(dirname(configFile), { recursive: true })
+  writeFileSync(configFile, `${JSON.stringify(raw, null, 2)}\n`)
+}
+
+function field(view: SettingsView, key: string): SettingField {
+  const f = view.fields.find((x) => x.key === key)
+  if (!f) throw new InvalidInputError(`setting ${key} not visible in this scope`)
+  return f
+}
