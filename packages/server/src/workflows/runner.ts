@@ -8,7 +8,7 @@ import { NotFoundError } from '../errors'
 import { emit } from '../services/events'
 import { checkGate } from '../services/gates'
 import { detachWorktree, reattachWorktree } from '../services/git'
-import { getFeatureRow, requireProject, setPhase } from '../services/repo'
+import { getFeatureRow, projectForFeature, setPhase } from '../services/repo'
 import { listByFeature, updateTicket } from '../services/tickets'
 import { claim as claimWaypoint, releaseForSession, resolve as resolveWaypoint } from '../services/waypoints'
 import { getWorkflow } from './registry'
@@ -83,7 +83,7 @@ export async function startRun(
   opts: StartRunOptions = {},
 ): Promise<StartRunResult> {
   const feature = getFeatureRow(ctx, featureId)
-  const project = requireProject(ctx)
+  const project = projectForFeature(ctx, feature)
   const def = getWorkflow(workflowId)
   if (!def) throw new NotFoundError(`workflow ${workflowId} not registered`)
 

@@ -23,6 +23,7 @@ import {
   hasActiveRun,
   listRunsByFeature,
   listSessionsByFeature,
+  projectForFeature,
   requireProject,
   rowToFeature,
   setPhase,
@@ -82,6 +83,9 @@ export async function createFeature(
   ctx: AppCtx,
   input: CreateFeatureInput,
 ): Promise<Feature> {
+  // Default-project shim (issue #36): a new feature has no project yet, so it
+  // lands in the sole project. The multi-project change makes this an explicit
+  // project id on the input.
   const project = requireProject(ctx)
   const slug = uniqueSlug(ctx, project.id, input.title)
   const branch = `feature/${slug}`
@@ -166,6 +170,8 @@ export function getFeatureFull(ctx: AppCtx, id: string): FeatureFull {
 }
 
 export function list(ctx: AppCtx): FeatureListItem[] {
+  // Default-project shim (issue #36): the feature list is project-scoped; the
+  // multi-project change makes the project id an explicit argument.
   const project = requireProject(ctx)
   const rows = ctx.db
     .select()
@@ -272,7 +278,7 @@ export function escalateToMap(
     return { ok: true, warning: `feature ${feature.slug} is already mapped — no changes made` }
   }
 
-  const project = requireProject(ctx)
+  const project = projectForFeature(ctx, feature)
   ctx.db.update(features).set({ mapped: true }).where(eq(features.id, featureId)).run()
   scaffoldMapDoc(project, { ...feature, mapped: true }, input)
 

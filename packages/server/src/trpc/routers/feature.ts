@@ -5,7 +5,7 @@ import { emit } from '../../services/events'
 import * as features from '../../services/features'
 import { overrideGate } from '../../services/gates'
 import * as git from '../../services/git'
-import { getFeatureRow, requireProject, setFeatureStatus, setPhase } from '../../services/repo'
+import { getFeatureRow, projectForFeature, setFeatureStatus, setPhase } from '../../services/repo'
 import { publicProcedure, router } from '../context'
 
 const gateId = z.enum(['G1', 'G2', 'G3', 'G4', 'G5'])
@@ -73,8 +73,8 @@ export const featureRouter = router({
   testDrive: publicProcedure
     .input(z.object({ featureId: z.string(), action: z.enum(['start', 'stop']) }))
     .mutation(async ({ ctx, input }) => {
-      const project = requireProject(ctx)
       const feature = getFeatureRow(ctx, input.featureId)
+      const project = projectForFeature(ctx, feature)
       return git.testDrive(ctx, project, feature, input.action)
     }),
 
@@ -83,8 +83,8 @@ export const featureRouter = router({
   merge: publicProcedure
     .input(z.object({ featureId: z.string() }))
     .mutation(async ({ ctx, input }) => {
-      const project = requireProject(ctx)
       const feature = getFeatureRow(ctx, input.featureId)
+      const project = projectForFeature(ctx, feature)
       // A test drive of THIS feature holds the main checkout on the feature
       // branch; stop it first (restores main) so the merge can proceed. This lets
       // the Merge button work whether or not the branch is currently test-driven.
