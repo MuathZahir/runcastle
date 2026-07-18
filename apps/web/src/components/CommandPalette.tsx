@@ -1,13 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { phaseGlyph } from '../lib/feature-ui'
 import type { FeatureListItem } from '../lib/api'
+import type { ProjectNavApi } from '../lib/use-project-nav'
 
 /**
- * ⌘K command palette for the pipeline-first shell (app-redesign). A single flat
- * list of navigable rows — features first, then actions — with Linear/Raycast
- * keyboarding: ↑↓ wrap, ↵ activates, esc closes. Query filters features by slug
- * or title; the "Create new feature" action shows when it matches the query.
- * Dependency-free (React only) — styling lives in the `.cmdk-*` classes.
+ * ⌘K command palette for the pipeline-first shell (app-redesign, multi-project
+ * #45). A single flat list of navigable rows — features, then projects, then
+ * actions — with Linear/Raycast keyboarding: ↑↓ wrap, ↵ activates, esc closes.
+ * Query filters features by slug/title and projects by name; switching a project
+ * from here never disturbs background runs. Dependency-free (React only).
  */
 
 export interface CommandPaletteProps {
@@ -17,14 +18,18 @@ export interface CommandPaletteProps {
   selectedFeatureId: string | null
   onSelect: (featureId: string) => void
   onNewFeature: () => void
+  nav: ProjectNavApi
 }
 
 type Row =
   | { kind: 'feature'; feature: FeatureListItem }
-  | { kind: 'action' }
+  | { kind: 'project'; id: string; name: string; branch: string; current: boolean }
+  | { kind: 'newFeature' }
+  | { kind: 'home' }
+  | { kind: 'openProject' }
 
 export function CommandPalette(props: CommandPaletteProps) {
-  const { open, onClose, features, selectedFeatureId, onSelect, onNewFeature } = props
+  const { open, onClose, features, selectedFeatureId, onSelect, onNewFeature, nav } = props
 
   const [query, setQuery] = useState('')
   const [activeIndex, setActiveIndex] = useState(0)
@@ -56,17 +61,30 @@ export function CommandPalette(props: CommandPaletteProps) {
     [features, q],
   )
 
-  const showCreate = 'create new feature'.includes(q)
+  const otherProjects = useMemo(
+    () => (nav.projects ?? []).filter((p) => p.id !== nav.currentProjectId),
+    [nav.projects, nav.currentProjectId],
+  )
+  const filteredProjects = useMemo(
+    () => (q === '' ? otherProjects : otherProjects.filter((p) => p.name.toLowerCase().includes(q))),
+    [otherProjects, q],
+  )
+
+  const showNewFeature = 'create new feature'.includes(q)
+  const showHome = 'all projects home'.includes(q)
+  const showOpen = 'open a project'.includes(q)
 
   const rows = useMemo<Row[]>(() => {
-    const r: Row[] = filteredFeatures.map((f) => ({ kind: 'feature', feature: f }))
-    if (showCreate) r.push({ kind: 'action' })
+    const r: Row[] = filteredFeatures.map((f) => ({ kind: 'feature' as const, feature: f }))
+    for (const p of filteredProjects)
+      r.push({ kind: 'project', id: p.id, name: p.name, branch: p.mainBranch, current: false })
+    if (showNewFeature) r.push({ kind: 'newFeature' })
+    if (showHome) r.push({ kind: 'home' })
+    if (showOpen) r.push({ kind: 'openProject' })
     return r
-  }, [filteredFeatures, showCreate])
+  }, [filteredFeatures, filteredProjects, showNewFeature, showHome, showOpen])
 
   if (!open) return null
-
-  const createIndex = filteredFeatures.length
 
   const move = (delta: number) => {
     if (rows.length === 0) return
@@ -78,8 +96,23 @@ export function CommandPalette(props: CommandPaletteProps) {
   const activate = (index: number) => {
     const row = rows[index]
     if (!row) return
-    if (row.kind === 'feature') onSelect(row.feature.id)
-    else onNewFeature()
+    switch (row.kind) {
+      case 'feature':
+        onSelect(row.feature.id)
+        break
+      case 'project':
+        nav.enterProject(row.id)
+        break
+      case 'newFeature':
+        onNewFeature()
+        break
+      case 'home':
+        nav.goHome()
+        break
+      case 'openProject':
+        nav.showOpen()
+        break
+    }
     onClose()
   }
 
@@ -99,17 +132,25 @@ export function CommandPalette(props: CommandPaletteProps) {
     }
   }
 
+  // Group boundaries in the flat row list (features | projects | actions).
+  const featuresEnd = filteredFeatures.length
+  const projectsEnd = featuresEnd + filteredProjects.length
+
+  const bindRow = (i: number) => (el: HTMLDivElement | null) => {
+    rowRefs.current[i] = el
+  }
+
   return (
     <div className="cmdk-backdrop" onClick={onClose}>
       <div className="cmdk" onClick={(e) => e.stopPropagation()}>
         <input
           ref={inputRef}
           className="cmdk-input"
-          placeholder="Search features or jump to…"
+          placeholder="Search features, projects, or jump to…"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           onKeyDown={onKeyDown}
-          aria-label="Search features or jump to"
+          aria-label="Search features, projects, or jump to"
         />
         <div className="cmdk-list">
           {filteredFeatures.length > 0 && (
@@ -118,9 +159,7 @@ export function CommandPalette(props: CommandPaletteProps) {
               {filteredFeatures.map((f, i) => (
                 <div
                   key={f.id}
-                  ref={(el) => {
-                    rowRefs.current[i] = el
-                  }}
+                  ref={bindRow(i)}
                   className={`cmdk-item${i === activeIndex ? ' is-active' : ''}`}
                   onMouseEnter={() => setActiveIndex(i)}
                   onClick={() => activate(i)}
@@ -137,23 +176,69 @@ export function CommandPalette(props: CommandPaletteProps) {
               ))}
             </>
           )}
-          {showCreate && (
+
+          {filteredProjects.length > 0 && (
             <>
-              <div className="cmdk-group-label">Actions</div>
-              <div
-                ref={(el) => {
-                  rowRefs.current[createIndex] = el
-                }}
-                className={`cmdk-item${createIndex === activeIndex ? ' is-active' : ''}`}
-                onMouseEnter={() => setActiveIndex(createIndex)}
-                onClick={() => activate(createIndex)}
-              >
-                <span className="cmdk-item-glyph">+</span>
-                <span className="cmdk-item-label">Create new feature</span>
-                <span className="cmdk-item-hint">action</span>
-              </div>
+              <div className="cmdk-group-label">Switch project</div>
+              {filteredProjects.map((p, j) => {
+                const i = featuresEnd + j
+                return (
+                  <div
+                    key={p.id}
+                    ref={bindRow(i)}
+                    className={`cmdk-item${i === activeIndex ? ' is-active' : ''}`}
+                    onMouseEnter={() => setActiveIndex(i)}
+                    onClick={() => activate(i)}
+                  >
+                    <span className="cmdk-item-glyph">◫</span>
+                    <span className="cmdk-item-label">{p.name}</span>
+                    <span className="cmdk-item-slug">⎇ {p.mainBranch}</span>
+                    <span className="cmdk-item-hint">project</span>
+                  </div>
+                )
+              })}
             </>
           )}
+
+          {(showNewFeature || showHome || showOpen) && (
+            <>
+              <div className="cmdk-group-label">Actions</div>
+              {showNewFeature && (
+                <ActionRow
+                  index={projectsEnd}
+                  activeIndex={activeIndex}
+                  bindRow={bindRow}
+                  setActiveIndex={setActiveIndex}
+                  activate={activate}
+                  glyph="+"
+                  label="Create new feature"
+                />
+              )}
+              {showHome && (
+                <ActionRow
+                  index={projectsEnd + (showNewFeature ? 1 : 0)}
+                  activeIndex={activeIndex}
+                  bindRow={bindRow}
+                  setActiveIndex={setActiveIndex}
+                  activate={activate}
+                  glyph="⊞"
+                  label="All projects (home)"
+                />
+              )}
+              {showOpen && (
+                <ActionRow
+                  index={projectsEnd + (showNewFeature ? 1 : 0) + (showHome ? 1 : 0)}
+                  activeIndex={activeIndex}
+                  bindRow={bindRow}
+                  setActiveIndex={setActiveIndex}
+                  activate={activate}
+                  glyph="◌"
+                  label="Open a project…"
+                />
+              )}
+            </>
+          )}
+
           {rows.length === 0 && <div className="cmdk-empty">No matches</div>}
         </div>
         <div className="cmdk-foot">
@@ -168,6 +253,37 @@ export function CommandPalette(props: CommandPaletteProps) {
           </span>
         </div>
       </div>
+    </div>
+  )
+}
+
+function ActionRow({
+  index,
+  activeIndex,
+  bindRow,
+  setActiveIndex,
+  activate,
+  glyph,
+  label,
+}: {
+  index: number
+  activeIndex: number
+  bindRow: (i: number) => (el: HTMLDivElement | null) => void
+  setActiveIndex: (i: number) => void
+  activate: (i: number) => void
+  glyph: string
+  label: string
+}) {
+  return (
+    <div
+      ref={bindRow(index)}
+      className={`cmdk-item${index === activeIndex ? ' is-active' : ''}`}
+      onMouseEnter={() => setActiveIndex(index)}
+      onClick={() => activate(index)}
+    >
+      <span className="cmdk-item-glyph">{glyph}</span>
+      <span className="cmdk-item-label">{label}</span>
+      <span className="cmdk-item-hint">action</span>
     </div>
   )
 }

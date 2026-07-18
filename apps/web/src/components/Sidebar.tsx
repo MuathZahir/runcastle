@@ -11,15 +11,17 @@ import { miniSegments, needsMe, phaseGlyph, triage } from '../lib/feature-ui'
  * glance. Polls `feature.list` at 1.5s.
  */
 export function Sidebar({
+  projectId,
   selectedFeatureId,
   onSelect,
   onNewFeature,
 }: {
+  projectId: string
   selectedFeatureId: string | null
   onSelect: (featureId: string) => void
   onNewFeature: () => void
 }) {
-  const list = trpc.feature.list.useQuery(undefined, { refetchInterval: 1500 })
+  const list = trpc.feature.list.useQuery({ projectId }, { refetchInterval: 1500 })
   const groups = triage(list.data ?? [])
 
   return (

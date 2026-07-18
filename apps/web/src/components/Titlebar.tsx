@@ -1,33 +1,50 @@
 import { trpc } from '../trpc'
+import { aggregateRuns, projectStats } from '../lib/projects'
+import type { ProjectNavApi } from '../lib/use-project-nav'
+import { ProjectSwitcher } from './ProjectSwitcher'
 
 /**
- * The IDE title bar (app-redesign): brand · project · main branch on the left;
- * a ⌘K search launcher, a live-runs pill, the server-health dot, and the
- * inspector toggle on the right. Reads project + feature list itself so the
- * Shell stays lean.
+ * The IDE title bar (app-redesign, multi-project #45): brand · project switcher ·
+ * main branch on the left; a ⌘K search launcher, an aggregate cross-project runs
+ * pill, the server-health dot, and the inspector toggle on the right. The runs
+ * pill counts runs across every open project so background work stays visible
+ * whichever project you're in. The brand mark returns to the portfolio home.
  */
 export function Titlebar({
+  nav,
   onOpenCmdk,
   onToggleInspector,
   inspectorCollapsed,
 }: {
+  nav: ProjectNavApi
   onOpenCmdk: () => void
   onToggleInspector: () => void
   inspectorCollapsed: boolean
 }) {
-  const project = trpc.project.get.useQuery(undefined, { refetchInterval: 5000 })
-  const list = trpc.feature.list.useQuery(undefined, { refetchInterval: 1500 })
-  const runCount = list.data?.filter((f) => f.activeRun).length ?? 0
-  const healthy = !list.isError && list.data !== undefined
+  const projects = nav.projects ?? []
+
+  // Aggregate runs across ALL open projects (not just the current one).
+  const featureQueries = trpc.useQueries((t) =>
+    projects.map((p) => t.feature.list({ projectId: p.id }, { refetchInterval: 1500 })),
+  )
+  const stats = featureQueries.map((q) => projectStats(q.data ?? []))
+  const runCount = aggregateRuns(stats)
+  const healthy = !featureQueries.some((q) => q.isError)
 
   return (
     <header className="titlebar">
-      <span className="tb-logo mono">r</span>
-      <span className="tb-app">runcastle</span>
+      <button
+        className="tb-home"
+        onClick={nav.goHome}
+        title={projects.length > 1 ? 'All projects' : 'runcastle'}
+      >
+        <span className="tb-logo mono">r</span>
+        <span className="tb-app">runcastle</span>
+      </button>
       <span className="tb-arrow">/</span>
-      <span className="tb-project">{project.data?.name ?? '…'}</span>
+      <ProjectSwitcher nav={nav} />
       <span className="tb-dot">·</span>
-      <span className="tb-branch">⎇ {project.data?.mainBranch ?? 'main'}</span>
+      <span className="tb-branch">⎇ {nav.currentProject?.mainBranch ?? 'main'}</span>
 
       <span className="tb-spacer" />
 
@@ -38,10 +55,14 @@ export function Titlebar({
       </button>
 
       {runCount > 0 && (
-        <span className="tb-runs">
+        <button
+          className="tb-runs"
+          onClick={nav.goHome}
+          title="Runs in flight across all projects — open the portfolio"
+        >
           <span className="spin-ring" />
           {runCount} run{runCount === 1 ? '' : 's'}
-        </span>
+        </button>
       )}
 
       <span

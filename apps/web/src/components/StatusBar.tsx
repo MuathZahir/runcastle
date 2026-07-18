@@ -9,17 +9,19 @@ import type { DriveState } from '../lib/workspace'
  * active run count · server health dot + port.
  */
 export function StatusBar({
+  projectId,
   activeFeatureId,
   driving,
   onDriveChange,
 }: {
+  projectId: string
   activeFeatureId: string | null
   driving: DriveState | null
   onDriveChange: (d: DriveState | null) => void
 }) {
   const toast = useToast()
   const utils = trpc.useUtils()
-  const list = trpc.feature.list.useQuery(undefined, { refetchInterval: 1500 })
+  const list = trpc.feature.list.useQuery({ projectId }, { refetchInterval: 1500 })
   const healthy = !list.isError && list.data !== undefined
   const active = list.data?.find((f) => f.id === activeFeatureId)
   const runCount = list.data?.filter((f) => f.activeRun).length ?? 0
