@@ -56,6 +56,8 @@ export interface WorkspaceApi {
   inspectorCollapsed: boolean
   /** Command palette (⌘K) open. */
   cmdkOpen: boolean
+  /** Settings overlay open (issue #47). */
+  settingsOpen: boolean
   /** Show the one-line guide captions on the next-step bar and phase bodies. */
   guidance: boolean
 
@@ -69,6 +71,7 @@ export interface WorkspaceApi {
   cancelCreate: () => void
   toggleInspector: () => void
   setCmdk: (open: boolean) => void
+  setSettings: (open: boolean) => void
   toggleGuidance: () => void
 }
 
@@ -81,6 +84,7 @@ export function useWorkspace(projectId: string): WorkspaceApi {
     () => readLS(INSPECTOR_KEY) === '1',
   )
   const [cmdkOpen, setCmdk] = useState(false)
+  const [settingsOpen, setSettings] = useState(false)
   const [guidance, setGuidance] = useState(() => readLS(GUIDANCE_KEY) !== '0')
 
   useEffect(() => {
@@ -105,6 +109,11 @@ export function useWorkspace(projectId: string): WorkspaceApi {
     setCreating(true)
     setCmdk(false)
   }, [])
+  // Opening settings closes the palette so only one overlay is up at a time.
+  const openSettings = useCallback((open: boolean) => {
+    setSettings(open)
+    if (open) setCmdk(false)
+  }, [])
   const cancelCreate = useCallback(() => setCreating(false), [])
   const toggleInspector = useCallback(() => setInspectorCollapsed((v) => !v), [])
   const toggleGuidance = useCallback(() => setGuidance((v) => !v), [])
@@ -115,6 +124,7 @@ export function useWorkspace(projectId: string): WorkspaceApi {
     creating,
     inspectorCollapsed,
     cmdkOpen,
+    settingsOpen,
     guidance,
     select,
     viewPhase,
@@ -122,6 +132,7 @@ export function useWorkspace(projectId: string): WorkspaceApi {
     cancelCreate,
     toggleInspector,
     setCmdk,
+    setSettings: openSettings,
     toggleGuidance,
   }
 }

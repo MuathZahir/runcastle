@@ -9,6 +9,7 @@ import { StatusBar } from './StatusBar'
 import { Workspace } from './Workspace'
 import { NewFeatureForm } from './NewFeatureForm'
 import { CommandPalette } from './CommandPalette'
+import { SettingsOverlay } from './SettingsOverlay'
 
 /**
  * The runcastle IDE shell for a single project (app-redesign, multi-project #45).
@@ -49,6 +50,7 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
       <Titlebar
         nav={nav}
         onOpenCmdk={() => ws.setCmdk(true)}
+        onOpenSettings={() => ws.setSettings(true)}
         onToggleInspector={ws.toggleInspector}
         inspectorCollapsed={ws.inspectorCollapsed}
       />
@@ -104,8 +106,13 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
         selectedFeatureId={ws.selectedFeatureId}
         onSelect={ws.select}
         onNewFeature={ws.startCreate}
+        onOpenSettings={() => ws.setSettings(true)}
         nav={nav}
       />
+
+      {ws.settingsOpen && (
+        <SettingsOverlay projectId={projectId} onClose={() => ws.setSettings(false)} />
+      )}
     </div>
   )
 }

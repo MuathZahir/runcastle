@@ -18,6 +18,7 @@ export interface CommandPaletteProps {
   selectedFeatureId: string | null
   onSelect: (featureId: string) => void
   onNewFeature: () => void
+  onOpenSettings: () => void
   nav: ProjectNavApi
 }
 
@@ -27,9 +28,11 @@ type Row =
   | { kind: 'newFeature' }
   | { kind: 'home' }
   | { kind: 'openProject' }
+  | { kind: 'settings' }
 
 export function CommandPalette(props: CommandPaletteProps) {
-  const { open, onClose, features, selectedFeatureId, onSelect, onNewFeature, nav } = props
+  const { open, onClose, features, selectedFeatureId, onSelect, onNewFeature, onOpenSettings, nav } =
+    props
 
   const [query, setQuery] = useState('')
   const [activeIndex, setActiveIndex] = useState(0)
@@ -73,6 +76,7 @@ export function CommandPalette(props: CommandPaletteProps) {
   const showNewFeature = 'create new feature'.includes(q)
   const showHome = 'all projects home'.includes(q)
   const showOpen = 'open a project'.includes(q)
+  const showSettings = 'settings preferences'.includes(q)
 
   const rows = useMemo<Row[]>(() => {
     const r: Row[] = filteredFeatures.map((f) => ({ kind: 'feature' as const, feature: f }))
@@ -81,8 +85,9 @@ export function CommandPalette(props: CommandPaletteProps) {
     if (showNewFeature) r.push({ kind: 'newFeature' })
     if (showHome) r.push({ kind: 'home' })
     if (showOpen) r.push({ kind: 'openProject' })
+    if (showSettings) r.push({ kind: 'settings' })
     return r
-  }, [filteredFeatures, filteredProjects, showNewFeature, showHome, showOpen])
+  }, [filteredFeatures, filteredProjects, showNewFeature, showHome, showOpen, showSettings])
 
   if (!open) return null
 
@@ -111,6 +116,9 @@ export function CommandPalette(props: CommandPaletteProps) {
         break
       case 'openProject':
         nav.showOpen()
+        break
+      case 'settings':
+        onOpenSettings()
         break
     }
     onClose()
@@ -200,7 +208,7 @@ export function CommandPalette(props: CommandPaletteProps) {
             </>
           )}
 
-          {(showNewFeature || showHome || showOpen) && (
+          {(showNewFeature || showHome || showOpen || showSettings) && (
             <>
               <div className="cmdk-group-label">Actions</div>
               {showNewFeature && (
@@ -234,6 +242,22 @@ export function CommandPalette(props: CommandPaletteProps) {
                   activate={activate}
                   glyph="◌"
                   label="Open a project…"
+                />
+              )}
+              {showSettings && (
+                <ActionRow
+                  index={
+                    projectsEnd +
+                    (showNewFeature ? 1 : 0) +
+                    (showHome ? 1 : 0) +
+                    (showOpen ? 1 : 0)
+                  }
+                  activeIndex={activeIndex}
+                  bindRow={bindRow}
+                  setActiveIndex={setActiveIndex}
+                  activate={activate}
+                  glyph="⚙"
+                  label="Settings"
                 />
               )}
             </>
