@@ -38,6 +38,7 @@ export const PUBLISHED_FILES = [
   'drizzle',
   'skills',
   'web',
+  'sandcastle-template',
 ] as const
 
 /** True for a dep that can't ship — the workspace protocol or a private pkg. */

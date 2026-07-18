@@ -2,6 +2,7 @@ import { useProjectNav } from '../lib/use-project-nav'
 import { ProjectShell } from './ProjectShell'
 import { PortfolioHome } from './PortfolioHome'
 import { OpenProject } from './OpenProject'
+import { FirstRunWizard } from './FirstRunWizard'
 import { UpdateBanner } from './UpdateBanner'
 import { DimLine } from '../ui'
 
@@ -27,10 +28,13 @@ export function Shell() {
         <DimLine>loading projects…</DimLine>
       </div>
     )
+  } else if (nav.view === 'open' && nav.projects.length === 0) {
+    // Fresh data dir: the full first-run wizard (git identity → AFK → project).
+    content = <FirstRunWizard onOpened={nav.enterProject} onCancel={nav.cancelOpen} />
   } else if (nav.view === 'open') {
     content = (
       <OpenProject
-        firstRun={nav.projects.length === 0}
+        firstRun={false}
         onOpened={nav.enterProject}
         onCancel={nav.cancelOpen}
       />

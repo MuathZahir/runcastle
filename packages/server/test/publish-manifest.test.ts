@@ -70,7 +70,16 @@ describe('buildPublishedManifest', () => {
 
   it('lists every vendored asset in `files`', () => {
     const files = build().files ?? []
-    for (const f of ['index.js', 'bin', 'hook-client.ts', 'pty-host.cjs', 'drizzle', 'skills', 'web']) {
+    for (const f of [
+      'index.js',
+      'bin',
+      'hook-client.ts',
+      'pty-host.cjs',
+      'drizzle',
+      'skills',
+      'web',
+      'sandcastle-template',
+    ]) {
       expect(files).toContain(f)
     }
   })

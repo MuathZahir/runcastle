@@ -135,7 +135,7 @@ async function claudeProbe(exec: ExecFn): Promise<ProbeResult> {
  * `commitDocs`, after a session did its work) if unset. `git config --get`
  * resolves local > global > system and exits 1 only when unset everywhere.
  */
-async function gitIdentityProbe(exec: ExecFn, cwd?: string): Promise<ProbeResult> {
+export async function gitIdentityProbe(exec: ExecFn, cwd?: string): Promise<ProbeResult> {
   const args = (key: string) => (cwd ? ['-C', cwd, 'config', '--get', key] : ['config', '--get', key])
   const email = await exec('git', args('user.email'))
   const name = await exec('git', args('user.name'))
@@ -166,7 +166,7 @@ async function gitIdentityProbe(exec: ExecFn, cwd?: string): Promise<ProbeResult
  * Tries docker first, then podman; classifies the exact failure so the fix line
  * is honest: not-installed vs. daemon-dead (docker) vs. machine-stopped (podman).
  */
-async function containerRuntimeProbe(exec: ExecFn): Promise<ProbeResult> {
+export async function containerRuntimeProbe(exec: ExecFn): Promise<ProbeResult> {
   const id = 'container-runtime'
   const label = 'Container runtime (Docker / Podman)'
   const docker = await exec('docker', ['--version'])
@@ -215,7 +215,7 @@ async function containerRuntimeProbe(exec: ExecFn): Promise<ProbeResult> {
  * Sandcastle image — nothing builds it automatically; the first Docker burn
  * fails on a fresh machine by construction. Reuses whichever runtime is present.
  */
-async function sandcastleImageProbe(exec: ExecFn, imageName: string): Promise<ProbeResult> {
+export async function sandcastleImageProbe(exec: ExecFn, imageName: string): Promise<ProbeResult> {
   const id = 'sandcastle-image'
   const label = 'Sandcastle container image'
   for (const runtime of ['docker', 'podman'] as const) {
@@ -248,7 +248,7 @@ async function sandcastleImageProbe(exec: ExecFn, imageName: string): Promise<Pr
  * AFK OAuth token — presence only (validity needs a live call). Read from the
  * injected env; the CLI merges `~/.runcastle/.env` in before calling.
  */
-function afkTokenProbe(env: Record<string, string | undefined>): ProbeResult {
+export function afkTokenProbe(env: Record<string, string | undefined>): ProbeResult {
   const id = 'afk-token'
   const label = 'AFK auth token (CLAUDE_CODE_OAUTH_TOKEN)'
   const token = env.CLAUDE_CODE_OAUTH_TOKEN

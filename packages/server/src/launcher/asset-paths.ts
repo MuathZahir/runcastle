@@ -26,6 +26,8 @@ export const ASSET_ENV = {
   ptyHost: 'RUNCASTLE_PTY_HOST',
   /** The `@runcastle/skills` root (has `packs/` + `burner/`). */
   skills: 'RUNCASTLE_SKILLS_DIR',
+  /** The vetted `.sandcastle/` burner template dir (scaffolded for `build-image`). */
+  sandcastleTemplate: 'RUNCASTLE_SANDCASTLE_TEMPLATE',
   /** The built web SPA (`apps/web/dist`). */
   webDist: 'RUNCASTLE_WEB_DIST',
 } as const
@@ -57,6 +59,7 @@ export function vendoredAssetPaths(pkgRoot: string): Record<string, string> {
     [ASSET_ENV.migrations]: join(pkgRoot, 'drizzle'),
     [ASSET_ENV.hookClient]: join(pkgRoot, 'hook-client.ts'),
     [ASSET_ENV.ptyHost]: join(pkgRoot, 'pty-host.cjs'),
+    [ASSET_ENV.sandcastleTemplate]: join(pkgRoot, 'sandcastle-template'),
   }
 }
 

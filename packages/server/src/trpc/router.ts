@@ -5,6 +5,7 @@ import { featureRouter } from './routers/feature'
 import { projectRouter } from './routers/project'
 import { runRouter } from './routers/run'
 import { settingsRouter } from './routers/settings'
+import { setupRouter } from './routers/setup'
 import { systemRouter } from './routers/system'
 
 /**
@@ -18,6 +19,7 @@ export const appRouter = router({
   events: eventsRouter,
   docs: docsRouter,
   settings: settingsRouter,
+  setup: setupRouter,
   system: systemRouter,
 })
 

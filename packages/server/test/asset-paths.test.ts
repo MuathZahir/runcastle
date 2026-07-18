@@ -51,6 +51,7 @@ describe('applyInstalledAssetEnv', () => {
     mkdirSync(join(root, 'drizzle'), { recursive: true })
     writeFileSync(join(root, 'hook-client.ts'), '')
     writeFileSync(join(root, 'pty-host.cjs'), '')
+    mkdirSync(join(root, 'sandcastle-template'), { recursive: true })
     return root
   }
 

@@ -2119,6 +2119,81 @@ button.tb-runs { cursor: pointer; }
 .op-hint { font-size: 11px; color: var(--text-4); }
 .op-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
 
+/* First-run wizard (issue #50) — reuses the op-card frame with a step rail. */
+.wizard-card { max-width: 520px; }
+.wizard-steps {
+  display: flex;
+  gap: 16px;
+  list-style: none;
+  margin: 0 0 6px;
+  padding: 0;
+  font-size: 11px;
+  color: var(--text-4);
+}
+.wizard-step { display: flex; align-items: center; gap: 6px; }
+.wizard-step.is-current { color: var(--accent-hi); }
+.wizard-step.is-done { color: var(--text-2); }
+.wizard-step-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--hairline);
+}
+.wizard-step.is-current .wizard-step-dot { background: var(--accent); }
+.wizard-step.is-done .wizard-step-dot { background: var(--text-3); }
+
+/* Enable AFK burns card (issue #50). */
+.afk-card { display: flex; flex-direction: column; gap: 10px; }
+.afk-card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.afk-card-title { font-size: 16px; font-weight: 600; }
+.afk-card-sub { color: var(--text-3); font-size: 12.5px; line-height: 1.5; margin: 0; }
+.afk-rows { display: flex; flex-direction: column; gap: 8px; }
+.afk-row {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius);
+  background: var(--panel-2);
+}
+.afk-row.is-ok { opacity: 0.72; }
+.afk-row-head { display: flex; align-items: flex-start; gap: 9px; }
+.afk-dot {
+  width: 8px;
+  height: 8px;
+  margin-top: 4px;
+  border-radius: 50%;
+  flex: none;
+}
+.afk-dot-ok { background: var(--ok, #3fb950); }
+.afk-dot-warn { background: var(--warn, #d9a441); }
+.afk-row-text { display: flex; flex-direction: column; gap: 2px; }
+.afk-row-label { font-size: 13px; font-weight: 500; }
+.afk-row-detail { font-size: 11px; color: var(--text-4); }
+.afk-row-action { display: flex; flex-direction: column; gap: 8px; padding-left: 17px; }
+.afk-cmd {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  background: var(--panel-inset);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius);
+}
+.afk-cmd-text { flex: 1; font-size: 12px; color: var(--accent-hi); word-break: break-all; }
+.afk-note { font-size: 11px; color: var(--text-4); }
+.afk-term {
+  height: 280px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.afk-term-actions { display: flex; justify-content: flex-end; gap: 8px; }
+.afk-verdict { font-size: 12px; }
+.afk-verdict.is-ok { color: var(--ok, #3fb950); }
+.afk-verdict.is-warn { color: var(--warn, #d9a441); }
+
 /* ============================================================================
    ANIMATIONS
    ========================================================================== */
