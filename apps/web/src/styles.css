@@ -1628,6 +1628,95 @@ details.wp-group-done > summary { cursor: pointer; list-style: revert; }
 }
 
 /* ============================================================================
+   SETTINGS OVERLAY (issue #47)
+   ========================================================================== */
+.peek.settings { max-width: 620px; }
+.settings-title { color: var(--text); font-size: 13px; font-weight: 600; }
+.settings-body { display: flex; flex-direction: column; gap: 26px; }
+
+.settings-section { display: flex; flex-direction: column; gap: 14px; }
+.settings-section-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--hairline);
+}
+.settings-section-title {
+  margin: 0;
+  font-size: 11px;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--text-2);
+  font-weight: 700;
+}
+.settings-section-hint { font-size: 11.5px; color: var(--text-4); }
+
+.settings-field { display: flex; flex-direction: column; gap: 5px; }
+.settings-field-head { display: flex; align-items: center; gap: 8px; }
+.settings-field-label { font-size: 12.5px; color: var(--text); }
+.settings-field.is-locked .settings-field-label { color: var(--text-2); }
+.settings-field-help { font-size: 11.5px; color: var(--text-4); line-height: 1.4; }
+
+.settings-badge {
+  font-size: 9.5px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 1px 6px;
+  border-radius: 999px;
+  border: 1px solid var(--hairline-strong);
+  color: var(--text-3);
+}
+.settings-badge.is-warn { color: var(--drive); border-color: color-mix(in srgb, var(--drive) 40%, transparent); }
+.settings-badge.is-override { color: var(--accent-hi); border-color: var(--accent-line); }
+.settings-saving { font-size: 10.5px; color: var(--text-4); font-style: italic; }
+
+.settings-input {
+  width: 100%;
+  height: 32px;
+  background: var(--panel-inset);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius);
+  color: var(--text);
+  padding: 0 10px;
+  font-size: 12.5px;
+  outline: none;
+  font-family: inherit;
+  transition: border-color var(--dur-1);
+}
+.settings-input:focus { border-color: var(--accent); }
+.settings-input:disabled { opacity: 0.6; cursor: progress; }
+select.settings-input { cursor: pointer; }
+
+.settings-readonly {
+  min-height: 32px;
+  display: flex;
+  align-items: center;
+  padding: 0 10px;
+  background: var(--panel-inset);
+  border: 1px dashed var(--hairline);
+  border-radius: var(--radius);
+  color: var(--text-2);
+  font-size: 12.5px;
+}
+
+.settings-field-note { font-size: 11px; color: var(--text-4); }
+.settings-clear {
+  align-self: flex-start;
+  margin-top: 2px;
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--text-3);
+  font-size: 11px;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.settings-clear:hover:not(:disabled) { color: var(--accent-hi); }
+.settings-clear:disabled { opacity: 0.5; cursor: default; }
+
+/* ============================================================================
    ERROR BOUNDARY / TERMINAL placeholders
    ========================================================================== */
 .terminal-placeholder,

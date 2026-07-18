@@ -13,11 +13,13 @@ import { ProjectSwitcher } from './ProjectSwitcher'
 export function Titlebar({
   nav,
   onOpenCmdk,
+  onOpenSettings,
   onToggleInspector,
   inspectorCollapsed,
 }: {
   nav: ProjectNavApi
   onOpenCmdk: () => void
+  onOpenSettings: () => void
   onToggleInspector: () => void
   inspectorCollapsed: boolean
 }) {
@@ -71,6 +73,10 @@ export function Titlebar({
       >
         <span className="health-dot" />
       </span>
+
+      <button className="tb-icon-btn" title="Settings" aria-label="Settings" onClick={onOpenSettings}>
+        ⚙
+      </button>
 
       <button
         className="tb-icon-btn"
