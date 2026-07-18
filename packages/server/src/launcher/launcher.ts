@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs'
-import { dirname, join } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { Feature, Project, Run, SessionKind, SessionRow, Waypoint } from '@runcastle/core'
 import { worktreeDir } from '@runcastle/core/paths'
@@ -7,6 +7,7 @@ import { nextGate, nextPhase } from '@runcastle/core'
 import { and, eq } from 'drizzle-orm'
 import type { AppCtx } from '../db/types'
 import { resolveExecutable } from '../util/resolve-executable'
+import { SKILLS_DIR_ENV } from './skills-root'
 import { runs } from '../db/schema'
 import { GateError, isNotImplemented } from '../errors'
 import { ptyRegistry } from '../pty/registry'
@@ -174,6 +175,17 @@ export function resolvePluginDir(
   fromDir: string = dirname(fileURLToPath(import.meta.url)),
 ): string {
   const rel = join('packages', 'skills', 'packs', 'runcastle')
+
+  // Published install: skills are vendored as real files and RUNCASTLE_SKILLS_DIR
+  // names their root — read the pack straight from there (issue #51). A bad
+  // override throws loudly rather than silently falling back to a workspace path.
+  const override = process.env[SKILLS_DIR_ENV]
+  if (override) {
+    const dir = join(resolve(override), 'packs', 'runcastle')
+    if (existsSync(dir)) return dir
+    throw new Error(`${SKILLS_DIR_ENV}=${override} has no plugin dir at ${dir}`)
+  }
+
   const searched: string[] = []
   let dir = fromDir
   for (let i = 0; i < 8; i += 1) {

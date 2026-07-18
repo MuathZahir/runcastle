@@ -11,6 +11,7 @@ import type {
 } from '@runcastle/core'
 import { loadConfig } from '@runcastle/core/config-load'
 import { envPath, featureDocsRel, logsDir, worktreeDir } from '@runcastle/core/paths'
+import { resolveSkillsRoot } from '../launcher/skills-root'
 import type {
   AgentCommandOptions,
   AgentProvider,
@@ -507,11 +508,14 @@ export async function burnRun(
 // Real sandcastle boundary (IO) — not exercised by unit tests
 // ---------------------------------------------------------------------------
 
-/** Absolute path to the burner prompt template in `packages/skills`. */
-function burnerTemplatePath(): string {
-  // …/packages/server/src/workflows -> …/packages/skills/burner/implement-ticket.md
+/**
+ * Absolute path to the burner prompt template. Resolves the skills root the
+ * same way everywhere (workspace `packages/skills`, or the vendored root via
+ * `RUNCASTLE_SKILLS_DIR` in a published install — issue #51).
+ */
+export function burnerTemplatePath(): string {
   const here = dirname(fileURLToPath(import.meta.url))
-  return join(here, '..', '..', '..', 'skills', 'burner', 'implement-ticket.md')
+  return join(resolveSkillsRoot(here), 'burner', 'implement-ticket.md')
 }
 
 /** Read `docs/features/<slug>/*.md` from the talk worktree, or a skip note. */

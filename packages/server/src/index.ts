@@ -63,7 +63,7 @@ export function buildApp(ctx: AppCtx): Hono {
   return app
 }
 
-async function main(): Promise<void> {
+export async function startServer(): Promise<void> {
   const config = loadConfig()
   ensureDataDir()
 
@@ -123,5 +123,5 @@ async function main(): Promise<void> {
 }
 
 if (import.meta.main) {
-  void main()
+  void startServer()
 }

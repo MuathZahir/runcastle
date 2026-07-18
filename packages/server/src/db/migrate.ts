@@ -1,6 +1,7 @@
 import { readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { sql } from 'drizzle-orm'
+import { ASSET_ENV, resolveAsset } from '../launcher/asset-paths'
 import type { Db } from './types'
 
 /**
@@ -16,7 +17,12 @@ import type { Db } from './types'
  * test path), so re-booting an existing db is a no-op.
  */
 
-const MIGRATIONS_DIR = join(import.meta.dirname, '..', '..', 'drizzle')
+// Workspace source path; a published install vendors the SQL and points
+// RUNCASTLE_MIGRATIONS_DIR at the vendored copy (issue #51).
+const MIGRATIONS_DIR = resolveAsset(
+  ASSET_ENV.migrations,
+  join(import.meta.dirname, '..', '..', 'drizzle'),
+)
 
 const STATEMENT_BREAKPOINT = '--> statement-breakpoint'
 

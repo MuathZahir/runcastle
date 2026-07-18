@@ -5,6 +5,7 @@ import type { Feature, RuncastleConfig, Waypoint, WorkflowCtx, WorkflowDef } fro
 import { newId } from '@runcastle/core'
 import { loadConfig } from '@runcastle/core/config-load'
 import { envPath, featureDocsRel, logsDir, worktreeDir } from '@runcastle/core/paths'
+import { resolveSkillsRoot } from '../launcher/skills-root'
 import type { RunOptions, RunResult } from '@ai-hero/sandcastle'
 import { run } from '@ai-hero/sandcastle'
 import { docker } from '@ai-hero/sandcastle/sandboxes/docker'
@@ -193,10 +194,14 @@ export function interpretResearchResult(
 // Real sandcastle boundary (IO) — not exercised by unit tests
 // ---------------------------------------------------------------------------
 
-/** Absolute path to the research prompt template in `packages/skills`. */
-function researchTemplatePath(): string {
+/**
+ * Absolute path to the research prompt template. Resolves the skills root the
+ * same way everywhere (workspace `packages/skills`, or the vendored root via
+ * `RUNCASTLE_SKILLS_DIR` in a published install — issue #51).
+ */
+export function researchTemplatePath(): string {
   const here = dirname(fileURLToPath(import.meta.url))
-  return join(here, '..', '..', '..', 'skills', 'burner', 'research-waypoint.md')
+  return join(resolveSkillsRoot(here), 'burner', 'research-waypoint.md')
 }
 
 /** Read `docs/features/<slug>/*.md` from the talk worktree, or a skip note. */
