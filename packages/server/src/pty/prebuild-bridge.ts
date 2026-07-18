@@ -6,26 +6,33 @@ import { join } from 'node:path'
  * WHY. node-pty 1.1.0 ships prebuilt addons for darwin + win32 but **no `linux-*`
  * prebuild**, so on Linux its `install` hook (`node scripts/prebuild.js ||
  * node-gyp rebuild`) falls through to compiling from source — needing a C++
- * toolchain and node ≥22. We suppress that hook by omitting node-pty from the
- * root `trustedDependencies` (specifying the field replaces bun's default trusted
- * list, so the untrusted `install` script never runs and can't abort the install).
- * Nothing then lands `pty.node` on Linux — so this bridge copies a vendored binary
- * into node-pty's `prebuilds/linux-<arch>/`, exactly where its runtime loader
- * looks (`build/Release` → `prebuilds/<platform>-<arch>`), before first use.
+ * toolchain and node ≥22. We neutralise that hook with a bun `patchedDependencies`
+ * patch (`patches/node-pty@1.1.0.patch`) that rewrites node-pty's `install` script
+ * to a no-op (`node -e "process.exit(0)"`). Nothing then lands `pty.node` on Linux
+ * — so this bridge copies a vendored binary into node-pty's `prebuilds/linux-<arch>/`,
+ * exactly where its runtime loader looks (`build/Release` →
+ * `prebuilds/<platform>-<arch>`), before first use.
  *
- * WHY A ROOT postinstall (not the dependency's, not a bun patch). Root lifecycle
- * scripts always run, regardless of `trustedDependencies`. Bun's
- * `patchedDependencies` was the first attempt and is a dead end: it cannot create
- * a *new* directory (`prebuilds/linux-x64/`) inside an installed package (bun
- * #13770/#22137).
+ * WHY A NO-OP, NOT A DELETED SCRIPT. Removing the `install` key entirely does NOT
+ * disable the hook: node-pty ships a `binding.gyp`, and bun (like npm) falls back
+ * to an *implicit* `node-gyp rebuild` for gyp packages that declare no install
+ * script — so a toolchain-less install still aborts. Replacing the script with an
+ * explicit no-op is what actually stops the compile, on every platform (on
+ * win/mac the original hook was already a no-op — its prebuild ships in the tarball).
+ *
+ * WHY A ROOT postinstall for the copy (not the dependency's, not the patch itself).
+ * Root lifecycle scripts always run. Bun's `patchedDependencies` cannot *create* a
+ * new directory (`prebuilds/linux-x64/`) inside an installed package (bun
+ * #13770/#22137), so the patch can only edit node-pty's existing `package.json`;
+ * the actual binary copy has to happen from the root postinstall.
  *
  * This function is pure given its options — {@link PrebuildBridgeOptions} injects
  * platform/arch/musl/fs — so every branch is unit-testable on any OS. It must
  * never throw: a postinstall that throws aborts `bun install`.
  *
  * RETIREMENT. node-pty 1.2 is expected to ship `linux-*` prebuilds. When bumping
- * to it, delete this bridge, the vendored binaries, and the `trustedDependencies`
- * override, confirm `bun install` still lands `pty.node` on stock glibc, and
+ * to it, delete this bridge, the vendored binaries, and the `patchedDependencies`
+ * patch, confirm `bun install` still lands `pty.node` on stock glibc, and
  * re-verify the Windows sidecar path (`pty-sidecar.ts`).
  */
 

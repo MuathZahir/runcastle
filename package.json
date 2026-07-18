@@ -2,6 +2,7 @@
   "name": "runcastle",
   "version": "0.0.0",
   "private": true,
+  "license": "MIT",
   "type": "module",
   "workspaces": [
     "packages/*",
@@ -18,5 +19,7 @@
     "typescript": "7.0.2",
     "vitest": "4.1.10"
   },
-  "trustedDependencies": []
+  "patchedDependencies": {
+    "node-pty@1.1.0": "patches/node-pty@1.1.0.patch"
+  }
 }

@@ -8,9 +8,10 @@ import {
 /**
  * Root-postinstall Linux prebuild bridge (issue #39).
  *
- * node-pty 1.1.0 ships no `linux-*` prebuild and its `install` hook is suppressed
- * (root `trustedDependencies` omits node-pty), so nothing lands `pty.node` on
- * Linux. The root `postinstall` calls {@link applyLinuxPrebuildBridge} to copy the
+ * node-pty 1.1.0 ships no `linux-*` prebuild and its `install` hook is neutralised
+ * to a no-op (a `patchedDependencies` patch rewrites node-pty's `install` script),
+ * so nothing lands `pty.node` on Linux. The root `postinstall` calls
+ * {@link applyLinuxPrebuildBridge} to copy the
  * vendored binary into node-pty's `prebuilds/linux-<arch>/` — the loader's search
  * path — before first use. It must: act only on glibc Linux, be idempotent, and
  * never explode (a thrown postinstall aborts `bun install`). These tests inject

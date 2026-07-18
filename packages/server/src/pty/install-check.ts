@@ -10,8 +10,8 @@ import { dirname, join } from 'node:path'
  * (`node scripts/prebuild.js || node-gyp rebuild`) falls through to compiling
  * from source — which needs a C++ toolchain and node ≥22. The prebuild bridge
  * (root `postinstall` → {@link applyLinuxPrebuildBridge}, with node-pty's hook
- * suppressed via `trustedDependencies`) copies a vendored linux prebuild into
- * node-pty's `prebuilds/linux-<arch>/` so the compile never fires.
+ * rewritten to a no-op via a `patchedDependencies` patch) copies a vendored linux
+ * prebuild into node-pty's `prebuilds/linux-<arch>/` so the compile never fires.
  *
  * WHY A DISK CHECK, NOT AN EXIT CODE. A second `bun install` after a failed one
  * exits **0** ("no changes") while the tree is still missing `pty.node` — the

@@ -1,15 +1,15 @@
 /**
  * Root `postinstall` — the Linux prebuild bridge for node-pty (issue #39).
  *
- * Root lifecycle scripts always run, regardless of `trustedDependencies`, so this
- * runs on every `bun install`. On glibc Linux it copies the vendored `pty.node`
- * (committed under `vendor/node-pty/linux-<arch>/`) into the resolved node-pty
- * package's `prebuilds/linux-<arch>/` — the loader's search path — because
- * node-pty 1.1.0 ships no linux prebuild and its compile-from-source `install`
- * hook is deliberately suppressed (node-pty is omitted from root
- * `trustedDependencies`). No-op on Windows/macOS (their prebuilds ship in the
- * tarball) and on musl/Alpine (a glibc prebuild can't load there — build from
- * source instead). Never fails the install: a thrown postinstall aborts it.
+ * Root lifecycle scripts always run, so this runs on every `bun install`. On glibc
+ * Linux it copies the vendored `pty.node` (committed under
+ * `vendor/node-pty/linux-<arch>/`) into the resolved node-pty package's
+ * `prebuilds/linux-<arch>/` — the loader's search path — because node-pty 1.1.0
+ * ships no linux prebuild and its compile-from-source `install` hook is rewritten
+ * to a no-op via a `patchedDependencies` patch (`patches/node-pty@1.1.0.patch`).
+ * No-op on Windows/macOS (their prebuilds ship in the tarball) and on musl/Alpine
+ * (a glibc prebuild can't load there — build from source instead). Never fails the
+ * install: a thrown postinstall aborts it.
  *
  * All real logic lives in `applyLinuxPrebuildBridge` (unit-tested with injected
  * fs); this wrapper only wires in the real fs, paths, and musl detection.
