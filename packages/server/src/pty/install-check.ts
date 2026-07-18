@@ -9,8 +9,9 @@ import { dirname, join } from 'node:path'
  * `linux-*` prebuild**, so on stock glibc Linux its install hook
  * (`node scripts/prebuild.js || node-gyp rebuild`) falls through to compiling
  * from source — which needs a C++ toolchain and node ≥22. The prebuild bridge
- * (`patches/node-pty@1.1.0.patch` + `patchedDependencies`) drops a vendored
- * linux prebuild into place *before* that hook runs so the compile never fires.
+ * (root `postinstall` → {@link applyLinuxPrebuildBridge}, with node-pty's hook
+ * suppressed via `trustedDependencies`) copies a vendored linux prebuild into
+ * node-pty's `prebuilds/linux-<arch>/` so the compile never fires.
  *
  * WHY A DISK CHECK, NOT AN EXIT CODE. A second `bun install` after a failed one
  * exits **0** ("no changes") while the tree is still missing `pty.node` — the
@@ -57,7 +58,7 @@ export interface PtyInstallProbe {
  * version on glibc systems and omits it on musl; Alpine's marker file is the
  * belt-and-braces fallback.
  */
-function detectMusl(): boolean {
+export function detectMusl(): boolean {
   if (process.platform !== 'linux') return false
   try {
     const report = process.report?.getReport() as
@@ -71,7 +72,7 @@ function detectMusl(): boolean {
 }
 
 /** Resolve node-pty's package root via its manifest, or null if not installed. */
-function resolvePtyRoot(): string | null {
+export function resolvePtyRoot(): string | null {
   try {
     const require = createRequire(import.meta.url)
     return dirname(require.resolve('node-pty/package.json'))
@@ -98,9 +99,11 @@ function remediation(
   return (
     `node-pty's native binary (pty.node) is missing for ${platform}-${arch} ` +
     `(looked in: ${where}). The embedded terminal will not work. Re-run ` +
-    '`bun install` — the linux prebuild bridge should place it before node-pty ' +
-    "builds. If it still fails you're likely without a C++ toolchain or on node " +
-    '<22; see docs/research/POSIX-VERIFICATION.md.'
+    "`bun install` — the root postinstall prebuild bridge should copy it into " +
+    "node-pty's prebuilds. If it still fails, no linux-" +
+    `${arch} binary is vendored (build one with \`bun ` +
+    'scripts/vendor-node-pty-prebuilds.ts\`) or you\'re without a C++ toolchain; ' +
+    'see docs/research/POSIX-VERIFICATION.md.'
   )
 }
 

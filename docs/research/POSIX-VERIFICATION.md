@@ -82,11 +82,18 @@ possible*): as it stands, Linux install = "install a C++ toolchain and node ≥2
 
 ### Resolution — the prebuild bridge (issue #39) [FIXED for linux-x64]
 
-`patches/node-pty@1.1.0.patch` + `patchedDependencies` (root `package.json`) vendor a
-linux-x64 `pty.node` into `prebuilds/linux-x64/`. Bun applies the patch *before*
-node-pty's install hook, so `prebuild.js` finds the dir, exits 0, and **no compile is
-attempted** — `bun install` succeeds on stock glibc Linux with no compiler and node 20.
-(Linux needs only `pty.node`; `spawn-helper` is macOS-only.) See `patches/README.md`.
+Two moving parts (root `package.json`): (1) `trustedDependencies` is declared
+**without** node-pty, which replaces bun's default trusted list so node-pty's
+compile-from-source `install` hook never runs and can't abort the install; (2) the
+root `postinstall` (`scripts/postinstall-node-pty.ts`) copies a vendored linux-x64
+`pty.node` (committed under `vendor/node-pty/linux-x64/`) into node-pty's
+`prebuilds/linux-x64/` — the loader's search path. Result: **no compile is
+attempted** and `bun install` succeeds on stock glibc Linux with no compiler and
+node 20. (Linux needs only `pty.node`; `spawn-helper` is macOS-only.) See
+`vendor/node-pty/README.md`.
+
+> Attempt 1 used `patchedDependencies` + a binary patch; that's a dead end — bun
+> can't create a new dir inside an installed package via patch (bun #13770/#22137).
 
 - **Completeness check.** `checkPtyInstall()` / `assertPtyInstalled()`
   (`packages/server/src/pty/install-check.ts`) verify `pty.node` exists **on disk** —
@@ -96,11 +103,12 @@ attempted** — `bun install` succeeds on stock glibc Linux with no compiler and
   `apk add build-base python3` then `bun install`. `checkPtyInstall()` detects musl
   (via `process.report`'s absent `glibcVersionRuntime`, or `/etc/alpine-release`) and
   points at exactly this.
-- **linux-arm64** is not yet vendored (no arm64 build host) — it still compiles from
-  source there; drop an arm64 `pty.node` in via the regen script to close it.
-- **Retire at node-pty 1.2**, which is expected to ship `linux-*` prebuilds: delete the
-  patch + `patchedDependencies` entry, confirm the binary still lands on stock glibc, and
-  re-verify the Windows sidecar path.
+- **linux-arm64** is not yet vendored (no arm64 build host) — the bridge reports the
+  gap there; drop an arm64 `pty.node` in via `bun scripts/vendor-node-pty-prebuilds.ts`
+  on an arm64 host to close it.
+- **Retire at node-pty 1.2**, which is expected to ship `linux-*` prebuilds: delete
+  `vendor/node-pty/`, the `trustedDependencies` override, and the root `postinstall`;
+  confirm the binary still lands on stock glibc, and re-verify the Windows sidecar path.
 
 ## 2. `bun run dev` starts only the server on Linux [VERIFIED]
 
