@@ -255,6 +255,32 @@ describe('burnRun — scheduling and summary', () => {
     expect(res).toEqual({ status: 'succeeded', summary: '1/1 tickets done' })
   })
 
+  it('fails fast with auth.missing when podman sandbox has no token', async () => {
+    const tickets = [ticket(1)]
+    const { ctx, events } = makeCtx(tickets)
+    const calls: number[] = []
+    const execute = fakeExecute({}, calls)
+
+    const res = await burnRun(ctx, deps(execute, { config: { serverPort: 4512, model: 'm', smokeModel: 's', sandbox: 'podman', mainBranch: 'main' }, hasAuthToken: false }))
+
+    expect(calls).toEqual([])
+    expect(res.status).toBe('failed')
+    expect(events).toContainEqual(expect.objectContaining({ type: 'auth.missing' }))
+  })
+
+  it('proceeds under podman when a token is present', async () => {
+    const tickets = [ticket(1)]
+    const { ctx } = makeCtx(tickets)
+    const execute = fakeExecute({ 1: { status: 'done', commits: ['a'] } })
+
+    const res = await burnRun(
+      ctx,
+      deps(execute, { config: { serverPort: 4512, model: 'm', smokeModel: 's', sandbox: 'podman', mainBranch: 'main' }, hasAuthToken: true }),
+    )
+
+    expect(res).toEqual({ status: 'succeeded', summary: '1/1 tickets done' })
+  })
+
   it('propagates an abort so the runner can finalize the run as cancelled', async () => {
     const tickets = [ticket(1)]
     const controller = new AbortController()

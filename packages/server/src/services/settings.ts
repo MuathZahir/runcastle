@@ -82,7 +82,7 @@ const DESCRIPTORS: FieldDescriptor[] = [
     envVar: 'RUNCASTLE_SANDBOX',
     projectColumn: 'sandbox',
     restartRequired: false,
-    valueSchema: z.enum(['docker', 'noSandbox']),
+    valueSchema: z.enum(['docker', 'podman', 'noSandbox']),
     parseEnv: idEnv,
   },
   {
