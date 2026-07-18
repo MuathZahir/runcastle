@@ -1,12 +1,13 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import type { AppCtx } from '../src/db/types'
-import { emit, listAfter } from '../src/services/events'
+import { emit, emitProject, listAfter, listByProject } from '../src/services/events'
 import { makeTestCtx } from './helpers/db'
 import { seedFeature, seedProject } from './helpers/fixtures'
 
 describe('events service', () => {
   let ctx: AppCtx
   let featureId: string
+  let projectId: string
 
   beforeEach(async () => {
     ctx = await makeTestCtx()
