@@ -7,6 +7,7 @@ import { worktreeDir } from '@runcastle/core/paths'
 import { nextGate, nextPhase } from '@runcastle/core'
 import { and, eq } from 'drizzle-orm'
 import type { AppCtx } from '../db/types'
+import { resolveExecutable } from '../util/resolve-executable'
 import { runs } from '../db/schema'
 import { GateError, isNotImplemented } from '../errors'
 import { ptyRegistry } from '../pty/registry'
@@ -188,19 +189,7 @@ export function buildLaunchCommand(input: BuildLaunchInput): LaunchCommand {
  * Falls back to the bare name so `CreateProcess`/exec can make a final attempt.
  */
 function resolveClaudeExecutable(): string {
-  const override = process.env.RUNCASTLE_CLAUDE_BIN
-  if (override && existsSync(override)) return override
-  const isWin = process.platform === 'win32'
-  const exts = isWin ? ['.exe', '.cmd', '.bat', ''] : ['']
-  const dirs = (process.env.PATH ?? '').split(isWin ? ';' : ':')
-  for (const dir of dirs) {
-    if (!dir) continue
-    for (const ext of exts) {
-      const candidate = join(dir, `claude${ext}`)
-      if (existsSync(candidate)) return candidate
-    }
-  }
-  return 'claude'
+  return resolveExecutable('claude', { override: process.env.RUNCASTLE_CLAUDE_BIN })
 }
 
 /**
