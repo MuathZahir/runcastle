@@ -1,8 +1,8 @@
 import { type ChildProcess, spawn } from 'node:child_process'
 import { createRequire } from 'node:module'
 import { existsSync } from 'node:fs'
-import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { resolveExecutable } from '../util/resolve-executable'
 import type { CreatePtyOptions, PtySession } from './pty'
 
 /**
@@ -29,18 +29,10 @@ function isBun(): boolean {
 function resolveNodeExecutable(): string {
   const override = process.env.RUNCASTLE_NODE_BIN
   if (override && existsSync(override)) return override
+  // Under a `node` runtime `process.execPath` IS node; only under Bun must we
+  // scan PATH for a system node (shared PATHEXT-aware resolver).
   if (!isBun()) return process.execPath
-  const isWin = process.platform === 'win32'
-  const exts = isWin ? ['.exe', '.cmd', ''] : ['']
-  const dirs = (process.env.PATH ?? '').split(isWin ? ';' : ':')
-  for (const dir of dirs) {
-    if (!dir) continue
-    for (const ext of exts) {
-      const candidate = join(dir, `node${ext}`)
-      if (existsSync(candidate)) return candidate
-    }
-  }
-  return 'node'
+  return resolveExecutable('node', { exts: process.platform === 'win32' ? ['.exe', '.cmd', ''] : [''] })
 }
 
 /** Resolve node-pty's entry once so the host never has to re-resolve it. */
