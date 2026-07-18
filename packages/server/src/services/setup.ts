@@ -1,9 +1,11 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
-import { dirname } from 'node:path'
-import { envPath } from '@runcastle/core/paths'
+import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { envPath, sandboxBuildDir } from '@runcastle/core/paths'
 import type { ExecFn, ProbeResult } from '../doctor/doctor'
 import { gitIdentityProbe } from '../doctor/doctor'
 import { InvalidInputError } from '../errors'
+import { ASSET_ENV, resolveAsset } from '../launcher/asset-paths'
 
 /**
  * First-run / Enable-AFK setup service (issue #50). The wizard's one hard step
@@ -161,6 +163,58 @@ export function terminalSpec(
 ): TerminalSpec {
   if (kind === 'setup-token') return { cmd: 'claude', args: ['setup-token'] }
   return { cmd: 'sandcastle', args: [opts.runtime, 'build-image', '--image-name', opts.imageName] }
+}
+
+// ---------------------------------------------------------------------------
+// Build-context scaffold (issue #50 product decision) — runcastle owns the scaffold
+// ---------------------------------------------------------------------------
+
+/** Result of a `.sandcastle/` scaffold: whether it wrote, and where it lives. */
+export interface ScaffoldResult {
+  scaffolded: boolean
+  dir: string
+}
+
+/**
+ * The vetted burner-image template dir shipped as a package asset (real files
+ * under `src/`, so they ride the published tarball). `RUNCASTLE_SANDCASTLE_TEMPLATE`
+ * overrides it in a vendored install, exactly like the other #51 runtime assets.
+ */
+export function sandcastleTemplateDir(): string {
+  return resolveAsset(
+    ASSET_ENV.sandcastleTemplate,
+    fileURLToPath(new URL('../assets/sandcastle', import.meta.url)),
+  )
+}
+
+/**
+ * Copy the template into `<targetDir>/.sandcastle/` so `sandcastle build-image`
+ * (which unconditionally requires a `.sandcastle/` at its cwd) has a context to
+ * build. **Create-only**: an existing `.sandcastle/` — which may be hand-tuned —
+ * is never touched, mirroring the knowledge-docs scaffold precedent. Idempotent.
+ */
+export function scaffoldSandcastleConfig(templateDir: string, targetDir: string): ScaffoldResult {
+  const dir = join(targetDir, '.sandcastle')
+  if (existsSync(dir)) return { scaffolded: false, dir }
+  mkdirSync(dir, { recursive: true })
+  for (const name of readdirSync(templateDir)) {
+    copyFileSync(join(templateDir, name), join(dir, name))
+  }
+  return { scaffolded: true, dir }
+}
+
+/**
+ * Ensure the runcastle-owned build context exists and return its dir. The AFK
+ * image is generic and app-global (not per-project — per-project deps install at
+ * sandbox start), and the card is actionable during first-run before any project
+ * exists, so the context lives under the data dir rather than in a project repo.
+ * `build-image` runs here with the freshly-scaffolded `.sandcastle/`.
+ */
+export function prepareSandboxBuildContext(): string {
+  const target = sandboxBuildDir()
+  mkdirSync(target, { recursive: true })
+  scaffoldSandcastleConfig(sandcastleTemplateDir(), target)
+  return target
 }
 
 // ---------------------------------------------------------------------------

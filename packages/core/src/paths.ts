@@ -40,6 +40,17 @@ export function worktreeDir(projectId: string, slug: string): string {
   return join(dataDir(), 'worktrees', projectId, slug)
 }
 
+/**
+ * Runcastle-owned build context for the generic AFK burner image
+ * (`~/.runcastle/sandbox-build/`). The Enable-AFK card scaffolds a vetted
+ * `.sandcastle/` here on demand and runs `sandcastle <runtime> build-image` in
+ * it — so a fresh install can build the image without a hand-made config and
+ * before any project exists (issue #50).
+ */
+export function sandboxBuildDir(): string {
+  return join(dataDir(), 'sandbox-build')
+}
+
 /** Feature docs location relative to the TARGET repo (forward slashes). */
 export function featureDocsRel(slug: string): string {
   return `docs/features/${slug}`

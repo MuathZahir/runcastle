@@ -5,6 +5,7 @@ import { createSystemExec } from '../../doctor/system-exec'
 import { ptyRegistry } from '../../pty/registry'
 import {
   fileAfkTokenIo,
+  prepareSandboxBuildContext,
   resolveRuntime,
   runtimeInstallGuide,
   saveAfkToken,
@@ -59,6 +60,11 @@ export const setupRouter = router({
       const imageName = ctx.config.sandboxImage ?? 'sandcastle:runcastle'
       const spec = terminalSpec(input.kind, { runtime, imageName })
       const sessionId = newId('setup')
+      // `build-image` runs `sandcastle <runtime> build-image`, which fails with
+      // "No .sandcastle/ found" unless its cwd holds a `.sandcastle/` build
+      // context. Scaffold a vetted one into a runcastle-owned dir first so a
+      // fresh install never dead-ends (issue #50) — create-only, both runtimes.
+      const cwd = input.kind === 'build-image' ? prepareSandboxBuildContext() : process.cwd()
       // Resolve through PATHEXT like the launcher does for `claude` — a bare
       // `spawn('sandcastle'|'claude')` misses a Windows `.cmd` shim, and ConPTY
       // can't exec a `.cmd`/`.bat` directly, so route those through cmd.exe.
@@ -70,7 +76,7 @@ export const setupRouter = router({
         sessionId,
         cmd: file,
         args,
-        opts: { cwd: process.cwd(), env: process.env },
+        opts: { cwd, env: process.env },
       })
       return { sessionId }
     }),
