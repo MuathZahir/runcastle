@@ -48,6 +48,7 @@ export function rowToProject(row: ProjectSelect): Project {
     repoPath: row.repoPath,
     mainBranch: row.mainBranch,
     devCommand: row.devCommand ?? undefined,
+    model: row.model ?? undefined,
   }
 }
 

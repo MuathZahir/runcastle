@@ -29,6 +29,8 @@ export function loadConfig(
   const overrides: Record<string, unknown> = {}
   if (env.RUNCASTLE_SERVER_PORT) overrides.serverPort = Number(env.RUNCASTLE_SERVER_PORT)
   if (env.RUNCASTLE_MODEL) overrides.model = env.RUNCASTLE_MODEL
+  // Legacy env var (issue #48): folded into `stepModels.smoke` by the schema's
+  // read-compat preprocess unless the smoke step is already set explicitly.
   if (env.RUNCASTLE_SMOKE_MODEL) overrides.smokeModel = env.RUNCASTLE_SMOKE_MODEL
   if (env.RUNCASTLE_SANDBOX) overrides.sandbox = env.RUNCASTLE_SANDBOX
   if (env.RUNCASTLE_MAIN_BRANCH) overrides.mainBranch = env.RUNCASTLE_MAIN_BRANCH

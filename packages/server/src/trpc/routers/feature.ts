@@ -69,8 +69,10 @@ export const featureRouter = router({
     .mutation(({ ctx, input }) => overrideGate(ctx, input.featureId, input.gate, input.reason)),
 
   burn: publicProcedure
-    .input(z.object({ featureId: z.string() }))
-    .mutation(({ ctx, input }) => features.burn(ctx, input.featureId)),
+    // `model` is a per-run override (issue #48) — the scripted smoke passes its
+    // cheap model here instead of the retired RUNCASTLE_MODEL env hack.
+    .input(z.object({ featureId: z.string(), model: z.string().min(1).optional() }))
+    .mutation(({ ctx, input }) => features.burn(ctx, input.featureId, { modelOverride: input.model })),
 
   // B2 behavior — the git stub throws NotImplementedError('B2').
   testDrive: publicProcedure

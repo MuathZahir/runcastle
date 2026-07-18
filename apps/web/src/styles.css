@@ -1716,6 +1716,33 @@ select.settings-input { cursor: pointer; }
 .settings-clear:hover:not(:disabled) { color: var(--accent-hi); }
 .settings-clear:disabled { opacity: 0.5; cursor: default; }
 
+/* Default-model combobox: curated select + a free-text field in custom mode. */
+.settings-combo { display: flex; flex-direction: column; gap: 6px; }
+
+/* Collapsed "Advanced — per-step models" section (issue #48). */
+.settings-advanced-toggle {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  text-align: left;
+  color: inherit;
+}
+.settings-advanced-toggle:hover .settings-section-title { color: var(--accent-hi); }
+.settings-advanced-body {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-top: 4px;
+  padding-left: 10px;
+  border-left: 1px solid var(--border-1, var(--text-5, #333));
+}
+
 /* ============================================================================
    ERROR BOUNDARY / TERMINAL placeholders
    ========================================================================== */

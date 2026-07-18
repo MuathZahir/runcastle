@@ -9,6 +9,7 @@ import type {
   WorkflowCtx,
   WorkflowDef,
 } from '@runcastle/core'
+import { resolveModel } from '@runcastle/core'
 import { loadConfig } from '@runcastle/core/config-load'
 import { envPath, featureDocsRel, logsDir, worktreeDir } from '@runcastle/core/paths'
 import { resolveSkillsRoot } from '../launcher/skills-root'
@@ -568,17 +569,21 @@ function readBlockedFile(dirs: (string | undefined)[]): string | undefined {
  *    with the selected model"). We de-quote the (shell-safe `[a-z0-9-]`) model in
  *    the print command on win32+noSandbox.
  */
-export function buildBurnAgent(config: RuncastleConfig, token: string | undefined): AgentProvider {
+export function buildBurnAgent(
+  config: RuncastleConfig,
+  token: string | undefined,
+  model: string,
+): AgentProvider {
   const onHost = config.sandbox === 'noSandbox'
   const opts: ClaudeCodeOptions = {
     ...(token ? { env: { CLAUDE_CODE_OAUTH_TOKEN: token } } : {}),
     ...(onHost ? { permissionMode: 'bypassPermissions' as const } : {}),
   }
-  const agent = claudeCode(config.model, opts)
+  const agent = claudeCode(model, opts)
 
   if (onHost && process.platform === 'win32') {
-    const quoted = `--model '${config.model}'`
-    const unquoted = `--model ${config.model}`
+    const quoted = `--model '${model}'`
+    const unquoted = `--model ${model}`
     return {
       ...agent,
       buildPrintCommand: (o: AgentCommandOptions): PrintCommand => {
@@ -619,6 +624,7 @@ async function realExecuteTicketRun(
   ticket: Ticket,
   config: RuncastleConfig,
   token: string | undefined,
+  model: string,
 ): Promise<TicketOutcome> {
   const { project, feature } = ctx
 
@@ -635,7 +641,7 @@ async function realExecuteTicketRun(
   const throttle = createStreamThrottle((e) => ctx.emitEvent({ ...e, ticketId: ticket.id }))
 
   const runOptions: RunOptions = {
-    agent: buildBurnAgent(config, token),
+    agent: buildBurnAgent(config, token, model),
     sandbox: selectSandbox(config),
     cwd: project.repoPath,
     prompt,
@@ -670,14 +676,20 @@ async function realExecuteTicketRun(
   return interpretRunResult(result, blocked)
 }
 
-/** Resolve production deps: real config, token from `~/.runcastle/.env`, real run. */
-function resolveBurnDeps(): BurnDeps {
+/**
+ * Resolve production deps: real config, token from `~/.runcastle/.env`, real
+ * run. The burner is the `implement` step (issue #48): its model resolves
+ * through `resolveModel` — a per-run override (smoke) wins over the step
+ * override, the per-project override, then the global default.
+ */
+function resolveBurnDeps(ctx: WorkflowCtx): BurnDeps {
   const config = loadConfig()
   const token = readTokenFromEnvFile(envPath())
+  const model = resolveModel('implement', config, ctx.project, ctx.modelOverride)
   return {
     config,
     hasAuthToken: token !== undefined,
-    executeTicketRun: (ctx, ticket) => realExecuteTicketRun(ctx, ticket, config, token),
+    executeTicketRun: (c, ticket) => realExecuteTicketRun(c, ticket, config, token, model),
   }
 }
 
@@ -697,5 +709,5 @@ function readTokenFromEnvFile(path: string): string | undefined {
 
 export const ticketBurner: WorkflowDef = {
   id: 'ticket-burner',
-  run: (ctx) => burnRun(ctx, resolveBurnDeps()),
+  run: (ctx) => burnRun(ctx, resolveBurnDeps(ctx)),
 }

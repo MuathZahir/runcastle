@@ -74,6 +74,11 @@ export interface StartRunOptions {
    * failed and the error rethrown, so no orphaned run lingers.
    */
   claimWaypointId?: string
+  /**
+   * Per-run model override (issue #48) exposed to the workflow as
+   * `ctx.modelOverride`; wins the `resolveModel` chain for the run's AFK agent.
+   */
+  modelOverride?: string
 }
 
 export async function startRun(
@@ -156,6 +161,7 @@ export async function startRun(
       updateTicket(ctx, id, patch)
     },
     input: opts.input,
+    modelOverride: opts.modelOverride,
     resolveWaypoint: (id, disposition, summary) => {
       resolveWaypoint(ctx, id, disposition, summary)
     },

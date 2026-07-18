@@ -3,7 +3,7 @@ import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { Feature, Project, Run, SessionKind, SessionRow, Waypoint } from '@runcastle/core'
 import { worktreeDir } from '@runcastle/core/paths'
-import { nextGate, nextPhase } from '@runcastle/core'
+import { nextGate, nextPhase, resolveModel } from '@runcastle/core'
 import { and, eq } from 'drizzle-orm'
 import type { AppCtx } from '../db/types'
 import { resolveExecutable } from '../util/resolve-executable'
@@ -99,9 +99,10 @@ export interface BuildLaunchInput {
   systemPromptPath: string
   permissionMode?: string
   /**
-   * The model every embedded session runs (`--model`), from
-   * `RuncastleConfig.model` — sessions must honour the configured model, never
-   * the operator's global CLI default (E2E finding: model flag was missing).
+   * The model this embedded session runs (`--model`), resolved for the session
+   * kind's step via `resolveModel` (issue #48) — sessions must honour the
+   * configured model, never the operator's global CLI default (E2E finding: the
+   * model flag was missing).
    */
   model: string
   /**
@@ -346,7 +347,9 @@ export async function launchSession(
     settingsPath: artifacts.settingsPath,
     mcpConfigPath: artifacts.mcpConfigPath,
     systemPromptPath: artifacts.systemPromptPath,
-    model: ctx.config.model,
+    // The session kind IS a model step (issue #48): resolve per-step model,
+    // falling back through the per-project override to the global default.
+    model: resolveModel(input.kind, ctx.config, project),
     resumeSessionId,
   }
 
