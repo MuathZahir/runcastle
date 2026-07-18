@@ -80,6 +80,28 @@ This directly threatens the map's standing preference (*streamline setup as much
 possible*): as it stands, Linux install = "install a C++ toolchain and node ≥22 first".
 → ticketed separately.
 
+### Resolution — the prebuild bridge (issue #39) [FIXED for linux-x64]
+
+`patches/node-pty@1.1.0.patch` + `patchedDependencies` (root `package.json`) vendor a
+linux-x64 `pty.node` into `prebuilds/linux-x64/`. Bun applies the patch *before*
+node-pty's install hook, so `prebuild.js` finds the dir, exits 0, and **no compile is
+attempted** — `bun install` succeeds on stock glibc Linux with no compiler and node 20.
+(Linux needs only `pty.node`; `spawn-helper` is macOS-only.) See `patches/README.md`.
+
+- **Completeness check.** `checkPtyInstall()` / `assertPtyInstalled()`
+  (`packages/server/src/pty/install-check.ts`) verify `pty.node` exists **on disk** —
+  catching the "retry lies" case above — and return remediation text for doctor / first-run.
+- **musl / Alpine fallback.** A glibc prebuild will not load under musl, so the bridge
+  does not help there. Install a toolchain and rebuild from source:
+  `apk add build-base python3` then `bun install`. `checkPtyInstall()` detects musl
+  (via `process.report`'s absent `glibcVersionRuntime`, or `/etc/alpine-release`) and
+  points at exactly this.
+- **linux-arm64** is not yet vendored (no arm64 build host) — it still compiles from
+  source there; drop an arm64 `pty.node` in via the regen script to close it.
+- **Retire at node-pty 1.2**, which is expected to ship `linux-*` prebuilds: delete the
+  patch + `patchedDependencies` entry, confirm the binary still lands on stock glibc, and
+  re-verify the Windows sidecar path.
+
 ## 2. `bun run dev` starts only the server on Linux [VERIFIED]
 
 The documented entry point is `bun run dev` →
