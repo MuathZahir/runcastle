@@ -4,6 +4,7 @@ import { useToast } from '../lib/toast'
 import { globalRows, projectRows, type SettingRow } from '../lib/settings'
 import type { SettingsView } from '../lib/api'
 import { DimLine } from '../ui'
+import { EnableAfkCard } from './EnableAfkCard'
 
 /**
  * The in-app settings overlay (issue #47). A command-palette / doc-peek style
@@ -61,6 +62,15 @@ export function SettingsOverlay({
             rowsOf={projectRows}
             projectId={projectId}
           />
+          <section className="settings-section">
+            <div className="settings-section-head">
+              <h3 className="settings-section-title">AFK burns</h3>
+              <span className="settings-section-hint">
+                Prerequisites for unattended sandbox runs.
+              </span>
+            </div>
+            <EnableAfkCard />
+          </section>
         </div>
       </div>
     </div>
