@@ -81,6 +81,7 @@ export interface AfkTokenIo {
 export async function saveAfkToken(io: AfkTokenIo, rawToken: string): Promise<TokenValidity> {
   const token = rawToken.trim()
   if (token.length === 0) throw new InvalidInputError('AFK token cannot be empty')
+  if (/[\r\n]/.test(token)) throw new InvalidInputError('AFK token cannot contain a newline')
   io.write(upsertEnvVar(io.read(), AFK_TOKEN_KEY, token))
   return io.verify(token)
 }
@@ -149,13 +150,17 @@ export interface TerminalSpec {
  * The command each embedded-terminal / streaming flow runs. `setup-token` drives
  * the interactive `claude setup-token` login; `build-image` builds the sandcastle
  * image with whichever runtime is present (its output streams into the card).
+ * `--image-name` is pinned explicitly so the built tag matches `opts.imageName`
+ * exactly — the same name the doctor probe re-checks after the build — instead
+ * of falling back to sandcastle's own cwd-derived default, which would silently
+ * build an image the re-probe can never find.
  */
 export function terminalSpec(
   kind: TerminalKind,
   opts: { runtime: Runtime; imageName: string },
 ): TerminalSpec {
   if (kind === 'setup-token') return { cmd: 'claude', args: ['setup-token'] }
-  return { cmd: 'sandcastle', args: [opts.runtime, 'build-image'] }
+  return { cmd: 'sandcastle', args: [opts.runtime, 'build-image', '--image-name', opts.imageName] }
 }
 
 // ---------------------------------------------------------------------------

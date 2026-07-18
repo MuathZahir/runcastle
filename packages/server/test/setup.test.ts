@@ -123,6 +123,13 @@ describe('saveAfkToken', () => {
     await expect(saveAfkToken(deps, '   ')).rejects.toThrow()
     expect(touched).toBe(false)
   })
+
+  it('rejects a token with an embedded newline without touching the file', async () => {
+    let touched = false
+    const deps = io({ write: () => (touched = true) })
+    await expect(saveAfkToken(deps, 'sk-ant-oat01-abc\nOTHER=evil')).rejects.toThrow()
+    expect(touched).toBe(false)
+  })
 })
 
 describe('runtimeInstallGuide', () => {
@@ -151,10 +158,10 @@ describe('terminalSpec', () => {
     })
   })
 
-  it('builds the image with the resolved runtime', () => {
+  it('builds the image with the resolved runtime and a pinned image name', () => {
     expect(terminalSpec('build-image', { runtime: 'podman', imageName: 'sandcastle:runcastle' })).toEqual({
       cmd: 'sandcastle',
-      args: ['podman', 'build-image'],
+      args: ['podman', 'build-image', '--image-name', 'sandcastle:runcastle'],
     })
   })
 })

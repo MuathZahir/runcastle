@@ -11,6 +11,7 @@ import {
   terminalSpec,
   writeGitIdentity,
 } from '../../services/setup'
+import { resolveExecutable } from '../../util/resolve-executable'
 import { publicProcedure, router } from '../context'
 
 /**
@@ -58,10 +59,17 @@ export const setupRouter = router({
       const imageName = ctx.config.sandboxImage ?? 'sandcastle:runcastle'
       const spec = terminalSpec(input.kind, { runtime, imageName })
       const sessionId = newId('setup')
+      // Resolve through PATHEXT like the launcher does for `claude` — a bare
+      // `spawn('sandcastle'|'claude')` misses a Windows `.cmd` shim, and ConPTY
+      // can't exec a `.cmd`/`.bat` directly, so route those through cmd.exe.
+      const resolved = resolveExecutable(spec.cmd)
+      const isShim = /\.(cmd|bat)$/i.test(resolved)
+      const file = isShim ? (process.env.ComSpec ?? 'cmd.exe') : resolved
+      const args = isShim ? ['/c', resolved, ...spec.args] : spec.args
       ptyRegistry().create({
         sessionId,
-        cmd: spec.cmd,
-        args: spec.args,
+        cmd: file,
+        args,
         opts: { cwd: process.cwd(), env: process.env },
       })
       return { sessionId }
