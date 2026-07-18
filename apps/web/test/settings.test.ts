@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { describeField, globalRows, projectRows } from '../src/lib/settings'
+import {
+  describeField,
+  globalRows,
+  projectRows,
+  stepModelRows,
+  unsetStepKeys,
+} from '../src/lib/settings'
 import type { SettingField, SettingsView } from '../src/lib/api'
 
 /**
@@ -63,6 +69,43 @@ describe('describeField', () => {
   it('coerces a null value to an empty display string', () => {
     const row = describeField(field({ key: 'devCommand', value: null, scope: 'project' }))
     expect(row.value).toBe('')
+  })
+
+  it('renders the default model as a curated combobox (issue #48)', () => {
+    const row = describeField(field({ key: 'model', value: 'claude-opus-4-8' }))
+    expect(row.control).toBe('select')
+    expect(row.allowCustom).toBe(true)
+    expect(row.options).toContain('claude-opus-4-8')
+  })
+
+  it('labels a per-step model field and allows custom input', () => {
+    const row = describeField(field({ key: 'stepModels.implement', value: 'claude-sonnet-5' }))
+    expect(row.label).toBe('Implement')
+    expect(row.control).toBe('select')
+    expect(row.allowCustom).toBe(true)
+  })
+})
+
+describe('per-step model rows (#48)', () => {
+  it('lists only set steps, in canonical order, and hides them from global rows', () => {
+    const v = view([
+      { key: 'model', source: 'default' },
+      { key: 'stepModels.smoke', value: 'claude-haiku-4-5-20251001', source: 'file' },
+      { key: 'stepModels.implement', value: 'x', source: 'default', scope: 'global' },
+      { key: 'stepModels.research', value: 'claude-sonnet-5', source: 'file' },
+    ])
+    const rows = stepModelRows(v)
+    expect(rows.map((r) => r.key)).toEqual(['stepModels.research', 'stepModels.smoke'])
+    // step fields never leak into the flat Global section
+    expect(globalRows(v).map((r) => r.key)).toEqual(['model'])
+  })
+
+  it('offers the unset steps (never review) for adding', () => {
+    const v = view([{ key: 'stepModels.smoke', value: 'h', source: 'file' }])
+    const keys = unsetStepKeys(v).map((s) => s.key)
+    expect(keys).toContain('stepModels.implement')
+    expect(keys).not.toContain('stepModels.smoke')
+    expect(keys).not.toContain('stepModels.review')
   })
 })
 

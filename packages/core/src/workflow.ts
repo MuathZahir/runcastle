@@ -27,6 +27,12 @@ export interface WorkflowCtx {
    */
   input?: unknown
   /**
+   * Per-run model override (issue #48). When set, it wins the `resolveModel`
+   * chain for this run's AFK agent (`runOverride`) — used by the scripted smoke
+   * to force a cheap model without the retired `RUNCASTLE_MODEL` env hack.
+   */
+  modelOverride?: string
+  /**
    * Resolve (or drop) the waypoint this run is working, flipping its lifecycle
    * status and recording a one-line summary (SPEC §13.1/§13.2). A run that never
    * calls this leaves its waypoint claimed; the runner's finalizer then

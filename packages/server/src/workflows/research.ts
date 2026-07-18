@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, readFileSync, readdirSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { Feature, RuncastleConfig, Waypoint, WorkflowCtx, WorkflowDef } from '@runcastle/core'
-import { newId } from '@runcastle/core'
+import { newId, resolveModel } from '@runcastle/core'
 import { loadConfig } from '@runcastle/core/config-load'
 import { envPath, featureDocsRel, logsDir, worktreeDir } from '@runcastle/core/paths'
 import { resolveSkillsRoot } from '../launcher/skills-root'
@@ -229,6 +229,7 @@ async function realExecuteResearchRun(
   waypoint: Waypoint,
   config: RuncastleConfig,
   token: string | undefined,
+  model: string,
 ): Promise<ResearchOutcome> {
   const { project, feature } = ctx
   const docRelPath = researchDocRel(feature.slug, waypoint)
@@ -249,7 +250,7 @@ async function realExecuteResearchRun(
   const throttle = createResearchStreamThrottle((e) => ctx.emitEvent(e))
 
   const runOptions: RunOptions = {
-    agent: buildBurnAgent(config, token),
+    agent: buildBurnAgent(config, token, model),
     sandbox:
       config.sandbox === 'docker'
         ? docker(config.sandboxImage ? { imageName: config.sandboxImage } : {})
@@ -301,14 +302,20 @@ async function realExecuteResearchRun(
   return outcome
 }
 
-/** Resolve production deps: real config, token from `~/.runcastle/.env`, real run. */
-function resolveResearchDeps(): ResearchDeps {
+/**
+ * Resolve production deps: real config, token from `~/.runcastle/.env`, real
+ * run. Research is the `research` step (issue #48): its model resolves through
+ * `resolveModel` — a per-run override wins over the step override, the
+ * per-project override, then the global default.
+ */
+function resolveResearchDeps(ctx: WorkflowCtx): ResearchDeps {
   const config = loadConfig()
   const token = readTokenFromEnvFile(envPath())
+  const model = resolveModel('research', config, ctx.project, ctx.modelOverride)
   return {
     config,
     hasAuthToken: token !== undefined,
-    executeResearchRun: (ctx, waypoint) => realExecuteResearchRun(ctx, waypoint, config, token),
+    executeResearchRun: (c, waypoint) => realExecuteResearchRun(c, waypoint, config, token, model),
   }
 }
 
@@ -328,5 +335,5 @@ function readTokenFromEnvFile(path: string): string | undefined {
 
 export const research: WorkflowDef = {
   id: 'research',
-  run: (ctx) => researchRun(ctx, resolveResearchDeps()),
+  run: (ctx) => researchRun(ctx, resolveResearchDeps(ctx)),
 }

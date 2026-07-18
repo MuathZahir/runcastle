@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { trpc } from '../../trpc'
 import { useToast } from '../../lib/toast'
-import { MODEL, SANDBOX_MODE } from '../../lib/env'
+import { SANDBOX_MODE } from '../../lib/env'
 import { shortSha } from '../../lib/format'
 import { DimLine, SectionTitle, SessionStatusDot, TicketStatusChip } from '../../ui'
 import { EndSessionButton } from '../EndSessionButton'
@@ -29,6 +29,19 @@ export function TicketsBody({
   const toast = useToast()
   const full = trpc.feature.get.useQuery({ id: featureId }, { refetchInterval: 1500 })
   const [open, setOpen] = useState<Set<string>>(() => new Set())
+
+  // The burn model chip reflects what the ticket-burner (the `implement` step)
+  // will use for this project — read from settings, never a hardcoded constant
+  // (issue #48). The step override wins, else the project/global default.
+  const projectId = full.data?.feature.projectId
+  const settings = trpc.settings.get.useQuery(
+    { projectId: projectId as string },
+    { enabled: !!projectId },
+  )
+  const implementField =
+    settings.data?.fields.find((f) => f.key === 'stepModels.implement' && f.source === 'file') ??
+    settings.data?.fields.find((f) => f.key === 'model')
+  const model = typeof implementField?.value === 'string' ? implementField.value : '…'
 
   if (full.isLoading) return <DimLine>loading tickets…</DimLine>
   // Hard error only when there was NEVER data. A refetch failure after data
@@ -91,7 +104,7 @@ export function TicketsBody({
         <span className="body-meta">{meta}</span>
         <span style={{ flex: 1 }} />
         <span className="chip chip-neutral" title="sandbox">sandbox · {SANDBOX_MODE}</span>
-        <span className="chip chip-neutral" title="model">{MODEL}</span>
+        <span className="chip chip-neutral" title="model">{model}</span>
       </div>
 
       {total === 0 ? (

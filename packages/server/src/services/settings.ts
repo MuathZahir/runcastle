@@ -1,7 +1,17 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname } from 'node:path'
-import type { RuncastleConfig, SettingField, SettingsUpdateInput, SettingsView } from '@runcastle/core'
-import { RuncastleConfig as RuncastleConfigSchema } from '@runcastle/core'
+import type {
+  ModelStep,
+  RuncastleConfig,
+  SettingField,
+  SettingsUpdateInput,
+  SettingsView,
+} from '@runcastle/core'
+import {
+  MODEL_STEPS,
+  RuncastleConfig as RuncastleConfigSchema,
+  foldLegacyModelConfig,
+} from '@runcastle/core'
 import { configPath } from '@runcastle/core/paths'
 import * as z from 'zod'
 import { eq } from 'drizzle-orm'
@@ -69,14 +79,6 @@ const DESCRIPTORS: FieldDescriptor[] = [
     parseEnv: idEnv,
   },
   {
-    key: 'smokeModel',
-    configKey: 'smokeModel',
-    envVar: 'RUNCASTLE_SMOKE_MODEL',
-    restartRequired: false,
-    valueSchema: z.string().min(1),
-    parseEnv: idEnv,
-  },
-  {
     key: 'sandbox',
     configKey: 'sandbox',
     envVar: 'RUNCASTLE_SANDBOX',
@@ -119,14 +121,46 @@ export interface SettingsIO {
   configFile?: string
 }
 
+/**
+ * Read the raw config JSON, folding the legacy `smokeModel` key into
+ * `stepModels.smoke` (issue #48) so both the settings VIEW and a write-through
+ * (which reads-modifies-writes this shape) see the new shape — the next write
+ * therefore drops `smokeModel` and persists `stepModels`.
+ */
 function readRawConfig(configFile: string): Record<string, unknown> {
   if (!existsSync(configFile)) return {}
   try {
     const parsed: unknown = JSON.parse(readFileSync(configFile, 'utf8'))
-    return typeof parsed === 'object' && parsed !== null ? (parsed as Record<string, unknown>) : {}
+    if (typeof parsed !== 'object' || parsed === null) return {}
+    return foldLegacyModelConfig(parsed) as Record<string, unknown>
   } catch {
     return {}
   }
+}
+
+/** The `stepModels` sub-object from a raw config, or an empty map. */
+function rawStepModels(fileRaw: Record<string, unknown>): Record<string, unknown> {
+  const raw = fileRaw.stepModels
+  return typeof raw === 'object' && raw !== null && !Array.isArray(raw)
+    ? (raw as Record<string, unknown>)
+    : {}
+}
+
+/**
+ * The per-step model fields (issue #48), one per `ModelStep` (never `review`).
+ * Global-only: a step present in the config file reports source `file`,
+ * otherwise the schema default (only `smoke` has one) with source `default`.
+ */
+function stepModelFields(fileRaw: Record<string, unknown>): SettingField[] {
+  const set = rawStepModels(fileRaw)
+  return MODEL_STEPS.map((step) => {
+    const base = { key: `stepModels.${step}`, restartRequired: false, scope: 'global' as const }
+    const v = set[step]
+    if (typeof v === 'string' && v !== '') {
+      return { ...base, value: v, source: 'file' as const, editable: true }
+    }
+    return { ...base, value: DEFAULTS.stepModels[step] ?? null, source: 'default' as const, editable: true }
+  })
 }
 
 /** The per-project override columns for one project (raw row, override-null = inherit). */
@@ -193,7 +227,9 @@ export function getSettings(ctx: AppCtx, projectId?: string, io: SettingsIO = {}
 
   const visible = DESCRIPTORS.filter((d) => projectId !== undefined || d.configKey !== undefined)
   const fields = visible.map((d) => resolveField(d, { env, fileRaw, overrides }))
-  return { projectId, fields }
+  // Per-step model overrides (issue #48) are global-only, so they resolve the
+  // same in both scopes — append them to whichever view was requested.
+  return { projectId, fields: [...fields, ...stepModelFields(fileRaw)] }
 }
 
 /**
@@ -210,6 +246,12 @@ export function updateSettings(
 ): SettingField {
   const env = io.env ?? process.env
   const configFile = io.configFile ?? configPath()
+
+  // Per-step model overrides (issue #48) are a global-only nested map, so they
+  // bypass the flat DESCRIPTOR machinery.
+  if (input.key.startsWith('stepModels.')) {
+    return updateStepModel(ctx, input, configFile, io)
+  }
 
   const desc = DESCRIPTORS.find((d) => d.key === input.key)
   if (!desc) throw new InvalidInputError(`unknown setting: ${input.key}`)
@@ -283,6 +325,61 @@ export function updateSettings(
 function writeGlobal(configFile: string, configKey: keyof RuncastleConfig, value: unknown): void {
   const raw = readRawConfig(configFile)
   raw[configKey] = value
+  mkdirSync(dirname(configFile), { recursive: true })
+  writeFileSync(configFile, `${JSON.stringify(raw, null, 2)}\n`)
+}
+
+/** Valid model steps as a set for O(1) membership checks. */
+const STEP_SET = new Set<string>(MODEL_STEPS)
+
+/**
+ * Write (or clear, on `null`) one per-step model override (issue #48). Global
+ * only, write-through: persists the nested `stepModels` map to the config file
+ * (dropping any legacy `smokeModel`, since `readRawConfig` folds it) and
+ * refreshes `ctx.config.stepModels` in place so the next launch/run sees it.
+ */
+function updateStepModel(
+  ctx: AppCtx,
+  input: SettingsUpdateInput,
+  configFile: string,
+  io: SettingsIO,
+): SettingField {
+  const step = input.key.slice('stepModels.'.length)
+  if (!STEP_SET.has(step)) throw new InvalidInputError(`unknown model step: ${step}`)
+  const modelStep = step as ModelStep
+
+  let value: string | null = null
+  if (input.value !== null) {
+    const parsed = z.string().min(1).safeParse(input.value)
+    if (!parsed.success) {
+      throw new InvalidInputError(
+        `invalid value for ${input.key}: ${parsed.error.issues[0]?.message}`,
+      )
+    }
+    value = parsed.data
+  }
+
+  writeStepModel(configFile, modelStep, value)
+  const stepModels = (ctx.config.stepModels ?? {}) as Record<string, string>
+  if (value === null) delete stepModels[modelStep]
+  else stepModels[modelStep] = value
+  ;(ctx.config as Record<string, unknown>).stepModels = stepModels
+
+  emitProject(ctx, GLOBAL_EVENT_KEY, {
+    type: 'settings.updated',
+    message: value === null ? `${input.key} override cleared` : `${input.key} set to ${value}`,
+    data: { key: input.key, scope: 'global', value },
+  })
+  return field(getSettings(ctx, input.projectId, io), input.key)
+}
+
+/** Merge/clear one step in the config file's `stepModels` map, preserving the rest. */
+function writeStepModel(configFile: string, step: ModelStep, value: string | null): void {
+  const raw = readRawConfig(configFile)
+  const stepModels = { ...rawStepModels(raw) }
+  if (value === null) delete stepModels[step]
+  else stepModels[step] = value
+  raw.stepModels = stepModels
   mkdirSync(dirname(configFile), { recursive: true })
   writeFileSync(configFile, `${JSON.stringify(raw, null, 2)}\n`)
 }

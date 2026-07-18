@@ -73,6 +73,25 @@ describe('workflow runner', () => {
   it('rejects an unregistered workflow id', async () => {
     await expect(startRun(ctx, featureId, 'nope')).rejects.toThrow(/not registered/)
   })
+
+  it('exposes a per-run modelOverride to the workflow ctx (issue #48)', async () => {
+    let seen: string | undefined = 'unset'
+    const captureDef: WorkflowDef = {
+      id: 'test-capture-model',
+      async run(wctx) {
+        seen = wctx.modelOverride
+        return { status: 'succeeded', summary: 'ok' }
+      },
+    }
+    workflowRegistry.set(captureDef.id, captureDef)
+    try {
+      const { done } = await startRun(ctx, featureId, captureDef.id, { modelOverride: 'claude-cheap' })
+      await done
+      expect(seen).toBe('claude-cheap')
+    } finally {
+      workflowRegistry.delete(captureDef.id)
+    }
+  })
 })
 
 describe('workflowClaimsFeatureBranch', () => {

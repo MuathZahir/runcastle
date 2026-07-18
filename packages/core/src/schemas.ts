@@ -123,6 +123,8 @@ export const Project = z.object({
   repoPath: z.string(),
   mainBranch: z.string(),
   devCommand: z.string().optional(),
+  /** Per-project default-model override (issue #48); unset → inherit global. */
+  model: z.string().optional(),
 })
 export type Project = z.infer<typeof Project>
 

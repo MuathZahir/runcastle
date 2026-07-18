@@ -239,7 +239,7 @@ describe('selectSandbox — provider for the configured sandbox', () => {
   const config = (sandbox: RuncastleConfig['sandbox']): RuncastleConfig => ({
     serverPort: 4512,
     model: 'm',
-    smokeModel: 's',
+    stepModels: {},
     sandbox,
     mainBranch: 'main',
   })

@@ -224,7 +224,11 @@ export function advance(ctx: AppCtx, featureId: string): Feature {
  * crashed left the feature parked there — and (re)starts the burn without
  * re-crossing any gate, so that state never dead-ends. Requires ≥1 ticket.
  */
-export async function burn(ctx: AppCtx, featureId: string): Promise<{ runId: string }> {
+export async function burn(
+  ctx: AppCtx,
+  featureId: string,
+  opts: { modelOverride?: string } = {},
+): Promise<{ runId: string }> {
   const feature = getFeatureRow(ctx, featureId)
   const restarting = feature.phase === 'implementation' && !hasActiveRun(ctx, featureId)
   if (feature.phase !== 'tickets' && !restarting) {
@@ -246,7 +250,9 @@ export async function burn(ctx: AppCtx, featureId: string): Promise<{ runId: str
   } else {
     setPhase(ctx, featureId, 'implementation', 'burn.started', 'burning tickets')
   }
-  const { runId } = await startRun(ctx, featureId, 'ticket-burner')
+  const { runId } = await startRun(ctx, featureId, 'ticket-burner', {
+    modelOverride: opts.modelOverride,
+  })
   return { runId }
 }
 
