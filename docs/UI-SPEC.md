@@ -1,5 +1,10 @@
 # Runcastle UI Spec v2 — "IDE, not dashboard"
 
+> **Build-time document.** Written to coordinate runcastle's own construction
+> and kept as part of the dogfooding record — it may describe states the code
+> has since moved past. The code and README are authoritative for current
+> behavior.
+
 Binding spec for the apps/web rework + embedded terminal. Supersedes SPEC.md §10. Written after walking the user stories; agents implement EXACTLY this and flag friction rather than redesigning.
 
 ## 1. User stories (the UI must serve these, in priority order)

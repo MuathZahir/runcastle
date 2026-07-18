@@ -7,12 +7,11 @@ An opinionated programming system layered on Claude Code — the IDE to Claude C
 ## Lineage
 
 - **Matt Pocock's skills** (`~/.claude/skills`) — the methodology source: grilling, to-spec, to-tickets, implement, tdd, code-review, wayfinder, handoff. We fork and adapt, not depend.
-- **Sandcastle** (`@ai-hero/sandcastle`) — the AFK engine: sandboxed agent runs (Docker/Podman/Vercel), branch strategy, merge-back. Docker 28.5.2 verified on this machine.
-- **Castellan repo** (`../castellan`) — the runcastle.dev registry codebase (workflow manifest format, `castellan` CLI, Next.js registry site, 20-workflow catalog). Its explicit non-goal — "no hosted execution" — is the hole this app fills. The registry folds into this product later as its workflow marketplace.
+- **Sandcastle** (`@ai-hero/sandcastle`) — the AFK engine: sandboxed agent runs (Docker/Podman/Vercel), branch strategy, merge-back.
 
 ## Locked decisions
 
-1. **Audience: dogfood-first, product bones.** v1 is the author's daily driver. Core abstractions (session store, workflow contract, skill packs) are designed so a public product can grow out of it. No auth/onboarding/docs until it survives real use.
+1. **Audience: dogfood-first, product bones.** v1 is dogfooded on real daily work. Core abstractions (session store, workflow contract, skill packs) are designed so a public product can grow out of it. No auth/onboarding until it survives real use.
 
 2. **Form factor: local web app.** Bun server on the user's machine owns sessions, workflows, sandcastle, transcript indexing; browser UI at localhost is the IDE surface. Tauri-wrappable later.
 
@@ -50,7 +49,7 @@ An opinionated programming system layered on Claude Code — the IDE to Claude C
 
 13. **Stack:** Bun + Hono + tRPC (live updates via subscription/SSE) + Vite/React + Drizzle + local SQLite. Sandcastle called directly as a TS lib. Terminals are server-owned embedded PTYs streamed to the in-app xterm view — cross-platform (Windows/macOS/Linux); the legacy `wt.exe` window mode is removed.
 
-14. **Name: runcastle.** Takes the runcastle.dev domain and brand. The existing registry (castellan repo) becomes the product's marketplace section later.
+14. **Name: runcastle.** Takes the runcastle.dev domain and brand.
 
 ## Design principles
 

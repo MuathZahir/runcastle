@@ -1,5 +1,10 @@
 # Runcastle M1 — Implementation Spec
 
+> **Build-time document.** Written to coordinate runcastle's own construction
+> and kept as part of the dogfooding record — it may describe states the code
+> has since moved past. The code and README are authoritative for current
+> behavior.
+
 Read `CONTEXT.md` first for vision + locked decisions. This spec pins the contracts every implementation agent builds against. **Names in this file are law**; if a research note (docs/research/) contradicts a *format detail* here (e.g. a hook JSON field), the research note wins — record the correction in docs/research/CORRECTIONS.md.
 
 M1 tracer bullet: one repo, one feature at a time: create feature → grilling terminal opens (context injected) → spec/tickets land in store → click Burn → sandcastle runs one AFK agent per ticket on the feature branch → test-drive → merge.

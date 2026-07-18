@@ -1,5 +1,10 @@
 # Claude Code Integration Notes (v2.1.x)
 
+> **Source & attribution.** Portions of this file are reproduced verbatim from
+> the official Claude Code documentation at <https://code.claude.com/docs>
+> (© Anthropic), retrieved 2026-07-14. Kept as a dated snapshot so agents can
+> work offline; the live docs are authoritative.
+
 Researched against the official docs at `https://code.claude.com/docs/en/*.md`. Every JSON block below is copied verbatim from the fetched markdown source (not paraphrased) unless marked UNVERIFIED. Doc version context: pages reference behavior up to v2.1.208+ (some fields note `min-version` gates, called out inline).
 
 ---

@@ -3,7 +3,7 @@ name: tickets
 description: Break the spec (or decisions.md when collapsed) into tracer-bullet vertical slices, each self-sufficient for one fresh sandboxed agent, and emit them via MCP. Then complete the tickets phase. Invoked by /runcastle:ideate.
 disable-model-invocation: false
 ---
-<!-- Forked from Matt Pocock's to-tickets skill, 2026-07-14, adapted for runcastle -->
+<!-- Forked from Matt Pocock's to-tickets skill, via https://github.com/mattpocock/skills, 2026-07-14, adapted for runcastle -->
 
 # Tickets
 

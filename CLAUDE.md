@@ -1,5 +1,9 @@
 # CLAUDE.md — runcastle
 
+> **Build-time document.** Agent instructions for building runcastle itself,
+> kept as part of the dogfooding record — some references describe build-era
+> states the code has since moved past.
+
 **Read `docs/SPEC.md` before implementing anything.** It pins every contract
 (schemas, tRPC map, gates, file ownership). Names in the spec are law. Read
 `CONTEXT.md` for vision + locked decisions, and `docs/research/*` for exact

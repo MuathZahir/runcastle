@@ -3,7 +3,7 @@ name: ideate
 description: The runcastle ideation session. Grill the human relentlessly about a feature, lock decisions incrementally into decisions.md, then drive spec and tickets out of the same unbroken context. Entry skill for kind=ideation sessions.
 disable-model-invocation: false
 ---
-<!-- Forked from Matt Pocock's grilling + grill-with-docs skills, 2026-07-14, adapted for runcastle -->
+<!-- Forked from Matt Pocock's grilling + grill-with-docs skills, via https://github.com/mattpocock/skills, 2026-07-14, adapted for runcastle -->
 
 # Ideate — runcastle's ideation session
 

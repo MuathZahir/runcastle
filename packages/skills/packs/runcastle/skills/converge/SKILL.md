@@ -3,7 +3,7 @@ name: converge
 description: Close a mapped feature. Read ONLY the compressed knowledge (map.md + decisions.md, never the waypoint transcripts), then drive spec and tickets out of that one unbroken window. Entry skill for kind=converge sessions.
 disable-model-invocation: false
 ---
-<!-- Forked from Matt Pocock's grilling/to-spec/to-tickets discipline, 2026-07-15, adapted for runcastle mapped ideation -->
+<!-- Forked from Matt Pocock's grilling/to-spec/to-tickets discipline, via https://github.com/mattpocock/skills, 2026-07-15, adapted for runcastle mapped ideation -->
 
 # Converge — close a mapped feature
 
