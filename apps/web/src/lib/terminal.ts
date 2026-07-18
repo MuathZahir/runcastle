@@ -22,7 +22,7 @@ export type TerminalStatus = 'connecting' | 'live' | 'reconnecting' | 'ended'
 
 export interface TerminalClientOptions {
   sessionId: string
-  /** WS origin, e.g. `ws://localhost:4512`. Defaults to the runcastle server (4512). */
+  /** WS origin, e.g. `ws://localhost:4512`. Defaults to the page's own origin. */
   wsBase?: string
   onData: (bytes: Uint8Array) => void
   onStatus: (status: TerminalStatus) => void
@@ -41,10 +41,20 @@ const CONNECT_TIMEOUT = 8000
 /** Outbound bytes still buffered this long after a send ⇒ half-open socket. */
 const STALL_TIMEOUT = 3000
 
-/** Default WS origin: the runcastle server on 4512 (SPEC §0), same host. */
+/**
+ * WS origin for a page location. Derives host+port from the page rather than
+ * hardcoding 4512 so the terminal works from whatever port the app is served on:
+ * in production the server serves the SPA and the WS from one origin (any port);
+ * in dev Vite (4513) proxies `/ws` to the server. `location.host` carries the
+ * port, so a non-default server port just works.
+ */
+export function wsBaseFrom(loc: Pick<Location, 'protocol' | 'host'>): string {
+  const proto = loc.protocol === 'https:' ? 'wss:' : 'ws:'
+  return `${proto}//${loc.host}`
+}
+
 function defaultWsBase(): string {
-  const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-  return `${proto}//${window.location.hostname}:4512`
+  return wsBaseFrom(window.location)
 }
 
 export class TerminalClient {
