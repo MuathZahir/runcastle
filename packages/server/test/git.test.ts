@@ -12,6 +12,7 @@ import { runs } from '../src/db/schema'
 import { listAfter } from '../src/services/events'
 import {
   __resetTestDriveState,
+  activeDriveInfo,
   activeTestDriveFeatureId,
   cleanupResearchBranches,
   commitDocs,
@@ -21,6 +22,7 @@ import {
   mergeFeature,
   mergeResearchBranch,
   reattachWorktree,
+  recordDriveUrl,
   researchBranchName,
   testDrive,
 } from '../src/services/git'
@@ -401,6 +403,37 @@ describe('testDrive', () => {
     const res = await testDrive(ctx, project, feature, 'stop')
     expect(res.ok).toBe(false)
     expect(res.deniedReason).toBe('No test drive is active')
+  })
+
+  it('activeDriveInfo surfaces the driven branch and the sniffed dev URL, cleared on stop', async () => {
+    expect(activeDriveInfo()).toBeNull()
+
+    await testDrive(ctx, project, feature, 'start')
+    // No devCommand on the seeded project → no pane, but the drive is reported.
+    expect(activeDriveInfo()).toMatchObject({
+      featureId: feature.id,
+      branch: 'feature/drive',
+      devPaneId: undefined,
+      devUrl: undefined,
+    })
+
+    // A sniffed URL becomes the sticky "Open app" link and lands on the timeline.
+    recordDriveUrl(ctx, feature.id, 'http://localhost:5173/')
+    expect(activeDriveInfo()?.devUrl).toBe('http://localhost:5173/')
+    // Sticky: a later/different URL does not overwrite the first.
+    recordDriveUrl(ctx, feature.id, 'http://localhost:9999/')
+    expect(activeDriveInfo()?.devUrl).toBe('http://localhost:5173/')
+    expect(listAfter(ctx, feature.id, 0).map((e) => e.type)).toContain('testdrive.url')
+
+    await testDrive(ctx, project, feature, 'stop')
+    expect(activeDriveInfo()).toBeNull()
+  })
+
+  it('recordDriveUrl ignores a URL for a feature that is not the active drive', async () => {
+    await testDrive(ctx, project, feature, 'start')
+    recordDriveUrl(ctx, 'feat_someone_else', 'http://localhost:3000/')
+    expect(activeDriveInfo()?.devUrl).toBeUndefined()
+    await testDrive(ctx, project, feature, 'stop')
   })
 
   it('start detaches a second worktree (e.g. the burner) that pins the branch', async () => {

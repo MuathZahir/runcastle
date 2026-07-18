@@ -78,6 +78,10 @@ export const featureRouter = router({
       return git.testDrive(ctx, project, feature, input.action)
     }),
 
+  // Active test-drive info for the review-phase dev pane + Open app link. Polled
+  // at 1.5s so the async-sniffed localhost URL surfaces once the dev server boots.
+  driveInfo: publicProcedure.query(() => git.activeDriveInfo()),
+
   // B2 behavior — the git stub throws; the success path (set phase shipped) is
   // wired now so B2 only fills in `mergeFeature`.
   merge: publicProcedure

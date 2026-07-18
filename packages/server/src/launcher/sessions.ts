@@ -107,7 +107,7 @@ export function markSessionLive(
  * handler; a short fixed delay after `live` is the pragmatic point where the
  * prompt is interactive (any trust/permission dialog blocks startup BEFORE the
  * SessionStart hook, so it cannot swallow this input). Best-effort by design:
- * no PTY entry (window mode / tests) or an exited PTY is a silent no-op, and the
+ * no PTY entry (spawn:false smoke / tests) or an exited PTY is a silent no-op, and the
  * worst failure mode is the line sitting unsubmitted in the input box.
  *
  * Submission is a SEPARATE `\r` keystroke, written a beat after the text
