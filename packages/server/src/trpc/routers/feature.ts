@@ -14,6 +14,7 @@ export const featureRouter = router({
   create: publicProcedure
     .input(
       z.object({
+        projectId: z.string(),
         title: z.string().min(1),
         oneLiner: z.string(),
         size: FeatureSize,
@@ -22,7 +23,9 @@ export const featureRouter = router({
     )
     .mutation(({ ctx, input }) => features.createFeature(ctx, input)),
 
-  list: publicProcedure.query(({ ctx }) => features.list(ctx)),
+  list: publicProcedure
+    .input(z.object({ projectId: z.string() }))
+    .query(({ ctx, input }) => features.list(ctx, input.projectId)),
 
   get: publicProcedure
     .input(z.object({ id: z.string() }))

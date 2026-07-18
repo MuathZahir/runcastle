@@ -11,6 +11,7 @@ import { seedProject, tmpRepo } from './helpers/fixtures'
 describe('feature.create', () => {
   let ctx: AppCtx
   let repoPath: string
+  let projectId: string
 
   beforeEach(async () => {
     ctx = await makeTestCtx()
@@ -26,13 +27,13 @@ describe('feature.create', () => {
     writeFileSync(join(repoPath, 'README.md'), 'base\n')
     await g.add(['README.md'])
     await g.commit('initial commit')
-    seedProject(ctx, repoPath)
+    projectId = seedProject(ctx, repoPath).id
   })
 
   it('slugifies the title and dedupes against existing slugs', async () => {
-    const a = await createFeature(ctx, { title: 'My Feature!', oneLiner: 'x', size: 'full' })
-    const b = await createFeature(ctx, { title: 'My Feature', oneLiner: 'x', size: 'full' })
-    const c = await createFeature(ctx, { title: 'my   feature', oneLiner: 'x', size: 'collapsed' })
+    const a = await createFeature(ctx, { projectId, title: 'My Feature!', oneLiner: 'x', size: 'full' })
+    const b = await createFeature(ctx, { projectId, title: 'My Feature', oneLiner: 'x', size: 'full' })
+    const c = await createFeature(ctx, { projectId, title: 'my   feature', oneLiner: 'x', size: 'collapsed' })
 
     expect(a.slug).toBe('my-feature')
     expect(b.slug).toBe('my-feature-2')
@@ -43,7 +44,7 @@ describe('feature.create', () => {
   })
 
   it('creates the row + real feature branch + scaffolds brief.md', async () => {
-    const f = await createFeature(ctx, { title: 'Brancher', oneLiner: 'y', size: 'full' })
+    const f = await createFeature(ctx, { projectId, title: 'Brancher', oneLiner: 'y', size: 'full' })
 
     // B2's git service creates the real branch → message reports it (not pending)
     const created = listAfter(ctx, f.id, 0).find((e) => e.type === 'feature.created')
@@ -57,7 +58,7 @@ describe('feature.create', () => {
   })
 
   it('commits the scaffolded brief so the working tree stays clean (ship gates)', async () => {
-    await createFeature(ctx, { title: 'Cleanly', oneLiner: 'z', size: 'full' })
+    await createFeature(ctx, { projectId, title: 'Cleanly', oneLiner: 'z', size: 'full' })
     const g = simpleGit(repoPath)
 
     // The brief must be committed, not left untracked — an untracked doc would

@@ -2,44 +2,61 @@ import { existsSync } from 'node:fs'
 import { basename, join } from 'node:path'
 import type { Project } from '@runcastle/core'
 import { newId } from '@runcastle/core'
-import { eq } from 'drizzle-orm'
+import { eq, isNull } from 'drizzle-orm'
 import type { AppCtx } from '../db/types'
 import { projects } from '../db/schema'
 import { InvalidInputError, isNotImplemented } from '../errors'
 import { emit } from './events'
 import * as git from './git'
-import { getProjectRow, rowToProject } from './repo'
+import { getProjectByRepoPath, projectHasActiveRun, requireProjectById, rowToProject } from './repo'
 
 /**
- * Project service (SPEC §3/§4). M1 is single-project: `initProject` creates (or
- * re-points) the sole project row. Repo validation + main-branch detection are
- * B2's git service; until B2 lands we tolerate its stub and fall back to a
- * lightweight `.git` existence check + the configured default branch, so the UI
- * is usable end-to-end before wave B.
+ * Project service (SPEC §3/§4, issue #43): the projects table is a real list.
+ * `openProject` upserts by repo path (re-open returns the same project and
+ * clears its closed state), `closeProject` hides a project (refusing while runs
+ * are in flight), `listProjects` returns the open projects, `renameProject` sets
+ * the display name. Repo validation + main-branch detection are B2's git
+ * service; until B2 lands we tolerate its stub and fall back to a lightweight
+ * `.git` existence check + the configured default branch.
+ *
+ * Project-level events reuse the timeline's `featureId` slot to carry the acting
+ * project's id — there is no separate project feed, and this keeps every mutation
+ * observable per the events-are-the-UI's-lifeblood rule (SPEC §12).
  */
 
-export function getProject(ctx: AppCtx): Project | null {
-  return getProjectRow(ctx)
+/** Open projects (closed ones are hidden), newest-known first is not required. */
+export function listProjects(ctx: AppCtx): Project[] {
+  return ctx.db
+    .select()
+    .from(projects)
+    .where(isNull(projects.closedAt))
+    .all()
+    .map(rowToProject)
 }
 
-export async function initProject(ctx: AppCtx, repoPath: string): Promise<Project> {
+/**
+ * Open a project at `repoPath`, upserting by path: a known path returns the same
+ * project (and clears any closed state — a closed project reappears with its
+ * features intact); an unknown path inserts a new one.
+ */
+export async function openProject(ctx: AppCtx, repoPath: string): Promise<Project> {
   await assertRepoTolerant(ctx, repoPath)
   const mainBranch = await detectMainBranchTolerant(ctx, repoPath)
   const name = basename(repoPath) || repoPath
 
-  const existing = getProjectRow(ctx)
+  const existing = getProjectByRepoPath(ctx, repoPath)
   if (existing) {
     ctx.db
       .update(projects)
-      .set({ repoPath, mainBranch, name })
+      .set({ mainBranch, closedAt: null })
       .where(eq(projects.id, existing.id))
       .run()
-    const updated = { ...existing, repoPath, mainBranch, name }
+    const reopened = { ...existing, mainBranch }
     emit(ctx, existing.id, {
-      type: 'project.reinitialised',
-      message: `project re-pointed at ${repoPath} (${mainBranch})`,
+      type: 'project.opened',
+      message: `project ${existing.name} re-opened at ${repoPath} (${mainBranch})`,
     })
-    return updated
+    return reopened
   }
 
   const row = {
@@ -48,31 +65,68 @@ export async function initProject(ctx: AppCtx, repoPath: string): Promise<Projec
     repoPath,
     mainBranch,
     devCommand: null,
+    closedAt: null,
   }
   const inserted = ctx.db.insert(projects).values(row).returning().get()
   const project = rowToProject(inserted)
   emit(ctx, project.id, {
-    type: 'project.initialised',
+    type: 'project.opened',
     message: `project ${name} at ${repoPath} (${mainBranch})`,
   })
   return project
 }
 
+/**
+ * Hide a project. Refuses (destroying nothing) while any of its runs are in
+ * flight; the project's features and rows are left intact so a later `open`
+ * brings it back.
+ */
+export function closeProject(ctx: AppCtx, projectId: string): Project {
+  const project = requireProjectById(ctx, projectId)
+  if (projectHasActiveRun(ctx, projectId)) {
+    throw new InvalidInputError(
+      `cannot close ${project.name}: a run is in flight — wait for it to finish or cancel it first`,
+    )
+  }
+  ctx.db.update(projects).set({ closedAt: Date.now() }).where(eq(projects.id, projectId)).run()
+  emit(ctx, projectId, {
+    type: 'project.closed',
+    message: `project ${project.name} closed`,
+  })
+  return project
+}
+
+/** Set a project's display name. */
+export function renameProject(ctx: AppCtx, projectId: string, name: string): Project {
+  const project = requireProjectById(ctx, projectId)
+  ctx.db.update(projects).set({ name }).where(eq(projects.id, projectId)).run()
+  emit(ctx, projectId, {
+    type: 'project.renamed',
+    message: `project renamed ${project.name} → ${name}`,
+    data: { from: project.name, to: name },
+  })
+  return { ...project, name }
+}
+
+/**
+ * Update a project's settings (currently just `devCommand`). Retired by the
+ * settings ticket; kept explicit-by-id here so it survives the singleton removal.
+ */
 export function updateProject(
   ctx: AppCtx,
+  projectId: string,
   patch: { devCommand?: string },
 ): Project {
-  const existing = getProjectRow(ctx)
-  if (!existing) throw new InvalidInputError('no project to update')
+  const project = requireProjectById(ctx, projectId)
   const set: { devCommand?: string | null } = {}
   if (patch.devCommand !== undefined) set.devCommand = patch.devCommand
-  ctx.db.update(projects).set(set).where(eq(projects.id, existing.id)).run()
-  emit(ctx, existing.id, {
+  ctx.db.update(projects).set(set).where(eq(projects.id, projectId)).run()
+  emit(ctx, projectId, {
     type: 'project.updated',
     message: 'project settings updated',
     data: patch,
   })
-  return { ...existing, devCommand: patch.devCommand ?? existing.devCommand }
+  return { ...project, devCommand: patch.devCommand ?? project.devCommand }
 }
 
 // --- B2 tolerance -----------------------------------------------------------

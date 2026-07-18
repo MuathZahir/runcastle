@@ -5,7 +5,7 @@ import type { AppCtx } from '../db/types'
 import { runs } from '../db/schema'
 import { emit } from '../services/events'
 import { cleanupResearchBranches, reattachWorktree } from '../services/git'
-import { getProjectById, getProjectRow, rowToRun, tryGetFeature } from '../services/repo'
+import { allProjects, getProjectById, rowToRun, tryGetFeature } from '../services/repo'
 import { releaseForSession } from '../services/waypoints'
 import { isRunActive, workflowClaimsFeatureBranch } from './runner'
 
@@ -77,11 +77,9 @@ export async function reconcileStaleRuns(ctx: AppCtx): Promise<Run[]> {
   }
 
   // Sweep research temp branches orphaned by crashed runs (merged-only; see
-  // `cleanupResearchBranches`). Best-effort: a missing/broken repo never
-  // blocks boot. Default-project shim (issue #36): this sweep is project-wide,
-  // not tied to one feature — the multi-project change iterates every project.
-  const project = getProjectRow(ctx)
-  if (project) {
+  // `cleanupResearchBranches`). Best-effort: a missing/broken repo never blocks
+  // boot. Project-wide (multi-project, issue #43): every project is swept.
+  for (const project of allProjects(ctx)) {
     try {
       await cleanupResearchBranches(project.repoPath)
     } catch {

@@ -23,6 +23,10 @@ export const projects = sqliteTable('projects', {
   repoPath: text('repo_path').notNull(),
   mainBranch: text('main_branch').notNull(),
   devCommand: text('dev_command'),
+  // Multi-project (issue #43): a project is "open" while `closedAt` is null.
+  // `project.close` sets it (hiding the project); re-`open` clears it. Additive
+  // and nullable so the migration leaves existing (open) projects untouched.
+  closedAt: integer('closed_at'),
 })
 
 export const features = sqliteTable('features', {

@@ -24,7 +24,7 @@ import {
   listRunsByFeature,
   listSessionsByFeature,
   projectForFeature,
-  requireProject,
+  requireProjectById,
   rowToFeature,
   setPhase,
 } from './repo'
@@ -72,6 +72,8 @@ export interface FeatureFull {
 }
 
 export interface CreateFeatureInput {
+  /** The project the feature belongs to (multi-project, issue #43). */
+  projectId: string
   title: string
   oneLiner: string
   size: FeatureSize
@@ -83,10 +85,7 @@ export async function createFeature(
   ctx: AppCtx,
   input: CreateFeatureInput,
 ): Promise<Feature> {
-  // Default-project shim (issue #36): a new feature has no project yet, so it
-  // lands in the sole project. The multi-project change makes this an explicit
-  // project id on the input.
-  const project = requireProject(ctx)
+  const project = requireProjectById(ctx, input.projectId)
   const slug = uniqueSlug(ctx, project.id, input.title)
   const branch = `feature/${slug}`
 
@@ -169,14 +168,11 @@ export function getFeatureFull(ctx: AppCtx, id: string): FeatureFull {
   }
 }
 
-export function list(ctx: AppCtx): FeatureListItem[] {
-  // Default-project shim (issue #36): the feature list is project-scoped; the
-  // multi-project change makes the project id an explicit argument.
-  const project = requireProject(ctx)
+export function list(ctx: AppCtx, projectId: string): FeatureListItem[] {
   const rows = ctx.db
     .select()
     .from(features)
-    .where(eq(features.projectId, project.id))
+    .where(eq(features.projectId, projectId))
     .orderBy(desc(features.createdAt))
     .all()
 
