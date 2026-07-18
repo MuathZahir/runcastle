@@ -65,9 +65,15 @@ async function main(argv: string[]): Promise<number> {
 }
 
 if (import.meta.main) {
-  main(process.argv.slice(2)).then((code) => {
-    // `serve` never resolves in practice (the listener keeps the loop alive);
-    // the other commands return a numeric exit code.
-    if (code !== 0) process.exit(code)
-  })
+  main(process.argv.slice(2)).then(
+    (code) => {
+      // `serve` never resolves in practice (the listener keeps the loop alive);
+      // the other commands return a numeric exit code.
+      if (code !== 0) process.exit(code)
+    },
+    (err) => {
+      console.error(err instanceof Error ? err.message : err)
+      process.exit(1)
+    },
+  )
 }
