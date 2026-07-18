@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process'
 import { existsSync } from 'node:fs'
-import { dirname, join, resolve } from 'node:path'
+import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { Feature, Project, Run, SessionKind, SessionRow, Waypoint } from '@runcastle/core'
 import { worktreeDir } from '@runcastle/core/paths'
@@ -219,21 +219,28 @@ function claudeSpawnTarget(claudeArgs: string[]): { file: string; args: string[]
 
 /**
  * Resolve the `runcastle` plugin dir (`packages/skills/packs/runcastle`).
- * Ascends from this module looking for the marker dir (robust against the
- * server being run from anywhere), falling back to the fixed 4-up repo layout.
+ * Ascends from `fromDir` looking for the marker dir (robust against the server
+ * being run from anywhere). If no ancestor contains it, throws an error naming
+ * every location searched — never a silent fallback to a path that doesn't
+ * exist (a missing pack must surface loudly, not fail later at launch time).
  */
-export function resolvePluginDir(): string {
+export function resolvePluginDir(
+  fromDir: string = dirname(fileURLToPath(import.meta.url)),
+): string {
   const rel = join('packages', 'skills', 'packs', 'runcastle')
-  let dir = dirname(fileURLToPath(import.meta.url))
+  const searched: string[] = []
+  let dir = fromDir
   for (let i = 0; i < 8; i += 1) {
-    if (existsSync(join(dir, rel))) return join(dir, rel)
+    const candidate = join(dir, rel)
+    searched.push(candidate)
+    if (existsSync(candidate)) return candidate
     const parent = dirname(dir)
     if (parent === dir) break
     dir = parent
   }
-  // Fallback: <root>/packages/server/src/launcher -> up 4 -> <root>
-  const root = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..')
-  return join(root, rel)
+  throw new Error(
+    `runcastle plugin dir (${rel}) not found; searched:\n  ${searched.join('\n  ')}`,
+  )
 }
 
 /**

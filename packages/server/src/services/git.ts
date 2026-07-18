@@ -61,15 +61,22 @@ function errMsg(e: unknown): string {
   return e instanceof Error ? e.message : String(e)
 }
 
-/** Canonical path key: absolute, forward-slashed, lower-cased, 8.3-expanded. */
-function canon(p: string): string {
+/**
+ * Canonical path key: absolute and `realpath`-resolved when the path exists.
+ * On Windows the filesystem is case-insensitive and uses `\` separators, so we
+ * forward-slash, lower-case and 8.3-expand to a single key. On POSIX paths are
+ * case-sensitive and `\` is a legal filename character, so we preserve both —
+ * lower-casing there would fold distinct directories (`/u/Repo` vs `/u/repo`)
+ * into one key.
+ */
+export function canon(p: string): string {
   let abs = resolve(p)
   try {
     abs = realpathSync.native(abs)
   } catch {
     // Path may not exist (stale registry entry) — fall back to the resolved form.
   }
-  return abs.replace(/\\/g, '/').toLowerCase()
+  return process.platform === 'win32' ? abs.replace(/\\/g, '/').toLowerCase() : abs
 }
 
 // --- repo detection ---------------------------------------------------------

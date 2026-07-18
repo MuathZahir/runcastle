@@ -8,7 +8,7 @@
     "apps/*"
   ],
   "scripts": {
-    "dev": "bun run --filter '@runcastle/server' --filter '@runcastle/web' dev",
+    "dev": "bun run scripts/dev.ts",
     "typecheck": "bun run --filter '@runcastle/core' --filter '@runcastle/server' typecheck",
     "test": "vitest run",
     "test:watch": "vitest"
