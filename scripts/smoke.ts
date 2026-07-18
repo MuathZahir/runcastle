@@ -30,13 +30,12 @@
 
 import { execFileSync } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
-import { homedir } from 'node:os'
+import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 // --- env setup (MUST precede any core/server import that resolves paths) ------
 
-const SCRATCH =
-  'C:/Users/user/AppData/Local/Temp/claude/C--Users-user-Projects--Active-/d5f87a03-170a-482c-ad5d-f35dee8ebb4c/scratchpad'
+const SCRATCH = join(tmpdir(), 'runcastle-smoke')
 const SMOKE_HOME = join(SCRATCH, 'smoke-home')
 const TARGET = join(SCRATCH, 'smoke-target')
 

@@ -1,4 +1,5 @@
 import { readFileSync, rmSync } from 'node:fs'
+import { join } from 'node:path'
 import { sessionDir } from '@runcastle/core/paths'
 import { afterEach, describe, expect, it } from 'vitest'
 import type { Feature, RuncastleConfig, SessionRow } from '@runcastle/core'
@@ -305,7 +306,7 @@ describe('writeSessionArtifacts', () => {
       config,
     })
 
-    expect(out.systemPromptPath).toBe(`${sessionDir(sess.id)}\\system-prompt.md`)
+    expect(out.systemPromptPath).toBe(join(sessionDir(sess.id), 'system-prompt.md'))
 
     const settings = JSON.parse(readFileSync(out.settingsPath, 'utf8'))
     expect(settings.hooks.SessionStart[0].matcher).toBe('startup')
