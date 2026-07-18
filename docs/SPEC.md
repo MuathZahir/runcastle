@@ -108,7 +108,7 @@ A1 creates B-owned files as typed stubs (`throw new NotImplementedError('B1')`) 
 Router `appRouter` in `trpc/router.ts`, context = `{ db, config }`. All inputs/outputs zod from core.
 
 - `project.get(): Project | null`
-- `project.init({ repoPath: string }): Project` — validates it's a git repo; stores mainBranch, optional devCommand later via `project.update({ devCommand? })`
+- `project.init({ repoPath: string }): Project` — validates it's a git repo; stores mainBranch. Per-project overrides (devCommand, model, sandbox) are set later via `settings.update({ projectId, key, value })` — `project.update` is retired (issue #46).
 - `feature.create({ title, oneLiner, size }): Feature` — slugify title; git branch `feature/<slug>`; scaffold docs; phase=`ideation`
 - `feature.list(): FeatureListItem[]` — Feature + ticket counts + activeRun boolean
 - `feature.get({ id }): { feature, tickets, sessions, runs, docs: {relPath, title}[], gate: { next: GateDef|null, satisfied: boolean, reason?: string } }`
@@ -121,6 +121,8 @@ Router `appRouter` in `trpc/router.ts`, context = `{ db, config }`. All inputs/o
 - `run.get({ runId }): Run`
 - `events.list({ featureId, afterId?: number }): EventRow[]` — UI polls this at 1.5s
 - `docs.read({ featureId, relPath }): { content: string }`
+- `settings.get({ projectId? }): SettingsView` — the scope-resolved settings surface (issue #46). Without `projectId` returns the globals; with one, each field resolved `project ?? global` with `source: env|project|file|default`, `editable` (env-locked → false), `restartRequired` (serverPort), and the `scope` a write targets. Globals live in `~/.runcastle/config.json`; per-project overrides (model, sandbox, devCommand) on project rows.
+- `settings.update({ projectId?, key, value }): SettingField` — write a global default (omit `projectId`) or a per-project override (with `projectId`, project-overridable fields only; `value: null` clears it). Env-locked fields are rejected. A global write is write-through: it persists to the config file AND refreshes the in-memory `config` in place, so the next launch/run picks it up with no restart while in-flight work keeps its starting config. Emits `settings.updated`.
 
 ## 5. Launcher (B1) — spawning an injected Claude Code terminal
 

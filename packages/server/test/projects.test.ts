@@ -4,13 +4,7 @@ import type { AppCtx } from '../src/db/types'
 import { runs } from '../src/db/schema'
 import { listAfter } from '../src/services/events'
 import * as features from '../src/services/features'
-import {
-  closeProject,
-  listProjects,
-  openProject,
-  renameProject,
-  updateProject,
-} from '../src/services/projects'
+import { closeProject, listProjects, openProject, renameProject } from '../src/services/projects'
 import { makeTestCtx } from './helpers/db'
 import { tmpRepo } from './helpers/fixtures'
 
@@ -138,12 +132,6 @@ describe('projects service — multi-project CRUD (#43)', () => {
     const renamed = renameProject(ctx, project.id, 'Renamed')
     expect(renamed.name).toBe('Renamed')
     expect(listProjects(ctx).find((p) => p.id === project.id)?.name).toBe('Renamed')
-  })
-
-  it('update still sets devCommand for an explicit project', async () => {
-    const project = await openProject(ctx, await gitRepo())
-    const updated = updateProject(ctx, project.id, { devCommand: 'bun dev' })
-    expect(updated.devCommand).toBe('bun dev')
   })
 
   it('mutations emit events that reflect the acting project', async () => {

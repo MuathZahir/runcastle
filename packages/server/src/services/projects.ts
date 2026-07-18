@@ -108,26 +108,8 @@ export function renameProject(ctx: AppCtx, projectId: string, name: string): Pro
   return { ...project, name }
 }
 
-/**
- * Update a project's settings (currently just `devCommand`). Retired by the
- * settings ticket; kept explicit-by-id here so it survives the singleton removal.
- */
-export function updateProject(
-  ctx: AppCtx,
-  projectId: string,
-  patch: { devCommand?: string },
-): Project {
-  const project = requireProjectById(ctx, projectId)
-  const set: { devCommand?: string | null } = {}
-  if (patch.devCommand !== undefined) set.devCommand = patch.devCommand
-  ctx.db.update(projects).set(set).where(eq(projects.id, projectId)).run()
-  emit(ctx, projectId, {
-    type: 'project.updated',
-    message: 'project settings updated',
-    data: patch,
-  })
-  return { ...project, devCommand: patch.devCommand ?? project.devCommand }
-}
+// `updateProject` is retired (issue #46): a project's devCommand/model/sandbox
+// overrides are written through the `settings` service now, not a project CRUD op.
 
 // --- B2 tolerance -----------------------------------------------------------
 

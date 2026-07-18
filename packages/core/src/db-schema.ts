@@ -23,6 +23,12 @@ export const projects = sqliteTable('projects', {
   repoPath: text('repo_path').notNull(),
   mainBranch: text('main_branch').notNull(),
   devCommand: text('dev_command'),
+  // Per-project settings overrides (issue #46): nullable columns holding a
+  // project's override of the global default. `null` means "inherit the global"
+  // (config file / env / schema default); resolution is `project ?? global`.
+  // Additive + nullable so the migration leaves existing projects inheriting.
+  model: text('model'),
+  sandbox: text('sandbox'),
   // Multi-project (issue #43): a project is "open" while `closedAt` is null.
   // `project.close` sets it (hiding the project); re-`open` clears it. Additive
   // and nullable so the migration leaves existing (open) projects untouched.

@@ -1,11 +1,5 @@
 import * as z from 'zod'
-import {
-  closeProject,
-  listProjects,
-  openProject,
-  renameProject,
-  updateProject,
-} from '../../services/projects'
+import { closeProject, listProjects, openProject, renameProject } from '../../services/projects'
 import { publicProcedure, router } from '../context'
 
 export const projectRouter = router({
@@ -23,10 +17,6 @@ export const projectRouter = router({
     .input(z.object({ projectId: z.string(), name: z.string().min(1) }))
     .mutation(({ ctx, input }) => renameProject(ctx, input.projectId, input.name)),
 
-  // Retired by the settings ticket; kept explicit-by-id through the singleton removal.
-  update: publicProcedure
-    .input(z.object({ projectId: z.string(), devCommand: z.string().optional() }))
-    .mutation(({ ctx, input }) =>
-      updateProject(ctx, input.projectId, { devCommand: input.devCommand }),
-    ),
+  // `project.update` is retired (issue #46): devCommand (and model/sandbox) now
+  // read/write through the `settings` router as per-project overrides.
 })
