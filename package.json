@@ -2,6 +2,7 @@
   "name": "runcastle",
   "version": "0.0.0",
   "private": true,
+  "license": "MIT",
   "type": "module",
   "workspaces": [
     "packages/*",
@@ -11,10 +12,14 @@
     "dev": "bun run scripts/dev.ts",
     "typecheck": "bun run --filter '@runcastle/core' --filter '@runcastle/server' typecheck",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "postinstall": "bun scripts/postinstall-node-pty.ts"
   },
   "devDependencies": {
     "typescript": "7.0.2",
     "vitest": "4.1.10"
+  },
+  "patchedDependencies": {
+    "node-pty@1.1.0": "patches/node-pty@1.1.0.patch"
   }
 }

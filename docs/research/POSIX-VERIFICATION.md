@@ -80,6 +80,41 @@ This directly threatens the map's standing preference (*streamline setup as much
 possible*): as it stands, Linux install = "install a C++ toolchain and node ≥22 first".
 → ticketed separately.
 
+### Resolution — the prebuild bridge (issue #39) [FIXED for linux-x64]
+
+Two moving parts (root `package.json`): (1) a `patchedDependencies` patch
+(`patches/node-pty@1.1.0.patch`) rewrites node-pty's `install` script to a no-op
+(`node -e "process.exit(0)"`), so the compile-from-source hook never runs on any
+platform; (2) the root `postinstall` (`scripts/postinstall-node-pty.ts`) copies a
+vendored linux-x64 `pty.node` (committed under `vendor/node-pty/linux-x64/`) into
+node-pty's `prebuilds/linux-x64/` — the loader's search path. Result: **no compile
+is attempted** and `bun install` succeeds on stock glibc Linux with no compiler and
+node 20. (Linux needs only `pty.node`; `spawn-helper` is macOS-only.) See
+`vendor/node-pty/README.md`.
+
+> The `install` script is **rewritten to a no-op, not deleted**: deleting it makes
+> bun fall back to an *implicit* `node-gyp rebuild` (node-pty ships a `binding.gyp`),
+> which still aborts a toolchain-less install. Earlier dead ends: attempt 1 used
+> `patchedDependencies` to *add* the binary — bun can't create a new dir inside an
+> installed package via patch (bun #13770/#22137); attempt 2 used
+> `trustedDependencies: []` — bun ignores it and runs the install script anyway when
+> a `bun.lock` already exists on disk.
+
+- **Completeness check.** `checkPtyInstall()` / `assertPtyInstalled()`
+  (`packages/server/src/pty/install-check.ts`) verify `pty.node` exists **on disk** —
+  catching the "retry lies" case above — and return remediation text for doctor / first-run.
+- **musl / Alpine fallback.** A glibc prebuild will not load under musl, so the bridge
+  does not help there. Install a toolchain and rebuild from source:
+  `apk add build-base python3` then `bun install`. `checkPtyInstall()` detects musl
+  (via `process.report`'s absent `glibcVersionRuntime`, or `/etc/alpine-release`) and
+  points at exactly this.
+- **linux-arm64** is not yet vendored (no arm64 build host) — the bridge reports the
+  gap there; drop an arm64 `pty.node` in via `bun scripts/vendor-node-pty-prebuilds.ts`
+  on an arm64 host to close it.
+- **Retire at node-pty 1.2**, which is expected to ship `linux-*` prebuilds: delete
+  `vendor/node-pty/`, the `patchedDependencies` patch, and the root `postinstall`;
+  confirm the binary still lands on stock glibc, and re-verify the Windows sidecar path.
+
 ## 2. `bun run dev` starts only the server on Linux [VERIFIED]
 
 The documented entry point is `bun run dev` →
