@@ -5,7 +5,7 @@ import type { AppCtx } from '../db/types'
 import { InvalidInputError, NotFoundError } from '../errors'
 import { emit } from './events'
 import { featureDocsDir, featureDocPath } from './feature-docs'
-import { requireProject } from './repo'
+import { projectForFeature } from './repo'
 
 /**
  * Feature knowledge lives in the target repo at `docs/features/<slug>/`
@@ -20,7 +20,7 @@ export interface DocSummary {
 
 /** Create the docs dir and seed `brief.md` (title + oneLiner + created date). */
 export function scaffoldDocs(ctx: AppCtx, feature: Feature): void {
-  const project = requireProject(ctx)
+  const project = projectForFeature(ctx, feature)
   const dir = featureDocsDir(project, feature)
   mkdirSync(dir, { recursive: true })
 
@@ -98,7 +98,7 @@ function mapDocBody(feature: Feature, seed?: MapSeed): string {
 
 /** List `.md` docs for a feature (relPath within the docs dir + a title). */
 export function listDocs(ctx: AppCtx, feature: Feature): DocSummary[] {
-  const project = requireProject(ctx)
+  const project = projectForFeature(ctx, feature)
   const dir = featureDocsDir(project, feature)
   if (!existsSync(dir)) return []
 
@@ -110,7 +110,7 @@ export function listDocs(ctx: AppCtx, feature: Feature): DocSummary[] {
 
 /** Read a doc by path relative to the feature's docs dir (traversal-guarded). */
 export function readDoc(ctx: AppCtx, feature: Feature, relPath: string): { content: string } {
-  const project = requireProject(ctx)
+  const project = projectForFeature(ctx, feature)
   const dir = featureDocsDir(project, feature)
   const root = resolve(dir)
   const target = resolve(dir, relPath)

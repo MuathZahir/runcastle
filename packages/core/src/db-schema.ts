@@ -23,6 +23,16 @@ export const projects = sqliteTable('projects', {
   repoPath: text('repo_path').notNull(),
   mainBranch: text('main_branch').notNull(),
   devCommand: text('dev_command'),
+  // Per-project settings overrides (issue #46): nullable columns holding a
+  // project's override of the global default. `null` means "inherit the global"
+  // (config file / env / schema default); resolution is `project ?? global`.
+  // Additive + nullable so the migration leaves existing projects inheriting.
+  model: text('model'),
+  sandbox: text('sandbox'),
+  // Multi-project (issue #43): a project is "open" while `closedAt` is null.
+  // `project.close` sets it (hiding the project); re-`open` clears it. Additive
+  // and nullable so the migration leaves existing (open) projects untouched.
+  closedAt: integer('closed_at'),
 })
 
 export const features = sqliteTable('features', {
@@ -96,7 +106,10 @@ export const runs = sqliteTable('runs', {
 export const events = sqliteTable('events', {
   // autoincrement integer — doubles as the polling cursor (`afterId`)
   id: integer('id').primaryKey({ autoIncrement: true }),
-  featureId: text('feature_id').notNull(),
+  // Every event belongs to a project (issue #44). Feature-scoped events also
+  // carry a `feature_id`; project-level events (open/close/rename) leave it null.
+  projectId: text('project_id').notNull(),
+  featureId: text('feature_id'),
   runId: text('run_id'),
   ticketId: text('ticket_id'),
   ts: integer('ts').notNull(),

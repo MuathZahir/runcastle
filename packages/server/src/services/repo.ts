@@ -48,6 +48,7 @@ export function rowToProject(row: ProjectSelect): Project {
     repoPath: row.repoPath,
     mainBranch: row.mainBranch,
     devCommand: row.devCommand ?? undefined,
+    model: row.model ?? undefined,
   }
 }
 
@@ -88,15 +89,49 @@ export function getFeatureRow(ctx: AppCtx, id: string): Feature {
   return feature
 }
 
-/** M1 is single-project: return the sole project row, or null before init. */
-export function getProjectRow(ctx: AppCtx): Project | null {
-  const row = ctx.db.select().from(projects).limit(1).get()
+/** Resolve a project by explicit id (the multi-project lookup). */
+export function getProjectById(ctx: AppCtx, projectId: string): Project | null {
+  const row = ctx.db.select().from(projects).where(eq(projects.id, projectId)).get()
   return row ? rowToProject(row) : null
 }
 
-export function requireProject(ctx: AppCtx): Project {
-  const project = getProjectRow(ctx)
-  if (!project) throw new NotFoundError('no project initialised')
+/**
+ * Resolve a project by its repo path (open or closed). `openProject` upserts on
+ * this so re-opening a known path returns the same row rather than a duplicate.
+ */
+export function getProjectByRepoPath(ctx: AppCtx, repoPath: string): Project | null {
+  const row = ctx.db.select().from(projects).where(eq(projects.repoPath, repoPath)).get()
+  return row ? rowToProject(row) : null
+}
+
+/** Every project row (open and closed) — for project-wide boot sweeps. */
+export function allProjects(ctx: AppCtx): Project[] {
+  return ctx.db.select().from(projects).all().map(rowToProject)
+}
+
+/** True while any feature of the project has a run in flight (blocks close). */
+export function projectHasActiveRun(ctx: AppCtx, projectId: string): boolean {
+  const row = ctx.db
+    .select({ id: runs.id })
+    .from(runs)
+    .innerJoin(features, eq(runs.featureId, features.id))
+    .where(and(eq(features.projectId, projectId), eq(runs.status, 'running')))
+    .limit(1)
+    .get()
+  return !!row
+}
+
+/** Resolve a project by id or throw — used by CRUD mutations. */
+export function requireProjectById(ctx: AppCtx, projectId: string): Project {
+  const project = getProjectById(ctx, projectId)
+  if (!project) throw new NotFoundError(`project ${projectId} not found`)
+  return project
+}
+
+/** Resolve the project that owns a feature — the feature is the source of truth. */
+export function projectForFeature(ctx: AppCtx, feature: Pick<Feature, 'projectId'>): Project {
+  const project = getProjectById(ctx, feature.projectId)
+  if (!project) throw new NotFoundError(`project ${feature.projectId} not found`)
   return project
 }
 

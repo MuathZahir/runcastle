@@ -123,6 +123,8 @@ export const Project = z.object({
   repoPath: z.string(),
   mainBranch: z.string(),
   devCommand: z.string().optional(),
+  /** Per-project default-model override (issue #48); unset → inherit global. */
+  model: z.string().optional(),
 })
 export type Project = z.infer<typeof Project>
 
@@ -168,10 +170,61 @@ export const Run = z.object({
 })
 export type Run = z.infer<typeof Run>
 
+// --- settings (issue #46) --------------------------------------------------
+
+/**
+ * Where a resolved setting's effective value comes from (SPEC §4, settings
+ * router). Resolution order is `env` (always wins, locks the field) → `project`
+ * (per-project override row) → `file` (machine `config.json`) → `default`
+ * (schema default).
+ */
+export const SettingSource = z.enum(['env', 'project', 'file', 'default'])
+export type SettingSource = z.infer<typeof SettingSource>
+
+/** Where a `settings.update` for this field writes: the global config file or a project override. */
+export const SettingScope = z.enum(['global', 'project'])
+export type SettingScope = z.infer<typeof SettingScope>
+
+/**
+ * One resolved setting as returned by `settings.get`: its effective `value`,
+ * the `source` it resolved from, whether it is `editable` (env-locked fields are
+ * not), whether changing it needs a server `restartRequired` (e.g. serverPort),
+ * and the `scope` a write would target.
+ */
+export const SettingField = z.object({
+  key: z.string(),
+  value: z.unknown(),
+  source: SettingSource,
+  editable: z.boolean(),
+  restartRequired: z.boolean(),
+  scope: SettingScope,
+})
+export type SettingField = z.infer<typeof SettingField>
+
+/** `settings.get` output: the resolved field set, plus the project it was scoped to (if any). */
+export const SettingsView = z.object({
+  projectId: z.string().optional(),
+  fields: z.array(SettingField),
+})
+export type SettingsView = z.infer<typeof SettingsView>
+
+/**
+ * `settings.update` input: set `projectId` to write a per-project override
+ * (only for project-overridable fields), omit it to write the global default.
+ * A `null` value clears a project override (falls back to the global).
+ */
+export const SettingsUpdateInput = z.object({
+  projectId: z.string().optional(),
+  key: z.string(),
+  value: z.union([z.string(), z.number(), z.boolean(), z.null()]),
+})
+export type SettingsUpdateInput = z.infer<typeof SettingsUpdateInput>
+
 /** `id` is an autoincrement integer — used as the polling cursor (`afterId`). */
 export const EventRow = z.object({
   id: z.number(),
-  featureId: z.string(),
+  projectId: z.string(),
+  featureId: z.string().optional(),
   runId: z.string().optional(),
   ticketId: z.string().optional(),
   ts: z.number(),

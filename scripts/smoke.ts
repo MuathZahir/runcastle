@@ -7,7 +7,8 @@
  *
  *   git target repo → project.init → feature.create → fabricate ideation session
  *   → hooks/session-start → MCP emit_tickets + complete_phase → feature.burn
- *   (noSandbox, smokeModel) → poll run/events → testDrive start/stop → merge.
+ *   (noSandbox, smoke model via runOverride) → poll run/events → testDrive
+ *   start/stop → merge.
  *
  * Run: `bun run scripts/smoke.ts`
  *
@@ -30,13 +31,12 @@
 
 import { execFileSync } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
-import { homedir } from 'node:os'
+import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 // --- env setup (MUST precede any core/server import that resolves paths) ------
 
-const SCRATCH =
-  'C:/Users/user/AppData/Local/Temp/claude/C--Users-user-Projects--Active-/d5f87a03-170a-482c-ad5d-f35dee8ebb4c/scratchpad'
+const SCRATCH = join(tmpdir(), 'runcastle-smoke')
 const SMOKE_HOME = join(SCRATCH, 'smoke-home')
 const TARGET = join(SCRATCH, 'smoke-target')
 
@@ -54,6 +54,7 @@ process.env.HOME = SMOKE_HOME
 
 const paths = await import('../packages/core/src/paths.ts')
 const { loadConfig } = await import('../packages/core/src/config-load.ts')
+const { resolveModel } = await import('../packages/core/src/config.ts')
 const { createDb } = await import('../packages/server/src/db/client.ts')
 const { runMigrations } = await import('../packages/server/src/db/migrate.ts')
 const { buildApp } = await import('../packages/server/src/index.ts')
@@ -95,8 +96,9 @@ const ctx = { db, config } as { db: typeof db; config: typeof config }
 const app = buildApp(ctx as never)
 const trpc = createCallerFactory(appRouter)(ctx as never)
 
+const smokeModel = resolveModel('smoke', config)
 log(`runcastle smoke — data dir: ${paths.dataDir()}`)
-log(`smokeModel = ${config.smokeModel}`)
+log(`smoke model = ${smokeModel} (resolved for the 'smoke' step)`)
 
 // --- HTTP helpers over the in-process app ------------------------------------
 
@@ -294,11 +296,12 @@ async function main(): Promise<void> {
   record('MCP complete_phase', 'ideation→tickets via G1 (decisions.md)')
 
   // (7) feature.burn — REAL noSandbox claude runs on the host ------------------
-  banner('STEP 7 — tRPC feature.burn (RUNCASTLE_SANDBOX=noSandbox, RUNCASTLE_MODEL=smokeModel)')
+  banner('STEP 7 — tRPC feature.burn (RUNCASTLE_SANDBOX=noSandbox, model via runOverride)')
   process.env.RUNCASTLE_SANDBOX = 'noSandbox'
-  process.env.RUNCASTLE_MODEL = config.smokeModel
-  log(`  burning with sandbox=noSandbox model=${config.smokeModel} (real host claude — trivial tickets)`)
-  const { runId } = await trpc.feature.burn({ featureId })
+  log(`  burning with sandbox=noSandbox model=${smokeModel} (real host claude — trivial tickets)`)
+  // Pass the smoke model through the burn run override (issue #48) — the
+  // RUNCASTLE_MODEL env hack is retired.
+  const { runId } = await trpc.feature.burn({ featureId, model: smokeModel })
   assert(!!runId, 'burn returned a runId')
   log(`  runId=${runId}; polling run/events (budget 10 min)…`)
 

@@ -1,19 +1,20 @@
-import { spawn } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { Feature, Project, Run, SessionKind, SessionRow, Waypoint } from '@runcastle/core'
 import { worktreeDir } from '@runcastle/core/paths'
-import { nextGate, nextPhase } from '@runcastle/core'
+import { nextGate, nextPhase, resolveModel } from '@runcastle/core'
 import { and, eq } from 'drizzle-orm'
 import type { AppCtx } from '../db/types'
+import { resolveExecutable } from '../util/resolve-executable'
+import { SKILLS_DIR_ENV } from './skills-root'
 import { runs } from '../db/schema'
 import { GateError, isNotImplemented } from '../errors'
 import { ptyRegistry } from '../pty/registry'
 import { emit } from '../services/events'
 import { checkGate, overrideGate } from '../services/gates'
 import * as git from '../services/git'
-import { getFeatureRow, requireProject, rowToRun, setPhase } from '../services/repo'
+import { getFeatureRow, projectForFeature, rowToRun, setPhase } from '../services/repo'
 import { listByFeature as listTicketsByFeature } from '../services/tickets'
 import {
   claim as claimWaypoint,
@@ -35,11 +36,12 @@ import {
 export { endSession, type EndSessionResult } from '../pty/end-session'
 
 /**
- * Session launcher (SPEC §5). Spawns a real, injected Claude Code terminal in a
- * fresh Windows Terminal tab: creates the session row, ensures the talk
- * worktree, writes the launch artifacts, then opens `wt.exe` running `claude`
- * with our settings/mcp/plugin flags and the per-tab env embedded in the command
- * line (the env-propagation caveat in SPEC §5.4).
+ * Session launcher (SPEC §5 / UI-SPEC §5). Spawns a real, injected Claude Code
+ * session inside a server-owned embedded PTY: creates the session row, ensures
+ * the talk worktree, writes the launch artifacts, then spawns `claude` with our
+ * settings/mcp/plugin flags and the two runcastle env vars inherited directly
+ * onto the spawn. The PTY is registered by session id and streamed to the in-app
+ * xterm view over `/ws/terminal/:sessionId` (cross-platform; no `wt.exe`).
  */
 
 /**
@@ -68,11 +70,11 @@ export interface LaunchSessionInput {
 
 export interface LaunchSessionOptions {
   /**
-   * Open the Windows Terminal tab (default true). Set false to fabricate a
-   * session end-to-end MINUS the terminal spawn — the row, talk worktree and
-   * launch artifacts are all created for real; only `wt.exe` is skipped. Used by
-   * the scripted smoke (SPEC §11) so it can drive hooks/MCP against a real live
-   * session without opening a terminal.
+   * Spawn the embedded PTY (default true). Set false to fabricate a session
+   * end-to-end MINUS the process — the row, talk worktree and launch artifacts
+   * are all created for real; only the PTY spawn is skipped. Used by the scripted
+   * smoke (SPEC §11) so it can drive hooks/MCP against a real live session
+   * without a live terminal.
    */
   spawn?: boolean
 }
@@ -97,9 +99,10 @@ export interface BuildLaunchInput {
   systemPromptPath: string
   permissionMode?: string
   /**
-   * The model every embedded/window session runs (`--model`), from
-   * `RuncastleConfig.model` — sessions must honour the configured model, never
-   * the operator's global CLI default (E2E finding: model flag was missing).
+   * The model this embedded session runs (`--model`), resolved for the session
+   * kind's step via `resolveModel` (issue #48) — sessions must honour the
+   * configured model, never the operator's global CLI default (E2E finding: the
+   * model flag was missing).
    */
   model: string
   /**
@@ -112,29 +115,11 @@ export interface BuildLaunchInput {
   resumeSessionId?: string
 }
 
-export interface LaunchCommand {
-  /** The inner `claude ...` invocation (SPEC §5.3). */
-  claudeCommand: string
-  /** The full `wt.exe ...` command line with env embedded (SPEC §5.4). */
-  display: string
-}
-
-/** Double-quote a path for a Windows command line. */
-function q(p: string): string {
-  return `"${p}"`
-}
-
-/** Quote a command-line token iff it carries a path/space char (bare flags stay bare). */
-function quoteArg(a: string): string {
-  return /[\\/: ]/.test(a) ? `"${a}"` : a
-}
-
 /**
- * The `claude` argv AFTER the program name (UI-SPEC §5.3). This is the SINGLE
- * source of the flag list: `buildLaunchCommand` renders it into the `wt.exe`
- * command string (window mode) and `launchSession` passes it verbatim to the PTY
- * spawn (embedded mode), so the flags/artifacts never drift between the two.
- * `--append-system-prompt-file` is a verified flag (CC-INTEGRATION-NOTES §7).
+ * The `claude` argv AFTER the program name (UI-SPEC §5.3). `launchSession`
+ * passes it verbatim to the embedded PTY spawn, and the `spawn:false` smoke path
+ * renders it for its `session.launched` event, so the flags/artifacts never
+ * drift. `--append-system-prompt-file` is a verified flag (CC-INTEGRATION-NOTES §7).
  */
 export function buildClaudeArgs(input: BuildLaunchInput): string[] {
   const permissionMode = input.permissionMode ?? 'acceptEdits'
@@ -158,49 +143,12 @@ export function buildClaudeArgs(input: BuildLaunchInput): string[] {
 }
 
 /**
- * Assemble the launch command (pure — the tested contract). Produces the exact
- * SPEC §5.3/§5.4 string: `wt.exe -w 0 nt` opening a `cmd /k` tab that first
- * `set`s the two runcastle env vars (no space before `&&`, so no trailing space
- * leaks into the value) and then runs `claude` with our flags. The inner claude
- * invocation is rendered from `buildClaudeArgs` so it stays byte-identical to the
- * embedded PTY spawn.
- */
-export function buildLaunchCommand(input: BuildLaunchInput): LaunchCommand {
-  const claudeCommand = ['claude', ...buildClaudeArgs(input).map(quoteArg)].join(' ')
-
-  // No space before `&&`: `set VAR=value&&` — a trailing space would be stored
-  // in the value (SPEC §5.4 gotcha).
-  const envPrefix =
-    `set RUNCASTLE_SESSION_ID=${input.sessionId}&& ` +
-    `set RUNCASTLE_SERVER_URL=${input.serverUrl}&& `
-  const cmdk = `${envPrefix}${claudeCommand}`
-
-  const display =
-    `wt.exe -w 0 nt --title ${q(`runcastle: ${input.featureTitle}`)} ` +
-    `-d ${q(input.worktreePath)} cmd /k ${q(cmdk)}`
-
-  return { claudeCommand, display }
-}
-
-/**
  * Resolve the `claude` executable to an absolute path. `RUNCASTLE_CLAUDE_BIN`
  * overrides; otherwise PATH is scanned for `claude` with Windows extensions.
  * Falls back to the bare name so `CreateProcess`/exec can make a final attempt.
  */
 function resolveClaudeExecutable(): string {
-  const override = process.env.RUNCASTLE_CLAUDE_BIN
-  if (override && existsSync(override)) return override
-  const isWin = process.platform === 'win32'
-  const exts = isWin ? ['.exe', '.cmd', '.bat', ''] : ['']
-  const dirs = (process.env.PATH ?? '').split(isWin ? ';' : ':')
-  for (const dir of dirs) {
-    if (!dir) continue
-    for (const ext of exts) {
-      const candidate = join(dir, `claude${ext}`)
-      if (existsSync(candidate)) return candidate
-    }
-  }
-  return 'claude'
+  return resolveExecutable('claude', { override: process.env.RUNCASTLE_CLAUDE_BIN })
 }
 
 /**
@@ -219,21 +167,39 @@ function claudeSpawnTarget(claudeArgs: string[]): { file: string; args: string[]
 
 /**
  * Resolve the `runcastle` plugin dir (`packages/skills/packs/runcastle`).
- * Ascends from this module looking for the marker dir (robust against the
- * server being run from anywhere), falling back to the fixed 4-up repo layout.
+ * Ascends from `fromDir` looking for the marker dir (robust against the server
+ * being run from anywhere). If no ancestor contains it, throws an error naming
+ * every location searched — never a silent fallback to a path that doesn't
+ * exist (a missing pack must surface loudly, not fail later at launch time).
  */
-export function resolvePluginDir(): string {
+export function resolvePluginDir(
+  fromDir: string = dirname(fileURLToPath(import.meta.url)),
+): string {
   const rel = join('packages', 'skills', 'packs', 'runcastle')
-  let dir = dirname(fileURLToPath(import.meta.url))
+
+  // Published install: skills are vendored as real files and RUNCASTLE_SKILLS_DIR
+  // names their root — read the pack straight from there (issue #51). A bad
+  // override throws loudly rather than silently falling back to a workspace path.
+  const override = process.env[SKILLS_DIR_ENV]
+  if (override) {
+    const dir = join(resolve(override), 'packs', 'runcastle')
+    if (existsSync(dir)) return dir
+    throw new Error(`${SKILLS_DIR_ENV}=${override} has no plugin dir at ${dir}`)
+  }
+
+  const searched: string[] = []
+  let dir = fromDir
   for (let i = 0; i < 8; i += 1) {
-    if (existsSync(join(dir, rel))) return join(dir, rel)
+    const candidate = join(dir, rel)
+    searched.push(candidate)
+    if (existsSync(candidate)) return candidate
     const parent = dirname(dir)
     if (parent === dir) break
     dir = parent
   }
-  // Fallback: <root>/packages/server/src/launcher -> up 4 -> <root>
-  const root = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..')
-  return join(root, rel)
+  throw new Error(
+    `runcastle plugin dir (${rel}) not found; searched:\n  ${searched.join('\n  ')}`,
+  )
 }
 
 /**
@@ -306,7 +272,7 @@ export async function launchSession(
   opts: LaunchSessionOptions = {},
 ): Promise<LaunchSessionResult> {
   const feature = getFeatureRow(ctx, input.featureId)
-  const project = requireProject(ctx)
+  const project = projectForFeature(ctx, feature)
 
   const worktreePath = await ensureWorktree(ctx, project, feature)
   const session = createSessionRow(ctx, {
@@ -381,29 +347,30 @@ export async function launchSession(
     settingsPath: artifacts.settingsPath,
     mcpConfigPath: artifacts.mcpConfigPath,
     systemPromptPath: artifacts.systemPromptPath,
-    model: ctx.config.model,
+    // The session kind IS a model step (issue #48): resolve per-step model,
+    // falling back through the per-project override to the global default.
+    model: resolveModel(input.kind, ctx.config, project),
     resumeSessionId,
   }
 
-  // spawn:false fabricates a session MINUS any process (SPEC §11 smoke driver) —
-  // honoured in both launch modes.
+  // spawn:false fabricates a session MINUS any process (SPEC §11 smoke driver).
   if (opts.spawn === false) {
     emit(ctx, feature.id, {
       type: 'session.launched',
       message: 'session prepared (terminal spawn skipped)',
-      data: { sessionId: session.id, command: buildLaunchCommand(buildInput).display, spawned: false },
+      data: {
+        sessionId: session.id,
+        command: ['claude', ...buildClaudeArgs(buildInput)].join(' '),
+        spawned: false,
+      },
     })
     return { sessionId: session.id }
   }
 
-  if (ctx.config.launchMode === 'window') {
-    spawnTerminal(ctx, feature.id, session.id, buildLaunchCommand(buildInput))
-  } else {
-    spawnEmbeddedPty(ctx, feature, session, worktreePath, serverUrl, buildClaudeArgs(buildInput), {
-      waypoint,
-      resumeSessionId,
-    })
-  }
+  spawnEmbeddedPty(ctx, feature, session, worktreePath, serverUrl, buildClaudeArgs(buildInput), {
+    waypoint,
+    resumeSessionId,
+  })
   return { sessionId: session.id }
 }
 
@@ -550,11 +517,11 @@ async function reconverge(
 
 /**
  * Embedded launch (UI-SPEC §5): spawn `claude` eagerly inside a server-owned PTY
- * with the EXACT same flags/artifacts as the window path (`buildClaudeArgs`),
- * `cwd` = talk worktree, and the two runcastle env vars inherited directly onto
- * the spawn (no `cmd /k`, no `wt.exe`). The PTY is registered by session id; the
- * WS endpoint streams it. On process exit we mark the session ended and emit
- * `session.pty_exited`. A spawn failure is surfaced as an event, never thrown.
+ * with the flags/artifacts from `buildClaudeArgs`, `cwd` = talk worktree, and the
+ * two runcastle env vars inherited directly onto the spawn (no `cmd /k`, no
+ * `wt.exe`). The PTY is registered by session id; the WS endpoint streams it. On
+ * process exit we mark the session ended and emit `session.pty_exited`. A spawn
+ * failure is surfaced as an event, never thrown.
  */
 /** Spawn-time context the PTY exit handler needs to report honestly. */
 export interface SpawnMeta {
@@ -614,8 +581,7 @@ export function handlePtyExit(
  * alone makes CC ≥ 2.1.211 skip writing the session transcript entirely —
  * silently breaking `--resume` — and the rest cause related child-session
  * artifacts (bridge frames, inherited session ids/effort). Scrubbed so embedded
- * sessions are first-class no matter how the server was launched. Window mode
- * needs no scrub: `wt.exe -w 0` tabs inherit the WT host's env, not ours.
+ * sessions are first-class no matter how the server was launched.
  */
 const CC_NESTING_ENV = [
   'CLAUDE_CODE_CHILD_SESSION',
@@ -667,54 +633,6 @@ function spawnEmbeddedPty(
       type: 'session.spawn_failed',
       message: `failed to spawn embedded terminal: ${err instanceof Error ? err.message : String(err)}`,
       data: { sessionId: session.id, mode: 'embedded' },
-    })
-  }
-}
-
-/**
- * Open the Windows Terminal tab (best-effort). We route the SPEC §5.4 command
- * line through `cmd.exe /s /c "<display>"`: `/s` forces cmd's deterministic
- * "strip only the outermost quote pair" rule, and `windowsVerbatimArguments`
- * stops Node re-quoting, so the nested quotes in `--title`/`-d`/`cmd /k` reach
- * `wt.exe` intact. A launch failure is surfaced as an event, never thrown — the
- * session row already exists and can be relaunched.
- */
-function spawnTerminal(
-  ctx: AppCtx,
-  featureId: string,
-  sessionId: string,
-  cmd: LaunchCommand,
-): void {
-  try {
-    const child = spawn('cmd.exe', ['/s', '/c', `"${cmd.display}"`], {
-      detached: true,
-      stdio: 'ignore',
-      windowsVerbatimArguments: true,
-    })
-    child.on('error', (err) => {
-      // Window never opened → no claude, no hooks: end the row + release its
-      // waypoint so the one-live-session guard is not wedged by a ghost.
-      markSessionEnded(ctx, sessionId)
-      releaseForSession(ctx, sessionId)
-      emit(ctx, featureId, {
-        type: 'session.spawn_failed',
-        message: `failed to open terminal: ${err.message}`,
-        data: { sessionId },
-      })
-    })
-    child.unref()
-    emit(ctx, featureId, {
-      type: 'session.launched',
-      message: 'terminal opened',
-      data: { sessionId, command: cmd.display },
-    })
-  } catch (err) {
-    markSessionEnded(ctx, sessionId)
-    releaseForSession(ctx, sessionId)
-    emit(ctx, featureId, {
-      type: 'session.spawn_failed',
-      message: `failed to open terminal: ${err instanceof Error ? err.message : String(err)}`,
-      data: { sessionId },
     })
   }
 }

@@ -5,7 +5,7 @@ import { emit } from '../../services/events'
 import * as features from '../../services/features'
 import { overrideGate } from '../../services/gates'
 import * as git from '../../services/git'
-import { getFeatureRow, requireProject, setFeatureStatus, setPhase } from '../../services/repo'
+import { getFeatureRow, projectForFeature, setFeatureStatus, setPhase } from '../../services/repo'
 import { publicProcedure, router } from '../context'
 
 const gateId = z.enum(['G1', 'G2', 'G3', 'G4', 'G5'])
@@ -14,6 +14,7 @@ export const featureRouter = router({
   create: publicProcedure
     .input(
       z.object({
+        projectId: z.string(),
         title: z.string().min(1),
         oneLiner: z.string(),
         size: FeatureSize,
@@ -22,7 +23,9 @@ export const featureRouter = router({
     )
     .mutation(({ ctx, input }) => features.createFeature(ctx, input)),
 
-  list: publicProcedure.query(({ ctx }) => features.list(ctx)),
+  list: publicProcedure
+    .input(z.object({ projectId: z.string() }))
+    .query(({ ctx, input }) => features.list(ctx, input.projectId)),
 
   get: publicProcedure
     .input(z.object({ id: z.string() }))
@@ -66,25 +69,31 @@ export const featureRouter = router({
     .mutation(({ ctx, input }) => overrideGate(ctx, input.featureId, input.gate, input.reason)),
 
   burn: publicProcedure
-    .input(z.object({ featureId: z.string() }))
-    .mutation(({ ctx, input }) => features.burn(ctx, input.featureId)),
+    // `model` is a per-run override (issue #48) — the scripted smoke passes its
+    // cheap model here instead of the retired RUNCASTLE_MODEL env hack.
+    .input(z.object({ featureId: z.string(), model: z.string().min(1).optional() }))
+    .mutation(({ ctx, input }) => features.burn(ctx, input.featureId, { modelOverride: input.model })),
 
   // B2 behavior — the git stub throws NotImplementedError('B2').
   testDrive: publicProcedure
     .input(z.object({ featureId: z.string(), action: z.enum(['start', 'stop']) }))
     .mutation(async ({ ctx, input }) => {
-      const project = requireProject(ctx)
       const feature = getFeatureRow(ctx, input.featureId)
+      const project = projectForFeature(ctx, feature)
       return git.testDrive(ctx, project, feature, input.action)
     }),
+
+  // Active test-drive info for the review-phase dev pane + Open app link. Polled
+  // at 1.5s so the async-sniffed localhost URL surfaces once the dev server boots.
+  driveInfo: publicProcedure.query(() => git.activeDriveInfo()),
 
   // B2 behavior — the git stub throws; the success path (set phase shipped) is
   // wired now so B2 only fills in `mergeFeature`.
   merge: publicProcedure
     .input(z.object({ featureId: z.string() }))
     .mutation(async ({ ctx, input }) => {
-      const project = requireProject(ctx)
       const feature = getFeatureRow(ctx, input.featureId)
+      const project = projectForFeature(ctx, feature)
       // A test drive of THIS feature holds the main checkout on the feature
       // branch; stop it first (restores main) so the merge can proceed. This lets
       // the Merge button work whether or not the branch is currently test-driven.

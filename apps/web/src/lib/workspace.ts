@@ -24,6 +24,12 @@ const SELECTED_KEY = 'runcastle.selected.v1'
 const INSPECTOR_KEY = 'runcastle.inspector.collapsed'
 const GUIDANCE_KEY = 'runcastle.guidance'
 
+/** Per-project selected-feature key so switching projects never restores a
+ *  feature from another project (multi-project, issue #45). */
+function selectedKeyFor(projectId: string): string {
+  return `${SELECTED_KEY}:${projectId}`
+}
+
 function readLS(key: string): string | null {
   try {
     return localStorage.getItem(key)
@@ -50,6 +56,8 @@ export interface WorkspaceApi {
   inspectorCollapsed: boolean
   /** Command palette (⌘K) open. */
   cmdkOpen: boolean
+  /** Settings overlay open (issue #47). */
+  settingsOpen: boolean
   /** Show the one-line guide captions on the next-step bar and phase bodies. */
   guidance: boolean
 
@@ -63,22 +71,25 @@ export interface WorkspaceApi {
   cancelCreate: () => void
   toggleInspector: () => void
   setCmdk: (open: boolean) => void
+  setSettings: (open: boolean) => void
   toggleGuidance: () => void
 }
 
-export function useWorkspace(): WorkspaceApi {
-  const [selectedFeatureId, setSelected] = useState<string | null>(() => readLS(SELECTED_KEY))
+export function useWorkspace(projectId: string): WorkspaceApi {
+  const selectedKey = selectedKeyFor(projectId)
+  const [selectedFeatureId, setSelected] = useState<string | null>(() => readLS(selectedKey))
   const [viewedPhase, setViewedPhase] = useState<Phase | null>(null)
   const [creating, setCreating] = useState(false)
   const [inspectorCollapsed, setInspectorCollapsed] = useState(
     () => readLS(INSPECTOR_KEY) === '1',
   )
   const [cmdkOpen, setCmdk] = useState(false)
+  const [settingsOpen, setSettings] = useState(false)
   const [guidance, setGuidance] = useState(() => readLS(GUIDANCE_KEY) !== '0')
 
   useEffect(() => {
-    if (selectedFeatureId) writeLS(SELECTED_KEY, selectedFeatureId)
-  }, [selectedFeatureId])
+    if (selectedFeatureId) writeLS(selectedKey, selectedFeatureId)
+  }, [selectedFeatureId, selectedKey])
   useEffect(() => {
     writeLS(INSPECTOR_KEY, inspectorCollapsed ? '1' : '0')
   }, [inspectorCollapsed])
@@ -98,6 +109,11 @@ export function useWorkspace(): WorkspaceApi {
     setCreating(true)
     setCmdk(false)
   }, [])
+  // Opening settings closes the palette so only one overlay is up at a time.
+  const openSettings = useCallback((open: boolean) => {
+    setSettings(open)
+    if (open) setCmdk(false)
+  }, [])
   const cancelCreate = useCallback(() => setCreating(false), [])
   const toggleInspector = useCallback(() => setInspectorCollapsed((v) => !v), [])
   const toggleGuidance = useCallback(() => setGuidance((v) => !v), [])
@@ -108,6 +124,7 @@ export function useWorkspace(): WorkspaceApi {
     creating,
     inspectorCollapsed,
     cmdkOpen,
+    settingsOpen,
     guidance,
     select,
     viewPhase,
@@ -115,6 +132,7 @@ export function useWorkspace(): WorkspaceApi {
     cancelCreate,
     toggleInspector,
     setCmdk,
+    setSettings: openSettings,
     toggleGuidance,
   }
 }

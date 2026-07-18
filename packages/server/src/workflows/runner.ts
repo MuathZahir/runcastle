@@ -8,7 +8,7 @@ import { NotFoundError } from '../errors'
 import { emit } from '../services/events'
 import { checkGate } from '../services/gates'
 import { detachWorktree, reattachWorktree } from '../services/git'
-import { getFeatureRow, requireProject, setPhase } from '../services/repo'
+import { getFeatureRow, projectForFeature, setPhase } from '../services/repo'
 import { listByFeature, updateTicket } from '../services/tickets'
 import { claim as claimWaypoint, releaseForSession, resolve as resolveWaypoint } from '../services/waypoints'
 import { getWorkflow } from './registry'
@@ -74,6 +74,11 @@ export interface StartRunOptions {
    * failed and the error rethrown, so no orphaned run lingers.
    */
   claimWaypointId?: string
+  /**
+   * Per-run model override (issue #48) exposed to the workflow as
+   * `ctx.modelOverride`; wins the `resolveModel` chain for the run's AFK agent.
+   */
+  modelOverride?: string
 }
 
 export async function startRun(
@@ -83,7 +88,7 @@ export async function startRun(
   opts: StartRunOptions = {},
 ): Promise<StartRunResult> {
   const feature = getFeatureRow(ctx, featureId)
-  const project = requireProject(ctx)
+  const project = projectForFeature(ctx, feature)
   const def = getWorkflow(workflowId)
   if (!def) throw new NotFoundError(`workflow ${workflowId} not registered`)
 
@@ -156,6 +161,7 @@ export async function startRun(
       updateTicket(ctx, id, patch)
     },
     input: opts.input,
+    modelOverride: opts.modelOverride,
     resolveWaypoint: (id, disposition, summary) => {
       resolveWaypoint(ctx, id, disposition, summary)
     },

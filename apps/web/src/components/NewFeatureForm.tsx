@@ -11,9 +11,11 @@ import { Button } from '../ui'
  * nothing; `collapsed` (Small) skips the spec phase.
  */
 export function NewFeatureForm({
+  projectId,
   onCancel,
   onCreated,
 }: {
+  projectId: string
   onCancel: () => void
   onCreated: (featureId: string) => void
 }) {
@@ -42,7 +44,7 @@ export function NewFeatureForm({
   const busy = create.isPending || launch.isPending
   const submit = () => {
     const t = title.trim()
-    if (t) create.mutate({ title: t, oneLiner: oneLiner.trim(), size, mapped })
+    if (t) create.mutate({ projectId, title: t, oneLiner: oneLiner.trim(), size, mapped })
   }
 
   return (

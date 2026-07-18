@@ -23,7 +23,8 @@ import {
   hasActiveRun,
   listRunsByFeature,
   listSessionsByFeature,
-  requireProject,
+  projectForFeature,
+  requireProjectById,
   rowToFeature,
   setPhase,
 } from './repo'
@@ -71,6 +72,8 @@ export interface FeatureFull {
 }
 
 export interface CreateFeatureInput {
+  /** The project the feature belongs to (multi-project, issue #43). */
+  projectId: string
   title: string
   oneLiner: string
   size: FeatureSize
@@ -82,7 +85,7 @@ export async function createFeature(
   ctx: AppCtx,
   input: CreateFeatureInput,
 ): Promise<Feature> {
-  const project = requireProject(ctx)
+  const project = requireProjectById(ctx, input.projectId)
   const slug = uniqueSlug(ctx, project.id, input.title)
   const branch = `feature/${slug}`
 
@@ -165,12 +168,11 @@ export function getFeatureFull(ctx: AppCtx, id: string): FeatureFull {
   }
 }
 
-export function list(ctx: AppCtx): FeatureListItem[] {
-  const project = requireProject(ctx)
+export function list(ctx: AppCtx, projectId: string): FeatureListItem[] {
   const rows = ctx.db
     .select()
     .from(features)
-    .where(eq(features.projectId, project.id))
+    .where(eq(features.projectId, projectId))
     .orderBy(desc(features.createdAt))
     .all()
 
@@ -222,7 +224,11 @@ export function advance(ctx: AppCtx, featureId: string): Feature {
  * crashed left the feature parked there — and (re)starts the burn without
  * re-crossing any gate, so that state never dead-ends. Requires ≥1 ticket.
  */
-export async function burn(ctx: AppCtx, featureId: string): Promise<{ runId: string }> {
+export async function burn(
+  ctx: AppCtx,
+  featureId: string,
+  opts: { modelOverride?: string } = {},
+): Promise<{ runId: string }> {
   const feature = getFeatureRow(ctx, featureId)
   const restarting = feature.phase === 'implementation' && !hasActiveRun(ctx, featureId)
   if (feature.phase !== 'tickets' && !restarting) {
@@ -244,7 +250,9 @@ export async function burn(ctx: AppCtx, featureId: string): Promise<{ runId: str
   } else {
     setPhase(ctx, featureId, 'implementation', 'burn.started', 'burning tickets')
   }
-  const { runId } = await startRun(ctx, featureId, 'ticket-burner')
+  const { runId } = await startRun(ctx, featureId, 'ticket-burner', {
+    modelOverride: opts.modelOverride,
+  })
   return { runId }
 }
 
@@ -272,7 +280,7 @@ export function escalateToMap(
     return { ok: true, warning: `feature ${feature.slug} is already mapped — no changes made` }
   }
 
-  const project = requireProject(ctx)
+  const project = projectForFeature(ctx, feature)
   ctx.db.update(features).set({ mapped: true }).where(eq(features.id, featureId)).run()
   scaffoldMapDoc(project, { ...feature, mapped: true }, input)
 

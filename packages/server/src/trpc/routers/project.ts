@@ -1,15 +1,22 @@
 import * as z from 'zod'
-import { getProject, initProject, updateProject } from '../../services/projects'
+import { closeProject, listProjects, openProject, renameProject } from '../../services/projects'
 import { publicProcedure, router } from '../context'
 
 export const projectRouter = router({
-  get: publicProcedure.query(({ ctx }) => getProject(ctx)),
+  list: publicProcedure.query(({ ctx }) => listProjects(ctx)),
 
-  init: publicProcedure
+  open: publicProcedure
     .input(z.object({ repoPath: z.string().min(1) }))
-    .mutation(({ ctx, input }) => initProject(ctx, input.repoPath)),
+    .mutation(({ ctx, input }) => openProject(ctx, input.repoPath)),
 
-  update: publicProcedure
-    .input(z.object({ devCommand: z.string().optional() }))
-    .mutation(({ ctx, input }) => updateProject(ctx, input)),
+  close: publicProcedure
+    .input(z.object({ projectId: z.string() }))
+    .mutation(({ ctx, input }) => closeProject(ctx, input.projectId)),
+
+  rename: publicProcedure
+    .input(z.object({ projectId: z.string(), name: z.string().min(1) }))
+    .mutation(({ ctx, input }) => renameProject(ctx, input.projectId, input.name)),
+
+  // `project.update` is retired (issue #46): devCommand (and model/sandbox) now
+  // read/write through the `settings` router as per-project overrides.
 })

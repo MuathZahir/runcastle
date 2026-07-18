@@ -1,4 +1,3 @@
-import { spawn } from 'node:child_process'
 import { existsSync, mkdirSync, realpathSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import type { Feature, Project } from '@runcastle/core'
@@ -7,6 +6,7 @@ import { simpleGit } from 'simple-git'
 import type { SimpleGit } from 'simple-git'
 import type { AppCtx } from '../db/types'
 import { GateError, InvalidInputError } from '../errors'
+import { startDevPane, stopDevPane } from '../pty/dev-pane'
 import { emit } from './events'
 import { hasActiveRun } from './repo'
 
@@ -32,6 +32,17 @@ export interface TestDriveResult {
   ok: boolean
   deniedReason?: string
   branch?: string
+}
+
+/** Active test-drive info the UI polls (`feature.driveInfo`): the branch under
+ *  the wheel plus the embedded dev pane's PTY id and its sniffed "Open app" URL. */
+export interface DriveInfo {
+  featureId: string
+  branch: string
+  /** Registry id of the drive's embedded dev pane, if a dev command spawned. */
+  devPaneId?: string
+  /** First localhost URL the dev server printed, if any (sticky per drive). */
+  devUrl?: string
 }
 
 export interface MergeResult {
@@ -61,15 +72,22 @@ function errMsg(e: unknown): string {
   return e instanceof Error ? e.message : String(e)
 }
 
-/** Canonical path key: absolute, forward-slashed, lower-cased, 8.3-expanded. */
-function canon(p: string): string {
+/**
+ * Canonical path key: absolute and `realpath`-resolved when the path exists.
+ * On Windows the filesystem is case-insensitive and uses `\` separators, so we
+ * forward-slash, lower-case and 8.3-expand to a single key. On POSIX paths are
+ * case-sensitive and `\` is a legal filename character, so we preserve both —
+ * lower-casing there would fold distinct directories (`/u/Repo` vs `/u/repo`)
+ * into one key.
+ */
+export function canon(p: string): string {
   let abs = resolve(p)
   try {
     abs = realpathSync.native(abs)
   } catch {
     // Path may not exist (stale registry entry) — fall back to the resolved form.
   }
-  return abs.replace(/\\/g, '/').toLowerCase()
+  return process.platform === 'win32' ? abs.replace(/\\/g, '/').toLowerCase() : abs
 }
 
 // --- repo detection ---------------------------------------------------------
@@ -487,9 +505,17 @@ export async function commitDocs(worktreePath: string, message: string): Promise
 
 /** Module-level in-memory test-drive state (SPEC §7). At most one active.
  *  `detachedWorktree` records the talk worktree we detached to free the feature
- *  branch for the main checkout, so `stop` reattaches exactly what it detached. */
+ *  branch for the main checkout, so `stop` reattaches exactly what it detached.
+ *  `devPaneId`/`devUrl` track the embedded dev pane and its sniffed localhost URL. */
 let testDriveState:
-  | { featureId: string; previousBranch: string; detachedWorktree?: string }
+  | {
+      featureId: string
+      branch: string
+      previousBranch: string
+      detachedWorktree?: string
+      devPaneId?: string
+      devUrl?: string
+    }
   | undefined
 
 /** Test-only: clear the in-memory test-drive state (not called by any router). */
@@ -504,6 +530,32 @@ export function __resetTestDriveState(): void {
  */
 export function activeTestDriveFeatureId(): string | undefined {
   return testDriveState?.featureId
+}
+
+/** The active test drive's info for the UI (dev pane + Open app link), or null. */
+export function activeDriveInfo(): DriveInfo | null {
+  if (!testDriveState) return null
+  return {
+    featureId: testDriveState.featureId,
+    branch: testDriveState.branch,
+    devPaneId: testDriveState.devPaneId,
+    devUrl: testDriveState.devUrl,
+  }
+}
+
+/**
+ * Record the first localhost URL sniffed from the drive's dev pane (the "Open
+ * app" link). Sticky per drive — the first URL wins — and ignored once the drive
+ * has stopped or moved to another feature. Emits `testdrive.url` for the timeline.
+ */
+export function recordDriveUrl(ctx: AppCtx, featureId: string, url: string): void {
+  if (!testDriveState || testDriveState.featureId !== featureId || testDriveState.devUrl) return
+  testDriveState.devUrl = url
+  emit(ctx, featureId, {
+    type: 'testdrive.url',
+    message: `dev server ready — open app at ${url}`,
+    data: { url },
+  })
 }
 
 /**
@@ -524,6 +576,10 @@ export async function testDrive(
     if (!testDriveState) return { ok: false, deniedReason: DENY_NONE_ACTIVE }
     const previousBranch = testDriveState.previousBranch
     const detachedWorktree = testDriveState.detachedWorktree
+    const devPaneId = testDriveState.devPaneId
+    // Kill the whole dev-server process tree first so its port is freed with no
+    // orphan (the drive owns the pane; its URL is cleared when state resets).
+    if (devPaneId) stopDevPane(devPaneId)
     await g.checkout(previousBranch)
     // The main checkout has released the feature branch — restore the talk
     // worktree to it (best-effort) so a resumed session picks up where it left.
@@ -558,7 +614,7 @@ export async function testDrive(
 
   const previousBranch = (await g.revparse(['--abbrev-ref', 'HEAD'])).trim()
   await g.checkout(branch)
-  testDriveState = { featureId: feature.id, previousBranch, detachedWorktree }
+  testDriveState = { featureId: feature.id, branch, previousBranch, detachedWorktree }
 
   emit(ctx, feature.id, {
     type: 'testdrive.started',
@@ -566,26 +622,21 @@ export async function testDrive(
     data: { branch, previousBranch },
   })
 
-  // Best-effort: open a dev-server tab. Never fail the call on a spawn error.
-  if (project.devCommand) spawnDevTerminal(project.repoPath, project.devCommand)
+  // Best-effort: spawn the dev command in a drive-owned embedded PTY pane and
+  // sniff its localhost URL for the "Open app" link. A spawn failure never fails
+  // the drive (startDevPane emits its own event and returns undefined).
+  if (project.devCommand) {
+    const devPaneId = startDevPane({
+      ctx,
+      featureId: feature.id,
+      repoPath: project.repoPath,
+      devCommand: project.devCommand,
+      onUrl: (url) => recordDriveUrl(ctx, feature.id, url),
+    })
+    if (devPaneId) testDriveState.devPaneId = devPaneId
+  }
 
   return { ok: true, branch }
-}
-
-/** Fire-and-forget a Windows Terminal tab running the project dev command. */
-function spawnDevTerminal(repoPath: string, devCommand: string): void {
-  try {
-    const child = spawn(
-      'wt.exe',
-      ['-w', '0', 'nt', '-d', repoPath, 'cmd', '/k', devCommand],
-      { detached: true, stdio: 'ignore', windowsHide: false },
-    )
-    // A missing wt.exe emits 'error' asynchronously — swallow it so it never throws.
-    child.on('error', () => {})
-    child.unref()
-  } catch {
-    // synchronous spawn failure — ignore, the test drive itself still succeeded
-  }
 }
 
 // --- merge ------------------------------------------------------------------

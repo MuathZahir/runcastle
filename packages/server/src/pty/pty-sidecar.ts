@@ -1,8 +1,9 @@
 import { type ChildProcess, spawn } from 'node:child_process'
 import { createRequire } from 'node:module'
 import { existsSync } from 'node:fs'
-import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { ASSET_ENV, resolveAsset } from '../launcher/asset-paths'
+import { resolveExecutable } from '../util/resolve-executable'
 import type { CreatePtyOptions, PtySession } from './pty'
 
 /**
@@ -15,7 +16,13 @@ import type { CreatePtyOptions, PtySession } from './pty'
  * restores INPUT while keeping the exact same `createPtySession` interface.
  */
 
-const HOST_PATH = fileURLToPath(new URL('./pty-host.cjs', import.meta.url))
+// Spawned by system `node`, so the host must be a real file (never bundled). A
+// published install vendors it beside the bin and names it via RUNCASTLE_PTY_HOST
+// (issue #51); a checkout uses the sibling source file.
+const HOST_PATH = resolveAsset(
+  ASSET_ENV.ptyHost,
+  fileURLToPath(new URL('./pty-host.cjs', import.meta.url)),
+)
 
 function isBun(): boolean {
   return typeof (globalThis as { Bun?: unknown }).Bun !== 'undefined'
@@ -29,18 +36,10 @@ function isBun(): boolean {
 function resolveNodeExecutable(): string {
   const override = process.env.RUNCASTLE_NODE_BIN
   if (override && existsSync(override)) return override
+  // Under a `node` runtime `process.execPath` IS node; only under Bun must we
+  // scan PATH for a system node (shared PATHEXT-aware resolver).
   if (!isBun()) return process.execPath
-  const isWin = process.platform === 'win32'
-  const exts = isWin ? ['.exe', '.cmd', ''] : ['']
-  const dirs = (process.env.PATH ?? '').split(isWin ? ';' : ':')
-  for (const dir of dirs) {
-    if (!dir) continue
-    for (const ext of exts) {
-      const candidate = join(dir, `node${ext}`)
-      if (existsSync(candidate)) return candidate
-    }
-  }
-  return 'node'
+  return resolveExecutable('node', { exts: process.platform === 'win32' ? ['.exe', '.cmd', ''] : [''] })
 }
 
 /** Resolve node-pty's entry once so the host never has to re-resolve it. */
