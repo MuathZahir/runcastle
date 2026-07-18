@@ -3,6 +3,16 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
+  "bin": {
+    "runcastle": "src/bin/runcastle.ts"
+  },
+  "engines": {
+    "bun": ">=1.3.14"
+  },
+  "files": [
+    "src",
+    "drizzle"
+  ],
   "scripts": {
     "dev": "bun --hot src/index.ts",
     "start": "bun src/index.ts",

@@ -8,6 +8,7 @@ import { StatusBar } from './StatusBar'
 import { Workspace } from './Workspace'
 import { NewFeatureForm } from './NewFeatureForm'
 import { CommandPalette } from './CommandPalette'
+import { UpdateBanner } from './UpdateBanner'
 
 /**
  * The runcastle IDE shell (app-redesign) — pipeline-first, no tabs. A title bar,
@@ -43,6 +44,7 @@ export function Shell() {
 
   return (
     <div className={`shell${ws.inspectorCollapsed ? ' inspector-collapsed' : ''}`}>
+      <UpdateBanner />
       <Titlebar
         onOpenCmdk={() => ws.setCmdk(true)}
         onToggleInspector={ws.toggleInspector}

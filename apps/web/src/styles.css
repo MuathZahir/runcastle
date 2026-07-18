@@ -1668,6 +1668,65 @@ details.wp-group-done > summary { cursor: pointer; list-style: revert; }
 .toast-success { border-color: color-mix(in srgb, var(--ok) 50%, var(--hairline)); color: var(--ok); }
 .toast-info { color: var(--text-2); }
 
+/* ---- update banner (issue #51) — floats above the shell; never installs ---- */
+.update-banner {
+  position: fixed;
+  top: 50px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: min(720px, calc(100vw - 32px));
+  padding: 7px 10px 7px 13px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--accent-line);
+  background: color-mix(in srgb, var(--accent) 12%, var(--panel));
+  color: var(--text);
+  font-size: 12.5px;
+  box-shadow: 0 14px 34px -16px rgba(0, 0, 0, 0.85);
+  z-index: 420;
+  animation: fadeUp var(--dur-3) var(--ease-out);
+}
+.update-banner-dot {
+  flex: 0 0 auto;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent-hi);
+  animation: dotGlow 2.2s var(--ease) infinite;
+}
+.update-banner-text { white-space: nowrap; }
+.update-banner-text strong { color: var(--accent-hi); font-weight: 600; }
+.update-banner-sep { color: var(--text-4); }
+.update-banner-dim { color: var(--text-3); }
+.update-banner-cmd {
+  font-family: var(--mono);
+  font-size: 11.5px;
+  color: var(--accent-hi);
+  background: var(--panel-inset);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-sm);
+  padding: 2px 7px;
+  white-space: nowrap;
+  user-select: all;
+}
+.update-banner-dismiss {
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  border: none;
+  background: none;
+  color: var(--text-3);
+  font-size: 16px;
+  line-height: 1;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+.update-banner-dismiss:hover { color: var(--text); background: var(--panel-3); }
+
 /* ============================================================================
    ANIMATIONS
    ========================================================================== */
