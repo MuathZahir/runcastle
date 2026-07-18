@@ -1,3 +1,4 @@
+import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import {
   applyLinuxPrebuildBridge,
@@ -18,10 +19,13 @@ import {
  * platform/arch/fs so the branches run identically on every OS.
  */
 
+// Build expected paths with node:path.join so they match the source's own
+// `join(...)` on every host — Windows included (issue #54). Hard-coded
+// '/'-separated literals only match on POSIX; the bridge is host-correct.
 const VENDOR = '/repo/vendor/node-pty'
 const PTY = '/pkg/node-pty'
-const vendored = (arch: string) => `${VENDOR}/linux-${arch}/pty.node`
-const target = (arch: string) => `${PTY}/prebuilds/linux-${arch}/pty.node`
+const vendored = (arch: string) => join(VENDOR, `linux-${arch}`, 'pty.node')
+const target = (arch: string) => join(PTY, 'prebuilds', `linux-${arch}`, 'pty.node')
 
 /** A recording fake fs seeded with a set of already-present paths. */
 function fakeFs(present: string[] = []): PrebuildBridgeFs & {
@@ -64,7 +68,7 @@ describe('applyLinuxPrebuildBridge', () => {
     expect(res.from).toBe(vendored('x64'))
     expect(res.to).toBe(target('x64'))
     expect(fs.copies).toEqual([{ from: vendored('x64'), to: target('x64') }])
-    expect(fs.dirs).toContain(`${PTY}/prebuilds/linux-x64`)
+    expect(fs.dirs).toContain(join(PTY, 'prebuilds', 'linux-x64'))
   })
 
   it('resolves the vendored/target dir by the running arch (arm64)', () => {

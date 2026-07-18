@@ -1,6 +1,6 @@
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 import { Hono } from 'hono'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { mountWebApp, resolveWebDist } from '../src/routes/web'
@@ -69,9 +69,13 @@ describe('mountWebApp (SPA hosting)', () => {
 describe('resolveWebDist', () => {
   it('honours the RUNCASTLE_WEB_DIST override', () => {
     const prev = process.env.RUNCASTLE_WEB_DIST
-    process.env.RUNCASTLE_WEB_DIST = '/tmp/custom-dist'
+    // Use an already-resolved absolute path so the assertion is host-independent:
+    // resolveWebDist() runs the override through node:path.resolve, which rewrites
+    // a POSIX-absolute literal to a drive path on Windows (issue #54).
+    const custom = resolve('custom-dist')
+    process.env.RUNCASTLE_WEB_DIST = custom
     try {
-      expect(resolveWebDist()).toBe('/tmp/custom-dist')
+      expect(resolveWebDist()).toBe(custom)
     } finally {
       if (prev === undefined) delete process.env.RUNCASTLE_WEB_DIST
       else process.env.RUNCASTLE_WEB_DIST = prev

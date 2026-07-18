@@ -1,3 +1,30 @@
+diff --git a/lib/conpty_console_list_agent.js b/lib/conpty_console_list_agent.js
+index 8c4fca9022a6d6f015bca87f61625cde2278f428..84279e248f314bf54ae75bd7703ac057d3a085ad 100644
+--- a/lib/conpty_console_list_agent.js
++++ b/lib/conpty_console_list_agent.js
+@@ -10,7 +10,20 @@ Object.defineProperty(exports, "__esModule", { value: true });
+ var utils_1 = require("./utils");
+ var getConsoleProcessList = utils_1.loadNativeModule('conpty_console_list').module.getConsoleProcessList;
+ var shellPid = parseInt(process.argv[2], 10);
+-var consoleProcessList = getConsoleProcessList(shellPid);
++// runcastle patch (issue #54): AttachConsole throws when this forked agent has no
++// console attached (headless service, CI worker, the Bun->node PTY sidecar). The
++// throw was uncaught, so node's crash report ("Error: AttachConsole failed" + a
++// full stack) leaked to the parent's inherited stderr on every ConPTY kill, and the
++// parent then waited out its 5s fallback timeout. Degrade to just the shell PID
++// instead -- exactly the parent's own timeout fallback (windowsPtyAgent.js) -- so
++// kill stays quiet and prompt. Delete with the rest of this patch at node-pty 1.2.
++var consoleProcessList;
++try {
++    consoleProcessList = getConsoleProcessList(shellPid);
++}
++catch (e) {
++    consoleProcessList = [shellPid];
++}
+ process.send({ consoleProcessList: consoleProcessList });
+ process.exit(0);
+ //# sourceMappingURL=conpty_console_list_agent.js.map
+\ No newline at end of file
 diff --git a/package.json b/package.json
 index 94a2c14381727674b8964c1b50e5e47a9205ffbc..3e80ac8a52d3447b85771a60369492cd518b05da 100644
 --- a/package.json
