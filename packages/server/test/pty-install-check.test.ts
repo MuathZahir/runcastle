@@ -1,3 +1,4 @@
+import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { createNativePtySession } from '../src/pty/pty'
 import {
@@ -22,9 +23,12 @@ const has = (...present: string[]) => {
   return (p: string) => set.has(p)
 }
 
+// Build expected paths with node:path.join so they match the source's own
+// `join(ptyRoot, dir, ...)` on every host — Windows included (issue #54). Hard-
+// coded '/'-separated literals only match on POSIX; the source is host-correct.
 const linuxRoot = '/pkg/node-pty'
-const bin = (dir: string) => `${linuxRoot}/${dir}/pty.node`
-const helper = (dir: string) => `${linuxRoot}/${dir}/spawn-helper`
+const bin = (dir: string) => join(linuxRoot, dir, 'pty.node')
+const helper = (dir: string) => join(linuxRoot, dir, 'spawn-helper')
 
 const probe = (over: Partial<PtyInstallProbe>): PtyInstallProbe => ({
   ptyRoot: linuxRoot,
@@ -73,7 +77,7 @@ describe('checkPtyInstall', () => {
       probe({
         platform: 'darwin',
         arch: 'arm64',
-        exists: has(`${linuxRoot}/prebuilds/darwin-arm64/pty.node`), // no spawn-helper
+        exists: has(bin('prebuilds/darwin-arm64')), // no spawn-helper
       }),
     )
     expect(status.ok).toBe(false)
@@ -89,7 +93,7 @@ describe('checkPtyInstall', () => {
     const status = checkPtyInstall(
       probe({
         platform: 'win32',
-        exists: has(`${linuxRoot}/prebuilds/win32-x64/pty.node`),
+        exists: has(bin('prebuilds/win32-x64')),
       }),
     )
     expect(status.ok).toBe(true)
