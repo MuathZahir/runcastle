@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { ExecFn, ExecOutcome } from '../src/doctor/doctor'
 import {
+  resolveRuntime,
   runtimeInstallGuide,
   saveAfkToken,
   terminalSpec,
@@ -155,5 +156,27 @@ describe('terminalSpec', () => {
       cmd: 'sandcastle',
       args: ['podman', 'build-image'],
     })
+  })
+})
+
+describe('resolveRuntime', () => {
+  /** A fake exec where only the named runtimes answer `--version` with code 0. */
+  function present(...bins: string[]): ExecFn {
+    return async (command): Promise<ExecOutcome> =>
+      bins.includes(command)
+        ? { ok: true, code: 0, stdout: `${command} 1.0`, stderr: '' }
+        : { ok: false, code: null, stdout: '', stderr: 'ENOENT' }
+  }
+
+  it('keeps the preferred runtime when it is installed', async () => {
+    expect(await resolveRuntime(present('podman'), 'podman')).toBe('podman')
+  })
+
+  it('falls back to the other runtime when the preferred one is missing', async () => {
+    expect(await resolveRuntime(present('docker'), 'podman')).toBe('docker')
+  })
+
+  it('returns the preference as a last resort when neither is present', async () => {
+    expect(await resolveRuntime(present(), 'docker')).toBe('docker')
   })
 })

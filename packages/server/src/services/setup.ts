@@ -116,6 +116,26 @@ export function runtimeInstallGuide(platform: NodeJS.Platform): RuntimeInstallGu
   }
 }
 
+/** Container runtimes the embedded flows can drive. */
+export type Runtime = 'docker' | 'podman'
+
+/**
+ * Picks the runtime the build-image / image-probe flows should drive. Honors the
+ * configured preference when that binary is actually present; otherwise falls
+ * back to whichever runtime is installed, and finally to the preference (docker)
+ * so the emitted command is still something the user can act on.
+ */
+export async function resolveRuntime(exec: ExecFn, preferred: Runtime): Promise<Runtime> {
+  const present = async (bin: Runtime): Promise<boolean> => {
+    const out = await exec(bin, ['--version'])
+    return out.ok && out.code === 0
+  }
+  if (await present(preferred)) return preferred
+  const other: Runtime = preferred === 'docker' ? 'podman' : 'docker'
+  if (await present(other)) return other
+  return preferred
+}
+
 /** Which embedded-terminal flow to launch. */
 export type TerminalKind = 'setup-token' | 'build-image'
 
@@ -132,7 +152,7 @@ export interface TerminalSpec {
  */
 export function terminalSpec(
   kind: TerminalKind,
-  opts: { runtime: 'docker' | 'podman'; imageName: string },
+  opts: { runtime: Runtime; imageName: string },
 ): TerminalSpec {
   if (kind === 'setup-token') return { cmd: 'claude', args: ['setup-token'] }
   return { cmd: 'sandcastle', args: [opts.runtime, 'build-image'] }
