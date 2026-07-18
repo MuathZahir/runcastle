@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import { newId } from '@runcastle/core'
 import type { AppCtx } from '../src/db/types'
 import { runs } from '../src/db/schema'
-import { listAfter } from '../src/services/events'
+import { listByProject } from '../src/services/events'
 import * as features from '../src/services/features'
 import {
   closeProject,
@@ -151,9 +151,9 @@ describe('projects service — multi-project CRUD (#43)', () => {
     const b = await openProject(ctx, await gitRepo())
     renameProject(ctx, b.id, 'Bee')
 
-    // Events are keyed by the acting project's id (the events.featureId slot).
-    const aTypes = listAfter(ctx, a.id, 0).map((e) => e.type)
-    const bTypes = listAfter(ctx, b.id, 0).map((e) => e.type)
+    // Project-level events carry the acting project's id (issue #44).
+    const aTypes = listByProject(ctx, a.id, 0).map((e) => e.type)
+    const bTypes = listByProject(ctx, b.id, 0).map((e) => e.type)
     expect(aTypes).toContain('project.opened')
     expect(bTypes).toContain('project.opened')
     expect(bTypes).toContain('project.renamed')

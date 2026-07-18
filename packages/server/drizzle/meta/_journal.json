@@ -29,6 +29,13 @@
       "when": 1784012829570,
       "tag": "0003_project_closed_at",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1784012829571,
+      "tag": "0004_events_project_id",
+      "breakpoints": true
     }
   ]
 }
