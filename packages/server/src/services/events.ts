@@ -2,6 +2,7 @@ import type { EventRow } from '@runcastle/core'
 import { and, asc, eq, gt } from 'drizzle-orm'
 import type { AppCtx } from '../db/types'
 import { events, features } from '../db/schema'
+import { NotFoundError } from '../errors'
 
 /**
  * The timeline. Every mutating service function emits an event here — the UI
@@ -46,7 +47,7 @@ function projectIdForFeature(ctx: AppCtx, featureId: string): string {
     .from(features)
     .where(eq(features.id, featureId))
     .get()
-  if (!row) throw new Error(`emit: unknown feature ${featureId}`)
+  if (!row) throw new NotFoundError(`feature ${featureId} not found`)
   return row.projectId
 }
 
