@@ -100,7 +100,10 @@ export const runs = sqliteTable('runs', {
 export const events = sqliteTable('events', {
   // autoincrement integer — doubles as the polling cursor (`afterId`)
   id: integer('id').primaryKey({ autoIncrement: true }),
-  featureId: text('feature_id').notNull(),
+  // Every event belongs to a project (issue #44). Feature-scoped events also
+  // carry a `feature_id`; project-level events (open/close/rename) leave it null.
+  projectId: text('project_id').notNull(),
+  featureId: text('feature_id'),
   runId: text('run_id'),
   ticketId: text('ticket_id'),
   ts: integer('ts').notNull(),

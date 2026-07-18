@@ -6,12 +6,13 @@ import { seedFeature, seedProject } from './helpers/fixtures'
 
 describe('events service', () => {
   let ctx: AppCtx
-  let featureId: string
   let projectId: string
+  let featureId: string
 
   beforeEach(async () => {
     ctx = await makeTestCtx()
-    featureId = seedFeature(ctx, seedProject(ctx).id).id
+    projectId = seedProject(ctx).id
+    featureId = seedFeature(ctx, projectId).id
   })
 
   it('lists events oldest-first and honours the afterId cursor', () => {
@@ -55,5 +56,50 @@ describe('events service', () => {
     expect(stored.runId).toBe('run_1')
     expect(stored.ticketId).toBe('tkt_1')
     expect(stored.data).toEqual({ n: 42 })
+  })
+
+  it('stamps every feature event with its project id', () => {
+    const e = emit(ctx, featureId, { type: 'a', message: 'one' })
+    expect(e.projectId).toBe(projectId)
+    expect(e.featureId).toBe(featureId)
+  })
+
+  it('emits project-level events with a project id and no feature id', () => {
+    const e = emitProject(ctx, projectId, { type: 'project.opened', message: 'opened' })
+    expect(e.projectId).toBe(projectId)
+    expect(e.featureId).toBeUndefined()
+  })
+
+  it('lists a project stream of feature AND project-level events, cursor honoured', () => {
+    const p = emitProject(ctx, projectId, { type: 'project.opened', message: 'opened' })
+    const f = emit(ctx, featureId, { type: 'feature.created', message: 'created' })
+    const r = emitProject(ctx, projectId, { type: 'project.renamed', message: 'renamed' })
+
+    const all = listByProject(ctx, projectId, 0)
+    expect(all.map((e) => e.message)).toEqual(['opened', 'created', 'renamed'])
+
+    const afterFirst = listByProject(ctx, projectId, p.id)
+    expect(afterFirst.map((e) => e.id)).toEqual([f.id, r.id])
+
+    expect(listByProject(ctx, projectId, r.id)).toEqual([])
+  })
+
+  it('scopes the project stream to its project', () => {
+    const otherProjectId = seedProject(ctx).id
+    const otherFeatureId = seedFeature(ctx, otherProjectId, { slug: 'other' }).id
+
+    emit(ctx, featureId, { type: 'a', message: 'mine-feature' })
+    emitProject(ctx, projectId, { type: 'project.renamed', message: 'mine-project' })
+    emit(ctx, otherFeatureId, { type: 'a', message: 'theirs-feature' })
+    emitProject(ctx, otherProjectId, { type: 'project.renamed', message: 'theirs-project' })
+
+    expect(listByProject(ctx, projectId, 0).map((e) => e.message)).toEqual([
+      'mine-feature',
+      'mine-project',
+    ])
+    expect(listByProject(ctx, otherProjectId, 0).map((e) => e.message)).toEqual([
+      'theirs-feature',
+      'theirs-project',
+    ])
   })
 })

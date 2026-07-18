@@ -6,7 +6,7 @@ import { eq, isNull } from 'drizzle-orm'
 import type { AppCtx } from '../db/types'
 import { projects } from '../db/schema'
 import { InvalidInputError, isNotImplemented } from '../errors'
-import { emit } from './events'
+import { emitProject } from './events'
 import * as git from './git'
 import { getProjectByRepoPath, projectHasActiveRun, requireProjectById, rowToProject } from './repo'
 
@@ -19,9 +19,10 @@ import { getProjectByRepoPath, projectHasActiveRun, requireProjectById, rowToPro
  * service; until B2 lands we tolerate its stub and fall back to a lightweight
  * `.git` existence check + the configured default branch.
  *
- * Project-level events reuse the timeline's `featureId` slot to carry the acting
- * project's id — there is no separate project feed, and this keeps every mutation
- * observable per the events-are-the-UI's-lifeblood rule (SPEC §12).
+ * Project-level events (open/close/rename) are emitted with `emitProject` — they
+ * carry the project id and no feature id (issue #44), so a project stream shows
+ * them alongside its feature events, per the events-are-the-UI's-lifeblood rule
+ * (SPEC §12).
  */
 
 /** Open projects (closed ones are hidden), newest-known first is not required. */
@@ -52,7 +53,7 @@ export async function openProject(ctx: AppCtx, repoPath: string): Promise<Projec
       .where(eq(projects.id, existing.id))
       .run()
     const reopened = { ...existing, mainBranch }
-    emit(ctx, existing.id, {
+    emitProject(ctx, existing.id, {
       type: 'project.opened',
       message: `project ${existing.name} re-opened at ${repoPath} (${mainBranch})`,
     })
@@ -69,7 +70,7 @@ export async function openProject(ctx: AppCtx, repoPath: string): Promise<Projec
   }
   const inserted = ctx.db.insert(projects).values(row).returning().get()
   const project = rowToProject(inserted)
-  emit(ctx, project.id, {
+  emitProject(ctx, project.id, {
     type: 'project.opened',
     message: `project ${name} at ${repoPath} (${mainBranch})`,
   })
@@ -89,7 +90,7 @@ export function closeProject(ctx: AppCtx, projectId: string): Project {
     )
   }
   ctx.db.update(projects).set({ closedAt: Date.now() }).where(eq(projects.id, projectId)).run()
-  emit(ctx, projectId, {
+  emitProject(ctx, projectId, {
     type: 'project.closed',
     message: `project ${project.name} closed`,
   })
@@ -100,7 +101,7 @@ export function closeProject(ctx: AppCtx, projectId: string): Project {
 export function renameProject(ctx: AppCtx, projectId: string, name: string): Project {
   const project = requireProjectById(ctx, projectId)
   ctx.db.update(projects).set({ name }).where(eq(projects.id, projectId)).run()
-  emit(ctx, projectId, {
+  emitProject(ctx, projectId, {
     type: 'project.renamed',
     message: `project renamed ${project.name} → ${name}`,
     data: { from: project.name, to: name },
@@ -121,7 +122,7 @@ export function updateProject(
   const set: { devCommand?: string | null } = {}
   if (patch.devCommand !== undefined) set.devCommand = patch.devCommand
   ctx.db.update(projects).set(set).where(eq(projects.id, projectId)).run()
-  emit(ctx, projectId, {
+  emitProject(ctx, projectId, {
     type: 'project.updated',
     message: 'project settings updated',
     data: patch,

@@ -171,7 +171,8 @@ export type Run = z.infer<typeof Run>
 /** `id` is an autoincrement integer — used as the polling cursor (`afterId`). */
 export const EventRow = z.object({
   id: z.number(),
-  featureId: z.string(),
+  projectId: z.string(),
+  featureId: z.string().optional(),
   runId: z.string().optional(),
   ticketId: z.string().optional(),
   ts: z.number(),
