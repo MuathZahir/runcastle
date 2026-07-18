@@ -59,6 +59,7 @@ export function vendoredAssetPaths(pkgRoot: string): Record<string, string> {
     [ASSET_ENV.migrations]: join(pkgRoot, 'drizzle'),
     [ASSET_ENV.hookClient]: join(pkgRoot, 'hook-client.ts'),
     [ASSET_ENV.ptyHost]: join(pkgRoot, 'pty-host.cjs'),
+    [ASSET_ENV.sandcastleTemplate]: join(pkgRoot, 'sandcastle-template'),
   }
 }
 
