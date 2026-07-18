@@ -62,6 +62,16 @@ describe('sniffDevUrl', () => {
     const out = 'Network: http://10.0.0.5:5173/\nLocal:   http://localhost:5173/\n'
     expect(sniffDevUrl(out)).toBe('http://localhost:5173/')
   })
+
+  it('strips a trailing ANSI colour reset butted directly against the URL', () => {
+    const out = '\x1b[32m  ➜  Local:\x1b[39m   \x1b[1mhttp://localhost:5173/\x1b[22m'
+    expect(sniffDevUrl(out)).toBe('http://localhost:5173/')
+  })
+
+  it('strips a trailing OSC-8 hyperlink terminator butted directly against the URL', () => {
+    const out = '\x1b]8;;http://localhost:3000/\x1b\\http://localhost:3000/\x1b]8;;\x1b\\'
+    expect(sniffDevUrl(out)).toBe('http://localhost:3000/')
+  })
 })
 
 describe('devSpawnTarget', () => {

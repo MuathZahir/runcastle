@@ -37,8 +37,11 @@ export function isDrivePaneId(id: string): boolean {
  * link opens the app on THIS machine.
  */
 export function sniffDevUrl(text: string): string | undefined {
+  // \x1b excluded from the path segment too: an ANSI colour reset or an OSC-8
+  // terminator butts directly against the URL with no whitespace between them,
+  // and would otherwise be swallowed into the captured string.
   const m = text.match(
-    /https?:\/\/(?:localhost|127\.0\.0\.1|\[::1\])(?::\d+)?(?:\/[^\s"'<>`]*)?/i,
+    /https?:\/\/(?:localhost|127\.0\.0\.1|\[::1\])(?::\d+)?(?:\/[^\s"'<>`\x1b]*)?/i,
   )
   return m ? m[0] : undefined
 }
