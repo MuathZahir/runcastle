@@ -6,6 +6,24 @@
 > credentials and judgment — the parts a machine cannot do for you — plus the
 > gotchas that will bite if you skip them.
 
+## Quick path
+
+For a normal cut, run the wrapper — it takes the version and does Steps 1, 3,
+and 5 in order (preconditions → tests → build → verify → confirm → publish →
+tag → GitHub release):
+
+```sh
+bun run release 1.0.0        # add --yes to skip the pre-publish confirmation
+```
+
+It **stops** before anything irreversible on any failed check (dirty tree, not
+logged in, red tests, version mismatch) and pauses for a `y/N` confirmation
+right before `npm publish`. It deliberately does **not** run the one-time /
+one-way / human steps — deprecating the old castellan versions (Step 2), making
+the repo public (Step 4), or the clean-machine verify (Step 6). Do those by hand
+from the sections below. The rest of this doc is the reference for what each
+automated step does and why.
+
 ## What ships
 
 One npm package named `runcastle`, assembled from `packages/server` by

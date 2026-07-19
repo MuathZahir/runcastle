@@ -16,6 +16,7 @@
     "typecheck": "bun run --filter '@runcastle/core' --filter '@runcastle/server' typecheck",
     "test": "vitest run",
     "test:watch": "vitest",
+    "release": "bun run scripts/release.ts",
     "postinstall": "bun scripts/postinstall-node-pty.ts"
   },
   "devDependencies": {
