@@ -18,7 +18,11 @@ bun run release 1.0.0        # add --yes to skip the pre-publish confirmation
 
 It **stops** before anything irreversible on any failed check (dirty tree, not
 logged in, red tests, version mismatch) and pauses for a `y/N` confirmation
-right before `npm publish`. It deliberately does **not** run the one-time /
+right before `npm publish`. If the npm account has 2FA, publish exits `EOTP`;
+the wrapper then prompts for a fresh one-time password and retries (enter the
+code at that prompt — it must be current, so it is asked at publish time, not up
+front). For a non-interactive run, pass it in: `bun run release 1.0.0 --yes
+--otp=123456`. It deliberately does **not** run the one-time /
 one-way / human steps — deprecating the old castellan versions (Step 2), making
 the repo public (Step 4), or the clean-machine verify (Step 6). Do those by hand
 from the sections below. The rest of this doc is the reference for what each

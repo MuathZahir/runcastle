@@ -73,6 +73,10 @@ async function capture(
 async function main(): Promise<void> {
   const args = process.argv.slice(2)
   const skipConfirm = args.includes('--yes') || args.includes('-y')
+  // `--otp=<code>` only (the space form would be misread as the version arg).
+  // 2FA codes expire fast; a value passed up front is a fallback for the
+  // non-interactive path — interactive runs are prompted at publish time.
+  const otpArg = args.find((a) => a.startsWith('--otp='))?.slice('--otp='.length)
   const version = args.find((a) => !a.startsWith('-'))
 
   if (!version) {
@@ -147,8 +151,9 @@ async function main(): Promise<void> {
   console.log(`  ✓ runcastle@${version}, public, all required assets present`)
 
   // ── Confirm ───────────────────────────────────────────────────────────────
+  const interactive = Boolean(process.stdin.isTTY)
   if (!skipConfirm) {
-    if (!process.stdin.isTTY) {
+    if (!interactive) {
       die('publish needs confirmation but stdin is not a TTY — re-run with --yes')
     }
     const answer = prompt(`\nPublish runcastle@${version} to npm and cut ${tag}? (y/N)`)
@@ -156,12 +161,24 @@ async function main(): Promise<void> {
   }
 
   // ── Publish ───────────────────────────────────────────────────────────────
-  // Pack from build/ (its manifest has no prepack, so it can't reset the
-  // version); publish the same dir. Never publish from packages/server.
+  // Publish from build/ (its manifest has no prepack, so it can't reset the
+  // version). Never publish from packages/server. If the account has 2FA, npm
+  // exits EOTP — prompt for a fresh one-time password and retry (codes expire
+  // in ~30s, so the code must be entered at publish time, not up front).
   step(`Publishing runcastle@${version}`)
-  {
-    const result = await $`npm publish --access public`.cwd(BUILD_DIR).nothrow()
-    if (result.exitCode !== 0) die(`npm publish failed (exit ${result.exitCode})`)
+  const publishOnce = (otp?: string) => {
+    const flags = ['publish', '--access', 'public', ...(otp ? [`--otp=${otp}`] : [])]
+    return $`npm ${flags}`.cwd(BUILD_DIR).nothrow()
+  }
+  let otp = otpArg
+  let result = await publishOnce(otp)
+  for (let attempt = 1; result.exitCode !== 0; attempt++) {
+    if (!interactive || attempt > 3) die(`npm publish failed (exit ${result.exitCode})`)
+    // Most commonly EOTP (2FA); a fresh code also recovers a typo/timeout.
+    const code = prompt('\nPublish failed. Enter a fresh npm one-time password (2FA) to retry, or leave blank to abort:')
+    if (!code?.trim()) die('aborted before publishing — nothing was released')
+    otp = code.trim()
+    result = await publishOnce(otp)
   }
 
   const published = await capture`npm view runcastle version`
