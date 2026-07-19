@@ -34,26 +34,45 @@ and deprecating the old ones.
 ## Step 1 — Build and inspect the tarball
 
 Stamp the release version through the `RUNCASTLE_RELEASE_VERSION` env var. It is
-**not** read from any file — omit it and the manifest defaults to `0.0.0`.
+**not** read from any file — omit it and the manifest defaults to `0.0.0`. It
+must be a real **environment** variable the `bun` child inherits, so the syntax
+differs by shell.
+
+PowerShell (Windows — the primary dev shell):
+
+```powershell
+cd packages\server
+$env:RUNCASTLE_RELEASE_VERSION = "1.0.0"
+bun run build:pkg
+# cleanup (optional): Remove-Item Env:RUNCASTLE_RELEASE_VERSION
+```
+
+bash / zsh (macOS, Linux):
 
 ```sh
 cd packages/server
 RUNCASTLE_RELEASE_VERSION=1.0.0 bun run build:pkg
 ```
 
+> **Gotcha — do not use `$RUNCASTLE_RELEASE_VERSION=1.0.0; bun run build:pkg` in
+> PowerShell.** That sets a PowerShell *variable*, not an environment variable,
+> so `bun` never sees it and the manifest silently falls back to `0.0.0`. Use
+> `$env:` as above.
+
 This bundles the server + bin (core inlined, deps external), builds the web SPA,
 and vendors drizzle migrations, the hook client, the PTY sidecar, the skills
 pack, the built SPA, and the sandcastle template into `build/`.
 
-Verify before packing:
+Verify before packing (PowerShell):
 
-```sh
+```powershell
 cd build
-grep '"version"' package.json          # -> "version": "1.0.0"
-grep '"name"'    package.json          # -> "name": "runcastle"  (NOT @runcastle/server)
-bun pm pack                            # -> runcastle-1.0.0.tgz
-tar tzf runcastle-1.0.0.tgz | grep -E 'bin/runcastle.js|index.js|pty-host.cjs|web/index.html'
+Select-String '"version"|"name"' package.json   # -> "version": "1.0.0", "name": "runcastle"
+bun pm pack                                      # -> runcastle-1.0.0.tgz
+tar tzf runcastle-1.0.0.tgz | Select-String 'bin/runcastle.js|index.js|pty-host.cjs|web/index.html'
 ```
+
+bash equivalent: `grep '"version"' package.json`, `tar tzf … | grep -E …`.
 
 **Gotcha — never run `bun pm pack` from `packages/server` (the source dir).**
 The source manifest has a `prepack` script that re-runs the build *without*
