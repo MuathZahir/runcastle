@@ -94,6 +94,19 @@ describe('buildPublishedManifest', () => {
     expect(build().engines?.bun).toBe('>=1.3.14')
   })
 
+  it('carries a repository.url that matches the repo (required for provenance)', () => {
+    // A provenance publish (E422) fails unless repository.url normalizes to the
+    // GitHub repo the OIDC claim came from.
+    const repo = build().repository as { type?: string; url?: string } | undefined
+    expect(repo?.url).toBe('git+https://github.com/MuathZahir/runcastle.git')
+  })
+
+  it('sets license and description so the npm page is not blank', () => {
+    const m = build()
+    expect(m.license).toBe('MIT')
+    expect(m.description).toBeTruthy()
+  })
+
   it('aligns the version to the release when one is given', () => {
     expect(build({ version: '1.4.2' }).version).toBe('1.4.2')
     expect(build().version).toBe('0.0.0')

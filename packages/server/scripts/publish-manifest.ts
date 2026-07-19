@@ -29,6 +29,21 @@ export interface PackageJson {
 /** The published package name, bin name, and update-banner name — all one word. */
 export const PUBLISHED_NAME = 'runcastle'
 
+/** One-line npm description (mirrors packages/server/README.md). */
+export const PUBLISHED_DESCRIPTION = 'Burn tickets into shipped features with Claude Code.'
+
+/** SPDX license (the workspace root is MIT; the source server manifest omits it). */
+export const PUBLISHED_LICENSE = 'MIT'
+
+/**
+ * Source-repo metadata. `repository.url` is REQUIRED for a provenance publish:
+ * npm's Trusted Publishing verifier (E422 otherwise) checks that it normalizes to
+ * the same repo the OIDC/provenance claim came from — https://github.com/MuathZahir/runcastle.
+ */
+export const REPOSITORY_URL = 'git+https://github.com/MuathZahir/runcastle.git'
+export const HOMEPAGE_URL = 'https://github.com/MuathZahir/runcastle#readme'
+export const BUGS_URL = 'https://github.com/MuathZahir/runcastle/issues'
+
 /** Real files/dirs vendored beside the built JS (see build-package.ts). */
 export const PUBLISHED_FILES = [
   'index.js',
@@ -77,9 +92,15 @@ export function buildPublishedManifest(opts: {
   const manifest: PackageJson = {
     name: PUBLISHED_NAME,
     version: opts.version ?? serverPkg.version ?? '0.0.0',
+    description: PUBLISHED_DESCRIPTION,
+    license: PUBLISHED_LICENSE,
     type: serverPkg.type ?? 'module',
     bin: { [PUBLISHED_NAME]: `./bin/${PUBLISHED_NAME}.js` },
     engines: serverPkg.engines,
+    // repository is required for provenance verification (see REPOSITORY_URL).
+    repository: { type: 'git', url: REPOSITORY_URL },
+    homepage: HOMEPAGE_URL,
+    bugs: { url: BUGS_URL },
     files: [...PUBLISHED_FILES],
     dependencies: mergeRuntimeDeps(serverPkg.dependencies ?? {}, corePkg.dependencies ?? {}),
   }
