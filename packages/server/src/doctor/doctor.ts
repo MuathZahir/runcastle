@@ -13,6 +13,8 @@
  * fixes.
  */
 
+import { DEFAULT_SANDBOX_IMAGE } from '@runcastle/core'
+
 /** Outcome of one injected command. `ok:false` = spawn failed (ENOENT / not on PATH). */
 export interface ExecOutcome {
   /** The process spawned and ran (regardless of exit code). `false` = not found. */
@@ -59,7 +61,7 @@ export interface DoctorEnv {
   platform?: NodeJS.Platform
   /** Directory to resolve git identity in (repo-local overrides honored). */
   cwd?: string
-  /** Sandcastle image tag to inspect (defaults to `sandcastle:runcastle`). */
+  /** Sandcastle image tag to inspect (defaults to {@link DEFAULT_SANDBOX_IMAGE}). */
   imageName?: string
 }
 
@@ -277,7 +279,7 @@ export function afkTokenProbe(env: Record<string, string | undefined>): ProbeRes
 export async function runDoctor(env: DoctorEnv): Promise<DoctorReport> {
   const { exec } = env
   const processEnv = env.env ?? process.env
-  const imageName = env.imageName ?? 'sandcastle:runcastle'
+  const imageName = env.imageName ?? DEFAULT_SANDBOX_IMAGE
 
   const results: ProbeResult[] = [
     await bunProbe(exec),

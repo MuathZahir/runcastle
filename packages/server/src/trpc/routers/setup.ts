@@ -1,4 +1,4 @@
-import { newId } from '@runcastle/core'
+import { newId, resolveSandboxImage } from '@runcastle/core'
 import * as z from 'zod'
 import { runDoctor } from '../../doctor/doctor'
 import { createSystemExec } from '../../doctor/system-exec'
@@ -58,7 +58,7 @@ export const setupRouter = router({
       const exec = createSystemExec()
       const preferred = ctx.config.sandbox === 'podman' ? 'podman' : 'docker'
       const runtime = await resolveRuntime(exec, preferred)
-      const imageName = ctx.config.sandboxImage ?? 'sandcastle:runcastle'
+      const imageName = resolveSandboxImage(ctx.config)
       // `build-image` runs the vendored sandcastle CLI, whose bin is never on the
       // user's PATH in a global install — resolve its entrypoint so we can launch
       // it under node instead of a bare (missing) `sandcastle`.

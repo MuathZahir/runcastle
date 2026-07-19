@@ -9,7 +9,7 @@ import type {
   WorkflowCtx,
   WorkflowDef,
 } from '@runcastle/core'
-import { resolveModel } from '@runcastle/core'
+import { resolveModel, resolveSandboxImage } from '@runcastle/core'
 import { loadConfig } from '@runcastle/core/config-load'
 import { envPath, featureDocsRel, logsDir, worktreeDir } from '@runcastle/core/paths'
 import { resolveSkillsRoot } from '../launcher/skills-root'
@@ -597,12 +597,15 @@ export function buildBurnAgent(
 
 /**
  * Pick the sandcastle sandbox provider for the configured `sandbox`. The two
- * container providers (docker/podman) take only the optional `imageName`;
- * podman keeps sandcastle's rootless defaults (SELinux `:z` relabel + `keep-id`
- * userns) — runcastle passes no volume-label/userns flags of its own.
+ * container providers (docker/podman) take an explicit `imageName` — always
+ * `resolveSandboxImage(config)`, never sandcastle's `sandcastle:<repo-dir-name>`
+ * fallback, so the tag matches what build-image/doctor built (SPEC §8; the
+ * "Image not found locally" mismatch). podman keeps sandcastle's rootless
+ * defaults (SELinux `:z` relabel + `keep-id` userns) — runcastle passes no
+ * volume-label/userns flags of its own.
  */
 export function selectSandbox(config: RuncastleConfig) {
-  const imageOpts = config.sandboxImage ? { imageName: config.sandboxImage } : {}
+  const imageOpts = { imageName: resolveSandboxImage(config) }
   switch (config.sandbox) {
     case 'docker':
       return docker(imageOpts)

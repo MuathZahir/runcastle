@@ -1,4 +1,5 @@
 import { existsSync, readFileSync } from 'node:fs'
+import { resolveSandboxImage } from '@runcastle/core'
 import { envPath } from '@runcastle/core/paths'
 import { loadConfig } from '@runcastle/core/config-load'
 import { parseEnvFile } from '../workflows/ticket-burner'
@@ -37,8 +38,9 @@ function envWithToken(): Record<string, string | undefined> {
 export function resolveDoctorEnv(): DoctorEnv {
   let imageName: string | undefined
   try {
-    imageName = loadConfig().sandboxImage
+    imageName = resolveSandboxImage(loadConfig())
   } catch {
+    // Config unreadable — let the doctor env fall back to DEFAULT_SANDBOX_IMAGE.
     imageName = undefined
   }
   return {

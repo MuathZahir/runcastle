@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, readFileSync, readdirSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { Feature, RuncastleConfig, Waypoint, WorkflowCtx, WorkflowDef } from '@runcastle/core'
-import { newId, resolveModel } from '@runcastle/core'
+import { newId, resolveModel, resolveSandboxImage } from '@runcastle/core'
 import { loadConfig } from '@runcastle/core/config-load'
 import { envPath, featureDocsRel, logsDir, worktreeDir } from '@runcastle/core/paths'
 import { resolveSkillsRoot } from '../launcher/skills-root'
@@ -253,7 +253,7 @@ async function realExecuteResearchRun(
     agent: buildBurnAgent(config, token, model),
     sandbox:
       config.sandbox === 'docker'
-        ? docker(config.sandboxImage ? { imageName: config.sandboxImage } : {})
+        ? docker({ imageName: resolveSandboxImage(config) })
         : noSandbox(),
     cwd: project.repoPath,
     prompt,

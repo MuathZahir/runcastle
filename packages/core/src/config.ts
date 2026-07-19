@@ -84,7 +84,10 @@ export const RuncastleConfig = z.preprocess(
     mainBranch: z.string().default('main'),
     /**
      * Docker image name for the sandcastle burner sandbox (B3 / SPEC §8). When
-     * unset, sandcastle derives its default (`sandcastle:<repo-dir-name>`). The
+     * unset, runcastle uses {@link DEFAULT_SANDBOX_IMAGE} everywhere — build,
+     * doctor probe, and burn — via {@link resolveSandboxImage}; it does NOT let
+     * sandcastle fall back to its own `sandcastle:<repo-dir-name>` derivation,
+     * which would look up a differently-named image than the one we built. The
      * demo image is tagged `sandcastle:runcastle-demo`. Applies to `docker` and
      * `podman`; ignored for `noSandbox`.
      */
@@ -92,6 +95,25 @@ export const RuncastleConfig = z.preprocess(
   }),
 )
 export type RuncastleConfig = z.infer<typeof RuncastleConfig>
+
+/**
+ * The image tag runcastle builds, probes, and burns against when a project
+ * leaves `sandboxImage` unset. This MUST be an explicit constant rather than
+ * letting sandcastle derive its own `sandcastle:<repo-dir-name>` default: the
+ * build-image/doctor/setup paths already hard-coded `sandcastle:runcastle`, so
+ * a run path that omits the name would look up a differently-named image and
+ * fail with "Image not found locally". Everyone resolves through
+ * {@link resolveSandboxImage} so the name can never drift again.
+ */
+export const DEFAULT_SANDBOX_IMAGE = 'sandcastle:runcastle'
+
+/**
+ * The sandcastle image tag to build/probe/run: the project's explicit
+ * `sandboxImage` when set, else {@link DEFAULT_SANDBOX_IMAGE}. Pure.
+ */
+export function resolveSandboxImage(config: Pick<RuncastleConfig, 'sandboxImage'>): string {
+  return config.sandboxImage ?? DEFAULT_SANDBOX_IMAGE
+}
 
 /**
  * Resolve the model for one pipeline step (issue #48). Pure: the chain is
