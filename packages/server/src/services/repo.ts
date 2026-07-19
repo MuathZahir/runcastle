@@ -36,6 +36,7 @@ export function rowToFeature(row: FeatureSelect): Feature {
     mapped: row.mapped,
     phase: row.phase,
     branch: row.branch,
+    baseBranch: row.baseBranch ?? undefined,
     status: row.status,
     createdAt: row.createdAt,
   }

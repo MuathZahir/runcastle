@@ -143,6 +143,11 @@ export const Feature = z.object({
   mapped: z.boolean(),
   phase: Phase,
   branch: z.string(),
+  /**
+   * The branch `branch` was forked from at creation (choosable base; defaults to
+   * the project's `mainBranch`). Unset on features created before this existed.
+   */
+  baseBranch: z.string().optional(),
   status: FeatureStatus,
   createdAt: z.number(),
 })

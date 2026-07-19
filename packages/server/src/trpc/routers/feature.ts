@@ -19,6 +19,7 @@ export const featureRouter = router({
         oneLiner: z.string(),
         size: FeatureSize,
         mapped: z.boolean().optional(),
+        baseBranch: z.string().optional(),
       }),
     )
     .mutation(({ ctx, input }) => features.createFeature(ctx, input)),
@@ -102,7 +103,7 @@ export const featureRouter = router({
       }
       const res = await git.mergeFeature(project, feature)
       if (res.ok) {
-        setPhase(ctx, input.featureId, 'shipped', 'feature.shipped', `merged to ${project.mainBranch}`)
+        setPhase(ctx, input.featureId, 'shipped', 'feature.shipped', `merged to ${res.target}`)
         setFeatureStatus(ctx, input.featureId, 'shipped')
       } else {
         emit(ctx, input.featureId, {

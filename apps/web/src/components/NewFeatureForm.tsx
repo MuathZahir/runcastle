@@ -23,8 +23,20 @@ export function NewFeatureForm({
   const [oneLiner, setOneLiner] = useState('')
   const [size, setSize] = useState<FeatureSize>('full')
   const [mapped, setMapped] = useState(false)
+  // Empty = fork off the project default; a value picks an explicit base branch.
+  const [base, setBase] = useState('')
   const utils = trpc.useUtils()
   const toast = useToast()
+
+  const branchesQ = trpc.project.branches.useQuery({ projectId })
+  const mainBranch = branchesQ.data?.mainBranch ?? ''
+  const currentBranch = branchesQ.data?.current
+  const branchList = branchesQ.data?.branches ?? []
+  // Remote-only branches (origin/…); picking one materializes a local base.
+  const remoteList = branchesQ.data?.remoteBranches ?? []
+  const noBranches = branchList.length === 0 && remoteList.length === 0
+  // What we'll actually fork off: the explicit pick, else the project default.
+  const effectiveBase = base || mainBranch
 
   const launch = trpc.feature.launchSession.useMutation()
   const create = trpc.feature.create.useMutation({
@@ -44,7 +56,15 @@ export function NewFeatureForm({
   const busy = create.isPending || launch.isPending
   const submit = () => {
     const t = title.trim()
-    if (t) create.mutate({ projectId, title: t, oneLiner: oneLiner.trim(), size, mapped })
+    if (t)
+      create.mutate({
+        projectId,
+        title: t,
+        oneLiner: oneLiner.trim(),
+        size,
+        mapped,
+        baseBranch: base || undefined,
+      })
   }
 
   return (
@@ -99,6 +119,39 @@ export function NewFeatureForm({
           </span>
         </div>
 
+        <div className="nf-base">
+          <label className="nf-base-label" htmlFor="nf-base-select">
+            Branch from
+          </label>
+          <select
+            id="nf-base-select"
+            className="nf-base-select"
+            value={effectiveBase}
+            disabled={branchesQ.isPending || noBranches}
+            onChange={(e) => setBase(e.target.value)}
+          >
+            {branchList.map((b) => (
+              <option key={b} value={b}>
+                {b}
+                {b === mainBranch ? ' (default)' : ''}
+                {b === currentBranch && b !== mainBranch ? ' (current)' : ''}
+              </option>
+            ))}
+            {remoteList.length > 0 && (
+              <optgroup label="Remote (creates a local branch)">
+                {remoteList.map((b) => (
+                  <option key={b} value={b}>
+                    {b}
+                  </option>
+                ))}
+              </optgroup>
+            )}
+          </select>
+          <span className="size-hint">
+            forks off this branch — and merges back into it when shipped.
+          </span>
+        </div>
+
         <label className="nf-mapped">
           <input
             type="checkbox"
@@ -113,7 +166,9 @@ export function NewFeatureForm({
           </span>
         </label>
 
-        <div className="nf-branch">branch · feat/{slug || '…'}</div>
+        <div className="nf-branch">
+          branch · feature/{slug || '…'} ← {effectiveBase || '…'}
+        </div>
 
         <div className="nf-actions">
           <Button variant="ghost" onClick={onCancel} disabled={busy}>

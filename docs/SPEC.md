@@ -42,7 +42,7 @@ runcastle/
   - `TicketInput` (what the ideation session emits via MCP): `{ title: string, goal: string, context: string, acceptanceCriteria: string[], seams: string[], blockedBy: number[] /* seq numbers of other tickets in the same batch */ }`
   - `Ticket` = TicketInput + `{ id, featureId, seq: number, status: TicketStatus, commits: string[], error?: string }`
   - `Project { id, name, repoPath, mainBranch, devCommand?: string }`
-  - `Feature { id, projectId, slug, title, oneLiner, size, phase, branch, status: 'active'|'shipped', createdAt }`
+  - `Feature { id, projectId, slug, title, oneLiner, size, phase, branch, baseBranch?, status: 'active'|'shipped', createdAt }` — `baseBranch` is the branch `branch` was forked off at creation (choosable; defaults to `mainBranch`). Unset on features predating the column.
   - `SessionRow { id, featureId, kind, ccSessionId?, transcriptPath?, status: 'launching'|'live'|'ended', worktreePath }`
   - `Run { id, featureId, workflow: string, status: RunStatus, startedAt, endedAt?, summary? }`
   - `EventRow { id: number, featureId, runId?, ticketId?, ts, type: string, message: string, data?: unknown }`
@@ -114,7 +114,8 @@ Router `appRouter` in `trpc/router.ts`, context = `{ db, config }`. All inputs/o
 
 - `project.get(): Project | null`
 - `project.init({ repoPath: string }): Project` — validates it's a git repo; stores mainBranch. Per-project overrides (devCommand, model, sandbox) are set later via `settings.update({ projectId, key, value })` — `project.update` is retired (issue #46).
-- `feature.create({ title, oneLiner, size }): Feature` — slugify title; git branch `feature/<slug>`; scaffold docs; phase=`ideation`
+- `project.branches({ projectId }): { current, mainBranch, branches: string[], remoteBranches: string[] }` — branches for the create-feature base picker (`feature/*` excluded); `current` is the main checkout's branch; `remoteBranches` are `origin/*` refs with no local twin (picking one materializes a local base — see §7 `resolveBaseBranch`).
+- `feature.create({ title, oneLiner, size, baseBranch? }): Feature` — slugify title; resolve `baseBranch` (default `mainBranch`) to a local branch (a remote pick materializes a local tracking branch); git branch `feature/<slug>` forked off it; scaffold docs; phase=`ideation`. Stores the resolved local base; the feature merges back into it at ship (not unconditionally main).
 - `feature.list(): FeatureListItem[]` — Feature + ticket counts + activeRun boolean
 - `feature.get({ id }): { feature, tickets, sessions, runs, docs: {relPath, title}[], gate: { next: GateDef|null, satisfied: boolean, reason?: string } }`
 - `feature.launchSession({ featureId, kind }): { sessionId }` (B1 behavior)
@@ -155,14 +156,16 @@ Mounted at `POST /mcp` (Streamable HTTP; use @hono/mcp if STACK-NOTES confirms, 
 ## 7. Git service (B2) — `services/git.ts`, use `simple-git`
 
 - `assertRepo(repoPath)`, `detectMainBranch(repoPath)`
-- `createFeatureBranch(project, slug)` → branch `feature/<slug>` from mainBranch (no checkout of main working dir)
+- `createFeatureBranch(project, slug, base?)` → branch `feature/<slug>` from `base` (default `project.mainBranch`; must be an existing local branch) (no checkout of main working dir)
+- `listBranches(project)` → `{ current, mainBranch, branches, remoteBranches }` — local branches + remote-only `origin/*` refs (`feature/*` excluded) for the `project.branches` base picker
+- `resolveBaseBranch(project, base)` → local branch name — passes a local branch through; materializes a local tracking branch for a remote-tracking pick (`origin/<name>` → local `<name>`, reusing an existing local one); throws if neither exists. Keeps the stored base a real merge target.
 - `ensureTalkWorktree(project, feature) → worktreePath` — `git worktree add <dataDir path> feature/<slug>`; reuse if exists; prune stale on failure and retry once
 - `commitDocs(worktreePath, message)` — stage `docs/features/<slug>` only, commit if changes (used by MCP complete_phase to checkpoint knowledge)
 - Test drive (in-memory module state: `{ active?: { featureId, previousBranch } }`):
   - `start`: deny (with reason) if: main checkout dirty (`status --porcelain` non-empty) | another test drive active | feature has an active run. Else record current branch, `checkout feature/<slug>`, return ok. If `project.devCommand` set, spawn it in a drive-owned embedded PTY pane (registry id `drive:<featureId>` — a NON-session id, so session guards / resume never touch it) via a generalized shell/cmd shim; sniff the first localhost URL from its output for the "Open app" link (sticky per drive). Best-effort — a spawn failure never fails the drive.
   - `stop`: checkout `previousBranch`, clear state, and kill the dev pane's whole process tree (POSIX process-group signal / Windows ConPTY teardown) so its port is freed with no orphan; the sniffed URL is cleared.
   - `activeDriveInfo()` → `{ featureId, branch, devPaneId?, devUrl? } | null` for the review-phase dev pane + Open app link (polled via `feature.driveInfo`).
-- `mergeFeature(project, feature)`: deny if test drive active or checkout dirty. `checkout mainBranch` → `merge --no-ff feature/<slug>` → on conflict `merge --abort`, return `{ ok: false, conflict: true }` + event; on success return ok (caller sets phase shipped, emits event). Stay on mainBranch after.
+- `mergeFeature(project, feature)`: target = `feature.baseBranch ?? mainBranch` (a feature lands back on the branch it forked from). Deny if test drive active, checkout dirty, or target branch gone. Record the pre-merge branch → `checkout target` → `merge --no-ff feature/<slug>` → on conflict `merge --abort`, return `{ ok: false, conflict: true, target }` + event; on success return `{ ok: true, target }` (caller sets phase shipped, emits event). Restore the pre-merge branch after (best-effort; detached HEAD left as-is) so the shared checkout isn't silently parked on the base.
 
 ## 8. Ticket burner (B3) — `workflows/ticket-burner.ts` + `@ai-hero/sandcastle`
 

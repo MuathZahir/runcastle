@@ -17,6 +17,7 @@ import {
   cleanupResearchBranches,
   commitDocs,
   createFeatureBranch,
+  listBranches,
   detachWorktree,
   ensureTalkWorktree,
   mergeFeature,
@@ -24,6 +25,7 @@ import {
   reattachWorktree,
   recordDriveUrl,
   researchBranchName,
+  resolveBaseBranch,
   testDrive,
 } from '../src/services/git'
 import { makeTestCtx } from './helpers/db'
@@ -75,6 +77,26 @@ async function currentBranch(g: SimpleGit): Promise<string> {
   return (await g.revparse(['--abbrev-ref', 'HEAD'])).trim()
 }
 
+/**
+ * Give `repo` an `origin` remote (a bare clone) that carries `branch`, WITHOUT a
+ * local copy of it — i.e. `origin/<branch>` exists as a remote-tracking ref only.
+ * Mirrors a fresh clone where the team's base line lives only on the remote.
+ */
+async function addRemoteOnlyBranch(g: SimpleGit, repoDir: string, branch: string): Promise<void> {
+  const remote = mkTmp('rc-origin-')
+  await simpleGit(remote).init(['--bare', '-b', 'main'])
+  await g.addRemote('origin', remote)
+  await g.push(['-u', 'origin', 'main'])
+  await g.checkoutLocalBranch(branch)
+  writeFileSync(join(repoDir, `${branch}.txt`), 'seed\n')
+  await g.add([`${branch}.txt`])
+  await g.commit(`seed ${branch}`)
+  await g.push(['-u', 'origin', branch])
+  await g.checkout('main')
+  await g.branch(['-D', branch])
+  await g.fetch()
+}
+
 beforeEach(() => {
   __resetTestDriveState()
 })
@@ -121,6 +143,129 @@ describe('createFeatureBranch', () => {
     expect(again).toBe('feature/dup')
     const branches = await simpleGit(project.repoPath).branchLocal()
     expect(branches.all.filter((b) => b === 'feature/dup')).toHaveLength(1)
+  })
+
+  it('forks off an explicit base branch, not just mainBranch', async () => {
+    const g = simpleGit(project.repoPath)
+    // A release line diverged from main by one commit.
+    await g.raw(['branch', 'release'])
+    await g.checkout('release')
+    writeFileSync(join(project.repoPath, 'REL.md'), 'rel\n')
+    await g.add(['REL.md'])
+    await g.commit('release-only commit')
+    const releaseTip = (await g.revparse(['release'])).trim()
+    await g.checkout('main')
+
+    const branch = await createFeatureBranch(project, 'off-release', 'release')
+    expect(branch).toBe('feature/off-release')
+    // The new branch points at the release tip, not main's tip.
+    expect((await g.revparse(['feature/off-release'])).trim()).toBe(releaseTip)
+    expect(await currentBranch(g)).toBe('main')
+  })
+
+  it('falls back to mainBranch when base is blank/undefined', async () => {
+    const g = simpleGit(project.repoPath)
+    const mainTip = (await g.revparse(['main'])).trim()
+    await createFeatureBranch(project, 'blank-base', '   ')
+    expect((await g.revparse(['feature/blank-base'])).trim()).toBe(mainTip)
+  })
+
+  it('throws a clear error when the base branch does not exist', async () => {
+    await expect(createFeatureBranch(project, 'bad-base', 'nope')).rejects.toThrow(/"nope"/)
+    const branches = await simpleGit(project.repoPath).branchLocal()
+    expect(branches.all).not.toContain('feature/bad-base')
+  })
+})
+
+describe('listBranches', () => {
+  let ctx: AppCtx
+  let project: Project
+
+  beforeEach(async () => {
+    ctx = await makeTestCtx()
+    const repo = mkTmp('rc-listbr-')
+    await initRepo(repo)
+    project = seedProject(ctx, repo)
+  })
+
+  it('reports current + mainBranch and excludes feature/* branches', async () => {
+    const g = simpleGit(project.repoPath)
+    await g.raw(['branch', 'dev'])
+    await createFeatureBranch(project, 'hidden')
+
+    const res = await listBranches(project)
+    expect(res.mainBranch).toBe('main')
+    expect(res.current).toBe('main')
+    expect(res.branches).toContain('main')
+    expect(res.branches).toContain('dev')
+    expect(res.branches).not.toContain('feature/hidden')
+    expect(res.remoteBranches).toEqual([])
+  })
+
+  it('surfaces remote-only branches and hides ones shadowed by a local twin', async () => {
+    const g = simpleGit(project.repoPath)
+    await addRemoteOnlyBranch(g, project.repoPath, 'release')
+
+    const res = await listBranches(project)
+    // release lives only on the remote → offered as origin/release.
+    expect(res.remoteBranches).toContain('origin/release')
+    // main has a local twin → not repeated as a remote option; no symbolic HEAD.
+    expect(res.remoteBranches).not.toContain('origin/main')
+    expect(res.remoteBranches.some((b) => b.endsWith('/HEAD'))).toBe(false)
+    expect(res.branches).not.toContain('origin/release')
+  })
+})
+
+describe('resolveBaseBranch', () => {
+  let ctx: AppCtx
+  let project: Project
+
+  beforeEach(async () => {
+    ctx = await makeTestCtx()
+    const repo = mkTmp('rc-resolve-')
+    await initRepo(repo)
+    project = seedProject(ctx, repo)
+  })
+
+  it('passes an existing local branch through unchanged', async () => {
+    await simpleGit(project.repoPath).raw(['branch', 'develop'])
+    expect(await resolveBaseBranch(project, 'develop')).toBe('develop')
+  })
+
+  it('materializes a local tracking branch for a remote-only pick', async () => {
+    const g = simpleGit(project.repoPath)
+    await addRemoteOnlyBranch(g, project.repoPath, 'release')
+
+    const resolved = await resolveBaseBranch(project, 'origin/release')
+    expect(resolved).toBe('release')
+    // A real local branch now exists (a valid future merge target)...
+    const local = await g.branchLocal()
+    expect(local.all).toContain('release')
+    // ...tracking origin/release.
+    const upstream = (
+      await g.raw(['rev-parse', '--abbrev-ref', '--symbolic-full-name', 'release@{u}'])
+    ).trim()
+    expect(upstream).toBe('origin/release')
+  })
+
+  it('reuses an existing local branch instead of clobbering it', async () => {
+    const g = simpleGit(project.repoPath)
+    await addRemoteOnlyBranch(g, project.repoPath, 'release')
+    // A local `release` diverged from origin/release by a commit.
+    await g.checkoutLocalBranch('release')
+    writeFileSync(join(project.repoPath, 'local-only.txt'), 'x\n')
+    await g.add(['local-only.txt'])
+    await g.commit('local divergence')
+    const localTip = (await g.revparse(['release'])).trim()
+    await g.checkout('main')
+
+    expect(await resolveBaseBranch(project, 'origin/release')).toBe('release')
+    // The existing local branch is untouched (not reset to the remote tip).
+    expect((await g.revparse(['release'])).trim()).toBe(localTip)
+  })
+
+  it('throws when the pick names neither a local nor a remote branch', async () => {
+    await expect(resolveBaseBranch(project, 'ghost')).rejects.toThrow(/"ghost"/)
   })
 })
 
@@ -649,11 +794,70 @@ describe('mergeFeature', () => {
 
     expect(res.ok).toBe(true)
     expect(res.conflict).toBeUndefined()
+    expect(res.target).toBe('main')
     expect(await currentBranch(g)).toBe('main')
     expect(existsSync(join(project.repoPath, 'feature.txt'))).toBe(true)
     // --no-ff → the merge produces a dedicated merge commit (two parents)
     const parents = (await g.raw(['rev-list', '--parents', '-n', '1', 'HEAD'])).trim().split(/\s+/)
     expect(parents.length).toBe(3)
+  })
+
+  it('merges back into the feature base branch, not main', async () => {
+    const g = simpleGit(project.repoPath)
+    // A develop line forked off main; the feature forks off develop.
+    await g.raw(['branch', 'develop'])
+    await createFeatureBranch(project, 'on-dev', 'develop')
+    await g.checkout('feature/on-dev')
+    writeFileSync(join(project.repoPath, 'dev-feat.txt'), 'hi\n')
+    await g.add(['dev-feat.txt'])
+    await g.commit('feat: dev work')
+    await g.checkout('main')
+
+    const feature = seedFeature(ctx, project.id, { slug: 'on-dev', baseBranch: 'develop' })
+    const res = await mergeFeature(project, feature)
+
+    expect(res.ok).toBe(true)
+    expect(res.target).toBe('develop')
+    // The merge landed on develop, but the checkout is RESTORED to main (where it
+    // was pre-merge) — the shared checkout isn't silently parked on the base.
+    expect(await currentBranch(g)).toBe('main')
+    // develop now contains the feature commit; main does NOT (never touched main).
+    const contains = await g.raw(['branch', '--contains', 'feature/on-dev'])
+    expect(contains).toMatch(/\bdevelop\b/)
+    expect(contains).not.toMatch(/\bmain\b/)
+  })
+
+  it('restores the pre-merge branch even when merging into main', async () => {
+    // Checkout sits on a scratch branch at merge time; after merging into main it
+    // must come back to that scratch branch, not stay on main.
+    await createFeatureBranch(project, 'scratchy')
+    const g = simpleGit(project.repoPath)
+    await g.checkout('feature/scratchy')
+    writeFileSync(join(project.repoPath, 'f.txt'), 'x\n')
+    await g.add(['f.txt'])
+    await g.commit('feat: work')
+    await g.checkout('main')
+    await g.checkoutLocalBranch('scratch')
+
+    const feature = seedFeature(ctx, project.id, { slug: 'scratchy' })
+    const res = await mergeFeature(project, feature)
+
+    expect(res.ok).toBe(true)
+    expect(res.target).toBe('main')
+    expect(await currentBranch(g)).toBe('scratch')
+    // main still got the merge.
+    const contains = await g.raw(['branch', '--contains', 'feature/scratchy'])
+    expect(contains).toMatch(/\bmain\b/)
+  })
+
+  it('denies merge when the base branch no longer exists', async () => {
+    const g = simpleGit(project.repoPath)
+    await g.raw(['branch', 'temp-base'])
+    await createFeatureBranch(project, 'orphan', 'temp-base')
+    await g.branch(['-D', 'temp-base'])
+
+    const feature = seedFeature(ctx, project.id, { slug: 'orphan', baseBranch: 'temp-base' })
+    await expect(mergeFeature(project, feature)).rejects.toThrow(/"temp-base" no longer exists/)
   })
 
   it('conflict: aborts, reports conflict, and leaves a clean checkout on main', async () => {

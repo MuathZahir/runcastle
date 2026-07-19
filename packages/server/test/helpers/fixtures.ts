@@ -41,6 +41,7 @@ export function seedFeature(
       mapped: overrides.mapped ?? false,
       phase: overrides.phase ?? 'ideation',
       branch: overrides.branch ?? `feature/${slug}`,
+      baseBranch: overrides.baseBranch ?? null,
       status: overrides.status ?? 'active',
       createdAt: overrides.createdAt ?? Date.now(),
     })

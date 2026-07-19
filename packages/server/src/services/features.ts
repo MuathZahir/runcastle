@@ -79,6 +79,12 @@ export interface CreateFeatureInput {
   size: FeatureSize
   /** Start the feature in mapped ideation (ADR-0001). Orthogonal to size. */
   mapped?: boolean
+  /**
+   * Branch to fork `feature/<slug>` off. Defaults to the project's `mainBranch`.
+   * Any existing local branch is valid (the current branch, a release line,
+   * another feature) — the merge target stays `mainBranch` regardless.
+   */
+  baseBranch?: string
 }
 
 export async function createFeature(
@@ -88,8 +94,11 @@ export async function createFeature(
   const project = requireProjectById(ctx, input.projectId)
   const slug = uniqueSlug(ctx, project.id, input.title)
   const branch = `feature/${slug}`
+  const requestedBase = input.baseBranch?.trim() || project.mainBranch
 
-  const { branchReady } = await ensureFeatureBranch(project, slug)
+  // The stored base is the RESOLVED local branch (a remote pick materialized a
+  // local tracking branch), so it's always a real merge target at ship time.
+  const { branchReady, baseBranch } = await ensureFeatureBranch(project, slug, requestedBase)
 
   const row = {
     id: newId('feat'),
@@ -101,6 +110,7 @@ export async function createFeature(
     mapped: input.mapped ?? false,
     phase: 'ideation' as const,
     branch,
+    baseBranch,
     status: 'active' as const,
     createdAt: Date.now(),
   }
@@ -110,9 +120,9 @@ export async function createFeature(
   emit(ctx, feature.id, {
     type: 'feature.created',
     message: branchReady
-      ? `feature.created (${branch})`
+      ? `feature.created (${branch} ← ${baseBranch})`
       : 'feature.created (branch pending)',
-    data: { slug, branch, branchReady },
+    data: { slug, branch, baseBranch, branchReady },
   })
 
   scaffoldDocs(ctx, feature)
@@ -140,12 +150,16 @@ export async function createFeature(
 async function ensureFeatureBranch(
   project: Project,
   slug: string,
-): Promise<{ branchReady: boolean }> {
+  requestedBase: string,
+): Promise<{ branchReady: boolean; baseBranch: string }> {
   try {
-    await git.createFeatureBranch(project, slug)
-    return { branchReady: true }
+    const baseBranch = await git.resolveBaseBranch(project, requestedBase)
+    await git.createFeatureBranch(project, slug, baseBranch)
+    return { branchReady: true, baseBranch }
   } catch (e) {
-    if (isNotImplemented(e)) return { branchReady: false }
+    // Pre-B2 the git service is a stub — the feature is created branchless and
+    // the requested base is recorded as-is (resolution happens when B2 lands).
+    if (isNotImplemented(e)) return { branchReady: false, baseBranch: requestedBase }
     throw e
   }
 }

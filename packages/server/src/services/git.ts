@@ -48,6 +48,8 @@ export interface DriveInfo {
 export interface MergeResult {
   ok: boolean
   conflict?: boolean
+  /** The branch the feature was merged into (its base; default `mainBranch`). */
+  target: string
 }
 
 /** Repo-relative dir (forward slashes) holding every feature's knowledge docs. */
@@ -138,17 +140,103 @@ export async function detectMainBranch(repoPath: string): Promise<string> {
 // --- feature branch ---------------------------------------------------------
 
 /**
- * Create branch `feature/<slug>` from `project.mainBranch` WITHOUT switching the
- * main working copy (`git branch <name> <mainBranch>`). Idempotent: if the
- * branch already exists this is a no-op. Returns the branch name.
+ * Create branch `feature/<slug>` from `base` (default `project.mainBranch`)
+ * WITHOUT switching the main working copy (`git branch <name> <base>`). `base`
+ * lets the caller fork a feature off any existing local branch — the current
+ * branch, another feature, a release line — not just the project default.
+ * Idempotent: if the branch already exists this is a no-op (the base is
+ * ignored). Throws a clear error if `base` is not an existing local branch.
+ * Returns the branch name.
  */
-export async function createFeatureBranch(project: Project, slug: string): Promise<string> {
+export async function createFeatureBranch(
+  project: Project,
+  slug: string,
+  base?: string,
+): Promise<string> {
   const branch = featureBranch(slug)
+  const from = base?.trim() || project.mainBranch
   const g = git(project.repoPath)
   const branches = await g.branchLocal()
   if (branches.all.includes(branch)) return branch
-  await g.raw(['branch', branch, project.mainBranch])
+  if (!branches.all.includes(from)) {
+    throw new Error(`base branch "${from}" does not exist in ${project.repoPath}`)
+  }
+  await g.raw(['branch', branch, from])
   return branch
+}
+
+export interface BranchList {
+  /** The branch the main checkout is on right now (the "use current" default). */
+  current: string
+  /** The project's stored default base. */
+  mainBranch: string
+  /** Local branches, `feature/*` excluded. */
+  branches: string[]
+  /**
+   * Remote-tracking branches with NO local counterpart, as `origin/<name>` — for
+   * teams whose base line (`develop`, `release/*`) lives only on the remote after
+   * a fresh clone. Picking one materializes a local tracking branch (see
+   * `resolveBaseBranch`), so it becomes a real, push-able ship destination.
+   */
+  remoteBranches: string[]
+}
+
+/**
+ * List branches for the create-feature base picker (§4 `project.branches`). You
+ * fork a NEW feature off a base, not off another in-flight talk branch, so
+ * `feature/*` is excluded everywhere; remote refs already shadowed by a local
+ * branch of the same name are dropped (the local one is the real target).
+ */
+export async function listBranches(project: Project): Promise<BranchList> {
+  const g = git(project.repoPath)
+  const local = await g.branchLocal()
+  const branches = local.all.filter((name) => !name.startsWith('feature/'))
+
+  const localSet = new Set(local.all)
+  let remoteBranches: string[] = []
+  try {
+    const remote = await g.branch(['-r'])
+    remoteBranches = remote.all
+      // Drop symbolic refs like `origin/HEAD -> origin/main`.
+      .filter((r) => !r.includes(' -> ') && !r.endsWith('/HEAD'))
+      // Remote-only: strip the `<remote>/` prefix and keep those with no local
+      // twin and not a talk branch.
+      .filter((r) => {
+        const short = r.replace(/^[^/]+\//, '')
+        return !short.startsWith('feature/') && !localSet.has(short)
+      })
+  } catch {
+    // No remotes (or a bare/odd repo) — remote picks simply aren't offered.
+  }
+
+  return { current: local.current, mainBranch: project.mainBranch, branches, remoteBranches }
+}
+
+/**
+ * Resolve a base-branch pick to the LOCAL branch a feature forks from and later
+ * merges back into. A local branch passes through unchanged. A remote-tracking
+ * pick (`origin/<name>`) is materialized into a local `<name>` tracking it —
+ * created at the remote tip when absent, an existing local `<name>` reused (never
+ * clobbered) — so a feature forked off a remote line still has a real, local,
+ * push-able ship destination. Throws if the pick names neither.
+ */
+export async function resolveBaseBranch(project: Project, base: string): Promise<string> {
+  const g = git(project.repoPath)
+  const local = await g.branchLocal()
+  if (local.all.includes(base)) return base
+
+  const remotes = (await g.getRemotes()).map((r) => r.name)
+  for (const rem of remotes) {
+    const prefix = `${rem}/`
+    if (!base.startsWith(prefix)) continue
+    const name = base.slice(prefix.length)
+    if (!name || name.endsWith('/HEAD')) break
+    if (local.all.includes(name)) return name
+    await g.raw(['branch', '--track', name, base])
+    return name
+  }
+
+  throw new Error(`base branch "${base}" does not exist in ${project.repoPath}`)
 }
 
 // --- talk worktree ----------------------------------------------------------
@@ -164,8 +252,10 @@ export async function ensureTalkWorktree(project: Project, feature: Feature): Pr
   const branch = featureBranch(feature.slug)
   const g = git(project.repoPath)
 
-  // The worktree can only be checked out to an existing branch.
-  await ensureBranchExists(g, branch, project.mainBranch)
+  // The worktree can only be checked out to an existing branch. Normally the
+  // branch already exists (created at feature.create); this only recreates it if
+  // it went missing — from the feature's recorded base, falling back to main.
+  await ensureBranchExists(g, branch, feature.baseBranch ?? project.mainBranch)
 
   if (await worktreeIsValid(g, worktreePath, branch)) return worktreePath
 
@@ -642,16 +732,28 @@ export async function testDrive(
 // --- merge ------------------------------------------------------------------
 
 /**
- * Merge `feature/<slug>` into `project.mainBranch` with `--no-ff`. Denies (via
- * `GateError` → PRECONDITION_FAILED) while a test drive is active or the main
- * checkout is dirty. On conflict it aborts and reports `{ ok: false, conflict:
- * true }`, leaving the checkout clean and on the main branch either way.
+ * Merge `feature/<slug>` into its base branch (`feature.baseBranch`, default
+ * `project.mainBranch`) with `--no-ff` — a feature lands back on the branch it
+ * was forked from, not unconditionally on main. Denies (via `GateError` →
+ * PRECONDITION_FAILED) while a test drive is active or the main checkout is
+ * dirty. On conflict it aborts and reports `{ ok: false, conflict: true }`,
+ * leaving the checkout clean either way. The resolved `target` is always
+ * returned so the caller can report/record it.
+ *
+ * The merge has to check out `target` to build the `--no-ff` commit, but the
+ * user's checkout is a shared surface — silently parking them on `develop` after
+ * shipping a develop-based feature is a footgun (accidental commits to the wrong
+ * branch). So we record where the checkout was and restore it afterwards
+ * (best-effort — the merge has already landed; a failed restore must not fail
+ * the ship). A detached HEAD is left as-is.
  *
  * The active-drive guard is a safety net: the merge tRPC handler already stops a
  * drive of the SAME feature first (via `activeTestDriveFeatureId`), so in the
  * normal flow this only fires when a DIFFERENT feature is being test-driven.
  */
 export async function mergeFeature(project: Project, feature: Feature): Promise<MergeResult> {
+  const target = feature.baseBranch ?? project.mainBranch
+
   if (testDriveState) {
     throw new GateError('Cannot merge while a test drive is active — stop it first')
   }
@@ -662,19 +764,43 @@ export async function mergeFeature(project: Project, feature: Feature): Promise<
     throw new GateError('Cannot merge — working tree has uncommitted changes')
   }
 
+  const branches = await g.branchLocal()
+  if (!branches.all.includes(target)) {
+    throw new GateError(`Cannot merge — base branch "${target}" no longer exists`)
+  }
+
+  const previous = (await g.revparse(['--abbrev-ref', 'HEAD'])).trim()
   const branch = featureBranch(feature.slug)
-  await g.checkout(project.mainBranch)
+  await g.checkout(target)
 
   try {
     await g.merge(['--no-ff', branch])
-    return { ok: true }
+    await restoreBranch(g, previous, target)
+    return { ok: true, target }
   } catch (e) {
     if (await mergeInProgress(g)) {
       await g.raw(['merge', '--abort'])
-      return { ok: false, conflict: true }
+      await restoreBranch(g, previous, target)
+      return { ok: false, conflict: true, target }
     }
     // Not a conflict (e.g. unknown branch) — surface the real failure.
     throw e instanceof Error ? e : new Error(errMsg(e))
+  }
+}
+
+/**
+ * Restore the checkout to `previous` after a merge that had to check out
+ * `target`. No-op when they match or when `previous` is a detached HEAD (git
+ * reports `HEAD`), which we can't meaningfully return to by name. Best-effort:
+ * the merge already landed, so a restore failure is swallowed (the caller keeps
+ * the checkout on `target` rather than turning a shipped feature into an error).
+ */
+async function restoreBranch(g: SimpleGit, previous: string, target: string): Promise<void> {
+  if (previous === target || previous === 'HEAD' || !previous) return
+  try {
+    await g.checkout(previous)
+  } catch {
+    // leave the checkout on `target` — a shipped feature must never fail here
   }
 }
 

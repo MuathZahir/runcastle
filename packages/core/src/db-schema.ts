@@ -45,6 +45,12 @@ export const features = sqliteTable('features', {
   mapped: integer('mapped', { mode: 'boolean' }).notNull().default(false),
   phase: text('phase').notNull().$type<Phase>(),
   branch: text('branch').notNull(),
+  /**
+   * The branch `branch` was created from (issue: choosable base). Null for
+   * features created before this column existed — historically always the
+   * project's `mainBranch`. New rows always store the resolved base explicitly.
+   */
+  baseBranch: text('base_branch'),
   status: text('status').notNull().$type<FeatureStatus>(),
   createdAt: integer('created_at').notNull(),
 })

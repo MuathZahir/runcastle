@@ -57,6 +57,67 @@ describe('feature.create', () => {
     expect(existsSync(join(repoPath, 'docs', 'features', 'brancher', 'brief.md'))).toBe(true)
   })
 
+  it('defaults baseBranch to the project mainBranch and forks from it', async () => {
+    const f = await createFeature(ctx, { projectId, title: 'Defaulted', oneLiner: 'x', size: 'full' })
+    expect(f.baseBranch).toBe('main')
+    const created = listAfter(ctx, f.id, 0).find((e) => e.type === 'feature.created')
+    expect(created?.message).toContain('← main')
+  })
+
+  it('forks the feature off an explicit baseBranch when given', async () => {
+    const g = simpleGit(repoPath)
+    await g.raw(['branch', 'develop'])
+    await g.checkout('develop')
+    writeFileSync(join(repoPath, 'DEV.md'), 'dev\n')
+    await g.add(['DEV.md'])
+    await g.commit('develop-only commit')
+    const developTip = (await g.revparse(['develop'])).trim()
+    await g.checkout('main')
+
+    const f = await createFeature(ctx, {
+      projectId,
+      title: 'Off Develop',
+      oneLiner: 'x',
+      size: 'full',
+      baseBranch: 'develop',
+    })
+    expect(f.baseBranch).toBe('develop')
+    // The feature branch tip is develop's tip (before its own doc commit).
+    const mergeBase = (await g.raw(['merge-base', 'feature/off-develop', 'develop'])).trim()
+    expect(mergeBase).toBe(developTip)
+  })
+
+  it('materializes a local base for a remote-only pick and stores the local name', async () => {
+    const g = simpleGit(repoPath)
+    // Give the repo an origin carrying `release` with no local copy.
+    const remote = tmpRepo()
+    await simpleGit(remote).init(['--bare', '-b', 'main'])
+    await g.addRemote('origin', remote)
+    await g.push(['-u', 'origin', 'main'])
+    await g.checkoutLocalBranch('release')
+    writeFileSync(join(repoPath, 'rel.txt'), 'r\n')
+    await g.add(['rel.txt'])
+    await g.commit('seed release')
+    await g.push(['-u', 'origin', 'release'])
+    await g.checkout('main')
+    await g.branch(['-D', 'release'])
+    await g.fetch()
+
+    const f = await createFeature(ctx, {
+      projectId,
+      title: 'Off Remote',
+      oneLiner: 'x',
+      size: 'full',
+      baseBranch: 'origin/release',
+    })
+
+    // Stored base is the resolved LOCAL branch, a real future merge target.
+    expect(f.baseBranch).toBe('release')
+    const local = await g.branchLocal()
+    expect(local.all).toContain('release')
+    expect(local.all).toContain('feature/off-remote')
+  })
+
   it('commits the scaffolded brief so the working tree stays clean (ship gates)', async () => {
     await createFeature(ctx, { projectId, title: 'Cleanly', oneLiner: 'z', size: 'full' })
     const g = simpleGit(repoPath)
