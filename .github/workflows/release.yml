@@ -1,0 +1,89 @@
+# Cut a runcastle release from a pushed `v*` tag.
+#
+# Trigger: push a tag like `v1.0.4` (the local `bun run release <version>`
+# script does this for you). The tag name is the version — it is injected as
+# RUNCASTLE_RELEASE_VERSION at build time, so nothing version-related is
+# committed to the repo (package.json stays 0.0.0 by design).
+#
+# Auth: npm Trusted Publishing (OIDC) — no NPM_TOKEN. The `id-token: write`
+# permission lets the runner mint a short-lived OIDC token npm trusts; provenance
+# attestations are generated automatically for this public repo/package. The
+# trust is configured on npmjs.com (package → Settings → Trusted Publisher) and
+# must point at THIS file: MuathZahir / runcastle / release.yml.
+name: release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write # checkout + create the GitHub release
+  id-token: write # OIDC token for npm trusted publishing
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # full history so the release notes can diff the prior tag
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: '1.3.14' # matches engines.bun floor
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24' # ships a recent npm; also the PTY sidecar runtime
+          registry-url: 'https://registry.npmjs.org'
+          package-manager-cache: false # never cache in a release build
+
+      - name: Resolve version from tag
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]]; then
+            echo "::error::tag '$GITHUB_REF_NAME' is not a vX.Y.Z release tag"
+            exit 1
+          fi
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          echo "Releasing runcastle $VERSION"
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Typecheck
+        run: bun run typecheck
+
+      - name: Test
+        run: bun run test
+
+      - name: Build publishable package
+        working-directory: packages/server
+        env:
+          RUNCASTLE_RELEASE_VERSION: ${{ env.VERSION }}
+        run: bun run build:pkg
+
+      - name: Verify built manifest
+        working-directory: packages/server/build
+        run: |
+          NAME=$(node -p "require('./package.json').name")
+          VER=$(node -p "require('./package.json').version")
+          [ "$NAME" = "runcastle" ] || { echo "::error::built name is '$NAME', expected 'runcastle'"; exit 1; }
+          [ "$VER" = "$VERSION" ] || { echo "::error::built version is '$VER', expected '$VERSION'"; exit 1; }
+          echo "✓ runcastle@$VER ready to publish"
+
+      # OIDC trusted publishing landed in npm 11.5.1; guarantee a new-enough CLI.
+      - name: Ensure npm supports trusted publishing
+        run: npm install -g npm@latest
+
+      # No token: OIDC + `id-token: write` authenticate the publish, and npm
+      # attaches provenance automatically for this public repo/package.
+      - name: Publish to npm
+        working-directory: packages/server/build
+        run: npm publish --provenance --access public
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" --title "runcastle $VERSION" --generate-notes

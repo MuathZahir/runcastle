@@ -8,25 +8,54 @@
 
 ## Quick path
 
-For a normal cut, run the wrapper — it takes the version and does Steps 1, 3,
-and 5 in order (preconditions → tests → build → verify → confirm → publish →
-tag → GitHub release):
+Releases are **CI-driven**: you push a version tag, and
+`.github/workflows/release.yml` does Steps 1, 3, and 5 — typecheck + tests,
+build the package with the version stamped in, publish to npm, and cut the
+GitHub release. The wrapper's only job is to cut and push the tag:
 
 ```sh
-bun run release 1.0.0        # add --yes to skip the pre-publish confirmation
+bun run release 1.0.4        # add --yes to skip the confirmation
 ```
 
-It **stops** before anything irreversible on any failed check (dirty tree, not
-logged in, red tests, version mismatch) and pauses for a `y/N` confirmation
-right before `npm publish`. If the npm account has 2FA, publish exits `EOTP`;
-the wrapper then prompts for a fresh one-time password and retries (enter the
-code at that prompt — it must be current, so it is asked at publish time, not up
-front). For a non-interactive run, pass it in: `bun run release 1.0.0 --yes
---otp=123456`. It deliberately does **not** run the one-time /
-one-way / human steps — deprecating the old castellan versions (Step 2), making
-the repo public (Step 4), or the clean-machine verify (Step 6). Do those by hand
-from the sections below. The rest of this doc is the reference for what each
-automated step does and why.
+It **stops** before pushing on any failed check (dirty tree, tag already exists
+locally or on `origin`) and pauses for a `y/N` confirmation. Then it pushes the
+annotated `v1.0.4` tag and prints the Actions URL to watch. The version lives
+**only in the tag** — nothing version-related is committed; CI reads the version
+from the tag name and passes it as `RUNCASTLE_RELEASE_VERSION` (Step 1).
+
+If a run fails, delete the tag and re-release once fixed:
+
+```sh
+git push --delete origin v1.0.4 && git tag -d v1.0.4
+```
+
+### How CI authenticates — npm Trusted Publishing (OIDC)
+
+The publish uses **OpenID Connect**, so there is **no `NPM_TOKEN` secret**. The
+workflow requests `id-token: write`; npm trusts a short-lived token minted for
+this exact repo + workflow, and attaches a build-provenance attestation
+automatically (public repo → public package). One-time setup on npmjs.com:
+package → **Settings** → **Trusted Publisher** → GitHub Actions, with:
+
+| Field | Value |
+|-------|-------|
+| Organization or user | `MuathZahir` |
+| Repository | `runcastle` |
+| Workflow filename | `release.yml` |
+| Environment name | *(leave blank)* |
+| Allowed actions | ✅ Allow npm publish |
+
+### Manual publish fallback
+
+If you ever need to publish from a laptop (OIDC unavailable, emergency), the
+underlying steps are still below (build → publish → tag). Authenticate either
+with an **Automation** token exported as `NPM_TOKEN` (2FA-exempt) or an
+`npm login` session plus a one-time password from your authenticator app.
+
+It deliberately does **not** run the one-time / one-way / human steps —
+deprecating the old castellan versions (Step 2), making the repo public (Step 4),
+or the clean-machine verify (Step 6). Do those by hand from the sections below.
+The rest of this doc is the reference for what each automated step does and why.
 
 ## What ships
 
