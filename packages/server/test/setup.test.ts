@@ -1,7 +1,9 @@
+import { existsSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import type { ExecFn, ExecOutcome } from '../src/doctor/doctor'
 import {
   resolveRuntime,
+  resolveSandcastleBin,
   runtimeInstallGuide,
   saveAfkToken,
   terminalSpec,
@@ -158,11 +160,35 @@ describe('terminalSpec', () => {
     })
   })
 
-  it('builds the image with the resolved runtime and a pinned image name', () => {
-    expect(terminalSpec('build-image', { runtime: 'podman', imageName: 'sandcastle:runcastle' })).toEqual({
-      cmd: 'sandcastle',
-      args: ['podman', 'build-image', '--image-name', 'sandcastle:runcastle'],
+  it('launches the resolved sandcastle CLI under node with a pinned image name', () => {
+    // The vendored CLI is a transitive dep never on PATH in a global install, so
+    // build-image runs `node <resolved-cli> <runtime> build-image …`, not a bare
+    // `sandcastle`.
+    const sandcastleBin = '/opt/rc/node_modules/@ai-hero/sandcastle/dist/main.js'
+    expect(
+      terminalSpec('build-image', { runtime: 'podman', imageName: 'sandcastle:runcastle', sandcastleBin }),
+    ).toEqual({
+      cmd: 'node',
+      args: [sandcastleBin, 'podman', 'build-image', '--image-name', 'sandcastle:runcastle'],
     })
+  })
+
+  it('fails loudly when the bundled sandcastle CLI cannot be resolved', () => {
+    expect(() =>
+      terminalSpec('build-image', { runtime: 'docker', imageName: 'sandcastle:runcastle' }),
+    ).toThrow(/sandcastle CLI/)
+  })
+})
+
+describe('resolveSandcastleBin', () => {
+  it('resolves the bundled @ai-hero/sandcastle CLI to a real file via module resolution', () => {
+    // The regression this guards: sandcastle is a transitive dep, so its bin is
+    // never on PATH in a `bun add -g runcastle` install. Module resolution finds
+    // it regardless of hoisting — the same path the build-image flow launches.
+    const bin = resolveSandcastleBin()
+    expect(bin).not.toBeNull()
+    expect(bin).toMatch(/sandcastle/)
+    expect(existsSync(bin as string)).toBe(true)
   })
 })
 

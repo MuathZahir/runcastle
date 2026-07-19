@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url'
 import { envPath, sandboxBuildDir } from '@runcastle/core/paths'
 import type { ExecFn, ProbeResult } from '../doctor/doctor'
 import { gitIdentityProbe } from '../doctor/doctor'
-import { InvalidInputError } from '../errors'
+import { InvalidInputError, NotFoundError } from '../errors'
 import { ASSET_ENV, resolveAsset } from '../launcher/asset-paths'
 
 /**
@@ -149,20 +149,74 @@ export interface TerminalSpec {
 }
 
 /**
+ * Resolve the bundled sandcastle CLI's entrypoint (`@ai-hero/sandcastle`'s
+ * `bin.sandcastle`, an absolute path) via module resolution, or null if it can't
+ * be found. This is the fix for the "one-click build" failing on a real install:
+ * sandcastle is a *transitive* dependency, so its bin is never on the user's PATH
+ * in a `bun add -g runcastle` install — a bare `spawn('sandcastle')` ENOENTs, and
+ * telling the user to type `sandcastle …` in their shell is a dead end. Resolving
+ * the manifest works in both the contributor checkout and the published tarball
+ * (sandcastle stays external, so it's a real installed dependency either way),
+ * mirroring {@link resolvePtyRoot}'s `require.resolve('node-pty/package.json')`.
+ */
+export function resolveSandcastleBin(): string | null {
+  try {
+    // `@ai-hero/sandcastle` is ESM-only with an `exports` map that neither
+    // carries a `require` condition nor exposes `./package.json`, so a CJS
+    // `require.resolve('…/package.json')` throws ERR_PACKAGE_PATH_NOT_EXPORTED.
+    // Resolve the exported main entry with the ESM resolver, then walk up to the
+    // package root to read `bin.sandcastle` — robust to hoisting and to the
+    // bundled published layout alike.
+    const mainUrl = import.meta.resolve('@ai-hero/sandcastle')
+    let dir = dirname(fileURLToPath(mainUrl))
+    for (let hops = 0; hops < 6; hops++) {
+      const manifestPath = join(dir, 'package.json')
+      if (existsSync(manifestPath)) {
+        const manifest = JSON.parse(readFileSync(manifestPath, 'utf8')) as {
+          name?: string
+          bin?: Record<string, string>
+        }
+        if (manifest.name === '@ai-hero/sandcastle' && manifest.bin?.sandcastle) {
+          return join(dir, manifest.bin.sandcastle)
+        }
+      }
+      const parent = dirname(dir)
+      if (parent === dir) break
+      dir = parent
+    }
+    return null
+  } catch {
+    return null
+  }
+}
+
+/**
  * The command each embedded-terminal / streaming flow runs. `setup-token` drives
  * the interactive `claude setup-token` login; `build-image` builds the sandcastle
  * image with whichever runtime is present (its output streams into the card).
- * `--image-name` is pinned explicitly so the built tag matches `opts.imageName`
- * exactly — the same name the doctor probe re-checks after the build — instead
- * of falling back to sandcastle's own cwd-derived default, which would silently
- * build an image the re-probe can never find.
+ *
+ * `build-image` launches the resolved sandcastle CLI (`opts.sandcastleBin`) under
+ * `node` — its shebang runtime and a Tier-1 prerequisite — rather than a bare
+ * `sandcastle`, which is never on PATH in a global install (see
+ * {@link resolveSandcastleBin}). `--image-name` is pinned explicitly so the built
+ * tag matches `opts.imageName` exactly — the same name the doctor probe re-checks
+ * after the build — instead of falling back to sandcastle's own cwd-derived
+ * default, which would silently build an image the re-probe can never find.
  */
 export function terminalSpec(
   kind: TerminalKind,
-  opts: { runtime: Runtime; imageName: string },
+  opts: { runtime: Runtime; imageName: string; sandcastleBin?: string },
 ): TerminalSpec {
   if (kind === 'setup-token') return { cmd: 'claude', args: ['setup-token'] }
-  return { cmd: 'sandcastle', args: [opts.runtime, 'build-image', '--image-name', opts.imageName] }
+  if (!opts.sandcastleBin) {
+    throw new NotFoundError(
+      'The bundled sandcastle CLI (@ai-hero/sandcastle) could not be located — reinstall runcastle.',
+    )
+  }
+  return {
+    cmd: 'node',
+    args: [opts.sandcastleBin, opts.runtime, 'build-image', '--image-name', opts.imageName],
+  }
 }
 
 // ---------------------------------------------------------------------------

@@ -212,8 +212,12 @@ export async function containerRuntimeProbe(exec: ExecFn): Promise<ProbeResult> 
 }
 
 /**
- * Sandcastle image — nothing builds it automatically; the first Docker burn
- * fails on a fresh machine by construction. Reuses whichever runtime is present.
+ * Sandcastle image — the first AFK burn fails on a fresh machine by construction
+ * until it's built. Runcastle builds it for the user: the in-app "Enable AFK
+ * burns" card scaffolds the build context and runs the bundled sandcastle CLI
+ * (the user never invokes `sandcastle` themselves — its bin isn't on PATH in a
+ * global install). AFK burns are opt-in, so a missing image is a warning, not a
+ * block. Reuses whichever runtime is present.
  */
 export async function sandcastleImageProbe(exec: ExecFn, imageName: string): Promise<ProbeResult> {
   const id = 'sandcastle-image'
@@ -231,7 +235,7 @@ export async function sandcastleImageProbe(exec: ExecFn, imageName: string): Pro
       tier: 2,
       status: 'missing',
       detail: `image ${imageName} not found locally`,
-      fix: 'Build it: sandcastle docker build-image (nothing builds it for you).',
+      fix: 'Start runcastle and click "Build image" on the Enable AFK burns card — it builds this for you (one click). Only needed for AFK/sandboxed burns.',
     }
   }
   return {
@@ -240,7 +244,7 @@ export async function sandcastleImageProbe(exec: ExecFn, imageName: string): Pro
     tier: 2,
     status: 'missing',
     detail: 'no container runtime available to inspect the image',
-    fix: 'Install a container runtime first, then build: sandcastle docker build-image',
+    fix: 'Install a container runtime (Docker or Podman) first, then build the image from the Enable AFK burns card in the app.',
   }
 }
 

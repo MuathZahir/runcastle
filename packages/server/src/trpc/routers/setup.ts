@@ -7,6 +7,7 @@ import {
   fileAfkTokenIo,
   prepareSandboxBuildContext,
   resolveRuntime,
+  resolveSandcastleBin,
   runtimeInstallGuide,
   saveAfkToken,
   terminalSpec,
@@ -58,7 +59,12 @@ export const setupRouter = router({
       const preferred = ctx.config.sandbox === 'podman' ? 'podman' : 'docker'
       const runtime = await resolveRuntime(exec, preferred)
       const imageName = ctx.config.sandboxImage ?? 'sandcastle:runcastle'
-      const spec = terminalSpec(input.kind, { runtime, imageName })
+      // `build-image` runs the vendored sandcastle CLI, whose bin is never on the
+      // user's PATH in a global install — resolve its entrypoint so we can launch
+      // it under node instead of a bare (missing) `sandcastle`.
+      const sandcastleBin =
+        input.kind === 'build-image' ? (resolveSandcastleBin() ?? undefined) : undefined
+      const spec = terminalSpec(input.kind, { runtime, imageName, sandcastleBin })
       const sessionId = newId('setup')
       // `build-image` runs `sandcastle <runtime> build-image`, which fails with
       // "No .sandcastle/ found" unless its cwd holds a `.sandcastle/` build
