@@ -14,8 +14,8 @@
     "drizzle"
   ],
   "scripts": {
-    "dev": "bun --hot src/index.ts",
-    "start": "bun src/index.ts",
+    "dev": "bun --hot src/bin/runcastle.ts serve",
+    "start": "bun src/bin/runcastle.ts serve",
     "doctor": "bun src/doctor/cli.ts",
     "typecheck": "tsc --noEmit",
     "db:generate": "drizzle-kit generate",

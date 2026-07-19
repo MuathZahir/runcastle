@@ -122,6 +122,11 @@ export async function startServer(): Promise<void> {
   }
 }
 
-if (import.meta.main) {
-  void startServer()
-}
+// NB: no `if (import.meta.main) startServer()` here. `src/bin/runcastle.ts` is
+// the sole boot entrypoint (it calls `startServer()` for the `serve` command).
+// A self-invoke guard here is harmless in the split dev tree but doubly fatal in
+// the published package: the prepack bundler inlines this module INTO the bundled
+// `bin/runcastle.js`, so `import.meta.main` here becomes true (it's the bin, the
+// real entry) and the guard fires a SECOND `startServer()` — the two race for the
+// port and the second dies with Bun's "Failed to start server. Is port … in use?"
+// while the first is still up. Dev/start scripts boot through the bin for parity.
