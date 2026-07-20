@@ -54,6 +54,20 @@ describe('describeField', () => {
     expect(row.options).toEqual(['docker', 'noSandbox'])
   })
 
+  it('renders burnConcurrency as an editable number control with an env-lock note when locked', () => {
+    const row = describeField(field({ key: 'burnConcurrency', value: 3 }))
+    expect(row.label).toBe('Burn concurrency')
+    expect(row.control).toBe('number')
+    expect(row.value).toBe('3')
+    expect(row.readOnly).toBe(false)
+
+    const locked = describeField(
+      field({ key: 'burnConcurrency', value: 4, source: 'env', editable: false }),
+    )
+    expect(locked.readOnly).toBe(true)
+    expect(locked.note).toBe('Set by RUNCASTLE_BURN_CONCURRENCY')
+  })
+
   it('marks a project-sourced field as overridden', () => {
     const row = describeField(field({ key: 'model', source: 'project', scope: 'project' }))
     expect(row.overridden).toBe(true)

@@ -146,6 +146,34 @@ describe('settings service (#46)', () => {
     )
   })
 
+  it('burnConcurrency defaults to 3, writes through, and rejects out-of-range widths', () => {
+    const before = field(getSettings(ctx, undefined, io()), 'burnConcurrency')
+    expect(before.value).toBe(3)
+    expect(before.source).toBe('default')
+    expect(before.scope).toBe('global')
+
+    updateSettings(ctx, { key: 'burnConcurrency', value: 5 }, io())
+    expect(ctx.config.burnConcurrency).toBe(5)
+    expect(field(getSettings(ctx, undefined, io()), 'burnConcurrency').source).toBe('file')
+
+    expect(() => updateSettings(ctx, { key: 'burnConcurrency', value: 0 }, io())).toThrow(
+      InvalidInputError,
+    )
+    expect(() => updateSettings(ctx, { key: 'burnConcurrency', value: 9 }, io())).toThrow(
+      InvalidInputError,
+    )
+  })
+
+  it('burnConcurrency env override coerces the string and locks the field', () => {
+    const f = field(
+      getSettings(ctx, undefined, io({ RUNCASTLE_BURN_CONCURRENCY: '4' })),
+      'burnConcurrency',
+    )
+    expect(f.value).toBe(4)
+    expect(f.source).toBe('env')
+    expect(f.editable).toBe(false)
+  })
+
   it('devCommand reads/writes through settings on a project', () => {
     const project = seedProject(ctx)
     updateSettings(ctx, { projectId: project.id, key: 'devCommand', value: 'bun dev' }, io())

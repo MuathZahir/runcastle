@@ -92,6 +92,14 @@ export const RuncastleConfig = z.preprocess(
      * `podman`; ignored for `noSandbox`.
      */
     sandboxImage: z.string().optional(),
+    /**
+     * Max tickets the burner works in parallel per run (M2, SPEC §8). Each
+     * concurrent ticket is one full AFK agent (its own container under a
+     * container sandbox), so this is a cost/resource knob as much as a speed
+     * knob — capped at 8. Dependency order (`blockedBy`) is always honoured
+     * regardless of the width.
+     */
+    burnConcurrency: z.number().int().min(1).max(8).default(3),
   }),
 )
 export type RuncastleConfig = z.infer<typeof RuncastleConfig>

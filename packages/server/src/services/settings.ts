@@ -96,6 +96,14 @@ const DESCRIPTORS: FieldDescriptor[] = [
     parseEnv: idEnv,
   },
   {
+    key: 'burnConcurrency',
+    configKey: 'burnConcurrency',
+    envVar: 'RUNCASTLE_BURN_CONCURRENCY',
+    restartRequired: false,
+    valueSchema: z.number().int().min(1).max(8),
+    parseEnv: (raw) => Number(raw),
+  },
+  {
     key: 'mainBranch',
     configKey: 'mainBranch',
     envVar: 'RUNCASTLE_MAIN_BRANCH',

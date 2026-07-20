@@ -404,26 +404,41 @@ export async function reattachWorktree(path: string, branch: string): Promise<vo
   }
 }
 
-// --- research temp branches (ADR-0001 §7: serial HITL, PARALLEL AFK) --------
+// --- runcastle temp branches (ADR-0001 §7: serial HITL, PARALLEL AFK) -------
 
 /**
- * Namespace for research-run temp branches. Distinctively runcastle-owned so
- * boot cleanup can never touch a user's own branches (a bare `research/*`
- * prefix would be too easy to collide with).
+ * Namespaces for AFK-run temp branches. Distinctively runcastle-owned so boot
+ * cleanup can never touch a user's own branches (bare `research/*` / `ticket/*`
+ * prefixes would be too easy to collide with). Both encode
+ * `<slug>/<seq>-<unique>` after the prefix so cleanup can map a leftover branch
+ * back to its feature branch.
  */
 export const RESEARCH_BRANCH_PREFIX = 'runcastle/research/'
+export const TICKET_BRANCH_PREFIX = 'runcastle/ticket/'
+const TEMP_BRANCH_PREFIXES = [RESEARCH_BRANCH_PREFIX, TICKET_BRANCH_PREFIX] as const
 
 /**
  * Branch a research run commits to: `runcastle/research/<slug>/<seq>-<unique>`.
  * Based on the feature branch tip (sandcastle `baseBranch`), merged back into
- * it at run finalize, deleted after a clean merge. Encoding the feature slug
- * lets boot cleanup map a leftover branch back to its feature branch.
+ * it at run finalize, deleted after a clean merge.
  */
 export function researchBranchName(slug: string, waypointSeq: number, unique: string): string {
   return `${RESEARCH_BRANCH_PREFIX}${slug}/${waypointSeq}-${unique}`
 }
 
-export interface ResearchMergeResult {
+/**
+ * Branch one ticket burn commits to: `runcastle/ticket/<slug>/<seq>-<unique>`
+ * (M2, SPEC §8). Based on the feature branch tip (sandcastle `baseBranch`) so
+ * every concurrent ticket gets its OWN sandcastle worktree — the `branch`
+ * strategy reuses `.sandcastle/worktrees/<branch>` per branch name, so distinct
+ * names are what isolate parallel agents. Landed on the feature branch through
+ * the burner's serialized merge queue, deleted after a clean merge.
+ */
+export function ticketBranchName(slug: string, ticketSeq: number, unique: string): string {
+  return `${TICKET_BRANCH_PREFIX}${slug}/${ticketSeq}-${unique}`
+}
+
+export interface TempBranchMergeResult {
   ok: boolean
   /** True when a real merge conflict was hit (merge aborted, temp branch kept). */
   conflict?: boolean
@@ -431,11 +446,12 @@ export interface ResearchMergeResult {
 }
 
 /**
- * Land a research run's temp branch on the feature branch (run-finalize success
- * path). The temp branch was created from the feature branch tip, so this is a
- * fast-forward unless the feature branch moved mid-run (docs committed by an
- * HITL session running in parallel) — then it is a plain merge, and on conflict
- * we abort, keep the temp branch for manual recovery, and report `conflict`.
+ * Land an AFK run's temp branch (research or ticket) on the feature branch.
+ * The temp branch was created from the feature branch tip, so this is a
+ * fast-forward unless the feature branch moved mid-run (docs committed by a
+ * parallel HITL session, or another concurrent ticket landed first) — then it
+ * is a plain merge, and on conflict we abort, keep the temp branch for manual
+ * recovery, and report `conflict`.
  *
  * Merge site: git only allows a merge inside a checkout of the target branch,
  * so if any worktree (normally the talk worktree; the main checkout during a
@@ -447,11 +463,11 @@ export interface ResearchMergeResult {
  * preserved sandcastle worktree pinning it is detached first; a branch that
  * still cannot be deleted is swept by boot cleanup once merged).
  */
-export async function mergeResearchBranch(
+export async function mergeTempBranch(
   repoPath: string,
   featureBranchName: string,
   tempBranch: string,
-): Promise<ResearchMergeResult> {
+): Promise<TempBranchMergeResult> {
   const g = git(repoPath)
   let branches: Awaited<ReturnType<SimpleGit['branchLocal']>>
   try {
@@ -519,19 +535,24 @@ async function deleteBranchDetachingWorktrees(
   }
 }
 
-export interface ResearchBranchCleanup {
+export interface TempBranchCleanup {
   deleted: string[]
   kept: string[]
 }
 
+/** The temp-branch prefix `name` falls under, or `undefined` for user branches. */
+function tempBranchPrefix(name: string): string | undefined {
+  return TEMP_BRANCH_PREFIXES.find((p) => name.startsWith(p))
+}
+
 /**
- * Boot sweep of leftover research temp branches (server crashed mid-run, or a
- * post-merge delete failed). Deletes ONLY branches fully merged into their
- * feature branch (`merge-base --is-ancestor`): an unmerged branch holds either
- * research commits that never landed or a conflict deliberately preserved for
- * manual recovery — both are kept, never destroyed. Best-effort throughout.
+ * Boot sweep of leftover runcastle temp branches — research AND ticket (server
+ * crashed mid-run, or a post-merge delete failed). Deletes ONLY branches fully
+ * merged into their feature branch: an unmerged branch holds either AFK commits
+ * that never landed or a conflict deliberately preserved for manual recovery —
+ * both are kept, never destroyed. Best-effort throughout.
  */
-export async function cleanupResearchBranches(repoPath: string): Promise<ResearchBranchCleanup> {
+export async function cleanupTempBranches(repoPath: string): Promise<TempBranchCleanup> {
   const deleted: string[] = []
   const kept: string[] = []
   const g = git(repoPath)
@@ -543,8 +564,9 @@ export async function cleanupResearchBranches(repoPath: string): Promise<Researc
   }
 
   for (const name of all) {
-    if (!name.startsWith(RESEARCH_BRANCH_PREFIX)) continue
-    const slug = name.slice(RESEARCH_BRANCH_PREFIX.length).split('/')[0]
+    const prefix = tempBranchPrefix(name)
+    if (!prefix) continue
+    const slug = name.slice(prefix.length).split('/')[0]
     const target = featureBranch(slug)
     let merged = false
     if (slug && all.includes(target)) {

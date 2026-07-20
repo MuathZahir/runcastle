@@ -95,8 +95,9 @@ function deps(
   over: Partial<Omit<BurnDeps, 'executeTicketRun'>> = {},
 ): BurnDeps {
   return {
-    config: { serverPort: 4512, model: 'm', stepModels: {}, sandbox: 'noSandbox', mainBranch: 'main' },
+    config: { serverPort: 4512, model: 'm', stepModels: {}, sandbox: 'noSandbox', mainBranch: 'main', burnConcurrency: 3 },
     hasAuthToken: true,
+    concurrency: 1,
     executeTicketRun: execute,
     ...over,
   }
@@ -289,5 +290,87 @@ describe('burnRun — scheduling and summary', () => {
     const execute = fakeExecute({ 1: { status: 'done', commits: ['a'] } })
 
     await expect(burnRun(ctx, deps(execute))).rejects.toThrow()
+  })
+})
+
+describe('burnRun — concurrency (M2)', () => {
+  /** Execute that tracks concurrent in-flight count and completes on a timer. */
+  function trackingExecute(log: Array<[string, number]>, onPeak: (n: number) => void) {
+    let active = 0
+    return async (_ctx: WorkflowCtx, t: Ticket): Promise<TicketOutcome> => {
+      active += 1
+      onPeak(active)
+      log.push(['start', t.seq])
+      await new Promise((r) => setTimeout(r, 10))
+      log.push(['end', t.seq])
+      active -= 1
+      return { status: 'done', commits: [`c${t.seq}`] }
+    }
+  }
+
+  it('burns independent tickets in parallel up to the width, never beyond it', async () => {
+    const tickets = [ticket(1), ticket(2), ticket(3)]
+    const { ctx } = makeCtx(tickets)
+    const log: Array<[string, number]> = []
+    let peak = 0
+    const execute = trackingExecute(log, (n) => {
+      peak = Math.max(peak, n)
+    })
+
+    const res = await burnRun(ctx, deps(execute, { concurrency: 2 }))
+
+    expect(res).toEqual({ status: 'succeeded', summary: '3/3 tickets done' })
+    expect(peak).toBe(2) // both slots used, cap respected
+  })
+
+  it('a dependent ticket waits for its blocker even with free slots', async () => {
+    const tickets = [ticket(1), ticket(2), ticket(3, [1])]
+    const { ctx } = makeCtx(tickets)
+    const log: Array<[string, number]> = []
+    const execute = trackingExecute(log, () => {})
+
+    const res = await burnRun(ctx, deps(execute, { concurrency: 3 }))
+
+    expect(res).toEqual({ status: 'succeeded', summary: '3/3 tickets done' })
+    // ticket 3 must start strictly after its blocker (1) ended
+    const end1 = log.findIndex(([k, s]) => k === 'end' && s === 1)
+    const start3 = log.findIndex(([k, s]) => k === 'start' && s === 3)
+    expect(end1).toBeGreaterThanOrEqual(0)
+    expect(start3).toBeGreaterThan(end1)
+  })
+
+  it('cascade still fails dependents of a failed ticket at width > 1', async () => {
+    const tickets = [ticket(1), ticket(2, [1]), ticket(3)]
+    const { ctx, patches } = makeCtx(tickets)
+    const calls: number[] = []
+    const execute = fakeExecute(
+      { 1: { status: 'failed', error: 'boom' }, 3: { status: 'done', commits: ['x'] } },
+      calls,
+    )
+
+    const res = await burnRun(ctx, deps(execute, { concurrency: 3 }))
+
+    expect(calls.sort()).toEqual([1, 3]) // 2 never executed
+    expect(res).toEqual({ status: 'failed', summary: '1/3 tickets done' })
+    expect(patches).toContainEqual({
+      id: 'tkt_2',
+      patch: { status: 'failed', error: 'blocked by failed ticket 1' },
+    })
+  })
+
+  it('an abort with several tickets in flight drains them all and rejects once', async () => {
+    const tickets = [ticket(1), ticket(2)]
+    const controller = new AbortController()
+    const { ctx } = makeCtx(tickets, controller.signal)
+    let started = 0
+    const execute = (c: WorkflowCtx, _t: Ticket): Promise<TicketOutcome> =>
+      new Promise((_resolve, reject) => {
+        started += 1
+        if (started === 2) queueMicrotask(() => controller.abort())
+        c.signal.addEventListener('abort', () => reject(new Error('run aborted')), { once: true })
+      })
+
+    await expect(burnRun(ctx, deps(execute, { concurrency: 2 }))).rejects.toThrow('run aborted')
+    expect(started).toBe(2) // both were genuinely in flight when the abort hit
   })
 })

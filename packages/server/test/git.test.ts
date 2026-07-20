@@ -14,19 +14,20 @@ import {
   __resetTestDriveState,
   activeDriveInfo,
   activeTestDriveFeatureId,
-  cleanupResearchBranches,
+  cleanupTempBranches,
   commitDocs,
   createFeatureBranch,
   listBranches,
   detachWorktree,
   ensureTalkWorktree,
   mergeFeature,
-  mergeResearchBranch,
+  mergeTempBranch,
   reattachWorktree,
   recordDriveUrl,
   researchBranchName,
   resolveBaseBranch,
   testDrive,
+  ticketBranchName,
 } from '../src/services/git'
 import { makeTestCtx } from './helpers/db'
 import { seedFeature, seedProject } from './helpers/fixtures'
@@ -601,7 +602,7 @@ describe('testDrive', () => {
   })
 })
 
-describe('mergeResearchBranch', () => {
+describe('mergeTempBranch', () => {
   let ctx: AppCtx
   let project: Project
   let feature: Feature
@@ -658,7 +659,7 @@ describe('mergeResearchBranch', () => {
       keepWorktree: true,
     })
 
-    const res = await mergeResearchBranch(project.repoPath, feature.branch, temp)
+    const res = await mergeTempBranch(project.repoPath, feature.branch, temp)
     expect(res).toEqual({ ok: true })
 
     // feature branch fast-forwarded to the research commit; talk worktree stayed
@@ -677,7 +678,7 @@ describe('mergeResearchBranch', () => {
     const temp = researchBranchName(feature.slug, 2, 'def456')
     const { tip } = await commitOnTempBranch(temp, feature.branch, 'notes.md', 'notes\n')
 
-    const res = await mergeResearchBranch(project.repoPath, feature.branch, temp)
+    const res = await mergeTempBranch(project.repoPath, feature.branch, temp)
     expect(res).toEqual({ ok: true })
 
     const g = simpleGit(project.repoPath)
@@ -697,7 +698,7 @@ describe('mergeResearchBranch', () => {
     await gw.add(['README.md'])
     await gw.commit('docs: hitl edit mid-run')
 
-    const res = await mergeResearchBranch(project.repoPath, feature.branch, temp)
+    const res = await mergeTempBranch(project.repoPath, feature.branch, temp)
     expect(res.ok).toBe(false)
     expect(res.conflict).toBe(true)
 
@@ -710,20 +711,20 @@ describe('mergeResearchBranch', () => {
   })
 
   it('reports missing branches instead of throwing', async () => {
-    const missing = await mergeResearchBranch(project.repoPath, feature.branch, 'runcastle/research/rsr/9-none')
+    const missing = await mergeTempBranch(project.repoPath, feature.branch, 'runcastle/research/rsr/9-none')
     expect(missing.ok).toBe(false)
     expect(missing.conflict).toBeUndefined()
     expect(missing.error).toMatch(/not found/)
 
     const temp = researchBranchName(feature.slug, 4, 'jkl012')
     await simpleGit(project.repoPath).raw(['branch', temp, feature.branch])
-    const noFeature = await mergeResearchBranch(project.repoPath, 'feature/ghost', temp)
+    const noFeature = await mergeTempBranch(project.repoPath, 'feature/ghost', temp)
     expect(noFeature.ok).toBe(false)
     expect(noFeature.error).toMatch(/not found/)
   })
 })
 
-describe('cleanupResearchBranches', () => {
+describe('cleanupTempBranches', () => {
   let ctx: AppCtx
   let project: Project
 
@@ -740,6 +741,9 @@ describe('cleanupResearchBranches', () => {
     // merged: points at the feature branch tip (an ancestor by definition)
     const merged = researchBranchName('swp', 1, 'aaa111')
     await g.raw(['branch', merged, 'feature/swp'])
+    // a merged TICKET temp branch is swept by the same pass (M2)
+    const mergedTicket = ticketBranchName('swp', 3, 'ccc333')
+    await g.raw(['branch', mergedTicket, 'feature/swp'])
     // unmerged: one commit ahead of the feature branch
     const unmerged = researchBranchName('swp', 2, 'bbb222')
     await g.raw(['branch', unmerged, 'feature/swp'])
@@ -750,22 +754,29 @@ describe('cleanupResearchBranches', () => {
     await gw.add(['orphan.md'])
     await gw.commit('research: orphan')
     await g.raw(['worktree', 'remove', wt, '--force'])
+    // an unmerged ticket branch (conflict leftover) must be kept too
+    const unmergedTicket = ticketBranchName('swp', 4, 'ddd444')
+    await g.raw(['branch', unmergedTicket, unmerged])
     // a user's own branch under a similar-but-not-ours prefix must survive
     await g.raw(['branch', 'research/user-branch', 'main'])
+    await g.raw(['branch', 'ticket/user-branch', 'main'])
 
-    const result = await cleanupResearchBranches(project.repoPath)
-    expect(result.deleted).toEqual([merged])
-    expect(result.kept).toEqual([unmerged])
+    const result = await cleanupTempBranches(project.repoPath)
+    expect(result.deleted.sort()).toEqual([merged, mergedTicket].sort())
+    expect(result.kept.sort()).toEqual([unmerged, unmergedTicket].sort())
 
     const all = (await g.branchLocal()).all
     expect(all).not.toContain(merged)
+    expect(all).not.toContain(mergedTicket)
     expect(all).toContain(unmerged)
+    expect(all).toContain(unmergedTicket)
     expect(all).toContain('research/user-branch')
+    expect(all).toContain('ticket/user-branch')
   })
 
   it('is a best-effort no-op on a directory that is not a git repo', async () => {
     const notRepo = mkTmp('rc-notrepo-')
-    await expect(cleanupResearchBranches(notRepo)).resolves.toEqual({ deleted: [], kept: [] })
+    await expect(cleanupTempBranches(notRepo)).resolves.toEqual({ deleted: [], kept: [] })
   })
 })
 

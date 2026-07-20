@@ -9,10 +9,11 @@ import type {
   WorkflowCtx,
   WorkflowDef,
 } from '@runcastle/core'
-import { resolveModel, resolveSandboxImage } from '@runcastle/core'
+import { newId, resolveModel, resolveSandboxImage } from '@runcastle/core'
 import { loadConfig } from '@runcastle/core/config-load'
 import { envPath, featureDocsRel, logsDir, worktreeDir } from '@runcastle/core/paths'
 import { resolveSkillsRoot } from '../launcher/skills-root'
+import { mergeTempBranch, ticketBranchName } from '../services/git'
 import type {
   AgentCommandOptions,
   AgentProvider,
@@ -29,27 +30,29 @@ import { noSandbox } from '@ai-hero/sandcastle/sandboxes/no-sandbox'
 
 /**
  * Ticket burner — WAVE B3 (SPEC §8), the AFK engine over `@ai-hero/sandcastle`
- * 0.12.0. One `claude --print` agent run per ticket, in topological order of
- * `blockedBy` (global seq numbers per docs/research/CORRECTIONS.md C1), commits
- * landing on `feature/<slug>` via sandcastle's `branch` strategy.
+ * 0.12.0. One `claude --print` agent run per ticket, honouring `blockedBy`
+ * (global seq numbers per docs/research/CORRECTIONS.md C1), up to
+ * `config.burnConcurrency` tickets in parallel (M2 — see ADR on burn
+ * concurrency).
  *
  * Structure: the pure units (topo/cycle, seq→ticket resolution, template
- * rendering, .env parsing, run-result interpretation, the stream throttler) are
- * exported and unit-tested with no sandcastle involvement. The sandcastle
- * boundary is isolated behind an injectable `executeTicketRun` (see `BurnDeps`)
- * so the scheduler (ready-queue, blocked-by-failed cascade, success/failure/
- * conflict/zero-commit handling) is testable against a fake.
+ * rendering, .env parsing, run-result interpretation, the stream throttler, the
+ * serial merge queue) are exported and unit-tested with no sandcastle
+ * involvement. The sandcastle boundary is isolated behind an injectable
+ * `executeTicketRun` (see `BurnDeps`) so the scheduler (ready-queue,
+ * blocked-by-failed cascade, success/failure/conflict/zero-commit handling) is
+ * testable against a fake.
  *
- * Branch-strategy note: `{ type: 'branch', branch: 'feature/<slug>' }` is the
- * only strategy that guarantees commits land on the feature branch regardless of
- * what branch the host checkout (`project.repoPath`) is on — at burn time the
- * host is still on `mainBranch` (B2 creates the feature branch without checking
- * it out), so `head`/`merge-to-head` would write to `main`. See the module's
- * final report for the live-run risks this choice trades against.
+ * Branch-strategy note (M2): each ticket runs on its OWN temp branch
+ * `runcastle/ticket/<slug>/<seq>-<unique>` (`baseBranch: feature/<slug>`).
+ * Sandcastle's `branch` strategy keys its `.sandcastle/worktrees/<branch>`
+ * worktree on the branch name, so distinct per-ticket names are what isolate
+ * concurrent agents — burning `feature/<slug>` directly would share ONE
+ * worktree across all tickets. Landings on the feature branch are serialized
+ * through a per-run merge queue, and a ticket is only `done` once its branch
+ * has landed — so a dependent ticket always forks a tip that includes its
+ * blockers' commits.
  */
-
-/** M1 worker-pool width; M2 raises this constant (SPEC §8). */
-export const CONCURRENCY = 1
 
 const AUTH_MISSING_EVENT = 'auth.missing'
 const AUTH_MISSING_MESSAGE =
@@ -73,6 +76,8 @@ export interface BurnDeps {
   config: RuncastleConfig
   /** Whether a CLAUDE_CODE_OAUTH_TOKEN is available (container sandboxes require it). */
   hasAuthToken: boolean
+  /** Worker-pool width — how many tickets burn in parallel (`config.burnConcurrency`). */
+  concurrency: number
   /** Runs one ticket to a terminal outcome. Real impl calls sandcastle `run()`. */
   executeTicketRun: (ctx: WorkflowCtx, ticket: Ticket) => Promise<TicketOutcome>
 }
@@ -324,7 +329,28 @@ export function isMergeConflictError(err: unknown): boolean {
 }
 
 // ---------------------------------------------------------------------------
-// Scheduler — worker pool over the ready queue (concurrency = CONCURRENCY)
+// Pure unit — serial queue (one merge lands at a time)
+// ---------------------------------------------------------------------------
+
+/**
+ * A promise-chain serializer: tasks run strictly one at a time in submission
+ * order. A rejection propagates to ITS submitter only — the chain itself never
+ * breaks, so later tasks still run. The burner creates one per run and lands
+ * every ticket's temp-branch merge through it, because concurrent merges into
+ * the same feature branch would race on the ref/checkout.
+ */
+export function createSerialQueue(): <T>(task: () => Promise<T>) => Promise<T> {
+  let tail: Promise<unknown> = Promise.resolve()
+  return <T>(task: () => Promise<T>): Promise<T> => {
+    const next = tail.then(task)
+    // Keep the chain alive past a rejection; the submitter still sees it via `next`.
+    tail = next.catch(() => undefined)
+    return next
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Scheduler — worker pool over the ready queue (width = deps.concurrency)
 // ---------------------------------------------------------------------------
 
 type ReadyState = 'ready' | 'wait' | { blockedBy: number; present: boolean }
@@ -338,15 +364,18 @@ function firstLine(s: string): string {
  * Drive tickets to terminal states honouring `blockedBy`. A ticket is ready when
  * all its blockers are `done`; a ticket with a `failed`/missing blocker is
  * marked failed (`blocked by failed ticket <seq>`) and cascades to its own
- * dependents. Runs up to `CONCURRENCY` at once. Aborts propagate (thrown by
- * `execute`) so the runner finalizes the run as cancelled. Returns the count of
- * tickets in `done` state at the end.
+ * dependents. Runs up to `concurrency` at once (min 1). Aborts propagate
+ * (thrown by `execute`) so the runner finalizes the run as cancelled — with
+ * every other in-flight ticket drained first, so no rejection goes unhandled.
+ * Returns the count of tickets in `done` state at the end.
  */
 export async function burnTickets(
   ctx: WorkflowCtx,
   tickets: Ticket[],
   execute: (ctx: WorkflowCtx, ticket: Ticket) => Promise<TicketOutcome>,
+  concurrency = 1,
 ): Promise<number> {
+  const width = Math.max(1, Math.floor(concurrency))
   const bySeq = indexBySeq(tickets)
   const status = new Map<number, TicketStatus>(tickets.map((t) => [t.seq, t.status]))
   const pending = new Set<number>(tickets.filter((t) => t.status === 'pending').map((t) => t.seq))
@@ -428,7 +457,7 @@ export async function burnTickets(
     }
 
     // 2) Fill the pool with ready tickets.
-    while (inFlight.size < CONCURRENCY) {
+    while (inFlight.size < width) {
       const readySeq = [...pending].find((seq) => readyState(seq) === 'ready')
       if (readySeq === undefined) break
       pending.delete(readySeq)
@@ -439,7 +468,15 @@ export async function burnTickets(
     }
 
     if (inFlight.size > 0) {
-      await Promise.race(inFlight.values())
+      try {
+        await Promise.race(inFlight.values())
+      } catch (err) {
+        // Abort (or an unexpected execute throw): the same AbortSignal is
+        // killing every in-flight agent — drain them all so none rejects
+        // unobserved, then rethrow so the runner finalizes the run.
+        await Promise.allSettled([...inFlight.values()])
+        throw err
+      }
     } else if (pending.size > 0) {
       // Defensive: acyclic + no failed blockers guarantees a ready or blocked
       // ticket, so this should be unreachable. Fail the rest rather than spin.
@@ -499,7 +536,7 @@ export async function burnRun(
     return { status: 'failed', summary: `dependency cycle: ${path}` }
   }
 
-  const done = await burnTickets(ctx, tickets, deps.executeTicketRun)
+  const done = await burnTickets(ctx, tickets, deps.executeTicketRun, deps.concurrency)
   const summary = `${done}/${total} tickets done`
   ctx.emitEvent({ type: 'burn.summary', message: summary, data: { done, total } })
   return { status: done === total ? 'succeeded' : 'failed', summary }
@@ -617,10 +654,14 @@ export function selectSandbox(config: RuncastleConfig) {
 }
 
 /**
- * Run one ticket through sandcastle. Renders the prompt, builds the `run()`
- * options (branch strategy targeting `feature/<slug>`, throttled stream
- * forwarding, abort wiring), interprets commits/BLOCKED.md, and maps a merge
- * conflict to a `merge.conflict.needs-human` failure. Aborts are rethrown.
+ * Run one ticket through sandcastle (M2). Renders the prompt, builds the
+ * `run()` options (branch strategy targeting a per-ticket temp branch based on
+ * `feature/<slug>`, throttled stream forwarding, abort wiring), interprets
+ * commits/BLOCKED.md, then lands the temp branch on the feature branch through
+ * `land` — the per-run serial merge queue, so concurrent tickets never merge at
+ * once. A landing conflict (parallel tickets touched the same files) fails the
+ * ticket with `merge.conflict.needs-human`, preserving the temp branch for
+ * manual recovery. Aborts are rethrown.
  */
 async function realExecuteTicketRun(
   ctx: WorkflowCtx,
@@ -628,8 +669,12 @@ async function realExecuteTicketRun(
   config: RuncastleConfig,
   token: string | undefined,
   model: string,
+  land: <T>(task: () => Promise<T>) => Promise<T>,
 ): Promise<TicketOutcome> {
   const { project, feature } = ctx
+  // Unique per attempt (nanoid alphabet is branch-name-safe) so a re-burned
+  // ticket never reuses a stale sandcastle worktree or a conflict leftover.
+  const tempBranch = ticketBranchName(feature.slug, ticket.seq, newId('b').slice(2, 10))
 
   const template = readFileSync(burnerTemplatePath(), 'utf8')
   const prompt = renderTicketPrompt(template, {
@@ -648,7 +693,9 @@ async function realExecuteTicketRun(
     sandbox: selectSandbox(config),
     cwd: project.repoPath,
     prompt,
-    branchStrategy: { type: 'branch', branch: feature.branch, baseBranch: project.mainBranch },
+    // Temp branch off the feature branch tip — its own sandcastle worktree,
+    // isolated from every concurrently-burning ticket. Landed below via `land`.
+    branchStrategy: { type: 'branch', branch: tempBranch, baseBranch: feature.branch },
     signal: ctx.signal,
     name: `ticket-${ticket.seq}`,
     logging: { type: 'file', path: logFilePath, onAgentStreamEvent: throttle.onEvent },
@@ -676,23 +723,53 @@ async function realExecuteTicketRun(
   throttle.flush()
 
   const blocked = readBlockedFile([result.preservedWorktreePath, project.repoPath])
-  return interpretRunResult(result, blocked)
+  const outcome = interpretRunResult(result, blocked)
+  if (outcome.status !== 'done') return outcome
+
+  // Land the ticket's commits on the feature branch — serialized per run, so
+  // two tickets finishing together never race the ref/checkout. The scheduler
+  // only marks a ticket done (and readies its dependents) after this resolves,
+  // so dependents always fork a tip that includes their blockers' work.
+  const merge = await land(() => mergeTempBranch(project.repoPath, feature.branch, tempBranch))
+  if (!merge.ok) {
+    const detail = merge.error ?? 'merge failed'
+    if (merge.conflict) {
+      return {
+        status: 'failed',
+        error: `ticket ${ticket.seq} committed to ${tempBranch} but landing on ${feature.branch} hit a conflict: ${detail}`,
+        event: {
+          type: 'merge.conflict.needs-human',
+          message: `ticket ${ticket.seq}: ${tempBranch} conflicts with ${feature.branch} — merge it manually (git merge ${tempBranch}; resolve; git branch -D ${tempBranch}), then re-burn`,
+        },
+      }
+    }
+    return {
+      status: 'failed',
+      error: `ticket ${ticket.seq} committed to ${tempBranch} but landing on ${feature.branch} failed: ${firstLine(detail)} — the branch is preserved for manual recovery`,
+    }
+  }
+
+  return outcome
 }
 
 /**
  * Resolve production deps: real config, token from `~/.runcastle/.env`, real
  * run. The burner is the `implement` step (issue #48): its model resolves
  * through `resolveModel` — a per-run override (smoke) wins over the step
- * override, the per-project override, then the global default.
+ * override, the per-project override, then the global default. One serial merge
+ * queue is created per run and shared by every ticket's execute closure, so
+ * landings on the feature branch never overlap.
  */
 function resolveBurnDeps(ctx: WorkflowCtx): BurnDeps {
   const config = loadConfig()
   const token = readTokenFromEnvFile(envPath())
   const model = resolveModel('implement', config, ctx.project, ctx.modelOverride)
+  const land = createSerialQueue()
   return {
     config,
     hasAuthToken: token !== undefined,
-    executeTicketRun: (c, ticket) => realExecuteTicketRun(c, ticket, config, token, model),
+    concurrency: config.burnConcurrency,
+    executeTicketRun: (c, ticket) => realExecuteTicketRun(c, ticket, config, token, model, land),
   }
 }
 

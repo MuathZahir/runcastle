@@ -54,6 +54,23 @@ describe('RuncastleConfig — model shape', () => {
   })
 })
 
+describe('RuncastleConfig — burnConcurrency (M2)', () => {
+  it('defaults to 3', () => {
+    expect(RuncastleConfig.parse({}).burnConcurrency).toBe(3)
+  })
+
+  it('accepts the 1..8 range', () => {
+    expect(RuncastleConfig.parse({ burnConcurrency: 1 }).burnConcurrency).toBe(1)
+    expect(RuncastleConfig.parse({ burnConcurrency: 8 }).burnConcurrency).toBe(8)
+  })
+
+  it('rejects out-of-range and non-integer widths', () => {
+    expect(RuncastleConfig.safeParse({ burnConcurrency: 0 }).success).toBe(false)
+    expect(RuncastleConfig.safeParse({ burnConcurrency: 9 }).success).toBe(false)
+    expect(RuncastleConfig.safeParse({ burnConcurrency: 2.5 }).success).toBe(false)
+  })
+})
+
 describe('resolveModel — chain runOverride ?? stepModels[step] ?? project.model ?? global.model', () => {
   const config = {
     model: 'global-default',

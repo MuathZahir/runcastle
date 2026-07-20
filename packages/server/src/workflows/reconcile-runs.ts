@@ -4,7 +4,7 @@ import { eq } from 'drizzle-orm'
 import type { AppCtx } from '../db/types'
 import { runs } from '../db/schema'
 import { emit } from '../services/events'
-import { cleanupResearchBranches, reattachWorktree } from '../services/git'
+import { cleanupTempBranches, reattachWorktree } from '../services/git'
 import { allProjects, getProjectById, rowToRun, tryGetFeature } from '../services/repo'
 import { releaseForSession } from '../services/waypoints'
 import { isRunActive, workflowClaimsFeatureBranch } from './runner'
@@ -76,12 +76,12 @@ export async function reconcileStaleRuns(ctx: AppCtx): Promise<Run[]> {
     reconciled.push(run)
   }
 
-  // Sweep research temp branches orphaned by crashed runs (merged-only; see
-  // `cleanupResearchBranches`). Best-effort: a missing/broken repo never blocks
-  // boot. Project-wide (multi-project, issue #43): every project is swept.
+  // Sweep runcastle temp branches (research + ticket) orphaned by crashed runs
+  // (merged-only; see `cleanupTempBranches`). Best-effort: a missing/broken repo
+  // never blocks boot. Project-wide (multi-project, issue #43): every project.
   for (const project of allProjects(ctx)) {
     try {
-      await cleanupResearchBranches(project.repoPath)
+      await cleanupTempBranches(project.repoPath)
     } catch {
       // best-effort
     }

@@ -15,6 +15,7 @@ export const FIELD_ENV_VAR: Record<string, string> = {
   model: 'RUNCASTLE_MODEL',
   sandbox: 'RUNCASTLE_SANDBOX',
   sandboxImage: 'RUNCASTLE_SANDBOX_IMAGE',
+  burnConcurrency: 'RUNCASTLE_BURN_CONCURRENCY',
   mainBranch: 'RUNCASTLE_MAIN_BRANCH',
 }
 
@@ -76,6 +77,11 @@ const META: Record<string, FieldMeta> = {
     label: 'Sandbox image',
     help: 'Docker image used when a session is sandboxed.',
     control: 'text',
+  },
+  burnConcurrency: {
+    label: 'Burn concurrency',
+    help: 'Max tickets burned in parallel per run (1–8). Each is a full agent.',
+    control: 'number',
   },
   mainBranch: {
     label: 'Main branch',

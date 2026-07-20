@@ -10,7 +10,7 @@ import type { RunOptions, RunResult } from '@ai-hero/sandcastle'
 import { run } from '@ai-hero/sandcastle'
 import { docker } from '@ai-hero/sandcastle/sandboxes/docker'
 import { noSandbox } from '@ai-hero/sandcastle/sandboxes/no-sandbox'
-import { mergeResearchBranch, researchBranchName } from '../services/git'
+import { mergeTempBranch, researchBranchName } from '../services/git'
 import type { StreamThrottle, ThrottledEvent } from './ticket-burner'
 import {
   buildBurnAgent,
@@ -283,7 +283,7 @@ async function realExecuteResearchRun(
   // the merge was aborted, the temp branch is preserved, and the run fails with
   // an actionable event — the waypoint stays unresolved and returns to the
   // frontier via the runner's auto-release.
-  const merge = await mergeResearchBranch(project.repoPath, feature.branch, tempBranch)
+  const merge = await mergeTempBranch(project.repoPath, feature.branch, tempBranch)
   if (!merge.ok) {
     const detail = merge.error ?? 'merge failed'
     ctx.emitEvent({
