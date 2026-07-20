@@ -324,14 +324,10 @@ describe('setup-command detection (deps install before the agent starts)', () =>
 })
 
 describe('cacheMountFor — package-manager cache bind-mounts', () => {
-  it('maps each manager to its in-sandbox cache/store path', () => {
+  it('maps download-cache managers to their in-sandbox cache path', () => {
     expect(cacheMountFor('bun', '/host/bun')).toEqual({
       hostPath: '/host/bun',
       sandboxPath: '~/.bun/install/cache',
-    })
-    expect(cacheMountFor('pnpm', '/host/pnpm')).toEqual({
-      hostPath: '/host/pnpm',
-      sandboxPath: '~/.local/share/pnpm/store',
     })
     expect(cacheMountFor('yarn', '/host/yarn')).toEqual({
       hostPath: '/host/yarn',
@@ -341,6 +337,13 @@ describe('cacheMountFor — package-manager cache bind-mounts', () => {
       hostPath: '/host/npm',
       sandboxPath: '~/.npm',
     })
+  })
+
+  // pnpm's store is hardlink-based, and a bind mount is always a different
+  // filesystem from the container's overlayfs — mounting it forces a full copy
+  // of every package instead of linking, on every host OS. Better unmounted.
+  it('returns undefined for pnpm so its store stays inside the container', () => {
+    expect(cacheMountFor('pnpm', '/host/pnpm')).toBeUndefined()
   })
 })
 

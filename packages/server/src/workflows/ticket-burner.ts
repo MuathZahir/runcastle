@@ -300,13 +300,24 @@ export function resolveSetupCommand(tc: RepoToolchain, override?: string): strin
 }
 
 /**
- * Where each package manager keeps its download cache/store inside the sandbox
+ * Where each package manager keeps its *download* cache inside the sandbox
  * (`~` expands to the container agent home). Bind-mounting a persistent host
- * dir here makes every install after the first mostly hardlinks/cache hits.
+ * dir here lets installs after the first skip the network.
+ *
+ * **pnpm is deliberately absent.** Its `~/.local/share/pnpm/store` is not a
+ * download cache but a content-addressed store whose whole point is to
+ * *hardlink* packages into `node_modules`. A bind mount is always a different
+ * filesystem from the container's overlayfs — on every host OS, not just
+ * Windows — so pnpm cannot hardlink out of a mounted store and silently falls
+ * back to copying every file of every package. That is strictly worse than
+ * letting the store live inside the container, where linking works: the mount
+ * costs a full cross-boundary copy per install and buys only the download.
+ * npm/yarn caches hold tarballs and are always extracted (never linked), and
+ * bun's cache saves the fetch-and-extract regardless of link fallback, so
+ * those three keep their mounts.
  */
-export const PM_CACHE_SANDBOX_PATHS: Record<PackageManager, string> = {
+export const PM_CACHE_SANDBOX_PATHS: Partial<Record<PackageManager, string>> = {
   bun: '~/.bun/install/cache',
-  pnpm: '~/.local/share/pnpm/store',
   yarn: '~/.cache/yarn',
   npm: '~/.npm',
 }
@@ -318,9 +329,14 @@ export interface CacheMount {
   readonly readonly?: boolean
 }
 
-/** The bind-mount for one package manager's persistent host cache. */
-export function cacheMountFor(pm: PackageManager, hostPath: string): CacheMount {
-  return { hostPath, sandboxPath: PM_CACHE_SANDBOX_PATHS[pm] }
+/**
+ * The bind-mount for one package manager's persistent host cache, or
+ * `undefined` for a manager that is better off with its cache inside the
+ * container (pnpm — see {@link PM_CACHE_SANDBOX_PATHS}).
+ */
+export function cacheMountFor(pm: PackageManager, hostPath: string): CacheMount | undefined {
+  const sandboxPath = PM_CACHE_SANDBOX_PATHS[pm]
+  return sandboxPath ? { hostPath, sandboxPath } : undefined
 }
 
 /** Inspect the target repo root for its JS toolchain markers (IO). */
@@ -839,17 +855,20 @@ async function realExecuteTicketRun(
   // override) and run it as a sandbox-side onSandboxReady hook, so the agent
   // never spends its iterations bootstrapping node_modules — the exact failure
   // mode that burned whole runs before (agent backgrounds an install, ends its
-  // turn "waiting for a notification" that print mode can never deliver). A
-  // persistent host cache dir is mounted at the manager's store path so the
-  // per-ticket cold install cost is paid roughly once per machine.
+  // turn "waiting for a notification" that print mode can never deliver). For
+  // managers with a download cache, a persistent host dir is mounted so later
+  // installs skip the network; pnpm opts out (`cacheMountFor` → undefined)
+  // because a mounted store cannot hardlink — see PM_CACHE_SANDBOX_PATHS.
   const toolchain = readRepoToolchain(project.repoPath)
   const pm = detectPackageManager(toolchain)
   const setupCommand = resolveSetupCommand(toolchain, config.setupCommand)
   const mounts: CacheMount[] = []
   if (config.sandbox !== 'noSandbox' && pm) {
-    const hostCache = burnCacheDir(pm)
-    mkdirSync(hostCache, { recursive: true }) // a missing hostPath fails sandbox creation
-    mounts.push(cacheMountFor(pm, hostCache))
+    const mount = cacheMountFor(pm, burnCacheDir(pm))
+    if (mount) {
+      mkdirSync(mount.hostPath, { recursive: true }) // a missing hostPath fails sandbox creation
+      mounts.push(mount)
+    }
   }
   if (setupCommand) {
     ctx.emitEvent({
