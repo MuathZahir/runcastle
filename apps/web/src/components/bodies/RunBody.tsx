@@ -5,15 +5,18 @@ import { useToast } from '../../lib/toast'
 import { useEventLog } from '../../lib/events'
 import { fmtDuration, fmtTime, shortSha } from '../../lib/format'
 import { DimLine, RunStatusChip, SessionStatusDot, TicketStatusChip } from '../../ui'
+import { AgentTranscript } from '../AgentTranscript'
 import { EndSessionButton } from '../EndSessionButton'
 import { ErrorBoundary } from '../ErrorBoundary'
 import { TerminalView } from '../TerminalView'
 
 /**
- * Run / implementation phase-body for the pipeline-first workspace: a lanes|stream
- * split — ticket lanes on the left, a live auto-following event stream on the
- * right. No run header/cancel here (that moved to the workspace next-step bar);
- * this body renders only the split. `readonly` is accepted but ignored (a log).
+ * Run / implementation phase-body for the pipeline-first workspace: a lanes|panel
+ * split — ticket lanes on the left, a tabbed Agent|Events panel on the right.
+ * The Agent tab is the live Claude Code-style transcript of the selected lane's
+ * agent (auto-selects the first burning ticket until you click a lane); the
+ * Events tab keeps the coarse run timeline. No run header/cancel here (that
+ * moved to the workspace next-step bar). `readonly` is accepted but ignored.
  */
 export function RunBody({
   featureId,
@@ -35,6 +38,18 @@ export function RunBody({
   const tickets = feature.data?.tickets ?? []
   const runEvents = useMemo(() => events.filter((e) => e.runId === runId), [events, runId])
   const durations = useMemo(() => ticketDurations(runEvents), [runEvents])
+
+  // Lane selection for the Agent tab. `pinned` is an explicit lane click and
+  // sticks; before any click the view follows the burn — first burning ticket,
+  // else the most recently terminal one (so a finished burn still shows its
+  // last transcript instead of a blank pane).
+  const [pinned, setPinned] = useState<string | null>(null)
+  const [tab, setTab] = useState<'agent' | 'events'>('agent')
+  const autoTicket =
+    tickets.find((t) => t.status === 'burning') ??
+    [...tickets].reverse().find((t) => t.status === 'done' || t.status === 'failed')
+  const selectedId = pinned ?? autoTicket?.id ?? null
+  const selected = tickets.find((t) => t.id === selectedId) ?? null
 
   const done = tickets.filter((t) => t.status === 'done').length
   const total = tickets.length
@@ -86,18 +101,71 @@ export function RunBody({
           <div className="run-lanes">
             {tickets.length === 0 && <DimLine>no ticket lanes</DimLine>}
             {tickets.map((t) => (
-              <Lane key={t.id} ticket={t} duration={durations.get(t.id)} />
+              <Lane
+                key={t.id}
+                ticket={t}
+                duration={durations.get(t.id)}
+                selected={t.id === selectedId}
+                onSelect={() => {
+                  setPinned(t.id)
+                  setTab('agent')
+                }}
+              />
             ))}
           </div>
         </div>
 
-        <EventStream events={runEvents} />
+        <div className="run-stream-panel">
+          <div className="stream-head">
+            <div className="panel-tabs">
+              <button
+                className={`panel-tab${tab === 'agent' ? ' is-active' : ''}`}
+                onClick={() => setTab('agent')}
+              >
+                Agent
+                {selected && <span className="panel-tab-ctx">#{selected.seq}</span>}
+              </button>
+              <button
+                className={`panel-tab${tab === 'events' ? ' is-active' : ''}`}
+                onClick={() => setTab('events')}
+              >
+                Events
+              </button>
+            </div>
+            {tab === 'agent' && selected?.status === 'burning' && (
+              <span className="agent-live-dot" title="agent running" />
+            )}
+          </div>
+          {tab === 'agent' ? (
+            selected ? (
+              <ErrorBoundary label="agent transcript">
+                <AgentTranscript key={selected.id} ticketId={selected.id} />
+              </ErrorBoundary>
+            ) : (
+              <div className="agent-body">
+                <DimLine>no agent yet — lanes light up here as tickets start burning.</DimLine>
+              </div>
+            )
+          ) : (
+            <EventStream events={runEvents} />
+          )}
+        </div>
       </div>
     </div>
   )
 }
 
-function Lane({ ticket, duration }: { ticket: Ticket; duration?: number }) {
+function Lane({
+  ticket,
+  duration,
+  selected,
+  onSelect,
+}: {
+  ticket: Ticket
+  duration?: number
+  selected: boolean
+  onSelect: () => void
+}) {
   const toast = useToast()
   const copy = (sha: string) => {
     navigator.clipboard?.writeText(sha).then(
@@ -111,7 +179,16 @@ function Lane({ ticket, duration }: { ticket: Ticket; duration?: number }) {
   const hasCommits = ticket.commits.length > 0
   const hasDuration = duration !== undefined
   return (
-    <div className={`lane${mod}`}>
+    <div
+      className={`lane is-clickable${mod}${selected ? ' is-selected' : ''}`}
+      role="button"
+      tabIndex={0}
+      title="show this ticket's agent"
+      onClick={onSelect}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') onSelect()
+      }}
+    >
       <div className="lane-head">
         <span className="lane-seq">#{ticket.seq}</span>
         <span className="lane-title">{ticket.title}</span>
@@ -124,7 +201,10 @@ function Lane({ ticket, duration }: { ticket: Ticket; duration?: number }) {
               <button
                 key={c}
                 className="commit-sha"
-                onClick={() => copy(c)}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  copy(c)
+                }}
                 title="copy sha"
               >
                 {shortSha(c)}
@@ -156,25 +236,20 @@ function EventStream({ events }: { events: EventRow[] }) {
   }
 
   return (
-    <div className="run-stream-panel">
-      <div className="stream-head">
-        <span className="panel-cap">Event stream</span>
-        {!following && (
-          <button className="follow-pill" onClick={() => setFollowing(true)}>
-            Follow ⇣
-          </button>
-        )}
-      </div>
-      <div className="stream-body" ref={scrollRef} onScroll={onScroll}>
-        {events.length === 0 && <DimLine>waiting for events…</DimLine>}
-        {events.map((e) => (
-          <div key={e.id} className={`stream-line level-${eventLevel(e.type)}`}>
-            <span className="sl-time">{fmtTime(e.ts)}</span>
-            <span className="sl-type">{e.type}</span>
-            <span className="sl-msg">{e.message}</span>
-          </div>
-        ))}
-      </div>
+    <div className="stream-body" ref={scrollRef} onScroll={onScroll}>
+      {events.length === 0 && <DimLine>waiting for events…</DimLine>}
+      {events.map((e) => (
+        <div key={e.id} className={`stream-line level-${eventLevel(e.type)}`}>
+          <span className="sl-time">{fmtTime(e.ts)}</span>
+          <span className="sl-type">{e.type}</span>
+          <span className="sl-msg">{e.message}</span>
+        </div>
+      ))}
+      {!following && (
+        <button className="follow-pill agent-follow" onClick={() => setFollowing(true)}>
+          Follow ⇣
+        </button>
+      )}
     </div>
   )
 }

@@ -13,6 +13,11 @@ import { newId, resolveModel, resolveSandboxImage } from '@runcastle/core'
 import { loadConfig } from '@runcastle/core/config-load'
 import { burnCacheDir, envPath, featureDocsRel, logsDir, worktreeDir } from '@runcastle/core/paths'
 import { resolveSkillsRoot } from '../launcher/skills-root'
+import {
+  appendTranscript,
+  beginTranscript,
+  endTranscript,
+} from '../services/agent-stream'
 import { mergeTempBranch, ticketBranchName } from '../services/git'
 import type {
   AgentCommandOptions,
@@ -858,6 +863,24 @@ async function realExecuteTicketRun(
   const logFilePath = join(logsDir(), `burn-${feature.id}-${ticket.seq}.log`)
   const throttle = createStreamThrottle((e) => ctx.emitEvent({ ...e, ticketId: ticket.id }))
 
+  // Two consumers of the agent stream: the throttle (coarse timeline events for
+  // the DB) and the in-memory transcript (UNTHROTTLED — the live Claude Code
+  // style view in the UI polls it). begin() resets any previous attempt's
+  // transcript so a re-burn starts clean.
+  beginTranscript(ticket.id)
+  const onStreamEvent = (event: AgentStreamEvent): void => {
+    throttle.onEvent(event)
+    if (event.type === 'text') {
+      appendTranscript(ticket.id, { kind: 'text', text: event.message })
+    } else if (event.type === 'toolCall') {
+      appendTranscript(ticket.id, {
+        kind: 'tool',
+        text: event.formattedArgs ?? '',
+        name: event.name,
+      })
+    }
+  }
+
   const runOptions: RunOptions = {
     agent: buildBurnAgent(config, token, model),
     sandbox: selectSandbox(config, mounts),
@@ -883,7 +906,7 @@ async function realExecuteTicketRun(
           },
         }
       : {}),
-    logging: { type: 'file', path: logFilePath, onAgentStreamEvent: throttle.onEvent },
+    logging: { type: 'file', path: logFilePath, onAgentStreamEvent: onStreamEvent },
   }
 
   let result: RunResult
@@ -891,6 +914,7 @@ async function realExecuteTicketRun(
     result = await run(runOptions)
   } catch (err) {
     throttle.flush()
+    endTranscript(ticket.id)
     if (ctx.signal.aborted) throw err // let the runner mark the run cancelled
     const msg = err instanceof Error ? err.message : String(err)
     if (isMergeConflictError(err)) {
@@ -906,6 +930,7 @@ async function realExecuteTicketRun(
     return { status: 'failed', error: msg }
   }
   throttle.flush()
+  endTranscript(ticket.id)
 
   const blocked = readBlockedFile([result.preservedWorktreePath, project.repoPath])
   const outcome = interpretRunResult(result, blocked)
