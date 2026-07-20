@@ -117,15 +117,24 @@ export async function researchRun(
   // Failed: leave the waypoint claimed — the runner's finalizer auto-releases it.
   ctx.emitEvent({
     type: 'research.failed',
-    message: `waypoint ${waypoint.seq} research failed: ${firstLine(outcome.error)}`,
+    message: `waypoint ${waypoint.seq} research failed: ${errorHeadline(outcome.error)}`,
     data: { waypointId: waypoint.id, error: outcome.error },
   })
   return { status: 'failed', summary: outcome.error }
 }
 
-function firstLine(s: string): string {
-  const i = s.indexOf('\n')
-  return (i === -1 ? s : s.slice(0, i)).trim()
+/**
+ * The most informative single line of a multi-line error. Git buries the cause
+ * under progress noise (a failed `worktree add` opens with "Preparing worktree
+ * (...)"), so prefer the LAST `fatal:`/`error:` line over the first line.
+ */
+function errorHeadline(s: string): string {
+  const lines = s
+    .split('\n')
+    .map((l) => l.trim())
+    .filter(Boolean)
+  const causes = lines.filter((l) => /^(fatal|error):/i.test(l))
+  return causes.at(-1) ?? lines[0] ?? ''
 }
 
 /**
@@ -290,7 +299,7 @@ async function realExecuteResearchRun(
       type: merge.conflict ? 'merge.conflict.needs-human' : 'research.merge_failed',
       message: merge.conflict
         ? `research branch ${tempBranch} conflicts with ${feature.branch} — merge it manually (git merge ${tempBranch}; resolve; git branch -D ${tempBranch}), then resolve the waypoint`
-        : `could not land ${tempBranch} on ${feature.branch}: ${firstLine(detail)} — the branch is preserved for manual recovery`,
+        : `could not land ${tempBranch} on ${feature.branch}: ${errorHeadline(detail)} — the branch is preserved for manual recovery`,
       data: { tempBranch, featureBranch: feature.branch, conflict: merge.conflict ?? false, error: detail },
     })
     return {

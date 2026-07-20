@@ -355,9 +355,19 @@ export function createSerialQueue(): <T>(task: () => Promise<T>) => Promise<T> {
 
 type ReadyState = 'ready' | 'wait' | { blockedBy: number; present: boolean }
 
-function firstLine(s: string): string {
-  const i = s.indexOf('\n')
-  return (i === -1 ? s : s.slice(0, i)).trim()
+/**
+ * The most informative single line of a multi-line error. Git buries the cause
+ * under progress noise — a failed `worktree add` starts with "Preparing
+ * worktree (...)" and only says `fatal: ... Filename too long` lines later —
+ * so prefer the LAST `fatal:`/`error:` line over the first line.
+ */
+function errorHeadline(s: string): string {
+  const lines = s
+    .split('\n')
+    .map((l) => l.trim())
+    .filter(Boolean)
+  const causes = lines.filter((l) => /^(fatal|error):/i.test(l))
+  return causes.at(-1) ?? lines[0] ?? ''
 }
 
 /**
@@ -429,7 +439,7 @@ export async function burnTickets(
       failTicket(seq, outcome.error, outcome.event)
       ctx.emitEvent({
         type: 'ticket.failed',
-        message: `ticket ${t.seq} failed: ${firstLine(outcome.error)}`,
+        message: `ticket ${t.seq} failed: ${errorHeadline(outcome.error)}`,
         ticketId: t.id,
         data: { error: outcome.error },
       })
@@ -757,7 +767,7 @@ async function realExecuteTicketRun(
     }
     return {
       status: 'failed',
-      error: `ticket ${ticket.seq} committed to ${tempBranch} but landing on ${feature.branch} failed: ${firstLine(detail)} — the branch is preserved for manual recovery`,
+      error: `ticket ${ticket.seq} committed to ${tempBranch} but landing on ${feature.branch} failed: ${errorHeadline(detail)} — the branch is preserved for manual recovery`,
     }
   }
 

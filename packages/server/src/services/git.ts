@@ -410,32 +410,49 @@ export async function reattachWorktree(path: string, branch: string): Promise<vo
  * Namespaces for AFK-run temp branches. Distinctively runcastle-owned so boot
  * cleanup can never touch a user's own branches (bare `research/*` / `ticket/*`
  * prefixes would be too easy to collide with). Both encode
- * `<slug>/<seq>-<unique>` after the prefix so cleanup can map a leftover branch
- * back to its feature branch.
+ * `<slug-segment>/<seq>-<unique>` after the prefix so cleanup can map a
+ * leftover branch back to its feature branch.
  */
 export const RESEARCH_BRANCH_PREFIX = 'runcastle/research/'
 export const TICKET_BRANCH_PREFIX = 'runcastle/ticket/'
 const TEMP_BRANCH_PREFIXES = [RESEARCH_BRANCH_PREFIX, TICKET_BRANCH_PREFIX] as const
 
+const TEMP_BRANCH_SLUG_MAX = 16
+
 /**
- * Branch a research run commits to: `runcastle/research/<slug>/<seq>-<unique>`.
- * Based on the feature branch tip (sandcastle `baseBranch`), merged back into
- * it at run finalize, deleted after a clean merge.
+ * The slug segment embedded in temp branch names: the feature slug truncated to
+ * 16 chars (ADR-0003). Sandcastle keys its worktree DIRECTORY on the branch
+ * name (`.sandcastle/worktrees/<branch>`), so a full 60+-char slug lands in
+ * every checked-out file path and blows past Windows' 260-char MAX_PATH in
+ * repos with deep trees ("Filename too long" mid-checkout). Truncation keeps
+ * the mapping human-readable while capping the path contribution; `unique`
+ * already guarantees branch-name uniqueness.
  */
-export function researchBranchName(slug: string, waypointSeq: number, unique: string): string {
-  return `${RESEARCH_BRANCH_PREFIX}${slug}/${waypointSeq}-${unique}`
+export function tempBranchSlugSegment(slug: string): string {
+  return slug.slice(0, TEMP_BRANCH_SLUG_MAX).replace(/-+$/, '')
 }
 
 /**
- * Branch one ticket burn commits to: `runcastle/ticket/<slug>/<seq>-<unique>`
- * (M2, SPEC §8). Based on the feature branch tip (sandcastle `baseBranch`) so
- * every concurrent ticket gets its OWN sandcastle worktree — the `branch`
- * strategy reuses `.sandcastle/worktrees/<branch>` per branch name, so distinct
- * names are what isolate parallel agents. Landed on the feature branch through
- * the burner's serialized merge queue, deleted after a clean merge.
+ * Branch a research run commits to:
+ * `runcastle/research/<slug-segment>/<seq>-<unique>`. Based on the feature
+ * branch tip (sandcastle `baseBranch`), merged back into it at run finalize,
+ * deleted after a clean merge.
+ */
+export function researchBranchName(slug: string, waypointSeq: number, unique: string): string {
+  return `${RESEARCH_BRANCH_PREFIX}${tempBranchSlugSegment(slug)}/${waypointSeq}-${unique}`
+}
+
+/**
+ * Branch one ticket burn commits to:
+ * `runcastle/ticket/<slug-segment>/<seq>-<unique>` (M2, SPEC §8). Based on the
+ * feature branch tip (sandcastle `baseBranch`) so every concurrent ticket gets
+ * its OWN sandcastle worktree — the `branch` strategy reuses
+ * `.sandcastle/worktrees/<branch>` per branch name, so distinct names are what
+ * isolate parallel agents. Landed on the feature branch through the burner's
+ * serialized merge queue, deleted after a clean merge.
  */
 export function ticketBranchName(slug: string, ticketSeq: number, unique: string): string {
-  return `${TICKET_BRANCH_PREFIX}${slug}/${ticketSeq}-${unique}`
+  return `${TICKET_BRANCH_PREFIX}${tempBranchSlugSegment(slug)}/${ticketSeq}-${unique}`
 }
 
 export interface TempBranchMergeResult {
@@ -566,19 +583,31 @@ export async function cleanupTempBranches(repoPath: string): Promise<TempBranchC
   for (const name of all) {
     const prefix = tempBranchPrefix(name)
     if (!prefix) continue
-    const slug = name.slice(prefix.length).split('/')[0]
-    const target = featureBranch(slug)
+    const seg = name.slice(prefix.length).split('/')[0]
+    // Candidate feature branches for this segment: the truncated slug (current
+    // format, ADR-0003) or the full slug (pre-truncation leftovers). Truncation
+    // can make two features share a segment, so check every candidate.
+    const targets = seg
+      ? all.filter((b) => {
+          if (!b.startsWith('feature/')) return false
+          const featureSlug = b.slice('feature/'.length)
+          return featureSlug === seg || tempBranchSlugSegment(featureSlug) === seg
+        })
+      : []
     let merged = false
-    if (slug && all.includes(target)) {
+    for (const target of targets) {
       try {
         // NOT `merge-base --is-ancestor`: its "no" is a silent exit 1, which
         // simple-git resolves (it only rejects on stderr). Compare tips instead:
         // the branch is fully merged iff merge-base(branch, target) == its tip.
         const tip = (await g.revparse([name])).trim()
         const base = (await g.raw(['merge-base', name, target])).trim()
-        merged = tip.length > 0 && tip === base
+        if (tip.length > 0 && tip === base) {
+          merged = true
+          break
+        }
       } catch {
-        merged = false
+        // unmergeable against this candidate — try the next
       }
     }
     if (merged && (await deleteBranchDetachingWorktrees(g, repoPath, name))) {

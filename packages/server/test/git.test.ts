@@ -724,6 +724,24 @@ describe('mergeTempBranch', () => {
   })
 })
 
+describe('temp branch names', () => {
+  const longSlug = 'add-the-rest-of-the-act-2-assistant-tools-and-functionalities'
+
+  it('truncates long slugs so sandcastle worktree paths stay under Windows MAX_PATH (ADR-0003)', () => {
+    expect(ticketBranchName(longSlug, 5, 'NjflEB0m')).toBe(
+      'runcastle/ticket/add-the-rest-of/5-NjflEB0m',
+    )
+    expect(researchBranchName(longSlug, 2, 'abc123')).toBe(
+      'runcastle/research/add-the-rest-of/2-abc123',
+    )
+  })
+
+  it('passes short slugs through unchanged', () => {
+    expect(ticketBranchName('swp', 3, 'ccc333')).toBe('runcastle/ticket/swp/3-ccc333')
+    expect(researchBranchName('swp', 1, 'aaa111')).toBe('runcastle/research/swp/1-aaa111')
+  })
+})
+
 describe('cleanupTempBranches', () => {
   let ctx: AppCtx
   let project: Project
@@ -772,6 +790,26 @@ describe('cleanupTempBranches', () => {
     expect(all).toContain(unmergedTicket)
     expect(all).toContain('research/user-branch')
     expect(all).toContain('ticket/user-branch')
+  })
+
+  it('maps truncated slug segments to their feature branch and still sweeps old full-slug leftovers', async () => {
+    const g = simpleGit(project.repoPath)
+    const longSlug = 'add-the-rest-of-the-act-2-assistant-tools-and-functionalities'
+    await createFeatureBranch(project, longSlug)
+    // current format (ADR-0003): segment is the truncated slug
+    const merged = ticketBranchName(longSlug, 1, 'eee555')
+    await g.raw(['branch', merged, `feature/${longSlug}`])
+    // pre-ADR-0003 leftover: full slug embedded in the branch name
+    const oldFormat = `runcastle/ticket/${longSlug}/2-fff666`
+    await g.raw(['branch', oldFormat, `feature/${longSlug}`])
+
+    const result = await cleanupTempBranches(project.repoPath)
+    expect(result.deleted.sort()).toEqual([merged, oldFormat].sort())
+    expect(result.kept).toEqual([])
+
+    const all = (await g.branchLocal()).all
+    expect(all).not.toContain(merged)
+    expect(all).not.toContain(oldFormat)
   })
 
   it('is a best-effort no-op on a directory that is not a git repo', async () => {
