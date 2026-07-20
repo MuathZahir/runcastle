@@ -4,7 +4,13 @@ import type { AppCtx } from '../src/db/types'
 import { runs } from '../src/db/schema'
 import { listByProject } from '../src/services/events'
 import * as features from '../src/services/features'
-import { closeProject, listProjects, openProject, renameProject } from '../src/services/projects'
+import {
+  closeProject,
+  isTranslatedWindowsMount,
+  listProjects,
+  openProject,
+  renameProject,
+} from '../src/services/projects'
 import { makeTestCtx } from './helpers/db'
 import { tmpRepo } from './helpers/fixtures'
 
@@ -132,6 +138,21 @@ describe('projects service — multi-project CRUD (#43)', () => {
     const renamed = renameProject(ctx, project.id, 'Renamed')
     expect(renamed.name).toBe('Renamed')
     expect(listProjects(ctx).find((p) => p.id === project.id)?.name).toBe('Renamed')
+  })
+
+  // The silent WSL trap (ADR-0005): from inside WSL a /mnt/<drive> repo works
+  // with no error while every git/install/burn operation pays the 9P per-file
+  // tax. openProject warns via a `project.slow-path` event; the predicate is
+  // pure so the Linux-only branch is testable from any host.
+  it('flags /mnt/<drive> repo paths on Linux only (the WSL DrvFS trap)', () => {
+    expect(isTranslatedWindowsMount('/mnt/c/Users/me/repo', 'linux')).toBe(true)
+    expect(isTranslatedWindowsMount('/mnt/D/work', 'linux')).toBe(true)
+    expect(isTranslatedWindowsMount('/mnt/c', 'linux')).toBe(true)
+    // /mnt/wsl, /mnt/media etc. are not translated Windows drives
+    expect(isTranslatedWindowsMount('/mnt/wsl/instances', 'linux')).toBe(false)
+    expect(isTranslatedWindowsMount('/home/me/repo', 'linux')).toBe(false)
+    expect(isTranslatedWindowsMount('/mnt/c/repo', 'win32')).toBe(false)
+    expect(isTranslatedWindowsMount('C:\\Users\\me\\repo', 'win32')).toBe(false)
   })
 
   it('mutations emit events that reflect the acting project', async () => {

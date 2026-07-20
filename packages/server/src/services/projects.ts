@@ -36,6 +36,29 @@ export function listProjects(ctx: AppCtx): Project[] {
 }
 
 /**
+ * True when `repoPath` is a Windows drive served into Linux through a
+ * translation layer (WSL DrvFS — `/mnt/<drive>/…`). From inside WSL such a
+ * path *works*, silently, while git, installs, and burns all pay a per-file
+ * 9P tax — usually the exact tax the user moved to WSL to escape (ADR-0005).
+ * Pure; platform injectable for tests.
+ */
+export function isTranslatedWindowsMount(
+  repoPath: string,
+  platform: NodeJS.Platform = process.platform,
+): boolean {
+  return platform === 'linux' && /^\/mnt\/[a-z](\/|$)/i.test(repoPath)
+}
+
+/** Warn (as a project event) when an opened repo sits on a translated mount. */
+function warnIfTranslatedMount(ctx: AppCtx, projectId: string, repoPath: string): void {
+  if (!isTranslatedWindowsMount(repoPath)) return
+  emitProject(ctx, projectId, {
+    type: 'project.slow-path',
+    message: `${repoPath} is a Windows drive mounted into Linux (/mnt) — git and burns pay a per-file translation tax here; clone the repo into the Linux filesystem (e.g. ~/projects) for native speed`,
+  })
+}
+
+/**
  * Open a project at `repoPath`, upserting by path: a known path returns the same
  * project (and clears any closed state — a closed project reappears with its
  * features intact); an unknown path inserts a new one.
@@ -57,6 +80,7 @@ export async function openProject(ctx: AppCtx, repoPath: string): Promise<Projec
       type: 'project.opened',
       message: `project ${existing.name} re-opened at ${repoPath} (${mainBranch})`,
     })
+    warnIfTranslatedMount(ctx, existing.id, repoPath)
     return reopened
   }
 
@@ -74,6 +98,7 @@ export async function openProject(ctx: AppCtx, repoPath: string): Promise<Projec
     type: 'project.opened',
     message: `project ${name} at ${repoPath} (${mainBranch})`,
   })
+  warnIfTranslatedMount(ctx, project.id, repoPath)
   return project
 }
 
