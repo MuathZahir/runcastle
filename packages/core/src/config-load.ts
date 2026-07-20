@@ -38,6 +38,10 @@ export function loadConfig(
   if (env.RUNCASTLE_BURN_CONCURRENCY) {
     overrides.burnConcurrency = Number(env.RUNCASTLE_BURN_CONCURRENCY)
   }
+  if (env.RUNCASTLE_BURN_MAX_ITERATIONS) {
+    overrides.burnMaxIterations = Number(env.RUNCASTLE_BURN_MAX_ITERATIONS)
+  }
+  if (env.RUNCASTLE_SETUP_COMMAND) overrides.setupCommand = env.RUNCASTLE_SETUP_COMMAND
 
   const base = typeof fileConfig === 'object' && fileConfig !== null ? fileConfig : {}
   return RuncastleConfig.parse({ ...base, ...overrides })

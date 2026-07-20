@@ -72,6 +72,25 @@ describe('RuncastleConfig — burnConcurrency (M2)', () => {
   })
 })
 
+describe('RuncastleConfig — burn iteration + setup knobs', () => {
+  it('burnMaxIterations defaults to 3 and accepts 1..10', () => {
+    expect(RuncastleConfig.parse({}).burnMaxIterations).toBe(3)
+    expect(RuncastleConfig.parse({ burnMaxIterations: 1 }).burnMaxIterations).toBe(1)
+    expect(RuncastleConfig.parse({ burnMaxIterations: 10 }).burnMaxIterations).toBe(10)
+  })
+
+  it('rejects out-of-range and non-integer iteration counts', () => {
+    expect(RuncastleConfig.safeParse({ burnMaxIterations: 0 }).success).toBe(false)
+    expect(RuncastleConfig.safeParse({ burnMaxIterations: 11 }).success).toBe(false)
+    expect(RuncastleConfig.safeParse({ burnMaxIterations: 1.5 }).success).toBe(false)
+  })
+
+  it('setupCommand is optional free text, absent by default', () => {
+    expect(RuncastleConfig.parse({}).setupCommand).toBeUndefined()
+    expect(RuncastleConfig.parse({ setupCommand: 'make deps' }).setupCommand).toBe('make deps')
+  })
+})
+
 describe('resolveModel — chain runOverride ?? stepModels[step] ?? project.model ?? global.model', () => {
   const config = {
     model: 'global-default',

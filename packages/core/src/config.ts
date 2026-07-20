@@ -101,6 +101,24 @@ export const RuncastleConfig = z.preprocess(
      * regardless of the width.
      */
     burnConcurrency: z.number().int().min(1).max(8).default(3),
+    /**
+     * Max agent iterations per ticket burn (sandcastle `maxIterations`). Each
+     * iteration is one fresh non-interactive `claude --print` invocation against
+     * the same worktree, so an agent that ends its turn prematurely (print mode
+     * has no background-task notifications) is picked up by the next iteration
+     * instead of failing the ticket. The burner prompt's
+     * `<promise>COMPLETE</promise>` signal stops the loop early once a ticket is
+     * actually done, so raising this does not make successful burns slower.
+     */
+    burnMaxIterations: z.number().int().min(1).max(10).default(3),
+    /**
+     * Command run inside the burner sandbox before the agent starts (sandcastle
+     * `sandbox.onSandboxReady`), overriding lockfile-based detection. Leave
+     * unset to auto-detect from the target repo (`packageManager` field, then
+     * lockfiles — a root install covers JS workspaces/monorepos). Set it for
+     * non-JS projects or bespoke bootstraps (e.g. `make deps`).
+     */
+    setupCommand: z.string().optional(),
   }),
 )
 export type RuncastleConfig = z.infer<typeof RuncastleConfig>

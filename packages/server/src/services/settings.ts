@@ -104,6 +104,22 @@ const DESCRIPTORS: FieldDescriptor[] = [
     parseEnv: (raw) => Number(raw),
   },
   {
+    key: 'burnMaxIterations',
+    configKey: 'burnMaxIterations',
+    envVar: 'RUNCASTLE_BURN_MAX_ITERATIONS',
+    restartRequired: false,
+    valueSchema: z.number().int().min(1).max(10),
+    parseEnv: (raw) => Number(raw),
+  },
+  {
+    key: 'setupCommand',
+    configKey: 'setupCommand',
+    envVar: 'RUNCASTLE_SETUP_COMMAND',
+    restartRequired: false,
+    valueSchema: z.string().min(1),
+    parseEnv: idEnv,
+  },
+  {
     key: 'mainBranch',
     configKey: 'mainBranch',
     envVar: 'RUNCASTLE_MAIN_BRANCH',

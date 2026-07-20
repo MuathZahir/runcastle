@@ -41,6 +41,16 @@ export function worktreeDir(projectId: string, slug: string): string {
 }
 
 /**
+ * Shared package-manager cache for burner sandboxes:
+ * `~/.runcastle/cache/<pm>`. Bind-mounted into every ticket's container at the
+ * manager's cache/store path so per-ticket dependency installs after the first
+ * are mostly cache hits instead of full downloads.
+ */
+export function burnCacheDir(pm: string): string {
+  return join(dataDir(), 'cache', pm)
+}
+
+/**
  * Runcastle-owned build context for the generic AFK burner image
  * (`~/.runcastle/sandbox-build/`). The Enable-AFK card scaffolds a vetted
  * `.sandcastle/` here on demand and runs `sandcastle <runtime> build-image` in

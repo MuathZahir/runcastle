@@ -5,16 +5,20 @@ import {
   buildDocsDigest,
   buildFeatureBrief,
   buildTicketJson,
+  cacheMountFor,
   createSerialQueue,
   createStreamThrottle,
   detectCycle,
+  detectPackageManager,
   indexBySeq,
   interpretRunResult,
   isMergeConflictError,
   parseEnvFile,
   renderTicketPrompt,
+  resolveSetupCommand,
   selectSandbox,
 } from '../src/workflows/ticket-burner'
+import type { RepoToolchain } from '../src/workflows/ticket-burner'
 import type { RuncastleConfig } from '@runcastle/core'
 
 function ticket(seq: number, blockedBy: number[] = [], overrides: Partial<Ticket> = {}): Ticket {
@@ -249,6 +253,94 @@ describe('selectSandbox — provider for the configured sandbox', () => {
     expect(selectSandbox(config('docker')).name).toBe('docker')
     expect(selectSandbox(config('podman')).name).toBe('podman')
     expect(selectSandbox(config('noSandbox')).name).toBe('no-sandbox')
+  })
+})
+
+describe('setup-command detection (deps install before the agent starts)', () => {
+  const tc = (over: Partial<RepoToolchain> = {}): RepoToolchain => ({
+    hasPackageJson: true,
+    lockfiles: { bun: false, pnpm: false, yarn: false, npm: false },
+    ...over,
+  })
+  const locks = (over: Partial<RepoToolchain['lockfiles']>): RepoToolchain['lockfiles'] => ({
+    bun: false,
+    pnpm: false,
+    yarn: false,
+    npm: false,
+    ...over,
+  })
+
+  it('the packageManager field (corepack pin) wins over lockfiles', () => {
+    const t = tc({ packageManagerField: 'pnpm@9.6.0', lockfiles: locks({ yarn: true }) })
+    expect(detectPackageManager(t)).toBe('pnpm')
+  })
+
+  it('falls back to lockfile presence in bun → pnpm → yarn → npm order', () => {
+    expect(detectPackageManager(tc({ lockfiles: locks({ bun: true, pnpm: true }) }))).toBe('bun')
+    expect(detectPackageManager(tc({ lockfiles: locks({ pnpm: true, yarn: true }) }))).toBe('pnpm')
+    expect(detectPackageManager(tc({ lockfiles: locks({ yarn: true, npm: true }) }))).toBe('yarn')
+    expect(detectPackageManager(tc({ lockfiles: locks({ npm: true }) }))).toBe('npm')
+  })
+
+  it('an unknown packageManager field falls back to lockfiles', () => {
+    const t = tc({ packageManagerField: 'deno@2.0.0', lockfiles: locks({ pnpm: true }) })
+    expect(detectPackageManager(t)).toBe('pnpm')
+  })
+
+  it('a bare package.json defaults to npm; no package.json means no toolchain', () => {
+    expect(detectPackageManager(tc())).toBe('npm')
+    expect(detectPackageManager(tc({ hasPackageJson: false }))).toBeUndefined()
+  })
+
+  it('uses frozen installs only when the matching lockfile exists', () => {
+    expect(resolveSetupCommand(tc({ lockfiles: locks({ bun: true }) }))).toBe(
+      'bun install --frozen-lockfile',
+    )
+    expect(resolveSetupCommand(tc({ lockfiles: locks({ pnpm: true }) }))).toBe(
+      'corepack pnpm install --frozen-lockfile',
+    )
+    expect(resolveSetupCommand(tc({ lockfiles: locks({ yarn: true }) }))).toBe(
+      'corepack yarn install --frozen-lockfile',
+    )
+    expect(resolveSetupCommand(tc({ lockfiles: locks({ npm: true }) }))).toBe('npm ci')
+    expect(resolveSetupCommand(tc())).toBe('npm install')
+    expect(resolveSetupCommand(tc({ packageManagerField: 'pnpm@9.0.0' }))).toBe(
+      'corepack pnpm install',
+    )
+  })
+
+  it('a config override wins — even with no package.json (non-JS bootstrap)', () => {
+    expect(resolveSetupCommand(tc({ lockfiles: locks({ pnpm: true }) }), 'make deps')).toBe(
+      'make deps',
+    )
+    expect(resolveSetupCommand(tc({ hasPackageJson: false }), 'make deps')).toBe('make deps')
+    // whitespace-only override is treated as unset
+    expect(resolveSetupCommand(tc({ hasPackageJson: false }), '   ')).toBeUndefined()
+  })
+
+  it('returns undefined for a repo with no JS toolchain and no override', () => {
+    expect(resolveSetupCommand(tc({ hasPackageJson: false }))).toBeUndefined()
+  })
+})
+
+describe('cacheMountFor — package-manager cache bind-mounts', () => {
+  it('maps each manager to its in-sandbox cache/store path', () => {
+    expect(cacheMountFor('bun', '/host/bun')).toEqual({
+      hostPath: '/host/bun',
+      sandboxPath: '~/.bun/install/cache',
+    })
+    expect(cacheMountFor('pnpm', '/host/pnpm')).toEqual({
+      hostPath: '/host/pnpm',
+      sandboxPath: '~/.local/share/pnpm/store',
+    })
+    expect(cacheMountFor('yarn', '/host/yarn')).toEqual({
+      hostPath: '/host/yarn',
+      sandboxPath: '~/.cache/yarn',
+    })
+    expect(cacheMountFor('npm', '/host/npm')).toEqual({
+      hostPath: '/host/npm',
+      sandboxPath: '~/.npm',
+    })
   })
 })
 

@@ -11,7 +11,7 @@ import type {
 } from '@runcastle/core'
 import { newId, resolveModel, resolveSandboxImage } from '@runcastle/core'
 import { loadConfig } from '@runcastle/core/config-load'
-import { envPath, featureDocsRel, logsDir, worktreeDir } from '@runcastle/core/paths'
+import { burnCacheDir, envPath, featureDocsRel, logsDir, worktreeDir } from '@runcastle/core/paths'
 import { resolveSkillsRoot } from '../launcher/skills-root'
 import { mergeTempBranch, ticketBranchName } from '../services/git'
 import type {
@@ -230,6 +230,117 @@ export function parseEnvFile(content: string): Record<string, string> {
     out[key] = value
   }
   return out
+}
+
+// ---------------------------------------------------------------------------
+// Pure unit — setup-command detection (deps install before the agent starts)
+// ---------------------------------------------------------------------------
+
+export const PACKAGE_MANAGERS = ['bun', 'pnpm', 'yarn', 'npm'] as const
+export type PackageManager = (typeof PACKAGE_MANAGERS)[number]
+
+/** What the target repo's root reveals about its JS toolchain. */
+export interface RepoToolchain {
+  hasPackageJson: boolean
+  /** `packageManager` field from package.json (corepack pin), e.g. `"pnpm@9.6.0"`. */
+  packageManagerField?: string
+  /** Which lockfiles exist at the repo root. */
+  lockfiles: { bun: boolean; pnpm: boolean; yarn: boolean; npm: boolean }
+}
+
+/**
+ * Pick the repo's package manager: the `packageManager` field wins (it is the
+ * corepack pin — authoritative even when stray lockfiles exist), then lockfile
+ * presence (bun → pnpm → yarn → npm), then npm as the neutral default for a
+ * repo with a package.json but no other marker. `undefined` for non-JS repos.
+ */
+export function detectPackageManager(tc: RepoToolchain): PackageManager | undefined {
+  const pinned = tc.packageManagerField?.split('@')[0]
+  if (pinned && (PACKAGE_MANAGERS as readonly string[]).includes(pinned)) {
+    return pinned as PackageManager
+  }
+  if (tc.lockfiles.bun) return 'bun'
+  if (tc.lockfiles.pnpm) return 'pnpm'
+  if (tc.lockfiles.yarn) return 'yarn'
+  if (tc.lockfiles.npm) return 'npm'
+  return tc.hasPackageJson ? 'npm' : undefined
+}
+
+/**
+ * The dependency-install command to run in the sandbox before the agent starts
+ * (sandcastle `sandbox.onSandboxReady`), or `undefined` when there is nothing
+ * to install. An explicit `override` (config `setupCommand`) always wins — even
+ * with no package.json, so non-JS projects can bootstrap. Detection follows
+ * {@link detectPackageManager}; a root install covers JS workspaces/monorepos,
+ * so there is no per-package resolution to do. pnpm/yarn go through corepack
+ * (present in the node:22 base image; neither manager is preinstalled), and
+ * `--frozen-lockfile` (a working deprecated alias on yarn berry) / `npm ci` is
+ * used only when the matching lockfile actually exists.
+ */
+export function resolveSetupCommand(tc: RepoToolchain, override?: string): string | undefined {
+  const trimmed = override?.trim()
+  if (trimmed) return trimmed
+  const pm = detectPackageManager(tc)
+  if (!pm) return undefined
+  switch (pm) {
+    case 'bun':
+      return tc.lockfiles.bun ? 'bun install --frozen-lockfile' : 'bun install'
+    case 'pnpm':
+      return tc.lockfiles.pnpm ? 'corepack pnpm install --frozen-lockfile' : 'corepack pnpm install'
+    case 'yarn':
+      return tc.lockfiles.yarn ? 'corepack yarn install --frozen-lockfile' : 'corepack yarn install'
+    case 'npm':
+      return tc.lockfiles.npm ? 'npm ci' : 'npm install'
+  }
+}
+
+/**
+ * Where each package manager keeps its download cache/store inside the sandbox
+ * (`~` expands to the container agent home). Bind-mounting a persistent host
+ * dir here makes every install after the first mostly hardlinks/cache hits.
+ */
+export const PM_CACHE_SANDBOX_PATHS: Record<PackageManager, string> = {
+  bun: '~/.bun/install/cache',
+  pnpm: '~/.local/share/pnpm/store',
+  yarn: '~/.cache/yarn',
+  npm: '~/.npm',
+}
+
+/** Structurally matches sandcastle's `MountConfig` (not exported from its barrel). */
+export interface CacheMount {
+  readonly hostPath: string
+  readonly sandboxPath: string
+  readonly readonly?: boolean
+}
+
+/** The bind-mount for one package manager's persistent host cache. */
+export function cacheMountFor(pm: PackageManager, hostPath: string): CacheMount {
+  return { hostPath, sandboxPath: PM_CACHE_SANDBOX_PATHS[pm] }
+}
+
+/** Inspect the target repo root for its JS toolchain markers (IO). */
+export function readRepoToolchain(repoPath: string): RepoToolchain {
+  const pkgPath = join(repoPath, 'package.json')
+  const hasPackageJson = existsSync(pkgPath)
+  let packageManagerField: string | undefined
+  if (hasPackageJson) {
+    try {
+      const pkg = JSON.parse(readFileSync(pkgPath, 'utf8')) as { packageManager?: unknown }
+      if (typeof pkg.packageManager === 'string') packageManagerField = pkg.packageManager
+    } catch {
+      // Unreadable package.json — fall back to lockfile detection alone.
+    }
+  }
+  return {
+    hasPackageJson,
+    ...(packageManagerField !== undefined ? { packageManagerField } : {}),
+    lockfiles: {
+      bun: existsSync(join(repoPath, 'bun.lock')) || existsSync(join(repoPath, 'bun.lockb')),
+      pnpm: existsSync(join(repoPath, 'pnpm-lock.yaml')),
+      yarn: existsSync(join(repoPath, 'yarn.lock')),
+      npm: existsSync(join(repoPath, 'package-lock.json')),
+    },
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -661,10 +772,15 @@ export function buildBurnAgent(
  * fallback, so the tag matches what build-image/doctor built (SPEC §8; the
  * "Image not found locally" mismatch). podman keeps sandcastle's rootless
  * defaults (SELinux `:z` relabel + `keep-id` userns) — runcastle passes no
- * volume-label/userns flags of its own.
+ * volume-label/userns flags of its own. `mounts` (package-manager cache dirs)
+ * apply to the container providers only — noSandbox runs on the host, where the
+ * real cache is already in place.
  */
-export function selectSandbox(config: RuncastleConfig) {
-  const imageOpts = { imageName: resolveSandboxImage(config) }
+export function selectSandbox(config: RuncastleConfig, mounts: readonly CacheMount[] = []) {
+  const imageOpts = {
+    imageName: resolveSandboxImage(config),
+    ...(mounts.length > 0 ? { mounts } : {}),
+  }
   switch (config.sandbox) {
     case 'docker':
       return docker(imageOpts)
@@ -674,6 +790,14 @@ export function selectSandbox(config: RuncastleConfig) {
       return noSandbox()
   }
 }
+
+/**
+ * Generous ceiling for the pre-agent dependency install
+ * (`sandbox.onSandboxReady`): sandcastle's default hook timeout is 60s, which a
+ * cold monorepo install blows through easily. 15 minutes; cache mounts make the
+ * warm path far faster.
+ */
+const SETUP_HOOK_TIMEOUT_MS = 15 * 60_000
 
 /**
  * Run one ticket through sandcastle (M2). Renders the prompt, builds the
@@ -706,13 +830,37 @@ async function realExecuteTicketRun(
     COMMIT_CONVENTION: `ticket(${ticket.seq}): <summary>`,
   })
 
+  // Dependency setup: detect the repo's install command (or take the config
+  // override) and run it as a sandbox-side onSandboxReady hook, so the agent
+  // never spends its iterations bootstrapping node_modules — the exact failure
+  // mode that burned whole runs before (agent backgrounds an install, ends its
+  // turn "waiting for a notification" that print mode can never deliver). A
+  // persistent host cache dir is mounted at the manager's store path so the
+  // per-ticket cold install cost is paid roughly once per machine.
+  const toolchain = readRepoToolchain(project.repoPath)
+  const pm = detectPackageManager(toolchain)
+  const setupCommand = resolveSetupCommand(toolchain, config.setupCommand)
+  const mounts: CacheMount[] = []
+  if (config.sandbox !== 'noSandbox' && pm) {
+    const hostCache = burnCacheDir(pm)
+    mkdirSync(hostCache, { recursive: true }) // a missing hostPath fails sandbox creation
+    mounts.push(cacheMountFor(pm, hostCache))
+  }
+  if (setupCommand) {
+    ctx.emitEvent({
+      type: 'burn.setup',
+      message: `installing deps before agent start: ${setupCommand}`,
+      ticketId: ticket.id,
+    })
+  }
+
   mkdirSync(logsDir(), { recursive: true })
   const logFilePath = join(logsDir(), `burn-${feature.id}-${ticket.seq}.log`)
   const throttle = createStreamThrottle((e) => ctx.emitEvent({ ...e, ticketId: ticket.id }))
 
   const runOptions: RunOptions = {
     agent: buildBurnAgent(config, token, model),
-    sandbox: selectSandbox(config),
+    sandbox: selectSandbox(config, mounts),
     cwd: project.repoPath,
     prompt,
     // Temp branch off the feature branch tip — its own sandcastle worktree,
@@ -720,6 +868,21 @@ async function realExecuteTicketRun(
     branchStrategy: { type: 'branch', branch: tempBranch, baseBranch: feature.branch },
     signal: ctx.signal,
     name: `ticket-${ticket.seq}`,
+    // Each iteration is a fresh `claude --print` against the same worktree (and
+    // the same warm container, so the setup hook runs once). The prompt's
+    // `<promise>COMPLETE</promise>` signal stops the loop early on success; the
+    // headroom exists so a turn that ends prematurely (idle wait, context cut)
+    // resumes instead of failing the ticket with zero commits.
+    maxIterations: config.burnMaxIterations,
+    ...(setupCommand
+      ? {
+          hooks: {
+            sandbox: {
+              onSandboxReady: [{ command: setupCommand, timeoutMs: SETUP_HOOK_TIMEOUT_MS }],
+            },
+          },
+        }
+      : {}),
     logging: { type: 'file', path: logFilePath, onAgentStreamEvent: throttle.onEvent },
   }
 
