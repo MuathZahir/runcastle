@@ -42,6 +42,7 @@ export function loadConfig(
     overrides.burnMaxIterations = Number(env.RUNCASTLE_BURN_MAX_ITERATIONS)
   }
   if (env.RUNCASTLE_SETUP_COMMAND) overrides.setupCommand = env.RUNCASTLE_SETUP_COMMAND
+  if (env.RUNCASTLE_BURN_WORKSPACE) overrides.burnWorkspace = env.RUNCASTLE_BURN_WORKSPACE
 
   const base = typeof fileConfig === 'object' && fileConfig !== null ? fileConfig : {}
   return RuncastleConfig.parse({ ...base, ...overrides })

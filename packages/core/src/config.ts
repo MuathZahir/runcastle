@@ -119,6 +119,17 @@ export const RuncastleConfig = z.preprocess(
      * non-JS projects or bespoke bootstraps (e.g. `make deps`).
      */
     setupCommand: z.string().optional(),
+    /**
+     * Where the burn agent's working tree lives (ADR-0005). `mounted` keeps the
+     * agent in sandcastle's bind-mounted worktree; `isolated` clones it onto the
+     * container's native filesystem and syncs commits back via a post-commit
+     * hook — the fix for Docker Desktop's per-file mount translation tax, which
+     * makes small-file-heavy tools (pnpm, tsc, jest) 10–60x slower on
+     * Windows/macOS hosts. `auto` picks `isolated` on win32/darwin and `mounted`
+     * on Linux (where the bind mount is native and free). Ignored for
+     * `noSandbox` (no container, nothing to isolate).
+     */
+    burnWorkspace: z.enum(['auto', 'mounted', 'isolated']).default('auto'),
   }),
 )
 export type RuncastleConfig = z.infer<typeof RuncastleConfig>

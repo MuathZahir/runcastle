@@ -89,6 +89,13 @@ describe('RuncastleConfig — burn iteration + setup knobs', () => {
     expect(RuncastleConfig.parse({}).setupCommand).toBeUndefined()
     expect(RuncastleConfig.parse({ setupCommand: 'make deps' }).setupCommand).toBe('make deps')
   })
+
+  it('burnWorkspace defaults to auto and accepts only the three modes (ADR-0005)', () => {
+    expect(RuncastleConfig.parse({}).burnWorkspace).toBe('auto')
+    expect(RuncastleConfig.parse({ burnWorkspace: 'mounted' }).burnWorkspace).toBe('mounted')
+    expect(RuncastleConfig.parse({ burnWorkspace: 'isolated' }).burnWorkspace).toBe('isolated')
+    expect(RuncastleConfig.safeParse({ burnWorkspace: 'wsl' }).success).toBe(false)
+  })
 })
 
 describe('resolveModel — chain runOverride ?? stepModels[step] ?? project.model ?? global.model', () => {

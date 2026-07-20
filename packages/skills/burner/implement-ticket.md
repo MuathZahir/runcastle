@@ -12,6 +12,10 @@ You run **non-interactively** (`claude --print`), for up to a few fresh iteratio
 - **You may not be the first iteration.** A previous iteration may have left commits or uncommitted work on this branch. Check `git status` and `git log` before starting; continue the work, don't redo it.
 - **Signal completion.** When the ticket is fully done — every acceptance criterion verified, self-review finished, all work committed — print exactly `<promise>COMPLETE</promise>` as the last line of your final message. Do the same after writing `BLOCKED.md` (see hard rules). Without the signal, the harness assumes you were cut off and spends another iteration.
 
+## Where to work
+
+{{WORKSPACE_NOTES}}
+
 ## The ticket
 
 ```json
@@ -37,6 +41,8 @@ You run **non-interactively** (`claude --print`), for up to a few fresh iteratio
 4. **Guard every commit.** Before each commit, run typecheck and the relevant tests (the full suite at least once at the end). **Never commit red.** Commit in small logical steps using the convention:
 
    `{{COMMIT_CONVENTION}}`
+
+   Run any full suite **once**, capturing output to a file (`<test command> > /tmp/test-run.log 2>&1`; check the exit code), then grep the file for failures and details — never re-run the whole suite just to re-read or filter its output.
 
 5. **Self-review before you finish (forked code-review — two axes).** When all acceptance criteria pass, review your own diff along both axes, then fix what you find and re-run typecheck + tests:
    - **Standards** — does the diff follow the conventions of the surrounding code? Watch for the smells: duplicated logic (extract it), mysterious names (rename), primitive obsession (give the concept a type), speculative generality (delete anything the ticket did not ask for), feature envy, data clumps.

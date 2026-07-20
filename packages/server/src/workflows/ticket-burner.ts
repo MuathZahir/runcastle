@@ -41,7 +41,8 @@ import { noSandbox } from '@ai-hero/sandcastle/sandboxes/no-sandbox'
  * concurrency).
  *
  * Structure: the pure units (topo/cycle, seq→ticket resolution, template
- * rendering, .env parsing, run-result interpretation, the stream throttler, the
+ * rendering, .env parsing, workspace-mode resolution + isolated setup command,
+ * run-result interpretation, the stream throttler, the
  * serial merge queue) are exported and unit-tested with no sandcastle
  * involvement. The sandcastle boundary is isolated behind an injectable
  * `executeTicketRun` (see `BurnDeps`) so the scheduler (ready-queue,
@@ -150,7 +151,13 @@ export function detectCycle(tickets: Ticket[]): number[] | null {
 // Pure unit — prompt template rendering
 // ---------------------------------------------------------------------------
 
-const PLACEHOLDERS = ['TICKET_JSON', 'FEATURE_BRIEF', 'DOCS_DIGEST', 'COMMIT_CONVENTION'] as const
+const PLACEHOLDERS = [
+  'TICKET_JSON',
+  'FEATURE_BRIEF',
+  'DOCS_DIGEST',
+  'COMMIT_CONVENTION',
+  'WORKSPACE_NOTES',
+] as const
 type PlaceholderKey = (typeof PLACEHOLDERS)[number]
 
 /**
@@ -337,6 +344,89 @@ export interface CacheMount {
 export function cacheMountFor(pm: PackageManager, hostPath: string): CacheMount | undefined {
   const sandboxPath = PM_CACHE_SANDBOX_PATHS[pm]
   return sandboxPath ? { hostPath, sandboxPath } : undefined
+}
+
+// ---------------------------------------------------------------------------
+// Pure unit — burn workspace mode (ADR-0005: keep the hot path off the mount)
+// ---------------------------------------------------------------------------
+
+/** Sandcastle's fixed bind-mount target for the worktree inside the container. */
+export const SANDBOX_WORKSPACE_PATH = '/home/agent/workspace'
+/** Container-native clone the agent works in under `isolated` mode. */
+export const ISOLATED_REPO_PATH = '/home/agent/repo'
+
+export type BurnWorkspaceMode = 'mounted' | 'isolated'
+
+/**
+ * Resolve the effective workspace mode for a burn (ADR-0005). `noSandbox` is
+ * always `mounted` — there is no container, so there is nothing to isolate
+ * from. `auto` keys on the HOST platform: Docker Desktop on win32/darwin serves
+ * bind mounts through a filesystem translation layer that every small-file
+ * operation pays (measured on Windows: 2000 small-file writes 4891ms on the
+ * mount vs 82ms on the container's native FS), while a Linux host bind mount is
+ * a native kernel path where isolation would only add clone overhead.
+ */
+export function resolveBurnWorkspaceMode(
+  config: Pick<RuncastleConfig, 'sandbox' | 'burnWorkspace'>,
+  platform: NodeJS.Platform = process.platform,
+): BurnWorkspaceMode {
+  if (config.sandbox === 'noSandbox') return 'mounted'
+  if (config.burnWorkspace === 'auto') return platform === 'linux' ? 'mounted' : 'isolated'
+  return config.burnWorkspace
+}
+
+/**
+ * The `sandbox.onSandboxReady` command for `isolated` mode (runs in-container
+ * via `sh -c`, cwd = the mounted workspace). Four steps:
+ *
+ * 1. Allow pushes into the workspace's checked-out temp branch —
+ *    `receive.denyCurrentBranch=updateInstead` also updates the mounted working
+ *    tree on each push, which is exactly what sandcastle's commit collection
+ *    reads. (A git worktree shares its repo's config, so this writes one
+ *    idempotent, receive-scoped key into the target repo's `.git/config`.)
+ * 2. Clone the workspace onto the container's native filesystem — one bulk
+ *    transfer across the mount instead of a per-file tax on every later
+ *    install/typecheck/test.
+ * 3. Install a `post-commit` hook in the clone that pushes every commit back to
+ *    the workspace, so syncing needs no agent discipline at all — if the agent
+ *    commits, the host sees it.
+ * 4. Run the deps install inside the clone, where pnpm's hardlinks actually
+ *    work (ADR-0004) and node_modules materializes on native FS.
+ */
+export function buildIsolatedSetupCommand(
+  tempBranch: string,
+  setupCommand: string | undefined,
+): string {
+  const hookFile = `${ISOLATED_REPO_PATH}/.git/hooks/post-commit`
+  const parts = [
+    `git -C ${SANDBOX_WORKSPACE_PATH} config receive.denyCurrentBranch updateInstead`,
+    `git clone ${SANDBOX_WORKSPACE_PATH} ${ISOLATED_REPO_PATH}`,
+    `printf '#!/bin/sh\\nexec git push --quiet origin HEAD:%s\\n' '${tempBranch}' > ${hookFile}`,
+    `chmod +x ${hookFile}`,
+  ]
+  if (setupCommand) parts.push(`cd ${ISOLATED_REPO_PATH} && ${setupCommand}`)
+  return parts.join(' && ')
+}
+
+/**
+ * The `{{WORKSPACE_NOTES}}` block for the burner prompt: where the agent must
+ * work. Isolated mode redirects it into the native-FS clone and covers the two
+ * places the redirect could otherwise leak (edits in the mounted mirror, a
+ * BLOCKED.md the host would never see). Worst case if the agent ignores this
+ * and works in the workspace anyway: today's mounted behavior — slow, but
+ * correct.
+ */
+export function buildWorkspaceNotes(mode: BurnWorkspaceMode): string {
+  if (mode === 'mounted') {
+    return 'Work in the current directory — it is the repo checkout on your branch.'
+  }
+  return [
+    `Your working repository is \`${ISOLATED_REPO_PATH}\` — a clone on the container's fast native filesystem, with dependencies already installed. Do ALL work there: \`cd ${ISOLATED_REPO_PATH}\` first; every file you read, edit, test, and commit lives under it.`,
+    '',
+    `The directory you start in (\`${SANDBOX_WORKSPACE_PATH}\`) is a slow mounted mirror used only to collect your commits — never edit files, install, or run tests there. Your commits sync back automatically (a post-commit hook pushes them); just commit as normal.`,
+    '',
+    `If you are blocked and write \`BLOCKED.md\`, write it at \`${ISOLATED_REPO_PATH}/BLOCKED.md\` AND copy it to \`${SANDBOX_WORKSPACE_PATH}/BLOCKED.md\` so the orchestrator can see it.`,
+  ].join('\n')
 }
 
 /** Inspect the target repo root for its JS toolchain markers (IO). */
@@ -843,12 +933,18 @@ async function realExecuteTicketRun(
   // ticket never reuses a stale sandcastle worktree or a conflict leftover.
   const tempBranch = ticketBranchName(feature.slug, ticket.seq, newId('b').slice(2, 10))
 
+  // Where the agent's hot path lives (ADR-0005): on win32/darwin container
+  // hosts the bind-mounted worktree pays Docker Desktop's per-file translation
+  // tax, so `auto` isolates the working tree onto the container's native FS.
+  const workspaceMode = resolveBurnWorkspaceMode(config)
+
   const template = readFileSync(burnerTemplatePath(), 'utf8')
   const prompt = renderTicketPrompt(template, {
     TICKET_JSON: buildTicketJson(ticket),
     FEATURE_BRIEF: buildFeatureBrief(feature),
     DOCS_DIGEST: readDocsDigestFromDisk(project.id, feature.slug),
     COMMIT_CONVENTION: `ticket(${ticket.seq}): <summary>`,
+    WORKSPACE_NOTES: buildWorkspaceNotes(workspaceMode),
   })
 
   // Dependency setup: detect the repo's install command (or take the config
@@ -870,10 +966,20 @@ async function realExecuteTicketRun(
       mounts.push(mount)
     }
   }
-  if (setupCommand) {
+  // In isolated mode the onSandboxReady hook always runs (the clone + sync
+  // wiring is needed even with nothing to install); mounted mode keeps the
+  // hook only when there is an install to run.
+  const hookCommand =
+    workspaceMode === 'isolated'
+      ? buildIsolatedSetupCommand(tempBranch, setupCommand)
+      : setupCommand
+  if (hookCommand) {
     ctx.emitEvent({
       type: 'burn.setup',
-      message: `installing deps before agent start: ${setupCommand}`,
+      message:
+        workspaceMode === 'isolated'
+          ? `preparing isolated workspace (native-FS clone)${setupCommand ? ` + deps install: ${setupCommand}` : ''}`
+          : `installing deps before agent start: ${setupCommand}`,
       ticketId: ticket.id,
     })
   }
@@ -916,11 +1022,11 @@ async function realExecuteTicketRun(
     // headroom exists so a turn that ends prematurely (idle wait, context cut)
     // resumes instead of failing the ticket with zero commits.
     maxIterations: config.burnMaxIterations,
-    ...(setupCommand
+    ...(hookCommand
       ? {
           hooks: {
             sandbox: {
-              onSandboxReady: [{ command: setupCommand, timeoutMs: SETUP_HOOK_TIMEOUT_MS }],
+              onSandboxReady: [{ command: hookCommand, timeoutMs: SETUP_HOOK_TIMEOUT_MS }],
             },
           },
         }

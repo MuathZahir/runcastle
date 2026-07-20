@@ -2,9 +2,13 @@ import type { AgentStreamEvent } from '@ai-hero/sandcastle'
 import type { Feature, Ticket } from '@runcastle/core'
 import { describe, expect, it } from 'vitest'
 import {
+  ISOLATED_REPO_PATH,
+  SANDBOX_WORKSPACE_PATH,
   buildDocsDigest,
   buildFeatureBrief,
+  buildIsolatedSetupCommand,
   buildTicketJson,
+  buildWorkspaceNotes,
   cacheMountFor,
   createSerialQueue,
   createStreamThrottle,
@@ -15,6 +19,7 @@ import {
   isMergeConflictError,
   parseEnvFile,
   renderTicketPrompt,
+  resolveBurnWorkspaceMode,
   resolveSetupCommand,
   selectSandbox,
 } from '../src/workflows/ticket-burner'
@@ -102,6 +107,7 @@ describe('renderTicketPrompt', () => {
     '## Docs',
     '{{DOCS_DIGEST}}',
     'Commit: `{{COMMIT_CONVENTION}}`',
+    'Work: {{WORKSPACE_NOTES}}',
   ].join('\n')
 
   it('replaces every placeholder and leaves no stray {{ }}', () => {
@@ -110,6 +116,7 @@ describe('renderTicketPrompt', () => {
       FEATURE_BRIEF: buildFeatureBrief(feature),
       DOCS_DIGEST: buildDocsDigest([{ name: 'spec.md', content: '# Spec\nbody' }]),
       COMMIT_CONVENTION: 'ticket(4): <summary>',
+      WORKSPACE_NOTES: buildWorkspaceNotes('mounted'),
     })
     expect(out).not.toContain('{{')
     expect(out).not.toContain('}}')
@@ -118,6 +125,7 @@ describe('renderTicketPrompt', () => {
     expect(out).toContain('feature/my-feature')
     expect(out).toContain('### spec.md')
     expect(out).toContain('ticket(4): <summary>')
+    expect(out).toContain('Work in the current directory')
   })
 
   it('renders values containing $ and special chars safely', () => {
@@ -126,6 +134,7 @@ describe('renderTicketPrompt', () => {
       FEATURE_BRIEF: '',
       DOCS_DIGEST: '',
       COMMIT_CONVENTION: '',
+      WORKSPACE_NOTES: '',
     })
     expect(out).toBe('cost is $5 & rising')
   })
@@ -344,6 +353,74 @@ describe('cacheMountFor — package-manager cache bind-mounts', () => {
   // of every package instead of linking, on every host OS. Better unmounted.
   it('returns undefined for pnpm so its store stays inside the container', () => {
     expect(cacheMountFor('pnpm', '/host/pnpm')).toBeUndefined()
+  })
+})
+
+describe('burn workspace mode (ADR-0005 — keep the hot path off the mount)', () => {
+  const cfg = (
+    sandbox: RuncastleConfig['sandbox'],
+    burnWorkspace: RuncastleConfig['burnWorkspace'],
+  ) => ({ sandbox, burnWorkspace })
+
+  it('auto isolates on win32/darwin container hosts, stays mounted on linux', () => {
+    expect(resolveBurnWorkspaceMode(cfg('docker', 'auto'), 'win32')).toBe('isolated')
+    expect(resolveBurnWorkspaceMode(cfg('docker', 'auto'), 'darwin')).toBe('isolated')
+    expect(resolveBurnWorkspaceMode(cfg('podman', 'auto'), 'win32')).toBe('isolated')
+    expect(resolveBurnWorkspaceMode(cfg('docker', 'auto'), 'linux')).toBe('mounted')
+  })
+
+  it('an explicit setting wins over the platform', () => {
+    expect(resolveBurnWorkspaceMode(cfg('docker', 'isolated'), 'linux')).toBe('isolated')
+    expect(resolveBurnWorkspaceMode(cfg('docker', 'mounted'), 'win32')).toBe('mounted')
+  })
+
+  it('noSandbox is always mounted — no container, nothing to isolate from', () => {
+    expect(resolveBurnWorkspaceMode(cfg('noSandbox', 'auto'), 'win32')).toBe('mounted')
+    expect(resolveBurnWorkspaceMode(cfg('noSandbox', 'isolated'), 'win32')).toBe('mounted')
+  })
+})
+
+describe('buildIsolatedSetupCommand — clone + auto-sync wiring for the sandbox hook', () => {
+  const branch = 'runcastle/ticket/my-feature/4-ab12cd34'
+
+  it('wires updateInstead, the clone, and a post-commit push hook, then installs in the clone', () => {
+    const cmd = buildIsolatedSetupCommand(branch, 'corepack pnpm install --frozen-lockfile')
+    const steps = cmd.split(' && ')
+    expect(steps[0]).toBe(
+      `git -C ${SANDBOX_WORKSPACE_PATH} config receive.denyCurrentBranch updateInstead`,
+    )
+    expect(steps[1]).toBe(`git clone ${SANDBOX_WORKSPACE_PATH} ${ISOLATED_REPO_PATH}`)
+    // the post-commit hook pushes HEAD to the ticket's temp branch — sync
+    // requires no agent discipline at all
+    expect(steps[2]).toContain(`HEAD:%s`)
+    expect(steps[2]).toContain(`'${branch}'`)
+    expect(steps[2]).toContain(`> ${ISOLATED_REPO_PATH}/.git/hooks/post-commit`)
+    expect(steps[3]).toBe(`chmod +x ${ISOLATED_REPO_PATH}/.git/hooks/post-commit`)
+    // install runs INSIDE the clone, on the container's native filesystem
+    expect(cmd.endsWith(`cd ${ISOLATED_REPO_PATH} && corepack pnpm install --frozen-lockfile`)).toBe(
+      true,
+    )
+  })
+
+  it('still emits the clone/sync wiring when there is nothing to install', () => {
+    const cmd = buildIsolatedSetupCommand(branch, undefined)
+    expect(cmd).toContain('git clone')
+    expect(cmd).toContain('post-commit')
+    expect(cmd).not.toContain(' cd ')
+  })
+})
+
+describe('buildWorkspaceNotes — the {{WORKSPACE_NOTES}} prompt block', () => {
+  it('mounted mode points at the current directory', () => {
+    expect(buildWorkspaceNotes('mounted')).toContain('current directory')
+  })
+
+  it('isolated mode redirects work, forbids the mirror, and routes BLOCKED.md to both', () => {
+    const notes = buildWorkspaceNotes('isolated')
+    expect(notes).toContain(ISOLATED_REPO_PATH)
+    expect(notes).toContain(SANDBOX_WORKSPACE_PATH)
+    expect(notes).toContain('BLOCKED.md')
+    expect(notes).toMatch(/never edit/i)
   })
 })
 
