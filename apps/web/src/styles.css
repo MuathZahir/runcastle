@@ -257,6 +257,7 @@ button {
 }
 .chip-ticket-done { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 40%, transparent); }
 .chip-ticket-failed { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 45%, transparent); }
+.chip-ticket-cancelled { color: var(--text-3); text-decoration: line-through; }
 .chip-run-running {
   color: var(--ph-implementation);
   border-color: color-mix(in srgb, var(--ph-implementation) 45%, transparent);

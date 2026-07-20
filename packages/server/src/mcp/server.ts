@@ -21,7 +21,14 @@ import { emit } from '../services/events'
 import * as git from '../services/git'
 import { listDocs, readDoc } from '../services/knowledge'
 import { getFeatureRow } from '../services/repo'
-import { listByFeature, storeTickets } from '../services/tickets'
+import {
+  cancelTicket,
+  editTicket,
+  getTicket,
+  listByFeature,
+  storeTickets,
+  type TicketContentPatch,
+} from '../services/tickets'
 import {
   claimedForFeature,
   frontier as waypointFrontier,
@@ -132,6 +139,34 @@ export function toolEmitTickets(
   // `tickets.emitted` note, which double-logged the same action on the timeline.
   const stored = storeTickets(ctx, feature.id, input.tickets)
   return { stored: stored.length, ids: stored.map((t) => t.id) }
+}
+
+/** Refuse cross-feature ticket surgery: the id must belong to THIS session's feature. */
+function requireOwnTicket(ctx: AppCtx, session: SessionRow, ticketId: string): Ticket {
+  const ticket = getTicket(ctx, ticketId)
+  if (ticket.featureId !== session.featureId) {
+    throw new GateError(`ticket ${ticketId} does not belong to this session's feature`)
+  }
+  return ticket
+}
+
+export function toolUpdateTicket(
+  ctx: AppCtx,
+  session: SessionRow,
+  input: { id: string } & TicketContentPatch,
+): { ok: true; ticket: Ticket } {
+  requireOwnTicket(ctx, session, input.id)
+  const { id, ...patch } = input
+  return { ok: true, ticket: editTicket(ctx, id, patch) }
+}
+
+export function toolCancelTicket(
+  ctx: AppCtx,
+  session: SessionRow,
+  input: { id: string; reason?: string },
+): { ok: true; ticket: Ticket } {
+  requireOwnTicket(ctx, session, input.id)
+  return { ok: true, ticket: cancelTicket(ctx, input.id, input.reason) }
 }
 
 export function toolEscalateToMap(
@@ -291,6 +326,47 @@ export function buildMcpServer(): McpServer {
       if (!rs) return noSession()
       const result = toolEmitTickets(rs.ctx, rs.session, args)
       await commitDocsCheckpoint(rs.ctx, rs.session, `runcastle: tickets emitted (${result.stored})`)
+      return ok(result)
+    },
+  )
+
+  server.registerTool(
+    'update_ticket',
+    {
+      title: 'Update ticket',
+      description:
+        'Rewrite a stored ticket\'s content — title, goal, context, acceptanceCriteria, seams (any subset). Only pending or failed tickets can be edited; done/cancelled tickets are history and burning tickets are already running. Use during a revisit when a decision change makes a ticket stale. Get ids from get_feature_context.',
+      inputSchema: {
+        id: z.string(),
+        title: z.string().optional(),
+        goal: z.string().optional(),
+        context: z.string().optional(),
+        acceptanceCriteria: z.array(z.string()).optional(),
+        seams: z.array(z.string()).optional(),
+      },
+    },
+    async (args, extra) => {
+      const rs = await resolveCtxSession(extra)
+      if (!rs) return noSession()
+      const result = toolUpdateTicket(rs.ctx, rs.session, args)
+      await commitDocsCheckpoint(rs.ctx, rs.session, `runcastle: ticket ${result.ticket.seq} updated`)
+      return ok(result)
+    },
+  )
+
+  server.registerTool(
+    'cancel_ticket',
+    {
+      title: 'Cancel ticket',
+      description:
+        'Cancel a ticket that is no longer needed (terminal state; only pending or failed tickets). The burner skips cancelled tickets, and tickets blocked by a cancelled one still burn — cancellation counts as satisfied. Pass a short reason so the timeline explains why.',
+      inputSchema: { id: z.string(), reason: z.string().optional() },
+    },
+    async (args, extra) => {
+      const rs = await resolveCtxSession(extra)
+      if (!rs) return noSession()
+      const result = toolCancelTicket(rs.ctx, rs.session, args)
+      await commitDocsCheckpoint(rs.ctx, rs.session, `runcastle: ticket ${result.ticket.seq} cancelled`)
       return ok(result)
     },
   )

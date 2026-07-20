@@ -9,6 +9,7 @@ import { clearRuntimeCtx, setRuntimeCtx } from '../src/launcher/runtime'
 import { createSessionRow, markSessionLive } from '../src/launcher/sessions'
 import mcpApp, {
   resolveSession,
+  toolCancelTicket,
   toolCompletePhase,
   toolEmitTickets,
   toolEmitWaypoints,
@@ -16,6 +17,7 @@ import mcpApp, {
   toolGetFeatureContext,
   toolRecordEvent,
   toolResolveWaypoint,
+  toolUpdateTicket,
 } from '../src/mcp/server'
 import { listAfter } from '../src/services/events'
 import { getFeatureRow } from '../src/services/repo'
@@ -77,6 +79,31 @@ describe('mcp tools', () => {
     expect(() => toolEmitTickets(ctx, session, { tickets: [ticket('one'), ticket('two', [9])] })).toThrow(
       InvalidInputError,
     )
+  })
+
+  it('update_ticket rewrites content; cancel_ticket cancels with a reason (ticket surgery)', () => {
+    const out = toolEmitTickets(ctx, session, { tickets: [ticket('stale'), ticket('obsolete')] })
+    const [staleId, obsoleteId] = out.ids
+
+    const updated = toolUpdateTicket(ctx, session, { id: staleId, title: 'fresh', goal: 'g2' })
+    expect(updated.ticket.title).toBe('fresh')
+    expect(updated.ticket.goal).toBe('g2')
+
+    const cancelled = toolCancelTicket(ctx, session, { id: obsoleteId, reason: 'decision changed' })
+    expect(cancelled.ticket.status).toBe('cancelled')
+    expect(cancelled.ticket.error).toBe('decision changed')
+
+    const types = listAfter(ctx, featureId, 0).map((e) => e.type)
+    expect(types).toContain('ticket.edited')
+    expect(types).toContain('ticket.cancelled')
+  })
+
+  it('update_ticket/cancel_ticket refuse a ticket from another feature', () => {
+    const otherFeature = seedFeature(ctx, seedProject(ctx, repoPath).id, { slug: 'other' })
+    const [foreign] = storeTickets(ctx, otherFeature.id, [ticket('foreign')])
+
+    expect(() => toolUpdateTicket(ctx, session, { id: foreign.id, title: 'x' })).toThrow(GateError)
+    expect(() => toolCancelTicket(ctx, session, { id: foreign.id })).toThrow(GateError)
   })
 
   it('get_feature_context returns the feature, phase, docs contents and tickets', () => {

@@ -51,15 +51,17 @@ export function checkGate(ctx: AppCtx, check: GateCheckId, feature: Feature): Ga
 
     case 'tickets-approved': {
       // G3: the human Burn click is the approval; the checkable precondition is
-      // that there is at least one ticket to burn.
-      const count = listByFeature(ctx, feature.id).length
+      // that there is at least one burnable (non-cancelled) ticket.
+      const count = listByFeature(ctx, feature.id).filter((t) => t.status !== 'cancelled').length
       return count >= 1 ? { satisfied: true } : { satisfied: false, reason: 'no tickets to burn' }
     }
 
     case 'all-tickets-terminal': {
       const tickets = listByFeature(ctx, feature.id)
       if (tickets.length === 0) return { satisfied: false, reason: 'no tickets have run yet' }
-      const open = tickets.filter((t) => t.status !== 'done' && t.status !== 'failed')
+      const open = tickets.filter(
+        (t) => t.status !== 'done' && t.status !== 'failed' && t.status !== 'cancelled',
+      )
       return open.length === 0
         ? { satisfied: true }
         : {

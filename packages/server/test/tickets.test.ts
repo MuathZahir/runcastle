@@ -2,7 +2,7 @@ import type { TicketInput } from '@runcastle/core'
 import { beforeEach, describe, expect, it } from 'vitest'
 import type { AppCtx } from '../src/db/types'
 import { InvalidInputError } from '../src/errors'
-import { listByFeature, storeTickets, updateTicket } from '../src/services/tickets'
+import { cancelTicket, editTicket, listByFeature, storeTickets, updateTicket } from '../src/services/tickets'
 import { makeTestCtx } from './helpers/db'
 import { seedFeature, seedProject } from './helpers/fixtures'
 
@@ -60,5 +60,56 @@ describe('tickets service', () => {
     const updated = updateTicket(ctx, t.id, { status: 'done', commits: ['abc123'] })
     expect(updated.status).toBe('done')
     expect(updated.commits).toEqual(['abc123'])
+  })
+
+  it('updateTicket clears a stored error with error: null (burn-retry path)', () => {
+    const [t] = storeTickets(ctx, featureId, [ticket('a')])
+    updateTicket(ctx, t.id, { status: 'failed', error: 'agent made no commits' })
+    const retried = updateTicket(ctx, t.id, { status: 'pending', error: null })
+    expect(retried.status).toBe('pending')
+    expect(retried.error).toBeUndefined()
+  })
+
+  it('editTicket rewrites content on pending and failed tickets only', () => {
+    const [a, b] = storeTickets(ctx, featureId, [ticket('a'), ticket('b')])
+
+    const edited = editTicket(ctx, a.id, { title: 'a2', acceptanceCriteria: ['new'] })
+    expect(edited.title).toBe('a2')
+    expect(edited.acceptanceCriteria).toEqual(['new'])
+    expect(edited.goal).toBe('g') // untouched fields survive
+
+    updateTicket(ctx, b.id, { status: 'failed', error: 'x' })
+    expect(editTicket(ctx, b.id, { goal: 'g2' }).goal).toBe('g2')
+  })
+
+  it('editTicket refuses done/burning/cancelled tickets and empty patches', () => {
+    const [t] = storeTickets(ctx, featureId, [ticket('a')])
+    expect(() => editTicket(ctx, t.id, {})).toThrow(InvalidInputError)
+
+    updateTicket(ctx, t.id, { status: 'burning' })
+    expect(() => editTicket(ctx, t.id, { title: 'x' })).toThrow(InvalidInputError)
+    updateTicket(ctx, t.id, { status: 'done' })
+    expect(() => editTicket(ctx, t.id, { title: 'x' })).toThrow(InvalidInputError)
+    updateTicket(ctx, t.id, { status: 'cancelled' })
+    expect(() => editTicket(ctx, t.id, { title: 'x' })).toThrow(InvalidInputError)
+  })
+
+  it('cancelTicket marks pending/failed tickets cancelled with the reason', () => {
+    const [a, b] = storeTickets(ctx, featureId, [ticket('a'), ticket('b')])
+
+    const cancelled = cancelTicket(ctx, a.id, 'superseded by revisit')
+    expect(cancelled.status).toBe('cancelled')
+    expect(cancelled.error).toBe('superseded by revisit')
+
+    updateTicket(ctx, b.id, { status: 'failed', error: 'x' })
+    expect(cancelTicket(ctx, b.id).status).toBe('cancelled')
+  })
+
+  it('cancelTicket refuses done/burning tickets', () => {
+    const [a, b] = storeTickets(ctx, featureId, [ticket('a'), ticket('b')])
+    updateTicket(ctx, a.id, { status: 'done' })
+    expect(() => cancelTicket(ctx, a.id)).toThrow(InvalidInputError)
+    updateTicket(ctx, b.id, { status: 'burning' })
+    expect(() => cancelTicket(ctx, b.id)).toThrow(InvalidInputError)
   })
 })

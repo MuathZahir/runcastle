@@ -63,6 +63,7 @@ export function renderSystemPrompt(
 ): string {
   if (kind === 'waypoint') return renderWaypointPrompt(feature, waypoint)
   if (kind === 'converge') return renderConvergePrompt(feature)
+  if (kind === 'revisit') return renderRevisitPrompt(feature)
 
   const docs = featureDocsRel(feature.slug) // docs/features/<slug>
   const entry =
@@ -211,6 +212,58 @@ export function renderConvergePrompt(feature: Feature): string {
   ].join('\n')
 }
 
+/**
+ * The kind=revisit system prompt. A revisit reopens a finished conversation
+ * (usually the grilling) because the human remembered something or changed
+ * their mind. The session amends the docs to match the new reality, then does
+ * ticket surgery — `update_ticket` for stale tickets, `cancel_ticket` for
+ * obsolete ones, `emit_tickets` for new work. It NEVER advances phases: the
+ * pipeline position stays wherever it is, and downstream phases pick up the
+ * amended docs/tickets on their own.
+ */
+export function renderRevisitPrompt(feature: Feature): string {
+  const docs = featureDocsRel(feature.slug)
+  return [
+    `# runcastle — ${feature.title} (revisit session)`,
+    '',
+    feature.oneLiner,
+    '',
+    'This is a **revisit session**: the human came back to a feature whose',
+    'earlier sessions are finished — they remembered something, or a decision',
+    'changed. Where possible this terminal RESUMES the previous conversation, so',
+    'you may already have its context above. Your job: fold the new information',
+    'into the record, then reconcile the tickets with it. The docs are the',
+    'artifact — later phases read them, never the transcripts.',
+    '',
+    '## Feature',
+    `- Slug: \`${feature.slug}\``,
+    `- Branch: \`${feature.branch}\``,
+    `- Current phase: **${feature.phase}** (size: ${feature.size})`,
+    '',
+    '## Knowledge (versioned in the target repo)',
+    `Feature docs live at \`${docs}/\`:`,
+    `- \`${docs}/decisions.md\` — append the new/changed decisions with a dated "revisited" note.`,
+    `- \`${docs}/spec.md\` — if it exists, amend the affected sections in place.`,
+    `- \`${docs}/map.md\` — if the feature is mapped, keep the map honest too.`,
+    '',
+    '## runcastle MCP tools',
+    '- `get_feature_context()` — feature + phase + docs + ALL tickets (with ids and statuses).',
+    '- `update_ticket({ id, ...fields })` — rewrite a stale pending/failed ticket\'s content.',
+    '- `cancel_ticket({ id, reason })` — cancel a pending/failed ticket that is now unnecessary.',
+    '- `emit_tickets({ tickets })` — add tickets for NEW work the change requires.',
+    '- `record_event({ type, message })` — drop a timeline note summarising the revisit.',
+    '',
+    '## Rules',
+    '- Do NOT call `complete_phase` — a revisit never moves the pipeline.',
+    '- Do NOT touch `done`/`burning` tickets; if done work is now wrong, emit a new ticket that fixes it.',
+    '- Docs first, tickets second: capture the decision prose before any ticket surgery.',
+    '',
+    '## Your task',
+    'Invoke the `/runcastle:revisit` skill and work through what the human brings up.',
+    '',
+  ].join('\n')
+}
+
 interface CommandHook {
   type: 'command'
   command: string
@@ -241,6 +294,8 @@ export type HooksSettings = SessionSettings
 export const RUNCASTLE_MCP_ALLOW_RULES: readonly string[] = [
   'mcp__runcastle__get_feature_context',
   'mcp__runcastle__emit_tickets',
+  'mcp__runcastle__update_ticket',
+  'mcp__runcastle__cancel_ticket',
   'mcp__runcastle__record_event',
   'mcp__runcastle__complete_phase',
   'mcp__runcastle__escalate_to_map',

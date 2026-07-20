@@ -188,6 +188,17 @@ describe('renderSystemPrompt', () => {
     expect(p).not.toContain('emit_tickets')
   })
 
+  it('directs a revisit session to /runcastle:revisit with ticket-surgery tools, no phase writes', () => {
+    const p = renderSystemPrompt(feature({ phase: 'implementation' }), 'revisit')
+    expect(p).toContain('/runcastle:revisit')
+    expect(p).toContain('update_ticket')
+    expect(p).toContain('cancel_ticket')
+    expect(p).toContain('emit_tickets')
+    expect(p).toContain('decisions.md')
+    // a revisit never moves the pipeline
+    expect(p).toMatch(/do not call `complete_phase`/i)
+  })
+
   it('directs a converge session to /runcastle:converge over ONLY the compressed knowledge', () => {
     const p = renderSystemPrompt(feature({ mapped: true, phase: 'spec' }), 'converge')
     expect(p).toContain('/runcastle:converge')

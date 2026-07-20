@@ -374,3 +374,49 @@ describe('burnRun — concurrency (M2)', () => {
     expect(started).toBe(2) // both were genuinely in flight when the abort hit
   })
 })
+
+describe('burnRun — cancelled tickets (revisit surgery)', () => {
+  it('skips cancelled tickets, unblocks their dependents, and reports them in the summary', async () => {
+    const cancelled: Ticket = { ...ticket(1), status: 'cancelled' }
+    const tickets = [cancelled, ticket(2, [1]), ticket(3)]
+    const { ctx, patches } = makeCtx(tickets)
+    const calls: number[] = []
+    const execute = fakeExecute(
+      { 2: { status: 'done', commits: ['a'] }, 3: { status: 'done', commits: ['b'] } },
+      calls,
+    )
+
+    const res = await burnRun(ctx, deps(execute))
+
+    expect(calls.sort()).toEqual([2, 3]) // 1 never executed; 2 was NOT cascaded-failed
+    expect(res).toEqual({ status: 'succeeded', summary: '2/2 tickets done (1 cancelled)' })
+    expect(patches.map((p) => p.id)).not.toContain('tkt_1') // cancelled row untouched
+  })
+
+  it('does not trip the cycle guard on edges through cancelled tickets', async () => {
+    // 1 ⇄ 2 would be a cycle, but 2 is cancelled — only burnable tickets count.
+    const two: Ticket = { ...ticket(2, [1]), status: 'cancelled' }
+    const tickets = [ticket(1, [2]), two]
+    const { ctx } = makeCtx(tickets)
+    const execute = fakeExecute({ 1: { status: 'done', commits: ['a'] } })
+
+    const res = await burnRun(ctx, deps(execute))
+
+    expect(res).toEqual({ status: 'succeeded', summary: '1/1 tickets done (1 cancelled)' })
+  })
+
+  it('previously-done tickets still count toward success on a re-burn', async () => {
+    // A restarted run: 1 already done, 2 reset to pending, 3 cancelled.
+    const doneTicket: Ticket = { ...ticket(1), status: 'done', commits: ['old'] }
+    const cancelledTicket: Ticket = { ...ticket(3), status: 'cancelled' }
+    const tickets = [doneTicket, ticket(2, [1]), cancelledTicket]
+    const { ctx } = makeCtx(tickets)
+    const calls: number[] = []
+    const execute = fakeExecute({ 2: { status: 'done', commits: ['new'] } }, calls)
+
+    const res = await burnRun(ctx, deps(execute))
+
+    expect(calls).toEqual([2]) // only the pending ticket burns
+    expect(res).toEqual({ status: 'succeeded', summary: '2/2 tickets done (1 cancelled)' })
+  })
+})

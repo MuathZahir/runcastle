@@ -131,6 +131,9 @@ export function Workspace({
       case 'askQuestions':
         launch.mutate({ featureId, kind: 'qa' })
         break
+      case 'revisit':
+        launch.mutate({ featureId, kind: 'revisit' })
+        break
       case 'openGrill':
         onViewPhase(null)
         requestAnimationFrame(() =>

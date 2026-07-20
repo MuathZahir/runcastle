@@ -20,6 +20,7 @@ export const MODEL_STEPS = [
   'qa',
   'waypoint',
   'converge',
+  'revisit',
   'research',
   'implement',
   'smoke',

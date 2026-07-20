@@ -24,15 +24,24 @@ export type Phase = z.infer<typeof Phase>
 export const FeatureSize = z.enum(['full', 'collapsed'])
 export type FeatureSize = z.infer<typeof FeatureSize>
 
-export const TicketStatus = z.enum(['pending', 'burning', 'done', 'failed'])
+/**
+ * `cancelled` is a terminal state set by a human/agent (revisit sessions,
+ * `cancel_ticket`) — never by the burner. The scheduler skips cancelled tickets
+ * and treats a cancelled blocker as satisfied (the work was deemed unnecessary,
+ * so dependents proceed).
+ */
+export const TicketStatus = z.enum(['pending', 'burning', 'done', 'failed', 'cancelled'])
 export type TicketStatus = z.infer<typeof TicketStatus>
 
 /**
  * `qa` = "come back and ask questions" — same injection, no phase writes.
  * Mapped ideation (ADR-0001 / SPEC §13.1) adds `waypoint` (work one frontier
  * waypoint) and `converge` (read map + decisions, then spec → tickets).
+ * `revisit` = "I remembered something" — resumes the feature's most recent
+ * resumable conversation to amend docs and do ticket surgery (edit/cancel/emit);
+ * never advances phases.
  */
-export const SessionKind = z.enum(['ideation', 'qa', 'waypoint', 'converge'])
+export const SessionKind = z.enum(['ideation', 'qa', 'waypoint', 'converge', 'revisit'])
 export type SessionKind = z.infer<typeof SessionKind>
 
 export const RunStatus = z.enum(['running', 'succeeded', 'failed', 'cancelled'])

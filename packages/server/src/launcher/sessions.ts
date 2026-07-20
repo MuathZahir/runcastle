@@ -1,6 +1,6 @@
 import type { SessionKind, SessionRow } from '@runcastle/core'
 import { newId } from '@runcastle/core'
-import { and, desc, eq, inArray, sql } from 'drizzle-orm'
+import { and, desc, eq, inArray, isNotNull, sql } from 'drizzle-orm'
 import type { AppCtx } from '../db/types'
 import { sessions } from '../db/schema'
 import { ptyRegistry } from '../pty/registry'
@@ -184,6 +184,30 @@ export function markSessionEnded(ctx: AppCtx, id: string): SessionRow | null {
   if (!existing) return null
   ctx.db.update(sessions).set({ status: 'ended' }).where(eq(sessions.id, id)).run()
   return getSessionRow(ctx, id)
+}
+
+/**
+ * The feature's most recently ENDED session that recorded a Claude Code session
+ * id — the conversation a kind=revisit session `--resume`s. Live sessions are
+ * excluded (the one-live-session guard refuses a revisit while one exists) and
+ * sessions that never went live have no cc id, so they can't match. Ordered by
+ * the implicit sqlite `rowid` (insertion order — `sessions` has no timestamp).
+ */
+export function mostRecentResumableSession(ctx: AppCtx, featureId: string): SessionRow | null {
+  const row = ctx.db
+    .select()
+    .from(sessions)
+    .where(
+      and(
+        eq(sessions.featureId, featureId),
+        eq(sessions.status, 'ended'),
+        isNotNull(sessions.ccSessionId),
+      ),
+    )
+    .orderBy(desc(sql`rowid`))
+    .limit(1)
+    .get()
+  return row ? rowToSession(row) : null
 }
 
 /**

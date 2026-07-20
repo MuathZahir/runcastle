@@ -28,6 +28,7 @@ import {
   createSessionRow,
   getSessionRow,
   markSessionEnded,
+  mostRecentResumableSession,
 } from './sessions'
 
 // Re-exported so the `feature.endSession` router (W2) imports the real,
@@ -315,11 +316,39 @@ export async function launchSession(
     }
   }
 
+  // A revisit resumes the feature's most recent resumable conversation (SPEC:
+  // "I remembered something"). One-live-session guard first — same failure mode
+  // as the waypoint path (end the just-created row, rethrow). No resumable
+  // conversation is fine: the docs carry the state, so it starts fresh and the
+  // timeline says so.
+  if (input.kind === 'revisit') {
+    try {
+      assertSpawnable(ctx, feature, session.id)
+    } catch (e) {
+      markSessionEnded(ctx, session.id)
+      throw e
+    }
+    const prior = mostRecentResumableSession(ctx, feature.id)
+    if (prior?.ccSessionId) {
+      resumeSessionId = prior.ccSessionId
+    } else {
+      resumeUnavailableFrom = 'revisit'
+    }
+  }
+
   emit(ctx, feature.id, {
     type: 'session.launching',
     message: `launching ${input.kind} session`,
     data: { sessionId: session.id, kind: input.kind, worktreePath, waypointId: waypoint?.id },
   })
+
+  if (input.kind === 'revisit' && resumeUnavailableFrom) {
+    emit(ctx, feature.id, {
+      type: 'session.resume_unavailable',
+      message: 'no resumable conversation for this feature — revisiting fresh from the docs',
+      data: { sessionId: session.id },
+    })
+  }
 
   if (waypoint && resumeUnavailableFrom) {
     emit(ctx, feature.id, {

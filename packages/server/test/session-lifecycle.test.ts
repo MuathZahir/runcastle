@@ -16,6 +16,7 @@ import {
   getSessionRow,
   markSessionEnded,
   markSessionLive,
+  mostRecentResumableSession,
 } from '../src/launcher/sessions'
 import { listAfter } from '../src/services/events'
 import { createFeatureBranch } from '../src/services/git'
@@ -324,5 +325,47 @@ describe('failed resume — lastSessionId preservation + events', () => {
     const note = listAfter(ctx, feature.id, 0).find((e) => e.type === 'session.resume_unavailable')
     expect(note).toBeTruthy()
     expect((note?.data as { sessionId?: string }).sessionId).toBe(res.sessionId)
+  })
+})
+
+describe('mostRecentResumableSession — the revisit resume target', () => {
+  it('picks the newest ENDED session with a cc id; ignores live rows and id-less rows', async () => {
+    const ctx = await makeTestCtx()
+    const featureId = seedFeature(ctx, seedProject(ctx).id).id
+
+    // oldest: ended with a cc id — the fallback candidate
+    const s1 = createSessionRow(ctx, { featureId, kind: 'ideation', worktreePath: 'w' })
+    markSessionLive(ctx, s1.id, { ccSessionId: 'cc-oldest' })
+    markSessionEnded(ctx, s1.id)
+
+    // newer: ended but never went live (no cc id) — not resumable
+    const s2 = createSessionRow(ctx, { featureId, kind: 'qa', worktreePath: 'w' })
+    markSessionEnded(ctx, s2.id)
+
+    expect(mostRecentResumableSession(ctx, featureId)?.ccSessionId).toBe('cc-oldest')
+
+    // newest: ended with a cc id — wins
+    const s3 = createSessionRow(ctx, { featureId, kind: 'qa', worktreePath: 'w' })
+    markSessionLive(ctx, s3.id, { ccSessionId: 'cc-newest' })
+    markSessionEnded(ctx, s3.id)
+    expect(mostRecentResumableSession(ctx, featureId)?.ccSessionId).toBe('cc-newest')
+
+    // a LIVE session is never the resume target
+    const s4 = createSessionRow(ctx, { featureId, kind: 'revisit', worktreePath: 'w' })
+    markSessionLive(ctx, s4.id, { ccSessionId: 'cc-live' })
+    expect(mostRecentResumableSession(ctx, featureId)?.ccSessionId).toBe('cc-newest')
+  })
+
+  it('returns null when the feature has no resumable conversation', async () => {
+    const ctx = await makeTestCtx()
+    const featureId = seedFeature(ctx, seedProject(ctx).id).id
+    expect(mostRecentResumableSession(ctx, featureId)).toBeNull()
+
+    const other = seedFeature(ctx, seedProject(ctx).id, { slug: 'other' }).id
+    const s = createSessionRow(ctx, { featureId: other, kind: 'ideation', worktreePath: 'w' })
+    markSessionLive(ctx, s.id, { ccSessionId: 'cc-other' })
+    markSessionEnded(ctx, s.id)
+    // another feature's conversation is never offered
+    expect(mostRecentResumableSession(ctx, featureId)).toBeNull()
   })
 })

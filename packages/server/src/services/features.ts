@@ -28,7 +28,7 @@ import {
   rowToFeature,
   setPhase,
 } from './repo'
-import { listByFeature } from './tickets'
+import { listByFeature, updateTicket } from './tickets'
 import { frontier, listByFeature as listWaypoints } from './waypoints'
 import { startRun } from '../workflows/runner'
 
@@ -45,6 +45,7 @@ export interface TicketCounts {
   burning: number
   done: number
   failed: number
+  cancelled: number
 }
 
 export interface FeatureListItem extends Feature {
@@ -199,6 +200,7 @@ export function list(ctx: AppCtx, projectId: string): FeatureListItem[] {
       burning: tickets.filter((t) => t.status === 'burning').length,
       done: tickets.filter((t) => t.status === 'done').length,
       failed: tickets.filter((t) => t.status === 'failed').length,
+      cancelled: tickets.filter((t) => t.status === 'cancelled').length,
     }
     return { ...feature, ticketCounts: counts, activeRun: hasActiveRun(ctx, feature.id) }
   })
@@ -234,9 +236,13 @@ export function advance(ctx: AppCtx, featureId: string): Feature {
  *
  * From phase `tickets` (the normal case) this crosses G3: sets phase
  * `implementation` and starts the ticket-burner run. It also accepts a feature
- * already at `implementation` with NO active run — a run that was cancelled or
- * crashed left the feature parked there — and (re)starts the burn without
- * re-crossing any gate, so that state never dead-ends. Requires ≥1 ticket.
+ * already at `implementation` with NO active run — a run that was cancelled,
+ * crashed, or finished with failures left the feature parked there — and
+ * (re)starts the burn without re-crossing any gate, so that state never
+ * dead-ends. On restart every `failed` ticket is reset to `pending` (error
+ * cleared) so the re-burn actually retries it — this is the retry path the
+ * burner's "resolve manually, then re-burn" messages promise. Requires ≥1
+ * non-cancelled ticket.
  */
 export async function burn(
   ctx: AppCtx,
@@ -252,14 +258,25 @@ export async function burn(
         : `feature must be in the tickets phase to burn (currently ${feature.phase})`
     throw new GateError(why)
   }
-  if (listByFeature(ctx, featureId).length < 1) {
-    throw new GateError('no tickets to burn')
+  const tickets = listByFeature(ctx, featureId)
+  if (tickets.filter((t) => t.status !== 'cancelled').length < 1) {
+    throw new GateError(
+      tickets.length > 0 ? 'no burnable tickets — every ticket is cancelled' : 'no tickets to burn',
+    )
   }
 
   if (restarting) {
+    const failed = tickets.filter((t) => t.status === 'failed')
+    for (const t of failed) {
+      updateTicket(ctx, t.id, { status: 'pending', error: null })
+    }
     emit(ctx, featureId, {
       type: 'burn.restarted',
-      message: 'restarting burn (previous run cancelled or crashed)',
+      message:
+        failed.length > 0
+          ? `restarting burn — retrying ${failed.length} failed ticket(s)`
+          : 'restarting burn (previous run cancelled or crashed)',
+      data: { retried: failed.map((t) => t.seq) },
     })
   } else {
     setPhase(ctx, featureId, 'implementation', 'burn.started', 'burning tickets')

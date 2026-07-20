@@ -52,16 +52,28 @@ describe('gates service', () => {
     expect(checkGate(ctx, 'tickets-approved', feature).satisfied).toBe(true)
   })
 
-  it('all-tickets-terminal is satisfied only when every ticket is done/failed', () => {
+  it('tickets-approved does not count cancelled tickets', () => {
+    const feature = seedFeature(ctx, project.id, { slug: 'g3-cancel', phase: 'tickets' })
+    const [only] = storeTickets(ctx, feature.id, [
+      { title: 't', goal: 'g', context: 'c', acceptanceCriteria: ['a'], seams: [], blockedBy: [] },
+    ])
+    updateTicket(ctx, only.id, { status: 'cancelled' })
+    expect(checkGate(ctx, 'tickets-approved', feature).satisfied).toBe(false)
+  })
+
+  it('all-tickets-terminal is satisfied only when every ticket is done/failed/cancelled', () => {
     const feature = seedFeature(ctx, project.id, { slug: 'g4', phase: 'implementation' })
-    const [a, b] = storeTickets(ctx, feature.id, [
+    const [a, b, c] = storeTickets(ctx, feature.id, [
       { title: 'a', goal: 'g', context: 'c', acceptanceCriteria: ['x'], seams: [], blockedBy: [] },
       { title: 'b', goal: 'g', context: 'c', acceptanceCriteria: ['x'], seams: [], blockedBy: [] },
+      { title: 'c', goal: 'g', context: 'c', acceptanceCriteria: ['x'], seams: [], blockedBy: [] },
     ])
     expect(checkGate(ctx, 'all-tickets-terminal', feature).satisfied).toBe(false)
     updateTicket(ctx, a.id, { status: 'done' })
     expect(checkGate(ctx, 'all-tickets-terminal', feature).satisfied).toBe(false)
     updateTicket(ctx, b.id, { status: 'failed' })
+    expect(checkGate(ctx, 'all-tickets-terminal', feature).satisfied).toBe(false)
+    updateTicket(ctx, c.id, { status: 'cancelled' })
     expect(checkGate(ctx, 'all-tickets-terminal', feature).satisfied).toBe(true)
   })
 

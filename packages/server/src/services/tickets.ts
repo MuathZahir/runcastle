@@ -106,10 +106,86 @@ export function storeTickets(
   return rows.map(rowToTicket)
 }
 
+export function getTicket(ctx: AppCtx, id: string): Ticket {
+  const row = ctx.db.select().from(tickets).where(eq(tickets.id, id)).get()
+  if (!row) throw new NotFoundError(`ticket ${id} not found`)
+  return rowToTicket(row)
+}
+
+/** Content fields a human/agent may rewrite after the fact (revisit sessions). */
+export type TicketContentPatch = Partial<
+  Pick<Ticket, 'title' | 'goal' | 'context' | 'acceptanceCriteria' | 'seams'>
+>
+
+/** Statuses whose content may still change / that may still be cancelled. */
+const MUTABLE_STATUSES = new Set<Ticket['status']>(['pending', 'failed'])
+
+function assertMutable(t: Ticket, verb: string): void {
+  if (!MUTABLE_STATUSES.has(t.status)) {
+    throw new InvalidInputError(
+      `cannot ${verb} ticket ${t.seq} — it is ${t.status}; only pending or failed tickets can be ${verb}${verb.endsWith('l') ? 'led' : 'ed'}`,
+    )
+  }
+}
+
+/**
+ * Rewrite a ticket's content (title/goal/context/acceptanceCriteria/seams) —
+ * the ticket-surgery half of a revisit session. Only `pending`/`failed` tickets
+ * are editable: a `burning` ticket's prompt is already rendered, and rewriting
+ * `done`/`cancelled` history would lie about what was burned.
+ */
+export function editTicket(ctx: AppCtx, id: string, patch: TicketContentPatch): Ticket {
+  const current = getTicket(ctx, id)
+  assertMutable(current, 'edit')
+
+  const set: Partial<TicketSelect> = {}
+  if (patch.title !== undefined) set.title = patch.title
+  if (patch.goal !== undefined) set.goal = patch.goal
+  if (patch.context !== undefined) set.context = patch.context
+  if (patch.acceptanceCriteria !== undefined) set.acceptanceCriteria = patch.acceptanceCriteria
+  if (patch.seams !== undefined) set.seams = patch.seams
+  if (Object.keys(set).length === 0) {
+    throw new InvalidInputError('nothing to edit — pass at least one content field')
+  }
+
+  ctx.db.update(tickets).set(set).where(eq(tickets.id, id)).run()
+  emit(ctx, current.featureId, {
+    type: 'ticket.edited',
+    message: `ticket ${current.seq} content edited (${Object.keys(set).join(', ')})`,
+    ticketId: id,
+    data: { fields: Object.keys(set) },
+  })
+  return getTicket(ctx, id)
+}
+
+/**
+ * Cancel a ticket — terminal, human/agent-initiated (never the burner). Only
+ * `pending`/`failed` tickets can be cancelled. The scheduler skips cancelled
+ * tickets and treats a cancelled blocker as satisfied, so dependents still burn.
+ */
+export function cancelTicket(ctx: AppCtx, id: string, reason?: string): Ticket {
+  const current = getTicket(ctx, id)
+  assertMutable(current, 'cancel')
+
+  ctx.db
+    .update(tickets)
+    .set({ status: 'cancelled', error: reason?.trim() ? reason.trim() : null })
+    .where(eq(tickets.id, id))
+    .run()
+  emit(ctx, current.featureId, {
+    type: 'ticket.cancelled',
+    message: `ticket ${current.seq} cancelled${reason?.trim() ? `: ${reason.trim()}` : ''}`,
+    ticketId: id,
+    data: { reason: reason ?? null },
+  })
+  return getTicket(ctx, id)
+}
+
 export function updateTicket(
   ctx: AppCtx,
   id: string,
-  patch: Partial<Pick<Ticket, 'status' | 'commits' | 'error'>>,
+  // `error: null` clears a stored error (the burn-restart retry path).
+  patch: Partial<Pick<Ticket, 'status' | 'commits'>> & { error?: string | null },
 ): Ticket {
   const current = ctx.db.select().from(tickets).where(eq(tickets.id, id)).get()
   if (!current) throw new NotFoundError(`ticket ${id} not found`)

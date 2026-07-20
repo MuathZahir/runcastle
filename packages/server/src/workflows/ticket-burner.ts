@@ -381,6 +381,10 @@ export async function burnTickets(
   const pending = new Set<number>(tickets.filter((t) => t.status === 'pending').map((t) => t.seq))
   const inFlight = new Map<number, Promise<void>>()
 
+  // A blocker is satisfied when `done` OR `cancelled` — a human cancelled it
+  // because the work is unnecessary, so dependents proceed without it.
+  const satisfied = (s: TicketStatus | undefined): boolean => s === 'done' || s === 'cancelled'
+
   const readyState = (seq: number): ReadyState => {
     const t = bySeq.get(seq)
     if (!t) return 'wait'
@@ -389,7 +393,7 @@ export async function burnTickets(
       const bs = present ? status.get(b) : undefined
       if (!present || bs === 'failed') return { blockedBy: b, present }
     }
-    return t.blockedBy.every((b) => status.get(b) === 'done') ? 'ready' : 'wait'
+    return t.blockedBy.every((b) => satisfied(status.get(b))) ? 'ready' : 'wait'
   }
 
   const failTicket = (seq: number, error: string, extra?: { type: string; message: string }) => {
@@ -515,7 +519,12 @@ export async function burnRun(
   deps: BurnDeps,
 ): Promise<{ status: 'succeeded' | 'failed'; summary: string }> {
   const tickets = ctx.tickets
-  const total = tickets.length
+  // Cancelled tickets never burn and never count against success — but they DO
+  // stay in the scheduler's ticket set so dependents can see their blocker is
+  // satisfied (`burnTickets` receives the full list).
+  const burnable = tickets.filter((t) => t.status !== 'cancelled')
+  const cancelled = tickets.length - burnable.length
+  const total = burnable.length
 
   // Auth precheck: container sandboxes (docker/podman) need a token before we
   // start any container; noSandbox runs `claude` on the already-authed host.
@@ -524,8 +533,10 @@ export async function burnRun(
     return { status: 'failed', summary: 'burn aborted: auth token missing' }
   }
 
-  // Cycle guard: fail the whole run before touching any ticket.
-  const cycle = detectCycle(tickets)
+  // Cycle guard: fail the whole run before touching any ticket. Cancelled
+  // tickets are excluded — they never run, so their edges cannot deadlock the
+  // schedule (edges pointing at them from burnable tickets resolve as satisfied).
+  const cycle = detectCycle(burnable)
   if (cycle) {
     const path = cycle.join(' → ')
     ctx.emitEvent({
@@ -537,8 +548,9 @@ export async function burnRun(
   }
 
   const done = await burnTickets(ctx, tickets, deps.executeTicketRun, deps.concurrency)
-  const summary = `${done}/${total} tickets done`
-  ctx.emitEvent({ type: 'burn.summary', message: summary, data: { done, total } })
+  const summary =
+    cancelled > 0 ? `${done}/${total} tickets done (${cancelled} cancelled)` : `${done}/${total} tickets done`
+  ctx.emitEvent({ type: 'burn.summary', message: summary, data: { done, total, cancelled } })
   return { status: done === total ? 'succeeded' : 'failed', summary }
 }
 

@@ -41,6 +41,7 @@ describe('RuncastleConfig — model shape', () => {
       'qa',
       'waypoint',
       'converge',
+      'revisit',
       'research',
       'implement',
       'smoke',

@@ -4,7 +4,10 @@ import { trpc } from '../../trpc'
 import { useToast } from '../../lib/toast'
 import { useEventLog } from '../../lib/events'
 import { fmtDuration, fmtTime, shortSha } from '../../lib/format'
-import { DimLine, RunStatusChip, TicketStatusChip } from '../../ui'
+import { DimLine, RunStatusChip, SessionStatusDot, TicketStatusChip } from '../../ui'
+import { EndSessionButton } from '../EndSessionButton'
+import { ErrorBoundary } from '../ErrorBoundary'
+import { TerminalView } from '../TerminalView'
 
 /**
  * Run / implementation phase-body for the pipeline-first workspace: a lanes|stream
@@ -39,12 +42,36 @@ export function RunBody({
     ? fmtDuration(run.data.startedAt, run.data.endedAt ?? Date.now())
     : ''
 
-  if (!runId) {
+  // Same pattern as TicketsBody: a live HITL session (a revisit opened between
+  // runs) renders as an inline terminal — without this the session is invisible
+  // at the build phase.
+  const session = [...(feature.data?.sessions ?? [])]
+    .reverse()
+    .find((s) => s.status === 'live' || s.status === 'launching')
+
+  if (!runId && !session) {
     return <DimLine>no run yet — start the burn from the workspace.</DimLine>
   }
 
   return (
     <div className="ws-body-inner">
+      {session && (
+        <div className="grill-panel tickets-session">
+          <div className="grill-strip">
+            <span className="grill-kind">{session.kind}</span>
+            <span className="grill-sid">{session.ccSessionId ?? session.id}</span>
+            <SessionStatusDot status={session.status} />
+            <span className="grill-strip-spacer" />
+            <EndSessionButton featureId={featureId} sessionId={session.id} />
+          </div>
+          <div className="grill-term" id="grill-term">
+            <ErrorBoundary label="terminal">
+              <TerminalView sessionId={session.id} />
+            </ErrorBoundary>
+          </div>
+        </div>
+      )}
+
       <div className="body-title">
         <span className="section-title">Run</span>
         {run.data && <RunStatusChip status={run.data.status} />}

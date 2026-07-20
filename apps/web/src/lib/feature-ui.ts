@@ -334,6 +334,7 @@ export type ActionKind =
   | 'testDriveStop' // feature.testDrive { action: 'stop' }
   | 'merge' // feature.merge (G5)
   | 'askQuestions' // launchSession { kind: 'qa' }
+  | 'revisit' // launchSession { kind: 'revisit' } — resume the old conversation, amend docs + tickets
 
 export interface NextAction {
   label: string
@@ -458,7 +459,11 @@ export function nextStep(full: FeatureFull, ctx: { driving: boolean }): NextStep
           title: 'Review & burn the tickets',
           desc: 'Each ticket is one atomic task Claude will implement. Review them, then burn.',
           primary: { label: `Burn ${t} ticket${t === 1 ? '' : 's'}`, kind: 'burn' },
-          secondary: live ? [{ label: 'Back to grill', kind: 'openGrill' }] : [],
+          // Revisit resumes the grilling conversation to amend docs/tickets —
+          // only offered when no session is live (one terminal per feature).
+          secondary: live
+            ? [{ label: 'Back to grill', kind: 'openGrill' }]
+            : [{ label: 'Revisit', kind: 'revisit' }],
           busy: false,
         }
       }
@@ -495,7 +500,9 @@ export function nextStep(full: FeatureFull, ctx: { driving: boolean }): NextStep
         title: 'Resume the burn',
         desc: why,
         primary: { label: 'Resume burn', kind: 'burn' },
-        secondary: [],
+        // Failed tickets are reset to pending on resume; Revisit instead opens
+        // a session to amend docs and edit/cancel tickets before re-burning.
+        secondary: live ? [] : [{ label: 'Revisit', kind: 'revisit' }],
         busy: false,
       }
     }

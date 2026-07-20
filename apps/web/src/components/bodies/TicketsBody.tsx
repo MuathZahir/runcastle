@@ -61,10 +61,12 @@ export function TicketsBody({
   const done = tickets.filter((t) => t.status === 'done').length
   const failed = tickets.filter((t) => t.status === 'failed').length
   const burning = tickets.filter((t) => t.status === 'burning').length
+  const cancelled = tickets.filter((t) => t.status === 'cancelled').length
 
   const metaParts = [`${done}/${total} done`]
   if (failed > 0) metaParts.push(`${failed} failed`)
   if (burning > 0) metaParts.push(`${burning} burning`)
+  if (cancelled > 0) metaParts.push(`${cancelled} cancelled`)
   const meta = metaParts.join(' · ')
 
   const toggle = (id: string) =>
@@ -183,6 +185,13 @@ export function TicketsBody({
                       <div className="td-section td-error">
                         <div className="td-heading">Error</div>
                         <div className="td-error-body">{t.error}</div>
+                      </div>
+                    )}
+
+                    {t.status === 'cancelled' && t.error && (
+                      <div className="td-section">
+                        <div className="td-heading">Cancelled</div>
+                        <div className="td-body">{t.error}</div>
                       </div>
                     )}
                   </div>
