@@ -18,7 +18,7 @@ import {
   beginTranscript,
   endTranscript,
 } from '../services/agent-stream'
-import { mergeTempBranch, ticketBranchName } from '../services/git'
+import { allowPushToCheckedOutBranches, mergeTempBranch, ticketBranchName } from '../services/git'
 import type {
   AgentCommandOptions,
   AgentProvider,
@@ -379,11 +379,12 @@ export function resolveBurnWorkspaceMode(
  * The `sandbox.onSandboxReady` command for `isolated` mode (runs in-container
  * via `sh -c`, cwd = the mounted workspace). Four steps:
  *
- * 1. Allow pushes into the workspace's checked-out temp branch —
- *    `receive.denyCurrentBranch=updateInstead` also updates the mounted working
- *    tree on each push, which is exactly what sandcastle's commit collection
- *    reads. (A git worktree shares its repo's config, so this writes one
- *    idempotent, receive-scoped key into the target repo's `.git/config`.)
+ * 1. Whitelist every repo path for git (`safe.directory '*'`). Bind-mounted
+ *    paths are owned by the host UID, and when the workspace is a worktree its
+ *    gitdir resolves into the parent `.git` mount (`/.sandcastle-parent-git`)
+ *    — which sandcastle ≤0.12.0 does not whitelist, so the clone's
+ *    `upload-pack` dies with "dubious ownership". Container-local global
+ *    config: no shared state, safe under any concurrency.
  * 2. Clone the workspace onto the container's native filesystem — one bulk
  *    transfer across the mount instead of a per-file tax on every later
  *    install/typecheck/test.
@@ -392,6 +393,12 @@ export function resolveBurnWorkspaceMode(
  *    commits, the host sees it.
  * 4. Run the deps install inside the clone, where pnpm's hardlinks actually
  *    work (ADR-0004) and node_modules materializes on native FS.
+ *
+ * The push-back target only accepts pushes because the host wrote
+ * `receive.denyCurrentBranch=updateInstead` into the parent repo's config
+ * before any ticket started (`allowPushToCheckedOutBranches`) — that write
+ * must NOT happen here: a worktree shares its parent repo's `.git/config`, so
+ * N sandboxes running it concurrently race on the shared `config.lock`.
  */
 export function buildIsolatedSetupCommand(
   tempBranch: string,
@@ -399,7 +406,7 @@ export function buildIsolatedSetupCommand(
 ): string {
   const hookFile = `${ISOLATED_REPO_PATH}/.git/hooks/post-commit`
   const parts = [
-    `git -C ${SANDBOX_WORKSPACE_PATH} config receive.denyCurrentBranch updateInstead`,
+    `git config --global --add safe.directory '*'`,
     `git clone ${SANDBOX_WORKSPACE_PATH} ${ISOLATED_REPO_PATH}`,
     `printf '#!/bin/sh\\nexec git push --quiet origin HEAD:%s\\n' '${tempBranch}' > ${hookFile}`,
     `chmod +x ${hookFile}`,
@@ -927,6 +934,7 @@ async function realExecuteTicketRun(
   token: string | undefined,
   model: string,
   land: <T>(task: () => Promise<T>) => Promise<T>,
+  ensureIsolatedPushTarget: () => Promise<void>,
 ): Promise<TicketOutcome> {
   const { project, feature } = ctx
   // Unique per attempt (nanoid alphabet is branch-name-safe) so a re-burned
@@ -937,6 +945,11 @@ async function realExecuteTicketRun(
   // hosts the bind-mounted worktree pays Docker Desktop's per-file translation
   // tax, so `auto` isolates the working tree onto the container's native FS.
   const workspaceMode = resolveBurnWorkspaceMode(config)
+
+  // Isolated mode pushes commits back into the mounted worktree, which the
+  // parent repo's config must permit. Host-side and shared across tickets —
+  // in-sandbox this write raced N containers on the shared `config.lock`.
+  if (workspaceMode === 'isolated') await ensureIsolatedPushTarget()
 
   const template = readFileSync(burnerTemplatePath(), 'utf8')
   const prompt = renderTicketPrompt(template, {
@@ -1100,11 +1113,17 @@ function resolveBurnDeps(ctx: WorkflowCtx): BurnDeps {
   const token = readTokenFromEnvFile(envPath())
   const model = resolveModel('implement', config, ctx.project, ctx.modelOverride)
   const land = createSerialQueue()
+  // Memoized so the whole run performs the parent-repo config write exactly
+  // once, no matter how many tickets burn in parallel (see git.ts).
+  let pushTargetReady: Promise<void> | undefined
+  const ensureIsolatedPushTarget = () =>
+    (pushTargetReady ??= allowPushToCheckedOutBranches(ctx.project.repoPath))
   return {
     config,
     hasAuthToken: token !== undefined,
     concurrency: config.burnConcurrency,
-    executeTicketRun: (c, ticket) => realExecuteTicketRun(c, ticket, config, token, model, land),
+    executeTicketRun: (c, ticket) =>
+      realExecuteTicketRun(c, ticket, config, token, model, land, ensureIsolatedPushTarget),
   }
 }
 

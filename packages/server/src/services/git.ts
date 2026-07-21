@@ -455,6 +455,22 @@ export function ticketBranchName(slug: string, ticketSeq: number, unique: string
   return `${TICKET_BRANCH_PREFIX}${tempBranchSlugSegment(slug)}/${ticketSeq}-${unique}`
 }
 
+/**
+ * Allow pushes into checked-out branches of `repoPath`, updating the checkout's
+ * working tree on each push (`receive.denyCurrentBranch=updateInstead`). The
+ * isolated burn workspace (ADR-0005) needs this so each sandbox's post-commit
+ * hook can push into the ticket's mounted worktree.
+ *
+ * This MUST run host-side, once, before any ticket container starts: a git
+ * worktree has no config of its own, so the write lands in the parent repo's
+ * shared `.git/config` — when every sandbox ran it concurrently they raced on
+ * the shared `config.lock` ("could not lock config file: File exists") and
+ * setup died before the agent ever started.
+ */
+export async function allowPushToCheckedOutBranches(repoPath: string): Promise<void> {
+  await git(repoPath).addConfig('receive.denyCurrentBranch', 'updateInstead')
+}
+
 export interface TempBranchMergeResult {
   ok: boolean
   /** True when a real merge conflict was hit (merge aborted, temp branch kept). */

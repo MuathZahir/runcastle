@@ -383,12 +383,13 @@ describe('burn workspace mode (ADR-0005 — keep the hot path off the mount)', (
 describe('buildIsolatedSetupCommand — clone + auto-sync wiring for the sandbox hook', () => {
   const branch = 'runcastle/ticket/my-feature/4-ab12cd34'
 
-  it('wires updateInstead, the clone, and a post-commit push hook, then installs in the clone', () => {
+  it('whitelists safe.directory, wires the clone and a post-commit push hook, then installs in the clone', () => {
     const cmd = buildIsolatedSetupCommand(branch, 'corepack pnpm install --frozen-lockfile')
     const steps = cmd.split(' && ')
-    expect(steps[0]).toBe(
-      `git -C ${SANDBOX_WORKSPACE_PATH} config receive.denyCurrentBranch updateInstead`,
-    )
+    // Container-local wildcard: the worktree's gitdir resolves into the parent
+    // .git mount, which sandcastle ≤0.12.0 leaves outside safe.directory —
+    // without this the clone dies with "dubious ownership".
+    expect(steps[0]).toBe(`git config --global --add safe.directory '*'`)
     expect(steps[1]).toBe(`git clone ${SANDBOX_WORKSPACE_PATH} ${ISOLATED_REPO_PATH}`)
     // the post-commit hook pushes HEAD to the ticket's temp branch — sync
     // requires no agent discipline at all
@@ -400,6 +401,14 @@ describe('buildIsolatedSetupCommand — clone + auto-sync wiring for the sandbox
     expect(cmd.endsWith(`cd ${ISOLATED_REPO_PATH} && corepack pnpm install --frozen-lockfile`)).toBe(
       true,
     )
+  })
+
+  it('does NOT write receive.denyCurrentBranch in-sandbox — that is a host-side, once-per-burn write', () => {
+    // A worktree shares its parent repo's .git/config; N sandboxes running the
+    // write concurrently race on the shared config.lock and kill setup. The
+    // host writes it once via allowPushToCheckedOutBranches before tickets spawn.
+    const cmd = buildIsolatedSetupCommand(branch, 'npm ci')
+    expect(cmd).not.toContain('receive.denyCurrentBranch')
   })
 
   it('still emits the clone/sync wiring when there is nothing to install', () => {

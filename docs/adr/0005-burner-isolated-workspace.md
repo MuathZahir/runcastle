@@ -43,13 +43,21 @@ sync commits back to the mounted worktree automatically.**
    identical everywhere.
 
 2. **Isolation is wired in the `onSandboxReady` hook** (pure builder
-   `buildIsolatedSetupCommand`), before the agent starts:
-   - `git -C /home/agent/workspace config receive.denyCurrentBranch updateInstead`
-     — lets the container push into the workspace's checked-out temp branch,
-     and makes each push update the mounted working tree, which is exactly
-     what sandcastle's commit collection reads. (A worktree shares its repo's
-     config, so this writes one idempotent, receive-scoped key into the target
-     repo's `.git/config`.)
+   `buildIsolatedSetupCommand`), before the agent starts. Its precondition —
+   `receive.denyCurrentBranch=updateInstead`, which lets the container push
+   into the workspace's checked-out temp branch and makes each push update
+   the mounted working tree (exactly what sandcastle's commit collection
+   reads) — is written **host-side, once per burn, before any ticket
+   container starts** (`allowPushToCheckedOutBranches`). It was originally
+   step one of the in-sandbox command, but a worktree shares its parent
+   repo's `.git/config`, so N concurrent sandboxes raced on the shared
+   `config.lock` and killed setup ("could not lock config file"). The hook's
+   steps:
+   - `git config --global --add safe.directory '*'` — bind-mounted paths are
+     host-UID-owned, and a worktree's gitdir resolves into the parent `.git`
+     mount that sandcastle ≤0.12.0 leaves outside its own `safe.directory`
+     whitelist, so without this the clone dies with "dubious ownership".
+     Container-local config; no shared state.
    - `git clone /home/agent/workspace /home/agent/repo` — one bulk transfer
      across the mount instead of a per-file tax on every later operation.
    - A `post-commit` hook in the clone pushes `HEAD:<tempBranch>` back to the
