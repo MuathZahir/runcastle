@@ -44,15 +44,22 @@ sync commits back to the mounted worktree automatically.**
 
 2. **Isolation is wired in the `onSandboxReady` hook** (pure builder
    `buildIsolatedSetupCommand`), before the agent starts. Its precondition —
-   `receive.denyCurrentBranch=updateInstead`, which lets the container push
-   into the workspace's checked-out temp branch and makes each push update
-   the mounted working tree (exactly what sandcastle's commit collection
-   reads) — is written **host-side, once per burn, before any ticket
-   container starts** (`allowPushToCheckedOutBranches`). It was originally
-   step one of the in-sandbox command, but a worktree shares its parent
-   repo's `.git/config`, so N concurrent sandboxes raced on the shared
-   `config.lock` and killed setup ("could not lock config file"). The hook's
-   steps:
+   `receive.denyCurrentBranch=ignore`, which lets the container push into the
+   workspace's checked-out temp branch (ref-only) — is written **host-side,
+   once per burn, before any ticket container starts**
+   (`allowPushToCheckedOutBranches`). Two corrections from the first real
+   Windows burn are baked in here:
+   - The config write was originally step one of the in-sandbox command, but a
+     worktree shares its parent repo's `.git/config`, so N concurrent
+     sandboxes raced on the shared `config.lock` and killed setup ("could not
+     lock config file").
+   - The value was originally `updateInstead`, but push-to-checkout resolves
+     the branch's checkout via the worktree path registered in the parent
+     repo's metadata — the HOST path (`C:\...`), which does not exist inside
+     the container — so every push was refused. `ignore` moves the ref only;
+     the post-commit hook then hard-resets the mounted checkout itself.
+
+   The hook's steps:
    - `git config --global --add safe.directory '*'` — bind-mounted paths are
      host-UID-owned, and a worktree's gitdir resolves into the parent `.git`
      mount that sandcastle ≤0.12.0 leaves outside its own `safe.directory`
@@ -61,10 +68,13 @@ sync commits back to the mounted worktree automatically.**
    - `git clone /home/agent/workspace /home/agent/repo` — one bulk transfer
      across the mount instead of a per-file tax on every later operation.
    - A `post-commit` hook in the clone pushes `HEAD:<tempBranch>` back to the
-     workspace on **every commit** — sync requires zero agent discipline; if
-     the agent commits, the host sees it. (Validated end-to-end in a container:
-     clone → commit → auto-push → host worktree ref *and* working tree
-     updated.)
+     workspace on **every commit**, then runs
+     `git -C /home/agent/workspace reset --hard <tempBranch>` so the mounted
+     working tree tracks the ref (sandcastle's end-of-run dirty check stays
+     clean — no preserved-worktree pile-up). Sync requires zero agent
+     discipline; if the agent commits, the host sees it. The hook unsets
+     `GIT_DIR`/`GIT_WORK_TREE`/`GIT_INDEX_FILE` first — git exports them to
+     hook processes, and they would pin the `-C` reset to the clone's repo.
    - The deps install runs **inside the clone**, where pnpm's hardlinks work
      (ADR-0004) and `node_modules` materializes on native FS.
 
@@ -86,10 +96,16 @@ sync commits back to the mounted worktree automatically.**
   cross the mount in bulk and still save the network fetch. pnpm still
   re-downloads per cold container; if sandcastle grows named-volume mount
   support, a shared store volume is the follow-up ADR-0004 anticipated.
-- `receive.denyCurrentBranch=updateInstead` persists in the target repo's
-  config after a burn. It is scoped to receives into that repo (a no-op in
-  normal use) and shared safely by concurrent tickets; deliberately not
-  cleaned up, since concurrent burns would race an unset.
+- `receive.denyCurrentBranch=ignore` persists in the target repo's config
+  after a burn. It is scoped to receives into that repo (a no-op in normal
+  use) and shared safely by concurrent tickets; deliberately not cleaned up,
+  since concurrent burns would race an unset.
+- Burn concurrency makes non-fast-forward landings the *normal* case (parallel
+  tickets fork the same feature tip; the first landing moves it). When no
+  checkout holds the feature branch (talk worktree detached or gone),
+  `mergeTempBranch` now merges in a disposable worktree under the OS temp dir
+  instead of failing with a rejected fast-forward fetch — the failure that
+  cost ticket 1 of the first real burn its (perfectly mergeable) commit.
 - For WSL users who point runcastle at `/mnt/<drive>` anyway, `openProject`
   emits a `project.slow-path` warning event — that path silently works while
   paying the same translation tax in reverse, which would otherwise read as

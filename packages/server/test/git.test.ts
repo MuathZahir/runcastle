@@ -687,6 +687,51 @@ describe('mergeTempBranch', () => {
     expect((await g.branchLocal()).all).not.toContain(temp)
   })
 
+  it('no-holder non-FF case (parallel tickets): merges via a disposable worktree', async () => {
+    // Two tickets fork the same feature tip; the first lands and moves the ref,
+    // so the second cannot fast-forward — the normal shape of burn concurrency
+    // (this exact case failed as "From . ! [rejected]" in the first real burn).
+    const tempA = researchBranchName(feature.slug, 5, 'aaa111')
+    const tempB = researchBranchName(feature.slug, 6, 'bbb222')
+    const { tip: tipA } = await commitOnTempBranch(tempA, feature.branch, 'a.md', 'a\n')
+    await commitOnTempBranch(tempB, feature.branch, 'b.md', 'b\n')
+
+    expect(await mergeTempBranch(project.repoPath, feature.branch, tempA)).toEqual({ ok: true })
+    const res = await mergeTempBranch(project.repoPath, feature.branch, tempB)
+    expect(res).toEqual({ ok: true })
+
+    const g = simpleGit(project.repoPath)
+    // both tickets' files landed on the feature branch (merged, not clobbered)
+    const files = (await g.raw(['ls-tree', '--name-only', feature.branch])).split('\n')
+    expect(files).toContain('a.md')
+    expect(files).toContain('b.md')
+    await g.raw(['merge-base', '--is-ancestor', tipA, feature.branch]) // throws if not
+    expect(await currentBranch(g)).toBe('main') // main checkout untouched
+    expect((await g.branchLocal()).all).not.toContain(tempB)
+    // the disposable merge worktree is gone again
+    expect(await g.raw(['worktree', 'list', '--porcelain'])).not.toMatch(/rc-land-/)
+  })
+
+  it('no-holder non-FF conflict: aborts in the disposable worktree, preserves the temp branch', async () => {
+    const tempA = researchBranchName(feature.slug, 7, 'ccc333')
+    const tempB = researchBranchName(feature.slug, 8, 'ddd444')
+    await commitOnTempBranch(tempA, feature.branch, 'same.md', 'from-a\n')
+    await commitOnTempBranch(tempB, feature.branch, 'same.md', 'from-b\n')
+
+    expect(await mergeTempBranch(project.repoPath, feature.branch, tempA)).toEqual({ ok: true })
+    const g = simpleGit(project.repoPath)
+    const tipAfterA = (await g.revparse([feature.branch])).trim()
+
+    const res = await mergeTempBranch(project.repoPath, feature.branch, tempB)
+    expect(res.ok).toBe(false)
+    expect(res.conflict).toBe(true)
+
+    // feature branch untouched, temp branch preserved, no worktree leaked
+    expect((await g.revparse([feature.branch])).trim()).toBe(tipAfterA)
+    expect((await g.branchLocal()).all).toContain(tempB)
+    expect(await g.raw(['worktree', 'list', '--porcelain'])).not.toMatch(/rc-land-/)
+  })
+
   it('conflict case: aborts the merge, keeps the temp branch, leaves the talk worktree clean', async () => {
     const talkWt = await ensureTalkWorktree(project, feature)
     const temp = researchBranchName(feature.slug, 3, 'ghi789')

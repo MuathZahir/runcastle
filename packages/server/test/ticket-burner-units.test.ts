@@ -391,12 +391,20 @@ describe('buildIsolatedSetupCommand — clone + auto-sync wiring for the sandbox
     // without this the clone dies with "dubious ownership".
     expect(steps[0]).toBe(`git config --global --add safe.directory '*'`)
     expect(steps[1]).toBe(`git clone ${SANDBOX_WORKSPACE_PATH} ${ISOLATED_REPO_PATH}`)
-    // the post-commit hook pushes HEAD to the ticket's temp branch — sync
-    // requires no agent discipline at all
-    expect(steps[2]).toContain(`HEAD:%s`)
-    expect(steps[2]).toContain(`'${branch}'`)
-    expect(steps[2]).toContain(`> ${ISOLATED_REPO_PATH}/.git/hooks/post-commit`)
-    expect(steps[3]).toBe(`chmod +x ${ISOLATED_REPO_PATH}/.git/hooks/post-commit`)
+    // the post-commit hook pushes HEAD to the ticket's temp branch (ref-only —
+    // receive.denyCurrentBranch=ignore host-side) and then hard-resets the
+    // mounted workspace checkout to it, so the worktree tracks the branch and
+    // sandcastle's dirty check stays clean. Sync requires no agent discipline.
+    // (Asserted on `cmd`, not a ' && '-split step: the hook body itself
+    // contains ' && '.)
+    expect(cmd).toContain(`HEAD:%s`)
+    expect(cmd).toContain(`git -C ${SANDBOX_WORKSPACE_PATH} reset --hard --quiet %s`)
+    // git exports GIT_DIR & co to hooks — without unsetting them the -C reset
+    // would operate on the clone's repo, not the workspace
+    expect(cmd).toContain('unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE')
+    expect(cmd).toContain(`'${branch}' '${branch}'`)
+    expect(cmd).toContain(`> ${ISOLATED_REPO_PATH}/.git/hooks/post-commit`)
+    expect(cmd).toContain(`chmod +x ${ISOLATED_REPO_PATH}/.git/hooks/post-commit`)
     // install runs INSIDE the clone, on the container's native filesystem
     expect(cmd.endsWith(`cd ${ISOLATED_REPO_PATH} && corepack pnpm install --frozen-lockfile`)).toBe(
       true,

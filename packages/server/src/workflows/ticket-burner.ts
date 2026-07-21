@@ -388,17 +388,25 @@ export function resolveBurnWorkspaceMode(
  * 2. Clone the workspace onto the container's native filesystem — one bulk
  *    transfer across the mount instead of a per-file tax on every later
  *    install/typecheck/test.
- * 3. Install a `post-commit` hook in the clone that pushes every commit back to
- *    the workspace, so syncing needs no agent discipline at all — if the agent
- *    commits, the host sees it.
+ * 3. Install a `post-commit` hook in the clone that, on every commit, pushes
+ *    `HEAD:<tempBranch>` back to the workspace and then hard-resets the
+ *    workspace checkout to the freshly-pushed ref — syncing needs no agent
+ *    discipline at all, and the mounted working tree tracks the branch, so
+ *    sandcastle's end-of-run dirty check stays clean (no worktree pile-up).
+ *    The push moves the REF only: the host wrote
+ *    `receive.denyCurrentBranch=ignore` before any container started
+ *    (`allowPushToCheckedOutBranches`), because `updateInstead`
+ *    push-to-checkout resolves the branch's checkout via its registered HOST
+ *    path (`C:\...`) — nonexistent in-container — and refuses every push.
+ *    The hook unsets GIT_DIR/GIT_WORK_TREE/GIT_INDEX_FILE first: git exports
+ *    them to hook processes, and they would otherwise pin the
+ *    `git -C <workspace>` reset to the clone's repo instead of the workspace.
  * 4. Run the deps install inside the clone, where pnpm's hardlinks actually
  *    work (ADR-0004) and node_modules materializes on native FS.
  *
- * The push-back target only accepts pushes because the host wrote
- * `receive.denyCurrentBranch=updateInstead` into the parent repo's config
- * before any ticket started (`allowPushToCheckedOutBranches`) — that write
- * must NOT happen here: a worktree shares its parent repo's `.git/config`, so
- * N sandboxes running it concurrently race on the shared `config.lock`.
+ * The `receive.denyCurrentBranch` write must NOT happen here: a worktree
+ * shares its parent repo's `.git/config`, so N sandboxes running it
+ * concurrently race on the shared `config.lock`.
  */
 export function buildIsolatedSetupCommand(
   tempBranch: string,
@@ -408,7 +416,7 @@ export function buildIsolatedSetupCommand(
   const parts = [
     `git config --global --add safe.directory '*'`,
     `git clone ${SANDBOX_WORKSPACE_PATH} ${ISOLATED_REPO_PATH}`,
-    `printf '#!/bin/sh\\nexec git push --quiet origin HEAD:%s\\n' '${tempBranch}' > ${hookFile}`,
+    `printf '#!/bin/sh\\nunset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE\\ngit push --quiet origin HEAD:%s && exec git -C ${SANDBOX_WORKSPACE_PATH} reset --hard --quiet %s\\n' '${tempBranch}' '${tempBranch}' > ${hookFile}`,
     `chmod +x ${hookFile}`,
   ]
   if (setupCommand) parts.push(`cd ${ISOLATED_REPO_PATH} && ${setupCommand}`)

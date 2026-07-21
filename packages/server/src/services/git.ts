@@ -1,5 +1,6 @@
-import { existsSync, mkdirSync, realpathSync } from 'node:fs'
-import { dirname, resolve } from 'node:path'
+import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { dirname, join, resolve } from 'node:path'
 import type { Feature, Project } from '@runcastle/core'
 import { worktreeDir } from '@runcastle/core/paths'
 import { simpleGit } from 'simple-git'
@@ -456,10 +457,16 @@ export function ticketBranchName(slug: string, ticketSeq: number, unique: string
 }
 
 /**
- * Allow pushes into checked-out branches of `repoPath`, updating the checkout's
- * working tree on each push (`receive.denyCurrentBranch=updateInstead`). The
- * isolated burn workspace (ADR-0005) needs this so each sandbox's post-commit
- * hook can push into the ticket's mounted worktree.
+ * Allow the isolated burn sandboxes (ADR-0005) to push into their tickets'
+ * checked-out temp branches: `receive.denyCurrentBranch=ignore` updates the
+ * REF only; the sandbox-side post-commit hook follows up with a `reset --hard`
+ * that syncs the mounted working tree itself.
+ *
+ * `updateInstead` cannot work here (observed in the first real Windows burn):
+ * push-to-checkout resolves the branch's checkout via the worktree path
+ * registered in the parent repo's metadata — the HOST path (`C:\...`), which
+ * does not exist inside the container — so every such push is refused.
+ * `ignore` sidesteps the checkout entirely.
  *
  * This MUST run host-side, once, before any ticket container starts: a git
  * worktree has no config of its own, so the write lands in the parent repo's
@@ -468,7 +475,7 @@ export function ticketBranchName(slug: string, ticketSeq: number, unique: string
  * setup died before the agent ever started.
  */
 export async function allowPushToCheckedOutBranches(repoPath: string): Promise<void> {
-  await git(repoPath).addConfig('receive.denyCurrentBranch', 'updateInstead')
+  await git(repoPath).addConfig('receive.denyCurrentBranch', 'ignore')
 }
 
 export interface TempBranchMergeResult {
@@ -489,8 +496,12 @@ export interface TempBranchMergeResult {
  * Merge site: git only allows a merge inside a checkout of the target branch,
  * so if any worktree (normally the talk worktree; the main checkout during a
  * test drive) holds the feature branch, the merge runs THERE. When nobody holds
- * it, `git fetch . <temp>:<feature>` fast-forwards the ref with no checkout at
- * all (it refuses non-fast-forward, which is exactly the conflict-shaped case).
+ * it (the talk worktree is detached or gone), `git fetch . <temp>:<feature>`
+ * fast-forwards the ref with no checkout at all; if that refuses because the
+ * feature branch moved mid-run, the merge happens in a disposable worktree —
+ * a refused fast-forward is NOT conflict-shaped, it is the normal shape of two
+ * parallel tickets landing (the first one moves the tip out from under the
+ * second).
  *
  * After a successful merge the temp branch is deleted (best-effort — a
  * preserved sandcastle worktree pinning it is detached first; a branch that
@@ -533,13 +544,67 @@ export async function mergeTempBranch(
       // No checkout holds the branch: fast-forward the ref in place. Refuses
       // non-fast-forward (feature branch moved mid-run) rather than clobbering.
       await g.raw(['fetch', '.', `${tempBranch}:${featureBranchName}`])
-    } catch (e) {
-      return { ok: false, error: errMsg(e) }
+    } catch {
+      // Non-fast-forward: the feature branch moved mid-run (normal under burn
+      // concurrency — a parallel ticket landed first, and this ticket's branch
+      // forked from the older tip). A real merge needs a checkout of the
+      // target branch and nobody holds one, so merge in a disposable worktree.
+      const merged = await mergeInDisposableWorktree(g, featureBranchName, tempBranch)
+      if (!merged.ok) return merged
     }
   }
 
   await deleteBranchDetachingWorktrees(g, repoPath, tempBranch)
   return { ok: true }
+}
+
+/**
+ * Merge `tempBranch` into `featureBranchName` when no existing checkout holds
+ * the feature branch and the ref cannot fast-forward: check the feature branch
+ * out in a short-lived worktree under the OS temp dir (short path — Windows
+ * MAX_PATH), merge there, then remove the worktree. On conflict the merge is
+ * aborted and the worktree removed, leaving the feature branch untouched and
+ * the temp branch preserved for manual recovery.
+ */
+async function mergeInDisposableWorktree(
+  g: SimpleGit,
+  featureBranchName: string,
+  tempBranch: string,
+): Promise<TempBranchMergeResult> {
+  let dir: string
+  try {
+    dir = mkdtempSync(join(tmpdir(), 'rc-land-'))
+  } catch (e) {
+    return { ok: false, error: errMsg(e) }
+  }
+  const wt = join(dir, 'wt')
+  try {
+    await g.raw(['worktree', 'add', wt, featureBranchName])
+    const gw = git(wt)
+    try {
+      await gw.merge([tempBranch])
+    } catch (e) {
+      if (await mergeInProgress(gw)) {
+        await gw.raw(['merge', '--abort'])
+        return { ok: false, conflict: true, error: errMsg(e) }
+      }
+      return { ok: false, error: errMsg(e) }
+    }
+    return { ok: true }
+  } catch (e) {
+    return { ok: false, error: errMsg(e) }
+  } finally {
+    try {
+      await g.raw(['worktree', 'remove', '--force', wt])
+    } catch {
+      // best-effort — a leftover dir under tmp is harmless and swept below
+    }
+    try {
+      rmSync(dir, { recursive: true, force: true })
+    } catch {
+      // best-effort
+    }
+  }
 }
 
 /**
