@@ -112,6 +112,18 @@ export const RuncastleConfig = z.preprocess(
      */
     burnMaxIterations: z.number().int().min(1).max(10).default(3),
     /**
+     * Max sandcastle attempts per ticket per run. Distinct from
+     * `burnMaxIterations` (turns WITHIN one healthy agent process): an attempt
+     * is a whole `run()` — when the agent process dies on a transient
+     * infrastructure error (API stream drop, network, overload/rate-limit,
+     * idle timeout), the burner starts a fresh attempt on a new temp branch
+     * BASED ON the failed attempt's branch, so commits already made are never
+     * lost, and tells the agent to continue rather than start over. Fatal
+     * errors (auth, unknown model, merge conflicts, agent-reported BLOCKED)
+     * never retry.
+     */
+    burnAttempts: z.number().int().min(1).max(5).default(3),
+    /**
      * Command run inside the burner sandbox before the agent starts (sandcastle
      * `sandbox.onSandboxReady`), overriding lockfile-based detection. Leave
      * unset to auto-detect from the target repo (`packageManager` field, then

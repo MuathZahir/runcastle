@@ -75,6 +75,14 @@ export const Ticket = TicketInput.extend({
   status: TicketStatus,
   commits: z.array(z.string()),
   error: z.string().optional(),
+  /**
+   * Tip of the last failed burn attempt's temp branch, when that attempt left
+   * commits behind. The next burn of this ticket (auto-retry within a run, a
+   * re-burn, or a manual per-ticket retry) bases its new attempt on this branch
+   * so committed work is never redone; cleared when the ticket lands or the
+   * user retries "fresh".
+   */
+  attemptBranch: z.string().optional(),
 })
 export type Ticket = z.infer<typeof Ticket>
 

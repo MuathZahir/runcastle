@@ -27,7 +27,6 @@ export function RunBody({
   runId: string | null
   readonly?: boolean
 }) {
-  void readonly
   const feature = trpc.feature.get.useQuery({ id: featureId }, { refetchInterval: 1500 })
   const run = trpc.run.get.useQuery(
     { runId: runId as string },
@@ -106,6 +105,7 @@ export function RunBody({
                 ticket={t}
                 duration={durations.get(t.id)}
                 selected={t.id === selectedId}
+                readonly={readonly}
                 onSelect={() => {
                   setPinned(t.id)
                   setTab('agent')
@@ -159,14 +159,23 @@ function Lane({
   ticket,
   duration,
   selected,
+  readonly,
   onSelect,
 }: {
   ticket: Ticket
   duration?: number
   selected: boolean
+  readonly: boolean
   onSelect: () => void
 }) {
   const toast = useToast()
+  const utils = trpc.useUtils()
+  const onMutated = {
+    onSuccess: () => utils.feature.get.invalidate({ id: ticket.featureId }),
+    onError: (e: { message: string }) => toast.push(e.message),
+  }
+  const retry = trpc.ticket.retry.useMutation(onMutated)
+  const stop = trpc.ticket.stop.useMutation(onMutated)
   const copy = (sha: string) => {
     navigator.clipboard?.writeText(sha).then(
       () => toast.push(`copied ${shortSha(sha)}`, 'info'),
@@ -178,6 +187,10 @@ function Lane({
     : ''
   const hasCommits = ticket.commits.length > 0
   const hasDuration = duration !== undefined
+  // First line of the failure, so the user never has to dig through the event
+  // stream to learn WHY a lane went red.
+  const errorHeadline = ticket.status === 'failed' ? ticket.error?.split('\n')[0] : undefined
+  const busy = retry.isPending || stop.isPending
   return (
     <div
       className={`lane is-clickable${mod}${selected ? ' is-selected' : ''}`}
@@ -194,6 +207,69 @@ function Lane({
         <span className="lane-title">{ticket.title}</span>
         <TicketStatusChip status={ticket.status} />
       </div>
+      {errorHeadline && (
+        <div className="lane-error" title={ticket.error}>
+          {errorHeadline}
+        </div>
+      )}
+      {!readonly && ticket.status === 'failed' && (
+        <div className="lane-actions">
+          <button
+            className="lane-btn"
+            disabled={busy}
+            title={
+              ticket.attemptBranch
+                ? 'retry this ticket, continuing from its preserved commits'
+                : 'retry this ticket'
+            }
+            onClick={(e) => {
+              e.stopPropagation()
+              retry.mutate({ ticketId: ticket.id })
+            }}
+          >
+            {ticket.attemptBranch ? 'Retry (continue)' : 'Retry'}
+          </button>
+          {ticket.attemptBranch && (
+            <button
+              className="lane-btn lane-btn-danger"
+              disabled={busy}
+              title="discard the preserved commits and redo the ticket from the feature branch tip"
+              onClick={(e) => {
+                e.stopPropagation()
+                if (confirm(`Discard ticket #${ticket.seq}'s preserved work and start over?`)) {
+                  retry.mutate({ ticketId: ticket.id, fresh: true })
+                }
+              }}
+            >
+              Retry fresh
+            </button>
+          )}
+        </div>
+      )}
+      {!readonly && ticket.status === 'burning' && (
+        <div className="lane-actions">
+          <button
+            className="lane-btn lane-btn-danger"
+            disabled={busy}
+            title="stop this ticket's agent — other lanes keep burning; committed work is preserved for retry"
+            onClick={(e) => {
+              e.stopPropagation()
+              // Hook-level onSuccess (invalidate) still runs; this only adds the
+              // no-op feedback when the agent already finished.
+              stop.mutate(
+                { ticketId: ticket.id },
+                {
+                  onSuccess: (r) => {
+                    if (!r.stopped) toast.push('no live agent for this ticket (already finishing?)', 'info')
+                  },
+                },
+              )
+            }}
+          >
+            Stop ticket
+          </button>
+        </div>
+      )}
       {(hasCommits || hasDuration) && (
         <div className="lane-foot">
           <span className="lane-commits">
@@ -256,9 +332,9 @@ function EventStream({ events }: { events: EventRow[] }) {
 
 /** Colour class from the event type keyword. */
 function eventLevel(type: string): 'error' | 'ok' | 'active' | 'info' {
-  if (/(error|fail|conflict|cancel)/i.test(type)) return 'error'
+  if (/(error|fail|conflict|cancel|stopped)/i.test(type)) return 'error'
   if (/(done|succeed|finished|shipped|merged)/i.test(type)) return 'ok'
-  if (/(start|burn|launch|advance|running)/i.test(type)) return 'active'
+  if (/(start|burn|launch|advance|running|retry|resum)/i.test(type)) return 'active'
   return 'info'
 }
 

@@ -18,7 +18,12 @@ import {
   beginTranscript,
   endTranscript,
 } from '../services/agent-stream'
-import { allowPushToCheckedOutBranches, mergeTempBranch, ticketBranchName } from '../services/git'
+import {
+  allowPushToCheckedOutBranches,
+  branchCommitsAhead,
+  mergeTempBranch,
+  ticketBranchName,
+} from '../services/git'
 import type {
   AgentCommandOptions,
   AgentProvider,
@@ -591,6 +596,121 @@ export function isMergeConflictError(err: unknown): boolean {
 }
 
 // ---------------------------------------------------------------------------
+// Pure unit — transient-error classification + retry pacing
+// ---------------------------------------------------------------------------
+
+/**
+ * Errors where a retry can only fail the same way — bad credentials, a model
+ * the account cannot use, a broken resume. Checked BEFORE the retryable
+ * patterns so "exited with code 1: Invalid API key" stays fatal.
+ */
+const FATAL_ERROR_PATTERNS: RegExp[] = [
+  /invalid (api key|x-api-key)/i,
+  /authentication|unauthorized|permission denied/i,
+  /credit balance|billing/i,
+  /oauth token|setup-token/i,
+  /issue with the selected model|model not found|unknown model/i,
+  /does not support resumeSession|resumeSession .* not found/i,
+]
+
+/**
+ * Transient infrastructure failures a fresh attempt has a real chance of
+ * surviving. The broad `exited with code N` entry is sandcastle's `AgentError`
+ * for ANY nonzero `claude --print` exit — in practice a dropped API stream,
+ * an OOM-killed process, or a CLI crash, none of which say anything about the
+ * ticket itself (a genuinely wrong ticket fails via zero commits or BLOCKED.md,
+ * which are outcomes, not throws — they never reach this classifier).
+ */
+const RETRYABLE_ERROR_PATTERNS: RegExp[] = [
+  /exited with code \d+/i,
+  /idle timeout|AgentIdleTimeout/i,
+  /connection (closed|error|refused|reset)|socket hang up|fetch failed/i,
+  /econnreset|etimedout|econnrefused|epipe|eai_again/i,
+  /overloaded|rate.?limit|too many requests/i,
+  /internal server error|service unavailable|bad gateway|gateway timeout/i,
+  /\bapi error\b/i,
+  /session capture failed/i,
+]
+
+/**
+ * Should a failed sandcastle attempt be retried? Fatal patterns win over
+ * retryable ones; anything unrecognized is fatal — an unknown throw (git
+ * worktree setup, sandbox creation) could compound if blindly retried, and the
+ * manual per-ticket retry tools cover it.
+ */
+export function classifyTicketRunError(err: unknown): 'retryable' | 'fatal' {
+  const msg = err instanceof Error ? err.message : typeof err === 'string' ? err : String(err)
+  if (FATAL_ERROR_PATTERNS.some((p) => p.test(msg))) return 'fatal'
+  if (RETRYABLE_ERROR_PATTERNS.some((p) => p.test(msg))) return 'retryable'
+  return 'fatal'
+}
+
+/** Backoff before retry attempt `attempt + 1`: 5s, 10s, 20s, capped at 30s. */
+export function retryDelayMs(attempt: number): number {
+  return Math.min(30_000, 5_000 * 2 ** (attempt - 1))
+}
+
+/**
+ * The prompt block appended when an attempt continues interrupted work — a
+ * fresh agent has no memory of the dead one, so it must be told the history is
+ * on its branch and that redoing (or reverting) it would burn the ticket.
+ */
+export function buildRetryNotes(input: { error?: string; commitCount: number }): string {
+  const cause = input.error ? ` (${input.error})` : ''
+  const commits =
+    input.commitCount > 0
+      ? `${input.commitCount} commit(s) from the previous attempt(s) are already on your branch — completed work, not noise.`
+      : 'The previous attempt had not committed anything yet, so you are effectively starting clean.'
+  return [
+    '## Recovery context — a previous attempt was interrupted',
+    '',
+    `A previous agent working THIS SAME ticket was killed by a transient infrastructure error${cause} — not by anything it did wrong, and not by a human decision. You are picking up where it left off.`,
+    '',
+    commits,
+    '',
+    'Before doing anything else, run `git log --oneline -15` and `git status` to see what was already completed. Build on that work — do NOT revert or redo existing commits. Uncommitted changes from the previous attempt were lost; only commits survived. If the ticket turns out to be fully implemented already, verify the acceptance criteria and finish normally.',
+  ].join('\n')
+}
+
+/** Resolves after `ms`, or EARLY (never rejects) when `signal` aborts — callers re-check their abort flags after. */
+export function delayUnlessAborted(ms: number, signal: AbortSignal): Promise<void> {
+  return new Promise((resolve) => {
+    if (signal.aborted) {
+      resolve()
+      return
+    }
+    const onAbort = (): void => {
+      clearTimeout(t)
+      resolve()
+    }
+    const t = setTimeout(() => {
+      signal.removeEventListener('abort', onAbort)
+      resolve()
+    }, ms)
+    signal.addEventListener('abort', onAbort, { once: true })
+  })
+}
+
+// ---------------------------------------------------------------------------
+// Per-ticket stop — abort ONE burning ticket's agent without killing the run
+// ---------------------------------------------------------------------------
+
+const activeTicketAborts = new Map<string, AbortController>()
+
+/**
+ * Stop a single burning ticket's agent (UI "Stop ticket"). The ticket lands as
+ * `failed` with its committed work preserved on its temp branch (retryable),
+ * while every other lane in the run keeps burning. Returns false when the
+ * ticket has no live agent in this process.
+ */
+export function stopTicketRun(ticketId: string): boolean {
+  const controller = activeTicketAborts.get(ticketId)
+  if (!controller) return false
+  controller.abort(new Error('ticket stopped by user'))
+  return true
+}
+
+// ---------------------------------------------------------------------------
 // Pure unit — serial queue (one merge lands at a time)
 // ---------------------------------------------------------------------------
 
@@ -958,7 +1078,19 @@ const SETUP_HOOK_TIMEOUT_MS = 15 * 60_000
  * `land` — the per-run serial merge queue, so concurrent tickets never merge at
  * once. A landing conflict (parallel tickets touched the same files) fails the
  * ticket with `merge.conflict.needs-human`, preserving the temp branch for
- * manual recovery. Aborts are rethrown.
+ * manual recovery. Aborts of the RUN are rethrown; a per-ticket stop
+ * (`stopTicketRun`) fails only this ticket.
+ *
+ * Robustness (attempt chaining): a transient infrastructure death (API stream
+ * drop, network, overload, idle timeout — see `classifyTicketRunError`) does
+ * not fail the ticket. Whatever the dead attempt committed survives on its
+ * temp branch in EVERY workspace mode (the post-commit sync hook in isolated
+ * mode; the host worktree ref in mounted/noSandbox), so the next attempt runs
+ * on a fresh temp branch BASED ON the dead one, with `buildRetryNotes`
+ * appended so the new agent continues instead of starting over. Up to
+ * `config.burnAttempts` attempts per run; a ticket that still fails persists
+ * its chain tip in `ticket.attemptBranch`, which the NEXT run (re-burn or
+ * manual retry) resumes from the same way. A successful landing clears it.
  */
 async function realExecuteTicketRun(
   ctx: WorkflowCtx,
@@ -970,9 +1102,6 @@ async function realExecuteTicketRun(
   ensureIsolatedPushTarget: () => Promise<void>,
 ): Promise<TicketOutcome> {
   const { project, feature } = ctx
-  // Unique per attempt (nanoid alphabet is branch-name-safe) so a re-burned
-  // ticket never reuses a stale sandcastle worktree or a conflict leftover.
-  const tempBranch = ticketBranchName(feature.slug, ticket.seq, newId('b').slice(2, 10))
 
   // Where the agent's hot path lives (ADR-0005): on win32/darwin container
   // hosts the bind-mounted worktree pays Docker Desktop's per-file translation
@@ -985,7 +1114,7 @@ async function realExecuteTicketRun(
   if (workspaceMode === 'isolated') await ensureIsolatedPushTarget()
 
   const template = readFileSync(burnerTemplatePath(), 'utf8')
-  const prompt = renderTicketPrompt(template, {
+  const basePrompt = renderTicketPrompt(template, {
     TICKET_JSON: buildTicketJson(ticket),
     FEATURE_BRIEF: buildFeatureBrief(feature),
     DOCS_DIGEST: readDocsDigestFromDisk(project.id, feature.slug),
@@ -1012,24 +1141,6 @@ async function realExecuteTicketRun(
       mounts.push(mount)
     }
   }
-  // In isolated mode the onSandboxReady hook always runs (the clone + sync
-  // wiring is needed even with nothing to install); mounted mode keeps the
-  // hook only when there is an install to run.
-  const hookCommand =
-    workspaceMode === 'isolated'
-      ? buildIsolatedSetupCommand(tempBranch, setupCommand, pm)
-      : setupCommand
-  if (hookCommand) {
-    ctx.emitEvent({
-      type: 'burn.setup',
-      message:
-        workspaceMode === 'isolated'
-          ? `preparing isolated workspace (native-FS clone)${setupCommand ? ` + deps install: ${setupCommand}` : ''}`
-          : `installing deps before agent start: ${setupCommand}`,
-      ticketId: ticket.id,
-    })
-  }
-
   mkdirSync(logsDir(), { recursive: true })
   const logFilePath = join(logsDir(), `burn-${feature.id}-${ticket.seq}.log`)
   const throttle = createStreamThrottle((e) => ctx.emitEvent({ ...e, ticketId: ticket.id }))
@@ -1052,85 +1163,221 @@ async function realExecuteTicketRun(
     }
   }
 
-  const runOptions: RunOptions = {
-    agent: buildBurnAgent(config, token, model),
-    sandbox: selectSandbox(config, mounts),
-    cwd: project.repoPath,
-    prompt,
-    // Temp branch off the feature branch tip — its own sandcastle worktree,
-    // isolated from every concurrently-burning ticket. Landed below via `land`.
-    branchStrategy: { type: 'branch', branch: tempBranch, baseBranch: feature.branch },
-    signal: ctx.signal,
-    name: `ticket-${ticket.seq}`,
-    // Each iteration is a fresh `claude --print` against the same worktree (and
-    // the same warm container, so the setup hook runs once). The prompt's
-    // `<promise>COMPLETE</promise>` signal stops the loop early on success; the
-    // headroom exists so a turn that ends prematurely (idle wait, context cut)
-    // resumes instead of failing the ticket with zero commits.
-    maxIterations: config.burnMaxIterations,
-    ...(hookCommand
-      ? {
-          hooks: {
-            sandbox: {
-              onSandboxReady: [{ command: hookCommand, timeoutMs: SETUP_HOOK_TIMEOUT_MS }],
+  // Per-ticket stop control: `signal` kills THIS ticket's agent on either the
+  // run's abort (cancel run) or a targeted `stopTicketRun` (Stop ticket).
+  const ticketAbort = new AbortController()
+  activeTicketAborts.set(ticket.id, ticketAbort)
+  const signal = AbortSignal.any([ctx.signal, ticketAbort.signal])
+
+  const maxAttempts = Math.max(1, config.burnAttempts)
+
+  // Cross-run resume: an earlier run (or a stopped/exhausted attempt chain)
+  // left committed work on `ticket.attemptBranch` — base the first attempt on
+  // it and tell the agent to continue. A stale pointer (branch deleted, or
+  // everything already landed) is silently ignored.
+  let baseBranch = feature.branch
+  let retryNotes: string | undefined
+  if (ticket.attemptBranch) {
+    const preserved = await branchCommitsAhead(project.repoPath, feature.branch, ticket.attemptBranch)
+    if (preserved.length > 0) {
+      baseBranch = ticket.attemptBranch
+      retryNotes = buildRetryNotes({
+        ...(ticket.error ? { error: errorHeadline(ticket.error) } : {}),
+        commitCount: preserved.length,
+      })
+      ctx.emitEvent({
+        type: 'ticket.resuming',
+        message: `ticket ${ticket.seq}: resuming from ${preserved.length} preserved commit(s) of a previous attempt`,
+        ticketId: ticket.id,
+        data: { attemptBranch: ticket.attemptBranch, preservedCommits: preserved.length },
+      })
+    }
+  }
+
+  /** Persist the chain tip so the NEXT burn of this ticket continues from it. */
+  const preserveChain = (branch: string): void => {
+    ctx.updateTicket(ticket.id, { attemptBranch: branch })
+  }
+
+  try {
+    let result: RunResult | undefined
+    let tempBranch = ''
+    for (let attempt = 1; ; attempt++) {
+      // Unique per attempt (nanoid alphabet is branch-name-safe) so an attempt
+      // never reuses a stale sandcastle worktree or a conflict leftover.
+      tempBranch = ticketBranchName(feature.slug, ticket.seq, newId('b').slice(2, 10))
+      // In isolated mode the onSandboxReady hook always runs (the clone + sync
+      // wiring is needed even with nothing to install) and embeds THIS
+      // attempt's temp branch; mounted mode keeps the hook only when there is
+      // an install to run.
+      const hookCommand =
+        workspaceMode === 'isolated'
+          ? buildIsolatedSetupCommand(tempBranch, setupCommand, pm)
+          : setupCommand
+      if (hookCommand && attempt === 1) {
+        ctx.emitEvent({
+          type: 'burn.setup',
+          message:
+            workspaceMode === 'isolated'
+              ? `preparing isolated workspace (native-FS clone)${setupCommand ? ` + deps install: ${setupCommand}` : ''}`
+              : `installing deps before agent start: ${setupCommand}`,
+          ticketId: ticket.id,
+        })
+      }
+
+      const runOptions: RunOptions = {
+        agent: buildBurnAgent(config, token, model),
+        sandbox: selectSandbox(config, mounts),
+        cwd: project.repoPath,
+        prompt: retryNotes ? `${basePrompt}\n\n${retryNotes}` : basePrompt,
+        // Temp branch off the chain tip (the feature branch, or the previous
+        // attempt's branch when resuming) — its own sandcastle worktree,
+        // isolated from every concurrently-burning ticket. Landed below via
+        // `land`; landing the final branch lands the whole chain.
+        branchStrategy: { type: 'branch', branch: tempBranch, baseBranch },
+        signal,
+        name: `ticket-${ticket.seq}`,
+        // Each iteration is a fresh `claude --print` against the same worktree
+        // (and the same warm container, so the setup hook runs once). The
+        // prompt's `<promise>COMPLETE</promise>` signal stops the loop early on
+        // success; the headroom exists so a turn that ends prematurely (idle
+        // wait, context cut) resumes instead of failing the ticket with zero
+        // commits. Attempts (this loop) are one level up: a whole run() dying.
+        maxIterations: config.burnMaxIterations,
+        ...(hookCommand
+          ? {
+              hooks: {
+                sandbox: {
+                  onSandboxReady: [{ command: hookCommand, timeoutMs: SETUP_HOOK_TIMEOUT_MS }],
+                },
+              },
+            }
+          : {}),
+        logging: { type: 'file', path: logFilePath, onAgentStreamEvent: onStreamEvent },
+      }
+
+      try {
+        result = await run(runOptions)
+        break
+      } catch (err) {
+        if (ctx.signal.aborted) throw err // let the runner mark the run cancelled
+        const msg = err instanceof Error ? err.message : String(err)
+        // Whatever the dead attempt committed survives on its temp branch —
+        // chain the next attempt (or a later run) onto it.
+        const salvaged = await branchCommitsAhead(project.repoPath, feature.branch, tempBranch)
+        if (salvaged.length > 0) baseBranch = tempBranch
+
+        if (ticketAbort.signal.aborted) {
+          if (salvaged.length > 0) preserveChain(tempBranch)
+          return {
+            status: 'failed',
+            error: `stopped by user${salvaged.length > 0 ? ` — ${salvaged.length} commit(s) preserved; retry to continue from them` : ''}`,
+            event: {
+              type: 'ticket.stopped',
+              message: `ticket ${ticket.seq} stopped by user${salvaged.length > 0 ? ` — ${salvaged.length} commit(s) preserved for retry` : ''}`,
             },
+          }
+        }
+        if (isMergeConflictError(err)) {
+          return {
+            status: 'failed',
+            error: `merge conflict landing ticket ${ticket.seq} on ${feature.branch}: ${msg}`,
+            event: {
+              type: 'merge.conflict.needs-human',
+              message: `ticket ${ticket.seq}: merge conflict on ${feature.branch} — resolve manually per the error, then re-burn`,
+            },
+          }
+        }
+        if (classifyTicketRunError(err) === 'retryable' && attempt < maxAttempts) {
+          const headline = errorHeadline(msg)
+          retryNotes = buildRetryNotes({ error: headline, commitCount: salvaged.length })
+          ctx.emitEvent({
+            type: 'ticket.retrying',
+            message: `ticket ${ticket.seq} attempt ${attempt}/${maxAttempts} died (${headline}) — retrying${salvaged.length > 0 ? ` from ${salvaged.length} preserved commit(s)` : ''}`,
+            ticketId: ticket.id,
+            data: { attempt, maxAttempts, error: msg, preservedCommits: salvaged.length },
+          })
+          appendTranscript(ticket.id, {
+            kind: 'text',
+            text: `\n— attempt ${attempt} interrupted (${headline}); starting attempt ${attempt + 1}${salvaged.length > 0 ? ' with committed work preserved' : ''} —\n`,
+          })
+          await delayUnlessAborted(retryDelayMs(attempt), signal)
+          ctx.signal.throwIfAborted() // run cancelled during backoff
+          if (ticketAbort.signal.aborted) {
+            if (salvaged.length > 0) preserveChain(tempBranch)
+            return {
+              status: 'failed',
+              error: `stopped by user${salvaged.length > 0 ? ` — ${salvaged.length} commit(s) preserved; retry to continue from them` : ''}`,
+              event: {
+                type: 'ticket.stopped',
+                message: `ticket ${ticket.seq} stopped by user${salvaged.length > 0 ? ` — ${salvaged.length} commit(s) preserved for retry` : ''}`,
+              },
+            }
+          }
+          continue
+        }
+        if (salvaged.length > 0) preserveChain(tempBranch)
+        return { status: 'failed', error: msg }
+      }
+    }
+
+    // Unreachable (the loop exits only via break-after-assign, return, or
+    // throw) — the guard just proves assignment to the type checker.
+    if (!result) return { status: 'failed', error: 'internal: run loop produced no result' }
+
+    // Interpret over the WHOLE chain (host refs include prior attempts'
+    // commits): a resumed agent that only verified and committed nothing new is
+    // still done; one that committed nothing new AND wrote BLOCKED.md failed —
+    // its preserved chain stays on the ticket for the next retry.
+    const blocked = readBlockedFile([result.preservedWorktreePath, project.repoPath])
+    const chain = await branchCommitsAhead(project.repoPath, feature.branch, tempBranch)
+    let outcome: TicketOutcome
+    if (result.commits.length === 0 && blocked !== undefined && blocked.trim().length > 0) {
+      outcome = { status: 'failed', error: `agent reported BLOCKED:\n${blocked.trim()}` }
+    } else if (chain.length > 0) {
+      outcome = { status: 'done', commits: chain }
+    } else {
+      outcome = interpretRunResult(result, blocked)
+    }
+    if (outcome.status !== 'done') {
+      if (chain.length > 0) preserveChain(tempBranch)
+      return outcome
+    }
+
+    // Land the ticket's commits on the feature branch — serialized per run, so
+    // two tickets finishing together never race the ref/checkout. The scheduler
+    // only marks a ticket done (and readies its dependents) after this resolves,
+    // so dependents always fork a tip that includes their blockers' work.
+    const merge = await land(() => mergeTempBranch(project.repoPath, feature.branch, tempBranch))
+    if (!merge.ok) {
+      const detail = merge.error ?? 'merge failed'
+      if (merge.conflict) {
+        return {
+          status: 'failed',
+          error: `ticket ${ticket.seq} committed to ${tempBranch} but landing on ${feature.branch} hit a conflict: ${detail}`,
+          event: {
+            type: 'merge.conflict.needs-human',
+            message: `ticket ${ticket.seq}: ${tempBranch} conflicts with ${feature.branch} — merge it manually (git merge ${tempBranch}; resolve; git branch -D ${tempBranch}), then re-burn`,
           },
         }
-      : {}),
-    logging: { type: 'file', path: logFilePath, onAgentStreamEvent: onStreamEvent },
-  }
+      }
+      // Non-conflict landing failure (lock contention, fs hiccup) — keep the
+      // chain on the ticket so a later retry just re-lands it.
+      preserveChain(tempBranch)
+      return {
+        status: 'failed',
+        error: `ticket ${ticket.seq} committed to ${tempBranch} but landing on ${feature.branch} failed: ${errorHeadline(detail)} — the branch is preserved for manual recovery`,
+      }
+    }
 
-  let result: RunResult
-  try {
-    result = await run(runOptions)
-  } catch (err) {
+    // Landed — the chain is merged; a stale resume pointer must not survive.
+    if (ticket.attemptBranch) ctx.updateTicket(ticket.id, { attemptBranch: null })
+    return outcome
+  } finally {
+    activeTicketAborts.delete(ticket.id)
     throttle.flush()
     endTranscript(ticket.id)
-    if (ctx.signal.aborted) throw err // let the runner mark the run cancelled
-    const msg = err instanceof Error ? err.message : String(err)
-    if (isMergeConflictError(err)) {
-      return {
-        status: 'failed',
-        error: `merge conflict landing ticket ${ticket.seq} on ${feature.branch}: ${msg}`,
-        event: {
-          type: 'merge.conflict.needs-human',
-          message: `ticket ${ticket.seq}: merge conflict on ${feature.branch} — resolve manually per the error, then re-burn`,
-        },
-      }
-    }
-    return { status: 'failed', error: msg }
   }
-  throttle.flush()
-  endTranscript(ticket.id)
-
-  const blocked = readBlockedFile([result.preservedWorktreePath, project.repoPath])
-  const outcome = interpretRunResult(result, blocked)
-  if (outcome.status !== 'done') return outcome
-
-  // Land the ticket's commits on the feature branch — serialized per run, so
-  // two tickets finishing together never race the ref/checkout. The scheduler
-  // only marks a ticket done (and readies its dependents) after this resolves,
-  // so dependents always fork a tip that includes their blockers' work.
-  const merge = await land(() => mergeTempBranch(project.repoPath, feature.branch, tempBranch))
-  if (!merge.ok) {
-    const detail = merge.error ?? 'merge failed'
-    if (merge.conflict) {
-      return {
-        status: 'failed',
-        error: `ticket ${ticket.seq} committed to ${tempBranch} but landing on ${feature.branch} hit a conflict: ${detail}`,
-        event: {
-          type: 'merge.conflict.needs-human',
-          message: `ticket ${ticket.seq}: ${tempBranch} conflicts with ${feature.branch} — merge it manually (git merge ${tempBranch}; resolve; git branch -D ${tempBranch}), then re-burn`,
-        },
-      }
-    }
-    return {
-      status: 'failed',
-      error: `ticket ${ticket.seq} committed to ${tempBranch} but landing on ${feature.branch} failed: ${errorHeadline(detail)} — the branch is preserved for manual recovery`,
-    }
-  }
-
-  return outcome
 }
 
 /**

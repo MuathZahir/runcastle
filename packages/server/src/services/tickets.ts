@@ -29,6 +29,7 @@ function rowToTicket(row: TicketSelect): Ticket {
     status: row.status,
     commits: row.commits,
     error: row.error ?? undefined,
+    attemptBranch: row.attemptBranch ?? undefined,
   }
 }
 
@@ -94,6 +95,7 @@ export function storeTickets(
     status: 'pending' as const,
     commits: [] as string[],
     error: null,
+    attemptBranch: null,
   }))
 
   ctx.db.insert(tickets).values(rows).run()
@@ -184,8 +186,11 @@ export function cancelTicket(ctx: AppCtx, id: string, reason?: string): Ticket {
 export function updateTicket(
   ctx: AppCtx,
   id: string,
-  // `error: null` clears a stored error (the burn-restart retry path).
-  patch: Partial<Pick<Ticket, 'status' | 'commits'>> & { error?: string | null },
+  // `null` clears a stored error/attemptBranch (retry + successful-landing paths).
+  patch: Partial<Pick<Ticket, 'status' | 'commits'>> & {
+    error?: string | null
+    attemptBranch?: string | null
+  },
 ): Ticket {
   const current = ctx.db.select().from(tickets).where(eq(tickets.id, id)).get()
   if (!current) throw new NotFoundError(`ticket ${id} not found`)
@@ -194,6 +199,7 @@ export function updateTicket(
   if (patch.status !== undefined) set.status = patch.status
   if (patch.commits !== undefined) set.commits = patch.commits
   if (patch.error !== undefined) set.error = patch.error
+  if (patch.attemptBranch !== undefined) set.attemptBranch = patch.attemptBranch
 
   ctx.db.update(tickets).set(set).where(eq(tickets.id, id)).run()
 

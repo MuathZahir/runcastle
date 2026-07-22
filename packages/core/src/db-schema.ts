@@ -80,6 +80,7 @@ export const tickets = sqliteTable('tickets', {
   status: text('status').notNull().$type<TicketStatus>(),
   commits: text('commits', { mode: 'json' }).notNull().$type<string[]>(),
   error: text('error'),
+  attemptBranch: text('attempt_branch'),
 })
 
 export const waypoints = sqliteTable('waypoints', {

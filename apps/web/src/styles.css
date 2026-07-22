@@ -1155,6 +1155,29 @@ details.wp-group-done > summary { cursor: pointer; list-style: revert; }
 .lane-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 6px; }
 .lane-commits { display: flex; flex-wrap: wrap; gap: 4px; }
 .lane-dur { color: var(--text-3); font-family: var(--mono); font-size: 11px; }
+.lane-error {
+  margin-top: 5px;
+  color: var(--danger);
+  font-family: var(--mono);
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.lane-actions { display: flex; gap: 6px; margin-top: 6px; }
+.lane-btn {
+  border: 1px solid var(--hairline);
+  background: none;
+  color: var(--text-2);
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+  transition: color var(--dur-1), border-color var(--dur-1);
+}
+.lane-btn:hover:not(:disabled) { color: var(--text); border-color: var(--accent); }
+.lane-btn:disabled { opacity: 0.5; cursor: default; }
+.lane-btn-danger:hover:not(:disabled) { color: var(--danger); border-color: var(--danger); }
 
 .run-stream-panel {
   flex: 3;

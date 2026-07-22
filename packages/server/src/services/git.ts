@@ -457,6 +457,42 @@ export function ticketBranchName(slug: string, ticketSeq: number, unique: string
 }
 
 /**
+ * Commit shas reachable from `branch` but not from `base`, oldest first — the
+ * work a burn attempt chain has accumulated over the feature branch. `[]` when
+ * either ref is missing (a crashed attempt may die before its branch is ever
+ * created) or the ranges cannot be compared; callers treat that as "nothing to
+ * salvage", never as an error.
+ */
+export async function branchCommitsAhead(
+  repoPath: string,
+  base: string,
+  branch: string,
+): Promise<string[]> {
+  try {
+    const out = await git(repoPath).raw(['rev-list', '--reverse', `${base}..${branch}`])
+    return out
+      .split('\n')
+      .map((l) => l.trim())
+      .filter(Boolean)
+  } catch {
+    return []
+  }
+}
+
+/**
+ * Best-effort delete of a burn temp branch (the "retry fresh" path: the user
+ * discards a preserved attempt chain). Detaches any sandcastle worktree still
+ * pinning the branch first; returns whether the branch is actually gone.
+ */
+export async function deleteTempBranch(repoPath: string, branch: string): Promise<boolean> {
+  try {
+    return await deleteBranchDetachingWorktrees(git(repoPath), repoPath, branch)
+  } catch {
+    return false
+  }
+}
+
+/**
  * Allow the isolated burn sandboxes (ADR-0005) to push into their tickets'
  * checked-out temp branches: `receive.denyCurrentBranch=ignore` updates the
  * REF only; the sandbox-side post-commit hook follows up with a `reset --hard`

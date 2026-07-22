@@ -7,6 +7,7 @@ import { runRouter } from './routers/run'
 import { settingsRouter } from './routers/settings'
 import { setupRouter } from './routers/setup'
 import { systemRouter } from './routers/system'
+import { ticketRouter } from './routers/ticket'
 
 /**
  * The app router (SPEC §4). apps/web builds against exactly this shape via
@@ -16,6 +17,7 @@ export const appRouter = router({
   project: projectRouter,
   feature: featureRouter,
   run: runRouter,
+  ticket: ticketRouter,
   events: eventsRouter,
   docs: docsRouter,
   settings: settingsRouter,

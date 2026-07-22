@@ -1,0 +1,1 @@
+ALTER TABLE `tickets` ADD `attempt_branch` text;
