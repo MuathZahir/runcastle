@@ -406,9 +406,33 @@ describe('buildIsolatedSetupCommand — clone + auto-sync wiring for the sandbox
     expect(cmd).toContain(`> ${ISOLATED_REPO_PATH}/.git/hooks/post-commit`)
     expect(cmd).toContain(`chmod +x ${ISOLATED_REPO_PATH}/.git/hooks/post-commit`)
     // install runs INSIDE the clone, on the container's native filesystem
-    expect(cmd.endsWith(`cd ${ISOLATED_REPO_PATH} && corepack pnpm install --frozen-lockfile`)).toBe(
-      true,
-    )
+    expect(cmd).toContain(`cd ${ISOLATED_REPO_PATH} && corepack pnpm install --frozen-lockfile`)
+  })
+
+  it('re-pins core.hooksPath to .git/hooks AFTER the install — husky must not disarm the sync hook', () => {
+    // A husky `prepare` script run by the install sets core.hooksPath=.husky/_,
+    // which makes git ignore .git/hooks/post-commit — commits then stay trapped
+    // in the clone and the ticket fails "agent made no commits" despite
+    // completed work (observed on a real burn). Last writer wins, so the
+    // re-pin must be the final step.
+    const cmd = buildIsolatedSetupCommand(branch, 'corepack pnpm install --frozen-lockfile', 'pnpm')
+    const rePin = `git -C ${ISOLATED_REPO_PATH} config core.hooksPath ${ISOLATED_REPO_PATH}/.git/hooks`
+    expect(cmd.endsWith(rePin)).toBe(true)
+    expect(cmd.indexOf(rePin)).toBeGreaterThan(cmd.indexOf('install --frozen-lockfile'))
+  })
+
+  it('shims pnpm/yarn onto ~/.local/bin — only corepack ships in the image', () => {
+    // Real-burn agents each independently rediscovered `pnpm: command not
+    // found` and hand-wrote this exact shim; do it once in setup instead.
+    const pnpmCmd = buildIsolatedSetupCommand(branch, 'corepack pnpm install', 'pnpm')
+    expect(pnpmCmd).toContain(`printf '#!/bin/sh\\nexec corepack pnpm "$@"\\n' > "$HOME/.local/bin/pnpm"`)
+    expect(pnpmCmd).toContain(`chmod +x "$HOME/.local/bin/pnpm"`)
+    const yarnCmd = buildIsolatedSetupCommand(branch, 'corepack yarn install', 'yarn')
+    expect(yarnCmd).toContain(`> "$HOME/.local/bin/yarn"`)
+    // bun/npm binaries exist in the image already — no shim
+    expect(buildIsolatedSetupCommand(branch, 'npm ci', 'npm')).not.toContain('.local/bin')
+    expect(buildIsolatedSetupCommand(branch, 'bun install', 'bun')).not.toContain('.local/bin')
+    expect(buildIsolatedSetupCommand(branch, undefined)).not.toContain('.local/bin')
   })
 
   it('does NOT write receive.denyCurrentBranch in-sandbox — that is a host-side, once-per-burn write', () => {

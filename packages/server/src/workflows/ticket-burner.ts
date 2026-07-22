@@ -377,7 +377,7 @@ export function resolveBurnWorkspaceMode(
 
 /**
  * The `sandbox.onSandboxReady` command for `isolated` mode (runs in-container
- * via `sh -c`, cwd = the mounted workspace). Four steps:
+ * via `sh -c`, cwd = the mounted workspace). Six steps:
  *
  * 1. Whitelist every repo path for git (`safe.directory '*'`). Bind-mounted
  *    paths are owned by the host UID, and when the workspace is a worktree its
@@ -401,8 +401,21 @@ export function resolveBurnWorkspaceMode(
  *    The hook unsets GIT_DIR/GIT_WORK_TREE/GIT_INDEX_FILE first: git exports
  *    them to hook processes, and they would otherwise pin the
  *    `git -C <workspace>` reset to the clone's repo instead of the workspace.
- * 4. Run the deps install inside the clone, where pnpm's hardlinks actually
+ * 4. For corepack-managed managers (pnpm/yarn), shim the bare binary onto
+ *    `~/.local/bin` (on PATH in the node:22 image). Neither manager is
+ *    preinstalled — only `corepack` is — and in real burns every agent
+ *    independently burned iterations rediscovering `pnpm: command not found`
+ *    and hand-writing this exact shim.
+ * 5. Run the deps install inside the clone, where pnpm's hardlinks actually
  *    work (ADR-0004) and node_modules materializes on native FS.
+ * 6. LAST, re-pin `core.hooksPath` to the clone's `.git/hooks`. A husky
+ *    `prepare` script run by the install sets `core.hooksPath=.husky/_`, which
+ *    makes git ignore `.git/hooks/` entirely — silently disarming the sync
+ *    hook from step 3, so every commit stays trapped in the clone and the
+ *    ticket fails with "agent made no commits" despite completed work. The
+ *    re-pin must follow the install (last writer wins); it also disables the
+ *    repo's own commit hooks (e.g. commitlint), which would otherwise reject
+ *    the burner's mandated `ticket(N):` message format.
  *
  * The `receive.denyCurrentBranch` write must NOT happen here: a worktree
  * shares its parent repo's `.git/config`, so N sandboxes running it
@@ -411,6 +424,7 @@ export function resolveBurnWorkspaceMode(
 export function buildIsolatedSetupCommand(
   tempBranch: string,
   setupCommand: string | undefined,
+  pm?: PackageManager,
 ): string {
   const hookFile = `${ISOLATED_REPO_PATH}/.git/hooks/post-commit`
   const parts = [
@@ -419,7 +433,18 @@ export function buildIsolatedSetupCommand(
     `printf '#!/bin/sh\\nunset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE\\ngit push --quiet origin HEAD:%s && exec git -C ${SANDBOX_WORKSPACE_PATH} reset --hard --quiet %s\\n' '${tempBranch}' '${tempBranch}' > ${hookFile}`,
     `chmod +x ${hookFile}`,
   ]
+  if (pm === 'pnpm' || pm === 'yarn') {
+    const shim = `$HOME/.local/bin/${pm}`
+    parts.push(
+      `mkdir -p "$HOME/.local/bin"`,
+      `printf '#!/bin/sh\\nexec corepack ${pm} "$@"\\n' > "${shim}"`,
+      `chmod +x "${shim}"`,
+    )
+  }
   if (setupCommand) parts.push(`cd ${ISOLATED_REPO_PATH} && ${setupCommand}`)
+  parts.push(
+    `git -C ${ISOLATED_REPO_PATH} config core.hooksPath ${ISOLATED_REPO_PATH}/.git/hooks`,
+  )
   return parts.join(' && ')
 }
 
@@ -438,7 +463,7 @@ export function buildWorkspaceNotes(mode: BurnWorkspaceMode): string {
   return [
     `Your working repository is \`${ISOLATED_REPO_PATH}\` — a clone on the container's fast native filesystem, with dependencies already installed. Do ALL work there: \`cd ${ISOLATED_REPO_PATH}\` first; every file you read, edit, test, and commit lives under it.`,
     '',
-    `The directory you start in (\`${SANDBOX_WORKSPACE_PATH}\`) is a slow mounted mirror used only to collect your commits — never edit files, install, or run tests there. Your commits sync back automatically (a post-commit hook pushes them); just commit as normal.`,
+    `The directory you start in (\`${SANDBOX_WORKSPACE_PATH}\`) is a slow mounted mirror used only to collect your commits — never edit files, install, or run tests there. Your commits sync back automatically (a post-commit hook pushes them); just commit as normal. If you re-run the dependency install and it reconfigures git hooks (husky), run \`git -C ${ISOLATED_REPO_PATH} config core.hooksPath ${ISOLATED_REPO_PATH}/.git/hooks\` afterwards so the sync hook stays armed.`,
     '',
     `If you are blocked and write \`BLOCKED.md\`, write it at \`${ISOLATED_REPO_PATH}/BLOCKED.md\` AND copy it to \`${SANDBOX_WORKSPACE_PATH}/BLOCKED.md\` so the orchestrator can see it.`,
   ].join('\n')
@@ -992,7 +1017,7 @@ async function realExecuteTicketRun(
   // hook only when there is an install to run.
   const hookCommand =
     workspaceMode === 'isolated'
-      ? buildIsolatedSetupCommand(tempBranch, setupCommand)
+      ? buildIsolatedSetupCommand(tempBranch, setupCommand, pm)
       : setupCommand
   if (hookCommand) {
     ctx.emitEvent({
