@@ -70,9 +70,19 @@ attempt's branch*, and the new agent is told to continue, not start over.**
    - `ticket.retry` — reset ONE failed ticket (plus its transitive *failed
      blockers*, without which the retry would just cascade back) to pending and
      start a burn; other failed tickets stay failed, unlike the whole-feature
-     re-burn. `fresh: true` deletes the preserved branch and clears
-     `attempt_branch` first. Refused while a run is live (the scheduler
+     re-burn. `fresh: true` deletes EVERY attempt branch of the ticket and
+     clears `attempt_branch` first. Refused while a run is live (the scheduler
      snapshots its ticket set at start and would strand the reset ticket).
+
+     When the ticket has no recorded `attempt_branch` (it failed before the
+     column existed, or the db was reset), retry falls back to
+     `findPreservedTicketBranch`: attempt branches are named deterministically
+     (`runcastle/ticket/<slug-segment>/<seq>-<unique>`), so it lists the
+     ticket's known prefix, keeps candidates with commits ahead of the feature
+     branch, adopts the newest tip, and records it as the pointer. This is a
+     targeted lookup at a known address — only the per-attempt random suffix
+     (needed because sandcastle keys its worktree dir on the branch name)
+     varies — and it never runs when the pointer exists.
    - `ticket.stop` — abort one burning ticket's agent via a per-ticket
      `AbortController` composed with the run signal (`AbortSignal.any`). The
      ticket fails as "stopped by user" with its commits preserved — dependents

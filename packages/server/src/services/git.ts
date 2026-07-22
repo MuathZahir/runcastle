@@ -492,6 +492,72 @@ export async function deleteTempBranch(repoPath: string, branch: string): Promis
   }
 }
 
+/** The deterministic name prefix every attempt branch of one ticket shares. */
+function ticketBranchPrefix(slug: string, ticketSeq: number): string {
+  return `${TICKET_BRANCH_PREFIX}${tempBranchSlugSegment(slug)}/${ticketSeq}-`
+}
+
+/** All local attempt branches for one ticket (the `retry fresh` discard set). */
+export async function listTicketAttemptBranches(
+  repoPath: string,
+  slug: string,
+  ticketSeq: number,
+): Promise<string[]> {
+  const prefix = ticketBranchPrefix(slug, ticketSeq)
+  try {
+    return (await git(repoPath).branchLocal()).all.filter((b) => b.startsWith(prefix))
+  } catch {
+    return []
+  }
+}
+
+export interface PreservedTicketBranch {
+  branch: string
+  /** Commits ahead of the feature branch, oldest first. */
+  commits: string[]
+}
+
+/**
+ * FALLBACK lookup of a failed ticket's preserved attempt branch when the DB
+ * carries no `attemptBranch` pointer — burns that predate the column, or a
+ * lost/reset db. Not a search: the burner names every attempt branch
+ * deterministically (`runcastle/ticket/<slug-segment>/<seq>-<unique>`), so
+ * this lists the known prefix and only the per-attempt random suffix varies.
+ * Candidates must still hold commits not on the feature branch (a landed or
+ * empty leftover is no resume point); the newest tip wins when several past
+ * attempts left work behind. Best-effort: git failures yield `undefined`.
+ *
+ * Caveat (ADR-0003 slug truncation): two features can share a segment, so a
+ * same-seq ticket of a sibling feature could in principle match. Adoption only
+ * happens on an explicit per-ticket retry, the resumed branch is named in the
+ * event stream, and `retry fresh` is the escape hatch.
+ */
+export async function findPreservedTicketBranch(
+  repoPath: string,
+  featureBranch: string,
+  slug: string,
+  ticketSeq: number,
+): Promise<PreservedTicketBranch | undefined> {
+  try {
+    const g = git(repoPath)
+    let best: (PreservedTicketBranch & { tipTime: number }) | undefined
+    for (const branch of await listTicketAttemptBranches(repoPath, slug, ticketSeq)) {
+      const commits = await branchCommitsAhead(repoPath, featureBranch, branch)
+      if (commits.length === 0) continue
+      let tipTime = 0
+      try {
+        tipTime = Number((await g.raw(['log', '-1', '--format=%ct', branch])).trim()) || 0
+      } catch {
+        // unreadable tip — still a candidate, just lowest priority
+      }
+      if (!best || tipTime > best.tipTime) best = { branch, commits, tipTime }
+    }
+    return best ? { branch: best.branch, commits: best.commits } : undefined
+  } catch {
+    return undefined // e.g. repoPath is not (or no longer) a git checkout
+  }
+}
+
 /**
  * Allow the isolated burn sandboxes (ADR-0005) to push into their tickets'
  * checked-out temp branches: `receive.denyCurrentBranch=ignore` updates the

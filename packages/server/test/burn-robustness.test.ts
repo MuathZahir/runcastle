@@ -1,11 +1,17 @@
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import type { WorkflowDef } from '@runcastle/core'
 import { newId } from '@runcastle/core'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { simpleGit } from 'simple-git'
+import type { SimpleGit } from 'simple-git'
+import { afterAll, afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { AppCtx } from '../src/db/types'
 import { runs } from '../src/db/schema'
 import { GateError } from '../src/errors'
 import { listAfter } from '../src/services/events'
 import { retryTicket } from '../src/services/features'
+import { findPreservedTicketBranch, listTicketAttemptBranches } from '../src/services/git'
 import { getTicket, listByFeature, storeTickets, updateTicket } from '../src/services/tickets'
 import {
   buildRetryNotes,
@@ -101,6 +107,86 @@ describe('delayUnlessAborted', () => {
 describe('stopTicketRun', () => {
   it('returns false when the ticket has no live agent', () => {
     expect(stopTicketRun('tkt_nope')).toBe(false)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Fallback branch lookup — real git fixtures
+// ---------------------------------------------------------------------------
+
+const tmpDirs: string[] = []
+afterAll(() => {
+  for (const d of tmpDirs) {
+    try {
+      rmSync(d, { recursive: true, force: true })
+    } catch {
+      // best-effort — Windows can hold git locks briefly
+    }
+  }
+})
+
+/** git init -b main + local identity + one seed commit + feature/demo branch. */
+async function initRepoWithFeature(): Promise<{ dir: string; g: SimpleGit }> {
+  const dir = mkdtempSync(join(tmpdir(), 'runcastle-robust-'))
+  tmpDirs.push(dir)
+  const g = simpleGit(dir)
+  await g.init(['-b', 'main'])
+  await g.addConfig('user.email', 'test@runcastle.dev')
+  await g.addConfig('user.name', 'Runcastle Test')
+  await g.addConfig('core.autocrlf', 'false')
+  writeFileSync(join(dir, 'README.md'), 'base\n')
+  await g.add(['README.md'])
+  await g.commit('initial commit')
+  await g.checkoutLocalBranch('feature/demo')
+  return { dir, g }
+}
+
+/** Commit one file on a new branch off feature/demo, then return to feature/demo. */
+async function seedAttemptBranch(
+  dir: string,
+  g: SimpleGit,
+  branch: string,
+  file: string,
+  committerDate: string,
+): Promise<void> {
+  await g.checkoutLocalBranch(branch)
+  writeFileSync(join(dir, file), `${file}\n`)
+  await g.add([file])
+  // simple-git refuses GIT_EDITOR in a custom child env (allowUnsafeEditor),
+  // so strip editor vars from the inherited environment before pinning dates.
+  const env: Record<string, string> = {}
+  for (const [k, v] of Object.entries(process.env)) {
+    if (v !== undefined && !k.includes('EDITOR')) env[k] = v
+  }
+  await g
+    .env({ ...env, GIT_COMMITTER_DATE: committerDate, GIT_AUTHOR_DATE: committerDate })
+    .commit(`ticket(2): ${file}`)
+  await g.checkout('feature/demo')
+}
+
+describe('findPreservedTicketBranch (fallback for pre-attemptBranch burns)', () => {
+  it('finds the newest unmerged attempt branch by the deterministic prefix', async () => {
+    const { dir, g } = await initRepoWithFeature()
+    await seedAttemptBranch(dir, g, 'runcastle/ticket/demo/2-old1', 'old.txt', '2026-07-01T00:00:00Z')
+    await seedAttemptBranch(dir, g, 'runcastle/ticket/demo/2-new1', 'new.txt', '2026-07-20T00:00:00Z')
+    // Same tip as feature/demo — nothing preserved, never a candidate.
+    await g.branch(['runcastle/ticket/demo/2-empt', 'feature/demo'])
+    // Different seq — different ticket, out of scope.
+    await seedAttemptBranch(dir, g, 'runcastle/ticket/demo/3-oth1', 'other.txt', '2026-07-21T00:00:00Z')
+
+    const found = await findPreservedTicketBranch(dir, 'feature/demo', 'demo', 2)
+    expect(found?.branch).toBe('runcastle/ticket/demo/2-new1')
+    expect(found?.commits).toHaveLength(1)
+  })
+
+  it('returns undefined when no attempt branch holds unmerged work', async () => {
+    const { dir, g } = await initRepoWithFeature()
+    await g.branch(['runcastle/ticket/demo/2-empt', 'feature/demo'])
+    expect(await findPreservedTicketBranch(dir, 'feature/demo', 'demo', 2)).toBeUndefined()
+  })
+
+  it('is best-effort on a non-repo path', async () => {
+    expect(await findPreservedTicketBranch(join(tmpdir(), 'nope-not-a-repo'), 'f', 'demo', 2)).toBeUndefined()
   })
 })
 
@@ -202,7 +288,49 @@ describe('retryTicket', () => {
 
     await retryTicket(ctx, a.id)
     const ev = listAfter(ctx, featureId, 0).find((e) => e.type === 'ticket.retry')
-    expect(ev?.data).toEqual({ retried: [a.seq], fresh: false })
+    expect(ev?.data).toEqual({
+      retried: [a.seq],
+      fresh: false,
+      resumedFrom: null,
+      preservedCommits: 0,
+    })
+  })
+
+  it('adopts an orphaned attempt branch when the ticket has no recorded pointer', async () => {
+    const { dir, g } = await initRepoWithFeature()
+    await seedAttemptBranch(dir, g, 'runcastle/ticket/demo/1-orph', 'work.txt', '2026-07-21T00:00:00Z')
+    const featureId = seedFeature(ctx, seedProject(ctx, dir).id, {
+      phase: 'implementation',
+      slug: 'demo',
+    }).id
+    const [a] = storeTickets(ctx, featureId, [ticketInput('a')])
+    updateTicket(ctx, a.id, { status: 'failed', error: 'died before attemptBranch existed' })
+
+    const res = await retryTicket(ctx, a.id)
+    expect(res.resumedFrom).toBe('runcastle/ticket/demo/1-orph')
+    expect(res.preservedCommits).toBe(1)
+    expect(getTicket(ctx, a.id).attemptBranch).toBe('runcastle/ticket/demo/1-orph')
+  })
+
+  it('fresh discards every attempt branch of the ticket, orphans included', async () => {
+    const { dir, g } = await initRepoWithFeature()
+    await seedAttemptBranch(dir, g, 'runcastle/ticket/demo/1-one1', 'one.txt', '2026-07-19T00:00:00Z')
+    await seedAttemptBranch(dir, g, 'runcastle/ticket/demo/1-two1', 'two.txt', '2026-07-20T00:00:00Z')
+    const featureId = seedFeature(ctx, seedProject(ctx, dir).id, {
+      phase: 'implementation',
+      slug: 'demo',
+    }).id
+    const [a] = storeTickets(ctx, featureId, [ticketInput('a')])
+    updateTicket(ctx, a.id, {
+      status: 'failed',
+      error: 'x',
+      attemptBranch: 'runcastle/ticket/demo/1-two1',
+    })
+
+    const res = await retryTicket(ctx, a.id, { fresh: true })
+    expect(res.resumedFrom).toBeNull()
+    expect(getTicket(ctx, a.id).attemptBranch).toBeUndefined()
+    expect(await listTicketAttemptBranches(dir, 'demo', 1)).toEqual([])
   })
 
   it('refuses a ticket that is not failed', async () => {

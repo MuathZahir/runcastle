@@ -217,33 +217,39 @@ function Lane({
           <button
             className="lane-btn"
             disabled={busy}
-            title={
-              ticket.attemptBranch
-                ? 'retry this ticket, continuing from its preserved commits'
-                : 'retry this ticket'
-            }
+            title="retry this ticket — continues from any commits preserved by previous attempts"
             onClick={(e) => {
               e.stopPropagation()
-              retry.mutate({ ticketId: ticket.id })
+              retry.mutate(
+                { ticketId: ticket.id },
+                {
+                  onSuccess: (r) => {
+                    if (r.resumedFrom) {
+                      toast.push(
+                        `resuming ticket #${ticket.seq} from ${r.preservedCommits} preserved commit(s)`,
+                        'info',
+                      )
+                    }
+                  },
+                },
+              )
             }}
           >
-            {ticket.attemptBranch ? 'Retry (continue)' : 'Retry'}
+            Retry
           </button>
-          {ticket.attemptBranch && (
-            <button
-              className="lane-btn lane-btn-danger"
-              disabled={busy}
-              title="discard the preserved commits and redo the ticket from the feature branch tip"
-              onClick={(e) => {
-                e.stopPropagation()
-                if (confirm(`Discard ticket #${ticket.seq}'s preserved work and start over?`)) {
-                  retry.mutate({ ticketId: ticket.id, fresh: true })
-                }
-              }}
-            >
-              Retry fresh
-            </button>
-          )}
+          <button
+            className="lane-btn lane-btn-danger"
+            disabled={busy}
+            title="discard any preserved commits from previous attempts and redo the ticket from the feature branch tip"
+            onClick={(e) => {
+              e.stopPropagation()
+              if (confirm(`Discard ticket #${ticket.seq}'s preserved work (if any) and start over?`)) {
+                retry.mutate({ ticketId: ticket.id, fresh: true })
+              }
+            }}
+          >
+            Retry fresh
+          </button>
         </div>
       )}
       {!readonly && ticket.status === 'burning' && (

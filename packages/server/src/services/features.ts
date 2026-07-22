@@ -297,10 +297,17 @@ export async function burn(
  * none is live. Other failed tickets stay failed (unlike the whole-feature
  * re-burn, which retries everything).
  *
- * `fresh` discards the ticket's preserved attempt chain (deletes the temp
- * branch, clears `attemptBranch`) so the new agent starts from the feature
- * branch tip instead of continuing the previous attempt's commits. Blockers
- * reset alongside it keep their chains — only the named ticket starts over.
+ * `fresh` discards the ticket's preserved work — EVERY attempt branch of this
+ * ticket (the recorded one plus any orphans a pre-`attemptBranch` burn left),
+ * `attemptBranch` cleared — so the new agent starts from the feature branch
+ * tip. Blockers reset alongside it keep their chains — only the named ticket
+ * starts over.
+ *
+ * When the ticket has NO recorded `attemptBranch` (it failed before the column
+ * existed, or the db was reset), the fallback lookup
+ * (`git.findPreservedTicketBranch`) checks the ticket's deterministic branch
+ * prefix for leftover unmerged work and adopts it, so the button rescues old
+ * failures too.
  *
  * Refused while a run is live: the running scheduler snapshotted its ticket
  * set at start and would never pick the reset ticket up, which would strand it
@@ -310,7 +317,14 @@ export async function retryTicket(
   ctx: AppCtx,
   ticketId: string,
   opts: { fresh?: boolean } = {},
-): Promise<{ runId: string; retried: number[] }> {
+): Promise<{
+  runId: string
+  retried: number[]
+  /** Branch the retry will resume from (recorded or adopted), or null. */
+  resumedFrom: string | null
+  /** Commits preserved on that branch (0 when starting clean). */
+  preservedCommits: number
+}> {
   const ticket = getTicket(ctx, ticketId)
   const feature = getFeatureRow(ctx, ticket.featureId)
   if (ticket.status !== 'failed') {
@@ -319,6 +333,7 @@ export async function retryTicket(
   if (hasActiveRun(ctx, feature.id)) {
     throw new GateError('a run is live for this feature — retry after it finishes, or cancel it first')
   }
+  const project = projectForFeature(ctx, feature)
 
   const all = listByFeature(ctx, feature.id)
   const bySeq = new Map(all.map((t) => [t.seq, t]))
@@ -339,33 +354,61 @@ export async function retryTicket(
     }
   }
 
-  if (opts.fresh && ticket.attemptBranch) {
-    const project = projectForFeature(ctx, feature)
-    await git.deleteTempBranch(project.repoPath, ticket.attemptBranch) // best-effort
+  let resumedFrom: string | null = ticket.attemptBranch ?? null
+  let preservedCommits = 0
+  if (opts.fresh) {
+    const discard = new Set(
+      await git.listTicketAttemptBranches(project.repoPath, feature.slug, ticket.seq),
+    )
+    if (ticket.attemptBranch) discard.add(ticket.attemptBranch)
+    for (const b of discard) await git.deleteTempBranch(project.repoPath, b) // best-effort
+    resumedFrom = null
+  } else if (resumedFrom) {
+    preservedCommits = (
+      await git.branchCommitsAhead(project.repoPath, feature.branch, resumedFrom)
+    ).length
+  } else {
+    const found = await git.findPreservedTicketBranch(
+      project.repoPath,
+      feature.branch,
+      feature.slug,
+      ticket.seq,
+    )
+    if (found) {
+      resumedFrom = found.branch
+      preservedCommits = found.commits.length
+    }
   }
 
   for (const t of toReset.values()) {
-    const fresh = opts.fresh && t.id === ticket.id
+    const isTarget = t.id === ticket.id
     updateTicket(ctx, t.id, {
       status: 'pending',
       error: null,
-      ...(fresh ? { attemptBranch: null } : {}),
+      // Record an adopted branch / clear on fresh — the burner reads this
+      // pointer to base the new attempt; blockers keep whatever they have.
+      ...(isTarget ? { attemptBranch: resumedFrom } : {}),
     })
   }
 
   const seqs = [...toReset.keys()].sort((a, b) => a - b)
+  const how = opts.fresh
+    ? ' from scratch'
+    : resumedFrom
+      ? ` from ${preservedCommits} preserved commit(s) on ${resumedFrom}`
+      : ''
   emit(ctx, feature.id, {
     type: 'ticket.retry',
     message:
       seqs.length > 1
-        ? `retrying ticket ${ticket.seq}${opts.fresh ? ' from scratch' : ''} (+ failed blocker${seqs.length > 2 ? 's' : ''} ${seqs.filter((s) => s !== ticket.seq).join(', ')})`
-        : `retrying ticket ${ticket.seq}${opts.fresh ? ' from scratch' : ticket.attemptBranch ? ' from its preserved commits' : ''}`,
+        ? `retrying ticket ${ticket.seq}${how} (+ failed blocker${seqs.length > 2 ? 's' : ''} ${seqs.filter((s) => s !== ticket.seq).join(', ')})`
+        : `retrying ticket ${ticket.seq}${how}`,
     ticketId: ticket.id,
-    data: { retried: seqs, fresh: !!opts.fresh },
+    data: { retried: seqs, fresh: !!opts.fresh, resumedFrom, preservedCommits },
   })
 
   const { runId } = await burn(ctx, feature.id, { resetFailed: false })
-  return { runId, retried: seqs }
+  return { runId, retried: seqs, resumedFrom, preservedCommits }
 }
 
 export interface EscalateResult {
