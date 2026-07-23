@@ -79,6 +79,13 @@ export function Workspace({
   })
   const testDrive = trpc.feature.testDrive.useMutation({ onError: (e) => toast.push(e.message) })
   const merge = trpc.feature.merge.useMutation({ onError: (e) => toast.push(e.message) })
+  const unarchive = trpc.feature.unarchive.useMutation({
+    onSuccess: () => {
+      invalidate()
+      toast.push('feature unarchived', 'success')
+    },
+    onError: (e) => toast.push(e.message),
+  })
 
   if (q.isLoading) {
     return (
@@ -121,7 +128,8 @@ export function Workspace({
     burn.isPending ||
     cancel.isPending ||
     testDrive.isPending ||
-    merge.isPending
+    merge.isPending ||
+    unarchive.isPending
 
   const runAction = (kind: ActionKind) => {
     switch (kind) {
@@ -148,6 +156,9 @@ export function Workspace({
         break
       case 'cancelRun':
         if (run) cancel.mutate({ runId: run.id })
+        break
+      case 'unarchive':
+        unarchive.mutate({ featureId })
         break
       case 'testDriveStart':
         testDrive.mutate(
