@@ -149,10 +149,6 @@ function FeatureRow({
             <span className="spin-ring" title="agent working" />
           ) : f.status === 'shipped' ? (
             <span className="mini-check">✓</span>
-          ) : f.status === 'archived' ? (
-            <span className="mini-check" title="archived">
-              ⌸
-            </span>
           ) : (
             <>
               {nm && <span className={`needs-dot needs-${nm.kind}`} title={nm.label} />}
