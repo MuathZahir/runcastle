@@ -76,8 +76,6 @@ export interface CreateFeatureInput {
   projectId: string
   title: string
   oneLiner: string
-  /** Start the feature in mapped ideation (ADR-0001). */
-  mapped?: boolean
   /**
    * Branch to fork `feature/<slug>` off. Defaults to the project's `mainBranch`.
    * Any existing local branch is valid (the current branch, a release line,
@@ -105,7 +103,9 @@ export async function createFeature(
     slug,
     title: input.title,
     oneLiner: input.oneLiner,
-    mapped: input.mapped ?? false,
+    // Every feature is created unmapped; mapping is escalation-only, reached
+    // mid-grill via the MCP escalate_to_map tool (no "start mapped" at creation).
+    mapped: false,
     phase: 'ideation' as const,
     branch,
     baseBranch,

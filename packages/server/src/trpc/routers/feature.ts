@@ -17,7 +17,6 @@ export const featureRouter = router({
         projectId: z.string(),
         title: z.string().min(1),
         oneLiner: z.string(),
-        mapped: z.boolean().optional(),
         baseBranch: z.string().optional(),
       }),
     )

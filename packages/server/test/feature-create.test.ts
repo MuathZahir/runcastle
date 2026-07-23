@@ -116,6 +116,13 @@ describe('feature.create', () => {
     expect(local.all).toContain('feature/off-remote')
   })
 
+  it('creates every feature unmapped — mapping is escalation-only', async () => {
+    // No `mapped` input exists at creation anymore (ticket 2); the only door into
+    // the mapped flow is the MCP escalate_to_map tool mid-grill.
+    const f = await createFeature(ctx, { projectId, title: 'Unmapped', oneLiner: 'x' })
+    expect(f.mapped).toBe(false)
+  })
+
   it('commits the scaffolded brief so the working tree stays clean (ship gates)', async () => {
     await createFeature(ctx, { projectId, title: 'Cleanly', oneLiner: 'z' })
     const g = simpleGit(repoPath)
