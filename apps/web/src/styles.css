@@ -1948,6 +1948,35 @@ select.settings-input { cursor: pointer; }
 }
 
 /* ============================================================================
+   DELETE FEATURE DIALOG (decision #8)
+   ========================================================================== */
+.peek.delete-dialog { max-width: 460px; }
+.delete-dialog-title { color: var(--danger); font-size: 13px; font-weight: 600; }
+.delete-dialog-body { display: flex; flex-direction: column; gap: 16px; }
+.delete-dialog-lead {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--text-2);
+}
+.delete-dialog-lead strong { color: var(--text); font-weight: 600; }
+.delete-dialog-field { display: flex; flex-direction: column; gap: 6px; }
+.delete-dialog-field > span { font-size: 12px; color: var(--text-2); }
+.delete-dialog-field code {
+  padding: 1px 5px;
+  border-radius: var(--radius);
+  background: var(--panel-inset);
+  color: var(--text);
+}
+.delete-dialog-field .settings-input:focus { border-color: var(--danger); }
+.delete-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 2px;
+}
+
+/* ============================================================================
    ERROR BOUNDARY / TERMINAL placeholders
    ========================================================================== */
 .terminal-placeholder,

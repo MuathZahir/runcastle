@@ -5,6 +5,7 @@ import { useToast } from '../lib/toast'
 import type { FeatureListItem } from '../lib/api'
 import { miniSegments, needsMe, phaseGlyph, triage } from '../lib/feature-ui'
 import { FeatureActionsMenu, type FeatureAction } from './FeatureActionsMenu'
+import { DeleteFeatureDialog } from './DeleteFeatureDialog'
 
 /** localStorage key for the sidebar's show-archived toggle (decision #8). */
 const SHOW_ARCHIVED_KEY = 'runcastle.sidebar.showArchived'
@@ -39,6 +40,8 @@ export function Sidebar({
   const utils = trpc.useUtils()
   const toast = useToast()
   const [showArchived, setShowArchived] = useState(readShowArchived)
+  // The feature awaiting delete confirmation (decision #8), or null.
+  const [pendingDelete, setPendingDelete] = useState<FeatureListItem | null>(null)
 
   const list = trpc.feature.list.useQuery({ projectId }, { refetchInterval: 1500 })
   const groups = triage(list.data ?? [], { showArchived })
@@ -51,6 +54,19 @@ export function Sidebar({
   })
   const unarchive = trpc.feature.unarchive.useMutation({
     onSuccess: invalidate,
+    onError: (e) => toast.push(e.message),
+  })
+  const del = trpc.feature.delete.useMutation({
+    onSuccess: (_res, vars) => {
+      invalidate()
+      // If the deleted feature was open, jump to another one so the workspace
+      // never dead-ends on a now-missing feature (delete is irreversible).
+      if (vars.featureId === selectedFeatureId) {
+        const next = (list.data ?? []).find((f) => f.id !== vars.featureId)
+        if (next) onSelect(next.id)
+      }
+      setPendingDelete(null)
+    },
     onError: (e) => toast.push(e.message),
   })
 
@@ -66,10 +82,18 @@ export function Sidebar({
     })
   }
 
-  const actionsFor = (f: FeatureListItem): FeatureAction[] =>
-    f.status === 'archived'
-      ? [{ key: 'unarchive', label: 'Unarchive', onSelect: () => unarchive.mutate({ featureId: f.id }) }]
-      : [{ key: 'archive', label: 'Archive', onSelect: () => archive.mutate({ featureId: f.id }) }]
+  const actionsFor = (f: FeatureListItem): FeatureAction[] => {
+    const actions: FeatureAction[] =
+      f.status === 'archived'
+        ? [{ key: 'unarchive', label: 'Unarchive', onSelect: () => unarchive.mutate({ featureId: f.id }) }]
+        : [{ key: 'archive', label: 'Archive', onSelect: () => archive.mutate({ featureId: f.id }) }]
+    // Delete is non-shipped only (shipped features are merged — archive covers
+    // them; the server refuses them too). Opens a destructive confirm dialog.
+    if (f.status !== 'shipped') {
+      actions.push({ key: 'delete', label: 'Delete…', danger: true, onSelect: () => setPendingDelete(f) })
+    }
+    return actions
+  }
 
   return (
     <nav className="sidebar">
@@ -119,6 +143,16 @@ export function Sidebar({
         Every feature moves through the same six-phase pipeline. Amber means it's
         waiting on you.
       </div>
+
+      {pendingDelete && (
+        <DeleteFeatureDialog
+          title={pendingDelete.title}
+          slug={pendingDelete.slug}
+          busy={del.isPending}
+          onConfirm={() => del.mutate({ featureId: pendingDelete.id })}
+          onCancel={() => setPendingDelete(null)}
+        />
+      )}
     </nav>
   )
 }
