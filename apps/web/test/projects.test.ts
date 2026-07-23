@@ -23,7 +23,6 @@ const feat = (over: Partial<FeatureListItem>): FeatureListItem =>
     slug: 'x',
     title: 'x',
     oneLiner: '',
-    size: 'full',
     mapped: false,
     phase: 'ideation',
     branch: 'feature/x',

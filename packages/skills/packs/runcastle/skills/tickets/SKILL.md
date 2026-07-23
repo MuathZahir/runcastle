@@ -1,13 +1,13 @@
 ---
 name: tickets
-description: Break the spec (or decisions.md when collapsed) into tracer-bullet vertical slices, each self-sufficient for one fresh sandboxed agent, and emit them via MCP. Then complete the tickets phase. Invoked by /runcastle:ideate.
+description: Break the spec into tracer-bullet vertical slices, each self-sufficient for one fresh sandboxed agent, and emit them via MCP. Then complete the tickets phase. Invoked by /runcastle:ideate.
 disable-model-invocation: false
 ---
 <!-- Forked from Matt Pocock's to-tickets skill, via https://github.com/mattpocock/skills, 2026-07-14, adapted for runcastle -->
 
 # Tickets
 
-Break the work into **tickets** — tracer-bullet vertical slices — and emit them to the runcastle store via `mcp__runcastle__emit_tickets`. You are still in the unbroken ideation window: synthesize from the spec (`docs/features/<slug>/spec.md`) or, for collapsed features, straight from `decisions.md`. Do not compact or clear.
+Break the work into **tickets** — tracer-bullet vertical slices — and emit them to the runcastle store via `mcp__runcastle__emit_tickets`. You are still in the unbroken ideation window: synthesize from the spec (`docs/features/<slug>/spec.md`). Do not compact or clear.
 
 ## The one thing that makes a runcastle ticket different
 

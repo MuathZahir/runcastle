@@ -33,14 +33,11 @@ describe('gates service', () => {
     expect(checkGate(ctx, 'decisions-file-exists', feature).satisfied).toBe(true)
   })
 
-  it('spec-file-exists reflects spec.md for full features, auto-true for collapsed', () => {
-    const full = seedFeature(ctx, project.id, { slug: 'g2-full', size: 'full' })
-    expect(checkGate(ctx, 'spec-file-exists', full).satisfied).toBe(false)
-    writeDoc(project, full, 'spec.md')
-    expect(checkGate(ctx, 'spec-file-exists', full).satisfied).toBe(true)
-
-    const collapsed = seedFeature(ctx, project.id, { slug: 'g2-col', size: 'collapsed' })
-    expect(checkGate(ctx, 'spec-file-exists', collapsed).satisfied).toBe(true)
+  it('spec-file-exists requires spec.md for every feature', () => {
+    const feature = seedFeature(ctx, project.id, { slug: 'g2' })
+    expect(checkGate(ctx, 'spec-file-exists', feature).satisfied).toBe(false)
+    writeDoc(project, feature, 'spec.md')
+    expect(checkGate(ctx, 'spec-file-exists', feature).satisfied).toBe(true)
   })
 
   it('tickets-approved requires at least one ticket', () => {

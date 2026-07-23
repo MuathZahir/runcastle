@@ -1,6 +1,6 @@
 ---
 name: spec
-description: Synthesize the ideation conversation and decisions.md into docs/features/<slug>/spec.md, then complete the spec phase. No interview — pure synthesis. Invoked by /runcastle:ideate for size=full features.
+description: Synthesize the ideation conversation and decisions.md into docs/features/<slug>/spec.md, then complete the spec phase. No interview — pure synthesis. Invoked by /runcastle:ideate.
 disable-model-invocation: false
 ---
 <!-- Forked from Matt Pocock's to-spec skill, via https://github.com/mattpocock/skills, 2026-07-14, adapted for runcastle -->

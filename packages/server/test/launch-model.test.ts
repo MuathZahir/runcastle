@@ -50,7 +50,7 @@ describe('launch model resolution (#48)', () => {
 
   async function launchAndReadModel(slug: string): Promise<string> {
     const project = seedProject(ctx, repoPath)
-    const feature = seedFeature(ctx, project.id, { slug, size: 'collapsed' })
+    const feature = seedFeature(ctx, project.id, { slug })
     await createFeatureBranch(project, slug)
     cleanup.push(worktreeDir(project.id, slug))
     const { sessionId } = await launchSession(
@@ -75,7 +75,7 @@ describe('launch model resolution (#48)', () => {
     // A launch reads the project fresh, so setting the row is enough.
     const project = seedProject(ctx, repoPath)
     ctx.db.update(projects).set({ model: 'claude-sonnet-5' }).where(eq(projects.id, project.id)).run()
-    const feature = seedFeature(ctx, project.id, { slug: 'proj-model', size: 'collapsed' })
+    const feature = seedFeature(ctx, project.id, { slug: 'proj-model' })
     await createFeatureBranch(project, 'proj-model')
     cleanup.push(worktreeDir(project.id, 'proj-model'))
     const { sessionId } = await launchSession(

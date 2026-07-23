@@ -49,7 +49,7 @@ export function GrillBody({ full, effective }: { full: FeatureFull; effective: P
         ))}
 
       <div className="body-title" style={{ marginTop: effective === 'spec' ? 18 : 0 }}>
-        <SectionTitle>{feature.size === 'collapsed' ? 'Session' : 'Grill session'}</SectionTitle>
+        <SectionTitle>Grill session</SectionTitle>
         <span className="body-hint">— shape the idea with Claude; promote it when it feels concrete</span>
       </div>
 

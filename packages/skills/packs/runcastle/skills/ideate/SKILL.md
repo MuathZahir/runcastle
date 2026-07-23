@@ -15,7 +15,7 @@ Everything happens in this one window. **Never compact. Never `/clear`. Never su
 
 ## 0. Orient
 
-1. Call `mcp__runcastle__get_feature_context`. It returns the feature (`slug`, `title`, `oneLiner`, `size`), current `phase`, the docs already on disk (`brief.md`, and any `decisions.md` — **this may be a resumed session; read what is already locked and do not re-ask it**), and any tickets.
+1. Call `mcp__runcastle__get_feature_context`. It returns the feature (`slug`, `title`, `oneLiner`), current `phase`, the docs already on disk (`brief.md`, and any `decisions.md` — **this may be a resumed session; read what is already locked and do not re-ask it**), and any tickets.
 2. Decisions live at `docs/features/<slug>/decisions.md` in this worktree. The injected system prompt carries the slug and paths; trust `get_feature_context` for the live state.
 3. `mcp__runcastle__record_event({ type: "ideation.started", message: "<feature title>" })`.
 
@@ -63,12 +63,9 @@ When the human confirms shared understanding and the open questions are answered
 
 `mcp__runcastle__complete_phase({ phase: "ideation" })` → returns `{ ok, nextPhase }`. If `ok: false`, it names what the gate wants (e.g. `decisions.md` missing) — fix it and retry. Then `record_event({ type: "phase.completed", message: "ideation" })`.
 
-## 5. Size branch — stay in this window
+## 5. Spec → tickets — stay in this window
 
-Read `feature.size` from step 0:
-
-- **`full`** → invoke `/runcastle:spec` (it writes `spec.md` and completes the `spec` phase); when it returns, invoke `/runcastle:tickets`.
-- **`collapsed`** → skip spec entirely; invoke `/runcastle:tickets` directly (it works from `decisions.md`).
+Invoke `/runcastle:spec` (it writes `spec.md` and completes the `spec` phase); when it returns, invoke `/runcastle:tickets`.
 
 Do not open a new session for these. They run here, on top of everything you just learned.
 

@@ -45,8 +45,6 @@ export function checkGate(ctx: AppCtx, check: GateCheckId, feature: Feature): Ga
     }
 
     case 'spec-file-exists':
-      // collapsed features skip the spec phase entirely — auto-satisfied.
-      if (feature.size === 'collapsed') return { satisfied: true }
       return fileGate(ctx, feature, 'spec.md', 'write the spec (spec.md) before breaking into tickets')
 
     case 'tickets-approved': {

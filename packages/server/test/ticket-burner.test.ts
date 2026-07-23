@@ -39,7 +39,6 @@ const feature: Feature = {
   slug: 'demo',
   title: 'Demo',
   oneLiner: 'x',
-  size: 'full',
   mapped: false,
   phase: 'implementation',
   branch: 'feature/demo',
