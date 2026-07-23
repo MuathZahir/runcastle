@@ -27,6 +27,7 @@ Interview the human about every aspect of the feature until you reach a genuinel
 - **Always recommend an answer.** Never ask a bare question — put your recommended answer to it and say why. The human corrects or confirms.
 - **Look up facts; ask only for decisions.** If a fact is discoverable in the codebase — how something currently works, what a type looks like, whether a pattern already exists — read/grep the repo and find it. Never make the human be your grep. *Decisions* are theirs: put each one to them and wait.
 - **Model the domain as you go** (forked from domain-modeling): challenge terms that conflict with existing usage, sharpen fuzzy words to one canonical meaning ("you said 'account' — Customer or User?"), invent concrete edge-case scenarios that force precision, and cross-check claims against the actual code ("your code cancels whole Orders, but you just said partial — which is right?").
+- **Probe the size early.** Within your first few questions, ask enough about scope to judge whether this is one-session-sized or map-sized — how many independent areas it touches, what has to be researched or prototyped before decisions can lock, how wide the design tree looks. Make that call up front, not thirty questions deep into one corner. If it smells map-sized, go to §3 *now* rather than rabbit-holing first.
 
 Do not move on until the human confirms you have reached shared understanding.
 
@@ -47,6 +48,8 @@ Every few locked decisions, `mcp__runcastle__record_event({ type: "decision.lock
 ## 3. Escalation branch — when the feature outgrows this window
 
 Some features are too big for one unbroken context. The tells: you are rabbit-holing into one corner while whole branches sit untouched; decisions keep hanging on material nobody has read yet (a prototype to build, a dependency to research, an area to grill on its own); the design tree has grown wider than you can hold and converge in this session. When that happens, **do not compact and do not grind on** — chart a map instead:
+
+**Ask before you chart.** Escalation is a one-way door — there is no un-map path once charted. So the instant you judge a feature map-sized, put it to the human and *wait for a yes*: "This looks bigger than one session — I'd like to chart it into a waypoint map instead of grinding on here. Chart it?" **Never call `escalate_to_map` without that explicit confirmation.** If they say no, keep grilling. Only on a yes do the steps below run:
 
 1. `mcp__runcastle__escalate_to_map({ destination: "<the one-line north star>", notes: "<what's locked / constraints so far>" })`. This flips the feature to *mapped* and scaffolds `docs/features/<slug>/map.md`. If it warns that the feature is already mapped, that is fine — the map already exists; just proceed to chart the first batch.
 2. `mcp__runcastle__emit_waypoints({ waypoints: [...] })` for the **first batch** — the questions worth branching now. Each waypoint: `title`, `type` (`grilling` | `research` | `prototype` | `task`), `question` (what that session must answer), and `blockedBy` (1-based positions within this batch, and/or ids of already-stored waypoints) for ordering. Charting the first frontier is enough; later sessions branch the map further (any mapped session may `emit_waypoints`).
