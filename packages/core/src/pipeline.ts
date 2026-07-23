@@ -85,6 +85,28 @@ export function nextPhase(feature: { phase: Phase }): Phase | null {
   return ORDER[i + 1]
 }
 
+/**
+ * The pipeline's one backward transition (CONTEXT.md decision #7). Burning fresh
+ * (pending) tickets from `review` loops the feature back to `implementation` so
+ * the run can execute them; the G4 auto-advance (`all-tickets-terminal`) then
+ * returns it to `review` when they finish, so review → iterate → burn → review
+ * repeats until the human merges. `nextPhase`/`nextGate` stay strictly forward —
+ * this loop is the lone exception, kept as its own typed transition rather than
+ * bent into the linear order.
+ */
+export const REVIEW_LOOP_BACK = { from: 'review', to: 'implementation' } as const satisfies {
+  from: Phase
+  to: Phase
+}
+
+/**
+ * The phase a review-phase burn loops back to (`implementation`), or null from
+ * any other phase — the pure model behind the server's burn-from-review guard.
+ */
+export function loopBackPhase(feature: { phase: Phase }): Phase | null {
+  return feature.phase === REVIEW_LOOP_BACK.from ? REVIEW_LOOP_BACK.to : null
+}
+
 /** G1 as it appears on a mapped feature (ADR-0001 / SPEC §13.1). */
 const MAPPED_G1: GateDef = {
   id: 'G1',
