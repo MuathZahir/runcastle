@@ -7,7 +7,7 @@ import type {
   Ticket,
   Waypoint,
 } from '@runcastle/core'
-import { newId, nextGate, nextPhase } from '@runcastle/core'
+import { REVIEW_LOOP_BACK, newId, nextGate, nextPhase } from '@runcastle/core'
 import { desc, eq } from 'drizzle-orm'
 import type { AppCtx } from '../db/types'
 import { features } from '../db/schema'
@@ -240,6 +240,12 @@ export function advance(ctx: AppCtx, featureId: string): Feature {
  * cleared) so the re-burn actually retries it — this is the retry path the
  * burner's "resolve manually, then re-burn" messages promise. Requires ≥1
  * non-cancelled ticket.
+ *
+ * It also accepts a feature at `review` with ≥1 pending (non-terminal) ticket
+ * and no active run — the Iterate loop (CONTEXT.md decision #7): fresh fix
+ * tickets emitted during review loop the phase back to `implementation` so the
+ * run executes them, and the G4 auto-advance returns the feature to `review`
+ * when they finish. Repeatable until the human clicks Merge & ship.
  */
 export async function burn(
   ctx: AppCtx,
@@ -247,15 +253,24 @@ export async function burn(
   opts: { modelOverride?: string; resetFailed?: boolean } = {},
 ): Promise<{ runId: string }> {
   const feature = getFeatureRow(ctx, featureId)
-  const restarting = feature.phase === 'implementation' && !hasActiveRun(ctx, featureId)
-  if (feature.phase !== 'tickets' && !restarting) {
-    const why =
-      feature.phase === 'implementation'
-        ? 'a run is already burning this feature'
-        : `feature must be in the tickets phase to burn (currently ${feature.phase})`
+  const running = hasActiveRun(ctx, featureId)
+  const tickets = listByFeature(ctx, featureId)
+  // A ticket the burner still has to run: not done/failed/cancelled (the
+  // terminal states). Fresh fix tickets from an Iterate session land as `pending`.
+  const pending = tickets.filter(
+    (t) => t.status !== 'done' && t.status !== 'failed' && t.status !== 'cancelled',
+  )
+  const restarting = feature.phase === 'implementation' && !running
+  const iterating = feature.phase === 'review' && !running && pending.length >= 1
+
+  if (feature.phase !== 'tickets' && !restarting && !iterating) {
+    let why: string
+    if (running) why = 'a run is already burning this feature'
+    else if (feature.phase === 'review')
+      why = 'no pending tickets to burn — emit fix tickets before burning from review'
+    else why = `feature must be in the tickets phase to burn (currently ${feature.phase})`
     throw new GateError(why)
   }
-  const tickets = listByFeature(ctx, featureId)
   if (tickets.filter((t) => t.status !== 'cancelled').length < 1) {
     throw new GateError(
       tickets.length > 0 ? 'no burnable tickets — every ticket is cancelled' : 'no tickets to burn',
@@ -278,6 +293,11 @@ export async function burn(
           : 'restarting burn (previous run cancelled or crashed)',
       data: { retried: failed.map((t) => t.seq) },
     })
+  } else if (iterating) {
+    // Loop back review → implementation (the pipeline's one backward transition)
+    // so the run picks up the fresh pending tickets. G4 auto-advance closes the
+    // loop back to review when they finish.
+    setPhase(ctx, featureId, REVIEW_LOOP_BACK.to, 'burn.started', 'burn from review — iterating')
   } else {
     setPhase(ctx, featureId, 'implementation', 'burn.started', 'burning tickets')
   }
