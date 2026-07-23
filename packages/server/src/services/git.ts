@@ -51,6 +51,8 @@ export interface MergeResult {
   conflict?: boolean
   /** The branch the feature was merged into (its base; default `mainBranch`). */
   target: string
+  /** Repo-relative paths that conflicted (only on `conflict`), for the review UI. */
+  files?: string[]
 }
 
 /** Repo-relative dir (forward slashes) holding every feature's knowledge docs. */
@@ -1013,9 +1015,13 @@ export async function mergeFeature(project: Project, feature: Feature): Promise<
     return { ok: true, target }
   } catch (e) {
     if (await mergeInProgress(g)) {
+      // Capture the conflicting files WHILE the merge is still in progress (the
+      // abort clears the unmerged index), so the review UI can list them and
+      // brief the resolve-with-agent session.
+      const files = await conflictedFiles(g)
       await g.raw(['merge', '--abort'])
       await restoreBranch(g, previous, target)
-      return { ok: false, conflict: true, target }
+      return { ok: false, conflict: true, target, files }
     }
     // Not a conflict (e.g. unknown branch) — surface the real failure.
     throw e instanceof Error ? e : new Error(errMsg(e))
@@ -1035,6 +1041,21 @@ async function restoreBranch(g: SimpleGit, previous: string, target: string): Pr
     await g.checkout(previous)
   } catch {
     // leave the checkout on `target` — a shipped feature must never fail here
+  }
+}
+
+/**
+ * Repo-relative paths with unresolved conflicts in the in-progress merge
+ * (`--diff-filter=U`). Called before `merge --abort`, which clears the unmerged
+ * index. Returns `[]` on any parse failure — a missing list must not turn a
+ * reported conflict into a thrown error.
+ */
+async function conflictedFiles(g: SimpleGit): Promise<string[]> {
+  try {
+    const out = (await g.raw(['diff', '--name-only', '--diff-filter=U'])).trim()
+    return out ? out.split('\n').map((s) => s.trim()).filter(Boolean) : []
+  } catch {
+    return []
   }
 }
 

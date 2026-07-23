@@ -113,12 +113,15 @@ export const featureRouter = router({
         setPhase(ctx, input.featureId, 'shipped', 'feature.shipped', `merged to ${res.target}`)
         setFeatureStatus(ctx, input.featureId, 'shipped')
       } else {
+        // Carry the base branch + conflicting files on the event so the review
+        // UI can surface the conflict card after a reload and brief the
+        // resolve-with-agent session (kickoff needs both).
         emit(ctx, input.featureId, {
           type: 'merge.conflict',
           message: 'merge conflict — resolve and retry',
-          data: { conflict: res.conflict },
+          data: { conflict: res.conflict, base: res.target, files: res.files ?? [] },
         })
       }
-      return { ok: res.ok, conflict: res.conflict }
+      return { ok: res.ok, conflict: res.conflict, base: res.target, files: res.files ?? [] }
     }),
 })
