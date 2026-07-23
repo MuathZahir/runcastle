@@ -1,6 +1,19 @@
 import { nextPhase } from '@runcastle/core'
 import type { Phase } from '@runcastle/core'
-import type { FeatureFull, FeatureListItem } from './api'
+import type { BranchList, FeatureFull, FeatureListItem } from './api'
+
+/**
+ * The New Feature form's default base branch. A new feature forks off the branch
+ * the user is currently on — that's the branch they chose to work on, and burns
+ * never touch the checkout. Fall back to the project main branch when the current
+ * checkout isn't a selectable base: a detached HEAD, or a test drive holding
+ * runcastle itself on a `feature/*` branch (which the picker excludes).
+ */
+export function defaultBaseBranch(
+  data: Pick<BranchList, 'current' | 'mainBranch' | 'branches'>,
+): string {
+  return data.branches.includes(data.current) ? data.current : data.mainBranch
+}
 
 /**
  * Client-side feature derivations (UI-SPEC §2/§3): sidebar glyph, needs-me
