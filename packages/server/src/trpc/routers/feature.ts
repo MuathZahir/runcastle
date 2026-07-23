@@ -87,6 +87,15 @@ export const featureRouter = router({
     .input(z.object({ featureId: z.string() }))
     .mutation(({ ctx, input }) => features.unarchiveFeature(ctx, input.featureId)),
 
+  // Permanently delete a non-shipped feature (decision #8): cancels an active
+  // run, ends a live session, stops this feature's test drive, removes the talk
+  // worktree, deletes feature + runcastle temp branches, and drops all DB rows +
+  // session artifact dirs. Committed docs history is left untouched. Refuses a
+  // shipped feature (archive covers those). Behind a confirm dialog in the UI.
+  delete: publicProcedure
+    .input(z.object({ featureId: z.string() }))
+    .mutation(({ ctx, input }) => features.deleteFeature(ctx, input.featureId)),
+
   burn: publicProcedure
     // `model` is a per-run override (issue #48) — the scripted smoke passes its
     // cheap model here instead of the retired RUNCASTLE_MODEL env hack.

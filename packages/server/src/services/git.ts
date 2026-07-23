@@ -804,6 +804,80 @@ export async function cleanupTempBranches(repoPath: string): Promise<TempBranchC
   return { deleted, kept }
 }
 
+// --- feature deletion (decision #8) -----------------------------------------
+
+/**
+ * Remove a feature's talk worktree at `worktreePath` (feature delete, decision
+ * #8). Tries `git worktree remove --force`, falling back to a direct recursive
+ * delete of the dir (a stale/unregistered leftover), then prunes the worktree
+ * registry. THROWS when the dir still exists afterwards — on Windows a locked
+ * file survives both removals, and the caller must surface that clearly and stop
+ * BEFORE deleting DB rows so the half-cleanup is retryable, never half-deleted.
+ */
+export async function removeTalkWorktree(repoPath: string, worktreePath: string): Promise<void> {
+  const g = git(repoPath)
+  try {
+    await g.raw(['worktree', 'remove', '--force', worktreePath])
+  } catch {
+    // Not a clean registered worktree (stale dir), or a locked file blocked the
+    // git removal — fall back to a direct delete, then prune the stale entry.
+    try {
+      rmSync(worktreePath, { recursive: true, force: true })
+    } catch {
+      // best-effort — the existsSync guard below turns a real failure into a throw
+    }
+  }
+  try {
+    await g.raw(['worktree', 'prune'])
+  } catch {
+    // best-effort — a leftover registry entry is harmless once the dir is gone
+  }
+  if (existsSync(worktreePath)) {
+    throw new InvalidInputError(
+      `could not remove talk worktree at ${worktreePath} — a file may be locked; ` +
+        'close anything using it and retry the delete',
+    )
+  }
+}
+
+/**
+ * Delete a feature's git branches (feature delete, decision #8): `feature/<slug>`
+ * plus every runcastle temp branch (`runcastle/ticket/<seg>/*`,
+ * `runcastle/research/<seg>/*`) whose segment matches the feature's slug. Detaches
+ * any sandcastle worktree (`.sandcastle/worktrees/*`) still pinning a branch first.
+ * Best-effort per branch (matches `deleteTempBranch`): a branch git refuses to
+ * delete is reported in `kept`, the rest in `deleted` — the caller does not fail
+ * the delete over an orphaned branch (the feature-side commits orphan naturally).
+ */
+export async function deleteFeatureBranches(
+  repoPath: string,
+  slug: string,
+): Promise<TempBranchCleanup> {
+  const deleted: string[] = []
+  const kept: string[] = []
+  const g = git(repoPath)
+
+  const featureBranchName = featureBranch(slug)
+  const seg = tempBranchSlugSegment(slug)
+  const tempPrefixes = TEMP_BRANCH_PREFIXES.map((p) => `${p}${seg}/`)
+
+  let all: string[]
+  try {
+    all = (await g.branchLocal()).all
+  } catch {
+    return { deleted, kept }
+  }
+
+  const targets = all.filter(
+    (b) => b === featureBranchName || tempPrefixes.some((p) => b.startsWith(p)),
+  )
+  for (const branch of targets) {
+    if (await deleteBranchDetachingWorktrees(g, repoPath, branch)) deleted.push(branch)
+    else kept.push(branch)
+  }
+  return { deleted, kept }
+}
+
 // --- docs checkpoint --------------------------------------------------------
 
 /**

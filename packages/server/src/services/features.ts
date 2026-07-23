@@ -9,11 +9,13 @@ import type {
   Waypoint,
 } from '@runcastle/core'
 import { REVIEW_LOOP_BACK, newId, nextGate, nextPhase } from '@runcastle/core'
+import { sessionDir, worktreeDir } from '@runcastle/core/paths'
 import { desc, eq } from 'drizzle-orm'
+import { rmSync } from 'node:fs'
 import type { AppCtx } from '../db/types'
-import { features } from '../db/schema'
+import { events, features, gateOverrides, runs, sessions, tickets, waypoints } from '../db/schema'
 import { GateError, isNotImplemented } from '../errors'
-import { emit } from './events'
+import { emit, emitProject } from './events'
 import { checkGate } from './gates'
 import * as git from './git'
 import { listDocs, scaffoldDocs, scaffoldMapDoc } from './knowledge'
@@ -31,7 +33,7 @@ import {
 import { endSession } from '../pty/end-session'
 import { getTicket, listByFeature, updateTicket } from './tickets'
 import { frontier, listByFeature as listWaypoints } from './waypoints'
-import { startRun } from '../workflows/runner'
+import { cancelRun, startRun } from '../workflows/runner'
 
 /**
  * Feature service (SPEC §3/§4): create, aggregate read, phase transitions,
@@ -512,6 +514,95 @@ export function unarchiveFeature(ctx: AppCtx, featureId: string): Feature {
     data: { status: restored },
   })
   return { ...feature, status: restored }
+}
+
+/**
+ * Permanently delete a NON-SHIPPED feature (decision #8), cleaning up everything
+ * runcastle created for it. Shipped features are refused — their branch is merged
+ * into the base, so deleting their rows would orphan the record of shipped work
+ * (archive covers those). Committed `docs/features/<slug>/` history is left
+ * untouched: no removal commit, no history rewrite — branch deletion orphans the
+ * branch-side doc commits naturally, and anything already on the base stays.
+ *
+ * Cleanup order stops live things first and deletes DB rows LAST, so a failure
+ * mid-cleanup (e.g. a locked talk worktree on Windows) throws with the feature
+ * row still present and the whole operation retryable:
+ *   1. cancel an active run   2. end a live session   3. stop THIS feature's test
+ *   drive   4. remove the talk worktree (throws on a locked/failed removal)
+ *   5. delete feature + runcastle temp branches   6. emit a PROJECT-scoped
+ *   `feature.deleted` (a feature-scoped event would die with the rows)
+ *   7. remove session artifact dirs + delete all DB rows keyed by the feature.
+ */
+export async function deleteFeature(
+  ctx: AppCtx,
+  featureId: string,
+): Promise<{ ok: true; slug: string }> {
+  const feature = getFeatureRow(ctx, featureId)
+  if (feature.status === 'shipped') {
+    throw new GateError(
+      `feature ${feature.slug} is shipped — archive it instead (delete is for non-shipped features)`,
+    )
+  }
+  const project = projectForFeature(ctx, feature)
+
+  // (1) Cancel any in-flight run — abort its signal before we tear the rest down.
+  for (const run of listRunsByFeature(ctx, featureId)) {
+    if (run.status === 'running') cancelRun(run.id)
+  }
+
+  // (2) End a live session (the same PTY-killing teardown Archive uses).
+  const live = listSessionsByFeature(ctx, featureId).find((s) => s.status === 'live')
+  if (live) endSession(ctx, live.id)
+
+  // (3) Stop a test drive of THIS feature — it holds the main checkout on the
+  // feature branch, which would block the branch delete (a drive of another
+  // feature is left alone).
+  if (git.activeTestDriveFeatureId() === featureId) {
+    await git.testDrive(ctx, project, feature, 'stop')
+  }
+
+  // (4) Remove the talk worktree — throws on a locked/failed removal so DB rows
+  // stay put below and the delete is retryable rather than half-applied.
+  await git.removeTalkWorktree(project.repoPath, worktreeDir(project.id, feature.slug))
+
+  // (5) Delete feature/<slug> + matching runcastle temp branches (best-effort;
+  // an orphaned branch never fails the delete).
+  await git.deleteFeatureBranches(project.repoPath, feature.slug)
+
+  // (6) Announce on the PROJECT stream BEFORE the rows go — a feature-scoped
+  // event would be deleted along with the feature it describes.
+  emitProject(ctx, project.id, {
+    type: 'feature.deleted',
+    message: `feature ${feature.slug} deleted`,
+    data: { featureId, slug: feature.slug },
+  })
+
+  // (7) Remove per-session artifact dirs, then delete all DB rows LAST.
+  for (const s of listSessionsByFeature(ctx, featureId)) {
+    try {
+      rmSync(sessionDir(s.id), { recursive: true, force: true })
+    } catch {
+      // best-effort — a stray artifact dir is harmless; the DB rows still go
+    }
+  }
+  deleteFeatureRows(ctx, featureId)
+
+  return { ok: true, slug: feature.slug }
+}
+
+/**
+ * Delete every DB row keyed by `featureId` — tickets, sessions, runs, events,
+ * gate overrides, waypoints — then the feature row itself. Feature-scoped events
+ * die here; the project-scoped `feature.deleted` (featureId null) survives.
+ */
+function deleteFeatureRows(ctx: AppCtx, featureId: string): void {
+  ctx.db.delete(tickets).where(eq(tickets.featureId, featureId)).run()
+  ctx.db.delete(sessions).where(eq(sessions.featureId, featureId)).run()
+  ctx.db.delete(runs).where(eq(runs.featureId, featureId)).run()
+  ctx.db.delete(events).where(eq(events.featureId, featureId)).run()
+  ctx.db.delete(gateOverrides).where(eq(gateOverrides.featureId, featureId)).run()
+  ctx.db.delete(waypoints).where(eq(waypoints.featureId, featureId)).run()
+  ctx.db.delete(features).where(eq(features.id, featureId)).run()
 }
 
 function gateState(ctx: AppCtx, feature: Feature): FeatureGateState {
