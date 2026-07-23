@@ -1,9 +1,16 @@
 import { useState } from 'react'
-import { SectionTitle, SessionStatusDot } from '../../ui'
+import { Button, SectionTitle, SessionStatusDot } from '../../ui'
 import { trpc } from '../../trpc'
 import type { FeatureFull } from '../../lib/api'
 import type { DriveState } from '../../lib/workspace'
-import { latestRun } from '../../lib/feature-ui'
+import {
+  latestRun,
+  mergeConflictKickoff,
+  unresolvedMergeConflict,
+  type MergeConflictState,
+} from '../../lib/feature-ui'
+import { useEventLog } from '../../lib/events'
+import { useToast } from '../../lib/toast'
 import { EndSessionButton } from '../EndSessionButton'
 import { ErrorBoundary } from '../ErrorBoundary'
 import { TerminalView } from '../TerminalView'
@@ -18,12 +25,20 @@ import { TerminalView } from '../TerminalView'
  * An Iterate (`revisit`) session launched from the review bar renders as an
  * inline terminal above the cards — same pattern as GrillBody/TicketsBody — so
  * the human can drive the fix-ticket interview without leaving review.
+ *
+ * A conflicted Merge & ship surfaces the {@link ConflictCard} above the cards:
+ * it lists the conflicting files and offers "Resolve with agent", which opens a
+ * revisit session pre-briefed to merge the base branch into the feature branch
+ * in the talk worktree. The conflict is read from the event feed, so it survives
+ * a reload; the action is hidden while any session is live (one terminal per
+ * feature — the server refuses a second one anyway).
  */
 export function ReviewBody({ full, driving }: { full: FeatureFull; driving: DriveState | null }) {
   const { feature, tickets, runs } = full
   const session = [...full.sessions]
     .reverse()
     .find((s) => s.status === 'live' || s.status === 'launching')
+  const conflict = unresolvedMergeConflict(useEventLog(feature.id))
   const run = latestRun(runs)
   const total = tickets.length
   const done = tickets.filter((t) => t.status === 'done').length
@@ -56,6 +71,15 @@ export function ReviewBody({ full, driving }: { full: FeatureFull; driving: Driv
             </ErrorBoundary>
           </div>
         </div>
+      )}
+
+      {conflict && (
+        <ConflictCard
+          featureId={feature.id}
+          branch={feature.branch}
+          conflict={conflict}
+          sessionLive={!!session}
+        />
       )}
 
       <div className="review-grid">
@@ -110,6 +134,67 @@ export function ReviewBody({ full, driving }: { full: FeatureFull; driving: Driv
       </div>
 
       {isDriving && <DrivePane featureId={feature.id} />}
+    </div>
+  )
+}
+
+/**
+ * The merge-conflict card (CONTEXT decision #9). Appears after a conflicted
+ * Merge & ship, listing the conflicting files. "Resolve with agent" opens a
+ * revisit session whose first message briefs the merge-into-feature resolution
+ * (base branch + file list), so the agent resolves in the talk worktree and the
+ * human retries Merge & ship. Hidden while a session is live — one terminal per
+ * feature (the launcher's `assertSpawnable` refuses a second one regardless).
+ */
+function ConflictCard({
+  featureId,
+  branch,
+  conflict,
+  sessionLive,
+}: {
+  featureId: string
+  branch: string
+  conflict: MergeConflictState
+  sessionLive: boolean
+}) {
+  const utils = trpc.useUtils()
+  const toast = useToast()
+  const launch = trpc.feature.launchSession.useMutation({
+    onSuccess: () => void utils.feature.get.invalidate({ id: featureId }),
+    onError: (e) => toast.push(e.message),
+  })
+
+  return (
+    <div className="review-card conflict-card">
+      <SectionTitle>Merge conflict</SectionTitle>
+      <div className="drive-copy">
+        Merging <code>{conflict.base}</code> into <code>{branch}</code> hit conflicts. An agent can
+        merge the base into this branch in the talk worktree, resolve with full spec context, and
+        commit — then retry Merge &amp; ship.
+      </div>
+      {conflict.files.length > 0 && (
+        <ul className="conflict-files">
+          {conflict.files.map((f) => (
+            <li key={f}>{f}</li>
+          ))}
+        </ul>
+      )}
+      {!sessionLive && (
+        <Button
+          variant="solid"
+          className="conflict-resolve"
+          disabled={launch.isPending}
+          onClick={() =>
+            launch.mutate({
+              featureId,
+              kind: 'revisit',
+              kickoffLine: mergeConflictKickoff(conflict.base, branch, conflict.files),
+            })
+          }
+        >
+          Resolve with agent
+        </Button>
+      )}
     </div>
   )
 }

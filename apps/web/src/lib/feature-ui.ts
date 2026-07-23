@@ -1,5 +1,5 @@
 import { nextPhase } from '@runcastle/core'
-import type { Phase } from '@runcastle/core'
+import type { EventRow, Phase } from '@runcastle/core'
 import type { BranchList, FeatureFull, FeatureListItem } from './api'
 
 /**
@@ -375,6 +375,55 @@ export const REVIEW_ITERATE_KICKOFF =
   'settle on into fix tickets with emit_tickets, and use update_ticket / cancel_ticket on any ' +
   'stale pending tickets. Never call complete_phase — leave the phase at review. When the ' +
   'tickets are ready, tell me to review the cards and click Burn.'
+
+/**
+ * Kickoff line for a review-phase Iterate session opened to RESOLVE a merge
+ * conflict (CONTEXT decision #9). Passed as the `launchSession` override, so the
+ * revisit agent — whose cwd IS the talk worktree checked out on the feature
+ * branch — opens straight on the merge-into-feature resolution rather than the
+ * generic revisit prompt. Parameterized with the base branch, feature branch,
+ * and conflicting files carried on the `merge.conflict` event.
+ */
+export function mergeConflictKickoff(base: string, branch: string, files: string[]): string {
+  const list = files.length ? files.join(', ') : '(run git status to see the conflicts)'
+  return (
+    `Proceed with your task: RESOLVE A MERGE CONFLICT. Merging ${base} into ${branch} conflicts ` +
+    `on: ${list}. Your working directory IS the talk worktree, already checked out on ${branch}. ` +
+    `Run \`git merge ${base}\`, then resolve every conflict using this feature’s spec.md and ` +
+    `decisions.md for intent, and commit the merge. Do NOT push and do NOT advance the phase ` +
+    `(never call complete_phase). When the merge commit is in, tell me to click “Merge & ship” ` +
+    `again for a clean retry.`
+  )
+}
+
+export interface MergeConflictState {
+  /** The base branch that failed to merge in (the merge target). */
+  base: string
+  /** Repo-relative paths that conflicted. */
+  files: string[]
+}
+
+/**
+ * The standing (unresolved) merge conflict for a feature, derived from its event
+ * feed so the review conflict card survives a page reload. The latest
+ * `merge.conflict` event carries the base branch + conflicting files; a later
+ * `burn.started` supersedes it — burning re-runs implementation and the recorded
+ * file list no longer applies, so the card clears once the loop moves on.
+ * Returns null when there is no standing conflict. `events` must be in id order.
+ */
+export function unresolvedMergeConflict(events: EventRow[]): MergeConflictState | null {
+  let conflict: MergeConflictState | null = null
+  for (const e of events) {
+    if (e.type === 'merge.conflict') {
+      const d = (e.data ?? {}) as { base?: unknown; files?: unknown }
+      const files = Array.isArray(d.files) ? d.files.filter((f): f is string => typeof f === 'string') : []
+      conflict = { base: typeof d.base === 'string' ? d.base : '', files }
+    } else if (e.type === 'burn.started') {
+      conflict = null
+    }
+  }
+  return conflict
+}
 
 /**
  * The single guided next step for a feature's *current* phase (app-redesign).

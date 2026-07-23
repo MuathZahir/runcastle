@@ -190,7 +190,12 @@ export function Workspace({
                 onDriveChange(null)
                 toast.push('merged — feature shipped', 'success')
               } else if (res.conflict) {
-                toast.push('merge conflict — resolve and retry')
+                const n = res.files.length
+                toast.push(
+                  n > 0
+                    ? `merge conflict in ${n} file${n === 1 ? '' : 's'} — resolve below and retry`
+                    : 'merge conflict — resolve below and retry',
+                )
               }
             },
           },

@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import type { TicketStatus } from '@runcastle/core'
-import { defaultBaseBranch, nextStep, REVIEW_ITERATE_KICKOFF } from '../src/lib/feature-ui'
+import type { EventRow, TicketStatus } from '@runcastle/core'
+import {
+  defaultBaseBranch,
+  mergeConflictKickoff,
+  nextStep,
+  REVIEW_ITERATE_KICKOFF,
+  unresolvedMergeConflict,
+} from '../src/lib/feature-ui'
 import type { FeatureFull } from '../src/lib/api'
 
 /**
@@ -104,5 +110,67 @@ describe('nextStep at review', () => {
     expect(REVIEW_ITERATE_KICKOFF).toContain('REVIEW ITERATION')
     expect(REVIEW_ITERATE_KICKOFF).toContain('emit_tickets')
     expect(REVIEW_ITERATE_KICKOFF).toContain('click Burn')
+  })
+})
+
+/**
+ * Streamlining-ux ticket 9 — a conflicted Merge & ship is surfaced from the
+ * event feed (so the conflict card survives a reload) and the resolve action
+ * briefs a merge-into-feature session. Tested at the pure derivations.
+ */
+describe('unresolvedMergeConflict', () => {
+  const ev = (id: number, type: string, data?: unknown): EventRow =>
+    ({ id, projectId: 'p', ts: id, type, message: type, data }) as EventRow
+
+  it('returns null when there is no merge.conflict event', () => {
+    expect(unresolvedMergeConflict([ev(1, 'burn.started'), ev(2, 'phase.advanced')])).toBeNull()
+  })
+
+  it('reads the base branch and files off the latest merge.conflict event', () => {
+    const events = [
+      ev(1, 'merge.conflict', { base: 'main', files: ['a.ts'] }),
+      ev(2, 'merge.conflict', { base: 'develop', files: ['x.ts', 'y.ts'] }),
+    ]
+    expect(unresolvedMergeConflict(events)).toEqual({ base: 'develop', files: ['x.ts', 'y.ts'] })
+  })
+
+  it('clears once a burn supersedes the conflict (loop moved on)', () => {
+    const events = [
+      ev(1, 'merge.conflict', { base: 'main', files: ['a.ts'] }),
+      ev(2, 'burn.started', { from: 'review' }),
+    ]
+    expect(unresolvedMergeConflict(events)).toBeNull()
+  })
+
+  it('re-surfaces a fresh conflict after a burn cycle', () => {
+    const events = [
+      ev(1, 'merge.conflict', { base: 'main', files: ['a.ts'] }),
+      ev(2, 'burn.started', { from: 'review' }),
+      ev(3, 'merge.conflict', { base: 'main', files: ['b.ts'] }),
+    ]
+    expect(unresolvedMergeConflict(events)).toEqual({ base: 'main', files: ['b.ts'] })
+  })
+
+  it('tolerates a conflict event with a missing/blank file list', () => {
+    expect(unresolvedMergeConflict([ev(1, 'merge.conflict', { base: 'main' })])).toEqual({
+      base: 'main',
+      files: [],
+    })
+  })
+})
+
+describe('mergeConflictKickoff', () => {
+  it('names the base, feature branch, and files, and forbids advancing the phase', () => {
+    const line = mergeConflictKickoff('main', 'feature/x', ['a.ts', 'b.ts'])
+    expect(line).toContain('git merge main')
+    expect(line).toContain('feature/x')
+    expect(line).toContain('a.ts, b.ts')
+    expect(line).toContain('complete_phase')
+    expect(line).toContain('Merge & ship')
+  })
+
+  it('degrades gracefully when the file list is empty', () => {
+    const line = mergeConflictKickoff('main', 'feature/x', [])
+    expect(line).toContain('git status')
   })
 })

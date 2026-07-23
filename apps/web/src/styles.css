@@ -1364,6 +1364,29 @@ details.wp-group-done > summary { cursor: pointer; list-style: revert; }
 .drive-loc { font-family: var(--mono); font-size: 11.5px; color: var(--text-2); }
 .drive-copy { margin-top: 12px; color: var(--text-2); font-size: 12.5px; line-height: 1.55; text-wrap: pretty; }
 
+/* merge-conflict card (ticket 9) — conflict surfaced at review, resolved in-loop */
+.conflict-card {
+  max-width: 1000px;
+  border-color: color-mix(in srgb, var(--danger) 45%, var(--hairline));
+}
+.conflict-files {
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.conflict-files li {
+  font-family: var(--mono);
+  font-size: 11.5px;
+  color: var(--danger);
+  padding: 3px 8px;
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--danger) 9%, transparent);
+}
+.conflict-resolve { margin-top: 14px; }
+
 /* test-drive embedded dev pane (issue #41) */
 .review-body { display: flex; flex-direction: column; gap: 14px; }
 .drive-pane {
