@@ -1,9 +1,10 @@
 import { useState } from 'react'
-import { SectionTitle } from '../../ui'
+import { SectionTitle, SessionStatusDot } from '../../ui'
 import { trpc } from '../../trpc'
 import type { FeatureFull } from '../../lib/api'
 import type { DriveState } from '../../lib/workspace'
 import { latestRun } from '../../lib/feature-ui'
+import { EndSessionButton } from '../EndSessionButton'
 import { ErrorBoundary } from '../ErrorBoundary'
 import { TerminalView } from '../TerminalView'
 
@@ -13,9 +14,16 @@ import { TerminalView } from '../TerminalView'
  * panel on the right. All figures come from real wire data — the start/stop and
  * merge actions live in the workspace next-step bar. While a drive is active the
  * embedded dev pane + "Open app" link render full-width below the cards.
+ *
+ * An Iterate (`revisit`) session launched from the review bar renders as an
+ * inline terminal above the cards — same pattern as GrillBody/TicketsBody — so
+ * the human can drive the fix-ticket interview without leaving review.
  */
 export function ReviewBody({ full, driving }: { full: FeatureFull; driving: DriveState | null }) {
   const { feature, tickets, runs } = full
+  const session = [...full.sessions]
+    .reverse()
+    .find((s) => s.status === 'live' || s.status === 'launching')
   const run = latestRun(runs)
   const total = tickets.length
   const done = tickets.filter((t) => t.status === 'done').length
@@ -33,6 +41,23 @@ export function ReviewBody({ full, driving }: { full: FeatureFull; driving: Driv
 
   return (
     <div className="review-body">
+      {session && (
+        <div className="grill-panel review-session">
+          <div className="grill-strip">
+            <span className="grill-kind">{session.kind}</span>
+            <span className="grill-sid">{session.ccSessionId ?? session.id}</span>
+            <SessionStatusDot status={session.status} />
+            <span className="grill-strip-spacer" />
+            <EndSessionButton featureId={feature.id} sessionId={session.id} />
+          </div>
+          <div className="grill-term" id="grill-term">
+            <ErrorBoundary label="terminal">
+              <TerminalView sessionId={session.id} />
+            </ErrorBoundary>
+          </div>
+        </div>
+      )}
+
       <div className="review-grid">
       <div className="review-card">
         <SectionTitle>Summary</SectionTitle>

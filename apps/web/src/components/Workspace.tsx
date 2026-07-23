@@ -13,6 +13,7 @@ import {
   nextStep,
   PHASE_LABELS,
   pipelineSteps,
+  REVIEW_ITERATE_KICKOFF,
   type ActionKind,
   type NextStep,
   type PipelineStep,
@@ -132,7 +133,14 @@ export function Workspace({
         launch.mutate({ featureId, kind: 'qa' })
         break
       case 'revisit':
-        launch.mutate({ featureId, kind: 'revisit' })
+        launch.mutate({
+          featureId,
+          kind: 'revisit',
+          // At review the revisit is an Iterate loop — brief the agent to read
+          // the run outcome, interview about the test drive, and emit fix tickets
+          // (ticket-3 kickoff override). Other phases use the default revisit line.
+          kickoffLine: feature.phase === 'review' ? REVIEW_ITERATE_KICKOFF : undefined,
+        })
         break
       case 'openGrill':
         onViewPhase(null)

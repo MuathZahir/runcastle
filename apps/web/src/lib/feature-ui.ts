@@ -361,6 +361,22 @@ export interface NextStep {
 }
 
 /**
+ * The kickoff line for a review-phase Iterate session (CONTEXT decision #6).
+ * Passed as the `launchSession` override (ticket 3 mechanism) when the review
+ * bar's Iterate action launches a `revisit` session, so the agent opens on the
+ * review-iteration move rather than the generic revisit prompt: read the run
+ * outcome + ticket states, interview the human about what the test drive
+ * surfaced, emit fix tickets, and never advance the phase.
+ */
+export const REVIEW_ITERATE_KICKOFF =
+  'Proceed with your task: invoke the /runcastle:revisit skill for a REVIEW ITERATION. ' +
+  'Call get_feature_context to read the latest run outcome and every ticket’s state, then ' +
+  'interview me about what the test drive surfaced — bugs, rough edges, tweaks. Turn what we ' +
+  'settle on into fix tickets with emit_tickets, and use update_ticket / cancel_ticket on any ' +
+  'stale pending tickets. Never call complete_phase — leave the phase at review. When the ' +
+  'tickets are ready, tell me to review the cards and click Burn.'
+
+/**
  * The single guided next step for a feature's *current* phase (app-redesign).
  * Gate-aware: when the gate guarding the next phase is satisfied and crossable
  * without a human-only gate (G3 Burn / G5 Merge), the primary action becomes the
@@ -375,6 +391,12 @@ export function nextStep(full: FeatureFull, ctx: { driving: boolean }): NextStep
   const t = tickets.length
   const done = tickets.filter((x) => x.status === 'done').length
   const failed = tickets.filter((x) => x.status === 'failed').length
+  // Non-terminal tickets the burner still has to run — matches the server's
+  // `burn` acceptance check (features.ts). Fix tickets from an Iterate session
+  // land here as `pending`, driving the review → burn loop-back.
+  const pending = tickets.filter(
+    (x) => x.status !== 'done' && x.status !== 'failed' && x.status !== 'cancelled',
+  ).length
   const run = latestRun(runs)
   const running = run?.status === 'running'
   const nextName = nextPhase(feature)
@@ -514,6 +536,30 @@ export function nextStep(full: FeatureFull, ctx: { driving: boolean }): NextStep
       }
     }
     case 'review': {
+      // Test-drive toggle + Iterate stay available at review throughout. Iterate
+      // opens a `revisit` session to interview the human and emit fix tickets;
+      // one terminal per feature, so it's hidden while any session is live.
+      const testDriveAction: NextAction = ctx.driving
+        ? { label: 'Stop test drive', kind: 'testDriveStop' }
+        : { label: 'Start test drive', kind: 'testDriveStart' }
+      const iterate: NextAction[] = live ? [] : [{ label: 'Iterate', kind: 'revisit' }]
+
+      // Fix tickets emitted by an Iterate session are non-terminal — while any
+      // exist, the review loops back through a burn (CONTEXT decision #7): Burn is
+      // promoted to primary, and Merge & ship drops to a secondary.
+      if (pending > 0) {
+        return {
+          kick: 'NEXT STEP',
+          title: 'Burn the fix tickets',
+          desc: ctx.driving
+            ? 'Test-driving the branch — burn the fix tickets when you’re ready.'
+            : `${pending} fix ticket${pending === 1 ? '' : 's'} ready — burn to run them, then review again.`,
+          primary: { label: `Burn ${pending} ticket${pending === 1 ? '' : 's'}`, kind: 'burn' },
+          secondary: [{ label: 'Merge & ship', kind: 'merge' }, testDriveAction, ...iterate],
+          busy: false,
+        }
+      }
+
       const desc = ctx.driving
         ? 'Test-driving the branch — merge when it looks right.'
         : failed > 0
@@ -524,9 +570,7 @@ export function nextStep(full: FeatureFull, ctx: { driving: boolean }): NextStep
         title: ctx.driving ? 'Merge when it looks right' : 'Test drive, then ship',
         desc,
         primary: { label: 'Merge & ship', kind: 'merge' },
-        secondary: ctx.driving
-          ? [{ label: 'Stop test drive', kind: 'testDriveStop' }]
-          : [{ label: 'Start test drive', kind: 'testDriveStart' }],
+        secondary: [testDriveAction, ...iterate],
         busy: false,
       }
     }
