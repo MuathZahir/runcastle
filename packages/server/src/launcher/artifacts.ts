@@ -219,9 +219,30 @@ export function renderConvergePrompt(feature: Feature): string {
  * obsolete ones, `emit_tickets` for new work. It NEVER advances phases: the
  * pipeline position stays wherever it is, and downstream phases pick up the
  * amended docs/tickets on their own.
+ *
+ * At the `review` phase the same session is surfaced as **Iterate** (CONTEXT
+ * decision #6): the human has just test-driven the burned branch and found
+ * things to fix. The kickoff line briefs the review-iteration move (read the run
+ * outcome + ticket states, interview about the test drive, emit fix tickets);
+ * the prompt below flags that purpose so the session knows the amended docs +
+ * fix tickets feed a re-Burn that loops the feature back through implementation.
  */
 export function renderRevisitPrompt(feature: Feature): string {
   const docs = featureDocsRel(feature.slug)
+  const reviewIteration =
+    feature.phase === 'review'
+      ? [
+          '## Review iteration',
+          'This feature is at **review**: its tickets were burned and the human has been',
+          'test-driving the branch. Treat this as a fix-ticket interview — read the latest',
+          'run outcome and every ticket’s state via `get_feature_context`, ask what the test',
+          'drive surfaced (bugs, rough edges, tweaks), then emit fix tickets for that work and',
+          'edit/cancel any stale pending tickets. Do NOT advance the phase: once the cards are',
+          'ready, tell the human to review them and click Burn — burning from review loops the',
+          'feature back through implementation and returns it here when the run finishes.',
+          '',
+        ]
+      : []
   return [
     `# runcastle — ${feature.title} (revisit session)`,
     '',
@@ -234,6 +255,7 @@ export function renderRevisitPrompt(feature: Feature): string {
     'into the record, then reconcile the tickets with it. The docs are the',
     'artifact — later phases read them, never the transcripts.',
     '',
+    ...reviewIteration,
     '## Feature',
     `- Slug: \`${feature.slug}\``,
     `- Branch: \`${feature.branch}\``,

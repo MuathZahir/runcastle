@@ -31,8 +31,17 @@ export const featureRouter = router({
     .query(({ ctx, input }) => features.getFeatureFull(ctx, input.id)),
 
   // B1 behavior — the stub throws NotImplementedError('B1').
+  // `kickoffLine` is the per-purpose kickoff override (ticket 3 mechanism): the
+  // review-phase Iterate action passes its review-iteration briefing here so the
+  // revisit session opens on the right first move instead of the generic line.
   launchSession: publicProcedure
-    .input(z.object({ featureId: z.string(), kind: SessionKind }))
+    .input(
+      z.object({
+        featureId: z.string(),
+        kind: SessionKind,
+        kickoffLine: z.string().min(1).optional(),
+      }),
+    )
     .mutation(({ ctx, input }) => launchSession(ctx, input)),
 
   // Work a frontier waypoint (ADR-0001 §13.2): claim it transactionally, then

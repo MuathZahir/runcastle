@@ -198,6 +198,20 @@ describe('renderSystemPrompt', () => {
     expect(p).toMatch(/do not call `complete_phase`/i)
   })
 
+  it('flags the review-iteration purpose for a revisit at the review phase (ticket 6)', () => {
+    const review = renderSystemPrompt(feature({ phase: 'review' }), 'revisit')
+    expect(review).toContain('Review iteration')
+    expect(review).toMatch(/fix ticket/i)
+    expect(review).toContain('emit_tickets')
+    // burning from review loops back through implementation; the phase never
+    // advances from within the session
+    expect(review).toMatch(/click Burn/i)
+    // the section is review-only — an implementation revisit never carries it
+    expect(renderSystemPrompt(feature({ phase: 'implementation' }), 'revisit')).not.toContain(
+      'Review iteration',
+    )
+  })
+
   it('directs a converge session to /runcastle:converge over ONLY the compressed knowledge', () => {
     const p = renderSystemPrompt(feature({ mapped: true, phase: 'spec' }), 'converge')
     expect(p).toContain('/runcastle:converge')
