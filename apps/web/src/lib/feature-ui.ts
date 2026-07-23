@@ -344,8 +344,7 @@ export type ActionKind =
   | 'merge' // feature.merge (G5)
   | 'askQuestions' // launchSession { kind: 'qa' }
   | 'revisit' // launchSession { kind: 'revisit' } — resume the old conversation, amend docs + tickets
-  | 'archive' // feature.archive — hide the feature, end any live session
-  | 'unarchive' // feature.unarchive — restore the feature to its lane
+  | 'unarchive' // feature.unarchive — restore an archived feature to its lane (next-step bar)
 
 export interface NextAction {
   label: string
