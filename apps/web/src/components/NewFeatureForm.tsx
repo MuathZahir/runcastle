@@ -1,14 +1,12 @@
 import { useState } from 'react'
-import type { FeatureSize } from '@runcastle/core'
 import { trpc } from '../trpc'
 import { useToast } from '../lib/toast'
 import { Button } from '../ui'
 
 /**
  * The new-feature form (app-redesign) — owns the whole workspace while open.
- * Name it, pick a size, and starting it creates the feature AND opens a grill
- * session so the ideation body is live the moment you land on it. `full` skips
- * nothing; `collapsed` (Small) skips the spec phase.
+ * Name it, and starting it creates the feature AND opens a grill session so the
+ * ideation body is live the moment you land on it.
  */
 export function NewFeatureForm({
   projectId,
@@ -21,7 +19,6 @@ export function NewFeatureForm({
 }) {
   const [title, setTitle] = useState('')
   const [oneLiner, setOneLiner] = useState('')
-  const [size, setSize] = useState<FeatureSize>('full')
   const [mapped, setMapped] = useState(false)
   // Empty = fork off the project default; a value picks an explicit base branch.
   const [base, setBase] = useState('')
@@ -61,7 +58,6 @@ export function NewFeatureForm({
         projectId,
         title: t,
         oneLiner: oneLiner.trim(),
-        size,
         mapped,
         baseBranch: base || undefined,
       })
@@ -73,8 +69,8 @@ export function NewFeatureForm({
         <div className="nf-kick">NEW FEATURE</div>
         <div className="nf-h">What are we building?</div>
         <div className="nf-sub">
-          Name it and pick a size — runcastle opens a grill session so you and Claude shape the idea
-          before any code is written.
+          Name it — runcastle opens a grill session so you and Claude shape the idea before any code
+          is written.
         </div>
 
         <input
@@ -99,25 +95,6 @@ export function NewFeatureForm({
             if (e.key === 'Escape') onCancel()
           }}
         />
-
-        <div className="nf-controls">
-          <div className="size-toggle">
-            <button className={size === 'full' ? 'is-on' : ''} onClick={() => setSize('full')}>
-              Full
-            </button>
-            <button
-              className={size === 'collapsed' ? 'is-on' : ''}
-              onClick={() => setSize('collapsed')}
-            >
-              Small
-            </button>
-          </div>
-          <span className="size-hint">
-            {size === 'collapsed'
-              ? 'Small skips the spec phase.'
-              : 'Full runs the whole six-phase pipeline.'}
-          </span>
-        </div>
 
         <div className="nf-base">
           <label className="nf-base-label" htmlFor="nf-base-select">

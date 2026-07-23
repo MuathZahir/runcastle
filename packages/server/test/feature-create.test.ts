@@ -31,9 +31,9 @@ describe('feature.create', () => {
   })
 
   it('slugifies the title and dedupes against existing slugs', async () => {
-    const a = await createFeature(ctx, { projectId, title: 'My Feature!', oneLiner: 'x', size: 'full' })
-    const b = await createFeature(ctx, { projectId, title: 'My Feature', oneLiner: 'x', size: 'full' })
-    const c = await createFeature(ctx, { projectId, title: 'my   feature', oneLiner: 'x', size: 'collapsed' })
+    const a = await createFeature(ctx, { projectId, title: 'My Feature!', oneLiner: 'x' })
+    const b = await createFeature(ctx, { projectId, title: 'My Feature', oneLiner: 'x' })
+    const c = await createFeature(ctx, { projectId, title: 'my   feature', oneLiner: 'x' })
 
     expect(a.slug).toBe('my-feature')
     expect(b.slug).toBe('my-feature-2')
@@ -44,7 +44,7 @@ describe('feature.create', () => {
   })
 
   it('creates the row + real feature branch + scaffolds brief.md', async () => {
-    const f = await createFeature(ctx, { projectId, title: 'Brancher', oneLiner: 'y', size: 'full' })
+    const f = await createFeature(ctx, { projectId, title: 'Brancher', oneLiner: 'y' })
 
     // B2's git service creates the real branch → message reports it (not pending)
     const created = listAfter(ctx, f.id, 0).find((e) => e.type === 'feature.created')
@@ -58,7 +58,7 @@ describe('feature.create', () => {
   })
 
   it('defaults baseBranch to the project mainBranch and forks from it', async () => {
-    const f = await createFeature(ctx, { projectId, title: 'Defaulted', oneLiner: 'x', size: 'full' })
+    const f = await createFeature(ctx, { projectId, title: 'Defaulted', oneLiner: 'x' })
     expect(f.baseBranch).toBe('main')
     const created = listAfter(ctx, f.id, 0).find((e) => e.type === 'feature.created')
     expect(created?.message).toContain('← main')
@@ -78,7 +78,6 @@ describe('feature.create', () => {
       projectId,
       title: 'Off Develop',
       oneLiner: 'x',
-      size: 'full',
       baseBranch: 'develop',
     })
     expect(f.baseBranch).toBe('develop')
@@ -107,7 +106,6 @@ describe('feature.create', () => {
       projectId,
       title: 'Off Remote',
       oneLiner: 'x',
-      size: 'full',
       baseBranch: 'origin/release',
     })
 
@@ -119,7 +117,7 @@ describe('feature.create', () => {
   })
 
   it('commits the scaffolded brief so the working tree stays clean (ship gates)', async () => {
-    await createFeature(ctx, { projectId, title: 'Cleanly', oneLiner: 'z', size: 'full' })
+    await createFeature(ctx, { projectId, title: 'Cleanly', oneLiner: 'z' })
     const g = simpleGit(repoPath)
 
     // The brief must be committed, not left untracked — an untracked doc would

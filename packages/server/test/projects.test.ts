@@ -76,13 +76,11 @@ describe('projects service — multi-project CRUD (#43)', () => {
       projectId: a.id,
       title: 'Alpha feature',
       oneLiner: 'a',
-      size: 'collapsed',
     })
     await features.createFeature(ctx, {
       projectId: b.id,
       title: 'Beta feature',
       oneLiner: 'b',
-      size: 'collapsed',
     })
 
     expect(features.list(ctx, a.id).map((f) => f.title)).toEqual(['Alpha feature'])
@@ -105,7 +103,6 @@ describe('projects service — multi-project CRUD (#43)', () => {
       projectId: project.id,
       title: 'Kept feature',
       oneLiner: 'k',
-      size: 'collapsed',
     })
 
     closeProject(ctx, project.id)
@@ -123,7 +120,6 @@ describe('projects service — multi-project CRUD (#43)', () => {
       projectId: project.id,
       title: 'Busy feature',
       oneLiner: 'b',
-      size: 'collapsed',
     })
     seedRunningRun(ctx, feature.id)
 

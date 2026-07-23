@@ -209,11 +209,6 @@ export function phaseIndex(phase: Phase): number {
   return PHASE_ORDER.indexOf(phase)
 }
 
-/** True when `spec` is skipped for this feature (collapsed size). */
-export function skipsSpec(feature: { size: FeatureListItem['size'] }): boolean {
-  return feature.size === 'collapsed'
-}
-
 // --- triage sidebar --------------------------------------------------------
 
 export type TriageKey = 'needsYou' | 'agentWorking' | 'inProgress' | 'shipped'
@@ -262,7 +257,7 @@ export function triage(features: FeatureListItem[]): TriageGroup[] {
 
 // --- pipeline (sidebar mini-map + workspace stepper) -----------------------
 
-export type StepState = 'done' | 'current' | 'upcoming' | 'skipped'
+export type StepState = 'done' | 'current' | 'upcoming'
 
 export interface PipelineStep {
   phase: Phase
@@ -275,8 +270,7 @@ export interface PipelineStep {
   tip: string
 }
 
-function stepState(feature: { phase: Phase; size: FeatureListItem['size'] }, phase: Phase): StepState {
-  if (skipsSpec(feature) && phase === 'spec') return 'skipped'
+function stepState(feature: { phase: Phase }, phase: Phase): StepState {
   const ci = phaseIndex(feature.phase)
   const pi = phaseIndex(phase)
   if (pi < ci) return 'done'
@@ -286,7 +280,7 @@ function stepState(feature: { phase: Phase; size: FeatureListItem['size'] }, pha
 
 /** Compact 6-segment lifecycle map for a sidebar row. */
 export function miniSegments(
-  feature: { phase: Phase; size: FeatureListItem['size'] },
+  feature: { phase: Phase },
 ): { phase: Phase; state: StepState }[] {
   return PHASE_ORDER.map((phase) => ({ phase, state: stepState(feature, phase) }))
 }
@@ -306,7 +300,7 @@ export function isReadonlyView(feature: { phase: Phase }, effective: Phase): boo
 
 /** The full workspace pipeline stepper for a feature at a given viewed phase. */
 export function pipelineSteps(
-  feature: { phase: Phase; size: FeatureListItem['size'] },
+  feature: { phase: Phase },
   effective: Phase,
 ): PipelineStep[] {
   return PHASE_ORDER.map((phase) => {

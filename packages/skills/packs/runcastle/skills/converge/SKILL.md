@@ -7,7 +7,7 @@ disable-model-invocation: false
 
 # Converge — close a mapped feature
 
-A mapped feature was too big for one window, so it was charted into a map and its waypoints were worked in their own sessions. Every waypoint is now terminal, the human clicked **Converge**, and the feature has already crossed G1 into the `spec` phase (or `tickets` for a `collapsed` feature). Your job: turn the compressed knowledge into a spec and tickets — the exact output an unbroken ideation session produces.
+A mapped feature was too big for one window, so it was charted into a map and its waypoints were worked in their own sessions. Every waypoint is now terminal, the human clicked **Converge**, and the feature has already crossed G1 into the `spec` phase. Your job: turn the compressed knowledge into a spec and tickets — the exact output an unbroken ideation session produces.
 
 ## Context hygiene is the whole game
 
@@ -15,19 +15,16 @@ Everything happens in this one window. **Never compact. Never `/clear`. Never su
 
 ## 0. Read ONLY the compressed knowledge
 
-1. Call `mcp__runcastle__get_feature_context`. It returns the feature (`slug`, `title`, `oneLiner`, `size`), current `phase`, and the docs on disk.
+1. Call `mcp__runcastle__get_feature_context`. It returns the feature (`slug`, `title`, `oneLiner`), current `phase`, and the docs on disk.
 2. Read **only** these two files under `docs/features/<slug>/`:
    - `map.md` — the destination, notes, and out-of-scope decisions.
    - `decisions.md` — every decision the waypoint sessions locked.
    **Do NOT read the waypoint session transcripts.** The map and decisions are the compression; trust them. If a decision is genuinely missing you may check the codebase for a *fact*, but never re-grill the human and never reopen a resolved waypoint — converge, do not re-ideate.
 3. `mcp__runcastle__record_event({ type: "converge.started", message: "<feature title>" })`.
 
-## 1. Size branch — run the pipeline in this window
+## 1. Run the pipeline in this window
 
-Read `feature.size` from step 0:
-
-- **`full`** → invoke `/runcastle:spec` (it writes `spec.md` and completes the `spec` phase); when it returns, invoke `/runcastle:tickets`.
-- **`collapsed`** → skip spec entirely; invoke `/runcastle:tickets` directly (it works from `decisions.md` + `map.md`).
+Invoke `/runcastle:spec` (it writes `spec.md` and completes the `spec` phase); when it returns, invoke `/runcastle:tickets`.
 
 **Re-convergence** — you may be a fresh session continuing a converge that crashed
 or was closed mid-way (the feature is past G1 but has no tickets). Pick up from
@@ -37,8 +34,7 @@ whatever already exists on disk:
   rewrite it, and proceed straight to `/runcastle:tickets`. (If the current
   `phase` is still `spec`, call `complete_phase` for spec first — the spec work
   is already done.)
-- If it does not exist (or the feature is `collapsed`), run the size branch
-  above as normal.
+- If it does not exist, run `/runcastle:spec` then `/runcastle:tickets` as normal.
 
 Do not open a new session for these. They run here, on top of the compressed knowledge you just read.
 

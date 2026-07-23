@@ -1,4 +1,4 @@
-import { FeatureSize, SessionKind } from '@runcastle/core'
+import { SessionKind } from '@runcastle/core'
 import * as z from 'zod'
 import { converge, endSession, launchSession, workWaypoint } from '../../launcher/launcher'
 import { emit } from '../../services/events'
@@ -17,7 +17,6 @@ export const featureRouter = router({
         projectId: z.string(),
         title: z.string().min(1),
         oneLiner: z.string(),
-        size: FeatureSize,
         mapped: z.boolean().optional(),
         baseBranch: z.string().optional(),
       }),

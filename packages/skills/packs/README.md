@@ -9,7 +9,7 @@ Four phase-scoped skills, each namespaced `/runcastle:<skill>`:
 | Skill | Invoked | Does |
 |---|---|---|
 | `/runcastle:ideate` | entry for `kind=ideation` | grills the human, locks decisions incrementally, drives spec + tickets out of one unbroken window |
-| `/runcastle:spec` | by ideate (size=full) | synthesizes `spec.md`, completes the `spec` phase |
+| `/runcastle:spec` | by ideate | synthesizes `spec.md`, completes the `spec` phase |
 | `/runcastle:tickets` | by ideate | emits tracer-bullet tickets via MCP, completes the `tickets` phase |
 | `/runcastle:qa` | entry for `kind=qa` | read-only Q&A over an existing feature; never advances phases |
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { FeatureSize, Phase, Ticket, TicketInput } from '../src/schemas'
+import { Phase, Ticket, TicketInput } from '../src/schemas'
 
 const validTicket = {
   title: 'Add health endpoint',
@@ -75,11 +75,5 @@ describe('enums', () => {
     expect(Phase.safeParse('ideation').success).toBe(true)
     expect(Phase.safeParse('shipped').success).toBe(true)
     expect(Phase.safeParse('bogus').success).toBe(false)
-  })
-
-  it('FeatureSize accepts full / collapsed only', () => {
-    expect(FeatureSize.safeParse('full').success).toBe(true)
-    expect(FeatureSize.safeParse('collapsed').success).toBe(true)
-    expect(FeatureSize.safeParse('medium').success).toBe(false)
   })
 })

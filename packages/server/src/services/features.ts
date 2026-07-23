@@ -1,6 +1,5 @@
 import type {
   Feature,
-  FeatureSize,
   GateDef,
   Project,
   Run,
@@ -77,8 +76,7 @@ export interface CreateFeatureInput {
   projectId: string
   title: string
   oneLiner: string
-  size: FeatureSize
-  /** Start the feature in mapped ideation (ADR-0001). Orthogonal to size. */
+  /** Start the feature in mapped ideation (ADR-0001). */
   mapped?: boolean
   /**
    * Branch to fork `feature/<slug>` off. Defaults to the project's `mainBranch`.
@@ -107,7 +105,6 @@ export async function createFeature(
     slug,
     title: input.title,
     oneLiner: input.oneLiner,
-    size: input.size,
     mapped: input.mapped ?? false,
     phase: 'ideation' as const,
     branch,

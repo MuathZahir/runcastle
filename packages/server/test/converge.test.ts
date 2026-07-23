@@ -55,8 +55,8 @@ describe('converge — mapped feature G1', () => {
     cleanup.length = 0
   })
 
-  async function mappedFeature(slug: string, size: 'full' | 'collapsed' = 'full') {
-    const feature = seedFeature(ctx, projectId, { slug, mapped: true, size })
+  async function mappedFeature(slug: string) {
+    const feature = seedFeature(ctx, projectId, { slug, mapped: true })
     await createFeatureBranch({ id: projectId, name: 't', repoPath, mainBranch: 'main' }, slug)
     cleanup.push(worktreeDir(projectId, slug))
     return feature
@@ -76,16 +76,6 @@ describe('converge — mapped feature G1', () => {
     const session = getSessionRow(ctx, sessionId)
     expect(session?.kind).toBe('converge')
     expect(session?.featureId).toBe(feature.id)
-  })
-
-  it('crosses G1 straight to tickets for a collapsed mapped feature (skips spec)', async () => {
-    const feature = await mappedFeature('small', 'collapsed')
-    const [a] = storeWaypoints(ctx, feature.id, [wp('a')])
-    resolve(ctx, a.id, 'resolved', 'answered')
-
-    const { sessionId } = await converge(ctx, { featureId: feature.id }, { spawn: false })
-    cleanup.push(sessionDir(sessionId))
-    expect(getFeatureRow(ctx, feature.id).phase).toBe('tickets')
   })
 
   it('refuses to converge while a waypoint is still open (no override)', async () => {
@@ -136,9 +126,9 @@ describe('converge — mapped feature G1', () => {
   })
 
   // --- re-convergence after a mid-run crash (E2E finding 3) ------------------
-  // A converge session that dies leaves the feature past G1 (phase spec, or
-  // tickets when collapsed) with zero tickets. That state must be recoverable:
-  // a fresh kind=converge session may be spawned exactly there — and only there.
+  // A converge session that dies leaves the feature past G1 (phase spec) with
+  // zero tickets. That state must be recoverable: a fresh kind=converge session
+  // may be spawned exactly there — and only there.
 
   it('refuses a second converge while the first converge session is still open', async () => {
     const feature = await mappedFeature('late')
@@ -170,19 +160,6 @@ describe('converge — mapped feature G1', () => {
     // the timeline says why this session exists
     const resumed = listAfter(ctx, feature.id, 0).find((e) => e.type === 'converge.resumed')
     expect(resumed).toBeTruthy()
-  })
-
-  it('allows re-convergence for a collapsed feature stranded at tickets with zero tickets', async () => {
-    const feature = await mappedFeature('stranded', 'collapsed')
-    const [a] = storeWaypoints(ctx, feature.id, [wp('a')])
-    resolve(ctx, a.id, 'resolved', 'answered')
-    const first = await converge(ctx, { featureId: feature.id }, { spawn: false }) // → tickets
-    cleanup.push(sessionDir(first.sessionId))
-    markSessionEnded(ctx, first.sessionId)
-
-    const second = await converge(ctx, { featureId: feature.id }, { spawn: false })
-    cleanup.push(sessionDir(second.sessionId))
-    expect(getFeatureRow(ctx, feature.id).phase).toBe('tickets')
   })
 
   it('refuses re-convergence once tickets exist (convergence completed)', async () => {
