@@ -1616,6 +1616,9 @@ details.wp-group-done > summary { cursor: pointer; list-style: revert; }
 }
 .sb-stop:hover:not(:disabled) { background: rgba(88, 166, 255, 0.12); }
 .sb-spacer { flex: 1; }
+.sb-notify { background: none; border: none; color: var(--text-3); cursor: pointer; font-family: var(--mono); font-size: 11px; padding: 0; transition: color var(--dur-1); }
+.sb-notify:hover { color: var(--text); }
+.sb-notify.is-on { color: var(--ok); }
 .sb-health { display: inline-flex; align-items: center; gap: 6px; color: var(--ph-shipped); }
 
 /* ============================================================================

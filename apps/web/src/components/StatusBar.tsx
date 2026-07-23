@@ -1,5 +1,6 @@
 import { trpc } from '../trpc'
 import { useToast } from '../lib/toast'
+import { useDesktopNotifications } from '../lib/use-notifications'
 import { SANDBOX_MODE, SERVER_PORT } from '../lib/env'
 import type { DriveState } from '../lib/workspace'
 
@@ -25,6 +26,7 @@ export function StatusBar({
   const healthy = !list.isError && list.data !== undefined
   const active = list.data?.find((f) => f.id === activeFeatureId)
   const runCount = list.data?.filter((f) => f.activeRun).length ?? 0
+  const notify = useDesktopNotifications(projectId, list.data ?? [])
 
   const stopDrive = trpc.feature.testDrive.useMutation({
     onSuccess: () => {
@@ -65,6 +67,19 @@ export function StatusBar({
         </span>
       )}
       <span className="sb-spacer" />
+      {notify.supported && (
+        <button
+          className={`sb-notify${notify.enabled ? ' is-on' : ''}`}
+          onClick={notify.toggle}
+          title={
+            notify.enabled
+              ? 'Desktop notifications on — click to disable'
+              : 'Notify me when a burn finishes'
+          }
+        >
+          {notify.enabled ? '🔔 notify' : '🔕 notify'}
+        </button>
+      )}
       <span className="sb-item">
         {runCount} run{runCount === 1 ? '' : 's'}
       </span>
