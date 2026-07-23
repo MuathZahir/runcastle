@@ -76,6 +76,17 @@ export const featureRouter = router({
     .input(z.object({ featureId: z.string(), gate: gateId, reason: z.string().min(1) }))
     .mutation(({ ctx, input }) => overrideGate(ctx, input.featureId, input.gate, input.reason)),
 
+  // Archive a feature from any phase (decision #8): ends any live session, hides
+  // it behind the sidebar's show-archived filter, keeps all data. Reversible via
+  // `unarchive`. Mirrors the `project.close` precedent (a reversible hide).
+  archive: publicProcedure
+    .input(z.object({ featureId: z.string() }))
+    .mutation(({ ctx, input }) => features.archiveFeature(ctx, input.featureId)),
+
+  unarchive: publicProcedure
+    .input(z.object({ featureId: z.string() }))
+    .mutation(({ ctx, input }) => features.unarchiveFeature(ctx, input.featureId)),
+
   burn: publicProcedure
     // `model` is a per-run override (issue #48) — the scripted smoke passes its
     // cheap model here instead of the retired RUNCASTLE_MODEL env hack.

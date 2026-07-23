@@ -1,5 +1,6 @@
 import type {
   Feature,
+  FeatureStatus,
   GateDef,
   Project,
   Run,
@@ -27,6 +28,7 @@ import {
   rowToFeature,
   setPhase,
 } from './repo'
+import { endSession } from '../pty/end-session'
 import { getTicket, listByFeature, updateTicket } from './tickets'
 import { frontier, listByFeature as listWaypoints } from './waypoints'
 import { startRun } from '../workflows/runner'
@@ -462,6 +464,54 @@ export function escalateToMap(
     data: { destination: input.destination },
   })
   return { ok: true }
+}
+
+/**
+ * Archive a feature (decision #8): allowed from any phase and any status except
+ * an already-archived one. Ends any live session first (the same PTY-killing
+ * teardown the End-session button uses), flips status to `archived`, and emits
+ * `feature.archived`. All data is kept — archiving only hides the feature behind
+ * the sidebar's show-archived filter; `unarchiveFeature` reverses it.
+ */
+export function archiveFeature(ctx: AppCtx, featureId: string): Feature {
+  const feature = getFeatureRow(ctx, featureId)
+  if (feature.status === 'archived') {
+    throw new GateError(`feature ${feature.slug} is already archived`)
+  }
+
+  // End any live session — an archived feature must not keep a terminal alive.
+  const live = listSessionsByFeature(ctx, featureId).find((s) => s.status === 'live')
+  if (live) endSession(ctx, live.id)
+
+  ctx.db.update(features).set({ status: 'archived' }).where(eq(features.id, featureId)).run()
+  emit(ctx, featureId, {
+    type: 'feature.archived',
+    message: `feature ${feature.slug} archived`,
+    data: { from: feature.status },
+  })
+  return { ...feature, status: 'archived' }
+}
+
+/**
+ * Unarchive a feature (decision #8): restore its pre-archive status, derived
+ * from the phase — a feature that reached `shipped` is restored to `shipped`,
+ * everything else to `active` (status only ever holds those three values, so
+ * deriving is exact). Emits `feature.unarchived`.
+ */
+export function unarchiveFeature(ctx: AppCtx, featureId: string): Feature {
+  const feature = getFeatureRow(ctx, featureId)
+  if (feature.status !== 'archived') {
+    throw new GateError(`feature ${feature.slug} is not archived`)
+  }
+
+  const restored: FeatureStatus = feature.phase === 'shipped' ? 'shipped' : 'active'
+  ctx.db.update(features).set({ status: restored }).where(eq(features.id, featureId)).run()
+  emit(ctx, featureId, {
+    type: 'feature.unarchived',
+    message: `feature ${feature.slug} unarchived (${restored})`,
+    data: { status: restored },
+  })
+  return { ...feature, status: restored }
 }
 
 function gateState(ctx: AppCtx, feature: Feature): FeatureGateState {

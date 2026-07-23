@@ -475,18 +475,24 @@ button {
 
 .feature-row {
   width: 100%;
+  display: flex;
+  align-items: center;
+  border-radius: var(--radius-sm);
+  position: relative;
+  transition: background var(--dur-1) var(--ease);
+}
+.feature-row-main {
+  flex: 1;
+  min-width: 0;
   min-height: 30px;
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 0 8px 0 9px;
+  padding: 0 4px 0 9px;
   border: none;
   background: none;
-  border-radius: var(--radius-sm);
   cursor: pointer;
   text-align: left;
-  position: relative;
-  transition: background var(--dur-1) var(--ease);
 }
 .feature-row::before {
   content: "";
@@ -505,8 +511,65 @@ button {
 .feature-row.is-active { background: var(--panel-3); }
 .feature-row.is-active::before { transform: scaleY(1); }
 .feature-row.is-active .feature-slug { color: var(--text); }
-.feature-row.is-shipped { opacity: 0.55; }
-.feature-row.is-shipped:hover { opacity: 0.85; }
+.feature-row.is-dim { opacity: 0.55; }
+.feature-row.is-dim:hover { opacity: 0.85; }
+
+/* per-row kebab actions menu (Archive / Unarchive; ticket 8 adds Delete) */
+.row-actions { position: relative; flex: 0 0 auto; padding-right: 4px; }
+.row-actions-btn {
+  border: none;
+  background: none;
+  color: var(--text-3);
+  cursor: pointer;
+  font-size: 15px;
+  line-height: 1;
+  padding: 2px 5px;
+  border-radius: var(--radius-sm);
+  transition: background var(--dur-1) var(--ease), color var(--dur-1) var(--ease);
+}
+.row-actions-btn:hover { background: var(--panel-3); color: var(--text); }
+.row-actions-menu {
+  position: absolute;
+  right: 4px;
+  top: calc(100% - 2px);
+  z-index: 20;
+  min-width: 128px;
+  display: flex;
+  flex-direction: column;
+  padding: 4px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  box-shadow: 0 6px 20px -8px rgba(0, 0, 0, 0.6);
+}
+.row-actions-item {
+  border: none;
+  background: none;
+  text-align: left;
+  padding: 5px 8px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  color: var(--text-2);
+  font-size: 12.5px;
+  transition: background var(--dur-1) var(--ease), color var(--dur-1) var(--ease);
+}
+.row-actions-item:hover { background: var(--panel-3); color: var(--text); }
+.row-actions-item.is-danger { color: var(--danger); }
+
+.show-archived-toggle {
+  width: 100%;
+  margin-top: 8px;
+  padding: 6px 9px;
+  border: none;
+  background: none;
+  color: var(--text-3);
+  cursor: pointer;
+  font-size: 11.5px;
+  text-align: left;
+  border-radius: var(--radius-sm);
+  transition: background var(--dur-1) var(--ease), color var(--dur-1) var(--ease);
+}
+.show-archived-toggle:hover { background: var(--panel-3); color: var(--text-2); }
 .feature-glyph {
   font-family: var(--mono);
   font-size: 12px;
