@@ -52,7 +52,7 @@ export interface NeedsMe {
  * reflected in the overview primary action (which uses full `feature.get` data).
  */
 export function needsMe(f: FeatureListItem): NeedsMe | null {
-  if (f.status === 'shipped') return null
+  if (f.status === 'shipped' || f.status === 'archived') return null
   if (f.activeRun) return null // burning: shown as a spinner, not a needs-me dot
   if (f.ticketCounts.failed > 0)
     return { kind: 'attention', label: 'run failed — needs attention' }
@@ -216,7 +216,7 @@ export function skipsSpec(feature: { size: FeatureListItem['size'] }): boolean {
 
 // --- triage sidebar --------------------------------------------------------
 
-export type TriageKey = 'needsYou' | 'agentWorking' | 'inProgress' | 'shipped'
+export type TriageKey = 'needsYou' | 'agentWorking' | 'inProgress' | 'shipped' | 'archived'
 
 export interface TriageGroup {
   key: TriageKey
@@ -226,9 +226,11 @@ export interface TriageGroup {
 
 /**
  * Which triage lane a feature belongs to. Order of checks matters — the first
- * match wins.
+ * match wins. Archived wins over everything: an archived feature carries no
+ * needs-me / working state, it only sits in the archived lane.
  */
 export function triageOf(f: FeatureListItem): TriageKey {
+  if (f.status === 'archived') return 'archived'
   if (f.status === 'shipped') return 'shipped'
   if (f.activeRun) return 'agentWorking'
   if (needsMe(f)) return 'needsYou'
@@ -238,14 +240,20 @@ export function triageOf(f: FeatureListItem): TriageKey {
 /**
  * Group features into the sidebar's triage lanes (app-redesign). Preserves the
  * incoming order within each lane (the server returns newest-first). Empty lanes
- * are omitted; lanes are returned in display order.
+ * are omitted; lanes are returned in display order. Archived features are
+ * excluded from the default view (decision #8) — pass `showArchived` to surface
+ * them in a trailing Archived lane.
  */
-export function triage(features: FeatureListItem[]): TriageGroup[] {
+export function triage(
+  features: FeatureListItem[],
+  opts: { showArchived?: boolean } = {},
+): TriageGroup[] {
   const buckets: Record<TriageKey, FeatureListItem[]> = {
     needsYou: [],
     agentWorking: [],
     inProgress: [],
     shipped: [],
+    archived: [],
   }
   for (const f of features) buckets[triageOf(f)].push(f)
 
@@ -255,6 +263,7 @@ export function triage(features: FeatureListItem[]): TriageGroup[] {
     { key: 'inProgress', label: 'In progress' },
     { key: 'shipped', label: 'Shipped' },
   ]
+  if (opts.showArchived) order.push({ key: 'archived', label: 'Archived' })
   return order
     .map(({ key, label }) => ({ key, label, features: buckets[key] }))
     .filter((g) => g.features.length > 0)
@@ -335,6 +344,8 @@ export type ActionKind =
   | 'merge' // feature.merge (G5)
   | 'askQuestions' // launchSession { kind: 'qa' }
   | 'revisit' // launchSession { kind: 'revisit' } — resume the old conversation, amend docs + tickets
+  | 'archive' // feature.archive — hide the feature, end any live session
+  | 'unarchive' // feature.unarchive — restore the feature to its lane
 
 export interface NextAction {
   label: string
@@ -371,6 +382,20 @@ export function nextStep(full: FeatureFull, ctx: { driving: boolean }): NextStep
   const run = latestRun(runs)
   const running = run?.status === 'running'
   const nextName = nextPhase(feature)
+
+  // An archived feature is parked out of the pipeline (decision #8): it offers no
+  // phase next-step, only a way back. Guard before the phase switch so no phase
+  // surfaces grill/burn/merge actions while archived.
+  if (feature.status === 'archived') {
+    return {
+      kick: 'ARCHIVED',
+      title: 'Feature archived',
+      desc: 'This feature is archived and out of the pipeline. Unarchive it to pick the work back up.',
+      primary: { label: 'Unarchive', kind: 'unarchive' },
+      secondary: [],
+      busy: false,
+    }
+  }
 
   const canAdvance =
     !!gate.next && gate.satisfied && gate.next.id !== 'G3' && gate.next.id !== 'G5'
