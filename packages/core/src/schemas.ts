@@ -47,7 +47,7 @@ export type SessionKind = z.infer<typeof SessionKind>
 export const RunStatus = z.enum(['running', 'succeeded', 'failed', 'cancelled'])
 export type RunStatus = z.infer<typeof RunStatus>
 
-export const FeatureStatus = z.enum(['active', 'shipped'])
+export const FeatureStatus = z.enum(['active', 'shipped', 'archived'])
 export type FeatureStatus = z.infer<typeof FeatureStatus>
 
 export const SessionStatus = z.enum(['launching', 'live', 'ended'])
