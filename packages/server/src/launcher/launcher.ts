@@ -29,6 +29,7 @@ import {
   getSessionRow,
   markSessionEnded,
   mostRecentResumableSession,
+  setKickoffOverride,
 } from './sessions'
 
 // Re-exported so the `feature.endSession` router (W2) imports the real,
@@ -67,6 +68,12 @@ export interface LaunchSessionInput {
    * marked ended and the error propagates, so no orphaned session lingers.
    */
   waypointId?: string
+  /**
+   * Optional kickoff line, replacing the per-kind default typed into the PTY once
+   * the session goes live (`KICKOFF_LINES`). Callers pass a per-purpose briefing
+   * here — e.g. a revisit told to resolve a merge conflict or iterate on review.
+   */
+  kickoffLine?: string
 }
 
 export interface LaunchSessionOptions {
@@ -281,6 +288,11 @@ export async function launchSession(
     kind: input.kind,
     worktreePath,
   })
+
+  // Stash any per-purpose kickoff override BEFORE the session can go live — the
+  // kickoff is scheduled from `markSessionLive` (fired by the SessionStart hook),
+  // so the override must be registered against the session id ahead of it.
+  if (input.kickoffLine) setKickoffOverride(session.id, input.kickoffLine)
 
   // A waypoint session claims its waypoint BEFORE spawning (SPEC §13.2). The
   // prior LIVE session's cc id (`lastSessionId` — promoted only when a session
