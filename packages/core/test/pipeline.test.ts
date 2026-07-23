@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { PIPELINE, nextGate, nextPhase } from '../src/pipeline'
+import { PIPELINE, REVIEW_LOOP_BACK, loopBackPhase, nextGate, nextPhase } from '../src/pipeline'
 import type { Phase } from '../src/schemas'
 
 const full = (phase: Phase) => ({ phase })
@@ -68,6 +68,28 @@ describe('nextGate', () => {
 
   it('returns null at the terminal phase', () => {
     expect(nextGate(full('shipped'))).toBeNull()
+  })
+})
+
+describe('review → implementation loop (CONTEXT.md decision #7)', () => {
+  it('REVIEW_LOOP_BACK is the review → implementation transition', () => {
+    expect(REVIEW_LOOP_BACK).toEqual({ from: 'review', to: 'implementation' })
+  })
+
+  it('loopBackPhase returns implementation only from review', () => {
+    expect(loopBackPhase(full('review'))).toBe('implementation')
+    expect(loopBackPhase(full('ideation'))).toBeNull()
+    expect(loopBackPhase(full('spec'))).toBeNull()
+    expect(loopBackPhase(full('tickets'))).toBeNull()
+    expect(loopBackPhase(full('implementation'))).toBeNull()
+    expect(loopBackPhase(full('shipped'))).toBeNull()
+  })
+
+  it('is the lone backward step — nextPhase stays forward-only from review', () => {
+    // Forward and loop-back are distinct transitions; review advances to shipped,
+    // the loop goes back to implementation.
+    expect(nextPhase(full('review'))).toBe('shipped')
+    expect(loopBackPhase(full('review'))).toBe('implementation')
   })
 })
 
