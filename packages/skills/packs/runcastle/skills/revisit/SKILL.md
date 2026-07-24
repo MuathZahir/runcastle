@@ -23,6 +23,15 @@ The human came back: they remembered a constraint, changed their mind, or learne
    - `done` work now wrong → emit a NEW ticket that corrects it. Never touch done/burning tickets.
 5. **Close.** `mcp__runcastle__record_event({ type: "feature.revisited", message: "<one-line gist of what changed>" })`, then tell the human what state you left things in — especially whether a re-Burn is needed (pending tickets exist and the feature is at `implementation`).
 
+## Review iteration ("Iterate")
+
+At the **review** phase this same session is surfaced as **Iterate**: the tickets were burned, the human test-drove the branch, and now they want to fix what they found. The moves are the same — docs, then ticket surgery — with a review flavour:
+
+1. **Read the outcome first.** `get_feature_context` carries the latest run outcome and every ticket's final state (done / failed / cancelled). Skim it before the interview so you know what already shipped and what failed.
+2. **Interview about the test drive.** Ask what they hit — bugs, rough edges, missing polish, follow-on tweaks. One concrete change per fix ticket.
+3. **Emit fix tickets.** New work → `emit_tickets`. If a just-burned ticket was wrong, emit a NEW fix ticket (never reopen `done` work). Reconcile stale pending tickets with `update_ticket` / `cancel_ticket`.
+4. **Hand back to Burn.** Do NOT advance the phase. When the cards are ready, tell the human to review them and click **Burn** — burning from review loops the feature back through implementation, and the run returns it to review when it finishes. The loop repeats until they click Merge & ship.
+
 ## Do NOT
 
 - **Never call `complete_phase`.** A revisit has no gates to cross; the human drives the pipeline from the UI.

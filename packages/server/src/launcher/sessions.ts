@@ -74,8 +74,9 @@ export interface MarkLiveInput {
  * Going live is the moment a session becomes RESUMABLE, so this is also where a
  * waypoint claim's `lastSessionId` is promoted (never at claim time — a resume
  * attempt that dies before this point must not clobber the previous good id).
- * A converge session additionally gets its kickoff line injected into the PTY:
- * its job is fully specified upfront, so it should not idle at the prompt.
+ * Every session kind additionally gets its kickoff line injected into the PTY:
+ * each kind has a defined opening move, so none should idle at the prompt waiting
+ * for the human to type "Hi".
  */
 export function markSessionLive(
   ctx: AppCtx,
@@ -96,19 +97,19 @@ export function markSessionLive(
   const firstTimeLive = existing.status !== 'live'
   if (firstTimeLive) {
     promoteLastSession(ctx, id)
-    if (existing.kind === 'converge') scheduleConvergeKickoff(ctx, existing)
+    scheduleKickoff(ctx, existing)
   }
   return getSessionRow(ctx, id)
 }
 
 /**
- * Converge kickoff (kind=converge only). The session-start hook fires while the
- * claude TUI is still mounting, so writing immediately can race the input
- * handler; a short fixed delay after `live` is the pragmatic point where the
- * prompt is interactive (any trust/permission dialog blocks startup BEFORE the
- * SessionStart hook, so it cannot swallow this input). Best-effort by design:
- * no PTY entry (spawn:false smoke / tests) or an exited PTY is a silent no-op, and the
- * worst failure mode is the line sitting unsubmitted in the input box.
+ * Kickoff (every session kind). The session-start hook fires while the claude
+ * TUI is still mounting, so writing immediately can race the input handler; a
+ * short fixed delay after `live` is the pragmatic point where the prompt is
+ * interactive (any trust/permission dialog blocks startup BEFORE the SessionStart
+ * hook, so it cannot swallow this input). Best-effort by design: no PTY entry
+ * (spawn:false smoke / tests) or an exited PTY is a silent no-op, and the worst
+ * failure mode is the line sitting unsubmitted in the input box.
  *
  * Submission is a SEPARATE `\r` keystroke, written a beat after the text
  * (E2E regression: text+`\r` in ONE write left the line sitting unsubmitted in
@@ -116,11 +117,54 @@ export function markSessionLive(
  * chunk as pasted text, not as the Enter key; it must land as its own
  * keystroke after the text has settled).
  */
-export const CONVERGE_KICKOFF_DELAY_MS = 1500
-export const CONVERGE_KICKOFF_SUBMIT_DELAY_MS = 350
+export const KICKOFF_DELAY_MS = 1500
+export const KICKOFF_SUBMIT_DELAY_MS = 350
+
+/** The converge kickoff line, unchanged (E2E-proven — kept named for clarity). */
 export const CONVERGE_KICKOFF_LINE =
   'Proceed with your task: invoke /runcastle:converge and drive spec then tickets ' +
   'from map.md + decisions.md, per your system prompt.'
+
+/**
+ * The per-kind kickoff line typed into a freshly-live session so no session
+ * starts dead. Each line names the same opening skill its appended system prompt
+ * does (`renderSystemPrompt` in artifacts.ts) so the injected line and the brief
+ * agree on the first move. A later ticket's per-purpose revisit briefings arrive
+ * via the `launchSession` override (see `setKickoffOverride`), not this table.
+ */
+export const KICKOFF_LINES: Record<SessionKind, string> = {
+  ideation:
+    'Proceed with your task: invoke the /runcastle:ideate skill and drive the ideation session.',
+  qa:
+    'Proceed with your task: invoke the /runcastle:qa skill and answer questions from the ' +
+    'docs and code — do not advance phases or emit tickets.',
+  waypoint:
+    'Proceed with your task: invoke the /runcastle:waypoint skill and work your assigned ' +
+    'waypoint to a resolution.',
+  converge: CONVERGE_KICKOFF_LINE,
+  revisit:
+    'Proceed with your task: invoke the /runcastle:revisit skill and work through what the ' +
+    'human brings up.',
+}
+
+/** The kickoff line for a session: an explicit override wins, else the per-kind default. */
+export function kickoffLineFor(kind: SessionKind, override?: string): string {
+  return override ?? KICKOFF_LINES[kind]
+}
+
+/**
+ * Pending per-session kickoff overrides, keyed by session id. `launchSession`
+ * stashes an override here BEFORE spawning; `scheduleKickoff` consumes it when
+ * the session goes live (kickoff is scheduled from `markSessionLive`, decoupled
+ * from launch by the SessionStart hook, so the override must survive the gap).
+ * Cleared on consume and on session end so the map never grows unbounded.
+ */
+const pendingKickoffOverrides = new Map<string, string>()
+
+/** Register a kickoff line that replaces the per-kind default for one session. */
+export function setKickoffOverride(sessionId: string, line: string): void {
+  pendingKickoffOverrides.set(sessionId, line)
+}
 
 /**
  * The two-write kickoff sequence (exported seam, unit-tested): write the prompt
@@ -131,15 +175,16 @@ export const CONVERGE_KICKOFF_LINE =
  * means "submitted", not "typed").
  */
 export function writeKickoffSequence(
+  line: string,
   io: {
     write: (data: string) => void
     alive: () => boolean
     onSubmitted?: () => void
   },
-  submitDelayMs: number = CONVERGE_KICKOFF_SUBMIT_DELAY_MS,
+  submitDelayMs: number = KICKOFF_SUBMIT_DELAY_MS,
 ): void {
   if (!io.alive()) return
-  io.write(CONVERGE_KICKOFF_LINE)
+  io.write(line)
   const submit = setTimeout(() => {
     try {
       if (!io.alive()) return
@@ -153,10 +198,12 @@ export function writeKickoffSequence(
   submit.unref?.()
 }
 
-function scheduleConvergeKickoff(ctx: AppCtx, session: SessionRow): void {
+function scheduleKickoff(ctx: AppCtx, session: SessionRow): void {
+  const line = kickoffLineFor(session.kind, pendingKickoffOverrides.get(session.id))
+  pendingKickoffOverrides.delete(session.id)
   const timer = setTimeout(() => {
     try {
-      writeKickoffSequence({
+      writeKickoffSequence(line, {
         write: (data) => ptyRegistry().get(session.id)?.pty.write(data),
         alive: () => {
           const entry = ptyRegistry().get(session.id)
@@ -165,15 +212,15 @@ function scheduleConvergeKickoff(ctx: AppCtx, session: SessionRow): void {
         onSubmitted: () => {
           emit(ctx, session.featureId, {
             type: 'session.kickoff',
-            message: 'converge session kicked off automatically',
-            data: { sessionId: session.id },
+            message: `${session.kind} session kicked off automatically`,
+            data: { sessionId: session.id, kind: session.kind },
           })
         },
       })
     } catch {
       // best-effort — a failed kickoff just leaves the user to type
     }
-  }, CONVERGE_KICKOFF_DELAY_MS)
+  }, KICKOFF_DELAY_MS)
   // Never hold the process open for a kickoff (tests, shutdown).
   timer.unref?.()
 }
@@ -182,6 +229,8 @@ function scheduleConvergeKickoff(ctx: AppCtx, session: SessionRow): void {
 export function markSessionEnded(ctx: AppCtx, id: string): SessionRow | null {
   const existing = getSessionRow(ctx, id)
   if (!existing) return null
+  // Drop any un-consumed kickoff override (session ended before going live).
+  pendingKickoffOverrides.delete(id)
   ctx.db.update(sessions).set({ status: 'ended' }).where(eq(sessions.id, id)).run()
   return getSessionRow(ctx, id)
 }

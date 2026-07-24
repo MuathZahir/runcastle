@@ -24,17 +24,14 @@ describe('mapped feature scaffolding', () => {
     projectId = seedProject(ctx, repoPath).id
   })
 
-  it('round-trips the mapped flag through the store (orthogonal to size)', () => {
+  it('round-trips the mapped flag through the store', () => {
     const plain = seedFeature(ctx, projectId, { slug: 'plain' })
     const mapped = seedFeature(ctx, projectId, {
       slug: 'charted',
-      size: 'collapsed',
       mapped: true,
     })
     expect(plain.mapped).toBe(false)
     expect(mapped.mapped).toBe(true)
-    // orthogonal to size — a collapsed feature can still be mapped
-    expect(mapped.size).toBe('collapsed')
   })
 
   it('scaffolds map.md with the four sections only when mapped', () => {

@@ -13,6 +13,7 @@ import {
   nextStep,
   PHASE_LABELS,
   pipelineSteps,
+  REVIEW_ITERATE_KICKOFF,
   type ActionKind,
   type NextStep,
   type PipelineStep,
@@ -79,6 +80,13 @@ export function Workspace({
   })
   const testDrive = trpc.feature.testDrive.useMutation({ onError: (e) => toast.push(e.message) })
   const merge = trpc.feature.merge.useMutation({ onError: (e) => toast.push(e.message) })
+  const unarchive = trpc.feature.unarchive.useMutation({
+    onSuccess: () => {
+      invalidate()
+      toast.push('feature unarchived', 'success')
+    },
+    onError: (e) => toast.push(e.message),
+  })
 
   if (q.isLoading) {
     return (
@@ -121,7 +129,8 @@ export function Workspace({
     burn.isPending ||
     cancel.isPending ||
     testDrive.isPending ||
-    merge.isPending
+    merge.isPending ||
+    unarchive.isPending
 
   const runAction = (kind: ActionKind) => {
     switch (kind) {
@@ -132,7 +141,14 @@ export function Workspace({
         launch.mutate({ featureId, kind: 'qa' })
         break
       case 'revisit':
-        launch.mutate({ featureId, kind: 'revisit' })
+        launch.mutate({
+          featureId,
+          kind: 'revisit',
+          // At review the revisit is an Iterate loop — brief the agent to read
+          // the run outcome, interview about the test drive, and emit fix tickets
+          // (ticket-3 kickoff override). Other phases use the default revisit line.
+          kickoffLine: feature.phase === 'review' ? REVIEW_ITERATE_KICKOFF : undefined,
+        })
         break
       case 'openGrill':
         onViewPhase(null)
@@ -148,6 +164,9 @@ export function Workspace({
         break
       case 'cancelRun':
         if (run) cancel.mutate({ runId: run.id })
+        break
+      case 'unarchive':
+        unarchive.mutate({ featureId })
         break
       case 'testDriveStart':
         testDrive.mutate(
@@ -182,7 +201,12 @@ export function Workspace({
                 onDriveChange(null)
                 toast.push('merged — feature shipped', 'success')
               } else if (res.conflict) {
-                toast.push('merge conflict — resolve and retry')
+                const n = res.files.length
+                toast.push(
+                  n > 0
+                    ? `merge conflict in ${n} file${n === 1 ? '' : 's'} — resolve below and retry`
+                    : 'merge conflict — resolve below and retry',
+                )
               }
             },
           },

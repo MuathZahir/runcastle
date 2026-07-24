@@ -20,10 +20,6 @@ export const Phase = z.enum([
 ])
 export type Phase = z.infer<typeof Phase>
 
-/** `collapsed` = small feature; skips the `spec` phase. */
-export const FeatureSize = z.enum(['full', 'collapsed'])
-export type FeatureSize = z.infer<typeof FeatureSize>
-
 /**
  * `cancelled` is a terminal state set by a human/agent (revisit sessions,
  * `cancel_ticket`) — never by the burner. The scheduler skips cancelled tickets
@@ -47,7 +43,7 @@ export type SessionKind = z.infer<typeof SessionKind>
 export const RunStatus = z.enum(['running', 'succeeded', 'failed', 'cancelled'])
 export type RunStatus = z.infer<typeof RunStatus>
 
-export const FeatureStatus = z.enum(['active', 'shipped'])
+export const FeatureStatus = z.enum(['active', 'shipped', 'archived'])
 export type FeatureStatus = z.infer<typeof FeatureStatus>
 
 export const SessionStatus = z.enum(['launching', 'live', 'ended'])
@@ -151,11 +147,10 @@ export const Feature = z.object({
   slug: z.string(),
   title: z.string(),
   oneLiner: z.string(),
-  size: FeatureSize,
   /**
    * Mapped ideation (ADR-0001 / SPEC §13): the feature's ideation phase runs as
-   * a shared waypoint map instead of a single grill. Orthogonal to `size`; set
-   * by the creation toggle or a mid-grill escalation. Defaults to false.
+   * a shared waypoint map instead of a single grill. Set by a mid-grill
+   * escalation. Defaults to false.
    */
   mapped: z.boolean(),
   phase: Phase,

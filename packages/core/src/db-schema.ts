@@ -1,6 +1,5 @@
 import { integer, sqliteTable, text } from 'drizzle-orm/sqlite-core'
 import type {
-  FeatureSize,
   FeatureStatus,
   Phase,
   RunStatus,
@@ -41,7 +40,6 @@ export const features = sqliteTable('features', {
   slug: text('slug').notNull(),
   title: text('title').notNull(),
   oneLiner: text('one_liner').notNull(),
-  size: text('size').notNull().$type<FeatureSize>(),
   mapped: integer('mapped', { mode: 'boolean' }).notNull().default(false),
   phase: text('phase').notNull().$type<Phase>(),
   branch: text('branch').notNull(),

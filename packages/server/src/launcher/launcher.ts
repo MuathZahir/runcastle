@@ -29,6 +29,7 @@ import {
   getSessionRow,
   markSessionEnded,
   mostRecentResumableSession,
+  setKickoffOverride,
 } from './sessions'
 
 // Re-exported so the `feature.endSession` router (W2) imports the real,
@@ -67,6 +68,12 @@ export interface LaunchSessionInput {
    * marked ended and the error propagates, so no orphaned session lingers.
    */
   waypointId?: string
+  /**
+   * Optional kickoff line, replacing the per-kind default typed into the PTY once
+   * the session goes live (`KICKOFF_LINES`). Callers pass a per-purpose briefing
+   * here — e.g. a revisit told to resolve a merge conflict or iterate on review.
+   */
+  kickoffLine?: string
 }
 
 export interface LaunchSessionOptions {
@@ -282,6 +289,11 @@ export async function launchSession(
     worktreePath,
   })
 
+  // Stash any per-purpose kickoff override BEFORE the session can go live — the
+  // kickoff is scheduled from `markSessionLive` (fired by the SessionStart hook),
+  // so the override must be registered against the session id ahead of it.
+  if (input.kickoffLine) setKickoffOverride(session.id, input.kickoffLine)
+
   // A waypoint session claims its waypoint BEFORE spawning (SPEC §13.2). The
   // prior LIVE session's cc id (`lastSessionId` — promoted only when a session
   // actually started) is captured so a released-then-reworked waypoint resumes
@@ -458,9 +470,9 @@ export async function workWaypoint(
  * the cage). Remaining fog (`Not yet specified` prose) is never checked here — it
  * is a soft UI warning, shown but never enforced.
  *
- * Crossing G1 advances the feature into `spec` (or `tickets` for a collapsed
- * feature — nextPhase is unchanged), so the fresh kind=`converge` session it
- * spawns rejoins the normal pipeline with NO downstream special-casing: it reads
+ * Crossing G1 advances the feature into `spec`, so the fresh kind=`converge`
+ * session it spawns rejoins the normal pipeline with NO downstream
+ * special-casing: it reads
  * only the compressed knowledge (map + decisions) and runs the existing
  * spec → tickets skills unbroken.
  */
@@ -482,8 +494,7 @@ export async function converge(
   const result = checkGate(ctx, gate.check, feature)
 
   if (result.satisfied) {
-    // Cross G1 into spec (or tickets for a collapsed feature — nextPhase is
-    // unchanged). G1 is never G3, so this plain crossing is legitimate.
+    // Cross G1 into spec. G1 is never G3, so this plain crossing is legitimate.
     const next = nextPhase(feature)
     if (!next) throw new GateError('feature is already at the final phase')
     setPhase(ctx, feature.id, next, 'phase.advanced', `converging (${next})`)
@@ -499,8 +510,8 @@ export async function converge(
 
 /**
  * RE-convergence (E2E finding 3): a converge session that crashed or was closed
- * mid-way leaves the feature stranded — G1 was already crossed (phase `spec`, or
- * `tickets` for a collapsed feature) but no tickets were emitted, and the
+ * mid-way leaves the feature stranded — G1 was already crossed (phase `spec`)
+ * but no tickets were emitted, and the
  * ideation-only refusal made that state unrecoverable. Allow a fresh
  * kind=converge session exactly in that window: mapped feature at its post-G1,
  * pre-tickets phase with ZERO tickets and no live session. The new session

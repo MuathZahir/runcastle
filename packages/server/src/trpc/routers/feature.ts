@@ -1,4 +1,4 @@
-import { FeatureSize, SessionKind } from '@runcastle/core'
+import { SessionKind } from '@runcastle/core'
 import * as z from 'zod'
 import { converge, endSession, launchSession, workWaypoint } from '../../launcher/launcher'
 import { emit } from '../../services/events'
@@ -17,8 +17,6 @@ export const featureRouter = router({
         projectId: z.string(),
         title: z.string().min(1),
         oneLiner: z.string(),
-        size: FeatureSize,
-        mapped: z.boolean().optional(),
         baseBranch: z.string().optional(),
       }),
     )
@@ -33,8 +31,17 @@ export const featureRouter = router({
     .query(({ ctx, input }) => features.getFeatureFull(ctx, input.id)),
 
   // B1 behavior — the stub throws NotImplementedError('B1').
+  // `kickoffLine` is the per-purpose kickoff override (ticket 3 mechanism): the
+  // review-phase Iterate action passes its review-iteration briefing here so the
+  // revisit session opens on the right first move instead of the generic line.
   launchSession: publicProcedure
-    .input(z.object({ featureId: z.string(), kind: SessionKind }))
+    .input(
+      z.object({
+        featureId: z.string(),
+        kind: SessionKind,
+        kickoffLine: z.string().min(1).optional(),
+      }),
+    )
     .mutation(({ ctx, input }) => launchSession(ctx, input)),
 
   // Work a frontier waypoint (ADR-0001 §13.2): claim it transactionally, then
@@ -68,6 +75,26 @@ export const featureRouter = router({
   overrideGate: publicProcedure
     .input(z.object({ featureId: z.string(), gate: gateId, reason: z.string().min(1) }))
     .mutation(({ ctx, input }) => overrideGate(ctx, input.featureId, input.gate, input.reason)),
+
+  // Archive a feature from any phase (decision #8): ends any live session, hides
+  // it behind the sidebar's show-archived filter, keeps all data. Reversible via
+  // `unarchive`. Mirrors the `project.close` precedent (a reversible hide).
+  archive: publicProcedure
+    .input(z.object({ featureId: z.string() }))
+    .mutation(({ ctx, input }) => features.archiveFeature(ctx, input.featureId)),
+
+  unarchive: publicProcedure
+    .input(z.object({ featureId: z.string() }))
+    .mutation(({ ctx, input }) => features.unarchiveFeature(ctx, input.featureId)),
+
+  // Permanently delete a non-shipped feature (decision #8): cancels an active
+  // run, ends a live session, stops this feature's test drive, removes the talk
+  // worktree, deletes feature + runcastle temp branches, and drops all DB rows +
+  // session artifact dirs. Committed docs history is left untouched. Refuses a
+  // shipped feature (archive covers those). Behind a confirm dialog in the UI.
+  delete: publicProcedure
+    .input(z.object({ featureId: z.string() }))
+    .mutation(({ ctx, input }) => features.deleteFeature(ctx, input.featureId)),
 
   burn: publicProcedure
     // `model` is a per-run override (issue #48) — the scripted smoke passes its
@@ -106,12 +133,15 @@ export const featureRouter = router({
         setPhase(ctx, input.featureId, 'shipped', 'feature.shipped', `merged to ${res.target}`)
         setFeatureStatus(ctx, input.featureId, 'shipped')
       } else {
+        // Carry the base branch + conflicting files on the event so the review
+        // UI can surface the conflict card after a reload and brief the
+        // resolve-with-agent session (kickoff needs both).
         emit(ctx, input.featureId, {
           type: 'merge.conflict',
           message: 'merge conflict — resolve and retry',
-          data: { conflict: res.conflict },
+          data: { conflict: res.conflict, base: res.target, files: res.files ?? [] },
         })
       }
-      return { ok: res.ok, conflict: res.conflict }
+      return { ok: res.ok, conflict: res.conflict, base: res.target, files: res.files ?? [] }
     }),
 })

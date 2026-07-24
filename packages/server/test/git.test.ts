@@ -974,6 +974,9 @@ describe('mergeFeature', () => {
 
     expect(res.ok).toBe(false)
     expect(res.conflict).toBe(true)
+    // the conflicting files are reported (captured before the abort) so the
+    // review UI can list them and brief the resolve-with-agent session
+    expect(res.files).toEqual(['README.md'])
     // abort must leave the working tree clean and back on main
     expect((await g.raw(['status', '--porcelain'])).trim()).toBe('')
     expect(await currentBranch(g)).toBe('main')

@@ -93,7 +93,7 @@ describe('mapped-path smoke (issue #9)', () => {
   it('escalate → blocking waypoints → resolution cascade → G1 satisfiable → converge', async () => {
     // (1) mapped-path feature + a live ideation session so MCP resolves by header.
     const slug = 'mapped-play'
-    const feature = seedFeature(ctx, project.id, { slug, mapped: false, size: 'collapsed' })
+    const feature = seedFeature(ctx, project.id, { slug, mapped: false })
     const featureId = feature.id
     await createFeatureBranch(project, slug)
     cleanup.push(worktreeDir(project.id, slug))
@@ -158,11 +158,11 @@ describe('mapped-path smoke (issue #9)', () => {
     expect(full.frontierIds).toEqual([])
     expect(full.gate.satisfied).toBe(true)
 
-    // (6) converge crosses the satisfied G1 into tickets (collapsed skips spec).
+    // (6) converge crosses the satisfied G1 into spec.
     const conv = await converge(ctx, { featureId }, { spawn: false })
     cleanup.push(sessionDir(conv.sessionId))
     const shipped = await trpc.feature.get({ id: featureId })
-    expect(shipped.feature.phase).toBe('tickets')
+    expect(shipped.feature.phase).toBe('spec')
     expect(shipped.sessions.find((s) => s.id === conv.sessionId)?.kind).toBe('converge')
   })
 })

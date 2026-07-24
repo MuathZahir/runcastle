@@ -1,14 +1,13 @@
 import { useState } from 'react'
-import type { FeatureSize } from '@runcastle/core'
 import { trpc } from '../trpc'
+import { defaultBaseBranch } from '../lib/feature-ui'
 import { useToast } from '../lib/toast'
 import { Button } from '../ui'
 
 /**
  * The new-feature form (app-redesign) — owns the whole workspace while open.
- * Name it, pick a size, and starting it creates the feature AND opens a grill
- * session so the ideation body is live the moment you land on it. `full` skips
- * nothing; `collapsed` (Small) skips the spec phase.
+ * Name it, and starting it creates the feature AND opens a grill session so the
+ * ideation body is live the moment you land on it.
  */
 export function NewFeatureForm({
   projectId,
@@ -21,9 +20,7 @@ export function NewFeatureForm({
 }) {
   const [title, setTitle] = useState('')
   const [oneLiner, setOneLiner] = useState('')
-  const [size, setSize] = useState<FeatureSize>('full')
-  const [mapped, setMapped] = useState(false)
-  // Empty = fork off the project default; a value picks an explicit base branch.
+  // Empty = fork off the current-checkout default; a value picks an explicit base.
   const [base, setBase] = useState('')
   const utils = trpc.useUtils()
   const toast = useToast()
@@ -35,8 +32,10 @@ export function NewFeatureForm({
   // Remote-only branches (origin/…); picking one materializes a local base.
   const remoteList = branchesQ.data?.remoteBranches ?? []
   const noBranches = branchList.length === 0 && remoteList.length === 0
-  // What we'll actually fork off: the explicit pick, else the project default.
-  const effectiveBase = base || mainBranch
+  // Default to the branch the user is currently on (falls back to main); an
+  // explicit pick in the Advanced disclosure overrides it.
+  const defaultBase = branchesQ.data ? defaultBaseBranch(branchesQ.data) : mainBranch
+  const effectiveBase = base || defaultBase
 
   const launch = trpc.feature.launchSession.useMutation()
   const create = trpc.feature.create.useMutation({
@@ -61,8 +60,6 @@ export function NewFeatureForm({
         projectId,
         title: t,
         oneLiner: oneLiner.trim(),
-        size,
-        mapped,
         baseBranch: base || undefined,
       })
   }
@@ -73,8 +70,8 @@ export function NewFeatureForm({
         <div className="nf-kick">NEW FEATURE</div>
         <div className="nf-h">What are we building?</div>
         <div className="nf-sub">
-          Name it and pick a size — runcastle opens a grill session so you and Claude shape the idea
-          before any code is written.
+          Name it — runcastle opens a grill session so you and Claude shape the idea before any code
+          is written.
         </div>
 
         <input
@@ -100,75 +97,46 @@ export function NewFeatureForm({
           }}
         />
 
-        <div className="nf-controls">
-          <div className="size-toggle">
-            <button className={size === 'full' ? 'is-on' : ''} onClick={() => setSize('full')}>
-              Full
-            </button>
-            <button
-              className={size === 'collapsed' ? 'is-on' : ''}
-              onClick={() => setSize('collapsed')}
+        <details className="nf-advanced">
+          <summary className="nf-advanced-summary">Advanced</summary>
+
+          <div className="nf-base">
+            <label className="nf-base-label" htmlFor="nf-base-select">
+              Branch from
+            </label>
+            <select
+              id="nf-base-select"
+              className="nf-base-select"
+              value={effectiveBase}
+              disabled={branchesQ.isPending || noBranches}
+              onChange={(e) => setBase(e.target.value)}
             >
-              Small
-            </button>
-          </div>
-          <span className="size-hint">
-            {size === 'collapsed'
-              ? 'Small skips the spec phase.'
-              : 'Full runs the whole six-phase pipeline.'}
-          </span>
-        </div>
-
-        <div className="nf-base">
-          <label className="nf-base-label" htmlFor="nf-base-select">
-            Branch from
-          </label>
-          <select
-            id="nf-base-select"
-            className="nf-base-select"
-            value={effectiveBase}
-            disabled={branchesQ.isPending || noBranches}
-            onChange={(e) => setBase(e.target.value)}
-          >
-            {branchList.map((b) => (
-              <option key={b} value={b}>
-                {b}
-                {b === mainBranch ? ' (default)' : ''}
-                {b === currentBranch && b !== mainBranch ? ' (current)' : ''}
-              </option>
-            ))}
-            {remoteList.length > 0 && (
-              <optgroup label="Remote (creates a local branch)">
-                {remoteList.map((b) => (
-                  <option key={b} value={b}>
-                    {b}
-                  </option>
-                ))}
-              </optgroup>
-            )}
-          </select>
-          <span className="size-hint">
-            forks off this branch — and merges back into it when shipped.
-          </span>
-        </div>
-
-        <label className="nf-mapped">
-          <input
-            type="checkbox"
-            checked={mapped}
-            onChange={(e) => setMapped(e.target.checked)}
-          />
-          <span className="nf-mapped-text">
-            <span className="nf-mapped-label">Start mapped</span>
+              {branchList.map((b) => (
+                <option key={b} value={b}>
+                  {b}
+                  {b === mainBranch ? ' (default)' : ''}
+                  {b === currentBranch && b !== mainBranch ? ' (current)' : ''}
+                </option>
+              ))}
+              {remoteList.length > 0 && (
+                <optgroup label="Remote (creates a local branch)">
+                  {remoteList.map((b) => (
+                    <option key={b} value={b}>
+                      {b}
+                    </option>
+                  ))}
+                </optgroup>
+              )}
+            </select>
             <span className="size-hint">
-              Chart the idea as a waypoint map when it's too big for one grill — orthogonal to size.
+              forks off this branch — and merges back into it when shipped.
             </span>
-          </span>
-        </label>
+          </div>
 
-        <div className="nf-branch">
-          branch · feature/{slug || '…'} ← {effectiveBase || '…'}
-        </div>
+          <div className="nf-branch">
+            branch · feature/{slug || '…'} ← {effectiveBase || '…'}
+          </div>
+        </details>
 
         <div className="nf-actions">
           <Button variant="ghost" onClick={onCancel} disabled={busy}>

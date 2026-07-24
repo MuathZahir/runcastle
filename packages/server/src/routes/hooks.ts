@@ -136,8 +136,8 @@ function sessionStartContext(ctx: AppCtx, feature: Feature): string {
 
   return [
     `[runcastle] ${feature.title} — ${feature.oneLiner}`,
-    `phase: ${feature.phase} (size: ${feature.size}); branch: ${feature.branch}`,
-    `docs: docs/features/${feature.slug}/ (brief.md, decisions.md${feature.size === 'full' ? ', spec.md' : ''})`,
+    `phase: ${feature.phase}; branch: ${feature.branch}`,
+    `docs: docs/features/${feature.slug}/ (brief.md, decisions.md, spec.md)`,
     `tickets: ${ticketSummary}`,
     'Call the runcastle MCP tool `get_feature_context` for the full docs + tickets.',
   ].join('\n')

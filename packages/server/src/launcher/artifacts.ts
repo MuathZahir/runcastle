@@ -79,19 +79,19 @@ export function renderSystemPrompt(
     '## Feature',
     `- Slug: \`${feature.slug}\``,
     `- Branch: \`${feature.branch}\``,
-    `- Current phase: **${feature.phase}** (size: ${feature.size})`,
+    `- Current phase: **${feature.phase}**`,
     '',
     '## Pipeline',
     'Features move ideation → spec → tickets → implementation → review → shipped.',
-    'A `collapsed` feature skips the `spec` phase. Each transition is guarded by a',
-    'gate; you cross a gate by calling the `complete_phase` MCP tool, which runs',
-    'the gate check server-side and advances the feature.',
+    'Each transition is guarded by a gate; you cross a gate by calling the',
+    '`complete_phase` MCP tool, which runs the gate check server-side and advances',
+    'the feature.',
     '',
     '## Knowledge (versioned in the target repo)',
     `Feature docs live at \`${docs}/\`:`,
     `- \`${docs}/brief.md\` — the seed brief (title + one-liner).`,
     `- \`${docs}/decisions.md\` — decisions you capture while grilling (satisfies gate G1).`,
-    `- \`${docs}/spec.md\` — the spec, for \`full\` features (satisfies gate G2).`,
+    `- \`${docs}/spec.md\` — the spec (satisfies gate G2).`,
     'Write these files in THIS working directory (the feature\'s talk worktree);',
     'they are committed to the feature branch automatically at phase boundaries.',
     '',
@@ -143,7 +143,7 @@ export function renderWaypointPrompt(feature: Feature, waypoint?: Waypoint): str
     '## Feature',
     `- Slug: \`${feature.slug}\``,
     `- Branch: \`${feature.branch}\``,
-    `- Current phase: **${feature.phase}** (size: ${feature.size})`,
+    `- Current phase: **${feature.phase}**`,
     '',
     '## Map + knowledge (versioned in the target repo)',
     `Feature docs live at \`${docs}/\`:`,
@@ -170,8 +170,7 @@ export function renderWaypointPrompt(feature: Feature, waypoint?: Waypoint): str
  * closes a mapped feature: it reads ONLY the compressed knowledge — `map.md` +
  * `decisions.md` — never the waypoint transcripts, then runs `/runcastle:spec` →
  * `/runcastle:tickets` in one unbroken window. The feature has already crossed G1
- * into spec (or tickets when collapsed), so this rejoins the normal pipeline with
- * no special-casing.
+ * into spec, so this rejoins the normal pipeline with no special-casing.
  */
 export function renderConvergePrompt(feature: Feature): string {
   const docs = featureDocsRel(feature.slug)
@@ -194,7 +193,7 @@ export function renderConvergePrompt(feature: Feature): string {
     '## Feature',
     `- Slug: \`${feature.slug}\``,
     `- Branch: \`${feature.branch}\``,
-    `- Current phase: **${feature.phase}** (size: ${feature.size})`,
+    `- Current phase: **${feature.phase}**`,
     '',
     '## runcastle MCP tools',
     '- `get_feature_context()` — full feature + phase + docs contents (map + decisions).',
@@ -220,9 +219,30 @@ export function renderConvergePrompt(feature: Feature): string {
  * obsolete ones, `emit_tickets` for new work. It NEVER advances phases: the
  * pipeline position stays wherever it is, and downstream phases pick up the
  * amended docs/tickets on their own.
+ *
+ * At the `review` phase the same session is surfaced as **Iterate** (CONTEXT
+ * decision #6): the human has just test-driven the burned branch and found
+ * things to fix. The kickoff line briefs the review-iteration move (read the run
+ * outcome + ticket states, interview about the test drive, emit fix tickets);
+ * the prompt below flags that purpose so the session knows the amended docs +
+ * fix tickets feed a re-Burn that loops the feature back through implementation.
  */
 export function renderRevisitPrompt(feature: Feature): string {
   const docs = featureDocsRel(feature.slug)
+  const reviewIteration =
+    feature.phase === 'review'
+      ? [
+          '## Review iteration',
+          'This feature is at **review**: its tickets were burned and the human has been',
+          'test-driving the branch. Treat this as a fix-ticket interview — read the latest',
+          'run outcome and every ticket’s state via `get_feature_context`, ask what the test',
+          'drive surfaced (bugs, rough edges, tweaks), then emit fix tickets for that work and',
+          'edit/cancel any stale pending tickets. Do NOT advance the phase: once the cards are',
+          'ready, tell the human to review them and click Burn — burning from review loops the',
+          'feature back through implementation and returns it here when the run finishes.',
+          '',
+        ]
+      : []
   return [
     `# runcastle — ${feature.title} (revisit session)`,
     '',
@@ -235,10 +255,11 @@ export function renderRevisitPrompt(feature: Feature): string {
     'into the record, then reconcile the tickets with it. The docs are the',
     'artifact — later phases read them, never the transcripts.',
     '',
+    ...reviewIteration,
     '## Feature',
     `- Slug: \`${feature.slug}\``,
     `- Branch: \`${feature.branch}\``,
-    `- Current phase: **${feature.phase}** (size: ${feature.size})`,
+    `- Current phase: **${feature.phase}**`,
     '',
     '## Knowledge (versioned in the target repo)',
     `Feature docs live at \`${docs}/\`:`,

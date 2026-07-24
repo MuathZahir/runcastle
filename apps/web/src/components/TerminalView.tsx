@@ -3,6 +3,7 @@ import { Terminal } from '@xterm/xterm'
 import '@xterm/xterm/css/xterm.css'
 import { useEffect, useRef, useState } from 'react'
 import { TerminalClient, type TerminalStatus } from '../lib/terminal'
+import { mapTerminalKey } from '../lib/terminal-keys'
 
 /**
  * Embedded terminal view (UI-SPEC §5). Renders a live Claude Code session over
@@ -75,6 +76,16 @@ export function TerminalView({ sessionId, wsBase }: TerminalViewProps) {
 
     const dataSub = term.onData((d) => client.send(d))
     const resizeSub = term.onResize(({ cols, rows }) => client.resize(cols, rows))
+
+    // Modifier+Enter must insert a newline in the Claude prompt, not submit.
+    // Stock xterm emits a bare `\r` for it; intercept and send ESC+CR instead
+    // (return false so xterm doesn't also process the event — see terminal-keys).
+    term.attachCustomKeyEventHandler((ev) => {
+      const action = mapTerminalKey(ev)
+      if (!action.intercept) return true
+      if (action.bytes) client.send(action.bytes)
+      return false
+    })
 
     client.connect()
 

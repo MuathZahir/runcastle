@@ -37,7 +37,6 @@ export function seedFeature(
       slug,
       title: overrides.title ?? 'Demo feature',
       oneLiner: overrides.oneLiner ?? 'a demo feature',
-      size: overrides.size ?? 'full',
       mapped: overrides.mapped ?? false,
       phase: overrides.phase ?? 'ideation',
       branch: overrides.branch ?? `feature/${slug}`,

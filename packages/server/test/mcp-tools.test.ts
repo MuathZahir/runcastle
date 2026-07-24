@@ -46,7 +46,7 @@ describe('mcp tools', () => {
     repoPath = tmpRepo()
     const project = seedProject(ctx, repoPath)
     slug = 'dark-mode'
-    const feature = seedFeature(ctx, project.id, { slug, phase: 'ideation', size: 'full' })
+    const feature = seedFeature(ctx, project.id, { slug, phase: 'ideation' })
     featureId = feature.id
     session = createSessionRow(ctx, { featureId, kind: 'ideation', worktreePath: repoPath })
     markSessionLive(ctx, session.id)
@@ -149,7 +149,7 @@ describe('mcp tools', () => {
     // G3 (tickets → implementation) is the human Burn gate: only feature.burn
     // may cross it (CONTEXT.md two-click covenant). complete_phase must park.
     const project = seedProject(ctx, repoPath)
-    const feat = seedFeature(ctx, project.id, { slug: 'burn-me', phase: 'tickets', size: 'full' })
+    const feat = seedFeature(ctx, project.id, { slug: 'burn-me', phase: 'tickets' })
     const s = createSessionRow(ctx, { featureId: feat.id, kind: 'ideation', worktreePath: repoPath })
     storeTickets(ctx, feat.id, [ticket('only')])
 
@@ -181,7 +181,7 @@ describe('mcp mapped write path (ADR-0001 §13.3)', () => {
     repoPath = tmpRepo()
     const project = seedProject(ctx, repoPath)
     slug = 'big-feature'
-    const feature = seedFeature(ctx, project.id, { slug, phase: 'ideation', size: 'full' })
+    const feature = seedFeature(ctx, project.id, { slug, phase: 'ideation' })
     featureId = feature.id
     session = createSessionRow(ctx, { featureId, kind: 'ideation', worktreePath: repoPath })
     markSessionLive(ctx, session.id)

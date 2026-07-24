@@ -1,4 +1,4 @@
-import type { FeatureSize, Phase } from './schemas'
+import type { Phase } from './schemas'
 
 /**
  * The pipeline as data (CONTEXT.md decision #7). Phases are a linear order;
@@ -43,8 +43,7 @@ export const PIPELINE: PhaseDef[] = [
     phase: 'tickets',
     gateToEnter: {
       id: 'G2',
-      description:
-        'Spec written before breaking into tickets (auto-satisfied for collapsed features)',
+      description: 'Spec written before breaking into tickets',
       check: 'spec-file-exists',
     },
   },
@@ -77,18 +76,35 @@ export const PIPELINE: PhaseDef[] = [
 const ORDER: Phase[] = PIPELINE.map((p) => p.phase)
 
 /**
- * The next phase for a feature, honouring the collapsed-size skip of `spec`.
- * Returns null when already at the terminal phase.
+ * The next phase for a feature. Every feature runs the full linear order;
+ * returns null when already at the terminal phase.
  */
-export function nextPhase(feature: { phase: Phase; size: FeatureSize }): Phase | null {
+export function nextPhase(feature: { phase: Phase }): Phase | null {
   const i = ORDER.indexOf(feature.phase)
   if (i < 0 || i >= ORDER.length - 1) return null
-  const step = ORDER[i + 1]
-  if (feature.size === 'collapsed' && step === 'spec') {
-    // collapsed features never enter `spec`; jump straight to `tickets`
-    return ORDER[i + 2] ?? null
-  }
-  return step
+  return ORDER[i + 1]
+}
+
+/**
+ * The pipeline's one backward transition (CONTEXT.md decision #7). Burning fresh
+ * (pending) tickets from `review` loops the feature back to `implementation` so
+ * the run can execute them; the G4 auto-advance (`all-tickets-terminal`) then
+ * returns it to `review` when they finish, so review → iterate → burn → review
+ * repeats until the human merges. `nextPhase`/`nextGate` stay strictly forward —
+ * this loop is the lone exception, kept as its own typed transition rather than
+ * bent into the linear order.
+ */
+export const REVIEW_LOOP_BACK = { from: 'review', to: 'implementation' } as const satisfies {
+  from: Phase
+  to: Phase
+}
+
+/**
+ * The phase a review-phase burn loops back to (`implementation`), or null from
+ * any other phase — the pure model behind the server's burn-from-review guard.
+ */
+export function loopBackPhase(feature: { phase: Phase }): Phase | null {
+  return feature.phase === REVIEW_LOOP_BACK.from ? REVIEW_LOOP_BACK.to : null
 }
 
 /** G1 as it appears on a mapped feature (ADR-0001 / SPEC §13.1). */
@@ -102,10 +118,7 @@ const MAPPED_G1: GateDef = {
  * The gate guarding the transition OUT of the feature's current phase.
  *
  * This is the `gateToEnter` of the immediately-following phase in the full
- * order. For a collapsed feature leaving `ideation`, the destination phase
- * changes to `tickets` (see nextPhase) but the guarding gate stays G1, while
- * G2's `spec-file-exists` is auto-satisfied server-side. Returns null at the
- * terminal phase.
+ * order. Returns null at the terminal phase.
  *
  * G1 is conditional on `feature.mapped` (ADR-0001 / SPEC §13.1): a mapped
  * feature converges only once every waypoint is terminal, so its G1 check is
@@ -114,7 +127,6 @@ const MAPPED_G1: GateDef = {
  */
 export function nextGate(feature: {
   phase: Phase
-  size: FeatureSize
   mapped?: boolean
 }): GateDef | null {
   const i = ORDER.indexOf(feature.phase)

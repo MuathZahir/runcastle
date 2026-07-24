@@ -18,7 +18,7 @@ Every feature moves left-to-right through six **phases**, each guarded by a **ga
 `ideation → spec → tickets → implementation → review → shipped`
 
 1. **Ideation** — you launch a Claude Code **session** ("grill") in a terminal to shape the idea.
-2. **Spec** — the idea is written up (skippable for small / "collapsed" features).
+2. **Spec** — the idea is written up.
 3. **Tickets** — the work is broken into **tickets** (each has a goal, context, acceptance criteria, "seams" = the files/edges it touches, and `blockedBy` deps). A gate (G2) approves them.
 4. **Implementation ("burn")** — a background workflow burns the tickets: it spawns Claude Code to implement each one, producing commits. This is a **run** — a live view with one **lane** per ticket and a streaming event log. The human "Burn" gate (G3) is the go/no-go.
 5. **Review** — you **test-drive** the branch (run it to try it), then **merge** to ship.
@@ -26,7 +26,7 @@ Every feature moves left-to-right through six **phases**, each guarded by a **ga
 
 ## Key objects (the vocabulary to keep)
 
-- **Feature** — a unit of work: `slug`, title, `phase`, `status`, git `branch`, `size`.
+- **Feature** — a unit of work: `slug`, title, `phase`, `status`, git `branch`.
 - **Phase** — lifecycle stage; each has a fixed color (the semantic spine): ideation = violet, spec = grey, tickets = amber, implementation = orange, review = blue, shipped = green.
 - **Gate** — a checkpoint between phases; can be advanced or **overridden with a reason**.
 - **Ticket** — an atomic implementation task (seq #, status: pending / burning / done / failed / blocked, commits).

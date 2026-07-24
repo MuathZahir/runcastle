@@ -1,13 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { PIPELINE, nextGate, nextPhase } from '../src/pipeline'
+import { PIPELINE, REVIEW_LOOP_BACK, loopBackPhase, nextGate, nextPhase } from '../src/pipeline'
 import type { Phase } from '../src/schemas'
 
-const full = (phase: Phase) => ({ phase, size: 'full' as const })
-const collapsed = (phase: Phase) => ({ phase, size: 'collapsed' as const })
-const mapped = (phase: Phase) => ({ phase, size: 'full' as const, mapped: true })
+const full = (phase: Phase) => ({ phase })
+const mapped = (phase: Phase) => ({ phase, mapped: true })
 
-describe('nextPhase — full features', () => {
-  it('walks every phase in order', () => {
+describe('nextPhase', () => {
+  it('walks every phase in order — every feature goes ideation → spec', () => {
     expect(nextPhase(full('ideation'))).toBe('spec')
     expect(nextPhase(full('spec'))).toBe('tickets')
     expect(nextPhase(full('tickets'))).toBe('implementation')
@@ -17,19 +16,6 @@ describe('nextPhase — full features', () => {
 
   it('returns null at the terminal phase', () => {
     expect(nextPhase(full('shipped'))).toBeNull()
-  })
-})
-
-describe('nextPhase — collapsed features', () => {
-  it('skips spec when leaving ideation', () => {
-    expect(nextPhase(collapsed('ideation'))).toBe('tickets')
-  })
-
-  it('behaves like full from tickets onward', () => {
-    expect(nextPhase(collapsed('tickets'))).toBe('implementation')
-    expect(nextPhase(collapsed('implementation'))).toBe('review')
-    expect(nextPhase(collapsed('review'))).toBe('shipped')
-    expect(nextPhase(collapsed('shipped'))).toBeNull()
   })
 })
 
@@ -75,14 +61,35 @@ describe('nextGate', () => {
     expect(nextGate(full('review'))?.id).toBe('G5')
   })
 
-  it('collapsed: leaving ideation is still guarded by G1', () => {
-    expect(nextGate(collapsed('ideation'))?.id).toBe('G1')
-    expect(nextGate(collapsed('ideation'))?.check).toBe('decisions-file-exists')
+  it('leaving ideation is guarded by G1 (decisions-file-exists)', () => {
+    expect(nextGate(full('ideation'))?.id).toBe('G1')
+    expect(nextGate(full('ideation'))?.check).toBe('decisions-file-exists')
   })
 
   it('returns null at the terminal phase', () => {
     expect(nextGate(full('shipped'))).toBeNull()
-    expect(nextGate(collapsed('shipped'))).toBeNull()
+  })
+})
+
+describe('review → implementation loop (CONTEXT.md decision #7)', () => {
+  it('REVIEW_LOOP_BACK is the review → implementation transition', () => {
+    expect(REVIEW_LOOP_BACK).toEqual({ from: 'review', to: 'implementation' })
+  })
+
+  it('loopBackPhase returns implementation only from review', () => {
+    expect(loopBackPhase(full('review'))).toBe('implementation')
+    expect(loopBackPhase(full('ideation'))).toBeNull()
+    expect(loopBackPhase(full('spec'))).toBeNull()
+    expect(loopBackPhase(full('tickets'))).toBeNull()
+    expect(loopBackPhase(full('implementation'))).toBeNull()
+    expect(loopBackPhase(full('shipped'))).toBeNull()
+  })
+
+  it('is the lone backward step — nextPhase stays forward-only from review', () => {
+    // Forward and loop-back are distinct transitions; review advances to shipped,
+    // the loop goes back to implementation.
+    expect(nextPhase(full('review'))).toBe('shipped')
+    expect(loopBackPhase(full('review'))).toBe('implementation')
   })
 })
 
@@ -94,7 +101,6 @@ describe('nextGate — mapped features (ADR-0001 §13.1)', () => {
 
   it('unmapped: G1 stays decisions-file-exists (unchanged behaviour)', () => {
     expect(nextGate(full('ideation'))?.check).toBe('decisions-file-exists')
-    expect(nextGate(collapsed('ideation'))?.check).toBe('decisions-file-exists')
   })
 
   it('mapping only affects G1 — every later gate is identical', () => {

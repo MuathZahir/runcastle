@@ -51,6 +51,8 @@ export interface MergeResult {
   conflict?: boolean
   /** The branch the feature was merged into (its base; default `mainBranch`). */
   target: string
+  /** Repo-relative paths that conflicted (only on `conflict`), for the review UI. */
+  files?: string[]
 }
 
 /** Repo-relative dir (forward slashes) holding every feature's knowledge docs. */
@@ -802,6 +804,80 @@ export async function cleanupTempBranches(repoPath: string): Promise<TempBranchC
   return { deleted, kept }
 }
 
+// --- feature deletion (decision #8) -----------------------------------------
+
+/**
+ * Remove a feature's talk worktree at `worktreePath` (feature delete, decision
+ * #8). Tries `git worktree remove --force`, falling back to a direct recursive
+ * delete of the dir (a stale/unregistered leftover), then prunes the worktree
+ * registry. THROWS when the dir still exists afterwards — on Windows a locked
+ * file survives both removals, and the caller must surface that clearly and stop
+ * BEFORE deleting DB rows so the half-cleanup is retryable, never half-deleted.
+ */
+export async function removeTalkWorktree(repoPath: string, worktreePath: string): Promise<void> {
+  const g = git(repoPath)
+  try {
+    await g.raw(['worktree', 'remove', '--force', worktreePath])
+  } catch {
+    // Not a clean registered worktree (stale dir), or a locked file blocked the
+    // git removal — fall back to a direct delete, then prune the stale entry.
+    try {
+      rmSync(worktreePath, { recursive: true, force: true })
+    } catch {
+      // best-effort — the existsSync guard below turns a real failure into a throw
+    }
+  }
+  try {
+    await g.raw(['worktree', 'prune'])
+  } catch {
+    // best-effort — a leftover registry entry is harmless once the dir is gone
+  }
+  if (existsSync(worktreePath)) {
+    throw new InvalidInputError(
+      `could not remove talk worktree at ${worktreePath} — a file may be locked; ` +
+        'close anything using it and retry the delete',
+    )
+  }
+}
+
+/**
+ * Delete a feature's git branches (feature delete, decision #8): `feature/<slug>`
+ * plus every runcastle temp branch (`runcastle/ticket/<seg>/*`,
+ * `runcastle/research/<seg>/*`) whose segment matches the feature's slug. Detaches
+ * any sandcastle worktree (`.sandcastle/worktrees/*`) still pinning a branch first.
+ * Best-effort per branch (matches `deleteTempBranch`): a branch git refuses to
+ * delete is reported in `kept`, the rest in `deleted` — the caller does not fail
+ * the delete over an orphaned branch (the feature-side commits orphan naturally).
+ */
+export async function deleteFeatureBranches(
+  repoPath: string,
+  slug: string,
+): Promise<TempBranchCleanup> {
+  const deleted: string[] = []
+  const kept: string[] = []
+  const g = git(repoPath)
+
+  const featureBranchName = featureBranch(slug)
+  const seg = tempBranchSlugSegment(slug)
+  const tempPrefixes = TEMP_BRANCH_PREFIXES.map((p) => `${p}${seg}/`)
+
+  let all: string[]
+  try {
+    all = (await g.branchLocal()).all
+  } catch {
+    return { deleted, kept }
+  }
+
+  const targets = all.filter(
+    (b) => b === featureBranchName || tempPrefixes.some((p) => b.startsWith(p)),
+  )
+  for (const branch of targets) {
+    if (await deleteBranchDetachingWorktrees(g, repoPath, branch)) deleted.push(branch)
+    else kept.push(branch)
+  }
+  return { deleted, kept }
+}
+
 // --- docs checkpoint --------------------------------------------------------
 
 /**
@@ -1013,9 +1089,13 @@ export async function mergeFeature(project: Project, feature: Feature): Promise<
     return { ok: true, target }
   } catch (e) {
     if (await mergeInProgress(g)) {
+      // Capture the conflicting files WHILE the merge is still in progress (the
+      // abort clears the unmerged index), so the review UI can list them and
+      // brief the resolve-with-agent session.
+      const files = await conflictedFiles(g)
       await g.raw(['merge', '--abort'])
       await restoreBranch(g, previous, target)
-      return { ok: false, conflict: true, target }
+      return { ok: false, conflict: true, target, files }
     }
     // Not a conflict (e.g. unknown branch) — surface the real failure.
     throw e instanceof Error ? e : new Error(errMsg(e))
@@ -1035,6 +1115,21 @@ async function restoreBranch(g: SimpleGit, previous: string, target: string): Pr
     await g.checkout(previous)
   } catch {
     // leave the checkout on `target` — a shipped feature must never fail here
+  }
+}
+
+/**
+ * Repo-relative paths with unresolved conflicts in the in-progress merge
+ * (`--diff-filter=U`). Called before `merge --abort`, which clears the unmerged
+ * index. Returns `[]` on any parse failure — a missing list must not turn a
+ * reported conflict into a thrown error.
+ */
+async function conflictedFiles(g: SimpleGit): Promise<string[]> {
+  try {
+    const out = (await g.raw(['diff', '--name-only', '--diff-filter=U'])).trim()
+    return out ? out.split('\n').map((s) => s.trim()).filter(Boolean) : []
+  } catch {
+    return []
   }
 }
 
