@@ -204,3 +204,60 @@ export function IconSparkle(p: IconProps) {
     </svg>
   )
 }
+
+/* ============================================================================
+   BRAND — castle mark with a play-triangle gate (Runcastle Logo template,
+   Runcastle Design System). One silhouette: a crenellated wall whose gate is
+   the run button, cut in negative space via the evenodd fill rule.
+   ========================================================================== */
+
+const LOGO_PATH =
+  'M4 29 V6 H10 V11 H13 V6 H19 V11 H22 V6 H28 V29 H4 Z M12.5 15 L21.5 20 L12.5 25 Z'
+
+export type LogoVariant = 'solid' | 'outline' | 'mono' | 'ink'
+
+/**
+ * The brand mark. Treatments from the logo spec: `solid` (accent, primary),
+ * `outline` (hairline, quiet surfaces), `mono` (neutral, inherits currentColor),
+ * `ink` (on an accent surface).
+ */
+export function LogoMark({
+  size = 16,
+  variant = 'solid',
+  ...rest
+}: SVGProps<SVGSVGElement> & { size?: number; variant?: LogoVariant }) {
+  const fill =
+    variant === 'solid'
+      ? 'var(--accent)'
+      : variant === 'mono'
+        ? 'currentColor'
+        : variant === 'ink'
+          ? 'var(--accent-ink)'
+          : 'none'
+  return (
+    <svg width={size} height={size} viewBox="0 0 32 32" fill="none" aria-hidden {...rest}>
+      <path
+        fillRule="evenodd"
+        clipRule="evenodd"
+        d={LOGO_PATH}
+        fill={fill}
+        stroke={variant === 'outline' ? 'var(--accent-hi)' : 'none'}
+        strokeWidth={variant === 'outline' ? 1.5 : 0}
+        strokeLinejoin="miter"
+      />
+    </svg>
+  )
+}
+
+/**
+ * The two-tone wordmark: mono, semibold, `run` in accent to teach the name's
+ * parse. Size via the `wordmark` CSS class scale (`is-lg` for hero uses).
+ */
+export function LogoWordmark({ large }: { large?: boolean }) {
+  return (
+    <span className={`wordmark${large ? ' is-lg' : ''}`}>
+      <span className="wordmark-run">run</span>
+      <span className="wordmark-castle">castle</span>
+    </span>
+  )
+}

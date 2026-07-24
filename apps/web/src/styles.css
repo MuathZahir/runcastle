@@ -358,21 +358,28 @@ button {
   background: var(--panel);
   font-size: 13px;
 }
+/* brand mark container — the castle mark IS the logo now, no tile behind it */
 .tb-logo {
-  width: 18px;
-  height: 18px;
-  border-radius: var(--radius-sm);
-  background: var(--accent);
-  display: flex;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  color: var(--accent-ink);
-  font-family: var(--mono);
-  font-size: 11px;
-  font-weight: 700;
   flex: 0 0 auto;
 }
 .tb-app { color: var(--text); font-weight: 600; letter-spacing: 0.02em; }
+
+/* two-tone wordmark (logo spec): mono semibold, `run` in accent */
+.wordmark {
+  font-family: var(--mono);
+  font-weight: 600;
+  font-size: 13px;
+  letter-spacing: -0.25px;
+  line-height: 1;
+  white-space: nowrap;
+}
+.wordmark.is-lg { font-size: 21px; letter-spacing: -0.5px; }
+.wordmark-run { color: var(--accent-hi); }
+.wordmark-castle { color: var(--text); }
+.tb-home:hover .wordmark-castle { color: var(--accent-hi); }
 .tb-arrow, .tb-dot { color: var(--text-4); }
 .tb-project { color: var(--text-2); }
 .tb-branch {
@@ -713,18 +720,10 @@ button {
   color: var(--text-3);
 }
 .ws-empty-logo {
-  width: 46px;
-  height: 46px;
-  border-radius: 12px;
-  background: var(--panel);
-  border: 1px solid var(--hairline);
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--accent);
-  font-family: var(--mono);
-  font-size: 22px;
-  font-weight: 700;
+  opacity: 0.85;
 }
 .ws-empty-title { font-size: 14px; font-weight: 500; color: var(--text-2); }
 .ws-empty-sub { font-size: 12.5px; color: var(--text-3); max-width: 40ch; text-align: center; }
@@ -2582,16 +2581,15 @@ button.tb-runs { cursor: pointer; }
   background: var(--panel);
   box-shadow: 0 24px 60px -30px rgba(0, 0, 0, 0.8);
 }
+/* inverse treatment (logo spec): accent tile, ink mark */
 .op-logo {
-  width: 34px;
-  height: 34px;
+  width: 36px;
+  height: 36px;
   border-radius: 9px;
   background: var(--accent);
-  color: var(--accent-ink);
   display: flex;
   align-items: center;
   justify-content: center;
-  font-weight: 700;
   margin-bottom: 6px;
 }
 .op-kick { font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--accent-hi); }

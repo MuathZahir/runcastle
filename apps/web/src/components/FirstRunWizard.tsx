@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { trpc } from '../trpc'
 import { useToast } from '../lib/toast'
 import { Button, DimLine } from '../ui'
+import { LogoMark } from '../icons'
 import { EnableAfkCard } from './EnableAfkCard'
 import { OpenProject } from './OpenProject'
 
@@ -45,7 +46,9 @@ export function FirstRunWizard({
   return (
     <div className="open-project">
       <div className="op-card wizard-card">
-        <div className="op-logo mono">r</div>
+        <div className="op-logo">
+          <LogoMark size={22} variant="ink" />
+        </div>
         <WizardSteps current={current} />
         {current === 'identity' ? (
           <IdentityStep onNext={() => setStep('afk')} />

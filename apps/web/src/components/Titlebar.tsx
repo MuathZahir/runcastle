@@ -1,7 +1,7 @@
 import { trpc } from '../trpc'
 import { aggregateRuns, projectStats } from '../lib/projects'
 import type { ProjectNavApi } from '../lib/use-project-nav'
-import { IconBranch, IconPanelRight, IconSearch, IconSettings } from '../icons'
+import { IconBranch, IconPanelRight, IconSearch, IconSettings, LogoMark, LogoWordmark } from '../icons'
 import { ProjectSwitcher } from './ProjectSwitcher'
 
 /**
@@ -41,8 +41,10 @@ export function Titlebar({
         onClick={nav.goHome}
         title={projects.length > 1 ? 'All projects' : 'runcastle'}
       >
-        <span className="tb-logo mono">r</span>
-        <span className="tb-app">runcastle</span>
+        <span className="tb-logo">
+          <LogoMark size={17} />
+        </span>
+        <LogoWordmark />
       </button>
       <span className="tb-arrow">/</span>
       <ProjectSwitcher nav={nav} />

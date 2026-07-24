@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { LogoMark } from '../icons'
 import { trpc } from '../trpc'
 import { useWorkspace, type DriveState } from '../lib/workspace'
 import type { ProjectNavApi } from '../lib/use-project-nav'
@@ -120,7 +121,9 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
 function EmptyWorkspace({ onNewFeature }: { onNewFeature: () => void }) {
   return (
     <div className="ws-empty">
-      <div className="ws-empty-logo mono">r</div>
+      <div className="ws-empty-logo">
+        <LogoMark size={44} variant="outline" />
+      </div>
       <div className="ws-empty-title">Select a feature to begin</div>
       <div className="ws-empty-sub">Or create one — every feature moves through the same guided pipeline.</div>
       <button className="btn btn-ghost" onClick={onNewFeature}>

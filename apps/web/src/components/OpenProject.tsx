@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { trpc } from '../trpc'
 import { useToast } from '../lib/toast'
+import { LogoMark } from '../icons'
 import { Button } from '../ui'
 
 /**
@@ -41,7 +42,9 @@ export function OpenProject({
   return (
     <div className="open-project">
       <div className="op-card">
-        <div className="op-logo mono">r</div>
+        <div className="op-logo">
+          <LogoMark size={22} variant="ink" />
+        </div>
         <div className="op-kick">{firstRun ? 'WELCOME TO RUNCASTLE' : 'OPEN A PROJECT'}</div>
         <div className="op-h">
           {firstRun ? 'Open your first project' : 'Open a project'}

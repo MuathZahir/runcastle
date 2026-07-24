@@ -4,7 +4,7 @@ import { useToast } from '../lib/toast'
 import { projectStats, type ProjectStats } from '../lib/projects'
 import type { ProjectNavApi } from '../lib/use-project-nav'
 import type { Project } from '../lib/api'
-import { IconBranch, IconPlus } from '../icons'
+import { IconBranch, IconPlus, LogoMark, LogoWordmark } from '../icons'
 
 /**
  * The portfolio home (issue #45): the canonical cross-project surface. One card
@@ -26,8 +26,10 @@ export function PortfolioHome({ nav }: { nav: ProjectNavApi }) {
     <div className="home-frame">
       <header className="home-topbar">
         <span className="tb-home">
-          <span className="tb-logo mono">r</span>
-          <span className="tb-app">runcastle</span>
+          <span className="tb-logo">
+            <LogoMark size={17} />
+          </span>
+          <LogoWordmark />
         </span>
         <span className="tb-spacer" />
         <button className="btn btn-ghost btn-xs" onClick={nav.showOpen}>

@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <!-- Runcastle brand mark, inverse treatment: accent tile, ink castle whose
+       gate is a play triangle (negative space via evenodd). -->
+  <rect width="32" height="32" rx="7" fill="#7c6cf6"/>
+  <path fill-rule="evenodd" clip-rule="evenodd"
+    d="M6.5 26.6 V8.4 H11.3 V12.4 H13.7 V8.4 H18.5 V12.4 H20.9 V8.4 H25.7 V26.6 H6.5 Z M13.3 15.6 L20.4 19.6 L13.3 23.6 Z"
+    fill="#0d0722"/>
+</svg>
