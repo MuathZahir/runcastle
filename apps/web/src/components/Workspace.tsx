@@ -18,6 +18,7 @@ import {
   type NextStep,
   type PipelineStep,
 } from '../lib/feature-ui'
+import { IconBranch } from '../icons'
 import { GrillBody } from './bodies/GrillBody'
 import { ReviewBody } from './bodies/ReviewBody'
 import { ShippedBody } from './bodies/ShippedBody'
@@ -222,8 +223,9 @@ export function Workspace({
           <PhaseTag phase={feature.phase} />
           <span className="ws-title">{feature.title}</span>
           <span className="ws-title-spacer" />
-          <button className="ws-branch" title="copy branch" onClick={() => copyText(feature.branch, toast)}>
-            ⎇ {feature.branch}
+          <button className="ws-branch" title="Copy branch name" onClick={() => copyText(feature.branch, toast)}>
+            <IconBranch size={11} />
+            {feature.branch}
           </button>
         </div>
         <PipelineStepper

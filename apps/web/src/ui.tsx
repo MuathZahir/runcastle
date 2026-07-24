@@ -26,9 +26,37 @@ export function SectionTitle({ children }: { children: ReactNode }) {
   return <div className="section-title">{children}</div>
 }
 
-/** One dim mono line — the only empty/error state style (UI-SPEC §4/§5). */
+/** One dim mono line — inline empty/error state for tight spots (UI-SPEC §4/§5). */
 export function DimLine({ children }: { children: ReactNode }) {
   return <div className="dim-line mono">{children}</div>
+}
+
+/**
+ * Designed empty state: quiet icon chip, plain-language title, one-line hint,
+ * optional action. Replaces the dashed placeholder boxes so blank areas read
+ * as intentional, not unfinished.
+ */
+export function EmptyState({
+  icon,
+  title,
+  hint,
+  action,
+  compact,
+}: {
+  icon?: ReactNode
+  title: string
+  hint?: ReactNode
+  action?: ReactNode
+  compact?: boolean
+}) {
+  return (
+    <div className={`empty-state${compact ? ' is-compact' : ''}`}>
+      {icon && <div className="empty-state-icon">{icon}</div>}
+      <div className="empty-state-title">{title}</div>
+      {hint && <div className="empty-state-hint">{hint}</div>}
+      {action && <div className="empty-state-action">{action}</div>}
+    </div>
+  )
 }
 
 export function PhaseTag({ phase }: { phase: Phase }) {

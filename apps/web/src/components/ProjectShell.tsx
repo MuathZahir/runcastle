@@ -121,9 +121,10 @@ function EmptyWorkspace({ onNewFeature }: { onNewFeature: () => void }) {
   return (
     <div className="ws-empty">
       <div className="ws-empty-logo mono">r</div>
-      <span className="dim-line mono">select a feature to begin</span>
-      <button className="btn btn-ghost btn-xs" onClick={onNewFeature}>
-        + New feature
+      <div className="ws-empty-title">Select a feature to begin</div>
+      <div className="ws-empty-sub">Or create one — every feature moves through the same guided pipeline.</div>
+      <button className="btn btn-ghost" onClick={onNewFeature}>
+        New feature
       </button>
     </div>
   )

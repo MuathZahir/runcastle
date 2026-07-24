@@ -21,11 +21,11 @@ export interface TerminalViewProps {
 }
 
 const THEME = {
-  background: '#0A0C0F',
+  background: '#07080b', // --panel-inset: terminal sits in the deepest layer
   foreground: '#C9D1D9',
-  cursor: '#8B5CF6',
-  cursorAccent: '#0A0C0F',
-  selectionBackground: 'rgba(139,92,246,0.25)',
+  cursor: '#7c6cf6', // --accent
+  cursorAccent: '#07080b',
+  selectionBackground: 'rgba(124,108,246,0.25)',
 }
 
 export function TerminalView({ sessionId, wsBase }: TerminalViewProps) {
@@ -38,7 +38,7 @@ export function TerminalView({ sessionId, wsBase }: TerminalViewProps) {
 
     const term = new Terminal({
       theme: THEME,
-      fontFamily: '"Cascadia Code", "JetBrains Mono", Consolas, monospace',
+      fontFamily: '"JetBrains Mono Variable", "Cascadia Code", Consolas, monospace',
       fontSize: 12.5,
       cursorBlink: true,
       allowProposedApi: true,
@@ -120,8 +120,10 @@ export function TerminalView({ sessionId, wsBase }: TerminalViewProps) {
         position: 'relative',
         width: '100%',
         height: '100%',
-        background: '#0A0C0F',
+        background: '#07080b',
         overflow: 'hidden',
+        boxSizing: 'border-box',
+        padding: '8px 2px 6px 10px',
       }}
     >
       <div ref={containerRef} style={{ width: '100%', height: '100%' }} data-session-id={sessionId} />

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { IconMore } from '../icons'
 
 /**
  * A per-feature actions menu (kebab) for a sidebar row. Deliberately a thin,
@@ -50,7 +51,7 @@ export function FeatureActionsMenu({ actions }: { actions: FeatureAction[] }) {
           setOpen((o) => !o)
         }}
       >
-        ⋯
+        <IconMore size={14} />
       </button>
       {open && (
         <div className="row-actions-menu" role="menu">

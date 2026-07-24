@@ -3,7 +3,8 @@ import { trpc } from '../../trpc'
 import { useToast } from '../../lib/toast'
 import { SANDBOX_MODE } from '../../lib/env'
 import { shortSha } from '../../lib/format'
-import { DimLine, SectionTitle, SessionStatusDot, TicketStatusChip } from '../../ui'
+import { DimLine, EmptyState, SectionTitle, SessionStatusDot, TicketStatusChip } from '../../ui'
+import { IconChevronRight, IconDoc } from '../../icons'
 import { EndSessionButton } from '../EndSessionButton'
 import { ErrorBoundary } from '../ErrorBoundary'
 import { TerminalView } from '../TerminalView'
@@ -88,9 +89,14 @@ export function TicketsBody({
         <div className="grill-panel tickets-session">
           <div className="grill-strip">
             <span className="grill-kind">{session.kind}</span>
-            <span className="grill-sid">{session.ccSessionId ?? session.id}</span>
             <SessionStatusDot status={session.status} />
+            <span className="grill-live-label">
+              {session.status === 'launching' ? 'launching…' : 'live'}
+            </span>
             <span className="grill-strip-spacer" />
+            <span className="grill-sid" title={session.ccSessionId ?? session.id}>
+              {(session.ccSessionId ?? session.id).slice(0, 8)}
+            </span>
             <EndSessionButton featureId={featureId} sessionId={session.id} />
           </div>
           <div className="grill-term" id="grill-term">
@@ -110,7 +116,14 @@ export function TicketsBody({
       </div>
 
       {total === 0 ? (
-        <DimLine>no tickets yet — a grill session emits them.</DimLine>
+        <div className="ledger">
+          <EmptyState
+            icon={<IconDoc size={16} />}
+            title="No tickets yet"
+            hint="A session breaks the spec into atomic, reviewable tickets — start one from the bar above."
+            compact
+          />
+        </div>
       ) : (
         <div className="ledger">
           {tickets.map((t) => {
@@ -118,11 +131,15 @@ export function TicketsBody({
             return (
               <div key={t.id} className={`ledger-row${isOpen ? ' is-open' : ''}`}>
                 <button className="ledger-head" onClick={() => toggle(t.id)}>
-                  <span className="lg-caret">▸</span>
+                  <span className="lg-caret">
+                    <IconChevronRight size={11} />
+                  </span>
                   <span className="lg-seq">#{t.seq}</span>
                   <span className="lg-title">{t.title}</span>
                   {t.blockedBy.length > 0 && (
-                    <span className="lg-block">⊘ after {t.blockedBy.join(', ')}</span>
+                    <span className="lg-block" title="Runs after these tickets land">
+                      after #{t.blockedBy.join(', #')}
+                    </span>
                   )}
                   <span className="lg-meta">
                     <TicketStatusChip status={t.status} />

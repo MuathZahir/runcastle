@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
-import { phaseGlyph } from '../lib/feature-ui'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import type { FeatureListItem } from '../lib/api'
 import type { ProjectNavApi } from '../lib/use-project-nav'
+import { IconFolder, IconPlus, IconSettings } from '../icons'
 
 /**
  * ⌘K command palette for the pipeline-first shell (app-redesign, multi-project
@@ -173,7 +173,7 @@ export function CommandPalette(props: CommandPaletteProps) {
                   onClick={() => activate(i)}
                 >
                   <span className="cmdk-item-glyph">
-                    <span className={`phase-fg-${f.phase}`}>{phaseGlyph(f.phase)}</span>
+                    <span className={`feature-dot phase-bg-${f.phase}`} />
                   </span>
                   <span className="cmdk-item-label">{f.title}</span>
                   <span className="cmdk-item-slug">{f.slug}</span>
@@ -198,9 +198,11 @@ export function CommandPalette(props: CommandPaletteProps) {
                     onMouseEnter={() => setActiveIndex(i)}
                     onClick={() => activate(i)}
                   >
-                    <span className="cmdk-item-glyph">◫</span>
+                    <span className="cmdk-item-glyph">
+                      <IconFolder size={13} />
+                    </span>
                     <span className="cmdk-item-label">{p.name}</span>
-                    <span className="cmdk-item-slug">⎇ {p.mainBranch}</span>
+                    <span className="cmdk-item-slug">{p.mainBranch}</span>
                     <span className="cmdk-item-hint">project</span>
                   </div>
                 )
@@ -218,7 +220,7 @@ export function CommandPalette(props: CommandPaletteProps) {
                   bindRow={bindRow}
                   setActiveIndex={setActiveIndex}
                   activate={activate}
-                  glyph="+"
+                  glyph={<IconPlus size={13} />}
                   label="Create new feature"
                 />
               )}
@@ -229,7 +231,7 @@ export function CommandPalette(props: CommandPaletteProps) {
                   bindRow={bindRow}
                   setActiveIndex={setActiveIndex}
                   activate={activate}
-                  glyph="⊞"
+                  glyph={<IconFolder size={13} />}
                   label="All projects (home)"
                 />
               )}
@@ -240,7 +242,7 @@ export function CommandPalette(props: CommandPaletteProps) {
                   bindRow={bindRow}
                   setActiveIndex={setActiveIndex}
                   activate={activate}
-                  glyph="◌"
+                  glyph={<IconFolder size={13} />}
                   label="Open a project…"
                 />
               )}
@@ -256,7 +258,7 @@ export function CommandPalette(props: CommandPaletteProps) {
                   bindRow={bindRow}
                   setActiveIndex={setActiveIndex}
                   activate={activate}
-                  glyph="⚙"
+                  glyph={<IconSettings size={13} />}
                   label="Settings"
                 />
               )}
@@ -295,7 +297,7 @@ function ActionRow({
   bindRow: (i: number) => (el: HTMLDivElement | null) => void
   setActiveIndex: (i: number) => void
   activate: (i: number) => void
-  glyph: string
+  glyph: ReactNode
   label: string
 }) {
   return (

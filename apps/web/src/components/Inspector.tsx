@@ -5,15 +5,17 @@ import { useEventLog } from '../lib/events'
 import type { DocSummary, GateState } from '../lib/api'
 import { relTime } from '../lib/format'
 import { Button, DimLine } from '../ui'
+import { IconCheck, IconDoc } from '../icons'
 import { DocPeek } from './DocPeek'
 
 /**
- * Inspector right rail for the pipeline-first shell. The vertical stepper now
- * lives in the workspace, so this rail no longer advances the pipeline — it
- * shows three stacked read-mostly sections: Current gate (with override-only
- * escape hatch), Knowledge (doc peeks), and Activity (recent events).
+ * Right rail for the pipeline-first shell, tabbed so the working surface stays
+ * calm: Details (current gate + knowledge docs) is the default; the raw event
+ * feed lives behind the Activity tab instead of scrolling permanently beside
+ * the workspace.
  */
 export function Inspector({ featureId }: { featureId: string }) {
+  const [tab, setTab] = useState<'details' | 'activity'>('details')
   const full = trpc.feature.get.useQuery({ id: featureId }, { refetchInterval: 1500 })
 
   if (full.isLoading)
@@ -34,9 +36,35 @@ export function Inspector({ featureId }: { featureId: string }) {
 
   return (
     <aside className="inspector">
-      <CurrentGate featureId={featureId} gate={full.data.gate} />
-      <Knowledge featureId={featureId} docs={full.data.docs} />
-      <Activity featureId={featureId} />
+      <div className="insp-tabs" role="tablist">
+        <button
+          role="tab"
+          aria-selected={tab === 'details'}
+          className={`insp-tab${tab === 'details' ? ' is-active' : ''}`}
+          onClick={() => setTab('details')}
+        >
+          Details
+        </button>
+        <button
+          role="tab"
+          aria-selected={tab === 'activity'}
+          className={`insp-tab${tab === 'activity' ? ' is-active' : ''}`}
+          onClick={() => setTab('activity')}
+        >
+          Activity
+        </button>
+      </div>
+
+      {tab === 'details' ? (
+        <div className="insp-pane" key="details">
+          <CurrentGate featureId={featureId} gate={full.data.gate} />
+          <Knowledge featureId={featureId} docs={full.data.docs} />
+        </div>
+      ) : (
+        <div className="insp-pane insp-pane-activity" key="activity">
+          <Activity featureId={featureId} />
+        </div>
+      )}
     </aside>
   )
 }
@@ -78,7 +106,10 @@ function CurrentGate({ featureId, gate }: { featureId: string; gate: GateState }
     <section className="insp-section">
       <div className="insp-cap">Current gate</div>
       {gate.next === null ? (
-        <div className="gate-empty">No gate — this feature is shipped.</div>
+        <div className="gate-shipped">
+          <IconCheck size={13} />
+          Shipped — no gates left.
+        </div>
       ) : (
         <GateCard
           gateId={gate.next.id}
@@ -140,19 +171,19 @@ function GateCard({
       <div className="gate-req">{description}</div>
       <div className={`gate-state ${satisfied ? 'is-ok' : 'is-block'}`}>
         <span className="gate-state-dot" />
-        <span>{satisfied ? 'ready to advance' : reason ?? 'blocked'}</span>
+        <span>{satisfied ? 'Ready to advance' : reason ?? 'Blocked'}</span>
       </div>
 
       {open ? (
         <div className="override-form">
           <input
             className="override-input"
-            placeholder="reason for override"
+            placeholder="Reason for override"
             value={reasonValue}
             autoFocus
             onChange={(e) => onReasonChange(e.target.value)}
           />
-          <div>
+          <div className="override-actions">
             <Button
               variant="solid"
               className="btn-xs"
@@ -167,14 +198,10 @@ function GateCard({
           </div>
         </div>
       ) : (
-        <Button variant="ghost" className="btn-xs" onClick={onOpen}>
+        <button className="gate-override-link" onClick={onOpen}>
           Override with reason…
-        </Button>
+        </button>
       )}
-
-      <div className="gate-hint">
-        The highlighted action in the workspace advances this gate.
-      </div>
     </div>
   )
 }
@@ -189,7 +216,9 @@ function Knowledge({ featureId, docs }: { featureId: string; docs: DocSummary[] 
     <section className="insp-section">
       <div className="insp-cap">Knowledge</div>
       {docs.length === 0 ? (
-        <DimLine>no docs yet</DimLine>
+        <div className="insp-empty">
+          Docs the sessions write — decisions, the spec, the map — collect here.
+        </div>
       ) : (
         <ul className="doc-list">
           {docs.map((d) => (
@@ -198,6 +227,9 @@ function Knowledge({ featureId, docs }: { featureId: string; docs: DocSummary[] 
                 className="doc-link"
                 onClick={() => setPeek({ relPath: d.relPath, title: d.title })}
               >
+                <span className="doc-link-icon">
+                  <IconDoc size={13} />
+                </span>
                 <span className="doc-title">{d.title}</span>
                 <span className="doc-meta">{basename(d.relPath)}</span>
               </button>
@@ -217,22 +249,37 @@ function Knowledge({ featureId, docs }: { featureId: string; docs: DocSummary[] 
   )
 }
 
+/** Event level → dot color class; keeps the feed scannable without mono codes. */
+function eventTone(type: string): string {
+  if (type.includes('failed') || type.includes('error') || type.includes('blocked')) return 'is-danger'
+  if (type.includes('done') || type.includes('shipped') || type.includes('merged')) return 'is-ok'
+  if (type.startsWith('phase') || type.startsWith('gate')) return 'is-accent'
+  return ''
+}
+
+/** `session.pty_exited` → `session · pty exited` */
+function humanType(type: string): string {
+  return type.replace(/_/g, ' ').replace('.', ' · ')
+}
+
 function Activity({ featureId }: { featureId: string }) {
   const events = useEventLog(featureId)
-  const recent = events.slice(-12).reverse()
+  const recent = events.slice(-50).reverse()
   return (
     <section className="insp-section">
-      <div className="insp-cap">Activity</div>
       {recent.length === 0 ? (
-        <DimLine>no activity yet</DimLine>
+        <div className="insp-empty">Everything that happens to this feature shows up here.</div>
       ) : (
         <div className="activity-log">
           {recent.map((e) => (
             <div key={e.id} className="act-line">
-              <span className="act-time">{relTime(e.ts)}</span>
+              <span className={`act-dot ${eventTone(e.type)}`} />
               <div className="act-body">
-                <div className="act-type">{e.type}</div>
                 <div className="act-msg">{e.message}</div>
+                <div className="act-sub">
+                  <span className="act-type">{humanType(e.type)}</span>
+                  <span className="act-time">{relTime(e.ts)}</span>
+                </div>
               </div>
             </div>
           ))}

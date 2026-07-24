@@ -60,9 +60,14 @@ export function ReviewBody({ full, driving }: { full: FeatureFull; driving: Driv
         <div className="grill-panel review-session">
           <div className="grill-strip">
             <span className="grill-kind">{session.kind}</span>
-            <span className="grill-sid">{session.ccSessionId ?? session.id}</span>
             <SessionStatusDot status={session.status} />
+            <span className="grill-live-label">
+              {session.status === 'launching' ? 'launching…' : 'live'}
+            </span>
             <span className="grill-strip-spacer" />
+            <span className="grill-sid" title={session.ccSessionId ?? session.id}>
+              {(session.ccSessionId ?? session.id).slice(0, 8)}
+            </span>
             <EndSessionButton featureId={feature.id} sessionId={session.id} />
           </div>
           <div className="grill-term" id="grill-term">
@@ -106,7 +111,7 @@ export function ReviewBody({ full, driving }: { full: FeatureFull; driving: Driv
             {commits} commit{commits === 1 ? '' : 's'}
           </span>
         </div>
-        <div className="review-foot">⎇ {feature.branch}</div>
+        <div className="review-foot">{feature.branch}</div>
       </div>
 
       <div className="review-card">

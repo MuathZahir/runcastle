@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { ProjectNavApi } from '../lib/use-project-nav'
+import { IconCheck, IconChevronDown } from '../icons'
 
 /**
  * Titlebar project switcher (issue #45). Click the project name to drop a menu
@@ -38,7 +39,9 @@ export function ProjectSwitcher({ nav }: { nav: ProjectNavApi }) {
         aria-expanded={open}
       >
         <span className="tb-project">{nav.currentProject?.name ?? '…'}</span>
-        <span className="tb-switcher-caret">▾</span>
+        <span className="tb-switcher-caret">
+          <IconChevronDown size={11} />
+        </span>
       </button>
 
       {open && (
@@ -55,8 +58,12 @@ export function ProjectSwitcher({ nav }: { nav: ProjectNavApi }) {
               }}
             >
               <span className="tb-menu-name">{p.name}</span>
-              <span className="tb-menu-branch mono">⎇ {p.mainBranch}</span>
-              {p.id === nav.currentProjectId && <span className="tb-menu-check">✓</span>}
+              <span className="tb-menu-branch mono">{p.mainBranch}</span>
+              {p.id === nav.currentProjectId && (
+                <span className="tb-menu-check">
+                  <IconCheck size={11} />
+                </span>
+              )}
             </button>
           ))}
           <div className="tb-menu-sep" />

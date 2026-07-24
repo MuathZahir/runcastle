@@ -1,6 +1,7 @@
 import { trpc } from '../trpc'
 import { aggregateRuns, projectStats } from '../lib/projects'
 import type { ProjectNavApi } from '../lib/use-project-nav'
+import { IconBranch, IconPanelRight, IconSearch, IconSettings } from '../icons'
 import { ProjectSwitcher } from './ProjectSwitcher'
 
 /**
@@ -45,12 +46,15 @@ export function Titlebar({
       </button>
       <span className="tb-arrow">/</span>
       <ProjectSwitcher nav={nav} />
-      <span className="tb-dot">·</span>
-      <span className="tb-branch">⎇ {nav.currentProject?.mainBranch ?? 'main'}</span>
+      <span className="tb-branch">
+        <IconBranch size={12} />
+        {nav.currentProject?.mainBranch ?? 'main'}
+      </span>
 
       <span className="tb-spacer" />
 
       <button className="tb-search" onClick={onOpenCmdk} title="Search or jump to (⌘K)">
+        <IconSearch size={13} />
         <span>Search or jump to…</span>
         <span className="tb-search-spacer" />
         <span className="kbd">⌘K</span>
@@ -75,15 +79,16 @@ export function Titlebar({
       </span>
 
       <button className="tb-icon-btn" title="Settings" aria-label="Settings" onClick={onOpenSettings}>
-        ⚙
+        <IconSettings size={14} />
       </button>
 
       <button
-        className="tb-icon-btn"
-        title={inspectorCollapsed ? 'Show inspector' : 'Hide inspector'}
+        className={`tb-icon-btn${inspectorCollapsed ? '' : ' is-on'}`}
+        title={inspectorCollapsed ? 'Show details panel' : 'Hide details panel'}
+        aria-label={inspectorCollapsed ? 'Show details panel' : 'Hide details panel'}
         onClick={onToggleInspector}
       >
-        ▥
+        <IconPanelRight size={14} />
       </button>
     </header>
   )

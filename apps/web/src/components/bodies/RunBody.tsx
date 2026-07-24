@@ -4,7 +4,8 @@ import { trpc } from '../../trpc'
 import { useToast } from '../../lib/toast'
 import { useEventLog } from '../../lib/events'
 import { fmtDuration, fmtTime, shortSha } from '../../lib/format'
-import { DimLine, RunStatusChip, SessionStatusDot, TicketStatusChip } from '../../ui'
+import { DimLine, EmptyState, RunStatusChip, SessionStatusDot, TicketStatusChip } from '../../ui'
+import { IconTerminal } from '../../icons'
 import { AgentTranscript } from '../AgentTranscript'
 import { EndSessionButton } from '../EndSessionButton'
 import { ErrorBoundary } from '../ErrorBoundary'
@@ -64,18 +65,31 @@ export function RunBody({
     .find((s) => s.status === 'live' || s.status === 'launching')
 
   if (!runId && !session) {
-    return <DimLine>no run yet — start the burn from the workspace.</DimLine>
+    return (
+      <div className="surface">
+        <EmptyState
+          icon={<IconTerminal size={16} />}
+          title="No run yet"
+          hint="Burning the tickets starts a run — one agent per ticket, each in its own lane."
+        />
+      </div>
+    )
   }
 
   return (
-    <div className="ws-body-inner">
+    <div>
       {session && (
         <div className="grill-panel tickets-session">
           <div className="grill-strip">
             <span className="grill-kind">{session.kind}</span>
-            <span className="grill-sid">{session.ccSessionId ?? session.id}</span>
             <SessionStatusDot status={session.status} />
+            <span className="grill-live-label">
+              {session.status === 'launching' ? 'launching…' : 'live'}
+            </span>
             <span className="grill-strip-spacer" />
+            <span className="grill-sid" title={session.ccSessionId ?? session.id}>
+              {(session.ccSessionId ?? session.id).slice(0, 8)}
+            </span>
             <EndSessionButton featureId={featureId} sessionId={session.id} />
           </div>
           <div className="grill-term" id="grill-term">
@@ -143,7 +157,7 @@ export function RunBody({
               </ErrorBoundary>
             ) : (
               <div className="agent-body">
-                <DimLine>no agent yet — lanes light up here as tickets start burning.</DimLine>
+                <DimLine>No agent yet — lanes light up here as tickets start burning.</DimLine>
               </div>
             )
           ) : (

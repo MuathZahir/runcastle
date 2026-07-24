@@ -1,9 +1,11 @@
 import { useState } from 'react'
 import type { Phase } from '@runcastle/core'
 import { trpc } from '../../trpc'
-import { DimLine, SectionTitle, SessionStatusDot } from '../../ui'
+import { DimLine, EmptyState, SectionTitle, SessionStatusDot } from '../../ui'
 import type { FeatureFull } from '../../lib/api'
 import { useToast } from '../../lib/toast'
+import { IconChevronRight, IconDoc, IconTerminal } from '../../icons'
+import { DocPeek } from '../DocPeek'
 import { EndSessionButton } from '../EndSessionButton'
 import { ErrorBoundary } from '../ErrorBoundary'
 import { TerminalView } from '../TerminalView'
@@ -35,60 +37,97 @@ export function GrillBody({ full, effective }: { full: FeatureFull; effective: P
     !hasLive &&
     full.tickets.length === 0
 
+  const sessionIsOpen = session && session.status !== 'ended'
+  const hasContext = feature.mapped || effective === 'spec'
+
   return (
-    <div className="grill">
+    <div className={`grill${hasContext ? ' has-context' : ''}`}>
       {feature.mapped && <MapPanel full={full} relPath={mapDoc?.relPath} />}
 
-      {effective === 'spec' &&
-        (specDoc ? (
-          <DocPanel featureId={feature.id} relPath={specDoc.relPath} />
-        ) : (
-          <div className="spec-doc">
-            <DimLine>spec not written yet — continue the grill to draft it</DimLine>
-          </div>
-        ))}
+      {effective === 'spec' && (
+        <SpecCard featureId={feature.id} relPath={specDoc?.relPath} />
+      )}
 
-      <div className="body-title" style={{ marginTop: effective === 'spec' ? 18 : 0 }}>
-        <SectionTitle>Grill session</SectionTitle>
-        <span className="body-hint">— shape the idea with Claude; promote it when it feels concrete</span>
+      <div className="body-title" style={{ marginTop: hasContext ? 18 : 0 }}>
+        <SectionTitle>Session</SectionTitle>
+        <span className="body-hint">shape the idea with Claude — promote it when it feels concrete</span>
       </div>
 
-      <div className="grill-panel">
-        {session ? (
-          <>
-            <div className="grill-strip">
-              <span className="grill-kind">{session.kind}</span>
-              <span className="grill-sid">{session.ccSessionId ?? session.id}</span>
-              <SessionStatusDot status={session.status} />
-              <span className="grill-strip-spacer" />
-              {(session.status === 'live' || session.status === 'launching') && (
-                <EndSessionButton featureId={feature.id} sessionId={session.id} />
-              )}
-            </div>
-            <div className="grill-term" id="grill-term">
-              {session.status === 'ended' ? (
-                <div className="grill-empty">
-                  <DimLine>session ended — its decisions live in Knowledge</DimLine>
-                </div>
-              ) : (
-                <ErrorBoundary label="terminal">
-                  <TerminalView sessionId={session.id} />
-                </ErrorBoundary>
-              )}
-            </div>
-          </>
-        ) : (
-          <div className="grill-empty">
-            <DimLine>no grill session yet</DimLine>
-            <span className="body-hint">
-              Start a session from the next step to shape the idea with Claude before any code.
+      {sessionIsOpen ? (
+        <div className="grill-panel">
+          <div className="grill-strip">
+            <span className="grill-kind">{session.kind}</span>
+            <SessionStatusDot status={session.status} />
+            <span className="grill-live-label">
+              {session.status === 'launching' ? 'launching…' : 'live'}
             </span>
+            <span className="grill-strip-spacer" />
+            <span className="grill-sid" title={session.ccSessionId ?? session.id}>
+              {(session.ccSessionId ?? session.id).slice(0, 8)}
+            </span>
+            <EndSessionButton featureId={feature.id} sessionId={session.id} />
           </div>
-        )}
-      </div>
+          <div className="grill-term" id="grill-term">
+            <ErrorBoundary label="terminal">
+              <TerminalView sessionId={session.id} />
+            </ErrorBoundary>
+          </div>
+        </div>
+      ) : session ? (
+        <div className="session-ended-card" id="grill-term">
+          <span className="session-ended-dot" />
+          <div className="session-ended-main">
+            <div className="session-ended-title">Session ended</div>
+            <div className="session-ended-sub">
+              Decisions from this conversation were captured to Knowledge.
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div className="grill-panel">
+          <EmptyState
+            icon={<IconTerminal size={16} />}
+            title="No session yet"
+            hint="Start a session from the bar above — you and Claude shape the idea here before any code is written."
+          />
+        </div>
+      )}
 
       {showConvergeResume && <ConvergeResume featureId={feature.id} />}
     </div>
+  )
+}
+
+/**
+ * Compact spec pointer: the written spec opens in a peek overlay instead of
+ * dumping its full mono text into the page. Keeps the session the hero.
+ */
+function SpecCard({ featureId, relPath }: { featureId: string; relPath?: string }) {
+  const [open, setOpen] = useState(false)
+  if (!relPath) {
+    return (
+      <div className="doc-card is-empty">
+        <IconDoc size={14} />
+        <span className="doc-card-title">Spec not written yet</span>
+        <span className="doc-card-hint">continue the session to draft it</span>
+      </div>
+    )
+  }
+  return (
+    <>
+      <button className="doc-card" onClick={() => setOpen(true)} title="View the spec">
+        <IconDoc size={14} />
+        <span className="doc-card-title">Specification</span>
+        <span className="doc-card-meta">{relPath.split(/[\\/]/).pop()}</span>
+        <span className="doc-card-open">
+          View
+          <IconChevronRight size={11} />
+        </span>
+      </button>
+      {open && (
+        <DocPeek featureId={featureId} relPath={relPath} title="Specification" onClose={() => setOpen(false)} />
+      )}
+    </>
   )
 }
 
@@ -110,12 +149,14 @@ function ConvergeResume({ featureId }: { featureId: string }) {
   })
   return (
     <div className="converge-resume">
-      <DimLine>the converge session ended before tickets were emitted</DimLine>
+      <span className="converge-resume-text">
+        The converge session ended before tickets were emitted.
+      </span>
       <button
         type="button"
         className="btn btn-xs btn-ghost"
         disabled={converge.isPending}
-        title="restart the converge session over map.md + decisions.md"
+        title="Restart the converge session over map.md + decisions.md"
         onClick={() => converge.mutate({ featureId })}
       >
         {converge.isPending ? 'Resuming…' : 'Resume converge'}
@@ -146,17 +187,31 @@ function MapPanel({ full, relPath }: { full: FeatureFull; relPath?: string }) {
   )
   const sections = q.data ? parseMapSections(q.data.content) : {}
 
+  // Nothing charted at all yet — one quiet card instead of stacked placeholders.
+  if (!relPath && full.waypoints.length === 0) {
+    return (
+      <div className="map-panel">
+        <div className="body-title">
+          <SectionTitle>Map</SectionTitle>
+          <span className="body-hint">the destination and open questions, charted before diving in</span>
+        </div>
+        <div className="doc-card is-empty">
+          <IconDoc size={14} />
+          <span className="doc-card-title">Not charted yet</span>
+          <span className="doc-card-hint">the session writes the map as you explore the idea</span>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="map-panel">
       <div className="body-title">
         <SectionTitle>Map</SectionTitle>
-        <span className="body-hint">— chart the destination and open questions before diving in</span>
+        <span className="body-hint">the destination and open questions, charted before diving in</span>
       </div>
 
       {q.isLoading && <DimLine>loading map…</DimLine>}
-      {!relPath && !q.isLoading && (
-        <DimLine>map not scaffolded yet</DimLine>
-      )}
 
       {relPath && (
         <div className="map-sections">
@@ -320,7 +375,7 @@ function WaypointGroups({
   if (waypoints.length === 0) {
     return (
       <div className="map-waypoints">
-        <DimLine>no waypoints yet — the frontier fills in as the map is charted</DimLine>
+        <DimLine>No waypoints yet — they appear here as the map takes shape.</DimLine>
       </div>
     )
   }
@@ -466,15 +521,3 @@ function parseMapSections(content: string): Record<string, string> {
   return out
 }
 
-/** Inline render of a knowledge doc (spec.md) beside the conversation. */
-function DocPanel({ featureId, relPath }: { featureId: string; relPath: string }) {
-  const q = trpc.docs.read.useQuery({ featureId, relPath })
-  return (
-    <div className="spec-doc">
-      <div className="spec-meta">{relPath}</div>
-      {q.isLoading && <DimLine>loading {relPath}…</DimLine>}
-      {q.error && <DimLine>could not read {relPath}</DimLine>}
-      {q.data && <div className="spec-body">{q.data.content}</div>}
-    </div>
-  )
-}

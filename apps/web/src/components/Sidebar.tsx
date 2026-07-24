@@ -3,7 +3,8 @@ import { trpc } from '../trpc'
 import { DimLine } from '../ui'
 import { useToast } from '../lib/toast'
 import type { FeatureListItem } from '../lib/api'
-import { miniSegments, needsMe, phaseGlyph, triage } from '../lib/feature-ui'
+import { miniSegments, needsMe, triage } from '../lib/feature-ui'
+import { IconCheck, IconPlus } from '../icons'
 import { FeatureActionsMenu, type FeatureAction } from './FeatureActionsMenu'
 import { DeleteFeatureDialog } from './DeleteFeatureDialog'
 
@@ -100,7 +101,8 @@ export function Sidebar({
       <div className="sidebar-head">
         <span className="pane-title">Features</span>
         <button className="new-btn" onClick={onNewFeature}>
-          + New
+          <IconPlus size={11} />
+          New
         </button>
       </div>
 
@@ -111,8 +113,10 @@ export function Sidebar({
           </div>
         )}
         {list.data && list.data.length === 0 && (
-          <div style={{ padding: '10px 8px' }}>
-            <DimLine>no features yet — + New to begin</DimLine>
+          <div className="sidebar-empty">
+            No features yet.
+            <br />
+            Create one to start the pipeline.
           </div>
         )}
         {groups.map((g) => (
@@ -137,11 +141,6 @@ export function Sidebar({
             {showArchived ? 'Hide' : 'Show'} archived ({archivedCount})
           </button>
         )}
-      </div>
-
-      <div className="sidebar-foot">
-        Every feature moves through the same six-phase pipeline. Amber means it's
-        waiting on you.
       </div>
 
       {pendingDelete && (
@@ -175,14 +174,16 @@ function FeatureRow({
 
   return (
     <div className={cls}>
-      <button className="feature-row-main" onClick={() => onSelect(f.id)} title={f.title}>
-        <span className={`feature-glyph phase-fg-${f.phase}`}>{phaseGlyph(f.phase)}</span>
-        <span className="feature-slug mono">{f.slug}</span>
+      <button className="feature-row-main" onClick={() => onSelect(f.id)} title={`${f.title} — ${f.slug}`}>
+        <span className={`feature-dot phase-bg-${f.phase}`} />
+        <span className="feature-slug">{f.title}</span>
         <span className="feature-flag">
           {f.activeRun ? (
             <span className="spin-ring" title="agent working" />
           ) : f.status === 'shipped' ? (
-            <span className="mini-check">✓</span>
+            <span className="mini-check">
+              <IconCheck size={10} />
+            </span>
           ) : (
             <>
               {nm && <span className={`needs-dot needs-${nm.kind}`} title={nm.label} />}

@@ -4,6 +4,7 @@ import { useToast } from '../lib/toast'
 import { projectStats, type ProjectStats } from '../lib/projects'
 import type { ProjectNavApi } from '../lib/use-project-nav'
 import type { Project } from '../lib/api'
+import { IconBranch, IconPlus } from '../icons'
 
 /**
  * The portfolio home (issue #45): the canonical cross-project surface. One card
@@ -22,39 +23,54 @@ export function PortfolioHome({ nav }: { nav: ProjectNavApi }) {
   )
 
   return (
-    <div className="home">
-      <header className="home-head">
-        <div className="home-title">
+    <div className="home-frame">
+      <header className="home-topbar">
+        <span className="tb-home">
           <span className="tb-logo mono">r</span>
-          <span className="home-title-text">Projects</span>
-          <span className="home-count">{projects.length}</span>
-        </div>
-        <p className="home-sub">
-          Every open project and where it stands. Open one to work its pipeline —
-          runs keep going in the background while you switch.
-        </p>
+          <span className="tb-app">runcastle</span>
+        </span>
+        <span className="tb-spacer" />
+        <button className="btn btn-ghost btn-xs" onClick={nav.showOpen}>
+          <IconPlus size={11} />
+          Open a project
+        </button>
       </header>
 
-      <div className="home-grid">
-        {projects.map((p, i) => {
-          const features = featureQueries[i]?.data
-          const stats = projectStats(features ?? [])
-          return (
-            <ProjectCard
-              key={p.id}
-              project={p}
-              stats={stats}
-              loading={features === undefined}
-              onOpen={() => nav.enterProject(p.id)}
-            />
-          )
-        })}
+      <div className="home">
+        <header className="home-head">
+          <div className="home-title">
+            <span className="home-title-text">Projects</span>
+            <span className="home-count">{projects.length}</span>
+          </div>
+          <p className="home-sub">
+            Every open project and where it stands — runs keep going in the
+            background while you switch.
+          </p>
+        </header>
 
-        <button className="open-card" onClick={nav.showOpen}>
-          <span className="open-card-plus">+</span>
-          <span className="open-card-label">Open a project</span>
-          <span className="open-card-sub">Point runcastle at a local git repo</span>
-        </button>
+        <div className="home-grid">
+          {projects.map((p, i) => {
+            const features = featureQueries[i]?.data
+            const stats = projectStats(features ?? [])
+            return (
+              <ProjectCard
+                key={p.id}
+                project={p}
+                stats={stats}
+                loading={features === undefined}
+                onOpen={() => nav.enterProject(p.id)}
+              />
+            )
+          })}
+
+          <button className="open-card" onClick={nav.showOpen}>
+            <span className="open-card-plus">
+              <IconPlus size={16} />
+            </span>
+            <span className="open-card-label">Open a project</span>
+            <span className="open-card-sub">Point runcastle at a local git repo</span>
+          </button>
+        </div>
       </div>
     </div>
   )
@@ -132,7 +148,10 @@ function ProjectCard({
           <span className={`pc-health-dot health-dot-${stats.health}`} title={HEALTH_LABEL[stats.health]} />
         </div>
         <span className="pc-path mono">{project.repoPath}</span>
-        <span className="pc-branch mono">⎇ {project.mainBranch}</span>
+        <span className="pc-branch">
+          <IconBranch size={11} />
+          {project.mainBranch}
+        </span>
 
         <div className="pc-stats">
           <Stat n={stats.total} label={stats.total === 1 ? 'feature' : 'features'} />

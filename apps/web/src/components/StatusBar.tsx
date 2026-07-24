@@ -3,6 +3,7 @@ import { useToast } from '../lib/toast'
 import { useDesktopNotifications } from '../lib/use-notifications'
 import { SANDBOX_MODE, SERVER_PORT } from '../lib/env'
 import type { DriveState } from '../lib/workspace'
+import { IconBell, IconBellOff, IconBranch, IconShield } from '../icons'
 
 /**
  * Bottom status bar for the pipeline-first shell (app-redesign): active-feature
@@ -48,11 +49,15 @@ export function StatusBar({
   return (
     <footer className="statusbar">
       {active && (
-        <button className="sb-branch" onClick={copyBranch} title="copy branch">
-          ⎇ {active.branch}
+        <button className="sb-branch" onClick={copyBranch} title="Copy branch name">
+          <IconBranch size={11} />
+          {active.branch}
         </button>
       )}
-      <span className="sb-item">sandbox · {SANDBOX_MODE}</span>
+      <span className="sb-item" title={`Agent sessions run sandboxed via ${SANDBOX_MODE}`}>
+        <IconShield size={11} />
+        {SANDBOX_MODE}
+      </span>
       {driving && (
         <span className="sb-driving">
           <span className="sb-driving-dot" />
@@ -77,7 +82,8 @@ export function StatusBar({
               : 'Notify me when a burn finishes'
           }
         >
-          {notify.enabled ? '🔔 notify' : '🔕 notify'}
+          {notify.enabled ? <IconBell size={12} /> : <IconBellOff size={12} />}
+          notify
         </button>
       )}
       <span className="sb-item">
