@@ -483,6 +483,79 @@ h3 {
 }
 
 /* ==========================================================================
+   HERO FILM
+   --------------------------------------------------------------------------
+   The hero is the launch film rather than a still. It keeps the shot's panel
+   treatment but closes the bottom edge the shot deliberately left open: a still
+   can bleed past the fold and lose nothing, while a 16:9 film has a height of
+   its own and bleeding it would crop the frame.
+   ========================================================================== */
+
+.hero-film {
+  border-bottom: 1px solid var(--hairline);
+  border-radius: var(--radius-panel);
+  margin-bottom: clamp(52px, 6.5vw, 88px);
+  /* The film's own backdrop rather than the page's panel, so the frame never
+     shows a lighter box behind it while the first frames decode. */
+  background: #08070e;
+}
+.hero-film .film {
+  display: block;
+  /* The `width`/`height` attributes carry the 16:9 ratio, so the frame reserves
+     its full height before a byte of video is fetched. Nothing reflows when the
+     film arrives, which matters here because it is the tallest thing on screen. */
+  width: 100%;
+  height: auto;
+}
+
+/* Offered only while the film is looping muted, and only by main.js — the frame
+   is already showing the product by then, so the one thing left to hand over is
+   the voiceover. It sits in the corner rather than over the middle because it is
+   an option, not a gate: the film plays either way. */
+.film-btn {
+  position: absolute;
+  right: 14px;
+  bottom: 14px;
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  height: 34px;
+  padding-inline: 13px;
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius-pill);
+  /* Translucent over the film, so it reads as an overlay on the footage rather
+     than a control bar bolted to the frame. */
+  background: rgba(10, 9, 15, 0.72);
+  backdrop-filter: blur(10px);
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background var(--dur-1) var(--ease), border-color var(--dur-1) var(--ease);
+}
+.film-btn[hidden] {
+  display: none;
+}
+.film-btn:hover,
+.film-btn:focus-visible {
+  background: rgba(18, 16, 26, 0.9);
+  border-color: var(--accent);
+}
+.film-btn-icon {
+  display: flex;
+  color: var(--text-2);
+}
+.film-btn-icon svg {
+  width: 15px;
+  height: 15px;
+}
+.film-btn-time {
+  color: var(--text-3);
+  font-size: 12px;
+}
+
+/* ==========================================================================
    EMBEDDED PRODUCT UI
    --------------------------------------------------------------------------
    The mockups on this page are the product's real components as live markup,
@@ -586,6 +659,11 @@ h3 {
 /* The app shell is a three-column grid, and below these widths the columns stop
    being readable, so the outer rails drop the way they would in a narrow window.
 
+   Nothing on the page is a whole shell any more: the hero was the only one, and
+   the hero is the film. These rules and `[data-mock='shell']` below are kept
+   because `assets/screens/mock-shell.png` — the root README's lead image and the
+   page's own og:image — can only be recaptured by standing the frame back up.
+
    These are CONTAINER queries, not media queries, and that distinction matters:
    a mock's width is its own logical width, which has nothing to do with the
    viewport. Keyed to the viewport, a 1600px-wide mock on a phone would collapse
@@ -603,11 +681,15 @@ h3 {
    specificity, so a bare `.shell-body` (0,1,0) would lose to the product sheet's
    `.rc-app .shell-body` (0,2,0). Matching that specificity and coming later in
    source order is what makes these win. */
+/* Scoped to a rail that is actually inside a shell. A mock may show one of these
+   panels on its own (the feature board is just `.sidebar`), and such a panel is
+   narrow by nature — keyed on the bare class it would match its own width here
+   and hide itself. */
 @container rcapp (max-width: 1080px) {
   .rc-app .shell-body {
     grid-template-columns: var(--sidebar-w) minmax(0, 1fr);
   }
-  .rc-app .inspector {
+  .rc-app .shell-body > .inspector {
     display: none;
   }
 }
@@ -618,7 +700,7 @@ h3 {
   .rc-app .shell-body {
     grid-template-columns: minmax(0, 1fr);
   }
-  .rc-app .sidebar {
+  .rc-app .shell-body > .sidebar {
     display: none;
   }
 }
@@ -629,9 +711,17 @@ h3 {
   --rc-w: 1600;
   --rc-h: 800;
 }
-.rc-frame[data-mock='strip'] {
-  --rc-w: 1240;
-  --rc-h: 168;
+/* Every panel of the end-to-end walkthrough lays out at one logical width, so the
+   phase stepper across the top does not resize as the stage cross-fades. Heights
+   differ per phase and `.is-autoheight` measures each; the stage takes the
+   tallest, which is the run. */
+.rc-frame[data-mock='walk'] {
+  --rc-w: 1040;
+  --rc-h: 560;
+}
+.rc-frame[data-mock='board'] {
+  --rc-w: 320;
+  --rc-h: 440;
 }
 .rc-frame[data-mock='term'] {
   --rc-w: 880;
@@ -660,8 +750,11 @@ h3 {
     --rc-w: 440;
     --rc-h: 620;
   }
-  .rc-frame[data-mock='strip'] {
-    --rc-h: 230;
+  /* The board is already a narrow rail at its natural size — shrinking it to the
+     blanket phone width would only make it illegible. */
+  .rc-frame[data-mock='board'] {
+    --rc-w: 320;
+    --rc-h: 440;
   }
 }
 @media (max-width: 520px) {
@@ -669,19 +762,68 @@ h3 {
     --rc-w: 400;
     --rc-h: 600;
   }
+  .rc-frame[data-mock='board'] {
+    --rc-w: 320;
+    --rc-h: 440;
+  }
 }
 
-/* Section mocks that are a single panel rather than a whole shell. */
-.rc-panel {
+/* --------------------------------------------------------------------------
+   WALKTHROUGH PANELS
+   Each panel is a slice of the workspace: the phase stepper, sometimes the
+   next-step bar, and one phase body. It is not a whole shell, so it supplies
+   the chrome the surrounding workspace would have given it.
+   -------------------------------------------------------------------------- */
+/* A floor in the mock's own logical units, set to the tallest panel (the run).
+   Without it each frame is exactly as tall as its own phase body, so the short
+   ones float as a small bordered box inside a stage cell sized by the tallest.
+   With it every panel fills the cell and only the content inside changes. */
+.walk-app {
   padding: 0;
+  min-height: 576px;
 }
 /* Standalone, the stepper is the panel's own header rather than something
    sitting under a title row, so it loses the product's top margin and gains
    the padding the surrounding chrome would otherwise have provided. */
-.rc-panel .pipeline {
+.walk-app .pipeline {
   margin-top: 0;
-  padding: 16px 20px;
+  padding: 14px 20px;
   border-bottom: 1px solid var(--hairline);
+  /* Six phases do not fit on one line once the mock lays out at phone width, and
+     a stepper with the last two phases cut off is the one thing this section
+     cannot afford to show. Wrapping keeps all six visible; at every width above
+     that it is a single row and this never applies. */
+  flex-wrap: wrap;
+  row-gap: 8px;
+}
+.walk-body {
+  padding: 18px 20px 20px;
+}
+/* `.run-stream-panel` sizes itself against the viewport (`100dvh`). Inside a
+   mock that lays out at a fixed logical size that is meaningless, so the log
+   gets a height in the mock's own coordinate space instead. */
+.walk-app .run-stream-panel {
+  height: 316px;
+}
+/* The doc view is an overlay in the app, centred over a backdrop. Here it is the
+   panel's whole content, so it drops the viewport-relative cap and fills. */
+.walk-app .peek {
+  max-width: none;
+  max-height: none;
+}
+/* Sized so the whole excerpt fits: a doc cut mid-sentence reads as broken rather
+   than as a panel that scrolls. Matches the run panel's height, so the sticky
+   stage does not resize between those two steps. */
+.walk-app .peek-body {
+  max-height: 440px;
+}
+/* Entry animations are for a view arriving once. These panels cross-fade every
+   time the reader scrolls past them, so the one-shot ones are dropped. The
+   running-lane pulse stays: it is state, not entry. */
+.walk-app .peek,
+.walk-app .nextstep,
+.walk-app .stream-line {
+  animation: none;
 }
 /* In the product the next-step bar is a card floating in the workspace. Here the
    frame is already that card, so the bar sits flush instead of drawing a second
@@ -692,13 +834,14 @@ h3 {
    that group, so left alone the bar sits 62px inboard of it and the two rows
    visibly fail to line up. Standalone there is no document column to centre
    against, so the bar takes the frame's full width. */
-.rc-panel .nextstep {
+.walk-app .nextstep {
   margin-top: 0;
   margin-inline: 0;
   max-width: none;
   border: 0;
+  border-bottom: 1px solid var(--hairline);
   border-radius: 0;
-  padding: 16px 20px;
+  padding: 14px 20px;
   background: transparent;
 }
 
@@ -807,109 +950,6 @@ h3 {
    PIPELINE
    ========================================================================== */
 
-.pipe-shot {
-  margin-top: 44px;
-  border: 1px solid var(--hairline);
-  border-radius: var(--radius-panel);
-  overflow: hidden;
-  background: var(--panel-2);
-}
-.pipe-shot img {
-  width: 100%;
-}
-
-/* the rail draws left to right as the section arrives: the pipeline advancing */
-.pipe-rail {
-  position: relative;
-  height: 1px;
-  margin-top: 52px;
-  background: var(--hairline-soft);
-}
-.pipe-rail::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  transform: scaleX(0);
-  transform-origin: left center;
-  background: linear-gradient(90deg, var(--accent) 0%, var(--accent-hi) 55%, #e9ecf4 100%);
-  transition: transform 1.5s var(--ease-out);
-}
-.reveal.is-in .pipe-rail::after {
-  transform: scaleX(1);
-}
-
-.phases {
-  display: grid;
-  grid-template-columns: repeat(6, 1fr);
-  gap: 0;
-  margin-top: 0;
-}
-/* The gutter is symmetric on purpose: `padding-right` keeps a column off its own
-   divider, `padding-left` keeps it off the previous one. With only the former,
-   every column after the first sits 1px from the rule to its left and the row
-   reads as six boxes crammed together. The column that starts a row has no rule
-   to its left, so it stays flush with the rail. */
-.phase {
-  padding: 22px 22px 0 22px;
-  border-right: 1px solid var(--hairline-soft);
-}
-.phase:first-child {
-  padding-left: 0;
-}
-.phase:last-child {
-  border-right: none;
-}
-.phase-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--ph);
-  margin-bottom: 12px;
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ph) 18%, transparent);
-}
-.phase-name {
-  font-family: var(--mono);
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--text);
-  margin-bottom: 6px;
-}
-.phase-note {
-  font-size: 13.5px;
-  color: var(--text-3);
-  line-height: 1.55;
-}
-@media (max-width: 1000px) {
-  .phases {
-    grid-template-columns: repeat(3, 1fr);
-    gap: 4px 0;
-  }
-  .phase:nth-child(3n) {
-    border-right: none;
-  }
-}
-/* First of each row, not just the first of the grid. Bounded below, because at
-   two columns `3n + 1` picks the 4th item — which is then a right-hand column —
-   and it would beat the plain `.phase` rule in the block below on specificity. */
-@media (max-width: 1000px) and (min-width: 621px) {
-  .phase:nth-child(3n + 1) {
-    padding-left: 0;
-  }
-}
-@media (max-width: 620px) {
-  .phases {
-    grid-template-columns: repeat(2, 1fr);
-  }
-  .phase {
-    border-right: none;
-    padding-right: 18px;
-    padding-left: 18px;
-  }
-  .phase:nth-child(odd) {
-    padding-left: 0;
-  }
-}
-
 /* the two decisions callout */
 .decisions {
   display: grid;
@@ -963,7 +1003,7 @@ h3 {
   border-bottom: 1px solid var(--hairline-soft);
 }
 .step {
-  padding: 34px 0;
+  padding: 28px 0;
   cursor: pointer;
   opacity: 0.42;
   transition: opacity var(--dur-3) var(--ease);
@@ -997,11 +1037,49 @@ h3 {
 /* The step is a <button>, so its contents are spans rather than h3 + p. These
    two rules carry the typography those tags would have brought. */
 .step-h {
+  display: block;
+  margin-bottom: 9px;
   font-size: 17px;
   font-weight: 600;
   letter-spacing: -0.012em;
   line-height: 1.3;
   color: var(--text);
+}
+/* The phase this step is, in the product's own vocabulary and phase colour, so
+   the label in the step and the label in the stepper opposite are the same word. */
+.step-phase {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  color: var(--text-2);
+}
+.step-phase::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--ph);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ph) 18%, transparent);
+}
+/* Whether this phase wants the reader's attention. The whole argument of the
+   section is that three of the six do not. */
+.step-who {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  padding-inline: 9px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--hairline);
+  font-size: 11px;
+  color: var(--text-3);
+  white-space: nowrap;
+}
+.step-who.is-you {
+  border-color: var(--accent-line);
+  background: rgba(124, 108, 246, 0.1);
+  color: var(--accent-hi);
 }
 .step-p {
   display: block;
@@ -1113,6 +1191,49 @@ h3 {
     opacity: 1;
     visibility: visible;
     transition: none;
+  }
+  /* The floor exists so every panel fills one shared sticky cell. Stacked, each
+     panel is its own block and the floor would only add dead space. */
+  .walk-app {
+    min-height: 0;
+  }
+}
+
+/* ==========================================================================
+   PARALLEL WORK  (the feature board, beside the reasons it works)
+   ========================================================================== */
+
+.parallel {
+  display: grid;
+  grid-template-columns: minmax(0, 340px) minmax(0, 1fr);
+  gap: clamp(36px, 5vw, 68px);
+  align-items: start;
+}
+/* Standalone the rail has nothing to its right to divide it from. */
+.board-app .sidebar {
+  border-right: none;
+}
+/* In the app the list is the scrolling remainder of a full-height shell column
+   (`flex: 1` against `min-height: 0`). With no height to take a remainder of,
+   that resolves to zero and the whole rail collapses, so here the list is simply
+   as tall as its rows. */
+.board-app .sidebar-list {
+  flex: none;
+  overflow: visible;
+}
+/* Reads the graphic above it, since the six-segment map is the whole point of
+   showing the rail at this size. */
+.board-note {
+  margin: 18px 2px 0;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--text-3);
+  max-width: 42ch;
+}
+@media (max-width: 900px) {
+  .parallel {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 34px;
   }
 }
 
@@ -1490,7 +1611,6 @@ h3 {
     transform: none;
     transition: none;
   }
-  .pipe-rail::after,
   .step-bar::after {
     transform: scaleX(1);
     transition: none;

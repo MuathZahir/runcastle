@@ -9,6 +9,9 @@
  *   3. sticky stage swap      -> storytelling, the visual tracks the step being read
  *   4. nav hairline on scroll -> state transition, the bar has detached from the top
  *   5. copy button feedback   -> feedback, acknowledges the click
+ *   6. hero film ambient loop -> the hero is the product moving rather than a
+ *                                still of it; muted, on screen only, one click
+ *                                away from the narrated cut
  */
 
 (() => {
@@ -173,4 +176,96 @@
       }, 1600)
     })
   })
+
+  /* ---- 6. the hero film -------------------------------------------------- */
+  /* Two modes, one file. The markup on its own is a plain video with native
+   * controls and a poster, which is exactly what someone with no JS should get:
+   * the narrated cut, on request. What this adds is the ambient mode — muted,
+   * controls dropped, looping on its own in-point, running only while it is on
+   * screen — plus the corner button that trades that loop for the voiceover.
+   *
+   * `narrating` is the mode flag rather than `film.muted`, because the muted
+   * state is set here and would otherwise be both the cause and the record of
+   * the mode. */
+  const film = document.getElementById('hero-film')
+  const filmBtn = document.querySelector('[data-film-play]')
+
+  if (film && filmBtn) {
+    let narrating = false
+
+    // The film opens on five seconds of brand hold and a statement card that
+    // repeats the page's own h1. That is the right way to open a film and the
+    // wrong way to open a hero, so the ambient loop starts where the product
+    // does. Clicking through plays the film whole, from frame one.
+    const AMBIENT_IN = 9.4
+
+    // Eleven megabytes is not a fair thing to push at a metered connection or a
+    // phone, and ambient motion is the first thing reduced-motion asks us to
+    // drop. In all three cases the native controls stay and the film waits.
+    const saveData = navigator.connection ? navigator.connection.saveData : false
+    const ambientOK =
+      !reduced && !saveData && !window.matchMedia('(max-width: 720px)').matches
+
+    // Only ever moves the playhead forward to the in-point: on the first play and
+    // on the loop back from the end, never on a resume from the pause the
+    // observer takes when the frame leaves the screen.
+    const cueIn = () => {
+      if (film.ended || film.currentTime < AMBIENT_IN) film.currentTime = AMBIENT_IN
+    }
+
+    const ambient = () => {
+      narrating = false
+      film.controls = false
+      film.muted = true
+      // `loop` is left off so that the loop point is ours: the end of the film
+      // returns to the product rather than to the brand open.
+      //
+      // Seeking a `preload="none"` element that has not loaded anything yet is
+      // dropped on the floor, so on the very first play the in-point has to wait
+      // for metadata. `cueIn` is idempotent, which is what makes that safe.
+      if (film.readyState > 0) cueIn()
+      else film.addEventListener('loadedmetadata', cueIn, { once: true })
+      const started = film.play()
+      if (!started) return
+      started
+        .then(() => filmBtn.removeAttribute('hidden'))
+        .catch(() => {
+          // Autoplay was refused after all. Hand the film back to the user
+          // rather than leaving a frozen poster with a sound button on it.
+          film.controls = true
+          filmBtn.setAttribute('hidden', '')
+        })
+    }
+
+    filmBtn.addEventListener('click', () => {
+      narrating = true
+      filmBtn.setAttribute('hidden', '')
+      film.controls = true
+      film.muted = false
+      film.currentTime = 0
+      film.play()
+    })
+
+    // Serves both modes, because both end at the same frame: it closes the
+    // ambient loop, and it drops the finished narrated cut back into it.
+    film.addEventListener('ended', () => {
+      if (ambientOK) ambient()
+    })
+
+    if (ambientOK && 'IntersectionObserver' in window) {
+      // Never fetch or decode a film nobody is looking at. The same observer
+      // parks it on the way out, and only ever touches the muted loop — a
+      // narrated play keeps going while the reader scrolls the page.
+      new IntersectionObserver(
+        ([entry]) => {
+          if (narrating) return
+          if (entry.isIntersecting) ambient()
+          else if (!film.paused) film.pause()
+        },
+        { threshold: 0.2 },
+      ).observe(film)
+    } else if (ambientOK) {
+      ambient()
+    }
+  }
 })()

@@ -108,156 +108,45 @@
         </div>
 
         <div class="wrap">
-          <div class="hero-shot reveal" data-delay="3">
-            <p class="sr-only">
-              The runcastle workspace, showing a feature called Realtime team collaboration in the
-              tickets phase. Ten generated tickets are listed in dependency order, the next step bar
-              offers to burn all ten, and the details panel shows gate G3, tickets approved, ready
-              to advance.
+          <!-- The launch film, in place of the still workspace shot that used to
+               sit here. Plain markup: a video with its own controls and a poster,
+               which is what someone with no JS gets. main.js upgrades it to an
+               ambient muted loop with a button that hands over the narrated cut. -->
+          <div class="hero-shot hero-film reveal" data-delay="3">
+            <p id="film-desc" class="sr-only">
+              A ninety-second walkthrough of runcastle. A feature is named and sized; a real
+              Claude Code session opens with the brief already injected and grills the idea into
+              a spec that is committed to the repo; the spec is split into ten dependency-ordered
+              tickets; one Burn click hands them to six sandboxed Docker agents that pick up
+              every unblocked ticket at once and commit to a single branch; four features run
+              side by side; the finished branch is test-driven on its own port and merged.
             </p>
-            <div class="rc-frame" data-mock="shell">
-              <div class="rc-app" inert aria-hidden="true">
-                <div class="shell">
-                  <!-- prettier-ignore -->
-                  <header class="titlebar">
-                    <span class="tb-home"><span class="tb-logo"><svg width="17" height="17" viewBox="0 0 32 32" fill="none"><path fill-rule="evenodd" clip-rule="evenodd" d="M4 29 V6 H10 V11 H13 V6 H19 V11 H22 V6 H28 V29 H4 Z M12.5 15 L21.5 20 L12.5 25 Z" fill="var(--accent)"/></svg></span><span class="wordmark"><span class="wordmark-run">run</span><span class="wordmark-castle">castle</span></span></span>
-                    <span class="tb-arrow">/</span>
-                    <div class="tb-switcher"><span class="tb-switcher-btn"><span class="tb-project">runcastle-demo</span><span class="tb-switcher-caret"><svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m4 6 4 4 4-4"/></svg></span></span></div>
-                    <span class="tb-branch"><svg width="12" height="12"><use href="#i-branch"/></svg>main</span>
-                    <span class="tb-spacer"></span>
-                    <span class="tb-search"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5 L14 14"/></svg><span>Search or jump to…</span><span class="tb-search-spacer"></span><span class="kbd">⌘K</span></span>
-                    <span class="tb-health is-ok"><span class="health-dot"></span></span>
-                    <span class="tb-icon-btn"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="2"/><path d="M8 1.8v2M8 12.2v2M1.8 8h2M12.2 8h2M3.6 3.6l1.4 1.4M11 11l1.4 1.4M12.4 3.6 11 5M5 11l-1.4 1.4"/></svg></span>
-                    <span class="tb-icon-btn is-on"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="1.8" y="2.8" width="12.4" height="10.4" rx="1.6"/><path d="M10.2 2.8v10.4"/></svg></span>
-                  </header>
-
-                  <div class="shell-body">
-                    <!-- prettier-ignore -->
-                    <nav class="sidebar">
-                      <div class="sidebar-head">
-                        <span class="pane-title">Features</span>
-                        <span class="new-btn"><svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3.2v9.6M3.2 8h9.6"/></svg>New</span>
-                      </div>
-                      <div class="sidebar-list">
-                        <div class="triage-group triage-needsYou">
-                          <div class="triage-label"><span class="triage-name">Needs you</span><span class="triage-count">2</span></div>
-                          <div class="feature-row is-active"><span class="feature-row-main"><span class="feature-dot phase-bg-tickets"></span><span class="feature-slug">Realtime team collaboration</span><span class="feature-flag"><span class="needs-dot needs-burn"></span><span class="mini-map"><span class="mini-seg is-done"></span><span class="mini-seg is-done"></span><span class="mini-seg is-current"></span><span class="mini-seg is-upcoming"></span><span class="mini-seg is-upcoming"></span><span class="mini-seg is-upcoming"></span></span></span></span></div>
-                          <div class="feature-row"><span class="feature-row-main"><span class="feature-dot phase-bg-review"></span><span class="feature-slug">Entry tags</span><span class="feature-flag"><span class="needs-dot needs-ship"></span><span class="mini-map"><span class="mini-seg is-done"></span><span class="mini-seg is-done"></span><span class="mini-seg is-done"></span><span class="mini-seg is-done"></span><span class="mini-seg is-current"></span><span class="mini-seg is-upcoming"></span></span></span></span></div>
-                        </div>
-                        <div class="triage-group triage-inProgress">
-                          <div class="triage-label"><span class="triage-name">In progress</span><span class="triage-count">2</span></div>
-                          <div class="feature-row"><span class="feature-row-main"><span class="feature-dot phase-bg-spec"></span><span class="feature-slug">Kickoff probe</span><span class="feature-flag"><span class="mini-map"><span class="mini-seg is-done"></span><span class="mini-seg is-current"></span><span class="mini-seg is-upcoming"></span><span class="mini-seg is-upcoming"></span><span class="mini-seg is-upcoming"></span><span class="mini-seg is-upcoming"></span></span></span></span></div>
-                          <div class="feature-row"><span class="feature-row-main"><span class="feature-dot phase-bg-tickets"></span><span class="feature-slug">Weekly digest email</span><span class="feature-flag"><span class="mini-map"><span class="mini-seg is-done"></span><span class="mini-seg is-done"></span><span class="mini-seg is-current"></span><span class="mini-seg is-upcoming"></span><span class="mini-seg is-upcoming"></span><span class="mini-seg is-upcoming"></span></span></span></span></div>
-                        </div>
-                        <div class="triage-group triage-shipped">
-                          <div class="triage-label"><span class="triage-name">Shipped</span><span class="triage-count">1</span></div>
-                          <div class="feature-row"><span class="feature-row-main"><span class="feature-dot phase-bg-shipped"></span><span class="feature-slug">mood-filter</span></span></div>
-                        </div>
-                      </div>
-                    </nav>
-
-                    <section class="workspace">
-                      <!-- prettier-ignore -->
-                      <div class="ws-head">
-                        <div class="ws-title-row">
-                          <span class="ws-title"><span class="phase-fg-tickets mono">tickets</span> Realtime team collaboration</span>
-                          <span class="ws-title-spacer"></span>
-                          <span class="ws-branch"><svg width="12" height="12"><use href="#i-branch"/></svg>feature/realtime-team-collaboration</span>
-                        </div>
-                        <div class="pipeline">
-                          <span class="pstep is-done"><span class="pstep-dot"></span><span class="pstep-label">ideation</span></span>
-                          <span class="pconn is-done"></span>
-                          <span class="pstep is-done"><span class="pstep-dot"></span><span class="pstep-label">spec</span></span>
-                          <span class="pconn is-done"></span>
-                          <span class="pstep is-current is-viewed"><span class="pstep-dot"></span><span class="pstep-label">tickets</span></span>
-                          <span class="pconn"></span>
-                          <span class="pstep is-upcoming"><span class="pstep-dot"></span><span class="pstep-label">build</span></span>
-                          <span class="pconn"></span>
-                          <span class="pstep is-upcoming"><span class="pstep-dot"></span><span class="pstep-label">review</span></span>
-                          <span class="pconn"></span>
-                          <span class="pstep is-upcoming"><span class="pstep-dot"></span><span class="pstep-label">shipped</span></span>
-                        </div>
-                      </div>
-
-                      <!-- prettier-ignore -->
-                      <div class="nextstep">
-                        <div class="nextstep-main">
-                          <div class="nextstep-kick">NEXT STEP</div>
-                          <div class="nextstep-title">Review &amp; burn the tickets</div>
-                          <div class="nextstep-desc">Each ticket is one atomic task Claude will implement. Review them, then burn.</div>
-                        </div>
-                        <div class="nextstep-actions">
-                          <span class="btn btn-ghost btn-xs">Revisit</span>
-                          <span class="btn btn-solid">Burn 10 tickets</span>
-                        </div>
-                      </div>
-
-                      <div class="ws-body">
-                        <div class="ws-body-inner">
-                          <!-- prettier-ignore -->
-                          <div class="body-title">
-                            <div class="section-title">Tickets</div>
-                            <span class="body-meta">0/10 done</span>
-                            <span style="flex: 1"></span>
-                            <span class="chip chip-neutral">sandbox · docker</span>
-                            <span class="chip chip-neutral">claude-opus-4-8</span>
-                          </div>
-                          <!-- prettier-ignore -->
-                          <div class="ledger">
-                            <div class="ledger-row"><span class="ledger-head"><span class="lg-caret"><svg width="11" height="11"><use href="#i-caret"/></svg></span><span class="lg-seq">#1</span><span class="lg-title">Move entries into SQLite behind an injectable driver port</span><span class="lg-meta"><span class="chip chip-ticket-pending">pending</span></span></span></div>
-                            <div class="ledger-row"><span class="ledger-head"><span class="lg-caret"><svg width="11" height="11"><use href="#i-caret"/></svg></span><span class="lg-seq">#2</span><span class="lg-title">EventBus with a durable allowlist, and entry lifecycle events</span><span class="lg-block">after #1</span><span class="lg-meta"><span class="chip chip-ticket-pending">pending</span></span></span></div>
-                            <div class="ledger-row"><span class="ledger-head"><span class="lg-caret"><svg width="11" height="11"><use href="#i-caret"/></svg></span><span class="lg-seq">#3</span><span class="lg-title">Feed history read: keyset pagination with actor and type filters</span><span class="lg-block">after #2</span><span class="lg-meta"><span class="chip chip-ticket-pending">pending</span></span></span></div>
-                            <div class="ledger-row"><span class="ledger-head"><span class="lg-caret"><svg width="11" height="11"><use href="#i-caret"/></svg></span><span class="lg-seq">#4</span><span class="lg-title">Retention pruning for the event log and the notification inbox</span><span class="lg-block">after #2</span><span class="lg-meta"><span class="chip chip-ticket-pending">pending</span></span></span></div>
-                            <div class="ledger-row"><span class="ledger-head"><span class="lg-caret"><svg width="11" height="11"><use href="#i-caret"/></svg></span><span class="lg-seq">#5</span><span class="lg-title">WebSocket transport, identity minting, and the pure message router</span><span class="lg-block">after #2</span><span class="lg-meta"><span class="chip chip-ticket-pending">pending</span></span></span></div>
-                            <div class="ledger-row"><span class="ledger-head"><span class="lg-caret"><svg width="11" height="11"><use href="#i-caret"/></svg></span><span class="lg-seq">#6</span><span class="lg-title">Presence: heartbeat, idle, liveness, and the avatar stack</span><span class="lg-block">after #5</span><span class="lg-meta"><span class="chip chip-ticket-pending">pending</span></span></span></div>
-                            <div class="ledger-row"><span class="ledger-head"><span class="lg-caret"><svg width="11" height="11"><use href="#i-caret"/></svg></span><span class="lg-seq">#7</span><span class="lg-title">Mentions: canonical tokens, recipient fan-out, and the composer typeahead</span><span class="lg-block">after #2, #5</span><span class="lg-meta"><span class="chip chip-ticket-pending">pending</span></span></span></div>
-                            <div class="ledger-row"><span class="ledger-head"><span class="lg-caret"><svg width="11" height="11"><use href="#i-caret"/></svg></span><span class="lg-seq">#8</span><span class="lg-title">Notification inbox: bell, unread count, live toast, and read state</span><span class="lg-block">after #5, #7</span><span class="lg-meta"><span class="chip chip-ticket-pending">pending</span></span></span></div>
-                            <div class="ledger-row"><span class="ledger-head"><span class="lg-caret"><svg width="11" height="11"><use href="#i-caret"/></svg></span><span class="lg-seq">#9</span><span class="lg-title">Activity tab: live feed push, infinite scroll, filters, and reconnect gap-fill</span><span class="lg-block">after #3, #5</span><span class="lg-meta"><span class="chip chip-ticket-pending">pending</span></span></span></div>
-                            <div class="ledger-row"><span class="ledger-head"><span class="lg-caret"><svg width="11" height="11"><use href="#i-caret"/></svg></span><span class="lg-seq">#10</span><span class="lg-title">Backpressure and reconnect: drop-and-resync, no outbox</span><span class="lg-block">after #5</span><span class="lg-meta"><span class="chip chip-ticket-pending">pending</span></span></span></div>
-                          </div>
-                        </div>
-                      </div>
-                    </section>
-
-                    <!-- prettier-ignore -->
-                    <aside class="inspector">
-                      <div class="insp-tabs">
-                        <span class="insp-tab is-active">Details</span>
-                        <span class="insp-tab">Activity</span>
-                      </div>
-                      <div class="insp-pane">
-                        <section class="insp-section">
-                          <div class="insp-cap">Current gate</div>
-                          <div class="gate-card">
-                            <div class="gate-idrow"><span class="gate-id">G3</span><span class="gate-name">Tickets approved</span></div>
-                            <div class="gate-req">Tickets approved by a human (the Burn click)</div>
-                            <div class="gate-state is-ok"><span class="gate-state-dot"></span><span>Ready to advance</span></div>
-                            <span class="gate-override-link">Override with reason…</span>
-                          </div>
-                        </section>
-                        <section class="insp-section">
-                          <div class="insp-cap">Knowledge</div>
-                          <ul class="doc-list">
-                            <li><span class="doc-link"><span class="doc-link-icon"><svg width="13" height="13"><use href="#i-doc"/></svg></span><span class="doc-title">Realtime team collaboration</span><span class="doc-meta">spec.md</span></span></li>
-                            <li><span class="doc-link"><span class="doc-link-icon"><svg width="13" height="13"><use href="#i-doc"/></svg></span><span class="doc-title">Realtime team collaboration decisions</span><span class="doc-meta">decisions.md</span></span></li>
-                            <li><span class="doc-link"><span class="doc-link-icon"><svg width="13" height="13"><use href="#i-doc"/></svg></span><span class="doc-title">Realtime team collaboration map</span><span class="doc-meta">map.md</span></span></li>
-                          </ul>
-                        </section>
-                      </div>
-                    </aside>
-                  </div>
-
-                  <!-- prettier-ignore -->
-                  <footer class="statusbar">
-                    <span class="sb-branch"><svg width="11" height="11"><use href="#i-branch"/></svg>feature/realtime-team-collaboration</span>
-                    <span class="sb-item"><svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 1.8 13 3.6v4.2c0 3.2-2.1 5.3-5 6.4-2.9-1.1-5-3.2-5-6.4V3.6z"/></svg>docker</span>
-                    <span class="sb-spacer"></span>
-                    <span class="sb-item">0 runs</span>
-                    <span class="sb-item sb-health is-ok"><span class="health-dot"></span>:4512 ok</span>
-                  </footer>
-                </div>
-              </div>
-            </div>
+            <video
+              class="film"
+              id="hero-film"
+              width="2560"
+              height="1440"
+              poster="assets/video/runcastle-demo-poster.webp"
+              preload="none"
+              controls
+              playsinline
+              aria-label="The runcastle demo film, ninety seconds"
+              aria-describedby="film-desc"
+            >
+              <source src="assets/video/runcastle-demo-1440.mp4" type="video/mp4" />
+              <track
+                kind="captions"
+                src="assets/video/runcastle-demo.en.vtt"
+                srclang="en"
+                label="English"
+              />
+            </video>
+            <!-- prettier-ignore -->
+            <button class="film-btn" type="button" aria-controls="hero-film" data-film-play hidden>
+              <span class="film-btn-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6.6 8.9H3.2v6.2h3.4L11 19Z"/><path d="M15.4 9.2a4 4 0 0 1 0 5.6"/><path d="M18.3 6.3a8 8 0 0 1 0 11.4"/></svg></span>
+              <span class="film-btn-text">Play with sound</span>
+              <span class="film-btn-time lp-mono">1:30</span>
+            </button>
           </div>
         </div>
       </section>
@@ -295,76 +184,424 @@
             </p>
           </div>
 
-          <div class="reveal" data-delay="1">
-            <p class="sr-only">
-              The phase stepper reads ideation, spec, tickets, build, review, shipped, with tickets
-              current. Below it a next step bar says review and burn the tickets, with a Burn 10
-              tickets button.
-            </p>
-            <div class="rc-frame is-autoheight" data-mock="strip">
-              <div class="rc-app rc-panel" inert aria-hidden="true">
-                <!-- prettier-ignore -->
-                <div class="pipeline">
-                  <span class="pstep is-done"><span class="pstep-dot"></span><span class="pstep-label">ideation</span></span>
-                  <span class="pconn is-done"></span>
-                  <span class="pstep is-done"><span class="pstep-dot"></span><span class="pstep-label">spec</span></span>
-                  <span class="pconn is-done"></span>
-                  <span class="pstep is-current is-viewed"><span class="pstep-dot"></span><span class="pstep-label">tickets</span></span>
-                  <span class="pconn"></span>
-                  <span class="pstep is-upcoming"><span class="pstep-dot"></span><span class="pstep-label">build</span></span>
-                  <span class="pconn"></span>
-                  <span class="pstep is-upcoming"><span class="pstep-dot"></span><span class="pstep-label">review</span></span>
-                  <span class="pconn"></span>
-                  <span class="pstep is-upcoming"><span class="pstep-dot"></span><span class="pstep-label">shipped</span></span>
-                </div>
-                <!-- prettier-ignore -->
-                <div class="nextstep">
-                  <div class="nextstep-main">
-                    <div class="nextstep-kick">NEXT STEP</div>
-                    <div class="nextstep-title">Review &amp; burn the tickets</div>
-                    <div class="nextstep-desc">Each ticket is one atomic task Claude will implement. Review them, then burn.</div>
-                  </div>
-                  <div class="nextstep-actions">
-                    <span class="btn btn-ghost btn-xs">Revisit</span>
-                    <span class="btn btn-solid">Burn 10 tickets</span>
-                  </div>
-                </div>
+          <!-- One feature walked end to end. Reading down the steps drives the
+               sticky stage, so the phase stepper in the panel advances with you
+               and each phase body is the screen the app actually shows. -->
+          <div class="showcase">
+            <div class="steps" id="steps">
+              <div class="step-wrap">
+                <button class="step is-active" type="button" data-stage="0" aria-controls="stage">
+                  <span class="step-top">
+                    <span class="step-idx lp-mono">01</span>
+                    <span class="step-phase lp-mono" style="--ph: var(--ph-ideation)">ideation</span>
+                    <span class="step-who is-you">Hands on</span>
+                  </span>
+                  <span class="step-h">Talk the idea into shape</span>
+                  <span class="step-p">
+                    A real Claude Code terminal opens with the feature already loaded, and argues
+                    the idea into something specific. This is the part only you can do.
+                  </span>
+                  <span class="step-bar"></span>
+                </button>
+              </div>
+
+              <div class="step-wrap">
+                <button class="step" type="button" data-stage="1" aria-controls="stage">
+                  <span class="step-top">
+                    <span class="step-idx lp-mono">02</span>
+                    <span class="step-phase lp-mono" style="--ph: var(--ph-spec)">spec</span>
+                    <span class="step-who">Hands off</span>
+                  </span>
+                  <span class="step-h">The decisions get written down</span>
+                  <span class="step-p">
+                    The same session that just interrogated you writes the spec and commits it to
+                    your repo, while everything you said is still in front of it.
+                  </span>
+                  <span class="step-bar"></span>
+                </button>
+              </div>
+
+              <div class="step-wrap">
+                <button class="step" type="button" data-stage="2" aria-controls="stage">
+                  <span class="step-top">
+                    <span class="step-idx lp-mono">03</span>
+                    <span class="step-phase lp-mono" style="--ph: var(--ph-tickets)">tickets</span>
+                    <span class="step-who is-you">Your call</span>
+                  </span>
+                  <span class="step-h">Skim the task list, say go</span>
+                  <span class="step-p">
+                    The spec becomes small tasks in the order they have to happen. You read the
+                    list and click once. It is the last thing you do here for a while.
+                  </span>
+                  <span class="step-bar"></span>
+                </button>
+              </div>
+
+              <div class="step-wrap">
+                <button class="step" type="button" data-stage="3" aria-controls="stage">
+                  <span class="step-top">
+                    <span class="step-idx lp-mono">04</span>
+                    <span class="step-phase lp-mono" style="--ph: var(--ph-implementation)">build</span>
+                    <span class="step-who">Hands off</span>
+                  </span>
+                  <span class="step-h">Close the tab</span>
+                  <span class="step-p">
+                    Agents take the tasks in order inside a container, committing to the branch as
+                    each one lands. Watch the log if you like, or go and start the next feature.
+                  </span>
+                  <span class="step-bar"></span>
+                </button>
+              </div>
+
+              <div class="step-wrap">
+                <button class="step" type="button" data-stage="4" aria-controls="stage">
+                  <span class="step-top">
+                    <span class="step-idx lp-mono">05</span>
+                    <span class="step-phase lp-mono" style="--ph: var(--ph-review)">review</span>
+                    <span class="step-who is-you">Your call</span>
+                  </span>
+                  <span class="step-h">Take it for a drive</span>
+                  <span class="step-p">
+                    runcastle sets your own work aside, checks out the finished branch, and starts
+                    it on its own port so you can click through the real thing before it lands.
+                  </span>
+                  <span class="step-bar"></span>
+                </button>
+              </div>
+
+              <div class="step-wrap">
+                <button class="step" type="button" data-stage="5" aria-controls="stage">
+                  <span class="step-top">
+                    <span class="step-idx lp-mono">06</span>
+                    <span class="step-phase lp-mono" style="--ph: var(--ph-shipped)">shipped</span>
+                    <span class="step-who">Hands off</span>
+                  </span>
+                  <span class="step-h">It merges, and it remembers</span>
+                  <span class="step-p">
+                    The branch lands on main. The spec, the decisions, and the whole run history
+                    stay readable afterwards, in your repo and in the app.
+                  </span>
+                  <span class="step-bar"></span>
+                </button>
               </div>
             </div>
-          </div>
 
-          <div class="reveal" data-delay="2">
-            <div class="pipe-rail"></div>
-            <div class="phases">
-              <div class="phase" style="--ph: var(--ph-ideation)">
-                <div class="phase-dot"></div>
-                <div class="phase-name">ideation</div>
-                <p class="phase-note">A real terminal opens and pushes back until the idea is actually decided.</p>
-              </div>
-              <div class="phase" style="--ph: var(--ph-spec)">
-                <div class="phase-dot"></div>
-                <div class="phase-name">spec</div>
-                <p class="phase-note">Those decisions get written down and committed to your repo.</p>
-              </div>
-              <div class="phase" style="--ph: var(--ph-tickets)">
-                <div class="phase-dot"></div>
-                <div class="phase-name">tickets</div>
-                <p class="phase-note">The plan is split into small tasks, in the order they have to happen.</p>
-              </div>
-              <div class="phase" style="--ph: var(--ph-implementation)">
-                <div class="phase-dot"></div>
-                <div class="phase-name">build</div>
-                <p class="phase-note">Agents work through the tasks in a container, committing as they go.</p>
-              </div>
-              <div class="phase" style="--ph: var(--ph-review)">
-                <div class="phase-dot"></div>
-                <div class="phase-name">review</div>
-                <p class="phase-note">Checks run, then you take the branch for a drive yourself.</p>
-              </div>
-              <div class="phase" style="--ph: var(--ph-shipped)">
-                <div class="phase-dot"></div>
-                <div class="phase-name">shipped</div>
-                <p class="phase-note">The branch merges, and the write-up stays in your repo.</p>
+            <div class="stage">
+              <div id="stage">
+                <!-- ---- 01 ideation ---- -->
+                <div class="stage-panel is-shown" data-stage="0">
+                  <p class="sr-only">
+                    The phase stepper with ideation current, above a live Claude Code session bound
+                    to the ideation phase, opened with an injected instruction to invoke the
+                    runcastle ideate skill.
+                  </p>
+                  <div class="rc-frame is-autoheight" data-mock="walk">
+                    <div class="rc-app walk-app" inert aria-hidden="true">
+                      <!-- prettier-ignore -->
+                      <div class="pipeline">
+                        <span class="pstep is-current is-viewed"><span class="pstep-dot"></span><span class="pstep-label">ideation</span></span>
+                        <span class="pconn"></span>
+                        <span class="pstep is-upcoming"><span class="pstep-dot"></span><span class="pstep-label">spec</span></span>
+                        <span class="pconn"></span>
+                        <span class="pstep is-upcoming"><span class="pstep-dot"></span><span class="pstep-label">tickets</span></span>
+                        <span class="pconn"></span>
+                        <span class="pstep is-upcoming"><span class="pstep-dot"></span><span class="pstep-label">build</span></span>
+                        <span class="pconn"></span>
+                        <span class="pstep is-upcoming"><span class="pstep-dot"></span><span class="pstep-label">review</span></span>
+                        <span class="pconn"></span>
+                        <span class="pstep is-upcoming"><span class="pstep-dot"></span><span class="pstep-label">shipped</span></span>
+                      </div>
+                      <div class="walk-body">
+                        <!-- prettier-ignore -->
+                        <div class="grill-strip">
+                          <span class="grill-kind">ideation</span>
+                          <span class="status-dot sess-dot-live"></span>
+                          <span class="grill-live-label">live</span>
+                          <span class="grill-strip-spacer"></span>
+                          <span class="grill-sid">cfc7946c</span>
+                          <span class="btn btn-xs btn-ghost sess-end">End session</span>
+                        </div>
+                        <div class="rc-term">
+                          <div class="rc-term-banner">
+                            <span class="rc-term-banner-label">Claude Code v2.1.218</span>
+                            <span class="t-hi">Welcome back!</span>
+                            <span class="t-dim">Opus 4.8 with high effort · Claude Max</span>
+                            <span class="t-dim">~/.runcastle/worktrees/proj_wf6xGoA7/realtime-team-collaboration</span>
+                          </div>
+                          <span class="rc-term-inject">
+                            &gt; Proceed with your task: invoke the /runcastle:ideate skill and
+                            drive the ideation session.
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- ---- 02 spec ---- -->
+                <div class="stage-panel" data-stage="1">
+                  <p class="sr-only">
+                    The phase stepper with spec current, above the generated spec document opened
+                    from the workspace, showing the decision, the scope, what is out of scope, and
+                    a resolved open question.
+                  </p>
+                  <div class="rc-frame is-autoheight" data-mock="walk">
+                    <div class="rc-app walk-app" inert aria-hidden="true">
+                      <!-- prettier-ignore -->
+                      <div class="pipeline">
+                        <span class="pstep is-done"><span class="pstep-dot"></span><span class="pstep-label">ideation</span></span>
+                        <span class="pconn is-done"></span>
+                        <span class="pstep is-current is-viewed"><span class="pstep-dot"></span><span class="pstep-label">spec</span></span>
+                        <span class="pconn"></span>
+                        <span class="pstep is-upcoming"><span class="pstep-dot"></span><span class="pstep-label">tickets</span></span>
+                        <span class="pconn"></span>
+                        <span class="pstep is-upcoming"><span class="pstep-dot"></span><span class="pstep-label">build</span></span>
+                        <span class="pconn"></span>
+                        <span class="pstep is-upcoming"><span class="pstep-dot"></span><span class="pstep-label">review</span></span>
+                        <span class="pconn"></span>
+                        <span class="pstep is-upcoming"><span class="pstep-dot"></span><span class="pstep-label">shipped</span></span>
+                      </div>
+                      <div class="walk-body">
+                        <!-- prettier-ignore -->
+                        <div class="peek">
+                          <div class="peek-head">
+                            <span class="mono peek-path">docs/features/realtime-team-collaboration/spec.md</span>
+                            <span class="peek-close">✕</span>
+                          </div>
+                          <div class="peek-body mono"><pre class="peek-pre"># Realtime team collaboration
+
+## Decision
+
+Entries move into SQLite behind an injectable driver port, so the
+transport and the storage can be replaced and tested apart.
+
+## In scope
+
+- Presence: who is in the entry, and whether they have gone idle.
+- Mentions: @name in a comment notifies the named person.
+- Activity feed: an append-only log of entry lifecycle events.
+
+## Out of scope
+
+- Live cursors and character-level merging. The comment is the unit
+  of collaboration here, not the keystroke.
+
+## Open question — resolved
+
+Q: Does a reconnecting client need an outbox to replay what it missed?
+A: No. It drops local state and re-reads the feed, which is already
+   paginated, so this costs one request.</pre></div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- ---- 03 tickets ---- -->
+                <div class="stage-panel" data-stage="2">
+                  <p class="sr-only">
+                    The phase stepper with tickets current, above a next step bar offering to burn
+                    ten tickets, and the ticket list in dependency order.
+                  </p>
+                  <div class="rc-frame is-autoheight" data-mock="walk">
+                    <div class="rc-app walk-app" inert aria-hidden="true">
+                      <!-- prettier-ignore -->
+                      <div class="pipeline">
+                        <span class="pstep is-done"><span class="pstep-dot"></span><span class="pstep-label">ideation</span></span>
+                        <span class="pconn is-done"></span>
+                        <span class="pstep is-done"><span class="pstep-dot"></span><span class="pstep-label">spec</span></span>
+                        <span class="pconn is-done"></span>
+                        <span class="pstep is-current is-viewed"><span class="pstep-dot"></span><span class="pstep-label">tickets</span></span>
+                        <span class="pconn"></span>
+                        <span class="pstep is-upcoming"><span class="pstep-dot"></span><span class="pstep-label">build</span></span>
+                        <span class="pconn"></span>
+                        <span class="pstep is-upcoming"><span class="pstep-dot"></span><span class="pstep-label">review</span></span>
+                        <span class="pconn"></span>
+                        <span class="pstep is-upcoming"><span class="pstep-dot"></span><span class="pstep-label">shipped</span></span>
+                      </div>
+                      <!-- prettier-ignore -->
+                      <div class="nextstep">
+                        <div class="nextstep-main">
+                          <div class="nextstep-kick">NEXT STEP</div>
+                          <div class="nextstep-title">Review &amp; burn the tickets</div>
+                          <div class="nextstep-desc">Each ticket is one atomic task Claude will implement. Review them, then burn.</div>
+                        </div>
+                        <div class="nextstep-actions">
+                          <span class="btn btn-ghost btn-xs">Revisit</span>
+                          <span class="btn btn-solid">Burn 10 tickets</span>
+                        </div>
+                      </div>
+                      <div class="walk-body">
+                        <!-- prettier-ignore -->
+                        <div class="body-title">
+                          <div class="section-title">Tickets</div>
+                          <span class="body-meta">0/10 done</span>
+                          <span style="flex: 1"></span>
+                          <span class="chip chip-neutral">sandbox · docker</span>
+                        </div>
+                        <!-- prettier-ignore -->
+                        <div class="ledger">
+                          <div class="ledger-row"><span class="ledger-head"><span class="lg-caret"><svg width="11" height="11"><use href="#i-caret"/></svg></span><span class="lg-seq">#1</span><span class="lg-title">Move entries into SQLite behind an injectable driver port</span><span class="lg-meta"><span class="chip chip-ticket-pending">pending</span></span></span></div>
+                          <div class="ledger-row"><span class="ledger-head"><span class="lg-caret"><svg width="11" height="11"><use href="#i-caret"/></svg></span><span class="lg-seq">#2</span><span class="lg-title">EventBus with a durable allowlist, and entry lifecycle events</span><span class="lg-block">after #1</span><span class="lg-meta"><span class="chip chip-ticket-pending">pending</span></span></span></div>
+                          <div class="ledger-row"><span class="ledger-head"><span class="lg-caret"><svg width="11" height="11"><use href="#i-caret"/></svg></span><span class="lg-seq">#3</span><span class="lg-title">Feed history read: keyset pagination with actor and type filters</span><span class="lg-block">after #2</span><span class="lg-meta"><span class="chip chip-ticket-pending">pending</span></span></span></div>
+                          <div class="ledger-row"><span class="ledger-head"><span class="lg-caret"><svg width="11" height="11"><use href="#i-caret"/></svg></span><span class="lg-seq">#5</span><span class="lg-title">WebSocket transport, identity minting, and the pure message router</span><span class="lg-block">after #2</span><span class="lg-meta"><span class="chip chip-ticket-pending">pending</span></span></span></div>
+                          <div class="ledger-row"><span class="ledger-head"><span class="lg-caret"><svg width="11" height="11"><use href="#i-caret"/></svg></span><span class="lg-seq">#7</span><span class="lg-title">Mentions: canonical tokens, recipient fan-out, and the composer typeahead</span><span class="lg-block">after #2, #5</span><span class="lg-meta"><span class="chip chip-ticket-pending">pending</span></span></span></div>
+                          <div class="ledger-row"><span class="ledger-head"><span class="lg-caret"><svg width="11" height="11"><use href="#i-caret"/></svg></span><span class="lg-seq">#9</span><span class="lg-title">Activity tab: live feed push, infinite scroll, filters, and reconnect gap-fill</span><span class="lg-block">after #3, #5</span><span class="lg-meta"><span class="chip chip-ticket-pending">pending</span></span></span></div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- ---- 04 build ---- -->
+                <div class="stage-panel" data-stage="3">
+                  <p class="sr-only">
+                    The phase stepper with build current, above a run in progress: four of ten
+                    ticket lanes done with their commits, one lane running, and a live event log
+                    beside them.
+                  </p>
+                  <div class="rc-frame is-autoheight" data-mock="walk">
+                    <div class="rc-app walk-app" inert aria-hidden="true">
+                      <!-- prettier-ignore -->
+                      <div class="pipeline">
+                        <span class="pstep is-done"><span class="pstep-dot"></span><span class="pstep-label">ideation</span></span>
+                        <span class="pconn is-done"></span>
+                        <span class="pstep is-done"><span class="pstep-dot"></span><span class="pstep-label">spec</span></span>
+                        <span class="pconn is-done"></span>
+                        <span class="pstep is-done"><span class="pstep-dot"></span><span class="pstep-label">tickets</span></span>
+                        <span class="pconn is-done"></span>
+                        <span class="pstep is-current is-viewed"><span class="pstep-dot"></span><span class="pstep-label">build</span></span>
+                        <span class="pconn"></span>
+                        <span class="pstep is-upcoming"><span class="pstep-dot"></span><span class="pstep-label">review</span></span>
+                        <span class="pconn"></span>
+                        <span class="pstep is-upcoming"><span class="pstep-dot"></span><span class="pstep-label">shipped</span></span>
+                      </div>
+                      <div class="walk-body">
+                        <!-- prettier-ignore -->
+                        <div class="body-title">
+                          <div class="section-title">Run</div>
+                          <span class="chip chip-run-running">running</span>
+                          <span class="body-meta">4/10 done · 11m 40s</span>
+                        </div>
+                        <!-- prettier-ignore -->
+                        <div class="run-split">
+                          <div class="run-lanes-panel">
+                            <div class="panel-cap">Ticket lanes</div>
+                            <div class="run-lanes">
+                              <div class="lane status-done"><div class="lane-head"><span class="lane-seq">#1</span><span class="lane-title">Move entries into SQLite behind an injectable driver port</span><span class="chip chip-ticket-done">done</span></div><div class="lane-foot"><span class="lane-commits"><span class="commit-sha">a3f91c2</span><span class="commit-sha">7bd0e14</span></span><span class="lane-dur">3m 12s</span></div></div>
+                              <div class="lane status-done"><div class="lane-head"><span class="lane-seq">#2</span><span class="lane-title">EventBus with a durable allowlist, and entry lifecycle events</span><span class="chip chip-ticket-done">done</span></div><div class="lane-foot"><span class="lane-commits"><span class="commit-sha">1c47ae9</span></span><span class="lane-dur">4m 01s</span></div></div>
+                              <div class="lane status-done"><div class="lane-head"><span class="lane-seq">#3</span><span class="lane-title">Feed history read: keyset pagination with actor and type filters</span><span class="chip chip-ticket-done">done</span></div><div class="lane-foot"><span class="lane-commits"><span class="commit-sha">0e5b83d</span><span class="commit-sha">c91f206</span></span><span class="lane-dur">2m 48s</span></div></div>
+                              <div class="lane status-done"><div class="lane-head"><span class="lane-seq">#4</span><span class="lane-title">Retention pruning for the event log and the notification inbox</span><span class="chip chip-ticket-done">done</span></div><div class="lane-foot"><span class="lane-commits"><span class="commit-sha">5a2d770</span></span><span class="lane-dur">1m 39s</span></div></div>
+                              <div class="lane status-burning"><div class="lane-head"><span class="lane-seq">#5</span><span class="lane-title">WebSocket transport, identity minting, and the pure message router</span><span class="chip chip-ticket-burning">burning</span></div></div>
+                              <div class="lane"><div class="lane-head"><span class="lane-seq">#6</span><span class="lane-title">Presence: heartbeat, idle, liveness, and the avatar stack</span><span class="chip chip-ticket-pending">pending</span></div></div>
+                              <div class="lane"><div class="lane-head"><span class="lane-seq">#7</span><span class="lane-title">Mentions: canonical tokens, recipient fan-out, and the composer typeahead</span><span class="chip chip-ticket-pending">pending</span></div></div>
+                            </div>
+                          </div>
+                          <div class="run-stream-panel">
+                            <div class="stream-head">
+                              <div class="panel-tabs">
+                                <span class="panel-tab">Agent</span>
+                                <span class="panel-tab is-active">Events</span>
+                              </div>
+                            </div>
+                            <div class="stream-body">
+                              <div class="stream-line level-info"><span class="sl-time">14:02</span><span class="sl-type">run.started</span><span class="sl-msg">10 tickets queued</span></div>
+                              <div class="stream-line level-active"><span class="sl-time">14:02</span><span class="sl-type">ticket.burning</span><span class="sl-msg">#1 Move entries into SQLite behind an injectable driver port</span></div>
+                              <div class="stream-line level-ok"><span class="sl-time">14:05</span><span class="sl-type">ticket.done</span><span class="sl-msg">#1 done · 2 commits</span></div>
+                              <div class="stream-line level-active"><span class="sl-time">14:05</span><span class="sl-type">ticket.burning</span><span class="sl-msg">#2 EventBus with a durable allowlist, and entry lifecycle events</span></div>
+                              <div class="stream-line level-ok"><span class="sl-time">14:09</span><span class="sl-type">ticket.done</span><span class="sl-msg">#2 done · 1 commit</span></div>
+                              <div class="stream-line level-active"><span class="sl-time">14:09</span><span class="sl-type">ticket.burning</span><span class="sl-msg">#3 Feed history read: keyset pagination with actor and type filters</span></div>
+                              <div class="stream-line level-ok"><span class="sl-time">14:12</span><span class="sl-type">ticket.done</span><span class="sl-msg">#3 done · 2 commits</span></div>
+                              <div class="stream-line level-active"><span class="sl-time">14:12</span><span class="sl-type">ticket.burning</span><span class="sl-msg">#4 Retention pruning for the event log and the notification inbox</span></div>
+                              <div class="stream-line level-ok"><span class="sl-time">14:13</span><span class="sl-type">ticket.done</span><span class="sl-msg">#4 done · 1 commit</span></div>
+                              <div class="stream-line level-active"><span class="sl-time">14:13</span><span class="sl-type">ticket.burning</span><span class="sl-msg">#5 WebSocket transport, identity minting, and the pure message router</span></div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- ---- 05 review ---- -->
+                <div class="stage-panel" data-stage="4">
+                  <p class="sr-only">
+                    The phase stepper with review current, above the run summary showing ten of ten
+                    tickets done across eleven commits, beside the test drive panel that boots the
+                    branch on its own port.
+                  </p>
+                  <div class="rc-frame is-autoheight" data-mock="walk">
+                    <div class="rc-app walk-app" inert aria-hidden="true">
+                      <!-- prettier-ignore -->
+                      <div class="pipeline">
+                        <span class="pstep is-done"><span class="pstep-dot"></span><span class="pstep-label">ideation</span></span>
+                        <span class="pconn is-done"></span>
+                        <span class="pstep is-done"><span class="pstep-dot"></span><span class="pstep-label">spec</span></span>
+                        <span class="pconn is-done"></span>
+                        <span class="pstep is-done"><span class="pstep-dot"></span><span class="pstep-label">tickets</span></span>
+                        <span class="pconn is-done"></span>
+                        <span class="pstep is-done"><span class="pstep-dot"></span><span class="pstep-label">build</span></span>
+                        <span class="pconn is-done"></span>
+                        <span class="pstep is-current is-viewed"><span class="pstep-dot"></span><span class="pstep-label">review</span></span>
+                        <span class="pconn"></span>
+                        <span class="pstep is-upcoming"><span class="pstep-dot"></span><span class="pstep-label">shipped</span></span>
+                      </div>
+                      <div class="walk-body">
+                        <!-- prettier-ignore -->
+                        <div class="review-body">
+                          <div class="review-grid">
+                            <div class="review-card">
+                              <div class="section-title">Summary</div>
+                              <div class="check-row"><span class="check-dot" style="background: var(--ok)"></span><span class="check-k">tickets</span><span class="check-v">10/10 done</span></div>
+                              <div class="check-row"><span class="check-dot" style="background: var(--ok)"></span><span class="check-k">run</span><span class="check-v">succeeded · 38m 12s</span></div>
+                              <div class="check-row"><span class="check-dot" style="background: var(--ph-shipped)"></span><span class="check-k">changes</span><span class="check-v">11 commits</span></div>
+                              <div class="review-foot">feature/realtime-team-collaboration</div>
+                            </div>
+                            <div class="review-card">
+                              <div class="section-title">Test drive</div>
+                              <div class="drive-copy">Nothing is running yet. Start the test drive from the next step to boot this branch on its own port and click through the feature yourself. The merge gate wants a human behind the wheel.</div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- ---- 06 shipped ---- -->
+                <div class="stage-panel" data-stage="5">
+                  <p class="sr-only">
+                    The phase stepper with every phase done and shipped current, above the shipped
+                    panel: the branch is merged and no gates remain.
+                  </p>
+                  <div class="rc-frame is-autoheight" data-mock="walk">
+                    <div class="rc-app walk-app" inert aria-hidden="true">
+                      <!-- prettier-ignore -->
+                      <div class="pipeline">
+                        <span class="pstep is-done"><span class="pstep-dot"></span><span class="pstep-label">ideation</span></span>
+                        <span class="pconn is-done"></span>
+                        <span class="pstep is-done"><span class="pstep-dot"></span><span class="pstep-label">spec</span></span>
+                        <span class="pconn is-done"></span>
+                        <span class="pstep is-done"><span class="pstep-dot"></span><span class="pstep-label">tickets</span></span>
+                        <span class="pconn is-done"></span>
+                        <span class="pstep is-done"><span class="pstep-dot"></span><span class="pstep-label">build</span></span>
+                        <span class="pconn is-done"></span>
+                        <span class="pstep is-done"><span class="pstep-dot"></span><span class="pstep-label">review</span></span>
+                        <span class="pconn is-done"></span>
+                        <span class="pstep is-current is-viewed"><span class="pstep-dot"></span><span class="pstep-label">shipped</span></span>
+                      </div>
+                      <div class="walk-body">
+                        <!-- prettier-ignore -->
+                        <div class="shipped-hero">
+                          <div class="shipped-check"><svg width="17" height="17" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m3 8.4 3.2 3.2L13 5"/></svg></div>
+                          <div class="shipped-title">Shipped to main</div>
+                          <div class="shipped-meta"><svg width="12" height="12"><use href="#i-branch"/></svg>feature/realtime-team-collaboration</div>
+                          <div class="shipped-sub">The branch is merged and the pipeline is complete. The full history lives in the Activity tab.</div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -400,200 +637,76 @@
             </p>
           </div>
 
-          <div class="showcase">
-            <div class="steps" id="steps">
-              <div class="step-wrap">
-                <button class="step is-active" type="button" data-stage="0" aria-controls="stage">
-                  <span class="step-top">
-                    <span class="step-idx lp-mono">01</span>
-                    <span class="step-h">A real terminal, already briefed</span>
-                  </span>
-                  <span class="step-p">
-                    runcastle opens actual Claude Code with the feature's brief, its rules for this
-                    phase, and its own skills already loaded. No pasting context back in, and no
-                    imitation chat window to learn.
-                  </span>
-                  <span class="step-bar"></span>
-                </button>
-                <div class="stage-mobile" data-stage-mobile="0"></div>
+          <div class="parallel">
+            <div class="parallel-shot reveal" data-delay="1">
+              <p class="sr-only">
+                The feature list, grouped by what each feature wants from you: two under Needs you,
+                three under In progress, one under Shipped. Every row carries a six-segment map of
+                how far that feature has walked the pipeline, so they are all visible at once.
+              </p>
+              <div class="rc-frame is-autoheight" data-mock="board">
+                <div class="rc-app board-app" inert aria-hidden="true">
+                  <!-- prettier-ignore -->
+                  <nav class="sidebar">
+                    <div class="sidebar-head">
+                      <span class="pane-title">Features</span>
+                      <span class="new-btn"><svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3.2v9.6M3.2 8h9.6"/></svg>New</span>
+                    </div>
+                    <div class="sidebar-list">
+                      <div class="triage-group triage-needsYou">
+                        <div class="triage-label"><span class="triage-name">Needs you</span><span class="triage-count">2</span></div>
+                        <div class="feature-row is-active"><span class="feature-row-main"><span class="feature-dot phase-bg-tickets"></span><span class="feature-slug">Realtime team collaboration</span><span class="feature-flag"><span class="needs-dot needs-burn"></span><span class="mini-map"><span class="mini-seg is-done"></span><span class="mini-seg is-done"></span><span class="mini-seg is-current"></span><span class="mini-seg is-upcoming"></span><span class="mini-seg is-upcoming"></span><span class="mini-seg is-upcoming"></span></span></span></span></div>
+                        <div class="feature-row"><span class="feature-row-main"><span class="feature-dot phase-bg-review"></span><span class="feature-slug">Entry tags</span><span class="feature-flag"><span class="needs-dot needs-ship"></span><span class="mini-map"><span class="mini-seg is-done"></span><span class="mini-seg is-done"></span><span class="mini-seg is-done"></span><span class="mini-seg is-done"></span><span class="mini-seg is-current"></span><span class="mini-seg is-upcoming"></span></span></span></span></div>
+                      </div>
+                      <div class="triage-group triage-inProgress">
+                        <div class="triage-label"><span class="triage-name">In progress</span><span class="triage-count">3</span></div>
+                        <div class="feature-row"><span class="feature-row-main"><span class="feature-dot phase-bg-implementation"></span><span class="feature-slug">Offline draft sync</span><span class="feature-flag"><span class="mini-map"><span class="mini-seg is-done"></span><span class="mini-seg is-done"></span><span class="mini-seg is-done"></span><span class="mini-seg is-current"></span><span class="mini-seg is-upcoming"></span><span class="mini-seg is-upcoming"></span></span></span></span></div>
+                        <div class="feature-row"><span class="feature-row-main"><span class="feature-dot phase-bg-spec"></span><span class="feature-slug">Kickoff probe</span><span class="feature-flag"><span class="mini-map"><span class="mini-seg is-done"></span><span class="mini-seg is-current"></span><span class="mini-seg is-upcoming"></span><span class="mini-seg is-upcoming"></span><span class="mini-seg is-upcoming"></span><span class="mini-seg is-upcoming"></span></span></span></span></div>
+                        <div class="feature-row"><span class="feature-row-main"><span class="feature-dot phase-bg-tickets"></span><span class="feature-slug">Weekly digest email</span><span class="feature-flag"><span class="mini-map"><span class="mini-seg is-done"></span><span class="mini-seg is-done"></span><span class="mini-seg is-current"></span><span class="mini-seg is-upcoming"></span><span class="mini-seg is-upcoming"></span><span class="mini-seg is-upcoming"></span></span></span></span></div>
+                      </div>
+                      <div class="triage-group triage-shipped">
+                        <div class="triage-label"><span class="triage-name">Shipped</span><span class="triage-count">1</span></div>
+                        <div class="feature-row"><span class="feature-row-main"><span class="feature-dot phase-bg-shipped"></span><span class="feature-slug">mood-filter</span></span></div>
+                      </div>
+                    </div>
+                  </nav>
+                </div>
               </div>
-
-              <div class="step-wrap">
-                <button class="step" type="button" data-stage="1" aria-controls="stage">
-                  <span class="step-top">
-                    <span class="step-idx lp-mono">02</span>
-                    <span class="step-h">Tasks that know what they wait on</span>
-                  </span>
-                  <span class="step-p">
-                    Each ticket is one self-contained job, and the ones that need earlier work say
-                    which. Agents follow that order instead of guessing at it, which is what makes
-                    running several at once safe.
-                  </span>
-                  <span class="step-bar"></span>
-                </button>
-                <div class="stage-mobile" data-stage-mobile="1"></div>
-              </div>
-
-              <div class="step-wrap">
-                <button class="step" type="button" data-stage="2" aria-controls="stage">
-                  <span class="step-top">
-                    <span class="step-idx lp-mono">03</span>
-                    <span class="step-h">Conflicts are a task, not a wall</span>
-                  </span>
-                  <span class="step-p">
-                    When a branch will not merge cleanly, an agent sorts it out in that feature's
-                    own copy of the repo, with the whole spec in front of it, and hands the branch
-                    back. Working on several things at once stops costing you a merge tax.
-                  </span>
-                  <span class="step-bar"></span>
-                </button>
-                <div class="stage-mobile" data-stage-mobile="2"></div>
-              </div>
-
-              <div class="step-wrap">
-                <button class="step" type="button" data-stage="3" aria-controls="stage">
-                  <span class="step-top">
-                    <span class="step-idx lp-mono">04</span>
-                    <span class="step-h">Nothing is lost when you close it</span>
-                  </span>
-                  <span class="step-p">
-                    The spec, the decisions, and the map are committed in your repo under the
-                    feature's folder, and the run history stays in the app. Come back in a week and
-                    the feature still knows what it was doing.
-                  </span>
-                  <span class="step-bar"></span>
-                </button>
-                <div class="stage-mobile" data-stage-mobile="3"></div>
-              </div>
+              <p class="board-note">
+                The bar on each row is where that feature has got to in the six phases. Two are
+                waiting on a decision from you. The other four are working.
+              </p>
             </div>
 
-            <!-- The sticky stage. Each panel is real product UI; only one is shown
-                 at a time, driven by whichever step is being read. -->
-            <div class="stage">
-              <div id="stage">
-                <!-- ---- 01 ideation session ---- -->
-                <div class="stage-panel is-shown" data-stage="0">
-                  <p class="sr-only">
-                    An embedded Claude Code session bound to the ideation phase, live, opened with an
-                    injected instruction to invoke the runcastle ideate skill.
-                  </p>
-                  <div class="rc-frame is-autoheight" data-mock="term">
-                    <div class="rc-app" inert aria-hidden="true">
-                      <!-- prettier-ignore -->
-                      <div class="grill-strip">
-                        <span class="grill-kind">ideation</span>
-                        <span class="status-dot sess-dot-live"></span>
-                        <span class="grill-live-label">live</span>
-                        <span class="grill-strip-spacer"></span>
-                        <span class="grill-sid">cfc7946c</span>
-                        <span class="btn btn-xs btn-ghost sess-end">End session</span>
-                      </div>
-                      <div class="rc-term">
-                        <div class="rc-term-banner">
-                          <span class="rc-term-banner-label">Claude Code v2.1.218</span>
-                          <span class="t-hi">Welcome back!</span>
-                          <span class="t-dim">Opus 4.8 with high effort · Claude Max</span>
-                          <span class="t-dim">~/.runcastle/worktrees/proj_wf6xGoA7/kickoff-probe</span>
-                        </div>
-                        <span class="rc-term-inject">
-                          &gt; Proceed with your task: invoke the /runcastle:ideate skill and drive
-                          the ideation session.
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                <!-- ---- 02 ticket ledger ---- -->
-                <div class="stage-panel" data-stage="1">
-                  <p class="sr-only">
-                    Six of ten tickets in the ledger, each with a sequence number, a title, and the
-                    tickets it runs after.
-                  </p>
-                  <div class="rc-frame is-autoheight" data-mock="ledger">
-                    <div class="rc-app" inert aria-hidden="true">
-                      <div class="ws-body">
-                        <div class="ws-body-inner">
-                          <!-- prettier-ignore -->
-                          <div class="body-title">
-                            <div class="section-title">Tickets</div>
-                            <span class="body-meta">0/10 done</span>
-                            <span style="flex: 1"></span>
-                            <span class="chip chip-neutral">sandbox · docker</span>
-                          </div>
-                          <!-- prettier-ignore -->
-                          <div class="ledger">
-                            <div class="ledger-row"><span class="ledger-head"><span class="lg-caret"><svg width="11" height="11"><use href="#i-caret"/></svg></span><span class="lg-seq">#1</span><span class="lg-title">Move entries into SQLite behind an injectable driver port</span><span class="lg-meta"><span class="chip chip-ticket-pending">pending</span></span></span></div>
-                            <div class="ledger-row"><span class="ledger-head"><span class="lg-caret"><svg width="11" height="11"><use href="#i-caret"/></svg></span><span class="lg-seq">#2</span><span class="lg-title">EventBus with a durable allowlist, and entry lifecycle events</span><span class="lg-block">after #1</span><span class="lg-meta"><span class="chip chip-ticket-pending">pending</span></span></span></div>
-                            <div class="ledger-row"><span class="ledger-head"><span class="lg-caret"><svg width="11" height="11"><use href="#i-caret"/></svg></span><span class="lg-seq">#3</span><span class="lg-title">Feed history read: keyset pagination with actor and type filters</span><span class="lg-block">after #2</span><span class="lg-meta"><span class="chip chip-ticket-pending">pending</span></span></span></div>
-                            <div class="ledger-row"><span class="ledger-head"><span class="lg-caret"><svg width="11" height="11"><use href="#i-caret"/></svg></span><span class="lg-seq">#5</span><span class="lg-title">WebSocket transport, identity minting, and the pure message router</span><span class="lg-block">after #2</span><span class="lg-meta"><span class="chip chip-ticket-pending">pending</span></span></span></div>
-                            <div class="ledger-row"><span class="ledger-head"><span class="lg-caret"><svg width="11" height="11"><use href="#i-caret"/></svg></span><span class="lg-seq">#7</span><span class="lg-title">Mentions: canonical tokens, recipient fan-out, and the composer typeahead</span><span class="lg-block">after #2, #5</span><span class="lg-meta"><span class="chip chip-ticket-pending">pending</span></span></span></div>
-                            <div class="ledger-row"><span class="ledger-head"><span class="lg-caret"><svg width="11" height="11"><use href="#i-caret"/></svg></span><span class="lg-seq">#9</span><span class="lg-title">Activity tab: live feed push, infinite scroll, filters, and reconnect gap-fill</span><span class="lg-block">after #3, #5</span><span class="lg-meta"><span class="chip chip-ticket-pending">pending</span></span></span></div>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                <!-- ---- 03 review with conflict ---- -->
-                <div class="stage-panel" data-stage="2">
-                  <p class="sr-only">
-                    The review phase showing a merge conflict card offering to resolve it with an
-                    agent, beside a run summary and a test drive panel.
-                  </p>
-                  <div class="rc-frame is-autoheight" data-mock="review">
-                    <div class="rc-app" inert aria-hidden="true">
-                      <div class="ws-body">
-                        <div class="ws-body-inner">
-                          <!-- prettier-ignore -->
-                          <div class="review-body">
-                            <div class="review-card conflict-card">
-                              <div class="section-title">Merge conflict</div>
-                              <div class="drive-copy">Merging <code>main</code> into <code>feature/entry-tags</code> hit conflicts. An agent can merge the base into this branch in the talk worktree, resolve with full spec context, and commit, then retry Merge &amp; ship.</div>
-                              <span class="btn btn-solid conflict-resolve">Resolve with agent</span>
-                            </div>
-                            <div class="review-grid">
-                              <div class="review-card">
-                                <div class="section-title">Summary</div>
-                                <div class="check-row"><span class="check-dot" style="background: var(--ok)"></span><span class="check-k">tickets</span><span class="check-v">2/2 done</span></div>
-                                <div class="check-row"><span class="check-dot" style="background: var(--ok)"></span><span class="check-k">run</span><span class="check-v">succeeded · 2/2 tickets done</span></div>
-                                <div class="check-row"><span class="check-dot" style="background: var(--ph-shipped)"></span><span class="check-k">changes</span><span class="check-v">4 commits</span></div>
-                                <div class="review-foot">feature/entry-tags</div>
-                              </div>
-                              <div class="review-card">
-                                <div class="section-title">Test drive</div>
-                                <div class="drive-copy">Nothing is running yet. Start the test drive from the next step to boot this branch on its own port and click through the feature yourself. The merge gate wants a human behind the wheel.</div>
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                <!-- ---- 04 shipped ---- -->
-                <div class="stage-panel" data-stage="3">
-                  <p class="sr-only">
-                    A feature in the shipped phase. Its branch is merged and no gates remain.
-                  </p>
-                  <div class="rc-frame is-autoheight" data-mock="shipped">
-                    <div class="rc-app" inert aria-hidden="true">
-                      <div class="ws-body">
-                        <div class="ws-body-inner">
-                          <!-- prettier-ignore -->
-                          <div class="shipped-hero">
-                            <div class="shipped-check"><svg width="17" height="17" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m3 8.4 3.2 3.2L13 5"/></svg></div>
-                            <div class="shipped-title">Shipped to main</div>
-                            <div class="shipped-meta"><svg width="12" height="12"><use href="#i-branch"/></svg>feature/mood-filter</div>
-                            <div class="shipped-sub">The branch is merged and the pipeline is complete. The full history lives in the Activity tab.</div>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
+            <div class="facts reveal" data-delay="2">
+              <div class="fact">
+                <h3>Sorted by who is blocking</h3>
+                <p>
+                  The two features that want a decision from you sit at the top. Everything else is
+                  working, and the bar on each row says how far along it is.
+                </p>
+              </div>
+              <div class="fact">
+                <h3>Starting another one costs nothing</h3>
+                <p>
+                  An ideation session gets its own docs-only copy of the repo, with no dependency
+                  install, so opening a second and a third is instant.
+                </p>
+              </div>
+              <div class="fact">
+                <h3>Conflicts are a task, not a wall</h3>
+                <p>
+                  When a branch will not merge cleanly, an agent resolves it in that feature's own
+                  copy with the whole spec in front of it, then hands the branch back to you.
+                </p>
+              </div>
+              <div class="fact">
+                <h3>Nothing is lost when you close it</h3>
+                <p>
+                  The spec, the decisions, and the map are committed under the feature's folder,
+                  and the run history stays in the app. Come back in a week and it still knows what
+                  it was doing.
+                </p>
               </div>
             </div>
           </div>

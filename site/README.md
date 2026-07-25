@@ -6,7 +6,7 @@ itself and no runtime dependencies.
 ```
 index.html          markup and copy
 styles.css          page styles, on tokens copied from apps/web/src/styles.css
-main.js             reveals, sticky stage, mock fitting, clipboard
+main.js             reveals, sticky stage, mock fitting, hero film, clipboard
 build-app-css.mjs   generates assets/app-ui.css from the product stylesheet
 assets/
   app-ui.css        GENERATED. the app's CSS, scoped under .rc-app
@@ -15,12 +15,80 @@ assets/
   fonts/            Inter + JetBrains Mono variable subsets (latin), self-hosted
   logos/            Simple Icons brand marks for the "runs on" strip
   screens/          PNG captures of the mocks below, for the root README only
+  video/            the launch film, its poster frame, its caption track
 ```
+
+## The hero is the launch film
+
+The hero frame is the 90-second launch film, cut from the same tokens as the page,
+in place of the still workspace shot that used to sit there.
+
+```
+assets/video/
+  runcastle-demo-1440.mp4      2560x1440, 60fps, H.264 + AAC, 11.5 MB
+  runcastle-demo-poster.webp   the 0:52 "six sandboxes" frame, 2560px, 59 KB
+  runcastle-demo.en.vtt        voiceover captions
+```
+
+**Why 1440p.** The frame is `--wrap` minus both gutters, so it renders at 1164 CSS
+px — 2328 device px on a 2x display, which 2560 covers and 1920 does not. It costs
+almost nothing to go up: the film is flat dark UI on a still background, so it
+compresses far better than camera footage. Measured against the 4K master, 1440p
+CRF 23 scores SSIM 0.9989 at 11.5 MB, where CRF 20 bought 0.9990 for 13.2 MB. 4K
+would be paying for pixels no display in the frame can show.
+
+`aq-mode=3` is not decoration. Almost every frame is near-black with a violet
+wash across it, which is the exact case H.264 bands in, and mode 3 is the one that
+spends its bits on dark flats.
+
+**Two modes, one file.** The markup is a plain `<video>` with `controls`, a poster
+and `preload="none"` — the narrated cut on request, which is what someone with no
+JS gets and what a phone, a metered connection or `prefers-reduced-motion` also
+gets. On a desktop `main.js` upgrades it: muted, controls dropped, playing only
+while the frame is on screen, with a corner button that trades the loop for the
+voiceover. Both paths end at the same frame, so one `ended` handler closes the
+ambient loop and drops a finished narrated cut back into it.
+
+The ambient loop starts at **9.4s**, not at zero. The film opens on five seconds
+of brand hold and then a card repeating the page's own `h1`, which is the right
+way to open a film and the wrong way to open a hero. The button plays it whole.
+
+**The captions are timed off the audio, not the storyboard.** `VO-SCRIPT.md` ships
+scene boundaries and says outright that they are a guide; the cues in the `.vtt`
+come from `silencedetect` run over the mixed track, so they follow the read.
+
+```sh
+ffmpeg -i "$FILM/runcastle-launch-4k60.mp4" -af silencedetect=noise=-45dB:d=0.45 -f null -
+```
+
+**To re-cut it** from a new master (the 4K one, always — the 1080p export is
+already compressed and re-encoding it twice shows):
+
+```sh
+ffmpeg -i "$FILM/runcastle-launch-4k60.mp4" \
+  -vf "scale=2560:1440:flags=lanczos" \
+  -c:v libx264 -profile:v high -level 5.1 -preset slow -crf 23 \
+  -x264-params "aq-mode=3:aq-strength=0.9" \
+  -pix_fmt yuv420p -g 120 -c:a aac -b:a 128k -ac 1 \
+  -movflags +faststart \
+  site/assets/video/runcastle-demo-1440.mp4
+
+ffmpeg -ss 52 -i "$FILM/runcastle-launch-4k60.mp4" -frames:v 1 \
+  -vf "scale=2560:1440:flags=lanczos" \
+  -c:v libwebp -quality 80 -compression_level 6 \
+  site/assets/video/runcastle-demo-poster.webp
+```
+
+`+faststart` is load-bearing: without it the moov atom sits at the end of the file
+and nothing plays until the whole 11.5 MB has arrived. Keep the `width`/`height`
+attributes on the `<video>` in step with the encode — they are what reserves the
+frame's height before a byte is fetched, and the film is the tallest thing on the
+page to reflow.
 
 ## The product mockups are real UI
 
-Every piece of runcastle shown on this page is the **product's own components as
-live markup**, not a screenshot. `assets/app-ui.css` is `apps/web/src/styles.css`
+Below the hero, every piece of runcastle shown on this page is the **product's own
+components as live markup**, not a screenshot. `assets/app-ui.css` is `apps/web/src/styles.css`
 with every rule scoped under `.rc-app`, so a mockup is that wrapper plus the app's
 real class names (`.titlebar`, `.pipeline`, `.ledger-row`, `.gate-card`, ...).
 
@@ -47,6 +115,29 @@ column:
   The shell mock does **not** use it, because `.shell` is a `height: 100%` grid and
   needs a real height to pin its status bar.
 
+### The end-to-end walkthrough
+
+The `#pipeline` section is the page's centrepiece: one feature walked through all
+six phases. Reading down the six `.step` buttons drives the sticky stage, and each
+`.stage-panel` is a slice of the workspace — the phase stepper, sometimes the
+next-step bar, and that phase's real body (terminal, spec doc, ticket list, run
+lanes, review cards, shipped card).
+
+Four things about it are load-bearing:
+
+- **`.walk-app` has a `min-height` in logical units**, set to the tallest panel.
+  All six panels share one grid cell, so the cell is as tall as the tallest; the
+  floor makes every frame fill it instead of leaving short ones floating in it.
+  It is dropped below 900px, where the panels stack and each is its own block.
+- **`.run-stream-panel` is re-heighted.** The product sizes it against `100dvh`,
+  which means nothing inside a mock that lays out at a fixed logical size.
+- **The stepper wraps** (`flex-wrap`) only at phone width. A stepper with the last
+  two phases cut off is the one thing this section cannot show.
+- **One-shot entry animations are disabled** on these panels (`.peek`,
+  `.nextstep`, `.stream-line`). They are written for a view that arrives once;
+  here the panels cross-fade every time someone scrolls past. The running-lane
+  pulse stays, because that is state rather than entry.
+
 ### Rules that are easy to get wrong
 
 - **Container queries, not media queries.** A mock's width has nothing to do with
@@ -56,6 +147,10 @@ column:
   workspace lands in the 252px sidebar track.
 - **Container queries do not add specificity.** Rules inside `@container` still
   need the `.rc-app` prefix to beat `.rc-app .shell-body` from the product sheet.
+- **Collapse rules key off `.shell-body > .sidebar`, not `.sidebar`.** A mock may
+  show one rail on its own — the feature board is just `.sidebar` — and such a
+  panel is narrow by nature. Keyed on the bare class it matches its own width and
+  hides itself.
 - **`minmax(0, 1fr)`, not `1fr`.** A bare `1fr` keeps an auto minimum, so a track
   refuses to shrink below its content and pushes the mock (and the page) wider.
 - **Mocks are `inert` + `aria-hidden`.** They are illustrations, so they stay out
@@ -76,11 +171,19 @@ and regenerate; never patch `app-ui.css` by hand.
 
 ## Preview locally
 
-Nothing to compile, so any static server works:
+Nothing to compile, but the server has to honour `Range` requests or the hero film
+cannot seek — which means the ambient loop never reaches its in-point and the
+player cannot scrub. `python -m http.server` answers every range with a `200` and
+the whole file, so use something that returns `206`:
 
 ```sh
-cd site && python -m http.server 4599   # then open http://localhost:4599
+cd site && npx --yes serve -l 4599   # then open http://localhost:4599
 ```
+
+Every real host for this directory (GitHub Pages, Cloudflare, Vercel, Netlify)
+range-serves by default, so this is a local-preview concern only. If a film that
+refuses to seek shows up in testing, check for `Accept-Ranges` before touching
+`main.js`.
 
 ## Deploy
 
@@ -97,6 +200,12 @@ preview cards will point at the wrong host.
 Markdown cannot run CSS, so the root README needs real images. Those PNGs are
 **captures of the mockups on this page**, not of the app, which is why they are
 well framed and carry no project names or account details.
+
+One of them is now orphaned: `mock-shell.png` was a capture of the whole-shell
+mock that stood in the hero, and the hero is the film. The file is still correct
+and still the `og:image`, but there is no longer an instance on the page to
+recapture it from. The rules and the `[data-mock='shell']` sizing it needs are
+still in `styles.css` — put the frame back on a scratch page to refresh it.
 
 To refresh one: serve the page, then screenshot the frame's bounding box at 2x.
 Note that the showcase panels are stacked in a single grid cell and cross-faded,
