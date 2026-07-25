@@ -187,13 +187,50 @@ refuses to seek shows up in testing, check for `Accept-Ranges` before touching
 
 ## Deploy
 
-Publish this directory as the site root. It needs no runtime, so GitHub Pages,
-Cloudflare Pages, Vercel, or Netlify all work with the build command left empty
-and the output directory set to `site`.
+Published as a **Cloudflare Pages** project (`runcastle-site`, direct upload) on
+the apex, `https://runcastle.dev`. It needs no runtime, so the build command is
+empty and the output directory is `site`.
+
+```sh
+npx wrangler@4 pages deploy site --project-name=runcastle-site --branch=main
+```
 
 The absolute URLs in `<head>` (`canonical`, `og:url`, `og:image`) point at
 `https://runcastle.dev/`. Change them if the page is served elsewhere, or the
 preview cards will point at the wrong host.
+
+### The film is only seekable on the apex, never on `*.pages.dev`
+
+Worth knowing before anyone files a bug against `main.js`. **Cloudflare Pages
+answers every `Range` request with `200` and the whole asset** — its own docs give
+this away in passing, noting that an asset is cacheable only when "the request does
+not have an `Authorization` or `Range` header". Uncached, nothing serves a `206`.
+
+The consequence is not subtle. On a `*.pages.dev` URL the film cannot seek **at
+all**, even fully buffered: every `currentTime =` assignment dumps the playhead
+back to the start, which kills both the scrubber and the loop-in point.
+
+On a **proxied** hostname in the zone it is correct — `206 Partial Content`,
+cached, every seek lands. It is Cloudflare's CDN, not the Pages asset server, that
+implements `Range`, and `*.pages.dev` does not go through it.
+
+So:
+
+- **Test the film on `runcastle.dev`**, or on a proxied hostname pointed at the
+  Pages project. A `*.pages.dev` preview will show you a broken player and a hero
+  that restarts on the brand open every loop.
+- **A `_headers` file does not fix it.** Pages ignores `Cache-Control` there for
+  its own assets — the response comes back `max-age=0, must-revalidate` regardless,
+  so the object never becomes cacheable. Tried, measured, removed.
+- If the film ever has to be served off a `pages.dev` URL for real, the fix is R2
+  behind a custom domain, which does `Range` natively. It was not needed here.
+
+Check with `curl` before believing anything:
+
+```sh
+curl -sD - -o /dev/null -r 5000000-5000100 https://runcastle.dev/assets/video/runcastle-demo-1440.mp4 | head -3
+# want: HTTP/1.1 206 Partial Content + a content-range header
+```
 
 ## `assets/screens/` and the root README
 
