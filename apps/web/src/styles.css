@@ -2607,8 +2607,138 @@ button.tb-runs { cursor: pointer; }
   transition: border-color var(--dur-1);
 }
 .op-input:focus { outline: none; border-color: var(--accent-line); }
+.op-input-row { display: flex; gap: 6px; align-items: center; }
+.op-input-row .op-input { flex: 1; min-width: 0; }
 .op-hint { font-size: 11px; color: var(--text-4); }
 .op-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
+
+/* ============================================================================
+   DIRECTORY PICKER — browses the server's filesystem (see DirectoryPicker.tsx)
+   ========================================================================== */
+.peek.dir-picker { max-width: 660px; height: 66vh; }
+.dir-picker-title { font-size: 13px; font-weight: 600; }
+.dir-picker-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--hairline);
+}
+.dir-up { min-width: 28px; padding: 0 8px; }
+.dir-crumbs {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  overflow-x: auto;
+  white-space: nowrap;
+  font-size: 12px;
+  scrollbar-width: none;
+}
+.dir-crumbs::-webkit-scrollbar { display: none; }
+.dir-crumb-wrap { display: inline-flex; align-items: center; gap: 2px; color: var(--text-4); }
+.dir-crumb {
+  background: none;
+  border: none;
+  padding: 2px 4px;
+  border-radius: var(--radius);
+  color: var(--text-2);
+  font: inherit;
+  cursor: pointer;
+}
+.dir-crumb:hover { color: var(--text); background: var(--panel-inset); }
+.dir-hidden-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  color: var(--text-4);
+  cursor: pointer;
+  user-select: none;
+}
+.dir-picker-body { flex: 1; min-height: 0; display: flex; }
+.dir-rail {
+  width: 140px;
+  flex: none;
+  overflow-y: auto;
+  padding: 8px;
+  border-right: 1px solid var(--hairline);
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.dir-rail-item {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 7px;
+  border: none;
+  border-radius: var(--radius);
+  background: none;
+  color: var(--text-3);
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+.dir-rail-item:hover { background: var(--panel-inset); color: var(--text); }
+.dir-rail-item.is-active { background: var(--accent-soft); color: var(--text); }
+.dir-rail-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dir-list { flex: 1; min-width: 0; overflow-y: auto; padding: 8px; }
+.dir-item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border: none;
+  border-radius: var(--radius);
+  background: none;
+  color: var(--text-2);
+  font: inherit;
+  font-size: 12.5px;
+  text-align: left;
+  cursor: pointer;
+}
+.dir-item:hover { background: var(--panel-inset); color: var(--text); }
+.dir-item.is-repo { color: var(--text); }
+.dir-item-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dir-item-tag { font-size: 10px; color: var(--text-4); }
+.dir-item-repo {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  flex: none;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--accent-hi);
+}
+.dir-picker-foot {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-top: 1px solid var(--hairline);
+}
+/* A long path is truncated at its *start* — the tail (the folder you picked) is
+   the part worth reading. `direction: rtl` moves the ellipsis to the left; the
+   inner <bdi> isolates the path so bidi reordering cannot move characters that
+   are direction-neutral (a trailing `_` or `-`) around to the wrong end. */
+.dir-picked {
+  flex: 1;
+  min-width: 0;
+  font-size: 11.5px;
+  color: var(--text-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  direction: rtl;
+  text-align: left;
+}
+.dir-picked > bdi { unicode-bidi: isolate; }
+.dir-picker-actions { display: flex; gap: 8px; flex: none; }
 
 /* First-run wizard (issue #50) — reuses the op-card frame with a step rail. */
 .wizard-card { max-width: 520px; }

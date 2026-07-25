@@ -7,8 +7,15 @@ import type { AppCtx } from '../db/types'
 import { projects } from '../db/schema'
 import { InvalidInputError, isNotImplemented } from '../errors'
 import { emitProject } from './events'
+import { expandPath } from './fsbrowse'
 import * as git from './git'
-import { getProjectByRepoPath, projectHasActiveRun, requireProjectById, rowToProject } from './repo'
+import {
+  allProjects,
+  getProjectByRepoPath,
+  projectHasActiveRun,
+  requireProjectById,
+  rowToProject,
+} from './repo'
 
 /**
  * Project service (SPEC §3/§4, issue #43): the projects table is a real list.
@@ -63,19 +70,26 @@ function warnIfTranslatedMount(ctx: AppCtx, projectId: string, repoPath: string)
  * project (and clears any closed state — a closed project reappears with its
  * features intact); an unknown path inserts a new one.
  */
-export async function openProject(ctx: AppCtx, repoPath: string): Promise<Project> {
+export async function openProject(ctx: AppCtx, rawPath: string): Promise<Project> {
+  // Normalize before anything touches the DB: `~/repo`, `./repo`, a trailing
+  // slash and (on Windows) `C:/repo` vs `C:\repo` all name one directory, and
+  // the picker always submits the fully-resolved form. Upserting on the raw
+  // string would file those as separate projects.
+  const repoPath = expandPath(rawPath)
   await assertRepoTolerant(ctx, repoPath)
   const mainBranch = await detectMainBranchTolerant(ctx, repoPath)
   const name = basename(repoPath) || repoPath
 
-  const existing = getProjectByRepoPath(ctx, repoPath)
+  const existing = getProjectByRepoPath(ctx, repoPath) ?? findProjectByCanonPath(ctx, repoPath)
   if (existing) {
     ctx.db
       .update(projects)
-      .set({ mainBranch, closedAt: null })
+      // Rewrite `repoPath` to the normalized form so a row stored raw by an
+      // older build converges the first time it is re-opened.
+      .set({ mainBranch, repoPath, closedAt: null })
       .where(eq(projects.id, existing.id))
       .run()
-    const reopened = { ...existing, mainBranch }
+    const reopened = { ...existing, mainBranch, repoPath }
     emitProject(ctx, existing.id, {
       type: 'project.opened',
       message: `project ${existing.name} re-opened at ${repoPath} (${mainBranch})`,
@@ -136,6 +150,18 @@ export function renameProject(ctx: AppCtx, projectId: string, name: string): Pro
 
 // `updateProject` is retired (issue #46): a project's devCommand/model/sandbox
 // overrides are written through the `settings` service now, not a project CRUD op.
+
+/**
+ * Find a project whose stored path names the same directory as `repoPath`, for
+ * rows written before paths were normalized (or written by hand). Falls back to
+ * `git.canon` — the repo's existing canonical-key helper, which resolves
+ * symlinks and folds Windows slash-direction/casing — so `C:\Repo\` and
+ * `c:/repo` match the one project instead of forking it.
+ */
+function findProjectByCanonPath(ctx: AppCtx, repoPath: string): Project | null {
+  const key = git.canon(repoPath)
+  return allProjects(ctx).find((p) => git.canon(p.repoPath) === key) ?? null
+}
 
 // --- B2 tolerance -----------------------------------------------------------
 

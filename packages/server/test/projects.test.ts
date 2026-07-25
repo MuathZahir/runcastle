@@ -23,8 +23,10 @@ import { tmpRepo } from './helpers/fixtures'
  */
 
 import { writeFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { join, sep } from 'node:path'
+import { eq } from 'drizzle-orm'
 import { simpleGit } from 'simple-git'
+import { projects as projectsTable } from '../src/db/schema'
 
 /**
  * A real git repo with a seed commit on `main` — `openProject`'s repo check and
@@ -93,6 +95,50 @@ describe('projects service — multi-project CRUD (#43)', () => {
     const again = await openProject(ctx, path)
 
     expect(again.id).toBe(first.id)
+    expect(listProjects(ctx)).toHaveLength(1)
+  })
+
+  // Path normalization (repo picker): the picker always submits a resolved
+  // absolute path while a human types `~/repo`, `repo/`, or `C:/repo`. Upserting
+  // on the raw string filed those as separate projects.
+  it('treats a trailing separator as the same project', async () => {
+    const path = await gitRepo()
+    const first = await openProject(ctx, path)
+    const again = await openProject(ctx, `${path}${sep}`)
+
+    expect(again.id).toBe(first.id)
+    expect(listProjects(ctx)).toHaveLength(1)
+  })
+
+  it('treats a path with relative segments as the same project', async () => {
+    const path = await gitRepo()
+    const first = await openProject(ctx, path)
+    const again = await openProject(ctx, join(path, 'sub', '..'))
+
+    expect(again.id).toBe(first.id)
+    expect(listProjects(ctx)).toHaveLength(1)
+  })
+
+  it('stores the normalized path, so the picker and a typed path agree', async () => {
+    const path = await gitRepo()
+    const project = await openProject(ctx, `${path}${sep}`)
+    expect(project.repoPath).toBe(path)
+  })
+
+  it('matches a legacy row stored un-normalized instead of forking it', async () => {
+    // Simulates a project written by an older build: the row holds the raw
+    // string, and re-opening the canonical path must converge onto it.
+    const path = await gitRepo()
+    const first = await openProject(ctx, path)
+    ctx.db
+      .update(projectsTable)
+      .set({ repoPath: `${path}${sep}` })
+      .where(eq(projectsTable.id, first.id))
+      .run()
+
+    const again = await openProject(ctx, path)
+    expect(again.id).toBe(first.id)
+    expect(again.repoPath).toBe(path)
     expect(listProjects(ctx)).toHaveLength(1)
   })
 

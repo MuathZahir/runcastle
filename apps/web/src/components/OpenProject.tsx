@@ -3,6 +3,7 @@ import { trpc } from '../trpc'
 import { useToast } from '../lib/toast'
 import { LogoMark } from '../icons'
 import { Button } from '../ui'
+import { DirectoryPicker } from './DirectoryPicker'
 
 /**
  * The open-a-project flow (issue #45). One repo path in; the server validates it
@@ -22,6 +23,7 @@ export function OpenProject({
   onCancel: () => void
 }) {
   const [repoPath, setRepoPath] = useState('')
+  const [picking, setPicking] = useState(false)
   const toast = useToast()
   const utils = trpc.useUtils()
 
@@ -34,9 +36,22 @@ export function OpenProject({
     onError: (e) => toast.push(e.message),
   })
 
-  const submit = () => {
-    const path = repoPath.trim()
+  const submit = (override?: string) => {
+    const path = (override ?? repoPath).trim()
     if (path) open.mutate({ repoPath: path })
+  }
+
+  /**
+   * Picking commits: "Open this folder" is already the user's confirmation, so
+   * asking them to click Open again would be a second confirmation of the same
+   * decision. The path is still written into the field first, so a rejected
+   * folder (not a git repo) leaves them something to edit rather than an empty
+   * box next to a toast.
+   */
+  const onPick = (path: string) => {
+    setRepoPath(path)
+    setPicking(false)
+    submit(path)
   }
 
   return (
@@ -57,21 +72,27 @@ export function OpenProject({
         <label className="op-label" htmlFor="op-repo-path">
           Repository path
         </label>
-        <input
-          id="op-repo-path"
-          className="op-input mono"
-          value={repoPath}
-          onChange={(e) => setRepoPath(e.target.value)}
-          placeholder="/path/to/your/repo"
-          autoFocus
-          spellCheck={false}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') submit()
-            if (e.key === 'Escape' && !firstRun) onCancel()
-          }}
-        />
+        <div className="op-input-row">
+          <input
+            id="op-repo-path"
+            className="op-input mono"
+            value={repoPath}
+            onChange={(e) => setRepoPath(e.target.value)}
+            placeholder="/path/to/your/repo"
+            autoFocus
+            spellCheck={false}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') submit()
+              if (e.key === 'Escape' && !firstRun) onCancel()
+            }}
+          />
+          <Button variant="ghost" onClick={() => setPicking(true)} disabled={open.isPending}>
+            Browse…
+          </Button>
+        </div>
         <div className="op-hint">
-          The default branch is detected automatically when the project opens.
+          Browse your machine, or paste a path. The default branch is detected
+          automatically when the project opens.
         </div>
 
         <div className="op-actions">
@@ -82,13 +103,15 @@ export function OpenProject({
           )}
           <Button
             variant="solid"
-            onClick={submit}
+            onClick={() => submit()}
             disabled={open.isPending || repoPath.trim() === ''}
           >
             {open.isPending ? 'Opening…' : 'Open'}
           </Button>
         </div>
       </div>
+
+      {picking && <DirectoryPicker onPick={onPick} onCancel={() => setPicking(false)} />}
     </div>
   )
 }
