@@ -1,0 +1,1254 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<!-- @template name="App Redesign — Guided IDE" description="The live runcastle IDE: brand titlebar, triage rail, pipeline-first workspace with a hero agent terminal, tabbed inspector, gate-aware next step, live burn simulation." -->
+<helmet><script src="./ds-base.js"></script><style>
+html,body{margin:0;height:100%;background:#090b10}
+button{font-family:inherit;color:inherit}
+a{text-decoration:none}
+/* ---------------------------------------------------------------------------
+   TOKENS — mirrored from apps/web/src/styles.css :root.
+   Scoped to the app wrapper on purpose: ds-base.js injects the design-system
+   stylesheet at runtime, and that sheet still carries the OLDER palette in its
+   own :root. Custom properties declared on a descendant always win for that
+   subtree regardless of load order, so every var() below resolves to the
+   values the shipping app uses today.
+   ------------------------------------------------------------------------ */
+[data-rc-app]{
+  --bg:#090b10; --panel:#0e1117; --panel-2:#0b0e14; --panel-3:#12151d; --panel-inset:#07080b;
+  --hairline:#1c2230; --hairline-soft:#151a26; --hairline-strong:#2a3242;
+  --text:#dde3ed; --text-2:#96a0b0; --text-3:#5f6a7a; --text-4:#3a4354;
+  --accent:#7c6cf6; --accent-hi:#a49bff; --accent-2:#8f80f8; --accent-ink:#0d0722;
+  --accent-soft:#161329; --accent-line:#3d3670;
+  --ph-ideation:#8b7cf8; --ph-spec:#8a94a2; --ph-tickets:#d7a94a;
+  --ph-implementation:#f0883e; --ph-review:#58a6ff; --ph-shipped:#3fb950;
+  --danger:#f4594e; --needs:#d7a94a; --ok:#3fb950; --drive:#58a6ff; --warn:#d9a441;
+  --mono:"JetBrains Mono Variable","JetBrains Mono",ui-monospace,Consolas,monospace;
+  --sans:"Inter Variable",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --radius-sm:5px; --radius:7px; --radius-lg:10px; --radius-pill:999px;
+  --control-h:28px; --sidebar-w:252px; --inspector-w:300px; --content-max:1060px;
+  --dur-1:.12s; --dur-2:.19s; --dur-3:.32s;
+  --ease:cubic-bezier(.22,.61,.24,1); --ease-out:cubic-bezier(.16,1,.3,1);
+}
+/* mirrors the app's global `* { box-sizing: border-box }` — without it every
+   padded rail overflows its grid column by exactly its horizontal padding */
+[data-rc-app],[data-rc-app] *,[data-rc-app] *::before,[data-rc-app] *::after{box-sizing:border-box}
+/* the active feature row's 2px accent spine (a ::before — not expressible inline) */
+[data-rc-app] [data-row]{position:relative}
+[data-rc-app] [data-row]::before{content:"";position:absolute;left:1px;top:6px;bottom:6px;width:2px;border-radius:2px;background:var(--accent);transform:scaleY(0);transform-origin:center;transition:transform var(--dur-2) var(--ease-out)}
+[data-rc-app] [data-row="active"]::before{transform:scaleY(1)}
+/* the inspector tab's 2px underline */
+[data-rc-app] [data-insp-tab]{border-bottom:2px solid transparent}
+[data-rc-app] [data-insp-tab="active"]{border-bottom-color:var(--accent)}
+/* the tickets ledger's acceptance bullets */
+[data-rc-app] [data-accept]::before{content:"—";color:var(--text-4);flex:0 0 auto;margin-right:8px}
+@keyframes rcSpin{to{transform:rotate(360deg)}}
+@keyframes rcPulse{0%,100%{opacity:1}50%{opacity:.32}}
+@keyframes rcDotGlow{0%,100%{box-shadow:0 0 0 3px rgba(124,108,246,.22)}50%{box-shadow:0 0 0 5px rgba(124,108,246,.08)}}
+@keyframes rcFadeUp{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+@keyframes rcBodyIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+@keyframes rcDetailIn{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:translateY(0)}}
+@keyframes rcLineIn{from{opacity:0;transform:translateX(-4px)}to{opacity:1;transform:translateX(0)}}
+@keyframes rcPopIn{from{opacity:0;transform:scale(.96)}to{opacity:1;transform:scale(1)}}
+@keyframes rcToastIn{from{opacity:0;transform:translateX(16px) scale(.98)}to{opacity:1;transform:translateX(0) scale(1)}}
+@keyframes rcCursor{50%{opacity:0}}
+[data-rc-app] ::-webkit-scrollbar{width:10px;height:10px}
+[data-rc-app] ::-webkit-scrollbar-thumb{background:#1c2230;border-radius:5px;border:2px solid transparent;background-clip:padding-box}
+[data-rc-app] ::-webkit-scrollbar-thumb:hover{background:#2a3242;background-clip:padding-box;border:2px solid transparent}
+[data-rc-app] ::-webkit-scrollbar-track{background:transparent}
+@media (prefers-reduced-motion:reduce){[data-rc-app] *,[data-rc-app] *::before,[data-rc-app] *::after{animation-duration:.001ms !important;animation-iteration-count:1 !important;transition-duration:.001ms !important}}
+</style></helmet>
+
+<div data-rc-app style="height:100vh;display:grid;grid-template-rows:44px 1fr 28px;background:var(--bg);color:var(--text);font-family:var(--sans);font-size:13px;line-height:1.45;letter-spacing:.004em;overflow:hidden" data-screen-label="app">
+
+<!-- ======================= TITLEBAR ======================= -->
+<div style="display:flex;align-items:center;gap:9px;padding:0 14px;border-bottom:1px solid var(--hairline);background:var(--panel);font-size:13px" data-screen-label="titlebar">
+  <button onClick="{{ goHome }}" title="runcastle" style="display:inline-flex;align-items:center;gap:9px;background:transparent;border:0;padding:0;cursor:pointer">
+    <span style="display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto"><svg width="17" height="17" viewBox="0 0 32 32" fill="none"><path fill-rule="evenodd" clip-rule="evenodd" d="M4 29 V6 H10 V11 H13 V6 H19 V11 H22 V6 H28 V29 H4 Z M12.5 15 L21.5 20 L12.5 25 Z" fill="var(--accent)" stroke-linejoin="miter"></path></svg></span>
+    <span style="font-family:var(--mono);font-weight:600;font-size:13px;letter-spacing:-.25px;line-height:1;white-space:nowrap"><span style="color:var(--accent-hi)">run</span><span style="color:var(--text)">castle</span></span>
+  </button>
+  <span style="color:var(--text-4)">/</span>
+  <button onClick="{{ onSwitchProject }}" style="display:inline-flex;align-items:center;gap:5px;height:24px;padding:0 7px;background:transparent;border:1px solid transparent;border-radius:var(--radius);cursor:pointer" style-hover="border-color:var(--hairline);background:var(--panel-3)">
+    <span style="color:var(--text-2)">{{ project }}</span>
+    <span style="color:var(--text-4);display:inline-flex;align-items:center"><svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m4 6 4 4 4-4"></path></svg></span>
+  </button>
+  <span style="display:inline-flex;align-items:center;gap:5px;color:var(--text-3);font-family:var(--mono);font-size:11.5px;padding:3px 8px;border-radius:var(--radius-pill);background:var(--panel-inset);border:1px solid var(--hairline-soft)">
+    <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="4.5" cy="3.8" r="1.7"></circle><circle cx="4.5" cy="12.2" r="1.7"></circle><circle cx="11.5" cy="5" r="1.7"></circle><path d="M4.5 5.5v5M11.5 6.7c0 2.6-3 3-5.4 3.6"></path></svg>
+    {{ mainBranch }}
+  </span>
+
+  <span style="flex:1"></span>
+
+  <button onClick="{{ onCmdK }}" title="Search or jump to (⌘K)" style="display:flex;align-items:center;gap:8px;height:28px;padding:0 8px 0 10px;background:var(--panel-inset);border:1px solid var(--hairline);border-radius:var(--radius);color:var(--text-3);font-size:12px;cursor:pointer;min-width:220px" style-hover="border-color:var(--hairline-strong);color:var(--text-2);background:var(--panel-3)">
+    <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="7" cy="7" r="4.5"></circle><path d="M10.5 10.5 L14 14"></path></svg>
+    <span>Search or jump to…</span>
+    <span style="flex:1"></span>
+    <span style="font-family:var(--mono);font-size:10px;border:1px solid var(--hairline-strong);border-radius:4px;padding:1px 5px;color:var(--text-3);line-height:1.4">⌘K</span>
+  </button>
+
+  <sc-if value="{{ anyRuns }}" hint-placeholder-val="{{ true }}">
+    <button onClick="{{ goHome }}" title="Runs in flight across all projects" style="display:inline-flex;align-items:center;gap:7px;height:24px;padding:0 10px;border-radius:var(--radius-pill);border:1px solid color-mix(in srgb,var(--ph-implementation) 30%,transparent);background:color-mix(in srgb,var(--ph-implementation) 9%,transparent);color:var(--ph-implementation);font-family:var(--mono);font-size:11px;cursor:pointer;animation:rcFadeUp var(--dur-3) var(--ease-out)">
+      <span style="width:12px;height:12px;border-radius:50%;border:1.6px solid var(--ph-implementation);border-top-color:transparent;display:inline-block;animation:rcSpin .8s linear infinite;flex:0 0 auto"></span>{{ runsLabel }}
+    </button>
+  </sc-if>
+
+  <span title="server healthy" style="display:inline-flex;align-items:center;gap:6px"><span style="width:8px;height:8px;border-radius:50%;display:inline-block;background:var(--ok)"></span></span>
+
+  <button onClick="{{ onSettings }}" title="Settings" aria-label="Settings" style="{{ iconBtn }}" style-hover="color:var(--text);background:var(--panel-3)">
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="2"></circle><path d="M8 1.8v2M8 12.2v2M1.8 8h2M12.2 8h2M3.6 3.6l1.4 1.4M11 11l1.4 1.4M12.4 3.6 11 5M5 11l-1.4 1.4"></path></svg>
+  </button>
+  <button onClick="{{ toggleInspector }}" title="Toggle details panel" aria-label="Toggle details panel" style="{{ inspBtn }}" style-hover="color:var(--text);background:var(--panel-3)">
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="1.8" y="2.8" width="12.4" height="10.4" rx="1.6"></rect><path d="M10.2 2.8v10.4"></path></svg>
+  </button>
+</div>
+
+<!-- ======================= SHELL BODY ======================= -->
+<div style="{{ shellBodyStyle }}">
+
+  <!-- ---------- SIDEBAR — triage rail ---------- -->
+  <div style="border-right:1px solid var(--hairline);background:var(--panel-2);display:flex;flex-direction:column;min-height:0" data-screen-label="features rail">
+    <div style="height:40px;flex:0 0 40px;display:flex;align-items:center;justify-content:space-between;padding:0 12px;border-bottom:1px solid var(--hairline-soft)">
+      <span style="font-size:11px;text-transform:uppercase;letter-spacing:.09em;color:var(--text-3);font-weight:600">Features</span>
+      <button onClick="{{ startCreate }}" style="display:inline-flex;align-items:center;gap:4px;height:23px;padding:0 9px;background:transparent;border:1px solid var(--accent-line);border-radius:var(--radius);color:var(--accent-hi);font-size:11.5px;font-weight:500;cursor:pointer" style-hover="background:var(--accent-soft);border-color:var(--accent)">
+        <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3.2v9.6M3.2 8h9.6"></path></svg>New
+      </button>
+    </div>
+
+    <div style="flex:1;overflow-y:auto;padding:4px 6px 12px;min-height:0">
+      <sc-for list="{{ groups }}" as="g" hint-placeholder-count="4">
+        <div style="{{ g.wrap }}">
+          <div style="display:flex;align-items:center;gap:6px;padding:11px 8px 5px;font-size:10px;font-weight:700;letter-spacing:.09em;text-transform:uppercase">
+            <span style="{{ g.nameStyle }}">{{ g.label }}</span>
+            <span style="color:var(--text-4);font-family:var(--mono);font-weight:500">{{ g.count }}</span>
+          </div>
+          <sc-for list="{{ g.rows }}" as="r" hint-placeholder-count="2">
+            <div data-row="{{ r.rowState }}" style="{{ r.style }}" style-hover="background:var(--panel-3)">
+              <button onClick="{{ r.onSelect }}" title="{{ r.tip }}" style="flex:1;min-width:0;min-height:30px;display:flex;align-items:center;gap:8px;padding:0 4px 0 9px;border:none;background:none;cursor:pointer;text-align:left">
+                <span style="{{ r.dotStyle }}"></span>
+                <span style="{{ r.slugStyle }}">{{ r.title }}</span>
+                <span style="flex:0 0 auto;display:flex;align-items:center;gap:3px">
+                  <sc-if value="{{ r.working }}" hint-placeholder-val="{{ false }}"><span title="agent working" style="width:12px;height:12px;border-radius:50%;border:1.6px solid var(--ph-implementation);border-top-color:transparent;display:inline-block;animation:rcSpin .8s linear infinite;flex:0 0 auto"></span></sc-if>
+                  <sc-if value="{{ r.shipped }}" hint-placeholder-val="{{ false }}"><span style="color:var(--ph-shipped);display:inline-flex;align-items:center"><svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m3 8.4 3.2 3.2L13 5"></path></svg></span></sc-if>
+                  <sc-if value="{{ r.plain }}" hint-placeholder-val="{{ true }}">
+                    <sc-if value="{{ r.needs }}" hint-placeholder-val="{{ true }}"><span title="{{ r.needsLabel }}" style="{{ r.needsStyle }}"></span></sc-if>
+                    <span style="display:flex;gap:2px;align-items:center"><sc-for list="{{ r.segs }}" as="s" hint-placeholder-count="6"><span style="{{ s.st }}"></span></sc-for></span>
+                  </sc-if>
+                </span>
+              </button>
+              <span style="position:relative;flex:0 0 auto;padding-right:4px">
+                <button onClick="{{ r.onMenu }}" title="Actions" style="border:none;background:none;color:var(--text-3);cursor:pointer;line-height:1;padding:4px 5px;border-radius:var(--radius-sm);display:inline-flex" style-hover="background:var(--panel-3);color:var(--text)">
+                  <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><circle cx="3.2" cy="8" r="1.1" fill="currentColor"></circle><circle cx="8" cy="8" r="1.1" fill="currentColor"></circle><circle cx="12.8" cy="8" r="1.1" fill="currentColor"></circle></svg>
+                </button>
+              </span>
+            </div>
+          </sc-for>
+        </div>
+      </sc-for>
+
+      <sc-if value="{{ hasArchived }}" hint-placeholder-val="{{ true }}">
+        <button onClick="{{ toggleArchived }}" style="width:100%;margin-top:8px;padding:6px 9px;border:none;background:none;color:var(--text-3);cursor:pointer;font-size:11.5px;text-align:left;border-radius:var(--radius-sm)" style-hover="background:var(--panel-3);color:var(--text-2)">{{ archivedLabel }}</button>
+      </sc-if>
+    </div>
+  </div>
+
+  <!-- ---------- WORKSPACE ---------- -->
+  <div style="display:flex;flex-direction:column;min-width:0;min-height:0;background:var(--bg);position:relative" data-screen-label="workspace">
+
+    <!-- new-feature form owns the whole workspace while open -->
+    <sc-if value="{{ creating }}" hint-placeholder-val="{{ false }}">
+      <div style="flex:1;display:flex;align-items:center;justify-content:center;padding:24px" data-screen-label="new feature">
+        <div style="width:540px;max-width:100%;border:1px solid var(--hairline);border-radius:var(--radius-lg);background:var(--panel);padding:26px 28px;animation:rcPopIn var(--dur-3) var(--ease-out)">
+          <div style="font-size:11px;letter-spacing:.09em;color:var(--accent-hi);font-weight:700">NEW FEATURE</div>
+          <div style="font-size:16px;font-weight:600;margin-top:6px">What are we building?</div>
+          <div style="margin-top:5px;font-size:12.5px;color:var(--text-2);line-height:1.55">Name it — runcastle opens a grill session so you and Claude shape the idea before any code is written.</div>
+          <input value="{{ nfTitle }}" onChange="{{ onNfTitle }}" placeholder="e.g. Slack notifications on failed runs" style="width:100%;margin-top:18px;height:36px;background:var(--panel-inset);border:1px solid var(--hairline);border-radius:var(--radius);color:var(--text);padding:0 12px;font-size:13px;outline:none;font-family:inherit;box-sizing:border-box" style-focus="border-color:var(--accent)">
+          <input value="{{ nfOne }}" onChange="{{ onNfOne }}" placeholder="one-liner (optional) — what &amp; why in a sentence" style="width:100%;margin-top:8px;height:32px;background:var(--panel-inset);border:1px solid var(--hairline);border-radius:var(--radius);color:var(--text);padding:0 12px;font-size:12.5px;outline:none;font-family:inherit;box-sizing:border-box" style-focus="border-color:var(--accent)">
+          <div style="margin-top:16px">
+            <button onClick="{{ toggleAdvanced }}" style="font-size:12.5px;color:var(--text-2);cursor:pointer;background:none;border:none;padding:0;width:fit-content" style-hover="color:var(--text)">{{ advCaret }} Advanced</button>
+            <sc-if value="{{ advOpen }}" hint-placeholder-val="{{ false }}">
+              <div style="display:flex;align-items:center;flex-wrap:wrap;gap:10px;margin-top:10px">
+                <span style="font-size:13px;color:var(--text)">Branch from</span>
+                <span style="height:30px;display:inline-flex;align-items:center;background:var(--panel-inset);border:1px solid var(--hairline);border-radius:var(--radius);color:var(--text);padding:0 8px;font-family:var(--mono);font-size:11.5px">{{ baseLabel }}</span>
+                <span style="font-size:12px;color:var(--text-3)">forks off this branch — and merges back into it when shipped.</span>
+              </div>
+              <div style="margin-top:16px;font-family:var(--mono);font-size:11.5px;color:var(--text-3)">branch · feature/{{ nfSlug }} ← {{ mainBranch }}</div>
+            </sc-if>
+          </div>
+          <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:22px">
+            <button onClick="{{ cancelCreate }}" style="{{ ghostBtn }}" style-hover="border-color:var(--hairline-strong);background:var(--panel);color:var(--text)">Cancel</button>
+            <button onClick="{{ createGo }}" style="{{ createBtn }}" style-hover="background:var(--accent-2);border-color:var(--accent-2)">Start grill session</button>
+          </div>
+        </div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ notCreating }}" hint-placeholder-val="{{ true }}">
+      <!-- workspace header: phase tag · title · branch, then the pipeline stepper -->
+      <div style="flex:0 0 auto;width:100%;max-width:calc(var(--content-max) + 56px);margin:0 auto;padding:18px 28px 0">
+        <div style="display:flex;align-items:center;gap:10px">
+          <span style="{{ phaseTagStyle }}">{{ featPhase }}</span>
+          <span style="font-size:17px;font-weight:600;letter-spacing:-.01em;color:var(--text)">{{ featTitle }}</span>
+          <span style="flex:1"></span>
+          <button onClick="{{ copyBranch }}" title="Copy branch name" style="display:inline-flex;align-items:center;gap:5px;font-family:var(--mono);font-size:11.5px;color:var(--text-3);background:none;border:none;cursor:pointer" style-hover="color:var(--text)">
+            <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="4.5" cy="3.8" r="1.7"></circle><circle cx="4.5" cy="12.2" r="1.7"></circle><circle cx="11.5" cy="5" r="1.7"></circle><path d="M4.5 5.5v5M11.5 6.7c0 2.6-3 3-5.4 3.6"></path></svg>
+            {{ featBranch }}
+          </button>
+        </div>
+        <div style="display:flex;align-items:center;margin-top:16px" data-screen-label="pipeline">
+          <sc-for list="{{ pipe }}" as="p" hint-placeholder-count="6">
+            <button onClick="{{ p.onClick }}" title="{{ p.tip }}" style="{{ p.style }}" style-hover="{{ p.hover }}"><span style="{{ p.dot }}"></span><span style="text-transform:lowercase">{{ p.label }}</span></button>
+            <sc-if value="{{ p.hasConn }}" hint-placeholder-val="{{ true }}"><span style="{{ p.conn }}"></span></sc-if>
+          </sc-for>
+        </div>
+      </div>
+
+      <!-- guided next-step bar, or the read-only banner when pinned to a past phase -->
+      <sc-if value="{{ notReadonly }}" hint-placeholder-val="{{ true }}">
+        <div style="width:100%;max-width:calc(var(--content-max) + 56px);margin:14px auto 0;border:1px solid var(--hairline);background:var(--panel);border-radius:var(--radius-lg);display:flex;align-items:center;gap:14px;padding:13px 16px;box-sizing:border-box;animation:rcFadeUp var(--dur-3) var(--ease-out)" data-screen-label="next step bar">
+          <sc-if value="{{ next.busy }}" hint-placeholder-val="{{ false }}"><span style="width:12px;height:12px;border-radius:50%;border:1.6px solid var(--ph-implementation);border-top-color:transparent;display:inline-block;animation:rcSpin .8s linear infinite;flex:0 0 auto"></span></sc-if>
+          <div style="flex:1;min-width:0">
+            <div style="{{ next.kickStyle }}">{{ next.kick }}</div>
+            <div style="font-size:13.5px;font-weight:600;margin-top:2px;color:var(--text)">{{ next.title }}</div>
+            <sc-if value="{{ showGuide }}" hint-placeholder-val="{{ true }}"><div style="font-size:12px;color:var(--text-2);margin-top:2px;line-height:1.5;text-wrap:pretty">{{ next.desc }}</div></sc-if>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;flex:0 0 auto">
+            <sc-for list="{{ next.secondary }}" as="a" hint-placeholder-count="1"><button onClick="{{ a.fn }}" style="{{ ghostXs }}" style-hover="border-color:var(--hairline-strong);background:var(--panel-3);color:var(--text)">{{ a.label }}</button></sc-for>
+            <sc-if value="{{ next.hasBtn }}" hint-placeholder-val="{{ true }}"><button onClick="{{ next.fn }}" style="{{ next.btnStyle }}" style-hover="{{ next.btnHover }}">{{ next.btn }}</button></sc-if>
+          </div>
+        </div>
+      </sc-if>
+      <sc-if value="{{ readonly }}" hint-placeholder-val="{{ false }}">
+        <div style="width:100%;max-width:calc(var(--content-max) + 56px);margin:12px auto 0;display:flex;align-items:center;gap:10px;padding:8px 14px;border:1px dashed var(--hairline-strong);border-radius:var(--radius);background:var(--panel-2);font-size:12px;color:var(--text-2);box-sizing:border-box;animation:rcFadeUp var(--dur-2) var(--ease-out)">
+          <span style="font-family:var(--mono);font-size:10px;letter-spacing:.06em;color:var(--text-3);border:1px solid var(--hairline);border-radius:4px;padding:1px 6px">READ-ONLY</span>
+          <span>You're viewing the {{ viewLabel }} phase.</span>
+          <button onClick="{{ jumpCurrent }}" style="margin-left:auto;background:none;border:none;color:var(--accent-hi);font-size:12px;cursor:pointer" style-hover="color:var(--accent-2)">Back to {{ curPhaseLabel }} →</button>
+        </div>
+      </sc-if>
+
+      <!-- ---------- PHASE BODY ---------- -->
+      <div style="flex:1;min-height:0;overflow-y:auto;padding:18px 0 32px">
+        <div style="width:100%;max-width:calc(var(--content-max) + 56px);margin:0 auto;padding:0 28px;box-sizing:border-box;animation:rcBodyIn var(--dur-3) var(--ease-out)">
+
+          <!-- ideation / spec — the hero agent terminal -->
+          <sc-if value="{{ isGrill }}" hint-placeholder-val="{{ false }}">
+            <div data-screen-label="session">
+              <sc-if value="{{ showSpecCard }}" hint-placeholder-val="{{ false }}">
+                <button onClick="{{ onPeekSpec }}" title="View the spec" style="display:flex;align-items:center;gap:9px;width:100%;padding:11px 14px;border:1px solid var(--hairline);border-radius:var(--radius-lg);background:var(--panel-2);color:var(--text-3);font-size:12.5px;cursor:pointer;text-align:left;box-sizing:border-box" style-hover="border-color:var(--hairline-strong);background:var(--panel-3)">
+                  <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 1.8h5.2L13 5.6v8.6H4z"></path><path d="M9 2v3.8h3.8M6 8.4h4M6 10.8h4"></path></svg>
+                  <span style="color:var(--text);font-weight:500">Specification</span>
+                  <span style="font-family:var(--mono);font-size:11px;color:var(--text-4)">spec.md</span>
+                  <span style="margin-left:auto;display:inline-flex;align-items:center;gap:3px;color:var(--text-3);font-size:12px">View<svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m6 4 4 4-4 4"></path></svg></span>
+                </button>
+              </sc-if>
+
+              <div style="{{ bodyTitleStyle }}">
+                <span style="font-size:11px;text-transform:uppercase;letter-spacing:.09em;color:var(--text-3);font-weight:600">Session</span>
+                <sc-if value="{{ showGuide }}" hint-placeholder-val="{{ true }}"><span style="font-size:12px;color:var(--text-3);text-wrap:pretty">shape the idea with Claude — promote it when it feels concrete</span></sc-if>
+              </div>
+
+              <sc-if value="{{ sessOpen }}" hint-placeholder-val="{{ true }}">
+                <div style="border:1px solid var(--hairline);border-radius:var(--radius-lg);overflow:hidden;background:var(--panel-2);display:flex;flex-direction:column">
+                  <div style="height:34px;flex:0 0 34px;display:flex;align-items:center;gap:10px;padding:0 12px;background:var(--panel);border-bottom:1px solid var(--hairline-soft)">
+                    <span style="display:inline-flex;align-items:center;height:18px;padding:0 8px;border-radius:var(--radius-pill);border:1px solid var(--accent-line);background:var(--accent-soft);color:var(--accent-hi);font-family:var(--mono);font-size:10.5px">{{ sessKind }}</span>
+                    <span style="{{ sessDot }}" title="live"></span>
+                    <span style="font-size:11.5px;color:var(--text-3)">live</span>
+                    <span style="flex:1"></span>
+                    <span style="font-family:var(--mono);font-size:11px;color:var(--text-3)">{{ sessId }}</span>
+                    <button onClick="{{ endSession }}" style="{{ endBtn }}" style-hover="color:var(--danger);border-color:color-mix(in srgb,var(--danger) 55%,var(--hairline))">End session</button>
+                  </div>
+                  <div style="{{ termStyle }}">
+                    <div style="height:100%;overflow-y:auto;padding:12px 16px;font-family:var(--mono);font-size:12px;line-height:1.7;box-sizing:border-box">
+                      <sc-for list="{{ term }}" as="l" hint-placeholder-count="8"><div style="display:flex;gap:9px;align-items:flex-start;margin-bottom:{{ l.gap }};animation:rcLineIn var(--dur-2) var(--ease-out)"><span style="{{ l.glyphStyle }}">{{ l.glyph }}</span><span style="{{ l.textStyle }}">{{ l.tx }}</span></div></sc-for>
+                      <div style="display:flex;align-items:center;gap:8px;margin-top:4px;color:var(--ph-implementation)"><span style="display:inline-block;animation:rcSpin 1.2s linear infinite">✳</span><span style="color:var(--text-3);font-size:11.5px">{{ termFoot }}</span><span style="animation:rcCursor 1.1s steps(1) infinite;color:var(--text-2)">▍</span></div>
+                    </div>
+                  </div>
+                </div>
+              </sc-if>
+              <sc-if value="{{ sessEnded }}" hint-placeholder-val="{{ false }}">
+                <div style="display:flex;align-items:center;gap:12px;padding:14px 16px;border:1px solid var(--hairline);border-radius:var(--radius-lg);background:var(--panel-2);animation:rcFadeUp var(--dur-2) var(--ease-out)">
+                  <span style="width:8px;height:8px;border-radius:50%;background:var(--text-4);flex:0 0 auto"></span>
+                  <div>
+                    <div style="font-size:13px;font-weight:500;color:var(--text-2)">Session ended</div>
+                    <div style="font-size:12px;color:var(--text-3);margin-top:1px">Decisions from this conversation were captured to Knowledge.</div>
+                  </div>
+                </div>
+              </sc-if>
+            </div>
+          </sc-if>
+
+          <!-- tickets — the ledger -->
+          <sc-if value="{{ isTix }}" hint-placeholder-val="{{ true }}">
+            <div data-screen-label="tickets">
+              <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+                <span style="font-size:11px;text-transform:uppercase;letter-spacing:.09em;color:var(--text-3);font-weight:600">Tickets</span>
+                <span style="font-family:var(--mono);font-size:11.5px;color:var(--text-2)">{{ tixMeta }}</span>
+                <span style="flex:1"></span>
+                <span title="sandbox" style="{{ neutralChip }}">sandbox · {{ sandbox }}</span>
+                <span title="model" style="{{ neutralChip }}">{{ model }}</span>
+              </div>
+              <div style="border:1px solid var(--hairline);border-radius:var(--radius-lg);overflow:hidden;background:var(--panel-2)">
+                <sc-for list="{{ tickets }}" as="t" hint-placeholder-count="5">
+                  <div style="{{ t.rowStyle }}">
+                    <button onClick="{{ t.onToggle }}" style="width:100%;display:flex;align-items:center;gap:10px;padding:10px 14px;background:none;border:none;cursor:pointer;text-align:left" style-hover="background:var(--panel-3)">
+                      <span style="{{ t.caretStyle }}"><svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m6 4 4 4-4 4"></path></svg></span>
+                      <span style="color:var(--text-3);font-family:var(--mono);font-size:11.5px;width:22px;flex:0 0 auto">#{{ t.seq }}</span>
+                      <span style="flex:1;min-width:0;color:var(--text);font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ t.title }}</span>
+                      <sc-if value="{{ t.blocked }}" hint-placeholder-val="{{ false }}"><span title="Runs after these tickets land" style="font-family:var(--mono);font-size:10.5px;color:var(--needs);flex:0 0 auto">after {{ t.blockedBy }}</span></sc-if>
+                      <span style="display:flex;align-items:center;gap:8px;flex:0 0 auto"><span style="{{ t.chipStyle }}">{{ t.status }}</span></span>
+                    </button>
+                    <sc-if value="{{ t.open }}" hint-placeholder-val="{{ false }}">
+                      <div style="padding:2px 16px 16px 46px;background:var(--panel-inset);border-top:1px solid var(--hairline-soft);overflow:hidden;animation:rcDetailIn var(--dur-2) var(--ease-out)">
+                        <div style="margin-top:12px"><div style="{{ tdHeading }}">GOAL</div><div style="color:var(--text);line-height:1.55;max-width:640px;text-wrap:pretty">{{ t.goal }}</div></div>
+                        <sc-if value="{{ t.hasContext }}" hint-placeholder-val="{{ false }}"><div style="margin-top:12px"><div style="{{ tdHeading }}">CONTEXT</div><div style="color:var(--text);line-height:1.55;max-width:640px;text-wrap:pretty">{{ t.context }}</div></div></sc-if>
+                        <div style="margin-top:12px"><div style="{{ tdHeading }}">ACCEPTANCE</div>
+                          <sc-for list="{{ t.acceptance }}" as="a" hint-placeholder-count="2"><div data-accept style="display:flex;padding:2px 0;color:var(--text-2);line-height:1.5">{{ a.tx }}</div></sc-for>
+                        </div>
+                        <div style="margin-top:12px"><div style="{{ tdHeading }}">SEAMS</div>
+                          <div style="display:flex;flex-wrap:wrap;gap:6px"><sc-for list="{{ t.seams }}" as="s" hint-placeholder-count="2"><span style="font-family:var(--mono);font-size:11px;color:var(--text-2);border:1px solid var(--hairline);background:var(--panel-2);border-radius:var(--radius-sm);padding:2px 7px">{{ s.tx }}</span></sc-for></div>
+                        </div>
+                        <div style="margin-top:12px"><div style="{{ tdHeading }}">COMMITS</div>
+                          <sc-if value="{{ t.noCommits }}" hint-placeholder-val="{{ true }}"><div style="font-family:var(--mono);font-size:11.5px;color:var(--text-4)">no commits yet — the burn writes them</div></sc-if>
+                          <div style="display:flex;flex-wrap:wrap;gap:6px"><sc-for list="{{ t.commits }}" as="c" hint-placeholder-count="0"><button onClick="{{ c.fn }}" title="copy full sha" style="font-family:var(--mono);font-size:11px;color:var(--ph-shipped);background:none;border:1px solid var(--hairline);border-radius:4px;padding:1px 6px;cursor:pointer" style-hover="border-color:var(--ph-shipped)">{{ c.tx }}</button></sc-for></div>
+                        </div>
+                      </div>
+                    </sc-if>
+                  </div>
+                </sc-for>
+              </div>
+            </div>
+          </sc-if>
+
+          <!-- implementation — lanes | agent transcript -->
+          <sc-if value="{{ isRun }}" hint-placeholder-val="{{ false }}">
+            <div data-screen-label="run">
+              <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+                <span style="font-size:11px;text-transform:uppercase;letter-spacing:.09em;color:var(--text-3);font-weight:600">Run</span>
+                <span style="{{ runChip }}">{{ runStatus }}</span>
+                <span style="font-family:var(--mono);font-size:11.5px;color:var(--text-2)">{{ runDone }}/{{ runTotal }} done · {{ runElapsed }}</span>
+              </div>
+              <div style="display:flex;gap:14px;align-items:stretch">
+                <div style="flex:2;min-width:0;border:1px solid var(--hairline);border-radius:var(--radius-lg);background:var(--panel-2);overflow:hidden;align-self:flex-start">
+                  <div style="{{ panelCap }}">Ticket lanes</div>
+                  <div style="padding:8px;display:flex;flex-direction:column;gap:6px">
+                    <sc-for list="{{ lanes }}" as="L" hint-placeholder-count="5">
+                      <div onClick="{{ L.onSelect }}" title="show this ticket's agent" style="{{ L.style }}" style-hover="border-color:var(--accent)">
+                        <div style="display:flex;align-items:center;gap:8px">
+                          <span style="color:var(--text-3);font-family:var(--mono);font-size:11.5px;flex:0 0 auto">#{{ L.seq }}</span>
+                          <span style="flex:1;min-width:0;font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ L.title }}</span>
+                          <span style="{{ L.chip }}">{{ L.status }}</span>
+                        </div>
+                        <sc-if value="{{ L.hasFoot }}" hint-placeholder-val="{{ false }}">
+                          <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:6px">
+                            <span style="display:flex;flex-wrap:wrap;gap:4px"><sc-for list="{{ L.commits }}" as="c" hint-placeholder-count="1"><span style="font-family:var(--mono);font-size:11px;color:var(--ph-shipped);border:1px solid var(--hairline);border-radius:4px;padding:1px 6px">{{ c.tx }}</span></sc-for></span>
+                            <span style="color:var(--text-3);font-family:var(--mono);font-size:11px">{{ L.dur }}</span>
+                          </div>
+                        </sc-if>
+                      </div>
+                    </sc-for>
+                  </div>
+                </div>
+
+                <div style="{{ streamPanel }}">
+                  <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;border-bottom:1px solid var(--hairline-soft);background:var(--panel-2)">
+                    <div style="display:flex;align-items:center;gap:4px">
+                      <button onClick="{{ tabAgent }}" style="{{ agentTabStyle }}">Agent<sc-if value="{{ hasSel }}" hint-placeholder-val="{{ true }}"><span style="margin-left:6px;color:var(--accent-hi);font-family:var(--mono);text-transform:none;letter-spacing:0">#{{ selSeq }}</span></sc-if></button>
+                      <button onClick="{{ tabEvents }}" style="{{ eventsTabStyle }}">Events</button>
+                    </div>
+                    <sc-if value="{{ agentLive }}" hint-placeholder-val="{{ true }}"><span title="agent running" style="width:8px;height:8px;border-radius:50%;background:var(--ph-implementation);animation:rcPulse 1.7s ease-in-out infinite"></span></sc-if>
+                  </div>
+
+                  <sc-if value="{{ onAgentTab }}" hint-placeholder-val="{{ true }}">
+                    <div style="flex:1;overflow-y:auto;padding:12px 16px;font-family:var(--mono);font-size:12px;line-height:1.7">
+                      <sc-for list="{{ agentBlocks }}" as="b" hint-placeholder-count="6"><div style="display:flex;gap:9px;align-items:flex-start;margin-bottom:{{ b.gap }};animation:rcLineIn var(--dur-2) var(--ease-out)"><span style="{{ b.glyphStyle }}">{{ b.glyph }}</span><span style="{{ b.textStyle }}"><span style="{{ b.nameStyle }}">{{ b.name }}</span>{{ b.tx }}</span></div></sc-for>
+                      <sc-if value="{{ agentLive }}" hint-placeholder-val="{{ true }}"><div style="display:flex;align-items:center;gap:8px;margin-top:4px;color:var(--ph-implementation)"><span style="display:inline-block;animation:rcSpin 1.2s linear infinite">✳</span><span style="color:var(--text-3);font-size:11.5px">Burning…</span><span style="animation:rcCursor 1.1s steps(1) infinite;color:var(--text-2)">▍</span></div></sc-if>
+                    </div>
+                  </sc-if>
+                  <sc-if value="{{ onEventsTab }}" hint-placeholder-val="{{ false }}">
+                    <div style="flex:1;overflow-y:auto;padding:10px 14px;font-family:var(--mono);font-size:11.5px;line-height:1.85">
+                      <sc-for list="{{ stream }}" as="e" hint-placeholder-count="8"><div style="display:flex;gap:10px;animation:rcLineIn var(--dur-2) var(--ease-out)"><span style="color:var(--text-4);flex:0 0 42px">{{ e.t }}</span><span style="{{ e.typeStyle }}">{{ e.ev }}</span><span style="flex:1;min-width:0;color:var(--text-2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ e.tx }}</span></div></sc-for>
+                    </div>
+                  </sc-if>
+                </div>
+              </div>
+            </div>
+          </sc-if>
+
+          <!-- review — summary | test drive -->
+          <sc-if value="{{ isRev }}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex;flex-direction:column;gap:14px" data-screen-label="review">
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;max-width:1000px">
+                <div style="{{ reviewCard }}">
+                  <div style="font-size:11px;text-transform:uppercase;letter-spacing:.09em;color:var(--text-3);font-weight:600;padding:4px 0">Summary</div>
+                  <sc-for list="{{ checks }}" as="c" hint-placeholder-count="3">
+                    <div style="display:flex;align-items:center;gap:10px;margin-top:11px"><span style="{{ c.dot }}"></span><span style="font-family:var(--mono);font-size:12px;color:var(--text);width:92px;flex:0 0 auto">{{ c.k }}</span><span style="font-family:var(--mono);font-size:11.5px;color:var(--text-3)">{{ c.v }}</span></div>
+                  </sc-for>
+                  <div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--hairline-soft);font-family:var(--mono);font-size:11.5px;color:var(--text-2)">{{ featBranch }}</div>
+                </div>
+                <div style="{{ reviewCard }}">
+                  <div style="font-size:11px;text-transform:uppercase;letter-spacing:.09em;color:var(--text-3);font-weight:600;padding:4px 0">Test drive</div>
+                  <sc-if value="{{ isDriving }}" hint-placeholder-val="{{ false }}">
+                    <div style="display:flex;align-items:center;gap:9px;margin-top:12px"><span style="width:8px;height:8px;border-radius:50%;background:var(--drive);animation:rcPulse 1.4s ease-in-out infinite"></span><span style="color:var(--drive);font-weight:600;font-size:12.5px">driving now</span><span style="font-family:var(--mono);font-size:11.5px;color:var(--text-2)">{{ featBranch }}</span></div>
+                    <div style="margin-top:12px;color:var(--text-2);font-size:12.5px;line-height:1.55;text-wrap:pretty">Click through the feature. When it feels right, merge — or stop the drive and send feedback back through tickets.</div>
+                  </sc-if>
+                  <sc-if value="{{ notDriving }}" hint-placeholder-val="{{ true }}">
+                    <div style="margin-top:12px;color:var(--text-2);font-size:12.5px;line-height:1.55;text-wrap:pretty">Nothing is running yet. Start the test drive from the next step to boot this branch on its own port and click through the feature yourself — the merge gate wants a human behind the wheel.</div>
+                  </sc-if>
+                </div>
+              </div>
+
+              <sc-if value="{{ isDriving }}" hint-placeholder-val="{{ false }}">
+                <div style="max-width:1000px;border:1px solid var(--hairline);border-radius:var(--radius-lg);background:var(--panel-2);overflow:hidden">
+                  <div style="height:38px;display:flex;align-items:center;gap:10px;padding:0 12px;background:var(--panel);border-bottom:1px solid var(--hairline-soft)">
+                    <span style="display:inline-flex;align-items:center;height:18px;padding:0 8px;border-radius:var(--radius-pill);border:1px solid var(--accent-line);background:var(--accent-soft);color:var(--drive);font-family:var(--mono);font-size:10.5px">dev server</span>
+                    <span style="font-family:var(--mono);font-size:11.5px;color:var(--text-3)">{{ featBranch }}</span>
+                    <span style="flex:1"></span>
+                    <a onClick="{{ openApp }}" style="font-family:var(--mono);font-size:11.5px;font-weight:600;color:var(--drive);padding:4px 10px;border:1px solid color-mix(in srgb,var(--drive) 40%,var(--hairline));border-radius:var(--radius-pill);background:var(--accent-soft);cursor:pointer" style-hover="border-color:var(--drive)">Open app ↗</a>
+                    <button onClick="{{ toggleDevOut }}" style="{{ ghostXs }}" style-hover="border-color:var(--hairline-strong);background:var(--panel-3);color:var(--text)">{{ devOutLabel }}</button>
+                  </div>
+                  <sc-if value="{{ devOutOpen }}" hint-placeholder-val="{{ false }}">
+                    <div style="height:220px;background:var(--bg);padding:12px 16px;font-family:var(--mono);font-size:11.5px;line-height:1.8;color:var(--text-2);overflow-y:auto">
+                      <sc-for list="{{ devLines }}" as="d" hint-placeholder-count="4"><div style="{{ d.st }}">{{ d.tx }}</div></sc-for>
+                    </div>
+                  </sc-if>
+                </div>
+              </sc-if>
+            </div>
+          </sc-if>
+
+          <!-- shipped -->
+          <sc-if value="{{ isShip }}" hint-placeholder-val="{{ false }}">
+            <div style="max-width:560px;margin:36px auto 0;text-align:center;animation:rcFadeUp var(--dur-3) var(--ease-out)" data-screen-label="shipped">
+              <div style="width:40px;height:40px;margin:0 auto;border-radius:50%;border:1px solid color-mix(in srgb,var(--ok) 45%,transparent);color:var(--ok);display:flex;align-items:center;justify-content:center;animation:rcPopIn var(--dur-3) var(--ease-out)">
+                <svg width="17" height="17" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m3 8.4 3.2 3.2L13 5"></path></svg>
+              </div>
+              <div style="margin-top:14px;font-size:16px;font-weight:600">Shipped to main</div>
+              <div style="margin-top:6px;font-family:var(--mono);font-size:12px;color:var(--text-2);display:inline-flex;align-items:center;gap:5px">
+                <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="4.5" cy="3.8" r="1.7"></circle><circle cx="4.5" cy="12.2" r="1.7"></circle><circle cx="11.5" cy="5" r="1.7"></circle><path d="M4.5 5.5v5M11.5 6.7c0 2.6-3 3-5.4 3.6"></path></svg>
+                {{ featBranch }}{{ shipWhen }}
+              </div>
+              <div style="margin-top:10px;font-size:12.5px;color:var(--text-3);line-height:1.55">The branch is merged and the pipeline is complete. The full history lives in the Activity tab.</div>
+            </div>
+          </sc-if>
+
+        </div>
+      </div>
+    </sc-if>
+  </div>
+
+  <!-- ---------- INSPECTOR — tabbed rail ---------- -->
+  <sc-if value="{{ inspectorOpen }}" hint-placeholder-val="{{ true }}">
+    <div style="border-left:1px solid var(--hairline);background:var(--panel-2);overflow:hidden;min-height:0;display:flex;flex-direction:column" data-screen-label="inspector">
+      <div style="flex:0 0 auto;display:flex;align-items:center;gap:2px;padding:8px 10px 0;border-bottom:1px solid var(--hairline-soft)" role="tablist">
+        <button data-insp-tab="{{ detailsTabState }}" onClick="{{ showDetails }}" style="{{ detailsTabStyle }}">Details</button>
+        <button data-insp-tab="{{ activityTabState }}" onClick="{{ showActivity }}" style="{{ activityTabStyle }}">Activity</button>
+      </div>
+
+      <sc-if value="{{ onDetailsTab }}" hint-placeholder-val="{{ true }}">
+        <div style="flex:1;min-height:0;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:22px;animation:rcFadeUp var(--dur-2) var(--ease-out)">
+          <div>
+            <div style="{{ inspCap }}">Current gate</div>
+            <sc-if value="{{ gateOn }}" hint-placeholder-val="{{ true }}">
+              <div style="border:1px solid var(--hairline);border-radius:var(--radius-lg);background:var(--panel);padding:12px 14px">
+                <div style="display:flex;align-items:center;gap:8px"><span style="font-family:var(--mono);font-size:11px;color:var(--accent-hi)">{{ gateId }}</span><span style="font-weight:600;font-size:12.5px;color:var(--text)">{{ gateName }}</span></div>
+                <div style="margin-top:6px;font-size:11.5px;color:var(--text-2);line-height:1.5;text-wrap:pretty">{{ gateReq }}</div>
+                <div style="{{ gateStateStyle }}"><span style="width:7px;height:7px;border-radius:50%;background:currentColor;flex:0 0 auto"></span><span>{{ gateLab }}</span></div>
+                <button onClick="{{ onOverride }}" style="margin-top:10px;background:none;border:none;padding:0;font-size:11.5px;color:var(--text-3);cursor:pointer" style-hover="color:var(--accent-hi)">Override with reason…</button>
+              </div>
+            </sc-if>
+            <sc-if value="{{ gateOff }}" hint-placeholder-val="{{ false }}">
+              <div style="display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--ok)">
+                <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m3 8.4 3.2 3.2L13 5"></path></svg>
+                Shipped — no gates left.
+              </div>
+            </sc-if>
+          </div>
+
+          <div>
+            <div style="{{ inspCap }}">Knowledge</div>
+            <sc-if value="{{ hasDocs }}" hint-placeholder-val="{{ true }}">
+              <sc-for list="{{ docs }}" as="d" hint-placeholder-count="3">
+                <button onClick="{{ d.fn }}" style="width:100%;display:flex;align-items:center;gap:8px;background:none;border:none;cursor:pointer;text-align:left;padding:7px 8px;margin:0 -8px;border-radius:var(--radius-sm)" style-hover="background:var(--panel-3)">
+                  <span style="color:var(--text-4);display:inline-flex;flex:0 0 auto"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 1.8h5.2L13 5.6v8.6H4z"></path><path d="M9 2v3.8h3.8M6 8.4h4M6 10.8h4"></path></svg></span>
+                  <span style="color:var(--text);font-size:12.5px;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ d.title }}</span>
+                  <span style="font-size:11px;color:var(--text-4);flex:0 0 auto">{{ d.meta }}</span>
+                </button>
+              </sc-for>
+            </sc-if>
+            <sc-if value="{{ noDocs }}" hint-placeholder-val="{{ false }}">
+              <div style="font-size:12px;color:var(--text-3);line-height:1.55;text-wrap:pretty">Docs the sessions write — decisions, the spec, the map — collect here.</div>
+            </sc-if>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ onActivityTab }}" hint-placeholder-val="{{ false }}">
+        <div style="flex:1;min-height:0;overflow-y:auto;padding:10px 12px;animation:rcFadeUp var(--dur-2) var(--ease-out)">
+          <div style="display:flex;flex-direction:column">
+            <sc-for list="{{ activity }}" as="e" hint-placeholder-count="6">
+              <div style="{{ e.lineStyle }}">
+                <span style="{{ e.dotStyle }}"></span>
+                <div style="min-width:0;flex:1">
+                  <div style="font-size:12px;color:var(--text-2);line-height:1.45">{{ e.tx }}</div>
+                  <div style="display:flex;align-items:baseline;gap:8px;margin-top:2px">
+                    <span style="font-size:10.5px;color:var(--text-4);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ e.ev }}</span>
+                    <span style="font-size:10.5px;color:var(--text-4);flex:0 0 auto;margin-left:auto">{{ e.t }}</span>
+                  </div>
+                </div>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+      </sc-if>
+    </div>
+  </sc-if>
+</div>
+
+<!-- ======================= STATUS BAR ======================= -->
+<div style="display:flex;align-items:center;gap:16px;padding:0 12px;border-top:1px solid var(--hairline);background:var(--panel);font-size:11px;color:var(--text-3)" data-screen-label="statusbar">
+  <button onClick="{{ copyBranch }}" title="Copy branch name" style="display:inline-flex;align-items:center;gap:5px;background:none;border:none;color:var(--text-3);cursor:pointer;font-family:var(--mono);font-size:11px;padding:0" style-hover="color:var(--text)">
+    <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="4.5" cy="3.8" r="1.7"></circle><circle cx="4.5" cy="12.2" r="1.7"></circle><circle cx="11.5" cy="5" r="1.7"></circle><path d="M4.5 5.5v5M11.5 6.7c0 2.6-3 3-5.4 3.6"></path></svg>
+    {{ featBranch }}
+  </button>
+  <span title="Agent sessions run sandboxed" style="display:inline-flex;align-items:center;gap:5px">
+    <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 1.8 13 3.6v4.2c0 3.2-2.1 5.3-5 6.4-2.9-1.1-5-3.2-5-6.4V3.6z"></path></svg>
+    {{ sandbox }}
+  </span>
+  <sc-if value="{{ isDriving }}" hint-placeholder-val="{{ false }}">
+    <span style="color:var(--drive);display:flex;gap:7px;align-items:center">
+      <span style="width:6px;height:6px;border-radius:50%;background:var(--drive);animation:rcPulse 1.4s ease-in-out infinite"></span>
+      driving <span style="font-family:var(--mono)">{{ featBranch }}</span>
+      <button onClick="{{ stopDrive }}" style="height:16px;padding:0 6px;background:transparent;border:1px solid color-mix(in srgb,var(--drive) 40%,transparent);border-radius:4px;color:var(--drive);font-size:10px;cursor:pointer" style-hover="background:rgba(88,166,255,.12)">stop</button>
+    </span>
+  </sc-if>
+  <span style="flex:1"></span>
+  <button onClick="{{ toggleNotify }}" title="Notify me when a burn finishes" style="{{ notifyStyle }}" style-hover="color:var(--text)">
+    <sc-if value="{{ notifyOn }}" hint-placeholder-val="{{ false }}"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2a4 4 0 0 0-4 4v2.6L2.8 11h10.4L12 8.6V6a4 4 0 0 0-4-4Z"></path><path d="M6.5 13.4a1.6 1.6 0 0 0 3 0"></path></svg></sc-if>
+    <sc-if value="{{ notifyOff }}" hint-placeholder-val="{{ true }}"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5.2 3.2A4 4 0 0 1 12 6v2.6L13.2 11H6.5M4 6.5V8.6L2.8 11h2.4"></path><path d="M6.5 13.4a1.6 1.6 0 0 0 3 0"></path><path d="M2 2l12 12"></path></svg></sc-if>
+    notify
+  </button>
+  <span style="display:inline-flex;align-items:center;gap:5px">{{ runsLabel }}</span>
+  <span style="display:inline-flex;align-items:center;gap:6px;color:var(--ph-shipped)"><span style="width:8px;height:8px;border-radius:50%;display:inline-block;background:var(--ok)"></span>:4512 ok</span>
+</div>
+
+<sc-if value="{{ toastOn }}" hint-placeholder-val="{{ false }}">
+  <div style="{{ toastStyle }}">{{ toastMsg }}</div>
+</sc-if>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;guidance&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Behavior&quot;},&quot;sandbox&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;workspace-write&quot;,&quot;read-only&quot;,&quot;danger-full-access&quot;],&quot;default&quot;:&quot;workspace-write&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Environment&quot;},&quot;project&quot;:{&quot;editor&quot;:&quot;text&quot;,&quot;default&quot;:&quot;runcastle&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Environment&quot;},&quot;mainBranch&quot;:{&quot;editor&quot;:&quot;text&quot;,&quot;default&quot;:&quot;main&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Environment&quot;},&quot;model&quot;:{&quot;editor&quot;:&quot;text&quot;,&quot;default&quot;:&quot;claude-opus-4-6&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Environment&quot;}}">
+/* ===========================================================================
+   runcastle — pipeline-first IDE (app-redesign), mirroring apps/web.
+
+   Phase order, phase LABELS, gate ids/descriptions, the triage lanes, the
+   next-step state machine and the ticket status enum are ports of the real
+   sources: packages/core/src/pipeline.ts and apps/web/src/lib/feature-ui.ts.
+   Keep them in step when the app moves.
+   ========================================================================= */
+const PH = ['ideation', 'spec', 'tickets', 'implementation', 'review', 'shipped'];
+
+/* PHASE_LABELS — note `implementation` renders as "build" (feature-ui.ts). */
+const PLABEL = { ideation: 'ideation', spec: 'spec', tickets: 'tickets', implementation: 'build', review: 'review', shipped: 'shipped' };
+const PTIP = {
+  ideation: 'Shape the idea in a grill session',
+  spec: 'Write it up as a spec',
+  tickets: 'Break the work into atomic tickets',
+  implementation: 'Burn the tickets into commits',
+  review: 'Test-drive the branch, then merge',
+  shipped: 'Merged to the main branch',
+};
+const PC = {
+  ideation: 'var(--ph-ideation)', spec: 'var(--ph-spec)', tickets: 'var(--ph-tickets)',
+  implementation: 'var(--ph-implementation)', review: 'var(--ph-review)', shipped: 'var(--ph-shipped)',
+};
+/* Ticket status enum (core): pending | burning | done | failed | cancelled. */
+const TC = {
+  pending: 'var(--text-3)', burning: 'var(--ph-implementation)', done: 'var(--ok)',
+  failed: 'var(--danger)', cancelled: 'var(--text-3)',
+};
+/* GATES[phase] = the gate guarding the transition OUT of that phase, i.e. the
+   `gateToEnter` of the next phase (pipeline.ts). Short names from Inspector. */
+const GATES = {
+  ideation: ['G1', 'Decisions captured', 'Decisions captured before writing a spec'],
+  spec: ['G2', 'Spec written', 'Spec written before breaking into tickets'],
+  tickets: ['G3', 'Tickets approved', 'Tickets approved by a human (the Burn click)'],
+  implementation: ['G4', 'Run clean', 'Every ticket reached a terminal state'],
+  review: ['G5', 'Merged', 'Human merged the feature branch (the Merge click)'],
+};
+const MONO = 'var(--mono)';
+const chip = (c) => `display:inline-flex;align-items:center;gap:5px;height:19px;padding:0 8px;border-radius:var(--radius-pill);border:1px solid color-mix(in srgb,${c} 42%,transparent);font-family:${MONO};font-size:10.5px;color:${c};white-space:nowrap`;
+const rand = (n) => Math.random().toString(16).slice(2, 2 + n);
+
+const seed = () => [
+  { slug: 'map-mode', title: 'Map mode for ideation', phase: 'ideation', branch: 'feature/map-mode',
+    session: { id: 'a4f21e6b', kind: 'ideation', status: 'live' },
+    term: [
+      { k: 'tool', name: 'get_feature_context', tx: '(feature: map-mode)' },
+      { k: 'text', tx: "Before we dive in — what's the actual failure mode today? Is ideation producing bad specs, or is it producing specs too early?" },
+      { k: 'you', tx: 'too early. we commit to an approach before the unknowns are even listed.' },
+      { k: 'text', tx: 'Then the artefact you want is a map, not a transcript: a destination, plus explicit waypoints for what is unresolved. The gate to leave ideation stops being "we talked enough" and becomes "every waypoint is terminal".' },
+      { k: 'you', tx: 'yes. and I want the fog visible — the stuff we knowingly left unspecified.' },
+      { k: 'tool', name: 'Write', tx: '(map.md — Destination, Notes, Not yet specified, Out of scope)' },
+      { k: 'text', tx: 'Written. Four sections, destination first. Two open questions before I record decisions: can a waypoint surface new waypoints, and does research run AFK or block the terminal?' },
+      { k: 'you', tx: 'both — waypoints cascade, and research runs AFK so I keep working.' },
+      { k: 'tool', name: 'record_decision', tx: '(waypoints cascade; research runs AFK)' },
+    ],
+    docs: [['Map', 'map.md'], ['Decisions', 'decisions.md']],
+    activity: [
+      ['4m', 'decision · recorded', 'waypoints cascade; research runs AFK'],
+      ['9m', 'session · message', 'claude drafted map.md with 4 sections'],
+      ['22m', 'session · started', 'ideation session launched'],
+      ['24m', 'feature · created', 'map-mode created off main'],
+    ] },
+
+  { slug: 'csv-export', title: 'CSV export for run logs', phase: 'spec', branch: 'feature/csv-export',
+    session: { id: '77d0a2c1', kind: 'ideation', status: 'live' }, specWritten: true,
+    term: [
+      { k: 'tool', name: 'Read', tx: '(decisions.md)' },
+      { k: 'text', tx: 'Decisions are captured, so I can write the spec. Scope as agreed: stream text/csv straight from the events table filtered by runId — no new state, no background job.' },
+      { k: 'tool', name: 'Write', tx: '(spec.md — problem, approach, columns, out of scope)' },
+      { k: 'text', tx: 'spec.md is in. Columns: ts, ticket_seq, kind, actor, message, commit. Scheduled exports, XLSX and PII redaction are explicitly out of scope.' },
+      { k: 'you', tx: 'good. approve it and break it into tickets.' },
+    ],
+    docs: [['Specification', 'spec.md'], ['Decisions', 'decisions.md']],
+    activity: [
+      ['6m', 'gate · passed', 'G1 decisions captured'],
+      ['7m', 'phase · advanced', 'ideation → spec'],
+      ['31m', 'session · started', 'ideation session launched'],
+    ] },
+
+  { slug: 'billing-webhooks', title: 'Billing webhooks', phase: 'tickets', branch: 'feature/billing-webhooks',
+    specWritten: true,
+    tickets: [
+      { seq: 1, title: 'Stripe webhook endpoint with signature verification', status: 'pending', blockedBy: [], commits: [],
+        goal: 'Expose POST /webhooks/stripe that verifies the Stripe-Signature header, preserves the raw body, and rejects replays before any handler runs.',
+        acceptance: ['Invalid signatures return 400 with no side effects', 'Replayed event ids are ignored idempotently', 'Raw body is preserved for verification'],
+        seams: ['packages/server/src/routes/webhooks.ts', 'packages/server/src/services/stripe.ts'] },
+      { seq: 2, title: 'Event persistence and dedupe table', status: 'pending', blockedBy: [1], commits: [],
+        goal: 'Persist every verified event with a unique index on stripe_event_id so retries and replays collapse to one row.',
+        acceptance: ['Migration is reversible', 'Duplicate inserts are no-ops', 'Events queryable by type and created_at'],
+        seams: ['packages/core/src/db/schema.ts', 'packages/server/src/db/migrations/'] },
+      { seq: 3, title: 'Subscription state machine on invoice events', status: 'pending', blockedBy: [2], commits: [],
+        goal: 'Map invoice.paid / invoice.payment_failed onto the subscription status enum with explicit transitions only.',
+        context: 'Illegal transitions are a real source of silent corruption — model them as a closed set and log the rejects.',
+        acceptance: ['Illegal transitions log and no-op', 'State changes emit a domain event'],
+        seams: ['packages/server/src/services/billing.ts'] },
+      { seq: 4, title: 'Dunning emails on payment_failed', status: 'pending', blockedBy: [3], commits: [],
+        goal: 'Send the 3-step dunning sequence when a subscription enters past_due, cancelling it on recovery.',
+        acceptance: ['No email before the second failed attempt', 'Recovery cancels pending sends'],
+        seams: ['packages/server/src/services/email.ts'] },
+      { seq: 5, title: 'Admin replay tool for dead-lettered events', status: 'pending', blockedBy: [2], commits: [],
+        goal: 'A CLI that re-enqueues dead-lettered webhook events by id or time range.',
+        acceptance: ['Dry-run mode prints without enqueueing', 'Replays are idempotent end to end'],
+        seams: ['packages/server/src/cli/replay.ts'] },
+    ],
+    docs: [['Specification', 'spec.md'], ['Decisions', 'decisions.md']],
+    activity: [
+      ['12m', 'tickets · emitted', '5 tickets shaped from the spec'],
+      ['1h', 'gate · passed', 'G2 spec written'],
+      ['1h', 'phase · advanced', 'spec → tickets'],
+      ['3h', 'session · started', 'ideation session launched'],
+    ] },
+
+  { slug: 'ship-path-bugs', title: 'Ship-path bug sweep', phase: 'implementation', branch: 'feature/ship-path-bugs',
+    specWritten: true,
+    tickets: [
+      { seq: 1, title: 'Fix double gate.passed emit on fast advance', status: 'done', blockedBy: [], commits: ['a41c2f0'], dur: '2m 14s',
+        goal: 'Debounce the gate.passed emitter so a fast double-advance emits once.', acceptance: ['One event per gate transition'], seams: ['packages/server/src/services/gates.ts'] },
+      { seq: 2, title: 'Run cancel leaves lanes in burning state', status: 'done', blockedBy: [], commits: ['b7e90d1', 'c003a4e'], dur: '4m 02s',
+        goal: 'Reset lane state to pending when a run is cancelled mid-ticket.', acceptance: ['No lane stays burning after cancel'], seams: ['packages/server/src/services/runs.ts'] },
+      { seq: 3, title: 'Merge fails when branch has no upstream', status: 'burning', blockedBy: [], commits: [],
+        goal: 'Set upstream on first push so merge never hits a missing-remote error.', acceptance: ['Merge works on a fresh branch'], seams: ['packages/server/src/services/git.ts'] },
+      { seq: 4, title: 'Status bar port drifts after server restart', status: 'pending', blockedBy: [], commits: [],
+        goal: 'Re-read the health endpoint port on reconnect instead of caching it.', acceptance: ['Port label matches the live server'], seams: ['apps/web/src/components/StatusBar.tsx'] },
+      { seq: 5, title: 'Test-drive stop leaves an orphan process', status: 'pending', blockedBy: [], commits: [],
+        goal: 'Kill the drive process group, not just the parent pid.', acceptance: ['No orphan node process after stop'], seams: ['packages/server/src/services/drive.ts'] },
+    ],
+    agent: [
+      { k: 'tool', name: 'Read', tx: '(packages/server/src/services/git.ts)' },
+      { k: 'text', tx: 'The merge helper assumes an upstream exists. On a branch that has never been pushed, `git merge` resolves the remote ref to nothing and fails before the merge starts.' },
+      { k: 'tool', name: 'Grep', tx: '(pattern: "setUpstream|--set-upstream")' },
+      { k: 'text', tx: 'No call sets upstream anywhere. Fixing it at first push is the smaller seam — the merge path then needs no special case.' },
+      { k: 'tool', name: 'Edit', tx: '(packages/server/src/services/git.ts)' },
+      { k: 'tool', name: 'Bash', tx: '(bun test packages/server/test/git.test.ts)' },
+    ],
+    run: { status: 'running', started: Date.now() - 763000, stream: [
+      { t: '12:38', ev: 'ticket.started', tx: '#3 merge fails when branch has no upstream' },
+      { t: '12:31', ev: 'ticket.done', tx: '#2 run cancel leaves lanes in burning state' },
+      { t: '12:31', ev: 'commit.created', tx: 'c003a4e fix: reset lane state on run cancel' },
+      { t: '09:47', ev: 'commit.created', tx: 'b7e90d1 test: cancel mid-burn leaves clean lanes' },
+      { t: '06:12', ev: 'ticket.done', tx: '#1 double gate.passed emit on fast advance' },
+      { t: '06:10', ev: 'commit.created', tx: 'a41c2f0 fix: debounce gate.passed emitter' },
+      { t: '02:04', ev: 'ticket.started', tx: '#1 double gate.passed emit on fast advance' },
+      { t: '00:00', ev: 'burn.started', tx: 'burning 5 tickets (workspace-write)' },
+    ] },
+    docs: [['Specification', 'spec.md'], ['Decisions', 'decisions.md']],
+    activity: [
+      ['13m', 'burn · started', 'burning 5 tickets'],
+      ['13m', 'gate · passed', 'G3 tickets approved'],
+      ['44m', 'tickets · emitted', '5 tickets shaped from the spec'],
+    ] },
+
+  { slug: 'auth-flow', title: 'Auth flow', phase: 'review', branch: 'feature/auth-flow', specWritten: true,
+    tickets: [
+      { seq: 1, title: 'Session model + migrations', status: 'done', blockedBy: [], commits: ['4d1aa02'], dur: '3m 11s', goal: 'Add the session table and its reversible migration.', acceptance: ['Migration is reversible'], seams: ['packages/core/src/db/schema.ts'] },
+      { seq: 2, title: 'Login / logout endpoints', status: 'done', blockedBy: [1], commits: ['9b7e114'], dur: '5m 40s', goal: 'Expose login and logout over tRPC with rate limiting.', acceptance: ['Bad credentials are indistinguishable in timing'], seams: ['packages/server/src/trpc/routers/auth.ts'] },
+      { seq: 3, title: 'Session middleware', status: 'done', blockedBy: [2], commits: ['e02c778'], dur: '2m 58s', goal: 'Attach the session to the tRPC context.', acceptance: ['Expired sessions are rejected'], seams: ['packages/server/src/trpc/context.ts'] },
+      { seq: 4, title: 'Sign-in surface', status: 'done', blockedBy: [3], commits: ['1f4b930'], dur: '6m 22s', goal: 'A sign-in screen wired to the real endpoints.', acceptance: ['Errors render inline, never as a toast'], seams: ['apps/web/src/components/SignIn.tsx'] },
+      { seq: 5, title: 'Auth tests + telemetry', status: 'done', blockedBy: [4], commits: ['c8a0d63'], dur: '4m 05s', goal: 'Cover the happy path and the three failure modes.', acceptance: ['Every auth event is emitted once'], seams: ['packages/server/test/auth.test.ts'] },
+    ],
+    run: { status: 'succeeded', started: Date.now() - 1_461_000, endedAt: Date.now() - 700_000, summary: '5/5 tickets burned clean', stream: [] },
+    docs: [['Specification', 'spec.md'], ['Decisions', 'decisions.md']],
+    activity: [
+      ['2m', 'run · succeeded', '5/5 tickets burned clean'],
+      ['3m', 'gate · passed', 'G4 run clean'],
+      ['3m', 'phase · advanced', 'implementation → review'],
+      ['21m', 'burn · started', 'burning 5 tickets'],
+      ['1h', 'gate · passed', 'G3 tickets approved'],
+    ] },
+
+  { slug: 'dark-mode', title: 'Dark mode', phase: 'shipped', branch: 'feature/dark-mode', specWritten: true,
+    shipped: { when: '2h' },
+    tickets: [
+      { seq: 1, title: 'Token layer', status: 'done', blockedBy: [], commits: ['77aa1c0'], dur: '2m 40s', goal: 'Extract the palette into tokens.', acceptance: ['No hardcoded hex outside :root'], seams: ['apps/web/src/styles.css'] },
+      { seq: 2, title: 'Theme switch', status: 'done', blockedBy: [1], commits: ['2b90e41'], dur: '3m 18s', goal: 'Persist the theme choice.', acceptance: ['Choice survives a reload'], seams: ['apps/web/src/lib/settings.ts'] },
+      { seq: 3, title: 'Contrast pass', status: 'done', blockedBy: [2], commits: ['d5c2f88'], dur: '4m 55s', goal: 'Meet AA on every surface.', acceptance: ['All text pairs pass AA'], seams: ['apps/web/src/styles.css'] },
+    ],
+    run: { status: 'succeeded', started: Date.now() - 20_000_000, endedAt: Date.now() - 19_400_000, summary: '3/3 tickets burned clean', stream: [] },
+    docs: [['Specification', 'spec.md'], ['Decisions', 'decisions.md']],
+    activity: [
+      ['2h', 'feature · shipped', 'merged to main'],
+      ['2h', 'gate · passed', 'G5 merged'],
+      ['5h', 'run · succeeded', '3/3 tickets burned clean'],
+    ] },
+];
+
+class Component extends DCLogic {
+  state = {
+    feats: seed(), slug: 'ship-path-bugs', view: null, exp: null, lane: null,
+    creating: false, nfTitle: '', nfOne: '', adv: false,
+    inspector: true, inspTab: 'details', runTab: 'agent',
+    showArchived: false, notify: false, devOut: false, toast: null,
+  };
+  componentDidMount() {
+    this.timers = {};
+    this.state.feats.forEach((f) => { if (f.run && f.run.status === 'running') this.startSim(f.slug); });
+  }
+  componentWillUnmount() { Object.values(this.timers || {}).forEach(clearInterval); clearTimeout(this._tt); }
+
+  f(s) { return this.state.feats.find((x) => x.slug === s); }
+  up() { this.setState({ feats: this.state.feats }); }
+  say(msg) { clearTimeout(this._tt); this.setState({ toast: msg }); this._tt = setTimeout(() => this.setState({ toast: null }), 2800); }
+  stub(m) { return () => this.say(m); }
+  act(f, ev, tx) { f.activity = [['now', ev, tx], ...(f.activity || [])].slice(0, 12); }
+  sel(slug) { this.setState({ slug, creating: false, view: null, exp: null, lane: null }); }
+  mmss(r) { const s = Math.floor((Date.now() - r.started) / 1000); return String(Math.floor(s / 60)).padStart(2, '0') + ':' + String(s % 60).padStart(2, '0'); }
+  elapsed(r) { const end = r.status === 'running' ? Date.now() : (r.endedAt || Date.now()); const s = Math.max(0, Math.floor((end - r.started) / 1000)); return Math.floor(s / 60) + 'm ' + String(s % 60).padStart(2, '0') + 's'; }
+
+  /* The burn simulation — one lane completes, the next starts, until the run
+     goes clean and G4 auto-advances the feature to review (pipeline.ts). */
+  startSim(slug) {
+    if (this.timers[slug]) return;
+    this.timers[slug] = setInterval(() => {
+      const f = this.f(slug), r = f && f.run;
+      if (!f || !r || r.status !== 'running') { clearInterval(this.timers[slug]); delete this.timers[slug]; return; }
+      const t = this.mmss(r);
+      const b = f.tickets.find((x) => x.status === 'burning');
+      if (b) {
+        b.status = 'done'; const h = rand(7); b.commits = [...(b.commits || []), h]; b.dur = (2 + (b.seq % 4)) + 'm ' + String(10 + b.seq * 7) + 's';
+        r.stream = [{ t, ev: 'ticket.done', tx: '#' + b.seq + ' ' + b.title }, { t, ev: 'commit.created', tx: h + ' ' + b.title.toLowerCase().slice(0, 44) }, ...r.stream];
+      }
+      const n = f.tickets.find((x) => x.status === 'pending');
+      if (n) { n.status = 'burning'; r.stream = [{ t, ev: 'ticket.started', tx: '#' + n.seq + ' ' + n.title }, ...r.stream]; }
+      else if (!f.tickets.some((x) => x.status === 'burning')) {
+        r.status = 'succeeded'; r.endedAt = Date.now(); r.summary = f.tickets.length + '/' + f.tickets.length + ' tickets burned clean';
+        r.stream = [{ t, ev: 'run.succeeded', tx: r.summary }, ...r.stream];
+        this.act(f, 'run · succeeded', r.summary);
+        /* G4 (all-tickets-terminal) is a non-human gate — it advances itself. */
+        f.phase = 'review';
+        this.act(f, 'gate · passed', 'G4 run clean');
+        this.act(f, 'phase · advanced', 'implementation → review');
+        this.say('Run finished clean — ' + f.slug + ' is ready for review');
+      }
+      r.stream = r.stream.slice(0, 40);
+      this.up();
+    }, 2400);
+  }
+
+  /* --- triage (feature-ui.ts: needsMe / triageOf / triage) --------------- */
+  needsMe(f) {
+    if (f.phase === 'shipped' || f.archived) return null;
+    if (f.run && f.run.status === 'running') return null;
+    if ((f.tickets || []).some((t) => t.status === 'failed')) return ['attention', 'run failed — needs attention'];
+    if (f.phase === 'ideation') return ['grill', 'needs grilling'];
+    if (f.phase === 'tickets' && (f.tickets || []).length > 0) return ['burn', 'review & burn tickets'];
+    if (f.phase === 'review') return ['ship', 'test & merge'];
+    return null;
+  }
+  triageOf(f) {
+    if (f.archived) return 'archived';
+    if (f.phase === 'shipped') return 'shipped';
+    if (f.run && f.run.status === 'running') return 'agentWorking';
+    if (this.needsMe(f)) return 'needsYou';
+    return 'inProgress';
+  }
+
+  /* --- the guided next step (feature-ui.ts nextStep) --------------------- */
+  nextStep(f, gateSatisfied, driving) {
+    const S = this.state;
+    const t = (f.tickets || []).length;
+    const done = (f.tickets || []).filter((x) => x.status === 'done').length;
+    const failed = (f.tickets || []).filter((x) => x.status === 'failed').length;
+    const pending = (f.tickets || []).filter((x) => x.status !== 'done' && x.status !== 'failed' && x.status !== 'cancelled').length;
+    const live = !!(f.session && f.session.status === 'live');
+    const r = f.run;
+    const running = r && r.status === 'running';
+    const g = GATES[f.phase];
+    const nextName = PH[PH.indexOf(f.phase) + 1];
+    const promote = nextName ? 'Promote to ' + PLABEL[nextName] : 'Promote';
+    /* G3 (Burn) and G5 (Merge) are human-only — never auto-promoted. */
+    const canAdvance = !!g && gateSatisfied && g[0] !== 'G3' && g[0] !== 'G5';
+
+    const openGrill = { label: 'Jump to session', fn: this.stub('Scrolls to the embedded session — the real app focuses the live terminal') };
+
+    switch (f.phase) {
+      case 'ideation':
+        if (canAdvance) return { kick: 'NEXT STEP', title: 'Promote the idea', desc: 'Decisions are captured — promote the idea when it feels concrete.',
+          btn: promote, fn: () => this.advance(f), secondary: live ? [{ label: 'Back to session', fn: openGrill.fn }] : [] };
+        if (live) return { kick: 'GRILL LIVE', kickTone: 'var(--accent-hi)', title: 'Grill session in progress', desc: 'Shape the idea with Claude — decisions accumulate in Knowledge.',
+          btn: 'Jump to session', fn: openGrill.fn, secondary: [] };
+        return { kick: 'NEXT STEP', title: 'Shape the idea with Claude', desc: 'Launch a grill session to shape the idea before any code is written.',
+          btn: 'Start grill session', fn: () => { f.session = { id: rand(8), kind: 'ideation', status: 'live' }; this.act(f, 'session · started', 'ideation session launched'); this.up(); }, secondary: [] };
+
+      case 'spec':
+        if (canAdvance) return { kick: 'NEXT STEP', title: 'Approve the spec', desc: 'The spec is written — approve it to move into tickets.',
+          btn: 'Approve spec → tickets', fn: () => this.advance(f), secondary: live ? [{ label: 'Back to session', fn: openGrill.fn }] : [] };
+        return live
+          ? { kick: 'GRILL LIVE', kickTone: 'var(--accent-hi)', title: 'Writing the spec', desc: 'The spec takes shape beside the conversation.', btn: 'Jump to session', fn: openGrill.fn, secondary: [] }
+          : { kick: 'NEXT STEP', title: 'Write the spec', desc: 'No spec yet — resume the session to draft it.', btn: 'Resume session', fn: this.stub('Relaunches the session over decisions.md'), secondary: [] };
+
+      case 'tickets':
+        if (t > 0) return { kick: 'NEXT STEP', title: 'Review & burn the tickets', desc: 'Each ticket is one atomic task Claude will implement. Review them, then burn.',
+          btn: 'Burn ' + t + ' ticket' + (t === 1 ? '' : 's'), fn: () => this.burn(f),
+          secondary: live ? [{ label: 'Back to session', fn: openGrill.fn }] : [{ label: 'Revisit', fn: this.stub('Resumes the conversation to amend docs and tickets') }] };
+        return { kick: 'WAITING', kickTone: 'var(--text-3)', title: 'Waiting for tickets', desc: 'No tickets yet — a session emits them. Open a session to shape the work.',
+          btn: 'Open session to emit tickets', fn: this.stub('Launches a session that emits tickets'), secondary: [] };
+
+      case 'implementation':
+        if (running) return { kick: 'IN PROGRESS', kickTone: 'var(--ph-implementation)', busy: true, title: 'Burning tickets',
+          desc: 'Burning ' + t + ' ticket' + (t === 1 ? '' : 's') + ' — ' + done + ' done' + (failed ? ', ' + failed + ' failed' : '') + '.',
+          btn: 'Cancel run', danger: true, fn: () => this.cancel(f), secondary: [] };
+        return { kick: 'NEXT STEP', title: 'Resume the burn',
+          desc: r && r.status === 'cancelled' ? 'The run was cancelled — resume the burn to continue.' : 'The burn has not started — resume to run the tickets.',
+          btn: 'Resume burn', fn: () => this.burn(f), secondary: live ? [] : [{ label: 'Revisit', fn: this.stub('Opens a session to amend docs and tickets before re-burning') }] };
+
+      case 'review': {
+        const drive = driving ? { label: 'Stop test drive', fn: () => { this.setState({ driving: null }); this.act(f, 'drive · stopped', 'test drive stopped'); this.up(); } }
+                              : { label: 'Start test drive', fn: () => { this.setState({ driving: f.slug }); this.act(f, 'drive · started', 'test-driving ' + f.branch); this.up(); } };
+        const iterate = live ? [] : [{ label: 'Iterate', fn: this.stub('Opens a session that interviews you and emits fix tickets') }];
+        /* Fix tickets from an Iterate session loop review back through a burn. */
+        if (pending > 0) return { kick: 'NEXT STEP', title: 'Burn the fix tickets',
+          desc: driving ? 'Test-driving the branch — burn the fix tickets when you’re ready.' : pending + ' fix ticket' + (pending === 1 ? '' : 's') + ' ready — burn to run them, then review again.',
+          btn: 'Burn ' + pending + ' ticket' + (pending === 1 ? '' : 's'), fn: () => this.burn(f),
+          secondary: [{ label: 'Merge & ship', fn: () => this.merge(f) }, drive, ...iterate] };
+        return { kick: 'NEXT STEP', title: driving ? 'Merge when it looks right' : 'Test drive, then ship',
+          desc: driving ? 'Test-driving the branch — merge when it looks right.'
+            : failed > 0 ? 'Run finished with ' + failed + ' failed ticket' + (failed === 1 ? '' : 's') + ' — review, then ship.'
+            : 'Checks are in. Test-drive the branch, then merge to ship.',
+          btn: 'Merge & ship', fn: () => this.merge(f), secondary: [drive, ...iterate] };
+      }
+
+      default:
+        return { kick: 'SHIPPED', kickTone: 'var(--ph-shipped)', title: 'Shipped to main',
+          desc: 'The branch is merged and the pipeline is complete. Ask a question anytime.',
+          hasBtn: false, secondary: [{ label: 'Ask a question', fn: this.stub('Opens a Q&A session over the shipped feature') }] };
+    }
+  }
+
+  advance(f) {
+    const g = GATES[f.phase];
+    const to = PH[PH.indexOf(f.phase) + 1];
+    f.phase = to;
+    this.act(f, 'gate · passed', g[0] + ' ' + g[1].toLowerCase());
+    this.act(f, 'phase · advanced', PLABEL[PH[PH.indexOf(to) - 1]] + ' → ' + PLABEL[to]);
+    if (to === 'spec') {
+      f.specWritten = true;
+      /* the session writes spec.md on the way in — add the pointer once */
+      f.docs = f.docs || [];
+      if (!f.docs.some((d) => d[1] === 'spec.md')) f.docs = [['Specification', 'spec.md'], ...f.docs];
+    }
+    if (to === 'tickets' && !f.tickets) {
+      f.tickets = [
+        ['Data model & migrations', 'packages/core/src/db/schema.ts'],
+        ['Service layer + endpoints', 'packages/server/src/services/'],
+        ['UI surface wired to live data', 'apps/web/src/components/'],
+        ['Tests & telemetry events', 'packages/server/test/'],
+      ].map((x, i) => ({ seq: i + 1, title: x[0], status: 'pending', blockedBy: i ? [i] : [], commits: [],
+        goal: 'Implement ' + x[0].toLowerCase() + ' for ' + f.title.toLowerCase() + '.',
+        acceptance: ['Shaped at emit time — review and edit before burning'], seams: [x[1]] }));
+      this.act(f, 'tickets · emitted', f.tickets.length + ' tickets shaped from the spec');
+    }
+    this.setState({ view: null, exp: null });
+  }
+  burn(f) {
+    const n = (f.tickets || []).filter((t) => t.status !== 'done').length;
+    f.tickets.forEach((t) => { if (t.status === 'failed') t.status = 'pending'; });
+    f.run = { status: 'running', started: Date.now(), stream: [{ t: '00:00', ev: 'burn.started', tx: 'burning ' + n + ' tickets (' + (this.props.sandbox ?? 'workspace-write') + ')' }] };
+    f.phase = 'implementation';
+    this.act(f, 'gate · passed', 'G3 tickets approved');
+    this.act(f, 'burn · started', 'burning ' + n + ' tickets');
+    this.setState({ view: null, lane: null });
+    this.startSim(f.slug);
+    this.say('Burn started — watch the lanes; you can leave anytime');
+  }
+  cancel(f) {
+    const r = f.run;
+    r.status = 'cancelled'; r.endedAt = Date.now();
+    f.tickets.forEach((t) => { if (t.status === 'burning') t.status = 'pending'; });
+    r.stream = [{ t: this.mmss(r), ev: 'run.cancelled', tx: 'cancelled by you — lanes reset' }, ...r.stream];
+    this.act(f, 'run · cancelled', 'run cancelled — lanes reset');
+    this.up();
+  }
+  merge(f) {
+    f.phase = 'shipped'; f.shipped = { when: 'just now' };
+    this.act(f, 'gate · passed', 'G5 merged');
+    this.act(f, 'feature · shipped', 'merged to ' + (this.props.mainBranch ?? 'main'));
+    this.setState({ view: null, driving: null });
+    this.say('Merged ' + f.branch + ' → ' + (this.props.mainBranch ?? 'main'));
+  }
+
+  renderVals() {
+    const S = this.state, feats = S.feats;
+    const project = this.props.project ?? 'runcastle';
+    const mainBranch = this.props.mainBranch ?? 'main';
+    const sandbox = this.props.sandbox ?? 'workspace-write';
+    const model = this.props.model ?? 'claude-opus-4-6';
+    const showGuide = this.props.guidance ?? true;
+
+    const f = this.f(S.slug) || feats[0];
+    const ci = PH.indexOf(f.phase);
+    const view = S.view && PH.indexOf(S.view) <= ci ? S.view : f.phase;
+    const vi = PH.indexOf(view);
+    const readonly = vi < ci;
+    const runsN = feats.filter((x) => x.run && x.run.status === 'running').length;
+    const driving = S.driving === f.slug;
+
+    /* ---- sidebar triage lanes ---- */
+    const LANES = [
+      ['needsYou', 'Needs you', 'var(--needs)'],
+      ['agentWorking', 'Agent working', 'var(--ph-implementation)'],
+      ['inProgress', 'In progress', 'var(--text-3)'],
+      ['shipped', 'Shipped', 'var(--ph-shipped)'],
+    ];
+    if (S.showArchived) LANES.push(['archived', 'Archived', 'var(--text-3)']);
+    const row = (x) => {
+      const active = x.slug === S.slug && !S.creating;
+      const xi = PH.indexOf(x.phase);
+      const nm = this.needsMe(x);
+      const working = !!(x.run && x.run.status === 'running');
+      const isShipped = x.phase === 'shipped';
+      const dim = isShipped || x.archived;
+      return {
+        title: x.title, tip: x.title + ' — ' + x.slug,
+        rowState: active ? 'active' : 'idle',
+        onSelect: () => this.sel(x.slug),
+        onMenu: this.stub('Archive · Delete — the row actions menu'),
+        style: `width:100%;display:flex;align-items:center;border-radius:var(--radius-sm);background:${active ? 'var(--panel-3)' : 'transparent'};opacity:${dim ? .55 : 1}`,
+        dotStyle: `width:8px;height:8px;border-radius:3px;flex:0 0 auto;opacity:.9;background:${PC[x.phase]}`,
+        slugStyle: `flex:1;min-width:0;color:${active ? 'var(--text)' : 'var(--text-2)'};font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap`,
+        working, shipped: isShipped, plain: !working && !isShipped,
+        needs: !!nm, needsLabel: nm ? nm[1] : '',
+        needsStyle: `width:7px;height:7px;border-radius:50%;background:${nm && nm[0] === 'attention' ? 'var(--danger)' : 'var(--needs)'}`,
+        segs: PH.map((p, i) => ({
+          st: `width:6px;height:6px;border-radius:2px;background:${i < xi ? 'var(--text-3)' : i === xi ? 'var(--accent)' : 'var(--text-4)'}${i === xi ? ';box-shadow:0 0 0 2px rgba(124,108,246,.22)' : ''}`,
+        })),
+      };
+    };
+    const groups = LANES
+      .map(([key, label, tone]) => ({ key, label, tone, items: feats.filter((x) => this.triageOf(x) === key) }))
+      .filter((g) => g.items.length > 0)
+      .map((g) => ({
+        wrap: 'margin-top:4px', label: g.label, count: String(g.items.length),
+        nameStyle: `color:${g.tone}`, rows: g.items.map(row),
+      }));
+
+    /* ---- pipeline stepper ---- */
+    const burning = !!(f.run && f.run.status === 'running') && f.phase === 'implementation';
+    const pipe = PH.map((p, i) => {
+      const state = i < ci ? 'done' : i === ci ? 'current' : 'upcoming';
+      const isViewed = i === vi;
+      const clickable = state !== 'upcoming';
+      const color = state === 'done' ? 'var(--text-2)' : state === 'current' ? 'var(--text)' : 'var(--text-4)';
+      return {
+        label: PLABEL[p], hasConn: i < PH.length - 1,
+        tip: clickable ? (state === 'current' ? PTIP[p] : PTIP[p] + ' — completed, read-only') : 'Locked until ' + GATES[PH[i - 1]][0] + ' passes',
+        onClick: clickable
+          ? () => this.setState({ view: p === f.phase ? null : p, exp: null })
+          : () => this.say('Locked — ' + GATES[f.phase][0] + ' (' + GATES[f.phase][1].toLowerCase() + ') has to pass first'),
+        hover: clickable ? 'background:var(--panel);color:var(--text)' : '',
+        style: `display:inline-flex;align-items:center;gap:7px;height:26px;padding:0 10px;border-radius:var(--radius-pill);border:1px solid ${isViewed ? (state === 'current' ? 'var(--accent-line)' : 'var(--hairline)') : 'transparent'};background:${isViewed ? 'var(--panel)' : 'none'};cursor:${clickable ? 'pointer' : 'default'};color:${color};font-size:12px;font-weight:${state === 'current' ? 600 : 400}`,
+        dot: state === 'current'
+          ? `width:8px;height:8px;border-radius:50%;flex:0 0 auto;background:var(--accent);box-shadow:0 0 0 3px rgba(124,108,246,.2)${burning ? ';animation:rcPulse 1.4s ease-in-out infinite' : ';animation:rcDotGlow 2.4s ease-in-out infinite'}`
+          : `width:8px;height:8px;border-radius:50%;flex:0 0 auto;background:currentColor;opacity:${state === 'done' ? 1 : .5}`,
+        conn: `width:16px;height:1px;flex:0 0 auto;background:${i < ci ? 'var(--text-4)' : 'var(--hairline)'}`,
+      };
+    });
+
+    /* ---- gate (drives both the inspector card and the next-step bar) ---- */
+    const g = GATES[f.phase];
+    const tix = f.tickets || [];
+    const terminal = (t) => t.status === 'done' || t.status === 'failed' || t.status === 'cancelled';
+    let gateSatisfied = false, gateLab = 'Blocked';
+    if (g) {
+      if (g[0] === 'G1') { gateSatisfied = !!(f.docs || []).some((d) => d[1] === 'decisions.md'); gateLab = gateSatisfied ? 'Ready to advance' : 'no decisions recorded yet'; }
+      else if (g[0] === 'G2') { gateSatisfied = !!f.specWritten; gateLab = gateSatisfied ? 'Ready to advance' : 'spec.md not written yet'; }
+      else if (g[0] === 'G3') { gateSatisfied = tix.length > 0; gateLab = gateSatisfied ? 'Waiting on your Burn click' : 'no tickets to approve'; }
+      else if (g[0] === 'G4') { gateSatisfied = tix.length > 0 && tix.every(terminal); gateLab = gateSatisfied ? 'Ready to advance' : tix.filter((t) => !terminal(t)).length + ' ticket(s) still running'; }
+      else { gateSatisfied = false; gateLab = 'Waiting on your Merge click'; }
+    }
+    const next = this.nextStep(f, gateSatisfied, driving);
+
+    const solid = 'height:var(--control-h);padding:0 12px;border-radius:var(--radius);border:1px solid var(--accent);background:var(--accent);color:#fff;font-size:12.5px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:6px;white-space:nowrap;flex:0 0 auto';
+    const danger = 'height:var(--control-h);padding:0 12px;border-radius:var(--radius);border:1px solid color-mix(in srgb,var(--danger) 55%,var(--hairline));background:transparent;color:var(--danger);font-size:12.5px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;flex:0 0 auto';
+    const ghost = 'height:var(--control-h);padding:0 12px;border-radius:var(--radius);border:1px solid var(--hairline);background:transparent;color:var(--text);font-size:12.5px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:6px;white-space:nowrap';
+    const ghostXs = 'height:22px;padding:0 9px;border-radius:var(--radius-sm);border:1px solid var(--hairline);background:transparent;color:var(--text);font-size:11.5px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;flex:0 0 auto';
+
+    /* ---- phase surfaces ---- */
+    const isGrill = view === 'ideation' || view === 'spec';
+    const isTix = view === 'tickets';
+    const isRun = view === 'implementation';
+    const isRev = view === 'review';
+    const isShip = view === 'shipped';
+
+    const sess = f.session;
+    const termGlyph = (l) => l.k === 'you'
+      ? { glyph: '>', glyphStyle: 'flex:0 0 auto;color:var(--text-3)', textStyle: 'flex:1;min-width:0;color:var(--text-2);white-space:pre-wrap' }
+      : l.k === 'tool'
+        ? { glyph: '●', glyphStyle: 'flex:0 0 auto;color:var(--ok)', textStyle: 'flex:1;min-width:0;color:var(--text-3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap' }
+        : { glyph: '⏺', glyphStyle: 'flex:0 0 auto;color:var(--text-2)', textStyle: 'flex:1;min-width:0;color:var(--text);white-space:pre-wrap' };
+    const term = (f.term || []).map((l) => {
+      const gph = termGlyph(l);
+      const tx = l.k === 'tool' ? '' : l.tx;
+      return { glyph: gph.glyph, glyphStyle: gph.glyphStyle, textStyle: gph.textStyle, gap: l.k === 'tool' ? '6px' : '10px',
+        tx: l.k === 'tool' ? l.name + ' ' + l.tx : tx };
+    });
+
+    /* tickets ledger */
+    const tickets = tix.map((t) => {
+      const open = S.exp === t.seq && isTix;
+      return {
+        seq: String(t.seq), title: t.title, status: t.status, open,
+        onToggle: () => this.setState({ exp: open ? null : t.seq }),
+        rowStyle: `border-top:${t.seq > 1 ? '1px solid var(--hairline-soft)' : 'none'}`,
+        caretStyle: `color:var(--text-4);width:12px;flex:0 0 auto;display:inline-flex;align-items:center;transition:transform var(--dur-2) var(--ease)${open ? ';transform:rotate(90deg)' : ''}`,
+        chipStyle: chip(TC[t.status]) + (t.status === 'burning' ? ';background:color-mix(in srgb,var(--ph-implementation) 8%,transparent);animation:rcPulse 1.5s ease-in-out infinite' : '') + (t.status === 'cancelled' ? ';text-decoration:line-through' : ''),
+        blocked: (t.blockedBy || []).length > 0, blockedBy: (t.blockedBy || []).map((n) => '#' + n).join(', '),
+        goal: t.goal, hasContext: !!t.context, context: t.context || '',
+        acceptance: (t.acceptance || []).map((a) => ({ tx: a })),
+        seams: (t.seams || []).map((s) => ({ tx: s })),
+        commits: (t.commits || []).map((h) => ({ tx: h, fn: () => this.say('copied ' + h) })),
+        noCommits: (t.commits || []).length === 0,
+      };
+    });
+    const done = tix.filter((t) => t.status === 'done').length;
+    const failedN = tix.filter((t) => t.status === 'failed').length;
+    const burningN = tix.filter((t) => t.status === 'burning').length;
+    const metaParts = [done + '/' + tix.length + ' done'];
+    if (failedN) metaParts.push(failedN + ' failed');
+    if (burningN) metaParts.push(burningN + ' burning');
+
+    /* run lanes + the selected lane's agent transcript */
+    const autoSel = tix.find((t) => t.status === 'burning') || [...tix].reverse().find((t) => t.status === 'done' || t.status === 'failed');
+    const selected = tix.find((t) => t.seq === S.lane) || autoSel || null;
+    const lanes = tix.map((t) => {
+      const sel = selected && selected.seq === t.seq;
+      const accent = t.status === 'burning' ? 'var(--ph-implementation)' : t.status === 'done' ? 'var(--ok)' : t.status === 'failed' ? 'var(--danger)' : 'var(--text-4)';
+      return {
+        seq: String(t.seq), title: t.title, status: t.status,
+        onSelect: () => this.setState({ lane: t.seq, runTab: 'agent' }),
+        style: `border:1px solid ${sel ? 'var(--accent)' : 'var(--hairline)'};border-left:2px solid ${accent};border-radius:var(--radius-sm);padding:8px 10px;cursor:pointer;background:${sel ? 'var(--panel-inset)' : 'transparent'}${t.status === 'burning' ? ';animation:rcPulse 1.7s ease-in-out infinite' : ''}`,
+        chip: chip(TC[t.status]) + (t.status === 'burning' ? ';animation:rcPulse 1.5s ease-in-out infinite' : ''),
+        hasFoot: (t.commits || []).length > 0 || !!t.dur,
+        commits: (t.commits || []).map((h) => ({ tx: h })), dur: t.dur || '',
+      };
+    });
+    const agentBlocks = (selected && selected.status === 'burning' ? (f.agent || []) : (f.agent || []).slice(0, 4)).map((b) => {
+      const gph = termGlyph(b);
+      return { glyph: gph.glyph, glyphStyle: gph.glyphStyle, textStyle: gph.textStyle, gap: b.k === 'tool' ? '6px' : '10px',
+        nameStyle: b.k === 'tool' ? 'color:var(--text);font-weight:600' : 'display:none', name: b.k === 'tool' ? b.name : '', tx: b.k === 'tool' ? b.tx : b.tx };
+    });
+    const evTone = (t) => /(error|fail|conflict|cancel|stopped)/i.test(t) ? 'var(--danger)'
+      : /(done|succeed|finished|shipped|merged)/i.test(t) ? 'var(--ok)'
+      : /(start|burn|launch|advance|running|retry|resum)/i.test(t) ? 'var(--ph-implementation)' : 'var(--accent-hi)';
+    const stream = ((f.run && f.run.stream) || []).map((e) => ({ t: e.t, ev: e.ev, tx: e.tx,
+      typeStyle: `flex:0 0 118px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:${evTone(e.ev)}` }));
+
+    /* review summary */
+    const commitsN = tix.reduce((n, t) => n + (t.commits || []).length, 0);
+    const r = f.run;
+    const checks = [
+      { k: 'tickets', v: done + '/' + tix.length + ' done' + (failedN ? ' · ' + failedN + ' failed' : ''), tone: failedN ? 'var(--danger)' : 'var(--ok)' },
+      { k: 'run', v: r ? r.status + (r.summary ? ' · ' + r.summary : '') : 'no run recorded', tone: r && r.status === 'succeeded' ? 'var(--ok)' : r && r.status === 'failed' ? 'var(--danger)' : 'var(--text-3)' },
+      { k: 'changes', v: commitsN + ' commit' + (commitsN === 1 ? '' : 's'), tone: 'var(--ph-shipped)' },
+    ].map((c) => ({ k: c.k, v: c.v, dot: `width:7px;height:7px;border-radius:50%;flex:0 0 7px;background:${c.tone}` }));
+
+    const inspCap = 'font-size:10.5px;font-weight:600;letter-spacing:.09em;text-transform:uppercase;color:var(--text-3);margin-bottom:8px';
+    const inspTabBase = 'background:none;border:none;color:var(--text-3);font-size:12px;font-weight:500;padding:6px 10px 8px;cursor:pointer';
+    const panelTab = (on) => `border:none;background:${on ? 'var(--panel-inset)' : 'none'};color:${on ? 'var(--text)' : 'var(--text-3)'};font-size:10.5px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;padding:3px 10px;border-radius:var(--radius-pill);cursor:pointer`;
+
+    const nfSlug = S.nfTitle.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || '…';
+    const canCreate = S.nfTitle.trim().length > 0;
+    const archivedN = feats.filter((x) => x.archived).length;
+
+    return {
+      project, mainBranch, sandbox, model, showGuide,
+      goHome: this.stub('Returns to the portfolio home — a card per open project'),
+      onSwitchProject: this.stub('Project switcher — jump between open projects'),
+      onCmdK: this.stub('⌘K command palette — jump to a feature, or run a command'),
+      onSettings: this.stub('Settings — models per step, AFK, sandbox and dev command'),
+      iconBtn: 'width:28px;height:28px;display:inline-flex;align-items:center;justify-content:center;background:transparent;border:none;border-radius:var(--radius);color:var(--text-3);cursor:pointer',
+      inspBtn: `width:28px;height:28px;display:inline-flex;align-items:center;justify-content:center;background:${S.inspector ? 'var(--panel-3)' : 'transparent'};border:none;border-radius:var(--radius);color:${S.inspector ? 'var(--text-2)' : 'var(--text-3)'};cursor:pointer`,
+      toggleInspector: () => this.setState({ inspector: !S.inspector }),
+      /* ProjectShell hides the rail while the new-feature form owns the
+         workspace: !inspectorCollapsed && selectedFeatureId && !creating */
+      inspectorOpen: S.inspector && !S.creating,
+      shellBodyStyle: `display:grid;grid-template-columns:var(--sidebar-w) 1fr${S.inspector && !S.creating ? ' var(--inspector-w)' : ''};min-height:0`,
+
+      anyRuns: runsN > 0, runsLabel: runsN + ' run' + (runsN === 1 ? '' : 's'),
+
+      groups,
+      hasArchived: archivedN > 0, archivedLabel: (S.showArchived ? 'Hide' : 'Show') + ' archived (' + archivedN + ')',
+      toggleArchived: () => this.setState({ showArchived: !S.showArchived }),
+
+      /* new-feature form */
+      startCreate: () => this.setState({ creating: true, nfTitle: '', nfOne: '', adv: false }),
+      creating: S.creating, notCreating: !S.creating,
+      nfTitle: S.nfTitle, onNfTitle: (e) => this.setState({ nfTitle: e.target.value }),
+      nfOne: S.nfOne, onNfOne: (e) => this.setState({ nfOne: e.target.value }),
+      nfSlug, advOpen: S.adv, advCaret: S.adv ? '▾' : '▸',
+      /* one binding, not `{{ mainBranch }} (default)` — the runtime trims the
+         markup whitespace that would otherwise separate them */
+      baseLabel: mainBranch + ' (default)',
+      toggleAdvanced: () => this.setState({ adv: !S.adv }),
+      cancelCreate: () => this.setState({ creating: false }),
+      ghostBtn: ghost, ghostXs,
+      createBtn: solid + (canCreate ? '' : ';opacity:.4;cursor:not-allowed'),
+      createGo: () => {
+        if (!canCreate) { this.say('Give the feature a name first'); return; }
+        const slug = feats.some((x) => x.slug === nfSlug) ? nfSlug + '-2' : nfSlug;
+        const nf = { slug, title: S.nfTitle.trim(), phase: 'ideation', branch: 'feature/' + slug,
+          session: { id: rand(8), kind: 'ideation', status: 'live' },
+          term: [
+            { k: 'tool', name: 'get_feature_context', tx: '(feature: ' + slug + ')' },
+            { k: 'text', tx: 'Let’s shape "' + S.nfTitle.trim() + '". What problem does it solve, and for whom? I’ll record what we settle on as decisions — that’s what gate G1 checks.' },
+          ],
+          docs: [], activity: [['now', 'session · started', 'ideation session launched'], ['now', 'feature · created', slug + ' created off ' + mainBranch]] };
+        this.setState({ feats: [nf, ...feats], slug, creating: false, view: null, exp: null, lane: null });
+        this.say('Grill session launched — shape the idea with Claude');
+      },
+
+      /* workspace header */
+      featTitle: f.title, featPhase: f.phase, featBranch: f.branch,
+      phaseTagStyle: `font-family:${MONO};font-size:12px;text-transform:lowercase;font-weight:600;color:${PC[f.phase]}`,
+      copyBranch: () => this.say('copied ' + f.branch),
+      pipe,
+
+      /* next-step bar */
+      next: {
+        kick: next.kick, kickStyle: `font-size:10px;font-weight:700;letter-spacing:.1em;color:${next.kickTone || 'var(--accent-hi)'}`,
+        title: next.title, desc: next.desc, busy: !!next.busy,
+        hasBtn: next.hasBtn !== false, btn: next.btn, fn: next.fn,
+        btnStyle: next.danger ? danger : solid,
+        btnHover: next.danger ? 'background:rgba(244,89,78,.12);border-color:var(--danger)' : 'background:var(--accent-2);border-color:var(--accent-2)',
+        secondary: next.secondary || [],
+      },
+      readonly, notReadonly: !readonly,
+      viewLabel: PLABEL[view], curPhaseLabel: PLABEL[f.phase],
+      jumpCurrent: () => this.setState({ view: null, exp: null }),
+
+      /* grill / session body */
+      isGrill, showSpecCard: isGrill && view === 'spec',
+      bodyTitleStyle: `display:flex;align-items:baseline;gap:10px;margin-bottom:12px;margin-top:${view === 'spec' ? '18px' : '0'}`,
+      onPeekSpec: this.stub('Opens spec.md in the doc peek overlay'),
+      sessOpen: !!sess && sess.status !== 'ended', sessEnded: !!sess && sess.status === 'ended',
+      sessKind: sess ? sess.kind : '', sessId: sess ? sess.id : '',
+      sessDot: 'width:7px;height:7px;border-radius:50%;background:var(--ok);box-shadow:0 0 0 3px rgba(63,185,80,.16);flex:0 0 auto',
+      endBtn: 'height:22px;padding:0 9px;border-radius:var(--radius-sm);border:1px solid var(--hairline);background:transparent;color:color-mix(in srgb,var(--danger) 70%,var(--text-2));font-size:11.5px;cursor:pointer',
+      endSession: () => { if (f.session) f.session.status = 'ended'; this.act(f, 'session · ended', 'session ended'); this.up(); },
+      termStyle: `height:clamp(320px,calc(100dvh - ${view === 'spec' ? 380 : 330}px),1400px);background:var(--panel-inset);position:relative`,
+      term, termFoot: 'Thinking…',
+
+      /* tickets */
+      isTix, tickets, tixMeta: metaParts.join(' · '),
+      neutralChip: 'display:inline-flex;align-items:center;gap:5px;height:19px;padding:0 8px;border-radius:var(--radius-pill);border:1px solid var(--hairline);font-family:' + MONO + ';font-size:10.5px;color:var(--text-2);white-space:nowrap',
+      tdHeading: 'font-size:10.5px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--text-3);margin-bottom:4px',
+
+      /* run */
+      isRun, lanes, stream, agentBlocks,
+      panelCap: 'padding:8px 12px;border-bottom:1px solid var(--hairline-soft);font-size:10.5px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--text-3)',
+      streamPanel: 'flex:3;min-width:0;border:1px solid var(--hairline);border-radius:var(--radius-lg);background:var(--panel-inset);overflow:hidden;display:flex;flex-direction:column;height:clamp(320px,calc(100dvh - 330px),1200px)',
+      runStatus: r ? r.status : '', runChip: r ? chip(r.status === 'running' ? 'var(--ph-implementation)' : r.status === 'succeeded' ? 'var(--ok)' : r.status === 'failed' ? 'var(--danger)' : 'var(--text-3)') + (r.status === 'running' ? ';animation:rcPulse 1.5s ease-in-out infinite' : '') : '',
+      runDone: String(done), runTotal: String(tix.length), runElapsed: r ? this.elapsed(r) : '',
+      onAgentTab: S.runTab === 'agent', onEventsTab: S.runTab === 'events',
+      tabAgent: () => this.setState({ runTab: 'agent' }), tabEvents: () => this.setState({ runTab: 'events' }),
+      agentTabStyle: panelTab(S.runTab === 'agent'), eventsTabStyle: panelTab(S.runTab === 'events'),
+      hasSel: !!selected, selSeq: selected ? String(selected.seq) : '',
+      agentLive: !!(selected && selected.status === 'burning'),
+
+      /* review */
+      isRev, checks, isDriving: driving, notDriving: !driving,
+      reviewCard: 'border:1px solid var(--hairline);border-radius:var(--radius-lg);background:var(--panel-2);padding:14px 16px',
+      openApp: this.stub('Opens the drive URL the server sniffed from the dev output'),
+      devOutOpen: S.devOut, devOutLabel: S.devOut ? 'Hide output' : 'Show output',
+      toggleDevOut: () => this.setState({ devOut: !S.devOut }),
+      devLines: [
+        { tx: '$ bun run dev', st: 'color:var(--text-3)' },
+        { tx: '  VITE v6.0.7  ready in 412 ms', st: 'color:var(--text-2)' },
+        { tx: '  ➜  Local:   http://localhost:4613/', st: 'color:var(--drive)' },
+        { tx: '  server listening on :4512 (' + f.branch + ')', st: 'color:var(--text-2)' },
+      ],
+      stopDrive: () => { this.setState({ driving: null }); this.act(f, 'drive · stopped', 'test drive stopped'); this.up(); },
+
+      /* shipped */
+      isShip, shipWhen: f.shipped ? ' · merged ' + f.shipped.when + (f.shipped.when === 'just now' ? '' : ' ago') : '',
+
+      /* inspector */
+      onDetailsTab: S.inspTab === 'details', onActivityTab: S.inspTab === 'activity',
+      showDetails: () => this.setState({ inspTab: 'details' }), showActivity: () => this.setState({ inspTab: 'activity' }),
+      detailsTabState: S.inspTab === 'details' ? 'active' : 'idle',
+      activityTabState: S.inspTab === 'activity' ? 'active' : 'idle',
+      detailsTabStyle: inspTabBase + (S.inspTab === 'details' ? ';color:var(--text)' : ''),
+      activityTabStyle: inspTabBase + (S.inspTab === 'activity' ? ';color:var(--text)' : ''),
+      inspCap,
+      gateOn: !!g, gateOff: !g,
+      gateId: g ? g[0] : '', gateName: g ? g[1] : '', gateReq: g ? g[2] : '',
+      gateStateStyle: `margin-top:11px;display:flex;align-items:center;gap:8px;font-size:12px;color:${gateSatisfied ? 'var(--ok)' : 'var(--needs)'}`,
+      gateLab,
+      onOverride: this.stub('Overrides record your reason and cross the gate anyway — the seatbelt, not the cage'),
+      hasDocs: (f.docs || []).length > 0, noDocs: (f.docs || []).length === 0,
+      docs: (f.docs || []).map((d) => ({ title: d[0], meta: d[1], fn: this.stub('Opens ' + d[1] + ' in the doc peek overlay') })),
+      activity: (f.activity || []).slice(0, 12).map((e, i) => ({
+        t: e[0], ev: e[1], tx: e[2],
+        lineStyle: `display:flex;gap:10px;padding:8px 4px;border-top:${i === 0 ? 'none' : '1px solid var(--hairline-soft)'}`,
+        dotStyle: `width:7px;height:7px;border-radius:50%;flex:0 0 auto;margin-top:5px;background:${/fail|error|cancel/i.test(e[1]) ? 'var(--danger)' : /done|shipped|succeed|merged/i.test(e[1]) ? 'var(--ok)' : /^(phase|gate)/i.test(e[1]) ? 'var(--accent)' : 'var(--text-4)'}`,
+      })),
+
+      /* status bar */
+      notifyOn: S.notify, notifyOff: !S.notify,
+      notifyStyle: `display:inline-flex;align-items:center;gap:5px;background:none;border:none;color:${S.notify ? 'var(--ok)' : 'var(--text-3)'};cursor:pointer;font-size:11px;padding:0`,
+      toggleNotify: () => this.setState({ notify: !S.notify }),
+
+      toastOn: !!S.toast, toastMsg: S.toast || '',
+      toastStyle: 'position:fixed;right:18px;bottom:38px;z-index:50;max-width:360px;padding:10px 14px;border-radius:var(--radius-lg);background:var(--panel);border:1px solid var(--hairline);color:var(--text);font-size:12.5px;line-height:1.45;animation:rcToastIn var(--dur-2) var(--ease-out)',
+    };
+  }
+}
+</script>
+</body>
+</html>

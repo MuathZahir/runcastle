@@ -314,30 +314,36 @@ describe('feature delete', () => {
     )
   })
 
-  it('leaves the feature row present and retryable when worktree removal fails', async () => {
-    const feature = seedFeature(ctx, project.id, { slug: 'locked', phase: 'implementation' })
-    await createFeatureBranch(project, feature.slug)
-    const worktree = await ensureTalkWorktree(project, feature)
-    seedAllRows(ctx, feature.id)
+  // POSIX-only: this test makes a directory unwritable with chmod to force the
+  // removal to fail. On Windows chmod does not affect directory write access,
+  // so the delete succeeds and the expected throw never happens.
+  it.skipIf(process.platform === 'win32')(
+    'leaves the feature row present and retryable when worktree removal fails',
+    async () => {
+      const feature = seedFeature(ctx, project.id, { slug: 'locked', phase: 'implementation' })
+      await createFeatureBranch(project, feature.slug)
+      const worktree = await ensureTalkWorktree(project, feature)
+      seedAllRows(ctx, feature.id)
 
-    // Make the worktree's PARENT read-only so neither `git worktree remove` nor
-    // the rmSync fallback can unlink the dir — the Linux stand-in for a Windows
-    // locked file. removeTalkWorktree must throw, before any DB row is deleted.
-    const parent = join(worktree, '..')
-    chmodSync(parent, 0o500)
-    try {
-      await expect(deleteFeature(ctx, feature.id)).rejects.toThrow(/talk worktree/)
-    } finally {
-      chmodSync(parent, 0o700)
-    }
+      // Make the worktree's PARENT read-only so neither `git worktree remove` nor
+      // the rmSync fallback can unlink the dir — the Linux stand-in for a Windows
+      // locked file. removeTalkWorktree must throw, before any DB row is deleted.
+      const parent = join(worktree, '..')
+      chmodSync(parent, 0o500)
+      try {
+        await expect(deleteFeature(ctx, feature.id)).rejects.toThrow(/talk worktree/)
+      } finally {
+        chmodSync(parent, 0o700)
+      }
 
-    // Feature row + its rows survive → the delete is retryable.
-    expect(rowCount(ctx, features, feature.id)).toBe(1)
-    expect(rowCount(ctx, tickets, feature.id)).toBe(1)
+      // Feature row + its rows survive → the delete is retryable.
+      expect(rowCount(ctx, features, feature.id)).toBe(1)
+      expect(rowCount(ctx, tickets, feature.id)).toBe(1)
 
-    // Retry now succeeds (parent writable again).
-    await expect(deleteFeature(ctx, feature.id)).resolves.toEqual({ ok: true, slug: 'locked' })
-    expect(rowCount(ctx, features, feature.id)).toBe(0)
-    expect(existsSync(worktree)).toBe(false)
-  })
+      // Retry now succeeds (parent writable again).
+      await expect(deleteFeature(ctx, feature.id)).resolves.toEqual({ ok: true, slug: 'locked' })
+      expect(rowCount(ctx, features, feature.id)).toBe(0)
+      expect(existsSync(worktree)).toBe(false)
+    },
+  )
 })

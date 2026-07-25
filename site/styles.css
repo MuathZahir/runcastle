@@ -1,0 +1,1511 @@
+/* ==========================================================================
+   runcastle.dev landing page
+   --------------------------------------------------------------------------
+   Tokens are lifted verbatim from apps/web/src/styles.css so the marketing
+   surface and the product read as one system: near-black layered by 1px
+   hairlines, exactly one violet accent, mono for every identifier.
+
+   Theme is locked to dark. The product is a dark IDE surface and this page is
+   its shopfront; there is no light variant to fall back to.
+
+   Radius system (locked): panels 10px, controls 7px, chips/pills full.
+   ========================================================================== */
+
+@font-face {
+  font-family: 'Inter Variable';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 900;
+  src: url('assets/fonts/inter-latin-wght-normal.woff2') format('woff2-variations');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA,
+    U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193,
+    U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: 'JetBrains Mono Variable';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 800;
+  src: url('assets/fonts/jetbrains-mono-latin-wght-normal.woff2') format('woff2-variations');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA,
+    U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193,
+    U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+:root {
+  color-scheme: dark;
+
+  /* surfaces */
+  --bg: #090b10;
+  --panel: #0e1117;
+  --panel-2: #0b0e14;
+  --panel-3: #12151d;
+  --panel-inset: #07080b;
+
+  /* hairlines */
+  --hairline: #1c2230;
+  --hairline-soft: #151a26;
+  --hairline-strong: #2a3242;
+
+  /* text ramp */
+  --text: #dde3ed;
+  --text-2: #96a0b0;
+  --text-3: #5f6a7a;
+  --text-4: #3a4354;
+
+  /* the one accent */
+  --accent: #7c6cf6;
+  --accent-hi: #a49bff;
+  --accent-2: #8f80f8;
+  --accent-ink: #0d0722;
+  --accent-soft: #161329;
+  --accent-line: #3d3670;
+
+  /* phase palette: semantic lifecycle state, confined to phase markers */
+  --ph-ideation: #8b7cf8;
+  --ph-spec: #8a94a2;
+  --ph-tickets: #d7a94a;
+  --ph-implementation: #f0883e;
+  --ph-review: #58a6ff;
+  --ph-shipped: #3fb950;
+
+  --mono: 'JetBrains Mono Variable', 'Cascadia Code', Consolas, ui-monospace, monospace;
+  --sans: 'Inter Variable', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+
+  --radius-ctl: 7px;
+  --radius-panel: 10px;
+  --radius-pill: 999px;
+
+  --wrap: 1220px;
+  --gutter: 28px;
+
+  --dur-1: 0.14s;
+  --dur-2: 0.24s;
+  --dur-3: 0.6s;
+  --ease: cubic-bezier(0.22, 0.61, 0.24, 1);
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ring: 0 0 0 2px var(--bg), 0 0 0 4px rgba(124, 108, 246, 0.5);
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+  -webkit-text-size-adjust: 100%;
+}
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: 16px;
+  line-height: 1.6;
+  letter-spacing: 0.004em;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  overflow-x: hidden;
+}
+
+img,
+svg {
+  display: block;
+  max-width: 100%;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+:focus-visible {
+  outline: none;
+  box-shadow: var(--ring);
+  border-radius: var(--radius-ctl);
+}
+
+::selection {
+  background: rgba(124, 108, 246, 0.32);
+  color: #fff;
+}
+
+.wrap {
+  width: 100%;
+  max-width: var(--wrap);
+  margin-inline: auto;
+  padding-inline: var(--gutter);
+}
+
+.lp-mono {
+  font-family: var(--mono);
+  font-variant-ligatures: none;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ==========================================================================
+   BRAND
+   ========================================================================== */
+
+.lp-wordmark {
+  font-family: var(--mono);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  font-size: 15px;
+}
+.lp-wordmark .run {
+  color: var(--accent-hi);
+}
+.lp-wordmark .castle {
+  color: var(--text);
+}
+
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+}
+
+/* ==========================================================================
+   NAV  (single line, 64px)
+   ========================================================================== */
+
+.nav {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  height: 64px;
+  display: flex;
+  align-items: center;
+  background: rgba(9, 11, 16, 0.76);
+  backdrop-filter: blur(14px) saturate(160%);
+  -webkit-backdrop-filter: blur(14px) saturate(160%);
+  border-bottom: 1px solid transparent;
+  transition: border-color var(--dur-2) var(--ease), background var(--dur-2) var(--ease);
+}
+.nav.is-stuck {
+  border-bottom-color: var(--hairline);
+  background: rgba(9, 11, 16, 0.9);
+}
+@media (prefers-reduced-transparency: reduce) {
+  .nav,
+  .nav.is-stuck {
+    background: var(--bg);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+}
+.nav-inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  width: 100%;
+  max-width: var(--wrap);
+  margin-inline: auto;
+  padding-inline: var(--gutter);
+}
+.nav-links {
+  display: flex;
+  align-items: center;
+  gap: 26px;
+  font-size: 13.5px;
+  color: var(--text-2);
+}
+.nav-links a {
+  transition: color var(--dur-1) var(--ease);
+}
+.nav-links a:hover {
+  color: var(--text);
+}
+.nav-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.nav-gh {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 34px;
+  padding-inline: 12px;
+  border-radius: var(--radius-ctl);
+  border: 1px solid var(--hairline);
+  color: var(--text-2);
+  font-size: 13px;
+  transition: color var(--dur-1) var(--ease), border-color var(--dur-1) var(--ease),
+    background var(--dur-1) var(--ease);
+}
+.nav-gh:hover {
+  color: var(--text);
+  border-color: var(--hairline-strong);
+  background: var(--panel-3);
+}
+.nav-gh svg {
+  width: 15px;
+  height: 15px;
+}
+@media (max-width: 880px) {
+  .nav-links {
+    display: none;
+  }
+}
+/* Below this the brand plus both nav controls stop fitting on one line. The
+   hero's own "View on GitHub" button and the footer link both still cover it. */
+@media (max-width: 520px) {
+  :root {
+    --gutter: 18px;
+  }
+  .nav-gh {
+    display: none;
+  }
+}
+
+/* ==========================================================================
+   BUTTONS
+   ========================================================================== */
+
+.lp-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 40px;
+  padding-inline: 18px;
+  border-radius: var(--radius-ctl);
+  border: 1px solid transparent;
+  font-family: var(--sans);
+  font-size: 14px;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: transform var(--dur-1) var(--ease), background var(--dur-1) var(--ease),
+    border-color var(--dur-1) var(--ease), color var(--dur-1) var(--ease);
+}
+.lp-btn-sm {
+  height: 34px;
+  padding-inline: 14px;
+  font-size: 13px;
+}
+.lp-btn-primary {
+  background: var(--accent);
+  color: #fff;
+}
+.lp-btn-primary:hover {
+  background: var(--accent-2);
+}
+.lp-btn-primary:active {
+  transform: translateY(1px);
+}
+.lp-btn-ghost {
+  background: transparent;
+  border-color: var(--hairline);
+  color: var(--text);
+}
+.lp-btn-ghost:hover {
+  border-color: var(--hairline-strong);
+  background: var(--panel-3);
+}
+.lp-btn-ghost:active {
+  transform: translateY(1px);
+}
+@media (prefers-reduced-motion: reduce) {
+  .lp-btn:active {
+    transform: none;
+  }
+}
+
+/* ==========================================================================
+   SECTION SCAFFOLD
+   ========================================================================== */
+
+section {
+  position: relative;
+}
+
+.band {
+  padding-block: clamp(64px, 7vw, 96px);
+}
+.band-tight {
+  padding-block: clamp(48px, 6vw, 76px);
+}
+
+.eyebrow {
+  font-family: var(--mono);
+  font-size: 11.5px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  color: var(--accent-hi);
+}
+
+h1,
+h2,
+h3 {
+  margin: 0;
+  font-weight: 600;
+  letter-spacing: -0.028em;
+  line-height: 1.08;
+  text-wrap: balance;
+}
+
+h2 {
+  font-size: clamp(30px, 4.2vw, 46px);
+}
+h3 {
+  font-size: 17px;
+  letter-spacing: -0.012em;
+  line-height: 1.3;
+}
+
+.lede {
+  margin: 18px 0 0;
+  font-size: clamp(16px, 1.5vw, 17.5px);
+  color: var(--text-2);
+  line-height: 1.65;
+  max-width: 60ch;
+  text-wrap: pretty;
+}
+
+/* Every band is `.section-head` followed by its content, so the gap between the
+   two lives here once rather than as a margin-top on each of `.showcase`,
+   `.bento`, `.local` and the pipeline's mock — which is how the pipeline ended
+   up with no gap at all, being the only one whose content is a bare wrapper. */
+.section-head {
+  max-width: 62ch;
+  margin-bottom: 52px;
+}
+
+/* Violet-to-white duotone wash on key display type. Set as a block so the
+   gradient maps across the whole line rather than restarting per line box
+   when the text wraps. */
+.duo {
+  display: block;
+  background: linear-gradient(96deg, var(--accent-hi) 4%, #eef0f6 68%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* ==========================================================================
+   HERO
+   ========================================================================== */
+
+.hero {
+  position: relative;
+  padding-top: clamp(56px, 7vw, 92px);
+  padding-bottom: 0;
+  overflow: hidden;
+}
+
+/* violet horizon wash: the duotone, kept low and wide so it reads as light
+   coming off the product rather than a glow effect on a box */
+.hero::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: -140px;
+  width: 1500px;
+  height: 900px;
+  translate: -50% 0;
+  background: radial-gradient(
+    56% 46% at 50% 40%,
+    rgba(124, 108, 246, 0.2) 0%,
+    rgba(124, 108, 246, 0.075) 42%,
+    transparent 72%
+  );
+  pointer-events: none;
+  z-index: 0;
+}
+
+.hero-inner {
+  position: relative;
+  z-index: 1;
+}
+
+.hero h1 {
+  font-size: clamp(34px, 5.4vw, 62px);
+  max-width: 24ch;
+}
+/* Two deliberate lines: statement in white, outcome in the violet-to-white
+   duotone. Blocks rather than a wrap, so the break never lands mid-phrase. */
+.hero h1 .h1-l1 {
+  display: block;
+}
+.hero .lede {
+  max-width: 54ch;
+  font-size: clamp(16.5px, 1.6vw, 19px);
+}
+
+.hero-cta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin-top: 32px;
+}
+
+/* the product shot: full-bleed-ish, bleeding past the fold on purpose so the
+   CTA above it stays in the first viewport */
+.hero-shot {
+  position: relative;
+  z-index: 1;
+  margin-top: clamp(48px, 6vw, 76px);
+  border: 1px solid var(--hairline);
+  border-bottom: none;
+  border-radius: var(--radius-panel) var(--radius-panel) 0 0;
+  overflow: hidden;
+  background: var(--panel-2);
+  box-shadow: 0 -1px 0 rgba(164, 155, 255, 0.14) inset, 0 40px 120px -50px rgba(124, 108, 246, 0.5);
+}
+.hero-shot img {
+  width: 100%;
+  height: auto;
+}
+
+/* ==========================================================================
+   EMBEDDED PRODUCT UI
+   --------------------------------------------------------------------------
+   The mockups on this page are the product's real components as live markup,
+   not screenshots. `assets/app-ui.css` is the shipped app stylesheet with every
+   rule scoped under `.rc-app` (see build-app-css.mjs), so a mock is just that
+   wrapper plus the app's own class names.
+
+   Two consequences worth knowing:
+   1. The mock lays out FLUIDLY at whatever width it is given, exactly as the app
+      does in a browser window. Nothing is scaled or letterboxed, so text stays
+      at its true size and no panel gets clipped.
+   2. Every mock is `inert` + `aria-hidden`, because it is an illustration. Each
+      one is paired with an `.sr-only` description carrying the same information.
+   ========================================================================== */
+
+.rc-app {
+  /* Named container, so the layout rules below can respond to the mock's own
+     logical width rather than the viewport. */
+  container-type: inline-size;
+  container-name: rcapp;
+
+  /* The app's global body typography, which the scoped stylesheet deliberately
+     drops. Without this the mock inherits the page's 16px and every component
+     renders oversized. */
+  font-family: var(--sans);
+  font-size: 13px;
+  line-height: 1.45;
+  letter-spacing: 0.004em;
+  font-feature-settings: 'tnum' 1, 'cv05' 1;
+  color: var(--text);
+  background: var(--bg);
+  text-align: left;
+  /* Belt and braces alongside `inert`, for browsers that predate it. */
+  pointer-events: none;
+  user-select: none;
+}
+
+/* The window a mock sits in. Hairline and radius match the product's own panel
+   treatment rather than inventing a browser chrome.
+
+   A mock lays out at a FIXED LOGICAL SIZE (--rc-w / --rc-h, unitless px) and is
+   then scaled to fit the frame. That is the whole trick: the app gets the room it
+   was designed for, so no title truncates and no panel is clipped, while the
+   scale keeps it inside the column. Because it is real DOM rather than a bitmap,
+   scaling costs nothing in sharpness.
+
+   `--rc-s` is refined per frame by main.js via ResizeObserver. The value below is
+   the no-JS fallback, correct for a full-width frame at the default page width. */
+.rc-frame {
+  --rc-w: 1600;
+  --rc-h: 900;
+  --rc-s: 0.72;
+  position: relative;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-panel);
+  overflow: hidden;
+  background: var(--bg);
+  height: calc(var(--rc-h) * var(--rc-s) * 1px);
+}
+.rc-frame > .rc-app {
+  width: calc(var(--rc-w) * 1px);
+  height: calc(var(--rc-h) * 1px);
+  transform: scale(var(--rc-s));
+  transform-origin: top left;
+}
+
+/* Mocks that are not scaled: they already sit at their natural size, so they
+   keep the frame's chrome but opt out of the fixed-size machinery. */
+.rc-frame.is-natural {
+  height: auto;
+}
+.rc-frame.is-natural > .rc-app {
+  width: auto;
+  height: auto;
+  transform: none;
+}
+
+/* Panels whose height should follow their content rather than a guessed number.
+   The inner element grows freely so its scrollHeight is the true content height;
+   main.js then sets the frame's height to that, scaled, because a transform does
+   not affect layout.
+
+   No min-height here on purpose: a floor would inflate the measurement and
+   reintroduce the dead space this is meant to remove. --rc-h survives only as the
+   frame's no-JS fallback height. */
+.rc-frame.is-autoheight > .rc-app {
+  height: auto;
+}
+
+/* A mock cropped on purpose: the panel continues past the frame, so fade the
+   cut edge instead of ending on a hard line. */
+.rc-frame.is-cropped::after {
+  content: '';
+  position: absolute;
+  inset: auto 0 0 0;
+  height: 88px;
+  background: linear-gradient(to top, var(--bg), transparent);
+  pointer-events: none;
+}
+
+/* The app shell is a three-column grid, and below these widths the columns stop
+   being readable, so the outer rails drop the way they would in a narrow window.
+
+   These are CONTAINER queries, not media queries, and that distinction matters:
+   a mock's width is its own logical width, which has nothing to do with the
+   viewport. Keyed to the viewport, a 1600px-wide mock on a phone would collapse
+   its rails while still being 1600px wide, and the workspace would end up in the
+   252px sidebar track. */
+/* The product declares only `grid-template-rows` on the shell, so its single
+   implicit COLUMN is auto-sized and grows to the widest thing inside. In the app
+   that is harmless because the shell fills a real window. Here the shell has a
+   fixed width to respect, so the column is pinned to it. */
+.rc-app .shell {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+/* Note the `.rc-app` prefix inside these blocks. A container query does not add
+   specificity, so a bare `.shell-body` (0,1,0) would lose to the product sheet's
+   `.rc-app .shell-body` (0,2,0). Matching that specificity and coming later in
+   source order is what makes these win. */
+@container rcapp (max-width: 1080px) {
+  .rc-app .shell-body {
+    grid-template-columns: var(--sidebar-w) minmax(0, 1fr);
+  }
+  .rc-app .inspector {
+    display: none;
+  }
+}
+@container rcapp (max-width: 760px) {
+  /* minmax(0, ...) rather than 1fr: a bare 1fr keeps an auto minimum, so the
+     workspace would refuse to shrink below its content and push the column wider
+     than the mock. */
+  .rc-app .shell-body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .rc-app .sidebar {
+    display: none;
+  }
+}
+
+/* Logical size per mock. Kept in CSS rather than inline styles so the narrow
+   overrides below can win on source order at equal specificity. */
+.rc-frame[data-mock='shell'] {
+  --rc-w: 1600;
+  --rc-h: 800;
+}
+.rc-frame[data-mock='strip'] {
+  --rc-w: 1240;
+  --rc-h: 168;
+}
+.rc-frame[data-mock='term'] {
+  --rc-w: 880;
+  --rc-h: 420;
+}
+.rc-frame[data-mock='ledger'] {
+  --rc-w: 900;
+  --rc-h: 430;
+}
+.rc-frame[data-mock='review'] {
+  --rc-w: 940;
+  --rc-h: 540;
+}
+.rc-frame[data-mock='shipped'] {
+  --rc-w: 900;
+  --rc-h: 380;
+}
+
+/* On a phone there is no scale at which a 1600px IDE is readable, so the mock
+   stops pretending to be a desktop window and lays out narrow instead. The
+   container queries above then collapse the rails coherently, and the scale
+   lands near 0.8 so the type stays legible. This is a real state: it is what
+   runcastle looks like in a narrow window. */
+@media (max-width: 760px) {
+  .rc-frame[data-mock] {
+    --rc-w: 440;
+    --rc-h: 620;
+  }
+  .rc-frame[data-mock='strip'] {
+    --rc-h: 230;
+  }
+}
+@media (max-width: 520px) {
+  .rc-frame[data-mock] {
+    --rc-w: 400;
+    --rc-h: 600;
+  }
+}
+
+/* Section mocks that are a single panel rather than a whole shell. */
+.rc-panel {
+  padding: 0;
+}
+/* Standalone, the stepper is the panel's own header rather than something
+   sitting under a title row, so it loses the product's top margin and gains
+   the padding the surrounding chrome would otherwise have provided. */
+.rc-panel .pipeline {
+  margin-top: 0;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--hairline);
+}
+/* In the product the next-step bar is a card floating in the workspace. Here the
+   frame is already that card, so the bar sits flush instead of drawing a second
+   border inside the first.
+
+   `max-width` / `margin-inline` are the product's centered document column
+   (`--content-max`, shared with `.ws-body-inner`). The stepper above is not in
+   that group, so left alone the bar sits 62px inboard of it and the two rows
+   visibly fail to line up. Standalone there is no document column to centre
+   against, so the bar takes the frame's full width. */
+.rc-panel .nextstep {
+  margin-top: 0;
+  margin-inline: 0;
+  max-width: none;
+  border: 0;
+  border-radius: 0;
+  padding: 16px 20px;
+  background: transparent;
+}
+
+/* The embedded terminal. Claude Code draws its start banner with box-drawing
+   characters, but those only tile cleanly at a line-height matching the font's
+   cell, which fights readable prose. So the banner is a real bordered box and the
+   text inside is ordinary monospace lines: same reading, no glyph seams, and it
+   stays sharp at any scale. */
+.rc-term {
+  padding: 18px 20px 20px;
+  margin: 0;
+  overflow: hidden;
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 1.7;
+  color: var(--text-2);
+}
+
+/* Claude Code's banner: hairline box in its terminal orange, with the version
+   label sitting on the top edge. */
+.rc-term-banner {
+  position: relative;
+  max-width: 62ch;
+  margin: 14px 0 22px;
+  padding: 18px 20px 16px;
+  border: 1px solid #a5522f;
+  border-radius: 8px;
+  color: #d98457;
+}
+.rc-term-banner-label {
+  position: absolute;
+  top: 0;
+  left: 16px;
+  translate: 0 -50%;
+  padding-inline: 8px;
+  background: var(--bg);
+  color: #d98457;
+}
+.rc-term-banner .t-hi {
+  display: block;
+  margin-bottom: 12px;
+  color: var(--text);
+  font-weight: 600;
+}
+.rc-term-banner .t-dim {
+  display: block;
+  color: #b0714f;
+}
+
+/* The instruction runcastle injects into the session. */
+.rc-term-inject {
+  display: block;
+  max-width: 62ch;
+  padding: 7px 10px;
+  border-radius: 4px;
+  background: #262b33;
+  color: var(--text);
+}
+
+@media (max-width: 900px) {
+  .rc-term {
+    font-size: 11px;
+  }
+}
+
+/* ==========================================================================
+   RUNS-ON STRIP  (real brand marks, no category labels)
+   ========================================================================== */
+
+.runson {
+  border-top: 1px solid var(--hairline);
+  border-bottom: 1px solid var(--hairline);
+  background: var(--panel-2);
+}
+.runson-inner {
+  display: flex;
+  align-items: center;
+  gap: clamp(24px, 4vw, 56px);
+  flex-wrap: wrap;
+  padding-block: 26px;
+}
+.runson .eyebrow {
+  color: var(--text-3);
+  flex: none;
+}
+.runson-marks {
+  display: flex;
+  align-items: center;
+  gap: clamp(26px, 4.4vw, 54px);
+  flex-wrap: wrap;
+}
+.runson-marks img {
+  height: 22px;
+  width: auto;
+  opacity: 0.44;
+  filter: grayscale(1);
+  transition: opacity var(--dur-2) var(--ease), filter var(--dur-2) var(--ease);
+}
+.runson-marks a:hover img,
+.runson-marks a:focus-visible img {
+  opacity: 0.95;
+  filter: grayscale(0);
+}
+
+/* ==========================================================================
+   PIPELINE
+   ========================================================================== */
+
+.pipe-shot {
+  margin-top: 44px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-panel);
+  overflow: hidden;
+  background: var(--panel-2);
+}
+.pipe-shot img {
+  width: 100%;
+}
+
+/* the rail draws left to right as the section arrives: the pipeline advancing */
+.pipe-rail {
+  position: relative;
+  height: 1px;
+  margin-top: 52px;
+  background: var(--hairline-soft);
+}
+.pipe-rail::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  transform: scaleX(0);
+  transform-origin: left center;
+  background: linear-gradient(90deg, var(--accent) 0%, var(--accent-hi) 55%, #e9ecf4 100%);
+  transition: transform 1.5s var(--ease-out);
+}
+.reveal.is-in .pipe-rail::after {
+  transform: scaleX(1);
+}
+
+.phases {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 0;
+  margin-top: 0;
+}
+/* The gutter is symmetric on purpose: `padding-right` keeps a column off its own
+   divider, `padding-left` keeps it off the previous one. With only the former,
+   every column after the first sits 1px from the rule to its left and the row
+   reads as six boxes crammed together. The column that starts a row has no rule
+   to its left, so it stays flush with the rail. */
+.phase {
+  padding: 22px 22px 0 22px;
+  border-right: 1px solid var(--hairline-soft);
+}
+.phase:first-child {
+  padding-left: 0;
+}
+.phase:last-child {
+  border-right: none;
+}
+.phase-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--ph);
+  margin-bottom: 12px;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ph) 18%, transparent);
+}
+.phase-name {
+  font-family: var(--mono);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text);
+  margin-bottom: 6px;
+}
+.phase-note {
+  font-size: 13.5px;
+  color: var(--text-3);
+  line-height: 1.55;
+}
+@media (max-width: 1000px) {
+  .phases {
+    grid-template-columns: repeat(3, 1fr);
+    gap: 4px 0;
+  }
+  .phase:nth-child(3n) {
+    border-right: none;
+  }
+}
+/* First of each row, not just the first of the grid. Bounded below, because at
+   two columns `3n + 1` picks the 4th item — which is then a right-hand column —
+   and it would beat the plain `.phase` rule in the block below on specificity. */
+@media (max-width: 1000px) and (min-width: 621px) {
+  .phase:nth-child(3n + 1) {
+    padding-left: 0;
+  }
+}
+@media (max-width: 620px) {
+  .phases {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .phase {
+    border-right: none;
+    padding-right: 18px;
+    padding-left: 18px;
+  }
+  .phase:nth-child(odd) {
+    padding-left: 0;
+  }
+}
+
+/* the two decisions callout */
+.decisions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1px;
+  margin-top: 64px;
+  background: var(--hairline);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-panel);
+  overflow: hidden;
+}
+.decision {
+  background: var(--panel);
+  padding: 28px;
+}
+.decision p {
+  margin: 8px 0 0;
+  font-size: 14.5px;
+  color: var(--text-2);
+  line-height: 1.6;
+}
+@media (max-width: 720px) {
+  .decisions {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ==========================================================================
+   SCROLL SHOWCASE  (sticky visual, steps drive it)
+   ========================================================================== */
+
+/* Fixed reading column, and everything left over goes to the stage. A fractional
+   split would hand the stage a width that changes with the gap, and the mock
+   inside is sized against that width. */
+.showcase {
+  display: grid;
+  grid-template-columns: minmax(0, 340px) minmax(0, 1fr);
+  gap: clamp(36px, 4vw, 56px);
+  align-items: start;
+}
+
+.steps {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+.step-wrap {
+  border-top: 1px solid var(--hairline-soft);
+}
+.step-wrap:last-child {
+  border-bottom: 1px solid var(--hairline-soft);
+}
+.step {
+  padding: 34px 0;
+  cursor: pointer;
+  opacity: 0.42;
+  transition: opacity var(--dur-3) var(--ease);
+  text-align: left;
+  background: none;
+  border: 0;
+  color: inherit;
+  font: inherit;
+  display: block;
+  width: 100%;
+}
+.step.is-active {
+  opacity: 1;
+}
+/* A step is a large block, so the default offset ring draws a big rectangle
+   around a paragraph and reads as a stray box. Swap it for the left accent bar
+   the product already uses to mark an active row: same clarity, no box. */
+.step:focus-visible {
+  box-shadow: none;
+  outline: none;
+}
+.step-wrap:has(.step:focus-visible) {
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+/* Fallback for engines without :has(), keep a visible indicator either way. */
+@supports not selector(:has(*)) {
+  .step:focus-visible {
+    box-shadow: inset 2px 0 0 var(--accent);
+  }
+}
+/* The step is a <button>, so its contents are spans rather than h3 + p. These
+   two rules carry the typography those tags would have brought. */
+.step-h {
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: -0.012em;
+  line-height: 1.3;
+  color: var(--text);
+}
+.step-p {
+  display: block;
+  font-size: 14.5px;
+  color: var(--text-2);
+  line-height: 1.62;
+  max-width: 46ch;
+}
+.step-top {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+.step-idx {
+  font-family: var(--mono);
+  font-size: 11.5px;
+  color: var(--text-4);
+  transition: color var(--dur-2) var(--ease);
+}
+.step.is-active .step-idx {
+  color: var(--accent-hi);
+}
+.step-bar {
+  display: block;
+  height: 1px;
+  margin-top: 18px;
+  background: var(--hairline);
+  position: relative;
+  overflow: hidden;
+}
+.step-bar::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: var(--accent);
+  transform: scaleX(0);
+  transform-origin: left center;
+  transition: transform var(--dur-3) var(--ease-out);
+}
+.step.is-active .step-bar::after {
+  transform: scaleX(1);
+}
+
+.stage {
+  position: sticky;
+  top: 108px;
+}
+/* The four panels are stacked in one grid cell and cross-faded. Because each is
+   real UI rather than a fixed-ratio image, the stage takes the height of the
+   tallest panel and never jumps between swaps.
+
+   minmax(0, 1fr) matters: the mock inside each panel is a fixed logical width,
+   and an auto grid track would size to that instead of to the column, pushing
+   the stage (and the page) wider than the layout allows. */
+#stage {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+}
+.stage-panel {
+  grid-area: 1 / 1;
+  min-width: 0;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity var(--dur-3) var(--ease), visibility var(--dur-3) var(--ease);
+}
+.stage-panel.is-shown {
+  opacity: 1;
+  visibility: visible;
+}
+.stage-panel .rc-frame {
+  box-shadow: 0 30px 90px -50px rgba(124, 108, 246, 0.42);
+}
+
+@media (max-width: 900px) {
+  /* minmax(0, 1fr) plus min-width:0 down the chain: a grid item defaults to a
+     min-content floor, which the product UI inside would otherwise push the
+     whole column past. */
+  .showcase {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+  }
+  .steps,
+  .step-wrap,
+  .step,
+  .stage,
+  #stage,
+  .stage-panel {
+    min-width: 0;
+  }
+  .step {
+    opacity: 1;
+    cursor: default;
+  }
+  /* No sticky column to track, so the panels stop competing for one cell and
+     simply stack below the steps. Every panel stays present and readable
+     without JavaScript. */
+  .stage {
+    position: static;
+    margin-top: 34px;
+  }
+  #stage {
+    display: flex;
+    flex-direction: column;
+    gap: 22px;
+  }
+  .stage-panel {
+    grid-area: auto;
+    opacity: 1;
+    visibility: visible;
+    transition: none;
+  }
+}
+
+/* ==========================================================================
+   GATES BENTO  (3 items, 3 cells, asymmetric)
+   ========================================================================== */
+
+/* The event stream is live UI now rather than a fixed-size capture, so it
+   reflows to whatever width the cell gives it and the columns can be even. */
+.bento {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-rows: auto auto;
+  gap: 18px;
+}
+.cell {
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-panel);
+  background: var(--panel);
+  padding: 26px;
+  min-width: 0;
+}
+.cell h3 {
+  margin-bottom: 10px;
+}
+.cell p {
+  margin: 0;
+  font-size: 14.5px;
+  color: var(--text-2);
+  line-height: 1.62;
+}
+
+/* cell 1: real event-stream capture, spans both rows */
+.cell-stream {
+  grid-row: 1 / span 2;
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  overflow: hidden;
+  background: var(--panel-inset);
+}
+.cell-stream-copy {
+  padding: 26px 26px 20px;
+}
+/* A window onto the live event stream. Capped so the cell shows a readable
+   slice, with the cut edge faded so it reads as a stream that continues rather
+   than a panel that ran out. */
+.cell-stream-shot {
+  position: relative;
+  flex: 1;
+  min-height: 200px;
+  max-height: 320px;
+  border-top: 1px solid var(--hairline-soft);
+  overflow: hidden;
+}
+.cell-stream-shot::after {
+  content: '';
+  position: absolute;
+  inset: auto 0 0 0;
+  height: 110px;
+  background: linear-gradient(to top, var(--panel-inset), transparent);
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* cell 2: violet-tinted, carries the gate token type */
+.cell-gate {
+  background: linear-gradient(150deg, var(--accent-soft) 0%, var(--panel) 58%);
+  border-color: var(--accent-line);
+}
+.gate-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  height: 28px;
+  padding-inline: 12px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--accent-line);
+  background: rgba(124, 108, 246, 0.1);
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--accent-hi);
+  margin-bottom: 16px;
+}
+
+/* The gate cell carries a real gate card, in its blocked state, so the copy
+   above it is demonstrated rather than described. */
+.cell-gate-shot {
+  margin-top: 20px;
+}
+
+/* cell 3: the override, hairline ruled */
+.cell-override .override-line {
+  margin-top: 18px;
+  padding: 12px 14px;
+  border: 1px dashed var(--hairline-strong);
+  border-radius: var(--radius-ctl);
+  font-family: var(--mono);
+  font-size: 12.5px;
+  color: var(--text-3);
+}
+
+@media (max-width: 860px) {
+  .bento {
+    grid-template-columns: 1fr;
+  }
+  .cell-stream {
+    grid-row: auto;
+  }
+  .cell-stream-shot {
+    max-height: 360px;
+  }
+}
+
+/* ==========================================================================
+   LOCAL-FIRST
+   ========================================================================== */
+
+.local {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: clamp(40px, 6vw, 80px);
+  align-items: start;
+}
+.facts {
+  display: flex;
+  flex-direction: column;
+}
+.fact {
+  padding: 22px 0;
+  border-top: 1px solid var(--hairline-soft);
+}
+.fact:last-child {
+  border-bottom: 1px solid var(--hairline-soft);
+}
+.fact h3 {
+  margin-bottom: 7px;
+}
+.fact p {
+  margin: 0;
+  font-size: 14.5px;
+  color: var(--text-2);
+  line-height: 1.62;
+  max-width: 48ch;
+}
+
+/* git topology, real branch and path names, set as a code block */
+.topology {
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-panel);
+  background: var(--panel-inset);
+  overflow: hidden;
+}
+.topology-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 38px;
+  padding-inline: 16px;
+  border-bottom: 1px solid var(--hairline-soft);
+  background: var(--panel);
+  font-family: var(--mono);
+  font-size: 11.5px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+.topology pre {
+  margin: 0;
+  padding: 20px 18px 22px;
+  overflow-x: auto;
+  font-family: var(--mono);
+  font-size: 12.5px;
+  line-height: 1.95;
+  color: var(--text-2);
+}
+.topology .t-c {
+  color: var(--text-4);
+}
+.topology .t-a {
+  color: var(--accent-hi);
+}
+.topology .t-g {
+  color: var(--ph-shipped);
+}
+
+@media (max-width: 900px) {
+  .local {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ==========================================================================
+   INSTALL
+   ========================================================================== */
+
+.install {
+  border-top: 1px solid var(--hairline);
+  background: linear-gradient(180deg, var(--panel-2) 0%, var(--bg) 100%);
+  position: relative;
+  overflow: hidden;
+}
+.install::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: -420px;
+  width: 1200px;
+  height: 760px;
+  translate: -50% 0;
+  background: radial-gradient(
+    50% 50% at 50% 50%,
+    rgba(124, 108, 246, 0.17) 0%,
+    transparent 70%
+  );
+  pointer-events: none;
+}
+.install-inner {
+  position: relative;
+  z-index: 1;
+  text-align: center;
+}
+.install h2 {
+  max-width: 22ch;
+  margin-inline: auto;
+}
+.install .lede {
+  margin-inline: auto;
+  max-width: 56ch;
+}
+
+.cmds {
+  margin: 44px auto 0;
+  max-width: 680px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-panel);
+  background: var(--panel-inset);
+  overflow: hidden;
+  text-align: left;
+}
+.cmd {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 15px 14px 15px 18px;
+  border-bottom: 1px solid var(--hairline-soft);
+}
+.cmd:last-child {
+  border-bottom: none;
+}
+.cmd-prompt {
+  color: var(--accent);
+  font-family: var(--mono);
+  font-size: 13px;
+  flex: none;
+  user-select: none;
+}
+.cmd code {
+  font-family: var(--mono);
+  font-size: 13.5px;
+  color: var(--text);
+  flex: 1;
+  min-width: 0;
+  overflow-x: auto;
+  white-space: nowrap;
+}
+.cmd-note {
+  font-family: var(--sans);
+  font-size: 12.5px;
+  color: var(--text-3);
+  flex: none;
+}
+.copy {
+  flex: none;
+  width: 30px;
+  height: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-ctl);
+  border: 1px solid var(--hairline);
+  background: var(--panel);
+  color: var(--text-3);
+  cursor: pointer;
+  transition: color var(--dur-1) var(--ease), border-color var(--dur-1) var(--ease);
+}
+.copy:hover {
+  color: var(--text);
+  border-color: var(--hairline-strong);
+}
+.copy.is-done {
+  color: var(--ph-shipped);
+  border-color: var(--ph-shipped);
+}
+.copy svg {
+  width: 14px;
+  height: 14px;
+}
+.install-after {
+  margin-top: 26px;
+  font-size: 13.5px;
+  color: var(--text-3);
+}
+.install-after a {
+  color: var(--accent-hi);
+  border-bottom: 1px solid var(--accent-line);
+}
+@media (max-width: 620px) {
+  .cmd-note {
+    display: none;
+  }
+}
+
+/* ==========================================================================
+   FOOTER
+   ========================================================================== */
+
+.footer {
+  border-top: 1px solid var(--hairline);
+  background: var(--panel-2);
+  padding-block: 40px;
+}
+.footer-inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 22px;
+  flex-wrap: wrap;
+}
+.footer-links {
+  display: flex;
+  align-items: center;
+  gap: 22px;
+  font-size: 13.5px;
+  color: var(--text-3);
+}
+.footer-links a {
+  transition: color var(--dur-1) var(--ease);
+}
+.footer-links a:hover {
+  color: var(--text);
+}
+.footer-meta {
+  font-size: 12.5px;
+  color: var(--text-4);
+  font-family: var(--mono);
+}
+
+/* ==========================================================================
+   REVEAL  (IntersectionObserver adds .is-in)
+   ========================================================================== */
+
+.reveal {
+  opacity: 0;
+  transform: translateY(18px);
+  transition: opacity 0.7s var(--ease-out), transform 0.7s var(--ease-out);
+}
+.reveal.is-in {
+  opacity: 1;
+  transform: none;
+}
+.reveal[data-delay='1'] {
+  transition-delay: 0.07s;
+}
+.reveal[data-delay='2'] {
+  transition-delay: 0.14s;
+}
+.reveal[data-delay='3'] {
+  transition-delay: 0.21s;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reveal {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+  .pipe-rail::after,
+  .step-bar::after {
+    transform: scaleX(1);
+    transition: none;
+  }
+  .stage-panel {
+    transition: none;
+  }
+  .step {
+    opacity: 1;
+  }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}
