@@ -47,7 +47,7 @@ describe('settings service (#46)', () => {
     expect(view.projectId).toBeUndefined()
 
     const model = field(view, 'model')
-    expect(model.value).toBe('claude-opus-4-8')
+    expect(model.value).toBe('claude-opus-5')
     expect(model.source).toBe('default')
     expect(model.editable).toBe(true)
     expect(model.scope).toBe('global')
@@ -133,7 +133,7 @@ describe('settings service (#46)', () => {
     updateSettings(ctx, { key: 'serverPort', value: 5000 }, io())
     // the run reads its own captured field values; serverPort change does not
     // retro-alter model, and a run that snapshotted a *copy* is fully immune.
-    expect(before).toBe('claude-opus-4-8')
+    expect(before).toBe('claude-opus-5')
     // the write is visible only to future reads of ctx.config
     expect(ctx.config.serverPort).toBe(5000)
   })
@@ -192,7 +192,7 @@ describe('settings service (#46)', () => {
     updateSettings(ctx, { projectId: project.id, key: 'model', value: null }, io())
     const model = field(getSettings(ctx, project.id, io()), 'model')
     expect(model.source).toBe('default')
-    expect(model.value).toBe('claude-opus-4-8')
+    expect(model.value).toBe('claude-opus-5')
   })
 
   it('sandbox override accepts the three-way choice and rejects anything else', () => {

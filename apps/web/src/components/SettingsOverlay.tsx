@@ -273,7 +273,7 @@ function ModelCombobox({
         <input
           className="settings-input mono"
           type="text"
-          placeholder="model id (e.g. claude-opus-4-8)"
+          placeholder="model id (e.g. claude-opus-5, claude-opus-5[1m])"
           value={draft}
           disabled={disabled}
           onChange={(e) => setDraft(e.target.value)}

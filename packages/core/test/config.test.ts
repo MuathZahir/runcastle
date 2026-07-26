@@ -10,8 +10,8 @@ import {
 describe('RuncastleConfig — model shape', () => {
   it('defaults to opus with a cheap smoke step override', () => {
     const cfg = RuncastleConfig.parse({})
-    expect(cfg.model).toBe('claude-opus-4-8')
-    expect(cfg.stepModels.smoke).toBe('claude-haiku-4-5-20251001')
+    expect(cfg.model).toBe('claude-opus-5')
+    expect(cfg.stepModels.smoke).toBe('claude-haiku-4-5')
   })
 
   it('folds a legacy smokeModel into stepModels.smoke (read-compat)', () => {
@@ -51,7 +51,16 @@ describe('RuncastleConfig — model shape', () => {
 
   it('ships a curated model list', () => {
     expect(CURATED_MODELS.length).toBeGreaterThan(0)
-    expect(CURATED_MODELS.map((m) => m.id)).toContain('claude-opus-4-8')
+    expect(CURATED_MODELS.map((m) => m.id)).toContain('claude-opus-5')
+  })
+
+  it('offers a 1M-context variant for every model that has one', () => {
+    const ids = CURATED_MODELS.map((m) => m.id)
+    for (const id of ['claude-opus-5', 'claude-sonnet-5', 'claude-fable-5']) {
+      expect(ids).toContain(`${id}[1m]`)
+    }
+    // Haiku 4.5 has no 1M tier — a `[1m]` entry would fail the launch.
+    expect(ids).not.toContain('claude-haiku-4-5[1m]')
   })
 })
 

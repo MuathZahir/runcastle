@@ -38,16 +38,31 @@ export interface CuratedModel {
  * The curated model list surfaced by the settings UI (issue #48). Lives in core
  * so server and web share one source of truth (web's hardcoded constant is
  * retired). Any model id not in this list is still accepted as free text.
+ *
+ * The `[1m]` suffix is a Claude Code model-id modifier that opts the session
+ * into the 1M-token context window; a bare id runs at the model's default
+ * window. It is NOT part of the Anthropic API model id — it is consumed by the
+ * CLI's `--model` flag, which is the only place runcastle uses these ids. Two
+ * caveats, both verified against the CLI:
+ *   - `[1m]` on a model without a 1M tier (e.g. Haiku 4.5) fails the launch
+ *     with `400 The long context beta is not yet available for this
+ *     subscription`, so no 1M entry is offered for it.
+ *   - some plans meter 1M separately and fail with `Usage credits required for
+ *     1M context`, which is why the default below stays on a bare id.
  */
 export const CURATED_MODELS: readonly CuratedModel[] = [
-  { id: 'claude-opus-4-8', label: 'Opus 4.8' },
+  { id: 'claude-opus-5', label: 'Opus 5' },
+  { id: 'claude-opus-5[1m]', label: 'Opus 5 (1M context)' },
   { id: 'claude-sonnet-5', label: 'Sonnet 5' },
-  { id: 'claude-haiku-4-5-20251001', label: 'Haiku 4.5' },
+  { id: 'claude-sonnet-5[1m]', label: 'Sonnet 5 (1M context)' },
   { id: 'claude-fable-5', label: 'Fable 5' },
+  { id: 'claude-fable-5[1m]', label: 'Fable 5 (1M context)' },
+  { id: 'claude-opus-4-8', label: 'Opus 4.8' },
+  { id: 'claude-haiku-4-5', label: 'Haiku 4.5' },
 ]
 
 /** Cheap default for the scripted smoke so an end-to-end run stays inexpensive. */
-const DEFAULT_SMOKE_MODEL = 'claude-haiku-4-5-20251001'
+const DEFAULT_SMOKE_MODEL = 'claude-haiku-4-5'
 
 /**
  * Read-compat for the legacy `smokeModel` field (issue #48): fold it into
@@ -74,8 +89,13 @@ export const RuncastleConfig = z.preprocess(
   foldLegacyModelConfig,
   z.object({
     serverPort: z.number().default(4512),
-    /** Default model every step inherits unless overridden (issue #48). */
-    model: z.string().default('claude-opus-4-8'),
+    /**
+     * Default model every step inherits unless overridden (issue #48). A bare
+     * id, not `claude-opus-5[1m]`: 1M context is metered separately on some
+     * plans, so a 1M default would fail the very first launch for those
+     * operators. Pick a `(1M context)` entry in settings to opt in.
+     */
+    model: z.string().default('claude-opus-5'),
     /**
      * Sparse per-step model overrides (issue #48). Global-only; a step absent
      * here inherits the default `model`. Seeds `smoke` with a cheap model.

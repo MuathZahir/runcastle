@@ -41,7 +41,7 @@ describe('per-step models (#48)', () => {
 
   it('an unset step reports the default; smoke seeds a cheap model', () => {
     const view = getSettings(ctx, undefined, io())
-    expect(field(view, 'stepModels.smoke').value).toBe('claude-haiku-4-5-20251001')
+    expect(field(view, 'stepModels.smoke').value).toBe('claude-haiku-4-5')
     expect(field(view, 'stepModels.smoke').source).toBe('default')
     expect(field(view, 'stepModels.implement').value).toBeNull()
     expect(field(view, 'stepModels.implement').source).toBe('default')

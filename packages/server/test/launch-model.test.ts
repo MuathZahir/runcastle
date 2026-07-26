@@ -67,8 +67,8 @@ describe('launch model resolution (#48)', () => {
   }
 
   it('falls back to the global default model', async () => {
-    expect(ctx.config.model).toBe('claude-opus-4-8')
-    expect(await launchAndReadModel('global-default')).toBe('claude-opus-4-8')
+    expect(ctx.config.model).toBe('claude-opus-5')
+    expect(await launchAndReadModel('global-default')).toBe('claude-opus-5')
   })
 
   it('uses the per-project model override above the global default', async () => {
