@@ -458,6 +458,71 @@ export function ticketBranchName(slug: string, ticketSeq: number, unique: string
   return `${TICKET_BRANCH_PREFIX}${tempBranchSlugSegment(slug)}/${ticketSeq}-${unique}`
 }
 
+// --- sandcastle burn worktrees ----------------------------------------------
+
+/**
+ * Where sandcastle puts the `branch` strategy's worktree:
+ * `<repo>/.sandcastle/worktrees/<branch with every `/` → `-`>` (its
+ * `worktreeName = branch.replace(/\//g, '-')`). Deriving it here lets us clean
+ * up a worktree sandcastle itself failed to remove, without parsing its errors.
+ */
+export function burnWorktreePath(repoPath: string, branch: string): string {
+  return join(repoPath, '.sandcastle', 'worktrees', branch.replace(/\//g, '-'))
+}
+
+/**
+ * Best-effort removal of a burn worktree sandcastle could not delete at
+ * teardown. On Windows `git worktree remove` hits `Directory not empty` when a
+ * handle inside the dir is still open — typically the just-`rm -f`'d
+ * container's bind mount, which Docker Desktop releases a moment later (also
+ * Defender/the indexer mid-scan) — so the first retry usually succeeds. Falls
+ * back to a direct recursive delete, then always prunes: git only drops the
+ * `.git/worktrees/<name>` admin entry when its work-tree delete succeeded, so a
+ * failed removal otherwise leaves the entry registered forever (and `prune`
+ * ignores it while the dir is still there).
+ *
+ * NEVER throws and never blocks an outcome — a burn's result is decided by its
+ * commits, not by whether we could tidy up after it. Returns whether the dir is
+ * actually gone.
+ */
+export async function cleanupBurnWorktree(
+  repoPath: string,
+  branch: string,
+  opts: { attempts?: number; delayMs?: number } = {},
+): Promise<boolean> {
+  const path = burnWorktreePath(repoPath, branch)
+  const attempts = Math.max(1, opts.attempts ?? 3)
+  const delayMs = opts.delayMs ?? 750
+  const g = git(repoPath)
+
+  for (let attempt = 1; attempt <= attempts && existsSync(path); attempt++) {
+    try {
+      await g.raw(['worktree', 'remove', '--force', path])
+    } catch {
+      // Still locked (or not a registered worktree) — retry, then fall back.
+    }
+    if (existsSync(path) && attempt < attempts) await sleep(delayMs)
+  }
+  if (existsSync(path)) {
+    try {
+      rmSync(path, { recursive: true, force: true })
+    } catch {
+      // best-effort — a locked file just means the dir survives this pass
+    }
+  }
+  try {
+    await g.raw(['worktree', 'prune'])
+  } catch {
+    // best-effort — a leftover registry entry is harmless once the dir is gone
+  }
+  return !existsSync(path)
+}
+
+/** `resolve` is `node:path`'s here — name the callback so it is not shadowed. */
+function sleep(ms: number): Promise<void> {
+  return new Promise((done) => setTimeout(done, ms))
+}
+
 /**
  * Commit shas reachable from `branch` but not from `base`, oldest first — the
  * work a burn attempt chain has accumulated over the feature branch. `[]` when

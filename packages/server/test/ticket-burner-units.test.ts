@@ -12,6 +12,7 @@ import {
   buildTicketJson,
   buildWorkspaceNotes,
   cacheMountFor,
+  classifyTicketRunError,
   createSerialQueue,
   createStreamThrottle,
   detectCycle,
@@ -19,6 +20,7 @@ import {
   indexBySeq,
   interpretRunResult,
   isMergeConflictError,
+  isWorktreeTeardownError,
   landWithResolve,
   parseEnvFile,
   renderTemplate,
@@ -255,6 +257,63 @@ describe('isMergeConflictError', () => {
   it('does not flag unrelated errors', () => {
     expect(isMergeConflictError(new Error('image not found locally'))).toBe(false)
     expect(isMergeConflictError('boom')).toBe(false)
+  })
+})
+
+describe('isWorktreeTeardownError', () => {
+  it('recognises sandcastle failing to remove its worktree after the run', () => {
+    // The real one, from a Windows burn: git's stderr, verbatim.
+    expect(
+      isWorktreeTeardownError(
+        new Error(
+          "error: failed to delete 'C:/Users/me/Projects/helix/.sandcastle/worktrees/runcastle-ticket-make-act-1-more-6-gX46ogOP': Directory not empty",
+        ),
+      ),
+    ).toBe(true)
+    expect(
+      isWorktreeTeardownError(
+        new Error(
+          'ENOTEMPTY: directory not empty, rmdir ' +
+            'C:\\repo\\.sandcastle\\worktrees\\runcastle-ticket-x-1-abc',
+        ),
+      ),
+    ).toBe(true)
+    expect(
+      isWorktreeTeardownError(
+        new Error("fatal: '/repo/.sandcastle/worktrees/runcastle-ticket-x-1-abc' is not a working tree"),
+      ),
+    ).toBe(true)
+    expect(
+      isWorktreeTeardownError(
+        new Error('EBUSY: resource busy or locked, unlink /repo/.sandcastle/worktrees/wt-1/node_modules/.bin/x'),
+      ),
+    ).toBe(true)
+  })
+
+  it('needs BOTH the worktree path and a removal failure — never an agent failure', () => {
+    // Removal wording without the worktree path: some other dir entirely.
+    expect(isWorktreeTeardownError(new Error('ENOTEMPTY: directory not empty, rmdir /tmp/x'))).toBe(
+      false,
+    )
+    // The worktree path without removal wording: a mid-run failure quoting it.
+    expect(
+      isWorktreeTeardownError(
+        new Error('claude-code exited with code 1: cwd /repo/.sandcastle/worktrees/wt-1'),
+      ),
+    ).toBe(false)
+    expect(isWorktreeTeardownError(new Error('authentication_error: unauthorized'))).toBe(false)
+    expect(isWorktreeTeardownError('boom')).toBe(false)
+    expect(isWorktreeTeardownError(undefined)).toBe(false)
+  })
+
+  it('stays FATAL under classifyTicketRunError — so the teardown check must come first', () => {
+    // Documents why the burner tests this before classifying: a blind retry
+    // would re-run an agent over work that is already committed.
+    const err = new Error(
+      "error: failed to delete '/repo/.sandcastle/worktrees/wt-1': Directory not empty",
+    )
+    expect(classifyTicketRunError(err)).toBe('fatal')
+    expect(isWorktreeTeardownError(err)).toBe(true)
   })
 })
 

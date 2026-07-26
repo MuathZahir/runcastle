@@ -14,6 +14,8 @@ import {
   __resetTestDriveState,
   activeDriveInfo,
   activeTestDriveFeatureId,
+  burnWorktreePath,
+  cleanupBurnWorktree,
   cleanupTempBranches,
   commitDocs,
   createFeatureBranch,
@@ -1055,5 +1057,75 @@ describe('mergeFeature', () => {
     expect(res.ok).toBe(true)
     expect(await currentBranch(g)).toBe('main')
     expect(existsSync(join(project.repoPath, 'feature.txt'))).toBe(true)
+  })
+})
+
+describe('burn worktree cleanup (sandcastle teardown flake)', () => {
+  let repo: string
+  let g: SimpleGit
+
+  const branch = 'runcastle/ticket/make-act-1-more/6-gX46ogOP'
+  /** No retries/sleeps in tests — the retry pacing exists for real file locks. */
+  const fast = { attempts: 1, delayMs: 0 }
+
+  async function addBurnWorktree(): Promise<string> {
+    const path = burnWorktreePath(repo, branch)
+    mkdirSync(join(repo, '.sandcastle', 'worktrees'), { recursive: true })
+    await g.raw(['worktree', 'add', '-b', branch, path, 'main'])
+    return path
+  }
+
+  async function registeredPaths(): Promise<string[]> {
+    return (await g.raw(['worktree', 'list', '--porcelain']))
+      .split('\n')
+      .filter((l) => l.startsWith('worktree '))
+      .map((l) => l.slice('worktree '.length).trim())
+  }
+
+  beforeEach(async () => {
+    repo = mkTmp('rc-burnwt-')
+    g = await initRepo(repo)
+  })
+
+  it('maps a branch to sandcastle`s worktree dir name (slashes → dashes)', () => {
+    expect(burnWorktreePath(repo, branch)).toBe(
+      join(repo, '.sandcastle', 'worktrees', 'runcastle-ticket-make-act-1-more-6-gX46ogOP'),
+    )
+  })
+
+  it('removes the worktree and deregisters it', async () => {
+    const path = await addBurnWorktree()
+    expect(existsSync(path)).toBe(true)
+
+    expect(await cleanupBurnWorktree(repo, branch, fast)).toBe(true)
+    expect(existsSync(path)).toBe(false)
+    expect(await registeredPaths()).toHaveLength(1) // the main checkout only
+  })
+
+  it('removes one left dirty + holding untracked files (--force)', async () => {
+    const path = await addBurnWorktree()
+    writeFileSync(join(path, 'README.md'), 'edited\n')
+    mkdirSync(join(path, 'node_modules'), { recursive: true })
+    writeFileSync(join(path, 'node_modules', 'junk.js'), 'x\n')
+
+    expect(await cleanupBurnWorktree(repo, branch, fast)).toBe(true)
+    expect(existsSync(path)).toBe(false)
+  })
+
+  it('prunes the registry entry a half-failed removal left behind', async () => {
+    // The real leftover state: git deleted enough to be useless but kept the
+    // `.git/worktrees/<name>` entry, since it only drops that once the work-tree
+    // delete succeeded. Stand in for it by deleting the dir out from under git.
+    const path = await addBurnWorktree()
+    rmSync(path, { recursive: true, force: true })
+    expect((await registeredPaths()).length).toBe(2)
+
+    expect(await cleanupBurnWorktree(repo, branch, fast)).toBe(true)
+    expect(await registeredPaths()).toHaveLength(1)
+  })
+
+  it('never throws when there is nothing to clean (or no repo at all)', async () => {
+    expect(await cleanupBurnWorktree(repo, branch, fast)).toBe(true)
+    expect(await cleanupBurnWorktree(mkTmp('rc-norepo-'), branch, fast)).toBe(true)
   })
 })

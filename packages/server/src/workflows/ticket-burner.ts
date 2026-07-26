@@ -21,6 +21,7 @@ import {
 import {
   allowPushToCheckedOutBranches,
   branchCommitsAhead,
+  cleanupBurnWorktree,
   commitSummaries,
   mergeTempBranch,
   ticketBranchName,
@@ -634,6 +635,46 @@ export function interpretRunResult(
     return { status: 'failed', error: `agent reported BLOCKED:\n${blockedContent.trim()}` }
   }
   return { status: 'failed', error: 'agent made no commits' }
+}
+
+/**
+ * The marker that an error is ABOUT a sandcastle burn worktree: its path. Every
+ * teardown failure quotes it (git's stderr names the dir it could not delete),
+ * and nothing in the agent's own failure modes does.
+ */
+const BURN_WORKTREE_PATH = /[\\/]\.sandcastle[\\/]worktrees[\\/]/i
+
+/** Phrases git/node produce when a directory removal is blocked, not when a run is. */
+const WORKTREE_REMOVAL_FAILURES: RegExp[] = [
+  /failed to delete/i,
+  /directory not empty|enotempty/i,
+  /unable to (unlink|delete)/i,
+  /is not a working tree/i,
+  /resource busy|ebusy|eperm|eacces/i,
+]
+
+/**
+ * Did `run()` throw from sandcastle's END-OF-RUN worktree teardown rather than
+ * from anything the agent did?
+ *
+ * Sandcastle removes the worktree in its scope's release step
+ * (`cleanupWorktree` → `git worktree remove --force`) and wires that with
+ * `Effect.orDie`, so a failure there becomes a defect and rejects `run()` —
+ * even though the agent had already finished and its commits were collected.
+ * On Windows this is a routine flake: the container is torn down first, but its
+ * bind mount can still hold a handle for a moment, and git reports
+ * `failed to delete '<path>': Directory not empty`.
+ *
+ * Recognizing it lets the burner land work that is already done instead of
+ * failing the ticket on a cleanup error (and burning a whole agent re-run to
+ * recover it). Callers MUST also require that the attempt's temp branch holds
+ * commits: creation-time worktree errors quote the same path, and only commits
+ * prove the agent actually got to work.
+ */
+export function isWorktreeTeardownError(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : typeof err === 'string' ? err : String(err)
+  if (!BURN_WORKTREE_PATH.test(msg)) return false
+  return WORKTREE_REMOVAL_FAILURES.some((p) => p.test(msg))
 }
 
 /** Heuristic: did `run()` throw because a branch merge conflicted? */
@@ -1430,7 +1471,7 @@ async function realExecuteTicketRun(
       return made.length > 0 ? resolveBranch : input.branch
     }
 
-    let result: RunResult
+    let result: RunResult | undefined
     try {
       result = await run({
         agent: buildBurnAgent(config, token, model),
@@ -1454,16 +1495,26 @@ async function realExecuteTicketRun(
       })
     } catch (err) {
       if (ctx.signal.aborted) throw err // run cancelled — the runner finalizes it
-      return {
-        ok: false,
-        branch: await bestTip(),
-        error: ticketAbort.signal.aborted
-          ? 'stopped by user during conflict resolution'
-          : errorHeadline(err instanceof Error ? err.message : String(err)),
+      const tip = await bestTip()
+      // Teardown-only failure (see `isWorktreeTeardownError`) on a branch that
+      // holds the resolver's commits: the merge it was asked to do either
+      // happened or did not, and the verification below reads that off git, not
+      // off `result`. Fall through instead of reporting a failed pass.
+      const teardownOnly =
+        !ticketAbort.signal.aborted && isWorktreeTeardownError(err) && tip === resolveBranch
+      if (!teardownOnly) {
+        return {
+          ok: false,
+          branch: tip,
+          error: ticketAbort.signal.aborted
+            ? 'stopped by user during conflict resolution'
+            : errorHeadline(err instanceof Error ? err.message : String(err)),
+        }
       }
+      await cleanupBurnWorktree(project.repoPath, resolveBranch)
     }
 
-    const blocked = readBlockedFile([result.preservedWorktreePath, project.repoPath])
+    const blocked = readBlockedFile([result?.preservedWorktreePath, project.repoPath])
     if (blocked !== undefined && blocked.trim().length > 0) {
       return {
         ok: false,
@@ -1654,6 +1705,28 @@ async function realExecuteTicketRun(
               message: `ticket ${ticket.seq} stopped by user${salvaged.length > 0 ? ` — ${salvaged.length} commit(s) preserved for retry` : ''}`,
             },
           }
+        }
+        // Sandcastle's end-of-run worktree teardown failed (Windows: a handle
+        // still open in the bind mount of the container it just removed). That
+        // is a defect inside its release step, so `run()` rejects AFTER the
+        // agent finished and its commits were collected — and the salvaged
+        // commits prove the agent got there. Failing the ticket over a cleanup
+        // error would discard finished work and spend another whole agent run
+        // rediscovering it, so land the chain and tidy up best-effort instead.
+        if (isWorktreeTeardownError(err)) {
+          const removed = await cleanupBurnWorktree(project.repoPath, tempBranch)
+          if (salvaged.length > 0) {
+            ctx.emitEvent({
+              type: 'burn.worktree.teardown-failed',
+              message: `ticket ${ticket.seq}: agent finished but sandcastle could not remove its worktree (${errorHeadline(msg)})${removed ? ' — cleaned up' : ' — left on disk'}; landing the ${salvaged.length} commit(s) anyway`,
+              ticketId: ticket.id,
+              data: { branch: tempBranch, error: msg, cleanedUp: removed },
+            })
+            return await landChain(tempBranch, salvaged)
+          }
+          // No commits to salvage — the failure says nothing about the ticket
+          // either way, so fall through to the normal paths (retry/fatal); the
+          // leftover dir is cleaned up regardless.
         }
         if (isMergeConflictError(err)) {
           // Sandcastle itself hit a branch conflict setting the run up, so we

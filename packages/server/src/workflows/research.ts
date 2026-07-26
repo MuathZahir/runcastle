@@ -10,13 +10,19 @@ import type { RunOptions, RunResult } from '@ai-hero/sandcastle'
 import { run } from '@ai-hero/sandcastle'
 import { docker } from '@ai-hero/sandcastle/sandboxes/docker'
 import { noSandbox } from '@ai-hero/sandcastle/sandboxes/no-sandbox'
-import { mergeTempBranch, researchBranchName } from '../services/git'
+import {
+  branchCommitsAhead,
+  cleanupBurnWorktree,
+  mergeTempBranch,
+  researchBranchName,
+} from '../services/git'
 import type { StreamThrottle, ThrottledEvent } from './ticket-burner'
 import {
   buildBurnAgent,
   buildDocsDigest,
   buildFeatureBrief,
   createStreamThrottle,
+  isWorktreeTeardownError,
   parseEnvFile,
 } from './ticket-burner'
 
@@ -274,17 +280,35 @@ async function realExecuteResearchRun(
     logging: { type: 'file', path: logFilePath, onAgentStreamEvent: throttle.onEvent },
   }
 
-  let result: RunResult
+  let result: RunResult | undefined
+  /** Commits recovered off the temp branch when only sandcastle's teardown died. */
+  let salvaged: string[] = []
   try {
     result = await run(runOptions)
   } catch (err) {
     throttle.flush()
     if (ctx.signal.aborted) throw err // let the runner mark the run cancelled
-    return { status: 'failed', error: err instanceof Error ? err.message : String(err) }
+    const msg = err instanceof Error ? err.message : String(err)
+    // Same flake the burner handles (see `isWorktreeTeardownError`): sandcastle
+    // rejects when it cannot remove its worktree in the run's release step —
+    // after the agent wrote and committed the summary. Recover the commits off
+    // the temp branch and land them rather than losing the waypoint's work.
+    salvaged = isWorktreeTeardownError(err)
+      ? await branchCommitsAhead(project.repoPath, feature.branch, tempBranch)
+      : []
+    if (salvaged.length === 0) return { status: 'failed', error: msg }
+    const removed = await cleanupBurnWorktree(project.repoPath, tempBranch)
+    ctx.emitEvent({
+      type: 'burn.worktree.teardown-failed',
+      message: `waypoint ${waypoint.seq}: agent finished but sandcastle could not remove its worktree (${errorHeadline(msg)})${removed ? ' — cleaned up' : ' — left on disk'}; landing the ${salvaged.length} commit(s) anyway`,
+      data: { tempBranch, error: msg, cleanedUp: removed },
+    })
   }
   throttle.flush()
 
-  const outcome = interpretResearchResult(result, docRelPath)
+  const outcome: ResearchOutcome = result
+    ? interpretResearchResult(result, docRelPath)
+    : { status: 'done', commits: salvaged, docRelPath }
   if (outcome.status !== 'done') return outcome
 
   // Land the research commits on the feature branch (run-finalize success path).
