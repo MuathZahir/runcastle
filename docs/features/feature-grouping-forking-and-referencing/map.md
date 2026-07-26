@@ -16,6 +16,8 @@ runcastle gains project-level memory and project-level entry points — durable 
 - `sessions.feature_id` and `tickets.feature_id` are both `NOT NULL` (`packages/core/src/db-schema.ts`) — the schema currently assumes every session and every ticket belongs to a feature.
 - `tickets.seams` is a stored JSON column, so cross-feature collision detection has the data it needs already.
 - Mapped ideation (waypoints, ADR-0001) already solves decomposition *within* a feature. Every question on this map is about the space *between* features.
+- Matt's `CONTEXT.md` (`~/.claude/skills/domain-modeling/CONTEXT-FORMAT.md`) is a *glossary* — `## Language`, tight term definitions, `_Avoid_` lists. runcastle's own root `CONTEXT.md` is a *charter* — vision, 14 locked decisions, design principles — with no glossary in it. Same filename, two documents; decision 6 merges them deliberately rather than inheriting the collision.
+- `CLAUDE.md` in this repo already carries a hand-written spec-decay stamp ("Build-time document… some references describe build-era states the code has since moved past") — empirical proof for decision 8.
 
 **Constraints carried in:**
 - `CONTEXT.md` design principle: flexible guidance over brittle machinery — when in doubt, less mechanism. Prefer edges over new entities, presets over parallel systems.

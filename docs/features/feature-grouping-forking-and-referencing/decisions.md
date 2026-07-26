@@ -53,3 +53,96 @@ features, not one big one, and the only reason it becomes a map is that runcastl
 no way to create features from anywhere but the New Feature form. That is itself
 evidence for the project-level session, and it is the sharpest argument for building
 it early.
+
+## 6. Five knowledge tiers, separated by write mode and scope
+**Decision:** A runcastle project has exactly five knowledge tiers. This is the
+vocabulary every other waypoint on this map uses; none of them may redefine it.
+
+1. **Charter** — `CONTEXT.md` at the repo root. What the project is, the words it
+   uses (a `## Language` glossary section in Matt's format), and the design
+   principles it will not violate. Project scope. **Rewritten in place** — it always
+   describes the present, never the past.
+2. **Decision log** — `docs/adr/NNNN-<slug>.md`. Project-scope decisions.
+   **Append-only**: an overturned ADR is marked superseded, never edited away.
+3. **Feature decisions** — `docs/features/<slug>/decisions.md`. Why *this* feature is
+   shaped the way it is. Feature scope, append-only, durable after ship.
+4. **Feature spec** — `docs/features/<slug>/spec.md`. Feature scope, true at exactly
+   one moment (see 8).
+5. **Working docs** — `brief.md`, `map.md`. The seed and the navigation for one
+   ideation. Feature scope, ephemeral: dead the moment the feature ships.
+
+The load-bearing axis is **rewritten-in-place vs append-only**, not importance — it
+is the rule that tells an agent whether to edit a file or add to it.
+
+**Why:** Matt's `CONTEXT.md` is a *glossary* (ubiquitous language, terms with
+`_Avoid_` lists); runcastle's own `CONTEXT.md` is a *charter* (vision, locked
+decisions, principles) with no glossary in it at all. Two documents, one filename —
+the product would have inherited that collision. One file with two sections resolves
+it without adding a third project-level doc (less-mechanism principle), and both
+halves share identical read semantics: always injected, always current. The glossary
+earns its place in runcastle specifically because **agents** author the docs here —
+vocabulary drift across twenty sessions ("waypoint" in one, "map node" in the next)
+is the most likely way cross-feature knowledge rots, and it rots silently.
+
+## 7. An ADR is a feature decision that outgrew its feature
+**Decision:** Matt's three-part filter (hard to reverse / surprising without context /
+result of a real trade-off) is a **quality** filter, not the ADR boundary — most
+`decisions.md` entries pass all three. The boundary is **blast radius**: an ADR is a
+decision that a stranger working on an unrelated part of the codebase must obey
+*without ever reading this feature's docs*. If it only makes sense while reading this
+feature's code, it stays in `decisions.md`. A promotion candidate must pass Matt's
+three **and** the blast-radius test.
+
+Corollary on lineage: **every ADR is born as a `decisions.md` entry.** A feature
+session never hand-writes into `docs/adr/` — it nominates. Direct project-level
+authoring, if it exists at all, belongs to the project-level session (waypoint 5's
+call). The promotion *mechanism* — who fires it, at which pipeline moment, and what
+happens to a superseded ADR — is waypoint 3's; this waypoint fixes only what is
+eligible.
+
+**Why:** if the test were quality, both files would collect the same entries and the
+split would be arbitrary. Scope is objectively checkable by an agent — "would someone
+who never opens this feature need this?" — where "is this important?" is not. Routing
+all project knowledge up through the feature record also keeps one unbroken provenance
+chain: every ADR can point back at the grill that produced it.
+
+## 8. `spec.md` decays and is never read across features
+**Decision:** `spec.md` is a **build order, not a record**. It is true at the moment
+tickets are emitted; from the first merged burn onward, the code is the truth. It is
+read by this feature's burners and its review pass and by nothing else — never carried
+into another feature's context, never indexed for cross-feature access. A later
+feature that needs to know how something works reads the **code** (what it does) and
+the ADR / `decisions.md` (why it is that way). At ship, `spec.md` gets a decay stamp in
+its header marking it superseded by the code.
+
+**Why:** runcastle already proved this by hand. Its own `CLAUDE.md` opens with
+"Build-time document… some references describe build-era states the code has since
+moved past" — a stamp a human had to write *after* being misled by it. Carrying a
+decayed spec across features is worse than carrying nothing: it reads authoritative,
+is silently wrong, and an agent has no cheap way to tell.
+
+## 9. Findings are not a tier
+**Decision:** Research output — version pins, API shapes, competitor sweeps, the
+adopt/skip list a `research` waypoint returns — is an **input**, not a knowledge tier.
+A finding either becomes a **decision** (promoted to whichever tier it earns), or a
+**constraint** (stated in the charter or an ADR: "we are pinned to X because Y"), or it
+is scratch that dies with the feature — folded into `map.md` Notes as "facts
+established, do not re-derive", which this very map already does. runcastle does not
+create a `docs/research/` tier in user projects.
+
+**Why:** findings decay faster than specs and accumulate faster than anything else, so
+a findings tier would be the first thing to rot and the largest thing to index. A
+finding that actually matters is always expressible as a decision or a constraint; one
+that resists both expressions was never durable. runcastle-the-repo's own
+`docs/research/*` is a bootstrapping artifact of building the stack, not a pattern to
+ship to users.
+
+## 10. Single-context by default; no subsystem tier
+**Decision:** A runcastle project has one `CONTEXT.md` and one `docs/adr/`. Matt's
+multi-context shape (`CONTEXT-MAP.md` plus per-context `CONTEXT.md` and `docs/adr/`)
+is recognised as the growth path but is not built: there is no per-subsystem knowledge
+tier between project and feature.
+**Why:** it is purely additive later — a `CONTEXT-MAP.md` appearing at the root is the
+signal, exactly as in Matt's format — and nothing else on this map depends on it.
+Building it now would double the "where does this go?" decision every promotion has to
+make, for a shape no dogfooded project has needed yet.
