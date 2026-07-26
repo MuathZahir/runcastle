@@ -252,3 +252,97 @@ trade-off: a session that never follows the chain can re-propose something alrea
 since the rejection is not in front of it. That is the right side to err on, because a
 *reasoned* reversal is recorded in the new ADR's "why", and the on-demand path exists for
 the reader who asks directly.
+
+## 14. Cross-feature access is a navigator, not an oracle
+**Decision:** runcastle does **not** build a question-shaped `why(...)` that returns a
+synthesised cited answer. It builds a navigator in four parts:
+
+1. **Injected, full text** — the charter and the **live** ADRs, rendered into the session's
+   system prompt at launch from live state (decision 13 already fixed the membership; this
+   fixes the delivery). Not a committed index file, so it cannot drift.
+2. **Injected, one line each** — a **project index** generated at launch from the features
+   table: slug, one-liner, status (`shipped` / `in flight`), and the path to that feature's
+   docs. In-flight features appear by title only.
+3. **On demand, no new tool** — every other doc (`decisions.md`, briefs, superseded ADRs) is
+   read with the session's ordinary `Read`/`Grep`. The index says where; the file gives the
+   unabridged argument.
+4. **On demand, one MCP tool** — the records that live only in SQLite (decision 15).
+
+Burners get part 1 and nothing else: the injected set is appended to
+`packages/skills/burner/implement-ticket.md`'s context, because decision 7's blast-radius
+test — "a stranger working on an unrelated part of the codebase must obey this without ever
+reading this feature's docs" — is a literal description of a burner. Parts 2–4 are
+talk-session surfaces.
+
+**Why:** the retrieval gap does not exist. A talk session is Claude Code in a worktree where
+every merged feature's `docs/features/<slug>/` is already on disk (map.md, facts
+established); the gaps are *navigation* and *staleness*, and an index plus a status word
+close both. `why(...)` would have required an LLM inside a server that has none — it is Hono
++ tRPC + SQLite, and decision 12 already established there is no agent at ship — buying
+inference cost and latency in order to compress prose for a caller that is itself a
+large-context LLM holding the same repo. Worse, it launders: a paraphrase with a citation
+reads authoritative while discarding the rejected alternatives and the trade-off, which is
+the entire payload of a decision record — the exact failure mode decision 8 named ("reads
+authoritative, is silently wrong, and an agent has no cheap way to tell"). The one real
+argument for `why(...)` — that vocabulary drift (decision 6) means an agent cannot guess the
+keyword — is a table-of-contents problem, and at runcastle's scale (tens of features, each
+with titled, one-line-summarised decisions) a generated title index beats a semantic index
+outright and costs nothing to keep fresh. This is decision 3's argument one level down: push
+beats pull, and pull that fails silently is worse than no pull.
+**Scope:** project
+
+## 15. The work record indexes facts, never intent
+**Decision:** The one new MCP tool returns a feature's **work record**, not its tickets. Per
+feature: ship date, run summaries, and a flat list of `{ seq, title, status, seams[],
+commits[], error? }`. It explicitly does **not** return a ticket's `goal`, `context`, or
+`acceptanceCriteria`. It is queryable two ways — by feature slug ("what did X actually
+do?") and by seam ("who has touched this path before, and why?").
+
+Failures are indexed as facts, not as knowledge: an `error` is a pointer meaning "this area
+has bitten us", which sends the agent to the code and the decisions. A recurring failure that
+deserves to become a rule is promotion's problem (waypoint 3), not access's.
+
+**Why:** a ticket's body fails decision 8's own test. `goal`/`context`/`acceptanceCriteria`
+are intent at a moment — `spec.md` chopped into slices, written before the code existed —
+and the burner may have satisfied them by another route, or a review iteration may have
+overwritten the result. Carrying them across features is handing a later agent a decayed spec
+with none of decision 8's decay stamp on it. What survives is the residue that is true as
+history and cannot be wrong later: seams, commits, status, error, timings, and the title as a
+label rather than a claim. The tool earns its existence because these rows live only in
+SQLite — `commitDocs` stages `docs/features` and nothing else — so no file tool can reach
+them, and because `seams` is the **only link from a path in the codebase back to the argument
+that put it there**: git gives `path → commit → message`, while `seams` gives `path → ticket
+→ feature → decisions.md`. The seam query is kept despite overlapping waypoint 7's collision
+detection: it is one filter over a column that already exists, it is the question an agent
+actually has mid-implementation, and one tool serving two consumers is cheaper than two.
+
+## 16. Provenance is a status word; there is no freshness heuristic and no size ceiling
+**Decision:** Indexed material carries a **status word** and a provenance address, never a
+confidence or recency score. Four states, exhaustive:
+
+- **`current`** — a live ADR or the charter. This binds you.
+- **`historical`** — a shipped feature's `decisions.md` entry. A true account of why that
+  feature is shaped that way; scoped to it, never binding on you.
+- **`superseded`** — carries `superseded by ADR-NNNN`. Read the pointer; read the body only
+  for the original argument.
+- **`in flight`** — an unmerged feature. Not real yet: a heads-up, not a constraint.
+
+Provenance is one line per item — `docs/features/<slug>/decisions.md#N` for docs, slug plus
+commit shas for the work record — always an address the agent can open, extending the
+`source:` convention decision 12 gave promoted ADRs.
+
+The always-injected set has **no size ceiling and no truncation**. Charter in full, live ADRs
+in full, index one line each.
+
+**Why:** every item we chose to index is an append-only *why*-record, and those do not decay
+— "we chose promote-then-merge because there is no agent at ship" is as true in five years as
+the day it was written. An age-based discount would teach the agent to distrust the one class
+of document in the project that never goes wrong. The things that genuinely decay were
+designed out of the corpus instead of labelled: `spec.md` by decision 8, ticket bodies by
+decision 15. So the only real question is "is this still what we do?", and decision 13 already
+answered it with an explicit supersession pointer rather than a guess. The load-bearing
+consequence is that **the agent is never asked to adjudicate trust** — it looks up a status
+the database already knows. On size: when the live ADR set grows painful, that is the
+over-nomination pressure decision 12 named, whose stated fix is tightening eligibility prose.
+A ceiling would silently drop ADRs, turning "this binds you" into "this binds you unless it
+did not fit" — the same silent failure decision 3 rejected. It should hurt visibly.
