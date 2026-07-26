@@ -16,6 +16,8 @@
  * knows earlier output was trimmed.
  */
 
+import { publishLive } from './bus'
+
 export interface TranscriptChunk {
   /** Monotonic per-ticket index — the poll cursor. */
   i: number
@@ -55,6 +57,7 @@ const transcripts = new Map<string, Transcript>()
 /** Start (or restart — a re-burn) a ticket's transcript: clears old content. */
 export function beginTranscript(ticketId: string): void {
   transcripts.set(ticketId, { live: true, chunks: [], nextIndex: 0, bytes: 0 })
+  publishLive({ kind: 'transcript', ticketId })
 }
 
 /** Append one chunk; trims oldest when over the retention caps. */
@@ -73,12 +76,17 @@ export function appendTranscript(
     if (!dropped) break
     t.bytes -= dropped.text.length
   }
+  // One signal per token would be a firehose; the SSE route coalesces per
+  // ticket on a flush tick, so publishing unthrottled here is safe and keeps
+  // this module free of timing policy.
+  publishLive({ kind: 'transcript', ticketId })
 }
 
 /** Mark the ticket's agent finished; the transcript stays readable. */
 export function endTranscript(ticketId: string): void {
   const t = transcripts.get(ticketId)
   if (t) t.live = false
+  publishLive({ kind: 'transcript', ticketId })
 }
 
 /** Read chunks after the cursor. Unknown ticket → empty, not an error. */

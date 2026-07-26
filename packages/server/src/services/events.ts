@@ -3,6 +3,7 @@ import { and, asc, eq, gt } from 'drizzle-orm'
 import type { AppCtx } from '../db/types'
 import { events, features } from '../db/schema'
 import { NotFoundError } from '../errors'
+import { publishLive } from './bus'
 
 /**
  * The timeline. Every mutating service function emits an event here — the UI
@@ -81,7 +82,17 @@ function insertEvent(
     })
     .returning()
     .get()
-  return rowToEvent(row)
+  const event = rowToEvent(row)
+  // Push the change to connected browsers (services/bus.ts). Every mutating
+  // service function lands here, so this one call makes the whole app live —
+  // polling stays only as the fallback for a dropped stream.
+  publishLive({
+    kind: 'event',
+    projectId: event.projectId,
+    featureId: event.featureId,
+    eventId: event.id,
+  })
+  return event
 }
 
 /** Events for a feature with `id > afterId`, oldest first (the poll cursor). */

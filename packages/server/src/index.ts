@@ -11,6 +11,7 @@ import mcpApp from './mcp/server'
 import { ptyRegistry } from './pty/registry'
 import { terminalWebSocket, tryUpgradeTerminal } from './pty/ws'
 import hooksApp from './routes/hooks'
+import streamApp from './routes/stream'
 import { mountWebAppIfBuilt } from './routes/web'
 import { appRouter } from './trpc/router'
 import { reconcileStaleRuns } from './workflows/reconcile-runs'
@@ -54,6 +55,8 @@ export function buildApp(ctx: AppCtx): Hono {
   )
 
   app.route('/api/hooks', hooksApp)
+  // Live-update SSE (routes/stream.ts) — the push channel the UI listens on.
+  app.route('/api/stream', streamApp)
   app.route('/mcp', mcpApp)
 
   // Production: serve the built SPA from this same origin (issue #38). No-op in
