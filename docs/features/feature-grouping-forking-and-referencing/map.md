@@ -17,6 +17,8 @@ runcastle gains project-level memory and project-level entry points — durable 
 - `tickets.seams` is a stored JSON column, so cross-feature collision detection has the data it needs already.
 - Mapped ideation (waypoints, ADR-0001) already solves decomposition *within* a feature. Every question on this map is about the space *between* features.
 - Matt's `CONTEXT.md` (`~/.claude/skills/domain-modeling/CONTEXT-FORMAT.md`) is a *glossary* — `## Language`, tight term definitions, `_Avoid_` lists. runcastle's own root `CONTEXT.md` is a *charter* — vision, 14 locked decisions, design principles — with no glossary in it. Same filename, two documents; decision 6 merges them deliberately rather than inheriting the collision.
+- **There is no agent at ship.** Session kinds are `ideation | qa | waypoint | converge | revisit` (`packages/core/src/schemas.ts`), and G5 (`human-merge`) is a UI button calling `mergeFeature` (`packages/server/src/services/git.ts`) — checkout base, `merge --no-ff`, restore. Nothing LLM-shaped runs at merge. Any behaviour a waypoint wants "at ship" is either a server-side mechanical step or a new session kind.
+- `commitDocs` (`packages/server/src/services/git.ts`) stages **only** `docs/features` via `DOCS_PATHSPEC`, so nothing outside a feature's own directory currently rides a feature merge.
 - `CLAUDE.md` in this repo already carries a hand-written spec-decay stamp ("Build-time document… some references describe build-era states the code has since moved past") — empirical proof for decision 8.
 
 **Constraints carried in:**

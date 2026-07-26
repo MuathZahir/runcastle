@@ -146,3 +146,109 @@ tier between project and feature.
 signal, exactly as in Matt's format — and nothing else on this map depends on it.
 Building it now would double the "where does this go?" decision every promotion has to
 make, for a shape no dogfooded project has needed yet.
+
+## 11. Nomination is a field on the decision, written by the session that decides
+**Decision:** A `decisions.md` entry marks itself as a promotion candidate with a third
+field on the entry itself:
+
+```markdown
+## 7. An ADR is a feature decision that outgrew its feature
+**Decision:** …
+**Why:** …
+**Scope:** project
+```
+
+Absent the line, the entry is feature scope — the default is "stays here." The session
+that writes the entry applies decision 7's eligibility test (Matt's three **and** blast
+radius) and adds the line. Nomination is a **property of the entry, not an event at a
+pipeline moment**: any later session — a review-phase `revisit`, the converge pass — may
+add or remove the line on an existing entry until ship freezes it. There is no
+nomination tool call and no nomination pass.
+
+**Why:** decision 7 made eligibility a judgement ("would a stranger who never opens this
+feature need to obey this?"), and the only moment that judgement is cheap is while the
+argument is still in context. A later auditing pass reads frozen prose and has to
+reconstruct the rejected alternatives, the reversibility cost, and who else the decision
+binds — all of which the grilling session had in front of it. Decisions 6 and 7 in this
+very file are legible as project-scope only because they happen to *argue* about scope;
+an auditor reading 1 and 4 would be guessing. Making it a prose field rather than a tool
+costs literally nothing (one line in text the agent is already writing) and keeps the
+"less mechanism" principle intact. The escape hatch for blast radius that only becomes
+visible after implementation is the editability rule above — late nomination needs no
+new machinery because nomination was never an event.
+
+## 12. Promotion is automatic at merge, visible beforehand, opt-out per item
+**Decision:** Promotion fires as part of the **Merge** click, server-side, as one
+promote-then-merge action on the feature branch:
+
+1. for each `**Scope:** project` entry not already promoted, write
+   `docs/adr/NNNN-<slug>.md` (next free number);
+2. stamp the source entry with `→ promoted to ADR-NNNN`;
+3. commit both to the feature branch;
+4. merge as today.
+
+The review pane lists what will be promoted and lets the human uncheck an item, but the
+merge is **never blocked** on dispositioning that list — promotion is a default that
+fires, not a gate. No new session kind is introduced.
+
+Three consequences, stated so they are not rediscovered later:
+
+- **Promotion copies, deliberately.** `map.md` carries "link, never copy," but that rule
+  governs documents that get *edited*. Both sides here are append-only and frozen at ship
+  (decision 6), so there is no drift channel; and a pure link would defeat decision 7's
+  blast-radius test, which says the reader must not have to open the feature's docs. The
+  copy carries `source: docs/features/<slug>/decisions.md#N` so provenance survives.
+- **The transform needs no LLM.** An ADR is "1–3 sentences: context, what we decided, and
+  why" (`ADR-FORMAT.md`); a `decisions.md` entry is already title + Decision + Why. The
+  mapping is mechanical.
+- **`DOCS_PATHSPEC` must widen.** `commitDocs` stages only `docs/features`
+  (`packages/server/src/services/git.ts`), so promotion either extends the pathspec to
+  `docs/adr` or takes its own commit. This is the one place the feature touches existing
+  git machinery.
+
+**Why:** there is no agent at ship — session kinds are `ideation | qa | waypoint |
+converge | revisit`, and G5 (`human-merge`) is a button calling `mergeFeature`. So
+"the shipping session promotes" was never available; the choice was really between
+inventing a session and making the step mechanical. Because nomination (decision 11)
+already carried the judgement, what remains at ship is a transform, and a transform can
+run inside the merge action. Beyond mechanics: runcastle is serial HITL, so the human was
+*present* for every decision being nominated — a confirm dialog at ship asks them to
+re-adjudicate weeks later with less context than they had the first time. And the errors
+are asymmetric: a wrong promotion is visible and cheap to reverse (supersede it, which the
+format is built for), while a missed promotion is invisible forever. The known risk is
+over-nomination bloating an always-read tier; the pre-merge list is the pressure valve,
+and the fix for a persistently wrong count is tightening the eligibility prose in the
+skill, not adding a gate. Writing the ADR on the feature branch *before* the merge is what
+makes "this feature's knowledge became the project's knowledge" a single atomic commit
+rather than a merge plus a stray commit to the base branch.
+
+## 13. A superseded ADR is stamped in place and leaves the default context, never disk
+**Decision:** When a later decision overturns a live ADR:
+
+- the overturning entry nominates with its target — `**Scope:** project (supersedes
+  ADR-0004)` — so the same mechanical transform does two writes: the new ADR carries
+  `supersedes: 0004`, and ADR-0004's status flips to `superseded by ADR-0009`;
+- **the status line is the only permitted edit to a shipped ADR.** It changes a *pointer*,
+  not a *claim* — the body stays exactly as written. Any other edit to a shipped ADR is a
+  bug, and this is the sole exception to decision 6's append-only rule for this tier;
+- **it does not move.** No `superseded/` subdirectory, no renumbering — ADRs cite each
+  other by path, and moving a file breaks every inbound pointer to buy tidiness;
+- **it leaves the always-read set but stays reachable.** The injected/indexed set is live
+  ADRs only; superseded ones remain on disk, marked, and reachable on demand by the
+  cross-feature access tool (waypoint 4).
+
+Promotion targets `docs/adr/` and only `docs/adr/`. A decision that overturns something in
+the charter is explicitly **not** handled here — the charter is the one rewritten-in-place
+tier and its edit lifecycle is waypoint 8's question.
+
+**Why:** the value of knowing a decision was overturned is carried by the **link**, not by
+the superseded record's presence in every session's context. ADR-0009 states what it
+supersedes and why, and a reader who asks "did we ever consider X?" follows the chain back
+to the intact original argument. Keeping superseded records in the default set would make
+the always-read tier grow monotonically with the project's history of changing its mind —
+a project that reverses course three times on one question should cost one ADR of context,
+not four — which is the same size pressure decision 12 already has to manage. The accepted
+trade-off: a session that never follows the chain can re-propose something already tried,
+since the rejection is not in front of it. That is the right side to err on, because a
+*reasoned* reversal is recorded in the new ADR's "why", and the on-demand path exists for
+the reader who asks directly.
