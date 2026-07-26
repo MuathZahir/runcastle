@@ -1,29 +1,25 @@
 import { useState } from 'react'
 import type { Phase } from '@runcastle/core'
 import { trpc } from '../../trpc'
-import { DimLine, EmptyState, SectionTitle, SessionStatusDot } from '../../ui'
+import { DimLine, EmptyState, SectionTitle } from '../../ui'
 import type { FeatureFull } from '../../lib/api'
 import { useToast } from '../../lib/toast'
 import { IconChevronRight, IconDoc, IconTerminal } from '../../icons'
 import { DocPeek } from '../DocPeek'
-import { EndSessionButton } from '../EndSessionButton'
-import { ErrorBoundary } from '../ErrorBoundary'
-import { TerminalView } from '../TerminalView'
+import { SessionPanel } from '../SessionPanel'
 
 type Waypoint = FeatureFull['waypoints'][number]
 
 /**
  * The ideation / spec phase body (app-redesign). Embeds the real live Claude
  * Code grill session as an inline terminal (over the /ws PTY stream); in the
- * `spec` phase the written spec doc is rendered above the conversation. When no
- * session is live the panel is a quiet empty state — the next-step bar owns the
- * "start a session" action.
+ * `spec` phase the written spec doc is rendered above the conversation. An ended
+ * session renders as the quiet ended card, which offers Resume when its
+ * conversation is still on disk (see {@link SessionPanel}). With no session at
+ * all the panel is an empty state — the next-step bar owns starting one.
  */
 export function GrillBody({ full, effective }: { full: FeatureFull; effective: Phase }) {
   const { feature, sessions, docs } = full
-  // Prefer a live/launching session; otherwise the most recent one.
-  const ordered = [...sessions].reverse()
-  const session = ordered.find((s) => s.status === 'live' || s.status === 'launching') ?? ordered[0]
   const specDoc = docs.find((d) => d.relPath.endsWith('spec.md'))
   const mapDoc = feature.mapped ? docs.find((d) => d.relPath.endsWith('map.md')) : undefined
   // Converge re-entry (recovery path): a mapped feature stranded at `spec` with
@@ -37,7 +33,6 @@ export function GrillBody({ full, effective }: { full: FeatureFull; effective: P
     !hasLive &&
     full.tickets.length === 0
 
-  const sessionIsOpen = session && session.status !== 'ended'
   const hasContext = feature.mapped || effective === 'spec'
 
   return (
@@ -53,36 +48,15 @@ export function GrillBody({ full, effective }: { full: FeatureFull; effective: P
         <span className="body-hint">shape the idea with Claude — promote it when it feels concrete</span>
       </div>
 
-      {sessionIsOpen ? (
-        <div className="grill-panel">
-          <div className="grill-strip">
-            <span className="grill-kind">{session.kind}</span>
-            <SessionStatusDot status={session.status} />
-            <span className="grill-live-label">
-              {session.status === 'launching' ? 'launching…' : 'live'}
-            </span>
-            <span className="grill-strip-spacer" />
-            <span className="grill-sid" title={session.ccSessionId ?? session.id}>
-              {(session.ccSessionId ?? session.id).slice(0, 8)}
-            </span>
-            <EndSessionButton featureId={feature.id} sessionId={session.id} />
-          </div>
-          <div className="grill-term" id="grill-term">
-            <ErrorBoundary label="terminal">
-              <TerminalView sessionId={session.id} />
-            </ErrorBoundary>
-          </div>
-        </div>
-      ) : session ? (
-        <div className="session-ended-card" id="grill-term">
-          <span className="session-ended-dot" />
-          <div className="session-ended-main">
-            <div className="session-ended-title">Session ended</div>
-            <div className="session-ended-sub">
-              Decisions from this conversation were captured to Knowledge.
-            </div>
-          </div>
-        </div>
+      {sessions.length > 0 ? (
+        // The ended card's own Resume stands down while the converge-recovery
+        // bar is showing — that bar relaunches the same conversation with the
+        // phase framing the human needs there.
+        <SessionPanel
+          featureId={feature.id}
+          sessions={sessions}
+          showResume={!showConvergeResume}
+        />
       ) : (
         <div className="grill-panel">
           <EmptyState

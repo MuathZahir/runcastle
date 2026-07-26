@@ -2,21 +2,27 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { sessionDir, worktreeDir } from '@runcastle/core/paths'
-import type { WaypointInput } from '@runcastle/core'
+import type { SessionKind, WaypointInput } from '@runcastle/core'
 import { newId } from '@runcastle/core'
 import { simpleGit } from 'simple-git'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AppCtx } from '../src/db/types'
 import { runs } from '../src/db/schema'
-import { handlePtyExit, workWaypoint } from '../src/launcher/launcher'
+import { handlePtyExit, launchSession, workWaypoint } from '../src/launcher/launcher'
 import { reconcileStaleSessions } from '../src/launcher/reconcile'
+import type { PtyEntry } from '../src/pty/registry'
+import { ptyRegistry } from '../src/pty/registry'
 import {
+  KICKOFF_DELAY_MS,
+  KICKOFF_LINES,
+  KICKOFF_SUBMIT_DELAY_MS,
   activeSessionsForFeature,
   createSessionRow,
   getSessionRow,
   markSessionEnded,
   markSessionLive,
   mostRecentResumableSession,
+  resumeKickoffLine,
 } from '../src/launcher/sessions'
 import { listAfter } from '../src/services/events'
 import { createFeatureBranch } from '../src/services/git'
@@ -328,7 +334,157 @@ describe('failed resume — lastSessionId preservation + events', () => {
   })
 })
 
+/**
+ * Reopening a terminal resumes ITS OWN conversation, at every phase. A session is
+ * a real `claude` process in a server-owned PTY, so quitting runcastle kills it
+ * and boot reconciliation ends the row — but the transcript survives on disk and
+ * the row kept its `ccSessionId`, so the next terminal of that kind `--resume`s
+ * it instead of starting cold from the docs.
+ */
+describe('relaunching a terminal resumes its own conversation', () => {
+  let ctx: AppCtx
+  let projectId: string
+  let repoPath: string
+  const cleanup: string[] = []
+
+  beforeEach(async () => {
+    ctx = await makeTestCtx()
+    repoPath = mkdtempSync(join(tmpdir(), 'runcastle-relaunch-'))
+    cleanup.push(repoPath)
+    await initRepo(repoPath)
+    projectId = seedProject(ctx, repoPath).id
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+    vi.useRealTimers()
+    for (const d of cleanup) rmSync(d, { recursive: true, force: true })
+    cleanup.length = 0
+  })
+
+  async function feature(slug: string) {
+    const f = seedFeature(ctx, projectId, { slug })
+    await createFeatureBranch({ id: projectId, name: 't', repoPath, mainBranch: 'main' }, slug)
+    cleanup.push(worktreeDir(projectId, slug))
+    return f
+  }
+
+  /** Launch a session (no process), tracking its artifact dir for cleanup. */
+  async function launch(featureId: string, kind: SessionKind): Promise<string> {
+    const { sessionId } = await launchSession(ctx, { featureId, kind }, { spawn: false })
+    cleanup.push(sessionDir(sessionId))
+    return sessionId
+  }
+
+  /** The `claude` argv recorded on this session's `session.launched` event. */
+  function commandFor(featureId: string, sessionId: string): string {
+    const launched = listAfter(ctx, featureId, 0).find(
+      (e) => e.type === 'session.launched' && String(e.data?.sessionId) === sessionId,
+    )
+    return String(launched?.data?.command ?? '')
+  }
+
+  it('the FIRST grill launch starts fresh — no --resume, no session.resumed', async () => {
+    const f = await feature('first')
+    const id = await launch(f.id, 'ideation')
+
+    expect(commandFor(f.id, id)).not.toContain('--resume')
+    expect(listAfter(ctx, f.id, 0).some((e) => e.type === 'session.resumed')).toBe(false)
+    // and no "unavailable" noise either — a first launch has nothing to resume
+    expect(listAfter(ctx, f.id, 0).some((e) => e.type === 'session.resume_unavailable')).toBe(false)
+  })
+
+  it('reopening the grill after the server killed it resumes the same conversation', async () => {
+    const f = await feature('reopen')
+    const first = await launch(f.id, 'ideation')
+    markSessionLive(ctx, first, { ccSessionId: 'cc-grill' })
+
+    // runcastle quits: the PTY dies with it and boot reconciliation ends the row
+    reconcileStaleSessions(ctx)
+    expect(getSessionRow(ctx, first)?.status).toBe('ended')
+
+    const second = await launch(f.id, 'ideation')
+    expect(commandFor(f.id, second)).toContain('--resume cc-grill')
+    const resumed = listAfter(ctx, f.id, 0).find((e) => e.type === 'session.resumed')
+    expect((resumed?.data as { resumeSessionId?: string }).resumeSessionId).toBe('cc-grill')
+  })
+
+  it('resumes the newest conversation of ITS OWN kind, not whatever ran last', async () => {
+    const f = await feature('bykind')
+    const grill = await launch(f.id, 'ideation')
+    markSessionLive(ctx, grill, { ccSessionId: 'cc-grill' })
+    reconcileStaleSessions(ctx)
+
+    // a qa terminal runs afterwards, so it is the newest conversation overall
+    const qa = await launch(f.id, 'qa')
+    markSessionLive(ctx, qa, { ccSessionId: 'cc-qa' })
+    reconcileStaleSessions(ctx)
+
+    // reopening the grill still lands in the GRILL conversation
+    const backToGrill = await launch(f.id, 'ideation')
+    expect(commandFor(f.id, backToGrill)).toContain('--resume cc-grill')
+    reconcileStaleSessions(ctx)
+
+    // and reopening qa lands in the qa one
+    const backToQa = await launch(f.id, 'qa')
+    expect(commandFor(f.id, backToQa)).toContain('--resume cc-qa')
+  })
+
+  it('a session that died before going live is never a resume target', async () => {
+    const f = await feature('stillborn')
+    const dead = await launch(f.id, 'ideation') // never reaches `live` → no cc id
+    reconcileStaleSessions(ctx)
+    expect(getSessionRow(ctx, dead)?.ccSessionId).toBeFalsy()
+
+    const next = await launch(f.id, 'ideation')
+    expect(commandFor(f.id, next)).not.toContain('--resume')
+  })
+
+  it('types the RESUME kickoff into a resumed terminal, not the per-kind opener', async () => {
+    const f = await feature('kickoff')
+    const first = await launch(f.id, 'ideation')
+    markSessionLive(ctx, first, { ccSessionId: 'cc-grill' })
+    reconcileStaleSessions(ctx)
+    const second = await launch(f.id, 'ideation')
+
+    // fake PTY + timers only for the kickoff window (the launches above do real IO)
+    const written: string[] = []
+    const entry = {
+      exited: false,
+      pty: { write: (d: string) => written.push(d) },
+    } as unknown as PtyEntry
+    vi.spyOn(ptyRegistry(), 'get').mockReturnValue(entry)
+    vi.useFakeTimers()
+
+    markSessionLive(ctx, second, { ccSessionId: 'cc-grill-2' })
+    vi.advanceTimersByTime(KICKOFF_DELAY_MS + KICKOFF_SUBMIT_DELAY_MS)
+
+    expect(written).toEqual([resumeKickoffLine('ideation'), '\r'])
+    // the resume framing wraps the per-kind line, it does not replace it
+    expect(written[0]).toContain(KICKOFF_LINES.ideation)
+    expect(written[0]).toContain('Do NOT start over')
+  })
+})
+
 describe('mostRecentResumableSession — the revisit resume target', () => {
+  it('narrows to one kind when asked, ignoring newer conversations of other kinds', async () => {
+    const ctx = await makeTestCtx()
+    const featureId = seedFeature(ctx, seedProject(ctx).id).id
+
+    const grill = createSessionRow(ctx, { featureId, kind: 'ideation', worktreePath: 'w' })
+    markSessionLive(ctx, grill.id, { ccSessionId: 'cc-grill' })
+    markSessionEnded(ctx, grill.id)
+    const qa = createSessionRow(ctx, { featureId, kind: 'qa', worktreePath: 'w' })
+    markSessionLive(ctx, qa.id, { ccSessionId: 'cc-qa' })
+    markSessionEnded(ctx, qa.id)
+
+    // unfiltered (the revisit target) = newest of any kind
+    expect(mostRecentResumableSession(ctx, featureId)?.ccSessionId).toBe('cc-qa')
+    // filtered = newest of that kind, however long ago it ran
+    expect(mostRecentResumableSession(ctx, featureId, 'ideation')?.ccSessionId).toBe('cc-grill')
+    expect(mostRecentResumableSession(ctx, featureId, 'converge')).toBeNull()
+  })
+
   it('picks the newest ENDED session with a cc id; ignores live rows and id-less rows', async () => {
     const ctx = await makeTestCtx()
     const featureId = seedFeature(ctx, seedProject(ctx).id).id

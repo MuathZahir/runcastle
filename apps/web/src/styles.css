@@ -1039,8 +1039,10 @@ button {
   background: var(--text-4);
   flex: 0 0 auto;
 }
+.session-ended-main { flex: 1; min-width: 0; }
 .session-ended-title { font-size: 13px; font-weight: 500; color: var(--text-2); }
 .session-ended-sub { font-size: 12px; color: var(--text-3); margin-top: 1px; }
+.session-ended-resume { flex: 0 0 auto; }
 
 /* compact doc pointer (spec / knowledge docs) — opens a peek overlay */
 .doc-card {

@@ -153,6 +153,28 @@ export function kickoffLineFor(kind: SessionKind, override?: string): string {
 }
 
 /**
+ * Framing prepended to the kickoff line of a RESUMED session. `--resume` restores
+ * the whole conversation, so typing the bare per-kind line ("invoke /runcastle:…
+ * and drive the session") reads as an instruction to start over — the agent
+ * re-runs its opening move on a conversation that is already mid-flight. This
+ * prefix says what actually happened (the terminal died, the conversation did
+ * not) and asks for a short re-orientation before it carries on.
+ *
+ * Only applied when the caller passed no explicit `kickoffLine`: a per-purpose
+ * briefing (merge-conflict resolution, review iteration) IS the new opening move
+ * and must not be reframed as "carry on with what you were doing".
+ */
+export const RESUME_KICKOFF_PREFIX =
+  'We are picking this conversation back up — runcastle restarted and closed the terminal, ' +
+  'but this conversation is intact. Do NOT start over: tell me in one or two lines where we ' +
+  'left off and what is next, then carry on. Your original instruction was: '
+
+/** The kickoff line typed into a resumed session of `kind` (see {@link RESUME_KICKOFF_PREFIX}). */
+export function resumeKickoffLine(kind: SessionKind): string {
+  return RESUME_KICKOFF_PREFIX + KICKOFF_LINES[kind]
+}
+
+/**
  * Pending per-session kickoff overrides, keyed by session id. `launchSession`
  * stashes an override here BEFORE spawning; `scheduleKickoff` consumes it when
  * the session goes live (kickoff is scheduled from `markSessionLive`, decoupled
@@ -237,12 +259,23 @@ export function markSessionEnded(ctx: AppCtx, id: string): SessionRow | null {
 
 /**
  * The feature's most recently ENDED session that recorded a Claude Code session
- * id — the conversation a kind=revisit session `--resume`s. Live sessions are
- * excluded (the one-live-session guard refuses a revisit while one exists) and
- * sessions that never went live have no cc id, so they can't match. Ordered by
- * the implicit sqlite `rowid` (insertion order — `sessions` has no timestamp).
+ * id — the conversation a relaunched terminal `--resume`s. Live sessions are
+ * excluded (the one-live-session guard refuses a second terminal while one
+ * exists) and sessions that never went live have no cc id, so they can't match.
+ * Ordered by the implicit sqlite `rowid` (insertion order — `sessions` has no
+ * timestamp).
+ *
+ * `kind` narrows the search to conversations of that kind, which is what every
+ * ordinary relaunch wants: reopening the grill must land back in the grill
+ * conversation, not in whatever qa session happened to run afterwards. A
+ * kind=revisit launch omits it deliberately — revisit means "resume the last
+ * thing we talked about", whatever kind that was.
  */
-export function mostRecentResumableSession(ctx: AppCtx, featureId: string): SessionRow | null {
+export function mostRecentResumableSession(
+  ctx: AppCtx,
+  featureId: string,
+  kind?: SessionKind,
+): SessionRow | null {
   const row = ctx.db
     .select()
     .from(sessions)
@@ -251,6 +284,7 @@ export function mostRecentResumableSession(ctx: AppCtx, featureId: string): Sess
         eq(sessions.featureId, featureId),
         eq(sessions.status, 'ended'),
         isNotNull(sessions.ccSessionId),
+        ...(kind ? [eq(sessions.kind, kind)] : []),
       ),
     )
     .orderBy(desc(sql`rowid`))

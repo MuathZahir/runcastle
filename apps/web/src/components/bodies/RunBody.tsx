@@ -4,12 +4,11 @@ import { trpc } from '../../trpc'
 import { useToast } from '../../lib/toast'
 import { useEventLog } from '../../lib/events'
 import { fmtDuration, fmtTime, shortSha } from '../../lib/format'
-import { DimLine, EmptyState, RunStatusChip, SessionStatusDot, TicketStatusChip } from '../../ui'
+import { DimLine, EmptyState, RunStatusChip, TicketStatusChip } from '../../ui'
 import { IconTerminal } from '../../icons'
 import { AgentTranscript } from '../AgentTranscript'
-import { EndSessionButton } from '../EndSessionButton'
 import { ErrorBoundary } from '../ErrorBoundary'
-import { TerminalView } from '../TerminalView'
+import { SessionPanel } from '../SessionPanel'
 
 /**
  * Run / implementation phase-body for the pipeline-first workspace: a lanes|panel
@@ -57,14 +56,16 @@ export function RunBody({
     ? fmtDuration(run.data.startedAt, run.data.endedAt ?? Date.now())
     : ''
 
-  // Same pattern as TicketsBody: a live HITL session (a revisit opened between
-  // runs) renders as an inline terminal — without this the session is invisible
-  // at the build phase.
-  const session = [...(feature.data?.sessions ?? [])]
-    .reverse()
-    .find((s) => s.status === 'live' || s.status === 'launching')
+  // Same pattern as TicketsBody: a HITL session (a revisit opened between runs)
+  // renders as the session panel — without this the session is invisible at the
+  // build phase. The empty state keys off a LIVE one only: with nothing running
+  // and nothing live there is no run to narrate, and the way back into an old
+  // conversation from here is the bar's Revisit (which resumes it), not an
+  // ideation terminal reopened three phases late.
+  const sessions = feature.data?.sessions ?? []
+  const live = sessions.some((s) => s.status === 'live' || s.status === 'launching')
 
-  if (!runId && !session) {
+  if (!runId && !live) {
     return (
       <div className="surface">
         <EmptyState
@@ -78,27 +79,7 @@ export function RunBody({
 
   return (
     <div>
-      {session && (
-        <div className="grill-panel tickets-session">
-          <div className="grill-strip">
-            <span className="grill-kind">{session.kind}</span>
-            <SessionStatusDot status={session.status} />
-            <span className="grill-live-label">
-              {session.status === 'launching' ? 'launching…' : 'live'}
-            </span>
-            <span className="grill-strip-spacer" />
-            <span className="grill-sid" title={session.ccSessionId ?? session.id}>
-              {(session.ccSessionId ?? session.id).slice(0, 8)}
-            </span>
-            <EndSessionButton featureId={featureId} sessionId={session.id} />
-          </div>
-          <div className="grill-term" id="grill-term">
-            <ErrorBoundary label="terminal">
-              <TerminalView sessionId={session.id} />
-            </ErrorBoundary>
-          </div>
-        </div>
-      )}
+      <SessionPanel featureId={featureId} sessions={sessions} className="tickets-session" />
 
       <div className="body-title">
         <span className="section-title">Run</span>

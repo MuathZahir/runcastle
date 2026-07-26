@@ -47,6 +47,66 @@ describe('defaultBaseBranch', () => {
 })
 
 /**
+ * Reopening a terminal resumes its conversation, so the bar must say so. A
+ * session row is `ended` the moment runcastle restarts (the PTY dies with the
+ * server), but a row that reached `live` recorded a `ccSessionId` and the
+ * launcher `--resume`s it on the next same-kind launch. The action is unchanged
+ * either way — only the wording tells the human which one they'll get.
+ */
+describe('nextStep — Resume vs Start wording for the grill', () => {
+  const grillFull = (opts: { phase?: string; sessions?: unknown[]; tickets?: unknown[] }) =>
+    ({
+      feature: { id: 'f1', phase: opts.phase ?? 'ideation', mapped: false, status: 'active' },
+      tickets: opts.tickets ?? [],
+      sessions: opts.sessions ?? [],
+      runs: [],
+      gate: { next: { id: 'G1' }, satisfied: false, reason: 'no decisions yet' },
+    }) as unknown as FeatureFull
+
+  const endedGrill = [{ id: 's1', status: 'ended', kind: 'ideation', ccSessionId: 'cc-1' }]
+
+  it('says Start when the feature has never had a grill conversation', () => {
+    const ns = nextStep(grillFull({}), { driving: false })
+    expect(ns.primary).toEqual({ label: 'Start grill session', kind: 'startGrill' })
+  })
+
+  it('says Resume once an ended grill session left a resumable conversation', () => {
+    const ns = nextStep(grillFull({ sessions: endedGrill }), { driving: false })
+    expect(ns.primary).toEqual({ label: 'Resume grill session', kind: 'startGrill' })
+    expect(ns.desc).toContain('still on disk')
+  })
+
+  it('keeps saying Start when the ended session never reached live (no cc id)', () => {
+    const stillborn = [{ id: 's1', status: 'ended', kind: 'ideation', ccSessionId: null }]
+    const ns = nextStep(grillFull({ sessions: stillborn }), { driving: false })
+    expect(ns.primary?.label).toBe('Start grill session')
+  })
+
+  it('ignores a resumable session of a DIFFERENT kind (the launcher would not pick it)', () => {
+    const qaOnly = [{ id: 's1', status: 'ended', kind: 'qa', ccSessionId: 'cc-qa' }]
+    const ns = nextStep(grillFull({ sessions: qaOnly }), { driving: false })
+    expect(ns.primary?.label).toBe('Start grill session')
+  })
+
+  it('carries the same wording into the spec and tickets phases', () => {
+    expect(nextStep(grillFull({ phase: 'spec' }), { driving: false }).primary?.label).toBe(
+      'Open grill',
+    )
+    expect(
+      nextStep(grillFull({ phase: 'spec', sessions: endedGrill }), { driving: false }).primary
+        ?.label,
+    ).toBe('Resume grill')
+    expect(nextStep(grillFull({ phase: 'tickets' }), { driving: false }).primary?.label).toBe(
+      'Open grill to emit tickets',
+    )
+    expect(
+      nextStep(grillFull({ phase: 'tickets', sessions: endedGrill }), { driving: false }).primary
+        ?.label,
+    ).toBe('Resume grill to emit tickets')
+  })
+})
+
+/**
  * Streamlining-ux ticket 6 — the review-phase next step is a loop, not a
  * terminus: Iterate opens a revisit session (hidden while one is live), and a
  * pending fix ticket promotes Burn to primary while Merge & ship + test drive

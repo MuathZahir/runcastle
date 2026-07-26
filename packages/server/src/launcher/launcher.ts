@@ -29,6 +29,7 @@ import {
   getSessionRow,
   markSessionEnded,
   mostRecentResumableSession,
+  resumeKickoffLine,
   setKickoffOverride,
 } from './sessions'
 
@@ -114,9 +115,11 @@ export interface BuildLaunchInput {
    */
   model: string
   /**
-   * The Claude Code session id (`ccSessionId`) to `--resume`. Set when re-working
-   * a waypoint whose previous session was auto-released so the operator picks up
-   * the same conversation (SPEC §13.6 "Resume"). `--resume` is scoped to the
+   * The Claude Code session id (`ccSessionId`) to `--resume`. Every kind has a
+   * resume target: a waypoint resumes the conversation its `lastSessionId`
+   * remembers, a revisit resumes the feature's latest conversation of any kind,
+   * and every other kind resumes its own latest conversation (so reopening a
+   * terminal after runcastle restarts continues it). `--resume` is scoped to the
    * project dir + its worktrees (CC-INTEGRATION-NOTES §7), which the talk worktree
    * satisfies. Omitted → a fresh session.
    */
@@ -289,11 +292,6 @@ export async function launchSession(
     worktreePath,
   })
 
-  // Stash any per-purpose kickoff override BEFORE the session can go live — the
-  // kickoff is scheduled from `markSessionLive` (fired by the SessionStart hook),
-  // so the override must be registered against the session id ahead of it.
-  if (input.kickoffLine) setKickoffOverride(session.id, input.kickoffLine)
-
   // A waypoint session claims its waypoint BEFORE spawning (SPEC §13.2). The
   // prior LIVE session's cc id (`lastSessionId` — promoted only when a session
   // actually started) is captured so a released-then-reworked waypoint resumes
@@ -348,11 +346,40 @@ export async function launchSession(
     }
   }
 
+  // Every OTHER kind (ideation / qa / converge) resumes its own most recent
+  // conversation on this feature. A terminal is a real `claude` process in a
+  // server-owned PTY, so quitting runcastle kills it and boot reconciliation
+  // marks the row ended — but the Claude Code transcript survives on disk and
+  // the row kept its `ccSessionId`, so reopening the same kind of terminal picks
+  // the conversation back up instead of starting cold from the docs. No prior
+  // conversation is the ordinary first-launch case, so unlike waypoint/revisit
+  // it gets no `resume_unavailable` note — there is nothing to be unavailable.
+  if (input.kind !== 'waypoint' && input.kind !== 'revisit') {
+    resumeSessionId = mostRecentResumableSession(ctx, feature.id, input.kind)?.ccSessionId
+  }
+
+  // Stash the kickoff override BEFORE the session can go live — the kickoff is
+  // scheduled from `markSessionLive` (fired by the SessionStart hook), so it must
+  // be registered against the session id ahead of it. An explicit per-purpose
+  // briefing always wins; otherwise a resumed session gets the resume framing so
+  // the agent continues the conversation rather than restarting its opening move.
+  const kickoffLine =
+    input.kickoffLine ?? (resumeSessionId ? resumeKickoffLine(input.kind) : undefined)
+  if (kickoffLine) setKickoffOverride(session.id, kickoffLine)
+
   emit(ctx, feature.id, {
     type: 'session.launching',
     message: `launching ${input.kind} session`,
     data: { sessionId: session.id, kind: input.kind, worktreePath, waypointId: waypoint?.id },
   })
+
+  if (resumeSessionId) {
+    emit(ctx, feature.id, {
+      type: 'session.resumed',
+      message: `resuming the previous ${input.kind} conversation`,
+      data: { sessionId: session.id, kind: input.kind, resumeSessionId },
+    })
+  }
 
   if (input.kind === 'revisit' && resumeUnavailableFrom) {
     emit(ctx, feature.id, {

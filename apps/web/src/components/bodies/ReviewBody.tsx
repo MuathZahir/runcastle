@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Button, SectionTitle, SessionStatusDot } from '../../ui'
+import { Button, SectionTitle } from '../../ui'
 import { trpc } from '../../trpc'
 import type { FeatureFull } from '../../lib/api'
 import type { DriveState } from '../../lib/workspace'
@@ -11,8 +11,8 @@ import {
 } from '../../lib/feature-ui'
 import { useEventLog } from '../../lib/events'
 import { useToast } from '../../lib/toast'
-import { EndSessionButton } from '../EndSessionButton'
 import { ErrorBoundary } from '../ErrorBoundary'
+import { SessionPanel } from '../SessionPanel'
 import { TerminalView } from '../TerminalView'
 
 /**
@@ -35,9 +35,10 @@ import { TerminalView } from '../TerminalView'
  */
 export function ReviewBody({ full, driving }: { full: FeatureFull; driving: DriveState | null }) {
   const { feature, tickets, runs } = full
-  const session = [...full.sessions]
-    .reverse()
-    .find((s) => s.status === 'live' || s.status === 'launching')
+  // Live-only: the conflict card's "Resolve with agent" spawns a terminal, and
+  // one terminal per feature — an ENDED session (which the panel still renders,
+  // with its Resume) must not hide it.
+  const sessionLive = full.sessions.some((s) => s.status === 'live' || s.status === 'launching')
   const conflict = unresolvedMergeConflict(useEventLog(feature.id))
   const run = latestRun(runs)
   const total = tickets.length
@@ -56,34 +57,14 @@ export function ReviewBody({ full, driving }: { full: FeatureFull; driving: Driv
 
   return (
     <div className="review-body">
-      {session && (
-        <div className="grill-panel review-session">
-          <div className="grill-strip">
-            <span className="grill-kind">{session.kind}</span>
-            <SessionStatusDot status={session.status} />
-            <span className="grill-live-label">
-              {session.status === 'launching' ? 'launching…' : 'live'}
-            </span>
-            <span className="grill-strip-spacer" />
-            <span className="grill-sid" title={session.ccSessionId ?? session.id}>
-              {(session.ccSessionId ?? session.id).slice(0, 8)}
-            </span>
-            <EndSessionButton featureId={feature.id} sessionId={session.id} />
-          </div>
-          <div className="grill-term" id="grill-term">
-            <ErrorBoundary label="terminal">
-              <TerminalView sessionId={session.id} />
-            </ErrorBoundary>
-          </div>
-        </div>
-      )}
+      <SessionPanel featureId={feature.id} sessions={full.sessions} className="review-session" />
 
       {conflict && (
         <ConflictCard
           featureId={feature.id}
           branch={feature.branch}
           conflict={conflict}
-          sessionLive={!!session}
+          sessionLive={sessionLive}
         />
       )}
 

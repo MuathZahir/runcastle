@@ -444,9 +444,23 @@ export function unresolvedMergeConflict(events: EventRow[]): MergeConflictState 
  * This supersedes {@link primaryAction} + {@link stateSummary} for the redesign,
  * but reuses the same wire data.
  */
+/**
+ * True when the feature has an ENDED session of `kind` whose Claude Code
+ * conversation can still be picked up (it reached `live`, so it recorded a
+ * `ccSessionId`). Opening a terminal of that kind `--resume`s the latest such
+ * conversation server-side, so this only decides the WORDING — Resume vs Start —
+ * never the action. A terminal is a real process, so quitting runcastle ends
+ * every session row; without this the bar would keep saying "Start" for a
+ * conversation that is actually being continued.
+ */
+function hasResumable(sessions: FeatureFull['sessions'], kind: string): boolean {
+  return sessions.some((s) => s.kind === kind && s.status === 'ended' && !!s.ccSessionId)
+}
+
 export function nextStep(full: FeatureFull, ctx: { driving: boolean }): NextStep {
   const { feature, tickets, sessions, runs, gate } = full
   const live = sessions.find((s) => s.status === 'live')
+  const resumableGrill = hasResumable(sessions, 'ideation')
   const t = tickets.length
   const done = tickets.filter((x) => x.status === 'done').length
   const failed = tickets.filter((x) => x.status === 'failed').length
@@ -516,14 +530,23 @@ export function nextStep(full: FeatureFull, ctx: { driving: boolean }): NextStep
           busy: false,
         }
       }
-      return {
-        kick: 'NEXT STEP',
-        title: 'Shape the idea with Claude',
-        desc: 'Launch a grill session to shape the idea before any code is written.',
-        primary: { label: 'Start grill session', kind: 'startGrill' },
-        secondary: [],
-        busy: false,
-      }
+      return resumableGrill
+        ? {
+            kick: 'NEXT STEP',
+            title: 'Pick the conversation back up',
+            desc: 'The grill session ended, but its conversation is still on disk — resume it to carry on where you left off.',
+            primary: { label: 'Resume grill session', kind: 'startGrill' },
+            secondary: [],
+            busy: false,
+          }
+        : {
+            kick: 'NEXT STEP',
+            title: 'Shape the idea with Claude',
+            desc: 'Launch a grill session to shape the idea before any code is written.',
+            primary: { label: 'Start grill session', kind: 'startGrill' },
+            secondary: [],
+            busy: false,
+          }
     }
     case 'spec': {
       if (canAdvance) {
@@ -548,8 +571,13 @@ export function nextStep(full: FeatureFull, ctx: { driving: boolean }): NextStep
         : {
             kick: 'NEXT STEP',
             title: 'Write the spec',
-            desc: 'No spec yet — resume the grill to draft it.',
-            primary: { label: 'Resume grill', kind: 'startGrill' },
+            desc: resumableGrill
+              ? 'No spec yet — resume the grill conversation to draft it.'
+              : 'No spec yet — open a grill session to draft it.',
+            primary: {
+              label: resumableGrill ? 'Resume grill' : 'Open grill',
+              kind: 'startGrill',
+            },
             secondary: [],
             busy: false,
           }
@@ -575,7 +603,10 @@ export function nextStep(full: FeatureFull, ctx: { driving: boolean }): NextStep
         desc: 'No tickets yet — a grill session emits them. Open a session to shape the work.',
         primary: live
           ? { label: 'Jump to grill', kind: 'openGrill' }
-          : { label: 'Open grill to emit tickets', kind: 'startGrill' },
+          : {
+              label: resumableGrill ? 'Resume grill to emit tickets' : 'Open grill to emit tickets',
+              kind: 'startGrill',
+            },
         secondary: [],
         busy: false,
       }
