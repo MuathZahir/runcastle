@@ -6,6 +6,7 @@ import {
   needsMe,
   nextStep,
   REVIEW_ITERATE_KICKOFF,
+  ticketConflictKickoff,
   triage,
   triageOf,
   unresolvedMergeConflict,
@@ -235,6 +236,42 @@ describe('mergeConflictKickoff', () => {
   it('degrades gracefully when the file list is empty', () => {
     const line = mergeConflictKickoff('main', 'feature/x', [])
     expect(line).toContain('git status')
+  })
+})
+
+/**
+ * The run lane's "Resolve in terminal" — the human escape hatch after the
+ * burner's automatic resolver gave up on a ticket's landing conflict. Unlike
+ * the review card's kickoff this merges the TICKET branch into the feature
+ * branch (the landing that failed), and it carries the ticket's identity so the
+ * agent resolves by intent rather than by guessing from the diff.
+ */
+describe('ticketConflictKickoff', () => {
+  const input = {
+    seq: 3,
+    title: 'Stage founder studio drafts',
+    branch: 'runcastle/ticket/improve-user-sto/3-lWsg1vxs',
+    featureBranch: 'feature/improve-user-story',
+    files: ['a/staging.service.ts', 'b/staging.spec.ts'],
+  }
+
+  it('names the ticket, both branches, and the conflicting files', () => {
+    const line = ticketConflictKickoff(input)
+    expect(line).toContain('#3')
+    expect(line).toContain('Stage founder studio drafts')
+    expect(line).toContain('git merge runcastle/ticket/improve-user-sto/3-lWsg1vxs')
+    expect(line).toContain('feature/improve-user-story')
+    expect(line).toContain('a/staging.service.ts, b/staging.spec.ts')
+  })
+
+  it('forbids advancing the phase and points back at the lane action', () => {
+    const line = ticketConflictKickoff(input)
+    expect(line).toContain('complete_phase')
+    expect(line).toContain('Retry')
+  })
+
+  it('degrades gracefully when git reported no file list', () => {
+    expect(ticketConflictKickoff({ ...input, files: [] })).toContain('git status')
   })
 })
 

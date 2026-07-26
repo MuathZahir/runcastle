@@ -120,6 +120,14 @@ const DESCRIPTORS: FieldDescriptor[] = [
     parseEnv: (raw) => Number(raw),
   },
   {
+    key: 'burnConflictAttempts',
+    configKey: 'burnConflictAttempts',
+    envVar: 'RUNCASTLE_BURN_CONFLICT_ATTEMPTS',
+    restartRequired: false,
+    valueSchema: z.number().int().min(0).max(3),
+    parseEnv: (raw) => Number(raw),
+  },
+  {
     key: 'setupCommand',
     configKey: 'setupCommand',
     envVar: 'RUNCASTLE_SETUP_COMMAND',

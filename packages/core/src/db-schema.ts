@@ -79,6 +79,7 @@ export const tickets = sqliteTable('tickets', {
   commits: text('commits', { mode: 'json' }).notNull().$type<string[]>(),
   error: text('error'),
   attemptBranch: text('attempt_branch'),
+  conflictFiles: text('conflict_files', { mode: 'json' }).$type<string[]>(),
 })
 
 export const waypoints = sqliteTable('waypoints', {

@@ -21,6 +21,7 @@ import {
   detachWorktree,
   ensureTalkWorktree,
   mergeFeature,
+  commitSummaries,
   mergeTempBranch,
   reattachWorktree,
   recordDriveUrl,
@@ -725,6 +726,9 @@ describe('mergeTempBranch', () => {
     const res = await mergeTempBranch(project.repoPath, feature.branch, tempB)
     expect(res.ok).toBe(false)
     expect(res.conflict).toBe(true)
+    // captured before the abort cleared the unmerged index — this list is what
+    // briefs the resolver agent and what the run lane renders
+    expect(res.files).toEqual(['same.md'])
 
     // feature branch untouched, temp branch preserved, no worktree leaked
     expect((await g.revparse([feature.branch])).trim()).toBe(tipAfterA)
@@ -746,6 +750,7 @@ describe('mergeTempBranch', () => {
     const res = await mergeTempBranch(project.repoPath, feature.branch, temp)
     expect(res.ok).toBe(false)
     expect(res.conflict).toBe(true)
+    expect(res.files).toEqual(['README.md'])
 
     // merge aborted: talk worktree clean, still on the feature branch, HITL edit intact
     expect((await gw.raw(['status', '--porcelain'])).trim()).toBe('')
@@ -753,6 +758,24 @@ describe('mergeTempBranch', () => {
     expect(readFileSync(join(talkWt, 'README.md'), 'utf8')).toBe('hitl-line\n')
     // temp branch preserved for manual recovery
     expect((await simpleGit(project.repoPath).branchLocal()).all).toContain(temp)
+  })
+
+  it('commitSummaries lists what landed on the feature branch, newest first', async () => {
+    // The resolver's "other side" brief: the sibling work it must reconcile
+    // with, seen from a ticket branch that forked before any of it landed.
+    const mine = researchBranchName(feature.slug, 10, 'mine111')
+    await simpleGit(project.repoPath).raw(['branch', mine, feature.branch])
+    const sibling = researchBranchName(feature.slug, 11, 'sib222')
+    await commitOnTempBranch(sibling, feature.branch, 'sibling.md', 'sibling\n')
+    expect(await mergeTempBranch(project.repoPath, feature.branch, sibling)).toEqual({ ok: true })
+
+    const summaries = await commitSummaries(project.repoPath, mine, feature.branch)
+    expect(summaries).toHaveLength(1)
+    expect(summaries[0]).toMatch(/^[0-9a-f]{7,} research: sibling\.md$/)
+
+    // nothing landed underneath → nothing to brief, never an error
+    expect(await commitSummaries(project.repoPath, feature.branch, feature.branch)).toEqual([])
+    expect(await commitSummaries(project.repoPath, 'feature/ghost', feature.branch)).toEqual([])
   })
 
   it('reports missing branches instead of throwing', async () => {

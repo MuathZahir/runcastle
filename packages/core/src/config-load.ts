@@ -44,6 +44,10 @@ export function loadConfig(
   if (env.RUNCASTLE_BURN_ATTEMPTS) {
     overrides.burnAttempts = Number(env.RUNCASTLE_BURN_ATTEMPTS)
   }
+  // Truthiness would swallow the meaningful `0` (disable in-loop resolution).
+  if (env.RUNCASTLE_BURN_CONFLICT_ATTEMPTS !== undefined) {
+    overrides.burnConflictAttempts = Number(env.RUNCASTLE_BURN_CONFLICT_ATTEMPTS)
+  }
   if (env.RUNCASTLE_SETUP_COMMAND) overrides.setupCommand = env.RUNCASTLE_SETUP_COMMAND
   if (env.RUNCASTLE_BURN_WORKSPACE) overrides.burnWorkspace = env.RUNCASTLE_BURN_WORKSPACE
 

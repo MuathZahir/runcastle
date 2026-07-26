@@ -482,6 +482,36 @@ export async function branchCommitsAhead(
 }
 
 /**
+ * One-line summaries (`<short sha> <subject>`) of the commits reachable from
+ * `branch` but not from `base`, newest first, capped at `limit`. The conflict
+ * resolver briefs its agent with these: "what landed underneath you while you
+ * were working" is the other side of the merge it has to reconcile with, and a
+ * list of subjects is the cheapest way to convey it. `[]` on any git failure —
+ * a missing brief must never fail a resolve.
+ */
+export async function commitSummaries(
+  repoPath: string,
+  base: string,
+  branch: string,
+  limit = 20,
+): Promise<string[]> {
+  try {
+    const out = await git(repoPath).raw([
+      'log',
+      `--max-count=${limit}`,
+      '--format=%h %s',
+      `${base}..${branch}`,
+    ])
+    return out
+      .split('\n')
+      .map((l) => l.trim())
+      .filter(Boolean)
+  } catch {
+    return []
+  }
+}
+
+/**
  * Best-effort delete of a burn temp branch (the "retry fresh" path: the user
  * discards a preserved attempt chain). Detaches any sandcastle worktree still
  * pinning the branch first; returns whether the branch is actually gone.
@@ -586,6 +616,13 @@ export interface TempBranchMergeResult {
   ok: boolean
   /** True when a real merge conflict was hit (merge aborted, temp branch kept). */
   conflict?: boolean
+  /**
+   * Repo-relative paths that conflicted (only on `conflict`). Captured while the
+   * merge is still in progress — `merge --abort` clears the unmerged index — so
+   * the resolver agent and the run lane get a real file list instead of having
+   * to parse git's error prose. Empty when git could not report them.
+   */
+  files?: string[]
   error?: string
 }
 
@@ -594,8 +631,9 @@ export interface TempBranchMergeResult {
  * The temp branch was created from the feature branch tip, so this is a
  * fast-forward unless the feature branch moved mid-run (docs committed by a
  * parallel HITL session, or another concurrent ticket landed first) — then it
- * is a plain merge, and on conflict we abort, keep the temp branch for manual
- * recovery, and report `conflict`.
+ * is a plain merge, and on conflict we abort, keep the temp branch (with the
+ * conflicting paths in `files`) and report `conflict` — the burner's landing
+ * loop then runs a resolver agent on that branch and comes back.
  *
  * Merge site: git only allows a merge inside a checkout of the target branch,
  * so if any worktree (normally the talk worktree; the main checkout during a
@@ -638,8 +676,9 @@ export async function mergeTempBranch(
       await gw.merge([tempBranch]) // plain merge: fast-forwards when it can
     } catch (e) {
       if (await mergeInProgress(gw)) {
+        const files = await conflictedFiles(gw) // before the abort clears the index
         await gw.raw(['merge', '--abort'])
-        return { ok: false, conflict: true, error: errMsg(e) }
+        return { ok: false, conflict: true, files, error: errMsg(e) }
       }
       return { ok: false, error: errMsg(e) }
     }
@@ -689,8 +728,9 @@ async function mergeInDisposableWorktree(
       await gw.merge([tempBranch])
     } catch (e) {
       if (await mergeInProgress(gw)) {
+        const files = await conflictedFiles(gw) // before the abort clears the index
         await gw.raw(['merge', '--abort'])
-        return { ok: false, conflict: true, error: errMsg(e) }
+        return { ok: false, conflict: true, files, error: errMsg(e) }
       }
       return { ok: false, error: errMsg(e) }
     }

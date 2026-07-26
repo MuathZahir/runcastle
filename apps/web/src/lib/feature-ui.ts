@@ -406,6 +406,42 @@ export function mergeConflictKickoff(base: string, branch: string, files: string
   )
 }
 
+/**
+ * Kickoff line for the run lane's "Resolve in terminal" — the human escape
+ * hatch when the burner's automatic resolver could not finish a ticket's
+ * landing conflict. Passed as the `launchSession` override, so the revisit
+ * agent (cwd = the talk worktree, checked out on the feature branch) opens on
+ * the resolution with the ticket's identity, its branch, and the conflicting
+ * files already in hand.
+ *
+ * Note the direction: the human session merges the TICKET branch into the
+ * feature branch (the landing that failed), which is the opposite of what the
+ * unattended resolver does in the sandbox — there is no sandbox here, and the
+ * talk worktree already holds the feature branch.
+ */
+export function ticketConflictKickoff(input: {
+  seq: number
+  title: string
+  branch: string
+  featureBranch: string
+  files: string[]
+}): string {
+  const list = input.files.length
+    ? input.files.join(', ')
+    : '(run git status after the merge to see them)'
+  return (
+    `Proceed with your task: RESOLVE A MERGE CONFLICT. Ticket #${input.seq} (“${input.title}”) is ` +
+    `fully implemented on branch ${input.branch}, but landing it on ${input.featureBranch} ` +
+    `conflicts on: ${list}. Your working directory IS the talk worktree, already checked out on ` +
+    `${input.featureBranch}. Run \`git merge ${input.branch}\`, read both sides before resolving ` +
+    `(the ticket's work on one side, the sibling tickets that landed first on the other), and ` +
+    `resolve by intent using this feature's spec.md and decisions.md — keep BOTH sides working. ` +
+    `Run the tests over the touched code, then commit the merge. Do NOT push and do NOT advance ` +
+    `the phase (never call complete_phase). When the merge commit is in, tell me to click Retry ` +
+    `on the ticket so runcastle records it as landed.`
+  )
+}
+
 export interface MergeConflictState {
   /** The base branch that failed to merge in (the merge target). */
   base: string

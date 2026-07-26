@@ -21,9 +21,11 @@ import {
 import {
   allowPushToCheckedOutBranches,
   branchCommitsAhead,
+  commitSummaries,
   mergeTempBranch,
   ticketBranchName,
 } from '../services/git'
+import type { TempBranchMergeResult } from '../services/git'
 import type {
   AgentCommandOptions,
   AgentProvider,
@@ -166,19 +168,26 @@ const PLACEHOLDERS = [
 type PlaceholderKey = (typeof PLACEHOLDERS)[number]
 
 /**
- * Replace every `{{KEY}}` placeholder in the burner template with its value.
+ * Replace every `{{KEY}}` placeholder in a burner template with its value.
  * Uses split/join (not RegExp) so values may contain `$` and special chars
- * safely, and replaces all occurrences of each key.
+ * safely, and replaces all occurrences of each key. Keys absent from `values`
+ * are left alone — a template is free to carry placeholders one caller fills
+ * and another does not.
  */
+export function renderTemplate(template: string, values: Record<string, string>): string {
+  let out = template
+  for (const [key, value] of Object.entries(values)) {
+    out = out.split(`{{${key}}}`).join(value)
+  }
+  return out
+}
+
+/** {@link renderTemplate} over the implement-ticket template's fixed key set. */
 export function renderTicketPrompt(
   template: string,
   values: Record<PlaceholderKey, string>,
 ): string {
-  let out = template
-  for (const key of PLACEHOLDERS) {
-    out = out.split(`{{${key}}}`).join(values[key])
-  }
-  return out
+  return renderTemplate(template, values)
 }
 
 /** The `{{TICKET_JSON}}` payload — the fields an unattended agent needs. */
@@ -215,6 +224,46 @@ export function buildDocsDigest(files: { name: string; content: string }[]): str
     return '_No feature docs found — work from the ticket context and the code._'
   }
   return files.map((f) => `### ${f.name}\n\n${f.content.trim()}`).join('\n\n---\n\n')
+}
+
+// ---------------------------------------------------------------------------
+// Pure units — the conflict-resolver prompt (resolve-conflict.md)
+// ---------------------------------------------------------------------------
+
+/** The `{{CONFLICT_FILES}}` block: the unmerged paths git reported, as a list. */
+export function buildConflictFilesBlock(files: string[]): string {
+  if (files.length === 0) {
+    return '_git did not report the paths — run `git status` after starting the merge to see them._'
+  }
+  return files.map((f) => `- \`${f}\``).join('\n')
+}
+
+/**
+ * The `{{OTHER_SIDE}}` block: one-line summaries of the commits that landed on
+ * the feature branch while this ticket was being implemented. This is the
+ * context a resolver spawned after the fact would otherwise lack entirely —
+ * without it the agent sees conflict markers with no idea who wrote the other
+ * half or why.
+ */
+export function buildOtherSideBlock(summaries: string[]): string {
+  if (summaries.length === 0) {
+    return '_No commit summaries available — inspect `git log` on the feature branch._'
+  }
+  return summaries.map((s) => `- ${s}`).join('\n')
+}
+
+/**
+ * The `{{MERGE_COMMAND}}` the resolver must run to start the merge. Mounted mode
+ * works in a git worktree of the host repo, so the feature branch is a local ref
+ * it can name directly. Isolated mode (ADR-0005) works in a container-native
+ * CLONE whose `origin` is the mounted worktree: the feature branch exists there
+ * only as a remote ref, and cloning happened before this merge was needed, so
+ * the fetch is explicit and the merge takes `FETCH_HEAD`.
+ */
+export function resolveMergeCommand(mode: BurnWorkspaceMode, featureBranch: string): string {
+  return mode === 'mounted'
+    ? `git merge --no-edit ${featureBranch}`
+    : `git fetch origin ${featureBranch} && git merge --no-edit FETCH_HEAD`
 }
 
 // ---------------------------------------------------------------------------
@@ -732,6 +781,107 @@ export function createSerialQueue(): <T>(task: () => Promise<T>) => Promise<T> {
 }
 
 // ---------------------------------------------------------------------------
+// Pure unit — the landing loop (merge → resolve conflict with an agent → merge)
+// ---------------------------------------------------------------------------
+
+/** Where a ticket's branch ended up after the landing loop gave up or won. */
+export type LandOutcome =
+  /** Merged into the feature branch. `branch` is what actually landed. */
+  | { status: 'landed'; branch: string }
+  /** Still conflicting after the resolver budget ran out (or with it disabled). */
+  | { status: 'conflict'; branch: string; files: string[]; error: string }
+  /** Landing failed for a non-conflict reason (lock contention, fs hiccup). */
+  | { status: 'failed'; branch: string; error: string }
+
+/** What one resolver pass produced: the best tip to keep, and whether it merged. */
+export interface ResolveAttemptResult {
+  ok: boolean
+  /**
+   * The branch to carry forward — the resolver's own branch when it committed
+   * anything, else the branch it was given. Always the tip holding the most
+   * work, so a failed resolve still never loses commits.
+   */
+  branch: string
+  error?: string
+}
+
+export interface LandDeps {
+  /** Merge `branch` into the feature branch (serialized through the run's queue). */
+  merge(branch: string): Promise<TempBranchMergeResult>
+  /** Run a resolver agent that merges the feature branch INTO `branch`. */
+  resolve(input: {
+    branch: string
+    files: string[]
+    attempt: number
+    maxAttempts: number
+  }): Promise<ResolveAttemptResult>
+  /** Resolver passes allowed per landing (`config.burnConflictAttempts`; 0 = off). */
+  maxResolveAttempts: number
+  /** Event sink (the caller tags events with the ticket id). */
+  emit(e: { type: string; message: string; data?: unknown }): void
+  /** Human label for messages, e.g. `ticket 3`. */
+  label: string
+  /** The branch being landed on, for messages. */
+  featureBranch: string
+}
+
+/**
+ * Land a ticket's branch, resolving landing conflicts in-loop instead of handing
+ * the human a git command.
+ *
+ * A conflict here is the NORMAL shape of burn concurrency — a sibling ticket
+ * landed first and touched the same files — so it is treated as a step in the
+ * landing, not as a ticket failure. On conflict we hand the branch to a resolver
+ * agent which merges the feature branch IN and resolves there (see
+ * `resolve-conflict.md`); the feature branch is never left mid-merge, and the
+ * next `merge` is a fast-forward. The loop repeats only when the feature tip
+ * moved again while the resolver worked, and is bounded by `maxResolveAttempts`
+ * — after which the conflict is reported for a human, with the branch preserved.
+ *
+ * The resolver deliberately runs OUTSIDE the caller's serial merge queue: it
+ * takes agent-minutes, and holding the queue would stall every other lane's
+ * landing behind one conflicted ticket.
+ */
+export async function landWithResolve(branch: string, deps: LandDeps): Promise<LandOutcome> {
+  let current = branch
+  for (let attempt = 1; ; attempt++) {
+    const merge = await deps.merge(current)
+    if (merge.ok) return { status: 'landed', branch: current }
+
+    const detail = merge.error ?? 'merge failed'
+    if (!merge.conflict) return { status: 'failed', branch: current, error: detail }
+
+    const files = merge.files ?? []
+    if (attempt > deps.maxResolveAttempts) {
+      return { status: 'conflict', branch: current, files, error: detail }
+    }
+
+    const where = files.length > 0 ? `${files.length} file(s)` : 'the merge'
+    deps.emit({
+      type: 'merge.conflict.resolving',
+      message: `${deps.label}: conflicts with ${deps.featureBranch} on ${where} — resolving with an agent (pass ${attempt}/${deps.maxResolveAttempts})`,
+      data: { branch: current, files, attempt, maxAttempts: deps.maxResolveAttempts },
+    })
+
+    const resolved = await deps.resolve({
+      branch: current,
+      files,
+      attempt,
+      maxAttempts: deps.maxResolveAttempts,
+    })
+    current = resolved.branch
+    if (!resolved.ok) {
+      return { status: 'conflict', branch: current, files, error: resolved.error ?? detail }
+    }
+    deps.emit({
+      type: 'merge.conflict.resolved',
+      message: `${deps.label}: conflict resolved on ${current} — landing`,
+      data: { branch: current, files, attempt },
+    })
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Scheduler — worker pool over the ready queue (width = deps.concurrency)
 // ---------------------------------------------------------------------------
 
@@ -956,8 +1106,17 @@ export async function burnRun(
  * `RUNCASTLE_SKILLS_DIR` in a published install — issue #51).
  */
 export function burnerTemplatePath(): string {
+  return burnerAssetPath('implement-ticket.md')
+}
+
+/** Absolute path to the conflict-resolver prompt template (same skills root). */
+export function resolverTemplatePath(): string {
+  return burnerAssetPath('resolve-conflict.md')
+}
+
+function burnerAssetPath(file: string): string {
   const here = dirname(fileURLToPath(import.meta.url))
-  return join(resolveSkillsRoot(here), 'burner', 'implement-ticket.md')
+  return join(resolveSkillsRoot(here), 'burner', file)
 }
 
 /** Read `docs/features/<slug>/*.md` from the talk worktree, or a skip note. */
@@ -1076,10 +1235,15 @@ const SETUP_HOOK_TIMEOUT_MS = 15 * 60_000
  * `feature/<slug>`, throttled stream forwarding, abort wiring), interprets
  * commits/BLOCKED.md, then lands the temp branch on the feature branch through
  * `land` — the per-run serial merge queue, so concurrent tickets never merge at
- * once. A landing conflict (parallel tickets touched the same files) fails the
- * ticket with `merge.conflict.needs-human`, preserving the temp branch for
- * manual recovery. Aborts of the RUN are rethrown; a per-ticket stop
- * (`stopTicketRun`) fails only this ticket.
+ * once. Aborts of the RUN are rethrown; a per-ticket stop (`stopTicketRun`)
+ * fails only this ticket.
+ *
+ * Landing conflicts (parallel tickets touched the same files) are resolved
+ * in-loop by a second agent rather than failing the ticket — see
+ * {@link landWithResolve}. Only when its budget runs out does the ticket fail,
+ * and it then carries `attemptBranch` + `conflictFiles`, which is exactly the
+ * state that makes the NEXT burn of this ticket (Retry, or a whole-feature
+ * re-burn) skip implementation and go straight back to resolving.
  *
  * Robustness (attempt chaining): a transient infrastructure death (API stream
  * drop, network, overload, idle timeout — see `classifyTicketRunError`) does
@@ -1113,13 +1277,20 @@ async function realExecuteTicketRun(
   // in-sandbox this write raced N containers on the shared `config.lock`.
   if (workspaceMode === 'isolated') await ensureIsolatedPushTarget()
 
-  const template = readFileSync(burnerTemplatePath(), 'utf8')
-  const basePrompt = renderTicketPrompt(template, {
-    TICKET_JSON: buildTicketJson(ticket),
-    FEATURE_BRIEF: buildFeatureBrief(feature),
-    DOCS_DIGEST: readDocsDigestFromDisk(project.id, feature.slug),
+  // Shared by both prompts: a resolver spawned after the fact gets the SAME
+  // ticket + feature + docs context the implementer had (the whole point — it
+  // must resolve by intent, which only the ticket and the feature docs carry).
+  const ticketJson = buildTicketJson(ticket)
+  const featureBrief = buildFeatureBrief(feature)
+  const docsDigest = readDocsDigestFromDisk(project.id, feature.slug)
+  const workspaceNotes = buildWorkspaceNotes(workspaceMode)
+
+  const basePrompt = renderTicketPrompt(readFileSync(burnerTemplatePath(), 'utf8'), {
+    TICKET_JSON: ticketJson,
+    FEATURE_BRIEF: featureBrief,
+    DOCS_DIGEST: docsDigest,
     COMMIT_CONVENTION: `ticket(${ticket.seq}): <summary>`,
-    WORKSPACE_NOTES: buildWorkspaceNotes(workspaceMode),
+    WORKSPACE_NOTES: workspaceNotes,
   })
 
   // Dependency setup: detect the repo's install command (or take the config
@@ -1171,13 +1342,25 @@ async function realExecuteTicketRun(
 
   const maxAttempts = Math.max(1, config.burnAttempts)
 
+  // Two different resumes, distinguished by `conflictFiles`:
+  //
+  // - CONFLICT resume — the ticket was implemented and its branch is complete;
+  //   it only failed to LAND. Re-running the implementer would be worse than
+  //   useless (it would find the ticket already done, commit nothing, and hit
+  //   the same conflict), so this path skips implementation entirely and goes
+  //   straight back into the landing loop, which re-detects the conflict
+  //   against the CURRENT tip and hands it to a resolver.
+  // - ATTEMPT resume (below) — the implementer itself was interrupted, so the
+  //   next attempt continues the unfinished work.
+  const conflictResume = ticket.conflictFiles !== undefined && !!ticket.attemptBranch
+
   // Cross-run resume: an earlier run (or a stopped/exhausted attempt chain)
   // left committed work on `ticket.attemptBranch` — base the first attempt on
   // it and tell the agent to continue. A stale pointer (branch deleted, or
   // everything already landed) is silently ignored.
   let baseBranch = feature.branch
   let retryNotes: string | undefined
-  if (ticket.attemptBranch) {
+  if (ticket.attemptBranch && !conflictResume) {
     const preserved = await branchCommitsAhead(project.repoPath, feature.branch, ticket.attemptBranch)
     if (preserved.length > 0) {
       baseBranch = ticket.attemptBranch
@@ -1199,7 +1382,201 @@ async function realExecuteTicketRun(
     ctx.updateTicket(ticket.id, { attemptBranch: branch })
   }
 
+  /**
+   * One conflict-resolver pass: an agent on a fresh branch off `branch` that
+   * merges the feature branch IN and resolves. Same sandbox, model, workspace
+   * mode and stream wiring as the implementer — and the same ticket/feature/docs
+   * context, plus the conflicting paths and the sibling commits it is
+   * reconciling against.
+   *
+   * Success is verified against git, not against what the agent says: the
+   * feature branch must be fully contained in the resulting branch (nothing
+   * reachable from it that the branch lacks). An agent that declared victory
+   * without completing the merge therefore fails the pass, and the branch is
+   * still carried forward whenever it holds commits — a failed resolve never
+   * loses work.
+   */
+  const runResolver = async (input: {
+    branch: string
+    files: string[]
+    attempt: number
+    maxAttempts: number
+  }): Promise<ResolveAttemptResult> => {
+    const resolveBranch = ticketBranchName(feature.slug, ticket.seq, newId('r').slice(2, 10))
+    const otherSide = await commitSummaries(project.repoPath, input.branch, feature.branch)
+    const prompt = renderTemplate(readFileSync(resolverTemplatePath(), 'utf8'), {
+      TICKET_JSON: ticketJson,
+      FEATURE_BRIEF: featureBrief,
+      DOCS_DIGEST: docsDigest,
+      WORKSPACE_NOTES: workspaceNotes,
+      FEATURE_BRANCH: feature.branch,
+      CONFLICT_FILES: buildConflictFilesBlock(input.files),
+      OTHER_SIDE: buildOtherSideBlock(otherSide),
+      MERGE_COMMAND: resolveMergeCommand(workspaceMode, feature.branch),
+    })
+    const hookCommand =
+      workspaceMode === 'isolated'
+        ? buildIsolatedSetupCommand(resolveBranch, setupCommand, pm)
+        : setupCommand
+
+    appendTranscript(ticket.id, {
+      kind: 'text',
+      text: `\n— landing conflict on ${feature.branch}; resolver pass ${input.attempt}/${input.maxAttempts} —\n`,
+    })
+
+    /** The tip to carry forward: the resolver's branch iff it committed. */
+    const bestTip = async (): Promise<string> => {
+      const made = await branchCommitsAhead(project.repoPath, input.branch, resolveBranch)
+      return made.length > 0 ? resolveBranch : input.branch
+    }
+
+    let result: RunResult
+    try {
+      result = await run({
+        agent: buildBurnAgent(config, token, model),
+        sandbox: selectSandbox(config, mounts),
+        cwd: project.repoPath,
+        prompt,
+        branchStrategy: { type: 'branch', branch: resolveBranch, baseBranch: input.branch },
+        signal,
+        name: `ticket-${ticket.seq}-resolve`,
+        maxIterations: config.burnMaxIterations,
+        ...(hookCommand
+          ? {
+              hooks: {
+                sandbox: {
+                  onSandboxReady: [{ command: hookCommand, timeoutMs: SETUP_HOOK_TIMEOUT_MS }],
+                },
+              },
+            }
+          : {}),
+        logging: { type: 'file', path: logFilePath, onAgentStreamEvent: onStreamEvent },
+      })
+    } catch (err) {
+      if (ctx.signal.aborted) throw err // run cancelled — the runner finalizes it
+      return {
+        ok: false,
+        branch: await bestTip(),
+        error: ticketAbort.signal.aborted
+          ? 'stopped by user during conflict resolution'
+          : errorHeadline(err instanceof Error ? err.message : String(err)),
+      }
+    }
+
+    const blocked = readBlockedFile([result.preservedWorktreePath, project.repoPath])
+    if (blocked !== undefined && blocked.trim().length > 0) {
+      return {
+        ok: false,
+        branch: await bestTip(),
+        error: `resolver reported BLOCKED:\n${blocked.trim()}`,
+      }
+    }
+    const missing = await branchCommitsAhead(project.repoPath, resolveBranch, feature.branch)
+    if (missing.length > 0) {
+      return {
+        ok: false,
+        branch: await bestTip(),
+        error: `resolver did not complete the merge — ${missing.length} commit(s) of ${feature.branch} are still missing from the branch`,
+      }
+    }
+    return { ok: true, branch: resolveBranch }
+  }
+
+  /**
+   * The commits that landed (snapshotted inside the merge queue, immediately
+   * before the merge that consumes them — afterwards they are no longer "ahead"
+   * of the feature branch).
+   */
+  let landedCommits: string[] = []
+
+  const landDeps: LandDeps = {
+    merge: (branch) =>
+      land(async () => {
+        const ahead = await branchCommitsAhead(project.repoPath, feature.branch, branch)
+        const res = await mergeTempBranch(project.repoPath, feature.branch, branch)
+        if (res.ok) landedCommits = ahead
+        return res
+      }),
+    resolve: runResolver,
+    maxResolveAttempts: Math.max(0, config.burnConflictAttempts),
+    emit: (e) => ctx.emitEvent({ ...e, ticketId: ticket.id }),
+    label: `ticket ${ticket.seq}`,
+    featureBranch: feature.branch,
+  }
+
+  /**
+   * Land `branch`, resolving conflicts in-loop, and map the result onto the
+   * ticket outcome + the state the next burn needs. Shared by the normal path
+   * and the conflict-resume path, so a re-landing behaves identically however
+   * the ticket got here.
+   */
+  const landChain = async (branch: string, commits: string[]): Promise<TicketOutcome> => {
+    const landing = await landWithResolve(branch, landDeps)
+    if (landing.status === 'landed') {
+      // Landed — nothing is pending on a branch any more, so both resume
+      // pointers must go or the next burn would resume an already-merged chain.
+      ctx.updateTicket(ticket.id, { attemptBranch: null, conflictFiles: null })
+      return { status: 'done', commits: landedCommits.length > 0 ? landedCommits : commits }
+    }
+
+    preserveChain(landing.branch)
+    if (landing.status === 'conflict') {
+      // The state that makes Retry resolve instead of re-implement, and the
+      // file list the run lane's conflict card renders.
+      ctx.updateTicket(ticket.id, { conflictFiles: landing.files })
+      const where =
+        landing.files.length > 0
+          ? ` on ${landing.files.length} file(s): ${landing.files.join(', ')}`
+          : ''
+      // Never claim the resolver failed when it was never allowed to run.
+      const why =
+        landDeps.maxResolveAttempts === 0
+          ? `Automatic resolution is off (burnConflictAttempts = 0): ${errorHeadline(landing.error)}`
+          : `The automatic resolver could not finish: ${errorHeadline(landing.error)}`
+      return {
+        status: 'failed',
+        error: `ticket ${ticket.seq} is implemented on ${landing.branch} but conflicts with ${feature.branch}${where}. ${why}`,
+        event: {
+          type: 'merge.conflict.needs-human',
+          message: `ticket ${ticket.seq}: could not auto-resolve the conflict with ${feature.branch} — resolve it from the run lane`,
+        },
+      }
+    }
+    // Non-conflict landing failure (lock contention, fs hiccup) — the chain is
+    // preserved, so a later retry just re-lands it.
+    return {
+      status: 'failed',
+      error: `ticket ${ticket.seq} committed to ${landing.branch} but landing on ${feature.branch} failed: ${errorHeadline(landing.error)} — the branch is preserved for manual recovery`,
+    }
+  }
+
   try {
+    // CONFLICT resume: the work exists and is complete; only the landing is
+    // outstanding. Skip the implementer entirely.
+    if (conflictResume) {
+      const branch = ticket.attemptBranch as string
+      const pending = await branchCommitsAhead(project.repoPath, feature.branch, branch)
+      if (pending.length === 0) {
+        // Nothing left to land — the human resolved and merged it by hand
+        // between runs. Record that rather than burning an agent on a no-op.
+        ctx.updateTicket(ticket.id, { attemptBranch: null, conflictFiles: null })
+        ctx.emitEvent({
+          type: 'merge.conflict.resolved',
+          message: `ticket ${ticket.seq}: ${branch} is already merged into ${feature.branch} — nothing left to land`,
+          ticketId: ticket.id,
+          data: { branch },
+        })
+        return { status: 'done', commits: ticket.commits }
+      }
+      ctx.emitEvent({
+        type: 'ticket.resuming',
+        message: `ticket ${ticket.seq}: implemented on ${branch} — retrying the landing (${pending.length} commit(s))`,
+        ticketId: ticket.id,
+        data: { attemptBranch: branch, preservedCommits: pending.length, conflict: true },
+      })
+      return await landChain(branch, pending)
+    }
+
     let result: RunResult | undefined
     let tempBranch = ''
     for (let attempt = 1; ; attempt++) {
@@ -1279,12 +1656,21 @@ async function realExecuteTicketRun(
           }
         }
         if (isMergeConflictError(err)) {
+          // Sandcastle itself hit a branch conflict setting the run up, so we
+          // never reached our own landing loop and have no file list. Record
+          // the conflict shape anyway (empty list) whenever commits survived:
+          // that is what routes the next burn through the resolver, which
+          // re-derives the conflicting paths from git.
+          if (salvaged.length > 0) {
+            preserveChain(tempBranch)
+            ctx.updateTicket(ticket.id, { conflictFiles: [] })
+          }
           return {
             status: 'failed',
             error: `merge conflict landing ticket ${ticket.seq} on ${feature.branch}: ${msg}`,
             event: {
               type: 'merge.conflict.needs-human',
-              message: `ticket ${ticket.seq}: merge conflict on ${feature.branch} — resolve manually per the error, then re-burn`,
+              message: `ticket ${ticket.seq}: merge conflict on ${feature.branch}${salvaged.length > 0 ? ' — resolve it from the run lane' : ' — resolve manually per the error, then re-burn'}`,
             },
           }
         }
@@ -1345,34 +1731,11 @@ async function realExecuteTicketRun(
     }
 
     // Land the ticket's commits on the feature branch — serialized per run, so
-    // two tickets finishing together never race the ref/checkout. The scheduler
+    // two tickets finishing together never race the ref/checkout, and resolving
+    // conflicts in-loop rather than dumping them on the human. The scheduler
     // only marks a ticket done (and readies its dependents) after this resolves,
     // so dependents always fork a tip that includes their blockers' work.
-    const merge = await land(() => mergeTempBranch(project.repoPath, feature.branch, tempBranch))
-    if (!merge.ok) {
-      const detail = merge.error ?? 'merge failed'
-      if (merge.conflict) {
-        return {
-          status: 'failed',
-          error: `ticket ${ticket.seq} committed to ${tempBranch} but landing on ${feature.branch} hit a conflict: ${detail}`,
-          event: {
-            type: 'merge.conflict.needs-human',
-            message: `ticket ${ticket.seq}: ${tempBranch} conflicts with ${feature.branch} — merge it manually (git merge ${tempBranch}; resolve; git branch -D ${tempBranch}), then re-burn`,
-          },
-        }
-      }
-      // Non-conflict landing failure (lock contention, fs hiccup) — keep the
-      // chain on the ticket so a later retry just re-lands it.
-      preserveChain(tempBranch)
-      return {
-        status: 'failed',
-        error: `ticket ${ticket.seq} committed to ${tempBranch} but landing on ${feature.branch} failed: ${errorHeadline(detail)} — the branch is preserved for manual recovery`,
-      }
-    }
-
-    // Landed — the chain is merged; a stale resume pointer must not survive.
-    if (ticket.attemptBranch) ctx.updateTicket(ticket.id, { attemptBranch: null })
-    return outcome
+    return await landChain(tempBranch, outcome.commits)
   } finally {
     activeTicketAborts.delete(ticket.id)
     throttle.flush()

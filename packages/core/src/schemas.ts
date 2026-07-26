@@ -79,6 +79,16 @@ export const Ticket = TicketInput.extend({
    * user retries "fresh".
    */
   attemptBranch: z.string().optional(),
+  /**
+   * Repo-relative paths that conflicted when `attemptBranch` last failed to land
+   * on the feature branch. Present (possibly empty, when git could not report
+   * the paths) IFF the ticket's preserved work is blocked by a landing conflict
+   * rather than by unfinished implementation — which is what makes the next burn
+   * of this ticket run the conflict RESOLVER instead of the implementer, and
+   * what the run lane renders its conflict card from. Cleared once the branch
+   * lands or the user retries "fresh".
+   */
+  conflictFiles: z.array(z.string()).optional(),
 })
 export type Ticket = z.infer<typeof Ticket>
 

@@ -4,9 +4,11 @@ import { describe, expect, it } from 'vitest'
 import {
   ISOLATED_REPO_PATH,
   SANDBOX_WORKSPACE_PATH,
+  buildConflictFilesBlock,
   buildDocsDigest,
   buildFeatureBrief,
   buildIsolatedSetupCommand,
+  buildOtherSideBlock,
   buildTicketJson,
   buildWorkspaceNotes,
   cacheMountFor,
@@ -17,13 +19,21 @@ import {
   indexBySeq,
   interpretRunResult,
   isMergeConflictError,
+  landWithResolve,
   parseEnvFile,
+  renderTemplate,
   renderTicketPrompt,
   resolveBurnWorkspaceMode,
+  resolveMergeCommand,
   resolveSetupCommand,
   selectSandbox,
 } from '../src/workflows/ticket-burner'
-import type { RepoToolchain } from '../src/workflows/ticket-burner'
+import type {
+  LandDeps,
+  RepoToolchain,
+  ResolveAttemptResult,
+} from '../src/workflows/ticket-burner'
+import type { TempBranchMergeResult } from '../src/services/git'
 import type { RuncastleConfig } from '@runcastle/core'
 
 function ticket(seq: number, blockedBy: number[] = [], overrides: Partial<Ticket> = {}): Ticket {
@@ -501,5 +511,164 @@ describe('createSerialQueue — one task at a time, in order', () => {
 
     await expect(failing).rejects.toThrow('merge failed')
     await expect(after).resolves.toBe('still runs')
+  })
+})
+
+describe('landWithResolve — conflicts are resolved in-loop, not handed to the human', () => {
+  /** A `LandDeps` whose merge/resolve behaviour is scripted per call. */
+  function deps(
+    merges: TempBranchMergeResult[],
+    resolves: ResolveAttemptResult[],
+    maxResolveAttempts = 2,
+  ) {
+    const events: { type: string; message: string; data?: unknown }[] = []
+    const merged: string[] = []
+    const resolved: { branch: string; files: string[]; attempt: number }[] = []
+    const landDeps: LandDeps = {
+      merge: (branch) => {
+        merged.push(branch)
+        return Promise.resolve(merges[merged.length - 1] ?? { ok: false, error: 'unscripted merge' })
+      },
+      resolve: (input) => {
+        resolved.push({ branch: input.branch, files: input.files, attempt: input.attempt })
+        return Promise.resolve(
+          resolves[resolved.length - 1] ?? { ok: false, branch: input.branch, error: 'unscripted' },
+        )
+      },
+      maxResolveAttempts,
+      emit: (e) => events.push(e),
+      label: 'ticket 3',
+      featureBranch: 'feature/demo',
+    }
+    return { landDeps, events, merged, resolved }
+  }
+
+  it('lands directly when the merge is clean — no resolver agent is spawned', async () => {
+    const d = deps([{ ok: true }], [])
+    const out = await landWithResolve('tkt/3-a', d.landDeps)
+
+    expect(out).toEqual({ status: 'landed', branch: 'tkt/3-a' })
+    expect(d.resolved).toEqual([])
+    expect(d.events).toEqual([])
+  })
+
+  it('resolves a conflict and lands the resolver’s branch', async () => {
+    const d = deps(
+      [{ ok: false, conflict: true, files: ['a.ts', 'b.ts'], error: 'CONFLICTS: a.ts, b.ts' }, { ok: true }],
+      [{ ok: true, branch: 'tkt/3-resolved' }],
+    )
+    const out = await landWithResolve('tkt/3-a', d.landDeps)
+
+    expect(out).toEqual({ status: 'landed', branch: 'tkt/3-resolved' })
+    // the resolver was briefed with the conflicting files git reported…
+    expect(d.resolved).toEqual([{ branch: 'tkt/3-a', files: ['a.ts', 'b.ts'], attempt: 1 }])
+    // …and the SECOND merge lands the resolved branch, not the original
+    expect(d.merged).toEqual(['tkt/3-a', 'tkt/3-resolved'])
+    expect(d.events.map((e) => e.type)).toEqual([
+      'merge.conflict.resolving',
+      'merge.conflict.resolved',
+    ])
+  })
+
+  it('loops when the feature tip moves again mid-resolve, up to the attempt budget', async () => {
+    const d = deps(
+      [
+        { ok: false, conflict: true, files: ['a.ts'], error: 'c1' },
+        { ok: false, conflict: true, files: ['c.ts'], error: 'c2' },
+        { ok: true },
+      ],
+      [
+        { ok: true, branch: 'tkt/3-r1' },
+        { ok: true, branch: 'tkt/3-r2' },
+      ],
+    )
+    const out = await landWithResolve('tkt/3-a', d.landDeps)
+
+    expect(out).toEqual({ status: 'landed', branch: 'tkt/3-r2' })
+    // each pass re-reads the CURRENT conflict rather than reusing the first list
+    expect(d.resolved).toEqual([
+      { branch: 'tkt/3-a', files: ['a.ts'], attempt: 1 },
+      { branch: 'tkt/3-r1', files: ['c.ts'], attempt: 2 },
+    ])
+  })
+
+  it('gives up for a human once the budget is spent, reporting the live conflict', async () => {
+    const d = deps(
+      [
+        { ok: false, conflict: true, files: ['a.ts'], error: 'c1' },
+        { ok: false, conflict: true, files: ['a.ts', 'd.ts'], error: 'c2' },
+      ],
+      [{ ok: true, branch: 'tkt/3-r1' }],
+      1,
+    )
+    const out = await landWithResolve('tkt/3-a', d.landDeps)
+
+    // the branch carried forward is the resolver's (it holds the most work) and
+    // the files are the ones that STILL conflict, not the original list
+    expect(out).toEqual({
+      status: 'conflict',
+      branch: 'tkt/3-r1',
+      files: ['a.ts', 'd.ts'],
+      error: 'c2',
+    })
+  })
+
+  it('a resolver that fails still carries its branch forward, with its own error', async () => {
+    const d = deps(
+      [{ ok: false, conflict: true, files: ['a.ts'], error: 'c1' }],
+      [{ ok: false, branch: 'tkt/3-r1', error: 'resolver reported BLOCKED:\ncontradictory specs' }],
+    )
+    const out = await landWithResolve('tkt/3-a', d.landDeps)
+
+    expect(out).toEqual({
+      status: 'conflict',
+      branch: 'tkt/3-r1',
+      files: ['a.ts'],
+      error: 'resolver reported BLOCKED:\ncontradictory specs',
+    })
+    expect(d.merged).toEqual(['tkt/3-a']) // no second merge after a failed resolve
+  })
+
+  it('never resolves when the budget is 0 (resolver disabled)', async () => {
+    const d = deps([{ ok: false, conflict: true, files: ['a.ts'], error: 'c1' }], [], 0)
+    const out = await landWithResolve('tkt/3-a', d.landDeps)
+
+    expect(out).toEqual({ status: 'conflict', branch: 'tkt/3-a', files: ['a.ts'], error: 'c1' })
+    expect(d.resolved).toEqual([])
+  })
+
+  it('a non-conflict landing failure is never handed to a resolver', async () => {
+    const d = deps([{ ok: false, error: 'could not lock ref' }], [])
+    const out = await landWithResolve('tkt/3-a', d.landDeps)
+
+    expect(out).toEqual({ status: 'failed', branch: 'tkt/3-a', error: 'could not lock ref' })
+    expect(d.resolved).toEqual([])
+  })
+})
+
+describe('resolver prompt blocks', () => {
+  it('renders the conflicting files, falling back to a git instruction', () => {
+    expect(buildConflictFilesBlock(['src/a.ts', 'src/b.ts'])).toBe('- `src/a.ts`\n- `src/b.ts`')
+    expect(buildConflictFilesBlock([])).toMatch(/git status/)
+  })
+
+  it('renders the other side of the merge, falling back to a git instruction', () => {
+    expect(buildOtherSideBlock(['abc1234 ticket(2): add staging', 'def5678 ticket(4): wire it'])).toBe(
+      '- abc1234 ticket(2): add staging\n- def5678 ticket(4): wire it',
+    )
+    expect(buildOtherSideBlock([])).toMatch(/git log/)
+  })
+
+  it('names the feature branch directly when mounted, and via a fetch when isolated', () => {
+    // isolated mode works in a container-native CLONE, where the feature branch
+    // is only a remote ref — a bare `git merge feature/x` would fail there
+    expect(resolveMergeCommand('mounted', 'feature/x')).toBe('git merge --no-edit feature/x')
+    expect(resolveMergeCommand('isolated', 'feature/x')).toBe(
+      'git fetch origin feature/x && git merge --no-edit FETCH_HEAD',
+    )
+  })
+
+  it('renderTemplate leaves placeholders it was given no value for alone', () => {
+    expect(renderTemplate('{{A}} and {{B}} and {{A}}', { A: 'x' })).toBe('x and {{B}} and x')
   })
 })

@@ -286,7 +286,9 @@ export async function burn(
     // reset exactly the tickets it wants burned — the rest stay failed).
     const failed = opts.resetFailed === false ? [] : tickets.filter((t) => t.status === 'failed')
     for (const t of failed) {
-      // Keep `attemptBranch`: the re-burn resumes from the preserved commits.
+      // Keep `attemptBranch` (the re-burn resumes from the preserved commits)
+      // and `conflictFiles` (a ticket that only failed to LAND gets its
+      // conflict resolved rather than re-implemented).
       updateTicket(ctx, t.id, { status: 'pending', error: null })
     }
     emit(ctx, featureId, {
@@ -320,9 +322,15 @@ export async function burn(
  *
  * `fresh` discards the ticket's preserved work — EVERY attempt branch of this
  * ticket (the recorded one plus any orphans a pre-`attemptBranch` burn left),
- * `attemptBranch` cleared — so the new agent starts from the feature branch
- * tip. Blockers reset alongside it keep their chains — only the named ticket
- * starts over.
+ * `attemptBranch` and `conflictFiles` cleared — so the new agent starts from the
+ * feature branch tip. Blockers reset alongside it keep their chains — only the
+ * named ticket starts over.
+ *
+ * A ticket that failed on a LANDING CONFLICT keeps its `conflictFiles`, which is
+ * what makes the burner resolve the conflict instead of re-implementing the
+ * ticket (`resolvingConflict` in the result says so, for the caller's copy).
+ * "Retry fresh" is the escape hatch that throws the conflicted work away and
+ * re-implements from the current tip.
  *
  * When the ticket has NO recorded `attemptBranch` (it failed before the column
  * existed, or the db was reset), the fallback lookup
@@ -345,6 +353,8 @@ export async function retryTicket(
   resumedFrom: string | null
   /** Commits preserved on that branch (0 when starting clean). */
   preservedCommits: number
+  /** True when this retry resolves a landing conflict rather than re-implementing. */
+  resolvingConflict: boolean
 }> {
   const ticket = getTicket(ctx, ticketId)
   const feature = getFeatureRow(ctx, ticket.featureId)
@@ -401,6 +411,10 @@ export async function retryTicket(
     }
   }
 
+  // A landing conflict survives a plain retry (the burner resolves it) but not
+  // a fresh one (the work it described is being discarded).
+  const resolvingConflict = !opts.fresh && ticket.conflictFiles !== undefined && !!resumedFrom
+
   for (const t of toReset.values()) {
     const isTarget = t.id === ticket.id
     updateTicket(ctx, t.id, {
@@ -409,15 +423,18 @@ export async function retryTicket(
       // Record an adopted branch / clear on fresh — the burner reads this
       // pointer to base the new attempt; blockers keep whatever they have.
       ...(isTarget ? { attemptBranch: resumedFrom } : {}),
+      ...(isTarget && !resolvingConflict ? { conflictFiles: null } : {}),
     })
   }
 
   const seqs = [...toReset.keys()].sort((a, b) => a - b)
   const how = opts.fresh
     ? ' from scratch'
-    : resumedFrom
-      ? ` from ${preservedCommits} preserved commit(s) on ${resumedFrom}`
-      : ''
+    : resolvingConflict
+      ? ` — resolving its conflict with ${feature.branch} (${preservedCommits} commit(s) preserved on ${resumedFrom})`
+      : resumedFrom
+        ? ` from ${preservedCommits} preserved commit(s) on ${resumedFrom}`
+        : ''
   emit(ctx, feature.id, {
     type: 'ticket.retry',
     message:
@@ -425,11 +442,11 @@ export async function retryTicket(
         ? `retrying ticket ${ticket.seq}${how} (+ failed blocker${seqs.length > 2 ? 's' : ''} ${seqs.filter((s) => s !== ticket.seq).join(', ')})`
         : `retrying ticket ${ticket.seq}${how}`,
     ticketId: ticket.id,
-    data: { retried: seqs, fresh: !!opts.fresh, resumedFrom, preservedCommits },
+    data: { retried: seqs, fresh: !!opts.fresh, resumedFrom, preservedCommits, resolvingConflict },
   })
 
   const { runId } = await burn(ctx, feature.id, { resetFailed: false })
-  return { runId, retried: seqs, resumedFrom, preservedCommits }
+  return { runId, retried: seqs, resumedFrom, preservedCommits, resolvingConflict }
 }
 
 export interface EscalateResult {

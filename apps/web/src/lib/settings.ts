@@ -17,6 +17,7 @@ export const FIELD_ENV_VAR: Record<string, string> = {
   sandboxImage: 'RUNCASTLE_SANDBOX_IMAGE',
   burnConcurrency: 'RUNCASTLE_BURN_CONCURRENCY',
   burnAttempts: 'RUNCASTLE_BURN_ATTEMPTS',
+  burnConflictAttempts: 'RUNCASTLE_BURN_CONFLICT_ATTEMPTS',
   mainBranch: 'RUNCASTLE_MAIN_BRANCH',
 }
 
@@ -87,6 +88,11 @@ const META: Record<string, FieldMeta> = {
   burnAttempts: {
     label: 'Burn attempts',
     help: 'Max agent attempts per ticket per run (1–5). A transient crash (API drop, network) retries with committed work preserved.',
+    control: 'number',
+  },
+  burnConflictAttempts: {
+    label: 'Conflict resolver passes',
+    help: 'Max agent passes spent resolving a ticket’s landing conflict before asking you (0–3). 0 sends every conflict straight to you.',
     control: 'number',
   },
   mainBranch: {

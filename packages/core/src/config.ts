@@ -144,6 +144,18 @@ export const RuncastleConfig = z.preprocess(
      */
     burnAttempts: z.number().int().min(1).max(5).default(3),
     /**
+     * Max in-loop conflict-RESOLVER passes per landing. When a ticket's branch
+     * conflicts with the feature branch (its siblings landed first and touched
+     * the same files), the burner does not hand the human a git command: it
+     * runs one more agent on that branch — same ticket, same feature docs, plus
+     * the conflicting paths and the sibling commits it is reconciling against —
+     * which merges the feature branch IN, resolves, and commits, turning the
+     * landing into a fast-forward. A pass is repeated only when the feature tip
+     * moves again mid-resolve. `0` disables it: conflicts go straight to the
+     * human (the pre-resolver behaviour).
+     */
+    burnConflictAttempts: z.number().int().min(0).max(3).default(2),
+    /**
      * Command run inside the burner sandbox before the agent starts (sandcastle
      * `sandbox.onSandboxReady`), overriding lockfile-based detection. Leave
      * unset to auto-detect from the target repo (`packageManager` field, then
