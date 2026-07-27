@@ -13,7 +13,7 @@ import {
   terminalSpec,
   writeGitIdentity,
 } from '../../services/setup'
-import { resolveTool } from '../../util/resolve-executable'
+import { resolveSpawnTarget } from '../../util/resolve-executable'
 import { publicProcedure, router } from '../context'
 
 /**
@@ -72,12 +72,9 @@ export const setupRouter = router({
       // fresh install never dead-ends (issue #50) — create-only, both runtimes.
       const cwd = input.kind === 'build-image' ? prepareSandboxBuildContext() : process.cwd()
       // Resolve through PATHEXT like the launcher does for `claude` — a bare
-      // `spawn('sandcastle'|'claude')` misses a Windows `.cmd` shim, and ConPTY
-      // can't exec a `.cmd`/`.bat` directly, so route those through cmd.exe.
-      const resolved = resolveTool(spec.cmd)
-      const isShim = /\.(cmd|bat)$/i.test(resolved)
-      const file = isShim ? (process.env.ComSpec ?? 'cmd.exe') : resolved
-      const args = isShim ? ['/c', resolved, ...spec.args] : spec.args
+      // `spawn('sandcastle'|'claude')` misses a Windows `.cmd`/`.ps1` shim, and
+      // ConPTY can't exec any shim directly, so each goes via its interpreter.
+      const { file, args } = resolveSpawnTarget(spec.cmd, spec.args)
       ptyRegistry().create({
         sessionId,
         cmd: file,

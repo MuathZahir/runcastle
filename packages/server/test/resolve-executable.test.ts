@@ -3,6 +3,7 @@ import {
   explainSpawnFailure,
   resolveExecutable,
   resolveTool,
+  spawnTargetFor,
 } from '../src/util/resolve-executable'
 
 describe('resolveExecutable', () => {
@@ -31,6 +32,24 @@ describe('resolveExecutable', () => {
       exists: (p) => p === 'C:\\bin\\docker.exe' || p === 'C:\\bin\\docker.cmd',
     })
     expect(resolved).toBe('C:\\bin\\docker.exe')
+  })
+
+  it('finds a .ps1 shim — npm installs one even when it installs no .cmd', () => {
+    const resolved = resolveExecutable('claude', {
+      platform: 'win32',
+      pathEnv: 'C:\\Users\\A\\AppData\\Roaming\\npm',
+      exists: (p) => p === 'C:\\Users\\A\\AppData\\Roaming\\npm\\claude.ps1',
+    })
+    expect(resolved).toBe('C:\\Users\\A\\AppData\\Roaming\\npm\\claude.ps1')
+  })
+
+  it('prefers a directly-executable .cmd over a .ps1 in the same dir', () => {
+    const resolved = resolveExecutable('claude', {
+      platform: 'win32',
+      pathEnv: 'C:\\npm',
+      exists: (p) => p === 'C:\\npm\\claude.cmd' || p === 'C:\\npm\\claude.ps1',
+    })
+    expect(resolved).toBe('C:\\npm\\claude.cmd')
   })
 
   it('falls back to the bare name when nothing is found on PATH', () => {
@@ -106,6 +125,46 @@ describe('resolveTool', () => {
       exists: (p) => p === '/usr/bin/claude',
     })
     expect(resolved).toBe('/usr/bin/claude')
+  })
+})
+
+/**
+ * Windows can only exec a real PE image, so every shim kind needs its
+ * interpreter. Handing ConPTY a `.ps1` directly fails the same way handing it a
+ * `.bat` does — a terminal that opens and instantly dies.
+ */
+describe('spawnTargetFor', () => {
+  it('runs a .cmd shim through the command processor', () => {
+    const t = spawnTargetFor('C:\\npm\\claude.cmd', ['--version'])
+    expect(t.file.toLowerCase()).toContain('cmd')
+    expect(t.args).toEqual(['/c', 'C:\\npm\\claude.cmd', '--version'])
+  })
+
+  it('runs a .ps1 shim through PowerShell with -File', () => {
+    const t = spawnTargetFor('C:\\npm\\claude.ps1', ['--version'])
+    expect(t.file).toBe('powershell.exe')
+    expect(t.args).toEqual([
+      '-NoProfile',
+      '-ExecutionPolicy',
+      'Bypass',
+      '-File',
+      'C:\\npm\\claude.ps1',
+      '--version',
+    ])
+  })
+
+  it('bypasses execution policy — Restricted is the client default and blocks npm shims', () => {
+    expect(spawnTargetFor('C:\\npm\\claude.ps1', []).args).toContain('Bypass')
+  })
+
+  it('spawns a native .exe directly, with no interpreter', () => {
+    const t = spawnTargetFor('C:\\bin\\claude.exe', ['--version'])
+    expect(t).toEqual({ file: 'C:\\bin\\claude.exe', args: ['--version'] })
+  })
+
+  it('leaves a POSIX path untouched', () => {
+    const t = spawnTargetFor('/usr/bin/claude', ['--version'])
+    expect(t).toEqual({ file: '/usr/bin/claude', args: ['--version'] })
   })
 })
 

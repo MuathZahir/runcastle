@@ -6,7 +6,7 @@ import { worktreeDir } from '@runcastle/core/paths'
 import { nextGate, nextPhase, resolveModel } from '@runcastle/core'
 import { and, eq } from 'drizzle-orm'
 import type { AppCtx } from '../db/types'
-import { resolveTool } from '../util/resolve-executable'
+import { resolveTool, spawnTargetFor, type SpawnTarget } from '../util/resolve-executable'
 import { SKILLS_DIR_ENV } from './skills-root'
 import { runs } from '../db/schema'
 import { GateError, isNotImplemented } from '../errors'
@@ -164,16 +164,12 @@ function resolveClaudeExecutable(): string {
 
 /**
  * The `{file, args}` to spawn `claude` inside a PTY. A native `.exe` is spawned
- * directly; a `.cmd`/`.bat` shim is run via `cmd.exe /c` (ConPTY cannot exec a
- * batch file directly). Env is inherited on the spawn (UI-SPEC §5 — no `cmd /k`
- * env prefix, no `wt.exe`).
+ * directly; a `.cmd`/`.bat`/`.ps1` shim goes through its interpreter (ConPTY
+ * cannot exec any of them directly) — see {@link spawnTargetFor}. Env is
+ * inherited on the spawn (UI-SPEC §5 — no `cmd /k` env prefix, no `wt.exe`).
  */
-function claudeSpawnTarget(claudeArgs: string[]): { file: string; args: string[] } {
-  const exe = resolveClaudeExecutable()
-  if (/\.(cmd|bat)$/i.test(exe)) {
-    return { file: process.env.ComSpec ?? 'cmd.exe', args: ['/c', exe, ...claudeArgs] }
-  }
-  return { file: exe, args: claudeArgs }
+function claudeSpawnTarget(claudeArgs: string[]): SpawnTarget {
+  return spawnTargetFor(resolveClaudeExecutable(), claudeArgs)
 }
 
 /**

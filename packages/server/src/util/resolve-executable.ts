@@ -26,8 +26,16 @@ export interface ResolveExecutableOptions {
   exists?: (path: string) => boolean
 }
 
-/** Windows shim extensions, native binary first so `.exe` beats a `.cmd`. */
-const WIN_EXTS = ['.exe', '.cmd', '.bat', '']
+/**
+ * Windows shim extensions, in launch-cost order: a native `.exe` beats a `.cmd`,
+ * which beats a `.ps1` (that one costs a PowerShell startup — see
+ * {@link spawnTargetFor}). `.ps1` is here because npm's global shims are a
+ * *trio* — `foo`, `foo.cmd`, `foo.ps1` — and `Get-Command foo` reports the
+ * `.ps1`, since PowerShell ranks ExternalScript above Application. So a user
+ * whose shell clearly resolves the tool can still be missing every extension we
+ * used to scan for.
+ */
+const WIN_EXTS = ['.exe', '.cmd', '.bat', '.ps1', '']
 
 /**
  * The `RUNCASTLE_*_BIN` escape hatch each externally-installed tool honors. This
@@ -56,6 +64,46 @@ export function resolveTool(
   const overrideKey = BIN_OVERRIDE_ENV[name]
   const override = opts.override ?? (overrideKey ? env[overrideKey] : undefined)
   return resolveExecutable(name, override ? { ...opts, override } : opts)
+}
+
+/** What to actually hand a spawn call: the real executable, and its full argv. */
+export interface SpawnTarget {
+  file: string
+  args: string[]
+}
+
+/**
+ * Turn a resolved path into something `CreateProcess`/ConPTY can actually run.
+ *
+ * Windows can only exec a real PE image, so both shim kinds need an interpreter:
+ * a `.cmd`/`.bat` goes through the command processor, and a `.ps1` — which is
+ * just a text file — needs PowerShell with `-File`. `-ExecutionPolicy Bypass` is
+ * required rather than optional: the default policy on Windows client SKUs is
+ * `Restricted`, which refuses to run npm's `.ps1` shims at all. We are launching
+ * a script the user installed and already runs by hand, at a path we resolved
+ * ourselves off PATH, so this widens nothing they had not already chosen.
+ *
+ * This lives here, once, because three call sites (doctor/verify exec, the
+ * session launcher, the embedded setup terminals) each had their own copy of the
+ * `.cmd`/`.bat` branch — and adding `.ps1` to three copies is how one gets
+ * missed.
+ */
+export function spawnTargetFor(resolved: string, args: string[]): SpawnTarget {
+  if (/\.(cmd|bat)$/i.test(resolved)) {
+    return { file: process.env.ComSpec ?? 'cmd.exe', args: ['/c', resolved, ...args] }
+  }
+  if (/\.ps1$/i.test(resolved)) {
+    return {
+      file: 'powershell.exe',
+      args: ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', resolved, ...args],
+    }
+  }
+  return { file: resolved, args }
+}
+
+/** {@link resolveTool} + {@link spawnTargetFor}: name and argv → runnable spawn. */
+export function resolveSpawnTarget(name: string, args: string[]): SpawnTarget {
+  return spawnTargetFor(resolveTool(name), args)
 }
 
 /** A bare command name — resolution gave up and never found a real path. */
