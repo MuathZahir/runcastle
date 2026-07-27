@@ -184,7 +184,7 @@ Plugin dir consumed via `--plugin-dir` (exact manifest format per CC-INTEGRATION
 
 - `ideate` (entry): orchestrates the unbroken ideation session: relentless grilling (fork of grilling/grill-with-docs) writing `docs/features/<slug>/decisions.md` incrementally → size branch: full → `/runcastle:spec` then `/runcastle:tickets`; collapsed → `/runcastle:tickets` directly. Calls `record_event` at milestones, `complete_phase` at each boundary, and ends after emit_tickets telling the user to review tickets in the runcastle UI and click Burn.
 - `spec` (fork of to-spec): writes `docs/features/<slug>/spec.md`, calls `complete_phase({phase:'spec'})`.
-- `tickets` (fork of to-tickets): tracer-bullet vertical slices, each sized to one fresh agent session, blockedBy edges by seq; calls `emit_tickets` (NOT files), then `complete_phase({phase:'tickets'})`.
+- `tickets` (fork of to-tickets): merge-by-default vertical slices, each sized to **fill** one fresh agent session (the per-ticket container + install + re-orientation is fixed overhead — ADR-0008 — so fine granularity lives in `acceptanceCriteria`, not in the ticket count), blockedBy edges by seq; calls `emit_tickets` (NOT files), then `complete_phase({phase:'tickets'})`.
 - `qa`: read-only helper for kind=qa sessions (answer questions from docs + code; may `record_event`; never advances phases).
 - `burner/implement-ticket.md`: NOT a skill — prompt template (see §8) embedding forked implement+tdd+code-review rules: pre-agreed seams from ticket, red-green per criterion, typecheck+tests before commit, conventional message.
 
