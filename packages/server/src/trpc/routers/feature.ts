@@ -47,8 +47,12 @@ export const featureRouter = router({
   // Work a frontier waypoint (ADR-0001 §13.2): claim it transactionally, then
   // open a kind=waypoint session on it. Refuses a waypoint not on the frontier,
   // or when a waypoint session is already live (one HITL session per feature).
+  // A finished live session is ended for us; `endLive` — set only after the human
+  // confirms — additionally abandons one that is still mid-work (decision #8).
   workWaypoint: publicProcedure
-    .input(z.object({ featureId: z.string(), waypointId: z.string() }))
+    .input(
+      z.object({ featureId: z.string(), waypointId: z.string(), endLive: z.boolean().optional() }),
+    )
     .mutation(({ ctx, input }) => workWaypoint(ctx, input)),
 
   // Converge a mapped feature (ADR-0001 §13.2): crosses G1 (all-waypoints-
