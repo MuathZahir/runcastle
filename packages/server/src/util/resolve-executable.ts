@@ -24,6 +24,12 @@ export interface ResolveExecutableOptions {
   exts?: string[]
   /** Existence predicate; defaults to `fs.existsSync`. Injected in tests. */
   exists?: (path: string) => boolean
+  /**
+   * Dirs to scan *after* PATH comes up empty — see {@link wellKnownBinDirs}.
+   * Kept opt-in so {@link resolveExecutable} stays a pure PATH scan and only
+   * {@link resolveTool} carries the guessing policy.
+   */
+  extraDirs?: string[]
 }
 
 /**
@@ -53,8 +59,51 @@ export const BIN_OVERRIDE_ENV: Readonly<Record<string, string>> = {
 }
 
 /**
- * {@link resolveExecutable} plus the tool's `RUNCASTLE_*_BIN` override — the
- * entry point every spawn site should use. `env` is injected in tests.
+ * Where the common installers actually put things, scanned only after PATH has
+ * failed. This exists because the two supported ways to install Claude Code land
+ * in different places and neither reliably reaches *our* process:
+ *
+ * - the native installer writes `~/.local/bin` (`%USERPROFILE%\.local\bin`) and
+ *   appends it to the **user** PATH, which only new processes inherit;
+ * - npm global writes `%APPDATA%\npm` (POSIX: the npm prefix's `bin`);
+ * - bun global writes `~/.bun/bin`.
+ *
+ * A server started from a stale shell, a GUI shortcut, or a login session
+ * predating the install sees none of them, and reports a tool the user can
+ * plainly run as missing. Guessing these dirs is a recovery path, not the
+ * primary one — PATH always wins when it has an answer.
+ */
+export function wellKnownBinDirs(
+  opts: { platform?: NodeJS.Platform; env?: NodeJS.ProcessEnv } = {},
+): string[] {
+  const env = opts.env ?? process.env
+  const isWin = (opts.platform ?? process.platform) === 'win32'
+  const dirs: string[] = []
+  if (isWin) {
+    const home = env.USERPROFILE
+    if (home) {
+      dirs.push(win32.join(home, '.local', 'bin'), win32.join(home, '.bun', 'bin'))
+    }
+    if (env.APPDATA) dirs.push(win32.join(env.APPDATA, 'npm'))
+    if (env.LOCALAPPDATA) dirs.push(win32.join(env.LOCALAPPDATA, 'Programs', 'claude'))
+    return dirs
+  }
+  const home = env.HOME
+  if (home) {
+    dirs.push(
+      posix.join(home, '.local', 'bin'),
+      posix.join(home, '.bun', 'bin'),
+      posix.join(home, '.npm-global', 'bin'),
+    )
+  }
+  dirs.push('/usr/local/bin', '/opt/homebrew/bin')
+  return dirs
+}
+
+/**
+ * {@link resolveExecutable} plus the tool's `RUNCASTLE_*_BIN` override and the
+ * {@link wellKnownBinDirs} recovery scan — the entry point every spawn site
+ * should use. `env` is injected in tests.
  */
 export function resolveTool(
   name: string,
@@ -63,7 +112,9 @@ export function resolveTool(
   const env = opts.env ?? process.env
   const overrideKey = BIN_OVERRIDE_ENV[name]
   const override = opts.override ?? (overrideKey ? env[overrideKey] : undefined)
-  return resolveExecutable(name, override ? { ...opts, override } : opts)
+  const extraDirs =
+    opts.extraDirs ?? wellKnownBinDirs({ ...(opts.platform ? { platform: opts.platform } : {}), env })
+  return resolveExecutable(name, { ...opts, extraDirs, ...(override ? { override } : {}) })
 }
 
 /** What to actually hand a spawn call: the real executable, and its full argv. */
@@ -128,7 +179,7 @@ export function explainSpawnFailure(cmd: string, raw: string): string {
   }
   const overrideKey = BIN_OVERRIDE_ENV[cmd]
   const lines = [
-    `Could not launch \`${cmd}\`: nothing by that name is on the PATH this runcastle server inherited.`,
+    `Could not launch \`${cmd}\`: not on the PATH this runcastle server inherited, nor in the usual install locations (~/.local/bin, npm global, ~/.bun/bin).`,
     // The trap this message exists to defuse: users check their own shell,
     // find the binary, and conclude runcastle is lying. The server's PATH is a
     // snapshot taken when it started — a newer install is simply not in it.
@@ -145,9 +196,10 @@ export function explainSpawnFailure(cmd: string, raw: string): string {
 }
 
 /**
- * Resolve `name` to an absolute executable path. Returns the bare `name`
- * unchanged when nothing is found so the caller's `spawn` can make a final
- * attempt (and surface a real ENOENT) rather than us inventing a bad path.
+ * Resolve `name` to an absolute executable path: PATH first, then `extraDirs` as
+ * a recovery scan. Returns the bare `name` unchanged when nothing is found so
+ * the caller's `spawn` can make a final attempt (and surface a real ENOENT)
+ * rather than us inventing a bad path.
  */
 export function resolveExecutable(name: string, opts: ResolveExecutableOptions = {}): string {
   const exists = opts.exists ?? existsSync
@@ -156,17 +208,22 @@ export function resolveExecutable(name: string, opts: ResolveExecutableOptions =
   const isWin = (opts.platform ?? process.platform) === 'win32'
   const exts = opts.exts ?? (isWin ? WIN_EXTS : [''])
   const pathEnv = opts.pathEnv ?? process.env.PATH ?? ''
-  const dirs = pathEnv.split(isWin ? ';' : ':')
   // Join with the TARGET platform's separator, not the host's, so resolution is
   // testable cross-platform (a linux CI can exercise the Windows path).
   const join = isWin ? win32.join : posix.join
 
-  for (const dir of dirs) {
-    if (!dir) continue
-    for (const ext of exts) {
-      const candidate = join(dir, `${name}${ext}`)
-      if (exists(candidate)) return candidate
+  const scan = (dirs: readonly string[]): string | null => {
+    for (const dir of dirs) {
+      if (!dir) continue
+      for (const ext of exts) {
+        const candidate = join(dir, `${name}${ext}`)
+        if (exists(candidate)) return candidate
+      }
     }
+    return null
   }
-  return name
+
+  // PATH is authoritative — the recovery dirs are only consulted once it has
+  // nothing, so a deliberate PATH ordering is never second-guessed.
+  return scan(pathEnv.split(isWin ? ';' : ':')) ?? scan(opts.extraDirs ?? []) ?? name
 }

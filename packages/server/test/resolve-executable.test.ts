@@ -4,6 +4,7 @@ import {
   resolveExecutable,
   resolveTool,
   spawnTargetFor,
+  wellKnownBinDirs,
 } from '../src/util/resolve-executable'
 
 describe('resolveExecutable', () => {
@@ -125,6 +126,86 @@ describe('resolveTool', () => {
       exists: (p) => p === '/usr/bin/claude',
     })
     expect(resolved).toBe('/usr/bin/claude')
+  })
+})
+
+/**
+ * Both supported Claude Code installs must work: the native installer
+ * (`~/.local/bin`, added to the *user* PATH so only new processes see it) and
+ * npm global (`%APPDATA%\npm`, shims only). A server launched from a stale
+ * shell or a GUI shortcut inherits neither.
+ */
+describe('install-location recovery', () => {
+  const WIN_ENV = {
+    USERPROFILE: 'C:\\Users\\Admin',
+    APPDATA: 'C:\\Users\\Admin\\AppData\\Roaming',
+  } as NodeJS.ProcessEnv
+
+  it('finds the native install when PATH is stale', () => {
+    const resolved = resolveTool('claude', {
+      env: WIN_ENV,
+      platform: 'win32',
+      pathEnv: 'C:\\Windows\\System32',
+      exists: (p) => p === 'C:\\Users\\Admin\\.local\\bin\\claude.exe',
+    })
+    expect(resolved).toBe('C:\\Users\\Admin\\.local\\bin\\claude.exe')
+  })
+
+  it('finds the npm install when PATH is stale', () => {
+    const resolved = resolveTool('claude', {
+      env: WIN_ENV,
+      platform: 'win32',
+      pathEnv: 'C:\\Windows\\System32',
+      exists: (p) => p === 'C:\\Users\\Admin\\AppData\\Roaming\\npm\\claude.ps1',
+    })
+    expect(resolved).toBe('C:\\Users\\Admin\\AppData\\Roaming\\npm\\claude.ps1')
+    // …and it must be launchable, not merely findable.
+    expect(spawnTargetFor(resolved, []).file).toBe('powershell.exe')
+  })
+
+  it('finds a POSIX native install under ~/.local/bin', () => {
+    const resolved = resolveTool('claude', {
+      env: { HOME: '/home/a' } as NodeJS.ProcessEnv,
+      platform: 'linux',
+      pathEnv: '/usr/bin',
+      exists: (p) => p === '/home/a/.local/bin/claude',
+    })
+    expect(resolved).toBe('/home/a/.local/bin/claude')
+  })
+
+  it('lets PATH win over a well-known dir — a deliberate ordering is not second-guessed', () => {
+    const resolved = resolveTool('claude', {
+      env: WIN_ENV,
+      platform: 'win32',
+      pathEnv: 'C:\\chosen',
+      exists: (p) =>
+        p === 'C:\\chosen\\claude.exe' || p === 'C:\\Users\\Admin\\.local\\bin\\claude.exe',
+    })
+    expect(resolved).toBe('C:\\chosen\\claude.exe')
+  })
+
+  it('still returns the bare name when the tool is genuinely absent', () => {
+    const resolved = resolveTool('claude', {
+      env: WIN_ENV,
+      platform: 'win32',
+      pathEnv: 'C:\\Windows\\System32',
+      exists: () => false,
+    })
+    expect(resolved).toBe('claude')
+  })
+
+  it('covers native, npm and bun locations on Windows', () => {
+    const dirs = wellKnownBinDirs({ platform: 'win32', env: WIN_ENV })
+    expect(dirs).toContain('C:\\Users\\Admin\\.local\\bin')
+    expect(dirs).toContain('C:\\Users\\Admin\\AppData\\Roaming\\npm')
+    expect(dirs).toContain('C:\\Users\\Admin\\.bun\\bin')
+  })
+
+  it('omits dirs whose env var is unset rather than emitting undefined paths', () => {
+    expect(wellKnownBinDirs({ platform: 'win32', env: {} as NodeJS.ProcessEnv })).toEqual([])
+    expect(wellKnownBinDirs({ platform: 'linux', env: {} as NodeJS.ProcessEnv })).not.toContain(
+      undefined,
+    )
   })
 })
 

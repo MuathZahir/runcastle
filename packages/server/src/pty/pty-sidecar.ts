@@ -3,7 +3,7 @@ import { createRequire } from 'node:module'
 import { existsSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { ASSET_ENV, resolveAsset } from '../launcher/asset-paths'
-import { explainSpawnFailure, resolveExecutable } from '../util/resolve-executable'
+import { explainSpawnFailure, resolveTool } from '../util/resolve-executable'
 import type { CreatePtyOptions, PtySession } from './pty'
 
 /**
@@ -37,9 +37,11 @@ function resolveNodeExecutable(): string {
   const override = process.env.RUNCASTLE_NODE_BIN
   if (override && existsSync(override)) return override
   // Under a `node` runtime `process.execPath` IS node; only under Bun must we
-  // scan PATH for a system node (shared PATHEXT-aware resolver).
+  // scan PATH for a system node (shared resolver, so a node installed after the
+  // server started is still found in the usual install dirs — a missing system
+  // node is fatal to every terminal on Bun+win32).
   if (!isBun()) return process.execPath
-  return resolveExecutable('node', { exts: process.platform === 'win32' ? ['.exe', '.cmd', ''] : [''] })
+  return resolveTool('node', { exts: process.platform === 'win32' ? ['.exe', '.cmd', ''] : [''] })
 }
 
 /** Resolve node-pty's entry once so the host never has to re-resolve it. */
