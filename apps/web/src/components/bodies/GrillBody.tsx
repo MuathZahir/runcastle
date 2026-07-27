@@ -6,6 +6,7 @@ import type { FeatureFull } from '../../lib/api'
 import { useToast } from '../../lib/toast'
 import { IconChevronRight, IconDoc, IconTerminal } from '../../icons'
 import { DocPeek } from '../DocPeek'
+import { Markdown } from '../Markdown'
 import { SessionPanel } from '../SessionPanel'
 
 type Waypoint = FeatureFull['waypoints'][number]
@@ -195,7 +196,7 @@ function MapPanel({ full, relPath }: { full: FeatureFull; relPath?: string }) {
               <section className="map-section" key={name}>
                 <div className="map-section-title">{name}</div>
                 {body ? (
-                  <div className="map-section-body">{body}</div>
+                  <div className="map-section-body"><Markdown source={body} /></div>
                 ) : (
                   <DimLine>—</DimLine>
                 )}

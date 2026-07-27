@@ -1,10 +1,11 @@
 import { useEffect } from 'react'
 import { trpc } from '../trpc'
 import { DimLine } from '../ui'
+import { Markdown } from './Markdown'
 
 /**
- * Read-only doc peek overlay (UI-SPEC §2 Knowledge). Renders a doc's raw
- * markdown in mono; Esc closes. No editing — knowledge is agent-authored.
+ * Read-only doc peek overlay (UI-SPEC §2 Knowledge). Renders a doc as formatted
+ * markdown; Esc closes. No editing — knowledge is agent-authored.
  */
 export function DocPeek({
   featureId,
@@ -36,10 +37,10 @@ export function DocPeek({
             ✕
           </button>
         </div>
-        <div className="peek-body mono">
+        <div className="peek-body">
           {query.isLoading && <DimLine>loading {title}…</DimLine>}
           {query.error && <DimLine>could not read {relPath}: {query.error.message}</DimLine>}
-          {query.data && <pre className="peek-pre">{query.data.content}</pre>}
+          {query.data && <Markdown source={query.data.content} />}
         </div>
       </div>
     </div>
