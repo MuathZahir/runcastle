@@ -9,7 +9,7 @@ import { emit } from '../services/events'
 import { checkGate } from '../services/gates'
 import { detachWorktree, reattachWorktree } from '../services/git'
 import { getFeatureRow, projectForFeature, setPhase } from '../services/repo'
-import { listByFeature, updateTicket } from '../services/tickets'
+import { listByFeature, sweepOrphanedBurning, updateTicket } from '../services/tickets'
 import { claim as claimWaypoint, releaseForSession, resolve as resolveWaypoint } from '../services/waypoints'
 import { getWorkflow } from './registry'
 
@@ -168,7 +168,7 @@ export async function startRun(
     signal: controller.signal,
   }
 
-  const done = executeRun(ctx, runId, featureId, def.run(wctx), controller, async () => {
+  const done = executeRun(ctx, runId, featureId, workflowId, def.run(wctx), controller, async () => {
     if (talkDetached) await reattachWorktree(talkWorktree, feature.branch)
   })
   return { runId, done }
@@ -183,6 +183,7 @@ async function executeRun(
   ctx: AppCtx,
   runId: string,
   featureId: string,
+  workflow: string,
   runPromise: Promise<{ status: 'succeeded' | 'failed'; summary: string }>,
   controller: AbortController,
   cleanup?: () => Promise<void>,
@@ -210,6 +211,15 @@ async function executeRun(
   // A run that worked a waypoint (research) auto-releases it if it did not resolve
   // it itself (SPEC §13.2 run finalizer); no-op for ticket-burner runs.
   releaseForSession(ctx, runId)
+  // Mirror for tickets: the burner normally lands every lane itself, but a
+  // workflow that threw between "mark burning" and the outcome write (or an
+  // abort that raced the ticket's own handler) leaves a `burning` row with no
+  // agent behind it — a state nothing else can move (see `sweepOrphanedBurning`).
+  // Only branch-claiming workflows own tickets, so only they sweep; a no-op when
+  // the run ended cleanly.
+  if (workflowClaimsFeatureBranch(workflow)) {
+    sweepOrphanedBurning(ctx, featureId, `orphaned — the run ended (${status}) while it was burning`)
+  }
   emit(ctx, featureId, {
     type: 'run.finished',
     message: `run ${status}: ${summary}`,

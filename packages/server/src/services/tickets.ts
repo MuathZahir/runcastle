@@ -1,6 +1,6 @@
 import type { Ticket, TicketInput } from '@runcastle/core'
 import { BlockingEdgeError, newId, resolveBatchBlocking } from '@runcastle/core'
-import { asc, eq } from 'drizzle-orm'
+import { and, asc, eq } from 'drizzle-orm'
 import type { AppCtx } from '../db/types'
 import { tickets } from '../db/schema'
 import { InvalidInputError, NotFoundError } from '../errors'
@@ -183,6 +183,43 @@ export function cancelTicket(ctx: AppCtx, id: string, reason?: string): Ticket {
     data: { reason: reason ?? null },
   })
   return getTicket(ctx, id)
+}
+
+/**
+ * Sweep tickets left `burning` with nothing behind them — the run that owned
+ * them is over (finalized, cancelled, or killed with the server), so no agent
+ * will ever move them again.
+ *
+ * A stranded `burning` row is a dead end in every direction: it is non-terminal
+ * so G4 never passes, the scheduler only picks up `pending` tickets so a
+ * re-burn finishes instantly with the ticket still stuck (`8/9 tickets done`),
+ * `retry`/`cancel`/`edit` all refuse a non-`pending`/`failed` ticket, and "Stop
+ * ticket" finds no live agent to abort. Marking them `failed` — keeping
+ * `attemptBranch`/`conflictFiles`, so a retry resumes the committed work rather
+ * than redoing it — puts them back on the paths that CAN move them.
+ *
+ * Callers must first establish that no agent is live for these tickets (the run
+ * finalizer, boot reconciliation, and burn restart each know this by
+ * construction).
+ */
+export function sweepOrphanedBurning(ctx: AppCtx, featureId: string, reason: string): Ticket[] {
+  const orphaned = ctx.db
+    .select()
+    .from(tickets)
+    .where(and(eq(tickets.featureId, featureId), eq(tickets.status, 'burning')))
+    .all()
+    .map(rowToTicket)
+
+  for (const t of orphaned) {
+    updateTicket(ctx, t.id, { status: 'failed', error: reason })
+    emit(ctx, featureId, {
+      type: 'ticket.failed',
+      message: `ticket ${t.seq} failed: ${reason}`,
+      ticketId: t.id,
+      data: { error: reason, orphaned: true },
+    })
+  }
+  return orphaned.map((t) => ({ ...t, status: 'failed' as const, error: reason }))
 }
 
 export function updateTicket(

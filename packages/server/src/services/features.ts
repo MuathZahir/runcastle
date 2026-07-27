@@ -31,7 +31,7 @@ import {
   setPhase,
 } from './repo'
 import { endSession } from '../pty/end-session'
-import { getTicket, listByFeature, updateTicket } from './tickets'
+import { getTicket, listByFeature, sweepOrphanedBurning, updateTicket } from './tickets'
 import { frontier, listByFeature as listWaypoints } from './waypoints'
 import { cancelRun, startRun } from '../workflows/runner'
 
@@ -240,10 +240,11 @@ export function advance(ctx: AppCtx, featureId: string): Feature {
  * already at `implementation` with NO active run — a run that was cancelled,
  * crashed, or finished with failures left the feature parked there — and
  * (re)starts the burn without re-crossing any gate, so that state never
- * dead-ends. On restart every `failed` ticket is reset to `pending` (error
- * cleared) so the re-burn actually retries it — this is the retry path the
- * burner's "resolve manually, then re-burn" messages promise. Requires ≥1
- * non-cancelled ticket.
+ * dead-ends. On restart every ticket a dead run left `burning` is failed first
+ * (no run is live, so nothing is behind it), then every `failed` ticket is
+ * reset to `pending` (error cleared) so the re-burn actually retries it — this
+ * is the retry path the burner's "resolve manually, then re-burn" messages
+ * promise. Requires ≥1 non-cancelled ticket.
  *
  * It also accepts a feature at `review` with ≥1 pending (non-terminal) ticket
  * and no active run — the Iterate loop (CONTEXT.md decision #7): fresh fix
@@ -258,7 +259,7 @@ export async function burn(
 ): Promise<{ runId: string }> {
   const feature = getFeatureRow(ctx, featureId)
   const running = hasActiveRun(ctx, featureId)
-  const tickets = listByFeature(ctx, featureId)
+  let tickets = listByFeature(ctx, featureId)
   // A ticket the burner still has to run: not done/failed/cancelled (the
   // terminal states). Fresh fix tickets from an Iterate session land as `pending`.
   const pending = tickets.filter(
@@ -282,6 +283,13 @@ export async function burn(
   }
 
   if (restarting) {
+    // No run is live (that is what `restarting` means), so a ticket still
+    // marked `burning` is an orphan from a run that died without finalizing —
+    // fail it first so the reset below can pick it up. Without this the
+    // scheduler (which only queues `pending`) skips it and the re-burn returns
+    // instantly with "N-1/N tickets done", leaving the ticket stuck forever.
+    sweepOrphanedBurning(ctx, featureId, 'orphaned — the previous run died while it was burning')
+    tickets = listByFeature(ctx, featureId)
     // `resetFailed: false` is the selective-retry path (retryTicket already
     // reset exactly the tickets it wants burned — the rest stay failed).
     const failed = opts.resetFailed === false ? [] : tickets.filter((t) => t.status === 'failed')

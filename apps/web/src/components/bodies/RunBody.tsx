@@ -337,7 +337,11 @@ function Lane({
                 { ticketId: ticket.id },
                 {
                   onSuccess: (r) => {
-                    if (!r.stopped) toast.push('no live agent for this ticket (already finishing?)', 'info')
+                    if (r.swept) {
+                      toast.push('no live agent — the lane was orphaned; marked failed, retry to resume it', 'info')
+                    } else if (!r.stopped) {
+                      toast.push('no live agent for this ticket (already finishing?)', 'info')
+                    }
                   },
                 },
               )
