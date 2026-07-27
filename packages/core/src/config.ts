@@ -186,6 +186,15 @@ export const RuncastleConfig = z.preprocess(
      * unset to auto-detect from the target repo (`packageManager` field, then
      * lockfiles — a root install covers JS workspaces/monorepos). Set it for
      * non-JS projects or bespoke bootstraps (e.g. `make deps`).
+     *
+     * Also the place to pre-warm generated artifacts. Burn measurements put
+     * ~51 minutes across 204 calls into build/codegen steps that are the same
+     * boilerplate every ticket — agents discovering mid-run that they need a
+     * contracts build or an ORM client generated. Chaining those here runs them
+     * once per sandbox, before the agent starts, e.g.
+     * `corepack pnpm install --frozen-lockfile && pnpm contracts:build && pnpm prisma:generate`.
+     * Note that overriding this replaces install detection entirely, so the
+     * install command must be included explicitly.
      */
     setupCommand: z.string().optional(),
     /**

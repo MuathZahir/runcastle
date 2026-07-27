@@ -530,6 +530,14 @@ export function buildWorkspaceNotes(mode: BurnWorkspaceMode): string {
  * spend its verification budget. Pure — reads only the two optional config
  * fields.
  *
+ * Setting `verifyCommands` is also the ONLY good way to bound test concurrency.
+ * The prompt forbids agents from improvising `--maxWorkers`/`--shard`, because
+ * measured in-sandbox a serialised suite takes 10–20 minutes for work its
+ * configured concurrency does in ~55s — but agents were reaching for those
+ * flags to survive real OOM kills. An operator whose environment genuinely
+ * needs a bound states it here, once, instead of every agent guessing at it
+ * per ticket.
+ *
  * Both halves exist because burn logs showed agents paying, per ticket, for
  * information the operator already had:
  *

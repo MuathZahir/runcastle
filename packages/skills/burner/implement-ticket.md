@@ -12,11 +12,22 @@ You run **non-interactively** (`claude --print`), for up to a few fresh iteratio
 - **A next iteration is not a free retry.** It is a brand-new container: your process dies, the sandbox is rebuilt, dependencies reinstall from scratch (1–8 minutes), and a fresh agent with none of your context re-reads every file you just read. Budget roughly ten wasted minutes per iteration you burn. Finishing in one is worth real effort.
 - **You may not be the first iteration.** A previous iteration may have left commits or uncommitted work on this branch. Check `git status` and `git log` before starting; continue the work, don't redo it.
 - **Signal completion.** When the ticket is fully done — every acceptance criterion verified, self-review finished, all work committed — print exactly `<promise>COMPLETE</promise>` as the last line of your final message. Do the same after writing `BLOCKED.md` (see hard rules). Without the signal, the harness assumes you were cut off and spends another iteration.
-- **You share the machine.** Several tickets burn in parallel, each in its own container on the same host. Test runners that size their worker pool from the visible CPU count will oversubscribe the box and can be OOM-killed mid-run. Prefer targeted runs; when you do run a full suite, bound it (`--maxWorkers=2`, `--runInBand`, or the repo's shard flag) rather than discovering the limit by watching a suite die.
+- **Run the repo's test command as the repo defines it.** Do not add `--maxWorkers`, `--pool`, `--shard`, `--runInBand`, or hand-split the suite into halves. The repo's test config is already tuned, and serialising it is not the cheap safety move it looks like: measured in this sandbox, a suite that runs in ~55s at its configured concurrency takes **10–20 minutes** at `--maxWorkers=1`. If a suite is killed for memory (exit 137), that is an environment fault — say so plainly in your final message and fall back to running the *narrower set of test files your change actually touches*, never the same full suite serialised.
 
 ## Where to work
 
 {{WORKSPACE_NOTES}}
+
+## Use your file tools, not the shell
+
+You have `Read`, `Grep`, `Glob`, `Edit`, and `Write`. **Use them.** Reach for `Bash` only for things that genuinely are commands: git, installs, typecheck, tests, codegen.
+
+This is not a style preference — it is one of the largest measured costs in real burns, where agents ran **1641 Bash calls and not one file tool**:
+
+- **Reading.** `cat`, `sed -n`, `head`, `tail`, and `grep` through Bash accounted for ~16% of all agent time. `Read` and `Grep` do the same work without paying process spawn plus the container's filesystem round-trip on every call.
+- **Editing.** Rewriting a file by piping a `python3 - <<'PY' … s.replace(…)` heredoc, or appending with `cat >>`, is the single most expensive thing observed — individual such calls cost 29s, 57s, 120s, and one 761s. `Edit` does the same edit in a fraction of that, fails loudly instead of silently matching nothing, and cannot half-write a file if your process dies mid-command.
+
+If you catch yourself writing a heredoc to edit a file, stop and use `Edit`.
 
 ## The ticket
 
@@ -38,7 +49,7 @@ You run **non-interactively** (`claude --print`), for up to a few fresh iteratio
 
 Whatever the commands are, spend them well — a full suite on a monorepo is minutes of your budget, and in real burns re-running one was the largest single waste:
 
-- **Capture, then read.** Redirect a full run to a file (`<command> > /tmp/test-run.log 2>&1`), check the exit code, then `grep`/`sed` that file as many times as you like. Never re-run a suite to re-read, re-filter, or re-format its output.
+- **Capture, then read.** Redirect a full run to a file (`<command> > /tmp/test-run.log 2>&1`), check the exit code, then read that file with `Read`/`Grep` as many times as you like. Never re-run a suite to re-read, re-filter, or re-format its output — the same command has been observed re-run five, six, and seven times inside a single ticket.
 - **Run the whole thing rarely.** Targeted runs (single file, single pattern) while you work; the full suite once before your final commit, plus once more only if that run found something you then fixed.
 - **Never `git stash` to get a clean-tree comparison.** It puts every uncommitted change you have into a place the orchestrator cannot see or recover if your process dies mid-window. If you need to compare against the pre-change state, use the baseline above, `git worktree add` a scratch checkout, or read the file at `HEAD` with `git show`.
 
