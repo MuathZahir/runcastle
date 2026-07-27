@@ -6,7 +6,7 @@ import { worktreeDir } from '@runcastle/core/paths'
 import { nextGate, nextPhase, resolveModel } from '@runcastle/core'
 import { and, eq } from 'drizzle-orm'
 import type { AppCtx } from '../db/types'
-import { resolveExecutable } from '../util/resolve-executable'
+import { resolveTool } from '../util/resolve-executable'
 import { SKILLS_DIR_ENV } from './skills-root'
 import { runs } from '../db/schema'
 import { GateError, isNotImplemented } from '../errors'
@@ -159,7 +159,7 @@ export function buildClaudeArgs(input: BuildLaunchInput): string[] {
  * Falls back to the bare name so `CreateProcess`/exec can make a final attempt.
  */
 function resolveClaudeExecutable(): string {
-  return resolveExecutable('claude', { override: process.env.RUNCASTLE_CLAUDE_BIN })
+  return resolveTool('claude')
 }
 
 /**

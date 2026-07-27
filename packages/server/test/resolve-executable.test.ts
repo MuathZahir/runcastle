@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { resolveExecutable } from '../src/util/resolve-executable'
+import { resolveExecutable, resolveTool } from '../src/util/resolve-executable'
 
 describe('resolveExecutable', () => {
   it('resolves a bare name against PATH on POSIX', () => {
@@ -51,6 +51,53 @@ describe('resolveExecutable', () => {
     const resolved = resolveExecutable('claude', {
       platform: 'linux',
       override: '/gone/claude',
+      pathEnv: '/usr/bin',
+      exists: (p) => p === '/usr/bin/claude',
+    })
+    expect(resolved).toBe('/usr/bin/claude')
+  })
+})
+
+/**
+ * The override table is the whole point of `resolveTool`: `RUNCASTLE_CLAUDE_BIN`
+ * used to be read only by the session launcher, so pinning it fixed sessions
+ * while the doctor probe and the AFK token verify still said "claude not found".
+ */
+describe('resolveTool', () => {
+  it('honors RUNCASTLE_CLAUDE_BIN for claude', () => {
+    const resolved = resolveTool('claude', {
+      env: { RUNCASTLE_CLAUDE_BIN: '/opt/claude/bin/claude' },
+      platform: 'linux',
+      pathEnv: '/usr/bin',
+      exists: (p) => p === '/opt/claude/bin/claude',
+    })
+    expect(resolved).toBe('/opt/claude/bin/claude')
+  })
+
+  it('honors RUNCASTLE_NODE_BIN for node', () => {
+    const resolved = resolveTool('node', {
+      env: { RUNCASTLE_NODE_BIN: '/opt/node/bin/node' },
+      platform: 'linux',
+      pathEnv: '/usr/bin',
+      exists: (p) => p === '/opt/node/bin/node',
+    })
+    expect(resolved).toBe('/opt/node/bin/node')
+  })
+
+  it('scans PATH normally for a tool with no override env var', () => {
+    const resolved = resolveTool('docker', {
+      env: { RUNCASTLE_CLAUDE_BIN: '/opt/claude/bin/claude' },
+      platform: 'linux',
+      pathEnv: '/usr/bin',
+      exists: (p) => p === '/usr/bin/docker',
+    })
+    expect(resolved).toBe('/usr/bin/docker')
+  })
+
+  it('falls back to PATH when the override points at a missing file', () => {
+    const resolved = resolveTool('claude', {
+      env: { RUNCASTLE_CLAUDE_BIN: '/gone/claude' },
+      platform: 'linux',
       pathEnv: '/usr/bin',
       exists: (p) => p === '/usr/bin/claude',
     })

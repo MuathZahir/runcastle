@@ -2853,9 +2853,10 @@ button.tb-runs { cursor: pointer; }
   overflow: hidden;
 }
 .afk-term-actions { display: flex; justify-content: flex-end; gap: 8px; }
-.afk-verdict { font-size: 12px; }
+.afk-verdict { font-size: 12px; display: flex; flex-direction: column; gap: 4px; }
 .afk-verdict.is-ok { color: var(--ok, #3fb950); }
 .afk-verdict.is-warn { color: var(--warn, #d9a441); }
+.afk-verdict-fix { color: var(--text-4); }
 
 /* ============================================================================
    ANIMATIONS

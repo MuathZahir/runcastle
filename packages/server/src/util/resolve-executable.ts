@@ -30,6 +30,35 @@ export interface ResolveExecutableOptions {
 const WIN_EXTS = ['.exe', '.cmd', '.bat', '']
 
 /**
+ * The `RUNCASTLE_*_BIN` escape hatch each externally-installed tool honors. This
+ * table is the reason it exists as a table and not an inline `process.env` read
+ * per call site: `claude` is resolved from three places (the session launcher,
+ * the doctor/verify {@link import('../doctor/system-exec').createSystemExec},
+ * and the embedded setup terminals), and when only one of them honored the
+ * override, pinning the path fixed sessions while onboarding still reported
+ * "claude CLI not found". Resolve tools through {@link resolveTool}, never
+ * {@link resolveExecutable} directly, so the override applies everywhere.
+ */
+export const BIN_OVERRIDE_ENV: Readonly<Record<string, string>> = {
+  claude: 'RUNCASTLE_CLAUDE_BIN',
+  node: 'RUNCASTLE_NODE_BIN',
+}
+
+/**
+ * {@link resolveExecutable} plus the tool's `RUNCASTLE_*_BIN` override — the
+ * entry point every spawn site should use. `env` is injected in tests.
+ */
+export function resolveTool(
+  name: string,
+  opts: ResolveExecutableOptions & { env?: NodeJS.ProcessEnv } = {},
+): string {
+  const env = opts.env ?? process.env
+  const overrideKey = BIN_OVERRIDE_ENV[name]
+  const override = opts.override ?? (overrideKey ? env[overrideKey] : undefined)
+  return resolveExecutable(name, override ? { ...opts, override } : opts)
+}
+
+/**
  * Resolve `name` to an absolute executable path. Returns the bare `name`
  * unchanged when nothing is found so the caller's `spawn` can make a final
  * attempt (and surface a real ENOENT) rather than us inventing a bad path.
