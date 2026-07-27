@@ -158,15 +158,47 @@ prompt text demonstrably could not.**
   the reviewed logs use the isolated clone, so the hot path is already off the
   mount; only the per-commit sync still crosses it.
 
-- **Reusing the container across iterations / `resumeSession`.** Container reuse
-  is sandcastle's to give — `withSandbox` is inside its iteration loop.
-  ADR-0006 already rejected `resumeSession` for attempt chaining, because
-  sandcastle captures the session JSONL to the host only *after* a successful
-  agent exit, and a container's `~/.claude` dies with it. One gap is worth an
-  upstream ask rather than a workaround: the abnormal iteration endings observed
-  here are exit-0, so their sessions ARE captured ("Capturing session" follows
-  every one), but sandcastle refuses `resumeSession` when `maxIterations > 1`
-  and applies it only to iteration 1. Allowing resume across iterations would
-  remove the re-orientation cost that finding 1 measures.
+- **Reusing the container across iterations.** Container reuse is sandcastle's
+  to give — `withSandbox` is inside its iteration loop.
+
+## Session resume — three cases, only one of them blocked
+
+Recorded because an earlier draft of this ADR collapsed these into a single
+"resume is rejected", which is wrong and would have buried a real opportunity.
+
+1. **Interactive terminal sessions** (`launcher.ts`) resume today, via
+   `claude --resume <ccSessionId>`, with a resume target per session kind. Not
+   affected by anything here — these run on the host, where the session JSONL is
+   already in `~/.claude/projects/`.
+
+2. **Burn ATTEMPT resume — genuinely blocked, and ADR-0006 is right.** An
+   attempt dies when `run()` throws, and the common throw is a nonzero CLI exit.
+   Sandcastle's `invokeAgent` does `Effect.fail(new AgentError(...))` on a
+   nonzero exit *before* reaching its capture block, so on exactly that path
+   there is no session on the host to resume, and the container's `~/.claude`
+   dies with it. ADR-0006's `buildRetryNotes` remains the answer.
+
+3. **Burn ITERATION resume — available, and not what ADR-0006 evaluated.** The
+   abnormal endings this ADR measures are the *other* shape: `claude --print`
+   exits **0** without emitting the completion signal (9 of 21 iterations).
+   `invokeAgent` returns normally, so sandcastle captures the session —
+   "Capturing session" follows every one of them in the logs — and
+   `sessionStorage.resumeIntoSandbox` exists to rewrite that JSONL into a fresh
+   container. `RunResult.iterations[].sessionId` exposes the id.
+
+   The only obstacle is sandcastle's own guard: `resumeSession` is refused when
+   `maxIterations > 1` and applied only to iteration 1. runcastle can sidestep
+   it without an upstream change by running `maxIterations: 1` and driving the
+   loop itself — which is machinery it already has, since ADR-0006's attempt
+   chain is exactly that loop. Folding iterations into the attempt chain, and
+   attaching `resumeSession` when the previous attempt exited cleanly, would
+   remove the re-orientation cost that finding 1 measures.
+
+   Left unbuilt pending a measured burn (finding 1 is the cost; this ADR's
+   telemetry is what will say whether it still dominates after the environment
+   work). Known unknowns for the spike: whether the rewritten session replays
+   cleanly into a new container, how the prompt interacts with a resumed
+   session, and whether per-run commit collection and branch chaining stay
+   correct when an "iteration" becomes an "attempt".
 
 - **A hard container memory limit.** See decision 3.
