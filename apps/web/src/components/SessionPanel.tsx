@@ -1,4 +1,6 @@
 import { trpc } from '../trpc'
+import { useEventLog } from '../lib/events'
+import { kickoffTrouble } from '../lib/feature-ui'
 import { useToast } from '../lib/toast'
 import { SessionStatusDot } from '../ui'
 import type { FeatureFull } from '../lib/api'
@@ -57,6 +59,7 @@ export function SessionPanel({
           </span>
           <EndSessionButton featureId={featureId} sessionId={session.id} />
         </div>
+        <BriefingBanner featureId={featureId} sessionId={session.id} />
         <div className="grill-term" id="grill-term">
           <ErrorBoundary label="terminal">
             <TerminalView sessionId={session.id} />
@@ -67,6 +70,46 @@ export function SessionPanel({
   }
 
   return <EndedSessionCard featureId={featureId} session={session} showResume={showResume} />
+}
+
+/**
+ * The "this terminal was never told what it is here for" banner.
+ *
+ * runcastle opens every terminal with a briefing typed into it — the merge-conflict
+ * resolution, the review iteration, the plain per-kind opening move — and waits
+ * for Claude Code to acknowledge it. When that acknowledgement never arrives (a
+ * startup dialog swallowed the keystrokes, the session never reported ready, or
+ * the human typed first), the terminal is live but the agent is working blind.
+ * This is the visible half of that state: it says so, and Send briefing re-types
+ * the exact same text, so the fix is one click instead of the human reconstructing
+ * the instruction by hand.
+ */
+function BriefingBanner({ featureId, sessionId }: { featureId: string; sessionId: string }) {
+  const toast = useToast()
+  const trouble = kickoffTrouble(useEventLog(featureId), sessionId)
+  const resend = trpc.feature.resendKickoff.useMutation({
+    onSuccess: () => toast.push('briefing sent to the terminal'),
+    onError: (e) => toast.push(e.message),
+  })
+  if (!trouble) return null
+
+  return (
+    <div className="session-briefing-warn">
+      <span className="session-briefing-text">
+        {trouble === 'not-ready'
+          ? 'This terminal has not reported ready — answer anything waiting in it (a trust or resume prompt), then send the briefing.'
+          : 'The opening briefing never reached Claude Code — this session has not been told what it is here for.'}
+      </span>
+      <button
+        type="button"
+        className="btn btn-xs btn-ghost"
+        disabled={resend.isPending}
+        onClick={() => resend.mutate({ sessionId })}
+      >
+        {resend.isPending ? 'Sending…' : 'Send briefing'}
+      </button>
+    </div>
+  )
 }
 
 /**

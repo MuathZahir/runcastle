@@ -1,6 +1,9 @@
+import { PreparedKey } from '@runcastle/core'
 import * as z from 'zod'
+import { listFindings } from '../../services/findings'
 import { browseDir, listRoots } from '../../services/fsbrowse'
 import * as git from '../../services/git'
+import { cancelPrep, isPreparing, keysToPrepare, latestPrep, startPrep } from '../../services/prep'
 import { closeProject, listProjects, openProject, renameProject } from '../../services/projects'
 import { requireProjectById } from '../../services/repo'
 import { publicProcedure, router } from '../context'
@@ -47,4 +50,56 @@ export const projectRouter = router({
 
   // `project.update` is retired (issue #46): devCommand (and model/sandbox) now
   // read/write through the `settings` router as per-project overrides.
+
+  // --- preparation ----------------------------------------------------------
+  // Repo facts an agent establishes once (commands, test baseline, db reset) so
+  // no burn agent re-derives them per ticket. See services/prep.ts.
+
+  /**
+   * Kick off a preparation run. Returns as soon as the row exists — progress
+   * arrives as project events, and `prep` below reports the outcome. `keys: []`
+   * means there was nothing left to establish.
+   */
+  prepare: publicProcedure
+    .input(
+      z.object({
+        projectId: z.string(),
+        /** Re-measure fields a previous prep run set, not only the empty ones. */
+        refresh: z.boolean().optional(),
+        /** Restrict the run to specific fields (default: everything in scope). */
+        keys: z.array(PreparedKey).optional(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const { prepId, keys } = await startPrep(ctx, input.projectId, {
+        ...(input.refresh !== undefined ? { refresh: input.refresh } : {}),
+        ...(input.keys ? { keys: input.keys } : {}),
+      })
+      return { prepId, keys }
+    }),
+
+  /** Abort an in-flight preparation run. */
+  cancelPrepare: publicProcedure
+    .input(z.object({ projectId: z.string() }))
+    .mutation(({ input }) => {
+      cancelPrep(input.projectId)
+      return { ok: true }
+    }),
+
+  /**
+   * The preparation surface the UI polls: the last run, whether one is live,
+   * what would be established if you started one now, and every established
+   * finding with its provenance and staleness.
+   */
+  prep: publicProcedure
+    .input(z.object({ projectId: z.string() }))
+    .query(async ({ ctx, input }) => {
+      const project = requireProjectById(ctx, input.projectId)
+      return {
+        latest: latestPrep(ctx, project.id),
+        running: isPreparing(project.id),
+        pendingKeys: keysToPrepare(ctx, project),
+        findings: await listFindings(ctx, project),
+      }
+    }),
 })

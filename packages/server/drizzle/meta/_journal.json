@@ -71,6 +71,13 @@
       "when": 1785053049626,
       "tag": "0009_pale_agent_zero",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1785143692533,
+      "tag": "0010_misty_ken_ellis",
+      "breakpoints": true
     }
   ]
 }

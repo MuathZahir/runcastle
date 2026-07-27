@@ -33,6 +33,36 @@ export interface TestDriveResult {
   ok: boolean
   deniedReason?: string
   branch?: string
+  /**
+   * Uncommitted paths that travelled across the branch switch on `stop`. git
+   * carries dirty files with you, so work done during a drive lands on the
+   * branch you return to — reported rather than silently allowed.
+   */
+  carriedChanges?: string[]
+  /** Set on `stop` when the drive may have left the dev database ahead (§drift). */
+  dbDrift?: DbDrift
+}
+
+/**
+ * A stopped test drive whose branch carried migrations the branch you returned
+ * to does not have.
+ *
+ * Test drive switches FILES. It cannot switch the dev database, and the dev
+ * pane inherits the same environment — so a migration applied during a drive
+ * outlives it, and the next `migrate dev` on the original branch reports drift
+ * against a schema whose migration files are no longer on disk. The user finds
+ * out much later, from a tool that cannot know a test drive ever happened.
+ *
+ * We cannot fix that from git, so we do the next best thing: notice at the
+ * exact moment it becomes true, name it, and hand over the project's own reset
+ * command. Running it is the human's call — a dev database can hold hand-built
+ * state that a silent auto-reset would destroy.
+ */
+export interface DbDrift {
+  /** Migration-ish paths that differ between the drive branch and this one. */
+  files: string[]
+  /** The project's `dbResetCommand`, when preparation or a human established one. */
+  resetCommand?: string
 }
 
 /** Active test-drive info the UI polls (`feature.driveInfo`): the branch under
@@ -57,6 +87,24 @@ export interface MergeResult {
 
 /** Repo-relative dir (forward slashes) holding every feature's knowledge docs. */
 const DOCS_PATHSPEC = 'docs/features'
+
+/**
+ * Paths that look like database migrations, across the conventions runcastle
+ * actually meets: a `migrations/` or `migrate/` directory segment covers
+ * Prisma, Django, Rails, Laravel, Supabase, Alembic and golang-migrate, and
+ * `.sql` files under a `drizzle/` segment cover Drizzle Kit's default output.
+ *
+ * Deliberately a heuristic over paths rather than a per-ORM detector: the cost
+ * of a false positive is one dismissible warning, and the cost of a false
+ * negative is the silent drift this exists to catch.
+ */
+const MIGRATION_DIR_RE = /(^|\/)(migrations|migrate)\//i
+const DRIZZLE_SQL_RE = /(^|\/)drizzle\/.*\.sql$/i
+
+/** The migration-looking subset of a diff's paths. Pure. */
+export function migrationPaths(paths: readonly string[]): string[] {
+  return paths.filter((p) => MIGRATION_DIR_RE.test(p) || DRIZZLE_SQL_RE.test(p))
+}
 
 /** Human-readable test-drive denial reasons (surfaced verbatim in the UI). */
 const DENY_DIRTY = 'Working tree has uncommitted changes — commit or stash first'
@@ -418,7 +466,50 @@ export async function reattachWorktree(path: string, branch: string): Promise<vo
  */
 export const RESEARCH_BRANCH_PREFIX = 'runcastle/research/'
 export const TICKET_BRANCH_PREFIX = 'runcastle/ticket/'
+/**
+ * Branch a project-preparation run commits its findings file to. Unlike the
+ * other two this is never merged anywhere: it exists only as a transport, so
+ * the agent's structured output survives a dropped stream and lands somewhere
+ * we can read deterministically. Deleted as soon as the file is read.
+ */
+export const PREP_BRANCH_PREFIX = 'runcastle/prep/'
 const TEMP_BRANCH_PREFIXES = [RESEARCH_BRANCH_PREFIX, TICKET_BRANCH_PREFIX] as const
+
+/** Name for one preparation run's throwaway findings branch. */
+export function prepBranchName(unique: string): string {
+  return `${PREP_BRANCH_PREFIX}${unique}`
+}
+
+/**
+ * Read a file's contents at a git ref without checking anything out
+ * (`git show <ref>:<path>`). `undefined` when the ref or path is absent.
+ * `path` must use forward slashes — it is a git pathspec, not an OS path.
+ */
+export async function readFileAtRef(
+  repoPath: string,
+  ref: string,
+  path: string,
+): Promise<string | undefined> {
+  try {
+    return await git(repoPath).raw(['show', `${ref}:${path}`])
+  } catch {
+    return undefined
+  }
+}
+
+/**
+ * Delete a preparation run's throwaway branch, whether or not the run
+ * succeeded. Best-effort by design: a leftover `runcastle/prep/*` branch is
+ * inert (nothing merges it, nothing reads it after the run), so failing a
+ * completed preparation over a failed branch delete would be strictly worse.
+ */
+export async function deletePrepBranch(repoPath: string, branch: string): Promise<void> {
+  try {
+    await deleteBranchDetachingWorktrees(git(repoPath), repoPath, branch)
+  } catch {
+    // best-effort — an orphaned prep branch costs nothing
+  }
+}
 
 const TEMP_BRANCH_SLUG_MAX = 16
 
@@ -541,6 +632,57 @@ export async function branchCommitsAhead(
       .split('\n')
       .map((l) => l.trim())
       .filter(Boolean)
+  } catch {
+    return []
+  }
+}
+
+/**
+ * The commit sha `ref` points at, or `undefined` when it cannot be resolved
+ * (unborn branch, missing ref, not a repo). Used to pin a preparation run's
+ * findings to the main-branch commit they were measured at.
+ */
+export async function headSha(repoPath: string, ref: string): Promise<string | undefined> {
+  try {
+    const out = (await git(repoPath).revparse([ref])).trim()
+    return out.length > 0 ? out : undefined
+  } catch {
+    return undefined
+  }
+}
+
+/**
+ * How many commits `branch` has gained since `sha` — the staleness distance for
+ * a prepared finding. `undefined` (unknown) rather than `0` whenever the answer
+ * cannot be trusted: the sha may have been rewritten out of history by a rebase
+ * or dropped by a shallow fetch, and reporting an unreachable baseline as
+ * "0 commits behind" would present the most dangerous case as the safest one.
+ */
+export async function commitsSince(
+  repoPath: string,
+  sha: string,
+  branch: string,
+): Promise<number | undefined> {
+  try {
+    const out = (await git(repoPath).raw(['rev-list', '--count', `${sha}..${branch}`])).trim()
+    const n = Number(out)
+    return Number.isFinite(n) ? n : undefined
+  } catch {
+    return undefined
+  }
+}
+
+/**
+ * Repo-relative paths that differ between two refs, or `[]` when the diff
+ * cannot be taken. Used by the test-drive stop to ask a narrower question than
+ * "did anything change": did files under a migrations directory change, i.e.
+ * could this drive have moved the dev database's schema out from under the
+ * branch being returned to.
+ */
+export async function diffPaths(repoPath: string, from: string, to: string): Promise<string[]> {
+  try {
+    const out = (await git(repoPath).raw(['diff', '--name-only', from, to])).trim()
+    return out ? out.split('\n').map((s) => s.trim()).filter(Boolean) : []
   } catch {
     return []
   }
@@ -1085,6 +1227,14 @@ export async function testDrive(
     // Kill the whole dev-server process tree first so its port is freed with no
     // orphan (the drive owns the pane; its URL is cleared when state resets).
     if (devPaneId) stopDevPane(devPaneId)
+
+    // Capture the dirty tree BEFORE the switch. `start` denies on a dirty tree
+    // but `stop` cannot — refusing would strand the user on the feature branch
+    // with no way back — so git carries these files across with them. That is
+    // how a migration generated during a drive ends up sitting untracked on the
+    // branch you returned to; naming it is the whole fix available here.
+    const carriedChanges = await dirtyPaths(g)
+
     await g.checkout(previousBranch)
     // The main checkout has released the feature branch — restore the talk
     // worktree to it (best-effort) so a resumed session picks up where it left.
@@ -1095,7 +1245,22 @@ export async function testDrive(
       message: `test drive stopped — back on ${previousBranch}`,
       data: { branch: previousBranch },
     })
-    return { ok: true, branch: previousBranch }
+
+    if (carriedChanges.length > 0) {
+      emit(ctx, feature.id, {
+        type: 'testdrive.carried_changes',
+        message: `${carriedChanges.length} uncommitted file(s) came back with you onto ${previousBranch}: ${carriedChanges.slice(0, 5).join(', ')}${carriedChanges.length > 5 ? ', …' : ''}`,
+        data: { branch: previousBranch, files: carriedChanges },
+      })
+    }
+
+    const dbDrift = await detectDbDrift(ctx, project, feature, previousBranch, branch)
+    return {
+      ok: true,
+      branch: previousBranch,
+      ...(carriedChanges.length > 0 ? { carriedChanges } : {}),
+      ...(dbDrift ? { dbDrift } : {}),
+    }
   }
 
   // action === 'start' — deny checks in SPEC order: dirty | active | active-run.
@@ -1142,6 +1307,69 @@ export async function testDrive(
   }
 
   return { ok: true, branch }
+}
+
+/** Repo-relative paths with uncommitted changes (tracked or not), or `[]`. */
+async function dirtyPaths(g: SimpleGit): Promise<string[]> {
+  try {
+    const out = (await g.raw(['status', '--porcelain'])).trim()
+    if (!out) return []
+    return out
+      .split('\n')
+      // Porcelain v1: two status chars, a space, then the path. A rename is
+      // `R  old -> new`; the destination is the file that actually exists now.
+      .map((line) => line.slice(3).trim())
+      .map((p) => (p.includes(' -> ') ? (p.split(' -> ').at(-1) ?? p) : p))
+      .map((p) => p.replace(/^"|"$/g, ''))
+      .filter(Boolean)
+  } catch {
+    return []
+  }
+}
+
+/**
+ * Whether the drive just stopped could have left the dev database ahead of the
+ * branch the user returned to, and what to do about it.
+ *
+ * The question asked is narrow on purpose: not "did anything change" but "do
+ * the two branches disagree about migration files". A drive of a UI-only
+ * feature costs nothing here, which is what keeps the warning meaningful when
+ * it does fire.
+ *
+ * Emits `testdrive.db_drift` and returns the drift. Never throws and never
+ * fails the stop — the drive HAS stopped by the time this runs, and a git
+ * failure here must not turn that into an error.
+ */
+async function detectDbDrift(
+  ctx: AppCtx,
+  project: Project,
+  feature: Feature,
+  previousBranch: string,
+  driveBranch: string,
+): Promise<DbDrift | undefined> {
+  let files: string[]
+  try {
+    files = migrationPaths(await diffPaths(project.repoPath, previousBranch, driveBranch))
+  } catch {
+    return undefined
+  }
+  if (files.length === 0) return undefined
+
+  const resetCommand = project.dbResetCommand?.trim() || undefined
+  const drift: DbDrift = { files, ...(resetCommand ? { resetCommand } : {}) }
+
+  emit(ctx, feature.id, {
+    type: 'testdrive.db_drift',
+    message:
+      `${driveBranch} and ${previousBranch} differ by ${files.length} migration file(s) — ` +
+      'anything you migrated during the drive is still applied to your dev database, so the next ' +
+      `migrate on ${previousBranch} may report drift. ` +
+      (resetCommand
+        ? `Rebuild it with: ${resetCommand}`
+        : 'Set a "Database reset command" in project settings to get a one-click fix here.'),
+    data: { files, previousBranch, driveBranch, resetCommand: resetCommand ?? null },
+  })
+  return drift
 }
 
 // --- merge ------------------------------------------------------------------

@@ -6,6 +6,7 @@ import { createDb } from './db/client'
 import { runMigrations } from './db/migrate'
 import type { AppCtx } from './db/types'
 import { reconcileStaleSessions } from './launcher/reconcile'
+import { reconcilePreps } from './services/prep'
 import { setRuntimeCtx } from './launcher/runtime'
 import mcpApp from './mcp/server'
 import { ptyRegistry } from './pty/registry'
@@ -92,6 +93,14 @@ export async function startServer(): Promise<void> {
   const staleRuns = await reconcileStaleRuns(ctx)
   if (staleRuns.length > 0) {
     console.log(`reconciled ${staleRuns.length} stale run(s) from a previous server run`)
+  }
+
+  // And for preparation rows: one left `running` has no agent behind it after a
+  // restart, so it would otherwise block every later `project.prepare` on the
+  // "already being prepared" guard forever.
+  const stalePreps = reconcilePreps(ctx)
+  if (stalePreps > 0) {
+    console.log(`reconciled ${stalePreps} stale preparation run(s) from a previous server run`)
   }
 
   // Embedded-terminal WebSocket (UI-SPEC §5/§6, W1). The `/ws/terminal/:sessionId`

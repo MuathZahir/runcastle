@@ -471,6 +471,35 @@ export function unresolvedMergeConflict(events: EventRow[]): MergeConflictState 
   return conflict
 }
 
+/** Why a session's briefing is flagged in the session strip. */
+export type KickoffTrouble = 'undelivered' | 'not-ready'
+
+/**
+ * Whether a session's opening briefing is currently in trouble, derived from the
+ * event feed (so it survives a reload, like the conflict card).
+ *
+ * The server types the briefing into the PTY and waits for Claude Code to
+ * acknowledge it via the `UserPromptSubmit` hook. Two things can go wrong, and
+ * both used to be invisible — the terminal looked healthy and the agent simply
+ * never knew why it had been opened:
+ * - `session.kickoff_undelivered` — typed, never acknowledged (a startup dialog
+ *   ate the keystrokes), or the human typed first so injection stopped.
+ * - `session.not_ready` — the terminal spawned but Claude Code never reported
+ *   `SessionStart` at all, so nothing was ever typed.
+ * A later `session.kickoff` (the automatic retry, or a manual Send) clears it.
+ * `events` must be in id order.
+ */
+export function kickoffTrouble(events: EventRow[], sessionId: string): KickoffTrouble | null {
+  let trouble: KickoffTrouble | null = null
+  for (const e of events) {
+    if ((e.data as { sessionId?: unknown } | null)?.sessionId !== sessionId) continue
+    if (e.type === 'session.kickoff_undelivered') trouble = 'undelivered'
+    else if (e.type === 'session.not_ready') trouble = 'not-ready'
+    else if (e.type === 'session.kickoff' || e.type === 'session.ended') trouble = null
+  }
+  return trouble
+}
+
 /**
  * The single guided next step for a feature's *current* phase (app-redesign).
  * Gate-aware: when the gate guarding the next phase is satisfied and crossable

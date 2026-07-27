@@ -6,6 +6,7 @@ import {
   getSessionRow,
   markSessionEnded,
   markSessionLive,
+  noteKickoffPrompt,
 } from '../launcher/sessions'
 import { emit } from '../services/events'
 import { tryGetFeature } from '../services/repo'
@@ -60,7 +61,7 @@ hooks.post('/:event', async (c) => {
       case 'session-start':
         return c.json(handleSessionStart(ctx, sessionId, feature, body.payload))
       case 'user-prompt':
-        return c.json(handleUserPrompt(ctx, feature))
+        return c.json(handleUserPrompt(ctx, sessionId, feature, body.payload))
       case 'session-end':
         return c.json(handleSessionEnd(ctx, sessionId, feature))
       default:
@@ -72,6 +73,14 @@ hooks.post('/:event', async (c) => {
   }
 })
 
+/**
+ * `SessionStart` — fired for EVERY source (`startup`, `resume`, `clear`,
+ * `compact`, `fork`), since the settings register a matcher per source. Only the
+ * first one flips the row to `live` and schedules the kickoff (`markSessionLive`
+ * is idempotent); the later ones exist to keep `ccSessionId`/`transcript_path`
+ * current — after a `/clear` or a compaction the conversation Claude Code would
+ * `--resume` is a different one, and a stale id resumes the wrong transcript.
+ */
 function handleSessionStart(
   ctx: AppCtx,
   sessionId: string,
@@ -81,13 +90,17 @@ function handleSessionStart(
   const ccSessionId = typeof payload?.session_id === 'string' ? payload.session_id : undefined
   const transcriptPath =
     typeof payload?.transcript_path === 'string' ? payload.transcript_path : undefined
+  const source = typeof payload?.source === 'string' ? payload.source : undefined
 
+  const wasLive = getSessionRow(ctx, sessionId)?.status === 'live'
   markSessionLive(ctx, sessionId, { ccSessionId, transcriptPath })
-  emit(ctx, feature.id, {
-    type: 'session.started',
-    message: 'session live',
-    data: { sessionId, ccSessionId, transcriptPath },
-  })
+  if (!wasLive) {
+    emit(ctx, feature.id, {
+      type: 'session.started',
+      message: source === 'resume' ? 'session live (conversation resumed)' : 'session live',
+      data: { sessionId, ccSessionId, transcriptPath, source: source ?? null },
+    })
+  }
 
   return {
     hookSpecificOutput: {
@@ -97,7 +110,20 @@ function handleSessionStart(
   }
 }
 
-function handleUserPrompt(ctx: AppCtx, feature: Feature): unknown {
+/**
+ * `UserPromptSubmit` — the only proof a prompt actually reached Claude Code, so
+ * it doubles as the kickoff delivery receipt (`noteKickoffPrompt`): our injected
+ * briefing coming back here confirms it landed, and anything else means the
+ * human typed first.
+ */
+function handleUserPrompt(
+  ctx: AppCtx,
+  sessionId: string,
+  feature: Feature,
+  payload: Record<string, unknown> | undefined,
+): unknown {
+  const prompt = typeof payload?.prompt === 'string' ? payload.prompt : undefined
+  noteKickoffPrompt(ctx, sessionId, prompt)
   const tickets = listByFeature(ctx, feature.id).length
   return {
     hookSpecificOutput: {

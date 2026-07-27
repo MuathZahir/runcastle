@@ -1,6 +1,12 @@
 import { SessionKind } from '@runcastle/core'
 import * as z from 'zod'
-import { converge, endSession, launchSession, workWaypoint } from '../../launcher/launcher'
+import {
+  converge,
+  endSession,
+  launchSession,
+  resendKickoff,
+  workWaypoint,
+} from '../../launcher/launcher'
 import { emit } from '../../services/events'
 import * as features from '../../services/features'
 import { overrideGate } from '../../services/gates'
@@ -60,6 +66,14 @@ export const featureRouter = router({
     .mutation(({ ctx, input }) =>
       converge(ctx, { featureId: input.featureId, overrideReason: input.overrideReason }),
     ),
+
+  // Re-type a live session's kickoff/briefing into its terminal ("Send briefing"
+  // in the session strip). The escape hatch for a briefing the TUI swallowed —
+  // a startup dialog eating the keystrokes leaves a terminal that looks fine and
+  // was never told what it is there for.
+  resendKickoff: publicProcedure
+    .input(z.object({ sessionId: z.string() }))
+    .mutation(({ ctx, input }) => resendKickoff(ctx, input.sessionId)),
 
   // End a live session (End session button; terminal-tab close is detach only).
   // Route added by W2 (UI-SPEC §6); backed by W1's PTY-killing `endSession`

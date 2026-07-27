@@ -23,6 +23,7 @@ export const MODEL_STEPS = [
   'revisit',
   'research',
   'implement',
+  'prepare',
   'smoke',
 ] as const
 export const ModelStep = z.enum(MODEL_STEPS)
@@ -209,6 +210,20 @@ export const RuncastleConfig = z.preprocess(
      * Note that overriding this replaces install detection entirely, so the
      * install command must be included explicitly.
      */
+    /**
+     * Run project preparation automatically the first time a project is opened
+     * (and only then — never on a re-open, and never over a field a human set).
+     *
+     * On by default because the fields preparation fills are empty on nearly
+     * every install, and they are empty for a structural reason: answering them
+     * means running the repo's suite, which is agent work. Left to a button,
+     * they stay empty and every burn agent keeps paying to re-derive them.
+     *
+     * Set `false` if you would rather spend nothing until you ask — preparation
+     * builds a sandbox and runs the full test suite once, so it is real CPU and
+     * real tokens. `project.prepare` remains available on demand either way.
+     */
+    autoPrepare: z.boolean().default(true),
     setupCommand: z.string().optional(),
     /**
      * The exact commands a burn agent should use to verify its work — typecheck,
@@ -266,6 +281,40 @@ export const DEFAULT_SANDBOX_IMAGE = 'sandcastle:runcastle'
  */
 export function resolveSandboxImage(config: Pick<RuncastleConfig, 'sandboxImage'>): string {
   return config.sandboxImage ?? DEFAULT_SANDBOX_IMAGE
+}
+
+/**
+ * The three burn-facing prepared fields, resolved `project ?? global`. Pure.
+ *
+ * These live on `RuncastleConfig` for historical reasons (they landed before
+ * multi-project), but every one of them describes a REPO — its install command,
+ * its verify commands, which of its tests are already red. A machine-wide value
+ * is wrong as soon as a second project is opened, so a project's own value
+ * always wins; the global stays as the inherited fallback so an operator who
+ * already set one keeps it.
+ *
+ * Empty strings are treated as unset: a cleared textarea in the settings UI
+ * arrives as `''`, and `''` must inherit rather than mean "no commands".
+ */
+export function resolvePreparedSettings(
+  config: Pick<RuncastleConfig, 'setupCommand' | 'verifyCommands' | 'knownFailures'>,
+  project?: {
+    setupCommand?: string | null
+    verifyCommands?: string | null
+    knownFailures?: string | null
+  } | null,
+): { setupCommand?: string; verifyCommands?: string; knownFailures?: string } {
+  const pick = (a: string | null | undefined, b: string | undefined): string | undefined => {
+    const own = a?.trim()
+    if (own) return own
+    const inherited = b?.trim()
+    return inherited || undefined
+  }
+  return {
+    setupCommand: pick(project?.setupCommand, config.setupCommand),
+    verifyCommands: pick(project?.verifyCommands, config.verifyCommands),
+    knownFailures: pick(project?.knownFailures, config.knownFailures),
+  }
 }
 
 /**

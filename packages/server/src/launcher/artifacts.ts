@@ -348,6 +348,22 @@ export const SESSION_BASH_ALLOW_RULES: readonly string[] = [
 ]
 
 /**
+ * Every `SessionStart` source we register the hook for (CC-INTEGRATION-NOTES §3;
+ * `fork` added in CC 2.1.214, reported as `resume` before that).
+ *
+ * REGRESSION THIS FIXES: the settings used to register `matcher: 'startup'`
+ * ALONE, so a `--resume` launch — every revisit, every reopened terminal, every
+ * merge-conflict "Resolve with agent" — fired `SessionStart` with source
+ * `resume`, matched nothing, and never reached our hook receiver. The session
+ * therefore never went `live`, never recorded its `ccSessionId`, and never got
+ * its kickoff line typed: the terminal opened on the old conversation and just
+ * sat there. One matcher per source (rather than one alternation matcher) keeps
+ * this working whether Claude Code compares the matcher as a regex or as a
+ * literal string.
+ */
+export const SESSION_START_SOURCES = ['startup', 'resume', 'clear', 'compact', 'fork'] as const
+
+/**
  * The `settings.json` for a session (CC-INTEGRATION-NOTES §2 verified shape).
  *
  * - `permissions.allow` pre-approves runcastle's own MCP tools so a session's
@@ -357,7 +373,8 @@ export const SESSION_BASH_ALLOW_RULES: readonly string[] = [
  *   stall on a Bash approval prompt.
  * - `command` = `bun run "<abs hook-client.ts>" <route-event>` where the route
  *   event is the kebab-case `/api/hooks/:event` segment the client POSTs to.
- * - `SessionStart` matches `startup` (the source for a fresh `claude` launch).
+ * - `SessionStart` is registered for EVERY source (see
+ *   {@link SESSION_START_SOURCES}) — a resumed session is a started session.
  * - `UserPromptSubmit`/`SessionEnd` take NO `matcher` (unsupported → omitted).
  * - Timeouts (seconds): SessionStart 10, UserPromptSubmit 5 (well inside its 30s
  *   hard budget), SessionEnd 10.
@@ -371,7 +388,10 @@ export function renderSettings(hookClient: string): SessionSettings {
   return {
     permissions: { allow: [...RUNCASTLE_MCP_ALLOW_RULES, ...SESSION_BASH_ALLOW_RULES] },
     hooks: {
-      SessionStart: [{ matcher: 'startup', hooks: [cmd('session-start')] }],
+      SessionStart: SESSION_START_SOURCES.map((source) => ({
+        matcher: source,
+        hooks: [cmd('session-start')],
+      })),
       UserPromptSubmit: [{ hooks: [cmd('user-prompt')] }],
       SessionEnd: [{ hooks: [cmd('session-end')] }],
     },

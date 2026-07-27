@@ -9,6 +9,7 @@ import { InvalidInputError, isNotImplemented } from '../errors'
 import { emitProject } from './events'
 import { expandPath } from './fsbrowse'
 import * as git from './git'
+import { startPrep } from './prep'
 import {
   allProjects,
   getProjectByRepoPath,
@@ -113,7 +114,33 @@ export async function openProject(ctx: AppCtx, rawPath: string): Promise<Project
     message: `project ${name} at ${repoPath} (${mainBranch})`,
   })
   warnIfTranslatedMount(ctx, project.id, repoPath)
+  maybeAutoPrepare(ctx, project)
   return project
+}
+
+/**
+ * Kick off the first preparation run for a brand-new project, in the
+ * background.
+ *
+ * Deliberately fire-and-forget: `openProject` must return immediately so the
+ * user lands in the project and can start a feature, and the only consumer of
+ * the findings is a burn — several gates downstream. Making anyone watch a
+ * container build before they can type a feature title would trade the whole
+ * benefit for a worse first impression.
+ *
+ * Only ever fires on a project's FIRST open (this function is not called from
+ * the re-open path), and only when `autoPrepare` is on. Everything after that
+ * is an explicit `project.prepare`.
+ */
+function maybeAutoPrepare(ctx: AppCtx, project: Project): void {
+  if (!ctx.config.autoPrepare) return
+  startPrep(ctx, project.id).catch((e: unknown) => {
+    // Never fail an open over preparation — the project is usable without it.
+    emitProject(ctx, project.id, {
+      type: 'prep.run.failed',
+      message: `could not start preparation: ${e instanceof Error ? e.message : String(e)}`,
+    })
+  })
 }
 
 /**

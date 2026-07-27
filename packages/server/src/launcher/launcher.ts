@@ -25,6 +25,7 @@ import { startRun, workflowClaimsFeatureBranch } from '../workflows/runner'
 import { serverUrlFor, writeSessionArtifacts } from './artifacts'
 import {
   activeSessionsForFeature,
+  armSessionReadyWatchdog,
   createSessionRow,
   getSessionRow,
   markSessionEnded,
@@ -32,6 +33,10 @@ import {
   resumeKickoffLine,
   setKickoffOverride,
 } from './sessions'
+
+// Re-exported for the `feature.resendKickoff` router: the launcher is the stable
+// import path for session-terminal behaviour (same arrangement as `endSession`).
+export { resendKickoff } from './sessions'
 
 // Re-exported so the `feature.endSession` router (W2) imports the real,
 // PTY-killing service from `../../launcher/launcher` per its coordination note —
@@ -686,6 +691,11 @@ function spawnEmbeddedPty(
       message: 'embedded terminal spawned',
       data: { sessionId: session.id, mode: 'embedded', pid: entry.pty.pid },
     })
+    // A spawned process is not a working session: everything downstream (going
+    // live, the kickoff, the cc session id) hangs off the SessionStart hook, so
+    // a terminal that never reports ready must say so instead of sitting there
+    // looking healthy.
+    armSessionReadyWatchdog(ctx, session)
   } catch (err) {
     // A session that never got a process must not linger `launching` — the
     // one-live-session guard reads session rows, so a leaked row would block

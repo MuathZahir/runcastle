@@ -9,7 +9,12 @@ import type {
   WorkflowCtx,
   WorkflowDef,
 } from '@runcastle/core'
-import { newId, resolveModel, resolveSandboxImage } from '@runcastle/core'
+import {
+  newId,
+  resolveModel,
+  resolvePreparedSettings,
+  resolveSandboxImage,
+} from '@runcastle/core'
 import { loadConfig } from '@runcastle/core/config-load'
 import { burnCacheDir, envPath, featureDocsRel, logsDir, worktreeDir } from '@runcastle/core/paths'
 import { resolveSkillsRoot } from '../launcher/skills-root'
@@ -1612,10 +1617,16 @@ async function realExecuteTicketRun(
   const featureBrief = buildFeatureBrief(feature)
   const docsDigest = readDocsDigestFromDisk(project.id, feature.slug)
   const workspaceNotes = buildWorkspaceNotes(workspaceMode)
+  // The prepared repo facts (verify commands, test baseline, install command),
+  // resolved project-first. They describe THIS repo, so a project's own value —
+  // normally established by a preparation run — always wins over the machine
+  // -wide config value, which survives only as the inherited fallback.
+  const prepared = resolvePreparedSettings(config, project)
+
   // Also shared: the resolver runs the same suites on the merge result, and
   // guessed filter names / re-derived baselines cost it exactly what they cost
   // the implementer.
-  const verifyNotes = buildVerifyNotes(config)
+  const verifyNotes = buildVerifyNotes(prepared)
 
   const basePrompt = renderTicketPrompt(readFileSync(burnerTemplatePath(), 'utf8'), {
     TICKET_JSON: ticketJson,
@@ -1636,7 +1647,7 @@ async function realExecuteTicketRun(
   // because a mounted store cannot hardlink — see PM_CACHE_SANDBOX_PATHS.
   const toolchain = readRepoToolchain(project.repoPath)
   const pm = detectPackageManager(toolchain)
-  const setupCommand = resolveSetupCommand(toolchain, config.setupCommand)
+  const setupCommand = resolveSetupCommand(toolchain, prepared.setupCommand)
   const mounts: CacheMount[] = []
   if (config.sandbox !== 'noSandbox' && pm) {
     const mount = cacheMountFor(pm, burnCacheDir(pm))
@@ -2176,7 +2187,7 @@ function resolveBurnDeps(ctx: WorkflowCtx): BurnDeps {
 }
 
 /** Read CLAUDE_CODE_OAUTH_TOKEN from the .env file, falling back to process env. */
-function readTokenFromEnvFile(path: string): string | undefined {
+export function readTokenFromEnvFile(path: string): string | undefined {
   let fromFile: string | undefined
   if (existsSync(path)) {
     try {

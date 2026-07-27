@@ -7,6 +7,7 @@ import { RuncastleConfig as ConfigSchema } from '@runcastle/core'
 import {
   RUNCASTLE_MCP_ALLOW_RULES,
   SESSION_BASH_ALLOW_RULES,
+  SESSION_START_SOURCES,
   hookClientPath,
   renderMcpConfig,
   renderSettings,
@@ -105,12 +106,19 @@ describe('renderSettings', () => {
   it('emits the verified hooks JSON shape with correct events + timeouts', () => {
     const s = renderSettings('C:\\hooks\\hook-client.ts')
 
-    // SessionStart: matcher 'startup', command hook, timeout 10
-    expect(s.hooks.SessionStart[0].matcher).toBe('startup')
-    const start = s.hooks.SessionStart[0].hooks[0]
-    expect(start.type).toBe('command')
-    expect(start.timeout).toBe(10)
-    expect(start.command).toBe('bun run "C:\\hooks\\hook-client.ts" session-start')
+    // SessionStart: one entry per source, command hook, timeout 10. REGRESSION:
+    // registering `startup` alone meant every `--resume` launch (revisit, merge-
+    // conflict resolve, any reopened terminal) fired source=resume, matched
+    // nothing, and never reached the hook receiver — so the session never went
+    // live and its kickoff was never typed.
+    expect(s.hooks.SessionStart.map((h) => h.matcher)).toEqual([...SESSION_START_SOURCES])
+    expect(s.hooks.SessionStart.map((h) => h.matcher)).toContain('resume')
+    for (const entry of s.hooks.SessionStart) {
+      const start = entry.hooks[0]
+      expect(start.type).toBe('command')
+      expect(start.timeout).toBe(10)
+      expect(start.command).toBe('bun run "C:\\hooks\\hook-client.ts" session-start')
+    }
 
     // UserPromptSubmit: NO matcher, timeout 5 (inside its 30s budget)
     expect(s.hooks.UserPromptSubmit[0]).not.toHaveProperty('matcher')
@@ -321,7 +329,9 @@ describe('writeSessionArtifacts', () => {
     expect(out.systemPromptPath).toBe(join(sessionDir(sess.id), 'system-prompt.md'))
 
     const settings = JSON.parse(readFileSync(out.settingsPath, 'utf8'))
-    expect(settings.hooks.SessionStart[0].matcher).toBe('startup')
+    expect(settings.hooks.SessionStart.map((h: { matcher: string }) => h.matcher)).toEqual([
+      ...SESSION_START_SOURCES,
+    ])
     expect(settings.hooks.SessionStart[0].hooks[0].command).toContain(hookClientPath())
     expect(settings.permissions.allow).toContain('mcp__runcastle__complete_phase')
 

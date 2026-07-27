@@ -115,10 +115,14 @@ Router `appRouter` in `trpc/router.ts`, context = `{ db, config }`. All inputs/o
 - `project.get(): Project | null`
 - `project.init({ repoPath: string }): Project` — validates it's a git repo; stores mainBranch. Per-project overrides (devCommand, model, sandbox) are set later via `settings.update({ projectId, key, value })` — `project.update` is retired (issue #46).
 - `project.branches({ projectId }): { current, mainBranch, branches: string[], remoteBranches: string[] }` — branches for the create-feature base picker (`feature/*` excluded); `current` is the main checkout's branch; `remoteBranches` are `origin/*` refs with no local twin (picking one materializes a local base — see §7 `resolveBaseBranch`).
+- `project.prepare({ projectId, refresh?, keys? }): { prepId, keys }` — start a preparation run (§14); returns immediately, progress arrives as project events
+- `project.cancelPrepare({ projectId }): { ok }`
+- `project.prep({ projectId }): { latest: PrepRun|null, running: boolean, pendingKeys: PreparedKey[], findings: ProjectFinding[] }` — the preparation surface the settings UI polls
 - `feature.create({ title, oneLiner, size, baseBranch? }): Feature` — slugify title; resolve `baseBranch` (default `mainBranch`) to a local branch (a remote pick materializes a local tracking branch); git branch `feature/<slug>` forked off it; scaffold docs; phase=`ideation`. Stores the resolved local base; the feature merges back into it at ship (not unconditionally main).
 - `feature.list(): FeatureListItem[]` — Feature + ticket counts + activeRun boolean
 - `feature.get({ id }): { feature, tickets, sessions, runs, docs: {relPath, title}[], gate: { next: GateDef|null, satisfied: boolean, reason?: string } }`
-- `feature.launchSession({ featureId, kind }): { sessionId }` (B1 behavior)
+- `feature.launchSession({ featureId, kind, kickoffLine? }): { sessionId }` (B1 behavior; `kickoffLine` replaces the per-kind opening briefing for one session)
+- `feature.resendKickoff({ sessionId }): { line: string }` — re-type that session's briefing into its terminal (ADR-0009; backs the session strip's **Send briefing** when delivery was never confirmed)
 - `feature.advance({ featureId }): Feature` — attempt gate → next phase (server-side check; error with reason if unsatisfied). Refuses G3 (tickets→implementation): that human "Burn" gate is crossed only by `feature.burn` or `overrideGate` (see C3).
 - `feature.overrideGate({ featureId, gate, reason }): Feature` — records override + advances (may cross any gate, incl. G3)
 - `feature.burn({ featureId }): { runId }` — G3, the ONLY plain-crossing of it: requires phase `tickets` + ≥1 ticket; sets phase `implementation`; `runner.startRun(...,'ticket-burner')`. Also accepts phase `implementation` with no active run (cancelled/crashed run) and restarts the burn without re-crossing a gate.
@@ -163,7 +167,7 @@ Mounted at `POST /mcp` (Streamable HTTP; use @hono/mcp if STACK-NOTES confirms, 
 - `commitDocs(worktreePath, message)` — stage `docs/features/<slug>` only, commit if changes (used by MCP complete_phase to checkpoint knowledge)
 - Test drive (in-memory module state: `{ active?: { featureId, previousBranch } }`):
   - `start`: deny (with reason) if: main checkout dirty (`status --porcelain` non-empty) | another test drive active | feature has an active run. Else record current branch, `checkout feature/<slug>`, return ok. If `project.devCommand` set, spawn it in a drive-owned embedded PTY pane (registry id `drive:<featureId>` — a NON-session id, so session guards / resume never touch it) via a generalized shell/cmd shim; sniff the first localhost URL from its output for the "Open app" link (sticky per drive). Best-effort — a spawn failure never fails the drive.
-  - `stop`: checkout `previousBranch`, clear state, and kill the dev pane's whole process tree (POSIX process-group signal / Windows ConPTY teardown) so its port is freed with no orphan; the sniffed URL is cleared.
+  - `stop`: checkout `previousBranch`, clear state, and kill the dev pane's whole process tree (POSIX process-group signal / Windows ConPTY teardown) so its port is freed with no orphan; the sniffed URL is cleared. Two reports, because a stop is not symmetric with a start: `carriedChanges` names the uncommitted files git carries across the switch (`start` denies a dirty tree; `stop` cannot without stranding the user), and `dbDrift` fires when migration-looking paths differ between the two branches — the drive applied schema the dev database still holds, so the next `migrate` on `previousBranch` reports drift with nothing tying it back. Carries `project.dbResetCommand` when set; it is offered, NEVER run automatically (a dev database can hold hand-built state).
   - `activeDriveInfo()` → `{ featureId, branch, devPaneId?, devUrl? } | null` for the review-phase dev pane + Open app link (polled via `feature.driveInfo`).
 - `mergeFeature(project, feature)`: target = `feature.baseBranch ?? mainBranch` (a feature lands back on the branch it forked from). Deny if test drive active, checkout dirty, or target branch gone. Record the pre-merge branch → `checkout target` → `merge --no-ff feature/<slug>` → on conflict `merge --abort`, return `{ ok: false, conflict: true, target }` + event; on success return `{ ok: true, target }` (caller sets phase shipped, emits event). Restore the pre-merge branch after (best-effort; detached HEAD left as-is) so the shared checkout isn't silently parked on the base.
 
@@ -297,3 +301,51 @@ tests), frontier derivation (blocked→freed on resolve AND on drop), claim
 transactionality (double-claim fails), auto-release on session end, G1
 conditional check both modes. Smoke extension: escalate → emit 2 waypoints
 (one blocking the other) → resolve both → converge gate satisfiable.
+
+## 14. Project preparation — `workflows/project-prep.ts` + `services/prep.ts`
+
+**Why.** `verifyCommands`, `knownFailures` and `setupCommand` sit empty on
+almost every install, and not because the form is unfriendly: they are
+*findings*, not preferences. Answering "which tests are already red on main"
+means running the suite; answering "how do I verify a change here" means knowing
+the workspace filter names. That is agent work, and today every burn agent pays
+it per ticket and throws it away (ADR-0008: two whole monorepo suite runs lost
+to guessing one filter name). Preparation pays it once, with evidence.
+
+**Prepared keys** (`PREPARED_KEYS`, core): `setupCommand`, `verifyCommands`,
+`knownFailures`, `devCommand`, `dbResetCommand`. Each is a column on `projects`;
+the first three also have a global config twin resolved `project ?? global` via
+`resolvePreparedSettings` (they describe a REPO, so a machine-wide value is
+wrong as soon as a second project is open). `dbResetCommand` is project-only.
+
+**Storage.** Values live in the project columns, so every existing reader —
+settings resolution, the burner, the launcher — is unchanged. `project_findings`
+(PK `project_id,key`) carries provenance only: `source` (`prep|human`),
+`evidence`, `established_at`, `established_sha`. `project_preps` is the run row
+(NOT `runs`: that is feature-scoped and its finalizer advances feature phases).
+
+**Rules.**
+- **Measured, not inferred.** The prompt requires the agent to RUN what it
+  proposes. Reading `package.json` would automate the same guess, earlier.
+- **Measured where it will be used.** Same sandbox image and setup command as
+  ticket agents get; a baseline from elsewhere is not comparable to theirs.
+  `devCommand`/`dbResetCommand` are the exceptions — they describe the human's
+  machine, so they are read from config and reported as *proposed, not run*.
+- **A human value is never overwritten.** No override flag exists. Clearing a
+  field drops its provenance and hands it back to preparation — the only way.
+  Re-checked at write-back, because a run takes minutes and a human may answer
+  a field mid-run.
+- **Staleness is measured.** Findings pin to the main-branch sha they were taken
+  at; the UI shows `rev-list <sha>..<main>` distance and flags past a threshold.
+  An uncomputable distance (rebased-away sha) reports *unknown*, never *fresh* —
+  a rotted baseline is worse than none, since agents trust it.
+- **Findings travel by commit.** The agent writes `.runcastle/prep.json` and
+  commits it to a throwaway `runcastle/prep/*` branch; the run reads it with
+  `git show` and deletes the branch. Nothing merges, nothing pollutes the repo,
+  and a dropped stream cannot lose a full suite run.
+
+**Lifecycle.** `autoPrepare` (global, default on) fires one run on a project's
+FIRST open, fire-and-forget so `project.open` returns immediately — the only
+consumer is a burn, several gates downstream. Everything after is an explicit
+`project.prepare`. One run per project at a time; boot reconciles `running` rows
+left by a dead server.

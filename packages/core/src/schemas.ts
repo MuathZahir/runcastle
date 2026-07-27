@@ -140,6 +140,31 @@ export type Waypoint = z.infer<typeof Waypoint>
 
 // --- core entities ---------------------------------------------------------
 
+/**
+ * The repo facts a preparation run establishes, in the order the settings UI
+ * and the prep prompt present them. Each maps 1:1 to a project column; the
+ * first four also have a global config twin (`project ?? global`), while
+ * `devCommand` and `dbResetCommand` are project-only.
+ *
+ * These are FINDINGS, not preferences: answering any of them honestly means
+ * reading the repo's workspace layout and running its suite, which is why they
+ * sit empty on almost every install. Preparation pays that cost once, with
+ * evidence, instead of every burn agent re-deriving it per ticket (ADR-0008).
+ */
+export const PREPARED_KEYS = [
+  'setupCommand',
+  'verifyCommands',
+  'knownFailures',
+  'devCommand',
+  'dbResetCommand',
+] as const
+export const PreparedKey = z.enum(PREPARED_KEYS)
+export type PreparedKey = z.infer<typeof PreparedKey>
+
+/** Who established a prepared value. A `human` value is never auto-overwritten. */
+export const FindingSource = z.enum(['prep', 'human'])
+export type FindingSource = z.infer<typeof FindingSource>
+
 export const Project = z.object({
   id: z.string(),
   name: z.string(),
@@ -148,8 +173,45 @@ export const Project = z.object({
   devCommand: z.string().optional(),
   /** Per-project default-model override (issue #48); unset → inherit global. */
   model: z.string().optional(),
+  /** Prepared repo facts (see {@link PREPARED_KEYS}); unset → inherit global. */
+  setupCommand: z.string().optional(),
+  verifyCommands: z.string().optional(),
+  knownFailures: z.string().optional(),
+  dbResetCommand: z.string().optional(),
 })
 export type Project = z.infer<typeof Project>
+
+/**
+ * A prepared field's provenance, as the UI and the staleness check see it.
+ * `staleCommits` is how far the repo's main branch has moved since the finding
+ * was measured — `undefined` when it cannot be computed (no sha, or the sha is
+ * no longer reachable after a rebase), which the UI shows as "unknown", never
+ * as "fresh".
+ */
+export const ProjectFinding = z.object({
+  key: PreparedKey,
+  source: FindingSource,
+  evidence: z.string().optional(),
+  establishedAt: z.number(),
+  establishedSha: z.string().optional(),
+  staleCommits: z.number().optional(),
+})
+export type ProjectFinding = z.infer<typeof ProjectFinding>
+
+export const PrepStatus = z.enum(['running', 'succeeded', 'failed', 'cancelled'])
+export type PrepStatus = z.infer<typeof PrepStatus>
+
+/** One preparation run over a project (project-scoped sibling of `Run`). */
+export const PrepRun = z.object({
+  id: z.string(),
+  projectId: z.string(),
+  status: PrepStatus,
+  startedAt: z.number(),
+  endedAt: z.number().optional(),
+  summary: z.string().optional(),
+  headSha: z.string().optional(),
+})
+export type PrepRun = z.infer<typeof PrepRun>
 
 export const Feature = z.object({
   id: z.string(),

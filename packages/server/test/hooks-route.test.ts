@@ -4,6 +4,7 @@ import type { AppCtx } from '../src/db/types'
 import { clearRuntimeCtx, setRuntimeCtx } from '../src/launcher/runtime'
 import { createSessionRow, getSessionRow } from '../src/launcher/sessions'
 import hooksApp from '../src/routes/hooks'
+import { listAfter } from '../src/services/events'
 import { storeTickets } from '../src/services/tickets'
 import { claim, getWaypoint, storeWaypoints } from '../src/services/waypoints'
 import { makeTestCtx } from './helpers/db'
@@ -67,6 +68,54 @@ describe('hooks route', () => {
     expect(session?.status).toBe('live')
     expect(session?.ccSessionId).toBe('cc-123')
     expect(session?.transcriptPath).toBe('/tmp/t.jsonl')
+  })
+
+  /**
+   * REGRESSION (merge-conflict "Resolve with agent" opened a terminal that just
+   * sat there): a resumed session is a started session. The settings used to
+   * register `matcher: 'startup'` alone, so this call never happened for a
+   * `--resume` launch — the row stayed `launching`, no `ccSessionId` was ever
+   * recorded, and the kickoff was never typed.
+   */
+  it('session-start with source=resume goes live exactly like a fresh start', async () => {
+    const { status } = await post(mount(), 'session-start', {
+      sessionId,
+      payload: {
+        session_id: 'cc-resumed',
+        transcript_path: '/tmp/t.jsonl',
+        hook_event_name: 'SessionStart',
+        source: 'resume',
+      },
+    })
+
+    expect(status).toBe(200)
+    const session = getSessionRow(ctx, sessionId)
+    expect(session?.status).toBe('live')
+    expect(session?.ccSessionId).toBe('cc-resumed')
+
+    const started = listAfter(ctx, featureId, 0).filter((e) => e.type === 'session.started')
+    expect(started).toHaveLength(1)
+    expect(started[0].message).toContain('resumed')
+  })
+
+  /**
+   * `/clear` and compaction start a NEW Claude Code conversation in the same
+   * terminal: keep the id current (a stale one resumes the wrong transcript)
+   * without re-announcing a session that is already live.
+   */
+  it('a later session-start refreshes the cc id without a second started event', async () => {
+    const app = mount()
+    await post(app, 'session-start', {
+      sessionId,
+      payload: { session_id: 'cc-1', hook_event_name: 'SessionStart', source: 'startup' },
+    })
+    await post(app, 'session-start', {
+      sessionId,
+      payload: { session_id: 'cc-2', hook_event_name: 'SessionStart', source: 'clear' },
+    })
+
+    expect(getSessionRow(ctx, sessionId)?.ccSessionId).toBe('cc-2')
+    expect(listAfter(ctx, featureId, 0).filter((e) => e.type === 'session.started')).toHaveLength(1)
   })
 
   it('user-prompt injects one compact runcastle line in the verified shape', async () => {

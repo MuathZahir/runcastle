@@ -1,7 +1,9 @@
-import { integer, sqliteTable, text } from 'drizzle-orm/sqlite-core'
+import { integer, primaryKey, sqliteTable, text } from 'drizzle-orm/sqlite-core'
 import type {
   FeatureStatus,
+  FindingSource,
   Phase,
+  PrepStatus,
   RunStatus,
   SessionKind,
   SessionStatus,
@@ -32,6 +34,64 @@ export const projects = sqliteTable('projects', {
   // `project.close` sets it (hiding the project); re-`open` clears it. Additive
   // and nullable so the migration leaves existing (open) projects untouched.
   closedAt: integer('closed_at'),
+  // Prepared repo facts (project preparation). These four mirror same-named
+  // GLOBAL config fields, which is the bug preparation exists to fix: "which
+  // tests are already red" and "how do I verify" are properties of a REPO, so a
+  // machine-wide value is wrong the moment a second project is opened. The
+  // preparation agent writes them here per project; `project ?? global` keeps
+  // an operator's existing global value working until a project overrides it.
+  // `dbResetCommand` is project-only (no global twin) — it exists to un-drift a
+  // dev database after a test drive, which is per-repo by construction.
+  setupCommand: text('setup_command'),
+  verifyCommands: text('verify_commands'),
+  knownFailures: text('known_failures'),
+  dbResetCommand: text('db_reset_command'),
+})
+
+/**
+ * Provenance for one prepared field (see {@link projects}). The VALUE lives in
+ * the project column so every existing reader resolves it unchanged; this table
+ * only records where it came from and what justified it.
+ *
+ * `source` is the whole point: a human-entered value is never overwritten by a
+ * later preparation run, and the UI can say "you set this" vs "prep found
+ * this". `establishedSha` pins the finding to the main-branch commit it was
+ * measured at, so staleness is computable (`git rev-list <sha>..<main>`) rather
+ * than guessed — a two-month-old test baseline is worse than none, because an
+ * agent trusts it and misattributes its own breakage to the repo's.
+ */
+export const projectFindings = sqliteTable(
+  'project_findings',
+  {
+    projectId: text('project_id').notNull(),
+    /** The prepared field this describes (a `PreparedKey`). */
+    key: text('key').notNull(),
+    source: text('source').notNull().$type<FindingSource>(),
+    /** What justified the value — the command output prep actually observed. */
+    evidence: text('evidence'),
+    establishedAt: integer('established_at').notNull(),
+    /** Main-branch sha the finding was measured at; null for human entries. */
+    establishedSha: text('established_sha'),
+  },
+  (t) => [primaryKey({ columns: [t.projectId, t.key] })],
+)
+
+/**
+ * One preparation run. Deliberately NOT the `runs` table: a run is feature-
+ * scoped (`runs.feature_id` is NOT NULL, and the runner's finalizer advances
+ * feature phases and sweeps tickets), while preparation belongs to the project
+ * and exists before any feature does. Widening `runs` would put a null feature
+ * through every one of those paths.
+ */
+export const projectPreps = sqliteTable('project_preps', {
+  id: text('id').primaryKey(),
+  projectId: text('project_id').notNull(),
+  status: text('status').notNull().$type<PrepStatus>(),
+  startedAt: integer('started_at').notNull(),
+  endedAt: integer('ended_at'),
+  summary: text('summary'),
+  /** Main-branch sha the run measured against (stamped on every finding). */
+  headSha: text('head_sha'),
 })
 
 export const features = sqliteTable('features', {

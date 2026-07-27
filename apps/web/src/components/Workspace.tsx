@@ -79,7 +79,31 @@ export function Workspace({
     },
     onError: (e) => toast.push(e.message),
   })
-  const testDrive = trpc.feature.testDrive.useMutation({ onError: (e) => toast.push(e.message) })
+  const testDrive = trpc.feature.testDrive.useMutation({
+    onSuccess: (res) => {
+      // Git switches files; it cannot switch the dev database. When the drive's
+      // branch carried migrations this one does not have, whatever was migrated
+      // during the drive is still applied — and the next `migrate` reports drift
+      // with nothing to connect it back to the test drive. Say so now, while the
+      // cause is still obvious, and hand over the project's own reset command.
+      // Never run it: a dev database can hold hand-built state.
+      if (res.dbDrift) {
+        toast.push(
+          res.dbDrift.resetCommand
+            ? `Migrations differ between the branches — your dev database may be ahead. Rebuild it with: ${res.dbDrift.resetCommand}`
+            : 'Migrations differ between the branches — your dev database may be ahead. Set a database reset command in settings for a one-line fix here.',
+          'info',
+        )
+      }
+      if (res.carriedChanges?.length) {
+        toast.push(
+          `${res.carriedChanges.length} uncommitted file(s) came back with you onto ${res.branch}`,
+          'info',
+        )
+      }
+    },
+    onError: (e) => toast.push(e.message),
+  })
   const merge = trpc.feature.merge.useMutation({ onError: (e) => toast.push(e.message) })
   const unarchive = trpc.feature.unarchive.useMutation({
     onSuccess: () => {

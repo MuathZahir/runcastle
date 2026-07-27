@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { EventRow, TicketStatus } from '@runcastle/core'
 import {
   defaultBaseBranch,
+  kickoffTrouble,
   mergeConflictKickoff,
   needsMe,
   nextStep,
@@ -220,6 +221,49 @@ describe('unresolvedMergeConflict', () => {
       base: 'main',
       files: [],
     })
+  })
+})
+
+/**
+ * The session strip's "this terminal was never briefed" banner. A terminal that
+ * opened, resumed a conversation and was never told why is exactly the failure
+ * the kickoff-confirmation loop exists to catch — so it has to be visible, and
+ * it has to clear itself the moment a send succeeds.
+ */
+describe('kickoffTrouble', () => {
+  const ev = (id: number, type: string, sessionId?: string): EventRow =>
+    ({ id, projectId: 'p', ts: id, type, message: type, data: { sessionId } }) as EventRow
+
+  it('is quiet for a session whose kickoff was typed and never questioned', () => {
+    expect(kickoffTrouble([ev(1, 'session.started', 's1'), ev(2, 'session.kickoff', 's1')], 's1')).toBeNull()
+  })
+
+  it('flags a briefing that was never acknowledged', () => {
+    const events = [ev(1, 'session.kickoff', 's1'), ev(2, 'session.kickoff_undelivered', 's1')]
+    expect(kickoffTrouble(events, 's1')).toBe('undelivered')
+  })
+
+  it('flags a terminal that never reported ready', () => {
+    expect(kickoffTrouble([ev(1, 'session.not_ready', 's1')], 's1')).toBe('not-ready')
+  })
+
+  it('clears once a later kickoff lands (the automatic retry, or a manual send)', () => {
+    const events = [
+      ev(1, 'session.kickoff_undelivered', 's1'),
+      ev(2, 'session.kickoff', 's1'),
+    ]
+    expect(kickoffTrouble(events, 's1')).toBeNull()
+  })
+
+  it('is scoped to one session — another terminal’s trouble is not this one’s', () => {
+    const events = [ev(1, 'session.kickoff_undelivered', 's2'), ev(2, 'session.kickoff', 's1')]
+    expect(kickoffTrouble(events, 's1')).toBeNull()
+    expect(kickoffTrouble(events, 's2')).toBe('undelivered')
+  })
+
+  it('does not carry a dead session’s trouble forward', () => {
+    const events = [ev(1, 'session.kickoff_undelivered', 's1'), ev(2, 'session.ended', 's1')]
+    expect(kickoffTrouble(events, 's1')).toBeNull()
   })
 })
 

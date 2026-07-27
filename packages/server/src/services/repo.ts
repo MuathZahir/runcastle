@@ -49,6 +49,10 @@ export function rowToProject(row: ProjectSelect): Project {
     mainBranch: row.mainBranch,
     devCommand: row.devCommand ?? undefined,
     model: row.model ?? undefined,
+    setupCommand: row.setupCommand ?? undefined,
+    verifyCommands: row.verifyCommands ?? undefined,
+    knownFailures: row.knownFailures ?? undefined,
+    dbResetCommand: row.dbResetCommand ?? undefined,
   }
 }
 
