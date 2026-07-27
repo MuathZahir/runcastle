@@ -23,7 +23,7 @@ An opinionated programming system layered on Claude Code — the IDE to Claude C
    - **UserPromptSubmit hook** → injects per-turn phase state/rules.
    - `--append-system-prompt-file` → generated feature brief.
    - `--plugin-dir` → vendored phase-scoped skill packs.
-   - `--mcp-config` + `--strict-mcp-config` → app's MCP server (record decision, advance phase, query feature memory, emit tickets).
+   - `--mcp-config` → app's MCP server (record decision, advance phase, query feature memory, emit tickets). Attached *alongside* the human's own MCP servers, not instead of them: `--strict-mcp-config` suppresses every other MCP source (user, project, and plugin-contributed), so it is opt-in via `sessionMcp: 'runcastleOnly'` rather than always-on. A session is the human's terminal; hermeticity belongs to the burn sandbox.
    - Transcripts tailed from `~/.claude/projects/<project>/<session-id>.jsonl`; `--resume`/`--fork-session` for the return-later and fork stories.
 
 5. **Session store: hybrid.** Knowledge (spec, decisions/ADRs, research, notes) lives **in the target repo** at `docs/features/<slug>/` — versioned, agent-readable. Machinery (phase state, CC session links, workflow runs, transcript index) lives in the **app's SQLite**.

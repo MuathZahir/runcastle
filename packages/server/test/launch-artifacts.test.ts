@@ -252,7 +252,6 @@ describe('buildClaudeArgs', () => {
       'C:\\s\\settings.json',
       '--mcp-config',
       'C:\\s\\mcp.json',
-      '--strict-mcp-config',
       '--plugin-dir',
       'C:\\repo\\packages\\skills\\packs\\runcastle',
       '--append-system-prompt-file',
@@ -262,6 +261,30 @@ describe('buildClaudeArgs', () => {
       '--model',
       'claude-sonnet-5',
     ])
+  })
+
+  it('omits --strict-mcp-config by default so a session keeps the human’s own MCP servers', () => {
+    const base = {
+      sessionId: 'sess_xyz',
+      serverUrl: 'http://localhost:4512',
+      featureTitle: 'Dark mode',
+      worktreePath: 'C:\\wt\\dark-mode',
+      pluginDir: 'C:\\repo\\pack',
+      settingsPath: 'C:\\s\\settings.json',
+      mcpConfigPath: 'C:\\s\\mcp.json',
+      systemPromptPath: 'C:\\s\\system-prompt.md',
+      model: 'claude-sonnet-5',
+    }
+    // default (sessionMcp: 'inherit') — the flag would suppress user/project/plugin servers
+    expect(buildClaudeArgs(base)).not.toContain('--strict-mcp-config')
+    // ...but runcastle's own server is always attached either way
+    expect(buildClaudeArgs(base)).toContain('--mcp-config')
+
+    // sessionMcp: 'runcastleOnly' — opt back in to the hermetic tool surface
+    const strict = buildClaudeArgs({ ...base, strictMcp: true })
+    expect(strict).toContain('--strict-mcp-config')
+    // still immediately after the config it restricts to
+    expect(strict[strict.indexOf('--strict-mcp-config') - 1]).toBe('C:\\s\\mcp.json')
   })
 
   it('prepends --resume <ccSessionId> when resuming a released waypoint', () => {

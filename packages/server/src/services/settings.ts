@@ -104,6 +104,14 @@ const DESCRIPTORS: FieldDescriptor[] = [
     parseEnv: idEnv,
   },
   {
+    key: 'sessionMcp',
+    configKey: 'sessionMcp',
+    envVar: 'RUNCASTLE_SESSION_MCP',
+    restartRequired: false,
+    valueSchema: z.enum(['inherit', 'runcastleOnly']),
+    parseEnv: idEnv,
+  },
+  {
     key: 'burnConcurrency',
     configKey: 'burnConcurrency',
     envVar: 'RUNCASTLE_BURN_CONCURRENCY',

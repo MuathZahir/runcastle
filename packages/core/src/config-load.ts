@@ -33,6 +33,7 @@ export function loadConfig(
   // read-compat preprocess unless the smoke step is already set explicitly.
   if (env.RUNCASTLE_SMOKE_MODEL) overrides.smokeModel = env.RUNCASTLE_SMOKE_MODEL
   if (env.RUNCASTLE_SANDBOX) overrides.sandbox = env.RUNCASTLE_SANDBOX
+  if (env.RUNCASTLE_SESSION_MCP) overrides.sessionMcp = env.RUNCASTLE_SESSION_MCP
   if (env.RUNCASTLE_MAIN_BRANCH) overrides.mainBranch = env.RUNCASTLE_MAIN_BRANCH
   if (env.RUNCASTLE_SANDBOX_IMAGE) overrides.sandboxImage = env.RUNCASTLE_SANDBOX_IMAGE
   if (env.RUNCASTLE_BURN_CONCURRENCY) {

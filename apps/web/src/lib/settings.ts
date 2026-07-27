@@ -15,6 +15,7 @@ export const FIELD_ENV_VAR: Record<string, string> = {
   model: 'RUNCASTLE_MODEL',
   sandbox: 'RUNCASTLE_SANDBOX',
   sandboxImage: 'RUNCASTLE_SANDBOX_IMAGE',
+  sessionMcp: 'RUNCASTLE_SESSION_MCP',
   burnConcurrency: 'RUNCASTLE_BURN_CONCURRENCY',
   burnAttempts: 'RUNCASTLE_BURN_ATTEMPTS',
   burnConflictAttempts: 'RUNCASTLE_BURN_CONFLICT_ATTEMPTS',
@@ -85,6 +86,12 @@ const META: Record<string, FieldMeta> = {
     label: 'Sandbox image',
     help: 'Docker image used when a session is sandboxed.',
     control: 'text',
+  },
+  sessionMcp: {
+    label: 'MCP servers in sessions',
+    help: 'inherit — sessions get your own MCP servers (user, project, and plugin) alongside runcastle’s. runcastleOnly — sessions see runcastle’s MCP server and nothing else.',
+    control: 'select',
+    options: ['inherit', 'runcastleOnly'],
   },
   burnConcurrency: {
     label: 'Burn concurrency',

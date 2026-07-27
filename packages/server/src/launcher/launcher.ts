@@ -129,6 +129,12 @@ export interface BuildLaunchInput {
    * satisfies. Omitted → a fresh session.
    */
   resumeSessionId?: string
+  /**
+   * Add `--strict-mcp-config` (config `sessionMcp: 'runcastleOnly'`). Default
+   * false: a session inherits the human's own MCP servers alongside
+   * runcastle's — see {@link RuncastleConfig.sessionMcp}.
+   */
+  strictMcp?: boolean
 }
 
 /**
@@ -136,6 +142,11 @@ export interface BuildLaunchInput {
  * passes it verbatim to the embedded PTY spawn, and the `spawn:false` smoke path
  * renders it for its `session.launched` event, so the flags/artifacts never
  * drift. `--append-system-prompt-file` is a verified flag (CC-INTEGRATION-NOTES §7).
+ *
+ * `--mcp-config` is unconditional (it is how the session reaches runcastle's own
+ * MCP server); `--strict-mcp-config` is opt-in, because it does not merely
+ * prefer our config — it suppresses every other MCP source, including the
+ * human's own connections and their plugins' servers.
  */
 export function buildClaudeArgs(input: BuildLaunchInput): string[] {
   const permissionMode = input.permissionMode ?? 'acceptEdits'
@@ -146,7 +157,7 @@ export function buildClaudeArgs(input: BuildLaunchInput): string[] {
     input.settingsPath,
     '--mcp-config',
     input.mcpConfigPath,
-    '--strict-mcp-config',
+    ...(input.strictMcp ? ['--strict-mcp-config'] : []),
     '--plugin-dir',
     input.pluginDir,
     '--append-system-prompt-file',
@@ -420,6 +431,7 @@ export async function launchSession(
     // falling back through the per-project override to the global default.
     model: resolveModel(input.kind, ctx.config, project),
     resumeSessionId,
+    strictMcp: ctx.config.sessionMcp === 'runcastleOnly',
   }
 
   // spawn:false fabricates a session MINUS any process (SPEC §11 smoke driver).

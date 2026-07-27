@@ -103,6 +103,25 @@ export const RuncastleConfig = z.preprocess(
      */
     stepModels: z.partialRecord(ModelStep, z.string()).default({ smoke: DEFAULT_SMOKE_MODEL }),
     sandbox: z.enum(['docker', 'podman', 'noSandbox']).default('docker'),
+    /**
+     * Whether a launched terminal also sees the human's OWN MCP servers.
+     *
+     * `inherit` (default) passes runcastle's `mcp.json` via `--mcp-config` and
+     * stops there, so Claude Code merges it with every other MCP source it
+     * normally loads — user `~/.claude.json`, the target repo's `.mcp.json`,
+     * and any servers contributed by the human's installed plugins.
+     *
+     * `runcastleOnly` additionally passes `--strict-mcp-config`, documented as
+     * *"Only use MCP servers from --mcp-config, ignoring all other MCP
+     * configurations"*. That word "all" is total: it drops the human's own
+     * connections AND their plugins' servers, which is why it is no longer the
+     * default. Sessions are the human's working terminal, not a hermetic
+     * sandbox — the burn sandbox is where hermeticity belongs. Choose
+     * `runcastleOnly` when you want a session's tool surface to be exactly
+     * reproducible, or to keep a heavy personal MCP set out of the context
+     * window.
+     */
+    sessionMcp: z.enum(['inherit', 'runcastleOnly']).default('inherit'),
     mainBranch: z.string().default('main'),
     /**
      * Docker image name for the sandcastle burner sandbox (B3 / SPEC §8). When
