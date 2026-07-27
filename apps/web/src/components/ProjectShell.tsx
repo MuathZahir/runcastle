@@ -79,6 +79,8 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
             viewedPhase={ws.viewedPhase}
             onViewPhase={ws.viewPhase}
             guidance={ws.guidance}
+            mapRailCollapsed={ws.mapRailCollapsed}
+            onToggleMapRail={ws.toggleMapRail}
             driving={driving}
             onDriveChange={setDriving}
           />

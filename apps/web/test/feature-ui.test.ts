@@ -5,10 +5,13 @@ import {
   mergeConflictKickoff,
   needsMe,
   nextStep,
+  parseMapSections,
   REVIEW_ITERATE_KICKOFF,
   triage,
   triageOf,
   unresolvedMergeConflict,
+  waypointGroups,
+  type Waypoint,
 } from '../src/lib/feature-ui'
 import type { FeatureFull, FeatureListItem } from '../src/lib/api'
 
@@ -319,5 +322,157 @@ describe('archive derivations', () => {
     const ns = nextStep(full({ status: 'archived', phase: 'review' }), { driving: false })
     expect(ns.primary?.kind).toBe('unarchive')
     expect(ns.secondary).toEqual([])
+  })
+})
+
+/**
+ * Improve-map-workflow ticket 3 — the map rail's two seams. `parseMapSections`
+ * was private to the grill body; the rail and the fog warning now read one
+ * implementation, so it is tested here on its own.
+ */
+describe('parseMapSections', () => {
+  it('splits a map into its `## ` sections, keyed by heading', () => {
+    const map = [
+      '# Map — demo',
+      '',
+      'preamble that belongs to no section',
+      '',
+      '## Destination',
+      'Ship the rail.',
+      '',
+      '## Out of scope',
+      'The tickets body.',
+    ].join('\n')
+    expect(parseMapSections(map)).toEqual({
+      Destination: 'Ship the rail.\n',
+      'Out of scope': 'The tickets body.',
+    })
+  })
+
+  it('keeps deeper headings inside their section rather than opening a new one', () => {
+    const map = ['## Notes', 'intro', '### A sub-heading', 'detail'].join('\n')
+    expect(parseMapSections(map)).toEqual({ Notes: 'intro\n### A sub-heading\ndetail' })
+  })
+
+  it('returns nothing for a map with no `## ` headings at all', () => {
+    expect(parseMapSections('just prose\nand more prose')).toEqual({})
+  })
+
+  it('records an empty body for a heading with nothing under it', () => {
+    expect(parseMapSections('## Not yet specified')).toEqual({ 'Not yet specified': '' })
+  })
+})
+
+/**
+ * Improve-map-workflow ticket 3 — the rail's grouping, ordering, lineage and
+ * default-expanded state as a pure derivation, because this repo has no DOM
+ * test environment and the rail component is kept thin over it.
+ */
+describe('waypointGroups', () => {
+  function wp(over: Partial<Waypoint> & Pick<Waypoint, 'id' | 'seq' | 'title'>): Waypoint {
+    return {
+      featureId: 'feat_1',
+      type: 'grilling',
+      question: `what about ${over.title}?`,
+      blockedBy: [],
+      originWaypointId: null,
+      status: 'open',
+      claimedBy: null,
+      lastSessionId: null,
+      summary: null,
+      ...over,
+    } as Waypoint
+  }
+
+  const keys = (gs: ReturnType<typeof waypointGroups>) => gs.map((g) => g.key)
+  const titles = (gs: ReturnType<typeof waypointGroups>, key: string) =>
+    gs.find((g) => g.key === key)?.waypoints.map((r) => r.waypoint.title) ?? []
+
+  it('returns nothing for a map with no waypoints yet', () => {
+    expect(waypointGroups([], [])).toEqual([])
+  })
+
+  it('groups frontier, claimed, blocked and terminal waypoints in rail order', () => {
+    const ws = [
+      wp({ id: 'w1', seq: 1, title: 'resolved one', status: 'resolved', summary: 'done' }),
+      wp({ id: 'w2', seq: 2, title: 'claimed one', status: 'claimed', claimedBy: 'sess_1' }),
+      wp({ id: 'w3', seq: 3, title: 'open one' }),
+      wp({ id: 'w4', seq: 4, title: 'blocked one', blockedBy: [2] }),
+      wp({ id: 'w5', seq: 5, title: 'dropped one', status: 'dropped' }),
+    ]
+    const groups = waypointGroups(ws, ['w3'])
+    expect(keys(groups)).toEqual(['frontier', 'claimed', 'blocked', 'done'])
+    expect(titles(groups, 'frontier')).toEqual(['open one'])
+    expect(titles(groups, 'claimed')).toEqual(['claimed one'])
+    expect(titles(groups, 'blocked')).toEqual(['blocked one'])
+    expect(titles(groups, 'done')).toEqual(['resolved one', 'dropped one'])
+  })
+
+  it('omits groups that have no waypoints', () => {
+    const ws = [wp({ id: 'w1', seq: 1, title: 'only one' })]
+    expect(keys(waypointGroups(ws, ['w1']))).toEqual(['frontier'])
+  })
+
+  it('orders the frontier by ascending seq whatever order the server sent', () => {
+    const ws = [
+      wp({ id: 'w9', seq: 9, title: 'ninth' }),
+      wp({ id: 'w2', seq: 2, title: 'second' }),
+      wp({ id: 'w5', seq: 5, title: 'fifth' }),
+    ]
+    const groups = waypointGroups(ws, ['w9', 'w2', 'w5'])
+    expect(titles(groups, 'frontier')).toEqual(['second', 'fifth', 'ninth'])
+  })
+
+  it('resolves blockedBy seqs to blocker titles, dropping the ones already terminal', () => {
+    const ws = [
+      wp({ id: 'w1', seq: 1, title: 'already resolved', status: 'resolved' }),
+      wp({ id: 'w2', seq: 2, title: 'still open' }),
+      wp({ id: 'w3', seq: 3, title: 'waits on both', blockedBy: [1, 2] }),
+    ]
+    const groups = waypointGroups(ws, ['w2'])
+    const blocked = groups.find((g) => g.key === 'blocked')?.waypoints ?? []
+    expect(blocked.map((r) => r.blockerTitles)).toEqual([['still open']])
+  })
+
+  it('ignores a blockedBy seq that names no waypoint', () => {
+    const ws = [wp({ id: 'w1', seq: 1, title: 'orphan edge', blockedBy: [42] })]
+    const groups = waypointGroups(ws, [])
+    expect(groups.find((g) => g.key === 'blocked')?.waypoints[0].blockerTitles).toEqual([])
+  })
+
+  it('names the waypoint that surfaced a later one, and leaves origin-less ones bare', () => {
+    const ws = [
+      wp({ id: 'w1', seq: 1, title: 'the origin', status: 'resolved' }),
+      wp({ id: 'w2', seq: 2, title: 'surfaced later', originWaypointId: 'w1' }),
+      wp({ id: 'w3', seq: 3, title: 'charted up front' }),
+    ]
+    const groups = waypointGroups(ws, ['w2', 'w3'])
+    const frontier = groups.find((g) => g.key === 'frontier')?.waypoints ?? []
+    expect(frontier.map((r) => r.originTitle)).toEqual(['the origin', undefined])
+  })
+
+  it('starts frontier waypoints expanded and every other group collapsed', () => {
+    const ws = [
+      wp({ id: 'w1', seq: 1, title: 'frontier', status: 'open' }),
+      wp({ id: 'w2', seq: 2, title: 'claimed', status: 'claimed', claimedBy: 'sess_1' }),
+      wp({ id: 'w3', seq: 3, title: 'blocked', blockedBy: [2] }),
+      wp({ id: 'w4', seq: 4, title: 'done', status: 'resolved' }),
+    ]
+    const groups = waypointGroups(ws, ['w1'])
+    expect(groups.map((g) => g.waypoints.map((r) => r.expanded))).toEqual([
+      [true],
+      [false],
+      [false],
+      [false],
+    ])
+  })
+
+  it('labels each group for the rail header', () => {
+    const ws = [
+      wp({ id: 'w1', seq: 1, title: 'frontier' }),
+      wp({ id: 'w2', seq: 2, title: 'done', status: 'dropped' }),
+    ]
+    const groups = waypointGroups(ws, ['w1'])
+    expect(groups.map((g) => g.label)).toEqual(['Frontier', 'Resolved / dropped'])
   })
 })

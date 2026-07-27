@@ -37,6 +37,8 @@ export function Workspace({
   viewedPhase,
   onViewPhase,
   guidance,
+  mapRailCollapsed,
+  onToggleMapRail,
   driving,
   onDriveChange,
 }: {
@@ -44,6 +46,8 @@ export function Workspace({
   viewedPhase: Phase | null
   onViewPhase: (phase: Phase | null) => void
   guidance: boolean
+  mapRailCollapsed: boolean
+  onToggleMapRail: () => void
   driving: DriveState | null
   onDriveChange: (d: DriveState | null) => void
 }) {
@@ -268,6 +272,8 @@ export function Workspace({
             driving={driving}
             runId={run?.id ?? null}
             readonly={readonly}
+            mapRailCollapsed={mapRailCollapsed}
+            onToggleMapRail={onToggleMapRail}
           />
         </div>
       </div>
@@ -281,17 +287,28 @@ function PhaseBody({
   driving,
   runId,
   readonly,
+  mapRailCollapsed,
+  onToggleMapRail,
 }: {
   effective: Phase
   full: FeatureFull
   driving: DriveState | null
   runId: string | null
   readonly: boolean
+  mapRailCollapsed: boolean
+  onToggleMapRail: () => void
 }) {
   switch (effective) {
     case 'ideation':
     case 'spec':
-      return <GrillBody full={full} effective={effective} />
+      return (
+        <GrillBody
+          full={full}
+          effective={effective}
+          mapRailCollapsed={mapRailCollapsed}
+          onToggleMapRail={onToggleMapRail}
+        />
+      )
     case 'tickets':
       return <TicketsBody featureId={full.feature.id} readonly={readonly} />
     case 'implementation':
