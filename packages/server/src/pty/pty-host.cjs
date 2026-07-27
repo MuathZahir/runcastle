@@ -91,7 +91,11 @@ function handleSpawn(msg) {
       useConpty: opts.useConpty !== false,
     })
   } catch (e) {
-    send({ t: 'error', message: `spawn failed: ${e && e.message}` })
+    // Name the file we were asked to run. node-pty's own message for a failed
+    // PATH search is `File not found: ` with the *resolved* path appended — i.e.
+    // empty, exactly when it matters — so without this the server sees a spawn
+    // failure with no indication of what it tried to spawn.
+    send({ t: 'error', message: `spawn failed for "${msg.file}": ${e && e.message}` })
     process.exit(1)
     return
   }

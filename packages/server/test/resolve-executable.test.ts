@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { resolveExecutable, resolveTool } from '../src/util/resolve-executable'
+import {
+  explainSpawnFailure,
+  resolveExecutable,
+  resolveTool,
+} from '../src/util/resolve-executable'
 
 describe('resolveExecutable', () => {
   it('resolves a bare name against PATH on POSIX', () => {
@@ -102,5 +106,48 @@ describe('resolveTool', () => {
       exists: (p) => p === '/usr/bin/claude',
     })
     expect(resolved).toBe('/usr/bin/claude')
+  })
+})
+
+/**
+ * node-pty's PATH-search failure is `File not found: ` + the *resolved* path,
+ * which is empty exactly when the search failed — a terminal that dies showing
+ * nothing but a colon. Every spawn site routes its failure through here instead.
+ */
+describe('explainSpawnFailure', () => {
+  it('names the binary node-pty could not report', () => {
+    const msg = explainSpawnFailure('claude', 'File not found: ')
+    expect(msg).toContain('claude')
+    expect(msg).toContain('PATH')
+  })
+
+  it('pre-empts "but it works in my terminal"', () => {
+    const msg = explainSpawnFailure('claude', 'File not found: ')
+    expect(msg).toContain('does not prove')
+    expect(msg).toContain('captured when it started')
+  })
+
+  it('offers the restart first and the override as the fallback', () => {
+    const msg = explainSpawnFailure('claude', 'File not found: ')
+    expect(msg).toContain('start it again from a terminal')
+    expect(msg).toContain('RUNCASTLE_CLAUDE_BIN')
+    expect(msg.indexOf('start it again')).toBeLessThan(msg.indexOf('RUNCASTLE_CLAUDE_BIN'))
+  })
+
+  it('keeps the underlying error for diagnosis', () => {
+    expect(explainSpawnFailure('claude', 'File not found: ')).toContain('File not found:')
+  })
+
+  it('omits the override hint for a tool that has none', () => {
+    const msg = explainSpawnFailure('sandcastle', 'File not found: ')
+    expect(msg).toContain('sandcastle')
+    expect(msg).not.toContain('RUNCASTLE_')
+  })
+
+  it('does not blame PATH when an absolute path was given', () => {
+    const msg = explainSpawnFailure('C:\\bin\\claude.exe', 'Access denied')
+    expect(msg).toContain('C:\\bin\\claude.exe')
+    expect(msg).toContain('Access denied')
+    expect(msg).not.toContain('PATH')
   })
 })

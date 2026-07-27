@@ -58,6 +58,44 @@ export function resolveTool(
   return resolveExecutable(name, override ? { ...opts, override } : opts)
 }
 
+/** A bare command name — resolution gave up and never found a real path. */
+function isBareName(cmd: string): boolean {
+  return !cmd.includes('/') && !cmd.includes('\\')
+}
+
+/**
+ * Turn a raw spawn failure into something the user can act on.
+ *
+ * node-pty is the reason this exists: when its own PATH search fails it throws
+ * `File not found: ` followed by the *resolved* path — which is the empty string
+ * precisely when the search failed. So the one case that needs explaining most
+ * arrives with no filename, no cause, and no next step. Every spawn site funnels
+ * its failure through here so the terminal says which binary was missing and why
+ * a working shell is not evidence that the server can see it.
+ */
+export function explainSpawnFailure(cmd: string, raw: string): string {
+  const detail = raw.trim()
+  if (!isBareName(cmd)) {
+    return `Could not launch ${cmd}${detail ? ` — ${detail}` : ''}`
+  }
+  const overrideKey = BIN_OVERRIDE_ENV[cmd]
+  const lines = [
+    `Could not launch \`${cmd}\`: nothing by that name is on the PATH this runcastle server inherited.`,
+    // The trap this message exists to defuse: users check their own shell,
+    // find the binary, and conclude runcastle is lying. The server's PATH is a
+    // snapshot taken when it started — a newer install is simply not in it.
+    `A terminal where \`${cmd}\` works does not prove the server can see it: the server's PATH was captured when it started.`,
+    `Fix: quit runcastle and start it again from a terminal where \`${cmd} --version\` works.`,
+  ]
+  if (overrideKey) {
+    lines.push(
+      `If that fails, set ${overrideKey} to the full path (\`where.exe ${cmd}\` / \`which ${cmd}\`) and restart.`,
+    )
+  }
+  if (detail) lines.push(`(underlying error: ${detail})`)
+  return lines.join('\n')
+}
+
 /**
  * Resolve `name` to an absolute executable path. Returns the bare `name`
  * unchanged when nothing is found so the caller's `spawn` can make a final

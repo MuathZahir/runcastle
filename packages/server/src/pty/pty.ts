@@ -1,4 +1,5 @@
 import { createRequire } from 'node:module'
+import { explainSpawnFailure } from '../util/resolve-executable'
 import { createSidecarPtySession } from './pty-sidecar'
 
 /**
@@ -166,14 +167,22 @@ export function createNativePtySession(
   opts: CreatePtyOptions,
 ): PtySession {
   const pty = loadNodePty()
-  const proc = pty.spawn(cmd, args, {
-    name: 'xterm-256color',
-    cols: opts.cols ?? 80,
-    rows: opts.rows ?? 24,
-    cwd: opts.cwd,
-    env: cleanEnv(opts.env),
-    useConpty: opts.useConpty ?? true,
-  })
+  let proc: NodePtyProcess
+  try {
+    proc = pty.spawn(cmd, args, {
+      name: 'xterm-256color',
+      cols: opts.cols ?? 80,
+      rows: opts.rows ?? 24,
+      cwd: opts.cwd,
+      env: cleanEnv(opts.env),
+      useConpty: opts.useConpty ?? true,
+    })
+  } catch (err) {
+    // This throw is synchronous, so it reaches the launcher's try/catch and
+    // becomes a `session.spawn_failed` event — worth carrying the explanation
+    // rather than node-pty's bare `File not found: ` (see explainSpawnFailure).
+    throw new Error(explainSpawnFailure(cmd, err instanceof Error ? err.message : String(err)))
+  }
 
   let killed = false
   proc.onExit(() => {
