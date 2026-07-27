@@ -18,6 +18,9 @@ export const FIELD_ENV_VAR: Record<string, string> = {
   burnConcurrency: 'RUNCASTLE_BURN_CONCURRENCY',
   burnAttempts: 'RUNCASTLE_BURN_ATTEMPTS',
   burnConflictAttempts: 'RUNCASTLE_BURN_CONFLICT_ATTEMPTS',
+  burnCpus: 'RUNCASTLE_BURN_CPUS',
+  verifyCommands: 'RUNCASTLE_VERIFY_COMMANDS',
+  knownFailures: 'RUNCASTLE_KNOWN_FAILURES',
   mainBranch: 'RUNCASTLE_MAIN_BRANCH',
 }
 
@@ -48,7 +51,7 @@ export const STEP_KEYS: string[] = MODEL_STEPS.map((s) => `${STEP_PREFIX}${s}`)
 /** Fields detected from the repo — always read-only in the UI (issue #47). */
 const GIT_DETECTED = new Set(['mainBranch'])
 
-export type ControlKind = 'text' | 'number' | 'select'
+export type ControlKind = 'text' | 'number' | 'select' | 'textarea'
 
 interface FieldMeta {
   label: string
@@ -94,6 +97,21 @@ const META: Record<string, FieldMeta> = {
     label: 'Conflict resolver passes',
     help: 'Max agent passes spent resolving a ticket’s landing conflict before asking you (0–3). 0 sends every conflict straight to you.',
     control: 'number',
+  },
+  burnCpus: {
+    label: 'Burn CPU limit',
+    help: 'CPU ceiling per burn container (--cpus). Blank leaves it unconstrained. Roughly cores ÷ concurrency keeps parallel tickets from oversubscribing the machine.',
+    control: 'number',
+  },
+  verifyCommands: {
+    label: 'Verify commands',
+    help: 'Exact typecheck/test/lint commands for this repo, one per line. Given these, burn agents stop discovering workspace filter names by running suites that error out.',
+    control: 'textarea',
+  },
+  knownFailures: {
+    label: 'Known failing tests',
+    help: 'Tests already red on main — a count plus suite names is enough. Saves every burn agent a full pre-work suite run to establish its own baseline.',
+    control: 'textarea',
   },
   mainBranch: {
     label: 'Main branch',

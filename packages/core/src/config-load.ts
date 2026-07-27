@@ -48,7 +48,10 @@ export function loadConfig(
   if (env.RUNCASTLE_BURN_CONFLICT_ATTEMPTS !== undefined) {
     overrides.burnConflictAttempts = Number(env.RUNCASTLE_BURN_CONFLICT_ATTEMPTS)
   }
+  if (env.RUNCASTLE_BURN_CPUS) overrides.burnCpus = Number(env.RUNCASTLE_BURN_CPUS)
   if (env.RUNCASTLE_SETUP_COMMAND) overrides.setupCommand = env.RUNCASTLE_SETUP_COMMAND
+  if (env.RUNCASTLE_VERIFY_COMMANDS) overrides.verifyCommands = env.RUNCASTLE_VERIFY_COMMANDS
+  if (env.RUNCASTLE_KNOWN_FAILURES) overrides.knownFailures = env.RUNCASTLE_KNOWN_FAILURES
   if (env.RUNCASTLE_BURN_WORKSPACE) overrides.burnWorkspace = env.RUNCASTLE_BURN_WORKSPACE
 
   const base = typeof fileConfig === 'object' && fileConfig !== null ? fileConfig : {}

@@ -165,6 +165,7 @@ const PLACEHOLDERS = [
   'DOCS_DIGEST',
   'COMMIT_CONVENTION',
   'WORKSPACE_NOTES',
+  'VERIFY_NOTES',
 ] as const
 type PlaceholderKey = (typeof PLACEHOLDERS)[number]
 
@@ -522,6 +523,69 @@ export function buildWorkspaceNotes(mode: BurnWorkspaceMode): string {
     '',
     `If you are blocked and write \`BLOCKED.md\`, write it at \`${ISOLATED_REPO_PATH}/BLOCKED.md\` AND copy it to \`${SANDBOX_WORKSPACE_PATH}/BLOCKED.md\` so the orchestrator can see it.`,
   ].join('\n')
+}
+
+/**
+ * The `{{VERIFY_NOTES}}` block for the burner prompt: how the agent should
+ * spend its verification budget. Pure — reads only the two optional config
+ * fields.
+ *
+ * Both halves exist because burn logs showed agents paying, per ticket, for
+ * information the operator already had:
+ *
+ * - **Commands.** With nothing stated, agents guess workspace filter names and
+ *   discover them by running whole monorepo suites that error out. One ticket
+ *   burned two full runs on `--filter helix-frontend` and `--filter helix`
+ *   before finding the right one. `config.verifyCommands` states them once.
+ * - **Baseline.** Agents must separate their own breakage from the repo's
+ *   existing breakage, and with no baseline the only way to get one is to run
+ *   the full suite before touching anything — doubling the most expensive
+ *   command in the burn, every ticket. `config.knownFailures` retires it.
+ *
+ * When a field is unset the block still says something useful: derive the
+ * commands once and record them, capture the baseline once and reuse it. The
+ * failure mode being prevented is re-deriving per slice, not deriving at all.
+ */
+export function buildVerifyNotes(
+  config: Pick<RuncastleConfig, 'verifyCommands' | 'knownFailures'>,
+): string {
+  const commands = config.verifyCommands?.trim()
+  const failures = config.knownFailures?.trim()
+  const out: string[] = []
+
+  if (commands) {
+    out.push(
+      'Verify with exactly these commands — they are correct for this repo, so do not go looking for alternatives or guess at workspace/package filter names:',
+      '',
+      '```',
+      commands,
+      '```',
+    )
+  } else {
+    out.push(
+      "No verification commands are configured, so derive them ONCE from the repo (root `package.json` scripts, the workspace's own manifest, CI config) before your first test run — reading a manifest is free, discovering a filter name by running the wrong suite is not. Write the working commands into your notes and reuse them verbatim for the rest of the ticket.",
+    )
+  }
+
+  out.push('')
+
+  if (failures) {
+    out.push(
+      'These tests ALREADY fail on this repo before you touch anything:',
+      '',
+      '```',
+      failures,
+      '```',
+      '',
+      'Treat that as your baseline — do NOT spend a run establishing it yourself. Only a failure outside this set is yours to fix; if you hit one that looks pre-existing but is not listed, confirm it on a single targeted run of that one test, never a whole-suite re-run.',
+    )
+  } else {
+    out.push(
+      'No pre-existing-failure baseline is configured. If the suite is already red, capture the baseline ONCE — the first full run you do, before your changes land, is the baseline — and compare every later run against those saved results. Never re-run a whole suite just to re-establish what was already failing.',
+    )
+  }
+
+  return out.join('\n')
 }
 
 /** Inspect the target repo root for its JS toolchain markers (IO). */
@@ -1246,12 +1310,16 @@ export function buildBurnAgent(
  * volume-label/userns flags of its own. `mounts` (package-manager cache dirs)
  * apply to the container providers only — noSandbox runs on the host, where the
  * real cache is already in place.
+ *
+ * `config.burnCpus`, when set, becomes `--cpus` on both container providers: at
+ * width N every container otherwise sees the host's full core count and sizes
+ * its install/test worker pools from it, oversubscribing the box N-fold. There
+ * is no memory equivalent — sandcastle's provider options do not expose
+ * `--memory` (see the `burnCpus` config doc for why that is the right call
+ * anyway). noSandbox ignores it: no container, nothing to constrain.
  */
 export function selectSandbox(config: RuncastleConfig, mounts: readonly CacheMount[] = []) {
-  const imageOpts = {
-    imageName: resolveSandboxImage(config),
-    ...(mounts.length > 0 ? { mounts } : {}),
-  }
+  const imageOpts = buildSandboxOptions(config, mounts)
   switch (config.sandbox) {
     case 'docker':
       return docker(imageOpts)
@@ -1259,6 +1327,23 @@ export function selectSandbox(config: RuncastleConfig, mounts: readonly CacheMou
       return podman(imageOpts)
     default:
       return noSandbox()
+  }
+}
+
+/**
+ * The option object handed to the docker/podman providers — split out as a pure
+ * unit because the providers close over their options and expose nothing, so
+ * this is the only place the wiring is observable to a test. Optional keys are
+ * omitted rather than set to `undefined` so a provider's own defaults apply.
+ */
+export function buildSandboxOptions(
+  config: Pick<RuncastleConfig, 'sandboxImage' | 'burnCpus'>,
+  mounts: readonly CacheMount[] = [],
+): { imageName: string; mounts?: readonly CacheMount[]; cpus?: number } {
+  return {
+    imageName: resolveSandboxImage(config),
+    ...(mounts.length > 0 ? { mounts } : {}),
+    ...(config.burnCpus !== undefined ? { cpus: config.burnCpus } : {}),
   }
 }
 
@@ -1325,12 +1410,17 @@ async function realExecuteTicketRun(
   const featureBrief = buildFeatureBrief(feature)
   const docsDigest = readDocsDigestFromDisk(project.id, feature.slug)
   const workspaceNotes = buildWorkspaceNotes(workspaceMode)
+  // Also shared: the resolver runs the same suites on the merge result, and
+  // guessed filter names / re-derived baselines cost it exactly what they cost
+  // the implementer.
+  const verifyNotes = buildVerifyNotes(config)
 
   const basePrompt = renderTicketPrompt(readFileSync(burnerTemplatePath(), 'utf8'), {
     TICKET_JSON: ticketJson,
     FEATURE_BRIEF: featureBrief,
     DOCS_DIGEST: docsDigest,
     COMMIT_CONVENTION: `ticket(${ticket.seq}): <summary>`,
+    VERIFY_NOTES: verifyNotes,
     WORKSPACE_NOTES: workspaceNotes,
   })
 
@@ -1450,6 +1540,7 @@ async function realExecuteTicketRun(
       FEATURE_BRIEF: featureBrief,
       DOCS_DIGEST: docsDigest,
       WORKSPACE_NOTES: workspaceNotes,
+      VERIFY_NOTES: verifyNotes,
       FEATURE_BRANCH: feature.branch,
       CONFLICT_FILES: buildConflictFilesBlock(input.files),
       OTHER_SIDE: buildOtherSideBlock(otherSide),
@@ -1665,10 +1756,18 @@ async function realExecuteTicketRun(
         branchStrategy: { type: 'branch', branch: tempBranch, baseBranch },
         signal,
         name: `ticket-${ticket.seq}`,
-        // Each iteration is a fresh `claude --print` against the same worktree
-        // (and the same warm container, so the setup hook runs once). The
-        // prompt's `<promise>COMPLETE</promise>` signal stops the loop early on
-        // success; the headroom exists so a turn that ends prematurely (idle
+        // Each iteration is a fresh `claude --print` against the same worktree.
+        // It is NOT a cheap resume: sandcastle calls `withSandbox` INSIDE its
+        // iteration loop, so every iteration builds a new container and re-runs
+        // `onSandboxReady` (measured across real burns: 70–507s of dependency
+        // install per iteration, ~2.5min average), and the fresh agent re-reads
+        // from scratch everything the dead one had already read. Treat an extra
+        // iteration as ~10 minutes of pure overhead, not a free retry — which is
+        // why the burner prompt spends so much of its budget on ending turns
+        // only when done and committing every green slice.
+        //
+        // The prompt's `<promise>COMPLETE</promise>` signal stops the loop early
+        // on success; the headroom exists so a turn that ends prematurely (idle
         // wait, context cut) resumes instead of failing the ticket with zero
         // commits. Attempts (this loop) are one level up: a whole run() dying.
         maxIterations: config.burnMaxIterations,

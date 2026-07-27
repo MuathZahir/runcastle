@@ -174,6 +174,40 @@ describe('settings service (#46)', () => {
     expect(f.editable).toBe(false)
   })
 
+  it('burnCpus is unset by default, writes through, and rejects a non-positive ceiling', () => {
+    const before = field(getSettings(ctx, undefined, io()), 'burnCpus')
+    expect(before.value).toBeNull() // an optional field with no default reads as null
+    expect(before.source).toBe('default')
+
+    updateSettings(ctx, { key: 'burnCpus', value: 1.5 }, io())
+    expect(ctx.config.burnCpus).toBe(1.5)
+    expect(field(getSettings(ctx, undefined, io()), 'burnCpus').source).toBe('file')
+
+    expect(() => updateSettings(ctx, { key: 'burnCpus', value: 0 }, io())).toThrow(InvalidInputError)
+  })
+
+  it('verifyCommands and knownFailures round-trip multi-line values', () => {
+    // Both are rendered verbatim into the burner prompt, so the newlines that
+    // separate one command (or one failing suite) from the next must survive.
+    const commands = 'pnpm --filter @acme/web test\npnpm --filter @acme/api typecheck'
+    updateSettings(ctx, { key: 'verifyCommands', value: commands }, io())
+    updateSettings(ctx, { key: 'knownFailures', value: '13 failures\n6 suites' }, io())
+
+    expect(ctx.config.verifyCommands).toBe(commands)
+    expect(field(getSettings(ctx, undefined, io()), 'verifyCommands').value).toBe(commands)
+    expect(ctx.config.knownFailures).toBe('13 failures\n6 suites')
+  })
+
+  it('the verify-command env override locks the field', () => {
+    const f = field(
+      getSettings(ctx, undefined, io({ RUNCASTLE_VERIFY_COMMANDS: 'make check' })),
+      'verifyCommands',
+    )
+    expect(f.value).toBe('make check')
+    expect(f.source).toBe('env')
+    expect(f.editable).toBe(false)
+  })
+
   it('devCommand reads/writes through settings on a project', () => {
     const project = seedProject(ctx)
     updateSettings(ctx, { projectId: project.id, key: 'devCommand', value: 'bun dev' }, io())

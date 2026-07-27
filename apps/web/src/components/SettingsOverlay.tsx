@@ -187,6 +187,25 @@ function Field({ row, projectId }: { row: SettingRow; projectId?: string }) {
             </option>
           ))}
         </select>
+      ) : row.control === 'textarea' ? (
+        // Multi-line fields (verify commands, known failures) — an <input>
+        // silently drops the newlines that give these values their meaning.
+        // Enter inserts a line; blur saves, Escape reverts.
+        <textarea
+          id={controlId}
+          className="settings-input mono settings-textarea"
+          rows={4}
+          value={draft}
+          disabled={update.isPending}
+          onChange={(e) => setDraft(e.target.value)}
+          onBlur={(e) => save(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') {
+              setDraft(row.value)
+              e.currentTarget.blur()
+            }
+          }}
+        />
       ) : (
         <input
           id={controlId}

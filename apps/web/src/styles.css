@@ -2162,6 +2162,15 @@ details.wp-group-done > summary { cursor: pointer; list-style: revert; }
 .settings-input:focus { border-color: var(--accent); }
 .settings-input:disabled { opacity: 0.6; cursor: progress; }
 select.settings-input { cursor: pointer; }
+/* Multi-line settings (verify commands, known failures) — height comes from
+   `rows`, and the fixed `.settings-input` height/padding would collapse it. */
+.settings-textarea {
+  height: auto;
+  padding: 7px 10px;
+  line-height: 1.5;
+  resize: vertical;
+  min-height: 32px;
+}
 
 .settings-readonly {
   min-height: 32px;

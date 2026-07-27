@@ -119,8 +119,33 @@ export const RuncastleConfig = z.preprocess(
      * container sandbox), so this is a cost/resource knob as much as a speed
      * knob — capped at 8. Dependency order (`blockedBy`) is always honoured
      * regardless of the width.
+     *
+     * Width is not free beyond the token cost: every concurrent agent runs the
+     * target repo's dependency install and test suite, each of which fans out
+     * to its own worker pool sized from the visible CPU count. Real burn logs
+     * show the setup hook stretching from ~70s at width 1 to ~500s with four
+     * tickets live, and test runners OOM-ing inside the sandbox. {@link
+     * burnCpus} bounds the CPU side of that; the memory side is bounded only by
+     * the container runtime's own VM limit, so lower this if suites die.
      */
     burnConcurrency: z.number().int().min(1).max(8).default(3),
+    /**
+     * Per-container CPU ceiling for burn sandboxes (`docker run --cpus`), or
+     * unset for today's unconstrained behaviour. Fractional values are allowed.
+     *
+     * This exists because N concurrent containers each see the HOST's full core
+     * count and size their install/test worker pools from it, so width N
+     * oversubscribes the box N-fold and every agent's commands slow down
+     * together. Setting this to roughly `cores / burnConcurrency` keeps each
+     * agent's wall-clock predictable. Container sandboxes only — `noSandbox`
+     * runs on the host, where there is no container to constrain.
+     *
+     * There is deliberately no matching memory ceiling: sandcastle's provider
+     * options do not expose `--memory`, and a hard cap would convert today's
+     * host-level pressure into a certain in-container OOM kill of the agent
+     * process. Bound memory by lowering {@link burnConcurrency} instead.
+     */
+    burnCpus: z.number().positive().max(256).optional(),
     /**
      * Max agent iterations per ticket burn (sandcastle `maxIterations`). Each
      * iteration is one fresh non-interactive `claude --print` invocation against
@@ -163,6 +188,30 @@ export const RuncastleConfig = z.preprocess(
      * non-JS projects or bespoke bootstraps (e.g. `make deps`).
      */
     setupCommand: z.string().optional(),
+    /**
+     * The exact commands a burn agent should use to verify its work — typecheck,
+     * unit tests, lint — one per line, free text, rendered verbatim into the
+     * burner prompt's verification section.
+     *
+     * Unset means the agent derives them from the repo, which real burn logs
+     * show is expensive in exactly one way: it guesses workspace filter names.
+     * A single ticket burned two full monorepo suite runs discovering that
+     * `--filter helix-frontend` and `--filter helix` were both wrong. One line
+     * here (`pnpm --filter @acme/web test`) removes that class of waste for
+     * every ticket of every feature.
+     */
+    verifyCommands: z.string().optional(),
+    /**
+     * Tests already failing on the target repo's main branch, free text (a count
+     * plus the suite names is enough), rendered into the burner prompt.
+     *
+     * Burn agents must distinguish their own breakage from the repo's existing
+     * breakage, and with nothing to go on every one of them re-derives it the
+     * only way available: run the whole suite before touching anything, then
+     * again after. Stating the baseline here retires the pre-work run — the
+     * single most repeated expensive command in the logs.
+     */
+    knownFailures: z.string().optional(),
     /**
      * Where the burn agent's working tree lives (ADR-0005). `mounted` keeps the
      * agent in sandcastle's bind-mounted worktree; `isolated` clones it onto the

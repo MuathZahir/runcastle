@@ -9,7 +9,9 @@ import {
   buildFeatureBrief,
   buildIsolatedSetupCommand,
   buildOtherSideBlock,
+  buildSandboxOptions,
   buildTicketJson,
+  buildVerifyNotes,
   buildWorkspaceNotes,
   cacheMountFor,
   classifyTicketRunError,
@@ -36,7 +38,7 @@ import type {
   ResolveAttemptResult,
 } from '../src/workflows/ticket-burner'
 import type { TempBranchMergeResult } from '../src/services/git'
-import type { RuncastleConfig } from '@runcastle/core'
+import { DEFAULT_SANDBOX_IMAGE, type RuncastleConfig } from '@runcastle/core'
 
 function ticket(seq: number, blockedBy: number[] = [], overrides: Partial<Ticket> = {}): Ticket {
   return {
@@ -119,6 +121,7 @@ describe('renderTicketPrompt', () => {
     '{{DOCS_DIGEST}}',
     'Commit: `{{COMMIT_CONVENTION}}`',
     'Work: {{WORKSPACE_NOTES}}',
+    'Verify: {{VERIFY_NOTES}}',
   ].join('\n')
 
   it('replaces every placeholder and leaves no stray {{ }}', () => {
@@ -128,6 +131,7 @@ describe('renderTicketPrompt', () => {
       DOCS_DIGEST: buildDocsDigest([{ name: 'spec.md', content: '# Spec\nbody' }]),
       COMMIT_CONVENTION: 'ticket(4): <summary>',
       WORKSPACE_NOTES: buildWorkspaceNotes('mounted'),
+      VERIFY_NOTES: buildVerifyNotes({ verifyCommands: 'bun test' }),
     })
     expect(out).not.toContain('{{')
     expect(out).not.toContain('}}')
@@ -137,6 +141,7 @@ describe('renderTicketPrompt', () => {
     expect(out).toContain('### spec.md')
     expect(out).toContain('ticket(4): <summary>')
     expect(out).toContain('Work in the current directory')
+    expect(out).toContain('bun test')
   })
 
   it('renders values containing $ and special chars safely', () => {
@@ -146,6 +151,7 @@ describe('renderTicketPrompt', () => {
       DOCS_DIGEST: '',
       COMMIT_CONVENTION: '',
       WORKSPACE_NOTES: '',
+      VERIFY_NOTES: '',
     })
     expect(out).toBe('cost is $5 & rising')
   })
@@ -330,6 +336,69 @@ describe('selectSandbox — provider for the configured sandbox', () => {
     expect(selectSandbox(config('docker')).name).toBe('docker')
     expect(selectSandbox(config('podman')).name).toBe('podman')
     expect(selectSandbox(config('noSandbox')).name).toBe('no-sandbox')
+  })
+
+  describe('buildSandboxOptions — container resource wiring', () => {
+    it('omits cpus entirely when burnCpus is unset (unconstrained default)', () => {
+      const opts = buildSandboxOptions(config('docker'))
+      expect('cpus' in opts).toBe(false)
+      expect(opts.imageName).toBe(DEFAULT_SANDBOX_IMAGE)
+    })
+
+    it('passes burnCpus through as the provider --cpus ceiling', () => {
+      expect(buildSandboxOptions({ ...config('docker'), burnCpus: 2.5 }).cpus).toBe(2.5)
+    })
+
+    it('keeps cache mounts alongside the cpu ceiling', () => {
+      const mount = { hostPath: '/host/cache', sandboxPath: '~/.npm' }
+      const opts = buildSandboxOptions({ ...config('docker'), burnCpus: 1 }, [mount])
+      expect(opts.mounts).toEqual([mount])
+      expect(opts.cpus).toBe(1)
+    })
+
+    it('omits mounts when there are none, so the provider default applies', () => {
+      expect('mounts' in buildSandboxOptions(config('docker'))).toBe(false)
+    })
+  })
+})
+
+describe('buildVerifyNotes — the prompt block that bounds verification spend', () => {
+  it('states configured commands verbatim and forbids hunting for alternatives', () => {
+    const out = buildVerifyNotes({ verifyCommands: 'pnpm --filter @acme/web test' })
+    expect(out).toContain('pnpm --filter @acme/web test')
+    // The point of configuring commands is that agents stop guessing filter
+    // names by running whole suites that error out.
+    expect(out).toMatch(/do not go looking for alternatives|guess/i)
+  })
+
+  it('tells the agent to derive commands once when none are configured', () => {
+    const out = buildVerifyNotes({})
+    expect(out).toMatch(/ONCE/)
+    expect(out).toMatch(/package\.json/i)
+  })
+
+  it('renders a configured baseline and retires the pre-work full-suite run', () => {
+    const out = buildVerifyNotes({ knownFailures: '13 failures across 6 suites (credits, threads)' })
+    expect(out).toContain('13 failures across 6 suites')
+    expect(out).toMatch(/do NOT spend a run establishing it yourself/)
+  })
+
+  it('falls back to capture-the-baseline-once when none is configured', () => {
+    const out = buildVerifyNotes({})
+    expect(out).toMatch(/capture the baseline ONCE/i)
+    expect(out).toMatch(/Never re-run a whole suite/i)
+  })
+
+  it('covers both halves independently — one configured, one not', () => {
+    const out = buildVerifyNotes({ verifyCommands: 'bun test' })
+    expect(out).toContain('bun test')
+    expect(out).toMatch(/No pre-existing-failure baseline is configured/)
+  })
+
+  it('treats whitespace-only config as unset', () => {
+    expect(buildVerifyNotes({ verifyCommands: '   \n ', knownFailures: '  ' })).toBe(
+      buildVerifyNotes({}),
+    )
   })
 })
 
