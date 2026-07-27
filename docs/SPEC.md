@@ -26,9 +26,10 @@ runcastle/
 ```
 
 - Package names: `@runcastle/core`, `@runcastle/server`, `@runcastle/skills`, `@runcastle/web`.
-- Root scripts: `bun run dev` (server + web concurrently), `bun run typecheck` (tsc -b or per-package `tsc --noEmit`), `bun run test` (vitest).
+- Root scripts: `bun run dev` (server + web concurrently), `bun run typecheck` (tsc -b or per-package `tsc --noEmit`), `bun run test` (vitest), `bun run dev:tool` (dev-only test-state surgery — `scripts/devtool.ts` over `packages/server/src/dev/`, unreachable from the published bundle).
 - Ports: server **4512**, web dev **4513** (vite `server.port`). Server URL: `http://localhost:4512`.
 - Data dir: `~/.runcastle/` → `runcastle.db`, `config.json`, `.env` (CLAUDE_CODE_OAUTH_TOKEN for sandboxed agents), `sessions/<sessionId>/` (launch artifacts), `worktrees/<projectId>/<slug>/` (talk worktrees), `logs/`.
+- Dev/prod split: `dataDir()` honours `RUNCASTLE_DATA_DIR`, and `scripts/dev.ts` points `bun run dev` at `~/.runcastle-dev/`. Everything else in `paths.ts` derives from `dataDir()`, so the two trees are fully independent; the published bin never sets the var. `GET /health` reports `{ ok, dataDir }` so a live server's tree is identifiable.
 
 ## 1. packages/core (file → exports)
 

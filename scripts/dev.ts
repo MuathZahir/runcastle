@@ -8,6 +8,7 @@
  * concurrent child sidesteps that: both start immediately, on every platform.
  */
 import { spawn } from 'node:child_process'
+import { devDataDir } from '../packages/core/src/paths.ts'
 
 /** Packages whose `dev` script the root launcher starts concurrently. */
 export const DEV_FILTERS = ['@runcastle/server', '@runcastle/web'] as const
@@ -17,11 +18,35 @@ export function devArgs(filter: string): string[] {
   return ['run', '--filter', filter, 'dev']
 }
 
+/**
+ * Environment for the dev children. Two additions, both about keeping dev and a
+ * real install apart:
+ *
+ * - `RUNCASTLE_DATA_DIR` → `~/.runcastle-dev/`, so the dev server gets its own
+ *   db, config, `.env` and worktrees. Without it `bun run dev` and an installed
+ *   `runcastle` share one db, and every destructive test (wipe the projects,
+ *   force a phase, re-run onboarding) hits the developer's real work.
+ * - `RUNCASTLE_DEV=1` — the marker that says "this process is a checkout, not an
+ *   install". The published bin never sets it.
+ *
+ * An explicit `RUNCASTLE_DATA_DIR` from the caller wins, so a contributor can
+ * still point dev at a scratch tree of their choosing.
+ */
+export function devEnv(
+  base: NodeJS.ProcessEnv = process.env,
+  dataDir: string = devDataDir(),
+): NodeJS.ProcessEnv {
+  return { ...base, RUNCASTLE_DEV: '1', RUNCASTLE_DATA_DIR: base.RUNCASTLE_DATA_DIR ?? dataDir }
+}
+
 export function startDev(): void {
+  const env = devEnv()
+  console.log(`runcastle dev — data dir: ${env.RUNCASTLE_DATA_DIR}`)
+
   // `process.execPath` is the running bun binary — avoids PATH/`.exe` resolution
   // differences between POSIX and Windows.
   const children = DEV_FILTERS.map((filter) =>
-    spawn(process.execPath, devArgs(filter), { stdio: 'inherit' }),
+    spawn(process.execPath, devArgs(filter), { stdio: 'inherit', env }),
   )
 
   let down = false

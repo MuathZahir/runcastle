@@ -1,5 +1,5 @@
 import { trpcServer } from '@hono/trpc-server'
-import { dbPath } from '@runcastle/core/paths'
+import { dataDir, dbPath } from '@runcastle/core/paths'
 import { Hono } from 'hono'
 import { ensureDataDir, loadConfig } from './config'
 import { createDb } from './db/client'
@@ -35,7 +35,11 @@ export function buildApp(ctx: AppCtx): Hono {
   // `setRuntimeCtx` — this is the same mechanism, called at boot.
   setRuntimeCtx(ctx)
 
-  app.get('/health', (c) => c.json({ ok: true }))
+  // `dataDir` identifies WHICH tree this server is serving. A port alone does
+  // not: dev (`~/.runcastle-dev/`) and an install (`~/.runcastle/`) both listen
+  // on 4512, so the dev tool would otherwise mistake one for the other when
+  // deciding whether a live server needs restarting after a db change.
+  app.get('/health', (c) => c.json({ ok: true, dataDir: dataDir() }))
 
   // tRPC replies are UTF-8 but @hono/trpc-server omits the charset, so
   // CP1252-defaulting clients (Windows PowerShell 5.1 et al.) mis-decode
@@ -115,7 +119,13 @@ export async function startServer(): Promise<void> {
     },
     websocket: terminalWebSocket,
   })
-  console.log(`runcastle server listening on http://localhost:${config.serverPort}`)
+  // Print the data dir, not just the port: dev runs against `~/.runcastle-dev/`
+  // and an install against `~/.runcastle/`, and "which tree am I looking at?" is
+  // the first question when a project you expected is missing.
+  console.log(
+    `runcastle${process.env.RUNCASTLE_DEV ? ' [dev]' : ''} server listening on ` +
+      `http://localhost:${config.serverPort} — data dir: ${dataDir()}`,
+  )
 
   // Kill every live PTY on shutdown so no orphaned claude processes survive.
   // Registered once even across `bun --hot` reloads (which re-run `main`) to
