@@ -70,6 +70,8 @@ These commits landed on `{{FEATURE_BRANCH}}` while you were working — this is 
 
 ## Hard rules
 
+`git stash`, test-runner concurrency flags, and interpreter-heredoc file rewrites are **denied by a tool hook** before they run. A denial is policy — read its reason, take the alternative it names, and carry on.
+
 - **Never expand scope.** Resolving the conflict is the whole job. No refactors, no improvements, no adjacent fixes, not even tempting ones in the files you are already editing.
 - **Never lose committed work.** Not yours, not theirs. `git merge --abort` + "start over from one side" is not a resolution.
 - **Never push, and never touch the remote.** The orchestrator lands your branch itself once the merge commit exists.

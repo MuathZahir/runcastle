@@ -37,6 +37,7 @@ import type {
   RunResult,
 } from '@ai-hero/sandcastle'
 import { claudeCode, run } from '@ai-hero/sandcastle'
+import { buildGuardInstallCommand } from './burn-guard'
 import { docker } from '@ai-hero/sandcastle/sandboxes/docker'
 import { podman } from '@ai-hero/sandcastle/sandboxes/podman'
 import { noSandbox } from '@ai-hero/sandcastle/sandboxes/no-sandbox'
@@ -685,6 +686,199 @@ export function createStreamThrottle(
   }
 
   return { onEvent, flush: flushText }
+}
+
+// ---------------------------------------------------------------------------
+// Pure unit — burn timing telemetry (where a ticket's wall-clock actually goes)
+// ---------------------------------------------------------------------------
+
+/**
+ * Where a burn's wall-clock goes. `model` is not a tool — it is the agent
+ * thinking/writing between tool calls, and it belongs here because the whole
+ * point of the breakdown is to see what share of a ticket ISN'T the model.
+ */
+export const TOOL_CATEGORIES = [
+  'tests',
+  'typecheck',
+  'build',
+  'lint',
+  'install',
+  'git',
+  'file-read',
+  'file-edit',
+  'search',
+  'model',
+  'other',
+] as const
+export type ToolCategory = (typeof TOOL_CATEGORIES)[number]
+
+/**
+ * Not followed by a path/extension character — so a tool's name counts only when
+ * it is being RUN, not when it names a file. Validating against real burn
+ * commands caught this: `grep -n … vite.config.ts vitest.config.ts` was charged
+ * to `tests`, because `\bvitest\b` matches happily inside `vitest.config.ts`.
+ */
+const RUN = String.raw`(?![\w./-])`
+
+/** Ordered dominant-cost-wins patterns for classifying a Bash command line. */
+const BASH_PATTERNS: ReadonlyArray<readonly [ToolCategory, RegExp]> = [
+  // Tests first: a command that runs a suite is dominated by the suite, however
+  // much greping is chained onto it (`pnpm test > log; grep -E ... log`).
+  // The second alternative allows flags between the manager and the script
+  // (`pnpm --filter web test`, the form this repo actually uses) but never
+  // crosses a `&&`/`;`/`|` into the next command.
+  ['tests', new RegExp(String.raw`\b(vitest|jest|pytest|go test|cargo test|bun test|playwright|maestro)${RUN}|\b(pnpm|npm|yarn|bun|npx)\b[^&;|]*?\s(run\s+)?test${RUN}|--testPathPatterns`)],
+  ['typecheck', /\btsc\b|\btypecheck\b|\bmypy\b|\bcargo check\b/],
+  ['build', new RegExp(String.raw`\bbuild${RUN}|\bprisma\s+(generate|migrate)\b|\bcodegen${RUN}`)],
+  ['lint', new RegExp(String.raw`\b(eslint|prettier|ruff|biome|lint|format)${RUN}`)],
+  ['install', /\b(pnpm|npm|yarn|bun|corepack)\s+\w*\s*install\b|\bnpm ci\b/],
+  ['git', /\bgit\b/],
+  // Reading/searching the repo THROUGH the shell — the thing the prompt now
+  // tells agents to stop doing. Kept distinct from `search` so the two rules
+  // (use Read, use Grep) can be measured separately.
+  ['search', /\b(grep|rg|ag|find)\b/],
+  ['file-read', /\b(cat|sed|head|tail|less|wc|ls)\b/],
+  // Rewriting a file by piping a heredoc into an interpreter. Deliberately last:
+  // these commands often mention other tools, but the edit is the cost.
+  ['file-edit', /<<\s*['"]?(PY|EOF|SH|JS|TS)\b|\bpython3?\s+-\s*<</],
+]
+
+/** Non-Bash Claude Code tools, mapped to the same vocabulary. */
+const TOOL_NAME_CATEGORY: Readonly<Record<string, ToolCategory>> = {
+  Read: 'file-read',
+  NotebookRead: 'file-read',
+  Grep: 'search',
+  Glob: 'search',
+  Edit: 'file-edit',
+  Write: 'file-edit',
+  NotebookEdit: 'file-edit',
+}
+
+/**
+ * Reduce a shell command to the part that says what it RUNS, by removing
+ * heredoc bodies and quoted strings.
+ *
+ * Without this the classifier reads arguments as commands, and validating
+ * against real burn commands showed exactly that: `grep -n "setupFiles|..."
+ * vitest.config.ts` was charged to `tests` because a test runner's name
+ * appeared inside a grep pattern, and a `python3 <<'PY'` heredoc that happened
+ * to write a spec file was charged to whatever its body mentioned. The heredoc
+ * marker itself is preserved (it is the signal that a file is being rewritten);
+ * only the body between the marker and its terminator goes.
+ */
+export function normalizeCommandForClassification(command: string): string {
+  return command
+    .replace(/<<\s*['"]?(\w+)['"]?[\s\S]*?(^|\n)\s*\1\b/gm, '<<$1 ')
+    .replace(/<<\s*['"]?(\w+)['"]?[\s\S]*$/, '<<$1 ') // unterminated (log truncation)
+    .replace(/'[^']*'/g, ' ')
+    .replace(/"[^"]*"/g, ' ')
+}
+
+/**
+ * Classify one tool call. Pure. Bash is classified from its command line, since
+ * `Bash` alone says nothing — and in real burns Bash was 100% of tool calls
+ * (1641 of 1641), so a breakdown that stopped at the tool name would say
+ * nothing at all.
+ *
+ * Patterns are ordered by DOMINANT cost, not by position in the command: burn
+ * agents chain aggressively (`pnpm test > log 2>&1; grep -E ... log`), and the
+ * suite is what that line costs, not the grep.
+ */
+export function classifyToolCall(name: string, args: string): ToolCategory {
+  const byName = TOOL_NAME_CATEGORY[name]
+  if (byName) return byName
+  if (name !== 'Bash') return 'other'
+  const normalized = normalizeCommandForClassification(args)
+  for (const [category, pattern] of BASH_PATTERNS) {
+    if (pattern.test(normalized)) return category
+  }
+  return 'other'
+}
+
+/** One category's slice of a burn. */
+export interface CategoryTiming {
+  calls: number
+  ms: number
+}
+export interface ToolTimingSummary {
+  totalMs: number
+  calls: number
+  /** Only categories that actually occurred, so the event payload stays small. */
+  byCategory: Partial<Record<ToolCategory, CategoryTiming>>
+}
+
+/**
+ * A single gap longer than this is not work — it is a sandbox rebuild, an idle
+ * stall, or a clock jump between iterations. Dropped rather than attributed,
+ * so one stall cannot swamp the breakdown it is supposed to explain.
+ */
+const MAX_ATTRIBUTABLE_GAP_MS = 20 * 60_000
+
+/**
+ * Accumulate where a burn's time goes, from the sandcastle stream alone.
+ *
+ * Method, and its honest limit: each event's timestamp closes the PREVIOUS
+ * event's interval. A gap after a `toolCall` is charged to that tool's
+ * category; a gap after `text` is charged to `model`. A tool gap therefore
+ * includes the model's latency in producing the next event, so per-call figures
+ * are upper bounds. That is fine for the job this does — comparing category
+ * SHARES across burns, before and after a change — and it needs no coupling to
+ * Claude Code's stream-json internals.
+ *
+ * Iteration boundaries reset the accumulator: a new iteration is a new
+ * container, and the setup hook between them is not agent time.
+ */
+export function createToolTimer(): {
+  onEvent(event: AgentStreamEvent): void
+  summary(): ToolTimingSummary
+} {
+  const byCategory: Partial<Record<ToolCategory, CategoryTiming>> = {}
+  let calls = 0
+  let totalMs = 0
+  let pending: { category: ToolCategory; at: number } | null = null
+  let iteration: number | null = null
+
+  const charge = (category: ToolCategory, ms: number): void => {
+    const slot = (byCategory[category] ??= { calls: 0, ms: 0 })
+    slot.ms += ms
+    totalMs += ms
+  }
+
+  const onEvent = (event: AgentStreamEvent): void => {
+    if (event.type === 'raw') return
+    const at = event.timestamp.getTime()
+
+    // A new container: whatever was open belongs to the dead iteration.
+    if (iteration !== null && event.iteration !== iteration) pending = null
+    iteration = event.iteration
+
+    if (pending) {
+      const gap = at - pending.at
+      if (gap > 0 && gap <= MAX_ATTRIBUTABLE_GAP_MS) charge(pending.category, gap)
+    }
+
+    if (event.type === 'toolCall') {
+      const category = classifyToolCall(event.name, event.formattedArgs ?? '')
+      const slot = (byCategory[category] ??= { calls: 0, ms: 0 })
+      slot.calls += 1
+      calls += 1
+      pending = { category, at }
+    } else {
+      pending = { category: 'model', at }
+    }
+  }
+
+  return { onEvent, summary: () => ({ totalMs, calls, byCategory }) }
+}
+
+/** A one-line `category share%` digest for the timing event's message. */
+export function formatTimingSummary(s: ToolTimingSummary): string {
+  if (s.totalMs === 0) return `${s.calls} tool call(s), no measurable time`
+  const parts = Object.entries(s.byCategory)
+    .sort((a, b) => (b[1]?.ms ?? 0) - (a[1]?.ms ?? 0))
+    .slice(0, 5)
+    .map(([c, t]) => `${c} ${Math.round(((t?.ms ?? 0) / s.totalMs) * 100)}%`)
+  return `${Math.round(s.totalMs / 60_000)}min across ${s.calls} tool call(s) — ${parts.join(', ')}`
 }
 
 // ---------------------------------------------------------------------------
@@ -1451,6 +1645,17 @@ async function realExecuteTicketRun(
       mounts.push(mount)
     }
   }
+  // The burn guard (PreToolUse deny hook) is installed by the same
+  // onSandboxReady hook that installs deps, so it is armed before the agent's
+  // first tool call. Container sandboxes only: under `noSandbox` the agent runs
+  // as the human on the host, where writing `~/.claude/settings.json` would
+  // clobber their own. In mounted mode with nothing to install this makes the
+  // hook run where it previously did not — intended.
+  const guardInstall =
+    config.burnGuard && config.sandbox !== 'noSandbox' ? buildGuardInstallCommand() : undefined
+  const withGuard = (setup: string | undefined): string | undefined =>
+    guardInstall === undefined ? setup : setup ? `${guardInstall} && ${setup}` : guardInstall
+
   mkdirSync(logsDir(), { recursive: true })
   const logFilePath = join(logsDir(), `burn-${feature.id}-${ticket.seq}.log`)
   const throttle = createStreamThrottle((e) => ctx.emitEvent({ ...e, ticketId: ticket.id }))
@@ -1460,8 +1665,15 @@ async function realExecuteTicketRun(
   // style view in the UI polls it). begin() resets any previous attempt's
   // transcript so a re-burn starts clean.
   beginTranscript(ticket.id)
+  // Third consumer: the timing accumulator. Burn logs carry no per-line
+  // timestamps, so before this the only way to learn where a ticket's hours
+  // went was to reconstruct it forensically from captured sessions. The
+  // sandcastle stream already carries a timestamp on every event; this just
+  // stops throwing it away.
+  const timer = createToolTimer()
   const onStreamEvent = (event: AgentStreamEvent): void => {
     throttle.onEvent(event)
+    timer.onEvent(event)
     if (event.type === 'text') {
       appendTranscript(ticket.id, { kind: 'text', text: event.message })
     } else if (event.type === 'toolCall') {
@@ -1554,10 +1766,11 @@ async function realExecuteTicketRun(
       OTHER_SIDE: buildOtherSideBlock(otherSide),
       MERGE_COMMAND: resolveMergeCommand(workspaceMode, feature.branch),
     })
-    const hookCommand =
+    const hookCommand = withGuard(
       workspaceMode === 'isolated'
         ? buildIsolatedSetupCommand(resolveBranch, setupCommand, pm)
-        : setupCommand
+        : setupCommand,
+    )
 
     appendTranscript(ticket.id, {
       kind: 'text',
@@ -1737,10 +1950,11 @@ async function realExecuteTicketRun(
       // wiring is needed even with nothing to install) and embeds THIS
       // attempt's temp branch; mounted mode keeps the hook only when there is
       // an install to run.
-      const hookCommand =
+      const hookCommand = withGuard(
         workspaceMode === 'isolated'
           ? buildIsolatedSetupCommand(tempBranch, setupCommand, pm)
-          : setupCommand
+          : setupCommand,
+      )
       if (hookCommand && attempt === 1) {
         ctx.emitEvent({
           type: 'burn.setup',
@@ -1920,6 +2134,17 @@ async function realExecuteTicketRun(
     activeTicketAborts.delete(ticket.id)
     throttle.flush()
     endTranscript(ticket.id)
+    // Emitted on EVERY exit path — a ticket that failed or was stopped is
+    // exactly the one whose time breakdown you want.
+    const timing = timer.summary()
+    if (timing.calls > 0) {
+      ctx.emitEvent({
+        type: 'ticket.timing',
+        message: `ticket ${ticket.seq} spent ${formatTimingSummary(timing)}`,
+        ticketId: ticket.id,
+        data: timing,
+      })
+    }
   }
 }
 

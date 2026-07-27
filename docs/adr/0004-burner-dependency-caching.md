@@ -75,3 +75,12 @@ fallback but still saves fetch-and-extract.
   Docker named volume rather than a bind mount), re-adding pnpm is a one-line
   change to the map — but a *named volume* is the correct mechanism there, not a
   bind mount.
+
+## Re-raised and re-rejected (2026-07-27)
+
+During the burn-performance work (ADR-0008) the missing pnpm key was reported
+as "a real bug in runcastle" — exactly the instinct decision 2 anticipated.
+Re-confirmed against the measurement above: the mount does not save the ~109s
+cold install, it *replaces* it with a 751s copying install. The suggestion also
+misattributed the map to sandcastle's `index.js`; it is
+`ticket-burner.ts` (`PM_CACHE_SANDBOX_PATHS`). No change.

@@ -76,6 +76,8 @@ Whatever the commands are, spend them well — a full suite on a monorepo is min
 
 ## Hard rules
 
+A few of these are enforced by a tool hook, not just stated here: `git stash`, test-runner concurrency flags, and rewriting files through interpreter heredocs are **denied** before they run. A denial is policy, not a broken environment — read its reason, take the alternative it names, and carry on. Do not try to route around it.
+
 - **Never end your turn with uncommitted green work.** If you are about to stop for any reason — done, blocked, unsure, out of room — commit what is green first. This rule outranks tidiness: a scrappy commit beats losing the work.
 - **Never `git stash`.** See "How to verify" — stashed work is invisible to the orchestrator and unrecoverable if your process dies.
 - **Never expand scope beyond the ticket.** If you notice adjacent work, worthwhile refactors, or another ticket's territory, leave it. Note it in your final commit body if it matters; do not do it.

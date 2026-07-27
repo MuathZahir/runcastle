@@ -49,6 +49,12 @@ export function loadConfig(
     overrides.burnConflictAttempts = Number(env.RUNCASTLE_BURN_CONFLICT_ATTEMPTS)
   }
   if (env.RUNCASTLE_BURN_CPUS) overrides.burnCpus = Number(env.RUNCASTLE_BURN_CPUS)
+  // Kill switch for the in-sandbox PreToolUse guard. Config-file + env only
+  // (like `burnWorkspace`): a rarely-touched escape hatch, and the settings
+  // overlay has no boolean control.
+  if (env.RUNCASTLE_BURN_GUARD !== undefined) {
+    overrides.burnGuard = env.RUNCASTLE_BURN_GUARD !== '0' && env.RUNCASTLE_BURN_GUARD !== 'false'
+  }
   if (env.RUNCASTLE_SETUP_COMMAND) overrides.setupCommand = env.RUNCASTLE_SETUP_COMMAND
   if (env.RUNCASTLE_VERIFY_COMMANDS) overrides.verifyCommands = env.RUNCASTLE_VERIFY_COMMANDS
   if (env.RUNCASTLE_KNOWN_FAILURES) overrides.knownFailures = env.RUNCASTLE_KNOWN_FAILURES

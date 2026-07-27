@@ -15,6 +15,9 @@ import {
   buildWorkspaceNotes,
   cacheMountFor,
   classifyTicketRunError,
+  classifyToolCall,
+  createToolTimer,
+  formatTimingSummary,
   createSerialQueue,
   createStreamThrottle,
   detectCycle,
@@ -359,6 +362,124 @@ describe('selectSandbox — provider for the configured sandbox', () => {
     it('omits mounts when there are none, so the provider default applies', () => {
       expect('mounts' in buildSandboxOptions(config('docker'))).toBe(false)
     })
+  })
+})
+
+describe('classifyToolCall — where a burn spends its wall-clock', () => {
+  const bash = (cmd: string) => classifyToolCall('Bash', cmd)
+
+  it('maps the non-Bash file tools by name', () => {
+    expect(classifyToolCall('Read', 'src/a.ts')).toBe('file-read')
+    expect(classifyToolCall('Grep', 'pattern')).toBe('search')
+    expect(classifyToolCall('Edit', 'src/a.ts')).toBe('file-edit')
+    expect(classifyToolCall('Write', 'src/a.ts')).toBe('file-edit')
+    expect(classifyToolCall('Task', 'explore')).toBe('other')
+  })
+
+  it('charges a chained command to its dominant cost, not its first word', () => {
+    // Burn agents chain hard; the suite is what the line costs, not the grep.
+    expect(bash('cd /repo && pnpm test > /tmp/t.log 2>&1; grep -E "Tests" /tmp/t.log')).toBe('tests')
+    expect(bash('cd /repo && git stash -u && pnpm --filter web test')).toBe('tests')
+    expect(bash('cat pkg.json && pnpm typecheck')).toBe('typecheck')
+  })
+
+  it('does not read a filename as the tool being run', () => {
+    // Regression: `\bvitest\b` matched inside `vitest.config.ts`, charging a
+    // grep of the test CONFIG to the test suite.
+    expect(bash('grep -n "setupFiles" vite.config.ts vitest.config.ts | head -20')).toBe('search')
+    expect(bash('wc -l src/build.ts')).toBe('file-read')
+    expect(bash('pnpm vitest run src/a.test.ts')).toBe('tests')
+    expect(bash('npx vitest --shard=1/4')).toBe('tests')
+    // A test-ish FILE argument to a different tool is not a test run.
+    expect(bash('npx prettier --write src/a.test.ts')).toBe('lint')
+  })
+
+  it('recognises a workspace-filtered test script, the form this repo uses', () => {
+    expect(bash('pnpm --filter web test')).toBe('tests')
+    expect(bash('pnpm --filter @acme/api run test')).toBe('tests')
+    // …but never across a command separator into an unrelated segment.
+    expect(bash('pnpm --filter web typecheck && cat test.ts')).toBe('typecheck')
+  })
+
+  it('does not read a quoted argument as the command', () => {
+    expect(bash('grep -rn "pnpm test" src/')).toBe('search')
+    expect(bash("grep -n 'eslint' package.json")).toBe('search')
+  })
+
+  it('ignores heredoc bodies but keeps the heredoc itself as an edit', () => {
+    const cmd = [
+      "cd /repo && python3 - <<'PY'",
+      "p = 'src/a.test.ts'",
+      "open(p,'w').write('vitest describe eslint build')",
+      'PY',
+    ].join('\n')
+    // The body writes a spec mentioning three other categories; the cost here
+    // is the file rewrite.
+    expect(bash(cmd)).toBe('file-edit')
+  })
+
+  it('separates shell reading from shell searching, so each prompt rule is measurable', () => {
+    expect(bash('cd /repo && cat src/a.ts')).toBe('file-read')
+    expect(bash('cd /repo && sed -n "1,80p" src/a.ts')).toBe('file-read')
+    expect(bash('cd /repo && rg --files-with-matches foo')).toBe('search')
+    expect(bash('cd /repo && git log --oneline -15')).toBe('git')
+    expect(bash('corepack pnpm install --frozen-lockfile')).toBe('install')
+    expect(bash('echo hi')).toBe('other')
+  })
+})
+
+describe('createToolTimer — category shares from the sandcastle stream', () => {
+  const at = (ms: number) => new Date(1_000_000 + ms)
+  const tool = (name: string, args: string, ms: number, iteration = 1) =>
+    ({ type: 'toolCall', name, formattedArgs: args, iteration, timestamp: at(ms) }) as const
+  const text = (ms: number, iteration = 1) =>
+    ({ type: 'text', message: 'thinking', iteration, timestamp: at(ms) }) as const
+
+  it('charges each gap to the event that opened it', () => {
+    const t = createToolTimer()
+    t.onEvent(tool('Bash', 'pnpm test', 0)) // 10s of tests
+    t.onEvent(text(10_000)) //  2s of model
+    t.onEvent(tool('Bash', 'cat a.ts', 12_000)) //  1s of file-read
+    t.onEvent(text(13_000))
+    const s = t.summary()
+    expect(s.byCategory.tests).toEqual({ calls: 1, ms: 10_000 })
+    expect(s.byCategory.model).toEqual({ calls: 0, ms: 2_000 })
+    expect(s.byCategory['file-read']).toEqual({ calls: 1, ms: 1_000 })
+    expect(s.calls).toBe(2)
+    expect(s.totalMs).toBe(13_000)
+  })
+
+  it('drops the gap across an iteration boundary — that is a container rebuild', () => {
+    const t = createToolTimer()
+    t.onEvent(tool('Bash', 'pnpm test', 0, 1))
+    t.onEvent(tool('Bash', 'git log', 500_000, 2)) // new container, not 8min of tests
+    expect(t.summary().byCategory.tests?.ms).toBe(0) // the call is counted, its 8min gap is not
+    expect(t.summary().byCategory.tests?.calls).toBe(1)
+  })
+
+  it('drops an implausibly long single gap rather than letting a stall swamp the shares', () => {
+    const t = createToolTimer()
+    t.onEvent(tool('Bash', 'pnpm test', 0))
+    t.onEvent(text(45 * 60_000))
+    expect(t.summary().totalMs).toBe(0)
+  })
+
+  it('ignores raw lines and counts calls even when no time is attributable', () => {
+    const t = createToolTimer()
+    t.onEvent({ type: 'raw', line: 'noise', iteration: 1, timestamp: at(0) })
+    t.onEvent(tool('Bash', 'pnpm test', 0))
+    const s = t.summary()
+    expect(s.calls).toBe(1)
+    expect(s.totalMs).toBe(0)
+  })
+
+  it('formats a share digest ordered by cost', () => {
+    const t = createToolTimer()
+    t.onEvent(tool('Bash', 'pnpm test', 0))
+    t.onEvent(tool('Bash', 'cat a.ts', 60_000))
+    t.onEvent(text(80_000))
+    expect(formatTimingSummary(t.summary())).toMatch(/tests 75%/)
+    expect(formatTimingSummary({ totalMs: 0, calls: 0, byCategory: {} })).toMatch(/no measurable/)
   })
 })
 

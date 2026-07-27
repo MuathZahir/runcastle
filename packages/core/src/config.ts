@@ -147,6 +147,19 @@ export const RuncastleConfig = z.preprocess(
      */
     burnCpus: z.number().positive().max(256).optional(),
     /**
+     * Install the burn guard — a Claude Code `PreToolUse` hook inside each burn
+     * sandbox that denies a few things the burner prompt already forbids (git
+     * stash, overriding test-runner concurrency, rewriting files through
+     * interpreter heredocs).
+     *
+     * On by default because prompt rules measurably did not hold on their own.
+     * Set `false` to fall back to prompt-only guidance — worth doing if a rule
+     * ever misfires, since a false deny in an unattended agent costs turns.
+     * Container sandboxes only: under `noSandbox` the agent runs on the host,
+     * where writing `~/.claude/settings.json` would clobber the human's own.
+     */
+    burnGuard: z.boolean().default(true),
+    /**
      * Max agent iterations per ticket burn (sandcastle `maxIterations`). Each
      * iteration is one fresh non-interactive `claude --print` invocation against
      * the same worktree, so an agent that ends its turn prematurely (print mode
