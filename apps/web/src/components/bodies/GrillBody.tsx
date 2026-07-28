@@ -77,6 +77,7 @@ export function GrillBody({
           <SessionPanel
             featureId={feature.id}
             sessions={sessions}
+            full={full}
             showResume={!showConvergeResume}
           />
         ) : (

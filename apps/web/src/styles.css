@@ -1147,6 +1147,32 @@ button {
 }
 .grill-live-label { font-size: 11.5px; color: var(--text-3); }
 
+/* the done state: a strip label + at most one button, never a modal */
+.strip-done { display: flex; align-items: center; gap: 9px; flex: 1; min-width: 0; }
+.done-check {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  border: 1px solid color-mix(in srgb, var(--ok) 50%, transparent);
+  background: color-mix(in srgb, var(--ok) 18%, transparent);
+  color: var(--ok);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 9px;
+}
+.done-txt {
+  min-width: 0;
+  font-size: 11.5px;
+  color: var(--text-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.done-txt b { color: var(--text); font-weight: 560; }
+.strip-work-next { max-width: 260px; overflow: hidden; text-overflow: ellipsis; }
+
 /* ended session: a quiet one-line card instead of a dead 400px frame */
 .session-ended-card {
   display: flex;
