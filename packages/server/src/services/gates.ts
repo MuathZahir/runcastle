@@ -49,12 +49,19 @@ export function checkGate(ctx: AppCtx, check: GateCheckId, feature: Feature): Ga
 
     case 'tickets-approved': {
       // G3: the human Burn click is the approval; the checkable precondition is
-      // that there is at least one burnable (non-cancelled) ticket.
-      const count = listByFeature(ctx, feature.id).filter((t) => t.status !== 'cancelled').length
+      // that there is at least one burnable (non-cancelled) ticket IN THE
+      // CURRENT LAP (SPEC §15.1). Scoping matters from lap 2 on: an earlier
+      // lap's tickets are all terminal by construction, so counting them would
+      // open G3 for a lap that has emitted nothing to burn.
+      const count = listByFeature(ctx, feature.id).filter(
+        (t) => t.lap === feature.lap && t.status !== 'cancelled',
+      ).length
       return count >= 1 ? { satisfied: true } : { satisfied: false, reason: 'no tickets to burn' }
     }
 
     case 'all-tickets-terminal': {
+      // G4 stays CUMULATIVE, unlike G3 above (ADR-0010 §8): every earlier lap's
+      // tickets are terminal by construction, so scoping would buy nothing.
       const tickets = listByFeature(ctx, feature.id)
       if (tickets.length === 0) return { satisfied: false, reason: 'no tickets have run yet' }
       const open = tickets.filter(

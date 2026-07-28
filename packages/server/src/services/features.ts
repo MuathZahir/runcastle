@@ -8,7 +8,7 @@ import type {
   Ticket,
   Waypoint,
 } from '@runcastle/core'
-import { REVIEW_LOOP_BACK, newId, nextGate, nextPhase } from '@runcastle/core'
+import { RETHINK_LOOP_BACK, REVIEW_LOOP_BACK, newId, nextGate, nextPhase } from '@runcastle/core'
 import { sessionDir, worktreeDir } from '@runcastle/core/paths'
 import { desc, eq } from 'drizzle-orm'
 import { rmSync } from 'node:fs'
@@ -30,6 +30,7 @@ import {
   rowToFeature,
   setPhase,
 } from './repo'
+import { activeSessionsForFeature } from '../launcher/sessions'
 import { endSession } from '../pty/end-session'
 import { getTicket, listByFeature, sweepOrphanedBurning, updateTicket } from './tickets'
 import { frontier, listByFeature as listWaypoints } from './waypoints'
@@ -262,9 +263,14 @@ export async function burn(
   const feature = getFeatureRow(ctx, featureId)
   const running = hasActiveRun(ctx, featureId)
   let tickets = listByFeature(ctx, featureId)
+  // G3 scopes to the CURRENT lap (SPEC §15.1) — an earlier lap's tickets are
+  // terminal by construction, so counting them would let a fresh lap burn
+  // nothing. `lapTickets` is that scope; the restarting path below deliberately
+  // ignores it.
+  const lapTickets = tickets.filter((t) => t.lap === feature.lap)
   // A ticket the burner still has to run: not done/failed/cancelled (the
   // terminal states). Fresh fix tickets from an Iterate session land as `pending`.
-  const pending = tickets.filter(
+  const pending = lapTickets.filter(
     (t) => t.status !== 'done' && t.status !== 'failed' && t.status !== 'cancelled',
   )
   const restarting = feature.phase === 'implementation' && !running
@@ -278,9 +284,11 @@ export async function burn(
     else why = `feature must be in the tickets phase to burn (currently ${feature.phase})`
     throw new GateError(why)
   }
-  if (tickets.filter((t) => t.status !== 'cancelled').length < 1) {
+  if (lapTickets.filter((t) => t.status !== 'cancelled').length < 1) {
     throw new GateError(
-      tickets.length > 0 ? 'no burnable tickets — every ticket is cancelled' : 'no tickets to burn',
+      lapTickets.length > 0
+        ? 'no burnable tickets — every ticket is cancelled'
+        : 'no tickets to burn',
     )
   }
 
@@ -294,6 +302,11 @@ export async function burn(
     tickets = listByFeature(ctx, featureId)
     // `resetFailed: false` is the selective-retry path (retryTicket already
     // reset exactly the tickets it wants burned — the rest stay failed).
+    //
+    // Deliberately UNSCOPED by lap, unlike the G3 checks above: resuming a dead
+    // burn is about rescuing whatever the run left broken, so an earlier lap's
+    // failed ticket is retried here too. Only the decision to START a burn is a
+    // lap question.
     const failed = opts.resetFailed === false ? [] : tickets.filter((t) => t.status === 'failed')
     for (const t of failed) {
       // Keep `attemptBranch` (the re-burn resumes from the preserved commits)
@@ -321,6 +334,43 @@ export async function burn(
     modelOverride: opts.modelOverride,
   })
   return { runId }
+}
+
+/**
+ * Rethink — the review → ideation loop back that starts lap N+1 (ADR-0010 §1,
+ * SPEC §15.2). Where Fix (`burn` from review) says the spec was right and the
+ * code wasn't, Rethink says the opposite: the drive taught us something the
+ * spec does not know yet, so the feature goes back to ideation to digest it.
+ *
+ * Increments `lap` and sets the phase to `ideation`, emitting `lap.started`.
+ * Nothing else moves: earlier laps' tickets, sessions and events keep their lap
+ * tag and the trail is derived by grouping on it (there is no laps table).
+ *
+ * Every guard runs BEFORE the mutation. The session guard especially: the
+ * caller launches the lap's terminal right after this returns, and a launch the
+ * one-terminal-per-feature guard would refuse must not leave the feature already
+ * bumped onto a lap with no session to work it.
+ */
+export function rethink(ctx: AppCtx, featureId: string): Feature {
+  const feature = getFeatureRow(ctx, featureId)
+  if (feature.phase !== RETHINK_LOOP_BACK.from) {
+    throw new GateError(
+      `feature must be in the review phase to rethink (currently ${feature.phase})`,
+    )
+  }
+  if (hasActiveRun(ctx, featureId)) {
+    throw new GateError('a run is burning this feature — cancel or wait for it before rethinking')
+  }
+  const live = activeSessionsForFeature(ctx, featureId)
+  if (live.length > 0) {
+    throw new GateError(
+      `a ${live[0].kind} session is already live for ${feature.slug} — only one terminal per feature; end or resume it first`,
+    )
+  }
+
+  const lap = feature.lap + 1
+  ctx.db.update(features).set({ lap }).where(eq(features.id, featureId)).run()
+  return setPhase(ctx, featureId, RETHINK_LOOP_BACK.to, 'lap.started', `rethink — lap ${lap}`)
 }
 
 /**
