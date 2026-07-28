@@ -1,8 +1,8 @@
 import type { PreparedKey, PrepRun, PrepStatus, Project } from '@runcastle/core'
 import { PREPARED_KEYS, newId } from '@runcastle/core'
-import { desc, eq } from 'drizzle-orm'
+import { and, desc, eq } from 'drizzle-orm'
 import type { AppCtx } from '../db/types'
-import { projectPreps } from '../db/schema'
+import { events, projectPreps } from '../db/schema'
 import { InvalidInputError } from '../errors'
 import type { PrepCtx, PrepDeps, PrepFindings } from '../workflows/project-prep'
 import { prepHeadSha, prepRun, resolvePrepDeps } from '../workflows/project-prep'
@@ -75,6 +75,29 @@ export function keysToPrepare(
   return candidates.filter(
     (key) => (opts.refresh || unset.has(key)) && isOverwritable(ctx, project.id, key),
   )
+}
+
+/**
+ * Whether opening this project should kick off its first preparation run.
+ *
+ * Pure decision, separated from the fire-and-forget call so it is testable
+ * without spawning an agent. Three conditions, in cheapness order: the feature
+ * is on, this project has never been prepared, and there is something left to
+ * establish.
+ *
+ * The middle one is the fix for the bug that made preparation look broken: it
+ * used to key off "the project row was just inserted", so every project opened
+ * before preparation existed could never auto-prepare — the trigger was
+ * unreachable for exactly the people with the most history. Keyed to
+ * `latestPrep` it fires once per project, whenever that project is first seen
+ * unprepared, and never again.
+ */
+export function shouldAutoPrepare(ctx: AppCtx, project: Project): boolean {
+  if (!ctx.config.autoPrepare) return false
+  // Any previous run — succeeded, failed or cancelled — means the user has been
+  // shown this once. Retrying is theirs to ask for.
+  if (latestPrep(ctx, project.id)) return false
+  return keysToPrepare(ctx, project).length > 0
 }
 
 /**
@@ -264,6 +287,26 @@ export function latestPrep(ctx: AppCtx, projectId: string): PrepRun | null {
     ...(row.summary !== null ? { summary: row.summary } : {}),
     ...(row.headSha !== null ? { headSha: row.headSha } : {}),
   }
+}
+
+/**
+ * The last headless run's free-text caveats, if any.
+ *
+ * Read back off the timeline rather than a column: `applyFindings` emits notes
+ * as a `prep.notes` event and `project_preps` has never stored them. They are
+ * worth recovering anyway — the notes are where a run explains what it could
+ * NOT settle, which is precisely the agenda for an interactive session. Adding
+ * a column for something already durably recorded would be the worse trade.
+ */
+export function latestPrepNotes(ctx: AppCtx, projectId: string): string | undefined {
+  const row = ctx.db
+    .select({ data: events.data })
+    .from(events)
+    .where(and(eq(events.projectId, projectId), eq(events.type, 'prep.notes')))
+    .orderBy(desc(events.id))
+    .get()
+  const notes = (row?.data as { notes?: unknown } | null)?.notes
+  return typeof notes === 'string' && notes.trim() !== '' ? notes : undefined
 }
 
 /**

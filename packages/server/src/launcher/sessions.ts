@@ -4,7 +4,7 @@ import { and, desc, eq, inArray, isNotNull, sql } from 'drizzle-orm'
 import type { AppCtx } from '../db/types'
 import { sessions } from '../db/schema'
 import { ptyRegistry } from '../pty/registry'
-import { emit } from '../services/events'
+import { emit, emitForSession } from '../services/events'
 import { promoteLastSession } from '../services/waypoints'
 import { rowToSession } from '../services/repo'
 
@@ -16,11 +16,15 @@ import { rowToSession } from '../services/repo'
  * emit the lifecycle events so the timeline messages stay meaningful.
  */
 
-export interface CreateSessionInput {
-  featureId: string
+/**
+ * Exactly one of `featureId` / `projectId` is set: feature sessions carry their
+ * feature and derive the project through it; a project-scoped `prepare` session
+ * carries the project directly because it has no feature to derive one from.
+ */
+export type CreateSessionInput = {
   kind: SessionKind
   worktreePath: string
-}
+} & ({ featureId: string; projectId?: never } | { projectId: string; featureId?: never })
 
 /** Insert a fresh session row in the `launching` state; returns it (with id). */
 export function createSessionRow(ctx: AppCtx, input: CreateSessionInput): SessionRow {
@@ -28,7 +32,8 @@ export function createSessionRow(ctx: AppCtx, input: CreateSessionInput): Sessio
     .insert(sessions)
     .values({
       id: newId('sess'),
-      featureId: input.featureId,
+      featureId: input.featureId ?? null,
+      projectId: input.projectId ?? null,
       kind: input.kind,
       ccSessionId: null,
       transcriptPath: null,
@@ -177,6 +182,14 @@ export const KICKOFF_LINES: Record<SessionKind, string> = {
   revisit:
     'Proceed with your task: invoke the /runcastle:revisit skill and work through what the ' +
     'human brings up.',
+  // No skill: the preparation brief is the whole task, and it arrives as the
+  // appended system prompt (renderPreparePrompt). The line only has to make the
+  // agent open its mouth — a headless run already measured what it could, so
+  // the useful first move is naming the gap, not re-deriving the repo.
+  prepare:
+    'Proceed with your task: work through the unestablished preparation fields with the human. ' +
+    'Start by telling them which fields are still open and what you need from them for each; ' +
+    'ask before running anything that touches their database or services.',
 }
 
 /** The kickoff line for a session: an explicit override wins, else the per-kind default. */
@@ -345,7 +358,7 @@ function attemptKickoff(
           write: io.write,
           alive: io.alive,
           onSubmitted: () =>
-            emit(ctx, session.featureId, {
+            emitForSession(ctx, session, {
               type: 'session.kickoff',
               message:
                 attempt === 1
@@ -384,7 +397,7 @@ function settleUndelivered(
 ): void {
   d.settled = true
   stopTimers(d)
-  emit(ctx, session.featureId, {
+  emitForSession(ctx, session, {
     type: 'session.kickoff_undelivered',
     message:
       reason === 'superseded'
@@ -480,7 +493,7 @@ export function armSessionReadyWatchdog(ctx: AppCtx, session: SessionRow): void 
     const row = getSessionRow(ctx, session.id)
     if (!row || row.status !== 'launching') return
     if (!ptyIo(session.id).alive()) return
-    emit(ctx, session.featureId, {
+    emitForSession(ctx, session, {
       type: 'session.not_ready',
       message: `the ${session.kind} terminal is open but Claude Code has not reported ready — check it for a prompt or dialog waiting on you, then send the briefing`,
       data: { sessionId: session.id, kind: session.kind },
@@ -538,6 +551,63 @@ export function mostRecentResumableSession(
         eq(sessions.status, 'ended'),
         isNotNull(sessions.ccSessionId),
         ...(kind ? [eq(sessions.kind, kind)] : []),
+      ),
+    )
+    .orderBy(desc(sql`rowid`))
+    .limit(1)
+    .get()
+  return row ? rowToSession(row) : null
+}
+
+/**
+ * The open (launching or live) project-scoped session of this kind, if any —
+ * what the UI needs to decide between "open a preparation conversation" and
+ * "show the one already running".
+ */
+export function activeProjectSession(
+  ctx: AppCtx,
+  projectId: string,
+  kind: SessionKind,
+): SessionRow | null {
+  const row = ctx.db
+    .select()
+    .from(sessions)
+    .where(
+      and(
+        eq(sessions.projectId, projectId),
+        eq(sessions.kind, kind),
+        inArray(sessions.status, ['launching', 'live']),
+      ),
+    )
+    .orderBy(desc(sql`rowid`))
+    .limit(1)
+    .get()
+  return row ? rowToSession(row) : null
+}
+
+/**
+ * The project-scoped twin of {@link mostRecentResumableSession}: the last ended
+ * conversation of this kind for a project, so reopening a preparation terminal
+ * continues it instead of making the human re-explain their database.
+ *
+ * Keyed on `project_id` rather than `feature_id`, which is the column a
+ * project-scoped session actually has — the feature-keyed query would never
+ * match one of these rows (NULL never equals anything), so it needs its own.
+ */
+export function mostRecentResumableProjectSession(
+  ctx: AppCtx,
+  projectId: string,
+  kind: SessionKind,
+): SessionRow | null {
+  const row = ctx.db
+    .select()
+    .from(sessions)
+    .where(
+      and(
+        eq(sessions.projectId, projectId),
+        eq(sessions.kind, kind),
+        eq(sessions.status, 'ended'),
+        isNotNull(sessions.ccSessionId),
       ),
     )
     .orderBy(desc(sql`rowid`))

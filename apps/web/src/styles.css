@@ -711,14 +711,30 @@ button {
   background: var(--bg);
   position: relative;
 }
-.ws-empty {
+/* The project home scrolls: the empty state keeps its centered hero, and the
+   project-scoped preparation card sits below it rather than only in settings. */
+.ws-empty-scroll {
   height: 100%;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+.ws-empty {
+  /* min-height, not height: the hero still fills a tall viewport, but shrinks
+     rather than pushing the preparation card off-screen on a short one. */
+  min-height: 60%;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   gap: 12px;
   color: var(--text-3);
+}
+.ws-empty-aside {
+  width: 100%;
+  max-width: calc(var(--content-max) + 56px);
+  margin: 0 auto;
+  padding: 0 28px 32px;
 }
 .ws-empty-logo {
   display: flex;
@@ -2500,6 +2516,24 @@ select.settings-input { cursor: pointer; }
   background: color-mix(in srgb, var(--drive) 10%, transparent);
   border: 1px solid color-mix(in srgb, var(--drive) 35%, transparent);
   border-radius: var(--radius);
+}
+
+/* The preparation conversation. Given a fixed height rather than left to grow:
+   the card lives inside a scrolling overlay, and an unbounded terminal would
+   push the findings list — the thing the conversation is editing — off screen. */
+.prep-talk {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.prep-talk-terminal {
+  height: 340px;
+  min-height: 200px;
+  resize: vertical;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--panel-inset);
 }
 
 .prep-findings {

@@ -4,6 +4,7 @@ import type { Project } from '@runcastle/core'
 import { migrationPaths } from '../src/services/git'
 import {
   buildRequestedKeysBlock,
+  nonFatalSetup,
   parsePrepFindings,
   prepRun,
   renderPrepPrompt,
@@ -11,6 +12,7 @@ import {
   type PrepDeps,
   type PrepOutcome,
 } from '../src/workflows/project-prep'
+import { buildIsolatedSetupCommand, resolveSetupCommand } from '../src/workflows/ticket-burner'
 
 /**
  * Pure units of project preparation. The sandcastle boundary is injected
@@ -245,5 +247,55 @@ describe('migrationPaths', () => {
     expect(
       migrationPaths(['src/lib/migration-utils.ts', 'docs/migrating.md', 'README.md']),
     ).toEqual([])
+  })
+})
+
+/**
+ * Regression — three real preparation runs died in the pre-agent install hook
+ * before the agent had a turn, on the one field the run exists to establish:
+ *
+ *  1. untracked `package-lock.json` → the isolated-mode clone never saw it,
+ *     `npm ci` failed EUSAGE;
+ *  2. tracked but stale lockfile → `npm ci` refused to reconcile it;
+ *  3. a genuine peer-dependency conflict → BOTH `npm ci` and `npm install`
+ *     failed, and no install command runcastle could have guessed would work.
+ *
+ * (1) and (2) are handled by resolveSetupCommand's fallback. (3) is why the
+ * install must not be fatal at all: the agent can find `--legacy-peer-deps`,
+ * runcastle cannot guess it.
+ */
+describe('nonFatalSetup — a failed install must not abort preparation', () => {
+  it('survives an install that fails every way it can', () => {
+    expect(nonFatalSetup('( npm ci || npm install )')).toBe(
+      '( ( npm ci || npm install ) || true )',
+    )
+  })
+
+  it('keeps the clone and the hooksPath re-pin fatal when composed', () => {
+    const setup = resolveSetupCommand({
+      hasPackageJson: true,
+      lockfiles: { bun: false, pnpm: false, yarn: false, npm: true },
+    })
+    const chain = buildIsolatedSetupCommand('runcastle/prep/abc', nonFatalSetup(setup!), 'npm')
+
+    // The install is wrapped, so its failure cannot propagate...
+    expect(chain).toContain('( ( npm ci || npm install ) || true )')
+
+    // ...but the wrapper is CLOSED before the chain continues. An unterminated
+    // `|| true` would swallow the clone's failure too, and the run would go on
+    // against an empty directory.
+    const installIdx = chain.indexOf('|| true )')
+    expect(chain.indexOf('git clone')).toBeLessThan(installIdx)
+    expect(chain.indexOf('core.hooksPath')).toBeGreaterThan(installIdx)
+    expect(chain.slice(installIdx)).toContain(' && ')
+  })
+
+  it('leaves a repo with no install step alone — nothing to make non-fatal', () => {
+    const none = resolveSetupCommand({
+      hasPackageJson: false,
+      lockfiles: { bun: false, pnpm: false, yarn: false, npm: false },
+    })
+    expect(none).toBeUndefined()
+    expect(buildIsolatedSetupCommand('runcastle/prep/abc', undefined)).not.toContain('|| true')
   })
 })

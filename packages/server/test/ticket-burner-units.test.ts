@@ -561,19 +561,48 @@ describe('setup-command detection (deps install before the agent starts)', () =>
 
   it('uses frozen installs only when the matching lockfile exists', () => {
     expect(resolveSetupCommand(tc({ lockfiles: locks({ bun: true }) }))).toBe(
-      'bun install --frozen-lockfile',
+      '( bun install --frozen-lockfile || bun install )',
     )
     expect(resolveSetupCommand(tc({ lockfiles: locks({ pnpm: true }) }))).toBe(
-      'corepack pnpm install --frozen-lockfile',
+      '( corepack pnpm install --frozen-lockfile || corepack pnpm install )',
     )
     expect(resolveSetupCommand(tc({ lockfiles: locks({ yarn: true }) }))).toBe(
-      'corepack yarn install --frozen-lockfile',
+      '( corepack yarn install --frozen-lockfile || corepack yarn install )',
     )
-    expect(resolveSetupCommand(tc({ lockfiles: locks({ npm: true }) }))).toBe('npm ci')
+    expect(resolveSetupCommand(tc({ lockfiles: locks({ npm: true }) }))).toBe(
+      '( npm ci || npm install )',
+    )
     expect(resolveSetupCommand(tc())).toBe('npm install')
     expect(resolveSetupCommand(tc({ packageManagerField: 'pnpm@9.0.0' }))).toBe(
       'corepack pnpm install',
     )
+  })
+
+  /**
+   * Regression — both halves measured against real repos on 2026-07-28, each of
+   * which killed a preparation run in the pre-agent install hook:
+   *
+   * - `exam-forge`: `package-lock.json` present on the host but UNTRACKED, so
+   *   the `isolated`-mode `git clone` did not carry it and `npm ci` died with
+   *   EUSAGE before the agent ran once.
+   * - `wasla`: `package-lock.json` tracked but out of sync with package.json,
+   *   so `npm ci` refused it ("Missing: @emnapi/runtime@1.11.3 from lock file").
+   *
+   * Both are recoverable by the permissive install, so neither may be fatal.
+   */
+  it('falls back to a permissive install when the strict one cannot hold', () => {
+    const cmd = resolveSetupCommand(tc({ lockfiles: locks({ npm: true }) }))
+    expect(cmd).toContain('npm ci')
+    expect(cmd).toContain('|| npm install')
+    // Parenthesised: callers join with ` && `, and `&&`/`||` bind left-to-right,
+    // so an unwrapped fallback would take the whole preceding chain as its left
+    // operand and install in the wrong directory.
+    expect(cmd?.startsWith('(')).toBe(true)
+    expect(cmd?.endsWith(')')).toBe(true)
+  })
+
+  it('never wraps an explicit override — a typed command keeps its own semantics', () => {
+    expect(resolveSetupCommand(tc({ lockfiles: locks({ npm: true }) }), 'npm ci')).toBe('npm ci')
   })
 
   it('a config override wins — even with no package.json (non-JS bootstrap)', () => {

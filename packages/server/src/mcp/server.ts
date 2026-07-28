@@ -2,14 +2,25 @@ import { StreamableHTTPTransport } from '@hono/mcp'
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js'
 import type {
+  FindingSource as FindingSourceT,
   Phase as PhaseT,
+  PreparedKey as PreparedKeyT,
+  Project,
   SessionRow,
   Ticket,
   TicketInput as TicketInputT,
   Waypoint as WaypointT,
   WaypointInput as WaypointInputT,
 } from '@runcastle/core'
-import { Phase, TicketInput, WaypointDisposition, WaypointInput, nextGate, nextPhase } from '@runcastle/core'
+import {
+  Phase,
+  PreparedKey,
+  TicketInput,
+  WaypointDisposition,
+  WaypointInput,
+  nextGate,
+  nextPhase,
+} from '@runcastle/core'
 import { Hono } from 'hono'
 import * as z from 'zod'
 import type { AppCtx } from '../db/types'
@@ -17,10 +28,11 @@ import { GateError, isNotImplemented } from '../errors'
 import { getRuntimeCtx } from '../launcher/runtime'
 import { getSessionRow, mostRecentLiveSession } from '../launcher/sessions'
 import { advance, escalateToMap } from '../services/features'
-import { emit } from '../services/events'
+import { emit, emitProject } from '../services/events'
+import { isOverwritable, recordFinding } from '../services/findings'
 import * as git from '../services/git'
 import { listDocs, readDoc } from '../services/knowledge'
-import { getFeatureRow } from '../services/repo'
+import { getFeatureRow, getProjectById } from '../services/repo'
 import {
   cancelTicket,
   editTicket,
@@ -73,6 +85,25 @@ export function resolveSession(ctx: AppCtx, sessionId: string | undefined): Sess
   return mostRecentLiveSession(ctx)
 }
 
+/**
+ * The feature a tool call belongs to, or a refusal that says why.
+ *
+ * Every tool below this line is feature-shaped, and a `prepare` session has no
+ * feature. Guarding once here rather than making each tool null-check means the
+ * failure is a legible message the agent can act on instead of a crash inside
+ * `getFeatureRow` — and it keeps the null impossible to forget when a tool is
+ * added later, because the featureId simply isn't reachable without this call.
+ */
+function requireFeatureId(session: SessionRow): string {
+  if (!session.featureId) {
+    throw new GateError(
+      `this tool needs a feature, and a ${session.kind} session is project-scoped. ` +
+        'Use record_finding to store what you establish about the project.',
+    )
+  }
+  return session.featureId
+}
+
 // --- tool implementations (pure over AppCtx + session — unit-tested) ---------
 
 export interface FeatureContext {
@@ -89,7 +120,7 @@ export interface FeatureContext {
 }
 
 export function toolGetFeatureContext(ctx: AppCtx, session: SessionRow): FeatureContext {
-  const feature = getFeatureRow(ctx, session.featureId)
+  const feature = getFeatureRow(ctx, requireFeatureId(session))
   const docs = listDocs(ctx, feature).map((d) => {
     try {
       return { relPath: d.relPath, content: readDoc(ctx, feature, d.relPath).content }
@@ -133,7 +164,7 @@ export function toolEmitTickets(
   session: SessionRow,
   input: { tickets: TicketInputT[] },
 ): { stored: number; ids: string[] } {
-  const feature = getFeatureRow(ctx, session.featureId)
+  const feature = getFeatureRow(ctx, requireFeatureId(session))
   // `storeTickets` is the mutation and emits the single `tickets.stored` event
   // (one mutation → one event). This tool used to emit an additional
   // `tickets.emitted` note, which double-logged the same action on the timeline.
@@ -144,7 +175,7 @@ export function toolEmitTickets(
 /** Refuse cross-feature ticket surgery: the id must belong to THIS session's feature. */
 function requireOwnTicket(ctx: AppCtx, session: SessionRow, ticketId: string): Ticket {
   const ticket = getTicket(ctx, ticketId)
-  if (ticket.featureId !== session.featureId) {
+  if (ticket.featureId !== requireFeatureId(session)) {
     throw new GateError(`ticket ${ticketId} does not belong to this session's feature`)
   }
   return ticket
@@ -174,7 +205,7 @@ export function toolEscalateToMap(
   session: SessionRow,
   input: { destination: string; notes?: string },
 ): { ok: true; warning?: string } {
-  return escalateToMap(ctx, session.featureId, input)
+  return escalateToMap(ctx, requireFeatureId(session), input)
 }
 
 export function toolEmitWaypoints(
@@ -182,7 +213,7 @@ export function toolEmitWaypoints(
   session: SessionRow,
   input: { waypoints: WaypointInputT[] },
 ): { stored: number; ids: string[] } {
-  const feature = getFeatureRow(ctx, session.featureId)
+  const feature = getFeatureRow(ctx, requireFeatureId(session))
   // Waypoints only exist on a map — every session on a mapped feature may branch
   // it (the recursion), but an unmapped feature must escalate first.
   if (!feature.mapped) {
@@ -197,7 +228,7 @@ export function toolRecordEvent(
   session: SessionRow,
   input: { type: string; message: string },
 ): { ok: true } {
-  emit(ctx, session.featureId, {
+  emit(ctx, requireFeatureId(session), {
     type: input.type,
     message: input.message,
     data: { source: 'mcp' },
@@ -214,7 +245,7 @@ export function toolCompletePhase(
   session: SessionRow,
   input: { phase: PhaseT },
 ): CompletePhaseResult {
-  const feature = getFeatureRow(ctx, session.featureId)
+  const feature = getFeatureRow(ctx, requireFeatureId(session))
   emit(ctx, feature.id, {
     type: 'phase.complete_requested',
     message: `session marked phase '${input.phase}' complete`,
@@ -260,7 +291,7 @@ async function commitDocsCheckpoint(
   try {
     await git.commitDocs(session.worktreePath, message)
   } catch (e) {
-    emit(ctx, session.featureId, {
+    emit(ctx, requireFeatureId(session), {
       type: 'git.commit_pending',
       message: isNotImplemented(e)
         ? 'docs checkpoint skipped (git service pending)'
@@ -268,6 +299,78 @@ async function commitDocsCheckpoint(
       data: { message },
     })
   }
+}
+
+// --- project-scoped tools (`prepare` sessions) ------------------------------
+
+/** The project a project-scoped tool call belongs to, or a refusal that says why. */
+function requireProject(ctx: AppCtx, session: SessionRow): Project {
+  if (!session.projectId) {
+    throw new GateError(
+      `record_finding is for a project-scoped preparation session; this is a ${session.kind} session.`,
+    )
+  }
+  const project = getProjectById(ctx, session.projectId)
+  if (!project) throw new GateError(`project ${session.projectId} not found`)
+  return project
+}
+
+export interface RecordFindingResult {
+  ok: true
+  key: PreparedKeyT
+  source: FindingSourceT
+  /** Set when the write was refused because a human already owns the key. */
+  skipped?: string
+}
+
+/**
+ * Store one established preparation value from an interactive session.
+ *
+ * The provenance split is the whole point, and it is NOT "whichever process
+ * wrote the row". `userSupplied` means the human gave or confirmed this value
+ * verbatim, which makes it `human` — and `human` is the source that permanently
+ * locks a key against future auto-overwrite. Everything the agent worked out
+ * itself, even with a human watching, is `session`: better attested than a
+ * headless finding, but still something a later run may improve on.
+ *
+ * Recording the agent's own measurement as `human` would be the damaging
+ * mistake — it would silently retire the key from every future preparation run,
+ * and the only way back is clearing a field the user never typed.
+ *
+ * The existing human-ownership rule still applies on top: a key a human already
+ * set is never overwritten here, and the refusal is reported rather than
+ * swallowed, so the agent can say so instead of believing it succeeded.
+ */
+export function toolRecordFinding(
+  ctx: AppCtx,
+  session: SessionRow,
+  input: { key: PreparedKeyT; value: string; evidence?: string; userSupplied?: boolean },
+): RecordFindingResult {
+  const project = requireProject(ctx, session)
+  const source: FindingSourceT = input.userSupplied ? 'human' : 'session'
+
+  if (!isOverwritable(ctx, project.id, input.key) && !input.userSupplied) {
+    return {
+      ok: true,
+      key: input.key,
+      source,
+      skipped: `${input.key} was set by a human and is not auto-overwritable — ask them to clear it first if it should change`,
+    }
+  }
+
+  recordFinding(ctx, project.id, {
+    key: input.key,
+    value: input.value,
+    source,
+    ...(input.evidence ? { evidence: input.evidence } : {}),
+  })
+
+  emitProject(ctx, project.id, {
+    type: 'prep.finding_recorded',
+    message: `preparation session established ${input.key} (${source})`,
+    data: { key: input.key, source, sessionId: session.id },
+  })
+  return { ok: true, key: input.key, source }
 }
 
 // --- MCP server assembly ----------------------------------------------------
@@ -297,6 +400,30 @@ async function resolveCtxSession(extra: HeaderCarrier): Promise<{ ctx: AppCtx; s
 /** Build a fresh MCP server with the runcastle tools registered. */
 export function buildMcpServer(): McpServer {
   const server = new McpServer({ name: 'runcastle', version: '0.1.0' })
+
+  server.registerTool(
+    'record_finding',
+    {
+      title: 'Record a preparation finding',
+      description:
+        'Store one established project setting from a preparation conversation. ' +
+        'Set userSupplied: true ONLY when the human gave you this value or confirmed it verbatim — ' +
+        'that marks it as theirs and stops any future automatic run from overwriting it. ' +
+        'Anything you worked out yourself must leave it false, even if they were watching. ' +
+        'Always include evidence: what you ran, or what the human told you.',
+      inputSchema: {
+        key: PreparedKey,
+        value: z.string(),
+        evidence: z.string().optional(),
+        userSupplied: z.boolean().optional(),
+      },
+    },
+    async (args, extra) => {
+      const rs = await resolveCtxSession(extra)
+      if (!rs) return noSession()
+      return ok(toolRecordFinding(rs.ctx, rs.session, args))
+    },
+  )
 
   server.registerTool(
     'get_feature_context',

@@ -1,4 +1,5 @@
 import { trpc } from '../trpc'
+import { TerminalView } from './TerminalView'
 import { useToast } from '../lib/toast'
 import { DimLine } from '../ui'
 import {
@@ -48,7 +49,26 @@ export function PreparationCard({ projectId }: { projectId: string }) {
     onError: (e) => toast.push(e.message),
   })
 
+  // The open conversation, if there is one. Polled so the terminal appears when
+  // a session is launched from anywhere (⌘K, another tab) and disappears when it
+  // ends — the session row is the single source of truth, not local state.
+  const session = trpc.project.prepSession.useQuery({ projectId }, { refetchInterval: 3000 })
+
+  const talk = trpc.project.talkToPrep.useMutation({
+    onSuccess: () => void utils.project.prepSession.invalidate(),
+    onError: (e) => toast.push(e.message),
+  })
+
+  const endTalk = trpc.feature.endSession.useMutation({
+    onSuccess: () => {
+      void utils.project.prepSession.invalidate()
+      void utils.project.prep.invalidate()
+    },
+    onError: (e) => toast.push(e.message),
+  })
+
   const view = prep.data as PrepView | undefined
+  const prepSession = session.data ?? null
   const running = view?.running ?? false
   const findings = view?.findings ?? []
   const pending = view?.pendingKeys ?? []
@@ -100,7 +120,40 @@ export function PreparationCard({ projectId }: { projectId: string }) {
                 {findings.length > 0 ? 'Re-prepare' : 'Prepare now'}
               </button>
             )}
+            {/* The conversation is a peer of the headless run, not a fallback:
+                a sandbox cannot ask a question, and cannot verify anything about
+                THIS machine. Offered whether or not a run has happened. */}
+            {prepSession ? (
+              <button
+                className="settings-clear"
+                onClick={() => endTalk.mutate({ sessionId: prepSession.id })}
+                disabled={endTalk.isPending}
+              >
+                End conversation
+              </button>
+            ) : (
+              <button
+                className="settings-clear"
+                onClick={() => talk.mutate({ projectId })}
+                disabled={talk.isPending}
+              >
+                {talk.isPending ? 'Opening…' : 'Talk to preparation'}
+              </button>
+            )}
           </div>
+
+          {prepSession && (
+            <div className="prep-talk">
+              <DimLine>
+                A preparation agent is open in your real checkout — it can run the host-only
+                commands a sandbox can only guess at. It will ask before touching anything
+                stateful.
+              </DimLine>
+              <div className="prep-talk-terminal">
+                <TerminalView sessionId={prepSession.id} />
+              </div>
+            </div>
+          )}
 
           {!running && pending.length > 0 && (
             <DimLine>
@@ -128,21 +181,31 @@ export function PreparationCard({ projectId }: { projectId: string }) {
                 <li key={f.key} className={`prep-finding${isStale(f) ? ' is-stale' : ''}`}>
                   <div className="prep-finding-head">
                     <span className="prep-finding-key">{PREPARED_LABEL[f.key] ?? f.key}</span>
+                    {/* Three sources, and the distinction that matters is which
+                        ones a later automatic run may replace. Only `yours` is
+                        locked; `verified` was established with you present but
+                        stays improvable. A host-only key reads `proposed` only
+                        while it is still the sandbox's guess — once a
+                        conversation actually ran it, it is verified. */}
                     <span
                       className={`settings-badge${f.source === 'human' ? '' : ' is-override'}`}
                       title={
                         f.source === 'human'
                           ? 'You set this by hand — preparation will never overwrite it'
-                          : HOST_ONLY_PREPARED.has(f.key)
-                            ? 'Read from config, not executed — this describes your machine, not the sandbox'
-                            : 'Measured by running it in the sandbox'
+                          : f.source === 'session'
+                            ? 'Established in a conversation on your own machine, not in a sandbox. A later run may still improve it.'
+                            : HOST_ONLY_PREPARED.has(f.key)
+                              ? 'Read from config, not executed — this describes your machine, not the sandbox'
+                              : 'Measured by running it in the sandbox'
                       }
                     >
                       {f.source === 'human'
                         ? 'yours'
-                        : HOST_ONLY_PREPARED.has(f.key)
-                          ? 'proposed'
-                          : 'measured'}
+                        : f.source === 'session'
+                          ? 'verified'
+                          : HOST_ONLY_PREPARED.has(f.key)
+                            ? 'proposed'
+                            : 'measured'}
                     </span>
                   </div>
                   <div className="prep-finding-note">{describeFinding(f)}</div>

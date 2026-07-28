@@ -12,10 +12,16 @@ import { runs } from '../db/schema'
 import { GateError, isNotImplemented } from '../errors'
 import { endSession } from '../pty/end-session'
 import { ptyRegistry } from '../pty/registry'
-import { emit } from '../services/events'
+import { emit, emitForSession, emitProject } from '../services/events'
 import { checkGate, overrideGate } from '../services/gates'
 import * as git from '../services/git'
-import { getFeatureRow, projectForFeature, rowToRun, setPhase } from '../services/repo'
+import {
+  getFeatureRow,
+  projectForFeature,
+  requireProjectById,
+  rowToRun,
+  setPhase,
+} from '../services/repo'
 import { listByFeature as listTicketsByFeature } from '../services/tickets'
 import {
   claim as claimWaypoint,
@@ -24,13 +30,16 @@ import {
   releaseForSession,
 } from '../services/waypoints'
 import { startRun, workflowClaimsFeatureBranch } from '../workflows/runner'
-import { serverUrlFor, writeSessionArtifacts } from './artifacts'
+import { listFindings } from '../services/findings'
+import { keysToPrepare, latestPrepNotes } from '../services/prep'
+import { serverUrlFor, writeSessionArtifacts, type PrepareBrief } from './artifacts'
 import {
   activeSessionsForFeature,
   armSessionReadyWatchdog,
   createSessionRow,
   getSessionRow,
   markSessionEnded,
+  mostRecentResumableProjectSession,
   mostRecentResumableSession,
   resumeKickoffLine,
   setKickoffOverride,
@@ -504,6 +513,119 @@ export async function launchSession(
 }
 
 /**
+ * Open a project-scoped preparation conversation (backs `project.talkToPrep`).
+ *
+ * Everything that makes `launchSession` feature-shaped is skipped: no feature
+ * row, no worktree, no waypoint claim, no one-live-session-per-feature guard.
+ * The session runs in the project's REAL checkout, which is the whole point —
+ * the five host-only keys a container can only propose (`devCommand`,
+ * `driveSetupCommand`, `driveStopCommand`, `driveEnv`, `dbResetCommand`) can be
+ * executed and verified here, and the human is present to answer for the ones
+ * no amount of reading the repo can settle.
+ *
+ * Running in the real checkout is also the one hazard no other session kind
+ * has: this terminal can dirty the working tree. The brief tells the agent to
+ * ask before anything stateful, but that is guidance, not a guard — a future
+ * hardening could take the guard from the burner's PreToolUse deny hook.
+ *
+ * Resumes its own previous conversation when there is one, so closing the
+ * terminal and reopening it continues where you left off rather than making the
+ * human re-explain their database.
+ */
+export async function launchPrepareSession(
+  ctx: AppCtx,
+  input: { projectId: string },
+  opts: LaunchSessionOptions = {},
+): Promise<LaunchSessionResult> {
+  const project = requireProjectById(ctx, input.projectId)
+
+  const session = createSessionRow(ctx, {
+    projectId: project.id,
+    kind: 'prepare',
+    // No worktree: preparation is about THIS machine's checkout, and a docs-only
+    // talk worktree could neither run the dev server nor see the real .env.
+    worktreePath: project.repoPath,
+  })
+
+  const resumeSessionId = mostRecentResumableProjectSession(ctx, project.id, 'prepare')?.ccSessionId
+
+  emitProject(ctx, project.id, {
+    type: 'session.launching',
+    message: 'launching preparation session',
+    data: { sessionId: session.id, kind: 'prepare', worktreePath: project.repoPath },
+  })
+  if (resumeSessionId) {
+    emitProject(ctx, project.id, {
+      type: 'session.resumed',
+      message: 'resuming the previous preparation conversation',
+      data: { sessionId: session.id, resumeSessionId },
+    })
+  }
+
+  const artifacts = await writeSessionArtifacts({
+    session,
+    project,
+    config: ctx.config,
+    prepare: await buildPrepareBrief(ctx, project),
+  })
+  const serverUrl = serverUrlFor(ctx.config)
+
+  const buildInput: BuildLaunchInput = {
+    sessionId: session.id,
+    serverUrl,
+    featureTitle: `preparing ${project.name}`,
+    worktreePath: project.repoPath,
+    pluginDir: resolvePluginDir(),
+    settingsPath: artifacts.settingsPath,
+    mcpConfigPath: artifacts.mcpConfigPath,
+    systemPromptPath: artifacts.systemPromptPath,
+    model: resolveModel('prepare', ctx.config, project),
+    resumeSessionId,
+    strictMcp: ctx.config.sessionMcp === 'runcastleOnly',
+  }
+
+  if (opts.spawn === false) {
+    emitProject(ctx, project.id, {
+      type: 'session.launched',
+      message: 'preparation session prepared (terminal spawn skipped)',
+      data: {
+        sessionId: session.id,
+        command: ['claude', ...buildClaudeArgs(buildInput)].join(' '),
+        spawned: false,
+      },
+    })
+    return { sessionId: session.id }
+  }
+
+  spawnEmbeddedPty(
+    ctx,
+    undefined,
+    session,
+    project.repoPath,
+    serverUrl,
+    buildClaudeArgs(buildInput),
+    { resumeSessionId },
+  )
+  return { sessionId: session.id }
+}
+
+/** Seed the conversation from the last headless run rather than starting cold. */
+async function buildPrepareBrief(ctx: AppCtx, project: Project): Promise<PrepareBrief> {
+  const findings = await listFindings(ctx, project)
+  const notes = latestPrepNotes(ctx, project.id)
+  return {
+    project,
+    remainingKeys: keysToPrepare(ctx, project),
+    established: findings.map((f) => ({
+      key: f.key,
+      source: f.source,
+      ...(f.evidence ? { evidence: f.evidence } : {}),
+    })),
+    ...(notes ? { notes } : {}),
+  }
+}
+
+/**
  * Work a waypoint (SPEC §13.2, backs `feature.workWaypoint`). A `research`
  * waypoint is worked AFK: it claims the waypoint for a headless `research` run
  * and returns `{ runId }`. Every other type opens a kind=`waypoint` HITL session
@@ -683,7 +805,7 @@ export interface SpawnMeta {
  */
 export function handlePtyExit(
   ctx: AppCtx,
-  feature: Feature,
+  feature: Feature | undefined,
   session: SessionRow,
   meta: SpawnMeta,
   exitCode: number | undefined | null,
@@ -696,7 +818,7 @@ export function handlePtyExit(
   releaseForSession(ctx, session.id)
   if (diedBeforeLive && meta.resumeSessionId) {
     const label = meta.waypoint ? `waypoint ${meta.waypoint.seq} (${meta.waypoint.title})` : session.kind
-    emit(ctx, feature.id, {
+    emitForSession(ctx, session, {
       type: 'session.resume_failed',
       message: `resume failed for ${label} — the session exited before starting (code ${exitCode ?? 'unknown'}); the previous conversation is still resumable`,
       data: {
@@ -707,7 +829,7 @@ export function handlePtyExit(
       },
     })
   }
-  emit(ctx, feature.id, {
+  emitForSession(ctx, session, {
     type: 'session.pty_exited',
     message: ptyExitMessage(exitCode),
     data: { sessionId: session.id, exitCode: exitCode ?? null },
@@ -735,7 +857,7 @@ const CC_NESTING_ENV = [
 
 function spawnEmbeddedPty(
   ctx: AppCtx,
-  feature: Feature,
+  feature: Feature | undefined,
   session: SessionRow,
   worktreePath: string,
   serverUrl: string,
@@ -757,7 +879,7 @@ function spawnEmbeddedPty(
       opts: { cwd: worktreePath, env, cols: 80, rows: 24, useConpty: true },
       onExit: ({ exitCode }) => handlePtyExit(ctx, feature, session, meta, exitCode),
     })
-    emit(ctx, feature.id, {
+    emitForSession(ctx, session, {
       type: 'session.launched',
       message: 'embedded terminal spawned',
       data: { sessionId: session.id, mode: 'embedded', pid: entry.pty.pid },
@@ -773,7 +895,7 @@ function spawnEmbeddedPty(
     // every future terminal on this feature until the next boot reconciliation.
     markSessionEnded(ctx, session.id)
     releaseForSession(ctx, session.id)
-    emit(ctx, feature.id, {
+    emitForSession(ctx, session, {
       type: 'session.spawn_failed',
       message: `failed to spawn embedded terminal: ${err instanceof Error ? err.message : String(err)}`,
       data: { sessionId: session.id, mode: 'embedded' },

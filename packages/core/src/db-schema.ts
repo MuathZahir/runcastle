@@ -128,7 +128,41 @@ export const features = sqliteTable('features', {
 
 export const sessions = sqliteTable('sessions', {
   id: text('id').primaryKey(),
-  featureId: text('feature_id').notNull(),
+  /**
+   * Null for PROJECT-scoped sessions (`kind = 'prepare'`), which exist before
+   * any feature does. Every other kind carries its feature.
+   *
+   * Nullable rather than a parallel table — the opposite of the call made for
+   * `project_preps` vs `runs`, and deliberately so. There, the machinery we
+   * refused to inherit was large (a finalizer that advances feature phases and
+   * sweeps tickets) and what we duplicated was small. Here it inverts: the PTY
+   * registry, hook receiver, boot reconciliation, `ccSessionId` resume and
+   * `sessionDir` are all entirely feature-agnostic, so a parallel table would
+   * duplicate the big half to avoid the small one.
+   *
+   * Safe by construction for every reader that FILTERS on this column — a NULL
+   * never matches `eq(sessions.featureId, x)`, so project sessions are
+   * invisible to the one-live-session-per-feature guard, to feature deletion
+   * cascades and to per-feature listings, which is what we want in all three
+   * cases. Readers that DEREFERENCE it are the ones that had to change; see
+   * `emitForSession`.
+   */
+  featureId: text('feature_id'),
+  /**
+   * The project a PROJECT-scoped session belongs to. Null on feature sessions,
+   * which derive their project through `feature_id` exactly as before.
+   *
+   * Events require a project id (`events.project_id` is NOT NULL — issue #44),
+   * and a `prepare` session has no feature to derive one from. Readers that
+   * only have a session row — boot reconciliation, the hook receiver, the PTY
+   * teardown — need it available without a lookup they cannot perform.
+   *
+   * Deliberately NOT backfilled onto existing feature sessions. Doing so would
+   * mean a migration that joins `features` and hard-fails on boot for any
+   * session whose feature is already gone; the feature path needs no such
+   * column, so the asymmetry buys a migration that cannot fail.
+   */
+  projectId: text('project_id'),
   kind: text('kind').notNull().$type<SessionKind>(),
   ccSessionId: text('cc_session_id'),
   transcriptPath: text('transcript_path'),

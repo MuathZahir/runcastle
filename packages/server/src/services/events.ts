@@ -1,4 +1,4 @@
-import type { EventRow } from '@runcastle/core'
+import type { EventRow, SessionRow } from '@runcastle/core'
 import { and, asc, eq, gt } from 'drizzle-orm'
 import type { AppCtx } from '../db/types'
 import { events, features } from '../db/schema'
@@ -60,6 +60,27 @@ export function emit(ctx: AppCtx, featureId: string, e: EmitInput): EventRow {
 /** Append a project-level timeline event (open/close/rename); no feature. */
 export function emitProject(ctx: AppCtx, projectId: string, e: EmitInput): EventRow {
   return insertEvent(ctx, projectId, null, e)
+}
+
+/**
+ * Emit for a session at whichever scope that session has: feature-scoped for
+ * every ordinary kind, project-scoped for `prepare` (which has no feature).
+ *
+ * This exists so the six lifecycle emitters — boot reconciliation, PTY
+ * teardown, the launcher's own events — do not each grow their own branch on a
+ * column that is now nullable. They are also the paths where getting it wrong
+ * is worst: several run during boot or teardown, where a throw is not a failed
+ * request but a server that will not start or a session that cannot be closed.
+ *
+ * A session with neither scope cannot be produced by any code path here, so it
+ * means a corrupt row. Emitting is never the caller's actual goal — it is the
+ * bookkeeping alongside it — so this drops the event and returns null rather
+ * than taking down a boot sweep over a timeline entry.
+ */
+export function emitForSession(ctx: AppCtx, session: SessionRow, e: EmitInput): EventRow | null {
+  if (session.featureId) return emit(ctx, session.featureId, e)
+  if (session.projectId) return emitProject(ctx, session.projectId, e)
+  return null
 }
 
 function insertEvent(

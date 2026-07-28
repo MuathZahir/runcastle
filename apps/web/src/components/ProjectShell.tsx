@@ -9,6 +9,7 @@ import { Inspector } from './Inspector'
 import { StatusBar } from './StatusBar'
 import { Workspace } from './Workspace'
 import { NewFeatureForm } from './NewFeatureForm'
+import { PreparationCard } from './PreparationCard'
 import { CommandPalette } from './CommandPalette'
 import { SettingsOverlay } from './SettingsOverlay'
 
@@ -86,7 +87,7 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
           />
         ) : (
           <section className="workspace">
-            <EmptyWorkspace onNewFeature={ws.startCreate} />
+            <EmptyWorkspace projectId={projectId} onNewFeature={ws.startCreate} />
           </section>
         )}
 
@@ -110,6 +111,12 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
         onSelect={ws.select}
         onNewFeature={ws.startCreate}
         onOpenSettings={() => ws.setSettings(true)}
+        // Preparation lives on the project home and in settings; from the
+        // palette, deselecting the feature reveals the home copy in place.
+        onOpenPreparation={() => {
+          ws.select(null)
+          ws.viewPhase(null)
+        }}
         nav={nav}
       />
 
@@ -120,17 +127,34 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
   )
 }
 
-function EmptyWorkspace({ onNewFeature }: { onNewFeature: () => void }) {
+/**
+ * The project home. Preparation lives here as well as in settings, because it is
+ * project-scoped: it has no place in the feature pipeline, and behind a settings
+ * overlay it was effectively invisible — you had to already know it existed to
+ * find it. This is the one screen you land on with no feature selected.
+ */
+function EmptyWorkspace({
+  projectId,
+  onNewFeature,
+}: {
+  projectId: string
+  onNewFeature: () => void
+}) {
   return (
-    <div className="ws-empty">
-      <div className="ws-empty-logo">
-        <LogoMark size={44} variant="outline" />
+    <div className="ws-empty-scroll">
+      <div className="ws-empty">
+        <div className="ws-empty-logo">
+          <LogoMark size={44} variant="outline" />
+        </div>
+        <div className="ws-empty-title">Select a feature to begin</div>
+        <div className="ws-empty-sub">Or create one — every feature moves through the same guided pipeline.</div>
+        <button className="btn btn-ghost" onClick={onNewFeature}>
+          New feature
+        </button>
       </div>
-      <div className="ws-empty-title">Select a feature to begin</div>
-      <div className="ws-empty-sub">Or create one — every feature moves through the same guided pipeline.</div>
-      <button className="btn btn-ghost" onClick={onNewFeature}>
-        New feature
-      </button>
+      <div className="ws-empty-aside">
+        <PreparationCard projectId={projectId} />
+      </div>
     </div>
   )
 }

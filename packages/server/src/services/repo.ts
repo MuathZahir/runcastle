@@ -74,7 +74,8 @@ export function rowToRun(row: RunSelect): Run {
 export function rowToSession(row: SessionSelect): SessionRow {
   return {
     id: row.id,
-    featureId: row.featureId,
+    featureId: row.featureId ?? undefined,
+    projectId: row.projectId ?? undefined,
     kind: row.kind,
     ccSessionId: row.ccSessionId ?? undefined,
     transcriptPath: row.transcriptPath ?? undefined,

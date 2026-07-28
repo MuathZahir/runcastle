@@ -4,6 +4,8 @@ import { listFindings } from '../../services/findings'
 import { browseDir, listRoots } from '../../services/fsbrowse'
 import * as git from '../../services/git'
 import { cancelPrep, isPreparing, keysToPrepare, latestPrep, startPrep } from '../../services/prep'
+import { launchPrepareSession } from '../../launcher/launcher'
+import { activeProjectSession } from '../../launcher/sessions'
 import { closeProject, listProjects, openProject, renameProject } from '../../services/projects'
 import { requireProjectById } from '../../services/repo'
 import { publicProcedure, router } from '../context'
@@ -77,6 +79,26 @@ export const projectRouter = router({
       })
       return { prepId, keys }
     }),
+
+  /**
+   * Open a preparation CONVERSATION — a project-scoped terminal on the host,
+   * seeded with whatever the last headless run established and, more usefully,
+   * with what it could not.
+   *
+   * The headless run measures; this one asks. It exists because the questions
+   * that block preparation are not ones a better prompt answers — a real run
+   * established seven of eight keys and declined the eighth because supplying it
+   * meant inventing a bootstrap step the repo documents nowhere. Unlike the
+   * container, this session can also RUN the host-only keys it proposes.
+   */
+  talkToPrep: publicProcedure
+    .input(z.object({ projectId: z.string() }))
+    .mutation(({ ctx, input }) => launchPrepareSession(ctx, { projectId: input.projectId })),
+
+  /** The live preparation conversation for this project, if one is open. */
+  prepSession: publicProcedure
+    .input(z.object({ projectId: z.string() }))
+    .query(({ ctx, input }) => activeProjectSession(ctx, input.projectId, 'prepare')),
 
   /** Abort an in-flight preparation run. */
   cancelPrepare: publicProcedure

@@ -340,6 +340,11 @@ export function detectPackageManager(tc: RepoToolchain): PackageManager | undefi
   return tc.hasPackageJson ? 'npm' : undefined
 }
 
+/** `strict`, then `permissive` if it fails — as one shell word (see below). */
+function orFallback(strict: string, permissive: string): string {
+  return `( ${strict} || ${permissive} )`
+}
+
 /**
  * The dependency-install command to run in the sandbox before the agent starts
  * (sandcastle `sandbox.onSandboxReady`), or `undefined` when there is nothing
@@ -350,6 +355,34 @@ export function detectPackageManager(tc: RepoToolchain): PackageManager | undefi
  * (present in the node:22 base image; neither manager is preinstalled), and
  * `--frozen-lockfile` (a working deprecated alias on yarn berry) / `npm ci` is
  * used only when the matching lockfile actually exists.
+ *
+ * **The strict form always falls back to the permissive one** — `( npm ci ||
+ * npm install )`. Lockfile presence is read off the HOST working tree, but the
+ * strict form asserts something about the lockfile that the sandbox may not be
+ * able to honour, and a wrong assertion here kills the run in a pre-agent hook
+ * before the agent gets a single turn. Two real repos, both measured:
+ *
+ * - **The lockfile is untracked.** `isolated` mode `git clone`s the workspace,
+ *   and a clone carries tracked files only — so `existsSync` says
+ *   `package-lock.json` is there and the container disagrees. `npm ci` dies
+ *   with EUSAGE ("can only install with an existing package-lock.json").
+ * - **The lockfile is tracked but stale.** It reaches the container intact and
+ *   `npm ci` correctly refuses to reconcile it ("Missing: … from lock file").
+ *
+ * Neither is worth failing over. The strict form is a claim about the lockfile;
+ * where the claim does not hold, the permissive install is simply the correct
+ * command, and preparation then *establishes* that with evidence — which is the
+ * entire point of the run it would otherwise have aborted. Reproducibility is
+ * preserved wherever it was actually available: the strict form still runs
+ * first and still wins whenever it can.
+ *
+ * Parenthesised because callers join parts with ` && ` and `&&`/`||` share
+ * precedence left-to-right: a bare `cd repo && npm ci || npm install` would run
+ * the fallback with the *whole preceding chain* as its left operand, installing
+ * in the wrong directory after an unrelated earlier failure.
+ *
+ * An explicit override is never wrapped — a command the user typed runs
+ * verbatim, including its own failure semantics.
  */
 export function resolveSetupCommand(tc: RepoToolchain, override?: string): string | undefined {
   const trimmed = override?.trim()
@@ -358,13 +391,19 @@ export function resolveSetupCommand(tc: RepoToolchain, override?: string): strin
   if (!pm) return undefined
   switch (pm) {
     case 'bun':
-      return tc.lockfiles.bun ? 'bun install --frozen-lockfile' : 'bun install'
+      return tc.lockfiles.bun
+        ? orFallback('bun install --frozen-lockfile', 'bun install')
+        : 'bun install'
     case 'pnpm':
-      return tc.lockfiles.pnpm ? 'corepack pnpm install --frozen-lockfile' : 'corepack pnpm install'
+      return tc.lockfiles.pnpm
+        ? orFallback('corepack pnpm install --frozen-lockfile', 'corepack pnpm install')
+        : 'corepack pnpm install'
     case 'yarn':
-      return tc.lockfiles.yarn ? 'corepack yarn install --frozen-lockfile' : 'corepack yarn install'
+      return tc.lockfiles.yarn
+        ? orFallback('corepack yarn install --frozen-lockfile', 'corepack yarn install')
+        : 'corepack yarn install'
     case 'npm':
-      return tc.lockfiles.npm ? 'npm ci' : 'npm install'
+      return tc.lockfiles.npm ? orFallback('npm ci', 'npm install') : 'npm install'
   }
 }
 

@@ -3,7 +3,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { beforeEach, describe, expect, it } from 'vitest'
 import type { Project } from '@runcastle/core'
-import { projects } from '../src/db/schema'
+import { PREPARED_KEYS } from '@runcastle/core'
+import { projectPreps, projects } from '../src/db/schema'
 import type { AppCtx } from '../src/db/types'
 import {
   isOverwritable,
@@ -13,7 +14,7 @@ import {
   recordHuman,
   unsetPreparedKeys,
 } from '../src/services/findings'
-import { applyFindings, keysToPrepare } from '../src/services/prep'
+import { applyFindings, keysToPrepare, shouldAutoPrepare } from '../src/services/prep'
 import { getSettings, updateSettings } from '../src/services/settings'
 import { makeTestCtx } from './helpers/db'
 
@@ -57,6 +58,59 @@ describe('isPreparedKey', () => {
     expect(isPreparedKey('dbResetCommand')).toBe(true)
     expect(isPreparedKey('model')).toBe(false)
     expect(isPreparedKey('burnConcurrency')).toBe(false)
+  })
+})
+
+/**
+ * The auto-prepare trigger. This used to key off "the project row was just
+ * inserted", which meant every project opened before preparation existed could
+ * never auto-prepare — preparation looked broken to exactly the people with the
+ * most history, and the only way in was a button inside the settings overlay.
+ */
+describe('shouldAutoPrepare', () => {
+  // The shared test ctx keeps autoPrepare OFF so no unrelated test spawns an
+  // agent; these opt in to exercise the trigger itself.
+  const on = (): AppCtx => ({ ...ctx, config: { ...ctx.config, autoPrepare: true } })
+
+  it('fires for an existing project that has never been prepared', () => {
+    expect(shouldAutoPrepare(on(), project())).toBe(true)
+  })
+
+  it('does not fire when the feature is off', () => {
+    expect(shouldAutoPrepare(ctx, project())).toBe(false)
+  })
+
+  // Once, ever — a failed or cancelled run still counts as "the user has seen
+  // this", so opening the project again does not silently retry a container
+  // build they may have cancelled on purpose.
+  it('does not fire again once any run exists, whatever its outcome', () => {
+    for (const status of ['succeeded', 'failed', 'cancelled'] as const) {
+      const fresh = on()
+      fresh.db
+        .insert(projectPreps)
+        .values({
+          id: `prep_${status}`,
+          projectId: PROJECT_ID,
+          status,
+          startedAt: Date.now(),
+          endedAt: Date.now(),
+          summary: null,
+          headSha: null,
+        })
+        .run()
+      expect(shouldAutoPrepare(fresh, project())).toBe(false)
+      fresh.db.delete(projectPreps).run()
+    }
+  })
+
+  it('does not fire when a human has already answered everything', () => {
+    for (const key of PREPARED_KEYS) {
+      recordFinding(ctx, PROJECT_ID, { key, value: 'set by hand', source: 'human' })
+    }
+    const answered = project(
+      Object.fromEntries(PREPARED_KEYS.map((k) => [k, 'set by hand'])) as Partial<Project>,
+    )
+    expect(shouldAutoPrepare(on(), answered)).toBe(false)
   })
 })
 

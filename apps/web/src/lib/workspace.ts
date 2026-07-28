@@ -64,8 +64,9 @@ export interface WorkspaceApi {
   /** Show the one-line guide captions on the next-step bar and phase bodies. */
   guidance: boolean
 
-  /** Select a feature (clears the phase pin and closes the create form). */
-  select: (featureId: string) => void
+  /** Select a feature, or `null` to return to the project home (clears the
+   *  phase pin and closes the create form). */
+  select: (featureId: string | null) => void
   /** Pin a phase to view (null = follow live phase). */
   viewPhase: (phase: Phase | null) => void
   /** Open the new-feature form in the workspace. */
@@ -109,7 +110,9 @@ export function useWorkspace(projectId: string): WorkspaceApi {
     writeLS(GUIDANCE_KEY, guidance ? '1' : '0')
   }, [guidance])
 
-  const select = useCallback((featureId: string) => {
+  // `null` deselects, which is how the project home (and the preparation card
+  // that lives on it) is reached without leaving the project.
+  const select = useCallback((featureId: string | null) => {
     setSelected(featureId)
     setViewedPhase(null)
     setCreating(false)

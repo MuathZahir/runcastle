@@ -51,6 +51,8 @@ An opinionated programming system layered on Claude Code — the IDE to Claude C
 
 14. **Name: runcastle.** Takes the runcastle.dev domain and brand.
 
+15. **Laps: iteration without a mode.** A feature may loop until the human is happy — "agile" vs "waterfall" are not modes, just descriptions of how a feature went. From review, three verbs: **Fix** (test-drive notes promoted to tickets one click each, burned via the existing review→implementation loop-back; same lap), **Rethink** (new **lap**: back to ideation), **Merge** (happy — the loop closes on the feature branch; one merge, at the end). Laps 2+ default to one unbroken session — digest test notes → update decisions/spec → emit the lap's tickets, auto-advancing phases via MCP — so lap cost scales with rethink size; full ceremony and the map stay available as opt-in escalation. The test-drive panel quick-captures notes (appended per lap to `test-notes.md`, injected into the next lap's session, which is told which notes are already tickets so it never re-emits them). Slicing is the grilling skill's judgment driven by user certainty — unsure → thin lap 1, deferred scope parked in the spec's `## Later laps` section; sure → spec it whole, likely merge on lap 1. Machinery: `feature.lap` counter (Rethink increments, Fix doesn't), `lap` column on tickets (G3/burn scoped to current lap), lap tags on sessions/events, no laps table; G1/G2 stay dumb on later laps (the lap starts with its grilling by construction).
+
 ## Design principles
 
 - **Flexible guidance over brittle machinery.** When in doubt, less mechanism. Gates guide; they never imprison. (Standing user directive.)
@@ -62,6 +64,7 @@ An opinionated programming system layered on Claude Code — the IDE to Claude C
 - Ticket schema design (first build task — the burner and `/to-tickets` fork both consume it).
 - Sandcastle auth for AFK agents (`claude setup-token` → `CLAUDE_CODE_OAUTH_TOKEN` in `.sandcastle/.env`) — setup prerequisite.
 - Automated testing workflow (browser agents) to shrink human click #2.
+- Per-burn overhead (sandbox spin-up, burner orientation) — attack independently so laps never feel slower than "I could've done it in one Claude session" (warm/reused sandboxes per feature, tighter burner context).
 - Fork-a-feature mechanics (new session seeded from parent knowledge; CC `--fork-session` where applicable).
 - Multi-project — in flight via the publish wayfinder map ([GH #12](https://github.com/MuathZahir/runcastle/issues/12)): full parallel multi-project UI.
 - Full-fat worktrees for side-by-side dev servers (only if the guarded switch proves annoying).

@@ -1,4 +1,4 @@
-import type { Feature } from '@runcastle/core'
+import type { Feature, SessionRow } from '@runcastle/core'
 import { Hono } from 'hono'
 import type { AppCtx } from '../db/types'
 import { getRuntimeCtx } from '../launcher/runtime'
@@ -8,8 +8,9 @@ import {
   markSessionLive,
   noteKickoffPrompt,
 } from '../launcher/sessions'
-import { emit } from '../services/events'
-import { tryGetFeature } from '../services/repo'
+import { emit, emitForSession } from '../services/events'
+import { keysToPrepare } from '../services/prep'
+import { getProjectById, tryGetFeature } from '../services/repo'
 import { listByFeature } from '../services/tickets'
 import { releaseForSession } from '../services/waypoints'
 
@@ -53,6 +54,23 @@ hooks.post('/:event', async (c) => {
     const ctx = await getRuntimeCtx()
     const session = getSessionRow(ctx, sessionId)
     if (!session) return c.json({})
+
+    // Project-scoped (`prepare`) sessions have no feature. They still need the
+    // full lifecycle — `markSessionLive` is what flips the row live and lets the
+    // kickoff be typed, so returning early here would leave the terminal open
+    // and permanently silent — but none of the feature briefing applies.
+    if (!session.featureId) {
+      switch (event) {
+        case 'session-start':
+          return c.json(handlePrepareSessionStart(ctx, session, body.payload))
+        case 'user-prompt':
+          return c.json(handlePrepareUserPrompt(ctx, session, body.payload))
+        case 'session-end':
+          return c.json(handlePrepareSessionEnd(ctx, session))
+        default:
+          return c.json({})
+      }
+    }
 
     const feature = tryGetFeature(ctx, session.featureId)
     if (!feature) return c.json({})
@@ -108,6 +126,83 @@ function handleSessionStart(
       additionalContext: sessionStartContext(ctx, feature),
     },
   }
+}
+
+// --- project-scoped (`prepare`) session hooks --------------------------------
+
+/**
+ * `SessionStart` for a preparation conversation. Same lifecycle bookkeeping as
+ * the feature path — flip live, keep `ccSessionId`/`transcript_path` current
+ * across `/clear` and compaction — with a project brief instead of a feature
+ * one. The digest re-grounds the agent on what is still unestablished, which is
+ * exactly the state a compaction is most likely to have dropped.
+ */
+function handlePrepareSessionStart(
+  ctx: AppCtx,
+  session: SessionRow,
+  payload: Record<string, unknown> | undefined,
+): unknown {
+  const ccSessionId = typeof payload?.session_id === 'string' ? payload.session_id : undefined
+  const transcriptPath =
+    typeof payload?.transcript_path === 'string' ? payload.transcript_path : undefined
+  const source = typeof payload?.source === 'string' ? payload.source : undefined
+
+  const wasLive = getSessionRow(ctx, session.id)?.status === 'live'
+  markSessionLive(ctx, session.id, { ccSessionId, transcriptPath })
+  if (!wasLive) {
+    emitForSession(ctx, session, {
+      type: 'session.started',
+      message: source === 'resume' ? 'preparation session live (resumed)' : 'preparation session live',
+      data: { sessionId: session.id, ccSessionId, transcriptPath, source: source ?? null },
+    })
+  }
+
+  return {
+    hookSpecificOutput: {
+      hookEventName: 'SessionStart',
+      additionalContext: prepareStartContext(ctx, session),
+    },
+  }
+}
+
+function handlePrepareUserPrompt(
+  ctx: AppCtx,
+  session: SessionRow,
+  payload: Record<string, unknown> | undefined,
+): unknown {
+  const prompt = typeof payload?.prompt === 'string' ? payload.prompt : undefined
+  noteKickoffPrompt(ctx, session.id, prompt)
+  return {
+    hookSpecificOutput: {
+      hookEventName: 'UserPromptSubmit',
+      additionalContext: `[runcastle] preparation session (project-scoped, no feature)`,
+    },
+  }
+}
+
+function handlePrepareSessionEnd(ctx: AppCtx, session: SessionRow): unknown {
+  markSessionEnded(ctx, session.id)
+  emitForSession(ctx, session, {
+    type: 'session.ended',
+    message: 'preparation session ended',
+    data: { sessionId: session.id },
+  })
+  return {}
+}
+
+/** What is still unestablished for this project, for the SessionStart digest. */
+function prepareStartContext(ctx: AppCtx, session: SessionRow): string {
+  const project = session.projectId ? getProjectById(ctx, session.projectId) : null
+  if (!project) return '[runcastle] preparation session — project not found'
+  const remaining = keysToPrepare(ctx, project)
+  return [
+    `[runcastle] preparation session for ${project.name} (${project.repoPath}).`,
+    remaining.length > 0
+      ? `Still unestablished: ${remaining.join(', ')}.`
+      : 'Every prepared field currently has a value.',
+    'Record what you establish with the `record_finding` MCP tool — a value the user',
+    'gives you or confirms verbatim is theirs (userSupplied: true), anything you measured is not.',
+  ].join(' ')
 }
 
 /**

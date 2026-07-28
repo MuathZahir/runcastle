@@ -37,8 +37,28 @@ export type TicketStatus = z.infer<typeof TicketStatus>
  * resumable conversation to amend docs and do ticket surgery (edit/cancel/emit);
  * never advances phases.
  */
-export const SessionKind = z.enum(['ideation', 'qa', 'waypoint', 'converge', 'revisit'])
+export const SessionKind = z.enum(['ideation', 'qa', 'waypoint', 'converge', 'revisit', 'prepare'])
 export type SessionKind = z.infer<typeof SessionKind>
+
+/**
+ * The one PROJECT-scoped session kind: `prepare` has no feature, so its
+ * `sessions.feature_id` is null (the only kind for which that is true).
+ *
+ * It exists because a headless preparation run can measure a repo but cannot
+ * ask a question. A real run established 7 of 8 keys and then declined the 8th
+ * — it knew the variable name, wrote out what the value would look like, and
+ * stopped, because supplying it meant inventing a bootstrap step the repo
+ * documents nowhere. That is not a prompt problem; it needs a human. This kind
+ * is the conversation that closes those gaps, and unlike the headless run it
+ * executes on the HOST, so the five keys prep can only propose ("not executed —
+ * host-only") can actually be run and verified.
+ */
+export const PROJECT_SESSION_KINDS = ['prepare'] as const
+
+/** True for session kinds that belong to a project rather than a feature. */
+export function isProjectSessionKind(kind: SessionKind): boolean {
+  return (PROJECT_SESSION_KINDS as readonly string[]).includes(kind)
+}
 
 export const RunStatus = z.enum(['running', 'succeeded', 'failed', 'cancelled'])
 export type RunStatus = z.infer<typeof RunStatus>
@@ -164,8 +184,19 @@ export const PREPARED_KEYS = [
 export const PreparedKey = z.enum(PREPARED_KEYS)
 export type PreparedKey = z.infer<typeof PreparedKey>
 
-/** Who established a prepared value. A `human` value is never auto-overwritten. */
-export const FindingSource = z.enum(['prep', 'human'])
+/**
+ * Who established a prepared value. A `human` value is never auto-overwritten.
+ *
+ * `session` is the interactive-preparation source: an agent measured it on the
+ * host while a human watched. It deliberately does NOT lock the key the way
+ * `human` does — a later headless run may still improve it — but it stays
+ * distinguishable in the UI from an unattended finding, because "I ran this on
+ * your actual machine with you there" is a different claim from "I ran this in
+ * a container". A value the human supplied or confirmed verbatim during that
+ * same session is recorded as `human`, not `session`: the lock belongs to who
+ * decided the value, not to which process wrote the row.
+ */
+export const FindingSource = z.enum(['prep', 'human', 'session'])
 export type FindingSource = z.infer<typeof FindingSource>
 
 export const Project = z.object({
@@ -247,7 +278,10 @@ export type Feature = z.infer<typeof Feature>
 
 export const SessionRow = z.object({
   id: z.string(),
-  featureId: z.string(),
+  /** Absent on project-scoped sessions (`kind = 'prepare'`) — see the db schema. */
+  featureId: z.string().optional(),
+  /** Set on project-scoped sessions only; feature sessions derive it via the feature. */
+  projectId: z.string().optional(),
   kind: SessionKind,
   ccSessionId: z.string().optional(),
   transcriptPath: z.string().optional(),

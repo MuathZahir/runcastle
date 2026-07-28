@@ -328,6 +328,38 @@ export function createPrepStreamThrottle(
 // Real sandcastle boundary (IO) — not exercised by unit tests
 // ---------------------------------------------------------------------------
 
+/**
+ * Make the pre-agent dependency install best-effort.
+ *
+ * Preparation exists to ESTABLISH `setupCommand`. Letting it die because the
+ * *guess* at that command failed is the one failure mode it must not have — and
+ * it is not hypothetical: two real repos killed a run each here before the agent
+ * got a single turn. One had an untracked lockfile the sandbox clone never saw;
+ * the other had a genuine peer-dependency conflict (`@types/react-dom` wanting a
+ * newer `@types/react` than the project pinned) that no install command we could
+ * have guessed would resolve. In both cases the agent was well placed to find
+ * what actually works — `--legacy-peer-deps`, the flag the error itself names,
+ * whatever CI does — and report it with evidence. It never got the chance.
+ *
+ * So the install may fail; the agent starts anyway and is told (see the prompt
+ * template) to verify the workspace really installed before trusting any test
+ * result. A missing `node_modules` is a fact the agent can measure and fix. An
+ * aborted run is not.
+ *
+ * **Prep only.** The burner keeps its fail-fast install: a ticket agent without
+ * dependencies produces garbage commits, and there failing early is cheaper than
+ * discovering it late. The asymmetry is the point — prep's job IS the unknown
+ * install, the burner's job assumes a known one.
+ *
+ * Parenthesised for the same precedence reason as the fallback in
+ * {@link resolveSetupCommand}: callers join with ` && `, so a bare `|| true`
+ * would swallow the failure of every step before it — including the clone,
+ * whose failure must stay fatal.
+ */
+export function nonFatalSetup(setupCommand: string): string {
+  return `( ${setupCommand} || true )`
+}
+
 /** Absolute path to the preparation prompt template (workspace or vendored). */
 export function prepTemplatePath(): string {
   const here = dirname(fileURLToPath(import.meta.url))
@@ -381,14 +413,19 @@ async function realExecutePrepRun(
   if (setupCommand) {
     ctx.emitEvent({
       type: 'prep.setup',
-      message: `installing deps before the agent starts: ${setupCommand}`,
+      message: `attempting a dependency install before the agent starts (best-effort): ${setupCommand}`,
     })
   }
 
+  // Best-effort: a failed install must not abort the run (see nonFatalSetup).
+  // The prompt still shows the UNWRAPPED command — the `|| true` is plumbing,
+  // and quoting it at the agent would only muddy what it is asked to verify.
+  const prepSetupCommand = setupCommand ? nonFatalSetup(setupCommand) : undefined
+
   const hookCommand =
     workspaceMode === 'isolated'
-      ? buildIsolatedSetupCommand(branch, setupCommand, pm)
-      : setupCommand
+      ? buildIsolatedSetupCommand(branch, prepSetupCommand, pm)
+      : prepSetupCommand
 
   const runOptions: RunOptions = {
     agent: buildBurnAgent(config, token, model),

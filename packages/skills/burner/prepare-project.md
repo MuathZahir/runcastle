@@ -23,11 +23,13 @@ You pay both costs once, here, so that no one pays them again.
 
 You are running in the **same sandbox image and with the same setup command** that ticket agents will get. That is deliberate: a test baseline captured somewhere else is not comparable to what those agents will see, and a wrong baseline is worse than no baseline — an agent trusts it and files its own breakage under "already red".
 
-Dependencies have already been installed by this command (or none was needed):
+A dependency install was **attempted** before you started, with this command (or none was needed):
 
 ```
 {{SETUP_COMMAND}}
 ```
+
+**It is not guaranteed to have succeeded.** That command is a guess, derived from which lockfiles happen to be present — and the command that actually works is `setupCommand`, the first thing this run exists to establish. So before you trust any test result, confirm dependencies really are installed: check that the tooling runs and that `node_modules` (or this stack's equivalent) is populated. If the install did not happen, finding the command that works is your first job — try the permissive form, the flags the error output itself recommends, or whatever the repo's own CI does — and report that as `setupCommand`. Put the failure you saw in `notes`, because a repo whose stock install does not work from a clean checkout is exactly the kind of thing every agent after you would otherwise rediscover.
 
 ## How to work
 
