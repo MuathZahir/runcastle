@@ -89,6 +89,12 @@ export const Ticket = TicketInput.extend({
   featureId: z.string(),
   seq: z.number(),
   status: TicketStatus,
+  /**
+   * The lap this ticket was emitted in (ADR-0010 / SPEC §15.1). Stamped from
+   * `feature.lap` at store time — `TicketInput` deliberately has no `lap`,
+   * because sessions never choose it.
+   */
+  lap: z.number(),
   commits: z.array(z.string()),
   error: z.string().optional(),
   /**
@@ -264,6 +270,13 @@ export const Feature = z.object({
    * escalation. Defaults to false.
    */
   mapped: z.boolean(),
+  /**
+   * Which trip round the pipeline the feature is on (ADR-0010 / SPEC §15.1).
+   * Starts at 1; Rethink increments it, Fix never does. Tickets, sessions and
+   * events are stamped with it, and the lap trail is derived by grouping on
+   * those stamps — there is no laps table.
+   */
+  lap: z.number(),
   phase: Phase,
   branch: z.string(),
   /**

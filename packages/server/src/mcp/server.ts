@@ -109,6 +109,11 @@ function requireFeatureId(session: SessionRow): string {
 export interface FeatureContext {
   feature: ReturnType<typeof getFeatureRow>
   phase: PhaseT
+  /**
+   * The lap the feature is on (SPEC §15.3). `tickets` below is the full history
+   * across every lap — the `lap` on each row is what distinguishes them.
+   */
+  lap: number
   docs: { relPath: string; content: string }[]
   tickets: Ticket[]
   /** Mapped features only (ADR-0001 §13.3): every waypoint on the map… */
@@ -131,6 +136,7 @@ export function toolGetFeatureContext(ctx: AppCtx, session: SessionRow): Feature
   const context: FeatureContext = {
     feature,
     phase: feature.phase,
+    lap: feature.lap,
     docs,
     tickets: listByFeature(ctx, feature.id),
   }

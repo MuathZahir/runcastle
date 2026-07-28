@@ -5,6 +5,7 @@ import type { AppCtx } from '../db/types'
 import { tickets } from '../db/schema'
 import { InvalidInputError, NotFoundError } from '../errors'
 import { emit } from './events'
+import { getFeatureRow } from './repo'
 
 /**
  * Ticket storage. The ideation session emits `TicketInput[]` in one batch via
@@ -26,6 +27,7 @@ function rowToTicket(row: TicketSelect): Ticket {
     acceptanceCriteria: row.acceptanceCriteria,
     seams: row.seams,
     blockedBy: row.blockedBy,
+    lap: row.lap,
     status: row.status,
     commits: row.commits,
     error: row.error ?? undefined,
@@ -66,6 +68,10 @@ export function listByFeature(ctx: AppCtx, featureId: string): Ticket[] {
  * to global seqs — and out-of-range/self edges rejected — by core's
  * `resolveBatchBlocking` (see that utility for the seq-vs-id note). An invalid
  * edge surfaces as `InvalidInputError`.
+ *
+ * Every row is stamped with the feature's CURRENT lap (ADR-0010 / SPEC §15.1);
+ * the emitting session never chooses it, which is why `TicketInput` has no
+ * `lap`. Earlier laps' tickets keep the lap they were stored in.
  */
 export function storeTickets(
   ctx: AppCtx,
@@ -73,6 +79,8 @@ export function storeTickets(
   inputs: TicketInput[],
 ): Ticket[] {
   if (inputs.length === 0) return []
+
+  const { lap } = getFeatureRow(ctx, featureId)
 
   const existing = ctx.db
     .select({ seq: tickets.seq })
@@ -93,6 +101,7 @@ export function storeTickets(
     acceptanceCriteria: t.acceptanceCriteria,
     seams: t.seams,
     blockedBy: resolved[i].blockedBy,
+    lap,
     status: 'pending' as const,
     commits: [] as string[],
     error: null,
