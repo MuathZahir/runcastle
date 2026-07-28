@@ -364,6 +364,104 @@ describe('parseMapSections', () => {
 })
 
 /**
+ * Improve-map-workflow ticket 6 — the next-step bar owns convergence. For a
+ * mapped feature at ideation the bar's primary IS Converge once G1 is satisfied;
+ * while waypoints are open it carries the blocking reason and the
+ * override-with-reason affordance instead. Remaining fog rides along as a
+ * warning that never gates the button, and the scroll-to-terminal action is gone.
+ */
+describe('nextStep — mapped ideation owns Converge', () => {
+  function mappedIdeation(
+    opts: { satisfied?: boolean; reason?: string | null; live?: boolean } = {},
+  ): FeatureFull {
+    const satisfied = opts.satisfied ?? false
+    return {
+      feature: { id: 'f1', phase: 'ideation', mapped: true, status: 'active' },
+      tickets: [],
+      sessions: opts.live ? [{ id: 's1', status: 'live', kind: 'waypoint' }] : [],
+      runs: [],
+      docs: [],
+      gate: {
+        next: { id: 'G1' },
+        satisfied,
+        reason: opts.reason === undefined ? '2 waypoints still open' : opts.reason,
+      },
+      waypoints: [],
+      frontierIds: [],
+    } as unknown as FeatureFull
+  }
+
+  const MAP_WITH_FOG = [
+    '## Destination',
+    'Ship the rail.',
+    '',
+    '## Not yet specified',
+    'the keyboard shortcut for “work next waypoint”',
+  ].join('\n')
+
+  it('makes Converge the primary action once every waypoint is terminal', () => {
+    const ns = nextStep(mappedIdeation({ satisfied: true }), { driving: false })
+    expect(ns.primary).toEqual({ label: 'Converge', kind: 'converge' })
+    expect(ns.secondary).toEqual([])
+    expect(ns.title).toBe('Converge the map')
+  })
+
+  it('exposes the override affordance and the blocking reason while waypoints are open', () => {
+    const ns = nextStep(
+      mappedIdeation({ reason: '2 waypoints still open — resolve or drop them' }),
+      { driving: false },
+    )
+    expect(ns.primary).toBeUndefined()
+    expect(ns.desc).toBe('2 waypoints still open — resolve or drop them')
+    expect(ns.secondary).toEqual([
+      {
+        label: 'Override & converge…',
+        kind: 'convergeOverride',
+        reason: {
+          placeholder: 'reason to converge past open waypoints',
+          submitLabel: 'Converge anyway',
+        },
+      },
+    ])
+  })
+
+  it('falls back to a plain instruction when the gate gives no reason', () => {
+    const ns = nextStep(mappedIdeation({ reason: null }), { driving: false })
+    expect(ns.desc).toBe('Resolve the open waypoints; converge once the frontier clears.')
+  })
+
+  it('surfaces the map’s remaining fog without gating Converge', () => {
+    const ns = nextStep(mappedIdeation({ satisfied: true }), {
+      driving: false,
+      mapContent: MAP_WITH_FOG,
+    })
+    expect(ns.fog).toBe('the keyboard shortcut for “work next waypoint”')
+    // Shown, never enforced: the primary is still Converge, and nothing about it
+    // changes because fog remains.
+    expect(ns.primary).toEqual({ label: 'Converge', kind: 'converge' })
+  })
+
+  it('shows the same fog while the gate is still blocking', () => {
+    const ns = nextStep(mappedIdeation(), { driving: false, mapContent: MAP_WITH_FOG })
+    expect(ns.fog).toBe('the keyboard shortcut for “work next waypoint”')
+  })
+
+  it('carries no fog when the map has none, or has not loaded yet', () => {
+    const clear = '## Destination\nShip the rail.\n\n## Not yet specified\n\n'
+    expect(nextStep(mappedIdeation(), { driving: false, mapContent: clear }).fog).toBeUndefined()
+    expect(nextStep(mappedIdeation(), { driving: false }).fog).toBeUndefined()
+  })
+
+  it('never offers the scroll-to-terminal action, live session or not', () => {
+    for (const satisfied of [true, false]) {
+      const ns = nextStep(mappedIdeation({ satisfied, live: true }), { driving: false })
+      const kinds = [ns.primary, ...ns.secondary].map((a) => a?.kind)
+      expect(kinds).not.toContain('openGrill')
+    }
+  })
+})
+
+/**
  * Improve-map-workflow ticket 3 — the rail's grouping, ordering, lineage and
  * default-expanded state as a pure derivation, because this repo has no DOM
  * test environment and the rail component is kept thin over it.

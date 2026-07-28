@@ -860,6 +860,22 @@ button {
 }
 .nextstep-actions { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
 
+/* Convergence lives in the bar (ADR-0001 §13.6): remaining map fog as a soft
+   warning under the description, and the override's inline reason input. */
+.nextstep-fog {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-top: 4px;
+  font-family: var(--mono);
+  font-size: 11.5px;
+  line-height: 1.6;
+  color: color-mix(in srgb, var(--needs) 82%, var(--text));
+}
+.nextstep-fog-icon { flex-shrink: 0; color: var(--needs); }
+.nextstep-override { display: flex; align-items: center; gap: 8px; }
+.nextstep-override .override-input { width: 260px; }
+
 /* read-only banner (viewing a past phase) */
 .readonly-bar {
   margin-top: 12px;
@@ -1337,33 +1353,6 @@ details.wp-group-done > summary { cursor: pointer; list-style: revert; }
   background: var(--panel-2);
 }
 .converge-resume-text { font-size: 12.5px; color: var(--text-2); }
-
-/* Convergence control (ADR-0001 §13.6): Converge button + soft fog warning. */
-.converge-bar {
-  margin-top: 18px;
-  padding-top: 16px;
-  border-top: 1px solid var(--hairline);
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  align-items: flex-start;
-}
-.converge-fog {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  font-family: var(--mono);
-  font-size: 11.5px;
-  line-height: 1.6;
-  color: var(--needs);
-}
-.converge-fog-icon { flex-shrink: 0; }
-.converge-fog-text { color: color-mix(in srgb, var(--needs) 82%, var(--text)); }
-.converge-btn { min-width: 120px; }
-.converge-override { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-/* the reason input sizes to the rail, not to its default character width */
-.converge-override .override-input { width: 100%; min-width: 0; }
-.converge-blocked { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
 
 /* ============================================================================
    PHASE BODY — tickets ledger
