@@ -754,6 +754,11 @@ const WAYPOINT_GROUP_LABELS: Record<WaypointGroupKey, string> = {
  * is ordered by ascending seq — charting order, the closest thing to authored
  * intent. Every other group keeps the order the server sent.
  */
+/** A waypoint that is finished with, either way it went. */
+function isTerminal(w: Waypoint): boolean {
+  return w.status === 'resolved' || w.status === 'dropped'
+}
+
 export function waypointGroups(
   waypoints: Waypoint[],
   frontierIds: string[],
@@ -761,7 +766,6 @@ export function waypointGroups(
   const front = new Set(frontierIds)
   const byId = new Map(waypoints.map((w) => [w.id, w]))
   const bySeq = new Map(waypoints.map((w) => [w.seq, w]))
-  const isTerminal = (w: Waypoint) => w.status === 'resolved' || w.status === 'dropped'
 
   const groupOf = (w: Waypoint): WaypointGroupKey => {
     if (isTerminal(w)) return 'done'
@@ -793,4 +797,53 @@ export function waypointGroups(
   return order
     .map((key) => ({ key, label: WAYPOINT_GROUP_LABELS[key], waypoints: buckets[key] }))
     .filter((g) => g.waypoints.length > 0)
+}
+
+// --- the session strip's done state (decision #9) ---------------------------
+
+/**
+ * What the terminal strip has to say about a session whose waypoint is finished.
+ * `notDone` is the ordinary live rendering; the other three are the done cases,
+ * each carrying the resolved waypoint itself (its `summary` is the line the
+ * human reads).
+ */
+export type SessionDoneState =
+  | { kind: 'notDone' }
+  /** Resolved, and the frontier has somewhere to go next — the one offered button. */
+  | { kind: 'workNext'; waypoint: Waypoint; next: Waypoint }
+  /** Resolved, frontier empty, research runs still holding claims — nothing to click. */
+  | { kind: 'awaitingResearch'; waypoint: Waypoint; claimed: number }
+  /** Resolved, and nothing is left open — the next-step bar owns Converge. */
+  | { kind: 'mapComplete'; waypoint: Waypoint }
+
+/**
+ * The done state for the session the strip is rendering (decision #9). A session
+ * owns the waypoint whose `lastSessionId` is its own — `resolve` clears
+ * `claimedBy` but keeps that pointer, so the link survives resolution. It is only
+ * promoted once the session actually went live, so a session that died on the way
+ * up owns nothing and reads as not done; so does any session on a feature with no
+ * waypoints at all.
+ *
+ * "Next" is the lowest-`seq` waypoint on the server-derived frontier — charting
+ * order, the closest thing to authored intent, with the rest of the frontier one
+ * glance away in the rail.
+ */
+export function sessionDoneState(
+  full: FeatureFull,
+  session: Pick<FeatureFull['sessions'][number], 'id'>,
+): SessionDoneState {
+  const waypoint = full.waypoints.find((w) => w.lastSessionId === session.id)
+  if (!waypoint || !isTerminal(waypoint)) return { kind: 'notDone' }
+
+  const next = full.waypoints
+    .filter((w) => full.frontierIds.includes(w.id))
+    .sort((a, b) => a.seq - b.seq)[0]
+  if (next) return { kind: 'workNext', waypoint, next }
+
+  // An empty frontier with claims still standing means AFK research is in flight
+  // (a live session would be holding this feature's one terminal, which is ours).
+  const claimed = full.waypoints.filter((w) => w.status === 'claimed').length
+  if (claimed > 0) return { kind: 'awaitingResearch', waypoint, claimed }
+
+  return { kind: 'mapComplete', waypoint }
 }

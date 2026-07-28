@@ -7,6 +7,7 @@ import {
   nextStep,
   parseMapSections,
   REVIEW_ITERATE_KICKOFF,
+  sessionDoneState,
   triage,
   triageOf,
   unresolvedMergeConflict,
@@ -368,22 +369,22 @@ describe('parseMapSections', () => {
  * default-expanded state as a pure derivation, because this repo has no DOM
  * test environment and the rail component is kept thin over it.
  */
-describe('waypointGroups', () => {
-  function wp(over: Partial<Waypoint> & Pick<Waypoint, 'id' | 'seq' | 'title'>): Waypoint {
-    return {
-      featureId: 'feat_1',
-      type: 'grilling',
-      question: `what about ${over.title}?`,
-      blockedBy: [],
-      originWaypointId: null,
-      status: 'open',
-      claimedBy: null,
-      lastSessionId: null,
-      summary: null,
-      ...over,
-    } as Waypoint
-  }
+function wp(over: Partial<Waypoint> & Pick<Waypoint, 'id' | 'seq' | 'title'>): Waypoint {
+  return {
+    featureId: 'feat_1',
+    type: 'grilling',
+    question: `what about ${over.title}?`,
+    blockedBy: [],
+    originWaypointId: null,
+    status: 'open',
+    claimedBy: null,
+    lastSessionId: null,
+    summary: null,
+    ...over,
+  } as Waypoint
+}
 
+describe('waypointGroups', () => {
   const keys = (gs: ReturnType<typeof waypointGroups>) => gs.map((g) => g.key)
   const titles = (gs: ReturnType<typeof waypointGroups>, key: string) =>
     gs.find((g) => g.key === key)?.waypoints.map((r) => r.waypoint.title) ?? []
@@ -474,5 +475,99 @@ describe('waypointGroups', () => {
     ]
     const groups = waypointGroups(ws, ['w1'])
     expect(groups.map((g) => g.label)).toEqual(['Frontier', 'Resolved / dropped'])
+  })
+})
+
+/**
+ * Improve-map-workflow ticket 5 — the session strip's done state. A waypoint
+ * session finds its own waypoint through `lastSessionId` (resolving clears the
+ * claim but leaves that pointer), and the strip then says one of three things —
+ * or nothing at all, while the work is still live. Pure derivation: this repo
+ * has no DOM environment, so the strip is kept thin over it.
+ */
+describe('sessionDoneState', () => {
+  const session = { id: 'sess_1', kind: 'waypoint', status: 'live' }
+
+  function mappedFull(waypoints: Waypoint[], frontierIds: string[]): FeatureFull {
+    return {
+      feature: { id: 'feat_1', phase: 'ideation', mapped: true, status: 'active' },
+      tickets: [],
+      sessions: [session],
+      runs: [],
+      docs: [],
+      gate: { next: { id: 'G1' }, satisfied: false, reason: null },
+      waypoints,
+      frontierIds,
+    } as unknown as FeatureFull
+  }
+
+  const mine = (over: Partial<Waypoint> = {}) =>
+    wp({ id: 'w1', seq: 1, title: 'mine', lastSessionId: session.id, ...over })
+
+  it('is not done while this session’s waypoint is still claimed', () => {
+    const ws = [mine({ status: 'claimed', claimedBy: session.id })]
+    expect(sessionDoneState(mappedFull(ws, []), session)).toEqual({ kind: 'notDone' })
+  })
+
+  it('is not done when no waypoint points at the session (it never went live)', () => {
+    // `lastSessionId` is only promoted once the session-start hook fires, so a
+    // session that died before going live owns no waypoint at all.
+    const ws = [wp({ id: 'w1', seq: 1, title: 'someone else’s', status: 'resolved' })]
+    expect(sessionDoneState(mappedFull(ws, []), session)).toEqual({ kind: 'notDone' })
+  })
+
+  it('is not done on an unmapped feature, which has no waypoints', () => {
+    expect(sessionDoneState(mappedFull([], []), session)).toEqual({ kind: 'notDone' })
+  })
+
+  it('offers the lowest-seq frontier waypoint once its own waypoint resolved', () => {
+    const ws = [
+      mine({ status: 'resolved', summary: 'shipped the rail' }),
+      wp({ id: 'w5', seq: 5, title: 'fifth' }),
+      wp({ id: 'w2', seq: 2, title: 'second' }),
+    ]
+    const state = sessionDoneState(mappedFull(ws, ['w5', 'w2']), session)
+    expect(state.kind).toBe('workNext')
+    if (state.kind !== 'workNext') return
+    expect(state.waypoint.summary).toBe('shipped the rail')
+    expect(state.next.title).toBe('second')
+  })
+
+  it('ignores a lower-seq waypoint that is not on the frontier', () => {
+    const ws = [
+      mine({ status: 'resolved' }),
+      wp({ id: 'w2', seq: 2, title: 'blocked', blockedBy: [3] }),
+      wp({ id: 'w3', seq: 3, title: 'open one' }),
+    ]
+    const state = sessionDoneState(mappedFull(ws, ['w3']), session)
+    expect(state.kind === 'workNext' && state.next.title).toBe('open one')
+  })
+
+  it('treats a dropped waypoint as done too', () => {
+    const ws = [mine({ status: 'dropped' }), wp({ id: 'w2', seq: 2, title: 'second' })]
+    expect(sessionDoneState(mappedFull(ws, ['w2']), session).kind).toBe('workNext')
+  })
+
+  it('reports the research runs still in flight when the frontier is empty', () => {
+    const ws = [
+      mine({ status: 'resolved' }),
+      wp({ id: 'w2', seq: 2, title: 'researching', status: 'claimed', claimedBy: 'run_1' }),
+      wp({ id: 'w3', seq: 3, title: 'also researching', status: 'claimed', claimedBy: 'run_2' }),
+      wp({ id: 'w4', seq: 4, title: 'waits on both', blockedBy: [2, 3] }),
+    ]
+    const state = sessionDoneState(mappedFull(ws, []), session)
+    expect(state).toEqual({ kind: 'awaitingResearch', waypoint: ws[0], claimed: 2 })
+  })
+
+  it('reports the map complete once every waypoint is terminal', () => {
+    const ws = [
+      mine({ status: 'resolved' }),
+      wp({ id: 'w2', seq: 2, title: 'second', status: 'resolved' }),
+      wp({ id: 'w3', seq: 3, title: 'third', status: 'dropped' }),
+    ]
+    expect(sessionDoneState(mappedFull(ws, []), session)).toEqual({
+      kind: 'mapComplete',
+      waypoint: ws[0],
+    })
   })
 })
