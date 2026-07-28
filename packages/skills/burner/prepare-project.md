@@ -46,11 +46,17 @@ Dependencies have already been installed by this command (or none was needed):
 
 ## Keys you must NOT run
 
-`devCommand` and `dbResetCommand` describe the **human's local machine**, not this sandbox. This container has no dev database and nowhere useful to serve a dev server.
+`devCommand`, `driveSetupCommand`, `driveStopCommand`, `driveEnv` and `dbResetCommand` describe the **human's local machine**, not this sandbox. This container has no dev database, no docker daemon you should be starting stacks in, and nowhere useful to serve a dev server.
 
 **Read these from configuration, never execute them.** Find them in `package.json` scripts, `docker-compose.yml`, ORM config (Prisma `schema.prisma`, Drizzle `drizzle.config.*`, TypeORM, Rails `database.yml`, Django `settings.py`), the Makefile, or the README, and report them as *proposals* with the file you found them in as evidence. If the repo has no database, omit `dbResetCommand` entirely — do not invent one.
 
 For `dbResetCommand` specifically: report the command that **rebuilds the dev database from the migrations in the working tree** — e.g. `npx prisma migrate reset --force`, `bun run db:reset`, `rails db:reset`, `python manage.py migrate` after a drop. A human will be shown this command and asked whether to run it; it will never be run automatically. Prefer the repo's own script (`bun run db:reset`) over a raw tool invocation when one exists.
+
+For `driveEnv`: these are `KEY=VALUE` lines overlaid on the dev server's environment for the duration of a test drive, with `{{slug}}`, `{{branch}}` and `{{id}}` (the slug reduced to `[a-z0-9_]`, safe as a database name) substituted per drive. The point is a **database per branch**: `DATABASE_URL=postgres://localhost:5432/myapp_{{id}}` in `driveEnv`, `createdb -T myapp myapp_{{id}}` in `driveSetupCommand`, `dropdb --if-exists myapp_{{id}}` in `driveStopCommand`.
+
+Only report it when the repo tells you the variable's real name and shape — read `.env.example`, `docker-compose.yml`, or the ORM config, and keep the host, port and credentials **exactly** as they appear there, changing only the database name. If you would have to invent any part of the connection string, omit the key. A URL that is right in shape and wrong in substance points the developer's dev server at a database that does not exist, and it will look like our bug, not a missing setting. Clone the existing dev database in the setup command (`-T`/template) rather than migrating an empty one, so the drive starts with the data the developer already has.
+
+For `driveSetupCommand`: this runs on the developer's machine immediately before their dev server starts, when they check out a branch to try it by hand. Report the shortest command that leaves the project runnable — `docker compose up -d && bun run db:migrate`, `make dev-up`, `bin/setup`. Chain steps with `&&` so a failing step stops the rest. Do **not** assemble one out of tools you merely found installed; if the repo does not describe a startup procedure, or the dev command is genuinely self-sufficient, omit the key. This one is run automatically on a real machine, so a wrong guess costs more than a missing answer. `driveStopCommand` is its counterpart (`docker compose down`) and is omitted just as freely.
 
 ## Write your findings
 
@@ -73,6 +79,9 @@ The file is exactly this shape. Every key is optional — **omit any key you cou
   "verifyCommands": { "value": "pnpm --filter @acme/web typecheck\npnpm --filter @acme/web test", "evidence": "both run and exit 0; the repo-wide `pnpm test` errors with 'no projects matched'" },
   "knownFailures":  { "value": "3 failing before any change: api/auth.test.ts (2), web/upload.test.ts (1)", "evidence": "full suite on HEAD: 412 passed, 3 failed" },
   "devCommand":     { "value": "pnpm dev", "evidence": "package.json scripts.dev — not executed (host-only)" },
+  "driveSetupCommand": { "value": "docker compose up -d && createdb -T acme_dev acme_{{id}} && pnpm db:migrate", "evidence": "README 'Local development'; compose defines postgres + redis — not executed (host-only)" },
+  "driveStopCommand":  { "value": "docker compose down && dropdb --if-exists acme_{{id}}", "evidence": "counterpart to the compose stack in README — not executed (host-only)" },
+  "driveEnv":          { "value": "DATABASE_URL=postgres://acme:acme@localhost:5432/acme_{{id}}", "evidence": ".env.example line 3, database name swapped for the per-drive one — not executed (host-only)" },
   "dbResetCommand": { "value": "npx prisma migrate reset --force", "evidence": "prisma/schema.prisma present; scripts has no db:reset — not executed (host-only)" },
   "notes": "The e2e suite needs a running Postgres and could not run in this sandbox."
 }

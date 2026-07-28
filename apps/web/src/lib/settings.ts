@@ -138,6 +138,21 @@ const META: Record<string, FieldMeta> = {
     help: 'Command that takes a clean checkout to a buildable state — dependency install plus any codegen every task would otherwise discover it needed mid-flight.',
     control: 'text',
   },
+  driveSetupCommand: {
+    label: 'Test drive setup',
+    help: 'Command run before the dev server starts a test drive — bring up services, apply schema, whatever this project needs. Chain steps with &&. Runs on your machine; a failure is reported, never fatal.',
+    control: 'text',
+  },
+  driveStopCommand: {
+    label: 'Test drive teardown',
+    help: 'Command run when a test drive stops, while the feature branch is still checked out. The counterpart to setup — stop services, drop the branch database.',
+    control: 'text',
+  },
+  driveEnv: {
+    label: 'Test drive environment',
+    help: 'KEY=VALUE per line, overlaid on the dev server and the setup/teardown commands during a drive. {{id}} is the branch as a safe database name, {{slug}} and {{branch}} are the raw forms. Pair DATABASE_URL=…/myapp_{{id}} with a setup command that creates it to give each branch its own database.',
+    control: 'textarea',
+  },
   dbResetCommand: {
     label: 'Database reset command',
     help: 'Command that rebuilds the dev database from the migrations in the working tree. Offered (never run automatically) after a test drive whose branch carried migrations this one does not have.',
@@ -161,6 +176,9 @@ export const PREPARED_LABEL: Record<string, string> = {
   knownFailures: 'Known failing tests',
   devCommand: 'Dev command',
   dbResetCommand: 'Database reset command',
+  driveSetupCommand: 'Test drive setup',
+  driveStopCommand: 'Test drive teardown',
+  driveEnv: 'Test drive environment',
 }
 
 /**
@@ -168,7 +186,13 @@ export const PREPARED_LABEL: Record<string, string> = {
  * describe the developer's own machine, which a throwaway sandbox cannot stand
  * in for. Surfaced so a proposed value is never mistaken for a measured one.
  */
-export const HOST_ONLY_PREPARED = new Set(['devCommand', 'dbResetCommand'])
+export const HOST_ONLY_PREPARED = new Set([
+  'devCommand',
+  'dbResetCommand',
+  'driveSetupCommand',
+  'driveStopCommand',
+  'driveEnv',
+])
 
 /** Coarse "3 days ago" for a finding's age. Exact enough to judge staleness by. */
 export function relativeAge(ts: number, now = Date.now()): string {

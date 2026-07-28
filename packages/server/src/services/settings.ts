@@ -50,6 +50,9 @@ type ProjectColumn =
   | 'verifyCommands'
   | 'knownFailures'
   | 'dbResetCommand'
+  | 'driveSetupCommand'
+  | 'driveStopCommand'
+  | 'driveEnv'
 
 interface FieldDescriptor {
   key: string
@@ -217,6 +220,35 @@ const DESCRIPTORS: FieldDescriptor[] = [
     valueSchema: z.string().min(1),
     parseEnv: idEnv,
   },
+  // Project-only test-drive hooks. Deliberately opaque shell strings rather than
+  // structured "services"/"migrate" fields: what it takes to bring a project up
+  // is the part that differs most between stacks, and any schema we invented
+  // here would encode one database's idea of the world into every other's.
+  {
+    key: 'driveSetupCommand',
+    projectColumn: 'driveSetupCommand',
+    restartRequired: false,
+    valueSchema: z.string().min(1),
+    parseEnv: idEnv,
+  },
+  {
+    key: 'driveStopCommand',
+    projectColumn: 'driveStopCommand',
+    restartRequired: false,
+    valueSchema: z.string().min(1),
+    parseEnv: idEnv,
+  },
+  // `KEY=VALUE` lines the drive overlays on the dev server's environment, with
+  // `{{slug}}`/`{{branch}}`/`{{id}}` rendered per drive. Pointing a dev server
+  // at a per-branch database is the generic half of that idea; creating the
+  // database is not, and stays in `driveSetupCommand`.
+  {
+    key: 'driveEnv',
+    projectColumn: 'driveEnv',
+    restartRequired: false,
+    valueSchema: z.string().min(1),
+    parseEnv: idEnv,
+  },
 ]
 
 const DEFAULTS = RuncastleConfigSchema.parse({})
@@ -281,6 +313,9 @@ function projectOverrides(ctx: AppCtx, projectId: string): Record<ProjectColumn,
       verifyCommands: projects.verifyCommands,
       knownFailures: projects.knownFailures,
       dbResetCommand: projects.dbResetCommand,
+      driveSetupCommand: projects.driveSetupCommand,
+      driveStopCommand: projects.driveStopCommand,
+      driveEnv: projects.driveEnv,
     })
     .from(projects)
     .where(eq(projects.id, projectId))
@@ -293,6 +328,9 @@ function projectOverrides(ctx: AppCtx, projectId: string): Record<ProjectColumn,
     verifyCommands: row?.verifyCommands ?? null,
     knownFailures: row?.knownFailures ?? null,
     dbResetCommand: row?.dbResetCommand ?? null,
+    driveSetupCommand: row?.driveSetupCommand ?? null,
+    driveStopCommand: row?.driveStopCommand ?? null,
+    driveEnv: row?.driveEnv ?? null,
   }
 }
 

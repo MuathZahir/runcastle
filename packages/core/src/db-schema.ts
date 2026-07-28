@@ -46,6 +46,19 @@ export const projects = sqliteTable('projects', {
   verifyCommands: text('verify_commands'),
   knownFailures: text('known_failures'),
   dbResetCommand: text('db_reset_command'),
+  // Test-drive hooks: opaque shell commands run before the dev pane starts and
+  // after it stops. runcastle never parses them and holds no model of what a
+  // "database" or a "service" is — bringing an environment up is exactly the
+  // part that differs per stack (Postgres, SQLite, MySQL, Mongo, hosted, none),
+  // so the only honest generic answer is to run the project's own string.
+  driveSetupCommand: text('drive_setup_command'),
+  driveStopCommand: text('drive_stop_command'),
+  // `KEY=VALUE` lines overlaid on the dev pane's and the hooks' environment,
+  // with `{{slug}}`/`{{branch}}`/`{{id}}` rendered per drive. This is the half
+  // of "a database per branch" that IS generic — pointing a dev server at a
+  // different URL is identical everywhere, while producing the database it
+  // names is not, and stays in `driveSetupCommand`.
+  driveEnv: text('drive_env'),
 })
 
 /**

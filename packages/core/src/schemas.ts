@@ -143,8 +143,8 @@ export type Waypoint = z.infer<typeof Waypoint>
 /**
  * The repo facts a preparation run establishes, in the order the settings UI
  * and the prep prompt present them. Each maps 1:1 to a project column; the
- * first four also have a global config twin (`project ?? global`), while
- * `devCommand` and `dbResetCommand` are project-only.
+ * first three also have a global config twin (`project ?? global`), while
+ * `devCommand`, the two drive hooks and `dbResetCommand` are project-only.
  *
  * These are FINDINGS, not preferences: answering any of them honestly means
  * reading the repo's workspace layout and running its suite, which is why they
@@ -156,6 +156,9 @@ export const PREPARED_KEYS = [
   'verifyCommands',
   'knownFailures',
   'devCommand',
+  'driveSetupCommand',
+  'driveStopCommand',
+  'driveEnv',
   'dbResetCommand',
 ] as const
 export const PreparedKey = z.enum(PREPARED_KEYS)
@@ -178,6 +181,11 @@ export const Project = z.object({
   verifyCommands: z.string().optional(),
   knownFailures: z.string().optional(),
   dbResetCommand: z.string().optional(),
+  /** Shell run before / after a test drive's dev pane; opaque to runcastle. */
+  driveSetupCommand: z.string().optional(),
+  driveStopCommand: z.string().optional(),
+  /** `KEY=VALUE` lines overlaid on a drive's environment, `{{id}}`-templated. */
+  driveEnv: z.string().optional(),
 })
 export type Project = z.infer<typeof Project>
 

@@ -8,6 +8,9 @@ import type { SimpleGit } from 'simple-git'
 import type { AppCtx } from '../db/types'
 import { GateError, InvalidInputError } from '../errors'
 import { startDevPane, stopDevPane } from '../pty/dev-pane'
+import type { DriveHookFailure } from './drive-hooks'
+import { describeHookResult, runDriveHook } from './drive-hooks'
+import { describeDriveEnv, driveProcessEnv, parseDriveEnv } from './drive-env'
 import { emit } from './events'
 import { hasActiveRun } from './repo'
 
@@ -41,6 +44,12 @@ export interface TestDriveResult {
   carriedChanges?: string[]
   /** Set on `stop` when the drive may have left the dev database ahead (§drift). */
   dbDrift?: DbDrift
+  /**
+   * The project's `driveSetupCommand` (on `start`) or `driveStopCommand` (on
+   * `stop`) when it ran and failed. Absent means "no hook, or it succeeded" —
+   * a successful hook is timeline material, not something to interrupt over.
+   */
+  hookFailure?: DriveHookFailure
 }
 
 /**
@@ -1228,6 +1237,21 @@ export async function testDrive(
     // orphan (the drive owns the pane; its URL is cleared when state resets).
     if (devPaneId) stopDevPane(devPaneId)
 
+    // Teardown runs BEFORE the switch back, while the feature branch is still
+    // checked out: the environment being torn down belongs to that branch, and
+    // so do the files describing it (compose file, migrations). Running it after
+    // the switch would hand the command a different repo than the one it built.
+    // Same environment the setup hook saw, so `dropdb myapp_{{id}}` names the
+    // database `createdb myapp_{{id}}` made.
+    const teardownFailure = await runDriveHookStep(
+      ctx,
+      feature.id,
+      project.repoPath,
+      'teardown',
+      project.driveStopCommand,
+      driveEnvFor(ctx, project, feature, branch),
+    )
+
     // Capture the dirty tree BEFORE the switch. `start` denies on a dirty tree
     // but `stop` cannot — refusing would strand the user on the feature branch
     // with no way back — so git carries these files across with them. That is
@@ -1260,6 +1284,7 @@ export async function testDrive(
       branch: previousBranch,
       ...(carriedChanges.length > 0 ? { carriedChanges } : {}),
       ...(dbDrift ? { dbDrift } : {}),
+      ...(teardownFailure ? { hookFailure: teardownFailure } : {}),
     }
   }
 
@@ -1292,21 +1317,136 @@ export async function testDrive(
     data: { branch, previousBranch },
   })
 
+  // Bring the project's environment up before the dev server, so the dev
+  // command starts against services that exist. What that means is the
+  // project's business — we run its string and report the exit code. Both it
+  // and the dev pane below get the same rendered environment, which is how a
+  // per-branch database gets created and then connected to.
+  const driveEnv = driveEnvFor(ctx, project, feature, branch)
+  const setupFailure = await runDriveHookStep(
+    ctx,
+    feature.id,
+    project.repoPath,
+    'setup',
+    project.driveSetupCommand,
+    driveEnv,
+  )
+
   // Best-effort: spawn the dev command in a drive-owned embedded PTY pane and
   // sniff its localhost URL for the "Open app" link. A spawn failure never fails
-  // the drive (startDevPane emits its own event and returns undefined).
+  // the drive (startDevPane emits its own event and returns undefined). Started
+  // even after a failed setup hook — the pane is where the user debugs it, and
+  // withholding it removes the tool at the moment they need it.
   if (project.devCommand) {
     const devPaneId = startDevPane({
       ctx,
       featureId: feature.id,
       repoPath: project.repoPath,
       devCommand: project.devCommand,
+      env: driveEnv,
       onUrl: (url) => recordDriveUrl(ctx, feature.id, url),
     })
     if (devPaneId) testDriveState.devPaneId = devPaneId
   }
 
-  return { ok: true, branch }
+  return { ok: true, branch, ...(setupFailure ? { hookFailure: setupFailure } : {}) }
+}
+
+/**
+ * The environment every child of this drive runs with: the project's `driveEnv`
+ * lines, rendered with the drive's own variables, overlaid on the inherited
+ * environment.
+ *
+ * Resolved ONCE per drive and shared by the hooks and the dev pane, because the
+ * whole mechanism depends on them agreeing: a setup hook that creates
+ * `myapp_{{id}}` and a dev server that connects to a differently-rendered name
+ * would be worse than not doing this at all.
+ *
+ * An unknown `{{placeholder}}` is left literal and reported. Substituting a
+ * blank would silently produce a plausible connection string pointing at the
+ * wrong database, which is the one outcome worth being noisy about.
+ */
+function driveEnvFor(
+  ctx: AppCtx,
+  project: Project,
+  feature: Feature,
+  branch: string,
+): NodeJS.ProcessEnv {
+  const { vars, unknown } = parseDriveEnv(project.driveEnv, { slug: feature.slug, branch })
+  if (unknown.length > 0) {
+    emit(ctx, feature.id, {
+      type: 'testdrive.env_unknown_placeholder',
+      message: `drive environment left ${unknown.map((u) => `{{${u}}}`).join(', ')} unsubstituted — known variables are {{slug}}, {{branch}}, {{id}}`,
+      data: { unknown },
+    })
+  }
+  if (Object.keys(vars).length > 0) {
+    emit(ctx, feature.id, {
+      type: 'testdrive.env',
+      message: describeDriveEnv(vars),
+      // Values can hold credentials; the timeline records WHICH vars, not what.
+      data: { keys: Object.keys(vars) },
+    })
+  }
+  return driveProcessEnv(vars)
+}
+
+/**
+ * Run one test-drive hook, narrating it into the feature timeline. Returns the
+ * failure worth interrupting over, or `undefined` when there is no hook or it
+ * succeeded.
+ *
+ * A hook failure never fails the drive: on `start` the checkout has already
+ * switched, and on `stop` the user is mid-exit. Both cases are better served by
+ * a loud event quoting the command's own output than by a refusal.
+ */
+async function runDriveHookStep(
+  ctx: AppCtx,
+  featureId: string,
+  repoPath: string,
+  phase: 'setup' | 'teardown',
+  command: string | undefined,
+  env: NodeJS.ProcessEnv,
+): Promise<DriveHookFailure | undefined> {
+  const cmd = command?.trim()
+  if (!cmd) return undefined
+
+  emit(ctx, featureId, {
+    type: `testdrive.${phase}_started`,
+    message:
+      phase === 'setup'
+        ? `preparing environment: \`${cmd}\``
+        : `tearing down environment: \`${cmd}\``,
+    data: { command: cmd },
+  })
+
+  const result = await runDriveHook(cmd, { cwd: repoPath, env })
+  if (result.ok) {
+    emit(ctx, featureId, {
+      type: `testdrive.${phase}_ok`,
+      message: describeHookResult(cmd, result),
+      data: { command: cmd, durationMs: result.durationMs },
+    })
+    return undefined
+  }
+
+  emit(ctx, featureId, {
+    type: `testdrive.${phase}_failed`,
+    message: `${describeHookResult(cmd, result)}${result.output ? `\n${result.output}` : ''}`,
+    data: {
+      command: cmd,
+      exitCode: result.exitCode,
+      timedOut: result.timedOut,
+      output: result.output,
+    },
+  })
+  return {
+    phase,
+    command: cmd,
+    exitCode: result.exitCode,
+    timedOut: result.timedOut,
+    output: result.output,
+  }
 }
 
 /** Repo-relative paths with uncommitted changes (tracked or not), or `[]`. */

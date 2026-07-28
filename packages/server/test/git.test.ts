@@ -585,6 +585,148 @@ describe('testDrive', () => {
     await testDrive(ctx, project, feature, 'stop')
   })
 
+  // Test-drive hooks. runcastle holds no model of what "bringing the project
+  // up" means — the project supplies a shell string and we run it, which is the
+  // only answer that works across Postgres, SQLite, Mongo, compose stacks and
+  // projects with no data layer at all.
+  it('runs the project driveSetupCommand on start and reports it on the timeline', async () => {
+    const withHook = { ...project, driveSetupCommand: 'echo setup-hook-ran' }
+    const start = await testDrive(ctx, withHook, feature, 'start')
+    expect(start.ok).toBe(true)
+    expect(start.hookFailure).toBeUndefined()
+
+    const events = listAfter(ctx, feature.id, 0)
+    expect(events.map((e) => e.type)).toContain('testdrive.setup_ok')
+
+    await testDrive(ctx, withHook, feature, 'stop')
+  })
+
+  it('runs driveStopCommand on stop', async () => {
+    const withHook = { ...project, driveStopCommand: 'echo teardown-hook-ran' }
+    await testDrive(ctx, withHook, feature, 'start')
+    const stop = await testDrive(ctx, withHook, feature, 'stop')
+    expect(stop.ok).toBe(true)
+    expect(stop.hookFailure).toBeUndefined()
+    expect(listAfter(ctx, feature.id, 0).map((e) => e.type)).toContain('testdrive.teardown_ok')
+  })
+
+  // The checkout has already switched by the time setup runs. Refusing the
+  // drive would strand the user on a branch they did not ask to be on, so a
+  // failing hook is reported loudly and the drive continues.
+  it('a failing setup hook does not fail the drive, but is reported', async () => {
+    const withHook = { ...project, driveSetupCommand: 'exit 4' }
+    const start = await testDrive(ctx, withHook, feature, 'start')
+
+    expect(start.ok).toBe(true)
+    expect(await currentBranch(simpleGit(project.repoPath))).toBe('feature/drive')
+    expect(start.hookFailure).toMatchObject({ phase: 'setup', command: 'exit 4', exitCode: 4 })
+    expect(listAfter(ctx, feature.id, 0).map((e) => e.type)).toContain('testdrive.setup_failed')
+
+    await testDrive(ctx, withHook, feature, 'stop')
+  })
+
+  it('a failing teardown hook still returns the user to their branch', async () => {
+    const withHook = { ...project, driveStopCommand: 'exit 5' }
+    await testDrive(ctx, withHook, feature, 'start')
+    const stop = await testDrive(ctx, withHook, feature, 'stop')
+
+    expect(stop.ok).toBe(true)
+    expect(await currentBranch(simpleGit(project.repoPath))).toBe('main')
+    expect(stop.hookFailure).toMatchObject({ phase: 'teardown', exitCode: 5 })
+  })
+
+  // Teardown describes the environment the FEATURE branch built, and the files
+  // that describe it (compose file, migrations) are the ones on that branch.
+  it('runs teardown before switching back, while the feature branch is checked out', async () => {
+    const marker = join(project.repoPath, 'branch-at-teardown.txt')
+    const withHook = {
+      ...project,
+      driveStopCommand: `git rev-parse --abbrev-ref HEAD > "${marker}"`,
+    }
+    await testDrive(ctx, withHook, feature, 'start')
+    await testDrive(ctx, withHook, feature, 'stop')
+
+    expect(readFileSync(marker, 'utf8').trim()).toBe('feature/drive')
+  })
+
+  // The generic half of "a database per branch": we render and inject the
+  // variables, the project's own command creates whatever they name.
+  it('renders driveEnv into the hook environment, per branch', async () => {
+    const marker = join(project.repoPath, 'seen-env.txt')
+    const withEnv = {
+      ...project,
+      driveEnv: 'DATABASE_URL=postgres://localhost:5432/myapp_{{id}}',
+      driveSetupCommand:
+        process.platform === 'win32'
+          ? `echo %DATABASE_URL% > "${marker}"`
+          : `echo "$DATABASE_URL" > "${marker}"`,
+    }
+    await testDrive(ctx, withEnv, feature, 'start')
+
+    expect(readFileSync(marker, 'utf8').trim()).toBe('postgres://localhost:5432/myapp_drive')
+
+    await testDrive(ctx, withEnv, feature, 'stop')
+  })
+
+  // Setup creates the database and the dev server has to connect to THAT one;
+  // two different renderings would be worse than not doing this at all.
+  it('gives the teardown hook the same rendering the setup hook saw', async () => {
+    const setupMarker = join(project.repoPath, 'setup-env.txt')
+    const stopMarker = join(project.repoPath, 'stop-env.txt')
+    const write = (m: string) =>
+      process.platform === 'win32' ? `echo %DATABASE_URL% > "${m}"` : `echo "$DATABASE_URL" > "${m}"`
+    const withEnv = {
+      ...project,
+      driveEnv: 'DATABASE_URL=db_{{id}}',
+      driveSetupCommand: write(setupMarker),
+      driveStopCommand: write(stopMarker),
+    }
+
+    await testDrive(ctx, withEnv, feature, 'start')
+    await testDrive(ctx, withEnv, feature, 'stop')
+
+    expect(readFileSync(stopMarker, 'utf8').trim()).toBe(readFileSync(setupMarker, 'utf8').trim())
+  })
+
+  it('reports an unknown placeholder instead of substituting a blank', async () => {
+    const withEnv = { ...project, driveEnv: 'DATABASE_URL=db_{{oops}}' }
+    await testDrive(ctx, withEnv, feature, 'start')
+
+    expect(listAfter(ctx, feature.id, 0).map((e) => e.type)).toContain(
+      'testdrive.env_unknown_placeholder',
+    )
+    await testDrive(ctx, withEnv, feature, 'stop')
+  })
+
+  // Values routinely hold credentials. The timeline is a shared artifact.
+  it('records which variables the drive set, never their values', async () => {
+    const withEnv = { ...project, driveEnv: 'DATABASE_URL=postgres://user:hunter2@localhost/x' }
+    await testDrive(ctx, withEnv, feature, 'start')
+
+    const event = listAfter(ctx, feature.id, 0).find((e) => e.type === 'testdrive.env')
+    expect(event?.message).toContain('DATABASE_URL')
+    expect(JSON.stringify(event)).not.toContain('hunter2')
+
+    await testDrive(ctx, withEnv, feature, 'stop')
+  })
+
+  it('does nothing when the project has no hooks', async () => {
+    await testDrive(ctx, project, feature, 'start')
+    await testDrive(ctx, project, feature, 'stop')
+    const types = listAfter(ctx, feature.id, 0).map((e) => e.type)
+    expect(types.some((t) => t.startsWith('testdrive.setup'))).toBe(false)
+    expect(types.some((t) => t.startsWith('testdrive.teardown'))).toBe(false)
+  })
+
+  it('treats a whitespace-only hook as unset', async () => {
+    const withHook = { ...project, driveSetupCommand: '   ' }
+    await testDrive(ctx, withHook, feature, 'start')
+    expect(listAfter(ctx, feature.id, 0).map((e) => e.type)).not.toContain(
+      'testdrive.setup_started',
+    )
+    await testDrive(ctx, withHook, feature, 'stop')
+  })
+
   it('start detaches a second worktree (e.g. the burner) that pins the branch', async () => {
     const g = simpleGit(project.repoPath)
     // Simulate sandcastle's `.sandcastle/worktrees/*`: a second worktree holding

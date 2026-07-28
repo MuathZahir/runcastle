@@ -81,6 +81,18 @@ export function Workspace({
   })
   const testDrive = trpc.feature.testDrive.useMutation({
     onSuccess: (res) => {
+      // The project's own setup/teardown command failed. Surfaced first and as
+      // an error: everything below is advisory, but a failed setup means the
+      // app you are about to open probably is not running. The command's output
+      // is in the timeline — the toast names which command, not why.
+      if (res.hookFailure) {
+        const f = res.hookFailure
+        toast.push(
+          `${f.phase === 'setup' ? 'Test drive setup' : 'Test drive teardown'} failed: ${f.command}${
+            f.timedOut ? ' (timed out)' : ''
+          } — see the timeline for its output`,
+        )
+      }
       // Git switches files; it cannot switch the dev database. When the drive's
       // branch carried migrations this one does not have, whatever was migrated
       // during the drive is still applied — and the next `migrate` reports drift

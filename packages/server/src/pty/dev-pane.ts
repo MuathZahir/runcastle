@@ -69,6 +69,12 @@ export interface StartDevPaneInput {
   featureId: string
   repoPath: string
   devCommand: string
+  /**
+   * Environment for the dev server. Defaults to this process's, which is what
+   * makes a drive share the developer's dev database; the drive passes an
+   * overlay here to point it somewhere branch-specific instead.
+   */
+  env?: NodeJS.ProcessEnv
   /** Called once, with the first sniffed localhost URL. */
   onUrl: (url: string) => void
 }
@@ -80,7 +86,7 @@ export interface StartDevPaneInput {
  * id so the caller can stream/stop it.
  */
 export function startDevPane(input: StartDevPaneInput): string | undefined {
-  const { ctx, featureId, repoPath, devCommand, onUrl } = input
+  const { ctx, featureId, repoPath, devCommand, env, onUrl } = input
   const paneId = drivePaneId(featureId)
   const { file, args } = devSpawnTarget(devCommand)
 
@@ -89,7 +95,7 @@ export function startDevPane(input: StartDevPaneInput): string | undefined {
       sessionId: paneId,
       cmd: file,
       args,
-      opts: { cwd: repoPath, env: process.env, cols: 80, rows: 24, useConpty: true },
+      opts: { cwd: repoPath, env: env ?? process.env, cols: 80, rows: 24, useConpty: true },
     })
   } catch (err) {
     emit(ctx, featureId, {

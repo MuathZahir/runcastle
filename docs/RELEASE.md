@@ -29,6 +29,44 @@ If a run fails, delete the tag and re-release once fixed:
 git push --delete origin v1.0.4 && git tag -d v1.0.4
 ```
 
+### Preview releases — the `next` channel
+
+To get a build onto another machine without shipping it to users, release a
+**prerelease version**. The version picks the channel; nothing else changes:
+
+```sh
+bun run release 1.3.0-beta.1     # -> npm dist-tag `next`, GitHub prerelease
+bun run release 1.3.0            # -> npm dist-tag `latest`, normal release
+```
+
+A `next` release leaves the `latest` dist-tag exactly where it was, so no
+existing install is prompted to update and `bun add -g runcastle` still resolves
+to the last stable. Pull the preview onto a test machine with:
+
+```sh
+bun add -g runcastle@next
+runcastle --version              # -> 1.3.0-beta.1
+```
+
+When the soak is done, release the same commit as a clean `1.3.0`. That moves
+`latest`, and because `checkForUpdate` ranks a prerelease below its release
+(`compareSemver` in `src/services/update-check.ts`), anyone left on a beta gets
+the update banner pointing at the stable build. Retagging the beta artifact
+itself (`npm dist-tag add runcastle@1.3.0-beta.1 latest`) also works and skips a
+rebuild, but then `runcastle --version` prints "beta" on every stable install —
+prefer the clean re-release.
+
+> **Gotcha — npm does not infer the channel from the version.** A bare
+> `npm publish` moves `latest` to whatever it just published, prerelease suffix
+> or not. CI passes `--tag "$NPM_TAG"` explicitly (derived from the tag name in
+> the *Resolve version and channel from tag* step); if you ever publish by hand,
+> you must pass it yourself — see Step 3.
+
+> **Gotcha — preview installs are one-way on a given machine.** Both channels
+> share `~/.runcastle/runcastle.db`, and drizzle migrations are forward-only, so
+> a beta carrying a new migration leaves the DB ahead of what stable can read.
+> Back it up before testing a preview if that machine has real feature history.
+
 ### How CI authenticates — npm Trusted Publishing (OIDC)
 
 The publish uses **OpenID Connect**, so there is **no `NPM_TOKEN` secret**. The
@@ -146,17 +184,22 @@ npm deprecate "runcastle@0.1.0" "Old 'castellan' CLI. runcastle is now a local a
 
 ```sh
 cd packages/server/build
-npm publish            # publishes runcastle-1.0.0 from this dir
+npm publish --tag latest    # stable: publishes runcastle-1.0.0 and moves `latest`
+npm publish --tag next      # preview: publishes a prerelease, leaves `latest` alone
 # or, to stay on Bun: `bun publish` (same npm auth token). `deprecate` in
 # Step 2 has no Bun equivalent, so the npm CLI is required there regardless.
 ```
 
-Because `1.0.0 > 0.2.0`, npm moves the `latest` dist-tag to `1.0.0`
-automatically — no `--tag` needed. Confirm:
+**Always pass `--tag` when publishing by hand.** npm ignores the prerelease
+suffix when choosing a dist-tag: omit the flag and `latest` moves to whatever you
+just published, so a `1.3.0-beta.1` would land on every user's next install. CI
+does this for you (`NPM_TAG` in `release.yml`); the manual path does not.
+
+Confirm:
 
 ```sh
 npm view runcastle version        # -> 1.0.0
-npm view runcastle dist-tags      # -> { latest: '1.0.0' }
+npm view runcastle dist-tags      # -> { latest: '1.0.0' }  (+ next, if any)
 ```
 
 ## Step 4 — Make the repo public

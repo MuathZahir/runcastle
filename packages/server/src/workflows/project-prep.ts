@@ -192,6 +192,12 @@ const KEY_BRIEF: Record<PreparedKey, string> = {
     '**`knownFailures`** — which tests are ALREADY failing on this checkout, before anything is changed. Run the full suite once and report the count plus the failing suite names. "0 known failures" is a real, useful answer.',
   devCommand:
     "**`devCommand`** — the command that starts this project's dev server on a developer's own machine. Read it from config; do not run it here.",
+  driveSetupCommand:
+    "**`driveSetupCommand`** — a single shell command that takes this repo from a fresh checkout to \"the dev server would actually work\": backing services up, schema applied, whatever this project needs. Chain steps with `&&`. Read it from the repo's own config (compose file, Makefile, package scripts, README); do not run it here. Omit it if the dev command alone is enough — an empty answer is better than a guessed one, because this runs on a developer's real machine.",
+  driveStopCommand:
+    '**`driveStopCommand`** — the matching teardown for `driveSetupCommand`, if this project has one (`docker compose down`, a stop script). Read it from config; do not run it here. Omit it if setup leaves nothing that needs stopping.',
+  driveEnv:
+    "**`driveEnv`** — `KEY=VALUE` lines (one per line) overlaid on the dev server's environment during a test drive, with `{{slug}}`, `{{branch}}` and `{{id}}` (an identifier-safe slug) rendered per drive. Its purpose is giving a branch its own database, e.g. `DATABASE_URL=postgres://localhost:5432/myapp_{{id}}` paired with a `driveSetupCommand` that creates it. Report it ONLY if you can read the real connection variable's name and shape out of the repo's own config or `.env.example`; a connection string you assembled from defaults points at the wrong database convincingly, which is worse than omitting the key. Omit it if the project has no database or you had to guess the host, port or credentials.",
   dbResetCommand:
     '**`dbResetCommand`** — the command that rebuilds the dev database from the migrations currently in the working tree. Read it from config; do not run it here. Omit it entirely if this repo has no database.',
 }

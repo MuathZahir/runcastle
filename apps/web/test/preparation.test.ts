@@ -117,6 +117,33 @@ describe('describeField with provenance', () => {
   })
 })
 
+// A settings key with no META entry silently renders as a bare text input with
+// no help — and driveEnv is multi-line, so a text input would eat the newlines
+// that separate its variables.
+describe('drive field presentation', () => {
+  it('gives every prepared key a label, help text and the right control', () => {
+    const rows = projectRows({
+      projectId: 'proj_1',
+      fields: [
+        field({ key: 'driveSetupCommand', value: 'make up' }),
+        field({ key: 'driveStopCommand', value: 'make down' }),
+        field({ key: 'driveEnv', value: 'DATABASE_URL=x' }),
+      ],
+    } as SettingsView)
+
+    for (const row of rows) {
+      expect(row.label).not.toBe(row.key)
+      expect(row.help.length).toBeGreaterThan(0)
+    }
+    expect(rows.find((r) => r.key === 'driveEnv')?.control).toBe('textarea')
+  })
+
+  it('marks the drive fields as proposed, not measured', () => {
+    const note = describeFinding(finding({ key: 'driveEnv', staleCommits: 0 }))
+    expect(note).toContain('not executed')
+  })
+})
+
 describe('projectRows', () => {
   it('attaches each finding to its own field only', () => {
     const view = {
