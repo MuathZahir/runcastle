@@ -794,3 +794,33 @@ export function waypointGroups(
     .map((key) => ({ key, label: WAYPOINT_GROUP_LABELS[key], waypoints: buckets[key] }))
     .filter((g) => g.waypoints.length > 0)
 }
+
+/**
+ * The live session a Work click would have to end, named by what it is holding
+ * (decision #2/#8) — the card's inline confirm asks about *this*, so it needs a
+ * human name for it, not a session id.
+ */
+export interface LiveSessionBlocker {
+  sessionId: string
+  kind: string
+  /** Title of the waypoint that session still holds, when it holds one. */
+  waypointTitle?: string
+}
+
+/**
+ * The feature's live session and the still-open waypoint it claimed, if any.
+ * `workWaypoint` ends a session it can prove is finished on its own, so this is
+ * only consulted once the server has refused: it turns that refusal into the
+ * card's confirm ("a session is live on X — end it and work this instead?").
+ * A session whose waypoint has already resolved keeps no claim, so it reports
+ * no title — and never reaches the confirm, because the server swept it.
+ */
+export function liveSessionBlocker(
+  sessions: FeatureFull['sessions'],
+  waypoints: Waypoint[],
+): LiveSessionBlocker | undefined {
+  const live = sessions.find((s) => s.status === 'live' || s.status === 'launching')
+  if (!live) return undefined
+  const held = waypoints.find((w) => w.status === 'claimed' && w.claimedBy === live.id)
+  return { sessionId: live.id, kind: live.kind, waypointTitle: held?.title }
+}

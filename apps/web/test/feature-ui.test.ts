@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { EventRow, TicketStatus } from '@runcastle/core'
 import {
   defaultBaseBranch,
+  liveSessionBlocker,
   mergeConflictKickoff,
   needsMe,
   nextStep,
@@ -363,27 +364,28 @@ describe('parseMapSections', () => {
   })
 })
 
+/** A waypoint row as the wire sends it, for the two rail derivations below. */
+function wp(over: Partial<Waypoint> & Pick<Waypoint, 'id' | 'seq' | 'title'>): Waypoint {
+  return {
+    featureId: 'feat_1',
+    type: 'grilling',
+    question: `what about ${over.title}?`,
+    blockedBy: [],
+    originWaypointId: null,
+    status: 'open',
+    claimedBy: null,
+    lastSessionId: null,
+    summary: null,
+    ...over,
+  } as Waypoint
+}
+
 /**
  * Improve-map-workflow ticket 3 — the rail's grouping, ordering, lineage and
  * default-expanded state as a pure derivation, because this repo has no DOM
  * test environment and the rail component is kept thin over it.
  */
 describe('waypointGroups', () => {
-  function wp(over: Partial<Waypoint> & Pick<Waypoint, 'id' | 'seq' | 'title'>): Waypoint {
-    return {
-      featureId: 'feat_1',
-      type: 'grilling',
-      question: `what about ${over.title}?`,
-      blockedBy: [],
-      originWaypointId: null,
-      status: 'open',
-      claimedBy: null,
-      lastSessionId: null,
-      summary: null,
-      ...over,
-    } as Waypoint
-  }
-
   const keys = (gs: ReturnType<typeof waypointGroups>) => gs.map((g) => g.key)
   const titles = (gs: ReturnType<typeof waypointGroups>, key: string) =>
     gs.find((g) => g.key === key)?.waypoints.map((r) => r.waypoint.title) ?? []
@@ -474,5 +476,64 @@ describe('waypointGroups', () => {
     ]
     const groups = waypointGroups(ws, ['w1'])
     expect(groups.map((g) => g.label)).toEqual(['Frontier', 'Resolved / dropped'])
+  })
+})
+
+/**
+ * Improve-map-workflow ticket 4 — a refused Work click becomes an inline confirm
+ * on the card instead of a toast, and the confirm has to name what it would end.
+ * This is the derivation behind that sentence.
+ */
+describe('liveSessionBlocker', () => {
+  const sessions = (rows: unknown[]) => rows as FeatureFull['sessions']
+
+  it('names the still-open waypoint the live session is working', () => {
+    const ws = [
+      wp({ id: 'w1', seq: 1, title: 'Session handoff', status: 'claimed', claimedBy: 'sess_1' }),
+      wp({ id: 'w2', seq: 2, title: 'next up' }),
+    ]
+    expect(
+      liveSessionBlocker(sessions([{ id: 'sess_1', status: 'live', kind: 'waypoint' }]), ws),
+    ).toEqual({ sessionId: 'sess_1', kind: 'waypoint', waypointTitle: 'Session handoff' })
+  })
+
+  it('finds nothing when no session is live or launching', () => {
+    const ws = [wp({ id: 'w1', seq: 1, title: 'only one' })]
+    expect(liveSessionBlocker(sessions([{ id: 'sess_1', status: 'ended', kind: 'waypoint' }]), ws))
+      .toBeUndefined()
+    expect(liveSessionBlocker(sessions([]), ws)).toBeUndefined()
+  })
+
+  it('counts a launching session — its terminal is already on the way', () => {
+    expect(
+      liveSessionBlocker(sessions([{ id: 'sess_2', status: 'launching', kind: 'waypoint' }]), []),
+    ).toEqual({ sessionId: 'sess_2', kind: 'waypoint', waypointTitle: undefined })
+  })
+
+  it('reports no waypoint for a live session holding none (the ideation grill)', () => {
+    const ws = [wp({ id: 'w1', seq: 1, title: 'charted by the grill' })]
+    expect(
+      liveSessionBlocker(sessions([{ id: 'sess_1', status: 'live', kind: 'ideation' }]), ws),
+    ).toEqual({ sessionId: 'sess_1', kind: 'ideation', waypointTitle: undefined })
+  })
+
+  it('ignores a resolved waypoint that merely remembers the session', () => {
+    // resolveWaypoint clears claimedBy but keeps lastSessionId — that session is
+    // finished, and the server ends it without ever asking the human.
+    const ws = [
+      wp({ id: 'w1', seq: 1, title: 'already answered', status: 'resolved', lastSessionId: 'sess_1' }),
+    ]
+    expect(
+      liveSessionBlocker(sessions([{ id: 'sess_1', status: 'live', kind: 'waypoint' }]), ws)
+        ?.waypointTitle,
+    ).toBeUndefined()
+  })
+
+  it('ignores a waypoint claimed by a parallel research RUN, not by the session', () => {
+    const ws = [wp({ id: 'w1', seq: 1, title: 'researching', status: 'claimed', claimedBy: 'run_9' })]
+    expect(
+      liveSessionBlocker(sessions([{ id: 'sess_1', status: 'live', kind: 'waypoint' }]), ws)
+        ?.waypointTitle,
+    ).toBeUndefined()
   })
 })

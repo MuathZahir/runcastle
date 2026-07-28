@@ -4,8 +4,10 @@ import { trpc } from '../../trpc'
 import { DimLine, EmptyState, SectionTitle } from '../../ui'
 import type { FeatureFull } from '../../lib/api'
 import {
+  liveSessionBlocker,
   parseMapSections,
   waypointGroups,
+  type LiveSessionBlocker,
   type RailWaypoint,
   type WaypointGroup,
   type WaypointGroupKey,
@@ -235,7 +237,7 @@ function MapRail({
               <WaypointGroupList
                 featureId={featureId}
                 groups={groups}
-                sessions={full.sessions}
+                blocker={liveSessionBlocker(full.sessions, full.waypoints)}
               />
               {relPath && <MapDoc sections={sections} />}
               <ConvergeBar full={full} fog={sections['Not yet specified']?.trim()} />
@@ -375,26 +377,12 @@ function ConvergeBar({ full, fog }: { full: FeatureFull; fog?: string }) {
 function WaypointGroupList({
   featureId,
   groups,
-  sessions,
+  blocker,
 }: {
   featureId: string
   groups: WaypointGroup[]
-  sessions: FeatureFull['sessions']
+  blocker?: LiveSessionBlocker
 }) {
-  const utils = trpc.useUtils()
-  const toast = useToast()
-  const work = trpc.feature.workWaypoint.useMutation({
-    onSuccess: () => {
-      void utils.feature.get.invalidate({ id: featureId })
-      void utils.feature.list.invalidate()
-    },
-    onError: (e) => toast.push(e.message),
-  })
-  // Serial HITL per feature (ADR-0001): only a live/launching SESSION blocks
-  // spawning another terminal. A waypoint claimed by an AFK research RUN
-  // (`claimedBy` = run_…) must not disable anything — research runs in parallel.
-  const liveHitl = sessions.some((s) => s.status === 'live' || s.status === 'launching')
-
   if (groups.length === 0) {
     return (
       <div className="map-waypoints">
@@ -407,13 +395,12 @@ function WaypointGroupList({
     <div className="map-waypoints">
       {groups.map((g) => {
         const rows = g.waypoints.map((item) => (
-          <WaypointRow
+          <WaypointCard
             key={item.waypoint.id}
+            featureId={featureId}
             group={g.key}
             item={item}
-            liveHitl={liveHitl}
-            working={work.isPending}
-            onWork={(waypointId) => work.mutate({ featureId, waypointId })}
+            blocker={blocker}
           />
         ))
         const title = `${g.label} · ${g.waypoints.length}`
@@ -434,70 +421,164 @@ function WaypointGroupList({
 }
 
 /**
- * One waypoint, still a flat row: type badge, title, and — on the frontier — the
- * Work button (every type gets one; research starts an AFK run through the same
- * `workWaypoint` mutation, the rest spawn a terminal, and a prior release that
- * left a `lastSessionId` reads as Resume). Blocked rows name their blockers,
- * claimed rows pulse, and lineage is one "surfaced by <name>" line.
+ * One waypoint as an expandable card (decision #6): type badge + title on the
+ * first line, the Work control on the second, and — expanded — the `question`
+ * that session exists to answer, which nothing else in the product shows. The
+ * card body toggles; the Work button inside it deliberately doesn't.
+ *
+ * Work goes through `workWaypoint`, which owns the handoff: research starts an
+ * AFK run (never blocked by a live session), every other type spawns a terminal
+ * after the server has ended any live session it can prove is finished, and a
+ * prior release that left a `lastSessionId` reads as Resume. A session still
+ * mid-work is refused — that refusal is the inline confirm below, not a toast.
  */
-function WaypointRow({
+function WaypointCard({
+  featureId,
   group,
   item,
-  liveHitl,
-  working,
-  onWork,
+  blocker,
 }: {
+  featureId: string
   group: WaypointGroupKey
   item: RailWaypoint
-  liveHitl: boolean
-  working: boolean
-  onWork: (waypointId: string) => void
+  blocker?: LiveSessionBlocker
 }) {
   const w = item.waypoint
-  // Research is worked AFK (a run, not a terminal) — a live HITL session doesn't
-  // block it. HITL types (grilling/prototype/task) spawn a terminal, so they wait
-  // for the live session to end first.
+  const [open, setOpen] = useState(item.expanded)
+  const [confirming, setConfirming] = useState(false)
+  const utils = trpc.useUtils()
+  const toast = useToast()
   const research = w.type === 'research'
   const resuming = !research && !!w.lastSessionId
-  const blockedBySession = !research && liveHitl
   // A run-claim is an AFK research run in flight — say so, instead of presenting
   // a dead row that looks like a hung session.
   const byRun = w.claimedBy?.startsWith('run_') ?? false
 
-  return (
-    <div className={`wp wp-${group}${group === 'done' ? ` wp-${w.status}` : ''}`}>
-      {group === 'claimed' && <span className="wp-pulse" aria-hidden="true" />}
-      <span className="wp-type">{group === 'done' ? w.status : w.type}</span>
-      <span className="wp-title">{w.title}</span>
+  const work = trpc.feature.workWaypoint.useMutation({
+    onSuccess: () => {
+      setConfirming(false)
+      void utils.feature.get.invalidate({ id: featureId })
+      void utils.feature.list.invalidate()
+    },
+    onError: (e, vars) => {
+      // The one-terminal-per-feature refusal (a GateError → PRECONDITION_FAILED)
+      // is a question for the human, not an error: ask it here, on the card they
+      // clicked, naming the session that would be ended. Research is never
+      // refused for a live session, and a refused confirm has nothing left to
+      // ask — both fall through to the toast, as does anything unexpected.
+      if (!research && !vars.endLive && blocker && e.data?.code === 'PRECONDITION_FAILED') {
+        setConfirming(true)
+      } else {
+        setConfirming(false)
+        toast.push(e.message)
+      }
+    },
+  })
 
-      {group === 'blocked' && item.blockerTitles.length > 0 && (
-        <span className="wp-blockers">blocked by {item.blockerTitles.join(', ')}</span>
+  return (
+    <div
+      className={`wp wp-${group}${group === 'done' ? ` wp-${w.status}` : ''}${open ? ' is-open' : ''}`}
+      role="button"
+      tabIndex={0}
+      aria-expanded={open}
+      title={open ? 'collapse this waypoint' : 'expand this waypoint'}
+      onClick={() => setOpen(!open)}
+      onKeyDown={(e) => {
+        // Only the card's own key events — Enter/Space on the buttons inside it
+        // is that button being pressed, not a request to fold the card away.
+        if (e.target !== e.currentTarget) return
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault()
+          setOpen(!open)
+        }
+      }}
+    >
+      <div className="wp-top">
+        {group === 'claimed' && <span className="wp-pulse" aria-hidden="true" />}
+        <span className="wp-type">{group === 'done' ? w.status : w.type}</span>
+        <span className="wp-title">{w.title}</span>
+        <span className="wp-caret" aria-hidden="true">
+          ▸
+        </span>
+      </div>
+
+      {open && (
+        // The question is multi-sentence prose meant to be read and selected —
+        // a click that lands in it must not fold it back up. The card's own
+        // first line (and its caret) stays the way to collapse.
+        <div className="wp-detail" onClick={(e) => e.stopPropagation()}>
+          <Markdown source={w.question} className="wp-q" />
+          {group === 'blocked' && item.blockerTitles.length > 0 && (
+            <div className="wp-blockers">blocked by {item.blockerTitles.join(', ')}</div>
+          )}
+          {group === 'claimed' && byRun && <div className="wp-run-note">researching…</div>}
+          {group === 'done' && w.summary && <Markdown source={w.summary} className="wp-summary" />}
+          {item.originTitle && <div className="wp-lineage">surfaced by {item.originTitle}</div>}
+        </div>
       )}
-      {group === 'claimed' && byRun && <span className="wp-run-note">researching…</span>}
-      {group === 'done' && w.summary && <span className="wp-summary">{w.summary}</span>}
 
       {group === 'frontier' && (
-        <button
-          type="button"
-          className="btn btn-xs btn-solid wp-work"
-          disabled={blockedBySession || working}
-          title={
-            research
-              ? 'start an AFK research run on this waypoint'
-              : blockedBySession
-                ? 'a session is already live on this feature — end or finish it before starting another'
+        <div className="wp-actions">
+          <button
+            type="button"
+            className="btn btn-xs btn-solid"
+            disabled={work.isPending}
+            title={
+              research
+                ? 'start an AFK research run on this waypoint'
                 : resuming
                   ? 'resume the previous session on this waypoint'
                   : 'claim this waypoint and open a session'
-          }
-          onClick={() => onWork(w.id)}
-        >
-          {resuming ? 'Resume' : 'Work'}
-        </button>
+            }
+            onClick={(e) => {
+              e.stopPropagation()
+              work.mutate({ featureId, waypointId: w.id })
+            }}
+          >
+            {resuming ? 'Resume' : 'Work'}
+          </button>
+          {research && <span className="wp-run-note">runs AFK</span>}
+        </div>
       )}
 
-      {group !== 'done' && item.originTitle && (
-        <div className="wp-lineage">surfaced by {item.originTitle}</div>
+      {confirming && blocker && (
+        <div className="wp-confirm" role="alert">
+          <div className="wp-confirm-text">
+            {blocker.waypointTitle ? (
+              <>
+                A session is live on <b>{blocker.waypointTitle}</b> and its waypoint is still open.
+                End it and work this instead?
+              </>
+            ) : (
+              <>
+                A {blocker.kind} session is live on this feature. End it and work this instead?
+              </>
+            )}
+          </div>
+          <div className="wp-confirm-actions">
+            <button
+              type="button"
+              className="btn btn-xs btn-danger"
+              disabled={work.isPending}
+              onClick={(e) => {
+                e.stopPropagation()
+                work.mutate({ featureId, waypointId: w.id, endLive: true })
+              }}
+            >
+              End &amp; work this
+            </button>
+            <button
+              type="button"
+              className="btn btn-xs btn-ghost"
+              onClick={(e) => {
+                e.stopPropagation()
+                setConfirming(false)
+              }}
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
       )}
     </div>
   )
