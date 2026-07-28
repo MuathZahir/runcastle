@@ -343,6 +343,8 @@ export function pipelineSteps(
 export type ActionKind =
   | 'startGrill' // launchSession { kind: 'ideation' }
   | 'openGrill' // focus the live session in the body
+  | 'converge' // feature.converge — crosses G1 on a mapped feature
+  | 'convergeOverride' // feature.converge { overrideReason } — forces G1, needs a reason
   | 'advance' // feature.advance (crosses non-human gates G1/G2/G4)
   | 'burn' // feature.burn (G3, and resume a parked run)
   | 'cancelRun' // run.cancel
@@ -353,10 +355,23 @@ export type ActionKind =
   | 'revisit' // launchSession { kind: 'revisit' } — resume the old conversation, amend docs + tickets
   | 'unarchive' // feature.unarchive — restore an archived feature to its lane (next-step bar)
 
+/**
+ * An action that can't fire on click: the bar expands inline to a free-text
+ * input first and hands the typed string to the dispatcher (today, the reason
+ * recorded with a forced G1 override).
+ */
+export interface ReasonPrompt {
+  placeholder: string
+  /** Label of the button that fires the action with the typed reason. */
+  submitLabel: string
+}
+
 export interface NextAction {
   label: string
   kind: ActionKind
   danger?: boolean
+  /** Set when the action needs a reason string before it can fire. */
+  reason?: ReasonPrompt
 }
 
 export interface NextStep {
@@ -368,6 +383,8 @@ export interface NextStep {
   secondary: NextAction[]
   /** A run is actively burning — show a spinner in the bar. */
   busy: boolean
+  /** Soft warning shown under the description — remaining map fog. */
+  fog?: string
 }
 
 /**
@@ -457,7 +474,10 @@ function hasResumable(sessions: FeatureFull['sessions'], kind: string): boolean 
   return sessions.some((s) => s.kind === kind && s.status === 'ended' && !!s.ccSessionId)
 }
 
-export function nextStep(full: FeatureFull, ctx: { driving: boolean }): NextStep {
+export function nextStep(
+  full: FeatureFull,
+  ctx: { driving: boolean; mapContent?: string },
+): NextStep {
   const { feature, tickets, sessions, runs, gate } = full
   const live = sessions.find((s) => s.status === 'live')
   const resumableGrill = hasResumable(sessions, 'ideation')
@@ -494,20 +514,45 @@ export function nextStep(full: FeatureFull, ctx: { driving: boolean }): NextStep
 
   switch (feature.phase) {
     case 'ideation': {
-      // Mapped features converge instead of promoting: the map's Converge button
-      // (in the body, beside the fog) crosses G1 and spawns the converge session.
-      // The next-step bar just narrates — it never shows a plain `advance`, which
-      // would bump the phase without a session (ADR-0001 §13.6).
+      // Mapped features converge instead of promoting: Converge crosses G1 and
+      // spawns the converge session, and the bar owns it (decision #4) — it never
+      // shows a plain `advance`, which would bump the phase without a session
+      // (ADR-0001 §13.6). Remaining fog — the map's still-unspecified prose —
+      // rides along as a warning: shown, never enforced, so it neither gates nor
+      // disables Converge.
       if (feature.mapped) {
+        const fog = ctx.mapContent
+          ? parseMapSections(ctx.mapContent)['Not yet specified']?.trim() || undefined
+          : undefined
+        if (gate.satisfied) {
+          return {
+            kick: 'MAP',
+            title: 'Converge the map',
+            desc: 'Every waypoint is resolved — converge to draft the spec and tickets.',
+            primary: { label: 'Converge', kind: 'converge' },
+            secondary: [],
+            busy: false,
+            fog,
+          }
+        }
         return {
           kick: 'MAP',
-          title: gate.satisfied ? 'Converge the map' : 'Work the frontier',
-          desc: gate.satisfied
-            ? 'Every waypoint is resolved — converge to draft the spec and tickets.'
-            : gate.reason ?? 'Resolve the open waypoints; converge once the frontier clears.',
-          primary: live ? { label: 'Jump to grill', kind: 'openGrill' } : undefined,
-          secondary: [],
+          title: 'Work the frontier',
+          desc: gate.reason ?? 'Resolve the open waypoints; converge once the frontier clears.',
+          // The override is the seatbelt, not the cage: a quiet secondary that
+          // asks for a reason before it forces G1.
+          secondary: [
+            {
+              label: 'Override & converge…',
+              kind: 'convergeOverride',
+              reason: {
+                placeholder: 'reason to converge past open waypoints',
+                submitLabel: 'Converge anyway',
+              },
+            },
+          ],
           busy: false,
+          fog,
         }
       }
       if (canAdvance) {
@@ -692,6 +737,16 @@ export function nextStep(full: FeatureFull, ctx: { driving: boolean }): NextStep
 
 // --- the map rail (mapped ideation) ----------------------------------------
 
+/**
+ * The map doc's path, or undefined when the feature isn't mapped or nothing is
+ * charted yet. One implementation so the rail's read and the next-step bar's fog
+ * read resolve the SAME `docs.read` query key and share a single fetch.
+ */
+export function mapDocPath(full: FeatureFull): string | undefined {
+  if (!full.feature.mapped) return undefined
+  return full.docs.find((d) => d.relPath.endsWith('map.md'))?.relPath
+}
+
 /** Split `map.md` into a `{ heading: body }` map keyed by its `## ` sections. */
 export function parseMapSections(content: string): Record<string, string> {
   const out: Record<string, string> = {}
@@ -846,4 +901,34 @@ export function sessionDoneState(
   if (claimed > 0) return { kind: 'awaitingResearch', waypoint, claimed }
 
   return { kind: 'mapComplete', waypoint }
+}
+
+/**
+ * The live session a Work click would have to end, named by what it is holding
+ * (decision #2/#8) — the card's inline confirm asks about *this*, so it needs a
+ * human name for it, not a session id.
+ */
+export interface LiveSessionBlocker {
+  sessionId: string
+  kind: string
+  /** Title of the waypoint that session still holds, when it holds one. */
+  waypointTitle?: string
+}
+
+/**
+ * The feature's live session and the still-open waypoint it claimed, if any.
+ * `workWaypoint` ends a session it can prove is finished on its own, so this is
+ * only consulted once the server has refused: it turns that refusal into the
+ * card's confirm ("a session is live on X — end it and work this instead?").
+ * A session whose waypoint has already resolved keeps no claim, so it reports
+ * no title — and never reaches the confirm, because the server swept it.
+ */
+export function liveSessionBlocker(
+  sessions: FeatureFull['sessions'],
+  waypoints: Waypoint[],
+): LiveSessionBlocker | undefined {
+  const live = sessions.find((s) => s.status === 'live' || s.status === 'launching')
+  if (!live) return undefined
+  const held = waypoints.find((w) => w.status === 'claimed' && w.claimedBy === live.id)
+  return { sessionId: live.id, kind: live.kind, waypointTitle: held?.title }
 }
