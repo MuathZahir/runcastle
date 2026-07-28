@@ -346,3 +346,147 @@ the database already knows. On size: when the live ADR set grows painful, that i
 over-nomination pressure decision 12 named, whose stated fix is tightening eligibility prose.
 A ceiling would silently drop ADRs, turning "this binds you" into "this binds you unless it
 did not fit" — the same silent failure decision 3 rejected. It should hurt visibly.
+
+## 17. The project-level session is the New Feature form with a brain
+**Decision:** runcastle gains a project-scoped session (kind `project`) whose defining job is
+**intake and decomposition terminating in feature creation**: take a lump of raw intent, grill
+it until it resolves into N features, and create them. Three jobs ride along as support, not
+as peers:
+
+- **Portfolio Q&A** — "have we already decided X", "did we ever build Y". This is the same
+  lookup intake needs anyway to avoid creating a duplicate feature; it is `qa` at project scope.
+- **Routing** — deciding an incoming thing is a bug, a tweak, or an existing feature's revisit
+  rather than a new feature. Same act as decomposition: read the intent, pick the record.
+- **Cross-feature curation**, deliberately declawed to **advisory only**. The session may
+  report that two in-flight features are on a collision course or that an ADR looks stale; it
+  does not fix either. Every fix routes back through a feature, through promotion (decision
+  12), or through the charter's own lifecycle (waypoint 8).
+
+**Why:** the New Feature form demands a title and a one-liner *up front*, which means it
+demands the human has already decomposed their thought into a feature. Decision 5 is the
+receipt — this map exists only because there was no way to say "here is a lump of intent, it
+is probably five features" and have runcastle do the cutting. Naming the session by its scope
+("a session at project level") describes a container, not a purpose, and an agent whose
+purpose is "anything not feature-shaped" is exactly the open-ended do-stuff agent the guided
+pipeline exists to prevent; naming it by the one job no other surface can do is what bounds
+it. Curation is cut back because it is the precise point where this session would quietly
+become a project editor with standing write access to the charter and `docs/adr/` — and the
+value of noticing a collision is fully captured by *saying so*, with none of the blast radius
+of acting on it.
+
+## 18. Agents never write the human's checkout — the project session works on a runcastle-owned branch and lands on base
+**Decision:** the project session **does write the repo** — real edits, real commits, no
+sandbox theatre — but never in the main checkout. It runs in
+`~/.runcastle/worktrees/<projectId>/__project/` on a runcastle-owned branch
+(`runcastle/project`, matching the existing `runcastle/*` temp-branch namespace) cut from the
+base tip at launch, and its commits are landed onto the base branch by the existing
+`mergeTempBranch`. Five consequences:
+
+- **Nothing is mutually exclusive.** The project session never *holds* the base branch, so the
+  test drive, the merge and the project terminal never contend for the one checkout. One live
+  project session per project, orthogonal to feature terminals — `assertSpawnable`'s
+  one-live-session rule exists for a git reason (one talk worktree, and git forbids two
+  checkouts of one branch) that simply does not apply here.
+- **Landing is shipped code, unchanged.** `mergeTempBranch`'s three cases each do the right
+  thing: a clean main checkout on the base branch → the merge runs there and fast-forwards the
+  human's working tree exactly like a `git pull`; mid-test-drive, when nothing holds the base
+  branch → `git fetch . <temp>:<base>` updates the ref with no checkout at all; base moved
+  ahead → the disposable-worktree merge. It refuses rather than clobbers uncommitted work.
+- **Edits imply commits.** A session that writes but cannot commit leaves the checkout dirty,
+  and a dirty tree is precisely what `testDrive` refuses on (`DENY_DIRTY`) and what jams the
+  next merge. Write-without-commit is strictly worse than both, so the skill's closing move is
+  *land what you wrote and leave the tree clean*.
+- **`--permission-mode default`, not `acceptEdits`.** Feature terminals get `acceptEdits` plus
+  pre-approved `git add`/`git commit` on the stated grounds that talk worktrees are docs-only,
+  so even `git add` can only touch feature docs. That justification evaporates here: this
+  session can touch anything in the repo and land it on the base branch. Prompting is also
+  what the human's own Claude Code does, which is the point.
+- **Direct project-level authoring exists, and it lives here.** Decision 7 deferred this to
+  this waypoint; the answer is yes. There are exactly two on-ramps to an ADR and they do not
+  overlap: **promotion at merge** (decision 12) for decisions born inside a feature, and **the
+  project session** for project-scope decisions that never had a feature ("we standardise on
+  Bun, never npm"). The same hands may write `CONTEXT.md`.
+
+**Why:** "writable on the base branch" has only two physical realisations — git refuses a
+second worktree on a branch the main checkout already holds — so it is either the main
+checkout itself or a transfer, and the main checkout is a three-way collision (the human's
+test drive needs it clean and flips its branch; `mergeFeature` refuses outright during a
+drive). Taking it would have made the project terminal a third claimant and imposed mutual
+exclusion on a surface that has never had any. Moving the test drive out instead fails on why
+it lives there at all — `devCommand`, `node_modules` and `.env` are in that checkout — and
+would sacrifice the thing the human values most to protect a terminal. The deciding argument
+for the temp branch is consistency rather than convenience: **every other agent in runcastle
+that writes already works on a `runcastle/*` branch and lands via `mergeTempBranch`** —
+burners, research runs. The project session doing the same makes it an ordinary citizen of the
+existing design instead of the one exception that touches the human's checkout directly, and
+it costs a branch name, a worktree and a call to a function that already exists. The accepted
+trade-off is that the session's cwd is a worktree path rather than the repo path — "my own
+terminal" in every respect except the string in the prompt — and that landed commits arrive in
+the human's checkout unprompted, which is `git pull` behaviour and refuses rather than
+clobbers. Because this also means only one session in the whole system may write the charter,
+and it is singleton, waypoint 8 inherits a strong serialisation story it may take or leave:
+feature sessions never touch the rewritten-in-place tier at all.
+**Scope:** project
+
+## 19. Sessions gain a project scope; the project session gets four tools and none of the pipeline's
+**Decision:** `sessions` mirrors `events`: add `projectId` **NOT NULL**, relax `featureId` to
+**nullable**. The invariant becomes "every session belongs to a project; a session may belong
+to a feature." Its MCP surface is four tools, and deliberately none of the existing nine:
+
+- `create_feature({ title, oneLiner, baseBranch?, brief? })` — the point of the session.
+- `get_project_context()` — project, charter, live ADRs, and decision 14's one-line feature
+  index (slug, one-liner, phase, status, docs path).
+- `get_work_record(...)` — decision 15's tool, unchanged.
+- `record_event({ type, message })` — project-scoped, `featureId` null, which the events table
+  already supports.
+
+Withheld: `emit_tickets`, `complete_phase`, `emit_waypoints`, `resolve_waypoint`,
+`escalate_to_map`, `update_ticket`, `cancel_ticket` — every one of them advances a feature
+through a gate, and a session with no feature has no business touching them. Reading any
+feature's docs needs no tool at all (decision 14 part 3).
+
+Two shapes on `create_feature`, both settled: it **carries a real brief** — the `brief` field
+is written straight into `brief.md` at creation instead of `scaffoldDocs` generating one from
+title + one-liner — and it **does not launch** what it creates. `mostRecentResumableSession`
+is keyed by `featureId` and needs a project-keyed sibling, so a project terminal resumes its
+own last conversation the way an ideation terminal does.
+
+**Why:** the migration is not a novel call — `events` took exactly it for issue #44
+(`projectId` NOT NULL, `featureId` nullable), so "scope up, feature optional" is already this
+schema's established shape. The alternative, a sentinel `__project` pseudo-feature row, avoids
+one migration by polluting `feature.list`, the sidebar, the pipeline and every gate check with
+a permanent fake feature. On the brief: the session will have just spent the conversation
+working out *why* feature three exists and what it must not swallow, and without a pass-through
+that reasoning evaporates when the terminal closes — decision 5's counterfactual only works if
+the five features it would have created carry five real briefs rather than five one-liners. On
+not launching: spawning terminals from inside a terminal makes the project session an
+orchestrator, where runcastle's serial-HITL premise is that the human decides what to work on
+next; the sidebar polls at 1.5s, so new cards appearing *is* the feedback.
+
+## 20. It lives on the features rail, and it ships first out of this map
+**Decision:** the project session lives **inside `ProjectShell`, as a pinned row at the top of
+the features rail** — always present, showing the project rather than a feature. Selecting it
+swaps `Workspace` from the feature workspace to a project workspace (the terminal, with the
+feature index and charter as its resting state) and hides `Inspector`, whose every panel is
+feature-scoped. It is **not** on the portfolio home: that is the cross-project surface and this
+session is bound to one project's repo. The New Feature path gains a sibling affordance — *not
+sure it's one feature? talk it through* — and the project workspace's chrome states its branch
+and its consequence (writing to the base branch; commits land in your checkout).
+
+Sequencing: this is the **first** slice converge should cut out of this map, ahead of knowledge
+tiers + promotion.
+
+**Why:** placement follows scope — the rail already is the project's list of things to work on,
+and the project session is the one entry on it that is not a feature. The discovery affordance
+matters more than it looks: `EmptyWorkspace` and the New Feature button are today the only two
+doors and both demand a title the human may not have yet, which is exactly the gap decision 5
+recorded — so the fix belongs on the screen where the gap is hit, not only as a rail item that
+must be noticed. On order: the project session changes how work *enters* runcastle, which
+compounds (every later feature is better cut), where promotion improves the quality of
+knowledge that already exists, which is linear — and promotion has nothing to promote on day
+one, since it only starts paying once features ship carrying `**Scope:** project` lines, so
+building it first builds a mechanism that idles. The known weakness, which argues for
+sequencing rather than reordering: in a *fresh* project there is no charter and no ADR set, so
+on day one this session decomposes ideas well and answers portfolio questions thinly. Decision
+14's injected set makes it richer later without being a prerequisite, and waypoint 8 owns where
+the charter comes from.
