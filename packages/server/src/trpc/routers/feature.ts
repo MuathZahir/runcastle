@@ -7,6 +7,7 @@ import {
   resendKickoff,
   workWaypoint,
 } from '../../launcher/launcher'
+import { lapKickoff } from '../../launcher/sessions'
 import { emit } from '../../services/events'
 import * as features from '../../services/features'
 import { overrideGate } from '../../services/gates'
@@ -70,6 +71,23 @@ export const featureRouter = router({
     .mutation(({ ctx, input }) =>
       converge(ctx, { featureId: input.featureId, overrideReason: input.overrideReason }),
     ),
+
+  // Rethink (ADR-0010 §1 / SPEC §15.2) — the review verb that starts lap N+1.
+  // The service runs FIRST so the phase is back at ideation and the lap already
+  // bumped when the session row is created (it is stamped with the feature's
+  // current lap); the terminal then opens on the lap briefing instead of the
+  // generic revisit line: digest the drive, amend the docs, emit this lap's
+  // tickets, hand back to the Burn click. One click, one terminal.
+  rethink: publicProcedure
+    .input(z.object({ featureId: z.string() }))
+    .mutation(({ ctx, input }) => {
+      const feature = features.rethink(ctx, input.featureId)
+      return launchSession(ctx, {
+        featureId: input.featureId,
+        kind: 'revisit',
+        kickoffLine: lapKickoff(feature.lap),
+      })
+    }),
 
   // Re-type a live session's kickoff/briefing into its terminal ("Send briefing"
   // in the session strip). The escape hatch for a briefing the TUI swallowed —

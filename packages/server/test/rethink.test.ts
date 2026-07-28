@@ -5,12 +5,14 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { runs, tickets } from '../src/db/schema'
 import type { AppCtx } from '../src/db/types'
 import { GateError } from '../src/errors'
-import { createSessionRow, markSessionEnded } from '../src/launcher/sessions'
+import { createSessionRow, lapKickoff, markSessionEnded } from '../src/launcher/sessions'
 import { listAfter } from '../src/services/events'
 import { burn, rethink } from '../src/services/features'
 import { checkGate } from '../src/services/gates'
 import { getFeatureRow } from '../src/services/repo'
 import { listByFeature, storeTickets, updateTicket } from '../src/services/tickets'
+import { createCallerFactory } from '../src/trpc/context'
+import { appRouter } from '../src/trpc/router'
 import { workflowRegistry } from '../src/workflows/registry'
 import { makeTestCtx } from './helpers/db'
 import { seedFeature, seedProject } from './helpers/fixtures'
@@ -160,6 +162,52 @@ describe('G3 (tickets-approved) scopes to the current lap', () => {
     expect(checkGate(ctx, 'all-tickets-terminal', getFeatureRow(ctx, featureId)).satisfied).toBe(
       true,
     )
+  })
+})
+
+describe('feature.rethink proc + the lap kickoff', () => {
+  let ctx: AppCtx
+
+  beforeEach(async () => {
+    ctx = await makeTestCtx()
+  })
+
+  it('is registered on the feature router and runs the service before launching anything', async () => {
+    const caller = createCallerFactory(appRouter)(ctx)
+    const featureId = seedFeature(ctx, seedProject(ctx).id, { phase: 'implementation' }).id
+
+    // The service's phase guard rejects, so no session is ever launched — which
+    // is what makes this callable without a real terminal (`launchSession` is B1
+    // behaviour and would spawn one). The launching path itself is exercised by
+    // the smoke, not here.
+    await expect(caller.feature.rethink({ featureId })).rejects.toThrow(
+      /review phase to rethink \(currently implementation\)/,
+    )
+    expect(getFeatureRow(ctx, featureId).lap).toBe(1)
+  })
+
+  it('lapKickoff names the lap and its review iteration', () => {
+    expect(lapKickoff(2)).toContain('LAP 2 REVIEW ITERATION')
+    expect(lapKickoff(7)).toContain('LAP 7 REVIEW ITERATION')
+    expect(lapKickoff(2)).toContain('/runcastle:revisit')
+  })
+
+  it('lapKickoff points at the PREVIOUS lap`s notes and warns both sources may be absent', () => {
+    const line = lapKickoff(3)
+    expect(line).toContain('test-notes.md')
+    expect(line).toContain('## Lap 2')
+    expect(line).toContain('## Later laps')
+    expect(line).toContain('MAY NOT EXIST YET')
+  })
+
+  it('lapKickoff drives the whole lap in one session: amend, emit, advance, hand to Burn', () => {
+    const line = lapKickoff(2)
+    expect(line).toContain('decisions.md')
+    expect(line).toContain('spec.md')
+    expect(line).toContain('emit_tickets')
+    expect(line).toContain('complete_phase')
+    expect(line).toContain('ideation → spec → tickets')
+    expect(line).toContain('click Burn')
   })
 })
 
