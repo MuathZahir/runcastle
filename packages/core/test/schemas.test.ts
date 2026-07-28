@@ -52,6 +52,7 @@ describe('Ticket — stored shape', () => {
       featureId: 'feat_xyz789',
       seq: 1,
       status: 'pending',
+      lap: 1,
       commits: [],
     }
     expect(Ticket.safeParse(stored).success).toBe(true)
