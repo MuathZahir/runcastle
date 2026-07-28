@@ -353,6 +353,7 @@ export type ActionKind =
   | 'merge' // feature.merge (G5)
   | 'askQuestions' // launchSession { kind: 'qa' }
   | 'revisit' // launchSession { kind: 'revisit' } — resume the old conversation, amend docs + tickets
+  | 'rethink' // feature.rethink — start the next lap (review → ideation)
   | 'unarchive' // feature.unarchive — restore an archived feature to its lane (next-step bar)
 
 /**
@@ -388,23 +389,7 @@ export interface NextStep {
 }
 
 /**
- * The kickoff line for a review-phase Iterate session (CONTEXT decision #6).
- * Passed as the `launchSession` override (ticket 3 mechanism) when the review
- * bar's Iterate action launches a `revisit` session, so the agent opens on the
- * review-iteration move rather than the generic revisit prompt: read the run
- * outcome + ticket states, interview the human about what the test drive
- * surfaced, emit fix tickets, and never advance the phase.
- */
-export const REVIEW_ITERATE_KICKOFF =
-  'Proceed with your task: invoke the /runcastle:revisit skill for a REVIEW ITERATION. ' +
-  'Call get_feature_context to read the latest run outcome and every ticket’s state, then ' +
-  'interview me about what the test drive surfaced — bugs, rough edges, tweaks. Turn what we ' +
-  'settle on into fix tickets with emit_tickets, and use update_ticket / cancel_ticket on any ' +
-  'stale pending tickets. Never call complete_phase — leave the phase at review. When the ' +
-  'tickets are ready, tell me to review the cards and click Burn.'
-
-/**
- * Kickoff line for a review-phase Iterate session opened to RESOLVE a merge
+ * Kickoff line for a review-phase revisit session opened to RESOLVE a merge
  * conflict (CONTEXT decision #9). Passed as the `launchSession` override, so the
  * revisit agent — whose cwd IS the talk worktree checked out on the feature
  * branch — opens straight on the merge-into-feature resolution rather than the
@@ -750,17 +735,19 @@ export function nextStep(
       }
     }
     case 'review': {
-      // Test-drive toggle + Iterate stay available at review throughout. Iterate
-      // opens a `revisit` session to interview the human and emit fix tickets;
-      // one terminal per feature, so it's hidden while any session is live.
+      // Review offers three verbs (ADR-0010 §3): Fix — the Burn primary below,
+      // for when the spec was right and the code wasn't; Rethink — the spec was
+      // wrong, so start lap N+1 back at ideation; Merge & ship. Test drive stays
+      // available throughout. Rethink opens the lap's terminal, and there is one
+      // terminal per feature, so it's hidden while any session is live.
       const testDriveAction: NextAction = ctx.driving
         ? { label: 'Stop test drive', kind: 'testDriveStop' }
         : { label: 'Start test drive', kind: 'testDriveStart' }
-      const iterate: NextAction[] = live ? [] : [{ label: 'Iterate', kind: 'revisit' }]
+      const rethink: NextAction[] = live ? [] : [{ label: 'Rethink', kind: 'rethink' }]
 
-      // Fix tickets emitted by an Iterate session are non-terminal — while any
-      // exist, the review loops back through a burn (CONTEXT decision #7): Burn is
-      // promoted to primary, and Merge & ship drops to a secondary.
+      // Fix tickets are non-terminal — while any exist, the review loops back
+      // through a burn (CONTEXT decision #7): Burn is promoted to primary, and
+      // Merge & ship drops to a secondary.
       if (pending > 0) {
         return {
           kick: 'NEXT STEP',
@@ -769,7 +756,7 @@ export function nextStep(
             ? 'Test-driving the branch — burn the fix tickets when you’re ready.'
             : `${pending} fix ticket${pending === 1 ? '' : 's'} ready — burn to run them, then review again.`,
           primary: { label: `Burn ${pending} ticket${pending === 1 ? '' : 's'}`, kind: 'burn' },
-          secondary: [{ label: 'Merge & ship', kind: 'merge' }, testDriveAction, ...iterate],
+          secondary: [{ label: 'Merge & ship', kind: 'merge' }, testDriveAction, ...rethink],
           busy: false,
         }
       }
@@ -784,7 +771,7 @@ export function nextStep(
         title: ctx.driving ? 'Merge when it looks right' : 'Test drive, then ship',
         desc,
         primary: { label: 'Merge & ship', kind: 'merge' },
-        secondary: [testDriveAction, ...iterate],
+        secondary: [testDriveAction, ...rethink],
         busy: false,
       }
     }

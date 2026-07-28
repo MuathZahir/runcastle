@@ -8,7 +8,6 @@ import {
   needsMe,
   nextStep,
   parseMapSections,
-  REVIEW_ITERATE_KICKOFF,
   sessionDoneState,
   ticketConflictKickoff,
   triage,
@@ -114,15 +113,16 @@ describe('nextStep — Resume vs Start wording for the grill', () => {
 })
 
 /**
- * Streamlining-ux ticket 6 — the review-phase next step is a loop, not a
- * terminus: Iterate opens a revisit session (hidden while one is live), and a
- * pending fix ticket promotes Burn to primary while Merge & ship + test drive
- * stay available. Tested at the pure `nextStep` derivation.
+ * Laps ticket 3 (ADR-0010 §3) — the review bar offers three verbs: Fix (the
+ * Burn primary a pending ticket promotes), Rethink (starts lap N+1, hidden
+ * while a session is live) and Merge & ship. Tested at the pure `nextStep`
+ * derivation.
  */
 describe('nextStep at review', () => {
   const reviewFull = (opts: {
     ticketStatuses?: TicketStatus[]
     sessionLive?: boolean
+    lap?: number
   }): FeatureFull => {
     const tickets = (opts.ticketStatuses ?? []).map((status, i) => ({
       id: `t${i}`,
@@ -131,7 +131,7 @@ describe('nextStep at review', () => {
     }))
     const sessions = opts.sessionLive ? [{ id: 's1', status: 'live', kind: 'revisit' }] : []
     return {
-      feature: { id: 'f1', phase: 'review', mapped: false },
+      feature: { id: 'f1', phase: 'review', mapped: false, lap: opts.lap ?? 1 },
       tickets,
       sessions,
       runs: [{ id: 'r1', status: 'succeeded', startedAt: 1 }],
@@ -140,27 +140,29 @@ describe('nextStep at review', () => {
   }
   const labels = (as: { label: string }[]) => as.map((a) => a.label)
 
-  it('offers Iterate and keeps Merge & ship primary when no tickets are pending', () => {
+  it('offers Rethink and keeps Merge & ship primary when no tickets are pending', () => {
     const ns = nextStep(reviewFull({}), { driving: false })
     expect(ns.primary).toEqual({ label: 'Merge & ship', kind: 'merge' })
-    expect(labels(ns.secondary)).toEqual(['Start test drive', 'Iterate'])
+    expect(labels(ns.secondary)).toEqual(['Start test drive', 'Rethink'])
+    expect(ns.secondary).toContainEqual({ label: 'Rethink', kind: 'rethink' })
   })
 
   it('promotes Burn to primary and drops Merge & ship to secondary with a pending ticket', () => {
     const ns = nextStep(reviewFull({ ticketStatuses: ['done', 'pending'] }), { driving: false })
     expect(ns.primary).toEqual({ label: 'Burn 1 ticket', kind: 'burn' })
-    expect(labels(ns.secondary)).toEqual(['Merge & ship', 'Start test drive', 'Iterate'])
+    expect(labels(ns.secondary)).toEqual(['Merge & ship', 'Start test drive', 'Rethink'])
+    expect(ns.secondary).toContainEqual({ label: 'Rethink', kind: 'rethink' })
   })
 
-  it('hides Iterate while a session is live (one terminal per feature)', () => {
+  it('hides Rethink while a session is live (one terminal per feature)', () => {
     const ns = nextStep(reviewFull({ sessionLive: true }), { driving: false })
-    expect(labels(ns.secondary)).not.toContain('Iterate')
+    expect(labels(ns.secondary)).not.toContain('Rethink')
     // Merge & ship + test drive remain available throughout.
     expect(ns.primary?.label).toBe('Merge & ship')
     expect(labels(ns.secondary)).toEqual(['Start test drive'])
   })
 
-  it('hides Iterate but still promotes Burn when a session is live with pending tickets', () => {
+  it('hides Rethink but still promotes Burn when a session is live with pending tickets', () => {
     const ns = nextStep(
       reviewFull({ ticketStatuses: ['pending'], sessionLive: true }),
       { driving: false },
@@ -172,14 +174,21 @@ describe('nextStep at review', () => {
   it('keeps the test-drive toggle and Merge & ship available while driving', () => {
     const ns = nextStep(reviewFull({ ticketStatuses: ['pending'] }), { driving: true })
     expect(ns.primary?.kind).toBe('burn')
-    expect(labels(ns.secondary)).toEqual(['Merge & ship', 'Stop test drive', 'Iterate'])
+    expect(labels(ns.secondary)).toEqual(['Merge & ship', 'Stop test drive', 'Rethink'])
   })
 
-  it('exposes the review-iteration kickoff briefing for the launch override', () => {
-    // The dispatch passes this verbatim as the launchSession kickoff override.
-    expect(REVIEW_ITERATE_KICKOFF).toContain('REVIEW ITERATION')
-    expect(REVIEW_ITERATE_KICKOFF).toContain('emit_tickets')
-    expect(REVIEW_ITERATE_KICKOFF).toContain('click Burn')
+  it('never offers the retired Iterate verb', () => {
+    // Iterate was subsumed by Fix/Rethink — the review bar has three verbs.
+    for (const full of [reviewFull({}), reviewFull({ ticketStatuses: ['pending'] })]) {
+      const ns = nextStep(full, { driving: false })
+      expect(labels(ns.secondary)).not.toContain('Iterate')
+      expect(ns.secondary.map((a) => a.kind)).not.toContain('revisit')
+    }
+  })
+
+  it('offers the same verbs on a later lap (the bar does not vary by lap)', () => {
+    const ns = nextStep(reviewFull({ lap: 3 }), { driving: false })
+    expect(labels(ns.secondary)).toEqual(['Start test drive', 'Rethink'])
   })
 })
 
