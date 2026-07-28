@@ -6,7 +6,7 @@ import { sessions } from '../db/schema'
 import { ptyRegistry } from '../pty/registry'
 import { emit, emitForSession } from '../services/events'
 import { promoteLastSession } from '../services/waypoints'
-import { rowToSession } from '../services/repo'
+import { getFeatureRow, rowToSession } from '../services/repo'
 
 /**
  * Session-row persistence for the launcher + hook receiver + MCP server. There
@@ -34,6 +34,9 @@ export function createSessionRow(ctx: AppCtx, input: CreateSessionInput): Sessio
       id: newId('sess'),
       featureId: input.featureId ?? null,
       projectId: input.projectId ?? null,
+      // A feature session belongs to the lap its feature is on; a project-scoped
+      // `prepare` session has no feature to take one from (ADR-0010 §7).
+      lap: input.featureId ? getFeatureRow(ctx, input.featureId).lap : 1,
       kind: input.kind,
       ccSessionId: null,
       transcriptPath: null,

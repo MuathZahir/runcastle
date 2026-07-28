@@ -110,6 +110,8 @@ export async function createFeature(
     // Every feature is created unmapped; mapping is escalation-only, reached
     // mid-grill via the MCP escalate_to_map tool (no "start mapped" at creation).
     mapped: false,
+    // Every feature starts on lap 1; only Rethink moves it (ADR-0010 §7).
+    lap: 1,
     phase: 'ideation' as const,
     branch,
     baseBranch,
