@@ -5,6 +5,7 @@ import { DimLine, EmptyState, SectionTitle } from '../../ui'
 import type { FeatureFull } from '../../lib/api'
 import {
   liveSessionBlocker,
+  mapDocPath,
   parseMapSections,
   waypointGroups,
   type LiveSessionBlocker,
@@ -44,7 +45,6 @@ export function GrillBody({
 }) {
   const { feature, sessions, docs } = full
   const specDoc = docs.find((d) => d.relPath.endsWith('spec.md'))
-  const mapDoc = feature.mapped ? docs.find((d) => d.relPath.endsWith('map.md')) : undefined
   // Converge re-entry (recovery path): a mapped feature stranded at `spec` with
   // no live session and zero tickets means the converge session died after
   // crossing G1 — offer a subtle restart (feature.converge re-enters here).
@@ -61,7 +61,7 @@ export function GrillBody({
       {feature.mapped && (
         <MapRail
           full={full}
-          relPath={mapDoc?.relPath}
+          relPath={mapDocPath(full)}
           collapsed={mapRailCollapsed}
           onToggle={onToggleMapRail}
         />
@@ -240,7 +240,6 @@ function MapRail({
                 blocker={liveSessionBlocker(full.sessions, full.waypoints)}
               />
               {relPath && <MapDoc sections={sections} />}
-              <ConvergeBar full={full} fog={sections['Not yet specified']?.trim()} />
             </>
           ) : (
             <div className="doc-card is-empty">
@@ -270,101 +269,6 @@ function MapDoc({ sections }: { sections: Record<string, string> }) {
         )
       })}
     </details>
-  )
-}
-
-/**
- * The convergence control (ADR-0001 §13.6). Only shown on a mapped feature still
- * guarded by G1 (`all-waypoints-terminal`). When the gate is satisfiable the
- * Converge button crosses G1 and spawns a fresh converge session; while any
- * waypoint is open or claimed the button is replaced by the blocking reason and
- * an override-with-reason affordance (the seatbelt, not the cage). Remaining fog
- * (the map's "Not yet specified" prose) renders as a soft warning beside it —
- * shown, never enforced.
- */
-function ConvergeBar({ full, fog }: { full: FeatureFull; fog?: string }) {
-  const { feature, gate } = full
-  const utils = trpc.useUtils()
-  const toast = useToast()
-  const [overriding, setOverriding] = useState(false)
-  const [reason, setReason] = useState('')
-
-  const converge = trpc.feature.converge.useMutation({
-    onSuccess: () => {
-      setOverriding(false)
-      setReason('')
-      void utils.feature.get.invalidate({ id: feature.id })
-      void utils.feature.list.invalidate()
-    },
-    onError: (e) => toast.push(e.message),
-  })
-
-  // Convergence only applies while the mapped feature is still at G1 (ideation).
-  if (feature.phase !== 'ideation' || gate.next?.id !== 'G1') return null
-
-  return (
-    <section className="converge-bar">
-      {fog && (
-        <div className="converge-fog" role="note">
-          <span className="converge-fog-icon" aria-hidden="true">
-            ⚑
-          </span>
-          <span className="converge-fog-text">
-            Fog remains — still not specified: {fog}. You can converge anyway.
-          </span>
-        </div>
-      )}
-
-      {gate.satisfied ? (
-        <button
-          type="button"
-          className="btn btn-solid converge-btn"
-          disabled={converge.isPending}
-          onClick={() => converge.mutate({ featureId: feature.id })}
-        >
-          {converge.isPending ? 'Converging…' : 'Converge'}
-        </button>
-      ) : overriding ? (
-        <div className="converge-override">
-          <input
-            className="override-input"
-            placeholder="reason to converge past open waypoints"
-            value={reason}
-            autoFocus
-            onChange={(e) => setReason(e.target.value)}
-          />
-          <button
-            type="button"
-            className="btn btn-xs btn-solid"
-            disabled={!reason.trim() || converge.isPending}
-            onClick={() => converge.mutate({ featureId: feature.id, overrideReason: reason.trim() })}
-          >
-            Converge anyway
-          </button>
-          <button
-            type="button"
-            className="btn btn-xs btn-ghost"
-            onClick={() => {
-              setOverriding(false)
-              setReason('')
-            }}
-          >
-            Cancel
-          </button>
-        </div>
-      ) : (
-        <div className="converge-blocked">
-          <DimLine>{gate.reason ?? 'resolve the open waypoints to converge'}</DimLine>
-          <button
-            type="button"
-            className="btn btn-xs btn-ghost"
-            onClick={() => setOverriding(true)}
-          >
-            Override & converge…
-          </button>
-        </div>
-      )}
-    </section>
   )
 }
 
