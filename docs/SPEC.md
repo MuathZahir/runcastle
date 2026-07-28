@@ -351,3 +351,119 @@ FIRST open, fire-and-forget so `project.open` returns immediately — the only
 consumer is a burn, several gates downstream. Everything after is an explicit
 `project.prepare`. One run per project at a time; boot reconciles `running` rows
 left by a dead server.
+
+## 15. Laps (ADR-0010)
+
+Iterative delivery: the pipeline loops until the human merges. One trip is a
+**lap**. From review, three verbs: **Fix** (promoted-note tickets burned via
+the existing review→implementation loop-back, same lap), **Rethink** (new lap,
+back to ideation), **Merge** (unchanged G5). No mode flag exists — a feature
+merged on lap 1 is the old linear flow verbatim. Self-contained amendments,
+same style as §13.
+
+### 15.1 Core amendments (§1)
+
+- `src/schemas.ts`:
+  - `Feature` gains `lap: number` (default 1).
+  - `Ticket` gains `lap: number` (stamped from `feature.lap` at store time;
+    `TicketInput` unchanged — sessions never choose the lap).
+  - `SessionKind` unchanged: the lap session is kind `revisit` (ADR-0010 §5).
+- `src/pipeline.ts`: second typed backward transition
+  `RETHINK_LOOP_BACK = { from: 'review', to: 'ideation' }` and
+  `rethinkPhase(feature): Phase | null` (mirror of `loopBackPhase`).
+  `nextPhase`/`nextGate` unchanged. Gate checks: `tickets-approved` (G3) is
+  satisfied by ≥1 `pending` ticket **in the current lap**; `all-tickets-
+  terminal` (G4) stays cumulative — earlier laps' tickets are terminal by
+  construction. G1/G2 untouched (trivially satisfied on laps ≥2; the lap
+  starts with its grilling by construction — seatbelt, not cage).
+- `src/db-schema.ts`: `lap` integer columns on `features` (default 1),
+  `tickets`, `sessions`, `events` — the latter three stamped from the
+  feature's lap at row creation. The UI's lap trail is derived by grouping on
+  them; there is NO `laps` table (ADR-0010 §8).
+
+### 15.2 Server amendments (§3, §4)
+
+- `services/features.ts` gains `rethink(featureId)`: guards phase=`review` ∧
+  no active run; increments `lap`, sets phase `ideation` via
+  `RETHINK_LOOP_BACK`, emits `lap.started`.
+- Test notes live in `docs/features/<slug>/test-notes.md` (decision-5 seam:
+  prose in the repo): one `## Lap N` heading per lap, one `- ` bullet per
+  note. Promotion rewrites the bullet in place, appending ` → tkt_<id>`.
+- tRPC additions (§4):
+  - `feature.rethink({ featureId }): { sessionId }` — calls the service, then
+    launches a `revisit` session with the lap kickoff (below). One click, one
+    terminal.
+  - `feature.testNote({ featureId, text }): { ok }` — appends a bullet under
+    the current lap's heading (creates heading/file lazily); emits
+    `testnote.added`. Callable any time, not only mid-drive.
+  - `feature.promoteNote({ featureId, lap, index }): { ticketId }` — promotes
+    the index-th bullet of that lap's section: stores one ticket (title =
+    note text, editable client-side before the call via `text?: string`
+    override; `lap` = current feature lap) and rewrites the bullet with the
+    ticket ref. Emits `testnote.promoted` (the single event for this
+    mutation; no separate `tickets.stored`). Rejects already-promoted notes.
+  - `feature.burn` G3 wording updated: requires ≥1 pending ticket **in the
+    current lap** (both the `tickets`-phase crossing and the review-phase
+    Fix restart).
+- Kickoff registry: `revisit` gains the `lap` purpose —
+  `LAP <n> REVIEW ITERATION`: read `test-notes.md` (previous lap's section)
+  + spec `## Later laps`; promoted notes are ALREADY tickets (ids injected —
+  never re-emit them); interview the human, update `decisions.md` + spec,
+  `emit_tickets` for this lap, `complete_phase` through ideation/spec/tickets
+  in this one session. Session-start context injection for a lap revisit
+  carries the same: previous lap's notes + promoted-ticket ids + `## Later
+  laps` content.
+
+### 15.3 MCP amendments (§6) — no new tools
+
+`get_feature_context` response gains `lap: number`; its `tickets` are the
+full history (the `lap` field on each row distinguishes). `complete_phase`
+already auto-advances ideation→spec→tickets and still refuses to cross G3 —
+the human Burn click stays the crossing, which is exactly the two-click lap.
+
+### 15.4 Knowledge amendments
+
+`test-notes.md` as in §15.2 (created lazily on first note — not scaffolded).
+The spec template gains an optional `## Later laps` section: scope
+consciously deferred at slicing time; each lap's session reads it alongside
+the notes and prunes/promotes entries with the human. `decisions.md`
+accumulates as before (a `## Lap N` heading per rethink is convention, not
+machinery).
+
+### 15.5 Skills amendments (§9)
+
+- `ideate` gains lap-awareness (the slicing question): ask *how sure is the
+  human this is what they want?* Sure/small → spec the whole thing, one lap.
+  Unsure/large → recommend a thin lap 1 (walking skeleton of the uncertain
+  part, or a sub-feature slice), park the rest in `## Later laps`, and say
+  so out loud — the human decides. Orthogonal to the map escalation branch
+  (§13.5): mapping is for ideation too big to *think*; laps are for features
+  too uncertain to *spec whole*.
+- `revisit` gains the lap mode (triggered by the lap kickoff): digest notes →
+  amend `decisions.md` + spec (including pruning `## Later laps`) →
+  `emit_tickets` → `complete_phase` through tickets → tell the human to Burn.
+  Never re-emit promoted tickets.
+
+### 15.6 UI amendments (§10)
+
+- Test-drive panel: notes box (one-liner input, appends via
+  `feature.testNote`; list of this lap's notes below it).
+- Review bar: verbs **Fix** (visible when current-lap pending tickets exist;
+  = existing burn-from-review) / **Rethink** (`feature.rethink`; hidden while
+  a session is live) / **Merge** (unchanged). The old Iterate action is
+  subsumed by Rethink.
+- Notes checklist in review: bullets of the current lap with a "→ ticket"
+  action each (inline-editable text, calls `feature.promoteNote`); promoted
+  notes render with their ticket chip.
+- Lap trail: phase stepper gains a "Lap N" chip when `lap > 1`; the timeline
+  groups by lap (derived — no new endpoints, no new polling).
+
+### 15.7 Tests
+
+Vitest: `rethinkPhase` transition; `rethink` service (lap increment, guard
+against active run / wrong phase); G3 lap-scoping (lap-1 done tickets do not
+satisfy lap 2); ticket lap-stamping; `testNote` append + lazy heading;
+`promoteNote` (ticket stored with current lap, bullet rewritten, double-
+promotion rejected). Smoke extension: burn lap 1 → testNote → promoteNote →
+Fix burn → rethink (lap=2, phase=ideation) → lap session emits 1 ticket →
+burn → merge.
