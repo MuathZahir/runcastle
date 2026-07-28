@@ -10,6 +10,7 @@ import { resolveTool, spawnTargetFor, type SpawnTarget } from '../util/resolve-e
 import { SKILLS_DIR_ENV } from './skills-root'
 import { runs } from '../db/schema'
 import { GateError, isNotImplemented } from '../errors'
+import { endSession } from '../pty/end-session'
 import { ptyRegistry } from '../pty/registry'
 import { emit } from '../services/events'
 import { checkGate, overrideGate } from '../services/gates'
@@ -19,6 +20,7 @@ import { listByFeature as listTicketsByFeature } from '../services/tickets'
 import {
   claim as claimWaypoint,
   getWaypoint,
+  listByFeature as listWaypointsByFeature,
   releaseForSession,
 } from '../services/waypoints'
 import { startRun, workflowClaimsFeatureBranch } from '../workflows/runner'
@@ -267,6 +269,52 @@ function assertSpawnable(ctx: AppCtx, feature: Feature, excludeSessionId?: strin
   }
 }
 
+/**
+ * Whether a live session's work is demonstrably DONE (decision #8):
+ * - a kind=`waypoint` session whose own waypoint — the one remembering it as
+ *   `lastSessionId` — has gone terminal (`resolved`/`dropped`). While it is still
+ *   working, that waypoint is `claimed`, so this is false.
+ * - any other kind (the ideation grill, qa, revisit, converge) once the feature
+ *   is `mapped`: the session that charted the map has done its job.
+ * A session that never went live has no waypoint remembering it, so it is never
+ * finished — abandoning it needs the explicit `endLive` confirmation.
+ */
+function sessionFinished(ctx: AppCtx, feature: Feature, session: SessionRow): boolean {
+  if (session.kind !== 'waypoint') return feature.mapped
+  const own = listWaypointsByFeature(ctx, feature.id).find((w) => w.lastSessionId === session.id)
+  return !!own && (own.status === 'resolved' || own.status === 'dropped')
+}
+
+/**
+ * End the live sessions standing between the human and the waypoint they just
+ * clicked Work on (decision #8). Ordinarily only FINISHED sessions are ended, so
+ * the ordinary click is one click instead of "End session" then "Work". With
+ * `endLive` — the human having confirmed the inline affordance — every active
+ * session goes, abandoning its mid-work claim (`endSession` releases it back to
+ * the frontier, so nothing is lost).
+ *
+ * `assertSpawnable` still runs after this and is deliberately untouched: a
+ * mid-work session with no `endLive` survives the sweep and is refused there.
+ */
+function sweepActiveSessions(ctx: AppCtx, feature: Feature, endLive: boolean): void {
+  for (const session of activeSessionsForFeature(ctx, feature.id)) {
+    const finished = sessionFinished(ctx, feature, session)
+    if (!finished && !endLive) continue
+    endSession(ctx, session.id)
+    emit(ctx, feature.id, {
+      type: 'session.auto_ended',
+      message: finished
+        ? `ended the finished ${session.kind} session to work the next waypoint`
+        : `abandoned the in-flight ${session.kind} session to work the next waypoint`,
+      data: {
+        sessionId: session.id,
+        kind: session.kind,
+        reason: finished ? 'finished' : 'abandoned',
+      },
+    })
+  }
+}
+
 /** Ensure the talk worktree, tolerating B2's stub (mirrors features.createFeature). */
 async function ensureWorktree(
   ctx: AppCtx,
@@ -465,10 +513,16 @@ export async function launchSession(
  * HITL session per feature). The claim — inside `launchSession` for HITL, inside
  * `startRun` for research — is the transactional frontier gate, so a waypoint
  * that is claimed/terminal/blocked can never be worked.
+ *
+ * The HITL path owns the whole handoff atomically (decision #8): it first sweeps
+ * away any live session it can prove is finished, and — with `endLive`, the
+ * human having confirmed — any live session at all. Doing it here rather than as
+ * a client-side end-then-work keeps it one mutation with no window where the
+ * feature holds nothing.
  */
 export async function workWaypoint(
   ctx: AppCtx,
-  input: { featureId: string; waypointId: string },
+  input: { featureId: string; waypointId: string; endLive?: boolean },
   opts: LaunchSessionOptions = {},
 ): Promise<LaunchSessionResult | WorkRunResult> {
   const feature = getFeatureRow(ctx, input.featureId)
@@ -491,6 +545,11 @@ export async function workWaypoint(
     })
     return { runId }
   }
+
+  // Make room: end the live sessions that are finished (or, with `endLive`, all
+  // of them). Research is deliberately above this — an AFK run is not a session
+  // and runs in parallel, so it is neither swept nor blocked by the sweep.
+  sweepActiveSessions(ctx, feature, input.endLive === true)
 
   // Fast-fail guard on live HITL SESSION rows + active runs (never on waypoint
   // claims — a parallel research run's claim must not block HITL work, and a

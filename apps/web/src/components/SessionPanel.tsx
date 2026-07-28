@@ -4,11 +4,14 @@ import { kickoffTrouble } from '../lib/feature-ui'
 import { useToast } from '../lib/toast'
 import { SessionStatusDot } from '../ui'
 import type { FeatureFull } from '../lib/api'
+import { sessionDoneState, type SessionDoneState, type Waypoint } from '../lib/feature-ui'
 import { EndSessionButton } from './EndSessionButton'
 import { ErrorBoundary } from './ErrorBoundary'
 import { TerminalView } from './TerminalView'
 
 type Session = FeatureFull['sessions'][number]
+/** The done cases of {@link SessionDoneState} — everything but `notDone`. */
+type DoneState = Exclude<SessionDoneState, { kind: 'notDone' }>
 
 /**
  * The one terminal panel every phase body renders (grill / tickets / run /
@@ -23,15 +26,24 @@ type Session = FeatureFull['sessions'][number]
  * `ccSessionId` — and the launcher `--resume`s the latest same-kind conversation
  * for the kind it is asked to open. So Resume is just "open this kind of
  * terminal again"; the server picks the target.
+ *
+ * Pass `full` where the feature's waypoints are known (mapped ideation) and the
+ * strip additionally flips from "live" to a done state once this session's
+ * waypoint goes terminal — a label plus at most one button, never a modal: the
+ * terminal below stays mounted and usable, because the agent may resolve while
+ * the human still has things to say to that session.
  */
 export function SessionPanel({
   featureId,
   sessions,
+  full,
   className,
   showResume = true,
 }: {
   featureId: string
   sessions: Session[]
+  /** The feature payload, when the caller has it — enables the done state. */
+  full?: FeatureFull
   /** Extra class on the live panel (bodies scope their own terminal sizing). */
   className?: string
   /**
@@ -45,15 +57,26 @@ export function SessionPanel({
   if (!session) return null
 
   if (session.status !== 'ended') {
+    // Without `full` (the tickets / review / run bodies) there are no waypoints
+    // to be done with, so those strips render exactly as they always have.
+    const done: SessionDoneState = full ? sessionDoneState(full, session) : { kind: 'notDone' }
+
     return (
       <div className={`grill-panel${className ? ` ${className}` : ''}`}>
         <div className="grill-strip">
           <span className="grill-kind">{session.kind}</span>
-          <SessionStatusDot status={session.status} />
-          <span className="grill-live-label">
-            {session.status === 'launching' ? 'launching…' : 'live'}
-          </span>
-          <span className="grill-strip-spacer" />
+          {done.kind === 'notDone' ? (
+            <>
+              <SessionStatusDot status={session.status} />
+              <span className="grill-live-label">
+                {session.status === 'launching' ? 'launching…' : 'live'}
+              </span>
+              <span className="grill-strip-spacer" />
+            </>
+          ) : (
+            <StripDone state={done} />
+          )}
+          {done.kind === 'workNext' && <WorkNextButton featureId={featureId} next={done.next} />}
           <span className="grill-sid" title={session.ccSessionId ?? session.id}>
             {(session.ccSessionId ?? session.id).slice(0, 8)}
           </span>
@@ -109,6 +132,75 @@ function BriefingBanner({ featureId, sessionId }: { featureId: string; sessionId
         {resend.isPending ? 'Sending…' : 'Send briefing'}
       </button>
     </div>
+  )
+}
+
+/**
+ * The strip's done label: a check and one line of text in place of the live dot
+ * (decision #9). The map-complete case deliberately points at the next-step bar
+ * rather than growing a second Converge button.
+ */
+function StripDone({ state }: { state: DoneState }) {
+  const { lead, rest } = doneText(state)
+  return (
+    <div className="strip-done">
+      <span className="done-check" aria-hidden="true">
+        ✓
+      </span>
+      {/* The line is ellipsized — a summary is prose and can be long. */}
+      <span className="done-txt" title={lead + rest}>
+        <b>{lead}</b>
+        {rest}
+      </span>
+    </div>
+  )
+}
+
+function doneText(state: DoneState): { lead: string; rest: string } {
+  // A waypoint can finish either way; saying "Resolved" over a dropped one lies.
+  const lead = state.waypoint.status === 'dropped' ? 'Dropped' : 'Resolved'
+  switch (state.kind) {
+    case 'workNext':
+      return { lead, rest: state.waypoint.summary ? ` — ${state.waypoint.summary}` : '' }
+    case 'awaitingResearch':
+      return {
+        lead,
+        rest: ` — waiting on ${state.claimed} research run${state.claimed === 1 ? '' : 's'}`,
+      }
+    case 'mapComplete':
+      return {
+        lead: 'Map complete',
+        rest: ' — every waypoint is done. Converge from the bar above.',
+      }
+  }
+}
+
+/**
+ * The one button the done state offers: claim the next frontier waypoint and open
+ * its session. No `endLive` — this session's own waypoint is terminal, which is
+ * exactly the proof `workWaypoint` needs to end it for us (decision #8), so the
+ * whole handoff is this single mutation.
+ */
+function WorkNextButton({ featureId, next }: { featureId: string; next: Waypoint }) {
+  const utils = trpc.useUtils()
+  const toast = useToast()
+  const work = trpc.feature.workWaypoint.useMutation({
+    onSuccess: () => {
+      void utils.feature.get.invalidate({ id: featureId })
+      void utils.feature.list.invalidate()
+    },
+    onError: (e) => toast.push(e.message),
+  })
+  return (
+    <button
+      type="button"
+      className="btn btn-xs btn-solid strip-work-next"
+      disabled={work.isPending}
+      title={`end this finished session and work the next waypoint: ${next.title}`}
+      onClick={() => work.mutate({ featureId, waypointId: next.id })}
+    >
+      {work.isPending ? 'Starting…' : `Work next: ${next.title}`}
+    </button>
   )
 }
 

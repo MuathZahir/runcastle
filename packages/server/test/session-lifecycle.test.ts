@@ -199,7 +199,7 @@ describe('one-live-session guard — sessions and runs, never claims', () => {
     if ('sessionId' in res) cleanup.push(sessionDir(res.sessionId))
   })
 
-  it('resolving a waypoint while its terminal is still open cannot sneak in a second session', async () => {
+  it('keeps exactly one live session across the resolve → work handoff', async () => {
     const feature = await mappedFeature('sneaky')
     const [a, b] = storeWaypoints(ctx, feature.id, [wp('a'), wp('b')])
     const first = await workWaypoint(ctx, { featureId: feature.id, waypointId: a.id }, { spawn: false })
@@ -207,20 +207,21 @@ describe('one-live-session guard — sessions and runs, never claims', () => {
     cleanup.push(sessionDir(first.sessionId))
     markSessionLive(ctx, first.sessionId, { ccSessionId: 'cc-a' })
 
-    // the agent resolves its waypoint — the CLAIM is gone, but the terminal is live
-    resolve(ctx, a.id, 'resolved', 'answered')
-
-    // the old claim-based guard passed here; the session-based guard must refuse
+    // mid-work: the claim is still held, so a second terminal is refused outright
     await expect(
       workWaypoint(ctx, { featureId: feature.id, waypointId: b.id }, { spawn: false }),
     ).rejects.toThrow(/already live/i)
-    expect(activeSessionsForFeature(ctx, feature.id)).toHaveLength(1)
 
-    // once the terminal actually ends, work resumes normally
-    markSessionEnded(ctx, first.sessionId)
+    // the agent resolves its waypoint — the CLAIM is gone, but the terminal is live.
+    // Working the next waypoint now ends that finished terminal for us (ticket 2),
+    // so the guard is satisfied by the handoff rather than by a refusal.
+    resolve(ctx, a.id, 'resolved', 'answered')
     const second = await workWaypoint(ctx, { featureId: feature.id, waypointId: b.id }, { spawn: false })
     if ('sessionId' in second) cleanup.push(sessionDir(second.sessionId))
     expect('sessionId' in second).toBe(true)
+    expect(activeSessionsForFeature(ctx, feature.id).map((s) => s.id)).toEqual([
+      'sessionId' in second ? second.sessionId : '',
+    ])
   })
 })
 

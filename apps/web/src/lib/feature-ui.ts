@@ -343,6 +343,8 @@ export function pipelineSteps(
 export type ActionKind =
   | 'startGrill' // launchSession { kind: 'ideation' }
   | 'openGrill' // focus the live session in the body
+  | 'converge' // feature.converge — crosses G1 on a mapped feature
+  | 'convergeOverride' // feature.converge { overrideReason } — forces G1, needs a reason
   | 'advance' // feature.advance (crosses non-human gates G1/G2/G4)
   | 'burn' // feature.burn (G3, and resume a parked run)
   | 'cancelRun' // run.cancel
@@ -353,10 +355,23 @@ export type ActionKind =
   | 'revisit' // launchSession { kind: 'revisit' } — resume the old conversation, amend docs + tickets
   | 'unarchive' // feature.unarchive — restore an archived feature to its lane (next-step bar)
 
+/**
+ * An action that can't fire on click: the bar expands inline to a free-text
+ * input first and hands the typed string to the dispatcher (today, the reason
+ * recorded with a forced G1 override).
+ */
+export interface ReasonPrompt {
+  placeholder: string
+  /** Label of the button that fires the action with the typed reason. */
+  submitLabel: string
+}
+
 export interface NextAction {
   label: string
   kind: ActionKind
   danger?: boolean
+  /** Set when the action needs a reason string before it can fire. */
+  reason?: ReasonPrompt
 }
 
 export interface NextStep {
@@ -368,6 +383,8 @@ export interface NextStep {
   secondary: NextAction[]
   /** A run is actively burning — show a spinner in the bar. */
   busy: boolean
+  /** Soft warning shown under the description — remaining map fog. */
+  fog?: string
 }
 
 /**
@@ -522,7 +539,10 @@ function hasResumable(sessions: FeatureFull['sessions'], kind: string): boolean 
   return sessions.some((s) => s.kind === kind && s.status === 'ended' && !!s.ccSessionId)
 }
 
-export function nextStep(full: FeatureFull, ctx: { driving: boolean }): NextStep {
+export function nextStep(
+  full: FeatureFull,
+  ctx: { driving: boolean; mapContent?: string },
+): NextStep {
   const { feature, tickets, sessions, runs, gate } = full
   const live = sessions.find((s) => s.status === 'live')
   const resumableGrill = hasResumable(sessions, 'ideation')
@@ -559,20 +579,45 @@ export function nextStep(full: FeatureFull, ctx: { driving: boolean }): NextStep
 
   switch (feature.phase) {
     case 'ideation': {
-      // Mapped features converge instead of promoting: the map's Converge button
-      // (in the body, beside the fog) crosses G1 and spawns the converge session.
-      // The next-step bar just narrates — it never shows a plain `advance`, which
-      // would bump the phase without a session (ADR-0001 §13.6).
+      // Mapped features converge instead of promoting: Converge crosses G1 and
+      // spawns the converge session, and the bar owns it (decision #4) — it never
+      // shows a plain `advance`, which would bump the phase without a session
+      // (ADR-0001 §13.6). Remaining fog — the map's still-unspecified prose —
+      // rides along as a warning: shown, never enforced, so it neither gates nor
+      // disables Converge.
       if (feature.mapped) {
+        const fog = ctx.mapContent
+          ? parseMapSections(ctx.mapContent)['Not yet specified']?.trim() || undefined
+          : undefined
+        if (gate.satisfied) {
+          return {
+            kick: 'MAP',
+            title: 'Converge the map',
+            desc: 'Every waypoint is resolved — converge to draft the spec and tickets.',
+            primary: { label: 'Converge', kind: 'converge' },
+            secondary: [],
+            busy: false,
+            fog,
+          }
+        }
         return {
           kick: 'MAP',
-          title: gate.satisfied ? 'Converge the map' : 'Work the frontier',
-          desc: gate.satisfied
-            ? 'Every waypoint is resolved — converge to draft the spec and tickets.'
-            : gate.reason ?? 'Resolve the open waypoints; converge once the frontier clears.',
-          primary: live ? { label: 'Jump to grill', kind: 'openGrill' } : undefined,
-          secondary: [],
+          title: 'Work the frontier',
+          desc: gate.reason ?? 'Resolve the open waypoints; converge once the frontier clears.',
+          // The override is the seatbelt, not the cage: a quiet secondary that
+          // asks for a reason before it forces G1.
+          secondary: [
+            {
+              label: 'Override & converge…',
+              kind: 'convergeOverride',
+              reason: {
+                placeholder: 'reason to converge past open waypoints',
+                submitLabel: 'Converge anyway',
+              },
+            },
+          ],
           busy: false,
+          fog,
         }
       }
       if (canAdvance) {
@@ -753,4 +798,202 @@ export function nextStep(full: FeatureFull, ctx: { driving: boolean }): NextStep
         busy: false,
       }
   }
+}
+
+// --- the map rail (mapped ideation) ----------------------------------------
+
+/**
+ * The map doc's path, or undefined when the feature isn't mapped or nothing is
+ * charted yet. One implementation so the rail's read and the next-step bar's fog
+ * read resolve the SAME `docs.read` query key and share a single fetch.
+ */
+export function mapDocPath(full: FeatureFull): string | undefined {
+  if (!full.feature.mapped) return undefined
+  return full.docs.find((d) => d.relPath.endsWith('map.md'))?.relPath
+}
+
+/** Split `map.md` into a `{ heading: body }` map keyed by its `## ` sections. */
+export function parseMapSections(content: string): Record<string, string> {
+  const out: Record<string, string> = {}
+  let current: string | null = null
+  const buf: string[] = []
+  const flush = () => {
+    if (current !== null) out[current] = buf.join('\n')
+    buf.length = 0
+  }
+  for (const line of content.split('\n')) {
+    const heading = line.match(/^##\s+(.+?)\s*$/)
+    if (heading) {
+      flush()
+      current = heading[1]
+    } else if (current !== null) {
+      buf.push(line)
+    }
+  }
+  flush()
+  return out
+}
+
+export type Waypoint = FeatureFull['waypoints'][number]
+
+export type WaypointGroupKey = 'frontier' | 'claimed' | 'blocked' | 'done'
+
+/**
+ * One waypoint as the rail renders it: the row itself plus the bits the wire
+ * only carries as references — `blockedBy` is a list of seqs and
+ * `originWaypointId` an id, both meaningless to a human until resolved against
+ * the sibling waypoints.
+ */
+export interface RailWaypoint {
+  waypoint: Waypoint
+  /** Titles of the blockers still standing — terminal ones no longer block. */
+  blockerTitles: string[]
+  /** Title of the waypoint that surfaced this one, when it has an origin. */
+  originTitle?: string
+  /** Starts expanded in the rail: the frontier is what the human chooses between. */
+  expanded: boolean
+}
+
+export interface WaypointGroup {
+  key: WaypointGroupKey
+  label: string
+  waypoints: RailWaypoint[]
+}
+
+const WAYPOINT_GROUP_LABELS: Record<WaypointGroupKey, string> = {
+  frontier: 'Frontier',
+  claimed: 'Claimed',
+  blocked: 'Blocked',
+  done: 'Resolved / dropped',
+}
+
+/** A waypoint that is finished with, either way it went. */
+function isTerminal(w: Waypoint): boolean {
+  return w.status === 'resolved' || w.status === 'dropped'
+}
+
+/**
+ * The map rail's waypoint groups (decision #4), in display order: frontier,
+ * claimed, blocked, then the resolved/dropped tail. Empty groups are omitted.
+ * The frontier is server-derived (open, unclaimed, every blocker terminal) and
+ * is ordered by ascending seq — charting order, the closest thing to authored
+ * intent. Every other group keeps the order the server sent.
+ */
+export function waypointGroups(
+  waypoints: Waypoint[],
+  frontierIds: string[],
+): WaypointGroup[] {
+  const front = new Set(frontierIds)
+  const byId = new Map(waypoints.map((w) => [w.id, w]))
+  const bySeq = new Map(waypoints.map((w) => [w.seq, w]))
+
+  const groupOf = (w: Waypoint): WaypointGroupKey => {
+    if (isTerminal(w)) return 'done'
+    if (w.status === 'claimed') return 'claimed'
+    return front.has(w.id) ? 'frontier' : 'blocked'
+  }
+
+  const buckets: Record<WaypointGroupKey, RailWaypoint[]> = {
+    frontier: [],
+    claimed: [],
+    blocked: [],
+    done: [],
+  }
+  for (const w of waypoints) {
+    const key = groupOf(w)
+    buckets[key].push({
+      waypoint: w,
+      blockerTitles: w.blockedBy
+        .map((seq) => bySeq.get(seq))
+        .filter((b): b is Waypoint => !!b && !isTerminal(b))
+        .map((b) => b.title),
+      originTitle: w.originWaypointId ? byId.get(w.originWaypointId)?.title : undefined,
+      expanded: key === 'frontier',
+    })
+  }
+  buckets.frontier.sort((a, b) => a.waypoint.seq - b.waypoint.seq)
+
+  const order: WaypointGroupKey[] = ['frontier', 'claimed', 'blocked', 'done']
+  return order
+    .map((key) => ({ key, label: WAYPOINT_GROUP_LABELS[key], waypoints: buckets[key] }))
+    .filter((g) => g.waypoints.length > 0)
+}
+
+// --- the session strip's done state (decision #9) ---------------------------
+
+/**
+ * What the terminal strip has to say about a session whose waypoint is finished.
+ * `notDone` is the ordinary live rendering; the other three are the done cases,
+ * each carrying the resolved waypoint itself (its `summary` is the line the
+ * human reads).
+ */
+export type SessionDoneState =
+  | { kind: 'notDone' }
+  /** Resolved, and the frontier has somewhere to go next — the one offered button. */
+  | { kind: 'workNext'; waypoint: Waypoint; next: Waypoint }
+  /** Resolved, frontier empty, research runs still holding claims — nothing to click. */
+  | { kind: 'awaitingResearch'; waypoint: Waypoint; claimed: number }
+  /** Resolved, and nothing is left open — the next-step bar owns Converge. */
+  | { kind: 'mapComplete'; waypoint: Waypoint }
+
+/**
+ * The done state for the session the strip is rendering (decision #9). A session
+ * owns the waypoint whose `lastSessionId` is its own — `resolve` clears
+ * `claimedBy` but keeps that pointer, so the link survives resolution. It is only
+ * promoted once the session actually went live, so a session that died on the way
+ * up owns nothing and reads as not done; so does any session on a feature with no
+ * waypoints at all.
+ *
+ * "Next" is the lowest-`seq` waypoint on the server-derived frontier — charting
+ * order, the closest thing to authored intent, with the rest of the frontier one
+ * glance away in the rail.
+ */
+export function sessionDoneState(
+  full: FeatureFull,
+  session: Pick<FeatureFull['sessions'][number], 'id'>,
+): SessionDoneState {
+  const waypoint = full.waypoints.find((w) => w.lastSessionId === session.id)
+  if (!waypoint || !isTerminal(waypoint)) return { kind: 'notDone' }
+
+  const next = full.waypoints
+    .filter((w) => full.frontierIds.includes(w.id))
+    .sort((a, b) => a.seq - b.seq)[0]
+  if (next) return { kind: 'workNext', waypoint, next }
+
+  // An empty frontier with claims still standing means AFK research is in flight
+  // (a live session would be holding this feature's one terminal, which is ours).
+  const claimed = full.waypoints.filter((w) => w.status === 'claimed').length
+  if (claimed > 0) return { kind: 'awaitingResearch', waypoint, claimed }
+
+  return { kind: 'mapComplete', waypoint }
+}
+
+/**
+ * The live session a Work click would have to end, named by what it is holding
+ * (decision #2/#8) — the card's inline confirm asks about *this*, so it needs a
+ * human name for it, not a session id.
+ */
+export interface LiveSessionBlocker {
+  sessionId: string
+  kind: string
+  /** Title of the waypoint that session still holds, when it holds one. */
+  waypointTitle?: string
+}
+
+/**
+ * The feature's live session and the still-open waypoint it claimed, if any.
+ * `workWaypoint` ends a session it can prove is finished on its own, so this is
+ * only consulted once the server has refused: it turns that refusal into the
+ * card's confirm ("a session is live on X — end it and work this instead?").
+ * A session whose waypoint has already resolved keeps no claim, so it reports
+ * no title — and never reaches the confirm, because the server swept it.
+ */
+export function liveSessionBlocker(
+  sessions: FeatureFull['sessions'],
+  waypoints: Waypoint[],
+): LiveSessionBlocker | undefined {
+  const live = sessions.find((s) => s.status === 'live' || s.status === 'launching')
+  if (!live) return undefined
+  const held = waypoints.find((w) => w.status === 'claimed' && w.claimedBy === live.id)
+  return { sessionId: live.id, kind: live.kind, waypointTitle: held?.title }
 }

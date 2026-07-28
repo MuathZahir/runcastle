@@ -7,7 +7,7 @@ import { simpleGit } from 'simple-git'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { AppCtx } from '../src/db/types'
 import { GateError } from '../src/errors'
-import { workWaypoint } from '../src/launcher/launcher'
+import { launchSession, workWaypoint } from '../src/launcher/launcher'
 import { getSessionRow, markSessionEnded, markSessionLive } from '../src/launcher/sessions'
 import { createFeatureBranch, ensureTalkWorktree } from '../src/services/git'
 import { listAfter } from '../src/services/events'
@@ -20,6 +20,8 @@ import {
   resolve,
   storeWaypoints,
 } from '../src/services/waypoints'
+import { research } from '../src/workflows/research'
+import { workflowRegistry } from '../src/workflows/registry'
 import { makeTestCtx } from './helpers/db'
 import { seedFeature, seedProject } from './helpers/fixtures'
 
@@ -181,6 +183,175 @@ describe('workWaypoint — claim before spawn', () => {
       (e) => e.type === 'session.launched' && String(e.data?.sessionId) === second.sessionId,
     )
     expect(String(launched?.data?.command)).toContain('--resume cc-remembered')
+  })
+})
+
+/**
+ * Ticket 2 — the implicit handoff (decision #8): Work on a frontier waypoint
+ * ends the live session itself when it can prove that session is finished, and
+ * abandons one that is still mid-work only behind the explicit `endLive` flag.
+ */
+describe('workWaypoint — implicit handoff', () => {
+  let ctx: AppCtx
+  let repoPath: string
+  let projectId: string
+  const cleanup: string[] = []
+
+  beforeEach(async () => {
+    ctx = await makeTestCtx()
+    repoPath = mkdtempSync(join(tmpdir(), 'runcastle-handoff-'))
+    cleanup.push(repoPath)
+    await initRepo(repoPath)
+    const project = seedProject(ctx, repoPath)
+    projectId = project.id
+  })
+
+  afterEach(() => {
+    workflowRegistry.set('research', research)
+    for (const d of cleanup) rmSync(d, { recursive: true, force: true })
+    cleanup.length = 0
+  })
+
+  async function mappedFeature(slug: string) {
+    const feature = seedFeature(ctx, projectId, { slug, mapped: true })
+    await createFeatureBranch({ id: projectId, name: 't', repoPath, mainBranch: 'main' }, slug)
+    cleanup.push(worktreeDir(projectId, slug))
+    return feature
+  }
+
+  /** Work `waypointId`, registering the session dir for cleanup. */
+  async function work(featureId: string, waypointId: string, endLive?: boolean) {
+    const result = await workWaypoint(ctx, { featureId, waypointId, endLive }, { spawn: false })
+    const { sessionId } = result as { sessionId: string }
+    cleanup.push(sessionDir(sessionId))
+    return sessionId
+  }
+
+  /** A live waypoint session on `waypointId` (live promotes `lastSessionId`). */
+  async function liveSessionOn(featureId: string, waypointId: string) {
+    const sessionId = await work(featureId, waypointId)
+    markSessionLive(ctx, sessionId, { ccSessionId: `cc-${sessionId}` })
+    return sessionId
+  }
+
+  const autoEnded = (featureId: string) =>
+    listAfter(ctx, featureId, 0).filter((e) => e.type === 'session.auto_ended')
+
+  it('ends a resolved waypoint session and spawns the next one in a single call', async () => {
+    const feature = await mappedFeature('finished')
+    const [a, b] = storeWaypoints(ctx, feature.id, [wp('a'), wp('b')])
+
+    const first = await liveSessionOn(feature.id, a.id)
+    resolve(ctx, a.id, 'resolved', 'answered')
+
+    const second = await work(feature.id, b.id)
+
+    expect(second).not.toBe(first)
+    expect(getSessionRow(ctx, first)?.status).toBe('ended')
+    expect(getWaypoint(ctx, b.id).claimedBy).toBe(second)
+  })
+
+  it('ends a dropped waypoint session too', async () => {
+    const feature = await mappedFeature('dropped')
+    const [a, b] = storeWaypoints(ctx, feature.id, [wp('a'), wp('b')])
+
+    const first = await liveSessionOn(feature.id, a.id)
+    resolve(ctx, a.id, 'dropped', 'not worth it')
+
+    await work(feature.id, b.id)
+    expect(getSessionRow(ctx, first)?.status).toBe('ended')
+  })
+
+  it('still refuses while the live session is mid-work, leaving it untouched', async () => {
+    const feature = await mappedFeature('midwork')
+    const [a, b] = storeWaypoints(ctx, feature.id, [wp('a'), wp('b')])
+
+    const first = await liveSessionOn(feature.id, a.id)
+
+    await expect(
+      workWaypoint(ctx, { featureId: feature.id, waypointId: b.id }, { spawn: false }),
+    ).rejects.toThrow(GateError)
+
+    expect(getSessionRow(ctx, first)?.status).toBe('live')
+    expect(getWaypoint(ctx, a.id).status).toBe('claimed')
+    expect(getWaypoint(ctx, b.id).status).toBe('open')
+    expect(autoEnded(feature.id)).toHaveLength(0)
+  })
+
+  it('abandons a mid-work session with endLive, releasing its waypoint to the frontier', async () => {
+    const feature = await mappedFeature('abandon')
+    const [a, b] = storeWaypoints(ctx, feature.id, [wp('a'), wp('b')])
+
+    const first = await liveSessionOn(feature.id, a.id)
+    const second = await work(feature.id, b.id, true)
+
+    expect(getSessionRow(ctx, first)?.status).toBe('ended')
+    // the abandoned waypoint is back on the frontier, remembering its session
+    const abandoned = getWaypoint(ctx, a.id)
+    expect(abandoned.status).toBe('open')
+    expect(abandoned.lastSessionId).toBe(first)
+    expect(frontier(ctx, feature.id).map((w) => w.id)).toContain(a.id)
+    expect(getWaypoint(ctx, b.id).claimedBy).toBe(second)
+  })
+
+  it('ends the live grill session once the feature is mapped (the first handoff)', async () => {
+    const feature = await mappedFeature('grill')
+    const [a] = storeWaypoints(ctx, feature.id, [wp('a')])
+    const grill = await launchSession(ctx, { featureId: feature.id, kind: 'ideation' }, { spawn: false })
+    cleanup.push(sessionDir(grill.sessionId))
+    markSessionLive(ctx, grill.sessionId, { ccSessionId: 'cc-grill' })
+
+    const worked = await work(feature.id, a.id)
+
+    expect(getSessionRow(ctx, grill.sessionId)?.status).toBe('ended')
+    expect(getWaypoint(ctx, a.id).claimedBy).toBe(worked)
+  })
+
+  it('ends the swept session through endSession — session.ended is emitted', async () => {
+    const feature = await mappedFeature('events')
+    const [a, b] = storeWaypoints(ctx, feature.id, [wp('a'), wp('b')])
+
+    const first = await liveSessionOn(feature.id, a.id)
+    resolve(ctx, a.id, 'resolved', 'answered')
+    await work(feature.id, b.id)
+
+    const ended = listAfter(ctx, feature.id, 0).filter((e) => e.type === 'session.ended')
+    expect(ended.map((e) => e.data?.sessionId)).toEqual([first])
+  })
+
+  it('records why the sweep ended a session — finished vs abandoned', async () => {
+    const feature = await mappedFeature('why')
+    const [a, b, c] = storeWaypoints(ctx, feature.id, [wp('a'), wp('b'), wp('c')])
+
+    const finished = await liveSessionOn(feature.id, a.id)
+    resolve(ctx, a.id, 'resolved', 'answered')
+    await liveSessionOn(feature.id, b.id)
+    expect(autoEnded(feature.id).map((e) => e.data)).toEqual([
+      { sessionId: finished, kind: 'waypoint', reason: 'finished' },
+    ])
+
+    // b is still mid-work — only the confirmed abandon ends it
+    const abandoned = await work(feature.id, c.id, true)
+    expect(abandoned).toBeTruthy()
+    expect(autoEnded(feature.id).map((e) => e.data?.reason)).toEqual(['finished', 'abandoned'])
+  })
+
+  it('leaves a research waypoint AFK — no sweep, and a live session does not block it', async () => {
+    const feature = await mappedFeature('research')
+    workflowRegistry.set('research', { id: 'research', run: async () => {} })
+    const [a, r] = storeWaypoints(ctx, feature.id, [
+      wp('a'),
+      wp('dig', [], { type: 'research' }),
+    ])
+
+    const live = await liveSessionOn(feature.id, a.id)
+    const result = await workWaypoint(ctx, { featureId: feature.id, waypointId: r.id }, { spawn: false })
+
+    expect(result).toHaveProperty('runId')
+    // the HITL session is untouched: research is a run, not a session
+    expect(getSessionRow(ctx, live)?.status).toBe('live')
+    expect(getWaypoint(ctx, a.id).status).toBe('claimed')
+    expect(autoEnded(feature.id)).toHaveLength(0)
   })
 })
 
