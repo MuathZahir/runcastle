@@ -747,6 +747,11 @@ const WAYPOINT_GROUP_LABELS: Record<WaypointGroupKey, string> = {
   done: 'Resolved / dropped',
 }
 
+/** A waypoint that is finished with, either way it went. */
+function isTerminal(w: Waypoint): boolean {
+  return w.status === 'resolved' || w.status === 'dropped'
+}
+
 /**
  * The map rail's waypoint groups (decision #4), in display order: frontier,
  * claimed, blocked, then the resolved/dropped tail. Empty groups are omitted.
@@ -754,11 +759,6 @@ const WAYPOINT_GROUP_LABELS: Record<WaypointGroupKey, string> = {
  * is ordered by ascending seq — charting order, the closest thing to authored
  * intent. Every other group keeps the order the server sent.
  */
-/** A waypoint that is finished with, either way it went. */
-function isTerminal(w: Waypoint): boolean {
-  return w.status === 'resolved' || w.status === 'dropped'
-}
-
 export function waypointGroups(
   waypoints: Waypoint[],
   frontierIds: string[],
