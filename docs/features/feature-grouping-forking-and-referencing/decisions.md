@@ -490,3 +490,146 @@ sequencing rather than reordering: in a *fresh* project there is no charter and 
 on day one this session decomposes ideas well and answers portfolio questions thinly. Decision
 14's injected set makes it richer later without being a prerequisite, and waypoint 8 owns where
 the charter comes from.
+
+## 21. A quick change is a feature that skipped its grilling — never a feature-less ticket
+**Decision:** `tickets.feature_id` stays **NOT NULL**. Work too small to deserve a grill
+enters through a **quick-change** door that creates an ordinary feature, born directly at
+`implementation` on lap 1, carrying exactly one ticket whose `goal` is the human's prose and
+whose sole acceptance criterion is that same sentence. No grill terminal, no `spec.md`, no
+`decisions.md`, no invented seams, no LLM in the server. The human reviews the one card
+(editable), clicks **Burn**, test-drives, clicks **Merge** — CONTEXT.md decision 9's two
+clicks, with zero terminals in between.
+
+There are two entrances to that door and one mechanism behind it: the human opens it directly
+from the UI, or the intake session (decision 17) opens it as one outcome of routing. **The
+direct entrance does not depend on the intake session shipping.**
+
+Six consequences, stated so they are not rediscovered:
+
+- **It is not a mode.** ADR-0010 rejected an `agile`/MVP toggle and fixed that "waterfall" and
+  "agile" are *descriptions of how a feature went, never settings*. The same rule binds here:
+  no `pipeline` column, no `quick` flag, nothing on the feature row. A quick change is a
+  feature whose lap 1 skipped the conversation because there was nothing to converse about,
+  and it is indistinguishable from one whose G1/G2 were overridden — which is a state the
+  machine can already reach today.
+- **G1/G2 are never evaluated.** Gates guard forward transitions only, and the feature starts
+  past both. Nothing needs to be relaxed, overridden, or made lap-aware.
+- **Promotion degenerates correctly.** Decision 12's promote-then-merge scans `decisions.md`
+  for `**Scope:** project`; a quick change has no such file, so the scan finds nothing and the
+  merge proceeds. Decision 8's decay stamp likewise has no `spec.md` to stamp. Both no-op
+  without a special case.
+- **Escalation is free.** If the tweak turns out to be a real feature, **Rethink** (ADR-0010)
+  increments the lap and lands it in `ideation` — the full pipeline, entered from the fast
+  path, using machinery that already shipped. The fast path is not a dead end; it is the
+  pipeline entered at the far side.
+- **`createFeature` is the one server change.** Its `phase: 'ideation'` is hard-coded, so the
+  door is a sibling creation path (proposed shape: `feature.quickChange({ projectId, title,
+  prose, baseBranch? })`) that creates the row at `implementation`, scaffolds `brief.md` from
+  the prose, and stores the single ticket in the same call. The intake session reaches the
+  same path by `create_feature` carrying a ticket — which is not the feature-less
+  `emit_tickets` decision 19 withheld, since the call creates the feature and its ticket
+  atomically.
+- **The burner is told nothing new.** A one-line goal with a one-line criterion is a legal
+  ticket; `implement-ticket.md`'s standing rules already cover it ("if two readings both
+  satisfy the acceptance criteria, take the smaller one").
+
+**Why:** the yardstick is ADR-0010's, adopted verbatim — *the loop must never cost more than
+it saves; if the ceremony exceeds "I could've done that in a single Claude session", the
+system has failed regardless of how principled its model is.* That immediately kills routing
+every tweak through the intake session: a conversation **is** one Claude session, so it spends
+the entire budget before any work happens. It equally kills the full pipeline, which spends
+two terminals and two documents to reach the same single card.
+
+Feature-less tickets were the tempting alternative and they do not survive contact with what a
+ticket needs: a branch to commit to, a docs directory for the burner's `{{FEATURE_BRIEF}}`, a
+row in the rail, and a merge. The feature record *is* the tuple `{branch, docs dir, rail
+entry, merge target}` — strip `feature_id` and every one of those must be reinvented for the
+orphan, which is a second entity in all but name and a direct violation of the less-mechanism
+principle. It also severs decision 15's chain at its second arrow: `seams` is "the only link
+from a path in the codebase back to the argument that put it there" precisely because it runs
+`path → ticket → feature → decisions.md`. Quick changes will be the *most numerous* rows in
+the tickets table, so orphaning them makes the work record blindest exactly where it is asked
+most often.
+
+The deciding insight is that runcastle **already has** this mechanism and it only needed a
+second doorway. ADR-0010 #6 gives test-drive notes a one-click "→ ticket" that joins the
+current lap and burns under **Fix** — *"the cheapest lap type ('three obvious bugs') costs a
+few clicks and zero conversations."* So the precedent that some work is too small to deserve a
+conversation is already accepted and specced. Its only defect is reachability: it exists at
+exactly one point in the system, the review phase of a feature you happen to be test-driving.
+An observation that arrives about an unrelated area, or with nothing in flight at all, has no
+door — and that, not a missing pipeline, was the actual gap.
+
+The accepted trade-off: a vague ticket burned by an agent with no human to ask can spend a
+sandbox run producing the wrong diff, which is worse than the yardstick rather than better.
+Three things make that the right side to err on — the burner is a full Claude Code session in
+a sandbox with the whole repo, the card is reviewable and editable before Burn, and laps made
+recovery cheap (Fix for a bad diff, Rethink for a bad idea). Per-burn overhead is already
+tracked as a charter thread for exactly this reason.
+**Scope:** project
+
+## 22. One door, five destinations — and diagnosis belongs to the burner, not to a session
+**Decision:** runcastle does not grow a third and fourth on-ramp. `ask-matt` observed that
+Matt has three doors (grill / triage / diagnose) where runcastle has one; they map on as:
+
+- **grill** → the New Feature form and the intake session (decisions 17–20);
+- **triage** → *not a door*. Decision 17 already made routing a job of the intake session
+  ("deciding an incoming thing is a bug, a tweak, or an existing feature's revisit"). Triage
+  is what the one door does before it picks a destination. With laps and decision 21, the
+  destination list is complete and closed: **a new feature, a quick change, an existing
+  feature's revisit, a Rethink lap on something in review, or nothing**;
+- **diagnose** → *not a session*. runcastle gains **no `diagnose` session kind.**
+
+Bug intake splits three ways and only the third was ever open. A bug in an in-flight feature
+is a lap — promote a test note and **Fix**, or **Rethink**, whose session ADR-0010 #6
+explicitly permits to emit plain bug tickets. A bug in shipped code that you can already
+characterise is the quick-change door with different prose; "expected X, got Y, reproduce it
+like this" is exactly as ticket-shaped as "make this darker". A bug you *cannot* characterise
+enters as a repro-shaped quick change and **the burner diagnoses it inside the sandbox** —
+red → green, which `implement-ticket.md` already instructs.
+
+**Why:** the diagnose call is structural, not a matter of taste. Diagnosis requires *running
+the code*, and CONTEXT.md decision 6 makes talk worktrees docs-only — "no dependency install
+— they only read code and write docs". So no runcastle talk session can run the app, ever, by
+construction. Code runs in exactly two places in this system: the human's main checkout (that
+is the test drive) and the sandbox (that is the burner). A `diagnose` session kind would
+therefore be a terminal that can read the code and form hypotheses but never execute one —
+the worst half of the loop. Giving it the other half means full-fat worktrees with installs,
+which the charter already carries as a deferred thread, so the escape hatch exists and is
+written down rather than invented here.
+
+On triage: naming it a separate on-ramp would have produced a second surface whose entire job
+is to choose between the destinations the first surface already reaches, which is decision
+17's argument against an open-ended do-stuff agent repeated one level down. The known cost of
+folding diagnosis into the burner is losing the interactive hunt — poking a hypothesis and
+watching what the app does. That cost is real and is the honest price of the docs-only
+worktree, which buys instant parallel grilling with no installs; the day it hurts more than it
+saves, the deferred thread is where the fix is already parked.
+**Scope:** project
+
+## 23. Codebase health is supply-driven intake, and it needs no queue
+**Decision:** Work the codebase generates rather than work the human brings — dead code,
+missing tests, drifted docs, `spec.md` decay stamps, recurring burner failures — is **a prompt
+shape for the intake session, not an on-ramp**. The session's job is already intake →
+decomposition → `create_feature`; a health sweep is that job with the codebase supplying the
+raw material instead of the human. Each finding routes to a destination from decision 22's
+closed list, and the ones the human wants now become features or quick changes on the spot.
+
+The ones they do **not** want now are stored **nowhere**. runcastle gains no `backlog` table,
+no `docs/backlog.md`, no `draft` feature status, and no sixth knowledge tier — decision 6's
+five stand untouched. An idea that is not regenerable and is still worth remembering goes as
+one line into the **charter's `## Deferred / open threads`**, written by the intake session,
+which decision 18 already made the one session permitted to write the charter.
+
+**Why:** a supply-driven finding is **idempotent** — the codebase still has the problem, so
+re-running the sweep regenerates it verbatim. Storing a derivable list buys nothing and costs
+a graveyard, and it would make runcastle's memory feature ship the one artifact every tracker
+rots into. Demand-driven ideas genuinely are not regenerable, but the charter already holds
+them and runcastle dogfoods it: `## Deferred / open threads` currently carries nine live
+entries and laps added the tenth on the way past. Its **write mode is the whole argument** —
+the charter is the one rewritten-in-place tier (decision 6), so a thread that gets done is
+*deleted*. It cannot decay into a backlog, where an append-only file would by construction.
+Decision 9 already ruled that findings are an input rather than a tier and named their three
+fates (become a decision, become a constraint, or die); health work reveals a fourth it did
+not consider — **become work** — and decision 21's door plus `create_feature` are that fate's
+mechanism, so nothing new is required to serve it.
