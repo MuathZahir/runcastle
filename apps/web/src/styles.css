@@ -780,13 +780,13 @@ button {
   background: var(--bg);
   position: relative;
 }
-.ws-empty-scroll {
+.ws-empty {
   height: 100%;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
 }
-.ws-empty {
+.ws-empty-inner {
   min-height: 100%;
   display: flex;
   flex-direction: column;
@@ -2687,6 +2687,16 @@ select.settings-input { cursor: pointer; }
 }
 
 /* --- Preparation ---------------------------------------------------------- */
+
+/* The body stacks three optional blocks (the conversation or its call-to-action,
+   a staleness warning, the established list), so the gap lives here rather than
+   as a margin on any one of them — any of the three can be the last on screen. */
+.prep-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+.prep-stack .pw-frame { margin-bottom: 0; }
 
 .prep-warn {
   font-size: 11.5px;

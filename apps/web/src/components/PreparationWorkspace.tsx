@@ -81,7 +81,7 @@ export function PreparationWorkspace({
       </div>
 
       <div className="ws-body">
-        <div className="ws-body-inner">
+        <div className="ws-body-inner prep-stack">
           {prep.isLoading && <DimLine>loading…</DimLine>}
           {prep.error && <DimLine>could not load preparation: {prep.error.message}</DimLine>}
 
@@ -136,21 +136,32 @@ export function PreparationWorkspace({
                   <li key={f.key} className={`prep-finding${isStale(f) ? ' is-stale' : ''}`}>
                     <div className="prep-finding-head">
                       <span className="prep-finding-key">{PREPARED_LABEL[f.key] ?? f.key}</span>
-                      {/* Two sources, and the distinction that matters is which
-                          one a later conversation may replace. Only `yours` is
-                          locked; `verified` was established with you present but
-                          stays improvable. */}
+                      {/* Three sources, and the distinction that matters is
+                          which ones a later conversation may replace. Only
+                          `yours` is locked; `verified` was established with you
+                          present but stays improvable. `proposed`/`measured` are
+                          the retired headless run's — kept because its rows
+                          outlive it, and a host-only key it never executed must
+                          not now read as if someone watched it run. */}
                       <span
                         className={`settings-badge${f.source === 'human' ? '' : ' is-override'}`}
                         title={
                           f.source === 'human'
                             ? 'You set this by hand — preparation will never overwrite it'
-                            : HOST_ONLY_PREPARED.has(f.key)
-                              ? 'Established on your own machine, where this key can actually be run'
-                              : 'Established in a conversation, with evidence'
+                            : f.source === 'session'
+                              ? 'Established in a conversation on your own machine'
+                              : HOST_ONLY_PREPARED.has(f.key)
+                                ? 'Read from config by an older automatic run, not executed'
+                                : 'Measured by an older automatic run, in a sandbox'
                         }
                       >
-                        {f.source === 'human' ? 'yours' : 'verified'}
+                        {f.source === 'human'
+                          ? 'yours'
+                          : f.source === 'session'
+                            ? 'verified'
+                            : HOST_ONLY_PREPARED.has(f.key)
+                              ? 'proposed'
+                              : 'measured'}
                       </span>
                     </div>
                     <div className="prep-finding-note">{describeFinding(f)}</div>

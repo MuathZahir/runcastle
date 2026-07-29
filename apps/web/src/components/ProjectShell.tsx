@@ -188,8 +188,8 @@ function EmptyWorkspace({
   onTalkItThrough: () => void
 }) {
   return (
-    <div className="ws-empty-scroll">
-      <div className="ws-empty">
+    <div className="ws-empty">
+      <div className="ws-empty-inner">
         <div className="ws-empty-logo">
           <LogoMark size={44} variant="outline" />
         </div>

@@ -428,7 +428,7 @@ function resetDataDir(): number {
 
 /**
  * The dev server holds state the db knows nothing about (the PTY registry,
- * in-flight prep/run controllers). `bun --hot` reloads modules but preserves
+ * in-flight run controllers). `bun --hot` reloads modules but preserves
  * that state, so after a destructive change the honest advice is a full restart
  * rather than "it'll pick it up".
  *
