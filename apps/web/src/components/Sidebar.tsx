@@ -4,7 +4,8 @@ import { DimLine } from '../ui'
 import { useToast } from '../lib/toast'
 import type { FeatureListItem } from '../lib/api'
 import { miniSegments, needsMe, triage } from '../lib/feature-ui'
-import { IconBolt, IconCheck, IconPlus } from '../icons'
+import type { ProjectTalkApi } from '../lib/use-project-talk'
+import { IconBolt, IconCheck, IconPlus, LogoMark } from '../icons'
 import { FeatureActionsMenu, type FeatureAction } from './FeatureActionsMenu'
 import { DeleteFeatureDialog } from './DeleteFeatureDialog'
 
@@ -26,17 +27,28 @@ function readShowArchived(): boolean {
  * slug, a compact six-segment pipeline map, and a kebab actions menu (Archive /
  * Unarchive). Archived features are hidden behind the show-archived toggle
  * (persisted in localStorage). Polls `feature.list` at 1.5s.
+ *
+ * Above the lanes — outside them, always present — sits the pinned project row
+ * (decision 20). The rail already is the project's list of things to work on, and
+ * the project session is the one entry on it that is not a feature, so it belongs
+ * here rather than in any triage lane.
  */
 export function Sidebar({
   projectId,
   selectedFeatureId,
+  projectSelected,
+  talk,
   onSelect,
+  onSelectProject,
   onNewFeature,
   onQuickChange,
 }: {
   projectId: string
   selectedFeatureId: string | null
+  projectSelected: boolean
+  talk: ProjectTalkApi
   onSelect: (featureId: string) => void
+  onSelectProject: () => void
   onNewFeature: () => void
   onQuickChange: () => void
 }) {
@@ -118,6 +130,13 @@ export function Sidebar({
         </button>
       </div>
 
+      <ProjectRow
+        projectId={projectId}
+        active={projectSelected}
+        state={talk.state}
+        onSelect={onSelectProject}
+      />
+
       <div className="sidebar-list">
         {list.isLoading && (
           <div style={{ padding: '10px 8px' }}>
@@ -165,6 +184,52 @@ export function Sidebar({
         />
       )}
     </nav>
+  )
+}
+
+/**
+ * The pinned project row. It is not a feature and must never join a triage lane:
+ * the lanes group by who is blocked, and this row is a door, not a piece of work.
+ * It shows the project's own identity plus a live indicator while the intake
+ * conversation is launching or up — the same "something is happening here" signal
+ * a feature row gives for a run, driven by the same 1.5s poll.
+ */
+function ProjectRow({
+  projectId,
+  active,
+  state,
+  onSelect,
+}: {
+  projectId: string
+  active: boolean
+  state: ProjectTalkApi['state']
+  onSelect: () => void
+}) {
+  // Same query key the nav polls — no extra fetch, just the project's name.
+  const projects = trpc.project.list.useQuery()
+  const project = projects.data?.find((p) => p.id === projectId)
+
+  return (
+    <div className="project-pin">
+      <button
+        className={`project-row${active ? ' is-active' : ''}`}
+        onClick={onSelect}
+        title="Talk to the project — intake, decomposition, and portfolio questions"
+      >
+        <span className="project-row-mark">
+          <LogoMark size={13} variant="outline" />
+        </span>
+        <span className="project-row-name">{project?.name ?? 'This project'}</span>
+        {state === 'none' ? (
+          <span className="project-row-kick">Project</span>
+        ) : (
+          <span className={`project-row-live is-${state}`}>
+            <span className="spin-ring" />
+            {state === 'launching' ? 'opening' : 'live'}
+          </span>
+        )}
+      </button>
+    </div>
   )
 }
 

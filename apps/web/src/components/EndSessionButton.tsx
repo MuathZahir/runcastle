@@ -11,16 +11,23 @@ import { useToast } from '../lib/toast'
 export function EndSessionButton({
   featureId,
   sessionId,
+  onEnded,
 }: {
-  featureId: string
+  /** Absent on a project-scoped session — there is no feature to refresh. */
+  featureId?: string
   sessionId: string
+  /** Extra refresh the owning surface needs (the project session's own row). */
+  onEnded?: () => void
 }) {
   const utils = trpc.useUtils()
   const toast = useToast()
   const end = trpc.feature.endSession.useMutation({
     onSuccess: () => {
-      void utils.feature.get.invalidate({ id: featureId })
-      void utils.feature.list.invalidate()
+      if (featureId) {
+        void utils.feature.get.invalidate({ id: featureId })
+        void utils.feature.list.invalidate()
+      }
+      onEnded?.()
       toast.push('session ended', 'info')
     },
     onError: (e) => toast.push(e.message),

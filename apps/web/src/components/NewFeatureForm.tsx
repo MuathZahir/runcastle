@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { trpc } from '../trpc'
 import { defaultBaseBranch, slugPreview } from '../lib/feature-ui'
+import { TALK_IT_THROUGH } from '../lib/project-workspace'
 import { useToast } from '../lib/toast'
 import { Button } from '../ui'
 
@@ -8,15 +9,21 @@ import { Button } from '../ui'
  * The new-feature form (app-redesign) — owns the whole workspace while open.
  * Name it, and starting it creates the feature AND opens a grill session so the
  * ideation body is live the moment you land on it.
+ *
+ * The form demands a title up front, which means it demands the human has already
+ * cut their thought into a feature — so it carries the escape hatch for when they
+ * have not (decision 20): the project session, which does the cutting.
  */
 export function NewFeatureForm({
   projectId,
   onCancel,
   onCreated,
+  onTalkItThrough,
 }: {
   projectId: string
   onCancel: () => void
   onCreated: (featureId: string) => void
+  onTalkItThrough: () => void
 }) {
   const [title, setTitle] = useState('')
   const [oneLiner, setOneLiner] = useState('')
@@ -145,6 +152,10 @@ export function NewFeatureForm({
         </details>
 
         <div className="nf-actions">
+          <button className="talk-door" onClick={onTalkItThrough} disabled={busy}>
+            {TALK_IT_THROUGH} →
+          </button>
+          <span className="nf-actions-spacer" />
           <Button variant="ghost" onClick={onCancel} disabled={busy}>
             Cancel
           </Button>
