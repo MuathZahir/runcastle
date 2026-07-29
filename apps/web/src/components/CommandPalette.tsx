@@ -19,7 +19,7 @@ export interface CommandPaletteProps {
   onSelect: (featureId: string) => void
   onNewFeature: () => void
   onOpenSettings: () => void
-  /** Reveal the project's preparation surface (findings, re-prepare, evidence). */
+  /** Give the workspace over to preparation (findings, evidence, the conversation). */
   onOpenPreparation: () => void
   nav: ProjectNavApi
 }
@@ -90,10 +90,10 @@ export function CommandPalette(props: CommandPaletteProps) {
   const showOpen = 'open a project'.includes(q)
   const showSettings = 'settings preferences'.includes(q)
   // Preparation is project-scoped and has no home in the feature pipeline, so
-  // without a palette entry the only way to reach it is remembering it lives
-  // inside settings.
+  // it needs a way in that does not depend on the project being unprepared and
+  // featureless (which is when the workspace offers it unprompted).
   // 'talk'/'ask' included because the conversation is reached THROUGH this
-  // card — the palette navigates, it does not launch sessions, so searching
+  // surface — the palette navigates, it does not launch sessions, so searching
   // for the conversation has to land you where its button is.
   const showPreparation =
     'preparation prepare project commands baseline talk ask secrets database'.includes(q)
@@ -308,7 +308,7 @@ export function CommandPalette(props: CommandPaletteProps) {
                   setActiveIndex={setActiveIndex}
                   activate={activate}
                   glyph={<IconSettings size={13} />}
-                  label="Preparation — measured repo facts, or talk to the agent"
+                  label="Preparation — establish this repo’s commands and baseline"
                 />
               )}
             </>

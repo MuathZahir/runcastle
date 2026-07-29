@@ -5,6 +5,7 @@ import { useWorkspace, type DriveState } from '../lib/workspace'
 import type { ProjectNavApi } from '../lib/use-project-nav'
 import { useProjectTalk } from '../lib/use-project-talk'
 import { showsInspector, workspaceView, TALK_IT_THROUGH } from '../lib/project-workspace'
+import type { PrepView } from '../lib/api'
 import { Titlebar } from './Titlebar'
 import { Sidebar } from './Sidebar'
 import { Inspector } from './Inspector'
@@ -13,7 +14,7 @@ import { Workspace } from './Workspace'
 import { ProjectWorkspace } from './ProjectWorkspace'
 import { NewFeatureForm } from './NewFeatureForm'
 import { QuickChangeForm } from './QuickChangeForm'
-import { PreparationCard } from './PreparationCard'
+import { PreparationWorkspace } from './PreparationWorkspace'
 import { CommandPalette } from './CommandPalette'
 import { SettingsOverlay } from './SettingsOverlay'
 
@@ -34,6 +35,10 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
   // The project conversation, polled once here and read by the pinned rail row,
   // the project workspace and both "talk it through" doors.
   const talk = useProjectTalk(projectId)
+  // Assumed prepared until it answers, so a fresh project's home never flashes
+  // through the call-to-action on its way to the real one.
+  const prep = trpc.project.prep.useQuery({ projectId }) as { data?: PrepView }
+  const prepared = prep.data?.prepared ?? true
 
   // Land on a feature: select the first one once, if nothing is selected yet.
   // Never over the project workspace — `select` would swap it back out.
@@ -61,7 +66,7 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
     return () => window.removeEventListener('keydown', onKey)
   }, [setCmdk])
 
-  const view = workspaceView(ws)
+  const view = workspaceView({ ...ws, featureCount: list.data?.length ?? 0, prepared })
   const showInspector = showsInspector(view, ws.inspectorCollapsed)
 
   return (
@@ -84,6 +89,7 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
           onSelectProject={ws.selectProject}
           onNewFeature={ws.startCreate}
           onQuickChange={ws.startQuickChange}
+          onOpenPreparation={ws.startPreparation}
         />
 
         {view === 'create' ? (
@@ -103,6 +109,14 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
               />
             )}
           </section>
+        ) : view === 'prepare' ? (
+          // `onClose` only when there is somewhere to go back to: the automatic
+          // call-to-action IS the project home, so a Back button there would
+          // dead-end on the screen it just left.
+          <PreparationWorkspace
+            projectId={projectId}
+            {...(ws.preparing ? { onClose: ws.closePreparation } : {})}
+          />
         ) : view === 'project' ? (
           <ProjectWorkspace projectId={projectId} talk={talk} />
         ) : view === 'feature' && ws.selectedFeatureId ? (
@@ -120,7 +134,6 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
         ) : (
           <section className="workspace">
             <EmptyWorkspace
-              projectId={projectId}
               onNewFeature={ws.startCreate}
               onQuickChange={ws.startQuickChange}
               onTalkItThrough={talkItThrough}
@@ -148,12 +161,7 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
         onSelect={ws.select}
         onNewFeature={ws.startCreate}
         onOpenSettings={() => ws.setSettings(true)}
-        // Preparation lives on the project home and in settings; from the
-        // palette, deselecting the feature reveals the home copy in place.
-        onOpenPreparation={() => {
-          ws.select(null)
-          ws.viewPhase(null)
-        }}
+        onOpenPreparation={ws.startPreparation}
         nav={nav}
       />
 
@@ -165,18 +173,16 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
 }
 
 /**
- * The project home. Preparation lives here as well as in settings, because it is
- * project-scoped: it has no place in the feature pipeline, and behind a settings
- * overlay it was effectively invisible — you had to already know it existed to
- * find it. This is the one screen you land on with no feature selected.
+ * The project home — the screen you land on with no feature selected. An
+ * unprepared project with no features never sees it: `workspaceView` gives the
+ * body to preparation instead, because there is exactly one thing to do first
+ * and putting it beside these buttons is what made it invisible.
  */
 function EmptyWorkspace({
-  projectId,
   onNewFeature,
   onQuickChange,
   onTalkItThrough,
 }: {
-  projectId: string
   onNewFeature: () => void
   onQuickChange: () => void
   onTalkItThrough: () => void
@@ -209,9 +215,6 @@ function EmptyWorkspace({
         <button className="talk-door" onClick={onTalkItThrough}>
           {TALK_IT_THROUGH} →
         </button>
-      </div>
-      <div className="ws-empty-aside">
-        <PreparationCard projectId={projectId} />
       </div>
     </div>
   )

@@ -780,8 +780,6 @@ button {
   background: var(--bg);
   position: relative;
 }
-/* The project home scrolls: the empty state keeps its centered hero, and the
-   project-scoped preparation card sits below it rather than only in settings. */
 .ws-empty-scroll {
   height: 100%;
   overflow-y: auto;
@@ -789,21 +787,13 @@ button {
   flex-direction: column;
 }
 .ws-empty {
-  /* min-height, not height: the hero still fills a tall viewport, but shrinks
-     rather than pushing the preparation card off-screen on a short one. */
-  min-height: 60%;
+  min-height: 100%;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   gap: 12px;
   color: var(--text-3);
-}
-.ws-empty-aside {
-  width: 100%;
-  max-width: calc(var(--content-max) + 56px);
-  margin: 0 auto;
-  padding: 0 28px 32px;
 }
 .ws-empty-logo {
   display: flex;
@@ -2696,35 +2686,7 @@ select.settings-input { cursor: pointer; }
   overflow-wrap: anywhere;
 }
 
-/* --- Preparation card ---------------------------------------------------- */
-
-.prep-status {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  font-size: 12px;
-  color: var(--text-2);
-}
-.prep-status-text { flex: 1; min-width: 0; }
-.prep-dot {
-  flex: none;
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--text-4);
-  align-self: center;
-}
-.prep-dot.is-running {
-  background: var(--accent-hi);
-  animation: prep-pulse 1.4s ease-in-out infinite;
-}
-@keyframes prep-pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.25; }
-}
-@media (prefers-reduced-motion: reduce) {
-  .prep-dot.is-running { animation: none; }
-}
+/* --- Preparation ---------------------------------------------------------- */
 
 .prep-warn {
   font-size: 11.5px;
@@ -2736,22 +2698,78 @@ select.settings-input { cursor: pointer; }
   border-radius: var(--radius);
 }
 
-/* The preparation conversation. Given a fixed height rather than left to grow:
-   the card lives inside a scrolling overlay, and an unbounded terminal would
-   push the findings list — the thing the conversation is editing — off screen. */
-.prep-talk {
+/* The call-to-action itself. Centred and roomy on purpose: on an unprepared
+   project with no features this IS the workspace, and it has one job — make the
+   single next step unmissable, where the old card was a footnote in settings. */
+.prep-cta {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  align-items: center;
+  gap: 12px;
+  padding: 40px 0 28px;
+  text-align: center;
 }
-.prep-talk-terminal {
-  height: 340px;
-  min-height: 200px;
-  resize: vertical;
-  overflow: hidden;
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  background: var(--panel-inset);
+.prep-cta-logo { display: flex; opacity: 0.85; }
+.prep-cta-title { font-size: 15px; font-weight: 500; color: var(--text-1); }
+.prep-cta-sub {
+  font-size: 12.5px;
+  color: var(--text-3);
+  max-width: 52ch;
+  line-height: 1.6;
+}
+/* What is still open, as a plain list. The count alone reads as a chore; the
+   names read as a short agenda, which is what the conversation actually is. */
+.prep-cta-open {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px;
+  max-width: 56ch;
+}
+.prep-cta-open li {
+  font-size: 11px;
+  color: var(--text-3);
+  padding: 3px 8px;
+  border: 1px solid var(--hairline);
+  border-radius: 999px;
+  background: var(--panel-3);
+}
+
+/* The rail's foot, once features exist. Quiet enough not to compete with the
+   triage lanes, present enough not to be forgotten again. */
+.prep-nudge {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 9px 12px;
+  border: none;
+  border-top: 1px solid var(--hairline);
+  background: none;
+  color: var(--text-3);
+  font-size: 11.5px;
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--dur-1) var(--ease), color var(--dur-1) var(--ease);
+}
+.prep-nudge:hover { background: var(--panel-3); color: var(--text-2); }
+.prep-nudge-dot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--drive);
+}
+.prep-nudge-text { flex: 1; min-width: 0; }
+.prep-nudge-count {
+  flex: none;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--text-4);
 }
 
 .prep-findings {
