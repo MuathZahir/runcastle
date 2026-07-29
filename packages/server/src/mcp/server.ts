@@ -684,7 +684,8 @@ export function buildMcpServer(): McpServer {
         'reasoning you just worked out with the human (why this feature exists, what it must NOT ' +
         'swallow): it becomes brief.md verbatim, and without it that reasoning is lost. Pass ' +
         '`ticket: { prose }` for a quick change — work too small to deserve a grill — which ' +
-        'creates the feature at the implementation phase with that one ticket. This does NOT open ' +
+        'creates the feature at the implementation phase with that one ticket, and whose brief.md ' +
+        'is the prose itself (so `brief` is unused there). This does NOT open ' +
         'a terminal on what it creates; the new card in the rail is the feedback, and the human ' +
         'decides what to work on next.',
       inputSchema: {
