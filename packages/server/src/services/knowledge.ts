@@ -18,24 +18,43 @@ export interface DocSummary {
   title: string
 }
 
-/** Create the docs dir and seed `brief.md` (title + oneLiner + created date). */
-export function scaffoldDocs(ctx: AppCtx, feature: Feature): void {
+/** Overrides for the docs a fresh feature is seeded with. */
+export interface ScaffoldOptions {
+  /**
+   * Body written into `brief.md` verbatim, instead of the generated
+   * title + oneLiner + created-date stub. Used by every creation path that
+   * already HAS the brief — the quick-change door (the human's own prose) and
+   * the project session's `create_feature` (the reasoning from the intake
+   * conversation, which would otherwise evaporate). Blank/whitespace-only falls
+   * back to the stub.
+   */
+  brief?: string
+}
+
+/**
+ * Create the docs dir and seed `brief.md` (title + oneLiner + created date, or
+ * `opts.brief` verbatim). Never overwrites an existing brief.
+ */
+export function scaffoldDocs(ctx: AppCtx, feature: Feature, opts: ScaffoldOptions = {}): void {
   const project = projectForFeature(ctx, feature)
   const dir = featureDocsDir(project, feature)
   mkdirSync(dir, { recursive: true })
 
   const briefPath = featureDocPath(project, feature, 'brief.md')
   if (!existsSync(briefPath)) {
+    const override = opts.brief?.trim()
     const created = new Date().toISOString()
-    const brief = [
-      `# ${feature.title}`,
-      '',
-      feature.oneLiner,
-      '',
-      `- Slug: ${feature.slug}`,
-      `- Created: ${created}`,
-      '',
-    ].join('\n')
+    const brief = override
+      ? `${override}\n`
+      : [
+          `# ${feature.title}`,
+          '',
+          feature.oneLiner,
+          '',
+          `- Slug: ${feature.slug}`,
+          `- Created: ${created}`,
+          '',
+        ].join('\n')
     writeFileSync(briefPath, brief, 'utf8')
   }
 
