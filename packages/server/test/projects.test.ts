@@ -11,7 +11,6 @@ import {
   openProject,
   renameProject,
 } from '../src/services/projects'
-import { isPreparing, latestPrep } from '../src/services/prep'
 import { makeTestCtx } from './helpers/db'
 import { tmpRepo } from './helpers/fixtures'
 
@@ -68,15 +67,6 @@ describe('projects service — multi-project CRUD (#43)', () => {
 
   beforeEach(async () => {
     ctx = await makeTestCtx()
-  })
-
-  // The guard that keeps `openProject` cheap. Without it a plain open spawns a
-  // preparation agent — a container build, minutes long — which is how this
-  // surfaced in the first place: as an unrelated open test timing out.
-  it('does not start preparation on open when autoPrepare is off', async () => {
-    const project = await openProject(ctx, await gitRepo())
-    expect(latestPrep(ctx, project.id)).toBeNull()
-    expect(isPreparing(project.id)).toBe(false)
   })
 
   it('opens two projects, each listing only its own features', async () => {

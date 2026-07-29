@@ -2,8 +2,9 @@ import { useState } from 'react'
 import { trpc } from '../trpc'
 import { DimLine } from '../ui'
 import { useToast } from '../lib/toast'
-import type { FeatureListItem } from '../lib/api'
+import type { FeatureListItem, PrepView } from '../lib/api'
 import { miniSegments, needsMe, triage } from '../lib/feature-ui'
+import { showsPrepNudge } from '../lib/project-workspace'
 import type { ProjectTalkApi } from '../lib/use-project-talk'
 import { IconBolt, IconCheck, IconPlus, LogoMark } from '../icons'
 import { FeatureActionsMenu, type FeatureAction } from './FeatureActionsMenu'
@@ -42,6 +43,7 @@ export function Sidebar({
   onSelectProject,
   onNewFeature,
   onQuickChange,
+  onOpenPreparation,
 }: {
   projectId: string
   selectedFeatureId: string | null
@@ -51,6 +53,7 @@ export function Sidebar({
   onSelectProject: () => void
   onNewFeature: () => void
   onQuickChange: () => void
+  onOpenPreparation: () => void
 }) {
   const utils = trpc.useUtils()
   const toast = useToast()
@@ -59,6 +62,11 @@ export function Sidebar({
   const [pendingDelete, setPendingDelete] = useState<FeatureListItem | null>(null)
 
   const list = trpc.feature.list.useQuery({ projectId }, { refetchInterval: 1500 })
+  // Same query key the preparation workspace polls — one fetch, two readers.
+  // Assumed prepared until it answers, so the nudge never flashes on first paint.
+  const prep = trpc.project.prep.useQuery({ projectId }) as { data?: PrepView }
+  const prepared = prep.data?.prepared ?? true
+  const pendingCount = prep.data?.pendingKeys.length ?? 0
   const groups = triage(list.data ?? [], { showArchived })
   const archivedCount = (list.data ?? []).filter((f) => f.status === 'archived').length
 
@@ -173,6 +181,22 @@ export function Sidebar({
           </button>
         )}
       </div>
+
+      {/* The demoted call-to-action (SPEC §14). With features on screen the
+          whole-body version would be in the way, but an unprepared project still
+          needs remembering — so it shrinks to the rail's foot rather than going
+          back into settings, where nobody found it. */}
+      {showsPrepNudge({ featureCount: list.data?.length ?? 0, prepared }) && (
+        <button
+          className="prep-nudge"
+          onClick={onOpenPreparation}
+          title="Establish this repo's commands and test baseline, once"
+        >
+          <span className="prep-nudge-dot" aria-hidden="true" />
+          <span className="prep-nudge-text">Prepare this project</span>
+          {pendingCount > 0 && <span className="prep-nudge-count">{pendingCount}</span>}
+        </button>
+      )}
 
       {pendingDelete && (
         <DeleteFeatureDialog

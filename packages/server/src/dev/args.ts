@@ -173,7 +173,7 @@ Usage: bun run dev:tool <command> [flags]
 
   project ls                      list projects (open and closed)
   project rm <id|name|all>        hard-delete a project, its features and rows
-  prep reset <id|name|all>        forget preparation findings so Prepare re-runs
+  prep reset <id|name|all>        forget preparation findings so it asks again
 
   feature ls [projectId|name]     list features with phase and status
   feature phase <id|slug> <phase> force a phase (${Phase.options.join(', ')})

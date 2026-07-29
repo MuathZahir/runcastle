@@ -3,7 +3,6 @@ import type {
   FeatureStatus,
   FindingSource,
   Phase,
-  PrepStatus,
   RunStatus,
   SessionKind,
   SessionStatus,
@@ -89,24 +88,6 @@ export const projectFindings = sqliteTable(
   (t) => [primaryKey({ columns: [t.projectId, t.key] })],
 )
 
-/**
- * One preparation run. Deliberately NOT the `runs` table: a run is feature-
- * scoped (`runs.feature_id` is NOT NULL, and the runner's finalizer advances
- * feature phases and sweeps tickets), while preparation belongs to the project
- * and exists before any feature does. Widening `runs` would put a null feature
- * through every one of those paths.
- */
-export const projectPreps = sqliteTable('project_preps', {
-  id: text('id').primaryKey(),
-  projectId: text('project_id').notNull(),
-  status: text('status').notNull().$type<PrepStatus>(),
-  startedAt: integer('started_at').notNull(),
-  endedAt: integer('ended_at'),
-  summary: text('summary'),
-  /** Main-branch sha the run measured against (stamped on every finding). */
-  headSha: text('head_sha'),
-})
-
 export const features = sqliteTable('features', {
   id: text('id').primaryKey(),
   projectId: text('project_id').notNull(),
@@ -139,13 +120,10 @@ export const sessions = sqliteTable('sessions', {
    * Null for PROJECT-scoped sessions (`kind = 'prepare'`), which exist before
    * any feature does. Every other kind carries its feature.
    *
-   * Nullable rather than a parallel table — the opposite of the call made for
-   * `project_preps` vs `runs`, and deliberately so. There, the machinery we
-   * refused to inherit was large (a finalizer that advances feature phases and
-   * sweeps tickets) and what we duplicated was small. Here it inverts: the PTY
-   * registry, hook receiver, boot reconciliation, `ccSessionId` resume and
-   * `sessionDir` are all entirely feature-agnostic, so a parallel table would
-   * duplicate the big half to avoid the small one.
+   * Nullable rather than a parallel table: the PTY registry, hook receiver,
+   * boot reconciliation, `ccSessionId` resume and `sessionDir` are all entirely
+   * feature-agnostic, so a parallel table would duplicate the big half of the
+   * machinery to avoid the small one.
    *
    * Safe by construction for every reader that FILTERS on this column — a NULL
    * never matches `eq(sessions.featureId, x)`, so project sessions are

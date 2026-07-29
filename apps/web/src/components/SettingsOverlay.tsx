@@ -11,7 +11,6 @@ import {
 import type { PrepView, SettingsView } from '../lib/api'
 import { DimLine } from '../ui'
 import { EnableAfkCard } from './EnableAfkCard'
-import { PreparationCard } from './PreparationCard'
 
 /**
  * The in-app settings overlay (issue #47). A command-palette / doc-peek style
@@ -74,7 +73,6 @@ export function SettingsOverlay({
             rowsOf={(view) => projectRows(view, findings)}
             projectId={projectId}
           />
-          <PreparationCard projectId={projectId} />
           <section className="settings-section">
             <div className="settings-section-head">
               <h3 className="settings-section-title">AFK burns</h3>

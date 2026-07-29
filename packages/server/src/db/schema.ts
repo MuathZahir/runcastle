@@ -3,7 +3,6 @@ import {
   features,
   gateOverrides,
   projectFindings,
-  projectPreps,
   projects,
   runs,
   sessions,
@@ -27,7 +26,6 @@ export const schema = {
   events,
   gateOverrides,
   projectFindings,
-  projectPreps,
 }
 
 export type Schema = typeof schema
@@ -37,7 +35,6 @@ export {
   features,
   gateOverrides,
   projectFindings,
-  projectPreps,
   projects,
   runs,
   sessions,

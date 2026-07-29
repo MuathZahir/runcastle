@@ -184,14 +184,12 @@ describe('record_finding provenance', () => {
 })
 
 describe('the prepare brief', () => {
-  it('quotes the last run’s notes verbatim and lists what is still open', () => {
+  it('lists what is established, with its evidence, and what is still open', () => {
     const out = renderPreparePrompt({
       project: project(),
       remainingKeys: ['driveEnv'],
-      established: [{ key: 'setupCommand', source: 'prep', evidence: 'ran it: exit 0' }],
-      notes: 'driveEnv OMITTED deliberately — .env.example ships every value blank.',
+      established: [{ key: 'setupCommand', source: 'session', evidence: 'ran it: exit 0' }],
     })
-    expect(out).toContain('driveEnv OMITTED deliberately')
     expect(out).toContain('ran it: exit 0')
     expect(out).toContain('`driveEnv`')
     // The host framing is the reason this session exists at all.

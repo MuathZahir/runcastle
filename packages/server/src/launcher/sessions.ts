@@ -692,6 +692,32 @@ export function activeProjectSession(
 }
 
 /**
+ * Whether this project has ever had a project-scoped conversation of this kind
+ * run to an end. The signal behind "has the human done preparation" — a session
+ * they opened and closed is one they sat through, whatever it managed to record.
+ */
+export function hasCompletedProjectSession(
+  ctx: AppCtx,
+  projectId: string,
+  kind: SessionKind,
+): boolean {
+  return (
+    ctx.db
+      .select({ id: sessions.id })
+      .from(sessions)
+      .where(
+        and(
+          eq(sessions.projectId, projectId),
+          eq(sessions.kind, kind),
+          eq(sessions.status, 'ended'),
+        ),
+      )
+      .limit(1)
+      .get() !== undefined
+  )
+}
+
+/**
  * The project-scoped twin of {@link mostRecentResumableSession}: the last ended
  * conversation of this kind for a project, so reopening a preparation terminal
  * continues it instead of making the human re-explain their database.

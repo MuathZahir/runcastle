@@ -57,21 +57,32 @@ export function projectBranchNote(mainBranch: string): string {
 }
 
 /** Which surface owns the workspace body. */
-export type WorkspaceView = 'create' | 'project' | 'feature' | 'empty'
+export type WorkspaceView = 'create' | 'prepare' | 'project' | 'feature' | 'empty'
 
 /**
  * The workspace body's one selector. A creation form owns the body outright;
- * otherwise the pinned project row wins over the selected feature, and with
- * neither the project home shows.
+ * then an explicitly opened preparation; then the pinned project row over the
+ * selected feature.
+ *
+ * The last line is the interesting one. A project with no features and no
+ * preparation has exactly ONE sensible next step, so it gets the whole body
+ * rather than a card tucked under the new-feature buttons — which is where
+ * preparation was, and why nobody found it. Once features exist the rail's
+ * pinned nudge carries it instead and the home reads normally again.
  */
 export function workspaceView(state: {
   creating: boolean
+  preparing: boolean
   projectSelected: boolean
   selectedFeatureId: string | null
+  featureCount: number
+  prepared: boolean
 }): WorkspaceView {
   if (state.creating) return 'create'
+  if (state.preparing) return 'prepare'
   if (state.projectSelected) return 'project'
-  return state.selectedFeatureId ? 'feature' : 'empty'
+  if (state.selectedFeatureId) return 'feature'
+  return state.featureCount === 0 && !state.prepared ? 'prepare' : 'empty'
 }
 
 /**
@@ -81,4 +92,14 @@ export function workspaceView(state: {
  */
 export function showsInspector(view: WorkspaceView, inspectorCollapsed: boolean): boolean {
   return view === 'feature' && !inspectorCollapsed
+}
+
+/**
+ * Whether the rail carries the preparation nudge at its foot. The demoted half
+ * of the same call-to-action: once features exist, the whole-body version would
+ * be in the way, but an unprepared project still needs remembering — so it
+ * shrinks to a pinned row rather than disappearing back into settings.
+ */
+export function showsPrepNudge(state: { featureCount: number; prepared: boolean }): boolean {
+  return state.featureCount > 0 && !state.prepared
 }

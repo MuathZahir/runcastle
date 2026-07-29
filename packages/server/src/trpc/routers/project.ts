@@ -1,9 +1,7 @@
-import { PreparedKey } from '@runcastle/core'
 import * as z from 'zod'
-import { listFindings } from '../../services/findings'
 import { browseDir, listRoots } from '../../services/fsbrowse'
 import * as git from '../../services/git'
-import { cancelPrep, isPreparing, keysToPrepare, latestPrep, startPrep } from '../../services/prep'
+import { prepView } from '../../services/prep'
 import { launchPrepareSession, launchProjectSession } from '../../launcher/launcher'
 import { activeProjectSession } from '../../launcher/sessions'
 import { closeProject, listProjects, openProject, renameProject } from '../../services/projects'
@@ -58,38 +56,13 @@ export const projectRouter = router({
   // no burn agent re-derives them per ticket. See services/prep.ts.
 
   /**
-   * Kick off a preparation run. Returns as soon as the row exists — progress
-   * arrives as project events, and `prep` below reports the outcome. `keys: []`
-   * means there was nothing left to establish.
-   */
-  prepare: publicProcedure
-    .input(
-      z.object({
-        projectId: z.string(),
-        /** Re-measure fields a previous prep run set, not only the empty ones. */
-        refresh: z.boolean().optional(),
-        /** Restrict the run to specific fields (default: everything in scope). */
-        keys: z.array(PreparedKey).optional(),
-      }),
-    )
-    .mutation(async ({ ctx, input }) => {
-      const { prepId, keys } = await startPrep(ctx, input.projectId, {
-        ...(input.refresh !== undefined ? { refresh: input.refresh } : {}),
-        ...(input.keys ? { keys: input.keys } : {}),
-      })
-      return { prepId, keys }
-    }),
-
-  /**
-   * Open a preparation CONVERSATION — a project-scoped terminal on the host,
-   * seeded with whatever the last headless run established and, more usefully,
-   * with what it could not.
+   * Open the preparation CONVERSATION — a project-scoped terminal on the host,
+   * seeded with what is already established and what is not.
    *
-   * The headless run measures; this one asks. It exists because the questions
-   * that block preparation are not ones a better prompt answers — a real run
-   * established seven of eight keys and declined the eighth because supplying it
-   * meant inventing a bootstrap step the repo documents nowhere. Unlike the
-   * container, this session can also RUN the host-only keys it proposes.
+   * The only way to prepare a project. The questions that block preparation are
+   * not ones a better prompt answers — how this machine's dev server starts,
+   * which database a drive should point at — so preparation asks them, and can
+   * actually RUN the answers here, which a sandbox never could.
    */
   talkToPrep: publicProcedure
     .input(z.object({ projectId: z.string() }))
@@ -115,28 +88,12 @@ export const projectRouter = router({
     .input(z.object({ projectId: z.string() }))
     .query(({ ctx, input }) => activeProjectSession(ctx, input.projectId, 'project')),
 
-  /** Abort an in-flight preparation run. */
-  cancelPrepare: publicProcedure
-    .input(z.object({ projectId: z.string() }))
-    .mutation(({ input }) => {
-      cancelPrep(input.projectId)
-      return { ok: true }
-    }),
-
   /**
-   * The preparation surface the UI polls: the last run, whether one is live,
-   * what would be established if you started one now, and every established
-   * finding with its provenance and staleness.
+   * The preparation surface the UI polls: what is still open, every established
+   * finding with its provenance and staleness, and whether this project still
+   * needs the call-to-action at all.
    */
   prep: publicProcedure
     .input(z.object({ projectId: z.string() }))
-    .query(async ({ ctx, input }) => {
-      const project = requireProjectById(ctx, input.projectId)
-      return {
-        latest: latestPrep(ctx, project.id),
-        running: isPreparing(project.id),
-        pendingKeys: keysToPrepare(ctx, project),
-        findings: await listFindings(ctx, project),
-      }
-    }),
+    .query(({ ctx, input }) => prepView(ctx, requireProjectById(ctx, input.projectId))),
 })

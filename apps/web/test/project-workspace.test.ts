@@ -4,6 +4,7 @@ import {
   projectBranchNote,
   projectSessionState,
   showsInspector,
+  showsPrepNudge,
   workspaceView,
 } from '../src/lib/project-workspace'
 import type { ProjectSession } from '../src/lib/api'
@@ -18,31 +19,70 @@ import type { ProjectSession } from '../src/lib/api'
 const session = (status: 'launching' | 'live' | 'ended'): ProjectSession =>
   ({ id: 'sess_1', projectId: 'proj_1', kind: 'project', status, worktreePath: '/w' }) as ProjectSession
 
+/** A prepared project with one feature — the resting case every test varies. */
+const state = (over: Partial<Parameters<typeof workspaceView>[0]> = {}) => ({
+  creating: false,
+  preparing: false,
+  projectSelected: false,
+  selectedFeatureId: null,
+  featureCount: 1,
+  prepared: true,
+  ...over,
+})
+
 describe('workspaceView', () => {
   it('swaps to the project workspace when the pinned row is selected', () => {
-    expect(workspaceView({ creating: false, projectSelected: true, selectedFeatureId: 'f1' })).toBe(
-      'project',
-    )
+    expect(workspaceView(state({ projectSelected: true, selectedFeatureId: 'f1' }))).toBe('project')
   })
 
   // Selecting any feature must restore the feature workspace — the pinned row is
   // a selection, not a mode you have to leave.
   it('restores the feature workspace once a feature is selected', () => {
-    expect(workspaceView({ creating: false, projectSelected: false, selectedFeatureId: 'f1' })).toBe(
-      'feature',
-    )
+    expect(workspaceView(state({ selectedFeatureId: 'f1' }))).toBe('feature')
   })
 
   it('falls back to the project home with neither selected', () => {
-    expect(workspaceView({ creating: false, projectSelected: false, selectedFeatureId: null })).toBe(
-      'empty',
-    )
+    expect(workspaceView(state())).toBe('empty')
   })
 
   it('lets a creation form own the body outright', () => {
-    expect(workspaceView({ creating: true, projectSelected: true, selectedFeatureId: 'f1' })).toBe(
-      'create',
-    )
+    expect(
+      workspaceView(state({ creating: true, projectSelected: true, selectedFeatureId: 'f1' })),
+    ).toBe('create')
+  })
+
+  /**
+   * The call-to-action. An unprepared project with no features has exactly one
+   * sensible next step, and the whole point of the change is that it stops being
+   * a card beside the new-feature buttons — where it was, and where nobody found
+   * it.
+   */
+  it('gives the whole body to preparation on an unprepared, featureless project', () => {
+    expect(workspaceView(state({ featureCount: 0, prepared: false }))).toBe('prepare')
+  })
+
+  it('reads as the ordinary home once either half of that stops holding', () => {
+    expect(workspaceView(state({ featureCount: 0, prepared: true }))).toBe('empty')
+    expect(workspaceView(state({ featureCount: 3, prepared: false }))).toBe('empty')
+  })
+
+  // Opening it deliberately (the rail's nudge, ⌘K) beats every automatic rule
+  // below it — including one that would swap it away the moment it succeeds.
+  it('honours a deliberately opened preparation over the selected feature', () => {
+    expect(workspaceView(state({ preparing: true, selectedFeatureId: 'f1' }))).toBe('prepare')
+  })
+
+  it('still lets a creation form outrank it', () => {
+    expect(workspaceView(state({ creating: true, preparing: true }))).toBe('create')
+  })
+})
+
+describe('showsPrepNudge', () => {
+  // The demoted half: exactly the case the whole-body version gives up.
+  it('is the unprepared project that already has features', () => {
+    expect(showsPrepNudge({ featureCount: 2, prepared: false })).toBe(true)
+    expect(showsPrepNudge({ featureCount: 0, prepared: false })).toBe(false)
+    expect(showsPrepNudge({ featureCount: 2, prepared: true })).toBe(false)
   })
 })
 
@@ -54,6 +94,7 @@ describe('showsInspector', () => {
     expect(showsInspector('project', false)).toBe(false)
     expect(showsInspector('empty', false)).toBe(false)
     expect(showsInspector('create', false)).toBe(false)
+    expect(showsInspector('prepare', false)).toBe(false)
   })
 
   it('still respects the collapse toggle', () => {

@@ -1,338 +1,63 @@
-import type { PreparedKey, PrepRun, PrepStatus, Project } from '@runcastle/core'
-import { PREPARED_KEYS, newId } from '@runcastle/core'
-import { and, desc, eq } from 'drizzle-orm'
+import type { PreparedKey, Project, ProjectFinding } from '@runcastle/core'
 import type { AppCtx } from '../db/types'
-import { events, projectPreps } from '../db/schema'
-import { InvalidInputError } from '../errors'
-import type { PrepCtx, PrepDeps, PrepFindings } from '../workflows/project-prep'
-import { prepHeadSha, prepRun, resolvePrepDeps } from '../workflows/project-prep'
-import { emitProject } from './events'
-import { isOverwritable, recordFinding, unsetPreparedKeys } from './findings'
-import { requireProjectById } from './repo'
+import { hasCompletedProjectSession } from '../launcher/sessions'
+import { isOverwritable, listFindings, unsetPreparedKeys } from './findings'
 
 /**
- * Project preparation service — the run bookkeeping and the write-back.
+ * Project preparation state — what is still open, and whether the human has
+ * been through it.
  *
- * Preparation is project-scoped and deliberately does NOT go through
- * `runner.startRun`: a run is feature-scoped by construction (`runs.feature_id`
- * is NOT NULL, and the finalizer advances feature phases and sweeps tickets),
- * while preparation belongs to the project and normally happens before any
- * feature exists. It keeps the parts that matter — a row, an AbortController,
- * a streamed event timeline — without pushing a null feature through paths that
- * assume one.
+ * Preparation is a CONVERSATION on the developer's own machine
+ * (`project.talkToPrep`), and only that. It used to have a headless twin that
+ * measured the repo in a sandbox with nobody watching; that is gone. The AFK
+ * run took minutes behind a spinner with nothing to look at, which is exactly
+ * how long it takes to lose someone's patience — and the keys it could never
+ * settle alone (the dev server, the local database, credentials) are the ones
+ * a single direct question resolves. Asking beats guessing, and asking is only
+ * possible with someone there.
  *
- * It is also non-blocking by design. `openProject` returns immediately and
- * preparation runs behind it: the only consumer of the findings is a burn,
- * which is several gates downstream, so there is no reason to make anyone watch
- * a progress bar before they can start a feature.
+ * This module is the read side of that: it answers "what is left" for the
+ * session brief and for the UI's call-to-action. Values and provenance are
+ * written by `record_finding` through {@link recordFinding} in `findings.ts`.
  */
 
-/** In-flight preparation runs, by project id (at most one per project). */
-const controllers = new Map<string, { runId: string; controller: AbortController }>()
-
-export interface StartPrepOptions {
-  /**
-   * Re-measure fields a PREVIOUS PREPARATION RUN established, not just the
-   * empty ones — what the "re-prepare" action does when a baseline has gone
-   * stale. Human-entered values are never in scope either way (see
-   * {@link isOverwritable}); clearing a field is how you hand it back.
-   */
-  refresh?: boolean
-  /** Restrict the run to these keys (default: everything in scope). */
-  keys?: readonly PreparedKey[]
-  /** Test seam: inject fake deps instead of resolving the real sandcastle path. */
-  deps?: PrepDeps
-}
-
-export interface StartPrepResult {
-  prepId: string
-  /** The keys the run will try to establish (empty → nothing to do). */
-  keys: PreparedKey[]
-  /** Resolves when the run finalizes; tests await it, callers may ignore it. */
-  done: Promise<void>
-}
-
-/** True while a preparation run for this project is in flight IN THIS PROCESS. */
-export function isPreparing(projectId: string): boolean {
-  return controllers.has(projectId)
+/**
+ * Which prepared keys a preparation conversation still has to establish: those
+ * with no value, minus anything a human typed by hand (see {@link isOverwritable}
+ * — clearing a field is how you hand it back).
+ */
+export function keysToPrepare(ctx: AppCtx, project: Project): PreparedKey[] {
+  return unsetPreparedKeys(project).filter((key) => isOverwritable(ctx, project.id, key))
 }
 
 /**
- * Which keys a run should try to establish.
+ * Whether this project counts as prepared — the question the call-to-action
+ * asks before it takes over the screen.
  *
- * Base scope is every prepared key that is currently EMPTY. `refresh` widens it
- * to already-set keys as well, so a re-prepare can replace a stale baseline
- * rather than skipping it as "already answered". Both are then filtered through
- * provenance, which removes anything a human typed.
+ * Two ways to be done, and the second one matters as much as the first. Some
+ * keys are legitimately empty forever ("this repo has no database"), so waiting
+ * for `pendingKeys` to drain would nag some projects permanently — and a
+ * permanent nudge is noise, which is what put preparation out of sight in the
+ * first place. Once a preparation conversation has actually run to an end, the
+ * human has seen every open field and decided; the prompt is done prompting.
  */
-export function keysToPrepare(
-  ctx: AppCtx,
-  project: Project,
-  opts: Pick<StartPrepOptions, 'refresh' | 'keys'> = {},
-): PreparedKey[] {
-  const unset = new Set<PreparedKey>(unsetPreparedKeys(project))
-  const candidates = opts.keys ?? (opts.refresh ? PREPARED_KEYS : [...unset])
-  return candidates.filter(
-    (key) => (opts.refresh || unset.has(key)) && isOverwritable(ctx, project.id, key),
-  )
+export function isPrepared(ctx: AppCtx, project: Project): boolean {
+  if (keysToPrepare(ctx, project).length === 0) return true
+  return hasCompletedProjectSession(ctx, project.id, 'prepare')
 }
 
-/**
- * Whether opening this project should kick off its first preparation run.
- *
- * Pure decision, separated from the fire-and-forget call so it is testable
- * without spawning an agent. Three conditions, in cheapness order: the feature
- * is on, this project has never been prepared, and there is something left to
- * establish.
- *
- * The middle one is the fix for the bug that made preparation look broken: it
- * used to key off "the project row was just inserted", so every project opened
- * before preparation existed could never auto-prepare — the trigger was
- * unreachable for exactly the people with the most history. Keyed to
- * `latestPrep` it fires once per project, whenever that project is first seen
- * unprepared, and never again.
- */
-export function shouldAutoPrepare(ctx: AppCtx, project: Project): boolean {
-  if (!ctx.config.autoPrepare) return false
-  // Any previous run — succeeded, failed or cancelled — means the user has been
-  // shown this once. Retrying is theirs to ask for.
-  if (latestPrep(ctx, project.id)) return false
-  return keysToPrepare(ctx, project).length > 0
+/** The preparation surface the UI polls. */
+export interface PrepView {
+  pendingKeys: PreparedKey[]
+  findings: ProjectFinding[]
+  /** Nothing left to establish, or a conversation has already been through it. */
+  prepared: boolean
 }
 
-/**
- * Start a preparation run for a project. Returns as soon as the row exists —
- * the agent works in the background and reports through project events.
- *
- * Refuses a second concurrent run for the same project: two agents measuring
- * the same repo would race on the write-back and one would silently win.
- */
-export async function startPrep(
-  ctx: AppCtx,
-  projectId: string,
-  opts: StartPrepOptions = {},
-): Promise<StartPrepResult> {
-  const project = requireProjectById(ctx, projectId)
-  if (controllers.has(projectId)) {
-    throw new InvalidInputError(`${project.name} is already being prepared`)
-  }
-
-  const keys = keysToPrepare(ctx, project, opts)
-  const prepId = newId('prep')
-  const headSha = await prepHeadSha(project)
-
-  ctx.db
-    .insert(projectPreps)
-    .values({
-      id: prepId,
-      projectId,
-      status: 'running',
-      startedAt: Date.now(),
-      endedAt: null,
-      summary: null,
-      headSha: headSha ?? null,
-    })
-    .run()
-
-  emitProject(ctx, projectId, {
-    type: 'prep.run.started',
-    message:
-      keys.length === 0
-        ? `preparing ${project.name} — nothing left to establish`
-        : `preparing ${project.name} — ${keys.length} field(s) to establish`,
-    data: { prepId, keys },
-  })
-
-  const controller = new AbortController()
-  controllers.set(projectId, { runId: prepId, controller })
-
-  const prepCtx: PrepCtx = {
-    project,
-    keys,
-    emitEvent: (e) => {
-      emitProject(ctx, projectId, { type: e.type, message: e.message, data: e.data })
-    },
-    signal: controller.signal,
-  }
-
-  const deps = opts.deps ?? resolvePrepDeps(project)
-  const done = finalize(ctx, project, prepId, prepCtx, deps, controller, headSha)
-  return { prepId, keys, done }
-}
-
-/** Cancel an in-flight preparation run; no-op when none is running. */
-export function cancelPrep(projectId: string): void {
-  controllers.get(projectId)?.controller.abort()
-}
-
-async function finalize(
-  ctx: AppCtx,
-  project: Project,
-  prepId: string,
-  prepCtx: PrepCtx,
-  deps: PrepDeps,
-  controller: AbortController,
-  headSha: string | undefined,
-): Promise<void> {
-  let status: PrepStatus = 'failed'
-  let summary = 'preparation failed'
-  let findings: PrepFindings | undefined
-
-  try {
-    const result = await prepRun(prepCtx, deps)
-    status = result.status === 'succeeded' ? 'succeeded' : 'failed'
-    summary = result.summary
-    findings = result.findings
-  } catch (e) {
-    if (controller.signal.aborted) {
-      status = 'cancelled'
-      summary = 'preparation cancelled'
-    } else {
-      status = 'failed'
-      summary = e instanceof Error ? e.message : 'preparation failed'
-    }
-  } finally {
-    controllers.delete(project.id)
-  }
-
-  // Apply BEFORE finalizing the row, so a client that sees `succeeded` can read
-  // the findings in the same poll rather than racing the write-back.
-  const applied = findings ? applyFindings(ctx, project, findings, headSha) : []
-
-  ctx.db
-    .update(projectPreps)
-    .set({ status, endedAt: Date.now(), summary })
-    .where(eq(projectPreps.id, prepId))
-    .run()
-
-  emitProject(ctx, project.id, {
-    type: 'prep.run.finished',
-    message: `preparation ${status}: ${summary}`,
-    data: { prepId, status, summary, applied },
-  })
-}
-
-/**
- * Write the agent's findings to the project, honouring provenance: a value a
- * human typed is skipped (and reported as skipped), everything else is written
- * with its evidence and the sha it was measured at. Returns the keys applied.
- *
- * The re-check against `isOverwritable` is not redundant with the one that
- * built the key list: a preparation run can take many minutes, and a human may
- * have answered a field in the settings UI while the agent was measuring it.
- * The human's answer wins.
- */
-export function applyFindings(
-  ctx: AppCtx,
-  project: Project,
-  findings: PrepFindings,
-  headSha: string | undefined,
-): PreparedKey[] {
-  const applied: PreparedKey[] = []
-  for (const [key, finding] of Object.entries(findings.values) as [PreparedKey, { value: string; evidence?: string }][]) {
-    if (!isOverwritable(ctx, project.id, key)) {
-      emitProject(ctx, project.id, {
-        type: 'prep.skipped_field',
-        message: `kept your ${key} — preparation proposed "${truncate(finding.value)}" but you set this by hand`,
-        data: { key, proposed: finding.value },
-      })
-      continue
-    }
-    recordFinding(ctx, project.id, {
-      key,
-      value: finding.value,
-      source: 'prep',
-      ...(finding.evidence ? { evidence: finding.evidence } : {}),
-      ...(headSha ? { establishedSha: headSha } : {}),
-    })
-    applied.push(key)
-    emitProject(ctx, project.id, {
-      type: 'prep.established',
-      message: `${key}: ${truncate(finding.value)}`,
-      data: { key, value: finding.value, evidence: finding.evidence },
-    })
-  }
-
-  if (findings.notes) {
-    emitProject(ctx, project.id, {
-      type: 'prep.notes',
-      message: `preparation notes: ${findings.notes}`,
-      data: { notes: findings.notes },
-    })
-  }
-  return applied
-}
-
-/** One-line preview of a value for an event message. */
-function truncate(value: string, max = 120): string {
-  const oneLine = value.replace(/\s*\n\s*/g, ' · ').trim()
-  return oneLine.length > max ? `${oneLine.slice(0, max - 1)}…` : oneLine
-}
-
-/** The most recent preparation run for a project, or `null`. */
-export function latestPrep(ctx: AppCtx, projectId: string): PrepRun | null {
-  const row = ctx.db
-    .select()
-    .from(projectPreps)
-    .where(eq(projectPreps.projectId, projectId))
-    .orderBy(desc(projectPreps.startedAt))
-    .get()
-  if (!row) return null
+export async function prepView(ctx: AppCtx, project: Project): Promise<PrepView> {
   return {
-    id: row.id,
-    projectId: row.projectId,
-    status: row.status,
-    startedAt: row.startedAt,
-    ...(row.endedAt !== null ? { endedAt: row.endedAt } : {}),
-    ...(row.summary !== null ? { summary: row.summary } : {}),
-    ...(row.headSha !== null ? { headSha: row.headSha } : {}),
+    pendingKeys: keysToPrepare(ctx, project),
+    findings: await listFindings(ctx, project),
+    prepared: isPrepared(ctx, project),
   }
-}
-
-/**
- * The last headless run's free-text caveats, if any.
- *
- * Read back off the timeline rather than a column: `applyFindings` emits notes
- * as a `prep.notes` event and `project_preps` has never stored them. They are
- * worth recovering anyway — the notes are where a run explains what it could
- * NOT settle, which is precisely the agenda for an interactive session. Adding
- * a column for something already durably recorded would be the worse trade.
- */
-export function latestPrepNotes(ctx: AppCtx, projectId: string): string | undefined {
-  const row = ctx.db
-    .select({ data: events.data })
-    .from(events)
-    .where(and(eq(events.projectId, projectId), eq(events.type, 'prep.notes')))
-    .orderBy(desc(events.id))
-    .get()
-  const notes = (row?.data as { notes?: unknown } | null)?.notes
-  return typeof notes === 'string' && notes.trim() !== '' ? notes : undefined
-}
-
-/**
- * Reconcile preparation rows left `running` by a server that died mid-run (or a
- * `bun --hot` reload). A row with no controller in this process has no agent
- * behind it and can never finish on its own.
- */
-export function reconcilePreps(ctx: AppCtx): number {
-  const stale = ctx.db
-    .select({ id: projectPreps.id, projectId: projectPreps.projectId })
-    .from(projectPreps)
-    .where(eq(projectPreps.status, 'running'))
-    .all()
-    .filter((row) => !controllers.has(row.projectId))
-
-  for (const row of stale) {
-    ctx.db
-      .update(projectPreps)
-      .set({ status: 'failed', endedAt: Date.now(), summary: 'server stopped while preparing' })
-      .where(eq(projectPreps.id, row.id))
-      .run()
-  }
-  return stale.length
-}
-
-/** Test-only: forget in-memory prep state (no router calls this). */
-export function __resetPrepState(): void {
-  controllers.clear()
 }

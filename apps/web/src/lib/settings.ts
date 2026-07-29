@@ -24,7 +24,6 @@ export const FIELD_ENV_VAR: Record<string, string> = {
   verifyCommands: 'RUNCASTLE_VERIFY_COMMANDS',
   knownFailures: 'RUNCASTLE_KNOWN_FAILURES',
   mainBranch: 'RUNCASTLE_MAIN_BRANCH',
-  autoPrepare: 'RUNCASTLE_AUTO_PREPARE',
 }
 
 /** Curated model ids offered by the Default-model dropdown (curated list in core). */
@@ -157,12 +156,6 @@ const META: Record<string, FieldMeta> = {
     label: 'Database reset command',
     help: 'Command that rebuilds the dev database from the migrations in the working tree. Offered (never run automatically) after a test drive whose branch carried migrations this one does not have.',
     control: 'text',
-  },
-  autoPrepare: {
-    label: 'Prepare new projects automatically',
-    help: 'Run preparation the first time a project is opened. It builds a sandbox and runs the test suite once, so turn it off to spend nothing until you ask.',
-    control: 'select',
-    options: ['true', 'false'],
   },
 }
 

@@ -116,9 +116,7 @@ Router `appRouter` in `trpc/router.ts`, context = `{ db, config }`. All inputs/o
 - `project.get(): Project | null`
 - `project.init({ repoPath: string }): Project` — validates it's a git repo; stores mainBranch. Per-project overrides (devCommand, model, sandbox) are set later via `settings.update({ projectId, key, value })` — `project.update` is retired (issue #46).
 - `project.branches({ projectId }): { current, mainBranch, branches: string[], remoteBranches: string[] }` — branches for the create-feature base picker (`feature/*` excluded); `current` is the main checkout's branch; `remoteBranches` are `origin/*` refs with no local twin (picking one materializes a local base — see §7 `resolveBaseBranch`).
-- `project.prepare({ projectId, refresh?, keys? }): { prepId, keys }` — start a preparation run (§14); returns immediately, progress arrives as project events
-- `project.cancelPrepare({ projectId }): { ok }`
-- `project.prep({ projectId }): { latest: PrepRun|null, running: boolean, pendingKeys: PreparedKey[], findings: ProjectFinding[] }` — the preparation surface the settings UI polls
+- `project.prep({ projectId }): { pendingKeys: PreparedKey[], findings: ProjectFinding[], prepared: boolean }` — the preparation surface the UI polls (§14); `prepared` is what decides whether the call-to-action shows
 - `feature.create({ title, oneLiner, size, baseBranch? }): Feature` — slugify title; resolve `baseBranch` (default `mainBranch`) to a local branch (a remote pick materializes a local tracking branch); git branch `feature/<slug>` forked off it; scaffold docs; phase=`ideation`. Stores the resolved local base; the feature merges back into it at ship (not unconditionally main).
 - `feature.list(): FeatureListItem[]` — Feature + ticket counts + activeRun boolean
 - `feature.get({ id }): { feature, tickets, sessions, runs, docs: {relPath, title}[], gate: { next: GateDef|null, satisfied: boolean, reason?: string } }`
@@ -304,7 +302,7 @@ transactionality (double-claim fails), auto-release on session end, G1
 conditional check both modes. Smoke extension: escalate → emit 2 waypoints
 (one blocking the other) → resolve both → converge gate satisfiable.
 
-## 14. Project preparation — `workflows/project-prep.ts` + `services/prep.ts`
+## 14. Project preparation — `services/prep.ts` + the `prepare` session
 
 **Why.** `verifyCommands`, `knownFailures` and `setupCommand` sit empty on
 almost every install, and not because the form is unfriendly: they are
@@ -322,35 +320,38 @@ wrong as soon as a second project is open). `dbResetCommand` is project-only.
 
 **Storage.** Values live in the project columns, so every existing reader —
 settings resolution, the burner, the launcher — is unchanged. `project_findings`
-(PK `project_id,key`) carries provenance only: `source` (`prep|human`),
-`evidence`, `established_at`, `established_sha`. `project_preps` is the run row
-(NOT `runs`: that is feature-scoped and its finalizer advances feature phases).
+(PK `project_id,key`) carries provenance only: `source` (`session|human`),
+`evidence`, `established_at`, `established_sha`.
 
 **Rules.**
-- **Measured, not inferred.** The prompt requires the agent to RUN what it
-  proposes. Reading `package.json` would automate the same guess, earlier.
-- **Measured where it will be used.** Same sandbox image and setup command as
-  ticket agents get; a baseline from elsewhere is not comparable to theirs.
-  `devCommand`/`dbResetCommand` are the exceptions — they describe the human's
-  machine, so they are read from config and reported as *proposed, not run*.
+- **Always interactive.** Preparation is a `prepare` SESSION on the human's own
+  machine (`project.talkToPrep`), and only that. It had a headless twin that
+  measured the repo in a sandbox with nobody watching; that is gone. The run was
+  minutes behind a spinner with nothing to look at, and the keys it could never
+  settle alone — the dev server, the local database, credentials — are the ones
+  a single direct question resolves. Asking beats guessing, and asking needs
+  someone there.
+- **Measured, not inferred.** The brief requires the agent to RUN what it
+  proposes. Reading `package.json` would automate the same guess, earlier. On
+  the host it can run every key, including the five that describe this machine.
 - **A human value is never overwritten.** No override flag exists. Clearing a
   field drops its provenance and hands it back to preparation — the only way.
-  Re-checked at write-back, because a run takes minutes and a human may answer
-  a field mid-run.
+  `record_finding({ userSupplied: true })` is what marks a value as theirs.
 - **Staleness is measured.** Findings pin to the main-branch sha they were taken
   at; the UI shows `rev-list <sha>..<main>` distance and flags past a threshold.
   An uncomputable distance (rebased-away sha) reports *unknown*, never *fresh* —
   a rotted baseline is worse than none, since agents trust it.
-- **Findings travel by commit.** The agent writes `.runcastle/prep.json` and
-  commits it to a throwaway `runcastle/prep/*` branch; the run reads it with
-  `git show` and deletes the branch. Nothing merges, nothing pollutes the repo,
-  and a dropped stream cannot lose a full suite run.
 
-**Lifecycle.** `autoPrepare` (global, default on) fires one run on a project's
-FIRST open, fire-and-forget so `project.open` returns immediately — the only
-consumer is a burn, several gates downstream. Everything after is an explicit
-`project.prepare`. One run per project at a time; boot reconciles `running` rows
-left by a dead server.
+**Lifecycle.** Nothing fires on open. `isPrepared` decides whether the UI asks:
+true once `pendingKeys` is empty OR a `prepare` session has run to an end. The
+second clause is what stops the prompt becoming wallpaper — some keys are
+honestly empty forever ("this repo has no database"), and a permanent nudge is
+the noise this surface exists to remove.
+
+**Where it shows (§10).** An unprepared project with no features gets the WHOLE
+workspace as the call-to-action — not a card under the new-feature buttons,
+which is where it was invisible. Once features exist it demotes to a row pinned
+at the bottom of the features rail. It is not in the settings overlay at all.
 
 ## 15. Laps (ADR-0010)
 

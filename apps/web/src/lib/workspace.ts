@@ -64,6 +64,13 @@ export interface WorkspaceApi {
   /** Whether a creation form owns the workspace (either door). */
   creating: boolean
   /**
+   * Preparation was opened deliberately — from the rail's nudge or ⌘K. Kept
+   * apart from the automatic call-to-action an unprepared, featureless project
+   * gets: that one is a condition, this one is a choice, and a choice has to
+   * survive the project becoming prepared while you are looking at it.
+   */
+  preparing: boolean
+  /**
    * Which door is open while `creating`: the New Feature form (a grill), or the
    * quick-change form (decision 21 — one prose field, straight to a card).
    */
@@ -90,8 +97,12 @@ export interface WorkspaceApi {
   startCreate: () => void
   /** Open the quick-change form in the workspace. */
   startQuickChange: () => void
+  /** Give the workspace over to preparation. */
+  startPreparation: () => void
   /** Close whichever creation form is open, without creating. */
   cancelCreate: () => void
+  /** Leave a deliberately-opened preparation. */
+  closePreparation: () => void
   toggleInspector: () => void
   toggleMapRail: () => void
   setCmdk: (open: boolean) => void
@@ -105,6 +116,7 @@ export function useWorkspace(projectId: string): WorkspaceApi {
   const [viewedPhase, setViewedPhase] = useState<Phase | null>(null)
   const [creating, setCreating] = useState(false)
   const [createMode, setCreateMode] = useState<CreateMode>('feature')
+  const [preparing, setPreparing] = useState(false)
   // Ephemeral like the phase pin: the pinned row is always in the rail, so a
   // reload landing back on your feature is the right resting state.
   const [projectSelected, setProjectSelected] = useState(false)
@@ -133,12 +145,13 @@ export function useWorkspace(projectId: string): WorkspaceApi {
     writeLS(GUIDANCE_KEY, guidance ? '1' : '0')
   }, [guidance])
 
-  // `null` deselects, which is how the project home (and the preparation card
-  // that lives on it) is reached without leaving the project.
+  // `null` deselects, which is how the project home is reached without leaving
+  // the project.
   const select = useCallback((featureId: string | null) => {
     setSelected(featureId)
     setViewedPhase(null)
     setCreating(false)
+    setPreparing(false)
     setProjectSelected(false)
     setCmdk(false)
   }, [])
@@ -149,6 +162,7 @@ export function useWorkspace(projectId: string): WorkspaceApi {
     setProjectSelected(true)
     setViewedPhase(null)
     setCreating(false)
+    setPreparing(false)
     setCmdk(false)
   }, [])
 
@@ -156,12 +170,20 @@ export function useWorkspace(projectId: string): WorkspaceApi {
   const startCreate = useCallback(() => {
     setCreateMode('feature')
     setCreating(true)
+    setPreparing(false)
     setProjectSelected(false)
     setCmdk(false)
   }, [])
   const startQuickChange = useCallback(() => {
     setCreateMode('quick')
     setCreating(true)
+    setPreparing(false)
+    setProjectSelected(false)
+    setCmdk(false)
+  }, [])
+  const startPreparation = useCallback(() => {
+    setPreparing(true)
+    setCreating(false)
     setProjectSelected(false)
     setCmdk(false)
   }, [])
@@ -171,6 +193,7 @@ export function useWorkspace(projectId: string): WorkspaceApi {
     if (open) setCmdk(false)
   }, [])
   const cancelCreate = useCallback(() => setCreating(false), [])
+  const closePreparation = useCallback(() => setPreparing(false), [])
   const toggleInspector = useCallback(() => setInspectorCollapsed((v) => !v), [])
   const toggleMapRail = useCallback(() => setMapRailCollapsed((v) => !v), [])
   const toggleGuidance = useCallback(() => setGuidance((v) => !v), [])
@@ -181,6 +204,7 @@ export function useWorkspace(projectId: string): WorkspaceApi {
     viewedPhase,
     creating,
     createMode,
+    preparing,
     inspectorCollapsed,
     mapRailCollapsed,
     cmdkOpen,
@@ -191,7 +215,9 @@ export function useWorkspace(projectId: string): WorkspaceApi {
     viewPhase,
     startCreate,
     startQuickChange,
+    startPreparation,
     cancelCreate,
+    closePreparation,
     toggleInspector,
     toggleMapRail,
     setCmdk,

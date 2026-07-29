@@ -17,11 +17,5 @@ export async function makeTestCtx(): Promise<AppCtx> {
   const sqlite = new SQL.Database()
   const db = drizzle(sqlite, { schema }) as unknown as Db
   runMigrations(db)
-  // `autoPrepare` ships ON, but a test that opens a project must not spawn a
-  // real preparation agent: it builds a container, writes to the developer's
-  // own `~/.runcastle/logs`, and takes minutes — which is exactly how it showed
-  // up, as an unrelated `openProject` test timing out. Tests that exercise
-  // preparation start it explicitly with injected deps.
-  const config = RuncastleConfig.parse({ autoPrepare: false })
-  return { db, config }
+  return { db, config: RuncastleConfig.parse({}) }
 }
