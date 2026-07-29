@@ -223,7 +223,7 @@ function ProjectRow({
         {state === 'none' ? (
           <span className="project-row-kick">Project</span>
         ) : (
-          <span className={`project-row-live is-${state}`}>
+          <span className="project-row-live">
             <span className="spin-ring" />
             {state === 'launching' ? 'opening' : 'live'}
           </span>
