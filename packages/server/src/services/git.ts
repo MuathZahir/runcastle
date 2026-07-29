@@ -319,13 +319,26 @@ export async function ensureTalkWorktree(project: Project, feature: Feature): Pr
 
   if (await worktreeIsValid(g, worktreePath, branch)) return worktreePath
 
-  mkdirSync(dirname(worktreePath), { recursive: true })
+  return addWorktree(g, worktreePath, branch, 'talk worktree')
+}
 
+/**
+ * `git worktree add <path> <branch>`, retried once through a `worktree prune` —
+ * the stale-registry case (the dir was deleted out from under git) is the common
+ * one, and it heals itself. `label` names the worktree in the error a second
+ * failure raises, so the message says which one could not be created.
+ */
+async function addWorktree(
+  g: SimpleGit,
+  worktreePath: string,
+  branch: string,
+  label: string,
+): Promise<string> {
+  mkdirSync(dirname(worktreePath), { recursive: true })
   try {
     await g.raw(['worktree', 'add', worktreePath, branch])
     return worktreePath
   } catch {
-    // Stale registry (e.g. the dir was deleted out from under git): prune, retry.
     try {
       await g.raw(['worktree', 'prune'])
     } catch {
@@ -335,9 +348,7 @@ export async function ensureTalkWorktree(project: Project, feature: Feature): Pr
       await g.raw(['worktree', 'add', worktreePath, branch])
       return worktreePath
     } catch (e) {
-      throw new InvalidInputError(
-        `could not create talk worktree at ${worktreePath}: ${errMsg(e)}`,
-      )
+      throw new InvalidInputError(`could not create ${label} at ${worktreePath}: ${errMsg(e)}`)
     }
   }
 }
@@ -378,41 +389,34 @@ export async function ensureProjectWorktree(project: Project): Promise<string> {
   if (await worktreeIsValid(g, worktreePath, PROJECT_BRANCH)) return worktreePath
 
   // A registered worktree that is merely detached (landing deletes the branch it
-  // held) or sitting on the previous branch just needs the new branch checked
-  // out — recreating it would be a needless delete of a directory git still owns.
+  // held) or sitting on the previous cut just needs the new branch checked out —
+  // recreating it would be a needless delete of a directory git still owns.
   if (existsSync(worktreePath) && (await registeredWorktrees(g)).has(canon(worktreePath))) {
-    const gw = git(worktreePath)
-    for (const args of [['checkout', PROJECT_BRANCH], ['checkout', '--force', PROJECT_BRANCH]]) {
-      try {
-        await gw.raw(args)
-        return worktreePath
-      } catch {
-        // plain checkout first so uncommitted work survives where it can; the
-        // forced retry is for the case where it cannot, and both failing falls
-        // through to recreating the worktree below
-      }
-    }
+    if (await checkoutInWorktree(worktreePath, PROJECT_BRANCH)) return worktreePath
   }
 
-  mkdirSync(dirname(worktreePath), { recursive: true })
+  return addWorktree(g, worktreePath, PROJECT_BRANCH, 'project worktree')
+}
 
+/**
+ * Check `branch` out in an existing worktree: plainly first, so any uncommitted
+ * work there survives where git can carry it over, then forced when it cannot
+ * (an abandoned edit must not leave the project terminal unlaunchable). Returns
+ * whether the worktree now holds the branch.
+ */
+async function checkoutInWorktree(worktreePath: string, branch: string): Promise<boolean> {
+  const gw = git(worktreePath)
   try {
-    await g.raw(['worktree', 'add', worktreePath, PROJECT_BRANCH])
-    return worktreePath
+    await gw.raw(['checkout', branch])
+    return true
   } catch {
-    try {
-      await g.raw(['worktree', 'prune'])
-    } catch {
-      // best-effort — a failed prune just means the retry below will surface it
-    }
-    try {
-      await g.raw(['worktree', 'add', worktreePath, PROJECT_BRANCH])
-      return worktreePath
-    } catch (e) {
-      throw new InvalidInputError(
-        `could not create project worktree at ${worktreePath}: ${errMsg(e)}`,
-      )
-    }
+    // carrying the changes over failed — take them out of the way instead
+  }
+  try {
+    await gw.raw(['checkout', '--force', branch])
+    return true
+  } catch {
+    return false // caller recreates the worktree from scratch
   }
 }
 

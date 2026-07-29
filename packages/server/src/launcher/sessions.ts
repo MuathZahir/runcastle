@@ -575,40 +575,46 @@ export function landProjectSession(ctx: AppCtx, session: SessionRow): void {
   const project = getProjectById(ctx, session.projectId)
   if (!project) return
 
+  const kept = `they are kept on ${PROJECT_BRANCH} and retried at the next launch`
+  const report = (type: string, message: string, data: Record<string, unknown> = {}): void => {
+    emitProject(ctx, project.id, {
+      type,
+      message,
+      data: { sessionId: session.id, branch: PROJECT_BRANCH, ...data },
+    })
+  }
+
   void landProjectBranch(project)
     .then((res) => {
-      if (!res) return
+      if (!res) return // the conversation wrote nothing — no timeline noise
       if (res.landed) {
-        emitProject(ctx, project.id, {
-          type: 'project.landed',
-          message: `landed ${res.commits} commit(s) from the project session onto ${project.mainBranch}`,
-          data: { sessionId: session.id, branch: PROJECT_BRANCH, commits: res.commits },
-        })
-        return
+        report(
+          'project.landed',
+          `landed ${res.commits} commit(s) from the project session onto ${project.mainBranch}`,
+          { commits: res.commits },
+        )
+      } else if (res.conflict) {
+        report(
+          'project.land_conflict',
+          `the project session's ${res.commits} commit(s) conflict with ${project.mainBranch} — nothing was overwritten; ${kept}`,
+          { commits: res.commits, files: res.files ?? [] },
+        )
+      } else {
+        report(
+          'project.land_failed',
+          `could not land the project session's ${res.commits} commit(s) onto ${project.mainBranch}: ${res.error ?? 'unknown error'} — ${kept}`,
+          { commits: res.commits, error: res.error ?? null },
+        )
       }
-      emitProject(ctx, project.id, {
-        type: 'project.land_conflict',
-        message: res.conflict
-          ? `the project session's ${res.commits} commit(s) conflict with ${project.mainBranch} — nothing was overwritten; they are kept on ${PROJECT_BRANCH} and retried at the next launch`
-          : `could not land the project session's ${res.commits} commit(s) onto ${project.mainBranch}: ${res.error ?? 'unknown error'} — they are kept on ${PROJECT_BRANCH}`,
-        data: {
-          sessionId: session.id,
-          branch: PROJECT_BRANCH,
-          commits: res.commits,
-          conflict: res.conflict ?? false,
-          files: res.files ?? [],
-          error: res.error ?? null,
-        },
-      })
     })
     .catch((e: unknown) => {
-      emitProject(ctx, project.id, {
-        type: 'project.land_conflict',
-        message: `could not land the project session's work onto ${project.mainBranch}: ${
+      report(
+        'project.land_failed',
+        `could not land the project session's work onto ${project.mainBranch}: ${
           e instanceof Error ? e.message : String(e)
-        } — it is kept on ${PROJECT_BRANCH}`,
-        data: { sessionId: session.id, branch: PROJECT_BRANCH, conflict: false },
-      })
+        } — ${kept}`,
+        { error: e instanceof Error ? e.message : String(e) },
+      )
     })
 }
 

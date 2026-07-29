@@ -357,7 +357,7 @@ describe('launching, resuming and landing a project session', () => {
     endSession(ctx, sessionId)
 
     const data = await waitForProjectEvent(ctx, project.id, 'project.land_conflict')
-    expect(data.conflict).toBe(true)
+    expect(data.commits).toBe(1)
     // nothing overwritten: the branch still holds the work for the next launch
     expect(git(repoPath, 'rev-parse', PROJECT_BRANCH)).toBe(projectTip)
     expect(readFileSync(join(repoPath, 'CONTEXT.md'), 'utf8')).toBe('human version\n')
