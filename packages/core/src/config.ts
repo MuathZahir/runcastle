@@ -24,6 +24,7 @@ export const MODEL_STEPS = [
   'research',
   'implement',
   'prepare',
+  'project',
   'smoke',
 ] as const
 export const ModelStep = z.enum(MODEL_STEPS)

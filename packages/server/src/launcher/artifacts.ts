@@ -35,6 +35,8 @@ export interface WriteArtifactsInput {
   waypoint?: Waypoint
   /** The brief for a `prepare` session; required when `feature` is absent. */
   prepare?: PrepareBrief
+  /** The brief for a `project` session; the other way `feature` may be absent. */
+  projectBrief?: ProjectBrief
 }
 
 /**
@@ -385,6 +387,84 @@ export function renderPreparePrompt(brief: PrepareBrief): string {
   ].join('\n')
 }
 
+/** What the project session needs to know about where it is working. */
+export interface ProjectBrief {
+  project: Project
+  /** The runcastle-owned branch it commits to (`runcastle/project`). */
+  branch: string
+  /** Its worktree — never the human's checkout (decision 18). */
+  worktreePath: string
+}
+
+/**
+ * The injected brief for a `project` session (decisions 17–20).
+ *
+ * Two things it must say that no other prompt has to. First, what this session
+ * is FOR: intake and decomposition terminating in `create_feature`, with
+ * portfolio Q&A, routing and curation as support jobs — naming it by scope
+ * ("a session at project level") would describe a container and invite exactly
+ * the open-ended do-stuff agent the guided pipeline exists to prevent. Second,
+ * where its writes go: this is the one session with whole-repo write access, it
+ * works on a runcastle-owned branch, and its commits reach the human's checkout
+ * when the terminal closes. A session that writes but never commits leaves the
+ * tree dirty, which is precisely what blocks a test drive and the next merge —
+ * so "land what you wrote and leave the tree clean" is its closing move.
+ */
+export function renderProjectPrompt(brief: ProjectBrief): string {
+  const { project, branch, worktreePath } = brief
+  return [
+    `# runcastle — ${project.name} (project session)`,
+    '',
+    'This is the **project session**: a conversation that belongs to the project, not to',
+    'any one feature. There is no phase to advance and no gate to cross here.',
+    '',
+    '## What this session is for',
+    '- **Intake and decomposition** — the job no other surface can do. Take whatever the',
+    '  human brings, grill it until it resolves into N features, and create them with',
+    '  `create_feature`. A feature born here carries a real brief: the reasoning you just',
+    '  worked out, not a restated one-liner.',
+    '- **Portfolio Q&A** — "have we already decided X?", "did we ever build Y?" — the same',
+    '  lookup intake needs anyway to avoid creating a duplicate feature.',
+    '- **Routing** — an incoming thing is one of exactly five destinations: a new feature,',
+    '  a quick change, an existing feature\'s revisit, a Rethink lap on something in',
+    '  review, or nothing. Say which, and why.',
+    '- **Curation, advisory only** — you may report that two in-flight features are on a',
+    '  collision course or that an ADR looks stale. You do NOT fix either. Every fix routes',
+    '  back through a feature, through promotion at merge, or through the charter.',
+    '- **The charter (`CONTEXT.md`)** — you are the only session in runcastle allowed to',
+    '  write it. Create it lazily: when there is first something to write, not before.',
+    '',
+    '## Where you are working — and where your writes go',
+    `- Working directory: \`${worktreePath}\` — a runcastle-owned worktree, NOT the human's`,
+    `  checkout at \`${project.repoPath}\`.`,
+    `- Branch: \`${branch}\`, cut from \`${project.mainBranch}\` when this session launched.`,
+    `- **Your commits land on \`${project.mainBranch}\` when this terminal closes**, arriving`,
+    "  in the human's checkout the way a `git pull` does. Write real code and real docs —",
+    '  there is no sandbox here — and commit everything you write before you finish.',
+    '  A session that edits without committing leaves a dirty tree, which is exactly what',
+    '  blocks a test drive and jams the next merge. Land what you wrote; leave it clean.',
+    '',
+    '## runcastle MCP tools',
+    'Four, and none of the feature pipeline\'s — a session with no feature has no business',
+    'advancing one through a gate:',
+    '- `create_feature({ title, oneLiner, baseBranch?, brief?, ticket? })` — the point of',
+    '  this session. It does NOT open a terminal on what it creates; the new card appearing',
+    '  in the rail is the feedback, and the human decides what to work on next.',
+    '- `get_project_context()` — the project, its charter, its live ADRs, and a one-line',
+    '  index of every feature.',
+    '- `get_work_record({ featureSlug? | seam? })` — what features actually did: tickets by',
+    '  status, seams, commits, errors. Facts, never intent.',
+    '- `record_event({ type, message })` — drop a note on the project timeline.',
+    '',
+    'Every merged feature\'s docs are already on disk in this worktree — read them with your',
+    'ordinary file tools. The index says where.',
+    '',
+    '## Your task',
+    'Invoke the `/runcastle:project` skill and drive the project session.',
+    '',
+  ].join('\n')
+}
+
 interface CommandHook {
   type: 'command'
   command: string
@@ -436,17 +516,34 @@ export const RUNCASTLE_MCP_ALLOW_RULES: readonly string[] = [
  * worktrees, so even `git add`/`git commit` can only touch the feature docs.
  * Deliberately git-only — nothing here loosens beyond git + the runcastle MCP
  * tools above.
+ *
+ * Split by write mode because the scoped reasoning only covers half of it: the
+ * WRITE rules are pre-approved on the strength of the worktree being docs-only,
+ * so a session that can touch the whole repo and land it on the base branch
+ * (kind `project`, decision 18) gets the read-only half and prompts for the
+ * rest — the same thing the human's own Claude Code does.
  */
-export const SESSION_BASH_ALLOW_RULES: readonly string[] = [
+export const SESSION_BASH_READ_RULES: readonly string[] = [
   'Bash(git status:*)',
   'Bash(git rev-parse:*)',
   'Bash(git log:*)',
   'Bash(git diff:*)',
-  'Bash(git add:*)',
-  'Bash(git commit:*)',
   'Bash(git branch:*)',
   'Bash(git show:*)',
 ]
+export const SESSION_BASH_WRITE_RULES: readonly string[] = [
+  'Bash(git add:*)',
+  'Bash(git commit:*)',
+]
+export const SESSION_BASH_ALLOW_RULES: readonly string[] = [
+  ...SESSION_BASH_READ_RULES,
+  ...SESSION_BASH_WRITE_RULES,
+]
+
+/** The git rules a session of `kind` is launched with (see the split above). */
+export function sessionBashAllowRules(kind?: SessionKind): readonly string[] {
+  return kind === 'project' ? SESSION_BASH_READ_RULES : SESSION_BASH_ALLOW_RULES
+}
 
 /**
  * Every `SessionStart` source we register the hook for (CC-INTEGRATION-NOTES §3;
@@ -471,7 +568,9 @@ export const SESSION_START_SOURCES = ['startup', 'resume', 'clear', 'compact', '
  *   `mcp__runcastle__*` tool calls never interrupt the user with a permission
  *   prompt (they are the app's own trusted tools), plus the benign git commands
  *   the skills run (`SESSION_BASH_ALLOW_RULES`) so docs-worktree sessions never
- *   stall on a Bash approval prompt.
+ *   stall on a Bash approval prompt. `kind` narrows that git surface to the
+ *   read-only rules for the one kind whose worktree is not docs-only
+ *   (see {@link sessionBashAllowRules}); omitted, every rule is granted.
  * - `command` = `bun run "<abs hook-client.ts>" <route-event>` where the route
  *   event is the kebab-case `/api/hooks/:event` segment the client POSTs to.
  * - `SessionStart` is registered for EVERY source (see
@@ -480,14 +579,14 @@ export const SESSION_START_SOURCES = ['startup', 'resume', 'clear', 'compact', '
  * - Timeouts (seconds): SessionStart 10, UserPromptSubmit 5 (well inside its 30s
  *   hard budget), SessionEnd 10.
  */
-export function renderSettings(hookClient: string): SessionSettings {
+export function renderSettings(hookClient: string, kind?: SessionKind): SessionSettings {
   const cmd = (event: string): CommandHook => ({
     type: 'command',
     command: `bun run "${hookClient}" ${event}`,
     timeout: event === 'user-prompt' ? 5 : 10,
   })
   return {
-    permissions: { allow: [...RUNCASTLE_MCP_ALLOW_RULES, ...SESSION_BASH_ALLOW_RULES] },
+    permissions: { allow: [...RUNCASTLE_MCP_ALLOW_RULES, ...sessionBashAllowRules(kind)] },
     hooks: {
       SessionStart: SESSION_START_SOURCES.map((source) => ({
         matcher: source,
@@ -531,7 +630,7 @@ export function renderMcpConfig(session: SessionRow, config: RuncastleConfig): M
 export async function writeSessionArtifacts(
   input: WriteArtifactsInput,
 ): Promise<SessionArtifacts> {
-  const { session, feature, config, waypoint, prepare } = input
+  const { session, feature, config, waypoint, prepare, projectBrief } = input
   const dir = sessionDir(session.id)
   mkdirSync(dir, { recursive: true })
 
@@ -540,18 +639,24 @@ export async function writeSessionArtifacts(
   const mcpConfigPath = join(dir, 'mcp.json')
 
   // A project-scoped session has no feature to brief from; the caller supplies
-  // the preparation brief instead. One of the two is always present — a session
-  // with neither would spawn a terminal with no instructions at all.
+  // its kind's brief instead. Exactly one of the three is always present — a
+  // session with none would spawn a terminal with no instructions at all.
   const systemPrompt = feature
     ? renderSystemPrompt(feature, session.kind, waypoint)
     : prepare
       ? renderPreparePrompt(prepare)
-      : (() => {
-          throw new Error(`session ${session.id} has neither a feature nor a preparation brief`)
-        })()
+      : projectBrief
+        ? renderProjectPrompt(projectBrief)
+        : (() => {
+            throw new Error(`session ${session.id} has no feature and no project-session brief`)
+          })()
 
   writeFileSync(systemPromptPath, systemPrompt, 'utf8')
-  writeFileSync(settingsPath, JSON.stringify(renderSettings(hookClientPath()), null, 2), 'utf8')
+  writeFileSync(
+    settingsPath,
+    JSON.stringify(renderSettings(hookClientPath(), session.kind), null, 2),
+    'utf8',
+  )
   writeFileSync(mcpConfigPath, JSON.stringify(renderMcpConfig(session, config), null, 2), 'utf8')
 
   return { systemPromptPath, settingsPath, mcpConfigPath }
