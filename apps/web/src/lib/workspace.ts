@@ -14,6 +14,9 @@ import type { Phase } from '@runcastle/core'
  * form are ephemeral session state.
  */
 
+/** The two doors into work: a full feature (a grill) or a quick change. */
+export type CreateMode = 'feature' | 'quick'
+
 /** Client-tracked active test drive (at most one globally, server-enforced). */
 export interface DriveState {
   featureId: string
@@ -51,8 +54,13 @@ export interface WorkspaceApi {
   selectedFeatureId: string | null
   /** Pinned phase to view read-only, or null to follow the feature's live phase. */
   viewedPhase: Phase | null
-  /** Whether the new-feature form owns the workspace. */
+  /** Whether a creation form owns the workspace (either door). */
   creating: boolean
+  /**
+   * Which door is open while `creating`: the New Feature form (a grill), or the
+   * quick-change form (decision 21 — one prose field, straight to a card).
+   */
+  createMode: CreateMode
   /** Right inspector rail collapsed. */
   inspectorCollapsed: boolean
   /** Mapped-ideation map rail collapsed to its frontier-count stub. */
@@ -71,7 +79,9 @@ export interface WorkspaceApi {
   viewPhase: (phase: Phase | null) => void
   /** Open the new-feature form in the workspace. */
   startCreate: () => void
-  /** Close the new-feature form without creating. */
+  /** Open the quick-change form in the workspace. */
+  startQuickChange: () => void
+  /** Close whichever creation form is open, without creating. */
   cancelCreate: () => void
   toggleInspector: () => void
   toggleMapRail: () => void
@@ -85,6 +95,7 @@ export function useWorkspace(projectId: string): WorkspaceApi {
   const [selectedFeatureId, setSelected] = useState<string | null>(() => readLS(selectedKey))
   const [viewedPhase, setViewedPhase] = useState<Phase | null>(null)
   const [creating, setCreating] = useState(false)
+  const [createMode, setCreateMode] = useState<CreateMode>('feature')
   const [inspectorCollapsed, setInspectorCollapsed] = useState(
     () => readLS(INSPECTOR_KEY) === '1',
   )
@@ -121,6 +132,12 @@ export function useWorkspace(projectId: string): WorkspaceApi {
 
   const viewPhase = useCallback((phase: Phase | null) => setViewedPhase(phase), [])
   const startCreate = useCallback(() => {
+    setCreateMode('feature')
+    setCreating(true)
+    setCmdk(false)
+  }, [])
+  const startQuickChange = useCallback(() => {
+    setCreateMode('quick')
     setCreating(true)
     setCmdk(false)
   }, [])
@@ -138,6 +155,7 @@ export function useWorkspace(projectId: string): WorkspaceApi {
     selectedFeatureId,
     viewedPhase,
     creating,
+    createMode,
     inspectorCollapsed,
     mapRailCollapsed,
     cmdkOpen,
@@ -146,6 +164,7 @@ export function useWorkspace(projectId: string): WorkspaceApi {
     select,
     viewPhase,
     startCreate,
+    startQuickChange,
     cancelCreate,
     toggleInspector,
     toggleMapRail,

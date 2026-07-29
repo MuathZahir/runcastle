@@ -505,6 +505,12 @@ button {
 }
 .new-btn:hover { background: var(--accent-soft); border-color: var(--accent); }
 .new-btn:active { transform: scale(0.96); }
+/* two doors in the rail head: the title takes the slack, the buttons pair up */
+.sidebar-head .pane-title { margin-right: auto; }
+.sidebar-head .new-btn + .new-btn { margin-left: 6px; }
+/* the quick-change door is the quieter of the two — same shape, less voltage */
+.new-btn.is-quick { border-color: var(--hairline); color: var(--text-3); }
+.new-btn.is-quick:hover { background: var(--panel-3); border-color: var(--hairline-strong); color: var(--text-2); }
 .sidebar-empty {
   padding: 14px 10px;
   font-size: 12px;
@@ -744,6 +750,15 @@ button {
 }
 .ws-empty-title { font-size: 14px; font-weight: 500; color: var(--text-2); }
 .ws-empty-sub { font-size: 12.5px; color: var(--text-3); max-width: 40ch; text-align: center; }
+/* the two doors, side by side on the one screen where the gap is hit */
+.ws-empty-actions { display: flex; gap: 10px; }
+.ws-empty-hint {
+  font-size: 12px;
+  color: var(--text-4);
+  max-width: 44ch;
+  text-align: center;
+  line-height: 1.5;
+}
 
 /* every direct workspace block sits in a centered rail — no more left-hugging
    content with a dead void on the right */
@@ -1522,6 +1537,38 @@ details.wp-group-done > summary { cursor: pointer; list-style: revert; }
 .td-list { margin: 0; padding-left: 0; list-style: none; }
 .td-list li { display: flex; gap: 8px; padding: 2px 0; color: var(--text-2); line-height: 1.5; }
 .td-list li::before { content: "—"; color: var(--text-4); flex: 0 0 auto; }
+/* in-place ticket editing — a pending card is correctable before Burn, with no
+   terminal in between (the quick-change door's promise) */
+.td-edit-open {
+  margin-top: 12px;
+  background: transparent;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius);
+  color: var(--text-3);
+  font-size: 11.5px;
+  font-family: inherit;
+  padding: 3px 9px;
+  cursor: pointer;
+  transition: border-color var(--dur-1), color var(--dur-1);
+}
+.td-edit-open:hover { border-color: var(--hairline-strong); color: var(--text-2); }
+.td-edit label.td-section { display: block; max-width: 640px; }
+.td-input {
+  width: 100%;
+  background: var(--panel-inset);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius);
+  color: var(--text);
+  padding: 7px 10px;
+  font-size: 12.5px;
+  font-family: inherit;
+  line-height: 1.55;
+  outline: none;
+  transition: border-color var(--dur-1);
+}
+.td-input:focus { border-color: var(--accent); }
+.td-area { min-height: 68px; resize: vertical; }
+.td-edit-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; max-width: 640px; }
 .td-seams { display: flex; flex-wrap: wrap; gap: 6px; }
 .seam {
   font-family: var(--mono);
@@ -1972,6 +2019,15 @@ details.wp-group-done > summary { cursor: pointer; list-style: revert; }
 .nf-input:focus { border-color: var(--accent); }
 /* the optional one-liner sits tight under the title input, slightly quieter */
 .nf-oneliner { margin-top: 8px; height: 32px; font-size: 12.5px; }
+/* the quick-change door's one prose field — the ticket, in the human's words */
+.nf-textarea {
+  margin-top: 8px;
+  height: 132px;
+  padding: 10px 12px;
+  font-size: 12.5px;
+  line-height: 1.55;
+  resize: vertical;
+}
 .size-hint { font-size: 12px; color: var(--text-3); }
 .nf-base { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin-top: 16px; }
 .nf-base-label { font-size: 13px; color: var(--text); }

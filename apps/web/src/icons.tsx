@@ -89,6 +89,15 @@ export function IconPlus(p: IconProps) {
   )
 }
 
+/** The quick-change door — a tweak that skips the conversation. */
+export function IconBolt(p: IconProps) {
+  return (
+    <svg {...base(p)}>
+      <path d="M8.9 1.8 3.4 9.1h3.9l-.7 5.1 5.5-7.3H8.2z" />
+    </svg>
+  )
+}
+
 export function IconCheck(p: IconProps) {
   return (
     <svg {...base(p)}>

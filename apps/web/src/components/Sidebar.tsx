@@ -4,7 +4,7 @@ import { DimLine } from '../ui'
 import { useToast } from '../lib/toast'
 import type { FeatureListItem } from '../lib/api'
 import { miniSegments, needsMe, triage } from '../lib/feature-ui'
-import { IconCheck, IconPlus } from '../icons'
+import { IconBolt, IconCheck, IconPlus } from '../icons'
 import { FeatureActionsMenu, type FeatureAction } from './FeatureActionsMenu'
 import { DeleteFeatureDialog } from './DeleteFeatureDialog'
 
@@ -32,11 +32,13 @@ export function Sidebar({
   selectedFeatureId,
   onSelect,
   onNewFeature,
+  onQuickChange,
 }: {
   projectId: string
   selectedFeatureId: string | null
   onSelect: (featureId: string) => void
   onNewFeature: () => void
+  onQuickChange: () => void
 }) {
   const utils = trpc.useUtils()
   const toast = useToast()
@@ -100,6 +102,16 @@ export function Sidebar({
     <nav className="sidebar">
       <div className="sidebar-head">
         <span className="pane-title">Features</span>
+        {/* Two doors, side by side (decision 21): a grill for work that needs
+            shaping, and a quick change for work that doesn't. */}
+        <button
+          className="new-btn is-quick"
+          onClick={onQuickChange}
+          title="Quick change — one sentence, one ticket, no grill session"
+        >
+          <IconBolt size={11} />
+          Quick
+        </button>
         <button className="new-btn" onClick={onNewFeature}>
           <IconPlus size={11} />
           New

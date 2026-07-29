@@ -1,7 +1,7 @@
 import * as z from 'zod'
 import { retryTicket } from '../../services/features'
 import { hasActiveRun } from '../../services/repo'
-import { cancelTicket, getTicket, sweepOrphanedBurning } from '../../services/tickets'
+import { cancelTicket, editTicket, getTicket, sweepOrphanedBurning } from '../../services/tickets'
 import { stopTicketRun } from '../../workflows/ticket-burner'
 import { publicProcedure, router } from '../context'
 
@@ -20,6 +20,11 @@ import { publicProcedure, router } from '../context'
  *               the same rescue and the only way out of that state from the UI.
  * - `cancel`  — mark a pending/failed ticket cancelled (terminal; dependents
  *               treat it as satisfied). Same service the MCP tool uses.
+ * - `edit`    — rewrite a pending/failed ticket's content from the UI. The
+ *               same `editTicket` service the MCP `update_ticket` tool calls,
+ *               exposed on the wire because the quick-change door (decision 21)
+ *               promises a card the human can correct before Burn *without*
+ *               opening a terminal to do it.
  */
 export const ticketRouter = router({
   retry: publicProcedure
@@ -43,4 +48,19 @@ export const ticketRouter = router({
   cancel: publicProcedure
     .input(z.object({ ticketId: z.string(), reason: z.string().optional() }))
     .mutation(({ ctx, input }) => cancelTicket(ctx, input.ticketId, input.reason)),
+
+  edit: publicProcedure
+    .input(
+      z.object({
+        ticketId: z.string(),
+        title: z.string().min(1).optional(),
+        goal: z.string().min(1).optional(),
+        context: z.string().optional(),
+        acceptanceCriteria: z.array(z.string().min(1)).optional(),
+      }),
+    )
+    .mutation(({ ctx, input }) => {
+      const { ticketId, ...patch } = input
+      return editTicket(ctx, ticketId, patch)
+    }),
 })

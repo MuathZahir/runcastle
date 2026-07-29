@@ -9,6 +9,7 @@ import { Inspector } from './Inspector'
 import { StatusBar } from './StatusBar'
 import { Workspace } from './Workspace'
 import { NewFeatureForm } from './NewFeatureForm'
+import { QuickChangeForm } from './QuickChangeForm'
 import { PreparationCard } from './PreparationCard'
 import { CommandPalette } from './CommandPalette'
 import { SettingsOverlay } from './SettingsOverlay'
@@ -63,15 +64,24 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
           selectedFeatureId={ws.selectedFeatureId}
           onSelect={ws.select}
           onNewFeature={ws.startCreate}
+          onQuickChange={ws.startQuickChange}
         />
 
         {ws.creating ? (
           <section className="workspace">
-            <NewFeatureForm
-              projectId={projectId}
-              onCancel={ws.cancelCreate}
-              onCreated={ws.select}
-            />
+            {ws.createMode === 'quick' ? (
+              <QuickChangeForm
+                projectId={projectId}
+                onCancel={ws.cancelCreate}
+                onCreated={ws.select}
+              />
+            ) : (
+              <NewFeatureForm
+                projectId={projectId}
+                onCancel={ws.cancelCreate}
+                onCreated={ws.select}
+              />
+            )}
           </section>
         ) : ws.selectedFeatureId ? (
           <Workspace
@@ -87,7 +97,11 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
           />
         ) : (
           <section className="workspace">
-            <EmptyWorkspace projectId={projectId} onNewFeature={ws.startCreate} />
+            <EmptyWorkspace
+              projectId={projectId}
+              onNewFeature={ws.startCreate}
+              onQuickChange={ws.startQuickChange}
+            />
           </section>
         )}
 
@@ -136,9 +150,11 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
 function EmptyWorkspace({
   projectId,
   onNewFeature,
+  onQuickChange,
 }: {
   projectId: string
   onNewFeature: () => void
+  onQuickChange: () => void
 }) {
   return (
     <div className="ws-empty-scroll">
@@ -148,9 +164,20 @@ function EmptyWorkspace({
         </div>
         <div className="ws-empty-title">Select a feature to begin</div>
         <div className="ws-empty-sub">Or create one — every feature moves through the same guided pipeline.</div>
-        <button className="btn btn-ghost" onClick={onNewFeature}>
-          New feature
-        </button>
+        {/* This is the screen where the "I only have a tweak" gap is hit, so
+            the quick-change door lives here beside New feature (decision 21). */}
+        <div className="ws-empty-actions">
+          <button className="btn btn-ghost" onClick={onNewFeature}>
+            New feature
+          </button>
+          <button className="btn btn-ghost" onClick={onQuickChange}>
+            Quick change
+          </button>
+        </div>
+        <div className="ws-empty-hint">
+          Too small for a conversation? A quick change is one sentence, one ticket — no grill
+          session.
+        </div>
       </div>
       <div className="ws-empty-aside">
         <PreparationCard projectId={projectId} />
