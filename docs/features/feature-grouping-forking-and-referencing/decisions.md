@@ -633,3 +633,121 @@ Decision 9 already ruled that findings are an input rather than a tier and named
 fates (become a decision, become a constraint, or die); health work reveals a fourth it did
 not consider — **become work** — and decision 21's door plus `create_feature` are that fate's
 mechanism, so nothing new is required to serve it.
+
+## 24. Three relations, three lifetimes — and no `feature_links` entity for any of them
+**Decision:** runcastle gains **no** stored relation between features. The waypoint's premise
+— one graph with edge kinds (`builds-on`, `supersedes`, `related`) plus automatic edges — is
+rejected, because the three things it would have fused have three different lifetimes and
+three different write modes:
+
+- **Lineage** (`forked-from`) — a fact, derived from git, permanent. Already stored:
+  `features.baseBranch` plus the deterministic `feature/<slug>` naming resolves a fork's
+  parent by a read-time join. Never authored, never synced (decision 25).
+- **Topical** (`builds-on` / `related`) — an opinion, authored at ideation, decaying from the
+  moment it is written. **Cut entirely.** The durable half of "B builds on A" is an ADR,
+  which every session already reads by default; the non-durable half is a pointer nobody
+  revisits. A topical edge is a weak, hand-maintained rival to promotion (decision 3).
+- **Collision** — not a relation at all but a state of the present, false the instant either
+  feature merges (decision 27).
+
+`supersedes` already has a home at the only tier where it is real: ADRs (decision 13).
+Features do not supersede each other; decisions do.
+
+**Why:** a `feature_links` table with a `kind` column would put a derived fact, a decaying
+opinion, and a transient computation in one entity with one write mode — exactly the
+collapse decision 6 exists to prevent (its load-bearing axis is write mode, not importance).
+Every job the graph was imagined for is already assigned: "what did we decide about X" is
+promotion + the injected ADR set; "what shipped near X" is the feature index (14) and the
+seam query (15); "what is this forked from" is `baseBranch`. The one job left over —
+clustering the sidebar — is rejected on its own terms in decision 26.
+
+## 25. Fork is a door, not a noun — and "shipped" becomes an honest word
+**Decision:** "Fork" survives as a **UI affordance over machinery that already exists**, not
+as a verb in the schema. A "Fork from here" action on an in-flight feature opens the New
+Feature form with *Branch from* prefilled to that feature's branch and the brief seeded from
+the parent. It calls the ordinary `feature.create`; nothing new is stored. Lineage is
+**derived, never written**: parent = the feature whose `feature/<slug>` branch equals this
+feature's `baseBranch`, resolved at read time so it can never disagree with git.
+
+Fork already has correct end-to-end semantics nobody designed: `mergeFeature` targets
+`feature.baseBranch ?? mainBranch` (`git.ts:1065`), so a fork merges **back into its
+parent** and rides the parent to main — there is no merge-order trap where merging the fork
+first drags unreviewed parent work onto the base. Fork is also precisely the in-flight case
+decision 1 set aside: it only has meaning while the parent is unmerged (a merged parent's
+docs are already on disk — you just branch from main), and it serves that case by git
+rather than by the cross-branch reads decision 1 refused to build.
+
+One consequence with teeth, in scope and fixed by derivation: the merge handler sets
+`status: shipped` unconditionally, so a fork that merged into its parent would sit dimmed
+in the Shipped lane while its code is nowhere near main — and would stay "shipped" even if
+the parent were later abandoned. The fix is a pure function, no migration: a feature is
+**shipped** only if its merge target was the project's main branch; otherwise the rail
+renders **"Merged into `<parent>`"** and flips to shipped when the parent ships. All inputs
+(`status`, `baseBranch`, parent status) are already stored.
+
+**Why:** the human forking has a feature-shaped intent — "continue from *streamlining UX*"
+— and today must translate it into a branch string picked from a dropdown that also lists
+`main`, `runcastle/*` temp branches, and remotes. The door is that translation, and it is
+the entire cost of the feature: zero schema, zero server change. Storing lineage as an edge
+instead would buy a second source of truth that starts drifting the moment a branch is
+renamed — the exact "link, never copy" failure `map.md` carries. The status fix rides along
+because a UI that confidently reports work as landed when it is not is the same
+silent-wrongness decisions 8 and 16 refused: wrong in the reassuring direction, with no
+cheap way for the reader to tell.
+
+## 26. No grouping — the rail's one axis stays triage, and lineage is a line, not a shape
+**Decision:** runcastle gains no group entity, no cluster rendering, and no second grouping
+axis in the features rail. Lineage renders as **a line on the feature, never a shape in the
+list**: "forked from `<parent>`" in the fork's workspace header, "N forks in flight" on the
+parent's, and decision 25's "Merged into `<parent>`" badge in the rail. The rail stays flat
+within its triage lanes.
+
+**Why:** the rail's one grouping axis is already spent, deliberately, on "who is blocked"
+(`triage()` — Needs you / Agent working / In progress / Shipped), and a fork and its parent
+are almost always in *different* lanes — that is why you forked: the parent parks in "Needs
+you" while the fork burns in "Agent working". Nesting the fork under its parent pulls a
+burning feature out of the lane whose whole promise is "this is what's happening right
+now", to honour a relationship that matters at exactly one moment: creation. The deeper
+point is that grouping was a symptom decision 2 already dissolved: the wish to see
+"everything about billing" clustered was the absence of project memory — no ADR with the
+conclusion, no index of what shipped, no seam query. Decisions 12/14/15 answer all three
+better than a cluster: a cluster yields five feature names to go read; an ADR yields the
+decision. What genuinely remains at scale ("60 features, show me only billing") is a
+*filter*, not a grouping — and it is decision 10's territory: if a project grows subsystems,
+`CONTEXT-MAP.md` arrives first and grouping follows it. "My rail is long" is the Shipped
+lane growing without bound, and archive already owns that.
+
+## 27. Collision is a state, not a relation — advisory before code, `git merge-tree` after, and no seam-overlap detector
+**Decision:** runcastle builds **no automatic collision edges and no seam-overlap
+detection**. Collision splits into two halves with different owners, one already assigned
+and one named-but-not-built:
+
+- **Before code exists** — the valuable half — is a *reading* task over intent, and it is
+  already the intake session's advisory job (decision 17: "may report that two in-flight
+  features are on a collision course; it does not fix either"). The lookups it needs are
+  already decided: the feature index (14) and the work record's seam query (15). No new
+  mechanism.
+- **After code exists**, the question has an exact answer: `git merge-tree --write-tree
+  <a> <b>` — no checkout, no worktree, verified against this repo's git. That is the right
+  *shape* if a mechanical pre-merge warning is ever wanted, recorded here so it is not
+  re-derived — and deliberately not built: it belongs to the merge/review surface, not to
+  a relations feature, and nobody has hit the pain. The same shape answers the parked
+  "main moved under you" drift warning (feature branch vs base tip is the same check), so
+  that idea is settled here too rather than left dangling.
+
+**Why:** the waypoint's premise — "`tickets.seams` already holds the data" — turned out to
+be false on inspection of the stored rows. Seams are free prose, not paths: one feature
+stores `["tRPC feature router", "Core pipeline functions"]`, another a single 40-word
+sentence about a Python game harness. They cohere *within* a feature only because the
+tickets skill says "prefer existing seams" — a skill read by sessions that never see
+another feature's spec, so cross-feature vocabulary is uncoordinated: decision 6's named
+silent rot, verbatim. Exact match under-reports invisibly; fuzzy match needs an LLM the
+server does not have (12, 14). Worse, the timing is wrong twice: at intake — where the
+warning is worth the most — the second feature has no tickets yet, so there is nothing to
+compare; and once both features are past G2, both are fully specced and the warning arrives
+after the money was spent. Storing collision as an edge would persist something guaranteed
+false within days inside a knowledge design (6, 8, 16) built around what decays. What
+survives of the seam idea is the direction decision 15 already shipped — **pull, not
+push**: "who touched this seam and why", asked by an agent mid-implementation, has a cheap
+true answer; "these features might collide", pushed by string comparison, is wrong often
+enough to train the human to ignore it, and an ignored warning is worse than none.
