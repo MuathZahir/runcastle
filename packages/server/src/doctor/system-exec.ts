@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process'
-import { resolveExecutable } from '../util/resolve-executable'
+import { resolveSpawnTarget } from '../util/resolve-executable'
 import type { ExecFn, ExecOutcome } from './doctor'
 
 /**
@@ -9,16 +9,18 @@ import type { ExecFn, ExecOutcome } from './doctor'
  * and fold the result into an {@link ExecOutcome}. Never throws: a spawn failure
  * (binary genuinely not found) becomes `{ ok: false }`, which the probes read as
  * "not installed".
+ *
+ * Resolves via {@link resolveTool}, so `RUNCASTLE_CLAUDE_BIN` / `RUNCASTLE_NODE_BIN`
+ * pin the path here exactly as they do for the session launcher — the probes and
+ * the launcher must never disagree about whether a tool is present.
  */
 export function createSystemExec(opts: { cwd?: string } = {}): ExecFn {
   return (command, args) =>
     new Promise<ExecOutcome>((resolve) => {
-      const resolved = resolveExecutable(command)
-      // A `.cmd`/`.bat` shim can't be exec'd directly on Windows — route it
-      // through the command processor, mirroring the launcher's spawn target.
-      const isShim = /\.(cmd|bat)$/i.test(resolved)
-      const file = isShim ? (process.env.ComSpec ?? 'cmd.exe') : resolved
-      const spawnArgs = isShim ? ['/c', resolved, ...args] : args
+      // A `.cmd`/`.bat`/`.ps1` shim can't be exec'd directly on Windows — each
+      // needs its interpreter, shared with the launcher so probe and launch can
+      // never disagree about whether a tool is runnable.
+      const { file, args: spawnArgs } = resolveSpawnTarget(command, args)
 
       let stdout = ''
       let stderr = ''

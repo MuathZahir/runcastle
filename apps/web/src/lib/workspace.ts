@@ -9,7 +9,7 @@ import type { Phase } from '@runcastle/core'
  * to an earlier, completed phase to inspect it read-only; selecting a different
  * feature clears the pin so the workspace snaps back to following the live phase.
  *
- * Only `selectedFeatureId`, the inspector-collapse flag, and the guidance toggle
+ * Only `selectedFeatureId`, the two rail-collapse flags, and the guidance toggle
  * persist across reloads — the viewed phase, command palette, and new-feature
  * form are ephemeral session state.
  */
@@ -22,6 +22,7 @@ export interface DriveState {
 
 const SELECTED_KEY = 'runcastle.selected.v1'
 const INSPECTOR_KEY = 'runcastle.inspector.collapsed'
+const MAPRAIL_KEY = 'runcastle.maprail.collapsed'
 const GUIDANCE_KEY = 'runcastle.guidance'
 
 /** Per-project selected-feature key so switching projects never restores a
@@ -54,6 +55,8 @@ export interface WorkspaceApi {
   creating: boolean
   /** Right inspector rail collapsed. */
   inspectorCollapsed: boolean
+  /** Mapped-ideation map rail collapsed to its frontier-count stub. */
+  mapRailCollapsed: boolean
   /** Command palette (⌘K) open. */
   cmdkOpen: boolean
   /** Settings overlay open (issue #47). */
@@ -61,8 +64,9 @@ export interface WorkspaceApi {
   /** Show the one-line guide captions on the next-step bar and phase bodies. */
   guidance: boolean
 
-  /** Select a feature (clears the phase pin and closes the create form). */
-  select: (featureId: string) => void
+  /** Select a feature, or `null` to return to the project home (clears the
+   *  phase pin and closes the create form). */
+  select: (featureId: string | null) => void
   /** Pin a phase to view (null = follow live phase). */
   viewPhase: (phase: Phase | null) => void
   /** Open the new-feature form in the workspace. */
@@ -70,6 +74,7 @@ export interface WorkspaceApi {
   /** Close the new-feature form without creating. */
   cancelCreate: () => void
   toggleInspector: () => void
+  toggleMapRail: () => void
   setCmdk: (open: boolean) => void
   setSettings: (open: boolean) => void
   toggleGuidance: () => void
@@ -83,6 +88,11 @@ export function useWorkspace(projectId: string): WorkspaceApi {
   const [inspectorCollapsed, setInspectorCollapsed] = useState(
     () => readLS(INSPECTOR_KEY) === '1',
   )
+  // Global, not per-project (matching the inspector): a rail preference is about
+  // how the human likes the screen, not about which project they are in.
+  const [mapRailCollapsed, setMapRailCollapsed] = useState(
+    () => readLS(MAPRAIL_KEY) === '1',
+  )
   const [cmdkOpen, setCmdk] = useState(false)
   const [settingsOpen, setSettings] = useState(false)
   const [guidance, setGuidance] = useState(() => readLS(GUIDANCE_KEY) !== '0')
@@ -94,10 +104,15 @@ export function useWorkspace(projectId: string): WorkspaceApi {
     writeLS(INSPECTOR_KEY, inspectorCollapsed ? '1' : '0')
   }, [inspectorCollapsed])
   useEffect(() => {
+    writeLS(MAPRAIL_KEY, mapRailCollapsed ? '1' : '0')
+  }, [mapRailCollapsed])
+  useEffect(() => {
     writeLS(GUIDANCE_KEY, guidance ? '1' : '0')
   }, [guidance])
 
-  const select = useCallback((featureId: string) => {
+  // `null` deselects, which is how the project home (and the preparation card
+  // that lives on it) is reached without leaving the project.
+  const select = useCallback((featureId: string | null) => {
     setSelected(featureId)
     setViewedPhase(null)
     setCreating(false)
@@ -116,6 +131,7 @@ export function useWorkspace(projectId: string): WorkspaceApi {
   }, [])
   const cancelCreate = useCallback(() => setCreating(false), [])
   const toggleInspector = useCallback(() => setInspectorCollapsed((v) => !v), [])
+  const toggleMapRail = useCallback(() => setMapRailCollapsed((v) => !v), [])
   const toggleGuidance = useCallback(() => setGuidance((v) => !v), [])
 
   return {
@@ -123,6 +139,7 @@ export function useWorkspace(projectId: string): WorkspaceApi {
     viewedPhase,
     creating,
     inspectorCollapsed,
+    mapRailCollapsed,
     cmdkOpen,
     settingsOpen,
     guidance,
@@ -131,6 +148,7 @@ export function useWorkspace(projectId: string): WorkspaceApi {
     startCreate,
     cancelCreate,
     toggleInspector,
+    toggleMapRail,
     setCmdk,
     setSettings: openSettings,
     toggleGuidance,

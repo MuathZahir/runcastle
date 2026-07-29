@@ -127,7 +127,15 @@ The `hooks` key inside that JSON uses the exact same schema as `settings.json` o
 
 Notes verified from the doc:
 - `UserPromptSubmit` (and `PostToolBatch`, `Stop`, `TeammateIdle`, `TaskCreated`, `TaskCompleted`, `WorktreeCreate`, `WorktreeRemove`, `MessageDisplay`) **do not support `matcher`** — a `matcher` field on these is silently ignored, so omit it (shown above).
-- `SessionStart` matcher values: `startup` | `resume` | `clear` | `compact`.
+- `SessionStart` matcher values: `startup` | `resume` | `clear` | `compact` | `fork` (`fork` added in CC 2.1.214; before that a forked session reported `resume`).
+- **A `SessionStart` group matches ONE source.** Registering `matcher: "startup"`
+  alone means the hook never runs for a `--resume` launch — verified in the field
+  (dogfooding, 2026-07-27): every resumed runcastle terminal stayed `launching`,
+  recorded no `ccSessionId`, and never got its kickoff line typed, because the
+  `source: "resume"` SessionStart matched nothing. Register one group **per
+  source** (`renderSettings` in `launcher/artifacts.ts`) rather than relying on
+  an alternation matcher, since whether the value is compared as a regex or as a
+  literal string is not documented.
 - Command-hook handler fields: `type` (required, `"command"`), `command` (required), `args` (optional, exec-form array), `timeout` (optional, seconds), `statusMessage`, `async`, `asyncRewake`, `shell` (`"bash"`|`"powershell"`).
 - **Default `timeout`**: 600s for `command`/`http`/`mcp_tool` handlers generally, but `UserPromptSubmit` lowers that default specifically to **30s** for those same types (because it blocks model processing until it completes).
 - To pass hooks via `--settings` inline JSON at launch, wrap the whole `{"hooks": {...}}` object as the flag argument, e.g. `claude --settings '{"hooks":{"SessionStart":[...]}}'`. This is a direct extrapolation from the confirmed inline-JSON + confirmed hooks schema; no single doc example shows both combined verbatim, so treat the exact CLI quoting as **UNVERIFIED** (shell-quoting mechanics aren't documented) though the JSON payload shape itself is fully verified.

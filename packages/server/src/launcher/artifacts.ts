@@ -27,11 +27,14 @@ export interface SessionArtifacts {
 
 export interface WriteArtifactsInput {
   session: SessionRow
-  feature: Feature
+  /** Absent for a project-scoped `prepare` session, which has `prepare` instead. */
+  feature?: Feature
   project: Project
   config: RuncastleConfig
   /** The claimed waypoint (kind=waypoint sessions) — injected into the prompt. */
   waypoint?: Waypoint
+  /** The brief for a `prepare` session; required when `feature` is absent. */
+  prepare?: PrepareBrief
 }
 
 /**
@@ -285,6 +288,103 @@ export function renderRevisitPrompt(feature: Feature): string {
   ].join('\n')
 }
 
+/** What a preparation conversation needs to know before it opens its mouth. */
+export interface PrepareBrief {
+  project: Project
+  /** Prepared keys still empty (and not human-owned) — the agenda. */
+  remainingKeys: readonly string[]
+  /** Keys already established, with who established them. */
+  established: readonly { key: string; source: string; evidence?: string }[]
+  /** The free-text caveats from the last headless run, if there was one. */
+  notes?: string
+}
+
+/**
+ * The injected brief for a `prepare` session.
+ *
+ * Deliberately framed as *continuing* a headless run rather than starting cold.
+ * A real run established seven of eight keys and then declined the eighth with a
+ * precise account of what it was missing — that account is the single most
+ * useful thing this conversation can open with, so the notes are quoted in full
+ * rather than summarised. Re-deriving the repo from scratch would waste the
+ * measurement already paid for and, worse, invite the agent to overwrite good
+ * findings with fresh guesses.
+ *
+ * The other half of the framing is that this session is on the HOST. The five
+ * host-only keys the container could only propose can actually be run here —
+ * that is the capability the conversation exists to use, and the reason it must
+ * also ask before touching anything stateful.
+ */
+export function renderPreparePrompt(brief: PrepareBrief): string {
+  const { project, remainingKeys, established, notes } = brief
+  return [
+    `# runcastle — preparing ${project.name}`,
+    '',
+    'This is a **preparation session**: a project-scoped conversation whose job is to',
+    'establish the settings every later agent depends on, and to record them with evidence.',
+    'There is no feature here and no pipeline to advance.',
+    '',
+    '## Where this runs — and why that matters',
+    `You are on the developer's own machine, in \`${project.repoPath}\`, NOT in a sandbox.`,
+    'A headless preparation run measures the repo in a throwaway container, which means it',
+    'can never verify anything about *this* machine: the dev server, the local database,',
+    'docker, credentials. Those keys — `devCommand`, `driveSetupCommand`, `driveStopCommand`,',
+    '`driveEnv`, `dbResetCommand` — are exactly what it has to leave as proposals.',
+    'You can actually run them. That is the point of this session.',
+    '',
+    'The same access is why you must **ask before you act**. Anything that starts or stops a',
+    'service, creates or migrates a database, or writes outside the repo needs the human to',
+    'agree first — say what you are about to run and why, then wait.',
+    '',
+    ...(established.length > 0
+      ? [
+          '## Already established — do not re-derive',
+          'These are recorded findings. Treat them as true unless the human says otherwise;',
+          'replacing a measured value with a fresh guess makes preparation worse, not better.',
+          '',
+          ...established.map(
+            (f) => `- \`${f.key}\` (${f.source})${f.evidence ? ` — ${f.evidence}` : ''}`,
+          ),
+          '',
+        ]
+      : []),
+    ...(notes
+      ? [
+          '## What the last run could not settle',
+          'Its own words. Where it says it declined to guess, it was right to — that is the',
+          'gap you are here to close, and closing it usually means asking one direct question.',
+          '',
+          notes,
+          '',
+        ]
+      : []),
+    '## Still open',
+    remainingKeys.length > 0
+      ? remainingKeys.map((k) => `- \`${k}\``).join('\n')
+      : '_Nothing is unset. Confirm the existing values still hold, then say so and stop._',
+    '',
+    '## Recording what you establish',
+    '- `record_finding({ key, value, evidence, userSupplied })` — one call per key.',
+    '- `userSupplied: true` means the human GAVE you this value or confirmed it verbatim.',
+    '  That marks it as theirs and permanently stops automatic runs from overwriting it.',
+    '- Leave it false for anything you worked out yourself, even with them watching —',
+    '  that stays improvable by a later run. Getting this backwards silently retires a',
+    '  field from preparation forever, and the only way back is the human clearing it.',
+    '- `evidence` is not optional in spirit: record what you ran and what it printed, or',
+    '  what the human told you. A value with no account of itself is a guess with a source field.',
+    '',
+    '## Secrets',
+    'This is a development environment and the human has agreed to supply real connection',
+    'strings and credentials here. Store them as given. Do not paste a secret into a timeline',
+    'note or a commit message — `record_finding` is the only place a value belongs.',
+    '',
+    '## Your task',
+    'Open by telling the human which fields are still open and what you need from them for',
+    'each. Work them one at a time: propose, ask, run it if they agree, then record it.',
+    '',
+  ].join('\n')
+}
+
 interface CommandHook {
   type: 'command'
   command: string
@@ -322,6 +422,7 @@ export const RUNCASTLE_MCP_ALLOW_RULES: readonly string[] = [
   'mcp__runcastle__escalate_to_map',
   'mcp__runcastle__emit_waypoints',
   'mcp__runcastle__resolve_waypoint',
+  'mcp__runcastle__record_finding',
 ]
 
 /**
@@ -348,6 +449,22 @@ export const SESSION_BASH_ALLOW_RULES: readonly string[] = [
 ]
 
 /**
+ * Every `SessionStart` source we register the hook for (CC-INTEGRATION-NOTES §3;
+ * `fork` added in CC 2.1.214, reported as `resume` before that).
+ *
+ * REGRESSION THIS FIXES: the settings used to register `matcher: 'startup'`
+ * ALONE, so a `--resume` launch — every revisit, every reopened terminal, every
+ * merge-conflict "Resolve with agent" — fired `SessionStart` with source
+ * `resume`, matched nothing, and never reached our hook receiver. The session
+ * therefore never went `live`, never recorded its `ccSessionId`, and never got
+ * its kickoff line typed: the terminal opened on the old conversation and just
+ * sat there. One matcher per source (rather than one alternation matcher) keeps
+ * this working whether Claude Code compares the matcher as a regex or as a
+ * literal string.
+ */
+export const SESSION_START_SOURCES = ['startup', 'resume', 'clear', 'compact', 'fork'] as const
+
+/**
  * The `settings.json` for a session (CC-INTEGRATION-NOTES §2 verified shape).
  *
  * - `permissions.allow` pre-approves runcastle's own MCP tools so a session's
@@ -357,7 +474,8 @@ export const SESSION_BASH_ALLOW_RULES: readonly string[] = [
  *   stall on a Bash approval prompt.
  * - `command` = `bun run "<abs hook-client.ts>" <route-event>` where the route
  *   event is the kebab-case `/api/hooks/:event` segment the client POSTs to.
- * - `SessionStart` matches `startup` (the source for a fresh `claude` launch).
+ * - `SessionStart` is registered for EVERY source (see
+ *   {@link SESSION_START_SOURCES}) — a resumed session is a started session.
  * - `UserPromptSubmit`/`SessionEnd` take NO `matcher` (unsupported → omitted).
  * - Timeouts (seconds): SessionStart 10, UserPromptSubmit 5 (well inside its 30s
  *   hard budget), SessionEnd 10.
@@ -371,7 +489,10 @@ export function renderSettings(hookClient: string): SessionSettings {
   return {
     permissions: { allow: [...RUNCASTLE_MCP_ALLOW_RULES, ...SESSION_BASH_ALLOW_RULES] },
     hooks: {
-      SessionStart: [{ matcher: 'startup', hooks: [cmd('session-start')] }],
+      SessionStart: SESSION_START_SOURCES.map((source) => ({
+        matcher: source,
+        hooks: [cmd('session-start')],
+      })),
       UserPromptSubmit: [{ hooks: [cmd('user-prompt')] }],
       SessionEnd: [{ hooks: [cmd('session-end')] }],
     },
@@ -410,7 +531,7 @@ export function renderMcpConfig(session: SessionRow, config: RuncastleConfig): M
 export async function writeSessionArtifacts(
   input: WriteArtifactsInput,
 ): Promise<SessionArtifacts> {
-  const { session, feature, config, waypoint } = input
+  const { session, feature, config, waypoint, prepare } = input
   const dir = sessionDir(session.id)
   mkdirSync(dir, { recursive: true })
 
@@ -418,7 +539,18 @@ export async function writeSessionArtifacts(
   const settingsPath = join(dir, 'settings.json')
   const mcpConfigPath = join(dir, 'mcp.json')
 
-  writeFileSync(systemPromptPath, renderSystemPrompt(feature, session.kind, waypoint), 'utf8')
+  // A project-scoped session has no feature to brief from; the caller supplies
+  // the preparation brief instead. One of the two is always present — a session
+  // with neither would spawn a terminal with no instructions at all.
+  const systemPrompt = feature
+    ? renderSystemPrompt(feature, session.kind, waypoint)
+    : prepare
+      ? renderPreparePrompt(prepare)
+      : (() => {
+          throw new Error(`session ${session.id} has neither a feature nor a preparation brief`)
+        })()
+
+  writeFileSync(systemPromptPath, systemPrompt, 'utf8')
   writeFileSync(settingsPath, JSON.stringify(renderSettings(hookClientPath()), null, 2), 'utf8')
   writeFileSync(mcpConfigPath, JSON.stringify(renderMcpConfig(session, config), null, 2), 'utf8')
 

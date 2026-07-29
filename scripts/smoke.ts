@@ -18,9 +18,10 @@
  *   through the in-process caller (full router + error middleware + services);
  *   the hooks (`/api/hooks/*`) and MCP (`/mcp`) HTTP endpoints are driven through
  *   the real Hono app via `app.request(...)`.
- * - `~/.runcastle` is redirected by overriding USERPROFILE/HOME (the only knob
- *   core `paths.ts` honours) BEFORE importing anything, so the smoke never
- *   touches the developer's real data dir.
+ * - `~/.runcastle` is redirected by overriding USERPROFILE/HOME BEFORE importing
+ *   anything, so the smoke never touches the developer's real data dir. Any
+ *   ambient `RUNCASTLE_DATA_DIR` (which would outrank the home override) is
+ *   cleared for the same reason.
  * - CLAUDE_CONFIG_DIR is pinned to the developer's REAL `~/.claude` so the
  *   burner's host `claude` (spawned under the redirected home) still finds its
  *   credentials.
@@ -49,6 +50,11 @@ mkdirSync(SMOKE_HOME, { recursive: true })
 
 process.env.USERPROFILE = SMOKE_HOME
 process.env.HOME = SMOKE_HOME
+// `RUNCASTLE_DATA_DIR` outranks the home override (see core `paths.ts`), so an
+// ambient one — a shell left over from `bun run dev`, which sets it — would
+// redirect the smoke's data dir straight back out of the temp home and into the
+// dev tree. Clear it: the whole point here is a throwaway tree.
+delete process.env.RUNCASTLE_DATA_DIR
 
 // --- dynamic imports (after env is set so lazy homedir() reads the temp home) --
 

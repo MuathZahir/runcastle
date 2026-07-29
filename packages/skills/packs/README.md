@@ -10,7 +10,7 @@ Four phase-scoped skills, each namespaced `/runcastle:<skill>`:
 |---|---|---|
 | `/runcastle:ideate` | entry for `kind=ideation` | grills the human, locks decisions incrementally, drives spec + tickets out of one unbroken window |
 | `/runcastle:spec` | by ideate | synthesizes `spec.md`, completes the `spec` phase |
-| `/runcastle:tickets` | by ideate | emits tracer-bullet tickets via MCP, completes the `tickets` phase |
+| `/runcastle:tickets` | by ideate | emits session-sized vertical-slice tickets via MCP, completes the `tickets` phase |
 | `/runcastle:qa` | entry for `kind=qa` | read-only Q&A over an existing feature; never advances phases |
 
 Layout (the verified plugin format — only `plugin.json` lives inside `.claude-plugin/`; `skills/` is a sibling at the plugin root):

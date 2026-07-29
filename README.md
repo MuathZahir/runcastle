@@ -234,10 +234,50 @@ bun run dev            # server (4512) + web dev server (4513)
 |---|---|
 | `bun run typecheck` | `tsc --noEmit` across the typed packages. |
 | `bun run test` | The Vitest suite: core contracts plus server services, git, hooks, MCP, and burner. |
+| `bun run dev:tool` | Dev-only test-state surgery (see below). |
 | `bun run scripts/smoke.ts` | A scripted end-to-end run against a throwaway repo and a real host `claude`. |
 
 Read [`CLAUDE.md`](CLAUDE.md) for conventions and [`docs/SPEC.md`](docs/SPEC.md)
 for the contracts before implementing anything.
+
+### The dev data dir
+
+`bun run dev` runs against **`~/.runcastle-dev/`** — its own database, config,
+`.env`, logs and worktrees. An installed `runcastle` keeps using `~/.runcastle/`.
+The two never see each other, so wiping projects while testing cannot touch your
+real work. Both listen on 4512, so run one at a time; the boot line names the
+tree it opened.
+
+### `bun run dev:tool`
+
+Test-state surgery the product deliberately refuses to do — hard-delete a
+project, force a phase past its gate, replay onboarding. It only ever touches
+the dev data dir, and refuses to start if that resolves to `~/.runcastle/`.
+
+```sh
+bun run dev:tool status                        # which tree, and what is in it
+bun run dev:tool project ls
+bun run dev:tool project rm myapp              # by id, name, or `all` (+ --yes)
+bun run dev:tool project rm all --yes --branches   # also delete feature/* branches
+
+bun run dev:tool feature ls
+bun run dev:tool feature phase my-feature tickets  # gates not checked
+bun run dev:tool feature status my-feature archived
+bun run dev:tool feature rm my-feature
+
+bun run dev:tool prep reset myapp              # re-test project preparation
+bun run dev:tool onboarding reset --yes        # re-test the first-run wizard
+bun run dev:tool onboarding git clear          # ...including its git step
+bun run dev:tool onboarding git restore        # exact inverse of `git clear`
+
+bun run dev:tool reset --yes                   # delete the whole dev tree
+```
+
+Two notes. `onboarding git clear` is the one command that reaches outside the
+dev tree — git identity is host-wide, so there is nowhere else it can live; it
+saves your values first and `restore` puts them back. And after a destructive
+change, restart `bun run dev`: `bun --hot` preserves in-memory session and run
+state that the db no longer backs.
 
 ---
 

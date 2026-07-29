@@ -1,10 +1,11 @@
 import type { Ticket, TicketInput } from '@runcastle/core'
 import { BlockingEdgeError, newId, resolveBatchBlocking } from '@runcastle/core'
-import { asc, eq } from 'drizzle-orm'
+import { and, asc, eq } from 'drizzle-orm'
 import type { AppCtx } from '../db/types'
 import { tickets } from '../db/schema'
 import { InvalidInputError, NotFoundError } from '../errors'
 import { emit } from './events'
+import { getFeatureRow } from './repo'
 
 /**
  * Ticket storage. The ideation session emits `TicketInput[]` in one batch via
@@ -26,10 +27,12 @@ function rowToTicket(row: TicketSelect): Ticket {
     acceptanceCriteria: row.acceptanceCriteria,
     seams: row.seams,
     blockedBy: row.blockedBy,
+    lap: row.lap,
     status: row.status,
     commits: row.commits,
     error: row.error ?? undefined,
     attemptBranch: row.attemptBranch ?? undefined,
+    conflictFiles: row.conflictFiles ?? undefined,
   }
 }
 
@@ -65,6 +68,10 @@ export function listByFeature(ctx: AppCtx, featureId: string): Ticket[] {
  * to global seqs — and out-of-range/self edges rejected — by core's
  * `resolveBatchBlocking` (see that utility for the seq-vs-id note). An invalid
  * edge surfaces as `InvalidInputError`.
+ *
+ * Every row is stamped with the feature's CURRENT lap (ADR-0010 / SPEC §15.1);
+ * the emitting session never chooses it, which is why `TicketInput` has no
+ * `lap`. Earlier laps' tickets keep the lap they were stored in.
  */
 export function storeTickets(
   ctx: AppCtx,
@@ -72,6 +79,8 @@ export function storeTickets(
   inputs: TicketInput[],
 ): Ticket[] {
   if (inputs.length === 0) return []
+
+  const { lap } = getFeatureRow(ctx, featureId)
 
   const existing = ctx.db
     .select({ seq: tickets.seq })
@@ -92,10 +101,12 @@ export function storeTickets(
     acceptanceCriteria: t.acceptanceCriteria,
     seams: t.seams,
     blockedBy: resolved[i].blockedBy,
+    lap,
     status: 'pending' as const,
     commits: [] as string[],
     error: null,
     attemptBranch: null,
+    conflictFiles: null,
   }))
 
   ctx.db.insert(tickets).values(rows).run()
@@ -183,13 +194,52 @@ export function cancelTicket(ctx: AppCtx, id: string, reason?: string): Ticket {
   return getTicket(ctx, id)
 }
 
+/**
+ * Sweep tickets left `burning` with nothing behind them — the run that owned
+ * them is over (finalized, cancelled, or killed with the server), so no agent
+ * will ever move them again.
+ *
+ * A stranded `burning` row is a dead end in every direction: it is non-terminal
+ * so G4 never passes, the scheduler only picks up `pending` tickets so a
+ * re-burn finishes instantly with the ticket still stuck (`8/9 tickets done`),
+ * `retry`/`cancel`/`edit` all refuse a non-`pending`/`failed` ticket, and "Stop
+ * ticket" finds no live agent to abort. Marking them `failed` — keeping
+ * `attemptBranch`/`conflictFiles`, so a retry resumes the committed work rather
+ * than redoing it — puts them back on the paths that CAN move them.
+ *
+ * Callers must first establish that no agent is live for these tickets (the run
+ * finalizer, boot reconciliation, and burn restart each know this by
+ * construction).
+ */
+export function sweepOrphanedBurning(ctx: AppCtx, featureId: string, reason: string): Ticket[] {
+  const orphaned = ctx.db
+    .select()
+    .from(tickets)
+    .where(and(eq(tickets.featureId, featureId), eq(tickets.status, 'burning')))
+    .all()
+    .map(rowToTicket)
+
+  for (const t of orphaned) {
+    updateTicket(ctx, t.id, { status: 'failed', error: reason })
+    emit(ctx, featureId, {
+      type: 'ticket.failed',
+      message: `ticket ${t.seq} failed: ${reason}`,
+      ticketId: t.id,
+      data: { error: reason, orphaned: true },
+    })
+  }
+  return orphaned.map((t) => ({ ...t, status: 'failed' as const, error: reason }))
+}
+
 export function updateTicket(
   ctx: AppCtx,
   id: string,
-  // `null` clears a stored error/attemptBranch (retry + successful-landing paths).
+  // `null` clears a stored error/attemptBranch/conflictFiles (retry +
+  // successful-landing paths).
   patch: Partial<Pick<Ticket, 'status' | 'commits'>> & {
     error?: string | null
     attemptBranch?: string | null
+    conflictFiles?: string[] | null
   },
 ): Ticket {
   const current = ctx.db.select().from(tickets).where(eq(tickets.id, id)).get()
@@ -200,6 +250,7 @@ export function updateTicket(
   if (patch.commits !== undefined) set.commits = patch.commits
   if (patch.error !== undefined) set.error = patch.error
   if (patch.attemptBranch !== undefined) set.attemptBranch = patch.attemptBranch
+  if (patch.conflictFiles !== undefined) set.conflictFiles = patch.conflictFiles
 
   ctx.db.update(tickets).set(set).where(eq(tickets.id, id)).run()
 

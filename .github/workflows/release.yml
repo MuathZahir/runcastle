@@ -39,15 +39,22 @@ jobs:
           registry-url: 'https://registry.npmjs.org'
           package-manager-cache: false # never cache in a release build
 
-      - name: Resolve version from tag
+      - name: Resolve version and channel from tag
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
           if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]]; then
             echo "::error::tag '$GITHUB_REF_NAME' is not a vX.Y.Z release tag"
             exit 1
           fi
+          # The version picks the channel: a prerelease (1.3.0-beta.1) goes to
+          # `next`, a clean X.Y.Z goes to `latest`. npm does NOT infer this — a
+          # bare `npm publish` points `latest` at whatever it just published,
+          # prerelease or not, so the --tag below has to be explicit or a beta
+          # ships to every user.
+          if [[ "$VERSION" == *-* ]]; then NPM_TAG=next; else NPM_TAG=latest; fi
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
-          echo "Releasing runcastle $VERSION"
+          echo "NPM_TAG=$NPM_TAG" >> "$GITHUB_ENV"
+          echo "Releasing runcastle $VERSION to the '$NPM_TAG' channel"
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
@@ -71,7 +78,7 @@ jobs:
           VER=$(node -p "require('./package.json').version")
           [ "$NAME" = "runcastle" ] || { echo "::error::built name is '$NAME', expected 'runcastle'"; exit 1; }
           [ "$VER" = "$VERSION" ] || { echo "::error::built version is '$VER', expected '$VERSION'"; exit 1; }
-          echo "✓ runcastle@$VER ready to publish"
+          echo "✓ runcastle@$VER ready to publish to '$NPM_TAG'"
 
       # OIDC trusted publishing landed in npm 11.5.1; guarantee a new-enough CLI.
       - name: Ensure npm supports trusted publishing
@@ -81,9 +88,16 @@ jobs:
       # attaches provenance automatically for this public repo/package.
       - name: Publish to npm
         working-directory: packages/server/build
-        run: npm publish --provenance --access public
+        run: npm publish --provenance --access public --tag "$NPM_TAG"
 
+      # Prereleases are marked as such so GitHub's "Latest release" badge tracks
+      # the `latest` channel, same as npm's dist-tag.
       - name: Create GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" --title "runcastle $VERSION" --generate-notes
+        run: |
+          if [ "$NPM_TAG" = next ]; then
+            gh release create "$GITHUB_REF_NAME" --title "runcastle $VERSION" --generate-notes --prerelease
+          else
+            gh release create "$GITHUB_REF_NAME" --title "runcastle $VERSION" --generate-notes
+          fi

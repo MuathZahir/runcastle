@@ -33,6 +33,7 @@ export function rowToFeature(row: FeatureSelect): Feature {
     title: row.title,
     oneLiner: row.oneLiner,
     mapped: row.mapped,
+    lap: row.lap,
     phase: row.phase,
     branch: row.branch,
     baseBranch: row.baseBranch ?? undefined,
@@ -49,6 +50,13 @@ export function rowToProject(row: ProjectSelect): Project {
     mainBranch: row.mainBranch,
     devCommand: row.devCommand ?? undefined,
     model: row.model ?? undefined,
+    setupCommand: row.setupCommand ?? undefined,
+    verifyCommands: row.verifyCommands ?? undefined,
+    knownFailures: row.knownFailures ?? undefined,
+    dbResetCommand: row.dbResetCommand ?? undefined,
+    driveSetupCommand: row.driveSetupCommand ?? undefined,
+    driveStopCommand: row.driveStopCommand ?? undefined,
+    driveEnv: row.driveEnv ?? undefined,
   }
 }
 
@@ -67,7 +75,8 @@ export function rowToRun(row: RunSelect): Run {
 export function rowToSession(row: SessionSelect): SessionRow {
   return {
     id: row.id,
-    featureId: row.featureId,
+    featureId: row.featureId ?? undefined,
+    projectId: row.projectId ?? undefined,
     kind: row.kind,
     ccSessionId: row.ccSessionId ?? undefined,
     transcriptPath: row.transcriptPath ?? undefined,

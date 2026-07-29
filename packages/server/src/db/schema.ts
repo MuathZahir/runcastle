@@ -2,6 +2,8 @@ import {
   events,
   features,
   gateOverrides,
+  projectFindings,
+  projectPreps,
   projects,
   runs,
   sessions,
@@ -24,8 +26,21 @@ export const schema = {
   runs,
   events,
   gateOverrides,
+  projectFindings,
+  projectPreps,
 }
 
 export type Schema = typeof schema
 
-export { events, features, gateOverrides, projects, runs, sessions, tickets, waypoints }
+export {
+  events,
+  features,
+  gateOverrides,
+  projectFindings,
+  projectPreps,
+  projects,
+  runs,
+  sessions,
+  tickets,
+  waypoints,
+}

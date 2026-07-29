@@ -3,7 +3,7 @@ import { createRequire } from 'node:module'
 import { existsSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { ASSET_ENV, resolveAsset } from '../launcher/asset-paths'
-import { resolveExecutable } from '../util/resolve-executable'
+import { explainSpawnFailure, resolveTool } from '../util/resolve-executable'
 import type { CreatePtyOptions, PtySession } from './pty'
 
 /**
@@ -37,9 +37,11 @@ function resolveNodeExecutable(): string {
   const override = process.env.RUNCASTLE_NODE_BIN
   if (override && existsSync(override)) return override
   // Under a `node` runtime `process.execPath` IS node; only under Bun must we
-  // scan PATH for a system node (shared PATHEXT-aware resolver).
+  // scan PATH for a system node (shared resolver, so a node installed after the
+  // server started is still found in the usual install dirs — a missing system
+  // node is fatal to every terminal on Bun+win32).
   if (!isBun()) return process.execPath
-  return resolveExecutable('node', { exts: process.platform === 'win32' ? ['.exe', '.cmd', ''] : [''] })
+  return resolveTool('node', { exts: process.platform === 'win32' ? ['.exe', '.cmd', ''] : [''] })
 }
 
 /** Resolve node-pty's entry once so the host never has to re-resolve it. */
@@ -133,12 +135,20 @@ export function createSidecarPtySession(
         case 'exit':
           fireExit(typeof msg.code === 'number' ? msg.code : 0, msg.signal ?? undefined)
           break
-        case 'error':
+        case 'error': {
           // Fatal host/spawn failure: surface on stderr and end the session so
           // the WS layer broadcasts `ended` instead of hanging.
-          process.stderr.write(`[pty-sidecar] host error: ${msg.message ?? 'unknown'}\n`)
+          const why = explainSpawnFailure(cmd, msg.message ?? 'unknown')
+          process.stderr.write(`[pty-sidecar] host error: ${why}\n`)
+          // Also write it into the PTY stream. The failure is asynchronous — the
+          // launcher already emitted `session.launched` and returned — so this is
+          // the ONLY channel that reaches the terminal the user is watching.
+          // Without it the pane just opens empty and dies, which is what a
+          // missing `claude` looked like: a terminal that "doesn't open".
+          emitData(Buffer.from(`\r\n${why.replace(/\n/g, '\r\n')}\r\n`, 'utf8'))
           fireExit(1)
           break
+        }
       }
     }
   })
@@ -150,7 +160,11 @@ export function createSidecarPtySession(
   })
 
   child.on('error', (err) => {
-    process.stderr.write(`[pty-sidecar] failed to spawn node host: ${err.message}\n`)
+    // The sidecar host itself could not start — almost always a missing system
+    // `node`. Same treatment: explain it, and put it where the user can see it.
+    const why = explainSpawnFailure(nodeExe, err.message)
+    process.stderr.write(`[pty-sidecar] failed to spawn node host: ${why}\n`)
+    emitData(Buffer.from(`\r\n${why.replace(/\n/g, '\r\n')}\r\n`, 'utf8'))
     fireExit(1)
   })
   child.on('exit', (code, signal) => {

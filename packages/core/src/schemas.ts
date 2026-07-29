@@ -37,8 +37,28 @@ export type TicketStatus = z.infer<typeof TicketStatus>
  * resumable conversation to amend docs and do ticket surgery (edit/cancel/emit);
  * never advances phases.
  */
-export const SessionKind = z.enum(['ideation', 'qa', 'waypoint', 'converge', 'revisit'])
+export const SessionKind = z.enum(['ideation', 'qa', 'waypoint', 'converge', 'revisit', 'prepare'])
 export type SessionKind = z.infer<typeof SessionKind>
+
+/**
+ * The one PROJECT-scoped session kind: `prepare` has no feature, so its
+ * `sessions.feature_id` is null (the only kind for which that is true).
+ *
+ * It exists because a headless preparation run can measure a repo but cannot
+ * ask a question. A real run established 7 of 8 keys and then declined the 8th
+ * — it knew the variable name, wrote out what the value would look like, and
+ * stopped, because supplying it meant inventing a bootstrap step the repo
+ * documents nowhere. That is not a prompt problem; it needs a human. This kind
+ * is the conversation that closes those gaps, and unlike the headless run it
+ * executes on the HOST, so the five keys prep can only propose ("not executed —
+ * host-only") can actually be run and verified.
+ */
+export const PROJECT_SESSION_KINDS = ['prepare'] as const
+
+/** True for session kinds that belong to a project rather than a feature. */
+export function isProjectSessionKind(kind: SessionKind): boolean {
+  return (PROJECT_SESSION_KINDS as readonly string[]).includes(kind)
+}
 
 export const RunStatus = z.enum(['running', 'succeeded', 'failed', 'cancelled'])
 export type RunStatus = z.infer<typeof RunStatus>
@@ -69,6 +89,12 @@ export const Ticket = TicketInput.extend({
   featureId: z.string(),
   seq: z.number(),
   status: TicketStatus,
+  /**
+   * The lap this ticket was emitted in (ADR-0010 / SPEC §15.1). Stamped from
+   * `feature.lap` at store time — `TicketInput` deliberately has no `lap`,
+   * because sessions never choose it.
+   */
+  lap: z.number(),
   commits: z.array(z.string()),
   error: z.string().optional(),
   /**
@@ -79,6 +105,16 @@ export const Ticket = TicketInput.extend({
    * user retries "fresh".
    */
   attemptBranch: z.string().optional(),
+  /**
+   * Repo-relative paths that conflicted when `attemptBranch` last failed to land
+   * on the feature branch. Present (possibly empty, when git could not report
+   * the paths) IFF the ticket's preserved work is blocked by a landing conflict
+   * rather than by unfinished implementation — which is what makes the next burn
+   * of this ticket run the conflict RESOLVER instead of the implementer, and
+   * what the run lane renders its conflict card from. Cleared once the branch
+   * lands or the user retries "fresh".
+   */
+  conflictFiles: z.array(z.string()).optional(),
 })
 export type Ticket = z.infer<typeof Ticket>
 
@@ -130,6 +166,45 @@ export type Waypoint = z.infer<typeof Waypoint>
 
 // --- core entities ---------------------------------------------------------
 
+/**
+ * The repo facts a preparation run establishes, in the order the settings UI
+ * and the prep prompt present them. Each maps 1:1 to a project column; the
+ * first three also have a global config twin (`project ?? global`), while
+ * `devCommand`, the two drive hooks and `dbResetCommand` are project-only.
+ *
+ * These are FINDINGS, not preferences: answering any of them honestly means
+ * reading the repo's workspace layout and running its suite, which is why they
+ * sit empty on almost every install. Preparation pays that cost once, with
+ * evidence, instead of every burn agent re-deriving it per ticket (ADR-0008).
+ */
+export const PREPARED_KEYS = [
+  'setupCommand',
+  'verifyCommands',
+  'knownFailures',
+  'devCommand',
+  'driveSetupCommand',
+  'driveStopCommand',
+  'driveEnv',
+  'dbResetCommand',
+] as const
+export const PreparedKey = z.enum(PREPARED_KEYS)
+export type PreparedKey = z.infer<typeof PreparedKey>
+
+/**
+ * Who established a prepared value. A `human` value is never auto-overwritten.
+ *
+ * `session` is the interactive-preparation source: an agent measured it on the
+ * host while a human watched. It deliberately does NOT lock the key the way
+ * `human` does — a later headless run may still improve it — but it stays
+ * distinguishable in the UI from an unattended finding, because "I ran this on
+ * your actual machine with you there" is a different claim from "I ran this in
+ * a container". A value the human supplied or confirmed verbatim during that
+ * same session is recorded as `human`, not `session`: the lock belongs to who
+ * decided the value, not to which process wrote the row.
+ */
+export const FindingSource = z.enum(['prep', 'human', 'session'])
+export type FindingSource = z.infer<typeof FindingSource>
+
 export const Project = z.object({
   id: z.string(),
   name: z.string(),
@@ -138,8 +213,50 @@ export const Project = z.object({
   devCommand: z.string().optional(),
   /** Per-project default-model override (issue #48); unset → inherit global. */
   model: z.string().optional(),
+  /** Prepared repo facts (see {@link PREPARED_KEYS}); unset → inherit global. */
+  setupCommand: z.string().optional(),
+  verifyCommands: z.string().optional(),
+  knownFailures: z.string().optional(),
+  dbResetCommand: z.string().optional(),
+  /** Shell run before / after a test drive's dev pane; opaque to runcastle. */
+  driveSetupCommand: z.string().optional(),
+  driveStopCommand: z.string().optional(),
+  /** `KEY=VALUE` lines overlaid on a drive's environment, `{{id}}`-templated. */
+  driveEnv: z.string().optional(),
 })
 export type Project = z.infer<typeof Project>
+
+/**
+ * A prepared field's provenance, as the UI and the staleness check see it.
+ * `staleCommits` is how far the repo's main branch has moved since the finding
+ * was measured — `undefined` when it cannot be computed (no sha, or the sha is
+ * no longer reachable after a rebase), which the UI shows as "unknown", never
+ * as "fresh".
+ */
+export const ProjectFinding = z.object({
+  key: PreparedKey,
+  source: FindingSource,
+  evidence: z.string().optional(),
+  establishedAt: z.number(),
+  establishedSha: z.string().optional(),
+  staleCommits: z.number().optional(),
+})
+export type ProjectFinding = z.infer<typeof ProjectFinding>
+
+export const PrepStatus = z.enum(['running', 'succeeded', 'failed', 'cancelled'])
+export type PrepStatus = z.infer<typeof PrepStatus>
+
+/** One preparation run over a project (project-scoped sibling of `Run`). */
+export const PrepRun = z.object({
+  id: z.string(),
+  projectId: z.string(),
+  status: PrepStatus,
+  startedAt: z.number(),
+  endedAt: z.number().optional(),
+  summary: z.string().optional(),
+  headSha: z.string().optional(),
+})
+export type PrepRun = z.infer<typeof PrepRun>
 
 export const Feature = z.object({
   id: z.string(),
@@ -153,6 +270,13 @@ export const Feature = z.object({
    * escalation. Defaults to false.
    */
   mapped: z.boolean(),
+  /**
+   * Which trip round the pipeline the feature is on (ADR-0010 / SPEC §15.1).
+   * Starts at 1; Rethink increments it, Fix never does. Tickets, sessions and
+   * events are stamped with it, and the lap trail is derived by grouping on
+   * those stamps — there is no laps table.
+   */
+  lap: z.number(),
   phase: Phase,
   branch: z.string(),
   /**
@@ -167,7 +291,10 @@ export type Feature = z.infer<typeof Feature>
 
 export const SessionRow = z.object({
   id: z.string(),
-  featureId: z.string(),
+  /** Absent on project-scoped sessions (`kind = 'prepare'`) — see the db schema. */
+  featureId: z.string().optional(),
+  /** Set on project-scoped sessions only; feature sessions derive it via the feature. */
+  projectId: z.string().optional(),
   kind: SessionKind,
   ccSessionId: z.string().optional(),
   transcriptPath: z.string().optional(),

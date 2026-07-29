@@ -10,6 +10,13 @@
  * Usage:
  *   bun run release 1.0.4          # confirms before pushing the tag
  *   bun run release 1.0.4 --yes    # skip the confirmation
+ *   bun run release 1.3.0-beta.1   # prerelease -> the npm `next` channel
+ *
+ * The version picks the channel. A plain X.Y.Z publishes to `latest`, so every
+ * user's next install gets it; a prerelease publishes to `next`, which nobody
+ * receives unless they opt in with `bun add -g runcastle@next`. CI derives the
+ * same thing from the tag and passes `--tag` explicitly — npm does not infer it,
+ * and a bare `npm publish` would point `latest` at a beta.
  *
  * The version lives only in the tag — nothing version-related is committed (the
  * build injects RUNCASTLE_RELEASE_VERSION from the tag name in CI).
@@ -63,8 +70,12 @@ async function main(): Promise<void> {
     die(`"${version}" is not a semver version (expected e.g. 1.0.4 or 1.2.0-rc.1)`)
   }
   const tag = `v${version}`
+  // Mirrors the channel logic in release.yml. Computed here only so the
+  // confirmation below can name the channel before anything is pushed — CI
+  // re-derives it from the tag and is the authority on what actually ships.
+  const channel = version.includes('-') ? 'next' : 'latest'
 
-  console.log(`\nReleasing runcastle ${version}\n${'─'.repeat(32)}`)
+  console.log(`\nReleasing runcastle ${version} → npm '${channel}'\n${'─'.repeat(40)}`)
 
   // ── Preconditions ─────────────────────────────────────────────────────────
   step('Checking preconditions')
@@ -90,6 +101,15 @@ async function main(): Promise<void> {
     if (!process.stdin.isTTY) {
       die('push needs confirmation but stdin is not a TTY — re-run with --yes')
     }
+    // Which channel this lands on is the one thing that can't be walked back
+    // (an unpublish is a 72h window and a broken install for anyone who already
+    // pulled it), so spell out the blast radius rather than just the tag name.
+    console.log(
+      channel === 'latest'
+        ? `\n  This moves the 'latest' dist-tag — every user's next install gets ${version}.`
+        : `\n  This publishes to 'next' only — 'latest' does not move, so no user is updated.` +
+            `\n  Install it with: bun add -g runcastle@next`,
+    )
     const answer = prompt(`\nTag and push ${tag}? CI will test, build, publish to npm, and cut the release. (y/N)`)
     if (answer?.trim().toLowerCase() !== 'y') die('aborted — no tag pushed, nothing released')
   }
@@ -100,6 +120,7 @@ async function main(): Promise<void> {
   await run`git -C ${REPO_ROOT} push ${REMOTE} ${tag}`
 
   console.log(`\n✓ Pushed ${tag}. GitHub Actions is now testing, building, and publishing runcastle ${version}.`)
+  console.log(`  Channel: ${channel} — once it lands: bun add -g runcastle@${channel}`)
   console.log(`  Watch it: ${ACTIONS_URL}`)
   console.log('  If the run fails, delete the tag (git push --delete origin ' + tag + '), fix, and re-release.')
 }

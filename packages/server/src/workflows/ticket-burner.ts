@@ -9,7 +9,12 @@ import type {
   WorkflowCtx,
   WorkflowDef,
 } from '@runcastle/core'
-import { newId, resolveModel, resolveSandboxImage } from '@runcastle/core'
+import {
+  newId,
+  resolveModel,
+  resolvePreparedSettings,
+  resolveSandboxImage,
+} from '@runcastle/core'
 import { loadConfig } from '@runcastle/core/config-load'
 import { burnCacheDir, envPath, featureDocsRel, logsDir, worktreeDir } from '@runcastle/core/paths'
 import { resolveSkillsRoot } from '../launcher/skills-root'
@@ -21,9 +26,12 @@ import {
 import {
   allowPushToCheckedOutBranches,
   branchCommitsAhead,
+  cleanupBurnWorktree,
+  commitSummaries,
   mergeTempBranch,
   ticketBranchName,
 } from '../services/git'
+import type { TempBranchMergeResult } from '../services/git'
 import type {
   AgentCommandOptions,
   AgentProvider,
@@ -34,6 +42,7 @@ import type {
   RunResult,
 } from '@ai-hero/sandcastle'
 import { claudeCode, run } from '@ai-hero/sandcastle'
+import { buildGuardInstallCommand } from './burn-guard'
 import { docker } from '@ai-hero/sandcastle/sandboxes/docker'
 import { podman } from '@ai-hero/sandcastle/sandboxes/podman'
 import { noSandbox } from '@ai-hero/sandcastle/sandboxes/no-sandbox'
@@ -162,23 +171,31 @@ const PLACEHOLDERS = [
   'DOCS_DIGEST',
   'COMMIT_CONVENTION',
   'WORKSPACE_NOTES',
+  'VERIFY_NOTES',
 ] as const
 type PlaceholderKey = (typeof PLACEHOLDERS)[number]
 
 /**
- * Replace every `{{KEY}}` placeholder in the burner template with its value.
+ * Replace every `{{KEY}}` placeholder in a burner template with its value.
  * Uses split/join (not RegExp) so values may contain `$` and special chars
- * safely, and replaces all occurrences of each key.
+ * safely, and replaces all occurrences of each key. Keys absent from `values`
+ * are left alone — a template is free to carry placeholders one caller fills
+ * and another does not.
  */
+export function renderTemplate(template: string, values: Record<string, string>): string {
+  let out = template
+  for (const [key, value] of Object.entries(values)) {
+    out = out.split(`{{${key}}}`).join(value)
+  }
+  return out
+}
+
+/** {@link renderTemplate} over the implement-ticket template's fixed key set. */
 export function renderTicketPrompt(
   template: string,
   values: Record<PlaceholderKey, string>,
 ): string {
-  let out = template
-  for (const key of PLACEHOLDERS) {
-    out = out.split(`{{${key}}}`).join(values[key])
-  }
-  return out
+  return renderTemplate(template, values)
 }
 
 /** The `{{TICKET_JSON}}` payload — the fields an unattended agent needs. */
@@ -215,6 +232,46 @@ export function buildDocsDigest(files: { name: string; content: string }[]): str
     return '_No feature docs found — work from the ticket context and the code._'
   }
   return files.map((f) => `### ${f.name}\n\n${f.content.trim()}`).join('\n\n---\n\n')
+}
+
+// ---------------------------------------------------------------------------
+// Pure units — the conflict-resolver prompt (resolve-conflict.md)
+// ---------------------------------------------------------------------------
+
+/** The `{{CONFLICT_FILES}}` block: the unmerged paths git reported, as a list. */
+export function buildConflictFilesBlock(files: string[]): string {
+  if (files.length === 0) {
+    return '_git did not report the paths — run `git status` after starting the merge to see them._'
+  }
+  return files.map((f) => `- \`${f}\``).join('\n')
+}
+
+/**
+ * The `{{OTHER_SIDE}}` block: one-line summaries of the commits that landed on
+ * the feature branch while this ticket was being implemented. This is the
+ * context a resolver spawned after the fact would otherwise lack entirely —
+ * without it the agent sees conflict markers with no idea who wrote the other
+ * half or why.
+ */
+export function buildOtherSideBlock(summaries: string[]): string {
+  if (summaries.length === 0) {
+    return '_No commit summaries available — inspect `git log` on the feature branch._'
+  }
+  return summaries.map((s) => `- ${s}`).join('\n')
+}
+
+/**
+ * The `{{MERGE_COMMAND}}` the resolver must run to start the merge. Mounted mode
+ * works in a git worktree of the host repo, so the feature branch is a local ref
+ * it can name directly. Isolated mode (ADR-0005) works in a container-native
+ * CLONE whose `origin` is the mounted worktree: the feature branch exists there
+ * only as a remote ref, and cloning happened before this merge was needed, so
+ * the fetch is explicit and the merge takes `FETCH_HEAD`.
+ */
+export function resolveMergeCommand(mode: BurnWorkspaceMode, featureBranch: string): string {
+  return mode === 'mounted'
+    ? `git merge --no-edit ${featureBranch}`
+    : `git fetch origin ${featureBranch} && git merge --no-edit FETCH_HEAD`
 }
 
 // ---------------------------------------------------------------------------
@@ -283,6 +340,11 @@ export function detectPackageManager(tc: RepoToolchain): PackageManager | undefi
   return tc.hasPackageJson ? 'npm' : undefined
 }
 
+/** `strict`, then `permissive` if it fails — as one shell word (see below). */
+function orFallback(strict: string, permissive: string): string {
+  return `( ${strict} || ${permissive} )`
+}
+
 /**
  * The dependency-install command to run in the sandbox before the agent starts
  * (sandcastle `sandbox.onSandboxReady`), or `undefined` when there is nothing
@@ -293,6 +355,34 @@ export function detectPackageManager(tc: RepoToolchain): PackageManager | undefi
  * (present in the node:22 base image; neither manager is preinstalled), and
  * `--frozen-lockfile` (a working deprecated alias on yarn berry) / `npm ci` is
  * used only when the matching lockfile actually exists.
+ *
+ * **The strict form always falls back to the permissive one** — `( npm ci ||
+ * npm install )`. Lockfile presence is read off the HOST working tree, but the
+ * strict form asserts something about the lockfile that the sandbox may not be
+ * able to honour, and a wrong assertion here kills the run in a pre-agent hook
+ * before the agent gets a single turn. Two real repos, both measured:
+ *
+ * - **The lockfile is untracked.** `isolated` mode `git clone`s the workspace,
+ *   and a clone carries tracked files only — so `existsSync` says
+ *   `package-lock.json` is there and the container disagrees. `npm ci` dies
+ *   with EUSAGE ("can only install with an existing package-lock.json").
+ * - **The lockfile is tracked but stale.** It reaches the container intact and
+ *   `npm ci` correctly refuses to reconcile it ("Missing: … from lock file").
+ *
+ * Neither is worth failing over. The strict form is a claim about the lockfile;
+ * where the claim does not hold, the permissive install is simply the correct
+ * command, and preparation then *establishes* that with evidence — which is the
+ * entire point of the run it would otherwise have aborted. Reproducibility is
+ * preserved wherever it was actually available: the strict form still runs
+ * first and still wins whenever it can.
+ *
+ * Parenthesised because callers join parts with ` && ` and `&&`/`||` share
+ * precedence left-to-right: a bare `cd repo && npm ci || npm install` would run
+ * the fallback with the *whole preceding chain* as its left operand, installing
+ * in the wrong directory after an unrelated earlier failure.
+ *
+ * An explicit override is never wrapped — a command the user typed runs
+ * verbatim, including its own failure semantics.
  */
 export function resolveSetupCommand(tc: RepoToolchain, override?: string): string | undefined {
   const trimmed = override?.trim()
@@ -301,13 +391,19 @@ export function resolveSetupCommand(tc: RepoToolchain, override?: string): strin
   if (!pm) return undefined
   switch (pm) {
     case 'bun':
-      return tc.lockfiles.bun ? 'bun install --frozen-lockfile' : 'bun install'
+      return tc.lockfiles.bun
+        ? orFallback('bun install --frozen-lockfile', 'bun install')
+        : 'bun install'
     case 'pnpm':
-      return tc.lockfiles.pnpm ? 'corepack pnpm install --frozen-lockfile' : 'corepack pnpm install'
+      return tc.lockfiles.pnpm
+        ? orFallback('corepack pnpm install --frozen-lockfile', 'corepack pnpm install')
+        : 'corepack pnpm install'
     case 'yarn':
-      return tc.lockfiles.yarn ? 'corepack yarn install --frozen-lockfile' : 'corepack yarn install'
+      return tc.lockfiles.yarn
+        ? orFallback('corepack yarn install --frozen-lockfile', 'corepack yarn install')
+        : 'corepack yarn install'
     case 'npm':
-      return tc.lockfiles.npm ? 'npm ci' : 'npm install'
+      return tc.lockfiles.npm ? orFallback('npm ci', 'npm install') : 'npm install'
   }
 }
 
@@ -474,6 +570,77 @@ export function buildWorkspaceNotes(mode: BurnWorkspaceMode): string {
   ].join('\n')
 }
 
+/**
+ * The `{{VERIFY_NOTES}}` block for the burner prompt: how the agent should
+ * spend its verification budget. Pure — reads only the two optional config
+ * fields.
+ *
+ * Setting `verifyCommands` is also the ONLY good way to bound test concurrency.
+ * The prompt forbids agents from improvising `--maxWorkers`/`--shard`, because
+ * measured in-sandbox a serialised suite takes 10–20 minutes for work its
+ * configured concurrency does in ~55s — but agents were reaching for those
+ * flags to survive real OOM kills. An operator whose environment genuinely
+ * needs a bound states it here, once, instead of every agent guessing at it
+ * per ticket.
+ *
+ * Both halves exist because burn logs showed agents paying, per ticket, for
+ * information the operator already had:
+ *
+ * - **Commands.** With nothing stated, agents guess workspace filter names and
+ *   discover them by running whole monorepo suites that error out. One ticket
+ *   burned two full runs on `--filter helix-frontend` and `--filter helix`
+ *   before finding the right one. `config.verifyCommands` states them once.
+ * - **Baseline.** Agents must separate their own breakage from the repo's
+ *   existing breakage, and with no baseline the only way to get one is to run
+ *   the full suite before touching anything — doubling the most expensive
+ *   command in the burn, every ticket. `config.knownFailures` retires it.
+ *
+ * When a field is unset the block still says something useful: derive the
+ * commands once and record them, capture the baseline once and reuse it. The
+ * failure mode being prevented is re-deriving per slice, not deriving at all.
+ */
+export function buildVerifyNotes(
+  config: Pick<RuncastleConfig, 'verifyCommands' | 'knownFailures'>,
+): string {
+  const commands = config.verifyCommands?.trim()
+  const failures = config.knownFailures?.trim()
+  const out: string[] = []
+
+  if (commands) {
+    out.push(
+      'Verify with exactly these commands — they are correct for this repo, so do not go looking for alternatives or guess at workspace/package filter names:',
+      '',
+      '```',
+      commands,
+      '```',
+    )
+  } else {
+    out.push(
+      "No verification commands are configured, so derive them ONCE from the repo (root `package.json` scripts, the workspace's own manifest, CI config) before your first test run — reading a manifest is free, discovering a filter name by running the wrong suite is not. Write the working commands into your notes and reuse them verbatim for the rest of the ticket.",
+    )
+  }
+
+  out.push('')
+
+  if (failures) {
+    out.push(
+      'These tests ALREADY fail on this repo before you touch anything:',
+      '',
+      '```',
+      failures,
+      '```',
+      '',
+      'Treat that as your baseline — do NOT spend a run establishing it yourself. Only a failure outside this set is yours to fix; if you hit one that looks pre-existing but is not listed, confirm it on a single targeted run of that one test, never a whole-suite re-run.',
+    )
+  } else {
+    out.push(
+      'No pre-existing-failure baseline is configured. If the suite is already red, capture the baseline ONCE — the first full run you do, before your changes land, is the baseline — and compare every later run against those saved results. Never re-run a whole suite just to re-establish what was already failing.',
+    )
+  }
+
+  return out.join('\n')
+}
+
 /** Inspect the target repo root for its JS toolchain markers (IO). */
 export function readRepoToolchain(repoPath: string): RepoToolchain {
   const pkgPath = join(repoPath, 'package.json')
@@ -566,6 +733,199 @@ export function createStreamThrottle(
 }
 
 // ---------------------------------------------------------------------------
+// Pure unit — burn timing telemetry (where a ticket's wall-clock actually goes)
+// ---------------------------------------------------------------------------
+
+/**
+ * Where a burn's wall-clock goes. `model` is not a tool — it is the agent
+ * thinking/writing between tool calls, and it belongs here because the whole
+ * point of the breakdown is to see what share of a ticket ISN'T the model.
+ */
+export const TOOL_CATEGORIES = [
+  'tests',
+  'typecheck',
+  'build',
+  'lint',
+  'install',
+  'git',
+  'file-read',
+  'file-edit',
+  'search',
+  'model',
+  'other',
+] as const
+export type ToolCategory = (typeof TOOL_CATEGORIES)[number]
+
+/**
+ * Not followed by a path/extension character — so a tool's name counts only when
+ * it is being RUN, not when it names a file. Validating against real burn
+ * commands caught this: `grep -n … vite.config.ts vitest.config.ts` was charged
+ * to `tests`, because `\bvitest\b` matches happily inside `vitest.config.ts`.
+ */
+const RUN = String.raw`(?![\w./-])`
+
+/** Ordered dominant-cost-wins patterns for classifying a Bash command line. */
+const BASH_PATTERNS: ReadonlyArray<readonly [ToolCategory, RegExp]> = [
+  // Tests first: a command that runs a suite is dominated by the suite, however
+  // much greping is chained onto it (`pnpm test > log; grep -E ... log`).
+  // The second alternative allows flags between the manager and the script
+  // (`pnpm --filter web test`, the form this repo actually uses) but never
+  // crosses a `&&`/`;`/`|` into the next command.
+  ['tests', new RegExp(String.raw`\b(vitest|jest|pytest|go test|cargo test|bun test|playwright|maestro)${RUN}|\b(pnpm|npm|yarn|bun|npx)\b[^&;|]*?\s(run\s+)?test${RUN}|--testPathPatterns`)],
+  ['typecheck', /\btsc\b|\btypecheck\b|\bmypy\b|\bcargo check\b/],
+  ['build', new RegExp(String.raw`\bbuild${RUN}|\bprisma\s+(generate|migrate)\b|\bcodegen${RUN}`)],
+  ['lint', new RegExp(String.raw`\b(eslint|prettier|ruff|biome|lint|format)${RUN}`)],
+  ['install', /\b(pnpm|npm|yarn|bun|corepack)\s+\w*\s*install\b|\bnpm ci\b/],
+  ['git', /\bgit\b/],
+  // Reading/searching the repo THROUGH the shell — the thing the prompt now
+  // tells agents to stop doing. Kept distinct from `search` so the two rules
+  // (use Read, use Grep) can be measured separately.
+  ['search', /\b(grep|rg|ag|find)\b/],
+  ['file-read', /\b(cat|sed|head|tail|less|wc|ls)\b/],
+  // Rewriting a file by piping a heredoc into an interpreter. Deliberately last:
+  // these commands often mention other tools, but the edit is the cost.
+  ['file-edit', /<<\s*['"]?(PY|EOF|SH|JS|TS)\b|\bpython3?\s+-\s*<</],
+]
+
+/** Non-Bash Claude Code tools, mapped to the same vocabulary. */
+const TOOL_NAME_CATEGORY: Readonly<Record<string, ToolCategory>> = {
+  Read: 'file-read',
+  NotebookRead: 'file-read',
+  Grep: 'search',
+  Glob: 'search',
+  Edit: 'file-edit',
+  Write: 'file-edit',
+  NotebookEdit: 'file-edit',
+}
+
+/**
+ * Reduce a shell command to the part that says what it RUNS, by removing
+ * heredoc bodies and quoted strings.
+ *
+ * Without this the classifier reads arguments as commands, and validating
+ * against real burn commands showed exactly that: `grep -n "setupFiles|..."
+ * vitest.config.ts` was charged to `tests` because a test runner's name
+ * appeared inside a grep pattern, and a `python3 <<'PY'` heredoc that happened
+ * to write a spec file was charged to whatever its body mentioned. The heredoc
+ * marker itself is preserved (it is the signal that a file is being rewritten);
+ * only the body between the marker and its terminator goes.
+ */
+export function normalizeCommandForClassification(command: string): string {
+  return command
+    .replace(/<<\s*['"]?(\w+)['"]?[\s\S]*?(^|\n)\s*\1\b/gm, '<<$1 ')
+    .replace(/<<\s*['"]?(\w+)['"]?[\s\S]*$/, '<<$1 ') // unterminated (log truncation)
+    .replace(/'[^']*'/g, ' ')
+    .replace(/"[^"]*"/g, ' ')
+}
+
+/**
+ * Classify one tool call. Pure. Bash is classified from its command line, since
+ * `Bash` alone says nothing — and in real burns Bash was 100% of tool calls
+ * (1641 of 1641), so a breakdown that stopped at the tool name would say
+ * nothing at all.
+ *
+ * Patterns are ordered by DOMINANT cost, not by position in the command: burn
+ * agents chain aggressively (`pnpm test > log 2>&1; grep -E ... log`), and the
+ * suite is what that line costs, not the grep.
+ */
+export function classifyToolCall(name: string, args: string): ToolCategory {
+  const byName = TOOL_NAME_CATEGORY[name]
+  if (byName) return byName
+  if (name !== 'Bash') return 'other'
+  const normalized = normalizeCommandForClassification(args)
+  for (const [category, pattern] of BASH_PATTERNS) {
+    if (pattern.test(normalized)) return category
+  }
+  return 'other'
+}
+
+/** One category's slice of a burn. */
+export interface CategoryTiming {
+  calls: number
+  ms: number
+}
+export interface ToolTimingSummary {
+  totalMs: number
+  calls: number
+  /** Only categories that actually occurred, so the event payload stays small. */
+  byCategory: Partial<Record<ToolCategory, CategoryTiming>>
+}
+
+/**
+ * A single gap longer than this is not work — it is a sandbox rebuild, an idle
+ * stall, or a clock jump between iterations. Dropped rather than attributed,
+ * so one stall cannot swamp the breakdown it is supposed to explain.
+ */
+const MAX_ATTRIBUTABLE_GAP_MS = 20 * 60_000
+
+/**
+ * Accumulate where a burn's time goes, from the sandcastle stream alone.
+ *
+ * Method, and its honest limit: each event's timestamp closes the PREVIOUS
+ * event's interval. A gap after a `toolCall` is charged to that tool's
+ * category; a gap after `text` is charged to `model`. A tool gap therefore
+ * includes the model's latency in producing the next event, so per-call figures
+ * are upper bounds. That is fine for the job this does — comparing category
+ * SHARES across burns, before and after a change — and it needs no coupling to
+ * Claude Code's stream-json internals.
+ *
+ * Iteration boundaries reset the accumulator: a new iteration is a new
+ * container, and the setup hook between them is not agent time.
+ */
+export function createToolTimer(): {
+  onEvent(event: AgentStreamEvent): void
+  summary(): ToolTimingSummary
+} {
+  const byCategory: Partial<Record<ToolCategory, CategoryTiming>> = {}
+  let calls = 0
+  let totalMs = 0
+  let pending: { category: ToolCategory; at: number } | null = null
+  let iteration: number | null = null
+
+  const charge = (category: ToolCategory, ms: number): void => {
+    const slot = (byCategory[category] ??= { calls: 0, ms: 0 })
+    slot.ms += ms
+    totalMs += ms
+  }
+
+  const onEvent = (event: AgentStreamEvent): void => {
+    if (event.type === 'raw') return
+    const at = event.timestamp.getTime()
+
+    // A new container: whatever was open belongs to the dead iteration.
+    if (iteration !== null && event.iteration !== iteration) pending = null
+    iteration = event.iteration
+
+    if (pending) {
+      const gap = at - pending.at
+      if (gap > 0 && gap <= MAX_ATTRIBUTABLE_GAP_MS) charge(pending.category, gap)
+    }
+
+    if (event.type === 'toolCall') {
+      const category = classifyToolCall(event.name, event.formattedArgs ?? '')
+      const slot = (byCategory[category] ??= { calls: 0, ms: 0 })
+      slot.calls += 1
+      calls += 1
+      pending = { category, at }
+    } else {
+      pending = { category: 'model', at }
+    }
+  }
+
+  return { onEvent, summary: () => ({ totalMs, calls, byCategory }) }
+}
+
+/** A one-line `category share%` digest for the timing event's message. */
+export function formatTimingSummary(s: ToolTimingSummary): string {
+  if (s.totalMs === 0) return `${s.calls} tool call(s), no measurable time`
+  const parts = Object.entries(s.byCategory)
+    .sort((a, b) => (b[1]?.ms ?? 0) - (a[1]?.ms ?? 0))
+    .slice(0, 5)
+    .map(([c, t]) => `${c} ${Math.round(((t?.ms ?? 0) / s.totalMs) * 100)}%`)
+  return `${Math.round(s.totalMs / 60_000)}min across ${s.calls} tool call(s) — ${parts.join(', ')}`
+}
+
+// ---------------------------------------------------------------------------
 // Pure unit — run-result interpretation
 // ---------------------------------------------------------------------------
 
@@ -585,6 +945,46 @@ export function interpretRunResult(
     return { status: 'failed', error: `agent reported BLOCKED:\n${blockedContent.trim()}` }
   }
   return { status: 'failed', error: 'agent made no commits' }
+}
+
+/**
+ * The marker that an error is ABOUT a sandcastle burn worktree: its path. Every
+ * teardown failure quotes it (git's stderr names the dir it could not delete),
+ * and nothing in the agent's own failure modes does.
+ */
+const BURN_WORKTREE_PATH = /[\\/]\.sandcastle[\\/]worktrees[\\/]/i
+
+/** Phrases git/node produce when a directory removal is blocked, not when a run is. */
+const WORKTREE_REMOVAL_FAILURES: RegExp[] = [
+  /failed to delete/i,
+  /directory not empty|enotempty/i,
+  /unable to (unlink|delete)/i,
+  /is not a working tree/i,
+  /resource busy|ebusy|eperm|eacces/i,
+]
+
+/**
+ * Did `run()` throw from sandcastle's END-OF-RUN worktree teardown rather than
+ * from anything the agent did?
+ *
+ * Sandcastle removes the worktree in its scope's release step
+ * (`cleanupWorktree` → `git worktree remove --force`) and wires that with
+ * `Effect.orDie`, so a failure there becomes a defect and rejects `run()` —
+ * even though the agent had already finished and its commits were collected.
+ * On Windows this is a routine flake: the container is torn down first, but its
+ * bind mount can still hold a handle for a moment, and git reports
+ * `failed to delete '<path>': Directory not empty`.
+ *
+ * Recognizing it lets the burner land work that is already done instead of
+ * failing the ticket on a cleanup error (and burning a whole agent re-run to
+ * recover it). Callers MUST also require that the attempt's temp branch holds
+ * commits: creation-time worktree errors quote the same path, and only commits
+ * prove the agent actually got to work.
+ */
+export function isWorktreeTeardownError(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : typeof err === 'string' ? err : String(err)
+  if (!BURN_WORKTREE_PATH.test(msg)) return false
+  return WORKTREE_REMOVAL_FAILURES.some((p) => p.test(msg))
 }
 
 /** Heuristic: did `run()` throw because a branch merge conflicted? */
@@ -728,6 +1128,107 @@ export function createSerialQueue(): <T>(task: () => Promise<T>) => Promise<T> {
     // Keep the chain alive past a rejection; the submitter still sees it via `next`.
     tail = next.catch(() => undefined)
     return next
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Pure unit — the landing loop (merge → resolve conflict with an agent → merge)
+// ---------------------------------------------------------------------------
+
+/** Where a ticket's branch ended up after the landing loop gave up or won. */
+export type LandOutcome =
+  /** Merged into the feature branch. `branch` is what actually landed. */
+  | { status: 'landed'; branch: string }
+  /** Still conflicting after the resolver budget ran out (or with it disabled). */
+  | { status: 'conflict'; branch: string; files: string[]; error: string }
+  /** Landing failed for a non-conflict reason (lock contention, fs hiccup). */
+  | { status: 'failed'; branch: string; error: string }
+
+/** What one resolver pass produced: the best tip to keep, and whether it merged. */
+export interface ResolveAttemptResult {
+  ok: boolean
+  /**
+   * The branch to carry forward — the resolver's own branch when it committed
+   * anything, else the branch it was given. Always the tip holding the most
+   * work, so a failed resolve still never loses commits.
+   */
+  branch: string
+  error?: string
+}
+
+export interface LandDeps {
+  /** Merge `branch` into the feature branch (serialized through the run's queue). */
+  merge(branch: string): Promise<TempBranchMergeResult>
+  /** Run a resolver agent that merges the feature branch INTO `branch`. */
+  resolve(input: {
+    branch: string
+    files: string[]
+    attempt: number
+    maxAttempts: number
+  }): Promise<ResolveAttemptResult>
+  /** Resolver passes allowed per landing (`config.burnConflictAttempts`; 0 = off). */
+  maxResolveAttempts: number
+  /** Event sink (the caller tags events with the ticket id). */
+  emit(e: { type: string; message: string; data?: unknown }): void
+  /** Human label for messages, e.g. `ticket 3`. */
+  label: string
+  /** The branch being landed on, for messages. */
+  featureBranch: string
+}
+
+/**
+ * Land a ticket's branch, resolving landing conflicts in-loop instead of handing
+ * the human a git command.
+ *
+ * A conflict here is the NORMAL shape of burn concurrency — a sibling ticket
+ * landed first and touched the same files — so it is treated as a step in the
+ * landing, not as a ticket failure. On conflict we hand the branch to a resolver
+ * agent which merges the feature branch IN and resolves there (see
+ * `resolve-conflict.md`); the feature branch is never left mid-merge, and the
+ * next `merge` is a fast-forward. The loop repeats only when the feature tip
+ * moved again while the resolver worked, and is bounded by `maxResolveAttempts`
+ * — after which the conflict is reported for a human, with the branch preserved.
+ *
+ * The resolver deliberately runs OUTSIDE the caller's serial merge queue: it
+ * takes agent-minutes, and holding the queue would stall every other lane's
+ * landing behind one conflicted ticket.
+ */
+export async function landWithResolve(branch: string, deps: LandDeps): Promise<LandOutcome> {
+  let current = branch
+  for (let attempt = 1; ; attempt++) {
+    const merge = await deps.merge(current)
+    if (merge.ok) return { status: 'landed', branch: current }
+
+    const detail = merge.error ?? 'merge failed'
+    if (!merge.conflict) return { status: 'failed', branch: current, error: detail }
+
+    const files = merge.files ?? []
+    if (attempt > deps.maxResolveAttempts) {
+      return { status: 'conflict', branch: current, files, error: detail }
+    }
+
+    const where = files.length > 0 ? `${files.length} file(s)` : 'the merge'
+    deps.emit({
+      type: 'merge.conflict.resolving',
+      message: `${deps.label}: conflicts with ${deps.featureBranch} on ${where} — resolving with an agent (pass ${attempt}/${deps.maxResolveAttempts})`,
+      data: { branch: current, files, attempt, maxAttempts: deps.maxResolveAttempts },
+    })
+
+    const resolved = await deps.resolve({
+      branch: current,
+      files,
+      attempt,
+      maxAttempts: deps.maxResolveAttempts,
+    })
+    current = resolved.branch
+    if (!resolved.ok) {
+      return { status: 'conflict', branch: current, files, error: resolved.error ?? detail }
+    }
+    deps.emit({
+      type: 'merge.conflict.resolved',
+      message: `${deps.label}: conflict resolved on ${current} — landing`,
+      data: { branch: current, files, attempt },
+    })
   }
 }
 
@@ -956,8 +1457,17 @@ export async function burnRun(
  * `RUNCASTLE_SKILLS_DIR` in a published install — issue #51).
  */
 export function burnerTemplatePath(): string {
+  return burnerAssetPath('implement-ticket.md')
+}
+
+/** Absolute path to the conflict-resolver prompt template (same skills root). */
+export function resolverTemplatePath(): string {
+  return burnerAssetPath('resolve-conflict.md')
+}
+
+function burnerAssetPath(file: string): string {
   const here = dirname(fileURLToPath(import.meta.url))
-  return join(resolveSkillsRoot(here), 'burner', 'implement-ticket.md')
+  return join(resolveSkillsRoot(here), 'burner', file)
 }
 
 /** Read `docs/features/<slug>/*.md` from the talk worktree, or a skip note. */
@@ -1046,12 +1556,16 @@ export function buildBurnAgent(
  * volume-label/userns flags of its own. `mounts` (package-manager cache dirs)
  * apply to the container providers only — noSandbox runs on the host, where the
  * real cache is already in place.
+ *
+ * `config.burnCpus`, when set, becomes `--cpus` on both container providers: at
+ * width N every container otherwise sees the host's full core count and sizes
+ * its install/test worker pools from it, oversubscribing the box N-fold. There
+ * is no memory equivalent — sandcastle's provider options do not expose
+ * `--memory` (see the `burnCpus` config doc for why that is the right call
+ * anyway). noSandbox ignores it: no container, nothing to constrain.
  */
 export function selectSandbox(config: RuncastleConfig, mounts: readonly CacheMount[] = []) {
-  const imageOpts = {
-    imageName: resolveSandboxImage(config),
-    ...(mounts.length > 0 ? { mounts } : {}),
-  }
+  const imageOpts = buildSandboxOptions(config, mounts)
   switch (config.sandbox) {
     case 'docker':
       return docker(imageOpts)
@@ -1059,6 +1573,23 @@ export function selectSandbox(config: RuncastleConfig, mounts: readonly CacheMou
       return podman(imageOpts)
     default:
       return noSandbox()
+  }
+}
+
+/**
+ * The option object handed to the docker/podman providers — split out as a pure
+ * unit because the providers close over their options and expose nothing, so
+ * this is the only place the wiring is observable to a test. Optional keys are
+ * omitted rather than set to `undefined` so a provider's own defaults apply.
+ */
+export function buildSandboxOptions(
+  config: Pick<RuncastleConfig, 'sandboxImage' | 'burnCpus'>,
+  mounts: readonly CacheMount[] = [],
+): { imageName: string; mounts?: readonly CacheMount[]; cpus?: number } {
+  return {
+    imageName: resolveSandboxImage(config),
+    ...(mounts.length > 0 ? { mounts } : {}),
+    ...(config.burnCpus !== undefined ? { cpus: config.burnCpus } : {}),
   }
 }
 
@@ -1076,10 +1607,15 @@ const SETUP_HOOK_TIMEOUT_MS = 15 * 60_000
  * `feature/<slug>`, throttled stream forwarding, abort wiring), interprets
  * commits/BLOCKED.md, then lands the temp branch on the feature branch through
  * `land` — the per-run serial merge queue, so concurrent tickets never merge at
- * once. A landing conflict (parallel tickets touched the same files) fails the
- * ticket with `merge.conflict.needs-human`, preserving the temp branch for
- * manual recovery. Aborts of the RUN are rethrown; a per-ticket stop
- * (`stopTicketRun`) fails only this ticket.
+ * once. Aborts of the RUN are rethrown; a per-ticket stop (`stopTicketRun`)
+ * fails only this ticket.
+ *
+ * Landing conflicts (parallel tickets touched the same files) are resolved
+ * in-loop by a second agent rather than failing the ticket — see
+ * {@link landWithResolve}. Only when its budget runs out does the ticket fail,
+ * and it then carries `attemptBranch` + `conflictFiles`, which is exactly the
+ * state that makes the NEXT burn of this ticket (Retry, or a whole-feature
+ * re-burn) skip implementation and go straight back to resolving.
  *
  * Robustness (attempt chaining): a transient infrastructure death (API stream
  * drop, network, overload, idle timeout — see `classifyTicketRunError`) does
@@ -1113,13 +1649,31 @@ async function realExecuteTicketRun(
   // in-sandbox this write raced N containers on the shared `config.lock`.
   if (workspaceMode === 'isolated') await ensureIsolatedPushTarget()
 
-  const template = readFileSync(burnerTemplatePath(), 'utf8')
-  const basePrompt = renderTicketPrompt(template, {
-    TICKET_JSON: buildTicketJson(ticket),
-    FEATURE_BRIEF: buildFeatureBrief(feature),
-    DOCS_DIGEST: readDocsDigestFromDisk(project.id, feature.slug),
+  // Shared by both prompts: a resolver spawned after the fact gets the SAME
+  // ticket + feature + docs context the implementer had (the whole point — it
+  // must resolve by intent, which only the ticket and the feature docs carry).
+  const ticketJson = buildTicketJson(ticket)
+  const featureBrief = buildFeatureBrief(feature)
+  const docsDigest = readDocsDigestFromDisk(project.id, feature.slug)
+  const workspaceNotes = buildWorkspaceNotes(workspaceMode)
+  // The prepared repo facts (verify commands, test baseline, install command),
+  // resolved project-first. They describe THIS repo, so a project's own value —
+  // normally established by a preparation run — always wins over the machine
+  // -wide config value, which survives only as the inherited fallback.
+  const prepared = resolvePreparedSettings(config, project)
+
+  // Also shared: the resolver runs the same suites on the merge result, and
+  // guessed filter names / re-derived baselines cost it exactly what they cost
+  // the implementer.
+  const verifyNotes = buildVerifyNotes(prepared)
+
+  const basePrompt = renderTicketPrompt(readFileSync(burnerTemplatePath(), 'utf8'), {
+    TICKET_JSON: ticketJson,
+    FEATURE_BRIEF: featureBrief,
+    DOCS_DIGEST: docsDigest,
     COMMIT_CONVENTION: `ticket(${ticket.seq}): <summary>`,
-    WORKSPACE_NOTES: buildWorkspaceNotes(workspaceMode),
+    VERIFY_NOTES: verifyNotes,
+    WORKSPACE_NOTES: workspaceNotes,
   })
 
   // Dependency setup: detect the repo's install command (or take the config
@@ -1132,7 +1686,7 @@ async function realExecuteTicketRun(
   // because a mounted store cannot hardlink — see PM_CACHE_SANDBOX_PATHS.
   const toolchain = readRepoToolchain(project.repoPath)
   const pm = detectPackageManager(toolchain)
-  const setupCommand = resolveSetupCommand(toolchain, config.setupCommand)
+  const setupCommand = resolveSetupCommand(toolchain, prepared.setupCommand)
   const mounts: CacheMount[] = []
   if (config.sandbox !== 'noSandbox' && pm) {
     const mount = cacheMountFor(pm, burnCacheDir(pm))
@@ -1141,6 +1695,17 @@ async function realExecuteTicketRun(
       mounts.push(mount)
     }
   }
+  // The burn guard (PreToolUse deny hook) is installed by the same
+  // onSandboxReady hook that installs deps, so it is armed before the agent's
+  // first tool call. Container sandboxes only: under `noSandbox` the agent runs
+  // as the human on the host, where writing `~/.claude/settings.json` would
+  // clobber their own. In mounted mode with nothing to install this makes the
+  // hook run where it previously did not — intended.
+  const guardInstall =
+    config.burnGuard && config.sandbox !== 'noSandbox' ? buildGuardInstallCommand() : undefined
+  const withGuard = (setup: string | undefined): string | undefined =>
+    guardInstall === undefined ? setup : setup ? `${guardInstall} && ${setup}` : guardInstall
+
   mkdirSync(logsDir(), { recursive: true })
   const logFilePath = join(logsDir(), `burn-${feature.id}-${ticket.seq}.log`)
   const throttle = createStreamThrottle((e) => ctx.emitEvent({ ...e, ticketId: ticket.id }))
@@ -1150,8 +1715,15 @@ async function realExecuteTicketRun(
   // style view in the UI polls it). begin() resets any previous attempt's
   // transcript so a re-burn starts clean.
   beginTranscript(ticket.id)
+  // Third consumer: the timing accumulator. Burn logs carry no per-line
+  // timestamps, so before this the only way to learn where a ticket's hours
+  // went was to reconstruct it forensically from captured sessions. The
+  // sandcastle stream already carries a timestamp on every event; this just
+  // stops throwing it away.
+  const timer = createToolTimer()
   const onStreamEvent = (event: AgentStreamEvent): void => {
     throttle.onEvent(event)
+    timer.onEvent(event)
     if (event.type === 'text') {
       appendTranscript(ticket.id, { kind: 'text', text: event.message })
     } else if (event.type === 'toolCall') {
@@ -1171,13 +1743,25 @@ async function realExecuteTicketRun(
 
   const maxAttempts = Math.max(1, config.burnAttempts)
 
+  // Two different resumes, distinguished by `conflictFiles`:
+  //
+  // - CONFLICT resume — the ticket was implemented and its branch is complete;
+  //   it only failed to LAND. Re-running the implementer would be worse than
+  //   useless (it would find the ticket already done, commit nothing, and hit
+  //   the same conflict), so this path skips implementation entirely and goes
+  //   straight back into the landing loop, which re-detects the conflict
+  //   against the CURRENT tip and hands it to a resolver.
+  // - ATTEMPT resume (below) — the implementer itself was interrupted, so the
+  //   next attempt continues the unfinished work.
+  const conflictResume = ticket.conflictFiles !== undefined && !!ticket.attemptBranch
+
   // Cross-run resume: an earlier run (or a stopped/exhausted attempt chain)
   // left committed work on `ticket.attemptBranch` — base the first attempt on
   // it and tell the agent to continue. A stale pointer (branch deleted, or
   // everything already landed) is silently ignored.
   let baseBranch = feature.branch
   let retryNotes: string | undefined
-  if (ticket.attemptBranch) {
+  if (ticket.attemptBranch && !conflictResume) {
     const preserved = await branchCommitsAhead(project.repoPath, feature.branch, ticket.attemptBranch)
     if (preserved.length > 0) {
       baseBranch = ticket.attemptBranch
@@ -1199,7 +1783,213 @@ async function realExecuteTicketRun(
     ctx.updateTicket(ticket.id, { attemptBranch: branch })
   }
 
+  /**
+   * One conflict-resolver pass: an agent on a fresh branch off `branch` that
+   * merges the feature branch IN and resolves. Same sandbox, model, workspace
+   * mode and stream wiring as the implementer — and the same ticket/feature/docs
+   * context, plus the conflicting paths and the sibling commits it is
+   * reconciling against.
+   *
+   * Success is verified against git, not against what the agent says: the
+   * feature branch must be fully contained in the resulting branch (nothing
+   * reachable from it that the branch lacks). An agent that declared victory
+   * without completing the merge therefore fails the pass, and the branch is
+   * still carried forward whenever it holds commits — a failed resolve never
+   * loses work.
+   */
+  const runResolver = async (input: {
+    branch: string
+    files: string[]
+    attempt: number
+    maxAttempts: number
+  }): Promise<ResolveAttemptResult> => {
+    const resolveBranch = ticketBranchName(feature.slug, ticket.seq, newId('r').slice(2, 10))
+    const otherSide = await commitSummaries(project.repoPath, input.branch, feature.branch)
+    const prompt = renderTemplate(readFileSync(resolverTemplatePath(), 'utf8'), {
+      TICKET_JSON: ticketJson,
+      FEATURE_BRIEF: featureBrief,
+      DOCS_DIGEST: docsDigest,
+      WORKSPACE_NOTES: workspaceNotes,
+      VERIFY_NOTES: verifyNotes,
+      FEATURE_BRANCH: feature.branch,
+      CONFLICT_FILES: buildConflictFilesBlock(input.files),
+      OTHER_SIDE: buildOtherSideBlock(otherSide),
+      MERGE_COMMAND: resolveMergeCommand(workspaceMode, feature.branch),
+    })
+    const hookCommand = withGuard(
+      workspaceMode === 'isolated'
+        ? buildIsolatedSetupCommand(resolveBranch, setupCommand, pm)
+        : setupCommand,
+    )
+
+    appendTranscript(ticket.id, {
+      kind: 'text',
+      text: `\n— landing conflict on ${feature.branch}; resolver pass ${input.attempt}/${input.maxAttempts} —\n`,
+    })
+
+    /** The tip to carry forward: the resolver's branch iff it committed. */
+    const bestTip = async (): Promise<string> => {
+      const made = await branchCommitsAhead(project.repoPath, input.branch, resolveBranch)
+      return made.length > 0 ? resolveBranch : input.branch
+    }
+
+    let result: RunResult | undefined
+    try {
+      result = await run({
+        agent: buildBurnAgent(config, token, model),
+        sandbox: selectSandbox(config, mounts),
+        cwd: project.repoPath,
+        prompt,
+        branchStrategy: { type: 'branch', branch: resolveBranch, baseBranch: input.branch },
+        signal,
+        name: `ticket-${ticket.seq}-resolve`,
+        maxIterations: config.burnMaxIterations,
+        ...(hookCommand
+          ? {
+              hooks: {
+                sandbox: {
+                  onSandboxReady: [{ command: hookCommand, timeoutMs: SETUP_HOOK_TIMEOUT_MS }],
+                },
+              },
+            }
+          : {}),
+        logging: { type: 'file', path: logFilePath, onAgentStreamEvent: onStreamEvent },
+      })
+    } catch (err) {
+      if (ctx.signal.aborted) throw err // run cancelled — the runner finalizes it
+      const tip = await bestTip()
+      // Teardown-only failure (see `isWorktreeTeardownError`) on a branch that
+      // holds the resolver's commits: the merge it was asked to do either
+      // happened or did not, and the verification below reads that off git, not
+      // off `result`. Fall through instead of reporting a failed pass.
+      const teardownOnly =
+        !ticketAbort.signal.aborted && isWorktreeTeardownError(err) && tip === resolveBranch
+      if (!teardownOnly) {
+        return {
+          ok: false,
+          branch: tip,
+          error: ticketAbort.signal.aborted
+            ? 'stopped by user during conflict resolution'
+            : errorHeadline(err instanceof Error ? err.message : String(err)),
+        }
+      }
+      await cleanupBurnWorktree(project.repoPath, resolveBranch)
+    }
+
+    const blocked = readBlockedFile([result?.preservedWorktreePath, project.repoPath])
+    if (blocked !== undefined && blocked.trim().length > 0) {
+      return {
+        ok: false,
+        branch: await bestTip(),
+        error: `resolver reported BLOCKED:\n${blocked.trim()}`,
+      }
+    }
+    const missing = await branchCommitsAhead(project.repoPath, resolveBranch, feature.branch)
+    if (missing.length > 0) {
+      return {
+        ok: false,
+        branch: await bestTip(),
+        error: `resolver did not complete the merge — ${missing.length} commit(s) of ${feature.branch} are still missing from the branch`,
+      }
+    }
+    return { ok: true, branch: resolveBranch }
+  }
+
+  /**
+   * The commits that landed (snapshotted inside the merge queue, immediately
+   * before the merge that consumes them — afterwards they are no longer "ahead"
+   * of the feature branch).
+   */
+  let landedCommits: string[] = []
+
+  const landDeps: LandDeps = {
+    merge: (branch) =>
+      land(async () => {
+        const ahead = await branchCommitsAhead(project.repoPath, feature.branch, branch)
+        const res = await mergeTempBranch(project.repoPath, feature.branch, branch)
+        if (res.ok) landedCommits = ahead
+        return res
+      }),
+    resolve: runResolver,
+    maxResolveAttempts: Math.max(0, config.burnConflictAttempts),
+    emit: (e) => ctx.emitEvent({ ...e, ticketId: ticket.id }),
+    label: `ticket ${ticket.seq}`,
+    featureBranch: feature.branch,
+  }
+
+  /**
+   * Land `branch`, resolving conflicts in-loop, and map the result onto the
+   * ticket outcome + the state the next burn needs. Shared by the normal path
+   * and the conflict-resume path, so a re-landing behaves identically however
+   * the ticket got here.
+   */
+  const landChain = async (branch: string, commits: string[]): Promise<TicketOutcome> => {
+    const landing = await landWithResolve(branch, landDeps)
+    if (landing.status === 'landed') {
+      // Landed — nothing is pending on a branch any more, so both resume
+      // pointers must go or the next burn would resume an already-merged chain.
+      ctx.updateTicket(ticket.id, { attemptBranch: null, conflictFiles: null })
+      return { status: 'done', commits: landedCommits.length > 0 ? landedCommits : commits }
+    }
+
+    preserveChain(landing.branch)
+    if (landing.status === 'conflict') {
+      // The state that makes Retry resolve instead of re-implement, and the
+      // file list the run lane's conflict card renders.
+      ctx.updateTicket(ticket.id, { conflictFiles: landing.files })
+      const where =
+        landing.files.length > 0
+          ? ` on ${landing.files.length} file(s): ${landing.files.join(', ')}`
+          : ''
+      // Never claim the resolver failed when it was never allowed to run.
+      const why =
+        landDeps.maxResolveAttempts === 0
+          ? `Automatic resolution is off (burnConflictAttempts = 0): ${errorHeadline(landing.error)}`
+          : `The automatic resolver could not finish: ${errorHeadline(landing.error)}`
+      return {
+        status: 'failed',
+        error: `ticket ${ticket.seq} is implemented on ${landing.branch} but conflicts with ${feature.branch}${where}. ${why}`,
+        event: {
+          type: 'merge.conflict.needs-human',
+          message: `ticket ${ticket.seq}: could not auto-resolve the conflict with ${feature.branch} — resolve it from the run lane`,
+        },
+      }
+    }
+    // Non-conflict landing failure (lock contention, fs hiccup) — the chain is
+    // preserved, so a later retry just re-lands it.
+    return {
+      status: 'failed',
+      error: `ticket ${ticket.seq} committed to ${landing.branch} but landing on ${feature.branch} failed: ${errorHeadline(landing.error)} — the branch is preserved for manual recovery`,
+    }
+  }
+
   try {
+    // CONFLICT resume: the work exists and is complete; only the landing is
+    // outstanding. Skip the implementer entirely.
+    if (conflictResume) {
+      const branch = ticket.attemptBranch as string
+      const pending = await branchCommitsAhead(project.repoPath, feature.branch, branch)
+      if (pending.length === 0) {
+        // Nothing left to land — the human resolved and merged it by hand
+        // between runs. Record that rather than burning an agent on a no-op.
+        ctx.updateTicket(ticket.id, { attemptBranch: null, conflictFiles: null })
+        ctx.emitEvent({
+          type: 'merge.conflict.resolved',
+          message: `ticket ${ticket.seq}: ${branch} is already merged into ${feature.branch} — nothing left to land`,
+          ticketId: ticket.id,
+          data: { branch },
+        })
+        return { status: 'done', commits: ticket.commits }
+      }
+      ctx.emitEvent({
+        type: 'ticket.resuming',
+        message: `ticket ${ticket.seq}: implemented on ${branch} — retrying the landing (${pending.length} commit(s))`,
+        ticketId: ticket.id,
+        data: { attemptBranch: branch, preservedCommits: pending.length, conflict: true },
+      })
+      return await landChain(branch, pending)
+    }
+
     let result: RunResult | undefined
     let tempBranch = ''
     for (let attempt = 1; ; attempt++) {
@@ -1210,10 +2000,11 @@ async function realExecuteTicketRun(
       // wiring is needed even with nothing to install) and embeds THIS
       // attempt's temp branch; mounted mode keeps the hook only when there is
       // an install to run.
-      const hookCommand =
+      const hookCommand = withGuard(
         workspaceMode === 'isolated'
           ? buildIsolatedSetupCommand(tempBranch, setupCommand, pm)
-          : setupCommand
+          : setupCommand,
+      )
       if (hookCommand && attempt === 1) {
         ctx.emitEvent({
           type: 'burn.setup',
@@ -1237,10 +2028,18 @@ async function realExecuteTicketRun(
         branchStrategy: { type: 'branch', branch: tempBranch, baseBranch },
         signal,
         name: `ticket-${ticket.seq}`,
-        // Each iteration is a fresh `claude --print` against the same worktree
-        // (and the same warm container, so the setup hook runs once). The
-        // prompt's `<promise>COMPLETE</promise>` signal stops the loop early on
-        // success; the headroom exists so a turn that ends prematurely (idle
+        // Each iteration is a fresh `claude --print` against the same worktree.
+        // It is NOT a cheap resume: sandcastle calls `withSandbox` INSIDE its
+        // iteration loop, so every iteration builds a new container and re-runs
+        // `onSandboxReady` (measured across real burns: 70–507s of dependency
+        // install per iteration, ~2.5min average), and the fresh agent re-reads
+        // from scratch everything the dead one had already read. Treat an extra
+        // iteration as ~10 minutes of pure overhead, not a free retry — which is
+        // why the burner prompt spends so much of its budget on ending turns
+        // only when done and committing every green slice.
+        //
+        // The prompt's `<promise>COMPLETE</promise>` signal stops the loop early
+        // on success; the headroom exists so a turn that ends prematurely (idle
         // wait, context cut) resumes instead of failing the ticket with zero
         // commits. Attempts (this loop) are one level up: a whole run() dying.
         maxIterations: config.burnMaxIterations,
@@ -1278,13 +2077,44 @@ async function realExecuteTicketRun(
             },
           }
         }
+        // Sandcastle's end-of-run worktree teardown failed (Windows: a handle
+        // still open in the bind mount of the container it just removed). That
+        // is a defect inside its release step, so `run()` rejects AFTER the
+        // agent finished and its commits were collected — and the salvaged
+        // commits prove the agent got there. Failing the ticket over a cleanup
+        // error would discard finished work and spend another whole agent run
+        // rediscovering it, so land the chain and tidy up best-effort instead.
+        if (isWorktreeTeardownError(err)) {
+          const removed = await cleanupBurnWorktree(project.repoPath, tempBranch)
+          if (salvaged.length > 0) {
+            ctx.emitEvent({
+              type: 'burn.worktree.teardown-failed',
+              message: `ticket ${ticket.seq}: agent finished but sandcastle could not remove its worktree (${errorHeadline(msg)})${removed ? ' — cleaned up' : ' — left on disk'}; landing the ${salvaged.length} commit(s) anyway`,
+              ticketId: ticket.id,
+              data: { branch: tempBranch, error: msg, cleanedUp: removed },
+            })
+            return await landChain(tempBranch, salvaged)
+          }
+          // No commits to salvage — the failure says nothing about the ticket
+          // either way, so fall through to the normal paths (retry/fatal); the
+          // leftover dir is cleaned up regardless.
+        }
         if (isMergeConflictError(err)) {
+          // Sandcastle itself hit a branch conflict setting the run up, so we
+          // never reached our own landing loop and have no file list. Record
+          // the conflict shape anyway (empty list) whenever commits survived:
+          // that is what routes the next burn through the resolver, which
+          // re-derives the conflicting paths from git.
+          if (salvaged.length > 0) {
+            preserveChain(tempBranch)
+            ctx.updateTicket(ticket.id, { conflictFiles: [] })
+          }
           return {
             status: 'failed',
             error: `merge conflict landing ticket ${ticket.seq} on ${feature.branch}: ${msg}`,
             event: {
               type: 'merge.conflict.needs-human',
-              message: `ticket ${ticket.seq}: merge conflict on ${feature.branch} — resolve manually per the error, then re-burn`,
+              message: `ticket ${ticket.seq}: merge conflict on ${feature.branch}${salvaged.length > 0 ? ' — resolve it from the run lane' : ' — resolve manually per the error, then re-burn'}`,
             },
           }
         }
@@ -1345,38 +2175,26 @@ async function realExecuteTicketRun(
     }
 
     // Land the ticket's commits on the feature branch — serialized per run, so
-    // two tickets finishing together never race the ref/checkout. The scheduler
+    // two tickets finishing together never race the ref/checkout, and resolving
+    // conflicts in-loop rather than dumping them on the human. The scheduler
     // only marks a ticket done (and readies its dependents) after this resolves,
     // so dependents always fork a tip that includes their blockers' work.
-    const merge = await land(() => mergeTempBranch(project.repoPath, feature.branch, tempBranch))
-    if (!merge.ok) {
-      const detail = merge.error ?? 'merge failed'
-      if (merge.conflict) {
-        return {
-          status: 'failed',
-          error: `ticket ${ticket.seq} committed to ${tempBranch} but landing on ${feature.branch} hit a conflict: ${detail}`,
-          event: {
-            type: 'merge.conflict.needs-human',
-            message: `ticket ${ticket.seq}: ${tempBranch} conflicts with ${feature.branch} — merge it manually (git merge ${tempBranch}; resolve; git branch -D ${tempBranch}), then re-burn`,
-          },
-        }
-      }
-      // Non-conflict landing failure (lock contention, fs hiccup) — keep the
-      // chain on the ticket so a later retry just re-lands it.
-      preserveChain(tempBranch)
-      return {
-        status: 'failed',
-        error: `ticket ${ticket.seq} committed to ${tempBranch} but landing on ${feature.branch} failed: ${errorHeadline(detail)} — the branch is preserved for manual recovery`,
-      }
-    }
-
-    // Landed — the chain is merged; a stale resume pointer must not survive.
-    if (ticket.attemptBranch) ctx.updateTicket(ticket.id, { attemptBranch: null })
-    return outcome
+    return await landChain(tempBranch, outcome.commits)
   } finally {
     activeTicketAborts.delete(ticket.id)
     throttle.flush()
     endTranscript(ticket.id)
+    // Emitted on EVERY exit path — a ticket that failed or was stopped is
+    // exactly the one whose time breakdown you want.
+    const timing = timer.summary()
+    if (timing.calls > 0) {
+      ctx.emitEvent({
+        type: 'ticket.timing',
+        message: `ticket ${ticket.seq} spent ${formatTimingSummary(timing)}`,
+        ticketId: ticket.id,
+        data: timing,
+      })
+    }
   }
 }
 
@@ -1408,7 +2226,7 @@ function resolveBurnDeps(ctx: WorkflowCtx): BurnDeps {
 }
 
 /** Read CLAUDE_CODE_OAUTH_TOKEN from the .env file, falling back to process env. */
-function readTokenFromEnvFile(path: string): string | undefined {
+export function readTokenFromEnvFile(path: string): string | undefined {
   let fromFile: string | undefined
   if (existsSync(path)) {
     try {

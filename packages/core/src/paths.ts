@@ -1,5 +1,5 @@
 import { homedir } from 'node:os'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 
 /**
  * Filesystem paths for runcastle's data dir (`~/.runcastle/`). These are the
@@ -8,10 +8,55 @@ import { join } from 'node:path'
  *
  * Repo-relative paths (`featureDocsRel`) intentionally use forward slashes:
  * they are logical git/repo paths, not host filesystem paths.
+ *
+ * Everything below derives from {@link dataDir}, so redirecting that one
+ * function relocates the db, config, env file, logs, session artifacts, talk
+ * worktrees and caches together — which is exactly what `bun run dev` does to
+ * keep a contributor's experiments off their real install (see
+ * {@link devDataDir}). Every path is computed lazily inside its function (never
+ * captured at module load), so setting the env var before the first *call* is
+ * enough — module import order does not matter.
  */
 
-export function dataDir(): string {
+/** Data dir a published `runcastle` install owns: `~/.runcastle/`. */
+export function prodDataDir(): string {
   return join(homedir(), '.runcastle')
+}
+
+/**
+ * Data dir `bun run dev` runs against: `~/.runcastle-dev/`. A separate tree —
+ * own db, own config, own `.env`, own worktrees — so wiping projects or forcing
+ * phases while testing can never touch the real install. `RUNCASTLE_DEV_DATA_DIR`
+ * overrides the location (the dev tooling still refuses to point it at
+ * {@link prodDataDir}).
+ */
+export function devDataDir(): string {
+  const override = process.env.RUNCASTLE_DEV_DATA_DIR
+  return override ? resolve(override) : join(homedir(), '.runcastle-dev')
+}
+
+/**
+ * The active data dir. `RUNCASTLE_DATA_DIR` wins when set — `scripts/dev.ts`
+ * sets it to {@link devDataDir} for the dev server; the published bin never
+ * sets it, so a real install always lands on {@link prodDataDir}.
+ */
+export function dataDir(): string {
+  const override = process.env.RUNCASTLE_DATA_DIR
+  return override ? resolve(override) : prodDataDir()
+}
+
+/**
+ * Compare two data-dir paths for identity, folding the case- and
+ * slash-insensitivity Windows has and POSIX does not. Used by the dev tooling's
+ * "never touch the real install" guard, where a false negative would be
+ * destructive.
+ */
+export function sameDataDir(a: string, b: string): boolean {
+  const canon = (p: string): string => {
+    const abs = resolve(p).replace(/[\\/]+$/, '')
+    return process.platform === 'win32' ? abs.toLowerCase().replace(/\//g, '\\') : abs
+  }
+  return canon(a) === canon(b)
 }
 
 export function dbPath(): string {
@@ -35,9 +80,14 @@ export function sessionDir(id: string): string {
   return join(dataDir(), 'sessions', id)
 }
 
+/** Every talk worktree of one project: `~/.runcastle/worktrees/<projectId>/`. */
+export function projectWorktreesDir(projectId: string): string {
+  return join(dataDir(), 'worktrees', projectId)
+}
+
 /** Talk worktree for a feature: `~/.runcastle/worktrees/<projectId>/<slug>/`. */
 export function worktreeDir(projectId: string, slug: string): string {
-  return join(dataDir(), 'worktrees', projectId, slug)
+  return join(projectWorktreesDir(projectId), slug)
 }
 
 /**

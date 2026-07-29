@@ -26,9 +26,10 @@ runcastle/
 ```
 
 - Package names: `@runcastle/core`, `@runcastle/server`, `@runcastle/skills`, `@runcastle/web`.
-- Root scripts: `bun run dev` (server + web concurrently), `bun run typecheck` (tsc -b or per-package `tsc --noEmit`), `bun run test` (vitest).
+- Root scripts: `bun run dev` (server + web concurrently), `bun run typecheck` (tsc -b or per-package `tsc --noEmit`), `bun run test` (vitest), `bun run dev:tool` (dev-only test-state surgery — `scripts/devtool.ts` over `packages/server/src/dev/`, unreachable from the published bundle).
 - Ports: server **4512**, web dev **4513** (vite `server.port`). Server URL: `http://localhost:4512`.
 - Data dir: `~/.runcastle/` → `runcastle.db`, `config.json`, `.env` (CLAUDE_CODE_OAUTH_TOKEN for sandboxed agents), `sessions/<sessionId>/` (launch artifacts), `worktrees/<projectId>/<slug>/` (talk worktrees), `logs/`.
+- Dev/prod split: `dataDir()` honours `RUNCASTLE_DATA_DIR`, and `scripts/dev.ts` points `bun run dev` at `~/.runcastle-dev/`. Everything else in `paths.ts` derives from `dataDir()`, so the two trees are fully independent; the published bin never sets the var. `GET /health` reports `{ ok, dataDir }` so a live server's tree is identifiable.
 
 ## 1. packages/core (file → exports)
 
@@ -115,10 +116,14 @@ Router `appRouter` in `trpc/router.ts`, context = `{ db, config }`. All inputs/o
 - `project.get(): Project | null`
 - `project.init({ repoPath: string }): Project` — validates it's a git repo; stores mainBranch. Per-project overrides (devCommand, model, sandbox) are set later via `settings.update({ projectId, key, value })` — `project.update` is retired (issue #46).
 - `project.branches({ projectId }): { current, mainBranch, branches: string[], remoteBranches: string[] }` — branches for the create-feature base picker (`feature/*` excluded); `current` is the main checkout's branch; `remoteBranches` are `origin/*` refs with no local twin (picking one materializes a local base — see §7 `resolveBaseBranch`).
+- `project.prepare({ projectId, refresh?, keys? }): { prepId, keys }` — start a preparation run (§14); returns immediately, progress arrives as project events
+- `project.cancelPrepare({ projectId }): { ok }`
+- `project.prep({ projectId }): { latest: PrepRun|null, running: boolean, pendingKeys: PreparedKey[], findings: ProjectFinding[] }` — the preparation surface the settings UI polls
 - `feature.create({ title, oneLiner, size, baseBranch? }): Feature` — slugify title; resolve `baseBranch` (default `mainBranch`) to a local branch (a remote pick materializes a local tracking branch); git branch `feature/<slug>` forked off it; scaffold docs; phase=`ideation`. Stores the resolved local base; the feature merges back into it at ship (not unconditionally main).
 - `feature.list(): FeatureListItem[]` — Feature + ticket counts + activeRun boolean
 - `feature.get({ id }): { feature, tickets, sessions, runs, docs: {relPath, title}[], gate: { next: GateDef|null, satisfied: boolean, reason?: string } }`
-- `feature.launchSession({ featureId, kind }): { sessionId }` (B1 behavior)
+- `feature.launchSession({ featureId, kind, kickoffLine? }): { sessionId }` (B1 behavior; `kickoffLine` replaces the per-kind opening briefing for one session)
+- `feature.resendKickoff({ sessionId }): { line: string }` — re-type that session's briefing into its terminal (ADR-0009; backs the session strip's **Send briefing** when delivery was never confirmed)
 - `feature.advance({ featureId }): Feature` — attempt gate → next phase (server-side check; error with reason if unsatisfied). Refuses G3 (tickets→implementation): that human "Burn" gate is crossed only by `feature.burn` or `overrideGate` (see C3).
 - `feature.overrideGate({ featureId, gate, reason }): Feature` — records override + advances (may cross any gate, incl. G3)
 - `feature.burn({ featureId }): { runId }` — G3, the ONLY plain-crossing of it: requires phase `tickets` + ≥1 ticket; sets phase `implementation`; `runner.startRun(...,'ticket-burner')`. Also accepts phase `implementation` with no active run (cancelled/crashed run) and restarts the burn without re-crossing a gate.
@@ -138,7 +143,8 @@ Router `appRouter` in `trpc/router.ts`, context = `{ db, config }`. All inputs/o
    - `settings.json` — hooks config (exact JSON shape per docs/research/CC-INTEGRATION-NOTES.md): SessionStart + UserPromptSubmit + SessionEnd, each `type: "command"`, command = `bun run <abs path to hook-client.ts> <event>`, timeout 10.
    - `mcp.json` — `{ "mcpServers": { "runcastle": { "type": "http", "url": "http://localhost:4512/mcp" } } }` (verify exact field names in research notes; if http-type needs headers for session identity, add `X-Runcastle-Session: <sessionId>`).
 3. Command (verify flags against research notes; `--append-system-prompt-file` fallback = inline `--append-system-prompt`):
-   `claude --settings "<dir>/settings.json" --mcp-config "<dir>/mcp.json" --strict-mcp-config --plugin-dir "<packs>/runcastle" --append-system-prompt-file "<dir>/system-prompt.md" --permission-mode acceptEdits`
+   `claude --settings "<dir>/settings.json" --mcp-config "<dir>/mcp.json" --plugin-dir "<packs>/runcastle" --append-system-prompt-file "<dir>/system-prompt.md" --permission-mode acceptEdits --model <resolved>`
+   `--strict-mcp-config` is appended only when `sessionMcp: 'runcastleOnly'` (default `inherit`). The flag means "ignore **all** other MCP configurations", which drops the human's own connections and their plugins' servers along with everything else — so the default keeps runcastle's server merged into the human's existing MCP set rather than replacing it.
 4. **Spawn:** the session runs in a server-owned embedded PTY (UI-SPEC §5, cross-platform — no `wt.exe`). `claude` is spawned with `cwd` = talk worktree and `RUNCASTLE_SESSION_ID` / `RUNCASTLE_SERVER_URL` inherited directly onto the process env; the PTY is registered by session id and streamed to the in-app xterm view over `/ws/terminal/:sessionId`. (The legacy `window` launch mode + its `wt.exe -w 0 nt … cmd /k` command line is removed — see CONTEXT.md decision 13.)
 5. `hook-client.ts` (runs inside session): reads stdin JSON, POSTs `{ event, env: { sessionId: RUNCASTLE_SESSION_ID }, payload }` to `RUNCASTLE_SERVER_URL/api/hooks/<event>`, prints the server's JSON response verbatim to stdout, exit 0. 3s fetch timeout; on any error print `{}` and exit 0 (never break the user's session).
 6. `/api/hooks/session-start`: mark session live, store `ccSessionId` + `transcriptPath` from payload; respond with the context-injection JSON (exact shape per research notes) carrying: feature brief digest + current phase + "call get_feature_context for detail".
@@ -163,7 +169,7 @@ Mounted at `POST /mcp` (Streamable HTTP; use @hono/mcp if STACK-NOTES confirms, 
 - `commitDocs(worktreePath, message)` — stage `docs/features/<slug>` only, commit if changes (used by MCP complete_phase to checkpoint knowledge)
 - Test drive (in-memory module state: `{ active?: { featureId, previousBranch } }`):
   - `start`: deny (with reason) if: main checkout dirty (`status --porcelain` non-empty) | another test drive active | feature has an active run. Else record current branch, `checkout feature/<slug>`, return ok. If `project.devCommand` set, spawn it in a drive-owned embedded PTY pane (registry id `drive:<featureId>` — a NON-session id, so session guards / resume never touch it) via a generalized shell/cmd shim; sniff the first localhost URL from its output for the "Open app" link (sticky per drive). Best-effort — a spawn failure never fails the drive.
-  - `stop`: checkout `previousBranch`, clear state, and kill the dev pane's whole process tree (POSIX process-group signal / Windows ConPTY teardown) so its port is freed with no orphan; the sniffed URL is cleared.
+  - `stop`: checkout `previousBranch`, clear state, and kill the dev pane's whole process tree (POSIX process-group signal / Windows ConPTY teardown) so its port is freed with no orphan; the sniffed URL is cleared. Two reports, because a stop is not symmetric with a start: `carriedChanges` names the uncommitted files git carries across the switch (`start` denies a dirty tree; `stop` cannot without stranding the user), and `dbDrift` fires when migration-looking paths differ between the two branches — the drive applied schema the dev database still holds, so the next `migrate` on `previousBranch` reports drift with nothing tying it back. Carries `project.dbResetCommand` when set; it is offered, NEVER run automatically (a dev database can hold hand-built state).
   - `activeDriveInfo()` → `{ featureId, branch, devPaneId?, devUrl? } | null` for the review-phase dev pane + Open app link (polled via `feature.driveInfo`).
 - `mergeFeature(project, feature)`: target = `feature.baseBranch ?? mainBranch` (a feature lands back on the branch it forked from). Deny if test drive active, checkout dirty, or target branch gone. Record the pre-merge branch → `checkout target` → `merge --no-ff feature/<slug>` → on conflict `merge --abort`, return `{ ok: false, conflict: true, target }` + event; on success return `{ ok: true, target }` (caller sets phase shipped, emits event). Restore the pre-merge branch after (best-effort; detached HEAD left as-is) so the shared checkout isn't silently parked on the base.
 
@@ -173,6 +179,7 @@ Consult docs/research/SANDCASTLE-NOTES.md for exact `run()` API (branch targetin
 
 - Topo-order tickets by `blockedBy`; detect cycles → fail run with event. Process queue with `concurrency = 1` (M1) but code shaped as a worker pool so M2 raises the constant.
 - Per ticket: status `burning` + event → render prompt from `packages/skills/burner/implement-ticket.md` template (placeholders: ticket JSON, feature brief, docs digest, commit convention `ticket(<seq>): <summary>`) → `sandcastle.run()` with: claudeCode(config.model), sandbox from config (`docker()` | `noSandbox()`), repo = project.repoPath, work on branch `feature/<slug>` (per sandcastle's branch strategy; commits must land on the feature branch) → on success: collect `result.commits`, status `done` + event; on failure/zero-commits: status `failed`, event with error, **continue** with other non-blocked tickets.
+- Landing (ADR-0007): each ticket lands through the run's serial merge queue. A landing conflict is NOT a ticket outcome — the burner runs a resolver agent (`packages/skills/burner/resolve-conflict.md`, same ticket + feature-docs context, plus the conflicting paths and the sibling commits) on the ticket's branch, which merges the feature branch IN and resolves there so the next merge fast-forwards; bounded by `config.burnConflictAttempts`. Only when that budget is spent does the ticket fail, carrying `attemptBranch` + `conflictFiles` — the state that makes the next burn of it resolve rather than re-implement.
 - Auth: load `~/.runcastle/.env` (CLAUDE_CODE_OAUTH_TOKEN) into the sandbox env per sandcastle's mechanism. If missing and sandbox=docker → fail fast with actionable event.
 - Run summary: `X/Y tickets done`. Succeeded iff all done. After run: server auto-advances to `review` if G4 satisfied.
 - The burner prompt embeds our forked implement+tdd+code-review discipline (single agent run per ticket does implement→self-review→fix→commit; M1 has no separate review run).
@@ -183,7 +190,7 @@ Plugin dir consumed via `--plugin-dir` (exact manifest format per CC-INTEGRATION
 
 - `ideate` (entry): orchestrates the unbroken ideation session: relentless grilling (fork of grilling/grill-with-docs) writing `docs/features/<slug>/decisions.md` incrementally → size branch: full → `/runcastle:spec` then `/runcastle:tickets`; collapsed → `/runcastle:tickets` directly. Calls `record_event` at milestones, `complete_phase` at each boundary, and ends after emit_tickets telling the user to review tickets in the runcastle UI and click Burn.
 - `spec` (fork of to-spec): writes `docs/features/<slug>/spec.md`, calls `complete_phase({phase:'spec'})`.
-- `tickets` (fork of to-tickets): tracer-bullet vertical slices, each sized to one fresh agent session, blockedBy edges by seq; calls `emit_tickets` (NOT files), then `complete_phase({phase:'tickets'})`.
+- `tickets` (fork of to-tickets): merge-by-default vertical slices, each sized to **fill** one fresh agent session (the per-ticket container + install + re-orientation is fixed overhead — ADR-0008 — so fine granularity lives in `acceptanceCriteria`, not in the ticket count), blockedBy edges by seq; calls `emit_tickets` (NOT files), then `complete_phase({phase:'tickets'})`.
 - `qa`: read-only helper for kind=qa sessions (answer questions from docs + code; may `record_event`; never advances phases).
 - `burner/implement-ticket.md`: NOT a skill — prompt template (see §8) embedding forked implement+tdd+code-review rules: pre-agreed seams from ticket, red-green per criterion, typecheck+tests before commit, conventional message.
 
@@ -296,3 +303,167 @@ tests), frontier derivation (blocked→freed on resolve AND on drop), claim
 transactionality (double-claim fails), auto-release on session end, G1
 conditional check both modes. Smoke extension: escalate → emit 2 waypoints
 (one blocking the other) → resolve both → converge gate satisfiable.
+
+## 14. Project preparation — `workflows/project-prep.ts` + `services/prep.ts`
+
+**Why.** `verifyCommands`, `knownFailures` and `setupCommand` sit empty on
+almost every install, and not because the form is unfriendly: they are
+*findings*, not preferences. Answering "which tests are already red on main"
+means running the suite; answering "how do I verify a change here" means knowing
+the workspace filter names. That is agent work, and today every burn agent pays
+it per ticket and throws it away (ADR-0008: two whole monorepo suite runs lost
+to guessing one filter name). Preparation pays it once, with evidence.
+
+**Prepared keys** (`PREPARED_KEYS`, core): `setupCommand`, `verifyCommands`,
+`knownFailures`, `devCommand`, `dbResetCommand`. Each is a column on `projects`;
+the first three also have a global config twin resolved `project ?? global` via
+`resolvePreparedSettings` (they describe a REPO, so a machine-wide value is
+wrong as soon as a second project is open). `dbResetCommand` is project-only.
+
+**Storage.** Values live in the project columns, so every existing reader —
+settings resolution, the burner, the launcher — is unchanged. `project_findings`
+(PK `project_id,key`) carries provenance only: `source` (`prep|human`),
+`evidence`, `established_at`, `established_sha`. `project_preps` is the run row
+(NOT `runs`: that is feature-scoped and its finalizer advances feature phases).
+
+**Rules.**
+- **Measured, not inferred.** The prompt requires the agent to RUN what it
+  proposes. Reading `package.json` would automate the same guess, earlier.
+- **Measured where it will be used.** Same sandbox image and setup command as
+  ticket agents get; a baseline from elsewhere is not comparable to theirs.
+  `devCommand`/`dbResetCommand` are the exceptions — they describe the human's
+  machine, so they are read from config and reported as *proposed, not run*.
+- **A human value is never overwritten.** No override flag exists. Clearing a
+  field drops its provenance and hands it back to preparation — the only way.
+  Re-checked at write-back, because a run takes minutes and a human may answer
+  a field mid-run.
+- **Staleness is measured.** Findings pin to the main-branch sha they were taken
+  at; the UI shows `rev-list <sha>..<main>` distance and flags past a threshold.
+  An uncomputable distance (rebased-away sha) reports *unknown*, never *fresh* —
+  a rotted baseline is worse than none, since agents trust it.
+- **Findings travel by commit.** The agent writes `.runcastle/prep.json` and
+  commits it to a throwaway `runcastle/prep/*` branch; the run reads it with
+  `git show` and deletes the branch. Nothing merges, nothing pollutes the repo,
+  and a dropped stream cannot lose a full suite run.
+
+**Lifecycle.** `autoPrepare` (global, default on) fires one run on a project's
+FIRST open, fire-and-forget so `project.open` returns immediately — the only
+consumer is a burn, several gates downstream. Everything after is an explicit
+`project.prepare`. One run per project at a time; boot reconciles `running` rows
+left by a dead server.
+
+## 15. Laps (ADR-0010)
+
+Iterative delivery: the pipeline loops until the human merges. One trip is a
+**lap**. From review, three verbs: **Fix** (promoted-note tickets burned via
+the existing review→implementation loop-back, same lap), **Rethink** (new lap,
+back to ideation), **Merge** (unchanged G5). No mode flag exists — a feature
+merged on lap 1 is the old linear flow verbatim. Self-contained amendments,
+same style as §13.
+
+### 15.1 Core amendments (§1)
+
+- `src/schemas.ts`:
+  - `Feature` gains `lap: number` (default 1).
+  - `Ticket` gains `lap: number` (stamped from `feature.lap` at store time;
+    `TicketInput` unchanged — sessions never choose the lap).
+  - `SessionKind` unchanged: the lap session is kind `revisit` (ADR-0010 §5).
+- `src/pipeline.ts`: second typed backward transition
+  `RETHINK_LOOP_BACK = { from: 'review', to: 'ideation' }` and
+  `rethinkPhase(feature): Phase | null` (mirror of `loopBackPhase`).
+  `nextPhase`/`nextGate` unchanged. Gate checks: `tickets-approved` (G3) is
+  satisfied by ≥1 `pending` ticket **in the current lap**; `all-tickets-
+  terminal` (G4) stays cumulative — earlier laps' tickets are terminal by
+  construction. G1/G2 untouched (trivially satisfied on laps ≥2; the lap
+  starts with its grilling by construction — seatbelt, not cage).
+- `src/db-schema.ts`: `lap` integer columns on `features` (default 1),
+  `tickets`, `sessions`, `events` — the latter three stamped from the
+  feature's lap at row creation. The UI's lap trail is derived by grouping on
+  them; there is NO `laps` table (ADR-0010 §8).
+
+### 15.2 Server amendments (§3, §4)
+
+- `services/features.ts` gains `rethink(featureId)`: guards phase=`review` ∧
+  no active run; increments `lap`, sets phase `ideation` via
+  `RETHINK_LOOP_BACK`, emits `lap.started`.
+- Test notes live in `docs/features/<slug>/test-notes.md` (decision-5 seam:
+  prose in the repo): one `## Lap N` heading per lap, one `- ` bullet per
+  note. Promotion rewrites the bullet in place, appending ` → tkt_<id>`.
+- tRPC additions (§4):
+  - `feature.rethink({ featureId }): { sessionId }` — calls the service, then
+    launches a `revisit` session with the lap kickoff (below). One click, one
+    terminal.
+  - `feature.testNote({ featureId, text }): { ok }` — appends a bullet under
+    the current lap's heading (creates heading/file lazily); emits
+    `testnote.added`. Callable any time, not only mid-drive.
+  - `feature.promoteNote({ featureId, lap, index }): { ticketId }` — promotes
+    the index-th bullet of that lap's section: stores one ticket (title =
+    note text, editable client-side before the call via `text?: string`
+    override; `lap` = current feature lap) and rewrites the bullet with the
+    ticket ref. Emits `testnote.promoted` (the single event for this
+    mutation; no separate `tickets.stored`). Rejects already-promoted notes.
+  - `feature.burn` G3 wording updated: requires ≥1 pending ticket **in the
+    current lap** (both the `tickets`-phase crossing and the review-phase
+    Fix restart).
+- Kickoff registry: `revisit` gains the `lap` purpose —
+  `LAP <n> REVIEW ITERATION`: read `test-notes.md` (previous lap's section)
+  + spec `## Later laps`; promoted notes are ALREADY tickets (ids injected —
+  never re-emit them); interview the human, update `decisions.md` + spec,
+  `emit_tickets` for this lap, `complete_phase` through ideation/spec/tickets
+  in this one session. Session-start context injection for a lap revisit
+  carries the same: previous lap's notes + promoted-ticket ids + `## Later
+  laps` content.
+
+### 15.3 MCP amendments (§6) — no new tools
+
+`get_feature_context` response gains `lap: number`; its `tickets` are the
+full history (the `lap` field on each row distinguishes). `complete_phase`
+already auto-advances ideation→spec→tickets and still refuses to cross G3 —
+the human Burn click stays the crossing, which is exactly the two-click lap.
+
+### 15.4 Knowledge amendments
+
+`test-notes.md` as in §15.2 (created lazily on first note — not scaffolded).
+The spec template gains an optional `## Later laps` section: scope
+consciously deferred at slicing time; each lap's session reads it alongside
+the notes and prunes/promotes entries with the human. `decisions.md`
+accumulates as before (a `## Lap N` heading per rethink is convention, not
+machinery).
+
+### 15.5 Skills amendments (§9)
+
+- `ideate` gains lap-awareness (the slicing question): ask *how sure is the
+  human this is what they want?* Sure/small → spec the whole thing, one lap.
+  Unsure/large → recommend a thin lap 1 (walking skeleton of the uncertain
+  part, or a sub-feature slice), park the rest in `## Later laps`, and say
+  so out loud — the human decides. Orthogonal to the map escalation branch
+  (§13.5): mapping is for ideation too big to *think*; laps are for features
+  too uncertain to *spec whole*.
+- `revisit` gains the lap mode (triggered by the lap kickoff): digest notes →
+  amend `decisions.md` + spec (including pruning `## Later laps`) →
+  `emit_tickets` → `complete_phase` through tickets → tell the human to Burn.
+  Never re-emit promoted tickets.
+
+### 15.6 UI amendments (§10)
+
+- Test-drive panel: notes box (one-liner input, appends via
+  `feature.testNote`; list of this lap's notes below it).
+- Review bar: verbs **Fix** (visible when current-lap pending tickets exist;
+  = existing burn-from-review) / **Rethink** (`feature.rethink`; hidden while
+  a session is live) / **Merge** (unchanged). The old Iterate action is
+  subsumed by Rethink.
+- Notes checklist in review: bullets of the current lap with a "→ ticket"
+  action each (inline-editable text, calls `feature.promoteNote`); promoted
+  notes render with their ticket chip.
+- Lap trail: phase stepper gains a "Lap N" chip when `lap > 1`; the timeline
+  groups by lap (derived — no new endpoints, no new polling).
+
+### 15.7 Tests
+
+Vitest: `rethinkPhase` transition; `rethink` service (lap increment, guard
+against active run / wrong phase); G3 lap-scoping (lap-1 done tickets do not
+satisfy lap 2); ticket lap-stamping; `testNote` append + lazy heading;
+`promoteNote` (ticket stored with current lap, bullet rewritten, double-
+promotion rejected). Smoke extension: burn lap 1 → testNote → promoteNote →
+Fix burn → rethink (lap=2, phase=ideation) → lap session emits 1 ticket →
+burn → merge.

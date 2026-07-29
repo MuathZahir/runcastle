@@ -3,14 +3,21 @@ import type { SessionKind } from '@runcastle/core'
 import type { PtyEntry } from '../src/pty/registry'
 import { ptyRegistry } from '../src/pty/registry'
 import {
+  CLEAR_INPUT,
   CONVERGE_KICKOFF_LINE,
+  KICKOFF_CONFIRM_MS,
   KICKOFF_DELAY_MS,
   KICKOFF_LINES,
+  KICKOFF_MAX_ATTEMPTS,
   KICKOFF_SUBMIT_DELAY_MS,
   createSessionRow,
+  kickoffDeliveryFor,
   kickoffLineFor,
   markSessionEnded,
   markSessionLive,
+  noteKickoffPrompt,
+  promptMatchesKickoff,
+  resendKickoff,
   setKickoffOverride,
   writeKickoffSequence,
 } from '../src/launcher/sessions'
@@ -146,6 +153,40 @@ describe('kickoff registry + override', () => {
 })
 
 /**
+ * Delivery confirmation matching: the `UserPromptSubmit` hook is the only proof
+ * a kickoff reached Claude Code, so this decides retry-vs-stop. It must tolerate
+ * the TUI re-flowing what it echoes, and must NOT claim a human's own prompt as
+ * our briefing.
+ */
+describe('promptMatchesKickoff', () => {
+  const line = KICKOFF_LINES.converge
+
+  it('matches the line verbatim', () => {
+    expect(promptMatchesKickoff(line, line)).toBe(true)
+  })
+
+  it('matches through whitespace re-flow and case', () => {
+    expect(promptMatchesKickoff(line, `  ${line.replace(/ /g, '\n  ').toUpperCase()}  `)).toBe(true)
+  })
+
+  it('matches a prompt the TUI prefixed or suffixed', () => {
+    expect(promptMatchesKickoff(line, `> ${line}`)).toBe(true)
+  })
+
+  it('rejects a human prompt, an empty prompt, and a missing one', () => {
+    expect(promptMatchesKickoff(line, 'what are you working on?')).toBe(false)
+    expect(promptMatchesKickoff(line, '')).toBe(false)
+    expect(promptMatchesKickoff(line, undefined)).toBe(false)
+  })
+
+  it('does not confuse two different briefings that share an opening clause', () => {
+    const a = 'Proceed with your task: RESOLVE A MERGE CONFLICT. Merging main into feature/a.'
+    const b = 'Proceed with your task: REVIEW ITERATION. Read the run outcome and interview me.'
+    expect(promptMatchesKickoff(a, b)).toBe(false)
+  })
+})
+
+/**
  * The kickoff wiring end-to-end at the `markSessionLive` seam: going live
  * schedules the two-write injection into the session's PTY and emits
  * `session.kickoff` (carrying the kind) once the `\r` lands. A fake PTY entry
@@ -220,6 +261,139 @@ describe('markSessionLive — schedules a kickoff for every kind', () => {
 
     expect(written).toEqual([KICKOFF_LINES.ideation, '\r'])
     expect(listAfter(ctx, featureId, 0).filter((e) => e.type === 'session.kickoff')).toHaveLength(1)
+  })
+
+  it('re-types the line when Claude Code never acknowledges it, then gives up loudly', async () => {
+    const ctx = await makeTestCtx()
+    const featureId = seedFeature(ctx, seedProject(ctx).id).id
+    const session = createSessionRow(ctx, { featureId, kind: 'revisit', worktreePath: 'w' })
+    const written = fakePty()
+
+    markSessionLive(ctx, session.id, { ccSessionId: 'cc' })
+    vi.advanceTimersByTime(KICKOFF_DELAY_MS + KICKOFF_SUBMIT_DELAY_MS)
+    expect(written).toEqual([KICKOFF_LINES.revisit, '\r'])
+
+    // No UserPromptSubmit came back → the keystrokes went somewhere else (a
+    // startup dialog). Retry clears the input line first so a half-typed first
+    // attempt cannot become one doubled prompt.
+    vi.advanceTimersByTime(KICKOFF_CONFIRM_MS + KICKOFF_SUBMIT_DELAY_MS)
+    expect(written).toEqual([
+      KICKOFF_LINES.revisit,
+      '\r',
+      CLEAR_INPUT,
+      KICKOFF_LINES.revisit,
+      '\r',
+    ])
+
+    // Third and final attempt, then the failure is announced rather than swallowed.
+    vi.advanceTimersByTime(KICKOFF_CONFIRM_MS + KICKOFF_SUBMIT_DELAY_MS)
+    expect(written.filter((w) => w === KICKOFF_LINES.revisit)).toHaveLength(KICKOFF_MAX_ATTEMPTS)
+    expect(kickoffDeliveryFor(session.id)?.settled).toBe(false)
+
+    vi.advanceTimersByTime(KICKOFF_CONFIRM_MS)
+    const undelivered = listAfter(ctx, featureId, 0).filter(
+      (e) => e.type === 'session.kickoff_undelivered',
+    )
+    expect(undelivered).toHaveLength(1)
+    expect((undelivered[0].data as { reason?: string }).reason).toBe('unacknowledged')
+    expect((undelivered[0].data as { line?: string }).line).toBe(KICKOFF_LINES.revisit)
+    expect(kickoffDeliveryFor(session.id)?.settled).toBe(true)
+
+    // and it stops there — no fourth attempt after the announcement
+    const attempts = written.filter((w) => w === KICKOFF_LINES.revisit).length
+    vi.advanceTimersByTime(KICKOFF_CONFIRM_MS * 3)
+    expect(written.filter((w) => w === KICKOFF_LINES.revisit)).toHaveLength(attempts)
+  })
+
+  it('stops retrying once the submitted prompt comes back through the hook', async () => {
+    const ctx = await makeTestCtx()
+    const featureId = seedFeature(ctx, seedProject(ctx).id).id
+    const session = createSessionRow(ctx, { featureId, kind: 'ideation', worktreePath: 'w' })
+    const written = fakePty()
+
+    markSessionLive(ctx, session.id, { ccSessionId: 'cc' })
+    vi.advanceTimersByTime(KICKOFF_DELAY_MS + KICKOFF_SUBMIT_DELAY_MS)
+
+    noteKickoffPrompt(ctx, session.id, KICKOFF_LINES.ideation)
+    vi.advanceTimersByTime(KICKOFF_CONFIRM_MS * 4)
+
+    expect(written).toEqual([KICKOFF_LINES.ideation, '\r']) // typed exactly once
+    expect(kickoffDeliveryFor(session.id)?.confirmed).toBe(true)
+    expect(
+      listAfter(ctx, featureId, 0).filter((e) => e.type === 'session.kickoff_undelivered'),
+    ).toHaveLength(0)
+  })
+
+  it('never injects over a human who typed first — it reports the briefing undelivered', async () => {
+    const ctx = await makeTestCtx()
+    const featureId = seedFeature(ctx, seedProject(ctx).id).id
+    const session = createSessionRow(ctx, { featureId, kind: 'revisit', worktreePath: 'w' })
+    const written = fakePty()
+
+    setKickoffOverride(session.id, 'Proceed with your task: RESOLVE A MERGE CONFLICT. Merging main…')
+    markSessionLive(ctx, session.id, { ccSessionId: 'cc' })
+    vi.advanceTimersByTime(KICKOFF_DELAY_MS + KICKOFF_SUBMIT_DELAY_MS)
+    const typed = written.length
+
+    noteKickoffPrompt(ctx, session.id, 'wait, what are you doing?')
+    vi.advanceTimersByTime(KICKOFF_CONFIRM_MS * 4)
+
+    expect(written).toHaveLength(typed) // no re-injection mid-conversation
+    const undelivered = listAfter(ctx, featureId, 0).filter(
+      (e) => e.type === 'session.kickoff_undelivered',
+    )
+    expect(undelivered).toHaveLength(1)
+    expect((undelivered[0].data as { reason?: string }).reason).toBe('superseded')
+  })
+
+  it('resendKickoff re-types the SAME line on demand and restarts the retry budget', async () => {
+    const ctx = await makeTestCtx()
+    const featureId = seedFeature(ctx, seedProject(ctx).id).id
+    const session = createSessionRow(ctx, { featureId, kind: 'revisit', worktreePath: 'w' })
+    const written = fakePty()
+
+    const briefing = 'Proceed with your task: RESOLVE A MERGE CONFLICT. Merging main into feature/x.'
+    setKickoffOverride(session.id, briefing)
+    markSessionLive(ctx, session.id, { ccSessionId: 'cc' })
+    vi.advanceTimersByTime(KICKOFF_DELAY_MS + KICKOFF_SUBMIT_DELAY_MS)
+    noteKickoffPrompt(ctx, session.id, 'never mind, I will drive') // settles it undelivered
+
+    const before = written.length
+    expect(resendKickoff(ctx, session.id).line).toBe(briefing)
+    vi.advanceTimersByTime(KICKOFF_SUBMIT_DELAY_MS)
+    expect(written.slice(before)).toEqual([CLEAR_INPUT, briefing, '\r'])
+
+    // and the resend is itself confirm-and-retry, not another blind write
+    vi.advanceTimersByTime(KICKOFF_CONFIRM_MS + KICKOFF_SUBMIT_DELAY_MS)
+    expect(written.slice(before)).toEqual([CLEAR_INPUT, briefing, '\r', CLEAR_INPUT, briefing, '\r'])
+  })
+
+  it('resendKickoff refuses when the session is over rather than writing into a dead PTY', async () => {
+    const ctx = await makeTestCtx()
+    const featureId = seedFeature(ctx, seedProject(ctx).id).id
+    const session = createSessionRow(ctx, { featureId, kind: 'qa', worktreePath: 'w' })
+    fakePty()
+
+    markSessionLive(ctx, session.id, { ccSessionId: 'cc' })
+    markSessionEnded(ctx, session.id)
+    expect(() => resendKickoff(ctx, session.id)).toThrow(/ended/)
+  })
+
+  it('a pending retry dies with its session — nothing types into the next terminal', async () => {
+    const ctx = await makeTestCtx()
+    const featureId = seedFeature(ctx, seedProject(ctx).id).id
+    const session = createSessionRow(ctx, { featureId, kind: 'ideation', worktreePath: 'w' })
+    const written = fakePty()
+
+    markSessionLive(ctx, session.id, { ccSessionId: 'cc' })
+    vi.advanceTimersByTime(KICKOFF_DELAY_MS + KICKOFF_SUBMIT_DELAY_MS)
+    const typed = written.length
+
+    markSessionEnded(ctx, session.id)
+    vi.advanceTimersByTime(KICKOFF_CONFIRM_MS * 4)
+
+    expect(written).toHaveLength(typed)
+    expect(kickoffDeliveryFor(session.id)).toBeNull()
   })
 
   it('drops an un-consumed override when the session ends before going live', async () => {

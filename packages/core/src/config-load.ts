@@ -33,6 +33,7 @@ export function loadConfig(
   // read-compat preprocess unless the smoke step is already set explicitly.
   if (env.RUNCASTLE_SMOKE_MODEL) overrides.smokeModel = env.RUNCASTLE_SMOKE_MODEL
   if (env.RUNCASTLE_SANDBOX) overrides.sandbox = env.RUNCASTLE_SANDBOX
+  if (env.RUNCASTLE_SESSION_MCP) overrides.sessionMcp = env.RUNCASTLE_SESSION_MCP
   if (env.RUNCASTLE_MAIN_BRANCH) overrides.mainBranch = env.RUNCASTLE_MAIN_BRANCH
   if (env.RUNCASTLE_SANDBOX_IMAGE) overrides.sandboxImage = env.RUNCASTLE_SANDBOX_IMAGE
   if (env.RUNCASTLE_BURN_CONCURRENCY) {
@@ -44,7 +45,20 @@ export function loadConfig(
   if (env.RUNCASTLE_BURN_ATTEMPTS) {
     overrides.burnAttempts = Number(env.RUNCASTLE_BURN_ATTEMPTS)
   }
+  // Truthiness would swallow the meaningful `0` (disable in-loop resolution).
+  if (env.RUNCASTLE_BURN_CONFLICT_ATTEMPTS !== undefined) {
+    overrides.burnConflictAttempts = Number(env.RUNCASTLE_BURN_CONFLICT_ATTEMPTS)
+  }
+  if (env.RUNCASTLE_BURN_CPUS) overrides.burnCpus = Number(env.RUNCASTLE_BURN_CPUS)
+  // Kill switch for the in-sandbox PreToolUse guard. Config-file + env only
+  // (like `burnWorkspace`): a rarely-touched escape hatch, and the settings
+  // overlay has no boolean control.
+  if (env.RUNCASTLE_BURN_GUARD !== undefined) {
+    overrides.burnGuard = env.RUNCASTLE_BURN_GUARD !== '0' && env.RUNCASTLE_BURN_GUARD !== 'false'
+  }
   if (env.RUNCASTLE_SETUP_COMMAND) overrides.setupCommand = env.RUNCASTLE_SETUP_COMMAND
+  if (env.RUNCASTLE_VERIFY_COMMANDS) overrides.verifyCommands = env.RUNCASTLE_VERIFY_COMMANDS
+  if (env.RUNCASTLE_KNOWN_FAILURES) overrides.knownFailures = env.RUNCASTLE_KNOWN_FAILURES
   if (env.RUNCASTLE_BURN_WORKSPACE) overrides.burnWorkspace = env.RUNCASTLE_BURN_WORKSPACE
 
   const base = typeof fileConfig === 'object' && fileConfig !== null ? fileConfig : {}

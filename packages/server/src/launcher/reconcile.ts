@@ -3,7 +3,7 @@ import { inArray } from 'drizzle-orm'
 import type { AppCtx } from '../db/types'
 import { sessions } from '../db/schema'
 import { ptyRegistry } from '../pty/registry'
-import { emit } from '../services/events'
+import { emitForSession } from '../services/events'
 import { rowToSession } from '../services/repo'
 import { releaseForSession } from '../services/waypoints'
 import { markSessionEnded } from './sessions'
@@ -40,7 +40,7 @@ export function reconcileStaleSessions(ctx: AppCtx): SessionRow[] {
 
     markSessionEnded(ctx, session.id)
     const released = releaseForSession(ctx, session.id)
-    emit(ctx, session.featureId, {
+    emitForSession(ctx, session, {
       type: 'session.reconciled',
       message: `session marked ended at boot — the server restarted while it was ${session.status}`,
       data: {

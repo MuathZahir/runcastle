@@ -13,6 +13,7 @@
   },
   "scripts": {
     "dev": "bun run scripts/dev.ts",
+    "dev:tool": "bun run scripts/devtool.ts",
     "typecheck": "bun run --filter '@runcastle/core' --filter '@runcastle/server' typecheck",
     "test": "vitest run",
     "test:watch": "vitest",

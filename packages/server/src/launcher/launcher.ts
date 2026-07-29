@@ -6,32 +6,48 @@ import { worktreeDir } from '@runcastle/core/paths'
 import { nextGate, nextPhase, resolveModel } from '@runcastle/core'
 import { and, eq } from 'drizzle-orm'
 import type { AppCtx } from '../db/types'
-import { resolveExecutable } from '../util/resolve-executable'
+import { resolveTool, spawnTargetFor, type SpawnTarget } from '../util/resolve-executable'
 import { SKILLS_DIR_ENV } from './skills-root'
 import { runs } from '../db/schema'
 import { GateError, isNotImplemented } from '../errors'
+import { endSession } from '../pty/end-session'
 import { ptyRegistry } from '../pty/registry'
-import { emit } from '../services/events'
+import { emit, emitForSession, emitProject } from '../services/events'
 import { checkGate, overrideGate } from '../services/gates'
 import * as git from '../services/git'
-import { getFeatureRow, projectForFeature, rowToRun, setPhase } from '../services/repo'
+import {
+  getFeatureRow,
+  projectForFeature,
+  requireProjectById,
+  rowToRun,
+  setPhase,
+} from '../services/repo'
 import { listByFeature as listTicketsByFeature } from '../services/tickets'
 import {
   claim as claimWaypoint,
   getWaypoint,
+  listByFeature as listWaypointsByFeature,
   releaseForSession,
 } from '../services/waypoints'
 import { startRun, workflowClaimsFeatureBranch } from '../workflows/runner'
-import { serverUrlFor, writeSessionArtifacts } from './artifacts'
+import { listFindings } from '../services/findings'
+import { keysToPrepare, latestPrepNotes } from '../services/prep'
+import { serverUrlFor, writeSessionArtifacts, type PrepareBrief } from './artifacts'
 import {
   activeSessionsForFeature,
+  armSessionReadyWatchdog,
   createSessionRow,
   getSessionRow,
   markSessionEnded,
+  mostRecentResumableProjectSession,
   mostRecentResumableSession,
   resumeKickoffLine,
   setKickoffOverride,
 } from './sessions'
+
+// Re-exported for the `feature.resendKickoff` router: the launcher is the stable
+// import path for session-terminal behaviour (same arrangement as `endSession`).
+export { resendKickoff } from './sessions'
 
 // Re-exported so the `feature.endSession` router (W2) imports the real,
 // PTY-killing service from `../../launcher/launcher` per its coordination note —
@@ -124,6 +140,12 @@ export interface BuildLaunchInput {
    * satisfies. Omitted → a fresh session.
    */
   resumeSessionId?: string
+  /**
+   * Add `--strict-mcp-config` (config `sessionMcp: 'runcastleOnly'`). Default
+   * false: a session inherits the human's own MCP servers alongside
+   * runcastle's — see {@link RuncastleConfig.sessionMcp}.
+   */
+  strictMcp?: boolean
 }
 
 /**
@@ -131,6 +153,11 @@ export interface BuildLaunchInput {
  * passes it verbatim to the embedded PTY spawn, and the `spawn:false` smoke path
  * renders it for its `session.launched` event, so the flags/artifacts never
  * drift. `--append-system-prompt-file` is a verified flag (CC-INTEGRATION-NOTES §7).
+ *
+ * `--mcp-config` is unconditional (it is how the session reaches runcastle's own
+ * MCP server); `--strict-mcp-config` is opt-in, because it does not merely
+ * prefer our config — it suppresses every other MCP source, including the
+ * human's own connections and their plugins' servers.
  */
 export function buildClaudeArgs(input: BuildLaunchInput): string[] {
   const permissionMode = input.permissionMode ?? 'acceptEdits'
@@ -141,7 +168,7 @@ export function buildClaudeArgs(input: BuildLaunchInput): string[] {
     input.settingsPath,
     '--mcp-config',
     input.mcpConfigPath,
-    '--strict-mcp-config',
+    ...(input.strictMcp ? ['--strict-mcp-config'] : []),
     '--plugin-dir',
     input.pluginDir,
     '--append-system-prompt-file',
@@ -159,21 +186,17 @@ export function buildClaudeArgs(input: BuildLaunchInput): string[] {
  * Falls back to the bare name so `CreateProcess`/exec can make a final attempt.
  */
 function resolveClaudeExecutable(): string {
-  return resolveExecutable('claude', { override: process.env.RUNCASTLE_CLAUDE_BIN })
+  return resolveTool('claude')
 }
 
 /**
  * The `{file, args}` to spawn `claude` inside a PTY. A native `.exe` is spawned
- * directly; a `.cmd`/`.bat` shim is run via `cmd.exe /c` (ConPTY cannot exec a
- * batch file directly). Env is inherited on the spawn (UI-SPEC §5 — no `cmd /k`
- * env prefix, no `wt.exe`).
+ * directly; a `.cmd`/`.bat`/`.ps1` shim goes through its interpreter (ConPTY
+ * cannot exec any of them directly) — see {@link spawnTargetFor}. Env is
+ * inherited on the spawn (UI-SPEC §5 — no `cmd /k` env prefix, no `wt.exe`).
  */
-function claudeSpawnTarget(claudeArgs: string[]): { file: string; args: string[] } {
-  const exe = resolveClaudeExecutable()
-  if (/\.(cmd|bat)$/i.test(exe)) {
-    return { file: process.env.ComSpec ?? 'cmd.exe', args: ['/c', exe, ...claudeArgs] }
-  }
-  return { file: exe, args: claudeArgs }
+function claudeSpawnTarget(claudeArgs: string[]): SpawnTarget {
+  return spawnTargetFor(resolveClaudeExecutable(), claudeArgs)
 }
 
 /**
@@ -252,6 +275,52 @@ function assertSpawnable(ctx: AppCtx, feature: Feature, excludeSessionId?: strin
     throw new GateError(
       `a ${running.workflow} run is in progress on ${feature.slug} — it holds the feature branch; terminals are available when it finishes`,
     )
+  }
+}
+
+/**
+ * Whether a live session's work is demonstrably DONE (decision #8):
+ * - a kind=`waypoint` session whose own waypoint — the one remembering it as
+ *   `lastSessionId` — has gone terminal (`resolved`/`dropped`). While it is still
+ *   working, that waypoint is `claimed`, so this is false.
+ * - any other kind (the ideation grill, qa, revisit, converge) once the feature
+ *   is `mapped`: the session that charted the map has done its job.
+ * A session that never went live has no waypoint remembering it, so it is never
+ * finished — abandoning it needs the explicit `endLive` confirmation.
+ */
+function sessionFinished(ctx: AppCtx, feature: Feature, session: SessionRow): boolean {
+  if (session.kind !== 'waypoint') return feature.mapped
+  const own = listWaypointsByFeature(ctx, feature.id).find((w) => w.lastSessionId === session.id)
+  return !!own && (own.status === 'resolved' || own.status === 'dropped')
+}
+
+/**
+ * End the live sessions standing between the human and the waypoint they just
+ * clicked Work on (decision #8). Ordinarily only FINISHED sessions are ended, so
+ * the ordinary click is one click instead of "End session" then "Work". With
+ * `endLive` — the human having confirmed the inline affordance — every active
+ * session goes, abandoning its mid-work claim (`endSession` releases it back to
+ * the frontier, so nothing is lost).
+ *
+ * `assertSpawnable` still runs after this and is deliberately untouched: a
+ * mid-work session with no `endLive` survives the sweep and is refused there.
+ */
+function sweepActiveSessions(ctx: AppCtx, feature: Feature, endLive: boolean): void {
+  for (const session of activeSessionsForFeature(ctx, feature.id)) {
+    const finished = sessionFinished(ctx, feature, session)
+    if (!finished && !endLive) continue
+    endSession(ctx, session.id)
+    emit(ctx, feature.id, {
+      type: 'session.auto_ended',
+      message: finished
+        ? `ended the finished ${session.kind} session to work the next waypoint`
+        : `abandoned the in-flight ${session.kind} session to work the next waypoint`,
+      data: {
+        sessionId: session.id,
+        kind: session.kind,
+        reason: finished ? 'finished' : 'abandoned',
+      },
+    })
   }
 }
 
@@ -419,6 +488,7 @@ export async function launchSession(
     // falling back through the per-project override to the global default.
     model: resolveModel(input.kind, ctx.config, project),
     resumeSessionId,
+    strictMcp: ctx.config.sessionMcp === 'runcastleOnly',
   }
 
   // spawn:false fabricates a session MINUS any process (SPEC §11 smoke driver).
@@ -443,6 +513,119 @@ export async function launchSession(
 }
 
 /**
+ * Open a project-scoped preparation conversation (backs `project.talkToPrep`).
+ *
+ * Everything that makes `launchSession` feature-shaped is skipped: no feature
+ * row, no worktree, no waypoint claim, no one-live-session-per-feature guard.
+ * The session runs in the project's REAL checkout, which is the whole point —
+ * the five host-only keys a container can only propose (`devCommand`,
+ * `driveSetupCommand`, `driveStopCommand`, `driveEnv`, `dbResetCommand`) can be
+ * executed and verified here, and the human is present to answer for the ones
+ * no amount of reading the repo can settle.
+ *
+ * Running in the real checkout is also the one hazard no other session kind
+ * has: this terminal can dirty the working tree. The brief tells the agent to
+ * ask before anything stateful, but that is guidance, not a guard — a future
+ * hardening could take the guard from the burner's PreToolUse deny hook.
+ *
+ * Resumes its own previous conversation when there is one, so closing the
+ * terminal and reopening it continues where you left off rather than making the
+ * human re-explain their database.
+ */
+export async function launchPrepareSession(
+  ctx: AppCtx,
+  input: { projectId: string },
+  opts: LaunchSessionOptions = {},
+): Promise<LaunchSessionResult> {
+  const project = requireProjectById(ctx, input.projectId)
+
+  const session = createSessionRow(ctx, {
+    projectId: project.id,
+    kind: 'prepare',
+    // No worktree: preparation is about THIS machine's checkout, and a docs-only
+    // talk worktree could neither run the dev server nor see the real .env.
+    worktreePath: project.repoPath,
+  })
+
+  const resumeSessionId = mostRecentResumableProjectSession(ctx, project.id, 'prepare')?.ccSessionId
+
+  emitProject(ctx, project.id, {
+    type: 'session.launching',
+    message: 'launching preparation session',
+    data: { sessionId: session.id, kind: 'prepare', worktreePath: project.repoPath },
+  })
+  if (resumeSessionId) {
+    emitProject(ctx, project.id, {
+      type: 'session.resumed',
+      message: 'resuming the previous preparation conversation',
+      data: { sessionId: session.id, resumeSessionId },
+    })
+  }
+
+  const artifacts = await writeSessionArtifacts({
+    session,
+    project,
+    config: ctx.config,
+    prepare: await buildPrepareBrief(ctx, project),
+  })
+  const serverUrl = serverUrlFor(ctx.config)
+
+  const buildInput: BuildLaunchInput = {
+    sessionId: session.id,
+    serverUrl,
+    featureTitle: `preparing ${project.name}`,
+    worktreePath: project.repoPath,
+    pluginDir: resolvePluginDir(),
+    settingsPath: artifacts.settingsPath,
+    mcpConfigPath: artifacts.mcpConfigPath,
+    systemPromptPath: artifacts.systemPromptPath,
+    model: resolveModel('prepare', ctx.config, project),
+    resumeSessionId,
+    strictMcp: ctx.config.sessionMcp === 'runcastleOnly',
+  }
+
+  if (opts.spawn === false) {
+    emitProject(ctx, project.id, {
+      type: 'session.launched',
+      message: 'preparation session prepared (terminal spawn skipped)',
+      data: {
+        sessionId: session.id,
+        command: ['claude', ...buildClaudeArgs(buildInput)].join(' '),
+        spawned: false,
+      },
+    })
+    return { sessionId: session.id }
+  }
+
+  spawnEmbeddedPty(
+    ctx,
+    undefined,
+    session,
+    project.repoPath,
+    serverUrl,
+    buildClaudeArgs(buildInput),
+    { resumeSessionId },
+  )
+  return { sessionId: session.id }
+}
+
+/** Seed the conversation from the last headless run rather than starting cold. */
+async function buildPrepareBrief(ctx: AppCtx, project: Project): Promise<PrepareBrief> {
+  const findings = await listFindings(ctx, project)
+  const notes = latestPrepNotes(ctx, project.id)
+  return {
+    project,
+    remainingKeys: keysToPrepare(ctx, project),
+    established: findings.map((f) => ({
+      key: f.key,
+      source: f.source,
+      ...(f.evidence ? { evidence: f.evidence } : {}),
+    })),
+    ...(notes ? { notes } : {}),
+  }
+}
+
+/**
  * Work a waypoint (SPEC §13.2, backs `feature.workWaypoint`). A `research`
  * waypoint is worked AFK: it claims the waypoint for a headless `research` run
  * and returns `{ runId }`. Every other type opens a kind=`waypoint` HITL session
@@ -452,10 +635,16 @@ export async function launchSession(
  * HITL session per feature). The claim — inside `launchSession` for HITL, inside
  * `startRun` for research — is the transactional frontier gate, so a waypoint
  * that is claimed/terminal/blocked can never be worked.
+ *
+ * The HITL path owns the whole handoff atomically (decision #8): it first sweeps
+ * away any live session it can prove is finished, and — with `endLive`, the
+ * human having confirmed — any live session at all. Doing it here rather than as
+ * a client-side end-then-work keeps it one mutation with no window where the
+ * feature holds nothing.
  */
 export async function workWaypoint(
   ctx: AppCtx,
-  input: { featureId: string; waypointId: string },
+  input: { featureId: string; waypointId: string; endLive?: boolean },
   opts: LaunchSessionOptions = {},
 ): Promise<LaunchSessionResult | WorkRunResult> {
   const feature = getFeatureRow(ctx, input.featureId)
@@ -478,6 +667,11 @@ export async function workWaypoint(
     })
     return { runId }
   }
+
+  // Make room: end the live sessions that are finished (or, with `endLive`, all
+  // of them). Research is deliberately above this — an AFK run is not a session
+  // and runs in parallel, so it is neither swept nor blocked by the sweep.
+  sweepActiveSessions(ctx, feature, input.endLive === true)
 
   // Fast-fail guard on live HITL SESSION rows + active runs (never on waypoint
   // claims — a parallel research run's claim must not block HITL work, and a
@@ -611,7 +805,7 @@ export interface SpawnMeta {
  */
 export function handlePtyExit(
   ctx: AppCtx,
-  feature: Feature,
+  feature: Feature | undefined,
   session: SessionRow,
   meta: SpawnMeta,
   exitCode: number | undefined | null,
@@ -624,7 +818,7 @@ export function handlePtyExit(
   releaseForSession(ctx, session.id)
   if (diedBeforeLive && meta.resumeSessionId) {
     const label = meta.waypoint ? `waypoint ${meta.waypoint.seq} (${meta.waypoint.title})` : session.kind
-    emit(ctx, feature.id, {
+    emitForSession(ctx, session, {
       type: 'session.resume_failed',
       message: `resume failed for ${label} — the session exited before starting (code ${exitCode ?? 'unknown'}); the previous conversation is still resumable`,
       data: {
@@ -635,7 +829,7 @@ export function handlePtyExit(
       },
     })
   }
-  emit(ctx, feature.id, {
+  emitForSession(ctx, session, {
     type: 'session.pty_exited',
     message: ptyExitMessage(exitCode),
     data: { sessionId: session.id, exitCode: exitCode ?? null },
@@ -663,7 +857,7 @@ const CC_NESTING_ENV = [
 
 function spawnEmbeddedPty(
   ctx: AppCtx,
-  feature: Feature,
+  feature: Feature | undefined,
   session: SessionRow,
   worktreePath: string,
   serverUrl: string,
@@ -685,18 +879,23 @@ function spawnEmbeddedPty(
       opts: { cwd: worktreePath, env, cols: 80, rows: 24, useConpty: true },
       onExit: ({ exitCode }) => handlePtyExit(ctx, feature, session, meta, exitCode),
     })
-    emit(ctx, feature.id, {
+    emitForSession(ctx, session, {
       type: 'session.launched',
       message: 'embedded terminal spawned',
       data: { sessionId: session.id, mode: 'embedded', pid: entry.pty.pid },
     })
+    // A spawned process is not a working session: everything downstream (going
+    // live, the kickoff, the cc session id) hangs off the SessionStart hook, so
+    // a terminal that never reports ready must say so instead of sitting there
+    // looking healthy.
+    armSessionReadyWatchdog(ctx, session)
   } catch (err) {
     // A session that never got a process must not linger `launching` — the
     // one-live-session guard reads session rows, so a leaked row would block
     // every future terminal on this feature until the next boot reconciliation.
     markSessionEnded(ctx, session.id)
     releaseForSession(ctx, session.id)
-    emit(ctx, feature.id, {
+    emitForSession(ctx, session, {
       type: 'session.spawn_failed',
       message: `failed to spawn embedded terminal: ${err instanceof Error ? err.message : String(err)}`,
       data: { sessionId: session.id, mode: 'embedded' },

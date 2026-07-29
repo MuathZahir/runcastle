@@ -1,0 +1,732 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>runcastle — mapped ideation prototype</title>
+<style>
+:root {
+  --bg:#090b10; --panel:#0e1117; --panel-2:#0b0e14; --panel-3:#12151d; --panel-inset:#07080b;
+  --hairline:#1c2230; --hairline-soft:#151a26; --hairline-strong:#2a3242;
+  --text:#dde3ed; --text-2:#96a0b0; --text-3:#5f6a7a; --text-4:#3a4354;
+  --accent:#7c6cf6; --accent-hi:#a49bff; --accent-2:#8f80f8; --accent-ink:#0d0722;
+  --accent-soft:#161329; --accent-line:#3d3670;
+  --ph-ideation:#8b7cf8; --danger:#f4594e; --needs:#d7a94a; --ok:#3fb950; --drive:#58a6ff;
+  --mono:"JetBrains Mono","Cascadia Code",Consolas,ui-monospace,monospace;
+  --sans:"Inter",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --radius-sm:5px; --radius:7px; --radius-lg:10px; --radius-pill:999px;
+  --control-h:28px; --sidebar-w:252px; --inspector-w:300px; --maprail-w:300px;
+  --dur-2:.19s; --ease-out:cubic-bezier(.16,1,.3,1);
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:13px;line-height:1.45;
+  letter-spacing:.004em;-webkit-font-smoothing:antialiased;overflow:hidden}
+button{font-family:inherit;color:inherit;cursor:pointer}
+::-webkit-scrollbar{width:10px;height:10px}
+::-webkit-scrollbar-thumb{background:#1c2230;border-radius:5px;border:2px solid transparent;background-clip:padding-box}
+
+/* ---------- prototype-only control strip ---------- */
+.proto-bar{position:fixed;bottom:14px;left:50%;transform:translateX(-50%);z-index:50;display:flex;gap:6px;
+  align-items:center;background:var(--panel);border:1px solid var(--hairline-strong);border-radius:var(--radius-pill);
+  padding:6px 8px;box-shadow:0 8px 28px -10px rgba(0,0,0,.8)}
+.proto-bar b{font-size:10px;letter-spacing:.09em;text-transform:uppercase;color:var(--text-3);padding:0 8px 0 4px}
+.proto-bar button{height:24px;padding:0 11px;border-radius:var(--radius-pill);border:1px solid var(--hairline);
+  background:transparent;color:var(--text-2);font-size:11.5px;transition:all var(--dur-2) var(--ease-out)}
+.proto-bar button:hover{border-color:var(--hairline-strong);color:var(--text)}
+.proto-bar button.on{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font-weight:600}
+.proto-bar .sep{width:1px;height:18px;background:var(--hairline);margin:0 3px}
+
+/* ---------- shell ---------- */
+.shell{height:100%;display:flex;flex-direction:column}
+.titlebar{height:38px;flex:0 0 38px;display:flex;align-items:center;gap:10px;padding:0 12px;
+  background:var(--panel);border-bottom:1px solid var(--hairline)}
+.logo{width:16px;height:16px;border-radius:4px;background:linear-gradient(135deg,var(--accent),#4a3fb0)}
+.tb-title{font-size:12px;color:var(--text-2)}
+.tb-spacer{flex:1}
+.tb-btn{height:24px;padding:0 9px;border-radius:var(--radius-sm);border:1px solid transparent;
+  background:transparent;color:var(--text-3);font-size:11.5px}
+.tb-btn:hover{background:var(--panel-3);color:var(--text-2)}
+.shell-body{flex:1;min-height:0;display:flex}
+
+/* features sidebar */
+.sidebar{width:var(--sidebar-w);flex:0 0 var(--sidebar-w);background:var(--panel-2);
+  border-right:1px solid var(--hairline);overflow-y:auto;padding:10px 0}
+.side-head{padding:4px 12px 8px;font-size:10px;letter-spacing:.09em;text-transform:uppercase;color:var(--text-3)}
+.feat{padding:7px 12px;border-left:2px solid transparent;cursor:pointer}
+.feat:hover{background:var(--panel-3)}
+.feat.sel{background:var(--panel-3);border-left-color:var(--accent)}
+.feat-t{font-size:12.5px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.feat-p{font-size:10.5px;color:var(--text-3);font-family:var(--mono);margin-top:2px}
+
+/* workspace */
+.workspace{flex:1;min-width:0;display:flex;flex-direction:column}
+.ws-head{padding:12px 18px 0;border-bottom:1px solid var(--hairline);background:var(--bg)}
+.ws-title-row{display:flex;align-items:center;gap:10px}
+.phase-tag{height:19px;display:inline-flex;align-items:center;padding:0 8px;border-radius:var(--radius-pill);
+  font-family:var(--mono);font-size:10px;letter-spacing:.04em;text-transform:uppercase;
+  color:var(--ph-ideation);border:1px solid color-mix(in srgb,var(--ph-ideation) 40%,var(--hairline));
+  background:color-mix(in srgb,var(--ph-ideation) 12%,transparent)}
+.ws-title{font-size:14.5px;font-weight:560;letter-spacing:-.01em}
+.ws-branch{margin-left:auto;font-family:var(--mono);font-size:11px;color:var(--text-3);
+  background:transparent;border:1px solid var(--hairline);border-radius:var(--radius-sm);padding:3px 8px}
+.pipeline{display:flex;align-items:center;gap:0;padding:12px 0 10px}
+.pstep{display:flex;align-items:center;gap:6px;background:transparent;border:0;padding:0 9px;color:var(--text-3);font-size:11.5px}
+.pstep .dot{width:7px;height:7px;border-radius:50%;background:var(--text-4)}
+.pstep.done{color:var(--text-2)} .pstep.done .dot{background:var(--ok)}
+.pstep.cur{color:var(--text)} .pstep.cur .dot{background:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+.pconn{width:22px;height:1px;background:var(--hairline)}
+.pconn.done{background:color-mix(in srgb,var(--ok) 40%,var(--hairline))}
+
+/* next-step bar — now owns Converge */
+.nextstep{display:flex;align-items:center;gap:14px;padding:11px 18px;background:var(--panel);
+  border-bottom:1px solid var(--hairline)}
+.ns-main{flex:1;min-width:0}
+.ns-kick{font-family:var(--mono);font-size:9.5px;letter-spacing:.11em;color:var(--accent-hi);margin-bottom:2px}
+.ns-kick.wait{color:var(--needs)}
+.ns-title{font-size:13px;font-weight:560}
+.ns-desc{font-size:11.5px;color:var(--text-3);margin-top:1px}
+.ns-desc .fog{color:var(--needs)}
+.ns-actions{display:flex;align-items:center;gap:7px;flex-shrink:0}
+.btn{height:var(--control-h);padding:0 13px;border-radius:var(--radius-sm);font-size:12px;
+  border:1px solid var(--hairline);background:transparent;color:var(--text-2);transition:all var(--dur-2) var(--ease-out)}
+.btn:hover{border-color:var(--hairline-strong);color:var(--text);background:var(--panel-3)}
+.btn.solid{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font-weight:600}
+.btn.solid:hover{background:var(--accent-2);border-color:var(--accent-2)}
+.btn.xs{height:22px;padding:0 9px;font-size:11px}
+.btn.danger{color:color-mix(in srgb,var(--danger) 75%,var(--text-2))}
+.btn.danger:hover{color:var(--danger);border-color:color-mix(in srgb,var(--danger) 55%,var(--hairline))}
+.override{display:flex;align-items:center;gap:6px}
+.override input{height:var(--control-h);width:250px;background:var(--panel-inset);border:1px solid var(--hairline);
+  border-radius:var(--radius-sm);color:var(--text);padding:0 9px;font-size:12px;font-family:var(--sans)}
+.override input::placeholder{color:var(--text-4)}
+
+/* ===== THE CHANGE: ws-body is a flex ROW, panes scroll independently ===== */
+.ws-body{flex:1;min-height:0;display:flex;overflow:hidden}
+
+/* --- left: map rail --- */
+.maprail{width:var(--maprail-w);flex:0 0 var(--maprail-w);background:var(--panel-2);
+  border-right:1px solid var(--hairline);display:flex;flex-direction:column;min-height:0}
+.maprail.collapsed{width:38px;flex:0 0 38px}
+.mr-head{height:32px;flex:0 0 32px;display:flex;align-items:center;gap:8px;padding:0 8px 0 12px;
+  border-bottom:1px solid var(--hairline-soft)}
+.mr-head-t{font-size:10px;letter-spacing:.09em;text-transform:uppercase;color:var(--text-3);flex:1}
+.mr-toggle{width:22px;height:22px;display:flex;align-items:center;justify-content:center;border-radius:var(--radius-sm);
+  border:0;background:transparent;color:var(--text-3);font-size:13px}
+.mr-toggle:hover{background:var(--panel-3);color:var(--text)}
+.mr-scroll{flex:1;min-height:0;overflow-y:auto;padding:10px 10px 18px}
+.maprail.collapsed .mr-head-t,.maprail.collapsed .mr-scroll{display:none}
+.mr-stub{display:none;flex-direction:column;align-items:center;gap:6px;padding-top:10px}
+.maprail.collapsed .mr-stub{display:flex}
+.mr-stub .n{width:22px;height:22px;border-radius:50%;background:var(--accent-soft);border:1px solid var(--accent-line);
+  color:var(--accent-hi);display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:11px}
+.mr-stub .vert{writing-mode:vertical-rl;font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--text-4)}
+
+/* waypoint groups */
+.wp-group{margin-bottom:14px}
+.wp-group-title{font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--text-3);
+  padding:0 2px 6px;display:flex;align-items:center;gap:6px}
+.wp-group-title .count{font-family:var(--mono);color:var(--text-4)}
+.wp{border:1px solid var(--hairline);border-radius:var(--radius);background:var(--panel);
+  padding:8px 9px;margin-bottom:6px;transition:border-color var(--dur-2) var(--ease-out)}
+.wp:hover{border-color:var(--hairline-strong)}
+.wp-top{display:flex;align-items:center;gap:7px;cursor:pointer}
+.wp-type{font-family:var(--mono);font-size:9.5px;letter-spacing:.03em;text-transform:uppercase;
+  padding:1px 6px;border-radius:var(--radius-pill);border:1px solid var(--hairline);color:var(--text-3);flex-shrink:0}
+.wp-title{font-size:12.5px;color:var(--text);line-height:1.3;flex:1;min-width:0}
+.wp-caret{color:var(--text-4);font-size:9px;transition:transform var(--dur-2) var(--ease-out);flex-shrink:0}
+.wp.open .wp-caret{transform:rotate(90deg)}
+.wp-detail{display:none;margin-top:7px;padding-top:7px;border-top:1px solid var(--hairline-soft)}
+.wp.open .wp-detail{display:block}
+.wp-q{font-size:11.5px;color:var(--text-2);line-height:1.5}
+.wp-q code{font-family:var(--mono);font-size:10.5px;background:var(--panel-inset);border:1px solid var(--hairline-soft);
+  border-radius:3px;padding:.5px 4px;color:var(--accent-hi)}
+.wp-meta{font-size:10.5px;color:var(--text-4);margin-top:6px;font-style:italic}
+.wp-actions{margin-top:8px;display:flex;align-items:center;gap:6px}
+
+.wp-group-frontier .wp{border-color:var(--accent-line);background:color-mix(in srgb,var(--accent) 4%,var(--panel))}
+.wp-group-frontier .wp-type{border-color:var(--accent-line);color:var(--accent-hi)}
+.wp-blocked{opacity:.55}
+.wp-blockers{font-size:10.5px;color:var(--needs);margin-top:5px}
+.wp-pulse{width:6px;height:6px;border-radius:50%;background:var(--ok);flex-shrink:0;animation:pulse 1.8s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+.wp-run-note{font-size:10.5px;color:var(--text-3);font-family:var(--mono)}
+.wp-done{opacity:.7}
+.wp-done .wp-type{color:var(--ok);border-color:color-mix(in srgb,var(--ok) 35%,var(--hairline))}
+.wp-summary{font-size:11px;color:var(--text-3);margin-top:5px;line-height:1.45}
+
+/* inline confirm affordance (replaces the thrown GateError toast) */
+.wp-confirm{display:none;margin-top:8px;padding:8px;border:1px solid color-mix(in srgb,var(--needs) 45%,var(--hairline));
+  border-radius:var(--radius-sm);background:color-mix(in srgb,var(--needs) 7%,transparent)}
+.wp.confirming .wp-confirm{display:block}
+.wp-confirm-t{font-size:11px;color:var(--text-2);line-height:1.45;margin-bottom:7px}
+.wp-confirm-t b{color:var(--text);font-weight:560}
+.wp-confirm-a{display:flex;gap:6px}
+
+/* map prose disclosure — collapsed by default */
+.mapdoc{border-top:1px solid var(--hairline-soft);padding-top:10px;margin-top:4px}
+.mapdoc-sum{display:flex;align-items:center;gap:7px;cursor:pointer;list-style:none;
+  font-size:10px;letter-spacing:.09em;text-transform:uppercase;color:var(--text-3);padding:2px}
+.mapdoc-sum::-webkit-details-marker{display:none}
+.mapdoc-sum:hover{color:var(--text-2)}
+.mapdoc-sum .car{font-size:9px;color:var(--text-4);transition:transform var(--dur-2) var(--ease-out)}
+.mapdoc[open] .mapdoc-sum .car{transform:rotate(90deg)}
+.map-section{margin-top:10px}
+.map-section-title{font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--text-4);margin-bottom:4px}
+
+/* --- right: terminal pane, the hero --- */
+.termpane{flex:1;min-width:0;min-height:0;display:flex;flex-direction:column;padding:12px 14px 14px}
+.grill-panel{flex:1;min-height:0;display:flex;flex-direction:column;border:1px solid var(--hairline);
+  border-radius:var(--radius-lg);overflow:hidden;background:var(--panel-2)}
+.grill-strip{min-height:34px;flex:0 0 auto;display:flex;align-items:center;gap:10px;padding:0 10px;
+  background:var(--panel);border-bottom:1px solid var(--hairline-soft)}
+.grill-kind{display:inline-flex;align-items:center;height:18px;padding:0 8px;border-radius:var(--radius-pill);
+  border:1px solid var(--accent-line);background:var(--accent-soft);color:var(--accent-hi);
+  font-family:var(--mono);font-size:10.5px}
+.dot-live{width:6px;height:6px;border-radius:50%;background:var(--ok);animation:pulse 1.8s infinite}
+.grill-live-label{font-size:11.5px;color:var(--text-3)}
+.grill-spacer{flex:1}
+.grill-sid{font-family:var(--mono);font-size:11px;color:var(--text-3)}
+/* the done state — a strip label + one button, never modal */
+.strip-done{display:flex;align-items:center;gap:9px;flex:1;min-width:0}
+.done-check{width:16px;height:16px;border-radius:50%;background:color-mix(in srgb,var(--ok) 18%,transparent);
+  border:1px solid color-mix(in srgb,var(--ok) 50%,transparent);color:var(--ok);display:flex;
+  align-items:center;justify-content:center;font-size:9px;flex-shrink:0}
+.done-txt{font-size:11.5px;color:var(--text-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.done-txt b{color:var(--text);font-weight:560}
+/* fake terminal */
+.grill-term{flex:1;min-height:0;background:var(--panel-inset);padding:11px 13px;overflow-y:auto;
+  font-family:var(--mono);font-size:12px;line-height:1.62;color:var(--text-2)}
+.grill-term .u{color:var(--accent-hi)}
+.grill-term .a{color:var(--text)}
+.grill-term .d{color:var(--text-4)}
+.grill-term .tool{color:var(--drive)}
+.grill-term .ok{color:var(--ok)}
+.caret{display:inline-block;width:7px;height:14px;background:var(--accent);vertical-align:-2px;animation:blink 1.1s steps(1) infinite}
+@keyframes blink{0%,50%{opacity:1}51%,100%{opacity:0}}
+
+/* inspector */
+.inspector{width:var(--inspector-w);flex:0 0 var(--inspector-w);background:var(--panel-2);
+  border-left:1px solid var(--hairline);overflow-y:auto;padding:10px 12px}
+.insp-h{font-size:10px;letter-spacing:.09em;text-transform:uppercase;color:var(--text-3);margin:6px 0 8px}
+.doc-card{display:flex;align-items:center;gap:8px;width:100%;text-align:left;background:var(--panel);
+  border:1px solid var(--hairline);border-radius:var(--radius-sm);padding:7px 9px;margin-bottom:5px;font-size:12px}
+.doc-card:hover{border-color:var(--hairline-strong);background:var(--panel-3)}
+.doc-card .nm{flex:1;color:var(--text-2)}
+.doc-card .mt{font-family:var(--mono);font-size:10px;color:var(--text-4)}
+.ev{display:flex;gap:8px;padding:5px 2px;font-size:11.5px;color:var(--text-3);border-bottom:1px solid var(--hairline-soft)}
+.ev .d{width:5px;height:5px;border-radius:50%;background:var(--accent);margin-top:6px;flex-shrink:0}
+.ev .d.ok{background:var(--ok)}
+
+/* ===== markdown rendering — the <Markdown> component ===== */
+.md{font-size:11.5px;color:var(--text-2);line-height:1.55}
+.md > *:first-child{margin-top:0}
+.md > *:last-child{margin-bottom:0}
+.md h1,.md h2,.md h3{color:var(--text);font-weight:600;line-height:1.3;margin:12px 0 5px}
+.md h1{font-size:14px;letter-spacing:-.01em}
+.md h2{font-size:12.5px}
+.md h3{font-size:11.5px;color:var(--text-2)}
+.md p{margin:0 0 7px}
+.md ul,.md ol{margin:0 0 7px;padding-left:17px}
+.md li{margin-bottom:2.5px}
+.md li::marker{color:var(--text-4)}
+.md strong{color:var(--text);font-weight:600}
+.md em{color:var(--text-2)}
+.md a{color:var(--accent-hi);text-decoration:none;border-bottom:1px solid var(--accent-line)}
+.md code{font-family:var(--mono);font-size:10.5px;background:var(--panel-inset);
+  border:1px solid var(--hairline-soft);border-radius:3px;padding:.5px 4px;color:var(--accent-hi)}
+.md pre{background:var(--panel-inset);border:1px solid var(--hairline-soft);border-radius:var(--radius-sm);
+  padding:8px 10px;overflow-x:auto;margin:0 0 8px}
+.md pre code{background:none;border:0;padding:0;color:var(--text-2);font-size:10.5px}
+.md blockquote{margin:0 0 8px;padding-left:10px;border-left:2px solid var(--accent-line);color:var(--text-3)}
+.md table{border-collapse:collapse;width:100%;margin:0 0 8px;font-size:11px}
+.md th,.md td{border:1px solid var(--hairline);padding:4px 7px;text-align:left}
+.md th{background:var(--panel);color:var(--text-2);font-weight:600}
+.md hr{border:0;border-top:1px solid var(--hairline);margin:10px 0}
+.md input[type=checkbox]{accent-color:var(--accent);margin-right:5px;vertical-align:-1px}
+.md ul.task{list-style:none;padding-left:2px}
+/* the "before" state — what every doc looks like today */
+.raw{font-family:var(--mono);font-size:11px;line-height:1.5;color:var(--text-2);white-space:pre-wrap;
+  word-break:break-word;margin:0}
+
+/* peek overlay */
+.peek-backdrop{position:fixed;inset:0;background:rgba(5,6,10,.72);z-index:40;display:none;
+  align-items:center;justify-content:center;padding:40px}
+.peek-backdrop.show{display:flex}
+.peek{width:min(760px,100%);max-height:100%;display:flex;flex-direction:column;background:var(--panel-2);
+  border:1px solid var(--hairline-strong);border-radius:var(--radius-lg);overflow:hidden;
+  box-shadow:0 24px 70px -24px rgba(0,0,0,.85)}
+.peek-head{height:36px;flex:0 0 36px;display:flex;align-items:center;gap:10px;padding:0 12px;
+  background:var(--panel);border-bottom:1px solid var(--hairline)}
+.peek-path{font-family:var(--mono);font-size:11px;color:var(--text-3);flex:1}
+.peek-close{background:transparent;border:0;color:var(--text-3);font-size:13px;padding:4px 7px;border-radius:var(--radius-sm)}
+.peek-close:hover{background:var(--panel-3);color:var(--text)}
+.peek-body{flex:1;min-height:0;overflow-y:auto;padding:16px 20px}
+.peek-body .md{font-size:12.5px}
+</style>
+</head>
+<body>
+
+<div class="shell">
+  <div class="titlebar">
+    <div class="logo"></div>
+    <span class="tb-title">runcastle · <span style="color:var(--text-3)">runcastle</span></span>
+    <span class="tb-spacer"></span>
+    <button class="tb-btn">⌘K</button>
+    <button class="tb-btn" id="tglInspector">Inspector</button>
+  </div>
+
+  <div class="shell-body">
+    <!-- features rail -->
+    <aside class="sidebar">
+      <div class="side-head">Features · 4</div>
+      <div class="feat sel">
+        <div class="feat-t">Improve map workflow UI/UX</div>
+        <div class="feat-p">ideation · mapped</div>
+      </div>
+      <div class="feat"><div class="feat-t">Feature grouping &amp; forking</div><div class="feat-p">spec</div></div>
+      <div class="feat"><div class="feat-t">Live updates over SSE</div><div class="feat-p">shipped</div></div>
+      <div class="feat"><div class="feat-t">Repo picker in open-a-project</div><div class="feat-p">shipped</div></div>
+    </aside>
+
+    <!-- workspace -->
+    <section class="workspace">
+      <div class="ws-head">
+        <div class="ws-title-row">
+          <span class="phase-tag">ideation</span>
+          <span class="ws-title">Improve map workflow UI/UX + Make markdown render correctly</span>
+          <button class="ws-branch">⑂ feature/improve-map-workflow-ui-ux</button>
+        </div>
+        <div class="pipeline">
+          <button class="pstep cur"><span class="dot"></span><span>Ideation</span></button>
+          <span class="pconn"></span>
+          <button class="pstep"><span class="dot"></span><span>Spec</span></button>
+          <span class="pconn"></span>
+          <button class="pstep"><span class="dot"></span><span>Tickets</span></button>
+          <span class="pconn"></span>
+          <button class="pstep"><span class="dot"></span><span>Implementation</span></button>
+          <span class="pconn"></span>
+          <button class="pstep"><span class="dot"></span><span>Review</span></button>
+          <span class="pconn"></span>
+          <button class="pstep"><span class="dot"></span><span>Shipped</span></button>
+        </div>
+      </div>
+
+      <!-- NEXT-STEP BAR — decision 4: it now owns Converge -->
+      <div class="nextstep" id="nextstep"></div>
+
+      <!-- ws-body is now a flex ROW -->
+      <div class="ws-body">
+
+        <!-- ======= LEFT: map rail ======= -->
+        <aside class="maprail" id="maprail">
+          <div class="mr-head">
+            <span class="mr-head-t">Map</span>
+            <button class="mr-toggle" id="mrToggle" title="Collapse rail">‹</button>
+          </div>
+          <div class="mr-stub">
+            <div class="n" id="stubCount">2</div>
+            <div class="vert">Frontier</div>
+          </div>
+          <div class="mr-scroll" id="mrScroll"></div>
+        </aside>
+
+        <!-- ======= RIGHT: terminal, the hero ======= -->
+        <div class="termpane">
+          <div class="grill-panel">
+            <div class="grill-strip" id="grillStrip"></div>
+            <div class="grill-term" id="term"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- inspector -->
+    <aside class="inspector" id="inspector">
+      <div class="insp-h">Knowledge</div>
+      <button class="doc-card" onclick="openPeek()">📄 <span class="nm">map.md</span><span class="mt">2.1 kB</span></button>
+      <button class="doc-card" onclick="openPeek()">📄 <span class="nm">decisions.md</span><span class="mt">6.4 kB</span></button>
+      <button class="doc-card" onclick="openPeek()">📄 <span class="nm">brief.md</span><span class="mt">0.4 kB</span></button>
+      <div class="insp-h" style="margin-top:16px">Activity</div>
+      <div class="ev"><span class="d ok"></span><span>waypoint 2 resolved — rail + terminal split confirmed</span></div>
+      <div class="ev"><span class="d"></span><span>session live · waypoint</span></div>
+      <div class="ev"><span class="d"></span><span>4 waypoints charted</span></div>
+      <div class="ev"><span class="d"></span><span>map charted from ideation</span></div>
+    </aside>
+  </div>
+</div>
+
+<!-- doc peek: markdown vs today's <pre> -->
+<div class="peek-backdrop" id="peek" onclick="closePeek(event)">
+  <div class="peek" onclick="event.stopPropagation()">
+    <div class="peek-head">
+      <span class="peek-path">docs/features/improve-map-workflow-ui-ux/map.md</span>
+      <button class="peek-close" onclick="closePeek()">✕</button>
+    </div>
+    <div class="peek-body" id="peekBody"></div>
+  </div>
+</div>
+
+<!-- prototype controls -->
+<div class="proto-bar">
+  <b>State</b>
+  <button data-state="working" class="on">Mid-work</button>
+  <button data-state="resolved">Resolved → next</button>
+  <button data-state="complete">Map complete</button>
+  <div class="sep"></div>
+  <b>Docs</b>
+  <button id="tglMd" class="on">Rendered</button>
+</div>
+
+<script>
+// ---------------------------------------------------------------- fixture data
+const WAYPOINTS = [
+  { seq:1, type:'grilling', title:'Rail vs inspector for waypoints',
+    q:'Should the waypoint list live in a dedicated left rail, or reuse the existing `Inspector`? Decide based on whether waypoints are *primary interaction* or *ambient context*.',
+    status:'resolved', summary:'Dedicated left rail — waypoints are the primary surface of a mapped feature, not ambient context.' },
+  { seq:2, type:'prototype', title:'Two-pane split, terminal as hero',
+    q:'Build a throwaway layout to confirm the terminal reads as the hero at 300px rail width, and that four columns (sidebar / rail / terminal / inspector) are not too cramped on a laptop.',
+    status:'resolved', summary:'Confirmed at 1440px. Rail collapses to a 38px stub for narrower windows.' },
+  { seq:3, type:'grilling', title:'Session handoff without "Close session"',
+    q:'What is the smallest change that removes the explicit end-session click? Consider: implicit end inside `workWaypoint`, auto-end on `resolve_waypoint`, or a client-side two-mutation sequence.',
+    status:'frontier', origin:'Rail vs inspector for waypoints' },
+  { seq:4, type:'research', title:'Markdown renderer: bundle cost',
+    q:'What does `react-markdown` + `remark-gfm` actually cost gzipped, and is there a lighter option that still handles GFM tables and task lists correctly?',
+    status:'frontier' },
+  { seq:5, type:'task', title:'Wire <Markdown> into all three call sites',
+    q:'Replace the raw renders in `DocPeek`, the map rail section bodies, and ticket `goal`/`context` with the shared component.',
+    status:'blocked', blockers:'Markdown renderer: bundle cost' },
+  { seq:6, type:'grilling', title:'Rail behaviour at `spec` phase',
+    q:'Once converged, does the rail stay visible showing the resolved tail, or collapse away?',
+    status:'blocked', blockers:'Session handoff without "Close session"' },
+];
+
+const MAP_MD = {
+  'Destination':
+`Make a **mapped feature** feel like an IDE, not a scroll. The terminal is the
+hero; waypoints are always in view; every doc renders as real markdown.`,
+  'Notes':
+`Three independent complaints, one feature:
+
+1. \`GrillBody\` stacks map → waypoints → terminal in one scroll column
+2. \`DocPeek\` renders \`<pre>{content}</pre>\` — *no* markdown anywhere
+3. \`assertSpawnable\` forces an explicit end-session between waypoints
+
+| Surface | Today | After |
+| --- | --- | --- |
+| Map prose | raw text | \`<Markdown>\` |
+| Terminal | \`100dvh - 380px\` | \`flex: 1\` |
+| Handoff | 2 clicks | 1 click |`,
+  'Not yet specified':
+`- [ ] Whether \`TicketsBody\` gets the same flex treatment *(deferred — out of scope)*
+- [x] Rail width and collapse behaviour
+- [ ] Keyboard shortcut for "work next waypoint"`,
+  'Out of scope':
+`\`ReviewBody\`, \`AgentTranscript\`, and the xterm terminal itself. Syntax
+highlighting in code blocks — see [decision 3](#).`,
+};
+
+// ------------------------------------------------------- tiny markdown renderer
+// Stands in for react-markdown + remark-gfm so the prototype stays a single file.
+function md(src){
+  const esc = s => s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  const inline = s => esc(s)
+    .replace(/`([^`]+)`/g,'<code>$1</code>')
+    .replace(/\*\*([^*]+)\*\*/g,'<strong>$1</strong>')
+    .replace(/(^|[^*])\*([^*]+)\*/g,'$1<em>$2</em>')
+    .replace(/~~([^~]+)~~/g,'<del>$1</del>')
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g,'<a href="$2">$1</a>');
+  const out=[]; const lines=src.split('\n'); let i=0;
+  while(i<lines.length){
+    const L=lines[i];
+    if(/^```/.test(L)){ const b=[]; i++; while(i<lines.length&&!/^```/.test(lines[i])) b.push(lines[i++]); i++;
+      out.push('<pre><code>'+esc(b.join('\n'))+'</code></pre>'); continue; }
+    if(/^\s*$/.test(L)){ i++; continue; }
+    if(/^(#{1,3})\s+/.test(L)){ const m=L.match(/^(#{1,3})\s+(.*)$/); out.push(`<h${m[1].length}>${inline(m[2])}</h${m[1].length}>`); i++; continue; }
+    if(/^---+$/.test(L)){ out.push('<hr>'); i++; continue; }
+    if(/^>\s?/.test(L)){ const b=[]; while(i<lines.length&&/^>\s?/.test(lines[i])) b.push(lines[i++].replace(/^>\s?/,''));
+      out.push('<blockquote>'+md(b.join('\n'))+'</blockquote>'); continue; }
+    if(/^\|/.test(L)&&/^\|[\s\-:|]+\|$/.test(lines[i+1]||'')){
+      const row=r=>r.trim().replace(/^\||\|$/g,'').split('|').map(c=>c.trim());
+      const head=row(L); i+=2; const body=[];
+      while(i<lines.length&&/^\|/.test(lines[i])) body.push(row(lines[i++]));
+      out.push('<table><thead><tr>'+head.map(h=>`<th>${inline(h)}</th>`).join('')+'</tr></thead><tbody>'+
+        body.map(r=>'<tr>'+r.map(c=>`<td>${inline(c)}</td>`).join('')+'</tr>').join('')+'</tbody></table>');
+      continue; }
+    if(/^\s*[-*]\s+\[[ x]\]\s+/i.test(L)){ const b=[];
+      while(i<lines.length&&/^\s*[-*]\s+\[[ x]\]\s+/i.test(lines[i])){
+        const m=lines[i++].match(/^\s*[-*]\s+\[([ x])\]\s+(.*)$/i);
+        b.push(`<li><input type="checkbox" disabled ${m[1].toLowerCase()==='x'?'checked':''}>${inline(m[2])}</li>`); }
+      out.push('<ul class="task">'+b.join('')+'</ul>'); continue; }
+    if(/^\s*[-*]\s+/.test(L)){ const b=[];
+      while(i<lines.length&&/^\s*[-*]\s+/.test(lines[i])) b.push('<li>'+inline(lines[i++].replace(/^\s*[-*]\s+/,''))+'</li>');
+      out.push('<ul>'+b.join('')+'</ul>'); continue; }
+    if(/^\s*\d+\.\s+/.test(L)){ const b=[];
+      while(i<lines.length&&/^\s*\d+\.\s+/.test(lines[i])) b.push('<li>'+inline(lines[i++].replace(/^\s*\d+\.\s+/,''))+'</li>');
+      out.push('<ol>'+b.join('')+'</ol>'); continue; }
+    const p=[]; while(i<lines.length&&!/^\s*$/.test(lines[i])&&!/^(#{1,3}\s|```|>|\||\s*[-*]\s|\s*\d+\.\s|---+$)/.test(lines[i])) p.push(lines[i++]);
+    out.push('<p>'+inline(p.join(' '))+'</p>');
+  }
+  return out.join('');
+}
+
+// ---------------------------------------------------------------- render state
+let STATE='working', RENDER_MD=true, OPEN=new Set([3,4]);
+
+function wpsFor(state){
+  return WAYPOINTS.map(w=>{
+    const x={...w};
+    if(state==='working'&&w.seq===3) x.status='claimed';
+    if(state==='resolved'){
+      if(w.seq===3){x.status='resolved';x.summary='Server-side implicit end inside `workWaypoint`, behind an `endLive` flag.';}
+      if(w.seq===5)x.status='blocked';
+    }
+    if(state==='complete'){
+      ['3','4','5','6'].includes(String(w.seq))&&(x.status='resolved');
+      if(!x.summary)x.summary='Resolved — see decisions.md.';
+    }
+    // cascade: unblock once the blocker is terminal
+    if(x.status==='blocked'){
+      const map={'Markdown renderer: bundle cost':4,'Session handoff without "Close session"':3};
+      const bseq=map[x.blockers];
+      const b=WAYPOINTS.find(v=>v.seq===bseq);
+      const bResolved=(state==='complete')||(state==='resolved'&&bseq===3)||(b&&b.status==='resolved');
+      if(bResolved)x.status='frontier';
+    }
+    return x;
+  });
+}
+
+function renderRail(){
+  const ws=wpsFor(STATE);
+  const g=s=>ws.filter(w=>w.status===s);
+  const frontier=g('frontier'), blocked=g('blocked'), claimed=g('claimed'), done=g('resolved');
+  document.getElementById('stubCount').textContent=frontier.length;
+
+  const card=(w,{expandedByDefault=false}={})=>{
+    const open=OPEN.has(w.seq)||(expandedByDefault&&!OPEN.has(-w.seq));
+    const isFront=w.status==='frontier';
+    return `<div class="wp ${w.status==='blocked'?'wp-blocked':''} ${w.status==='resolved'?'wp-done':''} ${open?'open':''}" data-seq="${w.seq}">
+      <div class="wp-top" onclick="toggleWp(${w.seq},${expandedByDefault})">
+        ${w.status==='claimed'?'<span class="wp-pulse"></span>':''}
+        <span class="wp-type">${w.status==='resolved'?'resolved':w.type}</span>
+        <span class="wp-title">${w.title}</span>
+        <span class="wp-caret">▶</span>
+      </div>
+      <div class="wp-detail">
+        <div class="wp-q md">${md(w.q)}</div>
+        ${w.origin?`<div class="wp-meta">surfaced by ${w.origin}</div>`:''}
+        ${w.blockers?`<div class="wp-blockers">⛔ blocked by ${w.blockers}</div>`:''}
+        ${w.summary?`<div class="wp-summary md">${md(w.summary)}</div>`:''}
+        ${w.status==='claimed'?`<div class="wp-meta">session live — resolve or abandon to move on</div>`:''}
+        ${isFront?`<div class="wp-actions">
+            <button class="btn xs solid" onclick="work(${w.seq},event)">${w.type==='research'?'Research':'Work'}</button>
+            ${w.type==='research'?'<span class="wp-run-note">runs AFK</span>':''}
+          </div>`:''}
+        ${isFront?`<div class="wp-confirm">
+            <div class="wp-confirm-t">A session is live on <b>Session handoff without "Close session"</b> and its waypoint is still open. End it and work this instead?</div>
+            <div class="wp-confirm-a">
+              <button class="btn xs danger" onclick="confirmWork(${w.seq},event)">End &amp; work this</button>
+              <button class="btn xs" onclick="cancelWork(${w.seq},event)">Cancel</button>
+            </div>
+          </div>`:''}
+      </div>
+    </div>`;
+  };
+
+  const group=(title,arr,cls,opts)=>arr.length?`<section class="wp-group ${cls}">
+    <div class="wp-group-title">${title} <span class="count">· ${arr.length}</span></div>
+    ${arr.map(w=>card(w,opts)).join('')}</section>`:'';
+
+  document.getElementById('mrScroll').innerHTML =
+    group('Frontier',frontier,'wp-group-frontier',{expandedByDefault:true}) +
+    group('Claimed',claimed,'wp-group-claimed') +
+    group('Blocked',blocked,'wp-group-blocked') +
+    group('Resolved',done,'wp-group-done') +
+    `<details class="mapdoc">
+       <summary class="mapdoc-sum"><span class="car">▶</span> Map document</summary>
+       ${Object.entries(MAP_MD).map(([k,v])=>`<div class="map-section">
+          <div class="map-section-title">${k}</div>
+          ${RENDER_MD?`<div class="md">${md(v)}</div>`:`<pre class="raw">${v.replace(/&/g,'&amp;').replace(/</g,'&lt;')}</pre>`}
+        </div>`).join('')}
+     </details>`;
+}
+
+function renderStrip(){
+  const el=document.getElementById('grillStrip');
+  if(STATE==='working'){
+    el.innerHTML=`<span class="grill-kind">waypoint</span><span class="dot-live"></span>
+      <span class="grill-live-label">live</span><span class="grill-spacer"></span>
+      <span class="grill-sid">a3f91c2e</span>
+      <button class="btn xs danger">End session</button>`;
+  } else if(STATE==='resolved'){
+    el.innerHTML=`<span class="grill-kind">waypoint</span>
+      <div class="strip-done"><span class="done-check">✓</span>
+        <span class="done-txt"><b>Resolved</b> — server-side implicit end inside <code style="font-family:var(--mono);font-size:10.5px">workWaypoint</code>, behind <code style="font-family:var(--mono);font-size:10.5px">endLive</code>.</span>
+      </div>
+      <button class="btn xs solid" onclick="setState('working')">Work next: Markdown renderer…</button>`;
+  } else {
+    el.innerHTML=`<span class="grill-kind">waypoint</span>
+      <div class="strip-done"><span class="done-check">✓</span>
+        <span class="done-txt"><b>Map complete</b> — every waypoint resolved. Converge from the bar above.</span>
+      </div>`;
+  }
+}
+
+function renderNextStep(){
+  const el=document.getElementById('nextstep');
+  if(STATE==='complete'){
+    el.innerHTML=`<div class="ns-main">
+        <div class="ns-kick">MAP</div>
+        <div class="ns-title">Converge the map</div>
+        <div class="ns-desc">Every waypoint is resolved — converge to draft the spec and tickets.
+          <span class="fog">⚑ Fog remains — still not specified: keyboard shortcut for “work next waypoint”. You can converge anyway.</span></div>
+      </div>
+      <div class="ns-actions"><button class="btn solid">Converge</button></div>`;
+  } else {
+    el.innerHTML=`<div class="ns-main">
+        <div class="ns-kick wait">MAP</div>
+        <div class="ns-title">Work the frontier</div>
+        <div class="ns-desc">2 waypoints still open — converge once the frontier clears.</div>
+      </div>
+      <div class="ns-actions">
+        <button class="btn" onclick="showOverride(this)">Override &amp; converge…</button>
+      </div>`;
+  }
+}
+
+function showOverride(btn){
+  btn.parentElement.innerHTML=`<div class="override">
+    <input placeholder="reason to converge past open waypoints" autofocus>
+    <button class="btn solid">Converge anyway</button>
+    <button class="btn" onclick="renderNextStep()">Cancel</button></div>`;
+  btn.parentElement.querySelector('input')?.focus();
+}
+
+const TERM = {
+  working:`<span class="d">╭─ claude · waypoint 3 ─────────────────────────╮</span>
+<span class="u">▸</span> <span class="a">Reading the current handoff path…</span>
+
+  <span class="tool">Read</span> <span class="d">packages/server/src/launcher/launcher.ts:456-489</span>
+  <span class="tool">Read</span> <span class="d">packages/server/src/routes/hooks.ts:110-121</span>
+
+<span class="a">Found it. <span class="u">assertSpawnable</span> throws on any live session row, and
+<span class="u">resolve_waypoint</span> only flips waypoint machinery — it never touches
+the session. So the finished <span class="u">claude</span> process sits there live,
+and the next Work click is refused until you hunt down End session.</span>
+
+<span class="a">Three places the implicit end could live:</span>
+
+  <span class="d">1.</span> client — endSession() then workWaypoint()  <span class="d">← racy</span>
+  <span class="d">2.</span> server — sweep inside workWaypoint()       <span class="d">← atomic</span>
+  <span class="d">3.</span> resolve_waypoint ends its own session      <span class="d">← too magic</span>
+
+<span class="a">I recommend 2, behind an explicit <span class="u">endLive</span> flag so a mid-work
+session still needs a human confirm. Sound right?</span>
+
+<span class="u">›</span> <span class="caret"></span>`,
+  resolved:`<span class="a">I recommend 2, behind an explicit <span class="u">endLive</span> flag so a mid-work
+session still needs a human confirm. Sound right?</span>
+
+<span class="u">›</span> yes, and allow abandoning a waypoint mid-work
+
+<span class="a">Locked. Writing it to decisions.md…</span>
+
+  <span class="tool">Edit</span> <span class="d">docs/features/…/decisions.md</span>
+  <span class="tool">runcastle</span> <span class="d">resolve_waypoint(id, "resolved", …)</span> <span class="ok">✓</span>
+
+<span class="a">Waypoint 3 resolved. The frontier now has <span class="u">Markdown renderer:
+bundle cost</span> and <span class="u">Wire &lt;Markdown&gt; into all three call sites</span> —
+pick either from the rail, or use Work next in the strip.</span>
+
+<span class="d">(the terminal stays usable — resolution is a machinery flip,
+ not the end of the conversation)</span>
+
+<span class="u">›</span> <span class="caret"></span>`,
+  complete:`<span class="a">Waypoint 6 resolved — the rail stays visible at <span class="u">spec</span>, showing
+the resolved tail as context for the converge session.</span>
+
+  <span class="tool">runcastle</span> <span class="d">resolve_waypoint(id, "resolved", …)</span> <span class="ok">✓</span>
+
+<span class="a">That clears the frontier. All 6 waypoints are terminal, so G1
+(<span class="u">all-waypoints-terminal</span>) is satisfied — <span class="u">Converge</span> is now the
+primary action in the next-step bar.</span>
+
+<span class="a">One piece of fog remains (<span class="u">keyboard shortcut for "work next
+waypoint"</span>), shown as a warning but never enforced. You can
+converge anyway.</span>
+
+<span class="u">›</span> <span class="caret"></span>`,
+};
+
+function renderTerm(){ document.getElementById('term').innerHTML = TERM[STATE]; }
+
+// -------------------------------------------------------------------- handlers
+function toggleWp(seq,expandedByDefault){
+  if(expandedByDefault&&!OPEN.has(seq)&&!OPEN.has(-seq)){ OPEN.add(-seq); }
+  else if(OPEN.has(-seq)){ OPEN.delete(-seq); }
+  else if(OPEN.has(seq)) OPEN.delete(seq); else OPEN.add(seq);
+  renderRail();
+}
+function work(seq,e){
+  e.stopPropagation();
+  const card=document.querySelector(`.wp[data-seq="${seq}"]`);
+  if(STATE==='working'){ card.classList.add('confirming'); }   // mid-work → inline confirm
+  else { setState('working'); }                                 // finished → one click, no confirm
+}
+function confirmWork(seq,e){ e.stopPropagation(); setState('working'); }
+function cancelWork(seq,e){ e.stopPropagation();
+  document.querySelector(`.wp[data-seq="${seq}"]`).classList.remove('confirming'); }
+
+function setState(s){
+  STATE=s; OPEN=new Set([3,4]);
+  document.querySelectorAll('.proto-bar [data-state]').forEach(b=>b.classList.toggle('on',b.dataset.state===s));
+  renderAll();
+}
+function renderAll(){ renderRail(); renderStrip(); renderNextStep(); renderTerm(); }
+
+document.querySelectorAll('.proto-bar [data-state]').forEach(b=>
+  b.onclick=()=>setState(b.dataset.state));
+document.getElementById('tglMd').onclick=e=>{
+  RENDER_MD=!RENDER_MD;
+  e.target.classList.toggle('on',RENDER_MD);
+  e.target.textContent=RENDER_MD?'Rendered':'Raw (today)';
+  renderRail(); if(document.getElementById('peek').classList.contains('show')) openPeek();
+};
+document.getElementById('mrToggle').onclick=()=>{
+  const r=document.getElementById('maprail');
+  r.classList.toggle('collapsed');
+  document.getElementById('mrToggle').textContent=r.classList.contains('collapsed')?'›':'‹';
+};
+document.getElementById('tglInspector').onclick=()=>{
+  const i=document.getElementById('inspector');
+  i.style.display = i.style.display==='none' ? '' : 'none';
+};
+
+const PEEK_MD=`# Map — Improve map workflow UI/UX
+
+## Destination
+${MAP_MD['Destination']}
+
+## Notes
+${MAP_MD['Notes']}
+
+## Not yet specified
+${MAP_MD['Not yet specified']}
+
+## Out of scope
+${MAP_MD['Out of scope']}`;
+
+function openPeek(){
+  document.getElementById('peekBody').innerHTML =
+    RENDER_MD ? `<div class="md">${md(PEEK_MD)}</div>`
+              : `<pre class="raw">${PEEK_MD.replace(/&/g,'&amp;').replace(/</g,'&lt;')}</pre>`;
+  document.getElementById('peek').classList.add('show');
+}
+function closePeek(e){ if(!e||e.target.id==='peek'||e.type==='click') document.getElementById('peek').classList.remove('show'); }
+document.addEventListener('keydown',e=>{ if(e.key==='Escape') document.getElementById('peek').classList.remove('show'); });
+
+renderAll();
+</script>
+</body>
+</html>

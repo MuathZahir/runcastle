@@ -179,7 +179,9 @@ function ImageRow({
 function TokenRow({ probe, onDone }: { probe: Probe | undefined; onDone: () => void }) {
   const [sessionId, setSessionId] = useState<string | null>(null)
   const [tokenText, setTokenText] = useState('')
-  const [verdict, setVerdict] = useState<{ valid: boolean; detail: string } | null>(null)
+  const [verdict, setVerdict] = useState<{ valid: boolean; detail: string; fix?: string } | null>(
+    null,
+  )
   const toast = useToast()
 
   const start = trpc.setup.startTerminal.useMutation({
@@ -232,8 +234,14 @@ function TokenRow({ probe, onDone }: { probe: Probe | undefined; onDone: () => v
       </div>
       {verdict && (
         <div className={`afk-verdict ${verdict.valid ? 'is-ok' : 'is-warn'}`}>
-          {verdict.valid ? '✓ ' : '⚠ '}
-          {verdict.detail}
+          <div>
+            {verdict.valid ? '✓ ' : '⚠ '}
+            {verdict.detail}
+          </div>
+          {/* The verdict is the *only* feedback this step gives, so a failure
+              must carry its own next step — a bare "cannot verify" leaves the
+              user with nothing to try but re-pasting the same token. */}
+          {verdict.fix && <div className="afk-verdict-fix">{verdict.fix}</div>}
         </div>
       )}
     </Row>

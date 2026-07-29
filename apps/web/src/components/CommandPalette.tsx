@@ -19,6 +19,8 @@ export interface CommandPaletteProps {
   onSelect: (featureId: string) => void
   onNewFeature: () => void
   onOpenSettings: () => void
+  /** Reveal the project's preparation surface (findings, re-prepare, evidence). */
+  onOpenPreparation: () => void
   nav: ProjectNavApi
 }
 
@@ -29,10 +31,20 @@ type Row =
   | { kind: 'home' }
   | { kind: 'openProject' }
   | { kind: 'settings' }
+  | { kind: 'preparation' }
 
 export function CommandPalette(props: CommandPaletteProps) {
-  const { open, onClose, features, selectedFeatureId, onSelect, onNewFeature, onOpenSettings, nav } =
-    props
+  const {
+    open,
+    onClose,
+    features,
+    selectedFeatureId,
+    onSelect,
+    onNewFeature,
+    onOpenSettings,
+    onOpenPreparation,
+    nav,
+  } = props
 
   const [query, setQuery] = useState('')
   const [activeIndex, setActiveIndex] = useState(0)
@@ -77,6 +89,14 @@ export function CommandPalette(props: CommandPaletteProps) {
   const showHome = 'all projects home'.includes(q)
   const showOpen = 'open a project'.includes(q)
   const showSettings = 'settings preferences'.includes(q)
+  // Preparation is project-scoped and has no home in the feature pipeline, so
+  // without a palette entry the only way to reach it is remembering it lives
+  // inside settings.
+  // 'talk'/'ask' included because the conversation is reached THROUGH this
+  // card — the palette navigates, it does not launch sessions, so searching
+  // for the conversation has to land you where its button is.
+  const showPreparation =
+    'preparation prepare project commands baseline talk ask secrets database'.includes(q)
 
   const rows = useMemo<Row[]>(() => {
     const r: Row[] = filteredFeatures.map((f) => ({ kind: 'feature' as const, feature: f }))
@@ -86,8 +106,17 @@ export function CommandPalette(props: CommandPaletteProps) {
     if (showHome) r.push({ kind: 'home' })
     if (showOpen) r.push({ kind: 'openProject' })
     if (showSettings) r.push({ kind: 'settings' })
+    if (showPreparation) r.push({ kind: 'preparation' })
     return r
-  }, [filteredFeatures, filteredProjects, showNewFeature, showHome, showOpen, showSettings])
+  }, [
+    filteredFeatures,
+    filteredProjects,
+    showNewFeature,
+    showHome,
+    showOpen,
+    showSettings,
+    showPreparation,
+  ])
 
   if (!open) return null
 
@@ -119,6 +148,9 @@ export function CommandPalette(props: CommandPaletteProps) {
         break
       case 'settings':
         onOpenSettings()
+        break
+      case 'preparation':
+        onOpenPreparation()
         break
     }
     onClose()
@@ -210,7 +242,7 @@ export function CommandPalette(props: CommandPaletteProps) {
             </>
           )}
 
-          {(showNewFeature || showHome || showOpen || showSettings) && (
+          {(showNewFeature || showHome || showOpen || showSettings || showPreparation) && (
             <>
               <div className="cmdk-group-label">Actions</div>
               {showNewFeature && (
@@ -260,6 +292,23 @@ export function CommandPalette(props: CommandPaletteProps) {
                   activate={activate}
                   glyph={<IconSettings size={13} />}
                   label="Settings"
+                />
+              )}
+              {showPreparation && (
+                <ActionRow
+                  index={
+                    projectsEnd +
+                    (showNewFeature ? 1 : 0) +
+                    (showHome ? 1 : 0) +
+                    (showOpen ? 1 : 0) +
+                    (showSettings ? 1 : 0)
+                  }
+                  activeIndex={activeIndex}
+                  bindRow={bindRow}
+                  setActiveIndex={setActiveIndex}
+                  activate={activate}
+                  glyph={<IconSettings size={13} />}
+                  label="Preparation — measured repo facts, or talk to the agent"
                 />
               )}
             </>

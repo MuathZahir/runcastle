@@ -3,6 +3,7 @@ import type { EventRow, Ticket } from '@runcastle/core'
 import { trpc } from '../../trpc'
 import { useToast } from '../../lib/toast'
 import { useEventLog } from '../../lib/events'
+import { ticketConflictKickoff } from '../../lib/feature-ui'
 import { fmtDuration, fmtTime, shortSha } from '../../lib/format'
 import { DimLine, EmptyState, RunStatusChip, TicketStatusChip } from '../../ui'
 import { IconTerminal } from '../../icons'
@@ -64,6 +65,10 @@ export function RunBody({
   // ideation terminal reopened three phases late.
   const sessions = feature.data?.sessions ?? []
   const live = sessions.some((s) => s.status === 'live' || s.status === 'launching')
+  // A conflict lane's "Resolve in terminal" spawns an HITL session, which the
+  // launcher refuses while a run holds the feature branch or another terminal
+  // is open — so the lane greys the button rather than offering a certain error.
+  const terminalBlocked = live || run.data?.status === 'running'
 
   if (!runId && !live) {
     return (
@@ -98,9 +103,11 @@ export function RunBody({
               <Lane
                 key={t.id}
                 ticket={t}
+                featureBranch={feature.data?.feature.branch ?? ''}
                 duration={durations.get(t.id)}
                 selected={t.id === selectedId}
                 readonly={readonly}
+                terminalBlocked={terminalBlocked}
                 onSelect={() => {
                   setPinned(t.id)
                   setTab('agent')
@@ -152,15 +159,19 @@ export function RunBody({
 
 function Lane({
   ticket,
+  featureBranch,
   duration,
   selected,
   readonly,
+  terminalBlocked,
   onSelect,
 }: {
   ticket: Ticket
+  featureBranch: string
   duration?: number
   selected: boolean
   readonly: boolean
+  terminalBlocked: boolean
   onSelect: () => void
 }) {
   const toast = useToast()
@@ -171,6 +182,7 @@ function Lane({
   }
   const retry = trpc.ticket.retry.useMutation(onMutated)
   const stop = trpc.ticket.stop.useMutation(onMutated)
+  const launch = trpc.feature.launchSession.useMutation(onMutated)
   const copy = (sha: string) => {
     navigator.clipboard?.writeText(sha).then(
       () => toast.push(`copied ${shortSha(sha)}`, 'info'),
@@ -185,7 +197,12 @@ function Lane({
   // First line of the failure, so the user never has to dig through the event
   // stream to learn WHY a lane went red.
   const errorHeadline = ticket.status === 'failed' ? ticket.error?.split('\n')[0] : undefined
-  const busy = retry.isPending || stop.isPending
+  const busy = retry.isPending || stop.isPending || launch.isPending
+  // A landing conflict is not a normal failure: the ticket IS implemented, its
+  // commits are safe on `attemptBranch`, and the only outstanding work is the
+  // merge. It gets its own card (with the conflicting files) and its own verbs,
+  // because "Retry" here means "resolve the conflict", not "write it again".
+  const conflict = ticket.status === 'failed' ? ticket.conflictFiles : undefined
   return (
     <div
       className={`lane is-clickable${mod}${selected ? ' is-selected' : ''}`}
@@ -202,9 +219,31 @@ function Lane({
         <span className="lane-title">{ticket.title}</span>
         <TicketStatusChip status={ticket.status} />
       </div>
-      {errorHeadline && (
+      {errorHeadline && !conflict && (
         <div className="lane-error" title={ticket.error}>
           {errorHeadline}
+        </div>
+      )}
+      {conflict && (
+        <div className="lane-conflict">
+          <div className="lane-conflict-head">
+            Merge conflict — the work is committed but could not land on{' '}
+            <code>{featureBranch}</code>
+          </div>
+          {conflict.length > 0 && (
+            <ul className="lane-conflict-files">
+              {conflict.map((f) => (
+                <li key={f} title={f}>
+                  {f}
+                </li>
+              ))}
+            </ul>
+          )}
+          {ticket.error && (
+            <div className="lane-error" title={ticket.error}>
+              {errorHeadline}
+            </div>
+          )}
         </div>
       )}
       {!readonly && ticket.status === 'failed' && (
@@ -212,14 +251,20 @@ function Lane({
           <button
             className="lane-btn"
             disabled={busy}
-            title="retry this ticket — continues from any commits preserved by previous attempts"
+            title={
+              conflict
+                ? 'run an agent that merges the feature branch into this ticket’s branch and resolves the conflict — it gets the ticket, the feature docs, and the commits it is reconciling against'
+                : 'retry this ticket — continues from any commits preserved by previous attempts'
+            }
             onClick={(e) => {
               e.stopPropagation()
               retry.mutate(
                 { ticketId: ticket.id },
                 {
                   onSuccess: (r) => {
-                    if (r.resumedFrom) {
+                    if (r.resolvingConflict) {
+                      toast.push(`resolving ticket #${ticket.seq}'s conflict with an agent`, 'info')
+                    } else if (r.resumedFrom) {
                       toast.push(
                         `resuming ticket #${ticket.seq} from ${r.preservedCommits} preserved commit(s)`,
                         'info',
@@ -230,12 +275,43 @@ function Lane({
               )
             }}
           >
-            Retry
+            {conflict ? 'Resolve with agent' : 'Retry'}
           </button>
+          {conflict && (
+            <button
+              className="lane-btn"
+              disabled={busy || terminalBlocked}
+              title={
+                terminalBlocked
+                  ? 'available once this run finishes and no terminal is open'
+                  : 'open a terminal on the feature branch, briefed with this ticket and its conflicting files, and resolve it yourself'
+              }
+              onClick={(e) => {
+                e.stopPropagation()
+                launch.mutate({
+                  featureId: ticket.featureId,
+                  kind: 'revisit',
+                  kickoffLine: ticketConflictKickoff({
+                    seq: ticket.seq,
+                    title: ticket.title,
+                    branch: ticket.attemptBranch ?? '',
+                    featureBranch,
+                    files: conflict,
+                  }),
+                })
+              }}
+            >
+              Resolve in terminal
+            </button>
+          )}
           <button
             className="lane-btn lane-btn-danger"
             disabled={busy}
-            title="discard any preserved commits from previous attempts and redo the ticket from the feature branch tip"
+            title={
+              conflict
+                ? 'throw away the conflicting branch and re-implement the ticket from the current feature branch tip'
+                : 'discard any preserved commits from previous attempts and redo the ticket from the feature branch tip'
+            }
             onClick={(e) => {
               e.stopPropagation()
               if (confirm(`Discard ticket #${ticket.seq}'s preserved work (if any) and start over?`)) {
@@ -261,7 +337,11 @@ function Lane({
                 { ticketId: ticket.id },
                 {
                   onSuccess: (r) => {
-                    if (!r.stopped) toast.push('no live agent for this ticket (already finishing?)', 'info')
+                    if (r.swept) {
+                      toast.push('no live agent — the lane was orphaned; marked failed, retry to resume it', 'info')
+                    } else if (!r.stopped) {
+                      toast.push('no live agent for this ticket (already finishing?)', 'info')
+                    }
                   },
                 },
               )
@@ -333,6 +413,10 @@ function EventStream({ events }: { events: EventRow[] }) {
 
 /** Colour class from the event type keyword. */
 function eventLevel(type: string): 'error' | 'ok' | 'active' | 'info' {
+  // In-loop conflict resolution is progress, not failure — checked before the
+  // generic `conflict` keyword, which would otherwise paint the whole resolve red.
+  if (type === 'merge.conflict.resolved') return 'ok'
+  if (type === 'merge.conflict.resolving') return 'active'
   if (/(error|fail|conflict|cancel|stopped)/i.test(type)) return 'error'
   if (/(done|succeed|finished|shipped|merged)/i.test(type)) return 'ok'
   if (/(start|burn|launch|advance|running|retry|resum)/i.test(type)) return 'active'

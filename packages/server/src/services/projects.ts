@@ -9,6 +9,7 @@ import { InvalidInputError, isNotImplemented } from '../errors'
 import { emitProject } from './events'
 import { expandPath } from './fsbrowse'
 import * as git from './git'
+import { shouldAutoPrepare, startPrep } from './prep'
 import {
   allProjects,
   getProjectByRepoPath,
@@ -95,6 +96,7 @@ export async function openProject(ctx: AppCtx, rawPath: string): Promise<Project
       message: `project ${existing.name} re-opened at ${repoPath} (${mainBranch})`,
     })
     warnIfTranslatedMount(ctx, existing.id, repoPath)
+    maybeAutoPrepare(ctx, reopened)
     return reopened
   }
 
@@ -113,7 +115,36 @@ export async function openProject(ctx: AppCtx, rawPath: string): Promise<Project
     message: `project ${name} at ${repoPath} (${mainBranch})`,
   })
   warnIfTranslatedMount(ctx, project.id, repoPath)
+  maybeAutoPrepare(ctx, project)
   return project
+}
+
+/**
+ * Kick off a project's FIRST preparation run, in the background.
+ *
+ * Deliberately fire-and-forget: `openProject` must return immediately so the
+ * user lands in the project and can start a feature, and the only consumer of
+ * the findings is a burn — several gates downstream. Making anyone watch a
+ * container build before they can type a feature title would trade the whole
+ * benefit for a worse first impression.
+ *
+ * "First" means the first time the PROJECT has ever been prepared, not the
+ * first time its row was inserted. Keying it to the insert meant every project
+ * opened before preparation existed could never auto-prepare — the row was
+ * already there, so the one code path that started a run was unreachable, and
+ * preparation looked broken to exactly the people who had been using runcastle
+ * longest. Guarding on `latestPrep` instead makes this idempotent: it fires
+ * once, on whichever open first finds the project unprepared, and never again.
+ */
+function maybeAutoPrepare(ctx: AppCtx, project: Project): void {
+  if (!shouldAutoPrepare(ctx, project)) return
+  startPrep(ctx, project.id).catch((e: unknown) => {
+    // Never fail an open over preparation — the project is usable without it.
+    emitProject(ctx, project.id, {
+      type: 'prep.run.failed',
+      message: `could not start preparation: ${e instanceof Error ? e.message : String(e)}`,
+    })
+  })
 }
 
 /**

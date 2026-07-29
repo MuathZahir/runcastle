@@ -8,6 +8,9 @@ import type { SimpleGit } from 'simple-git'
 import type { AppCtx } from '../db/types'
 import { GateError, InvalidInputError } from '../errors'
 import { startDevPane, stopDevPane } from '../pty/dev-pane'
+import type { DriveHookFailure } from './drive-hooks'
+import { describeHookResult, runDriveHook } from './drive-hooks'
+import { describeDriveEnv, driveProcessEnv, parseDriveEnv } from './drive-env'
 import { emit } from './events'
 import { hasActiveRun } from './repo'
 
@@ -33,6 +36,42 @@ export interface TestDriveResult {
   ok: boolean
   deniedReason?: string
   branch?: string
+  /**
+   * Uncommitted paths that travelled across the branch switch on `stop`. git
+   * carries dirty files with you, so work done during a drive lands on the
+   * branch you return to — reported rather than silently allowed.
+   */
+  carriedChanges?: string[]
+  /** Set on `stop` when the drive may have left the dev database ahead (§drift). */
+  dbDrift?: DbDrift
+  /**
+   * The project's `driveSetupCommand` (on `start`) or `driveStopCommand` (on
+   * `stop`) when it ran and failed. Absent means "no hook, or it succeeded" —
+   * a successful hook is timeline material, not something to interrupt over.
+   */
+  hookFailure?: DriveHookFailure
+}
+
+/**
+ * A stopped test drive whose branch carried migrations the branch you returned
+ * to does not have.
+ *
+ * Test drive switches FILES. It cannot switch the dev database, and the dev
+ * pane inherits the same environment — so a migration applied during a drive
+ * outlives it, and the next `migrate dev` on the original branch reports drift
+ * against a schema whose migration files are no longer on disk. The user finds
+ * out much later, from a tool that cannot know a test drive ever happened.
+ *
+ * We cannot fix that from git, so we do the next best thing: notice at the
+ * exact moment it becomes true, name it, and hand over the project's own reset
+ * command. Running it is the human's call — a dev database can hold hand-built
+ * state that a silent auto-reset would destroy.
+ */
+export interface DbDrift {
+  /** Migration-ish paths that differ between the drive branch and this one. */
+  files: string[]
+  /** The project's `dbResetCommand`, when preparation or a human established one. */
+  resetCommand?: string
 }
 
 /** Active test-drive info the UI polls (`feature.driveInfo`): the branch under
@@ -57,6 +96,24 @@ export interface MergeResult {
 
 /** Repo-relative dir (forward slashes) holding every feature's knowledge docs. */
 const DOCS_PATHSPEC = 'docs/features'
+
+/**
+ * Paths that look like database migrations, across the conventions runcastle
+ * actually meets: a `migrations/` or `migrate/` directory segment covers
+ * Prisma, Django, Rails, Laravel, Supabase, Alembic and golang-migrate, and
+ * `.sql` files under a `drizzle/` segment cover Drizzle Kit's default output.
+ *
+ * Deliberately a heuristic over paths rather than a per-ORM detector: the cost
+ * of a false positive is one dismissible warning, and the cost of a false
+ * negative is the silent drift this exists to catch.
+ */
+const MIGRATION_DIR_RE = /(^|\/)(migrations|migrate)\//i
+const DRIZZLE_SQL_RE = /(^|\/)drizzle\/.*\.sql$/i
+
+/** The migration-looking subset of a diff's paths. Pure. */
+export function migrationPaths(paths: readonly string[]): string[] {
+  return paths.filter((p) => MIGRATION_DIR_RE.test(p) || DRIZZLE_SQL_RE.test(p))
+}
 
 /** Human-readable test-drive denial reasons (surfaced verbatim in the UI). */
 const DENY_DIRTY = 'Working tree has uncommitted changes — commit or stash first'
@@ -418,7 +475,50 @@ export async function reattachWorktree(path: string, branch: string): Promise<vo
  */
 export const RESEARCH_BRANCH_PREFIX = 'runcastle/research/'
 export const TICKET_BRANCH_PREFIX = 'runcastle/ticket/'
+/**
+ * Branch a project-preparation run commits its findings file to. Unlike the
+ * other two this is never merged anywhere: it exists only as a transport, so
+ * the agent's structured output survives a dropped stream and lands somewhere
+ * we can read deterministically. Deleted as soon as the file is read.
+ */
+export const PREP_BRANCH_PREFIX = 'runcastle/prep/'
 const TEMP_BRANCH_PREFIXES = [RESEARCH_BRANCH_PREFIX, TICKET_BRANCH_PREFIX] as const
+
+/** Name for one preparation run's throwaway findings branch. */
+export function prepBranchName(unique: string): string {
+  return `${PREP_BRANCH_PREFIX}${unique}`
+}
+
+/**
+ * Read a file's contents at a git ref without checking anything out
+ * (`git show <ref>:<path>`). `undefined` when the ref or path is absent.
+ * `path` must use forward slashes — it is a git pathspec, not an OS path.
+ */
+export async function readFileAtRef(
+  repoPath: string,
+  ref: string,
+  path: string,
+): Promise<string | undefined> {
+  try {
+    return await git(repoPath).raw(['show', `${ref}:${path}`])
+  } catch {
+    return undefined
+  }
+}
+
+/**
+ * Delete a preparation run's throwaway branch, whether or not the run
+ * succeeded. Best-effort by design: a leftover `runcastle/prep/*` branch is
+ * inert (nothing merges it, nothing reads it after the run), so failing a
+ * completed preparation over a failed branch delete would be strictly worse.
+ */
+export async function deletePrepBranch(repoPath: string, branch: string): Promise<void> {
+  try {
+    await deleteBranchDetachingWorktrees(git(repoPath), repoPath, branch)
+  } catch {
+    // best-effort — an orphaned prep branch costs nothing
+  }
+}
 
 const TEMP_BRANCH_SLUG_MAX = 16
 
@@ -458,6 +558,71 @@ export function ticketBranchName(slug: string, ticketSeq: number, unique: string
   return `${TICKET_BRANCH_PREFIX}${tempBranchSlugSegment(slug)}/${ticketSeq}-${unique}`
 }
 
+// --- sandcastle burn worktrees ----------------------------------------------
+
+/**
+ * Where sandcastle puts the `branch` strategy's worktree:
+ * `<repo>/.sandcastle/worktrees/<branch with every `/` → `-`>` (its
+ * `worktreeName = branch.replace(/\//g, '-')`). Deriving it here lets us clean
+ * up a worktree sandcastle itself failed to remove, without parsing its errors.
+ */
+export function burnWorktreePath(repoPath: string, branch: string): string {
+  return join(repoPath, '.sandcastle', 'worktrees', branch.replace(/\//g, '-'))
+}
+
+/**
+ * Best-effort removal of a burn worktree sandcastle could not delete at
+ * teardown. On Windows `git worktree remove` hits `Directory not empty` when a
+ * handle inside the dir is still open — typically the just-`rm -f`'d
+ * container's bind mount, which Docker Desktop releases a moment later (also
+ * Defender/the indexer mid-scan) — so the first retry usually succeeds. Falls
+ * back to a direct recursive delete, then always prunes: git only drops the
+ * `.git/worktrees/<name>` admin entry when its work-tree delete succeeded, so a
+ * failed removal otherwise leaves the entry registered forever (and `prune`
+ * ignores it while the dir is still there).
+ *
+ * NEVER throws and never blocks an outcome — a burn's result is decided by its
+ * commits, not by whether we could tidy up after it. Returns whether the dir is
+ * actually gone.
+ */
+export async function cleanupBurnWorktree(
+  repoPath: string,
+  branch: string,
+  opts: { attempts?: number; delayMs?: number } = {},
+): Promise<boolean> {
+  const path = burnWorktreePath(repoPath, branch)
+  const attempts = Math.max(1, opts.attempts ?? 3)
+  const delayMs = opts.delayMs ?? 750
+  const g = git(repoPath)
+
+  for (let attempt = 1; attempt <= attempts && existsSync(path); attempt++) {
+    try {
+      await g.raw(['worktree', 'remove', '--force', path])
+    } catch {
+      // Still locked (or not a registered worktree) — retry, then fall back.
+    }
+    if (existsSync(path) && attempt < attempts) await sleep(delayMs)
+  }
+  if (existsSync(path)) {
+    try {
+      rmSync(path, { recursive: true, force: true })
+    } catch {
+      // best-effort — a locked file just means the dir survives this pass
+    }
+  }
+  try {
+    await g.raw(['worktree', 'prune'])
+  } catch {
+    // best-effort — a leftover registry entry is harmless once the dir is gone
+  }
+  return !existsSync(path)
+}
+
+/** `resolve` is `node:path`'s here — name the callback so it is not shadowed. */
+function sleep(ms: number): Promise<void> {
+  return new Promise((done) => setTimeout(done, ms))
+}
+
 /**
  * Commit shas reachable from `branch` but not from `base`, oldest first — the
  * work a burn attempt chain has accumulated over the feature branch. `[]` when
@@ -472,6 +637,87 @@ export async function branchCommitsAhead(
 ): Promise<string[]> {
   try {
     const out = await git(repoPath).raw(['rev-list', '--reverse', `${base}..${branch}`])
+    return out
+      .split('\n')
+      .map((l) => l.trim())
+      .filter(Boolean)
+  } catch {
+    return []
+  }
+}
+
+/**
+ * The commit sha `ref` points at, or `undefined` when it cannot be resolved
+ * (unborn branch, missing ref, not a repo). Used to pin a preparation run's
+ * findings to the main-branch commit they were measured at.
+ */
+export async function headSha(repoPath: string, ref: string): Promise<string | undefined> {
+  try {
+    const out = (await git(repoPath).revparse([ref])).trim()
+    return out.length > 0 ? out : undefined
+  } catch {
+    return undefined
+  }
+}
+
+/**
+ * How many commits `branch` has gained since `sha` — the staleness distance for
+ * a prepared finding. `undefined` (unknown) rather than `0` whenever the answer
+ * cannot be trusted: the sha may have been rewritten out of history by a rebase
+ * or dropped by a shallow fetch, and reporting an unreachable baseline as
+ * "0 commits behind" would present the most dangerous case as the safest one.
+ */
+export async function commitsSince(
+  repoPath: string,
+  sha: string,
+  branch: string,
+): Promise<number | undefined> {
+  try {
+    const out = (await git(repoPath).raw(['rev-list', '--count', `${sha}..${branch}`])).trim()
+    const n = Number(out)
+    return Number.isFinite(n) ? n : undefined
+  } catch {
+    return undefined
+  }
+}
+
+/**
+ * Repo-relative paths that differ between two refs, or `[]` when the diff
+ * cannot be taken. Used by the test-drive stop to ask a narrower question than
+ * "did anything change": did files under a migrations directory change, i.e.
+ * could this drive have moved the dev database's schema out from under the
+ * branch being returned to.
+ */
+export async function diffPaths(repoPath: string, from: string, to: string): Promise<string[]> {
+  try {
+    const out = (await git(repoPath).raw(['diff', '--name-only', from, to])).trim()
+    return out ? out.split('\n').map((s) => s.trim()).filter(Boolean) : []
+  } catch {
+    return []
+  }
+}
+
+/**
+ * One-line summaries (`<short sha> <subject>`) of the commits reachable from
+ * `branch` but not from `base`, newest first, capped at `limit`. The conflict
+ * resolver briefs its agent with these: "what landed underneath you while you
+ * were working" is the other side of the merge it has to reconcile with, and a
+ * list of subjects is the cheapest way to convey it. `[]` on any git failure —
+ * a missing brief must never fail a resolve.
+ */
+export async function commitSummaries(
+  repoPath: string,
+  base: string,
+  branch: string,
+  limit = 20,
+): Promise<string[]> {
+  try {
+    const out = await git(repoPath).raw([
+      'log',
+      `--max-count=${limit}`,
+      '--format=%h %s',
+      `${base}..${branch}`,
+    ])
     return out
       .split('\n')
       .map((l) => l.trim())
@@ -586,6 +832,13 @@ export interface TempBranchMergeResult {
   ok: boolean
   /** True when a real merge conflict was hit (merge aborted, temp branch kept). */
   conflict?: boolean
+  /**
+   * Repo-relative paths that conflicted (only on `conflict`). Captured while the
+   * merge is still in progress — `merge --abort` clears the unmerged index — so
+   * the resolver agent and the run lane get a real file list instead of having
+   * to parse git's error prose. Empty when git could not report them.
+   */
+  files?: string[]
   error?: string
 }
 
@@ -594,8 +847,9 @@ export interface TempBranchMergeResult {
  * The temp branch was created from the feature branch tip, so this is a
  * fast-forward unless the feature branch moved mid-run (docs committed by a
  * parallel HITL session, or another concurrent ticket landed first) — then it
- * is a plain merge, and on conflict we abort, keep the temp branch for manual
- * recovery, and report `conflict`.
+ * is a plain merge, and on conflict we abort, keep the temp branch (with the
+ * conflicting paths in `files`) and report `conflict` — the burner's landing
+ * loop then runs a resolver agent on that branch and comes back.
  *
  * Merge site: git only allows a merge inside a checkout of the target branch,
  * so if any worktree (normally the talk worktree; the main checkout during a
@@ -638,8 +892,9 @@ export async function mergeTempBranch(
       await gw.merge([tempBranch]) // plain merge: fast-forwards when it can
     } catch (e) {
       if (await mergeInProgress(gw)) {
+        const files = await conflictedFiles(gw) // before the abort clears the index
         await gw.raw(['merge', '--abort'])
-        return { ok: false, conflict: true, error: errMsg(e) }
+        return { ok: false, conflict: true, files, error: errMsg(e) }
       }
       return { ok: false, error: errMsg(e) }
     }
@@ -689,8 +944,9 @@ async function mergeInDisposableWorktree(
       await gw.merge([tempBranch])
     } catch (e) {
       if (await mergeInProgress(gw)) {
+        const files = await conflictedFiles(gw) // before the abort clears the index
         await gw.raw(['merge', '--abort'])
-        return { ok: false, conflict: true, error: errMsg(e) }
+        return { ok: false, conflict: true, files, error: errMsg(e) }
       }
       return { ok: false, error: errMsg(e) }
     }
@@ -980,6 +1236,29 @@ export async function testDrive(
     // Kill the whole dev-server process tree first so its port is freed with no
     // orphan (the drive owns the pane; its URL is cleared when state resets).
     if (devPaneId) stopDevPane(devPaneId)
+
+    // Teardown runs BEFORE the switch back, while the feature branch is still
+    // checked out: the environment being torn down belongs to that branch, and
+    // so do the files describing it (compose file, migrations). Running it after
+    // the switch would hand the command a different repo than the one it built.
+    // Same environment the setup hook saw, so `dropdb myapp_{{id}}` names the
+    // database `createdb myapp_{{id}}` made.
+    const teardownFailure = await runDriveHookStep(
+      ctx,
+      feature.id,
+      project.repoPath,
+      'teardown',
+      project.driveStopCommand,
+      driveEnvFor(ctx, project, feature, branch),
+    )
+
+    // Capture the dirty tree BEFORE the switch. `start` denies on a dirty tree
+    // but `stop` cannot — refusing would strand the user on the feature branch
+    // with no way back — so git carries these files across with them. That is
+    // how a migration generated during a drive ends up sitting untracked on the
+    // branch you returned to; naming it is the whole fix available here.
+    const carriedChanges = await dirtyPaths(g)
+
     await g.checkout(previousBranch)
     // The main checkout has released the feature branch — restore the talk
     // worktree to it (best-effort) so a resumed session picks up where it left.
@@ -990,7 +1269,23 @@ export async function testDrive(
       message: `test drive stopped — back on ${previousBranch}`,
       data: { branch: previousBranch },
     })
-    return { ok: true, branch: previousBranch }
+
+    if (carriedChanges.length > 0) {
+      emit(ctx, feature.id, {
+        type: 'testdrive.carried_changes',
+        message: `${carriedChanges.length} uncommitted file(s) came back with you onto ${previousBranch}: ${carriedChanges.slice(0, 5).join(', ')}${carriedChanges.length > 5 ? ', …' : ''}`,
+        data: { branch: previousBranch, files: carriedChanges },
+      })
+    }
+
+    const dbDrift = await detectDbDrift(ctx, project, feature, previousBranch, branch)
+    return {
+      ok: true,
+      branch: previousBranch,
+      ...(carriedChanges.length > 0 ? { carriedChanges } : {}),
+      ...(dbDrift ? { dbDrift } : {}),
+      ...(teardownFailure ? { hookFailure: teardownFailure } : {}),
+    }
   }
 
   // action === 'start' — deny checks in SPEC order: dirty | active | active-run.
@@ -1022,21 +1317,199 @@ export async function testDrive(
     data: { branch, previousBranch },
   })
 
+  // Bring the project's environment up before the dev server, so the dev
+  // command starts against services that exist. What that means is the
+  // project's business — we run its string and report the exit code. Both it
+  // and the dev pane below get the same rendered environment, which is how a
+  // per-branch database gets created and then connected to.
+  const driveEnv = driveEnvFor(ctx, project, feature, branch)
+  const setupFailure = await runDriveHookStep(
+    ctx,
+    feature.id,
+    project.repoPath,
+    'setup',
+    project.driveSetupCommand,
+    driveEnv,
+  )
+
   // Best-effort: spawn the dev command in a drive-owned embedded PTY pane and
   // sniff its localhost URL for the "Open app" link. A spawn failure never fails
-  // the drive (startDevPane emits its own event and returns undefined).
+  // the drive (startDevPane emits its own event and returns undefined). Started
+  // even after a failed setup hook — the pane is where the user debugs it, and
+  // withholding it removes the tool at the moment they need it.
   if (project.devCommand) {
     const devPaneId = startDevPane({
       ctx,
       featureId: feature.id,
       repoPath: project.repoPath,
       devCommand: project.devCommand,
+      env: driveEnv,
       onUrl: (url) => recordDriveUrl(ctx, feature.id, url),
     })
     if (devPaneId) testDriveState.devPaneId = devPaneId
   }
 
-  return { ok: true, branch }
+  return { ok: true, branch, ...(setupFailure ? { hookFailure: setupFailure } : {}) }
+}
+
+/**
+ * The environment every child of this drive runs with: the project's `driveEnv`
+ * lines, rendered with the drive's own variables, overlaid on the inherited
+ * environment.
+ *
+ * Resolved ONCE per drive and shared by the hooks and the dev pane, because the
+ * whole mechanism depends on them agreeing: a setup hook that creates
+ * `myapp_{{id}}` and a dev server that connects to a differently-rendered name
+ * would be worse than not doing this at all.
+ *
+ * An unknown `{{placeholder}}` is left literal and reported. Substituting a
+ * blank would silently produce a plausible connection string pointing at the
+ * wrong database, which is the one outcome worth being noisy about.
+ */
+function driveEnvFor(
+  ctx: AppCtx,
+  project: Project,
+  feature: Feature,
+  branch: string,
+): NodeJS.ProcessEnv {
+  const { vars, unknown } = parseDriveEnv(project.driveEnv, { slug: feature.slug, branch })
+  if (unknown.length > 0) {
+    emit(ctx, feature.id, {
+      type: 'testdrive.env_unknown_placeholder',
+      message: `drive environment left ${unknown.map((u) => `{{${u}}}`).join(', ')} unsubstituted — known variables are {{slug}}, {{branch}}, {{id}}`,
+      data: { unknown },
+    })
+  }
+  if (Object.keys(vars).length > 0) {
+    emit(ctx, feature.id, {
+      type: 'testdrive.env',
+      message: describeDriveEnv(vars),
+      // Values can hold credentials; the timeline records WHICH vars, not what.
+      data: { keys: Object.keys(vars) },
+    })
+  }
+  return driveProcessEnv(vars)
+}
+
+/**
+ * Run one test-drive hook, narrating it into the feature timeline. Returns the
+ * failure worth interrupting over, or `undefined` when there is no hook or it
+ * succeeded.
+ *
+ * A hook failure never fails the drive: on `start` the checkout has already
+ * switched, and on `stop` the user is mid-exit. Both cases are better served by
+ * a loud event quoting the command's own output than by a refusal.
+ */
+async function runDriveHookStep(
+  ctx: AppCtx,
+  featureId: string,
+  repoPath: string,
+  phase: 'setup' | 'teardown',
+  command: string | undefined,
+  env: NodeJS.ProcessEnv,
+): Promise<DriveHookFailure | undefined> {
+  const cmd = command?.trim()
+  if (!cmd) return undefined
+
+  emit(ctx, featureId, {
+    type: `testdrive.${phase}_started`,
+    message:
+      phase === 'setup'
+        ? `preparing environment: \`${cmd}\``
+        : `tearing down environment: \`${cmd}\``,
+    data: { command: cmd },
+  })
+
+  const result = await runDriveHook(cmd, { cwd: repoPath, env })
+  if (result.ok) {
+    emit(ctx, featureId, {
+      type: `testdrive.${phase}_ok`,
+      message: describeHookResult(cmd, result),
+      data: { command: cmd, durationMs: result.durationMs },
+    })
+    return undefined
+  }
+
+  emit(ctx, featureId, {
+    type: `testdrive.${phase}_failed`,
+    message: `${describeHookResult(cmd, result)}${result.output ? `\n${result.output}` : ''}`,
+    data: {
+      command: cmd,
+      exitCode: result.exitCode,
+      timedOut: result.timedOut,
+      output: result.output,
+    },
+  })
+  return {
+    phase,
+    command: cmd,
+    exitCode: result.exitCode,
+    timedOut: result.timedOut,
+    output: result.output,
+  }
+}
+
+/** Repo-relative paths with uncommitted changes (tracked or not), or `[]`. */
+async function dirtyPaths(g: SimpleGit): Promise<string[]> {
+  try {
+    const out = (await g.raw(['status', '--porcelain'])).trim()
+    if (!out) return []
+    return out
+      .split('\n')
+      // Porcelain v1: two status chars, a space, then the path. A rename is
+      // `R  old -> new`; the destination is the file that actually exists now.
+      .map((line) => line.slice(3).trim())
+      .map((p) => (p.includes(' -> ') ? (p.split(' -> ').at(-1) ?? p) : p))
+      .map((p) => p.replace(/^"|"$/g, ''))
+      .filter(Boolean)
+  } catch {
+    return []
+  }
+}
+
+/**
+ * Whether the drive just stopped could have left the dev database ahead of the
+ * branch the user returned to, and what to do about it.
+ *
+ * The question asked is narrow on purpose: not "did anything change" but "do
+ * the two branches disagree about migration files". A drive of a UI-only
+ * feature costs nothing here, which is what keeps the warning meaningful when
+ * it does fire.
+ *
+ * Emits `testdrive.db_drift` and returns the drift. Never throws and never
+ * fails the stop — the drive HAS stopped by the time this runs, and a git
+ * failure here must not turn that into an error.
+ */
+async function detectDbDrift(
+  ctx: AppCtx,
+  project: Project,
+  feature: Feature,
+  previousBranch: string,
+  driveBranch: string,
+): Promise<DbDrift | undefined> {
+  let files: string[]
+  try {
+    files = migrationPaths(await diffPaths(project.repoPath, previousBranch, driveBranch))
+  } catch {
+    return undefined
+  }
+  if (files.length === 0) return undefined
+
+  const resetCommand = project.dbResetCommand?.trim() || undefined
+  const drift: DbDrift = { files, ...(resetCommand ? { resetCommand } : {}) }
+
+  emit(ctx, feature.id, {
+    type: 'testdrive.db_drift',
+    message:
+      `${driveBranch} and ${previousBranch} differ by ${files.length} migration file(s) — ` +
+      'anything you migrated during the drive is still applied to your dev database, so the next ' +
+      `migrate on ${previousBranch} may report drift. ` +
+      (resetCommand
+        ? `Rebuild it with: ${resetCommand}`
+        : 'Set a "Database reset command" in project settings to get a one-click fix here.'),
+    data: { files, previousBranch, driveBranch, resetCommand: resetCommand ?? null },
+  })
+  return drift
 }
 
 // --- merge ------------------------------------------------------------------

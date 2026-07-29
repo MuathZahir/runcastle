@@ -4,9 +4,9 @@ import { and, desc, eq, inArray, isNotNull, sql } from 'drizzle-orm'
 import type { AppCtx } from '../db/types'
 import { sessions } from '../db/schema'
 import { ptyRegistry } from '../pty/registry'
-import { emit } from '../services/events'
+import { emit, emitForSession } from '../services/events'
 import { promoteLastSession } from '../services/waypoints'
-import { rowToSession } from '../services/repo'
+import { getFeatureRow, rowToSession } from '../services/repo'
 
 /**
  * Session-row persistence for the launcher + hook receiver + MCP server. There
@@ -16,11 +16,15 @@ import { rowToSession } from '../services/repo'
  * emit the lifecycle events so the timeline messages stay meaningful.
  */
 
-export interface CreateSessionInput {
-  featureId: string
+/**
+ * Exactly one of `featureId` / `projectId` is set: feature sessions carry their
+ * feature and derive the project through it; a project-scoped `prepare` session
+ * carries the project directly because it has no feature to derive one from.
+ */
+export type CreateSessionInput = {
   kind: SessionKind
   worktreePath: string
-}
+} & ({ featureId: string; projectId?: never } | { projectId: string; featureId?: never })
 
 /** Insert a fresh session row in the `launching` state; returns it (with id). */
 export function createSessionRow(ctx: AppCtx, input: CreateSessionInput): SessionRow {
@@ -28,7 +32,11 @@ export function createSessionRow(ctx: AppCtx, input: CreateSessionInput): Sessio
     .insert(sessions)
     .values({
       id: newId('sess'),
-      featureId: input.featureId,
+      featureId: input.featureId ?? null,
+      projectId: input.projectId ?? null,
+      // A feature session belongs to the lap its feature is on; a project-scoped
+      // `prepare` session has no feature to take one from (ADR-0010 §7).
+      lap: input.featureId ? getFeatureRow(ctx, input.featureId).lap : 1,
       kind: input.kind,
       ccSessionId: null,
       transcriptPath: null,
@@ -120,6 +128,38 @@ export function markSessionLive(
 export const KICKOFF_DELAY_MS = 1500
 export const KICKOFF_SUBMIT_DELAY_MS = 350
 
+/**
+ * How long a written kickoff has to come back as a real `UserPromptSubmit` hook
+ * before we assume the keystrokes were swallowed and type it again, and how many
+ * times we are willing to type it in total.
+ *
+ * Writing into a PTY is fire-and-forget: whatever is on screen eats the text.
+ * Claude Code can be showing a startup dialog when our timer fires — the
+ * "resume from a summary?" chooser on `--resume`, a trust prompt, an update
+ * notice — and then the briefing is simply gone, with the terminal looking
+ * perfectly healthy. Confirmation closes that loop: the ONLY proof a kickoff
+ * landed is Claude telling us it received the prompt.
+ */
+export const KICKOFF_CONFIRM_MS = 12_000
+export const KICKOFF_MAX_ATTEMPTS = 3
+
+/**
+ * `Ctrl-U` (kill-line), written before every retry. If the first attempt did
+ * reach the input box but never submitted, re-typing on top of it would produce
+ * one garbled double-length prompt; clearing first makes a retry idempotent.
+ */
+export const CLEAR_INPUT = '\x15'
+
+/**
+ * How long after spawning a terminal we wait for `SessionStart` before telling
+ * the human something is wrong. The hook fires within a second or two of a
+ * healthy launch, so silence past this means the session is blocked on
+ * something only they can see (a dialog waiting for an answer, a login prompt),
+ * or the hook itself is broken. Either way the kickoff cannot be delivered
+ * blind — we surface it and offer the manual Send.
+ */
+export const SESSION_READY_TIMEOUT_MS = 25_000
+
 /** The converge kickoff line, unchanged (E2E-proven — kept named for clarity). */
 export const CONVERGE_KICKOFF_LINE =
   'Proceed with your task: invoke /runcastle:converge and drive spec then tickets ' +
@@ -145,6 +185,40 @@ export const KICKOFF_LINES: Record<SessionKind, string> = {
   revisit:
     'Proceed with your task: invoke the /runcastle:revisit skill and work through what the ' +
     'human brings up.',
+  // No skill: the preparation brief is the whole task, and it arrives as the
+  // appended system prompt (renderPreparePrompt). The line only has to make the
+  // agent open its mouth — a headless run already measured what it could, so
+  // the useful first move is naming the gap, not re-deriving the repo.
+  prepare:
+    'Proceed with your task: work through the unestablished preparation fields with the human. ' +
+    'Start by telling them which fields are still open and what you need from them for each; ' +
+    'ask before running anything that touches their database or services.',
+}
+
+/**
+ * The lap briefing (SPEC §15.2) — the `revisit` kickoff override a Rethink
+ * passes, and the whole of a lap's ceremony: one terminal digests what the test
+ * drive taught, amends the docs, emits the lap's tickets and advances itself
+ * back to the human's Burn click (ADR-0010 §5).
+ *
+ * Both inputs it is told to read are genuinely optional and the line says so
+ * out loud: `test-notes.md` is created lazily on the first note (a feature that
+ * never captured one has no file at all), and `## Later laps` only exists when
+ * the slicing conversation parked scope there. An agent that treats a missing
+ * file as a broken environment stalls the lap on its first move.
+ */
+export function lapKickoff(lap: number): string {
+  return (
+    `Proceed with your task: invoke the /runcastle:revisit skill for LAP ${lap} REVIEW ITERATION. ` +
+    `Call get_feature_context, then read this feature's test-notes.md (the "## Lap ${lap - 1}" ` +
+    'section — what the last drive surfaced) and the "## Later laps" section of its spec.md. ' +
+    'EITHER MAY NOT EXIST YET; that is normal, not an error — say so and carry on from what I ' +
+    'tell you. Interview me about what the test drive taught: what was wrong, what was missing, ' +
+    'what I want next. Write what we settle on into decisions.md and amend spec.md for this lap ' +
+    '(pruning anything you promote out of "## Later laps"), then call emit_tickets for this ' +
+    `lap's work. Finish in THIS session: complete_phase through ideation → spec → tickets, then ` +
+    'tell me to review the cards and click Burn.'
+  )
 }
 
 /** The kickoff line for a session: an explicit override wins, else the per-kind default. */
@@ -220,39 +294,260 @@ export function writeKickoffSequence(
   submit.unref?.()
 }
 
+/**
+ * In-flight kickoff delivery for one session. Held in memory only: the PTY it
+ * types into dies with the process, so a delivery cannot outlive the server that
+ * owns it. The `line` is kept after the delivery settles so "Send briefing"
+ * (`resendKickoff`) can re-type the exact same text on demand.
+ */
+interface KickoffDelivery {
+  line: string
+  attempts: number
+  confirmed: boolean
+  /** No further automatic attempts: confirmed, superseded, or out of attempts. */
+  settled: boolean
+  timers: Set<ReturnType<typeof setTimeout>>
+}
+
+const deliveries = new Map<string, KickoffDelivery>()
+
+/** Public view of a session's kickoff delivery (tRPC/tests); null when unknown. */
+export function kickoffDeliveryFor(
+  sessionId: string,
+): { line: string; attempts: number; confirmed: boolean; settled: boolean } | null {
+  const d = deliveries.get(sessionId)
+  return d ? { line: d.line, attempts: d.attempts, confirmed: d.confirmed, settled: d.settled } : null
+}
+
+function stopTimers(d: KickoffDelivery): void {
+  for (const t of d.timers) clearTimeout(t)
+  d.timers.clear()
+}
+
+/** Drop all kickoff state for a session (session end — the PTY is gone). */
+export function forgetKickoff(sessionId: string): void {
+  const d = deliveries.get(sessionId)
+  if (d) stopTimers(d)
+  deliveries.delete(sessionId)
+  pendingKickoffOverrides.delete(sessionId)
+}
+
+function ptyIo(sessionId: string): { write: (data: string) => void; alive: () => boolean } {
+  return {
+    write: (data) => ptyRegistry().get(sessionId)?.pty.write(data),
+    alive: () => {
+      const entry = ptyRegistry().get(sessionId)
+      return !!entry && !entry.exited
+    },
+  }
+}
+
+function track(d: KickoffDelivery, timer: ReturnType<typeof setTimeout>): void {
+  // Never hold the process open for a kickoff (tests, shutdown).
+  timer.unref?.()
+  d.timers.add(timer)
+}
+
+/**
+ * Type the kickoff line into the PTY after `delayMs`, then wait for Claude Code
+ * to confirm it via the `UserPromptSubmit` hook (`noteKickoffPrompt`). No
+ * confirmation inside {@link KICKOFF_CONFIRM_MS} means the keystrokes went
+ * somewhere else — a startup dialog, a TUI that was not accepting input yet — so
+ * we clear the input line and type it again, up to {@link KICKOFF_MAX_ATTEMPTS}.
+ * The last failure is announced (`session.kickoff_undelivered`) rather than
+ * swallowed: an undelivered briefing is exactly the state that used to look like
+ * a working terminal that inexplicably did nothing.
+ */
+function attemptKickoff(
+  ctx: AppCtx,
+  session: SessionRow,
+  d: KickoffDelivery,
+  delayMs: number,
+  clearFirst = false,
+): void {
+  track(
+    d,
+    setTimeout(() => {
+      if (d.settled) return
+      const io = ptyIo(session.id)
+      // No PTY (spawn:false smoke, or the terminal already exited) — nothing to
+      // deliver into and nothing to report; the exit path owns that story.
+      if (!io.alive()) {
+        d.settled = true
+        return
+      }
+      d.attempts += 1
+      const attempt = d.attempts
+      try {
+        // Anything but the very first automatic write may be landing on top of a
+        // half-typed earlier attempt that never submitted; kill the line first so
+        // we never build one doubled prompt out of two good ones.
+        if (clearFirst) io.write(CLEAR_INPUT)
+        writeKickoffSequence(d.line, {
+          write: io.write,
+          alive: io.alive,
+          onSubmitted: () =>
+            emitForSession(ctx, session, {
+              type: 'session.kickoff',
+              message:
+                attempt === 1
+                  ? `${session.kind} session kicked off automatically`
+                  : `${session.kind} kickoff re-sent (attempt ${attempt}) — the first was never acknowledged`,
+              data: { sessionId: session.id, kind: session.kind, attempt },
+            }),
+        })
+      } catch {
+        // best-effort — a failed write still gets a confirmation window below
+      }
+      armConfirmation(ctx, session, d)
+    }, delayMs),
+  )
+}
+
+function armConfirmation(ctx: AppCtx, session: SessionRow, d: KickoffDelivery): void {
+  track(
+    d,
+    setTimeout(() => {
+      if (d.settled || d.confirmed) return
+      if (d.attempts < KICKOFF_MAX_ATTEMPTS && ptyIo(session.id).alive()) {
+        attemptKickoff(ctx, session, d, 0, true)
+        return
+      }
+      settleUndelivered(ctx, session, d, 'unacknowledged')
+    }, KICKOFF_CONFIRM_MS),
+  )
+}
+
+function settleUndelivered(
+  ctx: AppCtx,
+  session: SessionRow,
+  d: KickoffDelivery,
+  reason: 'unacknowledged' | 'superseded',
+): void {
+  d.settled = true
+  stopTimers(d)
+  emitForSession(ctx, session, {
+    type: 'session.kickoff_undelivered',
+    message:
+      reason === 'superseded'
+        ? `the ${session.kind} briefing was never delivered — you typed first, so runcastle stopped injecting it`
+        : `the ${session.kind} briefing was typed ${d.attempts}× but Claude Code never acknowledged it — send it again from the session strip`,
+    data: { sessionId: session.id, kind: session.kind, reason, attempts: d.attempts, line: d.line },
+  })
+}
+
+/**
+ * A prompt was submitted in this session (`UserPromptSubmit` hook). If it is our
+ * kickoff, the delivery is confirmed and retries stop. If it is anything else,
+ * the human is already driving — stop injecting (typing into a conversation
+ * mid-thought is worse than not briefing at all) and record the briefing as
+ * undelivered so the UI can offer it as a one-click send.
+ */
+export function noteKickoffPrompt(ctx: AppCtx, sessionId: string, prompt?: string): void {
+  const d = deliveries.get(sessionId)
+  if (!d || d.confirmed) return
+  const session = getSessionRow(ctx, sessionId)
+  if (!session) return
+  if (promptMatchesKickoff(d.line, prompt)) {
+    d.confirmed = true
+    d.settled = true
+    stopTimers(d)
+    return
+  }
+  if (d.settled) return
+  settleUndelivered(ctx, session, d, 'superseded')
+}
+
+/**
+ * Does a submitted prompt look like our kickoff line? Compared on collapsed
+ * whitespace over the first {@link MATCH_PREFIX} characters: the TUI can wrap,
+ * re-flow or trim what it echoes, and a startup dialog can eat a leading
+ * fragment, so an exact equality check would report false failures and re-inject
+ * a briefing the agent is already working on.
+ */
+const MATCH_PREFIX = 40
+export function promptMatchesKickoff(line: string, prompt?: string): boolean {
+  if (!prompt) return false
+  const norm = (s: string): string => s.replace(/\s+/g, ' ').trim().toLowerCase()
+  const want = norm(line)
+  const got = norm(prompt)
+  if (!want || !got) return false
+  return got.includes(want.slice(0, MATCH_PREFIX))
+}
+
+/**
+ * Re-send a session's kickoff line on demand (the "Send briefing" escape hatch).
+ * Resets the retry budget, so a human who has just dismissed whatever dialog ate
+ * the first attempt gets the same automatic confirm-and-retry behaviour.
+ */
+export function resendKickoff(ctx: AppCtx, sessionId: string): { line: string } {
+  const session = getSessionRow(ctx, sessionId)
+  if (!session) throw new Error(`unknown session ${sessionId}`)
+  if (session.status === 'ended') throw new Error('that session has ended — open a new terminal')
+  if (!ptyIo(sessionId).alive()) throw new Error('the terminal for that session is no longer running')
+
+  const existing = deliveries.get(sessionId)
+  const d: KickoffDelivery = existing ?? {
+    // The override is normally consumed at go-live; falling back to the per-kind
+    // default keeps the button useful for a session whose record was dropped.
+    line: kickoffLineFor(session.kind, pendingKickoffOverrides.get(sessionId)),
+    attempts: 0,
+    confirmed: false,
+    settled: false,
+    timers: new Set(),
+  }
+  stopTimers(d)
+  d.attempts = 0
+  d.confirmed = false
+  d.settled = false
+  deliveries.set(sessionId, d)
+  // Always clear first: a manual send is the human's answer to a terminal that
+  // may well have a stray fragment of the swallowed attempt sitting in its box.
+  attemptKickoff(ctx, session, d, 0, true)
+  return { line: d.line }
+}
+
+/**
+ * Watchdog armed when a terminal spawns: if Claude Code has not reported
+ * `SessionStart` by {@link SESSION_READY_TIMEOUT_MS}, the session is stuck on
+ * something only the human can see (the `--resume` "start from a summary?"
+ * chooser, a trust prompt, a login). We deliberately do NOT type into it blind —
+ * answering an unseen dialog with a paragraph of prompt text is how briefings got
+ * eaten in the first place, and a stray Enter could accept a permission
+ * question. We say so instead, and the UI offers Send briefing once the human
+ * has cleared whatever is on screen.
+ */
+export function armSessionReadyWatchdog(ctx: AppCtx, session: SessionRow): void {
+  const timer = setTimeout(() => {
+    const row = getSessionRow(ctx, session.id)
+    if (!row || row.status !== 'launching') return
+    if (!ptyIo(session.id).alive()) return
+    emitForSession(ctx, session, {
+      type: 'session.not_ready',
+      message: `the ${session.kind} terminal is open but Claude Code has not reported ready — check it for a prompt or dialog waiting on you, then send the briefing`,
+      data: { sessionId: session.id, kind: session.kind },
+    })
+  }, SESSION_READY_TIMEOUT_MS)
+  timer.unref?.()
+}
+
 function scheduleKickoff(ctx: AppCtx, session: SessionRow): void {
   const line = kickoffLineFor(session.kind, pendingKickoffOverrides.get(session.id))
   pendingKickoffOverrides.delete(session.id)
-  const timer = setTimeout(() => {
-    try {
-      writeKickoffSequence(line, {
-        write: (data) => ptyRegistry().get(session.id)?.pty.write(data),
-        alive: () => {
-          const entry = ptyRegistry().get(session.id)
-          return !!entry && !entry.exited
-        },
-        onSubmitted: () => {
-          emit(ctx, session.featureId, {
-            type: 'session.kickoff',
-            message: `${session.kind} session kicked off automatically`,
-            data: { sessionId: session.id, kind: session.kind },
-          })
-        },
-      })
-    } catch {
-      // best-effort — a failed kickoff just leaves the user to type
-    }
-  }, KICKOFF_DELAY_MS)
-  // Never hold the process open for a kickoff (tests, shutdown).
-  timer.unref?.()
+  const existing = deliveries.get(session.id)
+  if (existing) stopTimers(existing)
+  const d: KickoffDelivery = { line, attempts: 0, confirmed: false, settled: false, timers: new Set() }
+  deliveries.set(session.id, d)
+  attemptKickoff(ctx, session, d, KICKOFF_DELAY_MS)
 }
 
 /** Mark a session `ended`; returns the updated row, or null if unknown. */
 export function markSessionEnded(ctx: AppCtx, id: string): SessionRow | null {
   const existing = getSessionRow(ctx, id)
   if (!existing) return null
-  // Drop any un-consumed kickoff override (session ended before going live).
-  pendingKickoffOverrides.delete(id)
+  // Drop any un-consumed override and stop an in-flight delivery: the PTY it
+  // types into is gone, and a pending retry must never outlive its session.
+  forgetKickoff(id)
   ctx.db.update(sessions).set({ status: 'ended' }).where(eq(sessions.id, id)).run()
   return getSessionRow(ctx, id)
 }
@@ -285,6 +580,63 @@ export function mostRecentResumableSession(
         eq(sessions.status, 'ended'),
         isNotNull(sessions.ccSessionId),
         ...(kind ? [eq(sessions.kind, kind)] : []),
+      ),
+    )
+    .orderBy(desc(sql`rowid`))
+    .limit(1)
+    .get()
+  return row ? rowToSession(row) : null
+}
+
+/**
+ * The open (launching or live) project-scoped session of this kind, if any —
+ * what the UI needs to decide between "open a preparation conversation" and
+ * "show the one already running".
+ */
+export function activeProjectSession(
+  ctx: AppCtx,
+  projectId: string,
+  kind: SessionKind,
+): SessionRow | null {
+  const row = ctx.db
+    .select()
+    .from(sessions)
+    .where(
+      and(
+        eq(sessions.projectId, projectId),
+        eq(sessions.kind, kind),
+        inArray(sessions.status, ['launching', 'live']),
+      ),
+    )
+    .orderBy(desc(sql`rowid`))
+    .limit(1)
+    .get()
+  return row ? rowToSession(row) : null
+}
+
+/**
+ * The project-scoped twin of {@link mostRecentResumableSession}: the last ended
+ * conversation of this kind for a project, so reopening a preparation terminal
+ * continues it instead of making the human re-explain their database.
+ *
+ * Keyed on `project_id` rather than `feature_id`, which is the column a
+ * project-scoped session actually has — the feature-keyed query would never
+ * match one of these rows (NULL never equals anything), so it needs its own.
+ */
+export function mostRecentResumableProjectSession(
+  ctx: AppCtx,
+  projectId: string,
+  kind: SessionKind,
+): SessionRow | null {
+  const row = ctx.db
+    .select()
+    .from(sessions)
+    .where(
+      and(
+        eq(sessions.projectId, projectId),
+        eq(sessions.kind, kind),
+        eq(sessions.status, 'ended'),
+        isNotNull(sessions.ccSessionId),
       ),
     )
     .orderBy(desc(sql`rowid`))

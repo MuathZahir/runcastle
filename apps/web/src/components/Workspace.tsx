@@ -10,13 +10,15 @@ import {
   effectivePhase,
   isReadonlyView,
   latestRun,
+  mapDocPath,
   nextStep,
   PHASE_LABELS,
   pipelineSteps,
-  REVIEW_ITERATE_KICKOFF,
   type ActionKind,
+  type NextAction,
   type NextStep,
   type PipelineStep,
+  type ReasonPrompt,
 } from '../lib/feature-ui'
 import { IconBranch } from '../icons'
 import { GrillBody } from './bodies/GrillBody'
@@ -37,6 +39,8 @@ export function Workspace({
   viewedPhase,
   onViewPhase,
   guidance,
+  mapRailCollapsed,
+  onToggleMapRail,
   driving,
   onDriveChange,
 }: {
@@ -44,6 +48,8 @@ export function Workspace({
   viewedPhase: Phase | null
   onViewPhase: (phase: Phase | null) => void
   guidance: boolean
+  mapRailCollapsed: boolean
+  onToggleMapRail: () => void
   driving: DriveState | null
   onDriveChange: (d: DriveState | null) => void
 }) {
@@ -51,6 +57,14 @@ export function Workspace({
   const toast = useToast()
   const q = trpc.feature.get.useQuery({ id: featureId }, { refetchInterval: 1500 })
   const resumeFailed = useResumeFailedAlert(featureId)
+  // The next-step bar warns about remaining fog on a mapped feature, which lives
+  // in the map doc's prose — same query key as the map rail's read, so the two
+  // share one fetch.
+  const mapRelPath = q.data ? mapDocPath(q.data) : undefined
+  const mapQ = trpc.docs.read.useQuery(
+    { featureId, relPath: mapRelPath ?? 'map.md' },
+    { enabled: !!mapRelPath },
+  )
 
   const invalidate = () => {
     void utils.feature.get.invalidate({ id: featureId })
@@ -72,6 +86,26 @@ export function Workspace({
     },
     onError: (e) => toast.push(e.message),
   })
+  // Convergence is the bar's own action on a mapped feature (decision #4): it
+  // crosses G1 — with an override reason when waypoints are still open — and
+  // spawns the converge session, which lands the feature at `spec`.
+  const converge = trpc.feature.converge.useMutation({
+    onSuccess: () => {
+      invalidate()
+      onViewPhase(null)
+    },
+    onError: (e) => toast.push(e.message),
+  })
+  // Rethink is the review verb that starts the next lap (ADR-0010 §3): the
+  // server bumps the lap, drops the feature back to ideation and opens the lap
+  // session in one call, so the bar just snaps the view back to live.
+  const rethink = trpc.feature.rethink.useMutation({
+    onSuccess: () => {
+      invalidate()
+      onViewPhase(null)
+    },
+    onError: (e) => toast.push(e.message),
+  })
   const cancel = trpc.run.cancel.useMutation({
     onSuccess: () => {
       invalidate()
@@ -79,7 +113,43 @@ export function Workspace({
     },
     onError: (e) => toast.push(e.message),
   })
-  const testDrive = trpc.feature.testDrive.useMutation({ onError: (e) => toast.push(e.message) })
+  const testDrive = trpc.feature.testDrive.useMutation({
+    onSuccess: (res) => {
+      // The project's own setup/teardown command failed. Surfaced first and as
+      // an error: everything below is advisory, but a failed setup means the
+      // app you are about to open probably is not running. The command's output
+      // is in the timeline — the toast names which command, not why.
+      if (res.hookFailure) {
+        const f = res.hookFailure
+        toast.push(
+          `${f.phase === 'setup' ? 'Test drive setup' : 'Test drive teardown'} failed: ${f.command}${
+            f.timedOut ? ' (timed out)' : ''
+          } — see the timeline for its output`,
+        )
+      }
+      // Git switches files; it cannot switch the dev database. When the drive's
+      // branch carried migrations this one does not have, whatever was migrated
+      // during the drive is still applied — and the next `migrate` reports drift
+      // with nothing to connect it back to the test drive. Say so now, while the
+      // cause is still obvious, and hand over the project's own reset command.
+      // Never run it: a dev database can hold hand-built state.
+      if (res.dbDrift) {
+        toast.push(
+          res.dbDrift.resetCommand
+            ? `Migrations differ between the branches — your dev database may be ahead. Rebuild it with: ${res.dbDrift.resetCommand}`
+            : 'Migrations differ between the branches — your dev database may be ahead. Set a database reset command in settings for a one-line fix here.',
+          'info',
+        )
+      }
+      if (res.carriedChanges?.length) {
+        toast.push(
+          `${res.carriedChanges.length} uncommitted file(s) came back with you onto ${res.branch}`,
+          'info',
+        )
+      }
+    },
+    onError: (e) => toast.push(e.message),
+  })
   const merge = trpc.feature.merge.useMutation({ onError: (e) => toast.push(e.message) })
   const unarchive = trpc.feature.unarchive.useMutation({
     onSuccess: () => {
@@ -123,17 +193,19 @@ export function Workspace({
   const steps = pipelineSteps(feature, effective)
   const run = latestRun(full.runs)
   const isDriving = driving?.featureId === feature.id
-  const ns = nextStep(full, { driving: isDriving })
+  const ns = nextStep(full, { driving: isDriving, mapContent: mapQ.data?.content })
   const busy =
     launch.isPending ||
     advance.isPending ||
     burn.isPending ||
+    converge.isPending ||
+    rethink.isPending ||
     cancel.isPending ||
     testDrive.isPending ||
     merge.isPending ||
     unarchive.isPending
 
-  const runAction = (kind: ActionKind) => {
+  const runAction = (kind: ActionKind, reason?: string) => {
     switch (kind) {
       case 'startGrill':
         launch.mutate({ featureId, kind: 'ideation' })
@@ -142,20 +214,23 @@ export function Workspace({
         launch.mutate({ featureId, kind: 'qa' })
         break
       case 'revisit':
-        launch.mutate({
-          featureId,
-          kind: 'revisit',
-          // At review the revisit is an Iterate loop — brief the agent to read
-          // the run outcome, interview about the test drive, and emit fix tickets
-          // (ticket-3 kickoff override). Other phases use the default revisit line.
-          kickoffLine: feature.phase === 'review' ? REVIEW_ITERATE_KICKOFF : undefined,
-        })
+        launch.mutate({ featureId, kind: 'revisit' })
+        break
+      case 'rethink':
+        rethink.mutate({ featureId })
         break
       case 'openGrill':
         onViewPhase(null)
         requestAnimationFrame(() =>
           document.getElementById('grill-term')?.scrollIntoView({ behavior: 'smooth', block: 'center' }),
         )
+        break
+      case 'converge':
+        converge.mutate({ featureId })
+        break
+      case 'convergeOverride':
+        // The bar only dispatches this once the human has typed a reason.
+        if (reason) converge.mutate({ featureId, overrideReason: reason })
         break
       case 'advance':
         advance.mutate({ featureId })
@@ -230,6 +305,7 @@ export function Workspace({
         </div>
         <PipelineStepper
           steps={steps}
+          lap={feature.lap}
           onView={(p) => onViewPhase(p === feature.phase ? null : p)}
         />
       </div>
@@ -268,6 +344,8 @@ export function Workspace({
             driving={driving}
             runId={run?.id ?? null}
             readonly={readonly}
+            mapRailCollapsed={mapRailCollapsed}
+            onToggleMapRail={onToggleMapRail}
           />
         </div>
       </div>
@@ -281,17 +359,28 @@ function PhaseBody({
   driving,
   runId,
   readonly,
+  mapRailCollapsed,
+  onToggleMapRail,
 }: {
   effective: Phase
   full: FeatureFull
   driving: DriveState | null
   runId: string | null
   readonly: boolean
+  mapRailCollapsed: boolean
+  onToggleMapRail: () => void
 }) {
   switch (effective) {
     case 'ideation':
     case 'spec':
-      return <GrillBody full={full} effective={effective} />
+      return (
+        <GrillBody
+          full={full}
+          effective={effective}
+          mapRailCollapsed={mapRailCollapsed}
+          onToggleMapRail={onToggleMapRail}
+        />
+      )
     case 'tickets':
       return <TicketsBody featureId={full.feature.id} readonly={readonly} />
     case 'implementation':
@@ -305,9 +394,11 @@ function PhaseBody({
 
 function PipelineStepper({
   steps,
+  lap,
   onView,
 }: {
   steps: PipelineStep[]
+  lap: number
   onView: (phase: Phase) => void
 }) {
   return (
@@ -328,6 +419,13 @@ function PipelineStepper({
           )}
         </Fragment>
       ))}
+      {/* A feature merged on lap 1 looks exactly like the old linear flow
+          (ADR-0010 §4) — the chip only appears once Rethink has looped. */}
+      {lap > 1 && (
+        <span className="pipeline-lap" title="Rethink has looped this pipeline">
+          Lap {lap}
+        </span>
+      )}
     </div>
   )
 }
@@ -341,8 +439,20 @@ function NextStepBar({
   ns: NextStep
   guidance: boolean
   busy: boolean
-  onAction: (kind: ActionKind) => void
+  onAction: (kind: ActionKind, reason?: string) => void
 }) {
+  // An action carrying a `reason` prompt (Override & converge…) doesn't fire on
+  // click: it replaces the buttons with an inline input until the human commits
+  // or cancels.
+  const [asking, setAsking] = useState<{ kind: ActionKind; prompt: ReasonPrompt } | null>(null)
+  const [reason, setReason] = useState('')
+  const stopAsking = () => {
+    setAsking(null)
+    setReason('')
+  }
+  const click = (a: NextAction) =>
+    a.reason ? setAsking({ kind: a.kind, prompt: a.reason }) : onAction(a.kind)
+
   const kickClass =
     ns.kick === 'IN PROGRESS'
       ? 'is-progress'
@@ -359,21 +469,65 @@ function NextStepBar({
         <div className={`nextstep-kick ${kickClass}`}>{ns.kick}</div>
         <div className="nextstep-title">{ns.title}</div>
         {guidance && <div className="nextstep-desc">{ns.desc}</div>}
+        {/* Fog is shown, never enforced — it warns beside the action without
+            gating it (ADR-0001 §13.6). */}
+        {ns.fog && (
+          <div className="nextstep-fog" role="note">
+            <span className="nextstep-fog-icon" aria-hidden="true">
+              ⚑
+            </span>
+            <span>Fog remains — still not specified: {ns.fog}. You can converge anyway.</span>
+          </div>
+        )}
       </div>
       <div className="nextstep-actions">
-        {ns.secondary.map((a, i) => (
-          <Button key={i} variant="ghost" className="btn-xs" disabled={busy} onClick={() => onAction(a.kind)}>
-            {a.label}
-          </Button>
-        ))}
-        {ns.primary && (
-          <Button
-            variant={ns.primary.danger ? 'danger' : 'solid'}
-            disabled={busy}
-            onClick={() => onAction(ns.primary!.kind)}
-          >
-            {busy ? 'Working…' : ns.primary.label}
-          </Button>
+        {asking ? (
+          <div className="nextstep-override">
+            <input
+              className="override-input"
+              placeholder={asking.prompt.placeholder}
+              value={reason}
+              autoFocus
+              onChange={(e) => setReason(e.target.value)}
+            />
+            <Button
+              variant="solid"
+              className="btn-xs"
+              disabled={busy || !reason.trim()}
+              onClick={() => {
+                onAction(asking.kind, reason.trim())
+                stopAsking()
+              }}
+            >
+              {asking.prompt.submitLabel}
+            </Button>
+            <Button variant="ghost" className="btn-xs" onClick={stopAsking}>
+              Cancel
+            </Button>
+          </div>
+        ) : (
+          <>
+            {ns.secondary.map((a, i) => (
+              <Button
+                key={i}
+                variant="ghost"
+                className="btn-xs"
+                disabled={busy}
+                onClick={() => click(a)}
+              >
+                {a.label}
+              </Button>
+            ))}
+            {ns.primary && (
+              <Button
+                variant={ns.primary.danger ? 'danger' : 'solid'}
+                disabled={busy}
+                onClick={() => click(ns.primary!)}
+              >
+                {busy ? 'Working…' : ns.primary.label}
+              </Button>
+            )}
+          </>
         )}
       </div>
     </div>

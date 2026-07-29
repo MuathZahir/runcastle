@@ -6,6 +6,7 @@ import { runs } from '../db/schema'
 import { emit } from '../services/events'
 import { cleanupTempBranches, reattachWorktree } from '../services/git'
 import { allProjects, getProjectById, rowToRun, tryGetFeature } from '../services/repo'
+import { sweepOrphanedBurning } from '../services/tickets'
 import { releaseForSession } from '../services/waypoints'
 import { isRunActive, workflowClaimsFeatureBranch } from './runner'
 
@@ -19,8 +20,10 @@ import { isRunActive, workflowClaimsFeatureBranch } from './runner'
  *
  * For each stale run this mirrors the finalizer minus the workflow itself:
  * mark the row `failed` (summary "orphaned by server restart"), auto-release
- * any waypoint it still claims, best-effort reattach the talk worktree that a
- * branch-claiming run detached, and emit ONE `run.reconciled` event per run.
+ * any waypoint it still claims, fail the ticket lanes it left `burning` (their
+ * agents died with it — see `sweepOrphanedBurning`), best-effort reattach the
+ * talk worktree that a branch-claiming run detached, and emit ONE
+ * `run.reconciled` event per run.
  * Afterwards it sweeps leftover research temp branches — deleting only those
  * fully merged into their feature branch; unmerged ones hold unlanded commits
  * (mid-run crash or a conflict preserved for manual recovery) and are kept.
@@ -47,6 +50,12 @@ export async function reconcileStaleRuns(ctx: AppCtx): Promise<Run[]> {
       .where(eq(runs.id, run.id))
       .run()
     const released = releaseForSession(ctx, run.id)
+    // The run's in-flight ticket lanes died with it. Their `burning` rows would
+    // otherwise survive forever — non-terminal, unretryable, and invisible to
+    // the next burn's scheduler (see `sweepOrphanedBurning`).
+    const swept = workflowClaimsFeatureBranch(run.workflow)
+      ? sweepOrphanedBurning(ctx, run.featureId, 'orphaned by server restart — retry to resume its commits')
+      : []
 
     // A branch-claiming run detached the talk worktree at start and its
     // finalizer (which would have reattached it) never ran — restore it so the
@@ -71,6 +80,7 @@ export async function reconcileStaleRuns(ctx: AppCtx): Promise<Run[]> {
         runId: run.id,
         workflow: run.workflow,
         releasedWaypointIds: released.map((w) => w.id),
+        sweptTicketSeqs: swept.map((t) => t.seq),
       },
     })
     reconciled.push(run)

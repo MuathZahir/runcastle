@@ -24,15 +24,182 @@ export interface ResolveExecutableOptions {
   exts?: string[]
   /** Existence predicate; defaults to `fs.existsSync`. Injected in tests. */
   exists?: (path: string) => boolean
+  /**
+   * Dirs to scan *after* PATH comes up empty — see {@link wellKnownBinDirs}.
+   * Kept opt-in so {@link resolveExecutable} stays a pure PATH scan and only
+   * {@link resolveTool} carries the guessing policy.
+   */
+  extraDirs?: string[]
 }
 
-/** Windows shim extensions, native binary first so `.exe` beats a `.cmd`. */
-const WIN_EXTS = ['.exe', '.cmd', '.bat', '']
+/**
+ * Windows shim extensions, in launch-cost order: a native `.exe` beats a `.cmd`,
+ * which beats a `.ps1` (that one costs a PowerShell startup — see
+ * {@link spawnTargetFor}). `.ps1` is here because npm's global shims are a
+ * *trio* — `foo`, `foo.cmd`, `foo.ps1` — and `Get-Command foo` reports the
+ * `.ps1`, since PowerShell ranks ExternalScript above Application. So a user
+ * whose shell clearly resolves the tool can still be missing every extension we
+ * used to scan for.
+ */
+const WIN_EXTS = ['.exe', '.cmd', '.bat', '.ps1', '']
 
 /**
- * Resolve `name` to an absolute executable path. Returns the bare `name`
- * unchanged when nothing is found so the caller's `spawn` can make a final
- * attempt (and surface a real ENOENT) rather than us inventing a bad path.
+ * The `RUNCASTLE_*_BIN` escape hatch each externally-installed tool honors. This
+ * table is the reason it exists as a table and not an inline `process.env` read
+ * per call site: `claude` is resolved from three places (the session launcher,
+ * the doctor/verify {@link import('../doctor/system-exec').createSystemExec},
+ * and the embedded setup terminals), and when only one of them honored the
+ * override, pinning the path fixed sessions while onboarding still reported
+ * "claude CLI not found". Resolve tools through {@link resolveTool}, never
+ * {@link resolveExecutable} directly, so the override applies everywhere.
+ */
+export const BIN_OVERRIDE_ENV: Readonly<Record<string, string>> = {
+  claude: 'RUNCASTLE_CLAUDE_BIN',
+  node: 'RUNCASTLE_NODE_BIN',
+}
+
+/**
+ * Where the common installers actually put things, scanned only after PATH has
+ * failed. This exists because the two supported ways to install Claude Code land
+ * in different places and neither reliably reaches *our* process:
+ *
+ * - the native installer writes `~/.local/bin` (`%USERPROFILE%\.local\bin`) and
+ *   appends it to the **user** PATH, which only new processes inherit;
+ * - npm global writes `%APPDATA%\npm` (POSIX: the npm prefix's `bin`);
+ * - bun global writes `~/.bun/bin`.
+ *
+ * A server started from a stale shell, a GUI shortcut, or a login session
+ * predating the install sees none of them, and reports a tool the user can
+ * plainly run as missing. Guessing these dirs is a recovery path, not the
+ * primary one — PATH always wins when it has an answer.
+ */
+export function wellKnownBinDirs(
+  opts: { platform?: NodeJS.Platform; env?: NodeJS.ProcessEnv } = {},
+): string[] {
+  const env = opts.env ?? process.env
+  const isWin = (opts.platform ?? process.platform) === 'win32'
+  const dirs: string[] = []
+  if (isWin) {
+    const home = env.USERPROFILE
+    if (home) {
+      dirs.push(win32.join(home, '.local', 'bin'), win32.join(home, '.bun', 'bin'))
+    }
+    if (env.APPDATA) dirs.push(win32.join(env.APPDATA, 'npm'))
+    if (env.LOCALAPPDATA) dirs.push(win32.join(env.LOCALAPPDATA, 'Programs', 'claude'))
+    return dirs
+  }
+  const home = env.HOME
+  if (home) {
+    dirs.push(
+      posix.join(home, '.local', 'bin'),
+      posix.join(home, '.bun', 'bin'),
+      posix.join(home, '.npm-global', 'bin'),
+    )
+  }
+  dirs.push('/usr/local/bin', '/opt/homebrew/bin')
+  return dirs
+}
+
+/**
+ * {@link resolveExecutable} plus the tool's `RUNCASTLE_*_BIN` override and the
+ * {@link wellKnownBinDirs} recovery scan — the entry point every spawn site
+ * should use. `env` is injected in tests.
+ */
+export function resolveTool(
+  name: string,
+  opts: ResolveExecutableOptions & { env?: NodeJS.ProcessEnv } = {},
+): string {
+  const env = opts.env ?? process.env
+  const overrideKey = BIN_OVERRIDE_ENV[name]
+  const override = opts.override ?? (overrideKey ? env[overrideKey] : undefined)
+  const extraDirs =
+    opts.extraDirs ?? wellKnownBinDirs({ ...(opts.platform ? { platform: opts.platform } : {}), env })
+  return resolveExecutable(name, { ...opts, extraDirs, ...(override ? { override } : {}) })
+}
+
+/** What to actually hand a spawn call: the real executable, and its full argv. */
+export interface SpawnTarget {
+  file: string
+  args: string[]
+}
+
+/**
+ * Turn a resolved path into something `CreateProcess`/ConPTY can actually run.
+ *
+ * Windows can only exec a real PE image, so both shim kinds need an interpreter:
+ * a `.cmd`/`.bat` goes through the command processor, and a `.ps1` — which is
+ * just a text file — needs PowerShell with `-File`. `-ExecutionPolicy Bypass` is
+ * required rather than optional: the default policy on Windows client SKUs is
+ * `Restricted`, which refuses to run npm's `.ps1` shims at all. We are launching
+ * a script the user installed and already runs by hand, at a path we resolved
+ * ourselves off PATH, so this widens nothing they had not already chosen.
+ *
+ * This lives here, once, because three call sites (doctor/verify exec, the
+ * session launcher, the embedded setup terminals) each had their own copy of the
+ * `.cmd`/`.bat` branch — and adding `.ps1` to three copies is how one gets
+ * missed.
+ */
+export function spawnTargetFor(resolved: string, args: string[]): SpawnTarget {
+  if (/\.(cmd|bat)$/i.test(resolved)) {
+    return { file: process.env.ComSpec ?? 'cmd.exe', args: ['/c', resolved, ...args] }
+  }
+  if (/\.ps1$/i.test(resolved)) {
+    return {
+      file: 'powershell.exe',
+      args: ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', resolved, ...args],
+    }
+  }
+  return { file: resolved, args }
+}
+
+/** {@link resolveTool} + {@link spawnTargetFor}: name and argv → runnable spawn. */
+export function resolveSpawnTarget(name: string, args: string[]): SpawnTarget {
+  return spawnTargetFor(resolveTool(name), args)
+}
+
+/** A bare command name — resolution gave up and never found a real path. */
+function isBareName(cmd: string): boolean {
+  return !cmd.includes('/') && !cmd.includes('\\')
+}
+
+/**
+ * Turn a raw spawn failure into something the user can act on.
+ *
+ * node-pty is the reason this exists: when its own PATH search fails it throws
+ * `File not found: ` followed by the *resolved* path — which is the empty string
+ * precisely when the search failed. So the one case that needs explaining most
+ * arrives with no filename, no cause, and no next step. Every spawn site funnels
+ * its failure through here so the terminal says which binary was missing and why
+ * a working shell is not evidence that the server can see it.
+ */
+export function explainSpawnFailure(cmd: string, raw: string): string {
+  const detail = raw.trim()
+  if (!isBareName(cmd)) {
+    return `Could not launch ${cmd}${detail ? ` — ${detail}` : ''}`
+  }
+  const overrideKey = BIN_OVERRIDE_ENV[cmd]
+  const lines = [
+    `Could not launch \`${cmd}\`: not on the PATH this runcastle server inherited, nor in the usual install locations (~/.local/bin, npm global, ~/.bun/bin).`,
+    // The trap this message exists to defuse: users check their own shell,
+    // find the binary, and conclude runcastle is lying. The server's PATH is a
+    // snapshot taken when it started — a newer install is simply not in it.
+    `A terminal where \`${cmd}\` works does not prove the server can see it: the server's PATH was captured when it started.`,
+    `Fix: quit runcastle and start it again from a terminal where \`${cmd} --version\` works.`,
+  ]
+  if (overrideKey) {
+    lines.push(
+      `If that fails, set ${overrideKey} to the full path (\`where.exe ${cmd}\` / \`which ${cmd}\`) and restart.`,
+    )
+  }
+  if (detail) lines.push(`(underlying error: ${detail})`)
+  return lines.join('\n')
+}
+
+/**
+ * Resolve `name` to an absolute executable path: PATH first, then `extraDirs` as
+ * a recovery scan. Returns the bare `name` unchanged when nothing is found so
+ * the caller's `spawn` can make a final attempt (and surface a real ENOENT)
+ * rather than us inventing a bad path.
  */
 export function resolveExecutable(name: string, opts: ResolveExecutableOptions = {}): string {
   const exists = opts.exists ?? existsSync
@@ -41,17 +208,22 @@ export function resolveExecutable(name: string, opts: ResolveExecutableOptions =
   const isWin = (opts.platform ?? process.platform) === 'win32'
   const exts = opts.exts ?? (isWin ? WIN_EXTS : [''])
   const pathEnv = opts.pathEnv ?? process.env.PATH ?? ''
-  const dirs = pathEnv.split(isWin ? ';' : ':')
   // Join with the TARGET platform's separator, not the host's, so resolution is
   // testable cross-platform (a linux CI can exercise the Windows path).
   const join = isWin ? win32.join : posix.join
 
-  for (const dir of dirs) {
-    if (!dir) continue
-    for (const ext of exts) {
-      const candidate = join(dir, `${name}${ext}`)
-      if (exists(candidate)) return candidate
+  const scan = (dirs: readonly string[]): string | null => {
+    for (const dir of dirs) {
+      if (!dir) continue
+      for (const ext of exts) {
+        const candidate = join(dir, `${name}${ext}`)
+        if (exists(candidate)) return candidate
+      }
     }
+    return null
   }
-  return name
+
+  // PATH is authoritative — the recovery dirs are only consulted once it has
+  // nothing, so a deliberate PATH ordering is never second-guessed.
+  return scan(pathEnv.split(isWin ? ';' : ':')) ?? scan(opts.extraDirs ?? []) ?? name
 }

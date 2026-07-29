@@ -5,6 +5,7 @@ import { SANDBOX_MODE } from '../../lib/env'
 import { shortSha } from '../../lib/format'
 import { DimLine, EmptyState, SectionTitle, TicketStatusChip } from '../../ui'
 import { IconChevronRight, IconDoc } from '../../icons'
+import { Markdown } from '../Markdown'
 import { SessionPanel } from '../SessionPanel'
 
 /**
@@ -126,13 +127,13 @@ export function TicketsBody({
                   <div className="ledger-detail">
                     <div className="td-section">
                       <div className="td-heading">GOAL</div>
-                      <div className="td-body">{t.goal}</div>
+                      <div className="td-body"><Markdown source={t.goal} /></div>
                     </div>
 
                     {t.context && (
                       <div className="td-section">
                         <div className="td-heading">CONTEXT</div>
-                        <div className="td-body">{t.context}</div>
+                        <div className="td-body"><Markdown source={t.context} /></div>
                       </div>
                     )}
 

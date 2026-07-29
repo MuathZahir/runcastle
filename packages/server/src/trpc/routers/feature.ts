@@ -1,6 +1,13 @@
 import { SessionKind } from '@runcastle/core'
 import * as z from 'zod'
-import { converge, endSession, launchSession, workWaypoint } from '../../launcher/launcher'
+import {
+  converge,
+  endSession,
+  launchSession,
+  resendKickoff,
+  workWaypoint,
+} from '../../launcher/launcher'
+import { lapKickoff } from '../../launcher/sessions'
 import { emit } from '../../services/events'
 import * as features from '../../services/features'
 import { overrideGate } from '../../services/gates'
@@ -47,8 +54,12 @@ export const featureRouter = router({
   // Work a frontier waypoint (ADR-0001 §13.2): claim it transactionally, then
   // open a kind=waypoint session on it. Refuses a waypoint not on the frontier,
   // or when a waypoint session is already live (one HITL session per feature).
+  // A finished live session is ended for us; `endLive` — set only after the human
+  // confirms — additionally abandons one that is still mid-work (decision #8).
   workWaypoint: publicProcedure
-    .input(z.object({ featureId: z.string(), waypointId: z.string() }))
+    .input(
+      z.object({ featureId: z.string(), waypointId: z.string(), endLive: z.boolean().optional() }),
+    )
     .mutation(({ ctx, input }) => workWaypoint(ctx, input)),
 
   // Converge a mapped feature (ADR-0001 §13.2): crosses G1 (all-waypoints-
@@ -60,6 +71,31 @@ export const featureRouter = router({
     .mutation(({ ctx, input }) =>
       converge(ctx, { featureId: input.featureId, overrideReason: input.overrideReason }),
     ),
+
+  // Rethink (ADR-0010 §1 / SPEC §15.2) — the review verb that starts lap N+1.
+  // The service runs FIRST so the phase is back at ideation and the lap already
+  // bumped when the session row is created (it is stamped with the feature's
+  // current lap); the terminal then opens on the lap briefing instead of the
+  // generic revisit line: digest the drive, amend the docs, emit this lap's
+  // tickets, hand back to the Burn click. One click, one terminal.
+  rethink: publicProcedure
+    .input(z.object({ featureId: z.string() }))
+    .mutation(({ ctx, input }) => {
+      const feature = features.rethink(ctx, input.featureId)
+      return launchSession(ctx, {
+        featureId: input.featureId,
+        kind: 'revisit',
+        kickoffLine: lapKickoff(feature.lap),
+      })
+    }),
+
+  // Re-type a live session's kickoff/briefing into its terminal ("Send briefing"
+  // in the session strip). The escape hatch for a briefing the TUI swallowed —
+  // a startup dialog eating the keystrokes leaves a terminal that looks fine and
+  // was never told what it is there for.
+  resendKickoff: publicProcedure
+    .input(z.object({ sessionId: z.string() }))
+    .mutation(({ ctx, input }) => resendKickoff(ctx, input.sessionId)),
 
   // End a live session (End session button; terminal-tab close is detach only).
   // Route added by W2 (UI-SPEC §6); backed by W1's PTY-killing `endSession`

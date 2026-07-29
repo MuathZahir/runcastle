@@ -22,6 +22,8 @@ const AFK_TOKEN_KEY = 'CLAUDE_CODE_OAUTH_TOKEN'
 export interface TokenValidity {
   valid: boolean
   detail: string
+  /** Copy-pasteable next step; omitted when the check passed. */
+  fix?: string
 }
 
 /**
@@ -280,15 +282,47 @@ export function prepareSandboxBuildContext(): string {
  * with the token in the environment. We can't fully round-trip the API here
  * without a paid call, so we treat a resolvable `claude` binary that accepts the
  * token env as valid presence; a missing binary is reported honestly.
+ *
+ * The two ways that probe can fail are kept *distinct*, because they have
+ * opposite fixes and conflating them is what made this step a dead end for real
+ * users: `ok:false` is a spawn failure (nothing to run — almost always a PATH the
+ * server can't see, not a missing install), while a non-zero exit means `claude`
+ * ran and rejected the call, which is a Claude Code problem, not a runcastle one.
+ * Either way the token is already on disk, so we say so — the user's next move is
+ * never "paste it again".
  */
 export function createTokenVerifier(exec: ExecFn): (token: string) => Promise<TokenValidity> {
   return async (token) => {
-    const out = await exec('claude', ['--version'])
-    if (!(out.ok && out.code === 0)) {
-      return { valid: false, detail: 'claude CLI not found — cannot verify the token' }
-    }
     if (token.length < 8) {
-      return { valid: false, detail: 'token looks malformed (too short)' }
+      return {
+        valid: false,
+        detail: 'token looks malformed (too short) — saved to ~/.runcastle/.env anyway',
+        fix: 'Re-run `claude setup-token` and paste the whole line it prints (it starts with `sk-ant-oat`).',
+      }
+    }
+    const out = await exec('claude', ['--version'])
+    if (!out.ok) {
+      return {
+        valid: false,
+        detail:
+          'Token saved to ~/.runcastle/.env, but runcastle could not launch `claude` to verify it. ' +
+          'That is a PATH problem in this server process, not a missing install — a terminal that finds ' +
+          '`claude` proves nothing about the PATH runcastle was started with.',
+        fix:
+          'Quit runcastle and start it again from a terminal where `claude --version` works. ' +
+          'If it still fails, pin the path: set RUNCASTLE_CLAUDE_BIN to the full path from ' +
+          '`where.exe claude` (Windows) or `which claude` (macOS/Linux), then restart runcastle.',
+      }
+    }
+    if (out.code !== 0) {
+      const why = (out.stderr.trim() || out.stdout.trim()).split('\n')[0] ?? ''
+      return {
+        valid: false,
+        detail:
+          `Token saved to ~/.runcastle/.env, but \`claude --version\` exited ${out.code}` +
+          `${why ? `: ${why}` : ' with no output'}.`,
+        fix: 'Run `claude --version` yourself and fix what it reports — the Claude Code install is broken, not the token.',
+      }
     }
     return { valid: true, detail: 'token captured to ~/.runcastle/.env' }
   }

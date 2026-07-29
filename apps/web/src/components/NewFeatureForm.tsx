@@ -55,12 +55,18 @@ export function NewFeatureForm({
   const busy = create.isPending || launch.isPending
   const submit = () => {
     const t = title.trim()
-    if (t)
+    // Don't create while the branch list is still loading — `effectiveBase` isn't
+    // known yet, and creating now would silently fork off main.
+    if (t && !branchesQ.isPending)
       create.mutate({
         projectId,
         title: t,
         oneLiner: oneLiner.trim(),
-        baseBranch: base || undefined,
+        // Send the base the form is SHOWING, not just an explicit pick. Omitting
+        // it makes the server fall back to `project.mainBranch`, which silently
+        // contradicts the "current branch" default displayed in the picker.
+        // Empty only before the branch list loads — then main really is the base.
+        baseBranch: effectiveBase || undefined,
       })
   }
 
@@ -142,7 +148,11 @@ export function NewFeatureForm({
           <Button variant="ghost" onClick={onCancel} disabled={busy}>
             Cancel
           </Button>
-          <Button variant="solid" onClick={submit} disabled={!title.trim() || busy}>
+          <Button
+            variant="solid"
+            onClick={submit}
+            disabled={!title.trim() || busy || branchesQ.isPending}
+          >
             {busy ? 'Starting…' : 'Start grill session'}
           </Button>
         </div>

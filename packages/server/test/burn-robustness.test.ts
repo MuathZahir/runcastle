@@ -281,6 +281,35 @@ describe('retryTicket', () => {
     expect(after.attemptBranch).toBeUndefined()
   })
 
+  it('keeps a landing conflict on a plain retry (resolve) and drops it on fresh (re-implement)', async () => {
+    const featureId = seedFeature(ctx, seedProject(ctx).id, { phase: 'implementation' }).id
+    const [a] = storeTickets(ctx, featureId, [ticketInput('a')])
+    updateTicket(ctx, a.id, {
+      status: 'failed',
+      error: 'conflicts with feature/demo',
+      attemptBranch: 'runcastle/ticket/demo/1-abc',
+      conflictFiles: ['src/a.ts', 'src/b.ts'],
+    })
+
+    // Plain retry: the implemented work and the conflict both survive, which is
+    // what routes the next burn through the resolver instead of the implementer.
+    const plain = await retryTicket(ctx, a.id)
+    expect(plain.resolvingConflict).toBe(true)
+    const resumed = getTicket(ctx, a.id)
+    expect(resumed.status).toBe('pending')
+    expect(resumed.attemptBranch).toBe('runcastle/ticket/demo/1-abc')
+    expect(resumed.conflictFiles).toEqual(['src/a.ts', 'src/b.ts'])
+
+    // Fresh: the conflicting branch is being discarded, so the conflict it
+    // described must go with it — the next burn re-implements from the tip.
+    updateTicket(ctx, a.id, { status: 'failed', error: 'conflicts again' })
+    const fresh = await retryTicket(ctx, a.id, { fresh: true })
+    expect(fresh.resolvingConflict).toBe(false)
+    const after = getTicket(ctx, a.id)
+    expect(after.attemptBranch).toBeUndefined()
+    expect(after.conflictFiles).toBeUndefined()
+  })
+
   it('emits a ticket.retry event naming the retried seqs', async () => {
     const featureId = seedFeature(ctx, seedProject(ctx).id, { phase: 'implementation' }).id
     const [a] = storeTickets(ctx, featureId, [ticketInput('a')])
@@ -293,6 +322,7 @@ describe('retryTicket', () => {
       fresh: false,
       resumedFrom: null,
       preservedCommits: 0,
+      resolvingConflict: false,
     })
   })
 

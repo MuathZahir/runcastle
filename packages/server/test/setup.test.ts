@@ -2,6 +2,7 @@ import { existsSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import type { ExecFn, ExecOutcome } from '../src/doctor/doctor'
 import {
+  createTokenVerifier,
   resolveRuntime,
   resolveSandcastleBin,
   runtimeInstallGuide,
@@ -131,6 +132,63 @@ describe('saveAfkToken', () => {
     const deps = io({ write: () => (touched = true) })
     await expect(saveAfkToken(deps, 'sk-ant-oat01-abc\nOTHER=evil')).rejects.toThrow()
     expect(touched).toBe(false)
+  })
+})
+
+/**
+ * The verify step's verdict is the only feedback onboarding gives, so each
+ * failure must be distinguishable and carry its own next step. The regression
+ * this guards: a spawn failure (`ok:false` — a PATH the server can't see) and a
+ * non-zero exit (`claude` ran and refused) both rendered as the same dead-end
+ * "claude CLI not found", with no fix line and no hint the token was saved.
+ */
+describe('createTokenVerifier', () => {
+  const version = (out: Partial<ExecOutcome>): ExecFn => async () => ({
+    ok: true,
+    code: 0,
+    stdout: '',
+    stderr: '',
+    ...out,
+  })
+
+  it('accepts a plausible token when claude runs', async () => {
+    const res = await createTokenVerifier(version({ stdout: '2.0.1' }))('sk-ant-oat01-abcdefgh')
+    expect(res.valid).toBe(true)
+    expect(res.fix).toBeUndefined()
+  })
+
+  it('blames PATH — not a missing install — when claude cannot be spawned', async () => {
+    const res = await createTokenVerifier(version({ ok: false, code: null, stderr: 'ENOENT' }))(
+      'sk-ant-oat01-abcdefgh',
+    )
+    expect(res.valid).toBe(false)
+    expect(res.detail).toContain('PATH')
+    // The token IS on disk — the user must not be told to paste it again.
+    expect(res.detail).toContain('~/.runcastle/.env')
+    expect(res.fix).toContain('RUNCASTLE_CLAUDE_BIN')
+  })
+
+  it('reports a broken install distinctly when claude runs but exits non-zero', async () => {
+    const res = await createTokenVerifier(version({ code: 1, stderr: 'bad install\nmore' }))(
+      'sk-ant-oat01-abcdefgh',
+    )
+    expect(res.valid).toBe(false)
+    expect(res.detail).toContain('exited 1')
+    expect(res.detail).toContain('bad install')
+    // Distinct from the not-found case — opposite fix.
+    expect(res.detail).not.toContain('PATH')
+  })
+
+  it('flags a too-short token without needing claude at all', async () => {
+    let spawned = false
+    const exec: ExecFn = async () => {
+      spawned = true
+      return { ok: true, code: 0, stdout: '', stderr: '' }
+    }
+    const res = await createTokenVerifier(exec)('short')
+    expect(res.valid).toBe(false)
+    expect(res.detail).toContain('malformed')
+    expect(spawned).toBe(false)
   })
 })
 

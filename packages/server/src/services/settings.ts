@@ -19,6 +19,7 @@ import type { AppCtx } from '../db/types'
 import { projects } from '../db/schema'
 import { InvalidInputError } from '../errors'
 import { emitProject } from './events'
+import { recordHuman } from './findings'
 import { requireProjectById } from './repo'
 
 /**
@@ -41,7 +42,17 @@ import { requireProjectById } from './repo'
 const GLOBAL_EVENT_KEY = 'global'
 
 /** Which override column a project-overridable field maps to. */
-type ProjectColumn = 'model' | 'sandbox' | 'devCommand'
+type ProjectColumn =
+  | 'model'
+  | 'sandbox'
+  | 'devCommand'
+  | 'setupCommand'
+  | 'verifyCommands'
+  | 'knownFailures'
+  | 'dbResetCommand'
+  | 'driveSetupCommand'
+  | 'driveStopCommand'
+  | 'driveEnv'
 
 interface FieldDescriptor {
   key: string
@@ -96,6 +107,14 @@ const DESCRIPTORS: FieldDescriptor[] = [
     parseEnv: idEnv,
   },
   {
+    key: 'sessionMcp',
+    configKey: 'sessionMcp',
+    envVar: 'RUNCASTLE_SESSION_MCP',
+    restartRequired: false,
+    valueSchema: z.enum(['inherit', 'runcastleOnly']),
+    parseEnv: idEnv,
+  },
+  {
     key: 'burnConcurrency',
     configKey: 'burnConcurrency',
     envVar: 'RUNCASTLE_BURN_CONCURRENCY',
@@ -120,9 +139,57 @@ const DESCRIPTORS: FieldDescriptor[] = [
     parseEnv: (raw) => Number(raw),
   },
   {
+    key: 'burnConflictAttempts',
+    configKey: 'burnConflictAttempts',
+    envVar: 'RUNCASTLE_BURN_CONFLICT_ATTEMPTS',
+    restartRequired: false,
+    valueSchema: z.number().int().min(0).max(3),
+    parseEnv: (raw) => Number(raw),
+  },
+  {
+    key: 'burnCpus',
+    configKey: 'burnCpus',
+    envVar: 'RUNCASTLE_BURN_CPUS',
+    restartRequired: false,
+    valueSchema: z.number().positive().max(256),
+    parseEnv: (raw) => Number(raw),
+  },
+  {
+    key: 'autoPrepare',
+    configKey: 'autoPrepare',
+    envVar: 'RUNCASTLE_AUTO_PREPARE',
+    restartRequired: false,
+    valueSchema: z.boolean(),
+    parseEnv: (raw) => raw !== '0' && raw.toLowerCase() !== 'false',
+  },
+  // The three prepared burn fields. Each keeps its global config twin (an
+  // operator who set one machine-wide keeps it as the inherited fallback) and
+  // gains a per-project override, because every one of them describes a REPO,
+  // not a machine — "which tests are already red" cannot be a global answer
+  // once a second project is open. Project preparation writes the override.
+  {
     key: 'setupCommand',
     configKey: 'setupCommand',
     envVar: 'RUNCASTLE_SETUP_COMMAND',
+    projectColumn: 'setupCommand',
+    restartRequired: false,
+    valueSchema: z.string().min(1),
+    parseEnv: idEnv,
+  },
+  {
+    key: 'verifyCommands',
+    configKey: 'verifyCommands',
+    envVar: 'RUNCASTLE_VERIFY_COMMANDS',
+    projectColumn: 'verifyCommands',
+    restartRequired: false,
+    valueSchema: z.string().min(1),
+    parseEnv: idEnv,
+  },
+  {
+    key: 'knownFailures',
+    configKey: 'knownFailures',
+    envVar: 'RUNCASTLE_KNOWN_FAILURES',
+    projectColumn: 'knownFailures',
     restartRequired: false,
     valueSchema: z.string().min(1),
     parseEnv: idEnv,
@@ -138,6 +205,46 @@ const DESCRIPTORS: FieldDescriptor[] = [
   {
     key: 'devCommand',
     projectColumn: 'devCommand',
+    restartRequired: false,
+    valueSchema: z.string().min(1),
+    parseEnv: idEnv,
+  },
+  // Project-only (no global twin): the command that rebuilds this repo's dev
+  // database from its migrations. Test drive offers it after a drive whose
+  // branch carried migrations the branch you return to does not have — git
+  // switches files, not databases, so the schema the drive applied outlives it.
+  {
+    key: 'dbResetCommand',
+    projectColumn: 'dbResetCommand',
+    restartRequired: false,
+    valueSchema: z.string().min(1),
+    parseEnv: idEnv,
+  },
+  // Project-only test-drive hooks. Deliberately opaque shell strings rather than
+  // structured "services"/"migrate" fields: what it takes to bring a project up
+  // is the part that differs most between stacks, and any schema we invented
+  // here would encode one database's idea of the world into every other's.
+  {
+    key: 'driveSetupCommand',
+    projectColumn: 'driveSetupCommand',
+    restartRequired: false,
+    valueSchema: z.string().min(1),
+    parseEnv: idEnv,
+  },
+  {
+    key: 'driveStopCommand',
+    projectColumn: 'driveStopCommand',
+    restartRequired: false,
+    valueSchema: z.string().min(1),
+    parseEnv: idEnv,
+  },
+  // `KEY=VALUE` lines the drive overlays on the dev server's environment, with
+  // `{{slug}}`/`{{branch}}`/`{{id}}` rendered per drive. Pointing a dev server
+  // at a per-branch database is the generic half of that idea; creating the
+  // database is not, and stays in `driveSetupCommand`.
+  {
+    key: 'driveEnv',
+    projectColumn: 'driveEnv',
     restartRequired: false,
     valueSchema: z.string().min(1),
     parseEnv: idEnv,
@@ -198,7 +305,18 @@ function stepModelFields(fileRaw: Record<string, unknown>): SettingField[] {
 /** The per-project override columns for one project (raw row, override-null = inherit). */
 function projectOverrides(ctx: AppCtx, projectId: string): Record<ProjectColumn, string | null> {
   const row = ctx.db
-    .select({ model: projects.model, sandbox: projects.sandbox, devCommand: projects.devCommand })
+    .select({
+      model: projects.model,
+      sandbox: projects.sandbox,
+      devCommand: projects.devCommand,
+      setupCommand: projects.setupCommand,
+      verifyCommands: projects.verifyCommands,
+      knownFailures: projects.knownFailures,
+      dbResetCommand: projects.dbResetCommand,
+      driveSetupCommand: projects.driveSetupCommand,
+      driveStopCommand: projects.driveStopCommand,
+      driveEnv: projects.driveEnv,
+    })
     .from(projects)
     .where(eq(projects.id, projectId))
     .get()
@@ -206,6 +324,13 @@ function projectOverrides(ctx: AppCtx, projectId: string): Record<ProjectColumn,
     model: row?.model ?? null,
     sandbox: row?.sandbox ?? null,
     devCommand: row?.devCommand ?? null,
+    setupCommand: row?.setupCommand ?? null,
+    verifyCommands: row?.verifyCommands ?? null,
+    knownFailures: row?.knownFailures ?? null,
+    dbResetCommand: row?.dbResetCommand ?? null,
+    driveSetupCommand: row?.driveSetupCommand ?? null,
+    driveStopCommand: row?.driveStopCommand ?? null,
+    driveEnv: row?.driveEnv ?? null,
   }
 }
 
@@ -308,6 +433,9 @@ export function updateSettings(
       .set({ [desc.projectColumn as ProjectColumn]: null })
       .where(eq(projects.id, project.id))
       .run()
+    // Clearing a prepared field drops its provenance too, which deliberately
+    // makes it prep-writable again: clearing IS how you ask prep to re-derive.
+    recordHuman(ctx, project.id, desc.key, null)
     emitProject(ctx, project.id, {
       type: 'settings.updated',
       message: `${desc.key} override cleared`,
@@ -329,6 +457,8 @@ export function updateSettings(
       .set({ [desc.projectColumn as ProjectColumn]: String(value) })
       .where(eq(projects.id, project.id))
       .run()
+    // Stamp it human so no later preparation run overwrites what was typed here.
+    recordHuman(ctx, project.id, desc.key, String(value))
     emitProject(ctx, project.id, {
       type: 'settings.updated',
       message: `${desc.key} override set to ${String(value)}`,

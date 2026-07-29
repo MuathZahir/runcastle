@@ -8,9 +8,10 @@ import {
   unsetStepKeys,
   type SettingRow,
 } from '../lib/settings'
-import type { SettingsView } from '../lib/api'
+import type { PrepView, SettingsView } from '../lib/api'
 import { DimLine } from '../ui'
 import { EnableAfkCard } from './EnableAfkCard'
+import { PreparationCard } from './PreparationCard'
 
 /**
  * The in-app settings overlay (issue #47). A command-palette / doc-peek style
@@ -30,6 +31,10 @@ export function SettingsOverlay({
 }) {
   const globals = trpc.settings.get.useQuery()
   const scoped = trpc.settings.get.useQuery({ projectId })
+  // Provenance for the prepared project fields, so each row can say who
+  // established its value rather than just "overridden for this project".
+  const prep = trpc.project.prep.useQuery({ projectId })
+  const findings = (prep.data as PrepView | undefined)?.findings ?? []
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -66,9 +71,10 @@ export function SettingsOverlay({
             title="This project"
             hint="Overrides that apply only to the current project."
             query={scoped}
-            rowsOf={projectRows}
+            rowsOf={(view) => projectRows(view, findings)}
             projectId={projectId}
           />
+          <PreparationCard projectId={projectId} />
           <section className="settings-section">
             <div className="settings-section-head">
               <h3 className="settings-section-title">AFK burns</h3>
@@ -154,6 +160,14 @@ function Field({ row, projectId }: { row: SettingRow; projectId?: string }) {
           </span>
         )}
         {row.overridden && <span className="settings-badge is-override">overridden</span>}
+        {row.stale && (
+          <span
+            className="settings-badge is-warn"
+            title="Measured a long time ago — re-prepare to refresh it"
+          >
+            stale
+          </span>
+        )}
         {update.isPending && <span className="settings-saving">saving…</span>}
       </label>
       {row.help && <div className="settings-field-help">{row.help}</div>}
@@ -187,6 +201,25 @@ function Field({ row, projectId }: { row: SettingRow; projectId?: string }) {
             </option>
           ))}
         </select>
+      ) : row.control === 'textarea' ? (
+        // Multi-line fields (verify commands, known failures) — an <input>
+        // silently drops the newlines that give these values their meaning.
+        // Enter inserts a line; blur saves, Escape reverts.
+        <textarea
+          id={controlId}
+          className="settings-input mono settings-textarea"
+          rows={4}
+          value={draft}
+          disabled={update.isPending}
+          onChange={(e) => setDraft(e.target.value)}
+          onBlur={(e) => save(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') {
+              setDraft(row.value)
+              e.currentTarget.blur()
+            }
+          }}
+        />
       ) : (
         <input
           id={controlId}
@@ -207,6 +240,10 @@ function Field({ row, projectId }: { row: SettingRow; projectId?: string }) {
       )}
 
       {row.note && <div className="settings-field-note">{row.note}</div>}
+      {/* What preparation actually observed. Shown inline rather than behind a
+          tooltip: it is the only thing that distinguishes a measured value from
+          a plausible-looking guess, which is the whole question a reader has. */}
+      {row.evidence && <div className="settings-field-evidence mono">{row.evidence}</div>}
       {row.overridden && projectId && (
         <button className="settings-clear" onClick={clear} disabled={update.isPending}>
           Clear override

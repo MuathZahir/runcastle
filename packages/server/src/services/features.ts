@@ -8,7 +8,7 @@ import type {
   Ticket,
   Waypoint,
 } from '@runcastle/core'
-import { REVIEW_LOOP_BACK, newId, nextGate, nextPhase } from '@runcastle/core'
+import { RETHINK_LOOP_BACK, REVIEW_LOOP_BACK, newId, nextGate, nextPhase } from '@runcastle/core'
 import { sessionDir, worktreeDir } from '@runcastle/core/paths'
 import { desc, eq } from 'drizzle-orm'
 import { rmSync } from 'node:fs'
@@ -30,8 +30,9 @@ import {
   rowToFeature,
   setPhase,
 } from './repo'
+import { activeSessionsForFeature } from '../launcher/sessions'
 import { endSession } from '../pty/end-session'
-import { getTicket, listByFeature, updateTicket } from './tickets'
+import { getTicket, listByFeature, sweepOrphanedBurning, updateTicket } from './tickets'
 import { frontier, listByFeature as listWaypoints } from './waypoints'
 import { cancelRun, startRun } from '../workflows/runner'
 
@@ -110,6 +111,8 @@ export async function createFeature(
     // Every feature is created unmapped; mapping is escalation-only, reached
     // mid-grill via the MCP escalate_to_map tool (no "start mapped" at creation).
     mapped: false,
+    // Every feature starts on lap 1; only Rethink moves it (ADR-0010 §7).
+    lap: 1,
     phase: 'ideation' as const,
     branch,
     baseBranch,
@@ -240,10 +243,11 @@ export function advance(ctx: AppCtx, featureId: string): Feature {
  * already at `implementation` with NO active run — a run that was cancelled,
  * crashed, or finished with failures left the feature parked there — and
  * (re)starts the burn without re-crossing any gate, so that state never
- * dead-ends. On restart every `failed` ticket is reset to `pending` (error
- * cleared) so the re-burn actually retries it — this is the retry path the
- * burner's "resolve manually, then re-burn" messages promise. Requires ≥1
- * non-cancelled ticket.
+ * dead-ends. On restart every ticket a dead run left `burning` is failed first
+ * (no run is live, so nothing is behind it), then every `failed` ticket is
+ * reset to `pending` (error cleared) so the re-burn actually retries it — this
+ * is the retry path the burner's "resolve manually, then re-burn" messages
+ * promise. Requires ≥1 non-cancelled ticket.
  *
  * It also accepts a feature at `review` with ≥1 pending (non-terminal) ticket
  * and no active run — the Iterate loop (CONTEXT.md decision #7): fresh fix
@@ -258,10 +262,15 @@ export async function burn(
 ): Promise<{ runId: string }> {
   const feature = getFeatureRow(ctx, featureId)
   const running = hasActiveRun(ctx, featureId)
-  const tickets = listByFeature(ctx, featureId)
+  let tickets = listByFeature(ctx, featureId)
+  // G3 scopes to the CURRENT lap (SPEC §15.1) — an earlier lap's tickets are
+  // terminal by construction, so counting them would let a fresh lap burn
+  // nothing. `lapTickets` is that scope; the restarting path below deliberately
+  // ignores it.
+  const lapTickets = tickets.filter((t) => t.lap === feature.lap)
   // A ticket the burner still has to run: not done/failed/cancelled (the
   // terminal states). Fresh fix tickets from an Iterate session land as `pending`.
-  const pending = tickets.filter(
+  const pending = lapTickets.filter(
     (t) => t.status !== 'done' && t.status !== 'failed' && t.status !== 'cancelled',
   )
   const restarting = feature.phase === 'implementation' && !running
@@ -275,18 +284,34 @@ export async function burn(
     else why = `feature must be in the tickets phase to burn (currently ${feature.phase})`
     throw new GateError(why)
   }
-  if (tickets.filter((t) => t.status !== 'cancelled').length < 1) {
+  if (lapTickets.filter((t) => t.status !== 'cancelled').length < 1) {
     throw new GateError(
-      tickets.length > 0 ? 'no burnable tickets — every ticket is cancelled' : 'no tickets to burn',
+      lapTickets.length > 0
+        ? 'no burnable tickets — every ticket is cancelled'
+        : 'no tickets to burn',
     )
   }
 
   if (restarting) {
+    // No run is live (that is what `restarting` means), so a ticket still
+    // marked `burning` is an orphan from a run that died without finalizing —
+    // fail it first so the reset below can pick it up. Without this the
+    // scheduler (which only queues `pending`) skips it and the re-burn returns
+    // instantly with "N-1/N tickets done", leaving the ticket stuck forever.
+    sweepOrphanedBurning(ctx, featureId, 'orphaned — the previous run died while it was burning')
+    tickets = listByFeature(ctx, featureId)
     // `resetFailed: false` is the selective-retry path (retryTicket already
     // reset exactly the tickets it wants burned — the rest stay failed).
+    //
+    // Deliberately UNSCOPED by lap, unlike the G3 checks above: resuming a dead
+    // burn is about rescuing whatever the run left broken, so an earlier lap's
+    // failed ticket is retried here too. Only the decision to START a burn is a
+    // lap question.
     const failed = opts.resetFailed === false ? [] : tickets.filter((t) => t.status === 'failed')
     for (const t of failed) {
-      // Keep `attemptBranch`: the re-burn resumes from the preserved commits.
+      // Keep `attemptBranch` (the re-burn resumes from the preserved commits)
+      // and `conflictFiles` (a ticket that only failed to LAND gets its
+      // conflict resolved rather than re-implemented).
       updateTicket(ctx, t.id, { status: 'pending', error: null })
     }
     emit(ctx, featureId, {
@@ -312,6 +337,43 @@ export async function burn(
 }
 
 /**
+ * Rethink — the review → ideation loop back that starts lap N+1 (ADR-0010 §1,
+ * SPEC §15.2). Where Fix (`burn` from review) says the spec was right and the
+ * code wasn't, Rethink says the opposite: the drive taught us something the
+ * spec does not know yet, so the feature goes back to ideation to digest it.
+ *
+ * Increments `lap` and sets the phase to `ideation`, emitting `lap.started`.
+ * Nothing else moves: earlier laps' tickets, sessions and events keep their lap
+ * tag and the trail is derived by grouping on it (there is no laps table).
+ *
+ * Every guard runs BEFORE the mutation. The session guard especially: the
+ * caller launches the lap's terminal right after this returns, and a launch the
+ * one-terminal-per-feature guard would refuse must not leave the feature already
+ * bumped onto a lap with no session to work it.
+ */
+export function rethink(ctx: AppCtx, featureId: string): Feature {
+  const feature = getFeatureRow(ctx, featureId)
+  if (feature.phase !== RETHINK_LOOP_BACK.from) {
+    throw new GateError(
+      `feature must be in the review phase to rethink (currently ${feature.phase})`,
+    )
+  }
+  if (hasActiveRun(ctx, featureId)) {
+    throw new GateError('a run is burning this feature — cancel or wait for it before rethinking')
+  }
+  const live = activeSessionsForFeature(ctx, featureId)
+  if (live.length > 0) {
+    throw new GateError(
+      `a ${live[0].kind} session is already live for ${feature.slug} — only one terminal per feature; end or resume it first`,
+    )
+  }
+
+  const lap = feature.lap + 1
+  ctx.db.update(features).set({ lap }).where(eq(features.id, featureId)).run()
+  return setPhase(ctx, featureId, RETHINK_LOOP_BACK.to, 'lap.started', `rethink — lap ${lap}`)
+}
+
+/**
  * Retry ONE failed ticket (UI lane action). Resets the ticket — and every
  * failed ticket in its transitive `blockedBy` closure, since a dependent can
  * only burn once its blockers are redone — to `pending`, then starts a burn if
@@ -320,9 +382,15 @@ export async function burn(
  *
  * `fresh` discards the ticket's preserved work — EVERY attempt branch of this
  * ticket (the recorded one plus any orphans a pre-`attemptBranch` burn left),
- * `attemptBranch` cleared — so the new agent starts from the feature branch
- * tip. Blockers reset alongside it keep their chains — only the named ticket
- * starts over.
+ * `attemptBranch` and `conflictFiles` cleared — so the new agent starts from the
+ * feature branch tip. Blockers reset alongside it keep their chains — only the
+ * named ticket starts over.
+ *
+ * A ticket that failed on a LANDING CONFLICT keeps its `conflictFiles`, which is
+ * what makes the burner resolve the conflict instead of re-implementing the
+ * ticket (`resolvingConflict` in the result says so, for the caller's copy).
+ * "Retry fresh" is the escape hatch that throws the conflicted work away and
+ * re-implements from the current tip.
  *
  * When the ticket has NO recorded `attemptBranch` (it failed before the column
  * existed, or the db was reset), the fallback lookup
@@ -345,6 +413,8 @@ export async function retryTicket(
   resumedFrom: string | null
   /** Commits preserved on that branch (0 when starting clean). */
   preservedCommits: number
+  /** True when this retry resolves a landing conflict rather than re-implementing. */
+  resolvingConflict: boolean
 }> {
   const ticket = getTicket(ctx, ticketId)
   const feature = getFeatureRow(ctx, ticket.featureId)
@@ -401,6 +471,10 @@ export async function retryTicket(
     }
   }
 
+  // A landing conflict survives a plain retry (the burner resolves it) but not
+  // a fresh one (the work it described is being discarded).
+  const resolvingConflict = !opts.fresh && ticket.conflictFiles !== undefined && !!resumedFrom
+
   for (const t of toReset.values()) {
     const isTarget = t.id === ticket.id
     updateTicket(ctx, t.id, {
@@ -409,15 +483,18 @@ export async function retryTicket(
       // Record an adopted branch / clear on fresh — the burner reads this
       // pointer to base the new attempt; blockers keep whatever they have.
       ...(isTarget ? { attemptBranch: resumedFrom } : {}),
+      ...(isTarget && !resolvingConflict ? { conflictFiles: null } : {}),
     })
   }
 
   const seqs = [...toReset.keys()].sort((a, b) => a - b)
   const how = opts.fresh
     ? ' from scratch'
-    : resumedFrom
-      ? ` from ${preservedCommits} preserved commit(s) on ${resumedFrom}`
-      : ''
+    : resolvingConflict
+      ? ` — resolving its conflict with ${feature.branch} (${preservedCommits} commit(s) preserved on ${resumedFrom})`
+      : resumedFrom
+        ? ` from ${preservedCommits} preserved commit(s) on ${resumedFrom}`
+        : ''
   emit(ctx, feature.id, {
     type: 'ticket.retry',
     message:
@@ -425,11 +502,11 @@ export async function retryTicket(
         ? `retrying ticket ${ticket.seq}${how} (+ failed blocker${seqs.length > 2 ? 's' : ''} ${seqs.filter((s) => s !== ticket.seq).join(', ')})`
         : `retrying ticket ${ticket.seq}${how}`,
     ticketId: ticket.id,
-    data: { retried: seqs, fresh: !!opts.fresh, resumedFrom, preservedCommits },
+    data: { retried: seqs, fresh: !!opts.fresh, resumedFrom, preservedCommits, resolvingConflict },
   })
 
   const { runId } = await burn(ctx, feature.id, { resetFailed: false })
-  return { runId, retried: seqs, resumedFrom, preservedCommits }
+  return { runId, retried: seqs, resumedFrom, preservedCommits, resolvingConflict }
 }
 
 export interface EscalateResult {
