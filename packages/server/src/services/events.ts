@@ -52,6 +52,25 @@ function projectIdForFeature(ctx: AppCtx, featureId: string): string {
   return row.projectId
 }
 
+/**
+ * The lap to stamp on a feature's events (ADR-0010 / SPEC §15.1).
+ *
+ * Deliberately total: `insertEvent` runs on paths where a throw is not a failed
+ * request but a server that will not start (boot reconciliation) or a session
+ * that cannot be closed (PTY teardown). A missing feature row there means the
+ * lap is unknowable, not that the event should be lost — same posture as
+ * `emitForSession`, which drops rather than throws. Lap 1 is the honest
+ * fallback: it is where every event lived before laps existed.
+ */
+function lapForFeature(ctx: AppCtx, featureId: string): number {
+  const row = ctx.db
+    .select({ lap: features.lap })
+    .from(features)
+    .where(eq(features.id, featureId))
+    .get()
+  return row?.lap ?? 1
+}
+
 /** Append a feature-scoped timeline event; project id is derived from the feature. */
 export function emit(ctx: AppCtx, featureId: string, e: EmitInput): EventRow {
   return insertEvent(ctx, projectIdForFeature(ctx, featureId), featureId, e)
@@ -94,6 +113,9 @@ function insertEvent(
     .values({
       projectId,
       featureId,
+      // Feature-scoped events carry their feature's lap; project-level ones
+      // (open/close/rename) have no feature and sit on lap 1.
+      lap: featureId ? lapForFeature(ctx, featureId) : 1,
       runId: e.runId ?? null,
       ticketId: e.ticketId ?? null,
       ts: Date.now(),

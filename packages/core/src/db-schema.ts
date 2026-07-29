@@ -114,6 +114,13 @@ export const features = sqliteTable('features', {
   title: text('title').notNull(),
   oneLiner: text('one_liner').notNull(),
   mapped: integer('mapped', { mode: 'boolean' }).notNull().default(false),
+  /**
+   * The lap the feature is on (ADR-0010 / SPEC §15.1) — one trip round the
+   * pipeline. Rethink increments it; Fix does not. Every feature ever created
+   * before laps existed was, by definition, on lap 1, which is what the default
+   * backfills.
+   */
+  lap: integer('lap').notNull().default(1),
   phase: text('phase').notNull().$type<Phase>(),
   branch: text('branch').notNull(),
   /**
@@ -163,6 +170,13 @@ export const sessions = sqliteTable('sessions', {
    * column, so the asymmetry buys a migration that cannot fail.
    */
   projectId: text('project_id'),
+  /**
+   * The feature's lap when this session was created (ADR-0010 / SPEC §15.1) — a
+   * tag, not state: nothing reads it to make a decision, the lap trail groups on
+   * it. A project-scoped `prepare` session has no feature to take a lap from and
+   * stores 1.
+   */
+  lap: integer('lap').notNull().default(1),
   kind: text('kind').notNull().$type<SessionKind>(),
   ccSessionId: text('cc_session_id'),
   transcriptPath: text('transcript_path'),
@@ -182,6 +196,12 @@ export const tickets = sqliteTable('tickets', {
     .$type<string[]>(),
   seams: text('seams', { mode: 'json' }).notNull().$type<string[]>(),
   blockedBy: text('blocked_by', { mode: 'json' }).notNull().$type<number[]>(),
+  /**
+   * The feature's lap when this ticket was stored (ADR-0010 / SPEC §15.1).
+   * Stamped server-side by `storeTickets` — sessions never choose it. G3 scopes
+   * to the current lap's pending tickets; G4 stays cumulative.
+   */
+  lap: integer('lap').notNull().default(1),
   status: text('status').notNull().$type<TicketStatus>(),
   commits: text('commits', { mode: 'json' }).notNull().$type<string[]>(),
   error: text('error'),
@@ -225,6 +245,12 @@ export const events = sqliteTable('events', {
   featureId: text('feature_id'),
   runId: text('run_id'),
   ticketId: text('ticket_id'),
+  /**
+   * The feature's lap when the event was appended (ADR-0010 / SPEC §15.1), so
+   * the timeline can be grouped into laps without a join. Project-level events
+   * have no feature to take a lap from and store 1.
+   */
+  lap: integer('lap').notNull().default(1),
   ts: integer('ts').notNull(),
   type: text('type').notNull(),
   message: text('message').notNull(),

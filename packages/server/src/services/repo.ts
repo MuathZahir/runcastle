@@ -33,6 +33,7 @@ export function rowToFeature(row: FeatureSelect): Feature {
     title: row.title,
     oneLiner: row.oneLiner,
     mapped: row.mapped,
+    lap: row.lap,
     phase: row.phase,
     branch: row.branch,
     baseBranch: row.baseBranch ?? undefined,

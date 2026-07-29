@@ -842,6 +842,18 @@ button {
   transition: background var(--dur-2);
 }
 .pconn.is-done { background: var(--text-4); }
+/* lap chip — only rendered past lap 1, so the linear flow is unchanged */
+.pipeline-lap {
+  margin-left: 12px;
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  color: var(--text-3);
+  border: 1px solid var(--hairline);
+  border-radius: 4px;
+  padding: 1px 6px;
+  flex-shrink: 0;
+}
 
 /* ---- next-step bar (the guided spine) ---- */
 .nextstep {

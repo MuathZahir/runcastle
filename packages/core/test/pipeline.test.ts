@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest'
-import { PIPELINE, REVIEW_LOOP_BACK, loopBackPhase, nextGate, nextPhase } from '../src/pipeline'
+import {
+  PIPELINE,
+  RETHINK_LOOP_BACK,
+  REVIEW_LOOP_BACK,
+  loopBackPhase,
+  nextGate,
+  nextPhase,
+  rethinkPhase,
+} from '../src/pipeline'
 import type { Phase } from '../src/schemas'
 
 const full = (phase: Phase) => ({ phase })
@@ -90,6 +98,28 @@ describe('review → implementation loop (CONTEXT.md decision #7)', () => {
     // the loop goes back to implementation.
     expect(nextPhase(full('review'))).toBe('shipped')
     expect(loopBackPhase(full('review'))).toBe('implementation')
+  })
+})
+
+describe('review → ideation loop — Rethink (ADR-0010 §1)', () => {
+  it('RETHINK_LOOP_BACK is the review → ideation transition', () => {
+    expect(RETHINK_LOOP_BACK).toEqual({ from: 'review', to: 'ideation' })
+  })
+
+  it('rethinkPhase returns ideation only from review', () => {
+    expect(rethinkPhase(full('review'))).toBe('ideation')
+    expect(rethinkPhase(full('ideation'))).toBeNull()
+    expect(rethinkPhase(full('spec'))).toBeNull()
+    expect(rethinkPhase(full('tickets'))).toBeNull()
+    expect(rethinkPhase(full('implementation'))).toBeNull()
+    expect(rethinkPhase(full('shipped'))).toBeNull()
+  })
+
+  it('is a second backward step, distinct from Fix — the forward order is untouched', () => {
+    expect(rethinkPhase(full('review'))).toBe('ideation')
+    expect(loopBackPhase(full('review'))).toBe('implementation')
+    expect(nextPhase(full('review'))).toBe('shipped')
+    expect(nextGate(full('review'))?.id).toBe('G5')
   })
 })
 

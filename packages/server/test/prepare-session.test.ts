@@ -16,6 +16,7 @@ import { preparedValue } from '../src/services/findings'
 import { toolRecordFinding } from '../src/mcp/server'
 import { renderPreparePrompt } from '../src/launcher/artifacts'
 import { makeTestCtx } from './helpers/db'
+import { seedFeature } from './helpers/fixtures'
 
 /**
  * The project-scoped `prepare` session: a conversation that belongs to a project
@@ -70,6 +71,9 @@ function featureSession(): SessionRow {
 beforeEach(async () => {
   ctx = await makeTestCtx()
   seedProject()
+  // A feature session stamps its feature's lap, so the feature must really
+  // exist — `featureSession()` below is the genuine article, not a bare id.
+  seedFeature(ctx, PROJECT_ID, { id: FEATURE_ID })
 })
 
 describe('a prepare session is project-scoped', () => {

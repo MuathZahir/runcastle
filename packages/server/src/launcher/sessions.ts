@@ -6,7 +6,7 @@ import { sessions } from '../db/schema'
 import { ptyRegistry } from '../pty/registry'
 import { emit, emitForSession } from '../services/events'
 import { promoteLastSession } from '../services/waypoints'
-import { rowToSession } from '../services/repo'
+import { getFeatureRow, rowToSession } from '../services/repo'
 
 /**
  * Session-row persistence for the launcher + hook receiver + MCP server. There
@@ -34,6 +34,9 @@ export function createSessionRow(ctx: AppCtx, input: CreateSessionInput): Sessio
       id: newId('sess'),
       featureId: input.featureId ?? null,
       projectId: input.projectId ?? null,
+      // A feature session belongs to the lap its feature is on; a project-scoped
+      // `prepare` session has no feature to take one from (ADR-0010 §7).
+      lap: input.featureId ? getFeatureRow(ctx, input.featureId).lap : 1,
       kind: input.kind,
       ccSessionId: null,
       transcriptPath: null,
@@ -190,6 +193,32 @@ export const KICKOFF_LINES: Record<SessionKind, string> = {
     'Proceed with your task: work through the unestablished preparation fields with the human. ' +
     'Start by telling them which fields are still open and what you need from them for each; ' +
     'ask before running anything that touches their database or services.',
+}
+
+/**
+ * The lap briefing (SPEC §15.2) — the `revisit` kickoff override a Rethink
+ * passes, and the whole of a lap's ceremony: one terminal digests what the test
+ * drive taught, amends the docs, emits the lap's tickets and advances itself
+ * back to the human's Burn click (ADR-0010 §5).
+ *
+ * Both inputs it is told to read are genuinely optional and the line says so
+ * out loud: `test-notes.md` is created lazily on the first note (a feature that
+ * never captured one has no file at all), and `## Later laps` only exists when
+ * the slicing conversation parked scope there. An agent that treats a missing
+ * file as a broken environment stalls the lap on its first move.
+ */
+export function lapKickoff(lap: number): string {
+  return (
+    `Proceed with your task: invoke the /runcastle:revisit skill for LAP ${lap} REVIEW ITERATION. ` +
+    `Call get_feature_context, then read this feature's test-notes.md (the "## Lap ${lap - 1}" ` +
+    'section — what the last drive surfaced) and the "## Later laps" section of its spec.md. ' +
+    'EITHER MAY NOT EXIST YET; that is normal, not an error — say so and carry on from what I ' +
+    'tell you. Interview me about what the test drive taught: what was wrong, what was missing, ' +
+    'what I want next. Write what we settle on into decisions.md and amend spec.md for this lap ' +
+    '(pruning anything you promote out of "## Later laps"), then call emit_tickets for this ' +
+    `lap's work. Finish in THIS session: complete_phase through ideation → spec → tickets, then ` +
+    'tell me to review the cards and click Burn.'
+  )
 }
 
 /** The kickoff line for a session: an explicit override wins, else the per-kind default. */

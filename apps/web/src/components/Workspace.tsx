@@ -14,7 +14,6 @@ import {
   nextStep,
   PHASE_LABELS,
   pipelineSteps,
-  REVIEW_ITERATE_KICKOFF,
   type ActionKind,
   type NextAction,
   type NextStep,
@@ -91,6 +90,16 @@ export function Workspace({
   // crosses G1 — with an override reason when waypoints are still open — and
   // spawns the converge session, which lands the feature at `spec`.
   const converge = trpc.feature.converge.useMutation({
+    onSuccess: () => {
+      invalidate()
+      onViewPhase(null)
+    },
+    onError: (e) => toast.push(e.message),
+  })
+  // Rethink is the review verb that starts the next lap (ADR-0010 §3): the
+  // server bumps the lap, drops the feature back to ideation and opens the lap
+  // session in one call, so the bar just snaps the view back to live.
+  const rethink = trpc.feature.rethink.useMutation({
     onSuccess: () => {
       invalidate()
       onViewPhase(null)
@@ -190,6 +199,7 @@ export function Workspace({
     advance.isPending ||
     burn.isPending ||
     converge.isPending ||
+    rethink.isPending ||
     cancel.isPending ||
     testDrive.isPending ||
     merge.isPending ||
@@ -204,14 +214,10 @@ export function Workspace({
         launch.mutate({ featureId, kind: 'qa' })
         break
       case 'revisit':
-        launch.mutate({
-          featureId,
-          kind: 'revisit',
-          // At review the revisit is an Iterate loop — brief the agent to read
-          // the run outcome, interview about the test drive, and emit fix tickets
-          // (ticket-3 kickoff override). Other phases use the default revisit line.
-          kickoffLine: feature.phase === 'review' ? REVIEW_ITERATE_KICKOFF : undefined,
-        })
+        launch.mutate({ featureId, kind: 'revisit' })
+        break
+      case 'rethink':
+        rethink.mutate({ featureId })
         break
       case 'openGrill':
         onViewPhase(null)
@@ -299,6 +305,7 @@ export function Workspace({
         </div>
         <PipelineStepper
           steps={steps}
+          lap={feature.lap}
           onView={(p) => onViewPhase(p === feature.phase ? null : p)}
         />
       </div>
@@ -387,9 +394,11 @@ function PhaseBody({
 
 function PipelineStepper({
   steps,
+  lap,
   onView,
 }: {
   steps: PipelineStep[]
+  lap: number
   onView: (phase: Phase) => void
 }) {
   return (
@@ -410,6 +419,13 @@ function PipelineStepper({
           )}
         </Fragment>
       ))}
+      {/* A feature merged on lap 1 looks exactly like the old linear flow
+          (ADR-0010 §4) — the chip only appears once Rethink has looped. */}
+      {lap > 1 && (
+        <span className="pipeline-lap" title="Rethink has looped this pipeline">
+          Lap {lap}
+        </span>
+      )}
     </div>
   )
 }

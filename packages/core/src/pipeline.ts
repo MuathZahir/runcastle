@@ -107,6 +107,30 @@ export function loopBackPhase(feature: { phase: Phase }): Phase | null {
   return feature.phase === REVIEW_LOOP_BACK.from ? REVIEW_LOOP_BACK.to : null
 }
 
+/**
+ * The pipeline's second backward transition — Rethink (ADR-0010 §1 / SPEC §15.1).
+ * Where `REVIEW_LOOP_BACK` is "the spec was right, the code wasn't" (Fix, same
+ * lap), this one is "the code was right, the spec wasn't": the feature starts
+ * lap N+1 back at `ideation`, where one session digests what the test drive
+ * taught, amends the docs and emits the lap's tickets. It always lands in
+ * ideation, however small the rethink — that conversation is the point of the
+ * loop, so it always has a home. `nextPhase`/`nextGate` stay strictly forward;
+ * like the Fix loop this is its own typed transition, never bent into the
+ * linear order.
+ */
+export const RETHINK_LOOP_BACK = { from: 'review', to: 'ideation' } as const satisfies {
+  from: Phase
+  to: Phase
+}
+
+/**
+ * The phase a Rethink loops back to (`ideation`), or null from any other phase —
+ * the pure model behind the server's `rethink` guard.
+ */
+export function rethinkPhase(feature: { phase: Phase }): Phase | null {
+  return feature.phase === RETHINK_LOOP_BACK.from ? RETHINK_LOOP_BACK.to : null
+}
+
 /** G1 as it appears on a mapped feature (ADR-0001 / SPEC §13.1). */
 const MAPPED_G1: GateDef = {
   id: 'G1',
