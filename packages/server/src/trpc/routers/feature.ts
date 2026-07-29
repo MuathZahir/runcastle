@@ -29,6 +29,21 @@ export const featureRouter = router({
     )
     .mutation(({ ctx, input }) => features.createFeature(ctx, input)),
 
+  // The quick-change door (decision 21) — the second entrance beside `create`,
+  // for work too small to deserve a conversation. Creates an ordinary feature
+  // born at `implementation` on lap 1 with exactly one ticket built from the
+  // prose. No session is launched: the human reviews the card and clicks Burn.
+  quickChange: publicProcedure
+    .input(
+      z.object({
+        projectId: z.string(),
+        title: z.string().min(1),
+        prose: z.string().min(1),
+        baseBranch: z.string().optional(),
+      }),
+    )
+    .mutation(({ ctx, input }) => features.quickChange(ctx, input)),
+
   list: publicProcedure
     .input(z.object({ projectId: z.string() }))
     .query(({ ctx, input }) => features.list(ctx, input.projectId)),

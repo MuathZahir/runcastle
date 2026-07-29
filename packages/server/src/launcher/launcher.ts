@@ -34,10 +34,12 @@ import { listFindings } from '../services/findings'
 import { keysToPrepare, latestPrepNotes } from '../services/prep'
 import { serverUrlFor, writeSessionArtifacts, type PrepareBrief } from './artifacts'
 import {
+  activeProjectSession,
   activeSessionsForFeature,
   armSessionReadyWatchdog,
   createSessionRow,
   getSessionRow,
+  landProjectSession,
   markSessionEnded,
   mostRecentResumableProjectSession,
   mostRecentResumableSession,
@@ -609,6 +611,103 @@ export async function launchPrepareSession(
   return { sessionId: session.id }
 }
 
+/**
+ * Open the project's intake conversation (backs `project.talkToProject`) — the
+ * session that turns a lump of raw intent into features (decisions 17–20).
+ *
+ * Modelled on {@link launchPrepareSession}, and differing from it in exactly the
+ * ways decision 18 requires:
+ * - it runs in a runcastle-owned worktree on `runcastle/project`, cut from the
+ *   base tip at launch, NEVER in the human's checkout — this session writes the
+ *   whole repo, and its commits land on the base branch when the terminal ends;
+ * - `--permission-mode default` rather than `acceptEdits`: the docs-only
+ *   justification feature terminals run on evaporates with whole-repo write
+ *   access, and prompting is what the human's own Claude Code does anyway.
+ *
+ * One live project session per project. That guard is `assertSpawnable`'s
+ * cousin, not `assertSpawnable` itself: the feature rule exists because git
+ * forbids two checkouts of one branch, which says nothing about feature
+ * terminals — they and this session are orthogonal and never contend.
+ */
+export async function launchProjectSession(
+  ctx: AppCtx,
+  input: { projectId: string },
+  opts: LaunchSessionOptions = {},
+): Promise<LaunchSessionResult> {
+  const project = requireProjectById(ctx, input.projectId)
+
+  const live = activeProjectSession(ctx, project.id, 'project')
+  if (live) {
+    throw new GateError(
+      `a project session is already open for ${project.name} — resume or end it first`,
+    )
+  }
+
+  const worktreePath = await git.ensureProjectWorktree(project)
+  const session = createSessionRow(ctx, {
+    projectId: project.id,
+    kind: 'project',
+    worktreePath,
+  })
+
+  const resumeSessionId = mostRecentResumableProjectSession(ctx, project.id, 'project')?.ccSessionId
+
+  emitProject(ctx, project.id, {
+    type: 'session.launching',
+    message: 'launching project session',
+    data: { sessionId: session.id, kind: 'project', worktreePath, branch: git.PROJECT_BRANCH },
+  })
+  if (resumeSessionId) {
+    emitProject(ctx, project.id, {
+      type: 'session.resumed',
+      message: 'resuming the previous project conversation',
+      data: { sessionId: session.id, resumeSessionId },
+    })
+  }
+
+  const artifacts = await writeSessionArtifacts({
+    session,
+    project,
+    config: ctx.config,
+    projectBrief: { project, branch: git.PROJECT_BRANCH, worktreePath },
+  })
+  const serverUrl = serverUrlFor(ctx.config)
+
+  const buildInput: BuildLaunchInput = {
+    sessionId: session.id,
+    serverUrl,
+    featureTitle: project.name,
+    worktreePath,
+    pluginDir: resolvePluginDir(),
+    settingsPath: artifacts.settingsPath,
+    mcpConfigPath: artifacts.mcpConfigPath,
+    systemPromptPath: artifacts.systemPromptPath,
+    // Decision 18: whole-repo write access voids the acceptEdits justification.
+    permissionMode: 'default',
+    model: resolveModel('project', ctx.config, project),
+    resumeSessionId,
+    strictMcp: ctx.config.sessionMcp === 'runcastleOnly',
+  }
+
+  if (opts.spawn === false) {
+    emitProject(ctx, project.id, {
+      type: 'session.launched',
+      message: 'project session prepared (terminal spawn skipped)',
+      data: {
+        sessionId: session.id,
+        command: ['claude', ...buildClaudeArgs(buildInput)].join(' '),
+        spawned: false,
+      },
+    })
+    return { sessionId: session.id }
+  }
+
+  spawnEmbeddedPty(ctx, undefined, session, worktreePath, serverUrl, buildClaudeArgs(buildInput), {
+    resumeSessionId,
+  })
+  return { sessionId: session.id }
+}
+
 /** Seed the conversation from the last headless run rather than starting cold. */
 async function buildPrepareBrief(ctx: AppCtx, project: Project): Promise<PrepareBrief> {
   const findings = await listFindings(ctx, project)
@@ -816,6 +915,9 @@ export function handlePtyExit(
   // back to the frontier (SPEC §13.2); no-op for non-waypoint sessions or when
   // the agent already resolved.
   releaseForSession(ctx, session.id)
+  // A project session's commits land on the base branch when its terminal goes
+  // (decision 18) — including when it dies on its own; no-op for other kinds.
+  landProjectSession(ctx, session)
   if (diedBeforeLive && meta.resumeSessionId) {
     const label = meta.waypoint ? `waypoint ${meta.waypoint.seq} (${meta.waypoint.title})` : session.kind
     emitForSession(ctx, session, {

@@ -16,6 +16,19 @@ export function defaultBaseBranch(
 }
 
 /**
+ * The slug a title will get, for the branch line both creation forms preview.
+ * A preview only — the server slugifies again (and deduplicates) on create, so
+ * this never has to agree about a collision suffix, only about the shape.
+ */
+export function slugPreview(title: string): string {
+  return title
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 40)
+}
+
+/**
  * Client-side feature derivations (UI-SPEC §2/§3): sidebar glyph, needs-me
  * classification, and the overview primary-action state machine. Pure functions
  * over wire data — no IO.
@@ -717,10 +730,23 @@ export function nextStep(
           busy: true,
         }
       }
+      // Never burned at all — the feature was born here (the quick-change door,
+      // decision 21) or crossed G3 by an override. There is nothing to resume,
+      // so this is the plain first Burn, worded like the tickets phase's.
+      if (!run) {
+        return {
+          kick: 'NEXT STEP',
+          title: pending === 1 ? 'Review & burn the ticket' : 'Review & burn the tickets',
+          desc: 'Read the card — edit it if it is not quite right — then burn it into commits.',
+          primary: { label: `Burn ${t} ticket${t === 1 ? '' : 's'}`, kind: 'burn' },
+          secondary: live ? [] : [{ label: 'Revisit', kind: 'revisit' }],
+          busy: false,
+        }
+      }
       const why =
-        run?.status === 'failed'
+        run.status === 'failed'
           ? 'The run failed — resume the burn to retry.'
-          : run?.status === 'cancelled'
+          : run.status === 'cancelled'
             ? 'The run was cancelled — resume the burn to continue.'
             : 'The burn has not started — resume to run the tickets.'
       return {

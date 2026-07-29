@@ -14,7 +14,7 @@ import { desc, eq } from 'drizzle-orm'
 import { rmSync } from 'node:fs'
 import type { AppCtx } from '../db/types'
 import { events, features, gateOverrides, runs, sessions, tickets, waypoints } from '../db/schema'
-import { GateError, isNotImplemented } from '../errors'
+import { GateError, InvalidInputError, isNotImplemented } from '../errors'
 import { emit, emitProject } from './events'
 import { checkGate } from './gates'
 import * as git from './git'
@@ -32,7 +32,7 @@ import {
 } from './repo'
 import { activeSessionsForFeature } from '../launcher/sessions'
 import { endSession } from '../pty/end-session'
-import { getTicket, listByFeature, sweepOrphanedBurning, updateTicket } from './tickets'
+import { getTicket, listByFeature, storeTickets, sweepOrphanedBurning, updateTicket } from './tickets'
 import { frontier, listByFeature as listWaypoints } from './waypoints'
 import { cancelRun, startRun } from '../workflows/runner'
 
@@ -87,6 +87,13 @@ export interface CreateFeatureInput {
    * another feature) — the merge target stays `mainBranch` regardless.
    */
   baseBranch?: string
+  /**
+   * Body for `brief.md`, verbatim instead of the generated title + one-liner
+   * stub. The project session passes the reasoning it just worked out with the
+   * human (decision 19) — without it that reasoning evaporates when the intake
+   * terminal closes, and the burner reads a restated one-liner instead.
+   */
+  brief?: string
 }
 
 export async function createFeature(
@@ -130,12 +137,122 @@ export async function createFeature(
     data: { slug, branch, baseBranch, branchReady },
   })
 
-  scaffoldDocs(ctx, feature)
+  scaffoldDocs(ctx, feature, { brief: input.brief })
 
   // Commit the scaffolded brief so it does not linger as an untracked file in the
   // target repo's working tree. An untracked doc dirties the checkout and blocks
   // the ship gates (test-drive and merge both require `git status` to be clean).
   // Best-effort: a git stub (pre-B2) or a commit hiccup must never fail creation.
+  if (branchReady) {
+    try {
+      await git.commitDocs(project.repoPath, `runcastle: scaffold ${slug} docs`)
+    } catch {
+      // best-effort — the brief stays on disk; only the auto-commit is skipped
+    }
+  }
+
+  return feature
+}
+
+export interface QuickChangeInput {
+  projectId: string
+  /** Card title — the rail entry, the docs dir's slug, the ticket's title. */
+  title: string
+  /** The human's sentence. Becomes the ticket's goal AND its one criterion. */
+  prose: string
+  /** Same semantics as `CreateFeatureInput.baseBranch`. */
+  baseBranch?: string
+}
+
+/**
+ * The quick-change door (decision 21) — work too small to deserve a grill.
+ *
+ * An ORDINARY feature, born directly at `implementation` on lap 1, carrying
+ * exactly one ticket whose goal is the human's prose and whose sole acceptance
+ * criterion is that same sentence. From here it is the pipeline's far side:
+ * review the one card, click Burn, test-drive, click Merge — zero terminals.
+ *
+ * Nothing on the row marks it (ADR-0010 §7 forbids pipeline-shape settings), so
+ * a quick change is indistinguishable from a feature whose G1/G2 were
+ * overridden — a state the machine can already reach. G1/G2 are never evaluated
+ * because gates guard forward transitions only and this feature starts past
+ * both; G3 sees the one pending lap-1 ticket and the Burn click crosses it.
+ *
+ * No `spec.md` and no `decisions.md` are written — there was no conversation to
+ * record. `brief.md` carries the prose verbatim, which is what the burner reads
+ * as `{{FEATURE_BRIEF}}`.
+ */
+export async function quickChange(ctx: AppCtx, input: QuickChangeInput): Promise<Feature> {
+  const project = requireProjectById(ctx, input.projectId)
+  const title = input.title.trim()
+  const prose = input.prose.trim()
+  if (!title) throw new InvalidInputError('a quick change needs a title')
+  if (!prose) throw new InvalidInputError('a quick change needs a sentence describing the change')
+
+  const slug = uniqueSlug(ctx, project.id, title)
+  const branch = `feature/${slug}`
+  const requestedBase = input.baseBranch?.trim() || project.mainBranch
+  const { branchReady, baseBranch } = await ensureFeatureBranch(project, slug, requestedBase)
+
+  const inserted = ctx.db
+    .insert(features)
+    .values({
+      id: newId('feat'),
+      projectId: project.id,
+      slug,
+      title,
+      // The prose IS the one-liner — a quick change never had a separate summary
+      // to give, and inventing one would be a second source of truth for it.
+      // Only its first line, though: `oneLiner` is single-line by name and by
+      // every consumer (the hook's status line, the burner's brief header). The
+      // whole prose survives verbatim where it belongs — brief.md and the ticket.
+      oneLiner: prose.split('\n')[0].trim(),
+      mapped: false,
+      lap: 1,
+      phase: 'implementation' as const,
+      branch,
+      baseBranch,
+      status: 'active' as const,
+      createdAt: Date.now(),
+    })
+    .returning()
+    .get()
+  const feature = rowToFeature(inserted)
+
+  emit(ctx, feature.id, {
+    type: 'feature.created',
+    message: branchReady
+      ? `feature.created (${branch} ← ${baseBranch})`
+      : 'feature.created (branch pending)',
+    data: { slug, branch, baseBranch, branchReady },
+  })
+
+  scaffoldDocs(ctx, feature, { brief: `# ${title}\n\n${prose}\n` })
+
+  const [ticket] = storeTickets(ctx, feature.id, [
+    {
+      title,
+      goal: prose,
+      context: prose,
+      acceptanceCriteria: [prose],
+      // No invented seams: nobody read the codebase to name them.
+      seams: [],
+      blockedBy: [],
+    },
+  ])
+
+  // The one event that makes the fast path legible in the timeline — the row
+  // itself carries no marker, so without this the feature simply appears at
+  // `implementation` with no account of how it got past G1 and G2.
+  emit(ctx, feature.id, {
+    type: 'feature.quick_change',
+    message: `quick change — born at implementation on lap 1 with one ticket (#${ticket.seq}); no grill session, no spec.md`,
+    ticketId: ticket.id,
+    data: { slug, ticketSeq: ticket.seq, phase: 'implementation' },
+  })
+
+  // Same best-effort auto-commit as `createFeature` — an untracked brief dirties
+  // the checkout, and a dirty tree is what test-drive and merge both refuse on.
   if (branchReady) {
     try {
       await git.commitDocs(project.repoPath, `runcastle: scaffold ${slug} docs`)

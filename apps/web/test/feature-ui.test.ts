@@ -418,6 +418,76 @@ describe('archive derivations', () => {
 })
 
 /**
+ * Feature-grouping ticket 2 — the quick-change door (decision 21) lands a
+ * feature at `implementation` that has never run, which is the state the build
+ * phase's next-step bar had no wording for: it offered "Resume the burn" for a
+ * burn that never started. A run that died still resumes.
+ */
+describe('nextStep at implementation', () => {
+  const buildFull = (opts: {
+    runs?: { id: string; status: string; startedAt: number }[]
+    ticketStatuses?: TicketStatus[]
+    sessionLive?: boolean
+  }): FeatureFull =>
+    ({
+      feature: { id: 'f1', phase: 'implementation', mapped: false, lap: 1, status: 'active' },
+      tickets: (opts.ticketStatuses ?? ['pending']).map((status, i) => ({
+        id: `t${i}`,
+        status,
+        commits: [],
+      })),
+      sessions: opts.sessionLive ? [{ id: 's1', status: 'live', kind: 'revisit' }] : [],
+      runs: opts.runs ?? [],
+      gate: { next: null, satisfied: false, reason: null },
+    }) as unknown as FeatureFull
+
+  it('offers a plain first Burn — never "resume" — when no run has ever started', () => {
+    const ns = nextStep(buildFull({}), { driving: false })
+    expect(ns.title).toBe('Review & burn the ticket')
+    expect(ns.primary).toEqual({ label: 'Burn 1 ticket', kind: 'burn' })
+    expect(ns.desc).not.toContain('resume')
+    expect(ns.busy).toBe(false)
+  })
+
+  it('pluralizes the first Burn across several never-run tickets', () => {
+    const ns = nextStep(buildFull({ ticketStatuses: ['pending', 'pending'] }), { driving: false })
+    expect(ns.title).toBe('Review & burn the tickets')
+    expect(ns.primary?.label).toBe('Burn 2 tickets')
+  })
+
+  it('still resumes a burn whose run died, naming why', () => {
+    const cancelled = nextStep(
+      buildFull({ runs: [{ id: 'r1', status: 'cancelled', startedAt: 1 }] }),
+      { driving: false },
+    )
+    expect(cancelled.title).toBe('Resume the burn')
+    expect(cancelled.primary).toEqual({ label: 'Resume burn', kind: 'burn' })
+    expect(cancelled.desc).toContain('cancelled')
+
+    const failed = nextStep(buildFull({ runs: [{ id: 'r1', status: 'failed', startedAt: 1 }] }), {
+      driving: false,
+    })
+    expect(failed.desc).toContain('failed')
+  })
+
+  it('shows the cancel action while a run is live, whatever came before', () => {
+    const ns = nextStep(buildFull({ runs: [{ id: 'r1', status: 'running', startedAt: 1 }] }), {
+      driving: false,
+    })
+    expect(ns.primary).toEqual({ label: 'Cancel run', kind: 'cancelRun', danger: true })
+    expect(ns.busy).toBe(true)
+  })
+
+  it('hides Revisit while a session is live (one terminal per feature)', () => {
+    const ns = nextStep(buildFull({ sessionLive: true }), { driving: false })
+    expect(ns.secondary).toEqual([])
+    expect(nextStep(buildFull({}), { driving: false }).secondary).toEqual([
+      { label: 'Revisit', kind: 'revisit' },
+    ])
+  })
+})
+
+/**
  * Improve-map-workflow ticket 3 — the map rail's two seams. `parseMapSections`
  * was private to the grill body; the rail and the fog warning now read one
  * implementation, so it is tested here on its own.

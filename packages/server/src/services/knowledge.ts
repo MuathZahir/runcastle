@@ -18,24 +18,43 @@ export interface DocSummary {
   title: string
 }
 
-/** Create the docs dir and seed `brief.md` (title + oneLiner + created date). */
-export function scaffoldDocs(ctx: AppCtx, feature: Feature): void {
+/** Overrides for the docs a fresh feature is seeded with. */
+export interface ScaffoldOptions {
+  /**
+   * Body written into `brief.md` verbatim, instead of the generated
+   * title + oneLiner + created-date stub. Used by every creation path that
+   * already HAS the brief — the quick-change door (the human's own prose) and
+   * the project session's `create_feature` (the reasoning from the intake
+   * conversation, which would otherwise evaporate). Blank/whitespace-only falls
+   * back to the stub.
+   */
+  brief?: string
+}
+
+/**
+ * Create the docs dir and seed `brief.md` (title + oneLiner + created date, or
+ * `opts.brief` verbatim). Never overwrites an existing brief.
+ */
+export function scaffoldDocs(ctx: AppCtx, feature: Feature, opts: ScaffoldOptions = {}): void {
   const project = projectForFeature(ctx, feature)
   const dir = featureDocsDir(project, feature)
   mkdirSync(dir, { recursive: true })
 
   const briefPath = featureDocPath(project, feature, 'brief.md')
   if (!existsSync(briefPath)) {
+    const override = opts.brief?.trim()
     const created = new Date().toISOString()
-    const brief = [
-      `# ${feature.title}`,
-      '',
-      feature.oneLiner,
-      '',
-      `- Slug: ${feature.slug}`,
-      `- Created: ${created}`,
-      '',
-    ].join('\n')
+    const brief = override
+      ? `${override}\n`
+      : [
+          `# ${feature.title}`,
+          '',
+          feature.oneLiner,
+          '',
+          `- Slug: ${feature.slug}`,
+          `- Created: ${created}`,
+          '',
+        ].join('\n')
     writeFileSync(briefPath, brief, 'utf8')
   }
 
@@ -94,6 +113,71 @@ function mapDocBody(feature: Feature, seed?: MapSeed): string {
     if (body) lines.push(body, '')
   }
   return lines.join('\n')
+}
+
+// --- project-scope knowledge (charter + ADRs) -------------------------------
+
+/** The charter's path within a repo — the project's rewritten-in-place tier. */
+export const CHARTER_FILE = 'CONTEXT.md'
+
+/** Where project-scope decisions live — append-only, one file per decision. */
+export const ADR_DIR_REL = 'docs/adr'
+
+/**
+ * A shipped ADR that a later decision overturned carries this status line. It is
+ * the ONLY permitted edit to a shipped ADR: it changes a pointer, not a claim.
+ */
+export const SUPERSEDED_RE = /superseded by ADR-\d+/i
+
+/**
+ * The charter (`CONTEXT.md`) read out of one checkout, in full.
+ *
+ * Absent is a normal answer, not an error: the charter is born lazily, the first
+ * time the project session has something to write (decision 28). A scaffolded
+ * stub would be a file that reads authoritative while saying nothing, so
+ * "no file, nothing injected" is the designed degradation.
+ */
+export function readCharter(repoRoot: string): string | undefined {
+  const path = join(repoRoot, CHARTER_FILE)
+  if (!existsSync(path)) return undefined
+  try {
+    return readFileSync(path, 'utf8')
+  } catch {
+    return undefined
+  }
+}
+
+export interface AdrDoc {
+  /** Repo-relative path — the provenance address a reader can open. */
+  relPath: string
+  content: string
+}
+
+/**
+ * Every LIVE ADR under `docs/adr/`, in full and in filename order.
+ *
+ * A superseded ADR is omitted: it stays on disk, marked, reachable by an
+ * ordinary `Read` — but it leaves the always-read set, so a project that
+ * reversed course three times on one question costs one ADR of context, not
+ * four (decision 13). Full text, no truncation, no size ceiling (decision 16).
+ */
+export function listLiveAdrs(repoRoot: string): AdrDoc[] {
+  const dir = join(repoRoot, ADR_DIR_REL)
+  if (!existsSync(dir)) return []
+
+  const docs: AdrDoc[] = []
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    if (!entry.isFile() || !entry.name.endsWith('.md')) continue
+    let content: string
+    try {
+      content = readFileSync(join(dir, entry.name), 'utf8')
+    } catch {
+      continue
+    }
+    if (SUPERSEDED_RE.test(content)) continue
+    docs.push({ relPath: `${ADR_DIR_REL}/${entry.name}`, content })
+  }
+  return docs.sort((a, b) => a.relPath.localeCompare(b.relPath))
 }
 
 /** List `.md` docs for a feature (relPath within the docs dir + a title). */

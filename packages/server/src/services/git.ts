@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync } from 'node:f
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import type { Feature, Project } from '@runcastle/core'
-import { worktreeDir } from '@runcastle/core/paths'
+import { PROJECT_WORKTREE_SLUG, worktreeDir } from '@runcastle/core/paths'
 import { simpleGit } from 'simple-git'
 import type { SimpleGit } from 'simple-git'
 import type { AppCtx } from '../db/types'
@@ -319,13 +319,26 @@ export async function ensureTalkWorktree(project: Project, feature: Feature): Pr
 
   if (await worktreeIsValid(g, worktreePath, branch)) return worktreePath
 
-  mkdirSync(dirname(worktreePath), { recursive: true })
+  return addWorktree(g, worktreePath, branch, 'talk worktree')
+}
 
+/**
+ * `git worktree add <path> <branch>`, retried once through a `worktree prune` —
+ * the stale-registry case (the dir was deleted out from under git) is the common
+ * one, and it heals itself. `label` names the worktree in the error a second
+ * failure raises, so the message says which one could not be created.
+ */
+async function addWorktree(
+  g: SimpleGit,
+  worktreePath: string,
+  branch: string,
+  label: string,
+): Promise<string> {
+  mkdirSync(dirname(worktreePath), { recursive: true })
   try {
     await g.raw(['worktree', 'add', worktreePath, branch])
     return worktreePath
   } catch {
-    // Stale registry (e.g. the dir was deleted out from under git): prune, retry.
     try {
       await g.raw(['worktree', 'prune'])
     } catch {
@@ -335,10 +348,75 @@ export async function ensureTalkWorktree(project: Project, feature: Feature): Pr
       await g.raw(['worktree', 'add', worktreePath, branch])
       return worktreePath
     } catch (e) {
-      throw new InvalidInputError(
-        `could not create talk worktree at ${worktreePath}: ${errMsg(e)}`,
-      )
+      throw new InvalidInputError(`could not create ${label} at ${worktreePath}: ${errMsg(e)}`)
     }
+  }
+}
+
+/**
+ * Ensure the PROJECT session's worktree exists at
+ * `worktreeDir(projectId, '__project')`, checked out on {@link PROJECT_BRANCH}
+ * cut from the base tip (decision 18). Never the human's checkout: this session
+ * writes the whole repo, so it works on a runcastle-owned branch and lands via
+ * {@link mergeTempBranch}, exactly like every other AFK writer.
+ *
+ * A previous session that crashed (or whose landing hit a conflict) leaves
+ * commits on the branch, so this lands them BEFORE recutting — best-effort,
+ * because a failed landing must never be an excuse to throw the work away. If
+ * they still cannot land, the branch is left exactly as it is and the session
+ * reopens on top of its own unlanded work; the next end-of-session landing (or
+ * the next launch) tries again. Only a branch with nothing ahead of the base is
+ * recut.
+ */
+export async function ensureProjectWorktree(project: Project): Promise<string> {
+  const worktreePath = worktreeDir(project.id, PROJECT_WORKTREE_SLUG)
+  const g = git(project.repoPath)
+  const base = project.mainBranch
+
+  const leftover = await branchCommitsAhead(project.repoPath, base, PROJECT_BRANCH)
+  if (leftover.length > 0) {
+    await mergeTempBranch(project.repoPath, base, PROJECT_BRANCH)
+  }
+
+  const stillAhead = await branchCommitsAhead(project.repoPath, base, PROJECT_BRANCH)
+  if (stillAhead.length === 0) {
+    // Nothing to lose: drop whatever the branch was (detaching the worktree that
+    // pins it, if any) and cut it again at the base tip.
+    await deleteBranchDetachingWorktrees(g, project.repoPath, PROJECT_BRANCH)
+    await g.raw(['branch', PROJECT_BRANCH, base])
+  }
+
+  if (await worktreeIsValid(g, worktreePath, PROJECT_BRANCH)) return worktreePath
+
+  // A registered worktree that is merely detached (landing deletes the branch it
+  // held) or sitting on the previous cut just needs the new branch checked out —
+  // recreating it would be a needless delete of a directory git still owns.
+  if (existsSync(worktreePath) && (await registeredWorktrees(g)).has(canon(worktreePath))) {
+    if (await checkoutInWorktree(worktreePath, PROJECT_BRANCH)) return worktreePath
+  }
+
+  return addWorktree(g, worktreePath, PROJECT_BRANCH, 'project worktree')
+}
+
+/**
+ * Check `branch` out in an existing worktree: plainly first, so any uncommitted
+ * work there survives where git can carry it over, then forced when it cannot
+ * (an abandoned edit must not leave the project terminal unlaunchable). Returns
+ * whether the worktree now holds the branch.
+ */
+async function checkoutInWorktree(worktreePath: string, branch: string): Promise<boolean> {
+  const gw = git(worktreePath)
+  try {
+    await gw.raw(['checkout', branch])
+    return true
+  } catch {
+    // carrying the changes over failed — take them out of the way instead
+  }
+  try {
+    await gw.raw(['checkout', '--force', branch])
+    return true
+  } catch {
+    return false // caller recreates the worktree from scratch
   }
 }
 
@@ -482,6 +560,15 @@ export const TICKET_BRANCH_PREFIX = 'runcastle/ticket/'
  * we can read deterministically. Deleted as soon as the file is read.
  */
 export const PREP_BRANCH_PREFIX = 'runcastle/prep/'
+/**
+ * The branch the project session works on (decision 18 of feature-grouping).
+ * One per project — the session is a singleton — cut fresh from the base tip at
+ * each launch and landed back onto the base branch by {@link mergeTempBranch}
+ * when the session ends. Same `runcastle/*` namespace as every other AFK
+ * writer's temp branch, for the same reason: no agent ever writes the human's
+ * checkout directly.
+ */
+export const PROJECT_BRANCH = 'runcastle/project'
 const TEMP_BRANCH_PREFIXES = [RESEARCH_BRANCH_PREFIX, TICKET_BRANCH_PREFIX] as const
 
 /** Name for one preparation run's throwaway findings branch. */
@@ -990,6 +1077,40 @@ async function deleteBranchDetachingWorktrees(
     return true
   } catch {
     return false
+  }
+}
+
+export interface ProjectLandResult {
+  /** How many commits were ahead of the base branch when landing started. */
+  commits: number
+  landed: boolean
+  /** True when a real merge conflict kept the branch (nothing was clobbered). */
+  conflict?: boolean
+  /** Repo-relative conflicting paths, when git reported them. */
+  files?: string[]
+  error?: string
+}
+
+/**
+ * Land the project session's commits onto the base branch (decision 18) —
+ * `null` when the session wrote nothing, so a quiet conversation costs no
+ * timeline noise. Landing is {@link mergeTempBranch} unchanged: it merges in
+ * whichever checkout holds the base branch (the human's, fast-forwarded like a
+ * `git pull`), fast-forwards the ref when nobody holds it, and merges in a
+ * disposable worktree when the base moved ahead. On conflict it refuses rather
+ * than clobbers, and `runcastle/project` survives with the work on it —
+ * {@link ensureProjectWorktree} retries the landing at the next launch.
+ */
+export async function landProjectBranch(project: Project): Promise<ProjectLandResult | null> {
+  const ahead = await branchCommitsAhead(project.repoPath, project.mainBranch, PROJECT_BRANCH)
+  if (ahead.length === 0) return null
+  const res = await mergeTempBranch(project.repoPath, project.mainBranch, PROJECT_BRANCH)
+  return {
+    commits: ahead.length,
+    landed: res.ok,
+    ...(res.conflict ? { conflict: true } : {}),
+    ...(res.files ? { files: res.files } : {}),
+    ...(res.error ? { error: res.error } : {}),
   }
 }
 

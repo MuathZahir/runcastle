@@ -1,9 +1,10 @@
 import { useState } from 'react'
+import type { Ticket } from '@runcastle/core'
 import { trpc } from '../../trpc'
 import { useToast } from '../../lib/toast'
 import { SANDBOX_MODE } from '../../lib/env'
 import { shortSha } from '../../lib/format'
-import { DimLine, EmptyState, SectionTitle, TicketStatusChip } from '../../ui'
+import { Button, DimLine, EmptyState, SectionTitle, TicketStatusChip } from '../../ui'
 import { IconChevronRight, IconDoc } from '../../icons'
 import { Markdown } from '../Markdown'
 import { SessionPanel } from '../SessionPanel'
@@ -16,6 +17,11 @@ import { SessionPanel } from '../SessionPanel'
  * to reveal goal / context / acceptance / seams / commits / error. Burning
  * lives in the workspace next-step bar, not here — so this body carries no burn
  * actions.
+ *
+ * A pending or failed row's detail can also be edited in place (title / goal /
+ * context / acceptance), which is what makes the quick-change door's promise
+ * true: correct the card before Burn without opening a terminal to do it. The
+ * server refuses every other status, so no other row offers the affordance.
  */
 export function TicketsBody({
   featureId,
@@ -27,8 +33,21 @@ export function TicketsBody({
   readonly?: boolean
 }) {
   const toast = useToast()
+  const utils = trpc.useUtils()
   const full = trpc.feature.get.useQuery({ id: featureId }, { refetchInterval: 1500 })
   const [open, setOpen] = useState<Set<string>>(() => new Set())
+  // The ticket currently being edited in place, or null. One at a time — the
+  // ledger is a review surface, not a spreadsheet.
+  const [editing, setEditing] = useState<string | null>(null)
+
+  const edit = trpc.ticket.edit.useMutation({
+    onSuccess: () => {
+      setEditing(null)
+      void utils.feature.get.invalidate({ id: featureId })
+      toast.push('ticket updated', 'success')
+    },
+    onError: (e) => toast.push(e.message),
+  })
 
   // The burn model chip reflects what the ticket-burner (the `implement` step)
   // will use for this project — read from settings, never a hardcoded constant
@@ -123,8 +142,22 @@ export function TicketsBody({
                   </span>
                 </button>
 
-                {isOpen && (
+                {isOpen && editing === t.id && (
+                  <TicketEditor
+                    ticket={t}
+                    busy={edit.isPending}
+                    onCancel={() => setEditing(null)}
+                    onSave={(patch) => edit.mutate({ ticketId: t.id, ...patch })}
+                  />
+                )}
+
+                {isOpen && editing !== t.id && (
                   <div className="ledger-detail">
+                    {!readonly && EDITABLE_STATUSES.has(t.status) && (
+                      <button className="td-edit-open" onClick={() => setEditing(t.id)}>
+                        Edit ticket
+                      </button>
+                    )}
                     <div className="td-section">
                       <div className="td-heading">GOAL</div>
                       <div className="td-body"><Markdown source={t.goal} /></div>
@@ -196,5 +229,101 @@ export function TicketsBody({
         </div>
       )}
     </>
+  )
+}
+
+/**
+ * Statuses whose content the server will still accept a rewrite for — the same
+ * pair `editTicket` enforces (`burning` is already running; `done`/`cancelled`
+ * are history). Mirrored here so the button never offers a certain error.
+ */
+const EDITABLE_STATUSES = new Set(['pending', 'failed'])
+
+interface TicketPatch {
+  title: string
+  goal: string
+  context: string
+  acceptanceCriteria: string[]
+}
+
+/**
+ * In-place editor for one pending/failed ticket. Seams are left alone: they are
+ * the burner's map of the codebase, written by a session that read it, and the
+ * ledger is not where a human re-derives them.
+ */
+function TicketEditor({
+  ticket,
+  busy,
+  onCancel,
+  onSave,
+}: {
+  ticket: Ticket
+  busy: boolean
+  onCancel: () => void
+  onSave: (patch: TicketPatch) => void
+}) {
+  const [title, setTitle] = useState(ticket.title)
+  const [goal, setGoal] = useState(ticket.goal)
+  const [context, setContext] = useState(ticket.context)
+  // One criterion per line — the same shape the human reads them in.
+  const [criteria, setCriteria] = useState(ticket.acceptanceCriteria.join('\n'))
+
+  const lines = criteria
+    .split('\n')
+    .map((c) => c.trim())
+    .filter(Boolean)
+  const ready = !!title.trim() && !!goal.trim() && lines.length > 0
+
+  return (
+    <div className="ledger-detail td-edit">
+      <label className="td-section">
+        <div className="td-heading">TITLE</div>
+        <input className="td-input" value={title} onChange={(e) => setTitle(e.target.value)} />
+      </label>
+
+      <label className="td-section">
+        <div className="td-heading">GOAL</div>
+        <textarea className="td-input td-area" value={goal} onChange={(e) => setGoal(e.target.value)} />
+      </label>
+
+      <label className="td-section">
+        <div className="td-heading">CONTEXT</div>
+        <textarea
+          className="td-input td-area"
+          value={context}
+          onChange={(e) => setContext(e.target.value)}
+        />
+      </label>
+
+      <label className="td-section">
+        <div className="td-heading">ACCEPTANCE — one per line</div>
+        <textarea
+          className="td-input td-area"
+          value={criteria}
+          onChange={(e) => setCriteria(e.target.value)}
+        />
+      </label>
+
+      <div className="td-edit-actions">
+        <Button variant="ghost" className="btn-xs" onClick={onCancel} disabled={busy}>
+          Cancel
+        </Button>
+        <Button
+          variant="solid"
+          className="btn-xs"
+          disabled={!ready || busy}
+          onClick={() =>
+            onSave({
+              title: title.trim(),
+              goal: goal.trim(),
+              context: context.trim(),
+              acceptanceCriteria: lines,
+            })
+          }
+        >
+          {busy ? 'Saving…' : 'Save ticket'}
+        </Button>
+      </div>
+    </div>
   )
 }

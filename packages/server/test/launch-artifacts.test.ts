@@ -66,6 +66,15 @@ describe('renderSettings', () => {
         'mcp__runcastle__resolve_waypoint',
       ]),
     )
+    // the project session's three (decision 19) — server-side kind gating makes
+    // them inert for a feature session, so every session is launched with them
+    expect(s.permissions.allow).toEqual(
+      expect.arrayContaining([
+        'mcp__runcastle__create_feature',
+        'mcp__runcastle__get_project_context',
+        'mcp__runcastle__get_work_record',
+      ]),
+    )
     // the exported rule list is the single source and is fully included
     expect(s.permissions.allow).toEqual(expect.arrayContaining([...RUNCASTLE_MCP_ALLOW_RULES]))
     // every rule is either anchored to our own MCP server or a scoped git Bash

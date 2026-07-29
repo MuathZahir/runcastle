@@ -36,13 +36,30 @@ export type TicketStatus = z.infer<typeof TicketStatus>
  * `revisit` = "I remembered something" — resumes the feature's most recent
  * resumable conversation to amend docs and do ticket surgery (edit/cancel/emit);
  * never advances phases.
+ * `project` = the intake session (decisions 17–20 of feature-grouping): a
+ * project-scoped conversation that turns raw intent into features. It has no
+ * feature and no phase to advance.
  */
-export const SessionKind = z.enum(['ideation', 'qa', 'waypoint', 'converge', 'revisit', 'prepare'])
+export const SessionKind = z.enum([
+  'ideation',
+  'qa',
+  'waypoint',
+  'converge',
+  'revisit',
+  'prepare',
+  'project',
+])
 export type SessionKind = z.infer<typeof SessionKind>
 
 /**
- * The one PROJECT-scoped session kind: `prepare` has no feature, so its
- * `sessions.feature_id` is null (the only kind for which that is true).
+ * The PROJECT-scoped session kinds: neither has a feature, so their
+ * `sessions.feature_id` is null (the only kinds for which that is true) and
+ * `sessions.project_id` carries the scope instead.
+ *
+ * `project` is the intake session: it takes a lump of raw intent, grills it
+ * until it resolves into N features, and creates them. It works in a
+ * runcastle-owned worktree on `runcastle/project` and lands its commits on the
+ * base branch — never in the human's checkout.
  *
  * It exists because a headless preparation run can measure a repo but cannot
  * ask a question. A real run established 7 of 8 keys and then declined the 8th
@@ -53,7 +70,7 @@ export type SessionKind = z.infer<typeof SessionKind>
  * executes on the HOST, so the five keys prep can only propose ("not executed —
  * host-only") can actually be run and verified.
  */
-export const PROJECT_SESSION_KINDS = ['prepare'] as const
+export const PROJECT_SESSION_KINDS = ['prepare', 'project'] as const
 
 /** True for session kinds that belong to a project rather than a feature. */
 export function isProjectSessionKind(kind: SessionKind): boolean {
@@ -291,7 +308,7 @@ export type Feature = z.infer<typeof Feature>
 
 export const SessionRow = z.object({
   id: z.string(),
-  /** Absent on project-scoped sessions (`kind = 'prepare'`) — see the db schema. */
+  /** Absent on project-scoped sessions ({@link PROJECT_SESSION_KINDS}) — see the db schema. */
   featureId: z.string().optional(),
   /** Set on project-scoped sessions only; feature sessions derive it via the feature. */
   projectId: z.string().optional(),

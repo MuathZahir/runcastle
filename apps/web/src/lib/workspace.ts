@@ -14,6 +14,9 @@ import type { Phase } from '@runcastle/core'
  * form are ephemeral session state.
  */
 
+/** The two doors into work: a full feature (a grill) or a quick change. */
+export type CreateMode = 'feature' | 'quick'
+
 /** Client-tracked active test drive (at most one globally, server-enforced). */
 export interface DriveState {
   featureId: string
@@ -49,10 +52,22 @@ function writeLS(key: string, value: string): void {
 export interface WorkspaceApi {
   /** The feature whose pipeline fills the workspace, or null (empty state). */
   selectedFeatureId: string | null
+  /**
+   * The rail's pinned project row is selected (decision 20), so the project
+   * workspace fills the body instead of the selected feature's. Kept beside
+   * `selectedFeatureId` rather than folded into it: the feature you were last on
+   * is still the one you come back to when you leave the project workspace.
+   */
+  projectSelected: boolean
   /** Pinned phase to view read-only, or null to follow the feature's live phase. */
   viewedPhase: Phase | null
-  /** Whether the new-feature form owns the workspace. */
+  /** Whether a creation form owns the workspace (either door). */
   creating: boolean
+  /**
+   * Which door is open while `creating`: the New Feature form (a grill), or the
+   * quick-change form (decision 21 — one prose field, straight to a card).
+   */
+  createMode: CreateMode
   /** Right inspector rail collapsed. */
   inspectorCollapsed: boolean
   /** Mapped-ideation map rail collapsed to its frontier-count stub. */
@@ -65,13 +80,17 @@ export interface WorkspaceApi {
   guidance: boolean
 
   /** Select a feature, or `null` to return to the project home (clears the
-   *  phase pin and closes the create form). */
+   *  phase pin, the project row, and closes the create form). */
   select: (featureId: string | null) => void
+  /** Select the pinned project row — the project workspace fills the body. */
+  selectProject: () => void
   /** Pin a phase to view (null = follow live phase). */
   viewPhase: (phase: Phase | null) => void
   /** Open the new-feature form in the workspace. */
   startCreate: () => void
-  /** Close the new-feature form without creating. */
+  /** Open the quick-change form in the workspace. */
+  startQuickChange: () => void
+  /** Close whichever creation form is open, without creating. */
   cancelCreate: () => void
   toggleInspector: () => void
   toggleMapRail: () => void
@@ -85,6 +104,10 @@ export function useWorkspace(projectId: string): WorkspaceApi {
   const [selectedFeatureId, setSelected] = useState<string | null>(() => readLS(selectedKey))
   const [viewedPhase, setViewedPhase] = useState<Phase | null>(null)
   const [creating, setCreating] = useState(false)
+  const [createMode, setCreateMode] = useState<CreateMode>('feature')
+  // Ephemeral like the phase pin: the pinned row is always in the rail, so a
+  // reload landing back on your feature is the right resting state.
+  const [projectSelected, setProjectSelected] = useState(false)
   const [inspectorCollapsed, setInspectorCollapsed] = useState(
     () => readLS(INSPECTOR_KEY) === '1',
   )
@@ -116,12 +139,30 @@ export function useWorkspace(projectId: string): WorkspaceApi {
     setSelected(featureId)
     setViewedPhase(null)
     setCreating(false)
+    setProjectSelected(false)
+    setCmdk(false)
+  }, [])
+
+  // Leaves `selectedFeatureId` alone — the project workspace is a swap, not a
+  // deselection, so leaving it puts you back on the feature you were reading.
+  const selectProject = useCallback(() => {
+    setProjectSelected(true)
+    setViewedPhase(null)
+    setCreating(false)
     setCmdk(false)
   }, [])
 
   const viewPhase = useCallback((phase: Phase | null) => setViewedPhase(phase), [])
   const startCreate = useCallback(() => {
+    setCreateMode('feature')
     setCreating(true)
+    setProjectSelected(false)
+    setCmdk(false)
+  }, [])
+  const startQuickChange = useCallback(() => {
+    setCreateMode('quick')
+    setCreating(true)
+    setProjectSelected(false)
     setCmdk(false)
   }, [])
   // Opening settings closes the palette so only one overlay is up at a time.
@@ -136,16 +177,20 @@ export function useWorkspace(projectId: string): WorkspaceApi {
 
   return {
     selectedFeatureId,
+    projectSelected,
     viewedPhase,
     creating,
+    createMode,
     inspectorCollapsed,
     mapRailCollapsed,
     cmdkOpen,
     settingsOpen,
     guidance,
     select,
+    selectProject,
     viewPhase,
     startCreate,
+    startQuickChange,
     cancelCreate,
     toggleInspector,
     toggleMapRail,

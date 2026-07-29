@@ -45,6 +45,7 @@ describe('RuncastleConfig — model shape', () => {
       'research',
       'implement',
       'prepare',
+      'project',
       'smoke',
     ])
     expect(ModelStep.safeParse('review').success).toBe(false)

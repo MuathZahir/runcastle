@@ -91,6 +91,16 @@ export function worktreeDir(projectId: string, slug: string): string {
 }
 
 /**
+ * The slug the project session's worktree occupies inside
+ * {@link projectWorktreesDir} — it is not a feature, so it needs a name no
+ * feature can take. Verified safe: feature slugs come from `slugify`, which
+ * lowercases, collapses every non-alphanumeric run to a single `-` and trims
+ * leading/trailing `-`, so a slug can never begin with an underscore (or
+ * contain one at all).
+ */
+export const PROJECT_WORKTREE_SLUG = '__project'
+
+/**
  * Shared package-manager cache for burner sandboxes:
  * `~/.runcastle/cache/<pm>`. Bind-mounted into every ticket's container at the
  * manager's cache/store path so per-ticket dependency installs after the first

@@ -384,7 +384,15 @@ function PhaseBody({
     case 'tickets':
       return <TicketsBody featureId={full.feature.id} readonly={readonly} />
     case 'implementation':
-      return <RunBody featureId={full.feature.id} runId={runId} readonly={readonly} />
+      // Before the first burn there is no run to narrate, so an empty run pane
+      // is the wrong thing to show — the tickets about to burn are. This is the
+      // quick-change door's resting state (decision 21: review the one card,
+      // then Burn), and it also rescues a feature whose G3 was overridden.
+      return runId ? (
+        <RunBody featureId={full.feature.id} runId={runId} readonly={readonly} />
+      ) : (
+        <TicketsBody featureId={full.feature.id} readonly={readonly} />
+      )
     case 'review':
       return <ReviewBody full={full} driving={driving} />
     case 'shipped':

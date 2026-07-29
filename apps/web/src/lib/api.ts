@@ -19,3 +19,5 @@ export type SettingsView = RouterOutputs['settings']['get']
 export type SettingField = SettingsView['fields'][number]
 export type PrepView = RouterOutputs['project']['prep']
 export type ProjectFinding = PrepView['findings'][number]
+/** The live project conversation (decision 20), or null when none is open. */
+export type ProjectSession = RouterOutputs['project']['projectSession']

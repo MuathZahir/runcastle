@@ -4,7 +4,7 @@ import { listFindings } from '../../services/findings'
 import { browseDir, listRoots } from '../../services/fsbrowse'
 import * as git from '../../services/git'
 import { cancelPrep, isPreparing, keysToPrepare, latestPrep, startPrep } from '../../services/prep'
-import { launchPrepareSession } from '../../launcher/launcher'
+import { launchPrepareSession, launchProjectSession } from '../../launcher/launcher'
 import { activeProjectSession } from '../../launcher/sessions'
 import { closeProject, listProjects, openProject, renameProject } from '../../services/projects'
 import { requireProjectById } from '../../services/repo'
@@ -99,6 +99,21 @@ export const projectRouter = router({
   prepSession: publicProcedure
     .input(z.object({ projectId: z.string() }))
     .query(({ ctx, input }) => activeProjectSession(ctx, input.projectId, 'prepare')),
+
+  /**
+   * Open the project's intake CONVERSATION (decisions 17–20) — the session that
+   * takes a lump of raw intent, grills it until it resolves into N features, and
+   * creates them. It runs on a runcastle-owned branch and lands its commits on
+   * the base branch when it ends; it never touches the human's checkout.
+   */
+  talkToProject: publicProcedure
+    .input(z.object({ projectId: z.string() }))
+    .mutation(({ ctx, input }) => launchProjectSession(ctx, { projectId: input.projectId })),
+
+  /** The live project conversation for this project, if one is open. */
+  projectSession: publicProcedure
+    .input(z.object({ projectId: z.string() }))
+    .query(({ ctx, input }) => activeProjectSession(ctx, input.projectId, 'project')),
 
   /** Abort an in-flight preparation run. */
   cancelPrepare: publicProcedure
