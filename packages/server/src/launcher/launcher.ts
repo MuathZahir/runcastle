@@ -31,7 +31,7 @@ import {
 } from '../services/waypoints'
 import { startRun, workflowClaimsFeatureBranch } from '../workflows/runner'
 import { listFindings } from '../services/findings'
-import { keysToPrepare, latestPrepNotes } from '../services/prep'
+import { keysToPrepare } from '../services/prep'
 import { serverUrlFor, writeSessionArtifacts, type PrepareBrief } from './artifacts'
 import {
   activeProjectSession,
@@ -708,10 +708,9 @@ export async function launchProjectSession(
   return { sessionId: session.id }
 }
 
-/** Seed the conversation from the last headless run rather than starting cold. */
+/** Seed the conversation with what is established already, and what is not. */
 async function buildPrepareBrief(ctx: AppCtx, project: Project): Promise<PrepareBrief> {
   const findings = await listFindings(ctx, project)
-  const notes = latestPrepNotes(ctx, project.id)
   return {
     project,
     remainingKeys: keysToPrepare(ctx, project),
@@ -720,7 +719,6 @@ async function buildPrepareBrief(ctx: AppCtx, project: Project): Promise<Prepare
       source: f.source,
       ...(f.evidence ? { evidence: f.evidence } : {}),
     })),
-    ...(notes ? { notes } : {}),
   }
 }
 

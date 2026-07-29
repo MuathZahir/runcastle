@@ -4,8 +4,9 @@ import { join } from 'node:path'
 import { beforeEach, describe, expect, it } from 'vitest'
 import type { Project } from '@runcastle/core'
 import { PREPARED_KEYS } from '@runcastle/core'
-import { projectPreps, projects } from '../src/db/schema'
+import { projects } from '../src/db/schema'
 import type { AppCtx } from '../src/db/types'
+import { createSessionRow, markSessionEnded } from '../src/launcher/sessions'
 import {
   isOverwritable,
   isPreparedKey,
@@ -14,7 +15,7 @@ import {
   recordHuman,
   unsetPreparedKeys,
 } from '../src/services/findings'
-import { applyFindings, keysToPrepare, shouldAutoPrepare } from '../src/services/prep'
+import { isPrepared, keysToPrepare } from '../src/services/prep'
 import { getSettings, updateSettings } from '../src/services/settings'
 import { makeTestCtx } from './helpers/db'
 
@@ -62,55 +63,48 @@ describe('isPreparedKey', () => {
 })
 
 /**
- * The auto-prepare trigger. This used to key off "the project row was just
- * inserted", which meant every project opened before preparation existed could
- * never auto-prepare — preparation looked broken to exactly the people with the
- * most history, and the only way in was a button inside the settings overlay.
+ * Whether a project still needs the preparation call-to-action. It used to be
+ * "has a run row", back when preparation had a headless half; now there is only
+ * the conversation, so the question is whether the human has been through one.
  */
-describe('shouldAutoPrepare', () => {
-  // The shared test ctx keeps autoPrepare OFF so no unrelated test spawns an
-  // agent; these opt in to exercise the trigger itself.
-  const on = (): AppCtx => ({ ...ctx, config: { ...ctx.config, autoPrepare: true } })
+describe('isPrepared', () => {
+  const endedPrepareSession = (): void => {
+    const s = createSessionRow(ctx, { projectId: PROJECT_ID, kind: 'prepare', worktreePath: '/r' })
+    markSessionEnded(ctx, s.id)
+  }
 
-  it('fires for an existing project that has never been prepared', () => {
-    expect(shouldAutoPrepare(on(), project())).toBe(true)
+  it('is false for a project nobody has prepared', () => {
+    expect(isPrepared(ctx, project())).toBe(false)
   })
 
-  it('does not fire when the feature is off', () => {
-    expect(shouldAutoPrepare(ctx, project())).toBe(false)
-  })
-
-  // Once, ever — a failed or cancelled run still counts as "the user has seen
-  // this", so opening the project again does not silently retry a container
-  // build they may have cancelled on purpose.
-  it('does not fire again once any run exists, whatever its outcome', () => {
-    for (const status of ['succeeded', 'failed', 'cancelled'] as const) {
-      const fresh = on()
-      fresh.db
-        .insert(projectPreps)
-        .values({
-          id: `prep_${status}`,
-          projectId: PROJECT_ID,
-          status,
-          startedAt: Date.now(),
-          endedAt: Date.now(),
-          summary: null,
-          headSha: null,
-        })
-        .run()
-      expect(shouldAutoPrepare(fresh, project())).toBe(false)
-      fresh.db.delete(projectPreps).run()
-    }
-  })
-
-  it('does not fire when a human has already answered everything', () => {
-    for (const key of PREPARED_KEYS) {
-      recordFinding(ctx, PROJECT_ID, { key, value: 'set by hand', source: 'human' })
-    }
+  it('is true once nothing is left to establish', () => {
     const answered = project(
       Object.fromEntries(PREPARED_KEYS.map((k) => [k, 'set by hand'])) as Partial<Project>,
     )
-    expect(shouldAutoPrepare(on(), answered)).toBe(false)
+    expect(isPrepared(ctx, answered)).toBe(true)
+  })
+
+  /**
+   * The clause that stops the nudge becoming wallpaper. Some keys are honestly
+   * empty forever ("this repo has no database"), so waiting for `pendingKeys` to
+   * drain would prompt those projects for good — and a permanent prompt is the
+   * noise this feature exists to remove.
+   */
+  it('is true once a conversation has run to an end, even with keys still open', () => {
+    endedPrepareSession()
+    expect(keysToPrepare(ctx, project()).length).toBeGreaterThan(0)
+    expect(isPrepared(ctx, project())).toBe(true)
+  })
+
+  it('is still false while the first conversation is only open', () => {
+    createSessionRow(ctx, { projectId: PROJECT_ID, kind: 'prepare', worktreePath: '/r' })
+    expect(isPrepared(ctx, project())).toBe(false)
+  })
+
+  it('does not count another project’s conversation', () => {
+    const s = createSessionRow(ctx, { projectId: 'proj_2', kind: 'prepare', worktreePath: '/r' })
+    markSessionEnded(ctx, s.id)
+    expect(isPrepared(ctx, project())).toBe(false)
   })
 })
 
@@ -167,61 +161,16 @@ describe('human provenance', () => {
   })
 })
 
-describe('applyFindings', () => {
-  it('writes prep findings and reports which keys landed', () => {
-    const applied = applyFindings(
-      ctx,
-      project(),
-      {
-        values: {
-          verifyCommands: { value: 'bun test', evidence: 'exit 0' },
-          knownFailures: { value: '0 failing' },
-        },
-      },
-      'sha1',
-    )
-    expect(applied.sort()).toEqual(['knownFailures', 'verifyCommands'])
-    expect(preparedValue(ctx, PROJECT_ID, 'knownFailures')).toBe('0 failing')
-  })
-
-  // The re-check matters because preparation takes minutes: a human can answer
-  // a field in the settings UI while the agent is still measuring it.
-  it('never overwrites a value a human set mid-run', () => {
-    updateSettings(ctx, { projectId: PROJECT_ID, key: 'devCommand', value: 'bun run dev --port 1' })
-
-    const applied = applyFindings(
-      ctx,
-      project(),
-      { values: { devCommand: { value: 'npm start' } } },
-      'sha1',
-    )
-    expect(applied).toEqual([])
-    expect(preparedValue(ctx, PROJECT_ID, 'devCommand')).toBe('bun run dev --port 1')
-  })
-})
-
 describe('keysToPrepare', () => {
-  it('defaults to the fields that are empty', () => {
+  it('is the fields that are empty', () => {
     const keys = keysToPrepare(ctx, project({ devCommand: 'bun dev' }))
     expect(keys).not.toContain('devCommand')
     expect(keys).toContain('verifyCommands')
   })
 
-  it('excludes fields a human set, even when refreshing', () => {
+  it('excludes a field a human set, so the conversation never re-asks it', () => {
     updateSettings(ctx, { projectId: PROJECT_ID, key: 'verifyCommands', value: 'mine' })
-    const keys = keysToPrepare(ctx, project({ verifyCommands: 'mine' }), { refresh: true })
-    expect(keys).not.toContain('verifyCommands')
-  })
-
-  it('refresh re-includes fields a previous prep run established', () => {
-    recordFinding(ctx, PROJECT_ID, { key: 'knownFailures', value: '1 red', source: 'prep' })
-    const withValue = project({ knownFailures: '1 red' })
-    expect(keysToPrepare(ctx, withValue)).not.toContain('knownFailures')
-    expect(keysToPrepare(ctx, withValue, { refresh: true })).toContain('knownFailures')
-  })
-
-  it('honours an explicit key list', () => {
-    expect(keysToPrepare(ctx, project(), { keys: ['dbResetCommand'] })).toEqual(['dbResetCommand'])
+    expect(keysToPrepare(ctx, project({ verifyCommands: 'mine' }))).not.toContain('verifyCommands')
   })
 })
 

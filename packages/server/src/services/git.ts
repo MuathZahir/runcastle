@@ -554,13 +554,6 @@ export async function reattachWorktree(path: string, branch: string): Promise<vo
 export const RESEARCH_BRANCH_PREFIX = 'runcastle/research/'
 export const TICKET_BRANCH_PREFIX = 'runcastle/ticket/'
 /**
- * Branch a project-preparation run commits its findings file to. Unlike the
- * other two this is never merged anywhere: it exists only as a transport, so
- * the agent's structured output survives a dropped stream and lands somewhere
- * we can read deterministically. Deleted as soon as the file is read.
- */
-export const PREP_BRANCH_PREFIX = 'runcastle/prep/'
-/**
  * The branch the project session works on (decision 18 of feature-grouping).
  * One per project — the session is a singleton — cut fresh from the base tip at
  * each launch and landed back onto the base branch by {@link mergeTempBranch}
@@ -570,42 +563,6 @@ export const PREP_BRANCH_PREFIX = 'runcastle/prep/'
  */
 export const PROJECT_BRANCH = 'runcastle/project'
 const TEMP_BRANCH_PREFIXES = [RESEARCH_BRANCH_PREFIX, TICKET_BRANCH_PREFIX] as const
-
-/** Name for one preparation run's throwaway findings branch. */
-export function prepBranchName(unique: string): string {
-  return `${PREP_BRANCH_PREFIX}${unique}`
-}
-
-/**
- * Read a file's contents at a git ref without checking anything out
- * (`git show <ref>:<path>`). `undefined` when the ref or path is absent.
- * `path` must use forward slashes — it is a git pathspec, not an OS path.
- */
-export async function readFileAtRef(
-  repoPath: string,
-  ref: string,
-  path: string,
-): Promise<string | undefined> {
-  try {
-    return await git(repoPath).raw(['show', `${ref}:${path}`])
-  } catch {
-    return undefined
-  }
-}
-
-/**
- * Delete a preparation run's throwaway branch, whether or not the run
- * succeeded. Best-effort by design: a leftover `runcastle/prep/*` branch is
- * inert (nothing merges it, nothing reads it after the run), so failing a
- * completed preparation over a failed branch delete would be strictly worse.
- */
-export async function deletePrepBranch(repoPath: string, branch: string): Promise<void> {
-  try {
-    await deleteBranchDetachingWorktrees(git(repoPath), repoPath, branch)
-  } catch {
-    // best-effort — an orphaned prep branch costs nothing
-  }
-}
 
 const TEMP_BRANCH_SLUG_MAX = 16
 

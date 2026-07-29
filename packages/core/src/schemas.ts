@@ -260,21 +260,6 @@ export const ProjectFinding = z.object({
 })
 export type ProjectFinding = z.infer<typeof ProjectFinding>
 
-export const PrepStatus = z.enum(['running', 'succeeded', 'failed', 'cancelled'])
-export type PrepStatus = z.infer<typeof PrepStatus>
-
-/** One preparation run over a project (project-scoped sibling of `Run`). */
-export const PrepRun = z.object({
-  id: z.string(),
-  projectId: z.string(),
-  status: PrepStatus,
-  startedAt: z.number(),
-  endedAt: z.number().optional(),
-  summary: z.string().optional(),
-  headSha: z.string().optional(),
-})
-export type PrepRun = z.infer<typeof PrepRun>
-
 export const Feature = z.object({
   id: z.string(),
   projectId: z.string(),

@@ -9,7 +9,6 @@ import {
   features,
   gateOverrides,
   projectFindings,
-  projectPreps,
   projects,
   runs,
   sessions,
@@ -147,7 +146,6 @@ export async function removeProject(
   }
 
   ctx.db.delete(projectFindings).where(eq(projectFindings.projectId, project.id)).run()
-  ctx.db.delete(projectPreps).where(eq(projectPreps.projectId, project.id)).run()
   ctx.db.delete(events).where(eq(events.projectId, project.id)).run()
   ctx.db.delete(projects).where(eq(projects.id, project.id)).run()
 
@@ -157,19 +155,18 @@ export async function removeProject(
 }
 
 /**
- * Forget everything preparation established for a project: the run history, the
- * provenance rows, and the prepared VALUES themselves.
+ * Forget everything preparation established for a project: the provenance rows
+ * and the prepared VALUES themselves.
  *
- * Clearing the values is the part that matters. `keysToPrepare` scopes a run to
- * whichever prepared columns are empty, so deleting only the findings would
- * leave the values in place and the next run would correctly find nothing to do.
+ * Clearing the values is the part that matters. `keysToPrepare` scopes a
+ * conversation to whichever prepared columns are empty, so deleting only the
+ * findings would leave the values in place and the next conversation would
+ * correctly find nothing to do.
  *
- * Human-entered values go too — unlike the product's `refresh`, which preserves
- * them on purpose. This is "re-run preparation from scratch", which is the thing
- * that cannot otherwise be tested twice on one repo.
+ * Human-entered values go too. This is "prepare from scratch", which is the
+ * thing that cannot otherwise be tested twice on one repo.
  */
 export function resetPrep(ctx: AppCtx, project: ProjectRow): number {
-  ctx.db.delete(projectPreps).where(eq(projectPreps.projectId, project.id)).run()
   ctx.db.delete(projectFindings).where(eq(projectFindings.projectId, project.id)).run()
   ctx.db
     .update(projects)
@@ -185,7 +182,6 @@ export interface DevCounts {
   openProjects: number
   features: number
   tickets: number
-  preps: number
 }
 
 export function counts(ctx: AppCtx): DevCounts {
@@ -195,7 +191,6 @@ export function counts(ctx: AppCtx): DevCounts {
     openProjects: all.filter((p) => p.closedAt === null).length,
     features: ctx.db.select().from(features).all().length,
     tickets: ctx.db.select().from(tickets).all().length,
-    preps: ctx.db.select().from(projectPreps).all().length,
   }
 }
 

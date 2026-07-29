@@ -145,7 +145,6 @@ function status(ctx: AppCtx): number {
   log(`projects  ${c.projects} (${c.openProjects} open)`)
   log(`features  ${c.features}`)
   log(`tickets   ${c.tickets}`)
-  log(`preps     ${c.preps}`)
   log(`afk token ${hasAfkToken() ? 'captured' : 'absent'} — ${envPath()}`)
   log(`git ident ${describeGitIdentity()} — global, shared with your real install`)
   log('')
@@ -197,11 +196,10 @@ function prepReset(ctx: AppCtx, target: string): number {
   }
   for (const p of found) {
     const cleared = dev.resetPrep(ctx, p)
-    log(`${p.name} (${p.id}): prep history + findings deleted, ${cleared} field(s) unset`)
+    log(`${p.name} (${p.id}): findings deleted, ${cleared} field(s) unset`)
   }
   log('')
-  log('press Prepare in the project to re-run it from scratch (or re-open the')
-  log('project with autoPrepare on, which fires a run on first open).')
+  log('open the project to get the preparation call-to-action back.')
   return 0
 }
 

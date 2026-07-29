@@ -230,20 +230,6 @@ export const RuncastleConfig = z.preprocess(
      * Note that overriding this replaces install detection entirely, so the
      * install command must be included explicitly.
      */
-    /**
-     * Run project preparation automatically the first time a project is opened
-     * (and only then — never on a re-open, and never over a field a human set).
-     *
-     * On by default because the fields preparation fills are empty on nearly
-     * every install, and they are empty for a structural reason: answering them
-     * means running the repo's suite, which is agent work. Left to a button,
-     * they stay empty and every burn agent keeps paying to re-derive them.
-     *
-     * Set `false` if you would rather spend nothing until you ask — preparation
-     * builds a sandbox and runs the full test suite once, so it is real CPU and
-     * real tokens. `project.prepare` remains available on demand either way.
-     */
-    autoPrepare: z.boolean().default(true),
     setupCommand: z.string().optional(),
     /**
      * The exact commands a burn agent should use to verify its work — typecheck,

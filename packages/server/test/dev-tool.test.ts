@@ -18,14 +18,7 @@ import {
   resolveFeatures,
   resolveProjects,
 } from '../src/dev/state'
-import {
-  events,
-  features,
-  projectFindings,
-  projectPreps,
-  projects,
-  tickets,
-} from '../src/db/schema'
+import { events, features, projectFindings, projects, tickets } from '../src/db/schema'
 import type { AppCtx } from '../src/db/types'
 import { makeTestCtx } from './helpers/db'
 
@@ -196,18 +189,6 @@ async function seed(): Promise<{ ctx: AppCtx; projectId: string; featureId: stri
     })
     .run()
   ctx.db
-    .insert(projectPreps)
-    .values({
-      id: newId('prep'),
-      projectId,
-      status: 'succeeded',
-      startedAt: Date.now(),
-      endedAt: Date.now(),
-      summary: 'done',
-      headSha: 'abc123',
-    })
-    .run()
-  ctx.db
     .insert(projectFindings)
     .values({
       projectId,
@@ -290,7 +271,7 @@ describe('removeFeature', () => {
 })
 
 describe('removeProject', () => {
-  it('leaves nothing behind — features, tickets, preps, findings, events, row', async () => {
+  it('leaves nothing behind — features, tickets, findings, events, row', async () => {
     const { ctx } = await seed()
     const project = allProjects(ctx)[0]
     if (!project) throw new Error('seed failed')
@@ -300,16 +281,9 @@ describe('removeProject', () => {
     expect(allProjects(ctx)).toEqual([])
     expect(ctx.db.select().from(features).all()).toEqual([])
     expect(ctx.db.select().from(tickets).all()).toEqual([])
-    expect(ctx.db.select().from(projectPreps).all()).toEqual([])
     expect(ctx.db.select().from(projectFindings).all()).toEqual([])
     expect(ctx.db.select().from(events).all()).toEqual([])
-    expect(counts(ctx)).toEqual({
-      projects: 0,
-      openProjects: 0,
-      features: 0,
-      tickets: 0,
-      preps: 0,
-    })
+    expect(counts(ctx)).toEqual({ projects: 0, openProjects: 0, features: 0, tickets: 0 })
   })
 })
 
@@ -324,14 +298,13 @@ describe('resetPrep', () => {
     const after = allProjects(ctx)[0]
     if (!after) throw new Error('project vanished')
     // Emptying these is what puts the keys back in `keysToPrepare`'s scope —
-    // deleting only the findings would leave a run with nothing to establish.
+    // deleting only the findings would leave a conversation nothing to establish.
     expect(after.setupCommand).toBeNull()
     expect(after.verifyCommands).toBeNull()
     expect(after.knownFailures).toBeNull()
     expect(after.devCommand).toBeNull()
     expect(after.dbResetCommand).toBeNull()
     expect(ctx.db.select().from(projectFindings).all()).toEqual([])
-    expect(ctx.db.select().from(projectPreps).all()).toEqual([])
     // The project itself survives — only its prepared knowledge is forgotten.
     expect(allProjects(ctx).map((p) => p.id)).toEqual([projectId])
     expect(featuresOf(ctx, projectId)).toHaveLength(1)

@@ -297,28 +297,20 @@ export interface PrepareBrief {
   remainingKeys: readonly string[]
   /** Keys already established, with who established them. */
   established: readonly { key: string; source: string; evidence?: string }[]
-  /** The free-text caveats from the last headless run, if there was one. */
-  notes?: string
 }
 
 /**
- * The injected brief for a `prepare` session.
+ * The injected brief for a `prepare` session — the only way a project is
+ * prepared.
  *
- * Deliberately framed as *continuing* a headless run rather than starting cold.
- * A real run established seven of eight keys and then declined the eighth with a
- * precise account of what it was missing — that account is the single most
- * useful thing this conversation can open with, so the notes are quoted in full
- * rather than summarised. Re-deriving the repo from scratch would waste the
- * measurement already paid for and, worse, invite the agent to overwrite good
- * findings with fresh guesses.
- *
- * The other half of the framing is that this session is on the HOST. The five
- * host-only keys the container could only propose can actually be run here —
+ * The framing that carries it is that this session is on the HOST. Every key
+ * here can be RUN rather than guessed at, including the five that describe the
+ * developer's own machine (the dev server, the local database, credentials) —
  * that is the capability the conversation exists to use, and the reason it must
  * also ask before touching anything stateful.
  */
 export function renderPreparePrompt(brief: PrepareBrief): string {
-  const { project, remainingKeys, established, notes } = brief
+  const { project, remainingKeys, established } = brief
   return [
     `# runcastle — preparing ${project.name}`,
     '',
@@ -328,11 +320,10 @@ export function renderPreparePrompt(brief: PrepareBrief): string {
     '',
     '## Where this runs — and why that matters',
     `You are on the developer's own machine, in \`${project.repoPath}\`, NOT in a sandbox.`,
-    'A headless preparation run measures the repo in a throwaway container, which means it',
-    'can never verify anything about *this* machine: the dev server, the local database,',
-    'docker, credentials. Those keys — `devCommand`, `driveSetupCommand`, `driveStopCommand`,',
-    '`driveEnv`, `dbResetCommand` — are exactly what it has to leave as proposals.',
-    'You can actually run them. That is the point of this session.',
+    'That is the point of this session. A throwaway container can never verify anything about',
+    '*this* machine: the dev server, the local database, docker, credentials. Those keys —',
+    '`devCommand`, `driveSetupCommand`, `driveStopCommand`, `driveEnv`, `dbResetCommand` —',
+    'can only be settled here. Run what you propose; do not guess it from config.',
     '',
     'The same access is why you must **ask before you act**. Anything that starts or stops a',
     'service, creates or migrates a database, or writes outside the repo needs the human to',
@@ -347,16 +338,6 @@ export function renderPreparePrompt(brief: PrepareBrief): string {
           ...established.map(
             (f) => `- \`${f.key}\` (${f.source})${f.evidence ? ` — ${f.evidence}` : ''}`,
           ),
-          '',
-        ]
-      : []),
-    ...(notes
-      ? [
-          '## What the last run could not settle',
-          'Its own words. Where it says it declined to guess, it was right to — that is the',
-          'gap you are here to close, and closing it usually means asking one direct question.',
-          '',
-          notes,
           '',
         ]
       : []),
