@@ -1,5 +1,5 @@
 import type { AppCtx } from '../db/types'
-import { getSessionRow, markSessionEnded } from '../launcher/sessions'
+import { getSessionRow, landProjectSession, markSessionEnded } from '../launcher/sessions'
 import { emitForSession } from '../services/events'
 import { releaseForSession } from '../services/waypoints'
 import { ptyRegistry } from './registry'
@@ -31,6 +31,10 @@ export function endSession(ctx: AppCtx, sessionId: string): EndSessionResult {
     // Ending a waypoint session without resolving releases its waypoint back to
     // the frontier (SPEC §13.2); no-op for non-waypoint / already-resolved.
     releaseForSession(ctx, sessionId)
+    // A project session's commits live on `runcastle/project` until someone
+    // moves them; closing the terminal is that moment (decision 18). No-op for
+    // every other kind.
+    landProjectSession(ctx, session)
     emitForSession(ctx, session, {
       type: 'session.ended',
       message: 'session ended by user',

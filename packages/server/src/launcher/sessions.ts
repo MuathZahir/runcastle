@@ -4,9 +4,10 @@ import { and, desc, eq, inArray, isNotNull, sql } from 'drizzle-orm'
 import type { AppCtx } from '../db/types'
 import { sessions } from '../db/schema'
 import { ptyRegistry } from '../pty/registry'
-import { emit, emitForSession } from '../services/events'
+import { emit, emitForSession, emitProject } from '../services/events'
+import { landProjectBranch, PROJECT_BRANCH } from '../services/git'
 import { promoteLastSession } from '../services/waypoints'
-import { getFeatureRow, rowToSession } from '../services/repo'
+import { getFeatureRow, getProjectById, rowToSession } from '../services/repo'
 
 /**
  * Session-row persistence for the launcher + hook receiver + MCP server. There
@@ -193,6 +194,8 @@ export const KICKOFF_LINES: Record<SessionKind, string> = {
     'Proceed with your task: work through the unestablished preparation fields with the human. ' +
     'Start by telling them which fields are still open and what you need from them for each; ' +
     'ask before running anything that touches their database or services.',
+  project:
+    'Proceed with your task: invoke the /runcastle:project skill and drive the project session.',
 }
 
 /**
@@ -539,6 +542,80 @@ function scheduleKickoff(ctx: AppCtx, session: SessionRow): void {
   const d: KickoffDelivery = { line, attempts: 0, confirmed: false, settled: false, timers: new Set() }
   deliveries.set(session.id, d)
   attemptKickoff(ctx, session, d, KICKOFF_DELAY_MS)
+}
+
+/**
+ * Session ids whose landing has already been kicked off. A project terminal
+ * closed from the UI runs BOTH end paths — `endSession` kills the PTY, whose
+ * exit then reaches `handlePtyExit` — and two concurrent merges of the same
+ * branch is not a race worth having. Ids are kept for the life of the process:
+ * an ended session never lands twice, and the set grows by one entry per closed
+ * project terminal.
+ */
+const landedProjectSessions = new Set<string>()
+
+/**
+ * Land a finished PROJECT session's work on the base branch (decision 18) and
+ * report what happened on the project timeline. No-op for every other kind.
+ *
+ * The session commits its own work (its closing move is "land what you wrote
+ * and leave the tree clean"); this only moves those commits from
+ * `runcastle/project` onto the base branch, where they arrive in the human's
+ * checkout the way a `git pull` does. A conflict is not a failure to hide: the
+ * merge refuses, the branch keeps the work, and the next launch retries it.
+ *
+ * Fire-and-forget on purpose — both call sites are synchronous teardown paths
+ * (a PTY exit handler and `endSession`), and a session must still close cleanly
+ * when git is having a bad day.
+ */
+export function landProjectSession(ctx: AppCtx, session: SessionRow): void {
+  if (session.kind !== 'project' || !session.projectId) return
+  if (landedProjectSessions.has(session.id)) return
+  landedProjectSessions.add(session.id)
+  const project = getProjectById(ctx, session.projectId)
+  if (!project) return
+
+  const kept = `they are kept on ${PROJECT_BRANCH} and retried at the next launch`
+  const report = (type: string, message: string, data: Record<string, unknown> = {}): void => {
+    emitProject(ctx, project.id, {
+      type,
+      message,
+      data: { sessionId: session.id, branch: PROJECT_BRANCH, ...data },
+    })
+  }
+
+  void landProjectBranch(project)
+    .then((res) => {
+      if (!res) return // the conversation wrote nothing — no timeline noise
+      if (res.landed) {
+        report(
+          'project.landed',
+          `landed ${res.commits} commit(s) from the project session onto ${project.mainBranch}`,
+          { commits: res.commits },
+        )
+      } else if (res.conflict) {
+        report(
+          'project.land_conflict',
+          `the project session's ${res.commits} commit(s) conflict with ${project.mainBranch} — nothing was overwritten; ${kept}`,
+          { commits: res.commits, files: res.files ?? [] },
+        )
+      } else {
+        report(
+          'project.land_failed',
+          `could not land the project session's ${res.commits} commit(s) onto ${project.mainBranch}: ${res.error ?? 'unknown error'} — ${kept}`,
+          { commits: res.commits, error: res.error ?? null },
+        )
+      }
+    })
+    .catch((e: unknown) => {
+      report(
+        'project.land_failed',
+        `could not land the project session's work onto ${project.mainBranch}: ${
+          e instanceof Error ? e.message : String(e)
+        } — ${kept}`,
+        { error: e instanceof Error ? e.message : String(e) },
+      )
+    })
 }
 
 /** Mark a session `ended`; returns the updated row, or null if unknown. */
