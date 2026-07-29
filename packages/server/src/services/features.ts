@@ -196,7 +196,10 @@ export async function quickChange(ctx: AppCtx, input: QuickChangeInput): Promise
       title,
       // The prose IS the one-liner — a quick change never had a separate summary
       // to give, and inventing one would be a second source of truth for it.
-      oneLiner: prose,
+      // Only its first line, though: `oneLiner` is single-line by name and by
+      // every consumer (the hook's status line, the burner's brief header). The
+      // whole prose survives verbatim where it belongs — brief.md and the ticket.
+      oneLiner: prose.split('\n')[0].trim(),
       mapped: false,
       lap: 1,
       phase: 'implementation' as const,

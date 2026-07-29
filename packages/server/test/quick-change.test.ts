@@ -113,6 +113,23 @@ describe('quickChange service — a one-ticket feature born at implementation', 
     })
   })
 
+  it('keeps the one-liner to one line while brief.md and the ticket carry it all', async () => {
+    const multiline = `${PROSE}\n\nRepro: open a fresh project with no features.`
+    const feature = await features.quickChange(ctx, {
+      projectId,
+      title: 'Darker empty state',
+      prose: multiline,
+    })
+
+    // `oneLiner` feeds single-line consumers (the hook status line, the burner's
+    // brief header), so it gets the first line only.
+    expect(feature.oneLiner).toBe(PROSE)
+    expect(listByFeature(ctx, feature.id)[0].goal).toBe(multiline)
+    expect(
+      readFileSync(join(repoPath, 'docs', 'features', feature.slug, 'brief.md'), 'utf8'),
+    ).toContain('Repro: open a fresh project')
+  })
+
   it('writes the prose verbatim into brief.md and creates no spec.md or decisions.md', async () => {
     const feature = await features.quickChange(ctx, {
       projectId,

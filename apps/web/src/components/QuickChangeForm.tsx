@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { trpc } from '../trpc'
-import { defaultBaseBranch } from '../lib/feature-ui'
+import { defaultBaseBranch, slugPreview } from '../lib/feature-ui'
 import { useToast } from '../lib/toast'
 import { Button } from '../ui'
 
@@ -40,7 +40,7 @@ export function QuickChangeForm({
     onError: (e) => toast.push(e.message),
   })
 
-  const slug = slugify(title)
+  const slug = slugPreview(title)
   const busy = quickChange.isPending
   const ready = !!title.trim() && !!prose.trim() && !branchesQ.isPending
   const submit = () => {
@@ -104,12 +104,4 @@ export function QuickChangeForm({
       </div>
     </div>
   )
-}
-
-function slugify(s: string): string {
-  return s
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 40)
 }

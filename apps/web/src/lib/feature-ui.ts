@@ -16,6 +16,19 @@ export function defaultBaseBranch(
 }
 
 /**
+ * The slug a title will get, for the branch line both creation forms preview.
+ * A preview only — the server slugifies again (and deduplicates) on create, so
+ * this never has to agree about a collision suffix, only about the shape.
+ */
+export function slugPreview(title: string): string {
+  return title
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 40)
+}
+
+/**
  * Client-side feature derivations (UI-SPEC §2/§3): sidebar glyph, needs-me
  * classification, and the overview primary-action state machine. Pure functions
  * over wire data — no IO.

@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { trpc } from '../trpc'
-import { defaultBaseBranch } from '../lib/feature-ui'
+import { defaultBaseBranch, slugPreview } from '../lib/feature-ui'
 import { useToast } from '../lib/toast'
 import { Button } from '../ui'
 
@@ -51,7 +51,7 @@ export function NewFeatureForm({
     onError: (e) => toast.push(e.message),
   })
 
-  const slug = slugify(title)
+  const slug = slugPreview(title)
   const busy = create.isPending || launch.isPending
   const submit = () => {
     const t = title.trim()
@@ -159,12 +159,4 @@ export function NewFeatureForm({
       </div>
     </div>
   )
-}
-
-function slugify(s: string): string {
-  return s
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 40)
 }
