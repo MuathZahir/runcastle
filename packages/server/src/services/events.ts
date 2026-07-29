@@ -1,5 +1,5 @@
 import type { EventRow, SessionRow } from '@runcastle/core'
-import { and, asc, eq, gt } from 'drizzle-orm'
+import { and, asc, desc, eq, gt } from 'drizzle-orm'
 import type { AppCtx } from '../db/types'
 import { events, features } from '../db/schema'
 import { NotFoundError } from '../errors'
@@ -147,6 +147,25 @@ export function listAfter(ctx: AppCtx, featureId: string, afterId = 0): EventRow
     .orderBy(asc(events.id))
     .all()
   return rows.map(rowToEvent)
+}
+
+/**
+ * When a feature's most recent event of `type` landed, if it ever did.
+ *
+ * The timeline is where a fact like "this shipped" is recorded — the feature row
+ * carries `status: shipped` but not when it happened — so the work record reads
+ * its ship date from here (`feature.shipped`, emitted by the merge). Absent is a
+ * normal answer: an unmerged feature simply has no such event.
+ */
+export function latestEventTs(ctx: AppCtx, featureId: string, type: string): number | undefined {
+  const row = ctx.db
+    .select({ ts: events.ts })
+    .from(events)
+    .where(and(eq(events.featureId, featureId), eq(events.type, type)))
+    .orderBy(desc(events.ts))
+    .limit(1)
+    .get()
+  return row?.ts
 }
 
 /**

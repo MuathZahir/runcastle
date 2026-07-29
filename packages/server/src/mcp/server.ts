@@ -2,13 +2,17 @@ import { StreamableHTTPTransport } from '@hono/mcp'
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js'
 import type {
+  Feature,
+  FeatureStatus as FeatureStatusT,
   FindingSource as FindingSourceT,
   Phase as PhaseT,
   PreparedKey as PreparedKeyT,
   Project,
+  RunStatus as RunStatusT,
   SessionRow,
   Ticket,
   TicketInput as TicketInputT,
+  TicketStatus as TicketStatusT,
   Waypoint as WaypointT,
   WaypointInput as WaypointInputT,
 } from '@runcastle/core'
@@ -21,18 +25,26 @@ import {
   nextGate,
   nextPhase,
 } from '@runcastle/core'
+import { featureDocsRel } from '@runcastle/core/paths'
 import { Hono } from 'hono'
 import * as z from 'zod'
 import type { AppCtx } from '../db/types'
-import { GateError, isNotImplemented } from '../errors'
+import { GateError, InvalidInputError, isNotImplemented } from '../errors'
 import { getRuntimeCtx } from '../launcher/runtime'
 import { getSessionRow, mostRecentLiveSession } from '../launcher/sessions'
-import { advance, escalateToMap } from '../services/features'
-import { emit, emitProject } from '../services/events'
+import {
+  advance,
+  createFeature,
+  escalateToMap,
+  list as listFeatures,
+  quickChange,
+} from '../services/features'
+import { emit, emitForSession, emitProject, latestEventTs } from '../services/events'
 import { isOverwritable, recordFinding } from '../services/findings'
 import * as git from '../services/git'
-import { listDocs, readDoc } from '../services/knowledge'
-import { getFeatureRow, getProjectById } from '../services/repo'
+import type { AdrDoc } from '../services/knowledge'
+import { listDocs, listLiveAdrs, readCharter, readDoc } from '../services/knowledge'
+import { getFeatureRow, getProjectById, listRunsByFeature } from '../services/repo'
 import {
   cancelTicket,
   editTicket,
@@ -88,17 +100,26 @@ export function resolveSession(ctx: AppCtx, sessionId: string | undefined): Sess
 /**
  * The feature a tool call belongs to, or a refusal that says why.
  *
- * Every tool below this line is feature-shaped, and a `prepare` session has no
- * feature. Guarding once here rather than making each tool null-check means the
- * failure is a legible message the agent can act on instead of a crash inside
- * `getFeatureRow` — and it keeps the null impossible to forget when a tool is
- * added later, because the featureId simply isn't reachable without this call.
+ * Every tool below this line is feature-shaped — each one advances a feature
+ * through a gate — and a project-scoped session has no feature. Guarding once
+ * here rather than making each tool null-check means the failure is a legible
+ * message the agent can act on instead of a crash inside `getFeatureRow` — and
+ * it keeps the null impossible to forget when a tool is added later, because
+ * the featureId simply isn't reachable without this call.
+ *
+ * The refusal names the session's OWN project-scoped tools, so an agent that
+ * reached for the wrong half of the surface is pointed at the right half rather
+ * than just told no (the kinds are few, and each has exactly one entry point).
  */
 function requireFeatureId(session: SessionRow): string {
   if (!session.featureId) {
+    const instead =
+      session.kind === 'project'
+        ? 'Your tools are create_feature, get_project_context, get_work_record and record_event — ' +
+          'to work an existing feature, tell the human to open its terminal.'
+        : 'Use record_finding to store what you establish about the project.'
     throw new GateError(
-      `this tool needs a feature, and a ${session.kind} session is project-scoped. ` +
-        'Use record_finding to store what you establish about the project.',
+      `this tool belongs to a feature, and a ${session.kind} session is project-scoped. ${instead}`,
     )
   }
   return session.featureId
@@ -156,9 +177,13 @@ export function toolGetFeatureContext(ctx: AppCtx, session: SessionRow): Feature
 
 export function toolResolveWaypoint(
   ctx: AppCtx,
-  _session: SessionRow,
+  session: SessionRow,
   input: { id: string; disposition: 'resolved' | 'dropped'; summary: string },
 ): { ok: true } {
+  // Resolving is a map move on a feature, so it needs one — the guard is what
+  // makes a project-scoped session's call a legible refusal rather than a
+  // NotFound on an id it had no business knowing.
+  requireFeatureId(session)
   // The prose answer is written to decisions.md/map.md by the session directly;
   // this tool flips machinery only (status → terminal, cascade unblock events).
   resolveWaypoint(ctx, input.id, input.disposition, input.summary)
@@ -180,8 +205,12 @@ export function toolEmitTickets(
 
 /** Refuse cross-feature ticket surgery: the id must belong to THIS session's feature. */
 function requireOwnTicket(ctx: AppCtx, session: SessionRow, ticketId: string): Ticket {
+  // Scope first, existence second: a session with no feature has no business
+  // asking about any ticket, and telling it "that id doesn't exist" would send
+  // it hunting for a better id instead of at the tools it actually has.
+  const featureId = requireFeatureId(session)
   const ticket = getTicket(ctx, ticketId)
-  if (ticket.featureId !== requireFeatureId(session)) {
+  if (ticket.featureId !== featureId) {
     throw new GateError(`ticket ${ticketId} does not belong to this session's feature`)
   }
   return ticket
@@ -229,16 +258,29 @@ export function toolEmitWaypoints(
   return { stored: stored.length, ids: stored.map((w) => w.id) }
 }
 
+/**
+ * The one tool both halves of the surface share, so it emits at whatever scope
+ * the calling session has: a feature's timeline for every pipeline kind, the
+ * project's for a project-scoped session (`feature_id` null, which the events
+ * table already supports). A project session has milestones worth recording —
+ * features created, a charter drafted — and refusing them a note would leave
+ * the project stream blind to the one session that works at its scope.
+ */
 export function toolRecordEvent(
   ctx: AppCtx,
   session: SessionRow,
   input: { type: string; message: string },
 ): { ok: true } {
-  emit(ctx, requireFeatureId(session), {
+  const event = emitForSession(ctx, session, {
     type: input.type,
     message: input.message,
     data: { source: 'mcp' },
   })
+  if (!event) {
+    throw new GateError(
+      `session ${session.id} belongs to neither a feature nor a project — nothing to record against`,
+    )
+  }
   return { ok: true }
 }
 
@@ -307,13 +349,21 @@ async function commitDocsCheckpoint(
   }
 }
 
-// --- project-scoped tools (`prepare` sessions) ------------------------------
+// --- project-scoped tools (`prepare` + `project` sessions) ------------------
 
-/** The project a project-scoped tool call belongs to, or a refusal that says why. */
+/**
+ * The project a project-scoped tool call belongs to, or a refusal that says why.
+ *
+ * The mirror of {@link requireFeatureId}: exactly one of the two ids is set on
+ * a session row, so a feature session lands here with nothing to resolve. The
+ * message stays tool-agnostic — several tools sit behind this guard now — and
+ * points back at the surface the caller does have.
+ */
 function requireProject(ctx: AppCtx, session: SessionRow): Project {
   if (!session.projectId) {
     throw new GateError(
-      `record_finding is for a project-scoped preparation session; this is a ${session.kind} session.`,
+      `this tool belongs to a project-scoped session; this is a ${session.kind} session on a ` +
+        'feature. Use get_feature_context and the pipeline tools for feature work.',
     )
   }
   const project = getProjectById(ctx, session.projectId)
@@ -379,6 +429,200 @@ export function toolRecordFinding(
   return { ok: true, key: input.key, source }
 }
 
+// --- the project session's three tools (decisions 15, 19, 21) ---------------
+
+export interface CreateFeatureResult {
+  id: string
+  slug: string
+  branch: string
+  phase: PhaseT
+}
+
+/**
+ * The point of the project session: intake and decomposition terminating in a
+ * feature (decision 19).
+ *
+ * Two shapes, one call. Without `ticket` it is the ordinary door — an
+ * ideation-phase feature whose `brief.md` is the prose the intake conversation
+ * just produced, so the reasoning about why this feature exists and what it
+ * must not swallow survives the terminal closing. With `ticket` it is the
+ * quick-change door (decision 21): a feature born at `implementation` carrying
+ * exactly one ticket, created atomically with it — which is why this is NOT the
+ * feature-less `emit_tickets` the session is deliberately denied.
+ *
+ * It launches nothing. Spawning terminals from inside a terminal would make
+ * this session an orchestrator, where runcastle's premise is that the human
+ * decides what to work on next; the rail polls, so the new card IS the feedback.
+ */
+export async function toolCreateFeature(
+  ctx: AppCtx,
+  session: SessionRow,
+  input: {
+    title: string
+    oneLiner: string
+    baseBranch?: string
+    brief?: string
+    ticket?: { prose: string }
+  },
+): Promise<CreateFeatureResult> {
+  const project = requireProject(ctx, session)
+  const feature = input.ticket
+    ? await quickChange(ctx, {
+        projectId: project.id,
+        title: input.title,
+        prose: input.ticket.prose,
+        baseBranch: input.baseBranch,
+      })
+    : await createFeature(ctx, {
+        projectId: project.id,
+        title: input.title,
+        oneLiner: input.oneLiner,
+        baseBranch: input.baseBranch,
+        brief: input.brief,
+      })
+  return {
+    id: feature.id,
+    slug: feature.slug,
+    branch: feature.branch,
+    phase: feature.phase,
+  }
+}
+
+export interface ProjectContext {
+  project: Project
+  /** `CONTEXT.md` in full; absent when the project has no charter yet. */
+  charter?: string
+  /** Live ADRs in full — superseded ones are omitted (decision 13). */
+  adrs: AdrDoc[]
+  /** One line per feature (decision 14 part 2); see {@link featureIndexLine}. */
+  featureIndex: string[]
+}
+
+/**
+ * Everything that is true of the project right now: the row, the charter, the
+ * live ADRs, and a one-line index of every feature.
+ *
+ * The docs are read from THIS SESSION's worktree, not the human's checkout —
+ * the project session works on a runcastle-owned branch (decision 18), so its
+ * own tree is the state it is editing and the state it should be told about.
+ *
+ * No size ceiling and no truncation (decision 16): a ceiling would silently
+ * turn "this binds you" into "this binds you unless it did not fit".
+ */
+export function toolGetProjectContext(ctx: AppCtx, session: SessionRow): ProjectContext {
+  const project = requireProject(ctx, session)
+  const charter = readCharter(session.worktreePath)
+  return {
+    project,
+    ...(charter !== undefined ? { charter } : {}),
+    adrs: listLiveAdrs(session.worktreePath),
+    featureIndex: listFeatures(ctx, project.id).map(featureIndexLine),
+  }
+}
+
+/**
+ * One feature, one line. A shipped feature gets its slug, one-liner and docs
+ * path — its record is on disk and readable. An in-flight one gets its title and
+ * status and nothing else: it is not real yet (decision 16), so advertising a
+ * one-liner and a docs path that only exist on an unmerged branch would promise
+ * a read that cannot happen.
+ */
+function featureIndexLine(feature: Feature): string {
+  if (feature.status === 'shipped') {
+    return `${feature.slug} — ${feature.oneLiner} [shipped] ${featureDocsRel(feature.slug)}/`
+  }
+  return `${feature.title} [${feature.status === 'archived' ? 'archived' : 'in flight'}]`
+}
+
+/** One ticket as history: what it touched and what came of it, never its intent. */
+export interface WorkRecordTicket {
+  seq: number
+  title: string
+  status: TicketStatusT
+  seams: string[]
+  commits: string[]
+  error?: string
+}
+
+export interface WorkRecordRun {
+  workflow: string
+  status: RunStatusT
+  startedAt: number
+  endedAt?: number
+  summary?: string
+}
+
+export interface WorkRecordFeature {
+  slug: string
+  title: string
+  status: FeatureStatusT
+  /** When the merge landed (`feature.shipped`); absent while unmerged. */
+  shippedAt?: number
+  runs: WorkRecordRun[]
+  tickets: WorkRecordTicket[]
+}
+
+/**
+ * The work record (decision 15): facts about what features actually DID.
+ *
+ * Deliberately never a ticket's `goal`, `context` or `acceptanceCriteria` —
+ * those are intent at a moment, written before the code existed, and the burner
+ * may have satisfied them by another route. Handing them to a later session is
+ * handing it a decayed spec with none of the decay stamp. What survives is the
+ * residue that cannot be wrong later: seams, commits, status, error, timings,
+ * and the title as a label rather than a claim.
+ *
+ * Queryable two ways. By slug: "what did X actually do?". By seam: "who has
+ * touched this before?" — a case-insensitive SUBSTRING match, because seams are
+ * uncoordinated free prose across features (decision 27) and exact equality
+ * would under-report invisibly. A feature contributes only its matching tickets.
+ */
+export function toolGetWorkRecord(
+  ctx: AppCtx,
+  session: SessionRow,
+  input: { featureSlug?: string; seam?: string },
+): { features: WorkRecordFeature[] } {
+  const project = requireProject(ctx, session)
+  const slug = input.featureSlug?.trim()
+  const seam = input.seam?.trim().toLowerCase()
+  if (!slug && !seam) {
+    throw new InvalidInputError('get_work_record needs a featureSlug or a seam to look up')
+  }
+
+  const records: WorkRecordFeature[] = []
+  for (const feature of listFeatures(ctx, project.id)) {
+    if (slug && feature.slug !== slug) continue
+    let tickets = listByFeature(ctx, feature.id)
+    if (seam) {
+      tickets = tickets.filter((t) => t.seams.some((s) => s.toLowerCase().includes(seam)))
+      if (tickets.length === 0) continue
+    }
+    const shippedAt = latestEventTs(ctx, feature.id, 'feature.shipped')
+    records.push({
+      slug: feature.slug,
+      title: feature.title,
+      status: feature.status,
+      ...(shippedAt !== undefined ? { shippedAt } : {}),
+      runs: listRunsByFeature(ctx, feature.id).map((r) => ({
+        workflow: r.workflow,
+        status: r.status,
+        startedAt: r.startedAt,
+        ...(r.endedAt !== undefined ? { endedAt: r.endedAt } : {}),
+        ...(r.summary !== undefined ? { summary: r.summary } : {}),
+      })),
+      tickets: tickets.map((t) => ({
+        seq: t.seq,
+        title: t.title,
+        status: t.status,
+        seams: t.seams,
+        commits: t.commits,
+        ...(t.error !== undefined ? { error: t.error } : {}),
+      })),
+    })
+  }
+  return { features: records }
+}
+
 // --- MCP server assembly ----------------------------------------------------
 
 function ok(result: unknown): CallToolResult {
@@ -428,6 +672,71 @@ export function buildMcpServer(): McpServer {
       const rs = await resolveCtxSession(extra)
       if (!rs) return noSession()
       return ok(toolRecordFinding(rs.ctx, rs.session, args))
+    },
+  )
+
+  server.registerTool(
+    'create_feature',
+    {
+      title: 'Create a feature',
+      description:
+        'Create a feature from the project session — the end of intake. Pass `brief` with the ' +
+        'reasoning you just worked out with the human (why this feature exists, what it must NOT ' +
+        'swallow): it becomes brief.md verbatim, and without it that reasoning is lost. Pass ' +
+        '`ticket: { prose }` for a quick change — work too small to deserve a grill — which ' +
+        'creates the feature at the implementation phase with that one ticket. This does NOT open ' +
+        'a terminal on what it creates; the new card in the rail is the feedback, and the human ' +
+        'decides what to work on next.',
+      inputSchema: {
+        title: z.string().min(1),
+        oneLiner: z.string(),
+        baseBranch: z.string().optional(),
+        brief: z.string().optional(),
+        ticket: z.object({ prose: z.string().min(1) }).optional(),
+      },
+    },
+    async (args, extra) => {
+      const rs = await resolveCtxSession(extra)
+      if (!rs) return noSession()
+      return ok(await toolCreateFeature(rs.ctx, rs.session, args))
+    },
+  )
+
+  server.registerTool(
+    'get_project_context',
+    {
+      title: 'Get project context',
+      description:
+        'The project as it stands: the project row, the charter (CONTEXT.md) in full, every live ' +
+        'ADR in full (superseded ones are omitted), and a one-line index of every feature — ' +
+        'shipped ones with their one-liner and docs path, in-flight ones by title only. Read a ' +
+        "shipped feature's own docs with your ordinary file tools; the index says where they are.",
+      inputSchema: {},
+    },
+    async (_args, extra) => {
+      const rs = await resolveCtxSession(extra)
+      if (!rs) return noSession()
+      return ok(toolGetProjectContext(rs.ctx, rs.session))
+    },
+  )
+
+  server.registerTool(
+    'get_work_record',
+    {
+      title: 'Get work record',
+      description:
+        'What features actually DID — facts only: per feature its status, ship date, run ' +
+        'summaries and tickets as { seq, title, status, seams, commits, error? }. Never a ' +
+        "ticket's goal or acceptance criteria: those are intent from before the code existed. " +
+        'Query by `featureSlug` ("what did X do?") or by `seam` ("who has touched this area, and ' +
+        'what happened?") — the seam match is a case-insensitive substring, because seams are ' +
+        'free prose that differs between features. At least one argument is required.',
+      inputSchema: { featureSlug: z.string().optional(), seam: z.string().optional() },
+    },
+    async (args, extra) => {
+      const rs = await resolveCtxSession(extra)
+      if (!rs) return noSession()
+      return ok(toolGetWorkRecord(rs.ctx, rs.session, args))
     },
   )
 
@@ -561,7 +870,9 @@ export function buildMcpServer(): McpServer {
     'record_event',
     {
       title: 'Record event',
-      description: 'Add a note to the feature timeline (decisions recorded, spec saved, milestones).',
+      description:
+        'Add a note to the timeline (decisions recorded, spec saved, milestones) — the feature\'s ' +
+        "timeline from a feature session, the project's from a project-scoped one.",
       inputSchema: { type: z.string(), message: z.string() },
     },
     async (args, extra) => {
