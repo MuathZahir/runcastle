@@ -87,6 +87,13 @@ export interface CreateFeatureInput {
    * another feature) — the merge target stays `mainBranch` regardless.
    */
   baseBranch?: string
+  /**
+   * Body for `brief.md`, verbatim instead of the generated title + one-liner
+   * stub. The project session passes the reasoning it just worked out with the
+   * human (decision 19) — without it that reasoning evaporates when the intake
+   * terminal closes, and the burner reads a restated one-liner instead.
+   */
+  brief?: string
 }
 
 export async function createFeature(
@@ -130,7 +137,7 @@ export async function createFeature(
     data: { slug, branch, baseBranch, branchReady },
   })
 
-  scaffoldDocs(ctx, feature)
+  scaffoldDocs(ctx, feature, { brief: input.brief })
 
   // Commit the scaffolded brief so it does not linger as an untracked file in the
   // target repo's working tree. An untracked doc dirties the checkout and blocks

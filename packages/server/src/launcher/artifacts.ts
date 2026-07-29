@@ -503,6 +503,12 @@ export const RUNCASTLE_MCP_ALLOW_RULES: readonly string[] = [
   'mcp__runcastle__emit_waypoints',
   'mcp__runcastle__resolve_waypoint',
   'mcp__runcastle__record_finding',
+  // The project session's three (decision 19). Every session is launched with
+  // the whole list: the MCP server gates each tool on the calling session's
+  // kind, so a rule for a tool a feature session can only be refused is inert.
+  'mcp__runcastle__create_feature',
+  'mcp__runcastle__get_project_context',
+  'mcp__runcastle__get_work_record',
 ]
 
 /**

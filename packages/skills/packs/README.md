@@ -4,7 +4,7 @@
 
 ## The `runcastle` pack
 
-Four phase-scoped skills, each namespaced `/runcastle:<skill>`:
+Scope-specific skills, each namespaced `/runcastle:<skill>`:
 
 | Skill | Invoked | Does |
 |---|---|---|
@@ -12,6 +12,7 @@ Four phase-scoped skills, each namespaced `/runcastle:<skill>`:
 | `/runcastle:spec` | by ideate | synthesizes `spec.md`, completes the `spec` phase |
 | `/runcastle:tickets` | by ideate | emits session-sized vertical-slice tickets via MCP, completes the `tickets` phase |
 | `/runcastle:qa` | entry for `kind=qa` | read-only Q&A over an existing feature; never advances phases |
+| `/runcastle:project` | entry for `kind=project` | project scope, not feature scope: grills a lump of intent into N features and creates them, routes, answers portfolio questions, curates advisory-only, and owns `CONTEXT.md` |
 
 Layout (the verified plugin format — only `plugin.json` lives inside `.claude-plugin/`; `skills/` is a sibling at the plugin root):
 
