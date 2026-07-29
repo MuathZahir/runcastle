@@ -751,3 +751,66 @@ survives of the seam idea is the direction decision 15 already shipped — **pul
 push**: "who touched this seam and why", asked by an agent mid-implementation, has a cheap
 true answer; "these features might collide", pushed by string comparison, is wrong often
 enough to train the human to ignore it, and an ignored warning is worse than none.
+
+## 28. The charter is born lazily, extended by nomination, and rewritten by exactly one pen
+**Decision:** the charter's lifecycle, all four parts:
+
+- **Origin — lazy, with an offered bootstrap.** Onboarding scaffolds nothing: no stub,
+  no template, no charter file at `initProject`. The charter is created the first time
+  the one session allowed to write it (the project session, decision 18) has something
+  to write — Matt's rule verbatim ("create files lazily — only when you have something
+  to write"). For an existing codebase, the intake session's natural first move on
+  finding no charter is a conversational offer — "want me to draft one from the code?"
+  — not an onboarding pass. The charter's *format* lives in the project session's
+  skill, never in a stub on disk. Injection degrades gracefully: no file, nothing
+  injected, sessions behave as today.
+- **Delivery — settled elsewhere, restated for completeness.** Injected in full into
+  every session's system prompt, rendered at launch from live state (decision 14 part
+  1); no size ceiling, no truncation (decision 16).
+- **Glossary extension — nominate-then-mechanical-append, the ADR two-step applied to
+  terms.** A feature session keeps a `## Language` section at the bottom of its own
+  `decisions.md`, in Matt's exact format (`**Term**: definition. _Avoid_: …`), and
+  writes a term there *the moment it crystallises* — Matt's inline discipline applied
+  at the one tier the session can write. At merge, decision 12's promote-then-merge
+  step appends un-promoted terms to the charter's `## Language` and stamps the source;
+  same pre-merge review list, uncheckable per term, never blocking. A nominated term
+  that **collides with an existing charter term is flagged and skipped, never
+  overwritten** — redefinition is a rewrite-in-place operation and routes through the
+  project session with the human in the loop.
+- **Concurrency — the writer set is closed at two serialized channels.** (1) The
+  project session: full rewrite authority — prose body, redefining/pruning terms,
+  appending and deleting `## Deferred / open threads` entries (decision 23) —
+  serialized by being a singleton, landing via `mergeTempBranch`, which auto-merges
+  disjoint edits and refuses on conflict. (2) The merge click's mechanical append:
+  `## Language` only, additive only, serialized because merges are one server action
+  in a serial-HITL system. Feature sessions never write the charter and structurally
+  cannot (`DOCS_PATHSPEC` stages only `docs/features`). One detail with teeth: **the
+  merge-time append is computed against the base tip's charter at click time, never
+  the feature branch's stale copy** — feature branches never touch `CONTEXT.md`, so
+  the promote commit's charter diff is exactly the append, and consecutive merges
+  land terms X then Y cleanly instead of conflicting in `## Language` by
+  construction. (Decision 12's "next free ADR number" must be read from the base tip
+  at click time for the same reason.)
+
+**Why:** every part is a precedent already paid for, applied to one more tier. Lazy
+origin: a scaffolded stub is the silent-wrongness family (8, 16) injected into every
+session — a file that reads authoritative while saying nothing, whose empty sections
+agents dutifully preserve; and a charter is 100% judgment, so there is nothing for a
+mechanical onboarding step to write. The bootstrap is an LLM job needing repo reads
+and charter writes, which is precisely the project session's shape — putting it
+anywhere else would create the second writer decision 18 exists to prevent. Glossary
+extension copies Matt's *timing* while respecting runcastle's *topology*: Matt's
+skill proves the glossary only stays alive when the definition is written at the
+moment of resolution ("update CONTEXT.md right there — don't batch"), and decision
+11 already made the same argument for nomination; but Matt's single-checkout
+mechanism cannot survive concurrent sessions, so the write is staged in the feature's
+own docs and promoted mechanically — append-shaped, no LLM, exactly decision 12's
+transform. The load-bearing insight for the rewritten-in-place tier: **adding a term
+is an append-shaped operation on one section of a rewritten-in-place file**, so it
+can ride the mechanical path, while every genuinely rewrite-shaped operation
+(redefine, prune, restate) stays with the singleton pen. The accepted cost: terms
+land only at ship, so an in-flight feature's vocabulary is invisible to parallel
+sessions — correct under decision 16 (in-flight is "not real yet"), and the two
+features that coin conflicting terms collide in the pre-merge list, the same place
+decision 27 chose for code collisions.
+**Scope:** project
