@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { Phase, Ticket, TicketInput } from '../src/schemas'
+import { parsePhase, Phase, Ticket, TicketInput } from '../src/schemas'
 
 const validTicket = {
   title: 'Add health endpoint',
@@ -76,5 +76,25 @@ describe('enums', () => {
     expect(Phase.safeParse('ideation').success).toBe(true)
     expect(Phase.safeParse('shipped').success).toBe(true)
     expect(Phase.safeParse('bogus').success).toBe(false)
+  })
+})
+
+describe('parsePhase — tolerant read of an unrecognized phase (findings F19)', () => {
+  it('returns the phase for every value the pipeline knows', () => {
+    expect(parsePhase('ideation')).toBe('ideation')
+    expect(parsePhase('implementation')).toBe('implementation')
+    expect(parsePhase('shipped')).toBe('shipped')
+  })
+
+  it('returns null for a phase name this build does not know', () => {
+    expect(parsePhase('bogus')).toBeNull()
+    expect(parsePhase('polish')).toBeNull()
+  })
+
+  it('returns null rather than throwing for a non-string value', () => {
+    expect(parsePhase(undefined)).toBeNull()
+    expect(parsePhase(null)).toBeNull()
+    expect(parsePhase(7)).toBeNull()
+    expect(parsePhase({ phase: 'ideation' })).toBeNull()
   })
 })

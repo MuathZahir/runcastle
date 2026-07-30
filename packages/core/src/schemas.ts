@@ -21,6 +21,21 @@ export const Phase = z.enum([
 export type Phase = z.infer<typeof Phase>
 
 /**
+ * Read a phase from a value this build may not recognize — a row written by a
+ * newer server, a hand-edited column, a corrupt import. Returns null instead of
+ * throwing so callers can degrade to a readable "unrecognized" state.
+ *
+ * Every downstream reader types `phase` as `Phase` and switches on it
+ * exhaustively, which means ONE bad value falls through EVERY switch at once —
+ * on the web that rendered the whole app as a blank page (findings F19). Parsing
+ * at the boundary is what turns that into one contained, named failure.
+ */
+export function parsePhase(value: unknown): Phase | null {
+  const parsed = Phase.safeParse(value)
+  return parsed.success ? parsed.data : null
+}
+
+/**
  * `cancelled` is a terminal state set by a human/agent (revisit sessions,
  * `cancel_ticket`) — never by the burner. The scheduler skips cancelled tickets
  * and treats a cancelled blocker as satisfied (the work was deemed unnecessary,

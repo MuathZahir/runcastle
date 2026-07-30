@@ -1118,6 +1118,20 @@ button {
 .ws-banner.is-offline .ws-banner-tag {
   border-color: color-mix(in srgb, var(--warn, #d9a441) 40%, var(--hairline));
 }
+/* unrecognized-phase / crashed-feature variant (findings F19): the danger frame,
+   but nothing to dismiss — the row itself has to be fixed */
+.ws-banner.is-broken {
+  cursor: default;
+  align-items: flex-start;
+  animation: none;
+}
+.broken-detail {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 0 14px;
+}
 .ws-banner-tag {
   font-family: var(--mono);
   font-size: 10px;

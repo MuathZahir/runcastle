@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useRef, useState } from 'react'
-import type { EventRow, Phase } from '@runcastle/core'
+import { parsePhase, type EventRow, type Phase } from '@runcastle/core'
 import { trpc } from '../trpc'
 import { useEventLog } from '../lib/events'
 import { useToast } from '../lib/toast'
@@ -190,6 +190,15 @@ export function Workspace({
 
   const full = q.data
   const feature = full.feature
+  // A phase this build does not know (a row from a newer server, a corrupt or
+  // hand-edited column) falls through every exhaustive switch below at once —
+  // the stepper, the next-step bar and the body all come back empty, and the
+  // whole app used to render blank (findings F19). Degrade to a read-only view
+  // that NAMES the value instead, so the feature is reportable and every other
+  // feature stays usable.
+  if (parsePhase(feature.phase) === null) {
+    return <UnrecognizedPhase feature={feature} toast={toast} />
+  }
   const effective = effectivePhase(feature, viewedPhase)
   const readonly = isReadonlyView(feature, effective)
   const steps = pipelineSteps(feature, effective)
@@ -585,6 +594,80 @@ function useResumeFailedAlert(featureId: string): { message: string | null; dism
   }, [message])
 
   return { message, dismiss: () => setMessage(null) }
+}
+
+/**
+ * What the feature view shows when it crashed outright — the fallback for the
+ * error boundary ProjectShell mounts around it (findings F19). Containment is
+ * the point: the sidebar, the other features and every other project keep
+ * working, and this pane carries the feature id + the error so the crash is
+ * reportable rather than mysterious.
+ */
+export function FeatureCrash({ featureId, error }: { featureId: string; error: Error }) {
+  const toast = useToast()
+  const details = `feature ${featureId} — ${error.name}: ${error.message}`
+  return (
+    <section className="workspace">
+      <div className="ws-banner is-broken" role="alert">
+        <span className="ws-banner-tag">BROKEN</span>
+        <span>This feature couldn't be rendered. Everything else still works.</span>
+      </div>
+      <div className="ws-body">
+        <div className="ws-body-inner">
+          <div className="broken-detail">
+            <DimLine>{details}</DimLine>
+            <Button variant="ghost" className="btn-xs" onClick={() => copyText(details, toast)}>
+              Copy details
+            </Button>
+          </div>
+        </div>
+      </div>
+    </section>
+  )
+}
+
+/**
+ * The degraded feature view for a phase this build does not recognize (findings
+ * F19). Read-only by construction: it offers no pipeline, no next step and no
+ * action, because every one of those is derived from a phase we cannot place.
+ * What it does offer is the bad value itself and the feature's identity, so the
+ * user can report it or fix the row instead of staring at a blank page.
+ */
+function UnrecognizedPhase({
+  feature,
+  toast,
+}: {
+  feature: FeatureFull['feature']
+  toast: { push: (m: string, k?: 'error' | 'info' | 'success') => void }
+}) {
+  const details = `feature ${feature.id} (${feature.slug}) has phase "${feature.phase}"`
+  return (
+    <section className="workspace">
+      <div className="ws-head">
+        <div className="ws-title-row">
+          <span className="tag">unknown</span>
+          <span className="ws-title">{feature.title}</span>
+        </div>
+      </div>
+      <div className="ws-banner is-broken" role="alert">
+        <span className="ws-banner-tag">UNRECOGNIZED</span>
+        <span>
+          This feature's phase is <strong className="mono">{feature.phase}</strong>, which this
+          version of runcastle doesn't know. Nothing here can be acted on until the row is fixed.
+        </span>
+      </div>
+      <div className="ws-body">
+        <div className="ws-body-inner">
+          <div className="broken-detail">
+            <DimLine>{details}</DimLine>
+            <Button variant="ghost" className="btn-xs" onClick={() => copyText(details, toast)}>
+              Copy details
+            </Button>
+          </div>
+        </div>
+      </div>
+    </section>
+  )
 }
 
 function copyText(text: string, toast: { push: (m: string, k?: 'error' | 'info' | 'success') => void }): void {
