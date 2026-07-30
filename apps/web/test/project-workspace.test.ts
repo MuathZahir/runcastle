@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   PROJECT_BRANCH,
+  matchesPreparation,
   prepRailRow,
   projectBranchNote,
   projectSessionState,
@@ -120,6 +121,29 @@ describe('prepRailRow', () => {
   it('renders nothing at all until the prep view answers', () => {
     expect(prepRailRow(undefined)).toBeNull()
     expect(prepRailRow(null)).toBeNull()
+  })
+})
+
+describe('matchesPreparation', () => {
+  it('still answers to the words it always did', () => {
+    expect(matchesPreparation('prepare')).toBe(true)
+    expect(matchesPreparation('baseline')).toBe(true)
+    expect(matchesPreparation('')).toBe(true)
+  })
+
+  /**
+   * The words someone types looking for preparation a SECOND time. All of these
+   * missed, which is how a finished preparation became unreachable for anyone who
+   * had not memorised the noun — the palette was the last way in.
+   */
+  it('answers to the words a re-run is searched for by', () => {
+    for (const q of ['re-prepare', 'reprepare', 'redo', 're-run', 'rerun', 'stale', 'findings'])
+      expect(matchesPreparation(q)).toBe(true)
+  })
+
+  it('stays out of the way of unrelated queries', () => {
+    expect(matchesPreparation('merge')).toBe(false)
+    expect(matchesPreparation('ticket')).toBe(false)
   })
 })
 

@@ -95,6 +95,28 @@ export function showsInspector(view: WorkspaceView, inspectorCollapsed: boolean)
 }
 
 /**
+ * What the palette's Preparation row answers to. Every word someone might type
+ * looking for preparation, including the ones they type looking for it a SECOND
+ * time — "re-prepare", "redo", "re-run" all missed, which is how a finished
+ * preparation became unreachable for anyone who had not memorised the noun.
+ *
+ * 'talk'/'ask' are here because the conversation is reached THROUGH this row:
+ * the palette navigates, it never launches sessions, so searching for the
+ * conversation has to land you where its button is.
+ */
+const PREPARATION_TERMS =
+  'preparation prepare re-prepare reprepare redo re-run rerun again findings evidence stale project commands baseline talk ask secrets database'
+
+/**
+ * Whether the palette shows Preparation for `q` (already trimmed+lowercased).
+ * Substring-of-haystack, matching every other action row in the palette — the
+ * query is the needle, so a partial word still finds it.
+ */
+export function matchesPreparation(q: string): boolean {
+  return PREPARATION_TERMS.includes(q)
+}
+
+/**
  * The rail foot's preparation row. `todo` before a preparation has run, `done`
  * after — never absent.
  *

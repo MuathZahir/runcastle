@@ -2739,6 +2739,22 @@ select.settings-input { cursor: pointer; }
   gap: 6px;
   max-width: 56ch;
 }
+/* Prepared, the call-to-action carries what the screen used to stack below it —
+   the reason to act and what is already established — so both are constrained
+   to the reading width and left-aligned inside the centred column. */
+.prep-cta .prep-warn,
+.prep-cta .pw-frame {
+  width: 100%;
+  max-width: 62ch;
+  text-align: left;
+}
+/* Two ways to go again, side by side: resume is the cheap one and stays solid,
+   fresh is the deliberate one. */
+.prep-cta-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
 .prep-cta-open li {
   font-size: 11px;
   color: var(--text-3);
