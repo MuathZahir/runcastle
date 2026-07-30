@@ -316,6 +316,22 @@ describe('ensureTalkWorktree', () => {
     expect(existsSync(join(second, '.git'))).toBe(true)
   })
 
+  it('reattaches a registered-but-detached worktree instead of failing to re-add it', async () => {
+    // The post-test-drive state: the drive detached the talk worktree to take the
+    // branch, and the reattach on stop did not happen (it is best-effort). git
+    // still owns the path, so `worktree add` would refuse it.
+    const first = await ensureTalkWorktree(project, feature)
+    expect(await detachWorktree(first)).toBe(true)
+    expect(await currentBranch(simpleGit(first))).toBe('HEAD')
+
+    const second = await ensureTalkWorktree(project, feature)
+    expect(second).toBe(first)
+    expect(await currentBranch(simpleGit(second))).toBe('feature/wt')
+    // One worktree, not a second one bolted on beside it.
+    const list = await simpleGit(project.repoPath).raw(['worktree', 'list', '--porcelain'])
+    expect(list.match(/^worktree /gm)?.length).toBe(2) // the main checkout + the talk worktree
+  })
+
   it('recovers from a stale worktree (dir removed) via prune + retry', async () => {
     const first = await ensureTalkWorktree(project, feature)
     // Delete the worktree dir out from under git: registry now disagrees.

@@ -319,6 +319,16 @@ export async function ensureTalkWorktree(project: Project, feature: Feature): Pr
 
   if (await worktreeIsValid(g, worktreePath, branch)) return worktreePath
 
+  // A registered worktree that is merely DETACHED just needs the branch checked
+  // out again — `worktree add` would refuse the path git still owns. This is the
+  // post-test-drive state (the drive detaches the talk worktree to take the
+  // branch, and the reattach on stop is best-effort), which used to make the next
+  // terminal on the feature unlaunchable — findings F3. Same move as
+  // `ensureProjectWorktree`.
+  if (existsSync(worktreePath) && (await registeredWorktrees(g)).has(canon(worktreePath))) {
+    if (await checkoutInWorktree(worktreePath, branch)) return worktreePath
+  }
+
   return addWorktree(g, worktreePath, branch, 'talk worktree')
 }
 
