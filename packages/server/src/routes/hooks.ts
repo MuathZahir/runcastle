@@ -1,4 +1,4 @@
-import type { Feature, SessionRow } from '@runcastle/core'
+import type { Feature, SessionKind, SessionRow } from '@runcastle/core'
 import { Hono } from 'hono'
 import type { AppCtx } from '../db/types'
 import { getRuntimeCtx } from '../launcher/runtime'
@@ -55,18 +55,20 @@ hooks.post('/:event', async (c) => {
     const session = getSessionRow(ctx, sessionId)
     if (!session) return c.json({})
 
-    // Project-scoped (`prepare`) sessions have no feature. They still need the
-    // full lifecycle — `markSessionLive` is what flips the row live and lets the
+    // Project-scoped sessions (`prepare` and `project` — see
+    // PROJECT_SESSION_KINDS) have no feature. They still need the full
+    // lifecycle — `markSessionLive` is what flips the row live and lets the
     // kickoff be typed, so returning early here would leave the terminal open
-    // and permanently silent — but none of the feature briefing applies.
+    // and permanently silent — but none of the feature briefing applies, and
+    // what they are told instead differs per kind.
     if (!session.featureId) {
       switch (event) {
         case 'session-start':
-          return c.json(handlePrepareSessionStart(ctx, session, body.payload))
+          return c.json(handleProjectScopedSessionStart(ctx, session, body.payload))
         case 'user-prompt':
-          return c.json(handlePrepareUserPrompt(ctx, session, body.payload))
+          return c.json(handleProjectScopedUserPrompt(ctx, session, body.payload))
         case 'session-end':
-          return c.json(handlePrepareSessionEnd(ctx, session))
+          return c.json(handleProjectScopedSessionEnd(ctx, session))
         default:
           return c.json({})
       }
@@ -128,16 +130,16 @@ function handleSessionStart(
   }
 }
 
-// --- project-scoped (`prepare`) session hooks --------------------------------
+// --- project-scoped (`prepare` / `project`) session hooks ---------------------
 
 /**
- * `SessionStart` for a preparation conversation. Same lifecycle bookkeeping as
- * the feature path — flip live, keep `ccSessionId`/`transcript_path` current
- * across `/clear` and compaction — with a project brief instead of a feature
- * one. The digest re-grounds the agent on what is still unestablished, which is
- * exactly the state a compaction is most likely to have dropped.
+ * `SessionStart` for a project-scoped conversation, either kind. Same lifecycle
+ * bookkeeping as the feature path — flip live, keep `ccSessionId`/
+ * `transcript_path` current across `/clear` and compaction — with a
+ * kind-appropriate brief instead of a feature one. The bookkeeping is
+ * kind-agnostic; only the injected context and the event wording are not.
  */
-function handlePrepareSessionStart(
+function handleProjectScopedSessionStart(
   ctx: AppCtx,
   session: SessionRow,
   payload: Record<string, unknown> | undefined,
@@ -147,12 +149,13 @@ function handlePrepareSessionStart(
     typeof payload?.transcript_path === 'string' ? payload.transcript_path : undefined
   const source = typeof payload?.source === 'string' ? payload.source : undefined
 
+  const noun = projectScopedNoun(session.kind)
   const wasLive = getSessionRow(ctx, session.id)?.status === 'live'
   markSessionLive(ctx, session.id, { ccSessionId, transcriptPath })
   if (!wasLive) {
     emitForSession(ctx, session, {
       type: 'session.started',
-      message: source === 'resume' ? 'preparation session live (resumed)' : 'preparation session live',
+      message: source === 'resume' ? `${noun} live (resumed)` : `${noun} live`,
       data: { sessionId: session.id, ccSessionId, transcriptPath, source: source ?? null },
     })
   }
@@ -160,12 +163,12 @@ function handlePrepareSessionStart(
   return {
     hookSpecificOutput: {
       hookEventName: 'SessionStart',
-      additionalContext: prepareStartContext(ctx, session),
+      additionalContext: projectScopedStartContext(ctx, session),
     },
   }
 }
 
-function handlePrepareUserPrompt(
+function handleProjectScopedUserPrompt(
   ctx: AppCtx,
   session: SessionRow,
   payload: Record<string, unknown> | undefined,
@@ -175,28 +178,62 @@ function handlePrepareUserPrompt(
   return {
     hookSpecificOutput: {
       hookEventName: 'UserPromptSubmit',
-      additionalContext: `[runcastle] preparation session (project-scoped, no feature)`,
+      additionalContext:
+        session.kind === 'prepare'
+          ? '[runcastle] preparation session (project-scoped, no feature)'
+          : `[runcastle] ${projectScopedNoun(session.kind)}`,
     },
   }
 }
 
-function handlePrepareSessionEnd(ctx: AppCtx, session: SessionRow): unknown {
+function handleProjectScopedSessionEnd(ctx: AppCtx, session: SessionRow): unknown {
   markSessionEnded(ctx, session.id)
   emitForSession(ctx, session, {
     type: 'session.ended',
-    message: 'preparation session ended',
+    message: `${projectScopedNoun(session.kind)} ended`,
     data: { sessionId: session.id },
   })
   return {}
 }
 
-/** What is still unestablished for this project, for the SessionStart digest. */
-function prepareStartContext(ctx: AppCtx, session: SessionRow): string {
+/**
+ * The human noun for a project-scoped session, used in its lifecycle events and
+ * injected labels. It matches what `launchPrepareSession`/`launchProjectSession`
+ * already emit at launch; an unrecognised featureless kind gets the neutral word
+ * rather than being announced as somebody else's session.
+ */
+function projectScopedNoun(kind: SessionKind): string {
+  switch (kind) {
+    case 'prepare':
+      return 'preparation session'
+    case 'project':
+      return 'project session'
+    default:
+      return 'session'
+  }
+}
+
+/**
+ * The `SessionStart` digest for a project-scoped session, per kind.
+ *
+ * Only `prepare` gets the preparation agenda: its whole job is closing the
+ * unestablished keys, and the digest re-grounds it on which are still open —
+ * exactly the state a compaction is most likely to have dropped. A `project`
+ * session gets its scope and nothing else; its real briefing is the injected
+ * system prompt (`renderProjectPrompt`), and handing it the prep agenda made it
+ * open by measuring setup commands instead of talking to the human.
+ */
+function projectScopedStartContext(ctx: AppCtx, session: SessionRow): string {
+  const noun = projectScopedNoun(session.kind)
   const project = session.projectId ? getProjectById(ctx, session.projectId) : null
-  if (!project) return '[runcastle] preparation session — project not found'
+  if (!project) return `[runcastle] ${noun} — project not found`
+
+  const scope = `[runcastle] ${noun} for ${project.name} (${project.repoPath})`
+  if (session.kind !== 'prepare') return scope
+
   const remaining = keysToPrepare(ctx, project)
   return [
-    `[runcastle] preparation session for ${project.name} (${project.repoPath}).`,
+    `${scope}.`,
     remaining.length > 0
       ? `Still unestablished: ${remaining.join(', ')}.`
       : 'Every prepared field currently has a value.',
