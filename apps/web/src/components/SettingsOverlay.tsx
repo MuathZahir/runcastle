@@ -59,6 +59,13 @@ export function SettingsOverlay({
           </button>
         </div>
         <div className="peek-body settings-body">
+          {/* There is no Save button and there never was — values persist the
+              moment a field is left. Nothing said so, which made the whole
+              persistence model unknowable (findings F17.7 / F25.4). */}
+          <div className="settings-autosave">
+            Changes save automatically — there is no Save button. A field commits when you leave it
+            (Enter to commit, Escape to revert), and a dropdown the moment you pick.
+          </div>
           <Section
             title="Global"
             hint="Machine-wide defaults for every project."
@@ -147,7 +154,10 @@ function Field({ row, projectId }: { row: SettingRow; projectId?: string }) {
   const clear = () =>
     projectId && update.mutate({ projectId, key: row.key, value: null })
 
-  const controlId = `set-${row.key}`
+  // Scoped, because most keys appear in BOTH sections. Two controls sharing one
+  // id made every `htmlFor` resolve to the global one, so the per-project fields
+  // had no accessible name at all — an empty a11y tree (findings F17.7).
+  const controlId = `set-${projectId ? 'project' : 'global'}-${row.key}`
   return (
     <div className={`settings-field${row.readOnly ? ' is-locked' : ''}`}>
       <label className="settings-field-head" htmlFor={controlId}>
@@ -195,9 +205,11 @@ function Field({ row, projectId }: { row: SettingRow; projectId?: string }) {
             save(e.target.value)
           }}
         >
+          {/* The stored value is a config identifier ("noSandbox", "inherit");
+              the dropdown reads out what it means (findings F17.7). */}
           {row.options.map((opt) => (
             <option key={opt} value={opt}>
-              {opt}
+              {row.optionLabels[opt] ?? opt}
             </option>
           ))}
         </select>

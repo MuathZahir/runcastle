@@ -17,6 +17,7 @@ export const FIELD_ENV_VAR: Record<string, string> = {
   sandboxImage: 'RUNCASTLE_SANDBOX_IMAGE',
   sessionMcp: 'RUNCASTLE_SESSION_MCP',
   burnConcurrency: 'RUNCASTLE_BURN_CONCURRENCY',
+  burnMaxIterations: 'RUNCASTLE_BURN_MAX_ITERATIONS',
   burnAttempts: 'RUNCASTLE_BURN_ATTEMPTS',
   burnConflictAttempts: 'RUNCASTLE_BURN_CONFLICT_ATTEMPTS',
   burnCpus: 'RUNCASTLE_BURN_CPUS',
@@ -61,6 +62,12 @@ interface FieldMeta {
   help: string
   control: ControlKind
   options?: string[]
+  /**
+   * Human wording for an option whose stored value is a config identifier.
+   * `noSandbox` and `inherit` are what the file holds; they are not what a
+   * dropdown should read out (findings F17.7).
+   */
+  optionLabels?: Record<string, string>
 }
 
 const META: Record<string, FieldMeta> = {
@@ -80,6 +87,10 @@ const META: Record<string, FieldMeta> = {
     help: 'Where launched sessions run.',
     control: 'select',
     options: ['docker', 'noSandbox'],
+    optionLabels: {
+      docker: 'Docker container (isolated)',
+      noSandbox: 'No sandbox — run directly on this machine',
+    },
   },
   sandboxImage: {
     label: 'Sandbox image',
@@ -91,6 +102,15 @@ const META: Record<string, FieldMeta> = {
     help: 'inherit — sessions get your own MCP servers (user, project, and plugin) alongside runcastle’s. runcastleOnly — sessions see runcastle’s MCP server and nothing else.',
     control: 'select',
     options: ['inherit', 'runcastleOnly'],
+    optionLabels: {
+      inherit: 'Inherit mine — my servers alongside runcastle’s',
+      runcastleOnly: 'runcastle only — nothing else',
+    },
+  },
+  burnMaxIterations: {
+    label: 'Burn iterations',
+    help: 'Max turns a single burn agent takes within one healthy attempt (1–10) before it is stopped. Distinct from Burn attempts, which restarts a crashed agent.',
+    control: 'number',
   },
   burnConcurrency: {
     label: 'Burn concurrency',
@@ -256,6 +276,8 @@ export interface SettingRow {
   control: ControlKind
   /** Choices for a `select` control (empty otherwise). */
   options: string[]
+  /** Human wording per option value; an option absent here renders verbatim. */
+  optionLabels: Record<string, string>
   /** Not editable — env-locked or git-detected. */
   readOnly: boolean
   /** Changing this needs a server restart (serverPort). */
@@ -332,6 +354,7 @@ export function describeField(field: SettingField, finding?: FindingLike): Setti
     value: toDisplay(field.value),
     control: meta.control,
     options: meta.options ?? [],
+    optionLabels: meta.optionLabels ?? {},
     readOnly,
     restartRequired: field.restartRequired,
     overridden,

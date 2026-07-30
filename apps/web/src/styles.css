@@ -2678,6 +2678,14 @@ details.wp-group-done > summary { cursor: pointer; list-style: revert; }
 .peek.settings { max-width: 620px; }
 .settings-title { color: var(--text); font-size: 13px; font-weight: 600; }
 .settings-body { display: flex; flex-direction: column; gap: 26px; }
+/* the overlay has no Save button; say so rather than leaving it to be guessed */
+.settings-autosave {
+  font-size: 11.5px;
+  line-height: 1.55;
+  color: var(--text-3);
+  border-left: 2px solid var(--accent-line, var(--hairline));
+  padding-left: 10px;
+}
 
 .settings-section { display: flex; flex-direction: column; gap: 14px; }
 .settings-section-head {

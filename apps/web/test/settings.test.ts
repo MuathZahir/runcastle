@@ -54,6 +54,41 @@ describe('describeField', () => {
     expect(row.options).toEqual(['docker', 'noSandbox'])
   })
 
+  /**
+   * Findings F17.7 — the overlay read out config identifiers and one raw
+   * camelCase key amid otherwise humanized labels.
+   */
+  it('reads out what a config identifier means rather than the identifier', () => {
+    const sandbox = describeField(field({ key: 'sandbox', value: 'docker' }))
+    expect(sandbox.optionLabels.noSandbox).toMatch(/no sandbox/i)
+    expect(sandbox.optionLabels.docker).toMatch(/docker/i)
+
+    const mcp = describeField(field({ key: 'sessionMcp', value: 'inherit' }))
+    expect(mcp.optionLabels.inherit).not.toBe('inherit')
+    expect(mcp.optionLabels.runcastleOnly).not.toBe('runcastleOnly')
+  })
+
+  it('labels every option a select offers', () => {
+    for (const key of ['sandbox', 'sessionMcp']) {
+      const row = describeField(field({ key, value: '' }))
+      for (const opt of row.options) expect(row.optionLabels[opt]).toBeTruthy()
+    }
+  })
+
+  it('gives burnMaxIterations a human label instead of printing the key', () => {
+    const row = describeField(field({ key: 'burnMaxIterations', value: 3 }))
+    expect(row.label).toBe('Burn iterations')
+    expect(row.control).toBe('number')
+    expect(row.help).not.toBe('')
+    expect(
+      describeField(field({ key: 'burnMaxIterations', source: 'env', editable: false })).note,
+    ).toBe('Set by RUNCASTLE_BURN_MAX_ITERATIONS')
+  })
+
+  it('leaves model ids to speak for themselves', () => {
+    expect(describeField(field({ key: 'model', value: 'claude-opus-5' })).optionLabels).toEqual({})
+  })
+
   it('renders burnConcurrency as an editable number control with an env-lock note when locked', () => {
     const row = describeField(field({ key: 'burnConcurrency', value: 3 }))
     expect(row.label).toBe('Burn concurrency')
