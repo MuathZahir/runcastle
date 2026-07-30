@@ -178,6 +178,17 @@ export const featureRouter = router({
   // at 1.5s so the async-sniffed localhost URL surfaces once the dev server boots.
   driveInfo: publicProcedure.query(() => git.activeDriveInfo()),
 
+  // How many commits the branch actually carries over its merge target, for the
+  // review summary and the merge confirmation (findings F23). Its own query
+  // because `get` is synchronous and this is a git read; `count` is undefined
+  // when git cannot tell, which the UI must not paint as zero.
+  commitCount: publicProcedure
+    .input(z.object({ featureId: z.string() }))
+    .query(({ ctx, input }) => {
+      const feature = getFeatureRow(ctx, input.featureId)
+      return git.reviewCommitCount(projectForFeature(ctx, feature), feature)
+    }),
+
   // B2 behavior — the git stub throws; the success path (set phase shipped) is
   // wired now so B2 only fills in `mergeFeature`.
   merge: publicProcedure

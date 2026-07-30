@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { trpc } from '../trpc'
 import { defaultBaseBranch, slugPreview } from '../lib/feature-ui'
 import { useToast } from '../lib/toast'
+import { BURN_EXPLAINER, lapExplainer } from '../lib/vocabulary'
 import { Button } from '../ui'
 
 /**
@@ -60,7 +61,8 @@ export function QuickChangeForm({
         <div className="nf-h">What needs changing?</div>
         <div className="nf-sub">
           Too small for a conversation. Describe it once — runcastle turns it into a single ticket
-          you review and burn. No grill session, no spec.
+          you review, then burn. {BURN_EXPLAINER} No grill session (the Q&A that shapes a bigger
+          idea), no spec.
         </div>
 
         <input
@@ -90,7 +92,8 @@ export function QuickChangeForm({
         />
 
         <div className="nf-branch">
-          branch · feature/{slug || '…'} ← {base || '…'} · starts at build, lap 1
+          branch · feature/{slug || '…'} ← {base || '…'} · starts at build,{' '}
+          <span title={lapExplainer(1)}>lap 1</span>
         </div>
 
         <div className="nf-actions">

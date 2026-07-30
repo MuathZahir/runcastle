@@ -83,6 +83,15 @@ export interface DriveInfo {
   devPaneId?: string
   /** First localhost URL the dev server printed, if any (sticky per drive). */
   devUrl?: string
+  /**
+   * Whether the project had a `devCommand` to run at all. A drive is a `git
+   * checkout` plus, optionally, a dev server — and with no command configured
+   * the checkout is the whole of it. The UI needs the two cases apart to stop
+   * claiming "driving now" over a process that was never started (findings F22):
+   * `devPaneId` absent with this `false` means nothing was meant to start,
+   * absent with `true` means the spawn failed and the timeline says why.
+   */
+  devConfigured: boolean
 }
 
 export interface MergeResult {
@@ -124,6 +133,11 @@ const DENY_NONE_ACTIVE = 'No test drive is active'
 /** Branch name for a feature slug. */
 function featureBranch(slug: string): string {
   return `feature/${slug}`
+}
+
+/** The branch a feature merges into: its own base, else the project main line. */
+function mergeTarget(project: Project, feature: Feature): string {
+  return feature.baseBranch ?? project.mainBranch
 }
 
 function git(repoPath: string): SimpleGit {
@@ -701,6 +715,37 @@ export async function branchCommitsAhead(
 }
 
 /**
+ * How many commits the feature branch carries that its base does not, and which
+ * base that is — the honest answer to "what is about to be merged", read from git
+ * rather than from ticket rows (a branch a human or an Iterate session committed
+ * to has commits and no ticket commit rows at all: findings F23).
+ *
+ * The base is `mergeTarget`, the very branch {@link mergeFeature} will merge into,
+ * so the figure the review summary paints cannot drift from what the click does.
+ * `rev-list <base>..<branch>` is merge-base-relative, so a base that moved ahead
+ * underneath the feature does not inflate the count.
+ *
+ * `count` is `undefined` (unknown) rather than `0` when the branch is missing or
+ * git fails: reporting "no commits" for "cannot tell" is the reassuring lie.
+ */
+export async function reviewCommitCount(
+  project: Project,
+  feature: Feature,
+): Promise<{ base: string; count?: number }> {
+  const base = mergeTarget(project, feature)
+  const branch = featureBranch(feature.slug)
+  try {
+    const out = (
+      await git(project.repoPath).raw(['rev-list', '--count', `${base}..${branch}`])
+    ).trim()
+    const n = Number(out)
+    return { base, count: Number.isInteger(n) && n >= 0 ? n : undefined }
+  } catch {
+    return { base }
+  }
+}
+
+/**
  * The commit sha `ref` points at, or `undefined` when it cannot be resolved
  * (unborn branch, missing ref, not a repo). Used to pin a preparation run's
  * findings to the main-branch commit they were measured at.
@@ -1259,6 +1304,8 @@ let testDriveState:
       detachedWorktree?: string
       devPaneId?: string
       devUrl?: string
+      /** Whether the project had a dev command to start (see {@link DriveInfo}). */
+      devConfigured: boolean
     }
   | undefined
 
@@ -1284,6 +1331,7 @@ export function activeDriveInfo(): DriveInfo | null {
     branch: testDriveState.branch,
     devPaneId: testDriveState.devPaneId,
     devUrl: testDriveState.devUrl,
+    devConfigured: testDriveState.devConfigured,
   }
 }
 
@@ -1397,7 +1445,13 @@ export async function testDrive(
 
   const previousBranch = (await g.revparse(['--abbrev-ref', 'HEAD'])).trim()
   await g.checkout(branch)
-  testDriveState = { featureId: feature.id, branch, previousBranch, detachedWorktree }
+  testDriveState = {
+    featureId: feature.id,
+    branch,
+    previousBranch,
+    detachedWorktree,
+    devConfigured: !!project.devCommand,
+  }
 
   emit(ctx, feature.id, {
     type: 'testdrive.started',
@@ -1623,7 +1677,7 @@ async function detectDbDrift(
  * normal flow this only fires when a DIFFERENT feature is being test-driven.
  */
 export async function mergeFeature(project: Project, feature: Feature): Promise<MergeResult> {
-  const target = feature.baseBranch ?? project.mainBranch
+  const target = mergeTarget(project, feature)
 
   if (testDriveState) {
     throw new GateError('Cannot merge while a test drive is active — stop it first')

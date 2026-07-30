@@ -5,6 +5,7 @@ import { useToast } from '../../lib/toast'
 import { useEventLog } from '../../lib/events'
 import { ticketConflictKickoff } from '../../lib/feature-ui'
 import { fmtDuration, fmtTime, shortSha } from '../../lib/format'
+import { BURN_EXPLAINER } from '../../lib/vocabulary'
 import { DimLine, EmptyState, RunStatusChip, TicketStatusChip } from '../../ui'
 import { IconTerminal } from '../../icons'
 import { AgentTranscript } from '../AgentTranscript'
@@ -76,7 +77,7 @@ export function RunBody({
         <EmptyState
           icon={<IconTerminal size={16} />}
           title="No run yet"
-          hint="Burning the tickets starts a run — one agent per ticket, each in its own lane."
+          hint={`${BURN_EXPLAINER} Every ticket gets its own lane here.`}
         />
       </div>
     )

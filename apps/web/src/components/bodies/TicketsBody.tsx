@@ -3,6 +3,7 @@ import type { Ticket } from '@runcastle/core'
 import { trpc } from '../../trpc'
 import { useToast } from '../../lib/toast'
 import { SANDBOX_MODE } from '../../lib/env'
+import { BURN_EXPLAINER } from '../../lib/vocabulary'
 import { shortSha } from '../../lib/format'
 import { Button, DimLine, EmptyState, SectionTitle, TicketStatusChip } from '../../ui'
 import { IconChevronRight, IconDoc } from '../../icons'
@@ -110,6 +111,9 @@ export function TicketsBody({
         <span className="chip chip-neutral" title="sandbox">sandbox · {SANDBOX_MODE}</span>
         <span className="chip chip-neutral" title="model">{model}</span>
       </div>
+      {/* The bar above this ledger says "review, then burn" without ever saying
+          what burning does with them (finding F12/F16). */}
+      <div className="body-hint">{BURN_EXPLAINER}</div>
 
       {total === 0 ? (
         <div className="ledger">

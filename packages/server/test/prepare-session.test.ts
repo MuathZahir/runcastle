@@ -1,5 +1,8 @@
+import { mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { eq } from 'drizzle-orm'
-import { beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { Project, SessionRow } from '@runcastle/core'
 import { isProjectSessionKind } from '@runcastle/core'
 import { events, projects, sessions } from '../src/db/schema'
@@ -11,8 +14,12 @@ import {
   mostRecentResumableProjectSession,
   mostRecentResumableSession,
 } from '../src/launcher/sessions'
+import { launchPrepareSession } from '../src/launcher/launcher'
+import { reconcileStaleSessions } from '../src/launcher/reconcile'
+import { endSession } from '../src/pty/end-session'
 import { emitForSession } from '../src/services/events'
 import { preparedValue } from '../src/services/findings'
+import { preparedAt } from '../src/services/prep'
 import { toolRecordFinding } from '../src/mcp/server'
 import { renderPreparePrompt } from '../src/launcher/artifacts'
 import { makeTestCtx } from './helpers/db'
@@ -183,6 +190,88 @@ describe('record_finding provenance', () => {
   })
 })
 
+/**
+ * The baseline's date. `prepared` is monotonic and undated, so on its own it
+ * cannot be shown to anyone: a baseline established a year ago reads exactly
+ * like one established this morning, and "re-prepare" becomes a guess. Sessions
+ * carry no timestamp, so the date comes from the end event that closed one.
+ */
+describe('preparedAt', () => {
+  /** Rewrite one session's end event to a known instant (tests share a ms). */
+  function stampEnd(sessionId: string, ts: number): void {
+    const row = ctx.db
+      .select()
+      .from(events)
+      .all()
+      .find(
+        (e) =>
+          e.type === 'session.ended' &&
+          (e.data as { sessionId?: string } | null)?.sessionId === sessionId,
+      )
+    if (!row) throw new Error(`no session.ended event for ${sessionId}`)
+    ctx.db.update(events).set({ ts }).where(eq(events.id, row.id)).run()
+  }
+
+  it('has no date to report until a preparation has actually ended', () => {
+    expect(preparedAt(ctx, PROJECT_ID)).toBeNull()
+    prepareSession() // open, so nothing has been established yet
+    expect(preparedAt(ctx, PROJECT_ID)).toBeNull()
+  })
+
+  it('dates the most recent preparation, not the first', () => {
+    const older = prepareSession()
+    endSession(ctx, older.id)
+    stampEnd(older.id, 1_000)
+    const newer = prepareSession()
+    endSession(ctx, newer.id)
+    stampEnd(newer.id, 2_000)
+
+    expect(preparedAt(ctx, PROJECT_ID)).toBe(2_000)
+  })
+
+  /**
+   * How a good many preparations really end: the terminal was still open when
+   * the server stopped, and the next boot closes the row. Counting only the
+   * human's own "end session" would leave those projects prepared, dated by
+   * nothing, and told no conversation was ever on record.
+   */
+  it('counts a session the server closed at boot', () => {
+    prepareSession()
+    expect(reconcileStaleSessions(ctx)).toHaveLength(1)
+
+    expect(preparedAt(ctx, PROJECT_ID)).not.toBeNull()
+  })
+
+  /**
+   * Why this reads sessions and events rather than events alone: a project's
+   * OTHER conversations end on the same project timeline with the same event
+   * type, and an intake session ending must never date the repo's baseline.
+   */
+  it('ignores another kind of project conversation ending', () => {
+    const intake = createSessionRow(ctx, {
+      projectId: PROJECT_ID,
+      kind: 'project',
+      worktreePath: '/wt',
+    })
+    // Emitted directly rather than through endSession: ending a project session
+    // also lands its branch, which wants a real checkout this test has no use for.
+    emitForSession(ctx, intake, {
+      type: 'session.ended',
+      message: 'session ended by user',
+      data: { sessionId: intake.id },
+    })
+
+    expect(preparedAt(ctx, PROJECT_ID)).toBeNull()
+  })
+
+  it('is null for a project that never opened one, and per project', () => {
+    const s = prepareSession()
+    endSession(ctx, s.id)
+    expect(preparedAt(ctx, PROJECT_ID)).not.toBeNull()
+    expect(preparedAt(ctx, 'proj_other')).toBeNull()
+  })
+})
+
 describe('the prepare brief', () => {
   it('lists what is established, with its evidence, and what is still open', () => {
     const out = renderPreparePrompt({
@@ -200,5 +289,85 @@ describe('the prepare brief', () => {
   it('says so plainly when there is nothing left to establish', () => {
     const out = renderPreparePrompt({ project: project(), remainingKeys: [], established: [] })
     expect(out).toContain('Nothing is unset')
+  })
+})
+
+/**
+ * Resuming versus starting over. Reopening a preparation normally continues the
+ * last conversation — nobody should have to re-explain their database. But
+ * re-preparing a drifted baseline is the opposite job: the resumed transcript
+ * already believes every conclusion the new run exists to re-measure, so the
+ * prepared screen's "Start fresh" has to actually drop the resume.
+ *
+ * Asserted at the launch-input seam (`spawn: false` writes the argv it WOULD
+ * have spawned to the timeline) — no terminal is ever started here.
+ */
+describe('launching a preparation, fresh or resumed', () => {
+  const cleanup: string[] = []
+  let prevHome: string | undefined
+  let prevUserProfile: string | undefined
+
+  beforeEach(() => {
+    const home = mkdtempSync(join(tmpdir(), 'rc-prep-home-'))
+    cleanup.push(home)
+    prevHome = process.env.HOME
+    prevUserProfile = process.env.USERPROFILE
+    process.env.HOME = home
+    process.env.USERPROFILE = home
+  })
+
+  afterEach(() => {
+    process.env.HOME = prevHome
+    process.env.USERPROFILE = prevUserProfile
+    for (const d of cleanup) rmSync(d, { recursive: true, force: true })
+    cleanup.length = 0
+  })
+
+  /** The argv of the most recent launch (a relaunch appends a second event). */
+  function launchCommand(): string {
+    const launched = ctx.db
+      .select()
+      .from(events)
+      .all()
+      .filter((e) => e.type === 'session.launched')
+      .at(-1)
+    return String((launched?.data as { command?: string })?.command ?? '')
+  }
+
+  /** An ended conversation with a cc id — the only kind that can be resumed. */
+  function endedConversation(ccSessionId: string): void {
+    const s = prepareSession()
+    ctx.db
+      .update(sessions)
+      .set({ status: 'ended', ccSessionId })
+      .where(eq(sessions.id, s.id))
+      .run()
+  }
+
+  it('picks the last conversation back up by default', async () => {
+    endedConversation('cc-prep-1')
+
+    await launchPrepareSession(ctx, { projectId: PROJECT_ID }, { spawn: false })
+
+    expect(launchCommand()).toContain('--resume cc-prep-1')
+    expect(ctx.db.select().from(events).all().map((e) => e.type)).toContain('session.resumed')
+  })
+
+  it('starts over when asked, leaving the old conversation behind', async () => {
+    endedConversation('cc-prep-1')
+
+    await launchPrepareSession(ctx, { projectId: PROJECT_ID, fresh: true }, { spawn: false })
+
+    expect(launchCommand()).not.toContain('--resume')
+    const types = ctx.db.select().from(events).all().map((e) => e.type)
+    expect(types).not.toContain('session.resumed')
+    // …and the choice is visible on the timeline, which otherwise reads exactly
+    // like a project that had never been prepared at all.
+    const launching = ctx.db
+      .select()
+      .from(events)
+      .all()
+      .find((e) => e.type === 'session.launching')
+    expect((launching?.data as { fresh?: boolean })?.fresh).toBe(true)
   })
 })

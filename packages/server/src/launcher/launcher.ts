@@ -541,11 +541,14 @@ export async function launchSession(
  *
  * Resumes its own previous conversation when there is one, so closing the
  * terminal and reopening it continues where you left off rather than making the
- * human re-explain their database.
+ * human re-explain their database — unless `fresh` is set, which is how
+ * "re-prepare from scratch" is asked for: a baseline that has gone stale wants
+ * re-measuring, and a resumed conversation carries every conclusion the last one
+ * reached, which is exactly what re-measuring is meant to question.
  */
 export async function launchPrepareSession(
   ctx: AppCtx,
-  input: { projectId: string },
+  input: { projectId: string; fresh?: boolean },
   opts: LaunchSessionOptions = {},
 ): Promise<LaunchSessionResult> {
   const project = requireProjectById(ctx, input.projectId)
@@ -558,12 +561,24 @@ export async function launchPrepareSession(
     worktreePath: project.repoPath,
   })
 
-  const resumeSessionId = mostRecentResumableProjectSession(ctx, project.id, 'prepare')?.ccSessionId
+  const resumeSessionId = input.fresh
+    ? undefined
+    : mostRecentResumableProjectSession(ctx, project.id, 'prepare')?.ccSessionId
 
   emitProject(ctx, project.id, {
+    // A deliberate fresh start reads exactly like a first-ever preparation on
+    // the timeline unless it says so — and it is the one the human chose over
+    // the cheaper resume, which is worth being able to see later.
     type: 'session.launching',
-    message: 'launching preparation session',
-    data: { sessionId: session.id, kind: 'prepare', worktreePath: project.repoPath },
+    message: input.fresh
+      ? 'launching preparation session from scratch'
+      : 'launching preparation session',
+    data: {
+      sessionId: session.id,
+      kind: 'prepare',
+      worktreePath: project.repoPath,
+      ...(input.fresh ? { fresh: true } : {}),
+    },
   })
   if (resumeSessionId) {
     emitProject(ctx, project.id, {

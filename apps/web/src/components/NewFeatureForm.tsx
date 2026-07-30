@@ -3,12 +3,15 @@ import { trpc } from '../trpc'
 import { defaultBaseBranch, slugPreview } from '../lib/feature-ui'
 import { TALK_IT_THROUGH } from '../lib/project-workspace'
 import { useToast } from '../lib/toast'
+import { GRILL_EXPLAINER } from '../lib/vocabulary'
 import { Button } from '../ui'
 
 /**
  * The new-feature form (app-redesign) — owns the whole workspace while open.
  * Name it, and starting it creates the feature AND opens a grill session so the
- * ideation body is live the moment you land on it.
+ * ideation body is live the moment you land on it. Or create it and stop there:
+ * an idea worth writing down is not always an idea you want to talk about right
+ * now (finding F15), and the session-less ideation body already invites you back.
  *
  * The form demands a title up front, which means it demands the human has already
  * cut their thought into a feature — so it carries the escape hatch for when they
@@ -45,27 +48,26 @@ export function NewFeatureForm({
   const effectiveBase = base || defaultBase
 
   const launch = trpc.feature.launchSession.useMutation()
+  // Which button is in flight, for its own pending label — both actions run the
+  // same create; only the submit call site decides whether a session follows.
+  const [starting, setStarting] = useState<'grill' | 'alone' | null>(null)
   const create = trpc.feature.create.useMutation({
-    onSuccess: async (feature) => {
-      await utils.feature.list.invalidate()
-      // Best-effort: open a grill session so the ideation body lands live.
-      launch.mutate(
-        { featureId: feature.id, kind: 'ideation' },
-        { onSettled: () => void utils.feature.get.invalidate({ id: feature.id }) },
-      )
-      onCreated(feature.id)
+    onError: (e) => {
+      setStarting(null)
+      toast.push(e.message)
     },
-    onError: (e) => toast.push(e.message),
   })
 
   const slug = slugPreview(title)
   const busy = create.isPending || launch.isPending
-  const submit = () => {
+  const submit = (withGrill: boolean) => {
     const t = title.trim()
     // Don't create while the branch list is still loading — `effectiveBase` isn't
     // known yet, and creating now would silently fork off main.
-    if (t && !branchesQ.isPending)
-      create.mutate({
+    if (!t || branchesQ.isPending || busy) return
+    setStarting(withGrill ? 'grill' : 'alone')
+    create.mutate(
+      {
         projectId,
         title: t,
         oneLiner: oneLiner.trim(),
@@ -74,7 +76,20 @@ export function NewFeatureForm({
         // contradicts the "current branch" default displayed in the picker.
         // Empty only before the branch list loads — then main really is the base.
         baseBranch: effectiveBase || undefined,
-      })
+      },
+      {
+        onSuccess: async (feature) => {
+          await utils.feature.list.invalidate()
+          // Best-effort: open a grill session so the ideation body lands live.
+          if (withGrill)
+            launch.mutate(
+              { featureId: feature.id, kind: 'ideation' },
+              { onSettled: () => void utils.feature.get.invalidate({ id: feature.id }) },
+            )
+          onCreated(feature.id)
+        },
+      },
+    )
   }
 
   return (
@@ -83,8 +98,8 @@ export function NewFeatureForm({
         <div className="nf-kick">NEW FEATURE</div>
         <div className="nf-h">What are we building?</div>
         <div className="nf-sub">
-          Name it — runcastle opens a grill session so you and Claude shape the idea before any code
-          is written.
+          {GRILL_EXPLAINER} Name it and start one now — or create the feature and start the session
+          when you are ready for it.
         </div>
 
         <input
@@ -94,7 +109,7 @@ export function NewFeatureForm({
           placeholder="e.g. Slack notifications on failed runs"
           autoFocus
           onKeyDown={(e) => {
-            if (e.key === 'Enter') submit()
+            if (e.key === 'Enter') submit(true)
             if (e.key === 'Escape') onCancel()
           }}
         />
@@ -105,7 +120,7 @@ export function NewFeatureForm({
           onChange={(e) => setOneLiner(e.target.value)}
           placeholder="one-liner (optional) — what & why in a sentence"
           onKeyDown={(e) => {
-            if (e.key === 'Enter') submit()
+            if (e.key === 'Enter') submit(true)
             if (e.key === 'Escape') onCancel()
           }}
         />
@@ -160,11 +175,19 @@ export function NewFeatureForm({
             Cancel
           </Button>
           <Button
+            variant="ghost"
+            onClick={() => submit(false)}
+            disabled={!title.trim() || busy || branchesQ.isPending}
+            title="Create the feature and stop there — the grill session waits for you on the ideation screen"
+          >
+            {starting === 'alone' ? 'Creating…' : 'Create without starting'}
+          </Button>
+          <Button
             variant="solid"
-            onClick={submit}
+            onClick={() => submit(true)}
             disabled={!title.trim() || busy || branchesQ.isPending}
           >
-            {busy ? 'Starting…' : 'Start grill session'}
+            {starting === 'grill' ? 'Starting…' : 'Start grill session'}
           </Button>
         </div>
       </div>

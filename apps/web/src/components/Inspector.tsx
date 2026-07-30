@@ -6,6 +6,7 @@ import { useEventLog } from '../lib/events'
 import type { DocSummary, GateState } from '../lib/api'
 import { PHASE_LABELS, undoableOverride } from '../lib/feature-ui'
 import { relTime } from '../lib/format'
+import { GATE_EXPLAINER } from '../lib/vocabulary'
 import { Button, DimLine } from '../ui'
 import { IconCheck, IconDoc } from '../icons'
 import { DocPeek } from './DocPeek'
@@ -146,6 +147,9 @@ function CurrentGate({
   return (
     <section className="insp-section">
       <div className="insp-cap">Current gate</div>
+      {/* "G4 / Tickets terminal" says nothing about why the pipeline is holding
+          still, or who it is holding for (finding F16). */}
+      <div className="insp-hint">{GATE_EXPLAINER}</div>
       {parsePhase(phase) === null ? (
         // `nextGate` cannot place an unrecognized phase, so it returns no gate —
         // which reads identically to "shipped". Say which it is (findings F19).

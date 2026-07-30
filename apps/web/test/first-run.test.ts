@@ -1,0 +1,55 @@
+import { describe, expect, it } from 'vitest'
+import { firstSetupStep, wizardSteps, type ProbeLike } from '../src/lib/first-run'
+
+/**
+ * The wizard's promise to a first-time user: nothing was skipped behind your
+ * back. Every assertion here is about that — a step the host satisfied is still
+ * on the rail, marked passed, saying what it found (finding F13).
+ */
+
+const ok: ProbeLike = { status: 'ok', detail: 'Ada Lovelace <ada@example.com>' }
+const unset: ProbeLike = { status: 'unset', detail: 'user.email not set — commits would fail' }
+
+describe('firstSetupStep', () => {
+  it('skips the identity form when git already has one', () => {
+    expect(firstSetupStep(ok)).toBe('afk')
+  })
+
+  it('asks for an identity when it is missing, or while the probe is in flight', () => {
+    expect(firstSetupStep(unset)).toBe('identity')
+    expect(firstSetupStep(undefined)).toBe('identity')
+  })
+})
+
+describe('wizardSteps', () => {
+  it('keeps the whole sequence on the rail, whichever step is showing', () => {
+    expect(wizardSteps('afk', ok).map((s) => s.key)).toEqual(['identity', 'afk', 'project'])
+  })
+
+  // The bug this fixes: landing on AFK burns with "Git identity" listed first and
+  // never shown, so the user cannot tell whether it passed or needs attention.
+  it('shows a step the host satisfied as passed, with what was detected', () => {
+    const [identity, afk] = wizardSteps('afk', ok)
+    expect(identity?.state).toBe('passed')
+    expect(identity?.detected).toBe('detected from git config: Ada Lovelace <ada@example.com>')
+    expect(afk?.state).toBe('current')
+  })
+
+  // An unset probe's detail is a complaint ("commits would fail"), not a value —
+  // a crossed step with nothing detected is just done.
+  it('never dresses a missing identity up as a detected one', () => {
+    const [identity] = wizardSteps('afk', unset)
+    expect(identity?.state).toBe('done')
+    expect(identity?.detected).toBeUndefined()
+  })
+
+  it('claims nothing is passed on the step the user is being shown', () => {
+    const rows = wizardSteps('identity', unset)
+    expect(rows[0]?.detected).toBeUndefined()
+    expect(rows.map((s) => s.state)).toEqual(['current', 'todo', 'todo'])
+  })
+
+  it('walks forward as the user advances', () => {
+    expect(wizardSteps('project', unset).map((s) => s.state)).toEqual(['done', 'done', 'current'])
+  })
+})
