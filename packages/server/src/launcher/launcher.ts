@@ -482,7 +482,7 @@ export async function launchSession(
     project,
     config: ctx.config,
     waypoint,
-    ...(plan.lap ? { lap: plan.lap } : {}),
+    lap: plan.lap,
   })
   const serverUrl = serverUrlFor(ctx.config)
 

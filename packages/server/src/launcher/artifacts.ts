@@ -350,7 +350,7 @@ export function renderRevisitPrompt(feature: Feature, lap?: number): string {
     // used to be rendered into lap sessions too, flatly contradicting the lap
     // briefing that had just told them to complete_phase through to tickets (F2).
     lap
-      ? `- DO call \`complete_phase\` — this lap advances ideation → spec → tickets, and only you can.`
+      ? '- DO call `complete_phase` — this lap advances ideation → spec → tickets, and only you can.'
       : '- Do NOT call `complete_phase` — a revisit never moves the pipeline.',
     '- Do NOT touch `done`/`burning` tickets; if done work is now wrong, emit a new ticket that fixes it.',
     '- Docs first, tickets second: capture the decision prose before any ticket surgery.',
@@ -660,9 +660,9 @@ export function renderSettings(hookClient: string, kind?: SessionKind): SessionS
       })),
       UserPromptSubmit: [{ hooks: [cmd('user-prompt')] }],
       SessionEnd: [{ hooks: [cmd('session-end')] }],
-      ...(kind && !guardsEdits(kind)
-        ? {}
-        : { PreToolUse: [{ matcher: EDIT_TOOL_MATCHER, hooks: [cmd('pre-tool')] }] }),
+      ...(kind === undefined || guardsEdits(kind)
+        ? { PreToolUse: [{ matcher: EDIT_TOOL_MATCHER, hooks: [cmd('pre-tool')] }] }
+        : {}),
     },
   }
 }

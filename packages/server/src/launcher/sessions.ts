@@ -260,15 +260,9 @@ export function planKickoff(input: {
   kickoffLine?: string
 }): KickoffPlan {
   const lapBriefing = input.lap > 1 ? lapKickoff(input.lap) : undefined
-  if (input.kickoffLine) {
-    return input.kickoffLine === lapBriefing
-      ? { line: input.kickoffLine, explicit: true, lap: input.lap }
-      : { line: input.kickoffLine, explicit: true }
-  }
-  if (lapBriefing && input.kind === 'ideation') {
-    return { line: lapBriefing, explicit: true, lap: input.lap }
-  }
-  return { explicit: false }
+  const line = input.kickoffLine ?? (input.kind === 'ideation' ? lapBriefing : undefined)
+  if (!line) return { explicit: false }
+  return { line, explicit: true, lap: line === lapBriefing ? input.lap : undefined }
 }
 
 /**
@@ -298,7 +292,10 @@ export function resumeKickoffLine(kind: SessionKind): string {
  * stashes an override here BEFORE spawning; `scheduleKickoff` consumes it when
  * the session goes live (kickoff is scheduled from `markSessionLive`, decoupled
  * from launch by the SessionStart hook, so the override must survive the gap).
- * Cleared on consume and on session end so the map never grows unbounded.
+ *
+ * An entry OUTLIVES its consumption — it is the durable record of what this
+ * terminal was opened to say, which `resendKickoff` needs verbatim (F6) — and is
+ * dropped when the session ends, so the map never grows unbounded.
  */
 const pendingKickoffOverrides = new Map<string, string>()
 

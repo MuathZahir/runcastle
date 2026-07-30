@@ -269,9 +269,9 @@ function handlePreToolUse(
   const denial = evaluateEditGuard({
     kind: session.kind,
     worktreePath: session.worktreePath,
-    ...(toolName ? { toolName } : {}),
-    ...(path ? { filePath: path } : {}),
-    ...(feature ? { featureSlug: feature.slug } : {}),
+    toolName,
+    filePath: path,
+    featureSlug: feature?.slug,
   })
   return denial ? editDenyResponse(denial) : {}
 }
