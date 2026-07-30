@@ -113,6 +113,126 @@ describe('nextStep — Resume vs Start wording for the grill', () => {
 })
 
 /**
+ * Next-step-bar affordance audit — the bar never counsels the human to do the
+ * agent's job. While a session is live the bar is a status line: no primary, no
+ * secondaries, because the session agent promotes the phase itself. The live
+ * check therefore wins over the gate check — `decisions.md` exists minutes into
+ * a grill, and the old precedence flipped the bar to "Promote the idea"
+ * mid-conversation. With no session live, a satisfied gate keeps `advance` as a
+ * quiet escape hatch behind the Resume/Start grill primary.
+ */
+describe('nextStep — live sessions go status-only', () => {
+  const auditFull = (opts: {
+    phase?: string
+    live?: boolean
+    satisfied?: boolean
+    gateId?: string
+    tickets?: number
+  }): FeatureFull =>
+    ({
+      feature: { id: 'f1', phase: opts.phase ?? 'ideation', mapped: false, status: 'active' },
+      tickets: Array.from({ length: opts.tickets ?? 0 }, (_, i) => ({
+        id: `t${i}`,
+        status: 'pending',
+        commits: [],
+      })),
+      sessions: opts.live ? [{ id: 's1', status: 'live', kind: 'ideation' }] : [],
+      runs: [],
+      gate: {
+        next: { id: opts.gateId ?? 'G1' },
+        satisfied: opts.satisfied ?? false,
+        reason: null,
+      },
+    }) as unknown as FeatureFull
+
+  const kinds = (ns: ReturnType<typeof nextStep>) =>
+    [ns.primary, ...ns.secondary].map((a) => a?.kind)
+
+  it('shows ideation status-only while a grill is live, even once G1 is satisfied', () => {
+    const ns = nextStep(auditFull({ live: true, satisfied: true }), { driving: false })
+    expect(ns.kick).toBe('GRILL LIVE')
+    expect(ns.primary).toBeUndefined()
+    expect(ns.secondary).toEqual([])
+    expect(kinds(ns)).not.toContain('advance')
+  })
+
+  it('demotes the ideation promotion to a secondary once the grill has ended', () => {
+    const ns = nextStep(auditFull({ satisfied: true }), { driving: false })
+    expect(ns.primary).toEqual({ label: 'Start grill session', kind: 'startGrill' })
+    expect(ns.secondary).toEqual([{ label: 'Promote to spec', kind: 'advance' }])
+  })
+
+  it('says Resume on the idle satisfied-gate primary when the conversation survives', () => {
+    const full = auditFull({ satisfied: true })
+    const resumable = {
+      ...full,
+      sessions: [{ id: 's1', status: 'ended', kind: 'ideation', ccSessionId: 'cc-1' }],
+    } as unknown as FeatureFull
+    const ns = nextStep(resumable, { driving: false })
+    expect(ns.primary).toEqual({ label: 'Resume grill session', kind: 'startGrill' })
+    expect(ns.secondary).toEqual([{ label: 'Promote to spec', kind: 'advance' }])
+  })
+
+  it('shows spec status-only while a session is live, even once the spec exists', () => {
+    const ns = nextStep(auditFull({ phase: 'spec', gateId: 'G2', live: true, satisfied: true }), {
+      driving: false,
+    })
+    expect(ns.kick).toBe('GRILL LIVE')
+    expect(ns.title).toBe('Writing the spec')
+    expect(ns.primary).toBeUndefined()
+    expect(ns.secondary).toEqual([])
+  })
+
+  it('demotes the spec approval to a secondary once the session has ended', () => {
+    const ns = nextStep(auditFull({ phase: 'spec', gateId: 'G2', satisfied: true }), {
+      driving: false,
+    })
+    expect(ns.primary).toEqual({ label: 'Open grill', kind: 'startGrill' })
+    expect(ns.secondary).toEqual([{ label: 'Approve spec → tickets', kind: 'advance' }])
+  })
+
+  it('keeps Burn primary at tickets while live — emit_tickets lands one batch', () => {
+    const live = nextStep(auditFull({ phase: 'tickets', gateId: 'G3', live: true, tickets: 2 }), {
+      driving: false,
+    })
+    expect(live.primary).toEqual({ label: 'Burn 2 tickets', kind: 'burn' })
+    expect(live.secondary).toEqual([])
+
+    const idle = nextStep(auditFull({ phase: 'tickets', gateId: 'G3', tickets: 2 }), {
+      driving: false,
+    })
+    expect(idle.primary).toEqual({ label: 'Burn 2 tickets', kind: 'burn' })
+    expect(idle.secondary).toEqual([{ label: 'Revisit', kind: 'revisit' }])
+  })
+
+  it('waits status-only for the first tickets while the session is emitting them', () => {
+    const ns = nextStep(auditFull({ phase: 'tickets', gateId: 'G3', live: true }), {
+      driving: false,
+    })
+    expect(ns.kick).toBe('WAITING')
+    expect(ns.title).toBe('Emitting tickets')
+    expect(ns.primary).toBeUndefined()
+    expect(ns.secondary).toEqual([])
+  })
+
+  it('still offers a grill to emit the first tickets when nothing is live', () => {
+    const ns = nextStep(auditFull({ phase: 'tickets', gateId: 'G3' }), { driving: false })
+    expect(ns.primary).toEqual({ label: 'Open grill to emit tickets', kind: 'startGrill' })
+  })
+
+  it('never offers the scroll-to-terminal action in any live state', () => {
+    for (const phase of ['ideation', 'spec', 'tickets']) {
+      for (const tickets of [0, 2]) {
+        const ns = nextStep(auditFull({ phase, live: true, satisfied: true, tickets }), {
+          driving: false,
+        })
+        expect(kinds(ns)).not.toContain('openGrill')
+      }
+    }
+  })
+})
+
+/**
  * Laps ticket 3 (ADR-0010 §3) — the review bar offers three verbs: Fix (the
  * Burn primary a pending ticket promotes), Rethink (starts lap N+1, hidden
  * while a session is live) and Merge & ship. Tested at the pure `nextStep`
