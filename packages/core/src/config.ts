@@ -325,9 +325,14 @@ export function resolvePreparedSettings(
 
 /**
  * Resolve the model for one pipeline step (issue #48). Pure: the chain is
- * `runOverride ?? stepModels[step] ?? project.model ?? global.model`, so a
- * scripted/smoke run override wins over a per-step override, which wins over a
- * per-project override, which wins over the global default.
+ * `runOverride ?? project.model ?? stepModels[step] ?? global.model`, so a
+ * scripted/smoke run override wins over a per-project override, which wins over
+ * a global per-step override, which wins over the global default.
+ *
+ * The global values — `model` and the `stepModels` matrix — are the machine-wide
+ * default setup; a project's own `model` is an explicit "this repo runs on that
+ * model", so it beats them all. There is deliberately no per-project *per-step*
+ * override: the single project `model` is the whole per-project surface.
  */
 export function resolveModel(
   step: ModelStep,
@@ -335,5 +340,5 @@ export function resolveModel(
   project?: { model?: string | null } | null,
   runOverride?: string | null,
 ): string {
-  return runOverride ?? config.stepModels[step] ?? project?.model ?? config.model
+  return runOverride ?? project?.model ?? config.stepModels[step] ?? config.model
 }

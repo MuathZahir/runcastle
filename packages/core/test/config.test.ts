@@ -109,7 +109,7 @@ describe('RuncastleConfig — burn iteration + setup knobs', () => {
   })
 })
 
-describe('resolveModel — chain runOverride ?? stepModels[step] ?? project.model ?? global.model', () => {
+describe('resolveModel — chain runOverride ?? project.model ?? stepModels[step] ?? global.model', () => {
   const config = {
     model: 'global-default',
     stepModels: { implement: 'step-implement', smoke: 'step-smoke' },
@@ -123,8 +123,13 @@ describe('resolveModel — chain runOverride ?? stepModels[step] ?? project.mode
     expect(resolveModel('ideation', config, { model: 'project-model' })).toBe('project-model')
   })
 
-  it('a step override wins over a project override', () => {
-    expect(resolveModel('implement', config, { model: 'project-model' })).toBe('step-implement')
+  it('a project override wins over a global step override', () => {
+    expect(resolveModel('implement', config, { model: 'project-model' })).toBe('project-model')
+  })
+
+  it('a global step override applies to a project that sets no model of its own', () => {
+    expect(resolveModel('implement', config, { model: null })).toBe('step-implement')
+    expect(resolveModel('implement', config)).toBe('step-implement')
   })
 
   it('a run override wins over everything', () => {
