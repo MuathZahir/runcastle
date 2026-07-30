@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { trpc } from '../trpc'
+import { pathPlaceholder } from '../lib/platform'
 import { IconBranch, IconChevronRight, IconFolder } from '../icons'
 import { Button, DimLine } from '../ui'
 
@@ -18,16 +19,26 @@ import { Button, DimLine } from '../ui'
  * paths, so nothing here branches on platform or splits on a separator.
  */
 export function DirectoryPicker({
+  initialPath,
   onPick,
   onCancel,
 }: {
+  /**
+   * What the caller's path field already holds. The picker used to ignore it
+   * and always open at home, so a half-typed path meant navigating back to it
+   * by hand (findings F17.3).
+   */
+  initialPath?: string
   onPick: (path: string) => void
   onCancel: () => void
 }) {
   // `undefined` asks the server for its default (the user's home directory), so
   // the client never has to know what home is.
-  const [dir, setDir] = useState<string | undefined>(undefined)
+  const [dir, setDir] = useState<string | undefined>(initialPath?.trim() || undefined)
   const [showHidden, setShowHidden] = useState(false)
+  // The path box's draft. It follows navigation (so it always shows where you
+  // are) but a typed edit wins until it is committed or abandoned.
+  const [typed, setTyped] = useState<string | null>(null)
 
   const roots = trpc.project.roots.useQuery()
   const browse = trpc.project.browse.useQuery(
@@ -47,6 +58,11 @@ export function DirectoryPicker({
 
   const data = browse.data
   const current = data?.dir ?? dir
+
+  const navigate = (path: string) => {
+    setTyped(null)
+    setDir(path)
+  }
 
   return (
     <div className="peek-backdrop" onClick={onCancel}>
@@ -68,7 +84,7 @@ export function DirectoryPicker({
           <Button
             variant="ghost"
             className="dir-up"
-            onClick={() => data?.parent && setDir(data.parent)}
+            onClick={() => data?.parent && navigate(data.parent)}
             disabled={!data?.parent}
             aria-label="Up one level"
             title="Up one level"
@@ -79,7 +95,7 @@ export function DirectoryPicker({
             {(data?.crumbs ?? []).map((crumb, i) => (
               <span key={crumb.path} className="dir-crumb-wrap">
                 {i > 0 && <IconChevronRight size={11} />}
-                <button className="dir-crumb" onClick={() => setDir(crumb.path)}>
+                <button className="dir-crumb" onClick={() => navigate(crumb.path)}>
                   {crumb.name}
                 </button>
               </span>
@@ -95,13 +111,39 @@ export function DirectoryPicker({
           </label>
         </div>
 
+        {/* Typing a path was the fast way in and the dialog did not offer it —
+            deep directories cost eight clicks (findings F17.3). */}
+        <div className="dir-path-row">
+          <label className="dir-path-label" htmlFor="dir-path-input">
+            Path
+          </label>
+          <input
+            id="dir-path-input"
+            className="dir-path-input mono"
+            spellCheck={false}
+            value={typed ?? current ?? ''}
+            placeholder={pathPlaceholder()}
+            onChange={(e) => setTyped(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && typed !== null) navigate(typed.trim())
+              // Escape abandons the edit and shows where we actually are; the
+              // dialog's own Escape-to-close only applies once it is not being
+              // typed into.
+              if (e.key === 'Escape' && typed !== null) {
+                e.stopPropagation()
+                setTyped(null)
+              }
+            }}
+          />
+        </div>
+
         <div className="dir-picker-body">
           <div className="dir-rail">
             {(roots.data ?? []).map((root) => (
               <button
                 key={root.path}
                 className={`dir-rail-item${current === root.path ? ' is-active' : ''}`}
-                onClick={() => setDir(root.path)}
+                onClick={() => navigate(root.path)}
                 title={root.path}
               >
                 <IconFolder size={13} />
@@ -117,14 +159,15 @@ export function DirectoryPicker({
               <DimLine>Loading…</DimLine>
             ) : (data?.entries.length ?? 0) === 0 ? (
               <DimLine>
-                No subfolders here{showHidden ? '' : ' (hidden folders are filtered)'}.
+                No subfolders here
+                {showHidden ? '' : ' (hidden folders, junctions and node_modules are filtered)'}.
               </DimLine>
             ) : (
               (data?.entries ?? []).map((entry) => (
                 <button
                   key={entry.path}
                   className={`dir-item${entry.isRepo ? ' is-repo' : ''}`}
-                  onClick={() => setDir(entry.path)}
+                  onClick={() => navigate(entry.path)}
                   // A repo is usually the destination, so let a double-click
                   // both enter and commit it in one gesture.
                   onDoubleClick={() => entry.isRepo && onPick(entry.path)}

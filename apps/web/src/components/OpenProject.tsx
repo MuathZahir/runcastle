@@ -1,5 +1,7 @@
 import { useState } from 'react'
 import { trpc } from '../trpc'
+import { pathPlaceholder } from '../lib/platform'
+import { repoOpenFailure } from '../lib/projects'
 import { useToast } from '../lib/toast'
 import { LogoMark } from '../icons'
 import { Button } from '../ui'
@@ -24,6 +26,9 @@ export function OpenProject({
 }) {
   const [repoPath, setRepoPath] = useState('')
   const [picking, setPicking] = useState(false)
+  // The last rejected path, so the hint names the folder the user actually
+  // tried rather than whatever the field says by the time they read it.
+  const [attempted, setAttempted] = useState('')
   const toast = useToast()
   const utils = trpc.useUtils()
 
@@ -33,13 +38,21 @@ export function OpenProject({
       toast.push(`opened ${project.name} on ${project.mainBranch}`, 'info')
       onOpened(project.id)
     },
-    onError: (e) => toast.push(e.message),
+    // No toast: a rejected path is a fact about the field two inches away, and
+    // a corner toast that expires is the wrong place for it (findings F17.2).
+    // `open.error` renders inline below instead.
+    onError: () => undefined,
   })
 
   const submit = (override?: string) => {
     const path = (override ?? repoPath).trim()
-    if (path) open.mutate({ repoPath: path })
+    if (!path) return
+    setAttempted(path)
+    open.reset()
+    open.mutate({ repoPath: path })
   }
+
+  const failure = open.error ? repoOpenFailure(open.error.message, attempted) : null
 
   /**
    * Picking commits: "Open this folder" is already the user's confirmation, so
@@ -78,9 +91,11 @@ export function OpenProject({
             className="op-input mono"
             value={repoPath}
             onChange={(e) => setRepoPath(e.target.value)}
-            placeholder="/path/to/your/repo"
+            placeholder={pathPlaceholder()}
             autoFocus
             spellCheck={false}
+            aria-invalid={!!failure}
+            aria-describedby={failure ? 'op-repo-error' : undefined}
             onKeyDown={(e) => {
               if (e.key === 'Enter') submit()
               if (e.key === 'Escape' && !firstRun) onCancel()
@@ -90,10 +105,17 @@ export function OpenProject({
             Browse…
           </Button>
         </div>
-        <div className="op-hint">
-          Browse your machine, or paste a path. The default branch is detected
-          automatically when the project opens.
-        </div>
+        {failure ? (
+          <div className="op-error" id="op-repo-error" role="alert">
+            <div className="op-error-msg">{failure.message}</div>
+            {failure.hint && <div className="op-error-hint">{failure.hint}</div>}
+          </div>
+        ) : (
+          <div className="op-hint">
+            Browse your machine, or paste a path. The default branch is detected
+            automatically when the project opens.
+          </div>
+        )}
 
         <div className="op-actions">
           {!firstRun && (
@@ -111,7 +133,13 @@ export function OpenProject({
         </div>
       </div>
 
-      {picking && <DirectoryPicker onPick={onPick} onCancel={() => setPicking(false)} />}
+      {picking && (
+        <DirectoryPicker
+          initialPath={repoPath}
+          onPick={onPick}
+          onCancel={() => setPicking(false)}
+        />
+      )}
     </div>
   )
 }

@@ -120,16 +120,31 @@ describe('browseDir', () => {
     expect(() => browseDir(join(root, 'definitely-not-here'))).toThrow(/does not exist/)
   })
 
-  it('follows a symlink to a directory and tags it', () => {
+  it('follows a symlink to a directory and tags it, once Hidden is on', () => {
     const link = join(root, 'z-link')
     try {
       symlinkSync(join(root, 'a-repo'), link, 'junction')
     } catch {
       return // Unprivileged Windows without Developer Mode — nothing to assert.
     }
-    const entry = browseDir(root).entries.find((e) => e.name === 'z-link')
+    const entry = browseDir(root, true).entries.find((e) => e.name === 'z-link')
     expect(entry?.isSymlink).toBe(true)
     expect(entry?.isRepo).toBe(true)
+    rmSync(link, { recursive: true, force: true })
+  })
+
+  it('hides junctions and symlinked directories with Hidden unchecked', () => {
+    // Windows fills a home directory with compatibility junctions that are not
+    // where anything lives; they were pure noise in the picker (findings F17.3).
+    const link = join(root, 'z-link')
+    try {
+      symlinkSync(join(root, 'a-repo'), link, 'junction')
+    } catch {
+      return
+    }
+    expect(browseDir(root).entries.map((e) => e.name)).not.toContain('z-link')
+    // The real directory it points at is still listed — nothing is unreachable.
+    expect(browseDir(root).entries.map((e) => e.name)).toContain('a-repo')
     rmSync(link, { recursive: true, force: true })
   })
 })

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { aggregateRuns, initialView, projectStats } from '../src/lib/projects'
+import { aggregateRuns, initialView, projectStats, repoOpenFailure } from '../src/lib/projects'
 import type { FeatureListItem } from '../src/lib/api'
 import type { Project } from '../src/lib/api'
 
@@ -94,5 +94,35 @@ describe('aggregateRuns', () => {
     const b = projectStats([feat({ activeRun: true })])
     const c = projectStats([])
     expect(aggregateRuns([a, b, c])).toBe(3)
+  })
+})
+
+/**
+ * Findings F17.2 — repo-open failures arrived as auto-dismissing toasts in the
+ * far corner, with no hint for the commonest one of all.
+ */
+describe('repoOpenFailure', () => {
+  it('offers git init for a folder that is not a repository', () => {
+    const f = repoOpenFailure('not a git repository: /tmp/notes', '/tmp/notes')
+    expect(f.offerGitInit).toBe(true)
+    expect(f.hint).toContain('git init')
+    expect(f.hint).toContain('/tmp/notes')
+  })
+
+  it('points at Browse when the path is not there at all', () => {
+    const f = repoOpenFailure('path does not exist: /tmp/typo', '/tmp/typo')
+    expect(f.offerGitInit).toBe(false)
+    expect(f.hint).toContain('Browse')
+  })
+
+  it('passes an unrecognised failure through with no invented advice', () => {
+    const f = repoOpenFailure('EACCES: permission denied', '/root/secret')
+    expect(f.message).toBe('EACCES: permission denied')
+    expect(f.hint).toBeNull()
+    expect(f.offerGitInit).toBe(false)
+  })
+
+  it('still reads sensibly when the attempted path is unknown', () => {
+    expect(repoOpenFailure('not a git repository', '')?.hint).toContain('that folder')
   })
 })
