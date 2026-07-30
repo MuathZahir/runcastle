@@ -1,4 +1,6 @@
-import type { WorkflowDef } from '@runcastle/core'
+import { mkdirSync, writeFileSync } from 'node:fs'
+import { join } from 'node:path'
+import type { Feature, Project, SessionKind, WorkflowDef } from '@runcastle/core'
 import { newId } from '@runcastle/core'
 import { eq } from 'drizzle-orm'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -7,7 +9,8 @@ import type { AppCtx } from '../src/db/types'
 import { GateError } from '../src/errors'
 import { createSessionRow, lapKickoff, markSessionEnded } from '../src/launcher/sessions'
 import { listAfter } from '../src/services/events'
-import { burn, rethink } from '../src/services/features'
+import { advance, burn, rethink } from '../src/services/features'
+import { featureDocsDir } from '../src/services/feature-docs'
 import { checkGate } from '../src/services/gates'
 import { getFeatureRow } from '../src/services/repo'
 import { listByFeature, storeTickets, updateTicket } from '../src/services/tickets'
@@ -15,7 +18,7 @@ import { createCallerFactory } from '../src/trpc/context'
 import { appRouter } from '../src/trpc/router'
 import { workflowRegistry } from '../src/workflows/registry'
 import { makeTestCtx } from './helpers/db'
-import { seedFeature, seedProject } from './helpers/fixtures'
+import { seedFeature, seedProject, tmpRepo } from './helpers/fixtures'
 
 /**
  * Rethink — the review → ideation loop that starts lap N+1 (ADR-0010 §1,
@@ -162,6 +165,106 @@ describe('G3 (tickets-approved) scopes to the current lap', () => {
     expect(checkGate(ctx, 'all-tickets-terminal', getFeatureRow(ctx, featureId)).satisfied).toBe(
       true,
     )
+  })
+})
+
+/**
+ * G1/G2 scope to the current lap too (findings F4): lap 1's decisions.md and
+ * spec.md never leave the disk, so a file-only check let a fresh lap cross both
+ * gates on the previous lap's artifacts — advancing with no session at all and
+ * dead-ending at `tickets` with nothing to burn.
+ */
+describe('G1/G2 (the doc gates) scope to the current lap', () => {
+  let ctx: AppCtx
+  let project: Project
+
+  beforeEach(async () => {
+    ctx = await makeTestCtx()
+    project = seedProject(ctx, tmpRepo())
+  })
+
+  function writeDoc(feature: Feature, name: string): void {
+    const dir = featureDocsDir(project, feature)
+    mkdirSync(dir, { recursive: true })
+    writeFileSync(join(dir, name), '# doc\n', 'utf8')
+  }
+
+  /** A session of this feature's CURRENT lap — the evidence the lap was worked. */
+  function lapSession(feature: Feature, kind: SessionKind = 'revisit'): void {
+    const s = createSessionRow(ctx, { featureId: feature.id, kind, worktreePath: '/tmp/wt' })
+    markSessionEnded(ctx, s.id)
+  }
+
+  it('lap 1 is unchanged — the file alone satisfies both gates', () => {
+    const feature = seedFeature(ctx, project.id, { slug: 'lap1' })
+    writeDoc(feature, 'decisions.md')
+    writeDoc(feature, 'spec.md')
+
+    expect(checkGate(ctx, 'decisions-file-exists', feature).satisfied).toBe(true)
+    expect(checkGate(ctx, 'spec-file-exists', feature).satisfied).toBe(true)
+  })
+
+  it('refuses both gates on lap 2 while only lap-1 artifacts exist, naming the lap', () => {
+    const feature = seedFeature(ctx, project.id, { slug: 'stale', lap: 2 })
+    writeDoc(feature, 'decisions.md')
+    writeDoc(feature, 'spec.md')
+
+    const g1 = checkGate(ctx, 'decisions-file-exists', feature)
+    expect(g1.satisfied).toBe(false)
+    expect(g1.reason).toContain('decisions.md')
+    expect(g1.reason).toContain('lap 2')
+
+    const g2 = checkGate(ctx, 'spec-file-exists', feature)
+    expect(g2.satisfied).toBe(false)
+    expect(g2.reason).toContain('spec.md')
+    expect(g2.reason).toContain('lap 2')
+  })
+
+  it('opens both gates once a session of the running lap has worked the feature', () => {
+    const feature = seedFeature(ctx, project.id, { slug: 'worked', lap: 2 })
+    writeDoc(feature, 'decisions.md')
+    writeDoc(feature, 'spec.md')
+    lapSession(feature)
+
+    expect(checkGate(ctx, 'decisions-file-exists', feature).satisfied).toBe(true)
+    expect(checkGate(ctx, 'spec-file-exists', feature).satisfied).toBe(true)
+  })
+
+  it('does not count an EARLIER lap`s session as this lap`s work', () => {
+    const feature = seedFeature(ctx, project.id, { phase: 'review', slug: 'lap1-session' })
+    writeDoc(feature, 'decisions.md')
+    lapSession(feature) // a lap-1 session
+    const onLap2 = rethink(ctx, feature.id)
+
+    expect(checkGate(ctx, 'decisions-file-exists', onLap2).satisfied).toBe(false)
+  })
+
+  it('does not count a qa session — asking a question is not working the lap', () => {
+    const feature = seedFeature(ctx, project.id, { slug: 'asked', lap: 2 })
+    writeDoc(feature, 'decisions.md')
+    lapSession(feature, 'qa')
+
+    expect(checkGate(ctx, 'decisions-file-exists', feature).satisfied).toBe(false)
+  })
+
+  it('still refuses when the doc is missing entirely (the file reason wins)', () => {
+    const feature = seedFeature(ctx, project.id, { slug: 'nodoc', lap: 2 })
+    lapSession(feature)
+
+    expect(checkGate(ctx, 'decisions-file-exists', feature).reason).toContain('ideation session')
+  })
+
+  it('features.advance refuses a lap-2 ideation feature with stale artifacts, with the gate`s message', () => {
+    const feature = seedFeature(ctx, project.id, { slug: 'wedged', lap: 2, phase: 'ideation' })
+    writeDoc(feature, 'decisions.md')
+
+    expect(() => advance(ctx, feature.id)).toThrow(GateError)
+    expect(() => advance(ctx, feature.id)).toThrow(/no lap 2 session has worked this feature yet/)
+    expect(getFeatureRow(ctx, feature.id).phase).toBe('ideation')
+
+    // …and crosses once this lap actually had its session.
+    lapSession(feature)
+    expect(advance(ctx, feature.id).phase).toBe('spec')
   })
 })
 
