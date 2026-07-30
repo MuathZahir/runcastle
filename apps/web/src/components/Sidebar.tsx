@@ -199,6 +199,9 @@ export function Sidebar({
           className={`prep-nudge is-${prepRow.variant}`}
           onClick={onOpenPreparation}
           title={prepRow.title}
+          // The badge is a fragment ("8 to establish"); a screen reader should
+          // get the sentence that explains it, not the fragment.
+          aria-label={`${prepRow.label} — ${prepRow.title}`}
         >
           <span className="prep-nudge-dot" aria-hidden="true" />
           <span className="prep-nudge-text">{prepRow.label}</span>

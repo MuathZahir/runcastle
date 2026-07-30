@@ -42,10 +42,13 @@ export function ReviewBody({
   full,
   driving,
   conflict,
+  readonly = false,
 }: {
   full: FeatureFull
   driving: DriveState | null
   conflict: MergeConflictState | null
+  /** Looking back at review on a shipped feature — history, not work. */
+  readonly?: boolean
 }) {
   const { feature, tickets, runs } = full
   // Live-only: the conflict card's "Resolve with agent" spawns a terminal, and
@@ -66,7 +69,14 @@ export function ReviewBody({
 
   return (
     <div className="review-body">
-      <SessionPanel featureId={feature.id} sessions={full.sessions} className="review-session" />
+      {/* A retrospective view of review on a shipped feature must not offer to
+          reopen its conversation (findings F10.6). */}
+      <SessionPanel
+        featureId={feature.id}
+        sessions={full.sessions}
+        className="review-session"
+        showResume={!readonly}
+      />
 
       {conflict && (
         <ConflictCard

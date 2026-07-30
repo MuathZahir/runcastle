@@ -447,6 +447,7 @@ function PhaseBody({
         <GrillBody
           full={full}
           effective={effective}
+          readonly={readonly}
           mapRailCollapsed={mapRailCollapsed}
           onToggleMapRail={onToggleMapRail}
         />
@@ -464,7 +465,7 @@ function PhaseBody({
         <TicketsBody featureId={full.feature.id} readonly={readonly} />
       )
     case 'review':
-      return <ReviewBody full={full} driving={driving} conflict={conflict} />
+      return <ReviewBody full={full} driving={driving} conflict={conflict} readonly={readonly} />
     case 'shipped':
       return <ShippedBody full={full} />
   }

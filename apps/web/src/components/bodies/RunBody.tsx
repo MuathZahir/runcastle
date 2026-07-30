@@ -87,7 +87,14 @@ export function RunBody({
 
   return (
     <div>
-      <SessionPanel featureId={featureId} sessions={sessions} className="tickets-session" />
+      {/* A read-only retrospective view is history: it must not offer to reopen
+          a conversation from a phase the feature has already left (F10.6). */}
+      <SessionPanel
+        featureId={featureId}
+        sessions={sessions}
+        className="tickets-session"
+        showResume={!readonly}
+      />
 
       <div className="body-title">
         <span className="section-title">Run</span>

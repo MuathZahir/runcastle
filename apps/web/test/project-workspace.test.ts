@@ -90,7 +90,8 @@ describe('prepRailRow', () => {
       variant: 'todo',
       count: 8,
       label: 'Prepare this project',
-      badge: '8',
+      // A bare "8" was read as a count of anything at all (findings F17.5).
+      badge: '8 to establish',
     })
   })
 

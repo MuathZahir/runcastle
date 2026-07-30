@@ -162,7 +162,9 @@ export function prepRailRow(
       count: pendingCount,
       stale: staleCount,
       label: 'Prepare this project',
-      badge: pendingCount > 0 ? String(pendingCount) : null,
+      // A bare number said nothing — a rail badge reading "8" beside "Prepare
+      // this project" was read as a count of anything at all (findings F17.5).
+      badge: pendingCount > 0 ? `${pendingCount} to establish` : null,
       title: `${pendingCount} repo fact${pendingCount === 1 ? '' : 's'} nobody has established yet — how to install, how to verify, what is already red`,
     }
   return {

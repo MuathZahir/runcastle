@@ -35,11 +35,14 @@ import { SessionPanel } from '../SessionPanel'
 export function GrillBody({
   full,
   effective,
+  readonly = false,
   mapRailCollapsed,
   onToggleMapRail,
 }: {
   full: FeatureFull
   effective: Phase
+  /** Looking back at a phase the feature has already left — history, not work. */
+  readonly?: boolean
   mapRailCollapsed: boolean
   onToggleMapRail: () => void
 }) {
@@ -80,7 +83,7 @@ export function GrillBody({
             featureId={feature.id}
             sessions={sessions}
             full={full}
-            showResume={!showConvergeResume}
+            showResume={!showConvergeResume && !readonly}
           />
         ) : (
           <div className="grill-panel">
@@ -257,18 +260,23 @@ function MapRail({
 
 /** The map doc's prose, behind a disclosure that starts closed (decision #4). */
 function MapDoc({ sections }: { sections: Record<string, string> }) {
+  const written = MAP_SECTIONS.filter((name) => (sections[name]?.trim() ?? '') !== '')
   return (
     <details className="mapdoc">
       <summary className="mapdoc-summary">Map document</summary>
-      {MAP_SECTIONS.map((name) => {
-        const body = sections[name]?.trim()
-        return (
+      {/* A scaffolded-but-unwritten map used to render as four headings over
+          four em dashes — stubs that look like content is missing rather than
+          not written yet (findings F10.7). One line says it better. */}
+      {written.length === 0 ? (
+        <DimLine>Nothing written yet — the session fills this in as it explores the idea.</DimLine>
+      ) : (
+        written.map((name) => (
           <section className="map-section" key={name}>
             <div className="map-section-title">{name}</div>
-            {body ? <Markdown source={body} /> : <DimLine>—</DimLine>}
+            <Markdown source={sections[name].trim()} />
           </section>
-        )
-      })}
+        ))
+      )}
     </details>
   )
 }

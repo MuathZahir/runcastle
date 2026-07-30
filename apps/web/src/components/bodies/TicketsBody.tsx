@@ -30,8 +30,11 @@ export function TicketsBody({
   readonly = false,
 }: {
   featureId: string
-  // Accepted for API symmetry with the other phase bodies; the ledger is
-  // already read-only, so it changes nothing here.
+  /**
+   * Looking back at a phase the feature has already left. The ledger itself is
+   * read-only either way; what this suppresses is the session panel's offer to
+   * reopen a conversation from a phase that is over (findings F10.6).
+   */
   readonly?: boolean
 }) {
   const toast = useToast()
@@ -103,6 +106,7 @@ export function TicketsBody({
         featureId={featureId}
         sessions={full.data.sessions}
         className="tickets-session"
+        showResume={!readonly}
       />
 
       <div className="body-title">

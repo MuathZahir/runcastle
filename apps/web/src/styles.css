@@ -2581,6 +2581,13 @@ details.wp-group-done > summary { cursor: pointer; list-style: revert; }
 .cmdk-item-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
 .cmdk-item-slug { font-family: var(--mono); font-size: 11px; color: var(--text-4); }
 .cmdk-item-hint { font-size: 11px; color: var(--text-4); }
+/* "this is the one already open" — beside the phase, never instead of it */
+.cmdk-item-current {
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--accent-hi);
+}
 .cmdk-empty { padding: 24px; text-align: center; color: var(--text-3); font-size: 13px; }
 .cmdk-foot {
   display: flex;
@@ -2920,9 +2927,9 @@ select.settings-input { cursor: pointer; }
 .prep-nudge-text { flex: 1; min-width: 0; }
 .prep-nudge-count {
   flex: none;
-  font-family: var(--mono);
   font-size: 10.5px;
   color: var(--text-4);
+  white-space: nowrap;
 }
 
 .prep-findings {

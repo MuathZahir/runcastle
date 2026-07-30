@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import type { FeatureListItem } from '../lib/api'
 import type { ProjectNavApi } from '../lib/use-project-nav'
+import { PHASE_LABELS } from '../lib/feature-ui'
 import { matchesPreparation } from '../lib/project-workspace'
 import { IconFolder, IconPlus, IconSettings } from '../icons'
 
@@ -208,9 +209,12 @@ export function CommandPalette(props: CommandPaletteProps) {
                   </span>
                   <span className="cmdk-item-label">{f.title}</span>
                   <span className="cmdk-item-slug">{f.slug}</span>
-                  <span className="cmdk-item-hint">
-                    {f.id === selectedFeatureId ? 'current' : f.phase}
-                  </span>
+                  {/* The phase column used to read "current" for the selected
+                      feature, which meant the one feature you were most likely
+                      to be checking never showed its phase (findings F10.8).
+                      Being selected is a separate fact — it gets its own mark. */}
+                  {f.id === selectedFeatureId && <span className="cmdk-item-current">open</span>}
+                  <span className="cmdk-item-hint">{PHASE_LABELS[f.phase] ?? f.phase}</span>
                 </div>
               ))}
             </>

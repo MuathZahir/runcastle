@@ -1,5 +1,6 @@
 import { useEffect } from 'react'
 import { trpc } from '../trpc'
+import { humanizeTimestamps } from '../lib/format'
 import { DimLine } from '../ui'
 import { Markdown } from './Markdown'
 
@@ -40,7 +41,9 @@ export function DocPeek({
         <div className="peek-body">
           {query.isLoading && <DimLine>loading {title}…</DimLine>}
           {query.error && <DimLine>could not read {relPath}: {query.error.message}</DimLine>}
-          {query.data && <Markdown source={query.data.content} />}
+          {/* Agents stamp docs the way a program does ("Created:
+              2026-07-14T14:58:23.231Z"); nobody reads milliseconds (F10.9). */}
+          {query.data && <Markdown source={humanizeTimestamps(query.data.content)} />}
         </div>
       </div>
     </div>
