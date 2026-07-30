@@ -381,11 +381,22 @@ button {
 .wordmark-run { color: var(--accent-hi); }
 .wordmark-castle { color: var(--text); }
 .tb-home:hover .wordmark-castle { color: var(--accent-hi); }
-.tb-arrow, .tb-dot { color: var(--text-4); }
-.tb-project { color: var(--text-2); }
+.tb-arrow, .tb-dot { color: var(--text-4); flex: 0 0 auto; }
+/* The breadcrumb is the one titlebar slot holding user-supplied text, so it is
+   the one that has to give: it shrinks and ellipsises rather than widening the
+   shell until the workspace and details rail slide off-canvas (findings F20). */
+.tb-project {
+  color: var(--text-2);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .tb-branch {
   display: inline-flex;
   align-items: center;
+  flex: 0 0 auto;
+  white-space: nowrap;
   gap: 5px;
   color: var(--text-3);
   font-family: var(--mono);
@@ -2996,6 +3007,7 @@ select.settings-input { cursor: pointer; }
 .tb-home {
   display: inline-flex;
   align-items: center;
+  flex: 0 0 auto;
   gap: 9px;
   background: transparent;
   border: 0;
@@ -3005,10 +3017,13 @@ select.settings-input { cursor: pointer; }
 }
 .tb-home:hover .tb-app { color: var(--accent-hi); }
 
-.tb-switcher { position: relative; display: inline-flex; }
+/* `min-width: 0` all the way down to `.tb-project`, or the flex default of
+   min-content wins and the ellipsis never engages (findings F20). */
+.tb-switcher { position: relative; display: inline-flex; min-width: 0; }
 .tb-switcher-btn {
   display: inline-flex;
   align-items: center;
+  min-width: 0;
   gap: 5px;
   height: 24px;
   padding: 0 7px;

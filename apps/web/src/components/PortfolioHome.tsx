@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { PROJECT_NAME_MAX } from '@runcastle/core'
 import { trpc } from '../trpc'
 import { useToast } from '../lib/toast'
 import { projectStats, type ProjectStats } from '../lib/projects'
@@ -131,6 +132,9 @@ function ProjectCard({
             <input
               className="pc-rename mono"
               value={name}
+              // Same cap the server enforces (findings F20) — refusing the 81st
+              // keystroke beats a rejection toast after the fact.
+              maxLength={PROJECT_NAME_MAX}
               autoFocus
               onClick={(e) => e.stopPropagation()}
               onChange={(e) => setName(e.target.value)}

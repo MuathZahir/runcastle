@@ -1,4 +1,5 @@
 import * as z from 'zod'
+import { ProjectName } from '@runcastle/core'
 import { browseDir, listRoots } from '../../services/fsbrowse'
 import * as git from '../../services/git'
 import { prepView } from '../../services/prep'
@@ -45,7 +46,7 @@ export const projectRouter = router({
     .mutation(({ ctx, input }) => closeProject(ctx, input.projectId)),
 
   rename: publicProcedure
-    .input(z.object({ projectId: z.string(), name: z.string().min(1) }))
+    .input(z.object({ projectId: z.string(), name: ProjectName }))
     .mutation(({ ctx, input }) => renameProject(ctx, input.projectId, input.name)),
 
   // `project.update` is retired (issue #46): devCommand (and model/sandbox) now
