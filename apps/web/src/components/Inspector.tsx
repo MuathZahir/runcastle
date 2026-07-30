@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { nextPhase, type EventRow, type Phase } from '@runcastle/core'
+import { nextPhase, parsePhase, type EventRow, type Phase } from '@runcastle/core'
 import { trpc } from '../trpc'
 import { useToast } from '../lib/toast'
 import { useEventLog } from '../lib/events'
@@ -146,7 +146,13 @@ function CurrentGate({
   return (
     <section className="insp-section">
       <div className="insp-cap">Current gate</div>
-      {gate.next === null ? (
+      {parsePhase(phase) === null ? (
+        // `nextGate` cannot place an unrecognized phase, so it returns no gate —
+        // which reads identically to "shipped". Say which it is (findings F19).
+        <div className="gate-empty">
+          Phase <span className="mono">{phase}</span> isn't recognized, so no gate applies.
+        </div>
+      ) : gate.next === null ? (
         <div className="gate-shipped">
           <IconCheck size={13} />
           Shipped — no gates left.
