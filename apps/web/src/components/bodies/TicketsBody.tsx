@@ -4,6 +4,8 @@ import { trpc } from '../../trpc'
 import { useToast } from '../../lib/toast'
 import { SANDBOX_MODE } from '../../lib/env'
 import { shortSha } from '../../lib/format'
+import { effectiveStepModel } from '../../lib/settings'
+import type { SettingsView } from '../../lib/api'
 import { Button, DimLine, EmptyState, SectionTitle, TicketStatusChip } from '../../ui'
 import { IconChevronRight, IconDoc } from '../../icons'
 import { Markdown } from '../Markdown'
@@ -51,16 +53,16 @@ export function TicketsBody({
 
   // The burn model chip reflects what the ticket-burner (the `implement` step)
   // will use for this project — read from settings, never a hardcoded constant
-  // (issue #48). The step override wins, else the project/global default.
+  // (issue #48). The project's own model wins, else the global step model, else
+  // the default.
   const projectId = full.data?.feature.projectId
   const settings = trpc.settings.get.useQuery(
     { projectId: projectId as string },
     { enabled: !!projectId },
   )
-  const implementField =
-    settings.data?.fields.find((f) => f.key === 'stepModels.implement' && f.source === 'file') ??
-    settings.data?.fields.find((f) => f.key === 'model')
-  const model = typeof implementField?.value === 'string' ? implementField.value : '…'
+  // `useQuery().data` infers to `{}` here (the same tRPC-in-component typing gap
+  // the settings overlay documents); the runtime value is a SettingsView.
+  const model = effectiveStepModel(settings.data as SettingsView | undefined, 'implement') ?? '…'
 
   if (full.isLoading) return <DimLine>loading tickets…</DimLine>
   // Hard error only when there was NEVER data. A refetch failure after data

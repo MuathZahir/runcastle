@@ -326,7 +326,8 @@ function ModelCombobox({
  * The collapsed "Advanced — per-step models" section (issue #48). Sparse: only
  * steps that are actually set are listed (each editable + resettable); an
  * "Add override" picker adds one for a not-yet-set step. `review` is never
- * offered. Global-only, so writes carry no projectId.
+ * offered. Global-only, so writes carry no projectId — and being machine-wide,
+ * these lose to a project's own model, which the body states outright.
  */
 function AdvancedModels({ query }: { query: ReturnType<typeof trpc.settings.get.useQuery> }) {
   const utils = trpc.useUtils()
@@ -371,6 +372,9 @@ function AdvancedModels({ query }: { query: ReturnType<typeof trpc.settings.get.
       {open && (
         <div className="settings-advanced-body">
           {set.length === 0 && <DimLine>every step uses the default model.</DimLine>}
+          {set.length > 0 && (
+            <DimLine>Machine-wide — a project that sets its own model ignores these.</DimLine>
+          )}
           {set.map((row) => (
             <div key={row.key} className="settings-field">
               <div className="settings-field-head">
