@@ -130,7 +130,7 @@ function handleSessionStart(
   }
 }
 
-// --- project-scoped (`prepare` / `project`) session hooks ---------------------
+// --- project-scoped (`prepare` / `project`) session hooks --------------------
 
 /**
  * `SessionStart` for a project-scoped conversation, either kind. Same lifecycle
@@ -178,10 +178,7 @@ function handleProjectScopedUserPrompt(
   return {
     hookSpecificOutput: {
       hookEventName: 'UserPromptSubmit',
-      additionalContext:
-        session.kind === 'prepare'
-          ? '[runcastle] preparation session (project-scoped, no feature)'
-          : `[runcastle] ${projectScopedNoun(session.kind)}`,
+      additionalContext: projectScopedPromptLabel(session.kind),
     },
   }
 }
@@ -211,6 +208,13 @@ function projectScopedNoun(kind: SessionKind): string {
     default:
       return 'session'
   }
+}
+
+/** The per-turn `UserPromptSubmit` label for a project-scoped session, per kind. */
+function projectScopedPromptLabel(kind: SessionKind): string {
+  return kind === 'prepare'
+    ? '[runcastle] preparation session (project-scoped, no feature)'
+    : `[runcastle] ${projectScopedNoun(kind)}`
 }
 
 /**
