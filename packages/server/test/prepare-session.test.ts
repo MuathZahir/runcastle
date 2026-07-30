@@ -197,6 +197,45 @@ describe('the prepare brief', () => {
     expect(out).toContain('NOT in a sandbox')
   })
 
+  /**
+   * The five host-only keys are the ones a preparation agent cannot look up: the
+   * semantics live in this repo's source, and the installed build the agent can
+   * actually read has the explaining comments stripped out. A real session went
+   * grepping the minified bundle for `createdb`, found nothing, and told the
+   * human runcastle had no per-branch database support — so the brief has to
+   * carry the semantics itself.
+   */
+  it('explains what each host-only key drives, so the agent need not guess', () => {
+    const out = renderPreparePrompt({
+      project: project(),
+      remainingKeys: ['devCommand', 'driveEnv', 'dbResetCommand'],
+      established: [],
+    })
+
+    // devCommand: a drive-owned pane whose printed URL becomes the app link.
+    expect(out).toContain('Open app')
+    // The drive hooks run on the host, around the pane.
+    expect(out).toMatch(/`driveSetupCommand` \/ `driveStopCommand`/)
+
+    // driveEnv: the variables, and the once-per-drive sharing that makes the
+    // setup hook and the dev pane agree on one rendered name.
+    expect(out).toContain('{{slug}}')
+    expect(out).toContain('{{branch}}')
+    expect(out).toContain('{{id}}')
+    expect(out).toContain('ONCE per')
+
+    // The worked per-branch-database example, in the shape the ticket asks for:
+    // the derivation lives in driveEnv, the hooks only reference the variable.
+    expect(out).toContain('DB_NAME=myapp_{{id}}')
+    expect(out).toContain('DATABASE_URL=postgres://localhost/myapp_{{id}}')
+    expect(out).toContain('createdb "$DB_NAME"')
+    expect(out).toContain('dropdb --if-exists "$DB_NAME"')
+
+    // dbResetCommand: the correction that matters most — it is not a drive hook.
+    expect(out).toMatch(/`dbResetCommand` — NOT part of the drive loop/)
+    expect(out).toContain('drift')
+  })
+
   it('says so plainly when there is nothing left to establish', () => {
     const out = renderPreparePrompt({ project: project(), remainingKeys: [], established: [] })
     expect(out).toContain('Nothing is unset')
