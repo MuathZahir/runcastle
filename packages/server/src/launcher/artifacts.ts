@@ -390,6 +390,11 @@ export interface ProjectBrief {
  * when the terminal closes. A session that writes but never commits leaves the
  * tree dirty, which is precisely what blocks a test drive and the next merge —
  * so "land what you wrote and leave the tree clean" is its closing move.
+ *
+ * The task line asks first and explores second on purpose: told only to drive
+ * the session, the agent opens with `get_project_context` — charter plus every
+ * live ADR in full — and the human waits through a whole orientation pass, and
+ * often a subagent digest of it, before it says hello.
  */
 export function renderProjectPrompt(brief: ProjectBrief): string {
   const { project, branch, worktreePath } = brief
@@ -441,7 +446,9 @@ export function renderProjectPrompt(brief: ProjectBrief): string {
     'ordinary file tools. The index says where.',
     '',
     '## Your task',
-    'Invoke the `/runcastle:project` skill and drive the project session.',
+    'Invoke the `/runcastle:project` skill, then open by asking the human what they brought.',
+    'Do not explore the project first: orienting before you know the ask spends their wait on',
+    'context you may not need. Once they have told you, read only what answering calls for.',
     '',
   ].join('\n')
 }

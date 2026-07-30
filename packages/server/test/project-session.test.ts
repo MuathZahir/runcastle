@@ -142,6 +142,22 @@ describe('the `project` session kind', () => {
     expect(out).not.toContain('complete_phase')
     expect(out).toContain('/runcastle:project')
   })
+
+  /**
+   * Told only to drive the session, the agent opens by orienting — and
+   * `get_project_context` is the charter plus every live ADR in full, so the
+   * human waits through an exploration pass before the first word to them.
+   */
+  it('tells the session to open by asking the human, not by exploring', () => {
+    const out = renderProjectPrompt({
+      project: { id: 'proj_1', name: 'acme', repoPath: '/repo', mainBranch: 'main' },
+      branch: PROJECT_BRANCH,
+      worktreePath: '/wt/__project',
+    })
+    const task = out.slice(out.lastIndexOf('## Your task'))
+    expect(task).toMatch(/open by asking/i)
+    expect(task).toMatch(/do not explore/i)
+  })
 })
 
 describe('ensureProjectWorktree', () => {
