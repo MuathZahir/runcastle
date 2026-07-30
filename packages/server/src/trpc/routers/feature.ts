@@ -87,22 +87,27 @@ export const featureRouter = router({
       converge(ctx, { featureId: input.featureId, overrideReason: input.overrideReason }),
     ),
 
-  // Rethink (ADR-0010 §1 / SPEC §15.2) — the review verb that starts lap N+1.
-  // The service runs FIRST so the phase is back at ideation and the lap already
-  // bumped when the session row is created (it is stamped with the feature's
-  // current lap); the terminal then opens on the lap briefing instead of the
-  // generic revisit line: digest the drive, amend the docs, emit this lap's
+  // Iterate — internally Rethink (ADR-0010 §1 / SPEC §15.2), the review verb that
+  // starts lap N+1. The service runs FIRST so the phase is back at ideation and
+  // the lap already bumped when the session row is created (it is stamped with the
+  // feature's current lap); the terminal then opens on the lap briefing instead of
+  // the generic revisit line: digest the drive, amend the docs, emit this lap's
   // tickets, hand back to the Burn click. One click, one terminal.
+  //
+  // `rethinkAndLaunch` makes that ordering safe: a launch that throws rolls the
+  // flip back to review on the original lap (findings F3), so the click can just
+  // be retried once whatever blocked the terminal is cleared.
   rethink: publicProcedure
     .input(z.object({ featureId: z.string() }))
-    .mutation(({ ctx, input }) => {
-      const feature = features.rethink(ctx, input.featureId)
-      return launchSession(ctx, {
-        featureId: input.featureId,
-        kind: 'revisit',
-        kickoffLine: lapKickoff(feature.lap),
-      })
-    }),
+    .mutation(({ ctx, input }) =>
+      features.rethinkAndLaunch(ctx, input.featureId, (feature) =>
+        launchSession(ctx, {
+          featureId: input.featureId,
+          kind: 'revisit',
+          kickoffLine: lapKickoff(feature.lap),
+        }),
+      ),
+    ),
 
   // Re-type a live session's kickoff/briefing into its terminal ("Send briefing"
   // in the session strip). The escape hatch for a briefing the TUI swallowed —
