@@ -163,6 +163,61 @@ describe('nextStep — Resume vs Start wording for the grill', () => {
 })
 
 /**
+ * The build phase with an empty ledger. It used to offer an enabled
+ * "Burn 0 tickets" as the primary action, directly above an empty state whose
+ * own copy contradicted it (findings F25.1).
+ */
+describe('nextStep at implementation with no tickets', () => {
+  const buildFull = (opts: { sessions?: unknown[]; runs?: unknown[] } = {}) =>
+    ({
+      feature: { id: 'f1', phase: 'implementation', mapped: false, status: 'active' },
+      tickets: [],
+      sessions: opts.sessions ?? [],
+      runs: opts.runs ?? [],
+      gate: { next: { id: 'G4' }, satisfied: false, reason: 'no run' },
+    }) as unknown as FeatureFull
+
+  it('never offers a burn when there is nothing to burn', () => {
+    const ns = nextStep(buildFull(), { driving: false })
+    expect(ns.primary?.kind).not.toBe('burn')
+    expect(ns.title).toBe('No tickets to burn')
+  })
+
+  it('points at the thing that produces tickets', () => {
+    const ns = nextStep(buildFull(), { driving: false })
+    expect(ns.primary).toEqual({ label: 'Open a session', kind: 'startGrill' })
+    expect(ns.desc).toContain('tickets')
+  })
+
+  it('offers to resume the conversation that exists rather than start another', () => {
+    const ended = [{ id: 's1', status: 'ended', kind: 'ideation', ccSessionId: 'cc-1' }]
+    expect(nextStep(buildFull({ sessions: ended }), { driving: false }).primary).toEqual({
+      label: 'Resume the session',
+      kind: 'startGrill',
+    })
+  })
+
+  it('jumps to the live session instead of launching a second one', () => {
+    const live = [{ id: 's1', status: 'live', kind: 'revisit', ccSessionId: 'cc-1' }]
+    expect(nextStep(buildFull({ sessions: live }), { driving: false }).primary).toEqual({
+      label: 'Jump to the session',
+      kind: 'openGrill',
+    })
+  })
+
+  it('still offers the burn once there is a ticket to burn', () => {
+    const withTicket = {
+      ...buildFull(),
+      tickets: [{ id: 't1', status: 'pending' }],
+    } as unknown as FeatureFull
+    expect(nextStep(withTicket, { driving: false }).primary).toEqual({
+      label: 'Burn 1 ticket',
+      kind: 'burn',
+    })
+  })
+})
+
+/**
  * Laps ticket 3 (ADR-0010 §3) — the review bar offers three verbs: Fix (the
  * Burn primary a pending ticket promotes), Iterate (starts lap N+1, hidden
  * while a session is live, disabled while the test drive holds the branch) and

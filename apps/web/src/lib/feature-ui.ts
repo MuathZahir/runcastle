@@ -999,6 +999,25 @@ export function nextStep(
           busy: true,
         }
       }
+      // Nothing to burn. The bar used to offer an enabled "Burn 0 tickets" over
+      // an empty ledger whose own copy said the opposite (findings F25.1) — the
+      // tickets phase has always handled this state honestly, so this says the
+      // same thing: the missing thing is tickets, and a session emits them.
+      if (t === 0) {
+        return {
+          kick: 'WAITING',
+          title: 'No tickets to burn',
+          desc: 'This feature reached the build phase with an empty ledger. A session breaks the work into tickets — open one, and the burn has something to run.',
+          primary: live
+            ? { label: 'Jump to the session', kind: 'openGrill' }
+            : {
+                label: resumableGrill ? 'Resume the session' : 'Open a session',
+                kind: 'startGrill',
+              },
+          secondary: [],
+          busy: false,
+        }
+      }
       // Never burned at all — the feature was born here (the quick-change door,
       // decision 21) or crossed G3 by an override. There is nothing to resume,
       // so this is the plain first Burn, worded like the tickets phase's.
