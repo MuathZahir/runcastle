@@ -1010,3 +1010,23 @@ export function liveSessionBlocker(
   const held = waypoints.find((w) => w.status === 'claimed' && w.claimedBy === live.id)
   return { sessionId: live.id, kind: live.kind, waypointTitle: held?.title }
 }
+
+// --- the shipped body's Q&A terminal ----------------------------------------
+
+/**
+ * The sessions the shipped body's terminal panel should consider — the Q&A ones,
+ * and only when one of them is worth a panel at all.
+ *
+ * "Ask a question" is the shipped bar's action, so the conversation it starts
+ * belongs in the shipped body. Everything *else* on a shipped feature is a spent
+ * pipeline session, and a resumable one of those is the grill's (or review's)
+ * Resume, not shipped's — hence qa only. It reports nothing unless some qa session
+ * is live/launching or ended with its conversation still on disk (a `ccSessionId`,
+ * which only a session that reached live recorded — the launcher's own resume
+ * test), so a shipped feature nobody has asked anything stays the plain hero
+ * instead of growing an empty box.
+ */
+export function shippedQaSessions(sessions: FeatureFull['sessions']): FeatureFull['sessions'] {
+  const qa = sessions.filter((s) => s.kind === 'qa')
+  return qa.some((s) => s.status !== 'ended' || !!s.ccSessionId) ? qa : []
+}
