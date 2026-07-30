@@ -2462,6 +2462,7 @@ details.wp-group-done > summary { cursor: pointer; list-style: revert; }
 .sb-notify { display: inline-flex; align-items: center; gap: 5px; background: none; border: none; color: var(--text-3); cursor: pointer; font-size: 11px; padding: 0; transition: color var(--dur-1); }
 .sb-notify:hover { color: var(--text); }
 .sb-notify.is-on { color: var(--ok); }
+.sb-notify.is-blocked { color: var(--warn, #d9a441); }
 .sb-health { display: inline-flex; align-items: center; gap: 6px; color: var(--ph-shipped); }
 
 /* ============================================================================
