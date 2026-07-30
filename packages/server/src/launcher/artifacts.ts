@@ -11,6 +11,7 @@ import type {
 } from '@runcastle/core'
 import { featureDocsRel, sessionDir } from '@runcastle/core/paths'
 import { ASSET_ENV, resolveAsset } from './asset-paths'
+import { EDIT_TOOL_MATCHER, guardsEdits } from './edit-guard'
 
 /**
  * Session launch artifacts (SPEC §5.2). Writes `system-prompt.md`,
@@ -37,6 +38,16 @@ export interface WriteArtifactsInput {
   prepare?: PrepareBrief
   /** The brief for a `project` session; the other way `feature` may be absent. */
   projectBrief?: ProjectBrief
+  /**
+   * The lap this session was opened to run (a Rethink lap, or a lap-N grill).
+   * Passed EXPLICITLY rather than read off `feature.lap`, because a lap is not
+   * something the feature row can be asked about: an ordinary revisit on a
+   * lap-3 feature is not running a lap, and the rethink route bumps `lap` and
+   * flips the phase back to `ideation` BEFORE launching — which is how the lap
+   * framing used to be lost entirely (F2, `renderRevisitPrompt` keyed on
+   * `phase === 'review'` and by then the phase had moved).
+   */
+  lap?: number
 }
 
 /**
@@ -57,6 +68,28 @@ export function serverUrlFor(config: RuncastleConfig): string {
 // --- renderers (pure) -------------------------------------------------------
 
 /**
+ * The rule that keeps a talk session a conversation (F2). Every HITL feature
+ * session — grill, qa, revisit, lap — runs in a FULL checkout of the feature
+ * branch with `--permission-mode acceptEdits`, so nothing about the environment
+ * stops an agent from simply implementing what it was asked to discuss. One did:
+ * a lap whose briefing was swallowed read the docs, decided the work was small,
+ * and started editing source instead of grilling — no spec, no tickets, no way
+ * for the feature to reach review.
+ *
+ * Stated here AND enforced by the PreToolUse deny hook (`renderSettings`), for
+ * the reason the burn guard gives: a prompt rule is advisory, a deny is not.
+ */
+export function noCodeRule(docs: string): string {
+  return (
+    `- **Talk sessions do not write code.** You may write this feature's docs under \`${docs}/\` ` +
+    'and nothing else in this checkout. Every code change rides a ticket, burned by an ' +
+    'implementation agent in its own sandbox — even the one-line fix that is obviously faster ' +
+    'to just do. This is enforced by a hook, not left to your judgement: edits outside the docs ' +
+    'are denied.'
+  )
+}
+
+/**
  * The injected system prompt (feature brief). Directs the session to the pack's
  * entry skill, lists the on-disk knowledge paths and the MCP tool cheat-sheet.
  * A kind=waypoint session gets a dedicated prompt carrying its assigned waypoint.
@@ -65,10 +98,11 @@ export function renderSystemPrompt(
   feature: Feature,
   kind: SessionKind,
   waypoint?: Waypoint,
+  lap?: number,
 ): string {
   if (kind === 'waypoint') return renderWaypointPrompt(feature, waypoint)
   if (kind === 'converge') return renderConvergePrompt(feature)
-  if (kind === 'revisit') return renderRevisitPrompt(feature)
+  if (kind === 'revisit') return renderRevisitPrompt(feature, lap)
 
   const docs = featureDocsRel(feature.slug) // docs/features/<slug>
   const entry =
@@ -108,6 +142,9 @@ export function renderSystemPrompt(
     '- `emit_tickets({ tickets })` — emit the ticket batch (title, goal, context,',
     '  acceptanceCriteria, seams, blockedBy = 1-based positions within the batch).',
     '- `complete_phase({ phase })` — mark a phase done; advances past its gate.',
+    '',
+    '## Rules',
+    noCodeRule(docs),
     '',
     '## Your task',
     entry,
@@ -231,11 +268,39 @@ export function renderConvergePrompt(feature: Feature): string {
  * outcome + ticket states, interview about the test drive, emit fix tickets);
  * the prompt below flags that purpose so the session knows the amended docs +
  * fix tickets feed a re-Burn that loops the feature back through implementation.
+ *
+ * `lap` — passed explicitly by the launcher, never inferred from the phase (see
+ * {@link WriteArtifactsInput.lap}) — turns this into the LAP prompt: the session
+ * is running the front half of the pipeline again, so it not only may call
+ * `complete_phase`, it is the only thing that will.
  */
-export function renderRevisitPrompt(feature: Feature): string {
+export function renderRevisitPrompt(feature: Feature, lap?: number): string {
   const docs = featureDocsRel(feature.slug)
+  const lapIteration = lap
+    ? [
+        `## This is lap ${lap}`,
+        `You are running **lap ${lap}** of this feature (ADR-0010): the human test-drove what`,
+        `lap ${lap - 1} burned and came back with what it taught them. Unlike an`,
+        'ordinary revisit, a lap MOVES the pipeline — you drive the whole front half of it in',
+        'THIS session: grill the human about the drive, then `complete_phase` through',
+        '**ideation → spec → tickets**, emitting this lap’s tickets on the way. Nothing else',
+        'advances it; if you stop early the feature sits at ideation with no lap tickets and',
+        'the human has no way forward.',
+        '',
+        'Your inputs, both OPTIONAL — a missing one is normal, not an error:',
+        `- \`${docs}/test-notes.md\`, section \`## Lap ${lap - 1}\` — what the drive surfaced.`,
+        `- \`${docs}/spec.md\`, section \`## Later laps\` — scope parked by earlier laps.`,
+        'Say plainly which you found, then interview the human from what they tell you.',
+        '',
+        `Write what you settle on into \`${docs}/decisions.md\` under a \`## Lap ${lap}\` heading`,
+        '(supersede, never rewrite), amend `spec.md` for this lap (pruning anything you promote',
+        'out of `## Later laps`), then `emit_tickets` for this lap’s work. Finish by telling the',
+        'human to review the cards and click Burn.',
+        '',
+      ]
+    : []
   const reviewIteration =
-    feature.phase === 'review'
+    !lap && feature.phase === 'review'
       ? [
           '## Review iteration',
           'This feature is at **review**: its tickets were burned and the human has been',
@@ -260,6 +325,7 @@ export function renderRevisitPrompt(feature: Feature): string {
     'into the record, then reconcile the tickets with it. The docs are the',
     'artifact — later phases read them, never the transcripts.',
     '',
+    ...lapIteration,
     ...reviewIteration,
     '## Feature',
     `- Slug: \`${feature.slug}\``,
@@ -280,9 +346,15 @@ export function renderRevisitPrompt(feature: Feature): string {
     '- `record_event({ type, message })` — drop a timeline note summarising the revisit.',
     '',
     '## Rules',
-    '- Do NOT call `complete_phase` — a revisit never moves the pipeline.',
+    // A lap is the one revisit that MUST move the pipeline — the blanket ban
+    // used to be rendered into lap sessions too, flatly contradicting the lap
+    // briefing that had just told them to complete_phase through to tickets (F2).
+    lap
+      ? '- DO call `complete_phase` — this lap advances ideation → spec → tickets, and only you can.'
+      : '- Do NOT call `complete_phase` — a revisit never moves the pipeline.',
     '- Do NOT touch `done`/`burning` tickets; if done work is now wrong, emit a new ticket that fixes it.',
     '- Docs first, tickets second: capture the decision prose before any ticket surgery.',
+    noCodeRule(docs),
     '',
     '## Your task',
     'Invoke the `/runcastle:revisit` skill and work through what the human brings up.',
@@ -458,6 +530,8 @@ export interface SessionSettings {
     SessionStart: { matcher: string; hooks: CommandHook[] }[]
     UserPromptSubmit: { hooks: CommandHook[] }[]
     SessionEnd: { hooks: CommandHook[] }[]
+    /** The talk-session edit guard; absent for the one kind that may write code. */
+    PreToolUse?: { matcher: string; hooks: CommandHook[] }[]
   }
 }
 
@@ -563,14 +637,19 @@ export const SESSION_START_SOURCES = ['startup', 'resume', 'clear', 'compact', '
  * - `SessionStart` is registered for EVERY source (see
  *   {@link SESSION_START_SOURCES}) — a resumed session is a started session.
  * - `UserPromptSubmit`/`SessionEnd` take NO `matcher` (unsupported → omitted).
+ * - `PreToolUse` matches the file-write tools and carries the talk-session edit
+ *   guard (see {@link evaluateEditGuard}) — registered for every kind except
+ *   `project`, the one allowed to write code. A kind is needed to make that
+ *   distinction, so an omitted `kind` gets the guard: a session whose kind we do
+ *   not know is not one to hand whole-repo write access to.
  * - Timeouts (seconds): SessionStart 10, UserPromptSubmit 5 (well inside its 30s
- *   hard budget), SessionEnd 10.
+ *   hard budget), SessionEnd 10, PreToolUse 5 (it blocks every edit).
  */
 export function renderSettings(hookClient: string, kind?: SessionKind): SessionSettings {
   const cmd = (event: string): CommandHook => ({
     type: 'command',
     command: `bun run "${hookClient}" ${event}`,
-    timeout: event === 'user-prompt' ? 5 : 10,
+    timeout: event === 'session-start' || event === 'session-end' ? 10 : 5,
   })
   return {
     permissions: { allow: [...RUNCASTLE_MCP_ALLOW_RULES, ...sessionBashAllowRules(kind)] },
@@ -581,6 +660,9 @@ export function renderSettings(hookClient: string, kind?: SessionKind): SessionS
       })),
       UserPromptSubmit: [{ hooks: [cmd('user-prompt')] }],
       SessionEnd: [{ hooks: [cmd('session-end')] }],
+      ...(kind === undefined || guardsEdits(kind)
+        ? { PreToolUse: [{ matcher: EDIT_TOOL_MATCHER, hooks: [cmd('pre-tool')] }] }
+        : {}),
     },
   }
 }
@@ -617,7 +699,7 @@ export function renderMcpConfig(session: SessionRow, config: RuncastleConfig): M
 export async function writeSessionArtifacts(
   input: WriteArtifactsInput,
 ): Promise<SessionArtifacts> {
-  const { session, feature, config, waypoint, prepare, projectBrief } = input
+  const { session, feature, config, waypoint, prepare, projectBrief, lap } = input
   const dir = sessionDir(session.id)
   mkdirSync(dir, { recursive: true })
 
@@ -629,7 +711,7 @@ export async function writeSessionArtifacts(
   // its kind's brief instead. Exactly one of the three is always present — a
   // session with none would spawn a terminal with no instructions at all.
   const systemPrompt = feature
-    ? renderSystemPrompt(feature, session.kind, waypoint)
+    ? renderSystemPrompt(feature, session.kind, waypoint, lap)
     : prepare
       ? renderPreparePrompt(prepare)
       : projectBrief
