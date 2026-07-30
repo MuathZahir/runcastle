@@ -338,8 +338,8 @@ async function realExecuteResearchRun(
 /**
  * Resolve production deps: real config, token from `~/.runcastle/.env`, real
  * run. Research is the `research` step (issue #48): its model resolves through
- * `resolveModel` — a per-run override wins over the step override, the
- * per-project override, then the global default.
+ * `resolveModel` — a per-run override wins over the per-project override, then
+ * the global step override, then the global default.
  */
 function resolveResearchDeps(ctx: WorkflowCtx): ResearchDeps {
   const config = loadConfig()

@@ -372,7 +372,9 @@ function AdvancedModels({ query }: { query: ReturnType<typeof trpc.settings.get.
       {open && (
         <div className="settings-advanced-body">
           {set.length === 0 && <DimLine>every step uses the default model.</DimLine>}
-          <DimLine>Machine-wide — a project that sets its own model ignores these.</DimLine>
+          {set.length > 0 && (
+            <DimLine>Machine-wide — a project that sets its own model ignores these.</DimLine>
+          )}
           {set.map((row) => (
             <div key={row.key} className="settings-field">
               <div className="settings-field-head">

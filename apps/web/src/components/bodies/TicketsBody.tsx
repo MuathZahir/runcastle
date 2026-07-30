@@ -60,6 +60,8 @@ export function TicketsBody({
     { projectId: projectId as string },
     { enabled: !!projectId },
   )
+  // `useQuery().data` infers to `{}` here (the same tRPC-in-component typing gap
+  // the settings overlay documents); the runtime value is a SettingsView.
   const model = effectiveStepModel(settings.data as SettingsView | undefined, 'implement') ?? '…'
 
   if (full.isLoading) return <DimLine>loading tickets…</DimLine>

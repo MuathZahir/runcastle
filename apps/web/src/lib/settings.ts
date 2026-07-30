@@ -1,4 +1,5 @@
 import { CURATED_MODELS, MODEL_STEPS } from '@runcastle/core'
+import type { ModelStep } from '@runcastle/core'
 import type { SettingField, SettingsView } from './api'
 
 /**
@@ -389,7 +390,7 @@ export function stepModelRows(view: SettingsView): SettingRow[] {
  */
 export function effectiveStepModel(
   view: SettingsView | undefined,
-  step: string,
+  step: ModelStep,
 ): string | undefined {
   const find = (key: string): SettingField | undefined => view?.fields.find((f) => f.key === key)
   const model = find('model')

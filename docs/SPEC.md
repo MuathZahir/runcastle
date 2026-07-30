@@ -71,7 +71,7 @@ runcastle/
     run(ctx: WorkflowCtx): Promise<{ status: 'succeeded'|'failed'; summary: string }>;
   }
   ```
-- `src/config.ts` — `RuncastleConfig` zod (defaults): `{ serverPort: 4512, model: 'claude-opus-5', stepModels: { smoke: 'claude-haiku-4-5' } (sparse per-step overrides, issue #48; keyed by `ModelStep`), sandbox: 'docker'|'noSandbox' (default 'docker'), mainBranch: 'main' }`, loader merging `~/.runcastle/config.json` + env. Legacy `smokeModel` folds into `stepModels.smoke` (read-compat). `resolveModel(step, config, project?, runOverride?)` picks a step's model as `runOverride ?? stepModels[step] ?? project.model ?? model`.
+- `src/config.ts` — `RuncastleConfig` zod (defaults): `{ serverPort: 4512, model: 'claude-opus-5', stepModels: { smoke: 'claude-haiku-4-5' } (sparse per-step overrides, issue #48; keyed by `ModelStep`), sandbox: 'docker'|'noSandbox' (default 'docker'), mainBranch: 'main' }`, loader merging `~/.runcastle/config.json` + env. Legacy `smokeModel` folds into `stepModels.smoke` (read-compat). `resolveModel(step, config, project?, runOverride?)` picks a step's model as `runOverride ?? project.model ?? stepModels[step] ?? model` — the global values are the machine-wide setup, so a project's own `model` overrides them (there is no per-project per-step matrix).
 
 ## 2. Database (drizzle + bun:sqlite)
 
