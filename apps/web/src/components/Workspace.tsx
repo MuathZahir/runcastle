@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useRef, useState } from 'react'
+import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react'
 import { parsePhase, type EventRow, type Phase } from '@runcastle/core'
 import { trpc } from '../trpc'
 import { useEventLog } from '../lib/events'
@@ -197,7 +197,7 @@ export function Workspace({
   // that NAMES the value instead, so the feature is reportable and every other
   // feature stays usable.
   if (parsePhase(feature.phase) === null) {
-    return <UnrecognizedPhase feature={feature} toast={toast} />
+    return <UnrecognizedPhase feature={feature} />
   }
   const effective = effectivePhase(feature, viewedPhase)
   const readonly = isReadonlyView(feature, effective)
@@ -597,20 +597,26 @@ function useResumeFailedAlert(featureId: string): { message: string | null; dism
 }
 
 /**
- * What the feature view shows when it crashed outright — the fallback for the
- * error boundary ProjectShell mounts around it (findings F19). Containment is
- * the point: the sidebar, the other features and every other project keep
- * working, and this pane carries the feature id + the error so the crash is
- * reportable rather than mysterious.
+ * The shared face of a feature view that cannot do its job (findings F19): what
+ * went wrong in words, and the exact detail line to paste into a bug report.
+ * `details` is deliberately one copyable string — the two cases differ in what
+ * they know, not in how the user gets it out.
  */
-export function FeatureCrash({ featureId, error }: { featureId: string; error: Error }) {
+function BrokenFeaturePane({
+  tag,
+  details,
+  children,
+}: {
+  tag: string
+  details: string
+  children: ReactNode
+}) {
   const toast = useToast()
-  const details = `feature ${featureId} — ${error.name}: ${error.message}`
   return (
-    <section className="workspace">
+    <>
       <div className="ws-banner is-broken" role="alert">
-        <span className="ws-banner-tag">BROKEN</span>
-        <span>This feature couldn't be rendered. Everything else still works.</span>
+        <span className="ws-banner-tag">{tag}</span>
+        <span>{children}</span>
       </div>
       <div className="ws-body">
         <div className="ws-body-inner">
@@ -622,6 +628,27 @@ export function FeatureCrash({ featureId, error }: { featureId: string; error: E
           </div>
         </div>
       </div>
+    </>
+  )
+}
+
+/**
+ * What the feature view shows when it crashed outright — the fallback for the
+ * error boundary ProjectShell mounts around it (findings F19). Containment is
+ * the point: the sidebar, the other features and every other project keep
+ * working, and this pane carries the feature id + the error so the crash is
+ * reportable rather than mysterious. No title row: a crash this deep means the
+ * feature's own data is not trustworthy enough to render.
+ */
+export function FeatureCrash({ featureId, error }: { featureId: string; error: Error }) {
+  return (
+    <section className="workspace">
+      <BrokenFeaturePane
+        tag="BROKEN"
+        details={`feature ${featureId} — ${error.name}: ${error.message}`}
+      >
+        This feature couldn't be rendered. Everything else still works.
+      </BrokenFeaturePane>
     </section>
   )
 }
@@ -633,14 +660,7 @@ export function FeatureCrash({ featureId, error }: { featureId: string; error: E
  * What it does offer is the bad value itself and the feature's identity, so the
  * user can report it or fix the row instead of staring at a blank page.
  */
-function UnrecognizedPhase({
-  feature,
-  toast,
-}: {
-  feature: FeatureFull['feature']
-  toast: { push: (m: string, k?: 'error' | 'info' | 'success') => void }
-}) {
-  const details = `feature ${feature.id} (${feature.slug}) has phase "${feature.phase}"`
+function UnrecognizedPhase({ feature }: { feature: FeatureFull['feature'] }) {
   return (
     <section className="workspace">
       <div className="ws-head">
@@ -649,23 +669,13 @@ function UnrecognizedPhase({
           <span className="ws-title">{feature.title}</span>
         </div>
       </div>
-      <div className="ws-banner is-broken" role="alert">
-        <span className="ws-banner-tag">UNRECOGNIZED</span>
-        <span>
-          This feature's phase is <strong className="mono">{feature.phase}</strong>, which this
-          version of runcastle doesn't know. Nothing here can be acted on until the row is fixed.
-        </span>
-      </div>
-      <div className="ws-body">
-        <div className="ws-body-inner">
-          <div className="broken-detail">
-            <DimLine>{details}</DimLine>
-            <Button variant="ghost" className="btn-xs" onClick={() => copyText(details, toast)}>
-              Copy details
-            </Button>
-          </div>
-        </div>
-      </div>
+      <BrokenFeaturePane
+        tag="UNRECOGNIZED"
+        details={`feature ${feature.id} (${feature.slug}) has phase "${feature.phase}"`}
+      >
+        This feature's phase is <strong className="mono">{feature.phase}</strong>, which this version
+        of runcastle doesn't know. Nothing here can be acted on until the row is fixed.
+      </BrokenFeaturePane>
     </section>
   )
 }

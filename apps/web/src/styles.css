@@ -2972,6 +2972,9 @@ select.settings-input { cursor: pointer; }
   flex: 0 0 auto;
   display: flex;
   align-items: center;
+  /* the row is now as wide as the window, so it clips rather than pushing the
+     frame wider — the lesson of the breadcrumb (findings F20) */
+  overflow: hidden;
   gap: 10px;
   padding: 6px 14px;
   border-bottom: 1px solid var(--accent-line);
@@ -2987,7 +2990,7 @@ select.settings-input { cursor: pointer; }
   background: var(--accent-hi);
   animation: dotGlow 2.2s var(--ease) infinite;
 }
-.update-banner-text { white-space: nowrap; }
+.update-banner-text { white-space: nowrap; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .update-banner-text strong { color: var(--accent-hi); font-weight: 600; }
 .update-banner-sep { color: var(--text-4); }
 .update-banner-dim { color: var(--text-3); }

@@ -503,11 +503,12 @@ export interface UndoableOverride {
 }
 
 /**
- * True when an event records a phase transition. Every phase change goes through
- * the server's `setPhase`, which carries `{ from, to }` on the event whatever it
- * types the event as — so the data shape identifies a transition where a list of
- * event types would go stale. Status changes carry `{ from, to }` too, but of
- * statuses, so requiring BOTH to parse as phases separates them.
+ * The phase move an event records, or null if it records none. Every phase
+ * change goes through the server's `setPhase`, which carries `{ from, to }` on
+ * the event whatever it types the event as — so the data SHAPE identifies a
+ * transition where a list of event types would go stale. Status changes carry
+ * `{ from, to }` too, but of statuses, so requiring BOTH to parse as phases
+ * separates them.
  */
 function phaseTransition(e: EventRow): { from: Phase; to: Phase } | null {
   const d = (e.data ?? {}) as { from?: unknown; to?: unknown }
