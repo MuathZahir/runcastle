@@ -13,6 +13,7 @@ import {
   createSessionRow,
   kickoffDeliveryFor,
   kickoffLineFor,
+  lapKickoff,
   markSessionEnded,
   markSessionLive,
   noteKickoffPrompt,
@@ -366,6 +367,82 @@ describe('markSessionLive — schedules a kickoff for every kind', () => {
     // and the resend is itself confirm-and-retry, not another blind write
     vi.advanceTimersByTime(KICKOFF_CONFIRM_MS + KICKOFF_SUBMIT_DELAY_MS)
     expect(written.slice(before)).toEqual([CLEAR_INPUT, briefing, '\r', CLEAR_INPUT, briefing, '\r'])
+  })
+
+  /**
+   * A prompt that arrives BEFORE we have typed anything cannot be a human
+   * reacting to the briefing — it is the session's own opening traffic. Settling
+   * on it destroyed the retry budget at the exact moment the briefing needed it:
+   * the keystrokes had gone into a startup dialog, and attempts 2 and 3 were
+   * cancelled before the first one ever landed (F2).
+   */
+  it('ignores a prompt that arrives before the briefing was ever typed, and still retries', async () => {
+    const ctx = await makeTestCtx()
+    const featureId = seedFeature(ctx, seedProject(ctx).id).id
+    const session = createSessionRow(ctx, { featureId, kind: 'revisit', worktreePath: 'w' })
+    const written = fakePty()
+
+    const briefing = 'Proceed with your task: invoke /runcastle:revisit for LAP 2 REVIEW ITERATION.'
+    setKickoffOverride(session.id, briefing)
+    markSessionLive(ctx, session.id, { ccSessionId: 'cc' })
+
+    // ...before our first write lands, the session submits a prompt of its own
+    vi.advanceTimersByTime(KICKOFF_DELAY_MS - 1)
+    expect(written).toEqual([])
+    noteKickoffPrompt(ctx, session.id, 'Please continue with the summary of the conversation.')
+
+    expect(kickoffDeliveryFor(session.id)?.settled).toBe(false)
+    expect(
+      listAfter(ctx, featureId, 0).filter((e) => e.type === 'session.kickoff_undelivered'),
+    ).toHaveLength(0)
+
+    // the full retry budget survives it
+    vi.advanceTimersByTime(1 + KICKOFF_SUBMIT_DELAY_MS)
+    expect(written).toEqual([briefing, '\r'])
+    vi.advanceTimersByTime(KICKOFF_CONFIRM_MS + KICKOFF_SUBMIT_DELAY_MS)
+    vi.advanceTimersByTime(KICKOFF_CONFIRM_MS + KICKOFF_SUBMIT_DELAY_MS)
+    expect(written.filter((w) => w === briefing)).toHaveLength(KICKOFF_MAX_ATTEMPTS)
+  })
+
+  it('still stops for a human who types AFTER the briefing went out', async () => {
+    const ctx = await makeTestCtx()
+    const featureId = seedFeature(ctx, seedProject(ctx).id).id
+    const session = createSessionRow(ctx, { featureId, kind: 'ideation', worktreePath: 'w' })
+    const written = fakePty()
+
+    markSessionLive(ctx, session.id, { ccSessionId: 'cc' })
+    vi.advanceTimersByTime(KICKOFF_DELAY_MS + KICKOFF_SUBMIT_DELAY_MS)
+    noteKickoffPrompt(ctx, session.id, 'actually, hold on')
+
+    expect(kickoffDeliveryFor(session.id)?.settled).toBe(true)
+    vi.advanceTimersByTime(KICKOFF_CONFIRM_MS * 4)
+    expect(written).toEqual([KICKOFF_LINES.ideation, '\r'])
+  })
+
+  /**
+   * "Send briefing" must send the BRIEFING. The override is what a lap terminal
+   * was opened to say, so it outlives its consumption at go-live and is dropped
+   * only when the session ends — at no point while the terminal is alive may the
+   * recovery button degrade to the generic per-kind line (F6).
+   */
+  it('resends the real lap briefing — before the session goes live, and after', async () => {
+    const ctx = await makeTestCtx()
+    const featureId = seedFeature(ctx, seedProject(ctx).id, { lap: 2 }).id
+    const session = createSessionRow(ctx, { featureId, kind: 'revisit', worktreePath: 'w' })
+    fakePty()
+
+    const briefing = lapKickoff(2)
+    setKickoffOverride(session.id, briefing)
+
+    // the watchdog case: SessionStart never fired, the human sends it by hand
+    expect(resendKickoff(ctx, session.id).line).toBe(briefing)
+    expect(resendKickoff(ctx, session.id).line).not.toBe(KICKOFF_LINES.revisit)
+
+    // and after go-live consumed the override, with the delivery long settled
+    markSessionLive(ctx, session.id, { ccSessionId: 'cc' })
+    vi.advanceTimersByTime(KICKOFF_DELAY_MS + KICKOFF_SUBMIT_DELAY_MS)
+    noteKickoffPrompt(ctx, session.id, 'never mind, I will drive')
+    expect(resendKickoff(ctx, session.id).line).toBe(briefing)
   })
 
   it('resendKickoff refuses when the session is over rather than writing into a dead PTY', async () => {
