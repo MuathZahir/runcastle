@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { checkForUpdate, compareSemver } from '../src/services/update-check'
+import { UNKNOWN_VERSION } from '../src/version'
 
 /**
  * Issue #51 — the server checks npm's `latest` dist-tag on start and surfaces a
@@ -65,6 +66,22 @@ describe('checkForUpdate', () => {
     const info = await checkForUpdate({ current: '0.1.0', fetchImpl: boom })
     expect(info.updateAvailable).toBe(false)
     expect(info.latest).toBeNull()
+  })
+
+  // An unreadable manifest leaves the running version as UNKNOWN_VERSION, which
+  // every published release outranks — so a brand-new install was told it was on
+  // 0.0.0 and out of date, from a prompt it had no reason to trust (findings F7).
+  it('claims no update when the running version is unknown, without asking npm', async () => {
+    let asked = false
+    const spy = (async () => {
+      asked = true
+      return new Response(JSON.stringify({ version: '1.1.1' }), { status: 200 })
+    }) as unknown as typeof fetch
+
+    const info = await checkForUpdate({ current: UNKNOWN_VERSION, fetchImpl: spy })
+    expect(info.updateAvailable).toBe(false)
+    expect(info.latest).toBeNull()
+    expect(asked).toBe(false)
   })
 
   it('swallows a non-200 registry response', async () => {

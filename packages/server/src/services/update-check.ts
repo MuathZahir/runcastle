@@ -9,6 +9,8 @@
  * degrades to "no update" so a stranger with no network still boots cleanly.
  */
 
+import { UNKNOWN_VERSION } from '../version'
+
 /** Public package name + the command a user runs to update it. */
 export const PACKAGE_NAME = 'runcastle'
 export const UPDATE_COMMAND = `bun add -g ${PACKAGE_NAME}@latest`
@@ -83,6 +85,10 @@ export async function checkForUpdate(opts: {
 }): Promise<UpdateInfo> {
   const { current } = opts
   const fetchImpl = opts.fetchImpl ?? fetch
+  // An unknown running version cannot be compared: every published release
+  // outranks it, so the honest answer is "no update" rather than telling a
+  // brand-new install it is on 0.0.0 and out of date (findings F7).
+  if (current === UNKNOWN_VERSION) return NO_UPDATE(current)
   try {
     const res = await fetchImpl(`https://registry.npmjs.org/${PACKAGE_NAME}/latest`)
     if (!res.ok) return NO_UPDATE(current)

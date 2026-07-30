@@ -11,6 +11,15 @@ import { fileURLToPath } from 'node:url'
  */
 let cached: string | undefined
 
+/**
+ * What {@link runcastleVersion} reports when no manifest was readable — "we do
+ * not know what is installed", not "version zero". Callers that compare versions
+ * must treat it as unknown: comparing against it makes every published release
+ * look newer, which is how a brand-new install got told it was out of date
+ * (findings F7).
+ */
+export const UNKNOWN_VERSION = '0.0.0'
+
 export function runcastleVersion(): string {
   if (cached) return cached
   const here = dirname(fileURLToPath(import.meta.url))
@@ -28,6 +37,6 @@ export function runcastleVersion(): string {
       // try the next candidate
     }
   }
-  cached = '0.0.0'
+  cached = UNKNOWN_VERSION
   return cached
 }
