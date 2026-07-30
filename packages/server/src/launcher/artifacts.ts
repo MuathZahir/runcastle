@@ -448,7 +448,7 @@ export function renderProjectPrompt(brief: ProjectBrief): string {
     '## Your task',
     'Invoke the `/runcastle:project` skill, then open by asking the human what they brought.',
     'Do not explore the project first: orienting before you know the ask spends their wait on',
-    'context you may not need. Read what the answer actually calls for, once you have it.',
+    'context you may not need. Once they have told you, read only what answering calls for.',
     '',
   ].join('\n')
 }
