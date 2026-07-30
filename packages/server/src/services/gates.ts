@@ -1,9 +1,10 @@
 import { existsSync } from 'node:fs'
 import type { Feature, GateCheckId, GateId, SessionKind } from '@runcastle/core'
-import { nextPhase } from '@runcastle/core'
+import { nextPhase, previousPhase } from '@runcastle/core'
 import { and, desc, eq, inArray } from 'drizzle-orm'
 import type { AppCtx } from '../db/types'
 import { gateOverrides, sessions } from '../db/schema'
+import { GateError } from '../errors'
 import { emit } from './events'
 import { featureDocPath } from './feature-docs'
 import { getFeatureRow, projectForFeature, setPhase } from './repo'
@@ -189,13 +190,52 @@ export function overrideGate(
  * hold (converge rolls its forced G1 back when the session it forced the gate
  * for could not be opened, findings F5). The `gate.overridden` event stays: the
  * timeline records what was attempted, the table records what stands.
+ *
+ * Returns whether a row was actually dropped.
  */
-export function undoLastGateOverride(ctx: AppCtx, featureId: string, gate: GateId): void {
+export function undoLastGateOverride(ctx: AppCtx, featureId: string, gate: GateId): boolean {
   const last = ctx.db
     .select({ id: gateOverrides.id })
     .from(gateOverrides)
     .where(and(eq(gateOverrides.featureId, featureId), eq(gateOverrides.gate, gate)))
     .orderBy(desc(gateOverrides.id))
     .get()
-  if (last) ctx.db.delete(gateOverrides).where(eq(gateOverrides.id, last.id)).run()
+  if (!last) return false
+  ctx.db.delete(gateOverrides).where(eq(gateOverrides.id, last.id)).run()
+  return true
+}
+
+/**
+ * Take an override back: restore the phase it advanced past, drop the override
+ * row, and record the reversal on the timeline (findings F24).
+ *
+ * Override was a one-way door — Apply moved the feature a phase forward with no
+ * warning of the consequence and no way back but DB surgery, which is a lot of
+ * friction for a button whose word ("override") reads like "waive this gate",
+ * not "skip ahead now".
+ *
+ * The reversal is deliberately narrow: one phase back, the phase the override
+ * itself stepped over. WHEN that is still meaningful is the caller's call — the
+ * UI offers undo only while the override is the feature's latest transition —
+ * so this refuses only what it cannot do at all.
+ */
+export function undoGateOverride(ctx: AppCtx, featureId: string, gate: GateId): Feature {
+  const feature = getFeatureRow(ctx, featureId)
+  const back = previousPhase(feature)
+  if (!back) {
+    throw new GateError(`${feature.phase} is the first phase — there is nothing to step back to`)
+  }
+  if (!undoLastGateOverride(ctx, featureId, gate)) {
+    throw new GateError(`no ${gate} override is recorded on this feature`)
+  }
+  // One event, not two: `setPhase` types it as the undo, so the timeline entry
+  // IS the phase transition — which is also what tells the UI the undo window
+  // has closed.
+  return setPhase(
+    ctx,
+    featureId,
+    back,
+    'gate.override.undone',
+    `${gate} override undone — back to ${back}`,
+  )
 }

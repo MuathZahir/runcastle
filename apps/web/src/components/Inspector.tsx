@@ -1,8 +1,10 @@
 import { useState } from 'react'
+import { nextPhase, type EventRow, type Phase } from '@runcastle/core'
 import { trpc } from '../trpc'
 import { useToast } from '../lib/toast'
 import { useEventLog } from '../lib/events'
 import type { DocSummary, GateState } from '../lib/api'
+import { PHASE_LABELS, undoableOverride } from '../lib/feature-ui'
 import { relTime } from '../lib/format'
 import { Button, DimLine } from '../ui'
 import { IconCheck, IconDoc } from '../icons'
@@ -17,6 +19,10 @@ import { DocPeek } from './DocPeek'
 export function Inspector({ featureId }: { featureId: string }) {
   const [tab, setTab] = useState<'details' | 'activity'>('details')
   const full = trpc.feature.get.useQuery({ id: featureId }, { refetchInterval: 1500 })
+  // One feed for both tabs: Activity narrates it, and the gate card reads the
+  // undo window for a gate override out of it (findings F24). Mounted here
+  // rather than inside Activity so switching tabs doesn't re-accumulate it.
+  const events = useEventLog(featureId)
 
   if (full.isLoading)
     return (
@@ -57,12 +63,17 @@ export function Inspector({ featureId }: { featureId: string }) {
 
       {tab === 'details' ? (
         <div className="insp-pane" key="details">
-          <CurrentGate featureId={featureId} gate={full.data.gate} />
+          <CurrentGate
+            featureId={featureId}
+            gate={full.data.gate}
+            phase={full.data.feature.phase}
+            events={events}
+          />
           <Knowledge featureId={featureId} docs={full.data.docs} />
         </div>
       ) : (
         <div className="insp-pane insp-pane-activity" key="activity">
-          <Activity featureId={featureId} />
+          <Activity events={events} />
         </div>
       )}
     </aside>
@@ -86,21 +97,51 @@ function gateName(gate: NonNullable<GateState['next']>): string {
   return GATE_NAMES[gate.id] ?? gate.id
 }
 
-function CurrentGate({ featureId, gate }: { featureId: string; gate: GateState }) {
+function CurrentGate({
+  featureId,
+  gate,
+  phase,
+  events,
+}: {
+  featureId: string
+  gate: GateState
+  phase: Phase
+  events: EventRow[]
+}) {
   const toast = useToast()
   const utils = trpc.useUtils()
   const [open, setOpen] = useState(false)
   const [reason, setReason] = useState('')
 
+  const invalidate = () => {
+    utils.feature.get.invalidate({ id: featureId })
+    utils.feature.list.invalidate()
+  }
+  // What Apply is actually about to DO. Overriding advances one phase — the
+  // consequence the form never stated, so users read "override" as "waive this
+  // gate" rather than "skip ahead now" (findings F24).
+  const lands = nextPhase({ phase })
+
   const override = trpc.feature.overrideGate.useMutation({
-    onSuccess: () => {
+    onSuccess: (feature) => {
       setReason('')
       setOpen(false)
-      utils.feature.get.invalidate({ id: featureId })
-      utils.feature.list.invalidate()
+      invalidate()
+      toast.push(`gate overridden — moved to ${PHASE_LABELS[feature.phase]}`, 'success')
     },
     onError: (e) => toast.push(e.message),
   })
+  const undo = trpc.feature.undoGateOverride.useMutation({
+    onSuccess: (feature) => {
+      invalidate()
+      toast.push(`override undone — back to ${PHASE_LABELS[feature.phase]}`, 'info')
+    },
+    onError: (e) => toast.push(e.message),
+  })
+
+  // Offered only while the override is still the feature's latest transition —
+  // once the pipeline has moved on, stepping back one phase reverses nothing.
+  const undoable = undoableOverride(events)
 
   return (
     <section className="insp-section">
@@ -117,6 +158,11 @@ function CurrentGate({ featureId, gate }: { featureId: string; gate: GateState }
           description={gate.next.description}
           satisfied={gate.satisfied}
           reason={gate.reason}
+          consequence={
+            lands
+              ? `Overriding ${gate.next.id} moves this feature to ${PHASE_LABELS[lands]}.`
+              : undefined
+          }
           open={open}
           reasonValue={reason}
           pending={override.isPending}
@@ -131,6 +177,22 @@ function CurrentGate({ featureId, gate }: { featureId: string; gate: GateState }
           }
         />
       )}
+      {undoable && (
+        <div className="gate-undo">
+          <span>
+            {undoable.gate} was overridden — this feature skipped ahead to{' '}
+            {PHASE_LABELS[undoable.to]}.
+          </span>
+          <Button
+            variant="ghost"
+            className="btn-xs"
+            disabled={undo.isPending}
+            onClick={() => undo.mutate({ featureId, gate: undoable.gate })}
+          >
+            Undo — back to {PHASE_LABELS[undoable.from]}
+          </Button>
+        </div>
+      )}
     </section>
   )
 }
@@ -141,6 +203,7 @@ function GateCard({
   description,
   satisfied,
   reason,
+  consequence,
   open,
   reasonValue,
   pending,
@@ -154,6 +217,8 @@ function GateCard({
   description: string
   satisfied: boolean
   reason: string | undefined
+  /** What Apply will do, stated before it is clicked. */
+  consequence: string | undefined
   open: boolean
   reasonValue: string
   pending: boolean
@@ -176,6 +241,7 @@ function GateCard({
 
       {open ? (
         <div className="override-form">
+          {consequence && <div className="override-consequence">{consequence}</div>}
           <input
             className="override-input"
             placeholder="Reason for override"
@@ -262,8 +328,7 @@ function humanType(type: string): string {
   return type.replace(/_/g, ' ').replace('.', ' · ')
 }
 
-function Activity({ featureId }: { featureId: string }) {
-  const events = useEventLog(featureId)
+function Activity({ events }: { events: EventRow[] }) {
   const recent = events.slice(-50).reverse()
   return (
     <section className="insp-section">

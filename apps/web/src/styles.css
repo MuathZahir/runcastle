@@ -2330,6 +2330,28 @@ details.wp-group-done > summary { cursor: pointer; list-style: revert; }
   outline: none;
 }
 .override-input:focus { border-color: var(--accent); }
+/* what Apply is about to do, said before it is clicked (findings F24) */
+.override-consequence {
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--needs);
+  text-wrap: pretty;
+}
+/* the way back, for as long as the override is the latest transition */
+.gate-undo {
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 7px;
+  padding: 10px 12px;
+  border: 1px dashed var(--hairline-strong);
+  border-radius: var(--radius);
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--text-3);
+  text-wrap: pretty;
+}
 
 .doc-list { list-style: none; margin: 0; padding: 0; }
 .doc-link {

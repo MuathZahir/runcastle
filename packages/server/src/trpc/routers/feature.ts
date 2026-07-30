@@ -10,7 +10,7 @@ import {
 import { lapKickoff } from '../../launcher/sessions'
 import { emit } from '../../services/events'
 import * as features from '../../services/features'
-import { overrideGate } from '../../services/gates'
+import { overrideGate, undoGateOverride } from '../../services/gates'
 import * as git from '../../services/git'
 import { getFeatureRow, projectForFeature, setFeatureStatus, setPhase } from '../../services/repo'
 import { publicProcedure, router } from '../context'
@@ -131,6 +131,13 @@ export const featureRouter = router({
   overrideGate: publicProcedure
     .input(z.object({ featureId: z.string(), gate: gateId, reason: z.string().min(1) }))
     .mutation(({ ctx, input }) => overrideGate(ctx, input.featureId, input.gate, input.reason)),
+
+  // Take an override back (findings F24): the phase it advanced past is restored
+  // and the reversal is recorded. The UI only offers it while the override is
+  // still the feature's latest transition.
+  undoGateOverride: publicProcedure
+    .input(z.object({ featureId: z.string(), gate: gateId }))
+    .mutation(({ ctx, input }) => undoGateOverride(ctx, input.featureId, input.gate)),
 
   // Archive a feature from any phase (decision #8): ends any live session, hides
   // it behind the sidebar's show-archived filter, keeps all data. Reversible via
