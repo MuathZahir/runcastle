@@ -2096,7 +2096,6 @@ details.wp-group-done > summary { cursor: pointer; list-style: revert; }
 }
 .drive-open:hover { border-color: var(--drive); }
 .drive-pane-term { height: 420px; min-height: 260px; background: var(--bg); position: relative; }
-.drive-pane-empty { padding: 20px 16px; color: var(--text-3); font-size: 12.5px; }
 
 .shipped-hero {
   max-width: 560px;
@@ -2865,14 +2864,17 @@ select.settings-input { cursor: pointer; }
   font-size: 12px;
   line-height: 1.6;
 }
-.delete-dialog-body { display: flex; flex-direction: column; gap: 16px; }
-.delete-dialog-lead {
+.delete-dialog-body,
+.merge-dialog-body { display: flex; flex-direction: column; gap: 16px; }
+.delete-dialog-lead,
+.merge-dialog-lead {
   margin: 0;
   font-size: 12.5px;
   line-height: 1.6;
   color: var(--text-2);
 }
-.delete-dialog-lead strong { color: var(--text); font-weight: 600; }
+.delete-dialog-lead strong,
+.merge-dialog-lead strong { color: var(--text); font-weight: 600; }
 .delete-dialog-field { display: flex; flex-direction: column; gap: 6px; }
 .delete-dialog-field > span { font-size: 12px; color: var(--text-2); }
 .delete-dialog-field code {
@@ -2882,7 +2884,8 @@ select.settings-input { cursor: pointer; }
   color: var(--text);
 }
 .delete-dialog-field .settings-input:focus { border-color: var(--danger); }
-.delete-dialog-actions {
+.delete-dialog-actions,
+.merge-dialog-actions {
   display: flex;
   justify-content: flex-end;
   gap: 8px;

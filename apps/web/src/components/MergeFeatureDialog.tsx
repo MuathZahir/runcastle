@@ -54,8 +54,8 @@ export function MergeFeatureDialog({
             ✕
           </button>
         </div>
-        <div className="peek-body delete-dialog-body">
-          <p className="delete-dialog-lead">
+        <div className="peek-body merge-dialog-body">
+          <p className="merge-dialog-lead">
             Merge <strong>{title}</strong> from <code className="mono">{branch}</code>
             {base ? (
               <>
@@ -79,7 +79,7 @@ export function MergeFeatureDialog({
             </ul>
           )}
 
-          <div className="delete-dialog-actions">
+          <div className="merge-dialog-actions">
             <Button variant="ghost" onClick={onCancel} disabled={busy}>
               Cancel
             </Button>

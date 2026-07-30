@@ -19,6 +19,7 @@ import {
   testDriveTaken,
   unresolvedMergeConflict,
   type ActionKind,
+  type MergeConflictState,
   type NextAction,
   type NextStep,
   type PipelineStep,
@@ -397,6 +398,7 @@ export function Workspace({
             effective={effective}
             full={full}
             driving={driving}
+            conflict={conflict}
             runId={run?.id ?? null}
             readonly={readonly}
             mapRailCollapsed={mapRailCollapsed}
@@ -412,6 +414,7 @@ function PhaseBody({
   effective,
   full,
   driving,
+  conflict,
   runId,
   readonly,
   mapRailCollapsed,
@@ -420,6 +423,7 @@ function PhaseBody({
   effective: Phase
   full: FeatureFull
   driving: DriveState | null
+  conflict: MergeConflictState | null
   runId: string | null
   readonly: boolean
   mapRailCollapsed: boolean
@@ -449,7 +453,7 @@ function PhaseBody({
         <TicketsBody featureId={full.feature.id} readonly={readonly} />
       )
     case 'review':
-      return <ReviewBody full={full} driving={driving} />
+      return <ReviewBody full={full} driving={driving} conflict={conflict} />
     case 'shipped':
       return <ShippedBody full={full} />
   }

@@ -7,10 +7,8 @@ import {
   latestRun,
   mergeConflictKickoff,
   reviewChecks,
-  unresolvedMergeConflict,
   type MergeConflictState,
 } from '../../lib/feature-ui'
-import { useEventLog } from '../../lib/events'
 import { fmtDateTime, relTime } from '../../lib/format'
 import { useToast } from '../../lib/toast'
 import { ErrorBoundary } from '../ErrorBoundary'
@@ -31,29 +29,39 @@ import { TerminalView } from '../TerminalView'
  * A conflicted Merge & ship surfaces the {@link ConflictCard} above the cards:
  * it lists the conflicting files and offers "Resolve with agent", which opens a
  * revisit session pre-briefed to merge the base branch into the feature branch
- * in the talk worktree. The conflict is read from the event feed, so it survives
- * a reload; the action is hidden while any session is live (one terminal per
- * feature — the server refuses a second one anyway).
+ * in the talk worktree. The conflict is read from the event feed (so it survives
+ * a reload) by the workspace and handed down here, because the next-step bar
+ * reads the same one: the bar recommending a merge over the top of this panel
+ * telling the user to resolve first is findings F8, and one derivation for both
+ * is what makes that contradiction unrepresentable. The action is hidden while
+ * any session is live (one terminal per feature — the server refuses a second
+ * one anyway).
  */
-export function ReviewBody({ full, driving }: { full: FeatureFull; driving: DriveState | null }) {
+export function ReviewBody({
+  full,
+  driving,
+  conflict,
+}: {
+  full: FeatureFull
+  driving: DriveState | null
+  conflict: MergeConflictState | null
+}) {
   const { feature, tickets, runs } = full
   // Live-only: the conflict card's "Resolve with agent" spawns a terminal, and
   // one terminal per feature — an ENDED session (which the panel still renders,
   // with its Resume) must not hide it.
   const sessionLive = full.sessions.some((s) => s.status === 'live' || s.status === 'launching')
-  const conflict = unresolvedMergeConflict(useEventLog(feature.id))
   const run = latestRun(runs)
   const isDriving = driving?.featureId === feature.id
   // Commits come from git, not from ticket commit rows (findings F23). Polled
   // slower than the 1.5s shell: a `rev-list --count` is cheap but this figure
   // only moves when a burn lands, and a human reads a card, not a ticker.
-  const commits = trpc.feature.commitCount.useQuery({ featureId: feature.id }, { refetchInterval: 5000 })
+  const commits = trpc.feature.commitCount.useQuery(
+    { featureId: feature.id },
+    { refetchInterval: 5000 },
+  )
   const drive = trpc.feature.driveInfo.useQuery(undefined, { refetchInterval: 1500 })
-  const checks = reviewChecks({
-    tickets,
-    run,
-    commitCount: commits.data?.count,
-  })
+  const checks = reviewChecks({ tickets, run, commitCount: commits.data?.count })
 
   return (
     <div className="review-body">
@@ -94,9 +102,7 @@ export function ReviewBody({ full, driving }: { full: FeatureFull; driving: Driv
       </div>
       </div>
 
-      {isDriving && drive.data?.featureId === feature.id && drive.data.devPaneId && (
-        <DrivePane drive={drive.data} />
-      )}
+      {isDriving && drive.data?.featureId === feature.id && <DrivePane drive={drive.data} />}
     </div>
   )
 }
