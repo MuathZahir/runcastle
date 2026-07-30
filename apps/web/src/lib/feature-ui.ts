@@ -539,9 +539,15 @@ export function kickoffTrouble(events: EventRow[], sessionId: string): KickoffTr
  * never the action. A terminal is a real process, so quitting runcastle ends
  * every session row; without this the bar would keep saying "Start" for a
  * conversation that is actually being continued.
+ *
+ * `kind` is optional because a `revisit` launch is kind-BLIND server-side: it
+ * resumes the feature's most recent resumable conversation whatever kind it was,
+ * which is what the lap's own session asks for.
  */
-function hasResumable(sessions: FeatureFull['sessions'], kind: string): boolean {
-  return sessions.some((s) => s.kind === kind && s.status === 'ended' && !!s.ccSessionId)
+function hasResumable(sessions: FeatureFull['sessions'], kind?: string): boolean {
+  return sessions.some(
+    (s) => (!kind || s.kind === kind) && s.status === 'ended' && !!s.ccSessionId,
+  )
 }
 
 export function nextStep(
@@ -643,7 +649,7 @@ export function nextStep(
             busy: false,
           }
         }
-        const resumableLap = sessions.some((s) => s.status === 'ended' && !!s.ccSessionId)
+        const resumableLap = hasResumable(sessions)
         return {
           kick: 'NEXT STEP',
           title: `Work lap ${feature.lap}`,
