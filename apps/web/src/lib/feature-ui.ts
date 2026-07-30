@@ -612,7 +612,9 @@ export function mergeSummary(input: {
 
   const warnings: string[] = []
   if (input.commitCount === undefined) {
-    warnings.push('runcastle could not count the commits on this branch.')
+    // Covers both "git could not tell" and "the count has not arrived yet" —
+    // either way the honest line is that this dialog cannot vouch for it.
+    warnings.push('The commit count for this branch is unknown — check it before merging.')
   } else if (input.commitCount === 0) {
     warnings.push('This branch carries no commits — merging it changes nothing.')
   }

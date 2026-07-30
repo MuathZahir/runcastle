@@ -495,8 +495,10 @@ describe('mergeSummary', () => {
     expect(s.warnings.join(' ')).toContain('no commits')
   })
 
-  it('warns when git could not count the commits', () => {
-    expect(mergeSummary({ ...all, commitCount: undefined }).warnings).toHaveLength(1)
+  it('warns when the commit count is unknown, rather than vouching for it', () => {
+    const s = mergeSummary({ ...all, commitCount: undefined })
+    expect(s.warnings.join(' ')).toContain('unknown')
+    expect(s.rows.find((r) => r.key === 'changes')?.tone).toBe('idle')
   })
 
   it('warns when no run was ever recorded', () => {
