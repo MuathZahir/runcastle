@@ -417,6 +417,19 @@ export function kickoffTrouble(events: EventRow[], sessionId: string): KickoffTr
 }
 
 /**
+ * True when the feature has an ENDED session of `kind` whose Claude Code
+ * conversation can still be picked up (it reached `live`, so it recorded a
+ * `ccSessionId`). Opening a terminal of that kind `--resume`s the latest such
+ * conversation server-side, so this only decides the WORDING — Resume vs Start —
+ * never the action. A terminal is a real process, so quitting runcastle ends
+ * every session row; without this the bar would keep saying "Start" for a
+ * conversation that is actually being continued.
+ */
+function hasResumable(sessions: FeatureFull['sessions'], kind: string): boolean {
+  return sessions.some((s) => s.kind === kind && s.status === 'ended' && !!s.ccSessionId)
+}
+
+/**
  * The single guided next step for a feature's *current* phase (app-redesign).
  * Two rules order the cases:
  *
@@ -431,19 +444,6 @@ export function kickoffTrouble(events: EventRow[], sessionId: string): KickoffTr
  *
  * Buttons are only for verbs the agent cannot perform.
  */
-/**
- * True when the feature has an ENDED session of `kind` whose Claude Code
- * conversation can still be picked up (it reached `live`, so it recorded a
- * `ccSessionId`). Opening a terminal of that kind `--resume`s the latest such
- * conversation server-side, so this only decides the WORDING — Resume vs Start —
- * never the action. A terminal is a real process, so quitting runcastle ends
- * every session row; without this the bar would keep saying "Start" for a
- * conversation that is actually being continued.
- */
-function hasResumable(sessions: FeatureFull['sessions'], kind: string): boolean {
-  return sessions.some((s) => s.kind === kind && s.status === 'ended' && !!s.ccSessionId)
-}
-
 export function nextStep(
   full: FeatureFull,
   ctx: { driving: boolean; mapContent?: string },
