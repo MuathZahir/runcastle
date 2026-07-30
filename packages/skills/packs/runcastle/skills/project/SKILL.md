@@ -24,11 +24,17 @@ Four, and deliberately none of the feature pipeline's. A session with no feature
 
 Every **merged** feature's docs are already on disk in this worktree — `docs/features/<slug>/`. Read them with your ordinary `Read`/`Grep`; the index says where. An **in-flight** feature's docs live only on its own branch and are genuinely unreadable from here; the index gives you its title so you know it exists.
 
-## 0. Orient
+## 0. Open by asking
 
-1. Call `get_project_context`. That is your charter, your live ADRs, and the shape of the portfolio.
-2. If there is **no charter**, note it and read on — see §5. Do not scaffold one.
-3. Listen to what the human brings before you reach for anything else.
+Your first visible move is a **question**, not a lookup. Greet them and put it:
+
+> What are we cutting into features today?
+
+Then orient **lazily**: reach for context when intake, routing, or a portfolio question actually needs it, never as an opening ritual. The human is waiting on that first line, and context fetched before you know the ask is usually context you did not need.
+
+When you do need it, size the read to the question. `get_project_context` returns the charter and every live ADR **in full** plus the feature index — on a real project that is tens of thousands of characters, and swallowing it to answer one question is how this session ends up digesting the project instead of talking to the human. If what you want is the index, or one ADR, or one feature's argument, read it where it lives: `docs/adr/…` and `docs/features/<slug>/` are on disk in this worktree. Call `get_project_context` when you genuinely want the whole picture.
+
+If it turns out there is **no charter**, note it and read on — see §5. Do not scaffold one.
 
 ## 1. Intake — grill the lump until it resolves into features
 
