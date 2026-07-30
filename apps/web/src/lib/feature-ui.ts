@@ -1,5 +1,5 @@
-import { nextPhase } from '@runcastle/core'
-import type { EventRow, Phase } from '@runcastle/core'
+import { nextPhase, parsePhase } from '@runcastle/core'
+import type { EventRow, GateId, Phase } from '@runcastle/core'
 import type { BranchList, FeatureFull, FeatureListItem } from './api'
 
 /**
@@ -26,6 +26,31 @@ export function slugPreview(title: string): string {
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '')
     .slice(0, 40)
+}
+
+/**
+ * The New Feature form's inline "you already have one of these" note, or null.
+ *
+ * The form had no duplicate guard at all (findings F25.3): typing a title the
+ * project already uses created a second feature with a suffixed branch and no
+ * warning, and only the branch line hinted at it. This is a warning, never a
+ * block — a deliberate second attempt at the same idea is legitimate, and the
+ * server deduplicates the slug either way.
+ *
+ * Matching is on the SLUG, not the raw title, because that is what actually
+ * collides: "Slack notifications" and "slack notifications!" become the same
+ * branch name.
+ */
+export function duplicateTitleWarning(
+  title: string,
+  features: readonly Pick<FeatureListItem, 'title' | 'slug' | 'status'>[],
+): string | null {
+  const slug = slugPreview(title)
+  if (slug === '') return null
+  const existing = features.find((f) => f.slug === slug)
+  if (!existing) return null
+  const where = existing.status === 'shipped' ? 'was already shipped' : 'already exists'
+  return `“${existing.title}” ${where} on feature/${existing.slug}. Creating this makes a second feature and a second branch.`
 }
 
 /**
@@ -267,6 +292,7 @@ export type ActionKind =
   | 'merge' // feature.merge (G5)
   | 'askQuestions' // launchSession { kind: 'qa' }
   | 'revisit' // launchSession { kind: 'revisit' } — resume the old conversation, amend docs + tickets
+  | 'resolveConflict' // launchSession { kind: 'revisit', kickoffLine: mergeConflictKickoff(…) }
   | 'rethink' // feature.rethink — start the next lap (review → ideation)
   | 'unarchive' // feature.unarchive — restore an archived feature to its lane (next-step bar)
 
@@ -287,6 +313,13 @@ export interface NextAction {
   danger?: boolean
   /** Set when the action needs a reason string before it can fire. */
   reason?: ReasonPrompt
+  /**
+   * Why this action cannot fire right now — the server would refuse it in this
+   * state. Set means shown-but-disabled, with this sentence as the reason: an
+   * action that vanishes leaves the user hunting for it, and one that fails on
+   * click teaches nothing (findings F3).
+   */
+  disabled?: string
 }
 
 export interface NextStep {
@@ -363,6 +396,12 @@ export interface MergeConflictState {
   base: string
   /** Repo-relative paths that conflicted. */
   files: string[]
+  /**
+   * When the conflict was recorded (the event's `ts`). The panel is undated
+   * without it, and an undated red panel reads as "happening now" — the audit
+   * found one that was fifteen days old (findings F8).
+   */
+  at: number
 }
 
 /**
@@ -379,12 +418,193 @@ export function unresolvedMergeConflict(events: EventRow[]): MergeConflictState 
     if (e.type === 'merge.conflict') {
       const d = (e.data ?? {}) as { base?: unknown; files?: unknown }
       const files = Array.isArray(d.files) ? d.files.filter((f): f is string => typeof f === 'string') : []
-      conflict = { base: typeof d.base === 'string' ? d.base : '', files }
+      conflict = { base: typeof d.base === 'string' ? d.base : '', files, at: e.ts }
     } else if (e.type === 'burn.started') {
       conflict = null
     }
   }
   return conflict
+}
+
+export interface UndoableOverride {
+  /** The gate that was forced. */
+  gate: GateId
+  /** The phase the feature was on before the override advanced it. */
+  from: Phase
+  /** Where the override put it — the feature's phase, while the undo stands. */
+  to: Phase
+}
+
+/**
+ * The phase move an event records, or null if it records none. Every phase
+ * change goes through the server's `setPhase`, which carries `{ from, to }` on
+ * the event whatever it types the event as — so the data SHAPE identifies a
+ * transition where a list of event types would go stale. Status changes carry
+ * `{ from, to }` too, but of statuses, so requiring BOTH to parse as phases
+ * separates them.
+ */
+function phaseTransition(e: EventRow): { from: Phase; to: Phase } | null {
+  const d = (e.data ?? {}) as { from?: unknown; to?: unknown }
+  const from = parsePhase(d.from)
+  const to = parsePhase(d.to)
+  return from && to ? { from, to } : null
+}
+
+/**
+ * The gate override that can still be taken back, derived from the event feed
+ * (so the affordance survives a reload, like the conflict card).
+ *
+ * Override is the pipeline's quietest irreversible action: Apply advanced the
+ * phase instantly, and the only ways back were an agent action or DB surgery
+ * (findings F24). Undo is offered only while the override is the feature's
+ * LATEST transition — `overrideGate` emits `gate.overridden` and then the
+ * advance, so any later phase transition (a burn, a lap, a merge, another
+ * advance) means the pipeline has moved on and stepping back one phase would no
+ * longer be the reversal of anything. `events` must be in id order.
+ */
+export function undoableOverride(events: EventRow[]): UndoableOverride | null {
+  let forcedGate: GateId | null = null
+  let undoable: UndoableOverride | null = null
+  for (const e of events) {
+    if (e.type === 'gate.overridden') {
+      forcedGate = ((e.data ?? {}) as { gate?: GateId }).gate ?? null
+      continue
+    }
+    const moved = phaseTransition(e)
+    if (!moved) continue
+    // The advance that the override just forced — or any other transition, which
+    // closes the window on whatever was open.
+    undoable = forcedGate ? { gate: forcedGate, ...moved } : null
+    forcedGate = null
+  }
+  return undoable
+}
+
+/**
+ * Whether this feature was ever test-driven, from the event feed — the third
+ * figure the merge confirmation reports (findings F21). A stopped drive still
+ * counts: the human did put the branch on the road.
+ */
+export function testDriveTaken(events: EventRow[]): boolean {
+  return events.some((e) => e.type === 'testdrive.started')
+}
+
+// --- review honesty: the SUMMARY card and the merge confirmation -------------
+
+/**
+ * How much trust a review figure has earned, as a dot colour: `ok` green,
+ * `warn` amber, `danger` red, `idle` grey for "there is nothing here".
+ *
+ * The distinction that matters is `idle` vs `ok`. The audit found the SUMMARY
+ * card painting "0 commits", "0/0 done" and a missing run in all-clear green
+ * (findings F23) — the one card meant to inform an irreversible merge reassuring
+ * the user about data it did not have. Absence is never `ok` here.
+ */
+export type CheckTone = 'ok' | 'warn' | 'danger' | 'idle'
+
+/** One labelled figure in the review summary / merge confirmation. */
+export interface CheckRow {
+  /** Row label, as shown ("tickets", "run", "changes", "test drive"). */
+  key: string
+  /** The figure itself, as shown. */
+  value: string
+  tone: CheckTone
+}
+
+/** A run as the summary reads it — the wire row, narrowed to what it paints. */
+interface RunFigure {
+  status: string
+  summary?: string | null
+}
+
+function ticketRow(tickets: readonly { status: string }[]): CheckRow {
+  const total = tickets.length
+  const done = tickets.filter((t) => t.status === 'done').length
+  const failed = tickets.filter((t) => t.status === 'failed').length
+  const value = `${done}/${total} done${failed > 0 ? ` · ${failed} failed` : ''}`
+  // 0/0 is grey, not green: no tickets means nothing was verified, which is a
+  // different thing from everything having passed.
+  const tone: CheckTone =
+    failed > 0 ? 'danger' : total === 0 ? 'idle' : done === total ? 'ok' : 'warn'
+  return { key: 'tickets', value, tone }
+}
+
+function runRow(run: RunFigure | undefined): CheckRow {
+  if (!run) return { key: 'run', value: 'no run recorded', tone: 'idle' }
+  const tone: CheckTone =
+    run.status === 'succeeded' ? 'ok' : run.status === 'failed' ? 'danger' : 'warn'
+  return { key: 'run', value: `${run.status}${run.summary ? ` · ${run.summary}` : ''}`, tone }
+}
+
+/**
+ * The commits row. `count` comes from git (`feature.commitCount`), not from
+ * ticket commit rows — a branch a human or an Iterate session committed to has
+ * commits and no ticket rows at all, which is how a branch one commit ahead of
+ * main reported "0 commits" in green. `undefined` means git could not tell, and
+ * says so rather than borrowing zero's certainty.
+ */
+function commitRow(count: number | undefined): CheckRow {
+  if (count === undefined) return { key: 'changes', value: 'commit count unknown', tone: 'idle' }
+  return {
+    key: 'changes',
+    value: `${count} commit${count === 1 ? '' : 's'}`,
+    tone: count > 0 ? 'ok' : 'warn',
+  }
+}
+
+/** The review SUMMARY card's rows, in the order the card shows them. */
+export function reviewChecks(input: {
+  tickets?: readonly { status: string }[]
+  run?: RunFigure
+  commitCount?: number
+}): CheckRow[] {
+  return [ticketRow(input.tickets ?? []), runRow(input.run), commitRow(input.commitCount)]
+}
+
+/** What the merge confirmation shows: the figures, and every gap in them. */
+export interface MergeSummary {
+  rows: CheckRow[]
+  /**
+   * One sentence per missing or unhappy figure, shown as warnings above the
+   * confirm button. Empty when everything checks out.
+   */
+  warnings: string[]
+}
+
+/**
+ * The merge confirmation's summary (findings F21): what is about to be merged,
+ * and what is missing from that picture. Merging is the pipeline's most
+ * irreversible action and fired on a single unconfirmed click — this is the text
+ * that click now has to be read past.
+ *
+ * Every gap is reported, not just the first: "no commits" and "never
+ * test-driven" are two different reasons to stop, and the human deserves both
+ * before deciding.
+ */
+export function mergeSummary(input: {
+  commitCount?: number
+  run?: RunFigure
+  driveTaken: boolean
+}): MergeSummary {
+  const drive: CheckRow = input.driveTaken
+    ? { key: 'test drive', value: 'taken', tone: 'ok' }
+    : { key: 'test drive', value: 'never test-driven', tone: 'warn' }
+
+  const warnings: string[] = []
+  if (input.commitCount === undefined) {
+    // Covers both "git could not tell" and "the count has not arrived yet" —
+    // either way the honest line is that this dialog cannot vouch for it.
+    warnings.push('The commit count for this branch is unknown — check it before merging.')
+  } else if (input.commitCount === 0) {
+    warnings.push('This branch carries no commits — merging it changes nothing.')
+  }
+  if (!input.run) warnings.push('No run was recorded — no burn has run on this branch.')
+  else if (input.run.status !== 'succeeded') {
+    warnings.push(`The last run ${input.run.status} rather than succeeding.`)
+  }
+  if (!input.driveTaken) warnings.push('This branch was never test-driven.')
+
+  return { rows: [commitRow(input.commitCount), runRow(input.run), drive], warnings }
 }
 
 /** Why a session's briefing is flagged in the session strip. */
@@ -424,9 +644,15 @@ export function kickoffTrouble(events: EventRow[], sessionId: string): KickoffTr
  * never the action. A terminal is a real process, so quitting runcastle ends
  * every session row; without this the bar would keep saying "Start" for a
  * conversation that is actually being continued.
+ *
+ * `kind` is optional because a `revisit` launch is kind-BLIND server-side: it
+ * resumes the feature's most recent resumable conversation whatever kind it was,
+ * which is what the lap's own session asks for.
  */
-function hasResumable(sessions: FeatureFull['sessions'], kind: string): boolean {
-  return sessions.some((s) => s.kind === kind && s.status === 'ended' && !!s.ccSessionId)
+function hasResumable(sessions: FeatureFull['sessions'], kind?: string): boolean {
+  return sessions.some(
+    (s) => (!kind || s.kind === kind) && s.status === 'ended' && !!s.ccSessionId,
+  )
 }
 
 /**
@@ -446,7 +672,17 @@ function hasResumable(sessions: FeatureFull['sessions'], kind: string): boolean 
  */
 export function nextStep(
   full: FeatureFull,
-  ctx: { driving: boolean; mapContent?: string },
+  ctx: {
+    driving: boolean
+    mapContent?: string
+    /**
+     * The feature's standing merge conflict ({@link unresolvedMergeConflict}).
+     * Set means the last Merge & ship failed and nothing has superseded it, so
+     * the bar must stop recommending the merge that can only fail again — the
+     * bar and the conflict panel contradicting each other is findings F8.
+     */
+    conflict?: MergeConflictState | null
+  },
 ): NextStep {
   const { feature, tickets, sessions, runs, gate } = full
   const live = sessions.find((s) => s.status === 'live')
@@ -523,6 +759,39 @@ export function nextStep(
           ],
           busy: false,
           fog,
+        }
+      }
+      // From lap 2 on, ideation belongs to the LAP's session (SPEC §15.2): one
+      // terminal digests what the drive taught, amends the docs, emits this lap's
+      // tickets and advances itself through ideation → spec → tickets. So the bar
+      // never offers a bare promote here — lap 1's decisions.md is still on disk,
+      // and promoting on it skips the whole lap and dead-ends at `tickets` with
+      // nothing to burn (findings F4). The lap-scoped gates refuse it server-side;
+      // this is the same truth in the copy, pointing at the session instead.
+      if (feature.lap > 1) {
+        if (live) {
+          return {
+            kick: 'LAP LIVE',
+            title: `Lap ${feature.lap} in progress`,
+            desc: 'The lap session digests the drive, amends the docs and emits this lap’s tickets.',
+            primary: undefined,
+            secondary: [],
+            busy: false,
+          }
+        }
+        const resumableLap = hasResumable(sessions)
+        return {
+          kick: 'NEXT STEP',
+          title: `Work lap ${feature.lap}`,
+          desc: `Lap ${feature.lap} is open — its session amends the docs and emits this lap’s tickets, then hands back to Burn. Promoting is refused until it has run.`,
+          primary: {
+            label: resumableLap
+              ? `Resume lap ${feature.lap} session`
+              : `Start lap ${feature.lap} session`,
+            kind: 'revisit',
+          },
+          secondary: [],
+          busy: false,
         }
       }
       if (live) {
@@ -652,6 +921,33 @@ export function nextStep(
           busy: true,
         }
       }
+      // Nothing to burn. The bar used to offer an enabled "Burn 0 tickets" over
+      // an empty ledger whose own copy said the opposite (findings F25.1) — the
+      // tickets phase has always handled this state honestly, so this says the
+      // same thing: the missing thing is tickets, and a session emits them.
+      if (t === 0) {
+        if (live) {
+          return {
+            kick: 'WAITING',
+            title: 'No tickets to burn',
+            desc: 'This feature reached the build phase with an empty ledger. The live session breaks the work into tickets — they appear here as they land.',
+            primary: undefined,
+            secondary: [],
+            busy: false,
+          }
+        }
+        return {
+          kick: 'WAITING',
+          title: 'No tickets to burn',
+          desc: 'This feature reached the build phase with an empty ledger. A session breaks the work into tickets — open one, and the burn has something to run.',
+          primary: {
+            label: resumableGrill ? 'Resume the session' : 'Open a session',
+            kind: 'startGrill',
+          },
+          secondary: [],
+          busy: false,
+        }
+      }
       // Never burned at all — the feature was born here (the quick-change door,
       // decision 21) or crossed G3 by an override. There is nothing to resume,
       // so this is the plain first Burn, worded like the tickets phase's.
@@ -684,14 +980,54 @@ export function nextStep(
     }
     case 'review': {
       // Review offers three verbs (ADR-0010 §3): Fix — the Burn primary below,
-      // for when the spec was right and the code wasn't; Rethink — the spec was
-      // wrong, so start lap N+1 back at ideation; Merge & ship. Test drive stays
-      // available throughout. Rethink opens the lap's terminal, and there is one
-      // terminal per feature, so it's hidden while any session is live.
+      // for when the spec was right and the code wasn't; Iterate — the spec was
+      // wrong, so start lap N+1 back at ideation (the `rethink` procedure keeps
+      // the internal name, for continuity of the timeline); Merge & ship. Test
+      // drive stays available throughout. Iterate opens the lap's terminal, and
+      // there is one terminal per feature, so it's hidden while any session is
+      // live — and disabled while the drive holds the branch its worktree needs,
+      // which the server refuses outright (findings F3).
       const testDriveAction: NextAction = ctx.driving
         ? { label: 'Stop test drive', kind: 'testDriveStop' }
         : { label: 'Start test drive', kind: 'testDriveStart' }
-      const rethink: NextAction[] = live ? [] : [{ label: 'Rethink', kind: 'rethink' }]
+      const iterate: NextAction[] = live
+        ? []
+        : [
+            {
+              label: 'Iterate',
+              kind: 'rethink',
+              ...(ctx.driving
+                ? { disabled: 'Stop the test drive first — the branch is checked out' }
+                : {}),
+            },
+          ]
+
+      // A recorded conflict outranks every other review verb (findings F8). The
+      // bar used to highlight Merge & ship directly above the red conflict panel,
+      // so the one action the user trusts re-ran a merge that could not land.
+      // Merge & ship stays visible but disabled with the reason — an action that
+      // vanishes leaves the user hunting for it.
+      if (ctx.conflict) {
+        const blockedMerge: NextAction = {
+          label: 'Merge & ship',
+          kind: 'merge',
+          disabled: 'Resolve the merge conflict first — this merge will fail again',
+        }
+        return {
+          kick: 'MERGE CONFLICT',
+          title: 'Resolve the merge conflict',
+          desc: live
+            ? `Merging ${ctx.conflict.base} in hit conflicts — resolve them in the open session, then merge again.`
+            : `Merging ${ctx.conflict.base} in hit conflicts. An agent can resolve them on this branch, then Merge & ship retries.`,
+          // One terminal per feature: with a session live there is nothing to
+          // launch, and the conflict panel below carries the file list.
+          primary: live
+            ? undefined
+            : { label: 'Resolve the merge conflict', kind: 'resolveConflict' },
+          secondary: [blockedMerge, testDriveAction, ...iterate],
+          busy: false,
+        }
+      }
 
       // Fix tickets are non-terminal — while any exist, the review loops back
       // through a burn (CONTEXT decision #7): Burn is promoted to primary, and
@@ -704,22 +1040,27 @@ export function nextStep(
             ? 'Test-driving the branch — burn the fix tickets when you’re ready.'
             : `${pending} fix ticket${pending === 1 ? '' : 's'} ready — burn to run them, then review again.`,
           primary: { label: `Burn ${pending} ticket${pending === 1 ? '' : 's'}`, kind: 'burn' },
-          secondary: [{ label: 'Merge & ship', kind: 'merge' }, testDriveAction, ...rethink],
+          secondary: [{ label: 'Merge & ship', kind: 'merge' }, testDriveAction, ...iterate],
           busy: false,
         }
       }
 
+      // "Checks are in" is an all-clear, so it needs checks to have run: the audit
+      // found it over a feature with no run recorded at all (findings F23), which
+      // is the state a quick-change or an overridden gate lands in.
       const desc = ctx.driving
         ? 'Test-driving the branch — merge when it looks right.'
         : failed > 0
           ? `Run finished with ${failed} failed ticket${failed === 1 ? '' : 's'} — review, then ship.`
-          : 'Checks are in. Test-drive the branch, then merge to ship.'
+          : run
+            ? 'Checks are in. Test-drive the branch, then merge to ship.'
+            : 'No run has been recorded on this branch — test-drive it yourself before merging.'
       return {
         kick: 'NEXT STEP',
         title: ctx.driving ? 'Merge when it looks right' : 'Test drive, then ship',
         desc,
         primary: { label: 'Merge & ship', kind: 'merge' },
-        secondary: [testDriveAction, ...rethink],
+        secondary: [testDriveAction, ...iterate],
         busy: false,
       }
     }

@@ -77,3 +77,32 @@ export function projectStats(features: FeatureListItem[]): ProjectStats {
 export function aggregateRuns(stats: ProjectStats[]): number {
   return stats.reduce((n, s) => n + s.activeRuns, 0)
 }
+
+/**
+ * The inline failure the open-a-project form shows, from the server's error.
+ *
+ * It used to be a bottom-right toast that auto-dismissed six seconds later,
+ * fired from the far corner of the screen while the user was still looking at
+ * the path field (findings F17.2). The message belongs under the field it is
+ * about — and the commonest one of all, "not a git repository", has an obvious
+ * next move the toast never mentioned.
+ */
+export interface RepoOpenFailure {
+  message: string
+  /** What to do about it, when the failure has a known remedy. */
+  hint: string | null
+}
+
+export function repoOpenFailure(message: string, path: string): RepoOpenFailure {
+  const where = path.trim() || 'that folder'
+  if (/not a git repository/i.test(message)) {
+    return {
+      message,
+      hint: `runcastle tracks work as branches, so it needs a git repository. Run \`git init\` in ${where}, or pick a folder that already is one.`,
+    }
+  }
+  if (/does not exist|cannot read/i.test(message)) {
+    return { message, hint: 'Check the path, or use Browse… to find the folder.' }
+  }
+  return { message, hint: null }
+}

@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import type { FeatureListItem } from '../lib/api'
 import type { ProjectNavApi } from '../lib/use-project-nav'
+import { PHASE_LABELS } from '../lib/feature-ui'
+import { matchesPreparation } from '../lib/project-workspace'
 import { IconFolder, IconPlus, IconSettings } from '../icons'
 
 /**
@@ -91,12 +93,10 @@ export function CommandPalette(props: CommandPaletteProps) {
   const showSettings = 'settings preferences'.includes(q)
   // Preparation is project-scoped and has no home in the feature pipeline, so
   // it needs a way in that does not depend on the project being unprepared and
-  // featureless (which is when the workspace offers it unprompted).
-  // 'talk'/'ask' included because the conversation is reached THROUGH this
-  // surface — the palette navigates, it does not launch sessions, so searching
-  // for the conversation has to land you where its button is.
-  const showPreparation =
-    'preparation prepare project commands baseline talk ask secrets database'.includes(q)
+  // featureless (which is when the workspace offers it unprompted). Its terms
+  // live in lib/ because they are the searchable half of preparation's
+  // discoverability, and they are tested there.
+  const showPreparation = matchesPreparation(q)
 
   const rows = useMemo<Row[]>(() => {
     const r: Row[] = filteredFeatures.map((f) => ({ kind: 'feature' as const, feature: f }))
@@ -209,9 +209,12 @@ export function CommandPalette(props: CommandPaletteProps) {
                   </span>
                   <span className="cmdk-item-label">{f.title}</span>
                   <span className="cmdk-item-slug">{f.slug}</span>
-                  <span className="cmdk-item-hint">
-                    {f.id === selectedFeatureId ? 'current' : f.phase}
-                  </span>
+                  {/* The phase column used to read "current" for the selected
+                      feature, which meant the one feature you were most likely
+                      to be checking never showed its phase (findings F10.8).
+                      Being selected is a separate fact — it gets its own mark. */}
+                  {f.id === selectedFeatureId && <span className="cmdk-item-current">open</span>}
+                  <span className="cmdk-item-hint">{PHASE_LABELS[f.phase] ?? f.phase}</span>
                 </div>
               ))}
             </>

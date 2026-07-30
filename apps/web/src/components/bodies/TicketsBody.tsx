@@ -3,7 +3,9 @@ import type { Ticket } from '@runcastle/core'
 import { trpc } from '../../trpc'
 import { useToast } from '../../lib/toast'
 import { SANDBOX_MODE } from '../../lib/env'
+import { BURN_EXPLAINER } from '../../lib/vocabulary'
 import { shortSha } from '../../lib/format'
+import { useLivePoll } from '../../lib/live'
 import { effectiveStepModel } from '../../lib/settings'
 import type { SettingsView } from '../../lib/api'
 import { Button, DimLine, EmptyState, SectionTitle, TicketStatusChip } from '../../ui'
@@ -30,13 +32,16 @@ export function TicketsBody({
   readonly = false,
 }: {
   featureId: string
-  // Accepted for API symmetry with the other phase bodies; the ledger is
-  // already read-only, so it changes nothing here.
+  /**
+   * Looking back at a phase the feature has already left. The ledger itself is
+   * read-only either way; what this suppresses is the session panel's offer to
+   * reopen a conversation from a phase that is over (findings F10.6).
+   */
   readonly?: boolean
 }) {
   const toast = useToast()
   const utils = trpc.useUtils()
-  const full = trpc.feature.get.useQuery({ id: featureId }, { refetchInterval: 1500 })
+  const full = trpc.feature.get.useQuery({ id: featureId }, { refetchInterval: useLivePoll() })
   const [open, setOpen] = useState<Set<string>>(() => new Set())
   // The ticket currently being edited in place, or null. One at a time — the
   // ledger is a review surface, not a spreadsheet.
@@ -103,6 +108,7 @@ export function TicketsBody({
         featureId={featureId}
         sessions={full.data.sessions}
         className="tickets-session"
+        showResume={!readonly}
       />
 
       <div className="body-title">
@@ -112,6 +118,9 @@ export function TicketsBody({
         <span className="chip chip-neutral" title="sandbox">sandbox · {SANDBOX_MODE}</span>
         <span className="chip chip-neutral" title="model">{model}</span>
       </div>
+      {/* The bar above this ledger says "review, then burn" without ever saying
+          what burning does with them (finding F12/F16). */}
+      <div className="body-hint">{BURN_EXPLAINER}</div>
 
       {total === 0 ? (
         <div className="ledger">

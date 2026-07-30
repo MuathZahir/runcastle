@@ -4,7 +4,9 @@ import { DimLine } from '../ui'
 import { useToast } from '../lib/toast'
 import type { FeatureListItem, PrepView } from '../lib/api'
 import { miniSegments, needsMe, triage } from '../lib/feature-ui'
-import { showsPrepNudge } from '../lib/project-workspace'
+import { prepRailRow } from '../lib/project-workspace'
+import { isStale } from '../lib/settings'
+import { useLivePoll } from '../lib/live'
 import type { ProjectTalkApi } from '../lib/use-project-talk'
 import { IconBolt, IconCheck, IconPlus, LogoMark } from '../icons'
 import { FeatureActionsMenu, type FeatureAction } from './FeatureActionsMenu'
@@ -61,12 +63,18 @@ export function Sidebar({
   // The feature awaiting delete confirmation (decision #8), or null.
   const [pendingDelete, setPendingDelete] = useState<FeatureListItem | null>(null)
 
-  const list = trpc.feature.list.useQuery({ projectId }, { refetchInterval: 1500 })
+  const list = trpc.feature.list.useQuery({ projectId }, { refetchInterval: useLivePoll() })
   // Same query key the preparation workspace polls — one fetch, two readers.
-  // Assumed prepared until it answers, so the nudge never flashes on first paint.
+  // The row waits for the answer rather than guessing: its two variants say
+  // opposite things, so a guess is a sentence that flips on first paint.
   const prep = trpc.project.prep.useQuery({ projectId }) as { data?: PrepView }
-  const prepared = prep.data?.prepared ?? true
-  const pendingCount = prep.data?.pendingKeys.length ?? 0
+  const prepRow = prepRailRow(
+    prep.data && {
+      prepared: prep.data.prepared,
+      pendingCount: prep.data.pendingKeys.length,
+      staleCount: prep.data.findings.filter(isStale).length,
+    },
+  )
   const groups = triage(list.data ?? [], { showArchived })
   const archivedCount = (list.data ?? []).filter((f) => f.status === 'archived').length
 
@@ -182,19 +190,22 @@ export function Sidebar({
         )}
       </div>
 
-      {/* The demoted call-to-action (SPEC §14). With features on screen the
-          whole-body version would be in the way, but an unprepared project still
-          needs remembering — so it shrinks to the rail's foot rather than going
-          back into settings, where nobody found it. */}
-      {showsPrepNudge({ featureCount: list.data?.length ?? 0, prepared }) && (
+      {/* Preparation's permanent address (SPEC §14). With features on screen the
+          whole-body version would be in the way, so it shrinks to the rail's
+          foot — and it stays there once prepared, because a finished preparation
+          still has to be findable to be re-run or read. */}
+      {prepRow && (
         <button
-          className="prep-nudge"
+          className={`prep-nudge is-${prepRow.variant}`}
           onClick={onOpenPreparation}
-          title="Establish this repo's commands and test baseline, once"
+          title={prepRow.title}
+          // The badge is a fragment ("8 to establish"); a screen reader should
+          // get the sentence that explains it, not the fragment.
+          aria-label={`${prepRow.label} — ${prepRow.title}`}
         >
           <span className="prep-nudge-dot" aria-hidden="true" />
-          <span className="prep-nudge-text">Prepare this project</span>
-          {pendingCount > 0 && <span className="prep-nudge-count">{pendingCount}</span>}
+          <span className="prep-nudge-text">{prepRow.label}</span>
+          {prepRow.badge && <span className="prep-nudge-count">{prepRow.badge}</span>}
         </button>
       )}
 

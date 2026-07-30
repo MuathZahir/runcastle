@@ -1,5 +1,7 @@
 import { trpc } from '../trpc'
 import { aggregateRuns, projectStats } from '../lib/projects'
+import { useLivePoll } from '../lib/live'
+import { modKey } from '../lib/platform'
 import type { ProjectNavApi } from '../lib/use-project-nav'
 import { IconBranch, IconPanelRight, IconSearch, IconSettings, LogoMark, LogoWordmark } from '../icons'
 import { ProjectSwitcher } from './ProjectSwitcher'
@@ -25,10 +27,12 @@ export function Titlebar({
   inspectorCollapsed: boolean
 }) {
   const projects = nav.projects ?? []
+  const mod = modKey()
 
   // Aggregate runs across ALL open projects (not just the current one).
+  const poll = useLivePoll()
   const featureQueries = trpc.useQueries((t) =>
-    projects.map((p) => t.feature.list({ projectId: p.id }, { refetchInterval: 1500 })),
+    projects.map((p) => t.feature.list({ projectId: p.id }, { refetchInterval: poll })),
   )
   const stats = featureQueries.map((q) => projectStats(q.data ?? []))
   const runCount = aggregateRuns(stats)
@@ -55,11 +59,13 @@ export function Titlebar({
 
       <span className="tb-spacer" />
 
-      <button className="tb-search" onClick={onOpenCmdk} title="Search or jump to (⌘K)">
+      {/* The shortcut is ⌘K on a Mac and Ctrl+K everywhere else, and the hint
+          used to claim ⌘K for everyone (findings F17.4). */}
+      <button className="tb-search" onClick={onOpenCmdk} title={`Search or jump to (${mod})`}>
         <IconSearch size={13} />
         <span>Search or jump to…</span>
         <span className="tb-search-spacer" />
-        <span className="kbd">⌘K</span>
+        <span className="kbd">{mod}</span>
       </button>
 
       {runCount > 0 && (

@@ -381,11 +381,22 @@ button {
 .wordmark-run { color: var(--accent-hi); }
 .wordmark-castle { color: var(--text); }
 .tb-home:hover .wordmark-castle { color: var(--accent-hi); }
-.tb-arrow, .tb-dot { color: var(--text-4); }
-.tb-project { color: var(--text-2); }
+.tb-arrow, .tb-dot { color: var(--text-4); flex: 0 0 auto; }
+/* The breadcrumb is the one titlebar slot holding user-supplied text, so it is
+   the one that has to give: it shrinks and ellipsises rather than widening the
+   shell until the workspace and details rail slide off-canvas (findings F20). */
+.tb-project {
+  color: var(--text-2);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .tb-branch {
   display: inline-flex;
   align-items: center;
+  flex: 0 0 auto;
+  white-space: nowrap;
   gap: 5px;
   color: var(--text-3);
   font-family: var(--mono);
@@ -1118,6 +1129,20 @@ button {
 .ws-banner.is-offline .ws-banner-tag {
   border-color: color-mix(in srgb, var(--warn, #d9a441) 40%, var(--hairline));
 }
+/* unrecognized-phase / crashed-feature variant (findings F19): the danger frame,
+   but nothing to dismiss — the row itself has to be fixed */
+.ws-banner.is-broken {
+  cursor: default;
+  align-items: flex-start;
+  animation: none;
+}
+.broken-detail {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 0 14px;
+}
 .ws-banner-tag {
   font-family: var(--mono);
   font-size: 10px;
@@ -1159,7 +1184,7 @@ button {
   margin-bottom: 12px;
 }
 .body-title .section-title { padding: 0; }
-.body-hint { font-size: 12px; color: var(--text-3); text-wrap: pretty; }
+.body-hint { font-size: 12px; color: var(--text-3); text-wrap: pretty; margin-bottom: 12px; }
 .body-meta { font-family: var(--mono); font-size: 11.5px; color: var(--text-2); }
 
 /* generic bordered surface inside a body */
@@ -1992,6 +2017,11 @@ details.wp-group-done > summary { cursor: pointer; list-style: revert; }
   margin-top: 11px;
 }
 .check-dot { width: 7px; height: 7px; border-radius: 50%; flex: 0 0 7px; }
+/* Review-figure tones (findings F23): absence is grey, never green. */
+.check-dot.is-ok { background: var(--ok); }
+.check-dot.is-warn { background: var(--warn, #d9a441); }
+.check-dot.is-danger { background: var(--danger); }
+.check-dot.is-idle { background: var(--text-3); }
 .check-k { font-family: var(--mono); font-size: 12px; color: var(--text); width: 92px; flex: 0 0 auto; }
 .check-v { font-family: var(--mono); font-size: 11.5px; color: var(--text-3); }
 .review-foot {
@@ -2041,6 +2071,10 @@ details.wp-group-done > summary { cursor: pointer; list-style: revert; }
   background: color-mix(in srgb, var(--danger) 9%, transparent);
 }
 .conflict-resolve { margin-top: 14px; }
+.conflict-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.conflict-when { font-family: var(--mono); font-size: 11px; color: var(--text-3); }
+/* A drive that checked the branch out and started nothing is not "driving". */
+.drive-label.is-quiet { color: var(--text-2); }
 
 /* test-drive embedded dev pane (issue #41) */
 .review-body { display: flex; flex-direction: column; gap: 14px; }
@@ -2087,7 +2121,6 @@ details.wp-group-done > summary { cursor: pointer; list-style: revert; }
 }
 .drive-open:hover { border-color: var(--drive); }
 .drive-pane-term { height: 420px; min-height: 260px; background: var(--bg); position: relative; }
-.drive-pane-empty { padding: 20px 16px; color: var(--text-3); font-size: 12.5px; }
 
 .shipped-hero {
   max-width: 560px;
@@ -2191,6 +2224,26 @@ details.wp-group-done > summary { cursor: pointer; list-style: revert; }
 .nf-base-select:disabled { opacity: 0.5; cursor: default; }
 .nf-branch { margin-top: 16px; font-family: var(--mono); font-size: 11.5px; color: var(--text-3); }
 .nf-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 22px; }
+/* the one dismissal question, asked before typed prose is thrown away (F25.2) */
+.nf-discard {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 16px;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--warn, #d9a441) 45%, var(--hairline));
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--warn, #d9a441) 7%, var(--panel-2));
+}
+.nf-discard-text { font-size: 12.5px; color: var(--text); }
+.nf-discard-spacer { flex: 1; }
+/* the inline "you already have one of these" note under the title field (F25.3) */
+.nf-dupe {
+  margin-top: 8px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--warn, #d9a441);
+}
 .nf-advanced { margin-top: 16px; }
 .nf-advanced-summary {
   font-size: 12.5px;
@@ -2255,6 +2308,14 @@ details.wp-group-done > summary { cursor: pointer; list-style: revert; }
   color: var(--text-3);
   margin-bottom: 8px;
 }
+/* Plain-language gloss under a rail cap (finding F16). */
+.insp-hint {
+  font-size: 11.5px;
+  color: var(--text-3);
+  line-height: 1.5;
+  text-wrap: pretty;
+  margin-bottom: 8px;
+}
 .gate-shipped {
   display: flex;
   align-items: center;
@@ -2308,6 +2369,28 @@ details.wp-group-done > summary { cursor: pointer; list-style: revert; }
   outline: none;
 }
 .override-input:focus { border-color: var(--accent); }
+/* what Apply is about to do, said before it is clicked (findings F24) */
+.override-consequence {
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--needs);
+  text-wrap: pretty;
+}
+/* the way back, for as long as the override is the latest transition */
+.gate-undo {
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 7px;
+  padding: 10px 12px;
+  border: 1px dashed var(--hairline-strong);
+  border-radius: var(--radius);
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--text-3);
+  text-wrap: pretty;
+}
 
 .doc-list { list-style: none; margin: 0; padding: 0; }
 .doc-link {
@@ -2352,6 +2435,34 @@ details.wp-group-done > summary { cursor: pointer; list-style: revert; }
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
+}
+/* the summary is one line of plain text; the rest opens below it (F10.5/F18) */
+.act-msg-toggle {
+  width: 100%;
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+.act-msg-toggle:hover { color: var(--text); }
+.act-more { color: var(--text-4); margin-left: 6px; }
+.act-detail {
+  margin: 6px 0 0;
+  padding: 7px 9px;
+  max-height: 260px;
+  overflow: auto;
+  background: var(--panel-inset);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius);
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--text-2);
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 .act-sub { display: flex; align-items: baseline; gap: 8px; margin-top: 2px; }
 .act-type { font-size: 10.5px; color: var(--text-4); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -2402,6 +2513,7 @@ details.wp-group-done > summary { cursor: pointer; list-style: revert; }
 .sb-notify { display: inline-flex; align-items: center; gap: 5px; background: none; border: none; color: var(--text-3); cursor: pointer; font-size: 11px; padding: 0; transition: color var(--dur-1); }
 .sb-notify:hover { color: var(--text); }
 .sb-notify.is-on { color: var(--ok); }
+.sb-notify.is-blocked { color: var(--warn, #d9a441); }
 .sb-health { display: inline-flex; align-items: center; gap: 6px; color: var(--ph-shipped); }
 
 /* ============================================================================
@@ -2472,6 +2584,13 @@ details.wp-group-done > summary { cursor: pointer; list-style: revert; }
 .cmdk-item-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
 .cmdk-item-slug { font-family: var(--mono); font-size: 11px; color: var(--text-4); }
 .cmdk-item-hint { font-size: 11px; color: var(--text-4); }
+/* "this is the one already open" — beside the phase, never instead of it */
+.cmdk-item-current {
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--accent-hi);
+}
 .cmdk-empty { padding: 24px; text-align: center; color: var(--text-3); font-size: 13px; }
 .cmdk-foot {
   display: flex;
@@ -2597,6 +2716,14 @@ details.wp-group-done > summary { cursor: pointer; list-style: revert; }
 .peek.settings { max-width: 620px; }
 .settings-title { color: var(--text); font-size: 13px; font-weight: 600; }
 .settings-body { display: flex; flex-direction: column; gap: 26px; }
+/* the overlay has no Save button; say so rather than leaving it to be guessed */
+.settings-autosave {
+  font-size: 11.5px;
+  line-height: 1.55;
+  color: var(--text-3);
+  border-left: 2px solid var(--accent-line, var(--hairline));
+  padding-left: 10px;
+}
 
 .settings-section { display: flex; flex-direction: column; gap: 14px; }
 .settings-section-head {
@@ -2742,6 +2869,22 @@ select.settings-input { cursor: pointer; }
   gap: 6px;
   max-width: 56ch;
 }
+/* Prepared, the call-to-action carries what the screen used to stack below it —
+   the reason to act and what is already established — so both are constrained
+   to the reading width and left-aligned inside the centred column. */
+.prep-cta .prep-warn,
+.prep-cta .pw-frame {
+  width: 100%;
+  max-width: 62ch;
+  text-align: left;
+}
+/* Two ways to go again, side by side: resume is the cheap one and stays solid,
+   fresh is the deliberate one. */
+.prep-cta-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
 .prep-cta-open li {
   font-size: 11px;
   color: var(--text-3);
@@ -2752,7 +2895,8 @@ select.settings-input { cursor: pointer; }
 }
 
 /* The rail's foot, once features exist. Quiet enough not to compete with the
-   triage lanes, present enough not to be forgotten again. */
+   triage lanes, present enough not to be forgotten again. Permanent: `is-todo`
+   is a job waiting, `is-done` is a door back to what was established. */
 .prep-nudge {
   flex: none;
   display: flex;
@@ -2777,12 +2921,18 @@ select.settings-input { cursor: pointer; }
   border-radius: 50%;
   background: var(--drive);
 }
+/* Done asks for nothing: a hollow dot reads as a marker, not a nudge. */
+.prep-nudge.is-done { color: var(--text-4); }
+.prep-nudge.is-done .prep-nudge-dot {
+  background: none;
+  box-shadow: inset 0 0 0 1px var(--text-4);
+}
 .prep-nudge-text { flex: 1; min-width: 0; }
 .prep-nudge-count {
   flex: none;
-  font-family: var(--mono);
   font-size: 10.5px;
   color: var(--text-4);
+  white-space: nowrap;
 }
 
 .prep-findings {
@@ -2842,18 +2992,34 @@ select.settings-input { cursor: pointer; }
 }
 
 /* ============================================================================
-   DELETE FEATURE DIALOG (decision #8)
+   DELETE FEATURE DIALOG (decision #8) + MERGE CONFIRMATION (findings F21)
    ========================================================================== */
-.peek.delete-dialog { max-width: 460px; }
+.peek.delete-dialog,
+.peek.merge-dialog { max-width: 460px; }
 .delete-dialog-title { color: var(--danger); font-size: 13px; font-weight: 600; }
-.delete-dialog-body { display: flex; flex-direction: column; gap: 16px; }
-.delete-dialog-lead {
+/* Merging is the intended ending, not a destructive act — same shape, not red. */
+.merge-dialog-title { color: var(--text); font-size: 13px; font-weight: 600; }
+.merge-dialog-warnings {
+  margin: 0;
+  padding: 10px 12px 10px 26px;
+  border-radius: var(--radius-sm);
+  border: 1px solid color-mix(in srgb, var(--warn, #d9a441) 40%, var(--hairline));
+  background: color-mix(in srgb, var(--warn, #d9a441) 7%, var(--panel-2));
+  color: var(--warn, #d9a441);
+  font-size: 12px;
+  line-height: 1.6;
+}
+.delete-dialog-body,
+.merge-dialog-body { display: flex; flex-direction: column; gap: 16px; }
+.delete-dialog-lead,
+.merge-dialog-lead {
   margin: 0;
   font-size: 12.5px;
   line-height: 1.6;
   color: var(--text-2);
 }
-.delete-dialog-lead strong { color: var(--text); font-weight: 600; }
+.delete-dialog-lead strong,
+.merge-dialog-lead strong { color: var(--text); font-weight: 600; }
 .delete-dialog-field { display: flex; flex-direction: column; gap: 6px; }
 .delete-dialog-field > span { font-size: 12px; color: var(--text-2); }
 .delete-dialog-field code {
@@ -2863,7 +3029,8 @@ select.settings-input { cursor: pointer; }
   color: var(--text);
 }
 .delete-dialog-field .settings-input:focus { border-color: var(--danger); }
-.delete-dialog-actions {
+.delete-dialog-actions,
+.merge-dialog-actions {
   display: flex;
   justify-content: flex-end;
   gap: 8px;
@@ -2911,25 +3078,32 @@ select.settings-input { cursor: pointer; }
 .toast-success { border-color: color-mix(in srgb, var(--ok) 50%, var(--hairline)); color: var(--ok); }
 .toast-info { color: var(--text-2); }
 
-/* ---- update banner (issue #51) — floats above the shell; never installs ---- */
+/* ---- update banner (issue #51) — the frame's own first row; never installs ----
+   It was fixed and top-center at z-index 420, which put it over doc-peek and
+   Settings headers, the command palette and feature titles (findings F7). A row
+   in normal flow cannot cover anything: the app body simply starts below it. */
+.app-frame {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+.app-frame-body {
+  flex: 1;
+  min-height: 0;
+}
 .update-banner {
-  position: fixed;
-  top: 50px;
-  left: 50%;
-  transform: translateX(-50%);
+  flex: 0 0 auto;
   display: flex;
   align-items: center;
+  /* the row is now as wide as the window, so it clips rather than pushing the
+     frame wider — the lesson of the breadcrumb (findings F20) */
+  overflow: hidden;
   gap: 10px;
-  max-width: min(720px, calc(100vw - 32px));
-  padding: 7px 10px 7px 13px;
-  border-radius: var(--radius-pill);
-  border: 1px solid var(--accent-line);
+  padding: 6px 14px;
+  border-bottom: 1px solid var(--accent-line);
   background: color-mix(in srgb, var(--accent) 12%, var(--panel));
   color: var(--text);
   font-size: 12.5px;
-  box-shadow: 0 14px 34px -16px rgba(0, 0, 0, 0.85);
-  z-index: 420;
-  animation: fadeUp var(--dur-3) var(--ease-out);
 }
 .update-banner-dot {
   flex: 0 0 auto;
@@ -2939,7 +3113,7 @@ select.settings-input { cursor: pointer; }
   background: var(--accent-hi);
   animation: dotGlow 2.2s var(--ease) infinite;
 }
-.update-banner-text { white-space: nowrap; }
+.update-banner-text { white-space: nowrap; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .update-banner-text strong { color: var(--accent-hi); font-weight: 600; }
 .update-banner-sep { color: var(--text-4); }
 .update-banner-dim { color: var(--text-3); }
@@ -2956,6 +3130,8 @@ select.settings-input { cursor: pointer; }
 }
 .update-banner-dismiss {
   flex: 0 0 auto;
+  /* full-width row now — the dismiss sits at its far end */
+  margin-left: auto;
   width: 22px;
   height: 22px;
   display: grid;
@@ -2985,6 +3161,7 @@ select.settings-input { cursor: pointer; }
 .tb-home {
   display: inline-flex;
   align-items: center;
+  flex: 0 0 auto;
   gap: 9px;
   background: transparent;
   border: 0;
@@ -2994,10 +3171,13 @@ select.settings-input { cursor: pointer; }
 }
 .tb-home:hover .tb-app { color: var(--accent-hi); }
 
-.tb-switcher { position: relative; display: inline-flex; }
+/* `min-width: 0` all the way down to `.tb-project`, or the flex default of
+   min-content wins and the ellipsis never engages (findings F20). */
+.tb-switcher { position: relative; display: inline-flex; min-width: 0; }
 .tb-switcher-btn {
   display: inline-flex;
   align-items: center;
+  min-width: 0;
   gap: 5px;
   height: 24px;
   padding: 0 7px;
@@ -3266,6 +3446,16 @@ button.tb-runs { cursor: pointer; }
 .op-input-row { display: flex; gap: 6px; align-items: center; }
 .op-input-row .op-input { flex: 1; min-width: 0; }
 .op-hint { font-size: 11px; color: var(--text-4); }
+/* a rejected path is reported here, under the field it is about (F17.2) */
+.op-error {
+  border: 1px solid color-mix(in srgb, var(--danger, #e5534b) 45%, var(--hairline));
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--danger, #e5534b) 7%, var(--panel-2));
+  padding: 8px 10px;
+}
+.op-error-msg { font-size: 12px; color: var(--danger, #e5534b); font-family: var(--mono); word-break: break-word; }
+.op-error-hint { margin-top: 5px; font-size: 12px; color: var(--text-2); line-height: 1.5; }
+.op-error-hint code { font-family: var(--mono); }
 .op-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
 
 /* ============================================================================
@@ -3281,6 +3471,29 @@ button.tb-runs { cursor: pointer; }
   border-bottom: 1px solid var(--hairline);
 }
 .dir-up { min-width: 28px; padding: 0 8px; }
+/* type a path instead of clicking eight times to reach it (F17.3) */
+.dir-path-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--hairline);
+}
+.dir-path-label { font-size: 11px; color: var(--text-4); }
+.dir-path-input {
+  flex: 1;
+  min-width: 0;
+  height: 28px;
+  background: var(--panel-inset);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius);
+  color: var(--text);
+  padding: 0 8px;
+  font-size: 11.5px;
+  outline: none;
+  transition: border-color var(--dur-1);
+}
+.dir-path-input:focus { border-color: var(--accent); }
 .dir-crumbs {
   flex: 1;
   min-width: 0;
@@ -3410,6 +3623,17 @@ button.tb-runs { cursor: pointer; }
 .wizard-step { display: flex; align-items: center; gap: 6px; }
 .wizard-step.is-current { color: var(--accent-hi); }
 .wizard-step.is-done { color: var(--text-2); }
+/* Satisfied by the host before the user arrived — a checkmark, not a skipped row. */
+.wizard-step.is-passed { color: var(--ok); }
+.wizard-passed {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+  font-size: 11.5px;
+  color: var(--text-3);
+}
+.wizard-passed > svg { color: var(--ok); flex: none; }
 .wizard-step-dot {
   width: 7px;
   height: 7px;

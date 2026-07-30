@@ -21,6 +21,21 @@ export const Phase = z.enum([
 export type Phase = z.infer<typeof Phase>
 
 /**
+ * Read a phase from a value this build may not recognize — a row written by a
+ * newer server, a hand-edited column, a corrupt import. Returns null instead of
+ * throwing so callers can degrade to a readable "unrecognized" state.
+ *
+ * Every downstream reader types `phase` as `Phase` and switches on it
+ * exhaustively, which means ONE bad value falls through EVERY switch at once —
+ * on the web that rendered the whole app as a blank page (findings F19). Parsing
+ * at the boundary is what turns that into one contained, named failure.
+ */
+export function parsePhase(value: unknown): Phase | null {
+  const parsed = Phase.safeParse(value)
+  return parsed.success ? parsed.data : null
+}
+
+/**
  * `cancelled` is a terminal state set by a human/agent (revisit sessions,
  * `cancel_ticket`) — never by the burner. The scheduler skips cancelled tickets
  * and treats a cancelled blocker as satisfied (the work was deemed unnecessary,
@@ -221,6 +236,21 @@ export type PreparedKey = z.infer<typeof PreparedKey>
  */
 export const FindingSource = z.enum(['prep', 'human', 'session'])
 export type FindingSource = z.infer<typeof FindingSource>
+
+/**
+ * How long a project's display name may be. It lives in the title bar
+ * breadcrumb, the switcher menu and a card head, so it has to fit somewhere: a
+ * 324-character rename was accepted and pushed the whole workspace off-canvas
+ * (findings F20). 80 is generous for a repo name and short enough that no layout
+ * has to survive the pathological case on its own.
+ */
+export const PROJECT_NAME_MAX = 80
+
+/** A project name as `project.rename` accepts it — non-empty, capped. */
+export const ProjectName = z
+  .string()
+  .min(1, 'a project needs a name')
+  .max(PROJECT_NAME_MAX, `a project name can be at most ${PROJECT_NAME_MAX} characters`)
 
 export const Project = z.object({
   id: z.string(),

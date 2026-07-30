@@ -1,8 +1,10 @@
 import { existsSync } from 'node:fs'
-import type { Feature, GateCheckId, GateId } from '@runcastle/core'
-import { nextPhase } from '@runcastle/core'
+import type { Feature, GateCheckId, GateId, SessionKind } from '@runcastle/core'
+import { nextPhase, previousPhase } from '@runcastle/core'
+import { and, desc, eq, inArray } from 'drizzle-orm'
 import type { AppCtx } from '../db/types'
-import { gateOverrides } from '../db/schema'
+import { gateOverrides, sessions } from '../db/schema'
+import { GateError } from '../errors'
 import { emit } from './events'
 import { featureDocPath } from './feature-docs'
 import { getFeatureRow, projectForFeature, setPhase } from './repo'
@@ -24,7 +26,7 @@ export interface GateResult {
 export function checkGate(ctx: AppCtx, check: GateCheckId, feature: Feature): GateResult {
   switch (check) {
     case 'decisions-file-exists':
-      return fileGate(ctx, feature, 'decisions.md', 'run the ideation session to capture decisions first')
+      return docGate(ctx, feature, 'decisions.md', 'run the ideation session to capture decisions first')
 
     case 'all-waypoints-terminal': {
       // G1 for a mapped feature (ADR-0001 / SPEC §13.1): converge only once
@@ -45,7 +47,7 @@ export function checkGate(ctx: AppCtx, check: GateCheckId, feature: Feature): Ga
     }
 
     case 'spec-file-exists':
-      return fileGate(ctx, feature, 'spec.md', 'write the spec (spec.md) before breaking into tickets')
+      return docGate(ctx, feature, 'spec.md', 'write the spec (spec.md) before breaking into tickets')
 
     case 'tickets-approved': {
       // G3: the human Burn click is the approval; the checkable precondition is
@@ -115,6 +117,50 @@ function fileGate(
 }
 
 /**
+ * The talk kinds that can amend a feature's docs — the ones whose existence on a
+ * lap is evidence that lap was actually worked. `qa` is left out: asking a
+ * question is not doing the lap's work, and `waypoint` belongs to a mapped
+ * feature's own G1.
+ */
+const DOC_WRITING_KINDS: readonly SessionKind[] = ['ideation', 'revisit', 'converge']
+
+/**
+ * G1/G2 — the doc gates, scoped to the CURRENT lap from lap 2 on for the same
+ * reason G3 is (SPEC §15.1): lap 1's `decisions.md` and `spec.md` are still on
+ * disk, so a file-only check lets a fresh lap cross both gates on the previous
+ * lap's artifacts and land at `tickets` with nothing to burn — a silent path that
+ * skips the whole lap (findings F4).
+ *
+ * The lap's own evidence is a doc-writing session STAMPED with the lap (sessions
+ * carry their feature's lap at creation). Deliberately not the doc's mtime: every
+ * branch checkout rewrites it — a test drive most of all, which is exactly what
+ * a lap follows.
+ */
+function docGate(ctx: AppCtx, feature: Feature, fileName: string, reason: string): GateResult {
+  const file = fileGate(ctx, feature, fileName, reason)
+  if (!file.satisfied || feature.lap === 1) return file
+
+  const worked = ctx.db
+    .select({ id: sessions.id })
+    .from(sessions)
+    .where(
+      and(
+        eq(sessions.featureId, feature.id),
+        eq(sessions.lap, feature.lap),
+        inArray(sessions.kind, [...DOC_WRITING_KINDS]),
+      ),
+    )
+    .all()
+
+  return worked.length > 0
+    ? { satisfied: true }
+    : {
+        satisfied: false,
+        reason: `${fileName} is an earlier lap's — no lap ${feature.lap} session has worked this feature yet; open the lap's session before promoting`,
+      }
+}
+
+/**
  * Override a gate: record the reason (feature history), emit an event, and
  * advance to the next phase. The seatbelt, not the cage.
  */
@@ -137,4 +183,59 @@ export function overrideGate(
   const next = nextPhase(feature)
   if (next) return setPhase(ctx, featureId, next, 'phase.advanced', `advanced to ${next} (override)`)
   return feature
+}
+
+/**
+ * Drop the most recent override of `gate` — for a caller whose crossing did not
+ * hold (converge rolls its forced G1 back when the session it forced the gate
+ * for could not be opened, findings F5). The `gate.overridden` event stays: the
+ * timeline records what was attempted, the table records what stands.
+ *
+ * Returns whether a row was actually dropped.
+ */
+export function undoLastGateOverride(ctx: AppCtx, featureId: string, gate: GateId): boolean {
+  const last = ctx.db
+    .select({ id: gateOverrides.id })
+    .from(gateOverrides)
+    .where(and(eq(gateOverrides.featureId, featureId), eq(gateOverrides.gate, gate)))
+    .orderBy(desc(gateOverrides.id))
+    .get()
+  if (!last) return false
+  ctx.db.delete(gateOverrides).where(eq(gateOverrides.id, last.id)).run()
+  return true
+}
+
+/**
+ * Take an override back: restore the phase it advanced past, drop the override
+ * row, and record the reversal on the timeline (findings F24).
+ *
+ * Override was a one-way door — Apply moved the feature a phase forward with no
+ * warning of the consequence and no way back but DB surgery, which is a lot of
+ * friction for a button whose word ("override") reads like "waive this gate",
+ * not "skip ahead now".
+ *
+ * The reversal is deliberately narrow: one phase back, the phase the override
+ * itself stepped over. WHEN that is still meaningful is the caller's call — the
+ * UI offers undo only while the override is the feature's latest transition —
+ * so this refuses only what it cannot do at all.
+ */
+export function undoGateOverride(ctx: AppCtx, featureId: string, gate: GateId): Feature {
+  const feature = getFeatureRow(ctx, featureId)
+  const back = previousPhase(feature)
+  if (!back) {
+    throw new GateError(`${feature.phase} is the first phase — there is nothing to step back to`)
+  }
+  if (!undoLastGateOverride(ctx, featureId, gate)) {
+    throw new GateError(`no ${gate} override is recorded on this feature`)
+  }
+  // One event, not two: `setPhase` types it as the undo, so the timeline entry
+  // IS the phase transition — which is also what tells the UI the undo window
+  // has closed.
+  return setPhase(
+    ctx,
+    featureId,
+    back,
+    'gate.override.undone',
+    `${gate} override undone — back to ${back}`,
+  )
 }

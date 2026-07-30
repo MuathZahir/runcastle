@@ -1,15 +1,16 @@
 import { useState } from 'react'
-import { Button, SectionTitle } from '../../ui'
+import { Button, CheckLine, SectionTitle } from '../../ui'
 import { trpc } from '../../trpc'
 import type { FeatureFull } from '../../lib/api'
 import type { DriveState } from '../../lib/workspace'
 import {
   latestRun,
   mergeConflictKickoff,
-  unresolvedMergeConflict,
+  reviewChecks,
   type MergeConflictState,
 } from '../../lib/feature-ui'
-import { useEventLog } from '../../lib/events'
+import { fmtDateTime, relTime } from '../../lib/format'
+import { useLivePoll } from '../../lib/live'
 import { useToast } from '../../lib/toast'
 import { ErrorBoundary } from '../ErrorBoundary'
 import { SessionPanel } from '../SessionPanel'
@@ -29,35 +30,53 @@ import { TerminalView } from '../TerminalView'
  * A conflicted Merge & ship surfaces the {@link ConflictCard} above the cards:
  * it lists the conflicting files and offers "Resolve with agent", which opens a
  * revisit session pre-briefed to merge the base branch into the feature branch
- * in the talk worktree. The conflict is read from the event feed, so it survives
- * a reload; the action is hidden while any session is live (one terminal per
- * feature — the server refuses a second one anyway).
+ * in the talk worktree. The conflict is read from the event feed (so it survives
+ * a reload) by the workspace and handed down here, because the next-step bar
+ * reads the same one: the bar recommending a merge over the top of this panel
+ * telling the user to resolve first is findings F8, and one derivation for both
+ * is what makes that contradiction unrepresentable. The action is hidden while
+ * any session is live (one terminal per feature — the server refuses a second
+ * one anyway).
  */
-export function ReviewBody({ full, driving }: { full: FeatureFull; driving: DriveState | null }) {
+export function ReviewBody({
+  full,
+  driving,
+  conflict,
+  readonly = false,
+}: {
+  full: FeatureFull
+  driving: DriveState | null
+  conflict: MergeConflictState | null
+  /** Looking back at review on a shipped feature — history, not work. */
+  readonly?: boolean
+}) {
   const { feature, tickets, runs } = full
   // Live-only: the conflict card's "Resolve with agent" spawns a terminal, and
   // one terminal per feature — an ENDED session (which the panel still renders,
   // with its Resume) must not hide it.
   const sessionLive = full.sessions.some((s) => s.status === 'live' || s.status === 'launching')
-  const conflict = unresolvedMergeConflict(useEventLog(feature.id))
   const run = latestRun(runs)
-  const total = tickets.length
-  const done = tickets.filter((t) => t.status === 'done').length
-  const failed = tickets.filter((t) => t.status === 'failed').length
-  const commits = tickets.reduce((n, t) => n + t.commits.length, 0)
   const isDriving = driving?.featureId === feature.id
-
-  const ticketTone = failed > 0 ? 'var(--danger)' : 'var(--ok)'
-  const runTone =
-    run?.status === 'succeeded'
-      ? 'var(--ok)'
-      : run?.status === 'failed'
-        ? 'var(--danger)'
-        : 'var(--text-3)'
+  // Commits come from git, not from ticket commit rows (findings F23). Polled
+  // slower than the 1.5s shell: a `rev-list --count` is cheap but this figure
+  // only moves when a burn lands, and a human reads a card, not a ticker.
+  const commits = trpc.feature.commitCount.useQuery(
+    { featureId: feature.id },
+    { refetchInterval: 5000 },
+  )
+  const drive = trpc.feature.driveInfo.useQuery(undefined, { refetchInterval: useLivePoll() })
+  const checks = reviewChecks({ tickets, run, commitCount: commits.data?.count })
 
   return (
     <div className="review-body">
-      <SessionPanel featureId={feature.id} sessions={full.sessions} className="review-session" />
+      {/* A retrospective view of review on a shipped feature must not offer to
+          reopen its conversation (findings F10.6). */}
+      <SessionPanel
+        featureId={feature.id}
+        sessions={full.sessions}
+        className="review-session"
+        showResume={!readonly}
+      />
 
       {conflict && (
         <ConflictCard
@@ -71,44 +90,19 @@ export function ReviewBody({ full, driving }: { full: FeatureFull; driving: Driv
       <div className="review-grid">
       <div className="review-card">
         <SectionTitle>Summary</SectionTitle>
-        <div className="check-row">
-          <span className="check-dot" style={{ background: ticketTone }} />
-          <span className="check-k">tickets</span>
-          <span className="check-v">
-            {done}/{total} done{failed > 0 ? ` · ${failed} failed` : ''}
-          </span>
+        {checks.map((row) => (
+          <CheckLine key={row.key} row={row} />
+        ))}
+        <div className="review-foot">
+          {feature.branch}
+          {commits.data ? ` → ${commits.data.base}` : ''}
         </div>
-        <div className="check-row">
-          <span className="check-dot" style={{ background: runTone }} />
-          <span className="check-k">run</span>
-          <span className="check-v">
-            {run ? `${run.status}${run.summary ? ` · ${run.summary}` : ''}` : 'no run recorded'}
-          </span>
-        </div>
-        <div className="check-row">
-          <span className="check-dot" style={{ background: 'var(--ph-shipped)' }} />
-          <span className="check-k">changes</span>
-          <span className="check-v">
-            {commits} commit{commits === 1 ? '' : 's'}
-          </span>
-        </div>
-        <div className="review-foot">{feature.branch}</div>
       </div>
 
       <div className="review-card">
         <SectionTitle>Test drive</SectionTitle>
         {isDriving && driving ? (
-          <>
-            <div className="drive-live">
-              <span className="drive-pulse" />
-              <span className="drive-label">driving now</span>
-              <span className="drive-loc">{driving.branch}</span>
-            </div>
-            <div className="drive-copy">
-              Click through the feature. When it feels right, merge — or stop the drive and send
-              feedback back through tickets.
-            </div>
-          </>
+          <DriveStatus branch={driving.branch} drive={drive.data} />
         ) : (
           <div className="drive-copy">
             Nothing is running yet. Start the test drive from the next step to boot this branch on
@@ -119,8 +113,65 @@ export function ReviewBody({ full, driving }: { full: FeatureFull; driving: Driv
       </div>
       </div>
 
-      {isDriving && <DrivePane featureId={feature.id} />}
+      {isDriving && drive.data?.featureId === feature.id && <DrivePane drive={drive.data} />}
     </div>
+  )
+}
+
+/**
+ * What an active test drive actually is, said out loud (findings F22). A drive is
+ * a `git checkout` plus — only if the project has a dev command — a dev server.
+ * With no command configured the UI used to flip to "driving now" with a pulsing
+ * dev-server chip over a checkout and nothing else, leaving the user waiting for
+ * a URL that was never coming.
+ *
+ * Three states, because the three have different fixes: a server is up (drive
+ * away), nothing was meant to start (set a dev command in Settings), or the spawn
+ * failed (its output is in the timeline).
+ */
+function DriveStatus({
+  branch,
+  drive,
+}: {
+  branch: string
+  drive: { devPaneId?: string; devConfigured: boolean } | null | undefined
+}) {
+  // While driveInfo is still in flight, say the one thing that is certainly true.
+  if (!drive) {
+    return (
+      <div className="drive-live">
+        <span className="drive-label">branch checked out</span>
+        <span className="drive-loc">{branch}</span>
+      </div>
+    )
+  }
+  if (drive.devPaneId) {
+    return (
+      <>
+        <div className="drive-live">
+          <span className="drive-pulse" />
+          <span className="drive-label">driving now</span>
+          <span className="drive-loc">{branch}</span>
+        </div>
+        <div className="drive-copy">
+          Click through the feature. When it feels right, merge — or stop the drive and send
+          feedback back through tickets.
+        </div>
+      </>
+    )
+  }
+  return (
+    <>
+      <div className="drive-live">
+        <span className="drive-label is-quiet">checked out — nothing started</span>
+        <span className="drive-loc">{branch}</span>
+      </div>
+      <div className="drive-copy">
+        {drive.devConfigured
+          ? 'Your repo is on this branch, but the dev server did not start — its output is in the timeline. Click through whatever you run yourself, then merge.'
+          : 'Your repo is on this branch, but no server was started: this project has no dev command. Set one in Settings and the next drive boots the app here — or run it yourself and click through.'}
+      </div>
+    </>
   )
 }
 
@@ -152,7 +203,14 @@ function ConflictCard({
 
   return (
     <div className="review-card conflict-card">
-      <SectionTitle>Merge conflict</SectionTitle>
+      <div className="conflict-head">
+        <SectionTitle>Merge conflict</SectionTitle>
+        {/* When, because a red panel with no date reads as "right now" — the
+            audit found one that was fifteen days stale (findings F8). */}
+        <span className="conflict-when" title={fmtDateTime(conflict.at)}>
+          recorded {relTime(conflict.at)} ago
+        </span>
+      </div>
       <div className="drive-copy">
         Merging <code>{conflict.base}</code> into <code>{branch}</code> hit conflicts. An agent can
         merge the base into this branch in the talk worktree, resolve with full spec context, and
@@ -193,13 +251,14 @@ function ConflictCard({
  * surfaces the moment the server sniffs a localhost URL from the output; both the
  * pane and the link disappear when the drive stops (driveInfo → null). Nothing
  * auto-opens — the human clicks the link.
+ *
+ * Rendered only when a dev pane really exists — a "dev server" chip over a
+ * process that was never spawned is the lie findings F22 is about, and the
+ * {@link DriveStatus} card says what happened instead.
  */
-function DrivePane({ featureId }: { featureId: string }) {
+function DrivePane({ drive }: { drive: { branch: string; devPaneId?: string; devUrl?: string } }) {
   const [expanded, setExpanded] = useState(false)
-  const info = trpc.feature.driveInfo.useQuery(undefined, { refetchInterval: 1500 })
-  const drive = info.data
-  // The drive is global (one at a time); only render for THIS feature's drive.
-  if (!drive || drive.featureId !== featureId) return null
+  if (!drive.devPaneId) return null
 
   return (
     <div className="drive-pane">
@@ -212,28 +271,23 @@ function DrivePane({ featureId }: { featureId: string }) {
             Open app ↗
           </a>
         )}
-        {drive.devPaneId && (
-          <button
-            type="button"
-            className="btn btn-xs btn-ghost drive-pane-toggle"
-            aria-expanded={expanded}
-            onClick={() => setExpanded((v) => !v)}
-          >
-            {expanded ? 'Hide output' : 'Show output'}
-          </button>
-        )}
+        <button
+          type="button"
+          className="btn btn-xs btn-ghost drive-pane-toggle"
+          aria-expanded={expanded}
+          onClick={() => setExpanded((v) => !v)}
+        >
+          {expanded ? 'Hide output' : 'Show output'}
+        </button>
       </div>
 
-      {expanded &&
-        (drive.devPaneId ? (
-          <div className="drive-pane-term">
-            <ErrorBoundary label="dev terminal">
-              <TerminalView sessionId={drive.devPaneId} />
-            </ErrorBoundary>
-          </div>
-        ) : (
-          <div className="drive-pane-empty">no dev command configured for this project</div>
-        ))}
+      {expanded && (
+        <div className="drive-pane-term">
+          <ErrorBoundary label="dev terminal">
+            <TerminalView sessionId={drive.devPaneId} />
+          </ErrorBoundary>
+        </div>
+      )}
     </div>
   )
 }

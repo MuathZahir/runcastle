@@ -13,8 +13,11 @@ import { DimLine } from '../ui'
  * flow; exactly one open project goes straight into it; more than one lands on
  * the home. Switching between them is view-only, so background runs keep going.
  *
- * The update banner (issue #51) floats above every view — it's a fixed-position,
- * app-wide notice, so it lives at the root rather than inside any single project.
+ * The update banner (issue #51) is an app-wide notice, so it lives at the root
+ * rather than inside any single project — as the frame's own first ROW, above
+ * whichever view is showing. It used to float fixed and top-center over
+ * everything, covering doc-peek and Settings headers, the palette and feature
+ * titles (findings F7); a row pushes content down instead of hiding it.
  */
 export function Shell() {
   const nav = useProjectNav()
@@ -46,9 +49,9 @@ export function Shell() {
   }
 
   return (
-    <>
+    <div className="app-frame">
       <UpdateBanner />
-      {content}
-    </>
+      <div className="app-frame-body">{content}</div>
+    </div>
   )
 }

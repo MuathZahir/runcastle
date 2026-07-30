@@ -29,6 +29,7 @@ import {
   recordDriveUrl,
   researchBranchName,
   resolveBaseBranch,
+  reviewCommitCount,
   testDrive,
   ticketBranchName,
 } from '../src/services/git'
@@ -316,6 +317,22 @@ describe('ensureTalkWorktree', () => {
     expect(existsSync(join(second, '.git'))).toBe(true)
   })
 
+  it('reattaches a registered-but-detached worktree instead of failing to re-add it', async () => {
+    // The post-test-drive state: the drive detached the talk worktree to take the
+    // branch, and the reattach on stop did not happen (it is best-effort). git
+    // still owns the path, so `worktree add` would refuse it.
+    const first = await ensureTalkWorktree(project, feature)
+    expect(await detachWorktree(first)).toBe(true)
+    expect(await currentBranch(simpleGit(first))).toBe('HEAD')
+
+    const second = await ensureTalkWorktree(project, feature)
+    expect(second).toBe(first)
+    expect(await currentBranch(simpleGit(second))).toBe('feature/wt')
+    // One worktree, not a second one bolted on beside it.
+    const list = await simpleGit(project.repoPath).raw(['worktree', 'list', '--porcelain'])
+    expect(list.match(/^worktree /gm)?.length).toBe(2) // the main checkout + the talk worktree
+  })
+
   it('recovers from a stale worktree (dir removed) via prune + retry', async () => {
     const first = await ensureTalkWorktree(project, feature)
     // Delete the worktree dir out from under git: registry now disagrees.
@@ -559,11 +576,14 @@ describe('testDrive', () => {
 
     await testDrive(ctx, project, feature, 'start')
     // No devCommand on the seeded project → no pane, but the drive is reported.
+    // `devConfigured: false` is what lets the review card say the branch is
+    // checked out and nothing was started, instead of "driving now" (F22).
     expect(activeDriveInfo()).toMatchObject({
       featureId: feature.id,
       branch: 'feature/drive',
       devPaneId: undefined,
       devUrl: undefined,
+      devConfigured: false,
     })
 
     // A sniffed URL becomes the sticky "Open app" link and lands on the timeline.
@@ -1027,6 +1047,85 @@ describe('cleanupTempBranches', () => {
   it('is a best-effort no-op on a directory that is not a git repo', async () => {
     const notRepo = mkTmp('rc-notrepo-')
     await expect(cleanupTempBranches(notRepo)).resolves.toEqual({ deleted: [], kept: [] })
+  })
+})
+
+/**
+ * Ticket 4 / findings F23 — the review SUMMARY's commit count must come from git,
+ * not from ticket rows (which are empty on any branch a human committed to), and
+ * "cannot tell" must never arrive as the number 0.
+ */
+describe('reviewCommitCount', () => {
+  let ctx: AppCtx
+  let project: Project
+
+  beforeEach(async () => {
+    ctx = await makeTestCtx()
+    const repo = mkTmp('rc-count-')
+    await initRepo(repo)
+    project = seedProject(ctx, repo)
+  })
+
+  /** Commit `name.txt` on `branch`, leaving the checkout back on main. */
+  async function commitOn(branch: string, name: string): Promise<void> {
+    const g = simpleGit(project.repoPath)
+    await g.checkout(branch)
+    writeFileSync(join(project.repoPath, `${name}.txt`), `${name}\n`)
+    await g.add([`${name}.txt`])
+    await g.commit(`feat: ${name}`)
+    await g.checkout('main')
+  }
+
+  it('counts a branch that is one commit ahead as 1, never 0', async () => {
+    await createFeatureBranch(project, 'ahead')
+    await commitOn('feature/ahead', 'one')
+
+    const feature = seedFeature(ctx, project.id, { slug: 'ahead' })
+    expect(await reviewCommitCount(project, feature)).toEqual({ base: 'main', count: 1 })
+  })
+
+  it('counts every commit on the branch', async () => {
+    await createFeatureBranch(project, 'three')
+    for (const n of ['a', 'b', 'c']) await commitOn('feature/three', n)
+
+    const feature = seedFeature(ctx, project.id, { slug: 'three' })
+    expect((await reviewCommitCount(project, feature)).count).toBe(3)
+  })
+
+  it('is merge-base relative — commits that land on the base afterwards do not count', async () => {
+    await createFeatureBranch(project, 'forked')
+    await commitOn('feature/forked', 'mine')
+    // main moves on underneath the feature — that is the base's work, not ours.
+    await commitOn('main', 'theirs')
+
+    const feature = seedFeature(ctx, project.id, { slug: 'forked' })
+    expect((await reviewCommitCount(project, feature)).count).toBe(1)
+  })
+
+  it('counts against the feature base branch, not main — the branch merge will target', async () => {
+    const g = simpleGit(project.repoPath)
+    await g.raw(['branch', 'develop'])
+    await createFeatureBranch(project, 'on-dev', 'develop')
+    await commitOn('develop', 'dev-line')
+    await commitOn('feature/on-dev', 'mine')
+
+    const feature = seedFeature(ctx, project.id, { slug: 'on-dev', baseBranch: 'develop' })
+    // Against main this branch is 2 ahead (develop's commit + its own); against
+    // its real base it is 1 — and 1 is what merge will land.
+    expect(await reviewCommitCount(project, feature)).toEqual({ base: 'develop', count: 1 })
+  })
+
+  it('reports 0 for a branch with nothing on it', async () => {
+    await createFeatureBranch(project, 'empty')
+    const feature = seedFeature(ctx, project.id, { slug: 'empty' })
+    expect((await reviewCommitCount(project, feature)).count).toBe(0)
+  })
+
+  it('reports undefined (unknown) — not 0 — when the branch does not exist', async () => {
+    const feature = seedFeature(ctx, project.id, { slug: 'never-made' })
+    const res = await reviewCommitCount(project, feature)
+    expect(res.count).toBeUndefined()
+    expect(res.base).toBe('main')
   })
 })
 

@@ -1,6 +1,7 @@
 import type { Feature, SessionKind, SessionRow } from '@runcastle/core'
 import { Hono } from 'hono'
 import type { AppCtx } from '../db/types'
+import { editDenyResponse, evaluateEditGuard } from '../launcher/edit-guard'
 import { getRuntimeCtx } from '../launcher/runtime'
 import {
   getSessionRow,
@@ -69,6 +70,8 @@ hooks.post('/:event', async (c) => {
           return c.json(handleProjectScopedUserPrompt(ctx, session, body.payload))
         case 'session-end':
           return c.json(handleProjectScopedSessionEnd(ctx, session))
+        case 'pre-tool':
+          return c.json(handlePreToolUse(session, undefined, body.payload))
         default:
           return c.json({})
       }
@@ -84,6 +87,8 @@ hooks.post('/:event', async (c) => {
         return c.json(handleUserPrompt(ctx, sessionId, feature, body.payload))
       case 'session-end':
         return c.json(handleSessionEnd(ctx, sessionId, feature))
+      case 'pre-tool':
+        return c.json(handlePreToolUse(session, feature, body.payload))
       default:
         return c.json({})
     }
@@ -282,6 +287,36 @@ function handleSessionEnd(ctx: AppCtx, sessionId: string, feature: Feature): unk
   return {}
 }
 
+/**
+ * `PreToolUse` for the file-write tools — the talk-session edit guard (F2). A
+ * deny is returned as the verified hook shape; anything allowed answers `{}`,
+ * which Claude Code reads as "no opinion". Registered only for the kinds that
+ * may not write code (see `renderSettings` / {@link evaluateEditGuard}).
+ */
+function handlePreToolUse(
+  session: SessionRow,
+  feature: Feature | undefined,
+  payload: Record<string, unknown> | undefined,
+): unknown {
+  const toolName = typeof payload?.tool_name === 'string' ? payload.tool_name : undefined
+  const toolInput = (payload?.tool_input ?? {}) as Record<string, unknown>
+  const path =
+    typeof toolInput.file_path === 'string'
+      ? toolInput.file_path
+      : typeof toolInput.notebook_path === 'string'
+        ? toolInput.notebook_path
+        : undefined
+
+  const denial = evaluateEditGuard({
+    kind: session.kind,
+    worktreePath: session.worktreePath,
+    toolName,
+    filePath: path,
+    featureSlug: feature?.slug,
+  })
+  return denial ? editDenyResponse(denial) : {}
+}
+
 /** The SessionStart context digest: brief + phase + tickets + pointer to MCP. */
 function sessionStartContext(ctx: AppCtx, feature: Feature): string {
   const tickets = listByFeature(ctx, feature.id)
@@ -298,7 +333,10 @@ function sessionStartContext(ctx: AppCtx, feature: Feature): string {
 
   return [
     `[runcastle] ${feature.title} — ${feature.oneLiner}`,
-    `phase: ${feature.phase}; branch: ${feature.branch}`,
+    // The lap is part of where the feature IS (ADR-0010): a session that only
+    // hears "phase: ideation" on a lap-2 feature reads it as the first grill and
+    // re-litigates decisions the previous lap already shipped.
+    `phase: ${feature.phase}; lap: ${feature.lap}; branch: ${feature.branch}`,
     `docs: docs/features/${feature.slug}/ (brief.md, decisions.md, spec.md)`,
     `tickets: ${ticketSummary}`,
     'Call the runcastle MCP tool `get_feature_context` for the full docs + tickets.',

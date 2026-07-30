@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { trpc } from '../trpc'
 import type { RouterOutputs } from '../lib/api'
+import { useLivePoll } from '../lib/live'
 import { DimLine } from '../ui'
 
 type TranscriptChunk = RouterOutputs['run']['agentTranscript']['chunks'][number]
@@ -96,7 +97,7 @@ function useTicketTranscript(ticketId: string): TranscriptState {
   const after = chunks.length > 0 ? chunks[chunks.length - 1].i : undefined
   const query = trpc.run.agentTranscript.useQuery(
     { ticketId, after },
-    { refetchInterval: 1000 },
+    { refetchInterval: useLivePoll(1000) },
   )
 
   useEffect(() => {

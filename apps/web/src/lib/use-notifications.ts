@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { trpc } from '../trpc'
+import { useLivePoll } from './live'
 import { eventToNotification, type DesktopNotification } from './notifications'
 
 /**
@@ -27,6 +28,8 @@ const supported = typeof Notification !== 'undefined'
 export interface NotificationsControl {
   supported: boolean
   enabled: boolean
+  /** The browser's current answer — `denied` is the one the button must explain. */
+  permission: NotificationPermission
   toggle: () => void
 }
 
@@ -63,6 +66,11 @@ export function useDesktopNotifications(
   features: { id: string; title: string }[],
 ): NotificationsControl {
   const [enabled, setEnabled] = useState(() => supported && readPref())
+  // Mirrored into state because `Notification.permission` is not reactive — the
+  // button has to re-render when a prompt is answered.
+  const [permission, setPermission] = useState<NotificationPermission>(() =>
+    supported ? Notification.permission : 'default',
+  )
   const [cursor, setCursor] = useState<number | undefined>(undefined)
   const initialized = useRef(false)
 
@@ -72,7 +80,7 @@ export function useDesktopNotifications(
 
   const query = trpc.events.listByProject.useQuery(
     { projectId, afterId: cursor },
-    { refetchInterval: 1500, enabled: supported && enabled },
+    { refetchInterval: useLivePoll(), enabled: supported && enabled },
   )
 
   useEffect(() => {
@@ -94,6 +102,12 @@ export function useDesktopNotifications(
 
   const toggle = useCallback(() => {
     if (!supported) return
+    // Denied is not ours to undo — only site settings can. The button says so
+    // (see `notifyButton`); flipping the preference here would just make it lie.
+    if (Notification.permission === 'denied') {
+      setPermission('denied')
+      return
+    }
     if (enabled) {
       setEnabled(false)
       writePref(false)
@@ -106,8 +120,9 @@ export function useDesktopNotifications(
     writePref(true)
     // Permission must be requested from this gesture — never on page load.
     if (Notification.permission === 'default') {
-      void Notification.requestPermission().then((permission) => {
-        if (permission !== 'granted') {
+      void Notification.requestPermission().then((answer) => {
+        setPermission(answer)
+        if (answer !== 'granted') {
           setEnabled(false)
           writePref(false)
         }
@@ -115,5 +130,5 @@ export function useDesktopNotifications(
     }
   }, [enabled])
 
-  return { supported, enabled, toggle }
+  return { supported, enabled, permission, toggle }
 }

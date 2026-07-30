@@ -447,10 +447,28 @@ export async function burn(
   } else {
     setPhase(ctx, featureId, 'implementation', 'burn.started', 'burning tickets')
   }
-  const { runId } = await startRun(ctx, featureId, 'ticket-burner', {
-    modelOverride: opts.modelOverride,
-  })
-  return { runId }
+  try {
+    const { runId } = await startRun(ctx, featureId, 'ticket-burner', {
+      modelOverride: opts.modelOverride,
+    })
+    return { runId }
+  } catch (e) {
+    // The loop-back is the one flip with no way back: `implementation` with no
+    // run is the restart path for a feature that BELONGS there, but a review
+    // feature dropped into it by a run that never started has lost its review
+    // (findings F5). The forward flips are left alone — they land where the
+    // feature was heading, and `burn` itself restarts them.
+    if (iterating) {
+      setPhase(
+        ctx,
+        featureId,
+        REVIEW_LOOP_BACK.from,
+        'burn.aborted',
+        `the burn never started (${errMsg(e)}) — back at review`,
+      )
+    }
+    throw e
+  }
 }
 
 /**
@@ -484,10 +502,60 @@ export function rethink(ctx: AppCtx, featureId: string): Feature {
       `a ${live[0].kind} session is already live for ${feature.slug} — only one terminal per feature; end or resume it first`,
     )
   }
+  // A test drive of THIS feature holds the feature branch in the main checkout,
+  // and the lap's terminal needs it for the talk worktree — git refuses two
+  // checkouts of one branch, so the launch would fail with the lap already
+  // bumped (findings F3). Same guard shape as merge and delete.
+  if (git.activeTestDriveFeatureId() === featureId) {
+    throw new GateError(
+      `${feature.slug} is being test-driven — stop the test drive first, it holds the feature branch`,
+    )
+  }
 
   const lap = feature.lap + 1
   ctx.db.update(features).set({ lap }).where(eq(features.id, featureId)).run()
   return setPhase(ctx, featureId, RETHINK_LOOP_BACK.to, 'lap.started', `rethink — lap ${lap}`)
+}
+
+/**
+ * Rethink, then open the lap's terminal — TRANSACTIONALLY (findings F3/F5).
+ *
+ * The phase/lap flip has to happen first: the session row is stamped with the
+ * feature's current lap and the launcher's artifacts are rendered from its phase,
+ * so a terminal opened before the flip would be briefed for the lap it is
+ * leaving. That ordering used to mean a failed launch stranded the feature at
+ * `ideation` on lap N+1 with no terminal — and `rethink` refuses non-review
+ * phases, so there was no way back in the UI.
+ *
+ * So the flip is rolled back when `launch` throws: phase `review`, the original
+ * lap, and a `lap.aborted` event saying why, which leaves a subsequent Iterate
+ * click free to succeed. The caller's error still propagates — the human sees
+ * what failed, not a silent no-op.
+ */
+export async function rethinkAndLaunch<T>(
+  ctx: AppCtx,
+  featureId: string,
+  launch: (feature: Feature) => Promise<T>,
+): Promise<T> {
+  const before = getFeatureRow(ctx, featureId)
+  const feature = rethink(ctx, featureId)
+  try {
+    return await launch(feature)
+  } catch (e) {
+    ctx.db.update(features).set({ lap: before.lap }).where(eq(features.id, featureId)).run()
+    setPhase(
+      ctx,
+      featureId,
+      before.phase,
+      'lap.aborted',
+      `lap ${feature.lap} aborted — its terminal could not be opened (${errMsg(e)}); back at ${before.phase} on lap ${before.lap}`,
+    )
+    throw e
+  }
+}
+
+function errMsg(e: unknown): string {
+  return e instanceof Error ? e.message : String(e)
 }
 
 /**

@@ -86,6 +86,22 @@ export function nextPhase(feature: { phase: Phase }): Phase | null {
 }
 
 /**
+ * The phase immediately before the feature's, or null at the first phase — the
+ * inverse of {@link nextPhase}, for taking a forward step BACK. Its one caller
+ * is undoing a gate override (findings F24): the override advanced the feature
+ * one phase, and undoing has to name the phase it came from.
+ *
+ * Not a pipeline transition of its own — the two real backward moves
+ * ({@link REVIEW_LOOP_BACK}, {@link RETHINK_LOOP_BACK}) are typed separately
+ * because they jump, not step.
+ */
+export function previousPhase(feature: { phase: Phase }): Phase | null {
+  const i = ORDER.indexOf(feature.phase)
+  if (i <= 0) return null
+  return ORDER[i - 1]
+}
+
+/**
  * The pipeline's one backward transition (CONTEXT.md decision #7). Burning fresh
  * (pending) tickets from `review` loops the feature back to `implementation` so
  * the run can execute them; the G4 auto-advance (`all-tickets-terminal`) then

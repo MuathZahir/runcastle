@@ -2,19 +2,25 @@ import { describe, expect, it } from 'vitest'
 import type { EventRow, TicketStatus } from '@runcastle/core'
 import {
   defaultBaseBranch,
+  duplicateTitleWarning,
   kickoffTrouble,
   liveSessionBlocker,
   mergeConflictKickoff,
+  mergeSummary,
   needsMe,
   nextStep,
   parseMapSections,
+  reviewChecks,
   sessionDoneState,
   shippedQaSessions,
+  testDriveTaken,
   ticketConflictKickoff,
   triage,
   triageOf,
+  undoableOverride,
   unresolvedMergeConflict,
   waypointGroups,
+  type CheckRow,
   type Waypoint,
 } from '../src/lib/feature-ui'
 import type { FeatureFull, FeatureListItem } from '../src/lib/api'
@@ -50,6 +56,50 @@ describe('defaultBaseBranch', () => {
     expect(
       defaultBaseBranch({ current: 'feature/x', mainBranch: 'main', branches: ['main'] }),
     ).toBe('main')
+  })
+})
+
+/**
+ * The New Feature form had no duplicate guard at all (findings F25.3). The
+ * warning matches on the SLUG, because that is what actually collides — and it
+ * warns rather than blocks, since a second attempt at the same idea is a real
+ * thing to want.
+ */
+describe('duplicateTitleWarning', () => {
+  const existing = [
+    { title: 'Slack notifications', slug: 'slack-notifications', status: 'active' },
+    { title: 'Entry tags', slug: 'entry-tags', status: 'shipped' },
+  ] as unknown as FeatureListItem[]
+
+  it('says nothing for a title nothing else uses', () => {
+    expect(duplicateTitleWarning('Dark mode', existing)).toBeNull()
+  })
+
+  it('says nothing for an empty or punctuation-only title', () => {
+    expect(duplicateTitleWarning('', existing)).toBeNull()
+    expect(duplicateTitleWarning('   ', existing)).toBeNull()
+    expect(duplicateTitleWarning('!!!', existing)).toBeNull()
+  })
+
+  it('warns when the title slugifies onto an existing feature', () => {
+    expect(duplicateTitleWarning('Slack notifications', existing)).toContain(
+      'feature/slack-notifications',
+    )
+  })
+
+  it('catches collisions the raw titles do not show', () => {
+    // Different strings, same branch name — which is the collision that matters.
+    expect(duplicateTitleWarning('  slack   NOTIFICATIONS!  ', existing)).toContain(
+      '“Slack notifications”',
+    )
+  })
+
+  it('says a shipped feature was already shipped', () => {
+    expect(duplicateTitleWarning('Entry tags', existing)).toContain('was already shipped')
+  })
+
+  it('warns against an empty project without throwing', () => {
+    expect(duplicateTitleWarning('Anything', [])).toBeNull()
   })
 })
 
@@ -110,6 +160,61 @@ describe('nextStep — Resume vs Start wording for the grill', () => {
       nextStep(grillFull({ phase: 'tickets', sessions: endedGrill }), { driving: false }).primary
         ?.label,
     ).toBe('Resume grill to emit tickets')
+  })
+})
+
+/**
+ * The build phase with an empty ledger. It used to offer an enabled
+ * "Burn 0 tickets" as the primary action, directly above an empty state whose
+ * own copy contradicted it (findings F25.1).
+ */
+describe('nextStep at implementation with no tickets', () => {
+  const buildFull = (opts: { sessions?: unknown[]; runs?: unknown[] } = {}) =>
+    ({
+      feature: { id: 'f1', phase: 'implementation', mapped: false, status: 'active' },
+      tickets: [],
+      sessions: opts.sessions ?? [],
+      runs: opts.runs ?? [],
+      gate: { next: { id: 'G4' }, satisfied: false, reason: 'no run' },
+    }) as unknown as FeatureFull
+
+  it('never offers a burn when there is nothing to burn', () => {
+    const ns = nextStep(buildFull(), { driving: false })
+    expect(ns.primary?.kind).not.toBe('burn')
+    expect(ns.title).toBe('No tickets to burn')
+  })
+
+  it('points at the thing that produces tickets', () => {
+    const ns = nextStep(buildFull(), { driving: false })
+    expect(ns.primary).toEqual({ label: 'Open a session', kind: 'startGrill' })
+    expect(ns.desc).toContain('tickets')
+  })
+
+  it('offers to resume the conversation that exists rather than start another', () => {
+    const ended = [{ id: 's1', status: 'ended', kind: 'ideation', ccSessionId: 'cc-1' }]
+    expect(nextStep(buildFull({ sessions: ended }), { driving: false }).primary).toEqual({
+      label: 'Resume the session',
+      kind: 'startGrill',
+    })
+  })
+
+  it('goes status-only while a session is live instead of launching a second one', () => {
+    const live = [{ id: 's1', status: 'live', kind: 'revisit', ccSessionId: 'cc-1' }]
+    const ns = nextStep(buildFull({ sessions: live }), { driving: false })
+    expect(ns.title).toBe('No tickets to burn')
+    expect(ns.primary).toBeUndefined()
+    expect(ns.secondary).toEqual([])
+  })
+
+  it('still offers the burn once there is a ticket to burn', () => {
+    const withTicket = {
+      ...buildFull(),
+      tickets: [{ id: 't1', status: 'pending' }],
+    } as unknown as FeatureFull
+    expect(nextStep(withTicket, { driving: false }).primary).toEqual({
+      label: 'Burn 1 ticket',
+      kind: 'burn',
+    })
   })
 })
 
@@ -235,15 +340,16 @@ describe('nextStep — live sessions go status-only', () => {
 
 /**
  * Laps ticket 3 (ADR-0010 §3) — the review bar offers three verbs: Fix (the
- * Burn primary a pending ticket promotes), Rethink (starts lap N+1, hidden
- * while a session is live) and Merge & ship. Tested at the pure `nextStep`
- * derivation.
+ * Burn primary a pending ticket promotes), Iterate (starts lap N+1, hidden
+ * while a session is live, disabled while the test drive holds the branch) and
+ * Merge & ship. Tested at the pure `nextStep` derivation.
  */
 describe('nextStep at review', () => {
   const reviewFull = (opts: {
     ticketStatuses?: TicketStatus[]
     sessionLive?: boolean
     lap?: number
+    runs?: { id: string; status: string; startedAt: number }[]
   }): FeatureFull => {
     const tickets = (opts.ticketStatuses ?? []).map((status, i) => ({
       id: `t${i}`,
@@ -255,35 +361,46 @@ describe('nextStep at review', () => {
       feature: { id: 'f1', phase: 'review', mapped: false, lap: opts.lap ?? 1 },
       tickets,
       sessions,
-      runs: [{ id: 'r1', status: 'succeeded', startedAt: 1 }],
+      runs: opts.runs ?? [{ id: 'r1', status: 'succeeded', startedAt: 1 }],
       gate: { next: null, satisfied: false, reason: null },
     } as unknown as FeatureFull
   }
   const labels = (as: { label: string }[]) => as.map((a) => a.label)
 
-  it('offers Rethink and keeps Merge & ship primary when no tickets are pending', () => {
+  it('offers Iterate and keeps Merge & ship primary when no tickets are pending', () => {
     const ns = nextStep(reviewFull({}), { driving: false })
     expect(ns.primary).toEqual({ label: 'Merge & ship', kind: 'merge' })
-    expect(labels(ns.secondary)).toEqual(['Start test drive', 'Rethink'])
-    expect(ns.secondary).toContainEqual({ label: 'Rethink', kind: 'rethink' })
+    expect(labels(ns.secondary)).toEqual(['Start test drive', 'Iterate'])
+    expect(ns.secondary).toContainEqual({ label: 'Iterate', kind: 'rethink' })
   })
 
   it('promotes Burn to primary and drops Merge & ship to secondary with a pending ticket', () => {
     const ns = nextStep(reviewFull({ ticketStatuses: ['done', 'pending'] }), { driving: false })
     expect(ns.primary).toEqual({ label: 'Burn 1 ticket', kind: 'burn' })
-    expect(labels(ns.secondary)).toEqual(['Merge & ship', 'Start test drive', 'Rethink'])
-    expect(ns.secondary).toContainEqual({ label: 'Rethink', kind: 'rethink' })
+    expect(labels(ns.secondary)).toEqual(['Merge & ship', 'Start test drive', 'Iterate'])
+    expect(ns.secondary).toContainEqual({ label: 'Iterate', kind: 'rethink' })
   })
 
-  it('hides Rethink while a session is live (one terminal per feature)', () => {
+  it('hides Iterate while a session is live (one terminal per feature)', () => {
     const ns = nextStep(reviewFull({ sessionLive: true }), { driving: false })
-    expect(labels(ns.secondary)).not.toContain('Rethink')
+    expect(labels(ns.secondary)).not.toContain('Iterate')
     // Merge & ship + test drive remain available throughout.
     expect(ns.primary?.label).toBe('Merge & ship')
     expect(labels(ns.secondary)).toEqual(['Start test drive'])
   })
 
-  it('hides Rethink but still promotes Burn when a session is live with pending tickets', () => {
+  it('disables Iterate while the test drive holds the branch, with the reason', () => {
+    // The lap's talk worktree needs the feature branch the drive has checked out;
+    // the server refuses outright (findings F3), so the bar says why here.
+    const ns = nextStep(reviewFull({}), { driving: true })
+    expect(ns.secondary).toContainEqual({
+      label: 'Iterate',
+      kind: 'rethink',
+      disabled: 'Stop the test drive first — the branch is checked out',
+    })
+  })
+
+  it('hides Iterate but still promotes Burn when a session is live with pending tickets', () => {
     const ns = nextStep(
       reviewFull({ ticketStatuses: ['pending'], sessionLive: true }),
       { driving: false },
@@ -295,21 +412,132 @@ describe('nextStep at review', () => {
   it('keeps the test-drive toggle and Merge & ship available while driving', () => {
     const ns = nextStep(reviewFull({ ticketStatuses: ['pending'] }), { driving: true })
     expect(ns.primary?.kind).toBe('burn')
-    expect(labels(ns.secondary)).toEqual(['Merge & ship', 'Stop test drive', 'Rethink'])
+    expect(labels(ns.secondary)).toEqual(['Merge & ship', 'Stop test drive', 'Iterate'])
   })
 
-  it('never offers the retired Iterate verb', () => {
-    // Iterate was subsumed by Fix/Rethink — the review bar has three verbs.
+  it('never offers a bare revisit — review`s verbs are Fix, Iterate and Merge', () => {
     for (const full of [reviewFull({}), reviewFull({ ticketStatuses: ['pending'] })]) {
       const ns = nextStep(full, { driving: false })
-      expect(labels(ns.secondary)).not.toContain('Iterate')
       expect(ns.secondary.map((a) => a.kind)).not.toContain('revisit')
     }
   })
 
   it('offers the same verbs on a later lap (the bar does not vary by lap)', () => {
     const ns = nextStep(reviewFull({ lap: 3 }), { driving: false })
-    expect(labels(ns.secondary)).toEqual(['Start test drive', 'Rethink'])
+    expect(labels(ns.secondary)).toEqual(['Start test drive', 'Iterate'])
+  })
+
+  /**
+   * Ticket 4 / findings F23 — "Checks are in." rendered over a feature with no run
+   * recorded, contradicting the summary card two inches below it.
+   */
+  it('claims the checks are in only when a run was actually recorded', () => {
+    expect(nextStep(reviewFull({}), { driving: false }).desc).toContain('Checks are in')
+
+    const noRun = nextStep(reviewFull({ runs: [] }), { driving: false })
+    expect(noRun.desc).not.toContain('Checks are in')
+    expect(noRun.desc).toContain('No run')
+  })
+
+  /**
+   * Ticket 4 / findings F8 — the bar highlighted Merge & ship directly above a red
+   * MERGE CONFLICT panel telling the user to resolve first; following the bar
+   * re-ran a merge that could only fail again.
+   */
+  describe('with an unresolved merge conflict', () => {
+    const conflict = { base: 'main', files: ['a.ts'], at: 1_000 }
+
+    it('makes resolving the conflict the primary action', () => {
+      const ns = nextStep(reviewFull({}), { driving: false, conflict })
+      expect(ns.primary).toEqual({ label: 'Resolve the merge conflict', kind: 'resolveConflict' })
+      expect(ns.title).toBe('Resolve the merge conflict')
+      expect(ns.desc).toContain('main')
+    })
+
+    it('demotes Merge & ship to a disabled secondary that says why', () => {
+      const ns = nextStep(reviewFull({}), { driving: false, conflict })
+      expect(ns.secondary).toContainEqual({
+        label: 'Merge & ship',
+        kind: 'merge',
+        disabled: 'Resolve the merge conflict first — this merge will fail again',
+      })
+    })
+
+    it('outranks the fix-ticket burn too — the merge cannot land either way', () => {
+      const ns = nextStep(reviewFull({ ticketStatuses: ['pending'] }), { driving: false, conflict })
+      expect(ns.primary?.kind).toBe('resolveConflict')
+      expect(ns.secondary.find((a) => a.kind === 'merge')?.disabled).toBeTruthy()
+    })
+
+    it('keeps the test drive and Iterate available (a way out of the state)', () => {
+      const ns = nextStep(reviewFull({}), { driving: false, conflict })
+      expect(labels(ns.secondary)).toContain('Start test drive')
+      expect(labels(ns.secondary)).toContain('Iterate')
+    })
+
+    it('offers no launch of its own while a session is live (one terminal per feature)', () => {
+      const ns = nextStep(reviewFull({ sessionLive: true }), { driving: false, conflict })
+      expect(ns.primary).toBeUndefined()
+      expect(ns.desc).toContain('session')
+    })
+
+    it('goes back to the ordinary merge bar once the conflict clears', () => {
+      const ns = nextStep(reviewFull({}), { driving: false, conflict: null })
+      expect(ns.primary).toEqual({ label: 'Merge & ship', kind: 'merge' })
+    })
+  })
+})
+
+/**
+ * Ticket 2 / findings F4 — from lap 2 on, the ideation bar points at the lap's
+ * own session and never at a bare promote: lap 1's decisions.md is still on disk,
+ * so promoting there skips the whole lap and dead-ends at `tickets` with nothing
+ * to burn. (The lap-scoped G1/G2 refuse it server-side; this is the copy.)
+ */
+describe('nextStep at ideation on a later lap', () => {
+  const lapFull = (opts: {
+    lap: number
+    satisfied?: boolean
+    sessions?: unknown[]
+  }): FeatureFull =>
+    ({
+      feature: { id: 'f1', phase: 'ideation', mapped: false, status: 'active', lap: opts.lap },
+      tickets: [],
+      sessions: opts.sessions ?? [],
+      runs: [],
+      gate: { next: { id: 'G1' }, satisfied: opts.satisfied ?? true, reason: null },
+    }) as unknown as FeatureFull
+
+  it('points at the lap session instead of promoting, even with G1 satisfied', () => {
+    const ns = nextStep(lapFull({ lap: 2 }), { driving: false })
+    expect(ns.primary).toEqual({ label: 'Start lap 2 session', kind: 'revisit' })
+    expect(ns.secondary).toEqual([])
+    expect(ns.title).toBe('Work lap 2')
+    expect(ns.desc).toContain('Promoting is refused')
+  })
+
+  it('says Resume once the lap has a conversation on disk', () => {
+    const ns = nextStep(
+      lapFull({ lap: 3, sessions: [{ id: 's1', status: 'ended', kind: 'revisit', ccSessionId: 'cc-1' }] }),
+      { driving: false },
+    )
+    expect(ns.primary).toEqual({ label: 'Resume lap 3 session', kind: 'revisit' })
+  })
+
+  it('shows the live lap session status-only, as the lap`s work', () => {
+    const ns = nextStep(
+      lapFull({ lap: 2, sessions: [{ id: 's1', status: 'live', kind: 'revisit' }] }),
+      { driving: false },
+    )
+    expect(ns.title).toBe('Lap 2 in progress')
+    expect(ns.primary).toBeUndefined()
+    expect(ns.secondary).toEqual([])
+  })
+
+  it('leaves lap 1 exactly as it was — a satisfied G1 still offers the promotion', () => {
+    const ns = nextStep(lapFull({ lap: 1 }), { driving: false })
+    expect(ns.primary?.kind).toBe('startGrill')
+    expect(ns.secondary.map((a) => a.kind)).toContain('advance')
   })
 })
 
@@ -331,7 +559,18 @@ describe('unresolvedMergeConflict', () => {
       ev(1, 'merge.conflict', { base: 'main', files: ['a.ts'] }),
       ev(2, 'merge.conflict', { base: 'develop', files: ['x.ts', 'y.ts'] }),
     ]
-    expect(unresolvedMergeConflict(events)).toEqual({ base: 'develop', files: ['x.ts', 'y.ts'] })
+    expect(unresolvedMergeConflict(events)).toEqual({
+      base: 'develop',
+      files: ['x.ts', 'y.ts'],
+      at: 2,
+    })
+  })
+
+  it('carries when the conflict happened — a 15-day-old conflict may be stale (F8)', () => {
+    const conflict = unresolvedMergeConflict([
+      ev(7, 'merge.conflict', { base: 'main', files: ['a.ts'] }),
+    ])
+    expect(conflict?.at).toBe(7)
   })
 
   it('clears once a burn supersedes the conflict (loop moved on)', () => {
@@ -348,14 +587,233 @@ describe('unresolvedMergeConflict', () => {
       ev(2, 'burn.started', { from: 'review' }),
       ev(3, 'merge.conflict', { base: 'main', files: ['b.ts'] }),
     ]
-    expect(unresolvedMergeConflict(events)).toEqual({ base: 'main', files: ['b.ts'] })
+    expect(unresolvedMergeConflict(events)).toEqual({ base: 'main', files: ['b.ts'], at: 3 })
   })
 
   it('tolerates a conflict event with a missing/blank file list', () => {
     expect(unresolvedMergeConflict([ev(1, 'merge.conflict', { base: 'main' })])).toEqual({
       base: 'main',
       files: [],
+      at: 1,
     })
+  })
+})
+
+/**
+ * Findings F24 — a gate override advanced the phase with no way back. Undo is
+ * offered only while the override is still the feature's latest transition, and
+ * that window is derived from the event feed so it survives a reload.
+ */
+describe('undoableOverride', () => {
+  const ev = (id: number, type: string, data?: unknown): EventRow =>
+    ({ id, projectId: 'p', ts: id, type, message: type, data }) as EventRow
+  const forced = (id: number, gate: string) => ev(id, 'gate.overridden', { gate, reason: 'why' })
+  const advanced = (id: number, from: string, to: string) => ev(id, 'phase.advanced', { from, to })
+
+  it('returns null with no overrides in the feed', () => {
+    expect(undoableOverride([advanced(1, 'ideation', 'spec')])).toBeNull()
+  })
+
+  it('names the gate and both phases of the advance the override forced', () => {
+    const events = [forced(1, 'G4'), advanced(2, 'implementation', 'review')]
+    expect(undoableOverride(events)).toEqual({
+      gate: 'G4',
+      from: 'implementation',
+      to: 'review',
+    })
+  })
+
+  it('closes the window once any later phase transition lands', () => {
+    const events = [
+      forced(1, 'G4'),
+      advanced(2, 'implementation', 'review'),
+      ev(3, 'feature.shipped', { from: 'review', to: 'shipped' }),
+    ]
+    expect(undoableOverride(events)).toBeNull()
+  })
+
+  it('closes the window once the override is undone', () => {
+    const events = [
+      forced(1, 'G4'),
+      advanced(2, 'implementation', 'review'),
+      ev(3, 'gate.override.undone', { from: 'review', to: 'implementation' }),
+    ]
+    expect(undoableOverride(events)).toBeNull()
+  })
+
+  it('offers the latest override when a feature was overridden twice', () => {
+    const events = [
+      forced(1, 'G2'),
+      advanced(2, 'spec', 'tickets'),
+      forced(3, 'G3'),
+      advanced(4, 'tickets', 'implementation'),
+    ]
+    expect(undoableOverride(events)).toEqual({ gate: 'G3', from: 'tickets', to: 'implementation' })
+  })
+
+  it('ignores a status change — its from/to are statuses, not phases', () => {
+    const events = [
+      forced(1, 'G4'),
+      advanced(2, 'implementation', 'review'),
+      ev(3, 'feature.status', { from: 'active', to: 'archived' }),
+    ]
+    expect(undoableOverride(events)?.gate).toBe('G4')
+  })
+
+  it('ignores an override whose advance never happened (last phase, nothing moved)', () => {
+    expect(undoableOverride([forced(1, 'G5')])).toBeNull()
+  })
+})
+
+/**
+ * Ticket 4 / findings F21 — a test drive is something that either happened on
+ * this feature or did not, and the merge confirmation has to say which.
+ */
+describe('testDriveTaken', () => {
+  const ev = (id: number, type: string): EventRow =>
+    ({ id, projectId: 'p', ts: id, type, message: type }) as EventRow
+
+  it('is false for a feature that was never driven', () => {
+    expect(testDriveTaken([ev(1, 'burn.started'), ev(2, 'run.finished')])).toBe(false)
+  })
+
+  it('is true once a drive has started', () => {
+    expect(testDriveTaken([ev(1, 'testdrive.started')])).toBe(true)
+  })
+
+  it('stays true after the drive stops — it still happened', () => {
+    expect(testDriveTaken([ev(1, 'testdrive.started'), ev(2, 'testdrive.stopped')])).toBe(true)
+  })
+})
+
+/**
+ * Ticket 4 / findings F23 — the review SUMMARY card is the one surface meant to
+ * inform the merge decision, and it painted missing data green. These are the
+ * colour decisions: nothing absent is ever `ok`, and "cannot tell" is never `0`.
+ */
+describe('reviewChecks', () => {
+  const row = (rows: CheckRow[], key: string) => rows.find((r) => r.key === key)
+  const checks = (over: Parameters<typeof reviewChecks>[0] = {}) => reviewChecks(over)
+
+  it('greys 0/0 tickets — nothing was ticketed, so nothing is all-clear', () => {
+    const t = row(checks({ tickets: [] }), 'tickets')
+    expect(t).toEqual({ key: 'tickets', value: '0/0 done', tone: 'idle' })
+  })
+
+  it('ambers 0-done tickets and never greens them', () => {
+    const t = row(checks({ tickets: [{ status: 'pending' }, { status: 'pending' }] }), 'tickets')
+    expect(t?.value).toBe('0/2 done')
+    expect(t?.tone).toBe('warn')
+  })
+
+  it('ambers a partly-done set', () => {
+    expect(row(checks({ tickets: [{ status: 'done' }, { status: 'pending' }] }), 'tickets')?.tone)
+      .toBe('warn')
+  })
+
+  it('greens tickets only when every one of them is done', () => {
+    const t = row(checks({ tickets: [{ status: 'done' }, { status: 'done' }] }), 'tickets')
+    expect(t).toEqual({ key: 'tickets', value: '2/2 done', tone: 'ok' })
+  })
+
+  it('reds a set with a failed ticket, naming the count', () => {
+    const t = row(checks({ tickets: [{ status: 'done' }, { status: 'failed' }] }), 'tickets')
+    expect(t?.tone).toBe('danger')
+    expect(t?.value).toBe('1/2 done · 1 failed')
+  })
+
+  it('greys a missing run and never greens it', () => {
+    expect(row(checks({}), 'run')).toEqual({ key: 'run', value: 'no run recorded', tone: 'idle' })
+  })
+
+  it('greens a succeeded run, appending its summary', () => {
+    const r = row(checks({ run: { status: 'succeeded', summary: '3 tickets landed' } }), 'run')
+    expect(r).toEqual({ key: 'run', value: 'succeeded · 3 tickets landed', tone: 'ok' })
+  })
+
+  it('reds a failed run and ambers one that neither failed nor succeeded', () => {
+    expect(row(checks({ run: { status: 'failed' } }), 'run')?.tone).toBe('danger')
+    expect(row(checks({ run: { status: 'cancelled' } }), 'run')?.tone).toBe('warn')
+    expect(row(checks({ run: { status: 'running' } }), 'run')?.tone).toBe('warn')
+  })
+
+  it('greens the commit count only when git found commits', () => {
+    expect(row(checks({ commitCount: 3 }), 'changes')).toEqual({
+      key: 'changes',
+      value: '3 commits',
+      tone: 'ok',
+    })
+    expect(row(checks({ commitCount: 1 }), 'changes')?.value).toBe('1 commit')
+  })
+
+  it('ambers an empty branch — a review with no commits has nothing to merge', () => {
+    expect(row(checks({ commitCount: 0 }), 'changes')).toEqual({
+      key: 'changes',
+      value: '0 commits',
+      tone: 'warn',
+    })
+  })
+
+  it('greys an unknown commit count rather than reporting it as zero', () => {
+    const c = row(checks({}), 'changes')
+    expect(c?.tone).toBe('idle')
+    expect(c?.value).not.toContain('0')
+  })
+
+  it('keeps the card in one order: tickets, run, changes', () => {
+    expect(checks({}).map((r) => r.key)).toEqual(['tickets', 'run', 'changes'])
+  })
+})
+
+/**
+ * Ticket 4 / findings F21 — the most irreversible action in the pipeline had less
+ * friction than deleting a throwaway feature. The confirmation summarises what is
+ * about to merge and warns, in words, about everything missing from that summary.
+ */
+describe('mergeSummary', () => {
+  const all = { commitCount: 2, run: { status: 'succeeded' as const }, driveTaken: true }
+
+  it('summarises commits, run and test drive, with nothing to warn about', () => {
+    const s = mergeSummary(all)
+    expect(s.rows.map((r) => r.key)).toEqual(['changes', 'run', 'test drive'])
+    expect(s.rows.every((r) => r.tone === 'ok')).toBe(true)
+    expect(s.warnings).toEqual([])
+  })
+
+  it('warns when the branch carries no commits', () => {
+    const s = mergeSummary({ ...all, commitCount: 0 })
+    expect(s.warnings.join(' ')).toContain('no commits')
+  })
+
+  it('warns when the commit count is unknown, rather than vouching for it', () => {
+    const s = mergeSummary({ ...all, commitCount: undefined })
+    expect(s.warnings.join(' ')).toContain('unknown')
+    expect(s.rows.find((r) => r.key === 'changes')?.tone).toBe('idle')
+  })
+
+  it('warns when no run was ever recorded', () => {
+    const s = mergeSummary({ ...all, run: undefined })
+    expect(s.warnings.join(' ')).toContain('No run')
+    expect(s.rows.find((r) => r.key === 'run')?.tone).toBe('idle')
+  })
+
+  it('warns when the last run did not succeed', () => {
+    expect(mergeSummary({ ...all, run: { status: 'failed' } }).warnings).toHaveLength(1)
+  })
+
+  it('warns when the branch was never test-driven, and ambers the row', () => {
+    const s = mergeSummary({ ...all, driveTaken: false })
+    expect(s.warnings.join(' ')).toContain('never test-driven')
+    expect(s.rows.find((r) => r.key === 'test drive')).toEqual({
+      key: 'test drive',
+      value: 'never test-driven',
+      tone: 'warn',
+    })
+  })
+
+  it('warns about each missing thing at once — the whole picture, not the first fault', () => {
+    const s = mergeSummary({ commitCount: 0, run: undefined, driveTaken: false })
+    expect(s.warnings).toHaveLength(3)
   })
 })
 

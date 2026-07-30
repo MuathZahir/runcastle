@@ -1,7 +1,8 @@
-import { Fragment, useEffect, useRef, useState } from 'react'
-import type { EventRow, Phase } from '@runcastle/core'
+import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react'
+import { parsePhase, type EventRow, type Phase } from '@runcastle/core'
 import { trpc } from '../trpc'
 import { useEventLog } from '../lib/events'
+import { useLivePoll } from '../lib/live'
 import { useToast } from '../lib/toast'
 import { Button, DimLine, PhaseTag } from '../ui'
 import type { FeatureFull } from '../lib/api'
@@ -11,16 +12,23 @@ import {
   isReadonlyView,
   latestRun,
   mapDocPath,
+  mergeConflictKickoff,
+  mergeSummary,
   nextStep,
   PHASE_LABELS,
   pipelineSteps,
+  testDriveTaken,
+  unresolvedMergeConflict,
   type ActionKind,
+  type MergeConflictState,
   type NextAction,
   type NextStep,
   type PipelineStep,
   type ReasonPrompt,
 } from '../lib/feature-ui'
+import { lapExplainer } from '../lib/vocabulary'
 import { IconBranch } from '../icons'
+import { MergeFeatureDialog } from './MergeFeatureDialog'
 import { GrillBody } from './bodies/GrillBody'
 import { ReviewBody } from './bodies/ReviewBody'
 import { ShippedBody } from './bodies/ShippedBody'
@@ -55,8 +63,20 @@ export function Workspace({
 }) {
   const utils = trpc.useUtils()
   const toast = useToast()
-  const q = trpc.feature.get.useQuery({ id: featureId }, { refetchInterval: 1500 })
+  const q = trpc.feature.get.useQuery({ id: featureId }, { refetchInterval: useLivePoll() })
   const resumeFailed = useResumeFailedAlert(featureId)
+  // The review bar has to know two things the feature row cannot tell it: whether
+  // a merge conflict is standing (it must not recommend a merge that will fail
+  // again — findings F8) and whether this branch was ever test-driven (the merge
+  // confirmation reports it — F21). Both live in the event feed, same query key
+  // as every other reader, so this shares one poll.
+  const events = useEventLog(featureId)
+  const conflict = unresolvedMergeConflict(events)
+  const driveTaken = testDriveTaken(events)
+  // Commits from git, for the confirmation's summary (same key as the review
+  // body's read — one fetch between them).
+  const commits = trpc.feature.commitCount.useQuery({ featureId }, { refetchInterval: 5000 })
+  const [confirmMerge, setConfirmMerge] = useState(false)
   // The next-step bar warns about remaining fog on a mapped feature, which lives
   // in the map doc's prose — same query key as the map rail's read, so the two
   // share one fetch.
@@ -96,9 +116,11 @@ export function Workspace({
     },
     onError: (e) => toast.push(e.message),
   })
-  // Rethink is the review verb that starts the next lap (ADR-0010 §3): the
+  // Iterate is the review verb that starts the next lap (ADR-0010 §3; the
+  // procedure keeps its `rethink` name so the timeline stays continuous): the
   // server bumps the lap, drops the feature back to ideation and opens the lap
-  // session in one call, so the bar just snaps the view back to live.
+  // session in one call — or rolls all of it back — so the bar just snaps the
+  // view back to live.
   const rethink = trpc.feature.rethink.useMutation({
     onSuccess: () => {
       invalidate()
@@ -188,12 +210,25 @@ export function Workspace({
 
   const full = q.data
   const feature = full.feature
+  // A phase this build does not know (a row from a newer server, a corrupt or
+  // hand-edited column) falls through every exhaustive switch below at once —
+  // the stepper, the next-step bar and the body all come back empty, and the
+  // whole app used to render blank (findings F19). Degrade to a read-only view
+  // that NAMES the value instead, so the feature is reportable and every other
+  // feature stays usable.
+  if (parsePhase(feature.phase) === null) {
+    return <UnrecognizedPhase feature={feature} />
+  }
   const effective = effectivePhase(feature, viewedPhase)
   const readonly = isReadonlyView(feature, effective)
   const steps = pipelineSteps(feature, effective)
   const run = latestRun(full.runs)
   const isDriving = driving?.featureId === feature.id
-  const ns = nextStep(full, { driving: isDriving, mapContent: mapQ.data?.content })
+  const ns = nextStep(full, {
+    driving: isDriving,
+    mapContent: mapQ.data?.content,
+    conflict,
+  })
   const busy =
     launch.isPending ||
     advance.isPending ||
@@ -261,28 +296,48 @@ export function Workspace({
           },
         )
         break
+      // The click opens the confirmation; `runMerge` below is what actually
+      // merges (findings F21 — the pipeline's most irreversible action had no
+      // confirmation at all).
       case 'merge':
-        merge.mutate(
-          { featureId },
-          {
-            onSuccess: (res) => {
-              invalidate()
-              if (res.ok) {
-                onDriveChange(null)
-                toast.push('merged — feature shipped', 'success')
-              } else if (res.conflict) {
-                const n = res.files.length
-                toast.push(
-                  n > 0
-                    ? `merge conflict in ${n} file${n === 1 ? '' : 's'} — resolve below and retry`
-                    : 'merge conflict — resolve below and retry',
-                )
-              }
-            },
-          },
-        )
+        setConfirmMerge(true)
+        break
+      // Resolve a recorded merge conflict: a revisit session briefed to merge the
+      // base into this branch in the talk worktree — the same launch the conflict
+      // card offers, promoted to the bar's primary while the conflict stands.
+      case 'resolveConflict':
+        if (conflict) {
+          launch.mutate({
+            featureId,
+            kind: 'revisit',
+            kickoffLine: mergeConflictKickoff(conflict.base, feature.branch, conflict.files),
+          })
+        }
         break
     }
+  }
+
+  const runMerge = () => {
+    merge.mutate(
+      { featureId },
+      {
+        onSuccess: (res) => {
+          invalidate()
+          setConfirmMerge(false)
+          if (res.ok) {
+            onDriveChange(null)
+            toast.push('merged — feature shipped', 'success')
+          } else if (res.conflict) {
+            const n = res.files.length
+            toast.push(
+              n > 0
+                ? `merge conflict in ${n} file${n === 1 ? '' : 's'} — resolve below and retry`
+                : 'merge conflict — resolve below and retry',
+            )
+          }
+        },
+      },
+    )
   }
 
   return (
@@ -330,12 +385,25 @@ export function Workspace({
         </div>
       )}
 
+      {confirmMerge && (
+        <MergeFeatureDialog
+          title={feature.title}
+          branch={feature.branch}
+          base={commits.data?.base}
+          summary={mergeSummary({ commitCount: commits.data?.count, run, driveTaken })}
+          busy={merge.isPending}
+          onConfirm={runMerge}
+          onCancel={() => setConfirmMerge(false)}
+        />
+      )}
+
       <div className="ws-body">
         <div className="ws-body-inner" key={effective}>
           <PhaseBody
             effective={effective}
             full={full}
             driving={driving}
+            conflict={conflict}
             runId={run?.id ?? null}
             readonly={readonly}
             mapRailCollapsed={mapRailCollapsed}
@@ -351,6 +419,7 @@ function PhaseBody({
   effective,
   full,
   driving,
+  conflict,
   runId,
   readonly,
   mapRailCollapsed,
@@ -359,6 +428,7 @@ function PhaseBody({
   effective: Phase
   full: FeatureFull
   driving: DriveState | null
+  conflict: MergeConflictState | null
   runId: string | null
   readonly: boolean
   mapRailCollapsed: boolean
@@ -371,6 +441,7 @@ function PhaseBody({
         <GrillBody
           full={full}
           effective={effective}
+          readonly={readonly}
           mapRailCollapsed={mapRailCollapsed}
           onToggleMapRail={onToggleMapRail}
         />
@@ -388,7 +459,7 @@ function PhaseBody({
         <TicketsBody featureId={full.feature.id} readonly={readonly} />
       )
     case 'review':
-      return <ReviewBody full={full} driving={driving} />
+      return <ReviewBody full={full} driving={driving} conflict={conflict} readonly={readonly} />
     case 'shipped':
       return <ShippedBody full={full} />
   }
@@ -422,9 +493,9 @@ function PipelineStepper({
         </Fragment>
       ))}
       {/* A feature merged on lap 1 looks exactly like the old linear flow
-          (ADR-0010 §4) — the chip only appears once Rethink has looped. */}
+          (ADR-0010 §4) — the chip only appears once Iterate has looped. */}
       {lap > 1 && (
-        <span className="pipeline-lap" title="Rethink has looped this pipeline">
+        <span className="pipeline-lap" title={lapExplainer(lap)}>
           Lap {lap}
         </span>
       )}
@@ -509,12 +580,16 @@ function NextStepBar({
           </div>
         ) : (
           <>
+            {/* `a.disabled` is the reason the server would refuse this action in
+                the current state — shown as the tooltip beside the dead button,
+                so the user reads why instead of hunting for a vanished verb. */}
             {ns.secondary.map((a, i) => (
               <Button
                 key={i}
                 variant="ghost"
                 className="btn-xs"
-                disabled={busy}
+                disabled={busy || !!a.disabled}
+                title={a.disabled}
                 onClick={() => click(a)}
               >
                 {a.label}
@@ -523,7 +598,8 @@ function NextStepBar({
             {ns.primary && (
               <Button
                 variant={ns.primary.danger ? 'danger' : 'solid'}
-                disabled={busy}
+                disabled={busy || !!ns.primary.disabled}
+                title={ns.primary.disabled}
                 onClick={() => click(ns.primary!)}
               >
                 {busy ? 'Working…' : ns.primary.label}
@@ -572,6 +648,90 @@ function useResumeFailedAlert(featureId: string): { message: string | null; dism
   }, [message])
 
   return { message, dismiss: () => setMessage(null) }
+}
+
+/**
+ * The shared face of a feature view that cannot do its job (findings F19): what
+ * went wrong in words, and the exact detail line to paste into a bug report.
+ * `details` is deliberately one copyable string — the two cases differ in what
+ * they know, not in how the user gets it out.
+ */
+function BrokenFeaturePane({
+  tag,
+  details,
+  children,
+}: {
+  tag: string
+  details: string
+  children: ReactNode
+}) {
+  const toast = useToast()
+  return (
+    <>
+      <div className="ws-banner is-broken" role="alert">
+        <span className="ws-banner-tag">{tag}</span>
+        <span>{children}</span>
+      </div>
+      <div className="ws-body">
+        <div className="ws-body-inner">
+          <div className="broken-detail">
+            <DimLine>{details}</DimLine>
+            <Button variant="ghost" className="btn-xs" onClick={() => copyText(details, toast)}>
+              Copy details
+            </Button>
+          </div>
+        </div>
+      </div>
+    </>
+  )
+}
+
+/**
+ * What the feature view shows when it crashed outright — the fallback for the
+ * error boundary ProjectShell mounts around it (findings F19). Containment is
+ * the point: the sidebar, the other features and every other project keep
+ * working, and this pane carries the feature id + the error so the crash is
+ * reportable rather than mysterious. No title row: a crash this deep means the
+ * feature's own data is not trustworthy enough to render.
+ */
+export function FeatureCrash({ featureId, error }: { featureId: string; error: Error }) {
+  return (
+    <section className="workspace">
+      <BrokenFeaturePane
+        tag="BROKEN"
+        details={`feature ${featureId} — ${error.name}: ${error.message}`}
+      >
+        This feature couldn't be rendered. Everything else still works.
+      </BrokenFeaturePane>
+    </section>
+  )
+}
+
+/**
+ * The degraded feature view for a phase this build does not recognize (findings
+ * F19). Read-only by construction: it offers no pipeline, no next step and no
+ * action, because every one of those is derived from a phase we cannot place.
+ * What it does offer is the bad value itself and the feature's identity, so the
+ * user can report it or fix the row instead of staring at a blank page.
+ */
+function UnrecognizedPhase({ feature }: { feature: FeatureFull['feature'] }) {
+  return (
+    <section className="workspace">
+      <div className="ws-head">
+        <div className="ws-title-row">
+          <span className="tag">unknown</span>
+          <span className="ws-title">{feature.title}</span>
+        </div>
+      </div>
+      <BrokenFeaturePane
+        tag="UNRECOGNIZED"
+        details={`feature ${feature.id} (${feature.slug}) has phase "${feature.phase}"`}
+      >
+        This feature's phase is <strong className="mono">{feature.phase}</strong>, which this version
+        of runcastle doesn't know. Nothing here can be acted on until the row is fixed.
+      </BrokenFeaturePane>
+    </section>
+  )
 }
 
 function copyText(text: string, toast: { push: (m: string, k?: 'error' | 'info' | 'success') => void }): void {

@@ -9,9 +9,9 @@ import type { Phase } from '@runcastle/core'
  * to an earlier, completed phase to inspect it read-only; selecting a different
  * feature clears the pin so the workspace snaps back to following the live phase.
  *
- * Only `selectedFeatureId`, the two rail-collapse flags, and the guidance toggle
- * persist across reloads — the viewed phase, command palette, and new-feature
- * form are ephemeral session state.
+ * Only `selectedFeatureId`, an open preparation, the two rail-collapse flags and
+ * the guidance toggle persist across reloads — the viewed phase, command palette,
+ * and new-feature form are ephemeral session state.
  */
 
 /** The two doors into work: a full feature (a grill) or a quick change. */
@@ -24,6 +24,7 @@ export interface DriveState {
 }
 
 const SELECTED_KEY = 'runcastle.selected.v1'
+const PREPARING_KEY = 'runcastle.preparing.v1'
 const INSPECTOR_KEY = 'runcastle.inspector.collapsed'
 const MAPRAIL_KEY = 'runcastle.maprail.collapsed'
 const GUIDANCE_KEY = 'runcastle.guidance'
@@ -32,6 +33,11 @@ const GUIDANCE_KEY = 'runcastle.guidance'
  *  feature from another project (multi-project, issue #45). */
 function selectedKeyFor(projectId: string): string {
   return `${SELECTED_KEY}:${projectId}`
+}
+
+/** Per-project too, and for the same reason: preparation is a project's job. */
+function preparingKeyFor(projectId: string): string {
+  return `${PREPARING_KEY}:${projectId}`
 }
 
 function readLS(key: string): string | null {
@@ -64,10 +70,15 @@ export interface WorkspaceApi {
   /** Whether a creation form owns the workspace (either door). */
   creating: boolean
   /**
-   * Preparation was opened deliberately — from the rail's nudge or ⌘K. Kept
-   * apart from the automatic call-to-action an unprepared, featureless project
-   * gets: that one is a condition, this one is a choice, and a choice has to
-   * survive the project becoming prepared while you are looking at it.
+   * Preparation was opened deliberately — from the rail's row or ⌘K. Kept apart
+   * from the automatic call-to-action an unprepared, featureless project gets:
+   * that one is a condition, this one is a choice, and a choice has to survive
+   * both the project becoming prepared while you are looking at it and the
+   * reload that used to drop it (persisted, per project).
+   *
+   * Leaving is still deliberate — Back, or picking anything else in the rail —
+   * because the row at its foot is permanent now: what you left is one click
+   * away, and the conversation itself lives on the server either way.
    */
   preparing: boolean
   /**
@@ -112,11 +123,15 @@ export interface WorkspaceApi {
 
 export function useWorkspace(projectId: string): WorkspaceApi {
   const selectedKey = selectedKeyFor(projectId)
+  const preparingKey = preparingKeyFor(projectId)
   const [selectedFeatureId, setSelected] = useState<string | null>(() => readLS(selectedKey))
   const [viewedPhase, setViewedPhase] = useState<Phase | null>(null)
   const [creating, setCreating] = useState(false)
   const [createMode, setCreateMode] = useState<CreateMode>('feature')
-  const [preparing, setPreparing] = useState(false)
+  // Persisted, unlike the create form beside it: a preparation you opened is a
+  // conversation in progress, often a live terminal, and a reload used to drop
+  // it silently — landing you back on a feature with no sign of where you were.
+  const [preparing, setPreparing] = useState(() => readLS(preparingKey) === '1')
   // Ephemeral like the phase pin: the pinned row is always in the rail, so a
   // reload landing back on your feature is the right resting state.
   const [projectSelected, setProjectSelected] = useState(false)
@@ -135,6 +150,9 @@ export function useWorkspace(projectId: string): WorkspaceApi {
   useEffect(() => {
     if (selectedFeatureId) writeLS(selectedKey, selectedFeatureId)
   }, [selectedFeatureId, selectedKey])
+  useEffect(() => {
+    writeLS(preparingKey, preparing ? '1' : '0')
+  }, [preparing, preparingKey])
   useEffect(() => {
     writeLS(INSPECTOR_KEY, inspectorCollapsed ? '1' : '0')
   }, [inspectorCollapsed])

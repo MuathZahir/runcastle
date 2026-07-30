@@ -10,7 +10,7 @@ import {
 import { lapKickoff } from '../../launcher/sessions'
 import { emit } from '../../services/events'
 import * as features from '../../services/features'
-import { overrideGate } from '../../services/gates'
+import { overrideGate, undoGateOverride } from '../../services/gates'
 import * as git from '../../services/git'
 import { getFeatureRow, projectForFeature, setFeatureStatus, setPhase } from '../../services/repo'
 import { publicProcedure, router } from '../context'
@@ -87,22 +87,27 @@ export const featureRouter = router({
       converge(ctx, { featureId: input.featureId, overrideReason: input.overrideReason }),
     ),
 
-  // Rethink (ADR-0010 §1 / SPEC §15.2) — the review verb that starts lap N+1.
-  // The service runs FIRST so the phase is back at ideation and the lap already
-  // bumped when the session row is created (it is stamped with the feature's
-  // current lap); the terminal then opens on the lap briefing instead of the
-  // generic revisit line: digest the drive, amend the docs, emit this lap's
+  // Iterate — internally Rethink (ADR-0010 §1 / SPEC §15.2), the review verb that
+  // starts lap N+1. The service runs FIRST so the phase is back at ideation and
+  // the lap already bumped when the session row is created (it is stamped with the
+  // feature's current lap); the terminal then opens on the lap briefing instead of
+  // the generic revisit line: digest the drive, amend the docs, emit this lap's
   // tickets, hand back to the Burn click. One click, one terminal.
+  //
+  // `rethinkAndLaunch` makes that ordering safe: a launch that throws rolls the
+  // flip back to review on the original lap (findings F3), so the click can just
+  // be retried once whatever blocked the terminal is cleared.
   rethink: publicProcedure
     .input(z.object({ featureId: z.string() }))
-    .mutation(({ ctx, input }) => {
-      const feature = features.rethink(ctx, input.featureId)
-      return launchSession(ctx, {
-        featureId: input.featureId,
-        kind: 'revisit',
-        kickoffLine: lapKickoff(feature.lap),
-      })
-    }),
+    .mutation(({ ctx, input }) =>
+      features.rethinkAndLaunch(ctx, input.featureId, (feature) =>
+        launchSession(ctx, {
+          featureId: input.featureId,
+          kind: 'revisit',
+          kickoffLine: lapKickoff(feature.lap),
+        }),
+      ),
+    ),
 
   // Re-type a live session's kickoff/briefing into its terminal ("Send briefing"
   // in the session strip). The escape hatch for a briefing the TUI swallowed —
@@ -126,6 +131,13 @@ export const featureRouter = router({
   overrideGate: publicProcedure
     .input(z.object({ featureId: z.string(), gate: gateId, reason: z.string().min(1) }))
     .mutation(({ ctx, input }) => overrideGate(ctx, input.featureId, input.gate, input.reason)),
+
+  // Take an override back (findings F24): the phase it advanced past is restored
+  // and the reversal is recorded. The UI only offers it while the override is
+  // still the feature's latest transition.
+  undoGateOverride: publicProcedure
+    .input(z.object({ featureId: z.string(), gate: gateId }))
+    .mutation(({ ctx, input }) => undoGateOverride(ctx, input.featureId, input.gate)),
 
   // Archive a feature from any phase (decision #8): ends any live session, hides
   // it behind the sidebar's show-archived filter, keeps all data. Reversible via
@@ -165,6 +177,17 @@ export const featureRouter = router({
   // Active test-drive info for the review-phase dev pane + Open app link. Polled
   // at 1.5s so the async-sniffed localhost URL surfaces once the dev server boots.
   driveInfo: publicProcedure.query(() => git.activeDriveInfo()),
+
+  // How many commits the branch actually carries over its merge target, for the
+  // review summary and the merge confirmation (findings F23). Its own query
+  // because `get` is synchronous and this is a git read; `count` is undefined
+  // when git cannot tell, which the UI must not paint as zero.
+  commitCount: publicProcedure
+    .input(z.object({ featureId: z.string() }))
+    .query(({ ctx, input }) => {
+      const feature = getFeatureRow(ctx, input.featureId)
+      return git.reviewCommitCount(projectForFeature(ctx, feature), feature)
+    }),
 
   // B2 behavior — the git stub throws; the success path (set phase shipped) is
   // wired now so B2 only fills in `mergeFeature`.

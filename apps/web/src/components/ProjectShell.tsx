@@ -4,13 +4,15 @@ import { trpc } from '../trpc'
 import { useWorkspace, type DriveState } from '../lib/workspace'
 import type { ProjectNavApi } from '../lib/use-project-nav'
 import { useProjectTalk } from '../lib/use-project-talk'
+import { useLivePoll } from '../lib/live'
 import { showsInspector, workspaceView, TALK_IT_THROUGH } from '../lib/project-workspace'
 import type { PrepView } from '../lib/api'
 import { Titlebar } from './Titlebar'
 import { Sidebar } from './Sidebar'
 import { Inspector } from './Inspector'
 import { StatusBar } from './StatusBar'
-import { Workspace } from './Workspace'
+import { FeatureCrash, Workspace } from './Workspace'
+import { ErrorBoundary } from './ErrorBoundary'
 import { ProjectWorkspace } from './ProjectWorkspace'
 import { NewFeatureForm } from './NewFeatureForm'
 import { QuickChangeForm } from './QuickChangeForm'
@@ -31,7 +33,7 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
   const ws = useWorkspace(projectId)
   const { selectedFeatureId, projectSelected, select, selectProject, setCmdk } = ws
   const [driving, setDriving] = useState<DriveState | null>(null)
-  const list = trpc.feature.list.useQuery({ projectId }, { refetchInterval: 1500 })
+  const list = trpc.feature.list.useQuery({ projectId }, { refetchInterval: useLivePoll() })
   // The project conversation, polled once here and read by the pinned rail row,
   // the project workspace and both "talk it through" doors.
   const talk = useProjectTalk(projectId)
@@ -119,18 +121,29 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
           />
         ) : view === 'project' ? (
           <ProjectWorkspace projectId={projectId} talk={talk} />
-        ) : view === 'feature' && ws.selectedFeatureId ? (
-          <Workspace
-            key={`ws-${ws.selectedFeatureId}`}
-            featureId={ws.selectedFeatureId}
-            viewedPhase={ws.viewedPhase}
-            onViewPhase={ws.viewPhase}
-            guidance={ws.guidance}
-            mapRailCollapsed={ws.mapRailCollapsed}
-            onToggleMapRail={ws.toggleMapRail}
-            driving={driving}
-            onDriveChange={setDriving}
-          />
+        ) : view === 'feature' && selectedFeatureId ? (
+          // The feature view is the app's one unbounded render surface — it
+          // renders whatever a feature's row, tickets and sessions say. Contain
+          // it (findings F19): a crash in here keeps the rail, the other
+          // features and every other project alive. Keyed by feature so
+          // selecting a different one resets the boundary instead of leaving
+          // the crash face up.
+          <ErrorBoundary
+            key={`ws-${selectedFeatureId}`}
+            label="feature view"
+            fallback={(error) => <FeatureCrash featureId={selectedFeatureId} error={error} />}
+          >
+            <Workspace
+              featureId={selectedFeatureId}
+              viewedPhase={ws.viewedPhase}
+              onViewPhase={ws.viewPhase}
+              guidance={ws.guidance}
+              mapRailCollapsed={ws.mapRailCollapsed}
+              onToggleMapRail={ws.toggleMapRail}
+              driving={driving}
+              onDriveChange={setDriving}
+            />
+          </ErrorBoundary>
         ) : (
           <section className="workspace">
             <EmptyWorkspace

@@ -2,6 +2,7 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useState,
   type ReactNode,
 } from 'react'
@@ -20,6 +21,22 @@ interface ToastApi {
 
 const ToastCtx = createContext<ToastApi | null>(null)
 
+/**
+ * The mounted provider's `push`, reachable from outside React.
+ *
+ * The QueryClient is built before any component renders, so its global
+ * mutation-error handler cannot use the context hook — it needs a way in that
+ * does not sit under the provider. A registered sink is that way in; before the
+ * provider mounts (and after it unmounts) a push is simply dropped, which is
+ * the right answer when there is no UI to show it in.
+ */
+let sink: ToastApi['push'] | null = null
+
+/** Raise a toast from outside the React tree (the global mutation handler). */
+export function pushToast(message: string, kind: ToastKind = 'error'): void {
+  sink?.(message, kind)
+}
+
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([])
 
@@ -28,6 +45,13 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     setToasts((t) => [...t, { id, kind, message }])
     setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 6000)
   }, [])
+
+  useEffect(() => {
+    sink = push
+    return () => {
+      if (sink === push) sink = null
+    }
+  }, [push])
 
   return (
     <ToastCtx.Provider value={{ push }}>

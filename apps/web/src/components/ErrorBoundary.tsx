@@ -8,6 +8,12 @@ import { Component, type ErrorInfo, type ReactNode } from 'react'
 interface Props {
   children: ReactNode
   label?: string
+  /**
+   * Replaces the one-line fallback for a boundary whose blast radius deserves a
+   * fuller story — the feature view passes the feature's identity and a way to
+   * copy the crash details (findings F19).
+   */
+  fallback?: (error: Error) => ReactNode
 }
 interface State {
   error: Error | null
@@ -27,6 +33,7 @@ export class ErrorBoundary extends Component<Props, State> {
 
   render(): ReactNode {
     if (this.state.error) {
+      if (this.props.fallback) return this.props.fallback(this.state.error)
       return (
         <div className="boundary-fallback">
           <span className="dim-line mono">

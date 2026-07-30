@@ -2,8 +2,10 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { sessionDir, worktreeDir } from '@runcastle/core/paths'
+import { eq } from 'drizzle-orm'
 import { simpleGit } from 'simple-git'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { gateOverrides } from '../src/db/schema'
 import type { AppCtx } from '../src/db/types'
 import { GateError } from '../src/errors'
 import { converge } from '../src/launcher/launcher'
@@ -176,6 +178,48 @@ describe('converge — mapped feature G1', () => {
     await expect(converge(ctx, { featureId: feature.id }, { spawn: false })).rejects.toThrow(
       /ticket/i,
     )
+  })
+
+  // --- the crossing is committed only once the session exists (findings F5) ---
+  // `converge` must cross G1 before launching (the session's artifacts are
+  // rendered from the phase), so a launch that throws has to put the crossing
+  // back — otherwise the feature sits past G1 with no session, the state
+  // `reconverge` exists to rescue.
+
+  /** A mapped feature whose project is NOT a git repo — every launch throws there. */
+  function unlaunchableFeature(slug: string) {
+    const brokenRepo = mkdtempSync(join(tmpdir(), 'runcastle-norepo-'))
+    cleanup.push(brokenRepo)
+    const broken = seedProject(ctx, brokenRepo)
+    const feature = seedFeature(ctx, broken.id, { slug, mapped: true })
+    cleanup.push(worktreeDir(broken.id, slug))
+    return feature
+  }
+
+  it('rolls the G1 crossing back to ideation when the session cannot be opened', async () => {
+    const feature = unlaunchableFeature('launch-fails')
+    const [a] = storeWaypoints(ctx, feature.id, [wp('a')])
+    resolve(ctx, a.id, 'resolved', 'answered')
+
+    await expect(converge(ctx, { featureId: feature.id }, { spawn: false })).rejects.toThrow()
+
+    expect(getFeatureRow(ctx, feature.id).phase).toBe('ideation')
+    const aborted = listAfter(ctx, feature.id, 0).find((e) => e.type === 'converge.aborted')
+    expect(aborted?.message).toContain('back at ideation')
+  })
+
+  it('rolls a FORCED crossing back too — the override does not stand', async () => {
+    const feature = unlaunchableFeature('override-fails')
+    storeWaypoints(ctx, feature.id, [wp('a')]) // left open: needs the override
+
+    await expect(
+      converge(ctx, { featureId: feature.id, overrideReason: 'converging early' }, { spawn: false }),
+    ).rejects.toThrow()
+
+    expect(getFeatureRow(ctx, feature.id).phase).toBe('ideation')
+    expect(
+      ctx.db.select().from(gateOverrides).where(eq(gateOverrides.featureId, feature.id)).all(),
+    ).toEqual([])
   })
 
   it('refuses re-convergence at any later phase', async () => {

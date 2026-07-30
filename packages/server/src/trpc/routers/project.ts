@@ -1,4 +1,5 @@
 import * as z from 'zod'
+import { ProjectName } from '@runcastle/core'
 import { browseDir, listRoots } from '../../services/fsbrowse'
 import * as git from '../../services/git'
 import { prepView } from '../../services/prep'
@@ -45,7 +46,7 @@ export const projectRouter = router({
     .mutation(({ ctx, input }) => closeProject(ctx, input.projectId)),
 
   rename: publicProcedure
-    .input(z.object({ projectId: z.string(), name: z.string().min(1) }))
+    .input(z.object({ projectId: z.string(), name: ProjectName }))
     .mutation(({ ctx, input }) => renameProject(ctx, input.projectId, input.name)),
 
   // `project.update` is retired (issue #46): devCommand (and model/sandbox) now
@@ -63,10 +64,16 @@ export const projectRouter = router({
    * not ones a better prompt answers — how this machine's dev server starts,
    * which database a drive should point at — so preparation asks them, and can
    * actually RUN the answers here, which a sandbox never could.
+   *
+   * `fresh` opens it without picking the last conversation back up: re-preparing
+   * a project whose baseline has drifted means re-asking questions the resumed
+   * transcript already believes it answered.
    */
   talkToPrep: publicProcedure
-    .input(z.object({ projectId: z.string() }))
-    .mutation(({ ctx, input }) => launchPrepareSession(ctx, { projectId: input.projectId })),
+    .input(z.object({ projectId: z.string(), fresh: z.boolean().optional() }))
+    .mutation(({ ctx, input }) =>
+      launchPrepareSession(ctx, { projectId: input.projectId, fresh: input.fresh }),
+    ),
 
   /** The live preparation conversation for this project, if one is open. */
   prepSession: publicProcedure

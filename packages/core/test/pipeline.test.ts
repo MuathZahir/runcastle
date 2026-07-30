@@ -6,6 +6,7 @@ import {
   loopBackPhase,
   nextGate,
   nextPhase,
+  previousPhase,
   rethinkPhase,
 } from '../src/pipeline'
 import type { Phase } from '../src/schemas'
@@ -24,6 +25,18 @@ describe('nextPhase', () => {
 
   it('returns null at the terminal phase', () => {
     expect(nextPhase(full('shipped'))).toBeNull()
+  })
+})
+
+describe('previousPhase', () => {
+  it('steps back exactly one phase — the inverse of nextPhase', () => {
+    expect(previousPhase(full('spec'))).toBe('ideation')
+    expect(previousPhase(full('review'))).toBe('implementation')
+    expect(previousPhase(full('shipped'))).toBe('review')
+  })
+
+  it('returns null at the first phase, where there is nothing behind', () => {
+    expect(previousPhase(full('ideation'))).toBeNull()
   })
 })
 

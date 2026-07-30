@@ -38,7 +38,11 @@ export function ProjectSwitcher({ nav }: { nav: ProjectNavApi }) {
         aria-haspopup="menu"
         aria-expanded={open}
       >
-        <span className="tb-project">{nav.currentProject?.name ?? '…'}</span>
+        {/* Truncated by CSS when long (findings F20) — the title carries the
+            whole name so nothing is unreadable, only unshown. */}
+        <span className="tb-project" title={nav.currentProject?.name}>
+          {nav.currentProject?.name ?? '…'}
+        </span>
         <span className="tb-switcher-caret">
           <IconChevronDown size={11} />
         </span>

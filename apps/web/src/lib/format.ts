@@ -10,6 +10,27 @@ export function fmtDateTime(ts: number): string {
   return new Date(ts).toLocaleString()
 }
 
+/**
+ * Machine timestamps in agent-authored prose, rewritten for a human reader.
+ *
+ * Docs are written by agents, which stamp them the way a program does:
+ * "Created: 2026-07-14T14:58:23.231Z". Nobody reads milliseconds, and the doc
+ * peek was the surface where that showed (findings F10.9 / F18). Only whole
+ * ISO-8601 instants are touched — a date on its own ("2026-07-14") is already
+ * readable, and rewriting it would only move it across a timezone boundary.
+ *
+ * `format` is injected so the substitution is testable without depending on the
+ * runner's locale or zone.
+ */
+const ISO_INSTANT = /\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})/g
+
+export function humanizeTimestamps(text: string, format: (ts: number) => string = fmtDateTime): string {
+  return text.replace(ISO_INSTANT, (match) => {
+    const ms = Date.parse(match)
+    return Number.isNaN(ms) ? match : format(ms)
+  })
+}
+
 /** Trim a prefixed id (`feat_x1y2...`) to a short, readable tail. */
 export function shortId(id: string): string {
   const i = id.indexOf('_')

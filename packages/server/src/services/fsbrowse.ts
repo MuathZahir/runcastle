@@ -204,6 +204,13 @@ export function browseDir(input?: string, showHidden = false, home: string = hom
 
     const path = join(dir, name)
     const isSymlink = dirent.isSymbolicLink()
+    // Junctions and symlinked directories are hidden with the rest of the noise.
+    // Windows scatters compatibility junctions through a home directory
+    // ("Application Data", "My Documents", "Local Settings", …) and they filled
+    // the picker with entries that are not where anything lives (findings
+    // F17.3). A symlink is never the only route to a directory — its target is
+    // — so the cost of hiding one is a longer path, and Hidden brings them back.
+    if (isSymlink && !showHidden) continue
     // `withFileTypes` reports symlinks as links, not dirs — stat to see through
     // them, tolerating broken links and permission errors by skipping.
     let isDirectory = dirent.isDirectory()

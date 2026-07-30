@@ -24,6 +24,50 @@ export interface DesktopNotification {
   body: string
 }
 
+/** What the status bar's notify button is currently saying (findings F17.9). */
+export type NotifyState = 'on' | 'off' | 'blocked'
+
+export interface NotifyButton {
+  state: NotifyState
+  label: string
+  /** The hover explanation — for `blocked`, how to unblock. */
+  title: string
+}
+
+/**
+ * The notify button's three states.
+ *
+ * It used to have one appearance and a click that did nothing at all when the
+ * browser had denied permission: no state, no explanation, no route back. A
+ * denied permission cannot be re-requested from script — only the user can undo
+ * it in site settings — so the honest thing is to say so and point at where.
+ */
+export function notifyButton(input: {
+  enabled: boolean
+  permission: NotificationPermission
+}): NotifyButton {
+  if (input.permission === 'denied') {
+    return {
+      state: 'blocked',
+      label: 'notify blocked',
+      title:
+        'Your browser has blocked notifications for runcastle. Allow them in site settings (the icon beside the address bar), then click again.',
+    }
+  }
+  if (input.enabled) {
+    return {
+      state: 'on',
+      label: 'notify on',
+      title: 'Desktop notifications on — click to turn them off',
+    }
+  }
+  return {
+    state: 'off',
+    label: 'notify off',
+    title: 'Notify me when a burn finishes',
+  }
+}
+
 /** The `data` payload of a `run.finished` event (runner finalize). */
 interface RunFinishedData {
   status: 'succeeded' | 'failed' | 'cancelled'

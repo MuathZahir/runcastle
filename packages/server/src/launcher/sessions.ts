@@ -229,6 +229,42 @@ export function kickoffLineFor(kind: SessionKind, override?: string): string {
   return override ?? KICKOFF_LINES[kind]
 }
 
+/** What a launch is going to type into its terminal, and what that implies. */
+export interface KickoffPlan {
+  /** The briefing to type; absent means the per-kind default line. */
+  line?: string
+  /**
+   * The briefing IS this session's opening move (a lap briefing, a merge-conflict
+   * hand-off) rather than a nudge to carry on. Such a launch must be FRESH: a
+   * `--resume` shows Claude Code's "start from a summary?" chooser, which eats
+   * the very keystrokes carrying the briefing (F2), and even when it survives, a
+   * restored transcript argues with an instruction that means to start over.
+   */
+  explicit: boolean
+  /** Set when the briefing is the lap briefing: the lap this session runs. */
+  lap?: number
+}
+
+/**
+ * Decide a launch's kickoff (exported seam — see {@link KickoffPlan}).
+ *
+ * Two things produce an explicit briefing. An override passed by the caller (the
+ * review Iterate click passes `lapKickoff`), and a lap-N grill: the ideation
+ * next-step's "Start/Resume grill session" on a feature already past lap 1 used
+ * to open with the generic ideate line and no lap framing at all (F4), so the
+ * lap it was opened for was invisible to the agent.
+ */
+export function planKickoff(input: {
+  kind: SessionKind
+  lap: number
+  kickoffLine?: string
+}): KickoffPlan {
+  const lapBriefing = input.lap > 1 ? lapKickoff(input.lap) : undefined
+  const line = input.kickoffLine ?? (input.kind === 'ideation' ? lapBriefing : undefined)
+  if (!line) return { explicit: false }
+  return { line, explicit: true, lap: line === lapBriefing ? input.lap : undefined }
+}
+
 /**
  * Framing prepended to the kickoff line of a RESUMED session. `--resume` restores
  * the whole conversation, so typing the bare per-kind line ("invoke /runcastle:…
@@ -256,7 +292,10 @@ export function resumeKickoffLine(kind: SessionKind): string {
  * stashes an override here BEFORE spawning; `scheduleKickoff` consumes it when
  * the session goes live (kickoff is scheduled from `markSessionLive`, decoupled
  * from launch by the SessionStart hook, so the override must survive the gap).
- * Cleared on consume and on session end so the map never grows unbounded.
+ *
+ * An entry OUTLIVES its consumption — it is the durable record of what this
+ * terminal was opened to say, which `resendKickoff` needs verbatim (F6) — and is
+ * dropped when the session ends, so the map never grows unbounded.
  */
 const pendingKickoffOverrides = new Map<string, string>()
 
@@ -307,6 +346,11 @@ interface KickoffDelivery {
   line: string
   attempts: number
   confirmed: boolean
+  /**
+   * We have typed the briefing into the PTY at least once. Until then no
+   * submitted prompt can be a reaction to it — see {@link noteKickoffPrompt}.
+   */
+  written: boolean
   /** No further automatic attempts: confirmed, superseded, or out of attempts. */
   settled: boolean
   timers: Set<ReturnType<typeof setTimeout>>
@@ -380,6 +424,7 @@ function attemptKickoff(
         return
       }
       d.attempts += 1
+      d.written = true
       const attempt = d.attempts
       try {
         // Anything but the very first automatic write may be landing on top of a
@@ -445,12 +490,20 @@ function settleUndelivered(
  * the human is already driving — stop injecting (typing into a conversation
  * mid-thought is worse than not briefing at all) and record the briefing as
  * undelivered so the UI can offer it as a one-click send.
+ *
+ * "Anything else" only counts once we have actually typed (`written`). A prompt
+ * that arrives BEFORE our first write cannot be a human reacting to the briefing
+ * — it is the session's own opening traffic (a resumed conversation replaying,
+ * a queued prompt) — and treating it as "the human typed first" is how the
+ * retry budget used to destroy itself: the briefing was swallowed by a startup
+ * dialog, and attempts 2 and 3 were cancelled before the first even landed (F2).
  */
 export function noteKickoffPrompt(ctx: AppCtx, sessionId: string, prompt?: string): void {
   const d = deliveries.get(sessionId)
   if (!d || d.confirmed) return
   const session = getSessionRow(ctx, sessionId)
   if (!session) return
+  if (!d.written) return
   if (promptMatchesKickoff(d.line, prompt)) {
     d.confirmed = true
     d.settled = true
@@ -491,11 +544,14 @@ export function resendKickoff(ctx: AppCtx, sessionId: string): { line: string } 
 
   const existing = deliveries.get(sessionId)
   const d: KickoffDelivery = existing ?? {
-    // The override is normally consumed at go-live; falling back to the per-kind
-    // default keeps the button useful for a session whose record was dropped.
+    // No delivery record yet (the session has not gone live, so the kickoff was
+    // never scheduled). The override outlives its consumption precisely for this
+    // moment: without it, "Send briefing" on a lap terminal silently downgraded
+    // the lap briefing to the generic per-kind line (F6).
     line: kickoffLineFor(session.kind, pendingKickoffOverrides.get(sessionId)),
     attempts: 0,
     confirmed: false,
+    written: false,
     settled: false,
     timers: new Set(),
   }
@@ -535,11 +591,20 @@ export function armSessionReadyWatchdog(ctx: AppCtx, session: SessionRow): void 
 }
 
 function scheduleKickoff(ctx: AppCtx, session: SessionRow): void {
+  // The override is NOT dropped here. It is the only record of what this
+  // terminal was opened to say, and `resendKickoff` needs it verbatim long
+  // after go-live; `forgetKickoff` clears it when the session ends (F6).
   const line = kickoffLineFor(session.kind, pendingKickoffOverrides.get(session.id))
-  pendingKickoffOverrides.delete(session.id)
   const existing = deliveries.get(session.id)
   if (existing) stopTimers(existing)
-  const d: KickoffDelivery = { line, attempts: 0, confirmed: false, settled: false, timers: new Set() }
+  const d: KickoffDelivery = {
+    line,
+    attempts: 0,
+    confirmed: false,
+    written: false,
+    settled: false,
+    timers: new Set(),
+  }
   deliveries.set(session.id, d)
   attemptKickoff(ctx, session, d, KICKOFF_DELAY_MS)
 }

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { trpc } from '../trpc'
+import { useLivePoll } from './live'
 import { initialView, type AppView } from './projects'
 import type { Project } from './api'
 
@@ -29,7 +30,7 @@ export interface ProjectNavApi {
 }
 
 export function useProjectNav(): ProjectNavApi {
-  const q = trpc.project.list.useQuery(undefined, { refetchInterval: 5000 })
+  const q = trpc.project.list.useQuery(undefined, { refetchInterval: useLivePoll(5000) })
   const projects = q.data
 
   const [view, setView] = useState<AppView>('home')

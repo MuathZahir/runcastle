@@ -1,14 +1,18 @@
 import { useState } from 'react'
 import { trpc } from '../trpc'
-import { defaultBaseBranch, slugPreview } from '../lib/feature-ui'
+import { defaultBaseBranch, duplicateTitleWarning, slugPreview } from '../lib/feature-ui'
 import { TALK_IT_THROUGH } from '../lib/project-workspace'
 import { useToast } from '../lib/toast'
+import { GRILL_EXPLAINER } from '../lib/vocabulary'
 import { Button } from '../ui'
+import { FormOverlay } from './FormOverlay'
 
 /**
  * The new-feature form (app-redesign) — owns the whole workspace while open.
  * Name it, and starting it creates the feature AND opens a grill session so the
- * ideation body is live the moment you land on it.
+ * ideation body is live the moment you land on it. Or create it and stop there:
+ * an idea worth writing down is not always an idea you want to talk about right
+ * now (finding F15), and the session-less ideation body already invites you back.
  *
  * The form demands a title up front, which means it demands the human has already
  * cut their thought into a feature — so it carries the escape hatch for when they
@@ -45,27 +49,31 @@ export function NewFeatureForm({
   const effectiveBase = base || defaultBase
 
   const launch = trpc.feature.launchSession.useMutation()
+  // Which button is in flight, for its own pending label — both actions run the
+  // same create; only the submit call site decides whether a session follows.
+  const [starting, setStarting] = useState<'grill' | 'alone' | null>(null)
   const create = trpc.feature.create.useMutation({
-    onSuccess: async (feature) => {
-      await utils.feature.list.invalidate()
-      // Best-effort: open a grill session so the ideation body lands live.
-      launch.mutate(
-        { featureId: feature.id, kind: 'ideation' },
-        { onSettled: () => void utils.feature.get.invalidate({ id: feature.id }) },
-      )
-      onCreated(feature.id)
+    onError: (e) => {
+      setStarting(null)
+      toast.push(e.message)
     },
-    onError: (e) => toast.push(e.message),
   })
+
+  // Same query key the rail polls — one fetch, and the warning is against the
+  // list the user can already see.
+  const featuresQ = trpc.feature.list.useQuery({ projectId })
+  const duplicate = duplicateTitleWarning(title, featuresQ.data ?? [])
 
   const slug = slugPreview(title)
   const busy = create.isPending || launch.isPending
-  const submit = () => {
+  const submit = (withGrill: boolean) => {
     const t = title.trim()
     // Don't create while the branch list is still loading — `effectiveBase` isn't
     // known yet, and creating now would silently fork off main.
-    if (t && !branchesQ.isPending)
-      create.mutate({
+    if (!t || branchesQ.isPending || busy) return
+    setStarting(withGrill ? 'grill' : 'alone')
+    create.mutate(
+      {
         projectId,
         title: t,
         oneLiner: oneLiner.trim(),
@@ -74,100 +82,128 @@ export function NewFeatureForm({
         // contradicts the "current branch" default displayed in the picker.
         // Empty only before the branch list loads — then main really is the base.
         baseBranch: effectiveBase || undefined,
-      })
+      },
+      {
+        onSuccess: async (feature) => {
+          await utils.feature.list.invalidate()
+          // Best-effort: open a grill session so the ideation body lands live.
+          if (withGrill)
+            launch.mutate(
+              { featureId: feature.id, kind: 'ideation' },
+              { onSettled: () => void utils.feature.get.invalidate({ id: feature.id }) },
+            )
+          onCreated(feature.id)
+        },
+      },
+    )
   }
 
   return (
-    <div className="nf-overlay">
-      <div className="nf-card">
-        <div className="nf-kick">NEW FEATURE</div>
-        <div className="nf-h">What are we building?</div>
-        <div className="nf-sub">
-          Name it — runcastle opens a grill session so you and Claude shape the idea before any code
-          is written.
-        </div>
+    <FormOverlay dirty={title.trim() !== '' || oneLiner.trim() !== ''} onDismiss={onCancel}>
+      {(dismiss) => (
+        <>
+          <div className="nf-kick">NEW FEATURE</div>
+          <div className="nf-h">What are we building?</div>
+          <div className="nf-sub">
+            {GRILL_EXPLAINER} Name it and start one now — or create the feature and start the session
+            when you are ready for it.
+          </div>
 
-        <input
-          className="nf-input"
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          placeholder="e.g. Slack notifications on failed runs"
-          autoFocus
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') submit()
-            if (e.key === 'Escape') onCancel()
-          }}
-        />
+          <input
+            className="nf-input"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            placeholder="e.g. Slack notifications on failed runs"
+            autoFocus
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') submit(true)
+            }}
+          />
+          {/* A warning, not a block: a second run at the same idea is legitimate,
+              and the server suffixes the slug either way (findings F25.3). */}
+          {duplicate && (
+            <div className="nf-dupe" role="status">
+              {duplicate}
+            </div>
+          )}
 
-        <input
-          className="nf-input nf-oneliner"
-          value={oneLiner}
-          onChange={(e) => setOneLiner(e.target.value)}
-          placeholder="one-liner (optional) — what & why in a sentence"
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') submit()
-            if (e.key === 'Escape') onCancel()
-          }}
-        />
+          <input
+            className="nf-input nf-oneliner"
+            value={oneLiner}
+            onChange={(e) => setOneLiner(e.target.value)}
+            placeholder="one-liner (optional) — what & why in a sentence"
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') submit(true)
+            }}
+          />
 
-        <details className="nf-advanced">
-          <summary className="nf-advanced-summary">Advanced</summary>
+          <details className="nf-advanced">
+            <summary className="nf-advanced-summary">Advanced</summary>
 
-          <div className="nf-base">
-            <label className="nf-base-label" htmlFor="nf-base-select">
-              Branch from
-            </label>
-            <select
-              id="nf-base-select"
-              className="nf-base-select"
-              value={effectiveBase}
-              disabled={branchesQ.isPending || noBranches}
-              onChange={(e) => setBase(e.target.value)}
+            <div className="nf-base">
+              <label className="nf-base-label" htmlFor="nf-base-select">
+                Branch from
+              </label>
+              <select
+                id="nf-base-select"
+                className="nf-base-select"
+                value={effectiveBase}
+                disabled={branchesQ.isPending || noBranches}
+                onChange={(e) => setBase(e.target.value)}
+              >
+                {branchList.map((b) => (
+                  <option key={b} value={b}>
+                    {b}
+                    {b === mainBranch ? ' (default)' : ''}
+                    {b === currentBranch && b !== mainBranch ? ' (current)' : ''}
+                  </option>
+                ))}
+                {remoteList.length > 0 && (
+                  <optgroup label="Remote (creates a local branch)">
+                    {remoteList.map((b) => (
+                      <option key={b} value={b}>
+                        {b}
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
+              </select>
+              <span className="size-hint">
+                forks off this branch — and merges back into it when shipped.
+              </span>
+            </div>
+
+            <div className="nf-branch">
+              branch · feature/{slug || '…'} ← {effectiveBase || '…'}
+            </div>
+          </details>
+
+          <div className="nf-actions">
+            <button className="talk-door" onClick={onTalkItThrough} disabled={busy}>
+              {TALK_IT_THROUGH} →
+            </button>
+            <span className="nf-actions-spacer" />
+            <Button variant="ghost" onClick={dismiss} disabled={busy}>
+              Cancel
+            </Button>
+            <Button
+              variant="ghost"
+              onClick={() => submit(false)}
+              disabled={!title.trim() || busy || branchesQ.isPending}
+              title="Create the feature and stop there — the grill session waits for you on the ideation screen"
             >
-              {branchList.map((b) => (
-                <option key={b} value={b}>
-                  {b}
-                  {b === mainBranch ? ' (default)' : ''}
-                  {b === currentBranch && b !== mainBranch ? ' (current)' : ''}
-                </option>
-              ))}
-              {remoteList.length > 0 && (
-                <optgroup label="Remote (creates a local branch)">
-                  {remoteList.map((b) => (
-                    <option key={b} value={b}>
-                      {b}
-                    </option>
-                  ))}
-                </optgroup>
-              )}
-            </select>
-            <span className="size-hint">
-              forks off this branch — and merges back into it when shipped.
-            </span>
+              {starting === 'alone' ? 'Creating…' : 'Create without starting'}
+            </Button>
+            <Button
+              variant="solid"
+              onClick={() => submit(true)}
+              disabled={!title.trim() || busy || branchesQ.isPending}
+            >
+              {starting === 'grill' ? 'Starting…' : 'Start grill session'}
+            </Button>
           </div>
-
-          <div className="nf-branch">
-            branch · feature/{slug || '…'} ← {effectiveBase || '…'}
-          </div>
-        </details>
-
-        <div className="nf-actions">
-          <button className="talk-door" onClick={onTalkItThrough} disabled={busy}>
-            {TALK_IT_THROUGH} →
-          </button>
-          <span className="nf-actions-spacer" />
-          <Button variant="ghost" onClick={onCancel} disabled={busy}>
-            Cancel
-          </Button>
-          <Button
-            variant="solid"
-            onClick={submit}
-            disabled={!title.trim() || busy || branchesQ.isPending}
-          >
-            {busy ? 'Starting…' : 'Start grill session'}
-          </Button>
-        </div>
-      </div>
-    </div>
+        </>
+      )}
+    </FormOverlay>
   )
 }

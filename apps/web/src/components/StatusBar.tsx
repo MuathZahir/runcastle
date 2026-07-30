@@ -1,14 +1,21 @@
 import { trpc } from '../trpc'
 import { useToast } from '../lib/toast'
 import { useDesktopNotifications } from '../lib/use-notifications'
-import { SANDBOX_MODE, SERVER_PORT } from '../lib/env'
+import { useLivePoll } from '../lib/live'
+import { SANDBOX_MODE } from '../lib/env'
+import { notifyButton } from '../lib/notifications'
 import type { DriveState } from '../lib/workspace'
 import { IconBell, IconBellOff, IconBranch, IconShield } from '../icons'
+
+/** Where this page's tRPC calls go — the links are same-origin `/api/trpc`. */
+function apiOrigin(): string {
+  return typeof window === 'undefined' ? 'this machine' : window.location.origin
+}
 
 /**
  * Bottom status bar for the pipeline-first shell (app-redesign): active-feature
  * branch (click = copy) · sandbox mode · test-drive state (driving — stop) ·
- * active run count · server health dot + port.
+ * active run count · server health dot.
  */
 export function StatusBar({
   projectId,
@@ -23,11 +30,12 @@ export function StatusBar({
 }) {
   const toast = useToast()
   const utils = trpc.useUtils()
-  const list = trpc.feature.list.useQuery({ projectId }, { refetchInterval: 1500 })
+  const list = trpc.feature.list.useQuery({ projectId }, { refetchInterval: useLivePoll() })
   const healthy = !list.isError && list.data !== undefined
   const active = list.data?.find((f) => f.id === activeFeatureId)
   const runCount = list.data?.filter((f) => f.activeRun).length ?? 0
   const notify = useDesktopNotifications(projectId, list.data ?? [])
+  const notifyState = notifyButton(notify)
 
   const stopDrive = trpc.feature.testDrive.useMutation({
     onSuccess: () => {
@@ -74,24 +82,28 @@ export function StatusBar({
       <span className="sb-spacer" />
       {notify.supported && (
         <button
-          className={`sb-notify${notify.enabled ? ' is-on' : ''}`}
+          className={`sb-notify is-${notifyState.state}`}
           onClick={notify.toggle}
-          title={
-            notify.enabled
-              ? 'Desktop notifications on — click to disable'
-              : 'Notify me when a burn finishes'
-          }
+          title={notifyState.title}
         >
-          {notify.enabled ? <IconBell size={12} /> : <IconBellOff size={12} />}
-          notify
+          {notifyState.state === 'on' ? <IconBell size={12} /> : <IconBellOff size={12} />}
+          {notifyState.label}
         </button>
       )}
       <span className="sb-item">
         {runCount} run{runCount === 1 ? '' : 's'}
       </span>
-      <span className={`sb-item sb-health ${healthy ? 'is-ok' : 'is-down'}`}>
+      {/* Says "server", not ":4512". The port was a hardcoded constant that kept
+          claiming 4512 on an instance running anywhere else (findings F14) —
+          and a health chip that can be wrong about which server it is talking
+          to is worse than one that does not name it. The origin the API calls
+          actually go to is on the tooltip, where it can never go stale. */}
+      <span
+        className={`sb-item sb-health ${healthy ? 'is-ok' : 'is-down'}`}
+        title={`runcastle API at ${apiOrigin()}/api`}
+      >
         <span className="health-dot" />
-        :{SERVER_PORT} {healthy ? 'ok' : 'down'}
+        server {healthy ? 'ok' : 'down'}
       </span>
     </footer>
   )

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { EventRow } from '@runcastle/core'
-import { eventToNotification } from '../src/lib/notifications'
+import { eventToNotification, notifyButton } from '../src/lib/notifications'
 
 /**
  * Streamlining-ux ticket 10 — the events poll turns a finishing burn into a
@@ -64,5 +64,34 @@ describe('eventToNotification', () => {
     expect(eventToNotification(ev({ type: 'run.started', data: { status: 'succeeded', summary: 'x' } }))).toBeNull()
     expect(eventToNotification(ev({ type: 'session.kickoff' }))).toBeNull()
     expect(eventToNotification(ev({ type: 'phase.advanced' }))).toBeNull()
+  })
+})
+
+/**
+ * The status bar's notify button used to have one appearance and a click that
+ * silently did nothing once the browser had denied permission (findings F17.9).
+ */
+describe('notifyButton', () => {
+  it('is on when enabled and permitted', () => {
+    const b = notifyButton({ enabled: true, permission: 'granted' })
+    expect(b.state).toBe('on')
+    expect(b.label).toBe('notify on')
+  })
+
+  it('is off when the preference is off', () => {
+    const b = notifyButton({ enabled: false, permission: 'default' })
+    expect(b.state).toBe('off')
+    expect(b.label).toBe('notify off')
+  })
+
+  it('reads blocked — and says how to unblock — when the browser denied it', () => {
+    const b = notifyButton({ enabled: false, permission: 'denied' })
+    expect(b.state).toBe('blocked')
+    expect(b.label).toBe('notify blocked')
+    expect(b.title).toMatch(/site settings/i)
+  })
+
+  it('reads blocked even when the stored preference says on', () => {
+    expect(notifyButton({ enabled: true, permission: 'denied' }).state).toBe('blocked')
   })
 })

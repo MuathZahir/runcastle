@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it } from 'vitest'
-import { newId } from '@runcastle/core'
+import { newId, PROJECT_NAME_MAX } from '@runcastle/core'
 import type { AppCtx } from '../src/db/types'
+import { createCallerFactory } from '../src/trpc/context'
+import { appRouter } from '../src/trpc/router'
 import { runs } from '../src/db/schema'
 import { listByProject } from '../src/services/events'
 import * as features from '../src/services/features'
@@ -180,6 +182,29 @@ describe('projects service — multi-project CRUD (#43)', () => {
     const renamed = renameProject(ctx, project.id, 'Renamed')
     expect(renamed.name).toBe('Renamed')
     expect(listProjects(ctx).find((p) => p.id === project.id)?.name).toBe('Renamed')
+  })
+
+  // A 324-char rename used to be accepted and pushed the whole workspace
+  // off-canvas (findings F20). The cap lives on the procedure input, so the
+  // router is the seam: the name never reaches the service.
+  it('project.rename refuses a name over the cap, and keeps the old one', async () => {
+    const caller = createCallerFactory(appRouter)(ctx)
+    const project = await openProject(ctx, await gitRepo())
+    const tooLong = 'x'.repeat(PROJECT_NAME_MAX + 1)
+
+    await expect(
+      caller.project.rename({ projectId: project.id, name: tooLong }),
+    ).rejects.toThrow(new RegExp(`at most ${PROJECT_NAME_MAX} characters`))
+    expect(listProjects(ctx).find((p) => p.id === project.id)?.name).toBe(project.name)
+  })
+
+  it('project.rename accepts a name exactly at the cap', async () => {
+    const caller = createCallerFactory(appRouter)(ctx)
+    const project = await openProject(ctx, await gitRepo())
+    const atCap = 'y'.repeat(PROJECT_NAME_MAX)
+
+    const renamed = await caller.project.rename({ projectId: project.id, name: atCap })
+    expect(renamed.name).toBe(atCap)
   })
 
   // The silent WSL trap (ADR-0005): from inside WSL a /mnt/<drive> repo works

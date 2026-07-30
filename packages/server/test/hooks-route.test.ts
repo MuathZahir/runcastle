@@ -166,6 +166,118 @@ describe('hooks route', () => {
     expect(back.lastSessionId).toBe(s.id)
   })
 
+  it('session-start tells the session which LAP the feature is on', async () => {
+    const lapFeature = seedFeature(ctx, seedProject(ctx).id, { slug: 'lapper', lap: 3 })
+    const s = createSessionRow(ctx, {
+      featureId: lapFeature.id,
+      kind: 'revisit',
+      worktreePath: '/wt/lapper',
+    })
+
+    const { json } = await post(mount(), 'session-start', {
+      sessionId: s.id,
+      payload: { session_id: 'cc-lap', hook_event_name: 'SessionStart', source: 'startup' },
+    })
+
+    expect(json.hookSpecificOutput.additionalContext).toContain('lap: 3')
+  })
+
+  /**
+   * The talk-session edit guard (F2): a grill that was never told what it was
+   * there for used to read the docs and start editing source. The prompt rule
+   * says so; this hook is what makes it true.
+   */
+  describe('pre-tool — talk sessions do not write code', () => {
+    let talkSession: string
+
+    beforeEach(() => {
+      talkSession = createSessionRow(ctx, {
+        featureId,
+        kind: 'ideation',
+        worktreePath: '/wt/dark-mode',
+      }).id
+    })
+
+    async function preTool(id: string, tool: string, filePath: string): Promise<any> {
+      const { json } = await post(mount(), 'pre-tool', {
+        sessionId: id,
+        payload: {
+          hook_event_name: 'PreToolUse',
+          tool_name: tool,
+          tool_input: { file_path: filePath },
+        },
+      })
+      return json
+    }
+
+    it('denies an edit to source, naming the ticket route back', async () => {
+      const json = await preTool(talkSession, 'Edit', '/wt/dark-mode/src/theme.ts')
+      expect(json.hookSpecificOutput).toMatchObject({
+        hookEventName: 'PreToolUse',
+        permissionDecision: 'deny',
+      })
+      expect(json.hookSpecificOutput.permissionDecisionReason).toMatch(/do not write code/i)
+      expect(json.hookSpecificOutput.permissionDecisionReason).toMatch(/ticket/i)
+    })
+
+    it('denies Write and NotebookEdit the same way, and a relative path too', async () => {
+      for (const tool of ['Write', 'NotebookEdit']) {
+        const json = await preTool(talkSession, tool, '/wt/dark-mode/src/theme.ts')
+        expect(json.hookSpecificOutput.permissionDecision).toBe('deny')
+      }
+      const relative = await preTool(talkSession, 'Write', 'src/theme.ts')
+      expect(relative.hookSpecificOutput.permissionDecision).toBe('deny')
+    })
+
+    it('allows the feature docs — writing them IS the session`s output', async () => {
+      for (const path of [
+        '/wt/dark-mode/docs/features/dark-mode/decisions.md',
+        'docs/features/dark-mode/spec.md',
+        'docs/features/dark-mode/test-notes.md',
+      ]) {
+        expect(await preTool(talkSession, 'Write', path)).toEqual({})
+      }
+    })
+
+    it('does not deny another feature`s docs dir by prefix accident', async () => {
+      const json = await preTool(talkSession, 'Write', 'docs/features/dark-mode-2/spec.md')
+      expect(json.hookSpecificOutput.permissionDecision).toBe('deny')
+    })
+
+    it('leaves a project session alone — it is the one kind that writes code', async () => {
+      const projectSession = createSessionRow(ctx, {
+        projectId: seedProject(ctx).id,
+        kind: 'project',
+        worktreePath: '/wt/project',
+      }).id
+      expect(await preTool(projectSession, 'Edit', '/wt/project/src/index.ts')).toEqual({})
+    })
+
+    it('denies a preparation session, which runs in the human`s own checkout', async () => {
+      const prep = createSessionRow(ctx, {
+        projectId: seedProject(ctx).id,
+        kind: 'prepare',
+        worktreePath: '/repo',
+      }).id
+      const json = await preTool(prep, 'Write', '/repo/.env')
+      expect(json.hookSpecificOutput.permissionDecision).toBe('deny')
+      expect(json.hookSpecificOutput.permissionDecisionReason).toContain('record_finding')
+    })
+
+    it('fails open on a payload it cannot read', async () => {
+      const { json } = await post(mount(), 'pre-tool', {
+        sessionId: talkSession,
+        payload: { hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command: 'ls' } },
+      })
+      expect(json).toEqual({})
+      const noPath = await post(mount(), 'pre-tool', {
+        sessionId: talkSession,
+        payload: { hook_event_name: 'PreToolUse', tool_name: 'Edit', tool_input: {} },
+      })
+      expect(noPath.json).toEqual({})
+    })
+  })
+
   it('returns {} for an unknown session id (never breaks a session)', async () => {
     const { json } = await post(mount(), 'session-start', {
       sessionId: 'sess_does_not_exist',

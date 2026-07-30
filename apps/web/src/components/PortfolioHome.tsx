@@ -1,7 +1,9 @@
 import { useState } from 'react'
+import { PROJECT_NAME_MAX } from '@runcastle/core'
 import { trpc } from '../trpc'
 import { useToast } from '../lib/toast'
 import { projectStats, type ProjectStats } from '../lib/projects'
+import { useLivePoll } from '../lib/live'
 import type { ProjectNavApi } from '../lib/use-project-nav'
 import type { Project } from '../lib/api'
 import { IconBranch, IconPlus, LogoMark, LogoWordmark } from '../icons'
@@ -18,8 +20,9 @@ export function PortfolioHome({ nav }: { nav: ProjectNavApi }) {
 
   // One feature.list per project — the cards' health/runs/needs-you are derived
   // client-side, and the same polling powers the aggregate runs pill upstairs.
+  const poll = useLivePoll()
   const featureQueries = trpc.useQueries((t) =>
-    projects.map((p) => t.feature.list({ projectId: p.id }, { refetchInterval: 1500 })),
+    projects.map((p) => t.feature.list({ projectId: p.id }, { refetchInterval: poll })),
   )
 
   return (
@@ -131,6 +134,9 @@ function ProjectCard({
             <input
               className="pc-rename mono"
               value={name}
+              // Same cap the server enforces (findings F20) — refusing the 81st
+              // keystroke beats a rejection toast after the fact.
+              maxLength={PROJECT_NAME_MAX}
               autoFocus
               onClick={(e) => e.stopPropagation()}
               onChange={(e) => setName(e.target.value)}

@@ -3,8 +3,10 @@ import type { EventRow, Ticket } from '@runcastle/core'
 import { trpc } from '../../trpc'
 import { useToast } from '../../lib/toast'
 import { useEventLog } from '../../lib/events'
+import { useLivePoll } from '../../lib/live'
 import { ticketConflictKickoff } from '../../lib/feature-ui'
 import { fmtDuration, fmtTime, shortSha } from '../../lib/format'
+import { BURN_EXPLAINER } from '../../lib/vocabulary'
 import { DimLine, EmptyState, RunStatusChip, TicketStatusChip } from '../../ui'
 import { IconTerminal } from '../../icons'
 import { AgentTranscript } from '../AgentTranscript'
@@ -28,10 +30,11 @@ export function RunBody({
   runId: string | null
   readonly?: boolean
 }) {
-  const feature = trpc.feature.get.useQuery({ id: featureId }, { refetchInterval: 1500 })
+  const poll = useLivePoll()
+  const feature = trpc.feature.get.useQuery({ id: featureId }, { refetchInterval: poll })
   const run = trpc.run.get.useQuery(
     { runId: runId as string },
-    { refetchInterval: 1500, enabled: !!runId },
+    { refetchInterval: poll, enabled: !!runId },
   )
   const events = useEventLog(featureId)
 
@@ -76,7 +79,7 @@ export function RunBody({
         <EmptyState
           icon={<IconTerminal size={16} />}
           title="No run yet"
-          hint="Burning the tickets starts a run — one agent per ticket, each in its own lane."
+          hint={`${BURN_EXPLAINER} Every ticket gets its own lane here.`}
         />
       </div>
     )
@@ -84,7 +87,14 @@ export function RunBody({
 
   return (
     <div>
-      <SessionPanel featureId={featureId} sessions={sessions} className="tickets-session" />
+      {/* A read-only retrospective view is history: it must not offer to reopen
+          a conversation from a phase the feature has already left (F10.6). */}
+      <SessionPanel
+        featureId={featureId}
+        sessions={sessions}
+        className="tickets-session"
+        showResume={!readonly}
+      />
 
       <div className="body-title">
         <span className="section-title">Run</span>
