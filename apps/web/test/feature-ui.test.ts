@@ -5,15 +5,19 @@ import {
   kickoffTrouble,
   liveSessionBlocker,
   mergeConflictKickoff,
+  mergeSummary,
   needsMe,
   nextStep,
   parseMapSections,
+  reviewChecks,
   sessionDoneState,
+  testDriveTaken,
   ticketConflictKickoff,
   triage,
   triageOf,
   unresolvedMergeConflict,
   waypointGroups,
+  type CheckRow,
   type Waypoint,
 } from '../src/lib/feature-ui'
 import type { FeatureFull, FeatureListItem } from '../src/lib/api'
@@ -123,6 +127,7 @@ describe('nextStep at review', () => {
     ticketStatuses?: TicketStatus[]
     sessionLive?: boolean
     lap?: number
+    runs?: { id: string; status: string; startedAt: number }[]
   }): FeatureFull => {
     const tickets = (opts.ticketStatuses ?? []).map((status, i) => ({
       id: `t${i}`,
@@ -134,7 +139,7 @@ describe('nextStep at review', () => {
       feature: { id: 'f1', phase: 'review', mapped: false, lap: opts.lap ?? 1 },
       tickets,
       sessions,
-      runs: [{ id: 'r1', status: 'succeeded', startedAt: 1 }],
+      runs: opts.runs ?? [{ id: 'r1', status: 'succeeded', startedAt: 1 }],
       gate: { next: null, satisfied: false, reason: null },
     } as unknown as FeatureFull
   }
@@ -198,6 +203,66 @@ describe('nextStep at review', () => {
   it('offers the same verbs on a later lap (the bar does not vary by lap)', () => {
     const ns = nextStep(reviewFull({ lap: 3 }), { driving: false })
     expect(labels(ns.secondary)).toEqual(['Start test drive', 'Iterate'])
+  })
+
+  /**
+   * Ticket 4 / findings F23 — "Checks are in." rendered over a feature with no run
+   * recorded, contradicting the summary card two inches below it.
+   */
+  it('claims the checks are in only when a run was actually recorded', () => {
+    expect(nextStep(reviewFull({}), { driving: false }).desc).toContain('Checks are in')
+
+    const noRun = nextStep(reviewFull({ runs: [] }), { driving: false })
+    expect(noRun.desc).not.toContain('Checks are in')
+    expect(noRun.desc).toContain('No run')
+  })
+
+  /**
+   * Ticket 4 / findings F8 — the bar highlighted Merge & ship directly above a red
+   * MERGE CONFLICT panel telling the user to resolve first; following the bar
+   * re-ran a merge that could only fail again.
+   */
+  describe('with an unresolved merge conflict', () => {
+    const conflict = { base: 'main', files: ['a.ts'], at: 1_000 }
+
+    it('makes resolving the conflict the primary action', () => {
+      const ns = nextStep(reviewFull({}), { driving: false, conflict })
+      expect(ns.primary).toEqual({ label: 'Resolve the merge conflict', kind: 'resolveConflict' })
+      expect(ns.title).toBe('Resolve the merge conflict')
+      expect(ns.desc).toContain('main')
+    })
+
+    it('demotes Merge & ship to a disabled secondary that says why', () => {
+      const ns = nextStep(reviewFull({}), { driving: false, conflict })
+      expect(ns.secondary).toContainEqual({
+        label: 'Merge & ship',
+        kind: 'merge',
+        disabled: 'Resolve the merge conflict first — this merge will fail again',
+      })
+    })
+
+    it('outranks the fix-ticket burn too — the merge cannot land either way', () => {
+      const ns = nextStep(reviewFull({ ticketStatuses: ['pending'] }), { driving: false, conflict })
+      expect(ns.primary?.kind).toBe('resolveConflict')
+      expect(ns.secondary.find((a) => a.kind === 'merge')?.disabled).toBeTruthy()
+    })
+
+    it('keeps the test drive and Iterate available (a way out of the state)', () => {
+      const ns = nextStep(reviewFull({}), { driving: false, conflict })
+      expect(labels(ns.secondary)).toContain('Start test drive')
+      expect(labels(ns.secondary)).toContain('Iterate')
+    })
+
+    it('offers no launch of its own while a session is live (one terminal per feature)', () => {
+      const ns = nextStep(reviewFull({ sessionLive: true }), { driving: false, conflict })
+      expect(ns.primary).toBeUndefined()
+      expect(ns.desc).toContain('session')
+    })
+
+    it('goes back to the ordinary merge bar once the conflict clears', () => {
+      const ns = nextStep(reviewFull({}), { driving: false, conflict: null })
+      expect(ns.primary).toEqual({ label: 'Merge & ship', kind: 'merge' })
+    })
   })
 })
 
@@ -270,7 +335,18 @@ describe('unresolvedMergeConflict', () => {
       ev(1, 'merge.conflict', { base: 'main', files: ['a.ts'] }),
       ev(2, 'merge.conflict', { base: 'develop', files: ['x.ts', 'y.ts'] }),
     ]
-    expect(unresolvedMergeConflict(events)).toEqual({ base: 'develop', files: ['x.ts', 'y.ts'] })
+    expect(unresolvedMergeConflict(events)).toEqual({
+      base: 'develop',
+      files: ['x.ts', 'y.ts'],
+      at: 2,
+    })
+  })
+
+  it('carries when the conflict happened — a 15-day-old conflict may be stale (F8)', () => {
+    const conflict = unresolvedMergeConflict([
+      ev(7, 'merge.conflict', { base: 'main', files: ['a.ts'] }),
+    ])
+    expect(conflict?.at).toBe(7)
   })
 
   it('clears once a burn supersedes the conflict (loop moved on)', () => {
@@ -287,14 +363,165 @@ describe('unresolvedMergeConflict', () => {
       ev(2, 'burn.started', { from: 'review' }),
       ev(3, 'merge.conflict', { base: 'main', files: ['b.ts'] }),
     ]
-    expect(unresolvedMergeConflict(events)).toEqual({ base: 'main', files: ['b.ts'] })
+    expect(unresolvedMergeConflict(events)).toEqual({ base: 'main', files: ['b.ts'], at: 3 })
   })
 
   it('tolerates a conflict event with a missing/blank file list', () => {
     expect(unresolvedMergeConflict([ev(1, 'merge.conflict', { base: 'main' })])).toEqual({
       base: 'main',
       files: [],
+      at: 1,
     })
+  })
+})
+
+/**
+ * Ticket 4 / findings F21 — a test drive is something that either happened on
+ * this feature or did not, and the merge confirmation has to say which.
+ */
+describe('testDriveTaken', () => {
+  const ev = (id: number, type: string): EventRow =>
+    ({ id, projectId: 'p', ts: id, type, message: type }) as EventRow
+
+  it('is false for a feature that was never driven', () => {
+    expect(testDriveTaken([ev(1, 'burn.started'), ev(2, 'run.finished')])).toBe(false)
+  })
+
+  it('is true once a drive has started', () => {
+    expect(testDriveTaken([ev(1, 'testdrive.started')])).toBe(true)
+  })
+
+  it('stays true after the drive stops — it still happened', () => {
+    expect(testDriveTaken([ev(1, 'testdrive.started'), ev(2, 'testdrive.stopped')])).toBe(true)
+  })
+})
+
+/**
+ * Ticket 4 / findings F23 — the review SUMMARY card is the one surface meant to
+ * inform the merge decision, and it painted missing data green. These are the
+ * colour decisions: nothing absent is ever `ok`, and "cannot tell" is never `0`.
+ */
+describe('reviewChecks', () => {
+  const row = (rows: CheckRow[], key: string) => rows.find((r) => r.key === key)
+  const checks = (over: Parameters<typeof reviewChecks>[0] = {}) => reviewChecks(over)
+
+  it('greys 0/0 tickets — nothing was ticketed, so nothing is all-clear', () => {
+    const t = row(checks({ tickets: [] }), 'tickets')
+    expect(t).toEqual({ key: 'tickets', value: '0/0 done', tone: 'idle' })
+  })
+
+  it('ambers 0-done tickets and never greens them', () => {
+    const t = row(checks({ tickets: [{ status: 'pending' }, { status: 'pending' }] }), 'tickets')
+    expect(t?.value).toBe('0/2 done')
+    expect(t?.tone).toBe('warn')
+  })
+
+  it('ambers a partly-done set', () => {
+    expect(row(checks({ tickets: [{ status: 'done' }, { status: 'pending' }] }), 'tickets')?.tone)
+      .toBe('warn')
+  })
+
+  it('greens tickets only when every one of them is done', () => {
+    const t = row(checks({ tickets: [{ status: 'done' }, { status: 'done' }] }), 'tickets')
+    expect(t).toEqual({ key: 'tickets', value: '2/2 done', tone: 'ok' })
+  })
+
+  it('reds a set with a failed ticket, naming the count', () => {
+    const t = row(checks({ tickets: [{ status: 'done' }, { status: 'failed' }] }), 'tickets')
+    expect(t?.tone).toBe('danger')
+    expect(t?.value).toBe('1/2 done · 1 failed')
+  })
+
+  it('greys a missing run and never greens it', () => {
+    expect(row(checks({}), 'run')).toEqual({ key: 'run', value: 'no run recorded', tone: 'idle' })
+  })
+
+  it('greens a succeeded run, appending its summary', () => {
+    const r = row(checks({ run: { status: 'succeeded', summary: '3 tickets landed' } }), 'run')
+    expect(r).toEqual({ key: 'run', value: 'succeeded · 3 tickets landed', tone: 'ok' })
+  })
+
+  it('reds a failed run and ambers one that neither failed nor succeeded', () => {
+    expect(row(checks({ run: { status: 'failed' } }), 'run')?.tone).toBe('danger')
+    expect(row(checks({ run: { status: 'cancelled' } }), 'run')?.tone).toBe('warn')
+    expect(row(checks({ run: { status: 'running' } }), 'run')?.tone).toBe('warn')
+  })
+
+  it('greens the commit count only when git found commits', () => {
+    expect(row(checks({ commitCount: 3 }), 'changes')).toEqual({
+      key: 'changes',
+      value: '3 commits',
+      tone: 'ok',
+    })
+    expect(row(checks({ commitCount: 1 }), 'changes')?.value).toBe('1 commit')
+  })
+
+  it('ambers an empty branch — a review with no commits has nothing to merge', () => {
+    expect(row(checks({ commitCount: 0 }), 'changes')).toEqual({
+      key: 'changes',
+      value: '0 commits',
+      tone: 'warn',
+    })
+  })
+
+  it('greys an unknown commit count rather than reporting it as zero', () => {
+    const c = row(checks({}), 'changes')
+    expect(c?.tone).toBe('idle')
+    expect(c?.value).not.toContain('0')
+  })
+
+  it('keeps the card in one order: tickets, run, changes', () => {
+    expect(checks({}).map((r) => r.key)).toEqual(['tickets', 'run', 'changes'])
+  })
+})
+
+/**
+ * Ticket 4 / findings F21 — the most irreversible action in the pipeline had less
+ * friction than deleting a throwaway feature. The confirmation summarises what is
+ * about to merge and warns, in words, about everything missing from that summary.
+ */
+describe('mergeSummary', () => {
+  const all = { commitCount: 2, run: { status: 'succeeded' as const }, driveTaken: true }
+
+  it('summarises commits, run and test drive, with nothing to warn about', () => {
+    const s = mergeSummary(all)
+    expect(s.rows.map((r) => r.key)).toEqual(['changes', 'run', 'test drive'])
+    expect(s.rows.every((r) => r.tone === 'ok')).toBe(true)
+    expect(s.warnings).toEqual([])
+  })
+
+  it('warns when the branch carries no commits', () => {
+    const s = mergeSummary({ ...all, commitCount: 0 })
+    expect(s.warnings.join(' ')).toContain('no commits')
+  })
+
+  it('warns when git could not count the commits', () => {
+    expect(mergeSummary({ ...all, commitCount: undefined }).warnings).toHaveLength(1)
+  })
+
+  it('warns when no run was ever recorded', () => {
+    const s = mergeSummary({ ...all, run: undefined })
+    expect(s.warnings.join(' ')).toContain('No run')
+    expect(s.rows.find((r) => r.key === 'run')?.tone).toBe('idle')
+  })
+
+  it('warns when the last run did not succeed', () => {
+    expect(mergeSummary({ ...all, run: { status: 'failed' } }).warnings).toHaveLength(1)
+  })
+
+  it('warns when the branch was never test-driven, and ambers the row', () => {
+    const s = mergeSummary({ ...all, driveTaken: false })
+    expect(s.warnings.join(' ')).toContain('never test-driven')
+    expect(s.rows.find((r) => r.key === 'test drive')).toEqual({
+      key: 'test drive',
+      value: 'never test-driven',
+      tone: 'warn',
+    })
+  })
+
+  it('warns about each missing thing at once — the whole picture, not the first fault', () => {
+    const s = mergeSummary({ commitCount: 0, run: undefined, driveTaken: false })
+    expect(s.warnings).toHaveLength(3)
   })
 })
 

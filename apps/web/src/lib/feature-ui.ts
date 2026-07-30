@@ -366,6 +366,7 @@ export type ActionKind =
   | 'merge' // feature.merge (G5)
   | 'askQuestions' // launchSession { kind: 'qa' }
   | 'revisit' // launchSession { kind: 'revisit' } — resume the old conversation, amend docs + tickets
+  | 'resolveConflict' // launchSession { kind: 'revisit', kickoffLine: mergeConflictKickoff(…) }
   | 'rethink' // feature.rethink — start the next lap (review → ideation)
   | 'unarchive' // feature.unarchive — restore an archived feature to its lane (next-step bar)
 
@@ -469,6 +470,12 @@ export interface MergeConflictState {
   base: string
   /** Repo-relative paths that conflicted. */
   files: string[]
+  /**
+   * When the conflict was recorded (the event's `ts`). The panel is undated
+   * without it, and an undated red panel reads as "happening now" — the audit
+   * found one that was fifteen days old (findings F8).
+   */
+  at: number
 }
 
 /**
@@ -485,12 +492,137 @@ export function unresolvedMergeConflict(events: EventRow[]): MergeConflictState 
     if (e.type === 'merge.conflict') {
       const d = (e.data ?? {}) as { base?: unknown; files?: unknown }
       const files = Array.isArray(d.files) ? d.files.filter((f): f is string => typeof f === 'string') : []
-      conflict = { base: typeof d.base === 'string' ? d.base : '', files }
+      conflict = { base: typeof d.base === 'string' ? d.base : '', files, at: e.ts }
     } else if (e.type === 'burn.started') {
       conflict = null
     }
   }
   return conflict
+}
+
+/**
+ * Whether this feature was ever test-driven, from the event feed — the third
+ * figure the merge confirmation reports (findings F21). A stopped drive still
+ * counts: the human did put the branch on the road.
+ */
+export function testDriveTaken(events: EventRow[]): boolean {
+  return events.some((e) => e.type === 'testdrive.started')
+}
+
+// --- review honesty: the SUMMARY card and the merge confirmation -------------
+
+/**
+ * How much trust a review figure has earned, as a dot colour: `ok` green,
+ * `warn` amber, `danger` red, `idle` grey for "there is nothing here".
+ *
+ * The distinction that matters is `idle` vs `ok`. The audit found the SUMMARY
+ * card painting "0 commits", "0/0 done" and a missing run in all-clear green
+ * (findings F23) — the one card meant to inform an irreversible merge reassuring
+ * the user about data it did not have. Absence is never `ok` here.
+ */
+export type CheckTone = 'ok' | 'warn' | 'danger' | 'idle'
+
+/** One labelled figure in the review summary / merge confirmation. */
+export interface CheckRow {
+  /** Row label, as shown ("tickets", "run", "changes", "test drive"). */
+  key: string
+  /** The figure itself, as shown. */
+  value: string
+  tone: CheckTone
+}
+
+/** A run as the summary reads it — the wire row, narrowed to what it paints. */
+interface RunFigure {
+  status: string
+  summary?: string | null
+}
+
+function ticketRow(tickets: readonly { status: string }[]): CheckRow {
+  const total = tickets.length
+  const done = tickets.filter((t) => t.status === 'done').length
+  const failed = tickets.filter((t) => t.status === 'failed').length
+  const value = `${done}/${total} done${failed > 0 ? ` · ${failed} failed` : ''}`
+  // 0/0 is grey, not green: no tickets means nothing was verified, which is a
+  // different thing from everything having passed.
+  const tone: CheckTone =
+    failed > 0 ? 'danger' : total === 0 ? 'idle' : done === total ? 'ok' : 'warn'
+  return { key: 'tickets', value, tone }
+}
+
+function runRow(run: RunFigure | undefined): CheckRow {
+  if (!run) return { key: 'run', value: 'no run recorded', tone: 'idle' }
+  const tone: CheckTone =
+    run.status === 'succeeded' ? 'ok' : run.status === 'failed' ? 'danger' : 'warn'
+  return { key: 'run', value: `${run.status}${run.summary ? ` · ${run.summary}` : ''}`, tone }
+}
+
+/**
+ * The commits row. `count` comes from git (`feature.commitCount`), not from
+ * ticket commit rows — a branch a human or an Iterate session committed to has
+ * commits and no ticket rows at all, which is how a branch one commit ahead of
+ * main reported "0 commits" in green. `undefined` means git could not tell, and
+ * says so rather than borrowing zero's certainty.
+ */
+function commitRow(count: number | undefined): CheckRow {
+  if (count === undefined) return { key: 'changes', value: 'commit count unknown', tone: 'idle' }
+  return {
+    key: 'changes',
+    value: `${count} commit${count === 1 ? '' : 's'}`,
+    tone: count > 0 ? 'ok' : 'warn',
+  }
+}
+
+/** The review SUMMARY card's rows, in the order the card shows them. */
+export function reviewChecks(input: {
+  tickets?: readonly { status: string }[]
+  run?: RunFigure
+  commitCount?: number
+}): CheckRow[] {
+  return [ticketRow(input.tickets ?? []), runRow(input.run), commitRow(input.commitCount)]
+}
+
+/** What the merge confirmation shows: the figures, and every gap in them. */
+export interface MergeSummary {
+  rows: CheckRow[]
+  /**
+   * One sentence per missing or unhappy figure, shown as warnings above the
+   * confirm button. Empty when everything checks out.
+   */
+  warnings: string[]
+}
+
+/**
+ * The merge confirmation's summary (findings F21): what is about to be merged,
+ * and what is missing from that picture. Merging is the pipeline's most
+ * irreversible action and fired on a single unconfirmed click — this is the text
+ * that click now has to be read past.
+ *
+ * Every gap is reported, not just the first: "no commits" and "never
+ * test-driven" are two different reasons to stop, and the human deserves both
+ * before deciding.
+ */
+export function mergeSummary(input: {
+  commitCount?: number
+  run?: RunFigure
+  driveTaken: boolean
+}): MergeSummary {
+  const drive: CheckRow = input.driveTaken
+    ? { key: 'test drive', value: 'taken', tone: 'ok' }
+    : { key: 'test drive', value: 'never test-driven', tone: 'warn' }
+
+  const warnings: string[] = []
+  if (input.commitCount === undefined) {
+    warnings.push('runcastle could not count the commits on this branch.')
+  } else if (input.commitCount === 0) {
+    warnings.push('This branch carries no commits — merging it changes nothing.')
+  }
+  if (!input.run) warnings.push('No run was recorded — no burn has run on this branch.')
+  else if (input.run.status !== 'succeeded') {
+    warnings.push(`The last run ${input.run.status} rather than succeeding.`)
+  }
+  if (!input.driveTaken) warnings.push('This branch was never test-driven.')
+
+  return { rows: [commitRow(input.commitCount), runRow(input.run), drive], warnings }
 }
 
 /** Why a session's briefing is flagged in the session strip. */
@@ -552,7 +684,17 @@ function hasResumable(sessions: FeatureFull['sessions'], kind?: string): boolean
 
 export function nextStep(
   full: FeatureFull,
-  ctx: { driving: boolean; mapContent?: string },
+  ctx: {
+    driving: boolean
+    mapContent?: string
+    /**
+     * The feature's standing merge conflict ({@link unresolvedMergeConflict}).
+     * Set means the last Merge & ship failed and nothing has superseded it, so
+     * the bar must stop recommending the merge that can only fail again — the
+     * bar and the conflict panel contradicting each other is findings F8.
+     */
+    conflict?: MergeConflictState | null
+  },
 ): NextStep {
   const { feature, tickets, sessions, runs, gate } = full
   const live = sessions.find((s) => s.status === 'live')
@@ -830,6 +972,33 @@ export function nextStep(
             },
           ]
 
+      // A recorded conflict outranks every other review verb (findings F8). The
+      // bar used to highlight Merge & ship directly above the red conflict panel,
+      // so the one action the user trusts re-ran a merge that could not land.
+      // Merge & ship stays visible but disabled with the reason — an action that
+      // vanishes leaves the user hunting for it.
+      if (ctx.conflict) {
+        const blockedMerge: NextAction = {
+          label: 'Merge & ship',
+          kind: 'merge',
+          disabled: 'Resolve the merge conflict first — this merge will fail again',
+        }
+        return {
+          kick: 'MERGE CONFLICT',
+          title: 'Resolve the merge conflict',
+          desc: live
+            ? `Merging ${ctx.conflict.base} in hit conflicts — resolve them in the open session, then merge again.`
+            : `Merging ${ctx.conflict.base} in hit conflicts. An agent can resolve them on this branch, then Merge & ship retries.`,
+          // One terminal per feature: with a session live there is nothing to
+          // launch, and the conflict panel below carries the file list.
+          primary: live
+            ? undefined
+            : { label: 'Resolve the merge conflict', kind: 'resolveConflict' },
+          secondary: [blockedMerge, testDriveAction, ...iterate],
+          busy: false,
+        }
+      }
+
       // Fix tickets are non-terminal — while any exist, the review loops back
       // through a burn (CONTEXT decision #7): Burn is promoted to primary, and
       // Merge & ship drops to a secondary.
@@ -846,11 +1015,16 @@ export function nextStep(
         }
       }
 
+      // "Checks are in" is an all-clear, so it needs checks to have run: the audit
+      // found it over a feature with no run recorded at all (findings F23), which
+      // is the state a quick-change or an overridden gate lands in.
       const desc = ctx.driving
         ? 'Test-driving the branch — merge when it looks right.'
         : failed > 0
           ? `Run finished with ${failed} failed ticket${failed === 1 ? '' : 's'} — review, then ship.`
-          : 'Checks are in. Test-drive the branch, then merge to ship.'
+          : run
+            ? 'Checks are in. Test-drive the branch, then merge to ship.'
+            : 'No run has been recorded on this branch — test-drive it yourself before merging.'
       return {
         kick: 'NEXT STEP',
         title: ctx.driving ? 'Merge when it looks right' : 'Test drive, then ship',
