@@ -112,32 +112,25 @@ export function PreparationWorkspace({
                 </ErrorBoundary>
               </div>
             </div>
-          ) : (
+          ) : view ? (
             // Only once the view has answered: `prepared` decides between two
             // headings that say opposite things, and guessing one flashes the
             // wrong sentence on every first paint.
-            view && (
-              <PrepCallToAction
-                prepared={view.prepared}
-                preparedAt={view.preparedAt}
-                pending={pending}
-                findings={findings}
-                staleCount={staleCount}
-                starting={talk.isPending}
-                onStart={() => talk.mutate({ projectId })}
-                onStartFresh={() => talk.mutate({ projectId, fresh: true })}
-              />
-            )
-          )}
+            <PrepCallToAction
+              prepared={view.prepared}
+              preparedAt={view.preparedAt}
+              pending={pending}
+              findings={findings}
+              staleCount={staleCount}
+              starting={talk.isPending}
+              onStart={() => talk.mutate({ projectId })}
+              onStartFresh={() => talk.mutate({ projectId, fresh: true })}
+            />
+          ) : null}
 
           {/* While a conversation is open the call-to-action is gone, so what it
               carries has to stand on its own under the terminal. */}
-          {session && (
-            <>
-              {staleCount > 0 && <StaleWarning count={staleCount} />}
-              {findings.length > 0 && <EstablishedFrame findings={findings} />}
-            </>
-          )}
+          {session && <PrepEvidence findings={findings} staleCount={staleCount} />}
         </div>
       </div>
     </section>
@@ -173,6 +166,8 @@ function PrepCallToAction({
   onStart: () => void
   onStartFresh: () => void
 }) {
+  const anyEstablished = findings.length > 0
+
   if (prepared)
     return (
       <div className="prep-cta">
@@ -188,12 +183,11 @@ function PrepCallToAction({
           port. Going again re-measures them with you there.
         </div>
 
-        {/* The reason to act, where the reason normally is. A stale baseline is
-            the one thing on this screen that is actively harmful — agents trust
-            it and file their own breakage under "already red on main". */}
-        {staleCount > 0 && <StaleWarning count={staleCount} />}
-
-        {findings.length > 0 && <EstablishedFrame findings={findings} />}
+        {/* Hoisted above the buttons: on this screen the drifted baseline is the
+            reason to act, not a footnote under the action. A stale one is the
+            single actively harmful thing here — agents trust it and file their
+            own breakage under "already red on main". */}
+        <PrepEvidence findings={findings} staleCount={staleCount} />
 
         <div className="prep-cta-actions">
           <Button variant="solid" disabled={starting} onClick={onStart}>
@@ -217,7 +211,7 @@ function PrepCallToAction({
         <LogoMark size={44} variant="outline" />
       </div>
       <div className="prep-cta-title">
-        {findings.length > 0 ? 'Finish preparing this project' : 'Prepare this project first'}
+        {anyEstablished ? 'Finish preparing this project' : 'Prepare this project first'}
       </div>
       <div className="prep-cta-sub">
         A short conversation in your own checkout. It runs this repo’s commands, watches what they
@@ -236,14 +230,34 @@ function PrepCallToAction({
         {starting ? 'Opening…' : 'Start preparation'}
       </Button>
       <DimLine>
-        {findings.length > 0
+        {anyEstablished
           ? 'Opening it again resumes your last preparation conversation.'
           : 'It runs on your machine, and asks before touching anything stateful.'}
       </DimLine>
 
+      <PrepEvidence findings={findings} staleCount={staleCount} />
+    </div>
+  )
+}
+
+/**
+ * What preparation has to show for itself, in the one order that reads: why to
+ * act, then what is already there. Rendered under the terminal while a
+ * conversation is open, under the button while there is still a job to do, and
+ * above the buttons once there is not.
+ */
+function PrepEvidence({
+  findings,
+  staleCount,
+}: {
+  findings: readonly ProjectFinding[]
+  staleCount: number
+}) {
+  return (
+    <>
       {staleCount > 0 && <StaleWarning count={staleCount} />}
       {findings.length > 0 && <EstablishedFrame findings={findings} />}
-    </div>
+    </>
   )
 }
 
