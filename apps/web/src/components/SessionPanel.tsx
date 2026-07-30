@@ -15,9 +15,9 @@ type DoneState = Exclude<SessionDoneState, { kind: 'notDone' }>
 
 /**
  * The one terminal panel every phase body renders (grill / tickets / run /
- * review). A live or launching session shows the strip + inline PTY terminal; an
- * ENDED one shows the quiet ended card — with a Resume control when the
- * conversation behind it is still resumable.
+ * review / shipped). A live or launching session shows the strip + inline PTY
+ * terminal; an ENDED one shows the quiet ended card — with a Resume control when
+ * the conversation behind it is still resumable.
  *
  * Resume matters because a terminal is a real `claude` process in a server-owned
  * PTY: quitting runcastle kills it and boot reconciliation marks the row ended,

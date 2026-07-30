@@ -9,6 +9,7 @@ import {
   nextStep,
   parseMapSections,
   sessionDoneState,
+  shippedQaSessions,
   ticketConflictKickoff,
   triage,
   triageOf,
@@ -1008,5 +1009,48 @@ describe('liveSessionBlocker', () => {
       liveSessionBlocker(sessions([{ id: 'sess_1', status: 'live', kind: 'waypoint' }]), ws)
         ?.waypointTitle,
     ).toBeUndefined()
+  })
+})
+
+/**
+ * "Ask a question" lives on the shipped bar, so the terminal it opens has to
+ * appear in the shipped body — but only the Q&A conversation, and only when there
+ * is one worth showing: a shipped feature is full of ended pipeline sessions, and
+ * a quiet one must stay the plain hero. This is the derivation the body renders
+ * through.
+ */
+describe('shippedQaSessions', () => {
+  const sessions = (rows: unknown[]) => rows as FeatureFull['sessions']
+
+  it('shows a live qa session', () => {
+    const rows = sessions([{ id: 's1', status: 'live', kind: 'qa', ccSessionId: null }])
+    expect(shippedQaSessions(rows)).toEqual(rows)
+  })
+
+  it('shows an ended qa session whose conversation is still on disk', () => {
+    const rows = sessions([{ id: 's1', status: 'ended', kind: 'qa', ccSessionId: 'cc-qa' }])
+    expect(shippedQaSessions(rows)).toEqual(rows)
+  })
+
+  it('shows nothing for an ended qa session that never reached live (no cc id)', () => {
+    const rows = sessions([{ id: 's1', status: 'ended', kind: 'qa', ccSessionId: null }])
+    expect(shippedQaSessions(rows)).toEqual([])
+  })
+
+  it('shows nothing on a shipped feature that was never asked a question', () => {
+    // Every pipeline session is ended and resumable by the time a feature ships —
+    // those belong to the phase bodies that own them, not to the shipped hero.
+    const rows = sessions([
+      { id: 's1', status: 'ended', kind: 'ideation', ccSessionId: 'cc-1' },
+      { id: 's2', status: 'ended', kind: 'revisit', ccSessionId: 'cc-2' },
+    ])
+    expect(shippedQaSessions(rows)).toEqual([])
+    expect(shippedQaSessions(sessions([]))).toEqual([])
+  })
+
+  it('keeps only the qa rows when the feature also has other sessions', () => {
+    const qa = { id: 's2', status: 'live', kind: 'qa', ccSessionId: null }
+    const rows = sessions([{ id: 's1', status: 'ended', kind: 'ideation', ccSessionId: 'cc-1' }, qa])
+    expect(shippedQaSessions(rows)).toEqual([qa])
   })
 })
