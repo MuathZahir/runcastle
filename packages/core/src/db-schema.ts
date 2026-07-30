@@ -117,8 +117,9 @@ export const features = sqliteTable('features', {
 export const sessions = sqliteTable('sessions', {
   id: text('id').primaryKey(),
   /**
-   * Null for PROJECT-scoped sessions (`kind = 'prepare'`), which exist before
-   * any feature does. Every other kind carries its feature.
+   * Null for PROJECT-scoped sessions (`kind = 'prepare'` or `'project'` — see
+   * `PROJECT_SESSION_KINDS`), which exist before any feature does. Every other
+   * kind carries its feature.
    *
    * Nullable rather than a parallel table: the PTY registry, hook receiver,
    * boot reconciliation, `ccSessionId` resume and `sessionDir` are all entirely
