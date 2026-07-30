@@ -1,9 +1,10 @@
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { MutationCache, QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { httpBatchLink } from '@trpc/client'
 import { StrictMode, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import { App } from './App'
-import { ToastProvider } from './lib/toast'
+import { unhandledMutationError } from './lib/mutation-errors'
+import { pushToast, ToastProvider } from './lib/toast'
 import '@fontsource-variable/inter'
 import '@fontsource-variable/jetbrains-mono'
 import './styles.css'
@@ -13,6 +14,16 @@ function Root() {
   const [queryClient] = useState(
     () =>
       new QueryClient({
+        // The safety net under every mutation: a call site that forgets its own
+        // `onError` would otherwise fail in total silence — the button just
+        // stops working. Handled mutations opt out (see `unhandledMutationError`)
+        // so nothing gets reported twice.
+        mutationCache: new MutationCache({
+          onError: (error, _vars, _ctx, mutation) => {
+            const message = unhandledMutationError(error, mutation)
+            if (message) pushToast(message)
+          },
+        }),
         defaultOptions: {
           queries: {
             retry: false,
