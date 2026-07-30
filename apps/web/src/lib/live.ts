@@ -47,7 +47,7 @@ function subscribeStatus(listener: () => void): () => void {
 }
 
 /** The SSE stream's current state. */
-export function useLiveStatus(): LiveStatus {
+function useLiveStatus(): LiveStatus {
   return useSyncExternalStore(subscribeStatus, () => liveStatus)
 }
 
@@ -60,10 +60,10 @@ export function useLiveStatus(): LiveStatus {
  * silently buffering, would strand the UI forever with polling switched off;
  * one slow tick bounds that at half a minute for a cost of nothing.
  */
-export const LIVE_SAFETY_POLL_MS = 30_000
+const LIVE_SAFETY_POLL_MS = 30_000
 
 /** The default cadence a query falls back to when the stream is down. */
-export const FALLBACK_POLL_MS = 1500
+const FALLBACK_POLL_MS = 1500
 
 /**
  * The `refetchInterval` for a query whose data the SSE feed already

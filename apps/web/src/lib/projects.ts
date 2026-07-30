@@ -91,8 +91,6 @@ export interface RepoOpenFailure {
   message: string
   /** What to do about it, when the failure has a known remedy. */
   hint: string | null
-  /** Offering `git init` on this path would be the fix. */
-  offerGitInit: boolean
 }
 
 export function repoOpenFailure(message: string, path: string): RepoOpenFailure {
@@ -101,15 +99,10 @@ export function repoOpenFailure(message: string, path: string): RepoOpenFailure 
     return {
       message,
       hint: `runcastle tracks work as branches, so it needs a git repository. Run \`git init\` in ${where}, or pick a folder that already is one.`,
-      offerGitInit: true,
     }
   }
   if (/does not exist|cannot read/i.test(message)) {
-    return {
-      message,
-      hint: 'Check the path, or use Browse… to find the folder.',
-      offerGitInit: false,
-    }
+    return { message, hint: 'Check the path, or use Browse… to find the folder.' }
   }
-  return { message, hint: null, offerGitInit: false }
+  return { message, hint: null }
 }

@@ -102,24 +102,20 @@ describe('aggregateRuns', () => {
  * far corner, with no hint for the commonest one of all.
  */
 describe('repoOpenFailure', () => {
-  it('offers git init for a folder that is not a repository', () => {
+  it('names git init for a folder that is not a repository', () => {
     const f = repoOpenFailure('not a git repository: /tmp/notes', '/tmp/notes')
-    expect(f.offerGitInit).toBe(true)
     expect(f.hint).toContain('git init')
     expect(f.hint).toContain('/tmp/notes')
   })
 
   it('points at Browse when the path is not there at all', () => {
-    const f = repoOpenFailure('path does not exist: /tmp/typo', '/tmp/typo')
-    expect(f.offerGitInit).toBe(false)
-    expect(f.hint).toContain('Browse')
+    expect(repoOpenFailure('path does not exist: /tmp/typo', '/tmp/typo').hint).toContain('Browse')
   })
 
   it('passes an unrecognised failure through with no invented advice', () => {
     const f = repoOpenFailure('EACCES: permission denied', '/root/secret')
     expect(f.message).toBe('EACCES: permission denied')
     expect(f.hint).toBeNull()
-    expect(f.offerGitInit).toBe(false)
   })
 
   it('still reads sensibly when the attempted path is unknown', () => {
