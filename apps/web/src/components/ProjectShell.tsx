@@ -4,6 +4,7 @@ import { trpc } from '../trpc'
 import { useWorkspace, type DriveState } from '../lib/workspace'
 import type { ProjectNavApi } from '../lib/use-project-nav'
 import { useProjectTalk } from '../lib/use-project-talk'
+import { useLivePoll } from '../lib/live'
 import { showsInspector, workspaceView, TALK_IT_THROUGH } from '../lib/project-workspace'
 import type { PrepView } from '../lib/api'
 import { Titlebar } from './Titlebar'
@@ -32,7 +33,7 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
   const ws = useWorkspace(projectId)
   const { selectedFeatureId, projectSelected, select, selectProject, setCmdk } = ws
   const [driving, setDriving] = useState<DriveState | null>(null)
-  const list = trpc.feature.list.useQuery({ projectId }, { refetchInterval: 1500 })
+  const list = trpc.feature.list.useQuery({ projectId }, { refetchInterval: useLivePoll() })
   // The project conversation, polled once here and read by the pinned rail row,
   // the project workspace and both "talk it through" doors.
   const talk = useProjectTalk(projectId)

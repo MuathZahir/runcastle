@@ -3,6 +3,7 @@ import type { EventRow, Ticket } from '@runcastle/core'
 import { trpc } from '../../trpc'
 import { useToast } from '../../lib/toast'
 import { useEventLog } from '../../lib/events'
+import { useLivePoll } from '../../lib/live'
 import { ticketConflictKickoff } from '../../lib/feature-ui'
 import { fmtDuration, fmtTime, shortSha } from '../../lib/format'
 import { BURN_EXPLAINER } from '../../lib/vocabulary'
@@ -29,10 +30,11 @@ export function RunBody({
   runId: string | null
   readonly?: boolean
 }) {
-  const feature = trpc.feature.get.useQuery({ id: featureId }, { refetchInterval: 1500 })
+  const poll = useLivePoll()
+  const feature = trpc.feature.get.useQuery({ id: featureId }, { refetchInterval: poll })
   const run = trpc.run.get.useQuery(
     { runId: runId as string },
-    { refetchInterval: 1500, enabled: !!runId },
+    { refetchInterval: poll, enabled: !!runId },
   )
   const events = useEventLog(featureId)
 

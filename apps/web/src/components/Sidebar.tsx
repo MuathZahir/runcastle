@@ -6,6 +6,7 @@ import type { FeatureListItem, PrepView } from '../lib/api'
 import { miniSegments, needsMe, triage } from '../lib/feature-ui'
 import { prepRailRow } from '../lib/project-workspace'
 import { isStale } from '../lib/settings'
+import { useLivePoll } from '../lib/live'
 import type { ProjectTalkApi } from '../lib/use-project-talk'
 import { IconBolt, IconCheck, IconPlus, LogoMark } from '../icons'
 import { FeatureActionsMenu, type FeatureAction } from './FeatureActionsMenu'
@@ -62,7 +63,7 @@ export function Sidebar({
   // The feature awaiting delete confirmation (decision #8), or null.
   const [pendingDelete, setPendingDelete] = useState<FeatureListItem | null>(null)
 
-  const list = trpc.feature.list.useQuery({ projectId }, { refetchInterval: 1500 })
+  const list = trpc.feature.list.useQuery({ projectId }, { refetchInterval: useLivePoll() })
   // Same query key the preparation workspace polls — one fetch, two readers.
   // The row waits for the answer rather than guessing: its two variants say
   // opposite things, so a guess is a sentence that flips on first paint.

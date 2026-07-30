@@ -2,6 +2,7 @@ import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react'
 import { parsePhase, type EventRow, type Phase } from '@runcastle/core'
 import { trpc } from '../trpc'
 import { useEventLog } from '../lib/events'
+import { useLivePoll } from '../lib/live'
 import { useToast } from '../lib/toast'
 import { Button, DimLine, PhaseTag } from '../ui'
 import type { FeatureFull } from '../lib/api'
@@ -62,7 +63,7 @@ export function Workspace({
 }) {
   const utils = trpc.useUtils()
   const toast = useToast()
-  const q = trpc.feature.get.useQuery({ id: featureId }, { refetchInterval: 1500 })
+  const q = trpc.feature.get.useQuery({ id: featureId }, { refetchInterval: useLivePoll() })
   const resumeFailed = useResumeFailedAlert(featureId)
   // The review bar has to know two things the feature row cannot tell it: whether
   // a merge conflict is standing (it must not recommend a merge that will fail

@@ -3,6 +3,7 @@ import { nextPhase, parsePhase, type EventRow, type Phase } from '@runcastle/cor
 import { trpc } from '../trpc'
 import { useToast } from '../lib/toast'
 import { useEventLog } from '../lib/events'
+import { useLivePoll } from '../lib/live'
 import type { DocSummary, GateState } from '../lib/api'
 import { PHASE_LABELS, undoableOverride } from '../lib/feature-ui'
 import { relTime } from '../lib/format'
@@ -19,7 +20,7 @@ import { DocPeek } from './DocPeek'
  */
 export function Inspector({ featureId }: { featureId: string }) {
   const [tab, setTab] = useState<'details' | 'activity'>('details')
-  const full = trpc.feature.get.useQuery({ id: featureId }, { refetchInterval: 1500 })
+  const full = trpc.feature.get.useQuery({ id: featureId }, { refetchInterval: useLivePoll() })
   // One feed for both tabs: Activity narrates it, and the gate card reads the
   // undo window for a gate override out of it (findings F24). Mounted here
   // rather than inside Activity so switching tabs doesn't re-accumulate it.

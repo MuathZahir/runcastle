@@ -1,6 +1,7 @@
 import { trpc } from '../trpc'
 import { useToast } from '../lib/toast'
 import { useDesktopNotifications } from '../lib/use-notifications'
+import { useLivePoll } from '../lib/live'
 import { SANDBOX_MODE, SERVER_PORT } from '../lib/env'
 import type { DriveState } from '../lib/workspace'
 import { IconBell, IconBellOff, IconBranch, IconShield } from '../icons'
@@ -23,7 +24,7 @@ export function StatusBar({
 }) {
   const toast = useToast()
   const utils = trpc.useUtils()
-  const list = trpc.feature.list.useQuery({ projectId }, { refetchInterval: 1500 })
+  const list = trpc.feature.list.useQuery({ projectId }, { refetchInterval: useLivePoll() })
   const healthy = !list.isError && list.data !== undefined
   const active = list.data?.find((f) => f.id === activeFeatureId)
   const runCount = list.data?.filter((f) => f.activeRun).length ?? 0

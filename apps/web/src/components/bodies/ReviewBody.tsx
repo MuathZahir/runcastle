@@ -10,6 +10,7 @@ import {
   type MergeConflictState,
 } from '../../lib/feature-ui'
 import { fmtDateTime, relTime } from '../../lib/format'
+import { useLivePoll } from '../../lib/live'
 import { useToast } from '../../lib/toast'
 import { ErrorBoundary } from '../ErrorBoundary'
 import { SessionPanel } from '../SessionPanel'
@@ -60,7 +61,7 @@ export function ReviewBody({
     { featureId: feature.id },
     { refetchInterval: 5000 },
   )
-  const drive = trpc.feature.driveInfo.useQuery(undefined, { refetchInterval: 1500 })
+  const drive = trpc.feature.driveInfo.useQuery(undefined, { refetchInterval: useLivePoll() })
   const checks = reviewChecks({ tickets, run, commitCount: commits.data?.count })
 
   return (

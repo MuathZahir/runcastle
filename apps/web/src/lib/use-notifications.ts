@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { trpc } from '../trpc'
+import { useLivePoll } from './live'
 import { eventToNotification, type DesktopNotification } from './notifications'
 
 /**
@@ -72,7 +73,7 @@ export function useDesktopNotifications(
 
   const query = trpc.events.listByProject.useQuery(
     { projectId, afterId: cursor },
-    { refetchInterval: 1500, enabled: supported && enabled },
+    { refetchInterval: useLivePoll(), enabled: supported && enabled },
   )
 
   useEffect(() => {

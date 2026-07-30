@@ -2,6 +2,7 @@ import { trpc } from '../trpc'
 import { IconBranch } from '../icons'
 import { Button, DimLine, SessionStatusDot } from '../ui'
 import { projectStats } from '../lib/projects'
+import { useLivePoll } from '../lib/live'
 import { PROJECT_BRANCH, projectBranchNote } from '../lib/project-workspace'
 import type { ProjectTalkApi } from '../lib/use-project-talk'
 import { EndSessionButton } from './EndSessionButton'
@@ -33,7 +34,7 @@ export function ProjectWorkspace({
   const projectsQ = trpc.project.list.useQuery()
   const project = projectsQ.data?.find((p) => p.id === projectId)
   // Same key (and interval) as the rail's own poll — one fetch, two readers.
-  const featuresQ = trpc.feature.list.useQuery({ projectId }, { refetchInterval: 1500 })
+  const featuresQ = trpc.feature.list.useQuery({ projectId }, { refetchInterval: useLivePoll() })
   const stats = projectStats(featuresQ.data ?? [])
   const inFlight = stats.total - stats.shipped
   const session = talk.session

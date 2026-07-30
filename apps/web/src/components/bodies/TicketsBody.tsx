@@ -5,6 +5,7 @@ import { useToast } from '../../lib/toast'
 import { SANDBOX_MODE } from '../../lib/env'
 import { BURN_EXPLAINER } from '../../lib/vocabulary'
 import { shortSha } from '../../lib/format'
+import { useLivePoll } from '../../lib/live'
 import { Button, DimLine, EmptyState, SectionTitle, TicketStatusChip } from '../../ui'
 import { IconChevronRight, IconDoc } from '../../icons'
 import { Markdown } from '../Markdown'
@@ -35,7 +36,7 @@ export function TicketsBody({
 }) {
   const toast = useToast()
   const utils = trpc.useUtils()
-  const full = trpc.feature.get.useQuery({ id: featureId }, { refetchInterval: 1500 })
+  const full = trpc.feature.get.useQuery({ id: featureId }, { refetchInterval: useLivePoll() })
   const [open, setOpen] = useState<Set<string>>(() => new Set())
   // The ticket currently being edited in place, or null. One at a time — the
   // ledger is a review surface, not a spreadsheet.

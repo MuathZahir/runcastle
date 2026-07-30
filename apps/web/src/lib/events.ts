@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { EventRow } from '@runcastle/core'
 import { trpc } from '../trpc'
+import { useLivePoll } from './live'
 
 /**
  * Append-only event log for a feature (SPEC §10). Polls `events.list` at 1.5s
@@ -14,7 +15,11 @@ export function useEventLog(featureId: string): EventRow[] {
   const afterId = events.length ? events[events.length - 1].id : undefined
   const query = trpc.events.list.useQuery(
     { featureId, afterId },
-    { refetchInterval: 1500 },
+    // Each consumer accumulates its own cursor, so each has its OWN query key —
+    // five mounted logs are five independent polls, not one shared fetch
+    // (findings F11). The SSE feed already invalidates all of them on every new
+    // event, so the timer is only the fallback for a dead stream.
+    { refetchInterval: useLivePoll() },
   )
 
   useEffect(() => {

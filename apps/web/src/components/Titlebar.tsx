@@ -1,5 +1,6 @@
 import { trpc } from '../trpc'
 import { aggregateRuns, projectStats } from '../lib/projects'
+import { useLivePoll } from '../lib/live'
 import type { ProjectNavApi } from '../lib/use-project-nav'
 import { IconBranch, IconPanelRight, IconSearch, IconSettings, LogoMark, LogoWordmark } from '../icons'
 import { ProjectSwitcher } from './ProjectSwitcher'
@@ -27,8 +28,9 @@ export function Titlebar({
   const projects = nav.projects ?? []
 
   // Aggregate runs across ALL open projects (not just the current one).
+  const poll = useLivePoll()
   const featureQueries = trpc.useQueries((t) =>
-    projects.map((p) => t.feature.list({ projectId: p.id }, { refetchInterval: 1500 })),
+    projects.map((p) => t.feature.list({ projectId: p.id }, { refetchInterval: poll })),
   )
   const stats = featureQueries.map((q) => projectStats(q.data ?? []))
   const runCount = aggregateRuns(stats)
