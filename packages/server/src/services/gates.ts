@@ -1,7 +1,7 @@
 import { existsSync } from 'node:fs'
 import type { Feature, GateCheckId, GateId, SessionKind } from '@runcastle/core'
 import { nextPhase } from '@runcastle/core'
-import { and, eq, inArray } from 'drizzle-orm'
+import { and, desc, eq, inArray } from 'drizzle-orm'
 import type { AppCtx } from '../db/types'
 import { gateOverrides, sessions } from '../db/schema'
 import { emit } from './events'
@@ -182,4 +182,20 @@ export function overrideGate(
   const next = nextPhase(feature)
   if (next) return setPhase(ctx, featureId, next, 'phase.advanced', `advanced to ${next} (override)`)
   return feature
+}
+
+/**
+ * Drop the most recent override of `gate` — for a caller whose crossing did not
+ * hold (converge rolls its forced G1 back when the session it forced the gate
+ * for could not be opened, findings F5). The `gate.overridden` event stays: the
+ * timeline records what was attempted, the table records what stands.
+ */
+export function undoLastGateOverride(ctx: AppCtx, featureId: string, gate: GateId): void {
+  const last = ctx.db
+    .select({ id: gateOverrides.id })
+    .from(gateOverrides)
+    .where(and(eq(gateOverrides.featureId, featureId), eq(gateOverrides.gate, gate)))
+    .orderBy(desc(gateOverrides.id))
+    .get()
+  if (last) ctx.db.delete(gateOverrides).where(eq(gateOverrides.id, last.id)).run()
 }

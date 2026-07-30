@@ -464,7 +464,7 @@ export async function burn(
         featureId,
         REVIEW_LOOP_BACK.from,
         'burn.aborted',
-        `the burn never started (${errMessage(e)}) — back at review`,
+        `the burn never started (${errMsg(e)}) — back at review`,
       )
     }
     throw e
@@ -548,13 +548,13 @@ export async function rethinkAndLaunch<T>(
       featureId,
       before.phase,
       'lap.aborted',
-      `lap ${feature.lap} aborted — its terminal could not be opened (${errMessage(e)}); back at ${before.phase} on lap ${before.lap}`,
+      `lap ${feature.lap} aborted — its terminal could not be opened (${errMsg(e)}); back at ${before.phase} on lap ${before.lap}`,
     )
     throw e
   }
 }
 
-function errMessage(e: unknown): string {
+function errMsg(e: unknown): string {
   return e instanceof Error ? e.message : String(e)
 }
 

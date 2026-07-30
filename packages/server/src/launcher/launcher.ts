@@ -13,7 +13,7 @@ import { GateError, isNotImplemented } from '../errors'
 import { endSession } from '../pty/end-session'
 import { ptyRegistry } from '../pty/registry'
 import { emit, emitForSession, emitProject } from '../services/events'
-import { checkGate, overrideGate } from '../services/gates'
+import { checkGate, overrideGate, undoLastGateOverride } from '../services/gates'
 import * as git from '../services/git'
 import {
   getFeatureRow,
@@ -811,6 +811,7 @@ export async function converge(
   if (!gate) throw new GateError('feature is already at the final phase')
   const result = checkGate(ctx, gate.check, feature)
 
+  let overrode = false
   if (result.satisfied) {
     // Cross G1 into spec. G1 is never G3, so this plain crossing is legitimate.
     const next = nextPhase(feature)
@@ -819,11 +820,34 @@ export async function converge(
   } else if (input.overrideReason) {
     // The seatbelt, not the cage: record a G1 override and advance anyway.
     overrideGate(ctx, feature.id, gate.id, input.overrideReason)
+    overrode = true
   } else {
     throw new GateError(result.reason ?? 'the map is not ready to converge — resolve its waypoints or override with a reason')
   }
 
-  return launchSession(ctx, { featureId: feature.id, kind: 'converge' }, opts)
+  // The crossing has to happen first — the session's artifacts are rendered from
+  // the phase, so a converge terminal opened at `ideation` would be briefed to
+  // keep charting. That made a failed launch strand the feature past G1 with no
+  // session (findings F5), which is the whole reason `reconverge` below exists.
+  // So the crossing is rolled back when the launch throws: the map is back where
+  // it was and Converge can simply be clicked again.
+  try {
+    return await launchSession(ctx, { featureId: feature.id, kind: 'converge' }, opts)
+  } catch (e) {
+    if (overrode) undoLastGateOverride(ctx, feature.id, gate.id)
+    setPhase(
+      ctx,
+      feature.id,
+      feature.phase,
+      'converge.aborted',
+      `converge aborted — its session could not be opened (${errMsg(e)}); back at ${feature.phase}`,
+    )
+    throw e
+  }
+}
+
+function errMsg(e: unknown): string {
+  return e instanceof Error ? e.message : String(e)
 }
 
 /**
