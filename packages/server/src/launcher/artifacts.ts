@@ -401,6 +401,29 @@ export function renderPreparePrompt(brief: PrepareBrief): string {
     'service, creates or migrates a database, or writes outside the repo needs the human to',
     'agree first — say what you are about to run and why, then wait.',
     '',
+    '## What the five host keys mean',
+    'Take this from here. These semantics live in runcastle\'s source, not in the installed',
+    'build — grepping the shipped bundle for them finds nothing and proves nothing.',
+    '',
+    '- `devCommand` — spawned in a drive-owned terminal pane for the length of a test drive.',
+    '  The first localhost URL it prints becomes the "Open app" link.',
+    '- `driveSetupCommand` / `driveStopCommand` — run on the host, in the project repo, before',
+    '  the dev pane starts and after the drive stops.',
+    '- `driveEnv` — `KEY=VALUE` lines whose values render `{{slug}}`, `{{branch}}` and `{{id}}`',
+    '  (`{{id}}` is the slug made identifier-safe — legal as a database name). Rendered ONCE per',
+    '  drive and shared by the setup hook, the dev pane and the stop hook. So this, not a helper',
+    '  script, is where a branch→database-name derivation belongs: name it once here and have both',
+    '  hooks read the variable. A database per branch is exactly this shape —',
+    '',
+    '      driveEnv:           DB_NAME=myapp_{{id}}',
+    '                          DATABASE_URL=postgres://localhost/myapp_{{id}}',
+    '      driveSetupCommand:  createdb "$DB_NAME" && npm run migrate',
+    '      driveStopCommand:   dropdb --if-exists "$DB_NAME"',
+    '',
+    '- `dbResetCommand` — NOT part of the drive loop. Its only consumer is the migration-drift',
+    '  banner after a drive stops: when the drive branch and the branch you returned to disagree',
+    '  about migration files, this is offered as the one-click dev-database rebuild.',
+    '',
     ...(established.length > 0
       ? [
           '## Already established — do not re-derive',
@@ -462,6 +485,11 @@ export interface ProjectBrief {
  * when the terminal closes. A session that writes but never commits leaves the
  * tree dirty, which is precisely what blocks a test drive and the next merge —
  * so "land what you wrote and leave the tree clean" is its closing move.
+ *
+ * The task line asks first and explores second on purpose: told only to drive
+ * the session, the agent opens with `get_project_context` — charter plus every
+ * live ADR in full — and the human waits through a whole orientation pass, and
+ * often a subagent digest of it, before it says hello.
  */
 export function renderProjectPrompt(brief: ProjectBrief): string {
   const { project, branch, worktreePath } = brief
@@ -513,7 +541,9 @@ export function renderProjectPrompt(brief: ProjectBrief): string {
     'ordinary file tools. The index says where.',
     '',
     '## Your task',
-    'Invoke the `/runcastle:project` skill and drive the project session.',
+    'Invoke the `/runcastle:project` skill, then open by asking the human what they brought.',
+    'Do not explore the project first: orienting before you know the ask spends their wait on',
+    'context you may not need. Once they have told you, read only what answering calls for.',
     '',
   ].join('\n')
 }

@@ -55,8 +55,7 @@ export function duplicateTitleWarning(
 
 /**
  * Client-side feature derivations (UI-SPEC §2/§3): sidebar glyph, needs-me
- * classification, and the overview primary-action state machine. Pure functions
- * over wire data — no IO.
+ * classification, and the guided next step. Pure functions over wire data — no IO.
  */
 
 export const PHASE_ORDER: Phase[] = [
@@ -126,103 +125,6 @@ export function sortForSidebar(features: FeatureListItem[]): FeatureListItem[] {
     .map((f, i) => ({ f, i }))
     .sort((a, b) => rank(a.f) - rank(b.f) || a.i - b.i)
     .map((x) => x.f)
-}
-
-// --- overview primary-action state machine (UI-SPEC §3) --------------------
-
-export type PrimaryActionKind =
-  | 'startGrill'
-  | 'openGrill'
-  | 'reviewTickets'
-  | 'startBurn'
-  | 'watchRun'
-  | 'testDrive'
-  | 'merge'
-  | 'askQuestions'
-
-export interface PrimaryAction {
-  kind: PrimaryActionKind
-  label: string
-  /** Session to focus for `openGrill`. */
-  sessionId?: string
-  /** Run to focus for `watchRun`. */
-  runId?: string
-}
-
-/**
- * The single solid button on the overview (UI-SPEC §3):
- * Start grilling → Open live grill → Review tickets → (Burn in tickets tab) →
- * Watch run → Merge → Ask questions. Test driving at `review` is optional and
- * lives as a secondary action, so the primary here no longer depends on it.
- */
-export function primaryAction(full: FeatureFull): PrimaryAction {
-  const { feature, sessions, runs } = full
-  const liveSession = sessions.find((s) => s.status === 'live')
-
-  switch (feature.phase) {
-    case 'ideation':
-    case 'spec':
-      return liveSession
-        ? { kind: 'openGrill', label: 'Open live grill', sessionId: liveSession.id }
-        : { kind: 'startGrill', label: 'Start grilling' }
-    case 'tickets':
-      return { kind: 'reviewTickets', label: 'Review tickets' }
-    case 'implementation': {
-      const run = latestRun(runs)
-      // A live run → watch it. No active run means the burn was cancelled or
-      // crashed (or G3 was overridden without starting one): offer to (re)start
-      // the burn so the feature never dead-ends at `implementation`.
-      if (run && run.status === 'running') {
-        return { kind: 'watchRun', label: 'Watch run', runId: run.id }
-      }
-      return { kind: 'startBurn', label: 'Start burn' }
-    }
-    case 'review':
-      // Merge is the primary action whether or not a test drive is active — the
-      // server stops an active drive of this feature before merging. Test driving
-      // first is optional (offered as a secondary action on the overview).
-      return { kind: 'merge', label: 'Merge' }
-    case 'shipped':
-      return { kind: 'askQuestions', label: 'Ask questions' }
-  }
-}
-
-/** One-line state summary shown above the primary action (UI-SPEC §3). */
-export function stateSummary(full: FeatureFull, driving: boolean): string {
-  const { feature, tickets, sessions, runs } = full
-  const live = sessions.some((s) => s.status === 'live')
-  const t = tickets.length
-  const done = tickets.filter((x) => x.status === 'done').length
-  const failed = tickets.filter((x) => x.status === 'failed').length
-  switch (feature.phase) {
-    case 'ideation':
-      return live
-        ? 'Grilling in progress — decisions accumulate in Knowledge.'
-        : 'Grill the agent to capture decisions and shape the work.'
-    case 'spec':
-      return live ? 'Writing the spec beside the conversation.' : 'Spec in progress.'
-    case 'tickets':
-      return `${t} ticket${t === 1 ? '' : 's'} ready — review, then burn.`
-    case 'implementation': {
-      const run = latestRun(runs)
-      // Only claim a burn is in progress when a run is actually running —
-      // otherwise be honest that it hasn't started / was cancelled.
-      if (!run) return `Burn not started — ${t} ticket${t === 1 ? '' : 's'} ready. Start the burn.`
-      if (run.status === 'running') {
-        return `Burning ${t} ticket${t === 1 ? '' : 's'} — ${done} done${failed ? `, ${failed} failed` : ''}.`
-      }
-      if (run.status === 'cancelled') return 'Run cancelled — start the burn to retry.'
-      if (run.status === 'failed') return 'Run failed — start the burn to retry.'
-      return `Burn not started — ${t} ticket${t === 1 ? '' : 's'} ready. Start the burn.`
-    }
-    case 'review':
-      if (driving) return 'Test driving the branch — merge when it looks right.'
-      return failed
-        ? `Run finished with ${failed} failed ticket${failed === 1 ? '' : 's'} — review, then ship.`
-        : 'Run complete — merge to ship, or test drive it first.'
-    case 'shipped':
-      return 'Shipped. Ask questions anytime.'
-  }
 }
 
 function latestRun(runs: FeatureFull['runs']): FeatureFull['runs'][number] | undefined {
@@ -380,7 +282,6 @@ export function pipelineSteps(
 
 export type ActionKind =
   | 'startGrill' // launchSession { kind: 'ideation' }
-  | 'openGrill' // focus the live session in the body
   | 'converge' // feature.converge — crosses G1 on a mapped feature
   | 'convergeOverride' // feature.converge { overrideReason } — forces G1, needs a reason
   | 'advance' // feature.advance (crosses non-human gates G1/G2/G4)
@@ -736,15 +637,6 @@ export function kickoffTrouble(events: EventRow[], sessionId: string): KickoffTr
 }
 
 /**
- * The single guided next step for a feature's *current* phase (app-redesign).
- * Gate-aware: when the gate guarding the next phase is satisfied and crossable
- * without a human-only gate (G3 Burn / G5 Merge), the primary action becomes the
- * promotion; otherwise it's the work action for this phase (grill / burn / …).
- *
- * This supersedes {@link primaryAction} + {@link stateSummary} for the redesign,
- * but reuses the same wire data.
- */
-/**
  * True when the feature has an ENDED session of `kind` whose Claude Code
  * conversation can still be picked up (it reached `live`, so it recorded a
  * `ccSessionId`). Opening a terminal of that kind `--resume`s the latest such
@@ -763,6 +655,21 @@ function hasResumable(sessions: FeatureFull['sessions'], kind?: string): boolean
   )
 }
 
+/**
+ * The single guided next step for a feature's *current* phase (app-redesign).
+ * Two rules order the cases:
+ *
+ * - A live session wins over everything the session agent can do itself. It
+ *   calls `complete_phase` on its own and locks decisions incrementally, so a
+ *   satisfied gate mid-grill is not an invitation — the bar goes status-only
+ *   (no primary, no secondaries) rather than offering a promotion that races it.
+ * - Gate-aware otherwise: with nothing live and the gate guarding the next phase
+ *   satisfied without a human-only gate (G3 Burn / G5 Merge), the promotion
+ *   survives as a quiet secondary behind the phase's work action — the recovery
+ *   path for hand-written docs or an unresumable conversation.
+ *
+ * Buttons are only for verbs the agent cannot perform.
+ */
 export function nextStep(
   full: FeatureFull,
   ctx: {
@@ -867,7 +774,7 @@ export function nextStep(
             kick: 'LAP LIVE',
             title: `Lap ${feature.lap} in progress`,
             desc: 'The lap session digests the drive, amends the docs and emits this lap’s tickets.',
-            primary: { label: 'Jump to the lap session', kind: 'openGrill' },
+            primary: undefined,
             secondary: [],
             busy: false,
           }
@@ -887,23 +794,26 @@ export function nextStep(
           busy: false,
         }
       }
-      if (canAdvance) {
-        return {
-          kick: 'NEXT STEP',
-          title: 'Promote the idea',
-          desc: 'Decisions are captured — promote the idea when it feels concrete.',
-          primary: { label: promoteLabel, kind: 'advance' },
-          secondary: live ? [{ label: 'Back to grill', kind: 'openGrill' }] : [],
-          busy: false,
-        }
-      }
       if (live) {
         return {
           kick: 'GRILL LIVE',
           title: 'Grill session in progress',
-          desc: 'Shape the idea with Claude — decisions accumulate in Knowledge.',
-          primary: { label: 'Jump to grill', kind: 'openGrill' },
+          desc: 'Shape the idea with Claude — it promotes the phase itself when the grilling is done.',
+          primary: undefined,
           secondary: [],
+          busy: false,
+        }
+      }
+      if (canAdvance) {
+        return {
+          kick: 'NEXT STEP',
+          title: 'Shape the idea, or promote it',
+          desc: 'Decisions are captured — carry on in a grill session, or promote the idea when it feels concrete.',
+          primary: {
+            label: resumableGrill ? 'Resume grill session' : 'Start grill session',
+            kind: 'startGrill',
+          },
+          secondary: [{ label: promoteLabel, kind: 'advance' }],
           busy: false,
         }
       }
@@ -926,38 +836,42 @@ export function nextStep(
           }
     }
     case 'spec': {
-      if (canAdvance) {
+      if (live) {
         return {
-          kick: 'NEXT STEP',
-          title: 'Approve the spec',
-          desc: 'The spec is written — approve it to move into tickets.',
-          primary: { label: 'Approve spec → tickets', kind: 'advance' },
-          secondary: live ? [{ label: 'Back to grill', kind: 'openGrill' }] : [],
+          kick: 'GRILL LIVE',
+          title: 'Writing the spec',
+          desc: 'The spec takes shape beside the conversation — the session advances the phase when it’s written.',
+          primary: undefined,
+          secondary: [],
           busy: false,
         }
       }
-      return live
-        ? {
-            kick: 'GRILL LIVE',
-            title: 'Writing the spec',
-            desc: 'The spec takes shape beside the conversation.',
-            primary: { label: 'Jump to grill', kind: 'openGrill' },
-            secondary: [],
-            busy: false,
-          }
-        : {
-            kick: 'NEXT STEP',
-            title: 'Write the spec',
-            desc: resumableGrill
-              ? 'No spec yet — resume the grill conversation to draft it.'
-              : 'No spec yet — open a grill session to draft it.',
-            primary: {
-              label: resumableGrill ? 'Resume grill' : 'Open grill',
-              kind: 'startGrill',
-            },
-            secondary: [],
-            busy: false,
-          }
+      if (canAdvance) {
+        return {
+          kick: 'NEXT STEP',
+          title: 'Refine the spec, or approve it',
+          desc: 'The spec is written — reopen the grill to work on it, or approve it to move into tickets.',
+          primary: {
+            label: resumableGrill ? 'Resume grill' : 'Open grill',
+            kind: 'startGrill',
+          },
+          secondary: [{ label: 'Approve spec → tickets', kind: 'advance' }],
+          busy: false,
+        }
+      }
+      return {
+        kick: 'NEXT STEP',
+        title: 'Write the spec',
+        desc: resumableGrill
+          ? 'No spec yet — resume the grill conversation to draft it.'
+          : 'No spec yet — open a grill session to draft it.',
+        primary: {
+          label: resumableGrill ? 'Resume grill' : 'Open grill',
+          kind: 'startGrill',
+        },
+        secondary: [],
+        busy: false,
+      }
     }
     case 'tickets': {
       if (t > 0) {
@@ -965,12 +879,22 @@ export function nextStep(
           kick: 'NEXT STEP',
           title: 'Review & burn the tickets',
           desc: 'Each ticket is one atomic task Claude will implement. Review them, then burn.',
+          // Burn stays primary even while a session is live: `emit_tickets` lands
+          // one batch, so a non-zero count means the cards are ready to review.
           primary: { label: `Burn ${t} ticket${t === 1 ? '' : 's'}`, kind: 'burn' },
           // Revisit resumes the grilling conversation to amend docs/tickets —
           // only offered when no session is live (one terminal per feature).
-          secondary: live
-            ? [{ label: 'Back to grill', kind: 'openGrill' }]
-            : [{ label: 'Revisit', kind: 'revisit' }],
+          secondary: live ? [] : [{ label: 'Revisit', kind: 'revisit' }],
+          busy: false,
+        }
+      }
+      if (live) {
+        return {
+          kick: 'WAITING',
+          title: 'Emitting tickets',
+          desc: 'The session breaks the spec into tickets — they appear here as they land.',
+          primary: undefined,
+          secondary: [],
           busy: false,
         }
       }
@@ -978,12 +902,10 @@ export function nextStep(
         kick: 'WAITING',
         title: 'Waiting for tickets',
         desc: 'No tickets yet — a grill session emits them. Open a session to shape the work.',
-        primary: live
-          ? { label: 'Jump to grill', kind: 'openGrill' }
-          : {
-              label: resumableGrill ? 'Resume grill to emit tickets' : 'Open grill to emit tickets',
-              kind: 'startGrill',
-            },
+        primary: {
+          label: resumableGrill ? 'Resume grill to emit tickets' : 'Open grill to emit tickets',
+          kind: 'startGrill',
+        },
         secondary: [],
         busy: false,
       }
@@ -1004,16 +926,24 @@ export function nextStep(
       // tickets phase has always handled this state honestly, so this says the
       // same thing: the missing thing is tickets, and a session emits them.
       if (t === 0) {
+        if (live) {
+          return {
+            kick: 'WAITING',
+            title: 'No tickets to burn',
+            desc: 'This feature reached the build phase with an empty ledger. The live session breaks the work into tickets — they appear here as they land.',
+            primary: undefined,
+            secondary: [],
+            busy: false,
+          }
+        }
         return {
           kick: 'WAITING',
           title: 'No tickets to burn',
           desc: 'This feature reached the build phase with an empty ledger. A session breaks the work into tickets — open one, and the burn has something to run.',
-          primary: live
-            ? { label: 'Jump to the session', kind: 'openGrill' }
-            : {
-                label: resumableGrill ? 'Resume the session' : 'Open a session',
-                kind: 'startGrill',
-              },
+          primary: {
+            label: resumableGrill ? 'Resume the session' : 'Open a session',
+            kind: 'startGrill',
+          },
           secondary: [],
           busy: false,
         }
@@ -1342,4 +1272,24 @@ export function liveSessionBlocker(
   if (!live) return undefined
   const held = waypoints.find((w) => w.status === 'claimed' && w.claimedBy === live.id)
   return { sessionId: live.id, kind: live.kind, waypointTitle: held?.title }
+}
+
+// --- the shipped body's Q&A terminal ----------------------------------------
+
+/**
+ * The sessions the shipped body's terminal panel should consider — the Q&A ones,
+ * and only when one of them is worth a panel at all.
+ *
+ * "Ask a question" is the shipped bar's action, so the conversation it starts
+ * belongs in the shipped body. Everything *else* on a shipped feature is a spent
+ * pipeline session, and a resumable one of those is the grill's (or review's)
+ * Resume, not shipped's — hence qa only. It reports nothing unless some qa session
+ * is live/launching or ended with its conversation still on disk (a `ccSessionId`,
+ * which only a session that reached live recorded — the launcher's own resume
+ * test), so a shipped feature nobody has asked anything stays the plain hero
+ * instead of growing an empty box.
+ */
+export function shippedQaSessions(sessions: FeatureFull['sessions']): FeatureFull['sessions'] {
+  const qa = sessions.filter((s) => s.kind === 'qa')
+  return qa.some((s) => s.status !== 'ended' || !!s.ccSessionId) ? qa : []
 }

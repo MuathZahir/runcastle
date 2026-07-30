@@ -1,0 +1,7 @@
+# Show the QA terminal on the shipped phase
+
+Clicking "Ask a question" on a shipped feature (Workspace.tsx:213-215, next-step secondary from feature-ui.ts:810) launches a session with kind 'qa', but ShippedBody (apps/web/src/components/bodies/ShippedBody.tsx) is the only phase body that renders no SessionPanel — it is a static hero card. The terminal therefore appears nowhere on the shipped view; the user has to click an earlier phase in the pipeline stepper, whose read-only body (e.g. GrillBody) happens to include a SessionPanel, and the conversation shows up there under a READ-ONLY banner. 
+
+Fix: render the SessionPanel in ShippedBody the way the other phase bodies do (see GrillBody.tsx:79, TicketsBody.tsx:100, ReviewBody.tsx:60 for the established pattern — pass featureId + full.sessions, pick a sensible className). The shipped hero stays; the panel joins it so a live or resumable qa session's terminal appears in the same phase the button lives in. When no qa session exists and none is resumable, the shipped view should look exactly as it does today — the panel should not add an empty box to a quiet shipped feature. 
+
+Acceptance: on a shipped feature, click "Ask a question" → the terminal appears in the shipped phase body without navigating anywhere; closing/reopening the feature while the session is resumable still shows it on shipped; a shipped feature with no qa session renders the unchanged hero.

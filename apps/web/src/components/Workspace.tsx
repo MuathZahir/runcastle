@@ -254,12 +254,6 @@ export function Workspace({
       case 'rethink':
         rethink.mutate({ featureId })
         break
-      case 'openGrill':
-        onViewPhase(null)
-        requestAnimationFrame(() =>
-          document.getElementById('grill-term')?.scrollIntoView({ behavior: 'smooth', block: 'center' }),
-        )
-        break
       case 'converge':
         converge.mutate({ featureId })
         break

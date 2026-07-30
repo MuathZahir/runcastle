@@ -1,10 +1,11 @@
 import { Hono } from 'hono'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import type { SessionKind } from '@runcastle/core'
 import type { AppCtx } from '../src/db/types'
 import { clearRuntimeCtx, setRuntimeCtx } from '../src/launcher/runtime'
 import { createSessionRow, getSessionRow } from '../src/launcher/sessions'
 import hooksApp from '../src/routes/hooks'
-import { listAfter } from '../src/services/events'
+import { listAfter, listByProject } from '../src/services/events'
 import { storeTickets } from '../src/services/tickets'
 import { claim, getWaypoint, storeWaypoints } from '../src/services/waypoints'
 import { makeTestCtx } from './helpers/db'
@@ -288,5 +289,116 @@ describe('hooks route', () => {
   it('returns {} when no session id is provided', async () => {
     const { json } = await post(mount(), 'session-start', { payload: {} })
     expect(json).toEqual({})
+  })
+})
+
+/**
+ * The two featureless kinds share this branch of the route, and they must not
+ * share its briefing. Observed live: a `project` session opened by measuring
+ * setup/verify commands instead of engaging the human, because the branch handed
+ * it the preparation agenda — the prep digest plus "record what you establish
+ * with `record_finding`" — that only the `prepare` kind's job asks for.
+ */
+describe('hooks route, project-scoped sessions', () => {
+  let ctx: AppCtx
+  let projectId: string
+
+  beforeEach(async () => {
+    ctx = await makeTestCtx()
+    projectId = seedProject(ctx).id
+    setRuntimeCtx(ctx)
+  })
+
+  afterEach(() => clearRuntimeCtx())
+
+  function projectScopedSession(kind: SessionKind): string {
+    return createSessionRow(ctx, { projectId, kind, worktreePath: 'C:\\wt\\proj' }).id
+  }
+
+  it('a project session is told its scope, not the preparation agenda', async () => {
+    const sessionId = projectScopedSession('project')
+    const { json } = await post(mount(), 'session-start', {
+      sessionId,
+      payload: { session_id: 'cc-p1', hook_event_name: 'SessionStart', source: 'startup' },
+    })
+
+    const context: string = json.hookSpecificOutput.additionalContext
+    expect(json.hookSpecificOutput.hookEventName).toBe('SessionStart')
+    expect(context).toContain('[runcastle] project session for test')
+    expect(context).not.toContain('preparation session')
+    expect(context).not.toContain('Still unestablished')
+    expect(context).not.toContain('record_finding')
+  })
+
+  it('a project session still gets the whole lifecycle', async () => {
+    const sessionId = projectScopedSession('project')
+    await post(mount(), 'session-start', {
+      sessionId,
+      payload: {
+        session_id: 'cc-p2',
+        transcript_path: '/tmp/p.jsonl',
+        hook_event_name: 'SessionStart',
+        source: 'startup',
+      },
+    })
+
+    const live = getSessionRow(ctx, sessionId)
+    expect(live?.status).toBe('live')
+    expect(live?.ccSessionId).toBe('cc-p2')
+    expect(live?.transcriptPath).toBe('/tmp/p.jsonl')
+
+    const { json } = await post(mount(), 'session-end', {
+      sessionId,
+      payload: { hook_event_name: 'SessionEnd' },
+    })
+    expect(json).toEqual({})
+    expect(getSessionRow(ctx, sessionId)?.status).toBe('ended')
+  })
+
+  it('labels a project session as one on every turn', async () => {
+    const { json } = await post(mount(), 'user-prompt', {
+      sessionId: projectScopedSession('project'),
+      payload: { hook_event_name: 'UserPromptSubmit', prompt: 'hi' },
+    })
+    expect(json.hookSpecificOutput.additionalContext).toBe('[runcastle] project session')
+  })
+
+  it('leaves the prepare session its agenda, unchanged', async () => {
+    const sessionId = projectScopedSession('prepare')
+    const { json } = await post(mount(), 'session-start', {
+      sessionId,
+      payload: { session_id: 'cc-prep', hook_event_name: 'SessionStart', source: 'startup' },
+    })
+
+    const context: string = json.hookSpecificOutput.additionalContext
+    expect(context).toContain('[runcastle] preparation session for test')
+    expect(context).toContain('Still unestablished')
+    expect(context).toContain('record_finding')
+
+    const turn = await post(mount(), 'user-prompt', {
+      sessionId,
+      payload: { hook_event_name: 'UserPromptSubmit', prompt: 'hi' },
+    })
+    expect(turn.json.hookSpecificOutput.additionalContext).toBe(
+      '[runcastle] preparation session (project-scoped, no feature)',
+    )
+  })
+
+  it('announces each kind by its own name in its lifecycle events', async () => {
+    for (const [kind, noun] of [
+      ['project', 'project session'],
+      ['prepare', 'preparation session'],
+    ] as const) {
+      const sessionId = projectScopedSession(kind)
+      const before = listByProject(ctx, projectId, 0).at(-1)?.id ?? 0
+      await post(mount(), 'session-start', {
+        sessionId,
+        payload: { session_id: `cc-${kind}`, hook_event_name: 'SessionStart', source: 'startup' },
+      })
+      await post(mount(), 'session-end', { sessionId, payload: { hook_event_name: 'SessionEnd' } })
+
+      const messages = listByProject(ctx, projectId, before).map((e) => e.message)
+      expect(messages).toEqual([`${noun} live`, `${noun} ended`])
+    }
   })
 })

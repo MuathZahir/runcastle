@@ -17,7 +17,7 @@ import { seedFeature, seedProject } from './helpers/fixtures'
  * Per-step model resolution at launch (issue #48). A `spawn:false` launch still
  * renders the real `claude` argv into its `session.launched` event, so we can
  * observe the `--model` flag each session kind runs and prove the resolution
- * chain: `stepModels[kind]` wins over the per-project override, which wins over
+ * chain: the per-project override wins over `stepModels[kind]`, which wins over
  * the global default.
  */
 function git(cwd: string, ...args: string[]): string {
@@ -48,8 +48,13 @@ describe('launch model resolution (#48)', () => {
     cleanup.length = 0
   })
 
-  async function launchAndReadModel(slug: string): Promise<string> {
+  /** Launch an ideation session on a fresh project and report its `--model`. */
+  async function launchAndReadModel(slug: string, projectModel?: string): Promise<string> {
     const project = seedProject(ctx, repoPath)
+    // A launch reads the project fresh, so setting the row is enough.
+    if (projectModel) {
+      ctx.db.update(projects).set({ model: projectModel }).where(eq(projects.id, project.id)).run()
+    }
     const feature = seedFeature(ctx, project.id, { slug })
     await createFeatureBranch(project, slug)
     cleanup.push(worktreeDir(project.id, slug))
@@ -72,25 +77,16 @@ describe('launch model resolution (#48)', () => {
   })
 
   it('uses the per-project model override above the global default', async () => {
-    // A launch reads the project fresh, so setting the row is enough.
-    const project = seedProject(ctx, repoPath)
-    ctx.db.update(projects).set({ model: 'claude-sonnet-5' }).where(eq(projects.id, project.id)).run()
-    const feature = seedFeature(ctx, project.id, { slug: 'proj-model' })
-    await createFeatureBranch(project, 'proj-model')
-    cleanup.push(worktreeDir(project.id, 'proj-model'))
-    const { sessionId } = await launchSession(
-      ctx,
-      { featureId: feature.id, kind: 'ideation' },
-      { spawn: false },
-    )
-    cleanup.push(sessionDir(sessionId))
-    const launched = listAfter(ctx, feature.id, 0).find((e) => e.type === 'session.launched')
-    const command = String((launched?.data as { command?: string })?.command ?? '')
-    expect(command).toContain('--model claude-sonnet-5')
+    expect(await launchAndReadModel('proj-model', 'claude-sonnet-5')).toBe('claude-sonnet-5')
   })
 
-  it('a per-step model override wins the chain', async () => {
+  it('a global per-step model applies to a project that sets no model', async () => {
     ctx.config.stepModels = { ...ctx.config.stepModels, ideation: 'claude-haiku-4-5-20251001' }
     expect(await launchAndReadModel('step-model')).toBe('claude-haiku-4-5-20251001')
+  })
+
+  it("a project's model wins over the global per-step model", async () => {
+    ctx.config.stepModels = { ...ctx.config.stepModels, ideation: 'claude-haiku-4-5-20251001' }
+    expect(await launchAndReadModel('proj-beats-step', 'claude-sonnet-5')).toBe('claude-sonnet-5')
   })
 })

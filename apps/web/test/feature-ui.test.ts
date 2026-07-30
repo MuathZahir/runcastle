@@ -12,6 +12,7 @@ import {
   parseMapSections,
   reviewChecks,
   sessionDoneState,
+  shippedQaSessions,
   testDriveTaken,
   ticketConflictKickoff,
   triage,
@@ -197,12 +198,12 @@ describe('nextStep at implementation with no tickets', () => {
     })
   })
 
-  it('jumps to the live session instead of launching a second one', () => {
+  it('goes status-only while a session is live instead of launching a second one', () => {
     const live = [{ id: 's1', status: 'live', kind: 'revisit', ccSessionId: 'cc-1' }]
-    expect(nextStep(buildFull({ sessions: live }), { driving: false }).primary).toEqual({
-      label: 'Jump to the session',
-      kind: 'openGrill',
-    })
+    const ns = nextStep(buildFull({ sessions: live }), { driving: false })
+    expect(ns.title).toBe('No tickets to burn')
+    expect(ns.primary).toBeUndefined()
+    expect(ns.secondary).toEqual([])
   })
 
   it('still offers the burn once there is a ticket to burn', () => {
@@ -214,6 +215,126 @@ describe('nextStep at implementation with no tickets', () => {
       label: 'Burn 1 ticket',
       kind: 'burn',
     })
+  })
+})
+
+/**
+ * Next-step-bar affordance audit — the bar never counsels the human to do the
+ * agent's job. While a session is live the bar is a status line: no primary, no
+ * secondaries, because the session agent promotes the phase itself. The live
+ * check therefore wins over the gate check — `decisions.md` exists minutes into
+ * a grill, and the old precedence flipped the bar to "Promote the idea"
+ * mid-conversation. With no session live, a satisfied gate keeps `advance` as a
+ * quiet escape hatch behind the Resume/Start grill primary.
+ */
+describe('nextStep — live sessions go status-only', () => {
+  const auditFull = (opts: {
+    phase?: string
+    live?: boolean
+    satisfied?: boolean
+    gateId?: string
+    tickets?: number
+  }): FeatureFull =>
+    ({
+      feature: { id: 'f1', phase: opts.phase ?? 'ideation', mapped: false, status: 'active' },
+      tickets: Array.from({ length: opts.tickets ?? 0 }, (_, i) => ({
+        id: `t${i}`,
+        status: 'pending',
+        commits: [],
+      })),
+      sessions: opts.live ? [{ id: 's1', status: 'live', kind: 'ideation' }] : [],
+      runs: [],
+      gate: {
+        next: { id: opts.gateId ?? 'G1' },
+        satisfied: opts.satisfied ?? false,
+        reason: null,
+      },
+    }) as unknown as FeatureFull
+
+  const kinds = (ns: ReturnType<typeof nextStep>) =>
+    [ns.primary, ...ns.secondary].map((a) => a?.kind)
+
+  it('shows ideation status-only while a grill is live, even once G1 is satisfied', () => {
+    const ns = nextStep(auditFull({ live: true, satisfied: true }), { driving: false })
+    expect(ns.kick).toBe('GRILL LIVE')
+    expect(ns.primary).toBeUndefined()
+    expect(ns.secondary).toEqual([])
+    expect(kinds(ns)).not.toContain('advance')
+  })
+
+  it('demotes the ideation promotion to a secondary once the grill has ended', () => {
+    const ns = nextStep(auditFull({ satisfied: true }), { driving: false })
+    expect(ns.primary).toEqual({ label: 'Start grill session', kind: 'startGrill' })
+    expect(ns.secondary).toEqual([{ label: 'Promote to spec', kind: 'advance' }])
+  })
+
+  it('says Resume on the idle satisfied-gate primary when the conversation survives', () => {
+    const full = auditFull({ satisfied: true })
+    const resumable = {
+      ...full,
+      sessions: [{ id: 's1', status: 'ended', kind: 'ideation', ccSessionId: 'cc-1' }],
+    } as unknown as FeatureFull
+    const ns = nextStep(resumable, { driving: false })
+    expect(ns.primary).toEqual({ label: 'Resume grill session', kind: 'startGrill' })
+    expect(ns.secondary).toEqual([{ label: 'Promote to spec', kind: 'advance' }])
+  })
+
+  it('shows spec status-only while a session is live, even once the spec exists', () => {
+    const ns = nextStep(auditFull({ phase: 'spec', gateId: 'G2', live: true, satisfied: true }), {
+      driving: false,
+    })
+    expect(ns.kick).toBe('GRILL LIVE')
+    expect(ns.title).toBe('Writing the spec')
+    expect(ns.primary).toBeUndefined()
+    expect(ns.secondary).toEqual([])
+  })
+
+  it('demotes the spec approval to a secondary once the session has ended', () => {
+    const ns = nextStep(auditFull({ phase: 'spec', gateId: 'G2', satisfied: true }), {
+      driving: false,
+    })
+    expect(ns.primary).toEqual({ label: 'Open grill', kind: 'startGrill' })
+    expect(ns.secondary).toEqual([{ label: 'Approve spec → tickets', kind: 'advance' }])
+  })
+
+  it('keeps Burn primary at tickets while live — emit_tickets lands one batch', () => {
+    const live = nextStep(auditFull({ phase: 'tickets', gateId: 'G3', live: true, tickets: 2 }), {
+      driving: false,
+    })
+    expect(live.primary).toEqual({ label: 'Burn 2 tickets', kind: 'burn' })
+    expect(live.secondary).toEqual([])
+
+    const idle = nextStep(auditFull({ phase: 'tickets', gateId: 'G3', tickets: 2 }), {
+      driving: false,
+    })
+    expect(idle.primary).toEqual({ label: 'Burn 2 tickets', kind: 'burn' })
+    expect(idle.secondary).toEqual([{ label: 'Revisit', kind: 'revisit' }])
+  })
+
+  it('waits status-only for the first tickets while the session is emitting them', () => {
+    const ns = nextStep(auditFull({ phase: 'tickets', gateId: 'G3', live: true }), {
+      driving: false,
+    })
+    expect(ns.kick).toBe('WAITING')
+    expect(ns.title).toBe('Emitting tickets')
+    expect(ns.primary).toBeUndefined()
+    expect(ns.secondary).toEqual([])
+  })
+
+  it('still offers a grill to emit the first tickets when nothing is live', () => {
+    const ns = nextStep(auditFull({ phase: 'tickets', gateId: 'G3' }), { driving: false })
+    expect(ns.primary).toEqual({ label: 'Open grill to emit tickets', kind: 'startGrill' })
+  })
+
+  it('never offers the scroll-to-terminal action in any live state', () => {
+    for (const phase of ['ideation', 'spec', 'tickets']) {
+      for (const tickets of [0, 2]) {
+        const ns = nextStep(auditFull({ phase, live: true, satisfied: true, tickets }), {
+          driving: false,
+        })
+        expect(kinds(ns)).not.toContain('openGrill')
+      }
+    }
   })
 })
 
@@ -403,18 +524,20 @@ describe('nextStep at ideation on a later lap', () => {
     expect(ns.primary).toEqual({ label: 'Resume lap 3 session', kind: 'revisit' })
   })
 
-  it('shows the live lap session as the lap`s work, not a generic grill', () => {
+  it('shows the live lap session status-only, as the lap`s work', () => {
     const ns = nextStep(
       lapFull({ lap: 2, sessions: [{ id: 's1', status: 'live', kind: 'revisit' }] }),
       { driving: false },
     )
     expect(ns.title).toBe('Lap 2 in progress')
-    expect(ns.primary).toEqual({ label: 'Jump to the lap session', kind: 'openGrill' })
+    expect(ns.primary).toBeUndefined()
+    expect(ns.secondary).toEqual([])
   })
 
-  it('leaves lap 1 exactly as it was — a satisfied G1 still promotes', () => {
+  it('leaves lap 1 exactly as it was — a satisfied G1 still offers the promotion', () => {
     const ns = nextStep(lapFull({ lap: 1 }), { driving: false })
-    expect(ns.primary?.kind).toBe('advance')
+    expect(ns.primary?.kind).toBe('startGrill')
+    expect(ns.secondary.map((a) => a.kind)).toContain('advance')
   })
 })
 
@@ -1344,5 +1467,48 @@ describe('liveSessionBlocker', () => {
       liveSessionBlocker(sessions([{ id: 'sess_1', status: 'live', kind: 'waypoint' }]), ws)
         ?.waypointTitle,
     ).toBeUndefined()
+  })
+})
+
+/**
+ * "Ask a question" lives on the shipped bar, so the terminal it opens has to
+ * appear in the shipped body — but only the Q&A conversation, and only when there
+ * is one worth showing: a shipped feature is full of ended pipeline sessions, and
+ * a quiet one must stay the plain hero. This is the derivation the body renders
+ * through.
+ */
+describe('shippedQaSessions', () => {
+  const sessions = (rows: unknown[]) => rows as FeatureFull['sessions']
+
+  it('shows a live qa session', () => {
+    const rows = sessions([{ id: 's1', status: 'live', kind: 'qa', ccSessionId: null }])
+    expect(shippedQaSessions(rows)).toEqual(rows)
+  })
+
+  it('shows an ended qa session whose conversation is still on disk', () => {
+    const rows = sessions([{ id: 's1', status: 'ended', kind: 'qa', ccSessionId: 'cc-qa' }])
+    expect(shippedQaSessions(rows)).toEqual(rows)
+  })
+
+  it('shows nothing for an ended qa session that never reached live (no cc id)', () => {
+    const rows = sessions([{ id: 's1', status: 'ended', kind: 'qa', ccSessionId: null }])
+    expect(shippedQaSessions(rows)).toEqual([])
+  })
+
+  it('shows nothing on a shipped feature that was never asked a question', () => {
+    // Every pipeline session is ended and resumable by the time a feature ships —
+    // those belong to the phase bodies that own them, not to the shipped hero.
+    const rows = sessions([
+      { id: 's1', status: 'ended', kind: 'ideation', ccSessionId: 'cc-1' },
+      { id: 's2', status: 'ended', kind: 'revisit', ccSessionId: 'cc-2' },
+    ])
+    expect(shippedQaSessions(rows)).toEqual([])
+    expect(shippedQaSessions(sessions([]))).toEqual([])
+  })
+
+  it('keeps only the qa rows when the feature also has other sessions', () => {
+    const qa = { id: 's2', status: 'live', kind: 'qa', ccSessionId: null }
+    const rows = sessions([{ id: 's1', status: 'ended', kind: 'ideation', ccSessionId: 'cc-1' }, qa])
+    expect(shippedQaSessions(rows)).toEqual([qa])
   })
 })

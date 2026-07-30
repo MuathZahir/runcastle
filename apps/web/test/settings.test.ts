@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   describeField,
+  effectiveStepModel,
   globalRows,
   projectRows,
   stepModelRows,
@@ -155,6 +156,36 @@ describe('per-step model rows (#48)', () => {
     expect(keys).toContain('stepModels.implement')
     expect(keys).not.toContain('stepModels.smoke')
     expect(keys).not.toContain('stepModels.review')
+  })
+})
+
+describe('effectiveStepModel — mirrors core resolveModel', () => {
+  it("prefers the project's own model over a global step model", () => {
+    const v = view([
+      { key: 'model', value: 'project-model', source: 'project', scope: 'project' },
+      { key: 'stepModels.implement', value: 'step-model', source: 'file' },
+    ])
+    expect(effectiveStepModel(v, 'implement')).toBe('project-model')
+  })
+
+  it('uses the global step model when the project sets no model of its own', () => {
+    const v = view([
+      { key: 'model', value: 'global-default', source: 'file', scope: 'project' },
+      { key: 'stepModels.implement', value: 'step-model', source: 'file' },
+    ])
+    expect(effectiveStepModel(v, 'implement')).toBe('step-model')
+  })
+
+  it('falls back to the default model when the step is unset', () => {
+    const v = view([
+      { key: 'model', value: 'global-default', source: 'file' },
+      { key: 'stepModels.implement', value: null, source: 'default' },
+    ])
+    expect(effectiveStepModel(v, 'implement')).toBe('global-default')
+  })
+
+  it('reports nothing while the view is still loading', () => {
+    expect(effectiveStepModel(undefined, 'implement')).toBeUndefined()
   })
 })
 

@@ -2201,8 +2201,8 @@ async function realExecuteTicketRun(
 /**
  * Resolve production deps: real config, token from `~/.runcastle/.env`, real
  * run. The burner is the `implement` step (issue #48): its model resolves
- * through `resolveModel` — a per-run override (smoke) wins over the step
- * override, the per-project override, then the global default. One serial merge
+ * through `resolveModel` — a per-run override (smoke) wins over the per-project
+ * override, the global step override, then the global default. One serial merge
  * queue is created per run and shared by every ticket's execute closure, so
  * landings on the feature branch never overlap.
  */

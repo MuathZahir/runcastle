@@ -1,4 +1,5 @@
 import { CURATED_MODELS, MODEL_STEPS } from '@runcastle/core'
+import type { ModelStep } from '@runcastle/core'
 import type { SettingField, SettingsView } from './api'
 
 /**
@@ -78,7 +79,7 @@ const META: Record<string, FieldMeta> = {
   },
   model: {
     label: 'Default model',
-    help: 'Claude model every step inherits unless overridden below.',
+    help: "Claude model every step inherits. A project's own model wins over the per-step models below.",
     control: 'select',
     options: MODEL_OPTIONS,
   },
@@ -402,6 +403,28 @@ export function stepModelRows(view: SettingsView): SettingRow[] {
   return set
     .map((f) => describeField(f))
     .sort((a, b) => STEP_KEYS.indexOf(a.key) - STEP_KEYS.indexOf(b.key))
+}
+
+/**
+ * Which model a step will actually run, read off a project-scoped `settings.get`
+ * view — the view-side mirror of core's `resolveModel`: the project's own model
+ * wins, else a global per-step model, else the default model. Returns undefined
+ * while the view is still loading.
+ */
+export function effectiveStepModel(
+  view: SettingsView | undefined,
+  step: ModelStep,
+): string | undefined {
+  const find = (key: string): SettingField | undefined => view?.fields.find((f) => f.key === key)
+  const model = find('model')
+  // A step model counts only when actually set in the config file; an unset one
+  // reports the schema default and must not shadow the default model.
+  const stepModel = find(`${STEP_PREFIX}${step}`)
+  const chosen =
+    (model?.source === 'project' ? model : undefined) ??
+    (stepModel?.source === 'file' ? stepModel : undefined) ??
+    model
+  return typeof chosen?.value === 'string' ? chosen.value : undefined
 }
 
 /** Step keys not yet set — the choices offered by the "add override" control. */
