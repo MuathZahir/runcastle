@@ -1,5 +1,5 @@
 import type { PreparedKey, Project, ProjectFinding } from '@runcastle/core'
-import { and, desc, eq } from 'drizzle-orm'
+import { and, desc, eq, inArray } from 'drizzle-orm'
 import type { AppCtx } from '../db/types'
 import { events, sessions } from '../db/schema'
 import { hasCompletedProjectSession } from '../launcher/sessions'
@@ -55,11 +55,17 @@ export function isPrepared(ctx: AppCtx, project: Project): boolean {
  * baseline established a year ago reads exactly like one established this
  * morning. The date is what makes "re-prepare" a judgement rather than a guess.
  *
- * Sessions carry no timestamp of their own, so the answer comes from the
- * `session.ended` event that closed one — the row that makes `prepared` true is
- * the row that dates it. Read in two steps rather than one join because the
- * session id lives inside the event's JSON payload, and the alternative is
- * `json_extract` in a query that has to run on two different sqlite drivers.
+ * Sessions carry no timestamp of their own, so the answer comes from the event
+ * that closed one — the row that makes `prepared` true is the row that dates it.
+ * Both closing events count: a terminal the human closed emits `session.ended`,
+ * but a terminal still open when the server stopped is closed at the next boot
+ * with `session.reconciled`, which is how a good many of them really end. Taking
+ * only the first would leave a prepared project claiming no conversation ever
+ * ran, dated by nothing.
+ *
+ * Read in two steps rather than one join because the session id lives inside the
+ * event's JSON payload, and the alternative is `json_extract` in a query that has
+ * to run on two different sqlite drivers.
  */
 export function preparedAt(ctx: AppCtx, projectId: string): number | null {
   const prepareSessions = new Set(
@@ -72,12 +78,17 @@ export function preparedAt(ctx: AppCtx, projectId: string): number | null {
   )
   if (prepareSessions.size === 0) return null
 
-  // Project-scoped ends only — a feature session's end carries a feature id, and
-  // there are few enough of these that newest-first finds the answer immediately.
+  // This project's session closings, newest first — few enough that the answer
+  // is found in the first row or two.
   const ends = ctx.db
     .select({ ts: events.ts, data: events.data })
     .from(events)
-    .where(and(eq(events.projectId, projectId), eq(events.type, 'session.ended')))
+    .where(
+      and(
+        eq(events.projectId, projectId),
+        inArray(events.type, ['session.ended', 'session.reconciled']),
+      ),
+    )
     .orderBy(desc(events.ts))
     .all()
 
@@ -95,9 +106,10 @@ export interface PrepView {
   /** Nothing left to establish, or a conversation has already been through it. */
   prepared: boolean
   /**
-   * When the last preparation conversation ended (epoch ms), or `null` — either
-   * none ever ran, or the project is prepared only because nothing was left to
-   * establish. A `prepared` project with no date has no baseline to age.
+   * When the last preparation conversation closed (epoch ms), or `null` when none
+   * has — a project can be `prepared` with no conversation behind it, because
+   * nothing was left to establish. A `prepared` project with no date has no
+   * baseline to age.
    */
   preparedAt: number | null
 }

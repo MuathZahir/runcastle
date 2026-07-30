@@ -15,6 +15,7 @@ import {
   mostRecentResumableSession,
 } from '../src/launcher/sessions'
 import { launchPrepareSession } from '../src/launcher/launcher'
+import { reconcileStaleSessions } from '../src/launcher/reconcile'
 import { endSession } from '../src/pty/end-session'
 import { emitForSession } from '../src/services/events'
 import { preparedValue } from '../src/services/findings'
@@ -226,6 +227,19 @@ describe('preparedAt', () => {
     stampEnd(newer.id, 2_000)
 
     expect(preparedAt(ctx, PROJECT_ID)).toBe(2_000)
+  })
+
+  /**
+   * How a good many preparations really end: the terminal was still open when
+   * the server stopped, and the next boot closes the row. Counting only the
+   * human's own "end session" would leave those projects prepared, dated by
+   * nothing, and told no conversation was ever on record.
+   */
+  it('counts a session the server closed at boot', () => {
+    prepareSession()
+    expect(reconcileStaleSessions(ctx)).toHaveLength(1)
+
+    expect(preparedAt(ctx, PROJECT_ID)).not.toBeNull()
   })
 
   /**

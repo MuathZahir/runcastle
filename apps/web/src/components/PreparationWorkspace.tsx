@@ -178,7 +178,7 @@ function PrepCallToAction({
         <div className="prep-cta-sub">
           {preparedAt !== null
             ? `Prepared ${relativeAge(preparedAt)}. `
-            : 'Never established in a conversation — every field already had a value. '}
+            : 'No preparation conversation on record — every field already had a value. '}
           Repo facts drift: commands get renamed, the test baseline moves, a new service needs a
           port. Going again re-measures them with you there.
         </div>
