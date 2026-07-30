@@ -2739,6 +2739,22 @@ select.settings-input { cursor: pointer; }
   gap: 6px;
   max-width: 56ch;
 }
+/* Prepared, the call-to-action carries what the screen used to stack below it —
+   the reason to act and what is already established — so both are constrained
+   to the reading width and left-aligned inside the centred column. */
+.prep-cta .prep-warn,
+.prep-cta .pw-frame {
+  width: 100%;
+  max-width: 62ch;
+  text-align: left;
+}
+/* Two ways to go again, side by side: resume is the cheap one and stays solid,
+   fresh is the deliberate one. */
+.prep-cta-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
 .prep-cta-open li {
   font-size: 11px;
   color: var(--text-3);
@@ -2749,7 +2765,8 @@ select.settings-input { cursor: pointer; }
 }
 
 /* The rail's foot, once features exist. Quiet enough not to compete with the
-   triage lanes, present enough not to be forgotten again. */
+   triage lanes, present enough not to be forgotten again. Permanent: `is-todo`
+   is a job waiting, `is-done` is a door back to what was established. */
 .prep-nudge {
   flex: none;
   display: flex;
@@ -2773,6 +2790,12 @@ select.settings-input { cursor: pointer; }
   height: 7px;
   border-radius: 50%;
   background: var(--drive);
+}
+/* Done asks for nothing: a hollow dot reads as a marker, not a nudge. */
+.prep-nudge.is-done { color: var(--text-4); }
+.prep-nudge.is-done .prep-nudge-dot {
+  background: none;
+  box-shadow: inset 0 0 0 1px var(--text-4);
 }
 .prep-nudge-text { flex: 1; min-width: 0; }
 .prep-nudge-count {

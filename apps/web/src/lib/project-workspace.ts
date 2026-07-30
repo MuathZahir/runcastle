@@ -95,11 +95,85 @@ export function showsInspector(view: WorkspaceView, inspectorCollapsed: boolean)
 }
 
 /**
- * Whether the rail carries the preparation nudge at its foot. The demoted half
- * of the same call-to-action: once features exist, the whole-body version would
- * be in the way, but an unprepared project still needs remembering — so it
- * shrinks to a pinned row rather than disappearing back into settings.
+ * What the palette's Preparation row answers to. Every word someone might type
+ * looking for preparation, including the ones they type looking for it a SECOND
+ * time — "re-prepare", "redo", "re-run" all missed, which is how a finished
+ * preparation became unreachable for anyone who had not memorised the noun.
+ *
+ * 'talk'/'ask' are here because the conversation is reached THROUGH this row:
+ * the palette navigates, it never launches sessions, so searching for the
+ * conversation has to land you where its button is.
  */
-export function showsPrepNudge(state: { featureCount: number; prepared: boolean }): boolean {
-  return state.featureCount > 0 && !state.prepared
+const PREPARATION_TERMS =
+  'preparation prepare re-prepare reprepare redo re-run rerun again findings evidence stale project commands baseline talk ask secrets database'
+
+/**
+ * Whether the palette shows Preparation for `q` (already trimmed+lowercased).
+ * Substring-of-haystack, matching every other action row in the palette — the
+ * query is the needle, so a partial word still finds it.
+ */
+export function matchesPreparation(q: string): boolean {
+  return PREPARATION_TERMS.includes(q)
+}
+
+/**
+ * The rail foot's preparation row. `todo` before a preparation has run, `done`
+ * after — never absent.
+ *
+ * The row used to be a boolean nudge that vanished the moment preparation
+ * completed, and `prepared` is monotonic, so completing it once removed both
+ * preparation surfaces at the same instant and nothing represented a *finished*
+ * preparation. Findings went on rotting where only the settings overlay
+ * mentioned them, under a tooltip that said "re-prepare to refresh it" while
+ * offering no way to. A permanent resident costs one quiet row and answers both
+ * questions the vanishing one could not: what was established, and how to do it
+ * again.
+ */
+export interface PrepRailRow {
+  /** Never prepared (`todo`), or a preparation has been through it (`done`). */
+  variant: 'todo' | 'done'
+  /** Prepared keys still unset. */
+  count: number
+  /** Established findings whose measurements have drifted out of date. */
+  stale: number
+  /** The row's one line of copy. */
+  label: string
+  /** The number beside it: what is unanswered before, what has drifted after. */
+  badge: string | null
+  /** Why the row is there, spelled out on hover. */
+  title: string
+}
+
+/**
+ * The row, or `null` only while the prep view is still in flight — the two
+ * variants read as opposites, so guessing one before the answer lands would
+ * flash the wrong sentence on every first paint.
+ */
+export function prepRailRow(
+  view: { prepared: boolean; pendingCount: number; staleCount: number } | null | undefined,
+): PrepRailRow | null {
+  if (!view) return null
+  const { prepared, pendingCount, staleCount } = view
+  // Unprepared, the number is the size of the job. Prepared, the job is done and
+  // the only number worth interrupting for is what has since gone out of date.
+  if (!prepared)
+    return {
+      variant: 'todo',
+      count: pendingCount,
+      stale: staleCount,
+      label: 'Prepare this project',
+      badge: pendingCount > 0 ? String(pendingCount) : null,
+      title: `${pendingCount} repo fact${pendingCount === 1 ? '' : 's'} nobody has established yet — how to install, how to verify, what is already red`,
+    }
+  return {
+    variant: 'done',
+    count: pendingCount,
+    stale: staleCount,
+    label: 'Re-prepare the project',
+    badge: staleCount > 0 ? `${staleCount} stale` : null,
+    title:
+      staleCount > 0
+        ? `${staleCount} established fact${staleCount === 1 ? ' has' : 's have'} not been re-measured in a long time`
+        : "See what was established about this repo, or establish it again",
+  }
 }

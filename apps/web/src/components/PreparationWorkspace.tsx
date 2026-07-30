@@ -7,8 +7,9 @@ import {
   PREPARED_LABEL,
   describeFinding,
   isStale,
+  relativeAge,
 } from '../lib/settings'
-import type { PrepView } from '../lib/api'
+import type { PrepView, ProjectFinding } from '../lib/api'
 import { EndSessionButton } from './EndSessionButton'
 import { ErrorBoundary } from './ErrorBoundary'
 import { TerminalView } from './TerminalView'
@@ -111,84 +112,99 @@ export function PreparationWorkspace({
                 </ErrorBoundary>
               </div>
             </div>
-          ) : (
+          ) : view ? (
+            // Only once the view has answered: `prepared` decides between two
+            // headings that say opposite things, and guessing one flashes the
+            // wrong sentence on every first paint.
             <PrepCallToAction
+              prepared={view.prepared}
+              preparedAt={view.preparedAt}
               pending={pending}
-              anyEstablished={findings.length > 0}
+              findings={findings}
+              staleCount={staleCount}
               starting={talk.isPending}
               onStart={() => talk.mutate({ projectId })}
+              onStartFresh={() => talk.mutate({ projectId, fresh: true })}
             />
-          )}
+          ) : null}
 
-          {staleCount > 0 && (
-            <div className="prep-warn">
-              {staleCount} finding{staleCount === 1 ? ' has' : 's have'} not been re-measured in a
-              long time. A stale test baseline is worse than none — agents trust it and file their
-              own breakage under “already red on main”.
-            </div>
-          )}
-
-          {findings.length > 0 && (
-            <div className="pw-frame">
-              <div className="pw-frame-head">Established</div>
-              <ul className="prep-findings">
-                {findings.map((f) => (
-                  <li key={f.key} className={`prep-finding${isStale(f) ? ' is-stale' : ''}`}>
-                    <div className="prep-finding-head">
-                      <span className="prep-finding-key">{PREPARED_LABEL[f.key] ?? f.key}</span>
-                      {/* Three sources, and the distinction that matters is
-                          which ones a later conversation may replace. Only
-                          `yours` is locked; `verified` was established with you
-                          present but stays improvable. `proposed`/`measured` are
-                          the retired headless run's — kept because its rows
-                          outlive it, and a host-only key it never executed must
-                          not now read as if someone watched it run. */}
-                      <span
-                        className={`settings-badge${f.source === 'human' ? '' : ' is-override'}`}
-                        title={
-                          f.source === 'human'
-                            ? 'You set this by hand — preparation will never overwrite it'
-                            : f.source === 'session'
-                              ? 'Established in a conversation on your own machine'
-                              : HOST_ONLY_PREPARED.has(f.key)
-                                ? 'Read from config by an older automatic run, not executed'
-                                : 'Measured by an older automatic run, in a sandbox'
-                        }
-                      >
-                        {f.source === 'human'
-                          ? 'yours'
-                          : f.source === 'session'
-                            ? 'verified'
-                            : HOST_ONLY_PREPARED.has(f.key)
-                              ? 'proposed'
-                              : 'measured'}
-                      </span>
-                    </div>
-                    <div className="prep-finding-note">{describeFinding(f)}</div>
-                    {f.evidence && <div className="prep-finding-evidence mono">{f.evidence}</div>}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
+          {/* While a conversation is open the call-to-action is gone, so what it
+              carries has to stand on its own under the terminal. */}
+          {session && <PrepEvidence findings={findings} staleCount={staleCount} />}
         </div>
       </div>
     </section>
   )
 }
 
-/** The resting state: what is still open, and the one button that opens it. */
+/**
+ * The resting state — and it has two, because preparation does not end.
+ *
+ * Unprepared, this is the one thing to do: what is still open, and the button
+ * that opens it. Prepared, it is the door back — what was established, when, and
+ * the two ways to go again. That second state is the whole point of the change:
+ * `prepared` is monotonic, so the screen used to congratulate the human by
+ * removing every mention of preparation from the app, leaving a settings tooltip
+ * that said "re-prepare to refresh it" and no way to.
+ */
 function PrepCallToAction({
+  prepared,
+  preparedAt,
   pending,
-  anyEstablished,
+  findings,
+  staleCount,
   starting,
   onStart,
+  onStartFresh,
 }: {
+  prepared: boolean
+  preparedAt: number | null
   pending: readonly string[]
-  anyEstablished: boolean
+  findings: readonly ProjectFinding[]
+  staleCount: number
   starting: boolean
   onStart: () => void
+  onStartFresh: () => void
 }) {
+  const anyEstablished = findings.length > 0
+
+  if (prepared)
+    return (
+      <div className="prep-cta">
+        <div className="prep-cta-logo">
+          <LogoMark size={44} variant="outline" />
+        </div>
+        <div className="prep-cta-title">Re-prepare this project</div>
+        <div className="prep-cta-sub">
+          {preparedAt !== null
+            ? `Prepared ${relativeAge(preparedAt)}. `
+            : 'No preparation conversation on record — every field already had a value. '}
+          Repo facts drift: commands get renamed, the test baseline moves, a new service needs a
+          port. Going again re-measures them with you there.
+        </div>
+
+        {/* Hoisted above the buttons: on this screen the drifted baseline is the
+            reason to act, not a footnote under the action. A stale one is the
+            single actively harmful thing here — agents trust it and file their
+            own breakage under "already red on main". */}
+        <PrepEvidence findings={findings} staleCount={staleCount} />
+
+        <div className="prep-cta-actions">
+          <Button variant="solid" disabled={starting} onClick={onStart}>
+            {starting ? 'Opening…' : 'Resume'}
+          </Button>
+          <Button disabled={starting} onClick={onStartFresh}>
+            Start fresh
+          </Button>
+        </div>
+        <DimLine>
+          Resume picks your last preparation conversation back up. Start fresh opens one that has
+          never seen it — the honest choice when what it concluded is what you are re-checking.
+          Values you typed by hand are never overwritten either way.
+        </DimLine>
+      </div>
+    )
+
   return (
     <div className="prep-cta">
       <div className="prep-cta-logo">
@@ -218,6 +234,86 @@ function PrepCallToAction({
           ? 'Opening it again resumes your last preparation conversation.'
           : 'It runs on your machine, and asks before touching anything stateful.'}
       </DimLine>
+
+      <PrepEvidence findings={findings} staleCount={staleCount} />
+    </div>
+  )
+}
+
+/**
+ * What preparation has to show for itself, in the one order that reads: why to
+ * act, then what is already there. Rendered under the terminal while a
+ * conversation is open, under the button while there is still a job to do, and
+ * above the buttons once there is not.
+ */
+function PrepEvidence({
+  findings,
+  staleCount,
+}: {
+  findings: readonly ProjectFinding[]
+  staleCount: number
+}) {
+  return (
+    <>
+      {staleCount > 0 && <StaleWarning count={staleCount} />}
+      {findings.length > 0 && <EstablishedFrame findings={findings} />}
+    </>
+  )
+}
+
+/** Why a re-prepare is worth the interruption: the baseline has gone off. */
+function StaleWarning({ count }: { count: number }) {
+  return (
+    <div className="prep-warn">
+      {count} finding{count === 1 ? ' has' : 's have'} not been re-measured in a long time. A stale
+      test baseline is worse than none — agents trust it and file their own breakage under “already
+      red on main”.
+    </div>
+  )
+}
+
+/** What preparation established, with the provenance that says whether to trust it. */
+function EstablishedFrame({ findings }: { findings: readonly ProjectFinding[] }) {
+  return (
+    <div className="pw-frame">
+      <div className="pw-frame-head">Established</div>
+      <ul className="prep-findings">
+        {findings.map((f) => (
+          <li key={f.key} className={`prep-finding${isStale(f) ? ' is-stale' : ''}`}>
+            <div className="prep-finding-head">
+              <span className="prep-finding-key">{PREPARED_LABEL[f.key] ?? f.key}</span>
+              {/* Three sources, and the distinction that matters is which ones a
+                  later conversation may replace. Only `yours` is locked;
+                  `verified` was established with you present but stays
+                  improvable. `proposed`/`measured` are the retired headless
+                  run's — kept because its rows outlive it, and a host-only key it
+                  never executed must not now read as if someone watched it run. */}
+              <span
+                className={`settings-badge${f.source === 'human' ? '' : ' is-override'}`}
+                title={
+                  f.source === 'human'
+                    ? 'You set this by hand — preparation will never overwrite it'
+                    : f.source === 'session'
+                      ? 'Established in a conversation on your own machine'
+                      : HOST_ONLY_PREPARED.has(f.key)
+                        ? 'Read from config by an older automatic run, not executed'
+                        : 'Measured by an older automatic run, in a sandbox'
+                }
+              >
+                {f.source === 'human'
+                  ? 'yours'
+                  : f.source === 'session'
+                    ? 'verified'
+                    : HOST_ONLY_PREPARED.has(f.key)
+                      ? 'proposed'
+                      : 'measured'}
+              </span>
+            </div>
+            <div className="prep-finding-note">{describeFinding(f)}</div>
+            {f.evidence && <div className="prep-finding-evidence mono">{f.evidence}</div>}
+          </li>
+        ))}
+      </ul>
     </div>
   )
 }

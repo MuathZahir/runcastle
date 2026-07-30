@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import type { FeatureListItem } from '../lib/api'
 import type { ProjectNavApi } from '../lib/use-project-nav'
+import { matchesPreparation } from '../lib/project-workspace'
 import { IconFolder, IconPlus, IconSettings } from '../icons'
 
 /**
@@ -91,12 +92,10 @@ export function CommandPalette(props: CommandPaletteProps) {
   const showSettings = 'settings preferences'.includes(q)
   // Preparation is project-scoped and has no home in the feature pipeline, so
   // it needs a way in that does not depend on the project being unprepared and
-  // featureless (which is when the workspace offers it unprompted).
-  // 'talk'/'ask' included because the conversation is reached THROUGH this
-  // surface — the palette navigates, it does not launch sessions, so searching
-  // for the conversation has to land you where its button is.
-  const showPreparation =
-    'preparation prepare project commands baseline talk ask secrets database'.includes(q)
+  // featureless (which is when the workspace offers it unprompted). Its terms
+  // live in lib/ because they are the searchable half of preparation's
+  // discoverability, and they are tested there.
+  const showPreparation = matchesPreparation(q)
 
   const rows = useMemo<Row[]>(() => {
     const r: Row[] = filteredFeatures.map((f) => ({ kind: 'feature' as const, feature: f }))

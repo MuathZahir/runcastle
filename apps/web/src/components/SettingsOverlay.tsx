@@ -159,9 +159,11 @@ function Field({ row, projectId }: { row: SettingRow; projectId?: string }) {
         )}
         {row.overridden && <span className="settings-badge is-override">overridden</span>}
         {row.stale && (
+          // Says where, because for a long time it said "re-prepare to refresh
+          // it" while offering no way to and nothing on screen mentioning one.
           <span
             className="settings-badge is-warn"
-            title="Measured a long time ago — re-prepare to refresh it"
+            title="Measured a long time ago — “Re-prepare the project”, at the foot of the features rail, refreshes it"
           >
             stale
           </span>
