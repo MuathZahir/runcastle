@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import {
   PROJECT_BRANCH,
+  prepRailRow,
   projectBranchNote,
   projectSessionState,
   showsInspector,
-  showsPrepNudge,
   workspaceView,
 } from '../src/lib/project-workspace'
 import type { ProjectSession } from '../src/lib/api'
@@ -77,12 +77,49 @@ describe('workspaceView', () => {
   })
 })
 
-describe('showsPrepNudge', () => {
-  // The demoted half: exactly the case the whole-body version gives up.
-  it('is the unprepared project that already has features', () => {
-    expect(showsPrepNudge({ featureCount: 2, prepared: false })).toBe(true)
-    expect(showsPrepNudge({ featureCount: 0, prepared: false })).toBe(false)
-    expect(showsPrepNudge({ featureCount: 2, prepared: true })).toBe(false)
+describe('prepRailRow', () => {
+  /**
+   * The row that replaced the vanishing nudge. `prepared` is monotonic, so a
+   * boolean gate on it removed the rail row and the whole-body call-to-action at
+   * the same instant preparation succeeded — leaving nothing that represented a
+   * finished preparation and no way back to it. Both variants render.
+   */
+  it('carries the job while it is open', () => {
+    expect(prepRailRow({ prepared: false, pendingCount: 8, staleCount: 0 })).toMatchObject({
+      variant: 'todo',
+      count: 8,
+      label: 'Prepare this project',
+      badge: '8',
+    })
+  })
+
+  it('stays on as a way back once the job is done', () => {
+    expect(prepRailRow({ prepared: true, pendingCount: 0, staleCount: 0 })).toMatchObject({
+      variant: 'done',
+      label: 'Re-prepare the project',
+      badge: null,
+    })
+  })
+
+  // Prepared is not the same as current: the one number worth a badge afterwards
+  // is what has silently rotted, since agents trust a stale baseline.
+  it('badges drift rather than pending count once prepared', () => {
+    expect(prepRailRow({ prepared: true, pendingCount: 3, staleCount: 2 })).toMatchObject({
+      variant: 'done',
+      stale: 2,
+      badge: '2 stale',
+    })
+  })
+
+  it('drops the badge when there is no number to report', () => {
+    expect(prepRailRow({ prepared: false, pendingCount: 0, staleCount: 0 })?.badge).toBeNull()
+  })
+
+  // The two variants read as opposites, so there is no safe guess before the
+  // answer lands — "Re-prepare" flashing on an unprepared project is a lie.
+  it('renders nothing at all until the prep view answers', () => {
+    expect(prepRailRow(undefined)).toBeNull()
+    expect(prepRailRow(null)).toBeNull()
   })
 })
 
