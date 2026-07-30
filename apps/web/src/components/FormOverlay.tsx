@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { Button } from '../ui'
 
 /**
@@ -25,10 +25,17 @@ export function FormOverlay({
   children: (dismiss: () => void) => ReactNode
 }) {
   const [confirming, setConfirming] = useState(false)
+  const cardRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return
+      // The palette and the settings dialog can be open ON TOP of this form,
+      // and they own the Escape that closes them. Answer only when the focus is
+      // ours — or nowhere, which is where a click on our own backdrop leaves it.
+      const focused = document.activeElement
+      const mine = focused === null || focused === document.body || !!cardRef.current?.contains(focused)
+      if (!mine) return
       // Escape out of the question first — it is the smaller of the two things
       // open, and answering it with the same key that raised it would be a trap.
       if (confirming) setConfirming(false)
@@ -53,7 +60,7 @@ export function FormOverlay({
         if (e.target === e.currentTarget) dismiss()
       }}
     >
-      <div className="nf-card">
+      <div className="nf-card" ref={cardRef}>
         {children(dismiss)}
         {confirming && (
           <div className="nf-discard" role="alert">
