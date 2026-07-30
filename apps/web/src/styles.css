@@ -1159,7 +1159,7 @@ button {
   margin-bottom: 12px;
 }
 .body-title .section-title { padding: 0; }
-.body-hint { font-size: 12px; color: var(--text-3); text-wrap: pretty; }
+.body-hint { font-size: 12px; color: var(--text-3); text-wrap: pretty; margin-bottom: 12px; }
 .body-meta { font-family: var(--mono); font-size: 11.5px; color: var(--text-2); }
 
 /* generic bordered surface inside a body */
@@ -2250,6 +2250,14 @@ details.wp-group-done > summary { cursor: pointer; list-style: revert; }
   letter-spacing: 0.09em;
   text-transform: uppercase;
   color: var(--text-3);
+  margin-bottom: 8px;
+}
+/* Plain-language gloss under a rail cap (finding F16). */
+.insp-hint {
+  font-size: 11.5px;
+  color: var(--text-3);
+  line-height: 1.5;
+  text-wrap: pretty;
   margin-bottom: 8px;
 }
 .gate-shipped {
@@ -3430,6 +3438,17 @@ button.tb-runs { cursor: pointer; }
 .wizard-step { display: flex; align-items: center; gap: 6px; }
 .wizard-step.is-current { color: var(--accent-hi); }
 .wizard-step.is-done { color: var(--text-2); }
+/* Satisfied by the host before the user arrived — a checkmark, not a skipped row. */
+.wizard-step.is-passed { color: var(--ok); }
+.wizard-passed {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+  font-size: 11.5px;
+  color: var(--text-3);
+}
+.wizard-passed > svg { color: var(--ok); flex: none; }
 .wizard-step-dot {
   width: 7px;
   height: 7px;

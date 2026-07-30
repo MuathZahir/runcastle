@@ -20,6 +20,7 @@ import {
   type PipelineStep,
   type ReasonPrompt,
 } from '../lib/feature-ui'
+import { lapExplainer } from '../lib/vocabulary'
 import { IconBranch } from '../icons'
 import { GrillBody } from './bodies/GrillBody'
 import { ReviewBody } from './bodies/ReviewBody'
@@ -432,7 +433,7 @@ function PipelineStepper({
       {/* A feature merged on lap 1 looks exactly like the old linear flow
           (ADR-0010 §4) — the chip only appears once Iterate has looped. */}
       {lap > 1 && (
-        <span className="pipeline-lap" title="Iterate has looped this pipeline">
+        <span className="pipeline-lap" title={lapExplainer(lap)}>
           Lap {lap}
         </span>
       )}

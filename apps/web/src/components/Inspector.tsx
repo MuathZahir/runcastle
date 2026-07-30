@@ -4,6 +4,7 @@ import { useToast } from '../lib/toast'
 import { useEventLog } from '../lib/events'
 import type { DocSummary, GateState } from '../lib/api'
 import { relTime } from '../lib/format'
+import { GATE_EXPLAINER } from '../lib/vocabulary'
 import { Button, DimLine } from '../ui'
 import { IconCheck, IconDoc } from '../icons'
 import { DocPeek } from './DocPeek'
@@ -105,6 +106,9 @@ function CurrentGate({ featureId, gate }: { featureId: string; gate: GateState }
   return (
     <section className="insp-section">
       <div className="insp-cap">Current gate</div>
+      {/* "G4 / Tickets terminal" says nothing about why the pipeline is holding
+          still, or who it is holding for (finding F16). */}
+      <div className="insp-hint">{GATE_EXPLAINER}</div>
       {gate.next === null ? (
         <div className="gate-shipped">
           <IconCheck size={13} />
