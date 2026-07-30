@@ -96,9 +96,11 @@ export function Workspace({
     },
     onError: (e) => toast.push(e.message),
   })
-  // Rethink is the review verb that starts the next lap (ADR-0010 §3): the
+  // Iterate is the review verb that starts the next lap (ADR-0010 §3; the
+  // procedure keeps its `rethink` name so the timeline stays continuous): the
   // server bumps the lap, drops the feature back to ideation and opens the lap
-  // session in one call, so the bar just snaps the view back to live.
+  // session in one call — or rolls all of it back — so the bar just snaps the
+  // view back to live.
   const rethink = trpc.feature.rethink.useMutation({
     onSuccess: () => {
       invalidate()
@@ -428,9 +430,9 @@ function PipelineStepper({
         </Fragment>
       ))}
       {/* A feature merged on lap 1 looks exactly like the old linear flow
-          (ADR-0010 §4) — the chip only appears once Rethink has looped. */}
+          (ADR-0010 §4) — the chip only appears once Iterate has looped. */}
       {lap > 1 && (
-        <span className="pipeline-lap" title="Rethink has looped this pipeline">
+        <span className="pipeline-lap" title="Iterate has looped this pipeline">
           Lap {lap}
         </span>
       )}
@@ -515,12 +517,16 @@ function NextStepBar({
           </div>
         ) : (
           <>
+            {/* `a.disabled` is the reason the server would refuse this action in
+                the current state — shown as the tooltip beside the dead button,
+                so the user reads why instead of hunting for a vanished verb. */}
             {ns.secondary.map((a, i) => (
               <Button
                 key={i}
                 variant="ghost"
                 className="btn-xs"
-                disabled={busy}
+                disabled={busy || !!a.disabled}
+                title={a.disabled}
                 onClick={() => click(a)}
               >
                 {a.label}
@@ -529,7 +535,8 @@ function NextStepBar({
             {ns.primary && (
               <Button
                 variant={ns.primary.danger ? 'danger' : 'solid'}
-                disabled={busy}
+                disabled={busy || !!ns.primary.disabled}
+                title={ns.primary.disabled}
                 onClick={() => click(ns.primary!)}
               >
                 {busy ? 'Working…' : ns.primary.label}

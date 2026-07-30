@@ -386,6 +386,13 @@ export interface NextAction {
   danger?: boolean
   /** Set when the action needs a reason string before it can fire. */
   reason?: ReasonPrompt
+  /**
+   * Why this action cannot fire right now — the server would refuse it in this
+   * state. Set means shown-but-disabled, with this sentence as the reason: an
+   * action that vanishes leaves the user hunting for it, and one that fails on
+   * click teaches nothing (findings F3).
+   */
+  disabled?: string
 }
 
 export interface NextStep {
@@ -618,6 +625,39 @@ export function nextStep(
           fog,
         }
       }
+      // From lap 2 on, ideation belongs to the LAP's session (SPEC §15.2): one
+      // terminal digests what the drive taught, amends the docs, emits this lap's
+      // tickets and advances itself through ideation → spec → tickets. So the bar
+      // never offers a bare promote here — lap 1's decisions.md is still on disk,
+      // and promoting on it skips the whole lap and dead-ends at `tickets` with
+      // nothing to burn (findings F4). The lap-scoped gates refuse it server-side;
+      // this is the same truth in the copy, pointing at the session instead.
+      if (feature.lap > 1) {
+        if (live) {
+          return {
+            kick: 'LAP LIVE',
+            title: `Lap ${feature.lap} in progress`,
+            desc: 'The lap session digests the drive, amends the docs and emits this lap’s tickets.',
+            primary: { label: 'Jump to the lap session', kind: 'openGrill' },
+            secondary: [],
+            busy: false,
+          }
+        }
+        const resumableLap = sessions.some((s) => s.status === 'ended' && !!s.ccSessionId)
+        return {
+          kick: 'NEXT STEP',
+          title: `Work lap ${feature.lap}`,
+          desc: `Lap ${feature.lap} is open — its session amends the docs and emits this lap’s tickets, then hands back to Burn. Promoting is refused until it has run.`,
+          primary: {
+            label: resumableLap
+              ? `Resume lap ${feature.lap} session`
+              : `Start lap ${feature.lap} session`,
+            kind: 'revisit',
+          },
+          secondary: [],
+          busy: false,
+        }
+      }
       if (canAdvance) {
         return {
           kick: 'NEXT STEP',
@@ -762,14 +802,27 @@ export function nextStep(
     }
     case 'review': {
       // Review offers three verbs (ADR-0010 §3): Fix — the Burn primary below,
-      // for when the spec was right and the code wasn't; Rethink — the spec was
-      // wrong, so start lap N+1 back at ideation; Merge & ship. Test drive stays
-      // available throughout. Rethink opens the lap's terminal, and there is one
-      // terminal per feature, so it's hidden while any session is live.
+      // for when the spec was right and the code wasn't; Iterate — the spec was
+      // wrong, so start lap N+1 back at ideation (the `rethink` procedure keeps
+      // the internal name, for continuity of the timeline); Merge & ship. Test
+      // drive stays available throughout. Iterate opens the lap's terminal, and
+      // there is one terminal per feature, so it's hidden while any session is
+      // live — and disabled while the drive holds the branch its worktree needs,
+      // which the server refuses outright (findings F3).
       const testDriveAction: NextAction = ctx.driving
         ? { label: 'Stop test drive', kind: 'testDriveStop' }
         : { label: 'Start test drive', kind: 'testDriveStart' }
-      const rethink: NextAction[] = live ? [] : [{ label: 'Rethink', kind: 'rethink' }]
+      const iterate: NextAction[] = live
+        ? []
+        : [
+            {
+              label: 'Iterate',
+              kind: 'rethink',
+              ...(ctx.driving
+                ? { disabled: 'Stop the test drive first — the branch is checked out' }
+                : {}),
+            },
+          ]
 
       // Fix tickets are non-terminal — while any exist, the review loops back
       // through a burn (CONTEXT decision #7): Burn is promoted to primary, and
@@ -782,7 +835,7 @@ export function nextStep(
             ? 'Test-driving the branch — burn the fix tickets when you’re ready.'
             : `${pending} fix ticket${pending === 1 ? '' : 's'} ready — burn to run them, then review again.`,
           primary: { label: `Burn ${pending} ticket${pending === 1 ? '' : 's'}`, kind: 'burn' },
-          secondary: [{ label: 'Merge & ship', kind: 'merge' }, testDriveAction, ...rethink],
+          secondary: [{ label: 'Merge & ship', kind: 'merge' }, testDriveAction, ...iterate],
           busy: false,
         }
       }
@@ -797,7 +850,7 @@ export function nextStep(
         title: ctx.driving ? 'Merge when it looks right' : 'Test drive, then ship',
         desc,
         primary: { label: 'Merge & ship', kind: 'merge' },
-        secondary: [testDriveAction, ...rethink],
+        secondary: [testDriveAction, ...iterate],
         busy: false,
       }
     }

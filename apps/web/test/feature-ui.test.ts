@@ -114,9 +114,9 @@ describe('nextStep — Resume vs Start wording for the grill', () => {
 
 /**
  * Laps ticket 3 (ADR-0010 §3) — the review bar offers three verbs: Fix (the
- * Burn primary a pending ticket promotes), Rethink (starts lap N+1, hidden
- * while a session is live) and Merge & ship. Tested at the pure `nextStep`
- * derivation.
+ * Burn primary a pending ticket promotes), Iterate (starts lap N+1, hidden
+ * while a session is live, disabled while the test drive holds the branch) and
+ * Merge & ship. Tested at the pure `nextStep` derivation.
  */
 describe('nextStep at review', () => {
   const reviewFull = (opts: {
@@ -140,29 +140,40 @@ describe('nextStep at review', () => {
   }
   const labels = (as: { label: string }[]) => as.map((a) => a.label)
 
-  it('offers Rethink and keeps Merge & ship primary when no tickets are pending', () => {
+  it('offers Iterate and keeps Merge & ship primary when no tickets are pending', () => {
     const ns = nextStep(reviewFull({}), { driving: false })
     expect(ns.primary).toEqual({ label: 'Merge & ship', kind: 'merge' })
-    expect(labels(ns.secondary)).toEqual(['Start test drive', 'Rethink'])
-    expect(ns.secondary).toContainEqual({ label: 'Rethink', kind: 'rethink' })
+    expect(labels(ns.secondary)).toEqual(['Start test drive', 'Iterate'])
+    expect(ns.secondary).toContainEqual({ label: 'Iterate', kind: 'rethink' })
   })
 
   it('promotes Burn to primary and drops Merge & ship to secondary with a pending ticket', () => {
     const ns = nextStep(reviewFull({ ticketStatuses: ['done', 'pending'] }), { driving: false })
     expect(ns.primary).toEqual({ label: 'Burn 1 ticket', kind: 'burn' })
-    expect(labels(ns.secondary)).toEqual(['Merge & ship', 'Start test drive', 'Rethink'])
-    expect(ns.secondary).toContainEqual({ label: 'Rethink', kind: 'rethink' })
+    expect(labels(ns.secondary)).toEqual(['Merge & ship', 'Start test drive', 'Iterate'])
+    expect(ns.secondary).toContainEqual({ label: 'Iterate', kind: 'rethink' })
   })
 
-  it('hides Rethink while a session is live (one terminal per feature)', () => {
+  it('hides Iterate while a session is live (one terminal per feature)', () => {
     const ns = nextStep(reviewFull({ sessionLive: true }), { driving: false })
-    expect(labels(ns.secondary)).not.toContain('Rethink')
+    expect(labels(ns.secondary)).not.toContain('Iterate')
     // Merge & ship + test drive remain available throughout.
     expect(ns.primary?.label).toBe('Merge & ship')
     expect(labels(ns.secondary)).toEqual(['Start test drive'])
   })
 
-  it('hides Rethink but still promotes Burn when a session is live with pending tickets', () => {
+  it('disables Iterate while the test drive holds the branch, with the reason', () => {
+    // The lap's talk worktree needs the feature branch the drive has checked out;
+    // the server refuses outright (findings F3), so the bar says why here.
+    const ns = nextStep(reviewFull({}), { driving: true })
+    expect(ns.secondary).toContainEqual({
+      label: 'Iterate',
+      kind: 'rethink',
+      disabled: 'Stop the test drive first — the branch is checked out',
+    })
+  })
+
+  it('hides Iterate but still promotes Burn when a session is live with pending tickets', () => {
     const ns = nextStep(
       reviewFull({ ticketStatuses: ['pending'], sessionLive: true }),
       { driving: false },
@@ -174,21 +185,70 @@ describe('nextStep at review', () => {
   it('keeps the test-drive toggle and Merge & ship available while driving', () => {
     const ns = nextStep(reviewFull({ ticketStatuses: ['pending'] }), { driving: true })
     expect(ns.primary?.kind).toBe('burn')
-    expect(labels(ns.secondary)).toEqual(['Merge & ship', 'Stop test drive', 'Rethink'])
+    expect(labels(ns.secondary)).toEqual(['Merge & ship', 'Stop test drive', 'Iterate'])
   })
 
-  it('never offers the retired Iterate verb', () => {
-    // Iterate was subsumed by Fix/Rethink — the review bar has three verbs.
+  it('never offers a bare revisit — review`s verbs are Fix, Iterate and Merge', () => {
     for (const full of [reviewFull({}), reviewFull({ ticketStatuses: ['pending'] })]) {
       const ns = nextStep(full, { driving: false })
-      expect(labels(ns.secondary)).not.toContain('Iterate')
       expect(ns.secondary.map((a) => a.kind)).not.toContain('revisit')
     }
   })
 
   it('offers the same verbs on a later lap (the bar does not vary by lap)', () => {
     const ns = nextStep(reviewFull({ lap: 3 }), { driving: false })
-    expect(labels(ns.secondary)).toEqual(['Start test drive', 'Rethink'])
+    expect(labels(ns.secondary)).toEqual(['Start test drive', 'Iterate'])
+  })
+})
+
+/**
+ * Ticket 2 / findings F4 — from lap 2 on, the ideation bar points at the lap's
+ * own session and never at a bare promote: lap 1's decisions.md is still on disk,
+ * so promoting there skips the whole lap and dead-ends at `tickets` with nothing
+ * to burn. (The lap-scoped G1/G2 refuse it server-side; this is the copy.)
+ */
+describe('nextStep at ideation on a later lap', () => {
+  const lapFull = (opts: {
+    lap: number
+    satisfied?: boolean
+    sessions?: unknown[]
+  }): FeatureFull =>
+    ({
+      feature: { id: 'f1', phase: 'ideation', mapped: false, status: 'active', lap: opts.lap },
+      tickets: [],
+      sessions: opts.sessions ?? [],
+      runs: [],
+      gate: { next: { id: 'G1' }, satisfied: opts.satisfied ?? true, reason: null },
+    }) as unknown as FeatureFull
+
+  it('points at the lap session instead of promoting, even with G1 satisfied', () => {
+    const ns = nextStep(lapFull({ lap: 2 }), { driving: false })
+    expect(ns.primary).toEqual({ label: 'Start lap 2 session', kind: 'revisit' })
+    expect(ns.secondary).toEqual([])
+    expect(ns.title).toBe('Work lap 2')
+    expect(ns.desc).toContain('Promoting is refused')
+  })
+
+  it('says Resume once the lap has a conversation on disk', () => {
+    const ns = nextStep(
+      lapFull({ lap: 3, sessions: [{ id: 's1', status: 'ended', kind: 'revisit', ccSessionId: 'cc-1' }] }),
+      { driving: false },
+    )
+    expect(ns.primary).toEqual({ label: 'Resume lap 3 session', kind: 'revisit' })
+  })
+
+  it('shows the live lap session as the lap`s work, not a generic grill', () => {
+    const ns = nextStep(
+      lapFull({ lap: 2, sessions: [{ id: 's1', status: 'live', kind: 'revisit' }] }),
+      { driving: false },
+    )
+    expect(ns.title).toBe('Lap 2 in progress')
+    expect(ns.primary).toEqual({ label: 'Jump to the lap session', kind: 'openGrill' })
+  })
+
+  it('leaves lap 1 exactly as it was — a satisfied G1 still promotes', () => {
+    const ns = nextStep(lapFull({ lap: 1 }), { driving: false })
+    expect(ns.primary?.kind).toBe('advance')
   })
 })
 
