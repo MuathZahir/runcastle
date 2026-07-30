@@ -43,6 +43,7 @@ import {
   markSessionEnded,
   mostRecentResumableProjectSession,
   mostRecentResumableSession,
+  planKickoff,
   resumeKickoffLine,
   setKickoffOverride,
 } from './sessions'
@@ -363,6 +364,12 @@ export async function launchSession(
     worktreePath,
   })
 
+  // What this terminal opens with, decided before anything else: an explicit
+  // briefing makes the session FRESH (no `--resume`, so no summary chooser to
+  // swallow it — see `KickoffPlan.explicit`), and a lap briefing additionally
+  // tells the artifacts which lap they are rendering for.
+  const plan = planKickoff({ kind: input.kind, lap: feature.lap, kickoffLine: input.kickoffLine })
+
   // A waypoint session claims its waypoint BEFORE spawning (SPEC §13.2). The
   // prior LIVE session's cc id (`lastSessionId` — promoted only when a session
   // actually started) is captured so a released-then-reworked waypoint resumes
@@ -373,7 +380,7 @@ export async function launchSession(
   let resumeUnavailableFrom: string | undefined
   if (input.waypointId) {
     const before = getWaypoint(ctx, input.waypointId)
-    if (before.lastSessionId) {
+    if (before.lastSessionId && !plan.explicit) {
       resumeSessionId = getSessionRow(ctx, before.lastSessionId)?.ccSessionId ?? undefined
       // No cc id recorded for the remembered session → nothing the CLI could
       // `--resume`. Spawn fresh WITHOUT the flag (a bogus --resume makes claude
@@ -409,11 +416,13 @@ export async function launchSession(
       markSessionEnded(ctx, session.id)
       throw e
     }
-    const prior = mostRecentResumableSession(ctx, feature.id)
-    if (prior?.ccSessionId) {
-      resumeSessionId = prior.ccSessionId
-    } else {
-      resumeUnavailableFrom = 'revisit'
+    if (!plan.explicit) {
+      const prior = mostRecentResumableSession(ctx, feature.id)
+      if (prior?.ccSessionId) {
+        resumeSessionId = prior.ccSessionId
+      } else {
+        resumeUnavailableFrom = 'revisit'
+      }
     }
   }
 
@@ -425,7 +434,7 @@ export async function launchSession(
   // the conversation back up instead of starting cold from the docs. No prior
   // conversation is the ordinary first-launch case, so unlike waypoint/revisit
   // it gets no `resume_unavailable` note — there is nothing to be unavailable.
-  if (input.kind !== 'waypoint' && input.kind !== 'revisit') {
+  if (input.kind !== 'waypoint' && input.kind !== 'revisit' && !plan.explicit) {
     resumeSessionId = mostRecentResumableSession(ctx, feature.id, input.kind)?.ccSessionId
   }
 
@@ -434,8 +443,7 @@ export async function launchSession(
   // be registered against the session id ahead of it. An explicit per-purpose
   // briefing always wins; otherwise a resumed session gets the resume framing so
   // the agent continues the conversation rather than restarting its opening move.
-  const kickoffLine =
-    input.kickoffLine ?? (resumeSessionId ? resumeKickoffLine(input.kind) : undefined)
+  const kickoffLine = plan.line ?? (resumeSessionId ? resumeKickoffLine(input.kind) : undefined)
   if (kickoffLine) setKickoffOverride(session.id, kickoffLine)
 
   emit(ctx, feature.id, {
@@ -474,6 +482,7 @@ export async function launchSession(
     project,
     config: ctx.config,
     waypoint,
+    ...(plan.lap ? { lap: plan.lap } : {}),
   })
   const serverUrl = serverUrlFor(ctx.config)
 
