@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { nextPhase, parsePhase, type EventRow, type Phase } from '@runcastle/core'
 import { trpc } from '../trpc'
 import { useToast } from '../lib/toast'
+import { activityLine } from '../lib/activity'
 import { useEventLog } from '../lib/events'
 import { useLivePoll } from '../lib/live'
 import type { DocSummary, GateState } from '../lib/api'
@@ -348,19 +349,49 @@ function Activity({ events }: { events: EventRow[] }) {
       ) : (
         <div className="activity-log">
           {recent.map((e) => (
-            <div key={e.id} className="act-line">
-              <span className={`act-dot ${eventTone(e.type)}`} />
-              <div className="act-body">
-                <div className="act-msg">{e.message}</div>
-                <div className="act-sub">
-                  <span className="act-type">{humanType(e.type)}</span>
-                  <span className="act-time">{relTime(e.ts)}</span>
-                </div>
-              </div>
-            </div>
+            <ActivityRow key={e.id} event={e} />
           ))}
         </div>
       )}
     </section>
+  )
+}
+
+/**
+ * One event. The summary is plain text whatever the event carried — a tool call
+ * is named by its tool, agent prose is stripped of its markdown — and anything
+ * the summary dropped is one click away instead of cut off by CSS (F10.5/F18).
+ */
+function ActivityRow({ event }: { event: EventRow }) {
+  const [open, setOpen] = useState(false)
+  const line = activityLine(event)
+
+  return (
+    <div className={`act-line${line.detail ? ' is-expandable' : ''}${open ? ' is-open' : ''}`}>
+      <span className={`act-dot ${eventTone(event.type)}`} />
+      <div className="act-body">
+        {line.detail ? (
+          <button
+            type="button"
+            className="act-msg act-msg-toggle"
+            aria-expanded={open}
+            title={open ? 'Show less' : 'Show the whole event'}
+            onClick={() => setOpen((v) => !v)}
+          >
+            {line.summary}
+            <span className="act-more" aria-hidden="true">
+              {open ? '−' : '+'}
+            </span>
+          </button>
+        ) : (
+          <div className="act-msg">{line.summary}</div>
+        )}
+        {open && line.detail && <pre className="act-detail mono">{line.detail}</pre>}
+        <div className="act-sub">
+          <span className="act-type">{humanType(event.type)}</span>
+          <span className="act-time">{relTime(event.ts)}</span>
+        </div>
+      </div>
+    </div>
   )
 }

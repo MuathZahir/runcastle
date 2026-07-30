@@ -2433,6 +2433,34 @@ details.wp-group-done > summary { cursor: pointer; list-style: revert; }
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
+/* the summary is one line of plain text; the rest opens below it (F10.5/F18) */
+.act-msg-toggle {
+  width: 100%;
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+.act-msg-toggle:hover { color: var(--text); }
+.act-more { color: var(--text-4); margin-left: 6px; }
+.act-detail {
+  margin: 6px 0 0;
+  padding: 7px 9px;
+  max-height: 260px;
+  overflow: auto;
+  background: var(--panel-inset);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius);
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--text-2);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
 .act-sub { display: flex; align-items: baseline; gap: 8px; margin-top: 2px; }
 .act-type { font-size: 10.5px; color: var(--text-4); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .act-time { font-size: 10.5px; color: var(--text-4); flex: 0 0 auto; margin-left: auto; }
