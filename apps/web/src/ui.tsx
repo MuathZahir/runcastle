@@ -1,5 +1,6 @@
 import type { ButtonHTMLAttributes, ReactNode } from 'react'
 import type { Phase, RunStatus, SessionStatus, TicketStatus } from '@runcastle/core'
+import type { CheckRow } from './lib/feature-ui'
 
 /**
  * Primitive UI atoms for the IDE shell (UI-SPEC §4). Exactly one `solid` button
@@ -55,6 +56,22 @@ export function EmptyState({
       <div className="empty-state-title">{title}</div>
       {hint && <div className="empty-state-hint">{hint}</div>}
       {action && <div className="empty-state-action">{action}</div>}
+    </div>
+  )
+}
+
+/**
+ * One review figure — tone dot, label, value. Shared by the review SUMMARY card
+ * and the merge confirmation that quotes it, so a figure cannot be green in the
+ * card and amber in the dialog. The tone comes from the view-model; the dot only
+ * paints it.
+ */
+export function CheckLine({ row }: { row: CheckRow }) {
+  return (
+    <div className="check-row">
+      <span className={`check-dot is-${row.tone}`} />
+      <span className="check-k">{row.key}</span>
+      <span className="check-v">{row.value}</span>
     </div>
   )
 }

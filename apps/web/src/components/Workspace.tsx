@@ -11,9 +11,13 @@ import {
   isReadonlyView,
   latestRun,
   mapDocPath,
+  mergeConflictKickoff,
+  mergeSummary,
   nextStep,
   PHASE_LABELS,
   pipelineSteps,
+  testDriveTaken,
+  unresolvedMergeConflict,
   type ActionKind,
   type NextAction,
   type NextStep,
@@ -21,6 +25,7 @@ import {
   type ReasonPrompt,
 } from '../lib/feature-ui'
 import { IconBranch } from '../icons'
+import { MergeFeatureDialog } from './MergeFeatureDialog'
 import { GrillBody } from './bodies/GrillBody'
 import { ReviewBody } from './bodies/ReviewBody'
 import { ShippedBody } from './bodies/ShippedBody'
@@ -57,6 +62,18 @@ export function Workspace({
   const toast = useToast()
   const q = trpc.feature.get.useQuery({ id: featureId }, { refetchInterval: 1500 })
   const resumeFailed = useResumeFailedAlert(featureId)
+  // The review bar has to know two things the feature row cannot tell it: whether
+  // a merge conflict is standing (it must not recommend a merge that will fail
+  // again — findings F8) and whether this branch was ever test-driven (the merge
+  // confirmation reports it — F21). Both live in the event feed, same query key
+  // as every other reader, so this shares one poll.
+  const events = useEventLog(featureId)
+  const conflict = unresolvedMergeConflict(events)
+  const driveTaken = testDriveTaken(events)
+  // Commits from git, for the confirmation's summary (same key as the review
+  // body's read — one fetch between them).
+  const commits = trpc.feature.commitCount.useQuery({ featureId }, { refetchInterval: 5000 })
+  const [confirmMerge, setConfirmMerge] = useState(false)
   // The next-step bar warns about remaining fog on a mapped feature, which lives
   // in the map doc's prose — same query key as the map rail's read, so the two
   // share one fetch.
@@ -195,7 +212,11 @@ export function Workspace({
   const steps = pipelineSteps(feature, effective)
   const run = latestRun(full.runs)
   const isDriving = driving?.featureId === feature.id
-  const ns = nextStep(full, { driving: isDriving, mapContent: mapQ.data?.content })
+  const ns = nextStep(full, {
+    driving: isDriving,
+    mapContent: mapQ.data?.content,
+    conflict,
+  })
   const busy =
     launch.isPending ||
     advance.isPending ||
@@ -269,28 +290,48 @@ export function Workspace({
           },
         )
         break
+      // The click opens the confirmation; `runMerge` below is what actually
+      // merges (findings F21 — the pipeline's most irreversible action had no
+      // confirmation at all).
       case 'merge':
-        merge.mutate(
-          { featureId },
-          {
-            onSuccess: (res) => {
-              invalidate()
-              if (res.ok) {
-                onDriveChange(null)
-                toast.push('merged — feature shipped', 'success')
-              } else if (res.conflict) {
-                const n = res.files.length
-                toast.push(
-                  n > 0
-                    ? `merge conflict in ${n} file${n === 1 ? '' : 's'} — resolve below and retry`
-                    : 'merge conflict — resolve below and retry',
-                )
-              }
-            },
-          },
-        )
+        setConfirmMerge(true)
+        break
+      // Resolve a recorded merge conflict: a revisit session briefed to merge the
+      // base into this branch in the talk worktree — the same launch the conflict
+      // card offers, promoted to the bar's primary while the conflict stands.
+      case 'resolveConflict':
+        if (conflict) {
+          launch.mutate({
+            featureId,
+            kind: 'revisit',
+            kickoffLine: mergeConflictKickoff(conflict.base, feature.branch, conflict.files),
+          })
+        }
         break
     }
+  }
+
+  const runMerge = () => {
+    merge.mutate(
+      { featureId },
+      {
+        onSuccess: (res) => {
+          invalidate()
+          setConfirmMerge(false)
+          if (res.ok) {
+            onDriveChange(null)
+            toast.push('merged — feature shipped', 'success')
+          } else if (res.conflict) {
+            const n = res.files.length
+            toast.push(
+              n > 0
+                ? `merge conflict in ${n} file${n === 1 ? '' : 's'} — resolve below and retry`
+                : 'merge conflict — resolve below and retry',
+            )
+          }
+        },
+      },
+    )
   }
 
   return (
@@ -336,6 +377,18 @@ export function Workspace({
           <span className="ws-banner-tag">RESUME FAILED</span>
           <span>{resumeFailed.message}</span>
         </div>
+      )}
+
+      {confirmMerge && (
+        <MergeFeatureDialog
+          title={feature.title}
+          branch={feature.branch}
+          base={commits.data?.base}
+          summary={mergeSummary({ commitCount: commits.data?.count, run, driveTaken })}
+          busy={merge.isPending}
+          onConfirm={runMerge}
+          onCancel={() => setConfirmMerge(false)}
+        />
       )}
 
       <div className="ws-body">
