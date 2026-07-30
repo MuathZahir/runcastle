@@ -61,7 +61,8 @@ export function QuickChangeForm({
         <div className="nf-h">What needs changing?</div>
         <div className="nf-sub">
           Too small for a conversation. Describe it once — runcastle turns it into a single ticket
-          you review, then burn. {BURN_EXPLAINER} No question-and-answer session, no spec.
+          you review, then burn. {BURN_EXPLAINER} No grill session (the Q&A that shapes a bigger
+          idea), no spec.
         </div>
 
         <input

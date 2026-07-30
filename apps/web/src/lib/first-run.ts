@@ -33,7 +33,7 @@ export interface WizardStepRow {
   detected?: string
 }
 
-export const SETUP_ORDER: { key: SetupStep; label: string }[] = [
+const SETUP_ORDER: { key: SetupStep; label: string }[] = [
   { key: 'identity', label: 'Git identity' },
   { key: 'afk', label: 'AFK burns' },
   { key: 'project', label: 'First project' },
@@ -44,8 +44,11 @@ export function firstSetupStep(identity: ProbeLike | undefined): SetupStep {
   return identity?.status === 'ok' ? 'afk' : 'identity'
 }
 
-/** What the git-identity probe found, phrased for a human, or nothing if unset. */
-export function detectedIdentity(identity: ProbeLike | undefined): string | undefined {
+/**
+ * What the git-identity probe found, phrased for a human. An unset probe's detail
+ * is a complaint ("commits would fail"), not a value — so it detected nothing.
+ */
+function detectedIdentity(identity: ProbeLike | undefined): string | undefined {
   return identity?.status === 'ok' ? `detected from git config: ${identity.detail}` : undefined
 }
 

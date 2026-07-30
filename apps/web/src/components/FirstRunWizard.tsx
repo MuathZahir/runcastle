@@ -1,7 +1,13 @@
 import { useState } from 'react'
 import { trpc } from '../trpc'
 import { PHASE_LABELS, PHASE_ORDER } from '../lib/feature-ui'
-import { firstSetupStep, wizardSteps, type SetupStep, type WizardScreen, type WizardStepRow } from '../lib/first-run'
+import {
+  firstSetupStep,
+  wizardSteps,
+  type SetupStep,
+  type WizardScreen,
+  type WizardStepRow,
+} from '../lib/first-run'
 import { useToast } from '../lib/toast'
 import { AFK_BURN_EXPLAINER } from '../lib/vocabulary'
 import { Button, DimLine } from '../ui'
@@ -206,7 +212,9 @@ function AfkStep({ onNext }: { onNext: () => void }) {
     <>
       {/* The card itself opens on "ENABLE AFK BURNS" — three unexplained letters
           at the first thing a new user is asked to set up (F13/F16). */}
-      <div className="op-sub">{AFK_BURN_EXPLAINER} It is optional: skip it and burns run in a terminal you watch.</div>
+      <div className="op-sub">
+        {AFK_BURN_EXPLAINER} It is optional — skip it and burns run in a terminal you watch.
+      </div>
       <EnableAfkCard onDismiss={onNext} />
       <div className="op-actions">
         <Button variant="solid" onClick={onNext}>

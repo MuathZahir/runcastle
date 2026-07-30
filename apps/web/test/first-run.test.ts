@@ -1,10 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import {
-  detectedIdentity,
-  firstSetupStep,
-  wizardSteps,
-  type ProbeLike,
-} from '../src/lib/first-run'
+import { firstSetupStep, wizardSteps, type ProbeLike } from '../src/lib/first-run'
 
 /**
  * The wizard's promise to a first-time user: nothing was skipped behind your
@@ -26,19 +21,6 @@ describe('firstSetupStep', () => {
   })
 })
 
-describe('detectedIdentity', () => {
-  it('names where the value came from and what it was', () => {
-    expect(detectedIdentity(ok)).toBe('detected from git config: Ada Lovelace <ada@example.com>')
-  })
-
-  // An unset probe's detail is a complaint ("commits would fail"), not a value —
-  // reporting it as "detected" would read as a pass.
-  it('detects nothing when the identity is unset', () => {
-    expect(detectedIdentity(unset)).toBeUndefined()
-    expect(detectedIdentity(undefined)).toBeUndefined()
-  })
-})
-
 describe('wizardSteps', () => {
   it('keeps the whole sequence on the rail, whichever step is showing', () => {
     expect(wizardSteps('afk', ok).map((s) => s.key)).toEqual(['identity', 'afk', 'project'])
@@ -49,8 +31,16 @@ describe('wizardSteps', () => {
   it('shows a step the host satisfied as passed, with what was detected', () => {
     const [identity, afk] = wizardSteps('afk', ok)
     expect(identity?.state).toBe('passed')
-    expect(identity?.detected).toContain('Ada Lovelace')
+    expect(identity?.detected).toBe('detected from git config: Ada Lovelace <ada@example.com>')
     expect(afk?.state).toBe('current')
+  })
+
+  // An unset probe's detail is a complaint ("commits would fail"), not a value —
+  // a crossed step with nothing detected is just done.
+  it('never dresses a missing identity up as a detected one', () => {
+    const [identity] = wizardSteps('afk', unset)
+    expect(identity?.state).toBe('done')
+    expect(identity?.detected).toBeUndefined()
   })
 
   it('claims nothing is passed on the step the user is being shown', () => {
