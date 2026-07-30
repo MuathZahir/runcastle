@@ -141,6 +141,27 @@ describe('renderSettings', () => {
       'bun run "C:\\hooks\\hook-client.ts" session-end',
     )
   })
+
+  /**
+   * The talk-session edit guard (F2). Nothing but a prompt sentence stood
+   * between a session told to grill and a session that just implemented the
+   * feature itself — full checkout, `acceptEdits`, no deny hook anywhere.
+   */
+  it('registers the PreToolUse edit guard for every kind but `project`', () => {
+    for (const kind of ['ideation', 'qa', 'waypoint', 'converge', 'revisit', 'prepare'] as const) {
+      const guard = renderSettings('C:\\hooks\\hook-client.ts', kind).hooks.PreToolUse
+      expect(guard).toHaveLength(1)
+      expect(guard?.[0].matcher).toBe('Edit|Write|NotebookEdit')
+      expect(guard?.[0].hooks[0]).toMatchObject({
+        type: 'command',
+        command: 'bun run "C:\\hooks\\hook-client.ts" pre-tool',
+        timeout: 5,
+      })
+    }
+    // decision 18 gives the project session whole-repo write access — it is the
+    // one kind whose commits are the point of the session
+    expect(renderSettings('C:\\hooks\\hook-client.ts', 'project').hooks.PreToolUse).toBeUndefined()
+  })
 })
 
 describe('ptyExitMessage', () => {
@@ -227,6 +248,47 @@ describe('renderSystemPrompt', () => {
     expect(renderSystemPrompt(feature({ phase: 'implementation' }), 'revisit')).not.toContain(
       'Review iteration',
     )
+  })
+
+  /**
+   * A lap is passed in, never inferred: by the time the artifacts are written
+   * the rethink route has already flipped the phase back to `ideation`, so the
+   * old `phase === 'review'` test rendered a lap session the plain revisit
+   * prompt — complete with a "never call complete_phase" rule contradicting the
+   * lap briefing the same session was about to be typed (F2).
+   */
+  it('renders the lap framing when a lap is passed, and drops the complete_phase ban', () => {
+    const p = renderSystemPrompt(feature({ phase: 'ideation', lap: 2 }), 'revisit', undefined, 2)
+    expect(p).toContain('This is lap 2')
+    expect(p).toContain('ideation → spec → tickets')
+    expect(p).toContain('emit_tickets')
+    // its two optional inputs, and that missing ones are normal
+    expect(p).toContain('test-notes.md')
+    expect(p).toContain('## Lap 1')
+    expect(p).toContain('## Later laps')
+    expect(p).toMatch(/OPTIONAL/i)
+    // the rule that used to contradict the briefing is inverted, not merely dropped
+    expect(p).not.toMatch(/Do NOT call `complete_phase`/i)
+    expect(p).toMatch(/DO call `complete_phase`/)
+  })
+
+  it('leaves a plain revisit exactly as it was — no lap framing, ban intact', () => {
+    const p = renderSystemPrompt(feature({ phase: 'implementation', lap: 3 }), 'revisit')
+    expect(p).not.toContain('This is lap')
+    expect(p).toMatch(/Do NOT call `complete_phase`/i)
+  })
+
+  it('states the no-code rule in the revisit and ideation prompts', () => {
+    for (const p of [
+      renderSystemPrompt(feature(), 'ideation'),
+      renderSystemPrompt(feature({ phase: 'review' }), 'revisit'),
+      renderSystemPrompt(feature({ phase: 'ideation', lap: 2 }), 'revisit', undefined, 2),
+    ]) {
+      expect(p).toMatch(/Talk sessions do not write code/)
+      // and it says where the line is, and where the change goes instead
+      expect(p).toContain('docs/features/dark-mode/')
+      expect(p).toMatch(/ticket/i)
+    }
   })
 
   it('directs a converge session to /runcastle:converge over ONLY the compressed knowledge', () => {
@@ -366,6 +428,9 @@ describe('writeSessionArtifacts', () => {
     ])
     expect(settings.hooks.SessionStart[0].hooks[0].command).toContain(hookClientPath())
     expect(settings.permissions.allow).toContain('mcp__runcastle__complete_phase')
+    // the edit guard reaches the session as a real registered hook, not just a rule
+    expect(settings.hooks.PreToolUse[0].matcher).toBe('Edit|Write|NotebookEdit')
+    expect(settings.hooks.PreToolUse[0].hooks[0].command).toContain('pre-tool')
 
     const mcp = JSON.parse(readFileSync(out.mcpConfigPath, 'utf8'))
     expect(mcp.mcpServers.runcastle.headers['X-Runcastle-Session']).toBe(sess.id)

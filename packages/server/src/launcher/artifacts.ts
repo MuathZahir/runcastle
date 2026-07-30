@@ -11,6 +11,7 @@ import type {
 } from '@runcastle/core'
 import { featureDocsRel, sessionDir } from '@runcastle/core/paths'
 import { ASSET_ENV, resolveAsset } from './asset-paths'
+import { EDIT_TOOL_MATCHER, guardsEdits } from './edit-guard'
 
 /**
  * Session launch artifacts (SPEC §5.2). Writes `system-prompt.md`,
@@ -529,6 +530,8 @@ export interface SessionSettings {
     SessionStart: { matcher: string; hooks: CommandHook[] }[]
     UserPromptSubmit: { hooks: CommandHook[] }[]
     SessionEnd: { hooks: CommandHook[] }[]
+    /** The talk-session edit guard; absent for the one kind that may write code. */
+    PreToolUse?: { matcher: string; hooks: CommandHook[] }[]
   }
 }
 
@@ -634,14 +637,19 @@ export const SESSION_START_SOURCES = ['startup', 'resume', 'clear', 'compact', '
  * - `SessionStart` is registered for EVERY source (see
  *   {@link SESSION_START_SOURCES}) — a resumed session is a started session.
  * - `UserPromptSubmit`/`SessionEnd` take NO `matcher` (unsupported → omitted).
+ * - `PreToolUse` matches the file-write tools and carries the talk-session edit
+ *   guard (see {@link evaluateEditGuard}) — registered for every kind except
+ *   `project`, the one allowed to write code. A kind is needed to make that
+ *   distinction, so an omitted `kind` gets the guard: a session whose kind we do
+ *   not know is not one to hand whole-repo write access to.
  * - Timeouts (seconds): SessionStart 10, UserPromptSubmit 5 (well inside its 30s
- *   hard budget), SessionEnd 10.
+ *   hard budget), SessionEnd 10, PreToolUse 5 (it blocks every edit).
  */
 export function renderSettings(hookClient: string, kind?: SessionKind): SessionSettings {
   const cmd = (event: string): CommandHook => ({
     type: 'command',
     command: `bun run "${hookClient}" ${event}`,
-    timeout: event === 'user-prompt' ? 5 : 10,
+    timeout: event === 'session-start' || event === 'session-end' ? 10 : 5,
   })
   return {
     permissions: { allow: [...RUNCASTLE_MCP_ALLOW_RULES, ...sessionBashAllowRules(kind)] },
@@ -652,6 +660,9 @@ export function renderSettings(hookClient: string, kind?: SessionKind): SessionS
       })),
       UserPromptSubmit: [{ hooks: [cmd('user-prompt')] }],
       SessionEnd: [{ hooks: [cmd('session-end')] }],
+      ...(kind && !guardsEdits(kind)
+        ? {}
+        : { PreToolUse: [{ matcher: EDIT_TOOL_MATCHER, hooks: [cmd('pre-tool')] }] }),
     },
   }
 }
