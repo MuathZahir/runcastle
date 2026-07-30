@@ -29,6 +29,31 @@ export function slugPreview(title: string): string {
 }
 
 /**
+ * The New Feature form's inline "you already have one of these" note, or null.
+ *
+ * The form had no duplicate guard at all (findings F25.3): typing a title the
+ * project already uses created a second feature with a suffixed branch and no
+ * warning, and only the branch line hinted at it. This is a warning, never a
+ * block — a deliberate second attempt at the same idea is legitimate, and the
+ * server deduplicates the slug either way.
+ *
+ * Matching is on the SLUG, not the raw title, because that is what actually
+ * collides: "Slack notifications" and "slack notifications!" become the same
+ * branch name.
+ */
+export function duplicateTitleWarning(
+  title: string,
+  features: readonly Pick<FeatureListItem, 'title' | 'slug' | 'status'>[],
+): string | null {
+  const slug = slugPreview(title)
+  if (slug === '') return null
+  const existing = features.find((f) => f.slug === slug)
+  if (!existing) return null
+  const where = existing.status === 'shipped' ? 'was already shipped' : 'already exists'
+  return `“${existing.title}” ${where} on feature/${existing.slug}. Creating this makes a second feature and a second branch.`
+}
+
+/**
  * Client-side feature derivations (UI-SPEC §2/§3): sidebar glyph, needs-me
  * classification, and the overview primary-action state machine. Pure functions
  * over wire data — no IO.

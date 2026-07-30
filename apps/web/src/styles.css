@@ -2221,6 +2221,26 @@ details.wp-group-done > summary { cursor: pointer; list-style: revert; }
 .nf-base-select:disabled { opacity: 0.5; cursor: default; }
 .nf-branch { margin-top: 16px; font-family: var(--mono); font-size: 11.5px; color: var(--text-3); }
 .nf-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 22px; }
+/* the one dismissal question, asked before typed prose is thrown away (F25.2) */
+.nf-discard {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 16px;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--warn, #d9a441) 45%, var(--hairline));
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--warn, #d9a441) 7%, var(--panel-2));
+}
+.nf-discard-text { font-size: 12.5px; color: var(--text); }
+.nf-discard-spacer { flex: 1; }
+/* the inline "you already have one of these" note under the title field (F25.3) */
+.nf-dupe {
+  margin-top: 8px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--warn, #d9a441);
+}
 .nf-advanced { margin-top: 16px; }
 .nf-advanced-summary {
   font-size: 12.5px;

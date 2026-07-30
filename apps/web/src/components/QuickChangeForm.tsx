@@ -4,6 +4,7 @@ import { defaultBaseBranch, slugPreview } from '../lib/feature-ui'
 import { useToast } from '../lib/toast'
 import { BURN_EXPLAINER, lapExplainer } from '../lib/vocabulary'
 import { Button } from '../ui'
+import { FormOverlay } from './FormOverlay'
 
 /**
  * The quick-change door (decision 21) — the second entrance beside New Feature,
@@ -55,56 +56,61 @@ export function QuickChangeForm({
   }
 
   return (
-    <div className="nf-overlay">
-      <div className="nf-card">
-        <div className="nf-kick">QUICK CHANGE</div>
-        <div className="nf-h">What needs changing?</div>
-        <div className="nf-sub">
-          Too small for a conversation. Describe it once — runcastle turns it into a single ticket
-          you review, then burn. {BURN_EXPLAINER} No grill session (the Q&A that shapes a bigger
-          idea), no spec.
-        </div>
+    <FormOverlay dirty={title.trim() !== '' || prose.trim() !== ''} onDismiss={onCancel}>
+      {(dismiss) => (
+        <>
+          <div className="nf-kick">QUICK CHANGE</div>
+          <div className="nf-h">What needs changing?</div>
+          <div className="nf-sub">
+            Too small for a conversation. Describe it once — runcastle turns it into a single ticket
+            you review, then burn. {BURN_EXPLAINER} No grill session (the Q&A that shapes a bigger
+            idea), no spec.
+          </div>
+          {/* The form used to say nothing about this, and users reasonably
+              expected the ticket to attach to whichever feature was selected
+              (findings F25.5). It does not — it is its own feature. */}
+          <div className="nf-sub">
+            This creates its own feature and its own branch, beside the ones you already have — it
+            does not attach to the feature currently selected.
+          </div>
 
-        <input
-          className="nf-input"
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          placeholder="e.g. Darker empty state"
-          autoFocus
-          onKeyDown={(e) => {
-            if (e.key === 'Escape') onCancel()
-          }}
-        />
+          <input
+            className="nf-input"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            placeholder="e.g. Darker empty state"
+            autoFocus
+          />
 
-        <textarea
-          className="nf-input nf-textarea"
-          value={prose}
-          onChange={(e) => setProse(e.target.value)}
-          placeholder={
-            'The change, in your own words — this becomes the ticket, verbatim.\n' +
-            'e.g. "expected the run chip to stay amber while burning, got grey — reproduce by cancelling a run"'
-          }
-          onKeyDown={(e) => {
-            if (e.key === 'Escape') onCancel()
-            // ⌘/Ctrl-Enter submits; a bare Enter is a newline (this is prose).
-            if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) submit()
-          }}
-        />
+          <textarea
+            className="nf-input nf-textarea"
+            value={prose}
+            onChange={(e) => setProse(e.target.value)}
+            placeholder={
+              'The change, in your own words — this becomes the ticket, verbatim.\n' +
+              'e.g. "expected the run chip to stay amber while burning, got grey — reproduce by cancelling a run"'
+            }
+            onKeyDown={(e) => {
+              // ⌘/Ctrl-Enter submits; a bare Enter is a newline (this is prose).
+              if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) submit()
+            }}
+          />
 
-        <div className="nf-branch">
-          branch · feature/{slug || '…'} ← {base || '…'} · starts at build,{' '}
-          <span title={lapExplainer(1)}>lap 1</span>
-        </div>
+          <div className="nf-branch">
+            branch · feature/{slug || '…'} ← {base || '…'} · starts at build,{' '}
+            <span title={lapExplainer(1)}>lap 1</span>
+          </div>
 
-        <div className="nf-actions">
-          <Button variant="ghost" onClick={onCancel} disabled={busy}>
-            Cancel
-          </Button>
-          <Button variant="solid" onClick={submit} disabled={!ready || busy}>
-            {busy ? 'Creating…' : 'Create ticket'}
-          </Button>
-        </div>
-      </div>
-    </div>
+          <div className="nf-actions">
+            <Button variant="ghost" onClick={dismiss} disabled={busy}>
+              Cancel
+            </Button>
+            <Button variant="solid" onClick={submit} disabled={!ready || busy}>
+              {busy ? 'Creating…' : 'Create ticket'}
+            </Button>
+          </div>
+        </>
+      )}
+    </FormOverlay>
   )
 }

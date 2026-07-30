@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { EventRow, TicketStatus } from '@runcastle/core'
 import {
   defaultBaseBranch,
+  duplicateTitleWarning,
   kickoffTrouble,
   liveSessionBlocker,
   mergeConflictKickoff,
@@ -54,6 +55,50 @@ describe('defaultBaseBranch', () => {
     expect(
       defaultBaseBranch({ current: 'feature/x', mainBranch: 'main', branches: ['main'] }),
     ).toBe('main')
+  })
+})
+
+/**
+ * The New Feature form had no duplicate guard at all (findings F25.3). The
+ * warning matches on the SLUG, because that is what actually collides — and it
+ * warns rather than blocks, since a second attempt at the same idea is a real
+ * thing to want.
+ */
+describe('duplicateTitleWarning', () => {
+  const existing = [
+    { title: 'Slack notifications', slug: 'slack-notifications', status: 'active' },
+    { title: 'Entry tags', slug: 'entry-tags', status: 'shipped' },
+  ] as unknown as FeatureListItem[]
+
+  it('says nothing for a title nothing else uses', () => {
+    expect(duplicateTitleWarning('Dark mode', existing)).toBeNull()
+  })
+
+  it('says nothing for an empty or punctuation-only title', () => {
+    expect(duplicateTitleWarning('', existing)).toBeNull()
+    expect(duplicateTitleWarning('   ', existing)).toBeNull()
+    expect(duplicateTitleWarning('!!!', existing)).toBeNull()
+  })
+
+  it('warns when the title slugifies onto an existing feature', () => {
+    expect(duplicateTitleWarning('Slack notifications', existing)).toContain(
+      'feature/slack-notifications',
+    )
+  })
+
+  it('catches collisions the raw titles do not show', () => {
+    // Different strings, same branch name — which is the collision that matters.
+    expect(duplicateTitleWarning('  slack   NOTIFICATIONS!  ', existing)).toContain(
+      '“Slack notifications”',
+    )
+  })
+
+  it('says a shipped feature was already shipped', () => {
+    expect(duplicateTitleWarning('Entry tags', existing)).toContain('was already shipped')
+  })
+
+  it('warns against an empty project without throwing', () => {
+    expect(duplicateTitleWarning('Anything', [])).toBeNull()
   })
 })
 
