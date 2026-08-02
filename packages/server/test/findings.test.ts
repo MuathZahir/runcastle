@@ -241,8 +241,8 @@ describe('verification stamps', () => {
     expect(f?.verifiedSha).toBeUndefined()
   })
 
-  // A fresh insert can land on a stamp the same way an update can: the row for
-  // this key may have been dropped and re-added between passes.
+  // The other leg of both writers: a finding that has no row yet starts
+  // unverified, so nothing is ever born carrying proof it did not earn.
   it('never carries a stamp on a freshly inserted finding', async () => {
     recordFinding(ctx, PROJECT_ID, { key: 'driveSetupCommand', value: 'setup', source: 'prep' })
     expect((await finding('driveSetupCommand'))?.verifiedAt).toBeUndefined()
