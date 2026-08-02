@@ -15,6 +15,7 @@ import {
   rowChip,
   sessionDoneState,
   shippedQaSessions,
+  sortForSidebar,
   testDriveTaken,
   ticketConflictKickoff,
   ticketProgress,
@@ -945,8 +946,17 @@ function listItem(over: Partial<FeatureListItem> = {}): FeatureListItem {
       cancelled: 0,
     },
     activeRun: over.activeRun ?? false,
+    liveSession: over.liveSession ?? null,
     lastActivityAt: over.lastActivityAt ?? 0,
   } as FeatureListItem
+}
+
+/** A feature whose terminal is open, with its agent mid-turn or waiting. */
+function withSession(
+  awaitingInput: boolean,
+  over: Partial<FeatureListItem> = {},
+): FeatureListItem {
+  return listItem({ liveSession: { status: 'live', awaitingInput }, ...over })
 }
 
 function full(over: Partial<FeatureFull['feature']> = {}): FeatureFull {
@@ -1566,6 +1576,100 @@ describe('rowChip', () => {
     const chip = rowChip(listItem({ status: 'archived', lastActivityAt: NOW - 600_000 }), NOW)
     expect(chip.kind).toBe('age')
     expect(chip.text).toBe('10m')
+  })
+
+  /**
+   * Ticket 4 — the chip reads the same turn state the lanes do: a spinner while
+   * the agent works, the needs-you dot once it stops and waits.
+   */
+  it('spins while the agent is mid-turn in a live session', () => {
+    const chip = rowChip(withSession(false, { phase: 'ideation' }), NOW)
+    expect(chip.kind).toBe('working')
+    expect(chip.text).toBe('Working')
+  })
+
+  it('shows Needs you the moment that agent stops and waits', () => {
+    const chip = rowChip(withSession(true, { phase: 'ideation' }), NOW)
+    expect(chip.kind).toBe('needsMe')
+    expect(chip.text).toBe('Needs you')
+  })
+})
+
+/**
+ * improve-features-section ticket 4 — turn-aware feature states (decisions §3).
+ *
+ * The rail's whole claim is triage, and it was lying: `feature.list` carried no
+ * session at all, so `needsMe` fired on the PHASE alone and every active
+ * ideation feature showed the grilling dot — including one whose agent was
+ * mid-answer. Now a live session outranks the phase in both directions: while
+ * its agent works the feature is "Agent working", and when it stops for an
+ * answer that IS "Needs you", whatever phase the feature is on.
+ */
+describe('turn-aware feature states', () => {
+  it('keeps a mid-turn grill out of Needs you, where the phase alone would put it', () => {
+    const f = withSession(false, { phase: 'ideation' })
+    expect(needsMe(f)).toBeNull()
+    expect(triageOf(f)).toBe('agentWorking')
+  })
+
+  it('moves it to Needs you once the agent stops and waits for an answer', () => {
+    const f = withSession(true, { phase: 'ideation' })
+    expect(needsMe(f)?.kind).toBe('grill')
+    expect(triageOf(f)).toBe('needsYou')
+  })
+
+  it('reads a terminal that is still launching as working, not waiting', () => {
+    const f = listItem({ liveSession: { status: 'launching', awaitingInput: false } })
+    expect(needsMe(f)).toBeNull()
+    expect(triageOf(f)).toBe('agentWorking')
+  })
+
+  // The lane is the honest reading of a session that has stopped talking,
+  // whatever phase the feature is on — not just the ones with a phase-derived
+  // needs-me of their own.
+  it('claims attention for a waiting session at a phase that never asks for it', () => {
+    const f = withSession(true, { phase: 'spec' })
+    expect(needsMe(f)).not.toBeNull()
+    expect(triageOf(f)).toBe('needsYou')
+  })
+
+  it('holds a working session out of Needs you at a phase that would ask for it', () => {
+    const counts = { total: 2, pending: 2, burning: 0, done: 0, failed: 0, cancelled: 0 }
+    const f = withSession(false, { phase: 'tickets', ticketCounts: counts })
+    expect(needsMe(f)).toBeNull()
+    expect(triageOf(f)).toBe('agentWorking')
+  })
+
+  it('leaves a feature with no live session exactly as it was', () => {
+    const counts = { total: 2, pending: 2, burning: 0, done: 0, failed: 0, cancelled: 0 }
+    expect(needsMe(listItem({ phase: 'ideation' }))?.kind).toBe('grill')
+    expect(needsMe(listItem({ phase: 'tickets', ticketCounts: counts }))?.kind).toBe('burn')
+    expect(needsMe(listItem({ phase: 'review' }))?.kind).toBe('ship')
+    expect(needsMe(listItem({ phase: 'spec' }))).toBeNull()
+    expect(triageOf(listItem({ phase: 'ideation' }))).toBe('needsYou')
+    expect(triageOf(listItem({ phase: 'spec' }))).toBe('inProgress')
+  })
+
+  it('leaves shipped and archived features out of the lanes either way', () => {
+    expect(needsMe(withSession(true, { status: 'shipped', phase: 'shipped' }))).toBeNull()
+    expect(triageOf(withSession(true, { status: 'shipped', phase: 'shipped' }))).toBe('shipped')
+    expect(needsMe(withSession(true, { status: 'archived' }))).toBeNull()
+    expect(triageOf(withSession(true, { status: 'archived' }))).toBe('archived')
+  })
+
+  it('lets an active run outrank the session — the burn is the louder fact', () => {
+    const f = withSession(true, { activeRun: true })
+    expect(needsMe(f)).toBeNull()
+    expect(triageOf(f)).toBe('agentWorking')
+  })
+
+  it('sorts a waiting session to the top of the rail and a working one below it', () => {
+    const sorted = sortForSidebar([
+      listItem({ id: 'quiet', phase: 'spec' }),
+      withSession(false, { id: 'working', phase: 'ideation' }),
+      withSession(true, { id: 'waiting', phase: 'spec' }),
+    ])
+    expect(sorted[0].id).toBe('waiting')
   })
 })
 
