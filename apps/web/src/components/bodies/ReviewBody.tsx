@@ -65,6 +65,12 @@ export function ReviewBody({
     { refetchInterval: 5000 },
   )
   const drive = trpc.feature.driveInfo.useQuery(undefined, { refetchInterval: useLivePoll() })
+  // The drive slot is shared with preparation's dry run, which belongs to no
+  // feature (decision 9). Everything below reads this feature's own drive or
+  // nothing: a dry run's pane and dev server described under this branch would
+  // be a straight misattribution.
+  const ownDrive = drive.data?.featureId === feature.id ? drive.data : undefined
+  const dryRun = drive.data?.dryRun ?? false
   const checks = reviewChecks({ tickets, run, commitCount: commits.data?.count })
 
   return (
@@ -102,7 +108,12 @@ export function ReviewBody({
       <div className="review-card">
         <SectionTitle>Test drive</SectionTitle>
         {isDriving && driving ? (
-          <DriveStatus branch={driving.branch} drive={drive.data} />
+          <DriveStatus branch={driving.branch} drive={ownDrive} />
+        ) : dryRun ? (
+          <div className="drive-copy">
+            A preparation dry-run is holding the drive — it is proving this project’s drive
+            commands on your machine. Stop it from Preparation, and this branch can take the wheel.
+          </div>
         ) : (
           <div className="drive-copy">
             Nothing is running yet. Start the test drive from the next step to boot this branch on
@@ -113,7 +124,7 @@ export function ReviewBody({
       </div>
       </div>
 
-      {isDriving && drive.data?.featureId === feature.id && <DrivePane drive={drive.data} />}
+      {isDriving && ownDrive && <DrivePane drive={ownDrive} />}
     </div>
   )
 }
