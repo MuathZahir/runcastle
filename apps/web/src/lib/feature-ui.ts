@@ -1,6 +1,7 @@
 import { nextPhase, parsePhase } from '@runcastle/core'
 import type { EventRow, GateId, Phase } from '@runcastle/core'
 import type { BranchList, FeatureFull, FeatureListItem } from './api'
+import { relTime } from './format'
 
 /**
  * The New Feature form's default base branch. A new feature forks off the branch
@@ -111,6 +112,46 @@ export function needsMe(f: FeatureListItem): NeedsMe | null {
     return { kind: 'burn', label: 'review & burn tickets' }
   if (f.phase === 'review') return { kind: 'ship', label: 'test & merge' }
   return null
+}
+
+export type RowChipKind = 'needsMe' | 'working' | 'shipped' | 'age'
+
+/** What fills a sidebar row's single status-chip slot. */
+export interface RowChip {
+  kind: RowChipKind
+  /** The chip's visible text — `''` for the shipped chip, which is its ✓ alone. */
+  text: string
+  /** Hover sentence; for needs-me, the specific reason behind the generic label. */
+  title: string
+  /** needs-me only: which flavour of attention, which colours the dot. */
+  needs?: NeedsMeKind
+}
+
+/**
+ * The one thing a feature row's chip says (decisions §1). The slot holds exactly
+ * one thing, so the four candidates are ranked: something wants me > an agent is
+ * working > it shipped > nothing is happening, and here is how long for.
+ *
+ * Ticket 3 rewires what feeds this — live-session presence and turn state — so
+ * every caller reads the chip from here rather than re-deciding in the markup.
+ */
+export function rowChip(f: FeatureListItem, now: number = Date.now()): RowChip {
+  const nm = needsMe(f)
+  if (nm) return { kind: 'needsMe', text: 'Needs you', title: nm.label, needs: nm.kind }
+  if (f.activeRun) return { kind: 'working', text: 'Working', title: 'agent working' }
+  if (f.status === 'shipped') return { kind: 'shipped', text: '', title: 'shipped' }
+  const text = relTime(f.lastActivityAt, now)
+  return { kind: 'age', text, title: `last activity ${text === 'now' ? 'just now' : `${text} ago`}` }
+}
+
+/**
+ * A feature's ticket progress for the row's second line, or null when it has no
+ * tickets. Null rather than "0/0 done": a figure about nothing costs the line
+ * width that the slug and the pipeline map need.
+ */
+export function ticketProgress(f: FeatureListItem): string | null {
+  const { total, done } = f.ticketCounts
+  return total > 0 ? `${done}/${total} done` : null
 }
 
 /** Sidebar sort: needs-me first, then active, then shipped (dimmed). Stable
