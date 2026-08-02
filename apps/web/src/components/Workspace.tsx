@@ -570,8 +570,8 @@ function NextStepBar({
             proven, said where the eye already is before the click. The button
             beside it stays live. */}
         {ns.warning && (
-          <div className="nextstep-fog" role="note">
-            <span className="nextstep-fog-icon" aria-hidden="true">
+          <div className="nextstep-warn" role="note">
+            <span className="nextstep-warn-icon" aria-hidden="true">
               ⚑
             </span>
             <span>{ns.warning}</span>

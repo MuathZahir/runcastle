@@ -1032,9 +1032,12 @@ export function nextStep(
               ? { disabled: 'A preparation dry-run is in progress — stop it first' }
               : {}),
           }
-      const unverified =
-        ctx.driving || ctx.dryRunActive ? [] : (ctx.unverifiedDriveKeys ?? [])
-      const warning = unverified.length > 0 ? { warning: unverifiedWarning(unverified) } : {}
+      // Nothing to caveat mid-drive — the offer there is Stop — and nothing to
+      // caveat when the drive cannot start at all. Spread into each of review's
+      // three bars, so the doubt rides along whatever else the phase is saying.
+      const unverified = ctx.driving || ctx.dryRunActive ? [] : (ctx.unverifiedDriveKeys ?? [])
+      const driveWarning =
+        unverified.length > 0 ? { warning: unverifiedWarning(unverified) } : {}
       const iterate: NextAction[] = live
         ? []
         : [
@@ -1071,7 +1074,7 @@ export function nextStep(
             : { label: 'Resolve the merge conflict', kind: 'resolveConflict' },
           secondary: [blockedMerge, testDriveAction, ...iterate],
           busy: false,
-          ...warning,
+          ...driveWarning,
         }
       }
 
@@ -1088,7 +1091,7 @@ export function nextStep(
           primary: { label: `Burn ${pending} ticket${pending === 1 ? '' : 's'}`, kind: 'burn' },
           secondary: [{ label: 'Merge & ship', kind: 'merge' }, testDriveAction, ...iterate],
           busy: false,
-          ...warning,
+          ...driveWarning,
         }
       }
 
@@ -1109,7 +1112,7 @@ export function nextStep(
         primary: { label: 'Merge & ship', kind: 'merge' },
         secondary: [testDriveAction, ...iterate],
         busy: false,
-        ...warning,
+        ...driveWarning,
       }
     }
     case 'shipped':

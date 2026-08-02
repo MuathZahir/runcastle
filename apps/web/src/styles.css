@@ -1055,8 +1055,11 @@ button {
 .nextstep-actions { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
 
 /* Convergence lives in the bar (ADR-0001 §13.6): remaining map fog as a soft
-   warning under the description, and the override's inline reason input. */
-.nextstep-fog {
+   warning under the description, and the override's inline reason input. The
+   drive keys no dry run has proven (decision 7) get the same treatment — both
+   are doubts the bar states without gating the action beside them. */
+.nextstep-fog,
+.nextstep-warn {
   display: flex;
   align-items: baseline;
   gap: 8px;
@@ -1066,7 +1069,8 @@ button {
   line-height: 1.6;
   color: color-mix(in srgb, var(--needs) 82%, var(--text));
 }
-.nextstep-fog-icon { flex-shrink: 0; color: var(--needs); }
+.nextstep-fog-icon,
+.nextstep-warn-icon { flex-shrink: 0; color: var(--needs); }
 .nextstep-override { display: flex; align-items: center; gap: 8px; }
 .nextstep-override .override-input { width: 260px; }
 
