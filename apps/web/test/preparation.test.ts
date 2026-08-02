@@ -6,6 +6,7 @@ import {
   isStale,
   projectRows,
   relativeAge,
+  verificationBadge,
 } from '../src/lib/settings'
 import type { SettingField, SettingsView } from '../src/lib/api'
 
@@ -144,7 +145,82 @@ describe('drive field presentation', () => {
   })
 })
 
+/**
+ * Ticket 3 / decision 10 — the dry-run stamp reaches settings, the surface where
+ * a human edits the value and the edit clears it. Only the four drive-loop keys
+ * have an observable a host drive produces; on everything else the absence of a
+ * badge means "unverifiable", not "failed", so no wording appears at all.
+ */
+describe('verificationBadge', () => {
+  const now = Date.now()
+
+  it('ages a stamped drive-loop key', () => {
+    expect(verificationBadge({ key: 'devCommand', verifiedAt: now - 3 * HOUR }, now)).toBe(
+      'verified 3h ago',
+    )
+  })
+
+  it('calls an unstamped drive-loop key unverified', () => {
+    expect(verificationBadge({ key: 'driveSetupCommand' }, now)).toBe('unverified')
+  })
+
+  it('says nothing at all about a key no dry run can prove', () => {
+    for (const key of ['dbResetCommand', 'setupCommand', 'verifyCommands', 'knownFailures']) {
+      expect(verificationBadge({ key, verifiedAt: now }, now)).toBeNull()
+    }
+  })
+
+  // The stamp records that this exact value was seen working, not who chose it.
+  it('badges a human-set value like any other', () => {
+    expect(verificationBadge({ key: 'driveEnv', verifiedAt: now }, now)).toBe('verified just now')
+  })
+})
+
+describe('describeFinding — the dry-run stamp', () => {
+  it('appends the stamp to a verified drive-loop key', () => {
+    const note = describeFinding(
+      finding({ key: 'driveStopCommand', staleCommits: 0, verifiedAt: Date.now() }),
+    )
+    expect(note).toContain('Verified just now by a dry run')
+  })
+
+  it('says an unstamped drive-loop key was never proven', () => {
+    const note = describeFinding(finding({ key: 'driveSetupCommand', staleCommits: 0 }))
+    expect(note).toContain('Unverified — never proven by a dry run')
+  })
+
+  // Provenance and verification are orthogonal (decision 6) — the human branch
+  // returns early on its own sentence, and the stamp still has to land.
+  it('stamps a human-set drive-loop key too', () => {
+    const note = describeFinding(
+      finding({ key: 'devCommand', source: 'human', verifiedAt: Date.now() }),
+    )
+    expect(note).toMatch(/^You set this/)
+    expect(note).toContain('Verified just now by a dry run')
+  })
+
+  it('leaves an unverifiable key’s note exactly as it was', () => {
+    const note = describeFinding(finding({ key: 'verifyCommands', staleCommits: 0 }))
+    expect(note).toBe('Established by preparation just now — main has not moved since.')
+  })
+})
+
 describe('projectRows', () => {
+  it('carries the stamp into the prepared field’s note', () => {
+    const view = {
+      projectId: 'proj_1',
+      fields: [field({ key: 'devCommand', value: 'bun dev' })],
+    } as SettingsView
+
+    const stamped = projectRows(view, [finding({ key: 'devCommand', verifiedAt: Date.now() })])
+    expect(stamped[0]?.note).toContain('Verified just now by a dry run')
+
+    // The server clears the stamp on any write, so the refetched view is the
+    // same finding minus `verifiedAt` — and the note has to follow it back.
+    const cleared = projectRows(view, [finding({ key: 'devCommand' })])
+    expect(cleared[0]?.note).toContain('Unverified — never proven by a dry run')
+  })
+
   it('attaches each finding to its own field only', () => {
     const view = {
       projectId: 'proj_1',

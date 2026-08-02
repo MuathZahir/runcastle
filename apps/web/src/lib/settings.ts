@@ -1,4 +1,4 @@
-import { CURATED_MODELS, MODEL_STEPS } from '@runcastle/core'
+import { CURATED_MODELS, DRIVE_LOOP_KEYS, MODEL_STEPS } from '@runcastle/core'
 import type { ModelStep } from '@runcastle/core'
 import type { SettingField, SettingsView } from './api'
 
@@ -220,14 +220,62 @@ export function relativeAge(ts: number, now = Date.now()): string {
 }
 
 /**
+ * Whether a dry run can prove this key at all. Only the four drive-loop keys
+ * have an observable a host drive produces; the rest carry no verification
+ * wording anywhere, which reads as "unverifiable", not "failed" (decision 10).
+ */
+function isVerifiable(key: string): boolean {
+  return (DRIVE_LOOP_KEYS as readonly string[]).includes(key)
+}
+
+/**
+ * The verification badge for a finding — `null` for a key no dry run can prove.
+ *
+ * Deliberately independent of `source`: the stamp records that this exact value
+ * was seen working by the real drive machinery, not who chose it, so a value the
+ * human typed carries a badge exactly like one preparation measured.
+ */
+export function verificationBadge(
+  f: { key: string; verifiedAt?: number },
+  now = Date.now(),
+): string | null {
+  if (!isVerifiable(f.key)) return null
+  return f.verifiedAt === undefined ? 'unverified' : `verified ${relativeAge(f.verifiedAt, now)}`
+}
+
+/**
  * The one-line provenance note under a prepared field.
  *
  * The staleness half is the point: a value measured 200 commits ago is not
  * obviously wrong, which is exactly why it needs saying out loud — a test
  * baseline that has silently rotted gets trusted by every agent that reads it.
  * An unknown distance (rebased-away sha) says "unknown", never "fresh".
+ *
+ * A drive-loop key's note also carries its dry-run stamp, because settings is
+ * where a human edits the value and any edit clears the stamp (decision 6) — the
+ * place it goes away has to be the place it was visible.
  */
 export function describeFinding(f: {
+  source: string
+  establishedAt: number
+  establishedSha?: string
+  staleCommits?: number
+  verifiedAt?: number
+  key: string
+}): string {
+  return `${provenanceNote(f)}${verificationNote(f)}`
+}
+
+/** The dry-run half of the note; empty for a key no dry run can prove. */
+function verificationNote(f: { key: string; verifiedAt?: number }): string {
+  if (!isVerifiable(f.key)) return ''
+  return f.verifiedAt === undefined
+    ? ' Unverified — never proven by a dry run.'
+    : ` Verified ${relativeAge(f.verifiedAt)} by a dry run.`
+}
+
+/** Who established the value and how far the repo has moved since. */
+function provenanceNote(f: {
   source: string
   establishedAt: number
   establishedSha?: string
@@ -323,6 +371,8 @@ export interface FindingLike {
   establishedAt: number
   establishedSha?: string
   staleCommits?: number
+  /** When a dry run last proved this value; drive-loop keys only (decision 10). */
+  verifiedAt?: number
 }
 
 /**
