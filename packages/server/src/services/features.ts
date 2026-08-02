@@ -15,7 +15,7 @@ import { rmSync } from 'node:fs'
 import type { AppCtx } from '../db/types'
 import { events, features, gateOverrides, runs, sessions, tickets, waypoints } from '../db/schema'
 import { GateError, InvalidInputError, isNotImplemented } from '../errors'
-import { emit, emitProject } from './events'
+import { emit, emitProject, latestTsByFeature } from './events'
 import { checkGate } from './gates'
 import * as git from './git'
 import { listDocs, scaffoldDocs, scaffoldMapDoc } from './knowledge'
@@ -55,6 +55,13 @@ export interface TicketCounts {
 export interface FeatureListItem extends Feature {
   ticketCounts: TicketCounts
   activeRun: boolean
+  /**
+   * When this feature last did anything — its newest event's `ts`, falling back
+   * to `createdAt` when it has no events yet. The sidebar row's relative stamp
+   * ("10m") reads this: `createdAt` alone answers when the feature was made,
+   * which is not the question a triage rail is asked.
+   */
+  lastActivityAt: number
 }
 
 export interface FeatureGateState {
@@ -312,6 +319,8 @@ export function list(ctx: AppCtx, projectId: string): FeatureListItem[] {
     .orderBy(desc(features.createdAt))
     .all()
 
+  const lastActivity = latestTsByFeature(ctx, projectId)
+
   return rows.map((row) => {
     const feature = rowToFeature(row)
     const tickets = listByFeature(ctx, feature.id)
@@ -323,7 +332,12 @@ export function list(ctx: AppCtx, projectId: string): FeatureListItem[] {
       failed: tickets.filter((t) => t.status === 'failed').length,
       cancelled: tickets.filter((t) => t.status === 'cancelled').length,
     }
-    return { ...feature, ticketCounts: counts, activeRun: hasActiveRun(ctx, feature.id) }
+    return {
+      ...feature,
+      ticketCounts: counts,
+      activeRun: hasActiveRun(ctx, feature.id),
+      lastActivityAt: lastActivity.get(feature.id) ?? feature.createdAt,
+    }
   })
 }
 
