@@ -5,6 +5,7 @@ import type {
   Project,
   Run,
   SessionRow,
+  SessionStatus,
   Ticket,
   Waypoint,
 } from '@runcastle/core'
@@ -52,9 +53,28 @@ export interface TicketCounts {
   cancelled: number
 }
 
+/**
+ * A feature's open terminal, as the triage lanes read it (decisions §3): is one
+ * open at all, and is its agent mid-turn or waiting on the human? `activeRun`
+ * answers the same question for the unattended burner; this is the HITL half,
+ * which the list simply did not carry.
+ */
+export interface LiveSessionState {
+  /** `launching` while the terminal opens, `live` once Claude Code reported in. */
+  status: Extract<SessionStatus, 'launching' | 'live'>
+  /** The agent finished its turn and is waiting on the human (the `Stop` hook). */
+  awaitingInput: boolean
+}
+
 export interface FeatureListItem extends Feature {
   ticketCounts: TicketCounts
   activeRun: boolean
+  /**
+   * The feature's open session, or null when it has none — an ended session
+   * clears this entirely, because a conversation nobody is in is not a claim on
+   * anyone's attention.
+   */
+  liveSession: LiveSessionState | null
   /**
    * When this feature last did anything — its newest event's `ts`, falling back
    * to `createdAt` when it has no events yet. The sidebar row's relative stamp
@@ -336,9 +356,25 @@ export function list(ctx: AppCtx, projectId: string): FeatureListItem[] {
       ...feature,
       ticketCounts: counts,
       activeRun: hasActiveRun(ctx, feature.id),
+      liveSession: liveSessionOf(ctx, feature.id),
       lastActivityAt: lastActivity.get(feature.id) ?? feature.createdAt,
     }
   })
+}
+
+/**
+ * The feature's open terminal for {@link FeatureListItem.liveSession}. One
+ * live HITL session per feature is the launcher's guard, so the pick only
+ * matters while a second terminal is coming up: the one that reached `live`
+ * wins, because it is the one somebody is actually talking to.
+ */
+function liveSessionOf(ctx: AppCtx, featureId: string): LiveSessionState | null {
+  const open = activeSessionsForFeature(ctx, featureId)
+  const session = open.find((s) => s.status === 'live') ?? open[0]
+  // `activeSessionsForFeature` never returns an ended row; the check is what
+  // narrows the status to the two this reports, without a cast.
+  if (!session || session.status === 'ended') return null
+  return { status: session.status, awaitingInput: session.awaitingInput }
 }
 
 /** Attempt the gate guarding the next phase; advance or throw with the reason. */
