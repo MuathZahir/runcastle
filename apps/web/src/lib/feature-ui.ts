@@ -120,7 +120,9 @@ export function needsMe(f: FeatureListItem): NeedsMe | null {
   if (f.liveSession) {
     // The amber `grill` dot: every talk session is a conversation, and a
     // conversation that has stopped is waiting on my half of it.
-    return agentMidTurn(f) ? null : { kind: 'grill', label: 'the session is waiting on you' }
+    return f.liveSession.awaitingInput
+      ? { kind: 'grill', label: 'the session is waiting on you' }
+      : null
   }
   if (f.ticketCounts.failed > 0)
     return { kind: 'attention', label: 'run failed — needs attention' }
