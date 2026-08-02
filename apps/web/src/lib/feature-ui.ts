@@ -259,7 +259,7 @@ export function triage(
 }
 
 /** How many Shipped rows the rail shows collapsed (decisions §2). */
-export const SHIPPED_LANE_CAP = 5
+const SHIPPED_LANE_CAP = 5
 
 export interface CappedLane {
   /** The features the lane renders right now. */
