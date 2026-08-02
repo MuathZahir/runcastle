@@ -3,19 +3,21 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { beforeEach, describe, expect, it } from 'vitest'
 import type { Project } from '@runcastle/core'
-import { PREPARED_KEYS } from '@runcastle/core'
+import { DRIVE_LOOP_KEYS, PREPARED_KEYS } from '@runcastle/core'
 import { projects } from '../src/db/schema'
 import type { AppCtx } from '../src/db/types'
 import { createSessionRow, markSessionEnded } from '../src/launcher/sessions'
 import {
   isOverwritable,
   isPreparedKey,
+  listFindings,
+  markVerified,
   preparedValue,
   recordFinding,
   recordHuman,
   unsetPreparedKeys,
 } from '../src/services/findings'
-import { isPrepared, keysToPrepare } from '../src/services/prep'
+import { isPrepared, keysToPrepare, prepView } from '../src/services/prep'
 import { getSettings, updateSettings } from '../src/services/settings'
 import { makeTestCtx } from './helpers/db'
 
@@ -158,6 +160,111 @@ describe('human provenance', () => {
     updateSettings(ctx, { projectId: PROJECT_ID, key: 'verifyCommands', value: 'my test cmd' })
     updateSettings(ctx, { projectId: PROJECT_ID, key: 'verifyCommands', value: null })
     expect(isOverwritable(ctx, PROJECT_ID, 'verifyCommands')).toBe(true)
+  })
+})
+
+/**
+ * The dry-run stamp. Verification means "the drive machinery watched this exact
+ * value work", so the only way in is a clean dry-run pass and the only way out
+ * is a write to the key — no value-diffing, no staleness.
+ */
+describe('verification stamps', () => {
+  const finding = async (key: string) =>
+    (await listFindings(ctx, project())).find((f) => f.key === key)
+
+  const recordDevCommand = (): void => {
+    recordFinding(ctx, PROJECT_ID, { key: 'devCommand', value: 'bun dev', source: 'prep' })
+  }
+
+  it('names exactly the four keys a host drive can prove', () => {
+    expect(DRIVE_LOOP_KEYS).toEqual([
+      'devCommand',
+      'driveSetupCommand',
+      'driveStopCommand',
+      'driveEnv',
+    ])
+  })
+
+  it('stamps the given keys with the time and sha they were proven at', async () => {
+    recordDevCommand()
+    recordFinding(ctx, PROJECT_ID, { key: 'driveEnv', value: 'PORT=1', source: 'prep' })
+
+    markVerified(ctx, PROJECT_ID, ['devCommand', 'driveEnv'], 'deadbee')
+
+    expect((await finding('devCommand'))?.verifiedSha).toBe('deadbee')
+    expect((await finding('devCommand'))?.verifiedAt).toBeGreaterThan(0)
+    expect((await finding('driveEnv'))?.verifiedSha).toBe('deadbee')
+  })
+
+  it('stamps a human-sourced value too — the stamp records what worked, not who chose it', async () => {
+    recordHuman(ctx, PROJECT_ID, 'devCommand', 'bun dev')
+    markVerified(ctx, PROJECT_ID, ['devCommand'], 'deadbee')
+
+    const f = await finding('devCommand')
+    expect(f?.source).toBe('human')
+    expect(f?.verifiedSha).toBe('deadbee')
+  })
+
+  it('leaves a key with no provenance row unverified rather than inventing one', async () => {
+    markVerified(ctx, PROJECT_ID, ['driveStopCommand'], 'deadbee')
+    expect(await finding('driveStopCommand')).toBeUndefined()
+  })
+
+  it('records a null sha when the repo has no resolvable commit', async () => {
+    recordDevCommand()
+    markVerified(ctx, PROJECT_ID, ['devCommand'], null)
+
+    const f = await finding('devCommand')
+    expect(f?.verifiedAt).toBeGreaterThan(0)
+    expect(f?.verifiedSha).toBeUndefined()
+  })
+
+  it('is cleared by a prep re-record over the verified key', async () => {
+    recordDevCommand()
+    markVerified(ctx, PROJECT_ID, ['devCommand'], 'deadbee')
+
+    recordFinding(ctx, PROJECT_ID, { key: 'devCommand', value: 'bun dev --port 3000', source: 'prep' })
+
+    const f = await finding('devCommand')
+    expect(f?.verifiedAt).toBeUndefined()
+    expect(f?.verifiedSha).toBeUndefined()
+  })
+
+  it('is cleared by a human settings write over the verified key', async () => {
+    recordDevCommand()
+    markVerified(ctx, PROJECT_ID, ['devCommand'], 'deadbee')
+
+    updateSettings(ctx, { projectId: PROJECT_ID, key: 'devCommand', value: 'npm start' })
+
+    const f = await finding('devCommand')
+    expect(f?.verifiedAt).toBeUndefined()
+    expect(f?.verifiedSha).toBeUndefined()
+  })
+
+  // A fresh insert can land on a stamp the same way an update can: the row for
+  // this key may have been dropped and re-added between passes.
+  it('never carries a stamp on a freshly inserted finding', async () => {
+    recordFinding(ctx, PROJECT_ID, { key: 'driveSetupCommand', value: 'setup', source: 'prep' })
+    expect((await finding('driveSetupCommand'))?.verifiedAt).toBeUndefined()
+
+    recordHuman(ctx, PROJECT_ID, 'driveStopCommand', 'stop')
+    expect((await finding('driveStopCommand'))?.verifiedAt).toBeUndefined()
+  })
+
+  it('drops the stamp with the row when the value is cleared', async () => {
+    recordDevCommand()
+    markVerified(ctx, PROJECT_ID, ['devCommand'], 'deadbee')
+
+    recordFinding(ctx, PROJECT_ID, { key: 'devCommand', value: null, source: 'prep' })
+    expect(await finding('devCommand')).toBeUndefined()
+  })
+
+  it('carries the stamp out through the view the preparation workspace polls', async () => {
+    recordDevCommand()
+    markVerified(ctx, PROJECT_ID, ['devCommand'], 'deadbee')
+
+    const view = await prepView(ctx, project())
+    expect(view.findings.find((f) => f.key === 'devCommand')?.verifiedSha).toBe('deadbee')
   })
 })
 
