@@ -1,0 +1,1 @@
+ALTER TABLE `sessions` ADD `awaiting_input` integer DEFAULT false NOT NULL;

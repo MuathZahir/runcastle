@@ -40,6 +40,7 @@ function session(overrides: Partial<SessionRow> = {}): SessionRow {
     featureId: 'feat_abc',
     kind: 'ideation',
     status: 'launching',
+    awaitingInput: false,
     worktreePath: 'C:\\wt\\dark-mode',
     ...overrides,
   }

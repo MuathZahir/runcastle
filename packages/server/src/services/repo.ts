@@ -81,6 +81,7 @@ export function rowToSession(row: SessionSelect): SessionRow {
     ccSessionId: row.ccSessionId ?? undefined,
     transcriptPath: row.transcriptPath ?? undefined,
     status: row.status,
+    awaitingInput: row.awaitingInput,
     worktreePath: row.worktreePath,
   }
 }
