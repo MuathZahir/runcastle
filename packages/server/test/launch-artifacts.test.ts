@@ -143,6 +143,30 @@ describe('renderSettings', () => {
   })
 
   /**
+   * Ticket 4 — the turn-state hook. Without `Stop` the server only ever hears
+   * that a prompt went IN, so a live session looks identical whether the agent
+   * is mid-turn or has been waiting on the human for an hour.
+   */
+  it('registers the Stop hook so the end of an agent turn is observable', () => {
+    const s = renderSettings('C:\\hooks\\hook-client.ts')
+
+    // Stop takes NO matcher (CC-INTEGRATION-NOTES §2 — silently ignored there).
+    expect(s.hooks.Stop[0]).not.toHaveProperty('matcher')
+    expect(s.hooks.Stop[0].hooks[0]).toMatchObject({
+      type: 'command',
+      command: 'bun run "C:\\hooks\\hook-client.ts" stop',
+      timeout: 5,
+    })
+  })
+
+  it('registers Stop for every session kind — turn state is not kind-specific', () => {
+    for (const kind of ['ideation', 'qa', 'waypoint', 'converge', 'revisit', 'prepare', 'project'] as const) {
+      const s = renderSettings('C:\\hooks\\hook-client.ts', kind)
+      expect(s.hooks.Stop[0].hooks[0].command).toBe('bun run "C:\\hooks\\hook-client.ts" stop')
+    }
+  })
+
+  /**
    * The talk-session edit guard (F2). Nothing but a prompt sentence stood
    * between a session told to grill and a session that just implemented the
    * feature itself — full checkout, `acceptEdits`, no deny hook anywhere.
