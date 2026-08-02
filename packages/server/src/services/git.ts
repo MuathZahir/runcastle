@@ -1565,7 +1565,7 @@ export async function testDrive(
  * leftover database from a failed teardown makes `createdb` fail loudly, which
  * is the "make sure it is new" check enforced by the machinery itself.
  */
-export const DRY_RUN_SLUG = 'prep-dry-run'
+const DRY_RUN_SLUG = 'prep-dry-run'
 
 /** A hook as the dry-run result reports it — the tail is what the agent debugs from. */
 export interface DryRunHookReport {
@@ -1770,7 +1770,7 @@ async function stopDryRun(
  * is verified by. Spawning is too weak on its own: a server that crashes on boot
  * still spawns, and the URL is what "Open app" actually depends on.
  */
-export function recordDryRunUrl(ctx: AppCtx, projectId: string, url: string): void {
+function recordDryRunUrl(ctx: AppCtx, projectId: string, url: string): void {
   if (testDriveState?.kind !== 'dryRun') return
   if (testDriveState.projectId !== projectId || testDriveState.devUrl) return
   testDriveState.devUrl = url
@@ -1824,7 +1824,9 @@ function observableFailure(
 }
 
 /** The live half of a dry run's report, shared by every action that has one. */
-function liveFields(state: DryRunState): Partial<DryRunResult> {
+function liveFields(
+  state: DryRunState,
+): Pick<DryRunResult, 'identity' | 'devConfigured' | 'devPaneLive' | 'devUrl'> {
   return {
     identity: { slug: DRY_RUN_SLUG, branch: state.branch },
     devConfigured: state.devConfigured,

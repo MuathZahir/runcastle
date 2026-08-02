@@ -9,6 +9,7 @@ import { GateError } from '../src/errors'
 import { createSessionRow } from '../src/launcher/sessions'
 import { toolDryRunDrive } from '../src/mcp/server'
 import { createNativePtySession } from '../src/pty/pty'
+import { ptyRegistry } from '../src/pty/registry'
 import { listByProject } from '../src/services/events'
 import { listFindings, recordFinding } from '../src/services/findings'
 import {
@@ -204,6 +205,10 @@ describe('the preparation dry-run drive', () => {
     expect(activeDriveInfo()).toMatchObject({ dryRun: true, branch: 'main', devConfigured: false })
     // `dryRun` with no feature at all is how the UI tells the two drives apart.
     expect(activeDriveInfo()).not.toHaveProperty('featureId')
+    // The same shape reaches the wire the drive UI already polls.
+    const driveInfo = await createCallerFactory(appRouter)(ctx).feature.driveInfo()
+    expect(driveInfo).toMatchObject({ dryRun: true, branch: 'main' })
+    expect(driveInfo).not.toHaveProperty('featureId')
     // The prep workspace reads the same drive, which is how it offers a Stop.
     expect((await prepView(ctx, project)).dryRun).toMatchObject({ dryRun: true, branch: 'main' })
 
@@ -259,7 +264,12 @@ describe('the preparation dry-run drive', () => {
     expect(status.devUrl).toBe('http://localhost:5173/')
     expect(status.devPaneLive).toBe(true)
 
+    // Stop frees the port: the pane is killed before the stop hook goes looking
+    // for what it has to drop.
+    const paneId = activeDriveInfo()?.devPaneId
+    expect(paneId).toBeDefined()
     await drive('stop')
+    expect(ptyRegistry().has(paneId!)).toBe(false)
   }, 15000)
 
   // --- the stop half and its verdict ----------------------------------------
