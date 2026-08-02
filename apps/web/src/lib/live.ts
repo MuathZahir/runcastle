@@ -114,6 +114,10 @@ export function useLiveSync(): LiveStatus {
       void u.feature.list.invalidate()
       void u.feature.get.invalidate()
       void u.feature.driveInfo.invalidate()
+      // Findings carry the dry-run stamps the next-step bar warns on, and a
+      // clean dry run stamps them mid-session — without this the warning would
+      // outlive the run that disproved it until the next remount.
+      void u.project.prep.invalidate()
       void u.run.get.invalidate()
       void u.project.list.invalidate()
       // Spec/plan documents: these queries have no polling interval at all, so

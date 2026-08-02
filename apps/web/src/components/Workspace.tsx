@@ -94,7 +94,7 @@ export function Workspace({
   const projectId = q.data?.feature.projectId
   const prepQ = trpc.project.prep.useQuery(
     { projectId: projectId ?? '' },
-    { enabled: !!projectId, refetchInterval: 5000 },
+    { enabled: !!projectId, refetchInterval: useLivePoll() },
   )
   const driveQ = trpc.feature.driveInfo.useQuery(undefined, { refetchInterval: useLivePoll() })
 
