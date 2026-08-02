@@ -137,6 +137,10 @@ function Field({ row, projectId }: { row: SettingRow; projectId?: string }) {
   const update = trpc.settings.update.useMutation({
     onSuccess: () => {
       void utils.settings.get.invalidate()
+      // The write re-sourced the finding to `human` and cleared any dry-run
+      // stamp on it (decision 6) — the note under this very field says both, so
+      // it has to be refetched with the value.
+      void utils.project.prep.invalidate()
     },
     onError: (e) => {
       setDraft(row.value)
