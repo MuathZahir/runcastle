@@ -103,4 +103,16 @@ export const projectRouter = router({
   prep: publicProcedure
     .input(z.object({ projectId: z.string() }))
     .query(({ ctx, input }) => prepView(ctx, requireProjectById(ctx, input.projectId))),
+
+  /**
+   * Tear down a preparation dry-run drive by hand (decision 9). The prep session
+   * normally runs both halves itself, but it can die mid-run — and what it
+   * leaves up is a dev server and a temp database on the human's machine, so the
+   * stop half has to be reachable without it.
+   */
+  dryRunStop: publicProcedure
+    .input(z.object({ projectId: z.string() }))
+    .mutation(({ ctx, input }) =>
+      git.dryRunDrive(ctx, requireProjectById(ctx, input.projectId), 'stop'),
+    ),
 })
