@@ -258,6 +258,39 @@ export function triage(
     .filter((g) => g.features.length > 0)
 }
 
+/** How many Shipped rows the rail shows collapsed (decisions §2). */
+export const SHIPPED_LANE_CAP = 5
+
+export interface CappedLane {
+  /** The features the lane renders right now. */
+  visible: FeatureListItem[]
+  /**
+   * The expander button's label — 'Show all (N)' collapsed, 'Show fewer'
+   * expanded — or null when the lane shows everything it has and needs no button.
+   */
+  expanderLabel: string | null
+}
+
+/**
+ * How much of a triage lane to render (decisions §2). Shipped is the only lane
+ * that grows without bound, so it alone collapses to its newest
+ * {@link SHIPPED_LANE_CAP} rows — the incoming order is the server's newest-first
+ * — behind a "Show all (N)" expander. Every other lane is exactly what the rail
+ * exists to surface and is never hidden.
+ *
+ * N counts the whole lane, not the hidden tail: the label beside it is the
+ * lane's true total, and two different figures for one lane read as a bug.
+ */
+export function capLane(group: TriageGroup, expanded: boolean): CappedLane {
+  if (group.key !== 'shipped' || group.features.length <= SHIPPED_LANE_CAP) {
+    return { visible: group.features, expanderLabel: null }
+  }
+  return {
+    visible: expanded ? group.features : group.features.slice(0, SHIPPED_LANE_CAP),
+    expanderLabel: expanded ? 'Show fewer' : `Show all (${group.features.length})`,
+  }
+}
+
 // --- pipeline (sidebar mini-map + workspace stepper) -----------------------
 
 export type StepState = 'done' | 'current' | 'upcoming'
