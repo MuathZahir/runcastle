@@ -329,6 +329,34 @@ describe('the prepare brief', () => {
     const out = renderPreparePrompt({ project: project(), remainingKeys: [], established: [] })
     expect(out).toContain('Nothing is unset')
   })
+
+  /**
+   * The closing move (decision 8): the session ends by PROPOSING a dry-run
+   * drive, never by running one unannounced — it starts services and creates a
+   * database on someone's machine. The two halves and the fix-and-retry loop are
+   * the whole protocol, and the stamp being the server's to compute is what
+   * stops a diligent-sounding agent from marking its own homework.
+   */
+  it('closes by proposing the dry-run drive, asked for first and inspected in halves', () => {
+    const out = renderPreparePrompt({ project: project(), remainingKeys: [], established: [] })
+
+    expect(out).toContain('dry_run_drive')
+    expect(out).toContain('Ask before you act')
+    // The identity, so a leftover database is recognisable rather than alarming.
+    expect(out).toContain('prep-dry-run')
+    expect(out).toContain('prep_dry_run')
+    expect(out).toContain('createdb')
+
+    // Between the halves and after the stop: the checks the server cannot do.
+    expect(out).toContain('FRESH')
+    expect(out).toContain('RESPONDS')
+    expect(out).toContain('cleanup')
+
+    // Fix-and-retry, and where the stamp comes from.
+    expect(out).toContain('record_finding')
+    expect(out).toContain('clean full pass')
+    expect(out).toContain('mark your own homework')
+  })
 })
 
 /**
