@@ -706,7 +706,10 @@ button {
 .row-actions-item:hover { background: var(--panel-3); color: var(--text); }
 .row-actions-item.is-danger { color: var(--danger); }
 
-.show-archived-toggle {
+/* The rail's two quiet expanders: show-archived (a standing choice) and the
+   Shipped lane's "Show all (N)" — one idiom, so they read as the same affordance. */
+.show-archived-toggle,
+.lane-expander {
   width: 100%;
   margin-top: 8px;
   padding: 6px 9px;
@@ -719,7 +722,8 @@ button {
   border-radius: var(--radius-sm);
   transition: background var(--dur-1) var(--ease), color var(--dur-1) var(--ease);
 }
-.show-archived-toggle:hover { background: var(--panel-3); color: var(--text-2); }
+.show-archived-toggle:hover,
+.lane-expander:hover { background: var(--panel-3); color: var(--text-2); }
 .feature-dot {
   width: 8px;
   height: 8px;
