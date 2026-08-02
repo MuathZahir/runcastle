@@ -5,7 +5,8 @@ import { useEventLog } from '../lib/events'
 import { useLivePoll } from '../lib/live'
 import { useToast } from '../lib/toast'
 import { Button, DimLine, PhaseTag } from '../ui'
-import type { FeatureFull } from '../lib/api'
+import type { FeatureFull, PrepView } from '../lib/api'
+import { unverifiedDriveKeys } from '../lib/settings'
 import type { DriveState } from '../lib/workspace'
 import {
   effectivePhase,
@@ -85,6 +86,17 @@ export function Workspace({
     { featureId, relPath: mapRelPath ?? 'map.md' },
     { enabled: !!mapRelPath },
   )
+  // Before recommending a test drive the bar has to know what the drive is about
+  // to depend on that nothing has ever proven (decision 7) — that lives on the
+  // project's findings, same query key the preparation surfaces poll. And a
+  // preparation dry run holds the one drive slot (decision 9), which only the
+  // server's drive info knows; ReviewBody polls the same key, so this is one fetch.
+  const projectId = q.data?.feature.projectId
+  const prepQ = trpc.project.prep.useQuery(
+    { projectId: projectId ?? '' },
+    { enabled: !!projectId, refetchInterval: 5000 },
+  )
+  const driveQ = trpc.feature.driveInfo.useQuery(undefined, { refetchInterval: useLivePoll() })
 
   const invalidate = () => {
     void utils.feature.get.invalidate({ id: featureId })
@@ -228,6 +240,8 @@ export function Workspace({
     driving: isDriving,
     mapContent: mapQ.data?.content,
     conflict,
+    unverifiedDriveKeys: unverifiedDriveKeys((prepQ.data as PrepView | undefined)?.findings ?? []),
+    dryRunActive: !!driveQ.data?.dryRun,
   })
   const busy =
     launch.isPending ||
@@ -550,6 +564,17 @@ function NextStepBar({
               ⚑
             </span>
             <span>Fog remains — still not specified: {ns.fog}. You can converge anyway.</span>
+          </div>
+        )}
+        {/* Shown, never enforced (decision 7): the drive keys nothing has ever
+            proven, said where the eye already is before the click. The button
+            beside it stays live. */}
+        {ns.warning && (
+          <div className="nextstep-fog" role="note">
+            <span className="nextstep-fog-icon" aria-hidden="true">
+              ⚑
+            </span>
+            <span>{ns.warning}</span>
           </div>
         )}
       </div>

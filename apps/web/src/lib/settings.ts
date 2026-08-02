@@ -244,6 +244,22 @@ export function verificationBadge(
 }
 
 /**
+ * The drive-loop keys a test drive is about to depend on that no dry run has
+ * ever proven — what the next-step bar warns about (decision 7), in the canonical
+ * key order so the sentence is stable between polls.
+ *
+ * A key with no finding row has no value, and a drive that runs nothing for it
+ * has nothing to doubt: a checkout-only drive warns about nothing at all.
+ */
+export function unverifiedDriveKeys(
+  findings: readonly { key: string; verifiedAt?: number }[],
+): string[] {
+  return DRIVE_LOOP_KEYS.filter((k) =>
+    findings.some((f) => f.key === k && f.verifiedAt === undefined),
+  )
+}
+
+/**
  * The one-line provenance note under a prepared field.
  *
  * The staleness half is the point: a value measured 200 commits ago is not

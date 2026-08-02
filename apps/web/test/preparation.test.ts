@@ -6,6 +6,7 @@ import {
   isStale,
   projectRows,
   relativeAge,
+  unverifiedDriveKeys,
   verificationBadge,
 } from '../src/lib/settings'
 import type { SettingField, SettingsView } from '../src/lib/api'
@@ -173,6 +174,35 @@ describe('verificationBadge', () => {
   // The stamp records that this exact value was seen working, not who chose it.
   it('badges a human-set value like any other', () => {
     expect(verificationBadge({ key: 'driveEnv', verifiedAt: now }, now)).toBe('verified just now')
+  })
+})
+
+describe('unverifiedDriveKeys', () => {
+  it('lists the drive-loop keys with a finding row and no stamp, in key order', () => {
+    expect(
+      unverifiedDriveKeys([
+        finding({ key: 'driveEnv' }),
+        finding({ key: 'devCommand', verifiedAt: Date.now() }),
+        finding({ key: 'driveSetupCommand' }),
+      ]),
+    ).toEqual(['driveSetupCommand', 'driveEnv'])
+  })
+
+  // A key with no value is not part of the drive at all — a checkout-only drive
+  // has nothing to doubt, so it must warn about nothing.
+  it('ignores keys nothing was ever established for', () => {
+    expect(unverifiedDriveKeys([])).toEqual([])
+    expect(unverifiedDriveKeys([finding({ key: 'verifyCommands' })])).toEqual([])
+  })
+
+  it('is empty once every established drive key is stamped', () => {
+    const now = Date.now()
+    expect(
+      unverifiedDriveKeys([
+        finding({ key: 'devCommand', verifiedAt: now }),
+        finding({ key: 'driveStopCommand', verifiedAt: now }),
+      ]),
+    ).toEqual([])
   })
 })
 
