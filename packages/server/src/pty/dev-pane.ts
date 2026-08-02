@@ -1,5 +1,5 @@
 import type { AppCtx } from '../db/types'
-import { emit } from '../services/events'
+import { emitScoped, type EmitScope } from '../services/events'
 import { ptyRegistry, type TerminalSink } from './registry'
 
 /**
@@ -19,9 +19,13 @@ import { ptyRegistry, type TerminalSink } from './registry'
 /** Registry-id prefix for drive-owned PTYs. Deliberately not a `sess_` id. */
 const DRIVE_PREFIX = 'drive:'
 
-/** The registry id for a feature's test-drive dev pane (never a session id). */
-export function drivePaneId(featureId: string): string {
-  return `${DRIVE_PREFIX}${featureId}`
+/**
+ * The registry id for a drive's dev pane (never a session id). Keyed on whatever
+ * the drive belongs to: a feature for a test drive, a project for a preparation
+ * dry run — the two id spaces are disjoint, and at most one drive is ever live.
+ */
+export function drivePaneId(ownerId: string): string {
+  return `${DRIVE_PREFIX}${ownerId}`
 }
 
 /** True for a drive-owned PTY id (guards that never treat it as a session). */
@@ -66,7 +70,8 @@ const SNIFF_WINDOW = 8192
 
 export interface StartDevPaneInput {
   ctx: AppCtx
-  featureId: string
+  /** The drive this pane belongs to — a feature's timeline, or a project's. */
+  scope: EmitScope
   repoPath: string
   devCommand: string
   /**
@@ -86,8 +91,8 @@ export interface StartDevPaneInput {
  * id so the caller can stream/stop it.
  */
 export function startDevPane(input: StartDevPaneInput): string | undefined {
-  const { ctx, featureId, repoPath, devCommand, env, onUrl } = input
-  const paneId = drivePaneId(featureId)
+  const { ctx, scope, repoPath, devCommand, env, onUrl } = input
+  const paneId = drivePaneId('featureId' in scope ? scope.featureId : scope.projectId)
   const { file, args } = devSpawnTarget(devCommand)
 
   try {
@@ -98,7 +103,7 @@ export function startDevPane(input: StartDevPaneInput): string | undefined {
       opts: { cwd: repoPath, env: env ?? process.env, cols: 80, rows: 24, useConpty: true },
     })
   } catch (err) {
-    emit(ctx, featureId, {
+    emitScoped(ctx, scope, {
       type: 'testdrive.dev_failed',
       message: `dev server failed to start: ${err instanceof Error ? err.message : String(err)}`,
       data: { paneId },
@@ -127,12 +132,18 @@ export function startDevPane(input: StartDevPaneInput): string | undefined {
   }
   ptyRegistry().attach(paneId, sniffer)
 
-  emit(ctx, featureId, {
+  emitScoped(ctx, scope, {
     type: 'testdrive.dev_started',
     message: `dev server spawned: ${devCommand}`,
     data: { paneId },
   })
   return paneId
+}
+
+/** Whether a drive's dev pane is registered and its process still running. */
+export function devPaneLive(paneId: string): boolean {
+  const entry = ptyRegistry().get(paneId)
+  return !!entry && !entry.exited
 }
 
 /**
