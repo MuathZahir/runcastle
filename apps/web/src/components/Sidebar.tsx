@@ -3,7 +3,7 @@ import { trpc } from '../trpc'
 import { DimLine } from '../ui'
 import { useToast } from '../lib/toast'
 import type { FeatureListItem, PrepView } from '../lib/api'
-import { miniSegments, needsMe, triage } from '../lib/feature-ui'
+import { miniSegments, rowChip, ticketProgress, triage } from '../lib/feature-ui'
 import { prepRailRow } from '../lib/project-workspace'
 import { isStale } from '../lib/settings'
 import { useLivePoll } from '../lib/live'
@@ -268,6 +268,15 @@ function ProjectRow({
   )
 }
 
+/**
+ * One feature, as a two-line card (decisions §1). Line 1 is what the feature IS
+ * — its phase dot, its title, and the one status chip that says who it is
+ * waiting on. Line 2 is where it stands: the mono slug, its ticket progress when
+ * it has tickets, and the six-segment pipeline map at the end.
+ *
+ * The chip slot holds exactly one thing and `rowChip` picks it; this renders
+ * that decision without making one of its own.
+ */
 function FeatureRow({
   f,
   active,
@@ -279,7 +288,8 @@ function FeatureRow({
   onSelect: (id: string) => void
   actions: FeatureAction[]
 }) {
-  const nm = needsMe(f)
+  const chip = rowChip(f)
+  const progress = ticketProgress(f)
   const segs = miniSegments(f)
   const dimmed = f.status === 'shipped' || f.status === 'archived'
   const cls = `feature-row${active ? ' is-active' : ''}${dimmed ? ' is-dim' : ''}`
@@ -287,25 +297,24 @@ function FeatureRow({
   return (
     <div className={cls}>
       <button className="feature-row-main" onClick={() => onSelect(f.id)} title={`${f.title} — ${f.slug}`}>
-        <span className={`feature-dot phase-bg-${f.phase}`} />
-        <span className="feature-slug">{f.title}</span>
-        <span className="feature-flag">
-          {f.activeRun ? (
-            <span className="spin-ring" title="agent working" />
-          ) : f.status === 'shipped' ? (
-            <span className="mini-check">
-              <IconCheck size={10} />
-            </span>
-          ) : (
-            <>
-              {nm && <span className={`needs-dot needs-${nm.kind}`} title={nm.label} />}
-              <span className="mini-map">
-                {segs.map((s, i) => (
-                  <span key={i} className={`mini-seg is-${s.state}`} />
-                ))}
-              </span>
-            </>
-          )}
+        <span className="feature-line">
+          <span className={`feature-dot phase-bg-${f.phase}`} />
+          <span className="feature-title">{f.title}</span>
+          <span className={`feature-chip is-${chip.kind}`} title={chip.title}>
+            {chip.kind === 'needsMe' && <span className={`needs-dot needs-${chip.needs}`} />}
+            {chip.kind === 'working' && <span className="spin-ring" />}
+            {chip.kind === 'shipped' && <IconCheck size={10} />}
+            {chip.text}
+          </span>
+        </span>
+        <span className="feature-line is-meta">
+          <span className="feature-slug">{f.slug}</span>
+          {progress && <span className="feature-progress">{progress}</span>}
+          <span className="mini-map">
+            {segs.map((s, i) => (
+              <span key={i} className={`mini-seg is-${s.state}`} />
+            ))}
+          </span>
         </span>
       </button>
       <FeatureActionsMenu actions={actions} />
