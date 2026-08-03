@@ -160,6 +160,17 @@ export const sessions = sqliteTable('sessions', {
   ccSessionId: text('cc_session_id'),
   transcriptPath: text('transcript_path'),
   status: text('status').notNull().$type<SessionStatus>(),
+  /**
+   * Where this session is in its TURN, as opposed to its lifecycle: true once
+   * the agent has finished a turn (`Stop` hook) and is waiting on the human,
+   * false while a submitted prompt is being worked on (`UserPromptSubmit`).
+   *
+   * `status` cannot answer this — a `live` session is live whether the agent is
+   * mid-thought or has been idle for an hour — and the triage lanes need the
+   * difference: it is what separates "Agent working" from "Needs you". A fresh
+   * row is working, not waiting: nothing has stopped for anyone yet.
+   */
+  awaitingInput: integer('awaiting_input', { mode: 'boolean' }).notNull().default(false),
   worktreePath: text('worktree_path').notNull(),
 })
 

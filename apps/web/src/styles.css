@@ -560,19 +560,27 @@ button {
   position: relative;
   transition: background var(--dur-1) var(--ease);
 }
+/* A two-line card (decisions §1): line 1 is title + status chip, line 2 is the
+   mono slug, ticket progress and the pipeline map. */
 .feature-row-main {
   flex: 1;
   min-width: 0;
-  min-height: 30px;
   display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 0 4px 0 9px;
+  flex-direction: column;
+  gap: 3px;
+  padding: 6px 4px 7px 9px;
   border: none;
   background: none;
   cursor: pointer;
   text-align: left;
 }
+.feature-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.feature-line.is-meta { gap: 7px; }
 .feature-row::before {
   content: "";
   position: absolute;
@@ -589,7 +597,7 @@ button {
 .feature-row:hover { background: var(--panel-3); }
 .feature-row.is-active { background: var(--panel-3); }
 .feature-row.is-active::before { transform: scaleY(1); }
-.feature-row.is-active .feature-slug { color: var(--text); }
+.feature-row.is-active .feature-title { color: var(--text); }
 .feature-row.is-dim { opacity: 0.55; }
 .feature-row.is-dim:hover { opacity: 0.85; }
 
@@ -698,7 +706,10 @@ button {
 .row-actions-item:hover { background: var(--panel-3); color: var(--text); }
 .row-actions-item.is-danger { color: var(--danger); }
 
-.show-archived-toggle {
+/* The rail's two quiet expanders: show-archived (a standing choice) and the
+   Shipped lane's "Show all (N)" — one idiom, so they read as the same affordance. */
+.show-archived-toggle,
+.lane-expander {
   width: 100%;
   margin-top: 8px;
   padding: 6px 9px;
@@ -711,7 +722,8 @@ button {
   border-radius: var(--radius-sm);
   transition: background var(--dur-1) var(--ease), color var(--dur-1) var(--ease);
 }
-.show-archived-toggle:hover { background: var(--panel-3); color: var(--text-2); }
+.show-archived-toggle:hover,
+.lane-expander:hover { background: var(--panel-3); color: var(--text-2); }
 .feature-dot {
   width: 8px;
   height: 8px;
@@ -725,26 +737,53 @@ button {
 .phase-bg-implementation { background: var(--ph-implementation); }
 .phase-bg-review { background: var(--ph-review); }
 .phase-bg-shipped { background: var(--ph-shipped); }
-.feature-slug {
+.feature-title {
   flex: 1;
   min-width: 0;
   color: var(--text-2);
   font-size: 12.5px;
+  font-weight: 550;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   transition: color var(--dur-1);
 }
-.feature-flag {
+/* Line 2's mono slug — the branch name, so it reads as one. Shrinks before the
+   progress and the map do: those are fixed-width figures, the slug can ellipsize. */
+.feature-slug {
+  min-width: 0;
+  flex: 0 1 auto;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--text-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.feature-progress {
+  flex: 0 0 auto;
+  font-size: 10.5px;
+  color: var(--text-3);
+}
+/* The row's single status slot. Whatever fills it sits at line 1's end. */
+.feature-chip {
   flex: 0 0 auto;
   display: flex;
   align-items: center;
-  gap: 3px;
+  gap: 4px;
+  font-size: 10.5px;
+  color: var(--text-3);
 }
+.feature-chip.is-needsMe { color: var(--needs); }
+.feature-chip.is-working { color: var(--ph-implementation); }
+.feature-chip.is-shipped { color: var(--ph-shipped); }
+/* Sized to the chip's 10.5px text rather than the 12px a panel spinner wants. */
+.feature-chip .spin-ring { width: 9px; height: 9px; border-width: 1.4px; }
+/* The map keeps the line's end, so it lines up row to row whatever precedes it. */
+.feature-line.is-meta .mini-map { margin-left: auto; }
 .needs-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--needs); }
 .needs-attention { background: var(--danger); }
 .needs-grill, .needs-burn, .needs-ship { background: var(--needs); }
-.mini-check { color: var(--ph-shipped); display: inline-flex; align-items: center; }
 
 /* sidebar mini pipeline map */
 .mini-map { display: flex; gap: 2px; align-items: center; }

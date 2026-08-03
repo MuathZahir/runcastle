@@ -290,6 +290,84 @@ describe('hooks route', () => {
     const { json } = await post(mount(), 'session-start', { payload: {} })
     expect(json).toEqual({})
   })
+
+  /**
+   * Ticket 4 — per-session turn state (decisions §3). The server used to hear
+   * only that a prompt went IN, so a live session mid-turn and a live session
+   * that had been waiting on its human for an hour looked identical, and the
+   * triage lanes called both of them "Needs you".
+   */
+  describe('turn state', () => {
+    const awaiting = (): boolean | undefined => getSessionRow(ctx, sessionId)?.awaitingInput
+
+    it('starts out working — a fresh session has not stopped for anyone', () => {
+      expect(awaiting()).toBe(false)
+    })
+
+    it('marks the session awaiting input when the agent stops, answering {}', async () => {
+      const { json } = await post(mount(), 'stop', {
+        sessionId,
+        payload: { hook_event_name: 'Stop', stop_hook_active: false },
+      })
+
+      expect(json).toEqual({})
+      expect(awaiting()).toBe(true)
+    })
+
+    it('marks the agent working again when a prompt is submitted', async () => {
+      await post(mount(), 'stop', { sessionId, payload: { hook_event_name: 'Stop' } })
+      await post(mount(), 'user-prompt', {
+        sessionId,
+        payload: { hook_event_name: 'UserPromptSubmit', prompt: 'carry on' },
+      })
+
+      expect(awaiting()).toBe(false)
+    })
+
+    // The ordering hazard: the two hooks interleave, and a prompt arriving after
+    // a Stop is the human answering — which is the agent working again.
+    it('lets the last hook win across a whole conversation', async () => {
+      const stop = (): Promise<unknown> =>
+        post(mount(), 'stop', { sessionId, payload: { hook_event_name: 'Stop' } })
+      const prompt = (): Promise<unknown> =>
+        post(mount(), 'user-prompt', {
+          sessionId,
+          payload: { hook_event_name: 'UserPromptSubmit', prompt: 'more' },
+        })
+
+      await prompt()
+      await stop()
+      await prompt()
+      expect(awaiting()).toBe(false)
+      await stop()
+      expect(awaiting()).toBe(true)
+    })
+
+    it('returns {} for a stop on an unknown session', async () => {
+      const { json } = await post(mount(), 'stop', {
+        sessionId: 'sess_does_not_exist',
+        payload: { hook_event_name: 'Stop' },
+      })
+      expect(json).toEqual({})
+    })
+
+    it('tracks a project-scoped conversation the same way', async () => {
+      const project = createSessionRow(ctx, {
+        projectId: seedProject(ctx).id,
+        kind: 'project',
+        worktreePath: 'C:\\wt\\proj',
+      })
+
+      await post(mount(), 'stop', { sessionId: project.id, payload: { hook_event_name: 'Stop' } })
+      expect(getSessionRow(ctx, project.id)?.awaitingInput).toBe(true)
+
+      await post(mount(), 'user-prompt', {
+        sessionId: project.id,
+        payload: { hook_event_name: 'UserPromptSubmit', prompt: 'hi' },
+      })
+      expect(getSessionRow(ctx, project.id)?.awaitingInput).toBe(false)
+    })
+  })
 })
 
 /**

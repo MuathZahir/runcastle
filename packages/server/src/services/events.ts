@@ -1,5 +1,5 @@
 import type { EventRow, SessionRow } from '@runcastle/core'
-import { and, asc, desc, eq, gt } from 'drizzle-orm'
+import { and, asc, desc, eq, gt, max } from 'drizzle-orm'
 import type { AppCtx } from '../db/types'
 import { events, features } from '../db/schema'
 import { NotFoundError } from '../errors'
@@ -166,6 +166,31 @@ export function latestEventTs(ctx: AppCtx, featureId: string, type: string): num
     .limit(1)
     .get()
   return row?.ts
+}
+
+/**
+ * When each feature in a project last did anything, keyed by feature id.
+ *
+ * One grouped query for the whole project rather than a scan per feature:
+ * `feature.list` is polled at 1.5s and already runs a query per row, so the
+ * sidebar's activity stamp must not add another. Features with no events are
+ * absent from the map — the caller decides what "never" means for it (the list
+ * falls back to `createdAt`, so a brand-new feature reads as its own age).
+ */
+export function latestTsByFeature(ctx: AppCtx, projectId: string): Map<string, number> {
+  const rows = ctx.db
+    .select({ featureId: events.featureId, ts: max(events.ts) })
+    .from(events)
+    .where(eq(events.projectId, projectId))
+    .groupBy(events.featureId)
+    .all()
+
+  const out = new Map<string, number>()
+  // Project-level events (open/close/rename) carry no feature and are skipped.
+  for (const row of rows) {
+    if (row.featureId !== null && row.ts !== null) out.set(row.featureId, row.ts)
+  }
+  return out
 }
 
 /**

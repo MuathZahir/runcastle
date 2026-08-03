@@ -3,7 +3,7 @@ import { trpc } from '../trpc'
 import { DimLine } from '../ui'
 import { useToast } from '../lib/toast'
 import type { FeatureListItem, PrepView } from '../lib/api'
-import { miniSegments, needsMe, triage } from '../lib/feature-ui'
+import { capLane, miniSegments, rowChip, ticketProgress, triage } from '../lib/feature-ui'
 import { prepRailRow } from '../lib/project-workspace'
 import { isStale } from '../lib/settings'
 import { useLivePoll } from '../lib/live'
@@ -29,7 +29,9 @@ function readShowArchived(): boolean {
  * In progress · Shipped (dimmed ✓). Each row carries a phase glyph, its mono
  * slug, a compact six-segment pipeline map, and a kebab actions menu (Archive /
  * Unarchive). Archived features are hidden behind the show-archived toggle
- * (persisted in localStorage). Polls `feature.list` at 1.5s.
+ * (persisted in localStorage), and the Shipped lane — the only one that grows
+ * without bound — collapses to its newest few behind its own expander
+ * (`capLane`). Polls `feature.list` at 1.5s.
  *
  * Above the lanes — outside them, always present — sits the pinned project row
  * (decision 20). The rail already is the project's list of things to work on, and
@@ -60,6 +62,9 @@ export function Sidebar({
   const utils = trpc.useUtils()
   const toast = useToast()
   const [showArchived, setShowArchived] = useState(readShowArchived)
+  // The Shipped lane's expander (decisions §2). Unlike show-archived this is not
+  // persisted: it is a glance at a lane, not a standing choice about the rail.
+  const [showAllShipped, setShowAllShipped] = useState(false)
   // The feature awaiting delete confirmation (decision #8), or null.
   const [pendingDelete, setPendingDelete] = useState<FeatureListItem | null>(null)
 
@@ -166,23 +171,33 @@ export function Sidebar({
             Create one to start the pipeline.
           </div>
         )}
-        {groups.map((g) => (
-          <div key={g.key} className={`triage-group triage-${g.key}`}>
-            <div className="triage-label">
-              <span className="triage-name">{g.label}</span>
-              <span className="triage-count">{g.features.length}</span>
+        {groups.map((g) => {
+          const lane = capLane(g, showAllShipped)
+          return (
+            <div key={g.key} className={`triage-group triage-${g.key}`}>
+              <div className="triage-label">
+                <span className="triage-name">{g.label}</span>
+                {/* The lane's true total, capped or not — the count is what the
+                    lane HOLDS, and the expander says what it is showing. */}
+                <span className="triage-count">{g.features.length}</span>
+              </div>
+              {lane.visible.map((f) => (
+                <FeatureRow
+                  key={f.id}
+                  f={f}
+                  active={f.id === selectedFeatureId}
+                  onSelect={onSelect}
+                  actions={actionsFor(f)}
+                />
+              ))}
+              {lane.expanderLabel && (
+                <button className="lane-expander" onClick={() => setShowAllShipped((v) => !v)}>
+                  {lane.expanderLabel}
+                </button>
+              )}
             </div>
-            {g.features.map((f) => (
-              <FeatureRow
-                key={f.id}
-                f={f}
-                active={f.id === selectedFeatureId}
-                onSelect={onSelect}
-                actions={actionsFor(f)}
-              />
-            ))}
-          </div>
-        ))}
+          )
+        })}
         {archivedCount > 0 && (
           <button className="show-archived-toggle" onClick={toggleArchived}>
             {showArchived ? 'Hide' : 'Show'} archived ({archivedCount})
@@ -268,6 +283,15 @@ function ProjectRow({
   )
 }
 
+/**
+ * One feature, as a two-line card (decisions §1). Line 1 is what the feature IS
+ * — its phase dot, its title, and the one status chip that says who it is
+ * waiting on. Line 2 is where it stands: the mono slug, its ticket progress when
+ * it has tickets, and the six-segment pipeline map at the end.
+ *
+ * The chip slot holds exactly one thing and `rowChip` picks it; this renders
+ * that decision without making one of its own.
+ */
 function FeatureRow({
   f,
   active,
@@ -279,7 +303,8 @@ function FeatureRow({
   onSelect: (id: string) => void
   actions: FeatureAction[]
 }) {
-  const nm = needsMe(f)
+  const chip = rowChip(f)
+  const progress = ticketProgress(f)
   const segs = miniSegments(f)
   const dimmed = f.status === 'shipped' || f.status === 'archived'
   const cls = `feature-row${active ? ' is-active' : ''}${dimmed ? ' is-dim' : ''}`
@@ -287,25 +312,24 @@ function FeatureRow({
   return (
     <div className={cls}>
       <button className="feature-row-main" onClick={() => onSelect(f.id)} title={`${f.title} — ${f.slug}`}>
-        <span className={`feature-dot phase-bg-${f.phase}`} />
-        <span className="feature-slug">{f.title}</span>
-        <span className="feature-flag">
-          {f.activeRun ? (
-            <span className="spin-ring" title="agent working" />
-          ) : f.status === 'shipped' ? (
-            <span className="mini-check">
-              <IconCheck size={10} />
-            </span>
-          ) : (
-            <>
-              {nm && <span className={`needs-dot needs-${nm.kind}`} title={nm.label} />}
-              <span className="mini-map">
-                {segs.map((s, i) => (
-                  <span key={i} className={`mini-seg is-${s.state}`} />
-                ))}
-              </span>
-            </>
-          )}
+        <span className="feature-line">
+          <span className={`feature-dot phase-bg-${f.phase}`} />
+          <span className="feature-title">{f.title}</span>
+          <span className={`feature-chip is-${chip.kind}`} title={chip.title}>
+            {chip.kind === 'needsMe' && <span className={`needs-dot needs-${chip.needs}`} />}
+            {chip.kind === 'working' && <span className="spin-ring" />}
+            {chip.kind === 'shipped' && <IconCheck size={10} />}
+            {chip.text}
+          </span>
+        </span>
+        <span className="feature-line is-meta">
+          <span className="feature-slug">{f.slug}</span>
+          {progress && <span className="feature-progress">{progress}</span>}
+          <span className="mini-map">
+            {segs.map((s, i) => (
+              <span key={i} className={`mini-seg is-${s.state}`} />
+            ))}
+          </span>
         </span>
       </button>
       <FeatureActionsMenu actions={actions} />
