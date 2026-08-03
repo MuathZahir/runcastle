@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { EventRow, TicketStatus } from '@runcastle/core'
 import {
+  capLane,
   defaultBaseBranch,
   duplicateTitleWarning,
   kickoffTrouble,
@@ -11,16 +12,21 @@ import {
   nextStep,
   parseMapSections,
   reviewChecks,
+  rowChip,
   sessionDoneState,
   shippedQaSessions,
+  sortForSidebar,
   testDriveTaken,
   ticketConflictKickoff,
+  ticketProgress,
   triage,
   triageOf,
   undoableOverride,
   unresolvedMergeConflict,
   waypointGroups,
   type CheckRow,
+  type TriageGroup,
+  type TriageKey,
   type Waypoint,
 } from '../src/lib/feature-ui'
 import type { FeatureFull, FeatureListItem } from '../src/lib/api'
@@ -1010,7 +1016,17 @@ function listItem(over: Partial<FeatureListItem> = {}): FeatureListItem {
       cancelled: 0,
     },
     activeRun: over.activeRun ?? false,
+    liveSession: over.liveSession ?? null,
+    lastActivityAt: over.lastActivityAt ?? 0,
   } as FeatureListItem
+}
+
+/** A feature whose terminal is open, with its agent mid-turn or waiting. */
+function withSession(
+  awaitingInput: boolean,
+  over: Partial<FeatureListItem> = {},
+): FeatureListItem {
+  return listItem({ liveSession: { status: 'live', awaitingInput }, ...over })
 }
 
 function full(over: Partial<FeatureFull['feature']> = {}): FeatureFull {
@@ -1580,5 +1596,208 @@ describe('shippedQaSessions', () => {
     const qa = { id: 's2', status: 'live', kind: 'qa', ccSessionId: null }
     const rows = sessions([{ id: 's1', status: 'ended', kind: 'ideation', ccSessionId: 'cc-1' }, qa])
     expect(shippedQaSessions(rows)).toEqual([qa])
+  })
+})
+
+/**
+ * improve-features-section ticket 2 — the two-line sidebar row's status chip.
+ * The chip slot holds exactly one thing, and `rowChip` is the one place that
+ * decides which (ticket 3 re-derives its inputs from live session state).
+ */
+describe('rowChip', () => {
+  const NOW = 1_000_000_000_000
+
+  it('shows Needs you, carrying the specific reason as its title', () => {
+    const chip = rowChip(listItem({ phase: 'ideation' }), NOW)
+    expect(chip.kind).toBe('needsMe')
+    expect(chip.text).toBe('Needs you')
+    expect(chip.title).toBe('needs grilling')
+    expect(chip.needs).toBe('grill')
+  })
+
+  it('colours a failed run’s chip by its own flavour, not the generic amber', () => {
+    const counts = { total: 2, pending: 0, burning: 0, done: 1, failed: 1, cancelled: 0 }
+    const chip = rowChip(listItem({ phase: 'implementation', ticketCounts: counts }), NOW)
+    expect(chip.kind).toBe('needsMe')
+    expect(chip.needs).toBe('attention')
+  })
+
+  it('shows Working while a run is active, outranking the age stamp', () => {
+    const chip = rowChip(listItem({ activeRun: true, lastActivityAt: NOW - 600_000 }), NOW)
+    expect(chip.kind).toBe('working')
+    expect(chip.text).toBe('Working')
+  })
+
+  it('shows the shipped check — glyph alone, no text', () => {
+    const chip = rowChip(listItem({ status: 'shipped', phase: 'shipped' }), NOW)
+    expect(chip.kind).toBe('shipped')
+    expect(chip.text).toBe('')
+    expect(chip.title).toBe('shipped')
+  })
+
+  it('falls back to the relative last-activity stamp', () => {
+    expect(rowChip(listItem({ lastActivityAt: NOW - 600_000 }), NOW).text).toBe('10m')
+    expect(rowChip(listItem({ lastActivityAt: NOW - 10_800_000 }), NOW).text).toBe('3h')
+    expect(rowChip(listItem({ lastActivityAt: NOW - 172_800_000 }), NOW).text).toBe('2d')
+    expect(rowChip(listItem({ lastActivityAt: NOW }), NOW).text).toBe('now')
+  })
+
+  it('reads an archived feature as its age — archived rows claim no attention', () => {
+    const chip = rowChip(listItem({ status: 'archived', lastActivityAt: NOW - 600_000 }), NOW)
+    expect(chip.kind).toBe('age')
+    expect(chip.text).toBe('10m')
+  })
+
+  /**
+   * Ticket 4 — the chip reads the same turn state the lanes do: a spinner while
+   * the agent works, the needs-you dot once it stops and waits.
+   */
+  it('spins while the agent is mid-turn in a live session', () => {
+    const chip = rowChip(withSession(false, { phase: 'ideation' }), NOW)
+    expect(chip.kind).toBe('working')
+    expect(chip.text).toBe('Working')
+  })
+
+  it('shows Needs you the moment that agent stops and waits', () => {
+    const chip = rowChip(withSession(true, { phase: 'ideation' }), NOW)
+    expect(chip.kind).toBe('needsMe')
+    expect(chip.text).toBe('Needs you')
+  })
+})
+
+/**
+ * improve-features-section ticket 4 — turn-aware feature states (decisions §3).
+ *
+ * The rail's whole claim is triage, and it was lying: `feature.list` carried no
+ * session at all, so `needsMe` fired on the PHASE alone and every active
+ * ideation feature showed the grilling dot — including one whose agent was
+ * mid-answer. Now a live session outranks the phase in both directions: while
+ * its agent works the feature is "Agent working", and when it stops for an
+ * answer that IS "Needs you", whatever phase the feature is on.
+ */
+describe('turn-aware feature states', () => {
+  it('keeps a mid-turn grill out of Needs you, where the phase alone would put it', () => {
+    const f = withSession(false, { phase: 'ideation' })
+    expect(needsMe(f)).toBeNull()
+    expect(triageOf(f)).toBe('agentWorking')
+  })
+
+  it('moves it to Needs you once the agent stops and waits for an answer', () => {
+    const f = withSession(true, { phase: 'ideation' })
+    expect(needsMe(f)?.kind).toBe('grill')
+    expect(triageOf(f)).toBe('needsYou')
+  })
+
+  it('reads a terminal that is still launching as working, not waiting', () => {
+    const f = listItem({ liveSession: { status: 'launching', awaitingInput: false } })
+    expect(needsMe(f)).toBeNull()
+    expect(triageOf(f)).toBe('agentWorking')
+  })
+
+  // The lane is the honest reading of a session that has stopped talking,
+  // whatever phase the feature is on — not just the ones with a phase-derived
+  // needs-me of their own.
+  it('claims attention for a waiting session at a phase that never asks for it', () => {
+    const f = withSession(true, { phase: 'spec' })
+    expect(needsMe(f)).not.toBeNull()
+    expect(triageOf(f)).toBe('needsYou')
+  })
+
+  it('holds a working session out of Needs you at a phase that would ask for it', () => {
+    const counts = { total: 2, pending: 2, burning: 0, done: 0, failed: 0, cancelled: 0 }
+    const f = withSession(false, { phase: 'tickets', ticketCounts: counts })
+    expect(needsMe(f)).toBeNull()
+    expect(triageOf(f)).toBe('agentWorking')
+  })
+
+  it('leaves a feature with no live session exactly as it was', () => {
+    const counts = { total: 2, pending: 2, burning: 0, done: 0, failed: 0, cancelled: 0 }
+    expect(needsMe(listItem({ phase: 'ideation' }))?.kind).toBe('grill')
+    expect(needsMe(listItem({ phase: 'tickets', ticketCounts: counts }))?.kind).toBe('burn')
+    expect(needsMe(listItem({ phase: 'review' }))?.kind).toBe('ship')
+    expect(needsMe(listItem({ phase: 'spec' }))).toBeNull()
+    expect(triageOf(listItem({ phase: 'ideation' }))).toBe('needsYou')
+    expect(triageOf(listItem({ phase: 'spec' }))).toBe('inProgress')
+  })
+
+  it('leaves shipped and archived features out of the lanes either way', () => {
+    expect(needsMe(withSession(true, { status: 'shipped', phase: 'shipped' }))).toBeNull()
+    expect(triageOf(withSession(true, { status: 'shipped', phase: 'shipped' }))).toBe('shipped')
+    expect(needsMe(withSession(true, { status: 'archived' }))).toBeNull()
+    expect(triageOf(withSession(true, { status: 'archived' }))).toBe('archived')
+  })
+
+  it('lets an active run outrank the session — the burn is the louder fact', () => {
+    const f = withSession(true, { activeRun: true })
+    expect(needsMe(f)).toBeNull()
+    expect(triageOf(f)).toBe('agentWorking')
+  })
+
+  it('sorts a waiting session to the top of the rail and a working one below it', () => {
+    const sorted = sortForSidebar([
+      listItem({ id: 'quiet', phase: 'spec' }),
+      withSession(false, { id: 'working', phase: 'ideation' }),
+      withSession(true, { id: 'waiting', phase: 'spec' }),
+    ])
+    expect(sorted[0].id).toBe('waiting')
+  })
+})
+
+/**
+ * improve-features-section ticket 2 — line 2's ticket progress. Omitted
+ * entirely when the feature has no tickets: '0/0 done' is a figure about
+ * nothing, and the rail has one line's width to spend.
+ */
+describe('ticketProgress', () => {
+  it('reads done over total', () => {
+    const counts = { total: 5, pending: 2, burning: 0, done: 3, failed: 0, cancelled: 0 }
+    expect(ticketProgress(listItem({ ticketCounts: counts }))).toBe('3/5 done')
+  })
+
+  it('is null when the feature has no tickets', () => {
+    expect(ticketProgress(listItem())).toBeNull()
+  })
+})
+
+/**
+ * improve-features-section ticket 3 — only the Shipped lane is capped
+ * (decisions §2). The lanes the rail exists to surface are never hidden; the
+ * one that grows without bound collapses to its newest few behind an expander.
+ */
+describe('capLane', () => {
+  const lane = (key: TriageKey, n: number): TriageGroup => ({
+    key,
+    label: key,
+    features: Array.from({ length: n }, (_, i) => listItem({ id: `f${i}` })),
+  })
+  const ids = (features: FeatureListItem[]) => features.map((f) => f.id)
+
+  it('shows the newest 5 shipped rows when collapsed', () => {
+    const capped = capLane(lane('shipped', 8), false)
+    expect(ids(capped.visible)).toEqual(['f0', 'f1', 'f2', 'f3', 'f4'])
+  })
+
+  it('offers Show all with the lane’s true total while collapsed', () => {
+    expect(capLane(lane('shipped', 12), false).expanderLabel).toBe('Show all (12)')
+  })
+
+  it('shows every row and offers Show fewer once expanded', () => {
+    const capped = capLane(lane('shipped', 8), true)
+    expect(capped.visible).toHaveLength(8)
+    expect(capped.expanderLabel).toBe('Show fewer')
+  })
+
+  it('offers no expander when the shipped lane fits', () => {
+    const capped = capLane(lane('shipped', 5), false)
+    expect(capped.visible).toHaveLength(5)
+    expect(capped.expanderLabel).toBeNull()
+  })
+
+  it('never caps the other lanes', () => {
+    for (const key of ['needsYou', 'agentWorking', 'inProgress', 'archived'] as TriageKey[]) {
+      const capped = capLane(lane(key, 12), false)
+      expect(capped.visible).toHaveLength(12)
+      expect(capped.expanderLabel).toBeNull()
+    }
   })
 })

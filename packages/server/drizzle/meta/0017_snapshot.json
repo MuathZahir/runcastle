@@ -1,8 +1,8 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "8105336b-38cc-4a7e-8abe-5fda1a18d21f",
-  "prevId": "ca797b81-d599-4883-9ed6-b9aa119a4c00",
+  "id": "f975602a-9850-4ec3-bda6-59f8e4ce46a9",
+  "prevId": "8105336b-38cc-4a7e-8abe-5fda1a18d21f",
   "tables": {
     "events": {
       "name": "events",
@@ -266,6 +266,20 @@
         },
         "established_sha": {
           "name": "established_sha",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "verified_at": {
+          "name": "verified_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "verified_sha": {
+          "name": "verified_sha",
           "type": "text",
           "primaryKey": false,
           "notNull": false,

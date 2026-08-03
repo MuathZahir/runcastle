@@ -358,6 +358,12 @@ export const SessionRow = z.object({
   ccSessionId: z.string().optional(),
   transcriptPath: z.string().optional(),
   status: SessionStatus,
+  /**
+   * The agent finished its turn and is waiting on the human (the `Stop` hook);
+   * false while it is working on a submitted prompt. See the db schema — this
+   * is the session's TURN state, which its lifecycle `status` cannot express.
+   */
+  awaitingInput: z.boolean(),
   worktreePath: z.string(),
 })
 export type SessionRow = z.infer<typeof SessionRow>

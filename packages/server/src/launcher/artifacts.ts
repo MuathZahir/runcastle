@@ -589,6 +589,8 @@ export interface SessionSettings {
   hooks: {
     SessionStart: { matcher: string; hooks: CommandHook[] }[]
     UserPromptSubmit: { hooks: CommandHook[] }[]
+    /** End of an agent turn — the other half of the session's turn state. */
+    Stop: { hooks: CommandHook[] }[]
     SessionEnd: { hooks: CommandHook[] }[]
     /** The talk-session edit guard; absent for the one kind that may write code. */
     PreToolUse?: { matcher: string; hooks: CommandHook[] }[]
@@ -697,14 +699,18 @@ export const SESSION_START_SOURCES = ['startup', 'resume', 'clear', 'compact', '
  *   event is the kebab-case `/api/hooks/:event` segment the client POSTs to.
  * - `SessionStart` is registered for EVERY source (see
  *   {@link SESSION_START_SOURCES}) — a resumed session is a started session.
- * - `UserPromptSubmit`/`SessionEnd` take NO `matcher` (unsupported → omitted).
+ * - `UserPromptSubmit`/`Stop`/`SessionEnd` take NO `matcher` (unsupported →
+ *   omitted). `Stop` fires when the agent finishes a turn: paired with
+ *   `UserPromptSubmit` it is what tells the server whether a live session is
+ *   working or waiting on its human, and it is registered for every kind
+ *   because a turn ends the same way whatever the session was opened to do.
  * - `PreToolUse` matches the file-write tools and carries the talk-session edit
  *   guard (see {@link evaluateEditGuard}) — registered for every kind except
  *   `project`, the one allowed to write code. A kind is needed to make that
  *   distinction, so an omitted `kind` gets the guard: a session whose kind we do
  *   not know is not one to hand whole-repo write access to.
  * - Timeouts (seconds): SessionStart 10, UserPromptSubmit 5 (well inside its 30s
- *   hard budget), SessionEnd 10, PreToolUse 5 (it blocks every edit).
+ *   hard budget), SessionEnd 10, Stop 5, PreToolUse 5 (it blocks every edit).
  */
 export function renderSettings(hookClient: string, kind?: SessionKind): SessionSettings {
   const cmd = (event: string): CommandHook => ({
@@ -720,6 +726,7 @@ export function renderSettings(hookClient: string, kind?: SessionKind): SessionS
         hooks: [cmd('session-start')],
       })),
       UserPromptSubmit: [{ hooks: [cmd('user-prompt')] }],
+      Stop: [{ hooks: [cmd('stop')] }],
       SessionEnd: [{ hooks: [cmd('session-end')] }],
       ...(kind === undefined || guardsEdits(kind)
         ? { PreToolUse: [{ matcher: EDIT_TOOL_MATCHER, hooks: [cmd('pre-tool')] }] }

@@ -70,6 +70,33 @@ export function activeSessionsForFeature(ctx: AppCtx, featureId: string): Sessio
     .map(rowToSession)
 }
 
+/**
+ * Per-session TURN state (decisions §3): the agent has finished a turn and is
+ * waiting on the human. Two hooks drive one bit — `UserPromptSubmit` means a
+ * prompt went in and the agent is working on it, `Stop` means it has stopped —
+ * and the triage lanes read the result through `feature.list`. Without it a
+ * live session mid-thought and a live session that has been idle for an hour
+ * are the same row, which is why every active ideation feature used to sit in
+ * "Needs you" whether or not anyone was talking to it.
+ *
+ * Last hook wins, deliberately: the two interleave for the whole conversation,
+ * and a prompt landing after a `Stop` is the human answering — the agent
+ * working again. An unknown session id updates nothing rather than throwing;
+ * these are called from the hook receiver, which must never break a session.
+ */
+export function markAgentWorking(ctx: AppCtx, id: string): void {
+  setAwaitingInput(ctx, id, false)
+}
+
+/** @see {@link markAgentWorking} — the other half of the turn. */
+export function markAwaitingInput(ctx: AppCtx, id: string): void {
+  setAwaitingInput(ctx, id, true)
+}
+
+function setAwaitingInput(ctx: AppCtx, id: string, awaitingInput: boolean): void {
+  ctx.db.update(sessions).set({ awaitingInput }).where(eq(sessions.id, id)).run()
+}
+
 export interface MarkLiveInput {
   ccSessionId?: string
   transcriptPath?: string

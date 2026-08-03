@@ -5,6 +5,8 @@ import { editDenyResponse, evaluateEditGuard } from '../launcher/edit-guard'
 import { getRuntimeCtx } from '../launcher/runtime'
 import {
   getSessionRow,
+  markAgentWorking,
+  markAwaitingInput,
   markSessionEnded,
   markSessionLive,
   noteKickoffPrompt,
@@ -17,9 +19,9 @@ import { releaseForSession } from '../services/waypoints'
 
 /**
  * Hook receiver (SPEC §5.6): `POST /api/hooks/:event` for `session-start`,
- * `user-prompt` and `session-end`. The request body is what the standalone hook
- * client sends: `{ event, sessionId, payload }` (payload = the raw Claude Code
- * hook JSON). Responses are the verified hook JSON shapes from
+ * `user-prompt`, `stop` and `session-end`. The request body is what the
+ * standalone hook client sends: `{ event, sessionId, payload }` (payload = the
+ * raw Claude Code hook JSON). Responses are the verified hook JSON shapes from
  * docs/research/CC-INTEGRATION-NOTES.md §3 — Claude Code injects
  * `hookSpecificOutput.additionalContext` as session/turn context.
  *
@@ -55,6 +57,16 @@ hooks.post('/:event', async (c) => {
     const ctx = await getRuntimeCtx()
     const session = getSessionRow(ctx, sessionId)
     if (!session) return c.json({})
+
+    // Turn state (decisions §3) — the same bit for every kind, feature-scoped or
+    // not: a project conversation waits on its human exactly as a grill does.
+    // `Stop` says nothing else, so it answers here; `user-prompt` carries on to
+    // the per-scope handler for its injected context.
+    if (event === 'user-prompt') markAgentWorking(ctx, sessionId)
+    if (event === 'stop') {
+      markAwaitingInput(ctx, sessionId)
+      return c.json({})
+    }
 
     // Project-scoped sessions (`prepare` and `project` — see
     // PROJECT_SESSION_KINDS) have no feature. They still need the full
