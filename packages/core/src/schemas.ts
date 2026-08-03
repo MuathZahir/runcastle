@@ -223,6 +223,24 @@ export const PreparedKey = z.enum(PREPARED_KEYS)
 export type PreparedKey = z.infer<typeof PreparedKey>
 
 /**
+ * The prepared keys a preparation dry-run drive can actually prove, each by one
+ * observable of the real drive machinery: `driveEnv` renders with no unknown
+ * placeholders, `driveSetupCommand` and `driveStopCommand` exit 0, `devCommand`
+ * spawns a pane AND gets a localhost URL sniffed.
+ *
+ * Everything else is unverifiable by a host drive — `dbResetCommand` has no
+ * drive slot to prove it in, and the sandbox keys are never touched by one — so
+ * those keys carry no verification badge at all. That reads as "unverifiable",
+ * not "failed".
+ */
+export const DRIVE_LOOP_KEYS = [
+  'devCommand',
+  'driveSetupCommand',
+  'driveStopCommand',
+  'driveEnv',
+] as const satisfies readonly PreparedKey[]
+
+/**
  * Who established a prepared value. A `human` value is never auto-overwritten.
  *
  * `session` is the interactive-preparation source: an agent measured it on the
@@ -279,6 +297,13 @@ export type Project = z.infer<typeof Project>
  * was measured — `undefined` when it cannot be computed (no sha, or the sha is
  * no longer reachable after a rebase), which the UI shows as "unknown", never
  * as "fresh".
+ *
+ * `verifiedAt`/`verifiedSha` are the dry-run stamp: this exact value was seen
+ * working by the real drive machinery, at that time and that commit. Only the
+ * {@link DRIVE_LOOP_KEYS} can carry one, and any write to the key clears it —
+ * a stamp that survives an edit is a lie waiting to be trusted. It is
+ * deliberately orthogonal to `source`: a `human` value can be verified, because
+ * the stamp records what worked, not who chose it.
  */
 export const ProjectFinding = z.object({
   key: PreparedKey,
@@ -287,6 +312,8 @@ export const ProjectFinding = z.object({
   establishedAt: z.number(),
   establishedSha: z.string().optional(),
   staleCommits: z.number().optional(),
+  verifiedAt: z.number().optional(),
+  verifiedSha: z.string().optional(),
 })
 export type ProjectFinding = z.infer<typeof ProjectFinding>
 

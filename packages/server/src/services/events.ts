@@ -82,6 +82,18 @@ export function emitProject(ctx: AppCtx, projectId: string, e: EmitInput): Event
 }
 
 /**
+ * Which timeline something's events land on. A test drive has a feature; the
+ * preparation dry-run drive replays the same machinery with no feature at all,
+ * so the machinery takes the scope rather than a feature id.
+ */
+export type EmitScope = { featureId: string } | { projectId: string }
+
+/** Append an event at whichever scope its producer is running under. */
+export function emitScoped(ctx: AppCtx, scope: EmitScope, e: EmitInput): EventRow {
+  return 'featureId' in scope ? emit(ctx, scope.featureId, e) : emitProject(ctx, scope.projectId, e)
+}
+
+/**
  * Emit for a session at whichever scope that session has: feature-scoped for
  * every ordinary kind, project-scoped for `prepare` (which has no feature).
  *

@@ -84,6 +84,13 @@ export const projectFindings = sqliteTable(
     establishedAt: integer('established_at').notNull(),
     /** Main-branch sha the finding was measured at; null for human entries. */
     establishedSha: text('established_sha'),
+    /**
+     * When a preparation dry run last observed this exact value working, and at
+     * which commit. Null until a clean dry-run pass stamps it, and nulled again
+     * by any write to the key (see `markVerified` / `recordFinding`).
+     */
+    verifiedAt: integer('verified_at'),
+    verifiedSha: text('verified_sha'),
   },
   (t) => [primaryKey({ columns: [t.projectId, t.key] })],
 )

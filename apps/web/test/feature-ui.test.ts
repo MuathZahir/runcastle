@@ -492,6 +492,76 @@ describe('nextStep at review', () => {
       expect(ns.primary).toEqual({ label: 'Merge & ship', kind: 'merge' })
     })
   })
+
+  /**
+   * Ticket 3 / decision 7 — drives are best-effort and happen on every review, so
+   * the doubt about an unproven drive key is said inline where the eye already is
+   * before the click, and never gates it. A preparation dry run is the one thing
+   * that does block, because it is holding the same singleton drive slot.
+   */
+  describe('with unverified drive keys', () => {
+    const start = (ns: ReturnType<typeof nextStep>) =>
+      ns.secondary.find((a) => a.kind === 'testDriveStart')
+
+    it('names exactly the unverified keys and points at preparation', () => {
+      const ns = nextStep(reviewFull({}), {
+        driving: false,
+        unverifiedDriveKeys: ['driveSetupCommand', 'driveEnv'],
+      })
+      expect(ns.warning).toContain('Test drive setup')
+      expect(ns.warning).toContain('Test drive environment')
+      expect(ns.warning).not.toContain('Dev command')
+      expect(ns.warning).toContain('never proven by a dry run')
+      expect(ns.warning).toContain('preparation')
+    })
+
+    it('never disables the drive — one click still starts it, warning and all', () => {
+      const ns = nextStep(reviewFull({}), { driving: false, unverifiedDriveKeys: ['devCommand'] })
+      expect(ns.warning).toBeTruthy()
+      expect(start(ns)).toEqual({ label: 'Start test drive', kind: 'testDriveStart' })
+    })
+
+    it('stays silent when every participating key is stamped, and when none exist', () => {
+      expect(nextStep(reviewFull({}), { driving: false, unverifiedDriveKeys: [] }).warning)
+        .toBeUndefined()
+      expect(nextStep(reviewFull({}), { driving: false }).warning).toBeUndefined()
+    })
+
+    it('warns beside the fix-ticket burn and the merge conflict too', () => {
+      const ctx = { driving: false, unverifiedDriveKeys: ['devCommand'] }
+      const standing = { base: 'main', files: ['a.ts'], at: 1_000 }
+      expect(nextStep(reviewFull({ ticketStatuses: ['pending'] }), ctx).warning).toBeTruthy()
+      expect(nextStep(reviewFull({}), { ...ctx, conflict: standing }).warning).toBeTruthy()
+    })
+
+    // The warning is about the click that starts a drive; mid-drive the offer is
+    // Stop, and repeating the doubt there is noise the human cannot act on.
+    it('goes quiet once the drive is running', () => {
+      const ns = nextStep(reviewFull({}), { driving: true, unverifiedDriveKeys: ['devCommand'] })
+      expect(ns.warning).toBeUndefined()
+    })
+
+    it('disables the start with the dry-run reason while one is up', () => {
+      const ns = nextStep(reviewFull({}), { driving: false, dryRunActive: true })
+      expect(start(ns)).toEqual({
+        label: 'Start test drive',
+        kind: 'testDriveStart',
+        disabled: 'A preparation dry-run is in progress — stop it first',
+      })
+    })
+
+    // A refusal outranks a caveat: the drive cannot start at all, so the reason
+    // it cannot is the only thing worth saying.
+    it('drops the warning for the refusal when both apply', () => {
+      const ns = nextStep(reviewFull({}), {
+        driving: false,
+        dryRunActive: true,
+        unverifiedDriveKeys: ['devCommand'],
+      })
+      expect(ns.warning).toBeUndefined()
+      expect(start(ns)?.disabled).toBe('A preparation dry-run is in progress — stop it first')
+    })
+  })
 })
 
 /**

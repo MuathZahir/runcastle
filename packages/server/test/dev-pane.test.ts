@@ -102,7 +102,7 @@ describe.skipIf(!AVAILABLE)('startDevPane / stopDevPane', () => {
     let url: string | undefined
     const paneId = startDevPane({
       ctx,
-      featureId: feature.id,
+      scope: { featureId: feature.id },
       repoPath: process.cwd(),
       // Print a Vite-style local URL, then idle so the pane stays live to kill.
       devCommand: 'echo "  Local:   http://localhost:5173/"; sleep 30',
@@ -130,7 +130,7 @@ describe.skipIf(!AVAILABLE)('startDevPane / stopDevPane', () => {
 
     const paneId = startDevPane({
       ctx,
-      featureId: feature.id,
+      scope: { featureId: feature.id },
       repoPath: process.cwd(),
       // A child `sleep` in the same process group stands in for `npm → node`.
       devCommand: 'sleep 300 & echo child $!; wait',

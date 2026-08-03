@@ -91,6 +91,14 @@ export function isOverwritable(ctx: AppCtx, projectId: string, key: PreparedKey)
   return findingRow(ctx, projectId, key)?.source !== 'human'
 }
 
+/**
+ * The verification half of a provenance row, reset. Written on every path that
+ * establishes a value, because a write is a write: no value-diffing, no "it
+ * looks the same so the old proof still holds". The only way back to verified
+ * is another clean dry-run pass (decision 6).
+ */
+const UNVERIFIED = { verifiedAt: null, verifiedSha: null } as const
+
 export interface RecordFindingInput {
   key: PreparedKey
   /** The established value; `null` clears both the value and its provenance. */
@@ -129,6 +137,7 @@ export function recordFinding(ctx: AppCtx, projectId: string, input: RecordFindi
         evidence: evidence ?? null,
         establishedAt: Date.now(),
         establishedSha: establishedSha ?? null,
+        ...UNVERIFIED,
       })
       .onConflictDoUpdate({
         target: [projectFindings.projectId, projectFindings.key],
@@ -137,6 +146,7 @@ export function recordFinding(ctx: AppCtx, projectId: string, input: RecordFindi
           evidence: evidence ?? null,
           establishedAt: Date.now(),
           establishedSha: establishedSha ?? null,
+          ...UNVERIFIED,
         },
       })
       .run()
@@ -175,15 +185,52 @@ export function recordHuman(
       evidence: null,
       establishedAt: Date.now(),
       establishedSha: null,
+      ...UNVERIFIED,
     })
     .onConflictDoUpdate({
       target: [projectFindings.projectId, projectFindings.key],
       // Evidence belongs to the value that produced it: a human overwriting a
       // prep finding invalidates prep's justification, so it is cleared rather
       // than left pointing at a command output that no longer explains the value.
-      set: { source: 'human', evidence: null, establishedAt: Date.now(), establishedSha: null },
+      set: {
+        source: 'human',
+        evidence: null,
+        establishedAt: Date.now(),
+        establishedSha: null,
+        ...UNVERIFIED,
+      },
     })
     .run()
+}
+
+/**
+ * Stamp `keys` as verified — the drive machinery observed each of these values
+ * working on a clean dry-run pass, at `sha` (null when the repo has no
+ * resolvable commit).
+ *
+ * Existing provenance rows only: a key with no row stays unverified rather than
+ * gaining a fabricated provenance it never had. The prep session that runs a dry
+ * run has just recorded rows for everything it exercised, so in practice this
+ * only skips legacy values, and skipping them is the honest outcome.
+ *
+ * Deliberately emits no event, against the usual convention for a mutating
+ * service function: the dry-run service owns the timeline entry for a
+ * verification pass, so stamping here too would double-report one pass.
+ */
+export function markVerified(
+  ctx: AppCtx,
+  projectId: string,
+  keys: PreparedKey[],
+  sha: string | null,
+): void {
+  const verifiedAt = Date.now()
+  for (const key of keys) {
+    ctx.db
+      .update(projectFindings)
+      .set({ verifiedAt, verifiedSha: sha })
+      .where(and(eq(projectFindings.projectId, projectId), eq(projectFindings.key, key)))
+      .run()
+  }
 }
 
 /**
@@ -219,6 +266,8 @@ export async function listFindings(ctx: AppCtx, project: Project): Promise<Proje
         establishedAt: row.establishedAt,
         ...(row.establishedSha ? { establishedSha: row.establishedSha } : {}),
         ...(staleCommits !== undefined ? { staleCommits } : {}),
+        ...(row.verifiedAt !== null ? { verifiedAt: row.verifiedAt } : {}),
+        ...(row.verifiedSha ? { verifiedSha: row.verifiedSha } : {}),
       }
     })
 }

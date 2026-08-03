@@ -2,6 +2,7 @@ import { nextPhase, parsePhase } from '@runcastle/core'
 import type { EventRow, GateId, Phase } from '@runcastle/core'
 import type { BranchList, FeatureFull, FeatureListItem } from './api'
 import { relTime } from './format'
+import { PREPARED_LABEL } from './settings'
 
 /**
  * The New Feature form's default base branch. A new feature forks off the branch
@@ -435,6 +436,14 @@ export interface NextStep {
   busy: boolean
   /** Soft warning shown under the description — remaining map fog. */
   fog?: string
+  /**
+   * Soft warning about the step's own action, shown and never enforced: today,
+   * the drive keys this test drive depends on that no dry run has ever proven
+   * (decision 7). Unlike {@link NextAction.disabled} it blocks nothing — drives
+   * are best-effort and happen on every review, so a gate here would become a
+   * click-through ritual, while a line where the eye already is stays read.
+   */
+  warning?: string
 }
 
 /**
@@ -758,6 +767,20 @@ function hasResumable(sessions: FeatureFull['sessions'], kind?: string): boolean
 }
 
 /**
+ * The Start-test-drive step's inline warning (decision 7): the drive keys this
+ * drive is about to depend on that no dry run has ever proven, by their settings
+ * labels, pointing at the one thing that clears them. Never blocks the drive.
+ */
+function unverifiedWarning(keys: string[]): string {
+  const named = keys.map((k) => PREPARED_LABEL[k] ?? k)
+  const list =
+    named.length === 1
+      ? named[0]
+      : `${named.slice(0, -1).join(', ')} and ${named[named.length - 1]}`
+  return `${list} ${named.length === 1 ? 'was' : 'were'} never proven by a dry run — run preparation to verify.`
+}
+
+/**
  * The single guided next step for a feature's *current* phase (app-redesign).
  * Two rules order the cases:
  *
@@ -784,6 +807,14 @@ export function nextStep(
      * bar and the conflict panel contradicting each other is findings F8.
      */
     conflict?: MergeConflictState | null
+    /**
+     * Drive-loop keys this project has a value for that no dry run has ever
+     * proven (decision 7). Keys with no value are absent — a checkout-only drive
+     * has nothing to doubt.
+     */
+    unverifiedDriveKeys?: string[]
+    /** A preparation dry run holds the singleton drive slot (decision 9). */
+    dryRunActive?: boolean
   },
 ): NextStep {
   const { feature, tickets, sessions, runs, gate } = full
@@ -1089,9 +1120,26 @@ export function nextStep(
       // there is one terminal per feature, so it's hidden while any session is
       // live — and disabled while the drive holds the branch its worktree needs,
       // which the server refuses outright (findings F3).
+      // A dry run holds the same singleton drive slot, so the server refuses a
+      // feature drive outright while one is up (decision 9) — said here rather
+      // than on click. Unverified keys never disable: they are a caveat about
+      // what the drive may do, not a reason it cannot run (decision 7), and the
+      // refusal outranks the caveat when both apply.
       const testDriveAction: NextAction = ctx.driving
         ? { label: 'Stop test drive', kind: 'testDriveStop' }
-        : { label: 'Start test drive', kind: 'testDriveStart' }
+        : {
+            label: 'Start test drive',
+            kind: 'testDriveStart',
+            ...(ctx.dryRunActive
+              ? { disabled: 'A preparation dry-run is in progress — stop it first' }
+              : {}),
+          }
+      // Nothing to caveat mid-drive — the offer there is Stop — and nothing to
+      // caveat when the drive cannot start at all. Spread into each of review's
+      // three bars, so the doubt rides along whatever else the phase is saying.
+      const unverified = ctx.driving || ctx.dryRunActive ? [] : (ctx.unverifiedDriveKeys ?? [])
+      const driveWarning =
+        unverified.length > 0 ? { warning: unverifiedWarning(unverified) } : {}
       const iterate: NextAction[] = live
         ? []
         : [
@@ -1128,6 +1176,7 @@ export function nextStep(
             : { label: 'Resolve the merge conflict', kind: 'resolveConflict' },
           secondary: [blockedMerge, testDriveAction, ...iterate],
           busy: false,
+          ...driveWarning,
         }
       }
 
@@ -1144,6 +1193,7 @@ export function nextStep(
           primary: { label: `Burn ${pending} ticket${pending === 1 ? '' : 's'}`, kind: 'burn' },
           secondary: [{ label: 'Merge & ship', kind: 'merge' }, testDriveAction, ...iterate],
           busy: false,
+          ...driveWarning,
         }
       }
 
@@ -1164,6 +1214,7 @@ export function nextStep(
         primary: { label: 'Merge & ship', kind: 'merge' },
         secondary: [testDriveAction, ...iterate],
         busy: false,
+        ...driveWarning,
       }
     }
     case 'shipped':

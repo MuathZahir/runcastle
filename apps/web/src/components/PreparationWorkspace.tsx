@@ -8,6 +8,7 @@ import {
   describeFinding,
   isStale,
   relativeAge,
+  verificationBadge,
 } from '../lib/settings'
 import type { PrepView, ProjectFinding } from '../lib/api'
 import { EndSessionButton } from './EndSessionButton'
@@ -56,6 +57,16 @@ export function PreparationWorkspace({
     onError: (e) => toast.push(e.message),
   })
 
+  // The dry run's stop half, by hand. It frees the singleton drive slot, so the
+  // drive info every other surface polls has to be refetched too.
+  const stopDryRun = trpc.project.dryRunStop.useMutation({
+    onSuccess: () => {
+      void utils.project.prep.invalidate()
+      void utils.feature.driveInfo.invalidate()
+    },
+    onError: (e) => toast.push(e.message),
+  })
+
   const view = prep.data as PrepView | undefined
   const session = sessionQ.data ?? null
   const findings = view?.findings ?? []
@@ -85,6 +96,18 @@ export function PreparationWorkspace({
         <div className="ws-body-inner prep-stack">
           {prep.isLoading && <DimLine>loading…</DimLine>}
           {prep.error && <DimLine>could not load preparation: {prep.error.message}</DimLine>}
+
+          {/* Above everything, session or not: what is up on this machine right
+              now. A prep session that dies mid-run leaves a dev server and a temp
+              database behind, and the teardown half has to be reachable without
+              it (decision 9). */}
+          {view?.dryRun && (
+            <DryRunRow
+              url={view.dryRun.devUrl}
+              stopping={stopDryRun.isPending}
+              onStop={() => stopDryRun.mutate({ projectId })}
+            />
+          )}
 
           {session ? (
             <div className="grill-panel pw-session">
@@ -261,6 +284,63 @@ function PrepEvidence({
   )
 }
 
+/**
+ * The preparation dry run, while it holds the drive slot (decision 9). It is a
+ * real drive on the human's machine — services up, a temp database created — so
+ * the row says so and offers the teardown, which is the half a dead prep session
+ * never runs. The sniffed URL is shown when there is one: it is the same
+ * evidence `devCommand`'s stamp is made of.
+ */
+function DryRunRow({
+  url,
+  stopping,
+  onStop,
+}: {
+  url?: string
+  stopping: boolean
+  onStop: () => void
+}) {
+  return (
+    <div className="prep-dryrun">
+      <span className="drive-pulse" />
+      <span className="prep-dryrun-label">Preparation dry-run in progress</span>
+      {url && (
+        <a className="prep-dryrun-url mono" href={url} target="_blank" rel="noreferrer">
+          {url}
+        </a>
+      )}
+      <span className="prep-dryrun-spacer" />
+      <Button className="btn-xs" disabled={stopping} onClick={onStop}>
+        {stopping ? 'Stopping…' : 'Stop'}
+      </Button>
+    </div>
+  )
+}
+
+/**
+ * Whether a dry run has ever seen this value work, on the keys one can prove.
+ * Nothing at all on the rest — `dbResetCommand` has no drive slot to prove it in
+ * and a host drive never touches the sandbox keys, so silence is the honest
+ * report (decision 10).
+ */
+function VerificationBadge({ finding }: { finding: ProjectFinding }) {
+  const badge = verificationBadge(finding)
+  if (!badge) return null
+  const proven = finding.verifiedAt !== undefined
+  return (
+    <span
+      className={`settings-badge${proven ? ' is-verified' : ' is-unverified'}`}
+      title={
+        proven
+          ? 'A preparation dry run ran this value on the real drive machinery and it worked'
+          : 'No dry run has ever proven this value — a drive that depends on it may fall over'
+      }
+    >
+      {badge}
+    </span>
+  )
+}
+
 /** Why a re-prepare is worth the interruption: the baseline has gone off. */
 function StaleWarning({ count }: { count: number }) {
   return (
@@ -308,6 +388,11 @@ function EstablishedFrame({ findings }: { findings: readonly ProjectFinding[] })
                       ? 'proposed'
                       : 'measured'}
               </span>
+              {/* The dry-run stamp, on the four keys a host drive can actually
+                  prove (decision 10). Every other key shows nothing here —
+                  absence of proof, not failure, and a badge reading "unverified"
+                  on a key no dry run will ever touch would say the opposite. */}
+              <VerificationBadge finding={f} />
             </div>
             <div className="prep-finding-note">{describeFinding(f)}</div>
             {f.evidence && <div className="prep-finding-evidence mono">{f.evidence}</div>}

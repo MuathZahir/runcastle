@@ -429,6 +429,38 @@ export function toolRecordFinding(
   return { ok: true, key: input.key, source }
 }
 
+/**
+ * Drive what preparation recorded (decisions 1, 8): the server runs its real
+ * test-drive machinery under a synthetic identity, and the prep session watches.
+ *
+ * Gated to `prepare` for two reasons that point the same way. It starts
+ * services and creates a database on the host, which is exactly the authority a
+ * preparation conversation has and no other session does; and the values it
+ * proves are the ones this session just established, so anywhere else it would
+ * be proving somebody else's homework.
+ *
+ * Everything it returns is what the machinery SAW — hook output tails, the
+ * variable names it rendered, the URL it sniffed — because the agent's job
+ * between the halves is to check the things the server cannot (is the database
+ * fresh, did migrations apply) and decide whether to fix and re-run. The verdict
+ * itself is computed server-side and is not open to argument.
+ */
+export async function toolDryRunDrive(
+  ctx: AppCtx,
+  session: SessionRow,
+  input: { action: 'start' | 'status' | 'stop' },
+): Promise<git.DryRunResult> {
+  const project = requireProject(ctx, session)
+  if (session.kind !== 'prepare') {
+    throw new GateError(
+      `the dry-run drive belongs to a preparation conversation, and this is a ${session.kind} ` +
+        'session. It starts services and creates a database on the human\'s machine — only the ' +
+        'session that established those values may run them.',
+    )
+  }
+  return git.dryRunDrive(ctx, project, input.action)
+}
+
 // --- the project session's three tools (decisions 15, 19, 21) ---------------
 
 export interface CreateFeatureResult {
@@ -672,6 +704,29 @@ export function buildMcpServer(): McpServer {
       const rs = await resolveCtxSession(extra)
       if (!rs) return noSession()
       return ok(toolRecordFinding(rs.ctx, rs.session, args))
+    },
+  )
+
+  server.registerTool(
+    'dry_run_drive',
+    {
+      title: 'Dry-run the test drive',
+      description:
+        'Prove the drive keys you recorded by having the server run its REAL test-drive ' +
+        'machinery — same env rendering, same hooks, same dev pane — under a synthetic identity ' +
+        '(slug `prep-dry-run`) on the current branch. Nothing is checked out. `start` renders ' +
+        'driveEnv, runs driveSetupCommand and spawns devCommand; `status` reports the pane and ' +
+        'the sniffed localhost URL while you inspect; `stop` runs driveStopCommand and rules on ' +
+        'the run. Ask the human before starting: it starts services and creates a database on ' +
+        'their machine. A clean full pass stamps the participating keys verified, computed from ' +
+        'what the machinery observed — your own checks decide whether to fix and re-run, never ' +
+        'the stamp.',
+      inputSchema: { action: z.enum(['start', 'status', 'stop']) },
+    },
+    async (args, extra) => {
+      const rs = await resolveCtxSession(extra)
+      if (!rs) return noSession()
+      return ok(await toolDryRunDrive(rs.ctx, rs.session, args))
     },
   )
 

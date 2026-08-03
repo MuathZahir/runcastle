@@ -4,6 +4,7 @@ import type { AppCtx } from '../db/types'
 import { events, sessions } from '../db/schema'
 import { hasCompletedProjectSession } from '../launcher/sessions'
 import { isOverwritable, listFindings, unsetPreparedKeys } from './findings'
+import { activeDriveInfo, type DriveInfo } from './git'
 
 /**
  * Project preparation state — what is still open, and whether the human has
@@ -112,13 +113,24 @@ export interface PrepView {
    * baseline to age.
    */
   preparedAt: number | null
+  /**
+   * The preparation dry-run drive, while one is up (decision 9) — the same
+   * `DriveInfo` a feature drive surfaces, with no feature on it. It is here so
+   * the workspace can show the run and offer a Stop: a prep session that died
+   * mid-run leaves services and a temp database behind, and the human needs the
+   * teardown half by hand. `null` whenever the slot is empty or a feature drive
+   * holds it.
+   */
+  dryRun: DriveInfo | null
 }
 
 export async function prepView(ctx: AppCtx, project: Project): Promise<PrepView> {
+  const drive = activeDriveInfo()
   return {
     pendingKeys: keysToPrepare(ctx, project),
     findings: await listFindings(ctx, project),
     prepared: isPrepared(ctx, project),
     preparedAt: preparedAt(ctx, project.id),
+    dryRun: drive?.dryRun ? drive : null,
   }
 }
