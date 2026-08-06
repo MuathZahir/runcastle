@@ -696,6 +696,8 @@ export function mergeSummary(input: {
   commitCount?: number
   run?: RunFigure
   driveTaken: boolean
+  /** Notes captured during the test drive that were never ticked off. */
+  openNotes?: number
 }): MergeSummary {
   const drive: CheckRow = input.driveTaken
     ? { key: 'test drive', value: 'taken', tone: 'ok' }
@@ -714,6 +716,11 @@ export function mergeSummary(input: {
     warnings.push(`The last run ${input.run.status} rather than succeeding.`)
   }
   if (!input.driveTaken) warnings.push('This branch was never test-driven.')
+  // Informational, never blocking (decisions #7): shipping over findings the
+  // human logged and never handled is the moment worth catching, but someone who
+  // judged their open notes shippable must not be stopped.
+  const open = input.openNotes ?? 0
+  if (open > 0) warnings.push(`${open} open test-drive note${open === 1 ? '' : 's'}.`)
 
   return { rows: [commitRow(input.commitCount), runRow(input.run), drive], warnings }
 }
