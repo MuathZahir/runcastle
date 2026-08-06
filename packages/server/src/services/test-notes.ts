@@ -1,6 +1,6 @@
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { dirname } from 'node:path'
-import type { Feature, TestNote, Ticket, TicketInput } from '@runcastle/core'
+import type { Feature, TestNote, TestNoteStatus, Ticket, TicketInput } from '@runcastle/core'
 import { newId } from '@runcastle/core'
 import { featureDocsRel } from '@runcastle/core/paths'
 import { asc, eq } from 'drizzle-orm'
@@ -154,9 +154,13 @@ export function toggleNote(ctx: AppCtx, noteId: string): TestNote {
       `cannot toggle note ${noteId} — it is promoted, and promoted notes are frozen`,
     )
   }
-  const status = current.status === 'open' ? ('done' as const) : ('open' as const)
+  const status: TestNoteStatus = current.status === 'open' ? 'done' : 'open'
 
-  ctx.db.update(testNotes).set({ status, updatedAt: Date.now() }).where(eq(testNotes.id, noteId)).run()
+  ctx.db
+    .update(testNotes)
+    .set({ status, updatedAt: Date.now() })
+    .where(eq(testNotes.id, noteId))
+    .run()
 
   emit(ctx, current.featureId, {
     type: 'note.toggled',
@@ -228,9 +232,9 @@ export function promoteNote(
 
 function noteLine(ctx: AppCtx, note: TestNote): string {
   if (note.status === 'open') return `- [ ] ${note.text}`
-  if (note.status === 'done') return `- [x] ${note.text}`
-  const seq = note.ticketId ? getTicket(ctx, note.ticketId).seq : '?'
-  return `- [x] ${note.text} (→ ticket ${seq})`
+  // A promoted note always carries its ticket; done notes never do.
+  const ticket = note.ticketId ? ` (→ ticket ${getTicket(ctx, note.ticketId).seq})` : ''
+  return `- [x] ${note.text}${ticket}`
 }
 
 /**
