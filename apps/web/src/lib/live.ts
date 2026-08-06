@@ -114,6 +114,10 @@ export function useLiveSync(): LiveStatus {
       void u.feature.list.invalidate()
       void u.feature.get.invalidate()
       void u.feature.driveInfo.invalidate()
+      // Test-drive notes: the review checklist is a live surface — a note added,
+      // ticked, edited or promoted has to show up at push speed, not on the 30s
+      // safety poll.
+      void u.notes.invalidate()
       // Findings carry the dry-run stamps the next-step bar warns on, and a
       // clean dry run stamps them mid-session — without this the warning would
       // outlive the run that disproved it until the next remount.

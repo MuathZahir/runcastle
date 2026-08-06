@@ -7,6 +7,7 @@ import { runRouter } from './routers/run'
 import { settingsRouter } from './routers/settings'
 import { setupRouter } from './routers/setup'
 import { systemRouter } from './routers/system'
+import { testNotesRouter } from './routers/test-notes'
 import { ticketRouter } from './routers/ticket'
 
 /**
@@ -18,6 +19,7 @@ export const appRouter = router({
   feature: featureRouter,
   run: runRouter,
   ticket: ticketRouter,
+  notes: testNotesRouter,
   events: eventsRouter,
   docs: docsRouter,
   settings: settingsRouter,
