@@ -2165,6 +2165,54 @@ details.wp-group-done > summary { cursor: pointer; list-style: revert; }
 .drive-open:hover { border-color: var(--drive); }
 .drive-pane-term { height: 420px; min-height: 260px; background: var(--bg); position: relative; }
 
+/* test-drive notes — capture box + checklist, for the whole review phase */
+.notes-card { max-width: 1000px; margin-top: 14px; }
+.notes-form { display: flex; align-items: center; gap: 8px; margin-top: 14px; }
+.notes-input {
+  flex: 1;
+  min-width: 0;
+  height: 32px;
+  background: var(--panel-inset);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius);
+  color: var(--text);
+  padding: 0 12px;
+  font-size: 12.5px;
+  outline: none;
+  font-family: inherit;
+  transition: border-color var(--dur-1);
+}
+.notes-input:focus { border-color: var(--accent); }
+.notes-list { margin-top: 12px; display: flex; flex-direction: column; }
+.note-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 0;
+  border-top: 1px solid var(--hairline-soft);
+}
+.note-row:first-child { border-top: none; }
+.note-check { accent-color: var(--accent); width: 13px; height: 13px; flex: 0 0 13px; }
+/* promoted notes are frozen — the arrow stands where the checkbox would be */
+.note-frozen { width: 13px; flex: 0 0 13px; text-align: center; color: var(--text-3); }
+.note-text { flex: 1; min-width: 0; font-size: 12.5px; color: var(--text); text-wrap: pretty; }
+.note-row.is-done .note-text { color: var(--text-3); text-decoration: line-through; }
+.note-row.is-promoted .note-text { color: var(--text-2); }
+.note-ticket {
+  flex: 0 1 auto;
+  max-width: 40%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-3);
+}
+/* actions stay out of the way until the row is under the cursor */
+.note-actions { display: flex; gap: 4px; flex: 0 0 auto; opacity: 0; transition: opacity var(--dur-1); }
+.note-row:hover .note-actions,
+.note-row:focus-within .note-actions { opacity: 1; }
+
 .shipped-hero {
   max-width: 560px;
   margin: 36px auto 0;
