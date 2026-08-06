@@ -196,6 +196,35 @@ export const Waypoint = WaypointInput.extend({
 })
 export type Waypoint = z.infer<typeof Waypoint>
 
+// --- test notes (test-drive capture) ---------------------------------------
+
+/**
+ * A note's lifecycle: `open` → editable, deletable, promotable; `done` is the
+ * scratch-off (toggleable back to `open`); `promoted` is terminal and freezes
+ * the note as the record of what its ticket was built from.
+ */
+export const TestNoteStatus = z.enum(['open', 'done', 'promoted'])
+export type TestNoteStatus = z.infer<typeof TestNoteStatus>
+
+/**
+ * One observation captured during a feature's review phase. Notes are the
+ * source of truth; `docs/features/<slug>/test-notes.md` is regenerated from
+ * them on every change. `lap` is stamped from the feature's lap at capture —
+ * callers never choose it, mirroring tickets. `ticketId` is set exactly when
+ * `status` is `promoted`.
+ */
+export const TestNote = z.object({
+  id: z.string(),
+  featureId: z.string(),
+  lap: z.number(),
+  text: z.string(),
+  status: TestNoteStatus,
+  ticketId: z.string().optional(),
+  createdAt: z.number(),
+  updatedAt: z.number(),
+})
+export type TestNote = z.infer<typeof TestNote>
+
 // --- core entities ---------------------------------------------------------
 
 /**
