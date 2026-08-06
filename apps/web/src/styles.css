@@ -2212,6 +2212,8 @@ details.wp-group-done > summary { cursor: pointer; list-style: revert; }
 .note-actions { display: flex; gap: 4px; flex: 0 0 auto; opacity: 0; transition: opacity var(--dur-1); }
 .note-row:hover .note-actions,
 .note-row:focus-within .note-actions { opacity: 1; }
+/* an open editor's Save/Cancel are the row's whole point — never hover-gated */
+.note-row.is-editing .note-actions { opacity: 1; }
 
 .shipped-hero {
   max-width: 560px;

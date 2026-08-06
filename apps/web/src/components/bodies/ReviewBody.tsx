@@ -200,6 +200,9 @@ function NotesPanel({
   })
 
   const rows = notes.data ?? []
+  // One mutation in flight at a time: the list is about to be refetched, so a
+  // second click would act on a row the server is already moving.
+  const busy = edit.isPending || remove.isPending || toggle.isPending || promote.isPending
   const submit = (): void => {
     if (draft.trim() && !add.isPending) add.mutate({ featureId, text: draft })
   }
@@ -236,7 +239,6 @@ function NotesPanel({
           {rows.map((note) => {
             const ticket = note.ticketId ? tickets.find((t) => t.id === note.ticketId) : undefined
             const open = note.status === 'open'
-            const busy = edit.isPending || remove.isPending || toggle.isPending || promote.isPending
 
             if (editing === note.id) {
               return (
