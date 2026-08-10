@@ -1,4 +1,4 @@
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { simpleGit } from 'simple-git'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -211,6 +211,99 @@ describe('project-session MCP tools', () => {
     expect(tickets[0].goal).toBe(prose)
     expect(tickets[0].acceptanceCriteria).toEqual([prose])
     expect(tickets[0].lap).toBe(1)
+  })
+
+  /**
+   * Parking (draft-features decisions 5–6). A draft is a DB row and nothing
+   * else, so what is worth pinning is the absence: no branch cut, no docs on
+   * disk — and, from a feature session, that parking is the ONLY move the door
+   * opens.
+   */
+  it('create_feature with draft: true parks the feature — brief in the row, repo untouched', async () => {
+    const brief = 'Parked mid-intake: real, but not this week.'
+    const out = await toolCreateFeature(ctx, session, {
+      title: 'Fork door',
+      oneLiner: 'branch-from prefilled from the parent feature',
+      brief,
+      draft: true,
+    })
+
+    expect(out).toEqual({
+      id: expect.any(String),
+      slug: 'fork-door',
+      branch: 'feature/fork-door',
+      phase: 'ideation',
+    })
+    const row = getFeatureRow(ctx, out.id)
+    expect(row.status).toBe('draft')
+    expect(row.brief).toBe(brief)
+
+    expect((await simpleGit(repoPath).branchLocal()).all).not.toContain('feature/fork-door')
+    expect(existsSync(join(repoPath, 'docs', 'features', 'fork-door'))).toBe(false)
+  })
+
+  it('create_feature parks a draft from a feature session, in that feature’s project', async () => {
+    const feature = seedFeature(ctx, projectId, { slug: 'dark-mode' })
+    const grill = createSessionRow(ctx, {
+      featureId: feature.id,
+      kind: 'ideation',
+      worktreePath: repoPath,
+    })
+
+    const out = await toolCreateFeature(ctx, grill, {
+      title: 'Theme editor',
+      oneLiner: 'let the human tune the palette',
+      brief: 'Deferred out of the dark-mode grill — it is its own feature.',
+      draft: true,
+    })
+
+    const row = getFeatureRow(ctx, out.id)
+    expect(row.status).toBe('draft')
+    // The project came from the session's own feature, not from a projectId it
+    // does not have.
+    expect(row.projectId).toBe(projectId)
+    expect(row.brief).toContain('Deferred out of the dark-mode grill')
+  })
+
+  it('refuses a feature session anything but a draft, pointing at the project session', async () => {
+    const feature = seedFeature(ctx, projectId, { slug: 'dark-mode' })
+    const grill = createSessionRow(ctx, {
+      featureId: feature.id,
+      kind: 'ideation',
+      worktreePath: repoPath,
+    })
+
+    const cases: [string, Parameters<typeof toolCreateFeature>[2]][] = [
+      ['full create', { title: 'Theme editor', oneLiner: 'tune the palette' }],
+      [
+        'quick change',
+        { title: 'Darker empty state', oneLiner: 'o', draft: true, ticket: { prose: 'darker' } },
+      ],
+    ]
+
+    for (const [name, input] of cases) {
+      const thrown = await toolCreateFeature(ctx, grill, input).catch((e: unknown) => e)
+      expect(thrown, name).toBeInstanceOf(GateError)
+      expect((thrown as GateError).message, name).toMatch(/draft/i)
+      expect((thrown as GateError).message, name).toMatch(/project session/)
+    }
+  })
+
+  it('refuses a qa session outright — read-only means not even a draft', async () => {
+    const feature = seedFeature(ctx, projectId, { slug: 'dark-mode' })
+    const qa = createSessionRow(ctx, {
+      featureId: feature.id,
+      kind: 'qa',
+      worktreePath: repoPath,
+    })
+
+    const thrown = await toolCreateFeature(ctx, qa, {
+      title: 'Theme editor',
+      oneLiner: 'tune the palette',
+      draft: true,
+    }).catch((e: unknown) => e)
+    expect(thrown).toBeInstanceOf(GateError)
+    expect((thrown as GateError).message).toMatch(/read-only/i)
   })
 
   // --- get_project_context ---------------------------------------------------
