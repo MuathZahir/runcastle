@@ -1,0 +1,316 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Getting started — runcastle docs</title>
+    <meta
+      name="description"
+      content="Install runcastle with one command, check your prerequisites with the doctor, and boot the server on http://localhost:4512. What you need, what the first run asks for, and where everything gets written."
+    />
+    <link rel="icon" type="image/svg+xml" href="/assets/favicon.svg" />
+    <link rel="canonical" href="https://runcastle.dev/docs/" />
+    <meta name="theme-color" content="#090b10" />
+
+    <meta property="og:type" content="article" />
+    <meta property="og:url" content="https://runcastle.dev/docs/" />
+    <meta property="og:title" content="Getting started — runcastle docs" />
+    <meta
+      property="og:description"
+      content="One global command installs runcastle. The doctor names the exact prerequisite you are missing. Then it boots a Bun server and a browser tab on localhost:4512 — no account, no hosted backend."
+    />
+    <!-- PNG on purpose: several social-card scrapers still do not decode WebP. -->
+    <meta property="og:image" content="https://runcastle.dev/assets/screens/mock-shell.png" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Getting started — runcastle docs" />
+    <meta
+      name="twitter:description"
+      content="One global command installs runcastle. The doctor names the exact prerequisite you are missing. Then it boots a Bun server and a browser tab on localhost:4512."
+    />
+
+    <link rel="preload" as="font" type="font/woff2" crossorigin
+      href="/assets/fonts/inter-latin-wght-normal.woff2" />
+    <link rel="preload" as="font" type="font/woff2" crossorigin
+      href="/assets/fonts/jetbrains-mono-latin-wght-normal.woff2" />
+    <link rel="stylesheet" href="/styles.css" />
+    <link rel="stylesheet" href="/content.css" />
+
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "TechArticle",
+        "name": "Getting started with runcastle",
+        "headline": "Getting started with runcastle",
+        "description": "Install runcastle, check prerequisites with the doctor, and boot the local server on http://localhost:4512.",
+        "url": "https://runcastle.dev/docs/",
+        "mainEntityOfPage": "https://runcastle.dev/docs/",
+        "author": { "@type": "Organization", "name": "runcastle", "url": "https://runcastle.dev/" },
+        "publisher": { "@type": "Organization", "name": "runcastle", "url": "https://runcastle.dev/" },
+        "about": { "@type": "SoftwareApplication", "name": "runcastle" }
+      }
+    </script>
+  </head>
+
+  <body>
+    <a class="sr-only" href="#main">Skip to content</a>
+
+    <!-- ===================== NAV ===================== -->
+    <header class="nav" id="nav">
+      <div class="nav-inner">
+        <a class="brand" href="/" aria-label="runcastle home">
+          <svg width="20" height="20" viewBox="0 0 32 32" aria-hidden="true">
+            <rect width="32" height="32" rx="7" fill="#7c6cf6" />
+            <path fill-rule="evenodd" clip-rule="evenodd"
+              d="M6.5 26.6 V8.4 H11.3 V12.4 H13.7 V8.4 H18.5 V12.4 H20.9 V8.4 H25.7 V26.6 H6.5 Z M13.3 15.6 L20.4 19.6 L13.3 23.6 Z"
+              fill="#0d0722" />
+          </svg>
+          <span class="lp-wordmark"><span class="run">run</span><span class="castle">castle</span></span>
+        </a>
+
+        <nav class="nav-links" aria-label="Sections">
+          <a href="/#pipeline">Pipeline</a>
+          <a href="/#loop">Parallel work</a>
+          <a href="/#gates">Gates</a>
+          <a href="/#local">Local-first</a>
+          <a href="/docs/">Docs</a>
+          <a href="/compare/">Compare</a>
+        </nav>
+
+        <div class="nav-right">
+          <a class="nav-gh" href="https://github.com/MuathZahir/runcastle" rel="noopener" target="_blank">
+            <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+              <path d="M12 .5C5.37.5 0 5.87 0 12.5c0 5.3 3.44 9.8 8.21 11.39.6.11.82-.26.82-.58v-2.03c-3.34.73-4.04-1.61-4.04-1.61-.55-1.39-1.34-1.76-1.34-1.76-1.09-.75.08-.73.08-.73 1.2.08 1.84 1.24 1.84 1.24 1.07 1.83 2.81 1.3 3.5.99.11-.78.42-1.3.76-1.6-2.67-.3-5.47-1.34-5.47-5.96 0-1.32.47-2.4 1.24-3.24-.13-.3-.54-1.52.12-3.18 0 0 1.01-.32 3.3 1.23a11.5 11.5 0 0 1 6 0c2.29-1.55 3.3-1.23 3.3-1.23.66 1.66.25 2.88.12 3.18.77.84 1.24 1.92 1.24 3.24 0 4.63-2.81 5.65-5.49 5.95.43.37.81 1.1.81 2.22v3.29c0 .32.21.7.83.58A11.99 11.99 0 0 0 24 12.5C24 5.87 18.63.5 12 .5Z" />
+            </svg>
+            GitHub
+          </a>
+          <a class="lp-btn lp-btn-primary lp-btn-sm" href="/#install">Get started</a>
+        </div>
+      </div>
+    </header>
+
+    <main id="main">
+      <article class="article">
+        <nav class="crumbs" aria-label="Breadcrumb">
+          <a href="/">runcastle</a>
+          <span class="crumbs-sep" aria-hidden="true">/</span>
+          <span aria-current="page">Docs</span>
+        </nav>
+
+        <h1>Getting started</h1>
+        <p class="article-lede">
+          runcastle is an opinionated programming system layered on Claude Code — the IDE to
+          Claude Code's text editor. It installs as one global command and runs entirely on your
+          machine: a Bun server plus a browser UI at <code>http://localhost:4512</code>. There is
+          no runcastle account and no hosted backend.
+        </p>
+
+        <nav class="subnav" aria-label="Docs">
+          <a href="/docs/" aria-current="page">Getting started</a>
+          <a href="/docs/pipeline/">The pipeline</a>
+          <a href="/docs/gates/">Gates</a>
+          <a href="/compare/">Compare</a>
+        </nav>
+
+        <h2>Install</h2>
+        <p>
+          Three lines. The first installs the command, the second tells you what is missing, the
+          third boots the server and opens the app.
+        </p>
+        <pre><code><span class="pre-prompt">$</span> bun add -g runcastle       <span class="pre-comment"># install</span>
+<span class="pre-prompt">$</span> runcastle doctor           <span class="pre-comment"># check prerequisites</span>
+<span class="pre-prompt">$</span> runcastle                  <span class="pre-comment"># boot the server and open http://localhost:4512</span></code></pre>
+        <p>
+          <code>runcastle --version</code> prints the installed version. When a newer release is
+          published, an in-app banner names the exact
+          <code>bun add -g runcastle@latest</code> command. runcastle never installs anything for
+          you — every fix is a line you run yourself.
+        </p>
+
+        <h2>What you need first</h2>
+        <p>
+          runcastle drives real tools on your machine, so a few things must already be present.
+          Run <code>runcastle doctor</code> at any time: it probes each one and prints a
+          copy-pasteable fix for whatever is missing. <code>runcastle doctor --gate</code> is the
+          stricter pre-boot gate that stops only on the must-haves.
+        </p>
+        <div class="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th scope="col">Requirement</th>
+                <th scope="col">Why runcastle needs it</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <th scope="row"><a href="https://bun.sh" rel="noopener" target="_blank">Bun</a> 1.3.14+</th>
+                <td>The runtime runcastle itself runs on.</td>
+              </tr>
+              <tr>
+                <th scope="row">
+                  <a href="https://claude.com/claude-code" rel="noopener" target="_blank">Claude Code</a>
+                </th>
+                <td>
+                  The engine runcastle drives. Install it, then log in with <code>claude</code>.
+                  Requires a paid Claude plan — Pro, Max, Team, Enterprise, or Console. The free
+                  Claude.ai plan has no Claude Code access.
+                </td>
+              </tr>
+              <tr>
+                <th scope="row"><a href="https://git-scm.com" rel="noopener" target="_blank">Git</a></th>
+                <td>
+                  runcastle branches, worktrees, commits, and merges on your behalf. It also needs
+                  a commit identity; the first-run wizard collects one.
+                </td>
+              </tr>
+              <tr>
+                <th scope="row">
+                  <a href="https://nodejs.org" rel="noopener" target="_blank">Node.js</a> 22+
+                </th>
+                <td>
+                  <strong>Windows only.</strong> The embedded terminal uses a
+                  <code>node</code>-hosted PTY sidecar. Not needed on macOS.
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p>
+          Platform baselines: macOS 13+, Windows 10 1809+ (64-bit), or a modern Linux. runcastle
+          is MIT-licensed and published to npm as
+          <a href="https://www.npmjs.com/package/runcastle" rel="noopener" target="_blank">runcastle</a>.
+        </p>
+
+        <h3>Only for unattended builds</h3>
+        <p>
+          Skip these two if you just want interactive sessions. Builds you walk away from need a
+          container runtime — Docker or Podman — and an auth token: run
+          <code>claude setup-token</code> on this machine and put
+          <code>CLAUDE_CODE_OAUTH_TOKEN=…</code> in <code>~/.runcastle/.env</code>. Each user
+          authenticates against their own subscription; nothing routes through runcastle.
+        </p>
+        <div class="note">
+          <p>
+            Docker is the default and smoothest path, and Podman is a fully supported free
+            alternative, so a Docker Desktop licence never blocks you. Build the sandbox image
+            once with <code>sandcastle docker build-image</code> — nothing builds it for you, and
+            the doctor reports when it is missing.
+          </p>
+        </div>
+
+        <h2>First run</h2>
+        <ol>
+          <li>Run <code>runcastle</code> and open <code>http://localhost:4512</code>.</li>
+          <li>
+            On a fresh machine a short first-run wizard appears. It asks for a
+            <strong>git identity</strong> — the one hard step, because runcastle commits docs and
+            merges for you, so it writes your name and email to <code>git config --global</code>;
+            it is skipped automatically if you already have one. Then it offers to
+            <strong>enable unattended burns</strong> (optional — set up the sandbox and auth token
+            now, or later), and finally asks you to <strong>open your first project</strong> by
+            pointing runcastle at a git repo.
+          </li>
+          <li>Inside a project, drive the loop.</li>
+        </ol>
+
+        <h2>The loop</h2>
+        <p>
+          Every feature you build gets a persistent session that walks a pipeline:
+          <strong>ideation, spec, tickets, build, review, shipped</strong>. You get grilled on an
+          idea until a spec and a set of tickets fall out. Sandboxed AFK agents burn those tickets
+          on a branch. You test drive the result and merge. Human in the loop at only the two
+          ends — and because each feature has its own branch and its own memory, several run the
+          loop at once.
+        </p>
+        <p>
+          The app always names the one next step. Read
+          <a href="/docs/pipeline/">the pipeline</a> for what happens in each of the six phases,
+          and <a href="/docs/gates/">gates</a> for the checks between them and the two moments
+          they hand the decision back to you.
+        </p>
+
+        <h2>Where things get written</h2>
+        <ul>
+          <li>
+            <strong>Knowledge lives in your repo</strong>, at
+            <code>docs/features/&lt;slug&gt;/</code>: spec, decisions, research, notes. Plain
+            markdown, versioned and agent-readable, and it outlives the tool.
+          </li>
+          <li>
+            <strong>Machinery lives in the app's SQLite</strong> at <code>~/.runcastle/</code>:
+            phase state, session links, workflow runs, transcript index.
+          </li>
+          <li>
+            <strong>Your code lives where it always did.</strong> One branch per feature;
+            planning sessions get docs-only worktrees so several features can be planned in
+            parallel; the main checkout stays reserved for you.
+          </li>
+        </ul>
+
+        <h2>When something will not start</h2>
+        <p>
+          Start with <code>runcastle doctor</code>. It names the exact failing prerequisite and
+          the fix. Beyond that, the three that come up most:
+        </p>
+        <ul>
+          <li>
+            <strong><code>bun</code> or <code>runcastle</code> not found on Windows after
+            install.</strong> Add <code>%USERPROFILE%\.bun\bin</code> to your PATH.
+          </li>
+          <li>
+            <strong>The embedded terminal will not start, or instantly exits.</strong> node-pty's
+            native binary is missing — re-run <code>bun install</code>. On Windows this is almost
+            always a missing system <code>node</code>.
+          </li>
+          <li>
+            <strong>Unattended burns fail with an auth error.</strong> Make sure
+            <code>CLAUDE_CODE_OAUTH_TOKEN</code> is in <code>~/.runcastle/.env</code>, generated
+            by <code>claude setup-token</code>.
+          </li>
+        </ul>
+        <p>
+          The
+          <a href="https://github.com/MuathZahir/runcastle#troubleshooting" rel="noopener"
+            target="_blank">full troubleshooting list</a>
+          in the README covers the rest, including musl/Alpine and Podman on Windows.
+        </p>
+
+        <div class="next">
+          <a href="/docs/pipeline/">
+            <span class="next-k">Next</span>
+            <span class="next-t">The pipeline: six phases</span>
+          </a>
+          <a href="/docs/gates/">
+            <span class="next-k">Then</span>
+            <span class="next-t">Gates and the two decisions</span>
+          </a>
+        </div>
+      </article>
+    </main>
+
+    <!-- ===================== FOOTER ===================== -->
+    <footer class="footer">
+      <div class="wrap footer-inner">
+        <a class="brand" href="/" aria-label="runcastle home">
+          <svg width="18" height="18" viewBox="0 0 32 32" aria-hidden="true">
+            <rect width="32" height="32" rx="7" fill="#7c6cf6" />
+            <path fill-rule="evenodd" clip-rule="evenodd"
+              d="M6.5 26.6 V8.4 H11.3 V12.4 H13.7 V8.4 H18.5 V12.4 H20.9 V8.4 H25.7 V26.6 H6.5 Z M13.3 15.6 L20.4 19.6 L13.3 23.6 Z"
+              fill="#0d0722" />
+          </svg>
+          <span class="lp-wordmark"><span class="run">run</span><span class="castle">castle</span></span>
+        </a>
+        <nav class="footer-links" aria-label="Project links">
+          <a href="/docs/">Docs</a>
+          <a href="/compare/">Compare</a>
+          <a href="https://github.com/MuathZahir/runcastle" rel="noopener" target="_blank">GitHub</a>
+          <a href="https://www.npmjs.com/package/runcastle" rel="noopener" target="_blank">npm</a>
+          <a href="https://github.com/MuathZahir/runcastle/issues" rel="noopener" target="_blank">Issues</a>
+          <a href="https://github.com/MuathZahir/runcastle/blob/main/LICENSE" rel="noopener"
+            target="_blank">MIT</a>
+        </nav>
+        <span class="footer-meta lp-mono">built with Claude Code</span>
+      </div>
+    </footer>
+  </body>
+</html>

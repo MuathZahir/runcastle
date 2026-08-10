@@ -1,0 +1,429 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>runcastle vs. raw Claude Code + skills — do you need more than the terminal?</title>
+    <meta
+      name="description"
+      content="runcastle is not a rival to Claude Code — it runs on top of it, and its skill packs are forks of Matt Pocock's. The real question is whether you want that workflow hand-driven in a terminal or systematized. An honest answer, including when to stay with raw skills."
+    />
+    <link rel="icon" type="image/svg+xml" href="/assets/favicon.svg" />
+    <link rel="canonical" href="https://runcastle.dev/compare/claude-code/" />
+    <meta name="theme-color" content="#090b10" />
+
+    <meta property="og:type" content="article" />
+    <meta property="og:url" content="https://runcastle.dev/compare/claude-code/" />
+    <meta property="og:title" content="runcastle vs. raw Claude Code + skills — do you need more than the terminal?" />
+    <meta
+      property="og:description"
+      content="Same workflow — grill, spec, tickets, implement, review — hand-driven versus systematized. What runcastle adds, and the cases where skills in the terminal are genuinely enough."
+    />
+    <!-- PNG on purpose: several social-card scrapers still do not decode WebP. -->
+    <meta property="og:image" content="https://runcastle.dev/assets/screens/mock-shell.png" />
+    <meta property="og:image:width" content="2324" />
+    <meta property="og:image:height" content="1160" />
+    <meta
+      property="og:image:alt"
+      content="The runcastle workspace showing a feature in the tickets phase with a Burn tickets button"
+    />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="runcastle vs. raw Claude Code + skills" />
+    <meta
+      name="twitter:description"
+      content="runcastle requires Claude Code and forked its skills from Matt Pocock's. The comparison is not tool vs. tool — it is a workflow hand-driven vs. systematized."
+    />
+
+    <link rel="preload" as="font" type="font/woff2" crossorigin
+      href="/assets/fonts/inter-latin-wght-normal.woff2" />
+    <link rel="preload" as="font" type="font/woff2" crossorigin
+      href="/assets/fonts/jetbrains-mono-latin-wght-normal.woff2" />
+    <link rel="stylesheet" href="/styles.css" />
+    <link rel="stylesheet" href="/content.css" />
+
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "Article",
+        "headline": "runcastle vs. raw Claude Code + skills",
+        "description": "A comparison of runcastle against the hand-driven Claude Code skills workflow it forked, including when to stay with raw skills.",
+        "url": "https://runcastle.dev/compare/claude-code/",
+        "mainEntityOfPage": "https://runcastle.dev/compare/claude-code/",
+        "author": { "@type": "Organization", "name": "runcastle", "url": "https://runcastle.dev/" },
+        "publisher": { "@type": "Organization", "name": "runcastle", "url": "https://runcastle.dev/" },
+        "about": { "@type": "SoftwareApplication", "name": "runcastle" }
+      }
+    </script>
+  </head>
+
+  <body>
+    <a class="sr-only" href="#main">Skip to content</a>
+
+    <!-- ===================== NAV ===================== -->
+    <header class="nav" id="nav">
+      <div class="nav-inner">
+        <a class="brand" href="/" aria-label="runcastle home">
+          <svg width="20" height="20" viewBox="0 0 32 32" aria-hidden="true">
+            <rect width="32" height="32" rx="7" fill="#7c6cf6" />
+            <path fill-rule="evenodd" clip-rule="evenodd"
+              d="M6.5 26.6 V8.4 H11.3 V12.4 H13.7 V8.4 H18.5 V12.4 H20.9 V8.4 H25.7 V26.6 H6.5 Z M13.3 15.6 L20.4 19.6 L13.3 23.6 Z"
+              fill="#0d0722" />
+          </svg>
+          <span class="lp-wordmark"><span class="run">run</span><span class="castle">castle</span></span>
+        </a>
+
+        <nav class="nav-links" aria-label="Sections">
+          <a href="/#pipeline">Pipeline</a>
+          <a href="/#loop">Parallel work</a>
+          <a href="/#gates">Gates</a>
+          <a href="/#local">Local-first</a>
+          <a href="/docs/">Docs</a>
+          <a href="/compare/">Compare</a>
+        </nav>
+
+        <div class="nav-right">
+          <a class="nav-gh" href="https://github.com/MuathZahir/runcastle" rel="noopener" target="_blank">
+            <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+              <path d="M12 .5C5.37.5 0 5.87 0 12.5c0 5.3 3.44 9.8 8.21 11.39.6.11.82-.26.82-.58v-2.03c-3.34.73-4.04-1.61-4.04-1.61-.55-1.39-1.34-1.76-1.34-1.76-1.09-.75.08-.73.08-.73 1.2.08 1.84 1.24 1.84 1.24 1.07 1.83 2.81 1.3 3.5.99.11-.78.42-1.3.76-1.6-2.67-.3-5.47-1.34-5.47-5.96 0-1.32.47-2.4 1.24-3.24-.13-.3-.54-1.52.12-3.18 0 0 1.01-.32 3.3 1.23a11.5 11.5 0 0 1 6 0c2.29-1.55 3.3-1.23 3.3-1.23.66 1.66.25 2.88.12 3.18.77.84 1.24 1.92 1.24 3.24 0 4.63-2.81 5.65-5.49 5.95.43.37.81 1.1.81 2.22v3.29c0 .32.21.7.83.58A11.99 11.99 0 0 0 24 12.5C24 5.87 18.63.5 12 .5Z" />
+            </svg>
+            GitHub
+          </a>
+          <a class="lp-btn lp-btn-primary lp-btn-sm" href="/#install">Get started</a>
+        </div>
+      </div>
+    </header>
+
+    <main id="main">
+      <article class="article">
+        <nav class="crumbs" aria-label="Breadcrumb">
+          <a href="/">runcastle</a>
+          <span class="crumbs-sep" aria-hidden="true">/</span>
+          <a href="/compare/">Compare</a>
+          <span class="crumbs-sep" aria-hidden="true">/</span>
+          <span aria-current="page">vs. Claude Code + skills</span>
+        </nav>
+
+        <h1>runcastle vs. raw Claude Code + skills</h1>
+        <p class="article-lede">
+          If you already run Claude Code with a skills workflow — grill the idea, write the spec,
+          cut tickets, implement at the seams, review — then you are not choosing between two
+          tools. <strong>runcastle requires Claude Code</strong>, and its skill packs are forks of
+          the same skills you are using. The only real question is whether you want that workflow
+          hand-driven in a terminal, or systematized by something that remembers.
+        </p>
+
+        <nav class="subnav" aria-label="Comparisons">
+          <a href="/compare/">All comparisons</a>
+          <a href="/compare/claude-code/" aria-current="page">vs. Claude Code + skills</a>
+          <a href="/compare/t3-code/">vs. T3 Code</a>
+          <a href="/compare/conductor/">vs. Conductor</a>
+        </nav>
+
+        <h2>The verdict, up front</h2>
+        <p>
+          <strong>Stay with raw skills if you work one feature at a time and you are usually at
+          the keyboard while the agent runs.</strong> The terminal workflow is free, transparent,
+          and infinitely hackable, and for a single thread of work it has almost no overhead worth
+          removing. Nothing on this page argues otherwise.
+        </p>
+        <p>
+          <strong>Reach for runcastle when the bottleneck stops being the agent's output and
+          starts being you</strong> — when you have three features you would like moving at once,
+          when you keep re-explaining last week's decisions to a fresh session, or when you want
+          tickets burning inside a container while you are asleep. That is a scheduling and memory
+          problem, and no amount of skill authoring fixes it, because skills live inside one
+          session and the problem is between sessions.
+        </p>
+
+        <h2>Not a rival: runcastle runs on top of Claude Code</h2>
+        <p>
+          This needs saying plainly, because the URL of this page implies a fight that does not
+          exist. runcastle does not replace Claude Code, does not reimplement it, and does not
+          route your prompts anywhere else. It <em>launches</em> Claude Code. Interactive phases
+          open a real Claude Code terminal with context pre-injected; unattended phases run Claude
+          Code headless inside a container. Claude Code — and
+          <a href="https://claude.com/claude-code" rel="noopener" target="_blank">a paid Claude
+          plan</a> — is a hard prerequisite. If you uninstall it, runcastle does nothing at all.
+        </p>
+        <p>
+          The methodology is borrowed too, and credited. Five of runcastle's six skill pack skills
+          — <code>ideate</code>, <code>spec</code>, <code>tickets</code>, <code>qa</code>, and
+          <code>converge</code> — are adapted forks of
+          <a href="https://github.com/mattpocock/skills" rel="noopener" target="_blank">Matt
+          Pocock's skills</a>, each carrying a provenance header naming its upstream source. The
+          upstream repository is MIT-licensed and its licence is reproduced in full in
+          <a href="https://github.com/MuathZahir/runcastle/blob/main/packages/skills/NOTICE.md"
+            rel="noopener" target="_blank">runcastle's <code>NOTICE.md</code></a>. Only
+          <code>waypoint</code> is original work. runcastle forks rather than depends, so upstream
+          changes cannot break a running install and the forks can diverge toward runcastle's
+          machine-readable contracts — but the ideas are Matt's, and the grilling rule that a spec
+          and its tickets must come out of one unbroken context window is his, load-bearing, and
+          kept.
+        </p>
+
+        <h2>What the raw workflow actually is</h2>
+        <p>
+          Claude Code
+          <a href="https://code.claude.com/docs/en/skills" rel="noopener" target="_blank">skills</a>
+          are a <code>SKILL.md</code> file with instructions. They live in
+          <code>~/.claude/skills/</code> for personal use, in a repo's
+          <code>.claude/skills/</code> to share with a team, or inside a plugin. You invoke one
+          with <code>/skill-name</code>, or the model reaches for it when it looks relevant, and
+          the body only loads when it is used. Claude Code watches the directories, so editing a
+          skill takes effect in the session you are already in.
+        </p>
+        <p>
+          Matt's pack installs as a plugin — <code>claude plugins install mattpocock-skills</code>,
+          or <code>npx skills@latest add mattpocock/skills</code> for other agents — and you run
+          <code>/setup-matt-pocock-skills</code> once per repo. From there the shape is
+          <code>/grill-me</code> (or <code>/grill-with-docs</code>) to force alignment before any
+          code, <code>/to-spec</code> to freeze the conversation into a spec, <code>/to-tickets</code>
+          to cut it into tracer-bullet tickets that declare their blocking edges,
+          <code>/implement</code> driving <code>/tdd</code> at the pre-agreed seams, and
+          <code>/code-review</code> before you commit. <code>/wayfinder</code> sits above it for
+          multi-session work and <code>/handoff</code> exists precisely because sessions end.
+        </p>
+        <p>
+          It is a genuinely good system. It costs nothing beyond your Claude plan, every rule is a
+          markdown file you can read and rewrite, and it works in any repo on any machine with no
+          server, no container runtime, and no port to remember.
+        </p>
+
+        <h2>Stay with raw skills if…</h2>
+        <ul>
+          <li>
+            <strong>You ship one thing at a time.</strong> One feature, one terminal, you present
+            while it runs. Everything runcastle adds is scheduling, memory, and isolation for work
+            you are <em>not</em> watching. With a single live thread there is nothing to schedule,
+            you are the memory, and the isolation is just your working tree. You would be paying
+            setup cost for machinery that has nothing to do.
+          </li>
+          <li>
+            <strong>You are still tuning the methodology itself.</strong> If you are actively
+            editing your skills — arguing with the grilling prompt, changing what a ticket has to
+            declare — raw files in <code>~/.claude/skills/</code> are the right surface. Edit,
+            re-run, see the change immediately. runcastle vendors its packs and injects them
+            per session, which is exactly what you want when the workflow is settled and exactly
+            what you do not want when it is the thing under experiment.
+          </li>
+          <li>
+            <strong>You cannot run a container, or you work on someone else's locked-down
+            machine.</strong> runcastle's interactive phases need only Bun, Git, and Claude Code,
+            but unattended ticket-burning needs Docker or Podman and a
+            <code>claude setup-token</code> credential. Without those you get the pipeline and
+            lose the headline feature, and skills in the terminal give you the same methodology
+            with no infrastructure at all.
+          </li>
+          <li>
+            <strong>Your work is exploratory rather than feature-shaped.</strong> Debugging,
+            spikes, one-off refactors, reading unfamiliar code. A pipeline that expects an idea to
+            become a spec, tickets, and a merged branch is overhead when the honest output is
+            "now I understand it."
+          </li>
+        </ul>
+
+        <h2>What falls over without structure</h2>
+        <p>
+          The failure modes below are not criticisms of the skills. They are the things a skill
+          cannot reach, because a skill is instructions inside one conversation and these all
+          happen outside one.
+        </p>
+        <p>
+          <strong>Parallel features become bookkeeping.</strong> Two features means two branches,
+          two worktrees, two terminals, and a mental note about which one was waiting on you. Four
+          means you have quietly become a scheduler. Nothing breaks — you just spend your attention
+          on tab management instead of on the work.
+        </p>
+        <p>
+          <strong>Context dies with the session.</strong> The grilling was the expensive part, and
+          it lives in a context window that ends. <code>/handoff</code> and a maintained
+          <code>CONTEXT.md</code> are real answers to this, and they work — as long as you
+          remember to run them, every time, on every feature. The discipline is the product, and
+          discipline degrades on a Friday.
+        </p>
+        <p>
+          <strong>Nothing stands between the spec and the merge.</strong> A skill is advice the
+          model can decline. There is no check that a spec exists before tickets get cut, and
+          nothing stops a branch reaching main without a test drive. Most of the time you are fine.
+          The one time you are not is the time you skipped the step because you were sure.
+        </p>
+
+        <h2>The same feature, both ways</h2>
+        <p>
+          Take a real one: <em>add rate limiting to the public API</em>. Both workflows start
+          identically, because they are the same skills.
+        </p>
+        <div class="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th scope="col">Step</th>
+                <th scope="col">Raw Claude Code + skills</th>
+                <th scope="col">runcastle</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <th scope="row">Align</th>
+                <td><code>/grill-me</code> in a terminal you opened, in your working tree.</td>
+                <td>
+                  Create the feature; a real Claude Code terminal opens with the brief, the phase
+                  rules, and the forked <code>ideate</code> skill already injected, in a docs-only
+                  worktree.
+                </td>
+              </tr>
+              <tr>
+                <th scope="row">Spec &amp; tickets</th>
+                <td>
+                  <code>/to-spec</code>, then <code>/to-tickets</code> in the same window. You
+                  decide where the spec file lives.
+                </td>
+                <td>
+                  Same skills, same unbroken window. The spec lands as markdown in your repo under
+                  <code>docs/features/&lt;slug&gt;/</code>; tickets emit in a machine-readable
+                  schema the app can act on.
+                </td>
+              </tr>
+              <tr>
+                <th scope="row">Approve</th>
+                <td>You read the tickets in the transcript and keep going.</td>
+                <td>
+                  The pipeline stops at a gate and shows a ticket review card.
+                  <strong>Click one: burn.</strong>
+                </td>
+              </tr>
+              <tr>
+                <th scope="row">Build</th>
+                <td>
+                  <code>/implement</code> per ticket, in your terminal, in your working tree. You
+                  are present for each one, and your tree is the build surface.
+                </td>
+                <td>
+                  Every unblocked ticket goes to a sandboxed agent in a container, committing to
+                  the feature branch in dependency order. Close the tab.
+                </td>
+              </tr>
+              <tr>
+                <th scope="row">Review</th>
+                <td>
+                  <code>/code-review</code>, then run the app yourself, then merge by hand.
+                </td>
+                <td>
+                  Findings feed fix cycles inside the burner; only hard blockers reach you.
+                  runcastle sets your own work aside, starts the finished branch on its own port,
+                  and puts your work back after. <strong>Click two: merge.</strong>
+                </td>
+              </tr>
+              <tr>
+                <th scope="row">Next week</th>
+                <td>
+                  You re-read the spec file and re-explain the rest to a fresh session.
+                </td>
+                <td>
+                  The feature session, its decisions, and its run history are still there and
+                  still queryable.
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p>
+          Notice what the right-hand column does <em>not</em> claim: better prompts, better code,
+          a smarter agent. Same engine, same methodology. What changes is that the steps are
+          enforced rather than remembered, the build happens somewhere that is not your working
+          tree, and the whole thing survives you closing the laptop.
+        </p>
+
+        <h2>What runcastle actually adds</h2>
+        <ul>
+          <li>
+            <strong>Persistence.</strong> Every feature is a session on its own branch with its own
+            memory. Several run at once. Knowledge is plain markdown committed to your repo, so it
+            outlives runcastle if you stop using it.
+          </li>
+          <li>
+            <strong>An enforced pipeline.</strong>
+            <a href="/docs/pipeline/">Ideation → spec → tickets → build → review → shipped</a>,
+            with <a href="/docs/gates/">gates</a> between the phases. They block by default and
+            every one takes an override with a one-line reason that is recorded. Seatbelt, not
+            cage.
+          </li>
+          <li>
+            <strong>AFK ticket-burning.</strong> Sandboxed agents burn tickets inside Docker or
+            Podman on your own machine, on the feature branch, with no human in the loop.
+          </li>
+          <li>
+            <strong>Two clicks.</strong> Burn and merge. Those are the only two moments the system
+            requires you.
+          </li>
+          <li>
+            <strong>A browser UI at <code>localhost:4512</code>,</strong> served by a Bun server on
+            your machine. MIT-licensed, installed with <code>bun add -g runcastle</code>, no
+            account, no hosted backend, nothing leaves your machine that Claude Code was not
+            already sending.
+          </li>
+        </ul>
+
+        <div class="note">
+          <p>
+            If you are weighing other Claude Code front-ends rather than the terminal itself, the
+            <a href="/compare/">comparison index</a> covers the category, including
+            <a href="/compare/t3-code/">T3 Code</a> and
+            <a href="/compare/conductor/">Conductor</a>.
+          </p>
+        </div>
+
+        <h2>So do you need it?</h2>
+        <p>
+          Honestly: not yet, if the terminal is keeping up. The skills workflow is the good
+          version of AI-assisted engineering and runcastle's entire claim is that it is worth
+          systematizing — which is a compliment to it, not a replacement for it. Use the raw
+          skills until you notice yourself doing the scheduler's job, losing decisions between
+          sessions, or wishing a ticket could build itself while you did something else. Those
+          three complaints are the whole reason runcastle exists, and if you do not have them, you
+          do not need it.
+        </p>
+        <p>
+          If you do: <code>bun add -g runcastle</code>, then <code>runcastle doctor</code>. It
+          runs on the Claude Code you already have, with the skills you already trust.
+        </p>
+
+        <div class="next">
+          <a href="/compare/">
+            <span class="next-k">Compare</span>
+            <span class="next-t">All Claude Code UIs, side by side</span>
+          </a>
+          <a href="/docs/pipeline/">
+            <span class="next-k">Docs</span>
+            <span class="next-t">How the pipeline works</span>
+          </a>
+        </div>
+      </article>
+    </main>
+
+    <!-- ===================== FOOTER ===================== -->
+    <footer class="footer">
+      <div class="wrap footer-inner">
+        <a class="brand" href="/" aria-label="runcastle home">
+          <svg width="18" height="18" viewBox="0 0 32 32" aria-hidden="true">
+            <rect width="32" height="32" rx="7" fill="#7c6cf6" />
+            <path fill-rule="evenodd" clip-rule="evenodd"
+              d="M6.5 26.6 V8.4 H11.3 V12.4 H13.7 V8.4 H18.5 V12.4 H20.9 V8.4 H25.7 V26.6 H6.5 Z M13.3 15.6 L20.4 19.6 L13.3 23.6 Z"
+              fill="#0d0722" />
+          </svg>
+          <span class="lp-wordmark"><span class="run">run</span><span class="castle">castle</span></span>
+        </a>
+        <nav class="footer-links" aria-label="Project links">
+          <a href="/docs/">Docs</a>
+          <a href="/compare/">Compare</a>
+          <a href="https://github.com/MuathZahir/runcastle" rel="noopener" target="_blank">GitHub</a>
+          <a href="https://www.npmjs.com/package/runcastle" rel="noopener" target="_blank">npm</a>
+          <a href="https://github.com/MuathZahir/runcastle/issues" rel="noopener" target="_blank">Issues</a>
+          <a href="https://github.com/MuathZahir/runcastle/blob/main/LICENSE" rel="noopener"
+            target="_blank">MIT</a>
+        </nav>
+        <span class="footer-meta lp-mono">built with Claude Code</span>
+      </div>
+    </footer>
+  </body>
+</html>
