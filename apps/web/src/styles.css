@@ -550,6 +550,7 @@ button {
 .triage-needsYou .triage-label > .triage-name { color: var(--needs); }
 .triage-agentWorking .triage-label > .triage-name { color: var(--ph-implementation); }
 .triage-inProgress .triage-label > .triage-name { color: var(--text-3); }
+.triage-drafts .triage-label > .triage-name { color: var(--text-4); }
 .triage-shipped .triage-label > .triage-name { color: var(--ph-shipped); }
 
 .feature-row {
@@ -737,6 +738,14 @@ button {
 .phase-bg-implementation { background: var(--ph-implementation); }
 .phase-bg-review { background: var(--ph-review); }
 .phase-bg-shipped { background: var(--ph-shipped); }
+/* Occupies the phase dot's slot on a draft row, so line 1 still lines up. */
+.feature-draft-glyph {
+  width: 8px;
+  flex: 0 0 auto;
+  font-size: 11px;
+  line-height: 1;
+  color: var(--text-4);
+}
 .feature-title {
   flex: 1;
   min-width: 0;
@@ -777,6 +786,7 @@ button {
 .feature-chip.is-needsMe { color: var(--needs); }
 .feature-chip.is-working { color: var(--ph-implementation); }
 .feature-chip.is-shipped { color: var(--ph-shipped); }
+.feature-chip.is-draft { color: var(--text-4); }
 /* Sized to the chip's 10.5px text rather than the 12px a panel spinner wants. */
 .feature-chip .spin-ring { width: 9px; height: 9px; border-width: 1.4px; }
 /* The map keeps the line's end, so it lines up row to row whatever precedes it. */
