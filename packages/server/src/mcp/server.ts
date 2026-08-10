@@ -495,7 +495,7 @@ const DRAFTING_KINDS: readonly SessionKindT[] = ['ideation', 'revisit', 'waypoin
 function createFeatureProject(
   ctx: AppCtx,
   session: SessionRow,
-  input: { draft?: boolean; ticket?: unknown },
+  input: { draft?: boolean; ticket?: { prose: string } },
 ): Project {
   if (isProjectSessionKind(session.kind)) return requireProject(ctx, session)
   if (!DRAFTING_KINDS.includes(session.kind)) {
