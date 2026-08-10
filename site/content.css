@@ -21,7 +21,9 @@
    ========================================================================== */
 
 .article {
-  max-width: var(--measure);
+  /* The gutter is padding inside the box, so add it back: --measure is the
+     measure of the text, not of the column plus its margins. */
+  max-width: calc(var(--measure) + var(--gutter) * 2);
   margin-inline: auto;
   padding-inline: var(--gutter);
   padding-block: 56px 96px;
@@ -110,12 +112,6 @@
   text-decoration-color: var(--accent-hi);
 }
 
-.article hr {
-  border: 0;
-  border-top: 1px solid var(--hairline-soft);
-  margin: 44px 0;
-}
-
 /* ==========================================================================
    LISTS
    ========================================================================== */
@@ -167,11 +163,11 @@
   font-size: inherit;
 }
 /* A shell prompt inside a code block: dim, and not part of a copied line. */
-.article pre .p {
+.article pre .pre-prompt {
   color: var(--text-4);
   user-select: none;
 }
-.article pre .c {
+.article pre .pre-comment {
   color: var(--text-3);
 }
 
