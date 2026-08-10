@@ -2260,6 +2260,42 @@ details.wp-group-done > summary { cursor: pointer; list-style: revert; }
 .shipped-session .grill-term { height: clamp(300px, calc(100dvh - 420px), 1200px); }
 
 /* ============================================================================
+   DRAFT body — a parked idea (decision 9). One reading column: what the idea
+   is, then its brief, then the base Start will fork from. No terminal, no doc
+   cards, no pipeline — a draft is a DB row and nothing else yet.
+   ========================================================================== */
+.draft-body {
+  max-width: 640px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+.draft-hero { margin-top: 28px; animation: fadeUp var(--dur-3) var(--ease-out); }
+.draft-kick {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  color: var(--text-4);
+}
+.draft-glyph { font-size: 12px; line-height: 1; }
+.draft-title { margin-top: 8px; font-size: 16px; font-weight: 600; }
+.draft-oneliner { margin-top: 6px; font-size: 13px; color: var(--text-2); line-height: 1.55; }
+.draft-sub { margin-top: 12px; font-size: 12.5px; color: var(--text-3); line-height: 1.55; }
+.draft-brief.is-empty { color: var(--text-4); }
+.draft-advanced-summary {
+  cursor: pointer;
+  font-size: 11.5px;
+  color: var(--text-3);
+  user-select: none;
+}
+.draft-advanced[open] .draft-advanced-summary { margin-bottom: 8px; }
+.tag.is-draft { color: var(--text-4); }
+
+/* ============================================================================
    NEW-FEATURE workspace form
    ========================================================================== */
 .nf-overlay {

@@ -9,6 +9,7 @@ import type { FeatureFull, PrepView } from '../lib/api'
 import { unverifiedDriveKeys } from '../lib/settings'
 import type { DriveState } from '../lib/workspace'
 import {
+  defaultBaseBranch,
   effectivePhase,
   isReadonlyView,
   latestRun,
@@ -30,6 +31,7 @@ import {
 import { lapExplainer } from '../lib/vocabulary'
 import { IconBranch } from '../icons'
 import { MergeFeatureDialog } from './MergeFeatureDialog'
+import { DraftBody } from './bodies/DraftBody'
 import { GrillBody } from './bodies/GrillBody'
 import { ReviewBody } from './bodies/ReviewBody'
 import { ShippedBody } from './bodies/ShippedBody'
@@ -101,6 +103,20 @@ export function Workspace({
     { enabled: !!projectId, refetchInterval: useLivePoll() },
   )
   const driveQ = trpc.feature.driveInfo.useQuery(undefined, { refetchInterval: useLivePoll() })
+  // A parked draft picks its base at Start, not at creation (decision 3), so the
+  // branch list is read HERE — Start fires from the next-step bar, and the base
+  // has to be readable at that click, not buried in the body that shows the
+  // picker. Only fetched for a draft; every other feature already has a branch.
+  const isDraft = q.data?.feature.status === 'draft'
+  const branchesQ = trpc.project.branches.useQuery(
+    { projectId: projectId ?? '' },
+    { enabled: !!projectId && isDraft },
+  )
+  // '' = the client default (current checkout, falling back to main); a value is
+  // an explicit pick from the body's Advanced disclosure.
+  const [draftBase, setDraftBase] = useState('')
+  const effectiveDraftBase =
+    draftBase || (branchesQ.data ? defaultBaseBranch(branchesQ.data) : '')
 
   const invalidate = () => {
     void utils.feature.get.invalidate({ id: featureId })
@@ -196,6 +212,20 @@ export function Workspace({
     },
     onError: (e) => toast.push(e.message),
   })
+  // Start a parked draft (decision 7): the server cuts the branch, commits the
+  // brief and activates the feature, and the grill session is chained after it
+  // best-effort — mirroring the New Feature form's create-then-launch. A failure
+  // leaves the draft intact and startable, so the toast is the whole recovery.
+  const start = trpc.feature.start.useMutation({
+    onSuccess: (_res, vars) => {
+      launch.mutate(
+        { featureId: vars.featureId, kind: 'ideation' },
+        { onSettled: invalidate },
+      )
+      invalidate()
+    },
+    onError: (e) => toast.push(e.message),
+  })
 
   if (q.isLoading) {
     return (
@@ -246,8 +276,10 @@ export function Workspace({
     conflict,
     unverifiedDriveKeys: unverifiedDriveKeys((prepQ.data as PrepView | undefined)?.findings ?? []),
     dryRunActive: !!driveQ.data?.dryRun,
+    draftBaseUnresolved: isDraft && !effectiveDraftBase,
   })
   const busy =
+    start.isPending ||
     launch.isPending ||
     advance.isPending ||
     burn.isPending ||
@@ -260,6 +292,13 @@ export function Workspace({
 
   const runAction = (kind: ActionKind, reason?: string) => {
     switch (kind) {
+      case 'startDraft':
+        // Send the base the body is SHOWING, not just an explicit pick: omitting
+        // it lets the server fall back to the project main branch, silently
+        // contradicting the current-branch default in the picker. The bar's
+        // Start is disabled until this resolves, so it is never empty here.
+        start.mutate({ featureId, baseBranch: effectiveDraftBase })
+        break
       case 'startGrill':
         launch.mutate({ featureId, kind: 'ideation' })
         break
@@ -362,7 +401,9 @@ export function Workspace({
     <section className="workspace">
       <div className="ws-head">
         <div className="ws-title-row">
-          <PhaseTag phase={feature.phase} />
+          {/* Same reason the stepper is hidden below: a draft's phase is
+              `ideation` by construction, and naming it here reads as progress. */}
+          {isDraft ? <span className="tag is-draft">draft</span> : <PhaseTag phase={feature.phase} />}
           <span className="ws-title">{feature.title}</span>
           <span className="ws-title-spacer" />
           <button className="ws-branch" title="Copy branch name" onClick={() => copyText(feature.branch, toast)}>
@@ -370,11 +411,16 @@ export function Workspace({
             {feature.branch}
           </button>
         </div>
-        <PipelineStepper
-          steps={steps}
-          lap={feature.lap}
-          onView={(p) => onViewPhase(p === feature.phase ? null : p)}
-        />
+        {/* A draft has no meaningful pipeline position (decision 9): it is
+            created at `ideation` like everything else, and a stepper lit at that
+            first step would claim work has begun on a feature with no branch. */}
+        {!isDraft && (
+          <PipelineStepper
+            steps={steps}
+            lap={feature.lap}
+            onView={(p) => onViewPhase(p === feature.phase ? null : p)}
+          />
+        )}
       </div>
 
       {readonly ? (
@@ -416,17 +462,29 @@ export function Workspace({
       )}
 
       <div className="ws-body">
-        <div className="ws-body-inner" key={effective}>
-          <PhaseBody
-            effective={effective}
-            full={full}
-            driving={driving}
-            conflict={conflict}
-            runId={run?.id ?? null}
-            readonly={readonly}
-            mapRailCollapsed={mapRailCollapsed}
-            onToggleMapRail={onToggleMapRail}
-          />
+        <div className="ws-body-inner" key={isDraft ? 'draft' : effective}>
+          {/* Status wins over phase here (decision 9): a draft is created at
+              `ideation`, and the grill body would offer a terminal on a feature
+              that has no branch to open one against. */}
+          {isDraft ? (
+            <DraftBody
+              full={full}
+              branches={branchesQ.data}
+              base={effectiveDraftBase}
+              onPick={setDraftBase}
+            />
+          ) : (
+            <PhaseBody
+              effective={effective}
+              full={full}
+              driving={driving}
+              conflict={conflict}
+              runId={run?.id ?? null}
+              readonly={readonly}
+              mapRailCollapsed={mapRailCollapsed}
+              onToggleMapRail={onToggleMapRail}
+            />
+          )}
         </div>
       </div>
     </section>
