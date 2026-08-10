@@ -112,11 +112,15 @@ export function Workspace({
     { projectId: projectId ?? '' },
     { enabled: !!projectId && isDraft },
   )
-  // '' = the client default (current checkout, falling back to main); a value is
-  // an explicit pick from the body's Advanced disclosure.
-  const [draftBase, setDraftBase] = useState('')
+  // An explicit pick from the body's Advanced disclosure, stamped with the
+  // feature it was made on — this component is not remounted between features,
+  // so an unstamped pick would follow the user to the next draft and quietly
+  // fork it off a branch they chose for a different idea. No pick (or a stale
+  // one) means the client default: the current checkout, falling back to main.
+  const [draftPick, setDraftPick] = useState<{ featureId: string; base: string } | null>(null)
   const effectiveDraftBase =
-    draftBase || (branchesQ.data ? defaultBaseBranch(branchesQ.data) : '')
+    (draftPick?.featureId === featureId ? draftPick.base : '') ||
+    (branchesQ.data ? defaultBaseBranch(branchesQ.data) : '')
 
   const invalidate = () => {
     void utils.feature.get.invalidate({ id: featureId })
@@ -218,11 +222,8 @@ export function Workspace({
   // leaves the draft intact and startable, so the toast is the whole recovery.
   const start = trpc.feature.start.useMutation({
     onSuccess: (_res, vars) => {
-      launch.mutate(
-        { featureId: vars.featureId, kind: 'ideation' },
-        { onSettled: invalidate },
-      )
       invalidate()
+      launch.mutate({ featureId: vars.featureId, kind: 'ideation' })
     },
     onError: (e) => toast.push(e.message),
   })
@@ -471,7 +472,7 @@ export function Workspace({
               full={full}
               branches={branchesQ.data}
               base={effectiveDraftBase}
-              onPick={setDraftBase}
+              onPick={(base) => setDraftPick({ featureId, base })}
             />
           ) : (
             <PhaseBody
