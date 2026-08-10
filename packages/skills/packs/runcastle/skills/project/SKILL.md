@@ -19,7 +19,7 @@ Four, and deliberately none of the feature pipeline's. A session with no feature
 
 - `mcp__runcastle__get_project_context()` — the project, the charter in full, every live ADR in full, and a one-line index of every feature.
 - `mcp__runcastle__get_work_record({ featureSlug? , seam? })` — what features actually **did**: tickets by status, seams, commits, errors, run summaries. Facts, never intent.
-- `mcp__runcastle__create_feature({ title, oneLiner, baseBranch?, brief?, ticket? })` — the end of intake.
+- `mcp__runcastle__create_feature({ title, oneLiner, baseBranch?, brief?, draft?, ticket? })` — the end of intake.
 - `mcp__runcastle__record_event({ type, message })` — a note on the project timeline.
 
 Every **merged** feature's docs are already on disk in this worktree — `docs/features/<slug>/`. Read them with your ordinary `Read`/`Grep`; the index says where. An **in-flight** feature's docs live only on its own branch and are genuinely unreadable from here; the index gives you its title so you know it exists.
@@ -47,6 +47,8 @@ This is a grilling, run the way `/runcastle:ideate` grills, at one level up: you
 - **Check for duplicates before you create.** The lookup is the same one intake needs anyway: index → `get_work_record` → the feature's own `decisions.md` on disk. "We already decided this" is a legitimate outcome.
 
 When it resolves: **one `create_feature` call per feature.**
+
+**Ask, per feature: start it now, or park it as a draft?** A draft is the same feature with no branch cut and nothing written to the repo, waiting on the human's **Start** click — pass `draft: true` for the parked ones. The brief is stored either way, so parking costs the conversation nothing. Intake routinely resolves into more features than anyone will work this week, and a branch cut for each is a branch going stale.
 
 Each one carries a real `brief` — the reasoning you just worked out, in prose: why this feature exists, what it is for, what it must not swallow, what is already settled about it. It is written into `brief.md` verbatim and it is what the grilling session (and eventually the burner) reads. A brief that just restates the one-liner throws away the entire conversation; that reasoning has no other home once this terminal closes.
 
@@ -117,7 +119,7 @@ always describes the present, never the history.>
 - Delete the line when the thread is done — this section is pruned, not appended to forever.
 ```
 
-**`## Deferred / open threads` is runcastle's only home for a parked idea.** There is no backlog table, no `docs/backlog.md`, no draft feature status, and you must not create one. Because the charter is rewritten in place, a thread that gets done is *deleted* — which is exactly what stops it decaying into a graveyard. Only put a line here if the idea is **not regenerable**: if re-reading the code would surface it again, it does not need remembering.
+**`## Deferred / open threads` is the charter's home for a parked idea that is not yet a feature** — once it has resolved into one, park it as a draft (§1) instead. There is no backlog table and no `docs/backlog.md`, and you must not create one. Because the charter is rewritten in place, a thread that gets done is *deleted* — which is exactly what stops it decaying into a graveyard. Only put a line here if the idea is **not regenerable**: if re-reading the code would surface it again, it does not need remembering.
 
 Term collisions are a rewrite, not an append: if a feature's vocabulary conflicts with a term already defined here, raise it with the human and settle on one meaning — never silently redefine.
 
