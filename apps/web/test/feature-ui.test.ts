@@ -3,6 +3,7 @@ import type { EventRow, TicketStatus } from '@runcastle/core'
 import {
   capLane,
   defaultBaseBranch,
+  DRAFT_GLYPH,
   duplicateTitleWarning,
   kickoffTrouble,
   liveSessionBlocker,
@@ -11,6 +12,7 @@ import {
   needsMe,
   nextStep,
   parseMapSections,
+  phaseGlyph,
   reviewChecks,
   rowChip,
   sessionDoneState,
@@ -1100,6 +1102,71 @@ describe('archive derivations', () => {
     const ns = nextStep(full({ status: 'archived', phase: 'review' }), { driving: false })
     expect(ns.primary?.kind).toBe('unarchive')
     expect(ns.secondary).toEqual([])
+  })
+})
+
+/**
+ * draft-features ticket 3 — a parked draft is not in the pipeline (decision 9).
+ * Every derivation below reads its STATUS over its phase: drafts are created at
+ * `ideation`, which is also the phase that claims the loudest needs-me dot, so a
+ * phase-first reading would have the rail begging to grill a feature with no
+ * branch behind it.
+ */
+describe('draft derivations', () => {
+  const NOW = 1_000_000_000_000
+  const draft = (over: Partial<FeatureListItem> = {}) =>
+    listItem({ status: 'draft', phase: 'ideation', ...over })
+
+  it('needsMe is null for a draft, whatever its phase would claim', () => {
+    expect(needsMe(draft())).toBeNull()
+    expect(needsMe(listItem({ phase: 'ideation' }))?.kind).toBe('grill')
+  })
+
+  it('chips a draft as "Draft" instead of its age', () => {
+    const chip = rowChip(draft({ lastActivityAt: NOW - 600_000 }), NOW)
+    expect(chip.kind).toBe('draft')
+    expect(chip.text).toBe('Draft')
+  })
+
+  it('wears the ◌ glyph rather than a phase glyph', () => {
+    expect(DRAFT_GLYPH).toBe('◌')
+    expect(DRAFT_GLYPH).not.toBe(phaseGlyph('ideation'))
+  })
+
+  it('sorts drafts below active work and above shipped', () => {
+    const sorted = sortForSidebar([
+      listItem({ id: 'shipped', status: 'shipped', phase: 'shipped' }),
+      draft({ id: 'draft' }),
+      listItem({ id: 'active', phase: 'spec' }),
+      listItem({ id: 'needsMe', phase: 'ideation' }),
+    ])
+    expect(sorted.map((f) => f.id)).toEqual(['needsMe', 'active', 'draft', 'shipped'])
+  })
+
+  it('gives drafts their own rail band between In progress and Shipped', () => {
+    expect(triageOf(draft())).toBe('drafts')
+    const groups = triage([
+      listItem({ id: 'shipped', status: 'shipped', phase: 'shipped' }),
+      draft({ id: 'draft' }),
+      listItem({ id: 'active', phase: 'spec' }),
+    ])
+    expect(groups.map((g) => g.key)).toEqual(['inProgress', 'drafts', 'shipped'])
+    expect(groups.find((g) => g.key === 'drafts')?.label).toBe('Drafts')
+  })
+
+  it('nextStep offers Start as a draft’s one action', () => {
+    const ns = nextStep(full({ status: 'draft', phase: 'ideation' }), { driving: false })
+    expect(ns.primary).toEqual({ label: 'Start', kind: 'startDraft' })
+    expect(ns.secondary).toEqual([])
+  })
+
+  it('disables Start until the branch list resolves the base it would send', () => {
+    const ns = nextStep(full({ status: 'draft', phase: 'ideation' }), {
+      driving: false,
+      draftBaseUnresolved: true,
+    })
+    expect(ns.primary?.kind).toBe('startDraft')
+    expect(ns.primary?.disabled).toBe('Loading the branch list…')
   })
 })
 
