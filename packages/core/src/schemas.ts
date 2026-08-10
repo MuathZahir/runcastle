@@ -95,7 +95,7 @@ export function isProjectSessionKind(kind: SessionKind): boolean {
 export const RunStatus = z.enum(['running', 'succeeded', 'failed', 'cancelled'])
 export type RunStatus = z.infer<typeof RunStatus>
 
-export const FeatureStatus = z.enum(['active', 'shipped', 'archived'])
+export const FeatureStatus = z.enum(['draft', 'active', 'shipped', 'archived'])
 export type FeatureStatus = z.infer<typeof FeatureStatus>
 
 export const SessionStatus = z.enum(['launching', 'live', 'ended'])
@@ -352,6 +352,13 @@ export const Feature = z.object({
   slug: z.string(),
   title: z.string(),
   oneLiner: z.string(),
+  /**
+   * The brief prose a draft was parked with (decision 4). A draft is a DB row
+   * and nothing else, so its brief lives here until Start scaffolds `brief.md`
+   * from it; after that the file on the branch is the source of truth and this
+   * stays as a historical artifact. Unset on features created before drafts.
+   */
+  brief: z.string().optional(),
   /**
    * Mapped ideation (ADR-0001 / SPEC §13): the feature's ideation phase runs as
    * a shared waypoint map instead of a single grill. Set by a mid-grill

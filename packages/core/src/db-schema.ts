@@ -102,6 +102,12 @@ export const features = sqliteTable('features', {
   slug: text('slug').notNull(),
   title: text('title').notNull(),
   oneLiner: text('one_liner').notNull(),
+  /**
+   * The brief a draft was parked with (decision 4) — a draft is a DB row and
+   * nothing else, so its prose lives here until Start scaffolds `brief.md` from
+   * it. Null for every feature not created as a draft.
+   */
+  brief: text('brief'),
   mapped: integer('mapped', { mode: 'boolean' }).notNull().default(false),
   /**
    * The lap the feature is on (ADR-0010 / SPEC §15.1) — one trip round the
