@@ -270,6 +270,23 @@ describe('draft features', () => {
     })
   })
 
+  it('parks and starts a draft over tRPC', async () => {
+    const caller = createCallerFactory(appRouter)(ctx)
+
+    const draft = await caller.feature.create({
+      projectId: project.id,
+      title: 'Over The Wire',
+      oneLiner: 'someday',
+      draft: true,
+    })
+    expect(draft.status).toBe('draft')
+    expect((await simpleGit(repoPath).branchLocal()).all).not.toContain('feature/over-the-wire')
+
+    const started = await caller.feature.start({ featureId: draft.id })
+    expect(started).toMatchObject({ status: 'active', baseBranch: 'main' })
+    expect((await simpleGit(repoPath).branchLocal()).all).toContain('feature/over-the-wire')
+  })
+
   it('deletes a draft as pure row deletion', async () => {
     const draft = await createFeature(ctx, {
       projectId: project.id,
