@@ -891,6 +891,27 @@ describe('mergeSummary', () => {
     const s = mergeSummary({ commitCount: 0, run: undefined, driveTaken: false })
     expect(s.warnings).toHaveLength(3)
   })
+
+  // Test-drive notes (decisions #7): shipping over logged-but-unhandled findings
+  // is the dangerous moment, and this is exactly where it is caught. It informs;
+  // it never blocks, and it never becomes a row — the notes live on the review
+  // screen, this dialog only counts them.
+  it('warns about open test-drive notes, pluralised', () => {
+    expect(mergeSummary({ ...all, openNotes: 3 }).warnings).toEqual([
+      '3 open test-drive notes.',
+    ])
+    expect(mergeSummary({ ...all, openNotes: 1 }).warnings).toEqual(['1 open test-drive note.'])
+  })
+
+  it('says nothing when no notes are open, or when notes are unknown', () => {
+    expect(mergeSummary({ ...all, openNotes: 0 }).warnings).toEqual([])
+    expect(mergeSummary(all).warnings).toEqual([])
+  })
+
+  it('keeps open notes out of the rows — they are informational, and never block', () => {
+    const s = mergeSummary({ ...all, openNotes: 2 })
+    expect(s.rows.map((r) => r.key)).toEqual(['changes', 'run', 'test drive'])
+  })
 })
 
 /**

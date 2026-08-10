@@ -6,6 +6,7 @@ import type {
   RunStatus,
   SessionKind,
   SessionStatus,
+  TestNoteStatus,
   TicketStatus,
   WaypointStatus,
   WaypointType,
@@ -204,6 +205,23 @@ export const tickets = sqliteTable('tickets', {
   error: text('error'),
   attemptBranch: text('attempt_branch'),
   conflictFiles: text('conflict_files', { mode: 'json' }).$type<string[]>(),
+})
+
+export const testNotes = sqliteTable('test_notes', {
+  id: text('id').primaryKey(),
+  featureId: text('feature_id').notNull(),
+  /**
+   * The feature's lap when the note was captured (ADR-0010 / SPEC §15.1).
+   * Stamped server-side by `addNote` — the human never chooses it — and it is
+   * what groups the rendered `test-notes.md` into its `## Lap N` sections.
+   */
+  lap: integer('lap').notNull(),
+  text: text('text').notNull(),
+  status: text('status').notNull().$type<TestNoteStatus>(),
+  /** The ticket a `promoted` note was turned into; null for every other status. */
+  ticketId: text('ticket_id'),
+  createdAt: integer('created_at').notNull(),
+  updatedAt: integer('updated_at').notNull(),
 })
 
 export const waypoints = sqliteTable('waypoints', {

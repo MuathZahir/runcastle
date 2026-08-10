@@ -23,6 +23,9 @@ import { TerminalView } from '../TerminalView'
  * merge actions live in the workspace next-step bar. While a drive is active the
  * embedded dev pane + "Open app" link render full-width below the cards.
  *
+ * Below those, the {@link NotesPanel} — capture box plus checklist — for the
+ * whole review phase, drive or no drive.
+ *
  * An Iterate (`revisit`) session launched from the review bar renders as an
  * inline terminal above the cards — same pattern as GrillBody/TicketsBody — so
  * the human can drive the fix-ticket interview without leaving review.
@@ -125,6 +128,219 @@ export function ReviewBody({
       </div>
 
       {isDriving && ownDrive && <DrivePane drive={ownDrive} />}
+
+      <NotesPanel featureId={feature.id} tickets={tickets} readonly={readonly} />
+    </div>
+  )
+}
+
+/**
+ * Test-drive notes: what the human saw while clicking through the branch, and
+ * what became of it. Capture + checklist + one-click promotion (decisions #2).
+ *
+ * Deliberately NOT gated on an active drive (decisions #4). Observations do not
+ * stop when the dev server does — the "one more thing" typed right after Stop,
+ * or something spotted in the diff, would be lost if the box only existed while
+ * a drive was live, and there is no integrity reason to require a running server
+ * to record an observation.
+ *
+ * A note is `open` until it is ticked (`done` — handled or dismissed, toggleable
+ * both ways) or promoted. Promoted is frozen with a link to its ticket: it is
+ * the record of what that ticket was built from, so it offers no affordances at
+ * all. The server refuses every one of those transitions anyway; this only
+ * avoids showing a button that would be turned down.
+ */
+function NotesPanel({
+  featureId,
+  tickets,
+  readonly,
+}: {
+  featureId: string
+  tickets: FeatureFull['tickets']
+  /** Looking back at review on a shipped feature — the checklist, no editing. */
+  readonly: boolean
+}) {
+  const utils = trpc.useUtils()
+  const toast = useToast()
+  const notes = trpc.notes.list.useQuery({ featureId }, { refetchInterval: useLivePoll() })
+  const [draft, setDraft] = useState('')
+  // The note being edited in place, or null. One at a time — same as the ticket
+  // ledger's editor.
+  const [editing, setEditing] = useState<string | null>(null)
+
+  const refresh = (): void => void utils.notes.list.invalidate({ featureId })
+  const onError = (e: { message: string }): void => toast.push(e.message)
+
+  const add = trpc.notes.add.useMutation({
+    onSuccess: () => {
+      setDraft('')
+      refresh()
+    },
+    onError,
+  })
+  const edit = trpc.notes.edit.useMutation({
+    onSuccess: () => {
+      setEditing(null)
+      refresh()
+    },
+    onError,
+  })
+  const remove = trpc.notes.remove.useMutation({ onSuccess: refresh, onError })
+  const toggle = trpc.notes.toggle.useMutation({ onSuccess: refresh, onError })
+  const promote = trpc.notes.promote.useMutation({
+    onSuccess: ({ ticket }) => {
+      refresh()
+      // The ticket is new: without this the ledger and the next-step bar would
+      // keep the pre-promotion list until their own poll came round, and the
+      // one-click promise is that the ticket is simply there.
+      void utils.feature.get.invalidate({ id: featureId })
+      toast.push(`promoted to ticket #${ticket.seq}`, 'success')
+    },
+    onError,
+  })
+
+  const rows = notes.data ?? []
+  // One mutation in flight at a time: the list is about to be refetched, so a
+  // second click would act on a row the server is already moving.
+  const busy = edit.isPending || remove.isPending || toggle.isPending || promote.isPending
+  const submit = (): void => {
+    if (draft.trim() && !add.isPending) add.mutate({ featureId, text: draft })
+  }
+
+  return (
+    <div className="review-card notes-card">
+      <SectionTitle>Test-drive notes</SectionTitle>
+
+      {!readonly && (
+        <div className="notes-form">
+          <input
+            className="notes-input"
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') submit()
+            }}
+            placeholder="What did you just see? e.g. the run chip goes grey while burning"
+          />
+          <Button variant="ghost" onClick={submit} disabled={!draft.trim() || add.isPending}>
+            Add
+          </Button>
+        </div>
+      )}
+
+      {rows.length === 0 ? (
+        <div className="drive-copy">
+          Nothing noted yet. Anything you write here lands in the feature’s
+          <code> test-notes.md</code>, which the next lap’s session reads — or becomes a ticket in
+          one click.
+        </div>
+      ) : (
+        <div className="notes-list">
+          {rows.map((note) => {
+            const ticket = note.ticketId ? tickets.find((t) => t.id === note.ticketId) : undefined
+            const open = note.status === 'open'
+
+            if (editing === note.id) {
+              return (
+                <NoteEditor
+                  key={note.id}
+                  text={note.text}
+                  busy={edit.isPending}
+                  onCancel={() => setEditing(null)}
+                  onSave={(text) => edit.mutate({ noteId: note.id, text })}
+                />
+              )
+            }
+
+            return (
+              <div key={note.id} className={`note-row is-${note.status}`}>
+                {note.status === 'promoted' ? (
+                  <span className="note-frozen" title="promoted — frozen as its ticket's record">
+                    →
+                  </span>
+                ) : (
+                  <input
+                    type="checkbox"
+                    className="note-check"
+                    checked={note.status === 'done'}
+                    disabled={readonly || busy}
+                    aria-label={open ? 'mark handled' : 'reopen'}
+                    onChange={() => toggle.mutate({ noteId: note.id })}
+                  />
+                )}
+
+                <span className="note-text">{note.text}</span>
+
+                {ticket && <span className="note-ticket">#{ticket.seq} {ticket.title}</span>}
+
+                {!readonly && open && (
+                  <span className="note-actions">
+                    <button className="btn btn-xs btn-ghost" onClick={() => setEditing(note.id)}>
+                      Edit
+                    </button>
+                    <button
+                      className="btn btn-xs btn-ghost"
+                      disabled={busy}
+                      onClick={() => remove.mutate({ noteId: note.id })}
+                    >
+                      Delete
+                    </button>
+                    <button
+                      className="btn btn-xs btn-ghost"
+                      disabled={busy}
+                      title="Make this a pending ticket on the current lap"
+                      onClick={() => promote.mutate({ noteId: note.id })}
+                    >
+                      → ticket
+                    </button>
+                  </span>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
+/** One note's text, in place. Only open notes reach here. */
+function NoteEditor({
+  text,
+  busy,
+  onCancel,
+  onSave,
+}: {
+  text: string
+  busy: boolean
+  onCancel: () => void
+  onSave: (text: string) => void
+}) {
+  const [value, setValue] = useState(text)
+  const save = (): void => {
+    if (value.trim() && !busy) onSave(value)
+  }
+
+  return (
+    <div className="note-row is-editing">
+      <input
+        className="notes-input"
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') save()
+          if (e.key === 'Escape') onCancel()
+        }}
+        autoFocus
+      />
+      <span className="note-actions">
+        <button className="btn btn-xs btn-ghost" disabled={!value.trim() || busy} onClick={save}>
+          Save
+        </button>
+        <button className="btn btn-xs btn-ghost" onClick={onCancel}>
+          Cancel
+        </button>
+      </span>
     </div>
   )
 }

@@ -77,6 +77,10 @@ export function Workspace({
   // Commits from git, for the confirmation's summary (same key as the review
   // body's read — one fetch between them).
   const commits = trpc.feature.commitCount.useQuery({ featureId }, { refetchInterval: 5000 })
+  // Test-drive notes, for the confirmation's open-notes line — same query key the
+  // review body's checklist reads, so the two share one fetch.
+  const notes = trpc.notes.list.useQuery({ featureId }, { refetchInterval: useLivePoll() })
+  const openNotes = notes.data?.filter((n) => n.status === 'open').length
   const [confirmMerge, setConfirmMerge] = useState(false)
   // The next-step bar warns about remaining fog on a mapped feature, which lives
   // in the map doc's prose — same query key as the map rail's read, so the two
@@ -404,7 +408,7 @@ export function Workspace({
           title={feature.title}
           branch={feature.branch}
           base={commits.data?.base}
-          summary={mergeSummary({ commitCount: commits.data?.count, run, driveTaken })}
+          summary={mergeSummary({ commitCount: commits.data?.count, run, driveTaken, openNotes })}
           busy={merge.isPending}
           onConfirm={runMerge}
           onCancel={() => setConfirmMerge(false)}
