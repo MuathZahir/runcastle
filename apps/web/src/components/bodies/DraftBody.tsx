@@ -1,4 +1,5 @@
 import type { BranchList, FeatureFull } from '../../lib/api'
+import { DRAFT_GLYPH } from '../../lib/feature-ui'
 import { DimLine } from '../../ui'
 import { Markdown } from '../Markdown'
 
@@ -39,7 +40,7 @@ export function DraftBody({
       <div className="draft-hero">
         <div className="draft-kick">
           <span className="draft-glyph" aria-hidden="true">
-            ◌
+            {DRAFT_GLYPH}
           </span>
           PARKED
         </div>

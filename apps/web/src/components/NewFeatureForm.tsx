@@ -69,11 +69,11 @@ export function NewFeatureForm({
   const busy = create.isPending || launch.isPending
   const submit = (withGrill: boolean) => {
     const t = title.trim()
-    // Don't create while the branch list is still loading — `effectiveBase` isn't
-    // known yet, and creating now would silently fork off main. Parking takes no
-    // base at all, but the guard stays shared: a park and a start differ only in
-    // what follows the create.
-    if (!t || branchesQ.isPending || busy) return
+    if (!t || busy) return
+    // Don't cut a branch while the branch list is still loading — `effectiveBase`
+    // isn't known yet, and creating now would silently fork off main. Parking
+    // sends no base at all (decision 3), so it never has to wait for the list.
+    if (withGrill && branchesQ.isPending) return
     setStarting(withGrill ? 'grill' : 'draft')
     create.mutate(
       {
@@ -202,7 +202,7 @@ export function NewFeatureForm({
             <Button
               variant="ghost"
               onClick={() => submit(false)}
-              disabled={!title.trim() || busy || branchesQ.isPending}
+              disabled={!title.trim() || busy}
               title="Park it as a draft — no branch and no repo changes until you click Start on its screen"
             >
               {starting === 'draft' ? 'Saving…' : 'Save as draft'}
