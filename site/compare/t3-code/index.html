@@ -1,0 +1,426 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>runcastle vs T3 Code — Claude Code UIs compared</title>
+    <meta
+      name="description"
+      content="T3 Code is a control plane for coding agents — Claude Code, Codex, Cursor, Grok Build, OpenCode — on desktop, web and mobile. runcastle is an opinionated pipeline on top of Claude Code alone. An honest, sourced comparison of what each one is actually for."
+    />
+    <link rel="icon" type="image/svg+xml" href="/assets/favicon.svg" />
+    <link rel="canonical" href="https://runcastle.dev/compare/t3-code/" />
+    <meta name="theme-color" content="#090b10" />
+
+    <meta property="og:type" content="article" />
+    <meta property="og:url" content="https://runcastle.dev/compare/t3-code/" />
+    <meta property="og:title" content="runcastle vs T3 Code — Claude Code UIs compared" />
+    <meta
+      property="og:description"
+      content="One is a multi-harness control plane you can drive from your phone. The other structures the work before agents start and gates what merges. Where each one wins, with sources."
+    />
+    <!-- PNG on purpose: several social-card scrapers still do not decode WebP. -->
+    <meta property="og:image" content="https://runcastle.dev/assets/screens/mock-shell.png" />
+    <meta
+      property="og:image:alt"
+      content="The runcastle workspace showing a feature in the tickets phase with a Burn tickets button"
+    />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="runcastle vs T3 Code — Claude Code UIs compared" />
+    <meta
+      name="twitter:description"
+      content="T3 Code orchestrates five agent CLIs across desktop, web and mobile. runcastle runs one opinionated pipeline on Claude Code. An honest, sourced comparison."
+    />
+
+    <link rel="preload" as="font" type="font/woff2" crossorigin
+      href="/assets/fonts/inter-latin-wght-normal.woff2" />
+    <link rel="preload" as="font" type="font/woff2" crossorigin
+      href="/assets/fonts/jetbrains-mono-latin-wght-normal.woff2" />
+    <link rel="stylesheet" href="/styles.css" />
+    <link rel="stylesheet" href="/content.css" />
+
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "Article",
+        "headline": "runcastle vs T3 Code",
+        "description": "An honest comparison of T3 Code, the open-source control plane for coding agents, and runcastle, an opinionated pipeline layered on Claude Code.",
+        "url": "https://runcastle.dev/compare/t3-code/",
+        "mainEntityOfPage": "https://runcastle.dev/compare/t3-code/",
+        "author": { "@type": "Organization", "name": "runcastle", "url": "https://runcastle.dev/" },
+        "publisher": { "@type": "Organization", "name": "runcastle", "url": "https://runcastle.dev/" },
+        "about": [
+          { "@type": "SoftwareApplication", "name": "runcastle", "url": "https://runcastle.dev/" },
+          { "@type": "SoftwareApplication", "name": "T3 Code", "url": "https://t3.codes/" }
+        ]
+      }
+    </script>
+  </head>
+
+  <body>
+    <a class="sr-only" href="#main">Skip to content</a>
+
+    <!-- ===================== NAV ===================== -->
+    <header class="nav" id="nav">
+      <div class="nav-inner">
+        <a class="brand" href="/" aria-label="runcastle home">
+          <svg width="20" height="20" viewBox="0 0 32 32" aria-hidden="true">
+            <rect width="32" height="32" rx="7" fill="#7c6cf6" />
+            <path fill-rule="evenodd" clip-rule="evenodd"
+              d="M6.5 26.6 V8.4 H11.3 V12.4 H13.7 V8.4 H18.5 V12.4 H20.9 V8.4 H25.7 V26.6 H6.5 Z M13.3 15.6 L20.4 19.6 L13.3 23.6 Z"
+              fill="#0d0722" />
+          </svg>
+          <span class="lp-wordmark"><span class="run">run</span><span class="castle">castle</span></span>
+        </a>
+
+        <nav class="nav-links" aria-label="Sections">
+          <a href="/#pipeline">Pipeline</a>
+          <a href="/#loop">Parallel work</a>
+          <a href="/#gates">Gates</a>
+          <a href="/#local">Local-first</a>
+          <a href="/docs/">Docs</a>
+          <a href="/compare/">Compare</a>
+        </nav>
+
+        <div class="nav-right">
+          <a class="nav-gh" href="https://github.com/MuathZahir/runcastle" rel="noopener" target="_blank">
+            <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+              <path d="M12 .5C5.37.5 0 5.87 0 12.5c0 5.3 3.44 9.8 8.21 11.39.6.11.82-.26.82-.58v-2.03c-3.34.73-4.04-1.61-4.04-1.61-.55-1.39-1.34-1.76-1.34-1.76-1.09-.75.08-.73.08-.73 1.2.08 1.84 1.24 1.84 1.24 1.07 1.83 2.81 1.3 3.5.99.11-.78.42-1.3.76-1.6-2.67-.3-5.47-1.34-5.47-5.96 0-1.32.47-2.4 1.24-3.24-.13-.3-.54-1.52.12-3.18 0 0 1.01-.32 3.3 1.23a11.5 11.5 0 0 1 6 0c2.29-1.55 3.3-1.23 3.3-1.23.66 1.66.25 2.88.12 3.18.77.84 1.24 1.92 1.24 3.24 0 4.63-2.81 5.65-5.49 5.95.43.37.81 1.1.81 2.22v3.29c0 .32.21.7.83.58A11.99 11.99 0 0 0 24 12.5C24 5.87 18.63.5 12 .5Z" />
+            </svg>
+            GitHub
+          </a>
+          <a class="lp-btn lp-btn-primary lp-btn-sm" href="/#install">Get started</a>
+        </div>
+      </div>
+    </header>
+
+    <main id="main">
+      <article class="article">
+        <nav class="crumbs" aria-label="Breadcrumb">
+          <a href="/">runcastle</a>
+          <span class="crumbs-sep" aria-hidden="true">/</span>
+          <a href="/compare/">Compare</a>
+          <span class="crumbs-sep" aria-hidden="true">/</span>
+          <span aria-current="page">vs T3 Code</span>
+        </nav>
+
+        <h1>runcastle vs T3 Code</h1>
+        <p class="article-lede">
+          Both are free, MIT-licensed, open-source, and both put a UI in front of coding agents you
+          already pay for. They are not, however, the same kind of tool.
+          <strong>T3 Code is a control plane</strong>: one surface for five different agent CLIs,
+          reachable from your desktop, your browser, or your phone.
+          <strong>runcastle is a pipeline</strong>: it structures the work before any agent starts,
+          and gates what is allowed to merge.
+        </p>
+
+        <nav class="subnav" aria-label="Comparisons">
+          <a href="/compare/">All comparisons</a>
+          <a href="/compare/claude-code/">vs raw Claude Code</a>
+          <a href="/compare/t3-code/" aria-current="page">vs T3 Code</a>
+          <a href="/compare/conductor/">vs Conductor</a>
+          <a href="/docs/">Docs</a>
+        </nav>
+
+        <div class="note">
+          <p>
+            <strong>Short verdict.</strong> Pick <strong>T3 Code</strong> if you want to drive
+            several agent CLIs — Claude Code, Codex, Cursor, Grok Build, OpenCode — from one
+            surface, switch models mid-thread, and review diffs from wherever you are, including a
+            phone. Pick <strong>runcastle</strong> if your problem is not <em>watching</em> agents
+            but <em>deciding what they should build</em>: it makes you argue an idea into a spec and
+            a dependency-ordered ticket list first, then burns those tickets AFK in containers and
+            blocks the merge until the checks pass.
+          </p>
+        </div>
+
+        <h2>What T3 Code is</h2>
+        <p>
+          T3 Code comes from <a href="https://t3.gg/" rel="noopener" target="_blank">Theo</a> and
+          Ping Labs. Its README calls it
+          <a href="https://github.com/pingdotgg/t3code" rel="noopener" target="_blank">an “agent
+          harness control surface”</a>; the site's headline is
+          <a href="https://t3.codes/" rel="noopener" target="_blank">“the open-source control plane
+          for coding agents.”</a> It is not a model and not an agent — it drives agent CLIs that
+          are already installed and authenticated on your machine.
+        </p>
+        <p>
+          The scope is deliberately wide. It
+          <a href="https://github.com/pingdotgg/t3code" rel="noopener" target="_blank">works with
+          your subscriptions on Claude Code, Codex, Cursor, Grok Build and OpenCode</a>, and reaches
+          you through an Electron desktop app, a web app at
+          <a href="https://app.t3.codes/" rel="noopener" target="_blank">app.t3.codes</a>, and
+          native iOS and Android apps. You can start it with <code>npx t3@latest</code>, or install
+          the desktop build through winget, Homebrew or the AUR. Billing stays yours: the site is
+          explicit that <a href="https://t3.codes/" rel="noopener" target="_blank">it doesn't resell
+          tokens</a>.
+        </p>
+        <p>
+          Inside a thread you get the things a GUI is genuinely better at than a terminal: a diff
+          viewer, checkpoints, git worktree support so threads on the same repo don't collide,
+          model switching mid-thread, and
+          <a href="https://t3.codes/" rel="noopener" target="_blank">“one button to commit, push,
+          and make a PR”</a> with a generated title and body. It is moving fast and says so — the
+          README's own warning is <a href="https://github.com/pingdotgg/t3code" rel="noopener"
+          target="_blank">“We are very very early in this project. Expect bugs”</a>, and the project
+          is mostly not accepting outside contributions yet. As of August 2026 the repository has
+          passed 17,000 stars since its February 2026 creation, which tells you how quickly the
+          category is forming.
+        </p>
+
+        <h2>What runcastle is</h2>
+        <p>
+          runcastle is an opinionated programming system layered on Claude Code — the IDE to Claude
+          Code's text editor. Every feature you build gets a persistent session that walks a
+          pipeline: <strong>ideation, spec, tickets, build, review, shipped</strong>. You get
+          grilled on an idea until a spec and a set of tickets fall out; sandboxed AFK agents burn
+          those tickets on the feature's branch; you test drive the result and merge. Human in the
+          loop at only the two ends.
+        </p>
+        <p>
+          It runs entirely on your machine — a Bun server plus a browser UI at
+          <code>http://localhost:4512</code>, with no runcastle account and no hosted backend. It is
+          MIT-licensed, installs from npm with <code>bun add -g runcastle</code>, runs on macOS,
+          Windows and Linux, and requires Claude Code (on a paid Claude plan) as its engine. AFK
+          burns additionally need Docker or Podman. The narrower engine support is the price of the
+          opinion: everything runcastle knows how to do — injected skill packs, phase rules, hooks,
+          its own MCP server — is built on Claude Code's extension points.
+        </p>
+
+        <h2>Side by side</h2>
+        <div class="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th scope="col"></th>
+                <th scope="col">T3 Code</th>
+                <th scope="col">runcastle</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <th scope="row">Shape</th>
+                <td>Control plane over agent harnesses</td>
+                <td>Pipeline that produces and gates the work</td>
+              </tr>
+              <tr>
+                <th scope="row">Agents</th>
+                <td>Claude Code, Codex, Cursor, Grok Build, OpenCode</td>
+                <td>Claude Code only</td>
+              </tr>
+              <tr>
+                <th scope="row">Surfaces</th>
+                <td>Desktop (Electron), web, iOS, Android</td>
+                <td>Browser UI on <code>localhost:4512</code></td>
+              </tr>
+              <tr>
+                <th scope="row">Planning stage</th>
+                <td>You bring the task; threads start where you point them</td>
+                <td>Grilling → spec → dependency-ordered tickets, before any build</td>
+              </tr>
+              <tr>
+                <th scope="row">Parallelism unit</th>
+                <td>Threads mapped to git worktrees, across repos</td>
+                <td>Tickets on one feature branch; features run in parallel</td>
+              </tr>
+              <tr>
+                <th scope="row">Where agents run</th>
+                <td>On your machine, in worktrees</td>
+                <td>Interactive in real Claude Code terminals; AFK in Docker/Podman containers</td>
+              </tr>
+              <tr>
+                <th scope="row">Review</th>
+                <td>Diff viewer, checkpoints, one-click commit/push/PR</td>
+                <td>Gates, then a test drive of the branch on its own port, then merge</td>
+              </tr>
+              <tr>
+                <th scope="row">Artifacts</th>
+                <td>Commits and pull requests</td>
+                <td>Commits, plus spec/decisions/notes committed to <code>docs/features/</code></td>
+              </tr>
+              <tr>
+                <th scope="row">Cost</th>
+                <td>Free, MIT, bring your own subscription</td>
+                <td>Free, MIT, bring your own Claude plan</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h2>The real difference is how much opinion you want</h2>
+        <p>
+          Everything below follows from one choice each project made. T3 Code assumes you know what
+          you want built and need a better surface for running it. runcastle assumes the expensive
+          failures happen earlier — that an agent which builds the wrong thing beautifully has cost
+          you more than one that is merely slow.
+        </p>
+
+        <h3>Planning: bring your own, or produced for you</h3>
+        <p>
+          In T3 Code, a thread starts when you describe a task. The tool is neutral about how good
+          that description is; plan mode and reasoning controls help, but the framing is yours. That
+          neutrality is a feature — it never gets between you and the agent.
+        </p>
+        <p>
+          runcastle refuses to be neutral there. Ideation opens a real Claude Code terminal whose
+          job is to argue with you until the idea is concrete, and what falls out is a spec and a
+          set of atomic tickets in a dependency order. The spec and the decisions are committed
+          into your own repo under
+          <code>docs/features/&lt;slug&gt;/</code> as plain markdown — versioned, diffable, and
+          still useful if you stop using runcastle. If you already think in specs, this is the whole
+          product. If you find it ceremonial, it will feel like ceremony.
+        </p>
+
+        <h3>Parallelism: threads you watch, or tickets that run without you</h3>
+        <p>
+          Both tools are built for more than one agent at a time, but they cut it differently. T3
+          Code's unit is the thread, mapped to a git worktree, and it will happily run threads
+          across several repositories at once — you supervise them from one surface, on whichever
+          device you have.
+        </p>
+        <p>
+          runcastle's unit is the ticket. The dependency order produced in the tickets phase is what
+          makes the build phase parallel: everything unblocked starts at once, headless, inside
+          containers, all committing to the same feature branch — with the human in the loop at
+          only the two ends. Meanwhile interactive planning sessions get instant docs-only
+          worktrees, so you
+          can be grilling the next feature while the current one builds, and your main checkout
+          stays reserved for you.
+        </p>
+
+        <h3>Merging: a button, or a gate</h3>
+        <p>
+          T3 Code ends a thread with review in the diff viewer and, when you are happy, one button
+          that commits, pushes and opens the pull request. Your existing review process — GitHub
+          reviewers, CI, whatever you already run — takes it from there.
+        </p>
+        <p>
+          runcastle puts a gate between every pair of phases. Gates block by default, and every one
+          takes an override with a one-line reason recorded in the feature's history: seatbelt, not
+          cage. Two of them are the human ones. You review the ticket list and click burn; you test
+          drive the finished branch — runcastle sets your own work aside, checks the branch out, and
+          starts it on its own port — and click merge. Review findings feed fix cycles inside the
+          burner, so only hard blockers reach you.
+        </p>
+
+        <h3>Model choice and lock-in</h3>
+        <p>
+          This one is not close. T3 Code lets you pick among five harnesses and switch models
+          mid-thread; if a better model ships next quarter, that is a dropdown. runcastle drives
+          Claude Code and nothing else, and inherits Claude Code's requirements, including a paid
+          plan. If multi-model is a hard requirement, stop reading and take T3 Code.
+        </p>
+
+        <h2>When T3 Code is the better choice</h2>
+        <ul>
+          <li>
+            <strong>You want more than one model.</strong> Codex for one task, Claude Code for
+            another, and the freedom to switch mid-thread — runcastle cannot do this at all.
+          </li>
+          <li>
+            <strong>You want to work away from your desk.</strong> Native iOS and Android apps plus
+            a web app mean you can kick off and review work from a phone. runcastle is a browser tab
+            pointed at your own machine.
+          </li>
+          <li>
+            <strong>You want less opinion, not more.</strong> For small, well-understood changes —
+            a bug fix, a refactor you can already describe in a sentence — grilling and a spec are
+            overhead, and a thread plus a diff viewer plus a PR button is exactly the right amount
+            of tool.
+          </li>
+          <li>
+            <strong>You juggle many repositories.</strong> T3 Code manages multiple projects
+            simultaneously with per-repo thread history; runcastle's pipeline is organised around
+            features inside a project.
+          </li>
+        </ul>
+
+        <h2>When runcastle is the better choice</h2>
+        <ul>
+          <li>
+            <strong>The work is a feature, not a task.</strong> Something that wants a spec, a
+            dozen tickets, and a dependency order before anyone writes code.
+          </li>
+          <li>
+            <strong>You want to be absent, not attentive.</strong> The build phase is designed for
+            you to close the tab, not to watch turn by turn.
+          </li>
+          <li>
+            <strong>You want the reasoning to survive.</strong> Specs, decisions and research land
+            in your repo, so the next agent — or the next you — can read why the code is like that.
+          </li>
+          <li>
+            <strong>You want the tool to say no.</strong> Gates that block until checks pass, with
+            overrides that are recorded rather than silent.
+          </li>
+        </ul>
+
+        <h2>Sources</h2>
+        <p>
+          Everything above about T3 Code was checked against these on 10 August 2026. It is early
+          software that ships quickly — if you are reading this much later, check the repository
+          before trusting the details.
+        </p>
+        <ul>
+          <li>
+            <a href="https://github.com/pingdotgg/t3code" rel="noopener" target="_blank">pingdotgg/t3code
+            on GitHub</a> — README, supported harnesses, install paths, MIT licence, project status.
+          </li>
+          <li>
+            <a href="https://t3.codes/" rel="noopener" target="_blank">t3.codes</a> — positioning,
+            mid-thread model switching, the commit/push/PR button, platform list.
+          </li>
+          <li>
+            <a href="https://betterstack.com/community/guides/ai/t3-code/" rel="noopener"
+              target="_blank">Better Stack's T3 Code guide</a> — walkthrough of the worktree
+            handling, diff viewer, integrated terminal and multi-project behaviour.
+          </li>
+        </ul>
+        <p>
+          Everything about runcastle comes from its
+          <a href="https://github.com/MuathZahir/runcastle" rel="noopener" target="_blank">README and
+          CONTEXT.md</a>, or from <a href="/docs/">the docs</a> on this site. If you spot something
+          out of date or unfair to T3 Code,
+          <a href="https://github.com/MuathZahir/runcastle/issues" rel="noopener" target="_blank">open
+          an issue</a> — an inaccurate comparison is worth less than no comparison.
+        </p>
+
+        <div class="next">
+          <a href="/compare/">
+            <span class="next-k">Compare</span>
+            <span class="next-t">All Claude Code UIs, side by side</span>
+          </a>
+          <a href="/docs/">
+            <span class="next-k">Docs</span>
+            <span class="next-t">Install runcastle and run the loop</span>
+          </a>
+        </div>
+      </article>
+    </main>
+
+    <!-- ===================== FOOTER ===================== -->
+    <footer class="footer">
+      <div class="wrap footer-inner">
+        <a class="brand" href="/" aria-label="runcastle home">
+          <svg width="18" height="18" viewBox="0 0 32 32" aria-hidden="true">
+            <rect width="32" height="32" rx="7" fill="#7c6cf6" />
+            <path fill-rule="evenodd" clip-rule="evenodd"
+              d="M6.5 26.6 V8.4 H11.3 V12.4 H13.7 V8.4 H18.5 V12.4 H20.9 V8.4 H25.7 V26.6 H6.5 Z M13.3 15.6 L20.4 19.6 L13.3 23.6 Z"
+              fill="#0d0722" />
+          </svg>
+          <span class="lp-wordmark"><span class="run">run</span><span class="castle">castle</span></span>
+        </a>
+        <nav class="footer-links" aria-label="Project links">
+          <a href="/docs/">Docs</a>
+          <a href="/compare/">Compare</a>
+          <a href="https://github.com/MuathZahir/runcastle" rel="noopener" target="_blank">GitHub</a>
+          <a href="https://www.npmjs.com/package/runcastle" rel="noopener" target="_blank">npm</a>
+          <a href="https://github.com/MuathZahir/runcastle/issues" rel="noopener" target="_blank">Issues</a>
+          <a href="https://github.com/MuathZahir/runcastle/blob/main/LICENSE" rel="noopener"
+            target="_blank">MIT</a>
+        </nav>
+        <span class="footer-meta lp-mono">built with Claude Code</span>
+      </div>
+    </footer>
+  </body>
+</html>
