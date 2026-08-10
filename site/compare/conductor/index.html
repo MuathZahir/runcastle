@@ -144,8 +144,8 @@
           workspace, branch, files, terminal, diff, and review path.” Underneath, that is git —
           “When you create a workspace, Conductor creates a Git worktree for that workspace and
           checks out a branch inside it” — with the app automating the parts you would otherwise
-          do by hand: creating the branch and worktree, copying untracked local files, running
-          setup scripts, keeping the diff visible, tracking pull request state, and archiving the
+          do by hand: creating the branch and worktree, copying the local files you allow,
+          running setup and run scripts, keeping the diff visible, tracking pull request state, and archiving the
           workspace when the task is done. When the work is finished, “Conductor helps you review
           the diff, open a pull request, merge, and archive the workspace.”
         </p>
@@ -165,7 +165,7 @@
           <table>
             <thead>
               <tr>
-                <th scope="col">&nbsp;</th>
+                <th scope="col">Dimension</th>
                 <th scope="col">Conductor</th>
                 <th scope="col">runcastle</th>
               </tr>
