@@ -1255,6 +1255,13 @@ export async function landWithResolve(branch: string, deps: LandDeps): Promise<L
 
 type ReadyState = 'ready' | 'wait' | { blockedBy: number; present: boolean }
 
+/** One ticket's harvested digest, tagged with what it is a digest OF. */
+export interface HarvestedDigest {
+  readonly seq: number
+  readonly title: string
+  readonly digest: string
+}
+
 /**
  * The most informative single line of a multi-line error. Git buries the cause
  * under progress noise — a failed `worktree add` starts with "Preparing
@@ -1277,19 +1284,21 @@ function errorHeadline(s: string): string {
  * dependents. Runs up to `concurrency` at once (min 1). Aborts propagate
  * (thrown by `execute`) so the runner finalizes the run as cancelled — with
  * every other in-flight ticket drained first, so no rejection goes unhandled.
- * Returns the count of tickets in `done` state at the end.
+ * Returns the count of tickets in `done` state at the end, plus the digests
+ * harvested along the way (the raw material for this run's aggregate).
  */
 export async function burnTickets(
   ctx: WorkflowCtx,
   tickets: Ticket[],
   execute: (ctx: WorkflowCtx, ticket: Ticket) => Promise<TicketOutcome>,
   concurrency = 1,
-): Promise<number> {
+): Promise<{ done: number; digests: HarvestedDigest[] }> {
   const width = Math.max(1, Math.floor(concurrency))
   const bySeq = indexBySeq(tickets)
   const status = new Map<number, TicketStatus>(tickets.map((t) => [t.seq, t.status]))
   const pending = new Set<number>(tickets.filter((t) => t.status === 'pending').map((t) => t.seq))
   const inFlight = new Map<number, Promise<void>>()
+  const digests: HarvestedDigest[] = []
 
   // A blocker is satisfied when `done` OR `cancelled` — a human cancelled it
   // because the work is unnecessary, so dependents proceed without it.
@@ -1343,6 +1352,8 @@ export async function burnTickets(
           message: `ticket ${t.seq} done without DIGEST.md`,
           ticketId: t.id,
         })
+      } else {
+        digests.push({ seq: t.seq, title: t.title, digest: outcome.digest })
       }
     } else {
       failTicket(seq, outcome.error, outcome.event)
@@ -1420,12 +1431,26 @@ export async function burnTickets(
 
   let done = 0
   for (const s of status.values()) if (s === 'done') done += 1
-  return done
+  return { done, digests }
 }
 
 // ---------------------------------------------------------------------------
 // Workflow entry — auth precheck, cycle guard, schedule, summarise
 // ---------------------------------------------------------------------------
+
+/**
+ * This run's aggregate: the digests it harvested, in seq order, each under a
+ * header naming the ticket it came from. Strictly mechanical — the server makes
+ * no model calls (decision 5) — and null when the run harvested nothing, so a
+ * run without digests leaves the column alone rather than storing an empty doc.
+ */
+export function composeRunDigest(entries: readonly HarvestedDigest[]): string | null {
+  if (entries.length === 0) return null
+  return [...entries]
+    .sort((a, b) => a.seq - b.seq)
+    .map((e) => `## ticket ${e.seq} — ${e.title}\n\n${e.digest.trim()}`)
+    .join('\n\n')
+}
 
 /**
  * The testable core of the burner: everything except how `BurnDeps` are
@@ -1436,7 +1461,7 @@ export async function burnTickets(
 export async function burnRun(
   ctx: WorkflowCtx,
   deps: BurnDeps,
-): Promise<{ status: 'succeeded' | 'failed'; summary: string }> {
+): Promise<{ status: 'succeeded' | 'failed'; summary: string; digest?: string }> {
   const tickets = ctx.tickets
   // Cancelled tickets never burn and never count against success — but they DO
   // stay in the scheduler's ticket set so dependents can see their blocker is
@@ -1466,11 +1491,15 @@ export async function burnRun(
     return { status: 'failed', summary: `dependency cycle: ${path}` }
   }
 
-  const done = await burnTickets(ctx, tickets, deps.executeTicketRun, deps.concurrency)
+  const { done, digests } = await burnTickets(ctx, tickets, deps.executeTicketRun, deps.concurrency)
   const summary =
     cancelled > 0 ? `${done}/${total} tickets done (${cancelled} cancelled)` : `${done}/${total} tickets done`
   ctx.emitEvent({ type: 'burn.summary', message: summary, data: { done, total, cancelled } })
-  return { status: done === total ? 'succeeded' : 'failed', summary }
+  // The one-liner `summary` stays the run's headline (lists, timelines); the
+  // aggregate rides beside it for the run view. A partially-failed run still
+  // carries the digests of the tickets that did land.
+  const digest = composeRunDigest(digests)
+  return { status: done === total ? 'succeeded' : 'failed', summary, ...(digest ? { digest } : {}) }
 }
 
 // ---------------------------------------------------------------------------

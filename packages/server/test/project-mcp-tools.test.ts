@@ -389,6 +389,9 @@ describe('project-session MCP tools', () => {
     expect(out.features[0]?.tickets[0]?.digest).toBe('Rewired the router.')
   })
 
+  // Decision 7: the run aggregate is the same digests re-concatenated, so it is
+  // served to the UI only — returning it here would double the response with no
+  // new information for an agent consumer.
   it('never serves a run’s digest aggregate — that one is the UI’s', () => {
     const feature = seedFeature(ctx, projectId, { slug: 'laps', title: 'Laps' })
     storeTickets(ctx, feature.id, [
@@ -415,11 +418,13 @@ describe('project-session MCP tools', () => {
       })
       .run()
 
-    const [record] = toolGetWorkRecord(ctx, session, { featureSlug: 'laps' }).features
+    const out = toolGetWorkRecord(ctx, session, { featureSlug: 'laps' })
+    const [record] = out.features
     expect(record.runs).toEqual([
       { workflow: 'ticket-burner', status: 'done', startedAt: 1, endedAt: 2, summary: '1 ticket burned' },
     ])
-    expect(JSON.stringify(record.runs)).not.toContain('Added the lap column')
+    expect(record.runs[0]).not.toHaveProperty('digest')
+    expect(JSON.stringify(out)).not.toContain('Added the lap column')
   })
 
   it('needs at least one of featureSlug / seam', () => {

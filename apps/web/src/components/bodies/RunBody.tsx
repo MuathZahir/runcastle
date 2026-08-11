@@ -8,9 +8,10 @@ import { ticketConflictKickoff } from '../../lib/feature-ui'
 import { fmtDuration, fmtTime, shortSha } from '../../lib/format'
 import { BURN_EXPLAINER } from '../../lib/vocabulary'
 import { DimLine, EmptyState, RunStatusChip, TicketStatusChip } from '../../ui'
-import { IconTerminal } from '../../icons'
+import { IconChevronRight, IconTerminal } from '../../icons'
 import { AgentTranscript } from '../AgentTranscript'
 import { ErrorBoundary } from '../ErrorBoundary'
+import { Markdown } from '../Markdown'
 import { SessionPanel } from '../SessionPanel'
 
 /**
@@ -104,6 +105,8 @@ export function RunBody({
         </span>
       </div>
 
+      {run.data?.digest && <RunDigest digest={run.data.digest} />}
+
       <div className="run-split">
         <div className="run-lanes-panel">
           <div className="panel-cap">Ticket lanes</div>
@@ -162,6 +165,37 @@ export function RunBody({
             <EventStream events={runEvents} />
           )}
         </div>
+      </div>
+    </div>
+  )
+}
+
+/**
+ * What this attempt actually produced, in the burners' own words — the run's
+ * harvested ticket digests concatenated at finalize. Collapsed by default (the
+ * lanes are what you came for) and rendered only when the run has one, so a run
+ * whose tickets wrote no digest shows nothing rather than an empty card.
+ */
+function RunDigest({ digest }: { digest: string }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <div className="ledger run-digest">
+      <div className={`ledger-row${open ? ' is-open' : ''}`}>
+        <button className="ledger-head" onClick={() => setOpen(!open)}>
+          <span className="lg-caret">
+            <IconChevronRight size={11} />
+          </span>
+          <span className="lg-title">What this run produced</span>
+        </button>
+        {open && (
+          <div className="ledger-detail">
+            <div className="td-section">
+              <div className="td-body">
+                <Markdown source={digest} />
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )

@@ -70,6 +70,28 @@ describe('workflow runner', () => {
     expect(types).toContain('run.finished')
   })
 
+  it('persists a workflow’s run digest on the run row, and leaves it null without one', async () => {
+    const digestDef: WorkflowDef = {
+      id: 'test-digest',
+      async run() {
+        return { status: 'succeeded', summary: 'ok', digest: '## ticket 1 — A\n\nDid it.' }
+      },
+    }
+    workflowRegistry.set(digestDef.id, digestDef)
+    try {
+      const withDigest = await startRun(ctx, featureId, digestDef.id)
+      await withDigest.done
+      expect(getRunRow(ctx, withDigest.runId).digest).toBe('## ticket 1 — A\n\nDid it.')
+    } finally {
+      workflowRegistry.delete(digestDef.id)
+    }
+
+    // A workflow that returns no digest (research, an aborted burn) never writes one.
+    const without = await startRun(ctx, featureId, 'test-success')
+    await without.done
+    expect(getRunRow(ctx, without.runId).digest).toBeUndefined()
+  })
+
   it('rejects an unregistered workflow id', async () => {
     await expect(startRun(ctx, featureId, 'nope')).rejects.toThrow(/not registered/)
   })

@@ -17,6 +17,7 @@ import {
   buildVerifyNotes,
   buildWorkspaceNotes,
   cacheMountFor,
+  composeRunDigest,
   harvestDigest,
   classifyTicketRunError,
   classifyToolCall,
@@ -818,6 +819,32 @@ describe('harvestDigest — reading the agent DIGEST.md off the workspace', () =
 
   it('treats a whitespace-only digest as no digest', () => {
     expect(harvestDigest([dirWithDigest('  \n\t\n ')])).toBeUndefined()
+  })
+})
+
+describe('composeRunDigest — the run-level aggregate (mechanical, no LLM)', () => {
+  it('concatenates one section per ticket, in seq order', () => {
+    expect(
+      composeRunDigest([
+        { seq: 2, title: 'Second thing', digest: 'Wired the second seam.' },
+        { seq: 1, title: 'First thing', digest: 'Wired the first seam.' },
+      ]),
+    ).toBe(
+      '## ticket 1 — First thing\n\nWired the first seam.\n\n' +
+        '## ticket 2 — Second thing\n\nWired the second seam.',
+    )
+  })
+
+  it('composes null when the run harvested nothing', () => {
+    expect(composeRunDigest([])).toBeNull()
+  })
+
+  it('keeps a multi-line digest body intact under its header', () => {
+    expect(
+      composeRunDigest([
+        { seq: 7, title: 'Only thing', digest: '\nDid it.\n\nSurprise: the column existed.\n' },
+      ]),
+    ).toBe('## ticket 7 — Only thing\n\nDid it.\n\nSurprise: the column existed.')
   })
 })
 

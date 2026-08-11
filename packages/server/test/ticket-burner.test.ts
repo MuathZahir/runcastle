@@ -154,6 +154,45 @@ describe('burnRun — scheduling and summary', () => {
     )
   })
 
+  it('carries this run’s harvested digests as one seq-ordered aggregate', async () => {
+    const tickets = [ticket(1), ticket(2, [1])]
+    const { ctx } = makeCtx(tickets)
+    const execute = fakeExecute({
+      1: { status: 'done', commits: ['a'], digest: 'Wired the first seam.' },
+      2: { status: 'done', commits: ['b'], digest: 'Wired the second seam.' },
+    })
+
+    const res = await burnRun(ctx, deps(execute))
+
+    expect(res.summary).toBe('2/2 tickets done')
+    expect(res.digest).toBe(
+      '## ticket 1 — Ticket 1\n\nWired the first seam.\n\n' +
+        '## ticket 2 — Ticket 2\n\nWired the second seam.',
+    )
+  })
+
+  it('keeps the digests of the tickets that landed when the run partially fails', async () => {
+    const tickets = [ticket(1), ticket(2)]
+    const { ctx } = makeCtx(tickets)
+    const execute = fakeExecute({
+      1: { status: 'done', commits: ['a'], digest: 'Landed this one.' },
+      2: { status: 'failed', error: 'boom' },
+    })
+
+    const res = await burnRun(ctx, deps(execute))
+
+    expect(res.status).toBe('failed')
+    expect(res.digest).toBe('## ticket 1 — Ticket 1\n\nLanded this one.')
+  })
+
+  it('composes no aggregate when the run harvested no digest at all', async () => {
+    const tickets = [ticket(1)]
+    const { ctx } = makeCtx(tickets)
+    const execute = fakeExecute({ 1: { status: 'done', commits: ['a'] } })
+
+    expect((await burnRun(ctx, deps(execute))).digest).toBeUndefined()
+  })
+
   it('never stores a digest for a failed ticket', async () => {
     const tickets = [ticket(1)]
     const { ctx, events, patches } = makeCtx(tickets)
