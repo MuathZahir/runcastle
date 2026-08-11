@@ -19,11 +19,15 @@ export const runRouter = router({
     .query(({ input }) => readTranscript(input.ticketId, input.after ?? -1)),
 
   // W2 additive (UI-SPEC §6): wired to A1's per-run AbortController map in
-  // workflows/runner.ts via the existing `cancelRun` export. No-op if the run
-  // is unknown or already finished.
+  // workflows/runner.ts via the existing `cancelRun` export. An unknown run id
+  // is NOT_FOUND (via `getRunRow`, like every other run lookup) — reporting
+  // `{ok:true}` for a run this server has never heard of told the UI a cancel
+  // landed when nothing was cancelled. A run that exists but has already
+  // finished stays a no-op: it is genuinely already not running.
   cancel: publicProcedure
     .input(z.object({ runId: z.string() }))
-    .mutation(({ input }) => {
+    .mutation(({ ctx, input }) => {
+      getRunRow(ctx, input.runId)
       cancelRun(input.runId)
       return { ok: true }
     }),
