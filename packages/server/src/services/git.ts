@@ -2126,11 +2126,18 @@ export async function mergeInProgressAt(worktreePath: string): Promise<boolean> 
   }
 }
 
-/** True iff a merge is currently in progress (MERGE_HEAD present). */
+/**
+ * True iff a merge is currently in progress (MERGE_HEAD present).
+ *
+ * Decided on the OUTPUT, not on whether the call threw: `--quiet` suppresses
+ * git's stderr on a missing ref, and simple-git resolves a silent non-zero exit
+ * rather than rejecting it — so "it did not throw" answered true for every repo,
+ * merge or no merge. An absent MERGE_HEAD prints nothing; a present one prints
+ * its sha.
+ */
 async function mergeInProgress(g: SimpleGit): Promise<boolean> {
   try {
-    await g.raw(['rev-parse', '--verify', '--quiet', 'MERGE_HEAD'])
-    return true
+    return (await g.raw(['rev-parse', '--verify', '--quiet', 'MERGE_HEAD'])).trim() !== ''
   } catch {
     return false
   }
