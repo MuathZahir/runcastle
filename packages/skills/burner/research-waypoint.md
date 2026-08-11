@@ -2,7 +2,7 @@
 
 # Research this waypoint — unattended
 
-You are a single agent in a sandbox on branch `feature/<slug>`. You have **one research question**. There is **no human to ask** — no follow-up questions are possible. Everything you need is in this prompt, on the web, and in the repo. Research carefully, write one focused summary, commit it, and stop.
+You are a single agent in a sandbox on **this run's own temp branch**, `runcastle/research/<slug>/<seq>-<unique>`, forked from the feature branch `feature/<slug>`. Commit there and only there — the run merges your branch back into the feature branch when it lands, and the feature branch stays checked out elsewhere for the whole run, so never check it out or commit to it yourself. You have **one research question**. There is **no human to ask** — no follow-up questions are possible. Everything you need is in this prompt, on the web, and in the repo. Research carefully, write one focused summary, commit it, and stop.
 
 ## The waypoint
 
@@ -36,7 +36,7 @@ You are a single agent in a sandbox on branch `feature/<slug>`. You have **one r
 
    Keep it tight and honest. If the question cannot be answered from available material, say so plainly in the doc and record what would be needed.
 
-4. **Commit the doc to the feature branch.** Stage only your new/changed doc under `docs/features/<slug>/` and commit with a clear message, e.g. `research(<seq>): <summary>`. The run reads your exit state from the commit — **a doc with no commit is read as no research landed.**
+4. **Commit the doc to the branch you are on.** Stage only your new/changed doc under `docs/features/<slug>/` and commit with a clear message, e.g. `research(<seq>): <summary>`. The run reads your exit state from the commit — **a doc with no commit is read as no research landed** — and merges the commit onto the feature branch for you.
 
 ## Hard rules
 

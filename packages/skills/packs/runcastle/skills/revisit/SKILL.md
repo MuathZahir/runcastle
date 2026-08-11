@@ -35,7 +35,7 @@ Your kickoff line reads `LAP <n> REVIEW ITERATION`. The human burned the last la
 4. **Grill, briefly.** A small rethink is a short grilling: a few questions, one at a time, each with your recommended answer attached. Prune and promote `## Later laps` entries with the human as part of that conversation — what the drive taught is usually what decides which deferred scope this lap picks up and which stays parked.
 5. **Amend the docs.** Append this lap's learning to `docs/features/<slug>/decisions.md` under a `## Lap <n>` heading (the convention) — never rewrite old decisions, supersede them. Then amend `spec.md` in place: the sections this lap changes, plus the pruned `## Later laps`.
 6. **Emit this lap's tickets.** `mcp__runcastle__emit_tickets({ tickets })` — only the work this lap will burn; the rest stays in `## Later laps`. Reconcile stale pending tickets with `update_ticket` / `cancel_ticket`; `done` work that is now wrong gets a NEW ticket, as always.
-7. **Advance the pipeline.** `mcp__runcastle__complete_phase` through `ideation` → `spec` → `tickets`, here, without opening another session. It will refuse to cross into implementation — that gate is the human's Burn click, which is the point.
+7. **Advance the pipeline.** `mcp__runcastle__complete_phase` through `ideation` → `spec` → `tickets`, here, without opening another session. It will not cross into implementation: the `tickets` call comes back `ok: true` with `waitingOn: "human burn"` and the feature parks at `tickets` instead of advancing — that gate (G3) is the human's Burn click, which is the point.
 8. **Hand to Burn.** Tell the human in a line or two what this lap does, then:
 
    > Lap `<n>` is specced and carded. Review the ticket cards and click **Burn** — I'll stop here.
