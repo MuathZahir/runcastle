@@ -266,9 +266,9 @@ async function realExecuteResearchRun(
 
   const runOptions: RunOptions = {
     agent: buildBurnAgent(config, token, model),
-    // Shared with the burner (never hand-rolled here): a local `docker ?? host`
-    // ternary is how a `podman` config silently became "run the AFK agent on the
-    // developer's machine, unsandboxed".
+    // Shared with the burner, never hand-rolled here: the local
+    // `sandbox === 'docker' ? docker() : noSandbox()` this replaces is how a
+    // `podman` config silently became "run the AFK agent on the host".
     sandbox: selectSandbox(config),
     cwd: project.repoPath,
     prompt,

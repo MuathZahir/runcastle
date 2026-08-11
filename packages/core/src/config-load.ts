@@ -55,8 +55,9 @@ export function loadConfig(
   num('burnConcurrency', env.RUNCASTLE_BURN_CONCURRENCY)
   num('burnMaxIterations', env.RUNCASTLE_BURN_MAX_ITERATIONS)
   num('burnAttempts', env.RUNCASTLE_BURN_ATTEMPTS)
-  // Not truthiness: it would swallow the meaningful `0` (disable in-loop
-  // resolution). `envNumber` lets `0` through and still treats `''` as unset.
+  // The key that made `num` necessary: `0` is meaningful here (disable in-loop
+  // conflict resolution), so truthiness would swallow it — while the presence
+  // check it used to have let `''` land as a silent `0`.
   num('burnConflictAttempts', env.RUNCASTLE_BURN_CONFLICT_ATTEMPTS)
   num('burnCpus', env.RUNCASTLE_BURN_CPUS)
   // Kill switch for the in-sandbox PreToolUse guard. Config-file + env only
