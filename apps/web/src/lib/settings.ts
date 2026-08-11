@@ -259,6 +259,41 @@ export function unverifiedDriveKeys(
   )
 }
 
+/** Which halves of a test drive this project has actually configured. */
+export interface DriveCapabilities {
+  /** `driveEnv` — the KEY=VALUE overlay, where a per-branch database name comes from. */
+  env: boolean
+  /** `driveSetupCommand` — run before the dev server starts. */
+  setup: boolean
+  /** `devCommand` — the dev pane, and the "Open app" URL sniffed out of it. */
+  dev: boolean
+  /** `driveStopCommand` — run on stop, while the feature branch is still checked out. */
+  teardown: boolean
+}
+
+/**
+ * What a test drive on this project will do, read off the settings view.
+ *
+ * Mirrors the emptiness checks the drive itself makes — a hook step returns
+ * early on a blank command and the dev pane is spawned only when `devCommand`
+ * is set — so the review page describes the drive the human is about to get
+ * rather than the fully-prepared one we wish they had. `undefined` while the
+ * settings query is in flight: unknown is not the same answer as "none".
+ */
+export function driveCapabilities(view: SettingsView | undefined): DriveCapabilities | undefined {
+  if (!view) return undefined
+  const set = (key: string): boolean => {
+    const value = view.fields.find((f) => f.key === key)?.value
+    return typeof value === 'string' && value.trim().length > 0
+  }
+  return {
+    env: set('driveEnv'),
+    setup: set('driveSetupCommand'),
+    dev: set('devCommand'),
+    teardown: set('driveStopCommand'),
+  }
+}
+
 /**
  * The one-line provenance note under a prepared field.
  *

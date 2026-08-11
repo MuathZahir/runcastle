@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   describeField,
+  driveCapabilities,
   effectiveStepModel,
   globalRows,
   projectRows,
@@ -217,5 +218,54 @@ describe('projectRows', () => {
       ),
     )
     expect(rows.map((r) => r.key)).toEqual(['model', 'sandbox', 'devCommand'])
+  })
+})
+
+/**
+ * What a test drive will actually do here, read off the same values the server
+ * branches on. `runDriveHookStep` skips an empty command and the dev pane is
+ * spawned only `if (project.devCommand)` — so "configured" has to mean a
+ * non-blank string, or the review page promises a database nobody creates.
+ */
+describe('driveCapabilities', () => {
+  it('reports nothing configured on a project with no drive fields set', () => {
+    expect(driveCapabilities(view([{ key: 'model', value: 'claude' }]))).toEqual({
+      env: false,
+      setup: false,
+      dev: false,
+      teardown: false,
+    })
+  })
+
+  it('reports each drive field that carries a command', () => {
+    expect(
+      driveCapabilities(
+        view([
+          { key: 'driveEnv', value: 'DATABASE_URL=postgres:///myapp_{{id}}' },
+          { key: 'driveSetupCommand', value: 'createdb myapp_{{id}}' },
+          { key: 'devCommand', value: 'bun dev' },
+          { key: 'driveStopCommand', value: 'dropdb myapp_{{id}}' },
+        ]),
+      ),
+    ).toEqual({ env: true, setup: true, dev: true, teardown: true })
+  })
+
+  // A field cleared back to blank (or to whitespace) is a field the drive skips.
+  it('treats a blank or whitespace-only value as not configured', () => {
+    expect(
+      driveCapabilities(
+        view([
+          { key: 'devCommand', value: '' },
+          { key: 'driveSetupCommand', value: '   ' },
+          { key: 'driveEnv', value: null },
+        ]),
+      ),
+    ).toEqual({ env: false, setup: false, dev: false, teardown: false })
+  })
+
+  // Before settings land there is no answer, and guessing "false" would print
+  // "this project has no drive commands" at every mount of the review page.
+  it('has no answer until the settings view has loaded', () => {
+    expect(driveCapabilities(undefined)).toBeUndefined()
   })
 })
