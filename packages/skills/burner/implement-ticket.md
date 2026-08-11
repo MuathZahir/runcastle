@@ -2,7 +2,7 @@
 
 # Implement this ticket — unattended
 
-You are a single agent in a sandbox on branch `feature/<slug>`. You have **one ticket**. There is **no human to ask** — no follow-up questions are possible. Everything you need is in this prompt and in the repo. Work carefully, commit only green work, and stop when the ticket is done.
+You are a single agent in a sandbox on **your ticket's own temp branch**, `runcastle/ticket/<slug>/<seq>-<unique>`, forked from the feature branch `feature/<slug>`. Commit there and only there — the run merges your branch back into the feature branch once you land, so never check out or commit to `feature/<slug>` yourself. You have **one ticket**. There is **no human to ask** — no follow-up questions are possible. Everything you need is in this prompt and in the repo. Work carefully, commit only green work, and stop when the ticket is done.
 
 ## How you run
 

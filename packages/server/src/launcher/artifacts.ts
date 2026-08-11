@@ -287,12 +287,14 @@ export function renderConvergePrompt(feature: Feature): string {
  * pipeline position stays wherever it is, and downstream phases pick up the
  * amended docs/tickets on their own.
  *
- * At the `review` phase the same session is surfaced as **Iterate** (CONTEXT
- * decision #6): the human has just test-driven the burned branch and found
- * things to fix. The kickoff line briefs the review-iteration move (read the run
- * outcome + ticket states, interview about the test drive, emit fix tickets);
- * the prompt below flags that purpose so the session knows the amended docs +
- * fix tickets feed a re-Burn that loops the feature back through implementation.
+ * At the `review` phase the same session is surfaced as **Iterate** (CONTEXT.md,
+ * "Laps: iteration without a mode"; cited by name because the locked-decision
+ * numbers get renumbered): the human has just test-driven the burned branch and
+ * found things to fix. The kickoff line briefs the review-iteration move (read
+ * the run outcome + ticket states, interview about the test drive, emit fix
+ * tickets); the prompt below flags that purpose so the session knows the amended
+ * docs + fix tickets feed a re-Burn that loops the feature back through
+ * implementation.
  *
  * `lap` — passed explicitly by the launcher, never inferred from the phase (see
  * {@link WriteArtifactsInput.lap}) — turns this into the LAP prompt: the session
