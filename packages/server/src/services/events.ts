@@ -1,5 +1,5 @@
-import { EventRow } from '@runcastle/core'
 import type { SessionRow } from '@runcastle/core'
+import { EventRow } from '@runcastle/core'
 import { and, asc, desc, eq, gt, max } from 'drizzle-orm'
 import type { AppCtx } from '../db/types'
 import { events, features } from '../db/schema'
