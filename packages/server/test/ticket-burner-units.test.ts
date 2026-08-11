@@ -341,6 +341,14 @@ describe('selectSandbox — provider for the configured sandbox', () => {
     expect(selectSandbox(config('noSandbox')).name).toBe('no-sandbox')
   })
 
+  it('refuses a sandbox it has no provider for instead of falling back to the host', () => {
+    // A sandbox choice that reaches config without a provider here used to fall
+    // through to `noSandbox()` — the agent ran on the operator's machine, and
+    // nothing in the run said so.
+    const unsupported = { ...config('docker'), sandbox: 'kata' } as unknown as RuncastleConfig
+    expect(() => selectSandbox(unsupported)).toThrow(/refusing to run the agent unsandboxed/)
+  })
+
   describe('buildSandboxOptions — container resource wiring', () => {
     it('omits cpus entirely when burnCpus is unset (unconstrained default)', () => {
       const opts = buildSandboxOptions(config('docker'))

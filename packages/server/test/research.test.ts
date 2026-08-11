@@ -133,6 +133,21 @@ describe('researchRun — control flow (stubbed sandcastle)', () => {
     expect(events.map((e) => e.type)).toContain('auth.missing')
   })
 
+  it('fails fast when podman has no auth token too (every container sandbox)', async () => {
+    const { ctx, events } = makeCtx(makeWaypoint())
+    const { deps, calls } = fakeDeps(
+      { status: 'done', commits: ['x'], docRelPath: 'p' },
+      RuncastleConfig.parse({ sandbox: 'podman' }),
+      false,
+    )
+
+    const result = await researchRun(ctx, deps)
+
+    expect(result.status).toBe('failed')
+    expect(calls).toHaveLength(0)
+    expect(events.map((e) => e.type)).toContain('auth.missing')
+  })
+
   it('fails when started without a waypoint input', async () => {
     const { ctx } = makeCtx(undefined)
     const { deps, calls } = fakeDeps({ status: 'done', commits: ['x'], docRelPath: 'p' })
