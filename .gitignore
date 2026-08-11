@@ -21,3 +21,10 @@ AFK-REPORT.md
 .sandcastle/.env
 .sandcastle/logs/
 .sandcastle/worktrees/
+
+# Claude Code state written into the tree by a spawned agent. `~/` is what an
+# unexpanded tilde becomes when a child is spawned without HOME/USERPROFILE — it
+# is a literal directory, and one such tree (a 284 KB transcript) was committed
+# before the child env was fixed. `.claude/` is the same state under a real home.
+~/
+.claude/
