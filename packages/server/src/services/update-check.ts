@@ -29,7 +29,7 @@ export const UPDATE_COMMAND = `bun add -g ${PACKAGE_NAME}@latest`
 export const PING_URL = 'https://ping.runcastle.dev/ping'
 
 /** The fallback rung — npm's `latest` dist-tag, the pre-ping code path. */
-export const NPM_LATEST_URL = `https://registry.npmjs.org/${PACKAGE_NAME}/latest`
+const NPM_LATEST_URL = `https://registry.npmjs.org/${PACKAGE_NAME}/latest`
 
 export interface UpdateInfo {
   /** The running server's version. */
