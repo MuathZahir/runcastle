@@ -647,6 +647,27 @@ function scheduleKickoff(ctx: AppCtx, session: SessionRow): void {
 const landedProjectSessions = new Set<string>()
 
 /**
+ * Landings still in flight. Kicking one off is deliberately fire-and-forget (see
+ * {@link landProjectSession}), but the git children it spawns hold handles on the
+ * repo working tree, and they outlive the teardown path that started them. On
+ * Windows an open handle fails a directory removal with EPERM outright rather
+ * than waiting, so the work has to stay *observable*: anything about to delete
+ * the repo can wait for it via {@link awaitProjectLandings}.
+ */
+const inFlightLandings = new Set<Promise<void>>()
+
+/**
+ * Resolve once every landing kicked off so far has finished — including any
+ * started while we were waiting. Never rejects: a landing reports its own
+ * failures to the timeline, so there is nothing here for a caller to handle.
+ */
+export async function awaitProjectLandings(): Promise<void> {
+  while (inFlightLandings.size > 0) {
+    await Promise.allSettled([...inFlightLandings])
+  }
+}
+
+/**
  * Land a finished PROJECT session's work on the base branch (decision 18) and
  * report what happened on the project timeline. No-op for every other kind.
  *
@@ -658,7 +679,9 @@ const landedProjectSessions = new Set<string>()
  *
  * Fire-and-forget on purpose — both call sites are synchronous teardown paths
  * (a PTY exit handler and `endSession`), and a session must still close cleanly
- * when git is having a bad day.
+ * when git is having a bad day. Forgotten, though, is not unobservable: the
+ * in-flight work is tracked, so a caller that needs the git children gone before
+ * it touches the repo directory can await {@link awaitProjectLandings}.
  */
 export function landProjectSession(ctx: AppCtx, session: SessionRow): void {
   if (session.kind !== 'project' || !session.projectId) return
@@ -676,7 +699,7 @@ export function landProjectSession(ctx: AppCtx, session: SessionRow): void {
     })
   }
 
-  void landProjectBranch(project)
+  const landing = landProjectBranch(project)
     .then((res) => {
       if (!res) return // the conversation wrote nothing — no timeline noise
       if (res.landed) {
@@ -708,6 +731,8 @@ export function landProjectSession(ctx: AppCtx, session: SessionRow): void {
         { error: e instanceof Error ? e.message : String(e) },
       )
     })
+  inFlightLandings.add(landing)
+  void landing.finally(() => inFlightLandings.delete(landing))
 }
 
 /** Mark a session `ended`; returns the updated row, or null if unknown. */
