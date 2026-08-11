@@ -27,8 +27,12 @@ const stream = new Hono()
  */
 const FLUSH_MS = 120
 
-/** Idle comment interval — keeps proxies from reaping the connection. */
-const HEARTBEAT_MS = 25_000
+/**
+ * Idle comment interval — keeps proxies from reaping the connection. Exported
+ * because `SERVE_IDLE_TIMEOUT_SECONDS` has to stay above it: whichever of the
+ * two is smaller decides how long a healthy but quiet stream survives.
+ */
+export const HEARTBEAT_MS = 25_000
 
 /**
  * Signals that collapse onto each other. All event signals share one key: the

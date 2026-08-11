@@ -1571,8 +1571,16 @@ export function selectSandbox(config: RuncastleConfig, mounts: readonly CacheMou
       return docker(imageOpts)
     case 'podman':
       return podman(imageOpts)
-    default:
+    case 'noSandbox':
       return noSandbox()
+    default:
+      // Only reachable when a sandbox choice gains a config value before it
+      // gains a provider here. Refusing loudly is the point: the old `default:
+      // noSandbox()` turned "I asked for a container" into "the agent ran on
+      // your machine", with nothing said either way.
+      throw new Error(
+        `no sandbox provider for sandbox "${config.sandbox}" — refusing to run the agent unsandboxed`,
+      )
   }
 }
 

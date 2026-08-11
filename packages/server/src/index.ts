@@ -1,7 +1,12 @@
 import { trpcServer } from '@hono/trpc-server'
 import { dataDir, dbPath } from '@runcastle/core/paths'
 import { Hono } from 'hono'
-import { ensureDataDir, loadConfig } from './config'
+import {
+  SERVE_HOSTNAME,
+  SERVE_IDLE_TIMEOUT_SECONDS,
+  ensureDataDir,
+  loadConfig,
+} from './config'
 import { createDb } from './db/client'
 import { runMigrations } from './db/migrate'
 import type { AppCtx } from './db/types'
@@ -104,6 +109,8 @@ export async function startServer(): Promise<void> {
   // tests mount it without a socket — the WS lives only on this real listener.
   const server = Bun.serve({
     port: config.serverPort,
+    hostname: SERVE_HOSTNAME,
+    idleTimeout: SERVE_IDLE_TIMEOUT_SECONDS,
     fetch(req, srv) {
       if (tryUpgradeTerminal(req, srv)) return undefined
       return app.fetch(req, srv)
