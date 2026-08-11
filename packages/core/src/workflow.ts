@@ -51,5 +51,15 @@ export interface WorkflowCtx {
 export interface WorkflowDef {
   /** Stable identifier, e.g. `ticket-burner`. */
   id: string
-  run(ctx: WorkflowCtx): Promise<{ status: 'succeeded' | 'failed'; summary: string }>
+  /**
+   * `summary` is the run's one-liner (lists, timelines). `digest` is the
+   * optional long-form account of what the run produced — the ticket-burner's
+   * mechanical concatenation of the digests it harvested; workflows with
+   * nothing to say omit it and the runner leaves the column null.
+   */
+  run(ctx: WorkflowCtx): Promise<{
+    status: 'succeeded' | 'failed'
+    summary: string
+    digest?: string
+  }>
 }
