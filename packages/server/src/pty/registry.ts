@@ -136,10 +136,11 @@ class PtyRegistry {
    * Kill the PTY and everything it spawned, without waiting (onExit fires →
    * status broadcast + launcher hook). Returns whether a PTY was there to kill.
    *
-   * The teardown itself is async and runs on: every caller of this form is a
-   * synchronous service (`endSession`, and archive/delete/waypoint-sweep behind
-   * it) with nothing downstream that waits on a freed port. Callers that DO
-   * wait — drive stop, server shutdown — use `killTree` / `killAllTrees`.
+   * The teardown is async and continues in the background, because every caller
+   * of this form is a synchronous service (`endSession`, and the archive, delete
+   * and waypoint-sweep paths behind it) with nothing downstream that waits on a
+   * freed port. Callers that DO wait — drive stop, server shutdown — use
+   * `killTree` / `killAllTrees`.
    */
   kill(sessionId: string): boolean {
     const entry = this.entries.get(sessionId)
@@ -166,9 +167,9 @@ class PtyRegistry {
    * `allSettled`, so one hung tree cannot leave the others un-torn-down.
    */
   async killAllTrees(): Promise<void> {
-    const live = [...this.entries.values()]
+    const all = [...this.entries.values()]
     this.entries.clear()
-    await Promise.allSettled(live.map((entry) => this.tearDown(entry)))
+    await Promise.allSettled(all.map((entry) => this.tearDown(entry)))
   }
 
   /**
@@ -178,11 +179,18 @@ class PtyRegistry {
    * that holds the port. An already-exited entry is skipped rather than killed
    * again — the OS may have reused its pid, and taskkilling a stranger's tree is
    * worse than leaking nothing.
+   *
+   * Never rejects, so no form of kill can fail a caller (or, for the sync form,
+   * become an unhandled rejection): teardown is best-effort by construction.
    */
   private async tearDown(entry: PtyEntry): Promise<void> {
     if (entry.exited) return
     await killTreeBounded(entry.pty)
-    entry.pty.kill()
+    try {
+      entry.pty.kill()
+    } catch {
+      // Backend already reaped it between the tree kill and here.
+    }
   }
 
   /** Live session ids (diagnostics/tests). */
