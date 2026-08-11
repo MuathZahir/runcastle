@@ -213,9 +213,13 @@ Bun workspaces, TypeScript strict, ESM only.
 | `packages/core` | `@runcastle/core` | IO-free contracts: zod schemas, drizzle schema, pipeline and gates, paths, workflow types, config. |
 | `packages/server` | `@runcastle/server` | Hono + tRPC + services + launcher + MCP + workflows. Runs TS directly with Bun, no build step. |
 | `packages/skills` | `@runcastle/skills` | Vendored and forked Claude Code skill packs, plus the ticket-burner prompt template. |
-| `packages/design-system` | `@runcastle/design-system` | Near-black IDE-grammar UI primitives. |
 | `apps/web` | `@runcastle/web` | Vite + React + tRPC client + TanStack Query. |
 | `site/` | | The static landing page. No build step. |
+
+`packages/design-system` is **not** a fifth package in that sense: it is the surface of the
+Claude Design round-trip, owned by `.design-sync/`, holding the near-black IDE-grammar
+primitives as they come back from design. Nothing imports it yet — `apps/web` still owns its
+own styles — so treat it as a design artifact, not a shared dependency.
 
 ---
 

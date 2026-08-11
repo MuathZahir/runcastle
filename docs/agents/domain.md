@@ -44,6 +44,17 @@ When your output names a domain concept (in an issue title, a refactor proposal,
 
 If the concept you need isn't in the glossary yet, that's a signal — either you're inventing language the project doesn't use (reconsider) or there's a real gap (note it for `/domain-modeling`).
 
+### Two-layer vocabulary: `implementation` is labelled **build**
+
+Some domain terms deliberately carry a different user-facing label, and the difference is not
+drift to correct. The one that exists today: the pipeline phase is named `implementation`
+everywhere the domain is spoken — the DB column, the wire schemas, the gates, the skills — and
+**`build` is its canonical label in the UI**. `PHASE_LABELS` in `apps/web/src/lib/feature-ui.ts`
+is the implementation of that mapping and the place to add any future pair.
+
+So: say `implementation` in schemas, events, tickets and prose about the pipeline; say **build**
+in anything the user reads. Neither side gets renamed to match the other.
+
 ## Flag ADR conflicts
 
 If your output contradicts an existing ADR, surface it explicitly rather than silently overriding:
