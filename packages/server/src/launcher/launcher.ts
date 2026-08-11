@@ -1,7 +1,15 @@
 import { existsSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import type { Feature, Project, Run, SessionKind, SessionRow, Waypoint } from '@runcastle/core'
+import type {
+  Feature,
+  Project,
+  Run,
+  SessionKind,
+  SessionPurpose,
+  SessionRow,
+  Waypoint,
+} from '@runcastle/core'
 import { worktreeDir } from '@runcastle/core/paths'
 import { nextGate, nextPhase, resolveModel } from '@runcastle/core'
 import { and, eq } from 'drizzle-orm'
@@ -46,6 +54,7 @@ import {
   planKickoff,
   resumeKickoffLine,
   setKickoffOverride,
+  setSessionPurpose,
 } from './sessions'
 
 // Re-exported for the `feature.resendKickoff` router: the launcher is the stable
@@ -94,6 +103,13 @@ export interface LaunchSessionInput {
    * here — e.g. a revisit told to resolve a merge conflict or iterate on review.
    */
   kickoffLine?: string
+  /**
+   * Why this session is being opened, where that changes what it may do. The
+   * conflict-resolution launches pass `conflict` — the session ADR-0007 §6
+   * designs, which resolves the merge on the feature branch and so must be
+   * allowed to write code (E2E F18). Absent reads as `talk`.
+   */
+  purpose?: SessionPurpose
 }
 
 export interface LaunchSessionOptions {
@@ -286,13 +302,22 @@ function assertSpawnable(ctx: AppCtx, feature: Feature, excludeSessionId?: strin
  * - a kind=`waypoint` session whose own waypoint — the one remembering it as
  *   `lastSessionId` — has gone terminal (`resolved`/`dropped`). While it is still
  *   working, that waypoint is `claimed`, so this is false.
- * - any other kind (the ideation grill, qa, revisit, converge) once the feature
- *   is `mapped`: the session that charted the map has done its job.
+ * - a kind=`ideation`/`converge` session once the feature is `mapped`: charting
+ *   the map is the job those two were opened to do, and the map is on disk.
+ * - nothing else. A `qa` question or a `revisit` ("I remembered something") is a
+ *   conversation with the human, and no state on this side can prove one is
+ *   over — saying so is what the `endLive` confirmation is for.
  * A session that never went live has no waypoint remembering it, so it is never
  * finished — abandoning it needs the explicit `endLive` confirmation.
+ *
+ * This answered `feature.mapped` for every non-waypoint kind, and its only call
+ * site is reached only once the feature IS mapped — so it was constant `true`,
+ * and working a waypoint silently killed whatever conversation was live and told
+ * the timeline it had "finished".
  */
 function sessionFinished(ctx: AppCtx, feature: Feature, session: SessionRow): boolean {
-  if (session.kind !== 'waypoint') return feature.mapped
+  if (session.kind === 'ideation' || session.kind === 'converge') return feature.mapped
+  if (session.kind !== 'waypoint') return false
   const own = listWaypointsByFeature(ctx, feature.id).find((w) => w.lastSessionId === session.id)
   return !!own && (own.status === 'resolved' || own.status === 'dropped')
 }
@@ -445,6 +470,9 @@ export async function launchSession(
   // the agent continues the conversation rather than restarting its opening move.
   const kickoffLine = plan.line ?? (resumeSessionId ? resumeKickoffLine(input.kind) : undefined)
   if (kickoffLine) setKickoffOverride(session.id, kickoffLine)
+  // Registered against the session id for the same reason, and read by the edit
+  // guard on every PreToolUse for the life of the session.
+  if (input.purpose) setSessionPurpose(session.id, input.purpose)
 
   emit(ctx, feature.id, {
     type: 'session.launching',
@@ -483,6 +511,7 @@ export async function launchSession(
     config: ctx.config,
     waypoint,
     lap: plan.lap,
+    purpose: input.purpose,
   })
   const serverUrl = serverUrlFor(ctx.config)
 

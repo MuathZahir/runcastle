@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { trpc } from '../trpc'
 import { useToast } from '../lib/toast'
 import {
+  fieldCommit,
   globalRows,
   projectRows,
   stepModelRows,
@@ -44,14 +45,16 @@ export function SettingsOverlay({
   }, [onClose])
 
   return (
-    <div className="peek-backdrop" onClick={onClose}>
-      <div
-        className="peek settings"
-        role="dialog"
-        aria-modal="true"
-        aria-label="Settings"
-        onClick={(e) => e.stopPropagation()}
-      >
+    <div
+      className="peek-backdrop"
+      // mousedown, not click: a click that STARTS inside the panel and ends on
+      // the backdrop (selecting a field value and releasing outside) is not a
+      // dismissal — the same guard FormOverlay makes.
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) onClose()
+      }}
+    >
+      <div className="peek settings" role="dialog" aria-modal="true" aria-label="Settings">
         <div className="peek-head">
           <span className="settings-title">Settings</span>
           <button className="peek-close" onClick={onClose} aria-label="Close (Esc)">
@@ -128,14 +131,16 @@ function Section({
 
 function Field({ row, projectId }: { row: SettingRow; projectId?: string }) {
   const utils = trpc.useUtils()
-  const toast = useToast()
   const [draft, setDraft] = useState(row.value)
+  /** Why this field's last commit was refused; cleared by the next one. */
+  const [invalid, setInvalid] = useState<string | null>(null)
 
   // Keep the draft in sync when a refetch changes the resolved value.
   useEffect(() => setDraft(row.value), [row.value])
 
   const update = trpc.settings.update.useMutation({
     onSuccess: () => {
+      setInvalid(null)
       void utils.settings.get.invalidate()
       // The write re-sourced the finding to `human` and cleared any dry-run
       // stamp on it (decision 6) — the note under this very field says both, so
@@ -144,15 +149,23 @@ function Field({ row, projectId }: { row: SettingRow; projectId?: string }) {
     },
     onError: (e) => {
       setDraft(row.value)
-      toast.push(e.message)
+      // Beside the field, not in a toast: a rejected value is a question about
+      // THIS field ("burnCpus cannot be cleared"), and the draft has just
+      // snapped back, so a message that floats away leaves no trace of why.
+      setInvalid(e.message)
     },
   })
 
   const save = (raw: string) => {
     const trimmed = raw.trim()
     if (trimmed === row.value.trim()) return
-    const value = row.control === 'number' ? Number(trimmed) : trimmed
-    update.mutate({ ...(projectId ? { projectId } : {}), key: row.key, value })
+    const commit = fieldCommit(row.control, raw)
+    if ('error' in commit) {
+      setInvalid(commit.error)
+      return
+    }
+    setInvalid(null)
+    update.mutate({ ...(projectId ? { projectId } : {}), key: row.key, value: commit.value })
   }
 
   const clear = () =>
@@ -255,6 +268,11 @@ function Field({ row, projectId }: { row: SettingRow; projectId?: string }) {
         />
       )}
 
+      {invalid && (
+        <div className="settings-field-error" role="alert">
+          {invalid}
+        </div>
+      )}
       {row.note && <div className="settings-field-note">{row.note}</div>}
       {/* What preparation actually observed. Shown inline rather than behind a
           tooltip: it is the only thing that distinguishes a measured value from

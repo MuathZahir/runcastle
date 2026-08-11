@@ -1,5 +1,5 @@
 import { isAbsolute, relative, resolve } from 'node:path'
-import type { SessionKind } from '@runcastle/core'
+import type { SessionKind, SessionPurpose } from '@runcastle/core'
 import { featureDocsRel } from '@runcastle/core/paths'
 
 /**
@@ -21,6 +21,10 @@ import { featureDocsRel } from '@runcastle/core/paths'
  *
  * The one exempt kind is `project`: decision 18 gives it whole-repo write access
  * on a runcastle-owned branch, and its commits are the point of the session.
+ *
+ * The one exempt PURPOSE is `conflict` — a session of any guarded kind launched
+ * to resolve a merge conflict (ADR-0007 §6) writes the conflicted files in its
+ * own worktree, because that is the job it was opened to do.
  */
 
 /** The tools this guard is registered for (Claude Code's file-write surface). */
@@ -39,6 +43,12 @@ export function guardsEdits(kind: SessionKind): boolean {
 
 export interface EditGuardInput {
   kind: SessionKind
+  /**
+   * Why the session was launched. `conflict` — the conflict-resolution session
+   * ADR-0007 §6 designs — is the one talk session whose job IS writing code.
+   * Absent reads as `talk`.
+   */
+  purpose?: SessionPurpose
   /** `tool_name` from the hook payload. */
   toolName?: string
   /** `tool_input.file_path` / `notebook_path` — may be relative to the cwd. */
@@ -65,6 +75,25 @@ export function evaluateEditGuard(input: EditGuardInput): EditDenial | null {
   if (!input.toolName || !(EDIT_TOOLS as readonly string[]).includes(input.toolName)) return null
   if (!input.filePath) return null
 
+  const target = resolve(input.worktreePath, input.filePath)
+
+  // The conflict-resolution session (ADR-0007 §6) is the one talk session whose
+  // job IS writing code: it merges the base branch into the feature branch and
+  // resolves the conflicts. Denying it made the feature on the README's front
+  // page structurally impossible to complete — the agent was ordered to edit a
+  // conflicted file and then forbidden from doing it, so it aborted the merge
+  // and emitted a ticket to carry it instead (E2E F18). It may write anywhere in
+  // the worktree it was given, and nowhere else.
+  if (input.purpose === 'conflict') {
+    if (within(input.worktreePath, target)) return null
+    return {
+      reason:
+        'This conflict-resolution session resolves the merge inside its own worktree ' +
+        `(\`${input.worktreePath}\`) — ${input.filePath} is outside it. Resolve the conflicted ` +
+        'files on the branch and commit the merge; anything else belongs in a ticket.',
+    }
+  }
+
   if (!input.featureSlug) {
     return {
       reason:
@@ -75,10 +104,7 @@ export function evaluateEditGuard(input: EditGuardInput): EditDenial | null {
   }
 
   const docs = featureDocsRel(input.featureSlug)
-  const docsDir = resolve(input.worktreePath, docs)
-  const target = resolve(input.worktreePath, input.filePath)
-  const rel = relative(docsDir, target)
-  if (rel === '' || (!rel.startsWith('..') && !isAbsolute(rel))) return null
+  if (within(resolve(input.worktreePath, docs), target)) return null
 
   return {
     reason:
@@ -87,6 +113,12 @@ export function evaluateEditGuard(input: EditGuardInput): EditDenial | null {
       'want belongs in a ticket: capture the decision in `decisions.md`, amend `spec.md`, and ' +
       'emit a ticket for the work. An implementation agent burns it in its own sandbox.',
   }
+}
+
+/** Is `target` inside `dir` — or `dir` itself? Both paths must be absolute. */
+function within(dir: string, target: string): boolean {
+  const rel = relative(dir, target)
+  return rel === '' || (!rel.startsWith('..') && !isAbsolute(rel))
 }
 
 /** The verified `PreToolUse` deny shape (same as the burn guard's). */

@@ -6,6 +6,7 @@ import type {
   Project,
   RuncastleConfig,
   SessionKind,
+  SessionPurpose,
   SessionRow,
   Waypoint,
 } from '@runcastle/core'
@@ -38,6 +39,12 @@ export interface WriteArtifactsInput {
   prepare?: PrepareBrief
   /** The brief for a `project` session; the other way `feature` may be absent. */
   projectBrief?: ProjectBrief
+  /**
+   * Why the session was launched, when that changes its briefing — today only
+   * the conflict-resolution revisit, which is told to resolve the merge rather
+   * than that it may not write code.
+   */
+  purpose?: SessionPurpose
   /**
    * The lap this session was opened to run (a Rethink lap, or a lap-N grill).
    * Passed EXPLICITLY rather than read off `feature.lap`, because a lap is not
@@ -90,6 +97,23 @@ export function noCodeRule(docs: string): string {
 }
 
 /**
+ * The rule that REPLACES {@link noCodeRule} for the conflict-resolution session
+ * (ADR-0007 §6). Its whole job is to merge the base branch in and resolve the
+ * conflicts, which is code — and the blanket ban is why it could not: told to
+ * resolve and then told edits are denied, the agent believed the rule, aborted
+ * the merge and emitted a ticket to carry it instead (E2E F18). The guard now
+ * allows these writes; this is the same truth in the briefing.
+ */
+export function conflictResolutionRule(): string {
+  return (
+    '- **This session resolves a merge conflict, so it DOES write code here.** Edit the ' +
+    'conflicted files in this checkout, resolving them from the feature docs’ intent, and ' +
+    'commit the merge. That is the exception and its whole extent: work the merge revealed ' +
+    'but did not cause still rides a ticket, and writes outside this worktree are denied.'
+  )
+}
+
+/**
  * The injected system prompt (feature brief). Directs the session to the pack's
  * entry skill, lists the on-disk knowledge paths and the MCP tool cheat-sheet.
  * A kind=waypoint session gets a dedicated prompt carrying its assigned waypoint.
@@ -99,10 +123,11 @@ export function renderSystemPrompt(
   kind: SessionKind,
   waypoint?: Waypoint,
   lap?: number,
+  purpose?: SessionPurpose,
 ): string {
   if (kind === 'waypoint') return renderWaypointPrompt(feature, waypoint)
   if (kind === 'converge') return renderConvergePrompt(feature)
-  if (kind === 'revisit') return renderRevisitPrompt(feature, lap)
+  if (kind === 'revisit') return renderRevisitPrompt(feature, lap, purpose)
 
   const docs = featureDocsRel(feature.slug) // docs/features/<slug>
   const entry =
@@ -274,7 +299,11 @@ export function renderConvergePrompt(feature: Feature): string {
  * is running the front half of the pipeline again, so it not only may call
  * `complete_phase`, it is the only thing that will.
  */
-export function renderRevisitPrompt(feature: Feature, lap?: number): string {
+export function renderRevisitPrompt(
+  feature: Feature,
+  lap?: number,
+  purpose?: SessionPurpose,
+): string {
   const docs = featureDocsRel(feature.slug)
   const lapIteration = lap
     ? [
@@ -354,7 +383,9 @@ export function renderRevisitPrompt(feature: Feature, lap?: number): string {
       : '- Do NOT call `complete_phase` — a revisit never moves the pipeline.',
     '- Do NOT touch `done`/`burning` tickets; if done work is now wrong, emit a new ticket that fixes it.',
     '- Docs first, tickets second: capture the decision prose before any ticket surgery.',
-    noCodeRule(docs),
+    // The conflict-resolution revisit is briefed to resolve the merge, so the
+    // blanket ban would contradict the very kickoff it was opened with (F18).
+    purpose === 'conflict' ? conflictResolutionRule() : noCodeRule(docs),
     '',
     '## Your task',
     'Invoke the `/runcastle:revisit` skill and work through what the human brings up.',
@@ -767,7 +798,7 @@ export function renderMcpConfig(session: SessionRow, config: RuncastleConfig): M
 export async function writeSessionArtifacts(
   input: WriteArtifactsInput,
 ): Promise<SessionArtifacts> {
-  const { session, feature, config, waypoint, prepare, projectBrief, lap } = input
+  const { session, feature, config, waypoint, prepare, projectBrief, lap, purpose } = input
   const dir = sessionDir(session.id)
   mkdirSync(dir, { recursive: true })
 
@@ -779,7 +810,7 @@ export async function writeSessionArtifacts(
   // its kind's brief instead. Exactly one of the three is always present — a
   // session with none would spawn a terminal with no instructions at all.
   const systemPrompt = feature
-    ? renderSystemPrompt(feature, session.kind, waypoint, lap)
+    ? renderSystemPrompt(feature, session.kind, waypoint, lap, purpose)
     : prepare
       ? renderPreparePrompt(prepare)
       : projectBrief

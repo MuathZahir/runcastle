@@ -400,6 +400,30 @@ function toDisplay(value: unknown): string {
   return String(value)
 }
 
+/**
+ * What leaving a field commits: the value to write, or the inline error to show
+ * instead of writing anything. `null` clears the setting.
+ */
+export type FieldCommit = { value: string | number | null } | { error: string }
+
+/**
+ * The value a settings field commits for what was typed into it.
+ *
+ * Numeric fields used to go through a bare `Number(trimmed)`, and `Number('')`
+ * is `0`: blanking "Burn CPU limit" — the documented way to unconstrain it —
+ * wrote a zero the server's `z.number().positive()` then rejected, and anything
+ * non-numeric wrote `NaN`. A blank numeric field means "unset this"; anything
+ * that is not a number is a question for the human, not a value to send.
+ */
+export function fieldCommit(control: ControlKind, raw: string): FieldCommit {
+  const trimmed = raw.trim()
+  if (control !== 'number') return { value: trimmed }
+  if (trimmed === '') return { value: null }
+  const parsed = Number(trimmed)
+  if (!Number.isFinite(parsed)) return { error: 'Enter a number, or leave it blank to unset it.' }
+  return { value: parsed }
+}
+
 /** Meta for a field, synthesising per-step model entries not in the static table. */
 function metaFor(key: string): FieldMeta {
   if (isStepModelKey(key)) {

@@ -329,6 +329,9 @@ export function Workspace({
             featureId,
             kind: 'revisit',
             kickoffLine: mergeConflictKickoff(conflict.base, feature.branch, conflict.files),
+            // Resolving means editing the conflicted files, which the talk-session
+            // edit guard denies unless the launch says what it is for (E2E F18).
+            purpose: 'conflict',
           })
         }
         break

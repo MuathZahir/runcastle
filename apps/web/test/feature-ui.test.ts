@@ -14,6 +14,7 @@ import {
   reviewChecks,
   rowChip,
   sessionDoneState,
+  shippedAt,
   shippedQaSessions,
   sortForSidebar,
   testDriveTaken,
@@ -473,6 +474,28 @@ describe('nextStep at review', () => {
       const ns = nextStep(reviewFull({ ticketStatuses: ['pending'] }), { driving: false, conflict })
       expect(ns.primary?.kind).toBe('resolveConflict')
       expect(ns.secondary.find((a) => a.kind === 'merge')?.disabled).toBeTruthy()
+    })
+
+    /**
+     * REPORT 1.6 / E2E F18 — the conflict branch returned before the fix-ticket
+     * branch, so Burn vanished exactly when fix tickets existed. The agent that
+     * hit the conflict emitted "merge main and resolve it" as a ticket, and with
+     * no Burn on screen the only way forward was Iterate.
+     */
+    it('still offers to burn the fix tickets a conflict-resolution agent emitted', () => {
+      const ns = nextStep(reviewFull({ ticketStatuses: ['done', 'pending'] }), {
+        driving: false,
+        conflict,
+      })
+      const burn = ns.secondary.find((a) => a.kind === 'burn')
+      expect(burn?.label).toBe('Burn 1 ticket')
+      // The merge aborted, so the feature branch is intact and the burn can run.
+      expect(burn?.disabled).toBeUndefined()
+    })
+
+    it('offers no burn when there is nothing pending to burn', () => {
+      const ns = nextStep(reviewFull({ ticketStatuses: ['done'] }), { driving: false, conflict })
+      expect(ns.secondary.find((a) => a.kind === 'burn')).toBeUndefined()
     })
 
     it('keeps the test drive and Iterate available (a way out of the state)', () => {
@@ -1617,6 +1640,31 @@ describe('shippedQaSessions', () => {
     const qa = { id: 's2', status: 'live', kind: 'qa', ccSessionId: null }
     const rows = sessions([{ id: 's1', status: 'ended', kind: 'ideation', ccSessionId: 'cc-1' }, qa])
     expect(shippedQaSessions(rows)).toEqual([qa])
+  })
+})
+
+/**
+ * REPORT 1.7 — the shipped hero has never shown a merge time. The merge emits
+ * `feature.shipped` and THEN `feature.status`, and the hero's reverse scan took
+ * the last event of either, so it always landed on the status event.
+ */
+describe('shippedAt', () => {
+  const ev = (id: number, type: string): EventRow =>
+    ({ id, projectId: 'p', ts: id * 1000, type, message: type, data: null }) as EventRow
+
+  it('finds the merge time in a log that ends with feature.status', () => {
+    expect(
+      shippedAt([ev(1, 'merge.started'), ev(2, 'feature.shipped'), ev(3, 'feature.status')]),
+    ).toBe(2000)
+  })
+
+  it('reports nothing for a feature that has not shipped', () => {
+    expect(shippedAt([ev(1, 'burn.started'), ev(2, 'feature.status')])).toBeNull()
+    expect(shippedAt([])).toBeNull()
+  })
+
+  it('takes the latest shipped event when a feature shipped more than once', () => {
+    expect(shippedAt([ev(1, 'feature.shipped'), ev(4, 'feature.shipped')])).toBe(4000)
   })
 })
 

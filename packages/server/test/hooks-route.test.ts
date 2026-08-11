@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { SessionKind } from '@runcastle/core'
 import type { AppCtx } from '../src/db/types'
 import { clearRuntimeCtx, setRuntimeCtx } from '../src/launcher/runtime'
-import { createSessionRow, getSessionRow } from '../src/launcher/sessions'
+import { createSessionRow, getSessionRow, setSessionPurpose } from '../src/launcher/sessions'
 import hooksApp from '../src/routes/hooks'
 import { listAfter, listByProject } from '../src/services/events'
 import { storeTickets } from '../src/services/tickets'
@@ -242,6 +242,52 @@ describe('hooks route', () => {
     it('does not deny another feature`s docs dir by prefix accident', async () => {
       const json = await preTool(talkSession, 'Write', 'docs/features/dark-mode-2/spec.md')
       expect(json.hookSpecificOutput.permissionDecision).toBe('deny')
+    })
+
+    /**
+     * E2E F18 / ADR-0007 §6 — the conflict-resolution session is ordered to
+     * merge the base branch in and resolve the conflicts, and was then denied
+     * every write that means: "Resolve with agent" could not resolve anything.
+     * Only that launch is exempt, and only inside its own worktree.
+     */
+    describe('the conflict-resolution session, which resolves the merge', () => {
+      let conflictSession: string
+
+      beforeEach(() => {
+        conflictSession = createSessionRow(ctx, {
+          featureId,
+          kind: 'revisit',
+          worktreePath: '/wt/dark-mode',
+        }).id
+        setSessionPurpose(conflictSession, 'conflict')
+      })
+
+      it('may write the conflicted files on the feature branch', async () => {
+        for (const path of [
+          '/wt/dark-mode/public/index.html',
+          'src/theme.ts',
+          'docs/features/dark-mode/decisions.md',
+        ]) {
+          expect(await preTool(conflictSession, 'Edit', path)).toEqual({})
+        }
+      })
+
+      it('may not write outside the worktree it was given', async () => {
+        const json = await preTool(conflictSession, 'Write', '/etc/hosts')
+        expect(json.hookSpecificOutput.permissionDecision).toBe('deny')
+        expect(json.hookSpecificOutput.permissionDecisionReason).toMatch(/outside it/i)
+      })
+
+      it('exempts only itself — an ordinary revisit still writes docs only', async () => {
+        const revisit = createSessionRow(ctx, {
+          featureId,
+          kind: 'revisit',
+          worktreePath: '/wt/dark-mode',
+        }).id
+        const json = await preTool(revisit, 'Edit', 'src/theme.ts')
+        expect(json.hookSpecificOutput.permissionDecision).toBe('deny')
+        expect(await preTool(revisit, 'Write', 'docs/features/dark-mode/spec.md')).toEqual({})
+      })
     })
 
     it('leaves a project session alone — it is the one kind that writes code', async () => {

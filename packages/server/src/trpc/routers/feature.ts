@@ -1,4 +1,4 @@
-import { SessionKind } from '@runcastle/core'
+import { SessionKind, SessionPurpose } from '@runcastle/core'
 import * as z from 'zod'
 import {
   converge,
@@ -62,6 +62,7 @@ export const featureRouter = router({
         featureId: z.string(),
         kind: SessionKind,
         kickoffLine: z.string().min(1).optional(),
+        purpose: SessionPurpose.optional(),
       }),
     )
     .mutation(({ ctx, input }) => launchSession(ctx, input)),

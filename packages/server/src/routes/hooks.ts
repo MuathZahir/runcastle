@@ -10,6 +10,7 @@ import {
   markSessionEnded,
   markSessionLive,
   noteKickoffPrompt,
+  sessionPurpose,
 } from '../launcher/sessions'
 import { emit, emitForSession } from '../services/events'
 import { keysToPrepare } from '../services/prep'
@@ -321,6 +322,7 @@ function handlePreToolUse(
 
   const denial = evaluateEditGuard({
     kind: session.kind,
+    purpose: sessionPurpose(session.id),
     worktreePath: session.worktreePath,
     toolName,
     filePath: path,
