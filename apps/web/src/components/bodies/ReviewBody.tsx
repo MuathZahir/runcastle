@@ -1,8 +1,10 @@
 import { useState } from 'react'
 import { Button, CheckLine, SectionTitle } from '../../ui'
 import { trpc } from '../../trpc'
-import type { FeatureFull } from '../../lib/api'
+import type { FeatureFull, SettingsView } from '../../lib/api'
 import type { DriveState } from '../../lib/workspace'
+import { driveCapabilities } from '../../lib/settings'
+import { testDriveExplainer } from '../../lib/vocabulary'
 import {
   latestRun,
   mergeConflictKickoff,
@@ -75,6 +77,13 @@ export function ReviewBody({
   const ownDrive = drive.data?.featureId === feature.id ? drive.data : undefined
   const dryRun = drive.data?.dryRun ?? false
   const checks = reviewChecks({ tickets, run, commitCount: commits.data?.count })
+  // What a drive on THIS project does — a prepared one renders an environment,
+  // runs the setup command and boots a dev server; an unprepared one checks the
+  // branch out and stops. The card used to promise the first to everyone.
+  // (`useQuery().data` infers to `{}` here — the same tRPC-in-component typing
+  // gap the settings overlay documents; the runtime value is a SettingsView.)
+  const settings = trpc.settings.get.useQuery({ projectId: feature.projectId })
+  const caps = driveCapabilities(settings.data as SettingsView | undefined)
 
   return (
     <div className="review-body">
@@ -119,8 +128,7 @@ export function ReviewBody({
           </div>
         ) : (
           <div className="drive-copy">
-            Nothing is running yet. Start the test drive from the next step to boot this branch on
-            its own port and click through the feature yourself — the merge gate wants a human
+            {testDriveExplainer(caps)} Start it from the next step — the merge gate wants a human
             behind the wheel.
           </div>
         )}
