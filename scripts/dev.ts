@@ -7,8 +7,11 @@
  * §2 — verified on Linux). Spawning each package's `dev` script as its own
  * concurrent child sidesteps that: both start immediately, on every platform.
  */
-import { spawn } from 'node:child_process'
+import { execFile, spawn, type SpawnOptions } from 'node:child_process'
+import { promisify } from 'node:util'
 import { devDataDir } from '../packages/core/src/paths.ts'
+
+const execFileAsync = promisify(execFile)
 
 /** Packages whose `dev` script the root launcher starts concurrently. */
 export const DEV_FILTERS = ['@runcastle/server', '@runcastle/web'] as const
@@ -39,6 +42,41 @@ export function devEnv(
   return { ...base, RUNCASTLE_DEV: '1', RUNCASTLE_DATA_DIR: base.RUNCASTLE_DATA_DIR ?? dataDir }
 }
 
+/**
+ * Spawn options for one dev child. Split out as a pure unit because the spawn
+ * itself cannot be observed by a test, and `detached` is load-bearing.
+ *
+ * Each child is `bun run --filter <pkg> dev`, so the process that actually binds
+ * 4512/4513 is its GRANDCHILD. On POSIX a group signal is the only way to reach
+ * it, and a child gets its own group only when detached — otherwise it shares
+ * ours, which a group signal must never name. Windows walks the child list
+ * instead (`taskkill /T`), and `detached` there means a new console window.
+ */
+export function devSpawnOptions(env: NodeJS.ProcessEnv): SpawnOptions {
+  return { stdio: 'inherit', env, detached: process.platform !== 'win32' }
+}
+
+/**
+ * Kill the process tree rooted at `pid`, best-effort. A local copy of
+ * `packages/server/src/pty/kill-tree.ts` — deliberately duplicated rather than
+ * imported, because a repo-root script reaching into a package's internals to
+ * share ten lines costs more than the ten lines.
+ *
+ * Never rejects: a tree that is already gone is the normal case at teardown.
+ */
+export async function killTree(pid: number): Promise<void> {
+  try {
+    if (process.platform === 'win32') {
+      await execFileAsync('taskkill', ['/pid', String(pid), '/T', '/F'], { windowsHide: true })
+    } else {
+      // Negative pid → the whole process group (see `devSpawnOptions`).
+      process.kill(-pid, 'SIGTERM')
+    }
+  } catch {
+    // Already gone, or a pid the OS has since reused — nothing to do either way.
+  }
+}
+
 export function startDev(): void {
   const env = devEnv()
   console.log(`runcastle dev — data dir: ${env.RUNCASTLE_DATA_DIR}`)
@@ -46,14 +84,22 @@ export function startDev(): void {
   // `process.execPath` is the running bun binary — avoids PATH/`.exe` resolution
   // differences between POSIX and Windows.
   const children = DEV_FILTERS.map((filter) =>
-    spawn(process.execPath, devArgs(filter), { stdio: 'inherit', env }),
+    spawn(process.execPath, devArgs(filter), devSpawnOptions(env)),
   )
 
   let down = false
   const stop = (signal: NodeJS.Signals): void => {
     if (down) return
     down = true
-    for (const c of children) c.kill(signal)
+    // Tree first, then the direct child as a backstop: killing the child first
+    // breaks the parent → child link `taskkill /T` walks, which is how a dev
+    // server kept holding 4512 after Ctrl-C — the next run then either failed on
+    // Vite's `strictPort` or was fooled by the stale server still answering
+    // /health.
+    for (const c of children) {
+      if (c.pid === undefined) continue
+      void killTree(c.pid).then(() => c.kill(signal))
+    }
   }
 
   for (const sig of ['SIGINT', 'SIGTERM'] as const) process.on(sig, () => stop(sig))
