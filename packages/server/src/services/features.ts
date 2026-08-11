@@ -418,10 +418,11 @@ export function advance(ctx: AppCtx, featureId: string): Feature {
  *
  * It also accepts a feature at `review` with ≥1 pending (non-terminal) ticket
  * and no active run — the Iterate loop (CONTEXT.md, "Laps: iteration without a
- * mode" — cited by name because the locked-decision numbers get renumbered):
+ * mode"; cited by name because the locked-decision numbers get renumbered):
  * fresh fix tickets emitted during review loop the phase back to
  * `implementation` so the run executes them, and the G4 auto-advance returns
- * the feature to `review` when they finish. Repeatable until the human clicks Merge & ship.
+ * the feature to `review` when they finish. Repeatable until the human clicks
+ * Merge & ship.
  */
 export async function burn(
   ctx: AppCtx,
