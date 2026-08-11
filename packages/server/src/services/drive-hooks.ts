@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process'
+import { killProcessTree } from '../pty/kill-tree'
 
 /**
  * Test-drive hooks — the project's own "bring my environment up / take it down"
@@ -151,6 +152,13 @@ export function runDriveHook(
         env: opts.env ?? process.env,
         windowsHide: true,
         windowsVerbatimArguments: verbatim,
+        // POSIX only, and only so the timeout path has a tree to kill: without
+        // its own process group the hook shares OURS, and the group signal that
+        // reaches its grandchildren would have no group to name (it must never
+        // name the server's). Windows walks the child list instead — and
+        // `detached` there would mean a new console, which `windowsHide` exists
+        // to avoid.
+        detached: process.platform !== 'win32',
       })
     } catch (err) {
       output = err instanceof Error ? err.message : String(err)
@@ -160,12 +168,20 @@ export function runDriveHook(
 
     timer = setTimeout(() => {
       timedOut = true
-      child.kill()
-      // `close` waits for every stdio pipe to shut, which a grandchild that
-      // survived the kill (a detached `ping`, a service the shell spawned) can
-      // hold open forever. Normal completion still resolves on `close` so the
-      // output is complete; a killed hook gets this grace window and then gives
-      // up, because hanging the drive is worse than a truncated log.
+      // Kill the TREE, not just the shell. A hook is a shell command, so the
+      // process actually doing the work (`docker compose`, a seed script) is a
+      // GRANDCHILD: killing the shell alone left it running — holding the port
+      // or lock it took, and holding our stdio pipes open. Tree first, then the
+      // shell as a backstop (the Windows walk needs the parent link intact).
+      const pid = child.pid
+      if (pid === undefined) child.kill()
+      else void killProcessTree(pid).then(() => child.kill())
+      // `close` waits for every stdio pipe to shut. The tree kill closes the
+      // ones a grandchild held, but SIGTERM is a request — a POSIX process that
+      // traps or ignores it can still sit on them (on Windows `taskkill /F` is
+      // not refusable). So a killed hook gets this grace window and then gives
+      // up, because hanging the drive is worse than a truncated log. Normal
+      // completion still resolves on `close`, so that output is complete.
       const grace = setTimeout(() => finish(null), KILL_GRACE_MS)
       grace.unref?.()
     }, timeoutMs)

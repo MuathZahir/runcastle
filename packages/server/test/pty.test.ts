@@ -65,6 +65,16 @@ async function writeEchoRoundtrip(make: () => PtySession, marker: string): Promi
   return data
 }
 
+/** True while `pid` is still a live process (Windows-safe existence probe). */
+function pidAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0)
+    return true
+  } catch {
+    return false
+  }
+}
+
 describe('RingBuffer', () => {
   it('replays pushed chunks in order', () => {
     const rb = new RingBuffer()
@@ -238,5 +248,33 @@ describe.skipIf(!AVAILABLE)('ptyRegistry replay', () => {
       expect(ptyRegistry().has(sessionId)).toBe(false)
     },
     15000,
+  )
+})
+
+/**
+ * Shutdown teardown: `killAllTrees` is what the SIGINT/SIGTERM handler awaits, so
+ * a session PTY that survives it is an orphaned `claude` holding a lock after the
+ * server is gone. That the kill reaches the whole TREE (not just the shell) is
+ * asserted per backend in dev-pane.test.ts, which drives the same registry
+ * teardown; this covers the all-sessions sweep and the entry bookkeeping.
+ */
+describe.skipIf(!AVAILABLE)('ptyRegistry teardown', () => {
+  it(
+    'kills every live PTY and leaves no entry behind',
+    async () => {
+      const ids = [`sess_teardown_a_${Date.now()}`, `sess_teardown_b_${Date.now()}`]
+      const entries = ids.map((sessionId) =>
+        ptyRegistry().create({ sessionId, cmd: SHELL, args: idleArgs(), opts: baseOpts }),
+      )
+      await delay(400)
+      for (const entry of entries) expect(pidAlive(entry.pty.pid)).toBe(true)
+
+      await ptyRegistry().killAllTrees()
+      await delay(400)
+
+      for (const id of ids) expect(ptyRegistry().has(id)).toBe(false)
+      for (const entry of entries) expect(pidAlive(entry.pty.pid)).toBe(false)
+    },
+    20000,
   )
 })

@@ -8,6 +8,7 @@ import {
   buildDocsDigest,
   buildFeatureBrief,
   buildIsolatedSetupCommand,
+  buildBurnAgent,
   buildOtherSideBlock,
   buildSandboxOptions,
   buildTicketJson,
@@ -347,6 +348,38 @@ describe('selectSandbox — provider for the configured sandbox', () => {
     // nothing in the run said so.
     const unsupported = { ...config('docker'), sandbox: 'kata' } as unknown as RuncastleConfig
     expect(() => selectSandbox(unsupported)).toThrow(/refusing to run the agent unsandboxed/)
+  })
+
+  /**
+   * The env handed to the spawned `claude`. A replacement env
+   * (`{ CLAUDE_CODE_OAUTH_TOKEN }` alone) strips HOME/USERPROFILE, and a claude
+   * with no home writes its state to a LITERAL `~/` under its cwd — that is how
+   * a 284 KB transcript for an unrelated project got committed under
+   * `packages/server/`. In a container the opposite holds: the host env must not
+   * cross the boundary, because both providers turn this map into `-e` flags.
+   */
+  describe('buildBurnAgent — child environment', () => {
+    const homeKeys = ['HOME', 'USERPROFILE'] as const
+
+    it('keeps the host environment alongside the token when running on the host', () => {
+      const env = buildBurnAgent(config('noSandbox'), 'sk-token', 'opus').env
+
+      expect(env.CLAUDE_CODE_OAUTH_TOKEN).toBe('sk-token')
+      const present = homeKeys.filter((key) => process.env[key] !== undefined)
+      expect(present.length, 'this host has neither HOME nor USERPROFILE').toBeGreaterThan(0)
+      for (const key of present) expect(env[key]).toBe(process.env[key])
+    })
+
+    it('keeps the host environment when there is no token to pass', () => {
+      const env = buildBurnAgent(config('noSandbox'), undefined, 'opus').env
+      expect(env.CLAUDE_CODE_OAUTH_TOKEN).toBeUndefined()
+      expect(env.PATH ?? env.Path).toBeDefined()
+    })
+
+    it('sends only the overrides into a container, never the host env', () => {
+      const env = buildBurnAgent(config('docker'), 'sk-token', 'opus').env
+      expect(env).toEqual({ CLAUDE_CODE_OAUTH_TOKEN: 'sk-token' })
+    })
   })
 
   describe('buildSandboxOptions — container resource wiring', () => {

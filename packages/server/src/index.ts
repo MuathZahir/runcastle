@@ -18,6 +18,7 @@ import { terminalWebSocket, tryUpgradeTerminal } from './pty/ws'
 import hooksApp from './routes/hooks'
 import streamApp from './routes/stream'
 import { mountWebAppIfBuilt } from './routes/web'
+import { createShutdown } from './shutdown'
 import { appRouter } from './trpc/router'
 import { reconcileStaleRuns } from './workflows/reconcile-runs'
 
@@ -132,11 +133,11 @@ export async function startServer(): Promise<void> {
   const g = globalThis as typeof globalThis & { [SHUTDOWN_KEY]?: boolean }
   if (!g[SHUTDOWN_KEY]) {
     g[SHUTDOWN_KEY] = true
-    const shutdown = (): void => {
-      ptyRegistry().killAll()
-      server.stop()
-      process.exit(0)
-    }
+    const shutdown = createShutdown({
+      killAllTrees: () => ptyRegistry().killAllTrees(),
+      stop: () => server.stop(),
+      exit: (code) => process.exit(code),
+    })
     process.on('SIGINT', shutdown)
     process.on('SIGTERM', shutdown)
   }
