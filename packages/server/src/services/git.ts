@@ -1427,7 +1427,7 @@ export async function testDrive(
     const devPaneId = testDriveState.devPaneId
     // Kill the whole dev-server process tree first so its port is freed with no
     // orphan (the drive owns the pane; its URL is cleared when state resets).
-    if (devPaneId) stopDevPane(devPaneId)
+    if (devPaneId) await stopDevPane(devPaneId)
 
     // Teardown runs BEFORE the switch back, while the feature branch is still
     // checked out: the environment being torn down belongs to that branch, and
@@ -1724,7 +1724,7 @@ async function stopDryRun(
   const scope: EmitScope = { projectId: project.id }
   // The pane dies first so the dev server has released its port by the time the
   // stop hook goes looking for the things it has to drop.
-  if (state.devPaneId) stopDevPane(state.devPaneId)
+  if (state.devPaneId) await stopDevPane(state.devPaneId)
 
   const teardown = await runDriveHookStep(
     ctx,
