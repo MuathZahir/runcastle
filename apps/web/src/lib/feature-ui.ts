@@ -1170,6 +1170,18 @@ export function nextStep(
           kind: 'merge',
           disabled: 'Resolve the merge conflict first — this merge will fail again',
         }
+        // This branch returns before the fix-ticket branch below, so a conflict
+        // used to make Burn vanish exactly when fix tickets existed — the same
+        // vanishing act the comment above forbids, and the dead end the audit
+        // walked into (E2E F18): the conflict-resolution agent emitted "merge
+        // main and resolve it" as a ticket, and with no Burn on screen the only
+        // way forward was Iterate, restarting the whole feature. A conflict is a
+        // LANDING failure — the merge aborted, so the feature branch itself is
+        // intact and its tickets are as burnable as they are three lines below.
+        const burnFixTickets: NextAction[] =
+          pending > 0
+            ? [{ label: `Burn ${pending} ticket${pending === 1 ? '' : 's'}`, kind: 'burn' }]
+            : []
         return {
           kick: 'MERGE CONFLICT',
           title: 'Resolve the merge conflict',
@@ -1181,7 +1193,7 @@ export function nextStep(
           primary: live
             ? undefined
             : { label: 'Resolve the merge conflict', kind: 'resolveConflict' },
-          secondary: [blockedMerge, testDriveAction, ...iterate],
+          secondary: [...burnFixTickets, blockedMerge, testDriveAction, ...iterate],
           busy: false,
           ...driveWarning,
         }

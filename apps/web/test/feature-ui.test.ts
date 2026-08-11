@@ -476,6 +476,28 @@ describe('nextStep at review', () => {
       expect(ns.secondary.find((a) => a.kind === 'merge')?.disabled).toBeTruthy()
     })
 
+    /**
+     * REPORT 1.6 / E2E F18 — the conflict branch returned before the fix-ticket
+     * branch, so Burn vanished exactly when fix tickets existed. The agent that
+     * hit the conflict emitted "merge main and resolve it" as a ticket, and with
+     * no Burn on screen the only way forward was Iterate.
+     */
+    it('still offers to burn the fix tickets a conflict-resolution agent emitted', () => {
+      const ns = nextStep(reviewFull({ ticketStatuses: ['done', 'pending'] }), {
+        driving: false,
+        conflict,
+      })
+      const burn = ns.secondary.find((a) => a.kind === 'burn')
+      expect(burn?.label).toBe('Burn 1 ticket')
+      // The merge aborted, so the feature branch is intact and the burn can run.
+      expect(burn?.disabled).toBeUndefined()
+    })
+
+    it('offers no burn when there is nothing pending to burn', () => {
+      const ns = nextStep(reviewFull({ ticketStatuses: ['done'] }), { driving: false, conflict })
+      expect(ns.secondary.find((a) => a.kind === 'burn')).toBeUndefined()
+    })
+
     it('keeps the test drive and Iterate available (a way out of the state)', () => {
       const ns = nextStep(reviewFull({}), { driving: false, conflict })
       expect(labels(ns.secondary)).toContain('Start test drive')
