@@ -468,6 +468,11 @@ function ConflictCard({
               featureId,
               kind: 'revisit',
               kickoffLine: mergeConflictKickoff(conflict.base, branch, conflict.files),
+              // The purpose is what lets the session actually do what the kickoff
+              // asks: the edit guard exempts its writes while the merge below is
+              // in progress in the talk worktree.
+              purpose: 'resolve-conflict',
+              purposeData: { mergeFrom: conflict.base, mergeInto: branch },
             })
           }
         >

@@ -1,4 +1,4 @@
-import type { SessionKind, SessionRow } from '@runcastle/core'
+import type { MergeBranchPair, SessionKind, SessionPurpose, SessionRow } from '@runcastle/core'
 import { newId } from '@runcastle/core'
 import { and, desc, eq, inArray, isNotNull, sql } from 'drizzle-orm'
 import type { AppCtx } from '../db/types'
@@ -25,6 +25,10 @@ import { getFeatureRow, getProjectById, rowToSession } from '../services/repo'
 export type CreateSessionInput = {
   kind: SessionKind
   worktreePath: string
+  /** The errand this session was opened on, when `kind` cannot say it (see {@link SessionPurpose}). */
+  purpose?: SessionPurpose
+  /** The purpose's data — for `resolve-conflict`, the branch pair being merged. */
+  purposeData?: MergeBranchPair
 } & ({ featureId: string; projectId?: never } | { projectId: string; featureId?: never })
 
 /** Insert a fresh session row in the `launching` state; returns it (with id). */
@@ -39,6 +43,8 @@ export function createSessionRow(ctx: AppCtx, input: CreateSessionInput): Sessio
       // `prepare` session has no feature to take one from (ADR-0010 §7).
       lap: input.featureId ? getFeatureRow(ctx, input.featureId).lap : 1,
       kind: input.kind,
+      purpose: input.purpose ?? null,
+      purposeData: input.purposeData ?? null,
       ccSessionId: null,
       transcriptPath: null,
       status: 'launching',

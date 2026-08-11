@@ -1,5 +1,5 @@
 import { isAbsolute, relative, resolve } from 'node:path'
-import type { SessionKind } from '@runcastle/core'
+import type { SessionKind, SessionPurpose } from '@runcastle/core'
 import { featureDocsRel } from '@runcastle/core/paths'
 
 /**
@@ -21,6 +21,14 @@ import { featureDocsRel } from '@runcastle/core/paths'
  *
  * The one exempt kind is `project`: decision 18 gives it whole-repo write access
  * on a runcastle-owned branch, and its commits are the point of the session.
+ *
+ * The one exempt PURPOSE is `resolve-conflict`, and only while a merge is
+ * actually in progress in the session's worktree. Both conflict-resolve launch
+ * sites brief their agent to merge, resolve the conflicts and commit — work this
+ * guard used to deny outright, so the agent either wedged or bypassed it with
+ * shell scripts. The exemption is scoped to the in-progress merge rather than
+ * granted to the session, so it is self-limiting: the moment the merge commit
+ * lands, the guard snaps back to docs-only.
  */
 
 /** The tools this guard is registered for (Claude Code's file-write surface). */
@@ -39,6 +47,14 @@ export function guardsEdits(kind: SessionKind): boolean {
 
 export interface EditGuardInput {
   kind: SessionKind
+  /** The session's errand, when it has one — `resolve-conflict` is the exempt purpose. */
+  purpose?: SessionPurpose
+  /**
+   * Is a merge in progress in the session's worktree (`MERGE_HEAD` exists)? The
+   * probe is git IO, so the caller runs it and this stays pure — see
+   * `handlePreToolUse`, which only asks when the purpose could use the answer.
+   */
+  mergeInProgress?: boolean
   /** `tool_name` from the hook payload. */
   toolName?: string
   /** `tool_input.file_path` / `notebook_path` — may be relative to the cwd. */
@@ -62,6 +78,10 @@ export interface EditDenial {
  */
 export function evaluateEditGuard(input: EditGuardInput): EditDenial | null {
   if (!guardsEdits(input.kind)) return null
+  // The merge being resolved is what the session was opened for: while it is in
+  // progress, ANY path is fair game (the content comes from the two sides of the
+  // merge, not from the agent deciding to write code).
+  if (input.purpose === 'resolve-conflict' && input.mergeInProgress) return null
   if (!input.toolName || !(EDIT_TOOLS as readonly string[]).includes(input.toolName)) return null
   if (!input.filePath) return null
 

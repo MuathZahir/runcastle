@@ -1,7 +1,16 @@
 import { existsSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import type { Feature, Project, Run, SessionKind, SessionRow, Waypoint } from '@runcastle/core'
+import type {
+  Feature,
+  MergeBranchPair,
+  Project,
+  Run,
+  SessionKind,
+  SessionPurpose,
+  SessionRow,
+  Waypoint,
+} from '@runcastle/core'
 import { worktreeDir } from '@runcastle/core/paths'
 import { nextGate, nextPhase, resolveModel } from '@runcastle/core'
 import { and, eq } from 'drizzle-orm'
@@ -94,6 +103,15 @@ export interface LaunchSessionInput {
    * here — e.g. a revisit told to resolve a merge conflict or iterate on review.
    */
   kickoffLine?: string
+  /**
+   * The errand this session is opened on, when its `kind` cannot express it.
+   * Both conflict-resolve launch sites pass `resolve-conflict` (with the branch
+   * pair below), which is what lets the edit guard exempt the session's writes
+   * while the merge is in progress — the kickoff briefs it to resolve and commit.
+   */
+  purpose?: SessionPurpose
+  /** The merge a `resolve-conflict` session is about (base → feature, or ticket branch → feature). */
+  purposeData?: MergeBranchPair
 }
 
 export interface LaunchSessionOptions {
@@ -361,6 +379,8 @@ export async function launchSession(
   const session = createSessionRow(ctx, {
     featureId: feature.id,
     kind: input.kind,
+    purpose: input.purpose,
+    purposeData: input.purposeData,
     worktreePath,
   })
 

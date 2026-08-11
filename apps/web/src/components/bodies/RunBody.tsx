@@ -308,6 +308,13 @@ function Lane({
                     featureBranch,
                     files: conflict,
                   }),
+                  // Same exemption as the review card's resolve, about the other
+                  // merge: this one lands the ticket branch on the feature branch.
+                  purpose: 'resolve-conflict',
+                  purposeData: {
+                    mergeFrom: ticket.attemptBranch ?? '',
+                    mergeInto: featureBranch,
+                  },
                 })
               }}
             >

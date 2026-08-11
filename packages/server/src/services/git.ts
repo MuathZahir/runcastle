@@ -2106,6 +2106,26 @@ async function conflictedFiles(g: SimpleGit): Promise<string[]> {
   }
 }
 
+/**
+ * Is a merge in progress in the checkout at `worktreePath`? The edit guard's
+ * probe (a `resolve-conflict` session may write files only while its merge is
+ * unresolved), asked of a path rather than of a `SimpleGit` the caller had to
+ * build.
+ *
+ * Deliberately a git question, not a file test: a talk worktree's `.git` is a
+ * FILE pointing at the real git dir, so `<worktree>/.git/MERGE_HEAD` never
+ * exists there and a naive check would deny every resolve. Never throws — a
+ * worktree that has been removed, or a path that was never a repo, answers
+ * false, which just means the guard applies its ordinary rules.
+ */
+export async function mergeInProgressAt(worktreePath: string): Promise<boolean> {
+  try {
+    return await mergeInProgress(git(worktreePath))
+  } catch {
+    return false
+  }
+}
+
 /** True iff a merge is currently in progress (MERGE_HEAD present). */
 async function mergeInProgress(g: SimpleGit): Promise<boolean> {
   try {
