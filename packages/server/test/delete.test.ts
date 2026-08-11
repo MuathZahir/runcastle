@@ -28,6 +28,7 @@ import {
 import { listAfter, listByProject } from '../src/services/events'
 import { deleteFeature } from '../src/services/features'
 import { __resetTestDriveState, createFeatureBranch, ensureTalkWorktree, testDrive } from '../src/services/git'
+import { useDataDir } from './helpers/data-dir'
 import { makeTestCtx } from './helpers/db'
 import { seedFeature, seedProject } from './helpers/fixtures'
 
@@ -155,15 +156,11 @@ function rowCount(ctx: AppCtx, table: unknown, featureId: string): number {
 describe('feature delete', () => {
   let ctx: AppCtx
   let project: Project
-  let prevHome: string | undefined
-  let prevUserProfile: string | undefined
+  let restoreDataDir: () => void
 
   beforeEach(async () => {
     const home = mkTmp('rc-home-')
-    prevHome = process.env.HOME
-    prevUserProfile = process.env.USERPROFILE
-    process.env.HOME = home
-    process.env.USERPROFILE = home
+    restoreDataDir = useDataDir(home)
 
     __resetTestDriveState()
     ctx = await makeTestCtx()
@@ -173,8 +170,7 @@ describe('feature delete', () => {
   })
 
   afterEach(() => {
-    process.env.HOME = prevHome
-    process.env.USERPROFILE = prevUserProfile
+    restoreDataDir()
     __resetTestDriveState()
     while (tmpDirs.length) {
       const dir = tmpDirs.pop()
