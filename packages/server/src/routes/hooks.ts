@@ -12,7 +12,7 @@ import {
   noteKickoffPrompt,
 } from '../launcher/sessions'
 import { emit, emitForSession } from '../services/events'
-import { mergeInProgressAt } from '../services/git'
+import { isAncestor, mergeInProgressAt } from '../services/git'
 import { keysToPrepare } from '../services/prep'
 import { getProjectById, tryGetFeature } from '../services/repo'
 import { listByFeature } from '../services/tickets'
@@ -99,7 +99,7 @@ hooks.post('/:event', async (c) => {
       case 'user-prompt':
         return c.json(handleUserPrompt(ctx, sessionId, feature, body.payload))
       case 'session-end':
-        return c.json(handleSessionEnd(ctx, sessionId, feature))
+        return c.json(await handleSessionEnd(ctx, session, feature))
       case 'pre-tool':
         return c.json(await handlePreToolUse(session, feature, body.payload))
       default:
@@ -287,17 +287,52 @@ function handleUserPrompt(
   }
 }
 
-function handleSessionEnd(ctx: AppCtx, sessionId: string, feature: Feature): unknown {
-  markSessionEnded(ctx, sessionId)
+async function handleSessionEnd(
+  ctx: AppCtx,
+  session: SessionRow,
+  feature: Feature,
+): Promise<unknown> {
+  markSessionEnded(ctx, session.id)
   // A waypoint session that ended without calling resolve_waypoint auto-releases
   // its waypoint back to the frontier (SPEC §13.2); no-op otherwise.
-  releaseForSession(ctx, sessionId)
+  releaseForSession(ctx, session.id)
   emit(ctx, feature.id, {
     type: 'session.ended',
     message: 'session ended',
-    data: { sessionId },
+    data: { sessionId: session.id },
   })
+  await noteResolvedMerge(ctx, session, feature)
   return {}
+}
+
+/**
+ * Did a `resolve-conflict` session land the merge it was opened for? The
+ * standing conflict is derived from the event feed, so a resolution nothing
+ * emits about leaves the card up forever (the deadlock this feature fixes) —
+ * this is the event that clears it, decided from the worktree's real git state
+ * rather than from the agent saying it was done.
+ *
+ * Best-effort on purpose: teardown outranks detection. A probe that cannot run
+ * (worktree gone, branch renamed) just means no event, and the enabled "Retry
+ * Merge & ship" is the human's way through — see decision 2.
+ */
+async function noteResolvedMerge(
+  ctx: AppCtx,
+  session: SessionRow,
+  feature: Feature,
+): Promise<void> {
+  const pair = session.purpose === 'resolve-conflict' ? session.purposeData : undefined
+  if (!pair) return
+  try {
+    if (!(await isAncestor(session.worktreePath, pair.mergeFrom, pair.mergeInto))) return
+    emit(ctx, feature.id, {
+      type: 'merge.resolved',
+      message: `merge conflict resolved — ${pair.mergeFrom} is in ${pair.mergeInto}`,
+      data: { sessionId: session.id, ...pair },
+    })
+  } catch {
+    // never break session teardown over the timeline entry
+  }
 }
 
 /**

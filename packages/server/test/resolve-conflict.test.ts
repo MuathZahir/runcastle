@@ -11,6 +11,7 @@ import { launchSession } from '../src/launcher/launcher'
 import { clearRuntimeCtx, setRuntimeCtx } from '../src/launcher/runtime'
 import { createSessionRow, getSessionRow } from '../src/launcher/sessions'
 import hooksApp from '../src/routes/hooks'
+import { listAfter } from '../src/services/events'
 import { createFeatureBranch, isAncestor } from '../src/services/git'
 import { makeTestCtx } from './helpers/db'
 import { seedFeature, seedProject } from './helpers/fixtures'
@@ -254,6 +255,112 @@ describe('pre-tool — a resolve-conflict session against a real worktree', () =
     const json = await preTool(orphan, '/wt/gone/src/theme.ts')
     expect(json.hookSpecificOutput.permissionDecision).toBe('deny')
     expect(await preTool(orphan, 'docs/features/gone/spec.md')).toEqual({})
+  })
+})
+
+/**
+ * Session end for a resolve-conflict session (decision 2a). The conflict is
+ * derived from the event feed, so the only way a resolved conflict ever clears
+ * itself is an event saying so — emitted here, from real git state, when the
+ * session that was opened to land the merge ends with it landed.
+ */
+describe('session-end — merge.resolved when the resolver landed the merge', () => {
+  let ctx: AppCtx
+  let featureId: string
+  let worktree: string
+  let repo: string
+
+  beforeEach(async () => {
+    ctx = await makeTestCtx()
+    repo = mkTmp('runcastle-resolved-repo-')
+    git(repo, 'init', '-b', 'main')
+    git(repo, 'config', 'user.email', 'test@runcastle.dev')
+    git(repo, 'config', 'user.name', 'Runcastle Test')
+    git(repo, 'config', 'core.autocrlf', 'false')
+    writeFileSync(join(repo, 'vitest.config.ts'), 'export default {}\n')
+    git(repo, 'add', '.')
+    git(repo, 'commit', '-m', 'initial commit')
+
+    git(repo, 'branch', 'feature/dark-mode')
+    writeFileSync(join(repo, 'vitest.config.ts'), 'export default { main: true }\n')
+    git(repo, 'commit', '-am', 'main moves')
+
+    worktree = join(mkTmp('runcastle-resolved-wt-'), 'dark-mode')
+    git(repo, 'worktree', 'add', worktree, 'feature/dark-mode')
+    writeFileSync(join(worktree, 'vitest.config.ts'), 'export default { feature: true }\n')
+    git(worktree, 'commit', '-am', 'feature moves')
+
+    const project = seedProject(ctx, repo)
+    featureId = seedFeature(ctx, project.id, { slug: 'dark-mode', phase: 'review' }).id
+    setRuntimeCtx(ctx)
+  })
+
+  afterEach(() => clearRuntimeCtx())
+
+  function resolveSession(overrides: Partial<Parameters<typeof createSessionRow>[1]> = {}): string {
+    return createSessionRow(ctx, {
+      featureId,
+      kind: 'revisit',
+      purpose: 'resolve-conflict',
+      purposeData: { mergeFrom: 'main', mergeInto: 'feature/dark-mode' },
+      worktreePath: worktree,
+      ...overrides,
+    }).id
+  }
+
+  async function endSession(id: string): Promise<any> {
+    const app = new Hono()
+    app.route('/api/hooks', hooksApp)
+    const res = await app.request('/api/hooks/session-end', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ sessionId: id, payload: { hook_event_name: 'SessionEnd' } }),
+    })
+    return res.json()
+  }
+
+  const resolved = () => listAfter(ctx, featureId, 0).filter((e) => e.type === 'merge.resolved')
+
+  /** Resolve the conflicting merge exactly as the session's agent is briefed to. */
+  function landTheMerge(): void {
+    expect(() => git(worktree, 'merge', 'main')).toThrow()
+    writeFileSync(join(worktree, 'vitest.config.ts'), 'export default { both: true }\n')
+    git(worktree, 'commit', '-am', 'resolve the merge')
+  }
+
+  it('emits merge.resolved with the branch pair once the merge is in', async () => {
+    landTheMerge()
+    expect(await endSession(resolveSession())).toEqual({})
+
+    expect(resolved()).toHaveLength(1)
+    expect(resolved()[0]?.data).toMatchObject({
+      mergeFrom: 'main',
+      mergeInto: 'feature/dark-mode',
+    })
+  })
+
+  it('emits nothing when the session ended with the merge unresolved', async () => {
+    expect(() => git(worktree, 'merge', 'main')).toThrow()
+    await endSession(resolveSession())
+    expect(resolved()).toHaveLength(0)
+  })
+
+  it('leaves an ordinary session alone even with the merge landed', async () => {
+    landTheMerge()
+    await endSession(
+      createSessionRow(ctx, { featureId, kind: 'revisit', worktreePath: worktree }).id,
+    )
+    expect(resolved()).toHaveLength(0)
+  })
+
+  /** Teardown outranks detection: a probe that cannot run still ends the session. */
+  it('still ends the session when the worktree cannot be probed', async () => {
+    const id = resolveSession({ worktreePath: join(tmpdir(), 'runcastle-does-not-exist', 'gone') })
+    expect(await endSession(id)).toEqual({})
+
+    expect(getSessionRow(ctx, id)?.status).toBe('ended')
+    expect(resolved()).toHaveLength(0)
+    expect(listAfter(ctx, featureId, 0).filter((e) => e.type === 'session.ended')).toHaveLength(1)
   })
 })
 
