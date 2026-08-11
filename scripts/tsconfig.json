@@ -1,0 +1,10 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "types": ["bun-types"],
+    // The scripts are run directly by bun, so they import sibling package
+    // sources by their real `.ts` paths rather than through package exports.
+    "allowImportingTsExtensions": true
+  },
+  "include": ["."]
+}
