@@ -44,14 +44,16 @@ export function SettingsOverlay({
   }, [onClose])
 
   return (
-    <div className="peek-backdrop" onClick={onClose}>
-      <div
-        className="peek settings"
-        role="dialog"
-        aria-modal="true"
-        aria-label="Settings"
-        onClick={(e) => e.stopPropagation()}
-      >
+    <div
+      className="peek-backdrop"
+      // mousedown, not click: a click that STARTS inside the panel and ends on
+      // the backdrop (selecting a field value and releasing outside) is not a
+      // dismissal — the same guard FormOverlay makes.
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) onClose()
+      }}
+    >
+      <div className="peek settings" role="dialog" aria-modal="true" aria-label="Settings">
         <div className="peek-head">
           <span className="settings-title">Settings</span>
           <button className="peek-close" onClick={onClose} aria-label="Close (Esc)">

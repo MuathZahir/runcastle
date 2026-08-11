@@ -65,13 +65,20 @@ export function DirectoryPicker({
   }
 
   return (
-    <div className="peek-backdrop" onClick={onCancel}>
+    <div
+      className="peek-backdrop"
+      // mousedown, not click: a click that STARTS inside the panel and ends on
+      // the backdrop (selecting a path and releasing outside) is not a
+      // dismissal — the same guard FormOverlay makes.
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) onCancel()
+      }}
+    >
       <div
         className="peek dir-picker"
         role="dialog"
         aria-modal="true"
         aria-label="Choose a repository"
-        onClick={(e) => e.stopPropagation()}
       >
         <div className="peek-head">
           <span className="dir-picker-title">Choose a repository</span>
