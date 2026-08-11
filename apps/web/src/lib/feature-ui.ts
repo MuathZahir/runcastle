@@ -1453,3 +1453,20 @@ export function shippedQaSessions(sessions: FeatureFull['sessions']): FeatureFul
   const qa = sessions.filter((s) => s.kind === 'qa')
   return qa.some((s) => s.status !== 'ended' || !!s.ccSessionId) ? qa : []
 }
+
+/**
+ * When the branch landed — the `ts` of the feature's latest `feature.shipped`
+ * event, or null when the log carries none (the feature isn't merged, or the
+ * event predates the log this view holds).
+ *
+ * `feature.shipped` is the only event that records the merge. The hero used to
+ * take the last event of `feature.shipped | merge.conflict | feature.status`,
+ * but the merge emits `feature.shipped` and THEN `feature.status`, so the
+ * reverse scan always landed on the status event and the shipped hero has never
+ * shown a merge time. The server reads the same fact the same way
+ * (`latestEventTs(ctx, id, 'feature.shipped')`). `events` must be in id order.
+ */
+export function shippedAt(events: EventRow[]): number | null {
+  const shipped = [...events].reverse().find((e) => e.type === 'feature.shipped')
+  return shipped ? shipped.ts : null
+}

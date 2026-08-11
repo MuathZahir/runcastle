@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { EventRow, Ticket } from '@runcastle/core'
 import { trpc } from '../../trpc'
 import { useToast } from '../../lib/toast'
+import { eventLevel } from '../../lib/activity'
 import { useEventLog } from '../../lib/events'
 import { useLivePoll } from '../../lib/live'
 import { ticketConflictKickoff } from '../../lib/feature-ui'
@@ -406,7 +407,7 @@ function EventStream({ events }: { events: EventRow[] }) {
     <div className="stream-body" ref={scrollRef} onScroll={onScroll}>
       {events.length === 0 && <DimLine>waiting for events…</DimLine>}
       {events.map((e) => (
-        <div key={e.id} className={`stream-line level-${eventLevel(e.type)}`}>
+        <div key={e.id} className={`stream-line level-${eventLevel(e)}`}>
           <span className="sl-time">{fmtTime(e.ts)}</span>
           <span className="sl-type">{e.type}</span>
           <span className="sl-msg">{e.message}</span>
@@ -419,18 +420,6 @@ function EventStream({ events }: { events: EventRow[] }) {
       )}
     </div>
   )
-}
-
-/** Colour class from the event type keyword. */
-function eventLevel(type: string): 'error' | 'ok' | 'active' | 'info' {
-  // In-loop conflict resolution is progress, not failure — checked before the
-  // generic `conflict` keyword, which would otherwise paint the whole resolve red.
-  if (type === 'merge.conflict.resolved') return 'ok'
-  if (type === 'merge.conflict.resolving') return 'active'
-  if (/(error|fail|conflict|cancel|stopped)/i.test(type)) return 'error'
-  if (/(done|succeed|finished|shipped|merged)/i.test(type)) return 'ok'
-  if (/(start|burn|launch|advance|running|retry|resum)/i.test(type)) return 'active'
-  return 'info'
 }
 
 /** Best-effort per-ticket duration from its first→last event timestamps. */

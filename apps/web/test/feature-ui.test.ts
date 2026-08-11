@@ -14,6 +14,7 @@ import {
   reviewChecks,
   rowChip,
   sessionDoneState,
+  shippedAt,
   shippedQaSessions,
   sortForSidebar,
   testDriveTaken,
@@ -1617,6 +1618,31 @@ describe('shippedQaSessions', () => {
     const qa = { id: 's2', status: 'live', kind: 'qa', ccSessionId: null }
     const rows = sessions([{ id: 's1', status: 'ended', kind: 'ideation', ccSessionId: 'cc-1' }, qa])
     expect(shippedQaSessions(rows)).toEqual([qa])
+  })
+})
+
+/**
+ * REPORT 1.7 — the shipped hero has never shown a merge time. The merge emits
+ * `feature.shipped` and THEN `feature.status`, and the hero's reverse scan took
+ * the last event of either, so it always landed on the status event.
+ */
+describe('shippedAt', () => {
+  const ev = (id: number, type: string): EventRow =>
+    ({ id, projectId: 'p', ts: id * 1000, type, message: type, data: null }) as EventRow
+
+  it('finds the merge time in a log that ends with feature.status', () => {
+    expect(
+      shippedAt([ev(1, 'merge.started'), ev(2, 'feature.shipped'), ev(3, 'feature.status')]),
+    ).toBe(2000)
+  })
+
+  it('reports nothing for a feature that has not shipped', () => {
+    expect(shippedAt([ev(1, 'burn.started'), ev(2, 'feature.status')])).toBeNull()
+    expect(shippedAt([])).toBeNull()
+  })
+
+  it('takes the latest shipped event when a feature shipped more than once', () => {
+    expect(shippedAt([ev(1, 'feature.shipped'), ev(4, 'feature.shipped')])).toBe(4000)
   })
 })
 

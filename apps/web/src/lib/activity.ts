@@ -1,4 +1,4 @@
-import type { EventRow } from '@runcastle/core'
+import type { EventRow, RunStatus } from '@runcastle/core'
 
 /**
  * What the inspector's Activity feed renders for one event (findings F10.5,
@@ -103,4 +103,48 @@ export function activityLine(
   // Worth opening only when the summary genuinely dropped something.
   const detail = plain === summary ? null : plain
   return { summary: summary || event.type, detail }
+}
+
+// --- the run stream's colour ------------------------------------------------
+
+/** What colour class an event line reads as. */
+export type EventLevel = 'error' | 'ok' | 'active' | 'info'
+
+/**
+ * The terminal status a `run.finished` event carries, or `null` for any other
+ * event (and for a payload that predates the field). The runner writes it into
+ * `data` when it finalizes a run — the same payload the desktop notification
+ * reads, and the only place the outcome is actually recorded.
+ */
+export function runFinishedStatus(event: Pick<EventRow, 'type' | 'data'>): RunStatus | null {
+  if (event.type !== 'run.finished') return null
+  if (typeof event.data !== 'object' || event.data === null) return null
+  const status = (event.data as Record<string, unknown>).status
+  if (status === 'succeeded' || status === 'failed' || status === 'cancelled') return status
+  return null
+}
+
+/**
+ * Colour class for one event line in the run stream.
+ *
+ * A finished run is the one event whose type says nothing about how it went:
+ * `run.finished` is the type whether the burn succeeded, failed or was
+ * cancelled, so the keyword scan below painted every ended burn green — a
+ * failed burn rendered as success while the desktop notification, reading the
+ * same event's payload, said "Burn failed". The structured status wins wherever
+ * it exists; the keyword scan is the fallback for the events that carry none.
+ */
+export function eventLevel(event: Pick<EventRow, 'type' | 'data'>): EventLevel {
+  const status = runFinishedStatus(event)
+  if (status) return status === 'succeeded' ? 'ok' : 'error'
+
+  const type = event.type
+  // In-loop conflict resolution is progress, not failure — checked before the
+  // generic `conflict` keyword, which would otherwise paint the whole resolve red.
+  if (type === 'merge.conflict.resolved') return 'ok'
+  if (type === 'merge.conflict.resolving') return 'active'
+  if (/(error|fail|conflict|cancel|stopped)/i.test(type)) return 'error'
+  if (/(done|succeed|finished|shipped|merged)/i.test(type)) return 'ok'
+  if (/(start|burn|launch|advance|running|retry|resum)/i.test(type)) return 'active'
+  return 'info'
 }
