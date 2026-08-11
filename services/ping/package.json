@@ -1,0 +1,14 @@
+{
+  "name": "@runcastle/ping",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "deploy": "wrangler deploy",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "5.20260811.1",
+    "wrangler": "4.121.0"
+  }
+}

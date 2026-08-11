@@ -66,6 +66,17 @@ describe('README for strangers', () => {
     expect(README).toMatch(/pty\.node|node-pty/i)
   })
 
+  // The audience greps a new tool for phone-home code. The README has to name
+  // the endpoint, the whole payload, and the opt-out before they find it.
+  it('discloses the usage signal payload and the DO_NOT_TRACK opt-out', () => {
+    expect(README).toMatch(/usage signal/i)
+    expect(README).toContain('https://ping.runcastle.dev/ping')
+    expect(README).toContain('installId')
+    expect(README).toContain('platform')
+    expect(README).toContain('~/.runcastle/install-id')
+    expect(README).toContain('DO_NOT_TRACK')
+  })
+
   it('has dropped the old status / dev-log content', () => {
     expect(README).not.toMatch(/smoke-passing/i)
     expect(README).not.toMatch(/109 tests/i)
