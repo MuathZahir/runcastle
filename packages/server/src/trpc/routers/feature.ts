@@ -1,4 +1,4 @@
-import { SessionKind } from '@runcastle/core'
+import { MergeBranchPair, SessionKind, SessionPurpose } from '@runcastle/core'
 import * as z from 'zod'
 import {
   converge,
@@ -56,12 +56,17 @@ export const featureRouter = router({
   // `kickoffLine` is the per-purpose kickoff override (ticket 3 mechanism): the
   // review-phase Iterate action passes its review-iteration briefing here so the
   // revisit session opens on the right first move instead of the generic line.
+  // `purpose` + `purposeData` say what the session was opened to DO, which the
+  // briefing alone could not: both conflict-resolve sites mark their session
+  // `resolve-conflict` and name the merge, so the edit guard can let it write.
   launchSession: publicProcedure
     .input(
       z.object({
         featureId: z.string(),
         kind: SessionKind,
         kickoffLine: z.string().min(1).optional(),
+        purpose: SessionPurpose.optional(),
+        purposeData: MergeBranchPair.optional(),
       }),
     )
     .mutation(({ ctx, input }) => launchSession(ctx, input)),

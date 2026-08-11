@@ -78,6 +78,8 @@ export function rowToSession(row: SessionSelect): SessionRow {
     featureId: row.featureId ?? undefined,
     projectId: row.projectId ?? undefined,
     kind: row.kind,
+    purpose: row.purpose ?? undefined,
+    purposeData: row.purposeData ?? undefined,
     ccSessionId: row.ccSessionId ?? undefined,
     transcriptPath: row.transcriptPath ?? undefined,
     status: row.status,
