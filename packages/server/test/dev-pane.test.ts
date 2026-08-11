@@ -1,6 +1,9 @@
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { delimiter, dirname, join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { createNativePtySession } from '../src/pty/pty'
-import { ptyRegistry } from '../src/pty/registry'
+import { ptyRegistry, type TerminalSink } from '../src/pty/registry'
 import {
   devSpawnTarget,
   drivePaneId,
@@ -24,8 +27,9 @@ const delay = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms
 
 /** Probe whether node-pty can spawn here (CI without prebuilds cannot). */
 function ptyAvailable(): boolean {
+  const { file, args } = devSpawnTarget(process.platform === 'win32' ? 'rem' : 'true')
   try {
-    const p = createNativePtySession('/bin/sh', ['-c', 'true'], { cwd: process.cwd(), env: process.env })
+    const p = createNativePtySession(file, args, { cwd: process.cwd(), env: process.env })
     p.kill()
     return true
   } catch {
@@ -33,6 +37,17 @@ function ptyAvailable(): boolean {
   }
 }
 const AVAILABLE = process.platform !== 'win32' && ptyAvailable()
+const WIN_AVAILABLE = process.platform === 'win32' && ptyAvailable()
+
+/** True while `pid` is still a live process (Windows-safe existence probe). */
+function pidAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0)
+    return true
+  } catch {
+    return false
+  }
+}
 
 describe('drivePaneId', () => {
   it('is a non-session id (no sess_ prefix) so session guards never see it', () => {
@@ -145,12 +160,74 @@ describe.skipIf(!AVAILABLE)('startDevPane / stopDevPane', () => {
 
     // The process group must be gone — `kill -0 -pgid` throws ESRCH once every
     // member (shell + the backgrounded sleep) has been reaped.
-    let groupAlive = true
-    try {
-      process.kill(-pgid, 0)
-    } catch {
-      groupAlive = false
-    }
-    expect(groupAlive).toBe(false)
+    expect(pidAlive(-pgid)).toBe(false)
   }, 15000)
+})
+
+/**
+ * The Windows half of the tree kill. `devSpawnTarget` always interposes a
+ * `cmd.exe /d /s /c` shim there, so the dev server is a GRANDCHILD of the PTY:
+ * ConPTY teardown reaps the shim and leaves the server holding its port and its
+ * file locks. The POSIX group-kill path is covered by the suite above.
+ */
+describe.skipIf(!WIN_AVAILABLE)('stopDevPane on Windows', () => {
+  const dirs: string[] = []
+
+  afterEach(() => {
+    for (const id of ptyRegistry().ids()) if (isDrivePaneId(id)) stopDevPane(id)
+    for (const d of dirs) rmSync(d, { recursive: true, force: true })
+    dirs.length = 0
+  })
+
+  it('kills the grandchild behind the cmd shim, not just the shim', async () => {
+    const ctx = await makeTestCtx()
+    const project = seedProject(ctx)
+    const feature = seedFeature(ctx, project.id, { slug: 'wintree' })
+
+    // A long-lived node child stands in for the dev server. It runs from the
+    // pane's cwd so neither the script's path nor node's own needs quoting
+    // through `cmd /c` — both routinely contain spaces on Windows.
+    const dir = mkdtempSync(join(tmpdir(), 'rc-devpane-'))
+    dirs.push(dir)
+    writeFileSync(
+      join(dir, 'grandchild.mjs'),
+      "console.log('GRANDCHILD ' + process.pid)\nsetInterval(() => {}, 1000)\n",
+    )
+
+    const paneId = startDevPane({
+      ctx,
+      scope: { featureId: feature.id },
+      repoPath: dir,
+      devCommand: 'node grandchild.mjs',
+      // `node` resolves whichever way the suite was invoked (vitest runs under it).
+      env: {
+        ...process.env,
+        PATH: `${dirname(process.execPath)}${delimiter}${process.env.PATH ?? ''}`,
+      },
+      onUrl: () => {},
+    })!
+
+    let out = ''
+    const reader: TerminalSink = {
+      sendData(chunk) {
+        out += chunk.toString('utf8')
+      },
+      sendControl() {},
+    }
+    ptyRegistry().attach(paneId, reader)
+
+    let pid: number | undefined
+    for (let i = 0; i < 60 && pid === undefined; i++) {
+      await delay(250)
+      pid = Number(out.match(/GRANDCHILD (\d+)/)?.[1]) || undefined
+    }
+    expect(pid, `no grandchild pid in pane output: ${JSON.stringify(out)}`).toBeDefined()
+    expect(pidAlive(pid!)).toBe(true)
+
+    stopDevPane(paneId)
+
+    // taskkill returns as soon as the tree is signalled; reaping lags it.
+    for (let i = 0; i < 20 && pidAlive(pid!); i++) await delay(250)
+    expect(pidAlive(pid!)).toBe(false)
+  }, 45000)
 })

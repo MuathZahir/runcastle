@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process'
 import type { AppCtx } from '../db/types'
 import { emitScoped, type EmitScope } from '../services/events'
 import { ptyRegistry, type TerminalSink } from './registry'
@@ -12,8 +13,8 @@ import { ptyRegistry, type TerminalSink } from './registry'
  *
  * On start we sniff the first localhost URL out of the PTY output (surfaced as a
  * plain "Open app" link, sticky per drive); on stop we kill the whole process
- * tree so the dev server frees its port with no orphan — on Windows (ConPTY
- * teardown) and POSIX (process-group signal) alike.
+ * tree so the dev server frees its port with no orphan — on Windows (`taskkill
+ * /T` from the pane's pid) and POSIX (process-group signal) alike.
  */
 
 /** Registry-id prefix for drive-owned PTYs. Deliberately not a `sess_` id. */
@@ -147,23 +148,36 @@ export function devPaneLive(paneId: string): boolean {
 }
 
 /**
+ * Kill the process tree rooted at `pid`, best-effort. On POSIX the pane's shell
+ * is a process-group leader (`forkpty` set it up), so one signal reaches the
+ * group. On Windows nothing signals a tree, and killing the PTY is not enough:
+ * ConPTY teardown reaches only its DIRECT child, which `devSpawnTarget` always
+ * makes the `cmd.exe` shim — the dev server itself is a GRANDCHILD and survives,
+ * holding its port and its file locks. `taskkill /T` walks the child list, so it
+ * is the only teardown that actually frees the port.
+ */
+function killProcessTree(pid: number): void {
+  try {
+    if (process.platform === 'win32') {
+      execFileSync('taskkill', ['/pid', String(pid), '/T', '/F'], { stdio: 'ignore' })
+    } else {
+      // Negative pid → the whole process group (pid == pgid for the pty leader).
+      process.kill(-pid, 'SIGTERM')
+    }
+  } catch {
+    // tree already gone / pid reused — the caller's pty.kill still fires onExit
+  }
+}
+
+/**
  * Kill a drive's dev pane and forget it. Kills the WHOLE process tree so the dev
- * server frees its port with no orphan: on POSIX the pane's shell is a process-
- * group leader (`forkpty` set it up), so we signal the group; on Windows tearing
- * down the ConPTY already kills every attached process. Idempotent — a no-op for
- * an unknown / already-dead pane.
+ * server frees its port with no orphan (`killProcessTree`). Idempotent — a no-op
+ * for an unknown / already-dead pane.
  */
 export function stopDevPane(paneId: string): void {
   const reg = ptyRegistry()
   const entry = reg.get(paneId)
-  if (entry && !entry.exited && process.platform !== 'win32') {
-    try {
-      // Negative pid → the whole process group (pid == pgid for the pty leader).
-      process.kill(-entry.pty.pid, 'SIGTERM')
-    } catch {
-      // group already gone / pid reused — the pty.kill below still fires onExit
-    }
-  }
+  if (entry && !entry.exited) killProcessTree(entry.pty.pid)
   reg.kill(paneId)
   reg.remove(paneId)
 }
