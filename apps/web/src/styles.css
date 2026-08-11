@@ -2902,6 +2902,8 @@ select.settings-input { cursor: pointer; }
 }
 
 .settings-field-note { font-size: 11px; color: var(--text-4); }
+/* A value the field refused to commit — beside the control, not in a toast. */
+.settings-field-error { font-size: 11px; color: var(--danger); }
 
 /* What preparation observed to justify a value (settings row + prep card). */
 .settings-field-evidence,
