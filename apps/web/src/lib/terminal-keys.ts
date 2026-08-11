@@ -82,20 +82,19 @@ function isVKey(ev: TerminalKeyEvent): boolean {
  * it into the same `\x1b\r`.)
  */
 export function mapTerminalKey(ev: TerminalKeyEvent): TerminalKeyAction {
-  const emitting = ev.type === 'keydown' || ev.type === 'keypress'
-  if (!emitting) return { intercept: false }
+  // Only keydown carries the bytes; the matching keypress is swallowed empty.
+  const down = ev.type === 'keydown'
+  if (!down && ev.type !== 'keypress') return { intercept: false }
 
   if (ev.key === 'Enter' && (ev.shiftKey || ev.ctrlKey)) {
-    return { intercept: true, bytes: ev.type === 'keydown' ? NEWLINE_BYTES : '' }
+    return { intercept: true, bytes: down ? NEWLINE_BYTES : '' }
   }
 
   if (isVKey(ev) && !ev.shiftKey && !ev.metaKey) {
     // Ctrl+V — send nothing at all; the browser's paste event does the work.
     if (ev.ctrlKey && !ev.altKey) return { intercept: true, bytes: '' }
     // Alt+V — Ctrl+Alt is AltGr on Windows, an ordinary character, so exclude it.
-    if (ev.altKey && !ev.ctrlKey) {
-      return { intercept: true, bytes: ev.type === 'keydown' ? IMAGE_PASTE_BYTES : '' }
-    }
+    if (ev.altKey && !ev.ctrlKey) return { intercept: true, bytes: down ? IMAGE_PASTE_BYTES : '' }
   }
 
   return { intercept: false }
