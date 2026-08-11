@@ -1,6 +1,6 @@
 {
   "name": "runcastle",
-  "description": "Runcastle phase-scoped skills — forks of Matt Pocock's grilling, to-spec, and to-tickets adapted to runcastle's MCP feature pipeline (ideate, spec, tickets, qa).",
+  "description": "Runcastle phase-scoped skills for the MCP feature pipeline: ideate, spec, tickets, qa, project, converge (forks of Matt Pocock's grilling, to-spec and to-tickets, adapted) plus revisit and waypoint (original).",
   "version": "0.1.0",
   "author": { "name": "runcastle" }
 }
