@@ -1,5 +1,5 @@
-import type { Ticket, TicketInput } from '@runcastle/core'
-import { BlockingEdgeError, newId, resolveBatchBlocking } from '@runcastle/core'
+import type { TicketInput } from '@runcastle/core'
+import { BlockingEdgeError, Ticket, newId, resolveBatchBlocking } from '@runcastle/core'
 import { and, asc, eq } from 'drizzle-orm'
 import type { AppCtx } from '../db/types'
 import { tickets } from '../db/schema'
@@ -17,7 +17,7 @@ import { getFeatureRow } from './repo'
 type TicketSelect = typeof tickets.$inferSelect
 
 function rowToTicket(row: TicketSelect): Ticket {
-  return {
+  return Ticket.parse({
     id: row.id,
     featureId: row.featureId,
     seq: row.seq,
@@ -33,7 +33,7 @@ function rowToTicket(row: TicketSelect): Ticket {
     error: row.error ?? undefined,
     attemptBranch: row.attemptBranch ?? undefined,
     conflictFiles: row.conflictFiles ?? undefined,
-  }
+  })
 }
 
 /**
