@@ -165,7 +165,7 @@ function killProcessTree(pid: number): void {
       process.kill(-pid, 'SIGTERM')
     }
   } catch {
-    // tree already gone / pid reused — the pty.kill below still fires onExit
+    // tree already gone / pid reused — the caller's pty.kill still fires onExit
   }
 }
 
