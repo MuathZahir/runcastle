@@ -10,6 +10,7 @@ import {
   isDrivePaneId,
   sniffDevUrl,
   startDevPane,
+  type StartDevPaneInput,
   stopDevPane,
 } from '../src/pty/dev-pane'
 import { listAfter } from '../src/services/events'
@@ -245,6 +246,28 @@ describe.skipIf(!WIN_AVAILABLE)('stopDevPane on Windows', () => {
     else process.env[key] = value
   }
 
+  /**
+   * Start a pane on the SIDECAR backend and report the pid of the node host it
+   * spawned. Both env overrides are read at spawn time and restored immediately
+   * after, so only this pane takes the detour; `process.execPath` is a real node
+   * because vitest runs under one.
+   */
+  function startSidecarPane(input: StartDevPaneInput): { paneId: string; hostPid: number } {
+    const prevBackend = process.env.RUNCASTLE_PTY_BACKEND
+    const prevNodeBin = process.env.RUNCASTLE_NODE_BIN
+    try {
+      process.env.RUNCASTLE_PTY_BACKEND = 'sidecar'
+      process.env.RUNCASTLE_NODE_BIN = process.execPath
+      const paneId = startDevPane(input)!
+      // Read on THIS tick: `pty.pid` is the host's own pid only until the host's
+      // async `ready` frame arrives and replaces it with node-pty's inner pid.
+      return { paneId, hostPid: ptyRegistry().get(paneId)!.pty.pid }
+    } finally {
+      restoreEnv('RUNCASTLE_PTY_BACKEND', prevBackend)
+      restoreEnv('RUNCASTLE_NODE_BIN', prevNodeBin)
+    }
+  }
+
   /** Wait out the lag between taskkill signalling a tree and Windows reaping it. */
   async function awaitDeath(pid: number): Promise<void> {
     for (let i = 0; i < 20 && pidAlive(pid); i++) await delay(250)
@@ -286,30 +309,14 @@ describe.skipIf(!WIN_AVAILABLE)('stopDevPane on Windows', () => {
     const project = seedProject(ctx)
     const feature = seedFeature(ctx, project.id, { slug: 'winsidecar' })
 
-    const prevBackend = process.env.RUNCASTLE_PTY_BACKEND
-    const prevNodeBin = process.env.RUNCASTLE_NODE_BIN
-    let paneId: string
-    let hostPid: number
-    try {
-      // The backend is chosen at spawn time; the host needs a real `node`, and
-      // the executable running this suite is one.
-      process.env.RUNCASTLE_PTY_BACKEND = 'sidecar'
-      process.env.RUNCASTLE_NODE_BIN = process.execPath
-      paneId = startDevPane({
-        ctx,
-        scope: { featureId: feature.id },
-        repoPath: grandchildDir(),
-        devCommand: 'node grandchild.mjs',
-        env: paneEnv(),
-        onUrl: () => {},
-      })!
-      // Read on THIS tick: `pty.pid` is the host's own pid only until the host's
-      // `ready` frame arrives and replaces it with node-pty's inner pid.
-      hostPid = ptyRegistry().get(paneId)!.pty.pid
-    } finally {
-      restoreEnv('RUNCASTLE_PTY_BACKEND', prevBackend)
-      restoreEnv('RUNCASTLE_NODE_BIN', prevNodeBin)
-    }
+    const { paneId, hostPid } = startSidecarPane({
+      ctx,
+      scope: { featureId: feature.id },
+      repoPath: grandchildDir(),
+      devCommand: 'node grandchild.mjs',
+      env: paneEnv(),
+      onUrl: () => {},
+    })
     expect(hostPid).toBeGreaterThan(0)
 
     const pid = await readGrandchildPid(paneId)
