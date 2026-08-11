@@ -50,7 +50,7 @@ describe('composeOutcomeDoc', () => {
 
     expect(doc).toContain('# Outcome — The work record gets thick')
     expect(doc).toContain('burners write digests that survive the sandbox')
-    expect(doc).toContain('- Shipped: 2026-08-11T09:30:00.000Z')
+    expect(doc).toContain('- Shipped: 2026-08-11')
     expect(doc).toContain('- Lap: 3')
   })
 
@@ -137,11 +137,14 @@ describe('composeOutcomeDoc', () => {
     expect(doc.indexOf('- **3.')).toBeLessThan(doc.indexOf('## 4.'))
   })
 
-  it('is regenerated wholesale: the same inputs produce byte-identical markdown', () => {
+  it('is regenerated wholesale: same inputs, same day → byte-identical markdown', () => {
     const tickets = [ticket(1, { digest: 'did it' }), ticket(2, { status: 'failed', error: 'boom' })]
+    // Two merges hours apart on the same day must produce nothing for
+    // `commitDocs` to commit — hence a shipped DATE, not a timestamp.
+    const laterSameDay = SHIPPED_AT + 6 * 60 * 60 * 1000
 
     expect(composeOutcomeDoc(feature(), tickets, SHIPPED_AT)).toBe(
-      composeOutcomeDoc(feature(), tickets, SHIPPED_AT),
+      composeOutcomeDoc(feature(), tickets, laterSameDay),
     )
   })
 })

@@ -35,7 +35,7 @@ export function composeOutcomeDoc(feature: Feature, tickets: Ticket[], shippedAt
   const blocks: string[] = [
     `# Outcome — ${feature.title}`,
     feature.oneLiner,
-    [`- Shipped: ${new Date(shippedAt).toISOString()}`, `- Lap: ${feature.lap}`].join('\n'),
+    [`- Shipped: ${shippedDate(shippedAt)}`, `- Lap: ${feature.lap}`].join('\n'),
   ]
 
   // Consecutive one-liners accumulate into a single list block so a run of
@@ -57,6 +57,15 @@ export function composeOutcomeDoc(feature: Feature, tickets: Ticket[], shippedAt
   flush()
 
   return `${blocks.join('\n\n')}\n`
+}
+
+/**
+ * `YYYY-MM-DD` (UTC). A date, not a timestamp: the doc is regenerated wholesale
+ * on every merge, and a clock-precise header would differ on every lap — turning
+ * `commitDocs`' no-op into an empty-ish commit each time a feature is re-merged.
+ */
+function shippedDate(shippedAt: number): string {
+  return new Date(shippedAt).toISOString().slice(0, 10)
 }
 
 /** `- **3. Title** — failed: <headline>`, the headline dropped when there is none. */
