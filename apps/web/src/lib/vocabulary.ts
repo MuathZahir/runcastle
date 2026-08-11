@@ -47,11 +47,12 @@ export function testDriveExplainer(caps: DriveCapabilities | undefined): string 
     ? ' Stopping runs the teardown command and puts you back on the branch you were on.'
     : ' Stopping puts you back on the branch you were on.'
 
-  // Named in the order the drive performs them.
+  // Named in the order the drive performs them. No step carries a comma of its
+  // own — three of these joined into one sentence read as a list or not at all.
   const steps = [
-    caps.env && 'renders this project’s drive environment, giving the branch its own database name',
+    caps.env && 'renders this project’s drive environment (the branch gets its own database name)',
     caps.setup && 'runs the test-drive setup command',
-    caps.dev && 'starts the dev server and links you to it',
+    caps.dev && 'starts the dev server with an Open app link',
   ].filter((s): s is string => typeof s === 'string')
 
   if (steps.length === 0)
@@ -64,8 +65,9 @@ export function testDriveExplainer(caps: DriveCapabilities | undefined): string 
 
 /** "a", "a and b", "a, b and c" — read aloud, not comma-spliced. */
 function joinSteps(steps: string[]): string {
-  if (steps.length === 1) return steps[0] as string
-  return `${steps.slice(0, -1).join(', ')} and ${steps[steps.length - 1]}`
+  const last = steps[steps.length - 1] ?? ''
+  if (steps.length === 1) return last
+  return `${steps.slice(0, -1).join(', ')} and ${last}`
 }
 
 /**
