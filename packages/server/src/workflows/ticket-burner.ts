@@ -564,9 +564,9 @@ export function buildIsolatedSetupCommand(
  * places the redirect could otherwise leak (edits in the mounted mirror, a
  * BLOCKED.md the host would never see). DIGEST.md goes the other way — the
  * mirror in isolated mode, the checkout root in mounted mode — because it is
- * harvested from disk and must never be committed. Worst case if the agent ignores this
- * and works in the workspace anyway: today's mounted behavior — slow, but
- * correct.
+ * harvested from disk and must never ride a commit. Worst case if the agent
+ * ignores this and works in the workspace anyway: today's mounted behavior —
+ * slow, but correct.
  */
 export function buildWorkspaceNotes(mode: BurnWorkspaceMode): string {
   if (mode === 'mounted') {
