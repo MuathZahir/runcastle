@@ -147,6 +147,12 @@ export const Ticket = TicketInput.extend({
    * lands or the user retries "fresh".
    */
   conflictFiles: z.array(z.string()).optional(),
+  /**
+   * The burner's own account of what it did, harvested from the `DIGEST.md` it
+   * writes just before signalling COMPLETE. Absent when the agent wrote none —
+   * a done ticket without a digest is still done.
+   */
+  digest: z.string().optional(),
 })
 export type Ticket = z.infer<typeof Ticket>
 
@@ -405,6 +411,8 @@ export const Run = z.object({
   startedAt: z.number(),
   endedAt: z.number().optional(),
   summary: z.string().optional(),
+  /** This run's harvested ticket digests, concatenated under per-ticket headers. */
+  digest: z.string().optional(),
 })
 export type Run = z.infer<typeof Run>
 

@@ -205,6 +205,13 @@ export const tickets = sqliteTable('tickets', {
   error: text('error'),
   attemptBranch: text('attempt_branch'),
   conflictFiles: text('conflict_files', { mode: 'json' }).$type<string[]>(),
+  /**
+   * The burner's own account of what happened, harvested from the `DIGEST.md`
+   * it writes just before signalling COMPLETE. Null whenever the agent wrote
+   * none — harvest is best-effort and never blocks `done` (the burn emits a
+   * `digest.missing` event instead).
+   */
+  digest: text('digest'),
 })
 
 export const testNotes = sqliteTable('test_notes', {
@@ -249,6 +256,8 @@ export const runs = sqliteTable('runs', {
   startedAt: integer('started_at').notNull(),
   endedAt: integer('ended_at'),
   summary: text('summary'),
+  /** The run's harvested ticket digests, concatenated under per-ticket headers. */
+  digest: text('digest'),
 })
 
 export const events = sqliteTable('events', {

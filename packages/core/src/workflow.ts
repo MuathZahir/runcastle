@@ -21,7 +21,7 @@ export interface WorkflowCtx {
     id: string,
     // `null` clears a stored error/attemptBranch/conflictFiles (retry +
     // successful-landing paths).
-    patch: Partial<Pick<Ticket, 'status' | 'commits'>> & {
+    patch: Partial<Pick<Ticket, 'status' | 'commits' | 'digest'>> & {
       error?: string | null
       attemptBranch?: string | null
       conflictFiles?: string[] | null
