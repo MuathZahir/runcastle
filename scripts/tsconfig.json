@@ -6,5 +6,7 @@
     // sources by their real `.ts` paths rather than through package exports.
     "allowImportingTsExtensions": true
   },
-  "include": ["."]
+  // scripts/, plus the repo-root config files that belong to no workspace —
+  // otherwise they are the next thing nothing typechecks.
+  "include": [".", "../vitest.config.ts", "../vitest.setup.ts"]
 }
