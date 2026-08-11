@@ -8,7 +8,7 @@ import {
   unsetStepKeys,
   type SettingRow,
 } from '../lib/settings'
-import type { PrepView, SettingsView } from '../lib/api'
+import type { QueryResult, SettingsView } from '../lib/api'
 import { DimLine } from '../ui'
 import { EnableAfkCard } from './EnableAfkCard'
 
@@ -33,7 +33,7 @@ export function SettingsOverlay({
   // Provenance for the prepared project fields, so each row can say who
   // established its value rather than just "overridden for this project".
   const prep = trpc.project.prep.useQuery({ projectId })
-  const findings = (prep.data as PrepView | undefined)?.findings ?? []
+  const findings = prep.data?.findings ?? []
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -104,7 +104,7 @@ function Section({
 }: {
   title: string
   hint: string
-  query: ReturnType<typeof trpc.settings.get.useQuery>
+  query: QueryResult<SettingsView>
   rowsOf: (view: SettingsView) => SettingRow[]
   /** Present → writes target this project's overrides; absent → the global store. */
   projectId?: string
@@ -347,7 +347,7 @@ function ModelCombobox({
  * offered. Global-only, so writes carry no projectId — and being machine-wide,
  * these lose to a project's own model, which the body states outright.
  */
-function AdvancedModels({ query }: { query: ReturnType<typeof trpc.settings.get.useQuery> }) {
+function AdvancedModels({ query }: { query: QueryResult<SettingsView> }) {
   const utils = trpc.useUtils()
   const toast = useToast()
   const [open, setOpen] = useState(false)
@@ -359,9 +359,7 @@ function AdvancedModels({ query }: { query: ReturnType<typeof trpc.settings.get.
     onError: (e) => toast.push(e.message),
   })
 
-  // `useQuery().data` infers to `{}` here (a pre-existing tRPC-in-component
-  // typing gap, see the Section component); the runtime value is a SettingsView.
-  const view = query.data as SettingsView | undefined
+  const view = query.data
   const set = view ? stepModelRows(view) : []
   const unset = view ? unsetStepKeys(view) : []
   const defaultModel = view?.fields.find((f) => f.key === 'model')

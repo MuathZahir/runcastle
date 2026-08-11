@@ -1,4 +1,6 @@
 import type { inferRouterOutputs } from '@trpc/server'
+import type { TRPCClientErrorLike } from '@trpc/client'
+import type { UseTRPCQueryResult } from '@trpc/react-query/shared'
 import type { AppRouter } from '@runcastle/server'
 
 /**
@@ -21,3 +23,12 @@ export type PrepView = RouterOutputs['project']['prep']
 export type ProjectFinding = PrepView['findings'][number]
 /** The live project conversation (decision 20), or null when none is open. */
 export type ProjectSession = RouterOutputs['project']['projectSession']
+
+/**
+ * A `useQuery` result carrying a named data shape — for components that accept a
+ * query as a prop. Annotate those props with this, never with
+ * `ReturnType<typeof trpc.x.y.useQuery>`: that reads the *uninstantiated* hook
+ * overload, whose `TData` is unconstrained in that position, so it erases to
+ * `unknown` and every property access off `.data` collapses.
+ */
+export type QueryResult<TData> = UseTRPCQueryResult<TData, TRPCClientErrorLike<AppRouter>>
