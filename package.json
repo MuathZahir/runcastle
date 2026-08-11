@@ -14,13 +14,14 @@
   "scripts": {
     "dev": "bun run scripts/dev.ts",
     "dev:tool": "bun run scripts/devtool.ts",
-    "typecheck": "bun run --filter '@runcastle/core' --filter '@runcastle/server' typecheck",
+    "typecheck": "bun run --filter '@runcastle/core' --filter '@runcastle/server' --filter '@runcastle/web' --filter '@runcastle/design-system' typecheck && tsc --noEmit -p scripts/tsconfig.json",
     "test": "vitest run",
     "test:watch": "vitest",
     "release": "bun run scripts/release.ts",
     "postinstall": "bun scripts/postinstall-node-pty.ts"
   },
   "devDependencies": {
+    "bun-types": "1.3.14",
     "typescript": "7.0.2",
     "vitest": "4.1.10"
   },

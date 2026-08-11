@@ -5,6 +5,7 @@
     "": {
       "name": "runcastle",
       "devDependencies": {
+        "bun-types": "1.3.14",
         "typescript": "7.0.2",
         "vitest": "4.1.10",
       },
