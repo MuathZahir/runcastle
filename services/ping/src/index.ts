@@ -93,8 +93,9 @@ const worker = {
     if (pathname !== '/ping') return new Response('not found', { status: 404 })
     if (request.method !== 'POST') return new Response('method not allowed', { status: 405 })
 
-    // Size guard before parsing: refuse an oversized body on its declared length
-    // where there is one, and on what actually arrived where there isn't.
+    // Size guard before parsing: refuse an oversized body on its declared byte
+    // length where there is one, and on what actually arrived where there isn't
+    // (a real ping is ASCII, so characters and bytes are the same count).
     if (Number(request.headers.get('content-length')) > MAX_BODY_BYTES) {
       return new Response('bad request', { status: 400 })
     }
@@ -116,7 +117,7 @@ const worker = {
     try {
       latest = await fetchLatestVersion()
     } catch {
-      latest = null
+      // Unreachable registry — answered as 502 below, same as a bad answer.
     }
     if (latest === null) return new Response('upstream version lookup failed', { status: 502 })
 

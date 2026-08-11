@@ -129,15 +129,16 @@ describe('rejected requests', () => {
     expect(statements).toEqual([])
   })
 
-  it('rejects an over-long version or platform without touching D1', async () => {
+  it('rejects an over-long or empty version or platform without touching D1', async () => {
     const { statements, env } = dbStub()
     stubNpm(npmReturning('0.9.1'))
 
     const long = await worker.fetch(pingRequest({ ...VALID_PING, version: 'v'.repeat(65) }), env)
     const wide = await worker.fetch(pingRequest({ ...VALID_PING, platform: 'p'.repeat(33) }), env)
+    const blank = await worker.fetch(pingRequest({ ...VALID_PING, version: '' }), env)
+    const missing = await worker.fetch(pingRequest({ installId: VALID_PING.installId }), env)
 
-    expect(long.status).toBe(400)
-    expect(wide.status).toBe(400)
+    expect([long.status, wide.status, blank.status, missing.status]).toEqual([400, 400, 400, 400])
     expect(statements).toEqual([])
   })
 
