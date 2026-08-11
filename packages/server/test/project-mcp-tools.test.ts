@@ -1,7 +1,9 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { newId } from '@runcastle/core'
 import { simpleGit } from 'simple-git'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { runs } from '../src/db/schema'
 import type { AppCtx } from '../src/db/types'
 import { GateError, InvalidInputError } from '../src/errors'
 import { clearRuntimeCtx, setRuntimeCtx } from '../src/launcher/runtime'
@@ -23,7 +25,7 @@ import {
 import { emit, listByProject } from '../src/services/events'
 import { openProject } from '../src/services/projects'
 import { getFeatureRow, listSessionsByFeature, setFeatureStatus } from '../src/services/repo'
-import { listByFeature, storeTickets } from '../src/services/tickets'
+import { listByFeature, storeTickets, updateTicket } from '../src/services/tickets'
 import { makeTestCtx } from './helpers/db'
 import { seedFeature, tmpRepo } from './helpers/fixtures'
 
@@ -337,6 +339,87 @@ describe('project-session MCP tools', () => {
     const lapsRecord = wider.features.find((f) => f.slug === 'laps')
     // only the tickets that matched — the web-shell one is not part of the answer
     expect(lapsRecord?.tickets.map((t) => t.title)).toEqual(['touches the router'])
+  })
+
+  it('serves a ticket’s digest, and omits the key on a ticket that has none', () => {
+    const feature = seedFeature(ctx, projectId, { slug: 'laps', title: 'Laps' })
+    const [withDigest, without] = storeTickets(ctx, feature.id, [
+      {
+        title: 'Lap counter on features',
+        goal: 'g',
+        context: 'c',
+        acceptanceCriteria: ['a'],
+        seams: ['core pipeline functions'],
+        blockedBy: [],
+      },
+      {
+        title: 'never burned',
+        goal: 'g',
+        context: 'c',
+        acceptanceCriteria: ['a'],
+        seams: ['core pipeline functions'],
+        blockedBy: [],
+      },
+    ])
+    const digest = 'Added the lap column.\n\nSurprise: the migration already half-existed.'
+    updateTicket(ctx, withDigest.id, { status: 'done', commits: ['abc123'], digest })
+
+    const [record] = toolGetWorkRecord(ctx, session, { featureSlug: 'laps' }).features
+    const served = record.tickets.find((t) => t.seq === withDigest.seq)
+    expect(served?.digest).toBe(digest)
+    const bare = record.tickets.find((t) => t.seq === without.seq)
+    expect(bare).not.toHaveProperty('digest')
+  })
+
+  it('serves digests on seam-matched tickets too', () => {
+    const feature = seedFeature(ctx, projectId, { slug: 'laps', title: 'Laps' })
+    const [ticket] = storeTickets(ctx, feature.id, [
+      {
+        title: 'touches the router',
+        goal: 'g',
+        context: 'c',
+        acceptanceCriteria: ['a'],
+        seams: ['tRPC Feature Router'],
+        blockedBy: [],
+      },
+    ])
+    updateTicket(ctx, ticket.id, { status: 'done', digest: 'Rewired the router.' })
+
+    const out = toolGetWorkRecord(ctx, session, { seam: 'router' })
+    expect(out.features[0]?.tickets[0]?.digest).toBe('Rewired the router.')
+  })
+
+  it('never serves a run’s digest aggregate — that one is the UI’s', () => {
+    const feature = seedFeature(ctx, projectId, { slug: 'laps', title: 'Laps' })
+    storeTickets(ctx, feature.id, [
+      {
+        title: 'Lap counter on features',
+        goal: 'g',
+        context: 'c',
+        acceptanceCriteria: ['a'],
+        seams: ['core pipeline functions'],
+        blockedBy: [],
+      },
+    ])
+    ctx.db
+      .insert(runs)
+      .values({
+        id: newId('run'),
+        featureId: feature.id,
+        workflow: 'ticket-burner',
+        status: 'done',
+        startedAt: 1,
+        endedAt: 2,
+        summary: '1 ticket burned',
+        digest: '## 1 — Lap counter on features\n\nAdded the lap column.',
+      })
+      .run()
+
+    const [record] = toolGetWorkRecord(ctx, session, { featureSlug: 'laps' }).features
+    expect(record.runs).toEqual([
+      { workflow: 'ticket-burner', status: 'done', startedAt: 1, endedAt: 2, summary: '1 ticket burned' },
+    ])
+    expect(JSON.stringify(record.runs)).not.toContain('Added the lap column')
   })
 
   it('needs at least one of featureSlug / seam', () => {

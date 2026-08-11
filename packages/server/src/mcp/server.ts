@@ -574,6 +574,8 @@ export interface WorkRecordTicket {
   seams: string[]
   commits: string[]
   error?: string
+  /** The burner's own account of the work, written just before it signalled done. */
+  digest?: string
 }
 
 export interface WorkRecordRun {
@@ -603,6 +605,13 @@ export interface WorkRecordFeature {
  * handing it a decayed spec with none of the decay stamp. What survives is the
  * residue that cannot be wrong later: seams, commits, status, error, timings,
  * and the title as a label rather than a claim.
+ *
+ * The `digest` is prose and still a fact: the burner wrote it AFTER the work, as
+ * its account of what it actually did, what surprised it and what it left alone
+ * (decision 4). It carries the decay stamp intent lacks — it describes the code
+ * that exists rather than the code someone hoped for — so it belongs here. The
+ * run-level aggregate does not: it is these same digests re-concatenated, and
+ * serving both would double the response for no new fact (decision 7).
  *
  * Queryable two ways. By slug: "what did X actually do?". By seam: "who has
  * touched this before?" — a case-insensitive SUBSTRING match, because seams are
@@ -649,6 +658,7 @@ export function toolGetWorkRecord(
         seams: t.seams,
         commits: t.commits,
         ...(t.error !== undefined ? { error: t.error } : {}),
+        ...(t.digest !== undefined ? { digest: t.digest } : {}),
       })),
     })
   }
@@ -782,8 +792,10 @@ export function buildMcpServer(): McpServer {
       title: 'Get work record',
       description:
         'What features actually DID — facts only: per feature its status, ship date, run ' +
-        'summaries and tickets as { seq, title, status, seams, commits, error? }. Never a ' +
-        "ticket's goal or acceptance criteria: those are intent from before the code existed. " +
+        'summaries and tickets as { seq, title, status, seams, commits, error?, digest? }. The ' +
+        "digest is the burner's own account, written after the work: what it did, what " +
+        "surprised it, what it left undone. Never a ticket's goal or acceptance criteria: " +
+        'those are intent from before the code existed. ' +
         'Query by `featureSlug` ("what did X do?") or by `seam` ("who has touched this area, and ' +
         'what happened?") — the seam match is a case-insensitive substring, because seams are ' +
         'free prose that differs between features. At least one argument is required.',
