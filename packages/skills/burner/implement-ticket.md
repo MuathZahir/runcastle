@@ -74,6 +74,13 @@ Whatever the commands are, spend them well — a full suite on a monorepo is min
    - **Spec = this ticket** — is every acceptance criterion actually met, and is there **nothing in the diff the ticket did not ask for**? Missing and extra both count.
    Commit the fixes.
 
+6. **Write your digest — the last thing you do.** Once every acceptance criterion passes and the self-review fixes are committed, write `DIGEST.md` (see "Where to work" for exactly where) as your final act before printing `<promise>COMPLETE</promise>`. Roughly 10–15 lines, three parts:
+   - **What was done** — past tense, what you actually built, *including where it deviated* from the approach the ticket described.
+   - **Surprises** — what the ticket or the spec did not anticipate: the coupling nobody mentioned, the test that was already red, the API that did not behave as documented.
+   - **Left undone** — adjacent work you noticed and deliberately did not do, so the next agent inherits the observation instead of re-finding it.
+
+   Write it in plain prose, for a reader who does not have your context. **Never commit `DIGEST.md`** — it is harvested from the workspace, not from the repo, and a committed one is diff noise. It is a **success artifact only**: if you are blocked and writing `BLOCKED.md`, write no digest — `BLOCKED.md` is your record.
+
 ## Hard rules
 
 A few of these are enforced by a tool hook, not just stated here: `git stash`, test-runner concurrency flags, and rewriting files through interpreter heredocs are **denied** before they run. A denial is policy, not a broken environment — read its reason, take the alternative it names, and carry on. Do not try to route around it.

@@ -551,15 +551,21 @@ export function buildIsolatedSetupCommand(
 
 /**
  * The `{{WORKSPACE_NOTES}}` block for the burner prompt: where the agent must
- * work. Isolated mode redirects it into the native-FS clone and covers the two
+ * work. Isolated mode redirects it into the native-FS clone and covers the
  * places the redirect could otherwise leak (edits in the mounted mirror, a
- * BLOCKED.md the host would never see). Worst case if the agent ignores this
+ * BLOCKED.md the host would never see). DIGEST.md goes the other way — the
+ * mirror in isolated mode, the checkout root in mounted mode — because it is
+ * harvested from disk and must never be committed. Worst case if the agent ignores this
  * and works in the workspace anyway: today's mounted behavior — slow, but
  * correct.
  */
 export function buildWorkspaceNotes(mode: BurnWorkspaceMode): string {
   if (mode === 'mounted') {
-    return 'Work in the current directory — it is the repo checkout on your branch.'
+    return [
+      'Work in the current directory — it is the repo checkout on your branch.',
+      '',
+      'Write `DIGEST.md` at the root of that checkout, and leave it uncommitted — the host harvests it from disk.',
+    ].join('\n')
   }
   return [
     `Your working repository is \`${ISOLATED_REPO_PATH}\` — a clone on the container's fast native filesystem, with dependencies already installed. Do ALL work there: \`cd ${ISOLATED_REPO_PATH}\` first; every file you read, edit, test, and commit lives under it.`,
@@ -567,6 +573,8 @@ export function buildWorkspaceNotes(mode: BurnWorkspaceMode): string {
     `The directory you start in (\`${SANDBOX_WORKSPACE_PATH}\`) is a slow mounted mirror used only to collect your commits — never edit files, install, or run tests there. Your commits sync back automatically (a post-commit hook pushes them); just commit as normal. If you re-run the dependency install and it reconfigures git hooks (husky), run \`git -C ${ISOLATED_REPO_PATH} config core.hooksPath ${ISOLATED_REPO_PATH}/.git/hooks\` afterwards so the sync hook stays armed.`,
     '',
     `If you are blocked and write \`BLOCKED.md\`, write it at \`${ISOLATED_REPO_PATH}/BLOCKED.md\` AND copy it to \`${SANDBOX_WORKSPACE_PATH}/BLOCKED.md\` so the orchestrator can see it.`,
+    '',
+    `Write \`DIGEST.md\` at \`${SANDBOX_WORKSPACE_PATH}/DIGEST.md\` — the mounted mirror, so the host can see it — and NOT inside \`${ISOLATED_REPO_PATH}\`, where it would be committed with your work.`,
   ].join('\n')
 }
 

@@ -1,4 +1,5 @@
 import type { AgentStreamEvent } from '@ai-hero/sandcastle'
+import { readFileSync } from 'node:fs'
 import type { Feature, Ticket } from '@runcastle/core'
 import { describe, expect, it } from 'vitest'
 import {
@@ -34,6 +35,7 @@ import {
   resolveMergeCommand,
   resolveSetupCommand,
   selectSandbox,
+  burnerTemplatePath,
 } from '../src/workflows/ticket-burner'
 import type {
   LandDeps,
@@ -145,6 +147,30 @@ describe('renderTicketPrompt', () => {
     expect(out).toContain('ticket(4): <summary>')
     expect(out).toContain('Work in the current directory')
     expect(out).toContain('bun test')
+  })
+
+  it('carries the DIGEST.md contract into the prompt the burner actually gets', () => {
+    const out = renderTicketPrompt(readFileSync(burnerTemplatePath(), 'utf8'), {
+      TICKET_JSON: buildTicketJson(ticket(4)),
+      FEATURE_BRIEF: buildFeatureBrief(feature),
+      DOCS_DIGEST: '',
+      COMMIT_CONVENTION: 'ticket(4): <summary>',
+      WORKSPACE_NOTES: buildWorkspaceNotes('isolated'),
+      VERIFY_NOTES: '',
+    })
+
+    expect(out).toContain('DIGEST.md')
+    // The three-part template.
+    expect(out).toMatch(/what was done/i)
+    expect(out).toMatch(/surprises/i)
+    expect(out).toMatch(/left undone/i)
+    // Success-only, and never a repo artifact.
+    expect(out).toMatch(/never commit `DIGEST.md`/i)
+    expect(out).toMatch(/BLOCKED\.md[^.]*write no digest/i)
+    // Written last — right before the completion signal.
+    expect(out).toMatch(/before printing `<promise>COMPLETE<\/promise>`/)
+    // The mode-specific location comes from the workspace notes.
+    expect(out).toContain(`${SANDBOX_WORKSPACE_PATH}/DIGEST.md`)
   })
 
   it('renders values containing $ and special chars safely', () => {
@@ -749,6 +775,18 @@ describe('buildWorkspaceNotes — the {{WORKSPACE_NOTES}} prompt block', () => {
     expect(notes).toContain(SANDBOX_WORKSPACE_PATH)
     expect(notes).toContain('BLOCKED.md')
     expect(notes).toMatch(/never edit/i)
+  })
+
+  it('mounted mode puts DIGEST.md at the checkout root, uncommitted', () => {
+    const notes = buildWorkspaceNotes('mounted')
+    expect(notes).toContain('DIGEST.md')
+    expect(notes).toMatch(/uncommitted/i)
+  })
+
+  it('isolated mode puts DIGEST.md in the mounted mirror, not the isolated clone', () => {
+    const notes = buildWorkspaceNotes('isolated')
+    expect(notes).toContain(`${SANDBOX_WORKSPACE_PATH}/DIGEST.md`)
+    expect(notes).not.toContain(`${ISOLATED_REPO_PATH}/DIGEST.md`)
   })
 })
 
