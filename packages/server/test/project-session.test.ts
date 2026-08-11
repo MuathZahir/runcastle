@@ -62,6 +62,21 @@ function commitOnBranch(repoPath: string, branch: string, file: string, body: st
   return tip
 }
 
+/**
+ * Remove a case's temp dirs. Retries because landing a project session is
+ * fire-and-forget (`endSession` → `landProjectSession` → `landProjectBranch`):
+ * the git child it spawns can still be reading `repoPath` when the case ends,
+ * and Windows fails the removal with EPERM on an open handle rather than
+ * waiting. The test has nothing to close — the handle belongs to a process it
+ * never sees — so the retry window IS the fix.
+ */
+function removeAll(dirs: string[]): void {
+  for (const d of dirs) {
+    rmSync(d, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 })
+  }
+  dirs.length = 0
+}
+
 /** Poll until `type` shows up on the project timeline (landing is fire-and-forget). */
 async function waitForProjectEvent(
   ctx: AppCtx,
@@ -186,8 +201,7 @@ describe('ensureProjectWorktree', () => {
   afterEach(() => {
     process.env.HOME = prevHome
     process.env.USERPROFILE = prevUserProfile
-    for (const d of cleanup) rmSync(d, { recursive: true, force: true })
-    cleanup.length = 0
+    removeAll(cleanup)
   })
 
   it('cuts the branch from the base tip into its own worktree, never the checkout', async () => {
@@ -276,8 +290,7 @@ describe('launching, resuming and landing a project session', () => {
   afterEach(() => {
     process.env.HOME = prevHome
     process.env.USERPROFILE = prevUserProfile
-    for (const d of cleanup) rmSync(d, { recursive: true, force: true })
-    cleanup.length = 0
+    removeAll(cleanup)
   })
 
   function sessionRow(id: string): SessionRow {
