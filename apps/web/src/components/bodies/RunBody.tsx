@@ -189,8 +189,10 @@ function RunDigest({ digest }: { digest: string }) {
         </button>
         {open && (
           <div className="ledger-detail">
-            <div className="td-body">
-              <Markdown source={digest} />
+            <div className="td-section">
+              <div className="td-body">
+                <Markdown source={digest} />
+              </div>
             </div>
           </div>
         )}
