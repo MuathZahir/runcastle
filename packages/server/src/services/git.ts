@@ -2127,6 +2127,35 @@ export async function mergeInProgressAt(worktreePath: string): Promise<boolean> 
 }
 
 /**
+ * Is `ancestor` reachable from `descendant` in the repo at `repoPath` — i.e. has
+ * the merge landed? Asked at the end of a `resolve-conflict` session: once the
+ * resolver commits `git merge <mergeFrom>`, the branch it merged from is an
+ * ancestor of the branch it merged into, which is what `merge.resolved` reports.
+ *
+ * Not `merge-base --is-ancestor` despite that being the natural spelling: it
+ * answers with its EXIT CODE and prints nothing, and simple-git resolves a
+ * silent non-zero exit rather than rejecting it (the same trap
+ * {@link mergeInProgress} documents) — every pair would answer true. Counting
+ * the commits `ancestor` has that `descendant` lacks decides on the output:
+ * none means it landed, and an identical pair counts zero exactly as git's own
+ * `--is-ancestor` answers yes. Never throws — an unknown branch or a worktree
+ * that has gone missing answers false, i.e. "not landed as far as we can tell",
+ * and the enabled Merge & ship retry carries the load.
+ */
+export async function isAncestor(
+  repoPath: string,
+  ancestor: string,
+  descendant: string,
+): Promise<boolean> {
+  try {
+    const out = await git(repoPath).raw(['rev-list', '--count', ancestor, `^${descendant}`])
+    return out.trim() === '0'
+  } catch {
+    return false
+  }
+}
+
+/**
  * True iff a merge is currently in progress (MERGE_HEAD present).
  *
  * Decided on the OUTPUT, not on whether the call threw: `--quiet` suppresses

@@ -11,7 +11,7 @@ import { launchSession } from '../src/launcher/launcher'
 import { clearRuntimeCtx, setRuntimeCtx } from '../src/launcher/runtime'
 import { createSessionRow, getSessionRow } from '../src/launcher/sessions'
 import hooksApp from '../src/routes/hooks'
-import { createFeatureBranch } from '../src/services/git'
+import { createFeatureBranch, isAncestor } from '../src/services/git'
 import { makeTestCtx } from './helpers/db'
 import { seedFeature, seedProject } from './helpers/fixtures'
 
@@ -254,6 +254,60 @@ describe('pre-tool — a resolve-conflict session against a real worktree', () =
     const json = await preTool(orphan, '/wt/gone/src/theme.ts')
     expect(json.hookSpecificOutput.permissionDecision).toBe('deny')
     expect(await preTool(orphan, 'docs/features/gone/spec.md')).toEqual({})
+  })
+})
+
+/**
+ * The merge-landed probe (decision 2a). "Has the resolver's merge landed?" is
+ * asked as "is the branch it merged FROM now an ancestor of the branch it merged
+ * INTO", against real git state rather than a mocked exit code.
+ */
+describe('isAncestor — has the merge landed', () => {
+  let repo: string
+  let worktree: string
+
+  beforeEach(() => {
+    repo = mkTmp('runcastle-ancestor-repo-')
+    git(repo, 'init', '-b', 'main')
+    git(repo, 'config', 'user.email', 'test@runcastle.dev')
+    git(repo, 'config', 'user.name', 'Runcastle Test')
+    git(repo, 'config', 'core.autocrlf', 'false')
+    writeFileSync(join(repo, 'vitest.config.ts'), 'export default {}\n')
+    git(repo, 'add', '.')
+    git(repo, 'commit', '-m', 'initial commit')
+
+    git(repo, 'branch', 'feature/dark-mode')
+    writeFileSync(join(repo, 'vitest.config.ts'), 'export default { main: true }\n')
+    git(repo, 'commit', '-am', 'main moves')
+
+    worktree = join(mkTmp('runcastle-ancestor-wt-'), 'dark-mode')
+    git(repo, 'worktree', 'add', worktree, 'feature/dark-mode')
+    writeFileSync(join(worktree, 'vitest.config.ts'), 'export default { feature: true }\n')
+    git(worktree, 'commit', '-am', 'feature moves')
+  })
+
+  it('is false while the two branches have diverged', async () => {
+    expect(await isAncestor(worktree, 'main', 'feature/dark-mode')).toBe(false)
+  })
+
+  it('is true once the merge commit lands', async () => {
+    expect(() => git(worktree, 'merge', 'main')).toThrow()
+    writeFileSync(join(worktree, 'vitest.config.ts'), 'export default { both: true }\n')
+    git(worktree, 'commit', '-am', 'resolve the merge')
+
+    expect(await isAncestor(worktree, 'main', 'feature/dark-mode')).toBe(true)
+  })
+
+  /** A branch that never moved off the other is its ancestor, as git answers it. */
+  it('is true for a branch that is identical to, or behind, the other', async () => {
+    git(repo, 'branch', 'untouched', 'feature/dark-mode')
+    expect(await isAncestor(worktree, 'untouched', 'feature/dark-mode')).toBe(true)
+    expect(await isAncestor(worktree, 'feature/dark-mode', 'feature/dark-mode')).toBe(true)
+  })
+
+  it('answers false rather than throwing on an unknown branch or a missing repo', async () => {
+    expect(await isAncestor(worktree, 'main', 'no-such-branch')).toBe(false)
+    expect(await isAncestor(join(tmpdir(), 'runcastle-does-not-exist'), 'main', 'main')).toBe(false)
   })
 })
 
