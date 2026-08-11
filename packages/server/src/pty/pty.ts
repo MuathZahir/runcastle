@@ -1,5 +1,6 @@
 import { createRequire } from 'node:module'
 import { explainSpawnFailure } from '../util/resolve-executable'
+import { killProcessTree } from './kill-tree'
 import { createSidecarPtySession } from './pty-sidecar'
 
 /**
@@ -43,6 +44,14 @@ export interface PtySession {
   resize(cols: number, rows: number): void
   /** Terminate the process (ConPTY on Windows). */
   kill(): void
+  /**
+   * Kill the whole process tree this backend owns, best-effort. Distinct from
+   * `kill()`, which ends only the PTY itself and leaves grandchildren running —
+   * on win32 that is the dev server behind the `cmd.exe` shim, still holding its
+   * port. Each backend kills a process it owns rather than one it inferred, so
+   * the pid is never guessed across a process boundary. Never rejects.
+   */
+  killTree(): Promise<void>
   /** OS process id of the spawned shell. */
   readonly pid: number
   /** True once the process has exited. */
@@ -210,6 +219,11 @@ export function createNativePtySession(
       } catch {
         // Process may have already exited between the killed check and kill().
       }
+    },
+    killTree() {
+      // node-pty's own pid: the ConPTY cmd shim on win32 (taskkill /T walks down
+      // to the dev server behind it), the process-group leader on POSIX.
+      return killProcessTree(proc.pid)
     },
     get pid() {
       return proc.pid
