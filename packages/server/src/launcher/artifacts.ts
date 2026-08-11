@@ -86,6 +86,16 @@ export function serverUrlFor(config: RuncastleConfig): string {
  * Stated here AND enforced by the PreToolUse deny hook (`renderSettings`), for
  * the reason the burn guard gives: a prompt rule is advisory, a deny is not.
  */
+export function noCodeRule(docs: string): string {
+  return (
+    `- **Talk sessions do not write code.** You may write this feature's docs under \`${docs}/\` ` +
+    'and nothing else in this checkout. Every code change rides a ticket, burned by an ' +
+    'implementation agent in its own sandbox — even the one-line fix that is obviously faster ' +
+    'to just do. This is enforced by a hook, not left to your judgement: edits outside the docs ' +
+    'are denied.'
+  )
+}
+
 /**
  * The rule that REPLACES {@link noCodeRule} for the conflict-resolution session
  * (ADR-0007 §6). Its whole job is to merge the base branch in and resolve the
@@ -100,16 +110,6 @@ export function conflictResolutionRule(): string {
     'conflicted files in this checkout, resolving them from the feature docs’ intent, and ' +
     'commit the merge. That is the exception and its whole extent: work the merge revealed ' +
     'but did not cause still rides a ticket, and writes outside this worktree are denied.'
-  )
-}
-
-export function noCodeRule(docs: string): string {
-  return (
-    `- **Talk sessions do not write code.** You may write this feature's docs under \`${docs}/\` ` +
-    'and nothing else in this checkout. Every code change rides a ticket, burned by an ' +
-    'implementation agent in its own sandbox — even the one-line fix that is obviously faster ' +
-    'to just do. This is enforced by a hook, not left to your judgement: edits outside the docs ' +
-    'are denied.'
   )
 }
 

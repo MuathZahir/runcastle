@@ -21,6 +21,10 @@ import { featureDocsRel } from '@runcastle/core/paths'
  *
  * The one exempt kind is `project`: decision 18 gives it whole-repo write access
  * on a runcastle-owned branch, and its commits are the point of the session.
+ *
+ * The one exempt PURPOSE is `conflict` — a session of any guarded kind launched
+ * to resolve a merge conflict (ADR-0007 §6) writes the conflicted files in its
+ * own worktree, because that is the job it was opened to do.
  */
 
 /** The tools this guard is registered for (Claude Code's file-write surface). */

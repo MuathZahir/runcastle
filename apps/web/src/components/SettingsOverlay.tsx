@@ -132,7 +132,7 @@ function Section({
 function Field({ row, projectId }: { row: SettingRow; projectId?: string }) {
   const utils = trpc.useUtils()
   const [draft, setDraft] = useState(row.value)
-  /** What this field refused to commit, shown under the control until it changes. */
+  /** Why this field's last commit was refused; cleared by the next one. */
   const [invalid, setInvalid] = useState<string | null>(null)
 
   // Keep the draft in sync when a refetch changes the resolved value.

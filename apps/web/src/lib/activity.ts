@@ -116,7 +116,7 @@ export type EventLevel = 'error' | 'ok' | 'active' | 'info'
  * `data` when it finalizes a run — the same payload the desktop notification
  * reads, and the only place the outcome is actually recorded.
  */
-export function runFinishedStatus(event: Pick<EventRow, 'type' | 'data'>): RunStatus | null {
+function runFinishedStatus(event: Pick<EventRow, 'type' | 'data'>): RunStatus | null {
   if (event.type !== 'run.finished') return null
   if (typeof event.data !== 'object' || event.data === null) return null
   const status = (event.data as Record<string, unknown>).status
