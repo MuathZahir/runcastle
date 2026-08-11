@@ -268,11 +268,10 @@ describe('session-end — merge.resolved when the resolver landed the merge', ()
   let ctx: AppCtx
   let featureId: string
   let worktree: string
-  let repo: string
 
   beforeEach(async () => {
     ctx = await makeTestCtx()
-    repo = mkTmp('runcastle-resolved-repo-')
+    const repo = mkTmp('runcastle-resolved-repo-')
     git(repo, 'init', '-b', 'main')
     git(repo, 'config', 'user.email', 'test@runcastle.dev')
     git(repo, 'config', 'user.name', 'Runcastle Test')
@@ -297,14 +296,13 @@ describe('session-end — merge.resolved when the resolver landed the merge', ()
 
   afterEach(() => clearRuntimeCtx())
 
-  function resolveSession(overrides: Partial<Parameters<typeof createSessionRow>[1]> = {}): string {
+  function resolveSession(worktreePath = worktree): string {
     return createSessionRow(ctx, {
       featureId,
       kind: 'revisit',
       purpose: 'resolve-conflict',
       purposeData: { mergeFrom: 'main', mergeInto: 'feature/dark-mode' },
-      worktreePath: worktree,
-      ...overrides,
+      worktreePath,
     }).id
   }
 
@@ -355,7 +353,7 @@ describe('session-end — merge.resolved when the resolver landed the merge', ()
 
   /** Teardown outranks detection: a probe that cannot run still ends the session. */
   it('still ends the session when the worktree cannot be probed', async () => {
-    const id = resolveSession({ worktreePath: join(tmpdir(), 'runcastle-does-not-exist', 'gone') })
+    const id = resolveSession(join(tmpdir(), 'runcastle-does-not-exist', 'gone'))
     expect(await endSession(id)).toEqual({})
 
     expect(getSessionRow(ctx, id)?.status).toBe('ended')
