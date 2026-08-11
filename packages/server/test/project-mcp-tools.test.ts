@@ -2,6 +2,8 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { simpleGit } from 'simple-git'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { newId } from '@runcastle/core'
+import { runs } from '../src/db/schema'
 import type { AppCtx } from '../src/db/types'
 import { GateError, InvalidInputError } from '../src/errors'
 import { clearRuntimeCtx, setRuntimeCtx } from '../src/launcher/runtime'
@@ -295,6 +297,33 @@ describe('project-session MCP tools', () => {
     const serialized = JSON.stringify(out)
     expect(serialized).not.toContain('decayed intent')
     expect(serialized).not.toContain('the lap column exists')
+  })
+
+  // Decision 7: the run aggregate is the same digests re-concatenated, so it is
+  // served to the UI only — returning it here would double the response with no
+  // new information for an agent consumer.
+  it('never returns a run’s digest aggregate, only its one-line summary', () => {
+    const feature = seedFeature(ctx, projectId, { slug: 'laps', title: 'Laps' })
+    ctx.db
+      .insert(runs)
+      .values({
+        id: newId('run'),
+        featureId: feature.id,
+        workflow: 'ticket-burner',
+        status: 'succeeded',
+        startedAt: Date.now(),
+        endedAt: Date.now(),
+        summary: '1/1 tickets done',
+        digest: '## ticket 1 — A\n\nA whole page of prose the agent already has.',
+      })
+      .run()
+
+    const out = toolGetWorkRecord(ctx, session, { featureSlug: 'laps' })
+    expect(out.features[0].runs).toEqual([
+      expect.objectContaining({ workflow: 'ticket-burner', summary: '1/1 tickets done' }),
+    ])
+    expect(JSON.stringify(out)).not.toContain('whole page of prose')
+    expect(out.features[0].runs[0]).not.toHaveProperty('digest')
   })
 
   it('matches a seam as a case-insensitive substring, returning only the matching tickets', () => {
