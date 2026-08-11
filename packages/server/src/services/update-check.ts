@@ -1,19 +1,35 @@
 /**
- * Update check (issue #51, workstream G). On boot the server asks npm for the
- * `latest` dist-tag of the published `runcastle` package and compares it to the
- * running version. When latest is newer the UI shows a dismissible banner naming
- * the exact update command — runcastle *notifies*, it never auto-installs.
+ * Update check (issue #51, workstream G). On boot the server asks for the
+ * `latest` published version of `runcastle` and compares it to the running one.
+ * When latest is newer the UI shows a dismissible banner naming the exact update
+ * command — runcastle *notifies*, it never auto-installs.
  *
- * IO-thin on purpose: `fetch` is injected so the version compare + banner wiring
- * are unit-tested offline, and every failure path (offline, 404, garbage JSON)
+ * The same request is runcastle's usage signal: it goes to runcastle's own
+ * endpoint carrying an anonymous install ID, so a boot counts as one active
+ * install. That makes it a three-rung ladder, because the banner must survive
+ * the ping failing:
+ *
+ *   1. `DO_NOT_TRACK` set  → skip the ping, ask npm directly.
+ *   2. otherwise           → POST the ping, which answers `{ latest }`.
+ *   3. ping failed         → one attempt at npm; then a silent "no update".
+ *
+ * IO-thin on purpose: `fetch` and the environment are injected so every rung is
+ * unit-tested offline, and every failure path (offline, 5xx, garbage JSON)
  * degrades to "no update" so a stranger with no network still boots cleanly.
  */
 
 import { UNKNOWN_VERSION } from '../version'
+import { getInstallId } from './install-id'
 
 /** Public package name + the command a user runs to update it. */
 export const PACKAGE_NAME = 'runcastle'
 export const UPDATE_COMMAND = `bun add -g ${PACKAGE_NAME}@latest`
+
+/** runcastle's own endpoint: counts the install, answers with `latest`. */
+export const PING_URL = 'https://ping.runcastle.dev/ping'
+
+/** The fallback rung — npm's `latest` dist-tag, the pre-ping code path. */
+export const NPM_LATEST_URL = `https://registry.npmjs.org/${PACKAGE_NAME}/latest`
 
 export interface UpdateInfo {
   /** The running server's version. */
@@ -75,34 +91,81 @@ const NO_UPDATE = (current: string): UpdateInfo => ({
 })
 
 /**
- * Fetch npm's `latest` version and decide whether an update is available.
- * Any failure resolves to a "no update" result — this must never throw, so a
- * boot-time call can't wedge the server on a flaky network.
+ * The community `DO_NOT_TRACK` convention: any non-empty value other than `0`
+ * opts out. Read from the passed environment at CALL time, never captured at
+ * module load, so setting it before boot is always enough.
+ */
+function doNotTrack(env: Record<string, string | undefined>): boolean {
+  const raw = env.DO_NOT_TRACK
+  return raw !== undefined && raw !== '' && raw !== '0'
+}
+
+/** npm's `latest` dist-tag, or null on any failure. */
+async function latestFromNpm(fetchImpl: typeof fetch): Promise<string | null> {
+  try {
+    const res = await fetchImpl(NPM_LATEST_URL)
+    if (!res.ok) return null
+    const body = (await res.json()) as { version?: unknown }
+    return typeof body.version === 'string' ? body.version : null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Count this install and read back `latest`, or null on any failure. The body is
+ * the entire usage signal — a random install ID, the running version, the OS
+ * platform, and nothing else (documented in the README).
+ */
+async function latestFromPing(fetchImpl: typeof fetch, current: string): Promise<string | null> {
+  try {
+    const res = await fetchImpl(PING_URL, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        installId: getInstallId(),
+        version: current,
+        platform: process.platform,
+      }),
+    })
+    if (!res.ok) return null
+    const body = (await res.json()) as { latest?: unknown }
+    return typeof body.latest === 'string' ? body.latest : null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Walk the ping → npm → silence ladder and decide whether an update is
+ * available. Any failure resolves to a "no update" result — this must never
+ * throw, so a boot-time call can't wedge the server on a flaky network.
  */
 export async function checkForUpdate(opts: {
   current: string
   fetchImpl?: typeof fetch
+  /** Environment to read `DO_NOT_TRACK` from (default `process.env`). */
+  env?: Record<string, string | undefined>
 }): Promise<UpdateInfo> {
   const { current } = opts
   const fetchImpl = opts.fetchImpl ?? fetch
+  const env = opts.env ?? process.env
   // An unknown running version cannot be compared: every published release
   // outranks it, so the honest answer is "no update" rather than telling a
-  // brand-new install it is on 0.0.0 and out of date (findings F7).
+  // brand-new install it is on 0.0.0 and out of date (findings F7). No request
+  // is made at all — there is nothing to ask about.
   if (current === UNKNOWN_VERSION) return NO_UPDATE(current)
-  try {
-    const res = await fetchImpl(`https://registry.npmjs.org/${PACKAGE_NAME}/latest`)
-    if (!res.ok) return NO_UPDATE(current)
-    const body = (await res.json()) as { version?: unknown }
-    const latest = typeof body.version === 'string' ? body.version : null
-    if (!latest) return NO_UPDATE(current)
-    return {
-      current,
-      latest,
-      updateAvailable: compareSemver(latest, current) > 0,
-      command: UPDATE_COMMAND,
-    }
-  } catch {
-    return NO_UPDATE(current)
+
+  const latest = doNotTrack(env)
+    ? await latestFromNpm(fetchImpl)
+    : ((await latestFromPing(fetchImpl, current)) ?? (await latestFromNpm(fetchImpl)))
+  if (!latest) return NO_UPDATE(current)
+
+  return {
+    current,
+    latest,
+    updateAvailable: compareSemver(latest, current) > 0,
+    command: UPDATE_COMMAND,
   }
 }
 
