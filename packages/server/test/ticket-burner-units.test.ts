@@ -1,5 +1,7 @@
 import type { AgentStreamEvent } from '@ai-hero/sandcastle'
-import { readFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import type { Feature, Ticket } from '@runcastle/core'
 import { describe, expect, it } from 'vitest'
 import {
@@ -15,6 +17,7 @@ import {
   buildVerifyNotes,
   buildWorkspaceNotes,
   cacheMountFor,
+  harvestDigest,
   classifyTicketRunError,
   classifyToolCall,
   createToolTimer,
@@ -787,6 +790,34 @@ describe('buildWorkspaceNotes — the {{WORKSPACE_NOTES}} prompt block', () => {
     const notes = buildWorkspaceNotes('isolated')
     expect(notes).toContain(`${SANDBOX_WORKSPACE_PATH}/DIGEST.md`)
     expect(notes).not.toContain(`${ISOLATED_REPO_PATH}/DIGEST.md`)
+  })
+})
+
+describe('harvestDigest — reading the agent DIGEST.md off the workspace', () => {
+  /** A throwaway dir, optionally holding a DIGEST.md with the given content. */
+  function dirWithDigest(content?: string): string {
+    const dir = mkdtempSync(join(tmpdir(), 'runcastle-digest-'))
+    if (content !== undefined) writeFileSync(join(dir, 'DIGEST.md'), content, 'utf8')
+    return dir
+  }
+
+  it('reads and trims the digest from the first candidate dir that has one', () => {
+    const worktree = dirWithDigest('\n## What was done\nBuilt the thing.\n\n')
+    expect(harvestDigest([worktree, dirWithDigest('the repo copy')])).toBe(
+      '## What was done\nBuilt the thing.',
+    )
+  })
+
+  it('falls back to a later candidate dir', () => {
+    expect(harvestDigest([dirWithDigest(), dirWithDigest('from the repo')])).toBe('from the repo')
+  })
+
+  it('reads no digest when the agent wrote none', () => {
+    expect(harvestDigest([dirWithDigest(), undefined])).toBeUndefined()
+  })
+
+  it('treats a whitespace-only digest as no digest', () => {
+    expect(harvestDigest([dirWithDigest('  \n\t\n ')])).toBeUndefined()
   })
 })
 

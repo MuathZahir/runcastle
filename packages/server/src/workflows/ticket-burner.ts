@@ -84,7 +84,16 @@ const AUTH_MISSING_MESSAGE =
 
 /** What one ticket run resolves to. Aborts are thrown, never returned here. */
 export type TicketOutcome =
-  | { readonly status: 'done'; readonly commits: string[] }
+  | {
+      readonly status: 'done'
+      readonly commits: string[]
+      /**
+       * The agent's own account of the work, harvested from the `DIGEST.md` it
+       * writes just before signalling COMPLETE. Absent when it wrote none —
+       * harvest is best-effort, so the ticket is done either way.
+       */
+      readonly digest?: string
+    }
   | {
       readonly status: 'failed'
       readonly error: string
@@ -1319,13 +1328,22 @@ export async function burnTickets(
     const outcome = await execute(ctx, t) // throws on abort — propagates
     if (outcome.status === 'done') {
       status.set(seq, 'done')
-      ctx.updateTicket(t.id, { status: 'done', commits: outcome.commits })
+      ctx.updateTicket(t.id, { status: 'done', commits: outcome.commits, digest: outcome.digest })
       ctx.emitEvent({
         type: 'ticket.done',
         message: `ticket ${t.seq} done — ${outcome.commits.length} commit(s)`,
         ticketId: t.id,
         data: { commits: outcome.commits },
       })
+      // Never blocks `done` (commits are the ground truth), but the gap belongs
+      // in the timeline: the work record is thinner than it should be.
+      if (outcome.digest === undefined) {
+        ctx.emitEvent({
+          type: 'digest.missing',
+          message: `ticket ${t.seq} done without DIGEST.md`,
+          ticketId: t.id,
+        })
+      }
     } else {
       failTicket(seq, outcome.error, outcome.event)
       ctx.emitEvent({
@@ -1491,11 +1509,11 @@ function readDocsDigestFromDisk(projectId: string, slug: string): string {
   return buildDocsDigest(files)
 }
 
-/** First-found `BLOCKED.md` across candidate dirs (worktree first, then repo). */
-function readBlockedFile(dirs: (string | undefined)[]): string | undefined {
+/** First-found `file` across candidate dirs (worktree first, then repo). */
+function readAgentFile(dirs: (string | undefined)[], file: string): string | undefined {
   for (const dir of dirs) {
     if (!dir) continue
-    const p = join(dir, 'BLOCKED.md')
+    const p = join(dir, file)
     if (existsSync(p)) {
       try {
         return readFileSync(p, 'utf8')
@@ -1505,6 +1523,16 @@ function readBlockedFile(dirs: (string | undefined)[]): string | undefined {
     }
   }
   return undefined
+}
+
+/**
+ * The agent's own account of the ticket, from the `DIGEST.md` it writes just
+ * before signalling COMPLETE. Best-effort by contract: a missing file — or one
+ * holding nothing but whitespace — reads as no digest, never as a failure.
+ */
+export function harvestDigest(dirs: (string | undefined)[]): string | undefined {
+  const trimmed = readAgentFile(dirs, 'DIGEST.md')?.trim()
+  return trimmed ? trimmed : undefined
 }
 
 /**
@@ -1884,7 +1912,7 @@ async function realExecuteTicketRun(
       await cleanupBurnWorktree(project.repoPath, resolveBranch)
     }
 
-    const blocked = readBlockedFile([result?.preservedWorktreePath, project.repoPath])
+    const blocked = readAgentFile([result?.preservedWorktreePath, project.repoPath], 'BLOCKED.md')
     if (blocked !== undefined && blocked.trim().length > 0) {
       return {
         ok: false,
@@ -1926,6 +1954,15 @@ async function realExecuteTicketRun(
   }
 
   /**
+   * This run's `DIGEST.md`, harvested from the workspace once the agent is done
+   * and read back below when the landing resolves — landing sits between the
+   * agent finishing and the outcome being returned, so the digest has to
+   * survive it. Stays undefined on the conflict-resume path, where no agent
+   * ran and there is nothing to harvest.
+   */
+  let harvestedDigest: string | undefined
+
+  /**
    * Land `branch`, resolving conflicts in-loop, and map the result onto the
    * ticket outcome + the state the next burn needs. Shared by the normal path
    * and the conflict-resume path, so a re-landing behaves identically however
@@ -1937,7 +1974,11 @@ async function realExecuteTicketRun(
       // Landed — nothing is pending on a branch any more, so both resume
       // pointers must go or the next burn would resume an already-merged chain.
       ctx.updateTicket(ticket.id, { attemptBranch: null, conflictFiles: null })
-      return { status: 'done', commits: landedCommits.length > 0 ? landedCommits : commits }
+      return {
+        status: 'done',
+        commits: landedCommits.length > 0 ? landedCommits : commits,
+        digest: harvestedDigest,
+      }
     }
 
     preserveChain(landing.branch)
@@ -2167,7 +2208,10 @@ async function realExecuteTicketRun(
     // commits): a resumed agent that only verified and committed nothing new is
     // still done; one that committed nothing new AND wrote BLOCKED.md failed —
     // its preserved chain stays on the ticket for the next retry.
-    const blocked = readBlockedFile([result.preservedWorktreePath, project.repoPath])
+    const agentFileDirs = [result.preservedWorktreePath, project.repoPath]
+    const blocked = readAgentFile(agentFileDirs, 'BLOCKED.md')
+    // Harvested before the landing, attached after it — see `harvestedDigest`.
+    harvestedDigest = harvestDigest(agentFileDirs)
     const chain = await branchCommitsAhead(project.repoPath, feature.branch, tempBranch)
     let outcome: TicketOutcome
     if (result.commits.length === 0 && blocked !== undefined && blocked.trim().length > 0) {

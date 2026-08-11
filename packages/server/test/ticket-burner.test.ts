@@ -54,7 +54,7 @@ interface Emitted {
 }
 interface Patch {
   id: string
-  patch: Partial<Pick<Ticket, 'status' | 'commits' | 'error'>>
+  patch: Partial<Pick<Ticket, 'status' | 'commits' | 'error' | 'digest'>>
 }
 
 function makeCtx(tickets: Ticket[], signal?: AbortSignal) {
@@ -120,6 +120,49 @@ describe('burnRun — scheduling and summary', () => {
     expect(patches).toContainEqual({ id: 'tkt_2', patch: { status: 'done', commits: ['b', 'c'] } })
     expect(events.map((e) => e.type)).toContain('ticket.done')
     expect(events.at(-1)).toMatchObject({ type: 'burn.summary', message: '2/2 tickets done' })
+  })
+
+  it('stores the digest of a done ticket and emits no digest.missing', async () => {
+    const tickets = [ticket(1)]
+    const { ctx, events, patches } = makeCtx(tickets)
+    const digest = 'Did the thing.\n\nSurprise: the seam was already half-built.'
+    const execute = fakeExecute({ 1: { status: 'done', commits: ['a'], digest } })
+
+    await burnRun(ctx, deps(execute))
+
+    expect(patches).toContainEqual({
+      id: 'tkt_1',
+      patch: { status: 'done', commits: ['a'], digest },
+    })
+    expect(events.map((e) => e.type)).not.toContain('digest.missing')
+  })
+
+  it('lands a done ticket with no digest and flags the gap with digest.missing', async () => {
+    const tickets = [ticket(1)]
+    const { ctx, events, patches } = makeCtx(tickets)
+    const execute = fakeExecute({ 1: { status: 'done', commits: ['a'] } })
+
+    const res = await burnRun(ctx, deps(execute))
+
+    expect(res).toEqual({ status: 'succeeded', summary: '1/1 tickets done' })
+    expect(patches).toContainEqual({
+      id: 'tkt_1',
+      patch: { status: 'done', commits: ['a'], digest: undefined },
+    })
+    expect(events).toContainEqual(
+      expect.objectContaining({ type: 'digest.missing', ticketId: 'tkt_1' }),
+    )
+  })
+
+  it('never stores a digest for a failed ticket', async () => {
+    const tickets = [ticket(1)]
+    const { ctx, events, patches } = makeCtx(tickets)
+    const execute = fakeExecute({ 1: { status: 'failed', error: 'boom' } })
+
+    await burnRun(ctx, deps(execute))
+
+    expect(patches.every((p) => p.patch.digest === undefined)).toBe(true)
+    expect(events.map((e) => e.type)).not.toContain('digest.missing')
   })
 
   it('fails the run and reports X/Y when a ticket fails', async () => {
