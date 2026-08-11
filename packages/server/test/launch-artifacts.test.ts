@@ -316,6 +316,19 @@ describe('renderSystemPrompt', () => {
     }
   })
 
+  /**
+   * E2E F18 — the conflict-resolution revisit was briefed to resolve the merge
+   * AND told edits are denied. The agent believed the ban, aborted the merge and
+   * emitted a ticket to carry it instead, so the feature never worked.
+   */
+  it('tells the conflict-resolution revisit that it does write code here', () => {
+    const p = renderSystemPrompt(feature({ phase: 'review' }), 'revisit', undefined, undefined, 'conflict')
+    expect(p).not.toMatch(/Talk sessions do not write code/)
+    expect(p).toMatch(/resolves a merge conflict, so it DOES write code/i)
+    // the exception is bounded: other work still rides a ticket
+    expect(p).toMatch(/ticket/i)
+  })
+
   it('directs a converge session to /runcastle:converge over ONLY the compressed knowledge', () => {
     const p = renderSystemPrompt(feature({ mapped: true, phase: 'spec' }), 'converge')
     expect(p).toContain('/runcastle:converge')

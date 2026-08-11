@@ -302,6 +302,10 @@ function Lane({
                 launch.mutate({
                   featureId: ticket.featureId,
                   kind: 'revisit',
+                  // Landing this ticket means editing the conflicted files, which
+                  // the talk-session edit guard denies unless the launch says what
+                  // it is for (E2E F18 — the same defect on the ticket path).
+                  purpose: 'conflict',
                   kickoffLine: ticketConflictKickoff({
                     seq: ticket.seq,
                     title: ticket.title,

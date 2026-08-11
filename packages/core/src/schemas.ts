@@ -92,6 +92,19 @@ export function isProjectSessionKind(kind: SessionKind): boolean {
   return (PROJECT_SESSION_KINDS as readonly string[]).includes(kind)
 }
 
+/**
+ * Why a session was launched, where that changes what the session may DO (its
+ * kind stays what it is — a conflict-resolution session is still a `revisit`).
+ *
+ * `talk` is every ordinary conversation: it writes its feature's docs and
+ * nothing else. `conflict` is the conflict-resolution session ADR-0007 §6
+ * designs — a revisit briefed to merge the base branch in and resolve the
+ * conflicts, which means editing code on the feature branch, which the
+ * talk-session edit guard otherwise denies (E2E F18).
+ */
+export const SessionPurpose = z.enum(['talk', 'conflict'])
+export type SessionPurpose = z.infer<typeof SessionPurpose>
+
 export const RunStatus = z.enum(['running', 'succeeded', 'failed', 'cancelled'])
 export type RunStatus = z.infer<typeof RunStatus>
 

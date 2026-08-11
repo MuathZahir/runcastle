@@ -1,7 +1,15 @@
 import { existsSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import type { Feature, Project, Run, SessionKind, SessionRow, Waypoint } from '@runcastle/core'
+import type {
+  Feature,
+  Project,
+  Run,
+  SessionKind,
+  SessionPurpose,
+  SessionRow,
+  Waypoint,
+} from '@runcastle/core'
 import { worktreeDir } from '@runcastle/core/paths'
 import { nextGate, nextPhase, resolveModel } from '@runcastle/core'
 import { and, eq } from 'drizzle-orm'
@@ -46,6 +54,7 @@ import {
   planKickoff,
   resumeKickoffLine,
   setKickoffOverride,
+  setSessionPurpose,
 } from './sessions'
 
 // Re-exported for the `feature.resendKickoff` router: the launcher is the stable
@@ -94,6 +103,13 @@ export interface LaunchSessionInput {
    * here — e.g. a revisit told to resolve a merge conflict or iterate on review.
    */
   kickoffLine?: string
+  /**
+   * Why this session is being opened, where that changes what it may do. The
+   * conflict-resolution launches pass `conflict` — the session ADR-0007 §6
+   * designs, which resolves the merge on the feature branch and so must be
+   * allowed to write code (E2E F18). Absent reads as `talk`.
+   */
+  purpose?: SessionPurpose
 }
 
 export interface LaunchSessionOptions {
@@ -454,6 +470,9 @@ export async function launchSession(
   // the agent continues the conversation rather than restarting its opening move.
   const kickoffLine = plan.line ?? (resumeSessionId ? resumeKickoffLine(input.kind) : undefined)
   if (kickoffLine) setKickoffOverride(session.id, kickoffLine)
+  // Registered against the session id for the same reason, and read by the edit
+  // guard on every PreToolUse for the life of the session.
+  if (input.purpose) setSessionPurpose(session.id, input.purpose)
 
   emit(ctx, feature.id, {
     type: 'session.launching',
@@ -492,6 +511,7 @@ export async function launchSession(
     config: ctx.config,
     waypoint,
     lap: plan.lap,
+    purpose: input.purpose,
   })
   const serverUrl = serverUrlFor(ctx.config)
 
