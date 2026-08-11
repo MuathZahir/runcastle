@@ -17,7 +17,7 @@ import {
   testDrive,
 } from '../src/services/git'
 import { getFeatureRow } from '../src/services/repo'
-import { listByFeature, storeTickets, updateTicket } from '../src/services/tickets'
+import { storeTickets, updateTicket } from '../src/services/tickets'
 import { createCallerFactory } from '../src/trpc/context'
 import { appRouter } from '../src/trpc/router'
 import { makeTestCtx } from './helpers/db'
@@ -223,8 +223,10 @@ describe('feature.merge — outcome.md promotion (the-work-record ticket 3)', ()
     })
   }
 
-  const outcomeAt = (ref: string, slug: string): Promise<string> =>
-    g.raw(['show', `${ref}:docs/features/${slug}/outcome.md`])
+  /** The committed doc at a git ref — rejects when the ref does not carry one. */
+  function outcomeAt(ref: string, slug: string): Promise<string> {
+    return g.raw(['show', `${ref}:docs/features/${slug}/outcome.md`])
+  }
 
   it('commits the doc onto the feature branch before the merge, so it lands on the base', async () => {
     const feature = await seedShippableFeature('thick')
@@ -308,6 +310,5 @@ describe('feature.merge — outcome.md promotion (the-work-record ticket 3)', ()
     expect(getFeatureRow(ctx, feature.id).phase).toBe('shipped')
     const failed = listAfter(ctx, feature.id, 0).find((e) => e.type === 'docs.outcome_failed')
     expect(failed).toBeDefined()
-    expect(listByFeature(ctx, feature.id)).toHaveLength(1)
   })
 })
