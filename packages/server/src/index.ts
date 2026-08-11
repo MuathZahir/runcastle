@@ -18,8 +18,10 @@ import { terminalWebSocket, tryUpgradeTerminal } from './pty/ws'
 import hooksApp from './routes/hooks'
 import streamApp from './routes/stream'
 import { mountWebAppIfBuilt } from './routes/web'
+import { getUpdateInfo } from './services/update-check'
 import { createShutdown } from './shutdown'
 import { appRouter } from './trpc/router'
+import { runcastleVersion } from './version'
 import { reconcileStaleRuns } from './workflows/reconcile-runs'
 
 /**
@@ -125,6 +127,13 @@ export async function startServer(): Promise<void> {
     `runcastle${process.env.RUNCASTLE_DEV ? ' [dev]' : ''} server listening on ` +
       `http://localhost:${config.serverPort} — data dir: ${dataDir()}`,
   )
+
+  // Check for a newer release here, at boot, rather than lazily on the first UI
+  // page load: a server booted without anyone opening the app never checked at
+  // all, and "booted a server" is the honest definition of an active install.
+  // Fire-and-forget — the result is memoized for the banner's tRPC query, and
+  // the `catch` keeps even an unforeseen rejection off the boot path.
+  void getUpdateInfo(runcastleVersion()).catch(() => {})
 
   // Kill every live PTY on shutdown so no orphaned claude processes survive.
   // Registered once even across `bun --hot` reloads (which re-run `main`) to

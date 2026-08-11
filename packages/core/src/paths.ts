@@ -71,6 +71,16 @@ export function envPath(): string {
   return join(dataDir(), '.env')
 }
 
+/**
+ * The anonymous install ID the boot update-check sends: `<dataDir>/install-id`.
+ * Deliberately its own plain-text file rather than a `config.json` key — it is
+ * not a setting, and it must survive a config reset. Deriving from
+ * {@link dataDir} means a dev checkout counts separately from a real install.
+ */
+export function installIdPath(): string {
+  return join(dataDir(), 'install-id')
+}
+
 export function logsDir(): string {
   return join(dataDir(), 'logs')
 }
