@@ -1,11 +1,18 @@
-import type { MergeBranchPair, SessionKind, SessionPurpose, SessionRow } from '@runcastle/core'
+import type {
+  MergeBranchPair,
+  Project,
+  SessionKind,
+  SessionPurpose,
+  SessionRow,
+} from '@runcastle/core'
 import { newId } from '@runcastle/core'
 import { and, desc, eq, inArray, isNotNull, sql } from 'drizzle-orm'
 import type { AppCtx } from '../db/types'
 import { sessions } from '../db/schema'
 import { ptyRegistry } from '../pty/registry'
+import { stopDocsWatch } from '../services/docs-watch'
 import { emit, emitForSession, emitProject } from '../services/events'
-import { landProjectBranch, PROJECT_BRANCH } from '../services/git'
+import { landProjectBranch, PROJECT_BRANCH, type ProjectLandResult } from '../services/git'
 import { promoteLastSession } from '../services/waypoints'
 import { getFeatureRow, getProjectById, rowToSession } from '../services/repo'
 
@@ -662,6 +669,9 @@ const landedProjectSessions = new Set<string>()
  */
 const inFlightLandings = new Set<Promise<void>>()
 
+/** What becomes of work a landing could not place — the same in every report. */
+const LANDING_KEPT = `they are kept on ${PROJECT_BRANCH} and retried at the next launch`
+
 /**
  * Resolve once every landing kicked off so far has finished — including any
  * started while we were waiting. Never rejects: a landing reports its own
@@ -696,49 +706,71 @@ export function landProjectSession(ctx: AppCtx, session: SessionRow): void {
   const project = getProjectById(ctx, session.projectId)
   if (!project) return
 
-  const kept = `they are kept on ${PROJECT_BRANCH} and retried at the next launch`
-  const report = (type: string, message: string, data: Record<string, unknown> = {}): void => {
-    emitProject(ctx, project.id, {
-      type,
-      message,
-      data: { sessionId: session.id, branch: PROJECT_BRANCH, ...data },
-    })
-  }
-
   const landing = landProjectBranch(project)
     .then((res) => {
-      if (!res) return // the conversation wrote nothing — no timeline noise
-      if (res.landed) {
-        report(
-          'project.landed',
-          `landed ${res.commits} commit(s) from the project session onto ${project.mainBranch}`,
-          { commits: res.commits },
-        )
-      } else if (res.conflict) {
-        report(
-          'project.land_conflict',
-          `the project session's ${res.commits} commit(s) conflict with ${project.mainBranch} — nothing was overwritten; ${kept}`,
-          { commits: res.commits, files: res.files ?? [] },
-        )
-      } else {
-        report(
-          'project.land_failed',
-          `could not land the project session's ${res.commits} commit(s) onto ${project.mainBranch}: ${res.error ?? 'unknown error'} — ${kept}`,
-          { commits: res.commits, error: res.error ?? null },
-        )
-      }
+      // The conversation wrote nothing — no timeline noise.
+      if (res) reportProjectLanding(ctx, project, res, { sessionId: session.id })
     })
     .catch((e: unknown) => {
-      report(
-        'project.land_failed',
-        `could not land the project session's work onto ${project.mainBranch}: ${
+      emitProject(ctx, project.id, {
+        type: 'project.land_failed',
+        message: `could not land the project session's work onto ${project.mainBranch}: ${
           e instanceof Error ? e.message : String(e)
-        } — ${kept}`,
-        { error: e instanceof Error ? e.message : String(e) },
-      )
+        } — ${LANDING_KEPT}`,
+        data: {
+          sessionId: session.id,
+          branch: PROJECT_BRANCH,
+          error: e instanceof Error ? e.message : String(e),
+        },
+      })
     })
   inFlightLandings.add(landing)
   void landing.finally(() => inFlightLandings.delete(landing))
+}
+
+/**
+ * Put a project-branch landing on the project's timeline.
+ *
+ * Shared by both halves of the landing protocol: the attempt at session end
+ * ({@link landProjectSession}) and the retry at the next launch
+ * (`git.ensureProjectWorktree`). The retry used to be silent, which was the
+ * worse of the two to lose — a successful retry is the ONLY thing that
+ * supersedes the standing `project.land_conflict` from the attempt that failed,
+ * so without it the UI went on claiming the work was stranded on
+ * `runcastle/project` long after it had landed on the user's main branch.
+ */
+export function reportProjectLanding(
+  ctx: AppCtx,
+  project: Project,
+  res: ProjectLandResult,
+  data: Record<string, unknown> = {},
+): void {
+  const report = (type: string, message: string, extra: Record<string, unknown>): void => {
+    emitProject(ctx, project.id, {
+      type,
+      message,
+      data: { branch: PROJECT_BRANCH, ...data, ...extra },
+    })
+  }
+  if (res.landed) {
+    report(
+      'project.landed',
+      `landed ${res.commits} commit(s) from the project session onto ${project.mainBranch}`,
+      { commits: res.commits },
+    )
+  } else if (res.conflict) {
+    report(
+      'project.land_conflict',
+      `the project session's ${res.commits} commit(s) conflict with ${project.mainBranch} — nothing was overwritten; ${LANDING_KEPT}`,
+      { commits: res.commits, files: res.files ?? [] },
+    )
+  } else {
+    report(
+      'project.land_failed',
+      `could not land the project session's ${res.commits} commit(s) onto ${project.mainBranch}: ${res.error ?? 'unknown error'} — ${LANDING_KEPT}`,
+      { commits: res.commits, error: res.error ?? null },
+    )
+  }
 }
 
 /** Mark a session `ended`; returns the updated row, or null if unknown. */
@@ -748,6 +780,11 @@ export function markSessionEnded(ctx: AppCtx, id: string): SessionRow | null {
   // Drop any un-consumed override and stop an in-flight delivery: the PTY it
   // types into is gone, and a pending retry must never outlive its session.
   forgetKickoff(id)
+  // Same reasoning for the docs watcher, and one reason more: on Windows a live
+  // watcher holds a lock on the directory, which would block the worktree
+  // removal that follows a merge. Every end path funnels here — PTY exit, the
+  // Stop hook, boot reconciliation — so this is the one place it must happen.
+  if (existing.featureId) stopDocsWatch(existing.featureId)
   ctx.db.update(sessions).set({ status: 'ended' }).where(eq(sessions.id, id)).run()
   return getSessionRow(ctx, id)
 }
