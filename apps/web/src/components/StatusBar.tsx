@@ -1,7 +1,7 @@
 import { trpc } from '../trpc'
 import { useToast } from '../lib/toast'
 import { useDesktopNotifications } from '../lib/use-notifications'
-import { useLivePoll } from '../lib/live'
+import { useLivePoll, useLiveStatus } from '../lib/live'
 import { SANDBOX_MODE } from '../lib/env'
 import { notifyButton } from '../lib/notifications'
 import type { DriveState } from '../lib/workspace'
@@ -30,6 +30,7 @@ export function StatusBar({
 }) {
   const toast = useToast()
   const utils = trpc.useUtils()
+  const live = useLiveStatus()
   const list = trpc.feature.list.useQuery({ projectId }, { refetchInterval: useLivePoll() })
   const healthy = !list.isError && list.data !== undefined
   const active = list.data?.find((f) => f.id === activeFeatureId)
@@ -92,6 +93,21 @@ export function StatusBar({
       )}
       <span className="sb-item">
         {runCount} run{runCount === 1 ? '' : 's'}
+      </span>
+      {/* Data-stream health, not the terminal's (that one has its own OFFLINE
+          banner in the workspace). A dead stream used to be invisible, which is
+          what made staleness feel haunted — quiet dot while it flows, amber
+          word while it does not. No toast: reconnects are routine. */}
+      <span
+        className={`sb-item sb-live ${live === 'live' ? 'is-live' : 'is-degraded'}`}
+        title={
+          live === 'live'
+            ? 'Live updates are streaming from the server'
+            : 'Live updates paused — reconnecting, and polling meanwhile'
+        }
+      >
+        <span className="sb-live-dot" />
+        {live === 'live' ? 'live' : 'reconnecting…'}
       </span>
       {/* Says "server", not ":4512". The port was a hardcoded constant that kept
           claiming 4512 on an instance running anywhere else (findings F14) —

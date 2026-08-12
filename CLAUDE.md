@@ -22,7 +22,10 @@ the correction in `docs/research/CORRECTIONS.md`.
 - **Windows paths: always `node:path`** (`join`, `resolve`); never
   hand-concatenate; quote paths in shell commands.
 - **Every service function that mutates emits an event** — events are the UI's
-  lifeblood (`events.list` is polled at 1.5s).
+  lifeblood: each one is pushed over the SSE stream (`GET /api/stream`) and
+  invalidates the affected queries at once. Polling is only the fallback for a
+  stream that is down (1.5s), backed off to 30s while it is live — so a missed
+  emit costs the UI half a minute of staleness, not a tick.
 - **Commit your own work when done**: conventional message `feat(scope): ...`.
 - **For library/API shapes, use `npx ctx7@latest library|docs`** (≤3 calls per
   question) — don't trust training data for API shapes.
