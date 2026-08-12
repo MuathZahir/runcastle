@@ -2618,7 +2618,6 @@ details.wp-group-done > summary { cursor: pointer; list-style: revert; }
    while it is not. Deliberately smaller and calmer than the terminal's
    `.ws-banner.is-offline` — different connection, different message. */
 .sb-live-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--ok); flex: 0 0 auto; }
-.sb-live.is-live { color: var(--text-4); }
 .sb-live.is-degraded { color: var(--warn, #d9a441); }
 .sb-live.is-degraded .sb-live-dot { background: var(--warn, #d9a441); animation: pulse 1.4s ease-in-out infinite; }
 
