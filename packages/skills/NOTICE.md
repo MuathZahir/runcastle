@@ -35,4 +35,6 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-Runcastle's own license is MIT as well — see the repository root `LICENSE`.
+Runcastle's own license is the Functional Source License (FSL-1.1-ALv2) — see
+the repository root `LICENSE`. The MIT license above continues to apply to the
+upstream material as required by its terms.

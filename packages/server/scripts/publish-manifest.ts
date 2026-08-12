@@ -32,8 +32,8 @@ export const PUBLISHED_NAME = 'runcastle'
 /** One-line npm description (mirrors packages/server/README.md). */
 export const PUBLISHED_DESCRIPTION = 'Burn tickets into shipped features with Claude Code.'
 
-/** SPDX license (the workspace root is MIT; the source server manifest omits it). */
-export const PUBLISHED_LICENSE = 'MIT'
+/** SPDX license (matches the workspace root; the source server manifest omits it). */
+export const PUBLISHED_LICENSE = 'FSL-1.1-ALv2'
 
 /**
  * Source-repo metadata. `repository.url` is REQUIRED for a provenance publish:

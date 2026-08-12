@@ -103,7 +103,7 @@ describe('buildPublishedManifest', () => {
 
   it('sets license and description so the npm page is not blank', () => {
     const m = build()
-    expect(m.license).toBe('MIT')
+    expect(m.license).toBe('FSL-1.1-ALv2')
     expect(m.description).toBeTruthy()
   })
 
