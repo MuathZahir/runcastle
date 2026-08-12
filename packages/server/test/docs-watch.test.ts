@@ -1,8 +1,17 @@
-import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { featureDocsRel, sessionDir, worktreeDir } from '@runcastle/core/paths'
+import { simpleGit } from 'simple-git'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Feature } from '@runcastle/core'
 import type { AppCtx } from '../src/db/types'
+import { handlePtyExit, launchSession } from '../src/launcher/launcher'
+import { getSessionRow, markSessionEnded } from '../src/launcher/sessions'
+import type { PtyEntry } from '../src/pty/registry'
+import { ptyRegistry } from '../src/pty/registry'
+import { createFeatureBranch } from '../src/services/git'
+import { getFeatureRow } from '../src/services/repo'
 import { type LiveSignal, subscribeLive } from '../src/services/bus'
 import {
   DOCS_WATCH_DEBOUNCE_MS,
@@ -14,6 +23,7 @@ import {
 import { listAfter } from '../src/services/events'
 import { featureDocsDir } from '../src/services/feature-docs'
 import { projectForFeature } from '../src/services/repo'
+import { useDataDir } from './helpers/data-dir'
 import { makeTestCtx } from './helpers/db'
 import { seedFeature, seedProject } from './helpers/fixtures'
 
@@ -134,5 +144,95 @@ describe('docs watcher', () => {
     await sleep(SETTLE_MS)
 
     expect(docsEvents()).toHaveLength(0)
+  })
+})
+
+/**
+ * The watcher's lifetime is a session's lifetime — it must exist for exactly as
+ * long as something is working in the worktree. A leaked watcher is not just
+ * waste: on Windows it holds a lock on the directory the post-merge worktree
+ * removal has to delete.
+ */
+describe('docs watcher lifecycle — bound to the session', () => {
+  let ctx: AppCtx
+  let projectId: string
+  let repoPath: string
+  let restoreDataDir: () => void
+  const cleanup: string[] = []
+
+  beforeEach(async () => {
+    // Worktrees are built under the data dir; pin it into a temp home so this
+    // never reaches into a developer's real install.
+    const home = mkdtempSync(join(tmpdir(), 'runcastle-docs-home-'))
+    cleanup.push(home)
+    restoreDataDir = useDataDir(home)
+
+    ctx = await makeTestCtx()
+    repoPath = mkdtempSync(join(tmpdir(), 'runcastle-docs-watch-'))
+    cleanup.push(repoPath)
+    const git = simpleGit(repoPath)
+    await git.init(['-b', 'main'])
+    await git.addConfig('user.email', 'test@runcastle.dev')
+    await git.addConfig('user.name', 'Runcastle Test')
+    await git.addConfig('core.autocrlf', 'false')
+    await git.raw(['commit', '--allow-empty', '-m', 'initial commit'])
+    projectId = seedProject(ctx, repoPath).id
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+    stopAllDocsWatch()
+    restoreDataDir()
+    for (const dir of cleanup) rmSync(dir, { recursive: true, force: true })
+    cleanup.length = 0
+  })
+
+  /**
+   * A feature whose docs are committed on its branch — so the talk worktree's
+   * checkout contains the directory the watcher attaches to, exactly as a
+   * scaffolded feature's does.
+   */
+  async function featureWithWorktree(slug: string): Promise<Feature> {
+    const feature = seedFeature(ctx, projectId, { slug })
+    const docsSegments = featureDocsRel(slug).split('/')
+    mkdirSync(join(repoPath, ...docsSegments), { recursive: true })
+    writeFileSync(join(repoPath, ...docsSegments, 'brief.md'), '# brief\n', 'utf8')
+    const git = simpleGit(repoPath)
+    await git.add('.')
+    await git.commit(`scaffold docs for ${slug}`)
+    await createFeatureBranch({ id: projectId, name: 't', repoPath, mainBranch: 'main' }, slug)
+    cleanup.push(worktreeDir(projectId, slug))
+    return feature
+  }
+
+  /** Let the terminal "spawn" without starting a real Claude Code process. */
+  function stubPty(): void {
+    vi.spyOn(ptyRegistry(), 'create').mockReturnValue({
+      pty: { pid: 4512 },
+    } as unknown as PtyEntry)
+  }
+
+  it('starts on spawn and stops when the PTY exits', async () => {
+    const feature = await featureWithWorktree('pty-exit')
+    stubPty()
+
+    const { sessionId } = await launchSession(ctx, { featureId: feature.id, kind: 'ideation' })
+    cleanup.push(sessionDir(sessionId))
+    expect(docsWatchCount()).toBe(1)
+
+    handlePtyExit(ctx, getFeatureRow(ctx, feature.id), getSessionRow(ctx, sessionId)!, {}, 0)
+    expect(docsWatchCount()).toBe(0)
+  })
+
+  it('stops on the marked-ended path (Stop hook, boot reconciliation)', async () => {
+    const feature = await featureWithWorktree('marked-ended')
+    stubPty()
+
+    const { sessionId } = await launchSession(ctx, { featureId: feature.id, kind: 'ideation' })
+    cleanup.push(sessionDir(sessionId))
+    expect(docsWatchCount()).toBe(1)
+
+    markSessionEnded(ctx, sessionId)
+    expect(docsWatchCount()).toBe(0)
   })
 })

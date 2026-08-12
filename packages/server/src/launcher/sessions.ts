@@ -4,6 +4,7 @@ import { and, desc, eq, inArray, isNotNull, sql } from 'drizzle-orm'
 import type { AppCtx } from '../db/types'
 import { sessions } from '../db/schema'
 import { ptyRegistry } from '../pty/registry'
+import { stopDocsWatch } from '../services/docs-watch'
 import { emit, emitForSession, emitProject } from '../services/events'
 import { landProjectBranch, PROJECT_BRANCH } from '../services/git'
 import { promoteLastSession } from '../services/waypoints'
@@ -748,6 +749,11 @@ export function markSessionEnded(ctx: AppCtx, id: string): SessionRow | null {
   // Drop any un-consumed override and stop an in-flight delivery: the PTY it
   // types into is gone, and a pending retry must never outlive its session.
   forgetKickoff(id)
+  // Same reasoning for the docs watcher, and one reason more: on Windows a live
+  // watcher holds a lock on the directory, which would block the worktree
+  // removal that follows a merge. Every end path funnels here — PTY exit, the
+  // Stop hook, boot reconciliation — so this is the one place it must happen.
+  if (existing.featureId) stopDocsWatch(existing.featureId)
   ctx.db.update(sessions).set({ status: 'ended' }).where(eq(sessions.id, id)).run()
   return getSessionRow(ctx, id)
 }

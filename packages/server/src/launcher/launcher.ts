@@ -21,6 +21,7 @@ import { runs } from '../db/schema'
 import { GateError, isNotImplemented } from '../errors'
 import { endSession } from '../pty/end-session'
 import { ptyRegistry } from '../pty/registry'
+import { startDocsWatch } from '../services/docs-watch'
 import { emit, emitForSession, emitProject } from '../services/events'
 import { checkGate, overrideGate, undoLastGateOverride } from '../services/gates'
 import * as git from '../services/git'
@@ -1057,6 +1058,10 @@ function spawnEmbeddedPty(
       opts: { cwd: worktreePath, env, cols: 80, rows: 24, useConpty: true },
       onExit: ({ exitCode }) => handlePtyExit(ctx, feature, session, meta, exitCode),
     })
+    // The session is about to write docs; watch them so the UI sees the spec
+    // appear as it is written. Feature sessions only — the prepare and project
+    // sessions have no feature and so no feature docs dir.
+    if (feature) startDocsWatch(ctx, feature)
     emitForSession(ctx, session, {
       type: 'session.launched',
       message: 'embedded terminal spawned',
