@@ -1,5 +1,6 @@
 import { trpc } from '../trpc'
 import type { ProjectSession } from './api'
+import { useLivePoll } from './live'
 import { projectSessionState, type ProjectSessionState } from './project-workspace'
 import { useToast } from './toast'
 
@@ -9,9 +10,9 @@ import { useToast } from './toast'
  * workspace, and the two "talk it through" doors — reads the same polled row and
  * opens the session the same way.
  *
- * Polled at 1.5s alongside the rail's own `feature.list` poll: the session row is
- * the single source of truth, so a conversation opened or ended anywhere shows up
- * here without a page action.
+ * Polled on the shared live cadence, alongside the rail's own `feature.list`: the
+ * session row is the single source of truth, so a conversation opened or ended
+ * anywhere shows up here without a page action.
  */
 
 export interface ProjectTalkApi {
@@ -26,7 +27,7 @@ export interface ProjectTalkApi {
 export function useProjectTalk(projectId: string): ProjectTalkApi {
   const utils = trpc.useUtils()
   const toast = useToast()
-  const q = trpc.project.projectSession.useQuery({ projectId }, { refetchInterval: 1500 })
+  const q = trpc.project.projectSession.useQuery({ projectId }, { refetchInterval: useLivePoll() })
 
   const launch = trpc.project.talkToProject.useMutation({
     onSuccess: () => void utils.project.projectSession.invalidate(),

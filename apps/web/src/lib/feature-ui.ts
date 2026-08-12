@@ -732,6 +732,41 @@ export function mergeSummary(input: {
 export type KickoffTrouble = 'undelivered' | 'not-ready'
 
 /**
+ * How long a terminal may sit `launching` — spawned by the server, but with no
+ * `SessionStart` check-in from Claude Code yet — before the panel says so.
+ */
+export const CHECK_IN_GRACE_MS = 30_000
+
+/**
+ * True when the session's terminal has been up past {@link CHECK_IN_GRACE_MS}
+ * with the agent inside it still not checked in.
+ *
+ * Informational only. `launching` is a fully active state ({@link
+ * sessionActive}) — the terminal is there and can be typed into — so this never
+ * withholds anything; it is the panel's quiet explanation for why the strip
+ * still reads "launching…", which is usually something on screen waiting on the
+ * human (a trust prompt, a resume chooser).
+ *
+ * The age comes from the session's own `session.launching` event because the
+ * session row carries no timestamp. No such event in the log means an age that
+ * cannot be stated, and saying nothing beats guessing. `events` must be in id
+ * order.
+ */
+export function awaitingCheckIn(
+  session: { id: string; status: string },
+  events: EventRow[],
+  now: number = Date.now(),
+): boolean {
+  if (session.status !== 'launching') return false
+  const launched = events.find(
+    (e) =>
+      e.type === 'session.launching' &&
+      (e.data as { sessionId?: unknown } | null)?.sessionId === session.id,
+  )
+  return !!launched && now - launched.ts > CHECK_IN_GRACE_MS
+}
+
+/**
  * Whether a session's opening briefing is currently in trouble, derived from the
  * event feed (so it survives a reload, like the conflict card).
  *
@@ -755,6 +790,42 @@ export function kickoffTrouble(events: EventRow[], sessionId: string): KickoffTr
     else if (e.type === 'session.kickoff' || e.type === 'session.ended') trouble = null
   }
   return trouble
+}
+
+/**
+ * Whether a session's terminal is running — the one question every surface that
+ * asks "is a session up?" should ask, and the only place the statuses that mean
+ * yes are named.
+ *
+ * BOTH `launching` and `live` count. The server spawns the PTY, owns it, and
+ * tracks its exit first-hand (it marks the row ended and emits
+ * `session.pty_exited`), so either status means there is a real terminal the
+ * human can already type into. `live` records something narrower: that Claude
+ * Code's `SessionStart` hook called back, i.e. the agent confirmed it is inside.
+ * That check-in only ever UPGRADES what is known about a session — it must never
+ * gate whether one exists, because a hook that fails to arrive would then leave
+ * the bar offering "Start grill session" over the terminal being worked in,
+ * which is the reported bug.
+ */
+export function sessionActive(session: { status: string }): boolean {
+  return session.status === 'launching' || session.status === 'live'
+}
+
+/**
+ * The session strip's word for an active session — the ONE thing the two
+ * statuses are allowed to read differently, because here the distinction is the
+ * whole point: `launching…` says the terminal is up and the agent has not
+ * checked in yet, `live` says it has. Every strip says it identically.
+ */
+export function sessionStatusLabel(session: { status: string }): string {
+  return session.status === 'launching' ? 'launching…' : 'live'
+}
+
+/** The feature's active session ({@link sessionActive}), if it has one. */
+export function activeSession<T extends { status: string }>(
+  sessions: readonly T[],
+): T | undefined {
+  return sessions.find((s) => sessionActive(s))
 }
 
 /**
@@ -828,7 +899,7 @@ export function nextStep(
   },
 ): NextStep {
   const { feature, tickets, sessions, runs, gate } = full
-  const live = sessions.find((s) => s.status === 'live')
+  const live = activeSession(sessions)
   const resumableGrill = hasResumable(sessions, 'ideation')
   const t = tickets.length
   const done = tickets.filter((x) => x.status === 'done').length
@@ -1436,7 +1507,7 @@ export function liveSessionBlocker(
   sessions: FeatureFull['sessions'],
   waypoints: Waypoint[],
 ): LiveSessionBlocker | undefined {
-  const live = sessions.find((s) => s.status === 'live' || s.status === 'launching')
+  const live = activeSession(sessions)
   if (!live) return undefined
   const held = waypoints.find((w) => w.status === 'claimed' && w.claimedBy === live.id)
   return { sessionId: live.id, kind: live.kind, waypointTitle: held?.title }
