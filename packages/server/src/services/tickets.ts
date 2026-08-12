@@ -33,6 +33,7 @@ function rowToTicket(row: TicketSelect): Ticket {
     error: row.error ?? undefined,
     attemptBranch: row.attemptBranch ?? undefined,
     conflictFiles: row.conflictFiles ?? undefined,
+    digest: row.digest ?? undefined,
   })
 }
 
@@ -107,6 +108,7 @@ export function storeTickets(
     error: null,
     attemptBranch: null,
     conflictFiles: null,
+    digest: null,
   }))
 
   ctx.db.insert(tickets).values(rows).run()
@@ -236,7 +238,7 @@ export function updateTicket(
   id: string,
   // `null` clears a stored error/attemptBranch/conflictFiles (retry +
   // successful-landing paths).
-  patch: Partial<Pick<Ticket, 'status' | 'commits'>> & {
+  patch: Partial<Pick<Ticket, 'status' | 'commits' | 'digest'>> & {
     error?: string | null
     attemptBranch?: string | null
     conflictFiles?: string[] | null
@@ -251,6 +253,7 @@ export function updateTicket(
   if (patch.error !== undefined) set.error = patch.error
   if (patch.attemptBranch !== undefined) set.attemptBranch = patch.attemptBranch
   if (patch.conflictFiles !== undefined) set.conflictFiles = patch.conflictFiles
+  if (patch.digest !== undefined) set.digest = patch.digest
 
   ctx.db.update(tickets).set(set).where(eq(tickets.id, id)).run()
 

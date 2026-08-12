@@ -184,16 +184,19 @@ async function executeRun(
   runId: string,
   featureId: string,
   workflow: string,
-  runPromise: Promise<{ status: 'succeeded' | 'failed'; summary: string }>,
+  runPromise: Promise<{ status: 'succeeded' | 'failed'; summary: string; digest?: string }>,
   controller: AbortController,
   cleanup?: () => Promise<void>,
 ): Promise<void> {
   let status: RunStatus = 'failed'
   let summary = 'run failed'
+  // The workflow's long-form account of what this run produced, if it kept one.
+  let digest: string | undefined
   try {
     const result = await runPromise
     status = result.status
     summary = result.summary
+    digest = result.digest
   } catch (e) {
     if (controller.signal.aborted) {
       status = 'cancelled'
@@ -207,7 +210,11 @@ async function executeRun(
     controllers.delete(runId)
   }
 
-  ctx.db.update(runs).set({ status, endedAt: Date.now(), summary }).where(eq(runs.id, runId)).run()
+  ctx.db
+    .update(runs)
+    .set({ status, endedAt: Date.now(), summary, ...(digest ? { digest } : {}) })
+    .where(eq(runs.id, runId))
+    .run()
   // A run that worked a waypoint (research) auto-releases it if it did not resolve
   // it itself (SPEC §13.2 run finalizer); no-op for ticket-burner runs.
   releaseForSession(ctx, runId)

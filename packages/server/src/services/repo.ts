@@ -72,6 +72,7 @@ export function rowToRun(row: RunSelect): Run {
     startedAt: row.startedAt,
     endedAt: row.endedAt ?? undefined,
     summary: row.summary ?? undefined,
+    digest: row.digest ?? undefined,
   })
 }
 

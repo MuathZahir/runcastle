@@ -1811,6 +1811,8 @@ details.wp-group-done > summary { cursor: pointer; list-style: revert; }
 /* ============================================================================
    PHASE BODY — run (lanes | stream)
    ========================================================================== */
+/* the run's harvested digests, collapsed above the lanes */
+.run-digest { margin-bottom: 12px; }
 .run-split {
   display: flex;
   gap: 14px;
