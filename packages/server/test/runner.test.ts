@@ -10,6 +10,7 @@ import { createFeatureBranch, ensureTalkWorktree } from '../src/services/git'
 import { getRunRow } from '../src/services/repo'
 import { workflowRegistry } from '../src/workflows/registry'
 import { startRun, workflowClaimsFeatureBranch } from '../src/workflows/runner'
+import { useDataDir } from './helpers/data-dir'
 import { makeTestCtx } from './helpers/db'
 import { seedFeature, seedProject } from './helpers/fixtures'
 
@@ -129,8 +130,7 @@ describe('talk worktree detach — only for branch-claiming workflows (ADR-0001 
   let project: Project
   let feature: Feature
   let talkWt: string
-  let prevUserProfile: string | undefined
-  let prevHome: string | undefined
+  let restoreDataDir: () => void
   const tmpDirs: string[] = []
 
   /** A workflow stub whose run blocks until the test opens its gate. */
@@ -156,10 +156,7 @@ describe('talk worktree detach — only for branch-claiming workflows (ADR-0001 
   beforeEach(async () => {
     const home = mkdtempSync(join(tmpdir(), 'rc-runner-home-'))
     tmpDirs.push(home)
-    prevUserProfile = process.env.USERPROFILE
-    prevHome = process.env.HOME
-    process.env.USERPROFILE = home
-    process.env.HOME = home
+    restoreDataDir = useDataDir(home)
 
     ctx = await makeTestCtx()
     const repo = mkdtempSync(join(tmpdir(), 'rc-runner-repo-'))
@@ -180,8 +177,7 @@ describe('talk worktree detach — only for branch-claiming workflows (ADR-0001 
   })
 
   afterEach(() => {
-    process.env.USERPROFILE = prevUserProfile
-    process.env.HOME = prevHome
+    restoreDataDir()
     while (tmpDirs.length) {
       const dir = tmpDirs.pop()
       if (dir) {

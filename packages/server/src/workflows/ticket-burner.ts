@@ -1565,6 +1565,32 @@ export function harvestDigest(dirs: (string | undefined)[]): string | undefined 
 }
 
 /**
+ * The environment the spawned agent gets, as sandcastle's agent-provider env.
+ *
+ * ON THE HOST it must be the host's own environment plus our overrides, never a
+ * bare `{ CLAUDE_CODE_OAUTH_TOKEN }`: a replacement env drops HOME/USERPROFILE,
+ * and a `claude` with no home writes its state to a LITERAL `~/` under its cwd —
+ * which is how a 284 KB transcript for someone else's project ended up committed
+ * at `packages/server/~/.claude/`.
+ *
+ * IN A CONTAINER the host env must not cross the boundary at all. Both container
+ * providers turn this map into one `-e KEY=VALUE` per entry, so handing them
+ * `process.env` would push a Windows PATH (and TEMP, and SystemRoot) into a Linux
+ * image and break every tool in it. They set HOME themselves, so the `~` failure
+ * this exists to prevent cannot happen there.
+ */
+function buildAgentEnv(onHost: boolean, token: string | undefined): Record<string, string> {
+  const env: Record<string, string> = {}
+  if (onHost) {
+    for (const [key, value] of Object.entries(process.env)) {
+      if (value !== undefined) env[key] = value
+    }
+  }
+  if (token) env.CLAUDE_CODE_OAUTH_TOKEN = token
+  return env
+}
+
+/**
  * Build the sandcastle claude agent for a burn, working around two host/Windows
  * gaps in `@ai-hero/sandcastle` 0.12.0's `noSandbox` provider (the container
  * providers docker/podman are unaffected — they run inside a Linux container
@@ -1592,7 +1618,7 @@ export function buildBurnAgent(
 ): AgentProvider {
   const onHost = config.sandbox === 'noSandbox'
   const opts: ClaudeCodeOptions = {
-    ...(token ? { env: { CLAUDE_CODE_OAUTH_TOKEN: token } } : {}),
+    env: buildAgentEnv(onHost, token),
     ...(onHost ? { permissionMode: 'bypassPermissions' as const } : {}),
   }
   const agent = claudeCode(model, opts)
@@ -1636,8 +1662,16 @@ export function selectSandbox(config: RuncastleConfig, mounts: readonly CacheMou
       return docker(imageOpts)
     case 'podman':
       return podman(imageOpts)
-    default:
+    case 'noSandbox':
       return noSandbox()
+    default:
+      // Only reachable when a sandbox choice gains a config value before it
+      // gains a provider here. Refusing loudly is the point: the old `default:
+      // noSandbox()` turned "I asked for a container" into "the agent ran on
+      // your machine", with nothing said either way.
+      throw new Error(
+        `no sandbox provider for sandbox "${config.sandbox}" — refusing to run the agent unsandboxed`,
+      )
   }
 }
 

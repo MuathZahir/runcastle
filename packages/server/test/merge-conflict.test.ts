@@ -20,6 +20,7 @@ import { getFeatureRow } from '../src/services/repo'
 import { storeTickets, updateTicket } from '../src/services/tickets'
 import { createCallerFactory } from '../src/trpc/context'
 import { appRouter } from '../src/trpc/router'
+import { useDataDir } from './helpers/data-dir'
 import { makeTestCtx } from './helpers/db'
 import { seedFeature, seedProject } from './helpers/fixtures'
 
@@ -42,17 +43,18 @@ function mkTmp(prefix: string): string {
 }
 
 /**
- * HOME is redirected for every test in this file: merging now writes into the
- * feature's talk worktree (`worktreeDir` → `~/.runcastle`), which must never
- * touch the developer's real data dir.
+ * The data dir is redirected for every test in this file: merging now writes
+ * into the feature's talk worktree (`worktreeDir` → `~/.runcastle`), which must
+ * never touch the developer's real data dir. `useDataDir` pins
+ * `RUNCASTLE_DATA_DIR` too — a HOME override alone does nothing on Windows,
+ * where `homedir()` reads USERPROFILE.
  */
-let prevHome: string | undefined
+let restoreEnv: (() => void) | undefined
 beforeEach(() => {
-  prevHome = process.env.HOME
-  process.env.HOME = mkTmp('rc-home-')
+  restoreEnv = useDataDir(mkTmp('rc-home-'))
 })
 afterEach(() => {
-  process.env.HOME = prevHome
+  restoreEnv?.()
   while (tmpDirs.length) {
     const dir = tmpDirs.pop()
     if (dir) {
@@ -127,6 +129,47 @@ describe('feature.merge — conflict surfacing (ticket 9)', () => {
     expect(row.phase).toBe('review')
     expect(row.status).toBe('active')
   })
+
+  /**
+   * Fix-merge-conflict-system ticket 2 / decision 2b — the review bar now offers
+   * "Retry Merge & ship" while a conflict stands, which only works because the
+   * procedure never gated on the recorded one. A retry that conflicts again must
+   * record what conflicts NOW: the card is derived from the latest event, so a
+   * retry is also how a stale file list corrects itself.
+   */
+  it('lets a recorded conflict be retried, recording the conflict as it stands now', async () => {
+    await makeConflict(project, g, 'clash')
+    const feature = seedFeature(ctx, project.id, { slug: 'clash', phase: 'review' })
+    await caller.feature.merge({ featureId: feature.id })
+
+    // A second file starts clashing between the two attempts. The failed merge
+    // left the talk worktree holding feature/clash (outcome promotion ensures
+    // it), so detach it before the main checkout can take the branch.
+    expect(await detachWorktree(await ensureTalkWorktree(project, feature))).toBe(true)
+    await g.checkout('feature/clash')
+    writeFileSync(join(project.repoPath, 'NOTES.md'), 'feature-note\n')
+    await g.add(['NOTES.md'])
+    await g.commit('feat: notes')
+    await g.checkout('main')
+    writeFileSync(join(project.repoPath, 'NOTES.md'), 'main-note\n')
+    await g.add(['NOTES.md'])
+    await g.commit('chore: notes on main')
+
+    const retry = await caller.feature.merge({ featureId: feature.id })
+
+    expect(retry).toEqual({
+      ok: false,
+      conflict: true,
+      base: 'main',
+      files: ['NOTES.md', 'README.md'],
+    })
+    const conflicts = listAfter(ctx, feature.id, 0).filter((e) => e.type === 'merge.conflict')
+    expect(conflicts).toHaveLength(2)
+    expect(conflicts[1]?.data).toMatchObject({ base: 'main', files: ['NOTES.md', 'README.md'] })
+    expect(conflicts[1]!.ts).toBeGreaterThanOrEqual(conflicts[0]!.ts)
+    // Two merge attempts, each ensuring the talk worktree and committing the
+    // outcome doc — too much git for the 5s default under a parallel suite run.
+  }, 20_000)
 
   it('clean merge still ships: phase → shipped, status → shipped (regression)', async () => {
     await createFeatureBranch(project, 'happy')
@@ -302,7 +345,7 @@ describe('feature.merge — outcome.md promotion (the-work-record ticket 3)', ()
     const feature = await seedShippableFeature('unwritable')
     seedTickets(feature.id, [{ title: 'Some work', status: 'done', digest: 'Did it.' }])
     // A data dir that cannot hold a worktree: promotion fails, the ship does not.
-    process.env.HOME = join(project.repoPath, 'README.md')
+    process.env.RUNCASTLE_DATA_DIR = join(project.repoPath, 'README.md')
 
     const res = await caller.feature.merge({ featureId: feature.id })
 

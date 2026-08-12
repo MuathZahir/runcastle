@@ -1,5 +1,13 @@
 # runcastle E2E — findings log
 
+> **`(findings F<N>)` code comments do NOT cite this file.** The ~96 such comments across
+> `packages/**` and `apps/**` cite the UX audit log at
+> `docs/features/identify-random-issues-throughout-the-system/findings.md`, which shares the
+> F1–F25 numbering by coincidence. The two namespaces are unrelated: F19 here is
+> `.sandcastle/worktrees/` not gitignored; F19 there is the unknown-`phase` blank screen. To
+> cite a finding from *this* file, write `(E2E F<N>)` and say so in full. Neither log is
+> renumbered — the numbers are how each was filed.
+
 Environment: `bun run dev` against `~/.runcastle-dev`, fresh tree (wizard replayed,
 git identity cleared). Test repo: `C:\Users\user\Projects\_scratch_\notesapp`
 (Bun + Hono + Drizzle + Postgres in Docker `rc-e2e-pg` on :5433). Model: `claude-opus-5`.
@@ -29,6 +37,39 @@ seconds before its own keepalive can fire (F14) and drops slow tRPC/MCP calls mi
 Corrections after review: **F14** was originally filed as "session invisible until reload" — wrong,
 and re-measuring it is what exposed the `idleTimeout` root cause. **F16** was originally filed as
 "shipping a migration breaks your dev database" — withdrawn, that one was my mistake.
+
+## Status — 0 fixed / 19 open, as of the codebase audit (2026-08-11)
+
+This is a **backlog, not a changelog**: nothing below had been fixed when the recursive codebase
+audit re-derived every verdict from current source. The evidence column is that audit's
+(`docs/features/codebase-audit/audit/reports/periphery.md` §D). It is a snapshot — the audit's own
+lap 1 is landing fixes for some of these (F11 and F14's shared `idleTimeout` cause is already fixed
+on the `feature/codebase-audit` branch), so check the code before trusting a row.
+
+| F | Status | Evidence (as of the audit) |
+|---|---|---|
+| F1 doctor reads boot env | open | `setup.ts:30-33` no `env`; `doctor.ts:281`; merge helper `cli.ts:22-34` CLI-only |
+| F2 hardcoded `~/.runcastle/.env` | open | `setup.ts:299,308,322,327`; `doctor.ts:270`; `ticket-burner.ts:79`; `research.ts:53` |
+| F3 git-identity dead button | open | `FirstRunWizard.tsx:163` |
+| F4 token plaintext | open | `EnableAfkCard.tsx:218-222`, no `type=password` |
+| F5 setup-token PTY not torn down | open (low confidence) | no kill path in `EnableAfkCard.tsx` |
+| F6 prepare double-consent | open — now *deliberate* | `artifacts.ts:668-670`, `:641` "Deliberately git-only" |
+| F7 no `{{port}}` | open | `drive-env.ts:59-65` |
+| F8 `git clear` needs dev DB | open | `devtool.ts:95-100` bail precedes dispatch at `:133` |
+| F9 live prep session invisible | open | `project-workspace.ts:152-181` |
+| F10 POSIX-only db recipe | open | `artifacts.ts:418-421` + `drive-hooks.ts:84` cmd.exe |
+| **F11 no `idleTimeout`** | open | `server/src/index.ts:105-112` |
+| F12 "verified" ×2 meanings | open (tooltips only) | `PreparationWorkspace.tsx:386` + `:339` |
+| F13 re-record drops stamp | open | `findings.ts:100` |
+| **F14 SSE reaped pre-heartbeat** | open | `stream.ts:31` 25 s vs Bun's 10 s default |
+| F15 sandbox has no DB | open | `driveEnv` 0 hits in `ticket-burner.ts` |
+| F16 drift banner asserts falsehood | open | `git.ts:1983-2012`, `:2005` — the finding as *rewritten*; the original was withdrawn |
+| F17 `notify off` default | open | `use-notifications.ts:36-42` |
+| **F18 "Resolve with agent" impossible** | open | `feature-ui.ts:457-466` vs `edit-guard.ts:36-37,63-89`; no exemption in `hooks.ts:308-330` |
+| **F19 `.sandcastle/` in user repos** | open | `ticket-burner.ts:68,955`; no `.gitignore` write anywhere |
+
+The five **minor paper cuts** at the foot of this file carry no status: they were filed from live
+observation with no `file:line`, so the audit could not verify them either way.
 
 ---
 

@@ -37,6 +37,9 @@ the correction in `docs/research/CORRECTIONS.md`.
 | `packages/skills`   | `@runcastle/skills`  | Vendored/forked skill packs + burner prompt template (content only). |
 | `apps/web`          | `@runcastle/web`     | Vite + React + tRPC client + TanStack Query. |
 
+`packages/design-system` is deliberately absent from that map: it is the Claude Design
+round-trip surface owned by `.design-sync/`, not a peer package, and nothing imports it.
+
 `@runcastle/core` is the only package with no IO (except `paths.ts` pure path
 computation and `config.ts` lazy file read inside `loadConfig`). Everything else
 depends on it for wire types.
@@ -63,7 +66,7 @@ so typecheck + the UI work end-to-end before wave B lands.
 | `src/launcher/artifacts.ts`       | B1 | write settings.json / mcp.json / system-prompt.md |
 | `src/launcher/hook-client.ts`     | B1 | standalone bun hook script (runs inside sessions) |
 | `src/routes/hooks.ts`             | B1 | POST /api/hooks/:event |
-| `src/mcp/server.ts`               | B1 | 4 MCP tools, zod-validated (§6) |
+| `src/mcp/server.ts`               | B1 | 4 MCP tools, zod-validated (§6) — build-era count; the server registers **14** today |
 | `src/workflows/registry.ts`       | A1 | Map<string, WorkflowDef>; stub ticket-burner entry |
 | `src/workflows/ticket-burner.ts`  | B3 | @ai-hero/sandcastle burner (§8) |
 | `src/workflows/runner.ts`         | A1 | startRun: create run row, wire ctx, catch, finalize |

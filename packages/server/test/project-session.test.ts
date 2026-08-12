@@ -17,12 +17,13 @@ import {
   renderSettings,
 } from '../src/launcher/artifacts'
 import { buildClaudeArgs, launchProjectSession } from '../src/launcher/launcher'
-import { KICKOFF_LINES, getSessionRow } from '../src/launcher/sessions'
+import { KICKOFF_LINES, awaitProjectLandings, getSessionRow } from '../src/launcher/sessions'
 import { endSession } from '../src/pty/end-session'
 import { listByProject } from '../src/services/events'
 import { PROJECT_BRANCH, ensureProjectWorktree } from '../src/services/git'
 import { createCallerFactory } from '../src/trpc/context'
 import { appRouter } from '../src/trpc/router'
+import { useDataDir } from './helpers/data-dir'
 import { makeTestCtx } from './helpers/db'
 import { seedProject } from './helpers/fixtures'
 
@@ -60,6 +61,19 @@ function commitOnBranch(repoPath: string, branch: string, file: string, body: st
   const tip = git(repoPath, 'rev-parse', branch)
   git(repoPath, 'worktree', 'remove', wt, '--force')
   return tip
+}
+
+/**
+ * Remove a case's temp dirs. The retries are a backstop, not the fix: a case that
+ * triggers a landing waits for it (see `awaitProjectLandings` in the teardown
+ * below) so no git child is still holding `repoPath` by the time we get here.
+ * They stay only for handles nothing in this file can account for.
+ */
+function removeAll(dirs: string[]): void {
+  for (const d of dirs) {
+    rmSync(d, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 })
+  }
+  dirs.length = 0
 }
 
 /** Poll until `type` shows up on the project timeline (landing is fire-and-forget). */
@@ -165,16 +179,12 @@ describe('ensureProjectWorktree', () => {
   let project: Project
   let repoPath: string
   const cleanup: string[] = []
-  let prevHome: string | undefined
-  let prevUserProfile: string | undefined
+  let restoreDataDir: () => void
 
   beforeEach(async () => {
     const home = mkdtempSync(join(tmpdir(), 'rc-proj-home-'))
     cleanup.push(home)
-    prevHome = process.env.HOME
-    prevUserProfile = process.env.USERPROFILE
-    process.env.HOME = home
-    process.env.USERPROFILE = home
+    restoreDataDir = useDataDir(home)
 
     ctx = await makeTestCtx()
     repoPath = mkdtempSync(join(tmpdir(), 'rc-proj-repo-'))
@@ -184,10 +194,8 @@ describe('ensureProjectWorktree', () => {
   })
 
   afterEach(() => {
-    process.env.HOME = prevHome
-    process.env.USERPROFILE = prevUserProfile
-    for (const d of cleanup) rmSync(d, { recursive: true, force: true })
-    cleanup.length = 0
+    restoreDataDir()
+    removeAll(cleanup)
   })
 
   it('cuts the branch from the base tip into its own worktree, never the checkout', async () => {
@@ -255,16 +263,12 @@ describe('launching, resuming and landing a project session', () => {
   let project: Project
   let repoPath: string
   const cleanup: string[] = []
-  let prevHome: string | undefined
-  let prevUserProfile: string | undefined
+  let restoreDataDir: () => void
 
   beforeEach(async () => {
     const home = mkdtempSync(join(tmpdir(), 'rc-projlaunch-home-'))
     cleanup.push(home)
-    prevHome = process.env.HOME
-    prevUserProfile = process.env.USERPROFILE
-    process.env.HOME = home
-    process.env.USERPROFILE = home
+    restoreDataDir = useDataDir(home)
 
     ctx = await makeTestCtx()
     repoPath = mkdtempSync(join(tmpdir(), 'rc-projlaunch-repo-'))
@@ -273,11 +277,16 @@ describe('launching, resuming and landing a project session', () => {
     project = seedProject(ctx, repoPath)
   })
 
-  afterEach(() => {
-    process.env.HOME = prevHome
-    process.env.USERPROFILE = prevUserProfile
-    for (const d of cleanup) rmSync(d, { recursive: true, force: true })
-    cleanup.length = 0
+  // Ending a project session kicks off a landing that is fire-and-forget in
+  // production, so without this the case races the git children it just spawned:
+  // they are still holding `repoPath` when `removeAll` deletes it, and Windows
+  // answers an open handle with EPERM instead of waiting. Note that a landing
+  // which finds nothing to land emits no event at all, so polling the timeline
+  // cannot stand in for this — there would be nothing to poll for.
+  afterEach(async () => {
+    await awaitProjectLandings()
+    restoreDataDir()
+    removeAll(cleanup)
   })
 
   function sessionRow(id: string): SessionRow {
@@ -355,6 +364,32 @@ describe('launching, resuming and landing a project session', () => {
     const data = await waitForProjectEvent(ctx, project.id, 'project.landed')
     expect(data.commits).toBe(1)
     expect(existsSync(join(repoPath, 'CONTEXT.md'))).toBe(true)
+  })
+
+  /**
+   * The seam teardown depends on. Landing is fire-and-forget, so ending a session
+   * leaves git children running against the repo after the call returns — and on
+   * Windows those open handles fail the removal of that directory with EPERM.
+   * Awaiting the landing is the only way to know they are gone: a session that
+   * wrote nothing to land emits no event, so polling the timeline cannot serve as
+   * the signal in the very case that needs one.
+   */
+  it('exposes the fire-and-forget landing as something teardown can await', async () => {
+    const { sessionId } = await launchProjectSession(ctx, { projectId: project.id }, { spawn: false })
+    const wt = sessionRow(sessionId).worktreePath
+    writeFileSync(join(wt, 'CONTEXT.md'), '# charter\n')
+    git(wt, 'add', 'CONTEXT.md')
+    git(wt, 'commit', '-m', 'project: draft the charter')
+
+    endSession(ctx, sessionId)
+    // Still in flight: the landing only starts once the synchronous teardown returns.
+    expect(listByProject(ctx, project.id).map((e) => e.type)).not.toContain('project.landed')
+
+    await awaitProjectLandings()
+
+    expect(listByProject(ctx, project.id).map((e) => e.type)).toContain('project.landed')
+    // …and it is idempotent, so a teardown that waits when nothing is pending is free.
+    await awaitProjectLandings()
   })
 
   it('keeps the branch and says so when the work cannot land', async () => {

@@ -77,9 +77,11 @@ export function TerminalView({ sessionId, wsBase }: TerminalViewProps) {
     const dataSub = term.onData((d) => client.send(d))
     const resizeSub = term.onResize(({ cols, rows }) => client.resize(cols, rows))
 
-    // Modifier+Enter must insert a newline in the Claude prompt, not submit.
-    // Stock xterm emits a bare `\r` for it; intercept and send ESC+CR instead
-    // (return false so xterm doesn't also process the event — see terminal-keys).
+    // Modifier+Enter must insert a newline in the Claude prompt rather than
+    // submit, Ctrl+V must paste, and Alt+V must reach Claude Code's image paste
+    // — stock xterm gets all three wrong (see terminal-keys for the whys).
+    // Returning false stops xterm processing the event WITHOUT cancelling it,
+    // which is what leaves the browser free to fire its own paste on Ctrl+V.
     term.attachCustomKeyEventHandler((ev) => {
       const action = mapTerminalKey(ev)
       if (!action.intercept) return true

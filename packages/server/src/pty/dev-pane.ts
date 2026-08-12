@@ -11,9 +11,11 @@ import { ptyRegistry, type TerminalSink } from './registry'
  * same `/ws/terminal/:id` endpoint the embedded session terminals use.
  *
  * On start we sniff the first localhost URL out of the PTY output (surfaced as a
- * plain "Open app" link, sticky per drive); on stop we kill the whole process
- * tree so the dev server frees its port with no orphan — on Windows (ConPTY
- * teardown) and POSIX (process-group signal) alike.
+ * plain "Open app" link, sticky per drive); on stop we ask the PTY backend to
+ * kill the whole process tree (`PtySession.killTree`) so the dev server frees its
+ * port with no orphan. Which pid that tree is rooted at is the BACKEND's to know,
+ * not ours: under the sidecar it is the node host we spawned, natively it is
+ * node-pty's own process. The server never infers a pid it does not own.
  */
 
 /** Registry-id prefix for drive-owned PTYs. Deliberately not a `sess_` id. */
@@ -147,23 +149,14 @@ export function devPaneLive(paneId: string): boolean {
 }
 
 /**
- * Kill a drive's dev pane and forget it. Kills the WHOLE process tree so the dev
- * server frees its port with no orphan: on POSIX the pane's shell is a process-
- * group leader (`forkpty` set it up), so we signal the group; on Windows tearing
- * down the ConPTY already kills every attached process. Idempotent — a no-op for
- * an unknown / already-dead pane.
+ * Kill a drive's dev pane and forget it. The registry's awaited teardown kills
+ * the process TREE first, so the dev server has freed its port by the time the
+ * caller's teardown hook runs (attached sinks still get their `ended` status
+ * frame from the PTY's own exit). Idempotent — a no-op for an unknown /
+ * already-dead pane.
  */
-export function stopDevPane(paneId: string): void {
+export async function stopDevPane(paneId: string): Promise<void> {
   const reg = ptyRegistry()
-  const entry = reg.get(paneId)
-  if (entry && !entry.exited && process.platform !== 'win32') {
-    try {
-      // Negative pid → the whole process group (pid == pgid for the pty leader).
-      process.kill(-entry.pty.pid, 'SIGTERM')
-    } catch {
-      // group already gone / pid reused — the pty.kill below still fires onExit
-    }
-  }
-  reg.kill(paneId)
+  await reg.killTree(paneId)
   reg.remove(paneId)
 }

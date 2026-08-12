@@ -33,6 +33,7 @@ import {
   testDrive,
   ticketBranchName,
 } from '../src/services/git'
+import { useDataDir } from './helpers/data-dir'
 import { makeTestCtx } from './helpers/db'
 import { seedFeature, seedProject } from './helpers/fixtures'
 
@@ -278,17 +279,13 @@ describe('ensureTalkWorktree', () => {
   let ctx: AppCtx
   let project: Project
   let feature: Feature
-  let prevUserProfile: string | undefined
-  let prevHome: string | undefined
+  let restoreDataDir: () => void
 
   beforeEach(async () => {
     // Redirect `~/.runcastle` (worktreeDir) into an isolated temp home so the
     // test never writes to the developer's real data dir.
     const home = mkTmp('rc-home-')
-    prevUserProfile = process.env.USERPROFILE
-    prevHome = process.env.HOME
-    process.env.USERPROFILE = home
-    process.env.HOME = home
+    restoreDataDir = useDataDir(home)
 
     ctx = await makeTestCtx()
     const repo = mkTmp('rc-wt-')
@@ -299,8 +296,7 @@ describe('ensureTalkWorktree', () => {
   })
 
   afterEach(() => {
-    process.env.USERPROFILE = prevUserProfile
-    process.env.HOME = prevHome
+    restoreDataDir()
   })
 
   it('creates a worktree checked out to the feature branch', async () => {
@@ -350,15 +346,11 @@ describe('detachWorktree / reattachWorktree', () => {
   let ctx: AppCtx
   let project: Project
   let feature: Feature
-  let prevUserProfile: string | undefined
-  let prevHome: string | undefined
+  let restoreDataDir: () => void
 
   beforeEach(async () => {
     const home = mkTmp('rc-home-')
-    prevUserProfile = process.env.USERPROFILE
-    prevHome = process.env.HOME
-    process.env.USERPROFILE = home
-    process.env.HOME = home
+    restoreDataDir = useDataDir(home)
 
     ctx = await makeTestCtx()
     const repo = mkTmp('rc-detach-')
@@ -369,8 +361,7 @@ describe('detachWorktree / reattachWorktree', () => {
   })
 
   afterEach(() => {
-    process.env.USERPROFILE = prevUserProfile
-    process.env.HOME = prevHome
+    restoreDataDir()
   })
 
   it('detaches the talk worktree, freeing the branch, then reattaches it', async () => {
@@ -406,15 +397,11 @@ describe('testDrive with a live talk worktree', () => {
   let ctx: AppCtx
   let project: Project
   let feature: Feature
-  let prevUserProfile: string | undefined
-  let prevHome: string | undefined
+  let restoreDataDir: () => void
 
   beforeEach(async () => {
     const home = mkTmp('rc-home-')
-    prevUserProfile = process.env.USERPROFILE
-    prevHome = process.env.HOME
-    process.env.USERPROFILE = home
-    process.env.HOME = home
+    restoreDataDir = useDataDir(home)
 
     ctx = await makeTestCtx()
     const repo = mkTmp('rc-drive-wt-')
@@ -428,8 +415,7 @@ describe('testDrive with a live talk worktree', () => {
 
   afterEach(() => {
     __resetTestDriveState()
-    process.env.USERPROFILE = prevUserProfile
-    process.env.HOME = prevHome
+    restoreDataDir()
   })
 
   it('start switches the main checkout onto the feature branch despite the talk worktree; stop restores + reattaches', async () => {
@@ -771,15 +757,11 @@ describe('mergeTempBranch', () => {
   let ctx: AppCtx
   let project: Project
   let feature: Feature
-  let prevUserProfile: string | undefined
-  let prevHome: string | undefined
+  let restoreDataDir: () => void
 
   beforeEach(async () => {
     const home = mkTmp('rc-home-')
-    prevUserProfile = process.env.USERPROFILE
-    prevHome = process.env.HOME
-    process.env.USERPROFILE = home
-    process.env.HOME = home
+    restoreDataDir = useDataDir(home)
 
     ctx = await makeTestCtx()
     const repo = mkTmp('rc-research-')
@@ -790,8 +772,7 @@ describe('mergeTempBranch', () => {
   })
 
   afterEach(() => {
-    process.env.USERPROFILE = prevUserProfile
-    process.env.HOME = prevHome
+    restoreDataDir()
   })
 
   /** Create `branch` from `from` and land one commit on it via a temp worktree

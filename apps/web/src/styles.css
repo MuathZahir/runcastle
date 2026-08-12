@@ -43,6 +43,10 @@
   /* ---- status ---- */
   --danger: #f4594e; /* error / destructive */
   --needs: #d7a94a; /* needs-attention / warning (amber) */
+  /* The same amber under the name 17 warning rules ask for. They all carried a
+     hardcoded `#d9a441` fallback, so the app shipped two ambers a shade apart —
+     an alias costs nothing and puts every warning surface back on the palette. */
+  --warn: var(--needs);
   --ok: #3fb950; /* success / healthy */
   --drive: #58a6ff; /* test-drive blue */
 
@@ -2900,6 +2904,8 @@ select.settings-input { cursor: pointer; }
 }
 
 .settings-field-note { font-size: 11px; color: var(--text-4); }
+/* A value the field refused to commit — beside the control, not in a toast. */
+.settings-field-error { font-size: 11px; color: var(--danger); }
 
 /* What preparation observed to justify a value (settings row + prep card). */
 .settings-field-evidence,

@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { trpc } from '../trpc'
+import type { RouterOutputs } from '../lib/api'
 import { useToast } from '../lib/toast'
 import { Button, DimLine } from '../ui'
 import { ErrorBoundary } from './ErrorBoundary'
@@ -61,7 +62,7 @@ export function EnableAfkCard({ onDismiss }: { onDismiss?: () => void }) {
   )
 }
 
-type Probe = NonNullable<ReturnType<typeof trpc.setup.doctor.useQuery>['data']>['results'][number]
+type Probe = RouterOutputs['setup']['doctor']['results'][number]
 
 /** One prerequisite row: status dot, label + observed detail, and its action slot. */
 function Row({

@@ -1,7 +1,12 @@
 import { trpcServer } from '@hono/trpc-server'
 import { dataDir, dbPath } from '@runcastle/core/paths'
 import { Hono } from 'hono'
-import { ensureDataDir, loadConfig } from './config'
+import {
+  SERVE_HOSTNAME,
+  SERVE_IDLE_TIMEOUT_SECONDS,
+  ensureDataDir,
+  loadConfig,
+} from './config'
 import { createDb } from './db/client'
 import { runMigrations } from './db/migrate'
 import type { AppCtx } from './db/types'
@@ -13,7 +18,10 @@ import { terminalWebSocket, tryUpgradeTerminal } from './pty/ws'
 import hooksApp from './routes/hooks'
 import streamApp from './routes/stream'
 import { mountWebAppIfBuilt } from './routes/web'
+import { getUpdateInfo } from './services/update-check'
+import { createShutdown } from './shutdown'
 import { appRouter } from './trpc/router'
+import { runcastleVersion } from './version'
 import { reconcileStaleRuns } from './workflows/reconcile-runs'
 
 /**
@@ -104,6 +112,8 @@ export async function startServer(): Promise<void> {
   // tests mount it without a socket — the WS lives only on this real listener.
   const server = Bun.serve({
     port: config.serverPort,
+    hostname: SERVE_HOSTNAME,
+    idleTimeout: SERVE_IDLE_TIMEOUT_SECONDS,
     fetch(req, srv) {
       if (tryUpgradeTerminal(req, srv)) return undefined
       return app.fetch(req, srv)
@@ -118,6 +128,13 @@ export async function startServer(): Promise<void> {
       `http://localhost:${config.serverPort} — data dir: ${dataDir()}`,
   )
 
+  // Check for a newer release here, at boot, rather than lazily on the first UI
+  // page load: a server booted without anyone opening the app never checked at
+  // all, and "booted a server" is the honest definition of an active install.
+  // Fire-and-forget — the result is memoized for the banner's tRPC query, and
+  // the `catch` keeps even an unforeseen rejection off the boot path.
+  void getUpdateInfo(runcastleVersion()).catch(() => {})
+
   // Kill every live PTY on shutdown so no orphaned claude processes survive.
   // Registered once even across `bun --hot` reloads (which re-run `main`) to
   // avoid piling up signal listeners.
@@ -125,11 +142,11 @@ export async function startServer(): Promise<void> {
   const g = globalThis as typeof globalThis & { [SHUTDOWN_KEY]?: boolean }
   if (!g[SHUTDOWN_KEY]) {
     g[SHUTDOWN_KEY] = true
-    const shutdown = (): void => {
-      ptyRegistry().killAll()
-      server.stop()
-      process.exit(0)
-    }
+    const shutdown = createShutdown({
+      killAllTrees: () => ptyRegistry().killAllTrees(),
+      stop: () => server.stop(),
+      exit: (code) => process.exit(code),
+    })
     process.on('SIGINT', shutdown)
     process.on('SIGTERM', shutdown)
   }

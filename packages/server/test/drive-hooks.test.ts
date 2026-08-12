@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
@@ -110,6 +110,39 @@ describe('runDriveHook', () => {
     expect(res.timedOut).toBe(true)
     expect(res.ok).toBe(false)
   }, 15_000)
+
+  /**
+   * The timeout used to kill only the shell, leaving whatever it started alive —
+   * a `docker compose` still holding its port, a seed script still holding the
+   * db. The grandchild here proves it by appending to a file: after the timeout
+   * the file must stop growing.
+   *
+   * POSIX only. The tree the kill walks is a process GROUP here and the child
+   * list on Windows, and this container has no way to observe the latter; that
+   * half is covered per backend in dev-pane.test.ts. `& wait` is load-bearing —
+   * without it `sh` exec-replaces itself with the ticker, and there is no
+   * grandchild left to leak.
+   */
+  it('kills the whole hook process tree on timeout, not just the shell', async () => {
+    if (process.platform === 'win32') return
+    const dir = cwd()
+    const log = join(dir, 'tick.log')
+    writeFileSync(
+      join(dir, 'ticker.mjs'),
+      `import { appendFileSync } from 'node:fs'\nsetInterval(() => appendFileSync(${JSON.stringify(log)}, 'x'), 50)\n`,
+    )
+
+    const res = await runDriveHook(`"${process.execPath}" ticker.mjs & wait`, {
+      cwd: dir,
+      timeoutMs: 1500,
+    })
+    expect(res.timedOut).toBe(true)
+
+    const ticksAtKill = statSync(log).size
+    expect(ticksAtKill).toBeGreaterThan(0)
+    await new Promise((r) => setTimeout(r, 700))
+    expect(statSync(log).size, 'the grandchild outlived the timeout kill').toBe(ticksAtKill)
+  }, 20_000)
 
   it('gives a cold image pull room to finish by default', () => {
     expect(DRIVE_HOOK_TIMEOUT_MS).toBeGreaterThanOrEqual(5 * 60_000)

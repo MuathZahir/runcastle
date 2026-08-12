@@ -1,6 +1,6 @@
 import type { FeatureFull } from '../../lib/api'
 import { useEventLog } from '../../lib/events'
-import { shippedQaSessions } from '../../lib/feature-ui'
+import { shippedAt, shippedQaSessions } from '../../lib/feature-ui'
 import { relTime } from '../../lib/format'
 import { IconBranch, IconCheck } from '../../icons'
 import { SessionPanel } from '../SessionPanel'
@@ -17,10 +17,8 @@ import { SessionPanel } from '../SessionPanel'
  */
 export function ShippedBody({ full }: { full: FeatureFull }) {
   const events = useEventLog(full.feature.id)
-  const merged = [...events]
-    .reverse()
-    .find((e) => e.type === 'feature.shipped' || e.type === 'merge.conflict' || e.type === 'feature.status')
-  const when = merged && merged.type === 'feature.shipped' ? relTime(merged.ts) : ''
+  const merged = shippedAt(events)
+  const when = merged === null ? '' : relTime(merged)
 
   return (
     <div className="shipped-body">

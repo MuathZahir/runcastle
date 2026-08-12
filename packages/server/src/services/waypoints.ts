@@ -1,5 +1,5 @@
-import type { Waypoint, WaypointInput } from '@runcastle/core'
-import { BlockingEdgeError, newId, resolveBatchBlocking } from '@runcastle/core'
+import type { WaypointInput } from '@runcastle/core'
+import { BlockingEdgeError, Waypoint, newId, resolveBatchBlocking } from '@runcastle/core'
 import { and, asc, eq } from 'drizzle-orm'
 import type { AppCtx } from '../db/types'
 import { waypoints } from '../db/schema'
@@ -21,7 +21,7 @@ import { emit } from './events'
 type WaypointSelect = typeof waypoints.$inferSelect
 
 function rowToWaypoint(row: WaypointSelect): Waypoint {
-  return {
+  return Waypoint.parse({
     id: row.id,
     featureId: row.featureId,
     seq: row.seq,
@@ -34,7 +34,7 @@ function rowToWaypoint(row: WaypointSelect): Waypoint {
     claimedBy: row.claimedBy ?? undefined,
     lastSessionId: row.lastSessionId ?? undefined,
     summary: row.summary ?? undefined,
-  }
+  })
 }
 
 const TERMINAL = new Set<Waypoint['status']>(['resolved', 'dropped'])
@@ -266,6 +266,11 @@ export function releaseForSession(ctx: AppCtx, claimant: string): Waypoint[] {
  * dependent that this resolution just moved onto the frontier (all of its
  * blockers are now terminal). A drop counts as terminal, so it frees dependents
  * exactly like a resolve.
+ *
+ * Terminal is terminal: re-resolving rewrites a settled summary and re-emits
+ * `waypoint.resolved` (plus the unblocked cascade) for work that already
+ * finished, so an unknown or already-terminal waypoint is refused rather than
+ * applied twice. `getWaypoint` covers unknown.
  */
 export function resolve(
   ctx: AppCtx,
@@ -274,6 +279,9 @@ export function resolve(
   summary: string,
 ): Waypoint {
   const wp = getWaypoint(ctx, id)
+  if (isTerminal(wp)) {
+    throw new InvalidInputError(`waypoint ${wp.seq} is already ${wp.status}`)
+  }
 
   const before = listByFeature(ctx, wp.featureId)
   const bySeqBefore = new Map(before.map((w) => [w.seq, w]))

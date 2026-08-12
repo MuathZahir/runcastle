@@ -1,10 +1,12 @@
-import { integer, primaryKey, sqliteTable, text } from 'drizzle-orm/sqlite-core'
+import { index, integer, primaryKey, sqliteTable, text } from 'drizzle-orm/sqlite-core'
 import type {
   FeatureStatus,
   FindingSource,
+  MergeBranchPair,
   Phase,
   RunStatus,
   SessionKind,
+  SessionPurpose,
   SessionStatus,
   TestNoteStatus,
   TicketStatus,
@@ -165,6 +167,18 @@ export const sessions = sqliteTable('sessions', {
    */
   lap: integer('lap').notNull().default(1),
   kind: text('kind').notNull().$type<SessionKind>(),
+  /**
+   * The errand this session was opened on, when `kind` cannot express it — null
+   * for the ordinary launches, which is every session created before this
+   * column existed. Additive + nullable, so the migration cannot fail.
+   */
+  purpose: text('purpose').$type<SessionPurpose>(),
+  /**
+   * The data that purpose needs: for `resolve-conflict`, the branch pair the
+   * merge is between. Stored rather than re-derived because the session-end
+   * probe runs long after the launch click that knew it.
+   */
+  purposeData: text('purpose_data', { mode: 'json' }).$type<MergeBranchPair>(),
   ccSessionId: text('cc_session_id'),
   transcriptPath: text('transcript_path'),
   status: text('status').notNull().$type<SessionStatus>(),
@@ -260,26 +274,40 @@ export const runs = sqliteTable('runs', {
   digest: text('digest'),
 })
 
-export const events = sqliteTable('events', {
-  // autoincrement integer — doubles as the polling cursor (`afterId`)
-  id: integer('id').primaryKey({ autoIncrement: true }),
-  // Every event belongs to a project (issue #44). Feature-scoped events also
-  // carry a `feature_id`; project-level events (open/close/rename) leave it null.
-  projectId: text('project_id').notNull(),
-  featureId: text('feature_id'),
-  runId: text('run_id'),
-  ticketId: text('ticket_id'),
+export const events = sqliteTable(
+  'events',
+  {
+    // autoincrement integer — doubles as the polling cursor (`afterId`)
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    // Every event belongs to a project (issue #44). Feature-scoped events also
+    // carry a `feature_id`; project-level events (open/close/rename) leave it null.
+    projectId: text('project_id').notNull(),
+    featureId: text('feature_id'),
+    runId: text('run_id'),
+    ticketId: text('ticket_id'),
+    /**
+     * The feature's lap when the event was appended (ADR-0010 / SPEC §15.1), so
+     * the timeline can be grouped into laps without a join. Project-level events
+     * have no feature to take a lap from and store 1.
+     */
+    lap: integer('lap').notNull().default(1),
+    ts: integer('ts').notNull(),
+    type: text('type').notNull(),
+    message: text('message').notNull(),
+    data: text('data', { mode: 'json' }),
+  },
   /**
-   * The feature's lap when the event was appended (ADR-0010 / SPEC §15.1), so
-   * the timeline can be grouped into laps without a join. Project-level events
-   * have no feature to take a lap from and store 1.
+   * The two cursor polls the UI runs every 1.5s — `listAfter` (feature timeline)
+   * and `listByProject` (project timeline) — are both `WHERE <scope> = ? AND id
+   * > ? ORDER BY id`. Each index covers its scope column and the cursor, so a
+   * poll seeks straight to the cursor instead of scanning a table that only ever
+   * grows: the events table is append-only and never pruned.
    */
-  lap: integer('lap').notNull().default(1),
-  ts: integer('ts').notNull(),
-  type: text('type').notNull(),
-  message: text('message').notNull(),
-  data: text('data', { mode: 'json' }),
-})
+  (t) => [
+    index('events_project_id_id_idx').on(t.projectId, t.id),
+    index('events_feature_id_id_idx').on(t.featureId, t.id),
+  ],
+)
 
 export const gateOverrides = sqliteTable('gate_overrides', {
   id: integer('id').primaryKey({ autoIncrement: true }),

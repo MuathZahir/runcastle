@@ -213,9 +213,43 @@ Bun workspaces, TypeScript strict, ESM only.
 | `packages/core` | `@runcastle/core` | IO-free contracts: zod schemas, drizzle schema, pipeline and gates, paths, workflow types, config. |
 | `packages/server` | `@runcastle/server` | Hono + tRPC + services + launcher + MCP + workflows. Runs TS directly with Bun, no build step. |
 | `packages/skills` | `@runcastle/skills` | Vendored and forked Claude Code skill packs, plus the ticket-burner prompt template. |
-| `packages/design-system` | `@runcastle/design-system` | Near-black IDE-grammar UI primitives. |
 | `apps/web` | `@runcastle/web` | Vite + React + tRPC client + TanStack Query. |
 | `site/` | | The static landing page. No build step. |
+
+`packages/design-system` is **not** a fifth package in that sense: it is the surface of the
+Claude Design round-trip, owned by `.design-sync/`, holding the near-black IDE-grammar
+primitives as they come back from design. Nothing imports it yet — `apps/web` still owns its
+own styles — so treat it as a design artifact, not a shared dependency.
+
+---
+
+## Usage signal
+
+On boot, runcastle checks whether a newer version is published and, in the same
+request, counts your install as active. That request goes to
+`https://ping.runcastle.dev/ping` and carries exactly three things:
+
+| Field | Value |
+|---|---|
+| `installId` | A random UUID generated on first check. Nothing derived from your machine. |
+| `version` | The runcastle version you are running. |
+| `platform` | `process.platform` — `darwin`, `linux`, or `win32`. |
+
+Nothing else is sent: no project names, no repo paths, no file contents, no
+usage of any feature. The ID lives in plain text at `~/.runcastle/install-id`
+(`~/.runcastle-dev/install-id` for `bun run dev`) — delete it and the next boot
+generates a new one. The response is the latest published version, which is what
+the update banner reads.
+
+To opt out, set `DO_NOT_TRACK` to any non-empty value other than `0`:
+
+```sh
+export DO_NOT_TRACK=1
+```
+
+runcastle then skips the ping entirely and asks `registry.npmjs.org` for the
+latest version directly — you keep your update notifications. If the endpoint is
+unreachable, the check falls back to npm too, and if that fails it stays silent.
 
 ---
 

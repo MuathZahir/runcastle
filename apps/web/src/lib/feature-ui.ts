@@ -518,9 +518,12 @@ export interface MergeConflictState {
 /**
  * The standing (unresolved) merge conflict for a feature, derived from its event
  * feed so the review conflict card survives a page reload. The latest
- * `merge.conflict` event carries the base branch + conflicting files; a later
- * `burn.started` supersedes it — burning re-runs implementation and the recorded
- * file list no longer applies, so the card clears once the loop moves on.
+ * `merge.conflict` event carries the base branch + conflicting files; two later
+ * events supersede it. `burn.started` — burning re-runs implementation and the
+ * recorded file list no longer applies, so the card clears once the loop moves
+ * on. `merge.resolved` — the server watched a resolve session land the merge
+ * (decision 2a), which is how a resolved conflict stops disabling the pipeline's
+ * last step instead of standing forever.
  * Returns null when there is no standing conflict. `events` must be in id order.
  */
 export function unresolvedMergeConflict(events: EventRow[]): MergeConflictState | null {
@@ -530,7 +533,7 @@ export function unresolvedMergeConflict(events: EventRow[]): MergeConflictState 
       const d = (e.data ?? {}) as { base?: unknown; files?: unknown }
       const files = Array.isArray(d.files) ? d.files.filter((f): f is string => typeof f === 'string') : []
       conflict = { base: typeof d.base === 'string' ? d.base : '', files, at: e.ts }
-    } else if (e.type === 'burn.started') {
+    } else if (e.type === 'burn.started' || e.type === 'merge.resolved') {
       conflict = null
     }
   }
@@ -1162,14 +1165,19 @@ export function nextStep(
       // A recorded conflict outranks every other review verb (findings F8). The
       // bar used to highlight Merge & ship directly above the red conflict panel,
       // so the one action the user trusts re-ran a merge that could not land.
-      // Merge & ship stays visible but disabled with the reason — an action that
-      // vanishes leaves the user hunting for it.
+      // Resolve is therefore the primary — but nothing here is disabled, and
+      // that is the whole of decisions 2b and 3. A disabled Merge & ship
+      // deadlocked every resolution runcastle could not see (one done in the
+      // human's own checkout, a session that crashed); as a retry it either
+      // ships or re-emits a fresh conflict, so the card self-corrects. And Burn
+      // never touched the base merge in the first place — hiding it here hid the
+      // one button whose event (`burn.started`) supersedes the conflict.
       if (ctx.conflict) {
-        const blockedMerge: NextAction = {
-          label: 'Merge & ship',
-          kind: 'merge',
-          disabled: 'Resolve the merge conflict first — this merge will fail again',
-        }
+        const retryMerge: NextAction = { label: 'Retry Merge & ship', kind: 'merge' }
+        const burn: NextAction[] =
+          pending > 0
+            ? [{ label: `Burn ${pending} ticket${pending === 1 ? '' : 's'}`, kind: 'burn' }]
+            : []
         return {
           kick: 'MERGE CONFLICT',
           title: 'Resolve the merge conflict',
@@ -1181,7 +1189,7 @@ export function nextStep(
           primary: live
             ? undefined
             : { label: 'Resolve the merge conflict', kind: 'resolveConflict' },
-          secondary: [blockedMerge, testDriveAction, ...iterate],
+          secondary: [retryMerge, ...burn, testDriveAction, ...iterate],
           busy: false,
           ...driveWarning,
         }
@@ -1452,4 +1460,21 @@ export function liveSessionBlocker(
 export function shippedQaSessions(sessions: FeatureFull['sessions']): FeatureFull['sessions'] {
   const qa = sessions.filter((s) => s.kind === 'qa')
   return qa.some((s) => s.status !== 'ended' || !!s.ccSessionId) ? qa : []
+}
+
+/**
+ * When the branch landed — the `ts` of the feature's latest `feature.shipped`
+ * event, or null when the log carries none (the feature isn't merged, or the
+ * event predates the log this view holds).
+ *
+ * `feature.shipped` is the only event that records the merge. The hero used to
+ * take the last event of `feature.shipped | merge.conflict | feature.status`,
+ * but the merge emits `feature.shipped` and THEN `feature.status`, so the
+ * reverse scan always landed on the status event and the shipped hero has never
+ * shown a merge time. The server reads the same fact the same way
+ * (`latestEventTs(ctx, id, 'feature.shipped')`). `events` must be in id order.
+ */
+export function shippedAt(events: EventRow[]): number | null {
+  const shipped = [...events].reverse().find((e) => e.type === 'feature.shipped')
+  return shipped ? shipped.ts : null
 }

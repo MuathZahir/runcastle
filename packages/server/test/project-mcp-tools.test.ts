@@ -410,7 +410,7 @@ describe('project-session MCP tools', () => {
         id: newId('run'),
         featureId: feature.id,
         workflow: 'ticket-burner',
-        status: 'done',
+        status: 'succeeded',
         startedAt: 1,
         endedAt: 2,
         summary: '1 ticket burned',
@@ -421,7 +421,7 @@ describe('project-session MCP tools', () => {
     const out = toolGetWorkRecord(ctx, session, { featureSlug: 'laps' })
     const [record] = out.features
     expect(record.runs).toEqual([
-      { workflow: 'ticket-burner', status: 'done', startedAt: 1, endedAt: 2, summary: '1 ticket burned' },
+      { workflow: 'ticket-burner', status: 'succeeded', startedAt: 1, endedAt: 2, summary: '1 ticket burned' },
     ])
     expect(record.runs[0]).not.toHaveProperty('digest')
     expect(JSON.stringify(out)).not.toContain('Added the lap column')

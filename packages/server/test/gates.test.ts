@@ -142,6 +142,55 @@ describe('gates service', () => {
 })
 
 /**
+ * Override crosses the gate the feature is actually standing at. The gate id was
+ * previously recorded and emitted but never read: any id advanced the feature one
+ * phase, so a caller working from a stale view crossed a gate it did not name and
+ * the override row misdescribed the crossing.
+ */
+describe('gate override — the gate has to be the current one', () => {
+  let ctx: AppCtx
+  let project: Project
+
+  beforeEach(async () => {
+    ctx = await makeTestCtx()
+    project = seedProject(ctx, tmpRepo())
+  })
+
+  it('advances when the gate is the one guarding the current phase', () => {
+    const feature = seedFeature(ctx, project.id, { slug: 'ov-ok', phase: 'tickets' })
+    expect(overrideGate(ctx, feature.id, 'G3', 'burning without approval').phase).toBe(
+      'implementation',
+    )
+  })
+
+  it('rejects a gate the feature is not standing at, leaving the phase alone', () => {
+    const feature = seedFeature(ctx, project.id, { slug: 'ov-wrong', phase: 'tickets' })
+
+    expect(() => overrideGate(ctx, feature.id, 'G1', 'stale view')).toThrow(
+      /cannot override G1: the feature is at tickets, whose gate is G3/,
+    )
+    expect(getFeatureRow(ctx, feature.id).phase).toBe('tickets')
+    expect(listAfter(ctx, feature.id).map((e) => e.type)).not.toContain('gate.overridden')
+  })
+
+  it('rejects any override at the final phase', () => {
+    const feature = seedFeature(ctx, project.id, { slug: 'ov-shipped', phase: 'shipped' })
+
+    expect(() => overrideGate(ctx, feature.id, 'G5', 'already done')).toThrow(/no gate to cross/)
+    expect(getFeatureRow(ctx, feature.id).phase).toBe('shipped')
+  })
+
+  it("uses the mapped feature's G1 without changing which gate is current", () => {
+    const feature = seedFeature(ctx, project.id, {
+      slug: 'ov-mapped',
+      phase: 'ideation',
+      mapped: true,
+    })
+    expect(overrideGate(ctx, feature.id, 'G1', 'fog is fine').phase).toBe('spec')
+  })
+})
+
+/**
  * Findings F24 — "Override with reason…" + Apply was a one-way door: it advanced
  * the phase instantly with no consequence copy and no way back but DB surgery.
  * The reversal is one phase back, the phase the override stepped over, and it
