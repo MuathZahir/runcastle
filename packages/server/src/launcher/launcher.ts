@@ -54,6 +54,7 @@ import {
   mostRecentResumableProjectSession,
   mostRecentResumableSession,
   planKickoff,
+  reportProjectLanding,
   resumeKickoffLine,
   setKickoffOverride,
 } from './sessions'
@@ -698,7 +699,9 @@ export async function launchProjectSession(
     )
   }
 
-  const worktreePath = await git.ensureProjectWorktree(project)
+  const worktreePath = await git.ensureProjectWorktree(project, (res) =>
+    reportProjectLanding(ctx, project, res, { retried: true }),
+  )
   const session = createSessionRow(ctx, {
     projectId: project.id,
     kind: 'project',
