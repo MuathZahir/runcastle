@@ -87,6 +87,13 @@ export function phaseGlyph(phase: Phase): string {
   }
 }
 
+/**
+ * The rail glyph for a parked draft (decision 9), shown in place of
+ * {@link phaseGlyph}. A draft has no meaningful pipeline position, so it gets no
+ * phase glyph — the open circle says "nothing has started here yet".
+ */
+export const DRAFT_GLYPH = '◌'
+
 export type NeedsMeKind = 'grill' | 'burn' | 'attention' | 'ship'
 
 export interface NeedsMe {
@@ -116,6 +123,9 @@ function agentMidTurn(f: FeatureListItem): boolean {
  * thing it exists to say.
  */
 export function needsMe(f: FeatureListItem): NeedsMe | null {
+  // A parked draft is not in the pipeline at all (decision 9): it claims no
+  // attention until the human clicks Start, whatever its phase says.
+  if (f.status === 'draft') return null
   if (f.status === 'shipped' || f.status === 'archived') return null
   if (f.activeRun) return null // burning: shown as a spinner, not a needs-me dot
   if (f.liveSession) {
@@ -134,7 +144,7 @@ export function needsMe(f: FeatureListItem): NeedsMe | null {
   return null
 }
 
-export type RowChipKind = 'needsMe' | 'working' | 'shipped' | 'age'
+export type RowChipKind = 'needsMe' | 'working' | 'shipped' | 'draft' | 'age'
 
 /** What fills a sidebar row's single status-chip slot. */
 export interface RowChip {
@@ -164,6 +174,9 @@ export function rowChip(f: FeatureListItem, now: number = Date.now()): RowChip {
     return { kind: 'working', text: 'Working', title: 'the agent is working in the session' }
   }
   if (f.status === 'shipped') return { kind: 'shipped', text: '', title: 'shipped' }
+  // A parked idea's age is noise, not news (decision 9) — say what it IS instead.
+  if (f.status === 'draft')
+    return { kind: 'draft', text: 'Draft', title: 'parked — click Start to cut its branch' }
   const text = relTime(f.lastActivityAt, now)
   return { kind: 'age', text, title: `last activity ${text === 'now' ? 'just now' : `${text} ago`}` }
 }
@@ -178,11 +191,14 @@ export function ticketProgress(f: FeatureListItem): string | null {
   return total > 0 ? `${done}/${total} done` : null
 }
 
-/** Sidebar sort: needs-me first, then active, then shipped (dimmed). Stable
- *  within groups (the server returns newest-first). */
+/** Sidebar sort: needs-me first, then active, then parked drafts, then shipped
+ *  (both dimmed). Stable within groups (the server returns newest-first). */
 export function sortForSidebar(features: FeatureListItem[]): FeatureListItem[] {
   const rank = (f: FeatureListItem): number => {
-    if (f.status === 'shipped') return 2
+    if (f.status === 'shipped') return 3
+    // Parked ideas sit below work in motion and above shipped history
+    // (decision 9) — more alive than a merged branch, not in the pipeline.
+    if (f.status === 'draft') return 2
     if (needsMe(f)) return 0
     return 1
   }
@@ -229,7 +245,13 @@ export function phaseIndex(phase: Phase): number {
 
 // --- triage sidebar --------------------------------------------------------
 
-export type TriageKey = 'needsYou' | 'agentWorking' | 'inProgress' | 'shipped' | 'archived'
+export type TriageKey =
+  | 'needsYou'
+  | 'agentWorking'
+  | 'inProgress'
+  | 'drafts'
+  | 'shipped'
+  | 'archived'
 
 export interface TriageGroup {
   key: TriageKey
@@ -249,6 +271,9 @@ export interface TriageGroup {
 export function triageOf(f: FeatureListItem): TriageKey {
   if (f.status === 'archived') return 'archived'
   if (f.status === 'shipped') return 'shipped'
+  // Its own band (decision 9): a parked draft carries no needs-me or working
+  // state, so it never interleaves with things in motion.
+  if (f.status === 'draft') return 'drafts'
   if (f.activeRun) return 'agentWorking'
   if (needsMe(f)) return 'needsYou'
   if (agentMidTurn(f)) return 'agentWorking'
@@ -270,6 +295,7 @@ export function triage(
     needsYou: [],
     agentWorking: [],
     inProgress: [],
+    drafts: [],
     shipped: [],
     archived: [],
   }
@@ -279,6 +305,7 @@ export function triage(
     { key: 'needsYou', label: 'Needs you' },
     { key: 'agentWorking', label: 'Agent working' },
     { key: 'inProgress', label: 'In progress' },
+    { key: 'drafts', label: 'Drafts' },
     { key: 'shipped', label: 'Shipped' },
   ]
   if (opts.showArchived) order.push({ key: 'archived', label: 'Archived' })
@@ -384,6 +411,7 @@ export function pipelineSteps(
 // --- guided next-step bar ---------------------------------------------------
 
 export type ActionKind =
+  | 'startDraft' // feature.start — cut the branch on a parked draft, then grill
   | 'startGrill' // launchSession { kind: 'ideation' }
   | 'converge' // feature.converge — crosses G1 on a mapped feature
   | 'convergeOverride' // feature.converge { overrideReason } — forces G1, needs a reason
@@ -825,6 +853,13 @@ export function nextStep(
     unverifiedDriveKeys?: string[]
     /** A preparation dry run holds the singleton drive slot (decision 9). */
     dryRunActive?: boolean
+    /**
+     * A draft's Start has no base to send yet — the branch list is still
+     * loading, so the base the body is showing is not known. Starting now would
+     * silently fall back to the project main branch, the same trap the New
+     * Feature form guards against.
+     */
+    draftBaseUnresolved?: boolean
   },
 ): NextStep {
   const { feature, tickets, sessions, runs, gate } = full
@@ -842,6 +877,26 @@ export function nextStep(
   const run = latestRun(runs)
   const running = run?.status === 'running'
   const nextName = nextPhase(feature)
+
+  // A parked draft is not in the pipeline either (decision 9): it is created at
+  // phase `ideation`, so its status has to win over its phase here, or the bar
+  // would offer a grill session on a feature with no branch — which the server
+  // refuses. Its one next step is Start; the base picker rides along in the
+  // draft body's Advanced disclosure.
+  if (feature.status === 'draft') {
+    return {
+      kick: 'NEXT STEP',
+      title: 'Start this feature',
+      desc: 'Parked as a draft — Start cuts its branch, writes the brief, and opens the grill session.',
+      primary: {
+        label: 'Start',
+        kind: 'startDraft',
+        ...(ctx.draftBaseUnresolved ? { disabled: 'Loading the branch list…' } : {}),
+      },
+      secondary: [],
+      busy: false,
+    }
+  }
 
   // An archived feature is parked out of the pipeline (decision #8): it offers no
   // phase next-step, only a way back. Guard before the phase switch so no phase

@@ -26,9 +26,21 @@ export const featureRouter = router({
         title: z.string().min(1),
         oneLiner: z.string(),
         baseBranch: z.string().optional(),
+        // Park it instead of starting it (decision 5): the form's "Save as
+        // draft" button. No branch, no docs, no commit until Start.
+        draft: z.boolean().optional(),
       }),
     )
     .mutation(({ ctx, input }) => features.createFeature(ctx, input)),
+
+  // Start a parked draft (decision 7): cut the branch off a base resolved at
+  // this moment, scaffold + commit `brief.md`, activate. The client chains the
+  // grill-session launch after it, mirroring the form's create-then-launch.
+  start: publicProcedure
+    .input(z.object({ featureId: z.string(), baseBranch: z.string().optional() }))
+    .mutation(({ ctx, input }) =>
+      features.startDraft(ctx, input.featureId, { baseBranch: input.baseBranch }),
+    ),
 
   // The quick-change door (decision 21) — the second entrance beside `create`,
   // for work too small to deserve a conversation. Creates an ordinary feature
@@ -176,6 +188,7 @@ export const featureRouter = router({
     .input(z.object({ featureId: z.string(), action: z.enum(['start', 'stop']) }))
     .mutation(async ({ ctx, input }) => {
       const feature = getFeatureRow(ctx, input.featureId)
+      features.requireNotDraft(feature)
       const project = projectForFeature(ctx, feature)
       return git.testDrive(ctx, project, feature, input.action)
     }),
@@ -201,6 +214,7 @@ export const featureRouter = router({
     .input(z.object({ featureId: z.string() }))
     .mutation(async ({ ctx, input }) => {
       const feature = getFeatureRow(ctx, input.featureId)
+      features.requireNotDraft(feature)
       const project = projectForFeature(ctx, feature)
       // A test drive of THIS feature holds the main checkout on the feature
       // branch; stop it first (restores main) so the merge can proceed. This lets

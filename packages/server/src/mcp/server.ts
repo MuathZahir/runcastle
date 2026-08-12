@@ -9,6 +9,7 @@ import type {
   PreparedKey as PreparedKeyT,
   Project,
   RunStatus as RunStatusT,
+  SessionKind as SessionKindT,
   SessionRow,
   Ticket,
   TicketInput as TicketInputT,
@@ -22,6 +23,7 @@ import {
   TicketInput,
   WaypointDisposition,
   WaypointInput,
+  isProjectSessionKind,
   nextGate,
   nextPhase,
 } from '@runcastle/core'
@@ -44,7 +46,12 @@ import { isOverwritable, recordFinding } from '../services/findings'
 import * as git from '../services/git'
 import type { AdrDoc } from '../services/knowledge'
 import { listDocs, listLiveAdrs, readCharter, readDoc } from '../services/knowledge'
-import { getFeatureRow, getProjectById, listRunsByFeature } from '../services/repo'
+import {
+  getFeatureRow,
+  getProjectById,
+  listRunsByFeature,
+  projectForFeature,
+} from '../services/repo'
 import {
   cancelTicket,
   editTicket,
@@ -470,14 +477,54 @@ export interface CreateFeatureResult {
   phase: PhaseT
 }
 
+/** The feature-scoped talk kinds that may park a draft (draft-features decision 6). */
+const DRAFTING_KINDS: readonly SessionKindT[] = ['ideation', 'revisit', 'waypoint', 'converge']
+
+/**
+ * The project a `create_feature` call belongs to — and, on the way there, how
+ * much of the door the calling session may open (draft-features decision 6).
+ *
+ * A project-scoped session keeps the whole door. A feature-scoped TALK session
+ * gets exactly one move: park a draft, so scope creep surfaced mid-grill has
+ * somewhere to go instead of swallowing the feature being grilled — its project
+ * is the one its own feature belongs to. Anything beyond parking is refused,
+ * because a grill that can spawn live features is an orchestrator, and that is
+ * the project session's job. `qa` is refused outright: its contract is
+ * read-only, and a draft is still a write.
+ */
+function createFeatureProject(
+  ctx: AppCtx,
+  session: SessionRow,
+  input: { draft?: boolean; ticket?: { prose: string } },
+): Project {
+  if (isProjectSessionKind(session.kind)) return requireProject(ctx, session)
+  if (!DRAFTING_KINDS.includes(session.kind)) {
+    throw new GateError(
+      `a ${session.kind} session is read-only and may not create features, drafts included. ` +
+        'Tell the human what is worth capturing; the project session is where features are made.',
+    )
+  }
+  if (!input.draft || input.ticket) {
+    throw new GateError(
+      `a ${session.kind} session may only PARK a feature here: call create_feature with ` +
+        '`draft: true` and a `brief` carrying why you deferred it. Cutting a branch — a full ' +
+        'create or the quick-change `ticket` shape — belongs to the project session; tell the ' +
+        'human to open it.',
+    )
+  }
+  return projectForFeature(ctx, getFeatureRow(ctx, requireFeatureId(session)))
+}
+
 /**
  * The point of the project session: intake and decomposition terminating in a
  * feature (decision 19).
  *
- * Two shapes, one call. Without `ticket` it is the ordinary door — an
+ * Three shapes, one call. Without `ticket` it is the ordinary door — an
  * ideation-phase feature whose `brief.md` is the prose the intake conversation
  * just produced, so the reasoning about why this feature exists and what it
- * must not swallow survives the terminal closing. With `ticket` it is the
+ * must not swallow survives the terminal closing. With `draft` it parks that
+ * same feature instead of starting it (draft-features decision 5): a row and a
+ * stored brief, no branch, until the human clicks Start. With `ticket` it is the
  * quick-change door (decision 21): a feature born at `implementation` carrying
  * exactly one ticket, created atomically with it — which is why this is NOT the
  * feature-less `emit_tickets` the session is deliberately denied.
@@ -494,10 +541,11 @@ export async function toolCreateFeature(
     oneLiner: string
     baseBranch?: string
     brief?: string
+    draft?: boolean
     ticket?: { prose: string }
   },
 ): Promise<CreateFeatureResult> {
-  const project = requireProject(ctx, session)
+  const project = createFeatureProject(ctx, session, input)
   const feature = input.ticket
     ? await quickChange(ctx, {
         projectId: project.id,
@@ -511,6 +559,7 @@ export async function toolCreateFeature(
         oneLiner: input.oneLiner,
         baseBranch: input.baseBranch,
         brief: input.brief,
+        draft: input.draft,
       })
   return {
     id: feature.id,
@@ -748,9 +797,15 @@ export function buildMcpServer(): McpServer {
         'Create a feature from the project session — the end of intake. Pass `brief` with the ' +
         'reasoning you just worked out with the human (why this feature exists, what it must NOT ' +
         'swallow): it becomes brief.md verbatim, and without it that reasoning is lost. Pass ' +
+        '`draft: true` to PARK it instead of starting it — a row and its brief, no branch and no ' +
+        'files, until the human clicks Start; ask them per feature whether to start it now or ' +
+        'park it. Pass ' +
         '`ticket: { prose }` for a quick change — work too small to deserve a grill — which ' +
         'creates the feature at the implementation phase with that one ticket, and whose brief.md ' +
-        'is the prose itself (so `brief` is unused there). This does NOT open ' +
+        'is the prose itself (so `brief` is unused there). From a feature session (ideation, ' +
+        'revisit, waypoint, converge) this tool parks drafts and nothing else: `draft: true` is ' +
+        'required and the `ticket` shape is refused, so deflect scope creep here and leave full ' +
+        'creation to the project session. This does NOT open ' +
         'a terminal on what it creates; the new card in the rail is the feedback, and the human ' +
         'decides what to work on next.',
       inputSchema: {
@@ -758,6 +813,7 @@ export function buildMcpServer(): McpServer {
         oneLiner: z.string(),
         baseBranch: z.string().optional(),
         brief: z.string().optional(),
+        draft: z.boolean().optional(),
         ticket: z.object({ prose: z.string().min(1) }).optional(),
       },
     },

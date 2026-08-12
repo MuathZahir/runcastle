@@ -34,6 +34,7 @@ export function rowToFeature(row: FeatureSelect): Feature {
     slug: row.slug,
     title: row.title,
     oneLiner: row.oneLiner,
+    brief: row.brief ?? undefined,
     mapped: row.mapped,
     lap: row.lap,
     phase: row.phase,

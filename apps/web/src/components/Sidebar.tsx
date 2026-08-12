@@ -3,7 +3,14 @@ import { trpc } from '../trpc'
 import { DimLine } from '../ui'
 import { useToast } from '../lib/toast'
 import type { FeatureListItem, PrepView } from '../lib/api'
-import { capLane, miniSegments, rowChip, ticketProgress, triage } from '../lib/feature-ui'
+import {
+  capLane,
+  DRAFT_GLYPH,
+  miniSegments,
+  rowChip,
+  ticketProgress,
+  triage,
+} from '../lib/feature-ui'
 import { prepRailRow } from '../lib/project-workspace'
 import { isStale } from '../lib/settings'
 import { useLivePoll } from '../lib/live'
@@ -119,10 +126,16 @@ export function Sidebar({
   }
 
   const actionsFor = (f: FeatureListItem): FeatureAction[] => {
+    // A draft's verb set is Start and delete (decision 8). Archive is refused
+    // server-side — unarchiving derives status from phase and would resurrect it
+    // as active-without-a-branch — so the menu never offers a dead item; a draft
+    // IS the shelf, and Delete below covers the ideas that die on it.
     const actions: FeatureAction[] =
-      f.status === 'archived'
-        ? [{ key: 'unarchive', label: 'Unarchive', onSelect: () => unarchive.mutate({ featureId: f.id }) }]
-        : [{ key: 'archive', label: 'Archive', onSelect: () => archive.mutate({ featureId: f.id }) }]
+      f.status === 'draft'
+        ? []
+        : f.status === 'archived'
+          ? [{ key: 'unarchive', label: 'Unarchive', onSelect: () => unarchive.mutate({ featureId: f.id }) }]
+          : [{ key: 'archive', label: 'Archive', onSelect: () => archive.mutate({ featureId: f.id }) }]
     // Delete is non-shipped only (shipped features are merged — archive covers
     // them; the server refuses them too). Opens a destructive confirm dialog.
     if (f.status !== 'shipped') {
@@ -306,14 +319,26 @@ function FeatureRow({
   const chip = rowChip(f)
   const progress = ticketProgress(f)
   const segs = miniSegments(f)
-  const dimmed = f.status === 'shipped' || f.status === 'archived'
+  const draft = f.status === 'draft'
+  // Parked ideas dim with shipped history rather than sitting at the brightness
+  // of work in motion (decision 9).
+  const dimmed = draft || f.status === 'shipped' || f.status === 'archived'
   const cls = `feature-row${active ? ' is-active' : ''}${dimmed ? ' is-dim' : ''}`
 
   return (
     <div className={cls}>
       <button className="feature-row-main" onClick={() => onSelect(f.id)} title={`${f.title} — ${f.slug}`}>
         <span className="feature-line">
-          <span className={`feature-dot phase-bg-${f.phase}`} />
+          {/* A draft has no pipeline position, so it wears the parked glyph
+              instead of a phase dot — its phase is `ideation` like every new
+              feature, and that colour would claim it had started. */}
+          {draft ? (
+            <span className="feature-draft-glyph" aria-hidden="true">
+              {DRAFT_GLYPH}
+            </span>
+          ) : (
+            <span className={`feature-dot phase-bg-${f.phase}`} />
+          )}
           <span className="feature-title">{f.title}</span>
           <span className={`feature-chip is-${chip.kind}`} title={chip.title}>
             {chip.kind === 'needsMe' && <span className={`needs-dot needs-${chip.needs}`} />}

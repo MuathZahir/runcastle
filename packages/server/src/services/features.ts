@@ -121,6 +121,13 @@ export interface CreateFeatureInput {
    * terminal closes, and the burner reads a restated one-liner instead.
    */
   brief?: string
+  /**
+   * Park the feature instead of starting it (decision 2): insert the row at
+   * status `draft` and do no git or filesystem work at all — no branch, no docs,
+   * no commit. `baseBranch` is ignored on this path; the base is chosen and
+   * resolved later, when the human clicks Start (decision 3).
+   */
+  draft?: boolean
 }
 
 export async function createFeature(
@@ -132,9 +139,10 @@ export async function createFeature(
   const branch = `feature/${slug}`
   const requestedBase = input.baseBranch?.trim() || project.mainBranch
 
-  // The stored base is the RESOLVED local branch (a remote pick materialized a
-  // local tracking branch), so it's always a real merge target at ship time.
-  const { branchReady, baseBranch } = await ensureFeatureBranch(project, slug, requestedBase)
+  // A draft cuts nothing (decision 3): its base is chosen and resolved later, at
+  // Start. Otherwise the stored base is the RESOLVED local branch (a remote pick
+  // materialized a local tracking branch), always a real merge target at ship time.
+  const cut = input.draft ? null : await ensureFeatureBranch(project, slug, requestedBase)
 
   const row = {
     id: newId('feat'),
@@ -142,15 +150,20 @@ export async function createFeature(
     slug,
     title: input.title,
     oneLiner: input.oneLiner,
+    // Only a draft parks its brief in the column (decision 4); a live create
+    // writes it straight to `brief.md`, the source of truth from then on.
+    brief: input.draft ? (input.brief ?? null) : null,
     // Every feature is created unmapped; mapping is escalation-only, reached
     // mid-grill via the MCP escalate_to_map tool (no "start mapped" at creation).
     mapped: false,
     // Every feature starts on lap 1; only Rethink moves it (ADR-0010 §7).
     lap: 1,
     phase: 'ideation' as const,
+    // The branch NAME is recorded even for a draft (decision 2); `status:
+    // 'draft'` alone means the branch does not exist in the repo yet.
     branch,
-    baseBranch,
-    status: 'active' as const,
+    baseBranch: cut?.baseBranch ?? null,
+    status: cut ? ('active' as const) : ('draft' as const),
     createdAt: Date.now(),
   }
   const inserted = ctx.db.insert(features).values(row).returning().get()
@@ -158,11 +171,23 @@ export async function createFeature(
 
   emit(ctx, feature.id, {
     type: 'feature.created',
-    message: branchReady
-      ? `feature.created (${branch} ← ${baseBranch})`
-      : 'feature.created (branch pending)',
-    data: { slug, branch, baseBranch, branchReady },
+    message: !cut
+      ? `feature.created (draft — ${branch} not cut yet)`
+      : cut.branchReady
+        ? `feature.created (${branch} ← ${cut.baseBranch})`
+        : 'feature.created (branch pending)',
+    data: {
+      slug,
+      branch,
+      baseBranch: cut?.baseBranch,
+      branchReady: cut?.branchReady ?? false,
+      draft: !cut,
+    },
   })
+
+  // A draft is a DB row and nothing else (decision 4) — no docs on disk and no
+  // commit until Start, so parked scribbles never land on the current branch.
+  if (!cut) return feature
 
   scaffoldDocs(ctx, feature, { brief: input.brief })
 
@@ -170,7 +195,7 @@ export async function createFeature(
   // target repo's working tree. An untracked doc dirties the checkout and blocks
   // the ship gates (test-drive and merge both require `git status` to be clean).
   // Best-effort: a git stub (pre-B2) or a commit hiccup must never fail creation.
-  if (branchReady) {
+  if (cut.branchReady) {
     try {
       await git.commitDocs(project.repoPath, `runcastle: scaffold ${slug} docs`)
     } catch {
@@ -179,6 +204,73 @@ export async function createFeature(
   }
 
   return feature
+}
+
+/**
+ * The canonical draft refusal (decision 8). A draft's verb set is Start and
+ * delete; every door that treats the feature as live calls this first, so the
+ * human gets one consistent message pointing at the button that fixes it rather
+ * than an incidental git failure about a branch that was never cut.
+ */
+export function requireNotDraft(feature: Feature): void {
+  if (feature.status === 'draft') {
+    throw new GateError(`\`${feature.slug}\` is a draft — click Start to cut its branch and begin`)
+  }
+}
+
+/**
+ * Start a parked draft (decision 7): resolve the base AT THIS MOMENT (an
+ * explicit pick, else the project's main branch — the current-checkout default
+ * lives client-side), cut `feature/<slug>`, scaffold `brief.md` from the parked
+ * column and auto-commit it, then flip the row to `active` with the resolved
+ * base and emit `feature.started`.
+ *
+ * The git work happens BEFORE the db update on purpose: no rollback machinery
+ * is needed because a branch-cut failure propagates with the draft untouched,
+ * still parked and still startable once the human resolves the cause.
+ */
+export async function startDraft(
+  ctx: AppCtx,
+  featureId: string,
+  opts: { baseBranch?: string } = {},
+): Promise<Feature> {
+  const feature = getFeatureRow(ctx, featureId)
+  if (feature.status !== 'draft') {
+    throw new GateError(`feature ${feature.slug} is not a draft — it has already been started`)
+  }
+  const project = projectForFeature(ctx, feature)
+  const requestedBase = opts.baseBranch?.trim() || project.mainBranch
+
+  const { branchReady, baseBranch } = await ensureFeatureBranch(project, feature.slug, requestedBase)
+
+  ctx.db
+    .update(features)
+    .set({ status: 'active', baseBranch })
+    .where(eq(features.id, featureId))
+    .run()
+  const started: Feature = { ...feature, status: 'active', baseBranch }
+
+  emit(ctx, featureId, {
+    type: 'feature.started',
+    message: branchReady
+      ? `feature ${feature.slug} started (${feature.branch} ← ${baseBranch})`
+      : `feature ${feature.slug} started (branch pending)`,
+    data: { branch: feature.branch, baseBranch, branchReady },
+  })
+
+  // The brief parked in the column becomes the file, through the same verbatim
+  // scaffold path create uses — and the same best-effort auto-commit, so an
+  // untracked doc never dirties the checkout and blocks the ship gates.
+  scaffoldDocs(ctx, started, { brief: feature.brief })
+  if (branchReady) {
+    try {
+      await git.commitDocs(project.repoPath, `runcastle: scaffold ${feature.slug} docs`)
+    } catch {
+      // best-effort — the brief stays on disk; only the auto-commit is skipped
+    }
+  }
+
+  return started
 }
 
 export interface QuickChangeInput {
@@ -380,6 +472,7 @@ function liveSessionOf(ctx: AppCtx, featureId: string): LiveSessionState | null 
 /** Attempt the gate guarding the next phase; advance or throw with the reason. */
 export function advance(ctx: AppCtx, featureId: string): Feature {
   const feature = getFeatureRow(ctx, featureId)
+  requireNotDraft(feature)
   const gate = nextGate(feature)
   if (!gate) throw new GateError('feature is already at the final phase')
 
@@ -430,6 +523,7 @@ export async function burn(
   opts: { modelOverride?: string; resetFailed?: boolean } = {},
 ): Promise<{ runId: string }> {
   const feature = getFeatureRow(ctx, featureId)
+  requireNotDraft(feature)
   const running = hasActiveRun(ctx, featureId)
   let tickets = listByFeature(ctx, featureId)
   // G3 scopes to the CURRENT lap (SPEC §15.1) — an earlier lap's tickets are
@@ -540,6 +634,7 @@ export async function burn(
  */
 export function rethink(ctx: AppCtx, featureId: string): Feature {
   const feature = getFeatureRow(ctx, featureId)
+  requireNotDraft(feature)
   if (feature.phase !== RETHINK_LOOP_BACK.from) {
     throw new GateError(
       `feature must be in the review phase to rethink (currently ${feature.phase})`,
@@ -791,6 +886,10 @@ export function escalateToMap(
  */
 export function archiveFeature(ctx: AppCtx, featureId: string): Feature {
   const feature = getFeatureRow(ctx, featureId)
+  // Archive is refused for drafts (decision 8): `unarchiveFeature` derives the
+  // restored status from the phase and would resurrect a draft as
+  // active-without-a-branch. A draft IS the shelf; delete covers dead ideas.
+  requireNotDraft(feature)
   if (feature.status === 'archived') {
     throw new GateError(`feature ${feature.slug} is already archived`)
   }

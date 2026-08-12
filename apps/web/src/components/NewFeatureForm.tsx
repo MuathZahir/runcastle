@@ -10,9 +10,10 @@ import { FormOverlay } from './FormOverlay'
 /**
  * The new-feature form (app-redesign) — owns the whole workspace while open.
  * Name it, and starting it creates the feature AND opens a grill session so the
- * ideation body is live the moment you land on it. Or create it and stop there:
- * an idea worth writing down is not always an idea you want to talk about right
- * now (finding F15), and the session-less ideation body already invites you back.
+ * ideation body is live the moment you land on it. Or park it as a draft: an idea
+ * worth writing down is not always an idea you want to talk about right now
+ * (finding F15), and cutting a branch for it only leaves one to go stale
+ * (decision 5). A draft's screen carries the Start that cuts it later.
  *
  * The form demands a title up front, which means it demands the human has already
  * cut their thought into a feature — so it carries the escape hatch for when they
@@ -51,7 +52,7 @@ export function NewFeatureForm({
   const launch = trpc.feature.launchSession.useMutation()
   // Which button is in flight, for its own pending label — both actions run the
   // same create; only the submit call site decides whether a session follows.
-  const [starting, setStarting] = useState<'grill' | 'alone' | null>(null)
+  const [starting, setStarting] = useState<'grill' | 'draft' | null>(null)
   const create = trpc.feature.create.useMutation({
     onError: (e) => {
       setStarting(null)
@@ -68,20 +69,31 @@ export function NewFeatureForm({
   const busy = create.isPending || launch.isPending
   const submit = (withGrill: boolean) => {
     const t = title.trim()
-    // Don't create while the branch list is still loading — `effectiveBase` isn't
-    // known yet, and creating now would silently fork off main.
-    if (!t || branchesQ.isPending || busy) return
-    setStarting(withGrill ? 'grill' : 'alone')
+    if (!t || busy) return
+    // Don't cut a branch while the branch list is still loading — `effectiveBase`
+    // isn't known yet, and creating now would silently fork off main. Parking
+    // sends no base at all (decision 3), so it never has to wait for the list.
+    if (withGrill && branchesQ.isPending) return
+    setStarting(withGrill ? 'grill' : 'draft')
     create.mutate(
       {
         projectId,
         title: t,
         oneLiner: oneLiner.trim(),
-        // Send the base the form is SHOWING, not just an explicit pick. Omitting
-        // it makes the server fall back to `project.mainBranch`, which silently
-        // contradicts the "current branch" default displayed in the picker.
-        // Empty only before the branch list loads — then main really is the base.
-        baseBranch: effectiveBase || undefined,
+        // Park it instead of starting it (decision 5): a draft is a DB row and
+        // nothing else — no branch, no docs, no commit until Start.
+        ...(withGrill
+          ? {
+              // Send the base the form is SHOWING, not just an explicit pick.
+              // Omitting it makes the server fall back to `project.mainBranch`,
+              // which silently contradicts the "current branch" default displayed
+              // in the picker. Empty only before the branch list loads — then main
+              // really is the base.
+              baseBranch: effectiveBase || undefined,
+            }
+          : // No base on the park path (decision 3): a draft can sit for weeks, so
+            // its base is chosen and resolved at Start, not now.
+            { draft: true }),
       },
       {
         onSuccess: async (feature) => {
@@ -105,8 +117,8 @@ export function NewFeatureForm({
           <div className="nf-kick">NEW FEATURE</div>
           <div className="nf-h">What are we building?</div>
           <div className="nf-sub">
-            {GRILL_EXPLAINER} Name it and start one now — or create the feature and start the session
-            when you are ready for it.
+            {GRILL_EXPLAINER} Name it and start one now — or save it as a draft, parked with no
+            branch until you are ready to begin.
           </div>
 
           <input
@@ -169,7 +181,8 @@ export function NewFeatureForm({
                 )}
               </select>
               <span className="size-hint">
-                forks off this branch — and merges back into it when shipped.
+                forks off this branch — and merges back into it when shipped. Applies to “Start
+                grill session” only; a draft picks its base at Start.
               </span>
             </div>
 
@@ -189,10 +202,10 @@ export function NewFeatureForm({
             <Button
               variant="ghost"
               onClick={() => submit(false)}
-              disabled={!title.trim() || busy || branchesQ.isPending}
-              title="Create the feature and stop there — the grill session waits for you on the ideation screen"
+              disabled={!title.trim() || busy}
+              title="Park it as a draft — no branch and no repo changes until you click Start on its screen"
             >
-              {starting === 'alone' ? 'Creating…' : 'Create without starting'}
+              {starting === 'draft' ? 'Saving…' : 'Save as draft'}
             </Button>
             <Button
               variant="solid"

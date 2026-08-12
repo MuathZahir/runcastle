@@ -31,6 +31,7 @@ import {
   rowToRun,
   setPhase,
 } from '../services/repo'
+import { requireNotDraft } from '../services/features'
 import { listByFeature as listTicketsByFeature } from '../services/tickets'
 import {
   claim as claimWaypoint,
@@ -382,6 +383,7 @@ export async function launchSession(
   opts: LaunchSessionOptions = {},
 ): Promise<LaunchSessionResult> {
   const feature = getFeatureRow(ctx, input.featureId)
+  requireNotDraft(feature)
   const project = projectForFeature(ctx, feature)
 
   const worktreePath = await ensureWorktree(ctx, project, feature)
@@ -799,6 +801,7 @@ export async function workWaypoint(
   opts: LaunchSessionOptions = {},
 ): Promise<LaunchSessionResult | WorkRunResult> {
   const feature = getFeatureRow(ctx, input.featureId)
+  requireNotDraft(feature)
   if (!feature.mapped) {
     throw new GateError(`feature ${feature.slug} is not mapped — it has no waypoints to work`)
   }
@@ -854,6 +857,7 @@ export async function converge(
   opts: LaunchSessionOptions = {},
 ): Promise<LaunchSessionResult> {
   const feature = getFeatureRow(ctx, input.featureId)
+  requireNotDraft(feature)
   if (!feature.mapped) {
     throw new GateError(`feature ${feature.slug} is not mapped — convergence is only for mapped features`)
   }
