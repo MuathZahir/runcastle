@@ -105,6 +105,11 @@ export function Workspace({
   const invalidate = () => {
     void utils.feature.get.invalidate({ id: featureId })
     void utils.feature.list.invalidate()
+    // The timeline too, and not as an afterthought: the bar's conflict banner and
+    // its drive-taken stamp are derived from the event log, so a mutation that
+    // refreshed only the feature row would leave the thing it just caused
+    // waiting on the push pipe to become visible.
+    void utils.events.invalidate()
   }
 
   const launch = trpc.feature.launchSession.useMutation({ onSuccess: invalidate, onError: (e) => toast.push(e.message) })
@@ -153,6 +158,9 @@ export function Workspace({
   })
   const testDrive = trpc.feature.testDrive.useMutation({
     onSuccess: (res) => {
+      // A drive takes and releases the branch and stamps the timeline; the bar
+      // and the review body read all of it back through these queries.
+      invalidate()
       // The project's own setup/teardown command failed. Surfaced first and as
       // an error: everything below is advisory, but a failed setup means the
       // app you are about to open probably is not running. The command's output
@@ -188,7 +196,15 @@ export function Workspace({
     },
     onError: (e) => toast.push(e.message),
   })
-  const merge = trpc.feature.merge.useMutation({ onError: (e) => toast.push(e.message) })
+  // Settled, not success: a merge that hits a conflict is a REJECTED call, and
+  // the conflict banner is derived from the event the server logged on its way
+  // out (`unresolvedMergeConflict`). Invalidating here is what makes the banner
+  // appear on the click that caused it, instead of only when the push pipe
+  // delivers — the reported "I have to refresh to see the conflict".
+  const merge = trpc.feature.merge.useMutation({
+    onSettled: invalidate,
+    onError: (e) => toast.push(e.message),
+  })
   const unarchive = trpc.feature.unarchive.useMutation({
     onSuccess: () => {
       invalidate()
