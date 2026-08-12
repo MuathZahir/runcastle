@@ -7,6 +7,7 @@ import {
   liveSessionBlocker,
   mapDocPath,
   parseMapSections,
+  sessionActive,
   waypointGroups,
   type LiveSessionBlocker,
   type RailWaypoint,
@@ -51,7 +52,7 @@ export function GrillBody({
   // Converge re-entry (recovery path): a mapped feature stranded at `spec` with
   // no live session and zero tickets means the converge session died after
   // crossing G1 — offer a subtle restart (feature.converge re-enters here).
-  const hasLive = sessions.some((s) => s.status === 'live' || s.status === 'launching')
+  const hasLive = sessions.some(sessionActive)
   const showConvergeResume =
     feature.mapped &&
     feature.phase === 'spec' &&

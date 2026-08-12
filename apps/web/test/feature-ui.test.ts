@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import type { EventRow, TicketStatus } from '@runcastle/core'
 import {
+  activeSession,
+  awaitingCheckIn,
   capLane,
   defaultBaseBranch,
   DRAFT_GLYPH,
@@ -15,7 +17,9 @@ import {
   phaseGlyph,
   reviewChecks,
   rowChip,
+  sessionActive,
   sessionDoneState,
+  sessionStatusLabel,
   shippedAt,
   shippedQaSessions,
   sortForSidebar,
@@ -228,6 +232,79 @@ describe('nextStep at implementation with no tickets', () => {
 })
 
 /**
+ * ui-state-management ticket 3 — the session registry's one rule, in one place.
+ * The server spawns and owns the PTY, so a spawned session is an active session;
+ * the `live` status only records that the agent's `SessionStart` hook checked in.
+ * Every surface asks this, so it is tested here rather than through each of them.
+ */
+describe('sessionActive', () => {
+  const rows = (list: unknown[]) => list as FeatureFull['sessions']
+
+  it('counts a launching session — its terminal is already running', () => {
+    expect(sessionActive({ status: 'launching' })).toBe(true)
+  })
+
+  it('counts a live session', () => {
+    expect(sessionActive({ status: 'live' })).toBe(true)
+  })
+
+  it('does not count an ended session', () => {
+    expect(sessionActive({ status: 'ended' })).toBe(false)
+  })
+
+  // The one place the two active statuses are read apart, and only for wording.
+  it('labels a strip by whether the agent has checked in', () => {
+    expect(sessionStatusLabel({ status: 'launching' })).toBe('launching…')
+    expect(sessionStatusLabel({ status: 'live' })).toBe('live')
+  })
+
+  it('finds the active session among ended ones, and none when there is none', () => {
+    const launching = { id: 's2', status: 'launching', kind: 'ideation' }
+    expect(
+      activeSession(rows([{ id: 's1', status: 'ended', kind: 'ideation' }, launching])),
+    ).toEqual(launching)
+    expect(activeSession(rows([{ id: 's1', status: 'ended', kind: 'ideation' }]))).toBeUndefined()
+    expect(activeSession(rows([]))).toBeUndefined()
+  })
+})
+
+/**
+ * The panel's hint for the other half of the rule: the terminal is up, but the
+ * agent inside it has still not said hello. Informational — the session is
+ * active throughout.
+ */
+describe('awaitingCheckIn', () => {
+  const session = { id: 'sess_1', status: 'launching' }
+  const launched = (ts: number, sessionId = 'sess_1'): EventRow => ({
+    id: 1,
+    projectId: 'p1',
+    ts,
+    type: 'session.launching',
+    message: 'launching ideation session',
+    data: { sessionId },
+  })
+
+  it('says nothing while the launch is still young', () => {
+    expect(awaitingCheckIn(session, [launched(1_000)], 20_000)).toBe(false)
+  })
+
+  it('speaks up once the terminal has been up past the grace period', () => {
+    expect(awaitingCheckIn(session, [launched(1_000)], 40_000)).toBe(true)
+  })
+
+  it('says nothing about a session that has checked in or ended', () => {
+    const events = [launched(1_000)]
+    expect(awaitingCheckIn({ id: 'sess_1', status: 'live' }, events, 40_000)).toBe(false)
+    expect(awaitingCheckIn({ id: 'sess_1', status: 'ended' }, events, 40_000)).toBe(false)
+  })
+
+  it('says nothing when the log cannot date this session', () => {
+    expect(awaitingCheckIn(session, [], 40_000)).toBe(false)
+    expect(awaitingCheckIn(session, [launched(1_000, 'sess_other')], 40_000)).toBe(false)
+  })
+})
+
+/**
  * Next-step-bar affordance audit — the bar never counsels the human to do the
  * agent's job. While a session is live the bar is a status line: no primary, no
  * secondaries, because the session agent promotes the phase itself. The live
@@ -240,6 +317,8 @@ describe('nextStep — live sessions go status-only', () => {
   const auditFull = (opts: {
     phase?: string
     live?: boolean
+    /** The status that session carries; both of these are active sessions. */
+    sessionStatus?: 'live' | 'launching'
     satisfied?: boolean
     gateId?: string
     tickets?: number
@@ -251,7 +330,9 @@ describe('nextStep — live sessions go status-only', () => {
         status: 'pending',
         commits: [],
       })),
-      sessions: opts.live ? [{ id: 's1', status: 'live', kind: 'ideation' }] : [],
+      sessions: opts.live
+        ? [{ id: 's1', status: opts.sessionStatus ?? 'live', kind: 'ideation' }]
+        : [],
       runs: [],
       gate: {
         next: { id: opts.gateId ?? 'G1' },
@@ -269,6 +350,16 @@ describe('nextStep — live sessions go status-only', () => {
     expect(ns.primary).toBeUndefined()
     expect(ns.secondary).toEqual([])
     expect(kinds(ns)).not.toContain('advance')
+  })
+
+  // ui-state-management ticket 3 — the reported lie. The bar used to demand
+  // `live`, which only records the agent's hook check-in, so a terminal the
+  // human was already typing in still offered to start one.
+  it('never offers to start a grill while the terminal is still launching', () => {
+    const ns = nextStep(auditFull({ live: true, sessionStatus: 'launching' }), { driving: false })
+    expect(ns.kick).toBe('GRILL LIVE')
+    expect(ns.primary).toBeUndefined()
+    expect(kinds(ns)).not.toContain('startGrill')
   })
 
   it('demotes the ideation promotion to a secondary once the grill has ended', () => {

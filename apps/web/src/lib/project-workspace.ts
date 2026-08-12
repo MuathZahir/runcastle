@@ -1,4 +1,5 @@
 import type { ProjectSession } from './api'
+import { sessionActive } from './feature-ui'
 
 /**
  * The project workspace (decision 20) — the third thing the shell body can show.
@@ -37,10 +38,8 @@ export type ProjectSessionState = 'none' | 'launching' | 'live'
 export function projectSessionState(
   session: ProjectSession | null | undefined,
 ): ProjectSessionState {
-  if (!session) return 'none'
-  if (session.status === 'launching') return 'launching'
-  if (session.status === 'live') return 'live'
-  return 'none'
+  if (!session || !sessionActive(session)) return 'none'
+  return session.status === 'launching' ? 'launching' : 'live'
 }
 
 /**

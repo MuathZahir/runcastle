@@ -1,10 +1,17 @@
+import { useEffect, useState } from 'react'
+import type { EventRow } from '@runcastle/core'
 import { trpc } from '../trpc'
 import { useEventLog } from '../lib/events'
-import { kickoffTrouble } from '../lib/feature-ui'
+import { awaitingCheckIn, kickoffTrouble, sessionActive, sessionStatusLabel } from '../lib/feature-ui'
 import { useToast } from '../lib/toast'
 import { SessionStatusDot } from '../ui'
 import type { FeatureFull } from '../lib/api'
-import { sessionDoneState, type SessionDoneState, type Waypoint } from '../lib/feature-ui'
+import {
+  sessionDoneState,
+  type KickoffTrouble,
+  type SessionDoneState,
+  type Waypoint,
+} from '../lib/feature-ui'
 import { EndSessionButton } from './EndSessionButton'
 import { ErrorBoundary } from './ErrorBoundary'
 import { TerminalView } from './TerminalView'
@@ -56,7 +63,7 @@ export function SessionPanel({
   const session = pickPanelSession(sessions)
   if (!session) return null
 
-  if (session.status !== 'ended') {
+  if (sessionActive(session)) {
     // Without `full` (the tickets / review / run bodies) there are no waypoints
     // to be done with, so those strips render exactly as they always have.
     const done: SessionDoneState = full ? sessionDoneState(full, session) : { kind: 'notDone' }
@@ -68,9 +75,7 @@ export function SessionPanel({
           {done.kind === 'notDone' ? (
             <>
               <SessionStatusDot status={session.status} />
-              <span className="grill-live-label">
-                {session.status === 'launching' ? 'launching…' : 'live'}
-              </span>
+              <span className="grill-live-label">{sessionStatusLabel(session)}</span>
               <span className="grill-strip-spacer" />
             </>
           ) : (
@@ -82,7 +87,7 @@ export function SessionPanel({
           </span>
           <EndSessionButton featureId={featureId} sessionId={session.id} />
         </div>
-        <BriefingBanner featureId={featureId} sessionId={session.id} />
+        <SessionNotices featureId={featureId} session={session} />
         <div className="grill-term" id="grill-term">
           <ErrorBoundary label="terminal">
             <TerminalView sessionId={session.id} />
@@ -93,6 +98,56 @@ export function SessionPanel({
   }
 
   return <EndedSessionCard featureId={featureId} session={session} showResume={showResume} />
+}
+
+/**
+ * What the live panel has to say about the session above the terminal itself.
+ * One event-log read feeds both notices — each `useEventLog` carries its own
+ * cursor and so its own query key, and a second one here would be a second poll
+ * for facts this one already has.
+ */
+function SessionNotices({ featureId, session }: { featureId: string; session: Session }) {
+  const events = useEventLog(featureId)
+  return (
+    <>
+      <CheckInHint session={session} events={events} />
+      <BriefingBanner
+        featureId={featureId}
+        sessionId={session.id}
+        trouble={kickoffTrouble(events, session.id)}
+      />
+    </>
+  )
+}
+
+/** How often {@link CheckInHint} re-reads the clock. */
+const CHECK_IN_TICK_MS = 5_000
+
+/**
+ * The quiet "the terminal is up, the agent hasn't said hello" line.
+ *
+ * A session is active from the moment its PTY spawns ({@link sessionActive}),
+ * so nothing here is withheld or retried — the panel's own controls (Send
+ * briefing below, End session in the strip) are the affordances, and the
+ * terminal is right there. This only names what an otherwise silent
+ * "launching…" means once it has gone on longer than a launch should.
+ */
+function CheckInHint({ session, events }: { session: Session; events: EventRow[] }) {
+  // The hint is derived from elapsed time, so nothing would re-render it into
+  // view on its own — the panel is otherwise driven by session and event data.
+  const now = useNow(CHECK_IN_TICK_MS)
+  if (!awaitingCheckIn(session, events, now)) return null
+  return <div className="session-checkin-hint">agent hasn’t checked in yet</div>
+}
+
+/** The wall clock, re-read every `intervalMs` so age-derived UI keeps up. */
+function useNow(intervalMs: number): number {
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), intervalMs)
+    return () => clearInterval(timer)
+  }, [intervalMs])
+  return now
 }
 
 /**
@@ -107,11 +162,27 @@ export function SessionPanel({
  * the exact same text, so the fix is one click instead of the human reconstructing
  * the instruction by hand.
  */
-function BriefingBanner({ featureId, sessionId }: { featureId: string; sessionId: string }) {
+function BriefingBanner({
+  featureId,
+  sessionId,
+  trouble,
+}: {
+  featureId: string
+  sessionId: string
+  trouble: KickoffTrouble | null
+}) {
+  const utils = trpc.useUtils()
   const toast = useToast()
-  const trouble = kickoffTrouble(useEventLog(featureId), sessionId)
   const resend = trpc.feature.resendKickoff.useMutation({
-    onSuccess: () => toast.push('briefing sent to the terminal'),
+    onSuccess: () => {
+      // A resend clears the trouble the banner is rendered from, and that only
+      // reaches the panel through the queries that carry the session and its
+      // events — waiting on the push pipe for it would leave the banner up over
+      // a briefing that has already landed.
+      void utils.feature.get.invalidate({ id: featureId })
+      void utils.events.invalidate()
+      toast.push('briefing sent to the terminal')
+    },
     onError: (e) => toast.push(e.message),
   })
   if (!trouble) return null
@@ -215,7 +286,7 @@ function WorkNextButton({ featureId, next }: { featureId: string; next: Waypoint
 function pickPanelSession(sessions: Session[]): Session | undefined {
   const ordered = [...sessions].reverse()
   return (
-    ordered.find((s) => s.status === 'live' || s.status === 'launching') ??
+    ordered.find(sessionActive) ??
     ordered.find((s) => s.status === 'ended' && !!s.ccSessionId) ??
     ordered[0]
   )

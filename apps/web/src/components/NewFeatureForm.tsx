@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { trpc } from '../trpc'
 import { defaultBaseBranch, duplicateTitleWarning, slugPreview } from '../lib/feature-ui'
+import { useLivePoll } from '../lib/live'
 import { TALK_IT_THROUGH } from '../lib/project-workspace'
 import { useToast } from '../lib/toast'
 import { GRILL_EXPLAINER } from '../lib/vocabulary'
@@ -61,8 +62,9 @@ export function NewFeatureForm({
   })
 
   // Same query key the rail polls — one fetch, and the warning is against the
-  // list the user can already see.
-  const featuresQ = trpc.feature.list.useQuery({ projectId })
+  // list the user can already see, including a feature created in another tab
+  // while this form sat open.
+  const featuresQ = trpc.feature.list.useQuery({ projectId }, { refetchInterval: useLivePoll() })
   const duplicate = duplicateTitleWarning(title, featuresQ.data ?? [])
 
   const slug = slugPreview(title)

@@ -1,4 +1,6 @@
 import { trpc } from '../trpc'
+import { sessionStatusLabel } from '../lib/feature-ui'
+import { useLivePoll } from '../lib/live'
 import { useToast } from '../lib/toast'
 import { Button, DimLine, SessionStatusDot } from '../ui'
 import { LogoMark } from '../icons'
@@ -45,12 +47,15 @@ export function PreparationWorkspace({
   const projectsQ = trpc.project.list.useQuery()
   const project = projectsQ.data?.find((p) => p.id === projectId)
 
-  const prep = trpc.project.prep.useQuery({ projectId }, { refetchInterval: 3000 })
+  const prep = trpc.project.prep.useQuery({ projectId }, { refetchInterval: useLivePoll(3000) })
 
   // The open conversation, if there is one. Polled so the terminal appears when
   // a session is launched from anywhere (⌘K, another tab) and disappears when it
   // ends — the session row is the single source of truth, not local state.
-  const sessionQ = trpc.project.prepSession.useQuery({ projectId }, { refetchInterval: 1500 })
+  const sessionQ = trpc.project.prepSession.useQuery(
+    { projectId },
+    { refetchInterval: useLivePoll() },
+  )
 
   const talk = trpc.project.talkToPrep.useMutation({
     onSuccess: () => void utils.project.prepSession.invalidate(),
@@ -114,9 +119,7 @@ export function PreparationWorkspace({
               <div className="grill-strip">
                 <span className="grill-kind">prepare</span>
                 <SessionStatusDot status={session.status} />
-                <span className="grill-live-label">
-                  {session.status === 'launching' ? 'launching…' : 'live'}
-                </span>
+                <span className="grill-live-label">{sessionStatusLabel(session)}</span>
                 <span className="grill-strip-spacer" />
                 <span className="grill-sid" title={session.ccSessionId ?? session.id}>
                   {(session.ccSessionId ?? session.id).slice(0, 8)}

@@ -1443,6 +1443,16 @@ button {
 }
 .session-briefing-text { flex: 1; }
 
+/* The terminal is up but the agent has not said hello yet. Deliberately quieter
+   than the briefing warning above: nothing is wrong or actionable, it only names
+   what a long "launching…" means. */
+.session-checkin-hint {
+  padding: 6px 12px;
+  font-size: 11.5px;
+  color: var(--text-3);
+  border-bottom: 1px solid var(--hairline);
+}
+
 /* the done state: a strip label + at most one button, never a modal */
 .strip-done { display: flex; align-items: center; gap: 9px; flex: 1; min-width: 0; }
 .done-check {
@@ -2660,6 +2670,12 @@ details.wp-group-done > summary { cursor: pointer; list-style: revert; }
 .sb-notify.is-on { color: var(--ok); }
 .sb-notify.is-blocked { color: var(--warn, #d9a441); }
 .sb-health { display: inline-flex; align-items: center; gap: 6px; color: var(--ph-shipped); }
+/* live data-stream indicator: a quiet dot while push is flowing, an amber word
+   while it is not. Deliberately smaller and calmer than the terminal's
+   `.ws-banner.is-offline` — different connection, different message. */
+.sb-live-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--ok); flex: 0 0 auto; }
+.sb-live.is-degraded { color: var(--warn, #d9a441); }
+.sb-live.is-degraded .sb-live-dot { background: var(--warn, #d9a441); animation: pulse 1.4s ease-in-out infinite; }
 
 /* ============================================================================
    COMMAND PALETTE (⌘K)

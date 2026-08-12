@@ -2,7 +2,7 @@ import { execFileSync } from 'node:child_process'
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import type { Project, SessionRow } from '@runcastle/core'
+import type { EventRow, Project, SessionRow } from '@runcastle/core'
 import { SessionKind, isProjectSessionKind } from '@runcastle/core'
 import { PROJECT_WORKTREE_SLUG, sessionDir, worktreeDir } from '@runcastle/core/paths'
 import { eq } from 'drizzle-orm'
@@ -17,9 +17,15 @@ import {
   renderSettings,
 } from '../src/launcher/artifacts'
 import { buildClaudeArgs, launchProjectSession } from '../src/launcher/launcher'
-import { KICKOFF_LINES, awaitProjectLandings, getSessionRow } from '../src/launcher/sessions'
+import {
+  KICKOFF_LINES,
+  awaitProjectLandings,
+  getSessionRow,
+  reportProjectLanding,
+} from '../src/launcher/sessions'
 import { endSession } from '../src/pty/end-session'
 import { listByProject } from '../src/services/events'
+import type { ProjectLandResult } from '../src/services/git'
 import { PROJECT_BRANCH, ensureProjectWorktree } from '../src/services/git'
 import { createCallerFactory } from '../src/trpc/context'
 import { appRouter } from '../src/trpc/router'
@@ -255,6 +261,54 @@ describe('ensureProjectWorktree', () => {
     expect(git(repoPath, 'rev-parse', 'main')).toBe(mainTip)
     expect(readFileSync(join(repoPath, 'SHARED.md'), 'utf8')).toBe('human version\n')
     expect(git(worktreePath, 'rev-parse', '--abbrev-ref', 'HEAD')).toBe(PROJECT_BRANCH)
+  })
+
+  /**
+   * The retry landing was the one mutation the emit-coverage audit found silent.
+   * It puts commits on the human's own branch, and a successful retry is the
+   * ONLY thing that supersedes the `project.land_conflict` a failed attempt left
+   * standing — without it the timeline went on saying the work was stranded
+   * after it had landed. Asserted at the event choke point, wired exactly as the
+   * launcher wires it.
+   */
+  function landingReporter(): (res: ProjectLandResult) => void {
+    return (res) => reportProjectLanding(ctx, project, res, { retried: true })
+  }
+
+  /** Landing events on the project's timeline, in order. */
+  function landingEvents(): EventRow[] {
+    return listByProject(ctx, project.id).filter((e) => e.type.startsWith('project.land'))
+  }
+
+  it('reports a successful retry landing on the project timeline', async () => {
+    commitOnBranch(repoPath, PROJECT_BRANCH, 'NOTES.md', 'from a dead session\n')
+
+    await ensureProjectWorktree(project, landingReporter())
+
+    const events = landingEvents()
+    expect(events).toHaveLength(1)
+    expect(events[0].type).toBe('project.landed')
+    expect(events[0].message).toContain('1 commit(s)')
+    expect(events[0].data).toMatchObject({ commits: 1, retried: true, branch: PROJECT_BRANCH })
+  })
+
+  it('reports a retry landing that conflicted, so the conflict card stays honest', async () => {
+    commitOnBranch(repoPath, PROJECT_BRANCH, 'SHARED.md', 'session version\n')
+    writeFileSync(join(repoPath, 'SHARED.md'), 'human version\n')
+    git(repoPath, 'add', 'SHARED.md')
+    git(repoPath, 'commit', '-m', 'human edit')
+
+    await ensureProjectWorktree(project, landingReporter())
+
+    const events = landingEvents()
+    expect(events).toHaveLength(1)
+    expect(events[0].type).toBe('project.land_conflict')
+  })
+
+  it('says nothing when there is nothing to land', async () => {
+    await ensureProjectWorktree(project, landingReporter())
+
+    expect(landingEvents()).toEqual([])
   })
 })
 

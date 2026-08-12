@@ -405,15 +405,20 @@ async function addWorktree(
  * the next launch) tries again. Only a branch with nothing ahead of the base is
  * recut.
  */
-export async function ensureProjectWorktree(project: Project): Promise<string> {
+export async function ensureProjectWorktree(
+  project: Project,
+  onLanded?: (res: ProjectLandResult) => void,
+): Promise<string> {
   const worktreePath = worktreeDir(project.id, PROJECT_WORKTREE_SLUG)
   const g = git(project.repoPath)
   const base = project.mainBranch
 
-  const leftover = await branchCommitsAhead(project.repoPath, base, PROJECT_BRANCH)
-  if (leftover.length > 0) {
-    await mergeTempBranch(project.repoPath, base, PROJECT_BRANCH)
-  }
+  // The retry the landing protocol promises. Reported through `onLanded`,
+  // because this merge puts commits on the human's own branch: a silent success
+  // leaves the earlier `project.land_conflict` standing as the timeline's last
+  // word, so the UI keeps claiming the work is stranded after it has landed.
+  const landed = await landProjectBranch(project)
+  if (landed) onLanded?.(landed)
 
   const stillAhead = await branchCommitsAhead(project.repoPath, base, PROJECT_BRANCH)
   if (stillAhead.length === 0) {

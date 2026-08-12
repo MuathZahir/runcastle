@@ -17,6 +17,15 @@ import { trpc } from '../trpc'
  * normal queries, so there is one source of truth. Polling stays configured as
  * the fallback for a stream that is down, and `refetchOnWindowFocus` covers the
  * gap on return.
+ *
+ * A stream that dies silently is worse than no stream at all: while the client
+ * believes it is `live` every poll is backed off to 30s, so one unnoticed death
+ * freezes every surface at once. `EventSource` cannot see a half-open socket
+ * (laptop sleep, network change) — it stays `OPEN` with a peer that is gone —
+ * so the client verifies the server's own heartbeat instead: any frame counts
+ * as a pulse, and silence past {@link PULSE_TIMEOUT_MS} means the connection
+ * has stopped being believed, is force-closed and replaced. This is the same
+ * treatment `lib/terminal.ts` gives the terminal WebSocket.
  */
 
 /** Mirrors `LiveSignal` in packages/server/src/services/bus.ts. */
@@ -47,8 +56,13 @@ function subscribeStatus(listener: () => void): () => void {
 }
 
 /** The SSE stream's current state. */
-function useLiveStatus(): LiveStatus {
+export function useLiveStatus(): LiveStatus {
   return useSyncExternalStore(subscribeStatus, () => liveStatus)
+}
+
+/** The SSE stream's current state, outside React (tests, imperative code). */
+export function getLiveStatus(): LiveStatus {
+  return liveStatus
 }
 
 /**
@@ -86,7 +100,158 @@ const FALLBACK_POLL_MS = 1500
  * as fast as it ever was.
  */
 export function useLivePoll(ms: number = FALLBACK_POLL_MS): number {
-  return useLiveStatus() === 'live' ? LIVE_SAFETY_POLL_MS : ms
+  return livePollMs(useLiveStatus(), ms)
+}
+
+/** The cadence {@link useLivePoll} resolves to for a given stream state. */
+export function livePollMs(status: LiveStatus, ms: number = FALLBACK_POLL_MS): number {
+  return status === 'live' ? LIVE_SAFETY_POLL_MS : ms
+}
+
+/**
+ * How long the stream may go silent before the client stops believing it.
+ *
+ * Must exceed the server's idle heartbeat (`HEARTBEAT_MS` = 25s in
+ * packages/server/src/routes/stream.ts) by enough margin that a slow flush is
+ * not mistaken for a death — a healthy but idle stream pulses well inside this.
+ */
+export const PULSE_TIMEOUT_MS = 35_000
+
+/**
+ * How often the watchdog compares the clock against the last frame. Coarse on
+ * purpose: one cheap repeating timer costs nothing, where rescheduling a
+ * per-frame timeout would churn a timer on every signal of a busy burn.
+ */
+const WATCHDOG_INTERVAL_MS = 5_000
+
+/** What the stream asks the app to refetch when it (re)proves itself. */
+export interface LiveSyncHandlers {
+  /** Everything the events table backs — the reconnect resync. */
+  resyncAll: () => void
+  /** The agent transcript only. */
+  resyncTranscript: () => void
+}
+
+/**
+ * Open the stream and keep it honest. Returns a disposer.
+ *
+ * Split out of {@link useLiveSync} because the watchdog is the part with real
+ * behaviour to test: it is driven entirely by `EventSource` frames, the clock
+ * and window events, none of which need React.
+ */
+export function startLiveSync(handlers: LiveSyncHandlers): () => void {
+  let source: EventSource | null = null
+  /** Detaches the current source's listeners; paired with every `close()`. */
+  let releaseSource: (() => void) | null = null
+  let lastFrameAt = Date.now()
+  let disposed = false
+
+  const closeSource = (): void => {
+    releaseSource?.()
+    releaseSource = null
+    source?.close()
+    source = null
+  }
+
+  const connect = (): void => {
+    if (disposed) return
+    closeSource()
+    // Liveness is earned by a frame, never assumed from an open socket — that
+    // assumption is the whole bug. Queries read the module status to pick their
+    // cadence, so this also re-arms fast polling for the length of the gap.
+    setLiveStatus('connecting')
+    lastFrameAt = Date.now()
+
+    const s = new EventSource('/api/stream')
+    source = s
+
+    const onReady = (): void => {
+      lastFrameAt = Date.now()
+      setLiveStatus('live')
+      // Reconnect resync: while the stream was down (server restart, laptop
+      // asleep, network blip) signals were missed by definition. Refetch
+      // everything once so the UI is correct without a page reload.
+      handlers.resyncAll()
+      handlers.resyncTranscript()
+    }
+
+    const onLive = (ev: Event): void => {
+      lastFrameAt = Date.now()
+      setLiveStatus('live')
+      let signal: LiveSignal
+      try {
+        signal = JSON.parse((ev as MessageEvent<string>).data) as LiveSignal
+      } catch {
+        // Malformed frame: fall back to refreshing everything rather than
+        // silently going stale.
+        handlers.resyncAll()
+        return
+      }
+      if (signal.kind === 'transcript') handlers.resyncTranscript()
+      else handlers.resyncAll()
+    }
+
+    // The server's idle heartbeat. It carries no news, so it invalidates
+    // nothing — its whole job is to prove the pipe is still there.
+    const onPing = (): void => {
+      lastFrameAt = Date.now()
+    }
+
+    // `EventSource` reconnects on its own; this only reflects the gap in the
+    // UI. The queries' `refetchInterval` keeps the app working meanwhile.
+    const onError = (): void => {
+      setLiveStatus(s.readyState === EventSource.CLOSED ? 'offline' : 'connecting')
+    }
+
+    s.addEventListener('ready', onReady)
+    s.addEventListener('live', onLive)
+    s.addEventListener('ping', onPing)
+    s.addEventListener('error', onError)
+
+    releaseSource = () => {
+      s.removeEventListener('ready', onReady)
+      s.removeEventListener('live', onLive)
+      s.removeEventListener('ping', onPing)
+      s.removeEventListener('error', onError)
+    }
+  }
+
+  /**
+   * Silence past the timeout means the socket is dead in a way `EventSource`
+   * cannot report, so there is nothing to wait for: drop it and open a new one.
+   * There is no forced-reconnect API — a fresh instance is the reconnect.
+   */
+  const checkPulse = (): void => {
+    if (disposed || Date.now() - lastFrameAt <= PULSE_TIMEOUT_MS) return
+    connect()
+  }
+
+  const watchdog = setInterval(checkPulse, WATCHDOG_INTERVAL_MS)
+
+  // Background tabs get their timers throttled or suspended outright, so the
+  // watchdog above cannot be relied on to have run while you were away — the
+  // frozen-tab case is exactly the one it would miss. Returning to the tab, or
+  // the network coming back, checks the pulse immediately instead.
+  const onVisibilityChange = (): void => {
+    if (document.visibilityState === 'visible') checkPulse()
+  }
+  window.addEventListener('focus', checkPulse)
+  window.addEventListener('online', checkPulse)
+  document.addEventListener('visibilitychange', onVisibilityChange)
+
+  connect()
+
+  return () => {
+    disposed = true
+    clearInterval(watchdog)
+    window.removeEventListener('focus', checkPulse)
+    window.removeEventListener('online', checkPulse)
+    document.removeEventListener('visibilitychange', onVisibilityChange)
+    closeSource()
+    // Queries read the module status to decide their poll cadence, so a
+    // closed stream must never leave it reading `live`.
+    setLiveStatus('connecting')
+  }
 }
 
 /**
@@ -128,50 +293,20 @@ export function useLiveSync(): LiveStatus {
       // before push they only ever refreshed on remount — this is what made an
       // agent-written spec invisible until a page reload.
       void u.docs.read.invalidate()
+      // Settings, commit counts and the prep/project session rows: all of them
+      // change under a running agent, and each one used to depend on its own
+      // hardcoded interval (or on a remount) to notice.
+      void u.settings.get.invalidate()
+      void u.feature.commitCount.invalidate()
+      void u.project.prepSession.invalidate()
+      void u.project.projectSession.invalidate()
     }
 
     const invalidateTranscript = (): void => {
       void utilsRef.current.run.agentTranscript.invalidate()
     }
 
-    const source = new EventSource('/api/stream')
-
-    source.addEventListener('ready', () => {
-      setLiveStatus('live')
-      // Reconnect resync: while the stream was down (server restart, laptop
-      // asleep, network blip) signals were missed by definition. Refetch
-      // everything once so the UI is correct without a page reload.
-      invalidateDbBacked()
-      invalidateTranscript()
-    })
-
-    source.addEventListener('live', (ev) => {
-      setLiveStatus('live')
-      let signal: LiveSignal
-      try {
-        signal = JSON.parse((ev as MessageEvent<string>).data) as LiveSignal
-      } catch {
-        // Malformed frame: fall back to refreshing everything rather than
-        // silently going stale.
-        invalidateDbBacked()
-        return
-      }
-      if (signal.kind === 'transcript') invalidateTranscript()
-      else invalidateDbBacked()
-    })
-
-    // `EventSource` reconnects on its own; this only reflects the gap in the
-    // UI. The queries' `refetchInterval` keeps the app working meanwhile.
-    source.addEventListener('error', () => {
-      setLiveStatus(source.readyState === EventSource.CLOSED ? 'offline' : 'connecting')
-    })
-
-    return () => {
-      source.close()
-      // Queries read the module status to decide their poll cadence, so a
-      // closed stream must never leave it reading `live`.
-      setLiveStatus('connecting')
-    }
+    return startLiveSync({ resyncAll: invalidateDbBacked, resyncTranscript: invalidateTranscript })
   }, [])
 
   return status
