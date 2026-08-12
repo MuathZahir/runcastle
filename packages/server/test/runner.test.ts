@@ -10,6 +10,7 @@ import { createFeatureBranch, ensureTalkWorktree } from '../src/services/git'
 import { getRunRow } from '../src/services/repo'
 import { workflowRegistry } from '../src/workflows/registry'
 import { startRun, workflowClaimsFeatureBranch } from '../src/workflows/runner'
+import { useDataDir } from './helpers/data-dir'
 import { makeTestCtx } from './helpers/db'
 import { seedFeature, seedProject } from './helpers/fixtures'
 
@@ -70,6 +71,28 @@ describe('workflow runner', () => {
     expect(types).toContain('run.finished')
   })
 
+  it('persists a workflow’s run digest on the run row, and leaves it null without one', async () => {
+    const digestDef: WorkflowDef = {
+      id: 'test-digest',
+      async run() {
+        return { status: 'succeeded', summary: 'ok', digest: '## ticket 1 — A\n\nDid it.' }
+      },
+    }
+    workflowRegistry.set(digestDef.id, digestDef)
+    try {
+      const withDigest = await startRun(ctx, featureId, digestDef.id)
+      await withDigest.done
+      expect(getRunRow(ctx, withDigest.runId).digest).toBe('## ticket 1 — A\n\nDid it.')
+    } finally {
+      workflowRegistry.delete(digestDef.id)
+    }
+
+    // A workflow that returns no digest (research, an aborted burn) never writes one.
+    const without = await startRun(ctx, featureId, 'test-success')
+    await without.done
+    expect(getRunRow(ctx, without.runId).digest).toBeUndefined()
+  })
+
   it('rejects an unregistered workflow id', async () => {
     await expect(startRun(ctx, featureId, 'nope')).rejects.toThrow(/not registered/)
   })
@@ -107,8 +130,7 @@ describe('talk worktree detach — only for branch-claiming workflows (ADR-0001 
   let project: Project
   let feature: Feature
   let talkWt: string
-  let prevUserProfile: string | undefined
-  let prevHome: string | undefined
+  let restoreDataDir: () => void
   const tmpDirs: string[] = []
 
   /** A workflow stub whose run blocks until the test opens its gate. */
@@ -134,10 +156,7 @@ describe('talk worktree detach — only for branch-claiming workflows (ADR-0001 
   beforeEach(async () => {
     const home = mkdtempSync(join(tmpdir(), 'rc-runner-home-'))
     tmpDirs.push(home)
-    prevUserProfile = process.env.USERPROFILE
-    prevHome = process.env.HOME
-    process.env.USERPROFILE = home
-    process.env.HOME = home
+    restoreDataDir = useDataDir(home)
 
     ctx = await makeTestCtx()
     const repo = mkdtempSync(join(tmpdir(), 'rc-runner-repo-'))
@@ -158,8 +177,7 @@ describe('talk worktree detach — only for branch-claiming workflows (ADR-0001 
   })
 
   afterEach(() => {
-    process.env.USERPROFILE = prevUserProfile
-    process.env.HOME = prevHome
+    restoreDataDir()
     while (tmpDirs.length) {
       const dir = tmpDirs.pop()
       if (dir) {

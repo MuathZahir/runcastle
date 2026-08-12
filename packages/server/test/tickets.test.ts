@@ -62,6 +62,16 @@ describe('tickets service', () => {
     expect(updated.commits).toEqual(['abc123'])
   })
 
+  it('updateTicket stores a digest that round-trips through listByFeature', () => {
+    const [t] = storeTickets(ctx, featureId, [ticket('a')])
+    expect(t.digest).toBeUndefined()
+
+    updateTicket(ctx, t.id, { status: 'done', digest: 'Did the thing.\n\nNo surprises.' })
+
+    const [stored] = listByFeature(ctx, featureId)
+    expect(stored.digest).toBe('Did the thing.\n\nNo surprises.')
+  })
+
   it('updateTicket clears a stored error with error: null (burn-retry path)', () => {
     const [t] = storeTickets(ctx, featureId, [ticket('a')])
     updateTicket(ctx, t.id, { status: 'failed', error: 'agent made no commits' })

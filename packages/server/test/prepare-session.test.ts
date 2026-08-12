@@ -22,6 +22,7 @@ import { preparedValue } from '../src/services/findings'
 import { preparedAt } from '../src/services/prep'
 import { toolRecordFinding } from '../src/mcp/server'
 import { renderPreparePrompt } from '../src/launcher/artifacts'
+import { useDataDir } from './helpers/data-dir'
 import { makeTestCtx } from './helpers/db'
 import { seedFeature } from './helpers/fixtures'
 
@@ -371,21 +372,16 @@ describe('the prepare brief', () => {
  */
 describe('launching a preparation, fresh or resumed', () => {
   const cleanup: string[] = []
-  let prevHome: string | undefined
-  let prevUserProfile: string | undefined
+  let restoreDataDir: () => void
 
   beforeEach(() => {
     const home = mkdtempSync(join(tmpdir(), 'rc-prep-home-'))
     cleanup.push(home)
-    prevHome = process.env.HOME
-    prevUserProfile = process.env.USERPROFILE
-    process.env.HOME = home
-    process.env.USERPROFILE = home
+    restoreDataDir = useDataDir(home)
   })
 
   afterEach(() => {
-    process.env.HOME = prevHome
-    process.env.USERPROFILE = prevUserProfile
+    restoreDataDir()
     for (const d of cleanup) rmSync(d, { recursive: true, force: true })
     cleanup.length = 0
   })

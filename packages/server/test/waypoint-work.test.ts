@@ -307,6 +307,40 @@ describe('workWaypoint — implicit handoff', () => {
     expect(getWaypoint(ctx, a.id).claimedBy).toBe(worked)
   })
 
+  /**
+   * REPORT 1.4 — `sessionFinished` answered `feature.mapped` for every
+   * non-waypoint kind, and the sweep only runs on a mapped feature, so it was
+   * constant true: a live qa conversation was killed mid-sentence and the
+   * timeline recorded it as "finished".
+   */
+  it('refuses to sweep a live qa conversation, which nothing can prove is over', async () => {
+    const feature = await mappedFeature('qa-live')
+    const [a] = storeWaypoints(ctx, feature.id, [wp('a')])
+    const qa = await launchSession(ctx, { featureId: feature.id, kind: 'qa' }, { spawn: false })
+    cleanup.push(sessionDir(qa.sessionId))
+    markSessionLive(ctx, qa.sessionId, { ccSessionId: 'cc-qa' })
+
+    await expect(
+      workWaypoint(ctx, { featureId: feature.id, waypointId: a.id }, { spawn: false }),
+    ).rejects.toThrow(GateError)
+
+    expect(getSessionRow(ctx, qa.sessionId)?.status).toBe('live')
+    expect(autoEnded(feature.id)).toHaveLength(0)
+  })
+
+  it('abandons the qa conversation once the human confirms with endLive', async () => {
+    const feature = await mappedFeature('qa-abandon')
+    const [a] = storeWaypoints(ctx, feature.id, [wp('a')])
+    const qa = await launchSession(ctx, { featureId: feature.id, kind: 'qa' }, { spawn: false })
+    cleanup.push(sessionDir(qa.sessionId))
+    markSessionLive(ctx, qa.sessionId, { ccSessionId: 'cc-qa' })
+
+    await work(feature.id, a.id, true)
+
+    expect(getSessionRow(ctx, qa.sessionId)?.status).toBe('ended')
+    expect(autoEnded(feature.id).map((e) => e.data?.reason)).toEqual(['abandoned'])
+  })
+
   it('ends the swept session through endSession — session.ended is emitted', async () => {
     const feature = await mappedFeature('events')
     const [a, b] = storeWaypoints(ctx, feature.id, [wp('a'), wp('b')])

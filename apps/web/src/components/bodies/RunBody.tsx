@@ -2,15 +2,17 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { EventRow, Ticket } from '@runcastle/core'
 import { trpc } from '../../trpc'
 import { useToast } from '../../lib/toast'
+import { eventLevel } from '../../lib/activity'
 import { useEventLog } from '../../lib/events'
 import { useLivePoll } from '../../lib/live'
 import { ticketConflictKickoff } from '../../lib/feature-ui'
 import { fmtDuration, fmtTime, shortSha } from '../../lib/format'
 import { BURN_EXPLAINER } from '../../lib/vocabulary'
 import { DimLine, EmptyState, RunStatusChip, TicketStatusChip } from '../../ui'
-import { IconTerminal } from '../../icons'
+import { IconChevronRight, IconTerminal } from '../../icons'
 import { AgentTranscript } from '../AgentTranscript'
 import { ErrorBoundary } from '../ErrorBoundary'
+import { Markdown } from '../Markdown'
 import { SessionPanel } from '../SessionPanel'
 
 /**
@@ -104,6 +106,8 @@ export function RunBody({
         </span>
       </div>
 
+      {run.data?.digest && <RunDigest digest={run.data.digest} />}
+
       <div className="run-split">
         <div className="run-lanes-panel">
           <div className="panel-cap">Ticket lanes</div>
@@ -162,6 +166,37 @@ export function RunBody({
             <EventStream events={runEvents} />
           )}
         </div>
+      </div>
+    </div>
+  )
+}
+
+/**
+ * What this attempt actually produced, in the burners' own words — the run's
+ * harvested ticket digests concatenated at finalize. Collapsed by default (the
+ * lanes are what you came for) and rendered only when the run has one, so a run
+ * whose tickets wrote no digest shows nothing rather than an empty card.
+ */
+function RunDigest({ digest }: { digest: string }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <div className="ledger run-digest">
+      <div className={`ledger-row${open ? ' is-open' : ''}`}>
+        <button className="ledger-head" onClick={() => setOpen(!open)}>
+          <span className="lg-caret">
+            <IconChevronRight size={11} />
+          </span>
+          <span className="lg-title">What this run produced</span>
+        </button>
+        {open && (
+          <div className="ledger-detail">
+            <div className="td-section">
+              <div className="td-body">
+                <Markdown source={digest} />
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )
@@ -308,6 +343,13 @@ function Lane({
                     featureBranch,
                     files: conflict,
                   }),
+                  // Same exemption as the review card's resolve, about the other
+                  // merge: this one lands the ticket branch on the feature branch.
+                  purpose: 'resolve-conflict',
+                  purposeData: {
+                    mergeFrom: ticket.attemptBranch ?? '',
+                    mergeInto: featureBranch,
+                  },
                 })
               }}
             >
@@ -406,7 +448,7 @@ function EventStream({ events }: { events: EventRow[] }) {
     <div className="stream-body" ref={scrollRef} onScroll={onScroll}>
       {events.length === 0 && <DimLine>waiting for events…</DimLine>}
       {events.map((e) => (
-        <div key={e.id} className={`stream-line level-${eventLevel(e.type)}`}>
+        <div key={e.id} className={`stream-line level-${eventLevel(e)}`}>
           <span className="sl-time">{fmtTime(e.ts)}</span>
           <span className="sl-type">{e.type}</span>
           <span className="sl-msg">{e.message}</span>
@@ -419,18 +461,6 @@ function EventStream({ events }: { events: EventRow[] }) {
       )}
     </div>
   )
-}
-
-/** Colour class from the event type keyword. */
-function eventLevel(type: string): 'error' | 'ok' | 'active' | 'info' {
-  // In-loop conflict resolution is progress, not failure — checked before the
-  // generic `conflict` keyword, which would otherwise paint the whole resolve red.
-  if (type === 'merge.conflict.resolved') return 'ok'
-  if (type === 'merge.conflict.resolving') return 'active'
-  if (/(error|fail|conflict|cancel|stopped)/i.test(type)) return 'error'
-  if (/(done|succeed|finished|shipped|merged)/i.test(type)) return 'ok'
-  if (/(start|burn|launch|advance|running|retry|resum)/i.test(type)) return 'active'
-  return 'info'
 }
 
 /** Best-effort per-ticket duration from its first→last event timestamps. */

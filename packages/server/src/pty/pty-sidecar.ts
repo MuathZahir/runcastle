@@ -4,6 +4,7 @@ import { existsSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { ASSET_ENV, resolveAsset } from '../launcher/asset-paths'
 import { explainSpawnFailure, resolveTool } from '../util/resolve-executable'
+import { killProcessTree } from './kill-tree'
 import type { CreatePtyOptions, PtySession } from './pty'
 
 /**
@@ -241,6 +242,16 @@ export function createSidecarPtySession(
           }
         }
       }, 500)
+    },
+    killTree() {
+      // On win32 the tree is rooted at the host process WE spawned: its pid is
+      // known synchronously here, so it is never the inner node-pty pid the
+      // async `ready` frame swaps into `pid`, and one `taskkill /T` sweeps host
+      // → cmd shim → dev server. The host is not asked to do this over stdin —
+      // teardown must not depend on it being alive and responsive. Off-win32
+      // (only reachable via RUNCASTLE_PTY_BACKEND=sidecar) there is no tree
+      // walk, so signal the group node-pty's pid leads instead, best-effort.
+      return killProcessTree(process.platform === 'win32' ? (child.pid ?? pid) : pid)
     },
     get pid() {
       return pid

@@ -40,13 +40,20 @@ export function MergeFeatureDialog({
   }, [onCancel])
 
   return (
-    <div className="peek-backdrop" onClick={onCancel}>
+    <div
+      className="peek-backdrop"
+      // mousedown, not click: a click that STARTS inside the panel and ends on
+      // the backdrop (selecting the summary and releasing outside) is not a
+      // dismissal — the same guard FormOverlay makes.
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) onCancel()
+      }}
+    >
       <div
         className="peek merge-dialog"
         role="dialog"
         aria-modal="true"
         aria-label={`Merge and ship ${branch}`}
-        onClick={(e) => e.stopPropagation()}
       >
         <div className="peek-head">
           <span className="merge-dialog-title">Merge &amp; ship</span>

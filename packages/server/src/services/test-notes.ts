@@ -1,7 +1,7 @@
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { dirname } from 'node:path'
-import type { Feature, TestNote, TestNoteStatus, Ticket, TicketInput } from '@runcastle/core'
-import { newId } from '@runcastle/core'
+import type { Feature, TestNoteStatus, Ticket, TicketInput } from '@runcastle/core'
+import { TestNote, newId } from '@runcastle/core'
 import { featureDocsRel } from '@runcastle/core/paths'
 import { asc, eq } from 'drizzle-orm'
 import type { AppCtx } from '../db/types'
@@ -24,7 +24,7 @@ import { getTicket, storeTickets } from './tickets'
 type TestNoteSelect = typeof testNotes.$inferSelect
 
 function rowToNote(row: TestNoteSelect): TestNote {
-  return {
+  return TestNote.parse({
     id: row.id,
     featureId: row.featureId,
     lap: row.lap,
@@ -33,7 +33,7 @@ function rowToNote(row: TestNoteSelect): TestNote {
     ticketId: row.ticketId ?? undefined,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
-  }
+  })
 }
 
 function getNote(ctx: AppCtx, id: string): TestNote {

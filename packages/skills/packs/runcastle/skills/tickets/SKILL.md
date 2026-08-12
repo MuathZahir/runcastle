@@ -35,7 +35,7 @@ Expect a **handful of substantial tickets** for a feature — roughly 4–8, eac
 - **Parallelism pays when the halves are file-disjoint.** Tickets with no blocking edge burn concurrently, each on its own temp branch, landing one at a time (ADR-0002) — so two substantial slices touching *different* files buy real wall-clock for one container. Two touching the *same* files race to land, and the loser fails on a merge conflict: that width costs a re-burn, which is worse than the container it bought. Overlapping files → merge.
 </vertical-slice-rules>
 
-Give each ticket its **blocking edges** — the tickets that must finish before it can start. No blockers → it can start immediately.
+Give each ticket its **blocking edges** — the tickets that must finish before it can start. Every ticket carries them: the field is required, so a ticket with no blockers gets an empty array and can start immediately.
 
 <wide-refactor-exception>
 A **wide refactor** — one mechanical change (rename a column, retype a shared symbol) whose blast radius breaks thousands of call sites at once — cannot land green as a vertical slice. Sequence it **expand → migrate → contract** instead. Expand: add the new form beside the old so nothing breaks (one ticket). Migrate: move call sites over in batches sized by blast radius (per package/dir), each batch a ticket blocked by the expand, CI green throughout because the old form still exists. Contract: delete the old form once no caller remains, blocked by every migrate batch. If even the batches cannot stay green alone, let them share an integration branch that all block a final integrate-and-verify ticket — green is promised only there.
@@ -51,7 +51,7 @@ Each ticket:
 - **context** — everything the sandboxed agent needs and cannot ask for: file paths to touch, existing patterns/modules to follow, type/schema shapes, gotchas, how to run and verify. Be concrete (see above).
 - **acceptanceCriteria** — `string[]`, each independently *verifiable* (a behaviour you can observe, a command that passes). These are what the burner works red-green against, one at a time, committing each green one — so this is where the fine granularity lives. A substantial ticket having four to eight criteria is right, not a smell; a list running well past that is a ticket that will not land in one pass.
 - **seams** — `string[]`, the public interfaces to test at (carry them from the spec's Seams section; prefer existing, prefer the highest, prefer one).
-- **blockedBy** — `number[]`, the seq numbers (from your 1..N ordering) of the tickets that *genuinely* gate this one. Only true gates.
+- **blockedBy** — `number[]`, **required**, the seq numbers (from your 1..N ordering) of the tickets that *genuinely* gate this one. Only true gates; pass `[]` when there are none — omitting it fails validation.
 
 ## 3. Self-check, then emit
 
@@ -64,8 +64,7 @@ There is no in-session quiz — the human's review is the **Burn** gate in the r
 5. Is every `context` self-sufficient for an agent that cannot ask — covering every file and pattern the ticket touches?
 
 Then:
-- `mcp__runcastle__emit_tickets({ tickets: [...] })` — **emit the array; do NOT write ticket files.** It returns `{ stored, ids }`.
-- `mcp__runcastle__record_event({ type: "tickets.emitted", message: "<n> tickets" })`.
+- `mcp__runcastle__emit_tickets({ tickets: [...] })` — **emit the array; do NOT write ticket files.** It returns `{ stored, ids }` and logs the timeline event itself; do not record one of your own.
 - `mcp__runcastle__complete_phase({ phase: "tickets" })`. If the gate returns `ok: false`, fix what it names and retry.
 
 Return to `/runcastle:ideate` to close out the session.

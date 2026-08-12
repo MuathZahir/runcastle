@@ -259,6 +259,41 @@ export function unverifiedDriveKeys(
   )
 }
 
+/** Which halves of a test drive this project has actually configured. */
+export interface DriveCapabilities {
+  /** `driveEnv` — the KEY=VALUE overlay, where a per-branch database name comes from. */
+  env: boolean
+  /** `driveSetupCommand` — run before the dev server starts. */
+  setup: boolean
+  /** `devCommand` — the dev pane, and the "Open app" URL sniffed out of it. */
+  dev: boolean
+  /** `driveStopCommand` — run on stop, while the feature branch is still checked out. */
+  teardown: boolean
+}
+
+/**
+ * What a test drive on this project will do, read off the settings view.
+ *
+ * Mirrors the emptiness checks the drive itself makes — a hook step returns
+ * early on a blank command and the dev pane is spawned only when `devCommand`
+ * is set — so the review page describes the drive the human is about to get
+ * rather than the fully-prepared one we wish they had. `undefined` while the
+ * settings query is in flight: unknown is not the same answer as "none".
+ */
+export function driveCapabilities(view: SettingsView | undefined): DriveCapabilities | undefined {
+  if (!view) return undefined
+  const set = (key: string): boolean => {
+    const value = view.fields.find((f) => f.key === key)?.value
+    return typeof value === 'string' && value.trim().length > 0
+  }
+  return {
+    env: set('driveEnv'),
+    setup: set('driveSetupCommand'),
+    dev: set('devCommand'),
+    teardown: set('driveStopCommand'),
+  }
+}
+
 /**
  * The one-line provenance note under a prepared field.
  *
@@ -363,6 +398,30 @@ export interface SettingRow {
 function toDisplay(value: unknown): string {
   if (value === null || value === undefined) return ''
   return String(value)
+}
+
+/**
+ * What leaving a field commits: the value to write, or the inline error to show
+ * instead of writing anything. `null` clears the setting.
+ */
+export type FieldCommit = { value: string | number | null } | { error: string }
+
+/**
+ * The value a settings field commits for what was typed into it.
+ *
+ * Numeric fields used to go through a bare `Number(trimmed)`, and `Number('')`
+ * is `0`: blanking "Burn CPU limit" — the documented way to unconstrain it —
+ * wrote a zero the server's `z.number().positive()` then rejected, and anything
+ * non-numeric wrote `NaN`. A blank numeric field means "unset this"; anything
+ * that is not a number is a question for the human, not a value to send.
+ */
+export function fieldCommit(control: ControlKind, raw: string): FieldCommit {
+  const trimmed = raw.trim()
+  if (control !== 'number') return { value: trimmed }
+  if (trimmed === '') return { value: null }
+  const parsed = Number(trimmed)
+  if (!Number.isFinite(parsed)) return { error: 'Enter a number, or leave it blank to unset it.' }
+  return { value: parsed }
 }
 
 /** Meta for a field, synthesising per-step model entries not in the static table. */

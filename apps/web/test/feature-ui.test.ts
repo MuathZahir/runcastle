@@ -16,6 +16,7 @@ import {
   reviewChecks,
   rowChip,
   sessionDoneState,
+  shippedAt,
   shippedQaSessions,
   sortForSidebar,
   testDriveTaken,
@@ -462,19 +463,79 @@ describe('nextStep at review', () => {
       expect(ns.desc).toContain('main')
     })
 
-    it('demotes Merge & ship to a disabled secondary that says why', () => {
+    /**
+     * Ticket 2 / decision 2b — the merge secondary used to be DISABLED, so a
+     * conflict resolved outside a session (or by one runcastle could not read)
+     * left the pipeline's last step permanently dead. It is a retry now: it
+     * ships on success and refreshes this card on failure. Still a secondary —
+     * F8 is about never RECOMMENDING a merge that will fail, not about locking
+     * the door.
+     */
+    it('demotes Merge & ship to an enabled retry, never a disabled button', () => {
       const ns = nextStep(reviewFull({}), { driving: false, conflict })
-      expect(ns.secondary).toContainEqual({
-        label: 'Merge & ship',
-        kind: 'merge',
-        disabled: 'Resolve the merge conflict first — this merge will fail again',
-      })
+      expect(ns.primary?.kind).toBe('resolveConflict')
+      expect(ns.secondary).toContainEqual({ label: 'Retry Merge & ship', kind: 'merge' })
     })
 
-    it('outranks the fix-ticket burn too — the merge cannot land either way', () => {
-      const ns = nextStep(reviewFull({ ticketStatuses: ['pending'] }), { driving: false, conflict })
+    /**
+     * Ticket 2 / decision 3 — the conflict branch used to shadow the pending
+     * burn entirely, hiding the one button whose event (`burn.started`) clears
+     * the conflict. Burning runs tickets on the feature branch and never
+     * touches the base merge.
+     */
+    it('offers the fix-ticket burn alongside it — a conflict is no reason to hide Burn', () => {
+      const ns = nextStep(reviewFull({ ticketStatuses: ['pending', 'pending'] }), {
+        driving: false,
+        conflict,
+      })
       expect(ns.primary?.kind).toBe('resolveConflict')
-      expect(ns.secondary.find((a) => a.kind === 'merge')?.disabled).toBeTruthy()
+      expect(labels(ns.secondary)).toEqual([
+        'Retry Merge & ship',
+        'Burn 2 tickets',
+        'Start test drive',
+        'Iterate',
+      ])
+      expect(ns.secondary.every((a) => a.disabled === undefined)).toBe(true)
+    })
+
+    it('offers no Burn when nothing is pending', () => {
+      const ns = nextStep(reviewFull({}), { driving: false, conflict })
+      expect(ns.secondary.map((a) => a.kind)).not.toContain('burn')
+    })
+
+    it('keeps the burn reachable while a session is live, with no launch of its own', () => {
+      const ns = nextStep(reviewFull({ ticketStatuses: ['pending'], sessionLive: true }), {
+        driving: false,
+        conflict,
+      })
+      expect(ns.primary).toBeUndefined()
+      expect(labels(ns.secondary)).toEqual([
+        'Retry Merge & ship',
+        'Burn 1 ticket',
+        'Start test drive',
+      ])
+    })
+
+    /**
+     * REPORT 1.6 / E2E F18 — the conflict branch returned before the fix-ticket
+     * branch, so Burn vanished exactly when fix tickets existed. The agent that
+     * hit the conflict emitted "merge main and resolve it" as a ticket, and with
+     * no Burn on screen the only way forward was Iterate.
+     */
+    it('still offers to burn the fix tickets a conflict-resolution agent emitted', () => {
+      const ns = nextStep(reviewFull({ ticketStatuses: ['done', 'pending'] }), {
+        driving: false,
+        conflict,
+      })
+      const burn = ns.secondary.find((a) => a.kind === 'burn')
+      expect(burn?.label).toBe('Burn 1 ticket')
+      // The merge aborted, so the feature branch is intact and the burn can run.
+      expect(burn?.disabled).toBeUndefined()
+    })
+
+    it('offers no burn when there is nothing pending to burn', () => {
+      const ns = nextStep(reviewFull({ ticketStatuses: ['done'] }), { driving: false, conflict })
+      expect(ns.secondary.find((a) => a.kind === 'burn')).toBeUndefined()
     })
 
     it('keeps the test drive and Iterate available (a way out of the state)', () => {
@@ -657,6 +718,42 @@ describe('unresolvedMergeConflict', () => {
       ev(2, 'burn.started', { from: 'review' }),
     ]
     expect(unresolvedMergeConflict(events)).toBeNull()
+  })
+
+  /**
+   * Fix-merge-conflict-system ticket 2 / decision 2a — a resolve session that
+   * lands the merge emits `merge.resolved`, and until this the ONLY event that
+   * cleared a conflict was a burn starting, so a resolved conflict left Merge &
+   * ship disabled forever.
+   */
+  it('clears once the resolve session lands the merge', () => {
+    const events = [
+      ev(1, 'merge.conflict', { base: 'main', files: ['a.ts'] }),
+      ev(2, 'merge.resolved', { mergeFrom: 'main', mergeInto: 'feature/dark-mode' }),
+    ]
+    expect(unresolvedMergeConflict(events)).toBeNull()
+  })
+
+  it('re-surfaces a conflict recorded after a resolution (the retry failed too)', () => {
+    const events = [
+      ev(1, 'merge.conflict', { base: 'main', files: ['a.ts'] }),
+      ev(2, 'merge.resolved', { mergeFrom: 'main', mergeInto: 'feature/dark-mode' }),
+      ev(3, 'merge.conflict', { base: 'main', files: ['b.ts'] }),
+    ]
+    expect(unresolvedMergeConflict(events)).toEqual({ base: 'main', files: ['b.ts'], at: 3 })
+  })
+
+  /**
+   * A retry re-merges from scratch, so the server emits a fresh `merge.conflict`
+   * with the current timestamp and files — the card must follow the latest one,
+   * or the human reads a stale file list off a merge that has moved on.
+   */
+  it('follows the newest conflict when a retry conflicts on other files', () => {
+    const events = [
+      ev(1, 'merge.conflict', { base: 'main', files: ['a.ts'] }),
+      ev(5, 'merge.conflict', { base: 'main', files: ['b.ts', 'c.ts'] }),
+    ]
+    expect(unresolvedMergeConflict(events)).toEqual({ base: 'main', files: ['b.ts', 'c.ts'], at: 5 })
   })
 
   it('re-surfaces a fresh conflict after a burn cycle', () => {
@@ -1684,6 +1781,31 @@ describe('shippedQaSessions', () => {
     const qa = { id: 's2', status: 'live', kind: 'qa', ccSessionId: null }
     const rows = sessions([{ id: 's1', status: 'ended', kind: 'ideation', ccSessionId: 'cc-1' }, qa])
     expect(shippedQaSessions(rows)).toEqual([qa])
+  })
+})
+
+/**
+ * REPORT 1.7 — the shipped hero has never shown a merge time. The merge emits
+ * `feature.shipped` and THEN `feature.status`, and the hero's reverse scan took
+ * the last event of either, so it always landed on the status event.
+ */
+describe('shippedAt', () => {
+  const ev = (id: number, type: string): EventRow =>
+    ({ id, projectId: 'p', ts: id * 1000, type, message: type, data: null }) as EventRow
+
+  it('finds the merge time in a log that ends with feature.status', () => {
+    expect(
+      shippedAt([ev(1, 'merge.started'), ev(2, 'feature.shipped'), ev(3, 'feature.status')]),
+    ).toBe(2000)
+  })
+
+  it('reports nothing for a feature that has not shipped', () => {
+    expect(shippedAt([ev(1, 'burn.started'), ev(2, 'feature.status')])).toBeNull()
+    expect(shippedAt([])).toBeNull()
+  })
+
+  it('takes the latest shipped event when a feature shipped more than once', () => {
+    expect(shippedAt([ev(1, 'feature.shipped'), ev(4, 'feature.shipped')])).toBe(4000)
   })
 })
 

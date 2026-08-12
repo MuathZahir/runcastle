@@ -92,6 +92,33 @@ export function isProjectSessionKind(kind: SessionKind): boolean {
   return (PROJECT_SESSION_KINDS as readonly string[]).includes(kind)
 }
 
+/**
+ * Why a session was opened, when that differs from what its `kind` can say.
+ * Orthogonal to `kind`: a resolve-conflict session is still a `revisit`, it just
+ * carries an errand the guard has to know about.
+ *
+ * `resolve-conflict` — opened by "Resolve with agent" (the review conflict card)
+ * or "Resolve in terminal" (the run lane) to land a merge the pipeline could not.
+ * Its briefing tells the agent to merge, resolve and commit, so the edit guard
+ * lets it write files while that merge is actually in progress in its worktree
+ * (see `evaluateEditGuard`) — the one exemption a talk session ever gets.
+ */
+export const SessionPurpose = z.enum(['resolve-conflict'])
+export type SessionPurpose = z.infer<typeof SessionPurpose>
+
+/**
+ * The merge a `resolve-conflict` session is about — carried on the session so
+ * the session-end probe knows which pair to check without re-deriving it. The
+ * review card resolves base → feature; the run lane resolves ticket branch →
+ * feature.
+ */
+export const MergeBranchPair = z.object({
+  mergeFrom: z.string(),
+  mergeInto: z.string(),
+})
+export type MergeBranchPair = z.infer<typeof MergeBranchPair>
+
+
 export const RunStatus = z.enum(['running', 'succeeded', 'failed', 'cancelled'])
 export type RunStatus = z.infer<typeof RunStatus>
 
@@ -147,6 +174,12 @@ export const Ticket = TicketInput.extend({
    * lands or the user retries "fresh".
    */
   conflictFiles: z.array(z.string()).optional(),
+  /**
+   * The burner's own account of what it did, harvested from the `DIGEST.md` it
+   * writes just before signalling COMPLETE. Absent when the agent wrote none —
+   * a done ticket without a digest is still done.
+   */
+  digest: z.string().optional(),
 })
 export type Ticket = z.infer<typeof Ticket>
 
@@ -317,6 +350,13 @@ export const Project = z.object({
   driveStopCommand: z.string().optional(),
   /** `KEY=VALUE` lines overlaid on a drive's environment, `{{id}}`-templated. */
   driveEnv: z.string().optional(),
+  /**
+   * When the project was closed (issue #43); unset while it is open. The column
+   * drives `listProjects`, so the wire type has to carry it — a field the row
+   * has and the schema does not is drift the boundary parse would silently
+   * strip rather than report.
+   */
+  closedAt: z.number().optional(),
 })
 export type Project = z.infer<typeof Project>
 
@@ -391,6 +431,10 @@ export const SessionRow = z.object({
   /** Set on project-scoped sessions only; feature sessions derive it via the feature. */
   projectId: z.string().optional(),
   kind: SessionKind,
+  /** Why this session was opened, when `kind` cannot say it — see {@link SessionPurpose}. */
+  purpose: SessionPurpose.optional(),
+  /** The merge a `resolve-conflict` session is about; unset for every other purpose. */
+  purposeData: MergeBranchPair.optional(),
   ccSessionId: z.string().optional(),
   transcriptPath: z.string().optional(),
   status: SessionStatus,
@@ -412,6 +456,8 @@ export const Run = z.object({
   startedAt: z.number(),
   endedAt: z.number().optional(),
   summary: z.string().optional(),
+  /** This run's harvested ticket digests, concatenated under per-ticket headers. */
+  digest: z.string().optional(),
 })
 export type Run = z.infer<typeof Run>
 

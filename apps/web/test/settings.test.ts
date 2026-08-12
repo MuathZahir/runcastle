@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import {
   describeField,
+  driveCapabilities,
   effectiveStepModel,
+  fieldCommit,
   globalRows,
   projectRows,
   stepModelRows,
@@ -217,5 +219,89 @@ describe('projectRows', () => {
       ),
     )
     expect(rows.map((r) => r.key)).toEqual(['model', 'sandbox', 'devCommand'])
+  })
+})
+
+/**
+ * What a test drive will actually do here, read off the same values the server
+ * branches on. `runDriveHookStep` skips an empty command and the dev pane is
+ * spawned only `if (project.devCommand)` — so "configured" has to mean a
+ * non-blank string, or the review page promises a database nobody creates.
+ */
+describe('driveCapabilities', () => {
+  it('reports nothing configured on a project with no drive fields set', () => {
+    expect(driveCapabilities(view([{ key: 'model', value: 'claude' }]))).toEqual({
+      env: false,
+      setup: false,
+      dev: false,
+      teardown: false,
+    })
+  })
+
+  it('reports each drive field that carries a command', () => {
+    expect(
+      driveCapabilities(
+        view([
+          { key: 'driveEnv', value: 'DATABASE_URL=postgres:///myapp_{{id}}' },
+          { key: 'driveSetupCommand', value: 'createdb myapp_{{id}}' },
+          { key: 'devCommand', value: 'bun dev' },
+          { key: 'driveStopCommand', value: 'dropdb myapp_{{id}}' },
+        ]),
+      ),
+    ).toEqual({ env: true, setup: true, dev: true, teardown: true })
+  })
+
+  // A field cleared back to blank (or to whitespace) is a field the drive skips.
+  it('treats a blank or whitespace-only value as not configured', () => {
+    expect(
+      driveCapabilities(
+        view([
+          { key: 'devCommand', value: '' },
+          { key: 'driveSetupCommand', value: '   ' },
+          { key: 'driveEnv', value: null },
+        ]),
+      ),
+    ).toEqual({ env: false, setup: false, dev: false, teardown: false })
+  })
+
+  // Before settings land there is no answer, and guessing "false" would print
+  // "this project has no drive commands" at every mount of the review page.
+  it('has no answer until the settings view has loaded', () => {
+    expect(driveCapabilities(undefined)).toBeUndefined()
+  })
+})
+
+/**
+ * REPORT 1.20 — the overlay fed every numeric field through `Number(raw)`, and
+ * `Number('') === 0`. Blanking "Burn CPU limit" (the documented way to
+ * unconstrain it) sent a 0 that `z.number().positive()` rejects, and typing
+ * anything non-numeric sent `NaN`.
+ */
+describe('fieldCommit', () => {
+  it('sends a blank numeric field as an unset, not as zero', () => {
+    expect(fieldCommit('number', '')).toEqual({ value: null })
+    expect(fieldCommit('number', '   ')).toEqual({ value: null })
+  })
+
+  it('refuses a non-numeric value instead of sending NaN', () => {
+    expect(fieldCommit('number', 'lots')).toEqual({
+      error: 'Enter a number, or leave it blank to unset it.',
+    })
+    expect(fieldCommit('number', '1.2.3')).toEqual({
+      error: 'Enter a number, or leave it blank to unset it.',
+    })
+  })
+
+  it('commits the number a numeric field holds', () => {
+    expect(fieldCommit('number', '4')).toEqual({ value: 4 })
+    expect(fieldCommit('number', ' 1.5 ')).toEqual({ value: 1.5 })
+  })
+
+  it('leaves text fields as trimmed strings, blank included', () => {
+    expect(fieldCommit('text', ' main ')).toEqual({ value: 'main' })
+    expect(fieldCommit('text', '')).toEqual({ value: '' })
+    expect(fieldCommit('textarea', 'bun test\nbun run typecheck')).toEqual({
+      value: 'bun test\nbun run typecheck',
+    })
   })
 })

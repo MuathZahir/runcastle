@@ -5,7 +5,7 @@
  * and a throwaway `~/.runcastle` data dir, performing a REAL (cheap, host) claude
  * burn on trivial tickets:
  *
- *   git target repo → project.init → feature.create → fabricate ideation session
+ *   git target repo → project.open → feature.create → fabricate ideation session
  *   → hooks/session-start → MCP emit_tickets + complete_phase → feature.burn
  *   (noSandbox, smoke model via runOverride) → poll run/events → testDrive
  *   start/stop → merge.
@@ -186,19 +186,19 @@ async function main(): Promise<void> {
   assert(git(TARGET, 'rev-list', '--count', 'HEAD') === '1', 'one seed commit')
   record('target repo', `git repo at ${TARGET} on main with 1 commit`)
 
-  // (2) project.init -----------------------------------------------------------
-  banner('STEP 2 — tRPC project.init')
-  const project = await trpc.project.init({ repoPath: TARGET })
+  // (2) project.open -----------------------------------------------------------
+  banner('STEP 2 — tRPC project.open')
+  const project = await trpc.project.open({ repoPath: TARGET })
   assert(project.repoPath === TARGET, 'project.repoPath === target')
   assert(project.mainBranch === 'main', 'project.mainBranch === main')
-  record('project.init', `project ${project.id} @ ${project.mainBranch}`)
+  record('project.open', `project ${project.id} @ ${project.mainBranch}`)
 
   // (3) feature.create ---------------------------------------------------------
-  banner('STEP 3 — tRPC feature.create (collapsed)')
+  banner('STEP 3 — tRPC feature.create')
   const feature = await trpc.feature.create({
+    projectId: project.id,
     title: 'health check file',
     oneLiner: 'add a HEALTH.md file to prove the pipeline works end to end',
-    size: 'collapsed',
   })
   assert(feature.slug === 'health-check-file', `slug is health-check-file (got ${feature.slug})`)
   assert(feature.phase === 'ideation', 'phase ideation')
@@ -400,9 +400,9 @@ async function mappedFlow(projectId: string): Promise<void> {
   // (10) mapped feature + a live ideation session so /mcp resolves it by header --
   banner('STEP 10 — mapped path: feature.create + fabricate ideation session (spawn:false) → live')
   const feature = await trpc.feature.create({
+    projectId,
     title: 'mapped playground',
     oneLiner: 'a mapped feature to prove escalate → waypoints → converge end to end',
-    size: 'collapsed',
   })
   const featureId = feature.id
   const slug = feature.slug

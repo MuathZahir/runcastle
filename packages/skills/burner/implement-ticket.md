@@ -2,7 +2,7 @@
 
 # Implement this ticket — unattended
 
-You are a single agent in a sandbox on branch `feature/<slug>`. You have **one ticket**. There is **no human to ask** — no follow-up questions are possible. Everything you need is in this prompt and in the repo. Work carefully, commit only green work, and stop when the ticket is done.
+You are a single agent in a sandbox on **your ticket's own temp branch**, `runcastle/ticket/<slug>/<seq>-<unique>`, forked from the feature branch `feature/<slug>`. Commit there and only there — the run merges your branch back into the feature branch once you land, so never check out or commit to `feature/<slug>` yourself. You have **one ticket**. There is **no human to ask** — no follow-up questions are possible. Everything you need is in this prompt and in the repo. Work carefully, commit only green work, and stop when the ticket is done.
 
 ## How you run
 
@@ -73,6 +73,13 @@ Whatever the commands are, spend them well — a full suite on a monorepo is min
    - **Standards** — does the diff follow the conventions of the surrounding code? Watch for the smells: duplicated logic (extract it), mysterious names (rename), primitive obsession (give the concept a type), speculative generality (delete anything the ticket did not ask for), feature envy, data clumps.
    - **Spec = this ticket** — is every acceptance criterion actually met, and is there **nothing in the diff the ticket did not ask for**? Missing and extra both count.
    Commit the fixes.
+
+6. **Write your digest — the last thing you do.** Once every acceptance criterion passes and the self-review fixes are committed, write `DIGEST.md` (see "Where to work" for exactly where) as your final act before printing `<promise>COMPLETE</promise>`. Roughly 10–15 lines, three parts:
+   - **What was done** — past tense, what you actually built, *including where it deviated* from the approach the ticket described.
+   - **Surprises** — what the ticket or the spec did not anticipate: the coupling nobody mentioned, the test that was already red, the API that did not behave as documented.
+   - **Left undone** — adjacent work you noticed and deliberately did not do, so the next agent inherits the observation instead of re-finding it.
+
+   Write it in plain prose, for a reader who does not have your context. **Never commit `DIGEST.md`** — it is harvested from the workspace, not from the repo, and a committed one is diff noise. It is a **success artifact only**: if you are blocked and writing `BLOCKED.md`, write no digest — `BLOCKED.md` is your record.
 
 ## Hard rules
 

@@ -19,6 +19,7 @@ import { claim, frontier, getWaypoint, storeWaypoints } from '../src/services/wa
 import { reconcileStaleRuns } from '../src/workflows/reconcile-runs'
 import { workflowRegistry } from '../src/workflows/registry'
 import { startRun } from '../src/workflows/runner'
+import { useDataDir } from './helpers/data-dir'
 import { makeTestCtx } from './helpers/db'
 import { seedFeature, seedProject } from './helpers/fixtures'
 
@@ -116,8 +117,7 @@ describe('reconcileStaleRuns — in-memory db', () => {
 
 describe('reconcileStaleRuns — git side effects (fixture repo)', () => {
   let ctx: AppCtx
-  let prevUserProfile: string | undefined
-  let prevHome: string | undefined
+  let restoreDataDir: () => void
   const tmpDirs: string[] = []
 
   function mkTmp(prefix: string): string {
@@ -139,16 +139,12 @@ describe('reconcileStaleRuns — git side effects (fixture repo)', () => {
 
   beforeEach(async () => {
     const home = mkTmp('rc-recrun-home-')
-    prevUserProfile = process.env.USERPROFILE
-    prevHome = process.env.HOME
-    process.env.USERPROFILE = home
-    process.env.HOME = home
+    restoreDataDir = useDataDir(home)
     ctx = await makeTestCtx()
   })
 
   afterEach(() => {
-    process.env.USERPROFILE = prevUserProfile
-    process.env.HOME = prevHome
+    restoreDataDir()
     while (tmpDirs.length) {
       const dir = tmpDirs.pop()
       if (dir) {

@@ -18,7 +18,7 @@ Everything else you do — portfolio Q&A, routing, curation, the charter — is 
 Four, and deliberately none of the feature pipeline's. A session with no feature has no business advancing one through a gate.
 
 - `mcp__runcastle__get_project_context()` — the project, the charter in full, every live ADR in full, and a one-line index of every feature.
-- `mcp__runcastle__get_work_record({ featureSlug? , seam? })` — what features actually **did**: tickets by status, seams, commits, errors, run summaries. Facts, never intent.
+- `mcp__runcastle__get_work_record({ featureSlug? , seam? })` — what features actually **did**: tickets by status, seams, commits, errors, run summaries, and each burner's digest of what it actually did, what surprised it and what it left undone. Facts, never intent.
 - `mcp__runcastle__create_feature({ title, oneLiner, baseBranch?, brief?, draft?, ticket? })` — the end of intake.
 - `mcp__runcastle__record_event({ type, message })` — a note on the project timeline.
 

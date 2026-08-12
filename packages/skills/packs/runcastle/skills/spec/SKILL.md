@@ -34,6 +34,10 @@ Turn the ideation conversation plus `docs/features/<slug>/decisions.md` into a s
 
    ## Open questions
    Anything still unresolved or deliberately deferred.
+
+   ## Later laps
+   Optional — include it when this is a thin lap 1. Scope consciously deferred
+   to a later lap; it seeds the next lap's session alongside the test notes.
    ```
 
    Do **not** hardcode specific file paths or code snippets — they go stale. Exception: if the ideation produced a snippet that pins a decision more precisely than prose can (a state machine, reducer, schema, type shape), inline the decision-rich parts and note it came from that discussion.

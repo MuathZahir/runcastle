@@ -12,6 +12,7 @@ import { __resetTestDriveState, createFeatureBranch, testDrive } from '../src/se
 import { getFeatureRow } from '../src/services/repo'
 import { storeTickets } from '../src/services/tickets'
 import { workflowRegistry } from '../src/workflows/registry'
+import { useDataDir } from './helpers/data-dir'
 import { makeTestCtx } from './helpers/db'
 import { seedFeature, seedProject } from './helpers/fixtures'
 
@@ -46,16 +47,12 @@ describe('rethink refuses while the feature is being test-driven', () => {
   let ctx: AppCtx
   let project: Project
   let feature: Feature
-  let prevHome: string | undefined
-  let prevUserProfile: string | undefined
+  let restoreDataDir: () => void
 
   beforeEach(async () => {
     // The talk worktree lives under `~/.runcastle` — keep it in a temp home.
     const home = mkTmp('rc-home-')
-    prevHome = process.env.HOME
-    prevUserProfile = process.env.USERPROFILE
-    process.env.HOME = home
-    process.env.USERPROFILE = home
+    restoreDataDir = useDataDir(home)
 
     ctx = await makeTestCtx()
     const repo = mkTmp('rc-drive-')
@@ -67,8 +64,7 @@ describe('rethink refuses while the feature is being test-driven', () => {
 
   afterEach(() => {
     __resetTestDriveState()
-    process.env.HOME = prevHome
-    process.env.USERPROFILE = prevUserProfile
+    restoreDataDir()
     for (const d of tmpDirs) rmSync(d, { recursive: true, force: true })
     tmpDirs.length = 0
   })

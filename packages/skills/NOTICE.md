@@ -2,10 +2,11 @@
 
 The skill packs under `packs/runcastle/` are forks of skills from
 **Matt Pocock's skills repository** — <https://github.com/mattpocock/skills> —
-adapted to runcastle's contracts (MCP tools, doc paths, phase model). Five of
-the six pack skills carry this lineage: `ideate`, `spec`, `tickets`, `qa`, and
-`converge` (each keeps a provenance header naming its upstream sources);
-`waypoint` is original runcastle work with no upstream lineage.
+adapted to runcastle's contracts (MCP tools, doc paths, phase model). Six of
+the eight pack skills carry this lineage: `ideate`, `spec`, `tickets`, `qa`,
+`project`, and `converge` (each keeps a provenance header naming its upstream
+sources); `revisit` and `waypoint` are original runcastle work with no upstream
+lineage.
 
 The upstream repository is licensed under the MIT License, reproduced in full
 below as required:

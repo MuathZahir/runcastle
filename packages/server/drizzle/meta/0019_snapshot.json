@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "d2d4a597-8c33-478b-84ff-989f40661e15",
+  "id": "5aac2d84-f76f-4206-bc72-a08af1ca1c4f",
   "prevId": "634dbf6d-fc19-4122-9d1d-43d0ee3430f7",
   "tables": {
     "events": {
@@ -121,13 +121,6 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true,
-          "autoincrement": false
-        },
-        "brief": {
-          "name": "brief",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
           "autoincrement": false
         },
         "mapped": {
@@ -518,6 +511,20 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true,
+          "autoincrement": false
+        },
+        "purpose": {
+          "name": "purpose",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "purpose_data": {
+          "name": "purpose_data",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
           "autoincrement": false
         },
         "cc_session_id": {

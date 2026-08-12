@@ -138,6 +138,13 @@ function handle(msg) {
       }
       break
     case 'kill':
+      // Deliberately NOT a tree kill. Teardown never relies on this: the server
+      // tree-kills the pid it owns — THIS host process — and `taskkill /T` sweeps
+      // host → cmd shim → dev server from the outside (pty-sidecar.ts's
+      // `killTree`), so by the time a `kill` frame could matter the host is
+      // already gone. This is the backstop for the paths that are not teardown
+      // (an explicit kill with the tree walk unavailable or failed), where
+      // killing node-pty's own child is the most this process can do.
       if (proc) {
         try {
           proc.kill()
@@ -173,6 +180,9 @@ process.stdin.on('data', (chunk) => {
 })
 
 // When the server closes our stdin (it detached / crashed), tear down the child.
+// This is the orphan path, not the teardown path — an orderly stop tree-kills
+// this host from the outside and we never get here — so the same "kill what we
+// own, no tree walk" rule as the `kill` frame applies.
 process.stdin.on('end', () => {
   if (proc) {
     try {

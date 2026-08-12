@@ -1,4 +1,7 @@
 import type { AgentStreamEvent } from '@ai-hero/sandcastle'
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import type { Feature, Ticket } from '@runcastle/core'
 import { describe, expect, it } from 'vitest'
 import {
@@ -8,12 +11,15 @@ import {
   buildDocsDigest,
   buildFeatureBrief,
   buildIsolatedSetupCommand,
+  buildBurnAgent,
   buildOtherSideBlock,
   buildSandboxOptions,
   buildTicketJson,
   buildVerifyNotes,
   buildWorkspaceNotes,
   cacheMountFor,
+  composeRunDigest,
+  harvestDigest,
   classifyTicketRunError,
   classifyToolCall,
   createToolTimer,
@@ -34,6 +40,7 @@ import {
   resolveMergeCommand,
   resolveSetupCommand,
   selectSandbox,
+  burnerTemplatePath,
 } from '../src/workflows/ticket-burner'
 import type {
   LandDeps,
@@ -145,6 +152,30 @@ describe('renderTicketPrompt', () => {
     expect(out).toContain('ticket(4): <summary>')
     expect(out).toContain('Work in the current directory')
     expect(out).toContain('bun test')
+  })
+
+  it('carries the DIGEST.md contract into the prompt the burner actually gets', () => {
+    const out = renderTicketPrompt(readFileSync(burnerTemplatePath(), 'utf8'), {
+      TICKET_JSON: buildTicketJson(ticket(4)),
+      FEATURE_BRIEF: buildFeatureBrief(feature),
+      DOCS_DIGEST: '',
+      COMMIT_CONVENTION: 'ticket(4): <summary>',
+      WORKSPACE_NOTES: buildWorkspaceNotes('isolated'),
+      VERIFY_NOTES: '',
+    })
+
+    expect(out).toContain('DIGEST.md')
+    // The three-part template.
+    expect(out).toMatch(/what was done/i)
+    expect(out).toMatch(/surprises/i)
+    expect(out).toMatch(/left undone/i)
+    // Success-only, and never a repo artifact.
+    expect(out).toMatch(/never commit `DIGEST.md`/i)
+    expect(out).toMatch(/BLOCKED\.md[^.]*write no digest/i)
+    // Written last — right before the completion signal.
+    expect(out).toMatch(/before printing `<promise>COMPLETE<\/promise>`/)
+    // The mode-specific location comes from the workspace notes.
+    expect(out).toContain(`${SANDBOX_WORKSPACE_PATH}/DIGEST.md`)
   })
 
   it('renders values containing $ and special chars safely', () => {
@@ -339,6 +370,46 @@ describe('selectSandbox — provider for the configured sandbox', () => {
     expect(selectSandbox(config('docker')).name).toBe('docker')
     expect(selectSandbox(config('podman')).name).toBe('podman')
     expect(selectSandbox(config('noSandbox')).name).toBe('no-sandbox')
+  })
+
+  it('refuses a sandbox it has no provider for instead of falling back to the host', () => {
+    // A sandbox choice that reaches config without a provider here used to fall
+    // through to `noSandbox()` — the agent ran on the operator's machine, and
+    // nothing in the run said so.
+    const unsupported = { ...config('docker'), sandbox: 'kata' } as unknown as RuncastleConfig
+    expect(() => selectSandbox(unsupported)).toThrow(/refusing to run the agent unsandboxed/)
+  })
+
+  /**
+   * The env handed to the spawned `claude`. A replacement env
+   * (`{ CLAUDE_CODE_OAUTH_TOKEN }` alone) strips HOME/USERPROFILE, and a claude
+   * with no home writes its state to a LITERAL `~/` under its cwd — that is how
+   * a 284 KB transcript for an unrelated project got committed under
+   * `packages/server/`. In a container the opposite holds: the host env must not
+   * cross the boundary, because both providers turn this map into `-e` flags.
+   */
+  describe('buildBurnAgent — child environment', () => {
+    const homeKeys = ['HOME', 'USERPROFILE'] as const
+
+    it('keeps the host environment alongside the token when running on the host', () => {
+      const env = buildBurnAgent(config('noSandbox'), 'sk-token', 'opus').env
+
+      expect(env.CLAUDE_CODE_OAUTH_TOKEN).toBe('sk-token')
+      const present = homeKeys.filter((key) => process.env[key] !== undefined)
+      expect(present.length, 'this host has neither HOME nor USERPROFILE').toBeGreaterThan(0)
+      for (const key of present) expect(env[key]).toBe(process.env[key])
+    })
+
+    it('keeps the host environment when there is no token to pass', () => {
+      const env = buildBurnAgent(config('noSandbox'), undefined, 'opus').env
+      expect(env.CLAUDE_CODE_OAUTH_TOKEN).toBeUndefined()
+      expect(env.PATH ?? env.Path).toBeDefined()
+    })
+
+    it('sends only the overrides into a container, never the host env', () => {
+      const env = buildBurnAgent(config('docker'), 'sk-token', 'opus').env
+      expect(env).toEqual({ CLAUDE_CODE_OAUTH_TOKEN: 'sk-token' })
+    })
   })
 
   describe('buildSandboxOptions — container resource wiring', () => {
@@ -749,6 +820,72 @@ describe('buildWorkspaceNotes — the {{WORKSPACE_NOTES}} prompt block', () => {
     expect(notes).toContain(SANDBOX_WORKSPACE_PATH)
     expect(notes).toContain('BLOCKED.md')
     expect(notes).toMatch(/never edit/i)
+  })
+
+  it('mounted mode puts DIGEST.md at the checkout root, uncommitted', () => {
+    const notes = buildWorkspaceNotes('mounted')
+    expect(notes).toContain('DIGEST.md')
+    expect(notes).toMatch(/uncommitted/i)
+  })
+
+  it('isolated mode puts DIGEST.md in the mounted mirror, not the isolated clone', () => {
+    const notes = buildWorkspaceNotes('isolated')
+    expect(notes).toContain(`${SANDBOX_WORKSPACE_PATH}/DIGEST.md`)
+    expect(notes).not.toContain(`${ISOLATED_REPO_PATH}/DIGEST.md`)
+  })
+})
+
+describe('harvestDigest — reading the agent DIGEST.md off the workspace', () => {
+  /** A throwaway dir, optionally holding a DIGEST.md with the given content. */
+  function dirWithDigest(content?: string): string {
+    const dir = mkdtempSync(join(tmpdir(), 'runcastle-digest-'))
+    if (content !== undefined) writeFileSync(join(dir, 'DIGEST.md'), content, 'utf8')
+    return dir
+  }
+
+  it('reads and trims the digest from the first candidate dir that has one', () => {
+    const worktree = dirWithDigest('\n## What was done\nBuilt the thing.\n\n')
+    expect(harvestDigest([worktree, dirWithDigest('the repo copy')])).toBe(
+      '## What was done\nBuilt the thing.',
+    )
+  })
+
+  it('falls back to a later candidate dir', () => {
+    expect(harvestDigest([dirWithDigest(), dirWithDigest('from the repo')])).toBe('from the repo')
+  })
+
+  it('reads no digest when the agent wrote none', () => {
+    expect(harvestDigest([dirWithDigest(), undefined])).toBeUndefined()
+  })
+
+  it('treats a whitespace-only digest as no digest', () => {
+    expect(harvestDigest([dirWithDigest('  \n\t\n ')])).toBeUndefined()
+  })
+})
+
+describe('composeRunDigest — the run-level aggregate (mechanical, no LLM)', () => {
+  it('concatenates one section per ticket, in seq order', () => {
+    expect(
+      composeRunDigest([
+        { seq: 2, title: 'Second thing', digest: 'Wired the second seam.' },
+        { seq: 1, title: 'First thing', digest: 'Wired the first seam.' },
+      ]),
+    ).toBe(
+      '## ticket 1 — First thing\n\nWired the first seam.\n\n' +
+        '## ticket 2 — Second thing\n\nWired the second seam.',
+    )
+  })
+
+  it('composes null when the run harvested nothing', () => {
+    expect(composeRunDigest([])).toBeNull()
+  })
+
+  it('keeps a multi-line digest body intact under its header', () => {
+    expect(
+      composeRunDigest([
+        { seq: 7, title: 'Only thing', digest: '\nDid it.\n\nSurprise: the column existed.\n' },
+      ]),
+    ).toBe('## ticket 7 — Only thing\n\nDid it.\n\nSurprise: the column existed.')
   })
 })
 

@@ -1,4 +1,4 @@
-import { SessionKind } from '@runcastle/core'
+import { MergeBranchPair, SessionKind, SessionPurpose } from '@runcastle/core'
 import * as z from 'zod'
 import {
   converge,
@@ -12,6 +12,7 @@ import { emit } from '../../services/events'
 import * as features from '../../services/features'
 import { overrideGate, undoGateOverride } from '../../services/gates'
 import * as git from '../../services/git'
+import { promoteOutcomeDoc } from '../../services/outcome'
 import { getFeatureRow, projectForFeature, setFeatureStatus, setPhase } from '../../services/repo'
 import { publicProcedure, router } from '../context'
 
@@ -68,12 +69,17 @@ export const featureRouter = router({
   // `kickoffLine` is the per-purpose kickoff override (ticket 3 mechanism): the
   // review-phase Iterate action passes its review-iteration briefing here so the
   // revisit session opens on the right first move instead of the generic line.
+  // `purpose` + `purposeData` say what the session was opened to DO, which the
+  // briefing alone could not: both conflict-resolve sites mark their session
+  // `resolve-conflict` and name the merge, so the edit guard can let it write.
   launchSession: publicProcedure
     .input(
       z.object({
         featureId: z.string(),
         kind: SessionKind,
         kickoffLine: z.string().min(1).optional(),
+        purpose: SessionPurpose.optional(),
+        purposeData: MergeBranchPair.optional(),
       }),
     )
     .mutation(({ ctx, input }) => launchSession(ctx, input)),
@@ -216,6 +222,11 @@ export const featureRouter = router({
       if (git.activeTestDriveFeatureId() === feature.id) {
         await git.testDrive(ctx, project, feature, 'stop')
       }
+      // Regenerate the feature's outcome.md and commit it onto the feature
+      // branch first, so the account of what was done rides into the base
+      // branch with the merge (decision 6). On the conflict path below the
+      // commit simply stays on the branch — the retry regenerates it anyway.
+      await promoteOutcomeDoc(ctx, project, feature)
       const res = await git.mergeFeature(project, feature)
       if (res.ok) {
         setPhase(ctx, input.featureId, 'shipped', 'feature.shipped', `merged to ${res.target}`)

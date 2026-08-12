@@ -12,6 +12,7 @@ import {
   noteKickoffPrompt,
 } from '../launcher/sessions'
 import { emit, emitForSession } from '../services/events'
+import { isAncestor, mergeInProgressAt } from '../services/git'
 import { keysToPrepare } from '../services/prep'
 import { getProjectById, tryGetFeature } from '../services/repo'
 import { listByFeature } from '../services/tickets'
@@ -83,7 +84,7 @@ hooks.post('/:event', async (c) => {
         case 'session-end':
           return c.json(handleProjectScopedSessionEnd(ctx, session))
         case 'pre-tool':
-          return c.json(handlePreToolUse(session, undefined, body.payload))
+          return c.json(await handlePreToolUse(session, undefined, body.payload))
         default:
           return c.json({})
       }
@@ -98,9 +99,9 @@ hooks.post('/:event', async (c) => {
       case 'user-prompt':
         return c.json(handleUserPrompt(ctx, sessionId, feature, body.payload))
       case 'session-end':
-        return c.json(handleSessionEnd(ctx, sessionId, feature))
+        return c.json(await handleSessionEnd(ctx, session, feature))
       case 'pre-tool':
-        return c.json(handlePreToolUse(session, feature, body.payload))
+        return c.json(await handlePreToolUse(session, feature, body.payload))
       default:
         return c.json({})
     }
@@ -286,17 +287,52 @@ function handleUserPrompt(
   }
 }
 
-function handleSessionEnd(ctx: AppCtx, sessionId: string, feature: Feature): unknown {
-  markSessionEnded(ctx, sessionId)
+async function handleSessionEnd(
+  ctx: AppCtx,
+  session: SessionRow,
+  feature: Feature,
+): Promise<unknown> {
+  markSessionEnded(ctx, session.id)
   // A waypoint session that ended without calling resolve_waypoint auto-releases
   // its waypoint back to the frontier (SPEC §13.2); no-op otherwise.
-  releaseForSession(ctx, sessionId)
+  releaseForSession(ctx, session.id)
   emit(ctx, feature.id, {
     type: 'session.ended',
     message: 'session ended',
-    data: { sessionId },
+    data: { sessionId: session.id },
   })
+  await noteResolvedMerge(ctx, session, feature)
   return {}
+}
+
+/**
+ * Did a `resolve-conflict` session land the merge it was opened for? The
+ * standing conflict is derived from the event feed, so a resolution nothing
+ * emits about leaves the card up forever (the deadlock this feature fixes) —
+ * this is the event that clears it, decided from the worktree's real git state
+ * rather than from the agent saying it was done.
+ *
+ * Best-effort on purpose: teardown outranks detection. A probe that cannot run
+ * (worktree gone, branch renamed) just means no event, and the enabled "Retry
+ * Merge & ship" is the human's way through — see decision 2.
+ */
+async function noteResolvedMerge(
+  ctx: AppCtx,
+  session: SessionRow,
+  feature: Feature,
+): Promise<void> {
+  const pair = session.purpose === 'resolve-conflict' ? session.purposeData : undefined
+  if (!pair) return
+  try {
+    if (!(await isAncestor(session.worktreePath, pair.mergeFrom, pair.mergeInto))) return
+    emit(ctx, feature.id, {
+      type: 'merge.resolved',
+      message: `merge conflict resolved — ${pair.mergeFrom} is in ${pair.mergeInto}`,
+      data: { sessionId: session.id, ...pair },
+    })
+  } catch {
+    // never break session teardown over the timeline entry
+  }
 }
 
 /**
@@ -304,12 +340,17 @@ function handleSessionEnd(ctx: AppCtx, sessionId: string, feature: Feature): unk
  * deny is returned as the verified hook shape; anything allowed answers `{}`,
  * which Claude Code reads as "no opinion". Registered only for the kinds that
  * may not write code (see `renderSettings` / {@link evaluateEditGuard}).
+ *
+ * This is where the guard's one live input comes from: a `resolve-conflict`
+ * session's worktree is asked whether its merge is still in progress, which is
+ * what the exemption is scoped to. The probe never throws, so a session whose
+ * worktree has gone missing is simply guarded as usual.
  */
-function handlePreToolUse(
+async function handlePreToolUse(
   session: SessionRow,
   feature: Feature | undefined,
   payload: Record<string, unknown> | undefined,
-): unknown {
+): Promise<unknown> {
   const toolName = typeof payload?.tool_name === 'string' ? payload.tool_name : undefined
   const toolInput = (payload?.tool_input ?? {}) as Record<string, unknown>
   const path =
@@ -319,8 +360,15 @@ function handlePreToolUse(
         ? toolInput.notebook_path
         : undefined
 
+  // Only a resolve-conflict session can spend the exemption, so only it pays for
+  // the git probe — every other session keeps the pure, IO-free path it had.
+  const mergeInProgress =
+    session.purpose === 'resolve-conflict' ? await mergeInProgressAt(session.worktreePath) : false
+
   const denial = evaluateEditGuard({
     kind: session.kind,
+    purpose: session.purpose,
+    mergeInProgress,
     worktreePath: session.worktreePath,
     toolName,
     filePath: path,

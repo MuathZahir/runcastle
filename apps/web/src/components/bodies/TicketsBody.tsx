@@ -18,9 +18,9 @@ import { SessionPanel } from '../SessionPanel'
  * emit-tickets grill this phase starts on, live as an inline terminal or ended
  * with a Resume), then a read-only ledger of the feature's tickets (ordered by
  * seq) with a compact meta line and sandbox/model chips. Rows expand in place
- * to reveal goal / context / acceptance / seams / commits / error. Burning
- * lives in the workspace next-step bar, not here — so this body carries no burn
- * actions.
+ * to reveal goal / context / acceptance / seams / commits / digest / error.
+ * Burning lives in the workspace next-step bar, not here — so this body carries
+ * no burn actions.
  *
  * A pending or failed row's detail can also be edited in place (title / goal /
  * context / acceptance), which is what makes the quick-change door's promise
@@ -218,6 +218,15 @@ export function TicketsBody({
                         </div>
                       )}
                     </div>
+
+                    {/* The burner's own account of the burn — present on done
+                        tickets whose agent wrote one, absent everywhere else. */}
+                    {t.digest && (
+                      <div className="td-section">
+                        <div className="td-heading">DIGEST</div>
+                        <div className="td-body"><Markdown source={t.digest} /></div>
+                      </div>
+                    )}
 
                     {t.status === 'failed' && t.error && (
                       <div className="td-section td-error">

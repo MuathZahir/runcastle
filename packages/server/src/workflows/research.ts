@@ -2,14 +2,12 @@ import { existsSync, mkdirSync, readFileSync, readdirSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { Feature, RuncastleConfig, Waypoint, WorkflowCtx, WorkflowDef } from '@runcastle/core'
-import { newId, resolveModel, resolveSandboxImage } from '@runcastle/core'
+import { newId, resolveModel } from '@runcastle/core'
 import { loadConfig } from '@runcastle/core/config-load'
 import { envPath, featureDocsRel, logsDir, worktreeDir } from '@runcastle/core/paths'
 import { resolveSkillsRoot } from '../launcher/skills-root'
 import type { RunOptions, RunResult } from '@ai-hero/sandcastle'
 import { run } from '@ai-hero/sandcastle'
-import { docker } from '@ai-hero/sandcastle/sandboxes/docker'
-import { noSandbox } from '@ai-hero/sandcastle/sandboxes/no-sandbox'
 import {
   branchCommitsAhead,
   cleanupBurnWorktree,
@@ -24,6 +22,7 @@ import {
   createStreamThrottle,
   isWorktreeTeardownError,
   parseEnvFile,
+  selectSandbox,
 } from './ticket-burner'
 
 /**
@@ -96,8 +95,9 @@ export async function researchRun(
     return { status: 'failed', summary: 'no waypoint to research' }
   }
 
-  // Auth precheck: docker needs a token before we start any container.
-  if (deps.config.sandbox === 'docker' && !deps.hasAuthToken) {
+  // Auth precheck: container sandboxes (docker/podman) need a token before we
+  // start any container; noSandbox runs `claude` on the already-authed host.
+  if (deps.config.sandbox !== 'noSandbox' && !deps.hasAuthToken) {
     ctx.emitEvent({ type: AUTH_MISSING_EVENT, message: AUTH_MISSING_MESSAGE })
     return { status: 'failed', summary: 'research aborted: auth token missing' }
   }
@@ -266,10 +266,10 @@ async function realExecuteResearchRun(
 
   const runOptions: RunOptions = {
     agent: buildBurnAgent(config, token, model),
-    sandbox:
-      config.sandbox === 'docker'
-        ? docker({ imageName: resolveSandboxImage(config) })
-        : noSandbox(),
+    // Shared with the burner, never hand-rolled here: the local
+    // `sandbox === 'docker' ? docker() : noSandbox()` this replaces is how a
+    // `podman` config silently became "run the AFK agent on the host".
+    sandbox: selectSandbox(config),
     cwd: project.repoPath,
     prompt,
     // Temp branch based on the feature branch tip — the feature branch itself

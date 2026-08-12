@@ -84,7 +84,16 @@ const AUTH_MISSING_MESSAGE =
 
 /** What one ticket run resolves to. Aborts are thrown, never returned here. */
 export type TicketOutcome =
-  | { readonly status: 'done'; readonly commits: string[] }
+  | {
+      readonly status: 'done'
+      readonly commits: string[]
+      /**
+       * The agent's own account of the work, harvested from the `DIGEST.md` it
+       * writes just before signalling COMPLETE. Absent when it wrote none —
+       * harvest is best-effort, so the ticket is done either way.
+       */
+      readonly digest?: string
+    }
   | {
       readonly status: 'failed'
       readonly error: string
@@ -551,15 +560,21 @@ export function buildIsolatedSetupCommand(
 
 /**
  * The `{{WORKSPACE_NOTES}}` block for the burner prompt: where the agent must
- * work. Isolated mode redirects it into the native-FS clone and covers the two
+ * work. Isolated mode redirects it into the native-FS clone and covers the
  * places the redirect could otherwise leak (edits in the mounted mirror, a
- * BLOCKED.md the host would never see). Worst case if the agent ignores this
- * and works in the workspace anyway: today's mounted behavior — slow, but
- * correct.
+ * BLOCKED.md the host would never see). DIGEST.md goes the other way — the
+ * mirror in isolated mode, the checkout root in mounted mode — because it is
+ * harvested from disk and must never ride a commit. Worst case if the agent
+ * ignores this and works in the workspace anyway: today's mounted behavior —
+ * slow, but correct.
  */
 export function buildWorkspaceNotes(mode: BurnWorkspaceMode): string {
   if (mode === 'mounted') {
-    return 'Work in the current directory — it is the repo checkout on your branch.'
+    return [
+      'Work in the current directory — it is the repo checkout on your branch.',
+      '',
+      'Write `DIGEST.md` at the root of that checkout, and leave it uncommitted — the host harvests it from disk.',
+    ].join('\n')
   }
   return [
     `Your working repository is \`${ISOLATED_REPO_PATH}\` — a clone on the container's fast native filesystem, with dependencies already installed. Do ALL work there: \`cd ${ISOLATED_REPO_PATH}\` first; every file you read, edit, test, and commit lives under it.`,
@@ -567,6 +582,8 @@ export function buildWorkspaceNotes(mode: BurnWorkspaceMode): string {
     `The directory you start in (\`${SANDBOX_WORKSPACE_PATH}\`) is a slow mounted mirror used only to collect your commits — never edit files, install, or run tests there. Your commits sync back automatically (a post-commit hook pushes them); just commit as normal. If you re-run the dependency install and it reconfigures git hooks (husky), run \`git -C ${ISOLATED_REPO_PATH} config core.hooksPath ${ISOLATED_REPO_PATH}/.git/hooks\` afterwards so the sync hook stays armed.`,
     '',
     `If you are blocked and write \`BLOCKED.md\`, write it at \`${ISOLATED_REPO_PATH}/BLOCKED.md\` AND copy it to \`${SANDBOX_WORKSPACE_PATH}/BLOCKED.md\` so the orchestrator can see it.`,
+    '',
+    `Write \`DIGEST.md\` at \`${SANDBOX_WORKSPACE_PATH}/DIGEST.md\` — the mounted mirror, so the host can see it — and NOT inside \`${ISOLATED_REPO_PATH}\`, where it would be committed with your work.`,
   ].join('\n')
 }
 
@@ -1238,6 +1255,13 @@ export async function landWithResolve(branch: string, deps: LandDeps): Promise<L
 
 type ReadyState = 'ready' | 'wait' | { blockedBy: number; present: boolean }
 
+/** One ticket's harvested digest, tagged with what it is a digest OF. */
+export interface HarvestedDigest {
+  readonly seq: number
+  readonly title: string
+  readonly digest: string
+}
+
 /**
  * The most informative single line of a multi-line error. Git buries the cause
  * under progress noise — a failed `worktree add` starts with "Preparing
@@ -1260,19 +1284,21 @@ function errorHeadline(s: string): string {
  * dependents. Runs up to `concurrency` at once (min 1). Aborts propagate
  * (thrown by `execute`) so the runner finalizes the run as cancelled — with
  * every other in-flight ticket drained first, so no rejection goes unhandled.
- * Returns the count of tickets in `done` state at the end.
+ * Returns the count of tickets in `done` state at the end, plus the digests
+ * harvested along the way (the raw material for this run's aggregate).
  */
 export async function burnTickets(
   ctx: WorkflowCtx,
   tickets: Ticket[],
   execute: (ctx: WorkflowCtx, ticket: Ticket) => Promise<TicketOutcome>,
   concurrency = 1,
-): Promise<number> {
+): Promise<{ done: number; digests: HarvestedDigest[] }> {
   const width = Math.max(1, Math.floor(concurrency))
   const bySeq = indexBySeq(tickets)
   const status = new Map<number, TicketStatus>(tickets.map((t) => [t.seq, t.status]))
   const pending = new Set<number>(tickets.filter((t) => t.status === 'pending').map((t) => t.seq))
   const inFlight = new Map<number, Promise<void>>()
+  const digests: HarvestedDigest[] = []
 
   // A blocker is satisfied when `done` OR `cancelled` — a human cancelled it
   // because the work is unnecessary, so dependents proceed without it.
@@ -1311,13 +1337,24 @@ export async function burnTickets(
     const outcome = await execute(ctx, t) // throws on abort — propagates
     if (outcome.status === 'done') {
       status.set(seq, 'done')
-      ctx.updateTicket(t.id, { status: 'done', commits: outcome.commits })
+      ctx.updateTicket(t.id, { status: 'done', commits: outcome.commits, digest: outcome.digest })
       ctx.emitEvent({
         type: 'ticket.done',
         message: `ticket ${t.seq} done — ${outcome.commits.length} commit(s)`,
         ticketId: t.id,
         data: { commits: outcome.commits },
       })
+      // Never blocks `done` (commits are the ground truth), but the gap belongs
+      // in the timeline: the work record is thinner than it should be.
+      if (outcome.digest === undefined) {
+        ctx.emitEvent({
+          type: 'digest.missing',
+          message: `ticket ${t.seq} done without DIGEST.md`,
+          ticketId: t.id,
+        })
+      } else {
+        digests.push({ seq: t.seq, title: t.title, digest: outcome.digest })
+      }
     } else {
       failTicket(seq, outcome.error, outcome.event)
       ctx.emitEvent({
@@ -1394,12 +1431,26 @@ export async function burnTickets(
 
   let done = 0
   for (const s of status.values()) if (s === 'done') done += 1
-  return done
+  return { done, digests }
 }
 
 // ---------------------------------------------------------------------------
 // Workflow entry — auth precheck, cycle guard, schedule, summarise
 // ---------------------------------------------------------------------------
+
+/**
+ * This run's aggregate: the digests it harvested, in seq order, each under a
+ * header naming the ticket it came from. Strictly mechanical — the server makes
+ * no model calls (decision 5) — and null when the run harvested nothing, so a
+ * run without digests leaves the column alone rather than storing an empty doc.
+ */
+export function composeRunDigest(entries: readonly HarvestedDigest[]): string | null {
+  if (entries.length === 0) return null
+  return [...entries]
+    .sort((a, b) => a.seq - b.seq)
+    .map((e) => `## ticket ${e.seq} — ${e.title}\n\n${e.digest.trim()}`)
+    .join('\n\n')
+}
 
 /**
  * The testable core of the burner: everything except how `BurnDeps` are
@@ -1410,7 +1461,7 @@ export async function burnTickets(
 export async function burnRun(
   ctx: WorkflowCtx,
   deps: BurnDeps,
-): Promise<{ status: 'succeeded' | 'failed'; summary: string }> {
+): Promise<{ status: 'succeeded' | 'failed'; summary: string; digest?: string }> {
   const tickets = ctx.tickets
   // Cancelled tickets never burn and never count against success — but they DO
   // stay in the scheduler's ticket set so dependents can see their blocker is
@@ -1440,11 +1491,15 @@ export async function burnRun(
     return { status: 'failed', summary: `dependency cycle: ${path}` }
   }
 
-  const done = await burnTickets(ctx, tickets, deps.executeTicketRun, deps.concurrency)
+  const { done, digests } = await burnTickets(ctx, tickets, deps.executeTicketRun, deps.concurrency)
   const summary =
     cancelled > 0 ? `${done}/${total} tickets done (${cancelled} cancelled)` : `${done}/${total} tickets done`
   ctx.emitEvent({ type: 'burn.summary', message: summary, data: { done, total, cancelled } })
-  return { status: done === total ? 'succeeded' : 'failed', summary }
+  // The one-liner `summary` stays the run's headline (lists, timelines); the
+  // aggregate rides beside it for the run view. A partially-failed run still
+  // carries the digests of the tickets that did land.
+  const digest = composeRunDigest(digests)
+  return { status: done === total ? 'succeeded' : 'failed', summary, ...(digest ? { digest } : {}) }
 }
 
 // ---------------------------------------------------------------------------
@@ -1483,11 +1538,11 @@ function readDocsDigestFromDisk(projectId: string, slug: string): string {
   return buildDocsDigest(files)
 }
 
-/** First-found `BLOCKED.md` across candidate dirs (worktree first, then repo). */
-function readBlockedFile(dirs: (string | undefined)[]): string | undefined {
+/** First-found `file` across candidate dirs (worktree first, then repo). */
+function readAgentFile(dirs: (string | undefined)[], file: string): string | undefined {
   for (const dir of dirs) {
     if (!dir) continue
-    const p = join(dir, 'BLOCKED.md')
+    const p = join(dir, file)
     if (existsSync(p)) {
       try {
         return readFileSync(p, 'utf8')
@@ -1497,6 +1552,42 @@ function readBlockedFile(dirs: (string | undefined)[]): string | undefined {
     }
   }
   return undefined
+}
+
+/**
+ * The agent's own account of the ticket, from the `DIGEST.md` it writes just
+ * before signalling COMPLETE. Best-effort by contract: a missing file — or one
+ * holding nothing but whitespace — reads as no digest, never as a failure.
+ */
+export function harvestDigest(dirs: (string | undefined)[]): string | undefined {
+  const trimmed = readAgentFile(dirs, 'DIGEST.md')?.trim()
+  return trimmed ? trimmed : undefined
+}
+
+/**
+ * The environment the spawned agent gets, as sandcastle's agent-provider env.
+ *
+ * ON THE HOST it must be the host's own environment plus our overrides, never a
+ * bare `{ CLAUDE_CODE_OAUTH_TOKEN }`: a replacement env drops HOME/USERPROFILE,
+ * and a `claude` with no home writes its state to a LITERAL `~/` under its cwd —
+ * which is how a 284 KB transcript for someone else's project ended up committed
+ * at `packages/server/~/.claude/`.
+ *
+ * IN A CONTAINER the host env must not cross the boundary at all. Both container
+ * providers turn this map into one `-e KEY=VALUE` per entry, so handing them
+ * `process.env` would push a Windows PATH (and TEMP, and SystemRoot) into a Linux
+ * image and break every tool in it. They set HOME themselves, so the `~` failure
+ * this exists to prevent cannot happen there.
+ */
+function buildAgentEnv(onHost: boolean, token: string | undefined): Record<string, string> {
+  const env: Record<string, string> = {}
+  if (onHost) {
+    for (const [key, value] of Object.entries(process.env)) {
+      if (value !== undefined) env[key] = value
+    }
+  }
+  if (token) env.CLAUDE_CODE_OAUTH_TOKEN = token
+  return env
 }
 
 /**
@@ -1527,7 +1618,7 @@ export function buildBurnAgent(
 ): AgentProvider {
   const onHost = config.sandbox === 'noSandbox'
   const opts: ClaudeCodeOptions = {
-    ...(token ? { env: { CLAUDE_CODE_OAUTH_TOKEN: token } } : {}),
+    env: buildAgentEnv(onHost, token),
     ...(onHost ? { permissionMode: 'bypassPermissions' as const } : {}),
   }
   const agent = claudeCode(model, opts)
@@ -1571,8 +1662,16 @@ export function selectSandbox(config: RuncastleConfig, mounts: readonly CacheMou
       return docker(imageOpts)
     case 'podman':
       return podman(imageOpts)
-    default:
+    case 'noSandbox':
       return noSandbox()
+    default:
+      // Only reachable when a sandbox choice gains a config value before it
+      // gains a provider here. Refusing loudly is the point: the old `default:
+      // noSandbox()` turned "I asked for a container" into "the agent ran on
+      // your machine", with nothing said either way.
+      throw new Error(
+        `no sandbox provider for sandbox "${config.sandbox}" — refusing to run the agent unsandboxed`,
+      )
   }
 }
 
@@ -1876,7 +1975,7 @@ async function realExecuteTicketRun(
       await cleanupBurnWorktree(project.repoPath, resolveBranch)
     }
 
-    const blocked = readBlockedFile([result?.preservedWorktreePath, project.repoPath])
+    const blocked = readAgentFile([result?.preservedWorktreePath, project.repoPath], 'BLOCKED.md')
     if (blocked !== undefined && blocked.trim().length > 0) {
       return {
         ok: false,
@@ -1918,6 +2017,15 @@ async function realExecuteTicketRun(
   }
 
   /**
+   * This run's `DIGEST.md`, harvested from the workspace once the agent is done
+   * and read back below when the landing resolves — landing sits between the
+   * agent finishing and the outcome being returned, so the digest has to
+   * survive it. Stays undefined on the conflict-resume path, where no agent
+   * ran and there is nothing to harvest.
+   */
+  let harvestedDigest: string | undefined
+
+  /**
    * Land `branch`, resolving conflicts in-loop, and map the result onto the
    * ticket outcome + the state the next burn needs. Shared by the normal path
    * and the conflict-resume path, so a re-landing behaves identically however
@@ -1929,7 +2037,11 @@ async function realExecuteTicketRun(
       // Landed — nothing is pending on a branch any more, so both resume
       // pointers must go or the next burn would resume an already-merged chain.
       ctx.updateTicket(ticket.id, { attemptBranch: null, conflictFiles: null })
-      return { status: 'done', commits: landedCommits.length > 0 ? landedCommits : commits }
+      return {
+        status: 'done',
+        commits: landedCommits.length > 0 ? landedCommits : commits,
+        digest: harvestedDigest,
+      }
     }
 
     preserveChain(landing.branch)
@@ -2159,7 +2271,10 @@ async function realExecuteTicketRun(
     // commits): a resumed agent that only verified and committed nothing new is
     // still done; one that committed nothing new AND wrote BLOCKED.md failed —
     // its preserved chain stays on the ticket for the next retry.
-    const blocked = readBlockedFile([result.preservedWorktreePath, project.repoPath])
+    const agentFileDirs = [result.preservedWorktreePath, project.repoPath]
+    const blocked = readAgentFile(agentFileDirs, 'BLOCKED.md')
+    // Harvested before the landing, attached after it — see `harvestedDigest`.
+    harvestedDigest = harvestDigest(agentFileDirs)
     const chain = await branchCommitsAhead(project.repoPath, feature.branch, tempBranch)
     let outcome: TicketOutcome
     if (result.commits.length === 0 && blocked !== undefined && blocked.trim().length > 0) {

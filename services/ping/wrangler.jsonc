@@ -1,0 +1,17 @@
+{
+  "name": "runcastle-ping",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-08-11",
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "runcastle-ping",
+      // Placeholder: the real id is printed by `bunx wrangler d1 create
+      // runcastle-ping` — paste it here before the first deploy (README.md).
+      "database_id": "REPLACE_WITH_ID_FROM_WRANGLER_D1_CREATE"
+    }
+  ],
+  // Custom domain: the Worker is the origin, so Cloudflare manages the DNS
+  // record for ping.runcastle.dev itself.
+  "routes": [{ "pattern": "ping.runcastle.dev", "custom_domain": true }]
+}
