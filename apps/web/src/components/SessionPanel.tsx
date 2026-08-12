@@ -2,11 +2,16 @@ import { useEffect, useState } from 'react'
 import type { EventRow } from '@runcastle/core'
 import { trpc } from '../trpc'
 import { useEventLog } from '../lib/events'
-import { awaitingCheckIn, kickoffTrouble, sessionActive, type KickoffTrouble } from '../lib/feature-ui'
+import { awaitingCheckIn, kickoffTrouble, sessionActive, sessionStatusLabel } from '../lib/feature-ui'
 import { useToast } from '../lib/toast'
 import { SessionStatusDot } from '../ui'
 import type { FeatureFull } from '../lib/api'
-import { sessionDoneState, type SessionDoneState, type Waypoint } from '../lib/feature-ui'
+import {
+  sessionDoneState,
+  type KickoffTrouble,
+  type SessionDoneState,
+  type Waypoint,
+} from '../lib/feature-ui'
 import { EndSessionButton } from './EndSessionButton'
 import { ErrorBoundary } from './ErrorBoundary'
 import { TerminalView } from './TerminalView'
@@ -70,9 +75,7 @@ export function SessionPanel({
           {done.kind === 'notDone' ? (
             <>
               <SessionStatusDot status={session.status} />
-              <span className="grill-live-label">
-                {session.status === 'launching' ? 'launching…' : 'live'}
-              </span>
+              <span className="grill-live-label">{sessionStatusLabel(session)}</span>
               <span className="grill-strip-spacer" />
             </>
           ) : (
@@ -117,6 +120,9 @@ function SessionNotices({ featureId, session }: { featureId: string; session: Se
   )
 }
 
+/** How often {@link CheckInHint} re-reads the clock. */
+const CHECK_IN_TICK_MS = 5_000
+
 /**
  * The quiet "the terminal is up, the agent hasn't said hello" line.
  *
@@ -133,9 +139,6 @@ function CheckInHint({ session, events }: { session: Session; events: EventRow[]
   if (!awaitingCheckIn(session, events, now)) return null
   return <div className="session-checkin-hint">agent hasn’t checked in yet</div>
 }
-
-/** How often {@link CheckInHint} re-reads the clock. */
-const CHECK_IN_TICK_MS = 5_000
 
 /** The wall clock, re-read every `intervalMs` so age-derived UI keeps up. */
 function useNow(intervalMs: number): number {

@@ -1,6 +1,7 @@
 import { trpc } from '../trpc'
 import { IconBranch } from '../icons'
 import { Button, DimLine, SessionStatusDot } from '../ui'
+import { sessionStatusLabel } from '../lib/feature-ui'
 import { projectStats } from '../lib/projects'
 import { useLivePoll } from '../lib/live'
 import { PROJECT_BRANCH, projectBranchNote } from '../lib/project-workspace'
@@ -84,9 +85,7 @@ export function ProjectWorkspace({
               <div className="grill-strip">
                 <span className="grill-kind">project</span>
                 <SessionStatusDot status={session.status} />
-                <span className="grill-live-label">
-                  {session.status === 'launching' ? 'launching…' : 'live'}
-                </span>
+                <span className="grill-live-label">{sessionStatusLabel(session)}</span>
                 <span className="grill-strip-spacer" />
                 <span className="grill-sid" title={session.ccSessionId ?? session.id}>
                   {(session.ccSessionId ?? session.id).slice(0, 8)}

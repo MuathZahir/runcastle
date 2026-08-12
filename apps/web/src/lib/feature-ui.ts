@@ -811,6 +811,16 @@ export function sessionActive(session: { status: string }): boolean {
   return session.status === 'launching' || session.status === 'live'
 }
 
+/**
+ * The session strip's word for an active session — the ONE thing the two
+ * statuses are allowed to read differently, because here the distinction is the
+ * whole point: `launching…` says the terminal is up and the agent has not
+ * checked in yet, `live` says it has. Every strip says it identically.
+ */
+export function sessionStatusLabel(session: { status: string }): string {
+  return session.status === 'launching' ? 'launching…' : 'live'
+}
+
 /** The feature's active session ({@link sessionActive}), if it has one. */
 export function activeSession<T extends { status: string }>(
   sessions: readonly T[],

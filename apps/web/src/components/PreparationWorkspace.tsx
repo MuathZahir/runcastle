@@ -1,4 +1,5 @@
 import { trpc } from '../trpc'
+import { sessionStatusLabel } from '../lib/feature-ui'
 import { useLivePoll } from '../lib/live'
 import { useToast } from '../lib/toast'
 import { Button, DimLine, SessionStatusDot } from '../ui'
@@ -118,9 +119,7 @@ export function PreparationWorkspace({
               <div className="grill-strip">
                 <span className="grill-kind">prepare</span>
                 <SessionStatusDot status={session.status} />
-                <span className="grill-live-label">
-                  {session.status === 'launching' ? 'launching…' : 'live'}
-                </span>
+                <span className="grill-live-label">{sessionStatusLabel(session)}</span>
                 <span className="grill-strip-spacer" />
                 <span className="grill-sid" title={session.ccSessionId ?? session.id}>
                   {(session.ccSessionId ?? session.id).slice(0, 8)}

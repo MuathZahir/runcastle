@@ -17,6 +17,7 @@ import {
   rowChip,
   sessionActive,
   sessionDoneState,
+  sessionStatusLabel,
   shippedAt,
   shippedQaSessions,
   sortForSidebar,
@@ -247,6 +248,12 @@ describe('sessionActive', () => {
 
   it('does not count an ended session', () => {
     expect(sessionActive({ status: 'ended' })).toBe(false)
+  })
+
+  // The one place the two active statuses are read apart, and only for wording.
+  it('labels a strip by whether the agent has checked in', () => {
+    expect(sessionStatusLabel({ status: 'launching' })).toBe('launching…')
+    expect(sessionStatusLabel({ status: 'live' })).toBe('live')
   })
 
   it('finds the active session among ended ones, and none when there is none', () => {
