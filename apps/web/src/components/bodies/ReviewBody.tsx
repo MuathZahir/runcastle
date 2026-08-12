@@ -9,6 +9,7 @@ import {
   latestRun,
   mergeConflictKickoff,
   reviewChecks,
+  sessionActive,
   type MergeConflictState,
 } from '../../lib/feature-ui'
 import { fmtDateTime, relTime } from '../../lib/format'
@@ -59,7 +60,7 @@ export function ReviewBody({
   // Live-only: the conflict card's "Resolve with agent" spawns a terminal, and
   // one terminal per feature — an ENDED session (which the panel still renders,
   // with its Resume) must not hide it.
-  const sessionLive = full.sessions.some((s) => s.status === 'live' || s.status === 'launching')
+  const sessionLive = full.sessions.some(sessionActive)
   const run = latestRun(runs)
   const isDriving = driving?.featureId === feature.id
   // Commits come from git, not from ticket commit rows (findings F23). Polled

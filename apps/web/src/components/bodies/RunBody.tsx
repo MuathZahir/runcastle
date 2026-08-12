@@ -5,7 +5,7 @@ import { useToast } from '../../lib/toast'
 import { eventLevel } from '../../lib/activity'
 import { useEventLog } from '../../lib/events'
 import { useLivePoll } from '../../lib/live'
-import { ticketConflictKickoff } from '../../lib/feature-ui'
+import { sessionActive, ticketConflictKickoff } from '../../lib/feature-ui'
 import { fmtDuration, fmtTime, shortSha } from '../../lib/format'
 import { BURN_EXPLAINER } from '../../lib/vocabulary'
 import { DimLine, EmptyState, RunStatusChip, TicketStatusChip } from '../../ui'
@@ -69,7 +69,7 @@ export function RunBody({
   // conversation from here is the bar's Revisit (which resumes it), not an
   // ideation terminal reopened three phases late.
   const sessions = feature.data?.sessions ?? []
-  const live = sessions.some((s) => s.status === 'live' || s.status === 'launching')
+  const live = sessions.some(sessionActive)
   // A conflict lane's "Resolve in terminal" spawns an HITL session, which the
   // launcher refuses while a run holds the feature branch or another terminal
   // is open — so the lane greys the button rather than offering a certain error.
