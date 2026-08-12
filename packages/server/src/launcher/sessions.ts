@@ -669,6 +669,9 @@ const landedProjectSessions = new Set<string>()
  */
 const inFlightLandings = new Set<Promise<void>>()
 
+/** What becomes of work a landing could not place — the same in every report. */
+const LANDING_KEPT = `they are kept on ${PROJECT_BRANCH} and retried at the next launch`
+
 /**
  * Resolve once every landing kicked off so far has finished — including any
  * started while we were waiting. Never rejects: a landing reports its own
@@ -724,9 +727,6 @@ export function landProjectSession(ctx: AppCtx, session: SessionRow): void {
   inFlightLandings.add(landing)
   void landing.finally(() => inFlightLandings.delete(landing))
 }
-
-/** What becomes of work a landing could not place — the same in every report. */
-const LANDING_KEPT = `they are kept on ${PROJECT_BRANCH} and retried at the next launch`
 
 /**
  * Put a project-branch landing on the project's timeline.
