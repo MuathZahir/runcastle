@@ -322,7 +322,7 @@ describe('renderSystemPrompt', () => {
    * emitted a ticket to carry it instead, so the feature never worked.
    */
   it('tells the conflict-resolution revisit that it does write code here', () => {
-    const p = renderSystemPrompt(feature({ phase: 'review' }), 'revisit', undefined, undefined, 'conflict')
+    const p = renderSystemPrompt(feature({ phase: 'review' }), 'revisit', undefined, undefined, 'resolve-conflict')
     expect(p).not.toMatch(/Talk sessions do not write code/)
     expect(p).toMatch(/resolves a merge conflict, so it DOES write code/i)
     // the exception is bounded: other work still rides a ticket

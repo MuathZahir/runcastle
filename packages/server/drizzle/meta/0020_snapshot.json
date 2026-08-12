@@ -1,8 +1,8 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "5aac2d84-f76f-4206-bc72-a08af1ca1c4f",
-  "prevId": "634dbf6d-fc19-4122-9d1d-43d0ee3430f7",
+  "id": "da51180a-a46f-497c-97b3-8466fe1561a2",
+  "prevId": "5aac2d84-f76f-4206-bc72-a08af1ca1c4f",
   "tables": {
     "events": {
       "name": "events",
@@ -79,7 +79,24 @@
           "autoincrement": false
         }
       },
-      "indexes": {},
+      "indexes": {
+        "events_project_id_id_idx": {
+          "name": "events_project_id_id_idx",
+          "columns": [
+            "project_id",
+            "id"
+          ],
+          "isUnique": false
+        },
+        "events_feature_id_id_idx": {
+          "name": "events_feature_id_id_idx",
+          "columns": [
+            "feature_id",
+            "id"
+          ],
+          "isUnique": false
+        }
+      },
       "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},

@@ -3,6 +3,7 @@ import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type {
   Feature,
+  MergeBranchPair,
   Project,
   Run,
   SessionKind,
@@ -54,7 +55,6 @@ import {
   planKickoff,
   resumeKickoffLine,
   setKickoffOverride,
-  setSessionPurpose,
 } from './sessions'
 
 // Re-exported for the `feature.resendKickoff` router: the launcher is the stable
@@ -104,12 +104,14 @@ export interface LaunchSessionInput {
    */
   kickoffLine?: string
   /**
-   * Why this session is being opened, where that changes what it may do. The
-   * conflict-resolution launches pass `conflict` — the session ADR-0007 §6
-   * designs, which resolves the merge on the feature branch and so must be
-   * allowed to write code (E2E F18). Absent reads as `talk`.
+   * The errand this session is opened on, when its `kind` cannot express it.
+   * Both conflict-resolve launch sites pass `resolve-conflict` (with the branch
+   * pair below), which is what lets the edit guard exempt the session's writes
+   * while the merge is in progress — the kickoff briefs it to resolve and commit.
    */
   purpose?: SessionPurpose
+  /** The merge a `resolve-conflict` session is about (base → feature, or ticket branch → feature). */
+  purposeData?: MergeBranchPair
 }
 
 export interface LaunchSessionOptions {
@@ -386,6 +388,8 @@ export async function launchSession(
   const session = createSessionRow(ctx, {
     featureId: feature.id,
     kind: input.kind,
+    purpose: input.purpose,
+    purposeData: input.purposeData,
     worktreePath,
   })
 
@@ -470,9 +474,6 @@ export async function launchSession(
   // the agent continues the conversation rather than restarting its opening move.
   const kickoffLine = plan.line ?? (resumeSessionId ? resumeKickoffLine(input.kind) : undefined)
   if (kickoffLine) setKickoffOverride(session.id, kickoffLine)
-  // Registered against the session id for the same reason, and read by the edit
-  // guard on every PreToolUse for the life of the session.
-  if (input.purpose) setSessionPurpose(session.id, input.purpose)
 
   emit(ctx, feature.id, {
     type: 'session.launching',

@@ -97,19 +97,21 @@ export function noCodeRule(docs: string): string {
 }
 
 /**
- * The rule that REPLACES {@link noCodeRule} for the conflict-resolution session
+ * The rule that REPLACES {@link noCodeRule} for the resolve-conflict session
  * (ADR-0007 §6). Its whole job is to merge the base branch in and resolve the
  * conflicts, which is code — and the blanket ban is why it could not: told to
  * resolve and then told edits are denied, the agent believed the rule, aborted
  * the merge and emitted a ticket to carry it instead (E2E F18). The guard now
- * allows these writes; this is the same truth in the briefing.
+ * allows these writes while the merge is in progress; this is the same truth
+ * in the briefing.
  */
 export function conflictResolutionRule(): string {
   return (
     '- **This session resolves a merge conflict, so it DOES write code here.** Edit the ' +
     'conflicted files in this checkout, resolving them from the feature docs’ intent, and ' +
-    'commit the merge. That is the exception and its whole extent: work the merge revealed ' +
-    'but did not cause still rides a ticket, and writes outside this worktree are denied.'
+    'commit the merge. That is the exception and its whole extent: the edit guard exempts ' +
+    'writes only while the merge is in progress, so work the merge revealed but did not ' +
+    'cause still rides a ticket.'
   )
 }
 
@@ -387,7 +389,7 @@ export function renderRevisitPrompt(
     '- Docs first, tickets second: capture the decision prose before any ticket surgery.',
     // The conflict-resolution revisit is briefed to resolve the merge, so the
     // blanket ban would contradict the very kickoff it was opened with (F18).
-    purpose === 'conflict' ? conflictResolutionRule() : noCodeRule(docs),
+    purpose === 'resolve-conflict' ? conflictResolutionRule() : noCodeRule(docs),
     '',
     '## Your task',
     'Invoke the `/runcastle:revisit` skill and work through what the human brings up.',

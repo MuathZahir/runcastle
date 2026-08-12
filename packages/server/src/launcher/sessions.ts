@@ -1,4 +1,4 @@
-import type { SessionKind, SessionPurpose, SessionRow } from '@runcastle/core'
+import type { MergeBranchPair, SessionKind, SessionPurpose, SessionRow } from '@runcastle/core'
 import { newId } from '@runcastle/core'
 import { and, desc, eq, inArray, isNotNull, sql } from 'drizzle-orm'
 import type { AppCtx } from '../db/types'
@@ -25,6 +25,10 @@ import { getFeatureRow, getProjectById, rowToSession } from '../services/repo'
 export type CreateSessionInput = {
   kind: SessionKind
   worktreePath: string
+  /** The errand this session was opened on, when `kind` cannot say it (see {@link SessionPurpose}). */
+  purpose?: SessionPurpose
+  /** The purpose's data — for `resolve-conflict`, the branch pair being merged. */
+  purposeData?: MergeBranchPair
 } & ({ featureId: string; projectId?: never } | { projectId: string; featureId?: never })
 
 /** Insert a fresh session row in the `launching` state; returns it (with id). */
@@ -39,6 +43,8 @@ export function createSessionRow(ctx: AppCtx, input: CreateSessionInput): Sessio
       // `prepare` session has no feature to take one from (ADR-0010 §7).
       lap: input.featureId ? getFeatureRow(ctx, input.featureId).lap : 1,
       kind: input.kind,
+      purpose: input.purpose ?? null,
+      purposeData: input.purposeData ?? null,
       ccSessionId: null,
       transcriptPath: null,
       status: 'launching',
@@ -332,25 +338,6 @@ export function setKickoffOverride(sessionId: string, line: string): void {
 }
 
 /**
- * Why each session was launched, for the launches where it changes what the
- * session may do — today only the conflict-resolution revisit, which the edit
- * guard lets write code (see {@link evaluateEditGuard}). In memory beside the
- * kickoff state and dropped with it: a session's PTY is this process's child, so
- * no session outlives the map.
- */
-const sessionPurposes = new Map<string, SessionPurpose>()
-
-/** Record why this session was launched; `talk` needs no entry. */
-export function setSessionPurpose(sessionId: string, purpose: SessionPurpose): void {
-  sessionPurposes.set(sessionId, purpose)
-}
-
-/** Why this session was launched — `talk` unless the launch said otherwise. */
-export function sessionPurpose(sessionId: string): SessionPurpose {
-  return sessionPurposes.get(sessionId) ?? 'talk'
-}
-
-/**
  * The two-write kickoff sequence (exported seam, unit-tested): write the prompt
  * TEXT alone, then — after `submitDelayMs` — write `\r` as its own keystroke.
  * `alive()` is consulted before each write so a PTY that exits between the two
@@ -423,7 +410,6 @@ export function forgetKickoff(sessionId: string): void {
   if (d) stopTimers(d)
   deliveries.delete(sessionId)
   pendingKickoffOverrides.delete(sessionId)
-  sessionPurposes.delete(sessionId)
 }
 
 function ptyIo(sessionId: string): { write: (data: string) => void; alive: () => boolean } {

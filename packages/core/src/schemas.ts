@@ -93,17 +93,31 @@ export function isProjectSessionKind(kind: SessionKind): boolean {
 }
 
 /**
- * Why a session was launched, where that changes what the session may DO (its
- * kind stays what it is — a conflict-resolution session is still a `revisit`).
+ * Why a session was opened, when that differs from what its `kind` can say.
+ * Orthogonal to `kind`: a resolve-conflict session is still a `revisit`, it just
+ * carries an errand the guard has to know about.
  *
- * `talk` is every ordinary conversation: it writes its feature's docs and
- * nothing else. `conflict` is the conflict-resolution session ADR-0007 §6
- * designs — a revisit briefed to merge the base branch in and resolve the
- * conflicts, which means editing code on the feature branch, which the
- * talk-session edit guard otherwise denies (E2E F18).
+ * `resolve-conflict` — opened by "Resolve with agent" (the review conflict card)
+ * or "Resolve in terminal" (the run lane) to land a merge the pipeline could not.
+ * Its briefing tells the agent to merge, resolve and commit, so the edit guard
+ * lets it write files while that merge is actually in progress in its worktree
+ * (see `evaluateEditGuard`) — the one exemption a talk session ever gets.
  */
-export const SessionPurpose = z.enum(['talk', 'conflict'])
+export const SessionPurpose = z.enum(['resolve-conflict'])
 export type SessionPurpose = z.infer<typeof SessionPurpose>
+
+/**
+ * The merge a `resolve-conflict` session is about — carried on the session so
+ * the session-end probe knows which pair to check without re-deriving it. The
+ * review card resolves base → feature; the run lane resolves ticket branch →
+ * feature.
+ */
+export const MergeBranchPair = z.object({
+  mergeFrom: z.string(),
+  mergeInto: z.string(),
+})
+export type MergeBranchPair = z.infer<typeof MergeBranchPair>
+
 
 export const RunStatus = z.enum(['running', 'succeeded', 'failed', 'cancelled'])
 export type RunStatus = z.infer<typeof RunStatus>
@@ -404,6 +418,10 @@ export const SessionRow = z.object({
   /** Set on project-scoped sessions only; feature sessions derive it via the feature. */
   projectId: z.string().optional(),
   kind: SessionKind,
+  /** Why this session was opened, when `kind` cannot say it — see {@link SessionPurpose}. */
+  purpose: SessionPurpose.optional(),
+  /** The merge a `resolve-conflict` session is about; unset for every other purpose. */
+  purposeData: MergeBranchPair.optional(),
   ccSessionId: z.string().optional(),
   transcriptPath: z.string().optional(),
   status: SessionStatus,

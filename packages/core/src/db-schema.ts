@@ -2,9 +2,11 @@ import { index, integer, primaryKey, sqliteTable, text } from 'drizzle-orm/sqlit
 import type {
   FeatureStatus,
   FindingSource,
+  MergeBranchPair,
   Phase,
   RunStatus,
   SessionKind,
+  SessionPurpose,
   SessionStatus,
   TestNoteStatus,
   TicketStatus,
@@ -165,6 +167,18 @@ export const sessions = sqliteTable('sessions', {
    */
   lap: integer('lap').notNull().default(1),
   kind: text('kind').notNull().$type<SessionKind>(),
+  /**
+   * The errand this session was opened on, when `kind` cannot express it — null
+   * for the ordinary launches, which is every session created before this
+   * column existed. Additive + nullable, so the migration cannot fail.
+   */
+  purpose: text('purpose').$type<SessionPurpose>(),
+  /**
+   * The data that purpose needs: for `resolve-conflict`, the branch pair the
+   * merge is between. Stored rather than re-derived because the session-end
+   * probe runs long after the launch click that knew it.
+   */
+  purposeData: text('purpose_data', { mode: 'json' }).$type<MergeBranchPair>(),
   ccSessionId: text('cc_session_id'),
   transcriptPath: text('transcript_path'),
   status: text('status').notNull().$type<SessionStatus>(),

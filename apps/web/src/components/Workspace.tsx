@@ -329,9 +329,12 @@ export function Workspace({
             featureId,
             kind: 'revisit',
             kickoffLine: mergeConflictKickoff(conflict.base, feature.branch, conflict.files),
-            // Resolving means editing the conflicted files, which the talk-session
-            // edit guard denies unless the launch says what it is for (E2E F18).
-            purpose: 'conflict',
+            // Same session the conflict card launches, so it carries the same
+            // purpose: the guard exempts its writes while this merge is in
+            // progress, and its end is when the server checks whether the merge
+            // landed and clears the conflict.
+            purpose: 'resolve-conflict',
+            purposeData: { mergeFrom: conflict.base, mergeInto: feature.branch },
           })
         }
         break
