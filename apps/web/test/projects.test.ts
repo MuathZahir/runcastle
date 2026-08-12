@@ -1,5 +1,12 @@
-import { describe, expect, it } from 'vitest'
-import { aggregateRuns, initialView, projectStats, repoOpenFailure } from '../src/lib/projects'
+import { afterEach, describe, expect, it } from 'vitest'
+import {
+  aggregateRuns,
+  initialView,
+  projectStats,
+  repoOpenFailure,
+  restoredView,
+} from '../src/lib/projects'
+import { readStoredNav, writeStoredNav } from '../src/lib/use-project-nav'
 import type { FeatureListItem } from '../src/lib/api'
 import type { Project } from '../src/lib/api'
 
@@ -47,6 +54,106 @@ describe('initialView', () => {
       view: 'home',
       projectId: null,
     })
+  })
+})
+
+/**
+ * Refresh used to cost the user their place: the landing was re-derived from
+ * open-project count every load, so anyone with two projects open came back to
+ * the chooser. Where you were is persisted now (decision 3) — these tests drive
+ * the real localStorage round-trip the hook does on boot, then hand what it read
+ * to the rule that resolves the landing.
+ */
+describe('restored navigation', () => {
+  const NAV_KEY = 'runcastle.project.v1'
+  const both = [proj('proj_a'), proj('proj_b')]
+  const realStorage = Object.getOwnPropertyDescriptor(globalThis, 'localStorage')
+
+  /** The node test env has no DOM; the nav store needs only these methods. */
+  function fakeStorage(entries: Record<string, string> = {}) {
+    const map = new Map(Object.entries(entries))
+    return {
+      get length() {
+        return map.size
+      },
+      clear: () => map.clear(),
+      getItem: (k: string) => map.get(k) ?? null,
+      key: (i: number) => [...map.keys()][i] ?? null,
+      removeItem: (k: string) => void map.delete(k),
+      setItem: (k: string, v: string) => void map.set(k, v),
+    }
+  }
+
+  function storage(entries: Record<string, string> = {}): void {
+    Object.defineProperty(globalThis, 'localStorage', {
+      value: fakeStorage(entries),
+      configurable: true,
+      writable: true,
+    })
+  }
+
+  afterEach(() => {
+    if (realStorage) Object.defineProperty(globalThis, 'localStorage', realStorage)
+    else delete (globalThis as { localStorage?: unknown }).localStorage
+  })
+
+  it('comes back to the project you were in, without passing the chooser', () => {
+    storage()
+    writeStoredNav({ view: 'project', projectId: 'proj_b' })
+    expect(restoredView(both, readStoredNav())).toEqual({ view: 'project', projectId: 'proj_b' })
+  })
+
+  it('keeps a deliberate visit to the chooser, so reload stays on it', () => {
+    storage()
+    writeStoredNav({ view: 'home' })
+    expect(restoredView(both, readStoredNav())).toEqual({ view: 'home', projectId: null })
+    // Even against the count rule, which would otherwise walk straight in.
+    expect(restoredView([proj('proj_a')], readStoredNav())).toEqual({
+      view: 'home',
+      projectId: null,
+    })
+  })
+
+  it('falls back to the landing rule when the stored project is gone', () => {
+    storage({ [NAV_KEY]: JSON.stringify({ view: 'project', projectId: 'proj_closed' }) })
+    expect(restoredView(both, readStoredNav())).toEqual({ view: 'home', projectId: null })
+    expect(restoredView([proj('proj_a')], readStoredNav())).toEqual({
+      view: 'project',
+      projectId: 'proj_a',
+    })
+  })
+
+  it('falls back to the landing rule when nothing is stored', () => {
+    storage()
+    expect(readStoredNav()).toBeNull()
+    expect(restoredView(both, readStoredNav())).toEqual({ view: 'home', projectId: null })
+  })
+
+  it('treats corrupted or unusable storage as nothing stored', () => {
+    storage({ [NAV_KEY]: '{half-written' })
+    expect(readStoredNav()).toBeNull()
+    storage({ [NAV_KEY]: JSON.stringify({ view: 'project' }) }) // no id
+    expect(readStoredNav()).toBeNull()
+    expect(restoredView(both, readStoredNav())).toEqual({ view: 'home', projectId: null })
+  })
+
+  it('survives storage being unavailable at all (private mode)', () => {
+    delete (globalThis as { localStorage?: unknown }).localStorage
+    expect(readStoredNav()).toBeNull()
+    expect(() => writeStoredNav({ view: 'home' })).not.toThrow()
+  })
+
+  // The create/import flow is somewhere you pass through, not a place to be
+  // returned to — a stored 'open' is not written by the hook, and is ignored.
+  it('never restores the open-a-project flow', () => {
+    storage({ [NAV_KEY]: JSON.stringify({ view: 'open', projectId: null }) })
+    expect(readStoredNav()).toBeNull()
+    expect(restoredView(both, readStoredNav())).toEqual({ view: 'home', projectId: null })
+  })
+
+  it('leaves the fresh install on the open-a-project flow whatever is stored', () => {
+    storage({ [NAV_KEY]: JSON.stringify({ view: 'home' }) })
+    expect(restoredView([], readStoredNav())).toEqual({ view: 'open', projectId: null })
   })
 })
 
