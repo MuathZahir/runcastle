@@ -68,7 +68,7 @@ export function ReviewBody({
   // only moves when a burn lands, and a human reads a card, not a ticker.
   const commits = trpc.feature.commitCount.useQuery(
     { featureId: feature.id },
-    { refetchInterval: 5000 },
+    { refetchInterval: useLivePoll(5000) },
   )
   const drive = trpc.feature.driveInfo.useQuery(undefined, { refetchInterval: useLivePoll() })
   // The drive slot is shared with preparation's dry run, which belongs to no

@@ -76,7 +76,10 @@ export function Workspace({
   const driveTaken = testDriveTaken(events)
   // Commits from git, for the confirmation's summary (same key as the review
   // body's read — one fetch between them).
-  const commits = trpc.feature.commitCount.useQuery({ featureId }, { refetchInterval: 5000 })
+  const commits = trpc.feature.commitCount.useQuery(
+    { featureId },
+    { refetchInterval: useLivePoll(5000) },
+  )
   // Test-drive notes, for the confirmation's open-notes line — same query key the
   // review body's checklist reads, so the two share one fetch.
   const notes = trpc.notes.list.useQuery({ featureId }, { refetchInterval: useLivePoll() })
