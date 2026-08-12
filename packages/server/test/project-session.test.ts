@@ -23,6 +23,7 @@ import { listByProject } from '../src/services/events'
 import { PROJECT_BRANCH, ensureProjectWorktree } from '../src/services/git'
 import { createCallerFactory } from '../src/trpc/context'
 import { appRouter } from '../src/trpc/router'
+import { useDataDir } from './helpers/data-dir'
 import { makeTestCtx } from './helpers/db'
 import { seedProject } from './helpers/fixtures'
 
@@ -178,16 +179,12 @@ describe('ensureProjectWorktree', () => {
   let project: Project
   let repoPath: string
   const cleanup: string[] = []
-  let prevHome: string | undefined
-  let prevUserProfile: string | undefined
+  let restoreDataDir: () => void
 
   beforeEach(async () => {
     const home = mkdtempSync(join(tmpdir(), 'rc-proj-home-'))
     cleanup.push(home)
-    prevHome = process.env.HOME
-    prevUserProfile = process.env.USERPROFILE
-    process.env.HOME = home
-    process.env.USERPROFILE = home
+    restoreDataDir = useDataDir(home)
 
     ctx = await makeTestCtx()
     repoPath = mkdtempSync(join(tmpdir(), 'rc-proj-repo-'))
@@ -197,8 +194,7 @@ describe('ensureProjectWorktree', () => {
   })
 
   afterEach(() => {
-    process.env.HOME = prevHome
-    process.env.USERPROFILE = prevUserProfile
+    restoreDataDir()
     removeAll(cleanup)
   })
 
@@ -267,16 +263,12 @@ describe('launching, resuming and landing a project session', () => {
   let project: Project
   let repoPath: string
   const cleanup: string[] = []
-  let prevHome: string | undefined
-  let prevUserProfile: string | undefined
+  let restoreDataDir: () => void
 
   beforeEach(async () => {
     const home = mkdtempSync(join(tmpdir(), 'rc-projlaunch-home-'))
     cleanup.push(home)
-    prevHome = process.env.HOME
-    prevUserProfile = process.env.USERPROFILE
-    process.env.HOME = home
-    process.env.USERPROFILE = home
+    restoreDataDir = useDataDir(home)
 
     ctx = await makeTestCtx()
     repoPath = mkdtempSync(join(tmpdir(), 'rc-projlaunch-repo-'))
@@ -293,8 +285,7 @@ describe('launching, resuming and landing a project session', () => {
   // cannot stand in for this — there would be nothing to poll for.
   afterEach(async () => {
     await awaitProjectLandings()
-    process.env.HOME = prevHome
-    process.env.USERPROFILE = prevUserProfile
+    restoreDataDir()
     removeAll(cleanup)
   })
 

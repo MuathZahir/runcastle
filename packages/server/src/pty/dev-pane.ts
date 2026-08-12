@@ -1,6 +1,5 @@
 import type { AppCtx } from '../db/types'
 import { emitScoped, type EmitScope } from '../services/events'
-import type { PtySession } from './pty'
 import { ptyRegistry, type TerminalSink } from './registry'
 
 /**
@@ -149,39 +148,15 @@ export function devPaneLive(paneId: string): boolean {
   return !!entry && !entry.exited
 }
 
-/** How long a tree-kill may take before the stop gives up and proceeds anyway. */
-const KILL_TREE_TIMEOUT_MS = 5000
-
 /**
- * Tree-kill the pane's process tree, bounded. The backend owns the pid (see the
- * file header); all we own is the deadline — a `taskkill` that hangs must not
- * wedge the drive-stop mutation that is waiting on us, so on timeout the stop
- * proceeds regardless. Never rejects: teardown is best-effort, as it always was.
- */
-function killTreeBounded(pty: PtySession): Promise<void> {
-  return new Promise((resolve) => {
-    const timer = setTimeout(resolve, KILL_TREE_TIMEOUT_MS)
-    void pty
-      .killTree()
-      .catch(() => {})
-      .then(() => {
-        clearTimeout(timer)
-        resolve()
-      })
-  })
-}
-
-/**
- * Kill a drive's dev pane and forget it. The process TREE dies first, so the dev
- * server has freed its port by the time the caller's teardown hook runs; then the
- * registry kill (attached sinks still get their `ended` status frame from the
- * PTY's own exit), then removal. Idempotent — a no-op for an unknown /
+ * Kill a drive's dev pane and forget it. The registry's awaited teardown kills
+ * the process TREE first, so the dev server has freed its port by the time the
+ * caller's teardown hook runs (attached sinks still get their `ended` status
+ * frame from the PTY's own exit). Idempotent — a no-op for an unknown /
  * already-dead pane.
  */
 export async function stopDevPane(paneId: string): Promise<void> {
   const reg = ptyRegistry()
-  const entry = reg.get(paneId)
-  if (entry && !entry.exited) await killTreeBounded(entry.pty)
-  reg.kill(paneId)
+  await reg.killTree(paneId)
   reg.remove(paneId)
 }

@@ -1,11 +1,5 @@
-import type {
-  Feature,
-  FeatureStatus,
-  Phase,
-  Project,
-  Run,
-  SessionRow,
-} from '@runcastle/core'
+import type { FeatureStatus, Phase } from '@runcastle/core'
+import { Feature, Project, Run, SessionRow } from '@runcastle/core'
 import { and, desc, eq } from 'drizzle-orm'
 import type { AppCtx } from '../db/types'
 import { features, projects, runs, sessions } from '../db/schema'
@@ -18,6 +12,14 @@ import { emit } from './events'
  * Keeping these here (rather than in `features.ts`) breaks the would-be import
  * cycle between `features` and `gates` — both depend on `repo`, neither on the
  * other.
+ *
+ * Every mapper returns `Schema.parse(...)`, so the row→wire seam is where a row
+ * that violates the domain contract stops. Drizzle's `$type<Phase>()` is a
+ * compile-time cast with no runtime constraint, which means a value no build
+ * recognises — a newer server's enum member, a hand-edited column, a bad import
+ * — reads back as a well-typed lie and falls through every exhaustive switch
+ * downstream at once (findings F19). Parsing here turns that into one named,
+ * contained error. Deliberately uncaught: a corrupt row is not a degraded read.
  */
 
 type FeatureSelect = typeof features.$inferSelect
@@ -26,7 +28,7 @@ type RunSelect = typeof runs.$inferSelect
 type SessionSelect = typeof sessions.$inferSelect
 
 export function rowToFeature(row: FeatureSelect): Feature {
-  return {
+  return Feature.parse({
     id: row.id,
     projectId: row.projectId,
     slug: row.slug,
@@ -39,11 +41,11 @@ export function rowToFeature(row: FeatureSelect): Feature {
     baseBranch: row.baseBranch ?? undefined,
     status: row.status,
     createdAt: row.createdAt,
-  }
+  })
 }
 
 export function rowToProject(row: ProjectSelect): Project {
-  return {
+  return Project.parse({
     id: row.id,
     name: row.name,
     repoPath: row.repoPath,
@@ -57,11 +59,12 @@ export function rowToProject(row: ProjectSelect): Project {
     driveSetupCommand: row.driveSetupCommand ?? undefined,
     driveStopCommand: row.driveStopCommand ?? undefined,
     driveEnv: row.driveEnv ?? undefined,
-  }
+    closedAt: row.closedAt ?? undefined,
+  })
 }
 
 export function rowToRun(row: RunSelect): Run {
-  return {
+  return Run.parse({
     id: row.id,
     featureId: row.featureId,
     workflow: row.workflow,
@@ -69,11 +72,11 @@ export function rowToRun(row: RunSelect): Run {
     startedAt: row.startedAt,
     endedAt: row.endedAt ?? undefined,
     summary: row.summary ?? undefined,
-  }
+  })
 }
 
 export function rowToSession(row: SessionSelect): SessionRow {
-  return {
+  return SessionRow.parse({
     id: row.id,
     featureId: row.featureId ?? undefined,
     projectId: row.projectId ?? undefined,
@@ -85,7 +88,7 @@ export function rowToSession(row: SessionSelect): SessionRow {
     status: row.status,
     awaitingInput: row.awaitingInput,
     worktreePath: row.worktreePath,
-  }
+  })
 }
 
 // --- reads ------------------------------------------------------------------

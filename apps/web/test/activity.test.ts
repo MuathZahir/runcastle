@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { EventRow } from '@runcastle/core'
-import { activityLine, stripMarkdown } from '../src/lib/activity'
+import { activityLine, eventLevel, stripMarkdown } from '../src/lib/activity'
 
 /**
  * Findings F10.5 / F18 — the activity feed leaked agent internals (`Bash cd
@@ -96,5 +96,54 @@ describe('activityLine', () => {
 
   it('never renders an empty row', () => {
     expect(activityLine(ev({ type: 'phase.advanced', message: '' })).summary).toBe('phase.advanced')
+  })
+})
+
+/**
+ * REPORT 1.5 — the run stream matched `/finished/` against the event TYPE, so
+ * `run.finished` painted green whatever the burn actually did, while the desktop
+ * notification read the same event's payload and said "Burn failed".
+ */
+describe('eventLevel', () => {
+  it('reads a failed burn off the payload, not the type keyword', () => {
+    expect(
+      eventLevel(
+        ev({
+          type: 'run.finished',
+          message: 'run failed: ticket 2 never landed',
+          data: { status: 'failed', summary: 'ticket 2 never landed' },
+        }),
+      ),
+    ).toBe('error')
+  })
+
+  it('paints a cancelled burn as an outcome to notice too', () => {
+    expect(
+      eventLevel(ev({ type: 'run.finished', data: { status: 'cancelled', summary: 'stopped' } })),
+    ).toBe('error')
+  })
+
+  it('still paints a succeeded burn green', () => {
+    expect(
+      eventLevel(ev({ type: 'run.finished', data: { status: 'succeeded', summary: 'all done' } })),
+    ).toBe('ok')
+  })
+
+  it('falls back to the type keywords for events that carry no status', () => {
+    expect(eventLevel(ev({ type: 'burn.started' }))).toBe('active')
+    expect(eventLevel(ev({ type: 'ticket.failed' }))).toBe('error')
+    expect(eventLevel(ev({ type: 'feature.shipped' }))).toBe('ok')
+    expect(eventLevel(ev({ type: 'session.launched' }))).toBe('active')
+    expect(eventLevel(ev({ type: 'feature.created' }))).toBe('info')
+  })
+
+  it('keeps in-loop conflict resolution readable as progress', () => {
+    expect(eventLevel(ev({ type: 'merge.conflict.resolving' }))).toBe('active')
+    expect(eventLevel(ev({ type: 'merge.conflict.resolved' }))).toBe('ok')
+    expect(eventLevel(ev({ type: 'merge.conflict' }))).toBe('error')
+  })
+
+  it('falls back rather than guessing when a run.finished carries no payload', () => {
+    expect(eventLevel(ev({ type: 'run.finished', data: null }))).toBe('ok')
   })
 })

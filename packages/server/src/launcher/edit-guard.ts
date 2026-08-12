@@ -85,6 +85,8 @@ export function evaluateEditGuard(input: EditGuardInput): EditDenial | null {
   if (!input.toolName || !(EDIT_TOOLS as readonly string[]).includes(input.toolName)) return null
   if (!input.filePath) return null
 
+  const target = resolve(input.worktreePath, input.filePath)
+
   if (!input.featureSlug) {
     return {
       reason:
@@ -95,10 +97,7 @@ export function evaluateEditGuard(input: EditGuardInput): EditDenial | null {
   }
 
   const docs = featureDocsRel(input.featureSlug)
-  const docsDir = resolve(input.worktreePath, docs)
-  const target = resolve(input.worktreePath, input.filePath)
-  const rel = relative(docsDir, target)
-  if (rel === '' || (!rel.startsWith('..') && !isAbsolute(rel))) return null
+  if (within(resolve(input.worktreePath, docs), target)) return null
 
   return {
     reason:
@@ -107,6 +106,12 @@ export function evaluateEditGuard(input: EditGuardInput): EditDenial | null {
       'want belongs in a ticket: capture the decision in `decisions.md`, amend `spec.md`, and ' +
       'emit a ticket for the work. An implementation agent burns it in its own sandbox.',
   }
+}
+
+/** Is `target` inside `dir` — or `dir` itself? Both paths must be absolute. */
+function within(dir: string, target: string): boolean {
+  const rel = relative(dir, target)
+  return rel === '' || (!rel.startsWith('..') && !isAbsolute(rel))
 }
 
 /** The verified `PreToolUse` deny shape (same as the burn guard's). */

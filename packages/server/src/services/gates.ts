@@ -1,10 +1,10 @@
 import { existsSync } from 'node:fs'
 import type { Feature, GateCheckId, GateId, SessionKind } from '@runcastle/core'
-import { nextPhase, previousPhase } from '@runcastle/core'
+import { nextGate, nextPhase, previousPhase } from '@runcastle/core'
 import { and, desc, eq, inArray } from 'drizzle-orm'
 import type { AppCtx } from '../db/types'
 import { gateOverrides, sessions } from '../db/schema'
-import { GateError } from '../errors'
+import { GateError, InvalidInputError } from '../errors'
 import { emit } from './events'
 import { featureDocPath } from './feature-docs'
 import { getFeatureRow, projectForFeature, setPhase } from './repo'
@@ -163,6 +163,12 @@ function docGate(ctx: AppCtx, feature: Feature, fileName: string, reason: string
 /**
  * Override a gate: record the reason (feature history), emit an event, and
  * advance to the next phase. The seatbelt, not the cage.
+ *
+ * `gate` has to BE the gate the feature is standing at. Overriding advances one
+ * phase, so a mismatched id used to be filed and emitted verbatim while the
+ * feature advanced past whatever gate it actually faced — a caller working from
+ * a stale view could name G2 and cross G4, and the override row would then
+ * misdescribe the crossing forever.
  */
 export function overrideGate(
   ctx: AppCtx,
@@ -171,6 +177,18 @@ export function overrideGate(
   reason: string,
 ): Feature {
   const feature = getFeatureRow(ctx, featureId)
+
+  const current = nextGate(feature)
+  if (!current) {
+    throw new InvalidInputError(
+      `cannot override ${gate}: feature is at ${feature.phase}, its final phase — no gate to cross`,
+    )
+  }
+  if (current.id !== gate) {
+    throw new InvalidInputError(
+      `cannot override ${gate}: the feature is at ${feature.phase}, whose gate is ${current.id}`,
+    )
+  }
 
   ctx.db.insert(gateOverrides).values({ featureId, gate, reason, ts: Date.now() }).run()
 

@@ -1,7 +1,7 @@
 import type { WaypointInput } from '@runcastle/core'
 import { beforeEach, describe, expect, it } from 'vitest'
 import type { AppCtx } from '../src/db/types'
-import { GateError, InvalidInputError } from '../src/errors'
+import { GateError, InvalidInputError, NotFoundError } from '../src/errors'
 import { listAfter } from '../src/services/events'
 import { getFeatureFull } from '../src/services/features'
 import {
@@ -196,6 +196,25 @@ describe('waypoints service', () => {
       // c still blocked by b → no unblocked event yet
       const unblocked = listAfter(ctx, featureId, 0).filter((e) => e.type === 'waypoint.unblocked')
       expect(unblocked).toHaveLength(0)
+    })
+
+    it('refuses to resolve a waypoint that is already terminal', () => {
+      const [a] = storeWaypoints(ctx, featureId, [wp('a')])
+      resolve(ctx, a.id, 'resolved', 'the answer')
+
+      expect(() => resolve(ctx, a.id, 'resolved', 'a different answer')).toThrow(InvalidInputError)
+      expect(() => resolve(ctx, a.id, 'dropped', 'actually out of scope')).toThrow(
+        InvalidInputError,
+      )
+      // The settled summary and its cascade stand — nothing was rewritten or re-emitted.
+      expect(getWaypoint(ctx, a.id).summary).toBe('the answer')
+      expect(listAfter(ctx, featureId, 0).filter((e) => e.type === 'waypoint.resolved')).toHaveLength(
+        1,
+      )
+    })
+
+    it('refuses to resolve an unknown waypoint', () => {
+      expect(() => resolve(ctx, 'wpt_missing', 'resolved', 'nothing')).toThrow(NotFoundError)
     })
   })
 

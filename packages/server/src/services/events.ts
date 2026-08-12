@@ -1,4 +1,5 @@
-import type { EventRow, SessionRow } from '@runcastle/core'
+import type { SessionRow } from '@runcastle/core'
+import { EventRow } from '@runcastle/core'
 import { and, asc, desc, eq, gt, max } from 'drizzle-orm'
 import type { AppCtx } from '../db/types'
 import { events, features } from '../db/schema'
@@ -28,7 +29,7 @@ export interface EmitInput {
 type EventSelect = typeof events.$inferSelect
 
 function rowToEvent(row: EventSelect): EventRow {
-  return {
+  return EventRow.parse({
     id: row.id,
     projectId: row.projectId,
     featureId: row.featureId ?? undefined,
@@ -38,7 +39,7 @@ function rowToEvent(row: EventSelect): EventRow {
     type: row.type,
     message: row.message,
     data: row.data ?? undefined,
-  }
+  })
 }
 
 /** The project a feature belongs to — the required project id for its events. */

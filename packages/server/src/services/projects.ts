@@ -89,7 +89,9 @@ export async function openProject(ctx: AppCtx, rawPath: string): Promise<Project
       .set({ mainBranch, repoPath, closedAt: null })
       .where(eq(projects.id, existing.id))
       .run()
-    const reopened = { ...existing, mainBranch, repoPath }
+    // `closedAt: undefined` mirrors the column we just cleared — a re-opened
+    // project must not return carrying the closed stamp it had a line ago.
+    const reopened = { ...existing, mainBranch, repoPath, closedAt: undefined }
     emitProject(ctx, existing.id, {
       type: 'project.opened',
       message: `project ${existing.name} re-opened at ${repoPath} (${mainBranch})`,

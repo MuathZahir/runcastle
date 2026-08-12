@@ -42,6 +42,28 @@ export interface PtyEntry {
   exitCode: number | null
 }
 
+/** How long a tree-kill may take before teardown gives up and proceeds anyway. */
+const KILL_TREE_TIMEOUT_MS = 5000
+
+/**
+ * Tree-kill a PTY's process tree, bounded. The backend owns the pid (see
+ * `kill-tree.ts`); all we own is the deadline — a `taskkill` that hangs must not
+ * wedge the drive-stop mutation or the shutdown that is waiting on us, so on
+ * timeout the caller proceeds regardless. Never rejects: teardown is best-effort.
+ */
+function killTreeBounded(pty: PtySession): Promise<void> {
+  return new Promise((resolve) => {
+    const timer = setTimeout(resolve, KILL_TREE_TIMEOUT_MS)
+    void pty
+      .killTree()
+      .catch(() => {})
+      .then(() => {
+        clearTimeout(timer)
+        resolve()
+      })
+  })
+}
+
 class PtyRegistry {
   private entries = new Map<string, PtyEntry>()
 
@@ -110,11 +132,28 @@ class PtyRegistry {
     this.entries.get(sessionId)?.sinks.delete(sink)
   }
 
-  /** Kill the PTY (onExit fires → status broadcast + launcher hook). */
+  /**
+   * Kill the PTY and everything it spawned, without waiting (onExit fires →
+   * status broadcast + launcher hook). Returns whether a PTY was there to kill.
+   *
+   * The teardown is async and continues in the background, because every caller
+   * of this form is a synchronous service (`endSession`, and the archive, delete
+   * and waypoint-sweep paths behind it) with nothing downstream that waits on a
+   * freed port. Callers that DO wait — drive stop, server shutdown — use
+   * `killTree` / `killAllTrees`.
+   */
   kill(sessionId: string): boolean {
     const entry = this.entries.get(sessionId)
     if (!entry) return false
-    entry.pty.kill()
+    void this.tearDown(entry)
+    return true
+  }
+
+  /** Kill the PTY's whole process tree and wait for it. */
+  async killTree(sessionId: string): Promise<boolean> {
+    const entry = this.entries.get(sessionId)
+    if (!entry) return false
+    await this.tearDown(entry)
     return true
   }
 
@@ -123,12 +162,35 @@ class PtyRegistry {
     this.entries.delete(sessionId)
   }
 
-  /** Kill every live PTY (server shutdown). */
-  killAll(): void {
-    for (const entry of this.entries.values()) {
-      if (!entry.exited) entry.pty.kill()
-    }
+  /**
+   * Kill every live PTY's process tree and wait for them (server shutdown).
+   * `allSettled`, so one hung tree cannot leave the others un-torn-down.
+   */
+  async killAllTrees(): Promise<void> {
+    const all = [...this.entries.values()]
     this.entries.clear()
+    await Promise.allSettled(all.map((entry) => this.tearDown(entry)))
+  }
+
+  /**
+   * Tree-kill an entry, then kill the PTY itself as a backstop. The order is the
+   * whole point on Windows: killing the direct child first breaks the parent →
+   * child link `taskkill /T` walks, orphaning the dev server / claude grandchild
+   * that holds the port. An already-exited entry is skipped rather than killed
+   * again — the OS may have reused its pid, and taskkilling a stranger's tree is
+   * worse than leaking nothing.
+   *
+   * Never rejects, so no form of kill can fail a caller (or, for the sync form,
+   * become an unhandled rejection): teardown is best-effort by construction.
+   */
+  private async tearDown(entry: PtyEntry): Promise<void> {
+    if (entry.exited) return
+    await killTreeBounded(entry.pty)
+    try {
+      entry.pty.kill()
+    } catch {
+      // Backend already reaped it between the tree kill and here.
+    }
   }
 
   /** Live session ids (diagnostics/tests). */

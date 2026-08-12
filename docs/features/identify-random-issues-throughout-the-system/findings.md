@@ -1,5 +1,10 @@
 # Findings — UX audit of runcastle
 
+> **This is the file `(findings F<N>)` code comments cite.** The ~96 such comments across
+> `packages/**` and `apps/**` point here. The repo root also has an `E2E-FINDINGS.md` whose
+> findings happen to share the F1–F25 numbering; it is a different log and is cited by nothing —
+> comments referring to it say `(E2E F<N>)`. Neither log is renumbered.
+
 Compiled from the agent-browser sweeps (fresh new-user instance; read-only copy of real data) and code-level root-causing. Severity classes per decisions.md §6: `blocker` / `major` / `minor` / `note`.
 
 ## Triage summary

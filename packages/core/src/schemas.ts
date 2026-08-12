@@ -118,6 +118,7 @@ export const MergeBranchPair = z.object({
 })
 export type MergeBranchPair = z.infer<typeof MergeBranchPair>
 
+
 export const RunStatus = z.enum(['running', 'succeeded', 'failed', 'cancelled'])
 export type RunStatus = z.infer<typeof RunStatus>
 
@@ -343,6 +344,13 @@ export const Project = z.object({
   driveStopCommand: z.string().optional(),
   /** `KEY=VALUE` lines overlaid on a drive's environment, `{{id}}`-templated. */
   driveEnv: z.string().optional(),
+  /**
+   * When the project was closed (issue #43); unset while it is open. The column
+   * drives `listProjects`, so the wire type has to carry it — a field the row
+   * has and the schema does not is drift the boundary parse would silently
+   * strip rather than report.
+   */
+  closedAt: z.number().optional(),
 })
 export type Project = z.infer<typeof Project>
 

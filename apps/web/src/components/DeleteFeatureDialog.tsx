@@ -34,13 +34,20 @@ export function DeleteFeatureDialog({
   }, [onCancel])
 
   return (
-    <div className="peek-backdrop" onClick={onCancel}>
+    <div
+      className="peek-backdrop"
+      // mousedown, not click: a click that STARTS inside the panel and ends on
+      // the backdrop (selecting the slug and releasing outside) is not a
+      // dismissal — the same guard FormOverlay makes.
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) onCancel()
+      }}
+    >
       <div
         className="peek delete-dialog"
         role="dialog"
         aria-modal="true"
         aria-label={`Delete feature ${slug}`}
-        onClick={(e) => e.stopPropagation()}
       >
         <div className="peek-head">
           <span className="delete-dialog-title">Delete feature</span>
