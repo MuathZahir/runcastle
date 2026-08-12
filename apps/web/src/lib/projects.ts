@@ -13,15 +13,43 @@ import type { FeatureListItem, Project } from './api'
 /** Which top-level surface fills the shell. */
 export type AppView = 'home' | 'project' | 'open'
 
+/** Where the shell is pointed: a surface, plus the project it is bound to. */
+export interface Landing {
+  view: AppView
+  projectId: string | null
+}
+
 /**
  * Where the app lands given the currently open projects (acceptance criteria):
  * none → the open-a-project flow (fresh install); exactly one → straight into
  * it; more than one → the portfolio home.
  */
-export function initialView(projects: Project[]): { view: AppView; projectId: string | null } {
+export function initialView(projects: Project[]): Landing {
   if (projects.length === 0) return { view: 'open', projectId: null }
   if (projects.length === 1) return { view: 'project', projectId: projects[0].id }
   return { view: 'home', projectId: null }
+}
+
+/**
+ * The navigation a past session left behind (decision 3 — persisted rather than
+ * re-derived from project count on every load). The transient open-a-project
+ * flow is deliberately not representable: a half-finished create/import is not
+ * a place to come back to, so it falls through to {@link initialView}.
+ */
+export type StoredNav = { view: 'home' } | { view: 'project'; projectId: string }
+
+/**
+ * Where the app lands on boot now that navigation is remembered: back in the
+ * project the user was last in, or on the chooser if that is where they left
+ * off. Everything else — nothing stored, storage corrupted, or a stored project
+ * that has since been closed — falls back to the count-based landing rule.
+ */
+export function restoredView(projects: Project[], stored: StoredNav | null): Landing {
+  if (stored?.view === 'project' && projects.some((p) => p.id === stored.projectId)) {
+    return { view: 'project', projectId: stored.projectId }
+  }
+  if (stored?.view === 'home' && projects.length > 0) return { view: 'home', projectId: null }
+  return initialView(projects)
 }
 
 /**
