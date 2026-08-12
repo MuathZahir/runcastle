@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { trpc } from '../trpc'
 import { useLivePoll } from './live'
 import {
@@ -80,25 +80,26 @@ export function useProjectNav(): ProjectNavApi {
 
   // Read once, at mount: where the last session left off.
   const [stored] = useState(readStoredNav)
-  // Null until the user navigates. Until then the landing is *derived* from the
-  // list rather than written by an effect, so the first render that has projects
-  // already shows the restored place — an effect would paint the chooser for a
-  // frame on the way in.
+  // Null until the user navigates.
   const [chosen, setChosen] = useState<Landing | null>(null)
+  // The landing is resolved *during* the first render that has the list, not in
+  // an effect afterwards — an effect would paint the chooser for a frame on the
+  // way into the restored project. Latched once resolved, so a project opened
+  // elsewhere later cannot re-decide where the user is standing.
+  const resolved = useRef<Landing | null>(null)
+  if (!resolved.current && projects) resolved.current = restoredView(projects, stored)
 
-  const landing = chosen ?? (projects ? restoredView(projects, stored) : null)
+  const landing = chosen ?? resolved.current
   const view: AppView = landing?.view ?? 'home'
   const currentProjectId = landing?.projectId ?? null
 
   // If the bound project disappears (closed elsewhere), fall back gracefully.
-  // A landing still derived from the list needs no help: `restoredView` already
-  // drops a project that is no longer open.
   useEffect(() => {
-    if (!projects || !chosen) return
-    if (chosen.view === 'project' && !projects.some((p) => p.id === chosen.projectId)) {
+    if (!projects || !landing) return
+    if (landing.view === 'project' && !projects.some((p) => p.id === landing.projectId)) {
       setChosen(initialView(projects))
     }
-  }, [projects, chosen])
+  }, [projects, landing])
 
   // Deliberate navigation is what gets remembered — the chooser as much as a
   // project, so choosing to sit on the portfolio survives a reload too. The
