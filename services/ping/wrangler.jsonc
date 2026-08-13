@@ -8,7 +8,7 @@
       "database_name": "runcastle-ping",
       // Placeholder: the real id is printed by `bunx wrangler d1 create
       // runcastle-ping` — paste it here before the first deploy (README.md).
-      "database_id": "REPLACE_WITH_ID_FROM_WRANGLER_D1_CREATE"
+      "database_id": "fc2007f6-f748-4232-ab38-1d09babbb889"
     }
   ],
   // Custom domain: the Worker is the origin, so Cloudflare manages the DNS
