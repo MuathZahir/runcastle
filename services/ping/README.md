@@ -57,6 +57,14 @@ seen in the last 7 days:
 bunx wrangler d1 execute runcastle-ping --remote --command "SELECT COUNT(DISTINCT install_id) AS wau FROM pings WHERE day >= date('now', '-7 day')"
 ```
 
+On Windows, `bunx` mangles quoted arguments containing spaces (wrangler sees the
+SQL as many separate args), so run wrangler's entry point directly with `bun`
+from `services/ping/`:
+
+```
+bun ../../node_modules/wrangler/bin/wrangler.js d1 execute runcastle-ping --remote --command "SELECT COUNT(DISTINCT install_id) AS wau FROM pings WHERE day >= date('now', '-7 day')"
+```
+
 ## Tests
 
 The Worker's `fetch` handler is tested offline, with a stubbed D1 binding and a
