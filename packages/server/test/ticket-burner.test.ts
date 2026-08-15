@@ -61,6 +61,7 @@ function makeCtx(tickets: Ticket[], signal?: AbortSignal) {
   const events: Emitted[] = []
   const patches: Patch[] = []
   const ctx: WorkflowCtx = {
+    runId: 'run_1',
     project,
     feature,
     tickets,

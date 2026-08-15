@@ -145,6 +145,7 @@ export async function startRun(
     : false
 
   const wctx: WorkflowCtx = {
+    runId,
     project,
     feature,
     tickets,

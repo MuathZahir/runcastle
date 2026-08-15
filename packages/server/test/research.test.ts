@@ -79,6 +79,7 @@ describe('researchRun — control flow (stubbed sandcastle)', () => {
     const events: { type: string; message: string }[] = []
     const resolved: Resolved[] = []
     const ctx: WorkflowCtx = {
+      runId: 'run_1',
       project: {} as Project,
       feature: {} as Feature,
       tickets: [],

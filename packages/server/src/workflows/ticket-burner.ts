@@ -99,6 +99,13 @@ export type TicketOutcome =
       readonly error: string
       /** Extra event emitted before the generic `ticket.failed` (e.g. conflict). */
       readonly event?: { type: string; message: string }
+      /**
+       * An account of the failure worth keeping in the run's record — the review
+       * ticket's "could not review, because X". Optional because most failures
+       * say everything they have to say in `error`; when present it is stored
+       * and harvested exactly like a done ticket's digest.
+       */
+      readonly digest?: string
     }
 
 export interface BurnDeps {
@@ -109,6 +116,16 @@ export interface BurnDeps {
   concurrency: number
   /** Runs one ticket to a terminal outcome. Real impl calls sandcastle `run()`. */
   executeTicketRun: (ctx: WorkflowCtx, ticket: Ticket) => Promise<TicketOutcome>
+}
+
+/**
+ * The one fork in the burn (improve-workflow spec, "Per-kind execution"): a
+ * review ticket is executed host-side against the integrated feature branch —
+ * no per-ticket branch, no container, no merge-queue entry — and everything
+ * below that reads `kind` reads it through here.
+ */
+export function isReviewTicket(ticket: Ticket): boolean {
+  return ticket.kind === 'review'
 }
 
 // ---------------------------------------------------------------------------
@@ -1281,7 +1298,11 @@ function errorHeadline(s: string): string {
  * Drive tickets to terminal states honouring `blockedBy`. A ticket is ready when
  * all its blockers are `done`; a ticket with a `failed`/missing blocker is
  * marked failed (`blocked by failed ticket <seq>`) and cascades to its own
- * dependents. Runs up to `concurrency` at once (min 1). Aborts propagate
+ * dependents. A `review` ticket additionally waits for EVERY implementation
+ * ticket in the run to reach a terminal state, whatever its declared edges say —
+ * review exercises the integrated branch, so a review that started beside a
+ * still-burning ticket would be reviewing a half-landed feature.
+ * Runs up to `concurrency` at once (min 1). Aborts propagate
  * (thrown by `execute`) so the runner finalizes the run as cancelled — with
  * every other in-flight ticket drained first, so no rejection goes unhandled.
  * Returns the count of tickets in `done` state at the end, plus the digests
@@ -1304,6 +1325,16 @@ export async function burnTickets(
   // because the work is unnecessary, so dependents proceed without it.
   const satisfied = (s: TicketStatus | undefined): boolean => s === 'done' || s === 'cancelled'
 
+  /**
+   * The review precondition, held defensively rather than trusted to the
+   * emitting session's `blockedBy`: no implementation ticket is still waiting or
+   * still burning. Read off the scheduler's own sets, not off statuses, so a row
+   * left `burning` by a dead earlier run — which this schedule will never move —
+   * does not strand the review behind it forever.
+   */
+  const implementationsSettled = (): boolean =>
+    tickets.every((t) => isReviewTicket(t) || (!pending.has(t.seq) && !inFlight.has(t.seq)))
+
   const readyState = (seq: number): ReadyState => {
     const t = bySeq.get(seq)
     if (!t) return 'wait'
@@ -1312,14 +1343,21 @@ export async function burnTickets(
       const bs = present ? status.get(b) : undefined
       if (!present || bs === 'failed') return { blockedBy: b, present }
     }
+    if (isReviewTicket(t) && !implementationsSettled()) return 'wait'
     return t.blockedBy.every((b) => satisfied(status.get(b))) ? 'ready' : 'wait'
   }
 
-  const failTicket = (seq: number, error: string, extra?: { type: string; message: string }) => {
+  const failTicket = (
+    seq: number,
+    error: string,
+    extra?: { type: string; message: string },
+    digest?: string,
+  ) => {
     const t = bySeq.get(seq)
     status.set(seq, 'failed')
     if (!t) return
-    ctx.updateTicket(t.id, { status: 'failed', error })
+    ctx.updateTicket(t.id, { status: 'failed', error, ...(digest ? { digest } : {}) })
+    if (digest) digests.push({ seq: t.seq, title: t.title, digest })
     if (extra) ctx.emitEvent({ ...extra, ticketId: t.id })
   }
 
@@ -1356,7 +1394,7 @@ export async function burnTickets(
         digests.push({ seq: t.seq, title: t.title, digest: outcome.digest })
       }
     } else {
-      failTicket(seq, outcome.error, outcome.event)
+      failTicket(seq, outcome.error, outcome.event, outcome.digest)
       ctx.emitEvent({
         type: 'ticket.failed',
         message: `ticket ${t.seq} failed: ${errorHeadline(outcome.error)}`,
