@@ -100,14 +100,16 @@
 
         <h1>The pipeline</h1>
         <p class="article-lede">
-          Every feature you build in runcastle gets a persistent session that walks six phases:
+          Every feature gets its own conversation, which walks six phases:
           <strong>ideation, spec, tickets, build, review, shipped</strong>. The phase is not a
-          label you set to feel organised — it is what the app uses to decide which context to
-          inject, which agents to launch, and what the one next step is.
+          label you set to feel organised. It decides which context gets injected, which agents
+          launch, and what the app tells you to do next.
         </p>
 
         <nav class="subnav" aria-label="Docs">
           <a href="/docs/">Getting started</a>
+          <a href="/docs/preparation/">Preparation</a>
+          <a href="/docs/project/">Project session</a>
           <a href="/docs/pipeline/" aria-current="page">The pipeline</a>
           <a href="/docs/gates/">Gates</a>
           <a href="/compare/">Compare</a>
@@ -115,16 +117,32 @@
 
         <h2>The shape of it</h2>
         <p>
-          You get grilled on an idea until a spec and a set of tickets fall out. Sandboxed AFK
-          agents burn those tickets on a branch. You test drive the result and merge. Human in the
-          loop at only the two ends.
+          You get grilled on an idea until a spec and a set of tickets fall out. Sandboxed agents
+          burn those tickets on a branch. You test drive the result and merge. You are needed at
+          the two ends and nowhere in between.
         </p>
         <p>
-          That is the whole system in four sentences, and the six phases are just those sentences
-          made concrete enough for software to act on. A chat window has no idea whether you are
-          still arguing about the idea or waiting on a build; runcastle does, so it can put the
-          right thing in front of you and run everything in between without you.
+          The six phases are those four sentences made concrete enough for software to act on. A
+          chat window cannot tell whether you are arguing about an idea or waiting on a build.
+          runcastle can, so it runs the middle without you.
         </p>
+
+        <h2>Where a feature comes from</h2>
+        <p>There are three doors, and they all land in the same place.</p>
+        <ul>
+          <li>
+            <strong>New Feature</strong>, when you already have a title and a one-liner.
+          </li>
+          <li>
+            <strong><a href="/docs/project/">The project session</a></strong>, when you have a
+            complaint or a paragraph instead of a plan. It cuts the lump into features and creates
+            them.
+          </li>
+          <li>
+            <strong>Starting a draft</strong>, which is a feature you parked earlier with no
+            branch and no repo changes. Start cuts its branch and opens ideation.
+          </li>
+        </ul>
 
         <h2>The six phases</h2>
         <div class="table-scroll">
@@ -139,8 +157,8 @@
               <tr>
                 <th scope="row">ideation</th>
                 <td>
-                  A real Claude Code terminal opens with the feature brief, phase rules, and
-                  runcastle's skill pack pre-injected, and argues with you until the idea is
+                  A real Claude Code terminal opens with the feature brief, the phase rules, and
+                  runcastle's skill pack already loaded, and argues with you until the idea is
                   concrete.
                 </td>
               </tr>
@@ -161,8 +179,8 @@
               <tr>
                 <th scope="row">build</th>
                 <td>
-                  AFK agents burn each ticket inside a container, committing to the feature
-                  branch.
+                  Agents burn each ticket inside a container, committing to the feature branch.
+                  You can close the tab.
                 </td>
               </tr>
               <tr>
@@ -182,84 +200,93 @@
           </table>
         </div>
 
-        <h2>Grilling, and why the spec is worth the argument</h2>
+        <h2>Ideation: why the spec is worth the argument</h2>
         <p>
-          Ideation is not a form. runcastle launches a real Claude Code terminal — not a rebuilt
-          chat UX — with the feature's brief already in the system prompt, the phase's rules
-          injected per turn, and a phase-scoped skill pack loaded. Its job is to be difficult:
-          to keep asking until the idea is concrete enough that the next phases have something
-          to bite on.
+          Ideation is not a form. runcastle opens a real Claude Code terminal, not a rebuilt chat
+          UI, with the feature's brief in the system prompt, the phase's rules injected each turn,
+          and a phase-scoped skill pack loaded. Its job is to keep asking until the idea is
+          concrete enough for the next phases to bite on.
         </p>
         <p>
-          What comes out is written to your repository, not to a database you cannot read. Spec,
-          decisions, research and notes land as plain markdown under
-          <code>docs/features/&lt;slug&gt;/</code> — versioned, diffable, readable by any agent
-          you point at the repo later, and still there if you stop using runcastle entirely.
+          What comes out goes into your repository, not a database you cannot read. Spec,
+          decisions, research, and notes land as plain markdown under
+          <code>docs/features/&lt;slug&gt;/</code>: versioned, diffable, readable by any agent
+          later, and still there if you stop using runcastle.
         </p>
 
         <h2>Tickets: the spec, cut into work</h2>
         <p>
-          The spec becomes a set of atomic tickets in a dependency order. Each one names its goal,
-          its acceptance criteria, and the seams to test at, and knows which tickets block it.
-          That dependency order is what makes the build phase parallel: everything unblocked can
-          start at the same time.
+          The spec becomes a set of small tickets in dependency order. Each names its goal, its
+          acceptance criteria, and the seams to test at, and knows what blocks it. That order is
+          what makes the build parallel: everything unblocked starts at once.
         </p>
         <p>
-          The spec and the ticket list come out of one unbroken conversation, so nothing is
-          rebuilt from a summary of a summary. Then the pipeline stops and waits for you. Skimming
-          a ticket list is cheap; discovering after a long build that the plan was wrong is not.
+          The spec and the tickets come out of one unbroken conversation, so nothing is rebuilt
+          from a summary of a summary. Then the pipeline stops and waits for you. Skimming a
+          ticket list takes a minute. Finding out after a long build that the plan was wrong does
+          not.
         </p>
 
         <h2>Build: sandboxed agents on one branch</h2>
         <p>
-          Click burn and the tickets go to AFK agents running headless inside a Docker or Podman
-          container on your own machine. Each picks up an unblocked ticket and commits to the
-          feature's branch. You can close the tab.
+          Click burn and the tickets go to agents running headless in a Docker or Podman container
+          on your machine. Each picks up an unblocked ticket and commits to the feature's branch.
+          They already know your setup and verify commands, and which tests were red before they
+          started, because <a href="/docs/preparation/">preparation</a> told them.
         </p>
-        <p>The git topology underneath is deliberate:</p>
+        <p>The git layout underneath is deliberate:</p>
         <ul>
           <li>
-            <strong>One branch per feature.</strong> Commits from every agent on that feature land
-            on it, and nowhere else.
+            <strong>One branch per feature.</strong> Every agent's commits land there and nowhere
+            else.
           </li>
           <li>
-            <strong>Planning sessions get docs-only worktrees.</strong> They only read code and
-            write docs, so they need no dependency install — which is what makes grilling several
+            <strong>Planning sessions get docs-only worktrees.</strong> They read code and write
+            docs, so they skip the dependency install. That is what makes grilling several
             features at once cost nothing.
           </li>
           <li>
-            <strong>The main checkout stays yours.</strong> Unattended builds never touch your
-            working tree; they happen in containers.
+            <strong>Your checkout stays yours.</strong> Unattended builds happen in containers and
+            never touch your working tree.
           </li>
         </ul>
 
         <h2>Review, then shipped</h2>
         <p>
-          When every ticket has finished, the feature moves to review. runcastle sets your own
-          work aside, checks out the finished branch, and starts it on its own port so you can
-          click through the feature before it lands — then puts your work back. Review findings
-          feed fix cycles inside the burner; only hard blockers surface to you.
+          When every ticket finishes, the feature moves to review. runcastle sets your work aside,
+          checks out the finished branch, starts it on its own port so you can click through the
+          feature, then puts your work back. Review findings feed fix cycles inside the build
+          agents, and only hard blockers reach you.
         </p>
+        <p>Review has three ways out:</p>
+        <ul>
+          <li>
+            <strong>Fix</strong> turns a note you wrote during the test drive into a ticket and
+            loops back through build. Same lap.
+          </li>
+          <li>
+            <strong>Rethink</strong> starts a new lap at ideation, for when the problem was the
+            plan rather than the code.
+          </li>
+          <li><strong>Merge</strong> closes the loop.</li>
+        </ul>
         <p>
-          From review there are three ways out. <strong>Fix</strong> promotes a test-drive note
-          into a ticket and loops back through the build phase — same lap. <strong>Rethink</strong>
-          starts a new lap back at ideation, because the problem was the plan, not the code.
-          <strong>Merge</strong> closes the loop. Shipped keeps the spec, the decisions, and the
-          run history queryable.
+          Shipped keeps the spec, the decisions, and the run history queryable, including from the
+          project session later on.
         </p>
 
         <h2>Several features, same loop</h2>
         <p>
-          Nothing above assumes one live feature. A feature that is mid-build wants nothing from
-          you, which is exactly the point: while agents burn tickets on one branch you can be
-          grilling the next idea, and the sidebar flags the features actually waiting on you.
+          Nothing above assumes one live feature. A feature mid-build wants nothing from you,
+          which is the point: while agents burn tickets on one branch you can grill the next idea,
+          and the sidebar flags the features that are actually waiting on you.
         </p>
 
         <div class="note">
           <p>
-            Between every pair of phases sits a gate — a check that has to pass before the next
-            phase starts. Two of them are the moments the pipeline hands the decision back to
-            you. <a href="/docs/gates/">How gates work →</a>
+            Between every pair of phases sits a gate, a check that has to pass before the next
+            phase starts. Two of them are where the pipeline hands the decision back to you.
+            <a href="/docs/gates/">How gates work →</a>
           </p>
         </div>
 
