@@ -8,6 +8,7 @@ import type {
   SessionKind,
   SessionPurpose,
   SessionStatus,
+  TestNoteAuthor,
   TestNoteStatus,
   TicketKind,
   TicketStatus,
@@ -252,6 +253,11 @@ export const testNotes = sqliteTable('test_notes', {
   lap: integer('lap').notNull(),
   text: text('text').notNull(),
   status: text('status').notNull().$type<TestNoteStatus>(),
+  /**
+   * Who wrote the note — `human` or `agent`. Defaulted in the column too, so
+   * rows written before review agents existed read back as the human's.
+   */
+  author: text('author').notNull().$type<TestNoteAuthor>().default('human'),
   /** The ticket a `promoted` note was turned into; null for every other status. */
   ticketId: text('ticket_id'),
   createdAt: integer('created_at').notNull(),

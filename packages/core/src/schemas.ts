@@ -256,6 +256,15 @@ export const TestNoteStatus = z.enum(['open', 'done', 'promoted'])
 export type TestNoteStatus = z.infer<typeof TestNoteStatus>
 
 /**
+ * Who wrote a note: the `human` clicking through the review panel (the default,
+ * and everything written before review agents existed), or an `agent` — a review
+ * ticket reporting what it found. Attribution only; the lifecycle is identical,
+ * so an agent note edits, toggles and promotes exactly like a human one.
+ */
+export const TestNoteAuthor = z.enum(['human', 'agent'])
+export type TestNoteAuthor = z.infer<typeof TestNoteAuthor>
+
+/**
  * One observation captured during a feature's review phase. Notes are the
  * source of truth; `docs/features/<slug>/test-notes.md` is regenerated from
  * them on every change. `lap` is stamped from the feature's lap at capture —
@@ -268,6 +277,7 @@ export const TestNote = z.object({
   lap: z.number(),
   text: z.string(),
   status: TestNoteStatus,
+  author: TestNoteAuthor.default('human'),
   ticketId: z.string().optional(),
   createdAt: z.number(),
   updatedAt: z.number(),
