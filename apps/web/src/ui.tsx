@@ -1,5 +1,5 @@
 import type { ButtonHTMLAttributes, ReactNode } from 'react'
-import type { Phase, RunStatus, SessionStatus, TicketStatus } from '@runcastle/core'
+import type { Phase, RunStatus, SessionStatus, TicketKind, TicketStatus } from '@runcastle/core'
 import type { CheckRow } from './lib/feature-ui'
 
 /**
@@ -82,6 +82,20 @@ export function PhaseTag({ phase }: { phase: Phase }) {
 
 export function TicketStatusChip({ status }: { status: TicketStatus }) {
   return <span className={`chip chip-ticket-${status}`}>{status}</span>
+}
+
+/**
+ * The kind badge, shown only for `review` tickets: implementation is the
+ * default and the overwhelming majority, so badging it would be noise on every
+ * row without distinguishing anything.
+ */
+export function TicketKindChip({ kind }: { kind: TicketKind }) {
+  if (kind === 'implementation') return null
+  return (
+    <span className="chip chip-kind-review" title="Verifies the integrated feature branch">
+      {kind}
+    </span>
+  )
 }
 
 export function RunStatusChip({ status }: { status: RunStatus }) {

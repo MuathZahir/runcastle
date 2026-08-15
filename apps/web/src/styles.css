@@ -296,6 +296,11 @@ button {
 .chip-ticket-done { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 40%, transparent); }
 .chip-ticket-failed { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 45%, transparent); }
 .chip-ticket-cancelled { color: var(--text-3); text-decoration: line-through; }
+.chip-kind-review {
+  color: var(--ph-review);
+  border-color: color-mix(in srgb, var(--ph-review) 40%, transparent);
+  background: color-mix(in srgb, var(--ph-review) 8%, transparent);
+}
 .chip-run-running {
   color: var(--ph-implementation);
   border-color: color-mix(in srgb, var(--ph-implementation) 45%, transparent);
@@ -1754,6 +1759,8 @@ details.wp-group-done > summary { cursor: pointer; list-style: revert; }
 .lg-seq { color: var(--text-3); font-family: var(--mono); font-size: 11.5px; width: 22px; flex: 0 0 auto; }
 .lg-title { flex: 1; min-width: 0; color: var(--text); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .lg-block { font-family: var(--mono); font-size: 10.5px; color: var(--needs); flex: 0 0 auto; }
+/* The title takes the slack; the kind badge never gets squeezed by it. */
+.ledger-head .chip-kind-review { flex: 0 0 auto; }
 .lg-meta { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
 .lg-commits { color: var(--text-2); font-size: 11px; }
 .ledger-detail {
