@@ -5,9 +5,9 @@ import { logsDir, reviewDir } from '@runcastle/core/paths'
 import { run } from '@ai-hero/sandcastle'
 import type { AgentStreamEvent, RunOptions } from '@ai-hero/sandcastle'
 import { noSandbox } from '@ai-hero/sandcastle/sandboxes/no-sandbox'
+import { renderRunMcpConfig } from '../launcher/artifacts'
 import { appendTranscript, beginTranscript, endTranscript } from '../services/agent-stream'
 import { releaseReviewDrive } from '../services/git'
-import { renderRunMcpConfig } from '../launcher/artifacts'
 import type { TicketOutcome } from './ticket-burner'
 import {
   buildBurnAgent,
@@ -157,8 +157,8 @@ export interface ReviewDeps {
 
 /**
  * Run one review ticket to a terminal outcome. The sandcastle boundary, so not
- * exercised by unit tests — the pure units around it (prompt rendering, the run
- * mcp.json, the PATH probe, the outcome shapes) are.
+ * exercised by unit tests — the pure units around it (prompt rendering, the
+ * artifacts the agent is handed, the PATH probe, the outcome shapes) are.
  */
 export async function executeReviewTicket(
   ctx: WorkflowCtx,
@@ -167,8 +167,7 @@ export async function executeReviewTicket(
 ): Promise<TicketOutcome> {
   const { project, feature } = ctx
 
-  const browser = findOnPath(AGENT_BROWSER_BIN)
-  if (!browser) {
+  if (!findOnPath(AGENT_BROWSER_BIN)) {
     return couldNotReview(
       ticket,
       `\`${AGENT_BROWSER_BIN}\` is not on this machine's PATH, so there is no way to drive the app. Install it and re-burn this ticket.`,
@@ -228,26 +227,35 @@ export async function executeReviewTicket(
     },
   }
 
+  let runError: unknown
   try {
     await run(options)
   } catch (err) {
     if (ctx.signal.aborted) throw err // run cancelled — the runner finalizes it
-    return couldNotReview(
-      ticket,
-      ticketAbort.signal.aborted
-        ? 'stopped by user'
-        : `the review agent died: ${errorHeadline(err instanceof Error ? err.message : String(err))}`,
-    )
+    runError = err
   } finally {
     releaseTicketAbort(ticket.id)
     throttle.flush()
     endTranscript(ticket.id)
+    // Before the harvest below, so the review is never read off a machine the
+    // drive still holds.
     await releaseDriveQuietly()
   }
 
+  // The outcome is read off what the agent LEFT, not off how its process ended
+  // — the same rule the implementation path applies to commits. An agent that
+  // wrote its digest reviewed the feature, whatever `run()` did on the way out.
   const blocked = readAgentFile([artifacts.dir], 'BLOCKED.md')?.trim()
   const digest = harvestDigest([artifacts.dir])
   if (blocked) return couldNotReview(ticket, blocked, digest)
+  if (runError !== undefined && digest === undefined) {
+    return couldNotReview(
+      ticket,
+      ticketAbort.signal.aborted
+        ? 'stopped by user'
+        : `the review agent died: ${errorHeadline(runError instanceof Error ? runError.message : String(runError))}`,
+    )
+  }
   // Ran to completion: done, with no commits, because a review never writes
   // code. Its findings are already in the feature's test notes.
   return { status: 'done', commits: [], ...(digest ? { digest } : {}) }

@@ -76,6 +76,11 @@ import { noSandbox } from '@ai-hero/sandcastle/sandboxes/no-sandbox'
  * through a per-run merge queue, and a ticket is only `done` once its branch
  * has landed — so a dependent ticket always forks a tip that includes its
  * blockers' commits.
+ *
+ * All of the above is the `implementation` ticket kind. A `review` ticket takes
+ * none of it — no temp branch, no container, no merge queue — and is executed
+ * host-side by `./review-ticket`, once every implementation ticket in the run is
+ * terminal. `isReviewTicket` is the only fork.
  */
 
 const AUTH_MISSING_EVENT = 'auth.missing'
@@ -1318,15 +1323,16 @@ export function errorHeadline(s: string): string {
  * Drive tickets to terminal states honouring `blockedBy`. A ticket is ready when
  * all its blockers are `done`; a ticket with a `failed`/missing blocker is
  * marked failed (`blocked by failed ticket <seq>`) and cascades to its own
- * dependents. A `review` ticket additionally waits for EVERY implementation
- * ticket in the run to reach a terminal state, whatever its declared edges say —
- * review exercises the integrated branch, so a review that started beside a
- * still-burning ticket would be reviewing a half-landed feature.
- * Runs up to `concurrency` at once (min 1). Aborts propagate
+ * dependents. Runs up to `concurrency` at once (min 1). Aborts propagate
  * (thrown by `execute`) so the runner finalizes the run as cancelled — with
  * every other in-flight ticket drained first, so no rejection goes unhandled.
  * Returns the count of tickets in `done` state at the end, plus the digests
  * harvested along the way (the raw material for this run's aggregate).
+ *
+ * One ticket kind schedules differently: a `review` ticket also waits for every
+ * implementation ticket in the run to settle, whatever its declared edges say.
+ * It exercises the integrated branch, so starting it beside a still-burning
+ * ticket would review a half-landed feature.
  */
 export async function burnTickets(
   ctx: WorkflowCtx,
@@ -1653,6 +1659,22 @@ function buildAgentEnv(onHost: boolean, token: string | undefined): Record<strin
   return env
 }
 
+export interface BurnAgentOptions {
+  /**
+   * Force the host build regardless of `config.sandbox`. The review ticket runs
+   * on the host whatever the burn is configured to do with implementation
+   * tickets (it has to — the app and its database only exist there), so it needs
+   * the host env and the host permission mode from a docker-configured burn too.
+   */
+  onHost?: boolean
+  /**
+   * Give the agent an MCP config file (`--mcp-config`). sandcastle 0.12.0's
+   * `ClaudeCodeOptions` has no MCP field, so it rides the print command — the
+   * same seam the Windows model de-quote already uses.
+   */
+  mcpConfigPath?: string
+}
+
 /**
  * Build the sandcastle claude agent for a burn, working around two host/Windows
  * gaps in `@ai-hero/sandcastle` 0.12.0's `noSandbox` provider (the container
@@ -1674,22 +1696,6 @@ function buildAgentEnv(onHost: boolean, token: string | undefined): Record<strin
  *    with the selected model"). We de-quote the (shell-safe `[a-z0-9-]`) model in
  *    the print command on win32+noSandbox.
  */
-export interface BurnAgentOptions {
-  /**
-   * Force the host build regardless of `config.sandbox`. The review ticket runs
-   * on the host whatever the burn is configured to do with implementation
-   * tickets (it has to — the app and its database only exist there), so it needs
-   * the host env and the host permission mode from a docker-configured burn too.
-   */
-  onHost?: boolean
-  /**
-   * Give the agent an MCP config file (`--mcp-config`). sandcastle 0.12.0's
-   * `ClaudeCodeOptions` has no MCP field, so it rides the print command — the
-   * same seam the Windows model de-quote already uses.
-   */
-  mcpConfigPath?: string
-}
-
 export function buildBurnAgent(
   config: RuncastleConfig,
   token: string | undefined,

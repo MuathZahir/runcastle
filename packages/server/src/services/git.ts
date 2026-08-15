@@ -1360,6 +1360,19 @@ type DriveState =
 let testDriveState: DriveState | undefined
 
 /**
+ * How to end the live review drive, remembered from the call that started it.
+ *
+ * The burner has to be able to release the slot on every exit path — an agent
+ * that crashes holding the drive would otherwise leave the human's checkout
+ * parked on the feature branch with a dev server running — but workflows are
+ * deliberately `AppCtx`-free (the burner never touches the db). So the drive
+ * keeps the context that started it, and hands out the ctx-free
+ * {@link releaseReviewDrive}. Cleared whenever the drive stops, by whoever
+ * stopped it.
+ */
+let reviewDriveRelease: (() => Promise<unknown>) | undefined
+
+/**
  * The machinery's own account of a dry run, accumulated as it goes: the only
  * input to the verification verdict (decision 3). The agent's deeper checks —
  * is the database fresh, did migrations apply — decide whether to fix and
@@ -1667,19 +1680,6 @@ function reviewDriveFor(featureId: string): boolean {
     testDriveState.featureId === featureId
   )
 }
-
-/**
- * How to end the live review drive, remembered from the call that started it.
- *
- * The burner has to be able to release the slot on every exit path — an agent
- * that crashes holding the drive would otherwise leave the human's checkout
- * parked on the feature branch with a dev server running — but workflows are
- * deliberately `AppCtx`-free (the burner never touches the db). So the drive
- * keeps the context that started it, and hands out the ctx-free
- * {@link releaseReviewDrive}. Cleared whenever the drive stops, by whoever
- * stopped it.
- */
-let reviewDriveRelease: (() => Promise<unknown>) | undefined
 
 /**
  * Stop the live review drive, if there still is one. The burner's `finally`
