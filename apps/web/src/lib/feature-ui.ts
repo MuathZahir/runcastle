@@ -1,5 +1,5 @@
 import { nextPhase, parsePhase } from '@runcastle/core'
-import type { EventRow, GateId, Phase } from '@runcastle/core'
+import type { EventRow, GateId, Phase, TestNoteAuthor, TicketKind } from '@runcastle/core'
 import type { BranchList, FeatureFull, FeatureListItem } from './api'
 import { relTime } from './format'
 import { PREPARED_LABEL } from './settings'
@@ -694,13 +694,114 @@ function commitRow(count: number | undefined): CheckRow {
   }
 }
 
+/** A ticket as the review surfaces read it — the wire row, narrowed. */
+interface ReviewTicketFigure {
+  kind?: TicketKind
+  status: string
+  error?: string
+}
+
+/** A note as the review surfaces read it — only who wrote it matters here. */
+interface NoteFigure {
+  author?: TestNoteAuthor
+}
+
+/**
+ * What the review agent's pass amounted to (decisions #7). The human's review
+ * now starts from the agent's report, so every review surface has to be able to
+ * say what that report was — including that there wasn't one.
+ */
+export type ReviewOutcome =
+  /** No review ticket was emitted — today's status quo, and not a fault. */
+  | { state: 'none' }
+  /** The review ran to completion. Findings are not failure (decisions #6). */
+  | { state: 'ran'; findings?: number }
+  /** The review could not run; `reason` is whatever the ticket recorded. */
+  | { state: 'failed'; reason?: string }
+  /** A review ticket exists but has not finished — a burn still in flight. */
+  | { state: 'waiting'; status: string }
+
+/**
+ * The review agent's outcome, read off the feature's tickets and notes.
+ *
+ * Findings are counted from agent-authored notes rather than asked of the
+ * ticket, because the notes ARE the deliverable (decisions #2): a review that
+ * filed four notes found four things. All of them count, whatever became of
+ * them — a finding the human has since ticked off or promoted was still a
+ * finding. `undefined` notes means the list has not arrived, which reports as
+ * unknown rather than as 0: a clean bill of health is a claim, not a default.
+ *
+ * Lap 1 emits at most one review ticket per feature (spec, "Later laps"), so
+ * the last review ticket in the batch is *the* review. If multiplicity ever
+ * lands, this is the seam that has to aggregate instead of pick.
+ */
+export function reviewOutcome(input: {
+  tickets?: readonly ReviewTicketFigure[]
+  /** The feature's test notes, or undefined while the list is still in flight. */
+  notes?: readonly NoteFigure[]
+}): ReviewOutcome {
+  const review = (input.tickets ?? []).filter((t) => t.kind === 'review').at(-1)
+  if (!review) return { state: 'none' }
+  if (review.status === 'failed') {
+    return { state: 'failed', ...(review.error ? { reason: review.error } : {}) }
+  }
+  if (review.status !== 'done') return { state: 'waiting', status: review.status }
+  const findings = input.notes?.filter((n) => n.author === 'agent').length
+  return { state: 'ran', ...(findings === undefined ? {} : { findings }) }
+}
+
+/**
+ * The review agent's figure, as both review surfaces render it — or null when
+ * there is nothing to say because no review was ever asked for.
+ *
+ * `no findings` is green on purpose: a review that ran clean is the one positive
+ * signal this machinery can produce, and greying it would make a good result
+ * look like a missing one. Findings are amber, never red — they are things to
+ * read, not failures (decisions #6) — and so is a review that could not run,
+ * which merely leaves the human where they stood before any of this existed.
+ */
+function reviewRow(outcome: ReviewOutcome): CheckRow | null {
+  const key = 'review agent'
+  switch (outcome.state) {
+    case 'none':
+      return null
+    case 'waiting':
+      return { key, value: `ticket ${outcome.status}`, tone: 'warn' }
+    case 'failed':
+      return {
+        key,
+        value: `could not run${outcome.reason ? ` · ${outcome.reason}` : ''}`,
+        tone: 'warn',
+      }
+    case 'ran': {
+      const n = outcome.findings
+      if (n === undefined) return { key, value: 'ran · findings unknown', tone: 'idle' }
+      if (n === 0) return { key, value: 'no findings', tone: 'ok' }
+      return { key, value: `${n} finding${n === 1 ? '' : 's'}`, tone: 'warn' }
+    }
+  }
+}
+
 /** The review SUMMARY card's rows, in the order the card shows them. */
 export function reviewChecks(input: {
-  tickets?: readonly { status: string }[]
+  tickets?: readonly ReviewTicketFigure[]
   run?: RunFigure
   commitCount?: number
+  /** The feature's test notes — where the agent's findings are counted from. */
+  notes?: readonly NoteFigure[]
 }): CheckRow[] {
-  return [ticketRow(input.tickets ?? []), runRow(input.run), commitRow(input.commitCount)]
+  // The agent's report LEADS the card (decisions #7). The human arrives at this
+  // screen to read it, and a line appended under the commit count is exactly the
+  // "easy to miss" that decision exists to prevent. Omitted entirely when no
+  // review ticket ran: a feature that never asked for a review is not missing
+  // anything, and this card does not nag.
+  const review = reviewRow(reviewOutcome({ tickets: input.tickets, notes: input.notes }))
+  return [
+    ...(review ? [review] : []),
+    ticketRow(input.tickets ?? []),
+    runRow(input.run),
+    commitRow(input.commitCount),
+  ]
 }
 
 /** What the merge confirmation shows: the figures, and every gap in them. */
@@ -729,10 +830,25 @@ export function mergeSummary(input: {
   driveTaken: boolean
   /** Notes captured during the test drive that were never ticked off. */
   openNotes?: number
+  /** What the review agent made of this branch, when the caller knows. */
+  review?: ReviewOutcome
 }): MergeSummary {
   const drive: CheckRow = input.driveTaken
     ? { key: 'test drive', value: 'taken', tone: 'ok' }
     : { key: 'test drive', value: 'never test-driven', tone: 'warn' }
+
+  // Unlike the review card, this dialog says so when no review ticket ran: it
+  // reports every gap in the picture it is painting ("no run recorded", "commit
+  // count unknown"), and an unreviewed branch is one of them. Advisory only —
+  // it is a row, not a warning, because most branches will never have asked for
+  // a review and nagging every merge is not what decisions #7 asked for.
+  const reviewLine: CheckRow | null = input.review
+    ? (reviewRow(input.review) ?? {
+        key: 'review agent',
+        value: 'no review ticket',
+        tone: 'idle',
+      })
+    : null
 
   const warnings: string[] = []
   if (input.commitCount === undefined) {
@@ -747,13 +863,29 @@ export function mergeSummary(input: {
     warnings.push(`The last run ${input.run.status} rather than succeeding.`)
   }
   if (!input.driveTaken) warnings.push('This branch was never test-driven.')
+  // A review that could not run is a gap in this picture, same family as "never
+  // test-driven": nothing was verified for the human, and they should know that
+  // before clicking. Findings themselves get no warning — the open-notes line
+  // below already counts the ones still outstanding, agent-written included.
+  if (input.review?.state === 'failed') {
+    const reason = input.review.reason
+    warnings.push(`The review agent could not run${reason ? `: ${reason}` : ''}.`)
+  }
   // Informational, never blocking (decisions #7): shipping over findings the
   // human logged and never handled is the moment worth catching, but someone who
   // judged their open notes shippable must not be stopped.
   const open = input.openNotes ?? 0
   if (open > 0) warnings.push(`${open} open test-drive note${open === 1 ? '' : 's'}.`)
 
-  return { rows: [commitRow(input.commitCount), runRow(input.run), drive], warnings }
+  return {
+    rows: [
+      commitRow(input.commitCount),
+      runRow(input.run),
+      drive,
+      ...(reviewLine ? [reviewLine] : []),
+    ],
+    warnings,
+  }
 }
 
 /** Why a session's briefing is flagged in the session strip. */
