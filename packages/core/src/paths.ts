@@ -90,6 +90,17 @@ export function sessionDir(id: string): string {
   return join(dataDir(), 'sessions', id)
 }
 
+/**
+ * Scratch space for one review ticket's host-side agent:
+ * `~/.runcastle/reviews/<ticketId>/`. Its `mcp.json`, and the `DIGEST.md` /
+ * `BLOCKED.md` it reports through, live here rather than in the repo — the
+ * review agent works in the human's real checkout, where an untracked file of
+ * ours would show up as their dirty tree.
+ */
+export function reviewDir(ticketId: string): string {
+  return join(dataDir(), 'reviews', ticketId)
+}
+
 /** Every talk worktree of one project: `~/.runcastle/worktrees/<projectId>/`. */
 export function projectWorktreesDir(projectId: string): string {
   return join(dataDir(), 'worktrees', projectId)

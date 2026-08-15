@@ -1,0 +1,268 @@
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { delimiter, join } from 'node:path'
+import type { RuncastleConfig, Ticket, WorkflowCtx } from '@runcastle/core'
+import { logsDir, reviewDir } from '@runcastle/core/paths'
+import { run } from '@ai-hero/sandcastle'
+import type { AgentStreamEvent, RunOptions } from '@ai-hero/sandcastle'
+import { noSandbox } from '@ai-hero/sandcastle/sandboxes/no-sandbox'
+import { appendTranscript, beginTranscript, endTranscript } from '../services/agent-stream'
+import { releaseReviewDrive } from '../services/git'
+import { renderRunMcpConfig } from '../launcher/artifacts'
+import type { TicketOutcome } from './ticket-burner'
+import {
+  buildBurnAgent,
+  buildFeatureBrief,
+  buildTicketJson,
+  burnerAssetPath,
+  createStreamThrottle,
+  errorHeadline,
+  harvestDigest,
+  readAgentFile,
+  readDocsDigestFromDisk,
+  registerTicketAbort,
+  releaseTicketAbort,
+  renderTemplate,
+} from './ticket-burner'
+
+/**
+ * The burn's second execution kind (improve-workflow spec, "Per-kind execution
+ * in the burner"): a `review` ticket, run HOST-SIDE against the integrated
+ * feature branch once every implementation ticket is terminal.
+ *
+ * Everything the implementation path does to keep concurrent agents apart is
+ * absent here on purpose — no per-ticket branch, no container, no merge-queue
+ * entry — because a review has nothing to land. It runs `claude --print` in the
+ * project's real checkout, with the runcastle MCP wired in under the run's
+ * identity, so the agent can boot the app through `review_drive`, walk it, and
+ * write what it finds through `add_test_note`.
+ *
+ * Semantics, from decision 6: **findings are not failure.** The ticket is done
+ * when the review ran to completion, however many bugs it wrote up. It fails
+ * only when the review could not run at all — no `agent-browser` on the machine,
+ * a drive it could not get, an agent that crashed — and that reason rides the
+ * ticket's digest into the run digest, because "review could not run: X" is the
+ * one thing the human arriving at the review screen needs to know.
+ */
+
+/** The prompt the review agent is spawned with. */
+export function reviewTemplatePath(): string {
+  return burnerAssetPath('review-ticket.md')
+}
+
+const PLACEHOLDERS = [
+  'TICKET_JSON',
+  'FEATURE_BRIEF',
+  'DOCS_DIGEST',
+  'FEATURE_BRANCH',
+  'DIGEST_PATH',
+  'BLOCKED_PATH',
+] as const
+
+/** {@link renderTemplate} over the review template's fixed key set. */
+export function renderReviewPrompt(
+  template: string,
+  values: Record<(typeof PLACEHOLDERS)[number], string>,
+): string {
+  return renderTemplate(template, values)
+}
+
+/** The CLI the review agent drives the app with. */
+export const AGENT_BROWSER_BIN = 'agent-browser'
+
+/**
+ * Whether `agent-browser` is on this machine's PATH. Probed BEFORE the agent is
+ * spawned: a review that discovers halfway through that it cannot open a browser
+ * has already switched the human's checkout and burned an agent to say so, and
+ * "the CLI is not installed" is a fact the burner can establish for free.
+ *
+ * PATH is walked directly rather than shelling out to `which`/`where`, which
+ * differ per platform and cost a process either way.
+ */
+export function findOnPath(
+  bin: string,
+  env: NodeJS.ProcessEnv = process.env,
+  platform: NodeJS.Platform = process.platform,
+): string | undefined {
+  const dirs = (env.PATH ?? env.Path ?? '').split(delimiter).filter(Boolean)
+  // On Windows a bare name is only executable via one of PATHEXT's suffixes;
+  // elsewhere the name IS the file.
+  const suffixes =
+    platform === 'win32'
+      ? (env.PATHEXT ?? '.COM;.EXE;.BAT;.CMD').split(';').filter(Boolean)
+      : ['']
+  for (const dir of dirs) {
+    for (const suffix of suffixes) {
+      const candidate = join(dir, `${bin}${suffix}`)
+      if (existsSync(candidate)) return candidate
+    }
+  }
+  return undefined
+}
+
+/**
+ * Everything the review agent reports back through, kept OUT of the repo: the
+ * agent works in the human's real checkout, so a `DIGEST.md` written at its root
+ * would be an untracked file in their tree — and the drive refuses to start on a
+ * dirty tree.
+ */
+interface ReviewArtifacts {
+  dir: string
+  mcpConfigPath: string
+  digestPath: string
+  blockedPath: string
+}
+
+function writeReviewArtifacts(
+  ticket: Ticket,
+  runId: string,
+  config: RuncastleConfig,
+): ReviewArtifacts {
+  const dir = reviewDir(ticket.id)
+  // A re-burn of the same ticket must not inherit the last attempt's DIGEST.md
+  // or BLOCKED.md — that is how a failed review reports success.
+  rmSync(dir, { recursive: true, force: true })
+  mkdirSync(dir, { recursive: true })
+  const mcpConfigPath = join(dir, 'mcp.json')
+  writeFileSync(mcpConfigPath, JSON.stringify(renderRunMcpConfig(runId, config), null, 2), 'utf8')
+  return {
+    dir,
+    mcpConfigPath,
+    digestPath: join(dir, 'DIGEST.md'),
+    blockedPath: join(dir, 'BLOCKED.md'),
+  }
+}
+
+/**
+ * Give the drive slot back, whatever happened. The agent is told to stop what it
+ * started, but an agent that crashed — or that ended its turn holding the slot —
+ * would otherwise leave the human's checkout parked on the feature branch with a
+ * dev server running and the machine-wide slot taken.
+ *
+ * Never fails the ticket: the review's outcome is what it is, and a teardown
+ * that could not complete is the drive's problem to report, not this path's.
+ */
+async function releaseDriveQuietly(): Promise<void> {
+  try {
+    await releaseReviewDrive()
+  } catch {
+    /* best-effort — the ticket's outcome stands */
+  }
+}
+
+export interface ReviewDeps {
+  config: RuncastleConfig
+  token: string | undefined
+  model: string
+}
+
+/**
+ * Run one review ticket to a terminal outcome. The sandcastle boundary, so not
+ * exercised by unit tests — the pure units around it (prompt rendering, the run
+ * mcp.json, the PATH probe, the outcome shapes) are.
+ */
+export async function executeReviewTicket(
+  ctx: WorkflowCtx,
+  ticket: Ticket,
+  deps: ReviewDeps,
+): Promise<TicketOutcome> {
+  const { project, feature } = ctx
+
+  const browser = findOnPath(AGENT_BROWSER_BIN)
+  if (!browser) {
+    return couldNotReview(
+      ticket,
+      `\`${AGENT_BROWSER_BIN}\` is not on this machine's PATH, so there is no way to drive the app. Install it and re-burn this ticket.`,
+    )
+  }
+
+  const artifacts = writeReviewArtifacts(ticket, ctx.runId, deps.config)
+  const prompt = renderReviewPrompt(readFileSync(reviewTemplatePath(), 'utf8'), {
+    TICKET_JSON: buildTicketJson(ticket),
+    FEATURE_BRIEF: buildFeatureBrief(feature),
+    DOCS_DIGEST: readDocsDigestFromDisk(project.id, feature.slug),
+    FEATURE_BRANCH: feature.branch,
+    DIGEST_PATH: artifacts.digestPath,
+    BLOCKED_PATH: artifacts.blockedPath,
+  })
+
+  mkdirSync(logsDir(), { recursive: true })
+  const throttle = createStreamThrottle((e) => ctx.emitEvent({ ...e, ticketId: ticket.id }))
+  beginTranscript(ticket.id)
+  const onStreamEvent = (event: AgentStreamEvent): void => {
+    throttle.onEvent(event)
+    if (event.type === 'text') {
+      appendTranscript(ticket.id, { kind: 'text', text: event.message })
+    } else if (event.type === 'toolCall') {
+      appendTranscript(ticket.id, {
+        kind: 'tool',
+        text: event.formattedArgs ?? '',
+        name: event.name,
+      })
+    }
+  }
+
+  const ticketAbort = registerTicketAbort(ticket.id)
+  const signal = AbortSignal.any([ctx.signal, ticketAbort.signal])
+
+  const options: RunOptions = {
+    // Always the host build, whatever `config.sandbox` says about implementation
+    // tickets: the app, its database and its browser only exist out here.
+    agent: buildBurnAgent(deps.config, deps.token, deps.model, {
+      onHost: true,
+      mcpConfigPath: artifacts.mcpConfigPath,
+    }),
+    sandbox: noSandbox(),
+    cwd: project.repoPath,
+    prompt,
+    // `head`: no worktree, no temp branch, no merge — sandcastle runs the agent
+    // in the checkout as it stands, which is where the review drive puts the
+    // integrated feature branch.
+    branchStrategy: { type: 'head' },
+    signal,
+    name: `ticket-${ticket.seq}-review`,
+    maxIterations: deps.config.burnMaxIterations,
+    logging: {
+      type: 'file',
+      path: join(logsDir(), `review-${feature.id}-${ticket.seq}.log`),
+      onAgentStreamEvent: onStreamEvent,
+    },
+  }
+
+  try {
+    await run(options)
+  } catch (err) {
+    if (ctx.signal.aborted) throw err // run cancelled — the runner finalizes it
+    return couldNotReview(
+      ticket,
+      ticketAbort.signal.aborted
+        ? 'stopped by user'
+        : `the review agent died: ${errorHeadline(err instanceof Error ? err.message : String(err))}`,
+    )
+  } finally {
+    releaseTicketAbort(ticket.id)
+    throttle.flush()
+    endTranscript(ticket.id)
+    await releaseDriveQuietly()
+  }
+
+  const blocked = readAgentFile([artifacts.dir], 'BLOCKED.md')?.trim()
+  const digest = harvestDigest([artifacts.dir])
+  if (blocked) return couldNotReview(ticket, blocked, digest)
+  // Ran to completion: done, with no commits, because a review never writes
+  // code. Its findings are already in the feature's test notes.
+  return { status: 'done', commits: [], ...(digest ? { digest } : {}) }
+}
+
+/**
+ * The failure shape, and the only one this path has: the review could not run.
+ * The reason goes in the digest as well as the error so it survives into the run
+ * digest, where the human reads what the burn produced.
+ */
+function couldNotReview(ticket: Ticket, reason: string, digest?: string): TicketOutcome {
+  const headline = `Review could not run: ${reason}`
+  return {
+    status: 'failed',
+    error: `ticket ${ticket.seq}: ${headline}`,
+    digest: digest ? `${digest}\n\n**${headline}**` : `**${headline}**`,
+  }
+}
