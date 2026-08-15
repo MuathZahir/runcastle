@@ -1360,6 +1360,19 @@ type DriveState =
 let testDriveState: DriveState | undefined
 
 /**
+ * How to end the live review drive, remembered from the call that started it.
+ *
+ * The burner has to be able to release the slot on every exit path — an agent
+ * that crashes holding the drive would otherwise leave the human's checkout
+ * parked on the feature branch with a dev server running — but workflows are
+ * deliberately `AppCtx`-free (the burner never touches the db). So the drive
+ * keeps the context that started it, and hands out the ctx-free
+ * {@link releaseReviewDrive}. Cleared whenever the drive stops, by whoever
+ * stopped it.
+ */
+let reviewDriveRelease: (() => Promise<unknown>) | undefined
+
+/**
  * The machinery's own account of a dry run, accumulated as it goes: the only
  * input to the verification verdict (decision 3). The agent's deeper checks —
  * is the database fresh, did migrations apply — decide whether to fix and
@@ -1377,6 +1390,7 @@ interface DryRunObservables {
 /** Test-only: clear the in-memory test-drive state (not called by any router). */
 export function __resetTestDriveState(): void {
   testDriveState = undefined
+  reviewDriveRelease = undefined
 }
 
 /**
@@ -1480,6 +1494,9 @@ export async function testDrive(
     // worktree to it (best-effort) so a resumed session picks up where it left.
     if (detachedWorktree) await reattachWorktree(detachedWorktree, branch)
     testDriveState = undefined
+    // Whoever stopped it — the agent, the burner's finally, or the human's Stop
+    // reclaiming the slot from a dead agent — there is nothing left to release.
+    reviewDriveRelease = undefined
     emit(ctx, feature.id, {
       type: 'testdrive.stopped',
       message:
@@ -1665,6 +1682,17 @@ function reviewDriveFor(featureId: string): boolean {
 }
 
 /**
+ * Stop the live review drive, if there still is one. The burner's `finally`
+ * path: a no-op when the agent already stopped what it started, which is the
+ * ordinary case.
+ */
+export async function releaseReviewDrive(): Promise<void> {
+  const release = reviewDriveRelease
+  if (!release) return
+  await release()
+}
+
+/**
  * The start half. Everything a human drive's start does, minus the active-run
  * denial (the run asking for the drive is the review ticket's own) — and with
  * the slot released again if anything after the checkout switch throws, so a
@@ -1681,6 +1709,11 @@ async function startReviewDrive(
   } catch (e) {
     if (reviewDriveFor(feature.id)) await testDrive(ctx, project, feature, 'stop')
     throw e
+  }
+  // The slot is now the review's; remember how to give it back (see
+  // `reviewDriveRelease`). A denied start took no slot and gets no releaser.
+  if (reviewDriveFor(feature.id)) {
+    reviewDriveRelease = () => reviewDrive(ctx, project, feature, 'stop')
   }
   return {
     ok: start.ok,

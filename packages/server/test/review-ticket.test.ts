@@ -1,0 +1,478 @@
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import type {
+  Feature,
+  Project,
+  RuncastleConfig,
+  Ticket,
+  WorkflowCtx,
+  WorkflowDef,
+} from '@runcastle/core'
+import { newId } from '@runcastle/core'
+import { runs } from '../src/db/schema'
+import { simpleGit } from 'simple-git'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import type { AppCtx } from '../src/db/types'
+import { renderRunMcpConfig } from '../src/launcher/artifacts'
+import { createNativePtySession } from '../src/pty/pty'
+import { getFeatureRow, listRunsByFeature } from '../src/services/repo'
+import {
+  __resetTestDriveState,
+  activeDriveInfo,
+  createFeatureBranch,
+  releaseReviewDrive,
+  reviewDrive,
+} from '../src/services/git'
+import { openProject } from '../src/services/projects'
+import { listByFeature, storeTickets } from '../src/services/tickets'
+import { createCallerFactory } from '../src/trpc/context'
+import { appRouter } from '../src/trpc/router'
+import { workflowRegistry } from '../src/workflows/registry'
+import {
+  AGENT_BROWSER_BIN,
+  executeReviewTicket,
+  findOnPath,
+  renderReviewPrompt,
+  reviewTemplatePath,
+} from '../src/workflows/review-ticket'
+import type { BurnDeps, TicketOutcome } from '../src/workflows/ticket-burner'
+import { buildBurnAgent, burnRun } from '../src/workflows/ticket-burner'
+import { makeTestCtx } from './helpers/db'
+import { seedFeature, seedProject } from './helpers/fixtures'
+
+/**
+ * Per-kind execution in the burn (improve-workflow seam 2): a review ticket
+ * runs LAST, host-side, against the integrated feature branch — and its outcome
+ * obeys the advisory bargain, where finding bugs is success and only "could not
+ * review" is failure.
+ *
+ * The scheduling half is driven through `burnRun` with a fake
+ * `executeTicketRun`, the way `ticket-burner.test.ts` does — sandcastle is the
+ * boundary, not the subject. The executor's own half is exercised where it can
+ * be observed without spawning an agent: the artifacts it hands the agent, and
+ * the failure it reaches before any agent exists.
+ */
+
+const project: Project = { id: 'proj_1', name: 'test', repoPath: '/repo', mainBranch: 'main' }
+
+const feature: Feature = {
+  id: 'feat_1',
+  projectId: 'proj_1',
+  slug: 'demo',
+  title: 'Demo',
+  oneLiner: 'x',
+  mapped: false,
+  phase: 'implementation',
+  branch: 'feature/demo',
+  status: 'active',
+  createdAt: 0,
+}
+
+function ticket(seq: number, over: Partial<Ticket> = {}): Ticket {
+  return {
+    id: `tkt_${seq}`,
+    featureId: feature.id,
+    seq,
+    title: `Ticket ${seq}`,
+    goal: 'g',
+    context: 'c',
+    acceptanceCriteria: ['a'],
+    seams: ['s'],
+    blockedBy: [],
+    kind: 'implementation',
+    status: 'pending',
+    commits: [],
+    ...over,
+  }
+}
+
+const review = (seq: number, over: Partial<Ticket> = {}): Ticket =>
+  ticket(seq, { kind: 'review', title: `Review ${seq}`, ...over })
+
+function makeCtx(tickets: Ticket[]) {
+  const ctx: WorkflowCtx = {
+    runId: 'run_1',
+    project,
+    feature,
+    tickets,
+    emitEvent: () => {},
+    updateTicket: (id, patch) => {
+      const t = tickets.find((x) => x.id === id)
+      if (t) Object.assign(t, patch)
+    },
+    resolveWaypoint: () => {},
+    signal: new AbortController().signal,
+  }
+  return ctx
+}
+
+/**
+ * A boundary that records the order tickets reached it and holds each one until
+ * released, so "did the review wait?" is observable rather than inferred from a
+ * lucky interleaving.
+ */
+function gatedExecute(outcomes: Record<number, TicketOutcome> = {}) {
+  const started: number[] = []
+  const gates = new Map<number, () => void>()
+  const execute = (_c: WorkflowCtx, t: Ticket): Promise<TicketOutcome> => {
+    started.push(t.seq)
+    return new Promise<TicketOutcome>((resolve) => {
+      gates.set(t.seq, () => resolve(outcomes[t.seq] ?? { status: 'done', commits: ['sha'] }))
+    })
+  }
+  /** Let seq finish, then yield the microtask queue so the scheduler reacts. */
+  const release = async (seq: number): Promise<void> => {
+    gates.get(seq)?.()
+    for (let i = 0; i < 20; i++) await Promise.resolve()
+  }
+  return { execute, started, release }
+}
+
+function deps(execute: BurnDeps['executeTicketRun'], concurrency = 4): BurnDeps {
+  return {
+    config: { sandbox: 'docker' } as RuncastleConfig,
+    hasAuthToken: true,
+    concurrency,
+    executeTicketRun: execute,
+  }
+}
+
+describe('a review ticket is scheduled behind every implementation ticket', () => {
+  it('waits for them all, even at a concurrency that could run it beside them', async () => {
+    const tickets = [ticket(1), ticket(2), review(3, { blockedBy: [1, 2] })]
+    const { execute, started, release } = gatedExecute()
+
+    const run = burnRun(makeCtx(tickets), deps(execute))
+    await Promise.resolve()
+
+    // Both implementation tickets are in flight; the review is not.
+    expect(started).toEqual([1, 2])
+    await release(1)
+    expect(started).toEqual([1, 2])
+    await release(2)
+    expect(started).toEqual([1, 2, 3])
+
+    await release(3)
+    expect((await run).status).toBe('succeeded')
+  })
+
+  it('waits even when the ticket was emitted without the blocking edges', async () => {
+    // The precondition is the burner's, not the emitting session's: a review
+    // ticket with no `blockedBy` at all still runs last.
+    const tickets = [ticket(1), review(2)]
+    const { execute, started, release } = gatedExecute()
+
+    const run = burnRun(makeCtx(tickets), deps(execute))
+    await Promise.resolve()
+
+    expect(started).toEqual([1])
+    await release(1)
+    expect(started).toEqual([1, 2])
+
+    await release(2)
+    await run
+  })
+
+  it('does not hold implementation tickets behind each other', async () => {
+    // The gate is one-way — the review waits for the others, not the reverse.
+    const tickets = [ticket(1), ticket(2), review(3)]
+    const { execute, started, release } = gatedExecute()
+
+    const run = burnRun(makeCtx(tickets), deps(execute))
+    await Promise.resolve()
+
+    expect(started).toEqual([1, 2])
+    await release(1)
+    await release(2)
+    await release(3)
+    await run
+  })
+})
+
+describe("a review ticket's account reaches the run digest", () => {
+  it('carries its digest like any done ticket', async () => {
+    const tickets = [ticket(1), review(2, { blockedBy: [1] })]
+    const execute = async (_c: WorkflowCtx, t: Ticket): Promise<TicketOutcome> => ({
+      status: 'done',
+      commits: t.seq === 1 ? ['sha'] : [],
+      digest: t.seq === 1 ? 'built the thing' : 'walked the settings flow; 2 findings',
+    })
+
+    const result = await burnRun(makeCtx(tickets), deps(execute))
+
+    expect(result.status).toBe('succeeded')
+    expect(result.digest).toContain('## ticket 2 — Review 2')
+    expect(result.digest).toContain('walked the settings flow; 2 findings')
+  })
+
+  it('carries the reason it could not run, and stores it on the ticket', async () => {
+    const tickets = [ticket(1), review(2, { blockedBy: [1] })]
+    const execute = async (_c: WorkflowCtx, t: Ticket): Promise<TicketOutcome> =>
+      t.seq === 1
+        ? { status: 'done', commits: ['sha'] }
+        : {
+            status: 'failed',
+            error: 'ticket 2: Review could not run: the dev URL never appeared',
+            digest: '**Review could not run: the dev URL never appeared**',
+          }
+
+    const result = await burnRun(makeCtx(tickets), deps(execute))
+
+    expect(result.status).toBe('failed')
+    expect(result.digest).toContain('Review could not run: the dev URL never appeared')
+    expect(tickets[1]).toMatchObject({
+      status: 'failed',
+      digest: '**Review could not run: the dev URL never appeared**',
+    })
+  })
+})
+
+describe('what the review agent is handed', () => {
+  const config = { serverPort: 4512, sandbox: 'docker' } as RuncastleConfig
+
+  it('identifies itself to the MCP server by its run, not by a session', () => {
+    expect(renderRunMcpConfig('run_abc', config)).toEqual({
+      mcpServers: {
+        runcastle: {
+          type: 'http',
+          url: 'http://localhost:4512/mcp',
+          headers: { 'X-Runcastle-Run': 'run_abc' },
+        },
+      },
+    })
+  })
+
+  it('reaches that config through the print command, and runs on the host', () => {
+    // `config.sandbox` is docker — the review agent still gets the host build,
+    // because the app it reviews only exists out here.
+    const agent = buildBurnAgent(config, 'sk-token', 'opus', {
+      onHost: true,
+      mcpConfigPath: '/tmp/reviews/tkt_9/mcp.json',
+    })
+
+    const { command } = agent.buildPrintCommand({
+      prompt: 'review it',
+      dangerouslySkipPermissions: false,
+    })
+    expect(command).toContain('--mcp-config "/tmp/reviews/tkt_9/mcp.json"')
+    // The host build's markers: the host env passes through, and permissions
+    // are bypassed so the agent can actually call its tools.
+    expect(agent.env.PATH).toBe(process.env.PATH)
+    expect(command).toContain('--permission-mode bypassPermissions')
+  })
+
+  it('gets a prompt with every placeholder filled', () => {
+    const prompt = renderReviewPrompt(readFileSync(reviewTemplatePath(), 'utf8'), {
+      TICKET_JSON: '{"seq":3}',
+      FEATURE_BRIEF: 'Demo feature',
+      DOCS_DIGEST: 'the docs',
+      FEATURE_BRANCH: 'feature/demo',
+      DIGEST_PATH: '/data/reviews/tkt_3/DIGEST.md',
+      BLOCKED_PATH: '/data/reviews/tkt_3/BLOCKED.md',
+    })
+
+    expect(prompt).not.toContain('{{')
+    // The two wires and the two report paths are the contract with the burner.
+    expect(prompt).toContain('review_drive')
+    expect(prompt).toContain('add_test_note')
+    expect(prompt).toContain('/data/reviews/tkt_3/DIGEST.md')
+    expect(prompt).toContain('/data/reviews/tkt_3/BLOCKED.md')
+  })
+})
+
+describe('the agent-browser probe', () => {
+  let dir: string
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'rc-path-'))
+  })
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true })
+  })
+
+  it('finds a binary on PATH and misses one that is not there', () => {
+    writeFileSync(join(dir, 'agent-browser'), '#!/bin/sh\n')
+
+    expect(findOnPath('agent-browser', { PATH: dir }, 'linux')).toBe(join(dir, 'agent-browser'))
+    expect(findOnPath('nope-not-here', { PATH: dir }, 'linux')).toBeUndefined()
+    expect(findOnPath('agent-browser', { PATH: '' }, 'linux')).toBeUndefined()
+  })
+
+  it('needs a PATHEXT suffix on Windows', () => {
+    // Spelled as PATHEXT spells it, because this assertion runs on a
+    // case-SENSITIVE filesystem where Windows' own is not.
+    writeFileSync(join(dir, 'agent-browser.CMD'), 'echo\n')
+
+    expect(findOnPath('agent-browser', { PATH: dir, PATHEXT: '.EXE;.CMD' }, 'win32')).toBe(
+      join(dir, 'agent-browser.CMD'),
+    )
+    // The bare name is not executable there, and is all there is anywhere else.
+    expect(findOnPath('agent-browser', { PATH: dir }, 'linux')).toBeUndefined()
+  })
+
+  it('fails the ticket before spawning anything when the CLI is missing', async () => {
+    const original = process.env.PATH
+    process.env.PATH = dir // empty — no agent-browser here
+    try {
+      const outcome = await executeReviewTicket(makeCtx([]), review(3), {
+        config: { sandbox: 'docker' } as RuncastleConfig,
+        token: 'sk-token',
+        model: 'opus',
+      })
+
+      expect(outcome.status).toBe('failed')
+      if (outcome.status !== 'failed') return
+      expect(outcome.error).toContain(AGENT_BROWSER_BIN)
+      // The reason has to reach the digest — that is where the human reads what
+      // the burn produced.
+      expect(outcome.digest).toContain('Review could not run')
+      expect(outcome.digest).toContain(AGENT_BROWSER_BIN)
+    } finally {
+      process.env.PATH = original
+    }
+  })
+})
+
+// --- the drive is released on both paths ------------------------------------
+
+function ptyAvailable(): boolean {
+  try {
+    const p = createNativePtySession('/bin/sh', ['-c', 'true'], { cwd: process.cwd(), env: process.env })
+    p.kill()
+    return true
+  } catch {
+    return false
+  }
+}
+const PTY = process.platform !== 'win32' && ptyAvailable()
+
+describe.skipIf(!PTY)('releasing the drive a review agent left behind', () => {
+  let ctx: AppCtx
+  let repo: string
+  let proj: Project
+  let feat: Feature
+  const dirs: string[] = []
+
+  beforeEach(async () => {
+    ctx = await makeTestCtx()
+    repo = mkdtempSync(join(tmpdir(), 'rc-release-'))
+    dirs.push(repo)
+    const g = simpleGit(repo)
+    await g.init(['-b', 'main'])
+    await g.addConfig('user.email', 'test@runcastle.dev')
+    await g.addConfig('user.name', 'Runcastle Test')
+    await g.addConfig('core.autocrlf', 'false')
+    writeFileSync(join(repo, 'README.md'), 'base\n')
+    await g.add(['README.md'])
+    await g.commit('initial commit')
+    proj = await openProject(ctx, repo)
+    feat = seedFeature(ctx, proj.id, { slug: 'reviewed', phase: 'implementation' })
+    await createFeatureBranch(proj, feat.slug)
+    ctx.db
+      .insert(runs)
+      .values({
+        id: newId('run'),
+        featureId: feat.id,
+        workflow: 'ticket-burner',
+        status: 'running',
+        startedAt: Date.now(),
+      })
+      .run()
+  })
+
+  afterEach(() => {
+    __resetTestDriveState()
+    for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true })
+  })
+
+  const branch = async (): Promise<string> =>
+    (await simpleGit(repo).revparse(['--abbrev-ref', 'HEAD'])).trim()
+
+  it('puts the checkout back when the agent died holding the slot', async () => {
+    expect((await reviewDrive(ctx, proj, feat, 'start')).ok).toBe(true)
+    expect(await branch()).toBe('feature/reviewed')
+
+    await releaseReviewDrive()
+
+    expect(await branch()).toBe('main')
+    expect(activeDriveInfo()).toBeNull()
+  })
+
+  it('is a no-op when the agent already stopped what it started', async () => {
+    await reviewDrive(ctx, proj, feat, 'start')
+    await reviewDrive(ctx, proj, feat, 'stop')
+
+    await releaseReviewDrive()
+
+    expect(await branch()).toBe('main')
+    expect(activeDriveInfo()).toBeNull()
+  })
+
+  it('is a no-op when no review drive was ever started', async () => {
+    await expect(releaseReviewDrive()).resolves.toBeUndefined()
+    expect(await branch()).toBe('main')
+  })
+})
+
+// --- the run finalizer, with a review ticket in the batch --------------------
+
+describe('a run containing a review ticket still lands the feature in review', () => {
+  let ctx: AppCtx
+  let caller: ReturnType<ReturnType<typeof createCallerFactory<typeof appRouter>>>
+  let original: WorkflowDef | undefined
+
+  /** The real scheduler over a fake boundary, registered as the burner. */
+  const burner: WorkflowDef = {
+    id: 'ticket-burner',
+    run: (wctx) =>
+      burnRun(
+        wctx,
+        deps(async (_c, t) => ({
+          status: 'done',
+          commits: t.kind === 'review' ? [] : ['sha'],
+          digest: t.kind === 'review' ? 'reviewed the app: 1 finding' : 'implemented it',
+        })),
+      ),
+  }
+
+  beforeEach(async () => {
+    ctx = await makeTestCtx()
+    caller = createCallerFactory(appRouter)(ctx)
+    original = workflowRegistry.get('ticket-burner')
+    workflowRegistry.set('ticket-burner', burner)
+  })
+
+  afterEach(() => {
+    if (original) workflowRegistry.set('ticket-burner', original)
+    else workflowRegistry.delete('ticket-burner')
+  })
+
+  it('auto-advances on G4 and keeps the review digest in the run digest', async () => {
+    const featureId = seedFeature(ctx, seedProject(ctx).id, { phase: 'tickets' }).id
+    storeTickets(ctx, featureId, [
+      { title: 'build it', goal: 'g', context: 'c', acceptanceCriteria: ['a'], seams: ['s'], blockedBy: [] },
+      {
+        title: 'review it',
+        goal: 'g',
+        context: 'c',
+        acceptanceCriteria: ['a'],
+        seams: ['s'],
+        blockedBy: [1],
+        kind: 'review',
+      },
+    ])
+
+    await caller.feature.burn({ featureId })
+    for (let i = 0; i < 200 && getFeatureRow(ctx, featureId).phase !== 'review'; i++) {
+      await new Promise((r) => setTimeout(r, 5))
+    }
+
+    expect(getFeatureRow(ctx, featureId).phase).toBe('review')
+    // A review ticket lands `done` with no commits — its deliverable is notes.
+    const reviewTicket = listByFeature(ctx, featureId).find((t) => t.kind === 'review')
+    expect(reviewTicket).toMatchObject({ status: 'done', commits: [] })
+    const run = listRunsByFeature(ctx, featureId)[0]
+    expect(run?.digest).toContain('reviewed the app: 1 finding')
+  })
+})

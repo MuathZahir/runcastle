@@ -43,6 +43,10 @@ import type {
 } from '@ai-hero/sandcastle'
 import { claudeCode, run } from '@ai-hero/sandcastle'
 import { buildGuardInstallCommand } from './burn-guard'
+// The other execution kind. Imported for its one entry point only — everything
+// it needs from here it takes from the exported pure units, and neither module
+// touches the other while it is being evaluated.
+import { executeReviewTicket } from './review-ticket'
 import { docker } from '@ai-hero/sandcastle/sandboxes/docker'
 import { podman } from '@ai-hero/sandcastle/sandboxes/podman'
 import { noSandbox } from '@ai-hero/sandcastle/sandboxes/no-sandbox'
@@ -72,6 +76,11 @@ import { noSandbox } from '@ai-hero/sandcastle/sandboxes/no-sandbox'
  * through a per-run merge queue, and a ticket is only `done` once its branch
  * has landed — so a dependent ticket always forks a tip that includes its
  * blockers' commits.
+ *
+ * All of the above is the `implementation` ticket kind. A `review` ticket takes
+ * none of it — no temp branch, no container, no merge queue — and is executed
+ * host-side by `./review-ticket`, once every implementation ticket in the run is
+ * terminal. `isReviewTicket` is the only fork.
  */
 
 const AUTH_MISSING_EVENT = 'auth.missing'
@@ -99,6 +108,13 @@ export type TicketOutcome =
       readonly error: string
       /** Extra event emitted before the generic `ticket.failed` (e.g. conflict). */
       readonly event?: { type: string; message: string }
+      /**
+       * An account of the failure worth keeping in the run's record — the review
+       * ticket's "could not review, because X". Optional because most failures
+       * say everything they have to say in `error`; when present it is stored
+       * and harvested exactly like a done ticket's digest.
+       */
+      readonly digest?: string
     }
 
 export interface BurnDeps {
@@ -109,6 +125,16 @@ export interface BurnDeps {
   concurrency: number
   /** Runs one ticket to a terminal outcome. Real impl calls sandcastle `run()`. */
   executeTicketRun: (ctx: WorkflowCtx, ticket: Ticket) => Promise<TicketOutcome>
+}
+
+/**
+ * The one fork in the burn (improve-workflow spec, "Per-kind execution"): a
+ * review ticket is executed host-side against the integrated feature branch —
+ * no per-ticket branch, no container, no merge-queue entry — and everything
+ * below that reads `kind` reads it through here.
+ */
+export function isReviewTicket(ticket: Ticket): boolean {
+  return ticket.kind === 'review'
 }
 
 // ---------------------------------------------------------------------------
@@ -1127,6 +1153,22 @@ export function stopTicketRun(ticketId: string): boolean {
   return true
 }
 
+/**
+ * Make a ticket's agent stoppable for as long as it is running — every
+ * execution kind registers here, so "Stop ticket" reaches the review agent on
+ * the host exactly as it reaches an implementer in its container.
+ */
+export function registerTicketAbort(ticketId: string): AbortController {
+  const controller = new AbortController()
+  activeTicketAborts.set(ticketId, controller)
+  return controller
+}
+
+/** Drop a finished ticket's stop control (always paired, in a `finally`). */
+export function releaseTicketAbort(ticketId: string): void {
+  activeTicketAborts.delete(ticketId)
+}
+
 // ---------------------------------------------------------------------------
 // Pure unit — serial queue (one merge lands at a time)
 // ---------------------------------------------------------------------------
@@ -1268,7 +1310,7 @@ export interface HarvestedDigest {
  * worktree (...)" and only says `fatal: ... Filename too long` lines later —
  * so prefer the LAST `fatal:`/`error:` line over the first line.
  */
-function errorHeadline(s: string): string {
+export function errorHeadline(s: string): string {
   const lines = s
     .split('\n')
     .map((l) => l.trim())
@@ -1286,6 +1328,11 @@ function errorHeadline(s: string): string {
  * every other in-flight ticket drained first, so no rejection goes unhandled.
  * Returns the count of tickets in `done` state at the end, plus the digests
  * harvested along the way (the raw material for this run's aggregate).
+ *
+ * One ticket kind schedules differently: a `review` ticket also waits for every
+ * implementation ticket in the run to settle, whatever its declared edges say.
+ * It exercises the integrated branch, so starting it beside a still-burning
+ * ticket would review a half-landed feature.
  */
 export async function burnTickets(
   ctx: WorkflowCtx,
@@ -1304,6 +1351,16 @@ export async function burnTickets(
   // because the work is unnecessary, so dependents proceed without it.
   const satisfied = (s: TicketStatus | undefined): boolean => s === 'done' || s === 'cancelled'
 
+  /**
+   * The review precondition, held defensively rather than trusted to the
+   * emitting session's `blockedBy`: no implementation ticket is still waiting or
+   * still burning. Read off the scheduler's own sets, not off statuses, so a row
+   * left `burning` by a dead earlier run — which this schedule will never move —
+   * does not strand the review behind it forever.
+   */
+  const implementationsSettled = (): boolean =>
+    tickets.every((t) => isReviewTicket(t) || (!pending.has(t.seq) && !inFlight.has(t.seq)))
+
   const readyState = (seq: number): ReadyState => {
     const t = bySeq.get(seq)
     if (!t) return 'wait'
@@ -1312,14 +1369,21 @@ export async function burnTickets(
       const bs = present ? status.get(b) : undefined
       if (!present || bs === 'failed') return { blockedBy: b, present }
     }
+    if (isReviewTicket(t) && !implementationsSettled()) return 'wait'
     return t.blockedBy.every((b) => satisfied(status.get(b))) ? 'ready' : 'wait'
   }
 
-  const failTicket = (seq: number, error: string, extra?: { type: string; message: string }) => {
+  const failTicket = (
+    seq: number,
+    error: string,
+    extra?: { type: string; message: string },
+    digest?: string,
+  ) => {
     const t = bySeq.get(seq)
     status.set(seq, 'failed')
     if (!t) return
-    ctx.updateTicket(t.id, { status: 'failed', error })
+    ctx.updateTicket(t.id, { status: 'failed', error, ...(digest ? { digest } : {}) })
+    if (digest) digests.push({ seq: t.seq, title: t.title, digest })
     if (extra) ctx.emitEvent({ ...extra, ticketId: t.id })
   }
 
@@ -1356,7 +1420,7 @@ export async function burnTickets(
         digests.push({ seq: t.seq, title: t.title, digest: outcome.digest })
       }
     } else {
-      failTicket(seq, outcome.error, outcome.event)
+      failTicket(seq, outcome.error, outcome.event, outcome.digest)
       ctx.emitEvent({
         type: 'ticket.failed',
         message: `ticket ${t.seq} failed: ${errorHeadline(outcome.error)}`,
@@ -1520,13 +1584,18 @@ export function resolverTemplatePath(): string {
   return burnerAssetPath('resolve-conflict.md')
 }
 
-function burnerAssetPath(file: string): string {
+/**
+ * Absolute path to one burner asset, resolving the skills root the same way for
+ * every prompt template the burn renders — the implementer's, the conflict
+ * resolver's, and the review agent's.
+ */
+export function burnerAssetPath(file: string): string {
   const here = dirname(fileURLToPath(import.meta.url))
   return join(resolveSkillsRoot(here), 'burner', file)
 }
 
 /** Read `docs/features/<slug>/*.md` from the talk worktree, or a skip note. */
-function readDocsDigestFromDisk(projectId: string, slug: string): string {
+export function readDocsDigestFromDisk(projectId: string, slug: string): string {
   const worktree = worktreeDir(projectId, slug)
   if (!existsSync(worktree)) return '_No talk worktree on disk — docs digest skipped._'
   const docsDir = join(worktree, ...featureDocsRel(slug).split('/'))
@@ -1539,7 +1608,7 @@ function readDocsDigestFromDisk(projectId: string, slug: string): string {
 }
 
 /** First-found `file` across candidate dirs (worktree first, then repo). */
-function readAgentFile(dirs: (string | undefined)[], file: string): string | undefined {
+export function readAgentFile(dirs: (string | undefined)[], file: string): string | undefined {
   for (const dir of dirs) {
     if (!dir) continue
     const p = join(dir, file)
@@ -1590,6 +1659,22 @@ function buildAgentEnv(onHost: boolean, token: string | undefined): Record<strin
   return env
 }
 
+export interface BurnAgentOptions {
+  /**
+   * Force the host build regardless of `config.sandbox`. The review ticket runs
+   * on the host whatever the burn is configured to do with implementation
+   * tickets (it has to — the app and its database only exist there), so it needs
+   * the host env and the host permission mode from a docker-configured burn too.
+   */
+  onHost?: boolean
+  /**
+   * Give the agent an MCP config file (`--mcp-config`). sandcastle 0.12.0's
+   * `ClaudeCodeOptions` has no MCP field, so it rides the print command — the
+   * same seam the Windows model de-quote already uses.
+   */
+  mcpConfigPath?: string
+}
+
 /**
  * Build the sandcastle claude agent for a burn, working around two host/Windows
  * gaps in `@ai-hero/sandcastle` 0.12.0's `noSandbox` provider (the container
@@ -1615,26 +1700,37 @@ export function buildBurnAgent(
   config: RuncastleConfig,
   token: string | undefined,
   model: string,
+  options: BurnAgentOptions = {},
 ): AgentProvider {
-  const onHost = config.sandbox === 'noSandbox'
+  const onHost = options.onHost ?? config.sandbox === 'noSandbox'
   const opts: ClaudeCodeOptions = {
     env: buildAgentEnv(onHost, token),
     ...(onHost ? { permissionMode: 'bypassPermissions' as const } : {}),
   }
   const agent = claudeCode(model, opts)
 
-  if (onHost && process.platform === 'win32') {
-    const quoted = `--model '${model}'`
-    const unquoted = `--model ${model}`
-    return {
-      ...agent,
-      buildPrintCommand: (o: AgentCommandOptions): PrintCommand => {
-        const built = agent.buildPrintCommand(o)
-        return { ...built, command: built.command.split(quoted).join(unquoted) }
-      },
-    }
+  const dequoteModel = onHost && process.platform === 'win32'
+  if (!dequoteModel && !options.mcpConfigPath) return agent
+
+  return {
+    ...agent,
+    buildPrintCommand: (o: AgentCommandOptions): PrintCommand => {
+      const built = agent.buildPrintCommand(o)
+      let command = built.command
+      if (dequoteModel) command = command.split(`--model '${model}'`).join(`--model ${model}`)
+      if (options.mcpConfigPath) command += ` --mcp-config ${quoteArg(options.mcpConfigPath)}`
+      return { ...built, command }
+    },
   }
-  return agent
+}
+
+/**
+ * Quote one path for the shell the print command runs in — double quotes,
+ * because the only place a burn path contains a space is a Windows home
+ * directory and `cmd.exe` understands nothing else.
+ */
+function quoteArg(value: string): string {
+  return `"${value}"`
 }
 
 /**
@@ -1836,8 +1932,7 @@ async function realExecuteTicketRun(
 
   // Per-ticket stop control: `signal` kills THIS ticket's agent on either the
   // run's abort (cancel run) or a targeted `stopTicketRun` (Stop ticket).
-  const ticketAbort = new AbortController()
-  activeTicketAborts.set(ticket.id, ticketAbort)
+  const ticketAbort = registerTicketAbort(ticket.id)
   const signal = AbortSignal.any([ctx.signal, ticketAbort.signal])
 
   const maxAttempts = Math.max(1, config.burnAttempts)
@@ -2296,7 +2391,7 @@ async function realExecuteTicketRun(
     // so dependents always fork a tip that includes their blockers' work.
     return await landChain(tempBranch, outcome.commits)
   } finally {
-    activeTicketAborts.delete(ticket.id)
+    releaseTicketAbort(ticket.id)
     throttle.flush()
     endTranscript(ticket.id)
     // Emitted on EVERY exit path — a ticket that failed or was stopped is
@@ -2336,7 +2431,9 @@ function resolveBurnDeps(ctx: WorkflowCtx): BurnDeps {
     hasAuthToken: token !== undefined,
     concurrency: config.burnConcurrency,
     executeTicketRun: (c, ticket) =>
-      realExecuteTicketRun(c, ticket, config, token, model, land, ensureIsolatedPushTarget),
+      isReviewTicket(ticket)
+        ? executeReviewTicket(c, ticket, { config, token, model })
+        : realExecuteTicketRun(c, ticket, config, token, model, land, ensureIsolatedPushTarget),
   }
 }
 

@@ -33,6 +33,7 @@ import { Hono } from 'hono'
 import * as z from 'zod'
 import type { AppCtx } from '../db/types'
 import { GateError, InvalidInputError, isNotImplemented } from '../errors'
+import { RUN_HEADER } from '../launcher/artifacts'
 import { getRuntimeCtx } from '../launcher/runtime'
 import { getSessionRow, mostRecentLiveSession } from '../launcher/sessions'
 import {
@@ -493,12 +494,6 @@ export interface RunIdentity {
   runId: string
   featureId: string
 }
-
-/**
- * The header a run-scoped agent identifies itself with, as the runner must
- * spell it in that agent's `mcp.json` — the twin of `X-Runcastle-Session`.
- */
-export const RUN_HEADER = 'X-Runcastle-Run'
 
 function headerRunId(extra: HeaderCarrier): string | undefined {
   return identityHeader(extra, RUN_HEADER)

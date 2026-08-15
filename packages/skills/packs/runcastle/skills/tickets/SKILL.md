@@ -37,6 +37,12 @@ Expect a **handful of substantial tickets** for a feature — roughly 4–8, eac
 
 Give each ticket its **blocking edges** — the tickets that must finish before it can start. Every ticket carries them: the field is required, so a ticket with no blockers gets an empty array and can start immediately.
 
+<review-ticket>
+Close the batch with **one review ticket** (`kind: "review"`), blocked by every implementation ticket in it. It is not a slice: it is the prose brief for the agent that exercises the *integrated* feature at the tail of the burn, on the feature branch, and writes what it finds as test notes for the human's review phase. Its `goal` says what to verify and its `acceptanceCriteria` are the things to check off, one per behaviour worth confirming — the review agent walks them in order.
+
+Prescribe the verification that fits the feature, in plain prose: a browser walkthrough for anything with a UI ("open the settings flow, add a project, check the empty state"), or "run the suite and curl these endpoints" for a backend-only one. There is no mode to pick — the agent does what the ticket says. A feature with genuinely nothing to exercise gets no review ticket; everything else gets exactly one (more per feature comes later). The review agent never edits code, so its ticket needs no `seams` beyond the surface it exercises, and finding bugs is a *successful* review — the notes are the deliverable.
+</review-ticket>
+
 <wide-refactor-exception>
 A **wide refactor** — one mechanical change (rename a column, retype a shared symbol) whose blast radius breaks thousands of call sites at once — cannot land green as a vertical slice. Sequence it **expand → migrate → contract** instead. Expand: add the new form beside the old so nothing breaks (one ticket). Migrate: move call sites over in batches sized by blast radius (per package/dir), each batch a ticket blocked by the expand, CI green throughout because the old form still exists. Contract: delete the old form once no caller remains, blocked by every migrate batch. If even the batches cannot stay green alone, let them share an integration branch that all block a final integrate-and-verify ticket — green is promised only there.
 </wide-refactor-exception>
@@ -52,6 +58,7 @@ Each ticket:
 - **acceptanceCriteria** — `string[]`, each independently *verifiable* (a behaviour you can observe, a command that passes). These are what the burner works red-green against, one at a time, committing each green one — so this is where the fine granularity lives. A substantial ticket having four to eight criteria is right, not a smell; a list running well past that is a ticket that will not land in one pass.
 - **seams** — `string[]`, the public interfaces to test at (carry them from the spec's Seams section; prefer existing, prefer the highest, prefer one).
 - **blockedBy** — `number[]`, **required**, the seq numbers (from your 1..N ordering) of the tickets that *genuinely* gate this one. Only true gates; pass `[]` when there are none — omitting it fails validation.
+- **kind** — `"implementation"` (the default, omit it) or `"review"` for the one review ticket described above.
 
 ## 3. Self-check, then emit
 

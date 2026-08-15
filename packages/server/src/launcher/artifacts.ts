@@ -798,6 +798,32 @@ export function renderMcpConfig(session: SessionRow, config: RuncastleConfig): M
   }
 }
 
+/**
+ * The header a RUN-scoped agent identifies itself with — the twin of
+ * `X-Runcastle-Session`, for an agent that has no session to be. Lives here,
+ * beside the config that spells it, so the writer and the MCP server that gates
+ * on it read the same constant.
+ */
+export const RUN_HEADER = 'X-Runcastle-Run'
+
+/**
+ * `mcp.json` for the burner's review agent — the same server every talk session
+ * gets, identified by the RUN rather than by a session, because a review ticket
+ * burning at the tail of a run has no session row. `review_drive` and
+ * `add_test_note` are gated on exactly this header.
+ */
+export function renderRunMcpConfig(runId: string, config: RuncastleConfig): McpConfig {
+  return {
+    mcpServers: {
+      runcastle: {
+        type: 'http',
+        url: `${serverUrlFor(config)}/mcp`,
+        headers: { [RUN_HEADER]: runId },
+      },
+    },
+  }
+}
+
 // --- writer -----------------------------------------------------------------
 
 export async function writeSessionArtifacts(
