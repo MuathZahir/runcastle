@@ -119,8 +119,8 @@
         <p>
           Without it, every agent rediscovers your repo from scratch. It guesses the install
           command, guesses a test filter, and when a test fails it cannot tell whether it broke
-          something or found something that was already broken. One real burn spent two full
-          monorepo test runs guessing at a workspace filter name.
+          something or found something that was already broken. In one real build an agent spent
+          two full monorepo test runs guessing at a workspace filter name.
         </p>
         <p>
           Preparation pays that cost once. The answers are project settings from then on, and the
@@ -166,8 +166,8 @@
               <tr>
                 <th scope="row">Verify commands</th>
                 <td>
-                  The exact typecheck, test, and lint commands, one per line. Also the only
-                  sanctioned place to bound test concurrency.
+                  The exact typecheck, test, and lint commands, one per line. Also where you cap
+                  test concurrency, if your suite needs that.
                 </td>
               </tr>
               <tr>
@@ -233,8 +233,8 @@ DATABASE_URL=postgres://localhost/myapp_{{id}}</code></pre>
         <p>
           A dry run is a real test drive with the branch switch removed. Nothing is checked out.
           It renders the environment, runs your setup command, starts the dev server, watches for
-          a localhost URL, then runs teardown, all under a reserved slug so the temporary database
-          is obviously temporary. Four facts can be proven this way:
+          a localhost URL, then runs teardown, all under a reserved slug so nothing it creates
+          collides with a real feature. Four facts can be proven this way:
         </p>
         <ul>
           <li><strong>Test drive environment</strong>: no placeholder was left unsubstituted.</li>
@@ -263,25 +263,23 @@ DATABASE_URL=postgres://localhost/myapp_{{id}}</code></pre>
           verify commands, known failing tests) fall back to a global default when the project
           has none.
         </p>
-        <p>Each fact also records who settled it:</p>
+        <p>Each fact records who settled it:</p>
         <ul>
-          <li>
-            <strong>You</strong>, by typing it into Settings or confirming it in the conversation.
-            Preparation never overwrites those. Clear the override to hand the field back.
-          </li>
           <li>
             <strong>An agent</strong>, working it out with you present. The evidence it recorded
             sits under the value, so you can see what it actually ran.
           </li>
+          <li>
+            <strong>You</strong>, by editing the field in Settings or confirming it in the
+            conversation. Preparation never overwrites those. Clear the override to hand the field
+            back. Editing a field also clears its verification, since what was proven is no longer
+            what is stored.
+          </li>
         </ul>
         <p>
-          Every fact also pins the commit it was established at. When your main branch has moved a
-          long way since, the preparation screen says so. A stale test baseline is worse than
-          none, because agents trust it and file fresh breakage under "already red".
-        </p>
-        <p>
-          You can edit any of these by hand in Settings. Editing one marks it yours and clears its
-          verification, since the thing that was proven is no longer the thing that is stored.
+          Every fact pins the commit it was established at. When your main branch has moved a long
+          way since, the preparation screen says so. A stale test baseline is worse than none,
+          because agents trust it and file fresh breakage under "already red".
         </p>
 
         <h2>Skipping it</h2>
