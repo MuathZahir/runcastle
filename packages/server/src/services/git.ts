@@ -142,6 +142,7 @@ const DENY_ACTIVE_RUN = 'Feature has an active run — wait for it to finish'
 const DENY_NONE_ACTIVE = 'No test drive is active'
 const DENY_DRY_RUN_ACTIVE = 'A preparation dry-run is in progress — stop it first'
 const DENY_NO_DRY_RUN = 'No preparation dry-run is in progress'
+const DENY_NO_REVIEW_DRIVE = 'No review drive is in progress for this feature'
 
 /** Branch name for a feature slug. */
 function featureBranch(slug: string): string {
@@ -1316,9 +1317,19 @@ export async function commitDocs(worktreePath: string, message: string): Promise
  *  `detachedWorktree` records the talk worktree we detached to free the feature
  *  branch for the main checkout, so `stop` reattaches exactly what it detached.
  *  `devPaneId`/`devUrl` track the embedded dev pane and its sniffed localhost URL. */
+/**
+ * Who a feature drive belongs to: the `human` clicking Test drive, or a
+ * `review` ticket booting the integrated branch at the tail of its own burn
+ * (improve-workflow decision 4). The machinery is identical — same checkout
+ * switch, same hooks, same dev pane — and the purpose decides only two things:
+ * whether the active-run denial applies, and who may stop it.
+ */
+export type DrivePurpose = 'human' | 'review'
+
 type DriveState =
   | {
       kind: 'feature'
+      purpose: DrivePurpose
       featureId: string
       branch: string
       previousBranch: string
@@ -1411,12 +1422,17 @@ export function recordDriveUrl(ctx: AppCtx, featureId: string, url: string): voi
  * Guarded checkout-switch test drive of the feature branch on the MAIN checkout
  * (SPEC §7). `start` records the current branch and switches to the feature
  * branch after passing the deny checks; `stop` restores the recorded branch.
+ *
+ * `purpose` distinguishes the human's drive from a review ticket's (see
+ * {@link DrivePurpose}); `reviewDrive` is the review side's entry point and the
+ * only caller that passes anything but the default.
  */
 export async function testDrive(
   ctx: AppCtx,
   project: Project,
   feature: Feature,
   action: 'start' | 'stop',
+  purpose: DrivePurpose = 'human',
 ): Promise<TestDriveResult> {
   const g = git(project.repoPath)
   const branch = featureBranch(feature.slug)
@@ -1430,6 +1446,7 @@ export async function testDrive(
     const previousBranch = testDriveState.previousBranch
     const detachedWorktree = testDriveState.detachedWorktree
     const devPaneId = testDriveState.devPaneId
+    const stoppedPurpose = testDriveState.purpose
     // Kill the whole dev-server process tree first so its port is freed with no
     // orphan (the drive owns the pane; its URL is cleared when state resets).
     if (devPaneId) await stopDevPane(devPaneId)
@@ -1463,8 +1480,11 @@ export async function testDrive(
     testDriveState = undefined
     emit(ctx, feature.id, {
       type: 'testdrive.stopped',
-      message: `test drive stopped — back on ${previousBranch}`,
-      data: { branch: previousBranch },
+      message:
+        stoppedPurpose === 'review'
+          ? `review drive stopped — back on ${previousBranch}`
+          : `test drive stopped — back on ${previousBranch}`,
+      data: { branch: previousBranch, purpose: stoppedPurpose },
     })
 
     if (carriedChanges.length > 0) {
@@ -1494,7 +1514,14 @@ export async function testDrive(
       deniedReason: testDriveState.kind === 'dryRun' ? DENY_DRY_RUN_ACTIVE : DENY_ACTIVE,
     }
   }
-  if (hasActiveRun(ctx, feature.id)) return { ok: false, deniedReason: DENY_ACTIVE_RUN }
+  // The review carve-out (improve-workflow decision 4): a review ticket burns at
+  // the tail of its own run, once every implementation ticket is terminal and
+  // the branch is quiet — so the active run it would trip over here is the very
+  // one that launched it. Nothing else is waived: the two checks above still
+  // deny, and they deny immediately rather than waiting for the slot.
+  if (purpose === 'human' && hasActiveRun(ctx, feature.id)) {
+    return { ok: false, deniedReason: DENY_ACTIVE_RUN }
+  }
 
   // Free the feature branch from EVERY worktree that currently holds it so the
   // main checkout can switch onto it — git refuses two worktrees on one branch.
@@ -1513,6 +1540,7 @@ export async function testDrive(
   await g.checkout(branch)
   testDriveState = {
     kind: 'feature',
+    purpose,
     featureId: feature.id,
     branch,
     previousBranch,
@@ -1522,8 +1550,11 @@ export async function testDrive(
 
   emit(ctx, feature.id, {
     type: 'testdrive.started',
-    message: `test driving ${branch} (was on ${previousBranch})`,
-    data: { branch, previousBranch },
+    message:
+      purpose === 'review'
+        ? `review agent driving ${branch} (was on ${previousBranch})`
+        : `test driving ${branch} (was on ${previousBranch})`,
+    data: { branch, previousBranch, purpose },
   })
 
   // Bring the project's environment up before the dev server, so the dev
@@ -1559,6 +1590,103 @@ export async function testDrive(
   }
 
   return { ok: true, branch, ...(setup?.failure ? { hookFailure: setup.failure } : {}) }
+}
+
+// --- review drive -----------------------------------------------------------
+
+/** What one `reviewDrive` action reports back to the review agent. */
+export interface ReviewDriveResult {
+  ok: boolean
+  action: 'start' | 'status' | 'stop'
+  /** Why the action was refused. `ok` is false exactly when this is set. */
+  deniedReason?: string
+  /**
+   * The live drive — branch, dev pane, and the `devUrl` sniffed from the dev
+   * server's output — or null once it has stopped. The URL is what the agent
+   * points its browser at, and it appears on `status` rather than `start`
+   * because the dev server has to print it first.
+   */
+  drive: DriveInfo | null
+  /** The drive hook that ran and failed, when one did (setup on `start`, stop on `stop`). */
+  hookFailure?: DriveHookFailure
+}
+
+/**
+ * The review drive: the real feature test drive, started by a review ticket
+ * instead of a human (improve-workflow decisions 3, 4).
+ *
+ * Same machinery as {@link testDrive} — the same checkout switch of the real
+ * repo, the same `driveEnv`/setup/dev-pane sequence — because review must
+ * exercise the merged branch the human is about to be asked to ship, not a
+ * re-enactment of it. Only the run denial is carved out (see the start path).
+ *
+ * Three actions, because the drive outlives the call that starts it: `start`
+ * brings the branch and its dev server up, `status` answers "is there a URL yet"
+ * while the agent drives, and `stop` puts the checkout back. Contention is never
+ * waited on — a review that cannot have the slot reports why and the ticket
+ * fails, which is the advisory-and-best-effort bargain (decision 6).
+ */
+export async function reviewDrive(
+  ctx: AppCtx,
+  project: Project,
+  feature: Feature,
+  action: 'start' | 'status' | 'stop',
+): Promise<ReviewDriveResult> {
+  if (action === 'start') return startReviewDrive(ctx, project, feature)
+
+  // Only this feature's own review drive is the agent's to look at or end. The
+  // human's drive holding the slot is somebody else's — and the human's Stop in
+  // the UI remains able to end a review drive, which is how the slot is
+  // reclaimed if a review agent dies still holding it.
+  if (!reviewDriveFor(feature.id)) {
+    return { ok: false, action, deniedReason: DENY_NO_REVIEW_DRIVE, drive: null }
+  }
+  if (action === 'status') return { ok: true, action: 'status', drive: activeDriveInfo() }
+
+  const stop = await testDrive(ctx, project, feature, 'stop', 'review')
+  return {
+    ok: stop.ok,
+    action: 'stop',
+    ...(stop.deniedReason ? { deniedReason: stop.deniedReason } : {}),
+    drive: activeDriveInfo(),
+    ...(stop.hookFailure ? { hookFailure: stop.hookFailure } : {}),
+  }
+}
+
+/** True while THIS feature's review drive holds the slot. */
+function reviewDriveFor(featureId: string): boolean {
+  return (
+    testDriveState?.kind === 'feature' &&
+    testDriveState.purpose === 'review' &&
+    testDriveState.featureId === featureId
+  )
+}
+
+/**
+ * The start half. Everything a human drive's start does, minus the active-run
+ * denial (the run asking for the drive is the review ticket's own) — and with
+ * the slot released again if anything after the checkout switch throws, so a
+ * failed start never strands the human on the feature branch.
+ */
+async function startReviewDrive(
+  ctx: AppCtx,
+  project: Project,
+  feature: Feature,
+): Promise<ReviewDriveResult> {
+  let start: TestDriveResult
+  try {
+    start = await testDrive(ctx, project, feature, 'start', 'review')
+  } catch (e) {
+    if (reviewDriveFor(feature.id)) await testDrive(ctx, project, feature, 'stop', 'review')
+    throw e
+  }
+  return {
+    ok: start.ok,
+    action: 'start',
+    ...(start.deniedReason ? { deniedReason: start.deniedReason } : {}),
+    drive: activeDriveInfo(),
+    ...(start.hookFailure ? { hookFailure: start.hookFailure } : {}),
+  }
 }
 
 // --- preparation dry-run drive ----------------------------------------------

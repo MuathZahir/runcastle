@@ -11,6 +11,7 @@ import type {
   RunStatus as RunStatusT,
   SessionKind as SessionKindT,
   SessionRow,
+  TestNote,
   Ticket,
   TicketInput as TicketInputT,
   TicketStatus as TicketStatusT,
@@ -51,7 +52,9 @@ import {
   getProjectById,
   listRunsByFeature,
   projectForFeature,
+  tryGetRun,
 } from '../services/repo'
+import { addNote } from '../services/test-notes'
 import {
   cancelTicket,
   editTicket,
@@ -468,6 +471,110 @@ export async function toolDryRunDrive(
   return git.dryRunDrive(ctx, project, input.action)
 }
 
+// --- run identity: the review agent's two wires (improve-workflow) ----------
+
+/**
+ * Who a RUN-scoped tool call is from. Not a conversation: a review ticket
+ * burning at the tail of a run has no terminal and no session row, so it
+ * identifies itself with the `X-Runcastle-Run` header naming the run it is
+ * executing under, and the feature comes from that run rather than from
+ * anything the agent says.
+ */
+export interface RunIdentity {
+  runId: string
+  featureId: string
+}
+
+/** The run header, lower-cased the way `@hono/mcp` hands headers over. */
+const RUN_HEADER = 'x-runcastle-run'
+
+function headerRunId(extra: HeaderCarrier): string | undefined {
+  const headers = extra.requestInfo?.headers
+  if (!headers) return undefined
+  const raw = headers[RUN_HEADER] ?? headers['X-Runcastle-Run']
+  const value = Array.isArray(raw) ? raw[0] : raw
+  return typeof value === 'string' && value.length > 0 ? value : undefined
+}
+
+/**
+ * The run a tool call belongs to, or null.
+ *
+ * A run that has already finished resolves to nothing: the header outlives the
+ * burn (an agent process can survive its run being cancelled), and a stale one
+ * must not be able to switch the human's checkout or write notes minutes later.
+ */
+export function resolveRunIdentity(ctx: AppCtx, runId: string | undefined): RunIdentity | null {
+  if (!runId) return null
+  const run = tryGetRun(ctx, runId)
+  if (!run || run.status !== 'running') return null
+  return { runId: run.id, featureId: run.featureId }
+}
+
+/**
+ * What the run-scoped tools are called with: the run header when the caller
+ * carried one, and otherwise whichever session the request resolved to — kept
+ * only so the refusal can name it.
+ */
+export interface RunCaller {
+  runId?: string
+  session?: SessionRow
+}
+
+/**
+ * The gate both review wires share, and the socket the runner plugs into: these
+ * tools are reachable exactly when the caller carries a live run identity.
+ *
+ * Gated for the same reason `dry_run_drive` is gated to preparation. One boots
+ * the app on the human's machine and the other writes into the feature's review
+ * record — authority that belongs to the agent the runner launched for this
+ * feature, and to no ordinary talk session, which has neither the header nor a
+ * reason to want it.
+ */
+function requireRunIdentity(ctx: AppCtx, caller: RunCaller, tool: string): RunIdentity {
+  const identity = resolveRunIdentity(ctx, caller.runId)
+  if (identity) return identity
+  const who = caller.session
+    ? `this is a ${caller.session.kind} session`
+    : 'this call carries no run identity'
+  throw new GateError(
+    `${tool} belongs to a review ticket burning under a run, and ${who}. It acts on the ` +
+      "human's machine under the run's authority — only the review agent the runner launches " +
+      'may call it.',
+  )
+}
+
+/**
+ * Boot the integrated feature branch so a review ticket can drive it
+ * (improve-workflow decisions 3, 4): the server's REAL test-drive machinery,
+ * started under the run's identity instead of a human's click.
+ *
+ * The feature is the run's, never the agent's to name — a review ticket reviews
+ * the branch it was burned for.
+ */
+export async function toolReviewDrive(
+  ctx: AppCtx,
+  caller: RunCaller,
+  input: { action: 'start' | 'status' | 'stop' },
+): Promise<git.ReviewDriveResult> {
+  const identity = requireRunIdentity(ctx, caller, 'the review drive')
+  const feature = getFeatureRow(ctx, identity.featureId)
+  return git.reviewDrive(ctx, projectForFeature(ctx, feature), feature, input.action)
+}
+
+/**
+ * Append one review finding as a test note, attributed to the agent
+ * (improve-workflow decision 2). Findings ride the channel the human's own
+ * observations already use, so promote-to-fix-ticket works on them unchanged.
+ */
+export function toolAddTestNote(
+  ctx: AppCtx,
+  caller: RunCaller,
+  input: { text: string },
+): TestNote {
+  const identity = requireRunIdentity(ctx, caller, 'add_test_note')
+  return addNote(ctx, identity.featureId, input.text, 'agent')
+}
+
 // --- the project session's three tools (decisions 15, 19, 21) ---------------
 
 export interface CreateFeatureResult {
@@ -738,6 +845,20 @@ async function resolveCtxSession(extra: HeaderCarrier): Promise<{ ctx: AppCtx; s
   return session ? { ctx, session } : null
 }
 
+/**
+ * The caller of a run-scoped tool. Unlike a session tool this never refuses for
+ * want of a session — a review agent HAS no session — so the gate is the run
+ * header, checked in `requireRunIdentity`; the session is resolved only when
+ * there is no run header, to make the refusal name who called.
+ */
+async function resolveRunCaller(extra: HeaderCarrier): Promise<{ ctx: AppCtx; caller: RunCaller }> {
+  const ctx = await getRuntimeCtx()
+  const runId = headerRunId(extra)
+  if (runId) return { ctx, caller: { runId } }
+  const session = resolveSession(ctx, headerSessionId(extra))
+  return { ctx, caller: session ? { session } : {} }
+}
+
 /** Build a fresh MCP server with the runcastle tools registered. */
 export function buildMcpServer(): McpServer {
   const server = new McpServer({ name: 'runcastle', version: '0.1.0' })
@@ -786,6 +907,48 @@ export function buildMcpServer(): McpServer {
       const rs = await resolveCtxSession(extra)
       if (!rs) return noSession()
       return ok(await toolDryRunDrive(rs.ctx, rs.session, args))
+    },
+  )
+
+  server.registerTool(
+    'review_drive',
+    {
+      title: 'Drive the feature branch for review',
+      description:
+        'Boot the integrated feature branch so you can review it. Runs the REAL test-drive ' +
+        "machinery on the human's checkout under your run's identity: `start` switches the " +
+        'checkout to the feature branch, renders driveEnv (per-branch database), runs ' +
+        'driveSetupCommand and spawns devCommand; `status` reports the drive and hands back the ' +
+        'localhost URL once the dev server has printed one — poll it, the URL is not ready at ' +
+        'start; `stop` tears the environment down and puts the checkout back. ALWAYS stop what ' +
+        'you started, including when the review goes wrong: the drive holds a machine-wide slot ' +
+        'and the human cannot use their own checkout until you release it. Refusals are final, ' +
+        'never worth retrying in a loop — a dirty tree or a drive the human is already running ' +
+        'means this review cannot run, and reporting that is the honest outcome.',
+      inputSchema: { action: z.enum(['start', 'status', 'stop']) },
+    },
+    async (args, extra) => {
+      const rc = await resolveRunCaller(extra)
+      return ok(await toolReviewDrive(rc.ctx, rc.caller, args))
+    },
+  )
+
+  server.registerTool(
+    'add_test_note',
+    {
+      title: 'Add a review note',
+      description:
+        'Record one review finding on the feature you are reviewing. It lands in the same notes ' +
+        'the human writes while test-driving — attributed to you — so it shows up in the review ' +
+        'panel and can be promoted to a fix ticket in one click. One note per finding, written ' +
+        'as an observation the human can reproduce (what you did, what happened, what you ' +
+        'expected), plus a closing note summarising the pass. Findings are not failure: report ' +
+        'what you saw and let the human decide.',
+      inputSchema: { text: z.string().min(1) },
+    },
+    async (args, extra) => {
+      const rc = await resolveRunCaller(extra)
+      return ok(toolAddTestNote(rc.ctx, rc.caller, args))
     },
   )
 
