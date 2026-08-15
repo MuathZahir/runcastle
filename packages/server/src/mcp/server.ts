@@ -884,7 +884,7 @@ export function buildMcpServer(): McpServer {
     {
       title: 'Emit tickets',
       description:
-        'Store the ideation session\'s ticket batch. Each ticket: title, goal, context, acceptanceCriteria[], seams[], blockedBy[] (1-based positions within THIS batch).',
+        'Store the ideation session\'s ticket batch. Each ticket: title, goal, context, acceptanceCriteria[], seams[], blockedBy[] (1-based positions within THIS batch), kind (optional, "implementation" by default; "review" for a ticket that verifies the integrated feature branch — block it on every implementation ticket so it runs last).',
       inputSchema: { tickets: z.array(TicketInput) },
     },
     async (args, extra) => {

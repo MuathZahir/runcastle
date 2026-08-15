@@ -20,6 +20,16 @@ describe('TicketInput — happy path', () => {
     const r = TicketInput.safeParse({ ...validTicket, blockedBy: [1, 2] })
     expect(r.success).toBe(true)
   })
+
+  it('defaults kind to implementation when the emitter omits it', () => {
+    const r = TicketInput.safeParse(validTicket)
+    expect(r.success && r.data.kind).toBe('implementation')
+  })
+
+  it('accepts an explicit review kind', () => {
+    const r = TicketInput.safeParse({ ...validTicket, kind: 'review' })
+    expect(r.success && r.data.kind).toBe('review')
+  })
 })
 
 describe('TicketInput — failure cases', () => {
@@ -41,6 +51,10 @@ describe('TicketInput — failure cases', () => {
 
   it('rejects wrong-typed goal', () => {
     expect(TicketInput.safeParse({ ...validTicket, goal: 42 }).success).toBe(false)
+  })
+
+  it('rejects an unknown kind', () => {
+    expect(TicketInput.safeParse({ ...validTicket, kind: 'audit' }).success).toBe(false)
   })
 })
 

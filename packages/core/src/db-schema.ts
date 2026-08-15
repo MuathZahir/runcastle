@@ -9,6 +9,7 @@ import type {
   SessionPurpose,
   SessionStatus,
   TestNoteStatus,
+  TicketKind,
   TicketStatus,
   WaypointStatus,
   WaypointType,
@@ -214,6 +215,12 @@ export const tickets = sqliteTable('tickets', {
     .$type<string[]>(),
   seams: text('seams', { mode: 'json' }).notNull().$type<string[]>(),
   blockedBy: text('blocked_by', { mode: 'json' }).notNull().$type<number[]>(),
+  /**
+   * What the ticket asks for — `implementation` or `review`. Defaulted in the
+   * column too, so rows written before the kind existed read back as
+   * implementation tickets.
+   */
+  kind: text('kind').notNull().$type<TicketKind>().default('implementation'),
   /**
    * The feature's lap when this ticket was stored (ADR-0010 / SPEC §15.1).
    * Stamped server-side by `storeTickets` — sessions never choose it. G3 scopes

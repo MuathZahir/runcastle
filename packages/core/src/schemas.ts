@@ -130,6 +130,15 @@ export type SessionStatus = z.infer<typeof SessionStatus>
 
 // --- tickets ---------------------------------------------------------------
 
+/**
+ * What a ticket asks for: code (`implementation`, today's behavior) or a
+ * verification pass over the integrated feature branch (`review`). Execution
+ * dispatches on this; ordering does not — a review ticket runs last because the
+ * emitting session blocks it on the implementation tickets, as data.
+ */
+export const TicketKind = z.enum(['implementation', 'review'])
+export type TicketKind = z.infer<typeof TicketKind>
+
 /** What an ideation session emits via MCP `emit_tickets`. */
 export const TicketInput = z.object({
   title: z.string(),
@@ -139,8 +148,15 @@ export const TicketInput = z.object({
   seams: z.array(z.string()),
   /** seq numbers of other tickets in the same batch this one depends on */
   blockedBy: z.array(z.number()),
+  kind: TicketKind.default('implementation'),
 })
-export type TicketInput = z.infer<typeof TicketInput>
+/**
+ * The pre-parse shape, so `kind` stays optional for every caller that builds a
+ * batch by hand (emitters, note promotion, tests). Parsing — and `storeTickets`
+ * — is where the `implementation` default is applied, which is why the stored
+ * `Ticket` below carries `kind` as required.
+ */
+export type TicketInput = z.input<typeof TicketInput>
 
 /** A stored ticket: TicketInput plus persistence + run state. */
 export const Ticket = TicketInput.extend({
