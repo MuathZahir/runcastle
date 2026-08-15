@@ -90,12 +90,21 @@ interface HeaderCarrier {
   requestInfo?: { headers?: Record<string, string | string[] | undefined> }
 }
 
-function headerSessionId(extra: HeaderCarrier): string | undefined {
+/**
+ * One identity header off a request. Both spellings are read because
+ * `@hono/mcp` forwards whatever the client sent, and a header map is not
+ * guaranteed to be case-folded.
+ */
+function identityHeader(extra: HeaderCarrier, name: string): string | undefined {
   const headers = extra.requestInfo?.headers
   if (!headers) return undefined
-  const raw = headers['x-runcastle-session'] ?? headers['X-Runcastle-Session']
+  const raw = headers[name.toLowerCase()] ?? headers[name]
   const value = Array.isArray(raw) ? raw[0] : raw
   return typeof value === 'string' && value.length > 0 ? value : undefined
+}
+
+function headerSessionId(extra: HeaderCarrier): string | undefined {
+  return identityHeader(extra, 'X-Runcastle-Session')
 }
 
 /** Resolve the session for a tool call: header first, else the live singleton. */
@@ -485,15 +494,14 @@ export interface RunIdentity {
   featureId: string
 }
 
-/** The run header, lower-cased the way `@hono/mcp` hands headers over. */
-const RUN_HEADER = 'x-runcastle-run'
+/**
+ * The header a run-scoped agent identifies itself with, as the runner must
+ * spell it in that agent's `mcp.json` — the twin of `X-Runcastle-Session`.
+ */
+export const RUN_HEADER = 'X-Runcastle-Run'
 
 function headerRunId(extra: HeaderCarrier): string | undefined {
-  const headers = extra.requestInfo?.headers
-  if (!headers) return undefined
-  const raw = headers[RUN_HEADER] ?? headers['X-Runcastle-Run']
-  const value = Array.isArray(raw) ? raw[0] : raw
-  return typeof value === 'string' && value.length > 0 ? value : undefined
+  return identityHeader(extra, RUN_HEADER)
 }
 
 /**

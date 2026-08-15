@@ -1424,8 +1424,10 @@ export function recordDriveUrl(ctx: AppCtx, featureId: string, url: string): voi
  * branch after passing the deny checks; `stop` restores the recorded branch.
  *
  * `purpose` distinguishes the human's drive from a review ticket's (see
- * {@link DrivePurpose}); `reviewDrive` is the review side's entry point and the
- * only caller that passes anything but the default.
+ * {@link DrivePurpose}) and applies to `start` alone: `stop` restores a checkout,
+ * which is the same act whoever asks for it — deliberately, so the human's Stop
+ * can reclaim the slot from a review agent that died holding it. `reviewDrive`
+ * is the review side's entry point and the only caller that passes a purpose.
  */
 export async function testDrive(
   ctx: AppCtx,
@@ -1643,7 +1645,7 @@ export async function reviewDrive(
   }
   if (action === 'status') return { ok: true, action: 'status', drive: activeDriveInfo() }
 
-  const stop = await testDrive(ctx, project, feature, 'stop', 'review')
+  const stop = await testDrive(ctx, project, feature, 'stop')
   return {
     ok: stop.ok,
     action: 'stop',
@@ -1677,7 +1679,7 @@ async function startReviewDrive(
   try {
     start = await testDrive(ctx, project, feature, 'start', 'review')
   } catch (e) {
-    if (reviewDriveFor(feature.id)) await testDrive(ctx, project, feature, 'stop', 'review')
+    if (reviewDriveFor(feature.id)) await testDrive(ctx, project, feature, 'stop')
     throw e
   }
   return {
