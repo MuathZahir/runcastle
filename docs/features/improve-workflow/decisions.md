@@ -1,0 +1,29 @@
+# Decisions — Improve Workflow (automatic review)
+
+## 1. Review is a ticket type, not a dedicated workflow
+**Decision:** Automatic review is implemented as a new ticket kind (`review`), emitted by the tickets session alongside implementation tickets and burned in the same run, ordered after all implementation tickets via `blockedBy`. It is not a separate registered workflow.
+**Why:** Maximizes reuse of existing machinery — the burner, run rows, digests, ticket UI, and the blockedBy graph all work unchanged. Multiplicity (several review agents covering different areas) is just several review tickets; optionality (backend-only features get a "run tests / curl endpoints" review, or none at all) is just what the tickets session chooses to emit — no config flag or mode. The tickets session, which holds full ideation context, is the natural author of "what to verify and how." The dedicated-workflow shape (a `review` WorkflowDef) remains available later if review outgrows the burner.
+
+## 2. Review findings land as test notes
+**Decision:** Review agents write their findings through the existing test-notes channel (`docs/features/<slug>/test-notes.md` + the notes service), not a new artifact type. A new MCP wire exposing note-writing to agents is required (none exists today).
+**Why:** Test notes already feed the whole Fix loop — promote note → fix ticket → burn — so agent findings ride the existing pipeline with zero new concepts. The review phase becomes "human consumes the review artifacts (walkthrough video, notes) and chooses Merge / Fix / Rethink" instead of manually exercising the app from zero.
+
+## 3. Review tickets run on the integrated feature branch
+**Decision:** Unlike implementation tickets, a review ticket does not get its own branch — it runs against the integrated `feature/<slug>` branch after all implementation tickets have landed, with a distinct capability set: boot the app (drive machinery), drive it with agent-browser, write test notes. No code edits.
+**Why:** Review must exercise the merged result, not a slice. The `dry_run_drive` MCP machinery is the working template for agent-driven app boot; the singleton drive slot already enforces mutual exclusion.
+
+## 4. Review executes host-side via the existing drive machinery
+**Decision:** Review tickets run on the host (not the burner sandbox) and boot the app through the existing test-drive plumbing — `driveEnv` injection (per-branch DB via `{{id}}`), `driveSetupCommand`/`devCommand`/`driveStopCommand`, dev-URL sniffing. The drive's deny-on-active-run guard gets a carve-out for review-purpose drives (safe: by the time a review ticket runs, all implementation tickets are terminal and the feature branch is quiet). Preparation machinery is taken as-is; no new provisioning concepts in this feature.
+**Why:** The burner sandbox has no app and no database — the host drive is the only machinery that runs a target app, and it already carries the per-branch DB convention. Riding it keeps this feature small. Consequence accepted: the review drive switches the real checkout unattended at the tail of a burn, same as a human-started drive. Multi-service preparation gaps (redis namespacing, compose project-names/ports/health-waits, `{{port}}`, hosted DBs) are parked as their own draft feature, "Preparation supports multi-service projects."
+
+## 5. Thin lap 1: the spine; video walkthrough goes to lap 2
+**Decision:** Lap 1 proves the spine end-to-end: one `review` ticket kind, executed host-side at the tail of the burn, booting the app via the drive machinery, driving it with agent-browser, writing findings as test notes surfaced in the existing review panel. One review ticket per feature to start. Deferred to later laps (recorded in the spec's `## Later laps`): the video walkthrough surfaced in ReviewBody (agent-browser records natively; storage + playback UI is the deferred surface), multiple review tickets covering different areas, and a review-prompt template library. Backend-only reviews ("run tests, curl endpoints") need no template — lap 1 tickets are prose and can already express that.
+**Why:** The genuinely uncertain bet is "are agent findings worth reading," not "can we show a video." A thin lap lets the human test-drive the review agent itself on a real feature before investing in polish.
+
+## 6. Review is advisory and best-effort
+**Decision:** Findings are not failure: a review ticket reports `done` when the review ran to completion, however many bugs it found — the notes are the deliverable, not a verdict. `failed` means "couldn't review" (app wouldn't boot, drive slot taken, dirty tree, agent crash); G4 counts failed as terminal, so the feature still lands in `review` with no agent notes — today's status quo, no new blocking states. No gate hardening in lap 1: the Merge click remains the whole of G5; at most the existing merge-summary warnings gain a review-status line.
+**Why:** Teeth (merge blocked on unresolved notes) should wait until the agent's findings have earned that authority — false-positive notes blocking merges would sour the feature. Graceful degradation keeps burn runs from ever being hostage to the host drive slot.
+
+## 7. Review output must be loudly visible in the review phase
+**Decision:** The review phase UI must make it obvious that review tickets ran and what they produced — a summary surface (e.g. "Review agent: N findings" on the review screen's summary card, with agent-authored notes visibly attributed), not merely rows quietly appended to the notes list. A review ticket that failed is surfaced the same way ("review could not run: <reason>").
+**Why:** The human's review now starts from the agent's report; if that report is easy to miss, the feature silently degrades back to manual review from zero. (Raised explicitly by the user: "just having the test notes might not be easily noticeable.")
