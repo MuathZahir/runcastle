@@ -16,6 +16,7 @@ import {
   mapDocPath,
   mergeConflictKickoff,
   mergeSummary,
+  reviewOutcome,
   nextStep,
   PHASE_LABELS,
   pipelineSteps,
@@ -86,6 +87,10 @@ export function Workspace({
   // review body's checklist reads, so the two share one fetch.
   const notes = trpc.notes.list.useQuery({ featureId }, { refetchInterval: useLivePoll() })
   const openNotes = notes.data?.filter((n) => n.status === 'open').length
+  // What the review agent made of this branch, for the confirmation's status
+  // line — the same two reads the review card derives it from, so the dialog
+  // cannot report a different review than the screen behind it.
+  const review = reviewOutcome({ tickets: q.data?.tickets, notes: notes.data })
   const [confirmMerge, setConfirmMerge] = useState(false)
   // The next-step bar warns about remaining fog on a mapped feature, which lives
   // in the map doc's prose — same query key as the map rail's read, so the two
@@ -480,7 +485,13 @@ export function Workspace({
           title={feature.title}
           branch={feature.branch}
           base={commits.data?.base}
-          summary={mergeSummary({ commitCount: commits.data?.count, run, driveTaken, openNotes })}
+          summary={mergeSummary({
+            commitCount: commits.data?.count,
+            run,
+            driveTaken,
+            openNotes,
+            review,
+          })}
           busy={merge.isPending}
           onConfirm={runMerge}
           onCancel={() => setConfirmMerge(false)}

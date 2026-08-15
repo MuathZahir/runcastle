@@ -1,5 +1,12 @@
 import type { ButtonHTMLAttributes, ReactNode } from 'react'
-import type { Phase, RunStatus, SessionStatus, TicketKind, TicketStatus } from '@runcastle/core'
+import type {
+  Phase,
+  RunStatus,
+  SessionStatus,
+  TestNoteAuthor,
+  TicketKind,
+  TicketStatus,
+} from '@runcastle/core'
 import type { CheckRow } from './lib/feature-ui'
 
 /**
@@ -94,6 +101,22 @@ export function TicketKindChip({ kind }: { kind: TicketKind }) {
   return (
     <span className="chip chip-kind-review" title="Verifies the integrated feature branch">
       {kind}
+    </span>
+  )
+}
+
+/**
+ * Who wrote a test note, shown only for the review agent's — same reasoning as
+ * {@link TicketKindChip}: the human is the default author and badging every one
+ * of their own notes would distinguish nothing. This is the whole of the
+ * attribution the review panel needs (decisions #7): the human has to be able to
+ * tell the agent's findings from their own at a glance, and nothing more.
+ */
+export function NoteAuthorChip({ author }: { author: TestNoteAuthor }) {
+  if (author === 'human') return null
+  return (
+    <span className="chip chip-note-agent" title="Written by the review agent">
+      {author}
     </span>
   )
 }

@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { Button, CheckLine, SectionTitle } from '../../ui'
+import type { TestNote } from '@runcastle/core'
+import { Button, CheckLine, NoteAuthorChip, SectionTitle } from '../../ui'
 import { trpc } from '../../trpc'
 import type { FeatureFull, SettingsView } from '../../lib/api'
 import type { DriveState } from '../../lib/workspace'
@@ -77,7 +78,16 @@ export function ReviewBody({
   // be a straight misattribution.
   const ownDrive = drive.data?.featureId === feature.id ? drive.data : undefined
   const dryRun = drive.data?.dryRun ?? false
-  const checks = reviewChecks({ tickets, run, commitCount: commits.data?.count })
+  // Read once here and handed down: the summary counts the review agent's
+  // findings out of these same rows the panel lists, so a count that disagreed
+  // with the list below it would be unrepresentable.
+  const notes = trpc.notes.list.useQuery({ featureId: feature.id }, { refetchInterval: useLivePoll() })
+  const checks = reviewChecks({
+    tickets,
+    run,
+    commitCount: commits.data?.count,
+    notes: notes.data,
+  })
   // What a drive on THIS project does — a prepared one renders an environment,
   // runs the setup command and boots a dev server; an unprepared one checks the
   // branch out and stops. The card used to promise the first to everyone.
@@ -138,7 +148,12 @@ export function ReviewBody({
 
       {isDriving && ownDrive && <DrivePane drive={ownDrive} />}
 
-      <NotesPanel featureId={feature.id} tickets={tickets} readonly={readonly} />
+      <NotesPanel
+        featureId={feature.id}
+        tickets={tickets}
+        rows={notes.data ?? []}
+        readonly={readonly}
+      />
     </div>
   )
 }
@@ -158,20 +173,27 @@ export function ReviewBody({
  * the record of what that ticket was built from, so it offers no affordances at
  * all. The server refuses every one of those transitions anyway; this only
  * avoids showing a button that would be turned down.
+ *
+ * Notes the review agent wrote are badged (decisions #7) and otherwise identical
+ * — same checkbox, same Edit, same → ticket. The badge says who saw it, not what
+ * the human may do about it: an agent finding IS the thing the Fix loop is meant
+ * to consume, so withholding promote from exactly those notes would defeat it.
  */
 function NotesPanel({
   featureId,
   tickets,
+  rows,
   readonly,
 }: {
   featureId: string
   tickets: FeatureFull['tickets']
+  /** The feature's notes, read by the parent so the summary counts these rows. */
+  rows: TestNote[]
   /** Looking back at review on a shipped feature — the checklist, no editing. */
   readonly: boolean
 }) {
   const utils = trpc.useUtils()
   const toast = useToast()
-  const notes = trpc.notes.list.useQuery({ featureId }, { refetchInterval: useLivePoll() })
   const [draft, setDraft] = useState('')
   // The note being edited in place, or null. One at a time — same as the ticket
   // ledger's editor.
@@ -208,7 +230,6 @@ function NotesPanel({
     onError,
   })
 
-  const rows = notes.data ?? []
   // One mutation in flight at a time: the list is about to be refetched, so a
   // second click would act on a row the server is already moving.
   const busy = edit.isPending || remove.isPending || toggle.isPending || promote.isPending
@@ -277,6 +298,8 @@ function NotesPanel({
                     onChange={() => toggle.mutate({ noteId: note.id })}
                   />
                 )}
+
+                <NoteAuthorChip author={note.author} />
 
                 <span className="note-text">{note.text}</span>
 
