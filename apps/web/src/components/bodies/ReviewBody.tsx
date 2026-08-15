@@ -81,7 +81,10 @@ export function ReviewBody({
   // Read once here and handed down: the summary counts the review agent's
   // findings out of these same rows the panel lists, so a count that disagreed
   // with the list below it would be unrepresentable.
-  const notes = trpc.notes.list.useQuery({ featureId: feature.id }, { refetchInterval: useLivePoll() })
+  const notes = trpc.notes.list.useQuery(
+    { featureId: feature.id },
+    { refetchInterval: useLivePoll() },
+  )
   const checks = reviewChecks({
     tickets,
     run,

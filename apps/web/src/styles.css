@@ -296,19 +296,17 @@ button {
 .chip-ticket-done { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 40%, transparent); }
 .chip-ticket-failed { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 45%, transparent); }
 .chip-ticket-cancelled { color: var(--text-3); text-decoration: line-through; }
-.chip-kind-review {
-  color: var(--ph-review);
-  border-color: color-mix(in srgb, var(--ph-review) 40%, transparent);
-  background: color-mix(in srgb, var(--ph-review) 8%, transparent);
-}
-/* Agent-written notes, in the review phase's own colour — the badge marks whose
-   observation it is, so it must not read as a status the human has to act on. */
+/* The two review-flavoured badges: a ticket that verifies the branch, and a note
+   the agent that verified it wrote. Both mark WHOSE work a row is, not a status
+   the human has to act on, so they share the review phase's colour. */
+.chip-kind-review,
 .chip-note-agent {
   color: var(--ph-review);
   border-color: color-mix(in srgb, var(--ph-review) 40%, transparent);
   background: color-mix(in srgb, var(--ph-review) 8%, transparent);
-  flex: 0 0 auto;
 }
+/* The note text takes the slack; the author badge never gets squeezed by it. */
+.chip-note-agent { flex: 0 0 auto; }
 .chip-run-running {
   color: var(--ph-implementation);
   border-color: color-mix(in srgb, var(--ph-implementation) 45%, transparent);
