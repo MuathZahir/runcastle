@@ -22,6 +22,7 @@ import { preparedValue } from '../src/services/findings'
 import { preparedAt } from '../src/services/prep'
 import { toolRecordFinding } from '../src/mcp/server'
 import { renderPreparePrompt } from '../src/launcher/artifacts'
+import { evaluateEditGuard } from '../src/launcher/edit-guard'
 import { useDataDir } from './helpers/data-dir'
 import { makeTestCtx } from './helpers/db'
 import { seedFeature } from './helpers/fixtures'
@@ -288,7 +289,7 @@ describe('the prepare brief', () => {
   })
 
   /**
-   * The five host-only keys are the ones a preparation agent cannot look up: the
+   * The host-only keys are the ones a preparation agent cannot look up: the
    * semantics live in this repo's source, and the installed build the agent can
    * actually read has the explaining comments stripped out. A real session went
    * grepping the minified bundle for `createdb`, found nothing, and told the
@@ -304,26 +305,126 @@ describe('the prepare brief', () => {
 
     // devCommand: a drive-owned pane whose printed URL becomes the app link.
     expect(out).toContain('Open app')
-    // The drive hooks run on the host, around the pane.
+    // The drive hooks run on the host, around the pane — as invocation lines for
+    // the committed scripts, which is the shape the contract below spells out.
     expect(out).toMatch(/`driveSetupCommand` \/ `driveStopCommand`/)
-
-    // driveEnv: the variables, and the once-per-drive sharing that makes the
-    // setup hook and the dev pane agree on one rendered name.
-    expect(out).toContain('{{slug}}')
-    expect(out).toContain('{{branch}}')
-    expect(out).toContain('{{id}}')
-    expect(out).toContain('ONCE per')
-
-    // The worked per-branch-database example, in the shape the ticket asks for:
-    // the derivation lives in driveEnv, the hooks only reference the variable.
-    expect(out).toContain('DB_NAME=myapp_{{id}}')
-    expect(out).toContain('DATABASE_URL=postgres://localhost/myapp_{{id}}')
-    expect(out).toContain('createdb "$DB_NAME"')
-    expect(out).toContain('dropdb --if-exists "$DB_NAME"')
+    expect(out).toContain('INVOCATION LINES')
 
     // dbResetCommand: the correction that matters most — it is not a drive hook.
     expect(out).toMatch(/`dbResetCommand` — NOT part of the drive loop/)
     expect(out).toContain('drift')
+
+    // The retired key, and the templating that went with it (decision 6).
+    expect(out).not.toContain('driveEnv')
+    expect(out).not.toContain('{{id}}')
+    expect(out).not.toContain('{{slug}}')
+  })
+
+  /**
+   * The contract (decision 6) — the only part of a drive runcastle mandates, and
+   * the part no agent can infer from the repo in front of it. Each clause is one
+   * thing a script that got it wrong breaks: logic in the setting is logic no
+   * branch can amend, a value that never reaches `drive.env` never reaches the
+   * dev pane, an ungitignored `drive.env` commits a connection string, a
+   * delta-detecting step skips the install a branch needed, and a setup that
+   * returns before its services are up hands the dev pane a dead database.
+   */
+  it('states the drive contract: committed scripts, identity in, drive.env out', () => {
+    const out = renderPreparePrompt({ project: project(), remainingKeys: [], established: [] })
+
+    // Where the machinery lives, and what the settings shrink to.
+    expect(out).toContain('.runcastle/drive-setup.sh')
+    expect(out).toContain('committed to the repo')
+
+    // Identity in — all three, and the reason never to derive it from git.
+    expect(out).toContain('RUNCASTLE_SLUG')
+    expect(out).toContain('RUNCASTLE_BRANCH')
+    expect(out).toContain('RUNCASTLE_ID')
+    expect(out).toContain('git rev-parse')
+
+    // Computed values out, and the file that must never be committed.
+    expect(out).toContain('.runcastle/drive.env')
+    expect(out).toContain('gitignored')
+
+    // Idempotence by convention, never delta detection.
+    expect(out).toContain('idempotent')
+    expect(out).toMatch(/has anything changed\?/)
+
+    // Exit 0 means the services are up, so the waits live in the script.
+    expect(out).toContain('Exit 0 means the services are actually up')
+    expect(out).toContain('docker compose up --wait')
+    expect(out).toContain('pg_isready')
+
+    // And the session is told it may write the files the contract asks it for.
+    expect(out).toContain('`.runcastle/` and `.gitignore`')
+  })
+
+  /**
+   * Shape discovery before authoring (decision 7). The prompt used to carry one
+   * postgres example, so a project one shape away from it — compose, a monorepo,
+   * a hosted database, Windows — had nothing to reason from. Nothing
+   * stack-specific is mandated: the agent finds out what this project is first.
+   */
+  it('directs shape discovery before a line of script is written', () => {
+    const out = renderPreparePrompt({ project: project(), remainingKeys: [], established: [] })
+
+    expect(out).toContain('Discover the shape before you author anything')
+    expect(out).toContain('Package manager and workspace layout')
+    expect(out).toContain('monorepo')
+    expect(out).toContain('OS and shell')
+    expect(out).toContain('.ps1')
+    expect(out).toContain('Docker')
+    expect(out).toContain('services the app needs to boot')
+    expect(out).toContain('Hosted or local data stores')
+  })
+
+  /**
+   * The recipe pack (decision 7): shapes to adapt, never rules. Each entry exists
+   * because a real project shape had no answer in the old prompt — a compose
+   * stack with no per-drive isolation, a redis the drive would have shared with
+   * the human's own db 0, a hosted database the agent had no grant to create on,
+   * and fixed ports colliding with whatever was already running.
+   */
+  it('carries the recipe pack, adapt-not-copy', () => {
+    const out = renderPreparePrompt({ project: project(), remainingKeys: [], established: [] })
+
+    expect(out).toContain('adapt them, never copy them')
+
+    // Postgres, one database per drive, named from the identity.
+    expect(out).toContain('createdb')
+    expect(out).toContain('dropdb --if-exists')
+
+    // Compose: project name from the identity, ports the script chose, --wait.
+    expect(out).toContain('COMPOSE_PROJECT_NAME')
+    expect(out).toContain('docker compose down -v')
+
+    // Redis: a logical index or prefix, with db 0 left to the human.
+    expect(out).toContain('Redis')
+    expect(out).toContain('db 0')
+
+    // Hosted: a branch per feature, or a schema where CREATEDB is refused.
+    expect(out).toContain('Hosted databases')
+    expect(out).toContain('CREATEDB')
+    expect(out).toContain('CREATE SCHEMA IF NOT EXISTS')
+
+    // Ports: slug-derived so laps agree, bind-probed so nothing collides.
+    expect(out).toContain('Deterministic ports')
+    expect(out).toContain('bind-probe')
+    expect(out).toContain('PORT=$port')
+  })
+
+  /**
+   * The env-loading audit (decision 7). The overlay is process environment, so a
+   * loader told to clobber it leaves a drive that looks perfect while the app
+   * quietly reads the shared database. Nothing server-side can detect that, so
+   * the prompt names the agent as the detector and gives it both outcomes.
+   */
+  it('directs the env-loading audit, with fix-or-record as the outcomes', () => {
+    const out = renderPreparePrompt({ project: project(), remainingKeys: [], established: [] })
+
+    expect(out).toContain('override: true')
+    expect(out).toContain('you are the detector')
+    expect(out).toContain('record the finding with `record_event`')
   })
 
   it('says so plainly when there is nothing left to establish', () => {
@@ -348,15 +449,51 @@ describe('the prepare brief', () => {
     expect(out).toContain('prep_dry_run')
     expect(out).toContain('createdb')
 
+    // The observables as they are after the contract landed: setup exits 0 and
+    // hands back a parseable `drive.env`, the dev pane serves, stop exits 0.
+    expect(out).toContain('.runcastle/drive.env')
+    expect(out).toContain('variable NAMES it parsed')
+
     // Between the halves and after the stop: the checks the server cannot do.
     expect(out).toContain('FRESH')
     expect(out).toContain('RESPONDS')
+    // App readiness is the server's one wait — the agent judges the page, not
+    // whether it answers at all.
+    expect(out).toContain('the server waits for it to answer')
     expect(out).toContain('cleanup')
 
     // Fix-and-retry, and where the stamp comes from.
     expect(out).toContain('record_finding')
     expect(out).toContain('clean full pass')
     expect(out).toContain('mark your own homework')
+  })
+})
+
+/**
+ * What a preparation session may write. It holds the human's real checkout, so
+ * the edit guard denies it everything by default — but the drive contract asks
+ * it to author `.runcastle/` scripts and to gitignore `drive.env`, and a guard
+ * that denied those would deny the session its own job.
+ */
+describe('the preparation edit guard', () => {
+  const GUARD_BASE = { kind: 'prepare', toolName: 'Write', worktreePath: '/repo' } as const
+
+  function denialFor(filePath: string): string | undefined {
+    return evaluateEditGuard({ ...GUARD_BASE, filePath })?.reason
+  }
+
+  it('allows the drive machinery it is briefed to author', () => {
+    expect(denialFor('.runcastle/drive-setup.sh')).toBeUndefined()
+    expect(denialFor('/repo/.runcastle/drive-stop.ps1')).toBeUndefined()
+    expect(denialFor('.gitignore')).toBeUndefined()
+  })
+
+  it('still denies everything else in the developer\'s checkout', () => {
+    expect(denialFor('src/index.ts')).toContain('does not edit files')
+    // The near miss: a sibling directory whose name merely starts the same way.
+    expect(denialFor('../runcastle-notes/plan.md')).toContain('does not edit files')
+    // …and the denial says where the exception is, so the agent stops guessing.
+    expect(denialFor('src/index.ts')).toContain('.runcastle/')
   })
 })
 

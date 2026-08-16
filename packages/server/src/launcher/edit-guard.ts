@@ -22,6 +22,9 @@ import { featureDocsRel } from '@runcastle/core/paths'
  * The one exempt kind is `project`: decision 18 gives it whole-repo write access
  * on a runcastle-owned branch, and its commits are the point of the session.
  *
+ * A `prepare` session gets a narrow path exception instead of a kind exemption —
+ * see {@link PREPARE_WRITABLE}.
+ *
  * The one exempt PURPOSE is `resolve-conflict`, and only while a merge is
  * actually in progress in the session's worktree. Both conflict-resolve launch
  * sites brief their agent to merge, resolve the conflicts and commit — work this
@@ -65,6 +68,24 @@ export interface EditGuardInput {
   featureSlug?: string
 }
 
+/**
+ * What a `prepare` session may write in the developer's own checkout: the drive
+ * machinery it authors (`.runcastle/drive-setup.sh` and friends) and the
+ * `.gitignore` line that keeps `.runcastle/drive.env` — a scratch file that can
+ * hold connection strings — out of the repo.
+ *
+ * A preparation session is otherwise the strictest of all: it holds the human's
+ * real checkout, so it establishes settings and never touches code. But the
+ * drive contract asks it for exactly these files, and a guard that denied them
+ * would deny the session its own job.
+ */
+export const PREPARE_WRITABLE = ['.runcastle/', '.gitignore'] as const
+
+/** Is `target` one of the {@link PREPARE_WRITABLE} paths in this checkout? */
+function isPrepareWritable(worktreePath: string, target: string): boolean {
+  return PREPARE_WRITABLE.some((rel) => within(resolve(worktreePath, rel), target))
+}
+
 /** A deny verdict, with what to tell the agent instead; `null` means allow. */
 export interface EditDenial {
   reason: string
@@ -88,11 +109,14 @@ export function evaluateEditGuard(input: EditGuardInput): EditDenial | null {
   const target = resolve(input.worktreePath, input.filePath)
 
   if (!input.featureSlug) {
+    if (input.kind === 'prepare' && isPrepareWritable(input.worktreePath, target)) return null
     return {
       reason:
         `This ${input.kind} session does not edit files — it runs in the developer's own ` +
-        'checkout. Record what you establish with the `record_finding` MCP tool, and ask the ' +
-        'human to make any change to the repo itself.',
+        `checkout. The exception is the drive machinery it authors: ${PREPARE_WRITABLE.map(
+          (p) => `\`${p}\``,
+        ).join(' and ')}. Record what you establish with the \`record_finding\` MCP tool, and ` +
+        'ask the human to make any other change to the repo itself.',
     }
   }
 
