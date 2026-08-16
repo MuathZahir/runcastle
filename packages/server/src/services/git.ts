@@ -1438,10 +1438,7 @@ export async function testDrive(
       project.repoPath,
       'teardown',
       project.driveStopCommand,
-      driveOverlay(
-        { slug: feature.slug, branch },
-        readDriveEnvFile(project.repoPath),
-      ),
+      driveOverlay({ slug: feature.slug, branch }, readDriveEnvFile(project.repoPath)),
     )
     // The drive's own scratch artifact, gone with the drive: left behind it
     // would ride back to the branch you return to as a carried change, and deny
@@ -1573,9 +1570,9 @@ export async function testDrive(
  * The reserved slug a dry run takes its identity from (decision 5), so
  * `RUNCASTLE_ID` is `prep_dry_run` and the temp database a setup script derives
  * from it says what left it. Deliberately fixed: a retry wanting the same name
- * is the point — a
- * leftover database from a failed teardown makes `createdb` fail loudly, which
- * is the "make sure it is new" check enforced by the machinery itself.
+ * is the point — a leftover database from a failed teardown makes `createdb`
+ * fail loudly, which is the "make sure it is new" check enforced by the
+ * machinery itself.
  */
 const DRY_RUN_SLUG = 'prep-dry-run'
 
@@ -1744,10 +1741,7 @@ async function stopDryRun(
     project.repoPath,
     'teardown',
     project.driveStopCommand,
-    driveOverlay(
-      { slug: DRY_RUN_SLUG, branch: state.branch },
-      readDriveEnvFile(project.repoPath),
-    ),
+    driveOverlay({ slug: DRY_RUN_SLUG, branch: state.branch }, readDriveEnvFile(project.repoPath)),
   )
   state.observed.teardownOk = teardown?.result.ok
   // As a feature drive does: the file belongs to the drive, not to the repo.
