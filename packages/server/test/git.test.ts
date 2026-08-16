@@ -84,6 +84,25 @@ async function currentBranch(g: SimpleGit): Promise<string> {
 }
 
 /**
+ * A setup command that plays the setup script's half of the drive contract:
+ * write one `KEY=VALUE` line to `.runcastle/drive.env`. Spelled for whichever
+ * shell hosts it, so `$RUNCASTLE_ID` in the line becomes `%RUNCASTLE_ID%` on cmd.
+ */
+function writeDriveEnv(line: string): string {
+  const file = join('.runcastle', 'drive.env')
+  return process.platform === 'win32'
+    ? `mkdir .runcastle & echo ${line.replace(/\$([A-Z_]+)/g, '%$1%')}> "${file}"`
+    : `mkdir -p .runcastle && echo "${line}" > "${file}"`
+}
+
+/** A hook command that writes one environment variable to `marker`. */
+function readVar(name: string, marker: string): string {
+  return process.platform === 'win32'
+    ? `echo %${name}%> "${marker}"`
+    : `echo "$${name}" > "${marker}"`
+}
+
+/**
  * Give `repo` an `origin` remote (a bare clone) that carries `branch`, WITHOUT a
  * local copy of it — i.e. `origin/<branch>` exists as a remote-tracking ref only.
  * Mirrors a fresh clone where the team's base line lives only on the remote.
@@ -655,65 +674,84 @@ describe('testDrive', () => {
     expect(readFileSync(marker, 'utf8').trim()).toBe('feature/drive')
   })
 
-  // The generic half of "a database per branch": we render and inject the
-  // variables, the project's own command creates whatever they name.
-  it('renders driveEnv into the hook environment, per branch', async () => {
-    const marker = join(project.repoPath, 'seen-env.txt')
-    const withEnv = {
+  // The drive's environment contract: identity in as `RUNCASTLE_*`, everything
+  // the script computed back out through `.runcastle/drive.env`. runcastle
+  // injects; the project's own script decides what a per-branch database, port
+  // or compose project is called.
+  it('hands the setup hook the drive identity as plain environment', async () => {
+    const marker = join(project.repoPath, 'identity.txt')
+    const withHook = {
       ...project,
-      driveEnv: 'DATABASE_URL=postgres://localhost:5432/myapp_{{id}}',
       driveSetupCommand:
         process.platform === 'win32'
-          ? `echo %DATABASE_URL% > "${marker}"`
-          : `echo "$DATABASE_URL" > "${marker}"`,
+          ? `echo %RUNCASTLE_SLUG% %RUNCASTLE_BRANCH% %RUNCASTLE_ID%> "${marker}"`
+          : `echo "$RUNCASTLE_SLUG $RUNCASTLE_BRANCH $RUNCASTLE_ID" > "${marker}"`,
     }
-    await testDrive(ctx, withEnv, feature, 'start')
+    await testDrive(ctx, withHook, feature, 'start')
 
-    expect(readFileSync(marker, 'utf8').trim()).toBe('postgres://localhost:5432/myapp_drive')
+    expect(readFileSync(marker, 'utf8').trim()).toBe('drive feature/drive drive')
 
-    await testDrive(ctx, withEnv, feature, 'stop')
+    await testDrive(ctx, withHook, feature, 'stop')
   })
 
-  // Setup creates the database and the dev server has to connect to THAT one;
-  // two different renderings would be worse than not doing this at all.
-  it('gives the teardown hook the same rendering the setup hook saw', async () => {
-    const setupMarker = join(project.repoPath, 'setup-env.txt')
+  // Setup creates the database and the stop hook has to drop THAT one; the file
+  // is what carries the name across two processes the server spawns separately.
+  it('overlays what the setup script wrote onto the stop hook', async () => {
     const stopMarker = join(project.repoPath, 'stop-env.txt')
-    const write = (m: string) =>
-      process.platform === 'win32' ? `echo %DATABASE_URL% > "${m}"` : `echo "$DATABASE_URL" > "${m}"`
-    const withEnv = {
+    const withHooks = {
       ...project,
-      driveEnv: 'DATABASE_URL=db_{{id}}',
-      driveSetupCommand: write(setupMarker),
-      driveStopCommand: write(stopMarker),
+      driveSetupCommand: writeDriveEnv('DB_NAME=myapp_$RUNCASTLE_ID'),
+      driveStopCommand: readVar('DB_NAME', stopMarker),
     }
 
-    await testDrive(ctx, withEnv, feature, 'start')
-    await testDrive(ctx, withEnv, feature, 'stop')
+    await testDrive(ctx, withHooks, feature, 'start')
+    await testDrive(ctx, withHooks, feature, 'stop')
 
-    expect(readFileSync(stopMarker, 'utf8').trim()).toBe(readFileSync(setupMarker, 'utf8').trim())
+    expect(readFileSync(stopMarker, 'utf8').trim()).toBe('myapp_drive')
   })
 
-  it('reports an unknown placeholder instead of substituting a blank', async () => {
-    const withEnv = { ...project, driveEnv: 'DATABASE_URL=db_{{oops}}' }
-    await testDrive(ctx, withEnv, feature, 'start')
+  // Most projects need no variables at all, and a drive that failed over an
+  // absent scratch file would be brittle in exactly the dimension this contract
+  // exists to remove.
+  it('runs a drive with no drive.env at all, overlaying nothing', async () => {
+    const withHook = { ...project, driveSetupCommand: 'echo nothing-to-hand-back' }
+    const start = await testDrive(ctx, withHook, feature, 'start')
 
-    expect(listAfter(ctx, feature.id, 0).map((e) => e.type)).toContain(
-      'testdrive.env_unknown_placeholder',
-    )
-    await testDrive(ctx, withEnv, feature, 'stop')
+    expect(start.ok).toBe(true)
+    expect(listAfter(ctx, feature.id, 0).map((e) => e.type)).not.toContain('testdrive.env')
+
+    await testDrive(ctx, withHook, feature, 'stop')
   })
 
   // Values routinely hold credentials. The timeline is a shared artifact.
-  it('records which variables the drive set, never their values', async () => {
-    const withEnv = { ...project, driveEnv: 'DATABASE_URL=postgres://user:hunter2@localhost/x' }
-    await testDrive(ctx, withEnv, feature, 'start')
+  it('records which variables the script handed back, never their values', async () => {
+    const withHook = {
+      ...project,
+      driveSetupCommand: writeDriveEnv('DATABASE_URL=postgres://user:hunter2@localhost/x'),
+    }
+    await testDrive(ctx, withHook, feature, 'start')
 
     const event = listAfter(ctx, feature.id, 0).find((e) => e.type === 'testdrive.env')
     expect(event?.message).toContain('DATABASE_URL')
     expect(JSON.stringify(event)).not.toContain('hunter2')
 
-    await testDrive(ctx, withEnv, feature, 'stop')
+    await testDrive(ctx, withHook, feature, 'stop')
+  })
+
+  // An untracked file left in the repo would ride back to the branch you came
+  // from as a carried change, and deny the next start on a dirty tree.
+  it('deletes drive.env on stop, leaving the next drive a clean tree', async () => {
+    const withHook = { ...project, driveSetupCommand: writeDriveEnv('DB_NAME=myapp_$RUNCASTLE_ID') }
+
+    await testDrive(ctx, withHook, feature, 'start')
+    const stop = await testDrive(ctx, withHook, feature, 'stop')
+
+    expect(existsSync(join(project.repoPath, '.runcastle', 'drive.env'))).toBe(false)
+    expect(stop.carriedChanges).toBeUndefined()
+
+    const again = await testDrive(ctx, withHook, feature, 'start')
+    expect(again.ok).toBe(true)
+    await testDrive(ctx, withHook, feature, 'stop')
   })
 
   it('does nothing when the project has no hooks', async () => {
