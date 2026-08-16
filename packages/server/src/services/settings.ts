@@ -52,7 +52,6 @@ type ProjectColumn =
   | 'dbResetCommand'
   | 'driveSetupCommand'
   | 'driveStopCommand'
-  | 'driveEnv'
 
 interface FieldDescriptor {
   key: string
@@ -230,17 +229,6 @@ const DESCRIPTORS: FieldDescriptor[] = [
     valueSchema: z.string().min(1),
     parseEnv: idEnv,
   },
-  // `KEY=VALUE` lines the drive overlays on the dev server's environment, with
-  // `{{slug}}`/`{{branch}}`/`{{id}}` rendered per drive. Pointing a dev server
-  // at a per-branch database is the generic half of that idea; creating the
-  // database is not, and stays in `driveSetupCommand`.
-  {
-    key: 'driveEnv',
-    projectColumn: 'driveEnv',
-    restartRequired: false,
-    valueSchema: z.string().min(1),
-    parseEnv: idEnv,
-  },
 ]
 
 const DEFAULTS = RuncastleConfigSchema.parse({})
@@ -307,7 +295,6 @@ function projectOverrides(ctx: AppCtx, projectId: string): Record<ProjectColumn,
       dbResetCommand: projects.dbResetCommand,
       driveSetupCommand: projects.driveSetupCommand,
       driveStopCommand: projects.driveStopCommand,
-      driveEnv: projects.driveEnv,
     })
     .from(projects)
     .where(eq(projects.id, projectId))
@@ -322,7 +309,6 @@ function projectOverrides(ctx: AppCtx, projectId: string): Record<ProjectColumn,
     dbResetCommand: row?.dbResetCommand ?? null,
     driveSetupCommand: row?.driveSetupCommand ?? null,
     driveStopCommand: row?.driveStopCommand ?? null,
-    driveEnv: row?.driveEnv ?? null,
   }
 }
 

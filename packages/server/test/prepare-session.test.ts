@@ -171,17 +171,17 @@ describe('record_finding provenance', () => {
   it('marks a user-supplied value `human`, which locks it', () => {
     const s = prepareSession()
     const res = toolRecordFinding(ctx, s, {
-      key: 'driveEnv',
-      value: 'DATABASE_URL=postgres://localhost/app_{{id}}',
+      key: 'driveSetupCommand',
+      value: 'bash .runcastle/drive-setup.sh',
       userSupplied: true,
     })
     expect(res.source).toBe('human')
 
     // Locked: a subsequent agent measurement must not overwrite it.
-    const second = toolRecordFinding(ctx, s, { key: 'driveEnv', value: 'something else' })
+    const second = toolRecordFinding(ctx, s, { key: 'driveSetupCommand', value: 'something else' })
     expect(second.skipped).toBeTruthy()
-    expect(preparedValue(ctx, PROJECT_ID, 'driveEnv')).toBe(
-      'DATABASE_URL=postgres://localhost/app_{{id}}',
+    expect(preparedValue(ctx, PROJECT_ID, 'driveSetupCommand')).toBe(
+      'bash .runcastle/drive-setup.sh',
     )
   })
 
@@ -277,11 +277,11 @@ describe('the prepare brief', () => {
   it('lists what is established, with its evidence, and what is still open', () => {
     const out = renderPreparePrompt({
       project: project(),
-      remainingKeys: ['driveEnv'],
+      remainingKeys: ['driveStopCommand'],
       established: [{ key: 'setupCommand', source: 'session', evidence: 'ran it: exit 0' }],
     })
     expect(out).toContain('ran it: exit 0')
-    expect(out).toContain('`driveEnv`')
+    expect(out).toContain('`driveStopCommand`')
     // The host framing is the reason this session exists at all.
     expect(out).toContain('/repo')
     expect(out).toContain('NOT in a sandbox')
@@ -298,7 +298,7 @@ describe('the prepare brief', () => {
   it('explains what each host-only key drives, so the agent need not guess', () => {
     const out = renderPreparePrompt({
       project: project(),
-      remainingKeys: ['devCommand', 'driveEnv', 'dbResetCommand'],
+      remainingKeys: ['devCommand', 'driveSetupCommand', 'dbResetCommand'],
       established: [],
     })
 
