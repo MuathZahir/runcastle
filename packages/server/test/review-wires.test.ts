@@ -23,6 +23,8 @@ import { openProject } from '../src/services/projects'
 import { rowToRun } from '../src/services/repo'
 import { addNote, listByFeature as listNotes, promoteNote } from '../src/services/test-notes'
 import { listByFeature as listTickets } from '../src/services/tickets'
+import { createCallerFactory } from '../src/trpc/context'
+import { appRouter } from '../src/trpc/router'
 import { makeTestCtx } from './helpers/db'
 import { seedFeature } from './helpers/fixtures'
 
@@ -150,13 +152,28 @@ describe('the review agent wires', () => {
     const start = await drive('start')
 
     expect(start).toMatchObject({ ok: true, action: 'start' })
-    expect(start.drive).toMatchObject({ featureId: feature.id, branch: 'feature/reviewed' })
+    // `purpose` is what stops every drive surface calling this a test drive.
+    expect(start.drive).toMatchObject({
+      featureId: feature.id,
+      purpose: 'review',
+      branch: 'feature/reviewed',
+    })
     expect(await currentBranch()).toBe('feature/reviewed')
 
     const stop = await drive('stop')
     expect(stop).toMatchObject({ ok: true, drive: null })
     expect(await currentBranch()).toBe('main')
     expect(activeDriveInfo()).toBeNull()
+  })
+
+  it('tells the wire the UI polls that a review agent — not a human — is driving', async () => {
+    await drive('start')
+
+    const driveInfo = await createCallerFactory(appRouter)(ctx).feature.driveInfo()
+    expect(driveInfo).toMatchObject({ featureId: feature.id, purpose: 'review' })
+
+    await drive('stop')
+    expect(await createCallerFactory(appRouter)(ctx).feature.driveInfo()).toBeNull()
   })
 
   it('still denies a dirty tree, and leaves the checkout where it was', async () => {
