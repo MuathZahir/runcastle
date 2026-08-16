@@ -9,6 +9,8 @@ import type { SimpleGit } from 'simple-git'
 import type { AppCtx } from '../db/types'
 import { GateError, InvalidInputError } from '../errors'
 import { devPaneLive, startDevPane, stopDevPane } from '../pty/dev-pane'
+import type { AppReadyTiming } from './app-readiness'
+import { pollAppReady } from './app-readiness'
 import type { DriveHookFailure, DriveHookResult } from './drive-hooks'
 import { describeHookResult, runDriveHook } from './drive-hooks'
 import type { DriveIdentity } from './drive-env'
@@ -94,6 +96,18 @@ export interface DriveInfo {
   devPaneId?: string
   /** First localhost URL the dev server printed, if any (sticky per drive). */
   devUrl?: string
+  /**
+   * Whether that URL actually answers an HTTP request yet. A dev server prints
+   * its address well before it serves, so "Open app" stays a plain "starting…"
+   * until this turns true and only then becomes a link the human can trust.
+   */
+  devReady: boolean
+  /**
+   * Set only when the readiness poll exhausted its budget. The URL stays
+   * openable-by-hand and the drive is untouched — this is the hint that says
+   * we stopped waiting, not that anything failed.
+   */
+  devReadyTimedOut?: boolean
   /**
    * Whether the project had a `devCommand` to run at all. A drive is a `git
    * checkout` plus, optionally, a dev server — and with no command configured
@@ -1325,6 +1339,8 @@ type DriveState =
       detachedWorktree?: string
       devPaneId?: string
       devUrl?: string
+      devReadiness?: DevReadiness
+      readyPoll?: AbortController
       /** Whether the project had a dev command to start (see {@link DriveInfo}). */
       devConfigured: boolean
     }
@@ -1335,10 +1351,19 @@ type DriveState =
       branch: string
       devPaneId?: string
       devUrl?: string
+      devReadiness?: DevReadiness
+      readyPoll?: AbortController
       devConfigured: boolean
       /** What the machinery observed, which is all the verification stamp reads. */
       observed: DryRunObservables
     }
+
+/**
+ * Where the sniffed URL is in its journey from printed to openable. Absent
+ * until a URL is sniffed at all; `starting` while the readiness poll runs
+ * (app-readiness.ts), and either of the other two once it has ruled.
+ */
+type DevReadiness = 'starting' | 'ready' | 'timedOut'
 
 let testDriveState: DriveState | undefined
 
@@ -1357,8 +1382,20 @@ interface DryRunObservables {
 
 /** Test-only: clear the in-memory test-drive state (not called by any router). */
 export function __resetTestDriveState(): void {
+  testDriveState?.readyPoll?.abort()
   testDriveState = undefined
 }
+
+/**
+ * Test-only: run the readiness poll on a compressed clock, so a timeout is a
+ * test that takes milliseconds instead of two minutes. `undefined` restores the
+ * shipped timing; nothing in production ever calls this.
+ */
+export function __setAppReadinessTiming(timing?: AppReadyTiming): void {
+  readinessTiming = timing
+}
+
+let readinessTiming: AppReadyTiming | undefined
 
 /**
  * Feature id of the currently-active test drive, or `undefined` when none is
@@ -1379,6 +1416,8 @@ export function activeDriveInfo(): DriveInfo | null {
     branch: testDriveState.branch,
     devPaneId: testDriveState.devPaneId,
     devUrl: testDriveState.devUrl,
+    devReady: testDriveState.devReadiness === 'ready',
+    ...(testDriveState.devReadiness === 'timedOut' ? { devReadyTimedOut: true } : {}),
     devConfigured: testDriveState.devConfigured,
   }
 }
@@ -1386,7 +1425,8 @@ export function activeDriveInfo(): DriveInfo | null {
 /**
  * Record the first localhost URL sniffed from the drive's dev pane (the "Open
  * app" link). Sticky per drive — the first URL wins — and ignored once the drive
- * has stopped or moved to another feature. Emits `testdrive.url` for the timeline.
+ * has stopped or moved to another feature. Emits `testdrive.url` for the timeline
+ * and starts the readiness poll that eventually makes the link clickable.
  */
 export function recordDriveUrl(ctx: AppCtx, featureId: string, url: string): void {
   if (testDriveState?.kind !== 'feature') return
@@ -1394,8 +1434,45 @@ export function recordDriveUrl(ctx: AppCtx, featureId: string, url: string): voi
   testDriveState.devUrl = url
   emit(ctx, featureId, {
     type: 'testdrive.url',
-    message: `dev server ready — open app at ${url}`,
+    message: `dev server printed ${url} — waiting for it to answer`,
     data: { url },
+  })
+  watchAppReadiness(ctx, { featureId }, url, 'testdrive')
+}
+
+/**
+ * Start polling a freshly-sniffed URL and record what comes back (decision 5).
+ *
+ * Fire-and-forget by construction: the drive result never waits on this, so a
+ * dev server that takes a minute to compile costs the human nothing but a
+ * "starting…" label. A poll that outlives its drive — stopped, or replaced by
+ * another — reports nothing at all, which is what keeps a late answer from
+ * landing on the timeline of a drive that has already gone.
+ */
+function watchAppReadiness(
+  ctx: AppCtx,
+  scope: EmitScope,
+  url: string,
+  eventPrefix: 'testdrive' | 'prep.dryrun',
+): void {
+  const state = testDriveState
+  if (!state) return
+  const poll = new AbortController()
+  state.readyPoll = poll
+  state.devReadiness = 'starting'
+
+  void pollAppReady(url, { ...readinessTiming, signal: poll.signal }).then((outcome) => {
+    if (testDriveState !== state || outcome === 'cancelled') return
+    state.readyPoll = undefined
+    state.devReadiness = outcome === 'ready' ? 'ready' : 'timedOut'
+    emitScoped(ctx, scope, {
+      type: `${eventPrefix}.${outcome === 'ready' ? 'ready' : 'ready_timeout'}`,
+      message:
+        outcome === 'ready'
+          ? `app is serving at ${url} — open it`
+          : `${url} never answered — "Open app" stays unconfirmed, but the drive is unaffected`,
+      data: { url },
+    })
   })
 }
 
@@ -1422,6 +1499,9 @@ export async function testDrive(
     const previousBranch = testDriveState.previousBranch
     const detachedWorktree = testDriveState.detachedWorktree
     const devPaneId = testDriveState.devPaneId
+    // Cancel any in-flight readiness poll: the app is about to stop answering,
+    // and a timer still ticking against a dead drive is an orphan by definition.
+    testDriveState.readyPoll?.abort()
     // Kill the whole dev-server process tree first so its port is freed with no
     // orphan (the drive owns the pane; its URL is cleared when state resets).
     if (devPaneId) await stopDevPane(devPaneId)
@@ -1605,6 +1685,9 @@ export interface DryRunResult {
   devPaneLive?: boolean
   /** The sniffed localhost URL, once the dev server has printed one. */
   devUrl?: string
+  /** Whether that URL answers HTTP yet — the agent's view of "Open app" being
+   *  live, absent until there is a URL to poll at all. */
+  devReady?: boolean
   /** `stop` only: the drive-loop keys this pass stamped verified — `[]` on a
    *  failed pass, because verification is all-or-nothing (decision 3). */
   verified?: PreparedKey[]
@@ -1731,6 +1814,8 @@ async function stopDryRun(
   state: DryRunState,
 ): Promise<DryRunResult> {
   const scope: EmitScope = { projectId: project.id }
+  // As a feature drive does: no poll survives the drive it was watching.
+  state.readyPoll?.abort()
   // The pane dies first so the dev server has released its port by the time the
   // stop hook goes looking for the things it has to drop.
   if (state.devPaneId) await stopDevPane(state.devPaneId)
@@ -1778,17 +1863,20 @@ async function stopDryRun(
 /**
  * Record the dry run's first sniffed localhost URL — the observable `devCommand`
  * is verified by. Spawning is too weak on its own: a server that crashes on boot
- * still spawns, and the URL is what "Open app" actually depends on.
+ * still spawns, and the URL is what "Open app" actually depends on. Readiness is
+ * polled from here exactly as a feature drive polls it, so the prep agent's
+ * `status` reads the same state the human's drive panel does.
  */
-function recordDryRunUrl(ctx: AppCtx, projectId: string, url: string): void {
+export function recordDryRunUrl(ctx: AppCtx, projectId: string, url: string): void {
   if (testDriveState?.kind !== 'dryRun') return
   if (testDriveState.projectId !== projectId || testDriveState.devUrl) return
   testDriveState.devUrl = url
   emitProject(ctx, projectId, {
     type: 'prep.dryrun.url',
-    message: `dry-run dev server ready at ${url}`,
+    message: `dry-run dev server printed ${url} — waiting for it to answer`,
     data: { url },
   })
+  watchAppReadiness(ctx, { projectId }, url, 'prep.dryrun')
 }
 
 /**
@@ -1832,12 +1920,12 @@ function observableFailure(
 /** The live half of a dry run's report, shared by every action that has one. */
 function liveFields(
   state: DryRunState,
-): Pick<DryRunResult, 'identity' | 'devConfigured' | 'devPaneLive' | 'devUrl'> {
+): Pick<DryRunResult, 'identity' | 'devConfigured' | 'devPaneLive' | 'devUrl' | 'devReady'> {
   return {
     identity: { slug: DRY_RUN_SLUG, branch: state.branch },
     devConfigured: state.devConfigured,
     devPaneLive: !!state.devPaneId && devPaneLive(state.devPaneId),
-    ...(state.devUrl ? { devUrl: state.devUrl } : {}),
+    ...(state.devUrl ? { devUrl: state.devUrl, devReady: state.devReadiness === 'ready' } : {}),
   }
 }
 
