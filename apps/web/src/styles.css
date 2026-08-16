@@ -1886,6 +1886,7 @@ details.wp-group-done > summary { cursor: pointer; list-style: revert; }
 .lane-head { display: flex; align-items: center; gap: 8px; }
 .lane-seq { color: var(--text-3); font-family: var(--mono); font-size: 11.5px; flex: 0 0 auto; }
 .lane-title { flex: 1; min-width: 0; font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lane-head .chip-kind-review { flex: 0 0 auto; }
 .lane-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 6px; }
 .lane-commits { display: flex; flex-wrap: wrap; gap: 4px; }
 .lane-dur { color: var(--text-3); font-family: var(--mono); font-size: 11px; }

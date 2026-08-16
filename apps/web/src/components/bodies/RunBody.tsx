@@ -8,7 +8,7 @@ import { useLivePoll } from '../../lib/live'
 import { sessionActive, ticketConflictKickoff } from '../../lib/feature-ui'
 import { fmtDuration, fmtTime, shortSha } from '../../lib/format'
 import { BURN_EXPLAINER } from '../../lib/vocabulary'
-import { DimLine, EmptyState, RunStatusChip, TicketStatusChip } from '../../ui'
+import { DimLine, EmptyState, RunStatusChip, TicketKindChip, TicketStatusChip } from '../../ui'
 import { IconChevronRight, IconTerminal } from '../../icons'
 import { AgentTranscript } from '../AgentTranscript'
 import { ErrorBoundary } from '../ErrorBoundary'
@@ -262,6 +262,11 @@ function Lane({
       <div className="lane-head">
         <span className="lane-seq">#{ticket.seq}</span>
         <span className="lane-title">{ticket.title}</span>
+        {/* A review lane behaves unlike every lane around it — no branch, no
+            container, no merge-queue entry (decisions #10) — so it says which
+            kind it is, in the same chip the ticket ledger already uses.
+            Implementation lanes are unchanged: the chip renders nothing. */}
+        <TicketKindChip kind={ticket.kind} />
         <TicketStatusChip status={ticket.status} />
       </div>
       {errorHeadline && !conflict && (
