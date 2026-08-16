@@ -11,6 +11,8 @@ import type {
   Waypoint,
 } from '@runcastle/core'
 import { featureDocsRel, sessionDir } from '@runcastle/core/paths'
+import type { DriveHookFailure } from '../services/drive-hooks'
+import type { BranchDelta } from '../services/git'
 import { ASSET_ENV, resolveAsset } from './asset-paths'
 import { EDIT_TOOL_MATCHER, guardsEdits } from './edit-guard'
 
@@ -39,6 +41,12 @@ export interface WriteArtifactsInput {
   prepare?: PrepareBrief
   /** The brief for a `project` session; the other way `feature` may be absent. */
   projectBrief?: ProjectBrief
+  /**
+   * The brief for a `drive-fix` session. Feature-scoped but host-side, so it
+   * carries its own feature rather than being briefed from `feature` — the
+   * failure it exists to repair is not something the feature row can say.
+   */
+  driveFix?: DriveFixBrief
   /**
    * Why the session was launched, when that changes its briefing — today only
    * the conflict-resolution revisit, which is told to resolve the merge rather
@@ -655,6 +663,115 @@ export function renderPreparePrompt(brief: PrepareBrief): string {
   ].join('\n')
 }
 
+/** Everything a drive-fix session is handed about the drive that just died. */
+export interface DriveFixBrief {
+  project: Project
+  feature: Feature
+  /** The setup hook that failed — the whole reason this session exists. */
+  failure: DriveHookFailure
+  /** NAMES of the variables setup wrote to `.runcastle/drive.env`, if any. */
+  envKeys: readonly string[]
+  /** What this feature branch changed against its base, as `--stat` text. */
+  delta: BranchDelta
+}
+
+/**
+ * The injected brief for a `drive-fix` session (decision 9).
+ *
+ * A fitted prompt rather than prepare's, because the mandates differ in the way
+ * that matters: preparation establishes and verifies every key, and this session
+ * exists to unblock ONE drive that is failing right now. Told to prepare, an
+ * agent re-derives a project it already knows; told to fix this drive, it reads
+ * the failure it was handed and works the delta.
+ *
+ * Four things it is given that no other prompt has: the failure output itself
+ * (a human staring at a hookFailure blob is exactly what the one-click exists to
+ * end), the variable names the setup script managed to hand back before it died,
+ * the branch delta — the usual culprit is something this branch added and the
+ * script does not bring up — and where the feature's own docs are.
+ *
+ * It runs on the HOST, in the real checkout, on the feature branch the failed
+ * drive left checked out. So it carries prepare's ask-before-act rule verbatim,
+ * and one prepare does not need: the fix belongs in the branch, committed, both
+ * because the drive contract says a branch carries its own setup and because the
+ * retry cannot even start on a dirty tree.
+ */
+export function renderDriveFixPrompt(brief: DriveFixBrief): string {
+  const { project, feature, failure, envKeys, delta } = brief
+  const docs = featureDocsRel(feature.slug)
+  return [
+    `# runcastle — fixing the test drive for ${feature.title}`,
+    '',
+    'This is a **drive-fix session**. A test drive of this feature failed to come up, the human',
+    'clicked "Fix drive", and you are the recovery. Your mandate is narrow and complete:',
+    '**repair the environment and retry THIS drive until it comes up.** Nothing else.',
+    '',
+    '## What failed',
+    `The \`${failure.phase}\` hook of the drive on \`${delta.branch}\` did not succeed.`,
+    '',
+    `- command: \`${failure.command}\``,
+    `- outcome: ${failure.timedOut ? 'timed out' : `exited ${failure.exitCode ?? 'without a code'}`}`,
+    '',
+    'Its output (tail):',
+    '',
+    '```',
+    failure.output.length > 0 ? failure.output : '(the command produced no output)',
+    '```',
+    '',
+    '## What the drive ran with',
+    envKeys.length > 0
+      ? `Setup wrote these variables to \`.runcastle/drive.env\` before it stopped: ` +
+        `${envKeys.map((k) => `\`${k}\``).join(', ')}. The server overlays that file verbatim ` +
+        'onto the dev pane and the stop hook; read the file for the values.'
+      : 'Setup wrote no `.runcastle/drive.env` at all — so nothing it computed reached the dev ' +
+        'pane. If the script is supposed to write one, that alone may be the fault.',
+    '',
+    'The identity the server passed in is `RUNCASTLE_SLUG`, `RUNCASTLE_BRANCH` and',
+    '`RUNCASTLE_ID` (the identifier-safe slug). Everything else a drive needs, the script',
+    'computes for itself and hands back through that file.',
+    '',
+    '## What this branch changed',
+    `\`${delta.base}...${delta.branch}\`:`,
+    '',
+    '```',
+    delta.stat.length > 0 ? delta.stat : '(no delta against the base branch)',
+    '```',
+    '',
+    'Read it before you theorise. The usual fault is something this branch added — a package, a',
+    'migration, a service, a required variable — that the drive script does not bring up, and the',
+    'contract says the branch carries its own setup.',
+    '',
+    '## Where to work',
+    `You are on the developer's own machine, in \`${project.repoPath}\`, NOT in a sandbox. The`,
+    `failed drive is still holding the wheel with \`${delta.branch}\` checked out — that is the`,
+    'state you need, so do not switch branches or stop the drive by hand.',
+    '',
+    `The machinery is \`.runcastle/\` in this checkout, on this branch right now. Fix it there and`,
+    '**commit it to the feature branch** — a branch carries its own setup, so the fix must ride it',
+    'to review, and `retry_drive` cannot even start on a dirty tree. Those files and `.gitignore`',
+    'are the only ones you may write; the guard denies the rest, and a change to the app itself',
+    'belongs in a ticket.',
+    '',
+    '**Ask before you act.** Anything that starts or stops a service, creates or migrates a',
+    'database, installs software, or writes outside the repo needs the human to agree first — say',
+    'what you are about to run and why, then wait. You are on their machine and their stack is',
+    'running next to yours.',
+    '',
+    '## Retrying',
+    '`retry_drive()` stops the failed drive if it is still holding the slot, starts a fresh drive',
+    'of this feature, and hands back what the machinery saw: the setup hook outcome, the variable',
+    'names it wrote, and the dev pane with the sniffed URL and whether it answers yet. Fix, commit,',
+    'retry, read — until setup exits 0 and the app is serving. Then tell the human it is up and',
+    'stop; the drive is theirs to test.',
+    '',
+    '## The feature',
+    `- \`${docs}/\` — this feature's own docs (brief, spec, decisions, tickets).`,
+    `- branch \`${delta.branch}\`, based on \`${delta.base}\`.`,
+    '- `get_feature_context` gives you the row, the phase, the docs and the tickets in one call.',
+    '',
+  ].join('\n')
+}
+
 /** What the project session needs to know about where it is working. */
 export interface ProjectBrief {
   project: Project
@@ -784,6 +901,7 @@ export const RUNCASTLE_MCP_ALLOW_RULES: readonly string[] = [
   'mcp__runcastle__resolve_waypoint',
   'mcp__runcastle__record_finding',
   'mcp__runcastle__dry_run_drive',
+  'mcp__runcastle__retry_drive',
   // The project session's three (decision 19). Every session is launched with
   // the whole list: the MCP server gates each tool on the calling session's
   // kind, so a rule for a tool a feature session can only be refused is inert.
@@ -930,7 +1048,8 @@ export function renderMcpConfig(session: SessionRow, config: RuncastleConfig): M
 export async function writeSessionArtifacts(
   input: WriteArtifactsInput,
 ): Promise<SessionArtifacts> {
-  const { session, feature, config, waypoint, prepare, projectBrief, lap, purpose } = input
+  const { session, feature, config, waypoint, prepare, projectBrief, driveFix, lap, purpose } =
+    input
   const dir = sessionDir(session.id)
   mkdirSync(dir, { recursive: true })
 
@@ -938,18 +1057,21 @@ export async function writeSessionArtifacts(
   const settingsPath = join(dir, 'settings.json')
   const mcpConfigPath = join(dir, 'mcp.json')
 
-  // A project-scoped session has no feature to brief from; the caller supplies
-  // its kind's brief instead. Exactly one of the three is always present — a
-  // session with none would spawn a terminal with no instructions at all.
-  const systemPrompt = feature
-    ? renderSystemPrompt(feature, session.kind, waypoint, lap, purpose)
-    : prepare
-      ? renderPreparePrompt(prepare)
-      : projectBrief
-        ? renderProjectPrompt(projectBrief)
-        : (() => {
-            throw new Error(`session ${session.id} has no feature and no project-session brief`)
-          })()
+  // A session that is not briefed from its feature row — a project-scoped one,
+  // or the host-side drive fix — supplies its kind's brief instead. Exactly one
+  // of the four is always present: a session with none would spawn a terminal
+  // with no instructions at all.
+  const systemPrompt = driveFix
+    ? renderDriveFixPrompt(driveFix)
+    : feature
+      ? renderSystemPrompt(feature, session.kind, waypoint, lap, purpose)
+      : prepare
+        ? renderPreparePrompt(prepare)
+        : projectBrief
+          ? renderProjectPrompt(projectBrief)
+          : (() => {
+              throw new Error(`session ${session.id} has no feature and no project-session brief`)
+            })()
 
   writeFileSync(systemPromptPath, systemPrompt, 'utf8')
   writeFileSync(

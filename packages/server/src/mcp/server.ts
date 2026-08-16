@@ -469,6 +469,66 @@ export async function toolDryRunDrive(
   return git.dryRunDrive(ctx, project, input.action)
 }
 
+/** What one `retry_drive` attempt observed, as the drive-fix agent reads it. */
+export interface RetryDriveResult {
+  /**
+   * Whether the fresh drive STARTED. Its setup may still have failed — that is
+   * `drive.hookFailure`, and reading on is the whole point of the loop.
+   */
+  ok: boolean
+  /** Why the start was refused (an uncommitted tree, an active run). */
+  deniedReason?: string
+  /** Whether a drive was still holding the slot and was stopped first. */
+  stopped: boolean
+  /** The branch under the wheel, when one started. */
+  branch?: string
+  /**
+   * The fresh drive exactly as the human's panel sees it: the setup failure if
+   * it failed again, the NAMES of the variables setup wrote, the dev pane, the
+   * sniffed URL and whether it answers yet.
+   */
+  drive?: git.DriveInfo
+}
+
+/**
+ * Retry the drive this session was opened to fix (decision 9) — the fix→retry
+ * half of the loop, and the only tool a drive-fix session has that no other
+ * session does.
+ *
+ * Stopping first is not optional and not the agent's job to remember: the failed
+ * drive is still holding the singleton slot with the feature branch checked out,
+ * and a start is refused while it does. An already-stopped slot is tolerated
+ * (the human may have stopped it from the UI), which is what makes this callable
+ * as many times as the fix takes.
+ */
+export async function toolRetryDrive(
+  ctx: AppCtx,
+  session: SessionRow,
+): Promise<RetryDriveResult> {
+  if (session.kind !== 'drive-fix') {
+    throw new GateError(
+      `retrying a drive belongs to a drive-fix session, and this is a ${session.kind} session. ` +
+        "It stops and restarts a test drive on the human's machine — only the session opened on " +
+        'that failed drive may do that; everyone else asks the human to drive from the review panel.',
+    )
+  }
+  const feature = getFeatureRow(ctx, requireFeatureId(session))
+  const project = projectForFeature(ctx, feature)
+
+  const stopped = git.activeTestDriveFeatureId() === feature.id
+  if (stopped) await git.testDrive(ctx, project, feature, 'stop')
+
+  const start = await git.testDrive(ctx, project, feature, 'start')
+  const drive = git.activeDriveInfo()
+  return {
+    ok: start.ok,
+    stopped,
+    ...(start.deniedReason ? { deniedReason: start.deniedReason } : {}),
+    ...(start.branch ? { branch: start.branch } : {}),
+    ...(drive ? { drive } : {}),
+  }
+}
+
 // --- the project session's three tools (decisions 15, 19, 21) ---------------
 
 export interface CreateFeatureResult {
@@ -788,6 +848,28 @@ export function buildMcpServer(): McpServer {
       const rs = await resolveCtxSession(extra)
       if (!rs) return noSession()
       return ok(await toolDryRunDrive(rs.ctx, rs.session, args))
+    },
+  )
+
+  server.registerTool(
+    'retry_drive',
+    {
+      title: 'Retry this feature’s test drive',
+      description:
+        'Drive-fix sessions only. Stop the failed drive if it is still holding the wheel, then ' +
+        'start a fresh drive of this feature — the real machinery, the same hooks, the same dev ' +
+        'pane the human clicks. Commit your fix to the feature branch first: a drive will not ' +
+        'start on an uncommitted tree, and the branch is what carries its own setup. The reply is ' +
+        'what the machinery saw — `drive.hookFailure` when setup failed again (with the command, ' +
+        'the exit code and its output tail), `drive.envKeys` for the variable names setup handed ' +
+        'back, and `drive.devUrl` / `drive.devReady` for whether the app is serving yet. Call it ' +
+        'as many times as the fix takes.',
+      inputSchema: {},
+    },
+    async (_args, extra) => {
+      const rs = await resolveCtxSession(extra)
+      if (!rs) return noSession()
+      return ok(await toolRetryDrive(rs.ctx, rs.session))
     },
   )
 

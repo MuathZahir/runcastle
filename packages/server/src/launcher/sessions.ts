@@ -236,6 +236,14 @@ export const KICKOFF_LINES: Record<SessionKind, string> = {
     'ask before running anything that touches their database or services.',
   project:
     'Proceed with your task: invoke the /runcastle:project skill and drive the project session.',
+  // No skill either: the failure, the drive's own environment and the branch
+  // delta all arrive as the appended system prompt (renderDriveFixPrompt), so
+  // the line only has to point at the first move — read the failure, do not
+  // start repairing anything before saying what you are about to do.
+  'drive-fix':
+    'Proceed with your task: the drive whose setup just failed is in your system prompt. Read ' +
+    'the failure, work out what the environment is missing, and tell me what you propose to ' +
+    'change before you change it; then fix it and retry the drive with retry_drive.',
 }
 
 /**

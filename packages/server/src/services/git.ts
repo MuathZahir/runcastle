@@ -117,6 +117,24 @@ export interface DriveInfo {
    * absent with `true` means the spawn failed and the timeline says why.
    */
   devConfigured: boolean
+  /**
+   * The setup hook's failure, when this drive's setup command did not exit 0.
+   * Only ever a `setup` failure: a teardown failure ends the drive, and this
+   * state goes with it.
+   *
+   * It rides the polled drive rather than only the start result because the
+   * failure is what the human is looking at for the rest of the drive — the
+   * review panel surfaces its output and offers "Fix drive" from it, and a
+   * one-shot toast on the click that caused it is not a surface you can come
+   * back to.
+   */
+  hookFailure?: DriveHookFailure
+  /**
+   * NAMES of the variables the setup script wrote to `.runcastle/drive.env` —
+   * never their values, which can hold connection strings with credentials.
+   * What the drive-fix session is told this drive actually ran with.
+   */
+  envKeys?: string[]
 }
 
 export interface MergeResult {
@@ -777,6 +795,38 @@ export async function reviewCommitCount(
   }
 }
 
+/** What a feature branch changed against its base — the drive-fix agent's map. */
+export interface BranchDelta {
+  /** The branch this feature merges into (its own base, else the main line). */
+  base: string
+  branch: string
+  /** `git diff --stat <base>...<branch>`, empty when the diff cannot be taken. */
+  stat: string
+}
+
+/**
+ * The feature branch's delta against its base, as `--stat` text.
+ *
+ * Three-dot, so it reads "what this branch added" rather than "how the two
+ * differ" — a base that moved ahead underneath the feature is not this branch's
+ * doing, and listing its files would send a fix agent hunting in the wrong half
+ * of the diff. Never throws: a delta is context, and a drive-fix session with no
+ * delta is still worth opening.
+ */
+export async function featureBranchDelta(
+  project: Project,
+  feature: Feature,
+): Promise<BranchDelta> {
+  const base = mergeTarget(project, feature)
+  const branch = featureBranch(feature.slug)
+  try {
+    const out = await git(project.repoPath).raw(['diff', '--stat', `${base}...${branch}`])
+    return { base, branch, stat: out.trim() }
+  } catch {
+    return { base, branch, stat: '' }
+  }
+}
+
 /**
  * The commit sha `ref` points at, or `undefined` when it cannot be resolved
  * (unborn branch, missing ref, not a repo). Used to pin a preparation run's
@@ -1343,6 +1393,10 @@ type DriveState =
       readyPoll?: AbortController
       /** Whether the project had a dev command to start (see {@link DriveInfo}). */
       devConfigured: boolean
+      /** The setup hook's failure, when it failed (see {@link DriveInfo}). */
+      hookFailure?: DriveHookFailure
+      /** Names of the variables setup handed back (see {@link DriveInfo}). */
+      envKeys?: string[]
     }
   | {
       kind: 'dryRun'
@@ -1420,6 +1474,12 @@ export function activeDriveInfo(): DriveInfo | null {
     devReady: testDriveState.devReadiness === 'ready',
     ...(testDriveState.devReadiness === 'timedOut' ? { devReadyTimedOut: true } : {}),
     devConfigured: testDriveState.devConfigured,
+    ...(testDriveState.kind === 'feature' && testDriveState.hookFailure
+      ? { hookFailure: testDriveState.hookFailure }
+      : {}),
+    ...(testDriveState.kind === 'feature' && testDriveState.envKeys
+      ? { envKeys: testDriveState.envKeys }
+      : {}),
   }
 }
 
@@ -1625,6 +1685,11 @@ export async function testDrive(
   const fileVars = readDriveEnvFile(project.repoPath)
   emitDriveEnv(ctx, scope, Object.keys(fileVars))
   const driveEnv = driveOverlay(identity, fileVars)
+  // Both outlive the click that produced them, on the drive itself: the review
+  // panel reads the failure for the rest of the drive, and a drive-fix session
+  // is briefed with what this drive actually ran with.
+  testDriveState.envKeys = Object.keys(fileVars)
+  if (setup?.failure) testDriveState.hookFailure = setup.failure
 
   // Best-effort: spawn the dev command in a drive-owned embedded PTY pane and
   // sniff its localhost URL for the "Open app" link. A spawn failure never fails

@@ -69,21 +69,22 @@ export interface EditGuardInput {
 }
 
 /**
- * What a `prepare` session may write in the developer's own checkout: the drive
- * machinery it authors (`.runcastle/drive-setup.sh` and friends) and the
- * `.gitignore` line that keeps `.runcastle/drive.env` — a scratch file that can
- * hold connection strings — out of the repo.
+ * What a host-side session may write in the developer's own checkout: the drive
+ * machinery (`.runcastle/drive-setup.sh` and friends) and the `.gitignore` line
+ * that keeps `.runcastle/drive.env` — a scratch file that can hold connection
+ * strings — out of the repo.
  *
- * A preparation session is otherwise the strictest of all: it holds the human's
- * real checkout, so it establishes settings and never touches code. But the
- * drive contract asks it for exactly these files, and a guard that denied them
- * would deny the session its own job.
+ * Both kinds that hold the real checkout get exactly this and nothing more. A
+ * `prepare` session is otherwise the strictest of all: it establishes settings
+ * and never touches code. A `drive-fix` session is opened on one failing drive,
+ * and the machinery it repairs is these same files — on the feature branch,
+ * where the branch that broke the drive can carry its own fix.
  */
-const PREPARE_WRITABLE = ['.runcastle/', '.gitignore'] as const
+const DRIVE_MACHINERY_WRITABLE = ['.runcastle/', '.gitignore'] as const
 
-/** Is `target` one of the {@link PREPARE_WRITABLE} paths in this checkout? */
-function isPrepareWritable(worktreePath: string, target: string): boolean {
-  return PREPARE_WRITABLE.some((rel) => within(resolve(worktreePath, rel), target))
+/** Is `target` one of the {@link DRIVE_MACHINERY_WRITABLE} paths in this checkout? */
+function isDriveMachinery(worktreePath: string, target: string): boolean {
+  return DRIVE_MACHINERY_WRITABLE.some((rel) => within(resolve(worktreePath, rel), target))
 }
 
 /** A deny verdict, with what to tell the agent instead; `null` means allow. */
@@ -108,15 +109,27 @@ export function evaluateEditGuard(input: EditGuardInput): EditDenial | null {
 
   const target = resolve(input.worktreePath, input.filePath)
 
+  // A drive-fix session is feature-scoped but host-side: it holds the real
+  // checkout on the feature branch, and its whole job is amending the drive
+  // machinery there. Its docs are not the line — the machinery is.
+  if (input.kind === 'drive-fix') {
+    if (isDriveMachinery(input.worktreePath, target)) return null
+    return {
+      reason:
+        'A drive-fix session repairs one failing drive in the developer\'s own checkout, so it ' +
+        `writes the drive machinery and nothing else: ${writablePaths()} — ${input.filePath} is ` +
+        'outside them. A change to the app itself belongs in a ticket, not in this session.',
+    }
+  }
+
   if (!input.featureSlug) {
-    if (input.kind === 'prepare' && isPrepareWritable(input.worktreePath, target)) return null
-    const writable = PREPARE_WRITABLE.map((p) => `\`${p}\``).join(' and ')
+    if (input.kind === 'prepare' && isDriveMachinery(input.worktreePath, target)) return null
     return {
       reason:
         `This ${input.kind} session does not edit files — it runs in the developer's own ` +
-        `checkout. Its one exception is the drive machinery it authors: ${writable}. Record ` +
-        'what you establish with the `record_finding` MCP tool, and ask the human to make any ' +
-        'other change to the repo itself.',
+        `checkout. Its one exception is the drive machinery it authors: ${writablePaths()}. ` +
+        'Record what you establish with the `record_finding` MCP tool, and ask the human to make ' +
+        'any other change to the repo itself.',
     }
   }
 
@@ -130,6 +143,11 @@ export function evaluateEditGuard(input: EditGuardInput): EditDenial | null {
       'want belongs in a ticket: capture the decision in `decisions.md`, amend `spec.md`, and ' +
       'emit a ticket for the work. An implementation agent burns it in its own sandbox.',
   }
+}
+
+/** The writable paths, as a denial names them ("`.runcastle/` and `.gitignore`"). */
+function writablePaths(): string {
+  return DRIVE_MACHINERY_WRITABLE.map((p) => `\`${p}\``).join(' and ')
 }
 
 /** Is `target` inside `dir` — or `dir` itself? Both paths must be absolute. */

@@ -3,6 +3,7 @@ import * as z from 'zod'
 import {
   converge,
   endSession,
+  launchDriveFixSession,
   launchSession,
   resendKickoff,
   workWaypoint,
@@ -83,6 +84,14 @@ export const featureRouter = router({
       }),
     )
     .mutation(({ ctx, input }) => launchSession(ctx, input)),
+
+  // "Fix drive" — the one click that turns a failed drive into an agent already
+  // holding the failure (multi-service decision 9). Its own door rather than a
+  // `kind` on launchSession: the session runs in the real checkout beside the
+  // failed drive, and is refused when there is no failure to work from.
+  fixDrive: publicProcedure
+    .input(z.object({ featureId: z.string() }))
+    .mutation(({ ctx, input }) => launchDriveFixSession(ctx, { featureId: input.featureId })),
 
   // Work a frontier waypoint (ADR-0001 §13.2): claim it transactionally, then
   // open a kind=waypoint session on it. Refuses a waypoint not on the frontier,

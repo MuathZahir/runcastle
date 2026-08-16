@@ -54,6 +54,10 @@ export type TicketStatus = z.infer<typeof TicketStatus>
  * `project` = the intake session (decisions 17–20 of feature-grouping): a
  * project-scoped conversation that turns raw intent into features. It has no
  * feature and no phase to advance.
+ * `drive-fix` = the one-click recovery from a failed test drive (multi-service
+ * decision 9). It belongs to a FEATURE — the one whose drive died — but runs on
+ * the HOST in the real checkout like `prepare`, because the environment it is
+ * there to repair is the developer's own machine.
  */
 export const SessionKind = z.enum([
   'ideation',
@@ -63,6 +67,7 @@ export const SessionKind = z.enum([
   'revisit',
   'prepare',
   'project',
+  'drive-fix',
 ])
 export type SessionKind = z.infer<typeof SessionKind>
 
