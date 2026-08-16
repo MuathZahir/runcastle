@@ -6,6 +6,7 @@ import {
   capLane,
   defaultBaseBranch,
   DRAFT_GLYPH,
+  driveFailure,
   duplicateTitleWarning,
   kickoffTrouble,
   liveSessionBlocker,
@@ -987,6 +988,51 @@ describe('openApp', () => {
     })
     expect(open?.state).toBe('timedOut')
     expect(openAppWaitingLabel(open!)).toBe('http://localhost:5173/ — not answering')
+  })
+})
+
+/**
+ * The setup-failure surface (multi-service decisions 4 and 9): a drive that
+ * failed to come up is the one moment the human is most stranded, so the panel
+ * shows what failed and offers the one click that puts an agent on it.
+ */
+describe('driveFailure', () => {
+  const hookFailure = {
+    phase: 'setup' as const,
+    command: 'bash .runcastle/drive-setup.sh',
+    exitCode: 3,
+    timedOut: false,
+    output: 'psql: FATAL: role "app" does not exist',
+  }
+
+  it('is nothing at all for a drive that came up', () => {
+    expect(driveFailure(undefined)).toBeNull()
+    expect(driveFailure(null)).toBeNull()
+    expect(driveFailure({ devReady: true })).toBeNull()
+  })
+
+  it('surfaces the command, how it ended and its own output', () => {
+    expect(driveFailure({ hookFailure })).toEqual({
+      command: 'bash .runcastle/drive-setup.sh',
+      outcome: 'exited 3',
+      output: 'psql: FATAL: role "app" does not exist',
+      canFix: true,
+    })
+  })
+
+  it('says a timeout was a timeout, and a killed command had no code', () => {
+    expect(driveFailure({ hookFailure: { ...hookFailure, timedOut: true, exitCode: null } })
+      ?.outcome).toBe('timed out')
+    expect(driveFailure({ hookFailure: { ...hookFailure, exitCode: null } })?.outcome).toBe(
+      'exited without a code',
+    )
+  })
+
+  // One terminal per feature: the launcher refuses a second one, so offering
+  // Fix drive over a live session would be a button that can only be turned down.
+  it('withholds Fix drive while a session is already live', () => {
+    expect(driveFailure({ hookFailure }, { sessionLive: true })?.canFix).toBe(false)
+    expect(driveFailure({ hookFailure }, { sessionLive: false })?.canFix).toBe(true)
   })
 })
 

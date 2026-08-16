@@ -2140,6 +2140,20 @@ details.wp-group-done > summary { cursor: pointer; list-style: revert; }
   background: color-mix(in srgb, var(--danger) 9%, transparent);
 }
 .conflict-resolve { margin-top: 14px; }
+/* drive setup failure — the hook's own output, monospaced and scrollable */
+.drive-failure-output {
+  margin: 12px 0 0;
+  padding: 10px 12px;
+  max-height: 220px;
+  overflow: auto;
+  font-family: var(--mono);
+  font-size: 11.5px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  color: var(--text-2);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--danger) 9%, transparent);
+}
 .conflict-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
 .conflict-when { font-family: var(--mono); font-size: 11px; color: var(--text-3); }
 /* A drive that checked the branch out and started nothing is not "driving". */

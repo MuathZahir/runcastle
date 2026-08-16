@@ -297,7 +297,11 @@ function isResumable(session: Session): boolean {
   // A waypoint session's resume runs through `workWaypoint` (it must re-claim
   // the waypoint), so the map's own Resume button owns that path — offering a
   // second one here would spawn an unclaimed waypoint terminal.
-  return !!session.ccSessionId && session.kind !== 'waypoint'
+  //
+  // A drive-fix session is opened from a failed drive and briefed with that one
+  // failure; the server refuses to launch it any other way. Its Resume is the
+  // Fix drive button on whatever drive is failing NOW.
+  return !!session.ccSessionId && session.kind !== 'waypoint' && session.kind !== 'drive-fix'
 }
 
 function EndedSessionCard({

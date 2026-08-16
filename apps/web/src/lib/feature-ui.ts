@@ -662,6 +662,46 @@ export function openAppWaitingLabel(open: OpenApp): string {
   return open.state === 'timedOut' ? `${open.url} — not answering` : `starting… ${open.url}`
 }
 
+/** A drive whose setup hook failed, as the review panel surfaces it. */
+export interface DriveFailure {
+  /** The setup command the project ran, verbatim. */
+  command: string
+  /** How it ended, in words: `exited 3`, `timed out`. */
+  outcome: string
+  /** The command's own output tail — the part actually worth reading. */
+  output: string
+  /**
+   * Whether to offer "Fix drive". One terminal per feature, so not while a
+   * session is live — the launcher refuses a second one regardless, and an
+   * affordance that can only be turned down is worse than no affordance.
+   */
+  canFix: boolean
+}
+
+/**
+ * The setup-failure surface for a drive (multi-service decision 4).
+ *
+ * `null` for a drive that came up, which is the ordinary case. When one did not,
+ * the human used to get a toast on the click that caused it and then a panel
+ * that said "driving now" over an app that was never running — so this reads the
+ * failure off the polled drive, where it stays for as long as the drive does.
+ */
+export function driveFailure(
+  drive?: {
+    hookFailure?: { command: string; exitCode?: number | null; timedOut: boolean; output: string }
+  } | null,
+  opts: { sessionLive?: boolean } = {},
+): DriveFailure | null {
+  const f = drive?.hookFailure
+  if (!f) return null
+  return {
+    command: f.command,
+    outcome: f.timedOut ? 'timed out' : `exited ${f.exitCode ?? 'without a code'}`,
+    output: f.output,
+    canFix: !opts.sessionLive,
+  }
+}
+
 // --- review honesty: the SUMMARY card and the merge confirmation -------------
 
 /**

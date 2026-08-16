@@ -6,12 +6,14 @@ import type { DriveState } from '../../lib/workspace'
 import { driveCapabilities } from '../../lib/settings'
 import { testDriveExplainer } from '../../lib/vocabulary'
 import {
+  driveFailure,
   latestRun,
   mergeConflictKickoff,
   openApp,
   openAppWaitingLabel,
   reviewChecks,
   sessionActive,
+  type DriveFailure,
   type MergeConflictState,
 } from '../../lib/feature-ui'
 import { fmtDateTime, relTime } from '../../lib/format'
@@ -87,6 +89,9 @@ export function ReviewBody({
   // gap the settings overlay documents; the runtime value is a SettingsView.)
   const settings = trpc.settings.get.useQuery({ projectId: feature.projectId })
   const caps = driveCapabilities(settings.data as SettingsView | undefined)
+  // A drive whose setup died: the failure rides the polled drive, so it is here
+  // for as long as the drive is — not just on the click that caused it.
+  const failure = driveFailure(ownDrive, { sessionLive })
 
   return (
     <div className="review-body">
@@ -107,6 +112,8 @@ export function ReviewBody({
           sessionLive={sessionLive}
         />
       )}
+
+      {failure && <DriveFailureCard featureId={feature.id} failure={failure} />}
 
       <div className="review-grid">
       <div className="review-card">
@@ -480,6 +487,54 @@ function ConflictCard({
           }
         >
           Resolve with agent
+        </Button>
+      )}
+    </div>
+  )
+}
+
+/**
+ * The setup-failure card (multi-service decisions 4 and 9). A drive whose setup
+ * command failed used to be a toast on the click that caused it and then a panel
+ * claiming "driving now" — the human was left mid-review holding a hookFailure
+ * blob, at the worst possible moment to start debugging an environment.
+ *
+ * So the failure gets the loudest surface on the page: the command, how it
+ * ended, its own output, and one click that opens an agent already holding all
+ * three. The drive is deliberately left running — it holds the feature branch
+ * checked out, which is the state the fix session needs.
+ *
+ * Hidden while a session is live, exactly as the conflict card is: one terminal
+ * per feature, and the launcher refuses a second one regardless.
+ */
+function DriveFailureCard({ featureId, failure }: { featureId: string; failure: DriveFailure }) {
+  const utils = trpc.useUtils()
+  const toast = useToast()
+  const fix = trpc.feature.fixDrive.useMutation({
+    onSuccess: () => {
+      void utils.feature.get.invalidate({ id: featureId })
+      void utils.events.invalidate()
+    },
+    onError: (e) => toast.push(e.message),
+  })
+
+  return (
+    <div className="review-card conflict-card drive-failure-card">
+      <SectionTitle>Drive setup failed</SectionTitle>
+      <div className="drive-copy">
+        The branch is checked out, but <code>{failure.command}</code> {failure.outcome} — so
+        whatever it was meant to bring up is probably not running. An agent can read this failure
+        on your machine, repair the environment and retry the drive.
+      </div>
+      {failure.output && <pre className="drive-failure-output">{failure.output}</pre>}
+      {failure.canFix && (
+        <Button
+          variant="solid"
+          className="conflict-resolve"
+          disabled={fix.isPending}
+          onClick={() => fix.mutate({ featureId })}
+        >
+          Fix drive
         </Button>
       )}
     </div>
