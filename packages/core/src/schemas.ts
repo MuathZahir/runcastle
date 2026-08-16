@@ -278,7 +278,6 @@ export const PREPARED_KEYS = [
   'devCommand',
   'driveSetupCommand',
   'driveStopCommand',
-  'driveEnv',
   'dbResetCommand',
 ] as const
 export const PreparedKey = z.enum(PREPARED_KEYS)
@@ -286,9 +285,9 @@ export type PreparedKey = z.infer<typeof PreparedKey>
 
 /**
  * The prepared keys a preparation dry-run drive can actually prove, each by one
- * observable of the real drive machinery: `driveEnv` renders with no unknown
- * placeholders, `driveSetupCommand` and `driveStopCommand` exit 0, `devCommand`
- * spawns a pane AND gets a localhost URL sniffed.
+ * observable of the real drive machinery: `driveSetupCommand` and
+ * `driveStopCommand` exit 0, `devCommand` spawns a pane AND gets a localhost URL
+ * sniffed.
  *
  * Everything else is unverifiable by a host drive — `dbResetCommand` has no
  * drive slot to prove it in, and the sandbox keys are never touched by one — so
@@ -299,7 +298,6 @@ export const DRIVE_LOOP_KEYS = [
   'devCommand',
   'driveSetupCommand',
   'driveStopCommand',
-  'driveEnv',
 ] as const satisfies readonly PreparedKey[]
 
 /**
@@ -348,8 +346,6 @@ export const Project = z.object({
   /** Shell run before / after a test drive's dev pane; opaque to runcastle. */
   driveSetupCommand: z.string().optional(),
   driveStopCommand: z.string().optional(),
-  /** `KEY=VALUE` lines overlaid on a drive's environment, `{{id}}`-templated. */
-  driveEnv: z.string().optional(),
   /**
    * When the project was closed (issue #43); unset while it is open. The column
    * drives `listProjects`, so the wire type has to carry it — a field the row

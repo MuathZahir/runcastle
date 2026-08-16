@@ -1,17 +1,16 @@
 import { describe, expect, it } from 'vitest'
 import {
+  driveIdentityEnv,
   driveProcessEnv,
-  driveVars,
   identifierSafe,
-  parseDriveEnv,
-  renderTemplate,
+  parseEnvFile,
 } from '../src/services/drive-env'
 
 /**
- * Per-drive environment overrides — the generic half of "a database per
- * branch". runcastle renders the variables and injects them; creating the
- * database they name stays a project-supplied command, so nothing here knows
- * what a database is.
+ * The drive's environment contract: the server passes identity in as
+ * `RUNCASTLE_*` variables, the project's setup script computes everything else
+ * and writes it back as a `KEY=VALUE` file. Nothing here knows what a database
+ * is — it only carries variables across the process boundary.
  */
 
 const identity = { slug: 'add-billing', branch: 'feature/add-billing' }
@@ -50,79 +49,53 @@ describe('identifierSafe', () => {
   })
 })
 
-describe('driveVars', () => {
-  it('exposes the raw slug, the branch, and an identifier-safe form', () => {
-    expect(driveVars(identity)).toEqual({
-      slug: 'add-billing',
-      branch: 'feature/add-billing',
-      id: 'add_billing',
+describe('driveIdentityEnv', () => {
+  // The two things a script cannot work out for itself: which drive it serves,
+  // and a form of that name a database will accept.
+  it('names the drive with the raw slug, the branch and an identifier-safe form', () => {
+    expect(driveIdentityEnv(identity)).toEqual({
+      RUNCASTLE_SLUG: 'add-billing',
+      RUNCASTLE_BRANCH: 'feature/add-billing',
+      RUNCASTLE_ID: 'add_billing',
     })
   })
 })
 
-describe('renderTemplate', () => {
-  it('substitutes known placeholders, tolerating inner whitespace', () => {
-    const { value } = renderTemplate('db_{{id}}_{{ slug }}', driveVars(identity))
-    expect(value).toBe('db_add_billing_add-billing')
-  })
-
-  // Substituting a blank would produce a plausible connection string pointing at
-  // the wrong database. Leaving it literal fails loudly instead.
-  it('leaves an unknown placeholder literal and reports it', () => {
-    const { value, unknown } = renderTemplate('db_{{nope}}', driveVars(identity))
-    expect(value).toBe('db_{{nope}}')
-    expect(unknown).toEqual(['nope'])
-  })
-
-  it('reports each unknown placeholder once', () => {
-    expect(renderTemplate('{{a}}{{a}}{{b}}', {}).unknown).toEqual(['a', 'b'])
-  })
-})
-
-describe('parseDriveEnv', () => {
-  it('is empty for an unset or blank field', () => {
-    expect(parseDriveEnv(undefined, identity).vars).toEqual({})
-    expect(parseDriveEnv('   \n  \n', identity).vars).toEqual({})
-  })
-
-  it('renders the per-branch database URL that motivates the whole feature', () => {
-    const { vars } = parseDriveEnv(
-      'DATABASE_URL=postgres://localhost:5432/myapp_{{id}}',
-      identity,
-    )
-    expect(vars.DATABASE_URL).toBe('postgres://localhost:5432/myapp_add_billing')
+describe('parseEnvFile', () => {
+  it('is empty for a missing or blank file', () => {
+    expect(parseEnvFile(undefined)).toEqual({})
+    expect(parseEnvFile('   \n  \n')).toEqual({})
   })
 
   it('reads several lines, ignoring blanks and comments', () => {
-    const { vars } = parseDriveEnv(
-      ['# per-branch database', 'DATABASE_URL=postgres:///app_{{id}}', '', 'REDIS_DB=3'].join('\n'),
-      identity,
-    )
-    expect(vars).toEqual({ DATABASE_URL: 'postgres:///app_add_billing', REDIS_DB: '3' })
+    expect(
+      parseEnvFile(
+        ['# written by drive-setup', 'DATABASE_URL=postgres:///app_add_billing', '', 'PORT=4137'].join('\n'),
+      ),
+    ).toEqual({ DATABASE_URL: 'postgres:///app_add_billing', PORT: '4137' })
   })
 
-  it('tolerates the shapes people actually paste from a .env file', () => {
-    const { vars } = parseDriveEnv(
-      ['export FOO = bar', 'QUOTED="has spaces"', "SINGLE='x'"].join('\n'),
-      identity,
+  it('tolerates the shapes a shell script really emits', () => {
+    expect(parseEnvFile(['export FOO = bar', 'QUOTED="has spaces"', "SINGLE='x'"].join('\n'))).toEqual(
+      { FOO: 'bar', QUOTED: 'has spaces', SINGLE: 'x' },
     )
-    expect(vars).toEqual({ FOO: 'bar', QUOTED: 'has spaces', SINGLE: 'x' })
   })
 
   // A connection string is full of `=` and `:`; only the first `=` separates.
   it('splits on the first = only', () => {
-    const { vars } = parseDriveEnv('DATABASE_URL=postgres:///d?opts=a=b', identity)
-    expect(vars.DATABASE_URL).toBe('postgres:///d?opts=a=b')
+    expect(parseEnvFile('DATABASE_URL=postgres:///d?opts=a=b').DATABASE_URL).toBe(
+      'postgres:///d?opts=a=b',
+    )
   })
 
   it('drops lines that cannot mean anything rather than failing the drive', () => {
-    const { vars } = parseDriveEnv(['no-equals-here', '=novalue', 'OK=1'].join('\n'), identity)
-    expect(vars).toEqual({ OK: '1' })
+    expect(parseEnvFile(['no-equals-here', '=novalue', 'OK=1'].join('\n'))).toEqual({ OK: '1' })
   })
 
-  it('collects unknown placeholders across every line', () => {
-    const { unknown } = parseDriveEnv(['A={{oops}}', 'B={{alsoBad}}'].join('\n'), identity)
-    expect(unknown).toEqual(['oops', 'alsoBad'])
+  // The script computed the value; templating it again is exactly the machinery
+  // this contract retired, and a brace is a legal character in a password.
+  it('takes values verbatim, substituting nothing', () => {
+    expect(parseEnvFile('PASSWORD={{notatemplate}}').PASSWORD).toBe('{{notatemplate}}')
   })
 })
 

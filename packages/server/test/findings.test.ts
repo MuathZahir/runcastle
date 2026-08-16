@@ -176,24 +176,23 @@ describe('verification stamps', () => {
     recordFinding(ctx, PROJECT_ID, { key: 'devCommand', value: 'bun dev', source: 'prep' })
   }
 
-  it('names exactly the four keys a host drive can prove', () => {
-    expect(DRIVE_LOOP_KEYS).toEqual([
-      'devCommand',
-      'driveSetupCommand',
-      'driveStopCommand',
-      'driveEnv',
-    ])
+  it('names exactly the three keys a host drive can prove', () => {
+    expect(DRIVE_LOOP_KEYS).toEqual(['devCommand', 'driveSetupCommand', 'driveStopCommand'])
   })
 
   it('stamps the given keys with the time and sha they were proven at', async () => {
     recordDevCommand()
-    recordFinding(ctx, PROJECT_ID, { key: 'driveEnv', value: 'PORT=1', source: 'prep' })
+    recordFinding(ctx, PROJECT_ID, {
+      key: 'driveSetupCommand',
+      value: '.runcastle/drive-setup.sh',
+      source: 'prep',
+    })
 
-    markVerified(ctx, PROJECT_ID, ['devCommand', 'driveEnv'], 'deadbee')
+    markVerified(ctx, PROJECT_ID, ['devCommand', 'driveSetupCommand'], 'deadbee')
 
     expect((await finding('devCommand'))?.verifiedSha).toBe('deadbee')
     expect((await finding('devCommand'))?.verifiedAt).toBeGreaterThan(0)
-    expect((await finding('driveEnv'))?.verifiedSha).toBe('deadbee')
+    expect((await finding('driveSetupCommand'))?.verifiedSha).toBe('deadbee')
   })
 
   it('stamps a human-sourced value too — the stamp records what worked, not who chose it', async () => {

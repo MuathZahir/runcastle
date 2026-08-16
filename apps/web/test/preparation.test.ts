@@ -120,8 +120,8 @@ describe('describeField with provenance', () => {
 })
 
 // A settings key with no META entry silently renders as a bare text input with
-// no help — and driveEnv is multi-line, so a text input would eat the newlines
-// that separate its variables.
+// no help — and verifyCommands is multi-line, so a text input would eat the
+// newlines that separate its commands.
 describe('drive field presentation', () => {
   it('gives every prepared key a label, help text and the right control', () => {
     const rows = projectRows({
@@ -129,7 +129,7 @@ describe('drive field presentation', () => {
       fields: [
         field({ key: 'driveSetupCommand', value: 'make up' }),
         field({ key: 'driveStopCommand', value: 'make down' }),
-        field({ key: 'driveEnv', value: 'DATABASE_URL=x' }),
+        field({ key: 'verifyCommands', value: 'bun run test' }),
       ],
     } as SettingsView)
 
@@ -137,18 +137,18 @@ describe('drive field presentation', () => {
       expect(row.label).not.toBe(row.key)
       expect(row.help.length).toBeGreaterThan(0)
     }
-    expect(rows.find((r) => r.key === 'driveEnv')?.control).toBe('textarea')
+    expect(rows.find((r) => r.key === 'verifyCommands')?.control).toBe('textarea')
   })
 
   it('marks the drive fields as proposed, not measured', () => {
-    const note = describeFinding(finding({ key: 'driveEnv', staleCommits: 0 }))
+    const note = describeFinding(finding({ key: 'driveStopCommand', staleCommits: 0 }))
     expect(note).toContain('not executed')
   })
 })
 
 /**
  * Ticket 3 / decision 10 — the dry-run stamp reaches settings, the surface where
- * a human edits the value and the edit clears it. Only the four drive-loop keys
+ * a human edits the value and the edit clears it. Only the three drive-loop keys
  * have an observable a host drive produces; on everything else the absence of a
  * badge means "unverifiable", not "failed", so no wording appears at all.
  */
@@ -173,7 +173,9 @@ describe('verificationBadge', () => {
 
   // The stamp records that this exact value was seen working, not who chose it.
   it('badges a human-set value like any other', () => {
-    expect(verificationBadge({ key: 'driveEnv', verifiedAt: now }, now)).toBe('verified just now')
+    expect(verificationBadge({ key: 'driveStopCommand', verifiedAt: now }, now)).toBe(
+      'verified just now',
+    )
   })
 })
 
@@ -181,11 +183,11 @@ describe('unverifiedDriveKeys', () => {
   it('lists the drive-loop keys with a finding row and no stamp, in key order', () => {
     expect(
       unverifiedDriveKeys([
-        finding({ key: 'driveEnv' }),
+        finding({ key: 'driveStopCommand' }),
         finding({ key: 'devCommand', verifiedAt: Date.now() }),
         finding({ key: 'driveSetupCommand' }),
       ]),
-    ).toEqual(['driveSetupCommand', 'driveEnv'])
+    ).toEqual(['driveSetupCommand', 'driveStopCommand'])
   })
 
   // A key with no value is not part of the drive at all — a checkout-only drive

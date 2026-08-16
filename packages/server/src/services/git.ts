@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import type { Feature, PreparedKey, Project } from '@runcastle/core'
@@ -12,7 +12,7 @@ import { devPaneLive, startDevPane, stopDevPane } from '../pty/dev-pane'
 import type { DriveHookFailure, DriveHookResult } from './drive-hooks'
 import { describeHookResult, runDriveHook } from './drive-hooks'
 import type { DriveIdentity } from './drive-env'
-import { describeDriveEnv, driveProcessEnv, parseDriveEnv } from './drive-env'
+import { describeDriveEnv, driveIdentityEnv, driveProcessEnv, parseEnvFile } from './drive-env'
 import type { EmitScope } from './events'
 import { emit, emitProject, emitScoped } from './events'
 import { markVerified } from './findings'
@@ -1336,12 +1336,6 @@ type DriveState =
       devPaneId?: string
       devUrl?: string
       devConfigured: boolean
-      /**
-       * The environment rendered once at start, shared by the setup hook, the dev
-       * pane and the stop hook — so `dropdb "$DB_NAME"` names the database
-       * `createdb "$DB_NAME"` made.
-       */
-      env: NodeJS.ProcessEnv
       /** What the machinery observed, which is all the verification stamp reads. */
       observed: DryRunObservables
     }
@@ -1355,8 +1349,6 @@ let testDriveState: DriveState | undefined
  * re-run; they never reach this.
  */
 interface DryRunObservables {
-  /** `{{placeholders}}` the env render left literal, from the start half. */
-  envUnknowns: string[]
   /** `undefined` when the project configured no setup hook. */
   setupOk?: boolean
   /** `undefined` when no stop hook ran (or the run never reached the stop half). */
@@ -1436,18 +1428,22 @@ export async function testDrive(
 
     // Teardown runs BEFORE the switch back, while the feature branch is still
     // checked out: the environment being torn down belongs to that branch, and
-    // so do the files describing it (compose file, migrations). Running it after
-    // the switch would hand the command a different repo than the one it built.
-    // Same environment the setup hook saw, so `dropdb myapp_{{id}}` names the
-    // database `createdb myapp_{{id}}` made.
+    // so do the files describing it (compose file, migrations, `drive.env`).
+    // Running it after the switch would hand the command a different repo than
+    // the one it built. It reads `drive.env` where the setup script left it, so
+    // `dropdb "$DB_NAME"` names the database `createdb "$DB_NAME"` made.
     const teardown = await runDriveHookStep(
       ctx,
       scope,
       project.repoPath,
       'teardown',
       project.driveStopCommand,
-      driveEnvFor(ctx, project, { slug: feature.slug, branch }, scope).env,
+      driveOverlay({ slug: feature.slug, branch }, readDriveEnvFile(project.repoPath)),
     )
+    // The drive's own scratch artifact, gone with the drive: left behind it
+    // would ride back to the branch you return to as a carried change, and deny
+    // the next start on a dirty tree.
+    rmSync(driveEnvFilePath(project.repoPath), { force: true })
 
     // Capture the dirty tree BEFORE the switch. `start` denies on a dirty tree
     // but `stop` cannot — refusing would strand the user on the feature branch
@@ -1528,18 +1524,25 @@ export async function testDrive(
 
   // Bring the project's environment up before the dev server, so the dev
   // command starts against services that exist. What that means is the
-  // project's business — we run its string and report the exit code. Both it
-  // and the dev pane below get the same rendered environment, which is how a
-  // per-branch database gets created and then connected to.
-  const driveEnv = driveEnvFor(ctx, project, { slug: feature.slug, branch }, scope).env
+  // project's business — we hand it the drive's identity, run its string and
+  // report the exit code.
+  const identity: DriveIdentity = { slug: feature.slug, branch }
   const setup = await runDriveHookStep(
     ctx,
     scope,
     project.repoPath,
     'setup',
     project.driveSetupCommand,
-    driveEnv,
+    driveProcessEnv(driveIdentityEnv(identity)),
   )
+
+  // Whatever the setup script computed — ports, database names, a compose
+  // project name — comes back through `.runcastle/drive.env`, and the dev pane
+  // gets it verbatim. Read even after a failing hook: a script that wrote the
+  // file before dying still described the world the stop hook has to tear down.
+  const fileVars = readDriveEnvFile(project.repoPath)
+  emitDriveEnv(ctx, scope, Object.keys(fileVars))
+  const driveEnv = driveOverlay(identity, fileVars)
 
   // Best-effort: spawn the dev command in a drive-owned embedded PTY pane and
   // sniff its localhost URL for the "Open app" link. A spawn failure never fails
@@ -1564,11 +1567,12 @@ export async function testDrive(
 // --- preparation dry-run drive ----------------------------------------------
 
 /**
- * The reserved slug a dry run renders its drive variables from (decision 5), so
- * `{{id}}` becomes `prep_dry_run` and the temp database it creates says what
- * left it. Deliberately fixed: a retry wanting the same name is the point — a
- * leftover database from a failed teardown makes `createdb` fail loudly, which
- * is the "make sure it is new" check enforced by the machinery itself.
+ * The reserved slug a dry run takes its identity from (decision 5), so
+ * `RUNCASTLE_ID` is `prep_dry_run` and the temp database a setup script derives
+ * from it says what left it. Deliberately fixed: a retry wanting the same name
+ * is the point — a leftover database from a failed teardown makes `createdb`
+ * fail loudly, which is the "make sure it is new" check enforced by the
+ * machinery itself.
  */
 const DRY_RUN_SLUG = 'prep-dry-run'
 
@@ -1590,11 +1594,9 @@ export interface DryRunResult {
   deniedReason?: string
   /** The synthetic identity the run renders under (decision 5). */
   identity?: DriveIdentity
-  /** NAMES of the variables `driveEnv` rendered — never their values, which can
-   *  hold connection strings with credentials in them. */
+  /** NAMES of the variables the setup script wrote to `.runcastle/drive.env` —
+   *  never their values, which can hold connection strings with credentials. */
   envKeys?: string[]
-  /** `{{placeholders}}` the render left literal; zero is what verifies `driveEnv`. */
-  envUnknowns?: string[]
   setup?: DryRunHookReport
   teardown?: DryRunHookReport
   /** Whether the project has a `devCommand` for this run to start at all. */
@@ -1666,14 +1668,12 @@ async function startDryRun(ctx: AppCtx, project: Project): Promise<DryRunResult>
     data: { branch, slug: DRY_RUN_SLUG },
   })
 
-  const { env, keys, unknown } = driveEnvFor(ctx, project, identity, scope)
   const state: DryRunState = {
     kind: 'dryRun',
     projectId: project.id,
     branch,
     devConfigured: !!project.devCommand,
-    env,
-    observed: { envUnknowns: unknown },
+    observed: {},
   }
   testDriveState = state
 
@@ -1683,9 +1683,14 @@ async function startDryRun(ctx: AppCtx, project: Project): Promise<DryRunResult>
     project.repoPath,
     'setup',
     project.driveSetupCommand,
-    env,
+    driveProcessEnv(driveIdentityEnv(identity)),
   )
   state.observed.setupOk = setup?.result.ok
+
+  const fileVars = readDriveEnvFile(project.repoPath)
+  const keys = Object.keys(fileVars)
+  emitDriveEnv(ctx, scope, keys)
+  const env = driveOverlay(identity, fileVars)
 
   // Same best-effort spawn a feature drive does: a failed spawn emits its own
   // event and leaves `devPaneId` unset, which is the observable `devCommand`
@@ -1706,7 +1711,6 @@ async function startDryRun(ctx: AppCtx, project: Project): Promise<DryRunResult>
     ok: true,
     action: 'start',
     envKeys: keys,
-    envUnknowns: unknown,
     ...(setup ? { setup: hookReport(setup) } : {}),
     ...liveFields(state),
   }
@@ -1737,9 +1741,11 @@ async function stopDryRun(
     project.repoPath,
     'teardown',
     project.driveStopCommand,
-    state.env,
+    driveOverlay({ slug: DRY_RUN_SLUG, branch: state.branch }, readDriveEnvFile(project.repoPath)),
   )
   state.observed.teardownOk = teardown?.result.ok
+  // As a feature drive does: the file belongs to the drive, not to the repo.
+  rmSync(driveEnvFilePath(project.repoPath), { force: true })
   testDriveState = undefined
 
   emitProject(ctx, project.id, {
@@ -1763,7 +1769,6 @@ async function stopDryRun(
     ok: true,
     action: 'stop',
     identity: { slug: DRY_RUN_SLUG, branch: state.branch },
-    envUnknowns: state.observed.envUnknowns,
     ...(teardown ? { teardown: hookReport(teardown) } : {}),
     verified: failure ? [] : participating,
     ...(failure ? { failure } : {}),
@@ -1810,12 +1815,8 @@ function observableFailure(
   key: (typeof DRIVE_LOOP_KEYS)[number],
   state: DryRunState,
 ): string | undefined {
-  const { envUnknowns, setupOk, teardownOk } = state.observed
+  const { setupOk, teardownOk } = state.observed
   switch (key) {
-    case 'driveEnv':
-      return envUnknowns.length === 0
-        ? undefined
-        : `driveEnv left ${envUnknowns.map((u) => `{{${u}}}`).join(', ')} unsubstituted`
     case 'driveSetupCommand':
       return setupOk ? undefined : 'driveSetupCommand did not exit 0'
     case 'devCommand':
@@ -1846,43 +1847,52 @@ function hookReport(run: DriveHookRun): DryRunHookReport {
 }
 
 /**
- * The environment every child of this drive runs with: the project's `driveEnv`
- * lines, rendered with the drive's own variables, overlaid on the inherited
- * environment.
- *
- * Resolved ONCE per drive and shared by the hooks and the dev pane, because the
- * whole mechanism depends on them agreeing: a setup hook that creates
- * `myapp_{{id}}` and a dev server that connects to a differently-rendered name
- * would be worse than not doing this at all.
- *
- * An unknown `{{placeholder}}` is left literal and reported. Substituting a
- * blank would silently produce a plausible connection string pointing at the
- * wrong database, which is the one outcome worth being noisy about.
+ * Where the setup script hands its computed variables back to the server. Built
+ * with `node:path` rather than concatenated, like every other path here.
  */
-function driveEnvFor(
-  ctx: AppCtx,
-  project: Project,
+function driveEnvFilePath(repoPath: string): string {
+  return join(repoPath, '.runcastle', 'drive.env')
+}
+
+/**
+ * The variables the setup script wrote, or `{}` when it wrote none.
+ *
+ * Read leniently and never fatally: a project whose setup needs no variables is
+ * the ordinary case, and a drive that died on an unreadable scratch file would
+ * be a worse outcome than one that simply runs without the overlay.
+ */
+function readDriveEnvFile(repoPath: string): Record<string, string> {
+  const file = driveEnvFilePath(repoPath)
+  if (!existsSync(file)) return {}
+  try {
+    return parseEnvFile(readFileSync(file, 'utf8'))
+  } catch {
+    return {}
+  }
+}
+
+/**
+ * The environment the dev pane and the stop hook run with: the drive's identity
+ * plus whatever the setup script computed, overlaid on the inherited
+ * environment. The setup script's values win over the identity it was handed —
+ * a script that recomputes one is entitled to its own answer.
+ */
+function driveOverlay(
   identity: DriveIdentity,
-  scope: EmitScope,
-): { env: NodeJS.ProcessEnv; keys: string[]; unknown: string[] } {
-  const { vars, unknown } = parseDriveEnv(project.driveEnv, identity)
-  if (unknown.length > 0) {
-    emitScoped(ctx, scope, {
-      type: 'testdrive.env_unknown_placeholder',
-      message: `drive environment left ${unknown.map((u) => `{{${u}}}`).join(', ')} unsubstituted — known variables are {{slug}}, {{branch}}, {{id}}`,
-      data: { unknown },
-    })
-  }
-  const keys = Object.keys(vars)
-  if (keys.length > 0) {
-    emitScoped(ctx, scope, {
-      type: 'testdrive.env',
-      message: describeDriveEnv(vars),
-      // Values can hold credentials; the timeline records WHICH vars, not what.
-      data: { keys },
-    })
-  }
-  return { env: driveProcessEnv(vars), keys, unknown }
+  fileVars: Record<string, string>,
+): NodeJS.ProcessEnv {
+  return driveProcessEnv({ ...driveIdentityEnv(identity), ...fileVars })
+}
+
+/** Record WHICH variables the setup script handed back, once per drive. */
+function emitDriveEnv(ctx: AppCtx, scope: EmitScope, keys: string[]): void {
+  if (keys.length === 0) return
+  emitScoped(ctx, scope, {
+    type: 'testdrive.env',
+    message: describeDriveEnv(keys),
+    // Values can hold credentials; the timeline records WHICH vars, not what.
+    data: { keys },
+  })
 }
 
 /** One hook step that actually ran: what it did, and the failure a drive reports. */

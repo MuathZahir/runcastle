@@ -660,10 +660,10 @@ describe('nextStep at review', () => {
     it('names exactly the unverified keys and points at preparation', () => {
       const ns = nextStep(reviewFull({}), {
         driving: false,
-        unverifiedDriveKeys: ['driveSetupCommand', 'driveEnv'],
+        unverifiedDriveKeys: ['driveSetupCommand', 'driveStopCommand'],
       })
       expect(ns.warning).toContain('Test drive setup')
-      expect(ns.warning).toContain('Test drive environment')
+      expect(ns.warning).toContain('Test drive teardown')
       expect(ns.warning).not.toContain('Dev command')
       expect(ns.warning).toContain('never proven by a dry run')
       expect(ns.warning).toContain('preparation')

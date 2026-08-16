@@ -563,8 +563,8 @@ export async function launchSession(
  * Everything that makes `launchSession` feature-shaped is skipped: no feature
  * row, no worktree, no waypoint claim, no one-live-session-per-feature guard.
  * The session runs in the project's REAL checkout, which is the whole point —
- * the five host-only keys a container can only propose (`devCommand`,
- * `driveSetupCommand`, `driveStopCommand`, `driveEnv`, `dbResetCommand`) can be
+ * the host-only keys a container can only propose (`devCommand`,
+ * `driveSetupCommand`, `driveStopCommand`, `dbResetCommand`) can be
  * executed and verified here, and the human is present to answer for the ones
  * no amount of reading the repo can settle.
  *

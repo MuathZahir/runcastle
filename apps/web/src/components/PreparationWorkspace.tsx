@@ -391,7 +391,7 @@ function EstablishedFrame({ findings }: { findings: readonly ProjectFinding[] })
                       ? 'proposed'
                       : 'measured'}
               </span>
-              {/* The dry-run stamp, on the four keys a host drive can actually
+              {/* The dry-run stamp, on the three keys a host drive can actually
                   prove (decision 10). Every other key shows nothing here —
                   absence of proof, not failure, and a badge reading "unverified"
                   on a key no dry run will ever touch would say the opposite. */}

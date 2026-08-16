@@ -772,9 +772,10 @@ export function buildMcpServer(): McpServer {
       title: 'Dry-run the test drive',
       description:
         'Prove the drive keys you recorded by having the server run its REAL test-drive ' +
-        'machinery — same env rendering, same hooks, same dev pane — under a synthetic identity ' +
-        '(slug `prep-dry-run`) on the current branch. Nothing is checked out. `start` renders ' +
-        'driveEnv, runs driveSetupCommand and spawns devCommand; `status` reports the pane and ' +
+        'machinery — same identity variables, same hooks, same dev pane — under a synthetic ' +
+        'identity (slug `prep-dry-run`) on the current branch. Nothing is checked out. `start` ' +
+        'runs driveSetupCommand, overlays the `.runcastle/drive.env` it wrote and spawns ' +
+        'devCommand; `status` reports the pane and ' +
         'the sniffed localhost URL while you inspect; `stop` runs driveStopCommand and rules on ' +
         'the run. Ask the human before starting: it starts services and creates a database on ' +
         'their machine. A clean full pass stamps the participating keys verified, computed from ' +
