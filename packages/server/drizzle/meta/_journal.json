@@ -162,6 +162,13 @@
       "when": 1786540447625,
       "tag": "0022_yielding_iceman",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "6",
+      "when": 1786884097081,
+      "tag": "0023_chilly_callisto",
+      "breakpoints": true
     }
   ]
 }

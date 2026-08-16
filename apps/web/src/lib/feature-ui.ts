@@ -631,6 +631,77 @@ export function testDriveTaken(events: EventRow[]): boolean {
   return events.some((e) => e.type === 'testdrive.started')
 }
 
+/** The "Open app" affordance, as the polled drive currently justifies it. */
+export interface OpenApp {
+  url: string
+  /**
+   * `starting` while the server is still polling the URL, `ready` once it has
+   * answered, `timedOut` when the poll gave up waiting. Only `ready` earns a
+   * link: the point of the whole state is that a click always loads something.
+   */
+  state: 'starting' | 'ready' | 'timedOut'
+}
+
+/**
+ * What to show for "Open app" on a drive — the feature drive's pane and the
+ * preparation dry-run row ask the same question of the same `DriveInfo`.
+ *
+ * `null` until a URL has been sniffed at all. A dev server prints its address
+ * seconds-to-minutes before it serves, so a URL alone is not an invitation.
+ */
+export function openApp(
+  drive?: { devUrl?: string; devReady?: boolean; devReadyTimedOut?: boolean } | null,
+): OpenApp | null {
+  if (!drive?.devUrl) return null
+  if (drive.devReady) return { url: drive.devUrl, state: 'ready' }
+  return { url: drive.devUrl, state: drive.devReadyTimedOut ? 'timedOut' : 'starting' }
+}
+
+/** The plain text shown in place of the link while it is not one yet. */
+export function openAppWaitingLabel(open: OpenApp): string {
+  return open.state === 'timedOut' ? `${open.url} — not answering` : `starting… ${open.url}`
+}
+
+/** A drive whose setup hook failed, as the review panel surfaces it. */
+export interface DriveFailure {
+  /** The setup command the project ran, verbatim. */
+  command: string
+  /** How it ended, in words: `exited 3`, `timed out`. */
+  outcome: string
+  /** The command's own output tail — the part actually worth reading. */
+  output: string
+  /**
+   * Whether to offer "Fix drive". One terminal per feature, so not while a
+   * session is live — the launcher refuses a second one regardless, and an
+   * affordance that can only be turned down is worse than no affordance.
+   */
+  canFix: boolean
+}
+
+/**
+ * The setup-failure surface for a drive (multi-service decision 4).
+ *
+ * `null` for a drive that came up, which is the ordinary case. When one did not,
+ * the human used to get a toast on the click that caused it and then a panel
+ * that said "driving now" over an app that was never running — so this reads the
+ * failure off the polled drive, where it stays for as long as the drive does.
+ */
+export function driveFailure(
+  drive?: {
+    hookFailure?: { command: string; exitCode?: number | null; timedOut: boolean; output: string }
+  } | null,
+  opts: { sessionLive?: boolean } = {},
+): DriveFailure | null {
+  const f = drive?.hookFailure
+  if (!f) return null
+  return {
+    command: f.command,
+    outcome: f.timedOut ? 'timed out' : `exited ${f.exitCode ?? 'without a code'}`,
+    output: f.output,
+    canFix: !opts.sessionLive,
+  }
+}
+
 // --- review honesty: the SUMMARY card and the merge confirmation -------------
 
 /**

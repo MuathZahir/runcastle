@@ -35,7 +35,6 @@ const VALUE_COLUMN = {
   devCommand: projects.devCommand,
   driveSetupCommand: projects.driveSetupCommand,
   driveStopCommand: projects.driveStopCommand,
-  driveEnv: projects.driveEnv,
   dbResetCommand: projects.dbResetCommand,
 } as const satisfies Record<PreparedKey, unknown>
 
@@ -47,7 +46,6 @@ const COLUMN_NAME: Record<PreparedKey, string> = {
   devCommand: 'devCommand',
   driveSetupCommand: 'driveSetupCommand',
   driveStopCommand: 'driveStopCommand',
-  driveEnv: 'driveEnv',
   dbResetCommand: 'dbResetCommand',
 }
 

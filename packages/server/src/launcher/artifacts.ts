@@ -11,6 +11,8 @@ import type {
   Waypoint,
 } from '@runcastle/core'
 import { featureDocsRel, sessionDir } from '@runcastle/core/paths'
+import type { DriveHookFailure } from '../services/drive-hooks'
+import type { BranchDelta } from '../services/git'
 import { ASSET_ENV, resolveAsset } from './asset-paths'
 import { EDIT_TOOL_MATCHER, guardsEdits } from './edit-guard'
 
@@ -39,6 +41,12 @@ export interface WriteArtifactsInput {
   prepare?: PrepareBrief
   /** The brief for a `project` session; the other way `feature` may be absent. */
   projectBrief?: ProjectBrief
+  /**
+   * The brief for a `drive-fix` session. Feature-scoped but host-side, so it
+   * carries its own feature rather than being briefed from `feature` — the
+   * failure it exists to repair is not something the feature row can say.
+   */
+  driveFix?: DriveFixBrief
   /**
    * Why the session was launched, when that changes its briefing — today only
    * the conflict-resolution revisit, which is told to resolve the merge rather
@@ -411,10 +419,18 @@ export interface PrepareBrief {
  * prepared.
  *
  * The framing that carries it is that this session is on the HOST. Every key
- * here can be RUN rather than guessed at, including the five that describe the
+ * here can be RUN rather than guessed at, including the four that describe the
  * developer's own machine (the dev server, the local database, credentials) —
  * that is the capability the conversation exists to use, and the reason it must
  * also ask before touching anything stateful.
+ *
+ * The drive half of the brief is a CONTRACT plus a RECIPE PACK, not a worked
+ * example (decision 7). Runcastle mandates only what it cannot do without —
+ * scripts in `.runcastle/`, `RUNCASTLE_*` identity in, `drive.env` out,
+ * idempotent steps, exit 0 meaning ready — and everything stack-shaped ships as
+ * a recipe the agent adapts to the project it actually found. A single postgres
+ * one-liner used to stand in for all of that, and a project one shape away from
+ * it (compose, redis, a hosted database, a monorepo) had nothing to reason from.
  */
 export function renderPreparePrompt(brief: PrepareBrief): string {
   const { project, remainingKeys, established } = brief
@@ -429,35 +445,150 @@ export function renderPreparePrompt(brief: PrepareBrief): string {
     `You are on the developer's own machine, in \`${project.repoPath}\`, NOT in a sandbox.`,
     'That is the point of this session. A throwaway container can never verify anything about',
     '*this* machine: the dev server, the local database, docker, credentials. Those keys —',
-    '`devCommand`, `driveSetupCommand`, `driveStopCommand`, `driveEnv`, `dbResetCommand` —',
-    'can only be settled here. Run what you propose; do not guess it from config.',
+    '`devCommand`, `driveSetupCommand`, `driveStopCommand`, `dbResetCommand` — can only be',
+    'settled here. Run what you propose; do not guess it from config.',
     '',
     'The same access is why you must **ask before you act**. Anything that starts or stops a',
     'service, creates or migrates a database, or writes outside the repo needs the human to',
     'agree first — say what you are about to run and why, then wait.',
     '',
-    '## What the five host keys mean',
+    '## What the four host keys mean',
     'Take this from here. These semantics live in runcastle\'s source, not in the installed',
     'build — grepping the shipped bundle for them finds nothing and proves nothing.',
     '',
     '- `devCommand` — spawned in a drive-owned terminal pane for the length of a test drive.',
     '  The first localhost URL it prints becomes the "Open app" link.',
     '- `driveSetupCommand` / `driveStopCommand` — run on the host, in the project repo, before',
-    '  the dev pane starts and after the drive stops.',
-    '- `driveEnv` — `KEY=VALUE` lines whose values render `{{slug}}`, `{{branch}}` and `{{id}}`',
-    '  (`{{id}}` is the slug made identifier-safe — legal as a database name). Rendered ONCE per',
-    '  drive and shared by the setup hook, the dev pane and the stop hook. So this, not a helper',
-    '  script, is where a branch→database-name derivation belongs: name it once here and have both',
-    '  hooks read the variable. A database per branch is exactly this shape —',
-    '',
-    '      driveEnv:           DB_NAME=myapp_{{id}}',
-    '                          DATABASE_URL=postgres://localhost/myapp_{{id}}',
-    '      driveSetupCommand:  createdb "$DB_NAME" && npm run migrate',
-    '      driveStopCommand:   dropdb --if-exists "$DB_NAME"',
-    '',
+    '  the dev pane starts and after the drive stops. They are the INVOCATION LINES of scripts',
+    '  you write and commit (`bash .runcastle/drive-setup.sh`), not the machinery itself — see',
+    '  the contract below.',
     '- `dbResetCommand` — NOT part of the drive loop. Its only consumer is the migration-drift',
     '  banner after a drive stops: when the drive branch and the branch you returned to disagree',
     '  about migration files, this is offered as the one-click dev-database rebuild.',
+    '',
+    '## The drive contract',
+    'A drive is a script YOU write, committed to the project, plus the two things only the server',
+    'can do. Everything else — ports, database names, redis indexes, compose project names, URLs',
+    '— the script computes for itself. Runcastle mandates these seven points and nothing else:',
+    '',
+    '1. **The machinery lives in `.runcastle/`, committed to the repo.** Write the steps as real',
+    '   scripts (`.runcastle/drive-setup.sh`, `.runcastle/drive-stop.sh`, or whatever this host',
+    '   runs) and commit them. Versioning them with the code they prepare is the load-bearing',
+    '   part: a branch that adds a package, a service or a migration amends its own script, and',
+    '   the drive on that branch runs the amended version. Nothing inspects a diff, ever.',
+    '2. **`driveSetupCommand` / `driveStopCommand` are one line each** — how to invoke those',
+    '   scripts. Logic in the setting instead of the script is logic no branch can amend.',
+    '3. **Identity comes in as `RUNCASTLE_*`.** Every drive hook and the dev pane are handed',
+    '   `RUNCASTLE_SLUG` (the feature slug), `RUNCASTLE_BRANCH` (the branch under the wheel) and',
+    '   `RUNCASTLE_ID` — that slug made identifier-safe (lowercase `[a-z0-9_]`, never leading',
+    '   with a digit, length-capped), so it is legal as a database, schema or container name.',
+    '   Derive every per-drive name from `RUNCASTLE_ID`. Never derive one from `git rev-parse`:',
+    '   the dry run below drives under a synthetic identity on whatever branch is checked out.',
+    '4. **Computed values go back out through `.runcastle/drive.env`.** Setup appends plain',
+    '   `KEY=VALUE` lines there; when it exits, the server parses that file and overlays it',
+    '   verbatim onto the dev pane and the stop hook, and shows the variable NAMES on the',
+    '   timeline. It is the only way a value your script computed reaches the dev server — a',
+    '   variable exported inside the script dies with the script. Truncate the file at the top of',
+    '   setup so a rerun does not accumulate stale lines.',
+    '5. **`.runcastle/drive.env` MUST be gitignored.** Add the entry yourself. The server deletes',
+    '   the file when a drive ends, but a scratch file holding a connection string must never be',
+    '   one `git add -A` away from a commit.',
+    '6. **Every step is unconditionally idempotent.** Install, migrate, seed, compose up — run',
+    '   them every time, never behind a "has anything changed?" check. A no-op on a clean tree is',
+    '   cheap; a skipped install on a branch that added a package is a dead drive. This is how',
+    '   the loop absorbs whatever a feature branch changed with no delta detection anywhere.',
+    '7. **Exit 0 means the services are actually up.** The waits belong INSIDE the script —',
+    '   `docker compose up --wait`, a `pg_isready` loop, curl-until-healthy — because the dev',
+    '   pane starts the instant setup returns. The server waits for the app itself; it will not',
+    '   wait for your database.',
+    '',
+    'Stop undoes what setup made, for this identity only: drop the database it created, take its',
+    'compose project down with its volumes, free its ports. The human\'s own stack is never yours.',
+    '',
+    'Writing those files is the one exception to a preparation session not editing the repo: you',
+    'may write `.runcastle/` and `.gitignore` in this checkout and nothing else. Show the human',
+    'the script before you commit it — it is their repo and their PR.',
+    '',
+    '## Discover the shape before you author anything',
+    'Projects differ in every dimension this touches, and a script fitted to a project you',
+    'imagined is worse than no script at all. Find out first, by reading the repo and running',
+    'things here — not by assuming:',
+    '',
+    '- **Package manager and workspace layout** — npm/pnpm/yarn/bun; one package or a monorepo',
+    '  with workspaces, and which package the app actually is. Install, migrate and seed each run',
+    '  from somewhere specific.',
+    '- **OS and shell** — you are writing for THIS host. A Windows machine may want a `.ps1` or a',
+    '  cross-platform `node`/`bun` script; do not hand a developer bash they cannot run.',
+    '- **Docker** — installed, running, a compose file in the repo, and does the human actually',
+    '  use it for this project?',
+    '- **The services the app needs to boot** — database, redis, queues, object storage, a second',
+    '  process. Read the config and the env example, then confirm with the human.',
+    '- **Hosted or local data stores** — a local postgres you may freely `createdb` on is a very',
+    '  different recipe from a hosted one where you may only branch or add a schema.',
+    '- **How the app loads its environment** — see the audit below.',
+    '',
+    'Then write the smallest script that brings THAT shape up.',
+    '',
+    '## Recipes — adapt them, never copy them',
+    'Each of these is one shape that has worked. Take the idea and fit it to what you found.',
+    '',
+    '**Postgres, one database per drive.** Name it from `RUNCASTLE_ID`, create it if it is not',
+    'there, migrate, and hand the URL back:',
+    '',
+    '      DB="myapp_$RUNCASTLE_ID"',
+    '      createdb "$DB" 2>/dev/null || true      # idempotent: already-there is success',
+    '      DATABASE_URL="postgres://localhost/$DB" npm run migrate',
+    '      echo "DATABASE_URL=postgres://localhost/$DB" >> .runcastle/drive.env',
+    '',
+    'Stop drops exactly that database: `dropdb --if-exists "myapp_$RUNCASTLE_ID"`.',
+    '',
+    '**docker compose.** Isolate the whole stack per drive with a project name derived from the',
+    'identity, map host ports from variables the script chose, and let compose do the waiting:',
+    '',
+    '      export COMPOSE_PROJECT_NAME="myapp_$RUNCASTLE_ID"',
+    '      export PG_PORT=$(pick_port "$RUNCASTLE_SLUG-pg")   # the port recipe below',
+    '      docker compose up --wait -d',
+    '      echo "COMPOSE_PROJECT_NAME=$COMPOSE_PROJECT_NAME" >> .runcastle/drive.env',
+    '      echo "DATABASE_URL=postgres://localhost:$PG_PORT/app" >> .runcastle/drive.env',
+    '',
+    'The compose file maps `"${PG_PORT}:5432"`; stop is `docker compose down -v`, which needs the',
+    'same `COMPOSE_PROJECT_NAME` — which is why it goes into `drive.env` too.',
+    '',
+    '**Redis.** Do not run a second server. Take a logical database index or a key prefix derived',
+    'in-script from `RUNCASTLE_ID` — a small hash into 1..15 for the index — and leave db 0 to the',
+    'human, whose own work is already in it. Write `REDIS_URL=redis://localhost:6379/7` or',
+    '`REDIS_PREFIX=$RUNCASTLE_ID:` out, and have stop flush only that index or prefix.',
+    '',
+    '**Hosted databases.** Where the vendor has branches (Neon and its kin), setup creates one',
+    'named for `RUNCASTLE_ID` with the vendor CLI and writes the connection string it prints to',
+    '`drive.env`; stop deletes that branch. Where the role has no CREATEDB grant, take a schema',
+    'per drive instead — `CREATE SCHEMA IF NOT EXISTS "$RUNCASTLE_ID"` plus a URL with the search',
+    'path pinned to it, and `DROP SCHEMA ... CASCADE` at stop. Ask the human which they have:',
+    'it is their bill and their production neighbour.',
+    '',
+    '**Deterministic ports.** Every lap of a feature should keep the same URL, and no drive should',
+    'collide with the human\'s own running stack. Hash the SLUG — not the branch, so laps agree —',
+    'into a high range, then bind-probe upward for a free one:',
+    '',
+    '      base=$(( 20000 + $(printf %s "$RUNCASTLE_SLUG" | cksum | cut -d" " -f1) % 10000 ))',
+    '      port=$base; while port_in_use "$port"; do port=$((port + 1)); done',
+    '      echo "PORT=$port" >> .runcastle/drive.env',
+    '',
+    'The dev pane inherits `PORT` from the overlay, so the URL it prints — the "Open app" link —',
+    'is the port the script picked.',
+    '',
+    '## Audit how the app loads its environment',
+    'The overlay is process environment, which beats a `.env` file in dotenv, Prisma and Next by',
+    'default. One pattern defeats it: a loader told to clobber what is already exported —',
+    '`dotenv.config({ override: true })` and its equivalents — ignores everything the script',
+    'computed and quietly keeps the app on the shared database. That is a drive that looks',
+    'perfect while testing the wrong data. No machinery can detect it; you are the detector.',
+    '',
+    'Grep the app\'s entry points and config for env loading and decide, for each, which side',
+    'wins. Where the process environment loses: get it fixed — you may not edit app code from',
+    'this session, so propose the change (usually dropping `override`) and let the human make it',
+    '— or, if it must stay, record the finding with `record_event` naming the file and what it',
+    'breaks, so the first confusing drive is not a mystery.',
     '',
     ...(established.length > 0
       ? [
@@ -507,23 +638,136 @@ export function renderPreparePrompt(brief: PrepareBrief): string {
     '',
     'On a yes, `dry_run_drive({ action })` runs it in two halves and you inspect between them:',
     '',
-    '1. `start` — the server renders `driveEnv`, runs `driveSetupCommand` and spawns `devCommand`',
-    '   in a real drive pane. Identity is the reserved slug `prep-dry-run` (`{{id}}` renders',
-    '   `prep_dry_run`, so the temp database is e.g. `myapp_prep_dry_run`) on the current branch.',
-    '   Nothing is checked out.',
-    '2. While it is up, check what the server cannot: the temp database exists and is FRESH, the',
-    '   migrations applied, and the app actually RESPONDS at the sniffed URL — printing one is not',
-    '   the same as serving. `status` gives you the pane and the URL while you work.',
-    '3. `stop` — the server runs `driveStopCommand`. Then check the cleanup: temp database gone,',
-    '   no orphaned process or container left behind.',
+    '1. `start` — the server runs `driveSetupCommand` with the identity variables, reads back the',
+    '   `.runcastle/drive.env` it wrote (the reply lists the variable NAMES it parsed) and spawns',
+    '   `devCommand` in a real drive pane under that overlay. Identity is the reserved slug',
+    '   `prep-dry-run`, so `RUNCASTLE_ID` is `prep_dry_run` and a script deriving from it makes',
+    '   e.g. `myapp_prep_dry_run`, on the current branch. Nothing is checked out.',
+    '2. While it is up, check what the server cannot: the variable names came back as you meant',
+    '   them, the temp database exists and is FRESH, the migrations applied, and the app actually',
+    '   RESPONDS at the sniffed URL — the server waits for it to answer before "Open app" goes',
+    '   live, but only you can say the page is the right one. `status` gives you the pane and the',
+    '   URL while you work.',
+    '3. `stop` — the server runs `driveStopCommand` under the same overlay. Then check the',
+    '   cleanup: temp database gone, no orphaned process, container or volume left behind.',
     '',
-    'Anything off at any step, fix the finding with `record_finding` and run the WHOLE thing',
-    'again until a pass is clean. A leftover `myapp_prep_dry_run` making the retry\'s `createdb`',
-    'fail loudly is not a bug — that is the freshness check working.',
+    'Anything off at any step, fix it — amend the script, or `record_finding` for a key — and run',
+    'the WHOLE thing again until a pass is clean. Watch especially for a `myapp_prep_dry_run` left',
+    'standing after the stop: an idempotent setup will happily reuse it on the next start, so a',
+    'teardown that never worked reads exactly like a drive that did.',
     '',
     'The verified stamps are computed server-side from what the machinery observed, and only on a',
     'clean full pass. You cannot mark your own homework: your deeper checks decide whether to',
     'retry, never what gets stamped.',
+    '',
+  ].join('\n')
+}
+
+/** Everything a drive-fix session is handed about the drive that just died. */
+export interface DriveFixBrief {
+  project: Project
+  feature: Feature
+  /** The setup hook that failed — the whole reason this session exists. */
+  failure: DriveHookFailure
+  /** NAMES of the variables setup wrote to `.runcastle/drive.env`, if any. */
+  envKeys: readonly string[]
+  /** What this feature branch changed against its base, as `--stat` text. */
+  delta: BranchDelta
+}
+
+/**
+ * The injected brief for a `drive-fix` session (decision 9).
+ *
+ * A fitted prompt rather than prepare's, because the mandates differ in the way
+ * that matters: preparation establishes and verifies every key, and this session
+ * exists to unblock ONE drive that is failing right now. Told to prepare, an
+ * agent re-derives a project it already knows; told to fix this drive, it reads
+ * the failure it was handed and works the delta.
+ *
+ * Four things it is given that no other prompt has: the failure output itself
+ * (a human staring at a hookFailure blob is exactly what the one-click exists to
+ * end), the variable names the setup script managed to hand back before it died,
+ * the branch delta — the usual culprit is something this branch added and the
+ * script does not bring up — and where the feature's own docs are.
+ *
+ * It runs on the HOST, in the real checkout, on the feature branch the failed
+ * drive left checked out. So it carries prepare's ask-before-act rule verbatim,
+ * and one prepare does not need: the fix belongs in the branch, committed, both
+ * because the drive contract says a branch carries its own setup and because the
+ * retry cannot even start on a dirty tree.
+ */
+export function renderDriveFixPrompt(brief: DriveFixBrief): string {
+  const { project, feature, failure, envKeys, delta } = brief
+  const docs = featureDocsRel(feature.slug)
+  return [
+    `# runcastle — fixing the test drive for ${feature.title}`,
+    '',
+    'This is a **drive-fix session**. A test drive of this feature failed to come up, the human',
+    'clicked "Fix drive", and you are the recovery. Your mandate is narrow and complete:',
+    '**repair the environment and retry THIS drive until it comes up.** Nothing else.',
+    '',
+    '## What failed',
+    `The \`${failure.phase}\` hook of the drive on \`${delta.branch}\` did not succeed.`,
+    '',
+    `- command: \`${failure.command}\``,
+    `- outcome: ${failure.timedOut ? 'timed out' : `exited ${failure.exitCode ?? 'without a code'}`}`,
+    '',
+    'Its output (tail):',
+    '',
+    '```',
+    failure.output.length > 0 ? failure.output : '(the command produced no output)',
+    '```',
+    '',
+    '## What the drive ran with',
+    envKeys.length > 0
+      ? `Setup wrote these variables to \`.runcastle/drive.env\` before it stopped: ` +
+        `${envKeys.map((k) => `\`${k}\``).join(', ')}. The server overlays that file verbatim ` +
+        'onto the dev pane and the stop hook; read the file for the values.'
+      : 'Setup wrote no `.runcastle/drive.env` at all — so nothing it computed reached the dev ' +
+        'pane. If the script is supposed to write one, that alone may be the fault.',
+    '',
+    'The identity the server passed in is `RUNCASTLE_SLUG`, `RUNCASTLE_BRANCH` and',
+    '`RUNCASTLE_ID` (the identifier-safe slug). Everything else a drive needs, the script',
+    'computes for itself and hands back through that file.',
+    '',
+    '## What this branch changed',
+    `\`${delta.base}...${delta.branch}\`:`,
+    '',
+    '```',
+    delta.stat.length > 0 ? delta.stat : '(no delta against the base branch)',
+    '```',
+    '',
+    'Read it before you theorise. The usual fault is something this branch added — a package, a',
+    'migration, a service, a required variable — that the drive script does not bring up, and the',
+    'contract says the branch carries its own setup.',
+    '',
+    '## Where to work',
+    `You are on the developer's own machine, in \`${project.repoPath}\`, NOT in a sandbox. The`,
+    `failed drive is still holding the wheel with \`${delta.branch}\` checked out — that is the`,
+    'state you need, so do not switch branches or stop the drive by hand.',
+    '',
+    'The machinery is `.runcastle/` in this checkout, on this branch right now. Fix it there and',
+    '**commit it to the feature branch** — a branch carries its own setup, so the fix must ride it',
+    'to review, and `retry_drive` cannot even start on a dirty tree. Those files and `.gitignore`',
+    'are the only ones you may write; the guard denies the rest, and a change to the app itself',
+    'belongs in a ticket.',
+    '',
+    '**Ask before you act.** Anything that starts or stops a service, creates or migrates a',
+    'database, installs software, or writes outside the repo needs the human to agree first — say',
+    'what you are about to run and why, then wait. You are on their machine and their stack is',
+    'running next to yours.',
+    '',
+    '## Retrying',
+    '`retry_drive()` stops the failed drive if it is still holding the slot, starts a fresh drive',
+    'of this feature, and hands back what the machinery saw: the setup hook outcome, the variable',
+    'names it wrote, and the dev pane with the sniffed URL and whether it answers yet. Fix, commit,',
+    'retry, read — until setup exits 0 and the app is serving. Then tell the human it is up and',
+    'stop; the drive is theirs to test.',
+    '',
+    '## The feature',
+    `- \`${docs}/\` — this feature's own docs (brief, spec, decisions, tickets).`,
+    `- branch \`${delta.branch}\`, based on \`${delta.base}\`.`,
+    '- `get_feature_context` gives you the row, the phase, the docs and the tickets in one call.',
     '',
   ].join('\n')
 }
@@ -657,6 +901,7 @@ export const RUNCASTLE_MCP_ALLOW_RULES: readonly string[] = [
   'mcp__runcastle__resolve_waypoint',
   'mcp__runcastle__record_finding',
   'mcp__runcastle__dry_run_drive',
+  'mcp__runcastle__retry_drive',
   // The project session's three (decision 19). Every session is launched with
   // the whole list: the MCP server gates each tool on the calling session's
   // kind, so a rule for a tool a feature session can only be refused is inert.
@@ -803,7 +1048,8 @@ export function renderMcpConfig(session: SessionRow, config: RuncastleConfig): M
 export async function writeSessionArtifacts(
   input: WriteArtifactsInput,
 ): Promise<SessionArtifacts> {
-  const { session, feature, config, waypoint, prepare, projectBrief, lap, purpose } = input
+  const { session, feature, config, waypoint, prepare, projectBrief, driveFix, lap, purpose } =
+    input
   const dir = sessionDir(session.id)
   mkdirSync(dir, { recursive: true })
 
@@ -811,18 +1057,21 @@ export async function writeSessionArtifacts(
   const settingsPath = join(dir, 'settings.json')
   const mcpConfigPath = join(dir, 'mcp.json')
 
-  // A project-scoped session has no feature to brief from; the caller supplies
-  // its kind's brief instead. Exactly one of the three is always present — a
-  // session with none would spawn a terminal with no instructions at all.
-  const systemPrompt = feature
-    ? renderSystemPrompt(feature, session.kind, waypoint, lap, purpose)
-    : prepare
-      ? renderPreparePrompt(prepare)
-      : projectBrief
-        ? renderProjectPrompt(projectBrief)
-        : (() => {
-            throw new Error(`session ${session.id} has no feature and no project-session brief`)
-          })()
+  // A session that is not briefed from its feature row — a project-scoped one,
+  // or the host-side drive fix — supplies its kind's brief instead. Exactly one
+  // of the four is always present: a session with none would spawn a terminal
+  // with no instructions at all.
+  const systemPrompt = driveFix
+    ? renderDriveFixPrompt(driveFix)
+    : feature
+      ? renderSystemPrompt(feature, session.kind, waypoint, lap, purpose)
+      : prepare
+        ? renderPreparePrompt(prepare)
+        : projectBrief
+          ? renderProjectPrompt(projectBrief)
+          : (() => {
+              throw new Error(`session ${session.id} has no feature and no project-session brief`)
+            })()
 
   writeFileSync(systemPromptPath, systemPrompt, 'utf8')
   writeFileSync(

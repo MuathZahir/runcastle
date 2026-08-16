@@ -31,8 +31,8 @@ export const AFK_BURN_EXPLAINER =
 /**
  * Test drive, on the review page — the word whose meaning depends on the
  * project. An unprepared project gets a branch checkout and nothing else; a
- * prepared one gets its environment rendered, its setup command run and its dev
- * server booted, which is where "each branch gets its own database" comes from.
+ * prepared one gets its setup command run and its dev server booted, which is
+ * where "each branch gets its own database" comes from.
  * A single sentence covering both would have to hedge, so the caller passes the
  * capabilities it read from settings and the sentence names only what will
  * really happen. `undefined` (settings still loading) gets the shared half
@@ -50,7 +50,6 @@ export function testDriveExplainer(caps: DriveCapabilities | undefined): string 
   // Named in the order the drive performs them. No step carries a comma of its
   // own — three of these joined into one sentence read as a list or not at all.
   const steps = [
-    caps.env && 'renders this project’s drive environment (the branch gets its own database name)',
     caps.setup && 'runs the test-drive setup command',
     caps.dev && 'starts the dev server with an Open app link',
   ].filter((s): s is string => typeof s === 'string')

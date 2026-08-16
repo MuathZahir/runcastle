@@ -2140,6 +2140,27 @@ details.wp-group-done > summary { cursor: pointer; list-style: revert; }
   background: color-mix(in srgb, var(--danger) 9%, transparent);
 }
 .conflict-resolve { margin-top: 14px; }
+/* drive setup failure (multi-service decision 4) — the loudest card at review,
+   because a drive that did not come up is where a human gets stranded */
+.drive-failure-card {
+  max-width: 1000px;
+  border-color: color-mix(in srgb, var(--danger) 45%, var(--hairline));
+}
+.drive-failure-fix { margin-top: 14px; }
+/* the hook's own output, monospaced and scrollable */
+.drive-failure-output {
+  margin: 12px 0 0;
+  padding: 10px 12px;
+  max-height: 220px;
+  overflow: auto;
+  font-family: var(--mono);
+  font-size: 11.5px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  color: var(--text-2);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--danger) 9%, transparent);
+}
 .conflict-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
 .conflict-when { font-family: var(--mono); font-size: 11px; color: var(--text-3); }
 /* A drive that checked the branch out and started nothing is not "driving". */
@@ -2189,6 +2210,15 @@ details.wp-group-done > summary { cursor: pointer; list-style: revert; }
   background: var(--accent-soft);
 }
 .drive-open:hover { border-color: var(--drive); }
+/* The same pill before the app answers: muted and inert, so the shape reads as
+   "not yet" rather than as a link that happens to be styled quietly. */
+.drive-open-waiting {
+  color: var(--text-3);
+  font-weight: 500;
+  border-color: var(--hairline);
+  background: transparent;
+  cursor: default;
+}
 .drive-pane-term { height: 420px; min-height: 260px; background: var(--bg); position: relative; }
 
 /* test-drive notes — capture box + checklist, for the whole review phase */
@@ -3018,6 +3048,7 @@ select.settings-input { cursor: pointer; }
 }
 .prep-dryrun-label { color: var(--drive); font-weight: 600; font-size: 12.5px; }
 .prep-dryrun-url { font-size: 11.5px; color: var(--text-2); }
+.prep-dryrun-waiting { color: var(--text-3); }
 .prep-dryrun-spacer { flex: 1; }
 
 /* The call-to-action itself. Centred and roomy on purpose: on an unprepared

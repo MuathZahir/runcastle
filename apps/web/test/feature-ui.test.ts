@@ -6,6 +6,7 @@ import {
   capLane,
   defaultBaseBranch,
   DRAFT_GLYPH,
+  driveFailure,
   duplicateTitleWarning,
   kickoffTrouble,
   liveSessionBlocker,
@@ -13,6 +14,8 @@ import {
   mergeSummary,
   needsMe,
   nextStep,
+  openApp,
+  openAppWaitingLabel,
   parseMapSections,
   phaseGlyph,
   reviewChecks,
@@ -660,10 +663,10 @@ describe('nextStep at review', () => {
     it('names exactly the unverified keys and points at preparation', () => {
       const ns = nextStep(reviewFull({}), {
         driving: false,
-        unverifiedDriveKeys: ['driveSetupCommand', 'driveEnv'],
+        unverifiedDriveKeys: ['driveSetupCommand', 'driveStopCommand'],
       })
       expect(ns.warning).toContain('Test drive setup')
-      expect(ns.warning).toContain('Test drive environment')
+      expect(ns.warning).toContain('Test drive teardown')
       expect(ns.warning).not.toContain('Dev command')
       expect(ns.warning).toContain('never proven by a dry run')
       expect(ns.warning).toContain('preparation')
@@ -949,6 +952,87 @@ describe('testDriveTaken', () => {
 
   it('stays true after the drive stops — it still happened', () => {
     expect(testDriveTaken([ev(1, 'testdrive.started'), ev(2, 'testdrive.stopped')])).toBe(true)
+  })
+})
+
+/**
+ * Ticket 2 — "Open app" is a promise that the link loads. A sniffed URL is not
+ * that promise: only the server having watched it answer is.
+ */
+describe('openApp', () => {
+  it('is nothing at all until a URL has been sniffed', () => {
+    expect(openApp(undefined)).toBeNull()
+    expect(openApp(null)).toBeNull()
+    expect(openApp({ devReady: false })).toBeNull()
+  })
+
+  it('is a starting state — never a link — while the app has not answered', () => {
+    const open = openApp({ devUrl: 'http://localhost:5173/', devReady: false })
+    expect(open).toEqual({ url: 'http://localhost:5173/', state: 'starting' })
+    // The URL is still visible, as text: a human who wants to try it early can.
+    expect(openAppWaitingLabel(open!)).toBe('starting… http://localhost:5173/')
+  })
+
+  it('becomes the link once the server has seen the app respond', () => {
+    expect(openApp({ devUrl: 'http://localhost:5173/', devReady: true })).toEqual({
+      url: 'http://localhost:5173/',
+      state: 'ready',
+    })
+  })
+
+  it('says so when the readiness poll gave up, and still does not link', () => {
+    const open = openApp({
+      devUrl: 'http://localhost:5173/',
+      devReady: false,
+      devReadyTimedOut: true,
+    })
+    expect(open?.state).toBe('timedOut')
+    expect(openAppWaitingLabel(open!)).toBe('http://localhost:5173/ — not answering')
+  })
+})
+
+/**
+ * The setup-failure surface (multi-service decisions 4 and 9): a drive that
+ * failed to come up is the one moment the human is most stranded, so the panel
+ * shows what failed and offers the one click that puts an agent on it.
+ */
+describe('driveFailure', () => {
+  const hookFailure = {
+    phase: 'setup' as const,
+    command: 'bash .runcastle/drive-setup.sh',
+    exitCode: 3,
+    timedOut: false,
+    output: 'psql: FATAL: role "app" does not exist',
+  }
+
+  it('is nothing at all for a drive that came up', () => {
+    expect(driveFailure(undefined)).toBeNull()
+    expect(driveFailure(null)).toBeNull()
+    expect(driveFailure({ devReady: true })).toBeNull()
+  })
+
+  it('surfaces the command, how it ended and its own output', () => {
+    expect(driveFailure({ hookFailure })).toEqual({
+      command: 'bash .runcastle/drive-setup.sh',
+      outcome: 'exited 3',
+      output: 'psql: FATAL: role "app" does not exist',
+      canFix: true,
+    })
+  })
+
+  it('says a timeout was a timeout, and a killed command had no code', () => {
+    expect(driveFailure({ hookFailure: { ...hookFailure, timedOut: true, exitCode: null } })
+      ?.outcome).toBe('timed out')
+    expect(driveFailure({ hookFailure: { ...hookFailure, exitCode: null } })?.outcome).toBe(
+      'exited without a code',
+    )
+  })
+
+  // One terminal per feature: the launcher refuses a second one, so offering
+  // Fix drive over a live session would be a button that can only be turned down.
+  it('withholds Fix drive while a session is already live', () => {
+    expect(driveFailure({ hookFailure }, { sessionLive: true })?.canFix).toBe(false)
+    expect(driveFailure({ hookFailure }, { sessionLive: false })?.canFix).toBe(true)
   })
 })
 

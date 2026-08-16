@@ -384,6 +384,17 @@ export async function launchSession(
   input: LaunchSessionInput,
   opts: LaunchSessionOptions = {},
 ): Promise<LaunchSessionResult> {
+  // The one feature-scoped kind this door does not open: a drive-fix session
+  // runs in the REAL checkout holding a failed drive, and everything below
+  // (talk worktree, resume-by-kind, the feature brief) is wrong for it. It has
+  // its own launcher — see {@link launchDriveFixSession}.
+  if (input.kind === 'drive-fix') {
+    throw new GateError(
+      'a drive-fix session is opened by "Fix drive" on the failed drive itself, not as a talk ' +
+        'session — it needs the failure in hand and the developer\'s own checkout to repair.',
+    )
+  }
+
   const feature = getFeatureRow(ctx, input.featureId)
   requireNotDraft(feature)
   const project = projectForFeature(ctx, feature)
@@ -563,8 +574,8 @@ export async function launchSession(
  * Everything that makes `launchSession` feature-shaped is skipped: no feature
  * row, no worktree, no waypoint claim, no one-live-session-per-feature guard.
  * The session runs in the project's REAL checkout, which is the whole point —
- * the five host-only keys a container can only propose (`devCommand`,
- * `driveSetupCommand`, `driveStopCommand`, `driveEnv`, `dbResetCommand`) can be
+ * the host-only keys a container can only propose (`devCommand`,
+ * `driveSetupCommand`, `driveStopCommand`, `dbResetCommand`) can be
  * executed and verified here, and the human is present to answer for the ones
  * no amount of reading the repo can settle.
  *
@@ -665,6 +676,123 @@ export async function launchPrepareSession(
     serverUrl,
     buildClaudeArgs(buildInput),
     { resumeSessionId },
+  )
+  return { sessionId: session.id }
+}
+
+/**
+ * Open the one-click recovery from a failed drive (backs `feature.fixDrive`) —
+ * decision 9 of preparation-supports-multi-service-projects.
+ *
+ * Feature-scoped, and yet built from {@link launchPrepareSession} rather than
+ * {@link launchSession}: no worktree, the developer's REAL checkout, host-side
+ * ask-before-act rules. That is because the thing it repairs is the machine, not
+ * the code — and the failed drive is standing right there with the feature
+ * branch checked out, which is exactly the state the fix agent needs. So the
+ * drive is deliberately NOT stopped here; `retry_drive` is what ends it, once
+ * the agent has something to retry with.
+ *
+ * Refused unless a drive of THIS feature is currently failing. The affordance
+ * only ever appears over a failure, and a session opened without one has no
+ * mandate to carry out — its whole brief is the failure. It is never
+ * auto-spawned (decision 4): an agent does not start running on someone's
+ * machine uninvited.
+ *
+ * It counts as the feature's one terminal (`assertSpawnable`), because it is
+ * one: a terminal open on this feature while another is live is the thing that
+ * guard exists to prevent, whatever either was opened to do.
+ */
+export async function launchDriveFixSession(
+  ctx: AppCtx,
+  input: { featureId: string },
+  opts: LaunchSessionOptions = {},
+): Promise<LaunchSessionResult> {
+  const feature = getFeatureRow(ctx, input.featureId)
+  requireNotDraft(feature)
+  const project = projectForFeature(ctx, feature)
+
+  const drive = git.activeDriveInfo()
+  if (drive?.featureId !== feature.id || !drive.hookFailure) {
+    throw new GateError(
+      `no failed drive to fix on ${feature.slug} — a drive-fix session is opened from a drive ` +
+        'whose setup failed, and carries that failure as its whole brief. Start a drive first.',
+    )
+  }
+  assertSpawnable(ctx, feature)
+
+  const session = createSessionRow(ctx, {
+    featureId: feature.id,
+    kind: 'drive-fix',
+    // No worktree, for preparation's reason: the environment that broke is this
+    // machine's, and a docs-only talk worktree could neither run the setup
+    // script nor see the drive.env it was supposed to write.
+    worktreePath: project.repoPath,
+  })
+
+  emit(ctx, feature.id, {
+    type: 'session.launching',
+    message: `launching drive-fix session — ${drive.hookFailure.phase} failed on ${drive.branch}`,
+    data: {
+      sessionId: session.id,
+      kind: 'drive-fix',
+      worktreePath: project.repoPath,
+      branch: drive.branch,
+      command: drive.hookFailure.command,
+    },
+  })
+
+  const artifacts = await writeSessionArtifacts({
+    session,
+    project,
+    config: ctx.config,
+    driveFix: {
+      project,
+      feature,
+      failure: drive.hookFailure,
+      envKeys: drive.envKeys ?? [],
+      delta: await git.featureBranchDelta(project, feature),
+    },
+  })
+  const serverUrl = serverUrlFor(ctx.config)
+
+  const buildInput: BuildLaunchInput = {
+    sessionId: session.id,
+    serverUrl,
+    featureTitle: `fixing the drive for ${feature.title}`,
+    worktreePath: project.repoPath,
+    pluginDir: resolvePluginDir(),
+    settingsPath: artifacts.settingsPath,
+    mcpConfigPath: artifacts.mcpConfigPath,
+    systemPromptPath: artifacts.systemPromptPath,
+    // Prepare's step, deliberately: this is the same host-side environment work
+    // under a narrower mandate, and a step of its own would be a settings field
+    // nobody asked for.
+    model: resolveModel('prepare', ctx.config, project),
+    strictMcp: ctx.config.sessionMcp === 'runcastleOnly',
+  }
+
+  if (opts.spawn === false) {
+    emit(ctx, feature.id, {
+      type: 'session.launched',
+      message: 'drive-fix session prepared (terminal spawn skipped)',
+      data: {
+        sessionId: session.id,
+        command: ['claude', ...buildClaudeArgs(buildInput)].join(' '),
+        spawned: false,
+      },
+    })
+    return { sessionId: session.id }
+  }
+
+  // No docs watch (the `feature` argument): this session repairs the
+  // environment and never writes the feature's docs.
+  spawnEmbeddedPty(
+    ctx,
+    undefined,
+    session,
+    project.repoPath,
+    serverUrl,
+    buildClaudeArgs(buildInput),
   )
   return { sessionId: session.id }
 }

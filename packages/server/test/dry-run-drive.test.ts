@@ -1,4 +1,6 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { createServer } from 'node:http'
+import type { AddressInfo } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { PreparedKey, Project, SessionRow } from '@runcastle/core'
@@ -16,6 +18,7 @@ import {
   __resetTestDriveState,
   activeDriveInfo,
   createFeatureBranch,
+  recordDryRunUrl,
   testDrive,
 } from '../src/services/git'
 import { prepView } from '../src/services/prep'
@@ -56,7 +59,22 @@ async function initRepo(dir: string): Promise<void> {
   await g.commit('initial commit')
 }
 
-/** Write the drive-rendered `DB_NAME` to a file, spelled for the hosting shell. */
+/**
+ * A setup command that plays the setup script's half of the contract: write one
+ * `KEY=VALUE` line to `.runcastle/drive.env`. Spelled for whichever shell hosts
+ * it, so `$RUNCASTLE_ID` in the line becomes `%RUNCASTLE_ID%` on cmd.
+ */
+function writeDriveEnv(line: string): string {
+  const file = join('.runcastle', 'drive.env')
+  return process.platform === 'win32'
+    ? `mkdir .runcastle & echo ${line.replace(/\$([A-Z_]+)/g, '%$1%')}> "${file}"`
+    : `mkdir -p .runcastle && echo "${line}" > "${file}"`
+}
+
+/** The worked example: a database name derived from the identity the server passed. */
+const WRITE_DB_NAME = writeDriveEnv('DB_NAME=myapp_$RUNCASTLE_ID')
+
+/** Write the overlaid `DB_NAME` to a file, spelled for the hosting shell. */
 const CAPTURE_DB_NAME =
   process.platform === 'win32' ? 'echo %DB_NAME%>db-name.txt' : 'echo "$DB_NAME" > db-name.txt'
 
@@ -122,20 +140,16 @@ describe('the preparation dry-run drive', () => {
 
   // --- the start half --------------------------------------------------------
 
-  it('renders driveEnv under the prep-dry-run identity and runs setup, switching nothing', async () => {
-    record('driveEnv', 'DB_NAME=myapp_{{id}}')
-    record('driveSetupCommand', CAPTURE_DB_NAME)
+  it('runs setup under the prep-dry-run identity and overlays what it wrote, switching nothing', async () => {
+    record('driveSetupCommand', WRITE_DB_NAME)
+    record('driveStopCommand', CAPTURE_DB_NAME)
 
     const start = await drive('start')
 
     expect(start.ok).toBe(true)
     expect(start.identity).toEqual({ slug: 'prep-dry-run', branch: 'main' })
-    // The reserved slug is what makes the temp database self-describing: a human
-    // who finds `myapp_prep_dry_run` lying around knows what left it.
-    expect(readFileSync(join(repo, 'db-name.txt'), 'utf8').trim()).toBe('myapp_prep_dry_run')
     expect(start.envKeys).toEqual(['DB_NAME'])
-    expect(start.envUnknowns).toEqual([])
-    expect(start.setup).toMatchObject({ command: CAPTURE_DB_NAME, ok: true, exitCode: 0 })
+    expect(start.setup).toMatchObject({ command: WRITE_DB_NAME, ok: true, exitCode: 0 })
 
     // No feature, no branch to move to: a dry run proves the environment where
     // the human already is.
@@ -146,6 +160,31 @@ describe('the preparation dry-run drive', () => {
     expect(started?.message).toContain('prep-dry-run')
 
     await drive('stop')
+
+    // The reserved slug is what makes the temp database self-describing: a human
+    // who finds `myapp_prep_dry_run` lying around knows what left it — and the
+    // stop hook read the name from the file setup wrote, not from a template.
+    expect(readFileSync(join(repo, 'db-name.txt'), 'utf8').trim()).toBe('myapp_prep_dry_run')
+  })
+
+  it('overlays nothing, and fails nothing, when setup writes no drive.env', async () => {
+    record('driveSetupCommand', 'echo nothing-to-hand-back')
+
+    const start = await drive('start')
+    expect(start.ok).toBe(true)
+    expect(start.envKeys).toEqual([])
+
+    await drive('stop')
+  })
+
+  it('deletes drive.env when the run stops, leaving the repo as it found it', async () => {
+    record('driveSetupCommand', WRITE_DB_NAME)
+
+    await drive('start')
+    expect(existsSync(join(repo, '.runcastle', 'drive.env'))).toBe(true)
+
+    await drive('stop')
+    expect(existsSync(join(repo, '.runcastle', 'drive.env'))).toBe(false)
   })
 
   it('reports the hook output tail, so a failing hook explains itself', async () => {
@@ -157,13 +196,18 @@ describe('the preparation dry-run drive', () => {
     await drive('stop')
   })
 
-  it('names unresolvable placeholders without ever echoing a rendered value', async () => {
-    record('driveEnv', 'DATABASE_URL=postgres://user:hunter2@localhost/{{nope}}')
+  // A computed connection string is exactly what a setup script writes, and the
+  // dry-run report goes to an agent's transcript.
+  it('names the variables the file carries without ever echoing one', async () => {
+    mkdirSync(join(repo, '.runcastle'), { recursive: true })
+    writeFileSync(
+      join(repo, '.runcastle', 'drive.env'),
+      'DATABASE_URL=postgres://user:hunter2@localhost/x\n',
+    )
 
     const start = await drive('start')
 
     expect(start.envKeys).toEqual(['DATABASE_URL'])
-    expect(start.envUnknowns).toEqual(['nope'])
     // Values can hold credentials, so nothing that leaves this tool may carry one.
     expect(JSON.stringify(start)).not.toContain('hunter2')
 
@@ -241,6 +285,34 @@ describe('the preparation dry-run drive', () => {
     await drive('stop')
   })
 
+  // The prep agent's own view of app readiness (decision 5): the same poll the
+  // human's drive panel waits on, reported through the action it already calls.
+  it('reports app readiness through status, once the sniffed URL answers', async () => {
+    const server = createServer((_req, res) => {
+      res.writeHead(200)
+      res.end('ok')
+    })
+    await new Promise<void>((r) => server.listen(0, '127.0.0.1', () => r()))
+    const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}/`
+
+    await drive('start')
+    // Stand in for the pane's sniffer, which needs a real dev server to fire.
+    recordDryRunUrl(ctx, project.id, url)
+    // Synchronously after the sniff, nothing has answered yet.
+    expect(activeDriveInfo()?.devReady).toBe(false)
+
+    let status = await drive('status')
+    for (let i = 0; i < 100 && !status.devReady; i++) {
+      await delay(20)
+      status = await drive('status')
+    }
+    expect(status).toMatchObject({ devUrl: url, devReady: true })
+    expect(eventTypes()).toContain('prep.dryrun.ready')
+
+    await drive('stop')
+    await new Promise<void>((r) => server.close(() => r()))
+  })
+
   it('refuses status and stop when no dry run is up', async () => {
     expect(await drive('status')).toMatchObject({
       ok: false,
@@ -288,7 +360,6 @@ describe('the preparation dry-run drive', () => {
   })
 
   it('stamps exactly the keys that participated on a clean full pass', async () => {
-    record('driveEnv', 'DB_NAME=myapp_{{id}}')
     record('driveSetupCommand', 'echo up')
     record('driveStopCommand', 'echo down')
     // A key established but not part of the drive loop is never a candidate.
@@ -299,11 +370,9 @@ describe('the preparation dry-run drive', () => {
 
     // No devCommand, so devCommand simply is not part of this run (decision 2) —
     // and the run still passes cleanly on what it did exercise.
-    expect(stop.verified).toEqual(['driveSetupCommand', 'driveStopCommand', 'driveEnv'])
+    expect(stop.verified).toEqual(['driveSetupCommand', 'driveStopCommand'])
     expect(stop.failure).toBeUndefined()
-    expect((await verifiedKeys()).sort()).toEqual(
-      ['driveEnv', 'driveSetupCommand', 'driveStopCommand'].sort(),
-    )
+    expect((await verifiedKeys()).sort()).toEqual(['driveSetupCommand', 'driveStopCommand'].sort())
 
     const verified = listByProject(ctx, project.id, 0).find((e) => e.type === 'prep.dryrun.verified')
     expect(verified?.message).toContain('driveSetupCommand')
@@ -312,15 +381,14 @@ describe('the preparation dry-run drive', () => {
   })
 
   it('stamps nothing and names the observable when the setup hook fails', async () => {
-    record('driveEnv', 'DB_NAME=myapp_{{id}}')
     record('driveSetupCommand', 'exit 3')
     record('driveStopCommand', 'echo down')
 
     await drive('start')
     const stop = await drive('stop')
 
-    // All-or-nothing (decision 3): driveEnv and driveStopCommand were fine, and
-    // neither is stamped, because this run did not prove the loop.
+    // All-or-nothing (decision 3): driveStopCommand was fine, and it is not
+    // stamped either, because this run did not prove the loop.
     expect(stop.failure).toBe('driveSetupCommand did not exit 0')
     expect(stop.verified).toEqual([])
     expect(await verifiedKeys()).toEqual([])
@@ -350,17 +418,6 @@ describe('the preparation dry-run drive', () => {
     expect(stop.failure).toBe(
       'devCommand spawned but printed no localhost URL — "Open app" depends on one',
     )
-    expect(await verifiedKeys()).toEqual([])
-  })
-
-  it('stamps nothing when a placeholder in driveEnv could not be resolved', async () => {
-    record('driveEnv', 'DB_NAME=myapp_{{whoops}}')
-    record('driveSetupCommand', 'echo up')
-
-    await drive('start')
-    const stop = await drive('stop')
-
-    expect(stop.failure).toBe('driveEnv left {{whoops}} unsubstituted')
     expect(await verifiedKeys()).toEqual([])
   })
 
