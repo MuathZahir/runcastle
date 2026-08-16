@@ -231,7 +231,6 @@ describe('projectRows', () => {
 describe('driveCapabilities', () => {
   it('reports nothing configured on a project with no drive fields set', () => {
     expect(driveCapabilities(view([{ key: 'model', value: 'claude' }]))).toEqual({
-      env: false,
       setup: false,
       dev: false,
       teardown: false,
@@ -242,13 +241,12 @@ describe('driveCapabilities', () => {
     expect(
       driveCapabilities(
         view([
-          { key: 'driveEnv', value: 'DATABASE_URL=postgres:///myapp_{{id}}' },
-          { key: 'driveSetupCommand', value: 'createdb myapp_{{id}}' },
+          { key: 'driveSetupCommand', value: 'bash .runcastle/drive-setup.sh' },
           { key: 'devCommand', value: 'bun dev' },
-          { key: 'driveStopCommand', value: 'dropdb myapp_{{id}}' },
+          { key: 'driveStopCommand', value: 'bash .runcastle/drive-stop.sh' },
         ]),
       ),
-    ).toEqual({ env: true, setup: true, dev: true, teardown: true })
+    ).toEqual({ setup: true, dev: true, teardown: true })
   })
 
   // A field cleared back to blank (or to whitespace) is a field the drive skips.
@@ -258,10 +256,10 @@ describe('driveCapabilities', () => {
         view([
           { key: 'devCommand', value: '' },
           { key: 'driveSetupCommand', value: '   ' },
-          { key: 'driveEnv', value: null },
+          { key: 'driveStopCommand', value: null },
         ]),
       ),
-    ).toEqual({ env: false, setup: false, dev: false, teardown: false })
+    ).toEqual({ setup: false, dev: false, teardown: false })
   })
 
   // Before settings land there is no answer, and guessing "false" would print
