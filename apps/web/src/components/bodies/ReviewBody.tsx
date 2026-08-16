@@ -512,8 +512,8 @@ function DrivePane({
   }
 }) {
   const [expanded, setExpanded] = useState(false)
-  const open = openApp(drive)
   if (!drive.devPaneId) return null
+  const open = openApp(drive)
 
   return (
     <div className="drive-pane">
@@ -521,13 +521,14 @@ function DrivePane({
         <span className="drive-pane-kind">dev server</span>
         <span className="drive-pane-loc">{drive.branch}</span>
         <span className="drive-pane-spacer" />
-        {open?.state === 'ready' ? (
-          <a className="drive-open" href={open.url} target="_blank" rel="noreferrer noopener">
-            Open app ↗
-          </a>
-        ) : (
-          open && <span className="drive-open drive-open-waiting">{openAppWaitingLabel(open)}</span>
-        )}
+        {open &&
+          (open.state === 'ready' ? (
+            <a className="drive-open" href={open.url} target="_blank" rel="noreferrer noopener">
+              Open app ↗
+            </a>
+          ) : (
+            <span className="drive-open drive-open-waiting">{openAppWaitingLabel(open)}</span>
+          ))}
         <button
           type="button"
           className="btn btn-xs btn-ghost drive-pane-toggle"

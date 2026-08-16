@@ -308,17 +308,16 @@ function DryRunRow({
     <div className="prep-dryrun">
       <span className="drive-pulse" />
       <span className="prep-dryrun-label">Preparation dry-run in progress</span>
-      {open?.state === 'ready' ? (
-        <a className="prep-dryrun-url mono" href={open.url} target="_blank" rel="noreferrer">
-          {open.url}
-        </a>
-      ) : (
-        open && (
+      {open &&
+        (open.state === 'ready' ? (
+          <a className="prep-dryrun-url mono" href={open.url} target="_blank" rel="noreferrer">
+            {open.url}
+          </a>
+        ) : (
           <span className="prep-dryrun-url mono prep-dryrun-waiting">
             {openAppWaitingLabel(open)}
           </span>
-        )
-      )}
+        ))}
       <span className="prep-dryrun-spacer" />
       <Button className="btn-xs" disabled={stopping} onClick={onStop}>
         {stopping ? 'Stopping…' : 'Stop'}

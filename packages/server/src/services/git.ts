@@ -1386,6 +1386,9 @@ export function __resetTestDriveState(): void {
   testDriveState = undefined
 }
 
+/** Overridden only by the test hook below; `undefined` means the shipped timing. */
+let readinessTiming: AppReadyTiming | undefined
+
 /**
  * Test-only: run the readiness poll on a compressed clock, so a timeout is a
  * test that takes milliseconds instead of two minutes. `undefined` restores the
@@ -1394,8 +1397,6 @@ export function __resetTestDriveState(): void {
 export function __setAppReadinessTiming(timing?: AppReadyTiming): void {
   readinessTiming = timing
 }
-
-let readinessTiming: AppReadyTiming | undefined
 
 /**
  * Feature id of the currently-active test drive, or `undefined` when none is
@@ -1470,7 +1471,8 @@ function watchAppReadiness(
       message:
         outcome === 'ready'
           ? `app is serving at ${url} — open it`
-          : `${url} never answered — "Open app" stays unconfirmed, but the drive is unaffected`,
+          : `gave up waiting for ${url} to answer — the drive is unaffected, and the link is ` +
+            'still there to try by hand',
       data: { url },
     })
   })
