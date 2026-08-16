@@ -272,8 +272,10 @@ describe("a review ticket's account reaches the run digest", () => {
     expect(tickets[2].digest).toBe('walked what shipped')
   })
 
-  it('says so even when the review that ran against them could not report', async () => {
-    const tickets = [ticket(1), review(2, { blockedBy: [1] })]
+  it('says so off the run itself, even for a review with no edges that could not report', async () => {
+    // Neither the declared edges nor the agent's own prose is the source: this
+    // review was emitted without `blockedBy` and never got as far as a digest.
+    const tickets = [ticket(1), review(2)]
     const execute = async (_c: WorkflowCtx, t: Ticket): Promise<TicketOutcome> =>
       t.seq === 1
         ? { status: 'failed', error: 'boom' }

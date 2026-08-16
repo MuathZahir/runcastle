@@ -1325,7 +1325,7 @@ export function errorHeadline(s: string): string {
  * decision 9) — the run digest's own record of what the review was up against,
  * independent of whether the agent's prose remembered to say so.
  */
-export function failedBlockerNote(seqs: readonly number[]): string {
+function failedBlockerNote(seqs: readonly number[]): string {
   const list = [...seqs].sort((a, b) => a - b).join(', ')
   return `> Reviewed with failed implementation ticket(s): ${list}.`
 }
@@ -1397,14 +1397,18 @@ export async function burnTickets(
 
   /**
    * Keep a ticket's digest for the run aggregate. A review ticket that ran
-   * anyway because its blockers were merely terminal carries the names of the
-   * ones that failed into the run's record — the account of a partially-failed
-   * feature is worth nothing if the reader cannot tell it was one. Only the run
-   * digest is annotated; `ticket.digest` stays the agent's own words, because
-   * which sibling tickets failed is a fact about the run, not about the review.
+   * anyway because its blockers were merely terminal says which of them failed —
+   * the account of a partially-failed feature is worth nothing if the reader
+   * cannot tell it was one. Read off the run's own tickets rather than the
+   * declared edges, for the same reason `implementationsSettled` is: a session
+   * that emitted the review ticket without edges still reviewed what failed.
+   * Only the run digest is annotated; `ticket.digest` stays the agent's own
+   * words, because which sibling tickets failed is a fact about the run.
    */
   const harvestDigest = (t: Ticket, digest: string | undefined): void => {
-    const failed = isReviewTicket(t) ? t.blockedBy.filter((b) => status.get(b) === 'failed') : []
+    const failed = isReviewTicket(t)
+      ? tickets.filter((x) => !isReviewTicket(x) && status.get(x.seq) === 'failed').map((x) => x.seq)
+      : []
     const body = [failed.length > 0 ? failedBlockerNote(failed) : undefined, digest]
       .filter(Boolean)
       .join('\n\n')
