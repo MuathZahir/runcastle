@@ -447,7 +447,8 @@ export function toolRecordFinding(
  * be proving somebody else's homework.
  *
  * Everything it returns is what the machinery SAW — hook output tails, the
- * variable names it rendered, the URL it sniffed — because the agent's job
+ * variable names it rendered, the URL it sniffed and whether that URL answers —
+ * because the agent's job
  * between the halves is to check the things the server cannot (is the database
  * fresh, did migrations apply) and decide whether to fix and re-run. The verdict
  * itself is computed server-side and is not open to argument.
@@ -775,8 +776,8 @@ export function buildMcpServer(): McpServer {
         'machinery — same identity variables, same hooks, same dev pane — under a synthetic ' +
         'identity (slug `prep-dry-run`) on the current branch. Nothing is checked out. `start` ' +
         'runs driveSetupCommand, overlays the `.runcastle/drive.env` it wrote and spawns ' +
-        'devCommand; `status` reports the pane and ' +
-        'the sniffed localhost URL while you inspect; `stop` runs driveStopCommand and rules on ' +
+        'devCommand; `status` reports the pane, the sniffed localhost URL and whether that URL ' +
+        'answers HTTP yet (`devReady`) while you inspect; `stop` runs driveStopCommand and rules on ' +
         'the run. Ask the human before starting: it starts services and creates a database on ' +
         'their machine. A clean full pass stamps the participating keys verified, computed from ' +
         'what the machinery observed — your own checks decide whether to fix and re-run, never ' +
