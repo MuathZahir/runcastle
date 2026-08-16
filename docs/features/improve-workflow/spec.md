@@ -18,9 +18,11 @@ The shape:
 
 - **Notes wire.** A new agent-callable test-notes wire lets the review agent append notes through the existing test-notes service, attributed as agent-authored so the UI can distinguish them from the human's. Notes land in the feature's test-notes doc and the existing notes panel; promote-to-fix-ticket works on them unchanged.
 
-- **Review semantics — advisory and best-effort.** Findings are not failure: a review ticket is `done` when the review ran to completion, however many bugs it found. `failed` means "couldn't review" — app wouldn't boot, drive slot held, dirty tree, agent crash. Either way the all-tickets-terminal gate is satisfied and the feature enters review; a failed review just means arriving with no agent notes, today's status quo. No gate hardening: the Merge click remains the whole of the ship gate.
+- **Video walkthrough** *(lap 2)*. For browser reviews, the agent wraps its walkthrough in agent-browser's recording (`record start` / `record stop`, WebM out) and the file lands in the per-ticket review directory (`reviewDir`) that lap 1 introduced — never in the checkout, which must stay clean for the drive. The server serves the recording and a per-feature artifact listing over plain HTTP routes (media wants range requests, not tRPC); the review screen plays it inline above the notes. Non-browser reviews produce no video and that absence is a normal state; a recording failure never fails the review — notes remain the deliverable, the video is evidence.
 
-- **Loud review surface.** The review screen must make the agent's work unmissable: a review summary on the phase's summary surface — "Review agent: N findings" with agent-attributed notes, or "Review could not run: <reason>" when the ticket failed — not merely rows appended to the notes list. The merge summary gains a review-status line alongside its existing advisory warnings.
+- **Review semantics — advisory and best-effort.** Findings are not failure: a review ticket is `done` when the review ran to completion, however many bugs it found. `failed` means "couldn't review" — app wouldn't boot, drive slot held, dirty tree, agent crash. Either way the all-tickets-terminal gate is satisfied and the feature enters review; a failed review just means arriving with no agent notes, today's status quo. No gate hardening: the Merge click remains the whole of the ship gate. *(Lap 2)* Review tickets treat a blocker as satisfied when it is terminal — done, failed, or cancelled — instead of cascade-failing on a failed implementation ticket; reviewing a partially-failed feature is the review's most valuable case, and the agent's summary note says when that happened.
+
+- **Loud review surface.** The review screen must make the agent's work unmissable: a review summary on the phase's summary surface — "Review agent: N findings" with agent-attributed notes, or "Review could not run: <reason>" when the ticket failed — not merely rows appended to the notes list. The merge summary gains a review-status line alongside its existing advisory warnings. *(Lap 2)* While the review runs, the truth is visible too: the drive surface says a review agent is driving (not "test drive active"), and the run screen's ticket lanes carry the review kind chip.
 
 - **Review prompt.** The skills pack gains the review agent's prompt: consume the ticket's goal and acceptance criteria, start the review drive, drive the app with agent-browser (snapshot/act/re-snapshot loop), verify each criterion, write a note per finding plus a closing summary note, stop the drive. Backend-only reviews need no special mode — the prose ticket simply prescribes tests/endpoints instead of browser steps.
 
@@ -31,10 +33,10 @@ The shape:
 3. **Review drive wire** *(new, modeled on the dry-run drive)* — start/status/stop against the feature branch under a run identity, with the run-active carve-out. Observe: drive state transitions, dev URL handed to the agent, drive released on stop and on ticket failure.
 4. **Test-notes wire** *(new)* — agent-appended notes flow through the existing notes service with agent attribution. Observe: notes in the doc and the panel, flagged as agent-authored; promote-to-ticket works on them.
 5. **Review surface** *(existing, extended)* — the review screen's summary and the merge summary report review outcome. Observe: "N findings" / "could not run: reason" rendering from ticket + notes state.
+6. **Review artifact routes** *(new, lap 2)* — HTTP routes serving the walkthrough video and the per-feature artifact listing from `reviewDir`. Observe: listing returns the artifacts a review produced; the video URL streams WebM; both 404 cleanly when absent.
 
 ## Out of scope
 
-- Video walkthrough recording/playback (lap 2 — see Later laps).
 - Any gate hardening: merge never blocks on review outcome or unresolved notes.
 - Making the burner sandbox run apps or services — implementation tickets stay hermetic.
 - Multi-service preparation (redis namespacing, compose project names/ports/health-waits, `{{port}}`, hosted-DB affordances) — parked as the draft feature *Preparation supports multi-service projects*.
@@ -48,7 +50,7 @@ The shape:
 
 ## Later laps
 
-- **Video walkthrough** — agent-browser records natively; store the recording as a feature artifact and play it on the review screen. Deferred so lap 1 can answer the real bet: are agent findings worth reading?
-- **Multiple review tickets per feature** — different areas/angles per ticket; the schema and ordering already permit it, the prompt and UI summary would need to aggregate.
+- **Multiple review tickets per feature** — different areas/angles per ticket; the schema and ordering already permit it, the prompt, the artifact listing, and the UI summary would need to aggregate (lap 1 noted `reviewOutcome` takes the last review ticket).
+- **Lap-scoped findings count** — the notes query is not lap-filtered, so on lap 3 the findings count would include lap 1's agent notes; scoping is a server-side query decision.
 - **Review template library** — named review styles (browser walkthrough, API probe, test-suite audit) the tickets session can reach for instead of free prose.
 - **Teeth** — once findings have earned trust: merge-summary escalation or a soft gate on unresolved agent notes.

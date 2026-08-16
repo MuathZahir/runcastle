@@ -27,3 +27,19 @@
 ## 7. Review output must be loudly visible in the review phase
 **Decision:** The review phase UI must make it obvious that review tickets ran and what they produced — a summary surface (e.g. "Review agent: N findings" on the review screen's summary card, with agent-authored notes visibly attributed), not merely rows quietly appended to the notes list. A review ticket that failed is surfaced the same way ("review could not run: <reason>").
 **Why:** The human's review now starts from the agent's report; if that report is easy to miss, the feature silently degrades back to manual review from zero. (Raised explicitly by the user: "just having the test notes might not be easily noticeable.")
+
+---
+
+*Lap 2 — decided without a human test drive of lap 1 (the user's explicit call: the pre-existing test-drive experience made driving unattractive — which is itself the strongest argument for the video walkthrough). Lap 2's own burn will exercise lap 1's spine end-to-end, since its review ticket runs through the machinery lap 1 built.*
+
+## 8. Lap 2: the review agent records a video walkthrough
+**Decision:** For browser reviews, the review agent wraps its walkthrough in `agent-browser record start/stop`, producing a WebM that lands in the per-ticket review directory (the `reviewDir` convention lap 1 introduced, `~/.runcastle/reviews/<ticketId>/`). The server serves the recording and a small artifact listing over plain HTTP routes; the review screen plays it inline (WebM plays natively in browsers — no transcoding). Non-browser reviews (tests/endpoints) produce no video; absence is a normal state, not an error, and recording failures never fail the review — the notes remain the deliverable.
+**Why:** The user skipped the lap-1 human test drive because driving is unattractive; the video lets review be consumed without driving at all. Storage rides the existing reviewDir convention (repo stays clean — a video in the checkout would dirty the tree and block the drive); plain HTTP (not tRPC) because it is media, streamed with range requests.
+
+## 9. Review survives failed implementation tickets
+**Decision:** For review-kind tickets, a blocker counts as satisfied when it is *terminal* (done, failed, or cancelled), not only when it is done — a carve-out from the generic cascade-fail blockedBy semantics, applying to review tickets only. The review prompt tells the agent to state in its summary note when it reviewed a feature with failed implementation tickets.
+**Why:** Lap 1's own digest flagged this: the tickets skill tells sessions to block review on *every* implementation ticket, so one flaky ticket cascade-cancels the entire review. Reviewing a partially-failed feature is more valuable, not less — the agent reports what actually works. This also aligns the burner's behavior with gate G4, which already treats failed as terminal.
+
+## 10. Drive purpose and ticket kind are visible while running
+**Decision:** `activeDriveInfo` exposes the drive's purpose so the UI can say "review agent is driving" instead of the misleading "test drive active"; the run screen's per-ticket lanes show the review kind chip so a review ticket visibly behaves unlike its neighbours (no branch, no container, no merge-queue entry).
+**Why:** Both are lap-1 "left undone" items recorded in the ticket digests — the presentation was deliberately deferred until the behavior was real.
