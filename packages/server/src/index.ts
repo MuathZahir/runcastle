@@ -16,6 +16,7 @@ import mcpApp from './mcp/server'
 import { ptyRegistry } from './pty/registry'
 import { terminalWebSocket, tryUpgradeTerminal } from './pty/ws'
 import hooksApp from './routes/hooks'
+import reviewsApp from './routes/reviews'
 import streamApp from './routes/stream'
 import { mountWebAppIfBuilt } from './routes/web'
 import { getUpdateInfo } from './services/update-check'
@@ -67,6 +68,9 @@ export function buildApp(ctx: AppCtx): Hono {
   )
 
   app.route('/api/hooks', hooksApp)
+  // Review artifacts (routes/reviews.ts) — the walkthrough video is media, so it
+  // is served over plain HTTP with range requests rather than through tRPC.
+  app.route('/api/reviews', reviewsApp)
   // Live-update SSE (routes/stream.ts) — the push channel the UI listens on.
   app.route('/api/stream', streamApp)
   app.route('/mcp', mcpApp)
