@@ -24,13 +24,13 @@ import { getTicket, listByFeature } from '../services/tickets'
  */
 const reviews = new Hono()
 
-/** The one file a review may have left, wherever it is referred to. */
-const WALKTHROUGH_URL = (ticketId: string): string =>
-  // The prefix `index.ts` mounts this sub-app at.
-  `/api/reviews/ticket/${ticketId}/walkthrough.webm`
+/** Where a review ticket's recording streams from — the mount point in `index.ts`. */
+function walkthroughUrl(ticketId: string): string {
+  return `/api/reviews/ticket/${ticketId}/walkthrough.webm`
+}
 
 /** One review ticket's artifacts, as the listing reports them. */
-export interface ReviewArtifacts {
+export interface ReviewTicketArtifacts {
   ticketId: string
   seq: number
   hasVideo: boolean
@@ -70,7 +70,7 @@ function findReviewTicket(ctx: AppCtx, ticketId: string): Ticket | undefined {
 /** GET /api/reviews/:featureId — what this feature's reviews left behind. */
 reviews.get('/:featureId', async (c) => {
   const ctx = await getRuntimeCtx()
-  const artifacts: ReviewArtifacts[] = listByFeature(ctx, c.req.param('featureId'))
+  const artifacts: ReviewTicketArtifacts[] = listByFeature(ctx, c.req.param('featureId'))
     .filter((t) => t.kind === 'review')
     .map((t) => {
       const hasVideo = fileSize(reviewWalkthroughPath(t.id)) !== undefined
@@ -78,7 +78,7 @@ reviews.get('/:featureId', async (c) => {
         ticketId: t.id,
         seq: t.seq,
         hasVideo,
-        videoUrl: hasVideo ? WALKTHROUGH_URL(t.id) : null,
+        videoUrl: hasVideo ? walkthroughUrl(t.id) : null,
       }
     })
   // A feature with no review tickets — or no feature at all — has no artifacts.
@@ -101,7 +101,10 @@ interface ByteRange {
  * RFC 9110 lets a server ignore a Range it does not understand and reply 200.
  * Serving the whole video is always correct; only scrubbing gets slower.
  */
-function parseRange(header: string | undefined, size: number): ByteRange | 'unsatisfiable' | undefined {
+function parseRange(
+  header: string | undefined,
+  size: number,
+): ByteRange | 'unsatisfiable' | undefined {
   const spec = header?.trim().match(/^bytes=(\d*)-(\d*)$/)
   if (!spec) return undefined
   const [, rawStart, rawEnd] = spec
@@ -149,7 +152,6 @@ reviews.get('/ticket/:ticketId/walkthrough.webm', async (c) => {
   const range = parseRange(c.req.header('range'), size)
   if (range === 'unsatisfiable') {
     return c.body(null, 416, {
-      'content-type': 'video/webm',
       'accept-ranges': 'bytes',
       'content-range': `bytes */${size}`,
     })
@@ -159,12 +161,12 @@ reviews.get('/ticket/:ticketId/walkthrough.webm', async (c) => {
   const headers: Record<string, string> = {
     'content-type': 'video/webm',
     'accept-ranges': 'bytes',
-    'content-length': String(size === 0 ? 0 : end - start + 1),
+    'content-length': String(end - start + 1),
   }
   if (range) headers['content-range'] = `bytes ${start}-${end}/${size}`
-  // A zero-byte recording has no byte to stream, and `createReadStream` would
-  // be asked for the range [0, -1]. (Any Range against it is unsatisfiable, so
-  // this is the whole-file reply.)
+  // A recording that was cut off before a single byte reached disk: there is
+  // nothing to stream, and `createReadStream` would be asked for [0, -1]. (Any
+  // Range against it came back unsatisfiable above, so this is the plain reply.)
   if (size === 0) return c.body(null, 200, headers)
   return c.body(fileStream(path, start, end), range ? 206 : 200, headers)
 })

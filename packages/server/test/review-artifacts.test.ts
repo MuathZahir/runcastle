@@ -209,6 +209,22 @@ describe('review artifacts over HTTP', () => {
       }
     })
 
+    it('serves an empty recording as empty rather than erroring', async () => {
+      // A recorder cut off before a byte reached disk. The listing still says
+      // there is a video, so this route has to answer something coherent.
+      const { reviewId } = seedTickets()
+      recordWalkthrough(reviewId, '')
+      const app = mount()
+
+      const whole = await app.request(url(reviewId))
+      expect(whole.status).toBe(200)
+      expect(whole.headers.get('content-length')).toBe('0')
+      expect(await whole.text()).toBe('')
+
+      const ranged = await app.request(url(reviewId), { headers: { range: 'bytes=0-9' } })
+      expect(ranged.status).toBe(416)
+    })
+
     it('404s when the review recorded nothing', async () => {
       const { reviewId } = seedTickets()
 
