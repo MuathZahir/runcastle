@@ -101,6 +101,17 @@ export function reviewDir(ticketId: string): string {
   return join(dataDir(), 'reviews', ticketId)
 }
 
+/**
+ * The walkthrough recording a browser review leaves behind:
+ * `<reviewDir>/walkthrough.webm`. One fixed filename under {@link reviewDir} is
+ * the whole artifact record — its presence on disk IS the fact that a review
+ * recorded a video — and computing it here is what lets the route that serves it
+ * resolve a path from a ticket id alone, never from anything a caller sent.
+ */
+export function reviewWalkthroughPath(ticketId: string): string {
+  return join(reviewDir(ticketId), 'walkthrough.webm')
+}
+
 /** Every talk worktree of one project: `~/.runcastle/worktrees/<projectId>/`. */
 export function projectWorktreesDir(projectId: string): string {
   return join(dataDir(), 'worktrees', projectId)
