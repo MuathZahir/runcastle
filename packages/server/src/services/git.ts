@@ -89,6 +89,13 @@ export interface DriveInfo {
    * with a working Stop — `dryRun` with no `featureId` is how it is told apart.
    */
   dryRun?: boolean
+  /**
+   * Whose feature drive this is (improve-workflow decision 10). Absent for a
+   * dry run, which belongs to no feature and so to neither purpose. The UI
+   * reads it to stop announcing "test drive active" over a drive the review
+   * agent is holding. See {@link DrivePurpose}.
+   */
+  purpose?: DrivePurpose
   branch: string
   /** Registry id of the drive's embedded dev pane, if a dev command spawned. */
   devPaneId?: string
@@ -1407,7 +1414,7 @@ export function activeDriveInfo(): DriveInfo | null {
   if (!testDriveState) return null
   return {
     ...(testDriveState.kind === 'feature'
-      ? { featureId: testDriveState.featureId }
+      ? { featureId: testDriveState.featureId, purpose: testDriveState.purpose }
       : { dryRun: true }),
     branch: testDriveState.branch,
     devPaneId: testDriveState.devPaneId,

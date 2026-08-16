@@ -1320,6 +1320,17 @@ export function errorHeadline(s: string): string {
 }
 
 /**
+ * The line a review ticket's run-digest entry opens with when it reviewed a
+ * feature some of whose implementation tickets failed (improve-workflow
+ * decision 9) — the run digest's own record of what the review was up against,
+ * independent of whether the agent's prose remembered to say so.
+ */
+export function failedBlockerNote(seqs: readonly number[]): string {
+  const list = [...seqs].sort((a, b) => a - b).join(', ')
+  return `> Reviewed with failed implementation ticket(s): ${list}.`
+}
+
+/**
  * Drive tickets to terminal states honouring `blockedBy`. A ticket is ready when
  * all its blockers are `done`; a ticket with a `failed`/missing blocker is
  * marked failed (`blocked by failed ticket <seq>`) and cascades to its own
@@ -1332,7 +1343,9 @@ export function errorHeadline(s: string): string {
  * One ticket kind schedules differently: a `review` ticket also waits for every
  * implementation ticket in the run to settle, whatever its declared edges say.
  * It exercises the integrated branch, so starting it beside a still-burning
- * ticket would review a half-landed feature.
+ * ticket would review a half-landed feature. In exchange it is exempt from the
+ * cascade — a blocker that failed still lets it start, and its run-digest entry
+ * says which ones did (see {@link failedBlockerNote}).
  */
 export async function burnTickets(
   ctx: WorkflowCtx,
@@ -1348,8 +1361,14 @@ export async function burnTickets(
   const digests: HarvestedDigest[] = []
 
   // A blocker is satisfied when `done` OR `cancelled` — a human cancelled it
-  // because the work is unnecessary, so dependents proceed without it.
-  const satisfied = (s: TicketStatus | undefined): boolean => s === 'done' || s === 'cancelled'
+  // because the work is unnecessary, so dependents proceed without it. For a
+  // review ticket `failed` counts too (improve-workflow decision 9): its
+  // blockers are every implementation ticket in the batch, so the generic
+  // cascade would let one flaky ticket cancel the whole review — and reviewing
+  // a partially-failed feature is the review's most valuable case, not its
+  // least. Implementation tickets keep the cascade untouched.
+  const satisfied = (t: Ticket, s: TicketStatus | undefined): boolean =>
+    s === 'done' || s === 'cancelled' || (isReviewTicket(t) && s === 'failed')
 
   /**
    * The review precondition, held defensively rather than trusted to the
@@ -1367,10 +1386,29 @@ export async function burnTickets(
     for (const b of t.blockedBy) {
       const present = bySeq.has(b)
       const bs = present ? status.get(b) : undefined
-      if (!present || bs === 'failed') return { blockedBy: b, present }
+      // A blocker missing from the run is a malformed graph, not a failed
+      // ticket — that cascades whatever the kind; a failed one cascades only
+      // where it does not already satisfy this ticket.
+      if (!present || (bs === 'failed' && !satisfied(t, bs))) return { blockedBy: b, present }
     }
     if (isReviewTicket(t) && !implementationsSettled()) return 'wait'
-    return t.blockedBy.every((b) => satisfied(status.get(b))) ? 'ready' : 'wait'
+    return t.blockedBy.every((b) => satisfied(t, status.get(b))) ? 'ready' : 'wait'
+  }
+
+  /**
+   * Keep a ticket's digest for the run aggregate. A review ticket that ran
+   * anyway because its blockers were merely terminal carries the names of the
+   * ones that failed into the run's record — the account of a partially-failed
+   * feature is worth nothing if the reader cannot tell it was one. Only the run
+   * digest is annotated; `ticket.digest` stays the agent's own words, because
+   * which sibling tickets failed is a fact about the run, not about the review.
+   */
+  const harvestDigest = (t: Ticket, digest: string | undefined): void => {
+    const failed = isReviewTicket(t) ? t.blockedBy.filter((b) => status.get(b) === 'failed') : []
+    const body = [failed.length > 0 ? failedBlockerNote(failed) : undefined, digest]
+      .filter(Boolean)
+      .join('\n\n')
+    if (body) digests.push({ seq: t.seq, title: t.title, digest: body })
   }
 
   const failTicket = (
@@ -1383,7 +1421,7 @@ export async function burnTickets(
     status.set(seq, 'failed')
     if (!t) return
     ctx.updateTicket(t.id, { status: 'failed', error, ...(digest ? { digest } : {}) })
-    if (digest) digests.push({ seq: t.seq, title: t.title, digest })
+    harvestDigest(t, digest)
     if (extra) ctx.emitEvent({ ...extra, ticketId: t.id })
   }
 
@@ -1416,9 +1454,8 @@ export async function burnTickets(
           message: `ticket ${t.seq} done without DIGEST.md`,
           ticketId: t.id,
         })
-      } else {
-        digests.push({ seq: t.seq, title: t.title, digest: outcome.digest })
       }
+      harvestDigest(t, outcome.digest)
     } else {
       failTicket(seq, outcome.error, outcome.event, outcome.digest)
       ctx.emitEvent({
