@@ -270,14 +270,30 @@ describe('what the review agent is handed', () => {
       FEATURE_BRANCH: 'feature/demo',
       DIGEST_PATH: '/data/reviews/tkt_3/DIGEST.md',
       BLOCKED_PATH: '/data/reviews/tkt_3/BLOCKED.md',
+      WALKTHROUGH_PATH: '/data/reviews/tkt_3/walkthrough.webm',
     })
 
     expect(prompt).not.toContain('{{')
-    // The two wires and the two report paths are the contract with the burner.
+    // The two wires and the report paths are the contract with the burner.
     expect(prompt).toContain('review_drive')
     expect(prompt).toContain('add_test_note')
     expect(prompt).toContain('/data/reviews/tkt_3/DIGEST.md')
     expect(prompt).toContain('/data/reviews/tkt_3/BLOCKED.md')
+    // The recording is aimed at the file the artifact routes serve, and is
+    // stopped in the same cleanup that stops the drive.
+    expect(prompt).toContain('agent-browser record start /data/reviews/tkt_3/walkthrough.webm')
+    expect(prompt).toContain('agent-browser record stop')
+  })
+
+  it('tells the agent where the recording is optional and where it is not', () => {
+    const template = readFileSync(reviewTemplatePath(), 'utf8')
+
+    // A recording failure is never a review failure (decision 8), a review that
+    // is not a browser walkthrough records nothing, and a partially-failed
+    // feature is stated in the closing summary note (decision 9).
+    expect(template).toContain('A recording failure never fails the review.')
+    expect(template).toContain('skip the browser and the recording entirely')
+    expect(template).toMatch(/partially-built feature/)
   })
 })
 

@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { delimiter, join } from 'node:path'
 import type { RuncastleConfig, Ticket, WorkflowCtx } from '@runcastle/core'
-import { logsDir, reviewDir } from '@runcastle/core/paths'
+import { logsDir, reviewDir, reviewWalkthroughPath } from '@runcastle/core/paths'
 import { run } from '@ai-hero/sandcastle'
 import type { AgentStreamEvent, RunOptions } from '@ai-hero/sandcastle'
 import { noSandbox } from '@ai-hero/sandcastle/sandboxes/no-sandbox'
@@ -56,6 +56,7 @@ const PLACEHOLDERS = [
   'FEATURE_BRANCH',
   'DIGEST_PATH',
   'BLOCKED_PATH',
+  'WALKTHROUGH_PATH',
 ] as const
 
 /** {@link renderTemplate} over the review template's fixed key set. */
@@ -110,6 +111,8 @@ interface ReviewArtifacts {
   mcpConfigPath: string
   digestPath: string
   blockedPath: string
+  /** Where a browser review points `agent-browser record start`. */
+  walkthroughPath: string
 }
 
 function writeReviewArtifacts(
@@ -129,6 +132,7 @@ function writeReviewArtifacts(
     mcpConfigPath,
     digestPath: join(dir, 'DIGEST.md'),
     blockedPath: join(dir, 'BLOCKED.md'),
+    walkthroughPath: reviewWalkthroughPath(ticket.id),
   }
 }
 
@@ -182,6 +186,7 @@ export async function executeReviewTicket(
     FEATURE_BRANCH: feature.branch,
     DIGEST_PATH: artifacts.digestPath,
     BLOCKED_PATH: artifacts.blockedPath,
+    WALKTHROUGH_PATH: artifacts.walkthroughPath,
   })
 
   mkdirSync(logsDir(), { recursive: true })
