@@ -10,9 +10,11 @@ import {
   latestRun,
   mergeConflictKickoff,
   reviewChecks,
+  reviewWalkthroughUrl,
   sessionActive,
   type MergeConflictState,
 } from '../../lib/feature-ui'
+import { useReviewArtifacts } from '../../lib/reviews'
 import { fmtDateTime, relTime } from '../../lib/format'
 import { useLivePoll } from '../../lib/live'
 import { useToast } from '../../lib/toast'
@@ -91,6 +93,11 @@ export function ReviewBody({
     commitCount: commits.data?.count,
     notes: notes.data,
   })
+  // What the review left on disk, over the plain HTTP routes beside tRPC. The
+  // walkthrough sits with the summary rather than under the notes: the card
+  // above says what the agent found, this one shows it happening.
+  const artifacts = useReviewArtifacts(feature.id)
+  const walkthrough = reviewWalkthroughUrl(artifacts.data)
   // What a drive on THIS project does — a prepared one renders an environment,
   // runs the setup command and boots a dev server; an unprepared one checks the
   // branch out and stops. The card used to promise the first to everyone.
@@ -151,12 +158,43 @@ export function ReviewBody({
 
       {isDriving && ownDrive && <DrivePane drive={ownDrive} />}
 
+      {walkthrough && <WalkthroughCard url={walkthrough} />}
+
       <NotesPanel
         featureId={feature.id}
         tickets={tickets}
         rows={notes.data ?? []}
         readonly={readonly}
       />
+    </div>
+  )
+}
+
+/**
+ * The review agent's walkthrough (decisions #8): what it actually did on this
+ * branch, recorded as it went, so review can be *consumed* rather than driven —
+ * which is the whole point of the video, since driving is the thing the human
+ * was skipping.
+ *
+ * A native `<video>` and no player library: agent-browser records WebM, which
+ * browsers play natively, and the route behind this URL answers range requests
+ * so scrubbing works. `preload="metadata"` fetches the duration and nothing
+ * else — a walkthrough is evidence to reach for, not something to autoload in
+ * full every time the review screen opens.
+ *
+ * Rendered only when a recording exists ({@link reviewWalkthroughUrl} returns
+ * null otherwise): a backend review records nothing, and an empty player frame
+ * would read as a video that failed to load.
+ */
+function WalkthroughCard({ url }: { url: string }) {
+  return (
+    <div className="review-card walkthrough-card">
+      <SectionTitle>Review walkthrough</SectionTitle>
+      <video className="walkthrough-video" src={url} controls preload="metadata" />
+      <div className="drive-copy">
+        What the review agent did on this branch, as it did it. What it made of it is in the notes
+        below.
+      </div>
     </div>
   )
 }

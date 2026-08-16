@@ -1,5 +1,7 @@
+import { useQueryClient } from '@tanstack/react-query'
 import { useEffect, useRef, useSyncExternalStore } from 'react'
 import { trpc } from '../trpc'
+import { REVIEW_ARTIFACTS_KEY } from './reviews'
 
 /**
  * Live sync: subscribes to the server's `GET /api/stream` SSE feed and
@@ -260,12 +262,18 @@ export function startLiveSync(handlers: LiveSyncHandlers): () => void {
  */
 export function useLiveSync(): LiveStatus {
   const utils = trpc.useUtils()
+  // The review artifact listing is the one live surface that is not a tRPC
+  // query (media wants plain HTTP), so it is invalidated through the client
+  // directly rather than through `utils`.
+  const queryClient = useQueryClient()
   const status = useLiveStatus()
 
   // `utils` is a new proxy object each render; the effect must run exactly once
   // (a re-subscribe cycle would drop signals), so reach it through a ref.
   const utilsRef = useRef(utils)
   utilsRef.current = utils
+  const clientRef = useRef(queryClient)
+  clientRef.current = queryClient
 
   useEffect(() => {
     /**
@@ -300,6 +308,10 @@ export function useLiveSync(): LiveStatus {
       void u.feature.commitCount.invalidate()
       void u.project.prepSession.invalidate()
       void u.project.projectSession.invalidate()
+      // The review agent's walkthrough appears mid-burn, at the tail of a run
+      // the human is already watching — so the player has to arrive on the same
+      // push as everything else, not on a reload.
+      void clientRef.current.invalidateQueries({ queryKey: [REVIEW_ARTIFACTS_KEY] })
     }
 
     const invalidateTranscript = (): void => {
