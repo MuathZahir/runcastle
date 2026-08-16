@@ -1,4 +1,6 @@
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { createServer } from 'node:http'
+import type { AddressInfo } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { PreparedKey, Project, SessionRow } from '@runcastle/core'
@@ -16,6 +18,7 @@ import {
   __resetTestDriveState,
   activeDriveInfo,
   createFeatureBranch,
+  recordDryRunUrl,
   testDrive,
 } from '../src/services/git'
 import { prepView } from '../src/services/prep'
@@ -280,6 +283,34 @@ describe('the preparation dry-run drive', () => {
     expect(status.devUrl).toBeUndefined()
 
     await drive('stop')
+  })
+
+  // The prep agent's own view of app readiness (decision 5): the same poll the
+  // human's drive panel waits on, reported through the action it already calls.
+  it('reports app readiness through status, once the sniffed URL answers', async () => {
+    const server = createServer((_req, res) => {
+      res.writeHead(200)
+      res.end('ok')
+    })
+    await new Promise<void>((r) => server.listen(0, '127.0.0.1', () => r()))
+    const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}/`
+
+    await drive('start')
+    // Stand in for the pane's sniffer, which needs a real dev server to fire.
+    recordDryRunUrl(ctx, project.id, url)
+    // Synchronously after the sniff, nothing has answered yet.
+    expect(activeDriveInfo()?.devReady).toBe(false)
+
+    let status = await drive('status')
+    for (let i = 0; i < 100 && !status.devReady; i++) {
+      await delay(20)
+      status = await drive('status')
+    }
+    expect(status).toMatchObject({ devUrl: url, devReady: true })
+    expect(eventTypes()).toContain('prep.dryrun.ready')
+
+    await drive('stop')
+    await new Promise<void>((r) => server.close(() => r()))
   })
 
   it('refuses status and stop when no dry run is up', async () => {
