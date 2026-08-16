@@ -7,6 +7,7 @@ import type { DriveState } from '../../lib/workspace'
 import { driveCapabilities } from '../../lib/settings'
 import { testDriveExplainer } from '../../lib/vocabulary'
 import {
+  driveWheel,
   latestRun,
   mergeConflictKickoff,
   reviewChecks,
@@ -140,8 +141,13 @@ export function ReviewBody({
 
       <div className="review-card">
         <SectionTitle>Test drive</SectionTitle>
-        {isDriving && driving ? (
-          <DriveStatus branch={driving.branch} drive={ownDrive} />
+        {/* `driving` is this browser's own record of a drive it started, so a
+            review drive — started by an agent on the host — is invisible in it.
+            The server's `ownDrive` is what knows one is up at all, and reading
+            both is what lets this card describe a review drive instead of
+            offering to start a drive the server would refuse (decisions #10). */}
+        {isDriving || ownDrive ? (
+          <DriveStatus branch={driving?.branch ?? ownDrive?.branch ?? ''} drive={ownDrive} />
         ) : dryRun ? (
           <div className="drive-copy">
             A preparation dry-run is holding the drive — it is proving this project’s drive
@@ -153,6 +159,7 @@ export function ReviewBody({
             behind the wheel.
           </div>
         )}
+        {ownDrive?.purpose === 'review' && <StopReviewDrive featureId={feature.id} />}
       </div>
       </div>
 
@@ -428,14 +435,23 @@ function NoteEditor({
  * Three states, because the three have different fixes: a server is up (drive
  * away), nothing was meant to start (set a dev command in Settings), or the spawn
  * failed (its output is in the timeline).
+ *
+ * Who is driving is a separate question from what is running, and {@link
+ * driveWheel} answers it: the live state reads "review agent driving" when the
+ * drive is the review ticket's own (decisions #10), and is word-for-word the
+ * human's when it is not.
  */
 function DriveStatus({
   branch,
   drive,
 }: {
   branch: string
-  drive: { devPaneId?: string; devConfigured: boolean } | null | undefined
+  drive:
+    | { purpose?: 'human' | 'review'; devPaneId?: string; devConfigured: boolean }
+    | null
+    | undefined
 }) {
+  const wheel = driveWheel(drive)
   // While driveInfo is still in flight, say the one thing that is certainly true.
   if (!drive) {
     return (
@@ -450,13 +466,10 @@ function DriveStatus({
       <>
         <div className="drive-live">
           <span className="drive-pulse" />
-          <span className="drive-label">driving now</span>
+          <span className="drive-label">{wheel.label}</span>
           <span className="drive-loc">{branch}</span>
         </div>
-        <div className="drive-copy">
-          Click through the feature. When it feels right, merge — or stop the drive and send
-          feedback back through tickets.
-        </div>
+        <div className="drive-copy">{wheel.copy}</div>
       </>
     )
   }
@@ -472,6 +485,39 @@ function DriveStatus({
           : 'Your repo is on this branch, but no server was started: this project has no dev command. Set one in Settings and the next drive boots the app here — or run it yourself and click through.'}
       </div>
     </>
+  )
+}
+
+/**
+ * Stop, for a drive the review agent is holding (decisions #10).
+ *
+ * The human's own Stop lives in the next-step bar and the status bar, and both
+ * are driven by this browser's record of a drive IT started — so a review drive
+ * has no stop control anywhere without this one. It needs one: lap 1
+ * deliberately made `stop` purpose-blind so the human can reclaim the slot from
+ * a review agent that died holding it, and a Stop the server honours but the UI
+ * never offers is the same as no Stop at all.
+ */
+function StopReviewDrive({ featureId }: { featureId: string }) {
+  const utils = trpc.useUtils()
+  const toast = useToast()
+  const stop = trpc.feature.testDrive.useMutation({
+    onSuccess: () => {
+      void utils.feature.driveInfo.invalidate()
+      void utils.feature.get.invalidate({ id: featureId })
+    },
+    onError: (e) => toast.push(e.message),
+  })
+
+  return (
+    <Button
+      variant="ghost"
+      className="drive-stop-review"
+      disabled={stop.isPending}
+      onClick={() => stop.mutate({ featureId, action: 'stop' })}
+    >
+      Stop the review drive
+    </Button>
   )
 }
 
