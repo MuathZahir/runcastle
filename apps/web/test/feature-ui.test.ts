@@ -6,6 +6,7 @@ import {
   capLane,
   defaultBaseBranch,
   DRAFT_GLYPH,
+  driveWheel,
   duplicateTitleWarning,
   kickoffTrouble,
   liveSessionBlocker,
@@ -17,6 +18,7 @@ import {
   phaseGlyph,
   reviewChecks,
   reviewOutcome,
+  reviewWalkthroughUrl,
   rowChip,
   sessionActive,
   sessionDoneState,
@@ -1101,6 +1103,59 @@ describe('reviewOutcome', () => {
       state: 'waiting',
       status: 'running',
     })
+  })
+})
+
+describe('reviewWalkthroughUrl', () => {
+  const recorded = (ticketId: string) => ({
+    hasVideo: true,
+    videoUrl: `/api/reviews/ticket/${ticketId}/walkthrough.webm`,
+  })
+  const silent = { hasVideo: false, videoUrl: null }
+
+  it('has nothing to play when no review ran, or when none recorded', () => {
+    expect(reviewWalkthroughUrl()).toBeNull()
+    expect(reviewWalkthroughUrl([])).toBeNull()
+    expect(reviewWalkthroughUrl([silent])).toBeNull()
+  })
+
+  it('plays the recording a review left behind', () => {
+    expect(reviewWalkthroughUrl([recorded('t1')])).toBe(
+      '/api/reviews/ticket/t1/walkthrough.webm',
+    )
+  })
+
+  it('plays the LATEST review that recorded, not the latest review', () => {
+    expect(reviewWalkthroughUrl([recorded('t1'), recorded('t2')])).toBe(
+      '/api/reviews/ticket/t2/walkthrough.webm',
+    )
+    // A later review that recorded nothing must not hide the one that did.
+    expect(reviewWalkthroughUrl([recorded('t1'), silent])).toBe(
+      '/api/reviews/ticket/t1/walkthrough.webm',
+    )
+  })
+})
+
+describe('driveWheel', () => {
+  const human = driveWheel({ purpose: 'human' })
+
+  it('names the review agent when the drive is its own', () => {
+    const wheel = driveWheel({ purpose: 'review' })
+    expect(wheel.label).toBe('review agent driving')
+    expect(wheel.copy).toContain('review agent')
+  })
+
+  it('leaves the human’s wording exactly as it was', () => {
+    expect(human.label).toBe('driving now')
+    expect(human.copy).toBe(
+      'Click through the feature. When it feels right, merge — or stop the drive and send feedback back through tickets.',
+    )
+  })
+
+  it('reads a drive with no purpose as the human’s — every drive predating the wire was', () => {
+    expect(driveWheel({})).toEqual(human)
+    expect(driveWheel()).toEqual(human)
+    expect(driveWheel(null)).toEqual(human)
   })
 })
 
