@@ -13,6 +13,8 @@ import {
   mergeSummary,
   needsMe,
   nextStep,
+  openApp,
+  openAppWaitingLabel,
   parseMapSections,
   phaseGlyph,
   reviewChecks,
@@ -949,6 +951,42 @@ describe('testDriveTaken', () => {
 
   it('stays true after the drive stops — it still happened', () => {
     expect(testDriveTaken([ev(1, 'testdrive.started'), ev(2, 'testdrive.stopped')])).toBe(true)
+  })
+})
+
+/**
+ * Ticket 2 — "Open app" is a promise that the link loads. A sniffed URL is not
+ * that promise: only the server having watched it answer is.
+ */
+describe('openApp', () => {
+  it('is nothing at all until a URL has been sniffed', () => {
+    expect(openApp(undefined)).toBeNull()
+    expect(openApp(null)).toBeNull()
+    expect(openApp({ devReady: false })).toBeNull()
+  })
+
+  it('is a starting state — never a link — while the app has not answered', () => {
+    const open = openApp({ devUrl: 'http://localhost:5173/', devReady: false })
+    expect(open).toEqual({ url: 'http://localhost:5173/', state: 'starting' })
+    // The URL is still visible, as text: a human who wants to try it early can.
+    expect(openAppWaitingLabel(open!)).toBe('starting… http://localhost:5173/')
+  })
+
+  it('becomes the link once the server has seen the app respond', () => {
+    expect(openApp({ devUrl: 'http://localhost:5173/', devReady: true })).toEqual({
+      url: 'http://localhost:5173/',
+      state: 'ready',
+    })
+  })
+
+  it('says so when the readiness poll gave up, and still does not link', () => {
+    const open = openApp({
+      devUrl: 'http://localhost:5173/',
+      devReady: false,
+      devReadyTimedOut: true,
+    })
+    expect(open?.state).toBe('timedOut')
+    expect(openAppWaitingLabel(open!)).toBe('http://localhost:5173/ — not answering')
   })
 })
 

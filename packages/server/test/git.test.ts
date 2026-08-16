@@ -1,4 +1,7 @@
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync, existsSync } from 'node:fs'
+import { createServer } from 'node:http'
+import type { Server } from 'node:http'
+import type { AddressInfo } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { Feature, Project } from '@runcastle/core'
@@ -12,6 +15,7 @@ import { runs } from '../src/db/schema'
 import { listAfter } from '../src/services/events'
 import {
   __resetTestDriveState,
+  __setAppReadinessTiming,
   activeDriveInfo,
   activeTestDriveFeatureId,
   burnWorktreePath,
@@ -122,12 +126,50 @@ async function addRemoteOnlyBranch(g: SimpleGit, repoDir: string, branch: string
   await g.fetch()
 }
 
+/** Loopback HTTP servers a readiness test stood up, closed after each test. */
+const servers: Server[] = []
+
+/** A 127.0.0.1 port with nothing listening: bound to claim one, then released. */
+async function freePort(): Promise<number> {
+  const probe = createServer()
+  await new Promise<void>((r) => probe.listen(0, '127.0.0.1', () => r()))
+  const port = (probe.address() as AddressInfo).port
+  await new Promise<void>((r) => probe.close(() => r()))
+  return port
+}
+
+/** Answer every request on `port` with `status` — including the unhappy ones. */
+async function serve(port: number, status: number): Promise<void> {
+  const server = createServer((_req, res) => {
+    res.writeHead(status)
+    res.end('body')
+  })
+  servers.push(server)
+  await new Promise<void>((r) => server.listen(port, '127.0.0.1', () => r()))
+}
+
+/** Poll `fn` until it holds, for the asynchronous halves (readiness, sniffing). */
+async function waitFor(fn: () => boolean, tries = 200): Promise<void> {
+  for (let i = 0; i < tries; i++) {
+    if (fn()) return
+    await new Promise((r) => setTimeout(r, 10))
+  }
+  throw new Error('waitFor timed out')
+}
+
+const delay = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms))
+
 beforeEach(() => {
   __resetTestDriveState()
 })
 
-afterEach(() => {
+afterEach(async () => {
   __resetTestDriveState()
+  __setAppReadinessTiming()
+  while (servers.length) {
+    const server = servers.pop()
+    if (server) await new Promise<void>((r) => server.close(() => r()))
+  }
   while (tmpDirs.length) {
     const dir = tmpDirs.pop()
     if (dir) {
@@ -608,6 +650,67 @@ describe('testDrive', () => {
     recordDriveUrl(ctx, 'feat_someone_else', 'http://localhost:3000/')
     expect(activeDriveInfo()?.devUrl).toBeUndefined()
     await testDrive(ctx, project, feature, 'stop')
+  })
+
+  // App readiness (decision 5). A dev server prints its URL well before it
+  // serves, so "Open app" is held back until the URL actually answers — which
+  // is the only thing that makes the link worth clicking on the first try.
+  it('holds the app un-ready until the sniffed URL answers, polling through refused connections', async () => {
+    __setAppReadinessTiming({ intervalMs: 20, budgetMs: 10_000 })
+    const port = await freePort()
+    const url = `http://127.0.0.1:${port}/`
+
+    await testDrive(ctx, project, feature, 'start')
+    recordDriveUrl(ctx, feature.id, url)
+
+    // Nothing is listening yet: the URL is known, the link is not live.
+    expect(activeDriveInfo()).toMatchObject({ devUrl: url, devReady: false })
+    await delay(60)
+    expect(activeDriveInfo()?.devReady).toBe(false)
+
+    // A 503 is still a server: it accepted the connection and spoke HTTP, which
+    // is all "will the link load" asks.
+    await serve(port, 503)
+    await waitFor(() => activeDriveInfo()?.devReady === true)
+
+    expect(activeDriveInfo()?.devReadyTimedOut).toBeUndefined()
+    expect(listAfter(ctx, feature.id, 0).map((e) => e.type)).toContain('testdrive.ready')
+
+    await testDrive(ctx, project, feature, 'stop')
+  })
+
+  it('warns and leaves the drive alone when the readiness poll runs out of budget', async () => {
+    __setAppReadinessTiming({ intervalMs: 5, budgetMs: 40 })
+    const url = `http://127.0.0.1:${await freePort()}/`
+
+    await testDrive(ctx, project, feature, 'start')
+    recordDriveUrl(ctx, feature.id, url)
+    await waitFor(() => activeDriveInfo()?.devReadyTimedOut === true)
+
+    expect(activeDriveInfo()?.devReady).toBe(false)
+    // The URL is kept: giving up on the poll is a warning, not a retraction.
+    expect(activeDriveInfo()?.devUrl).toBe(url)
+    expect(listAfter(ctx, feature.id, 0).map((e) => e.type)).toContain('testdrive.ready_timeout')
+
+    // The drive itself never noticed — it is live, and it stops normally.
+    expect(activeTestDriveFeatureId()).toBe(feature.id)
+    expect((await testDrive(ctx, project, feature, 'stop')).ok).toBe(true)
+  })
+
+  it('cancels an in-flight readiness poll on stop, with no late event', async () => {
+    __setAppReadinessTiming({ intervalMs: 5, budgetMs: 10_000 })
+    const url = `http://127.0.0.1:${await freePort()}/`
+
+    await testDrive(ctx, project, feature, 'start')
+    recordDriveUrl(ctx, feature.id, url)
+    await testDrive(ctx, project, feature, 'stop')
+
+    // Long after the poll's own interval, nothing it could have said arrived.
+    await delay(100)
+    const types = listAfter(ctx, feature.id, 0).map((e) => e.type)
+    expect(types).not.toContain('testdrive.ready')
+    expect(types).not.toContain('testdrive.ready_timeout')
+    expect(activeDriveInfo()).toBeNull()
   })
 
   // Test-drive hooks. runcastle holds no model of what "bringing the project

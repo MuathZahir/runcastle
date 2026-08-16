@@ -8,6 +8,8 @@ import { testDriveExplainer } from '../../lib/vocabulary'
 import {
   latestRun,
   mergeConflictKickoff,
+  openApp,
+  openAppWaitingLabel,
   reviewChecks,
   sessionActive,
   type MergeConflictState,
@@ -488,18 +490,30 @@ function ConflictCard({
  * The test-drive dev pane: the project dev command runs in a drive-owned PTY the
  * server streams over `/ws/terminal/:devPaneId`. Collapsed to a status strip by
  * default (the terminal is only mounted — and only connects its WS — once
- * expanded), so boot output/errors are one click away. The "Open app" link
- * surfaces the moment the server sniffs a localhost URL from the output; both the
- * pane and the link disappear when the drive stops (driveInfo → null). Nothing
- * auto-opens — the human clicks the link.
+ * expanded), so boot output/errors are one click away. The sniffed URL surfaces
+ * as plain "starting…" text and only becomes the "Open app" link once the server
+ * has polled it and something answered; both the pane and the link disappear
+ * when the drive stops (driveInfo → null). Nothing auto-opens — the human clicks
+ * the link.
  *
  * Rendered only when a dev pane really exists — a "dev server" chip over a
  * process that was never spawned is the lie findings F22 is about, and the
  * {@link DriveStatus} card says what happened instead.
  */
-function DrivePane({ drive }: { drive: { branch: string; devPaneId?: string; devUrl?: string } }) {
+function DrivePane({
+  drive,
+}: {
+  drive: {
+    branch: string
+    devPaneId?: string
+    devUrl?: string
+    devReady?: boolean
+    devReadyTimedOut?: boolean
+  }
+}) {
   const [expanded, setExpanded] = useState(false)
   if (!drive.devPaneId) return null
+  const open = openApp(drive)
 
   return (
     <div className="drive-pane">
@@ -507,11 +521,14 @@ function DrivePane({ drive }: { drive: { branch: string; devPaneId?: string; dev
         <span className="drive-pane-kind">dev server</span>
         <span className="drive-pane-loc">{drive.branch}</span>
         <span className="drive-pane-spacer" />
-        {drive.devUrl && (
-          <a className="drive-open" href={drive.devUrl} target="_blank" rel="noreferrer noopener">
-            Open app ↗
-          </a>
-        )}
+        {open &&
+          (open.state === 'ready' ? (
+            <a className="drive-open" href={open.url} target="_blank" rel="noreferrer noopener">
+              Open app ↗
+            </a>
+          ) : (
+            <span className="drive-open drive-open-waiting">{openAppWaitingLabel(open)}</span>
+          ))}
         <button
           type="button"
           className="btn btn-xs btn-ghost drive-pane-toggle"
