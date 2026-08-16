@@ -79,7 +79,7 @@ export interface EditGuardInput {
  * drive contract asks it for exactly these files, and a guard that denied them
  * would deny the session its own job.
  */
-export const PREPARE_WRITABLE = ['.runcastle/', '.gitignore'] as const
+const PREPARE_WRITABLE = ['.runcastle/', '.gitignore'] as const
 
 /** Is `target` one of the {@link PREPARE_WRITABLE} paths in this checkout? */
 function isPrepareWritable(worktreePath: string, target: string): boolean {
@@ -110,13 +110,13 @@ export function evaluateEditGuard(input: EditGuardInput): EditDenial | null {
 
   if (!input.featureSlug) {
     if (input.kind === 'prepare' && isPrepareWritable(input.worktreePath, target)) return null
+    const writable = PREPARE_WRITABLE.map((p) => `\`${p}\``).join(' and ')
     return {
       reason:
         `This ${input.kind} session does not edit files — it runs in the developer's own ` +
-        `checkout. The exception is the drive machinery it authors: ${PREPARE_WRITABLE.map(
-          (p) => `\`${p}\``,
-        ).join(' and ')}. Record what you establish with the \`record_finding\` MCP tool, and ` +
-        'ask the human to make any other change to the repo itself.',
+        `checkout. Its one exception is the drive machinery it authors: ${writable}. Record ` +
+        'what you establish with the `record_finding` MCP tool, and ask the human to make any ' +
+        'other change to the repo itself.',
     }
   }
 
