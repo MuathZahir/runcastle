@@ -2140,7 +2140,14 @@ details.wp-group-done > summary { cursor: pointer; list-style: revert; }
   background: color-mix(in srgb, var(--danger) 9%, transparent);
 }
 .conflict-resolve { margin-top: 14px; }
-/* drive setup failure — the hook's own output, monospaced and scrollable */
+/* drive setup failure (multi-service decision 4) — the loudest card at review,
+   because a drive that did not come up is where a human gets stranded */
+.drive-failure-card {
+  max-width: 1000px;
+  border-color: color-mix(in srgb, var(--danger) 45%, var(--hairline));
+}
+.drive-failure-fix { margin-top: 14px; }
+/* the hook's own output, monospaced and scrollable */
 .drive-failure-output {
   margin: 12px 0 0;
   padding: 10px 12px;

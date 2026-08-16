@@ -746,7 +746,7 @@ export function renderDriveFixPrompt(brief: DriveFixBrief): string {
     `failed drive is still holding the wheel with \`${delta.branch}\` checked out — that is the`,
     'state you need, so do not switch branches or stop the drive by hand.',
     '',
-    `The machinery is \`.runcastle/\` in this checkout, on this branch right now. Fix it there and`,
+    'The machinery is `.runcastle/` in this checkout, on this branch right now. Fix it there and',
     '**commit it to the feature branch** — a branch carries its own setup, so the fix must ride it',
     'to review, and `retry_drive` cannot even start on a dirty tree. Those files and `.gitignore`',
     'are the only ones you may write; the guard denies the rest, and a change to the app itself',

@@ -7,7 +7,7 @@ import { simpleGit } from 'simple-git'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { AppCtx } from '../src/db/types'
 import { GateError } from '../src/errors'
-import { renderDriveFixPrompt, renderSettings } from '../src/launcher/artifacts'
+import { renderDriveFixPrompt } from '../src/launcher/artifacts'
 import { evaluateEditGuard } from '../src/launcher/edit-guard'
 import { launchDriveFixSession, launchSession } from '../src/launcher/launcher'
 import { createSessionRow, getSessionRow } from '../src/launcher/sessions'
@@ -128,9 +128,9 @@ describe('launching a drive-fix session', () => {
     expect(guard('src/index.ts')?.reason).toContain('drive machinery')
     // The guard is a hook, not a sentence in the briefing — it has to be
     // registered in the settings this launch wrote.
-    const settings = JSON.parse(
-      readFileSync(join(sessionDir(sessionId), 'settings.json'), 'utf8'),
-    ) as ReturnType<typeof renderSettings>
+    const settings = JSON.parse(readFileSync(join(sessionDir(sessionId), 'settings.json'), 'utf8')) as {
+      hooks: Record<string, unknown>
+    }
     expect(settings.hooks.PreToolUse).toBeDefined()
   })
 

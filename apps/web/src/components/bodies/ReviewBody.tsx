@@ -519,7 +519,7 @@ function DriveFailureCard({ featureId, failure }: { featureId: string; failure: 
   })
 
   return (
-    <div className="review-card conflict-card drive-failure-card">
+    <div className="review-card drive-failure-card">
       <SectionTitle>Drive setup failed</SectionTitle>
       <div className="drive-copy">
         The branch is checked out, but <code>{failure.command}</code> {failure.outcome} — so
@@ -530,7 +530,7 @@ function DriveFailureCard({ featureId, failure }: { featureId: string; failure: 
       {failure.canFix && (
         <Button
           variant="solid"
-          className="conflict-resolve"
+          className="drive-failure-fix"
           disabled={fix.isPending}
           onClick={() => fix.mutate({ featureId })}
         >

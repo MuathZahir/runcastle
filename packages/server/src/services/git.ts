@@ -1463,23 +1463,25 @@ export function activeTestDriveFeatureId(): string | undefined {
 
 /** The active drive's info for the UI (dev pane + Open app link), or null. */
 export function activeDriveInfo(): DriveInfo | null {
-  if (!testDriveState) return null
+  const state = testDriveState
+  if (!state) return null
   return {
-    ...(testDriveState.kind === 'feature'
-      ? { featureId: testDriveState.featureId }
+    // What a feature drive has and a dry run does not: the feature it belongs
+    // to, and what its setup made of the world (a dry run reports both through
+    // its own `DryRunResult` instead).
+    ...(state.kind === 'feature'
+      ? {
+          featureId: state.featureId,
+          ...(state.hookFailure ? { hookFailure: state.hookFailure } : {}),
+          ...(state.envKeys ? { envKeys: state.envKeys } : {}),
+        }
       : { dryRun: true }),
-    branch: testDriveState.branch,
-    devPaneId: testDriveState.devPaneId,
-    devUrl: testDriveState.devUrl,
-    devReady: testDriveState.devReadiness === 'ready',
-    ...(testDriveState.devReadiness === 'timedOut' ? { devReadyTimedOut: true } : {}),
-    devConfigured: testDriveState.devConfigured,
-    ...(testDriveState.kind === 'feature' && testDriveState.hookFailure
-      ? { hookFailure: testDriveState.hookFailure }
-      : {}),
-    ...(testDriveState.kind === 'feature' && testDriveState.envKeys
-      ? { envKeys: testDriveState.envKeys }
-      : {}),
+    branch: state.branch,
+    devPaneId: state.devPaneId,
+    devUrl: state.devUrl,
+    devReady: state.devReadiness === 'ready',
+    ...(state.devReadiness === 'timedOut' ? { devReadyTimedOut: true } : {}),
+    devConfigured: state.devConfigured,
   }
 }
 
@@ -1683,12 +1685,13 @@ export async function testDrive(
   // gets it verbatim. Read even after a failing hook: a script that wrote the
   // file before dying still described the world the stop hook has to tear down.
   const fileVars = readDriveEnvFile(project.repoPath)
-  emitDriveEnv(ctx, scope, Object.keys(fileVars))
+  const envKeys = Object.keys(fileVars)
+  emitDriveEnv(ctx, scope, envKeys)
   const driveEnv = driveOverlay(identity, fileVars)
   // Both outlive the click that produced them, on the drive itself: the review
   // panel reads the failure for the rest of the drive, and a drive-fix session
   // is briefed with what this drive actually ran with.
-  testDriveState.envKeys = Object.keys(fileVars)
+  testDriveState.envKeys = envKeys
   if (setup?.failure) testDriveState.hookFailure = setup.failure
 
   // Best-effort: spawn the dev command in a drive-owned embedded PTY pane and
