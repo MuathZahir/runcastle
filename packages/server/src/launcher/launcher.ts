@@ -814,10 +814,19 @@ export async function launchDriveFixSession(
  * cousin, not `assertSpawnable` itself: the feature rule exists because git
  * forbids two checkouts of one branch, which says nothing about feature
  * terminals — they and this session are orthogonal and never contend.
+ *
+ * A launch is FRESH unless it names a conversation to resume (decision 5). The
+ * project chat is a list now, so "open the chat" means a new conversation and
+ * picking up an old one is a click on that old one — the reverse of what this
+ * used to do, which was to silently resume the single endless conversation
+ * whatever the human meant by opening it. `resumeSessionId` is a runcastle
+ * SESSION ROW id (what the conversation list hands back), not a Claude Code id;
+ * `fresh` is the explicit spelling of the default, and wins over a row id, so a
+ * "New chat" click can never resume something.
  */
 export async function launchProjectSession(
   ctx: AppCtx,
-  input: { projectId: string },
+  input: { projectId: string; fresh?: boolean; resumeSessionId?: string },
   opts: LaunchSessionOptions = {},
 ): Promise<LaunchSessionResult> {
   const project = requireProjectById(ctx, input.projectId)
@@ -838,18 +847,36 @@ export async function launchProjectSession(
     worktreePath,
   })
 
-  const resumeSessionId = mostRecentResumableProjectSession(ctx, project.id, 'project')?.ccSessionId
+  // The chosen conversation's Claude Code id. Absent means the row never went
+  // live and has nothing the CLI could `--resume` (a bogus `--resume` makes
+  // claude exit with "No conversation found"), so we spawn fresh and say so.
+  const resumeRowId = input.fresh ? undefined : input.resumeSessionId
+  const resumeSessionId = resumeRowId
+    ? (getSessionRow(ctx, resumeRowId)?.ccSessionId ?? undefined)
+    : undefined
 
   emitProject(ctx, project.id, {
     type: 'session.launching',
-    message: 'launching project session',
-    data: { sessionId: session.id, kind: 'project', worktreePath, branch: git.PROJECT_BRANCH },
+    message: resumeSessionId ? 'resuming a project conversation' : 'launching a new project chat',
+    data: {
+      sessionId: session.id,
+      kind: 'project',
+      worktreePath,
+      branch: git.PROJECT_BRANCH,
+      ...(resumeSessionId ? {} : { fresh: true }),
+    },
   })
   if (resumeSessionId) {
     emitProject(ctx, project.id, {
       type: 'session.resumed',
       message: 'resuming the previous project conversation',
-      data: { sessionId: session.id, resumeSessionId },
+      data: { sessionId: session.id, resumeSessionId, resumedFrom: resumeRowId },
+    })
+  } else if (resumeRowId) {
+    emitProject(ctx, project.id, {
+      type: 'session.resume_unavailable',
+      message: 'that conversation was never picked up by Claude Code — starting a new chat instead',
+      data: { sessionId: session.id, resumedFrom: resumeRowId },
     })
   }
 

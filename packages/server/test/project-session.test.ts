@@ -5,10 +5,8 @@ import { join } from 'node:path'
 import type { EventRow, Project, SessionRow } from '@runcastle/core'
 import { SessionKind, isProjectSessionKind } from '@runcastle/core'
 import { PROJECT_WORKTREE_SLUG, sessionDir, worktreeDir } from '@runcastle/core/paths'
-import { eq } from 'drizzle-orm'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { AppCtx } from '../src/db/types'
-import { sessions } from '../src/db/schema'
 import {
   RUNCASTLE_MCP_ALLOW_RULES,
   SESSION_BASH_READ_RULES,
@@ -392,19 +390,9 @@ describe('launching, resuming and landing a project session', () => {
     ).rejects.toThrow(/already open/i)
   })
 
-  it('resumes its own last conversation on relaunch', async () => {
-    const first = await launchProjectSession(ctx, { projectId: project.id }, { spawn: false })
-    ctx.db
-      .update(sessions)
-      .set({ status: 'ended', ccSessionId: 'cc-project-1' })
-      .where(eq(sessions.id, first.sessionId))
-      .run()
-
-    await launchProjectSession(ctx, { projectId: project.id }, { spawn: false })
-
-    expect(launchCommand()).toContain('--resume cc-project-1')
-    expect(listByProject(ctx, project.id).map((e) => e.type)).toContain('session.resumed')
-  })
+  // Which conversation a launch opens — a new one by default, a named past one
+  // on request (decision 5) — lives in `project-conversations.test.ts` with the
+  // rest of the list it belongs to.
 
   it('lands the session’s commits on the base branch when the terminal ends', async () => {
     const { sessionId } = await launchProjectSession(ctx, { projectId: project.id }, { spawn: false })
