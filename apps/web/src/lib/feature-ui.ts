@@ -1694,23 +1694,25 @@ export function groupByLap<T extends { lap: number }>(
 /** The workspace's lap banner (decisions.md #6), or null on lap 1. */
 export interface LapBanner {
   lap: number
-  /** What put the feature on this lap, in the `lap.started` event's own words. */
-  kickoff: string | null
+  /** When Iterate put the feature on this lap, or null if the feed cannot say. */
+  startedAt: number | null
   /** What the lap before this one landed, as one line. */
   landed: string
 }
 
 /**
  * What the workspace says about the lap it is on, from lap 2 onward — which lap,
- * what kicked it off, and what the lap before it landed. Lap 1 returns null: a
- * feature that merges first try looks exactly like the plain linear flow
+ * when it was kicked off, and what the lap before it landed. Lap 1 returns null:
+ * a feature that merges first try looks exactly like the plain linear flow
  * (ADR-0010 §4), and iteration ceremony over it is noise.
  *
- * The kickoff is the latest `lap.started` message, UNLESS a later `lap.aborted`
- * took that lap back — a lap whose terminal could not be opened is rolled back
- * to the previous lap and phase, so its briefing no longer describes where the
- * feature is. Absent is a normal answer: a feed that does not reach back to the
- * Iterate simply has nothing to quote.
+ * WHY this lap exists needs no lookup — Iterate is the only thing that bumps a
+ * lap, so the reason is a constant the banner states in words. What the feed adds
+ * is WHEN: the latest `lap.started`, UNLESS a later `lap.aborted` took that lap
+ * back (a lap whose terminal could not be opened is rolled back to the previous
+ * lap and phase, so its start no longer describes where the feature is). Absent
+ * is a normal answer — a feed that does not reach back to the Iterate simply
+ * cannot date it.
  */
 export function lapBanner(
   full: Pick<FeatureFull, 'feature' | 'tickets'>,
@@ -1727,7 +1729,7 @@ export function lapBanner(
 
   return {
     lap,
-    kickoff: lastLapEvent?.type === 'lap.started' ? lastLapEvent.message : null,
+    startedAt: lastLapEvent?.type === 'lap.started' ? lastLapEvent.ts : null,
     landed: `Lap ${previous} landed ${
       landed === 0 ? 'no tickets' : `${landed} ticket${landed === 1 ? '' : 's'}`
     }`,

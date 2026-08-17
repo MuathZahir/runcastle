@@ -981,6 +981,7 @@ button {
 .nextstep,
 .readonly-bar,
 .ws-banner,
+.ws-lap,
 .ws-body-inner {
   width: 100%;
   max-width: calc(var(--content-max) + 56px);
@@ -1220,6 +1221,31 @@ button {
   padding: 1px 6px;
   flex-shrink: 0;
 }
+
+/* ---- lap banner (decisions.md #6) ----
+   Quiet by design: a standing statement of where the feature is, not an alert.
+   Never rendered on lap 1, so its mere presence already says "you iterated". */
+.ws-lap {
+  margin-top: 12px;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+.ws-lap-tag {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  color: var(--accent-2);
+  border: 1px solid var(--accent-line);
+  border-radius: 4px;
+  padding: 2px 7px;
+  flex: 0 0 auto;
+  cursor: default;
+}
+.ws-lap-body { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.ws-lap-why { font-size: 12px; color: var(--text-2); line-height: 1.5; text-wrap: pretty; }
+.ws-lap-facts { display: flex; gap: 10px; font-size: 11.5px; color: var(--text-3); }
+.ws-lap-facts > span + span::before { content: '· '; color: var(--text-4); }
 
 /* ---- workspace body (per-phase, scrollable) ---- */
 .ws-body {
@@ -2664,6 +2690,26 @@ details.lap-group[open] > summary.lap-group-head::before { content: '▾'; }
 .activity-log { display: flex; flex-direction: column; }
 .act-line { display: flex; gap: 10px; padding: 8px 4px; border-top: 1px solid var(--hairline-soft); }
 .act-line:first-child { border-top: none; }
+/* a lap boundary, drawn across the feed rather than listed in it (decisions #6) */
+.act-lap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 6px 0;
+  padding: 0 4px;
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--accent-2);
+}
+.act-lap::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--accent-line);
+}
+.act-lap-time { color: var(--text-4); order: 1; }
 .act-dot {
   width: 7px;
   height: 7px;
@@ -3313,6 +3359,34 @@ select.settings-input { cursor: pointer; }
   gap: 8px;
   margin-top: 2px;
 }
+
+/* ---- address-notes triage (decisions.md #11) ----
+   Two roads, one door. Wider than the confirmations above because one of the
+   roads is a list the human reads and picks from, not a sentence they accept. */
+.peek.notes-dialog { max-width: 560px; }
+.notes-dialog-body { display: flex; flex-direction: column; gap: 20px; }
+.notes-dialog-road { display: flex; flex-direction: column; gap: 8px; }
+.notes-dialog-list {
+  display: flex;
+  flex-direction: column;
+  max-height: 260px;
+  overflow-y: auto;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius);
+  background: var(--panel-2);
+}
+.notes-dialog-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 12px;
+  cursor: pointer;
+  transition: background var(--dur-1);
+}
+.notes-dialog-row + .notes-dialog-row { border-top: 1px solid var(--hairline-soft); }
+.notes-dialog-row:hover { background: var(--panel-3); }
+.notes-dialog-actions { display: flex; align-items: center; gap: 10px; }
+.notes-dialog-blocked { font-size: 11.5px; color: var(--text-3); text-wrap: pretty; }
 
 /* ============================================================================
    ERROR BOUNDARY / TERMINAL placeholders

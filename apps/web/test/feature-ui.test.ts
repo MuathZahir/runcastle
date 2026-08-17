@@ -837,7 +837,7 @@ describe('lapBanner', () => {
     expect(lapBanner(full(1), [started(1, 1)])).toBeNull()
   })
 
-  it('names the lap, its kickoff and what the lap before it landed', () => {
+  it('names the lap, when it started and what the lap before it landed', () => {
     const banner = lapBanner(
       full(2, [
         { lap: 1, status: 'done' },
@@ -847,26 +847,22 @@ describe('lapBanner', () => {
       ]),
       [ev(1, 'burn.started', 'burning'), started(2, 2)],
     )
-    expect(banner).toEqual({
-      lap: 2,
-      kickoff: 'rethink — lap 2',
-      landed: 'Lap 1 landed 2 tickets',
-    })
+    expect(banner).toEqual({ lap: 2, startedAt: 2, landed: 'Lap 1 landed 2 tickets' })
   })
 
-  it('reads the kickoff from the LATEST lap start', () => {
-    expect(lapBanner(full(3), [started(1, 2), started(2, 3)])?.kickoff).toBe('rethink — lap 3')
+  it('dates the lap from the LATEST lap start', () => {
+    expect(lapBanner(full(3), [started(1, 2), started(2, 3)])?.startedAt).toBe(2)
   })
 
   // A lap whose terminal could not be opened is rolled back to the previous lap
-  // and phase (`lap.aborted`), so its kickoff no longer describes where we are.
-  it('drops a kickoff a later abort took back', () => {
+  // and phase (`lap.aborted`), so its start no longer dates where we are.
+  it('drops a start a later abort took back', () => {
     const events = [started(1, 2), ev(2, 'lap.aborted', 'lap 3 aborted — back at review')]
-    expect(lapBanner(full(2), events)?.kickoff).toBeNull()
+    expect(lapBanner(full(2), events)?.startedAt).toBeNull()
   })
 
-  it('has no kickoff to show when the feed does not reach back that far', () => {
-    expect(lapBanner(full(2), [])?.kickoff).toBeNull()
+  it('has no date to show when the feed does not reach back that far', () => {
+    expect(lapBanner(full(2), [])?.startedAt).toBeNull()
   })
 
   it('says the previous lap landed nothing rather than counting zero', () => {
