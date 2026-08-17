@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import type { TestNote } from '@runcastle/core'
-import { Button, CheckLine, NoteAuthorChip, SectionTitle } from '../../ui'
+import { Button, CheckLine, LapSections, NoteAuthorChip, SectionTitle } from '../../ui'
 import { trpc } from '../../trpc'
 import type { FeatureFull, SettingsView } from '../../lib/api'
 import type { DriveState } from '../../lib/workspace'
@@ -9,6 +9,7 @@ import { testDriveExplainer } from '../../lib/vocabulary'
 import {
   driveFailure,
   driveWheel,
+  groupByLap,
   latestRun,
   mergeConflictKickoff,
   openApp,
@@ -178,6 +179,7 @@ export function ReviewBody({
 
       <NotesPanel
         featureId={feature.id}
+        lap={feature.lap}
         tickets={tickets}
         rows={notes.data ?? []}
         readonly={readonly}
@@ -216,8 +218,12 @@ function WalkthroughCard({ url }: { url: string }) {
 }
 
 /**
- * Test-drive notes: what the human saw while clicking through the branch, and
- * what became of it. Capture + checklist + one-click promotion (decisions #2).
+ * The findings inbox (decisions.md #11): what was seen while clicking through
+ * the branch, grouped under the lap it was seen on. During a drive the human only
+ * TYPES — the per-note "→ ticket" is gone, because triage one click at a time was
+ * making them do ticket admin mid-drive, and it competed with Iterate with no
+ * guidance on which to take. Both roads now leave from one "Address notes" in the
+ * next-step bar.
  *
  * Deliberately NOT gated on an active drive (decisions #4). Observations do not
  * stop when the dev server does — the "one more thing" typed right after Stop,
@@ -231,18 +237,20 @@ function WalkthroughCard({ url }: { url: string }) {
  * all. The server refuses every one of those transitions anyway; this only
  * avoids showing a button that would be turned down.
  *
- * Notes the review agent wrote are badged (decisions #7) and otherwise identical
- * — same checkbox, same Edit, same → ticket. The badge says who saw it, not what
- * the human may do about it: an agent finding IS the thing the Fix loop is meant
- * to consume, so withholding promote from exactly those notes would defeat it.
+ * Notes the review agent wrote are badged (decisions #7) and otherwise identical.
+ * The badge says who saw it, not what may be done about it: an agent finding IS
+ * the thing the fix loop is meant to consume.
  */
 function NotesPanel({
   featureId,
+  lap,
   tickets,
   rows,
   readonly,
 }: {
   featureId: string
+  /** The feature's current lap — the group rendered expanded. */
+  lap: number
   tickets: FeatureFull['tickets']
   /** The feature's notes, read by the parent so the summary counts these rows. */
   rows: TestNote[]
@@ -275,118 +283,136 @@ function NotesPanel({
   })
   const remove = trpc.notes.remove.useMutation({ onSuccess: refresh, onError })
   const toggle = trpc.notes.toggle.useMutation({ onSuccess: refresh, onError })
-  const promote = trpc.notes.promote.useMutation({
-    onSuccess: ({ ticket }) => {
-      refresh()
-      // The ticket is new: without this the ledger and the next-step bar would
-      // keep the pre-promotion list until their own poll came round, and the
-      // one-click promise is that the ticket is simply there.
-      void utils.feature.get.invalidate({ id: featureId })
-      toast.push(`promoted to ticket #${ticket.seq}`, 'success')
-    },
-    onError,
-  })
 
   // One mutation in flight at a time: the list is about to be refetched, so a
   // second click would act on a row the server is already moving.
-  const busy = edit.isPending || remove.isPending || toggle.isPending || promote.isPending
+  const busy = edit.isPending || remove.isPending || toggle.isPending
   const submit = (): void => {
     if (draft.trim() && !add.isPending) add.mutate({ featureId, text: draft })
   }
 
+  const openCount = rows.filter((n) => n.status === 'open').length
+  const meta = [
+    `${openCount} open`,
+    rows.filter((n) => n.status === 'done').length > 0 &&
+      `${rows.filter((n) => n.status === 'done').length} handled`,
+    rows.filter((n) => n.status === 'promoted').length > 0 &&
+      `${rows.filter((n) => n.status === 'promoted').length} ticketed`,
+  ]
+    .filter((p): p is string => typeof p === 'string')
+    .join(' · ')
+
+  const noteRow = (note: TestNote) => {
+    const ticket = note.ticketId ? tickets.find((t) => t.id === note.ticketId) : undefined
+    const open = note.status === 'open'
+
+    if (editing === note.id) {
+      return (
+        <NoteEditor
+          key={note.id}
+          text={note.text}
+          busy={edit.isPending}
+          onCancel={() => setEditing(null)}
+          onSave={(text) => edit.mutate({ noteId: note.id, text })}
+        />
+      )
+    }
+
+    return (
+      <div key={note.id} className={`note-row is-${note.status}`}>
+        {note.status === 'promoted' ? (
+          <span className="note-frozen" title="promoted — frozen as its ticket's record">
+            →
+          </span>
+        ) : (
+          <input
+            type="checkbox"
+            className="note-check"
+            checked={note.status === 'done'}
+            disabled={readonly || busy}
+            aria-label={open ? 'mark handled' : 'reopen'}
+            onChange={() => toggle.mutate({ noteId: note.id })}
+          />
+        )}
+
+        <span className="note-text">{note.text}</span>
+
+        <NoteAuthorChip author={note.author} />
+
+        {ticket && (
+          <span className="note-ticket" title={ticket.title}>
+            #{ticket.seq} {ticket.title}
+          </span>
+        )}
+
+        {!readonly && open && (
+          <span className="note-actions">
+            <button className="btn btn-xs btn-ghost" onClick={() => setEditing(note.id)}>
+              Edit
+            </button>
+            <button
+              className="btn btn-xs btn-ghost"
+              disabled={busy}
+              onClick={() => remove.mutate({ noteId: note.id })}
+            >
+              Delete
+            </button>
+          </span>
+        )}
+      </div>
+    )
+  }
+
   return (
     <div className="review-card notes-card">
-      <SectionTitle>Test-drive notes</SectionTitle>
+      <div className="notes-head">
+        <SectionTitle>Test-drive notes</SectionTitle>
+        {rows.length > 0 && <span className="body-meta">{meta}</span>}
+      </div>
 
       {!readonly && (
-        <div className="notes-form">
-          <input
-            className="notes-input"
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') submit()
-            }}
-            placeholder="What did you just see? e.g. the run chip goes grey while burning"
-          />
-          <Button variant="ghost" onClick={submit} disabled={!draft.trim() || add.isPending}>
-            Add
-          </Button>
-        </div>
+        <>
+          <div className="notes-form">
+            <input
+              className="notes-input"
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') submit()
+              }}
+              placeholder="What did you just see? e.g. the run chip goes grey while burning"
+            />
+            <Button
+              variant="ghost"
+              onClick={submit}
+              disabled={!draft.trim() || add.isPending}
+            >
+              {add.isPending ? 'Adding…' : 'Add'}
+            </Button>
+          </div>
+          {/* Where the triage went, said where the buttons used to be — the panel
+              is now only for capture, and the fork is one action in the bar. */}
+          <div className="notes-hint">
+            Just type what you see. When you’re done looking,{' '}
+            <strong>Address notes</strong> in the bar above turns the quick fixes into tickets — or
+            hands the whole inbox to the next lap’s session.
+          </div>
+        </>
       )}
 
       {rows.length === 0 ? (
         <div className="drive-copy">
           Nothing noted yet. Anything you write here lands in the feature’s
-          <code> test-notes.md</code>, which the next lap’s session reads — or becomes a ticket in
-          one click.
+          <code> test-notes.md</code>, which the next lap’s session reads.
         </div>
       ) : (
         <div className="notes-list">
-          {rows.map((note) => {
-            const ticket = note.ticketId ? tickets.find((t) => t.id === note.ticketId) : undefined
-            const open = note.status === 'open'
-
-            if (editing === note.id) {
-              return (
-                <NoteEditor
-                  key={note.id}
-                  text={note.text}
-                  busy={edit.isPending}
-                  onCancel={() => setEditing(null)}
-                  onSave={(text) => edit.mutate({ noteId: note.id, text })}
-                />
-              )
-            }
-
-            return (
-              <div key={note.id} className={`note-row is-${note.status}`}>
-                {note.status === 'promoted' ? (
-                  <span className="note-frozen" title="promoted — frozen as its ticket's record">
-                    →
-                  </span>
-                ) : (
-                  <input
-                    type="checkbox"
-                    className="note-check"
-                    checked={note.status === 'done'}
-                    disabled={readonly || busy}
-                    aria-label={open ? 'mark handled' : 'reopen'}
-                    onChange={() => toggle.mutate({ noteId: note.id })}
-                  />
-                )}
-
-                <NoteAuthorChip author={note.author} />
-
-                <span className="note-text">{note.text}</span>
-
-                {ticket && <span className="note-ticket">#{ticket.seq} {ticket.title}</span>}
-
-                {!readonly && open && (
-                  <span className="note-actions">
-                    <button className="btn btn-xs btn-ghost" onClick={() => setEditing(note.id)}>
-                      Edit
-                    </button>
-                    <button
-                      className="btn btn-xs btn-ghost"
-                      disabled={busy}
-                      onClick={() => remove.mutate({ noteId: note.id })}
-                    >
-                      Delete
-                    </button>
-                    <button
-                      className="btn btn-xs btn-ghost"
-                      disabled={busy}
-                      title="Make this a pending ticket on the current lap"
-                      onClick={() => promote.mutate({ noteId: note.id })}
-                    >
-                      → ticket
-                    </button>
-                  </span>
-                )}
-              </div>
-            )
-          })}
+          <LapSections
+            groups={groupByLap(rows, lap)}
+            meta={(g) => `${g.rows.filter((n) => n.status === 'open').length} open`}
+          >
+            {(group) => group.map(noteRow)}
+          </LapSections>
         </div>
       )}
     </div>

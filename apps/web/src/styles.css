@@ -2281,8 +2281,12 @@ details.lap-group[open] > summary.lap-group-head::before { content: '▾'; }
   background: #000;
 }
 
-/* test-drive notes — capture box + checklist, for the whole review phase */
+/* the findings inbox — capture box + lap-grouped checklist (decisions.md #11) */
 .notes-card { max-width: 1000px; margin-top: 14px; }
+.notes-head { display: flex; align-items: baseline; gap: 10px; }
+/* Where triage went, now that the rows no longer carry it themselves. */
+.notes-hint { margin-top: 8px; font-size: 12px; color: var(--text-3); text-wrap: pretty; }
+.notes-hint strong { color: var(--text-2); font-weight: 500; }
 .notes-form { display: flex; align-items: center; gap: 8px; margin-top: 14px; }
 .notes-input {
   flex: 1;
