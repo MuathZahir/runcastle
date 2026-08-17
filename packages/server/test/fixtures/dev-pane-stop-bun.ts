@@ -198,6 +198,15 @@ async function main(): Promise<void> {
   // process.exit skips `finally`, so cleanup belongs on the one exit path.
   const report = (ok: boolean): never => {
     evidence.ok = ok
+    // Never leak the tree we built. Synchronous on purpose: the failure most
+    // likely being reported here is a stop that hangs, so an awaited teardown
+    // could hang the report too — and the report is the whole point. The pids
+    // are in the evidence either way, so anything that survives is findable.
+    try {
+      ptyRegistry().get(paneId)?.pty.kill()
+    } catch {
+      // Already gone, or the backend refused — best-effort by design.
+    }
     rmSync(dir, { recursive: true, force: true })
     process.stdout.write(`EVIDENCE ${JSON.stringify(evidence)}\n`)
     process.exit(ok ? 0 : 1)
