@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { killProcessTree } from '../src/pty/kill-tree'
 import type { PtySession } from '../src/pty/pty'
 import { tearDownEntry, type PtyEntry } from '../src/pty/registry'
@@ -80,6 +80,35 @@ describe('killProcessTree', () => {
     const started = Date.now()
     await expect(killProcessTree(pid)).resolves.toBeUndefined()
     expect(Date.now() - started).toBeLessThan(3000)
+  }, 15000)
+
+  /**
+   * The breadcrumb has to come from HERE, not from the registry. The registry logs
+   * `entry.pty.pid`, which under the sidecar backend is the inner node-pty pid the
+   * async `ready` frame swaps in — while the sidecar deliberately roots its
+   * taskkill at the host pid it spawned. The two differ on every real run, so a
+   * teardown log written one layer up cannot name the pid actually killed.
+   * `killProcessTree` is the one place that knows it.
+   */
+  it('names the pid it actually kills, the branch taken, and ms-to-settle', async () => {
+    const errs: string[] = []
+    const spy = vi.spyOn(console, 'error').mockImplementation((...args: unknown[]) => {
+      errs.push(args.map(String).join(' '))
+    })
+    try {
+      await killProcessTree(0x7ffffffe)
+    } finally {
+      spy.mockRestore()
+    }
+
+    const line = errs.find((l) => l.includes('killProcessTree'))
+    expect(line, `no kill-tree breadcrumb. Saw: ${JSON.stringify(errs)}`).toBeDefined()
+    // Same channel and prefix as the registry's teardown lines, so one grep for
+    // `[pty-teardown]` gets an investigator the whole story in order.
+    expect(line).toContain('[pty-teardown]')
+    expect(line).toContain(`pid=${0x7ffffffe}`)
+    expect(line).toContain(process.platform === 'win32' ? 'branch=taskkill' : 'branch=pgroup')
+    expect(line).toMatch(/settled after \d+ms/)
   }, 15000)
 })
 

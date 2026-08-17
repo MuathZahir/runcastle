@@ -92,9 +92,14 @@ export async function tearDownEntry(entry: PtyEntry): Promise<void> {
     log(`${id}: skip (exited=true)`)
     return
   }
-  const pid = entry.pty.pid
+  // `ptyPid=`, not `pid=`: under the sidecar backend this is the INNER node-pty
+  // pid that the async `ready` frame swaps in, while the tree-kill is rooted at
+  // the host pid the sidecar spawned. Still worth logging — it is the pid the
+  // terminal talks to — but it must not pose as the kill target. The pid actually
+  // handed to the kill is logged by `killProcessTree` itself.
+  const ptyPid = entry.pty.pid
   const started = Date.now()
-  log(`${id}: start exited=false pid=${pid} t=${started}`)
+  log(`${id}: start exited=false ptyPid=${ptyPid} t=${started}`)
 
   const finished = await withDeadline(async () => {
     await entry.pty.killTree()

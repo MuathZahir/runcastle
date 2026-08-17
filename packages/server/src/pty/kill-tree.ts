@@ -64,14 +64,29 @@ function taskkillTree(pid: number): Promise<void> {
  * that is already gone, or a pid the OS has since reused, is normal at teardown.
  */
 export async function killProcessTree(pid: number): Promise<void> {
-  if (process.platform === 'win32') {
+  const started = Date.now()
+  const isWin32 = process.platform === 'win32'
+
+  if (isWin32) {
     await taskkillTree(pid)
-    return
+  } else {
+    try {
+      // Negative pid → the whole process group (pid == pgid for the pty leader).
+      process.kill(-pid, 'SIGTERM')
+    } catch {
+      // Tree already gone / pid reused — the caller's pty.kill() still fires onExit.
+    }
   }
-  try {
-    // Negative pid → the whole process group (pid == pgid for the pty leader).
-    process.kill(-pid, 'SIGTERM')
-  } catch {
-    // Tree already gone / pid reused — the caller's pty.kill() still fires onExit.
-  }
+
+  // The pid is logged HERE, not by the registry one layer up, because this is the
+  // only place that knows it. The registry logs `entry.pty.pid`; under the sidecar
+  // backend the tree is rooted at the HOST pid the sidecar spawned, never that
+  // inner node-pty pid, so the two differ on every real run. An investigator
+  // self-locating a recurrence from these breadcrumbs must be handed the pid that
+  // was actually killed, or they inspect an untouched stranger and conclude the
+  // tree-kill missed. Same `[pty-teardown]` prefix as the registry's lines, so one
+  // grep gets the whole teardown story in order.
+  console.error(
+    `[pty-teardown] killProcessTree: pid=${pid} branch=${isWin32 ? 'taskkill' : 'pgroup'} settled after ${Date.now() - started}ms`,
+  )
 }
