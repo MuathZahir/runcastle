@@ -425,6 +425,7 @@ export type ActionKind =
   | 'revisit' // launchSession { kind: 'revisit' } — resume the old conversation, amend docs + tickets
   | 'resolveConflict' // launchSession { kind: 'revisit', kickoffLine: mergeConflictKickoff(…) }
   | 'rethink' // feature.rethink — start the next lap (review → ideation)
+  | 'addressNotes' // opens the triage fork over the open notes (promote or iterate)
   | 'unarchive' // feature.unarchive — restore an archived feature to its lane (next-step bar)
 
 /**
@@ -1199,6 +1200,13 @@ export function nextStep(
      * Feature form guards against.
      */
     draftBaseUnresolved?: boolean
+    /**
+     * Open test-drive notes standing on this feature (decisions.md #11). Set and
+     * non-zero puts the "Address notes" triage in review's bar — the one place
+     * the promote-or-iterate fork is offered, now that the notes panel is a pure
+     * findings inbox.
+     */
+    openNotes?: number
   },
 ): NextStep {
   const { feature, tickets, sessions, runs, gate } = full
@@ -1555,6 +1563,13 @@ export function nextStep(
                 : {}),
             },
           ]
+      // Triage for the findings inbox (decisions.md #11), spread into all three
+      // review bars beside the drive and Iterate. Never disabled: it opens the
+      // fork rather than performing either road, and its promote road only
+      // writes ticket rows — no terminal, no branch — so neither a live session
+      // nor a drive can take it away. The dialog constrains the OTHER road.
+      const addressNotes: NextAction[] =
+        (ctx.openNotes ?? 0) > 0 ? [{ label: 'Address notes', kind: 'addressNotes' }] : []
 
       // A recorded conflict outranks every other review verb (findings F8). The
       // bar used to highlight Merge & ship directly above the red conflict panel,
@@ -1583,7 +1598,7 @@ export function nextStep(
           primary: live
             ? undefined
             : { label: 'Resolve the merge conflict', kind: 'resolveConflict' },
-          secondary: [retryMerge, ...burn, testDriveAction, ...iterate],
+          secondary: [retryMerge, ...burn, testDriveAction, ...addressNotes, ...iterate],
           busy: false,
           ...driveWarning,
         }
@@ -1600,7 +1615,12 @@ export function nextStep(
             ? 'Test-driving the branch — burn the fix tickets when you’re ready.'
             : `${pending} fix ticket${pending === 1 ? '' : 's'} ready — burn to run them, then review again.`,
           primary: { label: `Burn ${pending} ticket${pending === 1 ? '' : 's'}`, kind: 'burn' },
-          secondary: [{ label: 'Merge & ship', kind: 'merge' }, testDriveAction, ...iterate],
+          secondary: [
+            { label: 'Merge & ship', kind: 'merge' },
+            testDriveAction,
+            ...addressNotes,
+            ...iterate,
+          ],
           busy: false,
           ...driveWarning,
         }
@@ -1621,7 +1641,7 @@ export function nextStep(
         title: ctx.driving ? 'Merge when it looks right' : 'Test drive, then ship',
         desc,
         primary: { label: 'Merge & ship', kind: 'merge' },
-        secondary: [testDriveAction, ...iterate],
+        secondary: [testDriveAction, ...addressNotes, ...iterate],
         busy: false,
         ...driveWarning,
       }
@@ -1635,6 +1655,82 @@ export function nextStep(
         secondary: [{ label: 'Ask a question', kind: 'askQuestions' }],
         busy: false,
       }
+  }
+}
+
+// --- lap, the spine of feature history --------------------------------------
+
+/** One lap's worth of rows, as the ledger and the notes inbox render them. */
+export interface LapGroup<T> {
+  lap: number
+  rows: T[]
+  /** Rendered expanded; every other group collapses. */
+  current: boolean
+}
+
+/**
+ * Rows under their lap, ascending (decisions.md #6). Ascending because that is
+ * how `test-notes.md` already sections its `## Lap N` headers on disk — the UI
+ * is catching up with a grouping the pipeline has had all along, not inventing
+ * a second order for it.
+ *
+ * The expanded group is `currentLap`'s, falling back to the last lap that HAS
+ * rows: a lap always begins empty, so keying purely on `feature.lap` would
+ * collapse everything on screen the moment Iterate landed.
+ */
+export function groupByLap<T extends { lap: number }>(
+  rows: readonly T[],
+  currentLap: number,
+): LapGroup<T>[] {
+  const laps = [...new Set(rows.map((r) => r.lap))].sort((a, b) => a - b)
+  const expanded = laps.includes(currentLap) ? currentLap : laps[laps.length - 1]
+  return laps.map((lap) => ({
+    lap,
+    rows: rows.filter((r) => r.lap === lap),
+    current: lap === expanded,
+  }))
+}
+
+/** The workspace's lap banner (decisions.md #6), or null on lap 1. */
+export interface LapBanner {
+  lap: number
+  /** What put the feature on this lap, in the `lap.started` event's own words. */
+  kickoff: string | null
+  /** What the lap before this one landed, as one line. */
+  landed: string
+}
+
+/**
+ * What the workspace says about the lap it is on, from lap 2 onward — which lap,
+ * what kicked it off, and what the lap before it landed. Lap 1 returns null: a
+ * feature that merges first try looks exactly like the plain linear flow
+ * (ADR-0010 §4), and iteration ceremony over it is noise.
+ *
+ * The kickoff is the latest `lap.started` message, UNLESS a later `lap.aborted`
+ * took that lap back — a lap whose terminal could not be opened is rolled back
+ * to the previous lap and phase, so its briefing no longer describes where the
+ * feature is. Absent is a normal answer: a feed that does not reach back to the
+ * Iterate simply has nothing to quote.
+ */
+export function lapBanner(
+  full: Pick<FeatureFull, 'feature' | 'tickets'>,
+  events: readonly EventRow[],
+): LapBanner | null {
+  const lap = full.feature.lap
+  if (lap <= 1) return null
+
+  const lastLapEvent = [...events]
+    .reverse()
+    .find((e) => e.type === 'lap.started' || e.type === 'lap.aborted')
+  const previous = lap - 1
+  const landed = full.tickets.filter((t) => t.lap === previous && t.status === 'done').length
+
+  return {
+    lap,
+    kickoff: lastLapEvent?.type === 'lap.started' ? lastLapEvent.message : null,
+    landed: `Lap ${previous} landed ${
+      landed === 0 ? 'no tickets' : `${landed} ticket${landed === 1 ? '' : 's'}`
+    }`,
   }
 }
 

@@ -105,6 +105,22 @@ export function activityLine(
   return { summary: summary || event.type, detail }
 }
 
+// --- laps in the feed --------------------------------------------------------
+
+/**
+ * Whether this event OPENS a lap, and so renders as a divider across the feed
+ * rather than one more row in it (decisions.md #6).
+ *
+ * A lap boundary is not another thing that happened to the feature — it is the
+ * line every row above and below it belongs to one side of, which is exactly
+ * what the flat feed could not say. `lap.aborted` is deliberately not one: the
+ * lap it names was rolled back, so a divider for it would section the feed at a
+ * boundary that no longer exists.
+ */
+export function isLapDivider(type: string): boolean {
+  return type === 'lap.started'
+}
+
 // --- the run stream's colour ------------------------------------------------
 
 /** What colour class an event line reads as. */
@@ -143,6 +159,10 @@ export function eventLevel(event: Pick<EventRow, 'type' | 'data'>): EventLevel {
   // generic `conflict` keyword, which would otherwise paint the whole resolve red.
   if (type === 'merge.conflict.resolved') return 'ok'
   if (type === 'merge.conflict.resolving') return 'active'
+  // A lap that never opened is a failure the keyword scan cannot see: it knows
+  // "fail" and "cancel" but not "abort", so the one event saying the lap was
+  // rolled back used to be the quietest line in the feed.
+  if (type === 'lap.aborted') return 'error'
   if (/(error|fail|conflict|cancel|stopped)/i.test(type)) return 'error'
   if (/(done|succeed|finished|shipped|merged)/i.test(type)) return 'ok'
   if (/(start|burn|launch|advance|running|retry|resum)/i.test(type)) return 'active'

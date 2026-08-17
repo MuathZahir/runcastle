@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { EventRow } from '@runcastle/core'
-import { activityLine, eventLevel, stripMarkdown } from '../src/lib/activity'
+import { activityLine, eventLevel, isLapDivider, stripMarkdown } from '../src/lib/activity'
 
 /**
  * Findings F10.5 / F18 — the activity feed leaked agent internals (`Bash cd
@@ -145,5 +145,34 @@ describe('eventLevel', () => {
 
   it('falls back rather than guessing when a run.finished carries no payload', () => {
     expect(eventLevel(ev({ type: 'run.finished', data: null }))).toBe('ok')
+  })
+
+  /**
+   * Ticket 4 / decisions.md #6 — an abandoned lap read as neutral `info`: the
+   * keyword scan knows "fail" and "cancel" but not "abort", so the one event that
+   * says a lap never happened was the quietest line in the feed.
+   */
+  it('reads a started lap as progress and an aborted one as a failure', () => {
+    expect(eventLevel(ev({ type: 'lap.started' }))).toBe('active')
+    expect(eventLevel(ev({ type: 'lap.aborted' }))).toBe('error')
+  })
+})
+
+/**
+ * Ticket 4 / decisions.md #6 — the feed renders a lap start as a divider across
+ * the timeline rather than one more row, because it is the boundary every row
+ * around it belongs to one side of.
+ */
+describe('isLapDivider', () => {
+  it('is the lap start and nothing else', () => {
+    expect(isLapDivider('lap.started')).toBe(true)
+    expect(isLapDivider('lap.aborted')).toBe(false)
+    expect(isLapDivider('phase.advanced')).toBe(false)
+  })
+
+  it('leaves the divider a readable line to render', () => {
+    expect(activityLine(ev({ type: 'lap.started', message: 'rethink — lap 2' })).summary).toBe(
+      'rethink — lap 2',
+    )
   })
 })

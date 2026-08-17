@@ -9,7 +9,9 @@ import {
   driveFailure,
   driveWheel,
   duplicateTitleWarning,
+  groupByLap,
   kickoffTrouble,
+  lapBanner,
   liveSessionBlocker,
   mergeConflictKickoff,
   mergeSummary,
@@ -38,6 +40,7 @@ import {
   unresolvedMergeConflict,
   waypointGroups,
   type CheckRow,
+  type NextAction,
   type TriageGroup,
   type TriageKey,
   type Waypoint,
@@ -721,6 +724,158 @@ describe('nextStep at review', () => {
       expect(ns.warning).toBeUndefined()
       expect(start(ns)?.disabled).toBe('A preparation dry-run is in progress — stop it first')
     })
+  })
+
+  /**
+   * Ticket 4 / decisions.md #11 — triage moved out of the notes panel (which was
+   * making the human mint tickets one click at a time) into ONE bar action that
+   * offers the fork: batch-promote the quick fixes, or start the lap session.
+   */
+  describe('with open notes to address', () => {
+    const ADDRESS: NextAction = { label: 'Address notes', kind: 'addressNotes' }
+
+    it('offers Address notes when open notes stand', () => {
+      const ns = nextStep(reviewFull({}), { driving: false, openNotes: 3 })
+      expect(labels(ns.secondary)).toEqual(['Start test drive', 'Address notes', 'Iterate'])
+      expect(ns.secondary).toContainEqual(ADDRESS)
+    })
+
+    it('says nothing when every note is handled', () => {
+      for (const openNotes of [0, undefined]) {
+        const ns = nextStep(reviewFull({}), { driving: false, openNotes })
+        expect(labels(ns.secondary)).not.toContain('Address notes')
+      }
+    })
+
+    // The two fixes the fork leads to are both still reachable from a bar that is
+    // already saying something else — a burn to run, a conflict to resolve.
+    it('rides along on the fix-ticket and conflict bars too', () => {
+      const burning = nextStep(reviewFull({ ticketStatuses: ['pending'] }), {
+        driving: false,
+        openNotes: 1,
+      })
+      expect(burning.primary?.kind).toBe('burn')
+      expect(burning.secondary).toContainEqual(ADDRESS)
+
+      const conflicted = nextStep(reviewFull({}), {
+        driving: false,
+        openNotes: 1,
+        conflict: { base: 'main', files: ['a.ts'], at: 1 },
+      })
+      expect(conflicted.primary?.kind).toBe('resolveConflict')
+      expect(conflicted.secondary).toContainEqual(ADDRESS)
+    })
+
+    // Promoting notes writes ticket rows; it neither opens a terminal nor wants
+    // the branch, so neither a live session nor a drive can take it away. The
+    // fork's OTHER road (Iterate) is what those states constrain, in the dialog.
+    it('stays offered while a session is live and while the drive holds the branch', () => {
+      expect(
+        nextStep(reviewFull({ sessionLive: true }), { driving: false, openNotes: 2 }).secondary,
+      ).toContainEqual(ADDRESS)
+      expect(nextStep(reviewFull({}), { driving: true, openNotes: 2 }).secondary).toContainEqual(
+        ADDRESS,
+      )
+    })
+  })
+})
+
+/**
+ * Ticket 4 / decisions.md #6 — lap is the organizing spine of feature history, so
+ * the ledger and the notes inbox both group their rows under it.
+ */
+describe('groupByLap', () => {
+  const row = (lap: number, id: string) => ({ lap, id })
+
+  it('groups ascending, keeping each lap`s own row order', () => {
+    const rows = [row(2, 'c'), row(1, 'a'), row(2, 'd'), row(1, 'b')]
+    expect(groupByLap(rows, 2)).toEqual([
+      { lap: 1, rows: [row(1, 'a'), row(1, 'b')], current: false },
+      { lap: 2, rows: [row(2, 'c'), row(2, 'd')], current: true },
+    ])
+  })
+
+  it('has nothing to group when there are no rows', () => {
+    expect(groupByLap([], 1)).toEqual([])
+  })
+
+  it('marks the single lap of a lap-1 feature current', () => {
+    expect(groupByLap([row(1, 'a')], 1)).toEqual([
+      { lap: 1, rows: [row(1, 'a')], current: true },
+    ])
+  })
+
+  /**
+   * A lap always starts with nothing in it. Marking only `feature.lap` current
+   * would collapse every group on the screen the moment Iterate landed, so the
+   * last lap that HAS rows is expanded instead — the panel never reads as empty
+   * over rows it is holding.
+   */
+  it('expands the last lap with rows when the current lap has none yet', () => {
+    expect(groupByLap([row(1, 'a')], 2)).toEqual([
+      { lap: 1, rows: [row(1, 'a')], current: true },
+    ])
+  })
+})
+
+/**
+ * Ticket 4 / decisions.md #6 — from lap 2 on, the workspace says which lap this
+ * is, what kicked it off and what the lap before it landed. Lap 1 stays quiet: no
+ * iteration ceremony on a feature that merges first try.
+ */
+describe('lapBanner', () => {
+  const ev = (id: number, type: string, message: string): EventRow =>
+    ({ id, projectId: 'p', ts: id, type, message }) as EventRow
+  const started = (id: number, lap: number) => ev(id, 'lap.started', `rethink — lap ${lap}`)
+  const full = (lap: number, ticketLaps: { lap: number; status: TicketStatus }[] = []) =>
+    ({
+      feature: { id: 'f1', lap },
+      tickets: ticketLaps.map((t, i) => ({ id: `t${i}`, ...t })),
+    }) as unknown as FeatureFull
+
+  it('says nothing on lap 1', () => {
+    expect(lapBanner(full(1), [started(1, 1)])).toBeNull()
+  })
+
+  it('names the lap, its kickoff and what the lap before it landed', () => {
+    const banner = lapBanner(
+      full(2, [
+        { lap: 1, status: 'done' },
+        { lap: 1, status: 'done' },
+        { lap: 1, status: 'failed' },
+        { lap: 2, status: 'pending' },
+      ]),
+      [ev(1, 'burn.started', 'burning'), started(2, 2)],
+    )
+    expect(banner).toEqual({
+      lap: 2,
+      kickoff: 'rethink — lap 2',
+      landed: 'Lap 1 landed 2 tickets',
+    })
+  })
+
+  it('reads the kickoff from the LATEST lap start', () => {
+    expect(lapBanner(full(3), [started(1, 2), started(2, 3)])?.kickoff).toBe('rethink — lap 3')
+  })
+
+  // A lap whose terminal could not be opened is rolled back to the previous lap
+  // and phase (`lap.aborted`), so its kickoff no longer describes where we are.
+  it('drops a kickoff a later abort took back', () => {
+    const events = [started(1, 2), ev(2, 'lap.aborted', 'lap 3 aborted — back at review')]
+    expect(lapBanner(full(2), events)?.kickoff).toBeNull()
+  })
+
+  it('has no kickoff to show when the feed does not reach back that far', () => {
+    expect(lapBanner(full(2), [])?.kickoff).toBeNull()
+  })
+
+  it('says the previous lap landed nothing rather than counting zero', () => {
+    expect(lapBanner(full(2, [{ lap: 2, status: 'pending' }]), [])?.landed).toBe(
+      'Lap 1 landed no tickets',
+    )
+    expect(lapBanner(full(2, [{ lap: 1, status: 'done' }]), [])?.landed).toBe(
+      'Lap 1 landed 1 ticket',
+    )
   })
 })
 
