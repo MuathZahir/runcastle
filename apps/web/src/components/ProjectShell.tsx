@@ -175,6 +175,9 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
         onNewFeature={ws.startCreate}
         onOpenSettings={() => ws.setSettings(true)}
         onOpenPreparation={ws.startPreparation}
+        // The palette navigates, it never launches: this opens the project
+        // workspace, where the conversation list decides new-versus-resume.
+        onOpenProjectChat={ws.selectProject}
         nav={nav}
       />
 

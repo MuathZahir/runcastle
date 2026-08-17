@@ -196,6 +196,24 @@ export const sessions = sqliteTable('sessions', {
    */
   awaitingInput: integer('awaiting_input', { mode: 'boolean' }).notNull().default(false),
   worktreePath: text('worktree_path').notNull(),
+  /**
+   * This conversation's human-readable name, derived from the first thing the
+   * human said in it and cached here (see `services/conversations.ts`). Null
+   * until that derivation runs — the transcript does not exist at insert time,
+   * and it is the transcript that knows what the conversation is about.
+   *
+   * Cached rather than derived per read because deriving it means opening a
+   * JSONL transcript that grows for the whole session; a conversation list of
+   * twenty rows would otherwise re-read twenty files on every poll.
+   */
+  title: text('title'),
+  /**
+   * When the row was inserted. Additive and nullable: `sessions` carried no
+   * timestamp at all (readers ordered by the implicit `rowid`), and the rows
+   * that predate this column have no creation time anyone can recover — a
+   * backfilled default would be a fabricated date shown to the human as fact.
+   */
+  createdAt: integer('created_at'),
 })
 
 export const tickets = sqliteTable('tickets', {

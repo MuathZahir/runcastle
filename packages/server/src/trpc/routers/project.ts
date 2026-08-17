@@ -5,6 +5,7 @@ import * as git from '../../services/git'
 import { prepView } from '../../services/prep'
 import { launchPrepareSession, launchProjectSession } from '../../launcher/launcher'
 import { activeProjectSession } from '../../launcher/sessions'
+import { conversationTranscript, listProjectConversations } from '../../services/conversations'
 import { closeProject, listProjects, openProject, renameProject } from '../../services/projects'
 import { requireProjectById } from '../../services/repo'
 import { publicProcedure, router } from '../context'
@@ -81,19 +82,43 @@ export const projectRouter = router({
     .query(({ ctx, input }) => activeProjectSession(ctx, input.projectId, 'prepare')),
 
   /**
-   * Open the project's intake CONVERSATION (decisions 17–20) — the session that
+   * Open a project intake CONVERSATION (decisions 17–20) — the session that
    * takes a lump of raw intent, grills it until it resolves into N features, and
    * creates them. It runs on a runcastle-owned branch and lands its commits on
    * the base branch when it ends; it never touches the human's checkout.
+   *
+   * Opens a NEW conversation by default (decision 5). `resumeSessionId` names a
+   * row from {@link conversations} to pick back up instead; `fresh` says so
+   * explicitly and overrules it.
    */
   talkToProject: publicProcedure
-    .input(z.object({ projectId: z.string() }))
-    .mutation(({ ctx, input }) => launchProjectSession(ctx, { projectId: input.projectId })),
+    .input(
+      z.object({
+        projectId: z.string(),
+        fresh: z.boolean().optional(),
+        resumeSessionId: z.string().optional(),
+      }),
+    )
+    .mutation(({ ctx, input }) => launchProjectSession(ctx, input)),
 
   /** The live project conversation for this project, if one is open. */
   projectSession: publicProcedure
     .input(z.object({ projectId: z.string() }))
     .query(({ ctx, input }) => activeProjectSession(ctx, input.projectId, 'project')),
+
+  /**
+   * Every project conversation, newest first (decision 5) — the workspace's
+   * list. Includes the live one, so the list is the whole history rather than
+   * "the ones that are over".
+   */
+  conversations: publicProcedure
+    .input(z.object({ projectId: z.string() }))
+    .query(({ ctx, input }) => listProjectConversations(ctx, input.projectId)),
+
+  /** One conversation's turns, for the read-only transcript pane; empty when its transcript is gone. */
+  conversationTranscript: publicProcedure
+    .input(z.object({ sessionId: z.string() }))
+    .query(({ ctx, input }) => conversationTranscript(ctx, input.sessionId)),
 
   /**
    * The preparation surface the UI polls: what is still open, every established

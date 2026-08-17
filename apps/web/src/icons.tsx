@@ -149,6 +149,14 @@ export function IconTerminal(p: IconProps) {
   )
 }
 
+export function IconMessage(p: IconProps) {
+  return (
+    <svg {...base(p)}>
+      <path d="M2 4.4a1.6 1.6 0 0 1 1.6-1.6h8.8A1.6 1.6 0 0 1 14 4.4v5.2a1.6 1.6 0 0 1-1.6 1.6H6.4L3.2 14v-2.8A1.6 1.6 0 0 1 2 9.6z" />
+    </svg>
+  )
+}
+
 export function IconDoc(p: IconProps) {
   return (
     <svg {...base(p)}>

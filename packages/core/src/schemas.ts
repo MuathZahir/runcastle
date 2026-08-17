@@ -472,6 +472,10 @@ export const SessionRow = z.object({
    */
   awaitingInput: z.boolean(),
   worktreePath: z.string(),
+  /** The conversation's derived name; unset until its transcript has one to give. */
+  title: z.string().optional(),
+  /** Insert time; unset on rows written before `sessions` had a timestamp. */
+  createdAt: z.number().optional(),
 })
 export type SessionRow = z.infer<typeof SessionRow>
 

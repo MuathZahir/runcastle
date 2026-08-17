@@ -183,6 +183,13 @@
       "when": 1786884097081,
       "tag": "0023_chilly_callisto",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "6",
+      "when": 1786972953023,
+      "tag": "0026_polite_vertigo",
+      "breakpoints": true
     }
   ]
 }
