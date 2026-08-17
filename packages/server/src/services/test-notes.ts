@@ -219,35 +219,96 @@ function promotionTicket(feature: Feature, note: TestNote): TicketInput {
 }
 
 /**
- * Turn an open note into a `pending` fix ticket on the current lap, in one
- * click. The ticket goes through `storeTickets` so seq/lap/status semantics
- * stay in one place, and the existing Burn-from-review path picks it up
- * unchanged; the note then freezes with a link to it.
+ * Turn open notes into `pending` fix tickets on the current lap — the body both
+ * promoters share. Every guard runs before the first write, so a selection with
+ * one bad note mints no tickets at all: the panel's checkboxes are the human's
+ * whole triage decision, and a half-applied one would leave them re-deriving
+ * which half landed.
+ *
+ * The tickets go through `storeTickets` in the selection's own order, so
+ * seq/lap/status semantics stay in one place and the existing Burn-from-review
+ * path picks them up unchanged; the notes then freeze with a link each.
+ *
+ * The event and the `test-notes.md` re-render are the CALLERS' — one promotion
+ * reads as one line in the timeline whether it moved one note or six.
+ */
+function freezeAsTickets(
+  ctx: AppCtx,
+  noteIds: string[],
+): { feature: Feature; notes: TestNote[]; tickets: Ticket[] } {
+  if (noteIds.length === 0) throw new InvalidInputError('no notes selected to promote')
+  if (new Set(noteIds).size !== noteIds.length)
+    throw new InvalidInputError('the same note appears twice in the selection')
+
+  const selected = noteIds.map((id) => getNote(ctx, id))
+  for (const note of selected) assertOpen(note, 'promote')
+
+  const featureId = selected[0].featureId
+  if (selected.some((n) => n.featureId !== featureId))
+    throw new InvalidInputError('every note in a promotion must belong to the same feature')
+  const feature = getFeatureRow(ctx, featureId)
+
+  const tickets = storeTickets(
+    ctx,
+    featureId,
+    selected.map((note) => promotionTicket(feature, note)),
+  )
+
+  const now = Date.now()
+  selected.forEach((note, i) => {
+    ctx.db
+      .update(testNotes)
+      .set({ status: 'promoted', ticketId: tickets[i].id, updatedAt: now })
+      .where(eq(testNotes.id, note.id))
+      .run()
+  })
+
+  return { feature, notes: selected.map((n) => getNote(ctx, n.id)), tickets }
+}
+
+/**
+ * Promote ONE note, in one click. Kept for the MCP wire and for callers that
+ * want the minted ticket back on its own; the review panel batches instead.
  */
 export function promoteNote(
   ctx: AppCtx,
   noteId: string,
 ): { note: TestNote; ticket: Ticket } {
-  const current = getNote(ctx, noteId)
-  assertOpen(current, 'promote')
-  const feature = getFeatureRow(ctx, current.featureId)
+  const { feature, notes, tickets } = freezeAsTickets(ctx, [noteId])
+  const [note] = notes
+  const [ticket] = tickets
 
-  const [ticket] = storeTickets(ctx, current.featureId, [promotionTicket(feature, current)])
-
-  ctx.db
-    .update(testNotes)
-    .set({ status: 'promoted', ticketId: ticket.id, updatedAt: Date.now() })
-    .where(eq(testNotes.id, noteId))
-    .run()
-
-  emit(ctx, current.featureId, {
+  emit(ctx, feature.id, {
     type: 'note.promoted',
     message: `note promoted to ticket ${ticket.seq}`,
     ticketId: ticket.id,
     data: { noteId, seq: ticket.seq },
   })
   renderTestNotes(ctx, feature)
-  return { note: getNote(ctx, noteId), ticket }
+  return { note, ticket }
+}
+
+/**
+ * Promote a SELECTION of notes in one mutation (decisions.md #11). Triage is one
+ * decision the human makes over the whole findings inbox — "these are quick
+ * fixes" — so it lands as one call, one timeline entry and one re-render, rather
+ * than the per-note promotion that made them click through their own triage.
+ */
+export function promoteMany(
+  ctx: AppCtx,
+  noteIds: string[],
+): { notes: TestNote[]; tickets: Ticket[] } {
+  const { feature, notes, tickets } = freezeAsTickets(ctx, noteIds)
+
+  emit(ctx, feature.id, {
+    type: 'notes.promoted',
+    message: `${notes.length} note${notes.length === 1 ? '' : 's'} promoted to ticket${
+      tickets.length === 1 ? ` ${tickets[0].seq}` : `s ${tickets.map((t) => t.seq).join(', ')}`
+    }`,
+    data: { noteIds, seqs: tickets.map((t) => t.seq) },
+  })
+  renderTestNotes(ctx, feature)
+  return { notes, tickets }
 }
 
 function noteLine(ctx: AppCtx, note: TestNote): string {

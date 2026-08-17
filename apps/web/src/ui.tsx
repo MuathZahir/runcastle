@@ -7,7 +7,7 @@ import type {
   TicketKind,
   TicketStatus,
 } from '@runcastle/core'
-import type { CheckRow } from './lib/feature-ui'
+import type { CheckRow, LapGroup } from './lib/feature-ui'
 
 /**
  * Primitive UI atoms for the IDE shell (UI-SPEC §4). Exactly one `solid` button
@@ -80,6 +80,54 @@ export function CheckLine({ row }: { row: CheckRow }) {
       <span className="check-k">{row.key}</span>
       <span className="check-v">{row.value}</span>
     </div>
+  )
+}
+
+/**
+ * Rows under `Lap N` headers (decisions.md #6) — the shared shape of the ticket
+ * ledger and the notes inbox, which are the two places a human looks for "what
+ * was done this lap" and used to render everything flat.
+ *
+ * The current lap is a plain always-open section; earlier laps are a `<details>`
+ * that opens on a click — the same collapse idiom the map rail uses for its done
+ * waypoints. A feature with ONE lap gets no headers at all: it never iterated,
+ * and a "Lap 1" band over everything it owns is exactly the ceremony ADR-0010 §4
+ * keeps off a feature that merges first try.
+ */
+export function LapSections<T extends { lap: number }>({
+  groups,
+  meta,
+  children,
+}: {
+  groups: LapGroup<T>[]
+  /** One line about what a lap holds, shown beside its number. */
+  meta: (group: LapGroup<T>) => string
+  children: (rows: T[]) => ReactNode
+}) {
+  if (groups.length <= 1) return <>{children(groups[0]?.rows ?? [])}</>
+
+  return (
+    <>
+      {groups.map((g) => {
+        const head = (
+          <>
+            <span className="lap-group-n">Lap {g.lap}</span>
+            <span className="lap-group-meta">{meta(g)}</span>
+          </>
+        )
+        return g.current ? (
+          <section className="lap-group is-current" key={g.lap}>
+            <div className="lap-group-head">{head}</div>
+            {children(g.rows)}
+          </section>
+        ) : (
+          <details className="lap-group" key={g.lap}>
+            <summary className="lap-group-head">{head}</summary>
+            {children(g.rows)}
+          </details>
+        )
+      })}
+    </>
   )
 }
 

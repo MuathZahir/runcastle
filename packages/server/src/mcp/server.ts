@@ -1005,7 +1005,8 @@ export function buildMcpServer(): McpServer {
       description:
         'Record one review finding on the feature you are reviewing. It lands in the same notes ' +
         'the human writes while test-driving — attributed to you — so it shows up in the review ' +
-        'panel and can be promoted to a fix ticket in one click. One note per finding, written ' +
+        'panel, where the human triages every open note at once into fix tickets or the next ' +
+        'lap’s session. One note per finding, written ' +
         'as an observation the human can reproduce (what you did, what happened, what you ' +
         'expected), plus a closing note summarising the pass. Findings are not failure: report ' +
         'what you saw and let the human decide.',

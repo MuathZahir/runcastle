@@ -58,6 +58,27 @@ describe('notes router', () => {
     expect(full.tickets.map((t) => t.id)).toContain(promoted.ticket.id)
   })
 
+  it('batch-promotes a selection and returns every note with its ticket', async () => {
+    const first = await caller.notes.add({ featureId: feature.id, text: 'the run chip goes grey' })
+    const second = await caller.notes.add({ featureId: feature.id, text: 'stale empty state' })
+
+    const promoted = await caller.notes.promoteMany({ noteIds: [first.id, second.id] })
+
+    expect(promoted.tickets.map((t) => t.seq)).toEqual([1, 2])
+    expect(promoted.notes.map((n) => n.status)).toEqual(['promoted', 'promoted'])
+    const full = await caller.feature.get({ id: feature.id })
+    expect(full.tickets.map((t) => t.id)).toEqual(promoted.tickets.map((t) => t.id))
+  })
+
+  it('refuses a batch containing a note it cannot promote, minting nothing', async () => {
+    const open = await caller.notes.add({ featureId: feature.id, text: 'still open' })
+    const done = await caller.notes.add({ featureId: feature.id, text: 'already handled' })
+    await caller.notes.toggle({ noteId: done.id })
+
+    await expect(caller.notes.promoteMany({ noteIds: [open.id, done.id] })).rejects.toThrow(/done/)
+    expect((await caller.feature.get({ id: feature.id })).tickets).toEqual([])
+  })
+
   it('refuses to change a promoted note — frozen reaches the client as an error', async () => {
     const note = await caller.notes.add({ featureId: feature.id, text: 'stale empty state' })
     await caller.notes.promote({ noteId: note.id })

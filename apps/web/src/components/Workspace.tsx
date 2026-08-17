@@ -12,6 +12,7 @@ import {
   defaultBaseBranch,
   effectivePhase,
   isReadonlyView,
+  lapBanner,
   latestRun,
   mapDocPath,
   mergeConflictKickoff,
@@ -23,14 +24,17 @@ import {
   testDriveTaken,
   unresolvedMergeConflict,
   type ActionKind,
+  type LapBanner,
   type MergeConflictState,
   type NextAction,
   type NextStep,
   type PipelineStep,
   type ReasonPrompt,
 } from '../lib/feature-ui'
-import { lapExplainer } from '../lib/vocabulary'
+import { LAP_KICKOFF, lapExplainer } from '../lib/vocabulary'
+import { relTime } from '../lib/format'
 import { IconBranch } from '../icons'
+import { AddressNotesDialog } from './AddressNotesDialog'
 import { MergeFeatureDialog } from './MergeFeatureDialog'
 import { DraftBody } from './bodies/DraftBody'
 import { GrillBody } from './bodies/GrillBody'
@@ -84,14 +88,18 @@ export function Workspace({
     { refetchInterval: useLivePoll(5000) },
   )
   // Test-drive notes, for the confirmation's open-notes line — same query key the
-  // review body's checklist reads, so the two share one fetch.
+  // review body's checklist reads, so the two share one fetch. The open ones are
+  // also what the bar's Address-notes triage acts on (decisions.md #11).
   const notes = trpc.notes.list.useQuery({ featureId }, { refetchInterval: useLivePoll() })
-  const openNotes = notes.data?.filter((n) => n.status === 'open').length
+  const openNoteRows = notes.data?.filter((n) => n.status === 'open') ?? []
+  const openNotes = notes.data ? openNoteRows.length : undefined
   // What the review agent made of this branch, for the confirmation's status
   // line — the same two reads the review card derives it from, so the dialog
   // cannot report a different review than the screen behind it.
   const review = reviewOutcome({ tickets: q.data?.tickets, notes: notes.data })
   const [confirmMerge, setConfirmMerge] = useState(false)
+  // The Address-notes triage fork is open (decisions.md #11).
+  const [addressing, setAddressing] = useState(false)
   // The next-step bar warns about remaining fog on a mapped feature, which lives
   // in the map doc's prose — same query key as the map rail's read, so the two
   // share one fetch.
@@ -174,6 +182,17 @@ export function Workspace({
     onSuccess: () => {
       invalidate()
       onViewPhase(null)
+    },
+    onError: (e) => toast.push(e.message),
+  })
+  // The triage fork's quick-fix road: the whole selection in ONE mutation, so
+  // the tickets appear together and the notes list is frozen once, not per note.
+  const promoteNotes = trpc.notes.promoteMany.useMutation({
+    onSuccess: ({ tickets }) => {
+      invalidate()
+      void utils.notes.list.invalidate({ featureId })
+      setAddressing(false)
+      toast.push(`${tickets.length} fix ticket${tickets.length === 1 ? '' : 's'} added`, 'success')
     },
     onError: (e) => toast.push(e.message),
   })
@@ -302,7 +321,18 @@ export function Workspace({
     unverifiedDriveKeys: unverifiedDriveKeys((prepQ.data as PrepView | undefined)?.findings ?? []),
     dryRunActive: !!driveQ.data?.dryRun,
     draftBaseUnresolved: isDraft && !effectiveDraftBase,
+    openNotes,
   })
+  // The lap the workspace is on, from lap 2 (decisions.md #6). Derived from the
+  // same event feed as the conflict banner — one poll for all of it.
+  const banner = lapBanner(full, events)
+  // Why the triage fork's rethink road cannot fire, read off the bar's OWN
+  // Iterate action rather than re-derived: the dialog must not disagree with the
+  // button beside it about whether the lap session can start.
+  const iterateAction = ns.secondary.find((a) => a.kind === 'rethink')
+  const iterateBlocked = iterateAction
+    ? iterateAction.disabled
+    : 'One terminal per feature — end the live session first.'
   const busy =
     start.isPending ||
     launch.isPending ||
@@ -313,6 +343,7 @@ export function Workspace({
     cancel.isPending ||
     testDrive.isPending ||
     merge.isPending ||
+    promoteNotes.isPending ||
     unarchive.isPending
 
   const runAction = (kind: ActionKind, reason?: string) => {
@@ -384,6 +415,12 @@ export function Workspace({
       case 'merge':
         setConfirmMerge(true)
         break
+      // Triage for the findings inbox: the dialog offers the fork (promote the
+      // quick fixes, or start the lap session on all of them) — this click only
+      // opens it, exactly as `merge` opens its confirmation.
+      case 'addressNotes':
+        setAddressing(true)
+        break
       // Resolve a recorded merge conflict: a revisit session briefed to merge the
       // base into this branch in the talk worktree — the same launch the conflict
       // card offers, promoted to the bar's primary while the conflict stands.
@@ -454,6 +491,10 @@ export function Workspace({
         )}
       </div>
 
+      {/* Lap 1 renders nothing here at all — a feature that merges first try
+          looks exactly like the plain linear flow (ADR-0010 §4). */}
+      {banner && <LapBannerRow banner={banner} />}
+
       {readonly ? (
         <div className="readonly-bar">
           <span className="readonly-tag">READ-ONLY</span>
@@ -498,6 +539,20 @@ export function Workspace({
         />
       )}
 
+      {addressing && (
+        <AddressNotesDialog
+          notes={openNoteRows}
+          busy={promoteNotes.isPending || rethink.isPending}
+          iterateBlocked={iterateBlocked}
+          onPromote={(noteIds) => promoteNotes.mutate({ noteIds })}
+          onIterate={() => {
+            setAddressing(false)
+            runAction('rethink')
+          }}
+          onCancel={() => setAddressing(false)}
+        />
+      )}
+
       <div className="ws-body">
         <div className="ws-body-inner" key={isDraft ? 'draft' : effective}>
           {/* Status wins over phase here (decision 9): a draft is created at
@@ -525,6 +580,32 @@ export function Workspace({
         </div>
       </div>
     </section>
+  )
+}
+
+/**
+ * The lap banner (decisions.md #6) — from lap 2 on, under the workspace header:
+ * which lap this is, what put the feature on it, and what the lap before it
+ * landed. The user reported not knowing there WAS another lap; every surface
+ * below this line is lap-scoped, so the line that says which lap comes first.
+ *
+ * Never rendered on lap 1 (the caller checks): no iteration ceremony on a
+ * feature that merges first try, the same stance as the pipeline's lap chip.
+ */
+function LapBannerRow({ banner }: { banner: LapBanner }) {
+  return (
+    <div className="ws-lap" role="note">
+      <span className="ws-lap-tag" title={lapExplainer(banner.lap)}>
+        LAP {banner.lap}
+      </span>
+      <div className="ws-lap-body">
+        <div className="ws-lap-why">{LAP_KICKOFF}</div>
+        <div className="ws-lap-facts">
+          {banner.startedAt !== null && <span>started {relTime(banner.startedAt)} ago</span>}
+          <span>{banner.landed}</span>
+        </div>
+      </div>
+    </div>
   )
 }
 
