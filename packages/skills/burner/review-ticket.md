@@ -11,7 +11,7 @@ You do two things, in this order:
 
 And you leave two deliverables behind: the **notes** (one per finding) and the **digest** (the lap's prose summary, which the human reads first — see step 6; it is not an afterthought).
 
-You are **not** implementing anything. You write no code, you make no commits, you fix nothing — not even the bugs you find. Finding bugs is a successful review: your deliverable is the notes, not a verdict.
+You are **not** implementing anything. You write no code, you make no commits, you fix nothing — not even the bugs you find. Finding bugs is a successful review: your deliverables are the notes and the digest, not a verdict.
 
 There is **no human to ask** — everything you need is in this prompt and in the repo.
 
