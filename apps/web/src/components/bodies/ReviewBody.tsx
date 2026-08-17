@@ -291,16 +291,13 @@ function NotesPanel({
     if (draft.trim() && !add.isPending) add.mutate({ featureId, text: draft })
   }
 
-  const openCount = rows.filter((n) => n.status === 'open').length
-  const meta = [
-    `${openCount} open`,
-    rows.filter((n) => n.status === 'done').length > 0 &&
-      `${rows.filter((n) => n.status === 'done').length} handled`,
-    rows.filter((n) => n.status === 'promoted').length > 0 &&
-      `${rows.filter((n) => n.status === 'promoted').length} ticketed`,
-  ]
-    .filter((p): p is string => typeof p === 'string')
-    .join(' · ')
+  // The inbox's standing tally, in the same shape the ticket ledger's meta line
+  // uses: what is still open always, the rest only once there is any of it.
+  const count = (status: TestNote['status']) => rows.filter((n) => n.status === status).length
+  const metaParts = [`${count('open')} open`]
+  if (count('done') > 0) metaParts.push(`${count('done')} handled`)
+  if (count('promoted') > 0) metaParts.push(`${count('promoted')} ticketed`)
+  const meta = metaParts.join(' · ')
 
   const noteRow = (note: TestNote) => {
     const ticket = note.ticketId ? tickets.find((t) => t.id === note.ticketId) : undefined
