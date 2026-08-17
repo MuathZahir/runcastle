@@ -32,9 +32,9 @@
 **Decision:** The review agent writes a human-readable prose summary of what the lap delivered, as part of its pass; ReviewBody renders it at the top of the summary card. Not a changed-files list, not hunks. Fallback when no summary exists: render the per-ticket burner digests, clearly marked as the agents' own accounts.
 **Why:** The human wants "a summary of what this feature did," more readable than the build page's per-ticket changes. The review agent runs last, has spec + all ticket digests, and is the only agent that actually saw the result working — so its summary beats any server-side synthesis.
 
-## 9. A review always runs — code review when there's nothing to drive
-**Decision:** Every lap's ticket batch includes a review ticket. When the change is drivable, it's the app test-drive review (as today); when there's nothing to run, it's a code review instead — a runcastle version of Matt Pocock's review skill, vendored into packages/skills. "No review happened" stops being a silent state.
-**Why:** Today the review ticket is optional and its absence is invisible on the review card (only the merge dialog mentions it). The human wants review to be a constant of the pipeline, with the mode adapting to what the lap produced.
+## 9. A review always runs — code review always, drive when applicable
+**Decision:** Every lap's ticket batch includes a review ticket. The code review ALWAYS runs — a runcastle version of Matt Pocock's review skill (the implementing agent must read the original from github.com/mattpocock/skills and base the runcastle skill on it), vendored into packages/skills. The app test-drive runs additionally when the change is drivable. "No review happened" stops being a silent state.
+**Why:** Today the review ticket is optional and its absence is invisible on the review card (only the merge dialog mentions it). The human wants review to be a constant of the pipeline: code review unconditionally, driving on top when there is something to run.
 
 ## 10. Resolve-conflict affordance is never hidden
 **Decision:** The resolve buttons (next-step bar + ConflictCard) always show while a conflict stands. When a session is live, the button reads "End session & resolve" and performs the compound action in one click: gracefully end the live session, then launch the resolve session with the conflict kickoff. An explanatory line ("one terminal per feature — your live session will be closed") keeps it honest.
