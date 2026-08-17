@@ -22,6 +22,13 @@ AFK-REPORT.md
 .sandcastle/logs/
 .sandcastle/worktrees/
 
+# Test-drive scratch: the KEY=VALUE file .runcastle/drive-setup.ts writes for the
+# server to overlay onto the dev pane. Holds per-drive paths and a port today and
+# is the designated home for a connection string tomorrow, so it must never be one
+# `git add -A` away from a commit. The scripts themselves ARE tracked — a branch
+# that adds a service amends its own drive script.
+.runcastle/drive.env
+
 # Claude Code state written into the tree by a spawned agent. `~/` is what an
 # unexpanded tilde becomes when a child is spawned without HOME/USERPROFILE — it
 # is a literal directory, and one such tree (a 284 KB transcript) was committed
