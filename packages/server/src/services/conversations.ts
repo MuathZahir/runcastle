@@ -80,6 +80,11 @@ function untitled(createdAt: number | null): string {
  * and re-reading every transcript on every poll of a live list is exactly the
  * cost the column exists to avoid. A conversation with no title yet falls back
  * to its date and is NOT cached — the transcript may still gain one.
+ *
+ * The one write in a read path, and deliberately eventless (SPEC §12 asks every
+ * mutating service function to emit): caching a name the same call already
+ * returned changes nothing a client could observe, so an event would be a
+ * timeline entry per row per poll saying nothing happened.
  */
 export function listProjectConversations(ctx: AppCtx, projectId: string): ProjectConversation[] {
   return projectSessions(ctx, projectId, 'project').map((session) => {

@@ -48,11 +48,17 @@ export function ProjectWorkspace({
   const stats = projectStats(featuresQ.data ?? [])
   const inFlight = stats.total - stats.shipped
   const session = talk.session
-  // The conversation being read back, if any. Cleared whenever a session goes
-  // live: the terminal owns the body then, and coming back out should land on
-  // the list rather than on whatever was open before.
+  // The conversation being read back, if any. A live session outranks it — the
+  // terminal owns the body, whoever opened it and from wherever.
   const [viewing, setViewing] = useState<ProjectConversation | null>(null)
   const reading = session ? null : viewing
+  // Reopening leaves the read-only pane behind: what comes back is the terminal,
+  // and closing that should land on the list, not on the transcript of the
+  // conversation you have just been having.
+  const reopen = (sessionId: string): void => {
+    talk.resume(sessionId)
+    setViewing(null)
+  }
 
   return (
     <section className="workspace">
@@ -104,7 +110,7 @@ export function ProjectWorkspace({
             <ReadingPane
               conversation={reading}
               onBack={() => setViewing(null)}
-              onReopen={() => talk.resume(reading.id)}
+              onReopen={() => reopen(reading.id)}
               reopening={talk.starting}
             />
           ) : (
@@ -114,7 +120,7 @@ export function ProjectWorkspace({
                 conversations={talk.conversations}
                 pending={talk.conversationsPending}
                 busy={talk.starting}
-                onResume={talk.resume}
+                onResume={reopen}
                 onView={setViewing}
               />
               <SessionFrame stats={stats} inFlight={inFlight} />
