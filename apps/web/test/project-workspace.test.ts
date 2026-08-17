@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   PROJECT_BRANCH,
   matchesPreparation,
+  matchesProjectChat,
   prepRailRow,
   projectBranchNote,
   projectSessionState,
@@ -145,6 +146,28 @@ describe('matchesPreparation', () => {
   it('stays out of the way of unrelated queries', () => {
     expect(matchesPreparation('merge')).toBe(false)
     expect(matchesPreparation('ticket')).toBe(false)
+  })
+
+  /**
+   * Preparation used to answer to 'talk' and 'ask' on the reasoning that the
+   * conversation was reached through its row. Typing "talk" landing on
+   * Preparation was the complaint; the chat has its own row now.
+   */
+  it('no longer answers to the words for having a conversation', () => {
+    expect(matchesPreparation('talk')).toBe(false)
+    expect(matchesPreparation('ask')).toBe(false)
+  })
+})
+
+describe('matchesProjectChat', () => {
+  it('answers to the words an idea is brought in by', () => {
+    for (const q of ['talk', 'ask', 'chat', 'project chat', 'conversation', 'idea', 'discuss'])
+      expect(matchesProjectChat(q)).toBe(true)
+  })
+
+  it('stays out of the way of unrelated queries', () => {
+    expect(matchesProjectChat('merge')).toBe(false)
+    expect(matchesProjectChat('baseline')).toBe(false)
   })
 })
 
