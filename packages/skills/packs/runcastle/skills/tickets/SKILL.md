@@ -40,7 +40,11 @@ Give each ticket its **blocking edges** — the tickets that must finish before 
 <review-ticket>
 Close the batch with **one review ticket** (`kind: "review"`), blocked by every implementation ticket in it. It is not a slice: it is the prose brief for the agent that exercises the *integrated* feature at the tail of the burn, on the feature branch, and writes what it finds as test notes for the human's review phase. Its `goal` says what to verify and its `acceptanceCriteria` are the things to check off, one per behaviour worth confirming — the review agent walks them in order.
 
-Prescribe the verification that fits the feature, in plain prose: a browser walkthrough for anything with a UI ("open the settings flow, add a project, check the empty state"), or "run the suite and curl these endpoints" for a backend-only one. There is no mode to pick — the agent does what the ticket says. A feature with genuinely nothing to exercise gets no review ticket; everything else gets exactly one (more per feature comes later). The review agent never edits code, so its ticket needs no `seams` beyond the surface it exercises, and finding bugs is a *successful* review — the notes are the deliverable.
+**Every batch closes with one, unconditionally.** Not "when there is something to exercise" — every batch, no exceptions, exactly one (more per feature comes later). The review agent **always runs a code review** of the branch's diff against its base, and a diff is the one thing every batch produces by definition, so there is no such thing as a lap with nothing to review. A lap that ships without a review ticket is a lap nobody looked at, and its absence is invisible on the review page — which is precisely the silence this rule exists to end.
+
+What varies is the **drive**, not the review. Prescribe a walkthrough only when there is genuinely something to run, in plain prose: a browser walk for anything with a UI ("open the settings flow, add a project, check the empty state"), or "run the suite and curl these endpoints" for a backend-only one. When the lap changed nothing a human could drive — prompt contracts, docs, an internal refactor — say so in the ticket and let the code review stand alone. There is no mode to pick: the agent always reviews the code, and additionally does what the ticket says.
+
+The review agent never edits code, so its ticket needs no `seams` beyond the surface it exercises, and finding bugs is a *successful* review — the notes are the deliverable. Its digest is the other one: the agent writes the lap's "What landed this lap" prose summary there, and the review page renders it as the lead of the review card, so `goal` should ask for the verification, not for the summary — that part is the burner's standing contract.
 </review-ticket>
 
 <wide-refactor-exception>
@@ -69,6 +73,7 @@ There is no in-session quiz — the human's review is the **Burn** gate in the r
 3. Is each survivor a demoable vertical slice rather than a horizontal layer, and is it worth a session rather than rattling around in one?
 4. Are the blocking edges minimal and genuinely true gates? Where two are independent, do they touch different files — or will they collide on landing?
 5. Is every `context` self-sufficient for an agent that cannot ask — covering every file and pattern the ticket touches?
+6. Does the batch close with exactly one `kind: "review"` ticket, blocked by every implementation ticket? It is not optional and there is no feature that skips it.
 
 Then:
 - `mcp__runcastle__emit_tickets({ tickets: [...] })` — **emit the array; do NOT write ticket files.** It returns `{ stored, ids }` and logs the timeline event itself; do not record one of your own.
