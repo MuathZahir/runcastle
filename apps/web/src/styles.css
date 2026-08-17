@@ -1730,6 +1730,38 @@ details.wp-group-done > summary { cursor: pointer; list-style: revert; }
 }
 .converge-resume-text { font-size: 12.5px; color: var(--text-2); }
 
+/* ---- lap grouping (decisions.md #6) ----
+   Shared by the ticket ledger and the findings inbox — the two places a human
+   looks for "what was done this lap". Rendered only past lap 1: a feature that
+   never iterated gets no headers at all, the same stance as the pipeline chip. */
+.lap-group-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 8px 0;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+.lap-group.is-current > .lap-group-head { color: var(--text-2); }
+.lap-group-meta { color: var(--text-4); }
+/* The caret is drawn here: a flex summary drops the native marker entirely, and
+   a collapsed lap with no affordance reads as a lap with nothing in it. */
+details.lap-group > summary.lap-group-head { cursor: pointer; list-style: none; }
+details.lap-group > summary::-webkit-details-marker { display: none; }
+details.lap-group > summary.lap-group-head::before {
+  content: '▸';
+  color: var(--text-4);
+  flex: 0 0 auto;
+}
+details.lap-group[open] > summary.lap-group-head::before { content: '▾'; }
+/* Inside the bordered ledger the header is a band, and it lines up with the
+   rows' own gutter rather than the card edge. */
+.ledger .lap-group-head { padding: 8px 14px; background: var(--panel-3); }
+.ledger .lap-group + .lap-group { border-top: 1px solid var(--hairline); }
+
 /* ============================================================================
    PHASE BODY — tickets ledger
    ========================================================================== */
