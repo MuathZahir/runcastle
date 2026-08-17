@@ -8,7 +8,9 @@ import type {
   SessionKind,
   SessionPurpose,
   SessionStatus,
+  TestNoteAuthor,
   TestNoteStatus,
+  TicketKind,
   TicketStatus,
   WaypointStatus,
   WaypointType,
@@ -209,6 +211,12 @@ export const tickets = sqliteTable('tickets', {
   seams: text('seams', { mode: 'json' }).notNull().$type<string[]>(),
   blockedBy: text('blocked_by', { mode: 'json' }).notNull().$type<number[]>(),
   /**
+   * What the ticket asks for — `implementation` or `review`. Defaulted in the
+   * column too, so rows written before the kind existed read back as
+   * implementation tickets.
+   */
+  kind: text('kind').notNull().$type<TicketKind>().default('implementation'),
+  /**
    * The feature's lap when this ticket was stored (ADR-0010 / SPEC §15.1).
    * Stamped server-side by `storeTickets` — sessions never choose it. G3 scopes
    * to the current lap's pending tickets; G4 stays cumulative.
@@ -239,6 +247,11 @@ export const testNotes = sqliteTable('test_notes', {
   lap: integer('lap').notNull(),
   text: text('text').notNull(),
   status: text('status').notNull().$type<TestNoteStatus>(),
+  /**
+   * Who wrote the note — `human` or `agent`. Defaulted in the column too, so
+   * rows written before review agents existed read back as the human's.
+   */
+  author: text('author').notNull().$type<TestNoteAuthor>().default('human'),
   /** The ticket a `promoted` note was turned into; null for every other status. */
   ticketId: text('ticket_id'),
   createdAt: integer('created_at').notNull(),

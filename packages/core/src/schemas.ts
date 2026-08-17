@@ -135,6 +135,15 @@ export type SessionStatus = z.infer<typeof SessionStatus>
 
 // --- tickets ---------------------------------------------------------------
 
+/**
+ * What a ticket asks for: code (`implementation`, today's behavior) or a
+ * verification pass over the integrated feature branch (`review`). Execution
+ * dispatches on this; ordering does not — a review ticket runs last because the
+ * emitting session blocks it on the implementation tickets, as data.
+ */
+export const TicketKind = z.enum(['implementation', 'review'])
+export type TicketKind = z.infer<typeof TicketKind>
+
 /** What an ideation session emits via MCP `emit_tickets`. */
 export const TicketInput = z.object({
   title: z.string(),
@@ -144,8 +153,15 @@ export const TicketInput = z.object({
   seams: z.array(z.string()),
   /** seq numbers of other tickets in the same batch this one depends on */
   blockedBy: z.array(z.number()),
+  kind: TicketKind.default('implementation'),
 })
-export type TicketInput = z.infer<typeof TicketInput>
+/**
+ * The pre-parse shape, so `kind` stays optional for every caller that builds a
+ * batch by hand (emitters, note promotion, tests). Parsing — and `storeTickets`
+ * — is where the `implementation` default is applied, which is why the stored
+ * `Ticket` below carries `kind` as required.
+ */
+export type TicketInput = z.input<typeof TicketInput>
 
 /** A stored ticket: TicketInput plus persistence + run state. */
 export const Ticket = TicketInput.extend({
@@ -245,6 +261,15 @@ export const TestNoteStatus = z.enum(['open', 'done', 'promoted'])
 export type TestNoteStatus = z.infer<typeof TestNoteStatus>
 
 /**
+ * Who wrote a note: the `human` clicking through the review panel (the default,
+ * and everything written before review agents existed), or an `agent` — a review
+ * ticket reporting what it found. Attribution only; the lifecycle is identical,
+ * so an agent note edits, toggles and promotes exactly like a human one.
+ */
+export const TestNoteAuthor = z.enum(['human', 'agent'])
+export type TestNoteAuthor = z.infer<typeof TestNoteAuthor>
+
+/**
  * One observation captured during a feature's review phase. Notes are the
  * source of truth; `docs/features/<slug>/test-notes.md` is regenerated from
  * them on every change. `lap` is stamped from the feature's lap at capture —
@@ -257,6 +282,7 @@ export const TestNote = z.object({
   lap: z.number(),
   text: z.string(),
   status: TestNoteStatus,
+  author: TestNoteAuthor.default('human'),
   ticketId: z.string().optional(),
   createdAt: z.number(),
   updatedAt: z.number(),

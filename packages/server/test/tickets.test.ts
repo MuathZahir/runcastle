@@ -45,6 +45,26 @@ describe('tickets service', () => {
     expect(batch[1].blockedBy).toEqual([3]) // position 1 -> global seq 3
   })
 
+  it('stores a batch mixing kinds, defaulting to implementation, with blockedBy resolved', () => {
+    const stored = storeTickets(ctx, featureId, [
+      ticket('build the thing'),
+      { ...ticket('build the other thing'), kind: 'implementation' },
+      // The review ticket is ordered last purely as data: it is blocked by both
+      // implementation tickets, exactly like any other dependent ticket.
+      { ...ticket('verify the integrated result', [1, 2]), kind: 'review' },
+    ])
+
+    expect(stored.map((t) => t.kind)).toEqual(['implementation', 'implementation', 'review'])
+
+    const read = listByFeature(ctx, featureId)
+    expect(read.map((t) => [t.seq, t.kind])).toEqual([
+      [1, 'implementation'],
+      [2, 'implementation'],
+      [3, 'review'],
+    ])
+    expect(read[2].blockedBy).toEqual([1, 2])
+  })
+
   it('throws on an out-of-range blockedBy position', () => {
     expect(() => storeTickets(ctx, featureId, [ticket('a'), ticket('b', [5])])).toThrow(
       InvalidInputError,

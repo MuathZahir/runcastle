@@ -8,6 +8,13 @@ import type { Feature, Project, Ticket } from './schemas'
  */
 
 export interface WorkflowCtx {
+  /**
+   * The run this workflow is executing as. Workflows that spawn an agent with
+   * authority over the human's machine identify it by this id — the burner's
+   * review ticket names it in the `X-Runcastle-Run` header of its `mcp.json`,
+   * which is what the run-gated MCP tools resolve their feature from.
+   */
+  runId: string
   project: Project
   feature: Feature
   tickets: Ticket[]

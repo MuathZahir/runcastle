@@ -1,8 +1,8 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "54b0622e-898d-4ce9-9f2a-d2118877b66b",
-  "prevId": "d2d4a597-8c33-478b-84ff-989f40661e15",
+  "id": "72ad4eb7-8e6b-49df-9ebf-cd38e2c02d3d",
+  "prevId": "d1a33b2f-0668-4adf-8bd7-c8b7fe1f18d7",
   "tables": {
     "events": {
       "name": "events",
@@ -424,13 +424,6 @@
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
-        },
-        "drive_env": {
-          "name": "drive_env",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
         }
       },
       "indexes": {},
@@ -638,6 +631,14 @@
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
+        },
+        "author": {
+          "name": "author",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'human'"
         },
         "ticket_id": {
           "name": "ticket_id",

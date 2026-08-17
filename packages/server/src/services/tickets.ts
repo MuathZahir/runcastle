@@ -27,6 +27,7 @@ function rowToTicket(row: TicketSelect): Ticket {
     acceptanceCriteria: row.acceptanceCriteria,
     seams: row.seams,
     blockedBy: row.blockedBy,
+    kind: row.kind,
     lap: row.lap,
     status: row.status,
     commits: row.commits,
@@ -102,6 +103,9 @@ export function storeTickets(
     acceptanceCriteria: t.acceptanceCriteria,
     seams: t.seams,
     blockedBy: resolved[i].blockedBy,
+    // Pass-through, defaulted here rather than left to the column so the rows
+    // this function returns carry the kind without a re-read.
+    kind: t.kind ?? ('implementation' as const),
     lap,
     status: 'pending' as const,
     commits: [] as string[],

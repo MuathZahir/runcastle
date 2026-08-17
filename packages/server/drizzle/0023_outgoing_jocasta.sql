@@ -1,0 +1,1 @@
+ALTER TABLE `tickets` ADD `kind` text DEFAULT 'implementation' NOT NULL;

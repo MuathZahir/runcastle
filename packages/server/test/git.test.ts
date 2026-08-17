@@ -627,6 +627,8 @@ describe('testDrive', () => {
     // checked out and nothing was started, instead of "driving now" (F22).
     expect(activeDriveInfo()).toMatchObject({
       featureId: feature.id,
+      // Whose drive it is, so the UI can tell this apart from a review agent's.
+      purpose: 'human',
       branch: 'feature/drive',
       devPaneId: undefined,
       devUrl: undefined,

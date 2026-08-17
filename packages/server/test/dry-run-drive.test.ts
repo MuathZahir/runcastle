@@ -249,6 +249,8 @@ describe('the preparation dry-run drive', () => {
     expect(activeDriveInfo()).toMatchObject({ dryRun: true, branch: 'main', devConfigured: false })
     // `dryRun` with no feature at all is how the UI tells the two drives apart.
     expect(activeDriveInfo()).not.toHaveProperty('featureId')
+    // A dry run belongs to no feature, so it belongs to neither drive purpose.
+    expect(activeDriveInfo()?.purpose).toBeUndefined()
     // The same shape reaches the wire the drive UI already polls.
     const driveInfo = await createCallerFactory(appRouter)(ctx).feature.driveInfo()
     expect(driveInfo).toMatchObject({ dryRun: true, branch: 'main' })

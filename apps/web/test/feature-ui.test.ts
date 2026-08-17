@@ -7,6 +7,7 @@ import {
   defaultBaseBranch,
   DRAFT_GLYPH,
   driveFailure,
+  driveWheel,
   duplicateTitleWarning,
   kickoffTrouble,
   liveSessionBlocker,
@@ -19,6 +20,8 @@ import {
   parseMapSections,
   phaseGlyph,
   reviewChecks,
+  reviewOutcome,
+  reviewWalkthroughUrl,
   rowChip,
   sessionActive,
   sessionDoneState,
@@ -1116,6 +1119,184 @@ describe('reviewChecks', () => {
 })
 
 /**
+ * The review agent's report, on the two surfaces that quote it (decisions #7).
+ * The failure this covers is a silent one: findings that land as three more rows
+ * in a notes list nobody scrolls to, leaving the human reviewing from zero
+ * exactly as before. So the report leads the summary card, and it says something
+ * when the review could NOT run too.
+ */
+describe('reviewOutcome', () => {
+  const impl = (status: string) => ({ kind: 'implementation' as const, status })
+  const agentNote = { author: 'agent' as const }
+  const humanNote = { author: 'human' as const }
+
+  it('reports none when the batch held no review ticket', () => {
+    expect(reviewOutcome({ tickets: [impl('done')], notes: [] })).toEqual({ state: 'none' })
+    expect(reviewOutcome({})).toEqual({ state: 'none' })
+  })
+
+  it('counts agent notes as findings, and never the human’s own', () => {
+    const o = reviewOutcome({
+      tickets: [{ kind: 'review', status: 'done' }],
+      notes: [agentNote, humanNote, agentNote],
+    })
+    expect(o).toEqual({ state: 'ran', findings: 2 })
+  })
+
+  it('counts a finding the human has already handled — it was still found', () => {
+    const notes = [
+      { author: 'agent' as const, status: 'done' },
+      { author: 'agent' as const, status: 'promoted' },
+    ]
+    expect(reviewOutcome({ tickets: [{ kind: 'review', status: 'done' }], notes })).toEqual({
+      state: 'ran',
+      findings: 2,
+    })
+  })
+
+  it('reports a clean review as ran with zero findings, not as nothing', () => {
+    expect(reviewOutcome({ tickets: [{ kind: 'review', status: 'done' }], notes: [] })).toEqual({
+      state: 'ran',
+      findings: 0,
+    })
+  })
+
+  it('leaves findings unknown while the notes are still in flight', () => {
+    expect(reviewOutcome({ tickets: [{ kind: 'review', status: 'done' }] })).toEqual({
+      state: 'ran',
+    })
+  })
+
+  it('carries the ticket’s error as the reason a review could not run', () => {
+    expect(
+      reviewOutcome({
+        tickets: [{ kind: 'review', status: 'failed', error: 'the drive slot was held' }],
+        notes: [agentNote],
+      }),
+    ).toEqual({ state: 'failed', reason: 'the drive slot was held' })
+  })
+
+  it('reports a failed review with no recorded error, reasonless', () => {
+    expect(reviewOutcome({ tickets: [{ kind: 'review', status: 'failed' }] })).toEqual({
+      state: 'failed',
+    })
+  })
+
+  it('reports a review ticket that has not finished as waiting, not as ran', () => {
+    expect(reviewOutcome({ tickets: [{ kind: 'review', status: 'running' }], notes: [] })).toEqual({
+      state: 'waiting',
+      status: 'running',
+    })
+  })
+})
+
+describe('reviewWalkthroughUrl', () => {
+  const recorded = (ticketId: string) => ({
+    hasVideo: true,
+    videoUrl: `/api/reviews/ticket/${ticketId}/walkthrough.webm`,
+  })
+  const silent = { hasVideo: false, videoUrl: null }
+
+  it('has nothing to play when no review ran, or when none recorded', () => {
+    expect(reviewWalkthroughUrl()).toBeNull()
+    expect(reviewWalkthroughUrl([])).toBeNull()
+    expect(reviewWalkthroughUrl([silent])).toBeNull()
+  })
+
+  it('plays the recording a review left behind', () => {
+    expect(reviewWalkthroughUrl([recorded('t1')])).toBe(
+      '/api/reviews/ticket/t1/walkthrough.webm',
+    )
+  })
+
+  it('plays the LATEST review that recorded, not the latest review', () => {
+    expect(reviewWalkthroughUrl([recorded('t1'), recorded('t2')])).toBe(
+      '/api/reviews/ticket/t2/walkthrough.webm',
+    )
+    // A later review that recorded nothing must not hide the one that did.
+    expect(reviewWalkthroughUrl([recorded('t1'), silent])).toBe(
+      '/api/reviews/ticket/t1/walkthrough.webm',
+    )
+  })
+})
+
+describe('driveWheel', () => {
+  const human = driveWheel({ purpose: 'human' })
+
+  it('names the review agent when the drive is its own', () => {
+    const wheel = driveWheel({ purpose: 'review' })
+    expect(wheel.label).toBe('review agent driving')
+    expect(wheel.copy).toContain('review agent')
+  })
+
+  it('leaves the human’s wording exactly as it was', () => {
+    expect(human.label).toBe('driving now')
+    expect(human.copy).toBe(
+      'Click through the feature. When it feels right, merge — or stop the drive and send feedback back through tickets.',
+    )
+  })
+
+  it('reads a drive with no purpose as the human’s — every drive predating the wire was', () => {
+    expect(driveWheel({})).toEqual(human)
+    expect(driveWheel()).toEqual(human)
+    expect(driveWheel(null)).toEqual(human)
+  })
+})
+
+describe('reviewChecks — the review agent row', () => {
+  const row = (over: Parameters<typeof reviewChecks>[0]) =>
+    reviewChecks(over).find((r) => r.key === 'review agent')
+  const reviewTicket = (over: { status: string; error?: string }) => [{ kind: 'review' as const, ...over }]
+
+  it('says nothing at all when no review ticket ran — no nagging', () => {
+    expect(reviewChecks({ tickets: [{ kind: 'implementation', status: 'done' }] })).toHaveLength(3)
+    expect(row({ tickets: [] })).toBeUndefined()
+  })
+
+  it('leads the card with the agent’s report, so it cannot be missed', () => {
+    const keys = reviewChecks({ tickets: reviewTicket({ status: 'done' }), notes: [] }).map(
+      (r) => r.key,
+    )
+    expect(keys).toEqual(['review agent', 'tickets', 'run', 'changes'])
+  })
+
+  it('greens a review that found nothing — a clean pass is a positive signal', () => {
+    expect(row({ tickets: reviewTicket({ status: 'done' }), notes: [] })).toEqual({
+      key: 'review agent',
+      value: 'no findings',
+      tone: 'ok',
+    })
+  })
+
+  it('ambers findings and pluralises them, without calling them a failure', () => {
+    const notes = [{ author: 'agent' as const }]
+    expect(row({ tickets: reviewTicket({ status: 'done' }), notes })).toEqual({
+      key: 'review agent',
+      value: '1 finding',
+      tone: 'warn',
+    })
+    expect(row({ tickets: reviewTicket({ status: 'done' }), notes: [...notes, ...notes] })?.value)
+      .toBe('2 findings')
+  })
+
+  it('says a review could not run, and why', () => {
+    expect(row({ tickets: reviewTicket({ status: 'failed', error: 'app never booted' }) })).toEqual(
+      { key: 'review agent', value: 'could not run · app never booted', tone: 'warn' },
+    )
+  })
+
+  it('still says it could not run when the ticket recorded no reason', () => {
+    expect(row({ tickets: reviewTicket({ status: 'failed' }) })?.value).toBe('could not run')
+  })
+
+  it('greys an uncounted findings tally rather than reporting a clean pass', () => {
+    const r = row({ tickets: reviewTicket({ status: 'done' }) })
+    expect(r?.tone).toBe('idle')
+    expect(r?.value).not.toContain('no findings')
+  })
+})
+
+/**
  * Ticket 4 / findings F21 — the most irreversible action in the pipeline had less
  * friction than deleting a throwaway feature. The confirmation summarises what is
  * about to merge and warns, in words, about everything missing from that summary.
@@ -1185,6 +1366,48 @@ describe('mergeSummary', () => {
   it('keeps open notes out of the rows — they are informational, and never block', () => {
     const s = mergeSummary({ ...all, openNotes: 2 })
     expect(s.rows.map((r) => r.key)).toEqual(['changes', 'run', 'test drive'])
+  })
+
+  // The review agent's status line (decisions #7). Unlike the review card this
+  // dialog reports an ABSENT review too, because reporting every gap in the
+  // picture is the whole job of this summary.
+  it('reports the review agent last, after what actually lands', () => {
+    const s = mergeSummary({ ...all, review: { state: 'ran', findings: 2 } })
+    expect(s.rows.map((r) => r.key)).toEqual(['changes', 'run', 'test drive', 'review agent'])
+    expect(s.rows.at(-1)).toEqual({ key: 'review agent', value: '2 findings', tone: 'warn' })
+  })
+
+  it('says outright that no review ticket ran, rather than staying quiet', () => {
+    const s = mergeSummary({ ...all, review: { state: 'none' } })
+    expect(s.rows.at(-1)).toEqual({
+      key: 'review agent',
+      value: 'no review ticket',
+      tone: 'idle',
+    })
+  })
+
+  it('never warns about an absent review — most branches never asked for one', () => {
+    expect(mergeSummary({ ...all, review: { state: 'none' } }).warnings).toEqual([])
+  })
+
+  it('warns when the review could not run, naming the reason', () => {
+    const s = mergeSummary({ ...all, review: { state: 'failed', reason: 'drive slot held' } })
+    expect(s.warnings).toEqual(['The review agent could not run: drive slot held.'])
+    expect(s.rows.at(-1)?.tone).toBe('warn')
+  })
+
+  it('warns about a reasonless failed review as a bare sentence', () => {
+    expect(mergeSummary({ ...all, review: { state: 'failed' } }).warnings).toEqual([
+      'The review agent could not run.',
+    ])
+  })
+
+  it('never warns about findings — the open-notes line already counts them', () => {
+    expect(mergeSummary({ ...all, review: { state: 'ran', findings: 4 } }).warnings).toEqual([])
+  })
+
+  it('omits the row entirely when the caller knows nothing of any review', () => {
+    expect(mergeSummary(all).rows.map((r) => r.key)).toEqual(['changes', 'run', 'test drive'])
   })
 })
 

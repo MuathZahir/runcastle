@@ -8,7 +8,7 @@ import { shortSha } from '../../lib/format'
 import { useLivePoll } from '../../lib/live'
 import { effectiveStepModel } from '../../lib/settings'
 import type { SettingsView } from '../../lib/api'
-import { Button, DimLine, EmptyState, SectionTitle, TicketStatusChip } from '../../ui'
+import { Button, DimLine, EmptyState, SectionTitle, TicketKindChip, TicketStatusChip } from '../../ui'
 import { IconChevronRight, IconDoc } from '../../icons'
 import { Markdown } from '../Markdown'
 import { SessionPanel } from '../SessionPanel'
@@ -143,6 +143,7 @@ export function TicketsBody({
                   </span>
                   <span className="lg-seq">#{t.seq}</span>
                   <span className="lg-title">{t.title}</span>
+                  <TicketKindChip kind={t.kind} />
                   {t.blockedBy.length > 0 && (
                     <span className="lg-block" title="Runs after these tickets land">
                       after #{t.blockedBy.join(', #')}

@@ -151,10 +151,15 @@ export function projectForFeature(ctx: AppCtx, feature: Pick<Feature, 'projectId
   return project
 }
 
-export function getRunRow(ctx: AppCtx, id: string): Run {
+export function tryGetRun(ctx: AppCtx, id: string): Run | null {
   const row = ctx.db.select().from(runs).where(eq(runs.id, id)).get()
-  if (!row) throw new NotFoundError(`run ${id} not found`)
-  return rowToRun(row)
+  return row ? rowToRun(row) : null
+}
+
+export function getRunRow(ctx: AppCtx, id: string): Run {
+  const run = tryGetRun(ctx, id)
+  if (!run) throw new NotFoundError(`run ${id} not found`)
+  return run
 }
 
 export function listRunsByFeature(ctx: AppCtx, featureId: string): Run[] {

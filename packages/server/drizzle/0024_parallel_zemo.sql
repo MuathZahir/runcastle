@@ -1,0 +1,1 @@
+ALTER TABLE `test_notes` ADD `author` text DEFAULT 'human' NOT NULL;

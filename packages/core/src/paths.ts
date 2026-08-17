@@ -90,6 +90,28 @@ export function sessionDir(id: string): string {
   return join(dataDir(), 'sessions', id)
 }
 
+/**
+ * Scratch space for one review ticket's host-side agent:
+ * `~/.runcastle/reviews/<ticketId>/`. Its `mcp.json`, and the `DIGEST.md` /
+ * `BLOCKED.md` it reports through, live here rather than in the repo — the
+ * review agent works in the human's real checkout, where an untracked file of
+ * ours would show up as their dirty tree.
+ */
+export function reviewDir(ticketId: string): string {
+  return join(dataDir(), 'reviews', ticketId)
+}
+
+/**
+ * The walkthrough recording a browser review leaves behind:
+ * `<reviewDir>/walkthrough.webm`. One fixed filename under {@link reviewDir} is
+ * the whole artifact record — its presence on disk IS the fact that a review
+ * recorded a video — and computing it here is what lets the route that serves it
+ * resolve a path from a ticket id alone, never from anything a caller sent.
+ */
+export function reviewWalkthroughPath(ticketId: string): string {
+  return join(reviewDir(ticketId), 'walkthrough.webm')
+}
+
 /** Every talk worktree of one project: `~/.runcastle/worktrees/<projectId>/`. */
 export function projectWorktreesDir(projectId: string): string {
   return join(dataDir(), 'worktrees', projectId)

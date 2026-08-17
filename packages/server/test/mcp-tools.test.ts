@@ -2,7 +2,9 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { Hono } from 'hono'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import * as z from 'zod'
 import type { TicketInput, WaypointInput } from '@runcastle/core'
+import { TicketInput as TicketInputSchema } from '@runcastle/core'
 import type { AppCtx } from '../src/db/types'
 import { GateError, InvalidInputError } from '../src/errors'
 import { clearRuntimeCtx, setRuntimeCtx } from '../src/launcher/runtime'
@@ -72,6 +74,23 @@ describe('mcp tools', () => {
     expect(types).toContain('tickets.stored')
     expect(types.filter((t) => t === 'tickets.stored' || t === 'tickets.emitted')).toEqual([
       'tickets.stored',
+    ])
+  })
+
+  it('emit_tickets carries each ticket kind through, defaulting to implementation', () => {
+    // The registered tool hands its handler the PARSED batch, so parse here the
+    // same way — that is what applies the `implementation` default for the
+    // ticket that omits a kind.
+    const batch = z.array(TicketInputSchema).parse([
+      ticket('build it'),
+      { ...ticket('verify it', [1]), kind: 'review' },
+    ])
+    toolEmitTickets(ctx, session, { tickets: batch })
+
+    const stored = listByFeature(ctx, featureId)
+    expect(stored.map((t) => [t.title, t.kind])).toEqual([
+      ['build it', 'implementation'],
+      ['verify it', 'review'],
     ])
   })
 

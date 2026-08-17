@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { Button, CheckLine, SectionTitle } from '../../ui'
+import type { TestNote } from '@runcastle/core'
+import { Button, CheckLine, NoteAuthorChip, SectionTitle } from '../../ui'
 import { trpc } from '../../trpc'
 import type { FeatureFull, SettingsView } from '../../lib/api'
 import type { DriveState } from '../../lib/workspace'
@@ -7,15 +8,18 @@ import { driveCapabilities } from '../../lib/settings'
 import { testDriveExplainer } from '../../lib/vocabulary'
 import {
   driveFailure,
+  driveWheel,
   latestRun,
   mergeConflictKickoff,
   openApp,
   openAppWaitingLabel,
   reviewChecks,
+  reviewWalkthroughUrl,
   sessionActive,
   type DriveFailure,
   type MergeConflictState,
 } from '../../lib/feature-ui'
+import { useReviewArtifacts } from '../../lib/reviews'
 import { fmtDateTime, relTime } from '../../lib/format'
 import { useLivePoll } from '../../lib/live'
 import { useToast } from '../../lib/toast'
@@ -81,7 +85,24 @@ export function ReviewBody({
   // be a straight misattribution.
   const ownDrive = drive.data?.featureId === feature.id ? drive.data : undefined
   const dryRun = drive.data?.dryRun ?? false
-  const checks = reviewChecks({ tickets, run, commitCount: commits.data?.count })
+  // Read once here and handed down: the summary counts the review agent's
+  // findings out of these same rows the panel lists, so a count that disagreed
+  // with the list below it would be unrepresentable.
+  const notes = trpc.notes.list.useQuery(
+    { featureId: feature.id },
+    { refetchInterval: useLivePoll() },
+  )
+  const checks = reviewChecks({
+    tickets,
+    run,
+    commitCount: commits.data?.count,
+    notes: notes.data,
+  })
+  // What the review left on disk, over the plain HTTP routes beside tRPC. The
+  // walkthrough sits with the summary rather than under the notes: the card
+  // above says what the agent found, this one shows it happening.
+  const artifacts = useReviewArtifacts(feature.id)
+  const walkthrough = reviewWalkthroughUrl(artifacts.data)
   // What a drive on THIS project does — a prepared one renders an environment,
   // runs the setup command and boots a dev server; an unprepared one checks the
   // branch out and stops. The card used to promise the first to everyone.
@@ -129,8 +150,13 @@ export function ReviewBody({
 
       <div className="review-card">
         <SectionTitle>Test drive</SectionTitle>
-        {isDriving && driving ? (
-          <DriveStatus branch={driving.branch} drive={ownDrive} />
+        {/* `driving` is this browser's own record of a drive it started, so a
+            review drive — started by an agent on the host — is invisible in it.
+            The server's `ownDrive` is what knows one is up at all, and reading
+            both is what lets this card describe a review drive instead of
+            offering to start a drive the server would refuse (decisions #10). */}
+        {isDriving || ownDrive ? (
+          <DriveStatus branch={driving?.branch ?? ownDrive?.branch ?? ''} drive={ownDrive} />
         ) : dryRun ? (
           <div className="drive-copy">
             A preparation dry-run is holding the drive — it is proving this project’s drive
@@ -142,12 +168,49 @@ export function ReviewBody({
             behind the wheel.
           </div>
         )}
+        {ownDrive?.purpose === 'review' && <StopReviewDrive featureId={feature.id} />}
       </div>
       </div>
 
       {isDriving && ownDrive && <DrivePane drive={ownDrive} />}
 
-      <NotesPanel featureId={feature.id} tickets={tickets} readonly={readonly} />
+      {walkthrough && <WalkthroughCard url={walkthrough} />}
+
+      <NotesPanel
+        featureId={feature.id}
+        tickets={tickets}
+        rows={notes.data ?? []}
+        readonly={readonly}
+      />
+    </div>
+  )
+}
+
+/**
+ * The review agent's walkthrough (decisions #8): what it actually did on this
+ * branch, recorded as it went, so review can be *consumed* rather than driven —
+ * which is the whole point of the video, since driving is the thing the human
+ * was skipping.
+ *
+ * A native `<video>` and no player library: agent-browser records WebM, which
+ * browsers play natively, and the route behind this URL answers range requests
+ * so scrubbing works. `preload="metadata"` fetches the duration and nothing
+ * else — a walkthrough is evidence to reach for, not something to autoload in
+ * full every time the review screen opens.
+ *
+ * Rendered only when a recording exists ({@link reviewWalkthroughUrl} returns
+ * null otherwise): a backend review records nothing, and an empty player frame
+ * would read as a video that failed to load.
+ */
+function WalkthroughCard({ url }: { url: string }) {
+  return (
+    <div className="review-card walkthrough-card">
+      <SectionTitle>Review walkthrough</SectionTitle>
+      <video className="walkthrough-video" src={url} controls preload="metadata" />
+      <div className="drive-copy">
+        What the review agent did on this branch, as it did it. What it made of it is in the notes
+        below.
+      </div>
     </div>
   )
 }
@@ -167,20 +230,27 @@ export function ReviewBody({
  * the record of what that ticket was built from, so it offers no affordances at
  * all. The server refuses every one of those transitions anyway; this only
  * avoids showing a button that would be turned down.
+ *
+ * Notes the review agent wrote are badged (decisions #7) and otherwise identical
+ * — same checkbox, same Edit, same → ticket. The badge says who saw it, not what
+ * the human may do about it: an agent finding IS the thing the Fix loop is meant
+ * to consume, so withholding promote from exactly those notes would defeat it.
  */
 function NotesPanel({
   featureId,
   tickets,
+  rows,
   readonly,
 }: {
   featureId: string
   tickets: FeatureFull['tickets']
+  /** The feature's notes, read by the parent so the summary counts these rows. */
+  rows: TestNote[]
   /** Looking back at review on a shipped feature — the checklist, no editing. */
   readonly: boolean
 }) {
   const utils = trpc.useUtils()
   const toast = useToast()
-  const notes = trpc.notes.list.useQuery({ featureId }, { refetchInterval: useLivePoll() })
   const [draft, setDraft] = useState('')
   // The note being edited in place, or null. One at a time — same as the ticket
   // ledger's editor.
@@ -217,7 +287,6 @@ function NotesPanel({
     onError,
   })
 
-  const rows = notes.data ?? []
   // One mutation in flight at a time: the list is about to be refetched, so a
   // second click would act on a row the server is already moving.
   const busy = edit.isPending || remove.isPending || toggle.isPending || promote.isPending
@@ -286,6 +355,8 @@ function NotesPanel({
                     onChange={() => toggle.mutate({ noteId: note.id })}
                   />
                 )}
+
+                <NoteAuthorChip author={note.author} />
 
                 <span className="note-text">{note.text}</span>
 
@@ -373,14 +444,23 @@ function NoteEditor({
  * Three states, because the three have different fixes: a server is up (drive
  * away), nothing was meant to start (set a dev command in Settings), or the spawn
  * failed (its output is in the timeline).
+ *
+ * Who is driving is a separate question from what is running, and {@link
+ * driveWheel} answers it: the live state reads "review agent driving" when the
+ * drive is the review ticket's own (decisions #10), and is word-for-word the
+ * human's when it is not.
  */
 function DriveStatus({
   branch,
   drive,
 }: {
   branch: string
-  drive: { devPaneId?: string; devConfigured: boolean } | null | undefined
+  drive:
+    | { purpose?: 'human' | 'review'; devPaneId?: string; devConfigured: boolean }
+    | null
+    | undefined
 }) {
+  const wheel = driveWheel(drive)
   // While driveInfo is still in flight, say the one thing that is certainly true.
   if (!drive) {
     return (
@@ -395,13 +475,10 @@ function DriveStatus({
       <>
         <div className="drive-live">
           <span className="drive-pulse" />
-          <span className="drive-label">driving now</span>
+          <span className="drive-label">{wheel.label}</span>
           <span className="drive-loc">{branch}</span>
         </div>
-        <div className="drive-copy">
-          Click through the feature. When it feels right, merge — or stop the drive and send
-          feedback back through tickets.
-        </div>
+        <div className="drive-copy">{wheel.copy}</div>
       </>
     )
   }
@@ -417,6 +494,39 @@ function DriveStatus({
           : 'Your repo is on this branch, but no server was started: this project has no dev command. Set one in Settings and the next drive boots the app here — or run it yourself and click through.'}
       </div>
     </>
+  )
+}
+
+/**
+ * Stop, for a drive the review agent is holding (decisions #10).
+ *
+ * The human's own Stop lives in the next-step bar and the status bar, and both
+ * are driven by this browser's record of a drive IT started — so a review drive
+ * has no stop control anywhere without this one. It needs one: lap 1
+ * deliberately made `stop` purpose-blind so the human can reclaim the slot from
+ * a review agent that died holding it, and a Stop the server honours but the UI
+ * never offers is the same as no Stop at all.
+ */
+function StopReviewDrive({ featureId }: { featureId: string }) {
+  const utils = trpc.useUtils()
+  const toast = useToast()
+  const stop = trpc.feature.testDrive.useMutation({
+    onSuccess: () => {
+      void utils.feature.driveInfo.invalidate()
+      void utils.feature.get.invalidate({ id: featureId })
+    },
+    onError: (e) => toast.push(e.message),
+  })
+
+  return (
+    <Button
+      variant="ghost"
+      className="drive-stop-review"
+      disabled={stop.isPending}
+      onClick={() => stop.mutate({ featureId, action: 'stop' })}
+    >
+      Stop the review drive
+    </Button>
   )
 }
 

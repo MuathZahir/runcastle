@@ -1,6 +1,12 @@
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { dirname } from 'node:path'
-import type { Feature, TestNoteStatus, Ticket, TicketInput } from '@runcastle/core'
+import type {
+  Feature,
+  TestNoteAuthor,
+  TestNoteStatus,
+  Ticket,
+  TicketInput,
+} from '@runcastle/core'
 import { TestNote, newId } from '@runcastle/core'
 import { featureDocsRel } from '@runcastle/core/paths'
 import { asc, eq } from 'drizzle-orm'
@@ -30,6 +36,7 @@ function rowToNote(row: TestNoteSelect): TestNote {
     lap: row.lap,
     text: row.text,
     status: row.status,
+    author: row.author,
     ticketId: row.ticketId ?? undefined,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
@@ -76,8 +83,17 @@ export function listByFeature(ctx: AppCtx, featureId: string): TestNote[] {
  * Capture a note. Stamped with the feature's CURRENT lap (ADR-0010 / SPEC
  * §15.1) — the caller never chooses it, mirroring how `storeTickets` stamps
  * tickets — because the lap is what groups the rendered file.
+ *
+ * `author` is the one thing the caller does choose: the review panel leaves it
+ * at `human`, and the `add_test_note` MCP wire passes `agent` so a review
+ * ticket's findings arrive attributed. Nothing else about the note differs.
  */
-export function addNote(ctx: AppCtx, featureId: string, text: string): TestNote {
+export function addNote(
+  ctx: AppCtx,
+  featureId: string,
+  text: string,
+  author: TestNoteAuthor = 'human',
+): TestNote {
   const body = cleanText(text)
   const feature = getFeatureRow(ctx, featureId)
   const now = Date.now()
@@ -90,6 +106,7 @@ export function addNote(ctx: AppCtx, featureId: string, text: string): TestNote 
       lap: feature.lap,
       text: body,
       status: 'open' as const,
+      author,
       ticketId: null,
       createdAt: now,
       updatedAt: now,
@@ -100,8 +117,11 @@ export function addNote(ctx: AppCtx, featureId: string, text: string): TestNote 
   const note = rowToNote(row)
   emit(ctx, featureId, {
     type: 'note.added',
-    message: `note captured on lap ${note.lap}`,
-    data: { noteId: note.id, lap: note.lap },
+    message:
+      note.author === 'agent'
+        ? `review agent captured a note on lap ${note.lap}`
+        : `note captured on lap ${note.lap}`,
+    data: { noteId: note.id, lap: note.lap, author: note.author },
   })
   renderTestNotes(ctx, feature)
   return note
