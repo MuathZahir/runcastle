@@ -1,4 +1,4 @@
-import { spawn } from 'node:child_process'
+import { spawn, spawnSync } from 'node:child_process'
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
@@ -24,8 +24,13 @@ import { ptyRegistry } from '../../src/pty/registry'
  * shim (win32) or `/bin/sh -c` (POSIX) → a `bun` grandchild holding a real TCP
  * port — so a teardown that reaches only the direct child leaves the port bound.
  *
- * Exit 0 means: stop returned inside the deadline, the port is free, and every
- * pid in the tree is gone. Any other outcome exits non-zero with the evidence.
+ * Exit 0 means: the tree was genuinely OBSERVED (at least {@link MIN_TREE_PIDS}
+ * pids, so the walk saw the shim and the grandchild and not just the root), stop
+ * returned inside the deadline, the port is free, and every pid in that tree is
+ * gone. Any other outcome exits non-zero with a `failure` field in the evidence
+ * naming which of those went wrong — a capture that cannot see the tree is a
+ * failure here, not a small tree, because it was silently the latter for all of
+ * lap 1 and made the `aliveAfter` assertion vacuous.
  */
 
 /** The teardown deadline the registry promises. Stop must return inside it. */
@@ -37,8 +42,47 @@ const PORT_UP_TIMEOUT_MS = 20_000
  * hangs. Kept below the caller's test timeout so the evidence always escapes.
  */
 const WATCHDOG_MS = 45_000
+/** How long the process-table capture may take before it is called a failure. */
+const CAPTURE_TIMEOUT_MS = 15_000
+/** How long a bail-path tree-kill may block before the fixture gives up on it. */
+const BAIL_KILL_TIMEOUT_MS = 3000
+/**
+ * The smallest tree the pane can legitimately have — anything less means the
+ * process-table capture is lying, not that teardown had less to do.
+ *
+ * On win32 production's shape is three deep: the sidecar HOST we spawned → the
+ * `cmd.exe /d /s /c` shim `devSpawnTarget` always interposes → the `bun`
+ * grandchild holding the port. On POSIX node-pty's `forkpty` leader IS the
+ * `/bin/sh -c` shim, so there is no separate host and the legitimate floor is two.
+ */
+const MIN_TREE_PIDS = process.platform === 'win32' ? 3 : 2
 
 const delay = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms))
+
+/**
+ * Best-effort tree-kill of `pid`, synchronously and bounded.
+ *
+ * Synchronous because the only caller ends in `process.exit`, which would abandon
+ * an async spawn before it ever ran — and the likeliest reason we are bailing is a
+ * stop that hung, so an awaited teardown could hang the report too. `spawnSync`
+ * with a timeout gets the kill actually executed without risking either.
+ */
+function killTreeBestEffort(pid: number): void {
+  try {
+    if (process.platform === 'win32') {
+      spawnSync('taskkill', ['/pid', String(pid), '/T', '/F'], {
+        windowsHide: true,
+        stdio: 'ignore',
+        timeout: BAIL_KILL_TIMEOUT_MS,
+      })
+    } else {
+      // Negative pid → the process group the pty leader heads.
+      process.kill(-pid, 'SIGKILL')
+    }
+  } catch {
+    // Already gone, or the pid was reused — best-effort by design.
+  }
+}
 
 /** A port nothing is listening on, obtained by briefly binding port 0. */
 function freePort(): Promise<number> {
@@ -79,66 +123,106 @@ async function awaitPort(port: number, timeoutMs: number): Promise<number | null
 }
 
 /**
- * Run `command` through the platform shell, redirecting its output to `outFile`,
- * and resolve with what it wrote.
+ * Spawn `file` with `args` DIRECTLY — an args array, no shell interposed on win32,
+ * nothing piped — have the CHILD write `outFile`, then read that file back.
  *
- * The redirection is not incidental. Reading a child's stdout through a PIPE is
- * the exact operation suspected of never settling under Bun on Windows (a failed
- * `uv_read_start` parking the loop — oven-sh/bun#32011, fixed on canary by
- * oven-sh/bun#35150). A diagnostic that hangs the same way as the bug it is
- * measuring is worse than useless, so this fixture never pipes: `stdio: 'ignore'`
- * throughout, output via a file, settlement on listeners it attaches itself.
+ * Two hard constraints shaped this, both learned the expensive way.
+ *
+ * NEVER route it through `cmd.exe /d /s /c` with a `>` redirect. `cmd /s` strips
+ * the FIRST and LAST quote of the whole command string; when the command ends in a
+ * quoted redirect target, that closing quote IS the last character, so the path is
+ * left unbalanced, cmd exits 1 with "The filename, directory name, or volume label
+ * syntax is incorrect", and no file is ever written. That is precisely how this
+ * capture failed — silently — for all of lap 1: `readFileSync` threw, the old
+ * helper swallowed it and resolved `''`, the tree degenerated to `[root]`, and the
+ * test's `aliveAfter: []` assertion became vacuous.
+ *
+ * NEVER pipe the child's stdout/stderr either. A failed `uv_read_start` on a child
+ * PIPE parks Bun's event loop forever (oven-sh/bun#35150) — the exact bug class
+ * this feature fixed. A diagnostic that hangs the same way as the bug it measures
+ * is worse than useless. So: `stdio: 'ignore'`, output via a file the child writes
+ * itself, settlement on listeners we attach ourselves plus a timer backstop.
+ *
+ * Rejects — loudly — if the child cannot be spawned, exits non-zero, times out, or
+ * leaves nothing readable behind. Silence is what hollowed out lap 1's proof.
  */
-function shellCapture(command: string, outFile: string): Promise<string> {
-  const { file, args } =
-    process.platform === 'win32'
-      ? { file: process.env.ComSpec ?? 'cmd.exe', args: ['/d', '/s', '/c', command] }
-      : { file: '/bin/sh', args: ['-c', command] }
-
-  return new Promise((resolve) => {
+function captureToFile(file: string, args: string[], outFile: string): Promise<string> {
+  return new Promise((resolve, reject) => {
     let settled = false
-    const done = (): void => {
+    const finish = (err: Error | null): void => {
       if (settled) return
       settled = true
       clearTimeout(timer)
+      if (err !== null) {
+        reject(err)
+        return
+      }
       try {
         resolve(readFileSync(outFile, 'utf8'))
-      } catch {
-        resolve('')
+      } catch (readErr) {
+        reject(new Error(`${file} wrote no readable file at ${outFile}: ${String(readErr)}`))
       }
     }
-    const timer = setTimeout(done, 15_000)
+    const timer = setTimeout(
+      () => finish(new Error(`${file} did not settle within ${CAPTURE_TIMEOUT_MS}ms`)),
+      CAPTURE_TIMEOUT_MS,
+    )
     try {
       const child = spawn(file, args, { windowsHide: true, stdio: 'ignore' })
-      child.on('exit', done)
-      child.on('close', done)
-      child.on('error', done)
-    } catch {
-      done()
+      child.on('error', (err) => finish(new Error(`could not spawn ${file}: ${err.message}`)))
+      // No pipes to drain, so `exit` is the whole story — and it carries the code.
+      child.on('exit', (code) =>
+        finish(code === 0 ? null : new Error(`${file} exited ${String(code)}`)),
+      )
+    } catch (err) {
+      finish(new Error(`could not spawn ${file}: ${String(err)}`))
     }
   })
 }
 
-/** Every live process as `{pid, ppid}` — the raw material for a tree walk. */
+/**
+ * Every live process as `{pid, ppid}` — the raw material for a tree walk. Throws
+ * rather than returning an empty list: a process table with no rows in it is
+ * impossible, so an empty parse means the capture or its format broke.
+ */
 async function listProcesses(scratchDir: string): Promise<Array<{ pid: number; ppid: number }>> {
   const outFile = join(scratchDir, 'proclist.txt')
-  const command =
+  // The child writes `outFile` itself. On win32 that is PowerShell's `Set-Content`
+  // — spawned directly, so there is no `cmd /s` to mangle the quotes and no shell
+  // redirect at all. The path is single-quoted inside the PowerShell command, which
+  // is safe because it comes from `mkdtempSync(tmpdir())` and so contains no quote.
+  // On POSIX a directly-spawned `/bin/sh` redirects `ps`: `sh` does not do `cmd`'s
+  // first-and-last-quote stripping, and POSIX was never the broken path.
+  const { file, args } =
     process.platform === 'win32'
-      ? `powershell.exe -NoProfile -Command "Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId | ConvertTo-Csv -NoTypeInformation" > "${outFile}"`
-      : `ps -eo pid=,ppid= > "${outFile}"`
-  const raw = await shellCapture(command, outFile)
+      ? {
+          file: 'powershell.exe',
+          args: [
+            '-NoProfile',
+            '-Command',
+            `Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId | ConvertTo-Csv -NoTypeInformation | Set-Content -LiteralPath '${outFile}'`,
+          ],
+        }
+      : { file: '/bin/sh', args: ['-c', `ps -eo pid=,ppid= > '${outFile}'`] }
+
+  const raw = await captureToFile(file, args, outFile)
 
   // CSV on win32 (`"1234","5678"`), two bare columns on POSIX — either way, the
   // first two integers on a line are pid and ppid. NULs are stripped first: a
-  // PowerShell that redirects as UTF-16LE would otherwise read back as digits
-  // separated by NUL, and `\d+` would match each digit as its own "pid".
-  return raw
+  // PowerShell that writes UTF-16LE would otherwise read back as digits separated
+  // by NUL, and `\d+` would match each digit as its own "pid".
+  const rows = raw
     .replace(/\0/g, '')
     .split(/\r?\n/)
     .map((line) => line.match(/\d+/g))
     .filter((m): m is RegExpMatchArray => m !== null && m.length >= 2)
     .map((m) => ({ pid: Number(m[0]), ppid: Number(m[1]) }))
     .filter((r) => Number.isInteger(r.pid) && Number.isInteger(r.ppid))
+
+  if (rows.length === 0) {
+    throw new Error(`parsed 0 processes from ${outFile} (${raw.length} bytes) — format changed?`)
+  }
+  return rows
 }
 
 /** `root` plus every process descended from it, per a snapshot of the table. */
@@ -195,13 +279,22 @@ async function main(): Promise<void> {
     devCommand,
   }
 
+  // Set as soon as the pane exists, so every bail path below can reach the tree
+  // it needs to clean up — including the watchdog's.
+  let hostPid = -1
+
   // process.exit skips `finally`, so cleanup belongs on the one exit path.
   const report = (ok: boolean): never => {
     evidence.ok = ok
-    // Never leak the tree we built. Synchronous on purpose: the failure most
-    // likely being reported here is a stop that hangs, so an awaited teardown
-    // could hang the report too — and the report is the whole point. The pids
-    // are in the evidence either way, so anything that survives is findable.
+    // Never leak the tree we built. On a bail, `pty.kill()` alone is not enough:
+    // on win32 it reaps the sidecar host but leaves the port-holding GRANDCHILD
+    // orphaned behind the cmd.exe shim, and only a tree walk reaches that. The
+    // order is the same one the registry's teardown documents — tree FIRST,
+    // because reaping the direct child breaks the parent → child link
+    // `taskkill /T` walks. Both steps are synchronous and bounded: the failure
+    // most likely being reported here is a stop that hangs, and the report is the
+    // whole point.
+    if (!ok && hostPid > 0) killTreeBestEffort(hostPid)
     try {
       ptyRegistry().get(paneId)?.pty.kill()
     } catch {
@@ -228,18 +321,43 @@ async function main(): Promise<void> {
     })
     // Read on THIS tick: under the sidecar `pty.pid` is the host process we
     // spawned only until its async `ready` frame swaps in node-pty's inner pid.
-    const hostPid = ptyRegistry().get(paneId)?.pty.pid ?? -1
+    hostPid = ptyRegistry().get(paneId)?.pty.pid ?? -1
     evidence.hostPid = hostPid
 
     const portUpMs = await awaitPort(port, PORT_UP_TIMEOUT_MS)
     evidence.portUpMs = portUpMs
     evidence.ptyPid = ptyRegistry().get(paneId)?.pty.pid ?? -1
-    const before = await treePids(hostPid, dir)
+
+    // The tree walk is load-bearing evidence, so its failures are fatal and named
+    // rather than swallowed. Record what we got BEFORE judging it: a short list is
+    // the first thing anyone debugging the capture will want to read.
+    let before: number[] = []
+    let captureError: string | null = null
+    try {
+      before = await treePids(hostPid, dir)
+    } catch (err) {
+      captureError = err instanceof Error ? err.message : String(err)
+    }
     evidence.treePidsBefore = before
+
     if (portUpMs === null) {
       // Carry the tree anyway: what DID spawn under the host is the first thing
       // anyone debugging a fixture that never came up will want to see.
       evidence.failure = 'grandchild never bound the port'
+      report(false)
+    }
+    if (captureError !== null) {
+      evidence.failure = `process-table capture failed, so the tree claim cannot be trusted: ${captureError}`
+      report(false)
+    }
+    if (before.length < MIN_TREE_PIDS) {
+      // The lap-1 hole, now fatal. A tree of one is what a broken capture returns,
+      // and it makes `aliveAfter: []` mean only "the host died" while reading as
+      // "the whole tree died" — so it must never again pass for proof.
+      evidence.failure =
+        `pane tree resolved to ${before.length} pid(s) [${before.join(', ')}], expected at least ` +
+        `${MIN_TREE_PIDS} (host + shim + port-holding grandchild). The capture is not seeing the ` +
+        `tree, so aliveAfter would prove nothing.`
       report(false)
     }
 
