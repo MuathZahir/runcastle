@@ -17,7 +17,7 @@
     <meta property="og:title" content="Getting started — runcastle docs" />
     <meta
       property="og:description"
-      content="One global command installs runcastle. The doctor names the exact prerequisite you are missing. Then it boots a Bun server and a browser tab on localhost:4512 — no account, no hosted backend."
+      content="One global command installs runcastle. The doctor names the exact prerequisite you are missing. Then it boots a Bun server and a browser tab on localhost:4512. No account, no hosted backend."
     />
     <!-- PNG on purpose: several social-card scrapers still do not decode WebP. -->
     <meta property="og:image" content="https://runcastle.dev/assets/screens/mock-shell.png" />
@@ -98,40 +98,39 @@
 
         <h1>Getting started</h1>
         <p class="article-lede">
-          runcastle is an opinionated programming system layered on Claude Code — the IDE to
-          Claude Code's text editor. It installs as one global command and runs entirely on your
-          machine: a Bun server plus a browser UI at <code>http://localhost:4512</code>. There is
-          no runcastle account and no hosted backend.
+          runcastle is a programming system built on Claude Code: the IDE to Claude Code's text
+          editor. One global command installs it, and it runs entirely on your machine as a Bun
+          server plus a browser UI at <code>http://localhost:4512</code>. No account, no hosted
+          backend.
         </p>
 
         <nav class="subnav" aria-label="Docs">
           <a href="/docs/" aria-current="page">Getting started</a>
+          <a href="/docs/preparation/">Preparation</a>
+          <a href="/docs/project/">Project session</a>
           <a href="/docs/pipeline/">The pipeline</a>
           <a href="/docs/gates/">Gates</a>
           <a href="/compare/">Compare</a>
         </nav>
 
         <h2>Install</h2>
-        <p>
-          Three lines. The first installs the command, the second tells you what is missing, the
-          third boots the server and opens the app.
-        </p>
+        <p>Three lines: install it, see what is missing, boot it.</p>
         <pre><code><span class="pre-prompt">$</span> bun add -g runcastle       <span class="pre-comment"># install</span>
 <span class="pre-prompt">$</span> runcastle doctor           <span class="pre-comment"># check prerequisites</span>
 <span class="pre-prompt">$</span> runcastle                  <span class="pre-comment"># boot the server and open http://localhost:4512</span></code></pre>
         <p>
-          <code>runcastle --version</code> prints the installed version. When a newer release is
-          published, an in-app banner names the exact
+          <code>runcastle --version</code> prints the installed version. When a newer release
+          lands, an in-app banner names the exact
           <code>bun add -g runcastle@latest</code> command. runcastle never installs anything for
-          you — every fix is a line you run yourself.
+          you. Every fix is a line you run yourself.
         </p>
 
         <h2>What you need first</h2>
         <p>
-          runcastle drives real tools on your machine, so a few things must already be present.
-          Run <code>runcastle doctor</code> at any time: it probes each one and prints a
-          copy-pasteable fix for whatever is missing. <code>runcastle doctor --gate</code> is the
-          stricter pre-boot gate that stops only on the must-haves.
+          runcastle drives real tools on your machine, so a few must already be there. Run
+          <code>runcastle doctor</code> any time: it probes each one and prints a copy-pasteable
+          fix for whatever is missing. <code>runcastle doctor --gate</code> is the stricter
+          pre-boot check that stops only on the must-haves.
         </p>
         <div class="table-scroll">
           <table>
@@ -152,15 +151,15 @@
                 </th>
                 <td>
                   The engine runcastle drives. Install it, then log in with <code>claude</code>.
-                  Requires a paid Claude plan — Pro, Max, Team, Enterprise, or Console. The free
+                  Needs a paid Claude plan (Pro, Max, Team, Enterprise, or Console). The free
                   Claude.ai plan has no Claude Code access.
                 </td>
               </tr>
               <tr>
                 <th scope="row"><a href="https://git-scm.com" rel="noopener" target="_blank">Git</a></th>
                 <td>
-                  runcastle branches, worktrees, commits, and merges on your behalf. It also needs
-                  a commit identity; the first-run wizard collects one.
+                  runcastle branches, commits, and merges for you. It also needs a commit
+                  identity, which the first-run wizard collects.
                 </td>
               </tr>
               <tr>
@@ -183,18 +182,18 @@
 
         <h3>Only for unattended builds</h3>
         <p>
-          Skip these two if you just want interactive sessions. Builds you walk away from need a
-          container runtime — Docker or Podman — and an auth token: run
+          Skip these two if you only want interactive sessions. Builds you walk away from need a
+          container runtime (Docker or Podman) and an auth token: run
           <code>claude setup-token</code> on this machine and put
           <code>CLAUDE_CODE_OAUTH_TOKEN=…</code> in <code>~/.runcastle/.env</code>. Each user
-          authenticates against their own subscription; nothing routes through runcastle.
+          authenticates against their own subscription. Nothing routes through runcastle.
         </p>
         <div class="note">
           <p>
-            Docker is the default and smoothest path, and Podman is a fully supported free
-            alternative, so a Docker Desktop licence never blocks you. Build the sandbox image
-            once with <code>sandcastle docker build-image</code> — nothing builds it for you, and
-            the doctor reports when it is missing.
+            Docker is the smoothest path and Podman is fully supported, so a Docker Desktop
+            licence never blocks you. Build the sandbox image once with
+            <code>sandcastle docker build-image</code>. Nothing builds it for you, and the doctor
+            says so when it is missing.
           </p>
         </div>
 
@@ -202,31 +201,39 @@
         <ol>
           <li>Run <code>runcastle</code> and open <code>http://localhost:4512</code>.</li>
           <li>
-            On a fresh machine a short first-run wizard appears. It asks for a
-            <strong>git identity</strong> — the one hard step, because runcastle commits docs and
-            merges for you, so it writes your name and email to <code>git config --global</code>;
-            it is skipped automatically if you already have one. Then it offers to
-            <strong>enable unattended burns</strong> (optional — set up the sandbox and auth token
-            now, or later), and finally asks you to <strong>open your first project</strong> by
-            pointing runcastle at a git repo.
+            On a fresh machine a short wizard appears. It asks for a
+            <strong>git identity</strong>, the one hard step: runcastle commits docs and merges
+            for you, so it writes your name and email to <code>git config --global</code>. It is
+            skipped if you already have one. Then it offers to
+            <strong>enable unattended burns</strong> (optional, and you can do it later), and
+            asks you to <strong>open your first project</strong> by pointing runcastle at a git
+            repo.
           </li>
-          <li>Inside a project, drive the loop.</li>
+          <li>
+            <strong>Prepare the project.</strong> One conversation, once, that records how your
+            repo installs, verifies, and runs, so no agent has to guess.
+            <a href="/docs/preparation/">How preparation works</a>.
+          </li>
+          <li>
+            <strong>Start something.</strong> If you know what you want, use New Feature. If you
+            have a complaint rather than a plan,
+            <a href="/docs/project/">talk it through with the project session</a> and let it cut
+            the work into features.
+          </li>
         </ol>
 
         <h2>The loop</h2>
         <p>
-          Every feature you build gets a persistent session that walks a pipeline:
+          Every feature gets its own conversation, which walks six phases:
           <strong>ideation, spec, tickets, build, review, shipped</strong>. You get grilled on an
-          idea until a spec and a set of tickets fall out. Sandboxed AFK agents burn those tickets
-          on a branch. You test drive the result and merge. Human in the loop at only the two
-          ends — and because each feature has its own branch and its own memory, several run the
-          loop at once.
+          idea until a spec and tickets fall out. Sandboxed agents burn the tickets on the
+          feature's branch while you are elsewhere. You test drive the result and merge.
         </p>
         <p>
-          The app always names the one next step. Read
-          <a href="/docs/pipeline/">the pipeline</a> for what happens in each of the six phases,
-          and <a href="/docs/gates/">gates</a> for the checks between them and the two moments
-          they hand the decision back to you.
+          You are needed at the two ends and nowhere in between. Each feature has its own branch
+          and its own memory, so several run at once, and the app always names the next step. Read
+          <a href="/docs/pipeline/">the pipeline</a> for each phase and
+          <a href="/docs/gates/">gates</a> for the checks between them.
         </p>
 
         <h2>Where things get written</h2>
@@ -238,19 +245,20 @@
           </li>
           <li>
             <strong>Machinery lives in the app's SQLite</strong> at <code>~/.runcastle/</code>:
-            phase state, session links, workflow runs, transcript index.
+            phase state, session links, workflow runs, transcript index, and everything
+            <a href="/docs/preparation/">preparation</a> established about the repo.
           </li>
           <li>
-            <strong>Your code lives where it always did.</strong> One branch per feature;
-            planning sessions get docs-only worktrees so several features can be planned in
-            parallel; the main checkout stays reserved for you.
+            <strong>Your code lives where it always did.</strong> One branch per feature. Planning
+            sessions get docs-only worktrees so several features can be planned at once, and your
+            checkout stays yours.
           </li>
         </ul>
 
         <h2>When something will not start</h2>
         <p>
-          Start with <code>runcastle doctor</code>. It names the exact failing prerequisite and
-          the fix. Beyond that, the three that come up most:
+          Start with <code>runcastle doctor</code>. It names the failing prerequisite and the fix.
+          Beyond that, the three that come up most:
         </p>
         <ul>
           <li>
@@ -259,7 +267,7 @@
           </li>
           <li>
             <strong>The embedded terminal will not start, or instantly exits.</strong> node-pty's
-            native binary is missing — re-run <code>bun install</code>. On Windows this is almost
+            native binary is missing, so re-run <code>bun install</code>. On Windows it is almost
             always a missing system <code>node</code>.
           </li>
           <li>
@@ -276,13 +284,13 @@
         </p>
 
         <div class="next">
-          <a href="/docs/pipeline/">
+          <a href="/docs/preparation/">
             <span class="next-k">Next</span>
-            <span class="next-t">The pipeline: six phases</span>
+            <span class="next-t">Preparation: teach runcastle your repo</span>
           </a>
-          <a href="/docs/gates/">
+          <a href="/docs/pipeline/">
             <span class="next-k">Then</span>
-            <span class="next-t">Gates and the two decisions</span>
+            <span class="next-t">The pipeline: six phases</span>
           </a>
         </div>
       </article>

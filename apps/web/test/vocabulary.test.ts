@@ -49,13 +49,13 @@ describe('the explainers', () => {
 
 /**
  * Test drive is the one word whose meaning CHANGES per project: on a prepared
- * project it renders an environment, runs the setup command and boots the dev
- * server; on an unprepared one it checks out the branch and stops. One sentence
+ * project it runs the setup command and boots the dev server; on an unprepared
+ * one it checks out the branch and stops. One sentence
  * cannot cover both, so the explainer is told which project it is describing.
  */
 describe('testDriveExplainer', () => {
-  const none = { env: false, setup: false, dev: false, teardown: false }
-  const all = { env: true, setup: true, dev: true, teardown: true }
+  const none = { setup: false, dev: false, teardown: false }
+  const all = { setup: true, dev: true, teardown: true }
 
   it('always names the checkout — the half that happens on every project', () => {
     for (const caps of [none, all, undefined]) {
@@ -72,11 +72,10 @@ describe('testDriveExplainer', () => {
     expect(copy).not.toMatch(/dev server|database|setup command/)
   })
 
-  it('names the setup command, the environment and the dev server when set', () => {
+  it('names the setup command and the dev server when set', () => {
     const copy = testDriveExplainer(all)
     expect(copy).toContain('setup command')
     expect(copy).toContain('dev server')
-    expect(copy).toContain('database')
     expect(copy).not.toContain('the checkout is all it does')
   })
 

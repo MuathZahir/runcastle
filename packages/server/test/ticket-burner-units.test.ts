@@ -178,6 +178,39 @@ describe('renderTicketPrompt', () => {
     expect(out).toContain(`${SANDBOX_WORKSPACE_PATH}/DIGEST.md`)
   })
 
+  it('carries the drive-script maintenance instruction into the rendered prompt', () => {
+    const out = renderTicketPrompt(readFileSync(burnerTemplatePath(), 'utf8'), {
+      TICKET_JSON: buildTicketJson(ticket(4)),
+      FEATURE_BRIEF: buildFeatureBrief(feature),
+      DOCS_DIGEST: '',
+      COMMIT_CONVENTION: 'ticket(4): <summary>',
+      WORKSPACE_NOTES: buildWorkspaceNotes('isolated'),
+      VERIFY_NOTES: '',
+    })
+
+    // The standing instruction, its four triggers, and the same-branch rule.
+    expect(out).toMatch(/if your ticket introduces infrastructure the dev environment needs/i)
+    expect(out).toMatch(/update the `\.runcastle\/` scripts in this same branch/i)
+    expect(out).toMatch(/a \*\*service\*\* the app now needs/i)
+    expect(out).toMatch(/a \*\*required env var\*\*/i)
+    expect(out).toMatch(/a \*\*seed\*\* requirement/i)
+    expect(out).toMatch(/a \*\*process\*\* the dev environment must run/i)
+    // The contract facts a script author needs.
+    expect(out).toContain('drive-setup')
+    expect(out).toContain('drive-stop')
+    expect(out).toContain('.runcastle/drive.env')
+    expect(out).toContain('RUNCASTLE_SLUG')
+    expect(out).toContain('RUNCASTLE_BRANCH')
+    expect(out).toContain('RUNCASTLE_ID')
+    expect(out).toMatch(/idempotent/i)
+    // Hermetic: the scripts are never run, only checked.
+    expect(out).toMatch(/NEVER try to run `drive-setup`/)
+    expect(out).toContain('bash -n')
+    expect(out).toMatch(/every referenced file exists/i)
+    expect(out).toContain('docker compose config -q')
+    expect(out).toMatch(/new env vars appear in the output/i)
+  })
+
   it('renders values containing $ and special chars safely', () => {
     const out = renderTicketPrompt('{{TICKET_JSON}}', {
       TICKET_JSON: 'cost is $5 & rising',

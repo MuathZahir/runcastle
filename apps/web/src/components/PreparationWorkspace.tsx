@@ -1,5 +1,5 @@
 import { trpc } from '../trpc'
-import { sessionStatusLabel } from '../lib/feature-ui'
+import { openApp, openAppWaitingLabel, sessionStatusLabel, type OpenApp } from '../lib/feature-ui'
 import { useLivePoll } from '../lib/live'
 import { useToast } from '../lib/toast'
 import { Button, DimLine, SessionStatusDot } from '../ui'
@@ -108,7 +108,7 @@ export function PreparationWorkspace({
               it (decision 9). */}
           {view?.dryRun && (
             <DryRunRow
-              url={view.dryRun.devUrl}
+              open={openApp(view.dryRun)}
               stopping={stopDryRun.isPending}
               onStop={() => stopDryRun.mutate({ projectId })}
             />
@@ -292,14 +292,15 @@ function PrepEvidence({
  * real drive on the human's machine — services up, a temp database created — so
  * the row says so and offers the teardown, which is the half a dead prep session
  * never runs. The sniffed URL is shown when there is one: it is the same
- * evidence `devCommand`'s stamp is made of.
+ * evidence `devCommand`'s stamp is made of. It is a LINK only once the server
+ * has watched it answer, exactly as the feature drive's pane behaves.
  */
 function DryRunRow({
-  url,
+  open,
   stopping,
   onStop,
 }: {
-  url?: string
+  open: OpenApp | null
   stopping: boolean
   onStop: () => void
 }) {
@@ -307,11 +308,16 @@ function DryRunRow({
     <div className="prep-dryrun">
       <span className="drive-pulse" />
       <span className="prep-dryrun-label">Preparation dry-run in progress</span>
-      {url && (
-        <a className="prep-dryrun-url mono" href={url} target="_blank" rel="noreferrer">
-          {url}
-        </a>
-      )}
+      {open &&
+        (open.state === 'ready' ? (
+          <a className="prep-dryrun-url mono" href={open.url} target="_blank" rel="noreferrer">
+            {open.url}
+          </a>
+        ) : (
+          <span className="prep-dryrun-url mono prep-dryrun-waiting">
+            {openAppWaitingLabel(open)}
+          </span>
+        ))}
       <span className="prep-dryrun-spacer" />
       <Button className="btn-xs" disabled={stopping} onClick={onStop}>
         {stopping ? 'Stopping…' : 'Stop'}
@@ -391,7 +397,7 @@ function EstablishedFrame({ findings }: { findings: readonly ProjectFinding[] })
                       ? 'proposed'
                       : 'measured'}
               </span>
-              {/* The dry-run stamp, on the four keys a host drive can actually
+              {/* The dry-run stamp, on the three keys a host drive can actually
                   prove (decision 10). Every other key shows nothing here —
                   absence of proof, not failure, and a badge reading "unverified"
                   on a key no dry run will ever touch would say the opposite. */}

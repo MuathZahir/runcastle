@@ -227,7 +227,7 @@
 /* ==========================================================================
    DOCS SUB-NAV
    --------------------------------------------------------------------------
-   The three docs pages carry this so every one is a hop from every other,
+   Every docs page carries this so each one is a hop from every other,
    including on narrow screens where the header's .nav-links is hidden.
    ========================================================================== */
 

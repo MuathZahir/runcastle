@@ -1,20 +1,16 @@
 import { createHash } from 'node:crypto'
 
 /**
- * Per-drive environment overrides — the generic half of "a database per branch".
+ * The drive's environment contract: identity in, `.runcastle/drive.env` out.
  *
- * The split this file exists to enforce: runcastle owns INJECTION, the project
- * owns CLONING. Handing a dev server a different `DATABASE_URL` is identical
- * across every stack, so we do it. Producing the thing that URL points at is
- * `CREATE DATABASE … TEMPLATE` on Postgres, a dump/restore on MySQL, a file copy
- * on SQLite, a branching API on Neon, and nothing at all on a hosted database
- * that will not grant CREATEDB — so that stays a {@link driveSetupCommand}
- * string the project supplies and preparation proposes. We never grow a driver
- * per vendor, and a database we have never heard of works the same as Postgres.
- *
- * Both halves see the same variables, which is what makes them compose: the
- * setup hook creates `myapp_add_billing` and the dev pane connects to it because
- * both rendered `{{id}}` from the same drive.
+ * The split this file exists to enforce: the project's own setup script COMPUTES
+ * everything a drive needs — ports, database names, redis indexes, compose
+ * project names, URLs — and runcastle only INJECTS. There are exactly two things
+ * a script cannot do for itself: know which drive it is serving, and set the
+ * environment of a sibling process the server spawns (the dev pane). So the
+ * server passes the identity in as plain `RUNCASTLE_*` variables, reads back the
+ * `KEY=VALUE` file the script wrote, and overlays it verbatim. Nothing here
+ * knows what a database or a service is, which is why any stack works.
  *
  * Caveat worth knowing rather than detecting: this sets process environment,
  * which wins over `.env` in dotenv, Prisma and Next by default — but a project
@@ -32,9 +28,9 @@ export interface DriveIdentity {
 
 /**
  * Conservative cap for {@link identifierSafe}. Postgres truncates identifiers at
- * 63 bytes, and the rendered value is normally a database name with a prefix
- * (`myapp_{{id}}`) — so this leaves room for one rather than spending the whole
- * budget and silently colliding two long branches at the 63rd byte.
+ * 63 bytes, and a script normally prefixes the value (`myapp_$RUNCASTLE_ID`) —
+ * so this leaves room for one rather than spending the whole budget and silently
+ * colliding two long branches at the 63rd byte.
  */
 const MAX_ID_LENGTH = 40
 
@@ -55,62 +51,33 @@ export function identifierSafe(slug: string, max = MAX_ID_LENGTH): string {
   return `${safe.slice(0, max - digest.length - 1)}_${digest}`
 }
 
-/** The `{{...}}` variables a drive exposes to hooks and to the dev pane. */
-export function driveVars(identity: DriveIdentity): Record<string, string> {
+/**
+ * The identity every child process of a drive is handed. Server-passed rather
+ * than derived from git inside the script, because the preparation dry run
+ * drives under a synthetic slug on whatever branch is already checked out.
+ */
+export function driveIdentityEnv(identity: DriveIdentity): Record<string, string> {
   return {
-    slug: identity.slug,
-    branch: identity.branch,
-    id: identifierSafe(identity.slug),
+    RUNCASTLE_SLUG: identity.slug,
+    RUNCASTLE_BRANCH: identity.branch,
+    RUNCASTLE_ID: identifierSafe(identity.slug),
   }
 }
 
-const PLACEHOLDER_RE = /\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g
-
-export interface RenderResult {
-  value: string
-  /** Placeholders that matched nothing — left literal, reported, never guessed. */
-  unknown: string[]
-}
-
-/** Substitute `{{name}}` from `vars`, leaving unknown placeholders untouched. */
-export function renderTemplate(value: string, vars: Record<string, string>): RenderResult {
-  const unknown: string[] = []
-  const out = value.replace(PLACEHOLDER_RE, (match, name: string) => {
-    const replacement = vars[name]
-    if (replacement === undefined) {
-      if (!unknown.includes(name)) unknown.push(name)
-      return match
-    }
-    return replacement
-  })
-  return { value: out, unknown }
-}
-
-export interface DriveEnv {
-  /** Variables to overlay on the inherited environment. */
-  vars: Record<string, string>
-  /** Unknown `{{placeholders}}` across every line, for one warning event. */
-  unknown: string[]
-}
-
 /**
- * Parse the project's `driveEnv` — one `KEY=VALUE` per line — rendering drive
- * variables into each value.
+ * Parse a `KEY=VALUE` env file — the setup script's half of the contract.
  *
  * Lenient about shape (blank lines, `#` comments, surrounding quotes, whitespace
- * around `=`) and strict about nothing, because this is a settings textarea and
- * a rejected line would fail a drive over a stray comment. A line with no `=`
- * or an empty key is dropped: there is no sensible interpretation of it.
+ * around `=`) and strict about nothing, because a rejected line would fail a
+ * drive over a stray comment. A line with no `=` or an empty key is dropped:
+ * there is no sensible interpretation of it. Values are taken verbatim — the
+ * script already computed them, and reinterpreting one here would break the
+ * single property the file exists for.
  */
-export function parseDriveEnv(
-  raw: string | undefined,
-  identity: DriveIdentity,
-): DriveEnv {
+export function parseEnvFile(raw: string | undefined): Record<string, string> {
   const vars: Record<string, string> = {}
-  const unknown: string[] = []
-  if (!raw?.trim()) return { vars, unknown }
+  if (!raw?.trim()) return vars
 
-  const substitutions = driveVars(identity)
   for (const line of raw.split(/\r?\n/)) {
     const trimmed = line.trim()
     if (trimmed === '' || trimmed.startsWith('#')) continue
@@ -120,11 +87,9 @@ export function parseDriveEnv(
     const key = trimmed.slice(0, eq).trim().replace(/^export\s+/, '')
     if (key === '') continue
 
-    const rendered = renderTemplate(unquote(trimmed.slice(eq + 1).trim()), substitutions)
-    vars[key] = rendered.value
-    for (const name of rendered.unknown) if (!unknown.includes(name)) unknown.push(name)
+    vars[key] = unquote(trimmed.slice(eq + 1).trim())
   }
-  return { vars, unknown }
+  return vars
 }
 
 /** Strip one layer of matching surrounding quotes, as an env file would. */
@@ -147,8 +112,7 @@ export function driveProcessEnv(
   return { ...base, ...overrides }
 }
 
-/** One-line summary of what a drive overrode, for the timeline. */
-export function describeDriveEnv(vars: Record<string, string>): string {
-  const keys = Object.keys(vars)
-  return `drive environment: ${keys.join(', ')}`
+/** One-line summary of what a drive overlaid, for the timeline. Names only. */
+export function describeDriveEnv(keys: string[]): string {
+  return `drive environment from .runcastle/drive.env: ${keys.join(', ')}`
 }

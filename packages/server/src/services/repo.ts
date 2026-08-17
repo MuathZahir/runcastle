@@ -59,7 +59,6 @@ export function rowToProject(row: ProjectSelect): Project {
     dbResetCommand: row.dbResetCommand ?? undefined,
     driveSetupCommand: row.driveSetupCommand ?? undefined,
     driveStopCommand: row.driveStopCommand ?? undefined,
-    driveEnv: row.driveEnv ?? undefined,
     closedAt: row.closedAt ?? undefined,
   })
 }

@@ -168,11 +168,6 @@ const META: Record<string, FieldMeta> = {
     help: 'Command run when a test drive stops, while the feature branch is still checked out. The counterpart to setup — stop services, drop the branch database.',
     control: 'text',
   },
-  driveEnv: {
-    label: 'Test drive environment',
-    help: 'KEY=VALUE per line, overlaid on the dev server and the setup/teardown commands during a drive. {{id}} is the branch as a safe database name, {{slug}} and {{branch}} are the raw forms. Pair DATABASE_URL=…/myapp_{{id}} with a setup command that creates it to give each branch its own database.',
-    control: 'textarea',
-  },
   dbResetCommand: {
     label: 'Database reset command',
     help: 'Command that rebuilds the dev database from the migrations in the working tree. Offered (never run automatically) after a test drive whose branch carried migrations this one does not have.',
@@ -192,7 +187,6 @@ export const PREPARED_LABEL: Record<string, string> = {
   dbResetCommand: 'Database reset command',
   driveSetupCommand: 'Test drive setup',
   driveStopCommand: 'Test drive teardown',
-  driveEnv: 'Test drive environment',
 }
 
 /**
@@ -205,7 +199,6 @@ export const HOST_ONLY_PREPARED = new Set([
   'dbResetCommand',
   'driveSetupCommand',
   'driveStopCommand',
-  'driveEnv',
 ])
 
 /** Coarse "3 days ago" for a finding's age. Exact enough to judge staleness by. */
@@ -220,7 +213,7 @@ export function relativeAge(ts: number, now = Date.now()): string {
 }
 
 /**
- * Whether a dry run can prove this key at all. Only the four drive-loop keys
+ * Whether a dry run can prove this key at all. Only the three drive-loop keys
  * have an observable a host drive produces; the rest carry no verification
  * wording anywhere, which reads as "unverifiable", not "failed" (decision 10).
  */
@@ -261,8 +254,6 @@ export function unverifiedDriveKeys(
 
 /** Which halves of a test drive this project has actually configured. */
 export interface DriveCapabilities {
-  /** `driveEnv` — the KEY=VALUE overlay, where a per-branch database name comes from. */
-  env: boolean
   /** `driveSetupCommand` — run before the dev server starts. */
   setup: boolean
   /** `devCommand` — the dev pane, and the "Open app" URL sniffed out of it. */
@@ -287,7 +278,6 @@ export function driveCapabilities(view: SettingsView | undefined): DriveCapabili
     return typeof value === 'string' && value.trim().length > 0
   }
   return {
-    env: set('driveEnv'),
     setup: set('driveSetupCommand'),
     dev: set('devCommand'),
     teardown: set('driveStopCommand'),

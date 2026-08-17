@@ -25,7 +25,7 @@
     <meta name="twitter:title" content="Gates — runcastle docs" />
     <meta
       name="twitter:description"
-      content="A check between every phase that has to pass before the next one starts. Seatbelt, not cage — and two of them are the only moments runcastle stops you."
+      content="A check between every phase that has to pass before the next one starts. Seatbelt, not cage, and two of them are the only moments runcastle stops you."
     />
 
     <link rel="preload" as="font" type="font/woff2" crossorigin
@@ -100,13 +100,15 @@
 
         <h1>Gates</h1>
         <p class="article-lede">
-          Gates sit between the phases. Each one is a check that has to pass before the next phase
-          starts. They block by default, and every one of them can be waved through with a
-          one-line reason that is kept in the feature's history. Seatbelt, not cage.
+          A gate sits between each pair of phases: a check that has to pass before the next phase
+          starts. Gates block by default, and any of them can be waved through with a one-line
+          reason that stays in the feature's history. Seatbelt, not cage.
         </p>
 
         <nav class="subnav" aria-label="Docs">
           <a href="/docs/">Getting started</a>
+          <a href="/docs/preparation/">Preparation</a>
+          <a href="/docs/project/">Project session</a>
           <a href="/docs/pipeline/">The pipeline</a>
           <a href="/docs/gates/" aria-current="page">Gates</a>
           <a href="/compare/">Compare</a>
@@ -114,40 +116,39 @@
 
         <h2>What a gate is for</h2>
         <p>
-          A pipeline that lets you skip from an idea straight to a build is not a pipeline, it is
-          a suggestion. The expensive failures in agent work are all the same shape: a lot of code
-          gets written against a plan nobody checked. Gates are where that gets caught, and they
-          are cheap because each one asks for something you were going to produce anyway.
+          A pipeline you can skip from idea straight to build is not a pipeline, it is a
+          suggestion. The expensive failures in agent work all have the same shape: a lot of code
+          written against a plan nobody checked. Gates catch that, and they are cheap, because
+          each one asks for something you were going to produce anyway.
         </p>
         <p>
-          The rule the whole design bends toward is <em>flexible guidance over brittle
-          machinery</em>. A gate that cannot be overridden eventually blocks something legitimate,
-          and then the tool is the problem. So no gate is final — but skipping one is a decision,
-          and decisions get written down.
+          A gate that cannot be overridden eventually blocks something legitimate, and then the
+          tool is the problem. So no gate is final. But skipping one is a decision, and decisions
+          get written down.
         </p>
 
         <h2>A check does not just refuse</h2>
         <p>
-          A blocked gate names the one condition that is not met, right beside the control that
-          clears it. The gate into review does not say "not ready" — it says
+          A blocked gate names the condition that is not met, right next to the control that
+          clears it. The gate into review does not say "not ready". It says
           <code>3 tickets not yet terminal (2 pending, 1 burning)</code>, so you know whether to
-          wait or to go and look. A red X is not a gate doing its job.
+          wait or go and look.
         </p>
         <p>
-          If the check is wrong for your situation, override it. That takes one click and one
-          sentence, and the sentence joins the feature's activity stream:
+          If the check is wrong for your situation, override it. One click and one sentence, and
+          the sentence joins the feature's activity stream:
         </p>
         <pre><code>gate G1 overridden: regression verified by hand</code></pre>
         <p>
-          Sessions, overrides, generated docs, blocked runs — all of it lands in one stream per
-          feature, in order. Work that ran while you were somewhere else is still readable
-          afterwards, which is what makes an override an audit trail rather than a hole.
+          Sessions, overrides, generated docs, and blocked runs all land in that one stream, in
+          order. Work that ran while you were somewhere else is still readable afterwards, which
+          is what makes an override an audit trail rather than a hole.
         </p>
 
         <h2>The gates, in order</h2>
         <p>
-          Each gate guards the entry to a phase. Two of them wait on you; the rest clear
-          themselves the moment the work they describe exists.
+          Each gate guards the entry to a phase. Two wait on you. The rest clear themselves as
+          soon as the work they describe exists.
         </p>
         <div class="table-scroll">
           <table>
@@ -172,7 +173,7 @@
               <tr>
                 <th scope="row">G3</th>
                 <td>build</td>
-                <td><strong>A human approves the tickets — the Burn click.</strong></td>
+                <td><strong>A human approves the tickets. The Burn click.</strong></td>
               </tr>
               <tr>
                 <th scope="row">G4</th>
@@ -182,7 +183,7 @@
               <tr>
                 <th scope="row">G5</th>
                 <td>shipped</td>
-                <td><strong>A human merges the feature branch — the Merge click.</strong></td>
+                <td><strong>A human merges the feature branch. The Merge click.</strong></td>
               </tr>
             </tbody>
           </table>
@@ -190,46 +191,40 @@
 
         <h2>The two decisions</h2>
         <p>
-          G3 and G5 are the only two places runcastle stops and waits for a person. Everything
-          between them runs without you. That is the whole promise: human in the loop at only the
-          two ends.
+          G3 and G5 are the only places runcastle stops and waits for a person. Everything between
+          them runs without you.
         </p>
 
         <h3>Approve the plan</h3>
         <p>
           The spec and the ticket list come out of one unbroken conversation, so nothing is
           rebuilt from a summary of a summary. You skim it and say go. This is the cheap moment to
-          disagree — a ticket list takes a minute to read, and it is the last point before agents
+          disagree: a ticket list takes a minute to read, and it is the last point before agents
           start writing code against it.
         </p>
 
         <h3>Approve the merge</h3>
         <p>
-          runcastle sets your own work aside, checks out the finished branch, and starts it on its
-          own port, so you can click through the feature before it lands. Then it puts your work
-          back. The merge gate wants a human behind the wheel: an agent can tell you every ticket
-          finished and every check passed, and still not know whether the thing feels right.
+          runcastle sets your work aside, checks out the finished branch, and starts it on its own
+          port so you can click through the feature before it lands. Then it puts your work back.
+          An agent can tell you every ticket finished and every check passed, and still not know
+          whether the thing feels right.
         </p>
 
         <div class="note">
           <p>
-            Everything else — grilling, writing the spec, cutting tickets, burning them in
-            containers, looping fixes back through the build phase — happens between those two
-            clicks, and does not need you awake for it.
+            Everything else happens between those two clicks and does not need you awake for it:
+            grilling, writing the spec, cutting tickets, burning them in containers, and looping
+            fixes back through build.
           </p>
         </div>
 
-        <h2>Why not just remove the gates</h2>
+        <h2>Why not just remove them</h2>
         <p>
-          Because the alternative to a gate is not freedom, it is an agent quietly building on a
-          plan that was never checked. And because a gate is what lets the rest of the loop be
-          unattended: you can walk away from a build precisely because something is guaranteed to
-          stop before the branch merges itself.
-        </p>
-        <p>
-          The gates are guardrails on a road you are still driving. They block by default, they
-          tell you exactly what they want, they take an override with a reason, and they keep that
-          reason where the next person — including future you — will find it.
+          The alternative to a gate is not freedom, it is an agent quietly building on a plan
+          nobody checked. Gates are also what make the rest of the loop safe to leave alone: you
+          can walk away from a build because something is guaranteed to stop before the branch
+          merges itself.
         </p>
 
         <div class="next">

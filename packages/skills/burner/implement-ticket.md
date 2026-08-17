@@ -81,6 +81,40 @@ Whatever the commands are, spend them well — a full suite on a monorepo is min
 
    Write it in plain prose, for a reader who does not have your context. **Never commit `DIGEST.md`** — it is harvested from the workspace, not from the repo, and a committed one is diff noise. It is a **success artifact only**: if you are blocked and writing `BLOCKED.md`, write no digest — `BLOCKED.md` is your record.
 
+## Keep the drive scripts true
+
+The project's test drive runs from scripts committed in this repo under `.runcastle/` — `drive-setup` / `drive-stop` and whatever they source. They are the project's test-drive machinery, versioned with the code they prepare, so the drive of *this* branch runs *this* branch's copy of them.
+
+**Standing instruction: if your ticket introduces infrastructure the dev environment needs, update the `.runcastle/` scripts in this same branch.** The triggers are:
+
+- a **service** the app now needs — a database, a queue, a container in the compose file;
+- a **required env var** the app reads at boot and fails without;
+- a **seed** requirement — data that has to exist before the app is usable;
+- a **process** the dev environment must run alongside the app — a worker, a watcher.
+
+Anything short of those needs no edit. The steps are idempotent by design — install, migrate, compose up all run unconditionally — so a branch that merely adds a package or a migration is already covered. Only structural changes need you, and you are the agent who knows about them. This is part of your ticket, not adjacent work: a branch whose drive cannot boot is not done.
+
+The contract facts you need:
+
+- The scripts are **committed source** — edit them like any other file, alongside the change that made them necessary.
+- **Every step stays idempotent** — safe to re-run against an already-prepared world, correct against a fresh one.
+- **`drive-setup` writes `.runcastle/drive.env`** (gitignored, plain `KEY=VALUE`). That file is the only way a value the script computes — a port, a database name, a URL — reaches the app. If your ticket makes the app require an env var, the setup script must write it there.
+- **`RUNCASTLE_SLUG`, `RUNCASTLE_BRANCH`, and `RUNCASTLE_ID` are provided by the server** to every drive hook. Derive per-drive identity from those; never from git inside the script.
+- **Exit 0 means ready** — if you add a service, add the wait for it too.
+
+### Check the scripts hermetically — never run them
+
+Your sandbox is hermetic: **no docker, no services, no host, no app.** NEVER try to run `drive-setup`, `drive-stop`, a compose command that starts anything, or the app itself. There is nothing there to talk to, so an attempt buys a confusing failure and burns your budget. That is the design, not an obstacle to route around.
+
+What you *can* verify, all of it offline:
+
+- **Syntax.** `bash -n .runcastle/drive-setup.sh` for a shell script; for a `.ps1`, parse it with `[System.Management.Automation.Language.Parser]::ParseFile` under `pwsh -NoProfile` if `pwsh` exists in the sandbox.
+- **Every referenced file exists.** Read the script and check that each path it names — compose file, seed file, env sample, sourced helper — is present in the repo at that path.
+- **The compose file parses**, if you changed one: `docker compose config -q` when the CLI happens to be installed, otherwise parse it as YAML.
+- **New env vars appear in the output.** If your change made the app require an env var, grep the setup script and confirm it actually writes that key into `.runcastle/drive.env`.
+
+Say in your digest which of these you ran. If a check is impossible in the sandbox, state that rather than implying it passed.
+
 ## Hard rules
 
 A few of these are enforced by a tool hook, not just stated here: `git stash`, test-runner concurrency flags, and rewriting files through interpreter heredocs are **denied** before they run. A denial is policy, not a broken environment — read its reason, take the alternative it names, and carry on. Do not try to route around it.

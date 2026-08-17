@@ -1,4 +1,7 @@
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync, existsSync } from 'node:fs'
+import { createServer } from 'node:http'
+import type { Server } from 'node:http'
+import type { AddressInfo } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { Feature, Project } from '@runcastle/core'
@@ -12,6 +15,7 @@ import { runs } from '../src/db/schema'
 import { listAfter } from '../src/services/events'
 import {
   __resetTestDriveState,
+  __setAppReadinessTiming,
   activeDriveInfo,
   activeTestDriveFeatureId,
   burnWorktreePath,
@@ -84,6 +88,25 @@ async function currentBranch(g: SimpleGit): Promise<string> {
 }
 
 /**
+ * A setup command that plays the setup script's half of the drive contract:
+ * write one `KEY=VALUE` line to `.runcastle/drive.env`. Spelled for whichever
+ * shell hosts it, so `$RUNCASTLE_ID` in the line becomes `%RUNCASTLE_ID%` on cmd.
+ */
+function writeDriveEnv(line: string): string {
+  const file = join('.runcastle', 'drive.env')
+  return process.platform === 'win32'
+    ? `mkdir .runcastle & echo ${line.replace(/\$([A-Z_]+)/g, '%$1%')}> "${file}"`
+    : `mkdir -p .runcastle && echo "${line}" > "${file}"`
+}
+
+/** A hook command that writes one environment variable to `marker`. */
+function readVar(name: string, marker: string): string {
+  return process.platform === 'win32'
+    ? `echo %${name}%> "${marker}"`
+    : `echo "$${name}" > "${marker}"`
+}
+
+/**
  * Give `repo` an `origin` remote (a bare clone) that carries `branch`, WITHOUT a
  * local copy of it — i.e. `origin/<branch>` exists as a remote-tracking ref only.
  * Mirrors a fresh clone where the team's base line lives only on the remote.
@@ -103,12 +126,50 @@ async function addRemoteOnlyBranch(g: SimpleGit, repoDir: string, branch: string
   await g.fetch()
 }
 
+/** Loopback HTTP servers a readiness test stood up, closed after each test. */
+const servers: Server[] = []
+
+/** A 127.0.0.1 port with nothing listening: bound to claim one, then released. */
+async function freePort(): Promise<number> {
+  const probe = createServer()
+  await new Promise<void>((r) => probe.listen(0, '127.0.0.1', () => r()))
+  const port = (probe.address() as AddressInfo).port
+  await new Promise<void>((r) => probe.close(() => r()))
+  return port
+}
+
+/** Answer every request on `port` with `status` — including the unhappy ones. */
+async function serve(port: number, status: number): Promise<void> {
+  const server = createServer((_req, res) => {
+    res.writeHead(status)
+    res.end('body')
+  })
+  servers.push(server)
+  await new Promise<void>((r) => server.listen(port, '127.0.0.1', () => r()))
+}
+
+/** Poll `fn` until it holds, for the asynchronous halves (readiness, sniffing). */
+async function waitFor(fn: () => boolean, tries = 200): Promise<void> {
+  for (let i = 0; i < tries; i++) {
+    if (fn()) return
+    await new Promise((r) => setTimeout(r, 10))
+  }
+  throw new Error('waitFor timed out')
+}
+
+const delay = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms))
+
 beforeEach(() => {
   __resetTestDriveState()
 })
 
-afterEach(() => {
+afterEach(async () => {
   __resetTestDriveState()
+  __setAppReadinessTiming()
+  while (servers.length) {
+    const server = servers.pop()
+    if (server) await new Promise<void>((r) => server.close(() => r()))
+  }
   while (tmpDirs.length) {
     const dir = tmpDirs.pop()
     if (dir) {
@@ -593,6 +654,67 @@ describe('testDrive', () => {
     await testDrive(ctx, project, feature, 'stop')
   })
 
+  // App readiness (decision 5). A dev server prints its URL well before it
+  // serves, so "Open app" is held back until the URL actually answers — which
+  // is the only thing that makes the link worth clicking on the first try.
+  it('holds the app un-ready until the sniffed URL answers, polling through refused connections', async () => {
+    __setAppReadinessTiming({ intervalMs: 20, budgetMs: 10_000 })
+    const port = await freePort()
+    const url = `http://127.0.0.1:${port}/`
+
+    await testDrive(ctx, project, feature, 'start')
+    recordDriveUrl(ctx, feature.id, url)
+
+    // Nothing is listening yet: the URL is known, the link is not live.
+    expect(activeDriveInfo()).toMatchObject({ devUrl: url, devReady: false })
+    await delay(60)
+    expect(activeDriveInfo()?.devReady).toBe(false)
+
+    // A 503 is still a server: it accepted the connection and spoke HTTP, which
+    // is all "will the link load" asks.
+    await serve(port, 503)
+    await waitFor(() => activeDriveInfo()?.devReady === true)
+
+    expect(activeDriveInfo()?.devReadyTimedOut).toBeUndefined()
+    expect(listAfter(ctx, feature.id, 0).map((e) => e.type)).toContain('testdrive.ready')
+
+    await testDrive(ctx, project, feature, 'stop')
+  })
+
+  it('warns and leaves the drive alone when the readiness poll runs out of budget', async () => {
+    __setAppReadinessTiming({ intervalMs: 5, budgetMs: 40 })
+    const url = `http://127.0.0.1:${await freePort()}/`
+
+    await testDrive(ctx, project, feature, 'start')
+    recordDriveUrl(ctx, feature.id, url)
+    await waitFor(() => activeDriveInfo()?.devReadyTimedOut === true)
+
+    expect(activeDriveInfo()?.devReady).toBe(false)
+    // The URL is kept: giving up on the poll is a warning, not a retraction.
+    expect(activeDriveInfo()?.devUrl).toBe(url)
+    expect(listAfter(ctx, feature.id, 0).map((e) => e.type)).toContain('testdrive.ready_timeout')
+
+    // The drive itself never noticed — it is live, and it stops normally.
+    expect(activeTestDriveFeatureId()).toBe(feature.id)
+    expect((await testDrive(ctx, project, feature, 'stop')).ok).toBe(true)
+  })
+
+  it('cancels an in-flight readiness poll on stop, with no late event', async () => {
+    __setAppReadinessTiming({ intervalMs: 5, budgetMs: 10_000 })
+    const url = `http://127.0.0.1:${await freePort()}/`
+
+    await testDrive(ctx, project, feature, 'start')
+    recordDriveUrl(ctx, feature.id, url)
+    await testDrive(ctx, project, feature, 'stop')
+
+    // Long after the poll's own interval, nothing it could have said arrived.
+    await delay(100)
+    const types = listAfter(ctx, feature.id, 0).map((e) => e.type)
+    expect(types).not.toContain('testdrive.ready')
+    expect(types).not.toContain('testdrive.ready_timeout')
+    expect(activeDriveInfo()).toBeNull()
+  })
+
   // Test-drive hooks. runcastle holds no model of what "bringing the project
   // up" means — the project supplies a shell string and we run it, which is the
   // only answer that works across Postgres, SQLite, Mongo, compose stacks and
@@ -657,65 +779,84 @@ describe('testDrive', () => {
     expect(readFileSync(marker, 'utf8').trim()).toBe('feature/drive')
   })
 
-  // The generic half of "a database per branch": we render and inject the
-  // variables, the project's own command creates whatever they name.
-  it('renders driveEnv into the hook environment, per branch', async () => {
-    const marker = join(project.repoPath, 'seen-env.txt')
-    const withEnv = {
+  // The drive's environment contract: identity in as `RUNCASTLE_*`, everything
+  // the script computed back out through `.runcastle/drive.env`. runcastle
+  // injects; the project's own script decides what a per-branch database, port
+  // or compose project is called.
+  it('hands the setup hook the drive identity as plain environment', async () => {
+    const marker = join(project.repoPath, 'identity.txt')
+    const withHook = {
       ...project,
-      driveEnv: 'DATABASE_URL=postgres://localhost:5432/myapp_{{id}}',
       driveSetupCommand:
         process.platform === 'win32'
-          ? `echo %DATABASE_URL% > "${marker}"`
-          : `echo "$DATABASE_URL" > "${marker}"`,
+          ? `echo %RUNCASTLE_SLUG% %RUNCASTLE_BRANCH% %RUNCASTLE_ID%> "${marker}"`
+          : `echo "$RUNCASTLE_SLUG $RUNCASTLE_BRANCH $RUNCASTLE_ID" > "${marker}"`,
     }
-    await testDrive(ctx, withEnv, feature, 'start')
+    await testDrive(ctx, withHook, feature, 'start')
 
-    expect(readFileSync(marker, 'utf8').trim()).toBe('postgres://localhost:5432/myapp_drive')
+    expect(readFileSync(marker, 'utf8').trim()).toBe('drive feature/drive drive')
 
-    await testDrive(ctx, withEnv, feature, 'stop')
+    await testDrive(ctx, withHook, feature, 'stop')
   })
 
-  // Setup creates the database and the dev server has to connect to THAT one;
-  // two different renderings would be worse than not doing this at all.
-  it('gives the teardown hook the same rendering the setup hook saw', async () => {
-    const setupMarker = join(project.repoPath, 'setup-env.txt')
+  // Setup creates the database and the stop hook has to drop THAT one; the file
+  // is what carries the name across two processes the server spawns separately.
+  it('overlays what the setup script wrote onto the stop hook', async () => {
     const stopMarker = join(project.repoPath, 'stop-env.txt')
-    const write = (m: string) =>
-      process.platform === 'win32' ? `echo %DATABASE_URL% > "${m}"` : `echo "$DATABASE_URL" > "${m}"`
-    const withEnv = {
+    const withHooks = {
       ...project,
-      driveEnv: 'DATABASE_URL=db_{{id}}',
-      driveSetupCommand: write(setupMarker),
-      driveStopCommand: write(stopMarker),
+      driveSetupCommand: writeDriveEnv('DB_NAME=myapp_$RUNCASTLE_ID'),
+      driveStopCommand: readVar('DB_NAME', stopMarker),
     }
 
-    await testDrive(ctx, withEnv, feature, 'start')
-    await testDrive(ctx, withEnv, feature, 'stop')
+    await testDrive(ctx, withHooks, feature, 'start')
+    await testDrive(ctx, withHooks, feature, 'stop')
 
-    expect(readFileSync(stopMarker, 'utf8').trim()).toBe(readFileSync(setupMarker, 'utf8').trim())
+    expect(readFileSync(stopMarker, 'utf8').trim()).toBe('myapp_drive')
   })
 
-  it('reports an unknown placeholder instead of substituting a blank', async () => {
-    const withEnv = { ...project, driveEnv: 'DATABASE_URL=db_{{oops}}' }
-    await testDrive(ctx, withEnv, feature, 'start')
+  // Most projects need no variables at all, and a drive that failed over an
+  // absent scratch file would be brittle in exactly the dimension this contract
+  // exists to remove.
+  it('runs a drive with no drive.env at all, overlaying nothing', async () => {
+    const withHook = { ...project, driveSetupCommand: 'echo nothing-to-hand-back' }
+    const start = await testDrive(ctx, withHook, feature, 'start')
 
-    expect(listAfter(ctx, feature.id, 0).map((e) => e.type)).toContain(
-      'testdrive.env_unknown_placeholder',
-    )
-    await testDrive(ctx, withEnv, feature, 'stop')
+    expect(start.ok).toBe(true)
+    expect(listAfter(ctx, feature.id, 0).map((e) => e.type)).not.toContain('testdrive.env')
+
+    await testDrive(ctx, withHook, feature, 'stop')
   })
 
   // Values routinely hold credentials. The timeline is a shared artifact.
-  it('records which variables the drive set, never their values', async () => {
-    const withEnv = { ...project, driveEnv: 'DATABASE_URL=postgres://user:hunter2@localhost/x' }
-    await testDrive(ctx, withEnv, feature, 'start')
+  it('records which variables the script handed back, never their values', async () => {
+    const withHook = {
+      ...project,
+      driveSetupCommand: writeDriveEnv('DATABASE_URL=postgres://user:hunter2@localhost/x'),
+    }
+    await testDrive(ctx, withHook, feature, 'start')
 
     const event = listAfter(ctx, feature.id, 0).find((e) => e.type === 'testdrive.env')
     expect(event?.message).toContain('DATABASE_URL')
     expect(JSON.stringify(event)).not.toContain('hunter2')
 
-    await testDrive(ctx, withEnv, feature, 'stop')
+    await testDrive(ctx, withHook, feature, 'stop')
+  })
+
+  // An untracked file left in the repo would ride back to the branch you came
+  // from as a carried change, and deny the next start on a dirty tree.
+  it('deletes drive.env on stop, leaving the next drive a clean tree', async () => {
+    const withHook = { ...project, driveSetupCommand: writeDriveEnv('DB_NAME=myapp_$RUNCASTLE_ID') }
+
+    await testDrive(ctx, withHook, feature, 'start')
+    const stop = await testDrive(ctx, withHook, feature, 'stop')
+
+    expect(existsSync(join(project.repoPath, '.runcastle', 'drive.env'))).toBe(false)
+    expect(stop.carriedChanges).toBeUndefined()
+
+    const again = await testDrive(ctx, withHook, feature, 'start')
+    expect(again.ok).toBe(true)
+    await testDrive(ctx, withHook, feature, 'stop')
   })
 
   it('does nothing when the project has no hooks', async () => {
