@@ -12,7 +12,7 @@ Scope-specific skills, each namespaced `/runcastle:<skill>`:
 | `/runcastle:spec` | by ideate | synthesizes `spec.md`, completes the `spec` phase |
 | `/runcastle:tickets` | by ideate | emits session-sized vertical-slice tickets via MCP, completes the `tickets` phase |
 | `/runcastle:qa` | entry for `kind=qa` | read-only Q&A over an existing feature; never advances phases |
-| `/runcastle:project` | entry for `kind=project` | project scope, not feature scope: grills a lump of intent into N features and creates them, routes, answers portfolio questions, curates advisory-only, and owns `CONTEXT.md` |
+| `/runcastle:project` | entry for `kind=project` | project scope, not feature scope: consults the portfolio, advises on how a lump of intent should be cut into N features and creates them, routes, answers portfolio questions, curates advisory-only, and owns `CONTEXT.md` |
 | `/runcastle:waypoint` | entry for `kind=waypoint` | *original* — works ONE waypoint on a mapped feature, writes its decision prose, resolves the waypoint |
 | `/runcastle:converge` | entry for `kind=converge` | closes a mapped feature: reads only the compressed knowledge, then drives spec + tickets from it |
 | `/runcastle:revisit` | entry for `kind=revisit` | *original* — folds late information into a finished feature; on a Rethink, runs the whole front half of a lap |
