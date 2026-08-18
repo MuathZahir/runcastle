@@ -264,6 +264,7 @@ export function TicketsBody({
               header here rather than a view of its own. */}
           <LapSections
             groups={groupByLap(tickets, full.data.feature.lap)}
+            currentLap={full.data.feature.lap}
             meta={(g) =>
               `${g.rows.filter((t) => t.status === 'done').length}/${g.rows.length} done`
             }

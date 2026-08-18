@@ -90,21 +90,30 @@ export function CheckLine({ row }: { row: CheckRow }) {
  *
  * The current lap is a plain always-open section; earlier laps are a `<details>`
  * that opens on a click — the same collapse idiom the map rail uses for its done
- * waypoints. A feature with ONE lap gets no headers at all: it never iterated,
+ * waypoints. A feature still on LAP 1 gets no headers at all: it never iterated,
  * and a "Lap 1" band over everything it owns is exactly the ceremony ADR-0010 §4
  * keeps off a feature that merges first try.
+ *
+ * That suppression keys on the feature's lap, never on how many laps have rows.
+ * A lap-2 feature whose rows are all lap-1 carryovers has exactly one group, and
+ * heading it is the whole point: the lap banner directly above already says LAP
+ * 2, so a flat list there would have the two halves of the workspace disagreeing
+ * about which lap the human is looking at.
  */
 export function LapSections<T extends { lap: number }>({
   groups,
+  currentLap,
   meta,
   children,
 }: {
   groups: LapGroup<T>[]
+  /** The feature's own lap — what decides whether headers show at all. */
+  currentLap: number
   /** One line about what a lap holds, shown beside its number. */
   meta: (group: LapGroup<T>) => string
   children: (rows: T[]) => ReactNode
 }) {
-  if (groups.length <= 1) return <>{children(groups[0]?.rows ?? [])}</>
+  if (currentLap <= 1) return <>{children(groups.flatMap((g) => g.rows))}</>
 
   return (
     <>

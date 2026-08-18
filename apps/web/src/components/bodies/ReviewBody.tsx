@@ -500,6 +500,7 @@ function NotesPanel({
         <div className="notes-list">
           <LapSections
             groups={groupByLap(rows, lap)}
+            currentLap={lap}
             meta={(g) => `${g.rows.filter((n) => n.status === 'open').length} open`}
           >
             {(group) => group.map(noteRow)}
