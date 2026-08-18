@@ -1722,8 +1722,8 @@ describe('lapAccount', () => {
     kind: 'implementation' as const,
     ...(digest === undefined ? {} : { digest }),
   })
-  const review = (digest?: string) => ({
-    seq: 9,
+  const review = (digest?: string, seq = 9) => ({
+    seq,
     title: 'review',
     kind: 'review' as const,
     ...(digest === undefined ? {} : { digest }),
@@ -1769,6 +1769,52 @@ describe('lapAccount', () => {
     expect(lapAccount([impl(1), review()])).toBeNull()
     expect(lapAccount([])).toBeNull()
     expect(lapAccount()).toBeNull()
+  })
+
+  /**
+   * Ticket 11 — the account is of ONE lap. Picking the last review ticket across
+   * the whole batch is indistinguishable from correct on lap 1; on lap 2 it puts
+   * lap 1's summary under a heading that reads "What landed this lap".
+   */
+  describe('scoped to the lap under review', () => {
+    const on = <T,>(lap: number, t: T) => ({ ...t, lap })
+
+    it('never presents the previous lap’s review as this lap’s account', () => {
+      expect(
+        lapAccount(
+          [on(1, impl(1, 'built lap 1')), on(1, review('Lap 1 made laps legible.')), on(2, impl(2))],
+          2,
+        ),
+      ).toBeNull()
+    })
+
+    it('falls back to THIS lap’s burner accounts, never the previous lap’s', () => {
+      expect(
+        lapAccount(
+          [on(1, impl(1, 'built lap 1')), on(1, review('Lap 1 summary.')), on(2, impl(2, 'fixed the ledger'))],
+          2,
+        ),
+      ).toEqual({
+        source: 'tickets',
+        entries: [{ seq: 2, title: 'ticket 2', digest: 'fixed the ledger' }],
+      })
+    })
+
+    it('leads with this lap’s own review once it has run', () => {
+      expect(
+        lapAccount(
+          [on(1, review('Lap 1 summary.')), on(2, impl(2, 'fixed the ledger')), on(2, review('Lap 2 summary.', 10))],
+          2,
+        ),
+      ).toEqual({ source: 'review', prose: 'Lap 2 summary.' })
+    })
+
+    it('leaves lap 1 exactly as it was', () => {
+      expect(lapAccount([on(1, impl(1, 'built the thing')), on(1, review('Lap 1 summary.'))], 1)).toEqual({
+        source: 'review',
+        prose: 'Lap 1 summary.',
+      })
+    })
   })
 })
 

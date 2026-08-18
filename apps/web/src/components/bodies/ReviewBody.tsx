@@ -109,8 +109,10 @@ export function ReviewBody({
   })
   // What the lap delivered, in the agents' own prose (decisions #8) — the thing
   // the human came to this screen to read, so it leads the card the figures are
-  // on rather than sitting under them.
-  const account = lapAccount(tickets)
+  // on rather than sitting under them. Scoped to the lap this page is reviewing:
+  // the ledger below groups by lap, and a summary card silently answering with
+  // the previous lap's account is the same flat reading the lap work removed.
+  const account = lapAccount(tickets, feature.lap)
   // Scope the spec left for a later lap. Same read the next-step bar makes (one
   // query key, one fetch), so the card below and the bar above cannot disagree
   // about whether this lap is the last one.
