@@ -137,3 +137,69 @@ describe('guard install command', () => {
     expect(Buffer.from(encoded![1]!, 'base64').toString('utf8')).toBe(renderGuardScript())
   })
 })
+
+/**
+ * A codex burn must be guarded exactly as tightly as a claude one — same rules,
+ * same reasons — installed into the home codex actually reads. Codex's hook
+ * protocol is Claude-shaped (same stdin payload, same deny verdict), so the twin
+ * is the same script under a different path plus a `hooks.json` instead of a
+ * `settings.json`; the rules themselves are never transcribed twice.
+ */
+describe('the codex guard twin', () => {
+  it('installs the SAME script, under the codex home', () => {
+    const cmd = buildGuardInstallCommand('codex')
+    expect(cmd).toContain('mkdir -p "$HOME/.codex/hooks"')
+    expect(cmd).toContain('> "$HOME/.codex/hooks/burn-guard.sh"')
+    expect(cmd).toContain('> "$HOME/.codex/hooks.json"')
+    expect(cmd).not.toContain('.claude')
+
+    const encoded = /printf %s '([A-Za-z0-9+/=]+)' \| base64 -d > "\$HOME\/\.codex\/hooks\//.exec(cmd)
+    expect(encoded).not.toBeNull()
+    // Byte-identical to Claude's: one script, two installs.
+    expect(Buffer.from(encoded![1]!, 'base64').toString('utf8')).toBe(renderGuardScript())
+  })
+
+  it('registers PreToolUse in codex hooks.json, matching Bash as a regex', () => {
+    const hooks = renderGuardSettings('codex')
+    const entry = hooks.hooks.PreToolUse[0]!
+    expect(entry.matcher).toBe('^Bash$')
+    expect(entry.hooks[0]!.command).toBe('sh $HOME/.codex/hooks/burn-guard.sh')
+    expect(entry.hooks[0]!.type).toBe('command')
+  })
+
+  it('carries every rule — pattern and reason — into both renderings', () => {
+    /** The guard script as it actually lands inside the container. */
+    const installedScript = (runtime: 'claude-code' | 'codex'): string => {
+      const cmd = buildGuardInstallCommand(runtime)
+      const encoded = /printf %s '([A-Za-z0-9+/=]+)' \| base64 -d > "[^"]*burn-guard\.sh"/.exec(cmd)
+      expect(encoded, `no script payload in the ${runtime} install`).not.toBeNull()
+      return Buffer.from(encoded![1]!, 'base64').toString('utf8')
+    }
+
+    for (const script of [installedScript('claude-code'), installedScript('codex')]) {
+      for (const rule of GUARD_RULES) {
+        expect(script).toContain(rule.pattern)
+        // As the script quotes it: reasons contain apostrophes, which `sh`
+        // single-quoting escapes as '\''.
+        expect(script).toContain(rule.reason.split("'").join(`'\\''`))
+      }
+      // Both emit the one deny verdict claude AND codex understand — same
+      // hookSpecificOutput shape on exit 0 (verified against codex-rs).
+      expect(script).toContain('permissionDecision:"deny"')
+      expect(script).toContain('hookEventName:"PreToolUse"')
+    }
+  })
+
+  it('denies the same commands whichever runtime is burning', () => {
+    // The decision is the rule set's, not the rendering's — one evaluator backs
+    // both installs, so a command denied for claude is denied for codex.
+    for (const command of [
+      'git stash',
+      'bun test --maxWorkers=1',
+      "python3 - <<'PY'",
+      "cat > src/index.ts <<'EOF'",
+    ]) {
+      expect(evaluateGuard(command), `${command} must be denied`).not.toBeNull()
+    }
+  })
+})
