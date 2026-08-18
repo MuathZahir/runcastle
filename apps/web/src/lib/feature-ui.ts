@@ -531,6 +531,15 @@ export function ticketConflictKickoff(input: {
   )
 }
 
+/**
+ * What "End session & resolve" costs, said before the click (decisions #10). The
+ * resolve affordance never hides now, so the one-terminal rule it used to hide
+ * behind has to be explained instead — on the bar and on the conflict card, in
+ * the same words, because they fire the same compound.
+ */
+export const ONE_TERMINAL_WARNING =
+  'One terminal per feature — your live session will be closed to open the resolve session.'
+
 export interface MergeConflictState {
   /** The base branch that failed to merge in (the merge target). */
   base: string
@@ -919,6 +928,20 @@ function reviewRow(outcome: ReviewOutcome): CheckRow | null {
   }
 }
 
+/**
+ * The review row when no review ticket ran at all (decisions #9). A review is a
+ * constant of the pipeline now — the code review always runs, the drive rides
+ * along when the change is drivable — so its absence is a fact about THIS lap
+ * rather than a feature that never asked for one. Amber for the same reason
+ * "never test-driven" is: nothing was checked for the human, and the card that
+ * used to omit the row entirely is how "no review happened" stayed silent.
+ */
+const NO_REVIEW_ROW: CheckRow = {
+  key: 'review agent',
+  value: 'no review ran this lap',
+  tone: 'warn',
+}
+
 /** The review SUMMARY card's rows, in the order the card shows them. */
 export function reviewChecks(input: {
   tickets?: readonly ReviewTicketFigure[]
@@ -929,16 +952,92 @@ export function reviewChecks(input: {
 }): CheckRow[] {
   // The agent's report LEADS the card (decisions #7). The human arrives at this
   // screen to read it, and a line appended under the commit count is exactly the
-  // "easy to miss" that decision exists to prevent. Omitted entirely when no
-  // review ticket ran: a feature that never asked for a review is not missing
-  // anything, and this card does not nag.
+  // "easy to miss" that decision exists to prevent.
   const review = reviewRow(reviewOutcome({ tickets: input.tickets, notes: input.notes }))
   return [
-    ...(review ? [review] : []),
+    review ?? NO_REVIEW_ROW,
     ticketRow(input.tickets ?? []),
     runRow(input.run),
     commitRow(input.commitCount),
   ]
+}
+
+/** One implementation ticket's own account, as the fallback block lists it. */
+export interface TicketAccount {
+  seq: number
+  title: string
+  /** The burner's `DIGEST.md`, trimmed — never empty (an empty one is dropped). */
+  digest: string
+}
+
+/**
+ * What the review page leads with, and where it came from (decisions #8). The
+ * human arrives at review to read what the lap delivered, in prose.
+ */
+export type LapAccount =
+  /** The review agent's own summary — it ran last and saw the result working. */
+  | { source: 'review'; prose: string }
+  /** No review summary: the burners' own accounts, one per ticket. */
+  | { source: 'tickets'; entries: TicketAccount[] }
+
+/** A ticket as the "what landed" block reads it — its account and whose it is. */
+interface DigestTicketFigure {
+  seq: number
+  title: string
+  kind?: TicketKind
+  digest?: string
+}
+
+/**
+ * The prose account of what this lap landed, or null when no agent wrote one.
+ *
+ * The review agent's digest is the summary (decisions #8): it runs last, holds
+ * the spec plus every implementation digest, and is the only agent that saw the
+ * result working — so its account beats any synthesis assembled here. It rides
+ * the existing ticket-digest seam, so nothing new is stored.
+ *
+ * Falling back to the implementation tickets' own digests is deliberately a
+ * DIFFERENT thing, and the card labels it as such: several agents each saying
+ * what they did is not one account of the lap.
+ *
+ * The review ticket is picked exactly as {@link reviewOutcome} picks it — the
+ * last one in the batch — so the block and the row above it can never be talking
+ * about different reviews. A review ticket that wrote no digest falls through to
+ * the fallback: an empty summary is no summary.
+ */
+export function lapAccount(tickets?: readonly DigestTicketFigure[]): LapAccount | null {
+  const rows = tickets ?? []
+  const prose = rows.filter((t) => t.kind === 'review').at(-1)?.digest?.trim()
+  if (prose) return { source: 'review', prose }
+  const entries = rows.flatMap((t) => {
+    const digest = t.kind === 'review' ? '' : (t.digest?.trim() ?? '')
+    return digest ? [{ seq: t.seq, title: t.title, digest }] : []
+  })
+  return entries.length > 0 ? { source: 'tickets', entries } : null
+}
+
+/**
+ * The spec's path, or undefined until it is written. Same shape as {@link
+ * mapDocPath} and for the same reason: the review body's Planned-next-lap card
+ * and the next-step bar both read the spec, and one implementation is what makes
+ * them resolve the SAME `docs.read` query key and share a single fetch.
+ */
+export function specDocPath(full: FeatureFull): string | undefined {
+  return full.docs.find((d) => d.relPath.endsWith('spec.md'))?.relPath
+}
+
+/**
+ * The scope this feature's spec has deliberately left for a later lap — the body
+ * of its `## Later laps` section, verbatim — or null when the spec lists none.
+ *
+ * This is the fact the review page never knew (decisions #7): a spec written as
+ * a thin lap 1 reached review, and with nothing on screen aware of the planned
+ * lap 2, the human shipped half a feature by clicking the main button. Null is
+ * the ordinary case and means review behaves exactly as it always has.
+ */
+export function deferredScope(specContent?: string): string | null {
+  if (!specContent) return null
+  return parseMapSections(specContent)['Later laps']?.trim() || null
 }
 
 /** What the merge confirmation shows: the figures, and every gap in them. */
@@ -949,6 +1048,20 @@ export interface MergeSummary {
    * confirm button. Empty when everything checks out.
    */
   warnings: string[]
+}
+
+/** How much of the deferred scope a one-line warning can carry. */
+const SCOPE_QUOTE_MAX = 180
+
+/**
+ * A spec section as a warning line: its markdown flattened to one line, cut to
+ * something a dialog can hold. Verbatim belongs to the Planned-next-lap card,
+ * which has the room for it; this is the catch, and a catch has to be readable
+ * at a glance.
+ */
+function quoteScope(scope: string): string {
+  const flat = scope.replace(/\s+/g, ' ').trim()
+  return flat.length > SCOPE_QUOTE_MAX ? `${flat.slice(0, SCOPE_QUOTE_MAX).trimEnd()}…` : flat
 }
 
 /**
@@ -969,6 +1082,8 @@ export function mergeSummary(input: {
   openNotes?: number
   /** What the review agent made of this branch, when the caller knows. */
   review?: ReviewOutcome
+  /** Scope the spec left for a later lap ({@link deferredScope}). */
+  laterLaps?: string | null
 }): MergeSummary {
   const drive: CheckRow = input.driveTaken
     ? { key: 'test drive', value: 'taken', tone: 'ok' }
@@ -1013,6 +1128,13 @@ export function mergeSummary(input: {
   // judged their open notes shippable must not be stopped.
   const open = input.openNotes ?? 0
   if (open > 0) warnings.push(`${open} open test-drive note${open === 1 ? '' : 's'}.`)
+  // The last catch (decisions #7). The bar has already stopped recommending this
+  // merge, so anyone reading this line came here deliberately — which is exactly
+  // why it quotes the scope rather than just naming it: what was deferred is the
+  // thing they have to weigh, and it is not on screen behind this dialog.
+  if (input.laterLaps) {
+    warnings.push(`The spec still lists deferred scope: ${quoteScope(input.laterLaps)}`)
+  }
 
   return {
     rows: [
@@ -1207,6 +1329,13 @@ export function nextStep(
      * findings inbox.
      */
     openNotes?: number
+    /**
+     * Scope the spec has left for a later lap ({@link deferredScope}). Set means
+     * review's primary flips from Merge & ship to starting the next lap
+     * (decisions #7) — the main button is what steered the human into shipping
+     * half a feature, so the main button is what has to change.
+     */
+    laterLaps?: string | null
   },
 ): NextStep {
   const { feature, tickets, sessions, runs, gate } = full
@@ -1591,16 +1720,22 @@ export function nextStep(
           kick: 'MERGE CONFLICT',
           title: 'Resolve the merge conflict',
           desc: live
-            ? `Merging ${ctx.conflict.base} in hit conflicts — resolve them in the open session, then merge again.`
+            ? `Merging ${ctx.conflict.base} in hit conflicts. Resolving opens an agent on this branch — one terminal per feature, so your live session is closed first.`
             : `Merging ${ctx.conflict.base} in hit conflicts. An agent can resolve them on this branch, then Merge & ship retries.`,
-          // One terminal per feature: with a session live there is nothing to
-          // launch, and the conflict panel below carries the file list.
-          primary: live
-            ? undefined
-            : { label: 'Resolve the merge conflict', kind: 'resolveConflict' },
+          // NEVER hidden while the conflict stands (decisions #10). Gating it on
+          // the one-terminal rule is what made the resolve button read as
+          // randomly not existing until the chat ended; with a session live the
+          // button performs the dance instead — end it, then launch the resolve
+          // — and says so above.
+          primary: {
+            label: live ? 'End session & resolve' : 'Resolve the merge conflict',
+            kind: 'resolveConflict',
+          },
           secondary: [retryMerge, ...burn, testDriveAction, ...addressNotes, ...iterate],
           busy: false,
-          ...driveWarning,
+          // The compound's own explanation outranks the drive caveat, exactly as
+          // a drive refusal does: it is about the button the eye is on.
+          ...(live ? { warning: ONE_TERMINAL_WARNING } : driveWarning),
         }
       }
 
@@ -1620,6 +1755,31 @@ export function nextStep(
             testDriveAction,
             ...addressNotes,
             ...iterate,
+          ],
+          busy: false,
+          ...driveWarning,
+        }
+      }
+
+      // The spec still lists scope for a later lap (decisions #7), so shipping is
+      // not the step this lap ends on: the primary starts lap N+1 and Merge &
+      // ship drops to a secondary, one click away — "lap 1 is enough" is the
+      // human's call to make, and this only stops the main button making it for
+      // them. Reuses the Iterate action rather than minting a second one, so the
+      // next lap has ONE dispatch and inherits the reason it cannot fire while
+      // the drive holds the branch. With a session live there is nothing to
+      // launch (`iterate` is empty) and review says exactly what it says today.
+      const startNextLap = iterate[0]
+      if (ctx.laterLaps && startNextLap) {
+        return {
+          kick: 'NEXT STEP',
+          title: `Lap ${feature.lap} is done — the spec plans lap ${feature.lap + 1}`,
+          desc: `This lap is reviewable, and the spec still lists scope it deliberately deferred. Start lap ${feature.lap + 1} to take it on — or ship what landed, if lap ${feature.lap} is enough.`,
+          primary: { ...startNextLap, label: `Start lap ${feature.lap + 1}` },
+          secondary: [
+            { label: 'Merge & ship', kind: 'merge' },
+            testDriveAction,
+            ...addressNotes,
           ],
           busy: false,
           ...driveWarning,
@@ -1748,7 +1908,11 @@ export function mapDocPath(full: FeatureFull): string | undefined {
   return full.docs.find((d) => d.relPath.endsWith('map.md'))?.relPath
 }
 
-/** Split `map.md` into a `{ heading: body }` map keyed by its `## ` sections. */
+/**
+ * Split a doc into a `{ heading: body }` map keyed by its `## ` sections —
+ * `map.md`'s frontier prose, and `spec.md`'s deferred scope ({@link
+ * deferredScope}).
+ */
 export function parseMapSections(content: string): Record<string, string> {
   const out: Record<string, string> = {}
   let current: string | null = null
