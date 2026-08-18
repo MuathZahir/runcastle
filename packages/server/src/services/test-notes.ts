@@ -35,7 +35,7 @@ type TestNoteSelect = typeof testNotes.$inferSelect
  * follows a stamped URL back through that route, so a drift shows up as a 404
  * rather than as a silently broken thumbnail.
  */
-function screenshotUrl(noteId: string): string {
+function noteScreenshotUrl(noteId: string): string {
   return `/api/reviews/note/${noteId}/screenshot.png`
 }
 
@@ -55,7 +55,7 @@ function rowToNote(row: TestNoteSelect): TestNote {
     author: row.author,
     ticketId: row.ticketId ?? undefined,
     videoTimestamp: row.videoTimestamp ?? undefined,
-    screenshotUrl: existsSync(annotationPath(row.id)) ? screenshotUrl(row.id) : undefined,
+    screenshotUrl: existsSync(annotationPath(row.id)) ? noteScreenshotUrl(row.id) : undefined,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   })
