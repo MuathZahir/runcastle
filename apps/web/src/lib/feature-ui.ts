@@ -1720,7 +1720,7 @@ export function nextStep(
           kick: 'MERGE CONFLICT',
           title: 'Resolve the merge conflict',
           desc: live
-            ? `Merging ${ctx.conflict.base} in hit conflicts. Resolving opens an agent on this branch — one terminal per feature, so your live session is closed first.`
+            ? `Merging ${ctx.conflict.base} in hit conflicts. An agent can resolve them on this branch — or type the resolution into the session you already have open.`
             : `Merging ${ctx.conflict.base} in hit conflicts. An agent can resolve them on this branch, then Merge & ship retries.`,
           // NEVER hidden while the conflict stands (decisions #10). Gating it on
           // the one-terminal rule is what made the resolve button read as

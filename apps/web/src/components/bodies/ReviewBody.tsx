@@ -195,7 +195,7 @@ export function ReviewBody({
       </div>
       </div>
 
-      {laterLaps && <PlannedNextLapCard lap={feature.lap} scope={laterLaps} />}
+      {laterLaps && <PlannedNextLapCard lap={feature.lap} scope={laterLaps} readonly={readonly} />}
 
       {isDriving && ownDrive && <DrivePane drive={ownDrive} />}
 
@@ -259,13 +259,23 @@ function LapAccountBlock({ account }: { account: LapAccount }) {
  * has already flipped its primary to Start lap N+1; this is what that button is
  * for, in the spec's own words.
  */
-function PlannedNextLapCard({ lap, scope }: { lap: number; scope: string }) {
+function PlannedNextLapCard({
+  lap,
+  scope,
+  readonly,
+}: {
+  lap: number
+  scope: string
+  /** Looking back at review on a shipped feature — there is no next step to take. */
+  readonly: boolean
+}) {
   return (
     <div className="review-card planned-lap-card">
       <SectionTitle>Planned next lap</SectionTitle>
       <div className="drive-copy">
-        The spec kept this out of lap {lap} on purpose. Start lap {lap + 1} from the next step to
-        take it on — or ship what landed, if lap {lap} is enough.
+        {readonly
+          ? `The spec kept this out of lap ${lap} on purpose, and it was still deferred when this feature shipped.`
+          : `The spec kept this out of lap ${lap} on purpose. Start lap ${lap + 1} from the next step to take it on — or ship what landed, if lap ${lap} is enough.`}
       </div>
       <Markdown source={scope} className="planned-lap-scope" />
     </div>

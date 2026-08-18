@@ -35,8 +35,8 @@ import {
 } from '../lib/feature-ui'
 import { LAP_KICKOFF, lapExplainer } from '../lib/vocabulary'
 import { relTime } from '../lib/format'
-import { IconBranch } from '../icons'
 import { useResolveConflict } from '../lib/use-resolve-conflict'
+import { IconBranch } from '../icons'
 import { AddressNotesDialog } from './AddressNotesDialog'
 import { MergeFeatureDialog } from './MergeFeatureDialog'
 import { DraftBody } from './bodies/DraftBody'
@@ -115,7 +115,9 @@ export function Workspace({
   // the review bar's primary and warns in the merge dialog. Same query key the
   // review body's Planned-next-lap card reads, so the bar and the card share one
   // fetch and cannot disagree about what is still deferred.
-  const specRelPath = q.data ? specDocPath(q.data) : undefined
+  // Only at review, where both readers are: every earlier phase would be paying
+  // for a doc read whose answer it has nowhere to put.
+  const specRelPath = q.data?.feature.phase === 'review' ? specDocPath(q.data) : undefined
   const specQ = trpc.docs.read.useQuery(
     { featureId, relPath: specRelPath ?? 'spec.md' },
     { enabled: !!specRelPath },
