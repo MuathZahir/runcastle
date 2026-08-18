@@ -378,8 +378,12 @@ function ModelCombobox({
         <option value={CUSTOM}>Custom…</option>
       </select>
       {custom && (
+        // Keyed on the value so a write landing elsewhere restarts the form
+        // rather than leaving a draft that no longer answers anything.
         <CustomModelForm
-          id={value}
+          key={value}
+          controlId={id}
+          initialId={value}
           disabled={disabled}
           onCommit={(entry) => {
             setCustom(false)
@@ -402,15 +406,18 @@ function ModelCombobox({
  * "Add" stays refused until they have.
  */
 function CustomModelForm({
-  id,
+  controlId,
+  initialId,
   disabled,
   onCommit,
 }: {
-  id: string
+  /** The owning combobox's id — scopes the radio group, which is per-field. */
+  controlId: string
+  initialId: string
   disabled: boolean
   onCommit: (entry: ModelEntry) => void
 }) {
-  const [draftId, setDraftId] = useState(id)
+  const [draftId, setDraftId] = useState(initialId)
   const [runtime, setRuntime] = useState('')
   const [note, setNote] = useState('')
   const [invalid, setInvalid] = useState<string | null>(null)
@@ -445,7 +452,7 @@ function CustomModelForm({
           <label key={r} className="settings-runtime-option">
             <input
               type="radio"
-              name={`runtime-${id || 'new'}`}
+              name={`runtime-${controlId}`}
               value={r}
               checked={runtime === r}
               onChange={() => setRuntime(r)}

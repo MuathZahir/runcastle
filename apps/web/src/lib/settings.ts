@@ -35,9 +35,6 @@ export const FIELD_ENV_VAR: Record<string, string> = {
   mainBranch: 'RUNCASTLE_MAIN_BRANCH',
 }
 
-/** Curated model ids offered by the Default-model dropdown (curated list in core). */
-export const MODEL_OPTIONS: string[] = CURATED_MODELS.map((m) => m.id)
-
 /** How each runtime is named to a human. */
 export const RUNTIME_LABEL: Record<AgentRuntime, string> = {
   'claude-code': 'Claude Code',
@@ -158,7 +155,6 @@ const META: Record<string, FieldMeta> = {
     label: 'Default model',
     help: "Model every step inherits, and the runtime it runs on. A project's own model wins over the per-step models below.",
     control: 'select',
-    options: MODEL_OPTIONS,
   },
   sandbox: {
     label: 'Sandbox',
@@ -501,7 +497,6 @@ function metaFor(key: string): FieldMeta {
       label: STEP_LABEL[step] ?? step,
       help: `Model for the ${STEP_LABEL[step] ?? step} step.`,
       control: 'select',
-      options: MODEL_OPTIONS,
     }
   }
   return META[key] ?? { label: key, help: '', control: 'text' as const }
@@ -536,7 +531,7 @@ export function describeField(
   roster: readonly ModelEntry[] = CURATED_MODELS,
 ): SettingRow {
   const meta = metaFor(field.key)
-  const modelGroups = isModelKey(field.key) ? modelOptionGroups(roster) : []
+  const isModel = isModelKey(field.key)
   const gitDetected = GIT_DETECTED.has(field.key)
   const readOnly = !field.editable || gitDetected
   const overridden = field.source === 'project'
@@ -560,8 +555,8 @@ export function describeField(
     control: meta.control,
     // A model row's choices are the roster (curated + the operator's own), so a
     // custom id they added is a pick rather than something to retype.
-    options: modelGroups.length > 0 ? roster.map((m) => m.id) : (meta.options ?? []),
-    modelGroups,
+    options: isModel ? roster.map((m) => m.id) : (meta.options ?? []),
+    modelGroups: isModel ? modelOptionGroups(roster) : [],
     optionLabels: meta.optionLabels ?? {},
     readOnly,
     restartRequired: field.restartRequired,
@@ -570,9 +565,9 @@ export function describeField(
     note,
     ...(finding?.evidence ? { evidence: finding.evidence } : {}),
     stale: finding ? isStale(finding) : false,
-    // The Default-model dropdown and each per-step override accept a curated
+    // The Default-model dropdown and each per-step override accept a roster
     // choice OR a free-text model id (issue #48).
-    allowCustom: isModelKey(field.key),
+    allowCustom: isModel,
   }
 }
 
