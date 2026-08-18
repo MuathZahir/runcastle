@@ -1,4 +1,4 @@
-import type { SessionStatus } from '@runcastle/core'
+import type { SessionKind, SessionStatus } from '@runcastle/core'
 import type { AppCtx } from '../db/types'
 import {
   getSessionRow,
@@ -40,22 +40,32 @@ export interface ProjectConversation {
 export const TITLE_MAX = 60
 
 /**
- * The human's first line of a conversation, as a title.
+ * A transcript with the launcher's kickoff lines taken out of it.
  *
- * "First user message" is not literally the first `user` entry: every runcastle
- * terminal opens with a kickoff line typed in by the launcher, so taking the
- * literal first would title every project conversation "Proceed with your task:
- * invoke the /runcastle:project skill…". The kickoff is recognised with the same
- * comparison its own delivery confirmation uses, and skipped.
+ * Every runcastle terminal opens with a kickoff line typed in by the launcher,
+ * and Claude Code records it as a `user` turn — indistinguishable, on disk, from
+ * something the human typed. It is not: nobody wrote "Proceed with your task:
+ * invoke the /runcastle:project skill…", so neither the title nor the transcript
+ * may attribute it to them. Recognised with the same comparison the kickoff's own
+ * delivery confirmation uses, which is why a RESUMED conversation's re-sent
+ * kickoff is caught too — the resume framing is a prefix around the same line,
+ * and {@link promptMatchesKickoff} compares on the line's own opening.
+ *
+ * Filtered here, server-side, so the one matcher serves every surface and the
+ * title and the transcript can never disagree about who said the first thing.
  */
+export function withoutKickoff(
+  turns: TranscriptTurn[],
+  kind: SessionKind = 'project',
+): TranscriptTurn[] {
+  const kickoff = kickoffLineFor(kind)
+  return turns.filter((turn) => !(turn.role === 'user' && promptMatchesKickoff(kickoff, turn.text)))
+}
+
+/** The human's first line of a conversation, as a title (see {@link withoutKickoff}). */
 export function deriveTitle(turns: TranscriptTurn[]): string | null {
-  const kickoff = kickoffLineFor('project')
-  for (const turn of turns) {
-    if (turn.role !== 'user') continue
-    if (promptMatchesKickoff(kickoff, turn.text)) continue
-    return elide(turn.text)
-  }
-  return null
+  const first = withoutKickoff(turns).find((turn) => turn.role === 'user')
+  return first ? elide(first.text) : null
 }
 
 /** Collapse to one line and cut to {@link TITLE_MAX}, marking the cut. */
@@ -111,7 +121,13 @@ export function listProjectConversations(ctx: AppCtx, projectId: string): Projec
  * transcripts belong to Claude Code and can be cleared or tidied away, and a
  * conversation whose record is gone is a thing to render as empty, not an error
  * to throw at someone who only clicked "view transcript".
+ *
+ * What comes back is what was *said*: the launcher's kickoff lines are dropped
+ * ({@link withoutKickoff}), so the pane never opens with a "You" bubble carrying
+ * a sentence the human did not type.
  */
 export function conversationTranscript(ctx: AppCtx, sessionId: string): TranscriptTurn[] {
-  return readTranscript(getSessionRow(ctx, sessionId)?.transcriptPath)
+  const session = getSessionRow(ctx, sessionId)
+  if (!session) return []
+  return withoutKickoff(readTranscript(session.transcriptPath), session.kind)
 }
