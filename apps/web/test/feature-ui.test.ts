@@ -1722,8 +1722,8 @@ describe('lapAccount', () => {
     kind: 'implementation' as const,
     ...(digest === undefined ? {} : { digest }),
   })
-  const review = (digest?: string) => ({
-    seq: 9,
+  const review = (digest?: string, seq = 9) => ({
+    seq,
     title: 'review',
     kind: 'review' as const,
     ...(digest === undefined ? {} : { digest }),
@@ -1777,7 +1777,7 @@ describe('lapAccount', () => {
    * lap 1's summary under a heading that reads "What landed this lap".
    */
   describe('scoped to the lap under review', () => {
-    const on = <T extends { seq: number }>(lap: number, t: T) => ({ ...t, lap })
+    const on = <T,>(lap: number, t: T) => ({ ...t, lap })
 
     it('never presents the previous lap’s review as this lap’s account', () => {
       expect(
@@ -1803,7 +1803,7 @@ describe('lapAccount', () => {
     it('leads with this lap’s own review once it has run', () => {
       expect(
         lapAccount(
-          [on(1, review('Lap 1 summary.')), on(2, impl(2, 'fixed the ledger')), on(2, review('Lap 2 summary.'))],
+          [on(1, review('Lap 1 summary.')), on(2, impl(2, 'fixed the ledger')), on(2, review('Lap 2 summary.', 10))],
           2,
         ),
       ).toEqual({ source: 'review', prose: 'Lap 2 summary.' })
