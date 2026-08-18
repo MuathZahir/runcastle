@@ -54,17 +54,14 @@ export const TITLE_MAX = 60
  * Filtered here, server-side, so the one matcher serves every surface and the
  * title and the transcript can never disagree about who said the first thing.
  */
-export function withoutKickoff(
-  turns: TranscriptTurn[],
-  kind: SessionKind = 'project',
-): TranscriptTurn[] {
+function withoutKickoff(turns: TranscriptTurn[], kind: SessionKind): TranscriptTurn[] {
   const kickoff = kickoffLineFor(kind)
   return turns.filter((turn) => !(turn.role === 'user' && promptMatchesKickoff(kickoff, turn.text)))
 }
 
 /** The human's first line of a conversation, as a title (see {@link withoutKickoff}). */
 export function deriveTitle(turns: TranscriptTurn[]): string | null {
-  const first = withoutKickoff(turns).find((turn) => turn.role === 'user')
+  const first = withoutKickoff(turns, 'project').find((turn) => turn.role === 'user')
   return first ? elide(first.text) : null
 }
 
