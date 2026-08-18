@@ -986,6 +986,8 @@ interface DigestTicketFigure {
   title: string
   kind?: TicketKind
   digest?: string
+  /** Which lap emitted it. Absent only in figures that predate lap scoping. */
+  lap?: number
 }
 
 /**
@@ -1000,13 +1002,24 @@ interface DigestTicketFigure {
  * DIFFERENT thing, and the card labels it as such: several agents each saying
  * what they did is not one account of the lap.
  *
- * The review ticket is picked exactly as {@link reviewOutcome} picks it — the
- * last one in the batch — so the block and the row above it can never be talking
- * about different reviews. A review ticket that wrote no digest falls through to
- * the fallback: an empty summary is no summary.
+ * Everything read here belongs to `lap`, the lap being accounted for — a heading
+ * that says "What landed this lap" may never be answered by another one. Picking
+ * the last review ticket in the whole batch is indistinguishable from correct
+ * while a feature has only lap 1; from lap 2 on, until that lap's own review has
+ * run, it presents lap 1's summary as this lap's account. A lap with nothing to
+ * say says nothing (null) and the card's no-review state stands. Passing no lap
+ * accounts every ticket handed in, which is what an unstamped batch means.
+ *
+ * Within the lap the review ticket is picked exactly as {@link reviewOutcome}
+ * picks it — the last one — so the block and the row above it can never be
+ * talking about different reviews. A review ticket that wrote no digest falls
+ * through to the fallback: an empty summary is no summary.
  */
-export function lapAccount(tickets?: readonly DigestTicketFigure[]): LapAccount | null {
-  const rows = tickets ?? []
+export function lapAccount(
+  tickets?: readonly DigestTicketFigure[],
+  lap?: number,
+): LapAccount | null {
+  const rows = (tickets ?? []).filter((t) => lap === undefined || t.lap === lap)
   const prose = rows.filter((t) => t.kind === 'review').at(-1)?.digest?.trim()
   if (prose) return { source: 'review', prose }
   const entries = rows.flatMap((t) => {
