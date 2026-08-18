@@ -21,7 +21,7 @@ Four, and deliberately none of the feature pipeline's. A session with no feature
 
 - `mcp__runcastle__get_project_context()` — the project, the charter in full, every live ADR in full, and a one-line index of every feature.
 - `mcp__runcastle__get_work_record({ featureSlug? , seam? })` — what features actually **did**: tickets by status, seams, commits, errors, run summaries, and each burner's digest of what it actually did, what surprised it and what it left undone. Facts, never intent.
-- `mcp__runcastle__create_feature({ title, oneLiner, baseBranch?, brief?, draft?, ticket? })` — the end of intake.
+- `mcp__runcastle__create_feature({ title, oneLiner, baseBranch?, brief?, draft?, tickets? })` — the end of intake.
 - `mcp__runcastle__record_event({ type, message })` — a note on the project timeline.
 
 Every **merged** feature's docs are already on disk in this worktree — `docs/features/<slug>/`. Read them with your ordinary `Read`/`Grep`; the index says where. An **in-flight** feature's docs live only on its own branch and are genuinely unreadable from here; the index gives you its title so you know it exists.
@@ -82,7 +82,7 @@ Each one carries a real `brief` — the reasoning you just worked out, in prose:
 Anything that arrives (from the human, or from a sweep in §6) goes to exactly one of:
 
 1. **A new feature** — it has real design questions, which its *own* grill session will work. `create_feature` with a brief.
-2. **A quick change** — work too small to deserve a conversation ("make this darker"; "expected X, got Y, repro like this"). `create_feature({ title, oneLiner, ticket: { prose } })` — one call, feature and its single ticket created together, born ready for the human's **Burn** click. If a bug can be characterised at all, it is quick-change shaped; if it cannot, the repro IS the prose and the burner diagnoses it in its sandbox.
+2. **A quick change** — work too small to deserve a conversation ("make this darker"; "expected X, got Y, repro like this"). `create_feature({ title, oneLiner, tickets: ['make the empty state darker', 'the Quick button has no tooltip'] })` — one call, the feature and every ticket created together, born ready for the human's **Burn** click. **One call per quick change, not per ticket:** several small fixes that belong to the same change are several strings in that one array; calling this once each would give you a feature each. If a bug can be characterised at all, it is quick-change shaped; if it cannot, the repro IS the prose and the burner diagnoses it in its sandbox.
 3. **An existing feature's revisit** — it belongs to a feature already in flight. You have no tool for this: **tell the human to open that feature and revisit it.**
 4. **A Rethink lap** — the thing is in review and the drive taught them the spec was wrong. Again no tool: tell them to click **Rethink** on that feature.
 5. **Nothing** — it is already decided, already built, or not worth doing. Say so plainly, with the ADR or the shipped feature that settles it.

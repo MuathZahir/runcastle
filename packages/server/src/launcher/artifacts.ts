@@ -837,7 +837,7 @@ export function renderProjectPrompt(brief: ProjectBrief): string {
     '## runcastle MCP tools',
     'Four, and none of the feature pipeline\'s — a session with no feature has no business',
     'advancing one through a gate:',
-    '- `create_feature({ title, oneLiner, baseBranch?, brief?, ticket? })` — the point of',
+    '- `create_feature({ title, oneLiner, baseBranch?, brief?, tickets? })` — the point of',
     '  this session. It does NOT open a terminal on what it creates; the new card appearing',
     '  in the rail is the feedback, and the human decides what to work on next.',
     '- `get_project_context()` — the project, its charter, its live ADRs, and a one-line',
