@@ -407,10 +407,10 @@ export async function quickChange(ctx: AppCtx, input: QuickChangeInput): Promise
   // scoped on purpose: it is the birth of the whole card, not of any one of the
   // tickets it arrived with — `tickets.stored` above already speaks for those.
   const seqs = stored.map((t) => t.seq)
-  const count = stored.length === 1 ? 'one ticket' : `${stored.length} tickets`
+  const tally = stored.length === 1 ? 'one ticket' : `${stored.length} tickets`
   emit(ctx, feature.id, {
     type: 'feature.quick_change',
-    message: `quick change — born at implementation on lap 1 with ${count} (${seqs.map((s) => `#${s}`).join(', ')}); no grill session, no spec.md`,
+    message: `quick change — born at implementation on lap 1 with ${tally} (${seqs.map((s) => `#${s}`).join(', ')}); no grill session, no spec.md`,
     data: { slug, ticketSeqs: seqs, phase: 'implementation' },
   })
 

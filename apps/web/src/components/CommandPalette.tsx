@@ -101,9 +101,10 @@ export function CommandPalette(props: CommandPaletteProps) {
   const actions = useMemo<Action[]>(() => {
     const all: (Action & { shows: boolean })[] = [
       {
-        // The palette's create row used to open the NEW FEATURE overlay, which
-        // is retired (decisions.md #12). Its successor is the row below: New is
-        // a conversation now, and the chat's terms already answer to "new".
+        // The palette used to open the NEW FEATURE overlay from a create row of
+        // its own. That overlay is retired (decisions.md #12) and this row is
+        // what replaced it: New is a conversation now, and the chat's terms
+        // already answer to the words someone types looking to start one.
         kind: 'projectChat',
         shows: matchesProjectChat(q),
         glyph: <IconMessage size={13} />,
