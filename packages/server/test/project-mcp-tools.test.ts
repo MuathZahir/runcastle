@@ -209,10 +209,15 @@ describe('project-session MCP tools', () => {
 
     expect(out.phase).toBe('implementation')
     const tickets = listByFeature(ctx, out.id)
-    expect(tickets).toHaveLength(1)
+    // The prose ticket, and the review ticket every quick-change batch closes
+    // with — this door goes through `quickChange`, so decisions.md #9 holds
+    // here exactly as it does on the tRPC one.
+    expect(tickets).toHaveLength(2)
     expect(tickets[0].goal).toBe(prose)
     expect(tickets[0].acceptanceCriteria).toEqual([prose])
     expect(tickets[0].lap).toBe(1)
+    expect(tickets[1].kind).toBe('review')
+    expect(tickets[1].blockedBy).toEqual([1])
   })
 
   /**

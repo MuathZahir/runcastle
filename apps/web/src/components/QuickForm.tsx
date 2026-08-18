@@ -243,9 +243,12 @@ export function QuickForm({
                 + Add another ticket
               </button>
 
+              {/* The review ticket is named here because the server appends one
+                  to every quick change (decisions.md #9) — without it the
+                  footer would promise N cards and the ledger would show N+1. */}
               <div className="nf-branch">
                 branch · feature/{slug || '…'} ← {base || '…'} · starts at build with{' '}
-                {written.length || 1} ticket{(written.length || 1) === 1 ? '' : 's'}
+                {written.length || 1} ticket{(written.length || 1) === 1 ? '' : 's'} + a review
               </div>
             </>
           ) : (
