@@ -666,7 +666,7 @@ const DRAFTING_KINDS: readonly SessionKindT[] = ['ideation', 'revisit', 'waypoin
 function createFeatureProject(
   ctx: AppCtx,
   session: SessionRow,
-  input: { draft?: boolean; ticket?: { prose: string } },
+  input: { draft?: boolean; tickets?: string[] },
 ): Project {
   if (isProjectSessionKind(session.kind)) return requireProject(ctx, session)
   if (!DRAFTING_KINDS.includes(session.kind)) {
@@ -675,11 +675,11 @@ function createFeatureProject(
         'Tell the human what is worth capturing; the project session is where features are made.',
     )
   }
-  if (!input.draft || input.ticket) {
+  if (!input.draft || input.tickets) {
     throw new GateError(
       `a ${session.kind} session may only PARK a feature here: call create_feature with ` +
         '`draft: true` and a `brief` carrying why you deferred it. Cutting a branch — a full ' +
-        'create or the quick-change `ticket` shape — belongs to the project session; tell the ' +
+        'create or the quick-change `tickets` shape — belongs to the project session; tell the ' +
         'human to open it.',
     )
   }
@@ -695,10 +695,10 @@ function createFeatureProject(
  * just produced, so the reasoning about why this feature exists and what it
  * must not swallow survives the terminal closing. With `draft` it parks that
  * same feature instead of starting it (draft-features decision 5): a row and a
- * stored brief, no branch, until the human clicks Start. With `ticket` it is the
- * quick-change door (decision 21): a feature born at `implementation` carrying
- * exactly one ticket, created atomically with it — which is why this is NOT the
- * feature-less `emit_tickets` the session is deliberately denied.
+ * stored brief, no branch, until the human clicks Start. With `tickets` it is
+ * the quick-change door (decision 21): ONE feature born at `implementation`
+ * carrying a ticket per prose, created atomically with them — which is why this
+ * is NOT the feature-less `emit_tickets` the session is deliberately denied.
  *
  * It launches nothing. Spawning terminals from inside a terminal would make
  * this session an orchestrator, where runcastle's premise is that the human
@@ -713,17 +713,18 @@ export async function toolCreateFeature(
     baseBranch?: string
     brief?: string
     draft?: boolean
-    ticket?: { prose: string }
+    tickets?: string[]
   },
 ): Promise<CreateFeatureResult> {
   const project = createFeatureProject(ctx, session, input)
-  const feature = input.ticket
+  const feature = input.tickets
     ? await quickChange(ctx, {
         projectId: project.id,
         title: input.title,
-        // The tool's shape stays one prose ticket (§6) — the session describes
-        // one small change at a time; the multi-ticket list is the overlay's.
-        tickets: [input.ticket.prose],
+        // Same list the overlay sends, through the same service function — so
+        // the review-ticket append and every other quick-change invariant hold
+        // identically on both doors.
+        tickets: input.tickets,
         baseBranch: input.baseBranch,
       })
     : await createFeature(ctx, {
@@ -1053,11 +1054,14 @@ export function buildMcpServer(): McpServer {
         '`draft: true` to PARK it instead of starting it — a row and its brief, no branch and no ' +
         'files, until the human clicks Start; ask them per feature whether to start it now or ' +
         'park it. Pass ' +
-        '`ticket: { prose }` for a quick change — work too small to deserve a grill — which ' +
-        'creates the feature at the implementation phase with that one ticket, and whose brief.md ' +
-        'is the prose itself (so `brief` is unused there). From a feature session (ideation, ' +
+        '`tickets: [prose, ...]` for a quick change — work too small to deserve a grill — which ' +
+        'creates ONE feature at the implementation phase carrying a ticket per prose (plus the ' +
+        'review ticket every batch closes with), and whose brief.md is those proses themselves ' +
+        '(so `brief` is unused there). Send every sentence of one quick change in a single call: ' +
+        'calling this ' +
+        'once per ticket would make one feature per ticket. From a feature session (ideation, ' +
         'revisit, waypoint, converge) this tool parks drafts and nothing else: `draft: true` is ' +
-        'required and the `ticket` shape is refused, so deflect scope creep here and leave full ' +
+        'required and the `tickets` shape is refused, so deflect scope creep here and leave full ' +
         'creation to the project session. This does NOT open ' +
         'a terminal on what it creates; the new card in the rail is the feedback, and the human ' +
         'decides what to work on next.',
@@ -1067,7 +1071,7 @@ export function buildMcpServer(): McpServer {
         baseBranch: z.string().optional(),
         brief: z.string().optional(),
         draft: z.boolean().optional(),
-        ticket: z.object({ prose: z.string().min(1) }).optional(),
+        tickets: z.array(z.string()).min(1).optional(),
       },
     },
     async (args, extra) => {

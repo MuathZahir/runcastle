@@ -199,25 +199,30 @@ describe('project-session MCP tools', () => {
     expect(body).toContain('- Slug: fork-door')
   })
 
-  it('create_feature with a ticket takes the quick-change door — implementation, one ticket, atomically', async () => {
-    const prose = 'Make the empty state darker — it washes out on the light theme.'
+  it('create_feature with tickets takes the quick-change door — ONE feature at implementation carrying all of them', async () => {
+    const proses = [
+      'Make the empty state darker — it washes out on the light theme.',
+      'The rail head’s Quick button has no tooltip.',
+      'Dates in the conversation list read “2026-08-18”; make them human.',
+    ]
     const out = await toolCreateFeature(ctx, session, {
       title: 'Darker empty state',
       oneLiner: 'ignored — a quick change has no separate summary',
-      ticket: { prose },
+      tickets: proses,
     })
 
     expect(out.phase).toBe('implementation')
     const tickets = listByFeature(ctx, out.id)
-    // The prose ticket, and the review ticket every quick-change batch closes
-    // with — this door goes through `quickChange`, so decisions.md #9 holds
-    // here exactly as it does on the tRPC one.
-    expect(tickets).toHaveLength(2)
-    expect(tickets[0].goal).toBe(prose)
-    expect(tickets[0].acceptanceCriteria).toEqual([prose])
+    // Three prose tickets and ONE feature — the chat no longer has to call this
+    // three times and get three features (decisions.md #4 + #2). Plus the review
+    // ticket every quick-change batch closes with: this door goes through
+    // `quickChange`, so decisions.md #9 holds here exactly as on the tRPC one.
+    expect(tickets).toHaveLength(4)
+    expect(tickets.slice(0, 3).map((t) => t.goal)).toEqual(proses)
+    expect(tickets[0].acceptanceCriteria).toEqual([proses[0]])
     expect(tickets[0].lap).toBe(1)
-    expect(tickets[1].kind).toBe('review')
-    expect(tickets[1].blockedBy).toEqual([1])
+    expect(tickets[3].kind).toBe('review')
+    expect(tickets[3].blockedBy).toEqual([1, 2, 3])
   })
 
   /**
@@ -284,7 +289,7 @@ describe('project-session MCP tools', () => {
       ['full create', { title: 'Theme editor', oneLiner: 'tune the palette' }],
       [
         'quick change',
-        { title: 'Darker empty state', oneLiner: 'o', draft: true, ticket: { prose: 'darker' } },
+        { title: 'Darker empty state', oneLiner: 'o', draft: true, tickets: ['darker'] },
       ],
     ]
 
