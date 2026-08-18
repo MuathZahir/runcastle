@@ -2663,6 +2663,66 @@ details.lap-group[open] > summary.lap-group-head::before { content: '▾'; }
 .nf-advanced[open] .nf-advanced-summary { color: var(--text); margin-bottom: 4px; }
 .nf-advanced .nf-base { margin-top: 10px; }
 
+/* the Quick door's two modes, and its list of prose tickets (decisions.md #12) */
+.qf-modes {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-top: 12px;
+  border-bottom: 1px solid var(--hairline-soft);
+}
+.qf-mode {
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--text-3);
+  font-size: 12.5px;
+  font-weight: 500;
+  padding: 6px 10px 8px;
+  cursor: pointer;
+  transition: color var(--dur-1);
+}
+.qf-mode:hover { color: var(--text-2); }
+.qf-mode.is-active { color: var(--text); border-bottom-color: var(--accent); }
+.qf-tickets { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+.qf-ticket { display: flex; align-items: flex-start; gap: 8px; }
+.qf-ticket-num {
+  flex: 0 0 auto;
+  margin-top: 12px;
+  width: 16px;
+  text-align: right;
+  font-family: var(--mono);
+  font-size: 11.5px;
+  color: var(--text-3);
+}
+/* shorter than the single-field textarea it inherits from — a quick change is a
+   sentence, and several of them have to fit in the card at once */
+.qf-ticket-text { flex: 1; height: 62px; margin-top: 0; }
+.qf-ticket-remove {
+  flex: 0 0 auto;
+  margin-top: 8px;
+  background: none;
+  border: none;
+  color: var(--text-3);
+  font-size: 15px;
+  line-height: 1;
+  padding: 4px 6px;
+  cursor: pointer;
+  transition: color var(--dur-1);
+}
+.qf-ticket-remove:hover { color: var(--danger); }
+.qf-add {
+  margin-top: 8px;
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--accent);
+  font-size: 12.5px;
+  cursor: pointer;
+  width: fit-content;
+}
+.qf-add:hover { color: var(--accent-hi); }
+
 /* ============================================================================
    INSPECTOR RAIL
    ========================================================================== */

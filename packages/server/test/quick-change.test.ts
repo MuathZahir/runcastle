@@ -18,8 +18,8 @@ import { seedFeature, seedProject, tmpRepo } from './helpers/fixtures'
 /**
  * The quick-change door (decision 21): work too small to deserve a grill enters
  * as an ORDINARY feature born directly at `implementation` on lap 1, carrying
- * exactly one ticket whose goal is the human's prose and whose sole acceptance
- * criterion is that same sentence.
+ * one ticket per sentence the human typed (decisions.md #4) — each ticket's
+ * goal, and its sole acceptance criterion, being that sentence.
  *
  * Driven through the SERVICE and the tRPC proc (both are real seams here —
  * unlike `feature.rethink`, nothing in this path launches a terminal).
@@ -56,7 +56,7 @@ describe('quickChange service — a one-ticket feature born at implementation', 
     const feature = await features.quickChange(ctx, {
       projectId,
       title: 'Darker empty state',
-      prose: PROSE,
+      tickets: [PROSE],
     })
 
     expect(feature.phase).toBe('implementation')
@@ -85,17 +85,17 @@ describe('quickChange service — a one-ticket feature born at implementation', 
     const feature = await features.quickChange(ctx, {
       projectId,
       title: 'Off release',
-      prose: PROSE,
+      tickets: [PROSE],
       baseBranch: 'release',
     })
     expect(feature.baseBranch).toBe('release')
   })
 
-  it('carries exactly one pending lap-1 ticket whose goal and criterion are the prose', async () => {
+  it('carries one pending lap-1 ticket whose goal and criterion are the prose', async () => {
     const feature = await features.quickChange(ctx, {
       projectId,
       title: 'Darker empty state',
-      prose: `  ${PROSE}  `,
+      tickets: [`  ${PROSE}  `],
     })
 
     const tickets = listByFeature(ctx, feature.id)
@@ -104,7 +104,9 @@ describe('quickChange service — a one-ticket feature born at implementation', 
       seq: 1,
       lap: 1,
       status: 'pending',
-      title: 'Darker empty state',
+      // Titled from its own prose, not from the feature — see the multi-ticket
+      // case below, where the feature's title would name all three the same.
+      title: PROSE,
       goal: PROSE,
       context: PROSE,
       acceptanceCriteria: [PROSE],
@@ -113,12 +115,54 @@ describe('quickChange service — a one-ticket feature born at implementation', 
     })
   })
 
+  it('stores one ticket per sentence, in order, all pending on lap 1', async () => {
+    const feature = await features.quickChange(ctx, {
+      projectId,
+      title: 'Three small things',
+      tickets: ['Darken the empty state.', 'Fix the run chip colour.', '   ', 'Drop the lap chip.'],
+    })
+
+    const tickets = listByFeature(ctx, feature.id)
+    // The blank row the human left behind is not a ticket.
+    expect(tickets).toHaveLength(3)
+    expect(tickets.map((t) => t.seq)).toEqual([1, 2, 3])
+    expect(tickets.map((t) => t.goal)).toEqual([
+      'Darken the empty state.',
+      'Fix the run chip colour.',
+      'Drop the lap chip.',
+    ])
+    expect(tickets.every((t) => t.status === 'pending' && t.lap === 1)).toBe(true)
+    expect(tickets[1].acceptanceCriteria).toEqual(['Fix the run chip colour.'])
+    // Each is named by its own sentence, so the ledger says which is which.
+    expect(tickets.map((t) => t.title)).toEqual([
+      'Darken the empty state.',
+      'Fix the run chip colour.',
+      'Drop the lap chip.',
+    ])
+  })
+
+  it('cuts a long first line down to a title while the goal keeps every word', async () => {
+    const long =
+      'The run chip stays grey after a cancelled run instead of going back to amber, which nobody notices until the next burn.'
+    const feature = await features.quickChange(ctx, {
+      projectId,
+      title: 'Chip colour',
+      tickets: [long],
+    })
+
+    const [ticket] = listByFeature(ctx, feature.id)
+    expect(ticket.title.length).toBeLessThanOrEqual(73)
+    expect(ticket.title.endsWith('…')).toBe(true)
+    expect(long.startsWith(ticket.title.slice(0, -1))).toBe(true)
+    expect(ticket.goal).toBe(long)
+  })
+
   it('keeps the one-liner to one line while brief.md and the ticket carry it all', async () => {
     const multiline = `${PROSE}\n\nRepro: open a fresh project with no features.`
     const feature = await features.quickChange(ctx, {
       projectId,
       title: 'Darker empty state',
-      prose: multiline,
+      tickets: [multiline],
     })
 
     // `oneLiner` feeds single-line consumers (the hook status line, the burner's
@@ -134,7 +178,7 @@ describe('quickChange service — a one-ticket feature born at implementation', 
     const feature = await features.quickChange(ctx, {
       projectId,
       title: 'Darker empty state',
-      prose: PROSE,
+      tickets: [PROSE],
     })
 
     const dir = join(repoPath, 'docs', 'features', feature.slug)
@@ -144,11 +188,29 @@ describe('quickChange service — a one-ticket feature born at implementation', 
     expect(existsSync(join(dir, 'map.md'))).toBe(false)
   })
 
+  it('gives each sentence its own numbered section of brief.md', async () => {
+    const feature = await features.quickChange(ctx, {
+      projectId,
+      title: 'Three small things',
+      tickets: ['Darken the empty state.', 'Drop the lap chip.'],
+    })
+
+    const brief = readFileSync(
+      join(repoPath, 'docs', 'features', feature.slug, 'brief.md'),
+      'utf8',
+    )
+    // Numbered to match the seqs the sentences were stored under, so the burner
+    // reading the brief can tell which paragraph is which ticket.
+    expect(brief).toBe(
+      '# Three small things\n\n## Ticket 1\n\nDarken the empty state.\n\n## Ticket 2\n\nDrop the lap chip.\n',
+    )
+  })
+
   it('commits the scaffolded brief so the checkout stays clean', async () => {
     const feature = await features.quickChange(ctx, {
       projectId,
       title: 'Darker empty state',
-      prose: PROSE,
+      tickets: [PROSE],
     })
 
     const status = await simpleGit(repoPath).status()
@@ -161,7 +223,7 @@ describe('quickChange service — a one-ticket feature born at implementation', 
     const feature = await features.quickChange(ctx, {
       projectId,
       title: 'Darker empty state',
-      prose: PROSE,
+      tickets: [PROSE],
     })
 
     const events = listAfter(ctx, feature.id, 0)
@@ -173,15 +235,28 @@ describe('quickChange service — a one-ticket feature born at implementation', 
     ])
     const quick = events.find((e) => e.type === 'feature.quick_change')
     expect(quick?.message).toContain('born at implementation on lap 1')
+    expect(quick?.message).toContain('one ticket (#1)')
     expect(quick?.message).toContain('no grill session, no spec.md')
-    expect(quick?.data).toMatchObject({ ticketSeq: 1, phase: 'implementation' })
+    expect(quick?.data).toMatchObject({ ticketSeqs: [1], phase: 'implementation' })
+  })
+
+  it('names every ticket it was born with in that timeline entry', async () => {
+    const feature = await features.quickChange(ctx, {
+      projectId,
+      title: 'Three small things',
+      tickets: ['Darken the empty state.', 'Fix the run chip.', 'Drop the lap chip.'],
+    })
+
+    const quick = listAfter(ctx, feature.id, 0).find((e) => e.type === 'feature.quick_change')
+    expect(quick?.message).toContain('3 tickets (#1, #2, #3)')
+    expect(quick?.data).toMatchObject({ ticketSeqs: [1, 2, 3] })
   })
 
   it('leaves G1/G2 unevaluated and opens G3 on the single pending ticket', async () => {
     const feature = await features.quickChange(ctx, {
       projectId,
       title: 'Darker empty state',
-      prose: PROSE,
+      tickets: [PROSE],
     })
     const row = getFeatureRow(ctx, feature.id)
 
@@ -197,18 +272,18 @@ describe('quickChange service — a one-ticket feature born at implementation', 
   })
 
   it('deduplicates slugs against existing features, like create does', async () => {
-    const first = await features.quickChange(ctx, { projectId, title: 'Tweak', prose: PROSE })
-    const second = await features.quickChange(ctx, { projectId, title: 'Tweak', prose: PROSE })
+    const first = await features.quickChange(ctx, { projectId, title: 'Tweak', tickets: [PROSE] })
+    const second = await features.quickChange(ctx, { projectId, title: 'Tweak', tickets: [PROSE] })
     expect(first.slug).toBe('tweak')
     expect(second.slug).toBe('tweak-2')
   })
 
-  it('refuses blank prose or a blank title, creating nothing', async () => {
+  it('refuses an all-blank list or a blank title, creating nothing', async () => {
     await expect(
-      features.quickChange(ctx, { projectId, title: 'Empty', prose: '   ' }),
+      features.quickChange(ctx, { projectId, title: 'Empty', tickets: ['   ', ''] }),
     ).rejects.toThrow(/needs a sentence/)
     await expect(
-      features.quickChange(ctx, { projectId, title: '  ', prose: PROSE }),
+      features.quickChange(ctx, { projectId, title: '  ', tickets: [PROSE] }),
     ).rejects.toThrow(/needs a title/)
     expect(features.list(ctx, projectId)).toHaveLength(0)
   })
@@ -228,7 +303,7 @@ describe('feature.quickChange proc', () => {
     const feature = await caller.feature.quickChange({
       projectId,
       title: 'Darker empty state',
-      prose: PROSE,
+      tickets: [PROSE],
     })
 
     expect(feature.phase).toBe('implementation')
@@ -237,12 +312,36 @@ describe('feature.quickChange proc', () => {
     expect(full.tickets[0].status).toBe('pending')
   })
 
-  it('rejects an empty prose at the wire boundary', async () => {
+  // The overlay's list door (decisions.md #4): several sentences, one card.
+  it('lands every sentence of a multi-ticket quick change on one burnable card', async () => {
+    const projectId = (await openProject(ctx, await gitRepo())).id
+    const caller = createCallerFactory(appRouter)(ctx)
+
+    const feature = await caller.feature.quickChange({
+      projectId,
+      title: 'Three small things',
+      tickets: ['Darken the empty state.', 'Fix the run chip.', 'Drop the lap chip.'],
+    })
+
+    const full = await caller.feature.get({ id: feature.id })
+    expect(full.feature.phase).toBe('implementation')
+    expect(full.tickets.map((t) => t.goal)).toEqual([
+      'Darken the empty state.',
+      'Fix the run chip.',
+      'Drop the lap chip.',
+    ])
+    expect(full.tickets.every((t) => t.status === 'pending')).toBe(true)
+  })
+
+  it('rejects an empty list, and a list with nothing but blanks in it', async () => {
     const projectId = (await openProject(ctx, await gitRepo())).id
     const caller = createCallerFactory(appRouter)(ctx)
     await expect(
-      caller.feature.quickChange({ projectId, title: 'x', prose: '' }),
+      caller.feature.quickChange({ projectId, title: 'x', tickets: [] }),
     ).rejects.toThrow()
+    await expect(
+      caller.feature.quickChange({ projectId, title: 'x', tickets: ['  '] }),
+    ).rejects.toThrow(/needs a sentence/)
   })
 })
 

@@ -20,13 +20,6 @@ import { sessionActive } from './feature-ui'
  */
 export const PROJECT_BRANCH = 'runcastle/project'
 
-/**
- * The door's one wording. Both surfaces that demand a title the human may not
- * have yet — the empty workspace and the New Feature form — carry it verbatim,
- * so the affordance reads as the same door in both places.
- */
-export const TALK_IT_THROUGH = "Not sure it's one feature? Talk it through"
-
 /** What the pinned row's indicator and the workspace's session panel render. */
 export type ProjectSessionState = 'none' | 'launching' | 'live'
 
@@ -59,9 +52,10 @@ export function projectBranchNote(mainBranch: string): string {
 export type WorkspaceView = 'create' | 'prepare' | 'project' | 'feature' | 'empty'
 
 /**
- * The workspace body's one selector. A creation form owns the body outright;
+ * The workspace body's one selector. The Quick overlay owns the body outright;
  * then an explicitly opened preparation; then the pinned project row over the
- * selected feature.
+ * selected feature. (The other creation door, New, is not a view at all any
+ * more — it opens a fresh conversation in the project workspace.)
  *
  * The last line is the interesting one. A project with no features and no
  * preparation has exactly ONE sensible next step, so it gets the whole body
