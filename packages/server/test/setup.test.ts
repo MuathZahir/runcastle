@@ -2,6 +2,10 @@ import { existsSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import type { ExecFn, ExecOutcome } from '../src/doctor/doctor'
 import {
+  AFK_TOKEN_KEY,
+  CODEX_API_KEY,
+  RUNTIME_AUTH_KEY,
+  RUNTIME_AUTH_SETUP_HINT,
   createTokenVerifier,
   resolveRuntime,
   resolveSandcastleBin,
@@ -90,6 +94,42 @@ describe('upsertEnvVar', () => {
   it('appends without duplicating the trailing newline', () => {
     const after = upsertEnvVar('OTHER=1\n', 'CLAUDE_CODE_OAUTH_TOKEN', 'x')
     expect(after).toBe('OTHER=1\nCLAUDE_CODE_OAUTH_TOKEN=x\n')
+  })
+})
+
+/**
+ * Which key an unattended burn authenticates with is a property of the runtime,
+ * and this is the one table that says so — the env-file reader, the burn env
+ * builder and the setup UI all read it, so a disagreement here is a burn that
+ * starts with no credentials at all.
+ */
+describe('per-runtime AFK auth', () => {
+  it('gives each runtime its own env key', () => {
+    expect(RUNTIME_AUTH_KEY['claude-code']).toBe(AFK_TOKEN_KEY)
+    expect(RUNTIME_AUTH_KEY['claude-code']).toBe('CLAUDE_CODE_OAUTH_TOKEN')
+    // Verified against codex-rs: CODEX_API_KEY is the highest-precedence auth
+    // path and the one meant for headless use.
+    expect(RUNTIME_AUTH_KEY.codex).toBe(CODEX_API_KEY)
+    expect(RUNTIME_AUTH_KEY.codex).toBe('CODEX_API_KEY')
+  })
+
+  it('sends a stuck human to their own provider, and to the same env file', () => {
+    // A codex burn that aborts telling the human to run `claude setup-token`
+    // sends them to a CLI they may not even have installed.
+    expect(RUNTIME_AUTH_SETUP_HINT['claude-code']).toContain('claude setup-token')
+    expect(RUNTIME_AUTH_SETUP_HINT.codex).not.toContain('claude')
+    expect(RUNTIME_AUTH_SETUP_HINT.codex).toContain('CODEX_API_KEY')
+    expect(RUNTIME_AUTH_SETUP_HINT.codex).toContain('OpenAI API key')
+    for (const hint of Object.values(RUNTIME_AUTH_SETUP_HINT)) {
+      expect(hint).toContain('~/.runcastle/.env')
+    }
+  })
+
+  it('writes a codex key into the env file the same way as a claude one', () => {
+    const after = upsertEnvVar('CLAUDE_CODE_OAUTH_TOKEN=sk-claude\n', CODEX_API_KEY, 'sk-openai')
+    // Both runtimes coexist in one file — authing codex must not evict claude.
+    expect(after).toContain('CLAUDE_CODE_OAUTH_TOKEN=sk-claude')
+    expect(after).toContain('CODEX_API_KEY=sk-openai')
   })
 })
 
