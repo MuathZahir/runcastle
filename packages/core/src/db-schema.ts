@@ -206,8 +206,8 @@ export const sessions = sqliteTable('sessions', {
    * Both are nullable, and not only for the rows that predate the columns: a
    * session row created outside a launch (a fixture, a test) resolved no model,
    * and stamping the current default onto one would be a fabrication read back
-   * later as fact. Readers treat a null `runtime` as {@link DEFAULT_RUNTIME},
-   * which is what every historical session in fact ran on.
+   * later as fact. Readers treat a null `runtime` as `DEFAULT_RUNTIME`
+   * (config.ts), which is what every historical session in fact ran on.
    */
   model: text('model'),
   runtime: text('runtime').$type<AgentRuntime>(),

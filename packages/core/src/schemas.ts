@@ -475,7 +475,7 @@ export const SessionRow = z.object({
   worktreePath: z.string(),
   /** The model this session launched with; unset on a row created outside a launch. */
   model: z.string().optional(),
-  /** The runtime that model runs on — see the db schema; unset reads as {@link DEFAULT_RUNTIME}. */
+  /** The runtime that model runs on — see the db schema; unset reads as `DEFAULT_RUNTIME`. */
   runtime: AgentRuntime.optional(),
   /** The conversation's derived name; unset until its transcript has one to give. */
   title: z.string().optional(),

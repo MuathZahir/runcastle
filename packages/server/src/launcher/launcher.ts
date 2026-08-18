@@ -1,4 +1,5 @@
 import type {
+  AgentRuntime,
   Feature,
   MergeBranchPair,
   ModelEntry,
@@ -14,12 +15,7 @@ import { nextGate, nextPhase, resolveModelEntry } from '@runcastle/core'
 import { and, eq } from 'drizzle-orm'
 import type { AppCtx } from '../db/types'
 import { spawnTargetFor } from '../util/resolve-executable'
-import {
-  runtimeAdapterFor,
-  type AgentRuntimeAdapter,
-  type RuntimeLaunchInput,
-  type RuntimeLaunchSpec,
-} from './runtimes'
+import { runtimeAdapterFor, type AgentRuntimeAdapter, type RuntimeLaunchSpec } from './runtimes'
 import { runs } from '../db/schema'
 import { GateError, isNotImplemented } from '../errors'
 import { endSession } from '../pty/end-session'
@@ -159,6 +155,25 @@ function assertRuntimeReady(runtime: AgentRuntimeAdapter, opts: LaunchSessionOpt
   if (opts.spawn === false) return
   const ready = runtime.checkReady()
   if (!ready.ok) throw new GateError(`${ready.reason}. ${ready.doctorHint}`)
+}
+
+/**
+ * What a launch stamps on its `session.launching` event: the model that won the
+ * chain and the runtime it implies. The row carries the same pair (see the
+ * `sessions` db schema) — this is the mutation announcing itself, so the UI and
+ * the timeline can say which agent a terminal is talking to.
+ */
+function modelStamp(model: ModelEntry): { model: string; runtime: AgentRuntime } {
+  return { model: model.id, runtime: model.runtime }
+}
+
+/**
+ * The launch as one command line, for the `spawn:false` smoke event. The program
+ * word is the runtime's own CLI name, so a second runtime renders as itself
+ * rather than as `claude` with foreign flags after it.
+ */
+function renderCommand(runtime: AgentRuntimeAdapter, spec: RuntimeLaunchSpec): string {
+  return [runtime.binary, ...spec.argv].join(' ')
 }
 
 /**
@@ -466,25 +481,6 @@ export async function launchSession(
     resumeSessionId,
   })
   return { sessionId: session.id }
-}
-
-/**
- * What a launch stamps on its `session.launching` event: the model that won the
- * chain and the runtime it implies. The row carries the same pair (see the
- * `sessions` db schema) — this is the mutation announcing itself, so the UI and
- * the timeline can say which agent a terminal is talking to.
- */
-function modelStamp(model: ModelEntry): { model: string; runtime: string } {
-  return { model: model.id, runtime: model.runtime }
-}
-
-/**
- * The launch as one command line, for the `spawn:false` smoke event. The program
- * word is the runtime's own CLI name, so a second runtime renders as itself
- * rather than as `claude` with foreign flags after it.
- */
-function renderCommand(runtime: AgentRuntimeAdapter, spec: RuntimeLaunchSpec): string {
-  return [runtime.binary, ...spec.argv].join(' ')
 }
 
 /**
