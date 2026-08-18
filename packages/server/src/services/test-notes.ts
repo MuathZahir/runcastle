@@ -277,7 +277,7 @@ function clockTime(seconds: number): string {
  * agent's Read fails and it proceeds on the note text, which is exactly what an
  * unannotated note gives it.
  */
-function attachmentNote(note: TestNote): string | undefined {
+function screenshotParagraph(note: TestNote): string | undefined {
   if (!existsSync(annotationPath(note.id))) return undefined
   const moment =
     note.videoTimestamp === undefined
@@ -294,7 +294,7 @@ function attachmentNote(note: TestNote): string | undefined {
 function promotionTicket(feature: Feature, note: TestNote): TicketInput {
   const firstLine = note.text.split('\n')[0].trim()
   const docs = featureDocsRel(feature.slug)
-  const attachment = attachmentNote(note)
+  const screenshot = screenshotParagraph(note)
   return {
     title:
       firstLine.length <= TITLE_MAX
@@ -304,7 +304,7 @@ function promotionTicket(feature: Feature, note: TestNote): TicketInput {
     context: [
       `Found during lap ${note.lap} test drive of ${feature.slug}.`,
       `Read ${docs}/spec.md and ${docs}/decisions.md for what this feature is meant to do.`,
-      ...(attachment ? [attachment] : []),
+      ...(screenshot ? [screenshot] : []),
     ].join('\n\n'),
     acceptanceCriteria: [`The noted behavior no longer reproduces: ${note.text}`],
     seams: [],

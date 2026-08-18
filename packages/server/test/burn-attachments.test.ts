@@ -1,4 +1,4 @@
-import { execFile } from 'node:child_process'
+import { exec } from 'node:child_process'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -97,7 +97,8 @@ describe('burn attachments — which screenshots actually ride along', () => {
 
 describe('burn attachments — preparing the workspace', () => {
   const branch = 'runcastle/ticket/wide-app/3-6erDoFV'
-  const exec = promisify(execFile)
+  // Exactly how sandcastle runs a host hook: through the platform shell.
+  const runCommand = promisify(exec)
 
   let home: string
   let restoreDataDir: () => void
@@ -138,7 +139,7 @@ describe('burn attachments — preparing the workspace', () => {
   async function runWorkspacePrep(context: string): Promise<void> {
     await excludePath(repo, `${ATTACHMENTS_DIR}/`)
     for (const { command } of buildAttachmentCopyCommands(attachmentSources(context))) {
-      await exec(command, { cwd: workspace, shell: true })
+      await runCommand(command, { cwd: workspace })
     }
   }
 
