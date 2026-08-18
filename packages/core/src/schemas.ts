@@ -1,4 +1,5 @@
 import * as z from 'zod'
+import { ModelEntry } from './config'
 
 /**
  * Wire types for tRPC and MCP. Every schema here is the single source of
@@ -534,11 +535,15 @@ export type SettingsView = z.infer<typeof SettingsView>
  * `settings.update` input: set `projectId` to write a per-project override
  * (only for project-overridable fields), omit it to write the global default.
  * A `null` value clears a project override (falls back to the global).
+ *
+ * `ModelEntry[]` is the one non-scalar value: the `models` roster is written
+ * whole (the settings UI sends the full list), because an entry's id, runtime,
+ * and note only mean anything together.
  */
 export const SettingsUpdateInput = z.object({
   projectId: z.string().optional(),
   key: z.string(),
-  value: z.union([z.string(), z.number(), z.boolean(), z.null()]),
+  value: z.union([z.string(), z.number(), z.boolean(), z.array(ModelEntry), z.null()]),
 })
 export type SettingsUpdateInput = z.infer<typeof SettingsUpdateInput>
 
