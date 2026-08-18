@@ -1056,8 +1056,9 @@ export function buildMcpServer(): McpServer {
         'park it. Pass ' +
         '`tickets: [prose, ...]` for a quick change — work too small to deserve a grill — which ' +
         'creates ONE feature at the implementation phase carrying a ticket per prose (plus the ' +
-        'review ticket every batch closes with), and whose brief.md is that prose (so `brief` is ' +
-        'unused there). Send every sentence of one quick change in a single call: calling this ' +
+        'review ticket every batch closes with), and whose brief.md is those proses themselves ' +
+        '(so `brief` is unused there). Send every sentence of one quick change in a single call: ' +
+        'calling this ' +
         'once per ticket would make one feature per ticket. From a feature session (ideation, ' +
         'revisit, waypoint, converge) this tool parks drafts and nothing else: `draft: true` is ' +
         'required and the `tickets` shape is refused, so deflect scope creep here and leave full ' +
