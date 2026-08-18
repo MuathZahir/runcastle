@@ -22,6 +22,8 @@ import {
  * bar sits across the bottom of the frame — exactly where a human draws — and
  * swallows the pointer events an overlay needs. What replaces it is the minimum
  * a silent screencast wants: play/pause, a scrub bar, and where you are in it.
+ * `preload="metadata"` stays as it was: a walkthrough is evidence to reach for,
+ * not something to fetch in full every time the review screen opens.
  *
  * Annotating is offered only on a paused frame, and while it is on, play and
  * scrub are dead: a frame that moves under a drawing would leave the strokes
@@ -58,9 +60,9 @@ export function WalkthroughPlayer({
   const [playing, setPlaying] = useState(false)
   const [at, setAt] = useState(0)
   const [span, setSpan] = useState(0)
-  // Whether there is a decoded frame to draw on and to capture. `preload
-  //="metadata"` fetches dimensions long before pixels, and `drawImage` of a
-  // video with no current frame silently draws NOTHING — so annotating before
+  // Whether there is a decoded frame to draw on and to capture. Metadata-only
+  // preloading has the dimensions long before it has pixels, and `drawImage` of
+  // a video with no current frame silently draws NOTHING — so annotating before
   // this is true would bake a blank PNG.
   const [ready, setReady] = useState(false)
   const [annotating, setAnnotating] = useState(false)

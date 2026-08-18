@@ -452,7 +452,7 @@ function NotesPanel({
                 : `the annotated frame, at ${fmtClock(note.videoTimestamp)}`
             }
           >
-            <img src={note.screenshotUrl} alt="" />
+            <img src={note.screenshotUrl} alt="the annotated frame this note is about" />
           </a>
         )}
 
