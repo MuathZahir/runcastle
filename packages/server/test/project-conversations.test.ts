@@ -8,7 +8,12 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { AppCtx } from '../src/db/types'
 import { sessions } from '../src/db/schema'
 import { launchProjectSession } from '../src/launcher/launcher'
-import { KICKOFF_LINES, awaitProjectLandings, getSessionRow } from '../src/launcher/sessions'
+import {
+  KICKOFF_LINES,
+  awaitProjectLandings,
+  getSessionRow,
+  resumeKickoffLine,
+} from '../src/launcher/sessions'
 import { endSession } from '../src/pty/end-session'
 import { TITLE_MAX } from '../src/services/conversations'
 import { listByProject } from '../src/services/events'
@@ -223,6 +228,51 @@ describe('reading a conversation back', () => {
       { role: 'assistant', text: 'Looking at what exists.' },
       { role: 'assistant', text: 'I would split that in two.' },
     ])
+  })
+
+  /**
+   * The kickoff is a `user` turn on disk, but nobody typed it — the launcher
+   * did. The title path has always known that; the transcript used to render it
+   * as the human's opening line.
+   */
+  it('never hands back the launcher’s kickoff as something the human said', async () => {
+    const id = seedSession([
+      entry('user', KICKOFF_LINES.project),
+      entry('assistant', 'What are we building?'),
+      entry('user', 'offline mode for the mobile app'),
+    ])
+
+    expect(await caller().project.conversationTranscript({ sessionId: id })).toEqual([
+      { role: 'assistant', text: 'What are we building?' },
+      { role: 'user', text: 'offline mode for the mobile app' },
+    ])
+  })
+
+  /** Reopening a conversation re-sends the kickoff, wrapped in the resume framing. */
+  it('drops every kickoff, not just the first turn', async () => {
+    const id = seedSession([
+      entry('user', KICKOFF_LINES.project),
+      entry('assistant', 'What are we building?'),
+      entry('user', 'offline mode'),
+      entry('user', resumeKickoffLine('project')),
+      entry('assistant', 'We were slicing offline mode.'),
+    ])
+
+    const turns = await caller().project.conversationTranscript({ sessionId: id })
+
+    expect(turns.filter((t) => t.role === 'user')).toEqual([{ role: 'user', text: 'offline mode' }])
+  })
+
+  /** Kickoff plus the answer it drew is nothing the human took part in. */
+  it('leaves nothing the human said in a conversation that was only ever kicked off', async () => {
+    const id = seedSession([
+      entry('user', KICKOFF_LINES.project),
+      entry('assistant', 'Tell me what you have in mind.'),
+    ])
+
+    const turns = await caller().project.conversationTranscript({ sessionId: id })
+
+    expect(turns.some((t) => t.role === 'user')).toBe(false)
   })
 
   it('is empty rather than an error when the transcript file is gone', async () => {
