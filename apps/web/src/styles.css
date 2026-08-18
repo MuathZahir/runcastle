@@ -2428,16 +2428,45 @@ details.lap-group[open] > summary.lap-group-head::before { content: '▾'; }
 
 /* the review agent's walkthrough — evidence for the report in the summary card */
 .walkthrough-card { max-width: 1000px; margin-top: 14px; }
+.walkthrough-player { margin-top: 12px; }
+/* the stage the overlay is absolutely positioned into — it has to hug the video
+   exactly, so no padding and a line-height that leaves no descender gap */
+.player-stage { position: relative; display: block; line-height: 0; }
 .walkthrough-video {
   display: block;
   width: 100%;
-  margin-top: 12px;
   border: 1px solid var(--hairline);
   border-radius: var(--radius);
   /* Black behind the frame, not the panel colour: letterboxing a recording of
      whatever viewport the agent drove should read as film, not as a gap. */
   background: #000;
 }
+/* the drawing surface: sized in JS to the recording's intrinsic resolution and
+   scaled down to the layout box by these two rules, so strokes are captured at
+   full quality. `touch-action: none` is what makes a finger draw rather than
+   scroll the page. */
+.player-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border-radius: var(--radius);
+  cursor: crosshair;
+  touch-action: none;
+}
+.player-bar { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
+.player-play { flex: 0 0 auto; min-width: 30px; font-size: 10px; }
+.player-scrub {
+  flex: 1;
+  min-width: 0;
+  height: 4px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+.player-scrub:disabled { cursor: default; opacity: 0.5; }
+.player-clock { flex: 0 0 auto; font-size: 11px; color: var(--text-3); }
+.player-annotate { flex: 0 0 auto; }
+.annotate-bar { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
 
 /* the findings inbox — capture box + lap-grouped checklist (decisions.md #11) */
 .notes-card { max-width: 1000px; margin-top: 14px; }
@@ -2473,6 +2502,18 @@ details.lap-group[open] > summary.lap-group-head::before { content: '▾'; }
 .note-check { accent-color: var(--accent); width: 13px; height: 13px; flex: 0 0 13px; }
 /* promoted notes are frozen — the arrow stands where the checkbox would be */
 .note-frozen { width: 13px; flex: 0 0 13px; text-align: center; color: var(--text-3); }
+/* an annotated note's frame, at a size that says "there is a picture here" and
+   leaves the row a row — the full PNG is one click away */
+.note-shot { flex: 0 0 auto; display: block; line-height: 0; }
+.note-shot img {
+  display: block;
+  max-height: 34px;
+  max-width: 60px;
+  border: 1px solid var(--hairline);
+  border-radius: 3px;
+  background: #000;
+}
+.note-shot:hover img { border-color: var(--accent); }
 .note-text { flex: 1; min-width: 0; font-size: 12.5px; color: var(--text); text-wrap: pretty; }
 .note-row.is-done .note-text { color: var(--text-3); text-decoration: line-through; }
 .note-row.is-promoted .note-text { color: var(--text-2); }

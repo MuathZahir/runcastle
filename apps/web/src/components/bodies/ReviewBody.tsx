@@ -25,7 +25,7 @@ import {
   type MergeConflictState,
 } from '../../lib/feature-ui'
 import { useReviewArtifacts } from '../../lib/reviews'
-import { fmtDateTime, relTime } from '../../lib/format'
+import { fmtClock, fmtDateTime, relTime } from '../../lib/format'
 import { useLivePoll } from '../../lib/live'
 import { useResolveConflict } from '../../lib/use-resolve-conflict'
 import { useToast } from '../../lib/toast'
@@ -33,6 +33,7 @@ import { ErrorBoundary } from '../ErrorBoundary'
 import { Markdown } from '../Markdown'
 import { SessionPanel } from '../SessionPanel'
 import { TerminalView } from '../TerminalView'
+import { WalkthroughPlayer } from '../WalkthroughPlayer'
 
 /**
  * The review phase body (app-redesign): a summary of the finished run on the
@@ -201,7 +202,9 @@ export function ReviewBody({
 
       {isDriving && ownDrive && <DrivePane drive={ownDrive} />}
 
-      {walkthrough && <WalkthroughCard url={walkthrough} />}
+      {walkthrough && (
+        <WalkthroughCard url={walkthrough} featureId={feature.id} readonly={readonly} />
+      )}
 
       <NotesPanel
         featureId={feature.id}
@@ -290,24 +293,31 @@ function PlannedNextLapCard({
  * which is the whole point of the video, since driving is the thing the human
  * was skipping.
  *
- * A native `<video>` and no player library: agent-browser records WebM, which
+ * A hand-built player and no player library: agent-browser records WebM, which
  * browsers play natively, and the route behind this URL answers range requests
- * so scrubbing works. `preload="metadata"` fetches the duration and nothing
- * else — a walkthrough is evidence to reach for, not something to autoload in
- * full every time the review screen opens.
+ * so scrubbing works. The controls are custom because the frame is a drawing
+ * surface — see {@link WalkthroughPlayer}.
  *
  * Rendered only when a recording exists ({@link reviewWalkthroughUrl} returns
  * null otherwise): a backend review records nothing, and an empty player frame
  * would read as a video that failed to load.
  */
-function WalkthroughCard({ url }: { url: string }) {
+function WalkthroughCard({
+  url,
+  featureId,
+  readonly,
+}: {
+  url: string
+  featureId: string
+  readonly: boolean
+}) {
   return (
     <div className="review-card walkthrough-card">
       <SectionTitle>Review walkthrough</SectionTitle>
-      <video className="walkthrough-video" src={url} controls preload="metadata" />
+      <WalkthroughPlayer url={url} featureId={featureId} readonly={readonly} />
       <div className="drive-copy">
-        What the review agent did on this branch, as it did it. What it made of it is in the notes
-        below.
+        What the review agent did on this branch, as it did it. Pause on anything that looks wrong
+        and Annotate it — the drawing lands in the notes below.
       </div>
     </div>
   )
@@ -426,6 +436,24 @@ function NotesPanel({
             aria-label={open ? 'mark handled' : 'reopen'}
             onChange={() => toggle.mutate({ noteId: note.id })}
           />
+        )}
+
+        {/* An annotated note carries a picture of what it is about (decisions
+            #3). The full PNG opens in a tab — the row is a list, not a viewer. */}
+        {note.screenshotUrl && (
+          <a
+            className="note-shot"
+            href={note.screenshotUrl}
+            target="_blank"
+            rel="noreferrer noopener"
+            title={
+              note.videoTimestamp === undefined
+                ? 'the annotated frame'
+                : `the annotated frame, at ${fmtClock(note.videoTimestamp)}`
+            }
+          >
+            <img src={note.screenshotUrl} alt="" />
+          </a>
         )}
 
         <span className="note-text">{note.text}</span>
