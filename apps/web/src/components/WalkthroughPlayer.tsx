@@ -33,6 +33,13 @@ import {
  * note: it lands in the list below with the same lifecycle as one typed by hand,
  * carrying the moment it was taken from and a thumbnail of the frame.
  */
+/** Why Annotate is greyed out, said on hover rather than left to be guessed. */
+function annotateHint(playing: boolean, ready: boolean): string | undefined {
+  if (playing) return 'pause on the frame you want to draw on'
+  if (!ready) return 'the recording has not loaded a frame to draw on yet'
+  return undefined
+}
+
 export function WalkthroughPlayer({
   url,
   featureId,
@@ -51,6 +58,11 @@ export function WalkthroughPlayer({
   const [playing, setPlaying] = useState(false)
   const [at, setAt] = useState(0)
   const [span, setSpan] = useState(0)
+  // Whether there is a decoded frame to draw on and to capture. `preload
+  //="metadata"` fetches dimensions long before pixels, and `drawImage` of a
+  // video with no current frame silently draws NOTHING — so annotating before
+  // this is true would bake a blank PNG.
+  const [ready, setReady] = useState(false)
   const [annotating, setAnnotating] = useState(false)
   const [strokes, setStrokes] = useState<Stroke[]>([])
   const [text, setText] = useState('')
@@ -189,6 +201,8 @@ export function WalkthroughPlayer({
           onLoadedMetadata={(e) => setSpan(playableDuration(e.currentTarget))}
           onDurationChange={(e) => setSpan(playableDuration(e.currentTarget))}
           onProgress={(e) => setSpan(playableDuration(e.currentTarget))}
+          onLoadedData={() => setReady(true)}
+          onCanPlay={() => setReady(true)}
           onTimeUpdate={(e) => setAt(e.currentTarget.currentTime)}
           onPlay={() => setPlaying(true)}
           onPause={() => setPlaying(false)}
@@ -234,8 +248,8 @@ export function WalkthroughPlayer({
           <Button
             variant="ghost"
             className="player-annotate"
-            disabled={playing}
-            title={playing ? 'pause on the frame you want to draw on' : undefined}
+            disabled={playing || !ready}
+            title={annotateHint(playing, ready)}
             onClick={startAnnotating}
           >
             Annotate
