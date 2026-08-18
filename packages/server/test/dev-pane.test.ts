@@ -189,6 +189,17 @@ describe.skipIf(!AVAILABLE)('startDevPane / stopDevPane', () => {
  * `cmd.exe /d /s /c` shim there, so the dev server is a GRANDCHILD of the PTY:
  * ConPTY teardown reaps the shim and leaves the server holding its port and its
  * file locks. The POSIX group-kill path is covered by the suite above.
+ *
+ * READ THIS BEFORE TRUSTING A GREEN RUN HERE. This suite runs under NODE — vitest's
+ * runtime — and therefore does NOT exercise the runtime production uses. Production
+ * runs the server under BUN, where `selectBackend()` auto-picks the sidecar; these
+ * cases reach the same sidecar backend by forcing it with an env var, but they still
+ * await the tree-kill under node. The runtime, not the backend, was the variable:
+ * every case below was GREEN throughout the period when stopping a drive on Windows
+ * hung forever in production (preparation-bug), because `promisify(execFile)` settles
+ * fine under node and never settled under Bun. A green run here is evidence about
+ * node only. The production runtime is covered by `dev-pane-stop-bun.test.ts`, which
+ * drives this same path from inside a real Bun process.
  */
 describe.skipIf(!WIN_AVAILABLE)('stopDevPane on Windows', () => {
   const dirs: string[] = []

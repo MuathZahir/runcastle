@@ -42,26 +42,76 @@ export interface PtyEntry {
   exitCode: number | null
 }
 
-/** How long a tree-kill may take before teardown gives up and proceeds anyway. */
-const KILL_TREE_TIMEOUT_MS = 5000
+/** How long a whole per-entry teardown may take before the caller proceeds anyway. */
+const TEARDOWN_TIMEOUT_MS = 5000
+
+/** Concise teardown breadcrumb on stderr (same channel as `[pty] backend=`). */
+function log(msg: string): void {
+  console.error(`[pty-teardown] ${msg}`)
+}
 
 /**
- * Tree-kill a PTY's process tree, bounded. The backend owns the pid (see
- * `kill-tree.ts`); all we own is the deadline — a `taskkill` that hangs must not
- * wedge the drive-stop mutation or the shutdown that is waiting on us, so on
- * timeout the caller proceeds regardless. Never rejects: teardown is best-effort.
+ * Run `body`, but never let it hold the caller past `ms`. Resolves true if the
+ * body finished, false if the deadline fired first — in which case the body keeps
+ * running, unobserved, and the caller proceeds anyway. Never rejects.
+ *
+ * The deadline is a property of the WHOLE body on purpose. It used to race only
+ * the tree-kill, leaving the `pty.kill()` backstop after it unbounded; a bound
+ * that covers one step is a bound the next step can escape.
  */
-function killTreeBounded(pty: PtySession): Promise<void> {
+function withDeadline(body: () => Promise<void>, ms: number): Promise<boolean> {
   return new Promise((resolve) => {
-    const timer = setTimeout(resolve, KILL_TREE_TIMEOUT_MS)
-    void pty
-      .killTree()
+    const timer = setTimeout(() => resolve(false), ms)
+    void body()
       .catch(() => {})
       .then(() => {
         clearTimeout(timer)
-        resolve()
+        resolve(true)
       })
   })
+}
+
+/**
+ * Tree-kill an entry, then kill the PTY itself as a backstop — the whole thing
+ * bounded by {@link TEARDOWN_TIMEOUT_MS}. The order is the whole point on
+ * Windows: killing the direct child first breaks the parent → child link
+ * `taskkill /T` walks, orphaning the dev server / claude grandchild that holds
+ * the port. An already-exited entry is skipped rather than killed again — the OS
+ * may have reused its pid, and taskkilling a stranger's tree is worse than
+ * leaking nothing.
+ *
+ * Never rejects, so no form of kill can fail a caller (or, for the sync form,
+ * become an unhandled rejection): teardown is best-effort by construction.
+ *
+ * Exported for the deadline unit test, which needs a backend whose `killTree()`
+ * never settles — something no real PTY can be asked to do.
+ */
+export async function tearDownEntry(entry: PtyEntry): Promise<void> {
+  const id = entry.sessionId
+  if (entry.exited) {
+    log(`${id}: skip (exited=true)`)
+    return
+  }
+  // `ptyPid=`, not `pid=`: under the sidecar backend this is the INNER node-pty
+  // pid that the async `ready` frame swaps in, while the tree-kill is rooted at
+  // the host pid the sidecar spawned. Still worth logging — it is the pid the
+  // terminal talks to — but it must not pose as the kill target. The pid actually
+  // handed to the kill is logged by `killProcessTree` itself.
+  const ptyPid = entry.pty.pid
+  const started = Date.now()
+  log(`${id}: start exited=false ptyPid=${ptyPid} t=${started}`)
+
+  const finished = await withDeadline(async () => {
+    await entry.pty.killTree()
+    log(`${id}: killTree settled after ${Date.now() - started}ms`)
+    try {
+      entry.pty.kill()
+    } catch {
+      // Backend already reaped it between the tree kill and here.
+    }
+  }, TEARDOWN_TIMEOUT_MS)
+
+  log(`${id}: done after ${Date.now() - started}ms deadline=${finished ? 'no' : 'FIRED'}`)
 }
 
 class PtyRegistry {
@@ -144,16 +194,22 @@ class PtyRegistry {
    */
   kill(sessionId: string): boolean {
     const entry = this.entries.get(sessionId)
-    if (!entry) return false
-    void this.tearDown(entry)
+    if (!entry) {
+      log(`${sessionId}: registry miss (kill)`)
+      return false
+    }
+    void tearDownEntry(entry)
     return true
   }
 
   /** Kill the PTY's whole process tree and wait for it. */
   async killTree(sessionId: string): Promise<boolean> {
     const entry = this.entries.get(sessionId)
-    if (!entry) return false
-    await this.tearDown(entry)
+    if (!entry) {
+      log(`${sessionId}: registry miss (killTree)`)
+      return false
+    }
+    await tearDownEntry(entry)
     return true
   }
 
@@ -169,28 +225,7 @@ class PtyRegistry {
   async killAllTrees(): Promise<void> {
     const all = [...this.entries.values()]
     this.entries.clear()
-    await Promise.allSettled(all.map((entry) => this.tearDown(entry)))
-  }
-
-  /**
-   * Tree-kill an entry, then kill the PTY itself as a backstop. The order is the
-   * whole point on Windows: killing the direct child first breaks the parent →
-   * child link `taskkill /T` walks, orphaning the dev server / claude grandchild
-   * that holds the port. An already-exited entry is skipped rather than killed
-   * again — the OS may have reused its pid, and taskkilling a stranger's tree is
-   * worse than leaking nothing.
-   *
-   * Never rejects, so no form of kill can fail a caller (or, for the sync form,
-   * become an unhandled rejection): teardown is best-effort by construction.
-   */
-  private async tearDown(entry: PtyEntry): Promise<void> {
-    if (entry.exited) return
-    await killTreeBounded(entry.pty)
-    try {
-      entry.pty.kill()
-    } catch {
-      // Backend already reaped it between the tree kill and here.
-    }
+    await Promise.allSettled(all.map((entry) => tearDownEntry(entry)))
   }
 
   /** Live session ids (diagnostics/tests). */
