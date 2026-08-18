@@ -1,14 +1,17 @@
-import { readFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { Feature, Project } from '@runcastle/core'
+import { annotationPath } from '@runcastle/core/paths'
 import { eq } from 'drizzle-orm'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { features } from '../src/db/schema'
 import type { AppCtx } from '../src/db/types'
-import { InvalidInputError } from '../src/errors'
+import { InvalidInputError, NotFoundError } from '../src/errors'
 import { listAfter } from '../src/services/events'
 import {
   addNote,
+  attachScreenshot,
   deleteNote,
   editNote,
   listByFeature,
@@ -17,6 +20,7 @@ import {
   toggleNote,
 } from '../src/services/test-notes'
 import { listByFeature as listTickets } from '../src/services/tickets'
+import { useDataDir } from './helpers/data-dir'
 import { makeTestCtx } from './helpers/db'
 import { seedFeature, seedProject } from './helpers/fixtures'
 
@@ -268,5 +272,125 @@ describe('test notes service', () => {
 
     toggleNote(ctx, note.id)
     expect(renderedFile()).toBe('# Test notes\n\n## Lap 1\n\n- [x] the typo\n')
+  })
+
+  /**
+   * Notes captured from the walkthrough annotation player: a timestamp on the
+   * row, and a PNG whose presence on disk is the only record that it exists
+   * (decisions.md #5). The data dir is redirected at a temp tree so the
+   * annotations dir these tests write into is disposable.
+   */
+  describe('annotated notes', () => {
+    let home: string
+    let restoreDataDir: () => void
+
+    // A real PNG header is not needed at this seam — the service stores bytes and
+    // the signature check lives at the HTTP route, where the upload arrives.
+    const PNG = Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 1, 2, 3])
+
+    beforeEach(() => {
+      home = mkdtempSync(join(tmpdir(), 'rc-annotations-'))
+      restoreDataDir = useDataDir(home)
+    })
+
+    afterEach(() => {
+      restoreDataDir()
+      rmSync(home, { recursive: true, force: true })
+    })
+
+    it('stores the moment in the walkthrough a note was captured at', () => {
+      const annotated = addNote(ctx, feature.id, 'the panel is misaligned', 'human', 12.5)
+      tick()
+      const typed = addNote(ctx, feature.id, 'just typed this one')
+
+      expect(annotated.videoTimestamp).toBe(12.5)
+      // Sub-second scrub positions survive: the column is real, not integer.
+      expect(listByFeature(ctx, feature.id)[0].videoTimestamp).toBe(12.5)
+      expect(typed.videoTimestamp).toBeUndefined()
+    })
+
+    it('stamps screenshotUrl from the disk, on the note whose PNG is there', () => {
+      const annotated = addNote(ctx, feature.id, 'circled the header')
+      tick()
+      const plain = addNote(ctx, feature.id, 'no picture for this one')
+
+      expect(listByFeature(ctx, feature.id).map((n) => n.screenshotUrl)).toEqual([
+        undefined,
+        undefined,
+      ])
+
+      attachScreenshot(ctx, annotated.id, PNG)
+
+      const [withShot, without] = listByFeature(ctx, feature.id)
+      expect(withShot.screenshotUrl).toBe(`/api/reviews/note/${annotated.id}/screenshot.png`)
+      expect(without.screenshotUrl).toBeUndefined()
+      expect(plain.screenshotUrl).toBeUndefined()
+    })
+
+    it('writes the PNG note-keyed, and emits so the notes list refreshes', () => {
+      const note = addNote(ctx, feature.id, 'circled the header')
+
+      const returned = attachScreenshot(ctx, note.id, PNG)
+
+      expect(readFileSync(annotationPath(note.id))).toEqual(Buffer.from(PNG))
+      expect(returned.screenshotUrl).toBe(`/api/reviews/note/${note.id}/screenshot.png`)
+      expect(eventTypes()).toContain('note.screenshot')
+    })
+
+    it('refuses a screenshot for a note that does not exist', () => {
+      expect(() => attachScreenshot(ctx, 'note_nope', PNG)).toThrow(NotFoundError)
+      expect(existsSync(annotationPath('note_nope'))).toBe(false)
+    })
+
+    it('deletes the PNG with its note, and deletes an unannotated note fine', () => {
+      const annotated = addNote(ctx, feature.id, 'circled the header')
+      attachScreenshot(ctx, annotated.id, PNG)
+      tick()
+      const plain = addNote(ctx, feature.id, 'no picture for this one')
+
+      deleteNote(ctx, annotated.id)
+      expect(existsSync(annotationPath(annotated.id))).toBe(false)
+
+      // No PNG to clean up — the delete still goes through rather than erroring.
+      deleteNote(ctx, plain.id)
+      expect(listByFeature(ctx, feature.id)).toEqual([])
+    })
+
+    it('carries the screenshot path into test-notes.md, and re-renders on upload', () => {
+      const annotated = addNote(ctx, feature.id, 'the panel is misaligned')
+      tick()
+      addNote(ctx, feature.id, 'just typed this one')
+
+      // Before the upload the rendered file is byte-identical to a plain one.
+      expect(renderedFile()).toBe(
+        '# Test notes\n\n## Lap 1\n\n- [ ] the panel is misaligned\n- [ ] just typed this one\n',
+      )
+
+      // The upload alone re-renders — no other mutation happens in between.
+      attachScreenshot(ctx, annotated.id, PNG)
+
+      expect(renderedFile()).toBe(
+        [
+          '# Test notes',
+          '',
+          '## Lap 1',
+          '',
+          `- [ ] the panel is misaligned (screenshot: ${annotationPath(annotated.id)})`,
+          '- [ ] just typed this one',
+          '',
+        ].join('\n'),
+      )
+    })
+
+    it('keeps the ticket reference and the screenshot path on a promoted line', () => {
+      const note = addNote(ctx, feature.id, 'the panel is misaligned')
+      attachScreenshot(ctx, note.id, PNG)
+
+      promoteNote(ctx, note.id)
+
+      expect(renderedFile()).toBe(
+        `# Test notes\n\n## Lap 1\n\n- [x] the panel is misaligned (→ ticket 1) (screenshot: ${annotationPath(note.id)})\n`,
+      )
+    })
   })
 })

@@ -1,12 +1,13 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { reviewDir, reviewWalkthroughPath } from '@runcastle/core/paths'
+import { annotationPath, reviewDir, reviewWalkthroughPath } from '@runcastle/core/paths'
 import { Hono } from 'hono'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { AppCtx } from '../src/db/types'
 import { clearRuntimeCtx, setRuntimeCtx } from '../src/launcher/runtime'
 import reviewsApp from '../src/routes/reviews'
+import { addNote, deleteNote, listByFeature as listNotes } from '../src/services/test-notes'
 import { storeTickets } from '../src/services/tickets'
 import { makeTestCtx } from './helpers/db'
 import { seedFeature, seedProject } from './helpers/fixtures'
@@ -246,6 +247,97 @@ describe('review artifacts over HTTP', () => {
       for (const id of ['tkt_nope', '..%2F..%2Fetc', '%2Eetc']) {
         expect((await mount().request(url(id))).status, id).toBe(404)
       }
+    })
+  })
+
+  /**
+   * The annotated frame a note carries. Everything here goes through HTTP,
+   * because HTTP is the whole seam: the browser uploads what the annotation
+   * canvas composited and later fetches it back into an `<img>`.
+   */
+  describe('a note screenshot', () => {
+    // A minimal well-formed-enough PNG: the 8-byte signature plus a byte of
+    // payload, which is all the route checks and all the disk needs.
+    const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x42])
+
+    const upload = (noteId: string): string => `/api/reviews/note/${noteId}/screenshot`
+    const url = (noteId: string): string => `/api/reviews/note/${noteId}/screenshot.png`
+
+    function post(noteId: string, body: Uint8Array): Promise<Response> {
+      return mount().request(upload(noteId), { method: 'POST', body })
+    }
+
+    it('round-trips: upload the frame, fetch it back as a PNG', async () => {
+      const note = addNote(ctx, featureId, 'the panel is misaligned', 'human', 12.5)
+
+      const posted = await post(note.id, PNG)
+      expect(posted.status).toBe(200)
+      // The upload hands back the note the UI should now show — thumbnail and all.
+      expect(await posted.json()).toMatchObject({ id: note.id, videoTimestamp: 12.5 })
+
+      const got = await mount().request(url(note.id))
+      expect(got.status).toBe(200)
+      expect(got.headers.get('content-type')).toBe('image/png')
+      expect(got.headers.get('content-length')).toBe(String(PNG.length))
+      expect(new Uint8Array(await got.arrayBuffer())).toEqual(PNG)
+    })
+
+    it('serves it at exactly the URL the notes list stamps', async () => {
+      const note = addNote(ctx, featureId, 'circled the header')
+      await post(note.id, PNG)
+
+      // The stamped URL is a promise to the browser; follow it rather than
+      // rebuilding it, so a drift between service and route shows up as a 404.
+      const stamped = listNotes(ctx, featureId)[0].screenshotUrl
+      expect(stamped).toBeDefined()
+      expect((await mount().request(stamped as string)).status).toBe(200)
+    })
+
+    it('404s for a note nobody annotated', async () => {
+      const note = addNote(ctx, featureId, 'just typed this one')
+
+      expect((await mount().request(url(note.id))).status).toBe(404)
+    })
+
+    it('404s once the note — and with it the frame — is deleted', async () => {
+      const note = addNote(ctx, featureId, 'the panel is misaligned')
+      await post(note.id, PNG)
+      expect((await mount().request(url(note.id))).status).toBe(200)
+
+      deleteNote(ctx, note.id)
+
+      expect(existsSync(annotationPath(note.id))).toBe(false)
+      expect((await mount().request(url(note.id))).status).toBe(404)
+    })
+
+    it('refuses an upload for a note id no row matches, without going near the disk', async () => {
+      for (const id of ['note_nope', '..%2F..%2Fetc', '%2Eetc']) {
+        expect((await post(id, PNG)).status, id).toBe(404)
+      }
+      // Nothing was written anywhere under the annotations dir.
+      expect(existsSync(join(dataDir, 'annotations'))).toBe(false)
+    })
+
+    it('refuses a body that is not a PNG, which the GET would mislabel', async () => {
+      const note = addNote(ctx, featureId, 'circled the header')
+
+      const html = new TextEncoder().encode('<script>alert(1)</script>')
+      expect((await post(note.id, html)).status).toBe(400)
+      expect((await post(note.id, new Uint8Array())).status).toBe(400)
+
+      expect(existsSync(annotationPath(note.id))).toBe(false)
+      expect((await mount().request(url(note.id))).status).toBe(404)
+    })
+
+    it('replaces the frame when the same note is annotated again', async () => {
+      const note = addNote(ctx, featureId, 'circled the header')
+      await post(note.id, PNG)
+
+      const redrawn = new Uint8Array([...PNG.slice(0, 8), 0x43, 0x44])
+      expect((await post(note.id, redrawn)).status).toBe(200)
+
+      const got = await mount().request(url(note.id))
+      expect(new Uint8Array(await got.arrayBuffer())).toEqual(redrawn)
     })
   })
 })
