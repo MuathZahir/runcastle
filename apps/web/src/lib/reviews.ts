@@ -41,3 +41,21 @@ export function useReviewArtifacts(featureId: string): UseQueryResult<ReviewArti
     },
   })
 }
+
+/**
+ * Attach an annotated frame to the note it was drawn for. Raw PNG bytes as the
+ * body — the shape the route expects, and the one thing the tRPC surface beside
+ * it cannot carry.
+ *
+ * The URL this uploads to is the same one the server stamps back onto the note
+ * as `screenshotUrl`, so the thumbnail in the notes list is literally a GET of
+ * what was posted here.
+ */
+export async function uploadScreenshot(noteId: string, png: Blob): Promise<void> {
+  const res = await fetch(`/api/reviews/note/${encodeURIComponent(noteId)}/screenshot`, {
+    method: 'POST',
+    headers: { 'content-type': 'image/png' },
+    body: png,
+  })
+  if (!res.ok) throw new Error(`screenshot upload: ${res.status}`)
+}
