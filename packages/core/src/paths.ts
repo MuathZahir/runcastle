@@ -112,6 +112,27 @@ export function reviewWalkthroughPath(ticketId: string): string {
   return join(reviewDir(ticketId), 'walkthrough.webm')
 }
 
+/**
+ * Annotated-frame screenshots, one per test note:
+ * `~/.runcastle/annotations/`. Note-keyed rather than review-keyed on purpose
+ * (decisions.md #4) — {@link reviewDir} is wiped when a review re-burns, and a
+ * note outlives the review it was captured from.
+ */
+export function annotationsDir(): string {
+  return join(dataDir(), 'annotations')
+}
+
+/**
+ * One note's annotated frame: `<annotationsDir>/<noteId>.png`. Its presence on
+ * disk IS the record that the note has a screenshot — there is no row for it —
+ * so, exactly like {@link reviewWalkthroughPath}, the route that serves it
+ * resolves a path from a note id it looked up, never from anything a caller
+ * sent.
+ */
+export function annotationPath(noteId: string): string {
+  return join(annotationsDir(), `${noteId}.png`)
+}
+
 /** Every talk worktree of one project: `~/.runcastle/worktrees/<projectId>/`. */
 export function projectWorktreesDir(projectId: string): string {
   return join(dataDir(), 'worktrees', projectId)

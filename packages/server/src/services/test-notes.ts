@@ -1,4 +1,4 @@
-import { mkdirSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname } from 'node:path'
 import type {
   Feature,
@@ -8,7 +8,7 @@ import type {
   TicketInput,
 } from '@runcastle/core'
 import { TestNote, newId } from '@runcastle/core'
-import { featureDocsRel } from '@runcastle/core/paths'
+import { annotationPath, annotationsDir, featureDocsRel } from '@runcastle/core/paths'
 import { asc, eq } from 'drizzle-orm'
 import type { AppCtx } from '../db/types'
 import { testNotes } from '../db/schema'
@@ -29,6 +29,22 @@ import { getTicket, storeTickets } from './tickets'
 
 type TestNoteSelect = typeof testNotes.$inferSelect
 
+/**
+ * Where the browser fetches a note's annotated frame from. Must stay in step
+ * with the route that serves it (`routes/reviews.ts`); the HTTP round-trip test
+ * follows a stamped URL back through that route, so a drift shows up as a 404
+ * rather than as a silently broken thumbnail.
+ */
+function screenshotUrl(noteId: string): string {
+  return `/api/reviews/note/${noteId}/screenshot.png`
+}
+
+/**
+ * The row plus the one fact that is not in it: whether this note's annotated
+ * frame is on disk (decisions.md #5). Every read path funnels through here, so
+ * a screenshot written or deleted is reflected the moment the next read runs —
+ * there is no row to keep in sync.
+ */
 function rowToNote(row: TestNoteSelect): TestNote {
   return TestNote.parse({
     id: row.id,
@@ -38,12 +54,14 @@ function rowToNote(row: TestNoteSelect): TestNote {
     status: row.status,
     author: row.author,
     ticketId: row.ticketId ?? undefined,
+    videoTimestamp: row.videoTimestamp ?? undefined,
+    screenshotUrl: existsSync(annotationPath(row.id)) ? screenshotUrl(row.id) : undefined,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   })
 }
 
-function getNote(ctx: AppCtx, id: string): TestNote {
+export function getNote(ctx: AppCtx, id: string): TestNote {
   const row = ctx.db.select().from(testNotes).where(eq(testNotes.id, id)).get()
   if (!row) throw new NotFoundError(`test note ${id} not found`)
   return rowToNote(row)
@@ -87,12 +105,18 @@ export function listByFeature(ctx: AppCtx, featureId: string): TestNote[] {
  * `author` is the one thing the caller does choose: the review panel leaves it
  * at `human`, and the `add_test_note` MCP wire passes `agent` so a review
  * ticket's findings arrive attributed. Nothing else about the note differs.
+ *
+ * `videoTimestamp` arrives only from the annotation player — the moment in the
+ * walkthrough the human paused on. The screenshot that usually accompanies it is
+ * a separate upload ({@link attachScreenshot}), because it travels as PNG bytes
+ * rather than as JSON.
  */
 export function addNote(
   ctx: AppCtx,
   featureId: string,
   text: string,
   author: TestNoteAuthor = 'human',
+  videoTimestamp?: number,
 ): TestNote {
   const body = cleanText(text)
   const feature = getFeatureRow(ctx, featureId)
@@ -108,6 +132,7 @@ export function addNote(
       status: 'open' as const,
       author,
       ticketId: null,
+      videoTimestamp: videoTimestamp ?? null,
       createdAt: now,
       updatedAt: now,
     })
@@ -148,12 +173,19 @@ export function editNote(ctx: AppCtx, noteId: string, text: string): TestNote {
   return getNote(ctx, noteId)
 }
 
-/** Drop a dead observation. Only open notes — a promoted one has a ticket. */
+/**
+ * Drop a dead observation. Only open notes — a promoted one has a ticket.
+ *
+ * The note's annotated frame goes with it: this is the one delete path, so it is
+ * the one cleanup hook (decisions.md #7). `force` swallows the absence, which is
+ * the common case — most notes were never annotated.
+ */
 export function deleteNote(ctx: AppCtx, noteId: string): void {
   const current = getNote(ctx, noteId)
   assertOpen(current, 'delete')
 
   ctx.db.delete(testNotes).where(eq(testNotes.id, noteId)).run()
+  rmSync(annotationPath(noteId), { force: true })
 
   emit(ctx, current.featureId, {
     type: 'note.deleted',
@@ -161,6 +193,34 @@ export function deleteNote(ctx: AppCtx, noteId: string): void {
     data: { noteId },
   })
   renderTestNotes(ctx, getFeatureRow(ctx, current.featureId))
+}
+
+/**
+ * Attach the annotated frame the human drew on: the PNG the player composited
+ * from the paused video frame plus the strokes, stored at
+ * `~/.runcastle/annotations/<noteId>.png`.
+ *
+ * Writing the file is the whole mutation — there is no row to update — but it
+ * still emits and re-renders like any other note change, because the thumbnail
+ * the notes list shows and the `(screenshot: …)` line in `test-notes.md` both
+ * only appear once this file exists.
+ *
+ * Re-uploading overwrites: one screenshot per note is locked (decisions.md #3),
+ * so a second capture for the same note replaces the first.
+ */
+export function attachScreenshot(ctx: AppCtx, noteId: string, png: Uint8Array): TestNote {
+  const note = getNote(ctx, noteId)
+
+  mkdirSync(annotationsDir(), { recursive: true })
+  writeFileSync(annotationPath(noteId), png)
+
+  emit(ctx, note.featureId, {
+    type: 'note.screenshot',
+    message: 'annotated frame attached to note',
+    data: { noteId },
+  })
+  renderTestNotes(ctx, getFeatureRow(ctx, note.featureId))
+  return getNote(ctx, noteId)
 }
 
 /**
@@ -311,11 +371,22 @@ export function promoteMany(
   return { notes, tickets }
 }
 
+/**
+ * The absolute path suffix an annotated note's line carries, so a host-side
+ * session reading `test-notes.md` can Read the image itself (decisions.md #5).
+ * Absolute because the reader's working directory is the target repo, and the
+ * annotations dir is not under it.
+ */
+function screenshotSuffix(note: TestNote): string {
+  return note.screenshotUrl ? ` (screenshot: ${annotationPath(note.id)})` : ''
+}
+
 function noteLine(ctx: AppCtx, note: TestNote): string {
-  if (note.status === 'open') return `- [ ] ${note.text}`
+  const shot = screenshotSuffix(note)
+  if (note.status === 'open') return `- [ ] ${note.text}${shot}`
   // A promoted note always carries its ticket; done notes never do.
   const ticket = note.ticketId ? ` (→ ticket ${getTicket(ctx, note.ticketId).seq})` : ''
-  return `- [x] ${note.text}${ticket}`
+  return `- [x] ${note.text}${ticket}${shot}`
 }
 
 /**

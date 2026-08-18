@@ -26,9 +26,21 @@ export const testNotesRouter = router({
     .input(z.object({ featureId: z.string() }))
     .query(({ ctx, input }) => listByFeature(ctx, input.featureId)),
 
+  // `videoTimestamp` comes from the annotation player and nowhere else — a note
+  // typed into the plain input omits it. The PNG that usually goes with it is a
+  // separate upload over HTTP (`/api/reviews/note/:noteId/screenshot`), because
+  // tRPC's JSON wire is the wrong shape for image bytes.
   add: publicProcedure
-    .input(z.object({ featureId: z.string(), text: z.string().min(1) }))
-    .mutation(({ ctx, input }) => addNote(ctx, input.featureId, input.text)),
+    .input(
+      z.object({
+        featureId: z.string(),
+        text: z.string().min(1),
+        videoTimestamp: z.number().nonnegative().optional(),
+      }),
+    )
+    .mutation(({ ctx, input }) =>
+      addNote(ctx, input.featureId, input.text, 'human', input.videoTimestamp),
+    ),
 
   edit: publicProcedure
     .input(z.object({ noteId: z.string(), text: z.string().min(1) }))

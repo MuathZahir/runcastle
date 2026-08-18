@@ -1,4 +1,4 @@
-import { index, integer, primaryKey, sqliteTable, text } from 'drizzle-orm/sqlite-core'
+import { index, integer, primaryKey, real, sqliteTable, text } from 'drizzle-orm/sqlite-core'
 import type {
   FeatureStatus,
   FindingSource,
@@ -272,6 +272,17 @@ export const testNotes = sqliteTable('test_notes', {
   author: text('author').notNull().$type<TestNoteAuthor>().default('human'),
   /** The ticket a `promoted` note was turned into; null for every other status. */
   ticketId: text('ticket_id'),
+  /**
+   * Seconds into the review walkthrough the note was captured at, when it was
+   * captured from the annotation player; null for every note typed into the
+   * plain input. `real` rather than `integer` so a sub-second scrub position
+   * survives the round trip — the human pauses on a frame, not on a second.
+   *
+   * There is deliberately no record of WHICH walkthrough (decisions.md #7): the
+   * annotated frame is baked into the screenshot, so a timestamp going stale
+   * against a re-recorded video costs nothing.
+   */
+  videoTimestamp: real('video_timestamp'),
   createdAt: integer('created_at').notNull(),
   updatedAt: integer('updated_at').notNull(),
 })
