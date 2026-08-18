@@ -3,8 +3,13 @@ import {
   CURATED_MODELS,
   MODEL_STEPS,
   ModelStep,
+  RUNTIME_DEFAULT_MODELS,
   RuncastleConfig,
+  mergeModelEntries,
+  modelEntryFor,
+  modelRoster,
   resolveModel,
+  resolveModelEntry,
 } from '../src/config'
 
 describe('RuncastleConfig — model shape', () => {
@@ -63,6 +68,105 @@ describe('RuncastleConfig — model shape', () => {
     }
     // Haiku 4.5 has no 1M tier — a `[1m]` entry would fail the launch.
     expect(ids).not.toContain('claude-haiku-4-5[1m]')
+  })
+})
+
+describe('model vocabulary — runtime-aware entries', () => {
+  it('curates entries from both runtimes, each declaring its own', () => {
+    const byId = new Map(CURATED_MODELS.map((m) => [m.id, m.runtime]))
+    expect(byId.get('claude-opus-5')).toBe('claude-code')
+    expect(byId.get('claude-opus-5[1m]')).toBe('claude-code')
+    expect(byId.get('gpt-5.6-sol')).toBe('codex')
+    expect(byId.get('gpt-5.6-terra')).toBe('codex')
+    expect(byId.get('gpt-5.6-luna')).toBe('codex')
+  })
+
+  it('exports a flagship/smoke default pair per runtime', () => {
+    expect(RUNTIME_DEFAULT_MODELS['claude-code']).toEqual({
+      flagship: 'claude-opus-5',
+      smoke: 'claude-haiku-4-5',
+    })
+    expect(RUNTIME_DEFAULT_MODELS.codex).toEqual({
+      flagship: 'gpt-5.6-sol',
+      smoke: 'gpt-5.6-luna',
+    })
+  })
+
+  it('every default-pair model is a curated entry of its own runtime', () => {
+    for (const [runtime, pair] of Object.entries(RUNTIME_DEFAULT_MODELS)) {
+      for (const id of [pair.flagship, pair.smoke]) {
+        expect(CURATED_MODELS.find((m) => m.id === id)?.runtime).toBe(runtime)
+      }
+    }
+  })
+
+  it('merges a custom roster over the curated one, matched by id', () => {
+    const roster = modelRoster({
+      models: [
+        { id: 'gpt-5.6-sol', runtime: 'codex', note: 'mechanical refactors' },
+        { id: 'my-proxy/gpt', runtime: 'codex' },
+      ],
+    })
+    // the custom entry replaces the curated one in place, not appended twice
+    expect(roster.filter((m) => m.id === 'gpt-5.6-sol')).toEqual([
+      { id: 'gpt-5.6-sol', runtime: 'codex', note: 'mechanical refactors' },
+    ])
+    expect(roster.at(-1)).toEqual({ id: 'my-proxy/gpt', runtime: 'codex' })
+    expect(roster.map((m) => m.id)).toContain('claude-opus-5')
+  })
+
+  it('mergeModelEntries upserts by id, preserving order', () => {
+    const merged = mergeModelEntries(
+      [
+        { id: 'a', runtime: 'claude-code' },
+        { id: 'b', runtime: 'codex' },
+      ],
+      [
+        { id: 'b', runtime: 'codex', note: 'refactors' },
+        { id: 'c', runtime: 'claude-code' },
+      ],
+    )
+    expect(merged).toEqual([
+      { id: 'a', runtime: 'claude-code' },
+      { id: 'b', runtime: 'codex', note: 'refactors' },
+      { id: 'c', runtime: 'claude-code' },
+    ])
+  })
+
+  it('resolves an unknown/bare id to the historical claude-code runtime', () => {
+    expect(modelEntryFor('some-unlisted-model', { models: [] })).toEqual({
+      id: 'some-unlisted-model',
+      runtime: 'claude-code',
+    })
+  })
+
+  it('resolves a custom roster entry to its declared runtime', () => {
+    const config = { models: [{ id: 'my-proxy/gpt', runtime: 'codex' as const, note: 'cheap' }] }
+    expect(modelEntryFor('my-proxy/gpt', config)).toEqual({
+      id: 'my-proxy/gpt',
+      runtime: 'codex',
+      note: 'cheap',
+    })
+  })
+
+  it('round-trips a custom Codex entry with a note through the config schema', () => {
+    const cfg = RuncastleConfig.parse({
+      models: [{ id: 'gpt-5.6-terra', runtime: 'codex', note: 'gpt-5.6-terra — mechanical work' }],
+    })
+    expect(cfg.models).toEqual([
+      { id: 'gpt-5.6-terra', runtime: 'codex', note: 'gpt-5.6-terra — mechanical work' },
+    ])
+    // and back out again through a save/load-shaped JSON hop
+    expect(RuncastleConfig.parse(JSON.parse(JSON.stringify(cfg))).models).toEqual(cfg.models)
+  })
+
+  it('defaults the roster to empty and rejects an undeclared runtime', () => {
+    expect(RuncastleConfig.parse({}).models).toEqual([])
+    expect(RuncastleConfig.safeParse({ models: [{ id: 'x' }] }).success).toBe(false)
+    expect(RuncastleConfig.safeParse({ models: [{ id: 'x', runtime: 'gemini' }] }).success).toBe(
+      false,
+    )
+    expect(RuncastleConfig.safeParse({ models: [{ id: '', runtime: 'codex' }] }).success).toBe(false)
   })
 })
 
@@ -141,5 +245,59 @@ describe('resolveModel — chain runOverride ?? project.model ?? stepModels[step
   it('ignores a null/undefined project model and run override', () => {
     expect(resolveModel('qa', config, { model: null }, null)).toBe('global-default')
     expect(resolveModel('qa', config, null, undefined)).toBe('global-default')
+  })
+})
+
+describe('resolveModelEntry — the same chain, resolved to { id, runtime }', () => {
+  const config = {
+    model: 'claude-opus-5',
+    stepModels: { implement: 'gpt-5.6-sol', smoke: 'my-proxy/gpt' },
+    models: [{ id: 'my-proxy/gpt', runtime: 'codex' as const, note: 'cheap smoke' }],
+  }
+
+  it('yields an entry for every step', () => {
+    for (const step of MODEL_STEPS) {
+      const entry = resolveModelEntry(step, config)
+      expect(typeof entry.id).toBe('string')
+      expect(['claude-code', 'codex']).toContain(entry.runtime)
+    }
+  })
+
+  it('carries the runtime of whichever link of the chain wins', () => {
+    expect(resolveModelEntry('ideation', config)).toMatchObject({
+      id: 'claude-opus-5',
+      runtime: 'claude-code',
+    })
+    expect(resolveModelEntry('implement', config)).toMatchObject({
+      id: 'gpt-5.6-sol',
+      runtime: 'codex',
+    })
+    expect(resolveModelEntry('smoke', config)).toMatchObject({
+      id: 'my-proxy/gpt',
+      runtime: 'codex',
+    })
+    expect(resolveModelEntry('implement', config, { model: 'claude-sonnet-5' })).toMatchObject({
+      id: 'claude-sonnet-5',
+      runtime: 'claude-code',
+    })
+    expect(
+      resolveModelEntry('implement', config, { model: 'claude-sonnet-5' }, 'gpt-5.6-luna'),
+    ).toMatchObject({ id: 'gpt-5.6-luna', runtime: 'codex' })
+  })
+
+  it('agrees with resolveModel on the id at every link', () => {
+    for (const step of MODEL_STEPS) {
+      expect(resolveModelEntry(step, config).id).toBe(resolveModel(step, config))
+      expect(resolveModelEntry(step, config, { model: 'p' }).id).toBe(
+        resolveModel(step, config, { model: 'p' }),
+      )
+    }
+  })
+
+  it('falls back to claude-code for an id no roster knows', () => {
+    expect(resolveModelEntry('ideation', { ...config, model: 'mystery-model' })).toEqual({
+      id: 'mystery-model',
+      runtime: 'claude-code',
+    })
   })
 })
