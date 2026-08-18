@@ -2,7 +2,9 @@ import { existsSync, mkdirSync, readFileSync, readdirSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type {
+  AgentRuntime,
   Feature,
+  ModelEntry,
   RuncastleConfig,
   Ticket,
   TicketStatus,
@@ -11,13 +13,15 @@ import type {
 } from '@runcastle/core'
 import {
   newId,
-  resolveModel,
+  resolveModelEntry,
   resolvePreparedSettings,
   resolveSandboxImage,
 } from '@runcastle/core'
 import { loadConfig } from '@runcastle/core/config-load'
 import { burnCacheDir, envPath, featureDocsRel, logsDir, worktreeDir } from '@runcastle/core/paths'
+import type { McpConfig } from '../launcher/artifacts'
 import { resolveSkillsRoot } from '../launcher/skills-root'
+import { RUNTIME_AUTH_KEY, RUNTIME_AUTH_SETUP_HINT } from '../services/setup'
 import {
   appendTranscript,
   beginTranscript,
@@ -37,11 +41,12 @@ import type {
   AgentProvider,
   AgentStreamEvent,
   ClaudeCodeOptions,
+  CodexOptions,
   PrintCommand,
   RunOptions,
   RunResult,
 } from '@ai-hero/sandcastle'
-import { claudeCode, run } from '@ai-hero/sandcastle'
+import { claudeCode, codex, run } from '@ai-hero/sandcastle'
 import { buildGuardInstallCommand } from './burn-guard'
 // The other execution kind. Imported for its one entry point only — everything
 // it needs from here it takes from the exported pure units, and neither module
@@ -83,9 +88,7 @@ import { noSandbox } from '@ai-hero/sandcastle/sandboxes/no-sandbox'
  * terminal. `isReviewTicket` is the only fork.
  */
 
-const AUTH_MISSING_EVENT = 'auth.missing'
-const AUTH_MISSING_MESSAGE =
-  'run `claude setup-token` and put CLAUDE_CODE_OAUTH_TOKEN in ~/.runcastle/.env'
+export const AUTH_MISSING_EVENT = 'auth.missing'
 
 // ---------------------------------------------------------------------------
 // Outcome + dependency shapes (the sandcastle boundary)
@@ -119,7 +122,9 @@ export type TicketOutcome =
 
 export interface BurnDeps {
   config: RuncastleConfig
-  /** Whether a CLAUDE_CODE_OAUTH_TOKEN is available (container sandboxes require it). */
+  /** The runtime this run's resolved model launches — whose auth key must be set. */
+  runtime: AgentRuntime
+  /** Whether {@link runtime}'s auth key is available (container sandboxes require it). */
   hasAuthToken: boolean
   /** Worker-pool width — how many tickets burn in parallel (`config.burnConcurrency`). */
   concurrency: number
@@ -1576,9 +1581,11 @@ export async function burnRun(
   const total = burnable.length
 
   // Auth precheck: container sandboxes (docker/podman) need a token before we
-  // start any container; noSandbox runs `claude` on the already-authed host.
+  // start any container; noSandbox runs the CLI on the already-authed host. The
+  // message names the fix for THIS run's runtime — a Codex burn that aborts
+  // pointing at `claude setup-token` sends the human to the wrong provider.
   if (deps.config.sandbox !== 'noSandbox' && !deps.hasAuthToken) {
-    ctx.emitEvent({ type: AUTH_MISSING_EVENT, message: AUTH_MISSING_MESSAGE })
+    ctx.emitEvent({ type: AUTH_MISSING_EVENT, message: RUNTIME_AUTH_SETUP_HINT[deps.runtime] })
     return { status: 'failed', summary: 'burn aborted: auth token missing' }
   }
 
@@ -1688,16 +1695,39 @@ export function harvestDigest(dirs: (string | undefined)[]): string | undefined 
  * `process.env` would push a Windows PATH (and TEMP, and SystemRoot) into a Linux
  * image and break every tool in it. They set HOME themselves, so the `~` failure
  * this exists to prevent cannot happen there.
+ *
+ * The token is whatever `runtime` authenticates with — an OAuth token for Claude
+ * Code, an OpenAI API key for Codex — and lands under that runtime's own key. A
+ * container's env starts empty, so a Codex burn that is never handed
+ * `CODEX_API_KEY` has no auth at all; this is the only place it gets one.
  */
-function buildAgentEnv(onHost: boolean, token: string | undefined): Record<string, string> {
+function buildAgentEnv(
+  onHost: boolean,
+  token: string | undefined,
+  runtime: AgentRuntime,
+): Record<string, string> {
   const env: Record<string, string> = {}
   if (onHost) {
     for (const [key, value] of Object.entries(process.env)) {
       if (value !== undefined) env[key] = value
     }
   }
-  if (token) env.CLAUDE_CODE_OAUTH_TOKEN = token
+  if (token) env[RUNTIME_AUTH_KEY[runtime]] = token
   return env
+}
+
+/**
+ * The runcastle MCP server, in both the forms a runtime can take it: Claude Code
+ * reads the JSON file, Codex takes the same values as `-c` config overrides. One
+ * source (`renderRunMcpConfig`), two injections — a Codex review agent must end
+ * up on the same run-scoped connection, header and all, or its runcastle tools
+ * resolve to nothing.
+ */
+export interface BurnAgentMcp {
+  /** The rendered `mcp.json` already on disk, for `--mcp-config`. */
+  readonly path: string
+  /** The same server as values, for runtimes configured by flag rather than file. */
+  readonly config: McpConfig
 }
 
 export interface BurnAgentOptions {
@@ -1709,18 +1739,35 @@ export interface BurnAgentOptions {
    */
   onHost?: boolean
   /**
-   * Give the agent an MCP config file (`--mcp-config`). sandcastle 0.12.0's
-   * `ClaudeCodeOptions` has no MCP field, so it rides the print command — the
-   * same seam the Windows model de-quote already uses.
+   * Give the agent the runcastle MCP server. sandcastle 0.12.0 has no MCP field
+   * on either agent's options, so it rides the print command — the same seam the
+   * Windows model de-quote already uses.
    */
-  mcpConfigPath?: string
+  mcp?: BurnAgentMcp
+  /**
+   * We installed the burn guard into this sandbox's Codex home. Codex ignores a
+   * `hooks.json` it has no persisted trust for — even one in `$CODEX_HOME` —
+   * so without `--dangerously-bypass-hook-trust` the guard we just wrote is
+   * silently inert (verified against codex-rs `engine/discovery.rs`, whose own
+   * exec integration test needs the flag for exactly this file). Set only where
+   * we authored the hooks: never on the host, where it would also un-gate the
+   * human's own.
+   */
+  bypassHookTrust?: boolean
 }
 
 /**
- * Build the sandcastle claude agent for a burn, working around two host/Windows
- * gaps in `@ai-hero/sandcastle` 0.12.0's `noSandbox` provider (the container
- * providers docker/podman are unaffected — they run inside a Linux container
- * with a POSIX shell):
+ * THE burn chokepoint: every headless agent runcastle runs — ticket burns,
+ * conflict resolution, review tickets, research — is constructed here, so this
+ * is the one place a runtime is chosen. The model's `runtime` decides it
+ * (decision 2: runtime is a property of the model, never a separate knob), and
+ * everything downstream — sandbox, prompt, completion, merge queue — is
+ * runtime-neutral and untouched.
+ *
+ * Both providers need the same two host/Windows workarounds for
+ * `@ai-hero/sandcastle` 0.12.0's `noSandbox` provider (the container providers
+ * docker/podman are unaffected — they run inside a Linux container with a POSIX
+ * shell):
  *
  * 1. **Permissions.** For `noSandbox`, sandcastle forces
  *    `dangerouslySkipPermissions=false` (never auto-skip on the host) and passes
@@ -1729,40 +1776,77 @@ export interface BurnAgentOptions {
  *    `permissionMode: 'bypassPermissions'` for noSandbox (the same effect docker
  *    gets from `--dangerously-skip-permissions` inside its container) so the AFK
  *    agent can actually write files; the noSandbox user has opted into host
- *    execution. Docker keeps sandcastle's default.
- * 2. **Windows model quoting.** sandcastle POSIX-single-quotes the `--model`
- *    value (`shellEscape`), but its noSandbox exec runs through
- *    `cmd.exe /d /s /c` with verbatim args on Windows, and cmd.exe does NOT strip
- *    single quotes — so `claude` receives a quoted, invalid model name ("issue
- *    with the selected model"). We de-quote the (shell-safe `[a-z0-9-]`) model in
- *    the print command on win32+noSandbox.
+ *    execution. Docker keeps sandcastle's default. Codex needs no equivalent:
+ *    its provider passes `--dangerously-bypass-approvals-and-sandbox` on every
+ *    print command, host or container, and `CodexOptions` has no permission knob.
+ * 2. **Model quoting on Windows.** sandcastle POSIX-single-quotes the model
+ *    value (`shellEscape`) for BOTH providers — `--model 'x'` for claude,
+ *    `-m 'x'` for codex — but its noSandbox exec runs through `cmd.exe /d /s /c`
+ *    with verbatim args on Windows, and cmd.exe does NOT strip single quotes, so
+ *    the CLI receives a quoted, invalid model name ("issue with the selected
+ *    model"). We de-quote the (shell-safe) model in the print command on
+ *    win32+noSandbox — per runtime, because the flag spelling differs.
  */
 export function buildBurnAgent(
   config: RuncastleConfig,
   token: string | undefined,
-  model: string,
+  model: ModelEntry,
   options: BurnAgentOptions = {},
 ): AgentProvider {
   const onHost = options.onHost ?? config.sandbox === 'noSandbox'
-  const opts: ClaudeCodeOptions = {
-    env: buildAgentEnv(onHost, token),
-    ...(onHost ? { permissionMode: 'bypassPermissions' as const } : {}),
-  }
-  const agent = claudeCode(model, opts)
+  const env = buildAgentEnv(onHost, token, model.runtime)
+  const agent =
+    model.runtime === 'codex'
+      ? codex(model.id, { env } satisfies CodexOptions)
+      : claudeCode(model.id, {
+          env,
+          ...(onHost ? { permissionMode: 'bypassPermissions' as const } : {}),
+        } satisfies ClaudeCodeOptions)
 
+  const extraArgs = buildAgentExtraArgs(model.runtime, options)
   const dequoteModel = onHost && process.platform === 'win32'
-  if (!dequoteModel && !options.mcpConfigPath) return agent
+  if (!dequoteModel && extraArgs.length === 0) return agent
+
+  const quotedModelFlag = model.runtime === 'codex' ? `-m '${model.id}'` : `--model '${model.id}'`
+  const bareModelFlag = model.runtime === 'codex' ? `-m ${model.id}` : `--model ${model.id}`
 
   return {
     ...agent,
     buildPrintCommand: (o: AgentCommandOptions): PrintCommand => {
       const built = agent.buildPrintCommand(o)
       let command = built.command
-      if (dequoteModel) command = command.split(`--model '${model}'`).join(`--model ${model}`)
-      if (options.mcpConfigPath) command += ` --mcp-config ${quoteArg(options.mcpConfigPath)}`
+      if (dequoteModel) command = command.split(quotedModelFlag).join(bareModelFlag)
+      for (const arg of extraArgs) command += ` ${arg}`
       return { ...built, command }
     },
   }
+}
+
+/**
+ * The arguments neither provider builds for us, in that runtime's own spelling.
+ * Claude Code takes a `--mcp-config` FILE; Codex has no such flag and instead
+ * takes `-c` dotted config overrides, so the same server is spelled out as
+ * values. Codex parses each `-c` value as TOML and falls back to the raw string,
+ * and the double quotes are deliberately left unquoted at the shell level: a
+ * POSIX shell strips them (raw-string fallback, right value) and cmd.exe keeps
+ * them (TOML string, right value), so one rendering is correct on both — which
+ * matters because the review path runs on the host, Windows included.
+ */
+function buildAgentExtraArgs(runtime: AgentRuntime, options: BurnAgentOptions): string[] {
+  const args: string[] = []
+  if (runtime === 'codex') {
+    // Ordered so a burn's command is stable across runs (tests read it).
+    if (options.bypassHookTrust) args.push('--dangerously-bypass-hook-trust')
+    for (const [name, server] of Object.entries(options.mcp?.config.mcpServers ?? {})) {
+      args.push(`-c mcp_servers.${name}.url="${server.url}"`)
+      for (const [header, value] of Object.entries(server.headers)) {
+        args.push(`-c mcp_servers.${name}.http_headers.${header}="${value}"`)
+      }
+    }
+    return args
+  }
+  if (options.mcp) args.push(`--mcp-config ${quoteArg(options.mcp.path)}`)
+  return args
 }
 
 /**
@@ -1869,7 +1953,7 @@ async function realExecuteTicketRun(
   ticket: Ticket,
   config: RuncastleConfig,
   token: string | undefined,
-  model: string,
+  model: ModelEntry,
   land: <T>(task: () => Promise<T>) => Promise<T>,
   ensureIsolatedPushTarget: () => Promise<void>,
 ): Promise<TicketOutcome> {
@@ -1934,13 +2018,18 @@ async function realExecuteTicketRun(
   // The burn guard (PreToolUse deny hook) is installed by the same
   // onSandboxReady hook that installs deps, so it is armed before the agent's
   // first tool call. Container sandboxes only: under `noSandbox` the agent runs
-  // as the human on the host, where writing `~/.claude/settings.json` would
-  // clobber their own. In mounted mode with nothing to install this makes the
-  // hook run where it previously did not — intended.
-  const guardInstall =
-    config.burnGuard && config.sandbox !== 'noSandbox' ? buildGuardInstallCommand() : undefined
+  // as the human on the host, where writing `~/.claude/settings.json` (or
+  // `~/.codex/hooks.json`) would clobber their own. In mounted mode with nothing
+  // to install this makes the hook run where it previously did not — intended.
+  // Installed for the runtime that is about to run, into that runtime's home.
+  const guardOn = config.burnGuard && config.sandbox !== 'noSandbox'
+  const guardInstall = guardOn ? buildGuardInstallCommand(model.runtime) : undefined
   const withGuard = (setup: string | undefined): string | undefined =>
     guardInstall === undefined ? setup : setup ? `${guardInstall} && ${setup}` : guardInstall
+  // Codex runs no hooks it has no persisted trust for; the flag is what makes
+  // the file we just wrote bind. Paired with the install so it is never passed
+  // when there is no guard of ours to un-gate.
+  const agentOptions: BurnAgentOptions = guardOn ? { bypassHookTrust: true } : {}
 
   mkdirSync(logsDir(), { recursive: true })
   const logFilePath = join(logsDir(), `burn-${feature.id}-${ticket.seq}.log`)
@@ -2071,7 +2160,7 @@ async function realExecuteTicketRun(
     let result: RunResult | undefined
     try {
       result = await run({
-        agent: buildBurnAgent(config, token, model),
+        agent: buildBurnAgent(config, token, model, agentOptions),
         sandbox: selectSandbox(config, mounts),
         cwd: project.repoPath,
         prompt,
@@ -2265,7 +2354,7 @@ async function realExecuteTicketRun(
       }
 
       const runOptions: RunOptions = {
-        agent: buildBurnAgent(config, token, model),
+        agent: buildBurnAgent(config, token, model, agentOptions),
         sandbox: selectSandbox(config, mounts),
         cwd: project.repoPath,
         prompt: retryNotes ? `${basePrompt}\n\n${retryNotes}` : basePrompt,
@@ -2459,8 +2548,8 @@ async function realExecuteTicketRun(
  */
 function resolveBurnDeps(ctx: WorkflowCtx): BurnDeps {
   const config = loadConfig()
-  const token = readTokenFromEnvFile(envPath())
-  const model = resolveModel('implement', config, ctx.project, ctx.modelOverride)
+  const model = resolveModelEntry('implement', config, ctx.project, ctx.modelOverride)
+  const token = readTokenFromEnvFile(envPath(), model.runtime)
   const land = createSerialQueue()
   // Memoized so the whole run performs the parent-repo config write exactly
   // once, no matter how many tickets burn in parallel (see git.ts).
@@ -2469,6 +2558,7 @@ function resolveBurnDeps(ctx: WorkflowCtx): BurnDeps {
     (pushTargetReady ??= allowPushToCheckedOutBranches(ctx.project.repoPath))
   return {
     config,
+    runtime: model.runtime,
     hasAuthToken: token !== undefined,
     concurrency: config.burnConcurrency,
     executeTicketRun: (c, ticket) =>
@@ -2478,17 +2568,22 @@ function resolveBurnDeps(ctx: WorkflowCtx): BurnDeps {
   }
 }
 
-/** Read CLAUDE_CODE_OAUTH_TOKEN from the .env file, falling back to process env. */
-export function readTokenFromEnvFile(path: string): string | undefined {
+/**
+ * Read a runtime's AFK auth value from the .env file, falling back to process
+ * env. Which key that is belongs to the runtime, not to this reader — Claude
+ * Code burns on `CLAUDE_CODE_OAUTH_TOKEN`, Codex burns on `CODEX_API_KEY`.
+ */
+export function readTokenFromEnvFile(path: string, runtime: AgentRuntime): string | undefined {
+  const key = RUNTIME_AUTH_KEY[runtime]
   let fromFile: string | undefined
   if (existsSync(path)) {
     try {
-      fromFile = parseEnvFile(readFileSync(path, 'utf8')).CLAUDE_CODE_OAUTH_TOKEN
+      fromFile = parseEnvFile(readFileSync(path, 'utf8'))[key]
     } catch {
       fromFile = undefined
     }
   }
-  const token = fromFile && fromFile.length > 0 ? fromFile : process.env.CLAUDE_CODE_OAUTH_TOKEN
+  const token = fromFile && fromFile.length > 0 ? fromFile : process.env[key]
   return token && token.length > 0 ? token : undefined
 }
 

@@ -1,6 +1,7 @@
 import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import type { AgentRuntime } from '@runcastle/core'
 import { envPath, sandboxBuildDir } from '@runcastle/core/paths'
 import type { ExecFn, ProbeResult } from '../doctor/doctor'
 import { gitIdentityProbe } from '../doctor/doctor'
@@ -16,7 +17,35 @@ import { ASSET_ENV, resolveAsset } from '../launcher/asset-paths'
  * {@link ExecFn} for git, {@link AfkTokenIo} for the env file + live token check.
  */
 
-const AFK_TOKEN_KEY = 'CLAUDE_CODE_OAUTH_TOKEN'
+/** The env key an AFK Claude Code burn authenticates with. */
+export const AFK_TOKEN_KEY = 'CLAUDE_CODE_OAUTH_TOKEN'
+/**
+ * The env key an AFK Codex burn authenticates with — an OpenAI API key. Verified
+ * against codex-rs: `CODEX_API_KEY` is Codex's highest-precedence auth path and
+ * the one designed for headless use. Interactive Codex sessions are NOT this —
+ * they inherit the human's own `codex login` (decision 5).
+ */
+export const CODEX_API_KEY = 'CODEX_API_KEY'
+
+/**
+ * The env var each runtime's unattended burns authenticate with. One map so the
+ * env-file reader, the burn env builder, and the setup UI never disagree about
+ * which key a runtime needs.
+ */
+export const RUNTIME_AUTH_KEY: Record<AgentRuntime, string> = {
+  'claude-code': AFK_TOKEN_KEY,
+  codex: CODEX_API_KEY,
+}
+
+/**
+ * What to tell a human whose burn aborted for missing auth, per runtime. Both
+ * end in the same place — a key in `~/.runcastle/.env` — but only the Claude one
+ * has a command that produces the value.
+ */
+export const RUNTIME_AUTH_SETUP_HINT: Record<AgentRuntime, string> = {
+  'claude-code': `run \`claude setup-token\` and put ${AFK_TOKEN_KEY} in ~/.runcastle/.env`,
+  codex: `put ${CODEX_API_KEY} (an OpenAI API key) in ~/.runcastle/.env`,
+}
 
 /** Result of a live token validity check (a real `claude` call, injected). */
 export interface TokenValidity {

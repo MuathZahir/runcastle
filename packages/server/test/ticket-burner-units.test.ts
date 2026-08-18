@@ -2,7 +2,7 @@ import type { AgentStreamEvent } from '@ai-hero/sandcastle'
 import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import type { Feature, Ticket } from '@runcastle/core'
+import type { Feature, ModelEntry, Ticket } from '@runcastle/core'
 import { describe, expect, it } from 'vitest'
 import {
   ISOLATED_REPO_PATH,
@@ -390,6 +390,10 @@ describe('isWorktreeTeardownError', () => {
   })
 })
 
+/** A resolved model per runtime — what `resolveModelEntry` hands the chokepoint. */
+const CLAUDE_MODEL: ModelEntry = { id: 'claude-opus-5', runtime: 'claude-code' }
+const CODEX_MODEL: ModelEntry = { id: 'gpt-5.6-sol', runtime: 'codex' }
+
 describe('selectSandbox — provider for the configured sandbox', () => {
   const config = (sandbox: RuncastleConfig['sandbox']): RuncastleConfig => ({
     serverPort: 4512,
@@ -425,7 +429,7 @@ describe('selectSandbox — provider for the configured sandbox', () => {
     const homeKeys = ['HOME', 'USERPROFILE'] as const
 
     it('keeps the host environment alongside the token when running on the host', () => {
-      const env = buildBurnAgent(config('noSandbox'), 'sk-token', 'opus').env
+      const env = buildBurnAgent(config('noSandbox'), 'sk-token', CLAUDE_MODEL).env
 
       expect(env.CLAUDE_CODE_OAUTH_TOKEN).toBe('sk-token')
       const present = homeKeys.filter((key) => process.env[key] !== undefined)
@@ -434,14 +438,86 @@ describe('selectSandbox — provider for the configured sandbox', () => {
     })
 
     it('keeps the host environment when there is no token to pass', () => {
-      const env = buildBurnAgent(config('noSandbox'), undefined, 'opus').env
+      const env = buildBurnAgent(config('noSandbox'), undefined, CLAUDE_MODEL).env
       expect(env.CLAUDE_CODE_OAUTH_TOKEN).toBeUndefined()
       expect(env.PATH ?? env.Path).toBeDefined()
     })
 
     it('sends only the overrides into a container, never the host env', () => {
-      const env = buildBurnAgent(config('docker'), 'sk-token', 'opus').env
+      const env = buildBurnAgent(config('docker'), 'sk-token', CLAUDE_MODEL).env
       expect(env).toEqual({ CLAUDE_CODE_OAUTH_TOKEN: 'sk-token' })
+    })
+
+    // A container's env starts empty, so the key the codex CLI authenticates
+    // with has to be put there explicitly — and under ITS name, not Claude's.
+    it('authenticates a codex burn with CODEX_API_KEY, not the Claude token', () => {
+      const env = buildBurnAgent(config('docker'), 'sk-openai', CODEX_MODEL).env
+      expect(env).toEqual({ CODEX_API_KEY: 'sk-openai' })
+    })
+  })
+
+  /**
+   * The chokepoint every headless agent is built at. The model's runtime picks
+   * the CLI — that is the whole of decision 2 — and the rendered print command
+   * is where it becomes observable without spawning anything.
+   */
+  describe('buildBurnAgent — runtime selection', () => {
+    const printCommand = (agent: ReturnType<typeof buildBurnAgent>): string =>
+      agent.buildPrintCommand({ prompt: 'do the ticket' }).command
+
+    it('builds a claude agent for a claude-runtime model', () => {
+      const agent = buildBurnAgent(config('docker'), 'sk-token', CLAUDE_MODEL)
+      expect(agent.name).toBe('claude-code')
+      expect(printCommand(agent)).toContain("--model 'claude-opus-5'")
+    })
+
+    it('builds a codex agent for a codex-runtime model', () => {
+      const agent = buildBurnAgent(config('docker'), 'sk-openai', CODEX_MODEL)
+      expect(agent.name).toBe('codex')
+      const command = printCommand(agent)
+      expect(command).toContain('codex exec')
+      expect(command).toContain("-m 'gpt-5.6-sol'")
+      expect(command).not.toContain('claude')
+    })
+
+    // Writing $HOME/.codex/hooks.json is necessary but not sufficient: codex
+    // runs no hook it has no persisted trust for, so without the flag the guard
+    // we just installed is silently inert.
+    it('un-gates the guard hooks it installed itself, and only those', () => {
+      const guarded = buildBurnAgent(config('docker'), 'k', CODEX_MODEL, { bypassHookTrust: true })
+      expect(printCommand(guarded)).toContain('--dangerously-bypass-hook-trust')
+
+      const unguarded = buildBurnAgent(config('docker'), 'k', CODEX_MODEL)
+      expect(printCommand(unguarded)).not.toContain('--dangerously-bypass-hook-trust')
+    })
+
+    it('gives a codex review agent the same run-scoped MCP server as claude', () => {
+      const mcp = {
+        path: '/data/review/mcp.json',
+        config: {
+          mcpServers: {
+            runcastle: {
+              type: 'http' as const,
+              url: 'http://127.0.0.1:4512/mcp',
+              headers: { 'X-Runcastle-Run': 'run_abc123' },
+            },
+          },
+        },
+      }
+
+      const claudeCommand = printCommand(
+        buildBurnAgent(config('noSandbox'), undefined, CLAUDE_MODEL, { onHost: true, mcp }),
+      )
+      expect(claudeCommand).toContain('--mcp-config "/data/review/mcp.json"')
+
+      // Codex has no --mcp-config; the same server rides `-c` dotted overrides.
+      const codexCommand = printCommand(
+        buildBurnAgent(config('noSandbox'), undefined, CODEX_MODEL, { onHost: true, mcp }),
+      )
+      expect(codexCommand).toContain('-c mcp_servers.runcastle.url="http://127.0.0.1:4512/mcp"')
+      expect(codexCommand).toContain(
+        '-c mcp_servers.runcastle.http_headers.X-Runcastle-Run="run_abc123"',
+      )
     })
   })
 
