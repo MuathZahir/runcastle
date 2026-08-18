@@ -3482,6 +3482,26 @@ select.settings-input { cursor: pointer; }
 /* Default-model combobox: curated select + a free-text field in custom mode. */
 .settings-combo { display: flex; flex-direction: column; gap: 6px; }
 
+/* Custom-model form: id + required runtime picker + optional use-case note. */
+.settings-custom-model {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid var(--hairline);
+  border-radius: 4px;
+}
+.settings-runtime-picker { border: none; padding: 0; margin: 0; display: flex; gap: 12px; flex-wrap: wrap; }
+.settings-runtime-picker legend { padding: 0; margin-bottom: 4px; }
+.settings-runtime-option {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--text-2);
+  cursor: pointer;
+}
+
 /* Collapsed "Advanced — per-step models" section (issue #48). */
 .settings-advanced-toggle {
   display: flex;

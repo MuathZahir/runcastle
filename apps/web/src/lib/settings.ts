@@ -1,5 +1,12 @@
-import { CURATED_MODELS, DRIVE_LOOP_KEYS, MODEL_STEPS } from '@runcastle/core'
-import type { ModelStep } from '@runcastle/core'
+import {
+  AGENT_RUNTIMES,
+  CURATED_MODELS,
+  DRIVE_LOOP_KEYS,
+  MODEL_STEPS,
+  ModelEntry,
+  modelRoster,
+} from '@runcastle/core'
+import type { AgentRuntime, ModelStep } from '@runcastle/core'
 import type { SettingField, SettingsView } from './api'
 
 /**
@@ -30,6 +37,76 @@ export const FIELD_ENV_VAR: Record<string, string> = {
 
 /** Curated model ids offered by the Default-model dropdown (curated list in core). */
 export const MODEL_OPTIONS: string[] = CURATED_MODELS.map((m) => m.id)
+
+/** How each runtime is named to a human. */
+export const RUNTIME_LABEL: Record<AgentRuntime, string> = {
+  'claude-code': 'Claude Code',
+  codex: 'Codex',
+}
+
+/** One `<optgroup>` of the model dropdown: every model of a single runtime. */
+export interface ModelOptionGroup {
+  runtime: AgentRuntime
+  label: string
+  entries: ModelEntry[]
+}
+
+/**
+ * The operator's OWN roster entries as stored in the global `models` setting —
+ * what a roster write must be merged into, as distinct from the curated list it
+ * is merged over. Malformed entries (a hand-edited config file) are dropped
+ * rather than allowed to break the dropdown.
+ */
+export function customModelsFromView(view: SettingsView | undefined): ModelEntry[] {
+  const raw = view?.fields.find((f) => f.key === 'models')?.value
+  if (!Array.isArray(raw)) return []
+  return raw.flatMap((e) => {
+    const parsed = ModelEntry.safeParse(e)
+    return parsed.success ? [parsed.data] : []
+  })
+}
+
+/** Every model this view offers: the curated list with the operator's roster over it. */
+export function rosterFromView(view: SettingsView | undefined): ModelEntry[] {
+  return modelRoster({ models: customModelsFromView(view) })
+}
+
+/**
+ * The dropdown's runtime groups, in the canonical runtime order. A runtime with
+ * no models is left out entirely rather than rendered as an empty group.
+ */
+export function modelOptionGroups(roster: readonly ModelEntry[]): ModelOptionGroup[] {
+  return AGENT_RUNTIMES.map((runtime) => ({
+    runtime,
+    label: RUNTIME_LABEL[runtime],
+    entries: roster.filter((m) => m.runtime === runtime),
+  })).filter((g) => g.entries.length > 0)
+}
+
+/** What the custom-model form commits: the entry to add, or the reason it cannot. */
+export type CustomModelCommit = { entry: ModelEntry } | { error: string }
+
+/**
+ * Validate a free-text custom model id, its declared runtime, and its optional
+ * use-case note. The runtime is REQUIRED and never inferred from the id: pattern
+ * matching fails silently on proxies and unguessable future ids, and the failure
+ * mode is launching the wrong CLI (decision 3).
+ */
+export function customModelCommit(id: string, runtime: string, note: string): CustomModelCommit {
+  const trimmedId = id.trim()
+  if (trimmedId === '') return { error: 'Enter a model id.' }
+  if (!(AGENT_RUNTIMES as readonly string[]).includes(runtime)) {
+    return { error: 'Choose which runtime this model runs on.' }
+  }
+  const trimmedNote = note.trim()
+  return {
+    entry: {
+      id: trimmedId,
+      runtime: runtime as AgentRuntime,
+      ...(trimmedNote ? { note: trimmedNote } : {}),
+    },
+  }
+}
 
 /** `stepModels.<step>` is the key convention for a per-step override (issue #48). */
 const STEP_PREFIX = 'stepModels.'
@@ -79,7 +156,7 @@ const META: Record<string, FieldMeta> = {
   },
   model: {
     label: 'Default model',
-    help: "Claude model every step inherits. A project's own model wins over the per-step models below.",
+    help: "Model every step inherits, and the runtime it runs on. A project's own model wins over the per-step models below.",
     control: 'select',
     options: MODEL_OPTIONS,
   },
@@ -379,6 +456,8 @@ export interface SettingRow {
   note: string | null
   /** A `select` may also accept a free-text model id (the Default-model combobox). */
   allowCustom: boolean
+  /** `options` grouped by runtime — model rows only, empty for every other control. */
+  modelGroups: ModelOptionGroup[]
   /** What preparation observed to justify this value, when it established it. */
   evidence?: string
   /** The repo has moved far enough since this was measured to be worth a nudge. */
@@ -428,6 +507,11 @@ function metaFor(key: string): FieldMeta {
   return META[key] ?? { label: key, help: '', control: 'text' as const }
 }
 
+/** Whether a field's value is a model id — the rows that offer the runtime groups. */
+function isModelKey(key: string): boolean {
+  return key === 'model' || isStepModelKey(key)
+}
+
 /** The provenance a prepared field carries, when one has been established. */
 export interface FindingLike {
   key: string
@@ -446,8 +530,13 @@ export interface FindingLike {
  * established the value and how far the repo has moved since — because "where
  * did this come from" is the question that decides whether to trust it.
  */
-export function describeField(field: SettingField, finding?: FindingLike): SettingRow {
+export function describeField(
+  field: SettingField,
+  finding?: FindingLike,
+  roster: readonly ModelEntry[] = CURATED_MODELS,
+): SettingRow {
   const meta = metaFor(field.key)
+  const modelGroups = isModelKey(field.key) ? modelOptionGroups(roster) : []
   const gitDetected = GIT_DETECTED.has(field.key)
   const readOnly = !field.editable || gitDetected
   const overridden = field.source === 'project'
@@ -469,7 +558,10 @@ export function describeField(field: SettingField, finding?: FindingLike): Setti
     help: meta.help,
     value: toDisplay(field.value),
     control: meta.control,
-    options: meta.options ?? [],
+    // A model row's choices are the roster (curated + the operator's own), so a
+    // custom id they added is a pick rather than something to retype.
+    options: modelGroups.length > 0 ? roster.map((m) => m.id) : (meta.options ?? []),
+    modelGroups,
     optionLabels: meta.optionLabels ?? {},
     readOnly,
     restartRequired: field.restartRequired,
@@ -480,18 +572,23 @@ export function describeField(field: SettingField, finding?: FindingLike): Setti
     stale: finding ? isStale(finding) : false,
     // The Default-model dropdown and each per-step override accept a curated
     // choice OR a free-text model id (issue #48).
-    allowCustom: field.key === 'model' || isStepModelKey(field.key),
+    allowCustom: isModelKey(field.key),
   }
 }
 
 /**
  * Rows for the Global section — the flat fields, EXCLUDING per-step model
- * overrides (those render in their own collapsed Advanced section, issue #48).
+ * overrides (those render in their own collapsed Advanced section, issue #48)
+ * and the `models` roster, which is not a value with a control of its own: it
+ * is the vocabulary the model dropdowns are built from.
  */
 export function globalRows(view: SettingsView): SettingRow[] {
+  const roster = rosterFromView(view)
   // Not `.map(describeField)` — `describeField`'s optional second parameter
   // would bind to Array#map's index argument.
-  return view.fields.filter((f) => !isStepModelKey(f.key)).map((f) => describeField(f))
+  return view.fields
+    .filter((f) => !isStepModelKey(f.key) && f.key !== 'models')
+    .map((f) => describeField(f, undefined, roster))
 }
 
 /**
@@ -503,9 +600,10 @@ export function projectRows(
   findings: readonly FindingLike[] = [],
 ): SettingRow[] {
   const byKey = new Map(findings.map((f) => [f.key, f]))
+  const roster = rosterFromView(view)
   return view.fields
     .filter((f) => f.scope === 'project')
-    .map((f) => describeField(f, byKey.get(f.key)))
+    .map((f) => describeField(f, byKey.get(f.key), roster))
 }
 
 /**
@@ -514,9 +612,10 @@ export function projectRows(
  * — sparse overrides, so an inheriting step stays hidden until added.
  */
 export function stepModelRows(view: SettingsView): SettingRow[] {
+  const roster = rosterFromView(view)
   const set = view.fields.filter((f) => isStepModelKey(f.key) && f.source === 'file')
   return set
-    .map((f) => describeField(f))
+    .map((f) => describeField(f, undefined, roster))
     .sort((a, b) => STEP_KEYS.indexOf(a.key) - STEP_KEYS.indexOf(b.key))
 }
 

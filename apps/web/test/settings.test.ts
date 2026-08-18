@@ -1,11 +1,15 @@
 import { describe, expect, it } from 'vitest'
 import {
+  customModelCommit,
+  customModelsFromView,
   describeField,
   driveCapabilities,
   effectiveStepModel,
   fieldCommit,
   globalRows,
+  modelOptionGroups,
   projectRows,
+  rosterFromView,
   stepModelRows,
   unsetStepKeys,
 } from '../src/lib/settings'
@@ -135,6 +139,98 @@ describe('describeField', () => {
     expect(row.label).toBe('Implement')
     expect(row.control).toBe('select')
     expect(row.allowCustom).toBe(true)
+  })
+
+  it('describes the default model without naming one runtime', () => {
+    const row = describeField(field({ key: 'model', value: 'claude-opus-5' }))
+    expect(row.help).not.toContain('Claude')
+  })
+})
+
+/**
+ * The model dropdowns are grouped by runtime (decision 3): the runtime a session
+ * or burn launches with is a property of the model chosen, so the choice has to
+ * read that way. A custom id the operator added carries the runtime they
+ * declared for it — nothing is ever inferred from the id string.
+ */
+describe('model dropdown — runtime groups', () => {
+  const rosterView = (models: unknown) =>
+    view([{ key: 'model', value: 'claude-opus-5' }, { key: 'models', value: models }])
+
+  it('groups the curated roster by runtime, each group labelled', () => {
+    const groups = modelOptionGroups(rosterFromView(view([])))
+    expect(groups.map((g) => g.runtime)).toEqual(['claude-code', 'codex'])
+    expect(groups.map((g) => g.label)).toEqual(['Claude Code', 'Codex'])
+    expect(groups[0]?.entries.map((m) => m.id)).toContain('claude-opus-5')
+    expect(groups[1]?.entries.map((m) => m.id)).toContain('gpt-5.6-sol')
+    // no id lands in the wrong group
+    expect(groups[1]?.entries.every((m) => m.runtime === 'codex')).toBe(true)
+  })
+
+  it('offers a custom entry in the group of the runtime it declared', () => {
+    const roster = rosterFromView(
+      rosterView([{ id: 'my-proxy/gpt', runtime: 'codex', note: 'mechanical refactors' }]),
+    )
+    const codex = modelOptionGroups(roster).find((g) => g.runtime === 'codex')
+    expect(codex?.entries.map((m) => m.id)).toContain('my-proxy/gpt')
+    expect(codex?.entries.find((m) => m.id === 'my-proxy/gpt')?.note).toBe('mechanical refactors')
+  })
+
+  it('drops a malformed roster entry rather than breaking the dropdown', () => {
+    const roster = rosterFromView(rosterView([{ id: 'no-runtime' }, 'nonsense', null]))
+    expect(roster.map((m) => m.id)).not.toContain('no-runtime')
+    expect(roster.map((m) => m.id)).toContain('claude-opus-5')
+    expect(rosterFromView(rosterView('not-an-array')).map((m) => m.id)).toContain('gpt-5.6-sol')
+  })
+
+  it('reads back only the operator’s own entries for a roster write', () => {
+    const custom = [{ id: 'my-proxy/gpt', runtime: 'codex', note: 'cheap' }]
+    expect(customModelsFromView(rosterView(custom))).toEqual(custom)
+    expect(customModelsFromView(view([]))).toEqual([])
+  })
+
+  it('carries the runtime groups onto every model row and no other', () => {
+    const v = rosterView([{ id: 'my-proxy/gpt', runtime: 'codex' }])
+    const modelRow = globalRows(v).find((r) => r.key === 'model')
+    expect(modelRow?.modelGroups.map((g) => g.runtime)).toEqual(['claude-code', 'codex'])
+    expect(modelRow?.options).toContain('my-proxy/gpt')
+    expect(describeField(field({ key: 'sandbox', value: 'docker' })).modelGroups).toEqual([])
+  })
+
+  it('never renders the roster itself as a settings row', () => {
+    expect(globalRows(rosterView([])).map((r) => r.key)).toEqual(['model'])
+  })
+})
+
+/**
+ * What the custom-id form commits. The runtime picker is required precisely
+ * because guessing is the failure we are avoiding: an unanswered picker must
+ * stop the write, not quietly pick Claude.
+ */
+describe('customModelCommit', () => {
+  it('builds an entry from an id, a declared runtime, and a note', () => {
+    expect(customModelCommit(' my-proxy/gpt ', 'codex', '  mechanical refactors ')).toEqual({
+      entry: { id: 'my-proxy/gpt', runtime: 'codex', note: 'mechanical refactors' },
+    })
+  })
+
+  it('omits the note when it is blank — it is optional', () => {
+    expect(customModelCommit('my-proxy/gpt', 'claude-code', '   ')).toEqual({
+      entry: { id: 'my-proxy/gpt', runtime: 'claude-code' },
+    })
+  })
+
+  it('refuses a blank id', () => {
+    expect(customModelCommit('  ', 'codex', '')).toEqual({ error: 'Enter a model id.' })
+  })
+
+  it('refuses to guess an unanswered or unknown runtime', () => {
+    expect(customModelCommit('my-proxy/gpt', '', '')).toEqual({
+      error: 'Choose which runtime this model runs on.',
+    })
+    expect(customModelCommit('my-proxy/gpt', 'gemini', '')).toEqual({
+      error: 'Choose which runtime this model runs on.',
+    })
   })
 })
 

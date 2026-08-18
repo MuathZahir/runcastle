@@ -2,13 +2,18 @@ import { useEffect, useState } from 'react'
 import { trpc } from '../trpc'
 import { useToast } from '../lib/toast'
 import {
+  RUNTIME_LABEL,
+  customModelCommit,
+  customModelsFromView,
   fieldCommit,
   globalRows,
   projectRows,
   stepModelRows,
   unsetStepKeys,
+  type ModelOptionGroup,
   type SettingRow,
 } from '../lib/settings'
+import { AGENT_RUNTIMES, mergeModelEntries, type ModelEntry } from '@runcastle/core'
 import type { QueryResult, SettingsView } from '../lib/api'
 import { DimLine } from '../ui'
 import { EnableAfkCard } from './EnableAfkCard'
@@ -113,6 +118,9 @@ function Section({
   projectId?: string
 }) {
   const rows = query.data ? rowsOf(query.data) : []
+  // The roster is global whichever scope this section writes to, so a custom
+  // model added from the project section lands in the same one place.
+  const customModels = customModelsFromView(query.data)
   return (
     <section className="settings-section">
       <div className="settings-section-head">
@@ -123,13 +131,22 @@ function Section({
       {query.error && <DimLine>could not load settings: {query.error.message}</DimLine>}
       {query.data && rows.length === 0 && <DimLine>no settings in this scope</DimLine>}
       {rows.map((row) => (
-        <Field key={row.key} row={row} projectId={projectId} />
+        <Field key={row.key} row={row} projectId={projectId} customModels={customModels} />
       ))}
     </section>
   )
 }
 
-function Field({ row, projectId }: { row: SettingRow; projectId?: string }) {
+function Field({
+  row,
+  projectId,
+  customModels,
+}: {
+  row: SettingRow
+  projectId?: string
+  /** The operator's own roster entries — what a new custom model merges into. */
+  customModels: ModelEntry[]
+}) {
   const utils = trpc.useUtils()
   const [draft, setDraft] = useState(row.value)
   /** Why this field's last commit was refused; cleared by the next one. */
@@ -171,6 +188,17 @@ function Field({ row, projectId }: { row: SettingRow; projectId?: string }) {
   const clear = () =>
     projectId && update.mutate({ projectId, key: row.key, value: null })
 
+  /**
+   * Add a custom model to the global roster, THEN select it — sequentially,
+   * because both writes read-modify-write the same config file and a concurrent
+   * pair would clobber one another.
+   */
+  const addCustomModel = (entry: ModelEntry) =>
+    update.mutate(
+      { key: 'models', value: mergeModelEntries(customModels, [entry]) },
+      { onSuccess: () => save(entry.id) },
+    )
+
   // Scoped, because most keys appear in BOTH sections. Two controls sharing one
   // id made every `htmlFor` resolve to the global one, so the per-project fields
   // had no accessible name at all — an empty a11y tree (findings F17.7).
@@ -208,8 +236,10 @@ function Field({ row, projectId }: { row: SettingRow; projectId?: string }) {
           id={controlId}
           value={row.value}
           options={row.options}
+          groups={row.modelGroups}
           disabled={update.isPending}
           onCommit={save}
+          onCommitCustom={addCustomModel}
         />
       ) : row.control === 'select' ? (
         <select
@@ -291,29 +321,32 @@ function Field({ row, projectId }: { row: SettingRow; projectId?: string }) {
 const CUSTOM = '__custom__'
 
 /**
- * The Default-model dropdown (issue #48): a curated `<select>` plus a "Custom…"
- * choice that reveals a free-text field for any model id not in the list. Any
- * value already outside the curated list opens straight into custom mode.
+ * The model dropdown (issue #48): the roster grouped by runtime — because the
+ * runtime a session or burn launches with IS the model chosen (decision 2) —
+ * plus a "Custom…" choice revealing the free-text form below. Any value not in
+ * the roster opens straight into custom mode.
  */
 function ModelCombobox({
   id,
   value,
   options,
+  groups,
   disabled,
   onCommit,
+  onCommitCustom,
 }: {
   id: string
   value: string
   options: string[]
+  groups: ModelOptionGroup[]
   disabled: boolean
   onCommit: (raw: string) => void
+  /** Adds a custom id to the roster with its declared runtime, then selects it. */
+  onCommitCustom: (entry: ModelEntry) => void
 }) {
-  const known = options.includes(value)
-  const [custom, setCustom] = useState(!known && value !== '')
-  const [draft, setDraft] = useState(value)
+  const [custom, setCustom] = useState(!options.includes(value) && value !== '')
 
   useEffect(() => {
-    setDraft(value)
     setCustom(!options.includes(value) && value !== '')
   }, [value, options])
 
@@ -333,26 +366,113 @@ function ModelCombobox({
           onCommit(e.target.value)
         }}
       >
-        {options.map((opt) => (
-          <option key={opt} value={opt}>
-            {opt}
-          </option>
+        {groups.map((group) => (
+          <optgroup key={group.runtime} label={group.label}>
+            {group.entries.map((entry) => (
+              <option key={entry.id} value={entry.id} title={entry.note}>
+                {entry.note ? `${entry.id} — ${entry.note}` : entry.id}
+              </option>
+            ))}
+          </optgroup>
         ))}
         <option value={CUSTOM}>Custom…</option>
       </select>
       {custom && (
-        <input
-          className="settings-input mono"
-          type="text"
-          placeholder="model id (e.g. claude-opus-5, claude-opus-5[1m])"
-          value={draft}
+        <CustomModelForm
+          id={value}
           disabled={disabled}
-          onChange={(e) => setDraft(e.target.value)}
-          onBlur={(e) => onCommit(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') e.currentTarget.blur()
+          onCommit={(entry) => {
+            setCustom(false)
+            onCommitCustom(entry)
           }}
         />
+      )}
+    </div>
+  )
+}
+
+/**
+ * The free-text model form: an id, the runtime it runs on, and an optional
+ * use-case note.
+ *
+ * The runtime picker is the point of this form and is deliberately REQUIRED
+ * with no default (decision 3). Inferring a runtime from the id string would
+ * fail silently on proxies, local models, and unguessable future ids, and the
+ * failure mode is launching the wrong CLI — so the operator states it, and
+ * "Add" stays refused until they have.
+ */
+function CustomModelForm({
+  id,
+  disabled,
+  onCommit,
+}: {
+  id: string
+  disabled: boolean
+  onCommit: (entry: ModelEntry) => void
+}) {
+  const [draftId, setDraftId] = useState(id)
+  const [runtime, setRuntime] = useState('')
+  const [note, setNote] = useState('')
+  const [invalid, setInvalid] = useState<string | null>(null)
+
+  const add = () => {
+    const commit = customModelCommit(draftId, runtime, note)
+    if ('error' in commit) {
+      setInvalid(commit.error)
+      return
+    }
+    setInvalid(null)
+    onCommit(commit.entry)
+  }
+
+  return (
+    <div className="settings-custom-model">
+      <input
+        className="settings-input mono"
+        type="text"
+        aria-label="Custom model id"
+        placeholder="model id (e.g. claude-opus-5, claude-opus-5[1m])"
+        value={draftId}
+        disabled={disabled}
+        onChange={(e) => setDraftId(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') add()
+        }}
+      />
+      <fieldset className="settings-runtime-picker" disabled={disabled}>
+        <legend className="settings-field-help">Runs on (required — never guessed)</legend>
+        {AGENT_RUNTIMES.map((r) => (
+          <label key={r} className="settings-runtime-option">
+            <input
+              type="radio"
+              name={`runtime-${id || 'new'}`}
+              value={r}
+              checked={runtime === r}
+              onChange={() => setRuntime(r)}
+            />
+            {RUNTIME_LABEL[r]}
+          </label>
+        ))}
+      </fieldset>
+      <input
+        className="settings-input"
+        type="text"
+        aria-label="Use-case note"
+        placeholder="use-case note, guides per-ticket model choice (optional)"
+        value={note}
+        disabled={disabled}
+        onChange={(e) => setNote(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') add()
+        }}
+      />
+      <button className="settings-clear" type="button" disabled={disabled} onClick={add}>
+        Add model
+      </button>
+      {invalid && (
+        <div className="settings-field-error" role="alert">
+          {invalid}
+        </div>
       )}
     </div>
   )
@@ -381,12 +501,20 @@ function AdvancedModels({ query }: { query: QueryResult<SettingsView> }) {
   const set = view ? stepModelRows(view) : []
   const unset = view ? unsetStepKeys(view) : []
   const defaultModel = view?.fields.find((f) => f.key === 'model')
+  const customModels = customModelsFromView(view)
 
   const commit = (key: string, value: string) => {
     const trimmed = value.trim()
     if (trimmed === '') return
     update.mutate({ key, value: trimmed })
   }
+
+  /** Same two-step write as a Field's: roster first, then select the new id. */
+  const addCustomModel = (key: string, entry: ModelEntry) =>
+    update.mutate(
+      { key: 'models', value: mergeModelEntries(customModels, [entry]) },
+      { onSuccess: () => commit(key, entry.id) },
+    )
 
   return (
     <section className="settings-section">
@@ -419,8 +547,10 @@ function AdvancedModels({ query }: { query: QueryResult<SettingsView> }) {
                 id={`step-${row.key}`}
                 value={row.value}
                 options={row.options}
+                groups={row.modelGroups}
                 disabled={update.isPending}
                 onCommit={(raw) => commit(row.key, raw)}
+                onCommitCustom={(entry) => addCustomModel(row.key, entry)}
               />
               <button
                 className="settings-clear"
