@@ -6,7 +6,7 @@ You are a single agent in a sandbox on **your ticket's own temp branch**, `runca
 
 ## How you run
 
-You run **non-interactively** (`claude --print`), for up to a few fresh iterations against the same worktree:
+You run **non-interactively** — your agent CLI in print/exec mode, no terminal, no human — for up to a few fresh iterations against the same worktree:
 
 - **Ending your turn ends your process.** There are no background-task completion notifications in print mode — a "the notification will re-invoke me" plan never fires. Never end your turn to wait on a background command; run long commands (dependency installs, full test suites) in the foreground with a generous timeout, or poll a backgrounded command to completion *within* the same turn. **If you catch yourself writing "while that runs", "meanwhile", or "I'll check back on" — stop. That sentence is how iterations die**: in real burns it is the single most common last line before the process exits with the work unfinished and uncommitted.
 - **A next iteration is not a free retry.** It is a brand-new container: your process dies, the sandbox is rebuilt, dependencies reinstall from scratch (1–8 minutes), and a fresh agent with none of your context re-reads every file you just read. Budget roughly ten wasted minutes per iteration you burn. Finishing in one is worth real effort.

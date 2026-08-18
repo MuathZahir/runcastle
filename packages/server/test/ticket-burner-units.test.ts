@@ -39,7 +39,9 @@ import {
   resolveBurnWorkspaceMode,
   resolveMergeCommand,
   resolveSetupCommand,
+  resolverTemplatePath,
   selectSandbox,
+  burnerAssetPath,
   burnerTemplatePath,
 } from '../src/workflows/ticket-burner'
 import type {
@@ -176,6 +178,43 @@ describe('renderTicketPrompt', () => {
     expect(out).toMatch(/before printing `<promise>COMPLETE<\/promise>`/)
     // The mode-specific location comes from the workspace notes.
     expect(out).toContain(`${SANDBOX_WORKSPACE_PATH}/DIGEST.md`)
+  })
+
+  /**
+   * The same prompts are handed to a codex agent, which does not run
+   * `claude --print` and would be told a plain falsehood about its own process.
+   * Naming the CLI is the only thing that has to go — the completion contract is
+   * runtime-neutral already (sandcastle matches the signal against accumulated
+   * stdout, whichever provider produced it).
+   */
+  it('names no runtime in any burner prompt', () => {
+    const templates = [
+      burnerTemplatePath(),
+      resolverTemplatePath(),
+      burnerAssetPath('review-ticket.md'),
+      burnerAssetPath('research-waypoint.md'),
+    ]
+
+    for (const path of templates) {
+      const template = readFileSync(path, 'utf8')
+      // CLAUDE.md is a FILE in the repo, not a runtime — the review prompt
+      // still points at it as the standards authority.
+      const runtimeMentions = template.match(/claude(?!\.md)/gi) ?? []
+      expect(runtimeMentions, `${path} mentions: ${runtimeMentions.join(', ')}`).toEqual([])
+    }
+  })
+
+  it('keeps the completion contract in every prompt that signals one', () => {
+    // Unchanged by the runtime work: sandcastle matches the signal against the
+    // agent's accumulated stdout, so it is honoured identically on both
+    // providers. (The research prompt has never signalled — it completes on git.)
+    for (const path of [
+      burnerTemplatePath(),
+      resolverTemplatePath(),
+      burnerAssetPath('review-ticket.md'),
+    ]) {
+      expect(readFileSync(path, 'utf8'), path).toContain('<promise>COMPLETE</promise>')
+    }
   })
 
   it('carries the drive-script maintenance instruction into the rendered prompt', () => {

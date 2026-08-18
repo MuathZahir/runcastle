@@ -17,7 +17,7 @@ There is **no human to ask** — everything you need is in this prompt and in th
 
 ## How you run
 
-You run **non-interactively** (`claude --print`) on the **host**, in the project's real checkout — not a container, not a worktree. So:
+You run **non-interactively** — your agent CLI in print/exec mode, no terminal, no human — on the **host**, in the project's real checkout: not a container, not a worktree. So:
 
 - **Ending your turn ends your process.** There are no background-task completion notifications in print mode. Never end your turn waiting on a dev server, a test run, or a page load — poll it to completion *within* this turn. If you catch yourself writing "meanwhile" or "I'll check back on", stop.
 - **You are on someone's machine.** The drive you start switches their checkout and runs their dev server. Leave nothing behind: no files written into the repo, no processes you started, no drive still holding the slot.

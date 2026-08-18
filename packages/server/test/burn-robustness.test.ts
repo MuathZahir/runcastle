@@ -63,6 +63,48 @@ describe('classifyTicketRunError', () => {
     expect(classifyTicketRunError('weird')).toBe('fatal')
     expect(classifyTicketRunError(undefined)).toBe('fatal')
   })
+
+  /**
+   * The codex CLI reports the same facts in OpenAI's words. A burn that retries
+   * a bad API key three times wastes ~10 minutes per attempt rebuilding a
+   * sandbox to fail identically; one that gives up on a plain rate limit throws
+   * away a ticket that would have landed.
+   */
+  describe('OpenAI wording, on codex burns', () => {
+    it.each([
+      'codex exited with code 1: 429 rate_limit_exceeded',
+      'server_error: the model is overloaded',
+      'stream disconnected before completion',
+    ])('retryable: %s', (msg) => {
+      expect(classifyTicketRunError(new Error(msg), 'codex')).toBe('retryable')
+    })
+
+    it.each([
+      'codex exited with code 1: 401 invalid_api_key',
+      'Error code: 403 - permission denied for this org',
+      'insufficient_quota: You exceeded your current quota',
+      'model_not_found: the model `gpt-5.6-sol` does not exist or you do not have access',
+      'CODEX_API_KEY is not set',
+    ])('fatal: %s', (msg) => {
+      expect(classifyTicketRunError(new Error(msg), 'codex')).toBe('fatal')
+    })
+
+    // 429 means two different things to OpenAI: a rate limit worth waiting out,
+    // and an exhausted account that no retry will fix. Quota wins.
+    it('reads an exhausted quota as fatal even though it arrives as a 429', () => {
+      const msg = 'Error code: 429 - {"type":"insufficient_quota"}'
+      expect(classifyTicketRunError(new Error(msg), 'codex')).toBe('fatal')
+    })
+
+    it('leaves the Anthropic classification exactly as it was', () => {
+      expect(classifyTicketRunError(new Error('overloaded_error: Overloaded'), 'claude-code')).toBe(
+        'retryable',
+      )
+      expect(
+        classifyTicketRunError(new Error('claude-code exited with code 1:\nInvalid API key'), 'claude-code'),
+      ).toBe('fatal')
+    })
+  })
 })
 
 describe('retryDelayMs', () => {

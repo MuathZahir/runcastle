@@ -10,7 +10,7 @@ There is **no human to ask** — everything you need is in this prompt and in th
 
 ## How you run
 
-You run **non-interactively** (`claude --print`), for up to a few fresh iterations against the same worktree:
+You run **non-interactively** — your agent CLI in print/exec mode, no terminal, no human — for up to a few fresh iterations against the same worktree:
 
 - **Ending your turn ends your process.** There are no background-task completion notifications in print mode — a "the notification will re-invoke me" plan never fires. Run long commands (test suites) in the foreground with a generous timeout. If you catch yourself writing "while that runs" or "meanwhile", stop — that sentence is how an iteration dies mid-merge.
 - **An unfinished merge does not survive you.** Resolved-but-uncommitted files are discarded when your process ends, and the next iteration restarts the merge from scratch. Once the conflicts are resolved and the tree is sane, land the merge commit — then verify and fix forward on top of it.

@@ -1051,6 +1051,12 @@ export function isMergeConflictError(err: unknown): boolean {
  * Errors where a retry can only fail the same way — bad credentials, a model
  * the account cannot use, a broken resume. Checked BEFORE the retryable
  * patterns so "exited with code 1: Invalid API key" stays fatal.
+ *
+ * Runtime-neutral entries plus each provider's own wording. The runtime-specific
+ * lists are tagged rather than merged so it stays visible which provider a
+ * pattern was written for — an OpenAI `insufficient_quota` and an Anthropic
+ * `credit balance` are the same fact spelled two ways, and neither CLI emits
+ * the other's string.
  */
 const FATAL_ERROR_PATTERNS: RegExp[] = [
   /invalid (api key|x-api-key)/i,
@@ -1060,6 +1066,23 @@ const FATAL_ERROR_PATTERNS: RegExp[] = [
   /issue with the selected model|model not found|unknown model/i,
   /does not support resumeSession|resumeSession .* not found/i,
 ]
+
+/**
+ * Per-runtime fatal wording. OpenAI reports auth as a 401 with an
+ * `invalid_api_key` code, an exhausted account as `insufficient_quota` (a
+ * billing fact no retry fixes, despite arriving as a 429), and an unusable
+ * model as `model_not_found`.
+ */
+const RUNTIME_FATAL_ERROR_PATTERNS: Record<AgentRuntime, RegExp[]> = {
+  'claude-code': [],
+  codex: [
+    /invalid_api_key|invalid_request_error/i,
+    /\b401\b|\b403\b/,
+    /insufficient_quota|exceeded your current quota/i,
+    /model_not_found|does not exist or you do not have access/i,
+    /CODEX_API_KEY/,
+  ],
+}
 
 /**
  * Transient infrastructure failures a fresh attempt has a real chance of
@@ -1081,15 +1104,43 @@ const RETRYABLE_ERROR_PATTERNS: RegExp[] = [
 ]
 
 /**
+ * Per-runtime transient wording. OpenAI's plain rate limit is a 429 with
+ * `rate_limit_exceeded` — worth another attempt, unlike the `insufficient_quota`
+ * that shares its status code and is classified fatal above.
+ */
+const RUNTIME_RETRYABLE_ERROR_PATTERNS: Record<AgentRuntime, RegExp[]> = {
+  'claude-code': [],
+  codex: [/rate_limit_exceeded/i, /\b429\b/, /server_error/i, /stream (disconnected|interrupted)/i],
+}
+
+/**
  * Should a failed sandcastle attempt be retried? Fatal patterns win over
  * retryable ones; anything unrecognized is fatal — an unknown throw (git
  * worktree setup, sandbox creation) could compound if blindly retried, and the
  * manual per-ticket retry tools cover it.
+ *
+ * `runtime` narrows the provider-specific patterns to the CLI that actually
+ * produced the message. Omitting it considers every runtime's, which is what a
+ * caller with no model in hand wants: the strings do not collide, so the union
+ * classifies correctly either way.
  */
-export function classifyTicketRunError(err: unknown): 'retryable' | 'fatal' {
+export function classifyTicketRunError(
+  err: unknown,
+  runtime?: AgentRuntime,
+): 'retryable' | 'fatal' {
   const msg = err instanceof Error ? err.message : typeof err === 'string' ? err : String(err)
-  if (FATAL_ERROR_PATTERNS.some((p) => p.test(msg))) return 'fatal'
-  if (RETRYABLE_ERROR_PATTERNS.some((p) => p.test(msg))) return 'retryable'
+  const runtimes: AgentRuntime[] = runtime ? [runtime] : ['claude-code', 'codex']
+  const forRuntimes = (table: Record<AgentRuntime, RegExp[]>): RegExp[] =>
+    runtimes.flatMap((r) => table[r])
+
+  if ([...FATAL_ERROR_PATTERNS, ...forRuntimes(RUNTIME_FATAL_ERROR_PATTERNS)].some((p) => p.test(msg)))
+    return 'fatal'
+  if (
+    [...RETRYABLE_ERROR_PATTERNS, ...forRuntimes(RUNTIME_RETRYABLE_ERROR_PATTERNS)].some((p) =>
+      p.test(msg),
+    )
+  )
+    return 'retryable'
   return 'fatal'
 }
 
@@ -2455,7 +2506,7 @@ async function realExecuteTicketRun(
             },
           }
         }
-        if (classifyTicketRunError(err) === 'retryable' && attempt < maxAttempts) {
+        if (classifyTicketRunError(err, model.runtime) === 'retryable' && attempt < maxAttempts) {
           const headline = errorHeadline(msg)
           retryNotes = buildRetryNotes({ error: headline, commitCount: salvaged.length })
           ctx.emitEvent({
