@@ -3,7 +3,7 @@ import type { FeatureListItem } from '../lib/api'
 import type { ProjectNavApi } from '../lib/use-project-nav'
 import { PHASE_LABELS } from '../lib/feature-ui'
 import { matchesPreparation, matchesProjectChat } from '../lib/project-workspace'
-import { IconFolder, IconMessage, IconPlus, IconSettings } from '../icons'
+import { IconFolder, IconMessage, IconSettings } from '../icons'
 
 /**
  * ⌘K command palette for the pipeline-first shell (app-redesign, multi-project
@@ -19,7 +19,6 @@ export interface CommandPaletteProps {
   features: FeatureListItem[]
   selectedFeatureId: string | null
   onSelect: (featureId: string) => void
-  onNewFeature: () => void
   onOpenSettings: () => void
   /** Give the workspace over to preparation (findings, evidence, the conversation). */
   onOpenPreparation: () => void
@@ -29,7 +28,7 @@ export interface CommandPaletteProps {
 }
 
 /** The rows that are not a feature or a project: the palette's action list. */
-type ActionKind = 'newFeature' | 'home' | 'openProject' | 'settings' | 'preparation' | 'projectChat'
+type ActionKind = 'home' | 'openProject' | 'settings' | 'preparation' | 'projectChat'
 
 type Row =
   | { kind: 'feature'; feature: FeatureListItem }
@@ -50,7 +49,6 @@ export function CommandPalette(props: CommandPaletteProps) {
     features,
     selectedFeatureId,
     onSelect,
-    onNewFeature,
     onOpenSettings,
     onOpenPreparation,
     onOpenProjectChat,
@@ -103,13 +101,9 @@ export function CommandPalette(props: CommandPaletteProps) {
   const actions = useMemo<Action[]>(() => {
     const all: (Action & { shows: boolean })[] = [
       {
-        kind: 'newFeature',
-        shows: 'create new feature'.includes(q),
-        glyph: <IconPlus size={13} />,
-        label: 'Create new feature',
-        run: onNewFeature,
-      },
-      {
+        // The palette's create row used to open the NEW FEATURE overlay, which
+        // is retired (decisions.md #12). Its successor is the row below: New is
+        // a conversation now, and the chat's terms already answer to "new".
         kind: 'projectChat',
         shows: matchesProjectChat(q),
         glyph: <IconMessage size={13} />,
@@ -146,7 +140,7 @@ export function CommandPalette(props: CommandPaletteProps) {
       },
     ]
     return all.filter((a) => a.shows)
-  }, [q, onNewFeature, onOpenProjectChat, onOpenSettings, onOpenPreparation, nav])
+  }, [q, onOpenProjectChat, onOpenSettings, onOpenPreparation, nav])
 
   const rows = useMemo<Row[]>(() => {
     const r: Row[] = filteredFeatures.map((f) => ({ kind: 'feature' as const, feature: f }))

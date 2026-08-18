@@ -11,11 +11,8 @@ import type { Phase } from '@runcastle/core'
  *
  * Only `selectedFeatureId`, an open preparation, the two rail-collapse flags and
  * the guidance toggle persist across reloads — the viewed phase, command palette,
- * and new-feature form are ephemeral session state.
+ * and Quick overlay are ephemeral session state.
  */
-
-/** The two doors into work: a full feature (a grill) or a quick change. */
-export type CreateMode = 'feature' | 'quick'
 
 /** Client-tracked active test drive (at most one globally, server-enforced). */
 export interface DriveState {
@@ -67,7 +64,7 @@ export interface WorkspaceApi {
   projectSelected: boolean
   /** Pinned phase to view read-only, or null to follow the feature's live phase. */
   viewedPhase: Phase | null
-  /** Whether a creation form owns the workspace (either door). */
+  /** Whether the Quick door's overlay owns the workspace (decisions.md #12). */
   creating: boolean
   /**
    * Preparation was opened deliberately — from the rail's row or ⌘K. Kept apart
@@ -81,11 +78,6 @@ export interface WorkspaceApi {
    * away, and the conversation itself lives on the server either way.
    */
   preparing: boolean
-  /**
-   * Which door is open while `creating`: the New Feature form (a grill), or the
-   * quick-change form (decision 21 — one prose field, straight to a card).
-   */
-  createMode: CreateMode
   /** Right inspector rail collapsed. */
   inspectorCollapsed: boolean
   /** Mapped-ideation map rail collapsed to its frontier-count stub. */
@@ -104,13 +96,11 @@ export interface WorkspaceApi {
   selectProject: () => void
   /** Pin a phase to view (null = follow live phase). */
   viewPhase: (phase: Phase | null) => void
-  /** Open the new-feature form in the workspace. */
-  startCreate: () => void
-  /** Open the quick-change form in the workspace. */
+  /** Open the Quick door's overlay in the workspace. */
   startQuickChange: () => void
   /** Give the workspace over to preparation. */
   startPreparation: () => void
-  /** Close whichever creation form is open, without creating. */
+  /** Close the Quick overlay without creating anything. */
   cancelCreate: () => void
   /** Leave a deliberately-opened preparation. */
   closePreparation: () => void
@@ -127,7 +117,6 @@ export function useWorkspace(projectId: string): WorkspaceApi {
   const [selectedFeatureId, setSelected] = useState<string | null>(() => readLS(selectedKey))
   const [viewedPhase, setViewedPhase] = useState<Phase | null>(null)
   const [creating, setCreating] = useState(false)
-  const [createMode, setCreateMode] = useState<CreateMode>('feature')
   // Persisted, unlike the create form beside it: a preparation you opened is a
   // conversation in progress, often a live terminal, and a reload used to drop
   // it silently — landing you back on a feature with no sign of where you were.
@@ -185,15 +174,7 @@ export function useWorkspace(projectId: string): WorkspaceApi {
   }, [])
 
   const viewPhase = useCallback((phase: Phase | null) => setViewedPhase(phase), [])
-  const startCreate = useCallback(() => {
-    setCreateMode('feature')
-    setCreating(true)
-    setPreparing(false)
-    setProjectSelected(false)
-    setCmdk(false)
-  }, [])
   const startQuickChange = useCallback(() => {
-    setCreateMode('quick')
     setCreating(true)
     setPreparing(false)
     setProjectSelected(false)
@@ -221,7 +202,6 @@ export function useWorkspace(projectId: string): WorkspaceApi {
     projectSelected,
     viewedPhase,
     creating,
-    createMode,
     preparing,
     inspectorCollapsed,
     mapRailCollapsed,
@@ -231,7 +211,6 @@ export function useWorkspace(projectId: string): WorkspaceApi {
     select,
     selectProject,
     viewPhase,
-    startCreate,
     startQuickChange,
     startPreparation,
     cancelCreate,

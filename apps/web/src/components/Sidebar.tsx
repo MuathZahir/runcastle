@@ -52,7 +52,7 @@ export function Sidebar({
   talk,
   onSelect,
   onSelectProject,
-  onNewFeature,
+  onNewChat,
   onQuickChange,
   onOpenPreparation,
 }: {
@@ -62,7 +62,9 @@ export function Sidebar({
   talk: ProjectTalkApi
   onSelect: (featureId: string) => void
   onSelectProject: () => void
-  onNewFeature: () => void
+  /** New — open the project workspace on a fresh conversation. */
+  onNewChat: () => void
+  /** Quick — open the two-mode overlay (a change to burn, or a draft to park). */
   onQuickChange: () => void
   onOpenPreparation: () => void
 }) {
@@ -148,17 +150,21 @@ export function Sidebar({
     <nav className="sidebar">
       <div className="sidebar-head">
         <span className="pane-title">Features</span>
-        {/* Two doors, side by side (decision 21): a grill for work that needs
-            shaping, and a quick change for work that doesn't. */}
+        {/* Two doors, side by side, split by how much thinking you want
+            (decisions.md #12): New talks it through, Quick types it in. */}
         <button
           className="new-btn is-quick"
           onClick={onQuickChange}
-          title="Quick change — one sentence, one ticket, no grill session"
+          title="Quick — a change to burn now, or a draft to park. No conversation."
         >
           <IconBolt size={11} />
           Quick
         </button>
-        <button className="new-btn" onClick={onNewFeature}>
+        <button
+          className="new-btn"
+          onClick={onNewChat}
+          title="New — open a fresh conversation with the project, which turns intent into features"
+        >
           <IconPlus size={11} />
           New
         </button>
