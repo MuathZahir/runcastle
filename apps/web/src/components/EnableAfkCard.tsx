@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import type { AgentRuntime } from '@runcastle/core'
 import { trpc } from '../trpc'
 import type { RouterOutputs } from '../lib/api'
 import { useToast } from '../lib/toast'
@@ -8,11 +9,11 @@ import { TerminalView } from './TerminalView'
 
 /**
  * The "Enable AFK burns" card (issue #50). AFK (unattended sandbox) burns need
- * three tier-2 prerequisites the interactive path never does: a container
- * runtime, the sandcastle image, and a captured OAuth token. This card makes
- * each one actionable in place — a live re-check on the runtime, a one-click
- * image build that streams and re-probes, and a `claude setup-token` login in an
- * embedded terminal whose printed token is pasted back and validity-checked.
+ * prerequisites the interactive path never does: a container runtime, the
+ * sandcastle image, and — per runtime — an unattended credential. This card
+ * makes each one actionable in place: a live re-check on the runtime, a
+ * one-click image build that streams and re-probes, and a credential section per
+ * agent runtime, each enabled independently of the other (decision 6).
  *
  * Everything is non-blocking: the user can act on any row now or leave it. The
  * card is rendered inside the first-run wizard and, dismissed there, stays
@@ -25,7 +26,7 @@ export function EnableAfkCard({ onDismiss }: { onDismiss?: () => void }) {
   const probe = (id: string) => report?.results.find((r) => r.id === id)
   const runtime = probe('container-runtime')
   const image = probe('sandcastle-image')
-  const token = probe('afk-token')
+  const credentials = (report?.results ?? []).filter((r) => r.check === 'afk-key')
 
   const recheck = () => doctor.refetch()
 
@@ -44,8 +45,9 @@ export function EnableAfkCard({ onDismiss }: { onDismiss?: () => void }) {
       </div>
       <p className="afk-card-sub">
         AFK burns run each feature to completion in a sandbox — no interactive
-        session. They need a container runtime, the sandcastle image, and an auth
-        token. Set them up now or anytime from Settings.
+        session. They need a container runtime, the sandcastle image, and a key
+        for each agent you want to burn with. Set them up now or anytime from
+        Settings.
       </p>
 
       {doctor.isLoading && <DimLine>checking prerequisites…</DimLine>}
@@ -55,7 +57,9 @@ export function EnableAfkCard({ onDismiss }: { onDismiss?: () => void }) {
         <div className="afk-rows">
           <RuntimeRow probe={runtime} onRecheck={recheck} />
           <ImageRow probe={image} runtimeOk={runtime?.status === 'ok'} onDone={recheck} />
-          <TokenRow probe={token} onDone={recheck} />
+          {credentials.map((c) => (
+            <CredentialRow key={c.id} probe={c} onDone={recheck} />
+          ))}
         </div>
       )}
     </div>
@@ -177,7 +181,30 @@ function ImageRow({
   )
 }
 
-function TokenRow({ probe, onDone }: { probe: Probe | undefined; onDone: () => void }) {
+/**
+ * How each runtime's unattended credential is obtained. Claude Code mints a
+ * long-lived token with its own `setup-token` flow, so the card runs it in an
+ * embedded terminal and takes the printed line; Codex has no such flow — its
+ * unattended credential is an OpenAI API key the operator already holds, pasted
+ * straight in.
+ */
+const AFK_CREDENTIAL: Record<
+  AgentRuntime,
+  { mint?: { kind: 'setup-token'; label: string }; prompt: string; placeholder: string }
+> = {
+  'claude-code': {
+    mint: { kind: 'setup-token', label: 'Run claude setup-token' },
+    prompt: 'Paste the token it prints',
+    placeholder: 'sk-ant-oat01-…',
+  },
+  codex: {
+    prompt: 'Paste an OpenAI API key (platform.openai.com/api-keys)',
+    placeholder: 'sk-…',
+  },
+}
+
+/** One runtime's AFK credential: mint it if the CLI can, then capture and verify. */
+function CredentialRow({ probe, onDone }: { probe: Probe | undefined; onDone: () => void }) {
   const [sessionId, setSessionId] = useState<string | null>(null)
   const [tokenText, setTokenText] = useState('')
   const [verdict, setVerdict] = useState<{ valid: boolean; detail: string; fix?: string } | null>(
@@ -196,31 +223,39 @@ function TokenRow({ probe, onDone }: { probe: Probe | undefined; onDone: () => v
     },
     onError: (e) => toast.push(e.message),
   })
-  if (!probe) return null
+  if (!probe?.runtime) return null
+  const runtime = probe.runtime
+  const flow = AFK_CREDENTIAL[runtime]
+  const inputId = `afk-credential-${runtime}`
 
   return (
     <Row probe={probe}>
-      {sessionId ? (
-        <div className="afk-term">
-          <ErrorBoundary label="setup-token">
-            <TerminalView sessionId={sessionId} />
-          </ErrorBoundary>
-        </div>
-      ) : (
-        <Button variant="ghost" onClick={() => start.mutate({ kind: 'setup-token' })} disabled={start.isPending}>
-          {start.isPending ? 'Starting…' : 'Run claude setup-token'}
-        </Button>
-      )}
+      {flow.mint &&
+        (sessionId ? (
+          <div className="afk-term">
+            <ErrorBoundary label={flow.mint.kind}>
+              <TerminalView sessionId={sessionId} />
+            </ErrorBoundary>
+          </div>
+        ) : (
+          <Button
+            variant="ghost"
+            onClick={() => flow.mint && start.mutate({ kind: flow.mint.kind })}
+            disabled={start.isPending}
+          >
+            {start.isPending ? 'Starting…' : flow.mint.label}
+          </Button>
+        ))}
 
-      <label className="op-label" htmlFor="afk-token-input">
-        Paste the token it prints
+      <label className="op-label" htmlFor={inputId}>
+        {flow.prompt}
       </label>
       <input
-        id="afk-token-input"
+        id={inputId}
         className="op-input mono"
         value={tokenText}
         onChange={(e) => setTokenText(e.target.value)}
-        placeholder="sk-ant-oat01-…"
+        placeholder={flow.placeholder}
         spellCheck={false}
         autoComplete="off"
       />
@@ -228,7 +263,7 @@ function TokenRow({ probe, onDone }: { probe: Probe | undefined; onDone: () => v
         <Button
           variant="solid"
           disabled={tokenText.trim() === '' || save.isPending}
-          onClick={() => save.mutate({ token: tokenText })}
+          onClick={() => save.mutate({ token: tokenText, runtime })}
         >
           {save.isPending ? 'Verifying…' : 'Save & verify'}
         </Button>

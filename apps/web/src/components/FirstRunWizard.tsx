@@ -3,7 +3,12 @@ import { trpc } from '../trpc'
 import { PHASE_LABELS, PHASE_ORDER } from '../lib/feature-ui'
 import {
   firstSetupStep,
+  nextSetupStep,
+  readyRuntimes,
+  runtimeReadiness,
+  RUNTIME_LOGIN,
   wizardSteps,
+  type RuntimeReadiness,
   type SetupStep,
   type WizardScreen,
   type WizardStepRow,
@@ -13,18 +18,21 @@ import { AFK_BURN_EXPLAINER } from '../lib/vocabulary'
 import { Button, DimLine } from '../ui'
 import { IconCheck, LogoMark } from '../icons'
 import { EnableAfkCard } from './EnableAfkCard'
+import { ErrorBoundary } from './ErrorBoundary'
 import { OpenProject } from './OpenProject'
+import { TerminalView } from './TerminalView'
 
 /**
  * First-run wizard (issue #50). Shown only when the projects table is empty; it
  * never re-appears once a project exists (the shell drops straight into a
  * project after that). It opens on an intro screen — a first-time user meets
  * "AFK burns" before anything has told them what runcastle does (finding F13) —
- * then walks the setup steps. The only *hard* step is the git-identity form:
- * commits (docs, merges) fail late without it, so we collect it up front and
- * write it to `git config --global`. AFK setup is a single non-blocking card the
- * user can act on or skip. The wizard terminates in "Open your first project",
- * straight into the pipeline UI.
+ * then walks the setup steps. Two *hard* steps: the git-identity form (commits
+ * fail late without it, so we collect it up front and write it to `git config
+ * --global`) and a coding agent — runcastle needs at least one runtime that can
+ * open a session, though never a particular vendor's (decision 6). AFK setup is
+ * a single non-blocking card the user can act on or skip. The wizard terminates
+ * in "Open your first project", straight into the pipeline UI.
  */
 export function FirstRunWizard({
   onOpened,
@@ -38,7 +46,17 @@ export function FirstRunWizard({
   // it stays on the rail as a passed row saying what was found, never skipped in
   // silence. (undefined while the probe is in flight.)
   const identity = doctor.data?.results.find((r) => r.id === 'git-identity')
+  const runtimes = runtimeReadiness(doctor.data?.results ?? [])
   const [screen, setScreen] = useState<WizardScreen>('intro')
+
+  // Onboarding's last act: the global default and smoke models come from the
+  // pair of a runtime the operator actually authed, so a Codex-only install
+  // never lands on dead Claude defaults (decision 7).
+  const seed = trpc.setup.seedModelDefaults.useMutation()
+  const finish = () => {
+    seed.mutate({ runtimes: readyRuntimes(runtimes) })
+    setScreen('project')
+  }
 
   if (doctor.isLoading) {
     return (
@@ -64,7 +82,12 @@ export function FirstRunWizard({
           <SetupScreen
             step={screen}
             steps={wizardSteps(screen, identity)}
-            onNext={() => setScreen(screen === 'identity' ? 'afk' : 'project')}
+            runtimes={runtimes}
+            onNext={() => {
+              const next = nextSetupStep(screen)
+              if (next === 'project' || next === undefined) finish()
+              else setScreen(next)
+            }}
           />
         )}
       </div>
@@ -75,10 +98,12 @@ export function FirstRunWizard({
 function SetupScreen({
   step,
   steps,
+  runtimes,
   onNext,
 }: {
   step: SetupStep
   steps: WizardStepRow[]
+  runtimes: RuntimeReadiness[]
   onNext: () => void
 }) {
   return (
@@ -94,7 +119,9 @@ function SetupScreen({
             </span>
           </div>
         ))}
-      {step === 'identity' ? <IdentityStep onNext={onNext} /> : <AfkStep onNext={onNext} />}
+      {step === 'identity' && <IdentityStep onNext={onNext} />}
+      {step === 'runtimes' && <RuntimesStep runtimes={runtimes} onNext={onNext} />}
+      {step === 'afk' && <AfkStep onNext={onNext} />}
     </>
   )
 }
@@ -126,11 +153,11 @@ function IntroStep({ onNext }: { onNext: () => void }) {
   return (
     <>
       <div className="op-kick">WELCOME TO RUNCASTLE</div>
-      <div className="op-h">Claude Code, driven through a pipeline</div>
+      <div className="op-h">Your coding agent, driven through a pipeline</div>
       <div className="op-sub">
-        Describe a feature and runcastle runs the Claude Code sessions that carry it from idea to
-        merged — <span className="mono">{pipeline}</span> — keeping the decisions, spec, tickets and
-        commits together on the feature's own branch.
+        Describe a feature and runcastle runs the agent sessions that carry it from idea to merged —{' '}
+        <span className="mono">{pipeline}</span> — keeping the decisions, spec, tickets and commits
+        together on the feature's own branch.
       </div>
       <div className="op-sub">
         You are the one who says go. runcastle stops at gates and waits for you there: <b>Burn</b> to
@@ -204,6 +231,128 @@ function IdentityStep({ onNext }: { onNext: () => void }) {
         </Button>
       </div>
     </>
+  )
+}
+
+/**
+ * Both providers as peers (decision 6). Each card says what was detected, offers
+ * that runtime's own sign-in, and states what it unlocks; the operator auths
+ * whichever they have or want. The step continues once ONE runtime can open a
+ * session — that is the invariant the pipeline actually needs.
+ */
+function RuntimesStep({
+  runtimes,
+  onNext,
+}: {
+  runtimes: RuntimeReadiness[]
+  onNext: () => void
+}) {
+  const ready = readyRuntimes(runtimes)
+  return (
+    <>
+      <div className="op-kick">WELCOME TO RUNCASTLE</div>
+      <div className="op-h">Connect a coding agent</div>
+      <div className="op-sub">
+        runcastle drives whichever agent you have — sign in to one or both. Sessions run on the agent
+        the model you pick belongs to, so the ones you connect here are the ones you can choose from
+        later.
+      </div>
+
+      <div className="afk-rows">
+        {runtimes.map((r) => (
+          <RuntimeCard key={r.runtime} runtime={r} />
+        ))}
+      </div>
+
+      <div className="op-actions">
+        <Button variant="solid" onClick={onNext} disabled={ready.length === 0}>
+          Continue
+        </Button>
+      </div>
+      {ready.length === 0 && (
+        <DimLine>Connect at least one agent to continue — runcastle has nothing to run without one.</DimLine>
+      )}
+    </>
+  )
+}
+
+/** One provider card: detected state, its sign-in flow, and what AFK adds. */
+function RuntimeCard({ runtime }: { runtime: RuntimeReadiness }) {
+  const [sessionId, setSessionId] = useState<string | null>(null)
+  const toast = useToast()
+  const utils = trpc.useUtils()
+  const start = trpc.setup.startTerminal.useMutation({
+    onSuccess: ({ sessionId }) => setSessionId(sessionId),
+    onError: (e) => toast.push(e.message),
+  })
+  const login = RUNTIME_LOGIN[runtime.runtime]
+
+  const state = runtime.talkReady ? 'ready' : runtime.installed ? 'sign in' : 'not installed'
+
+  return (
+    <div className={`afk-row${runtime.talkReady ? ' is-ok' : ''}`}>
+      <div className="afk-row-head">
+        <span className={`afk-dot afk-dot-${runtime.talkReady ? 'ok' : 'warn'}`} aria-hidden />
+        <div className="afk-row-text">
+          <div className="afk-row-label">
+            {runtime.label} — {state}
+          </div>
+          <div className="afk-row-detail mono">{runtime.detail}</div>
+        </div>
+      </div>
+      <div className="afk-row-action">
+        {runtime.installFix && (
+          <div className="afk-cmd">
+            <code className="afk-cmd-text mono">{runtime.installFix}</code>
+            <Button
+              variant="ghost"
+              onClick={() => {
+                void navigator.clipboard?.writeText(runtime.installFix ?? '')
+                toast.push('copied', 'info')
+              }}
+            >
+              Copy
+            </Button>
+          </div>
+        )}
+        {runtime.installed &&
+          !runtime.talkReady &&
+          (sessionId ? (
+            <>
+              <div className="afk-term">
+                <ErrorBoundary label={login.kind}>
+                  <TerminalView sessionId={sessionId} />
+                </ErrorBoundary>
+              </div>
+              <div className="afk-term-actions">
+                <Button
+                  variant="solid"
+                  onClick={() => {
+                    setSessionId(null)
+                    void utils.setup.doctor.invalidate()
+                  }}
+                >
+                  Done — re-check
+                </Button>
+              </div>
+            </>
+          ) : (
+            <Button
+              variant="solid"
+              disabled={start.isPending}
+              onClick={() => start.mutate({ kind: login.kind })}
+            >
+              {start.isPending ? 'Starting…' : `Run ${login.command}`}
+            </Button>
+          ))}
+        {runtime.talkReady && !runtime.afkReady && (
+          <div className="afk-note">
+            Signed in for sessions you watch. Unattended burns on {runtime.label} also need its key —
+            the next step sets that up.
+          </div>
+        )}
+      </div>
+    </div>
   )
 }
 
