@@ -8,8 +8,8 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { AppCtx } from '../src/db/types'
 import { sessions } from '../src/db/schema'
 import { launchProjectSession } from '../src/launcher/launcher'
+import { KICKOFF_LINES } from '../src/launcher/runtimes/claude'
 import {
-  KICKOFF_LINES,
   awaitProjectLandings,
   getSessionRow,
   resumeKickoffLine,

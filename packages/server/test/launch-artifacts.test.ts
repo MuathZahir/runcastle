@@ -14,7 +14,8 @@ import {
   renderSystemPrompt,
   writeSessionArtifacts,
 } from '../src/launcher/artifacts'
-import { buildClaudeArgs, ptyExitMessage } from '../src/launcher/launcher'
+import { ptyExitMessage } from '../src/launcher/launcher'
+import { buildClaudeArgs } from '../src/launcher/runtimes/claude'
 
 const config: RuncastleConfig = ConfigSchema.parse({})
 
@@ -346,10 +347,6 @@ describe('renderSystemPrompt', () => {
 describe('buildClaudeArgs', () => {
   it('assembles the claude argv with the verified flags (embedded PTY spawn)', () => {
     const args = buildClaudeArgs({
-      sessionId: 'sess_xyz',
-      serverUrl: 'http://localhost:4512',
-      featureTitle: 'Dark mode',
-      worktreePath: 'C:\\wt\\dark-mode',
       pluginDir: 'C:\\repo\\packages\\skills\\packs\\runcastle',
       settingsPath: 'C:\\s\\settings.json',
       mcpConfigPath: 'C:\\s\\mcp.json',
@@ -374,10 +371,6 @@ describe('buildClaudeArgs', () => {
 
   it('omits --strict-mcp-config by default so a session keeps the human’s own MCP servers', () => {
     const base = {
-      sessionId: 'sess_xyz',
-      serverUrl: 'http://localhost:4512',
-      featureTitle: 'Dark mode',
-      worktreePath: 'C:\\wt\\dark-mode',
       pluginDir: 'C:\\repo\\pack',
       settingsPath: 'C:\\s\\settings.json',
       mcpConfigPath: 'C:\\s\\mcp.json',
@@ -398,10 +391,6 @@ describe('buildClaudeArgs', () => {
 
   it('prepends --resume <ccSessionId> when resuming a released waypoint', () => {
     const base = {
-      sessionId: 'sess_xyz',
-      serverUrl: 'http://localhost:4512',
-      featureTitle: 'Dark mode',
-      worktreePath: 'C:\\wt\\dark-mode',
       pluginDir: 'C:\\repo\\pack',
       settingsPath: 'C:\\s\\settings.json',
       mcpConfigPath: 'C:\\s\\mcp.json',
@@ -417,10 +406,6 @@ describe('buildClaudeArgs', () => {
 
   it('always carries --model from config so sessions never inherit the CLI default', () => {
     const args = buildClaudeArgs({
-      sessionId: 'sess_xyz',
-      serverUrl: 'http://localhost:4512',
-      featureTitle: 'Dark mode',
-      worktreePath: 'C:\\wt\\dark-mode',
       pluginDir: 'C:\\repo\\pack',
       settingsPath: 'C:\\s\\settings.json',
       mcpConfigPath: 'C:\\s\\mcp.json',

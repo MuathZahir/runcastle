@@ -1,9 +1,7 @@
-import { existsSync } from 'node:fs'
-import { dirname, join, resolve } from 'node:path'
-import { fileURLToPath } from 'node:url'
 import type {
   Feature,
   MergeBranchPair,
+  ModelEntry,
   Project,
   Run,
   SessionKind,
@@ -12,11 +10,16 @@ import type {
   Waypoint,
 } from '@runcastle/core'
 import { worktreeDir } from '@runcastle/core/paths'
-import { nextGate, nextPhase, resolveModel } from '@runcastle/core'
+import { nextGate, nextPhase, resolveModelEntry } from '@runcastle/core'
 import { and, eq } from 'drizzle-orm'
 import type { AppCtx } from '../db/types'
-import { resolveTool, spawnTargetFor, type SpawnTarget } from '../util/resolve-executable'
-import { SKILLS_DIR_ENV } from './skills-root'
+import { spawnTargetFor } from '../util/resolve-executable'
+import {
+  runtimeAdapterFor,
+  type AgentRuntimeAdapter,
+  type RuntimeLaunchInput,
+  type RuntimeLaunchSpec,
+} from './runtimes'
 import { runs } from '../db/schema'
 import { GateError, isNotImplemented } from '../errors'
 import { endSession } from '../pty/end-session'
@@ -43,7 +46,7 @@ import {
 import { startRun, workflowClaimsFeatureBranch } from '../workflows/runner'
 import { listFindings } from '../services/findings'
 import { keysToPrepare } from '../services/prep'
-import { serverUrlFor, writeSessionArtifacts, type PrepareBrief } from './artifacts'
+import { serverUrlFor, type PrepareBrief } from './artifacts'
 import {
   activeProjectSession,
   activeSessionsForFeature,
@@ -70,12 +73,17 @@ export { resendKickoff } from './sessions'
 export { endSession, type EndSessionResult } from '../pty/end-session'
 
 /**
- * Session launcher (SPEC §5 / UI-SPEC §5). Spawns a real, injected Claude Code
- * session inside a server-owned embedded PTY: creates the session row, ensures
- * the talk worktree, writes the launch artifacts, then spawns `claude` with our
- * settings/mcp/plugin flags and the two runcastle env vars inherited directly
- * onto the spawn. The PTY is registered by session id and streamed to the in-app
- * xterm view over `/ws/terminal/:sessionId` (cross-platform; no `wt.exe`).
+ * Session launcher (SPEC §5 / UI-SPEC §5). Spawns a real, injected agent session
+ * inside a server-owned embedded PTY: resolves the model (and with it the
+ * runtime — decision 2), creates the session row, ensures the talk worktree,
+ * then hands the whole launch to that runtime's adapter, which writes the
+ * artifacts and hands back the argv + env to spawn. The PTY is registered by
+ * session id and streamed to the in-app xterm view over
+ * `/ws/terminal/:sessionId` (cross-platform; no `wt.exe`).
+ *
+ * Everything runtime-specific — the CLI name, the flags, the artifact files, the
+ * env scrub list, the kickoff spelling — lives behind {@link
+ * AgentRuntimeAdapter}; this module knows only the shape of a launch.
  */
 
 /**
@@ -137,127 +145,20 @@ export interface WorkRunResult {
   runId: string
 }
 
-export interface BuildLaunchInput {
-  sessionId: string
-  serverUrl: string
-  featureTitle: string
-  worktreePath: string
-  pluginDir: string
-  settingsPath: string
-  mcpConfigPath: string
-  systemPromptPath: string
-  permissionMode?: string
-  /**
-   * The model this embedded session runs (`--model`), resolved for the session
-   * kind's step via `resolveModel` (issue #48) — sessions must honour the
-   * configured model, never the operator's global CLI default (E2E finding: the
-   * model flag was missing).
-   */
-  model: string
-  /**
-   * The Claude Code session id (`ccSessionId`) to `--resume`. Every kind has a
-   * resume target: a waypoint resumes the conversation its `lastSessionId`
-   * remembers, a revisit resumes the feature's latest conversation of any kind,
-   * and every other kind resumes its own latest conversation (so reopening a
-   * terminal after runcastle restarts continues it). `--resume` is scoped to the
-   * project dir + its worktrees (CC-INTEGRATION-NOTES §7), which the talk worktree
-   * satisfies. Omitted → a fresh session.
-   */
-  resumeSessionId?: string
-  /**
-   * Add `--strict-mcp-config` (config `sessionMcp: 'runcastleOnly'`). Default
-   * false: a session inherits the human's own MCP servers alongside
-   * runcastle's — see {@link RuncastleConfig.sessionMcp}.
-   */
-  strictMcp?: boolean
-}
-
 /**
- * The `claude` argv AFTER the program name (UI-SPEC §5.3). `launchSession`
- * passes it verbatim to the embedded PTY spawn, and the `spawn:false` smoke path
- * renders it for its `session.launched` event, so the flags/artifacts never
- * drift. `--append-system-prompt-file` is a verified flag (CC-INTEGRATION-NOTES §7).
+ * Refuse a launch whose runtime cannot run right now (decision 7) — the AFK
+ * auth-precheck extended to talk sessions. Called BEFORE the session row, the
+ * worktree and the artifacts exist, so a refusal leaves nothing behind and the
+ * human reads a sentence naming the doctor fix instead of watching a terminal
+ * open and close on an ENOENT.
  *
- * `--mcp-config` is unconditional (it is how the session reaches runcastle's own
- * MCP server); `--strict-mcp-config` is opt-in, because it does not merely
- * prefer our config — it suppresses every other MCP source, including the
- * human's own connections and their plugins' servers.
+ * The `spawn:false` smoke path is exempt: it fabricates a session MINUS the
+ * process (SPEC §11), and the process is the only thing readiness is about.
  */
-export function buildClaudeArgs(input: BuildLaunchInput): string[] {
-  const permissionMode = input.permissionMode ?? 'acceptEdits'
-  const resume = input.resumeSessionId ? ['--resume', input.resumeSessionId] : []
-  return [
-    ...resume,
-    '--settings',
-    input.settingsPath,
-    '--mcp-config',
-    input.mcpConfigPath,
-    ...(input.strictMcp ? ['--strict-mcp-config'] : []),
-    '--plugin-dir',
-    input.pluginDir,
-    '--append-system-prompt-file',
-    input.systemPromptPath,
-    '--permission-mode',
-    permissionMode,
-    '--model',
-    input.model,
-  ]
-}
-
-/**
- * Resolve the `claude` executable to an absolute path. `RUNCASTLE_CLAUDE_BIN`
- * overrides; otherwise PATH is scanned for `claude` with Windows extensions.
- * Falls back to the bare name so `CreateProcess`/exec can make a final attempt.
- */
-function resolveClaudeExecutable(): string {
-  return resolveTool('claude')
-}
-
-/**
- * The `{file, args}` to spawn `claude` inside a PTY. A native `.exe` is spawned
- * directly; a `.cmd`/`.bat`/`.ps1` shim goes through its interpreter (ConPTY
- * cannot exec any of them directly) — see {@link spawnTargetFor}. Env is
- * inherited on the spawn (UI-SPEC §5 — no `cmd /k` env prefix, no `wt.exe`).
- */
-function claudeSpawnTarget(claudeArgs: string[]): SpawnTarget {
-  return spawnTargetFor(resolveClaudeExecutable(), claudeArgs)
-}
-
-/**
- * Resolve the `runcastle` plugin dir (`packages/skills/packs/runcastle`).
- * Ascends from `fromDir` looking for the marker dir (robust against the server
- * being run from anywhere). If no ancestor contains it, throws an error naming
- * every location searched — never a silent fallback to a path that doesn't
- * exist (a missing pack must surface loudly, not fail later at launch time).
- */
-export function resolvePluginDir(
-  fromDir: string = dirname(fileURLToPath(import.meta.url)),
-): string {
-  const rel = join('packages', 'skills', 'packs', 'runcastle')
-
-  // Published install: skills are vendored as real files and RUNCASTLE_SKILLS_DIR
-  // names their root — read the pack straight from there (issue #51). A bad
-  // override throws loudly rather than silently falling back to a workspace path.
-  const override = process.env[SKILLS_DIR_ENV]
-  if (override) {
-    const dir = join(resolve(override), 'packs', 'runcastle')
-    if (existsSync(dir)) return dir
-    throw new Error(`${SKILLS_DIR_ENV}=${override} has no plugin dir at ${dir}`)
-  }
-
-  const searched: string[] = []
-  let dir = fromDir
-  for (let i = 0; i < 8; i += 1) {
-    const candidate = join(dir, rel)
-    searched.push(candidate)
-    if (existsSync(candidate)) return candidate
-    const parent = dirname(dir)
-    if (parent === dir) break
-    dir = parent
-  }
-  throw new Error(
-    `runcastle plugin dir (${rel}) not found; searched:\n  ${searched.join('\n  ')}`,
-  )
+function assertRuntimeReady(runtime: AgentRuntimeAdapter, opts: LaunchSessionOptions): void {
+  if (opts.spawn === false) return
+  const ready = runtime.checkReady()
+  if (!ready.ok) throw new GateError(`${ready.reason}. ${ready.doctorHint}`)
 }
 
 /**
@@ -399,6 +300,14 @@ export async function launchSession(
   requireNotDraft(feature)
   const project = projectForFeature(ctx, feature)
 
+  // The session kind IS a model step (issue #48): resolve per-step model,
+  // falling back through the per-project override to the global default. The
+  // winner decides the runtime too (decision 2), so the adapter — and whether it
+  // can run at all — is settled before anything is created.
+  const model = resolveModelEntry(input.kind, ctx.config, project)
+  const runtime = runtimeAdapterFor(model.runtime)
+  assertRuntimeReady(runtime, opts)
+
   const worktreePath = await ensureWorktree(ctx, project, feature)
   const session = createSessionRow(ctx, {
     featureId: feature.id,
@@ -406,6 +315,7 @@ export async function launchSession(
     purpose: input.purpose,
     purposeData: input.purposeData,
     worktreePath,
+    model,
   })
 
   // What this terminal opens with, decided before anything else: an explicit
@@ -487,13 +397,20 @@ export async function launchSession(
   // be registered against the session id ahead of it. An explicit per-purpose
   // briefing always wins; otherwise a resumed session gets the resume framing so
   // the agent continues the conversation rather than restarting its opening move.
-  const kickoffLine = plan.line ?? (resumeSessionId ? resumeKickoffLine(input.kind) : undefined)
+  const kickoffLine =
+    plan.line ?? (resumeSessionId ? resumeKickoffLine(input.kind, runtime.id) : undefined)
   if (kickoffLine) setKickoffOverride(session.id, kickoffLine)
 
   emit(ctx, feature.id, {
     type: 'session.launching',
     message: `launching ${input.kind} session`,
-    data: { sessionId: session.id, kind: input.kind, worktreePath, waypointId: waypoint?.id },
+    data: {
+      sessionId: session.id,
+      kind: input.kind,
+      worktreePath,
+      waypointId: waypoint?.id,
+      ...modelStamp(model),
+    },
   })
 
   if (resumeSessionId) {
@@ -520,7 +437,7 @@ export async function launchSession(
     })
   }
 
-  const artifacts = await writeSessionArtifacts({
+  const spec = await runtime.writeArtifacts({
     session,
     feature,
     project,
@@ -528,44 +445,46 @@ export async function launchSession(
     waypoint,
     lap: plan.lap,
     purpose: input.purpose,
-  })
-  const serverUrl = serverUrlFor(ctx.config)
-
-  const buildInput: BuildLaunchInput = {
-    sessionId: session.id,
-    serverUrl,
-    featureTitle: feature.title,
     worktreePath,
-    pluginDir: resolvePluginDir(),
-    settingsPath: artifacts.settingsPath,
-    mcpConfigPath: artifacts.mcpConfigPath,
-    systemPromptPath: artifacts.systemPromptPath,
-    // The session kind IS a model step (issue #48): resolve per-step model,
-    // falling back through the per-project override to the global default.
-    model: resolveModel(input.kind, ctx.config, project),
+    serverUrl: serverUrlFor(ctx.config),
+    model: model.id,
     resumeSessionId,
-    strictMcp: ctx.config.sessionMcp === 'runcastleOnly',
-  }
+  })
 
   // spawn:false fabricates a session MINUS any process (SPEC §11 smoke driver).
   if (opts.spawn === false) {
     emit(ctx, feature.id, {
       type: 'session.launched',
       message: 'session prepared (terminal spawn skipped)',
-      data: {
-        sessionId: session.id,
-        command: ['claude', ...buildClaudeArgs(buildInput)].join(' '),
-        spawned: false,
-      },
+      data: { sessionId: session.id, command: renderCommand(runtime, spec), spawned: false },
     })
     return { sessionId: session.id }
   }
 
-  spawnEmbeddedPty(ctx, feature, session, worktreePath, serverUrl, buildClaudeArgs(buildInput), {
+  spawnEmbeddedPty(ctx, feature, session, worktreePath, runtime, spec, {
     waypoint,
     resumeSessionId,
   })
   return { sessionId: session.id }
+}
+
+/**
+ * What a launch stamps on its `session.launching` event: the model that won the
+ * chain and the runtime it implies. The row carries the same pair (see the
+ * `sessions` db schema) — this is the mutation announcing itself, so the UI and
+ * the timeline can say which agent a terminal is talking to.
+ */
+function modelStamp(model: ModelEntry): { model: string; runtime: string } {
+  return { model: model.id, runtime: model.runtime }
+}
+
+/**
+ * The launch as one command line, for the `spawn:false` smoke event. The program
+ * word is the runtime's own CLI name, so a second runtime renders as itself
+ * rather than as `claude` with foreign flags after it.
+ */
+function renderCommand(runtime: AgentRuntimeAdapter, spec: RuntimeLaunchSpec): string {
+  return [runtime.binary, ...spec.argv].join(' ')
 }
 
 /**
@@ -598,12 +517,17 @@ export async function launchPrepareSession(
 ): Promise<LaunchSessionResult> {
   const project = requireProjectById(ctx, input.projectId)
 
+  const model = resolveModelEntry('prepare', ctx.config, project)
+  const runtime = runtimeAdapterFor(model.runtime)
+  assertRuntimeReady(runtime, opts)
+
   const session = createSessionRow(ctx, {
     projectId: project.id,
     kind: 'prepare',
     // No worktree: preparation is about THIS machine's checkout, and a docs-only
     // talk worktree could neither run the dev server nor see the real .env.
     worktreePath: project.repoPath,
+    model,
   })
 
   const resumeSessionId = input.fresh
@@ -622,6 +546,7 @@ export async function launchPrepareSession(
       sessionId: session.id,
       kind: 'prepare',
       worktreePath: project.repoPath,
+      ...modelStamp(model),
       ...(input.fresh ? { fresh: true } : {}),
     },
   })
@@ -633,50 +558,27 @@ export async function launchPrepareSession(
     })
   }
 
-  const artifacts = await writeSessionArtifacts({
+  const spec = await runtime.writeArtifacts({
     session,
     project,
     config: ctx.config,
     prepare: await buildPrepareBrief(ctx, project),
-  })
-  const serverUrl = serverUrlFor(ctx.config)
-
-  const buildInput: BuildLaunchInput = {
-    sessionId: session.id,
-    serverUrl,
-    featureTitle: `preparing ${project.name}`,
     worktreePath: project.repoPath,
-    pluginDir: resolvePluginDir(),
-    settingsPath: artifacts.settingsPath,
-    mcpConfigPath: artifacts.mcpConfigPath,
-    systemPromptPath: artifacts.systemPromptPath,
-    model: resolveModel('prepare', ctx.config, project),
+    serverUrl: serverUrlFor(ctx.config),
+    model: model.id,
     resumeSessionId,
-    strictMcp: ctx.config.sessionMcp === 'runcastleOnly',
-  }
+  })
 
   if (opts.spawn === false) {
     emitProject(ctx, project.id, {
       type: 'session.launched',
       message: 'preparation session prepared (terminal spawn skipped)',
-      data: {
-        sessionId: session.id,
-        command: ['claude', ...buildClaudeArgs(buildInput)].join(' '),
-        spawned: false,
-      },
+      data: { sessionId: session.id, command: renderCommand(runtime, spec), spawned: false },
     })
     return { sessionId: session.id }
   }
 
-  spawnEmbeddedPty(
-    ctx,
-    undefined,
-    session,
-    project.repoPath,
-    serverUrl,
-    buildClaudeArgs(buildInput),
-    { resumeSessionId },
-  )
+  spawnEmbeddedPty(ctx, undefined, session, project.repoPath, runtime, spec, { resumeSessionId })
   return { sessionId: session.id }
 }
 
@@ -720,6 +622,13 @@ export async function launchDriveFixSession(
   }
   assertSpawnable(ctx, feature)
 
+  // Prepare's step, deliberately: this is the same host-side environment work
+  // under a narrower mandate, and a step of its own would be a settings field
+  // nobody asked for.
+  const model = resolveModelEntry('prepare', ctx.config, project)
+  const runtime = runtimeAdapterFor(model.runtime)
+  assertRuntimeReady(runtime, opts)
+
   const session = createSessionRow(ctx, {
     featureId: feature.id,
     kind: 'drive-fix',
@@ -727,6 +636,7 @@ export async function launchDriveFixSession(
     // machine's, and a docs-only talk worktree could neither run the setup
     // script nor see the drive.env it was supposed to write.
     worktreePath: project.repoPath,
+    model,
   })
 
   emit(ctx, feature.id, {
@@ -738,10 +648,11 @@ export async function launchDriveFixSession(
       worktreePath: project.repoPath,
       branch: drive.branch,
       command: drive.hookFailure.command,
+      ...modelStamp(model),
     },
   })
 
-  const artifacts = await writeSessionArtifacts({
+  const spec = await runtime.writeArtifacts({
     session,
     project,
     config: ctx.config,
@@ -752,48 +663,23 @@ export async function launchDriveFixSession(
       envKeys: drive.envKeys ?? [],
       delta: await git.featureBranchDelta(project, feature),
     },
-  })
-  const serverUrl = serverUrlFor(ctx.config)
-
-  const buildInput: BuildLaunchInput = {
-    sessionId: session.id,
-    serverUrl,
-    featureTitle: `fixing the drive for ${feature.title}`,
     worktreePath: project.repoPath,
-    pluginDir: resolvePluginDir(),
-    settingsPath: artifacts.settingsPath,
-    mcpConfigPath: artifacts.mcpConfigPath,
-    systemPromptPath: artifacts.systemPromptPath,
-    // Prepare's step, deliberately: this is the same host-side environment work
-    // under a narrower mandate, and a step of its own would be a settings field
-    // nobody asked for.
-    model: resolveModel('prepare', ctx.config, project),
-    strictMcp: ctx.config.sessionMcp === 'runcastleOnly',
-  }
+    serverUrl: serverUrlFor(ctx.config),
+    model: model.id,
+  })
 
   if (opts.spawn === false) {
     emit(ctx, feature.id, {
       type: 'session.launched',
       message: 'drive-fix session prepared (terminal spawn skipped)',
-      data: {
-        sessionId: session.id,
-        command: ['claude', ...buildClaudeArgs(buildInput)].join(' '),
-        spawned: false,
-      },
+      data: { sessionId: session.id, command: renderCommand(runtime, spec), spawned: false },
     })
     return { sessionId: session.id }
   }
 
   // No docs watch (the `feature` argument): this session repairs the
   // environment and never writes the feature's docs.
-  spawnEmbeddedPty(
-    ctx,
-    undefined,
-    session,
-    project.repoPath,
-    serverUrl,
-    buildClaudeArgs(buildInput),
-  )
+  spawnEmbeddedPty(ctx, undefined, session, project.repoPath, runtime, spec)
   return { sessionId: session.id }
 }
 
@@ -838,6 +724,10 @@ export async function launchProjectSession(
     )
   }
 
+  const model = resolveModelEntry('project', ctx.config, project)
+  const runtime = runtimeAdapterFor(model.runtime)
+  assertRuntimeReady(runtime, opts)
+
   const worktreePath = await git.ensureProjectWorktree(project, (res) =>
     reportProjectLanding(ctx, project, res, { retried: true }),
   )
@@ -845,6 +735,7 @@ export async function launchProjectSession(
     projectId: project.id,
     kind: 'project',
     worktreePath,
+    model,
   })
 
   // The chosen conversation's Claude Code id. Absent means the row never went
@@ -863,6 +754,7 @@ export async function launchProjectSession(
       kind: 'project',
       worktreePath,
       branch: git.PROJECT_BRANCH,
+      ...modelStamp(model),
       ...(resumeSessionId ? {} : { fresh: true }),
     },
   })
@@ -880,46 +772,29 @@ export async function launchProjectSession(
     })
   }
 
-  const artifacts = await writeSessionArtifacts({
+  const spec = await runtime.writeArtifacts({
     session,
     project,
     config: ctx.config,
     projectBrief: { project, branch: git.PROJECT_BRANCH, worktreePath },
-  })
-  const serverUrl = serverUrlFor(ctx.config)
-
-  const buildInput: BuildLaunchInput = {
-    sessionId: session.id,
-    serverUrl,
-    featureTitle: project.name,
     worktreePath,
-    pluginDir: resolvePluginDir(),
-    settingsPath: artifacts.settingsPath,
-    mcpConfigPath: artifacts.mcpConfigPath,
-    systemPromptPath: artifacts.systemPromptPath,
+    serverUrl: serverUrlFor(ctx.config),
+    model: model.id,
+    resumeSessionId,
     // Decision 18: whole-repo write access voids the acceptEdits justification.
     permissionMode: 'default',
-    model: resolveModel('project', ctx.config, project),
-    resumeSessionId,
-    strictMcp: ctx.config.sessionMcp === 'runcastleOnly',
-  }
+  })
 
   if (opts.spawn === false) {
     emitProject(ctx, project.id, {
       type: 'session.launched',
       message: 'project session prepared (terminal spawn skipped)',
-      data: {
-        sessionId: session.id,
-        command: ['claude', ...buildClaudeArgs(buildInput)].join(' '),
-        spawned: false,
-      },
+      data: { sessionId: session.id, command: renderCommand(runtime, spec), spawned: false },
     })
     return { sessionId: session.id }
   }
 
-  spawnEmbeddedPty(ctx, undefined, session, worktreePath, serverUrl, buildClaudeArgs(buildInput), {
-    resumeSessionId,
-  })
+  spawnEmbeddedPty(ctx, undefined, session, worktreePath, runtime, spec, { resumeSessionId })
   return { sessionId: session.id }
 }
 
@@ -1114,14 +989,6 @@ async function reconverge(
   return launchSession(ctx, { featureId: feature.id, kind: 'converge' }, opts)
 }
 
-/**
- * Embedded launch (UI-SPEC §5): spawn `claude` eagerly inside a server-owned PTY
- * with the flags/artifacts from `buildClaudeArgs`, `cwd` = talk worktree, and the
- * two runcastle env vars inherited directly onto the spawn (no `cmd /k`, no
- * `wt.exe`). The PTY is registered by session id; the WS endpoint streams it. On
- * process exit we mark the session ended and emit `session.pty_exited`. A spawn
- * failure is surfaced as an event, never thrown.
- */
 /** Spawn-time context the PTY exit handler needs to report honestly. */
 export interface SpawnMeta {
   /** The waypoint this session claimed (kind=waypoint), if any. */
@@ -1178,40 +1045,29 @@ export function handlePtyExit(
 }
 
 /**
- * CC nesting markers leaked from a parent Claude Code session (the server is
- * routinely started from inside one during dogfooding). `CLAUDE_CODE_CHILD_SESSION`
- * alone makes CC ≥ 2.1.211 skip writing the session transcript entirely —
- * silently breaking `--resume` — and the rest cause related child-session
- * artifacts (bridge frames, inherited session ids/effort). Scrubbed so embedded
- * sessions are first-class no matter how the server was launched.
+ * Spawn the runtime's CLI inside a server-owned PTY from its {@link
+ * RuntimeLaunchSpec}. A native `.exe` is spawned directly; a `.cmd`/`.bat`/`.ps1`
+ * shim goes through its interpreter (ConPTY cannot exec any of them directly) —
+ * see {@link spawnTargetFor}. The env is the server's own, plus what the runtime
+ * asked for and minus what it asked to have scrubbed (UI-SPEC §5 — no `cmd /k`
+ * env prefix, no `wt.exe`).
+ *
+ * The PTY is registered by session id and the WS endpoint streams it. On process
+ * exit we mark the session ended and emit `session.pty_exited`. A spawn failure
+ * is surfaced as an event, never thrown.
  */
-const CC_NESTING_ENV = [
-  'CLAUDE_CODE_CHILD_SESSION',
-  'CLAUDECODE',
-  'CLAUDE_CODE_SESSION_ID',
-  'CLAUDE_CODE_BRIDGE_SESSION_ID',
-  'CLAUDE_CODE_ENTRYPOINT',
-  'CLAUDE_CODE_EXECPATH',
-  'CLAUDE_EFFORT',
-  'CLAUDE_CODE_SSE_PORT',
-] as const
-
 function spawnEmbeddedPty(
   ctx: AppCtx,
   feature: Feature | undefined,
   session: SessionRow,
   worktreePath: string,
-  serverUrl: string,
-  claudeArgs: string[],
+  runtime: AgentRuntimeAdapter,
+  spec: RuntimeLaunchSpec,
   meta: SpawnMeta = {},
 ): void {
-  const { file, args } = claudeSpawnTarget(claudeArgs)
-  const env: Record<string, string | undefined> = {
-    ...process.env,
-    RUNCASTLE_SESSION_ID: session.id,
-    RUNCASTLE_SERVER_URL: serverUrl,
-  }
-  for (const key of CC_NESTING_ENV) delete env[key]
+  const { file, args } = spawnTargetFor(runtime.resolveBinary(), spec.argv)
+  const env: Record<string, string | undefined> = { ...process.env, ...spec.env }
+  for (const key of spec.envScrub) delete env[key]
   try {
     const entry = ptyRegistry().create({
       sessionId: session.id,

@@ -1,4 +1,5 @@
 import { index, integer, primaryKey, sqliteTable, text } from 'drizzle-orm/sqlite-core'
+import type { AgentRuntime } from './config'
 import type {
   FeatureStatus,
   FindingSource,
@@ -196,6 +197,20 @@ export const sessions = sqliteTable('sessions', {
    */
   awaitingInput: integer('awaiting_input', { mode: 'boolean' }).notNull().default(false),
   worktreePath: text('worktree_path').notNull(),
+  /**
+   * The model this session was launched with, and the agent runtime that model
+   * runs on — the pair `resolveModelEntry` yielded at launch, stamped here so
+   * later readers never have to re-derive it from a config that has since moved
+   * on.
+   *
+   * Both are nullable, and not only for the rows that predate the columns: a
+   * session row created outside a launch (a fixture, a test) resolved no model,
+   * and stamping the current default onto one would be a fabrication read back
+   * later as fact. Readers treat a null `runtime` as {@link DEFAULT_RUNTIME},
+   * which is what every historical session in fact ran on.
+   */
+  model: text('model'),
+  runtime: text('runtime').$type<AgentRuntime>(),
   /**
    * This conversation's human-readable name, derived from the first thing the
    * human said in it and cached here (see `services/conversations.ts`). Null
