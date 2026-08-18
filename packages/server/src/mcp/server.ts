@@ -721,7 +721,9 @@ export async function toolCreateFeature(
     ? await quickChange(ctx, {
         projectId: project.id,
         title: input.title,
-        prose: input.ticket.prose,
+        // The tool's shape stays one prose ticket (§6) — the session describes
+        // one small change at a time; the multi-ticket list is the overlay's.
+        tickets: [input.ticket.prose],
         baseBranch: input.baseBranch,
       })
     : await createFeature(ctx, {

@@ -50,7 +50,7 @@ export function QuickChangeForm({
     quickChange.mutate({
       projectId,
       title: title.trim(),
-      prose: prose.trim(),
+      tickets: [prose.trim()],
       baseBranch: base || undefined,
     })
   }
