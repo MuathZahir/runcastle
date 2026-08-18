@@ -12,6 +12,7 @@ import {
   deleteNote,
   editNote,
   listByFeature,
+  promoteMany,
   promoteNote,
   toggleNote,
 } from '../src/services/test-notes'
@@ -155,6 +156,75 @@ describe('test notes service', () => {
     promoteNote(ctx, note.id)
     expect(() => promoteNote(ctx, note.id)).toThrow(InvalidInputError)
     expect(listTickets(ctx, feature.id)).toHaveLength(1)
+  })
+
+  it('promotes a selection of notes in one batch, one ticket per note', () => {
+    const first = addNote(ctx, feature.id, 'the run chip goes grey while burning')
+    tick()
+    const skipped = addNote(ctx, feature.id, 'not this one')
+    tick()
+    const second = addNote(ctx, feature.id, 'the empty state is stale after a delete')
+
+    const { notes, tickets } = promoteMany(ctx, [first.id, second.id])
+
+    expect(notes.map((n) => n.status)).toEqual(['promoted', 'promoted'])
+    expect(tickets.map((t) => t.seq)).toEqual([1, 2])
+    expect(tickets.map((t) => t.title)).toEqual([
+      'the run chip goes grey while burning',
+      'the empty state is stale after a delete',
+    ])
+    expect(notes.map((n) => n.ticketId)).toEqual(tickets.map((t) => t.id))
+    expect(listTickets(ctx, feature.id)).toHaveLength(2)
+    // Untouched by a batch it was not in.
+    expect(listByFeature(ctx, feature.id).find((n) => n.id === skipped.id)?.status).toBe('open')
+  })
+
+  it('emits one promotion event for the whole batch', () => {
+    const first = addNote(ctx, feature.id, 'one')
+    tick()
+    const second = addNote(ctx, feature.id, 'two')
+
+    promoteMany(ctx, [first.id, second.id])
+
+    expect(eventTypes().filter((t) => t === 'notes.promoted')).toHaveLength(1)
+    expect(eventTypes()).not.toContain('note.promoted')
+  })
+
+  it('rejects a batch with an empty, duplicated or non-open selection, promoting nothing', () => {
+    expect(() => promoteMany(ctx, [])).toThrow(InvalidInputError)
+
+    const open = addNote(ctx, feature.id, 'still open')
+    tick()
+    const done = addNote(ctx, feature.id, 'already handled')
+    toggleNote(ctx, done.id)
+
+    expect(() => promoteMany(ctx, [open.id, done.id])).toThrow(InvalidInputError)
+    expect(() => promoteMany(ctx, [open.id, open.id])).toThrow(InvalidInputError)
+    // Refused before anything was written: no ticket, and the open note is open.
+    expect(listTickets(ctx, feature.id)).toEqual([])
+    expect(listByFeature(ctx, feature.id).find((n) => n.id === open.id)?.status).toBe('open')
+  })
+
+  it('rejects a batch spanning two features — a batch belongs to one ledger', () => {
+    const other = seedFeature(ctx, project.id, { slug: 'elsewhere' })
+    const here = addNote(ctx, feature.id, 'here')
+    const there = addNote(ctx, other.id, 'there')
+
+    expect(() => promoteMany(ctx, [here.id, there.id])).toThrow(InvalidInputError)
+    expect(listTickets(ctx, feature.id)).toEqual([])
+    expect(listTickets(ctx, other.id)).toEqual([])
+  })
+
+  it('regenerates test-notes.md once for the whole batch', () => {
+    const first = addNote(ctx, feature.id, 'first finding')
+    tick()
+    const second = addNote(ctx, feature.id, 'second finding')
+
+    promoteMany(ctx, [first.id, second.id])
+
+    expect(renderedFile()).toBe(
+      '# Test notes\n\n## Lap 1\n\n- [x] first finding (→ ticket 1)\n- [x] second finding (→ ticket 2)\n',
+    )
   })
 
   it('renders test-notes.md with lap sections, checkboxes and ticket annotations', () => {

@@ -956,17 +956,6 @@ button {
 .pw-frame-list b { color: var(--text-2); font-weight: 600; }
 .pw-frame-list code { font-family: var(--mono); font-size: 11.5px; }
 .pw-term { height: clamp(300px, calc(100dvh - 420px), 1200px); }
-.pw-rest {
-  border: 1px solid var(--hairline);
-  border-radius: var(--radius-lg);
-  background: var(--panel-2);
-  padding: 32px 24px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 12px;
-  text-align: center;
-}
 .pw-rest-title { font-size: 14px; font-weight: 500; color: var(--text-2); }
 .pw-rest-sub {
   font-size: 12.5px;
@@ -975,12 +964,107 @@ button {
   max-width: 52ch;
 }
 
+/* ---- the conversation list (decision 5) ---- */
+/* New chat is the default action, so it gets the accented card at the top and
+   the only solid button on the screen; the past ones are a quiet list under it. */
+.pw-newchat {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  border: 1px solid var(--accent-line);
+  border-radius: var(--radius-lg);
+  background: var(--accent-soft);
+  padding: 20px 22px;
+  margin-bottom: 18px;
+}
+.pw-newchat-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1;
+}
+.pw-convos {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 18px;
+}
+.pw-convos .pw-frame-head { margin-bottom: 6px; }
+.pw-convo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  transition: background var(--dur-1) var(--ease), border-color var(--dur-1) var(--ease);
+}
+.pw-convo:hover { background: var(--panel-2); border-color: var(--hairline); }
+.pw-convo-glyph { display: inline-flex; color: var(--text-3); }
+.pw-convo-main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+.pw-convo-title {
+  font-size: 12.5px;
+  color: var(--text-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pw-convo-when { font-size: 11px; color: var(--text-3); }
+
+/* ---- one conversation, read back ---- */
+.pw-reading { display: flex; flex-direction: column; gap: 14px; }
+.pw-reading-head { display: flex; align-items: center; gap: 12px; }
+.convo-transcript {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: clamp(300px, calc(100dvh - 340px), 1200px);
+  overflow-y: auto;
+  padding-right: 4px;
+}
+.convo-bubble {
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-lg);
+  background: var(--panel-2);
+  padding: 10px 14px;
+  max-width: 76ch;
+}
+/* The human's own turns sit right and accented — a transcript you are scanning
+   for "what did I ask for?" is read by finding your own side of it. */
+.convo-bubble.is-user {
+  align-self: flex-end;
+  border-color: var(--accent-line);
+  background: var(--accent-soft);
+}
+.convo-bubble-role {
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--text-3);
+  margin-bottom: 4px;
+}
+.convo-bubble-text {
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--text-2);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 /* every direct workspace block sits in a centered rail — no more left-hugging
    content with a dead void on the right */
 .ws-head,
 .nextstep,
 .readonly-bar,
 .ws-banner,
+.ws-lap,
 .ws-body-inner {
   width: 100%;
   max-width: calc(var(--content-max) + 56px);
@@ -1220,6 +1304,31 @@ button {
   padding: 1px 6px;
   flex-shrink: 0;
 }
+
+/* ---- lap banner (decisions.md #6) ----
+   Quiet by design: a standing statement of where the feature is, not an alert.
+   Never rendered on lap 1, so its mere presence already says "you iterated". */
+.ws-lap {
+  margin-top: 12px;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+.ws-lap-tag {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  color: var(--accent-2);
+  border: 1px solid var(--accent-line);
+  border-radius: 4px;
+  padding: 2px 7px;
+  flex: 0 0 auto;
+  cursor: default;
+}
+.ws-lap-body { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.ws-lap-why { font-size: 12px; color: var(--text-2); line-height: 1.5; text-wrap: pretty; }
+.ws-lap-facts { display: flex; gap: 10px; font-size: 11.5px; color: var(--text-3); }
+.ws-lap-facts > span + span::before { content: '· '; color: var(--text-4); }
 
 /* ---- workspace body (per-phase, scrollable) ---- */
 .ws-body {
@@ -1730,6 +1839,38 @@ details.wp-group-done > summary { cursor: pointer; list-style: revert; }
 }
 .converge-resume-text { font-size: 12.5px; color: var(--text-2); }
 
+/* ---- lap grouping (decisions.md #6) ----
+   Shared by the ticket ledger and the findings inbox — the two places a human
+   looks for "what was done this lap". Rendered only past lap 1: a feature that
+   never iterated gets no headers at all, the same stance as the pipeline chip. */
+.lap-group-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 8px 0;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+.lap-group.is-current > .lap-group-head { color: var(--text-2); }
+.lap-group-meta { color: var(--text-4); }
+/* The caret is drawn here: a flex summary drops the native marker entirely, and
+   a collapsed lap with no affordance reads as a lap with nothing in it. */
+details.lap-group > summary.lap-group-head { cursor: pointer; list-style: none; }
+details.lap-group > summary::-webkit-details-marker { display: none; }
+details.lap-group > summary.lap-group-head::before {
+  content: '▸';
+  color: var(--text-4);
+  flex: 0 0 auto;
+}
+details.lap-group[open] > summary.lap-group-head::before { content: '▾'; }
+/* Inside the bordered ledger the header is a band, and it lines up with the
+   rows' own gutter rather than the card edge. */
+.ledger .lap-group-head { padding: 8px 14px; background: var(--panel-3); }
+.ledger .lap-group + .lap-group { border-top: 1px solid var(--hairline); }
+
 /* ============================================================================
    PHASE BODY — tickets ledger
    ========================================================================== */
@@ -2107,6 +2248,48 @@ details.wp-group-done > summary { cursor: pointer; list-style: revert; }
 .check-dot.is-idle { background: var(--text-3); }
 .check-k { font-family: var(--mono); font-size: 12px; color: var(--text); width: 92px; flex: 0 0 auto; }
 .check-v { font-family: var(--mono); font-size: 11.5px; color: var(--text-3); }
+/* "What landed this lap" (decisions #8) — the prose the review page leads with,
+   above the figures rather than under them, because it is what the human came
+   to read. Bounded and scrollable: a digest is a dozen lines, and the card must
+   not push the drive panel beside it off the screen. */
+.lap-account {
+  margin-top: 12px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--hairline-soft);
+}
+.lap-account-head {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-3);
+  margin-bottom: 8px;
+}
+.lap-account-prose { max-height: 320px; overflow: auto; }
+/* The fallback is labelled, because per-ticket accounts are not a lap summary. */
+.lap-account-note {
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--text-3);
+  margin-bottom: 10px;
+}
+.lap-account-entry + .lap-account-entry {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--hairline-soft);
+}
+.lap-account-ticket {
+  font-family: var(--mono);
+  font-size: 11.5px;
+  color: var(--text-2);
+  margin-bottom: 6px;
+}
+/* the scope the spec deferred, verbatim beside what this lap delivered */
+.planned-lap-card {
+  max-width: 1000px;
+  border-color: color-mix(in srgb, var(--warn, #d9a441) 40%, var(--hairline));
+}
+.planned-lap-scope { margin-top: 12px; }
 .review-foot {
   margin-top: 14px;
   padding-top: 12px;
@@ -2155,6 +2338,13 @@ details.wp-group-done > summary { cursor: pointer; list-style: revert; }
   background: color-mix(in srgb, var(--danger) 9%, transparent);
 }
 .conflict-resolve { margin-top: 14px; }
+/* the one-terminal explanation, which replaced the button hiding itself */
+.conflict-note {
+  margin-top: 8px;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--text-3);
+}
 /* drive setup failure (multi-service decision 4) — the loudest card at review,
    because a drive that did not come up is where a human gets stranded */
 .drive-failure-card {
@@ -2249,8 +2439,12 @@ details.wp-group-done > summary { cursor: pointer; list-style: revert; }
   background: #000;
 }
 
-/* test-drive notes — capture box + checklist, for the whole review phase */
+/* the findings inbox — capture box + lap-grouped checklist (decisions.md #11) */
 .notes-card { max-width: 1000px; margin-top: 14px; }
+.notes-head { display: flex; align-items: baseline; gap: 10px; }
+/* Where triage went, now that the rows no longer carry it themselves. */
+.notes-hint { margin-top: 8px; font-size: 12px; color: var(--text-3); text-wrap: pretty; }
+.notes-hint strong { color: var(--text-2); font-weight: 500; }
 .notes-form { display: flex; align-items: center; gap: 8px; margin-top: 14px; }
 .notes-input {
   flex: 1;
@@ -2469,6 +2663,66 @@ details.wp-group-done > summary { cursor: pointer; list-style: revert; }
 .nf-advanced[open] .nf-advanced-summary { color: var(--text); margin-bottom: 4px; }
 .nf-advanced .nf-base { margin-top: 10px; }
 
+/* the Quick door's two modes, and its list of prose tickets (decisions.md #12) */
+.qf-modes {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-top: 12px;
+  border-bottom: 1px solid var(--hairline-soft);
+}
+.qf-mode {
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--text-3);
+  font-size: 12.5px;
+  font-weight: 500;
+  padding: 6px 10px 8px;
+  cursor: pointer;
+  transition: color var(--dur-1);
+}
+.qf-mode:hover { color: var(--text-2); }
+.qf-mode.is-active { color: var(--text); border-bottom-color: var(--accent); }
+.qf-tickets { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+.qf-ticket { display: flex; align-items: flex-start; gap: 8px; }
+.qf-ticket-num {
+  flex: 0 0 auto;
+  margin-top: 12px;
+  width: 16px;
+  text-align: right;
+  font-family: var(--mono);
+  font-size: 11.5px;
+  color: var(--text-3);
+}
+/* shorter than the single-field textarea it inherits from — a quick change is a
+   sentence, and several of them have to fit in the card at once */
+.qf-ticket-text { flex: 1; height: 62px; margin-top: 0; }
+.qf-ticket-remove {
+  flex: 0 0 auto;
+  margin-top: 8px;
+  background: none;
+  border: none;
+  color: var(--text-3);
+  font-size: 15px;
+  line-height: 1;
+  padding: 4px 6px;
+  cursor: pointer;
+  transition: color var(--dur-1);
+}
+.qf-ticket-remove:hover { color: var(--danger); }
+.qf-add {
+  margin-top: 8px;
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--accent);
+  font-size: 12.5px;
+  cursor: pointer;
+  width: fit-content;
+}
+.qf-add:hover { color: var(--accent-hi); }
+
 /* ============================================================================
    INSPECTOR RAIL
    ========================================================================== */
@@ -2628,6 +2882,26 @@ details.wp-group-done > summary { cursor: pointer; list-style: revert; }
 .activity-log { display: flex; flex-direction: column; }
 .act-line { display: flex; gap: 10px; padding: 8px 4px; border-top: 1px solid var(--hairline-soft); }
 .act-line:first-child { border-top: none; }
+/* a lap boundary, drawn across the feed rather than listed in it (decisions #6) */
+.act-lap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 6px 0;
+  padding: 0 4px;
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--accent-2);
+}
+.act-lap::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--accent-line);
+}
+.act-lap-time { color: var(--text-4); order: 1; }
 .act-dot {
   width: 7px;
   height: 7px;
@@ -3277,6 +3551,34 @@ select.settings-input { cursor: pointer; }
   gap: 8px;
   margin-top: 2px;
 }
+
+/* ---- address-notes triage (decisions.md #11) ----
+   Two roads, one door. Wider than the confirmations above because one of the
+   roads is a list the human reads and picks from, not a sentence they accept. */
+.peek.notes-dialog { max-width: 560px; }
+.notes-dialog-body { display: flex; flex-direction: column; gap: 20px; }
+.notes-dialog-road { display: flex; flex-direction: column; gap: 8px; }
+.notes-dialog-list {
+  display: flex;
+  flex-direction: column;
+  max-height: 260px;
+  overflow-y: auto;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius);
+  background: var(--panel-2);
+}
+.notes-dialog-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 12px;
+  cursor: pointer;
+  transition: background var(--dur-1);
+}
+.notes-dialog-row + .notes-dialog-row { border-top: 1px solid var(--hairline-soft); }
+.notes-dialog-row:hover { background: var(--panel-3); }
+.notes-dialog-actions { display: flex; align-items: center; gap: 10px; }
+.notes-dialog-blocked { font-size: 11.5px; color: var(--text-3); text-wrap: pretty; }
 
 /* ============================================================================
    ERROR BOUNDARY / TERMINAL placeholders

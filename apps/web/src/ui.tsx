@@ -7,7 +7,7 @@ import type {
   TicketKind,
   TicketStatus,
 } from '@runcastle/core'
-import type { CheckRow } from './lib/feature-ui'
+import type { CheckRow, LapGroup } from './lib/feature-ui'
 
 /**
  * Primitive UI atoms for the IDE shell (UI-SPEC §4). Exactly one `solid` button
@@ -80,6 +80,63 @@ export function CheckLine({ row }: { row: CheckRow }) {
       <span className="check-k">{row.key}</span>
       <span className="check-v">{row.value}</span>
     </div>
+  )
+}
+
+/**
+ * Rows under `Lap N` headers (decisions.md #6) — the shared shape of the ticket
+ * ledger and the notes inbox, which are the two places a human looks for "what
+ * was done this lap" and used to render everything flat.
+ *
+ * The current lap is a plain always-open section; earlier laps are a `<details>`
+ * that opens on a click — the same collapse idiom the map rail uses for its done
+ * waypoints. A feature still on LAP 1 gets no headers at all: it never iterated,
+ * and a "Lap 1" band over everything it owns is exactly the ceremony ADR-0010 §4
+ * keeps off a feature that merges first try.
+ *
+ * That suppression keys on the feature's lap, never on how many laps have rows.
+ * A lap-2 feature whose rows are all lap-1 carryovers has exactly one group, and
+ * heading it is the whole point: the lap banner directly above already says LAP
+ * 2, so a flat list there would have the two halves of the workspace disagreeing
+ * about which lap the human is looking at.
+ */
+export function LapSections<T extends { lap: number }>({
+  groups,
+  currentLap,
+  meta,
+  children,
+}: {
+  groups: LapGroup<T>[]
+  /** The feature's own lap — what decides whether headers show at all. */
+  currentLap: number
+  /** One line about what a lap holds, shown beside its number. */
+  meta: (group: LapGroup<T>) => string
+  children: (rows: T[]) => ReactNode
+}) {
+  if (currentLap <= 1) return <>{children(groups.flatMap((g) => g.rows))}</>
+
+  return (
+    <>
+      {groups.map((g) => {
+        const head = (
+          <>
+            <span className="lap-group-n">Lap {g.lap}</span>
+            <span className="lap-group-meta">{meta(g)}</span>
+          </>
+        )
+        return g.current ? (
+          <section className="lap-group is-current" key={g.lap}>
+            <div className="lap-group-head">{head}</div>
+            {children(g.rows)}
+          </section>
+        ) : (
+          <details className="lap-group" key={g.lap}>
+            <summary className="lap-group-head">{head}</summary>
+            {children(g.rows)}
+          </details>
+        )
+      })}
+    </>
   )
 }
 

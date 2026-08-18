@@ -56,6 +56,11 @@ export function createSessionRow(ctx: AppCtx, input: CreateSessionInput): Sessio
       transcriptPath: null,
       status: 'launching',
       worktreePath: input.worktreePath,
+      // Named lazily from the transcript once there is one (see
+      // `services/conversations.ts`) — a row born a millisecond ago has
+      // nothing to be called yet.
+      title: null,
+      createdAt: Date.now(),
     })
     .returning()
     .get()
@@ -857,6 +862,33 @@ export function activeProjectSession(
     .limit(1)
     .get()
   return row ? rowToSession(row) : null
+}
+
+/**
+ * Every project-scoped session of this kind, newest first — the conversation
+ * list behind `project.conversations`. Unlike {@link activeProjectSession} it
+ * filters on nothing else: an ended conversation is still a conversation you can
+ * read back, and one that never went live is still a row that says an attempt
+ * was made. Ordered by the implicit sqlite `rowid`, which is insertion order and
+ * so agrees with `createdAt` for every row that has one.
+ */
+export function projectSessions(
+  ctx: AppCtx,
+  projectId: string,
+  kind: SessionKind,
+): SessionRow[] {
+  return ctx.db
+    .select()
+    .from(sessions)
+    .where(and(eq(sessions.projectId, projectId), eq(sessions.kind, kind)))
+    .orderBy(desc(sql`rowid`))
+    .all()
+    .map(rowToSession)
+}
+
+/** Cache a conversation's derived name on its row (see `services/conversations.ts`). */
+export function setSessionTitle(ctx: AppCtx, id: string, title: string): void {
+  ctx.db.update(sessions).set({ title }).where(eq(sessions.id, id)).run()
 }
 
 /**

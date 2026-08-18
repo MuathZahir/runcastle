@@ -5,7 +5,7 @@ import { useWorkspace, type DriveState } from '../lib/workspace'
 import type { ProjectNavApi } from '../lib/use-project-nav'
 import { useProjectTalk } from '../lib/use-project-talk'
 import { useLivePoll } from '../lib/live'
-import { showsInspector, workspaceView, TALK_IT_THROUGH } from '../lib/project-workspace'
+import { showsInspector, workspaceView } from '../lib/project-workspace'
 import type { PrepView } from '../lib/api'
 import { Titlebar } from './Titlebar'
 import { Sidebar } from './Sidebar'
@@ -14,8 +14,7 @@ import { StatusBar } from './StatusBar'
 import { FeatureCrash, Workspace } from './Workspace'
 import { ErrorBoundary } from './ErrorBoundary'
 import { ProjectWorkspace } from './ProjectWorkspace'
-import { NewFeatureForm } from './NewFeatureForm'
-import { QuickChangeForm } from './QuickChangeForm'
+import { QuickForm } from './QuickForm'
 import { PreparationWorkspace } from './PreparationWorkspace'
 import { CommandPalette } from './CommandPalette'
 import { SettingsOverlay } from './SettingsOverlay'
@@ -49,9 +48,11 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
       select(list.data[0].id)
   }, [selectedFeatureId, projectSelected, list.data, select])
 
-  // The one door behind both "not sure it's one feature?" affordances: open the
-  // project workspace and start (or resume) the conversation in it.
-  const talkItThrough = () => {
+  // The New door (decisions.md #12): open the project workspace and start a
+  // FRESH conversation in it — intake for anything that deserves talking about.
+  // `talk.start` is the new-chat contract, so a live conversation is left alone
+  // and the workspace's list is what you land on instead.
+  const newChat = () => {
     selectProject()
     talk.start()
   }
@@ -89,27 +90,14 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
           talk={talk}
           onSelect={ws.select}
           onSelectProject={ws.selectProject}
-          onNewFeature={ws.startCreate}
+          onNewChat={newChat}
           onQuickChange={ws.startQuickChange}
           onOpenPreparation={ws.startPreparation}
         />
 
         {view === 'create' ? (
           <section className="workspace">
-            {ws.createMode === 'quick' ? (
-              <QuickChangeForm
-                projectId={projectId}
-                onCancel={ws.cancelCreate}
-                onCreated={ws.select}
-              />
-            ) : (
-              <NewFeatureForm
-                projectId={projectId}
-                onCancel={ws.cancelCreate}
-                onCreated={ws.select}
-                onTalkItThrough={talkItThrough}
-              />
-            )}
+            <QuickForm projectId={projectId} onCancel={ws.cancelCreate} onCreated={ws.select} />
           </section>
         ) : view === 'prepare' ? (
           // `onClose` only when there is somewhere to go back to: the automatic
@@ -146,11 +134,7 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
           </ErrorBoundary>
         ) : (
           <section className="workspace">
-            <EmptyWorkspace
-              onNewFeature={ws.startCreate}
-              onQuickChange={ws.startQuickChange}
-              onTalkItThrough={talkItThrough}
-            />
+            <EmptyWorkspace onNewChat={newChat} onQuickChange={ws.startQuickChange} />
           </section>
         )}
 
@@ -172,9 +156,11 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
         features={list.data ?? []}
         selectedFeatureId={ws.selectedFeatureId}
         onSelect={ws.select}
-        onNewFeature={ws.startCreate}
         onOpenSettings={() => ws.setSettings(true)}
         onOpenPreparation={ws.startPreparation}
+        // The palette navigates, it never launches: this opens the project
+        // workspace, where the conversation list decides new-versus-resume.
+        onOpenProjectChat={ws.selectProject}
         nav={nav}
       />
 
@@ -192,13 +178,11 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
  * and putting it beside these buttons is what made it invisible.
  */
 function EmptyWorkspace({
-  onNewFeature,
+  onNewChat,
   onQuickChange,
-  onTalkItThrough,
 }: {
-  onNewFeature: () => void
+  onNewChat: () => void
   onQuickChange: () => void
-  onTalkItThrough: () => void
 }) {
   return (
     <div className="ws-empty">
@@ -207,27 +191,22 @@ function EmptyWorkspace({
           <LogoMark size={44} variant="outline" />
         </div>
         <div className="ws-empty-title">Select a feature to begin</div>
-        <div className="ws-empty-sub">Or create one — every feature moves through the same guided pipeline.</div>
-        {/* This is the screen where the "I only have a tweak" gap is hit, so
-            the quick-change door lives here beside New feature (decision 21). */}
+        <div className="ws-empty-sub">Or start one — every feature moves through the same guided pipeline.</div>
+        {/* The rail head's two doors, said again where a project with nothing
+            selected is looking for them (decisions.md #12). */}
         <div className="ws-empty-actions">
-          <button className="btn btn-ghost" onClick={onNewFeature}>
-            New feature
+          <button className="btn btn-ghost" onClick={onNewChat}>
+            New chat
           </button>
           <button className="btn btn-ghost" onClick={onQuickChange}>
-            Quick change
+            Quick
           </button>
         </div>
         <div className="ws-empty-hint">
-          Too small for a conversation? A quick change is one sentence, one ticket — no grill
-          session.
+          New opens a conversation with the project — it knows what you have already built, and cuts
+          a lump of intent into features. Quick skips the conversation: a change to burn now, or a
+          draft to park.
         </div>
-        {/* Both doors above still demand a title. This one does not — it is the
-            way in for a lump of intent that has not been cut into features yet
-            (decision 20). */}
-        <button className="talk-door" onClick={onTalkItThrough}>
-          {TALK_IT_THROUGH} →
-        </button>
       </div>
     </div>
   )

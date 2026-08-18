@@ -7,6 +7,7 @@ import type {
   SessionRow,
   SessionStatus,
   Ticket,
+  TicketInput,
   Waypoint,
 } from '@runcastle/core'
 import { RETHINK_LOOP_BACK, REVIEW_LOOP_BACK, newId, nextGate, nextPhase } from '@runcastle/core'
@@ -275,27 +276,110 @@ export async function startDraft(
 
 export interface QuickChangeInput {
   projectId: string
-  /** Card title — the rail entry, the docs dir's slug, the ticket's title. */
+  /** Card title — the rail entry, the docs dir's slug. */
   title: string
-  /** The human's sentence. Becomes the ticket's goal AND its one criterion. */
-  prose: string
+  /**
+   * One sentence per ticket, in the order the human typed them (decisions.md
+   * #4 — real quick work is often several small tickets, not one blob). Each
+   * becomes a ticket whose goal AND sole acceptance criterion are that prose.
+   * Blank entries are dropped; at least one has to survive.
+   */
+  tickets: string[]
   /** Same semantics as `CreateFeatureInput.baseBranch`. */
   baseBranch?: string
+}
+
+/** How wide a derived ticket title may run before it is cut. */
+const TICKET_TITLE_MAX = 72
+
+/**
+ * A quick-change ticket's title, derived from its own prose. The ledger lists
+ * tickets by title, so N of them all wearing the feature's title would say
+ * nothing about which is which. The first line, cut at a word boundary when it
+ * runs long — the whole prose survives verbatim as the goal and the criterion.
+ */
+function quickTicketTitle(prose: string): string {
+  const line = prose.split('\n')[0].trim()
+  if (line.length <= TICKET_TITLE_MAX) return line
+  const cut = line.slice(0, TICKET_TITLE_MAX)
+  const space = cut.lastIndexOf(' ')
+  return `${(space > 0 ? cut.slice(0, space) : cut).trimEnd()}…`
+}
+
+/**
+ * `brief.md` for a quick change — the prose verbatim, which is what the burner
+ * reads as `{{FEATURE_BRIEF}}`. Several tickets get a heading each, numbered to
+ * match the seqs they are stored under; a lone ticket stays one paragraph.
+ */
+function quickBrief(title: string, proses: string[]): string {
+  const body =
+    proses.length === 1
+      ? proses[0]
+      : proses.map((p, i) => `## Ticket ${i + 1}\n\n${p}`).join('\n\n')
+  return `# ${title}\n\n${body}\n`
+}
+
+/**
+ * The review ticket a quick-change batch closes with (decisions.md #9 — "a
+ * review always runs", every lap, unconditionally).
+ *
+ * The tickets skill states that mandate for the sessions that emit batches, but
+ * the quick door has no emitting agent to obey it: nobody writes tickets here,
+ * the human types sentences and this service turns them into rows. So on this
+ * path the invariant has to be code, or it is not enforced at all — which is
+ * exactly the hole a quick change fell through, reaching review having never
+ * been reviewed.
+ *
+ * `blockedBy` names every typed ticket by its 1-based batch position — the
+ * space `storeTickets` resolves — so it burns last, against the integrated
+ * branch. Its prose says what the skill says a hand-written one must: the code
+ * review is unconditional, the drive happens only when there is something a
+ * human can operate, and the digest is the lap's summary.
+ */
+function quickReviewTicket(proses: string[]): TicketInput {
+  return {
+    title: 'Review the integrated change',
+    goal:
+      "Review the integrated feature branch and report what you find. Code-review the branch's " +
+      'diff against its base — always, whatever this change turned out to be — and additionally ' +
+      'drive the app when the diff touches something a human can operate. Write one note per ' +
+      'finding; finding bugs is a successful review, and the notes are the deliverable.',
+    context:
+      'This feature came through the quick-change door, so there was no grill session and there ' +
+      'is no spec.md or decisions.md to review it against: the whole statement of intent is the ' +
+      `${proses.length === 1 ? 'sentence' : `${proses.length} sentences`} the human typed, which ` +
+      'are the other tickets in this batch and are reproduced verbatim in brief.md. Nobody ' +
+      'prescribed a walkthrough for you either — judge from the diff whether there is anything ' +
+      'drivable, and if there is not, say so and let the code review stand alone. Your digest is ' +
+      "the lap's prose summary of what landed; the review page leads with it.",
+    acceptanceCriteria: [
+      "The branch's diff against its base is code-reviewed on both axes — the repo's own " +
+        'standards, and the change against what was asked for.',
+      ...proses.map((prose) => `Landed and does what it says: ${prose}`),
+    ],
+    // Nothing to name: the review agent edits no code, and nobody read the
+    // codebase on this path to say which surfaces it touches.
+    seams: [],
+    blockedBy: proses.map((_, i) => i + 1),
+    kind: 'review',
+  }
 }
 
 /**
  * The quick-change door (decision 21) — work too small to deserve a grill.
  *
- * An ORDINARY feature, born directly at `implementation` on lap 1, carrying
- * exactly one ticket whose goal is the human's prose and whose sole acceptance
- * criterion is that same sentence. From here it is the pipeline's far side:
- * review the one card, click Burn, test-drive, click Merge — zero terminals.
+ * An ORDINARY feature, born directly at `implementation` on lap 1, carrying one
+ * ticket per sentence the human typed — each ticket's goal, and its sole
+ * acceptance criterion, is that sentence — plus the review ticket every batch
+ * closes with (see {@link quickReviewTicket}), blocked by all of them. From
+ * here it is the pipeline's far side: review the cards, click Burn, test-drive,
+ * click Merge — zero terminals.
  *
  * Nothing on the row marks it (ADR-0010 §7 forbids pipeline-shape settings), so
  * a quick change is indistinguishable from a feature whose G1/G2 were
  * overridden — a state the machine can already reach. G1/G2 are never evaluated
  * because gates guard forward transitions only and this feature starts past
- * both; G3 sees the one pending lap-1 ticket and the Burn click crosses it.
+ * both; G3 sees the pending lap-1 tickets and the Burn click crosses it.
  *
  * No `spec.md` and no `decisions.md` are written — there was no conversation to
  * record. `brief.md` carries the prose verbatim, which is what the burner reads
@@ -304,9 +388,12 @@ export interface QuickChangeInput {
 export async function quickChange(ctx: AppCtx, input: QuickChangeInput): Promise<Feature> {
   const project = requireProjectById(ctx, input.projectId)
   const title = input.title.trim()
-  const prose = input.prose.trim()
+  // A blank row is one the human added and left empty, not a ticket — the
+  // overlay's list can stay loose because the rule lives here.
+  const proses = input.tickets.map((t) => t.trim()).filter((t) => t !== '')
   if (!title) throw new InvalidInputError('a quick change needs a title')
-  if (!prose) throw new InvalidInputError('a quick change needs a sentence describing the change')
+  if (proses.length === 0)
+    throw new InvalidInputError('a quick change needs a sentence describing the change')
 
   const slug = uniqueSlug(ctx, project.id, title)
   const branch = `feature/${slug}`
@@ -320,12 +407,13 @@ export async function quickChange(ctx: AppCtx, input: QuickChangeInput): Promise
       projectId: project.id,
       slug,
       title,
-      // The prose IS the one-liner — a quick change never had a separate summary
-      // to give, and inventing one would be a second source of truth for it.
-      // Only its first line, though: `oneLiner` is single-line by name and by
-      // every consumer (the hook's status line, the burner's brief header). The
-      // whole prose survives verbatim where it belongs — brief.md and the ticket.
-      oneLiner: prose.split('\n')[0].trim(),
+      // The first ticket's prose IS the one-liner — a quick change never had a
+      // separate summary to give, and inventing one (or a count of the tickets)
+      // would be a second source of truth for it. Only its first line, though:
+      // `oneLiner` is single-line by name and by every consumer (the hook's
+      // status line, the burner's brief header). Every sentence survives
+      // verbatim where it belongs — brief.md and the tickets.
+      oneLiner: proses[0].split('\n')[0].trim(),
       mapped: false,
       lap: 1,
       phase: 'implementation' as const,
@@ -346,28 +434,37 @@ export async function quickChange(ctx: AppCtx, input: QuickChangeInput): Promise
     data: { slug, branch, baseBranch, branchReady },
   })
 
-  scaffoldDocs(ctx, feature, { brief: `# ${title}\n\n${prose}\n` })
+  scaffoldDocs(ctx, feature, { brief: quickBrief(title, proses) })
 
-  const [ticket] = storeTickets(ctx, feature.id, [
-    {
-      title,
+  // One batch, not two: the review ticket's `blockedBy` names batch positions,
+  // which only resolve against the typed tickets it is stored alongside.
+  const stored = storeTickets(ctx, feature.id, [
+    ...proses.map((prose) => ({
+      title: quickTicketTitle(prose),
       goal: prose,
       context: prose,
       acceptanceCriteria: [prose],
       // No invented seams: nobody read the codebase to name them.
       seams: [],
       blockedBy: [],
-    },
+    })),
+    quickReviewTicket(proses),
   ])
+  const typed = stored.slice(0, proses.length)
+  const review = stored[stored.length - 1]
 
   // The one event that makes the fast path legible in the timeline — the row
   // itself carries no marker, so without this the feature simply appears at
-  // `implementation` with no account of how it got past G1 and G2.
+  // `implementation` with no account of how it got past G1 and G2. Feature-
+  // scoped on purpose: it is the birth of the whole card, not of any one of the
+  // tickets it arrived with — `tickets.stored` above already speaks for those.
+  // The tally counts what the human typed; the review ticket is named apart
+  // from it, because it is the pipeline's doing and not theirs.
+  const tally = typed.length === 1 ? 'one ticket' : `${typed.length} tickets`
   emit(ctx, feature.id, {
     type: 'feature.quick_change',
-    message: `quick change — born at implementation on lap 1 with one ticket (#${ticket.seq}); no grill session, no spec.md`,
-    ticketId: ticket.id,
-    data: { slug, ticketSeq: ticket.seq, phase: 'implementation' },
+    message: `quick change — born at implementation on lap 1 with ${tally} (${typed.map((t) => `#${t.seq}`).join(', ')}) plus a review ticket (#${review.seq}); no grill session, no spec.md`,
+    data: { slug, ticketSeqs: stored.map((t) => t.seq), phase: 'implementation' },
   })
 
   // Same best-effort auto-commit as `createFeature` — an untracked brief dirties

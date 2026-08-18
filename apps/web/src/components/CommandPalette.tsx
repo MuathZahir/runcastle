@@ -2,8 +2,8 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import type { FeatureListItem } from '../lib/api'
 import type { ProjectNavApi } from '../lib/use-project-nav'
 import { PHASE_LABELS } from '../lib/feature-ui'
-import { matchesPreparation } from '../lib/project-workspace'
-import { IconFolder, IconPlus, IconSettings } from '../icons'
+import { matchesPreparation, matchesProjectChat } from '../lib/project-workspace'
+import { IconFolder, IconMessage, IconSettings } from '../icons'
 
 /**
  * ⌘K command palette for the pipeline-first shell (app-redesign, multi-project
@@ -19,21 +19,28 @@ export interface CommandPaletteProps {
   features: FeatureListItem[]
   selectedFeatureId: string | null
   onSelect: (featureId: string) => void
-  onNewFeature: () => void
   onOpenSettings: () => void
   /** Give the workspace over to preparation (findings, evidence, the conversation). */
   onOpenPreparation: () => void
+  /** Give the workspace over to the project chat — its conversation list. */
+  onOpenProjectChat: () => void
   nav: ProjectNavApi
 }
+
+/** The rows that are not a feature or a project: the palette's action list. */
+type ActionKind = 'home' | 'openProject' | 'settings' | 'preparation' | 'projectChat'
 
 type Row =
   | { kind: 'feature'; feature: FeatureListItem }
   | { kind: 'project'; id: string; name: string; branch: string; current: boolean }
-  | { kind: 'newFeature' }
-  | { kind: 'home' }
-  | { kind: 'openProject' }
-  | { kind: 'settings' }
-  | { kind: 'preparation' }
+  | { kind: 'action'; action: Action }
+
+interface Action {
+  kind: ActionKind
+  glyph: ReactNode
+  label: string
+  run: () => void
+}
 
 export function CommandPalette(props: CommandPaletteProps) {
   const {
@@ -42,9 +49,9 @@ export function CommandPalette(props: CommandPaletteProps) {
     features,
     selectedFeatureId,
     onSelect,
-    onNewFeature,
     onOpenSettings,
     onOpenPreparation,
+    onOpenProjectChat,
     nav,
   } = props
 
@@ -87,36 +94,62 @@ export function CommandPalette(props: CommandPaletteProps) {
     [otherProjects, q],
   )
 
-  const showNewFeature = 'create new feature'.includes(q)
-  const showHome = 'all projects home'.includes(q)
-  const showOpen = 'open a project'.includes(q)
-  const showSettings = 'settings preferences'.includes(q)
-  // Preparation is project-scoped and has no home in the feature pipeline, so
-  // it needs a way in that does not depend on the project being unprepared and
-  // featureless (which is when the workspace offers it unprompted). Its terms
-  // live in lib/ because they are the searchable half of preparation's
-  // discoverability, and they are tested there.
-  const showPreparation = matchesPreparation(q)
+  // Both project-scoped rows earn their place the same way: neither surface has
+  // a home in the feature pipeline, so neither is reachable except through the
+  // rail row someone has to already know about. Their terms live in lib/ because
+  // they are the searchable half of that discoverability, and are tested there.
+  const actions = useMemo<Action[]>(() => {
+    const all: (Action & { shows: boolean })[] = [
+      {
+        // The palette used to open the NEW FEATURE overlay from a create row of
+        // its own. That overlay is retired (decisions.md #12) and this row is
+        // what replaced it: New is a conversation now, and the chat's terms
+        // already answer to the words someone types looking to start one.
+        kind: 'projectChat',
+        shows: matchesProjectChat(q),
+        glyph: <IconMessage size={13} />,
+        label: 'Project chat — talk an idea through, or reopen a past conversation',
+        run: onOpenProjectChat,
+      },
+      {
+        kind: 'home',
+        shows: 'all projects home'.includes(q),
+        glyph: <IconFolder size={13} />,
+        label: 'All projects (home)',
+        run: nav.goHome,
+      },
+      {
+        kind: 'openProject',
+        shows: 'open a project'.includes(q),
+        glyph: <IconFolder size={13} />,
+        label: 'Open a project…',
+        run: nav.showOpen,
+      },
+      {
+        kind: 'settings',
+        shows: 'settings preferences'.includes(q),
+        glyph: <IconSettings size={13} />,
+        label: 'Settings',
+        run: onOpenSettings,
+      },
+      {
+        kind: 'preparation',
+        shows: matchesPreparation(q),
+        glyph: <IconSettings size={13} />,
+        label: 'Preparation — establish this repo’s commands and baseline',
+        run: onOpenPreparation,
+      },
+    ]
+    return all.filter((a) => a.shows)
+  }, [q, onOpenProjectChat, onOpenSettings, onOpenPreparation, nav])
 
   const rows = useMemo<Row[]>(() => {
     const r: Row[] = filteredFeatures.map((f) => ({ kind: 'feature' as const, feature: f }))
     for (const p of filteredProjects)
       r.push({ kind: 'project', id: p.id, name: p.name, branch: p.mainBranch, current: false })
-    if (showNewFeature) r.push({ kind: 'newFeature' })
-    if (showHome) r.push({ kind: 'home' })
-    if (showOpen) r.push({ kind: 'openProject' })
-    if (showSettings) r.push({ kind: 'settings' })
-    if (showPreparation) r.push({ kind: 'preparation' })
+    for (const action of actions) r.push({ kind: 'action', action })
     return r
-  }, [
-    filteredFeatures,
-    filteredProjects,
-    showNewFeature,
-    showHome,
-    showOpen,
-    showSettings,
-    showPreparation,
-  ])
+  }, [filteredFeatures, filteredProjects, actions])
 
   if (!open) return null
 
@@ -137,20 +170,8 @@ export function CommandPalette(props: CommandPaletteProps) {
       case 'project':
         nav.enterProject(row.id)
         break
-      case 'newFeature':
-        onNewFeature()
-        break
-      case 'home':
-        nav.goHome()
-        break
-      case 'openProject':
-        nav.showOpen()
-        break
-      case 'settings':
-        onOpenSettings()
-        break
-      case 'preparation':
-        onOpenPreparation()
+      case 'action':
+        row.action.run()
         break
     }
     onClose()
@@ -245,75 +266,21 @@ export function CommandPalette(props: CommandPaletteProps) {
             </>
           )}
 
-          {(showNewFeature || showHome || showOpen || showSettings || showPreparation) && (
+          {actions.length > 0 && (
             <>
               <div className="cmdk-group-label">Actions</div>
-              {showNewFeature && (
+              {actions.map((action, j) => (
                 <ActionRow
-                  index={projectsEnd}
+                  key={action.kind}
+                  index={projectsEnd + j}
                   activeIndex={activeIndex}
                   bindRow={bindRow}
                   setActiveIndex={setActiveIndex}
                   activate={activate}
-                  glyph={<IconPlus size={13} />}
-                  label="Create new feature"
+                  glyph={action.glyph}
+                  label={action.label}
                 />
-              )}
-              {showHome && (
-                <ActionRow
-                  index={projectsEnd + (showNewFeature ? 1 : 0)}
-                  activeIndex={activeIndex}
-                  bindRow={bindRow}
-                  setActiveIndex={setActiveIndex}
-                  activate={activate}
-                  glyph={<IconFolder size={13} />}
-                  label="All projects (home)"
-                />
-              )}
-              {showOpen && (
-                <ActionRow
-                  index={projectsEnd + (showNewFeature ? 1 : 0) + (showHome ? 1 : 0)}
-                  activeIndex={activeIndex}
-                  bindRow={bindRow}
-                  setActiveIndex={setActiveIndex}
-                  activate={activate}
-                  glyph={<IconFolder size={13} />}
-                  label="Open a project…"
-                />
-              )}
-              {showSettings && (
-                <ActionRow
-                  index={
-                    projectsEnd +
-                    (showNewFeature ? 1 : 0) +
-                    (showHome ? 1 : 0) +
-                    (showOpen ? 1 : 0)
-                  }
-                  activeIndex={activeIndex}
-                  bindRow={bindRow}
-                  setActiveIndex={setActiveIndex}
-                  activate={activate}
-                  glyph={<IconSettings size={13} />}
-                  label="Settings"
-                />
-              )}
-              {showPreparation && (
-                <ActionRow
-                  index={
-                    projectsEnd +
-                    (showNewFeature ? 1 : 0) +
-                    (showHome ? 1 : 0) +
-                    (showOpen ? 1 : 0) +
-                    (showSettings ? 1 : 0)
-                  }
-                  activeIndex={activeIndex}
-                  bindRow={bindRow}
-                  setActiveIndex={setActiveIndex}
-                  activate={activate}
-                  glyph={<IconSettings size={13} />}
-                  label="Preparation — establish this repo’s commands and baseline"
-                />
-              )}
+              ))}
             </>
           )}
 

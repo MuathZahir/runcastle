@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { nextPhase, parsePhase, type EventRow, type Phase } from '@runcastle/core'
 import { trpc } from '../trpc'
 import { useToast } from '../lib/toast'
-import { activityLine } from '../lib/activity'
+import { activityLine, isLapDivider } from '../lib/activity'
 import { useEventLog } from '../lib/events'
 import { useLivePoll } from '../lib/live'
 import type { DocSummary, GateState } from '../lib/api'
@@ -348,12 +348,31 @@ function Activity({ events }: { events: EventRow[] }) {
         <div className="insp-empty">Everything that happens to this feature shows up here.</div>
       ) : (
         <div className="activity-log">
-          {recent.map((e) => (
-            <ActivityRow key={e.id} event={e} />
-          ))}
+          {recent.map((e) =>
+            isLapDivider(e.type) ? (
+              <LapDivider key={e.id} event={e} />
+            ) : (
+              <ActivityRow key={e.id} event={e} />
+            ),
+          )}
         </div>
       )}
     </section>
+  )
+}
+
+/**
+ * A lap boundary, drawn ACROSS the feed rather than listed in it (decisions.md
+ * #6). Every row above and below belongs to one side of this line, which is
+ * exactly what a flat feed could not say — the user reported not knowing there
+ * was another lap at all.
+ */
+function LapDivider({ event }: { event: EventRow }) {
+  return (
+    <div className="act-lap" role="separator">
+      <span className="act-lap-label">{activityLine(event).summary}</span>
+      <span className="act-lap-time">{relTime(event.ts)}</span>
+    </div>
   )
 }
 

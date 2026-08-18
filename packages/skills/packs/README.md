@@ -1,6 +1,6 @@
 # Skill packs
 
-**Packs** are runcastle-owned Claude Code *plugin directories* wired to runcastle's MCP contracts. They are injected into each launched terminal via `--plugin-dir`, so the human's Claude Code needs nothing preinstalled, and upstream changes to Matt Pocock's skills can never break us. Six of the eight skills are adapted forks of his methodology skills and each keeps a provenance header crediting the original; `revisit` and `waypoint` are original runcastle work.
+**Packs** are runcastle-owned Claude Code *plugin directories* wired to runcastle's MCP contracts. They are injected into each launched terminal via `--plugin-dir`, so the human's Claude Code needs nothing preinstalled, and upstream changes to Matt Pocock's skills can never break us. Seven of the nine skills are adapted forks of his methodology skills and each keeps a provenance header crediting the original; `revisit` and `waypoint` are original runcastle work.
 
 ## The `runcastle` pack
 
@@ -12,10 +12,11 @@ Scope-specific skills, each namespaced `/runcastle:<skill>`:
 | `/runcastle:spec` | by ideate | synthesizes `spec.md`, completes the `spec` phase |
 | `/runcastle:tickets` | by ideate | emits session-sized vertical-slice tickets via MCP, completes the `tickets` phase |
 | `/runcastle:qa` | entry for `kind=qa` | read-only Q&A over an existing feature; never advances phases |
-| `/runcastle:project` | entry for `kind=project` | project scope, not feature scope: grills a lump of intent into N features and creates them, routes, answers portfolio questions, curates advisory-only, and owns `CONTEXT.md` |
+| `/runcastle:project` | entry for `kind=project` | project scope, not feature scope: consults the portfolio, advises on how a lump of intent should be cut into N features and creates them, routes, answers portfolio questions, curates advisory-only, and owns `CONTEXT.md` |
 | `/runcastle:waypoint` | entry for `kind=waypoint` | *original* — works ONE waypoint on a mapped feature, writes its decision prose, resolves the waypoint |
 | `/runcastle:converge` | entry for `kind=converge` | closes a mapped feature: reads only the compressed knowledge, then drives spec + tickets from it |
 | `/runcastle:revisit` | entry for `kind=revisit` | *original* — folds late information into a finished feature; on a Rethink, runs the whole front half of a lap |
+| `/runcastle:code-review` | by description, or by name | two-axis review (Standards + Spec) of a feature branch's diff against its base, run as parallel sub-agents and reported unmerged; never edits |
 
 Layout (the verified plugin format — only `plugin.json` lives inside `.claude-plugin/`; `skills/` is a sibling at the plugin root):
 
@@ -33,7 +34,8 @@ packs/
         ├── project/SKILL.md
         ├── waypoint/SKILL.md
         ├── converge/SKILL.md
-        └── revisit/SKILL.md
+        ├── revisit/SKILL.md
+        └── code-review/SKILL.md
 ```
 
 ## How the launcher consumes a pack
@@ -44,7 +46,7 @@ The session launcher spawns Claude Code with the pack's **root** directory (the 
 claude ... --plugin-dir "<abs path>/packages/skills/packs/runcastle" ...
 ```
 
-The `name` field in `plugin.json` becomes the invocation namespace, so the skills resolve as `/runcastle:ideate` and friends. The injected system prompt tells each session which entry skill to invoke for its kind (`/runcastle:ideate` for ideation, `/runcastle:qa` for Q&A). All eight skills carry `disable-model-invocation: false`, so the model may also reach for them by description.
+The `name` field in `plugin.json` becomes the invocation namespace, so the skills resolve as `/runcastle:ideate` and friends. The injected system prompt tells each session which entry skill to invoke for its kind (`/runcastle:ideate` for ideation, `/runcastle:qa` for Q&A). All nine skills carry `disable-model-invocation: false`, so the model may also reach for them by description — which is the only way `code-review` is reached, since it is the one skill that is not a session entry point.
 
 ## Adding a pack
 

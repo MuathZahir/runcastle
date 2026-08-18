@@ -8,7 +8,16 @@ import { shortSha } from '../../lib/format'
 import { useLivePoll } from '../../lib/live'
 import { effectiveStepModel } from '../../lib/settings'
 import type { SettingsView } from '../../lib/api'
-import { Button, DimLine, EmptyState, SectionTitle, TicketKindChip, TicketStatusChip } from '../../ui'
+import { groupByLap } from '../../lib/feature-ui'
+import {
+  Button,
+  DimLine,
+  EmptyState,
+  LapSections,
+  SectionTitle,
+  TicketKindChip,
+  TicketStatusChip,
+} from '../../ui'
 import { IconChevronRight, IconDoc } from '../../icons'
 import { Markdown } from '../Markdown'
 import { SessionPanel } from '../SessionPanel'
@@ -102,6 +111,123 @@ export function TicketsBody({
     toast.push(`copied ${shortSha(sha)}`, 'info')
   }
 
+  // One ledger row, named rather than inlined: the lap grouping below renders
+  // rows per lap, and this is the same row whichever lap it sits under.
+  const ticketRow = (t: Ticket) => {
+    const isOpen = open.has(t.id)
+    return (
+      <div key={t.id} className={`ledger-row${isOpen ? ' is-open' : ''}`}>
+        <button className="ledger-head" onClick={() => toggle(t.id)}>
+          <span className="lg-caret">
+            <IconChevronRight size={11} />
+          </span>
+          <span className="lg-seq">#{t.seq}</span>
+          <span className="lg-title">{t.title}</span>
+          <TicketKindChip kind={t.kind} />
+          {t.blockedBy.length > 0 && (
+            <span className="lg-block" title="Runs after these tickets land">
+              after #{t.blockedBy.join(', #')}
+            </span>
+          )}
+          <span className="lg-meta">
+            <TicketStatusChip status={t.status} />
+          </span>
+        </button>
+
+        {isOpen && editing === t.id && (
+          <TicketEditor
+            ticket={t}
+            busy={edit.isPending}
+            onCancel={() => setEditing(null)}
+            onSave={(patch) => edit.mutate({ ticketId: t.id, ...patch })}
+          />
+        )}
+
+        {isOpen && editing !== t.id && (
+          <div className="ledger-detail">
+            {!readonly && EDITABLE_STATUSES.has(t.status) && (
+              <button className="td-edit-open" onClick={() => setEditing(t.id)}>
+                Edit ticket
+              </button>
+            )}
+            <div className="td-section">
+              <div className="td-heading">GOAL</div>
+              <div className="td-body"><Markdown source={t.goal} /></div>
+            </div>
+
+            {t.context && (
+              <div className="td-section">
+                <div className="td-heading">CONTEXT</div>
+                <div className="td-body"><Markdown source={t.context} /></div>
+              </div>
+            )}
+
+            <div className="td-section">
+              <div className="td-heading">ACCEPTANCE</div>
+              <ul className="td-list">
+                {t.acceptanceCriteria.map((c, i) => (
+                  <li key={i}>{c}</li>
+                ))}
+              </ul>
+            </div>
+
+            <div className="td-section">
+              <div className="td-heading">SEAMS</div>
+              <div className="td-seams">
+                {t.seams.map((s, i) => (
+                  <span key={i} className="seam">{s}</span>
+                ))}
+              </div>
+            </div>
+
+            <div className="td-section">
+              <div className="td-heading">COMMITS</div>
+              {t.commits.length === 0 ? (
+                <div className="td-empty">no commits yet — the burn writes them</div>
+              ) : (
+                <div className="td-commits">
+                  {t.commits.map((c) => (
+                    <button
+                      key={c}
+                      className="commit-sha"
+                      onClick={() => copySha(c)}
+                      title="copy full sha"
+                    >
+                      {shortSha(c)}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* The burner's own account of the burn — present on done
+                tickets whose agent wrote one, absent everywhere else. */}
+            {t.digest && (
+              <div className="td-section">
+                <div className="td-heading">DIGEST</div>
+                <div className="td-body"><Markdown source={t.digest} /></div>
+              </div>
+            )}
+
+            {t.status === 'failed' && t.error && (
+              <div className="td-section td-error">
+                <div className="td-heading">Error</div>
+                <div className="td-error-body">{t.error}</div>
+              </div>
+            )}
+
+            {t.status === 'cancelled' && t.error && (
+              <div className="td-section">
+                <div className="td-heading">Cancelled</div>
+                <div className="td-body">{t.error}</div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    )
+  }
+
   return (
     <>
       <SessionPanel
@@ -133,120 +259,18 @@ export function TicketsBody({
         </div>
       ) : (
         <div className="ledger">
-          {tickets.map((t) => {
-            const isOpen = open.has(t.id)
-            return (
-              <div key={t.id} className={`ledger-row${isOpen ? ' is-open' : ''}`}>
-                <button className="ledger-head" onClick={() => toggle(t.id)}>
-                  <span className="lg-caret">
-                    <IconChevronRight size={11} />
-                  </span>
-                  <span className="lg-seq">#{t.seq}</span>
-                  <span className="lg-title">{t.title}</span>
-                  <TicketKindChip kind={t.kind} />
-                  {t.blockedBy.length > 0 && (
-                    <span className="lg-block" title="Runs after these tickets land">
-                      after #{t.blockedBy.join(', #')}
-                    </span>
-                  )}
-                  <span className="lg-meta">
-                    <TicketStatusChip status={t.status} />
-                  </span>
-                </button>
-
-                {isOpen && editing === t.id && (
-                  <TicketEditor
-                    ticket={t}
-                    busy={edit.isPending}
-                    onCancel={() => setEditing(null)}
-                    onSave={(patch) => edit.mutate({ ticketId: t.id, ...patch })}
-                  />
-                )}
-
-                {isOpen && editing !== t.id && (
-                  <div className="ledger-detail">
-                    {!readonly && EDITABLE_STATUSES.has(t.status) && (
-                      <button className="td-edit-open" onClick={() => setEditing(t.id)}>
-                        Edit ticket
-                      </button>
-                    )}
-                    <div className="td-section">
-                      <div className="td-heading">GOAL</div>
-                      <div className="td-body"><Markdown source={t.goal} /></div>
-                    </div>
-
-                    {t.context && (
-                      <div className="td-section">
-                        <div className="td-heading">CONTEXT</div>
-                        <div className="td-body"><Markdown source={t.context} /></div>
-                      </div>
-                    )}
-
-                    <div className="td-section">
-                      <div className="td-heading">ACCEPTANCE</div>
-                      <ul className="td-list">
-                        {t.acceptanceCriteria.map((c, i) => (
-                          <li key={i}>{c}</li>
-                        ))}
-                      </ul>
-                    </div>
-
-                    <div className="td-section">
-                      <div className="td-heading">SEAMS</div>
-                      <div className="td-seams">
-                        {t.seams.map((s, i) => (
-                          <span key={i} className="seam">{s}</span>
-                        ))}
-                      </div>
-                    </div>
-
-                    <div className="td-section">
-                      <div className="td-heading">COMMITS</div>
-                      {t.commits.length === 0 ? (
-                        <div className="td-empty">no commits yet — the burn writes them</div>
-                      ) : (
-                        <div className="td-commits">
-                          {t.commits.map((c) => (
-                            <button
-                              key={c}
-                              className="commit-sha"
-                              onClick={() => copySha(c)}
-                              title="copy full sha"
-                            >
-                              {shortSha(c)}
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-
-                    {/* The burner's own account of the burn — present on done
-                        tickets whose agent wrote one, absent everywhere else. */}
-                    {t.digest && (
-                      <div className="td-section">
-                        <div className="td-heading">DIGEST</div>
-                        <div className="td-body"><Markdown source={t.digest} /></div>
-                      </div>
-                    )}
-
-                    {t.status === 'failed' && t.error && (
-                      <div className="td-section td-error">
-                        <div className="td-heading">Error</div>
-                        <div className="td-error-body">{t.error}</div>
-                      </div>
-                    )}
-
-                    {t.status === 'cancelled' && t.error && (
-                      <div className="td-section">
-                        <div className="td-heading">Cancelled</div>
-                        <div className="td-body">{t.error}</div>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            )
-          })}
+          {/* Grouped by lap (decisions.md #6): the ledger IS where the human
+              looks for "what was done this lap", so the lap it was done on is a
+              header here rather than a view of its own. */}
+          <LapSections
+            groups={groupByLap(tickets, full.data.feature.lap)}
+            currentLap={full.data.feature.lap}
+            meta={(g) =>
+              `${g.rows.filter((t) => t.status === 'done').length}/${g.rows.length} done`
+            }
+          >
+            {(rows) => rows.map(ticketRow)}
+          </LapSections>
         </div>
       )}
     </>

@@ -20,13 +20,6 @@ import { sessionActive } from './feature-ui'
  */
 export const PROJECT_BRANCH = 'runcastle/project'
 
-/**
- * The door's one wording. Both surfaces that demand a title the human may not
- * have yet — the empty workspace and the New Feature form — carry it verbatim,
- * so the affordance reads as the same door in both places.
- */
-export const TALK_IT_THROUGH = "Not sure it's one feature? Talk it through"
-
 /** What the pinned row's indicator and the workspace's session panel render. */
 export type ProjectSessionState = 'none' | 'launching' | 'live'
 
@@ -59,9 +52,10 @@ export function projectBranchNote(mainBranch: string): string {
 export type WorkspaceView = 'create' | 'prepare' | 'project' | 'feature' | 'empty'
 
 /**
- * The workspace body's one selector. A creation form owns the body outright;
+ * The workspace body's one selector. The Quick overlay owns the body outright;
  * then an explicitly opened preparation; then the pinned project row over the
- * selected feature.
+ * selected feature. (The other creation door, New, is not a view at all any
+ * more — it opens a fresh conversation in the project workspace.)
  *
  * The last line is the interesting one. A project with no features and no
  * preparation has exactly ONE sensible next step, so it gets the whole body
@@ -99,12 +93,20 @@ export function showsInspector(view: WorkspaceView, inspectorCollapsed: boolean)
  * time — "re-prepare", "redo", "re-run" all missed, which is how a finished
  * preparation became unreachable for anyone who had not memorised the noun.
  *
- * 'talk'/'ask' are here because the conversation is reached THROUGH this row:
- * the palette navigates, it never launches sessions, so searching for the
- * conversation has to land you where its button is.
+ * 'talk'/'ask' USED to be here, on the reasoning that the conversation was
+ * reached through this row. They are gone: the chat has a palette row of its
+ * own now, and typing "talk" landing on Preparation was the whole complaint.
  */
 const PREPARATION_TERMS =
-  'preparation prepare re-prepare reprepare redo re-run rerun again findings evidence stale project commands baseline talk ask secrets database'
+  'preparation prepare re-prepare reprepare redo re-run rerun again findings evidence stale project commands baseline secrets database'
+
+/**
+ * What the palette's project-chat row answers to. The chat is the intake door —
+ * where a raw idea goes before it is a feature — so it has to answer to the
+ * words for having a conversation, not only to its own name.
+ */
+const PROJECT_CHAT_TERMS =
+  'project chat talk ask conversation conversations idea intake discuss advice new chat'
 
 /**
  * Whether the palette shows Preparation for `q` (already trimmed+lowercased).
@@ -113,6 +115,11 @@ const PREPARATION_TERMS =
  */
 export function matchesPreparation(q: string): boolean {
   return PREPARATION_TERMS.includes(q)
+}
+
+/** The same rule for the project chat's row — see {@link matchesPreparation}. */
+export function matchesProjectChat(q: string): boolean {
+  return PROJECT_CHAT_TERMS.includes(q)
 }
 
 /**

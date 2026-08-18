@@ -9,28 +9,35 @@ import type { FeatureFull, PrepView } from '../lib/api'
 import { unverifiedDriveKeys } from '../lib/settings'
 import type { DriveState } from '../lib/workspace'
 import {
+  activeSession,
   defaultBaseBranch,
+  deferredScope,
   effectivePhase,
   isReadonlyView,
+  lapBanner,
   latestRun,
   mapDocPath,
-  mergeConflictKickoff,
   mergeSummary,
   nextStep,
   PHASE_LABELS,
   pipelineSteps,
   reviewOutcome,
+  specDocPath,
   testDriveTaken,
   unresolvedMergeConflict,
   type ActionKind,
+  type LapBanner,
   type MergeConflictState,
   type NextAction,
   type NextStep,
   type PipelineStep,
   type ReasonPrompt,
 } from '../lib/feature-ui'
-import { lapExplainer } from '../lib/vocabulary'
+import { LAP_KICKOFF, lapExplainer } from '../lib/vocabulary'
+import { relTime } from '../lib/format'
+import { useResolveConflict } from '../lib/use-resolve-conflict'
 import { IconBranch } from '../icons'
+import { AddressNotesDialog } from './AddressNotesDialog'
 import { MergeFeatureDialog } from './MergeFeatureDialog'
 import { DraftBody } from './bodies/DraftBody'
 import { GrillBody } from './bodies/GrillBody'
@@ -84,14 +91,18 @@ export function Workspace({
     { refetchInterval: useLivePoll(5000) },
   )
   // Test-drive notes, for the confirmation's open-notes line — same query key the
-  // review body's checklist reads, so the two share one fetch.
+  // review body's checklist reads, so the two share one fetch. The open ones are
+  // also what the bar's Address-notes triage acts on (decisions.md #11).
   const notes = trpc.notes.list.useQuery({ featureId }, { refetchInterval: useLivePoll() })
-  const openNotes = notes.data?.filter((n) => n.status === 'open').length
+  const openNoteRows = notes.data?.filter((n) => n.status === 'open') ?? []
+  const openNotes = notes.data ? openNoteRows.length : undefined
   // What the review agent made of this branch, for the confirmation's status
   // line — the same two reads the review card derives it from, so the dialog
   // cannot report a different review than the screen behind it.
   const review = reviewOutcome({ tickets: q.data?.tickets, notes: notes.data })
   const [confirmMerge, setConfirmMerge] = useState(false)
+  // The Address-notes triage fork is open (decisions.md #11).
+  const [addressing, setAddressing] = useState(false)
   // The next-step bar warns about remaining fog on a mapped feature, which lives
   // in the map doc's prose — same query key as the map rail's read, so the two
   // share one fetch.
@@ -100,6 +111,18 @@ export function Workspace({
     { featureId, relPath: mapRelPath ?? 'map.md' },
     { enabled: !!mapRelPath },
   )
+  // Scope the spec deliberately left for a later lap (decisions #7) — it steers
+  // the review bar's primary and warns in the merge dialog. Same query key the
+  // review body's Planned-next-lap card reads, so the bar and the card share one
+  // fetch and cannot disagree about what is still deferred.
+  // Only at review, where both readers are: every earlier phase would be paying
+  // for a doc read whose answer it has nowhere to put.
+  const specRelPath = q.data?.feature.phase === 'review' ? specDocPath(q.data) : undefined
+  const specQ = trpc.docs.read.useQuery(
+    { featureId, relPath: specRelPath ?? 'spec.md' },
+    { enabled: !!specRelPath },
+  )
+  const laterLaps = deferredScope(specQ.data?.content)
   // Before recommending a test drive the bar has to know what the drive is about
   // to depend on that nothing has ever proven (decision 7) — that lives on the
   // project's findings, same query key the preparation surfaces poll. And a
@@ -177,6 +200,17 @@ export function Workspace({
     },
     onError: (e) => toast.push(e.message),
   })
+  // The triage fork's quick-fix road: the whole selection in ONE mutation, so
+  // the tickets appear together and the notes list is frozen once, not per note.
+  const promoteNotes = trpc.notes.promoteMany.useMutation({
+    onSuccess: ({ tickets }) => {
+      invalidate()
+      void utils.notes.list.invalidate({ featureId })
+      setAddressing(false)
+      toast.push(`${tickets.length} fix ticket${tickets.length === 1 ? '' : 's'} added`, 'success')
+    },
+    onError: (e) => toast.push(e.message),
+  })
   const cancel = trpc.run.cancel.useMutation({
     onSuccess: () => {
       invalidate()
@@ -251,6 +285,10 @@ export function Workspace({
     },
     onError: (e) => toast.push(e.message),
   })
+  // The resolve launch, shared with the conflict card below so the two brief the
+  // agent identically (decisions #10) — and so the bar's primary can end a live
+  // session on the way in rather than hiding until the human ends it themselves.
+  const resolveConflict = useResolveConflict(featureId, q.data?.feature.branch ?? '')
 
   if (q.isLoading) {
     return (
@@ -302,7 +340,23 @@ export function Workspace({
     unverifiedDriveKeys: unverifiedDriveKeys((prepQ.data as PrepView | undefined)?.findings ?? []),
     dryRunActive: !!driveQ.data?.dryRun,
     draftBaseUnresolved: isDraft && !effectiveDraftBase,
+    openNotes,
+    laterLaps,
   })
+  // The terminal the resolve compound has to close on its way in — one read, so
+  // the bar's "End session & resolve" and the click that follows it can never be
+  // about different sessions.
+  const liveSession = activeSession(full.sessions)
+  // The lap the workspace is on, from lap 2 (decisions.md #6). Derived from the
+  // same event feed as the conflict banner — one poll for all of it.
+  const banner = lapBanner(full, events)
+  // Why the triage fork's rethink road cannot fire, read off the bar's OWN
+  // Iterate action rather than re-derived: the dialog must not disagree with the
+  // button beside it about whether the lap session can start.
+  const iterateAction = ns.secondary.find((a) => a.kind === 'rethink')
+  const iterateBlocked = iterateAction
+    ? iterateAction.disabled
+    : 'One terminal per feature — end the live session first.'
   const busy =
     start.isPending ||
     launch.isPending ||
@@ -313,7 +367,9 @@ export function Workspace({
     cancel.isPending ||
     testDrive.isPending ||
     merge.isPending ||
-    unarchive.isPending
+    promoteNotes.isPending ||
+    unarchive.isPending ||
+    resolveConflict.pending
 
   const runAction = (kind: ActionKind, reason?: string) => {
     switch (kind) {
@@ -384,23 +440,19 @@ export function Workspace({
       case 'merge':
         setConfirmMerge(true)
         break
+      // Triage for the findings inbox: the dialog offers the fork (promote the
+      // quick fixes, or start the lap session on all of them) — this click only
+      // opens it, exactly as `merge` opens its confirmation.
+      case 'addressNotes':
+        setAddressing(true)
+        break
       // Resolve a recorded merge conflict: a revisit session briefed to merge the
       // base into this branch in the talk worktree — the same launch the conflict
       // card offers, promoted to the bar's primary while the conflict stands.
+      // With a terminal already live this is the compound the bar's label
+      // promises: end that one first, because only one runs per feature.
       case 'resolveConflict':
-        if (conflict) {
-          launch.mutate({
-            featureId,
-            kind: 'revisit',
-            kickoffLine: mergeConflictKickoff(conflict.base, feature.branch, conflict.files),
-            // Same session the conflict card launches, so it carries the same
-            // purpose: the guard exempts its writes while this merge is in
-            // progress, and its end is when the server checks whether the merge
-            // landed and clears the conflict.
-            purpose: 'resolve-conflict',
-            purposeData: { mergeFrom: conflict.base, mergeInto: feature.branch },
-          })
-        }
+        if (conflict) void resolveConflict.resolve(conflict, liveSession?.id)
         break
     }
   }
@@ -454,6 +506,10 @@ export function Workspace({
         )}
       </div>
 
+      {/* Lap 1 renders nothing here at all — a feature that merges first try
+          looks exactly like the plain linear flow (ADR-0010 §4). */}
+      {banner && <LapBannerRow banner={banner} />}
+
       {readonly ? (
         <div className="readonly-bar">
           <span className="readonly-tag">READ-ONLY</span>
@@ -491,10 +547,25 @@ export function Workspace({
             driveTaken,
             openNotes,
             review,
+            laterLaps,
           })}
           busy={merge.isPending}
           onConfirm={runMerge}
           onCancel={() => setConfirmMerge(false)}
+        />
+      )}
+
+      {addressing && (
+        <AddressNotesDialog
+          notes={openNoteRows}
+          busy={promoteNotes.isPending || rethink.isPending}
+          iterateBlocked={iterateBlocked}
+          onPromote={(noteIds) => promoteNotes.mutate({ noteIds })}
+          onIterate={() => {
+            setAddressing(false)
+            runAction('rethink')
+          }}
+          onCancel={() => setAddressing(false)}
         />
       )}
 
@@ -525,6 +596,32 @@ export function Workspace({
         </div>
       </div>
     </section>
+  )
+}
+
+/**
+ * The lap banner (decisions.md #6) — from lap 2 on, under the workspace header:
+ * which lap this is, what put the feature on it, and what the lap before it
+ * landed. The user reported not knowing there WAS another lap; every surface
+ * below this line is lap-scoped, so the line that says which lap comes first.
+ *
+ * Never rendered on lap 1 (the caller checks): no iteration ceremony on a
+ * feature that merges first try, the same stance as the pipeline's lap chip.
+ */
+function LapBannerRow({ banner }: { banner: LapBanner }) {
+  return (
+    <div className="ws-lap" role="note">
+      <span className="ws-lap-tag" title={lapExplainer(banner.lap)}>
+        LAP {banner.lap}
+      </span>
+      <div className="ws-lap-body">
+        <div className="ws-lap-why">{LAP_KICKOFF}</div>
+        <div className="ws-lap-facts">
+          {banner.startedAt !== null && <span>started {relTime(banner.startedAt)} ago</span>}
+          <span>{banner.landed}</span>
+        </div>
+      </div>
+    </div>
   )
 }
 
