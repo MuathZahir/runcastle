@@ -1,4 +1,12 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs'
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import type { Feature, PreparedKey, Project } from '@runcastle/core'
@@ -694,6 +702,33 @@ export function ticketBranchName(slug: string, ticketSeq: number, unique: string
  */
 export function burnWorktreePath(repoPath: string, branch: string): string {
   return join(repoPath, '.sandcastle', 'worktrees', branch.replace(/\//g, '-'))
+}
+
+/**
+ * Add `pattern` to the repo's `info/exclude` — git's per-clone ignore list,
+ * which lives in `.git/` and is therefore never committed and never dirties the
+ * working tree the way an edit to `.gitignore` would.
+ *
+ * The path is asked of git rather than assembled, for two reasons: a linked
+ * worktree's `.git` is a FILE, not a directory, and git resolves `info/exclude`
+ * against the COMMON git dir anyway — so one write here covers the parent
+ * checkout and every burn worktree hanging off it, including worktrees that do
+ * not exist yet. That is what lets the burner exclude its attachments directory
+ * before sandcastle has created the worktree it will land in.
+ *
+ * The read-and-append is synchronous on purpose: tickets burn in parallel and
+ * all want the same line, and a sync read-modify-write cannot interleave, so N
+ * concurrent callers still produce one line.
+ */
+export async function excludePath(repoPath: string, pattern: string): Promise<void> {
+  const raw = (await git(repoPath).raw(['rev-parse', '--git-path', 'info/exclude'])).trim()
+  const file = resolve(repoPath, raw)
+  mkdirSync(dirname(file), { recursive: true })
+  const current = existsSync(file) ? readFileSync(file, 'utf8') : ''
+  if (current.split(/\r?\n/).includes(pattern)) return
+  writeFileSync(file, current.length > 0 && !current.endsWith('\n') ? `\n${pattern}\n` : `${pattern}\n`, {
+    flag: 'a',
+  })
 }
 
 /**

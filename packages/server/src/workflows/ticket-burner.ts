@@ -1,5 +1,5 @@
-import { existsSync, mkdirSync, readFileSync, readdirSync } from 'node:fs'
-import { dirname, join } from 'node:path'
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync } from 'node:fs'
+import { basename, dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type {
   Feature,
@@ -16,7 +16,15 @@ import {
   resolveSandboxImage,
 } from '@runcastle/core'
 import { loadConfig } from '@runcastle/core/config-load'
-import { burnCacheDir, envPath, featureDocsRel, logsDir, worktreeDir } from '@runcastle/core/paths'
+import {
+  ATTACHMENTS_DIR,
+  annotationPath,
+  burnCacheDir,
+  envPath,
+  featureDocsRel,
+  logsDir,
+  worktreeDir,
+} from '@runcastle/core/paths'
 import { resolveSkillsRoot } from '../launcher/skills-root'
 import {
   appendTranscript,
@@ -26,8 +34,10 @@ import {
 import {
   allowPushToCheckedOutBranches,
   branchCommitsAhead,
+  burnWorktreePath,
   cleanupBurnWorktree,
   commitSummaries,
+  excludePath,
   mergeTempBranch,
   ticketBranchName,
 } from '../services/git'
@@ -611,6 +621,83 @@ export function buildWorkspaceNotes(mode: BurnWorkspaceMode): string {
     '',
     `Write \`DIGEST.md\` at \`${SANDBOX_WORKSPACE_PATH}/DIGEST.md\` — the mounted mirror, so the host can see it — and NOT inside \`${ISOLATED_REPO_PATH}\`, where it would be committed with your work.`,
   ].join('\n')
+}
+
+// ---------------------------------------------------------------------------
+// Attachments — an annotated note's screenshot riding into its fix burn
+// ---------------------------------------------------------------------------
+
+/**
+ * The note ids a ticket's context names attachments for. The ticket payload
+ * carries no attachment field (its shape is pinned), so the
+ * `.runcastle-attachments/<noteId>.png` sentence the promotion wrote into the
+ * context is the whole handover — reading it back here is what closes the loop,
+ * and `attachmentRelPath` is the single place the spelling lives.
+ *
+ * Scanned rather than regexed against a hardcoded directory so the two ends
+ * cannot drift; a mention of a note that has no PNG is simply dropped later.
+ */
+export function attachedNoteIds(context: string): string[] {
+  const marker = `${ATTACHMENTS_DIR}/`
+  const ids: string[] = []
+  for (let at = context.indexOf(marker); at !== -1; at = context.indexOf(marker, at + 1)) {
+    const id = /^([\w-]+)\.png/.exec(context.slice(at + marker.length))?.[1]
+    if (id && !ids.includes(id)) ids.push(id)
+  }
+  return ids
+}
+
+/**
+ * Absolute host paths of the screenshots a ticket should burn with: every note
+ * its context names, minus the ones whose PNG is no longer on disk. A note's
+ * screenshot can be deleted between promotion and burn (the note itself, a
+ * manual cleanup), and that is not a burn failure — the agent's Read fails and
+ * it proceeds on the note text, exactly as an unannotated note would.
+ */
+export function attachmentSources(context: string): string[] {
+  return attachedNoteIds(context).map(annotationPath).filter((p) => existsSync(p))
+}
+
+/**
+ * Host `onWorktreeReady` commands that copy `sources` into the burn worktree's
+ * `.runcastle-attachments/`. Sandcastle runs these through the platform shell
+ * with cwd = the worktree, after `git worktree add` and before the sandbox
+ * starts — the one window in which the workspace exists on the host and no
+ * agent is looking at it yet. Doing it there rather than in a sandbox hook is
+ * what makes it sandbox-agnostic: docker and noSandbox both bind the same
+ * directory the copy just wrote into.
+ *
+ * One command per file (plus the mkdir) because `cmd.exe` does not chain an
+ * `if not exist` with `&&` the way `sh` chains `mkdir -p`, and sandcastle runs
+ * the list in order anyway.
+ */
+export function buildAttachmentCopyCommands(
+  sources: string[],
+  platform: NodeJS.Platform = process.platform,
+): { command: string }[] {
+  if (sources.length === 0) return []
+  const win = platform === 'win32'
+  const dir = ATTACHMENTS_DIR
+  const mkdir = win ? `if not exist "${dir}" mkdir "${dir}"` : `mkdir -p "${dir}"`
+  return [
+    { command: mkdir },
+    ...sources.map((src) => ({
+      command: win
+        ? `copy /Y "${src}" "${dir}\\${basename(src)}" >nul`
+        : `cp "${src}" "${dir}/${basename(src)}"`,
+    })),
+  ]
+}
+
+/**
+ * Take the attachments back out of a workspace once the run is over. Belt and
+ * braces: the directory is excluded from git before it is ever written, so it
+ * cannot be committed and cannot ride the merge — but a worktree sandcastle
+ * PRESERVES (the agent left uncommitted work) would otherwise keep the images
+ * around for as long as the leftover does.
+ */
+export function clearAttachments(workspacePath: string): void {
+  rmSync(join(workspacePath, ATTACHMENTS_DIR), { recursive: true, force: true })
 }
 
 /**
@@ -1885,6 +1972,19 @@ async function realExecuteTicketRun(
   // in-sandbox this write raced N containers on the shared `config.lock`.
   if (workspaceMode === 'isolated') await ensureIsolatedPushTarget()
 
+  // Screenshots the promoted note carried in (spec.md "Riding into the burn").
+  // The exclude goes in BEFORE the first copy and covers every worktree of this
+  // repo at once (git resolves `info/exclude` against the common git dir), so
+  // the images are unstageable from the moment they exist — no commit of the
+  // agent's can pick them up, and sandcastle's end-of-run dirty check still
+  // sees a clean tree.
+  const attachments = attachmentSources(ticket.context)
+  const attachmentCommands = buildAttachmentCopyCommands(attachments)
+  if (attachments.length > 0) await excludePath(project.repoPath, `${ATTACHMENTS_DIR}/`)
+  const clearAttachmentsFor = (branch: string) => {
+    if (attachments.length > 0) clearAttachments(burnWorktreePath(project.repoPath, branch))
+  }
+
   // Shared by both prompts: a resolver spawned after the fact gets the SAME
   // ticket + feature + docs context the implementer had (the whole point — it
   // must resolve by intent, which only the ticket and the feature docs carry).
@@ -2291,12 +2391,24 @@ async function realExecuteTicketRun(
         // wait, context cut) resumes instead of failing the ticket with zero
         // commits. Attempts (this loop) are one level up: a whole run() dying.
         maxIterations: config.burnMaxIterations,
-        ...(hookCommand
+        ...(hookCommand || attachmentCommands.length > 0
           ? {
               hooks: {
-                sandbox: {
-                  onSandboxReady: [{ command: hookCommand, timeoutMs: SETUP_HOOK_TIMEOUT_MS }],
-                },
+                // Host-side, after `git worktree add` and before the sandbox:
+                // the images land in the workspace the container is about to
+                // bind, so docker and noSandbox see them identically.
+                ...(attachmentCommands.length > 0
+                  ? { host: { onWorktreeReady: attachmentCommands } }
+                  : {}),
+                ...(hookCommand
+                  ? {
+                      sandbox: {
+                        onSandboxReady: [
+                          { command: hookCommand, timeoutMs: SETUP_HOOK_TIMEOUT_MS },
+                        ],
+                      },
+                    }
+                  : {}),
               },
             }
           : {}),
@@ -2305,8 +2417,11 @@ async function realExecuteTicketRun(
 
       try {
         result = await run(runOptions)
+        // Before anything lands: a preserved worktree must not keep the images.
+        clearAttachmentsFor(tempBranch)
         break
       } catch (err) {
+        clearAttachmentsFor(tempBranch)
         if (ctx.signal.aborted) throw err // let the runner mark the run cancelled
         const msg = err instanceof Error ? err.message : String(err)
         // Whatever the dead attempt committed survives on its temp branch —

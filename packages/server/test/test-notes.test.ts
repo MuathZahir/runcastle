@@ -356,6 +356,44 @@ describe('test notes service', () => {
       expect(listByFeature(ctx, feature.id)).toEqual([])
     })
 
+    it('tells the fix agent where to Read the screenshot, and when it was captured', () => {
+      const note = addNote(ctx, feature.id, 'the panel is misaligned', 'human', 42.6)
+      attachScreenshot(ctx, note.id, PNG)
+
+      const { ticket } = promoteNote(ctx, note.id)
+
+      expect(ticket.context).toBe(
+        `Found during lap 1 test drive of ${feature.slug}.\n\n` +
+          `Read docs/features/${feature.slug}/spec.md and docs/features/${feature.slug}/decisions.md for what this feature is meant to do.\n\n` +
+          `An annotated screenshot of the problem is at .runcastle-attachments/${note.id}.png in your workspace, ` +
+          'captured at 0:42 of the review walkthrough — Read it before starting; the drawing marks the problem area.',
+      )
+    })
+
+    it('names the attachment without a moment when the note carries no timestamp', () => {
+      const note = addNote(ctx, feature.id, 'the panel is misaligned')
+      attachScreenshot(ctx, note.id, PNG)
+
+      const { ticket } = promoteNote(ctx, note.id)
+
+      expect(ticket.context).toContain(
+        `An annotated screenshot of the problem is at .runcastle-attachments/${note.id}.png in your workspace — Read it`,
+      )
+    })
+
+    it('leaves the context of a note with no PNG on disk exactly as it was', () => {
+      // A timestamp without a screenshot is not an attachment — the paragraph
+      // exists to point at a file, and there is no file to point at.
+      const note = addNote(ctx, feature.id, 'the panel is misaligned', 'human', 42.6)
+
+      const { ticket } = promoteNote(ctx, note.id)
+
+      expect(ticket.context).toBe(
+        `Found during lap 1 test drive of ${feature.slug}.\n\n` +
+          `Read docs/features/${feature.slug}/spec.md and docs/features/${feature.slug}/decisions.md for what this feature is meant to do.`,
+      )
+    })
+
     it('carries the screenshot path into test-notes.md, and re-renders on upload', () => {
       const annotated = addNote(ctx, feature.id, 'the panel is misaligned')
       tick()
