@@ -9,18 +9,20 @@ import type { FeatureFull, PrepView } from '../lib/api'
 import { unverifiedDriveKeys } from '../lib/settings'
 import type { DriveState } from '../lib/workspace'
 import {
+  activeSession,
   defaultBaseBranch,
+  deferredScope,
   effectivePhase,
   isReadonlyView,
   lapBanner,
   latestRun,
   mapDocPath,
-  mergeConflictKickoff,
   mergeSummary,
   nextStep,
   PHASE_LABELS,
   pipelineSteps,
   reviewOutcome,
+  specDocPath,
   testDriveTaken,
   unresolvedMergeConflict,
   type ActionKind,
@@ -34,6 +36,7 @@ import {
 import { LAP_KICKOFF, lapExplainer } from '../lib/vocabulary'
 import { relTime } from '../lib/format'
 import { IconBranch } from '../icons'
+import { useResolveConflict } from '../lib/use-resolve-conflict'
 import { AddressNotesDialog } from './AddressNotesDialog'
 import { MergeFeatureDialog } from './MergeFeatureDialog'
 import { DraftBody } from './bodies/DraftBody'
@@ -108,6 +111,16 @@ export function Workspace({
     { featureId, relPath: mapRelPath ?? 'map.md' },
     { enabled: !!mapRelPath },
   )
+  // Scope the spec deliberately left for a later lap (decisions #7) — it steers
+  // the review bar's primary and warns in the merge dialog. Same query key the
+  // review body's Planned-next-lap card reads, so the bar and the card share one
+  // fetch and cannot disagree about what is still deferred.
+  const specRelPath = q.data ? specDocPath(q.data) : undefined
+  const specQ = trpc.docs.read.useQuery(
+    { featureId, relPath: specRelPath ?? 'spec.md' },
+    { enabled: !!specRelPath },
+  )
+  const laterLaps = deferredScope(specQ.data?.content)
   // Before recommending a test drive the bar has to know what the drive is about
   // to depend on that nothing has ever proven (decision 7) — that lives on the
   // project's findings, same query key the preparation surfaces poll. And a
@@ -270,6 +283,10 @@ export function Workspace({
     },
     onError: (e) => toast.push(e.message),
   })
+  // The resolve launch, shared with the conflict card below so the two brief the
+  // agent identically (decisions #10) — and so the bar's primary can end a live
+  // session on the way in rather than hiding until the human ends it themselves.
+  const resolveConflict = useResolveConflict(featureId, q.data?.feature.branch ?? '')
 
   if (q.isLoading) {
     return (
@@ -322,7 +339,12 @@ export function Workspace({
     dryRunActive: !!driveQ.data?.dryRun,
     draftBaseUnresolved: isDraft && !effectiveDraftBase,
     openNotes,
+    laterLaps,
   })
+  // The terminal the resolve compound has to close on its way in — one read, so
+  // the bar's "End session & resolve" and the click that follows it can never be
+  // about different sessions.
+  const liveSession = activeSession(full.sessions)
   // The lap the workspace is on, from lap 2 (decisions.md #6). Derived from the
   // same event feed as the conflict banner — one poll for all of it.
   const banner = lapBanner(full, events)
@@ -344,7 +366,8 @@ export function Workspace({
     testDrive.isPending ||
     merge.isPending ||
     promoteNotes.isPending ||
-    unarchive.isPending
+    unarchive.isPending ||
+    resolveConflict.pending
 
   const runAction = (kind: ActionKind, reason?: string) => {
     switch (kind) {
@@ -424,20 +447,10 @@ export function Workspace({
       // Resolve a recorded merge conflict: a revisit session briefed to merge the
       // base into this branch in the talk worktree — the same launch the conflict
       // card offers, promoted to the bar's primary while the conflict stands.
+      // With a terminal already live this is the compound the bar's label
+      // promises: end that one first, because only one runs per feature.
       case 'resolveConflict':
-        if (conflict) {
-          launch.mutate({
-            featureId,
-            kind: 'revisit',
-            kickoffLine: mergeConflictKickoff(conflict.base, feature.branch, conflict.files),
-            // Same session the conflict card launches, so it carries the same
-            // purpose: the guard exempts its writes while this merge is in
-            // progress, and its end is when the server checks whether the merge
-            // landed and clears the conflict.
-            purpose: 'resolve-conflict',
-            purposeData: { mergeFrom: conflict.base, mergeInto: feature.branch },
-          })
-        }
+        if (conflict) void resolveConflict.resolve(conflict, liveSession?.id)
         break
     }
   }
@@ -532,6 +545,7 @@ export function Workspace({
             driveTaken,
             openNotes,
             review,
+            laterLaps,
           })}
           busy={merge.isPending}
           onConfirm={runMerge}

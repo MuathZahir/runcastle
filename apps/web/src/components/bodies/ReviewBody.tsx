@@ -7,24 +7,30 @@ import type { DriveState } from '../../lib/workspace'
 import { driveCapabilities } from '../../lib/settings'
 import { testDriveExplainer } from '../../lib/vocabulary'
 import {
+  activeSession,
+  deferredScope,
   driveFailure,
   driveWheel,
   groupByLap,
+  lapAccount,
   latestRun,
-  mergeConflictKickoff,
+  ONE_TERMINAL_WARNING,
   openApp,
   openAppWaitingLabel,
   reviewChecks,
   reviewWalkthroughUrl,
-  sessionActive,
+  specDocPath,
   type DriveFailure,
+  type LapAccount,
   type MergeConflictState,
 } from '../../lib/feature-ui'
 import { useReviewArtifacts } from '../../lib/reviews'
 import { fmtDateTime, relTime } from '../../lib/format'
 import { useLivePoll } from '../../lib/live'
+import { useResolveConflict } from '../../lib/use-resolve-conflict'
 import { useToast } from '../../lib/toast'
 import { ErrorBoundary } from '../ErrorBoundary'
+import { Markdown } from '../Markdown'
 import { SessionPanel } from '../SessionPanel'
 import { TerminalView } from '../TerminalView'
 
@@ -66,10 +72,12 @@ export function ReviewBody({
   readonly?: boolean
 }) {
   const { feature, tickets, runs } = full
-  // Live-only: the conflict card's "Resolve with agent" spawns a terminal, and
-  // one terminal per feature — an ENDED session (which the panel still renders,
-  // with its Resume) must not hide it.
-  const sessionLive = full.sessions.some(sessionActive)
+  // The feature's open terminal, if it has one. The conflict card no longer
+  // HIDES behind it (decisions #10) — it ends this session on its way into the
+  // resolve one — but the drive-failure card still does, and an ENDED session
+  // (which the panel still renders, with its Resume) is not one either way.
+  const liveSession = activeSession(full.sessions)
+  const sessionLive = !!liveSession
   const run = latestRun(runs)
   const isDriving = driving?.featureId === feature.id
   // Commits come from git, not from ticket commit rows (findings F23). Polled
@@ -99,6 +107,19 @@ export function ReviewBody({
     commitCount: commits.data?.count,
     notes: notes.data,
   })
+  // What the lap delivered, in the agents' own prose (decisions #8) — the thing
+  // the human came to this screen to read, so it leads the card the figures are
+  // on rather than sitting under them.
+  const account = lapAccount(tickets)
+  // Scope the spec left for a later lap. Same read the next-step bar makes (one
+  // query key, one fetch), so the card below and the bar above cannot disagree
+  // about whether this lap is the last one.
+  const specRelPath = specDocPath(full)
+  const specQ = trpc.docs.read.useQuery(
+    { featureId: feature.id, relPath: specRelPath ?? 'spec.md' },
+    { enabled: !!specRelPath },
+  )
+  const laterLaps = deferredScope(specQ.data?.content)
   // What the review left on disk, over the plain HTTP routes beside tRPC. The
   // walkthrough sits with the summary rather than under the notes: the card
   // above says what the agent found, this one shows it happening.
@@ -131,7 +152,7 @@ export function ReviewBody({
           featureId={feature.id}
           branch={feature.branch}
           conflict={conflict}
-          sessionLive={sessionLive}
+          liveSessionId={liveSession?.id ?? null}
         />
       )}
 
@@ -140,6 +161,7 @@ export function ReviewBody({
       <div className="review-grid">
       <div className="review-card">
         <SectionTitle>Summary</SectionTitle>
+        {account && <LapAccountBlock account={account} />}
         {checks.map((row) => (
           <CheckLine key={row.key} row={row} />
         ))}
@@ -173,6 +195,8 @@ export function ReviewBody({
       </div>
       </div>
 
+      {laterLaps && <PlannedNextLapCard lap={feature.lap} scope={laterLaps} />}
+
       {isDriving && ownDrive && <DrivePane drive={ownDrive} />}
 
       {walkthrough && <WalkthroughCard url={walkthrough} />}
@@ -184,6 +208,66 @@ export function ReviewBody({
         rows={notes.data ?? []}
         readonly={readonly}
       />
+    </div>
+  )
+}
+
+/**
+ * What this lap landed, in prose, at the top of the summary card (decisions #8).
+ * The human arrives at review to read what the lap did — not a changed-files
+ * list, not hunks — and the only account worth leading with comes from an agent
+ * that was there.
+ *
+ * The review agent's own digest is that account: it ran last, held the spec plus
+ * every implementation digest, and actually saw the result working. The burners'
+ * per-ticket digests are the fallback, and they are LABELLED as the fallback,
+ * because several agents each saying what they did is a different (and weaker)
+ * thing than one account of the lap.
+ */
+function LapAccountBlock({ account }: { account: LapAccount }) {
+  return (
+    <div className="lap-account">
+      <div className="lap-account-head">What landed this lap</div>
+      {account.source === 'review' ? (
+        <Markdown source={account.prose} className="lap-account-prose" />
+      ) : (
+        <>
+          <div className="lap-account-note">
+            No review summary this lap — below is each burner’s own account of the ticket it ran.
+          </div>
+          {account.entries.map((entry) => (
+            <div key={entry.seq} className="lap-account-entry">
+              <div className="lap-account-ticket">
+                #{entry.seq} {entry.title}
+              </div>
+              <Markdown source={entry.digest} className="lap-account-prose" />
+            </div>
+          ))}
+        </>
+      )}
+    </div>
+  )
+}
+
+/**
+ * The scope this spec deliberately deferred (decisions #7), shown verbatim beside
+ * what the lap delivered.
+ *
+ * This card is the answer to the story the whole feature is about: a spec written
+ * as a thin lap 1 reached review, nothing on the page knew a lap 2 was planned,
+ * and the human shipped half a feature by clicking the main button. The bar above
+ * has already flipped its primary to Start lap N+1; this is what that button is
+ * for, in the spec's own words.
+ */
+function PlannedNextLapCard({ lap, scope }: { lap: number; scope: string }) {
+  return (
+    <div className="review-card planned-lap-card">
+      <SectionTitle>Planned next lap</SectionTitle>
+      <div className="drive-copy">
+        The spec kept this out of lap {lap} on purpose. Start lap {lap + 1} from the next step to
+        take it on — or ship what landed, if lap {lap} is enough.
+      </div>
+      <Markdown source={scope} className="planned-lap-scope" />
     </div>
   )
 }
@@ -555,29 +639,30 @@ function StopReviewDrive({ featureId }: { featureId: string }) {
 
 /**
  * The merge-conflict card (CONTEXT decision #9). Appears after a conflicted
- * Merge & ship, listing the conflicting files. "Resolve with agent" opens a
- * revisit session whose first message briefs the merge-into-feature resolution
- * (base branch + file list), so the agent resolves in the talk worktree and the
- * human retries Merge & ship. Hidden while a session is live — one terminal per
- * feature (the launcher's `assertSpawnable` refuses a second one regardless).
+ * Merge & ship, listing the conflicting files. Its button opens a revisit session
+ * whose first message briefs the merge-into-feature resolution (base branch +
+ * file list), so the agent resolves in the talk worktree and the human retries
+ * Merge & ship.
+ *
+ * The button NEVER hides (decisions #10). It used to disappear whenever any
+ * session was live — the one-terminal rule, enforced by the launcher's
+ * `assertSpawnable` — which read as the button randomly not existing until the
+ * chat was ended. With a session live it becomes "End session & resolve",
+ * performs that dance in one click, and says so underneath.
  */
 function ConflictCard({
   featureId,
   branch,
   conflict,
-  sessionLive,
+  liveSessionId,
 }: {
   featureId: string
   branch: string
   conflict: MergeConflictState
-  sessionLive: boolean
+  /** The terminal the resolve has to close first, or null when none is open. */
+  liveSessionId: string | null
 }) {
-  const utils = trpc.useUtils()
-  const toast = useToast()
-  const launch = trpc.feature.launchSession.useMutation({
-    onSuccess: () => void utils.feature.get.invalidate({ id: featureId }),
-    onError: (e) => toast.push(e.message),
-  })
+  const resolve = useResolveConflict(featureId, branch)
 
   return (
     <div className="review-card conflict-card">
@@ -601,27 +686,17 @@ function ConflictCard({
           ))}
         </ul>
       )}
-      {!sessionLive && (
-        <Button
-          variant="solid"
-          className="conflict-resolve"
-          disabled={launch.isPending}
-          onClick={() =>
-            launch.mutate({
-              featureId,
-              kind: 'revisit',
-              kickoffLine: mergeConflictKickoff(conflict.base, branch, conflict.files),
-              // The purpose is what lets the session actually do what the kickoff
-              // asks: the edit guard exempts its writes while the merge below is
-              // in progress in the talk worktree.
-              purpose: 'resolve-conflict',
-              purposeData: { mergeFrom: conflict.base, mergeInto: branch },
-            })
-          }
-        >
-          Resolve with agent
-        </Button>
-      )}
+      <Button
+        variant="solid"
+        className="conflict-resolve"
+        disabled={resolve.pending}
+        onClick={() => void resolve.resolve(conflict, liveSessionId ?? undefined)}
+      >
+        {liveSessionId ? 'End session & resolve' : 'Resolve with agent'}
+      </Button>
+      {/* What the compound costs, said before the click — the honesty that
+          replaces the button hiding itself. */}
+      {liveSessionId && <div className="conflict-note">{ONE_TERMINAL_WARNING}</div>}
     </div>
   )
 }

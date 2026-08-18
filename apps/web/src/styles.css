@@ -2248,6 +2248,48 @@ details.lap-group[open] > summary.lap-group-head::before { content: '▾'; }
 .check-dot.is-idle { background: var(--text-3); }
 .check-k { font-family: var(--mono); font-size: 12px; color: var(--text); width: 92px; flex: 0 0 auto; }
 .check-v { font-family: var(--mono); font-size: 11.5px; color: var(--text-3); }
+/* "What landed this lap" (decisions #8) — the prose the review page leads with,
+   above the figures rather than under them, because it is what the human came
+   to read. Bounded and scrollable: a digest is a dozen lines, and the card must
+   not push the drive panel beside it off the screen. */
+.lap-account {
+  margin-top: 12px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--hairline-soft);
+}
+.lap-account-head {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-3);
+  margin-bottom: 8px;
+}
+.lap-account-prose { max-height: 320px; overflow: auto; }
+/* The fallback is labelled, because per-ticket accounts are not a lap summary. */
+.lap-account-note {
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--text-3);
+  margin-bottom: 10px;
+}
+.lap-account-entry + .lap-account-entry {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--hairline-soft);
+}
+.lap-account-ticket {
+  font-family: var(--mono);
+  font-size: 11.5px;
+  color: var(--text-2);
+  margin-bottom: 6px;
+}
+/* the scope the spec deferred, verbatim beside what this lap delivered */
+.planned-lap-card {
+  max-width: 1000px;
+  border-color: color-mix(in srgb, var(--warn, #d9a441) 40%, var(--hairline));
+}
+.planned-lap-scope { margin-top: 12px; }
 .review-foot {
   margin-top: 14px;
   padding-top: 12px;
@@ -2296,6 +2338,13 @@ details.lap-group[open] > summary.lap-group-head::before { content: '▾'; }
   background: color-mix(in srgb, var(--danger) 9%, transparent);
 }
 .conflict-resolve { margin-top: 14px; }
+/* the one-terminal explanation, which replaced the button hiding itself */
+.conflict-note {
+  margin-top: 8px;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--text-3);
+}
 /* drive setup failure (multi-service decision 4) — the loudest card at review,
    because a drive that did not come up is where a human gets stranded */
 .drive-failure-card {
