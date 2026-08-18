@@ -5,6 +5,7 @@ import {
   ModelStep,
   RUNTIME_DEFAULT_MODELS,
   RuncastleConfig,
+  configuredRuntimes,
   mergeModelEntries,
   modelEntryFor,
   modelRoster,
@@ -299,5 +300,42 @@ describe('resolveModelEntry — the same chain, resolved to { id, runtime }', ()
       id: 'mystery-model',
       runtime: 'claude-code',
     })
+  })
+})
+
+/**
+ * The derivation the doctor's conditional severity rests on: a runtime is only
+ * something the operator can be in trouble over once one of their configured
+ * models actually runs on it.
+ */
+describe('configuredRuntimes', () => {
+  it('is claude-code alone on a stock config', () => {
+    expect(configuredRuntimes(RuncastleConfig.parse({}))).toEqual(['claude-code'])
+  })
+
+  it('picks up a runtime a per-step override brought in', () => {
+    const config = RuncastleConfig.parse({ stepModels: { implement: 'gpt-5.6-sol' } })
+    expect(configuredRuntimes(config)).toEqual(['claude-code', 'codex'])
+  })
+
+  it('is codex alone for a codex-only operator', () => {
+    const config = RuncastleConfig.parse({
+      model: 'gpt-5.6-sol',
+      stepModels: { smoke: 'gpt-5.6-luna' },
+    })
+    expect(configuredRuntimes(config)).toEqual(['codex'])
+  })
+
+  it('honours the operator roster for a custom id, and extra ids the caller holds', () => {
+    const config = RuncastleConfig.parse({ models: [{ id: 'my-proxy/gpt', runtime: 'codex' }] })
+    expect(configuredRuntimes(config, ['my-proxy/gpt'])).toEqual(['claude-code', 'codex'])
+    // A project override / ticket assignment nothing knows is claude-code, the
+    // historical default — never inferred from the id string.
+    expect(configuredRuntimes(config, ['mystery-model'])).toEqual(['claude-code'])
+  })
+
+  it('ignores blank extra ids — an unset override selects no runtime', () => {
+    const config = RuncastleConfig.parse({ model: 'gpt-5.6-sol', stepModels: {} })
+    expect(configuredRuntimes(config, [null, undefined, ''])).toEqual(['codex'])
   })
 })

@@ -438,6 +438,30 @@ export function modelEntryFor(id: string, config: ModelRosterConfig): ModelEntry
 }
 
 /**
+ * Every runtime some CONFIGURED model resolves to — the global default, every
+ * per-step override, and whatever extra ids the caller holds (per-project
+ * overrides, per-ticket assignments). Pure.
+ *
+ * This is what makes a runtime's readiness conditional: a host with no `codex`
+ * binary is perfectly healthy until some model the operator actually configured
+ * runs on Codex, at which point the missing CLI is a real, fixable error. Blank
+ * ids are ignored (an unset override inherits rather than selecting a runtime),
+ * and the result is ordered by {@link AGENT_RUNTIMES} so a report's runtime
+ * sections never shuffle between calls.
+ */
+export function configuredRuntimes(
+  config: ModelConfig,
+  extraModelIds: readonly (string | null | undefined)[] = [],
+): AgentRuntime[] {
+  const ids = [config.model, ...Object.values(config.stepModels), ...extraModelIds]
+  const found = new Set<AgentRuntime>()
+  for (const id of ids) {
+    if (id) found.add(modelEntryFor(id, config).runtime)
+  }
+  return AGENT_RUNTIMES.filter((r) => found.has(r))
+}
+
+/**
  * {@link resolveModel}'s chain, resolved all the way to the `{ id, runtime }`
  * pair a launch needs — the runtime a session or burn runs on is a property of
  * whichever model won the chain, never a knob of its own. Pure.
