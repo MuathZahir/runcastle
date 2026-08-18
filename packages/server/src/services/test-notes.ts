@@ -8,7 +8,12 @@ import type {
   TicketInput,
 } from '@runcastle/core'
 import { TestNote, newId } from '@runcastle/core'
-import { annotationPath, annotationsDir, featureDocsRel } from '@runcastle/core/paths'
+import {
+  annotationPath,
+  annotationsDir,
+  attachmentRelPath,
+  featureDocsRel,
+} from '@runcastle/core/paths'
 import { asc, eq } from 'drizzle-orm'
 import type { AppCtx } from '../db/types'
 import { testNotes } from '../db/schema'
@@ -254,6 +259,33 @@ export function toggleNote(ctx: AppCtx, noteId: string): TestNote {
 /** Longest a derived ticket title runs before it is elided. */
 const TITLE_MAX = 60
 
+/** `92.4` → `1:32` — the walkthrough moment as the player would show it. */
+function clockTime(seconds: number): string {
+  const whole = Math.floor(seconds)
+  return `${Math.floor(whole / 60)}:${String(whole % 60).padStart(2, '0')}`
+}
+
+/**
+ * The paragraph that carries an annotated note's screenshot into the burn
+ * (spec.md "Riding into the burn"). It names the WORKSPACE-relative path the
+ * burner copies the PNG to and tells the agent to Read it — the ticket payload
+ * has no attachment field, so this sentence is the entire contract, and
+ * `attachmentRelPath` is what keeps both ends spelling it the same way.
+ *
+ * Written only when the PNG is on disk at promotion time. The reverse case (a
+ * PNG deleted between promotion and burn) is left to degrade on its own: the
+ * agent's Read fails and it proceeds on the note text, which is exactly what an
+ * unannotated note gives it.
+ */
+function attachmentNote(note: TestNote): string | undefined {
+  if (!existsSync(annotationPath(note.id))) return undefined
+  const moment =
+    note.videoTimestamp === undefined
+      ? ''
+      : `, captured at ${clockTime(note.videoTimestamp)} of the review walkthrough`
+  return `An annotated screenshot of the problem is at ${attachmentRelPath(note.id)} in your workspace${moment} — Read it before starting; the drawing marks the problem area.`
+}
+
 /**
  * The mechanical promotion template (decisions.md #5): the note IS the spec of
  * the defect, so the ticket is assembled from it rather than drafted by an
@@ -262,6 +294,7 @@ const TITLE_MAX = 60
 function promotionTicket(feature: Feature, note: TestNote): TicketInput {
   const firstLine = note.text.split('\n')[0].trim()
   const docs = featureDocsRel(feature.slug)
+  const attachment = attachmentNote(note)
   return {
     title:
       firstLine.length <= TITLE_MAX
@@ -271,6 +304,7 @@ function promotionTicket(feature: Feature, note: TestNote): TicketInput {
     context: [
       `Found during lap ${note.lap} test drive of ${feature.slug}.`,
       `Read ${docs}/spec.md and ${docs}/decisions.md for what this feature is meant to do.`,
+      ...(attachment ? [attachment] : []),
     ].join('\n\n'),
     acceptanceCriteria: [`The noted behavior no longer reproduces: ${note.text}`],
     seams: [],
