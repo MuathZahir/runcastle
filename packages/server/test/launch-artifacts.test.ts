@@ -1,9 +1,10 @@
-import { readFileSync, rmSync } from 'node:fs'
+import { existsSync, readFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { sessionDir } from '@runcastle/core/paths'
 import { afterEach, describe, expect, it } from 'vitest'
-import type { Feature, RuncastleConfig, SessionRow } from '@runcastle/core'
-import { RuncastleConfig as ConfigSchema } from '@runcastle/core'
+import type { Feature, Project, RuncastleConfig, SessionRow } from '@runcastle/core'
+import { RuncastleConfig as ConfigSchema, SessionKind } from '@runcastle/core'
+import type { WriteArtifactsInput } from '../src/launcher/artifacts'
 import {
   RUNCASTLE_MCP_ALLOW_RULES,
   SESSION_BASH_ALLOW_RULES,
@@ -15,7 +16,14 @@ import {
   writeSessionArtifacts,
 } from '../src/launcher/artifacts'
 import { ptyExitMessage } from '../src/launcher/launcher'
-import { buildClaudeArgs } from '../src/launcher/runtimes/claude'
+import type { RuntimeLaunchInput, RuntimeLaunchSpec } from '../src/launcher/runtimes'
+import {
+  CC_NESTING_ENV,
+  KICKOFF_LINES,
+  buildClaudeArgs,
+  claudeRuntime,
+} from '../src/launcher/runtimes/claude'
+import { resolvePluginDir } from '../src/launcher/skills-root'
 
 const config: RuncastleConfig = ConfigSchema.parse({})
 
@@ -459,5 +467,124 @@ describe('writeSessionArtifacts', () => {
     expect(mcp.mcpServers.runcastle.headers['X-Runcastle-Session']).toBe(sess.id)
 
     expect(readFileSync(out.systemPromptPath, 'utf8')).toContain('/runcastle:ideate')
+  })
+})
+
+/**
+ * The AgentRuntime seam. Every launch now goes through an adapter, so the thing
+ * to pin is that the Claude adapter builds EXACTLY what the four launch sites
+ * used to build inline — same argv, same three artifact files, same env, same
+ * scrub list — for every session kind. `buildClaudeArgs` is the pre-refactor
+ * argv builder, unchanged, so comparing against it is comparing against what
+ * shipped before.
+ */
+describe('claudeRuntime.writeArtifacts', () => {
+  const created: string[] = []
+  afterEach(() => {
+    for (const id of created) rmSync(sessionDir(id), { recursive: true, force: true })
+    created.length = 0
+  })
+
+  const project: Project = { id: 'proj_1', name: 'p', repoPath: 'C:\\repo', mainBranch: 'main' }
+
+  /** The brief each kind is launched with — exactly the one its launch site passes. */
+  function briefFor(kind: SessionKind): Partial<WriteArtifactsInput> {
+    if (kind === 'prepare') {
+      return { prepare: { project, remainingKeys: ['devCommand'], established: [] } }
+    }
+    if (kind === 'project') {
+      return { projectBrief: { project, branch: 'runcastle/project', worktreePath: 'C:\\wt\\p' } }
+    }
+    if (kind === 'drive-fix') {
+      return {
+        driveFix: {
+          project,
+          feature: feature(),
+          failure: {
+            phase: 'setup',
+            command: 'bash .runcastle/drive-setup.sh',
+            exitCode: 3,
+            timedOut: false,
+            output: 'boom',
+          },
+          envKeys: [],
+          delta: { base: 'main', branch: 'feature/dark-mode', stat: '' },
+        },
+      }
+    }
+    return { feature: feature() }
+  }
+
+  async function launchSpec(
+    kind: SessionKind,
+    extra: Partial<RuntimeLaunchInput> = {},
+  ): Promise<RuntimeLaunchSpec> {
+    const sess = session({ id: `sess_rt_${kind}`, kind })
+    created.push(sess.id)
+    return claudeRuntime.writeArtifacts({
+      session: sess,
+      project,
+      config,
+      ...briefFor(kind),
+      worktreePath: 'C:\\wt\\dark-mode',
+      serverUrl: 'http://localhost:4512',
+      model: 'claude-sonnet-5',
+      ...extra,
+    })
+  }
+
+  it.each(SessionKind.options)('builds the pre-refactor argv for a %s session', async (kind) => {
+    const spec = await launchSpec(kind)
+    const dir = sessionDir(`sess_rt_${kind}`)
+
+    expect(spec.argv).toEqual(
+      buildClaudeArgs({
+        pluginDir: resolvePluginDir(),
+        settingsPath: join(dir, 'settings.json'),
+        mcpConfigPath: join(dir, 'mcp.json'),
+        systemPromptPath: join(dir, 'system-prompt.md'),
+        model: 'claude-sonnet-5',
+        strictMcp: false,
+      }),
+    )
+    // the three files the launch sites used to collect from writeSessionArtifacts
+    expect(spec.files).toEqual([
+      join(dir, 'system-prompt.md'),
+      join(dir, 'settings.json'),
+      join(dir, 'mcp.json'),
+    ])
+    for (const file of spec.files) expect(existsSync(file)).toBe(true)
+  })
+
+  it('carries the two runcastle env vars and the CC nesting scrub list', async () => {
+    const spec = await launchSpec('ideation')
+    expect(spec.env).toEqual({
+      RUNCASTLE_SESSION_ID: 'sess_rt_ideation',
+      RUNCASTLE_SERVER_URL: 'http://localhost:4512',
+    })
+    // the marker that makes a nested CC skip writing its transcript, breaking --resume
+    expect(spec.envScrub).toContain('CLAUDE_CODE_CHILD_SESSION')
+    expect(spec.envScrub).toEqual([...CC_NESTING_ENV])
+  })
+
+  it('passes the launch options through to the flags they used to set inline', async () => {
+    const resumed = await launchSpec('revisit', { resumeSessionId: 'cc-42' })
+    expect(resumed.argv.slice(0, 2)).toEqual(['--resume', 'cc-42'])
+
+    // the project session's `default` posture (decision 18), chosen by its site
+    const projected = await launchSpec('project', { permissionMode: 'default' })
+    expect(projected.argv[projected.argv.indexOf('--permission-mode') + 1]).toBe('default')
+
+    // strictMcp is the adapter's own reading of config.sessionMcp
+    const strict = await launchSpec('qa', {
+      config: ConfigSchema.parse({ sessionMcp: 'runcastleOnly' }),
+    })
+    expect(strict.argv).toContain('--strict-mcp-config')
+  })
+
+  it('spells the kickoff line for every kind (the launcher no longer holds a table)', () => {
+    for (const kind of SessionKind.options) {
+      expect(claudeRuntime.kickoffLine(kind)).toBe(KICKOFF_LINES[kind])
+    }
   })
 })
