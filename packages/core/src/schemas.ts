@@ -1,5 +1,5 @@
 import * as z from 'zod'
-import { ModelEntry } from './config'
+import { AgentRuntime, ModelEntry } from './config'
 
 /**
  * Wire types for tRPC and MCP. Every schema here is the single source of
@@ -473,6 +473,10 @@ export const SessionRow = z.object({
    */
   awaitingInput: z.boolean(),
   worktreePath: z.string(),
+  /** The model this session launched with; unset on a row created outside a launch. */
+  model: z.string().optional(),
+  /** The runtime that model runs on — see the db schema; unset reads as `DEFAULT_RUNTIME`. */
+  runtime: AgentRuntime.optional(),
   /** The conversation's derived name; unset until its transcript has one to give. */
   title: z.string().optional(),
   /** Insert time; unset on rows written before `sessions` had a timestamp. */
