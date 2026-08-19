@@ -2,6 +2,7 @@ import type { SessionKind } from '@runcastle/core'
 import { resolveTool } from '../../util/resolve-executable'
 import { writeSessionArtifacts } from '../artifacts'
 import { resolvePluginDir } from '../skills-root'
+import { kickoffLinesFor } from './skills'
 import type { AgentRuntimeAdapter, RuntimeLaunchInput, RuntimeLaunchSpec, RuntimeReadiness } from './types'
 
 /**
@@ -98,55 +99,16 @@ export const CC_NESTING_ENV = [
   'CLAUDE_CODE_SSE_PORT',
 ] as const
 
-/** The converge kickoff line, unchanged (E2E-proven — kept named for clarity). */
-export const CONVERGE_KICKOFF_LINE =
-  'Proceed with your task: invoke /runcastle:converge and drive spec then tickets ' +
-  'from map.md + decisions.md, per your system prompt.'
-
 /**
- * The per-kind kickoff line typed into a freshly-live session so no session
- * starts dead. Each line names the same opening skill its appended system prompt
- * does (`renderSystemPrompt` in artifacts.ts) so the injected line and the brief
- * agree on the first move. A later ticket's per-purpose revisit briefings arrive
- * via the `launchSession` override (see `setKickoffOverride`), not this table.
- *
- * Lives with the adapter because the SPELLING is Claude's: `/runcastle:x` is how
- * Claude Code invokes a skill, and a second runtime invokes the same skill
- * differently. Reached through {@link claudeRuntime}'s `kickoffLine`, never
- * indexed directly by the launcher.
+ * The kickoff lines a Claude Code session is opened with — the shared per-kind
+ * table (see {@link kickoffLinesFor}), spelled `/runcastle:x` because that is how
+ * Claude Code invokes a pack skill. Reached through {@link claudeRuntime}'s
+ * `kickoffLine`, never indexed directly by the launcher.
  */
-export const KICKOFF_LINES: Record<SessionKind, string> = {
-  ideation:
-    'Proceed with your task: invoke the /runcastle:ideate skill and drive the ideation session.',
-  qa:
-    'Proceed with your task: invoke the /runcastle:qa skill and answer questions from the ' +
-    'docs and code — do not advance phases or emit tickets.',
-  waypoint:
-    'Proceed with your task: invoke the /runcastle:waypoint skill and work your assigned ' +
-    'waypoint to a resolution.',
-  converge: CONVERGE_KICKOFF_LINE,
-  revisit:
-    'Proceed with your task: invoke the /runcastle:revisit skill and work through what the ' +
-    'human brings up.',
-  // No skill: the preparation brief is the whole task, and it arrives as the
-  // appended system prompt (renderPreparePrompt). The line only has to make the
-  // agent open its mouth — a headless run already measured what it could, so
-  // the useful first move is naming the gap, not re-deriving the repo.
-  prepare:
-    'Proceed with your task: work through the unestablished preparation fields with the human. ' +
-    'Start by telling them which fields are still open and what you need from them for each; ' +
-    'ask before running anything that touches their database or services.',
-  project:
-    'Proceed with your task: invoke the /runcastle:project skill and drive the project session.',
-  // No skill either: the failure, the drive's own environment and the branch
-  // delta all arrive as the appended system prompt (renderDriveFixPrompt), so
-  // the line only has to point at the first move — read the failure, do not
-  // start repairing anything before saying what you are about to do.
-  'drive-fix':
-    'Proceed with your task: the drive whose setup just failed is in your system prompt. Read ' +
-    'the failure, work out what the environment is missing, and tell me what you propose to ' +
-    'change before you change it; then fix it and retry the drive with retry_drive.',
-}
+export const KICKOFF_LINES: Record<SessionKind, string> = kickoffLinesFor('claude-code')
+
+/** The converge kickoff line, unchanged (E2E-proven — kept named for clarity). */
+export const CONVERGE_KICKOFF_LINE = KICKOFF_LINES.converge
 
 /** The CLI name, as `resolveTool` and the doctor's `claude` probe both spell it. */
 const CLAUDE_BIN = 'claude'
@@ -185,7 +147,9 @@ export const claudeRuntime: AgentRuntimeAdapter = {
   },
 
   async writeArtifacts(input: RuntimeLaunchInput): Promise<RuntimeLaunchSpec> {
-    const files = await writeSessionArtifacts(input)
+    // The adapter names the runtime the briefing is rendered for, so the prompt's
+    // skill spelling can never disagree with the CLI that is about to read it.
+    const files = await writeSessionArtifacts({ ...input, runtime: this.id })
     return {
       files: [files.systemPromptPath, files.settingsPath, files.mcpConfigPath],
       argv: buildClaudeArgs({
