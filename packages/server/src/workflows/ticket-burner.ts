@@ -2638,12 +2638,22 @@ function resolveBurnDeps(ctx: WorkflowCtx): BurnDeps {
     hasAuthToken: token !== undefined,
     concurrency: config.burnConcurrency,
     executeTicketRun: (c, ticket) => {
-      const m = resolveTicketModel(config, ctx.project, ctx.modelOverride, ticket)
-      const t =
-        m.runtime === model.runtime ? token : readTokenFromEnvFile(envPath(), m.runtime)
+      const ticketModel = resolveTicketModel(config, ctx.project, ctx.modelOverride, ticket)
+      const ticketToken =
+        ticketModel.runtime === model.runtime
+          ? token
+          : readTokenFromEnvFile(envPath(), ticketModel.runtime)
       return isReviewTicket(ticket)
-        ? executeReviewTicket(c, ticket, { config, token: t, model: m })
-        : realExecuteTicketRun(c, ticket, config, t, m, land, ensureIsolatedPushTarget)
+        ? executeReviewTicket(c, ticket, { config, token: ticketToken, model: ticketModel })
+        : realExecuteTicketRun(
+            c,
+            ticket,
+            config,
+            ticketToken,
+            ticketModel,
+            land,
+            ensureIsolatedPushTarget,
+          )
     },
   }
 }

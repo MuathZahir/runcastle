@@ -199,7 +199,7 @@ export function editTicket(ctx: AppCtx, id: string, patch: TicketContentPatch): 
   if (patch.seams !== undefined) set.seams = patch.seams
   if (patch.model !== undefined) set.model = normalizeModel(ctx, patch.model)
   if (Object.keys(set).length === 0) {
-    throw new InvalidInputError('nothing to edit — pass at least one content field')
+    throw new InvalidInputError('nothing to edit — pass at least one field')
   }
 
   ctx.db.update(tickets).set(set).where(eq(tickets.id, id)).run()
