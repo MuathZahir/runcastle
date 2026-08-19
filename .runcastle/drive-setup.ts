@@ -113,9 +113,12 @@ mkdirSync(dataDir, { recursive: true })
  *
  * Without this a drive can click around the UI and nothing else: every path
  * below derives from the data dir, so a fresh tree has no `.env` and therefore
- * no `CLAUDE_CODE_OAUTH_TOKEN` — and `readTokenFromEnvFile(envPath())` is how
- * the ticket burner and the research workflow authenticate. Burning tickets is
- * the product, so a drive that cannot burn is testing the shell.
+ * none of the per-runtime auth keys (`CLAUDE_CODE_OAUTH_TOKEN` for Claude Code
+ * burns, `CODEX_API_KEY` for Codex ones) — and `readTokenFromEnvFile(envPath(),
+ * runtime)` is how the ticket burner and the research workflow authenticate.
+ * Burning tickets is the product, so a drive that cannot burn is testing the
+ * shell. Copying the whole file is what makes this runtime-agnostic: a key added
+ * for a new runtime rides along with no change here.
  *
  * `config.json` comes too, for a subtler reason: a fresh tree falls back to
  * schema defaults, which would silently drive a DIFFERENT model and a different
