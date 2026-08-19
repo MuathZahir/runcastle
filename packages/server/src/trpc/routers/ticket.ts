@@ -20,7 +20,8 @@ import { publicProcedure, router } from '../context'
  *               the same rescue and the only way out of that state from the UI.
  * - `cancel`  — mark a pending/failed ticket cancelled (terminal; dependents
  *               treat it as satisfied). Same service the MCP tool uses.
- * - `edit`    — rewrite a pending/failed ticket's content from the UI. The
+ * - `edit`    — rewrite a pending/failed ticket's content, or reassign the model
+ *               it burns on, from the UI. The
  *               same `editTicket` service the MCP `update_ticket` tool calls,
  *               exposed on the wire because the quick-change door (decision 21)
  *               promises a card the human can correct before Burn *without*
@@ -57,6 +58,10 @@ export const ticketRouter = router({
         goal: z.string().min(1).optional(),
         context: z.string().optional(),
         acceptanceCriteria: z.array(z.string().min(1)).optional(),
+        // The burn-model assignment (decisions.md #4). Empty clears it, which is
+        // how the card's "default" option puts the ticket back on the ordinary
+        // chain; the service refuses any id off the configured roster.
+        model: z.string().optional(),
       }),
     )
     .mutation(({ ctx, input }) => {

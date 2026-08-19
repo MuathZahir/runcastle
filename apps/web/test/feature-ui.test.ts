@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { modelRoster } from '@runcastle/core'
 import type { EventRow, TicketStatus } from '@runcastle/core'
 import {
   activeSession,
@@ -35,6 +36,7 @@ import {
   sortForSidebar,
   testDriveTaken,
   ticketConflictKickoff,
+  ticketModelChip,
   ticketProgress,
   triage,
   triageOf,
@@ -2844,5 +2846,37 @@ describe('capLane', () => {
       expect(capped.visible).toHaveLength(12)
       expect(capped.expanderLabel).toBeNull()
     }
+  })
+})
+
+describe('ticketModelChip — what a card says about its burn model', () => {
+  const roster = modelRoster({ models: [{ id: 'my-proxy', runtime: 'codex', note: 'bulk edits' }] })
+
+  it('says nothing for an unassigned ticket', () => {
+    expect(ticketModelChip({ model: undefined }, roster)).toBeNull()
+    expect(ticketModelChip({ model: '' }, roster)).toBeNull()
+  })
+
+  it('names the assigned model with the runtime it launches', () => {
+    expect(ticketModelChip({ model: 'gpt-5.6-sol' }, roster)).toEqual({
+      id: 'gpt-5.6-sol',
+      runtime: 'codex',
+      runtimeLabel: 'Codex',
+    })
+    expect(ticketModelChip({ model: 'claude-opus-5' }, roster)?.runtimeLabel).toBe('Claude Code')
+  })
+
+  it('reads the runtime an operator declared for their own entry', () => {
+    // Never inferred from the id string (decisions.md #3) — "my-proxy" says
+    // nothing about its provider; the roster entry does.
+    expect(ticketModelChip({ model: 'my-proxy' }, roster)?.runtime).toBe('codex')
+  })
+
+  it('falls back to the default runtime for an id no longer on the roster', () => {
+    expect(ticketModelChip({ model: 'retired-model' }, roster)).toEqual({
+      id: 'retired-model',
+      runtime: 'claude-code',
+      runtimeLabel: 'Claude Code',
+    })
   })
 })

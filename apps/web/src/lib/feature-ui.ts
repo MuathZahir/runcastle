@@ -1,8 +1,17 @@
-import { nextPhase, parsePhase } from '@runcastle/core'
-import type { EventRow, GateId, Phase, TestNoteAuthor, TicketKind } from '@runcastle/core'
+import { modelEntryFor, nextPhase, parsePhase } from '@runcastle/core'
+import type {
+  AgentRuntime,
+  EventRow,
+  GateId,
+  ModelEntry,
+  Phase,
+  TestNoteAuthor,
+  Ticket,
+  TicketKind,
+} from '@runcastle/core'
 import type { BranchList, FeatureFull, FeatureListItem } from './api'
 import { relTime } from './format'
-import { PREPARED_LABEL } from './settings'
+import { PREPARED_LABEL, RUNTIME_LABEL } from './settings'
 
 /**
  * The New Feature form's default base branch. A new feature forks off the branch
@@ -1862,6 +1871,37 @@ export function groupByLap<T extends { lap: number }>(
     rows: rows.filter((r) => r.lap === lap),
     current: lap === expanded,
   }))
+}
+
+// --- per-ticket model assignment (decisions.md #4) ---------------------------
+
+/** A ticket's model assignment as its card shows it. */
+export interface TicketModelChip {
+  id: string
+  runtime: AgentRuntime
+  /** The runtime named for a human — "Claude Code", "Codex". */
+  runtimeLabel: string
+}
+
+/**
+ * What a ticket's card says about the model it will burn on, or null when it
+ * carries no assignment. Null is the ordinary case and shows nothing: an
+ * unassigned ticket burns on whatever the ledger's own model chip already
+ * names, and repeating that on every row would say nothing per ticket.
+ *
+ * The runtime comes from the roster rather than the id, since a model's runtime
+ * is a declared property of its entry (decisions.md #3) — an id the operator has
+ * since removed from the roster falls back to `modelEntryFor`'s default rather
+ * than leaving the chip runtime-less.
+ */
+export function ticketModelChip(
+  ticket: Pick<Ticket, 'model'>,
+  roster: readonly ModelEntry[],
+): TicketModelChip | null {
+  const id = ticket.model?.trim()
+  if (!id) return null
+  const { runtime } = modelEntryFor(id, { models: roster })
+  return { id, runtime, runtimeLabel: RUNTIME_LABEL[runtime] }
 }
 
 /** The workspace's lap banner (decisions.md #6), or null on lap 1. */

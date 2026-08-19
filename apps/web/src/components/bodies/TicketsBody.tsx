@@ -1,14 +1,14 @@
 import { useState } from 'react'
-import type { Ticket } from '@runcastle/core'
+import type { ModelEntry, Ticket } from '@runcastle/core'
 import { trpc } from '../../trpc'
 import { useToast } from '../../lib/toast'
 import { SANDBOX_MODE } from '../../lib/env'
 import { BURN_EXPLAINER } from '../../lib/vocabulary'
 import { shortSha } from '../../lib/format'
 import { useLivePoll } from '../../lib/live'
-import { effectiveStepModel } from '../../lib/settings'
+import { effectiveStepModel, modelOptionGroups, rosterFromView } from '../../lib/settings'
 import type { SettingsView } from '../../lib/api'
-import { groupByLap } from '../../lib/feature-ui'
+import { groupByLap, ticketModelChip } from '../../lib/feature-ui'
 import {
   Button,
   DimLine,
@@ -77,6 +77,9 @@ export function TicketsBody({
   // `useQuery().data` infers to `{}` here (the same tRPC-in-component typing gap
   // the settings overlay documents); the runtime value is a SettingsView.
   const model = effectiveStepModel(settings.data as SettingsView | undefined, 'implement') ?? '…'
+  // Every model the operator has configured — what a per-ticket assignment may
+  // be changed to, and where each id's runtime is declared (decisions.md #3).
+  const roster = rosterFromView(settings.data as SettingsView | undefined)
 
   if (full.isLoading) return <DimLine>loading tickets…</DimLine>
   // Hard error only when there was NEVER data. A refetch failure after data
@@ -115,6 +118,7 @@ export function TicketsBody({
   // rows per lap, and this is the same row whichever lap it sits under.
   const ticketRow = (t: Ticket) => {
     const isOpen = open.has(t.id)
+    const assigned = ticketModelChip(t, roster)
     return (
       <div key={t.id} className={`ledger-row${isOpen ? ' is-open' : ''}`}>
         <button className="ledger-head" onClick={() => toggle(t.id)}>
@@ -130,6 +134,16 @@ export function TicketsBody({
             </span>
           )}
           <span className="lg-meta">
+            {/* Only an ASSIGNED ticket says anything: an unassigned one burns on
+                the model the ledger's own chip already names. */}
+            {assigned && (
+              <span
+                className="chip chip-neutral"
+                title={`Burns on ${assigned.id} (${assigned.runtimeLabel})`}
+              >
+                {assigned.id} · {assigned.runtimeLabel}
+              </span>
+            )}
             <TicketStatusChip status={t.status} />
           </span>
         </button>
@@ -137,6 +151,7 @@ export function TicketsBody({
         {isOpen && editing === t.id && (
           <TicketEditor
             ticket={t}
+            roster={roster}
             busy={edit.isPending}
             onCancel={() => setEditing(null)}
             onSave={(patch) => edit.mutate({ ticketId: t.id, ...patch })}
@@ -289,20 +304,29 @@ interface TicketPatch {
   goal: string
   context: string
   acceptanceCriteria: string[]
+  /** The assigned model id, or `''` to clear it back to the default chain. */
+  model: string
 }
 
 /**
  * In-place editor for one pending/failed ticket. Seams are left alone: they are
  * the burner's map of the codebase, written by a session that read it, and the
  * ledger is not where a human re-derives them.
+ *
+ * The model IS editable here, and only here: the ticket session's assignment
+ * (decisions.md #4) is a suggestion the human overrules before Burn, and the
+ * same status guard that gates content edits is what makes "pre-burn" true —
+ * a burning ticket's agent has already launched on whatever model it had.
  */
 function TicketEditor({
   ticket,
+  roster,
   busy,
   onCancel,
   onSave,
 }: {
   ticket: Ticket
+  roster: readonly ModelEntry[]
   busy: boolean
   onCancel: () => void
   onSave: (patch: TicketPatch) => void
@@ -312,6 +336,7 @@ function TicketEditor({
   const [context, setContext] = useState(ticket.context)
   // One criterion per line — the same shape the human reads them in.
   const [criteria, setCriteria] = useState(ticket.acceptanceCriteria.join('\n'))
+  const [model, setModel] = useState(ticket.model ?? '')
 
   const lines = criteria
     .split('\n')
@@ -349,6 +374,24 @@ function TicketEditor({
         />
       </label>
 
+      <label className="td-section">
+        <div className="td-heading">MODEL</div>
+        <select className="td-input" value={model} onChange={(e) => setModel(e.target.value)}>
+          {/* Clearing the assignment is the first option, because unassigned is
+              the ordinary state — the burn then resolves its model as usual. */}
+          <option value="">default (project model)</option>
+          {modelOptionGroups(roster).map((g) => (
+            <optgroup key={g.runtime} label={g.label}>
+              {g.entries.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.note ? `${m.id} — ${m.note}` : m.id}
+                </option>
+              ))}
+            </optgroup>
+          ))}
+        </select>
+      </label>
+
       <div className="td-edit-actions">
         <Button variant="ghost" className="btn-xs" onClick={onCancel} disabled={busy}>
           Cancel
@@ -363,6 +406,7 @@ function TicketEditor({
               goal: goal.trim(),
               context: context.trim(),
               acceptanceCriteria: lines,
+              model,
             })
           }
         >
