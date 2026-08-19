@@ -40,6 +40,7 @@ import {
   resolveBurnWorkspaceMode,
   resolveMergeCommand,
   resolveSetupCommand,
+  resolveTicketModel,
   resolverTemplatePath,
   selectSandbox,
   burnerAssetPath,
@@ -433,6 +434,43 @@ describe('isWorktreeTeardownError', () => {
 /** A resolved model per runtime — what `resolveModelEntry` hands the chokepoint. */
 const CLAUDE_MODEL: ModelEntry = { id: 'claude-opus-5', runtime: 'claude-code' }
 const CODEX_MODEL: ModelEntry = { id: 'gpt-5.6-sol', runtime: 'codex' }
+
+describe('resolveTicketModel — an assignment is that ticket’s run override', () => {
+  const config = {
+    model: 'claude-sonnet-5',
+    stepModels: { implement: 'claude-opus-5' },
+    models: [{ id: 'gpt-5.6-sol', runtime: 'codex' as const, note: 'mechanical refactors' }],
+  }
+
+  it('burns an assigned ticket on its own model, runtime and all', () => {
+    expect(
+      resolveTicketModel(config, null, null, ticket(1, [], { model: 'gpt-5.6-sol' })),
+    ).toEqual({ id: 'gpt-5.6-sol', runtime: 'codex', note: 'mechanical refactors' })
+  })
+
+  it('leaves an unassigned ticket on the unchanged default chain', () => {
+    // No assignment: the `implement` step override wins, exactly as before
+    // per-ticket models existed.
+    expect(resolveTicketModel(config, null, null, ticket(2))).toEqual({
+      id: 'claude-opus-5',
+      runtime: 'claude-code',
+    })
+    // …and the per-project override still beats that step override.
+    expect(resolveTicketModel(config, { model: 'claude-haiku-4-5' }, null, ticket(2)).id).toBe(
+      'claude-haiku-4-5',
+    )
+  })
+
+  it('beats the run-level override for the ticket that carries one, not for the rest', () => {
+    expect(
+      resolveTicketModel(config, null, 'claude-haiku-4-5', ticket(3, [], { model: 'gpt-5.6-sol' }))
+        .id,
+    ).toBe('gpt-5.6-sol')
+    expect(resolveTicketModel(config, null, 'claude-haiku-4-5', ticket(4)).id).toBe(
+      'claude-haiku-4-5',
+    )
+  })
+})
 
 describe('selectSandbox — provider for the configured sandbox', () => {
   const config = (sandbox: RuncastleConfig['sandbox']): RuncastleConfig => ({

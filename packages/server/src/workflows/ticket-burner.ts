@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url'
 import type {
   AgentRuntime,
   Feature,
+  ModelConfig,
   ModelEntry,
   RuncastleConfig,
   Ticket,
@@ -2590,12 +2591,36 @@ async function realExecuteTicketRun(
 }
 
 /**
+ * The model ONE ticket burns on. A ticket the tickets session stamped carries
+ * its own assignment (decisions.md #4), and that assignment IS the run override
+ * for its burn — the human curated the roster it was chosen from and can still
+ * change it on the card. A ticket with no assignment resolves through the
+ * unchanged chain, run override (smoke) included.
+ *
+ * Pure, and exported so the assignment is observable without a container: the
+ * runtime it yields is what decides which CLI and which auth key the burn uses.
+ */
+export function resolveTicketModel(
+  config: ModelConfig,
+  project: { model?: string | null } | null | undefined,
+  runOverride: string | null | undefined,
+  ticket: Pick<Ticket, 'model'>,
+): ModelEntry {
+  return resolveModelEntry('implement', config, project, ticket.model ?? runOverride)
+}
+
+/**
  * Resolve production deps: real config, token from `~/.runcastle/.env`, real
  * run. The burner is the `implement` step (issue #48): its model resolves
- * through `resolveModel` — a per-run override (smoke) wins over the per-project
- * override, the global step override, then the global default. One serial merge
- * queue is created per run and shared by every ticket's execute closure, so
- * landings on the feature branch never overlap.
+ * through `resolveModel` — a per-ticket assignment or a per-run override (smoke)
+ * wins over the per-project override, the global step override, then the global
+ * default. One serial merge queue is created per run and shared by every
+ * ticket's execute closure, so landings on the feature branch never overlap.
+ *
+ * The run-level `model`/`token` are the run's default pair — what the auth
+ * precheck reports on and what every unassigned ticket burns with; a ticket that
+ * carries its own assignment re-resolves both, because a model on the other
+ * runtime authenticates with the other key.
  */
 function resolveBurnDeps(ctx: WorkflowCtx): BurnDeps {
   const config = loadConfig()
@@ -2612,10 +2637,14 @@ function resolveBurnDeps(ctx: WorkflowCtx): BurnDeps {
     runtime: model.runtime,
     hasAuthToken: token !== undefined,
     concurrency: config.burnConcurrency,
-    executeTicketRun: (c, ticket) =>
-      isReviewTicket(ticket)
-        ? executeReviewTicket(c, ticket, { config, token, model })
-        : realExecuteTicketRun(c, ticket, config, token, model, land, ensureIsolatedPushTarget),
+    executeTicketRun: (c, ticket) => {
+      const m = resolveTicketModel(config, ctx.project, ctx.modelOverride, ticket)
+      const t =
+        m.runtime === model.runtime ? token : readTokenFromEnvFile(envPath(), m.runtime)
+      return isReviewTicket(ticket)
+        ? executeReviewTicket(c, ticket, { config, token: t, model: m })
+        : realExecuteTicketRun(c, ticket, config, t, m, land, ensureIsolatedPushTarget)
+    },
   }
 }
 
