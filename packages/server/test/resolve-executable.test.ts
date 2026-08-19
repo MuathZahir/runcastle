@@ -98,6 +98,26 @@ describe('resolveTool', () => {
     expect(resolved).toBe('/opt/claude/bin/claude')
   })
 
+  it('honors RUNCASTLE_CODEX_BIN for codex', () => {
+    const resolved = resolveTool('codex', {
+      env: { RUNCASTLE_CODEX_BIN: '/opt/codex/bin/codex' },
+      platform: 'linux',
+      pathEnv: '/usr/bin',
+      exists: (p) => p === '/opt/codex/bin/codex',
+    })
+    expect(resolved).toBe('/opt/codex/bin/codex')
+  })
+
+  it('finds a codex npm shim on Windows when PATH is stale', () => {
+    const resolved = resolveTool('codex', {
+      env: { APPDATA: 'C:\\Users\\dev\\AppData\\Roaming' },
+      platform: 'win32',
+      pathEnv: 'C:\\Windows\\system32',
+      exists: (p) => p === 'C:\\Users\\dev\\AppData\\Roaming\\npm\\codex.cmd',
+    })
+    expect(resolved).toBe('C:\\Users\\dev\\AppData\\Roaming\\npm\\codex.cmd')
+  })
+
   it('honors RUNCASTLE_NODE_BIN for node', () => {
     const resolved = resolveTool('node', {
       env: { RUNCASTLE_NODE_BIN: '/opt/node/bin/node' },

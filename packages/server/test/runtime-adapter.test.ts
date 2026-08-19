@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process'
-import { mkdtempSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { AgentRuntime } from '@runcastle/core'
@@ -11,7 +11,14 @@ import { launchSession } from '../src/launcher/launcher'
 import type { AgentRuntimeAdapter, RuntimeReadiness } from '../src/launcher/runtimes'
 import { registerRuntimeAdapter, resetRuntimeAdapters } from '../src/launcher/runtimes'
 import { KICKOFF_LINES } from '../src/launcher/runtimes/claude'
-import { createSessionRow, getSessionRow, kickoffLineFor } from '../src/launcher/sessions'
+import { codexHomeDir } from '../src/launcher/runtimes/codex'
+import {
+  createSessionRow,
+  getSessionRow,
+  kickoffLineFor,
+  markSessionEnded,
+  markSessionLive,
+} from '../src/launcher/sessions'
 import { listAfter } from '../src/services/events'
 import { createFeatureBranch } from '../src/services/git'
 import { makeTestCtx } from './helpers/db'
@@ -96,6 +103,73 @@ describe('runtime dispatch at launch', () => {
     expect((launched?.data as { command?: string }).command).toBe('stub-agent --stub ok')
   })
 
+  /**
+   * The `spawn:false` smoke path on the REAL Codex adapter (SPEC §11). A launch
+   * configured through a synthetic home rather than through flags is only half
+   * described by its argv, so the rendered command carries `CODEX_HOME` too —
+   * without it the line reads as a session pointed at the human's own config.
+   */
+  it('renders the whole codex command, synthetic home included, without spawning', async () => {
+    useModel('gpt-5.6-sol', 'codex')
+
+    const project = seedProject(ctx, repoPath)
+    const feature = seedFeature(ctx, project.id, { slug: 'codex-smoke' })
+    await createFeatureBranch(project, 'codex-smoke')
+    cleanup.push(worktreeDir(project.id, 'codex-smoke'))
+
+    const { sessionId } = await launchSession(
+      ctx,
+      { featureId: feature.id, kind: 'ideation' },
+      { spawn: false },
+    )
+    cleanup.push(sessionDir(sessionId))
+
+    const launched = listAfter(ctx, feature.id, 0).find((e) => e.type === 'session.launched')
+    const command = String((launched?.data as { command?: string }).command)
+    expect(command).toContain(`CODEX_HOME=${codexHomeDir(sessionId)}`)
+    expect(command).toContain(`RUNCASTLE_SESSION_ID=${sessionId}`)
+    expect(command).toContain('codex --dangerously-bypass-hook-trust')
+    expect(existsSync(join(codexHomeDir(sessionId), 'config.toml'))).toBe(true)
+  })
+
+  /**
+   * `codex resume <id>` across a relaunch, on the id the SessionStart hook
+   * captured. This is the whole reason reopening a terminal after runcastle
+   * restarts continues the conversation instead of starting cold from the docs.
+   */
+  it('resumes a Codex conversation on relaunch, using the id SessionStart recorded', async () => {
+    useModel('gpt-5.6-sol', 'codex')
+
+    const project = seedProject(ctx, repoPath)
+    const feature = seedFeature(ctx, project.id, { slug: 'codex-resume' })
+    await createFeatureBranch(project, 'codex-resume')
+    cleanup.push(worktreeDir(project.id, 'codex-resume'))
+
+    const first = await launchSession(
+      ctx,
+      { featureId: feature.id, kind: 'ideation' },
+      { spawn: false },
+    )
+    cleanup.push(sessionDir(first.sessionId))
+    // what the SessionStart hook does with `payload.session_id`, then teardown
+    markSessionLive(ctx, first.sessionId, { ccSessionId: 'codex-rollout-7' })
+    markSessionEnded(ctx, first.sessionId)
+
+    const second = await launchSession(
+      ctx,
+      { featureId: feature.id, kind: 'ideation' },
+      { spawn: false },
+    )
+    cleanup.push(sessionDir(second.sessionId))
+
+    const launched = listAfter(ctx, feature.id, 0)
+      .filter((e) => e.type === 'session.launched')
+      .at(-1)
+    expect(String((launched?.data as { command?: string }).command)).toContain(
+      'codex resume codex-rollout-7',
+    )
+  })
+
   it('refuses a launch whose runtime is not ready, naming the doctor fix', async () => {
     registerRuntimeAdapter(
       stubAdapter('codex', {
@@ -121,14 +195,16 @@ describe('runtime dispatch at launch', () => {
   })
 
   it('refuses a launch whose runtime has no adapter at all', async () => {
-    useModel('gpt-5.6-sol', 'codex')
+    // Both shipped runtimes are wired up now, so the unwired case needs a runtime
+    // id no adapter claims — the shape a third runtime would first arrive in.
+    useModel('gemini-3-pro', 'gemini' as AgentRuntime)
 
     const project = seedProject(ctx, repoPath)
     const feature = seedFeature(ctx, project.id, { slug: 'unwired' })
 
     await expect(
       launchSession(ctx, { featureId: feature.id, kind: 'ideation' }, { spawn: false }),
-    ).rejects.toThrow(/no agent runtime is wired up for codex/)
+    ).rejects.toThrow(/no agent runtime is wired up for gemini/)
   })
 
   it('stamps the resolved model and runtime on the session row and its event', async () => {

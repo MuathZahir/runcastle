@@ -34,12 +34,18 @@ import { featureDocsRel } from '@runcastle/core/paths'
  * lands, the guard snaps back to docs-only.
  */
 
-/** The tools this guard is registered for (Claude Code's file-write surface). */
-export const EDIT_TOOLS = ['Edit', 'Write', 'NotebookEdit'] as const
+/**
+ * The tools this guard is registered for: Claude Code's file-write surface plus
+ * Codex's (`apply_patch`), because the guard is shared and a session is one or
+ * the other. Additive on purpose — a runtime never sees the other's tool names,
+ * so listing both costs nothing and keeps one matcher for both `hooks.json` and
+ * `settings.json`.
+ */
+export const EDIT_TOOLS = ['Edit', 'Write', 'NotebookEdit', 'apply_patch'] as const
 
 /**
- * The `matcher` string registering them. Claude Code matches a tool name against
- * this as a regex, so the alternation covers all three in one entry.
+ * The `matcher` string registering them. Both runtimes match a tool name against
+ * this as a regex, so the alternation covers all of them in one entry.
  */
 export const EDIT_TOOL_MATCHER = EDIT_TOOLS.join('|')
 

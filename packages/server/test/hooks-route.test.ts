@@ -278,6 +278,74 @@ describe('hooks route', () => {
     })
   })
 
+  /**
+   * Runtime parity at the route (feature `codex-runtime-support`, decision 9).
+   * Codex's hook protocol is Claude-shaped — the same stdin JSON, the same
+   * `hookSpecificOutput` verdicts — which is the whole reason this route and the
+   * edit guard are unchanged. What that buys has to be asserted HERE, where the
+   * traffic actually arrives, rather than inferred from the adapter writing a
+   * `hooks.json`.
+   */
+  describe('a Codex session drives the same lifecycle through the same route', () => {
+    let codexSession: string
+
+    beforeEach(() => {
+      codexSession = createSessionRow(ctx, {
+        featureId,
+        kind: 'ideation',
+        worktreePath: '/wt/dark-mode',
+        model: { id: 'gpt-5.6-sol', runtime: 'codex' },
+      }).id
+    })
+
+    it('goes live on SessionStart, awaits input on Stop, and ends on SessionEnd', async () => {
+      await post(mount(), 'session-start', {
+        sessionId: codexSession,
+        payload: { session_id: 'codex-rollout-7', hook_event_name: 'SessionStart', source: 'startup' },
+      })
+      expect(getSessionRow(ctx, codexSession)).toMatchObject({
+        status: 'live',
+        // the id `codex resume` needs, captured from the payload like any other
+        ccSessionId: 'codex-rollout-7',
+      })
+
+      await post(mount(), 'stop', { sessionId: codexSession, payload: { hook_event_name: 'Stop' } })
+      expect(getSessionRow(ctx, codexSession)?.awaitingInput).toBe(true)
+
+      await post(mount(), 'session-end', {
+        sessionId: codexSession,
+        payload: { hook_event_name: 'SessionEnd' },
+      })
+      expect(getSessionRow(ctx, codexSession)?.status).toBe('ended')
+    })
+
+    it('denies a Codex file edit outside the feature docs, and allows one inside', async () => {
+      const { json: denied } = await post(mount(), 'pre-tool', {
+        sessionId: codexSession,
+        payload: {
+          hook_event_name: 'PreToolUse',
+          tool_name: 'apply_patch',
+          tool_input: { file_path: '/wt/dark-mode/src/theme.ts' },
+        },
+      })
+      expect(denied.hookSpecificOutput).toMatchObject({
+        hookEventName: 'PreToolUse',
+        permissionDecision: 'deny',
+      })
+      expect(denied.hookSpecificOutput.permissionDecisionReason).toMatch(/do not write code/i)
+
+      const { json: allowed } = await post(mount(), 'pre-tool', {
+        sessionId: codexSession,
+        payload: {
+          hook_event_name: 'PreToolUse',
+          tool_name: 'apply_patch',
+          tool_input: { file_path: 'docs/features/dark-mode/decisions.md' },
+        },
+      })
+      expect(allowed).toEqual({})
+    })
+  })
+
   it('returns {} for an unknown session id (never breaks a session)', async () => {
     const { json } = await post(mount(), 'session-start', {
       sessionId: 'sess_does_not_exist',

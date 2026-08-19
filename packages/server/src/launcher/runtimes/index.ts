@@ -1,6 +1,7 @@
 import type { AgentRuntime } from '@runcastle/core'
 import { GateError } from '../../errors'
 import { claudeRuntime } from './claude'
+import { codexRuntime } from './codex'
 import type { AgentRuntimeAdapter } from './types'
 
 export type {
@@ -16,7 +17,7 @@ export type {
  * runtime is a property of the model, never a knob of its own).
  */
 
-const BUILT_IN: readonly AgentRuntimeAdapter[] = [claudeRuntime]
+const BUILT_IN: readonly AgentRuntimeAdapter[] = [claudeRuntime, codexRuntime]
 
 const adapters = new Map<AgentRuntime, AgentRuntimeAdapter>(BUILT_IN.map((a) => [a.id, a]))
 

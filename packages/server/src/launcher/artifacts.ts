@@ -2,6 +2,7 @@ import { mkdirSync, writeFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { join } from 'node:path'
 import type {
+  AgentRuntime,
   Feature,
   Project,
   RuncastleConfig,
@@ -10,11 +11,13 @@ import type {
   SessionRow,
   Waypoint,
 } from '@runcastle/core'
+import { DEFAULT_RUNTIME } from '@runcastle/core'
 import { featureDocsRel, sessionDir } from '@runcastle/core/paths'
 import type { DriveHookFailure } from '../services/drive-hooks'
 import type { BranchDelta } from '../services/git'
 import { ASSET_ENV, resolveAsset } from './asset-paths'
 import { EDIT_TOOL_MATCHER, guardsEdits } from './edit-guard'
+import { skillRef } from './runtimes/skills'
 
 /**
  * Session launch artifacts (SPEC §5.2). Writes `system-prompt.md`,
@@ -63,6 +66,14 @@ export interface WriteArtifactsInput {
    * `phase === 'review'` and by then the phase had moved).
    */
   lap?: number
+  /**
+   * The runtime this session's agent runs on, which decides how the briefing
+   * spells a skill invocation (see {@link skillRef}) — a Codex session told to
+   * invoke `/runcastle:ideate` simply does nothing. Optional: a caller that does
+   * not say gets {@link DEFAULT_RUNTIME}, the runtime every session ran on
+   * before there was a second one.
+   */
+  runtime?: AgentRuntime
 }
 
 /**
@@ -134,16 +145,17 @@ export function renderSystemPrompt(
   waypoint?: Waypoint,
   lap?: number,
   purpose?: SessionPurpose,
+  runtime: AgentRuntime = DEFAULT_RUNTIME,
 ): string {
-  if (kind === 'waypoint') return renderWaypointPrompt(feature, waypoint)
-  if (kind === 'converge') return renderConvergePrompt(feature)
-  if (kind === 'revisit') return renderRevisitPrompt(feature, lap, purpose)
+  if (kind === 'waypoint') return renderWaypointPrompt(feature, waypoint, runtime)
+  if (kind === 'converge') return renderConvergePrompt(feature, runtime)
+  if (kind === 'revisit') return renderRevisitPrompt(feature, lap, purpose, runtime)
 
   const docs = featureDocsRel(feature.slug) // docs/features/<slug>
   const entry =
     kind === 'ideation'
-      ? 'Begin by invoking the `/runcastle:ideate` skill and drive the ideation session to completion.'
-      : 'This is a Q&A session: invoke `/runcastle:qa`. Answer questions from the docs + code. Do NOT advance phases or emit tickets.'
+      ? `Begin by invoking the \`${skillRef(runtime, 'ideate')}\` skill and drive the ideation session to completion.`
+      : `This is a Q&A session: invoke \`${skillRef(runtime, 'qa')}\`. Answer questions from the docs + code. Do NOT advance phases or emit tickets.`
 
   return [
     `# runcastle — ${feature.title}`,
@@ -194,7 +206,11 @@ export function renderSystemPrompt(
  * writes decision prose straight to `decisions.md`/`map.md`, may branch the map
  * with `emit_waypoints`, and ends by calling `resolve_waypoint`.
  */
-export function renderWaypointPrompt(feature: Feature, waypoint?: Waypoint): string {
+export function renderWaypointPrompt(
+  feature: Feature,
+  waypoint?: Waypoint,
+  runtime: AgentRuntime = DEFAULT_RUNTIME,
+): string {
   const docs = featureDocsRel(feature.slug)
   const assigned = waypoint
     ? [
@@ -237,7 +253,7 @@ export function renderWaypointPrompt(feature: Feature, waypoint?: Waypoint): str
     '- `record_event({ type, message })` — drop a timeline note at a milestone.',
     '',
     '## Your task',
-    'Invoke the `/runcastle:waypoint` skill and work your assigned waypoint to a resolution.',
+    `Invoke the \`${skillRef(runtime, 'waypoint')}\` skill and work your assigned waypoint to a resolution.`,
     '',
   ].join('\n')
 }
@@ -249,7 +265,10 @@ export function renderWaypointPrompt(feature: Feature, waypoint?: Waypoint): str
  * `/runcastle:tickets` in one unbroken window. The feature has already crossed G1
  * into spec, so this rejoins the normal pipeline with no special-casing.
  */
-export function renderConvergePrompt(feature: Feature): string {
+export function renderConvergePrompt(
+  feature: Feature,
+  runtime: AgentRuntime = DEFAULT_RUNTIME,
+): string {
   const docs = featureDocsRel(feature.slug)
   return [
     `# runcastle — ${feature.title} (converge session)`,
@@ -279,8 +298,8 @@ export function renderConvergePrompt(feature: Feature): string {
     '- `record_event({ type, message })` — drop a timeline note at a milestone.',
     '',
     '## Your task',
-    'Invoke the `/runcastle:converge` skill. Working from the map + decisions only,',
-    'run `/runcastle:spec` (for a `full` feature) then `/runcastle:tickets` in this',
+    `Invoke the \`${skillRef(runtime, 'converge')}\` skill. Working from the map + decisions only,`,
+    `run \`${skillRef(runtime, 'spec')}\` (for a \`full\` feature) then \`${skillRef(runtime, 'tickets')}\` in this`,
     'one window. Do NOT re-grill and do NOT reopen resolved waypoints — converge.',
     `If \`${docs}/spec.md\` already exists (a previous converge session wrote it`,
     'before dying), read it, skip spec-writing, and proceed straight to tickets.',
@@ -315,6 +334,7 @@ export function renderRevisitPrompt(
   feature: Feature,
   lap?: number,
   purpose?: SessionPurpose,
+  runtime: AgentRuntime = DEFAULT_RUNTIME,
 ): string {
   const docs = featureDocsRel(feature.slug)
   const lapIteration = lap
@@ -400,7 +420,7 @@ export function renderRevisitPrompt(
     purpose === 'resolve-conflict' ? conflictResolutionRule() : noCodeRule(docs),
     '',
     '## Your task',
-    'Invoke the `/runcastle:revisit` skill and work through what the human brings up.',
+    `Invoke the \`${skillRef(runtime, 'revisit')}\` skill and work through what the human brings up.`,
     '',
   ].join('\n')
 }
@@ -800,7 +820,10 @@ export interface ProjectBrief {
  * live ADR in full — and the human waits through a whole orientation pass, and
  * often a subagent digest of it, before it says hello.
  */
-export function renderProjectPrompt(brief: ProjectBrief): string {
+export function renderProjectPrompt(
+  brief: ProjectBrief,
+  runtime: AgentRuntime = DEFAULT_RUNTIME,
+): string {
   const { project, branch, worktreePath } = brief
   return [
     `# runcastle — ${project.name} (project session)`,
@@ -851,7 +874,7 @@ export function renderProjectPrompt(brief: ProjectBrief): string {
     'ordinary file tools. The index says where.',
     '',
     '## Your task',
-    'Invoke the `/runcastle:project` skill, then open by asking the human what they brought.',
+    `Invoke the \`${skillRef(runtime, 'project')}\` skill, then open by asking the human what they brought.`,
     'Do not explore the project first: orienting before you know the ask spends their wait on',
     'context you may not need. Once they have told you, read only what answering calls for.',
     '',
@@ -1071,11 +1094,32 @@ export function renderRunMcpConfig(runId: string, config: RuncastleConfig): McpC
 
 // --- writer -----------------------------------------------------------------
 
+/**
+ * The whole briefing for one session, whichever of the four briefs it carries.
+ *
+ * A session that is not briefed from its feature row — a project-scoped one, or
+ * the host-side drive fix — supplies its kind's brief instead. Exactly one of
+ * the four is always present: a session with none would spawn a terminal with no
+ * instructions at all.
+ *
+ * Exported because a runtime injects it differently: Claude Code appends the
+ * file with `--append-system-prompt-file`, where Codex reads `AGENTS.md` out of
+ * its home dir. Same prose, two destinations.
+ */
+export function renderSessionPrompt(input: WriteArtifactsInput): string {
+  const { session, feature, waypoint, prepare, projectBrief, driveFix, lap, purpose, runtime } =
+    input
+  if (driveFix) return renderDriveFixPrompt(driveFix)
+  if (feature) return renderSystemPrompt(feature, session.kind, waypoint, lap, purpose, runtime)
+  if (prepare) return renderPreparePrompt(prepare)
+  if (projectBrief) return renderProjectPrompt(projectBrief, runtime)
+  throw new Error(`session ${session.id} has no feature and no project-session brief`)
+}
+
 export async function writeSessionArtifacts(
   input: WriteArtifactsInput,
 ): Promise<SessionArtifacts> {
-  const { session, feature, config, waypoint, prepare, projectBrief, driveFix, lap, purpose } =
-    input
+  const { session, config } = input
   const dir = sessionDir(session.id)
   mkdirSync(dir, { recursive: true })
 
@@ -1083,23 +1127,7 @@ export async function writeSessionArtifacts(
   const settingsPath = join(dir, 'settings.json')
   const mcpConfigPath = join(dir, 'mcp.json')
 
-  // A session that is not briefed from its feature row — a project-scoped one,
-  // or the host-side drive fix — supplies its kind's brief instead. Exactly one
-  // of the four is always present: a session with none would spawn a terminal
-  // with no instructions at all.
-  const systemPrompt = driveFix
-    ? renderDriveFixPrompt(driveFix)
-    : feature
-      ? renderSystemPrompt(feature, session.kind, waypoint, lap, purpose)
-      : prepare
-        ? renderPreparePrompt(prepare)
-        : projectBrief
-          ? renderProjectPrompt(projectBrief)
-          : (() => {
-              throw new Error(`session ${session.id} has no feature and no project-session brief`)
-            })()
-
-  writeFileSync(systemPromptPath, systemPrompt, 'utf8')
+  writeFileSync(systemPromptPath, renderSessionPrompt(input), 'utf8')
   writeFileSync(
     settingsPath,
     JSON.stringify(renderSettings(hookClientPath(), session.kind), null, 2),
