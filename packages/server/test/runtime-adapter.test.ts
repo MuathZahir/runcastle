@@ -12,7 +12,13 @@ import type { AgentRuntimeAdapter, RuntimeReadiness } from '../src/launcher/runt
 import { registerRuntimeAdapter, resetRuntimeAdapters } from '../src/launcher/runtimes'
 import { KICKOFF_LINES } from '../src/launcher/runtimes/claude'
 import { codexHomeDir } from '../src/launcher/runtimes/codex'
-import { createSessionRow, getSessionRow, kickoffLineFor } from '../src/launcher/sessions'
+import {
+  createSessionRow,
+  getSessionRow,
+  kickoffLineFor,
+  markSessionEnded,
+  markSessionLive,
+} from '../src/launcher/sessions'
 import { listAfter } from '../src/services/events'
 import { createFeatureBranch } from '../src/services/git'
 import { makeTestCtx } from './helpers/db'
@@ -124,6 +130,44 @@ describe('runtime dispatch at launch', () => {
     expect(command).toContain(`RUNCASTLE_SESSION_ID=${sessionId}`)
     expect(command).toContain('codex --dangerously-bypass-hook-trust')
     expect(existsSync(join(codexHomeDir(sessionId), 'config.toml'))).toBe(true)
+  })
+
+  /**
+   * `codex resume <id>` across a relaunch, on the id the SessionStart hook
+   * captured. This is the whole reason reopening a terminal after runcastle
+   * restarts continues the conversation instead of starting cold from the docs.
+   */
+  it('resumes a Codex conversation on relaunch, using the id SessionStart recorded', async () => {
+    useModel('gpt-5.6-sol', 'codex')
+
+    const project = seedProject(ctx, repoPath)
+    const feature = seedFeature(ctx, project.id, { slug: 'codex-resume' })
+    await createFeatureBranch(project, 'codex-resume')
+    cleanup.push(worktreeDir(project.id, 'codex-resume'))
+
+    const first = await launchSession(
+      ctx,
+      { featureId: feature.id, kind: 'ideation' },
+      { spawn: false },
+    )
+    cleanup.push(sessionDir(first.sessionId))
+    // what the SessionStart hook does with `payload.session_id`, then teardown
+    markSessionLive(ctx, first.sessionId, { ccSessionId: 'codex-rollout-7' })
+    markSessionEnded(ctx, first.sessionId)
+
+    const second = await launchSession(
+      ctx,
+      { featureId: feature.id, kind: 'ideation' },
+      { spawn: false },
+    )
+    cleanup.push(sessionDir(second.sessionId))
+
+    const launched = listAfter(ctx, feature.id, 0)
+      .filter((e) => e.type === 'session.launched')
+      .at(-1)
+    expect(String((launched?.data as { command?: string }).command)).toContain(
+      'codex resume codex-rollout-7',
+    )
   })
 
   it('refuses a launch whose runtime is not ready, naming the doctor fix', async () => {
