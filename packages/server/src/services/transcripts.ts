@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs'
-import { type AgentRuntime, DEFAULT_RUNTIME } from '@runcastle/core'
+import type { AgentRuntime } from '@runcastle/core'
 
 /**
  * Reading a session's transcript back out (SPEC §5 — the on-disk half of a
@@ -195,10 +195,7 @@ const PARSERS: Record<AgentRuntime, (jsonl: string) => ParseResult> = {
  * `unavailable` — a format we do not know, which is the case decision 10 leaves
  * room for. A file with nothing in it at all is an ordinary empty conversation.
  */
-export function parseTranscript(
-  jsonl: string,
-  runtime: AgentRuntime = DEFAULT_RUNTIME,
-): SessionTranscript {
+export function parseTranscript(jsonl: string, runtime: AgentRuntime): SessionTranscript {
   const { turns, recognized } = PARSERS[runtime](jsonl)
   if (!recognized && jsonl.trim().length > 0) return { status: 'unavailable', turns: [] }
   return { status: 'ok', turns }
@@ -211,7 +208,7 @@ export function parseTranscript(
  */
 export function readTranscript(
   path: string | null | undefined,
-  runtime: AgentRuntime = DEFAULT_RUNTIME,
+  runtime: AgentRuntime,
 ): SessionTranscript {
   if (!path) return { status: 'ok', turns: [] }
   try {

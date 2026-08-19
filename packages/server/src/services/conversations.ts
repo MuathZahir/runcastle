@@ -43,7 +43,7 @@ export const TITLE_MAX = 60
  * A transcript with the launcher's kickoff lines taken out of it.
  *
  * Every runcastle terminal opens with a kickoff line typed in by the launcher,
- * and Claude Code records it as a `user` turn — indistinguishable, on disk, from
+ * and the runtime records it as a `user` turn — indistinguishable, on disk, from
  * something the human typed. It is not: nobody wrote "Proceed with your task:
  * invoke the /runcastle:project skill…", so neither the title nor the transcript
  * may attribute it to them. Recognised with the same comparison the kickoff's own
@@ -51,21 +51,26 @@ export const TITLE_MAX = 60
  * kickoff is caught too — the resume framing is a prefix around the same line,
  * and {@link promptMatchesKickoff} compares on the line's own opening.
  *
+ * `runtime` is not optional, and that is the point: each adapter SPELLS the
+ * kickoff its own way (`/runcastle:project` against `$project`), so a matcher
+ * given the wrong runtime silently keeps the line and names the conversation
+ * after it.
+ *
  * Filtered here, server-side, so the one matcher serves every surface and the
  * title and the transcript can never disagree about who said the first thing.
  */
 function withoutKickoff(
   turns: TranscriptTurn[],
   kind: SessionKind,
-  runtime: AgentRuntime = DEFAULT_RUNTIME,
+  runtime: AgentRuntime,
 ): TranscriptTurn[] {
   const kickoff = kickoffLineFor(kind, undefined, runtime)
   return turns.filter((turn) => !(turn.role === 'user' && promptMatchesKickoff(kickoff, turn.text)))
 }
 
 /** The human's first line of a conversation, as a title (see {@link withoutKickoff}). */
-export function deriveTitle(turns: TranscriptTurn[]): string | null {
-  const first = withoutKickoff(turns, 'project').find((turn) => turn.role === 'user')
+export function deriveTitle(turns: TranscriptTurn[], runtime: AgentRuntime): string | null {
+  const first = withoutKickoff(turns, 'project', runtime).find((turn) => turn.role === 'user')
   return first ? elide(first.text) : null
 }
 
@@ -100,9 +105,10 @@ function untitled(createdAt: number | null): string {
 export function listProjectConversations(ctx: AppCtx, projectId: string): ProjectConversation[] {
   return projectSessions(ctx, projectId, 'project').map((session) => {
     const createdAt = session.createdAt ?? null
+    const runtime = session.runtime ?? DEFAULT_RUNTIME
     let title = session.title ?? null
     if (!title) {
-      title = deriveTitle(readTranscript(session.transcriptPath, session.runtime).turns)
+      title = deriveTitle(readTranscript(session.transcriptPath, runtime).turns, runtime)
       if (title) setSessionTitle(ctx, session.id, title)
     }
     return {

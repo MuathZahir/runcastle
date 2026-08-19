@@ -273,6 +273,29 @@ describe('reading a conversation back', () => {
     })
   })
 
+  /**
+   * The derived title runs through the same kickoff matcher, so it needs the
+   * same runtime — the adapters spell the kickoff differently, and a Codex
+   * conversation matched against Claude's spelling would be NAMED after the
+   * launcher's own opening line.
+   */
+  it('titles a Codex conversation from the human’s first message, not its kickoff', async () => {
+    const said = (role: 'user' | 'assistant', text: string) =>
+      JSON.stringify({
+        timestamp: '2026-01-01T00:00:00.000Z',
+        type: 'response_item',
+        payload: { type: 'message', role, content: [{ type: 'input_text', text }] },
+      })
+    const id = seedSession(
+      [said('user', CODEX_KICKOFF_LINES.project), said('user', 'rework the review page')],
+      'codex',
+    )
+
+    const list = await caller().project.conversations({ projectId: project.id })
+
+    expect(list.find((c) => c.id === id)?.title).toBe('rework the review page')
+  })
+
   /** A rollout format we do not recognise is said so, not rendered as silence. */
   it('reports a transcript it cannot parse as unavailable', async () => {
     const id = seedSession(['{"some":"format we have never seen"}'], 'codex')

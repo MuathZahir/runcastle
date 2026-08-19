@@ -172,7 +172,6 @@ function BriefingBanner({
   session: Session
   trouble: KickoffTrouble | null
 }) {
-  const sessionId = session.id
   const utils = trpc.useUtils()
   const toast = useToast()
   const resend = trpc.feature.resendKickoff.useMutation({
@@ -200,7 +199,7 @@ function BriefingBanner({
         type="button"
         className="btn btn-xs btn-ghost"
         disabled={resend.isPending}
-        onClick={() => resend.mutate({ sessionId })}
+        onClick={() => resend.mutate({ sessionId: session.id })}
       >
         {resend.isPending ? 'Sending…' : 'Send briefing'}
       </button>
