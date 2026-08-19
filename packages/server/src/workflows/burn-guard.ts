@@ -97,10 +97,12 @@ export const GUARD_INSTALL_PATHS: Record<AgentRuntime, { script: string; config:
   },
 }
 
-/** The container path the Claude Code guard script is installed at. */
+/**
+ * The container path the Claude Code guard script is installed at. Kept as a
+ * name of its own because it is the path this module's own history is written
+ * against; new code should read {@link GUARD_INSTALL_PATHS} and pass a runtime.
+ */
 export const GUARD_SCRIPT_PATH = GUARD_INSTALL_PATHS['claude-code'].script
-/** The container path of the settings file that registers the Claude Code hook. */
-export const GUARD_SETTINGS_PATH = GUARD_INSTALL_PATHS['claude-code'].config
 
 /**
  * Evaluate a Bash command against the rules — the same decision the in-sandbox
