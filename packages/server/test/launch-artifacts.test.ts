@@ -29,7 +29,7 @@ import {
   KICKOFF_LINES as CODEX_KICKOFF_LINES,
   codexHomeDir,
   codexRuntime,
-  inheritedMcpServers,
+  mcpServerTables,
   renderCodexHooks,
 } from '../src/launcher/runtimes/codex'
 import { resolvePluginDir } from '../src/launcher/skills-root'
@@ -789,10 +789,14 @@ describe('codexRuntime.writeArtifacts', () => {
   })
 
   it('never lets the human’s own `runcastle` entry shadow the generated one', () => {
-    const merged = inheritedMcpServers(
-      ['[mcp_servers.runcastle]', 'url = "http://stale"', '', '[mcp_servers.linear]', 'command = "x"'].join(
-        '\n',
-      ),
+    const merged = mcpServerTables(
+      [
+        '[mcp_servers.runcastle]',
+        'url = "http://stale"',
+        '',
+        '[mcp_servers.linear]',
+        'command = "x"',
+      ].join('\n'),
     )
     expect(merged).not.toContain('http://stale')
     expect(merged).toContain('[mcp_servers.linear]')

@@ -1,4 +1,13 @@
-import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs'
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs'
+import { homedir } from 'node:os'
 import { basename, dirname, join, resolve } from 'node:path'
 import type { RuncastleConfig, SessionKind, SessionRow } from '@runcastle/core'
 import { sessionDir } from '@runcastle/core/paths'
@@ -8,7 +17,12 @@ import { hookClientPath, renderSessionPrompt, serverUrlFor } from '../artifacts'
 import { EDIT_TOOL_MATCHER, guardsEdits } from '../edit-guard'
 import { resolvePluginDir } from '../skills-root'
 import { kickoffLinesFor } from './skills'
-import type { AgentRuntimeAdapter, RuntimeLaunchInput, RuntimeLaunchSpec, RuntimeReadiness } from './types'
+import type {
+  AgentRuntimeAdapter,
+  RuntimeLaunchInput,
+  RuntimeLaunchSpec,
+  RuntimeReadiness,
+} from './types'
 
 /**
  * The Codex adapter (decision 9) — the same session, driven by the other CLI.
@@ -41,11 +55,15 @@ export function codexHomeDir(sessionId: string): string {
   return join(sessionDir(sessionId), 'codex-home')
 }
 
-/** The human's REAL `auth.json`, which an interactive session borrows (decision 5). */
+/**
+ * The human's REAL `auth.json`, which an interactive session borrows (decision
+ * 5). Asked of the doctor's own probe so the launcher and the "Codex login"
+ * check can never disagree about where credentials live; `authFile` is optional
+ * on the shared spec type (Claude Code has none on darwin), so the same default
+ * it uses stands in.
+ */
 export function realCodexAuthFile(env: NodeJS.ProcessEnv = process.env): string {
-  // `authFile` is declared on the codex spec; the fallback keeps this total
-  // rather than making the launcher depend on a doctor field staying optional.
-  return CODEX.authFile?.(env) ?? join(env.HOME ?? env.USERPROFILE ?? '', '.codex', 'auth.json')
+  return CODEX.authFile?.(env) ?? join(homedir(), '.codex', 'auth.json')
 }
 
 // --- config.toml ------------------------------------------------------------
@@ -118,7 +136,7 @@ export function renderCodexConfig(input: CodexConfigInput): string {
  * verbatim cannot lose a field we did not think to model. Our own entry is
  * dropped if the human happens to have one, so the generated table always wins.
  */
-export function inheritedMcpServers(userConfigToml: string): string {
+export function mcpServerTables(userConfigToml: string): string {
   const sections: string[] = []
   let keep = false
   for (const line of userConfigToml.split(/\r?\n/)) {
@@ -138,7 +156,7 @@ function readInheritedMcpServers(env: NodeJS.ProcessEnv = process.env): string {
   const path = join(dirname(realCodexAuthFile(env)), 'config.toml')
   if (!existsSync(path)) return ''
   try {
-    return inheritedMcpServers(readFileSync(path, 'utf8'))
+    return mcpServerTables(readFileSync(path, 'utf8'))
   } catch {
     // A config we cannot read is not a launch we should refuse — the session
     // still gets runcastle's own server, which is the one it needs.
@@ -198,7 +216,9 @@ export function renderCodexHooks(
 ): CodexHooksFile {
   const cmd = (event: string): CodexCommandHook => {
     const command = `bun run "${hookClient}" ${event}`
-    return platform === 'win32' ? { type: 'command', command, commandWindows: command } : { type: 'command', command }
+    return platform === 'win32'
+      ? { type: 'command', command, commandWindows: command }
+      : { type: 'command', command }
   }
   return {
     hooks: {
@@ -273,7 +293,8 @@ function excludeFromGit(worktreePath: string, entry: string): void {
     const path = join(info, 'exclude')
     const existing = existsSync(path) ? readFileSync(path, 'utf8') : ''
     if (existing.split(/\r?\n/).some((line) => line.trim() === entry)) return
-    writeFileSync(path, `${existing.length > 0 && !existing.endsWith('\n') ? `${existing}\n` : existing}${entry}\n`, 'utf8')
+    const head = existing.length > 0 && !existing.endsWith('\n') ? `${existing}\n` : existing
+    writeFileSync(path, `${head}${entry}\n`, 'utf8')
   } catch {
     // An unwritable git dir costs the human a dirty-tree entry, not a session.
   }
