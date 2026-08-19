@@ -7,6 +7,7 @@
  * opens. Keeping the sentences here means every surface says the same thing.
  */
 
+import { DEFAULT_RUNTIME } from '@runcastle/core'
 import type { AgentRuntime } from '@runcastle/core'
 import type { DriveCapabilities } from './settings'
 
@@ -29,6 +30,17 @@ const AGENT_NAME: Record<AgentRuntime, string> = {
 
 export function agentName(runtime: AgentRuntime | null | undefined): string {
   return runtime ? AGENT_NAME[runtime] : 'the agent'
+}
+
+/**
+ * {@link agentName} for a session that EXISTS — which is a different question,
+ * because a session row always ran on something. A row written before the
+ * `runtime` column reads as {@link DEFAULT_RUNTIME} (the db schema's stated
+ * convention, and what the server applies when it reads one back), so an old
+ * conversation is named rather than anonymised.
+ */
+export function sessionAgentName(session: { runtime?: AgentRuntime | null }): string {
+  return agentName(session.runtime ?? DEFAULT_RUNTIME)
 }
 
 /** New-feature form: what the session it offers to open actually is. */

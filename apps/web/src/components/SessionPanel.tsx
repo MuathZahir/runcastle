@@ -4,6 +4,7 @@ import { trpc } from '../trpc'
 import { useEventLog } from '../lib/events'
 import { awaitingCheckIn, kickoffTrouble, sessionActive, sessionStatusLabel } from '../lib/feature-ui'
 import { useToast } from '../lib/toast'
+import { sessionAgentName } from '../lib/vocabulary'
 import { SessionStatusDot } from '../ui'
 import type { FeatureFull } from '../lib/api'
 import {
@@ -26,11 +27,11 @@ type DoneState = Exclude<SessionDoneState, { kind: 'notDone' }>
  * terminal; an ENDED one shows the quiet ended card — with a Resume control when
  * the conversation behind it is still resumable.
  *
- * Resume matters because a terminal is a real `claude` process in a server-owned
+ * Resume matters because a terminal is a real CLI process in a server-owned
  * PTY: quitting runcastle kills it and boot reconciliation marks the row ended,
  * so every session is "ended" on the next launch. The conversation itself
- * survives — Claude Code keeps the transcript on disk and the row kept its
- * `ccSessionId` — and the launcher `--resume`s the latest same-kind conversation
+ * survives — the runtime keeps the transcript on disk and the row kept its
+ * `ccSessionId` — and the launcher resumes the latest same-kind conversation
  * for the kind it is asked to open. So Resume is just "open this kind of
  * terminal again"; the server picks the target.
  *
@@ -113,7 +114,7 @@ function SessionNotices({ featureId, session }: { featureId: string; session: Se
       <CheckInHint session={session} events={events} />
       <BriefingBanner
         featureId={featureId}
-        sessionId={session.id}
+        session={session}
         trouble={kickoffTrouble(events, session.id)}
       />
     </>
@@ -155,7 +156,7 @@ function useNow(intervalMs: number): number {
  *
  * runcastle opens every terminal with a briefing typed into it — the merge-conflict
  * resolution, the review iteration, the plain per-kind opening move — and waits
- * for Claude Code to acknowledge it. When that acknowledgement never arrives (a
+ * for the CLI to acknowledge it. When that acknowledgement never arrives (a
  * startup dialog swallowed the keystrokes, the session never reported ready, or
  * the human typed first), the terminal is live but the agent is working blind.
  * This is the visible half of that state: it says so, and Send briefing re-types
@@ -164,13 +165,14 @@ function useNow(intervalMs: number): number {
  */
 function BriefingBanner({
   featureId,
-  sessionId,
+  session,
   trouble,
 }: {
   featureId: string
-  sessionId: string
+  session: Session
   trouble: KickoffTrouble | null
 }) {
+  const sessionId = session.id
   const utils = trpc.useUtils()
   const toast = useToast()
   const resend = trpc.feature.resendKickoff.useMutation({
@@ -192,7 +194,7 @@ function BriefingBanner({
       <span className="session-briefing-text">
         {trouble === 'not-ready'
           ? 'This terminal has not reported ready — answer anything waiting in it (a trust or resume prompt), then send the briefing.'
-          : 'The opening briefing never reached Claude Code — this session has not been told what it is here for.'}
+          : `The opening briefing never reached ${sessionAgentName(session)} — this session has not been told what it is here for.`}
       </span>
       <button
         type="button"
@@ -292,7 +294,7 @@ function pickPanelSession(sessions: Session[]): Session | undefined {
   )
 }
 
-/** True when this session's Claude Code conversation can be picked back up. */
+/** True when this session's runtime-side conversation can be picked back up. */
 function isResumable(session: Session): boolean {
   // A waypoint session's resume runs through `workWaypoint` (it must re-claim
   // the waypoint), so the map's own Resume button owns that path — offering a

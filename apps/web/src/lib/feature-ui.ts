@@ -12,6 +12,7 @@ import type {
 import type { BranchList, FeatureFull, FeatureListItem } from './api'
 import { relTime } from './format'
 import { PREPARED_LABEL, RUNTIME_LABEL } from './settings'
+import { sessionAgentName } from './vocabulary'
 
 /**
  * The New Feature form's default base branch. A new feature forks off the branch
@@ -1494,7 +1495,7 @@ export function nextStep(
         return {
           kick: 'GRILL LIVE',
           title: 'Grill session in progress',
-          desc: 'Shape the idea with Claude — it promotes the phase itself when the grilling is done.',
+          desc: `Shape the idea with ${sessionAgentName(live)} — it promotes the phase itself when the grilling is done.`,
           primary: undefined,
           secondary: [],
           busy: false,
@@ -1524,7 +1525,9 @@ export function nextStep(
           }
         : {
             kick: 'NEXT STEP',
-            title: 'Shape the idea with Claude',
+            // No session and none to resume: nothing has resolved a model yet,
+            // so there is no runtime to name (decision 11).
+            title: 'Shape the idea with the agent',
             desc: 'Launch a grill session to shape the idea before any code is written.',
             primary: { label: 'Start grill session', kind: 'startGrill' },
             secondary: [],
@@ -1574,7 +1577,9 @@ export function nextStep(
         return {
           kick: 'NEXT STEP',
           title: 'Review & burn the tickets',
-          desc: 'Each ticket is one atomic task Claude will implement. Review them, then burn.',
+          // "the agent", not a runtime: each ticket may carry its own model
+          // (decision 4), so this batch can span both runtimes.
+          desc: 'Each ticket is one atomic task the agent will implement. Review them, then burn.',
           // Burn stays primary even while a session is live: `emit_tickets` lands
           // one batch, so a non-zero count means the cards are ready to review.
           primary: { label: `Burn ${t} ticket${t === 1 ? '' : 's'}`, kind: 'burn' },

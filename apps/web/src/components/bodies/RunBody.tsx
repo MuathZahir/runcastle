@@ -18,7 +18,7 @@ import { SessionPanel } from '../SessionPanel'
 /**
  * Run / implementation phase-body for the pipeline-first workspace: a lanes|panel
  * split — ticket lanes on the left, a tabbed Agent|Events panel on the right.
- * The Agent tab is the live Claude Code-style transcript of the selected lane's
+ * The Agent tab is the live agent-style transcript of the selected lane's
  * agent (auto-selects the first burning ticket until you click a lane); the
  * Events tab keeps the coarse run timeline. No run header/cancel here (that
  * moved to the workspace next-step bar). `readonly` is accepted but ignored.
