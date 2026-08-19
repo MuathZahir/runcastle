@@ -7,11 +7,33 @@
  * opens. Keeping the sentences here means every surface says the same thing.
  */
 
+import type { AgentRuntime } from '@runcastle/core'
 import type { DriveCapabilities } from './settings'
+
+/**
+ * What to call the thing on the other side of a session (decision 11).
+ *
+ * Distinct from `RUNTIME_LABEL`, which names the *product* in a settings
+ * dropdown ("Claude Code"); this names the *correspondent* in a sentence, which
+ * is the shorter word — you shape an idea with Claude, not with Claude Code.
+ *
+ * `undefined` is the case that matters most: copy about a session that has not
+ * been launched, or about work that has not picked a model, cannot know the
+ * runtime and must not guess one — a Codex-only human reading "Claude" is the
+ * broken product decision 11 exists to prevent.
+ */
+const AGENT_NAME: Record<AgentRuntime, string> = {
+  'claude-code': 'Claude',
+  codex: 'Codex',
+}
+
+export function agentName(runtime: AgentRuntime | null | undefined): string {
+  return runtime ? AGENT_NAME[runtime] : 'the agent'
+}
 
 /** New-feature form: what the session it offers to open actually is. */
 export const GRILL_EXPLAINER =
-  'A grill session is a Q&A conversation with Claude to pin the idea down before any code is written.'
+  'A grill session is a Q&A conversation with the agent to pin the idea down before any code is written.'
 
 /**
  * Tickets + build bodies: the mechanics behind Burn, which the bar's "review,
