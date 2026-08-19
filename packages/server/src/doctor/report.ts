@@ -21,17 +21,21 @@ function statusWord(status: ProbeStatus): string {
 }
 
 function line(r: ProbeResult): string {
+  // An `info` gap is a runtime nothing the operator configured runs on: report
+  // what was found, but never as a defect — no ✗, no fix line, no issue count.
+  const informational = r.severity === 'info' && r.status !== 'ok'
   const tier = `[T${r.tier}]`
-  const head = `${GLYPH[r.status]} ${tier} ${r.label} — ${statusWord(r.status)}`
+  const suffix = informational ? ' (not in use)' : ''
+  const head = `${informational ? '·' : GLYPH[r.status]} ${tier} ${r.label} — ${statusWord(r.status)}${suffix}`
   const detail = `    ${r.detail}`
-  if (r.status === 'ok' || !r.fix) return `${head}\n${detail}`
+  if (r.status === 'ok' || informational || !r.fix) return `${head}\n${detail}`
   return `${head}\n${detail}\n    fix: ${r.fix}`
 }
 
 /** Render the full report as a block of text, one stanza per probe. */
 export function formatReport(report: DoctorReport, mode: DoctorMode = 'diagnostic'): string {
   const body = report.results.map(line).join('\n')
-  const failing = report.results.filter((r) => r.status !== 'ok')
+  const failing = report.results.filter((r) => r.severity === 'error' && r.status !== 'ok')
   const tier1Failing = failing.filter((r) => r.tier === 1)
 
   let summary: string

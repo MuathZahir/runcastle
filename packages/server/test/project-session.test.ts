@@ -14,9 +14,9 @@ import {
   renderProjectPrompt,
   renderSettings,
 } from '../src/launcher/artifacts'
-import { buildClaudeArgs, launchProjectSession } from '../src/launcher/launcher'
+import { launchProjectSession } from '../src/launcher/launcher'
+import { KICKOFF_LINES, buildClaudeArgs } from '../src/launcher/runtimes/claude'
 import {
-  KICKOFF_LINES,
   awaitProjectLandings,
   getSessionRow,
   reportProjectLanding,

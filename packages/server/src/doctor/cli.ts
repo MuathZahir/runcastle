@@ -1,9 +1,14 @@
 import { existsSync, readFileSync } from 'node:fs'
-import { resolveSandboxImage } from '@runcastle/core'
+import {
+  AGENT_RUNTIMES,
+  configuredRuntimes,
+  resolveSandboxImage,
+  type AgentRuntime,
+} from '@runcastle/core'
 import { envPath } from '@runcastle/core/paths'
 import { loadConfig } from '@runcastle/core/config-load'
 import { parseEnvFile } from '../workflows/ticket-burner'
-import { runDoctor, exitCodeFor, type DoctorEnv, type DoctorMode } from './doctor'
+import { RUNTIME_SPECS, runDoctor, exitCodeFor, type DoctorEnv, type DoctorMode } from './doctor'
 import { formatReport } from './report'
 import { createSystemExec } from './system-exec'
 
@@ -19,17 +24,21 @@ export function parseMode(argv: string[]): DoctorMode {
   return argv.includes('--gate') || argv.includes('--boot') ? 'gate' : 'diagnostic'
 }
 
-/** Merge `CLAUDE_CODE_OAUTH_TOKEN` from `~/.runcastle/.env` over `process.env`. */
-function envWithToken(): Record<string, string | undefined> {
+/** Merge every runtime's AFK credential from `~/.runcastle/.env` over `process.env`. */
+function envWithAfkCredentials(): Record<string, string | undefined> {
   const merged: Record<string, string | undefined> = { ...process.env }
   try {
     const path = envPath()
     if (existsSync(path)) {
-      const fromFile = parseEnvFile(readFileSync(path, 'utf8')).CLAUDE_CODE_OAUTH_TOKEN
-      if (fromFile && fromFile.length > 0) merged.CLAUDE_CODE_OAUTH_TOKEN = fromFile
+      const fromFile = parseEnvFile(readFileSync(path, 'utf8'))
+      for (const runtime of AGENT_RUNTIMES) {
+        const key = RUNTIME_SPECS[runtime].afkKey
+        const value = fromFile[key]
+        if (value && value.length > 0) merged[key] = value
+      }
     }
   } catch {
-    // A malformed/unreadable .env just means the token probe reports it unset.
+    // A malformed/unreadable .env just means the key probes report it unset.
   }
   return merged
 }
@@ -37,18 +46,25 @@ function envWithToken(): Record<string, string | undefined> {
 /** Assemble the production {@link DoctorEnv} from real config + host state. */
 export function resolveDoctorEnv(): DoctorEnv {
   let imageName: string | undefined
+  // Which runtimes are the operator's problem is a property of their model
+  // config: a runtime nothing resolves to is reported, never demanded.
+  let runtimes: AgentRuntime[] | undefined
   try {
-    imageName = resolveSandboxImage(loadConfig())
+    const config = loadConfig()
+    imageName = resolveSandboxImage(config)
+    runtimes = configuredRuntimes(config)
   } catch {
-    // Config unreadable — let the doctor env fall back to DEFAULT_SANDBOX_IMAGE.
+    // Config unreadable — fall back to DEFAULT_SANDBOX_IMAGE and the default runtime.
     imageName = undefined
+    runtimes = undefined
   }
   return {
     exec: createSystemExec({ cwd: process.cwd() }),
-    env: envWithToken(),
+    env: envWithAfkCredentials(),
     platform: process.platform,
     cwd: process.cwd(),
     ...(imageName ? { imageName } : {}),
+    ...(runtimes ? { runtimes } : {}),
   }
 }
 

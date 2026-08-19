@@ -2,12 +2,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { SessionKind } from '@runcastle/core'
 import type { PtyEntry } from '../src/pty/registry'
 import { ptyRegistry } from '../src/pty/registry'
+import { CONVERGE_KICKOFF_LINE, KICKOFF_LINES } from '../src/launcher/runtimes/claude'
 import {
   CLEAR_INPUT,
-  CONVERGE_KICKOFF_LINE,
   KICKOFF_CONFIRM_MS,
   KICKOFF_DELAY_MS,
-  KICKOFF_LINES,
   KICKOFF_MAX_ATTEMPTS,
   KICKOFF_SUBMIT_DELAY_MS,
   createSessionRow,

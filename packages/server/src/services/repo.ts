@@ -89,6 +89,8 @@ export function rowToSession(row: SessionSelect): SessionRow {
     status: row.status,
     awaitingInput: row.awaitingInput,
     worktreePath: row.worktreePath,
+    model: row.model ?? undefined,
+    runtime: row.runtime ?? undefined,
     title: row.title ?? undefined,
     createdAt: row.createdAt ?? undefined,
   })

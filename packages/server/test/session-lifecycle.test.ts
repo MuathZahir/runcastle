@@ -12,9 +12,9 @@ import { handlePtyExit, launchSession, workWaypoint } from '../src/launcher/laun
 import { reconcileStaleSessions } from '../src/launcher/reconcile'
 import type { PtyEntry } from '../src/pty/registry'
 import { ptyRegistry } from '../src/pty/registry'
+import { KICKOFF_LINES } from '../src/launcher/runtimes/claude'
 import {
   KICKOFF_DELAY_MS,
-  KICKOFF_LINES,
   KICKOFF_SUBMIT_DELAY_MS,
   activeSessionsForFeature,
   createSessionRow,

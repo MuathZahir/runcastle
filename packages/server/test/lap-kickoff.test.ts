@@ -6,8 +6,8 @@ import { sessionDir, worktreeDir } from '@runcastle/core/paths'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { AppCtx } from '../src/db/types'
 import { launchSession } from '../src/launcher/launcher'
+import { KICKOFF_LINES } from '../src/launcher/runtimes/claude'
 import {
-  KICKOFF_LINES,
   createSessionRow,
   kickoffDeliveryFor,
   lapKickoff,
