@@ -171,9 +171,15 @@ function modelStamp(model: ModelEntry): { model: string; runtime: AgentRuntime }
  * The launch as one command line, for the `spawn:false` smoke event. The program
  * word is the runtime's own CLI name, so a second runtime renders as itself
  * rather than as `claude` with foreign flags after it.
+ *
+ * The env the runtime asked for is rendered as a `KEY=value` prefix, because for
+ * a runtime configured through a synthetic home rather than through flags
+ * (`CODEX_HOME=…`) the environment IS most of the launch — a bare argv would
+ * describe a session pointed at the human's real config.
  */
 function renderCommand(runtime: AgentRuntimeAdapter, spec: RuntimeLaunchSpec): string {
-  return [runtime.binary, ...spec.argv].join(' ')
+  const env = Object.entries(spec.env).map(([key, value]) => `${key}=${value}`)
+  return [...env, runtime.binary, ...spec.argv].join(' ')
 }
 
 /**

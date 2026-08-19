@@ -1,7 +1,9 @@
-import { existsSync, readFileSync, rmSync } from 'node:fs'
+import { execFileSync } from 'node:child_process'
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { sessionDir } from '@runcastle/core/paths'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Feature, Project, RuncastleConfig, SessionRow } from '@runcastle/core'
 import { RuncastleConfig as ConfigSchema, SessionKind } from '@runcastle/core'
 import type { WriteArtifactsInput } from '../src/launcher/artifacts'
@@ -23,6 +25,13 @@ import {
   buildClaudeArgs,
   claudeRuntime,
 } from '../src/launcher/runtimes/claude'
+import {
+  KICKOFF_LINES as CODEX_KICKOFF_LINES,
+  codexHomeDir,
+  codexRuntime,
+  inheritedMcpServers,
+  renderCodexHooks,
+} from '../src/launcher/runtimes/codex'
 import { resolvePluginDir } from '../src/launcher/skills-root'
 
 const config: RuncastleConfig = ConfigSchema.parse({})
@@ -185,7 +194,7 @@ describe('renderSettings', () => {
     for (const kind of ['ideation', 'qa', 'waypoint', 'converge', 'revisit', 'prepare'] as const) {
       const guard = renderSettings('C:\\hooks\\hook-client.ts', kind).hooks.PreToolUse
       expect(guard).toHaveLength(1)
-      expect(guard?.[0].matcher).toBe('Edit|Write|NotebookEdit')
+      expect(guard?.[0].matcher).toBe('Edit|Write|NotebookEdit|apply_patch')
       expect(guard?.[0].hooks[0]).toMatchObject({
         type: 'command',
         command: 'bun run "C:\\hooks\\hook-client.ts" pre-tool',
@@ -460,7 +469,7 @@ describe('writeSessionArtifacts', () => {
     expect(settings.hooks.SessionStart[0].hooks[0].command).toContain(hookClientPath())
     expect(settings.permissions.allow).toContain('mcp__runcastle__complete_phase')
     // the edit guard reaches the session as a real registered hook, not just a rule
-    expect(settings.hooks.PreToolUse[0].matcher).toBe('Edit|Write|NotebookEdit')
+    expect(settings.hooks.PreToolUse[0].matcher).toBe('Edit|Write|NotebookEdit|apply_patch')
     expect(settings.hooks.PreToolUse[0].hooks[0].command).toContain('pre-tool')
 
     const mcp = JSON.parse(readFileSync(out.mcpConfigPath, 'utf8'))
@@ -586,5 +595,293 @@ describe('claudeRuntime.writeArtifacts', () => {
     for (const kind of SessionKind.options) {
       expect(claudeRuntime.kickoffLine(kind)).toBe(KICKOFF_LINES[kind])
     }
+  })
+})
+
+/**
+ * The Codex adapter (decision 9). Where the Claude adapter passes flags against
+ * the human's real home, this one BUILDS a home — so what has to be pinned is
+ * the content of that home, since every per-session decision the flags used to
+ * carry now lives in a file inside it.
+ *
+ * `CODEX_HOME` is redirected at a temp dir for the whole block: the adapter
+ * borrows the human's credentials and (on `inherit`) their MCP servers from
+ * there, and a test that read the developer's real `~/.codex` would pass or fail
+ * on whether they happen to be logged in.
+ */
+describe('codexRuntime.writeArtifacts', () => {
+  const project: Project = { id: 'proj_1', name: 'p', repoPath: '/repo', mainBranch: 'main' }
+  const created: string[] = []
+  let userHome: string
+  let worktree: string
+  let realCodexHome: string | undefined
+
+  beforeEach(() => {
+    userHome = mkdtempSync(join(tmpdir(), 'runcastle-codex-home-'))
+    worktree = mkdtempSync(join(tmpdir(), 'runcastle-codex-wt-'))
+    realCodexHome = process.env.CODEX_HOME
+    process.env.CODEX_HOME = userHome
+    writeFileSync(join(userHome, 'auth.json'), '{"tokens":{"id_token":"real"}}', 'utf8')
+  })
+
+  afterEach(() => {
+    if (realCodexHome === undefined) delete process.env.CODEX_HOME
+    else process.env.CODEX_HOME = realCodexHome
+    for (const id of created) rmSync(sessionDir(id), { recursive: true, force: true })
+    created.length = 0
+    rmSync(userHome, { recursive: true, force: true })
+    rmSync(worktree, { recursive: true, force: true })
+  })
+
+  async function launchSpec(
+    kind: SessionKind = 'ideation',
+    extra: Partial<RuntimeLaunchInput> = {},
+  ): Promise<RuntimeLaunchSpec> {
+    const sess = session({ id: `sess_codex_${kind}`, kind })
+    created.push(sess.id)
+    return codexRuntime.writeArtifacts({
+      session: sess,
+      feature: feature(),
+      project,
+      config,
+      worktreePath: worktree,
+      serverUrl: 'http://localhost:4512',
+      model: 'gpt-5.6-sol',
+      ...extra,
+    })
+  }
+
+  /** The generated `config.toml` of a just-written session home. */
+  function configToml(sessionId: string): string {
+    return readFileSync(join(codexHomeDir(sessionId), 'config.toml'), 'utf8')
+  }
+
+  it('writes a synthetic CODEX_HOME: config, hooks, per-kind prompt, borrowed auth', async () => {
+    const spec = await launchSpec('ideation')
+    const home = codexHomeDir('sess_codex_ideation')
+
+    expect(spec.files).toEqual(
+      expect.arrayContaining([
+        join(home, 'config.toml'),
+        join(home, 'hooks.json'),
+        join(home, 'AGENTS.md'),
+        join(home, 'auth.json'),
+      ]),
+    )
+    for (const file of spec.files) expect(existsSync(file)).toBe(true)
+
+    // auth is BORROWED byte-for-byte, never managed (decision 5)
+    expect(readFileSync(join(home, 'auth.json'), 'utf8')).toBe(
+      readFileSync(join(userHome, 'auth.json'), 'utf8'),
+    )
+  })
+
+  it('pins the model, the acceptEdits analogue, project trust and the MCP identity header', async () => {
+    await launchSpec('ideation')
+    const toml = configToml('sess_codex_ideation')
+
+    expect(toml).toContain('model = "gpt-5.6-sol"')
+    // the `--permission-mode acceptEdits` analogue: writes inside the worktree
+    // without prompting — a dialog blocks BEFORE SessionStart, stranding the session
+    expect(toml).toContain('sandbox_mode = "workspace-write"')
+    expect(toml).toContain('approval_policy = "never"')
+    // the first-run "do you trust this folder?" gate, answered up front
+    expect(toml).toContain(`[projects.${JSON.stringify(worktree)}]`)
+    expect(toml).toContain('trust_level = "trusted"')
+    // the same server, behind the same identity header the MCP route already gates on
+    expect(toml).toContain('[mcp_servers.runcastle]')
+    expect(toml).toContain('url = "http://localhost:4512/mcp"')
+    expect(toml).toContain('http_headers = { "X-Runcastle-Session" = "sess_codex_ideation" }')
+  })
+
+  it('registers the five lifecycle events against the same runtime-neutral hook client', async () => {
+    await launchSpec('ideation')
+    const hooks = JSON.parse(
+      readFileSync(join(codexHomeDir('sess_codex_ideation'), 'hooks.json'), 'utf8'),
+    )
+
+    const client = hookClientPath()
+    expect(hooks.hooks.SessionStart[0].hooks[0]).toEqual({
+      type: 'command',
+      command: `bun run "${client}" session-start`,
+    })
+    expect(hooks.hooks.UserPromptSubmit[0].hooks[0].command).toBe(`bun run "${client}" user-prompt`)
+    expect(hooks.hooks.Stop[0].hooks[0].command).toBe(`bun run "${client}" stop`)
+    expect(hooks.hooks.SessionEnd[0].hooks[0].command).toBe(`bun run "${client}" session-end`)
+    // the edit guard reaches a Codex session as the same deny hook, matching the
+    // tool name Codex edits files with
+    expect(hooks.hooks.PreToolUse[0].matcher).toBe('Edit|Write|NotebookEdit|apply_patch')
+    expect(hooks.hooks.PreToolUse[0].hooks[0].command).toBe(`bun run "${client}" pre-tool`)
+  })
+
+  it('adds the win32 spelling of every hook command, and only there', () => {
+    const posix = renderCodexHooks('/tmp/hook-client.ts', 'ideation', 'linux')
+    expect(posix.hooks.SessionStart[0].hooks[0]).not.toHaveProperty('commandWindows')
+
+    const win = renderCodexHooks('C:\\hooks\\hook-client.ts', 'ideation', 'win32')
+    for (const group of Object.values(win.hooks)) {
+      for (const hook of group?.[0].hooks ?? []) {
+        expect(hook.commandWindows).toBe(hook.command)
+      }
+    }
+  })
+
+  it('exempts the one kind that may write code from the edit guard, as Claude does', () => {
+    expect(renderCodexHooks('/tmp/hook-client.ts', 'project').hooks.PreToolUse).toBeUndefined()
+    expect(renderCodexHooks('/tmp/hook-client.ts', 'qa').hooks.PreToolUse).toHaveLength(1)
+  })
+
+  it('writes the per-kind prompt as AGENTS.md, spelled the way Codex invokes a skill', async () => {
+    await launchSpec('ideation')
+    const ideation = readFileSync(join(codexHomeDir('sess_codex_ideation'), 'AGENTS.md'), 'utf8')
+    expect(ideation).toContain('$ideate')
+    expect(ideation).not.toContain('/runcastle:')
+
+    await launchSpec('qa')
+    expect(readFileSync(join(codexHomeDir('sess_codex_qa'), 'AGENTS.md'), 'utf8')).toContain('$qa')
+  })
+
+  it('builds the argv and env — the home IS the configuration', async () => {
+    const spec = await launchSpec('ideation')
+
+    expect(spec.argv).toEqual(['--dangerously-bypass-hook-trust'])
+    expect(spec.env).toEqual({
+      CODEX_HOME: codexHomeDir('sess_codex_ideation'),
+      RUNCASTLE_SESSION_ID: 'sess_codex_ideation',
+      RUNCASTLE_SERVER_URL: 'http://localhost:4512',
+    })
+    expect(spec.envScrub).toEqual([])
+  })
+
+  it('resumes the conversation the SessionStart hook recorded', async () => {
+    const spec = await launchSpec('revisit', { resumeSessionId: 'codex-sess-42' })
+    expect(spec.argv).toEqual(['resume', 'codex-sess-42', '--dangerously-bypass-hook-trust'])
+  })
+
+  it('merges the human’s own MCP servers on `inherit`, and none on `runcastleOnly`', async () => {
+    writeFileSync(
+      join(userHome, 'config.toml'),
+      [
+        'model = "gpt-5.6-terra"',
+        '',
+        '[mcp_servers.linear]',
+        'command = "linear-mcp"',
+        '',
+        '[shell_environment_policy]',
+        'inherit = "all"',
+      ].join('\n'),
+      'utf8',
+    )
+
+    await launchSpec('ideation')
+    const inherited = configToml('sess_codex_ideation')
+    expect(inherited).toContain('[mcp_servers.linear]')
+    expect(inherited).toContain('command = "linear-mcp"')
+    // only the server tables come across — not the rest of their configuration
+    expect(inherited).not.toContain('[shell_environment_policy]')
+    expect(inherited).not.toContain('gpt-5.6-terra')
+    expect(inherited).toContain('[mcp_servers.runcastle]')
+
+    await launchSpec('qa', { config: ConfigSchema.parse({ sessionMcp: 'runcastleOnly' }) })
+    const isolated = configToml('sess_codex_qa')
+    expect(isolated).not.toContain('linear')
+    expect(isolated).toContain('[mcp_servers.runcastle]')
+  })
+
+  it('never lets the human’s own `runcastle` entry shadow the generated one', () => {
+    const merged = inheritedMcpServers(
+      ['[mcp_servers.runcastle]', 'url = "http://stale"', '', '[mcp_servers.linear]', 'command = "x"'].join(
+        '\n',
+      ),
+    )
+    expect(merged).not.toContain('http://stale')
+    expect(merged).toContain('[mcp_servers.linear]')
+  })
+
+  it('renders the skill pack into the worktree without adding a tracked file', async () => {
+    execFileSync('git', ['init', '-q', '-b', 'main'], { cwd: worktree })
+
+    const spec = await launchSpec('ideation')
+    const skill = join(worktree, '.agents', 'skills', 'ideate', 'SKILL.md')
+
+    expect(spec.files).toContain(skill)
+    // Codex resolves `$ideate` from the frontmatter name, so the kickoff line and
+    // the rendered pack have to agree about what the skill is called
+    expect(readFileSync(skill, 'utf8')).toContain('name: ideate')
+    expect(codexRuntime.kickoffLine('ideation')).toContain('$ideate')
+
+    // the invariant: skills load and the human's diff is untouched — via
+    // .git/info/exclude, never their .gitignore, which is their file and their PR
+    expect(
+      execFileSync('git', ['status', '--porcelain'], { cwd: worktree, encoding: 'utf8' }).trim(),
+    ).toBe('')
+    expect(readFileSync(join(worktree, '.git', 'info', 'exclude'), 'utf8')).toContain('.agents/')
+    expect(existsSync(join(worktree, '.gitignore'))).toBe(false)
+  })
+
+  it('renders nothing into a worktree that is not on disk (the smoke path computes one)', async () => {
+    const absent = join(tmpdir(), 'runcastle-codex-absent-wt')
+    const spec = await launchSpec('ideation', { worktreePath: absent })
+    expect(spec.files.some((f) => f.includes('.agents'))).toBe(false)
+    expect(existsSync(absent)).toBe(false)
+  })
+
+  it('spells every kickoff line the way Codex invokes a skill', () => {
+    for (const kind of SessionKind.options) {
+      expect(codexRuntime.kickoffLine(kind)).toBe(CODEX_KICKOFF_LINES[kind])
+      expect(codexRuntime.kickoffLine(kind)).not.toContain('/runcastle:')
+    }
+    expect(codexRuntime.kickoffLine('converge')).toContain('$converge')
+  })
+})
+
+/**
+ * The fail-early precheck (decision 7), which for Codex has a second half the
+ * Claude adapter has no equivalent of: a session runs on a COPY of the human's
+ * own credentials, so "logged out" is not a session that logs in — it is a
+ * synthetic home with no credentials in it at all.
+ */
+describe('codexRuntime.checkReady', () => {
+  let home: string
+  let realCodexHome: string | undefined
+
+  beforeEach(() => {
+    home = mkdtempSync(join(tmpdir(), 'runcastle-codex-ready-'))
+    realCodexHome = process.env.CODEX_HOME
+    process.env.CODEX_HOME = home
+    vi.spyOn(codexRuntime, 'resolveBinary').mockReturnValue(join(home, 'codex'))
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+    if (realCodexHome === undefined) delete process.env.CODEX_HOME
+    else process.env.CODEX_HOME = realCodexHome
+    rmSync(home, { recursive: true, force: true })
+  })
+
+  it('is ready when the CLI resolves and the human is logged in', () => {
+    writeFileSync(join(home, 'auth.json'), '{}', 'utf8')
+    expect(codexRuntime.checkReady()).toEqual({ ok: true })
+  })
+
+  it('refuses with a doctor hint when the CLI is nowhere this server can see', () => {
+    // `resolveTool` returns the bare name when PATH and the recovery dirs both
+    // came up empty — exactly the case a spawn would ENOENT on.
+    vi.spyOn(codexRuntime, 'resolveBinary').mockReturnValue('codex')
+    const ready = codexRuntime.checkReady()
+
+    expect(ready.ok).toBe(false)
+    if (ready.ok) return
+    expect(ready.reason).toContain('`codex`')
+    expect(ready.doctorHint).toContain('runcastle doctor')
+  })
+
+  it('refuses with the login fix when there are no credentials to borrow', () => {
+    const ready = codexRuntime.checkReady()
+
+    expect(ready.ok).toBe(false)
+    if (ready.ok) return
+    expect(ready.reason).toContain(join(home, 'auth.json'))
+    expect(ready.doctorHint).toContain('codex login')
   })
 })
