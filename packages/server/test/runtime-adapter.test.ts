@@ -21,6 +21,8 @@ import {
 } from '../src/launcher/sessions'
 import { listAfter } from '../src/services/events'
 import { createFeatureBranch } from '../src/services/git'
+import { createCallerFactory } from '../src/trpc/context'
+import { appRouter } from '../src/trpc/router'
 import { makeTestCtx } from './helpers/db'
 import { seedFeature, seedProject } from './helpers/fixtures'
 
@@ -227,6 +229,15 @@ describe('runtime dispatch at launch', () => {
     // the mutation announces itself, so the timeline can say which agent this is
     const launching = listAfter(ctx, feature.id, 0).find((e) => e.type === 'session.launching')
     expect(launching?.data).toMatchObject({ model: 'claude-opus-5', runtime: 'claude-code' })
+
+    // …and the pair survives the trip to the web app, which is where the copy
+    // that names the runtime is written (decision 11). A column projection on
+    // the session read would silently take this away.
+    const full = await createCallerFactory(appRouter)(ctx).feature.get({ id: feature.id })
+    expect(full.sessions.find((s) => s.id === sessionId)).toMatchObject({
+      model: 'claude-opus-5',
+      runtime: 'claude-code',
+    })
   })
 
   it('leaves a row created outside a launch unstamped rather than inventing a model', () => {
