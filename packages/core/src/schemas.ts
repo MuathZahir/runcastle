@@ -155,6 +155,14 @@ export const TicketInput = z.object({
   /** seq numbers of other tickets in the same batch this one depends on */
   blockedBy: z.array(z.number()),
   kind: TicketKind.default('implementation'),
+  /**
+   * The model this ticket burns on (decisions.md #4). Stamped by the tickets
+   * session from the operator's annotated roster, and changeable by the human
+   * on the card before Burn. Unset — the ordinary case — means the burn resolves
+   * its model through the unchanged `resolveModel` chain; set, it is that burn's
+   * run override.
+   */
+  model: z.string().optional(),
 })
 /**
  * The pre-parse shape, so `kind` stays optional for every caller that builds a

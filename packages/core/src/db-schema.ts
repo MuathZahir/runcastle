@@ -250,6 +250,13 @@ export const tickets = sqliteTable('tickets', {
    */
   kind: text('kind').notNull().$type<TicketKind>().default('implementation'),
   /**
+   * The model this ticket burns on, or null for "resolve it the ordinary way"
+   * (decisions.md #4). Nullable and additive: every ticket written before
+   * per-ticket assignment existed reads back unassigned, which is exactly the
+   * default chain it burned on.
+   */
+  model: text('model'),
+  /**
    * The feature's lap when this ticket was stored (ADR-0010 / SPEC §15.1).
    * Stamped server-side by `storeTickets` — sessions never choose it. G3 scopes
    * to the current lap's pending tickets; G4 stays cumulative.
