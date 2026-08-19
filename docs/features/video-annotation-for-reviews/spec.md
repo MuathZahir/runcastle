@@ -10,13 +10,15 @@ The walkthrough video in the review body becomes an annotation surface. The huma
 
 This is a thin lap 1: the whole capture → note → burn loop, minimally furnished (see Later laps).
 
+Lap 2 repairs what the lap-1 review found — the attachment never reached the agent under the default burn mode off-Linux, and the git exclude line outlived the burn — cleans up five standards findings, and promotes one deferred item: jump-to-moment from an annotated note.
+
 ### Player
 
 The bare native `<video controls>` walkthrough player is replaced with minimal custom controls: play/pause, a scrub bar, current time / duration. No volume, fullscreen, or playback-rate controls — walkthroughs are silent screencasts. Native controls are dropped because they occlude the frame and block pointer events where the annotation overlay draws.
 
 ### Annotation overlay
 
-When the video is paused, an **Annotate** button enables a canvas overlay sized to the video frame. Drawing is freehand strokes in one high-visibility color (red), with undo-last-stroke and clear. The overlay carries a note-text input and a save button. Save composites the paused frame plus the strokes into one flat PNG client-side (the video element is same-origin, so canvas capture is untainted), then submits text + timestamp + PNG in one action. Stroke/vector data is not persisted — the baked PNG is the artifact.
+When the video is paused, an **Annotate** button enables a canvas overlay sized to the video frame. Drawing is freehand strokes in one high-visibility color — the palette's danger red, `#F85149` (lap 2; lap 1's one-off `#ff2b2b` was off-palette) — with undo-last-stroke and clear. The overlay carries a note-text input and a save button. Save composites the paused frame plus the strokes into one flat PNG client-side (the video element is same-origin, so canvas capture is untainted), then submits text + timestamp + PNG in one action. Stroke/vector data is not persisted — the baked PNG is the artifact.
 
 ### Data model
 
@@ -28,12 +30,20 @@ Screenshots live at `~/.runcastle/annotations/<noteId>.png` — outside the repo
 
 Deleting an annotated note deletes its PNG in the same service call — the one delete path is the one cleanup hook.
 
+The screenshot URL is spelled once, in `@runcastle/core`, and imported by the service that stamps it, the route that serves it, and the web client that uploads to it (lap 2; lap 1 hand-spelled it in three files held in step by a test).
+
+### Jump to this moment (lap 2)
+
+An annotated note's timestamp is a control, not just metadata: clicking it in the notes list seeks the walkthrough player to the note's `videoTimestamp` and pauses there. No schema or wire change — the timestamp is already on the note and the player is already custom.
+
 ### Riding into the burn
 
 Two extensions carry the screenshot downstream:
 
 1. **Rendered markdown view.** The `test-notes.md` view (the contract read by lap-kickoff and revisit sessions) gains a `(screenshot: <absolute path>)` suffix on annotated note lines, so host-side sessions can Read the image directly.
-2. **Burn-time copy.** When a promoted note-ticket burns, the burner workflow looks up the ticket's source note(s), copies each existing `~/.runcastle/annotations/<noteId>.png` into the ticket's workspace under a well-known relative directory (e.g. `.runcastle-attachments/<noteId>.png`), and the ticket context generated at promotion names that relative path and instructs the agent to Read it. Copy-at-burn works identically under docker and noSandbox and ships only the images the ticket references — no container mounts, no network plumbing. The attachment directory is cleaned out of the workspace before commit/merge so it never lands in the repo.
+2. **Burn-time copy.** When a promoted note-ticket burns, the burner workflow copies each existing `~/.runcastle/annotations/<noteId>.png` host-side into the ticket's workspace under a well-known relative directory (`.runcastle-attachments/<noteId>.png`); the ticket context generated at promotion names that relative path and instructs the agent to Read it. In the **isolated** workspace mode (the `burnWorkspace: 'auto'` default on Windows/macOS, where the agent works in a `git clone` of the mounted workspace), the container setup additionally copies `.runcastle-attachments/` from the workspace into the clone after cloning — a git-excluded file cannot survive the clone on its own, and lap 1 shipped without this, so the context named a path the agent could not reach on every default off-Linux burn. With the copy, the relative path in the context resolves identically in both modes; only the images the ticket references ship, with no container mounts or network plumbing.
+
+   The `.runcastle-attachments/` line the burner writes into the repo's `.git/info/exclude` (load-bearing while the agent commits) is removed again by the post-run cleanup, restoring the file as found — lap 1 left it in place forever, silently hiding any such directory from the human's own `git status` in every worktree. The attachment directory itself is cleared from the workspace after the run, before any merge.
 
 A missing PNG at burn time (manually deleted, disk loss) degrades gracefully: the ticket burns on text alone, same as an unannotated note.
 
@@ -61,7 +71,8 @@ None blocking. Sizing details (canvas resolution vs. video intrinsic size, PNG s
 
 - Shape, arrow, and text drawing tools; multiple colors.
 - Recording human test drives (its own capture/consent/storage question).
-- "Jump to this moment" — seeking the player from a note's stored timestamp.
 - Post-capture stroke editing (requires vector persistence).
 - Multiple screenshots per note.
 - Player polish: fullscreen, playback rate, keyboard shortcuts.
+- Orphaned-PNG cleanup when notes vanish by routes other than `deleteNote` (feature/project deletion leaves screenshots on disk — noted by ticket 1's digest).
+- Attachments for conflict-resolver runs (the second `run()` in the burner resolves merges from ticket text alone).

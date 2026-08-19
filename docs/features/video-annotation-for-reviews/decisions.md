@@ -31,3 +31,27 @@
 ## 8. Later laps (consciously deferred)
 **Decision:** Deferred to later laps: shape/arrow/text drawing tools and colors; recording human test drives; "jump to this moment" from a note's timestamp; post-capture stroke editing; multiple screenshots per note; player polish (fullscreen, playback rate).
 **Why:** Lap 1 proves the capture → note → burn loop; all of these are additive polish on a proven pipeline.
+
+## Lap 2
+
+Lap 1's review found the loop broken at its last link on the machines this repo is developed on, plus a permanent git-config side effect and five tidiness smells. The browser drive never ran (uncommitted files in the checkout), so the UI half of the loop is still unwitnessed. Lap 2 is a fix-and-verify lap, plus one cheap promotion from Later laps.
+
+## 9. Isolated burns copy the attachments into the clone (supersedes the "identical under docker and noSandbox" claim in #4)
+**Decision:** `buildIsolatedSetupCommand` copies `.runcastle-attachments/` from the mounted workspace (`/home/agent/workspace`) into the container-native clone (`/home/agent/repo`) after the `git clone`, when the directory exists. The relative path named in the ticket context then resolves identically in both workspace modes; the promotion wording stays mode-unaware.
+**Why:** The lap-1 review proved the default Windows/macOS burn (`burnWorkspace: 'auto'` → `isolated`) git-clones the workspace, and an untracked, git-excluded PNG cannot survive a clone — the ticket context pointed the agent at a file that wasn't there on every default burn on this host. One extra copy command in the setup script keeps the path contract single-spelling; the alternative (mode-aware promotion wording) would leak a burn-time decision into promotion time.
+
+## 10. The `info/exclude` line is removed at post-run cleanup (supersedes the open-ended exclude in lap 1's implementation)
+**Decision:** The burner still writes `.runcastle-attachments/` into the repo's `.git/info/exclude` before copying attachments in, but the post-run cleanup (`clearAttachments`, which already runs after `run()` returns or throws) also removes that exact line, restoring the file as found. The concurrent-burn race (one burn's cleanup un-excluding another's live directory) is accepted — the worst case is the attachments dir briefly visible in `git status`, and annotated-note burns are rare.
+**Why:** The exclude is load-bearing during the run (the agent commits, and sandcastle preserves dirty worktrees), but `info/exclude` resolves against the common git dir, so lap 1's never-removed line silently changed the human's own checkout — every worktree, forever. Symmetric add/remove keeps the protection and drops the pollution.
+
+## 11. Lap-1 review tidiness is fixed as one cleanup pass; the pen red becomes palette `#F85149`
+**Decision:** One cleanup ticket fixes the five standards findings: the burn copy destination built with `node:path` `join` instead of a hand-concatenated `\\`; the screenshot URL spelled once in `@runcastle/core` (the `attachmentRelPath` treatment) and imported by service, route, and web client; one seconds-to-clock formatter in core replacing the two divergent copies; one "has a screenshot?" predicate in the test-notes service; a shared lookup-or-undefined helper replacing the duplicated NotFound-catch in `routes/reviews.ts`. `STROKE_COLOR` changes from `#ff2b2b` to the palette's `#F85149`.
+**Why:** All five are small, none behavioral, and bundling them keeps the lap's ticket count honest. The palette stays exhaustive rather than growing undocumented one-off hexes — `#F85149` is plenty visible over video frames.
+
+## 12. "Jump to this moment" is promoted from Later laps
+**Decision:** An annotated note's stored timestamp becomes a control: clicking it in the notes list seeks the walkthrough player to that `videoTimestamp` and pauses there. Everything else in Later laps stays parked.
+**Why:** The two halves already exist — the timestamp is stored and the player is ours to command — so this is glue, not scope. It also makes lap 2's re-drive more useful: the drive that finally witnesses the player working can witness the seek too.
+
+## 13. Lap 2's review must actually drive
+**Decision:** The lap-2 review ticket requires the browser drive (lap 1's was refused over uncommitted files — the human commits or stashes `packages/server/src/services/git.ts` and `packages/server/test/project-session.test.ts` before Burn). The review ticket's runner instructions are corrected: the suite is vitest from the repo root, not `bun test` in `packages/server` (which hangs with no output).
+**Why:** The player, the pen, the thumbnail, and now the timestamp-seek have never been seen working in a browser; tests cover the seams but not the experience. The wrong-runner instruction cost the lap-1 reviewer ten minutes of dead time.
