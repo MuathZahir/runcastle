@@ -1,4 +1,11 @@
-import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type PointerEvent as ReactPointerEvent,
+  type RefObject,
+} from 'react'
 import { fmtClock } from '@runcastle/core'
 import { Button } from '../ui'
 import { trpc } from '../trpc'
@@ -10,9 +17,17 @@ import {
   paintStrokes,
   playableDuration,
   saveAnnotatedNote,
+  seekTarget,
   type Point,
   type Stroke,
 } from '../lib/walkthrough'
+
+/**
+ * Sending the playhead to a moment, from outside this component (decisions #12).
+ * The player publishes one of these into a ref its parent holds, which is how a
+ * note's timestamp in the list below reaches a player that is its sibling.
+ */
+export type SeekWalkthrough = (seconds: number) => void
 
 /**
  * The walkthrough player and its annotation surface (video-annotation
@@ -46,11 +61,14 @@ export function WalkthroughPlayer({
   url,
   featureId,
   readonly,
+  seekRef,
 }: {
   url: string
   featureId: string
   /** Looking back at a shipped feature — the recording plays, nothing is captured. */
   readonly: boolean
+  /** Filled in with this player's {@link SeekWalkthrough} while it is mounted. */
+  seekRef?: RefObject<SeekWalkthrough | null>
 }) {
   const utils = trpc.useUtils()
   const toast = useToast()
@@ -109,6 +127,33 @@ export function WalkthroughPlayer({
     video.currentTime = seconds
     setAt(seconds)
   }
+
+  /**
+   * Jump to this moment (decisions #12): the playhead goes to `seconds` and
+   * STOPS there — the human clicked a note to look at the frame it is about, and
+   * a player that carried on past it would have moved on before they got there.
+   * Whether the jump happens at all, and where it lands, is {@link seekTarget}.
+   */
+  const jumpTo = useCallback((seconds: number): void => {
+    const video = videoRef.current
+    if (!video) return
+    const target = seekTarget(seconds, { playable: playableDuration(video), annotating })
+    if (target === null) return
+    video.pause()
+    video.currentTime = target
+    setAt(target)
+  }, [annotating])
+
+  // Published for as long as this player is on the page, and taken back down
+  // when it leaves: a seek left behind in the parent's ref would be a click into
+  // a video element that no longer exists.
+  useEffect(() => {
+    if (!seekRef) return
+    seekRef.current = jumpTo
+    return () => {
+      seekRef.current = null
+    }
+  }, [seekRef, jumpTo])
 
   const startAnnotating = (): void => {
     videoRef.current?.pause()

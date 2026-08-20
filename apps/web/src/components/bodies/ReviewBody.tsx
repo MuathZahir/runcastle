@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState, type RefObject } from 'react'
 import { fmtClock, type TestNote } from '@runcastle/core'
 import { Button, CheckLine, LapSections, NoteAuthorChip, SectionTitle } from '../../ui'
 import { trpc } from '../../trpc'
@@ -33,7 +33,7 @@ import { ErrorBoundary } from '../ErrorBoundary'
 import { Markdown } from '../Markdown'
 import { SessionPanel } from '../SessionPanel'
 import { TerminalView } from '../TerminalView'
-import { WalkthroughPlayer } from '../WalkthroughPlayer'
+import { WalkthroughPlayer, type SeekWalkthrough } from '../WalkthroughPlayer'
 
 /**
  * The review phase body (app-redesign): a summary of the finished run on the
@@ -138,6 +138,12 @@ export function ReviewBody({
   // A drive whose setup died: the failure rides the polled drive, so it is here
   // for as long as the drive is — not just on the click that caused it.
   const failure = driveFailure(ownDrive, { sessionLive })
+  // Jump to this moment (decisions #12). The player and the notes list are
+  // siblings, so a timestamp click travels up to the one parent they share: the
+  // player writes its seek in here while it is mounted, and the rows below call
+  // whatever is in it. Nothing fills it when there is no recording on the page,
+  // and the timestamps down there stay plain text.
+  const seekWalkthrough = useRef<SeekWalkthrough | null>(null)
 
   return (
     <div className="review-body">
@@ -203,7 +209,12 @@ export function ReviewBody({
       {isDriving && ownDrive && <DrivePane drive={ownDrive} />}
 
       {walkthrough && (
-        <WalkthroughCard url={walkthrough} featureId={feature.id} readonly={readonly} />
+        <WalkthroughCard
+          url={walkthrough}
+          featureId={feature.id}
+          readonly={readonly}
+          seekRef={seekWalkthrough}
+        />
       )}
 
       <NotesPanel
@@ -212,6 +223,7 @@ export function ReviewBody({
         tickets={tickets}
         rows={notes.data ?? []}
         readonly={readonly}
+        onJump={walkthrough ? (seconds) => seekWalkthrough.current?.(seconds) : undefined}
       />
     </div>
   )
@@ -306,15 +318,18 @@ function WalkthroughCard({
   url,
   featureId,
   readonly,
+  seekRef,
 }: {
   url: string
   featureId: string
   readonly: boolean
+  /** Where the player publishes its seek, for the notes list below to reach. */
+  seekRef: RefObject<SeekWalkthrough | null>
 }) {
   return (
     <div className="review-card walkthrough-card">
       <SectionTitle>Review walkthrough</SectionTitle>
-      <WalkthroughPlayer url={url} featureId={featureId} readonly={readonly} />
+      <WalkthroughPlayer url={url} featureId={featureId} readonly={readonly} seekRef={seekRef} />
       <div className="drive-copy">
         What the review agent did on this branch, as it did it. Pause on anything that looks wrong
         and Annotate it — the drawing lands in the notes below.
@@ -353,6 +368,7 @@ function NotesPanel({
   tickets,
   rows,
   readonly,
+  onJump,
 }: {
   featureId: string
   /** The feature's current lap — the group rendered expanded. */
@@ -362,6 +378,8 @@ function NotesPanel({
   rows: TestNote[]
   /** Looking back at review on a shipped feature — the checklist, no editing. */
   readonly: boolean
+  /** Send the walkthrough above to a moment, when there is a walkthrough above. */
+  onJump?: (seconds: number) => void
 }) {
   const utils = trpc.useUtils()
   const toast = useToast()
@@ -408,6 +426,9 @@ function NotesPanel({
   const noteRow = (note: TestNote) => {
     const ticket = note.ticketId ? tickets.find((t) => t.id === note.ticketId) : undefined
     const open = note.status === 'open'
+    // The moment in the walkthrough this note was taken from, when it came from
+    // one at all — plain notes have none and render exactly as they always did.
+    const moment = note.videoTimestamp
 
     if (editing === note.id) {
       return (
@@ -447,14 +468,34 @@ function NotesPanel({
             target="_blank"
             rel="noreferrer noopener"
             title={
-              note.videoTimestamp === undefined
+              moment === undefined
                 ? 'the annotated frame'
-                : `the annotated frame, at ${fmtClock(note.videoTimestamp)}`
+                : `the annotated frame, at ${fmtClock(moment)}`
             }
           >
             <img src={note.screenshotUrl} alt="the annotated frame this note is about" />
           </a>
         )}
+
+        {/* Jump to this moment (decisions #12): the stored timestamp is a
+            control, not a caption — clicking it sends the player above to that
+            frame and pauses on it. With no recording on the page there is
+            nowhere to send it, so it stays the label it used to be. */}
+        {moment !== undefined &&
+          (onJump ? (
+            <button
+              type="button"
+              className="note-at"
+              title="jump the walkthrough to this moment"
+              onClick={() => onJump(moment)}
+            >
+              {fmtClock(moment)}
+            </button>
+          ) : (
+            <span className="note-at" title="the moment in the walkthrough this was seen at">
+              {fmtClock(moment)}
+            </span>
+          ))}
 
         <span className="note-text">{note.text}</span>
 

@@ -2514,6 +2514,20 @@ details.lap-group[open] > summary.lap-group-head::before { content: '▾'; }
   background: #000;
 }
 .note-shot:hover img { border-color: var(--accent); }
+/* the moment an annotated note was taken from — a control where there is a
+   player to send anywhere (decisions #12), and a label where there is not */
+.note-at {
+  flex: 0 0 auto;
+  padding: 0;
+  border: none;
+  background: none;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-3);
+  transition: color var(--dur-1);
+}
+button.note-at { cursor: pointer; }
+button.note-at:hover { color: var(--accent); }
 .note-text { flex: 1; min-width: 0; font-size: 12.5px; color: var(--text); text-wrap: pretty; }
 .note-row.is-done .note-text { color: var(--text-3); text-decoration: line-through; }
 .note-row.is-promoted .note-text { color: var(--text-2); }
