@@ -41,6 +41,21 @@ describe('notes router', () => {
     expect(await caller.notes.list({ featureId: feature.id })).toEqual([])
   })
 
+  it('carries a note captured from the annotation player, timestamp and all', async () => {
+    const annotated = await caller.notes.add({
+      featureId: feature.id,
+      text: 'the panel is misaligned',
+      videoTimestamp: 12.5,
+    })
+    const typed = await caller.notes.add({ featureId: feature.id, text: 'just typed this one' })
+
+    expect(annotated.videoTimestamp).toBe(12.5)
+    expect(typed.videoTimestamp).toBeUndefined()
+    expect(
+      (await caller.notes.list({ featureId: feature.id })).map((n) => n.videoTimestamp),
+    ).toEqual([12.5, undefined])
+  })
+
   it('promotes a note to a pending ticket and returns both', async () => {
     const note = await caller.notes.add({ featureId: feature.id, text: 'the run chip goes grey' })
 

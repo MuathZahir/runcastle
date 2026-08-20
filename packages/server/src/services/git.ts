@@ -800,6 +800,64 @@ export function burnWorktreePath(repoPath: string, branch: string): string {
 }
 
 /**
+ * Where git keeps this repo's `info/exclude`. Asked of git rather than
+ * assembled, for two reasons: a linked worktree's `.git` is a FILE, not a
+ * directory, and git resolves `info/exclude` against the COMMON git dir anyway
+ * — so one write there covers the parent checkout and every burn worktree
+ * hanging off it, including worktrees that do not exist yet. That is what lets
+ * the burner exclude its attachments directory before sandcastle has created
+ * the worktree it will land in — and what makes taking the line out again
+ * ({@link unexcludePath}) matter as much as putting it in.
+ */
+async function excludeFilePath(repoPath: string): Promise<string> {
+  const raw = (await git(repoPath).raw(['rev-parse', '--git-path', 'info/exclude'])).trim()
+  return resolve(repoPath, raw)
+}
+
+/**
+ * Add `pattern` to the repo's `info/exclude` — git's per-clone ignore list,
+ * which lives in `.git/` and is therefore never committed and never dirties the
+ * working tree the way an edit to `.gitignore` would.
+ *
+ * The read-and-append is synchronous on purpose: tickets burn in parallel and
+ * all want the same line, and a sync read-modify-write cannot interleave, so N
+ * concurrent callers still produce one line.
+ */
+export async function excludePath(repoPath: string, pattern: string): Promise<void> {
+  const file = await excludeFilePath(repoPath)
+  mkdirSync(dirname(file), { recursive: true })
+  const current = existsSync(file) ? readFileSync(file, 'utf8') : ''
+  if (current.split(/\r?\n/).includes(pattern)) return
+  writeFileSync(file, current.length > 0 && !current.endsWith('\n') ? `\n${pattern}\n` : `${pattern}\n`, {
+    flag: 'a',
+  })
+}
+
+/**
+ * Take `pattern` back out of the repo's `info/exclude`, restoring the file as
+ * {@link excludePath} found it.
+ *
+ * The counterpart is not optional book-keeping: the file it writes to is the
+ * common git dir's, so a line left behind does not expire with the burn
+ * worktree that needed it — it goes on hiding that pattern from the human's own
+ * `git status`, in every worktree of the clone, forever.
+ *
+ * Only whole lines equal to `pattern` go. Everything else is written back
+ * byte-for-byte, line endings included, so a file the human has their own
+ * entries in comes out unchanged; a pattern that is not there (never added,
+ * already removed by a concurrent burn) is a no-op, and so is a missing file.
+ */
+export async function unexcludePath(repoPath: string, pattern: string): Promise<void> {
+  const file = await excludeFilePath(repoPath)
+  if (!existsSync(file)) return
+  const current = readFileSync(file, 'utf8')
+  // Split AFTER each newline so every surviving line keeps its own terminator.
+  const kept = current.split(/(?<=\n)/).filter((line) => line.replace(/\r?\n$/, '') !== pattern)
+  const next = kept.join('')
+  if (next !== current) writeFileSync(file, next)
+}
+
+/**
  * Best-effort removal of a burn worktree sandcastle could not delete at
  * teardown. On Windows `git worktree remove` hits `Directory not empty` when a
  * handle inside the dir is still open — typically the just-`rm -f`'d
