@@ -56,6 +56,10 @@ export function relTime(ts: number, now: number = Date.now()): string {
   return `${d}d`
 }
 
+// A player position as a clock (`0:07`, `1:04:12`) is `fmtClock` in
+// @runcastle/core — the promoted ticket's context paragraph renders the same
+// walkthrough moment server-side, and the two copies had drifted.
+
 /** Elapsed duration between two epochs as `1m 04s` / `12s` / `1h 03m`. */
 export function fmtDuration(from: number, to: number): string {
   const total = Math.max(0, Math.floor((to - from) / 1000))

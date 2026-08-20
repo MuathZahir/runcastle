@@ -1,4 +1,5 @@
 import { trpcServer } from '@hono/trpc-server'
+import { REVIEWS_BASE } from '@runcastle/core'
 import { dataDir, dbPath } from '@runcastle/core/paths'
 import { Hono } from 'hono'
 import {
@@ -69,8 +70,10 @@ export function buildApp(ctx: AppCtx): Hono {
 
   app.route('/api/hooks', hooksApp)
   // Review artifacts (routes/reviews.ts) — the walkthrough video is media, so it
-  // is served over plain HTTP with range requests rather than through tRPC.
-  app.route('/api/reviews', reviewsApp)
+  // is served over plain HTTP with range requests rather than through tRPC. The
+  // mount point comes from core because the URLs the service stamps onto notes
+  // are built from it: a mount moved by hand here would 404 every thumbnail.
+  app.route(REVIEWS_BASE, reviewsApp)
   // Live-update SSE (routes/stream.ts) — the push channel the UI listens on.
   app.route('/api/stream', streamApp)
   app.route('/mcp', mcpApp)

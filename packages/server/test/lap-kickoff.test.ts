@@ -10,6 +10,7 @@ import { KICKOFF_LINES } from '../src/launcher/runtimes/claude'
 import {
   createSessionRow,
   kickoffDeliveryFor,
+  lapInFlight,
   lapKickoff,
   markSessionEnded,
   markSessionLive,
@@ -41,22 +42,73 @@ describe('planKickoff', () => {
     expect(plan).toEqual({ line: 'Resolve the merge conflict.', explicit: true })
   })
 
-  it('recognises the lap briefing and reports which lap it is running', () => {
-    const plan = planKickoff({ kind: 'revisit', lap: 4, kickoffLine: lapKickoff(4) })
+  it('reports which lap it is running from feature state, not the briefing string', () => {
+    const plan = planKickoff({
+      kind: 'revisit',
+      lap: 4,
+      kickoffLine: lapKickoff(4),
+      lapInFlight: true,
+    })
     expect(plan.explicit).toBe(true)
     expect(plan.lap).toBe(4)
   })
 
   it('gives a lap-N grill the lap briefing instead of the generic ideate line', () => {
-    const plan = planKickoff({ kind: 'ideation', lap: 2 })
+    const plan = planKickoff({ kind: 'ideation', lap: 2, lapInFlight: true })
     expect(plan.line).toBe(lapKickoff(2))
     expect(plan.lap).toBe(2)
     expect(plan.explicit).toBe(true)
   })
 
+  /**
+   * THE STRANDING BUG. `lap` used to be derived by `line === lapKickoff(lap)` —
+   * JS string equality, three call frames from the renderer that depends on it.
+   * That works exactly once, on the Rethink launch that passes the line. A
+   * terminal that died mid-lap left the feature at `ideation`/lap N with no lap
+   * tickets, Rethink refused (it needs the `review` phase, which had already
+   * moved), and Revisit — the only door left — passes no `kickoffLine`, so the
+   * comparison failed and `lap` came back undefined. Deriving it from state
+   * makes the SAME re-entry produce the lap plan.
+   */
+  it('recovers a lap that died mid-flight, with no kickoffLine to compare against', () => {
+    const plan = planKickoff({ kind: 'revisit', lap: 4, lapInFlight: true })
+    expect(plan.lap).toBe(4)
+    expect(plan.line).toBe(lapKickoff(4))
+    // and it launches FRESH — the dead lap's transcript argues with the briefing
+    expect(plan.explicit).toBe(true)
+  })
+
   it('leaves an ordinary launch alone — no line, no lap, resume as before', () => {
     expect(planKickoff({ kind: 'ideation', lap: 1 })).toEqual({ explicit: false })
-    expect(planKickoff({ kind: 'revisit', lap: 3 })).toEqual({ explicit: false })
+    // an ordinary revisit on a lap-3 feature is NOT running a lap
+    expect(planKickoff({ kind: 'revisit', lap: 3, lapInFlight: false })).toEqual({
+      explicit: false,
+    })
+  })
+})
+
+/**
+ * The state predicate itself. A lap is in flight when the feature is parked at
+ * `ideation` on a lap past the first with no tickets emitted for that lap — the
+ * exact shape Rethink creates and a lap session is the only thing that clears.
+ */
+describe('lapInFlight', () => {
+  it('is true at ideation on lap N with no lap-N tickets', () => {
+    expect(lapInFlight({ lap: 2, phase: 'ideation', ticketLaps: [1, 1] })).toBe(true)
+  })
+
+  it('is false once the lap has emitted its tickets', () => {
+    expect(lapInFlight({ lap: 2, phase: 'ideation', ticketLaps: [1, 2] })).toBe(false)
+  })
+
+  it('is false on lap 1 — there is no lap to be running', () => {
+    expect(lapInFlight({ lap: 1, phase: 'ideation', ticketLaps: [] })).toBe(false)
+  })
+
+  it('is false anywhere but ideation — a lap-3 feature at review is not mid-lap', () => {
+    for (const phase of ['spec', 'tickets', 'implementation', 'review', 'shipped']) {
+      expect(lapInFlight({ lap: 3, phase, ticketLaps: [1, 2] })).toBe(false)
+    }
   })
 })
 
@@ -161,5 +213,25 @@ describe('launchSession — an explicit briefing launches fresh', () => {
   it('a lap-1 grill keeps the generic ideate line', () => {
     expect(planKickoff({ kind: 'ideation', lap: 1 }).line).toBeUndefined()
     expect(KICKOFF_LINES.ideation).toContain('/runcastle:ideate')
+  })
+
+  /**
+   * End-to-end re-entry: a feature parked mid-lap by a dead terminal, reopened
+   * through Revisit with NO kickoffLine — the only door the UI leaves once
+   * Rethink has refused. It used to resume the dead lap conversation and render
+   * "Do NOT call `complete_phase` — a revisit never moves the pipeline" into a
+   * transcript whose own earlier turn said to complete_phase through to tickets.
+   */
+  it('re-enters a stranded lap through plain Revisit and rebuilds the lap briefing', async () => {
+    const { featureId } = await seedResumable('stranded-lap', { phase: 'ideation', lap: 2 })
+    const { sessionId, command, prompt } = await launchAndRead(featureId, { kind: 'revisit' })
+
+    expect(prompt).toContain('This is lap 2')
+    expect(prompt).toMatch(/DO call `complete_phase`/)
+    expect(prompt).not.toMatch(/Do NOT call `complete_phase`/i)
+    // fresh, so the dead lap's transcript cannot argue with the new briefing
+    expect(command).not.toContain('--resume')
+    markSessionLive(ctx, sessionId, { ccSessionId: 'cc-reentry' })
+    expect(kickoffDeliveryFor(sessionId)?.line).toBe(lapKickoff(2))
   })
 })

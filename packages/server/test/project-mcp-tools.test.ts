@@ -18,6 +18,7 @@ import {
   toolGetFeatureContext,
   toolGetProjectContext,
   toolGetWorkRecord,
+  toolReadAdr,
   toolRecordEvent,
   toolResolveWaypoint,
   toolUpdateTicket,
@@ -320,7 +321,7 @@ describe('project-session MCP tools', () => {
 
   // --- get_project_context ---------------------------------------------------
 
-  it('returns the charter in full, only live ADRs, and a one-line feature index', async () => {
+  it('returns the charter in full, an index of the live ADRs, and a one-line feature index', async () => {
     write(repoPath, 'CONTEXT.md', '# Runcastle\n\n## Language\n\n**Seam**: an observable boundary.\n')
     write(repoPath, 'docs/adr/0001-bun-everywhere.md', '# ADR-0001\n\nWe use Bun, never npm.\n')
     write(
@@ -336,27 +337,58 @@ describe('project-session MCP tools', () => {
       oneLiner: 'one trip round the pipeline',
     })
     setFeatureStatus(ctx, shipped.id, 'shipped')
-    seedFeature(ctx, projectId, {
+    const inFlight = seedFeature(ctx, projectId, {
       slug: 'promotion-at-merge',
       title: 'Promotion at merge',
       oneLiner: 'this one-liner must not appear — it is not real yet',
     })
+    storeTickets(ctx, inFlight.id, [
+      { title: 'a', goal: 'g', context: 'c', acceptanceCriteria: ['a'], seams: [], blockedBy: [] },
+      { title: 'b', goal: 'g', context: 'c', acceptanceCriteria: ['a'], seams: [], blockedBy: [] },
+    ])
 
     const out = toolGetProjectContext(ctx, session)
 
     expect(out.project.id).toBe(projectId)
     expect(out.charter).toContain('**Seam**: an observable boundary.')
 
+    // The ADRs are an INDEX now, not the arguments themselves: across every real
+    // project in this repo's data ZERO ADRs are superseded, so decision 13's
+    // pruning never fires and "live ADRs in full" was 73% of an 80 KB payload.
+    // Nothing is unreachable — indexing is not truncation, and `read_adr` cashes
+    // the index in — so decision 16's no-ceiling rule still holds.
     const adrPaths = out.adrs.map((a) => a.relPath)
     expect(adrPaths).toEqual(['docs/adr/0001-bun-everywhere.md', 'docs/adr/0009-no-modes.md'])
-    expect(out.adrs[0].content).toContain('We use Bun, never npm.')
+    expect(out.adrs[0].title).toBe('ADR-0001')
+    expect(out.adrs[0].bytes).toBeGreaterThan(0)
+    expect(JSON.stringify(out)).not.toContain('We use Bun, never npm.')
+    expect(out.adrsNote).toMatch(/read_adr/)
+
+    expect(toolReadAdr(ctx, session, { relPath: 'docs/adr/0001-bun-everywhere.md' }).content).toContain(
+      'We use Bun, never npm.',
+    )
+    // A bare filename is the same file — an agent echoing either spelling wins.
+    expect(toolReadAdr(ctx, session, { relPath: '0001-bun-everywhere.md' }).content).toContain(
+      'We use Bun, never npm.',
+    )
+    expect(() => toolReadAdr(ctx, session, { relPath: '../../CONTEXT.md' })).toThrow(
+      InvalidInputError,
+    )
 
     expect(out.featureIndex).toContain(
       'laps — one trip round the pipeline [shipped] docs/features/laps/',
     )
-    expect(out.featureIndex).toContain('Promotion at merge [in flight]')
-    // In flight is "not real yet": title and status, nothing else.
+    // The in-flight line now carries what the portfolio lookup is asked for:
+    // the SLUG (`get_work_record` matches on it, and the index never gave it),
+    // the pipeline position and the ticket counts. All of it is in SQLite and
+    // true of the feature rather than of an unmerged branch.
+    expect(out.featureIndex).toContain(
+      'promotion-at-merge — Promotion at merge [in flight: ideation, lap 1, 2 pending]',
+    )
+    // Decision 16 still holds where it was right: the one-liner and the docs
+    // path live on the unmerged branch and stay withheld.
     expect(out.featureIndex.join('\n')).not.toContain('must not appear')
+    expect(out.featureIndex.join('\n')).not.toContain('docs/features/promotion-at-merge')
   })
 
   it('reports an absent charter as absent, with no error', () => {

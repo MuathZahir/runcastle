@@ -1,3 +1,4 @@
+import { noteScreenshotUploadUrl } from '@runcastle/core'
 import { useQuery, type UseQueryResult } from '@tanstack/react-query'
 
 /**
@@ -40,4 +41,22 @@ export function useReviewArtifacts(featureId: string): UseQueryResult<ReviewArti
       return (await res.json()) as ReviewArtifacts[]
     },
   })
+}
+
+/**
+ * Attach an annotated frame to the note it was drawn for. Raw PNG bytes as the
+ * body — the shape the route expects, and the one thing the tRPC surface beside
+ * it cannot carry.
+ *
+ * The URL comes from core, which is also where the route that serves it and the
+ * service that stamps `screenshotUrl` onto the note get theirs — so the
+ * thumbnail in the notes list is literally a GET of what was posted here.
+ */
+export async function uploadScreenshot(noteId: string, png: Blob): Promise<void> {
+  const res = await fetch(noteScreenshotUploadUrl(noteId), {
+    method: 'POST',
+    headers: { 'content-type': 'image/png' },
+    body: png,
+  })
+  if (!res.ok) throw new Error(`screenshot upload: ${res.status}`)
 }

@@ -69,7 +69,7 @@ so typecheck + the UI work end-to-end before wave B lands.
 | `src/launcher/artifacts.ts`       | B1 | write settings.json / mcp.json / system-prompt.md |
 | `src/launcher/hook-client.ts`     | B1 | standalone bun hook script (runs inside sessions) |
 | `src/routes/hooks.ts`             | B1 | POST /api/hooks/:event |
-| `src/mcp/server.ts`               | B1 | 4 MCP tools, zod-validated (§6) — build-era count; the server registers **14** today |
+| `src/mcp/server.ts`               | B1 | 4 MCP tools, zod-validated (§6) — build-era count; the server registers **20** today, filtered per session kind so no session sees all of them |
 | `src/workflows/registry.ts`       | A1 | Map<string, WorkflowDef>; stub ticket-burner entry |
 | `src/workflows/ticket-burner.ts`  | B3 | @ai-hero/sandcastle burner (§8) |
 | `src/workflows/runner.ts`         | A1 | startRun: create run row, wire ctx, catch, finalize |

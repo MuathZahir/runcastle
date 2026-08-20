@@ -1,6 +1,6 @@
 ---
 name: tickets
-description: Break the spec into vertical slices sized to earn a fresh sandboxed agent session and land inside it, and emit them via MCP. Then complete the tickets phase. Invoked by /runcastle:ideate.
+description: Break the spec into vertical slices sized to earn a fresh sandboxed agent session and land inside it, and emit them via MCP. Then complete the tickets phase. Invoked by /runcastle:ideate or /runcastle:converge.
 disable-model-invocation: false
 ---
 <!-- Forked from Matt Pocock's to-tickets skill, via https://github.com/mattpocock/skills, 2026-07-14, adapted for runcastle -->
@@ -90,4 +90,4 @@ Then:
 - `mcp__runcastle__emit_tickets({ tickets: [...] })` — **emit the array; do NOT write ticket files.** It returns `{ stored, ids }` and logs the timeline event itself; do not record one of your own.
 - `mcp__runcastle__complete_phase({ phase: "tickets" })`. If the gate returns `ok: false`, fix what it names and retry.
 
-Return to `/runcastle:ideate` to close out the session.
+Return control to **the session skill that invoked you** — `/runcastle:ideate` for a linear feature, `/runcastle:converge` for a mapped one — and let it close out the session. Do **not** invoke a session skill yourself to hand back: you are already inside one, and loading another session's entry skill would drop a whole procedure this session is not running (a converge session in particular is forbidden to grill) into the window.

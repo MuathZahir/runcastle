@@ -1,4 +1,12 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs'
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import type { Feature, PreparedKey, Project } from '@runcastle/core'
@@ -400,10 +408,12 @@ export async function ensureTalkWorktree(project: Project, feature: Feature): Pr
 }
 
 /**
- * `git worktree add <path> <branch>`, retried once through a `worktree prune` —
- * the stale-registry case (the dir was deleted out from under git) is the common
- * one, and it heals itself. `label` names the worktree in the error a second
- * failure raises, so the message says which one could not be created.
+ * `git worktree add <path> <branch>`, retried once through the two repairs that
+ * cover the two ways the path gets stuck — mirror images of each other:
+ * `worktree prune` for a registration whose checkout is gone, and
+ * {@link reclaimOrphanedWorktree} for a checkout whose registration is gone.
+ * `label` names the worktree in the error a second failure raises, so the
+ * message says which one could not be created.
  */
 async function addWorktree(
   g: SimpleGit,
@@ -421,6 +431,7 @@ async function addWorktree(
     } catch {
       // best-effort — a failed prune just means the retry below will surface it
     }
+    if (await reclaimOrphanedWorktree(g, worktreePath, branch)) return worktreePath
     try {
       await g.raw(['worktree', 'add', worktreePath, branch])
       return worktreePath
@@ -428,6 +439,98 @@ async function addWorktree(
       throw new InvalidInputError(`could not create ${label} at ${worktreePath}: ${errMsg(e)}`)
     }
   }
+}
+
+/**
+ * Re-adopt a checkout that survived on disk after its `.git/worktrees/<id>`
+ * admin entry went missing — the mirror image of the stale-registry case
+ * `prune` handles, and a dead end for every git command: `worktree add` refuses
+ * the path forever (`fatal: '<path>' already exists`), `--force` refuses it too
+ * (that flag is about the branch, not the directory), `prune` only drops
+ * entries whose checkout is gone, and `repair` needs the entry it is missing.
+ * Seen in the wild on the project worktree, which left the project terminal
+ * unlaunchable until the directory was deleted by hand.
+ *
+ * Rebuilds the entry rather than clearing the path, because clearing the path is
+ * the repair that cannot be undone — and on Windows it is also the one that
+ * fails, since a single open handle anywhere inside blocks both delete and
+ * rename. The entry is three small files: `gitdir` and `commondir` relink the
+ * two halves, and HEAD is written DETACHED at the branch tip so re-registering
+ * can never collide with a worktree that already holds the branch.
+ *
+ * The working tree is then reset to that tip, which is the one place this does
+ * discard something. It has to: git kept no record of the commit the orphan was
+ * checked out at, so its files are of unknown vintage, and adopting them as-is
+ * presents a months-old checkout to the session as a mountain of pending edits —
+ * edits a session could commit, reverting real work on the branch. Only
+ * uncommitted, unrecorded bytes go; commits are on the branch and never at risk,
+ * and ignored files (`node_modules`, `.env`) survive the clean.
+ *
+ * Returns whether the worktree is now registered AND on `branch`; false leaves
+ * everything as it was, so an ordinary `add` failure still reports itself
+ * unchanged.
+ */
+async function reclaimOrphanedWorktree(
+  g: SimpleGit,
+  worktreePath: string,
+  branch: string,
+): Promise<boolean> {
+  if (!existsSync(worktreePath)) return false
+  if ((await registeredWorktrees(g)).has(canon(worktreePath))) return false
+
+  // The orphan's own `.git` file names the admin dir it lost — more reliable
+  // than deriving it from the path, since git's id is not always the basename.
+  const adminDir = worktreeAdminDir(worktreePath)
+  if (!adminDir || existsSync(adminDir)) return false
+  const commonDir = resolve(adminDir, '..', '..')
+  if (!existsSync(join(commonDir, 'objects'))) return false
+
+  let tip: string
+  try {
+    tip = (await g.revparse([branch])).trim()
+  } catch {
+    return false // the branch vanished too — a plain `add` will say so better
+  }
+
+  try {
+    mkdirSync(adminDir, { recursive: true })
+    writeFileSync(join(adminDir, 'gitdir'), `${slash(join(worktreePath, '.git'))}\n`)
+    writeFileSync(join(adminDir, 'commondir'), '../..\n')
+    writeFileSync(join(adminDir, 'HEAD'), `${tip}\n`)
+    const gw = git(worktreePath)
+    await gw.raw(['reset', '--hard', '--quiet', tip]) // rebuilds the missing index too
+    await gw.raw(['clean', '-fdq']) // stale files the tip no longer tracks; keeps ignored ones
+  } catch {
+    rmSync(adminDir, { recursive: true, force: true })
+    return false
+  }
+
+  if (!(await registeredWorktrees(g)).has(canon(worktreePath))) {
+    rmSync(adminDir, { recursive: true, force: true })
+    return false
+  }
+  return checkoutInWorktree(worktreePath, branch)
+}
+
+/**
+ * The `.git/worktrees/<id>` dir a linked worktree's `.git` file points at, or
+ * `undefined` when `path` holds no readable `gitdir:` pointer (a real repo with
+ * a `.git` DIRECTORY included — that is not an orphaned worktree).
+ */
+function worktreeAdminDir(path: string): string | undefined {
+  let contents: string
+  try {
+    contents = readFileSync(join(path, '.git'), 'utf8')
+  } catch {
+    return undefined
+  }
+  const pointer = contents.match(/^gitdir:\s*(.+)$/m)?.[1].trim()
+  return pointer ? resolve(pointer) : undefined
+}
+
+/** git writes POSIX separators inside its own metadata files, on Windows too. */
+function slash(path: string): string {
+  return path.replace(/\\/g, '/')
 }
 
 /**
@@ -694,6 +797,64 @@ export function ticketBranchName(slug: string, ticketSeq: number, unique: string
  */
 export function burnWorktreePath(repoPath: string, branch: string): string {
   return join(repoPath, '.sandcastle', 'worktrees', branch.replace(/\//g, '-'))
+}
+
+/**
+ * Where git keeps this repo's `info/exclude`. Asked of git rather than
+ * assembled, for two reasons: a linked worktree's `.git` is a FILE, not a
+ * directory, and git resolves `info/exclude` against the COMMON git dir anyway
+ * — so one write there covers the parent checkout and every burn worktree
+ * hanging off it, including worktrees that do not exist yet. That is what lets
+ * the burner exclude its attachments directory before sandcastle has created
+ * the worktree it will land in — and what makes taking the line out again
+ * ({@link unexcludePath}) matter as much as putting it in.
+ */
+async function excludeFilePath(repoPath: string): Promise<string> {
+  const raw = (await git(repoPath).raw(['rev-parse', '--git-path', 'info/exclude'])).trim()
+  return resolve(repoPath, raw)
+}
+
+/**
+ * Add `pattern` to the repo's `info/exclude` — git's per-clone ignore list,
+ * which lives in `.git/` and is therefore never committed and never dirties the
+ * working tree the way an edit to `.gitignore` would.
+ *
+ * The read-and-append is synchronous on purpose: tickets burn in parallel and
+ * all want the same line, and a sync read-modify-write cannot interleave, so N
+ * concurrent callers still produce one line.
+ */
+export async function excludePath(repoPath: string, pattern: string): Promise<void> {
+  const file = await excludeFilePath(repoPath)
+  mkdirSync(dirname(file), { recursive: true })
+  const current = existsSync(file) ? readFileSync(file, 'utf8') : ''
+  if (current.split(/\r?\n/).includes(pattern)) return
+  writeFileSync(file, current.length > 0 && !current.endsWith('\n') ? `\n${pattern}\n` : `${pattern}\n`, {
+    flag: 'a',
+  })
+}
+
+/**
+ * Take `pattern` back out of the repo's `info/exclude`, restoring the file as
+ * {@link excludePath} found it.
+ *
+ * The counterpart is not optional book-keeping: the file it writes to is the
+ * common git dir's, so a line left behind does not expire with the burn
+ * worktree that needed it — it goes on hiding that pattern from the human's own
+ * `git status`, in every worktree of the clone, forever.
+ *
+ * Only whole lines equal to `pattern` go. Everything else is written back
+ * byte-for-byte, line endings included, so a file the human has their own
+ * entries in comes out unchanged; a pattern that is not there (never added,
+ * already removed by a concurrent burn) is a no-op, and so is a missing file.
+ */
+export async function unexcludePath(repoPath: string, pattern: string): Promise<void> {
+  const file = await excludeFilePath(repoPath)
+  if (!existsSync(file)) return
+  const current = readFileSync(file, 'utf8')
+  // Split AFTER each newline so every surviving line keeps its own terminator.
+  const kept = current.split(/(?<=\n)/).filter((line) => line.replace(/\r?\n$/, '') !== pattern)
+  const next = kept.join('')
+  if (next !== current) writeFileSync(file, next)
 }
 
 /**

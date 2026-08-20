@@ -1,8 +1,8 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "26087193-7b7b-4d1f-81d1-6a59f9584ea1",
-  "prevId": "83398eca-6866-4731-96bf-6010d25b4205",
+  "id": "83398eca-6866-4731-96bf-6010d25b4205",
+  "prevId": "8692b89c-cfa8-4712-bad0-064c9d68fd8f",
   "tables": {
     "events": {
       "name": "events",
@@ -688,6 +688,13 @@
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
+        },
+        "video_timestamp": {
+          "name": "video_timestamp",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
         }
       },
       "indexes": {},
@@ -769,13 +776,6 @@
           "notNull": true,
           "autoincrement": false,
           "default": "'implementation'"
-        },
-        "model": {
-          "name": "model",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
         },
         "lap": {
           "name": "lap",

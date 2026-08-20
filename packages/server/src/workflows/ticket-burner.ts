@@ -1,5 +1,5 @@
-import { existsSync, mkdirSync, readFileSync, readdirSync } from 'node:fs'
-import { dirname, join } from 'node:path'
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync } from 'node:fs'
+import { basename, dirname, join, posix as posixPath, win32 as winPath } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type {
   AgentRuntime,
@@ -13,15 +13,27 @@ import type {
   WorkflowDef,
 } from '@runcastle/core'
 import {
+  WITHHELD_FEATURE_DOCS,
+  agentDigestDocOrder,
+  isAgentDigestDoc,
   newId,
   resolveModelEntry,
   resolvePreparedSettings,
   resolveSandboxImage,
 } from '@runcastle/core'
 import { loadConfig } from '@runcastle/core/config-load'
-import { burnCacheDir, envPath, featureDocsRel, logsDir, worktreeDir } from '@runcastle/core/paths'
+import {
+  ATTACHMENTS_DIR,
+  annotationPath,
+  burnCacheDir,
+  envPath,
+  featureDocsRel,
+  logsDir,
+  worktreeDir,
+} from '@runcastle/core/paths'
 import type { McpConfig } from '../launcher/artifacts'
 import { resolveSkillsRoot } from '../launcher/skills-root'
+import { ADR_DIR_REL, CHARTER_FILE, MAP_SECTIONS, listLiveAdrs } from '../services/knowledge'
 import { RUNTIME_AUTH_KEY, RUNTIME_AUTH_SETUP_HINT } from '../services/setup'
 import {
   appendTranscript,
@@ -31,10 +43,13 @@ import {
 import {
   allowPushToCheckedOutBranches,
   branchCommitsAhead,
+  burnWorktreePath,
   cleanupBurnWorktree,
   commitSummaries,
+  excludePath,
   mergeTempBranch,
   ticketBranchName,
+  unexcludePath,
 } from '../services/git'
 import type { TempBranchMergeResult } from '../services/git'
 import type {
@@ -121,6 +136,33 @@ export type TicketOutcome =
       readonly digest?: string
     }
 
+/**
+ * What the run knows at the moment a ticket starts, beyond the ticket itself.
+ *
+ * It exists for one reason: the burn already harvests every finished ticket's
+ * own account of its work into an in-process array, and until now that array
+ * went ONLY to the run row. Two agents in the same process at the same instant
+ * needed it — an implementer that was handed its blockers as bare integers, and
+ * a reviewer told it was "the only agent who can say what landed" — and both
+ * were left to rediscover from `git log` what was sitting in memory beside them.
+ */
+export interface TicketRunContext {
+  /** Digests harvested from tickets that have already settled in this run. */
+  readonly digests: readonly HarvestedDigest[]
+}
+
+/**
+ * The prompt blocks that are identical for every ticket in one burn — resolved
+ * ONCE per run rather than per ticket, both because re-reading them 12 times is
+ * waste and because the docs digest's timeline event should fire once, not once
+ * per lane.
+ */
+export interface BurnPromptBlocks {
+  readonly docsDigest: string
+  readonly projectStandards: string
+  readonly driveNotes: string
+}
+
 export interface BurnDeps {
   config: RuncastleConfig
   /** The runtime this run's resolved model launches — whose auth key must be set. */
@@ -130,7 +172,11 @@ export interface BurnDeps {
   /** Worker-pool width — how many tickets burn in parallel (`config.burnConcurrency`). */
   concurrency: number
   /** Runs one ticket to a terminal outcome. Real impl calls sandcastle `run()`. */
-  executeTicketRun: (ctx: WorkflowCtx, ticket: Ticket) => Promise<TicketOutcome>
+  executeTicketRun: (
+    ctx: WorkflowCtx,
+    ticket: Ticket,
+    run: TicketRunContext,
+  ) => Promise<TicketOutcome>
 }
 
 /**
@@ -206,15 +252,46 @@ export function detectCycle(tickets: Ticket[]): number[] | null {
 // Pure unit — prompt template rendering
 // ---------------------------------------------------------------------------
 
+/**
+ * The implement-ticket template's keys, in TEMPLATE ORDER — and that order is
+ * load-bearing, not cosmetic (see the ordering note on `implement-ticket.md`).
+ *
+ * Everything above the line is RUN-CONSTANT: identical bytes for every ticket in
+ * a burn, and identical across a ticket's own retry iterations. Everything below
+ * it varies per ticket. Keeping the constant half first makes the rendered
+ * prompts of concurrent tickets share a long common prefix — measured at ~92% of
+ * the prompt, against 11.6% when the ticket JSON sat near the top — which is the
+ * shape a prompt cache can actually reuse. A new placeholder that varies per
+ * ticket MUST go below the line or the prefix collapses to whatever precedes it.
+ */
 const PLACEHOLDERS = [
-  'TICKET_JSON',
+  // --- run-constant ---
+  'WORKSPACE_NOTES',
+  'PROJECT_STANDARDS',
   'FEATURE_BRIEF',
   'DOCS_DIGEST',
-  'COMMIT_CONVENTION',
-  'WORKSPACE_NOTES',
   'VERIFY_NOTES',
+  'DRIVE_NOTES',
+  'GUARD_NOTES',
+  // --- ticket-specific (must stay last) ---
+  'TICKET_JSON',
+  'BLOCKERS',
 ] as const
 type PlaceholderKey = (typeof PLACEHOLDERS)[number]
+
+/** The keys above whose value is the same for every ticket in one burn. */
+export const RUN_CONSTANT_PLACEHOLDERS: readonly PlaceholderKey[] = [
+  'WORKSPACE_NOTES',
+  'PROJECT_STANDARDS',
+  'FEATURE_BRIEF',
+  'DOCS_DIGEST',
+  'VERIFY_NOTES',
+  'DRIVE_NOTES',
+  'GUARD_NOTES',
+]
+
+/** The keys whose value differs between two tickets of the same burn. */
+export const TICKET_SPECIFIC_PLACEHOLDERS: readonly PlaceholderKey[] = ['TICKET_JSON', 'BLOCKERS']
 
 /**
  * Replace every `{{KEY}}` placeholder in a burner template with its value.
@@ -256,23 +333,306 @@ export function buildTicketJson(ticket: Ticket): string {
   )
 }
 
-/** The `{{FEATURE_BRIEF}}` block — title / oneLiner / slug / branch. */
+/**
+ * The `{{FEATURE_BRIEF}}` block — title / oneLiner / slug / integration branch.
+ *
+ * The branch line says **integration** branch and says not to check it out,
+ * because that is what it is: every implementer works on its own temp branch
+ * forked from it, and the prompt's first paragraph forbids checking it out. The
+ * label used to read "Working branch", which told the agent to do the one thing
+ * the same prompt banned twenty lines earlier.
+ */
 export function buildFeatureBrief(feature: Feature): string {
   return [
     `**${feature.title}** (\`${feature.slug}\`)`,
     '',
     feature.oneLiner,
     '',
-    `Working branch: \`${feature.branch}\``,
+    `Integration branch (do NOT check it out): \`${feature.branch}\` — your own temp branch is forked from it, and the run merges you back into it.`,
   ].join('\n')
 }
 
-/** The `{{DOCS_DIGEST}}` block from the feature's `docs/features/<slug>/*.md`. */
-export function buildDocsDigest(files: { name: string; content: string }[]): string {
+/** A doc named to the agent but not inlined, with the reason it was not. */
+export interface WithheldDoc {
+  readonly name: string
+  readonly reason: string
+}
+
+/**
+ * The `{{DOCS_DIGEST}}` block: the canonical feature docs in full, followed by
+ * an INDEX of everything else in the feature's docs dir.
+ *
+ * The index is the half that makes the allowlist safe (see `@runcastle/core`'s
+ * `docs.ts`): the burner agent works in a real checkout and has `Read`, so a doc
+ * it is told exists — by path, with the reason it was not inlined — is one call
+ * away, while the alternative (inlining everything) shipped a 97 KB digest to
+ * every coder in a 12-ticket run.
+ */
+export function buildDocsDigest(
+  files: { name: string; content: string }[],
+  withheld: readonly WithheldDoc[] = [],
+  docsRel?: string,
+): string {
+  const parts: string[] = []
   if (files.length === 0) {
-    return '_No feature docs found — work from the ticket context and the code._'
+    parts.push('_No canonical feature docs found — work from the ticket context and the code._')
+  } else {
+    parts.push(files.map((f) => `### ${f.name}\n\n${f.content.trim()}`).join('\n\n---\n\n'))
   }
-  return files.map((f) => `### ${f.name}\n\n${f.content.trim()}`).join('\n\n---\n\n')
+  if (withheld.length > 0) {
+    const at = (name: string): string => (docsRel ? `${docsRel}/${name}` : name)
+    parts.push(
+      [
+        '### Also on disk, not inlined',
+        '',
+        'These exist in this feature\'s docs directory and are NOT reproduced above. Read one only if your ticket points at it:',
+        '',
+        ...withheld.map((w) => `- \`${at(w.name)}\` — ${w.reason}`),
+      ].join('\n'),
+    )
+  }
+  return parts.join('\n\n---\n\n')
+}
+
+/**
+ * `map.md` sections a coder must not act on, dropped from the digest.
+ *
+ * "Not yet specified" and "Out of scope" are the map's two negative-space
+ * sections: between them they enumerate work that is deliberately NOT this
+ * lap's, and on a mapped feature "Not yet specified" is the section that grows
+ * without bound as waypoints pile up. The implementer is already told, twice,
+ * never to expand scope beyond its ticket — so the only thing these sections can
+ * change about its behaviour is to tempt it. Destination and Notes stay: those
+ * are the intent a coder resolves ambiguity against.
+ *
+ * A pointer replaces what was cut, so the contract's naming half holds here too.
+ */
+export const DROPPED_MAP_SECTIONS: readonly string[] = ['Not yet specified', 'Out of scope']
+
+/**
+ * Strip {@link DROPPED_MAP_SECTIONS} out of a `map.md` body. Section headings are
+ * matched at any heading level and case-insensitively, and a section runs to the
+ * next heading of the same-or-shallower depth. Content with none of them is
+ * returned unchanged (no pointer line is added for a cut that did not happen).
+ */
+export function trimMapDoc(content: string, docPath?: string): string {
+  const lines = content.split(/\r?\n/)
+  const out: string[] = []
+  let dropping: number | null = null
+  let dropped = false
+  for (const line of lines) {
+    const heading = /^(#{1,6})\s+(.*?)\s*$/.exec(line)
+    if (heading) {
+      const depth = heading[1]?.length ?? 1
+      const title = (heading[2] ?? '').toLowerCase()
+      if (dropping !== null && depth <= dropping) dropping = null
+      if (DROPPED_MAP_SECTIONS.some((s) => s.toLowerCase() === title)) {
+        dropping = depth
+        dropped = true
+        continue
+      }
+    }
+    if (dropping === null) out.push(line)
+  }
+  const body = out.join('\n').replace(/\n{3,}$/, '\n').trimEnd()
+  if (!dropped) return content
+  const where = docPath ? ` — read \`${docPath}\` if you need them` : ''
+  return `${body}\n\n_(The "${DROPPED_MAP_SECTIONS.join('" and "')}" sections are omitted here: they describe work outside this ticket${where}.)_`
+}
+
+/** Both halves of a docs digest read off disk, plus what it cost to ship. */
+export interface DocsDigestResult {
+  /** The rendered `{{DOCS_DIGEST}}` block. */
+  readonly text: string
+  /** `text.length` — the per-ticket byte cost, for the timeline event. */
+  readonly bytes: number
+  /** Canonical docs inlined, in digest order. */
+  readonly included: readonly string[]
+  /** Docs named but not inlined. */
+  readonly withheld: readonly WithheldDoc[]
+  /**
+   * Set when the digest carries NO spec at all. A burn can legitimately run this
+   * way (the runner detaches the talk worktree for exactly these runs), which is
+   * precisely why it must be visible rather than one italic line inside a
+   * container's prompt.
+   */
+  readonly missing?: 'no-worktree' | 'no-docs-dir' | 'no-canonical-docs'
+}
+
+/**
+ * The `{{PROJECT_STANDARDS}}` block: the repo's own standards named BY PATH.
+ *
+ * By path, never by content. The reviewer is told to judge the diff against
+ * `CLAUDE.md` ("the highest authority"), `CONTEXT.md` and the live ADRs — and
+ * until this block existed the implementer was told none of it, so every burn
+ * was graded against a rulebook only one of its agents had seen. Inlining them
+ * would re-create exactly the bloat the docs allowlist just removed; the agent
+ * has `Read` and a real checkout, so a path is enough.
+ *
+ * Only files that actually exist are listed: a path that resolves to nothing
+ * teaches the agent to distrust the whole block.
+ */
+export const AGENT_CONVENTIONS_FILE = 'CLAUDE.md'
+
+export function buildProjectStandards(repoPath: string): string {
+  const present: string[] = []
+  if (existsSync(join(repoPath, AGENT_CONVENTIONS_FILE))) {
+    present.push(
+      '`CLAUDE.md` — this repo\'s agent-facing conventions, and the highest authority on them',
+    )
+  }
+  if (existsSync(join(repoPath, CHARTER_FILE))) {
+    present.push(`\`${CHARTER_FILE}\` — the project charter: what this codebase is for`)
+  }
+  const adrs = listLiveAdrs(repoPath).map((a) => a.relPath)
+  if (adrs.length > 0) {
+    const list = adrs.map((p) => `\`${p}\``).join(', ')
+    present.push(`${adrs.length} live ADR(s) under \`${ADR_DIR_REL}/\`: ${list}`)
+  }
+
+  if (present.length === 0) {
+    return 'This repo documents no standards of its own (no `CLAUDE.md`, no `CONTEXT.md`, no live ADRs), so the conventions of the surrounding code are the whole standard. Read the files nearest your change and match them.'
+  }
+  return [
+    'Your diff will be reviewed against these, so read the ones your change touches BEFORE you write code — they are in your checkout:',
+    '',
+    ...present.map((p) => `- ${p}`),
+    '',
+    'Read them, do not skim past them: a convention you break here is a review finding, and a fix ticket, later in this same run. Where they are silent, match the conventions of the surrounding code.',
+  ].join('\n')
+}
+
+/** Everything the drive contract can be configured with (project columns). */
+export interface DriveSettings {
+  readonly repoPath: string
+  readonly driveSetupCommand?: string | undefined
+  readonly driveStopCommand?: string | undefined
+  readonly devCommand?: string | undefined
+  readonly dbResetCommand?: string | undefined
+}
+
+/**
+ * The `{{DRIVE_NOTES}}` block: keep the project's test-drive machinery true.
+ *
+ * Conditional, and it did not used to be. The old prompt spent ~3.3 KB per
+ * ticket teaching every agent about `.runcastle/drive-setup.sh`, `drive.env` and
+ * the `RUNCASTLE_*` variables — on every project, including the ones with no
+ * `.runcastle/` directory at all, and naming a `.sh` file this very repo does
+ * not have (its own hook is `drive-setup.ts`). The contract the server actually
+ * resolves is the prepared project columns, which may hold ANY command; the
+ * `.runcastle/` convention is one common shape of it, not the shape.
+ *
+ * So: a project with a configured drive gets the instruction, quoting the
+ * commands it really runs. A project without one gets two sentences telling the
+ * agent to report the need instead of inventing the machinery.
+ */
+export function buildDriveNotes(settings: DriveSettings): string {
+  const configured: string[] = []
+  const add = (label: string, cmd?: string): void => {
+    const v = cmd?.trim()
+    if (v) configured.push(`- **${label}**: \`${v}\``)
+  }
+  add('setup', settings.driveSetupCommand)
+  add('stop', settings.driveStopCommand)
+  add('dev server', settings.devCommand)
+  add('db reset', settings.dbResetCommand)
+  const hasDir = existsSync(join(settings.repoPath, '.runcastle'))
+
+  if (configured.length === 0 && !hasDir) {
+    return [
+      'This project has no test-drive machinery configured, so there is nothing here for you to keep in step — do not invent any.',
+      '',
+      'If your ticket makes the dev environment need something new (a service, a required env var, a seed, a background process), say so plainly in your digest. That is the whole obligation: a human wires it up once, for the project, not once per ticket.',
+    ].join('\n')
+  }
+
+  const out: string[] = [
+    "The project's test drive boots this branch through commands committed in this repo, so the drive of *this* branch runs *this* branch's copy of them.",
+  ]
+  if (configured.length > 0) {
+    out.push('', 'What the server runs:', '', ...configured)
+  }
+  if (hasDir) {
+    out.push(
+      '',
+      'The scripts those commands invoke live under `.runcastle/`. `drive-setup` writes computed values (a port, a database name, a URL) to `.runcastle/drive.env` as plain `KEY=VALUE` — that file is the only channel from the script to the app — and the server provides `RUNCASTLE_SLUG`, `RUNCASTLE_BRANCH` and `RUNCASTLE_ID` to every drive hook, so per-drive identity is derived from those and never from git inside the script.',
+    )
+  }
+  out.push(
+    '',
+    '**Standing instruction: if your ticket introduces infrastructure the dev environment needs, update that machinery in this same branch.** The triggers are a **service** the app now needs, a **required env var** it reads at boot and fails without, a **seed** that must exist before the app is usable, or a **process** the dev environment must run alongside the app. Anything short of those needs no edit — the steps are idempotent by design, so a branch that merely adds a package or a migration is already covered. This is part of your ticket, not adjacent work: a branch whose drive cannot boot is not done.',
+    '',
+    '**Check it, never run it.** Your sandbox has no services and no app, so running `drive-setup`, `drive-stop`, or the app itself buys a confusing failure and burns your budget. What you *can* verify offline: that the script parses (`bash -n` for a shell script), that every path it names — compose file, seed file, env sample, sourced helper — exists in the repo, and that any env var your change made mandatory is actually written out. Say in your digest which of those you checked, and say plainly when one was not possible rather than implying it passed.',
+  )
+  return out.join('\n')
+}
+
+/**
+ * The `{{GUARD_NOTES}}` block: whether the deny hook is actually armed.
+ *
+ * The prompt used to assert flatly that `git stash` and friends are "denied
+ * before they run" — but the guard installs only under a container sandbox with
+ * `burnGuard` on, so under `noSandbox` (or with the kill switch thrown) that
+ * paragraph was simply false. An agent that reads a false claim about its
+ * environment has no way to tell which of the prompt's other claims are also
+ * false, so the rules are stated either way and only the ENFORCEMENT claim is
+ * conditional.
+ */
+export function buildGuardNotes(guardInstalled: boolean): string {
+  return guardInstalled
+    ? 'Three of the rules below are enforced by a tool hook, not merely stated: `git stash`, test-runner concurrency flags, and rewriting files through interpreter heredocs are **denied before they run**. A denial is policy, not a broken environment — read its reason, take the alternative it names, and carry on. Do not try to route around it.'
+    : 'Nothing below is machine-enforced in this burn — the deny hook is not installed, so the rules hold on your discipline alone. They are not style preferences: each one is a measured way burns lose work.'
+}
+
+/**
+ * The `{{BLOCKERS}}` block: what this ticket's blockers actually built.
+ *
+ * The ticket JSON carries `blockedBy: [2]` — bare integers that appeared nowhere
+ * else in the prompt, so the agent was never told what they referred to, nor the
+ * one fact that matters operationally: the scheduler already landed those
+ * tickets and their commits are in the base of the branch it is standing on. The
+ * alternative it reached for instead was an unbounded `git log` archaeology dig
+ * inside the container. Every blocker here already wrote an account of its own
+ * work; this hands it over.
+ */
+export function buildBlockersBlock(
+  blockedBy: readonly number[],
+  digests: readonly HarvestedDigest[],
+): string {
+  if (blockedBy.length === 0) {
+    return 'This ticket has no blockers — nothing in this run had to land before it.'
+  }
+  const bySeq = new Map(digests.map((d) => [d.seq, d]))
+  const ordered = [...blockedBy].sort((a, b) => a - b)
+  const head = `This ticket was blocked by ticket(s) ${ordered.join(', ')} of this same run. **They have already landed** — their commits are in the branch you are standing on, so read the code, do not re-implement it, and do not go digging through \`git log\` to find out what they were.`
+  const bodies = ordered.map((seq) => {
+    const d = bySeq.get(seq)
+    if (!d) {
+      return `### ticket ${seq}\n\n_Landed, but left no account of its work. Read the code it added if you need the detail._`
+    }
+    return `### ticket ${seq} — ${d.title}\n\n${d.digest.trim()}`
+  })
+  return [head, '', 'In their own words:', '', ...bodies].join('\n')
+}
+
+/**
+ * The `{{LAP_DIGESTS}}` block for the review prompt: what every implementer in
+ * this burn says it did.
+ *
+ * The review template claimed the reviewer was "the only agent in the burn that
+ * can answer" what the lap delivered. It never was: a dozen implementers each
+ * wrote an account first, and the two sections a reviewer cannot reconstruct
+ * from a diff at any price — "Surprises" and "Left undone" — exist only in them.
+ * The diff says what changed; these say what it cost and what was left.
+ */
+export function buildLapDigestsBlock(digests: readonly HarvestedDigest[]): string {
+  if (digests.length === 0) {
+    return '_No implementation ticket in this burn left a digest — the diff and the feature docs are all you have._'
+  }
+  return [...digests]
+    .sort((a, b) => a.seq - b.seq)
+    .map((d) => `### ticket ${d.seq} — ${d.title}\n\n${d.digest.trim()}`)
+    .join('\n\n---\n\n')
 }
 
 // ---------------------------------------------------------------------------
@@ -519,7 +879,7 @@ export function resolveBurnWorkspaceMode(
 
 /**
  * The `sandbox.onSandboxReady` command for `isolated` mode (runs in-container
- * via `sh -c`, cwd = the mounted workspace). Six steps:
+ * via `sh -c`, cwd = the mounted workspace). Seven steps:
  *
  * 1. Whitelist every repo path for git (`safe.directory '*'`). Bind-mounted
  *    paths are owned by the host UID, and when the workspace is a worktree its
@@ -530,7 +890,15 @@ export function resolveBurnWorkspaceMode(
  * 2. Clone the workspace onto the container's native filesystem — one bulk
  *    transfer across the mount instead of a per-file tax on every later
  *    install/typecheck/test.
- * 3. Install a `post-commit` hook in the clone that, on every commit, pushes
+ * 3. Carry any attachments across (spec.md "Riding into the burn"). The
+ *    host-side copy put them in the mounted workspace, but they are untracked
+ *    and git-excluded by design, so a clone cannot bring them — and the ticket
+ *    context names their path relative to wherever the agent works, which in
+ *    this mode is the clone. Guarded on the directory existing, because most
+ *    burns have no attachments at all; re-excluded inside the clone, because
+ *    step 4 pushes the clone's commits back and `info/exclude` is not something
+ *    a clone inherits.
+ * 4. Install a `post-commit` hook in the clone that, on every commit, pushes
  *    `HEAD:<tempBranch>` back to the workspace and then hard-resets the
  *    workspace checkout to the freshly-pushed ref — syncing needs no agent
  *    discipline at all, and the mounted working tree tracks the branch, so
@@ -543,17 +911,17 @@ export function resolveBurnWorkspaceMode(
  *    The hook unsets GIT_DIR/GIT_WORK_TREE/GIT_INDEX_FILE first: git exports
  *    them to hook processes, and they would otherwise pin the
  *    `git -C <workspace>` reset to the clone's repo instead of the workspace.
- * 4. For corepack-managed managers (pnpm/yarn), shim the bare binary onto
+ * 5. For corepack-managed managers (pnpm/yarn), shim the bare binary onto
  *    `~/.local/bin` (on PATH in the node:22 image). Neither manager is
  *    preinstalled — only `corepack` is — and in real burns every agent
  *    independently burned iterations rediscovering `pnpm: command not found`
  *    and hand-writing this exact shim.
- * 5. Run the deps install inside the clone, where pnpm's hardlinks actually
+ * 6. Run the deps install inside the clone, where pnpm's hardlinks actually
  *    work (ADR-0004) and node_modules materializes on native FS.
- * 6. LAST, re-pin `core.hooksPath` to the clone's `.git/hooks`. A husky
+ * 7. LAST, re-pin `core.hooksPath` to the clone's `.git/hooks`. A husky
  *    `prepare` script run by the install sets `core.hooksPath=.husky/_`, which
  *    makes git ignore `.git/hooks/` entirely — silently disarming the sync
- *    hook from step 3, so every commit stays trapped in the clone and the
+ *    hook from step 4, so every commit stays trapped in the clone and the
  *    ticket fails with "agent made no commits" despite completed work. The
  *    re-pin must follow the install (last writer wins); it also disables the
  *    repo's own commit hooks (e.g. commitlint), which would otherwise reject
@@ -569,9 +937,12 @@ export function buildIsolatedSetupCommand(
   pm?: PackageManager,
 ): string {
   const hookFile = `${ISOLATED_REPO_PATH}/.git/hooks/post-commit`
+  const attachmentsDir = `${SANDBOX_WORKSPACE_PATH}/${ATTACHMENTS_DIR}`
+  const cloneAttachmentsDir = `${ISOLATED_REPO_PATH}/${ATTACHMENTS_DIR}`
   const parts = [
     `git config --global --add safe.directory '*'`,
     `git clone ${SANDBOX_WORKSPACE_PATH} ${ISOLATED_REPO_PATH}`,
+    `if [ -d "${attachmentsDir}" ]; then mkdir -p "${cloneAttachmentsDir}" && cp -r "${attachmentsDir}/." "${cloneAttachmentsDir}/" && mkdir -p "${ISOLATED_REPO_PATH}/.git/info" && printf '%s\\n' '${ATTACHMENTS_DIR}/' >> "${ISOLATED_REPO_PATH}/.git/info/exclude"; fi`,
     `printf '#!/bin/sh\\nunset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE\\ngit push --quiet origin HEAD:%s && exec git -C ${SANDBOX_WORKSPACE_PATH} reset --hard --quiet %s\\n' '${tempBranch}' '${tempBranch}' > ${hookFile}`,
     `chmod +x ${hookFile}`,
   ]
@@ -606,6 +977,8 @@ export function buildWorkspaceNotes(mode: BurnWorkspaceMode): string {
       'Work in the current directory — it is the repo checkout on your branch.',
       '',
       'Write `DIGEST.md` at the root of that checkout, and leave it uncommitted — the host harvests it from disk.',
+      '',
+      'If you are blocked and write `BLOCKED.md`, write it at the root of that checkout too. **These two paths are the only authoritative ones** — nothing later in this prompt overrides them.',
     ].join('\n')
   }
   return [
@@ -616,7 +989,104 @@ export function buildWorkspaceNotes(mode: BurnWorkspaceMode): string {
     `If you are blocked and write \`BLOCKED.md\`, write it at \`${ISOLATED_REPO_PATH}/BLOCKED.md\` AND copy it to \`${SANDBOX_WORKSPACE_PATH}/BLOCKED.md\` so the orchestrator can see it.`,
     '',
     `Write \`DIGEST.md\` at \`${SANDBOX_WORKSPACE_PATH}/DIGEST.md\` — the mounted mirror, so the host can see it — and NOT inside \`${ISOLATED_REPO_PATH}\`, where it would be committed with your work.`,
+    '',
+    '**Those paths are the only authoritative ones** — nothing later in this prompt overrides them.',
   ].join('\n')
+}
+
+// ---------------------------------------------------------------------------
+// Attachments — an annotated note's screenshot riding into its fix burn
+// ---------------------------------------------------------------------------
+
+/**
+ * The note ids a ticket's context names attachments for. The ticket payload
+ * carries no attachment field (its shape is pinned), so the
+ * `.runcastle-attachments/<noteId>.png` sentence the promotion wrote into the
+ * context is the whole handover — reading it back here is what closes the loop,
+ * and `attachmentRelPath` is the single place the spelling lives.
+ *
+ * Scanned rather than regexed against a hardcoded directory so the two ends
+ * cannot drift; a mention of a note that has no PNG is simply dropped later.
+ */
+export function attachedNoteIds(context: string): string[] {
+  const marker = `${ATTACHMENTS_DIR}/`
+  const ids: string[] = []
+  for (let at = context.indexOf(marker); at !== -1; at = context.indexOf(marker, at + 1)) {
+    const id = /^([\w-]+)\.png/.exec(context.slice(at + marker.length))?.[1]
+    if (id && !ids.includes(id)) ids.push(id)
+  }
+  return ids
+}
+
+/**
+ * Absolute host paths of the screenshots a ticket should burn with: every note
+ * its context names, minus the ones whose PNG is no longer on disk. A note's
+ * screenshot can be deleted between promotion and burn (the note itself, a
+ * manual cleanup), and that is not a burn failure — the agent's Read fails and
+ * it proceeds on the note text, exactly as an unannotated note would.
+ */
+export function attachmentSources(context: string): string[] {
+  return attachedNoteIds(context).map(annotationPath).filter((p) => existsSync(p))
+}
+
+/**
+ * Host `onWorktreeReady` commands that copy `sources` into the burn worktree's
+ * `.runcastle-attachments/`. Sandcastle runs these through the platform shell
+ * with cwd = the worktree, after `git worktree add` and before the sandbox
+ * starts — the one window in which the workspace exists on the host and no
+ * agent is looking at it yet. Doing it there rather than in a sandbox hook is
+ * what makes it sandbox-agnostic: docker and noSandbox both bind the same
+ * directory the copy just wrote into.
+ *
+ * One command per file (plus the mkdir) because `cmd.exe` does not chain an
+ * `if not exist` with `&&` the way `sh` chains `mkdir -p`, and sandcastle runs
+ * the list in order anyway.
+ *
+ * Destinations are built with `node:path`, in the namespace of the TARGET
+ * platform rather than the host's: `platform` is a parameter here, so the
+ * separator has to follow the shell the command is written for, not the machine
+ * that wrote it. (In production the two are the same — the only caller takes the
+ * default — but a `join` that answered `/` for a `cmd.exe` copy under test would
+ * be describing a Windows this code never runs on.)
+ */
+export function buildAttachmentCopyCommands(
+  sources: string[],
+  platform: NodeJS.Platform = process.platform,
+): { command: string }[] {
+  if (sources.length === 0) return []
+  const win = platform === 'win32'
+  const path = win ? winPath : posixPath
+  const dir = ATTACHMENTS_DIR
+  const mkdir = win ? `if not exist "${dir}" mkdir "${dir}"` : `mkdir -p "${dir}"`
+  return [
+    { command: mkdir },
+    ...sources.map((src) => {
+      const dest = path.join(dir, path.basename(src))
+      return {
+        command: win ? `copy /Y "${src}" "${dest}" >nul` : `cp "${src}" "${dest}"`,
+      }
+    }),
+  ]
+}
+
+/**
+ * Undo the workspace preparation once the run is over — both halves of it.
+ *
+ * The images go first. Belt and braces: the directory is excluded from git
+ * before it is ever written, so it cannot be committed and cannot ride the
+ * merge — but a worktree sandcastle PRESERVES (the agent left uncommitted work)
+ * would otherwise keep the images around for as long as the leftover does.
+ *
+ * Then the exclude itself, which is load-bearing only while the agent commits.
+ * It is written against the repo's COMMON git dir, so leaving it behind would
+ * hide any `.runcastle-attachments/` from the human's own `git status` in every
+ * worktree, forever (decisions.md #10). Two burns overlapping can un-exclude
+ * each other's live directory; the cost is the directory showing up in
+ * `git status` until that burn cleans up too, which is not worth coordinating.
+ */
+export async function clearAttachments(workspacePath: string, repoPath: string): Promise<void> {
+  rmSync(join(workspacePath, ATTACHMENTS_DIR), { recursive: true, force: true })
+  await unexcludePath(repoPath, `${ATTACHMENTS_DIR}/`)
 }
 
 /**
@@ -1407,7 +1877,7 @@ function failedBlockerNote(seqs: readonly number[]): string {
 export async function burnTickets(
   ctx: WorkflowCtx,
   tickets: Ticket[],
-  execute: (ctx: WorkflowCtx, ticket: Ticket) => Promise<TicketOutcome>,
+  execute: (ctx: WorkflowCtx, ticket: Ticket, run: TicketRunContext) => Promise<TicketOutcome>,
   concurrency = 1,
 ): Promise<{ done: number; digests: HarvestedDigest[] }> {
   const width = Math.max(1, Math.floor(concurrency))
@@ -1497,7 +1967,9 @@ export async function burnTickets(
       ticketId: t.id,
     })
 
-    const outcome = await execute(ctx, t) // throws on abort — propagates
+    // Snapshotted, not aliased: `digests` keeps growing as sibling lanes finish,
+    // and a ticket's prompt must be built from what had landed when it started.
+    const outcome = await execute(ctx, t, { digests: [...digests] }) // throws on abort — propagates
     if (outcome.status === 'done') {
       status.set(seq, 'done')
       ctx.updateTicket(t.id, { status: 'done', commits: outcome.commits, digest: outcome.digest })
@@ -1694,17 +2166,131 @@ export function burnerAssetPath(file: string): string {
   return join(resolveSkillsRoot(here), 'burner', file)
 }
 
-/** Read `docs/features/<slug>/*.md` from the talk worktree, or a skip note. */
-export function readDocsDigestFromDisk(projectId: string, slug: string): string {
+/**
+ * Every `.md` under a feature's docs dir, as paths relative to it — one level of
+ * recursion, so `research/3-auth.md` is nameable in the index even though it is
+ * never inlined.
+ */
+function listFeatureDocs(docsDir: string, prefix = ''): string[] {
+  const out: string[] = []
+  for (const e of readdirSync(docsDir, { withFileTypes: true })) {
+    const rel = prefix ? `${prefix}/${e.name}` : e.name
+    if (e.isFile() && e.name.endsWith('.md')) out.push(rel)
+    else if (e.isDirectory() && !prefix) out.push(...listFeatureDocs(join(docsDir, e.name), rel))
+  }
+  return out
+}
+
+/**
+ * Build the burn's docs digest off the talk worktree, honouring the shared
+ * allowlist in `@runcastle/core`'s `docs.ts`.
+ *
+ * This used to glob every `.md` in the directory and inline all of it, with no
+ * allowlist and no cap — an independent reimplementation of the same bug the MCP
+ * `get_feature_context` tool had. On this repo's own runs that shipped 97 KB
+ * (~25k tokens) to EVERY coder in a 12-ticket burn, of which `outcome.md` (52 KB)
+ * and `test-notes.md` (27 KB) were the bulk: the previous lap's human-facing
+ * postmortem and its already-triaged bug notes, re-sent up to nine times per
+ * ticket across iterations and attempts.
+ *
+ * Now: the four canonical docs in canonical order, `map.md` trimmed of its
+ * negative-space sections, and everything else NAMED with a reason and a path.
+ */
+export function readDocsDigest(projectId: string, slug: string): DocsDigestResult {
+  const docsRel = featureDocsRel(slug)
+  const done = (text: string, missing: DocsDigestResult['missing']): DocsDigestResult => ({
+    text,
+    bytes: text.length,
+    included: [],
+    withheld: [],
+    ...(missing ? { missing } : {}),
+  })
+
   const worktree = worktreeDir(projectId, slug)
-  if (!existsSync(worktree)) return '_No talk worktree on disk — docs digest skipped._'
-  const docsDir = join(worktree, ...featureDocsRel(slug).split('/'))
-  if (!existsSync(docsDir)) return '_No docs/features dir in the talk worktree — docs digest skipped._'
-  const files = readdirSync(docsDir, { withFileTypes: true })
-    .filter((e) => e.isFile() && e.name.endsWith('.md'))
-    .sort((a, b) => a.name.localeCompare(b.name))
-    .map((e) => ({ name: e.name, content: readFileSync(join(docsDir, e.name), 'utf8') }))
-  return buildDocsDigest(files)
+  if (!existsSync(worktree)) {
+    return done('_No talk worktree on disk — docs digest skipped._', 'no-worktree')
+  }
+  const docsDir = join(worktree, ...docsRel.split('/'))
+  if (!existsSync(docsDir)) {
+    return done('_No docs/features dir in the talk worktree — docs digest skipped._', 'no-docs-dir')
+  }
+
+  const names = listFeatureDocs(docsDir).sort(
+    (a, b) => agentDigestDocOrder(a) - agentDigestDocOrder(b) || a.localeCompare(b),
+  )
+  const files: { name: string; content: string }[] = []
+  const withheld: WithheldDoc[] = []
+  for (const name of names) {
+    if (!isAgentDigestDoc(name)) {
+      withheld.push({
+        name,
+        reason:
+          WITHHELD_FEATURE_DOCS[name.toLowerCase()] ??
+          'not one of the canonical feature docs — read it only if a ticket points at it',
+      })
+      continue
+    }
+    let content: string
+    try {
+      content = readFileSync(join(docsDir, ...name.split('/')), 'utf8')
+    } catch {
+      continue // an unreadable doc is one fewer doc, never a failed burn
+    }
+    if (name.toLowerCase() === 'map.md') content = trimMapDoc(content, `${docsRel}/${name}`)
+    files.push({ name, content })
+  }
+
+  const text = buildDocsDigest(files, withheld, docsRel)
+  return {
+    text,
+    bytes: text.length,
+    included: files.map((f) => f.name),
+    withheld,
+    ...(files.length === 0 ? { missing: 'no-canonical-docs' as const } : {}),
+  }
+}
+
+/** {@link readDocsDigest}, rendered — the block a prompt placeholder takes. */
+export function readDocsDigestFromDisk(projectId: string, slug: string): string {
+  return readDocsDigest(projectId, slug).text
+}
+
+/**
+ * Put the cost — and the absence — of the spec on the run's timeline.
+ *
+ * A spec-less burn used to be traceable only to one italic line inside a
+ * container's prompt, which nothing outside that container ever read; and the
+ * runner *detaches* the talk worktree for exactly the runs that hit it, so a
+ * 12-ticket burn could proceed against no spec at all in complete silence. The
+ * happy path emits too: the digest's byte count is paid once per ticket per
+ * iteration, and it belongs where the rest of the run's cost is visible.
+ */
+export function emitDocsDigestEvent(ctx: WorkflowCtx, docs: DocsDigestResult): void {
+  const data = {
+    bytes: docs.bytes,
+    included: [...docs.included],
+    withheld: docs.withheld.map((w) => w.name),
+    ...(docs.missing ? { missing: docs.missing } : {}),
+  }
+  if (docs.missing) {
+    const why =
+      docs.missing === 'no-worktree'
+        ? 'there is no talk worktree on disk'
+        : docs.missing === 'no-docs-dir'
+          ? 'the talk worktree has no docs dir for this feature'
+          : 'the docs dir holds none of brief/map/decisions/spec'
+    ctx.emitEvent({
+      type: 'burn.docs.missing',
+      message: `burning with NO feature spec — ${why}; every ticket runs on its own text alone`,
+      data,
+    })
+    return
+  }
+  ctx.emitEvent({
+    type: 'burn.docs.digest',
+    message: `docs digest: ${docs.bytes} bytes to every ticket (${docs.included.join(', ')}${docs.withheld.length > 0 ? `; ${docs.withheld.length} named, not inlined` : ''})`,
+    data,
+  })
 }
 
 /** First-found `file` across candidate dirs (worktree first, then repo). */
@@ -2008,6 +2594,8 @@ async function realExecuteTicketRun(
   model: ModelEntry,
   land: <T>(task: () => Promise<T>) => Promise<T>,
   ensureIsolatedPushTarget: () => Promise<void>,
+  blocks: BurnPromptBlocks,
+  runCtx: TicketRunContext,
 ): Promise<TicketOutcome> {
   const { project, feature } = ctx
 
@@ -2021,13 +2609,35 @@ async function realExecuteTicketRun(
   // in-sandbox this write raced N containers on the shared `config.lock`.
   if (workspaceMode === 'isolated') await ensureIsolatedPushTarget()
 
+  // Screenshots the promoted note carried in (spec.md "Riding into the burn").
+  const attachments = attachmentSources(ticket.context)
+  const attachmentCommands = buildAttachmentCopyCommands(attachments)
+  // The exclude goes in BEFORE the first copy and covers every worktree of this
+  // repo at once (git resolves `info/exclude` against the common git dir), so
+  // the images are unstageable from the moment they exist — no commit of the
+  // agent's can pick them up, and sandcastle's end-of-run dirty check still
+  // sees a clean tree. Bracketed by `clearAttachmentsFor`, so the line lives
+  // exactly as long as the run it protects: it reaches the human's own checkout
+  // too, which is why it may not outlive the burn.
+  const excludeAttachments = async () => {
+    if (attachments.length > 0) await excludePath(project.repoPath, `${ATTACHMENTS_DIR}/`)
+  }
+  const clearAttachmentsFor = async (branch: string) => {
+    if (attachments.length > 0) {
+      await clearAttachments(burnWorktreePath(project.repoPath, branch), project.repoPath)
+    }
+  }
+
   // Shared by both prompts: a resolver spawned after the fact gets the SAME
   // ticket + feature + docs context the implementer had (the whole point — it
   // must resolve by intent, which only the ticket and the feature docs carry).
   const ticketJson = buildTicketJson(ticket)
   const featureBrief = buildFeatureBrief(feature)
-  const docsDigest = readDocsDigestFromDisk(project.id, feature.slug)
+  const docsDigest = blocks.docsDigest
   const workspaceNotes = buildWorkspaceNotes(workspaceMode)
+  // Whether the deny hook will actually be installed below — the prompt states
+  // the rules either way, but only claims enforcement when it is true.
+  const guardInstalled = config.burnGuard && config.sandbox !== 'noSandbox'
   // The prepared repo facts (verify commands, test baseline, install command),
   // resolved project-first. They describe THIS repo, so a project's own value —
   // normally established by a preparation run — always wins over the machine
@@ -2039,13 +2649,19 @@ async function realExecuteTicketRun(
   // the implementer.
   const verifyNotes = buildVerifyNotes(prepared)
 
+  // Order matters only in the TEMPLATE, not here — but every value below is
+  // either run-constant or explicitly ticket-specific, and `PLACEHOLDERS`
+  // records which is which.
   const basePrompt = renderTicketPrompt(readFileSync(burnerTemplatePath(), 'utf8'), {
-    TICKET_JSON: ticketJson,
+    WORKSPACE_NOTES: workspaceNotes,
+    PROJECT_STANDARDS: blocks.projectStandards,
     FEATURE_BRIEF: featureBrief,
     DOCS_DIGEST: docsDigest,
-    COMMIT_CONVENTION: `ticket(${ticket.seq}): <summary>`,
     VERIFY_NOTES: verifyNotes,
-    WORKSPACE_NOTES: workspaceNotes,
+    DRIVE_NOTES: blocks.driveNotes,
+    GUARD_NOTES: buildGuardNotes(guardInstalled),
+    TICKET_JSON: ticketJson,
+    BLOCKERS: buildBlockersBlock(ticket.blockedBy, runCtx.digests),
   })
 
   // Dependency setup: detect the repo's install command (or take the config
@@ -2074,14 +2690,13 @@ async function realExecuteTicketRun(
   // `~/.codex/hooks.json`) would clobber their own. In mounted mode with nothing
   // to install this makes the hook run where it previously did not — intended.
   // Installed for the runtime that is about to run, into that runtime's home.
-  const guardOn = config.burnGuard && config.sandbox !== 'noSandbox'
-  const guardInstall = guardOn ? buildGuardInstallCommand(model.runtime) : undefined
+  const guardInstall = guardInstalled ? buildGuardInstallCommand(model.runtime) : undefined
   const withGuard = (setup: string | undefined): string | undefined =>
     guardInstall === undefined ? setup : setup ? `${guardInstall} && ${setup}` : guardInstall
   // Codex runs no hooks it has no persisted trust for; the flag is what makes
   // the file we just wrote bind. Paired with the install so it is never passed
   // when there is no guard of ours to un-gate.
-  const agentOptions: BurnAgentOptions = guardOn ? { bypassHookTrust: true } : {}
+  const agentOptions: BurnAgentOptions = guardInstalled ? { bypassHookTrust: true } : {}
 
   mkdirSync(logsDir(), { recursive: true })
   const logFilePath = join(logsDir(), `burn-${feature.id}-${ticket.seq}.log`)
@@ -2187,6 +2802,7 @@ async function realExecuteTicketRun(
       DOCS_DIGEST: docsDigest,
       WORKSPACE_NOTES: workspaceNotes,
       VERIFY_NOTES: verifyNotes,
+      GUARD_NOTES: buildGuardNotes(guardInstalled),
       FEATURE_BRANCH: feature.branch,
       CONFLICT_FILES: buildConflictFilesBlock(input.files),
       OTHER_SIDE: buildOtherSideBlock(otherSide),
@@ -2432,12 +3048,24 @@ async function realExecuteTicketRun(
         // wait, context cut) resumes instead of failing the ticket with zero
         // commits. Attempts (this loop) are one level up: a whole run() dying.
         maxIterations: config.burnMaxIterations,
-        ...(hookCommand
+        ...(hookCommand || attachmentCommands.length > 0
           ? {
               hooks: {
-                sandbox: {
-                  onSandboxReady: [{ command: hookCommand, timeoutMs: SETUP_HOOK_TIMEOUT_MS }],
-                },
+                // Host-side, after `git worktree add` and before the sandbox:
+                // the images land in the workspace the container is about to
+                // bind, so docker and noSandbox see them identically.
+                ...(attachmentCommands.length > 0
+                  ? { host: { onWorktreeReady: attachmentCommands } }
+                  : {}),
+                ...(hookCommand
+                  ? {
+                      sandbox: {
+                        onSandboxReady: [
+                          { command: hookCommand, timeoutMs: SETUP_HOOK_TIMEOUT_MS },
+                        ],
+                      },
+                    }
+                  : {}),
               },
             }
           : {}),
@@ -2445,9 +3073,16 @@ async function realExecuteTicketRun(
       }
 
       try {
+        // Immediately before the host hook that copies them in — a run that
+        // never gets here (a conflict resume lands without an agent) must not
+        // leave the line behind.
+        await excludeAttachments()
         result = await run(runOptions)
+        // Before anything lands: a preserved worktree must not keep the images.
+        await clearAttachmentsFor(tempBranch)
         break
       } catch (err) {
+        await clearAttachmentsFor(tempBranch)
         if (ctx.signal.aborted) throw err // let the runner mark the run cancelled
         const msg = err instanceof Error ? err.message : String(err)
         // Whatever the dead attempt committed survives on its temp branch —
@@ -2632,19 +3267,42 @@ function resolveBurnDeps(ctx: WorkflowCtx): BurnDeps {
   let pushTargetReady: Promise<void> | undefined
   const ensureIsolatedPushTarget = () =>
     (pushTargetReady ??= allowPushToCheckedOutBranches(ctx.project.repoPath))
+
+  // Run-constant, so read once per run and not once per ticket — and the digest
+  // read is the one that puts its size (or its absence) on the timeline.
+  const docs = readDocsDigest(ctx.project.id, ctx.feature.slug)
+  emitDocsDigestEvent(ctx, docs)
+  const blocks: BurnPromptBlocks = {
+    docsDigest: docs.text,
+    projectStandards: buildProjectStandards(ctx.project.repoPath),
+    driveNotes: buildDriveNotes({
+      repoPath: ctx.project.repoPath,
+      driveSetupCommand: ctx.project.driveSetupCommand,
+      driveStopCommand: ctx.project.driveStopCommand,
+      devCommand: ctx.project.devCommand,
+      dbResetCommand: ctx.project.dbResetCommand,
+    }),
+  }
+
   return {
     config,
     runtime: model.runtime,
     hasAuthToken: token !== undefined,
     concurrency: config.burnConcurrency,
-    executeTicketRun: (c, ticket) => {
+    executeTicketRun: (c, ticket, run) => {
       const ticketModel = resolveTicketModel(config, ctx.project, ctx.modelOverride, ticket)
       const ticketToken =
         ticketModel.runtime === model.runtime
           ? token
           : readTokenFromEnvFile(envPath(), ticketModel.runtime)
       return isReviewTicket(ticket)
-        ? executeReviewTicket(c, ticket, { config, token: ticketToken, model: ticketModel })
+        ? executeReviewTicket(c, ticket, {
+            config,
+            token: ticketToken,
+            model: ticketModel,
+            docsDigest: docs.text,
+            lapDigests: run.digests,
+          })
         : realExecuteTicketRun(
             c,
             ticket,
@@ -2653,6 +3311,8 @@ function resolveBurnDeps(ctx: WorkflowCtx): BurnDeps {
             ticketModel,
             land,
             ensureIsolatedPushTarget,
+            blocks,
+            run,
           )
     },
   }

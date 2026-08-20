@@ -136,7 +136,14 @@ describe('the `project` session kind', () => {
     )
   })
 
-  it('briefs the session with its branch, its worktree, and its four tools', () => {
+  /**
+   * The prompt no longer enumerates the tools. Tool registration is filtered by
+   * audience, so the session already has each one in its tool list with a
+   * schema-backed description — and a hand-written copy could only drift or, now
+   * that the roster changes, name something this session was never given. It
+   * keeps the POLICY (no pipeline tools here) and drops the field-level list.
+   */
+  it('briefs the session with its branch, its worktree, and its tool policy', () => {
     const out = renderProjectPrompt({
       project: { id: 'proj_1', name: 'acme', repoPath: '/repo', mainBranch: 'main' },
       branch: PROJECT_BRANCH,
@@ -147,15 +154,12 @@ describe('the `project` session kind', () => {
     // the consequence of the branch, stated where the agent will read it
     expect(out).toContain('/repo')
     expect(out).toContain('main')
-    for (const tool of [
-      'create_feature',
-      'get_project_context',
-      'get_work_record',
-      'record_event',
-    ]) {
-      expect(out).toContain(tool)
-    }
-    // …and none of the pipeline tools it is deliberately not given.
+    // the one tool whose BEHAVIOUR is surprising is still named: create_feature
+    // does not open a terminal on what it creates.
+    expect(out).toContain('create_feature')
+    // …but the roster is not restated, and no pipeline tool is offered.
+    expect(out).not.toContain('## runcastle MCP tools')
+    expect(out).not.toContain('get_work_record')
     expect(out).not.toContain('emit_tickets')
     expect(out).not.toContain('complete_phase')
     expect(out).toContain('/runcastle:project')
@@ -307,6 +311,42 @@ describe('ensureProjectWorktree', () => {
     await ensureProjectWorktree(project, landingReporter())
 
     expect(landingEvents()).toEqual([])
+  })
+
+  /**
+   * The orphaned-checkout case, seen in the wild: `.git/worktrees/__project`
+   * went missing while the checkout survived, so `worktree add` refused the path
+   * ("already exists") on every relaunch and nothing git offers could clear it —
+   * `prune` drops entries whose checkout is gone, not the reverse. The project
+   * terminal stayed unlaunchable until the directory was deleted by hand.
+   */
+  it('reopens over a checkout whose worktree registration went missing', async () => {
+    const worktreePath = await ensureProjectWorktree(project)
+    // the orphan is a stale checkout: files from an older commit, edits nobody
+    // recorded, and no way left to tell which commit it belonged to
+    writeFileSync(join(worktreePath, 'README.md'), 'months out of date\n')
+    writeFileSync(join(worktreePath, 'STALE.md'), 'from a long-dead session\n')
+    writeFileSync(join(worktreePath, 'node_modules-marker'), 'ignored\n')
+    writeFileSync(join(worktreePath, '.gitignore'), 'node_modules-marker\n')
+    git(worktreePath, 'add', '.gitignore')
+    git(worktreePath, 'commit', '-m', 'ignore the marker')
+    rmSync(join(repoPath, '.git', 'worktrees', PROJECT_WORKTREE_SLUG), {
+      recursive: true,
+      force: true,
+    })
+    expect(git(repoPath, 'worktree', 'list', '--porcelain')).not.toContain(PROJECT_WORKTREE_SLUG)
+
+    const reopened = await ensureProjectWorktree(project)
+
+    expect(reopened).toBe(worktreePath)
+    expect(existsSync(join(repoPath, '.git', 'worktrees', PROJECT_WORKTREE_SLUG))).toBe(true)
+    expect(git(reopened, 'rev-parse', '--abbrev-ref', 'HEAD')).toBe(PROJECT_BRANCH)
+    // the session opens on the branch tip, not on a mountain of phantom edits
+    expect(git(reopened, 'status', '--porcelain')).toBe('')
+    expect(readFileSync(join(reopened, 'README.md'), 'utf8')).toBe('base\n')
+    expect(existsSync(join(reopened, 'STALE.md'))).toBe(false)
+    // …and the clean respects .gitignore, so an installed node_modules survives
+    expect(existsSync(join(reopened, 'node_modules-marker'))).toBe(true)
   })
 })
 

@@ -8,18 +8,17 @@ import { noSandbox } from '@ai-hero/sandcastle/sandboxes/no-sandbox'
 import { renderRunMcpConfig } from '../launcher/artifacts'
 import { appendTranscript, beginTranscript, endTranscript } from '../services/agent-stream'
 import { releaseReviewDrive } from '../services/git'
-import type { TicketOutcome } from './ticket-burner'
-import type { BurnAgentMcp } from './ticket-burner'
+import type { BurnAgentMcp, HarvestedDigest, TicketOutcome } from './ticket-burner'
 import {
   buildBurnAgent,
   buildFeatureBrief,
+  buildLapDigestsBlock,
   buildTicketJson,
   burnerAssetPath,
   createStreamThrottle,
   errorHeadline,
   harvestDigest,
   readAgentFile,
-  readDocsDigestFromDisk,
   registerTicketAbort,
   releaseTicketAbort,
   renderTemplate,
@@ -54,7 +53,10 @@ const PLACEHOLDERS = [
   'TICKET_JSON',
   'FEATURE_BRIEF',
   'DOCS_DIGEST',
+  'LAP_DIGESTS',
   'FEATURE_BRANCH',
+  /** The ref the branch forked from — `project.mainBranch`, not a shell guess. */
+  'BASE_BRANCH',
   'DIGEST_PATH',
   'BLOCKED_PATH',
   'WALKTHROUGH_PATH',
@@ -162,6 +164,19 @@ export interface ReviewDeps {
   config: RuncastleConfig
   token: string | undefined
   model: ModelEntry
+  /**
+   * The run's docs digest, already built (and already charged to the timeline)
+   * once for the whole burn. Re-reading it here would be the thirteenth
+   * transmission of the same bytes in one run.
+   */
+  docsDigest: string
+  /**
+   * What every implementer in this burn said it did. The template used to tell
+   * the reviewer it was "the only agent in the burn that can answer" what
+   * landed; it never was, and the two things a diff cannot express — what
+   * surprised each implementer, and what each left undone — live only here.
+   */
+  lapDigests: readonly HarvestedDigest[]
 }
 
 /**
@@ -187,8 +202,17 @@ export async function executeReviewTicket(
   const prompt = renderReviewPrompt(readFileSync(reviewTemplatePath(), 'utf8'), {
     TICKET_JSON: buildTicketJson(ticket),
     FEATURE_BRIEF: buildFeatureBrief(feature),
-    DOCS_DIGEST: readDocsDigestFromDisk(project.id, feature.slug),
+    DOCS_DIGEST: deps.docsDigest,
+    LAP_DIGESTS: buildLapDigestsBlock(deps.lapDigests),
     FEATURE_BRANCH: feature.branch,
+    // The base the branch forked from, stated rather than guessed. The agent
+    // runs with `branchStrategy: {type:'head'}` in the human's own checkout,
+    // where HEAD is still the main branch at step 1 — the merge that landed the
+    // lap fast-forwards the feature REF without any checkout, and the runner
+    // detached the talk worktree — so the template's old `<base>...HEAD` diff
+    // was empty on a perfectly healthy lap, and its own failure criterion then
+    // made it report "could not review".
+    BASE_BRANCH: project.mainBranch,
     DIGEST_PATH: artifacts.digestPath,
     BLOCKED_PATH: artifacts.blockedPath,
     WALKTHROUGH_PATH: artifacts.walkthroughPath,

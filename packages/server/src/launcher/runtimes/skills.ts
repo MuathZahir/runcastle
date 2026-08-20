@@ -53,14 +53,15 @@ export function kickoffLinesFor(runtime: AgentRuntime): Record<SessionKind, stri
     revisit:
       `Proceed with your task: invoke the ${skill('revisit')} skill and work through what the ` +
       'human brings up.',
-    // No skill: the preparation brief is the whole task, and it arrives as the
-    // appended system prompt (renderPreparePrompt). The line only has to make the
-    // agent open its mouth — a headless run already measured what it could, so
-    // the useful first move is naming the gap, not re-deriving the repo.
+    // The method moved out of the prompt and into a skill, so this names it like
+    // every other entry line does. The rest of the line is the opening MOVE — a
+    // headless run already measured what it could, so the useful first thing is
+    // naming the gap, not re-deriving the repo.
     prepare:
-      'Proceed with your task: work through the unestablished preparation fields with the human. ' +
-      'Start by telling them which fields are still open and what you need from them for each; ' +
-      'ask before running anything that touches their database or services.',
+      `Proceed with your task: invoke the ${skill('prepare')} skill and work through the ` +
+      'unestablished preparation fields with the human. Start by telling them which fields are ' +
+      'still open and what you need from them for each; ask before running anything that touches ' +
+      'their database or services.',
     project: `Proceed with your task: invoke the ${skill('project')} skill and drive the project session.`,
     // No skill either: the failure, the drive's own environment and the branch
     // delta all arrive as the appended system prompt (renderDriveFixPrompt), so
@@ -71,4 +72,23 @@ export function kickoffLinesFor(runtime: AgentRuntime): Record<SessionKind, stri
       'the failure, work out what the environment is missing, and tell me what you propose to ' +
       'change before you change it; then fix it and retry the drive with retry_drive.',
   }
+}
+
+/**
+ * The prepare kickoff for a project with NOTHING left to establish.
+ *
+ * The 0-keys path used to give the session four instructions, three of which
+ * were to work an empty list: the prompt rendered "_Nothing is unset… say so and
+ * **stop**_" while its task line still said to tell the human which fields were
+ * open and its closing move still ordered a dry-run drive — and this line, typed
+ * into the terminal ahead of all of it, said "Start by telling them which fields
+ * are still open". All four now say confirm-and-stop. Spelled per runtime for
+ * the same reason the table above is.
+ */
+export function prepareConfirmKickoffFor(runtime: AgentRuntime): string {
+  return (
+    `Proceed with your task: invoke the ${skillRef(runtime, 'prepare')} skill. Every prepared field already ` +
+    'has a value, so this is a confirmation, not a preparation — tell me what is recorded and ' +
+    'how stale it is, ask whether it still holds, and stop. Do not re-derive a settled value.'
+  )
 }

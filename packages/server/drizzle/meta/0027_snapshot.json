@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "83398eca-6866-4731-96bf-6010d25b4205",
+  "id": "8692b89c-cfa8-4712-bad0-064c9d68fd8f",
   "prevId": "dc3f6352-9b8c-4c3f-b1d2-ad0ee8f4e47b",
   "tables": {
     "events": {
@@ -587,20 +587,6 @@
           "notNull": true,
           "autoincrement": false
         },
-        "model": {
-          "name": "model",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "runtime": {
-          "name": "runtime",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
         "title": {
           "name": "title",
           "type": "text",
@@ -671,6 +657,13 @@
         "ticket_id": {
           "name": "ticket_id",
           "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "video_timestamp": {
+          "name": "video_timestamp",
+          "type": "real",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false

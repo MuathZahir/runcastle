@@ -284,6 +284,11 @@ export type TestNoteAuthor = z.infer<typeof TestNoteAuthor>
  * them on every change. `lap` is stamped from the feature's lap at capture —
  * callers never choose it, mirroring tickets. `ticketId` is set exactly when
  * `status` is `promoted`.
+ *
+ * A note captured from the walkthrough annotation player additionally carries
+ * `videoTimestamp` (stored) and `screenshotUrl` (never stored — the server
+ * stamps it when the note's PNG is on disk, following the walkthrough's
+ * disk-presence-is-the-record precedent; decisions.md #5).
  */
 export const TestNote = z.object({
   id: z.string(),
@@ -293,6 +298,8 @@ export const TestNote = z.object({
   status: TestNoteStatus,
   author: TestNoteAuthor.default('human'),
   ticketId: z.string().optional(),
+  videoTimestamp: z.number().optional(),
+  screenshotUrl: z.string().optional(),
   createdAt: z.number(),
   updatedAt: z.number(),
 })
