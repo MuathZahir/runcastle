@@ -274,7 +274,7 @@ describe('burn attachments — riding the clone into isolated mode', () => {
     const src = `${SANDBOX_WORKSPACE_PATH}/${ATTACHMENTS_DIR}`
 
     expect(cmd).toContain(`[ -d "${src}" ]`)
-    expect(cmd).toContain(`cp -r "${src}" "${ISOLATED_REPO_PATH}/"`)
+    expect(cmd).toContain(`cp -r "${src}/." "${ISOLATED_REPO_PATH}/${ATTACHMENTS_DIR}/"`)
     expect(cmd.indexOf(src)).toBeGreaterThan(cmd.indexOf(`git clone ${SANDBOX_WORKSPACE_PATH}`))
   })
 
