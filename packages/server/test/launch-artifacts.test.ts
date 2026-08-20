@@ -846,7 +846,11 @@ describe('codexRuntime.writeArtifacts', () => {
     )
 
     const client = hookClientPath()
-    expect(hooks.hooks.SessionStart[0].hooks[0]).toEqual({
+    // `toMatchObject`, not `toEqual`: this test writes a real home on whatever
+    // platform it runs on, and win32 entries carry a `commandWindows` besides.
+    // The exact per-platform shape is pinned in the next test, which names the
+    // platform instead of inheriting the host's.
+    expect(hooks.hooks.SessionStart[0].hooks[0]).toMatchObject({
       type: 'command',
       command: `bun run "${client}" session-start`,
     })
@@ -859,11 +863,31 @@ describe('codexRuntime.writeArtifacts', () => {
     expect(hooks.hooks.PreToolUse[0].hooks[0].command).toBe(`bun run "${client}" pre-tool`)
   })
 
+  /**
+   * The one thing about a hook entry that varies by platform, pinned against a
+   * NAMED platform — so the same three cases are proven whichever host runs the
+   * suite, rather than only the branch the host happens to take.
+   */
   it('adds the win32 spelling of every hook command, and only there', () => {
-    const posix = renderCodexHooks('/tmp/hook-client.ts', 'ideation', 'linux')
-    expect(posix.hooks.SessionStart[0].hooks[0]).not.toHaveProperty('commandWindows')
+    for (const platform of ['linux', 'darwin'] as const) {
+      const posix = renderCodexHooks('/tmp/hook-client.ts', 'ideation', platform)
+      expect(posix.hooks.SessionStart[0].hooks[0]).toEqual({
+        type: 'command',
+        command: 'bun run "/tmp/hook-client.ts" session-start',
+      })
+      for (const group of Object.values(posix.hooks)) {
+        for (const hook of group?.[0].hooks ?? []) {
+          expect(hook).not.toHaveProperty('commandWindows')
+        }
+      }
+    }
 
     const win = renderCodexHooks('C:\\hooks\\hook-client.ts', 'ideation', 'win32')
+    expect(win.hooks.SessionStart[0].hooks[0]).toEqual({
+      type: 'command',
+      command: 'bun run "C:\\hooks\\hook-client.ts" session-start',
+      commandWindows: 'bun run "C:\\hooks\\hook-client.ts" session-start',
+    })
     for (const group of Object.values(win.hooks)) {
       for (const hook of group?.[0].hooks ?? []) {
         expect(hook.commandWindows).toBe(hook.command)
