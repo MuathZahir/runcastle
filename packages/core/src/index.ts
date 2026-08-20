@@ -8,6 +8,7 @@
 // NOT re-exported here. The config module below is the PURE schema only (IO-free).
 
 export * from './ids'
+export * from './docs'
 export * from './schemas'
 export * from './blocking'
 export * from './pipeline'

@@ -132,7 +132,12 @@ describe('mapped-path smoke (issue #9)', () => {
     })
     expect(emit.isError).toBe(false)
     expect(emit.data.stored).toBe(2)
-    const [wp1Id, wp2Id] = emit.data.ids as [string, string]
+    // `emit_waypoints` returns `{id, seq, title}` rows rather than bare ids, so a
+    // caller can reference what it just created without a follow-up context pull.
+    const [wp1Id, wp2Id] = (emit.data.waypoints as { id: string }[]).map((w) => w.id) as [
+      string,
+      string,
+    ]
 
     // only wp1 is on the frontier — wp2 is blocked; G1 is not yet satisfiable.
     let full = await trpc.feature.get({ id: featureId })

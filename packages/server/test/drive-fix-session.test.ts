@@ -10,7 +10,12 @@ import { GateError } from '../src/errors'
 import { renderDriveFixPrompt } from '../src/launcher/artifacts'
 import { evaluateEditGuard } from '../src/launcher/edit-guard'
 import { launchDriveFixSession, launchSession } from '../src/launcher/launcher'
-import { createSessionRow, getSessionRow } from '../src/launcher/sessions'
+import {
+  createSessionRow,
+  getSessionRow,
+  markSessionEnded,
+  markSessionLive,
+} from '../src/launcher/sessions'
 import { toolRetryDrive } from '../src/mcp/server'
 import { listAfter } from '../src/services/events'
 import { recordFinding } from '../src/services/findings'
@@ -95,6 +100,29 @@ describe('launching a drive-fix session', () => {
   function launched(): Promise<{ sessionId: string }> {
     return launchDriveFixSession(ctx, { featureId: feature.id }, { spawn: false })
   }
+
+  /**
+   * Every "Fix drive" click used to be a COLD start — `launchDriveFixSession`
+   * passed no `resumeSessionId` at all — so an agent on its third attempt
+   * re-theorised the same failure with no memory of the two fixes it had
+   * already tried.
+   */
+  it('resumes the previous drive-fix conversation instead of re-theorising cold', async () => {
+    await failedDrive()
+    const first = await launched()
+    markSessionLive(ctx, first.sessionId, { ccSessionId: 'cc-fix-1' })
+    markSessionEnded(ctx, first.sessionId)
+
+    await launched()
+    const cmd = String(
+      (
+        listAfter(ctx, feature.id, 0)
+          .filter((e) => e.type === 'session.launched')
+          .at(-1)?.data as { command?: string }
+      )?.command ?? '',
+    )
+    expect(cmd).toContain('--resume cc-fix-1')
+  })
 
   it('runs host-side in the real checkout, scoped to the feature whose drive failed', async () => {
     await failedDrive()

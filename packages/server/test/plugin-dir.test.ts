@@ -16,7 +16,7 @@ describe('resolvePluginDir', () => {
     const skills = join(resolvePluginDir(), 'skills')
     for (const line of Object.values(KICKOFF_LINES)) {
       const named = line.match(/\/runcastle:([a-z-]+)/)
-      if (!named) continue // `prepare` carries its whole brief in the prompt
+      if (!named) continue // `drive-fix` carries its whole brief in the prompt
       const path = join(skills, named[1], 'SKILL.md')
       expect(existsSync(path), named[1]).toBe(true)
       // Skills resolve by folder name; the frontmatter must agree with it.

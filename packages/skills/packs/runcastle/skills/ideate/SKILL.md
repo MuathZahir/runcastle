@@ -1,7 +1,7 @@
 ---
 name: ideate
 description: The runcastle ideation session. Grill the human relentlessly about a feature, lock decisions incrementally into decisions.md, then drive spec and tickets out of the same unbroken context. Entry skill for kind=ideation sessions.
-disable-model-invocation: false
+disable-model-invocation: true
 ---
 <!-- Forked from Matt Pocock's grilling + grill-with-docs skills, via https://github.com/mattpocock/skills, 2026-07-14, adapted for runcastle -->
 
@@ -15,9 +15,17 @@ Everything happens in this one window. **Never compact. Never `/clear`. Never su
 
 ## 0. Orient
 
-1. Call `mcp__runcastle__get_feature_context`. It returns the feature (`slug`, `title`, `oneLiner`), current `phase`, the docs already on disk (`brief.md`, and any `decisions.md` — **this may be a resumed session; read what is already locked and do not re-ask it**), and any tickets.
+1. Call `mcp__runcastle__get_feature_context`. It returns the feature (`slug`, `title`, `oneLiner`), current `phase` and `lap`, the canonical docs inlined in `docs[]` (`brief.md`, and any `decisions.md` — **this may be a resumed session; read what is already locked and do not re-ask it**), an index of every other doc in `moreDocs[]` (fetch one with `mcp__runcastle__read_feature_doc({ relPath })`), and any tickets.
 2. Decisions live at `docs/features/<slug>/decisions.md` in this worktree. The injected system prompt carries the slug and paths; trust `get_feature_context` for the live state.
-3. `mcp__runcastle__record_event({ type: "ideation.started", message: "<feature title>" })`.
+
+**Your tools**, and there are not many — this session's real work is the conversation:
+
+- `mcp__runcastle__get_feature_context` / `mcp__runcastle__read_feature_doc` / `mcp__runcastle__list_tickets` — the record.
+- `mcp__runcastle__create_feature({ title, oneLiner, brief, draft: true })` — park scope creep as a draft feature (§1). `draft: true` is the only door open to you; a full create belongs to the project session.
+- `mcp__runcastle__escalate_to_map` + `mcp__runcastle__emit_waypoints` — the escalation branch (§3). This is the entire entry point into mapped ideation: no other surface charts a map from a linear feature.
+- `mcp__runcastle__complete_phase` — the phase boundaries (§4), and the ones `/runcastle:spec` and `/runcastle:tickets` cross after you.
+- `mcp__runcastle__emit_tickets` — used by `/runcastle:tickets`, not by you directly.
+- `mcp__runcastle__record_event` — the feature timeline. Most state changes already emit their own event; only reach for this when the timeline would otherwise have no record at all.
 
 ## 1. Grill relentlessly
 
@@ -44,9 +52,7 @@ The moment a decision locks, append it to `docs/features/<slug>/decisions.md` �
 **Why:** <the reason / the trade-off chosen over the alternatives>
 ```
 
-Keep `decisions.md` free of implementation minutiae — it is the record of *what was decided and why*, the raw material spec and tickets are built from. `complete_phase` checkpoints the file into git for you; you just write it.
-
-Every few locked decisions, `mcp__runcastle__record_event({ type: "decision.locked", message: "<n> decisions locked" })`.
+Keep `decisions.md` free of implementation minutiae — it is the record of *what was decided and why*, the raw material spec and tickets are built from. `complete_phase` checkpoints the file into git for you; you just write it. The file is the record — do not narrate it onto the timeline as you go.
 
 ## 3. Escalation branch — when the feature outgrows this window
 
@@ -67,7 +73,7 @@ Some features are too big for one unbroken context. The tells: you are rabbit-ho
 
 When the human confirms shared understanding and the open questions are answered or explicitly deferred:
 
-`mcp__runcastle__complete_phase({ phase: "ideation" })` → returns `{ ok, nextPhase }`. If `ok: false`, it names what the gate wants (e.g. `decisions.md` missing) — fix it and retry. Then `record_event({ type: "phase.completed", message: "ideation" })`.
+`mcp__runcastle__complete_phase({ phase: "ideation" })` → returns `{ ok, nextPhase }`. If `ok: false`, it names what the gate wants (e.g. `decisions.md` missing) — fix it and retry. It logs its own timeline event; do not add one.
 
 ## 5. Spec → tickets — stay in this window
 
@@ -81,4 +87,4 @@ Do not open a new session for these. They run here, on top of everything you jus
 
 > Tickets are in the runcastle UI. Review the ticket cards and click **Burn** to start the AFK agents. That is the next step — I will stop here.
 
-Do **not** implement anything. Do **not** start burning. The two human clicks (Burn, then Merge after test-drive) are the only gates left, and they belong to the human.
+Do **not** start burning. The two human clicks (Burn, then Merge after test-drive) are the only gates left, and they belong to the human. (You do not write code here either — that rule is in your injected prompt and enforced by the edit guard, not restated as advice.)

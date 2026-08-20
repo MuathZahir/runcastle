@@ -1,10 +1,10 @@
-import { existsSync, mkdirSync, readFileSync, readdirSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { Feature, RuncastleConfig, Waypoint, WorkflowCtx, WorkflowDef } from '@runcastle/core'
 import { newId, resolveModel } from '@runcastle/core'
 import { loadConfig } from '@runcastle/core/config-load'
-import { envPath, featureDocsRel, logsDir, worktreeDir } from '@runcastle/core/paths'
+import { envPath, featureDocsRel, logsDir } from '@runcastle/core/paths'
 import { resolveSkillsRoot } from '../launcher/skills-root'
 import type { RunOptions, RunResult } from '@ai-hero/sandcastle'
 import { run } from '@ai-hero/sandcastle'
@@ -17,11 +17,16 @@ import {
 import type { StreamThrottle, ThrottledEvent } from './ticket-burner'
 import {
   buildBurnAgent,
-  buildDocsDigest,
   buildFeatureBrief,
   createStreamThrottle,
   isWorktreeTeardownError,
   parseEnvFile,
+  // The ONE docs-digest reader. This module used to carry a private copy of the
+  // old unbounded `*.md` glob — the third independent instance of that bug, after
+  // the burner's and the MCP tool's — so a research waypoint was handed the same
+  // ~25k-token payload (outcome.md + test-notes.md and all) that the allowlist
+  // exists to prevent. Importing it keeps the three callers on one contract.
+  readDocsDigestFromDisk,
   selectSandbox,
 } from './ticket-burner'
 
@@ -217,19 +222,6 @@ export function interpretResearchResult(
 export function researchTemplatePath(): string {
   const here = dirname(fileURLToPath(import.meta.url))
   return join(resolveSkillsRoot(here), 'burner', 'research-waypoint.md')
-}
-
-/** Read `docs/features/<slug>/*.md` from the talk worktree, or a skip note. */
-function readDocsDigestFromDisk(projectId: string, slug: string): string {
-  const worktree = worktreeDir(projectId, slug)
-  if (!existsSync(worktree)) return '_No talk worktree on disk — docs digest skipped._'
-  const docsDir = join(worktree, ...featureDocsRel(slug).split('/'))
-  if (!existsSync(docsDir)) return '_No docs/features dir in the talk worktree — docs digest skipped._'
-  const files = readdirSync(docsDir, { withFileTypes: true })
-    .filter((e) => e.isFile() && e.name.endsWith('.md'))
-    .sort((a, b) => a.name.localeCompare(b.name))
-    .map((e) => ({ name: e.name, content: readFileSync(join(docsDir, e.name), 'utf8') }))
-  return buildDocsDigest(files)
 }
 
 /**

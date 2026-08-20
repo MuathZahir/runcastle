@@ -1,6 +1,6 @@
 ---
 name: spec
-description: Synthesize the ideation conversation and decisions.md into docs/features/<slug>/spec.md, then complete the spec phase. No interview — pure synthesis. Invoked by /runcastle:ideate.
+description: Synthesize the ideation conversation and decisions.md into docs/features/<slug>/spec.md, then complete the spec phase. No interview — pure synthesis. Invoked by /runcastle:ideate or /runcastle:converge.
 disable-model-invocation: false
 ---
 <!-- Forked from Matt Pocock's to-spec skill, via https://github.com/mattpocock/skills, 2026-07-14, adapted for runcastle -->
@@ -42,6 +42,6 @@ Turn the ideation conversation plus `docs/features/<slug>/decisions.md` into a s
 
    Do **not** hardcode specific file paths or code snippets — they go stale. Exception: if the ideation produced a snippet that pins a decision more precisely than prose can (a state machine, reducer, schema, type shape), inline the decision-rich parts and note it came from that discussion.
 
-4. **Complete the phase.** `mcp__runcastle__record_event({ type: "spec.written", message: "<feature title>" })`, then `mcp__runcastle__complete_phase({ phase: "spec" })`. If the gate returns `ok: false`, it names what is missing — fix and retry.
+4. **Complete the phase.** `mcp__runcastle__complete_phase({ phase: "spec" })`. If the gate returns `ok: false`, it names what is missing — fix and retry. It logs its own timeline event and checkpoints `spec.md` into git; do not add an event of your own.
 
-Return control to `/runcastle:ideate`, which invokes `/runcastle:tickets` next.
+Return control to **the session skill that invoked you** — `/runcastle:ideate` for a linear feature, `/runcastle:converge` for a mapped one. It invokes `/runcastle:tickets` next. Do **not** invoke a session skill yourself to hand back: you are already inside one, and loading another session's entry skill would drop a whole procedure this session is not running (a converge session in particular is forbidden to grill) into the window.

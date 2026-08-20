@@ -1,3 +1,4 @@
+import { statSync } from 'node:fs'
 import type {
   MergeBranchPair,
   Project,
@@ -231,14 +232,15 @@ export const KICKOFF_LINES: Record<SessionKind, string> = {
   revisit:
     'Proceed with your task: invoke the /runcastle:revisit skill and work through what the ' +
     'human brings up.',
-  // No skill: the preparation brief is the whole task, and it arrives as the
-  // appended system prompt (renderPreparePrompt). The line only has to make the
-  // agent open its mouth — a headless run already measured what it could, so
-  // the useful first move is naming the gap, not re-deriving the repo.
+  // The method moved out of the prompt and into a skill, so this names it like
+  // every other entry line does. The rest of the line is the opening MOVE — a
+  // headless run already measured what it could, so the useful first thing is
+  // naming the gap, not re-deriving the repo.
   prepare:
-    'Proceed with your task: work through the unestablished preparation fields with the human. ' +
-    'Start by telling them which fields are still open and what you need from them for each; ' +
-    'ask before running anything that touches their database or services.',
+    'Proceed with your task: invoke the /runcastle:prepare skill and work through the ' +
+    'unestablished preparation fields with the human. Start by telling them which fields are ' +
+    'still open and what you need from them for each; ask before running anything that touches ' +
+    'their database or services.',
   project:
     'Proceed with your task: invoke the /runcastle:project skill and drive the project session.',
   // No skill either: the failure, the drive's own environment and the branch
@@ -277,6 +279,21 @@ export function lapKickoff(lap: number): string {
   )
 }
 
+/**
+ * The prepare kickoff for a project with NOTHING left to establish.
+ *
+ * The 0-keys path used to give the session four instructions, three of which
+ * were to work an empty list: the prompt rendered "_Nothing is unset… say so and
+ * **stop**_" while its task line still said to tell the human which fields were
+ * open and its closing move still ordered a dry-run drive — and this line, typed
+ * into the terminal ahead of all of it, said "Start by telling them which fields
+ * are still open". All four now say confirm-and-stop.
+ */
+export const PREPARE_CONFIRM_KICKOFF =
+  'Proceed with your task: invoke the /runcastle:prepare skill. Every prepared field already ' +
+  'has a value, so this is a confirmation, not a preparation — tell me what is recorded and ' +
+  'how stale it is, ask whether it still holds, and stop. Do not re-derive a settled value.'
+
 /** The kickoff line for a session: an explicit override wins, else the per-kind default. */
 export function kickoffLineFor(kind: SessionKind, override?: string): string {
   return override ?? KICKOFF_LINES[kind]
@@ -294,28 +311,78 @@ export interface KickoffPlan {
    * restored transcript argues with an instruction that means to start over.
    */
   explicit: boolean
-  /** Set when the briefing is the lap briefing: the lap this session runs. */
+  /** Set when this session is running a lap: which lap (see {@link lapInFlight}). */
   lap?: number
+}
+
+/**
+ * Is this feature MID-LAP right now? The one question the launcher must answer
+ * from FEATURE STATE rather than from what a caller happened to type.
+ *
+ * A lap is the front half of the pipeline run again: Rethink bumps `lap` and
+ * flips the phase back to `ideation` BEFORE launching, and the lap session is
+ * the only thing that will advance it out again — through `complete_phase`
+ * ideation → spec → tickets, emitting that lap's tickets on the way. So a
+ * feature sitting at `ideation` on lap N with no tickets AT lap N has a lap in
+ * flight, whether the session that was running it is still alive or died an hour
+ * ago.
+ *
+ * THE BUG THIS FIXES. `lap` used to be derived by comparing the kickoff line to
+ * `lapKickoff(lap)` with `===`, three call frames from the renderer that
+ * depended on it. That works exactly once — on the Rethink launch that passes
+ * the line. If the terminal then died mid-lap, the feature was stranded: Rethink
+ * refuses to run again (it requires the `review` phase, and the phase had
+ * already moved to `ideation`), so the human's only door back was Revisit, which
+ * passes no `kickoffLine` — string identity failed, `lap` came back `undefined`,
+ * and the relaunch RESUMED the dead lap conversation while rendering "Do NOT
+ * call `complete_phase` — a revisit never moves the pipeline" into a transcript
+ * whose own earlier turn said to complete_phase through to tickets. The feature
+ * could not be finished through the UI at all.
+ *
+ * Deriving it from state keeps {@link WriteArtifactsInput.lap}'s reasoning true
+ * — an ordinary revisit on a lap-3 feature is NOT running a lap, because such a
+ * feature is at `review` or `implementation`, not at `ideation` — while closing
+ * the re-entry hole, because the state that says "mid-lap" survives the terminal
+ * that was running it.
+ *
+ * `ticketLaps` is the set of laps this feature has tickets for. It comes from
+ * the tickets the launcher already lists; no new query and no new service.
+ */
+export function lapInFlight(input: {
+  lap: number
+  phase: string
+  ticketLaps: readonly number[]
+}): boolean {
+  return input.lap > 1 && input.phase === 'ideation' && !input.ticketLaps.includes(input.lap)
 }
 
 /**
  * Decide a launch's kickoff (exported seam — see {@link KickoffPlan}).
  *
  * Two things produce an explicit briefing. An override passed by the caller (the
- * review Iterate click passes `lapKickoff`), and a lap-N grill: the ideation
- * next-step's "Start/Resume grill session" on a feature already past lap 1 used
- * to open with the generic ideate line and no lap framing at all (F4), so the
- * lap it was opened for was invisible to the agent.
+ * review Iterate click passes `lapKickoff`), and a lap that is in flight — which
+ * covers both the lap-N grill (the ideation next-step's "Start/Resume grill
+ * session" on a feature past lap 1 used to open with the generic ideate line and
+ * no lap framing at all, F4) and the re-entry after a lap terminal died.
+ *
+ * `lap` on the plan is set from {@link lapInFlight}, never from what the line
+ * happens to equal — that is the whole fix. It drives the artifacts, so a lap
+ * relaunched by any door renders the lap prompt and the lap's `complete_phase`
+ * licence.
  */
 export function planKickoff(input: {
   kind: SessionKind
   lap: number
   kickoffLine?: string
+  /** Is a lap in flight on this feature? Defaults false (no lap framing). */
+  lapInFlight?: boolean
 }): KickoffPlan {
+  const running = input.lapInFlight === true
   const lapBriefing = input.lap > 1 ? lapKickoff(input.lap) : undefined
-  const line = input.kickoffLine ?? (input.kind === 'ideation' ? lapBriefing : undefined)
-  if (!line) return { explicit: false }
-  return { line, explicit: true, lap: line === lapBriefing ? input.lap : undefined }
+  const line = input.kickoffLine ?? (running ? lapBriefing : undefined)
+  const lap = running ? input.lap : undefined
+  if (!line) return { explicit: false, ...(lap !== undefined ? { lap } : {}) }
+  return { line, explicit: true, ...(lap !== undefined ? { lap } : {}) }
 }
 
 /**
@@ -323,21 +390,41 @@ export function planKickoff(input: {
  * the whole conversation, so typing the bare per-kind line ("invoke /runcastle:…
  * and drive the session") reads as an instruction to start over — the agent
  * re-runs its opening move on a conversation that is already mid-flight. This
- * prefix says what actually happened (the terminal died, the conversation did
- * not) and asks for a short re-orientation before it carries on.
+ * prefix says what actually happened (the conversation survived, the terminal
+ * did not) and asks for a short re-orientation before it carries on.
+ *
+ * It no longer claims a CAUSE. It used to open "runcastle restarted and closed
+ * the terminal", which is one of several ways a session ends and flatly untrue
+ * of the commonest: the human clicking Revisit on a conversation that closed
+ * cleanly. A resumed agent that is told something false about the last five
+ * minutes has no way to tell which other statements to trust.
  *
  * Only applied when the caller passed no explicit `kickoffLine`: a per-purpose
  * briefing (merge-conflict resolution, review iteration) IS the new opening move
  * and must not be reframed as "carry on with what you were doing".
  */
 export const RESUME_KICKOFF_PREFIX =
-  'We are picking this conversation back up — runcastle restarted and closed the terminal, ' +
-  'but this conversation is intact. Do NOT start over: tell me in one or two lines where we ' +
+  'We are picking this conversation back up — the terminal was closed, but this ' +
+  'conversation is intact. Do NOT start over: tell me in one or two lines where we ' +
   'left off and what is next, then carry on. Your original instruction was: '
 
-/** The kickoff line typed into a resumed session of `kind` (see {@link RESUME_KICKOFF_PREFIX}). */
-export function resumeKickoffLine(kind: SessionKind): string {
-  return RESUME_KICKOFF_PREFIX + KICKOFF_LINES[kind]
+/**
+ * The kickoff line typed into a resumed session, quoting the ORIGINAL
+ * instruction of the conversation being resumed (see
+ * {@link RESUME_KICKOFF_PREFIX}).
+ *
+ * `resumedKind` is the kind of the session row whose transcript is coming back,
+ * which is not always the kind of the row being created. A revisit resumes
+ * `mostRecentResumableSession` with NO kind filter — deliberately, because
+ * "revisit" means "pick up the last thing we talked about", whatever that was —
+ * so quoting `KICKOFF_LINES['revisit']` told an ideation conversation that its
+ * original instruction had been "invoke the /runcastle:revisit skill", which it
+ * demonstrably was not, with the real opening turn visible directly above in the
+ * restored transcript. Quote what was actually said; fall back to the new kind's
+ * line only when the resumed row's kind is unknown.
+ */
+export function resumeKickoffLine(kind: SessionKind, resumedKind?: SessionKind): string {
+  return RESUME_KICKOFF_PREFIX + KICKOFF_LINES[resumedKind ?? kind]
 }
 
 /**
@@ -946,6 +1033,120 @@ export function mostRecentResumableProjectSession(
     .limit(1)
     .get()
   return row ? rowToSession(row) : null
+}
+
+// --- re-entry cap -----------------------------------------------------------
+
+/**
+ * How large a restored transcript may get before a relaunch stops resuming it
+ * and starts FRESH instead, in bytes and in re-entries.
+ *
+ * There is no compaction, pruning or summarization anywhere in runcastle, so
+ * `--resume` is monotonic: every re-entry restores everything the last one had
+ * plus whatever it added. Measured on real transcripts, a `prepare`
+ * conversation resumed across four session rows reached 1.42 MB / 464 turns /
+ * ~91k tokens; an ordinary revisit resumes into ~35k. At eight to ten re-entries
+ * that approaches the window, at which point Claude Code's own auto-compact
+ * fires and silently drops exactly the decision prose the revisit came back for
+ * — the worst possible moment to lose it, because nothing says it happened.
+ *
+ * Starting fresh is not a loss, and the revisit prompt already says why: "The
+ * docs are the artifact — later phases read them, never the transcripts."
+ * `converge` is built on that premise deliberately. This makes it the fallback
+ * for every kind rather than a property of one.
+ *
+ * Both are overridable per-install by env var, and either set to `0` disables
+ * that half of the check.
+ */
+export const RESUME_MAX_TRANSCRIPT_BYTES = envInt('RUNCASTLE_RESUME_MAX_BYTES', 1_000_000)
+export const RESUME_MAX_REENTRIES = envInt('RUNCASTLE_RESUME_MAX_REENTRIES', 8)
+
+function envInt(name: string, fallback: number): number {
+  const raw = process.env[name]
+  if (raw === undefined || raw.trim() === '') return fallback
+  const n = Number.parseInt(raw, 10)
+  return Number.isFinite(n) && n >= 0 ? n : fallback
+}
+
+/** Why a relaunch declined to resume; `null` means resuming is fine. */
+export interface ResumeCapVerdict {
+  reason: 'transcript-size' | 'reentry-count'
+  /** Human-readable, used verbatim in the timeline event. */
+  detail: string
+  bytes?: number
+  reentries: number
+}
+
+/**
+ * Should this relaunch skip `--resume` and start fresh? Pure over the two
+ * measurements so it is testable without a transcript on disk; the caller does
+ * the `statSync` (see {@link transcriptBytes}).
+ */
+export function resumeCapExceeded(input: {
+  bytes?: number
+  reentries: number
+}): ResumeCapVerdict | null {
+  const { bytes, reentries } = input
+  if (
+    RESUME_MAX_TRANSCRIPT_BYTES > 0 &&
+    bytes !== undefined &&
+    bytes > RESUME_MAX_TRANSCRIPT_BYTES
+  ) {
+    return {
+      reason: 'transcript-size',
+      detail: `the previous conversation's transcript is ${Math.round(bytes / 1024)} KB, over the ${Math.round(
+        RESUME_MAX_TRANSCRIPT_BYTES / 1024,
+      )} KB re-entry cap`,
+      bytes,
+      reentries,
+    }
+  }
+  if (RESUME_MAX_REENTRIES > 0 && reentries >= RESUME_MAX_REENTRIES) {
+    return {
+      reason: 'reentry-count',
+      detail: `this conversation has already been re-entered ${reentries}× (cap ${RESUME_MAX_REENTRIES})`,
+      reentries,
+    }
+  }
+  return null
+}
+
+/** Size of a session's transcript on disk, or undefined when there isn't one. */
+export function transcriptBytes(session: SessionRow | null): number | undefined {
+  if (!session?.transcriptPath) return undefined
+  try {
+    return statSync(session.transcriptPath).size
+  } catch {
+    // A transcript we cannot stat is one we cannot judge — fail OPEN and resume,
+    // for the guard's usual reason: this must never be able to wedge a launch.
+    return undefined
+  }
+}
+
+/**
+ * How many times this conversation has already been picked back up: the count of
+ * ENDED rows carrying a Claude Code id in the same scope, which is one row per
+ * terminal that ever went live on it. An approximation on purpose — the exact
+ * resume chain is not recorded anywhere — but it is the number that grows every
+ * time a human clicks Resume, which is precisely the thing being capped.
+ */
+export function reentryCount(
+  ctx: AppCtx,
+  scope: { featureId?: string; projectId?: string; kind?: SessionKind },
+): number {
+  const where = [
+    eq(sessions.status, 'ended'),
+    isNotNull(sessions.ccSessionId),
+    ...(scope.featureId ? [eq(sessions.featureId, scope.featureId)] : []),
+    ...(scope.projectId ? [eq(sessions.projectId, scope.projectId)] : []),
+    ...(scope.kind ? [eq(sessions.kind, scope.kind)] : []),
+  ]
+  const row = ctx.db
+    .select({ n: sql<number>`count(*)` })
+    .from(sessions)
+    .where(and(...where))
+    .get()
+  return row?.n ?? 0
 }
 
 /**

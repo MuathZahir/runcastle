@@ -1,9 +1,10 @@
 import type { AgentStreamEvent } from '@ai-hero/sandcastle'
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import type { Feature, Ticket } from '@runcastle/core'
-import { describe, expect, it } from 'vitest'
+import { worktreeDir } from '@runcastle/core/paths'
+import { afterAll, describe, expect, it } from 'vitest'
 import {
   ISOLATED_REPO_PATH,
   SANDBOX_WORKSPACE_PATH,
@@ -41,8 +42,18 @@ import {
   resolveSetupCommand,
   selectSandbox,
   burnerTemplatePath,
+  RUN_CONSTANT_PLACEHOLDERS,
+  TICKET_SPECIFIC_PLACEHOLDERS,
+  buildBlockersBlock,
+  buildDriveNotes,
+  buildGuardNotes,
+  buildLapDigestsBlock,
+  buildProjectStandards,
+  readDocsDigest,
+  trimMapDoc,
 } from '../src/workflows/ticket-burner'
 import type {
+  HarvestedDigest,
   LandDeps,
   RepoToolchain,
   ResolveAttemptResult,
@@ -119,50 +130,51 @@ describe('detectCycle', () => {
   })
 })
 
-describe('renderTicketPrompt', () => {
-  const template = [
-    '# Ticket',
-    '```json',
-    '{{TICKET_JSON}}',
-    '```',
-    '## Brief',
-    '{{FEATURE_BRIEF}}',
-    '## Docs',
-    '{{DOCS_DIGEST}}',
-    'Commit: `{{COMMIT_CONVENTION}}`',
-    'Work: {{WORKSPACE_NOTES}}',
-    'Verify: {{VERIFY_NOTES}}',
-  ].join('\n')
+/** Every implement-ticket placeholder, so a render leaves no stray `{{ }}`. */
+function promptValues(
+  overrides: Partial<Record<string, string>> = {},
+): Record<
+  (typeof RUN_CONSTANT_PLACEHOLDERS)[number] | (typeof TICKET_SPECIFIC_PLACEHOLDERS)[number],
+  string
+> {
+  return {
+    WORKSPACE_NOTES: buildWorkspaceNotes('isolated'),
+    PROJECT_STANDARDS: 'standards go here',
+    FEATURE_BRIEF: buildFeatureBrief(feature),
+    DOCS_DIGEST: buildDocsDigest([{ name: 'spec.md', content: '# Spec\nbody' }]),
+    VERIFY_NOTES: buildVerifyNotes({ verifyCommands: 'bun test' }),
+    DRIVE_NOTES: 'drive notes go here',
+    GUARD_NOTES: buildGuardNotes(true),
+    TICKET_JSON: buildTicketJson(ticket(4)),
+    BLOCKERS: buildBlockersBlock([], []),
+    ...overrides,
+  }
+}
 
+describe('renderTicketPrompt', () => {
   it('replaces every placeholder and leaves no stray {{ }}', () => {
-    const out = renderTicketPrompt(template, {
-      TICKET_JSON: buildTicketJson(ticket(4)),
-      FEATURE_BRIEF: buildFeatureBrief(feature),
-      DOCS_DIGEST: buildDocsDigest([{ name: 'spec.md', content: '# Spec\nbody' }]),
-      COMMIT_CONVENTION: 'ticket(4): <summary>',
-      WORKSPACE_NOTES: buildWorkspaceNotes('mounted'),
-      VERIFY_NOTES: buildVerifyNotes({ verifyCommands: 'bun test' }),
-    })
+    const out = renderTicketPrompt(readFileSync(burnerTemplatePath(), 'utf8'), promptValues())
     expect(out).not.toContain('{{')
     expect(out).not.toContain('}}')
     expect(out).toContain('"seq": 4')
     expect(out).toContain('My Feature')
     expect(out).toContain('feature/my-feature')
     expect(out).toContain('### spec.md')
-    expect(out).toContain('ticket(4): <summary>')
-    expect(out).toContain('Work in the current directory')
     expect(out).toContain('bun test')
   })
 
+  it('states the commit convention statically, keyed off the ticket JSON', () => {
+    // COMMIT_CONVENTION used to be a per-ticket VALUE sitting above ~6.8 KB of
+    // static tail, which broke the shared prefix twice per prompt for a string
+    // the agent can read off the ticket itself.
+    const template = readFileSync(burnerTemplatePath(), 'utf8')
+    expect(template).not.toContain('{{COMMIT_CONVENTION}}')
+    expect(template).toContain('ticket(<seq>): <summary>')
+    expect(template).toMatch(/`seq` field of the ticket JSON/i)
+  })
+
   it('carries the DIGEST.md contract into the prompt the burner actually gets', () => {
-    const out = renderTicketPrompt(readFileSync(burnerTemplatePath(), 'utf8'), {
-      TICKET_JSON: buildTicketJson(ticket(4)),
-      FEATURE_BRIEF: buildFeatureBrief(feature),
-      DOCS_DIGEST: '',
-      COMMIT_CONVENTION: 'ticket(4): <summary>',
-      WORKSPACE_NOTES: buildWorkspaceNotes('isolated'),
-      VERIFY_NOTES: '',
-    })
+    const out = renderTicketPrompt(readFileSync(burnerTemplatePath(), 'utf8'), promptValues())
 
     expect(out).toContain('DIGEST.md')
     // The three-part template.
@@ -178,53 +190,320 @@ describe('renderTicketPrompt', () => {
     expect(out).toContain(`${SANDBOX_WORKSPACE_PATH}/DIGEST.md`)
   })
 
-  it('carries the drive-script maintenance instruction into the rendered prompt', () => {
-    const out = renderTicketPrompt(readFileSync(burnerTemplatePath(), 'utf8'), {
-      TICKET_JSON: buildTicketJson(ticket(4)),
-      FEATURE_BRIEF: buildFeatureBrief(feature),
-      DOCS_DIGEST: '',
-      COMMIT_CONVENTION: 'ticket(4): <summary>',
-      WORKSPACE_NOTES: buildWorkspaceNotes('isolated'),
-      VERIFY_NOTES: '',
-    })
+  it('gives BLOCKED.md exactly one authoritative location — the workspace notes', () => {
+    // The template used to say "at the repo root" 100 lines below workspace
+    // notes that named two other paths.
+    const out = renderTicketPrompt(readFileSync(burnerTemplatePath(), 'utf8'), promptValues())
+    expect(out).not.toMatch(/BLOCKED\.md at the repo root/i)
+    expect(out).toMatch(/BLOCKED\.md`? — \*\*at the path given in "Where to work"/i)
+    expect(out).toContain(`${ISOLATED_REPO_PATH}/BLOCKED.md`)
+  })
 
-    // The standing instruction, its four triggers, and the same-branch rule.
-    expect(out).toMatch(/if your ticket introduces infrastructure the dev environment needs/i)
-    expect(out).toMatch(/update the `\.runcastle\/` scripts in this same branch/i)
-    expect(out).toMatch(/a \*\*service\*\* the app now needs/i)
-    expect(out).toMatch(/a \*\*required env var\*\*/i)
-    expect(out).toMatch(/a \*\*seed\*\* requirement/i)
-    expect(out).toMatch(/a \*\*process\*\* the dev environment must run/i)
-    // The contract facts a script author needs.
-    expect(out).toContain('drive-setup')
-    expect(out).toContain('drive-stop')
-    expect(out).toContain('.runcastle/drive.env')
-    expect(out).toContain('RUNCASTLE_SLUG')
-    expect(out).toContain('RUNCASTLE_BRANCH')
-    expect(out).toContain('RUNCASTLE_ID')
-    expect(out).toMatch(/idempotent/i)
-    // Hermetic: the scripts are never run, only checked.
-    expect(out).toMatch(/NEVER try to run `drive-setup`/)
-    expect(out).toContain('bash -n')
-    expect(out).toMatch(/every referenced file exists/i)
-    expect(out).toContain('docker compose config -q')
-    expect(out).toMatch(/new env vars appear in the output/i)
+  it('drops the branches its sandbox cannot run', () => {
+    const template = readFileSync(burnerTemplatePath(), 'utf8')
+    // Linux node:22 image: there is no pwsh, and no docker inside the sandbox.
+    expect(template).not.toMatch(/pwsh/i)
+    expect(template).not.toContain('docker compose config -q')
+  })
+
+  it('does not tell the agent iterations share one worktree', () => {
+    // Isolated mode (the win32/darwin default) re-clones every iteration, so
+    // "uncommitted work from a previous iteration" was a lie about the default.
+    const template = readFileSync(burnerTemplatePath(), 'utf8')
+    expect(template).not.toMatch(/against the same worktree/i)
+    expect(template).toMatch(/only commits carry across/i)
   })
 
   it('renders values containing $ and special chars safely', () => {
-    const out = renderTicketPrompt('{{TICKET_JSON}}', {
-      TICKET_JSON: 'cost is $5 & rising',
-      FEATURE_BRIEF: '',
-      DOCS_DIGEST: '',
-      COMMIT_CONVENTION: '',
-      WORKSPACE_NOTES: '',
-      VERIFY_NOTES: '',
-    })
+    const out = renderTicketPrompt('{{TICKET_JSON}}', promptValues({ TICKET_JSON: 'cost is $5 & rising' }))
     expect(out).toBe('cost is $5 & rising')
   })
 
-  it('buildDocsDigest notes when no docs are present', () => {
-    expect(buildDocsDigest([])).toMatch(/No feature docs/i)
+  it('buildDocsDigest notes when no canonical docs are present', () => {
+    expect(buildDocsDigest([])).toMatch(/No canonical feature docs/i)
+  })
+})
+
+describe('prompt cache prefix (the ordering contract)', () => {
+  const template = readFileSync(burnerTemplatePath(), 'utf8')
+
+  const sharedPrefix = (a: string, b: string): number => {
+    let i = 0
+    while (i < a.length && i < b.length && a[i] === b[i]) i++
+    return i
+  }
+
+  it('puts every ticket-specific placeholder after every run-constant one', () => {
+    const at = (key: string): number => template.indexOf(`{{${key}}}`)
+    for (const key of [...RUN_CONSTANT_PLACEHOLDERS, ...TICKET_SPECIFIC_PLACEHOLDERS]) {
+      expect(at(key), `${key} missing from the template`).toBeGreaterThanOrEqual(0)
+    }
+    const lastConstant = Math.max(...RUN_CONSTANT_PLACEHOLDERS.map(at))
+    const firstSpecific = Math.min(...TICKET_SPECIFIC_PLACEHOLDERS.map(at))
+    expect(firstSpecific).toBeGreaterThan(lastConstant)
+  })
+
+  it('two sibling tickets share almost the whole prompt as a common prefix', () => {
+    const constant = promptValues()
+    const a = renderTicketPrompt(template, {
+      ...constant,
+      TICKET_JSON: buildTicketJson(ticket(4)),
+      BLOCKERS: buildBlockersBlock([], []),
+    })
+    const b = renderTicketPrompt(template, {
+      ...constant,
+      TICKET_JSON: buildTicketJson(ticket(9, [4])),
+      BLOCKERS: buildBlockersBlock([4], [{ seq: 4, title: 'Ticket 4', digest: 'did a thing' }]),
+    })
+    const share = sharedPrefix(a, b) / Math.min(a.length, b.length)
+    // Measured at 11.6% before the reorder; the guard is deliberately well
+    // below the real figure so ordinary prose edits do not trip it.
+    expect(share).toBeGreaterThan(0.8)
+  })
+
+  it('a ticket keeps its own prefix across a retry, since retry notes are appended', () => {
+    const values = promptValues()
+    const base = renderTicketPrompt(template, values)
+    const retried = `${base}\n\n## Recovery context`
+    expect(sharedPrefix(base, retried)).toBe(base.length)
+  })
+})
+
+describe('buildBlockersBlock', () => {
+  const digests: HarvestedDigest[] = [
+    { seq: 2, title: 'Add the store', digest: 'Wrote `store.ts`.\n\nSurprises: none.' },
+    { seq: 5, title: 'Wire the API', digest: 'Wired it.' },
+  ]
+
+  it('says so plainly when a ticket has no blockers', () => {
+    expect(buildBlockersBlock([], digests)).toMatch(/no blockers/i)
+  })
+
+  it('renders each blocker seq, title and digest, and says the work already landed', () => {
+    const out = buildBlockersBlock([5, 2], digests)
+    expect(out).toContain('ticket 2 — Add the store')
+    expect(out).toContain('ticket 5 — Wire the API')
+    expect(out).toContain('Wrote `store.ts`.')
+    expect(out).toMatch(/already landed/i)
+    // The rediscovery loop this replaces.
+    expect(out).toMatch(/do not go digging through `git log`/i)
+    // Seq order, not the order the edges happened to be written in.
+    expect(out.indexOf('ticket 2')).toBeLessThan(out.indexOf('ticket 5'))
+  })
+
+  it('names a blocker that left no digest rather than dropping it', () => {
+    const out = buildBlockersBlock([7], digests)
+    expect(out).toContain('ticket 7')
+    expect(out).toMatch(/left no account/i)
+  })
+})
+
+describe('buildLapDigestsBlock', () => {
+  it('renders every implementer account in seq order', () => {
+    const out = buildLapDigestsBlock([
+      { seq: 3, title: 'Third', digest: 'c' },
+      { seq: 1, title: 'First', digest: 'a' },
+    ])
+    expect(out.indexOf('ticket 1')).toBeLessThan(out.indexOf('ticket 3'))
+    expect(out).toContain('First')
+    expect(out).toContain('Third')
+  })
+
+  it('is explicit when the burn harvested nothing', () => {
+    expect(buildLapDigestsBlock([])).toMatch(/No implementation ticket/i)
+  })
+})
+
+describe('buildGuardNotes', () => {
+  it('claims enforcement only when the hook is actually installed', () => {
+    expect(buildGuardNotes(true)).toMatch(/denied before they run/i)
+    expect(buildGuardNotes(false)).not.toMatch(/denied/i)
+    expect(buildGuardNotes(false)).toMatch(/machine-enforced/i)
+  })
+})
+
+describe('buildDriveNotes', () => {
+  const repoPath = mkdtempSync(join(tmpdir(), 'runcastle-drive-notes-'))
+
+  it('spends two sentences on a project with no drive machinery at all', () => {
+    const out = buildDriveNotes({ repoPath })
+    expect(out).toMatch(/no test-drive machinery configured/i)
+    expect(out).not.toContain('RUNCASTLE_SLUG')
+    expect(out).not.toContain('drive.env')
+    // The 3,283-byte block this replaces.
+    expect(out.length).toBeLessThan(600)
+  })
+
+  it('quotes the commands the server actually runs when the project has them', () => {
+    const out = buildDriveNotes({
+      repoPath,
+      driveSetupCommand: 'bun .runcastle/drive-setup.ts',
+      devCommand: 'bun run dev',
+    })
+    expect(out).toContain('bun .runcastle/drive-setup.ts')
+    expect(out).toContain('bun run dev')
+    expect(out).toMatch(/introduces infrastructure the dev environment needs/i)
+    // Never asserts a `.sh` file the project may not have.
+    expect(out).not.toContain('drive-setup.sh')
+    // Hermetic check survives; the impossible branches do not.
+    expect(out).toMatch(/never run it/i)
+    expect(out).not.toMatch(/pwsh/i)
+    expect(out).not.toContain('docker compose config -q')
+  })
+
+  it('adds the `.runcastle/` contract facts only when that directory exists', () => {
+    const withDir = mkdtempSync(join(tmpdir(), 'runcastle-drive-dir-'))
+    mkdirSync(join(withDir, '.runcastle'))
+    const out = buildDriveNotes({ repoPath: withDir })
+    expect(out).toContain('.runcastle/drive.env')
+    expect(out).toContain('RUNCASTLE_ID')
+  })
+})
+
+describe('buildProjectStandards', () => {
+  it('names the standards files by path, never by content', () => {
+    const repo = mkdtempSync(join(tmpdir(), 'runcastle-standards-'))
+    writeFileSync(join(repo, 'CLAUDE.md'), 'x'.repeat(5000), 'utf8')
+    writeFileSync(join(repo, 'CONTEXT.md'), 'y'.repeat(5000), 'utf8')
+    mkdirSync(join(repo, 'docs', 'adr'), { recursive: true })
+    writeFileSync(join(repo, 'docs/adr/0001-live.md'), '# live', 'utf8')
+    writeFileSync(join(repo, 'docs/adr/0002-dead.md'), '# dead\nsuperseded by ADR-0001', 'utf8')
+
+    const out = buildProjectStandards(repo)
+    expect(out).toContain('`CLAUDE.md`')
+    expect(out).toContain('`CONTEXT.md`')
+    expect(out).toContain('docs/adr/0001-live.md')
+    // Superseded ADRs are not in the always-read set.
+    expect(out).not.toContain('0002-dead.md')
+    // By path, not by content — the whole point.
+    expect(out).not.toContain('xxxxxxxxxx')
+    expect(out.length).toBeLessThan(1500)
+  })
+
+  it('says so honestly when the repo documents nothing', () => {
+    const repo = mkdtempSync(join(tmpdir(), 'runcastle-standards-empty-'))
+    expect(buildProjectStandards(repo)).toMatch(/documents no standards of its own/i)
+  })
+})
+
+describe('trimMapDoc', () => {
+  const map = [
+    '# Feature — map',
+    '',
+    '## Destination',
+    'ship it',
+    '',
+    '## Notes',
+    'a note',
+    '',
+    '## Not yet specified',
+    'a waypoint',
+    '',
+    '## Out of scope',
+    'never do this',
+    '',
+  ].join('\n')
+
+  it('keeps Destination and Notes, drops the two negative-space sections', () => {
+    const out = trimMapDoc(map, 'docs/features/x/map.md')
+    expect(out).toContain('ship it')
+    expect(out).toContain('a note')
+    expect(out).not.toContain('a waypoint')
+    expect(out).not.toContain('never do this')
+    // Named, not silently dropped.
+    expect(out).toContain('docs/features/x/map.md')
+  })
+
+  it('returns content untouched when there is nothing to drop', () => {
+    const plain = '# map\n\n## Destination\nx\n'
+    expect(trimMapDoc(plain, 'p')).toBe(plain)
+  })
+})
+
+describe('readDocsDigest (the allowlist)', () => {
+  const savedDataDir = process.env.RUNCASTLE_DATA_DIR
+  afterAll(() => {
+    if (savedDataDir === undefined) delete process.env.RUNCASTLE_DATA_DIR
+    else process.env.RUNCASTLE_DATA_DIR = savedDataDir
+  })
+
+  /** A talk worktree with a feature docs dir, laid out where paths expects it. */
+  function seedDocs(files: Record<string, string>): { projectId: string; slug: string } {
+    process.env.RUNCASTLE_DATA_DIR = mkdtempSync(join(tmpdir(), 'runcastle-docs-data-'))
+    const projectId = 'proj_docs'
+    const slug = 'a-feature'
+    const dir = join(worktreeDir(projectId, slug), 'docs', 'features', slug)
+    mkdirSync(dir, { recursive: true })
+    for (const [name, content] of Object.entries(files)) {
+      const p = join(dir, ...name.split('/'))
+      mkdirSync(dirname(p), { recursive: true })
+      writeFileSync(p, content, 'utf8')
+    }
+    return { projectId, slug }
+  }
+
+  const bigOutcome = `# outcome\n${'o'.repeat(50_000)}`
+
+  it('inlines only the canonical docs and NAMES the rest with a reason', () => {
+    const { projectId, slug } = seedDocs({
+      'brief.md': '# brief\nthe brief',
+      'spec.md': '# spec\nthe spec',
+      'decisions.md': '# decisions\nthe decisions',
+      'outcome.md': bigOutcome,
+      'test-notes.md': `# notes\n${'n'.repeat(20_000)}`,
+      'findings.md': '# findings\nstuff',
+      'research/3-auth.md': '# auth research',
+    })
+    const docs = readDocsDigest(projectId, slug)
+
+    expect(docs.included).toEqual(['brief.md', 'decisions.md', 'spec.md'])
+    expect(docs.text).toContain('the spec')
+    // The 52 KB postmortem that used to be the bulk of every coder's context.
+    expect(docs.text).not.toContain('o'.repeat(100))
+    expect(docs.text).not.toContain('n'.repeat(100))
+    // But it is still NAMED, with its reason and its path.
+    expect(docs.withheld.map((w) => w.name).sort()).toEqual([
+      'findings.md',
+      'outcome.md',
+      'research/3-auth.md',
+      'test-notes.md',
+    ])
+    expect(docs.text).toContain(`docs/features/${slug}/outcome.md`)
+    expect(docs.text).toMatch(/human-facing/)
+    expect(docs.text).toContain(`docs/features/${slug}/research/3-auth.md`)
+    // The whole point: the digest is now a fraction of what was on disk.
+    expect(docs.bytes).toBeLessThan(3_000)
+  })
+
+  it('orders the canonical docs brief → map → decisions → spec whatever the FS says', () => {
+    const { projectId, slug } = seedDocs({
+      'spec.md': '# spec',
+      'decisions.md': '# decisions',
+      'map.md': '# map\n\n## Destination\nthere',
+      'brief.md': '# brief',
+    })
+    const docs = readDocsDigest(projectId, slug)
+    expect(docs.included).toEqual(['brief.md', 'map.md', 'decisions.md', 'spec.md'])
+  })
+
+  it('trims the map to the sections a coder may act on', () => {
+    const { projectId, slug } = seedDocs({
+      'map.md': '# map\n\n## Destination\nthere\n\n## Out of scope\nforbidden fruit\n',
+    })
+    const docs = readDocsDigest(projectId, slug)
+    expect(docs.text).toContain('there')
+    expect(docs.text).not.toContain('forbidden fruit')
+  })
+
+  it('reports a spec-less burn instead of hiding it in one italic line', () => {
+    process.env.RUNCASTLE_DATA_DIR = mkdtempSync(join(tmpdir(), 'runcastle-docs-none-'))
+    expect(readDocsDigest('proj_none', 'nope').missing).toBe('no-worktree')
+
+    const { projectId, slug } = seedDocs({ 'outcome.md': '# outcome' })
+    const docs = readDocsDigest(projectId, slug)
+    expect(docs.missing).toBe('no-canonical-docs')
+    // Still names what IS there.
+    expect(docs.withheld.map((w) => w.name)).toEqual(['outcome.md'])
   })
 })
 

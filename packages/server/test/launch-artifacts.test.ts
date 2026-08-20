@@ -7,6 +7,8 @@ import { RuncastleConfig as ConfigSchema } from '@runcastle/core'
 import {
   RUNCASTLE_MCP_ALLOW_RULES,
   SESSION_BASH_ALLOW_RULES,
+  SESSION_BASH_READ_RULES,
+  sessionBashAllowRules,
   SESSION_START_SOURCES,
   hookClientPath,
   renderMcpConfig,
@@ -113,6 +115,48 @@ describe('renderSettings', () => {
     expect(s.permissions.allow).not.toContain('Bash(*)')
   })
 
+  /**
+   * The blanket `git add`/`git commit` grant was justified on the worktree being
+   * docs-only. That is false for the two HOST-SIDE kinds: `prepare` and
+   * `drive-fix` both run in `project.repoPath` — the developer's own checkout,
+   * with their own uncommitted work in it — where an unprompted `git add -A`
+   * commits their entire dirty tree. Doubly pointed because the prepare brief's
+   * own drive contract warns that `.runcastle/drive.env` "must never be one
+   * `git add -A` away from a commit".
+   */
+  it('narrows the git write surface for the kinds that hold the real checkout', () => {
+    for (const kind of ['prepare', 'drive-fix'] as const) {
+      const allow = sessionBashAllowRules(kind)
+      expect(allow).not.toContain('Bash(git add:*)')
+      expect(allow).not.toContain('Bash(git commit:*)')
+      // scoped to exactly what their edit guard lets them have written
+      expect(allow).toContain('Bash(git add .runcastle:*)')
+      expect(allow).toContain('Bash(git add .gitignore:*)')
+      // and the read rules are untouched
+      expect(allow).toEqual(expect.arrayContaining([...SESSION_BASH_READ_RULES]))
+    }
+    // the docs-only talk kinds keep the blanket grant the reasoning covers
+    for (const kind of ['ideation', 'qa', 'waypoint', 'converge', 'revisit'] as const) {
+      expect(sessionBashAllowRules(kind)).toEqual(
+        expect.arrayContaining([...SESSION_BASH_ALLOW_RULES]),
+      )
+    }
+    // and `project` still gets read-only (whole-repo write, prompts for the rest)
+    expect(sessionBashAllowRules('project')).toEqual([...SESSION_BASH_READ_RULES])
+  })
+
+  /**
+   * The paged-context tools added with the `get_feature_context` reshape. Without
+   * an allow rule, the first reach for a fifth doc stops the session on an
+   * interactive permission prompt.
+   */
+  it('pre-approves the paged-context tools', () => {
+    const s = renderSettings('C:\\hooks\\hook-client.ts')
+    for (const tool of ['read_feature_doc', 'list_tickets', 'read_adr']) {
+      expect(s.permissions.allow).toContain(`mcp__runcastle__${tool}`)
+    }
+  })
+
   it('emits the verified hooks JSON shape with correct events + timeouts', () => {
     const s = renderSettings('C:\\hooks\\hook-client.ts')
 
@@ -212,20 +256,50 @@ describe('renderMcpConfig', () => {
 })
 
 describe('renderSystemPrompt', () => {
-  it('directs an ideation session to /runcastle:ideate with docs paths + MCP cheat-sheet', () => {
+  it('directs an ideation session to /runcastle:ideate with the docs paths', () => {
     const p = renderSystemPrompt(feature(), 'ideation')
     expect(p).toContain('/runcastle:ideate')
     expect(p).toContain('docs/features/dark-mode/')
-    expect(p).toContain('get_feature_context')
-    expect(p).toContain('emit_tickets')
     expect(p).toContain('complete_phase')
-    expect(p).toContain('record_event')
   })
 
-  it('directs a qa session to /runcastle:qa and forbids advancing phases', () => {
+  /**
+   * No renderer restates the MCP tool list any more. Every tool is already in
+   * the session's tool list with a schema-backed description, registration is
+   * filtered by audience — so a hand-written copy can name a tool this session
+   * was never given — and the copies that existed had already drifted apart
+   * from each other and from the schema.
+   */
+  it('carries no MCP tool cheat-sheet in any renderer', () => {
+    const prompts = [
+      renderSystemPrompt(feature(), 'ideation'),
+      renderSystemPrompt(feature(), 'qa'),
+      renderSystemPrompt(feature({ mapped: true }), 'waypoint'),
+      renderSystemPrompt(feature({ mapped: true, phase: 'spec' }), 'converge'),
+      renderSystemPrompt(feature({ phase: 'review' }), 'revisit'),
+    ]
+    for (const p of prompts) expect(p).not.toContain('## runcastle MCP tools')
+  })
+
+  /**
+   * A qa session is READ-ONLY, and used to fall through the generic feature
+   * brief: the whole `## Pipeline` section on how to cross gates, a cheat-sheet
+   * for `emit_tickets`/`complete_phase`, and a `## Knowledge` section naming the
+   * docs as files to WRITE — roughly a fifth of the prompt was operating
+   * instructions for the two tools the same document forbade 30 lines later.
+   */
+  it('gives a qa session its own read-only prompt with no pipeline instructions', () => {
     const p = renderSystemPrompt(feature(), 'qa')
     expect(p).toContain('/runcastle:qa')
-    expect(p).toMatch(/do not advance phases/i)
+    expect(p).toMatch(/does not advance the pipeline/i)
+    expect(p).toContain('docs/features/dark-mode/')
+    // none of the writer's brief survives
+    expect(p).not.toContain('## Pipeline')
+    expect(p).not.toContain('## Knowledge')
+    expect(p).not.toContain('emit_tickets')
+    expect(p).not.toContain('complete_phase')
+    // and it is materially shorter than the brief it used to share
+    expect(p.length).toBeLessThan(renderSystemPrompt(feature(), 'ideation').length)
   })
 
   it('injects the assigned waypoint + map state into a waypoint session', () => {
@@ -243,19 +317,17 @@ describe('renderSystemPrompt', () => {
     expect(p).toContain('/runcastle:waypoint')
     expect(p).toContain('auth model')
     expect(p).toContain('sessions or JWT?')
-    expect(p).toContain('resolve_waypoint')
-    expect(p).toContain('emit_waypoints')
     expect(p).toContain('map.md')
     // a waypoint session must NOT be told to converge / emit tickets
     expect(p).not.toContain('emit_tickets')
+    // it states the no-code rule itself rather than leaving the guard's denial
+    // to be the session's first notice of it
+    expect(p).toMatch(/Talk sessions do not write code/)
   })
 
   it('directs a revisit session to /runcastle:revisit with ticket-surgery tools, no phase writes', () => {
     const p = renderSystemPrompt(feature({ phase: 'implementation' }), 'revisit')
     expect(p).toContain('/runcastle:revisit')
-    expect(p).toContain('update_ticket')
-    expect(p).toContain('cancel_ticket')
-    expect(p).toContain('emit_tickets')
     expect(p).toContain('decisions.md')
     // a revisit never moves the pipeline
     expect(p).toMatch(/do not call `complete_phase`/i)
@@ -265,7 +337,14 @@ describe('renderSystemPrompt', () => {
     const review = renderSystemPrompt(feature({ phase: 'review' }), 'revisit')
     expect(review).toContain('Review iteration')
     expect(review).toMatch(/fix ticket/i)
-    expect(review).toContain('emit_tickets')
+    // it points at the PER-TICKET facts that are actually in the payload —
+    // there is no run outcome in `get_feature_context`, `get_work_record` is
+    // gated shut for feature sessions, and `digest` is no longer returned
+    expect(review).toContain('get_feature_context')
+    expect(review).toMatch(/`commits`/)
+    expect(review).toMatch(/`error`/)
+    expect(review).not.toMatch(/run outcome/i)
+    expect(review).not.toContain('digest')
     // burning from review loops back through implementation; the phase never
     // advances from within the session
     expect(review).toMatch(/click Burn/i)
@@ -286,7 +365,6 @@ describe('renderSystemPrompt', () => {
     const p = renderSystemPrompt(feature({ phase: 'ideation', lap: 2 }), 'revisit', undefined, 2)
     expect(p).toContain('This is lap 2')
     expect(p).toContain('ideation → spec → tickets')
-    expect(p).toContain('emit_tickets')
     // its two optional inputs, and that missing ones are normal
     expect(p).toContain('test-notes.md')
     expect(p).toContain('## Lap 1')
@@ -339,7 +417,74 @@ describe('renderSystemPrompt', () => {
     // it runs the existing spec → tickets skills
     expect(p).toContain('/runcastle:spec')
     expect(p).toContain('/runcastle:tickets')
-    expect(p).toContain('emit_tickets')
+    // the `size`/`full` concept was DELETED (migration 0008 drops the column),
+    // so the spec step must not be handed a condition it cannot evaluate
+    expect(p).not.toContain('`full`')
+    // and it states the no-code rule, which `guardsEdits` enforces anyway
+    expect(p).toMatch(/Talk sessions do not write code/)
+    // the incomplete re-convergence rule is gone; the skill owns the complete
+    // one, including the "complete_phase for spec first" clause this omitted
+    expect(p).not.toMatch(/already exists \(a previous converge session/)
+  })
+
+  /**
+   * The lap owns the entry skill, then the kind. A lap-N grill is created as
+   * `kind: 'ideation'` and used to render the generic feature brief ("invoke
+   * `/runcastle:ideate`") while the lap kickoff typed into the same terminal
+   * said "invoke `/runcastle:revisit` for LAP N" — two entry skills, no defined
+   * precedence, and the `lap` parameter never read on that path.
+   */
+  it('routes a lap-N ideation session to the revisit prompt, one entry skill', () => {
+    const p = renderSystemPrompt(feature({ phase: 'ideation', lap: 3 }), 'ideation', undefined, 3)
+    expect(p).toContain('This is lap 3')
+    expect(p).toContain('/runcastle:revisit')
+    expect(p).not.toContain('/runcastle:ideate')
+    expect(p).toMatch(/DO call `complete_phase`/)
+    // and it is byte-identical to the revisit rendering of the same lap
+    expect(p).toBe(
+      renderSystemPrompt(feature({ phase: 'ideation', lap: 3 }), 'revisit', undefined, 3),
+    )
+  })
+
+  /**
+   * A conflict-resolution revisit is ALWAYS at `review` (its only launch site is
+   * the review body's conflict card), and its whole job is a `git merge`. It was
+   * also getting 591 chars of fix-ticket interview — the same failure shape as
+   * F18, fixed in the Rules block and missed in this guard.
+   */
+  it('does not brief the conflict-resolution revisit as a review iteration', () => {
+    const p = renderSystemPrompt(
+      feature({ phase: 'review' }),
+      'revisit',
+      undefined,
+      undefined,
+      'resolve-conflict',
+    )
+    expect(p).not.toContain('Review iteration')
+    expect(p).not.toMatch(/fix ticket/i)
+    expect(p).toMatch(/resolves a merge conflict/i)
+    // strictly shorter than the review-iteration revisit it used to also be
+    expect(p.length).toBeLessThan(
+      renderSystemPrompt(feature({ phase: 'review' }), 'revisit').length,
+    )
+  })
+
+  /**
+   * A lap advances the pipeline and writes no code; a conflict resolution writes
+   * code and advances nothing. One session cannot be both, and the tRPC route
+   * takes `kickoffLine` and `purpose` as free parameters — so the exclusion is
+   * asserted where the two meet rather than left to call-site luck.
+   */
+  it('refuses to render one revisit as both a lap and a conflict resolution', () => {
+    expect(() =>
+      renderSystemPrompt(
+        feature({ phase: 'ideation', lap: 2 }),
+        'revisit',
+        undefined,
+        2,
+        'resolve-conflict',
+      ),
+    ).toThrow(/both lap 2 and a conflict resolution/i)
   })
 })
 

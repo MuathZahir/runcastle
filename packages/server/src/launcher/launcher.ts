@@ -43,7 +43,12 @@ import {
 import { startRun, workflowClaimsFeatureBranch } from '../workflows/runner'
 import { listFindings } from '../services/findings'
 import { keysToPrepare } from '../services/prep'
-import { serverUrlFor, writeSessionArtifacts, type PrepareBrief } from './artifacts'
+import {
+  serverUrlFor,
+  writeSessionArtifacts,
+  type PrepareBrief,
+  type PrepareHost,
+} from './artifacts'
 import {
   activeProjectSession,
   activeSessionsForFeature,
@@ -51,13 +56,19 @@ import {
   createSessionRow,
   getSessionRow,
   landProjectSession,
+  lapInFlight,
   markSessionEnded,
   mostRecentResumableProjectSession,
   mostRecentResumableSession,
   planKickoff,
+  PREPARE_CONFIRM_KICKOFF,
+  reentryCount,
   reportProjectLanding,
+  resumeCapExceeded,
   resumeKickoffLine,
   setKickoffOverride,
+  transcriptBytes,
+  type ResumeCapVerdict,
 } from './sessions'
 
 // Re-exported for the `feature.resendKickoff` router: the launcher is the stable
@@ -379,6 +390,26 @@ async function ensureWorktree(
   }
 }
 
+/**
+ * The re-entry cap, applied at one place per launcher: measure the transcript
+ * that is about to be restored and how many times this conversation has already
+ * been picked back up, and return a verdict when resuming should be skipped in
+ * favour of a fresh window. `null` (including for a launch that was never going
+ * to resume) means carry on.
+ */
+function applyResumeCap(
+  ctx: AppCtx,
+  resumeSessionId: string | undefined,
+  resumedFrom: SessionRow | undefined,
+  scope: { featureId?: string; projectId?: string; kind?: SessionKind },
+): ResumeCapVerdict | null {
+  if (!resumeSessionId) return null
+  return resumeCapExceeded({
+    bytes: transcriptBytes(resumedFrom ?? null),
+    reentries: reentryCount(ctx, scope),
+  })
+}
+
 export async function launchSession(
   ctx: AppCtx,
   input: LaunchSessionInput,
@@ -410,9 +441,24 @@ export async function launchSession(
 
   // What this terminal opens with, decided before anything else: an explicit
   // briefing makes the session FRESH (no `--resume`, so no summary chooser to
-  // swallow it — see `KickoffPlan.explicit`), and a lap briefing additionally
+  // swallow it — see `KickoffPlan.explicit`), and a lap in flight additionally
   // tells the artifacts which lap they are rendering for.
-  const plan = planKickoff({ kind: input.kind, lap: feature.lap, kickoffLine: input.kickoffLine })
+  //
+  // The lap is read off FEATURE STATE — phase, lap number, and whether tickets
+  // exist at that lap — not off what the caller typed. `listTicketsByFeature` is
+  // already this module's import, so "does lap N have tickets" costs nothing
+  // extra and, unlike a kickoff string, it is still true tomorrow. See
+  // `lapInFlight` for the stranding bug this closes.
+  const plan = planKickoff({
+    kind: input.kind,
+    lap: feature.lap,
+    kickoffLine: input.kickoffLine,
+    lapInFlight: lapInFlight({
+      lap: feature.lap,
+      phase: feature.phase,
+      ticketLaps: listTicketsByFeature(ctx, feature.id).map((t) => t.lap),
+    }),
+  })
 
   // A waypoint session claims its waypoint BEFORE spawning (SPEC §13.2). The
   // prior LIVE session's cc id (`lastSessionId` — promoted only when a session
@@ -422,10 +468,15 @@ export async function launchSession(
   let waypoint: Waypoint | undefined
   let resumeSessionId: string | undefined
   let resumeUnavailableFrom: string | undefined
+  // The row whose conversation is coming back. Kept because the resume framing
+  // must quote ITS original instruction, not the new session's — a revisit
+  // resumes whatever kind talked last (see `resumeKickoffLine`).
+  let resumedFrom: SessionRow | undefined
   if (input.waypointId) {
     const before = getWaypoint(ctx, input.waypointId)
     if (before.lastSessionId && !plan.explicit) {
-      resumeSessionId = getSessionRow(ctx, before.lastSessionId)?.ccSessionId ?? undefined
+      resumedFrom = getSessionRow(ctx, before.lastSessionId) ?? undefined
+      resumeSessionId = resumedFrom?.ccSessionId ?? undefined
       // No cc id recorded for the remembered session → nothing the CLI could
       // `--resume`. Spawn fresh WITHOUT the flag (a bogus --resume makes claude
       // exit with "No conversation found") and say so on the timeline.
@@ -463,6 +514,7 @@ export async function launchSession(
     if (!plan.explicit) {
       const prior = mostRecentResumableSession(ctx, feature.id)
       if (prior?.ccSessionId) {
+        resumedFrom = prior
         resumeSessionId = prior.ccSessionId
       } else {
         resumeUnavailableFrom = 'revisit'
@@ -479,7 +531,24 @@ export async function launchSession(
   // conversation is the ordinary first-launch case, so unlike waypoint/revisit
   // it gets no `resume_unavailable` note — there is nothing to be unavailable.
   if (input.kind !== 'waypoint' && input.kind !== 'revisit' && !plan.explicit) {
-    resumeSessionId = mostRecentResumableSession(ctx, feature.id, input.kind)?.ccSessionId
+    resumedFrom = mostRecentResumableSession(ctx, feature.id, input.kind) ?? undefined
+    resumeSessionId = resumedFrom?.ccSessionId
+  }
+
+  // The re-entry cap: past a transcript size or a re-entry count, resuming costs
+  // more than it carries, so launch fresh from the docs instead (see
+  // `resumeCapExceeded`).
+  const capped = applyResumeCap(ctx, resumeSessionId, resumedFrom, {
+    featureId: feature.id,
+  })
+  if (capped) {
+    resumeSessionId = undefined
+    resumedFrom = undefined
+    emit(ctx, feature.id, {
+      type: 'session.resume_capped',
+      message: `starting the ${input.kind} session fresh — ${capped.detail}; the docs carry the state`,
+      data: { sessionId: session.id, kind: input.kind, ...capped },
+    })
   }
 
   // Stash the kickoff override BEFORE the session can go live — the kickoff is
@@ -487,7 +556,8 @@ export async function launchSession(
   // be registered against the session id ahead of it. An explicit per-purpose
   // briefing always wins; otherwise a resumed session gets the resume framing so
   // the agent continues the conversation rather than restarting its opening move.
-  const kickoffLine = plan.line ?? (resumeSessionId ? resumeKickoffLine(input.kind) : undefined)
+  const kickoffLine =
+    plan.line ?? (resumeSessionId ? resumeKickoffLine(input.kind, resumedFrom?.kind) : undefined)
   if (kickoffLine) setKickoffOverride(session.id, kickoffLine)
 
   emit(ctx, feature.id, {
@@ -606,9 +676,18 @@ export async function launchPrepareSession(
     worktreePath: project.repoPath,
   })
 
-  const resumeSessionId = input.fresh
+  const resumedFrom = input.fresh
     ? undefined
-    : mostRecentResumableProjectSession(ctx, project.id, 'prepare')?.ccSessionId
+    : (mostRecentResumableProjectSession(ctx, project.id, 'prepare') ?? undefined)
+  let resumeSessionId = resumedFrom?.ccSessionId ?? undefined
+
+  // Preparation is the kind most likely to be re-entered and the one measured
+  // reaching 1.42 MB across four rows, so the cap matters most here.
+  const capped = applyResumeCap(ctx, resumeSessionId, resumedFrom, {
+    projectId: project.id,
+    kind: 'prepare',
+  })
+  if (capped) resumeSessionId = undefined
 
   emitProject(ctx, project.id, {
     // A deliberate fresh start reads exactly like a first-ever preparation on
@@ -631,13 +710,33 @@ export async function launchPrepareSession(
       message: 'resuming the previous preparation conversation',
       data: { sessionId: session.id, resumeSessionId },
     })
+  } else if (capped) {
+    emitProject(ctx, project.id, {
+      type: 'session.resume_capped',
+      message: `starting the preparation session fresh — ${capped.detail}; the recorded findings carry the state`,
+      data: { sessionId: session.id, kind: 'prepare', ...capped },
+    })
+  }
+
+  const prepare = await buildPrepareBrief(ctx, project)
+
+  // Two ways the default cold-start line is wrong here, both one line to fix.
+  // A resumed terminal used to get it typed into a conversation already
+  // mid-flight — `RESUME_KICKOFF_PREFIX` was wired only into `launchSession`,
+  // and this is the kind most likely to be resumed. And with nothing left open
+  // it said "Start by telling them which fields are still open" over a prompt
+  // that says to confirm and stop.
+  if (resumeSessionId) {
+    setKickoffOverride(session.id, resumeKickoffLine('prepare'))
+  } else if (prepare.remainingKeys.length === 0) {
+    setKickoffOverride(session.id, PREPARE_CONFIRM_KICKOFF)
   }
 
   const artifacts = await writeSessionArtifacts({
     session,
     project,
     config: ctx.config,
-    prepare: await buildPrepareBrief(ctx, project),
+    prepare,
   })
   const serverUrl = serverUrlFor(ctx.config)
 
@@ -741,6 +840,35 @@ export async function launchDriveFixSession(
     },
   })
 
+  // Every "Fix drive" click used to be a COLD start: no `resumeSessionId` was
+  // ever passed, so an agent on its third attempt re-theorised the same failure
+  // from scratch with no memory of the two fixes it had already tried. Resume
+  // this feature's last drive-fix conversation when there is one — the fault is
+  // usually the same fault, and what did not work is the most useful thing it
+  // knows. The re-entry cap still applies.
+  const resumedFrom = mostRecentResumableSession(ctx, feature.id, 'drive-fix') ?? undefined
+  let resumeSessionId = resumedFrom?.ccSessionId
+  const capped = applyResumeCap(ctx, resumeSessionId, resumedFrom, {
+    featureId: feature.id,
+    kind: 'drive-fix',
+  })
+  if (capped) resumeSessionId = undefined
+
+  if (resumeSessionId) {
+    emit(ctx, feature.id, {
+      type: 'session.resumed',
+      message: 'resuming the previous drive-fix conversation — it already knows what it tried',
+      data: { sessionId: session.id, kind: 'drive-fix', resumeSessionId },
+    })
+    setKickoffOverride(session.id, resumeKickoffLine('drive-fix'))
+  } else if (capped) {
+    emit(ctx, feature.id, {
+      type: 'session.resume_capped',
+      message: `starting the drive-fix session fresh — ${capped.detail}; the failure is in the brief`,
+      data: { sessionId: session.id, kind: 'drive-fix', ...capped },
+    })
+  }
+
   const artifacts = await writeSessionArtifacts({
     session,
     project,
@@ -768,6 +896,7 @@ export async function launchDriveFixSession(
     // under a narrower mandate, and a step of its own would be a settings field
     // nobody asked for.
     model: resolveModel('prepare', ctx.config, project),
+    resumeSessionId,
     strictMcp: ctx.config.sessionMcp === 'runcastleOnly',
   }
 
@@ -793,6 +922,7 @@ export async function launchDriveFixSession(
     project.repoPath,
     serverUrl,
     buildClaudeArgs(buildInput),
+    { resumeSessionId },
   )
   return { sessionId: session.id }
 }
@@ -851,9 +981,14 @@ export async function launchProjectSession(
   // live and has nothing the CLI could `--resume` (a bogus `--resume` makes
   // claude exit with "No conversation found"), so we spawn fresh and say so.
   const resumeRowId = input.fresh ? undefined : input.resumeSessionId
-  const resumeSessionId = resumeRowId
-    ? (getSessionRow(ctx, resumeRowId)?.ccSessionId ?? undefined)
-    : undefined
+  const resumedFrom = resumeRowId ? (getSessionRow(ctx, resumeRowId) ?? undefined) : undefined
+  let resumeSessionId = resumedFrom?.ccSessionId ?? undefined
+
+  const capped = applyResumeCap(ctx, resumeSessionId, resumedFrom, {
+    projectId: project.id,
+    kind: 'project',
+  })
+  if (capped) resumeSessionId = undefined
 
   emitProject(ctx, project.id, {
     type: 'session.launching',
@@ -872,6 +1007,12 @@ export async function launchProjectSession(
       message: 'resuming the previous project conversation',
       data: { sessionId: session.id, resumeSessionId, resumedFrom: resumeRowId },
     })
+  } else if (capped) {
+    emitProject(ctx, project.id, {
+      type: 'session.resume_capped',
+      message: `starting a new project chat — ${capped.detail}; the repo and the charter carry the state`,
+      data: { sessionId: session.id, kind: 'project', ...capped },
+    })
   } else if (resumeRowId) {
     emitProject(ctx, project.id, {
       type: 'session.resume_unavailable',
@@ -879,6 +1020,11 @@ export async function launchProjectSession(
       data: { sessionId: session.id, resumedFrom: resumeRowId },
     })
   }
+
+  // Same gap as prepare: a resumed project chat got its cold-start line typed
+  // into a live conversation. Quotes the project line, which is also the
+  // resumed row's own — a project session only ever resumes another one.
+  if (resumeSessionId) setKickoffOverride(session.id, resumeKickoffLine('project'))
 
   const artifacts = await writeSessionArtifacts({
     session,
@@ -923,7 +1069,16 @@ export async function launchProjectSession(
   return { sessionId: session.id }
 }
 
-/** Seed the conversation with what is established already, and what is not. */
+/**
+ * Seed the conversation with what is established already, what is not, and what
+ * the server can see about the host without being asked.
+ *
+ * `verifiedAt` and `staleCommits` are passed through rather than dropped:
+ * `listFindings` has always computed both, and without them the brief could not
+ * distinguish a value measured today from one measured a year and 400 commits
+ * ago — which is exactly the judgement the session has to make about every
+ * established key before it decides whether to re-derive it.
+ */
 async function buildPrepareBrief(ctx: AppCtx, project: Project): Promise<PrepareBrief> {
   const findings = await listFindings(ctx, project)
   return {
@@ -933,7 +1088,48 @@ async function buildPrepareBrief(ctx: AppCtx, project: Project): Promise<Prepare
       key: f.key,
       source: f.source,
       ...(f.evidence ? { evidence: f.evidence } : {}),
+      ...(f.verifiedAt !== undefined ? { verifiedAt: f.verifiedAt } : {}),
+      ...(f.staleCommits !== undefined ? { staleCommits: f.staleCommits } : {}),
     })),
+    host: probePrepareHost(project.repoPath),
+  }
+}
+
+/** Lockfiles, newest-convention first — the first one present names the manager. */
+const LOCKFILES: readonly (readonly [string, string])[] = [
+  ['bun.lock', 'bun'],
+  ['bun.lockb', 'bun'],
+  ['pnpm-lock.yaml', 'pnpm'],
+  ['yarn.lock', 'yarn'],
+  ['package-lock.json', 'npm'],
+  ['uv.lock', 'uv'],
+  ['poetry.lock', 'poetry'],
+  ['Cargo.lock', 'cargo'],
+  ['go.sum', 'go'],
+]
+
+const COMPOSE_FILES = [
+  'docker-compose.yml',
+  'docker-compose.yaml',
+  'compose.yml',
+  'compose.yaml',
+] as const
+
+/**
+ * What the host is, answered by the process that IS the host. The prepare prompt
+ * used to send the agent off to discover every one of these — the platform, the
+ * package manager, whether there is a compose file, whether `.runcastle/`
+ * already exists — which is several tool calls and a paragraph of prose to learn
+ * four things a `statSync` away from the code writing the prompt.
+ */
+export function probePrepareHost(repoPath: string): PrepareHost {
+  const has = (rel: string): boolean => existsSync(join(repoPath, rel))
+  const lock = LOCKFILES.find(([file]) => has(file))
+  return {
+    platform: process.platform,
+    hasCompose: COMPOSE_FILES.some(has),
+    hasDriveMachinery: has('.runcastle'),
+    ...(lock ? { packageManager: lock[1] } : {}),
   }
 }
 

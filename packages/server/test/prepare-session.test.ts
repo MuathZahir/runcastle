@@ -1,16 +1,20 @@
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { eq } from 'drizzle-orm'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { Project, SessionRow } from '@runcastle/core'
-import { isProjectSessionKind } from '@runcastle/core'
+import { PREPARED_KEYS, isProjectSessionKind } from '@runcastle/core'
 import { events, projects, sessions } from '../src/db/schema'
 import type { AppCtx } from '../src/db/types'
 import {
+  PREPARE_CONFIRM_KICKOFF,
+  RESUME_KICKOFF_PREFIX,
   activeProjectSession,
   activeSessionsForFeature,
   createSessionRow,
+  kickoffDeliveryFor,
+  markSessionLive,
   mostRecentResumableProjectSession,
   mostRecentResumableSession,
 } from '../src/launcher/sessions'
@@ -18,7 +22,7 @@ import { launchPrepareSession } from '../src/launcher/launcher'
 import { reconcileStaleSessions } from '../src/launcher/reconcile'
 import { endSession } from '../src/pty/end-session'
 import { emitForSession } from '../src/services/events'
-import { preparedValue } from '../src/services/findings'
+import { preparedValue, recordFinding } from '../src/services/findings'
 import { preparedAt } from '../src/services/prep'
 import { toolRecordFinding } from '../src/mcp/server'
 import { renderPreparePrompt } from '../src/launcher/artifacts'
@@ -289,183 +293,194 @@ describe('the prepare brief', () => {
   })
 
   /**
-   * The host-only keys are the ones a preparation agent cannot look up: the
-   * semantics live in this repo's source, and the installed build the agent can
-   * actually read has the explaining comments stripped out. A real session went
-   * grepping the minified bundle for `createdb`, found nothing, and told the
-   * human runcastle had no per-branch database support — so the brief has to
-   * carry the semantics itself.
+   * The prompt is PER-SESSION FACTS now. It used to be the largest artifact in
+   * the system — 13,494 chars, ~3,374 tokens — because it rendered the drive
+   * contract, the discovery method, five stack recipes and a dry-run
+   * walkthrough on every launch while branching on `remainingKeys` in exactly
+   * one 34-character place. With one key open, 84% of it was provably
+   * irrelevant, and it GREW as work completed. All of that moved into
+   * `/runcastle:prepare`.
    */
-  it('explains what each host-only key drives, so the agent need not guess', () => {
+  it('is a fraction of its old size and carries no moved procedure', () => {
     const out = renderPreparePrompt({
       project: project(),
-      remainingKeys: ['devCommand', 'driveSetupCommand', 'dbResetCommand'],
+      remainingKeys: ['knownFailures'],
       established: [],
     })
-
-    // devCommand: a drive-owned pane whose printed URL becomes the app link.
-    expect(out).toContain('Open app')
-    // The drive hooks run on the host, around the pane — as invocation lines for
-    // the committed scripts, which is the shape the contract below spells out.
-    expect(out).toMatch(/`driveSetupCommand` \/ `driveStopCommand`/)
-    expect(out).toContain('INVOCATION LINES')
-
-    // dbResetCommand: the correction that matters most — it is not a drive hook.
-    expect(out).toMatch(/`dbResetCommand` — NOT part of the drive loop/)
-    expect(out).toContain('drift')
-
-    // The retired key, and the templating that went with it (decision 6).
-    expect(out).not.toContain('driveEnv')
-    expect(out).not.toContain('{{id}}')
-    expect(out).not.toContain('{{slug}}')
+    expect(out.length).toBeLessThan(4000)
+    // the four blocks that now live in the skill / its references
+    expect(out).not.toContain('Discover the shape before you author anything')
+    expect(out).not.toContain('adapt them, never copy them')
+    expect(out).not.toContain('dry_run_drive')
+    expect(out).not.toContain('override: true')
+    // and it names the skill that has them
+    expect(out).toContain('/runcastle:prepare')
   })
 
   /**
-   * The contract (decision 6) — the only part of a drive runcastle mandates, and
-   * the part no agent can infer from the repo in front of it. Each clause is one
-   * thing a script that got it wrong breaks: logic in the setting is logic no
-   * branch can amend, a value that never reaches `drive.env` never reaches the
-   * dev pane, an ungitignored `drive.env` commits a connection string, a
-   * delta-detecting step skips the install a branch needed, and a setup that
-   * returns before its services are up hands the dev pane a dead database.
+   * The drive prose is gated on the agenda actually reaching the drive loop.
+   * `dbResetCommand` is deliberately outside that set — the old prompt said in
+   * one breath that it is "NOT part of the drive loop" and in the next rendered
+   * 10,355 chars of drive contract for a session opened to settle only it.
    */
-  it('states the drive contract: committed scripts, identity in, drive.env out', () => {
-    const out = renderPreparePrompt({ project: project(), remainingKeys: [], established: [] })
+  it('renders the drive framing only when an open key is in the drive loop', () => {
+    const driveish = renderPreparePrompt({
+      project: project(),
+      remainingKeys: ['driveSetupCommand'],
+      established: [],
+    })
+    expect(driveish).toContain('These keys are the drive loop')
+    expect(driveish).toContain('.runcastle/drive.env')
 
-    // Where the machinery lives, and what the settings shrink to.
-    expect(out).toContain('.runcastle/drive-setup.sh')
-    expect(out).toContain('committed to the repo')
-
-    // Identity in — all three, and the reason never to derive it from git.
-    expect(out).toContain('RUNCASTLE_SLUG')
-    expect(out).toContain('RUNCASTLE_BRANCH')
-    expect(out).toContain('RUNCASTLE_ID')
-    expect(out).toContain('git rev-parse')
-
-    // Computed values out, and the file that must never be committed.
-    expect(out).toContain('.runcastle/drive.env')
-    expect(out).toContain('gitignored')
-
-    // Idempotence by convention, never delta detection.
-    expect(out).toContain('idempotent')
-    expect(out).toMatch(/has anything changed\?/)
-
-    // Exit 0 means the services are up, so the waits live in the script.
-    expect(out).toContain('Exit 0 means the services are actually up')
-    expect(out).toContain('docker compose up --wait')
-    expect(out).toContain('pg_isready')
-
-    // And the session is told it may write the files the contract asks it for.
-    expect(out).toContain('`.runcastle/` and `.gitignore`')
+    for (const key of ['knownFailures', 'dbResetCommand', 'verifyCommands']) {
+      const out = renderPreparePrompt({
+        project: project(),
+        remainingKeys: [key],
+        established: [],
+      })
+      expect(out).not.toContain('These keys are the drive loop')
+      expect(out.length).toBeLessThan(driveish.length)
+    }
   })
 
   /**
-   * Shape discovery before authoring (decision 7). The prompt used to carry one
-   * postgres example, so a project one shape away from it — compose, a monorepo,
-   * a hosted database, Windows — had nothing to reason from. Nothing
-   * stack-specific is mandated: the agent finds out what this project is first.
+   * `verifiedAt` and `staleCommits` are computed by `listFindings` and were
+   * being dropped on the floor by `buildPrepareBrief`, so a value measured
+   * today and a value measured a year and 400 commits ago read identically to
+   * the agent deciding whether to re-derive either.
    */
-  it('directs shape discovery before a line of script is written', () => {
-    const out = renderPreparePrompt({ project: project(), remainingKeys: [], established: [] })
-
-    expect(out).toContain('Discover the shape before you author anything')
-    expect(out).toContain('Package manager and workspace layout')
-    expect(out).toContain('monorepo')
-    expect(out).toContain('OS and shell')
-    expect(out).toContain('.ps1')
-    expect(out).toContain('Docker')
-    expect(out).toContain('services the app needs to boot')
-    expect(out).toContain('Hosted or local data stores')
+  it('renders how stale and how proven each established value is', () => {
+    const out = renderPreparePrompt({
+      project: project(),
+      remainingKeys: [],
+      established: [
+        { key: 'devCommand', source: 'session', verifiedAt: Date.now(), staleCommits: 0 },
+        { key: 'setupCommand', source: 'run', evidence: 'ran it', staleCommits: 412 },
+      ],
+    })
+    expect(out).toContain('verified today')
+    expect(out).toContain('412 commit(s) behind')
+    expect(out).toContain('never verified by a drive')
   })
 
   /**
-   * The recipe pack (decision 7): shapes to adapt, never rules. Each entry exists
-   * because a real project shape had no answer in the old prompt — a compose
-   * stack with no per-drive isolation, a redis the drive would have shared with
-   * the human's own db 0, a hosted database the agent had no grant to create on,
-   * and fixed ports colliding with whatever was already running.
+   * What the server can see for itself. The prompt used to send the agent off
+   * to discover the platform, the package manager, whether there is a compose
+   * file and whether `.runcastle/` exists — four things a `statSync` away from
+   * the process writing the prompt.
    */
-  it('carries the recipe pack, adapt-not-copy', () => {
-    const out = renderPreparePrompt({ project: project(), remainingKeys: [], established: [] })
-
-    expect(out).toContain('adapt them, never copy them')
-
-    // Postgres, one database per drive, named from the identity.
-    expect(out).toContain('createdb')
-    expect(out).toContain('dropdb --if-exists')
-
-    // Compose: project name from the identity, ports the script chose, --wait.
-    expect(out).toContain('COMPOSE_PROJECT_NAME')
-    expect(out).toContain('docker compose down -v')
-
-    // Redis: a logical index or prefix, with db 0 left to the human.
-    expect(out).toContain('Redis')
-    expect(out).toContain('db 0')
-
-    // Hosted: a branch per feature, or a schema where CREATEDB is refused.
-    expect(out).toContain('Hosted databases')
-    expect(out).toContain('CREATEDB')
-    expect(out).toContain('CREATE SCHEMA IF NOT EXISTS')
-
-    // Ports: slug-derived so laps agree, bind-probed so nothing collides.
-    expect(out).toContain('Deterministic ports')
-    expect(out).toContain('bind-probe')
-    expect(out).toContain('PORT=$port')
+  it('reports the host probes the server made instead of asking for them', () => {
+    const out = renderPreparePrompt({
+      project: project(),
+      remainingKeys: ['devCommand'],
+      established: [],
+      host: {
+        platform: 'win32',
+        hasCompose: true,
+        hasDriveMachinery: false,
+        packageManager: 'bun',
+      },
+    })
+    expect(out).toContain('What the server already checked')
+    expect(out).toContain('win32')
+    expect(out).toContain('`bun`')
+    expect(out).toContain('Compose file at the repo root: **yes**')
   })
 
   /**
-   * The env-loading audit (decision 7). The overlay is process environment, so a
-   * loader told to clobber it leaves a drive that looks perfect while the app
-   * quietly reads the shared database. Nothing server-side can detect that, so
-   * the prompt names the agent as the detector and gives it both outcomes.
+   * The 0-keys-open path used to give three instructions to work an empty list
+   * and one to stop: "_Nothing is unset… say so and **stop**_" alongside a task
+   * line saying to tell the human which fields are open and a 2,246-char
+   * closing move ordering a dry-run drive. All four now say the same thing.
    */
-  it('directs the env-loading audit, with fix-or-record as the outcomes', () => {
-    const out = renderPreparePrompt({ project: project(), remainingKeys: [], established: [] })
-
-    expect(out).toContain('override: true')
-    expect(out).toContain('you are the detector')
-    expect(out).toContain('record the finding with `record_event`')
+  it('says confirm-and-stop consistently when nothing is open', () => {
+    const out = renderPreparePrompt({
+      project: project(),
+      remainingKeys: [],
+      established: [{ key: 'devCommand', source: 'human' }],
+    })
+    expect(out).toMatch(/confirmation,\nnot a preparation/)
+    expect(out).toContain('there is nothing open to work')
+    expect(out).not.toContain('which fields are still open and what you need')
+    // and no dry-run drive is ordered
+    expect(out).not.toContain('dry_run_drive')
   })
 
-  it('says so plainly when there is nothing left to establish', () => {
-    const out = renderPreparePrompt({ project: project(), remainingKeys: [], established: [] })
-    expect(out).toContain('Nothing is unset')
-  })
-
-  /**
-   * The closing move (decision 8): the session ends by PROPOSING a dry-run
-   * drive, never by running one unannounced — it starts services and creates a
-   * database on someone's machine. The two halves and the fix-and-retry loop are
-   * the whole protocol, and the stamp being the server's to compute is what
-   * stops a diligent-sounding agent from marking its own homework.
-   */
-  it('closes by proposing the dry-run drive, asked for first and inspected in halves', () => {
-    const out = renderPreparePrompt({ project: project(), remainingKeys: [], established: [] })
-
-    expect(out).toContain('dry_run_drive')
-    expect(out).toContain('Ask before you act')
-    // The identity, so a leftover database is recognisable rather than alarming.
-    expect(out).toContain('prep-dry-run')
-    expect(out).toContain('prep_dry_run')
-    expect(out).toContain('createdb')
-
-    // The observables as they are after the contract landed: setup exits 0 and
-    // hands back a parseable `drive.env`, the dev pane serves, stop exits 0.
-    expect(out).toContain('.runcastle/drive.env')
-    expect(out).toContain('variable NAMES it parsed')
-
-    // Between the halves and after the stop: the checks the server cannot do.
-    expect(out).toContain('FRESH')
-    expect(out).toContain('RESPONDS')
-    // App readiness is the server's one wait — the agent judges the page, not
-    // whether it answers at all.
-    expect(out).toContain('the server waits for it to answer')
-    expect(out).toContain('cleanup')
-
-    // Fix-and-retry, and where the stamp comes from.
+  /** The standing rules that must hold BEFORE a skill has been loaded. */
+  it('keeps ask-before-you-act, the write scope, secrets and record_finding', () => {
+    const out = renderPreparePrompt({
+      project: project(),
+      remainingKeys: ['devCommand'],
+      established: [],
+    })
+    expect(out).toContain('ask before you act')
+    expect(out).toContain('`.runcastle/`')
+    expect(out).toContain('.gitignore')
     expect(out).toContain('record_finding')
-    expect(out).toContain('clean full pass')
-    expect(out).toContain('mark your own homework')
+    expect(out).toContain('userSupplied')
+    expect(out).toContain('Secrets')
+  })
+})
+
+/**
+ * The procedure that left the prompt has to have LANDED somewhere. These read
+ * the shipped skill rather than trusting that it was written: a prompt that
+ * dropped its drive contract and a skill that never gained one is strictly
+ * worse than the bloated prompt it replaced.
+ */
+describe('the prepare skill', () => {
+  const skillDir = join(
+    import.meta.dirname,
+    '..',
+    '..',
+    'skills',
+    'packs',
+    'runcastle',
+    'skills',
+    'prepare',
+  )
+
+  it('carries the drive contract, the discovery method and the dry run', () => {
+    const skill = readFileSync(join(skillDir, 'SKILL.md'), 'utf8')
+    expect(skill).toContain('name: prepare')
+    // the seven-point contract
+    expect(skill).toContain('.runcastle/drive.env')
+    expect(skill).toContain('RUNCASTLE_ID')
+    expect(skill).toContain('idempotent')
+    expect(skill).toContain('Exit 0 means')
+    // discovery
+    expect(skill).toContain('Discover the shape before you author anything')
+    // the dry run
+    expect(skill).toContain('dry_run_drive')
+    expect(skill).toContain('prep-dry-run')
+    expect(skill).toContain('mark your own homework')
+    // the env-loading audit
+    expect(skill).toContain('override: true')
+  })
+
+  /**
+   * All SEVEN prepared keys are accounted for. The prompt used to explain four
+   * and leave `setupCommand`, `verifyCommands` and `knownFailures` defined
+   * nowhere at all.
+   */
+  it('documents every prepared key, sandbox ones included', () => {
+    const skill = readFileSync(join(skillDir, 'SKILL.md'), 'utf8')
+    for (const key of PREPARED_KEYS) expect(skill).toContain(key)
+    expect(skill).toMatch(/human-supplied/i)
+  })
+
+  it('keeps the recipes in a reference that loads only when reached for', () => {
+    const recipes = readFileSync(join(skillDir, 'references', 'recipes.md'), 'utf8')
+    expect(recipes).toContain('COMPOSE_PROJECT_NAME')
+    expect(recipes).toContain('createdb')
+    // the two helpers that were called but defined nowhere are named as the
+    // agent's job rather than presented as runnable
+    expect(recipes).toContain('pick_port')
+    expect(recipes).toContain('port_in_use')
+    expect(recipes).toMatch(/pseudocode/i)
+    // and the language is keyed off the platform rather than assumed to be bash
+    expect(recipes).toContain('process.platform')
+    expect(recipes).toContain('win32')
   })
 })
 
@@ -551,6 +566,46 @@ describe('launching a preparation, fresh or resumed', () => {
 
     expect(launchCommand()).toContain('--resume cc-prep-1')
     expect(ctx.db.select().from(events).all().map((e) => e.type)).toContain('session.resumed')
+  })
+
+  /**
+   * `RESUME_KICKOFF_PREFIX` was wired only into `launchSession`, so the kind
+   * most likely to be resumed got the COLD-START line ("Start by telling them
+   * which fields are still open") typed into a conversation already mid-flight.
+   */
+  it('reframes the kickoff of a resumed preparation instead of restarting it', async () => {
+    endedConversation('cc-prep-1')
+    const { sessionId } = await launchPrepareSession(
+      ctx,
+      { projectId: PROJECT_ID },
+      { spawn: false },
+    )
+    markSessionLive(ctx, sessionId, { ccSessionId: 'cc-prep-2' })
+
+    const line = kickoffDeliveryFor(sessionId)?.line ?? ''
+    expect(line).toContain(RESUME_KICKOFF_PREFIX)
+    expect(line).toMatch(/do not start over/i)
+  })
+
+  /**
+   * Item 7(c): with nothing open, the prompt, the task line and the kickoff must
+   * all say confirm-and-stop. The kickoff used to say the opposite of the prompt
+   * it was typed on top of.
+   */
+  it('opens a nothing-open preparation with confirm-and-stop, not the agenda line', async () => {
+    for (const key of PREPARED_KEYS) {
+      recordFinding(ctx, PROJECT_ID, { key, value: `value for ${key}`, source: 'human' })
+    }
+    const { sessionId } = await launchPrepareSession(
+      ctx,
+      { projectId: PROJECT_ID },
+      { spawn: false },
+    )
+    markSessionLive(ctx, sessionId, { ccSessionId: 'cc-confirm' })
+
+    expect(kickoffDeliveryFor(sessionId)?.line).toBe(PREPARE_CONFIRM_KICKOFF)
+    expect(PREPARE_CONFIRM_KICKOFF).not.toContain('still open')
+    expect(PREPARE_CONFIRM_KICKOFF).toMatch(/and stop/)
   })
 
   it('starts over when asked, leaving the old conversation behind', async () => {

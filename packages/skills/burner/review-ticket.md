@@ -2,7 +2,7 @@
 
 # Review this feature — unattended
 
-Every implementation ticket in this burn has landed on `{{FEATURE_BRANCH}}`. Your job is to **review the integrated result and report what you find**, so the human arriving at the review screen starts from your account instead of from zero.
+Every implementation ticket in this burn has landed on `{{FEATURE_BRANCH}}`, which forked from `{{BASE_BRANCH}}`. Your job is to **review the integrated result and report what you find**, so the human arriving at the review screen starts from your account instead of from zero.
 
 You do two things, in this order:
 
@@ -41,40 +41,39 @@ Its `goal` says what to verify and its `acceptanceCriteria` say how you will kno
 
 {{DOCS_DIGEST}}
 
+## What the implementers say they did
+
+Each ticket in this burn wrote its own account of its work before finishing. They are reproduced here in full, and they are **evidence, not truth** — an implementer's claim is a hypothesis you confirm against the diff, exactly like a sub-agent's finding.
+
+Read them for the two things a diff cannot express at any price: what **surprised** each implementer (the coupling nobody specified, the test that was already red, the API that misbehaved), and what each one **left undone** on purpose. A gap between what a digest claims and what its commits actually do is itself a finding.
+
+{{LAP_DIGESTS}}
+
 ## How to work
 
 ### 1. Code review — always, and first
 
 First, because it is the part that always runs and the part that needs nothing booted. It also gives you the material for step 6: after this you will have read every commit and every hunk of the lap.
 
-**Pin the fixed point.** Resolve the base the branch forked from — the feature's `baseBranch` if you were handed one, else the repo's default branch (`git symbolic-ref --quiet --short refs/remotes/origin/HEAD`, else `main`, else `master`). Then, three-dot, so you see the branch's own work and not everything that landed on base meanwhile:
+**Pin the fixed point.** Both refs are given to you — do not go looking for a default branch to guess a base from, and do **not** diff against `HEAD`. You are running in the human's own checkout, which is still on `{{BASE_BRANCH}}` at this point: the lap's merge moved the `{{FEATURE_BRANCH}}` ref without switching any checkout, and nothing puts the branch under your feet until the drive in step 2. Diffing `HEAD` here reads an empty diff on a perfectly healthy lap.
+
+Three-dot, so you see the branch's own work and not everything that landed on the base meanwhile:
 
 ```
-git log <base>...HEAD --oneline    # the commits under review
-git diff <base>...HEAD             # the diff both axes read
+git log {{BASE_BRANCH}}...{{FEATURE_BRANCH}} --oneline    # the commits under review
+git diff {{BASE_BRANCH}}...{{FEATURE_BRANCH}}             # the diff both axes read
 ```
 
-Confirm the ref resolves and the diff is non-empty **before** spawning anything. An empty diff on a lap that supposedly landed work is itself a finding worth a note. Three-dot excludes uncommitted work; say so if the tree is dirty rather than quietly reviewing something else.
+Confirm both refs resolve and the diff is non-empty **before** spawning anything. An empty diff there — where the empty-`HEAD` trap cannot explain it — is a real finding worth a note.
 
-**Gather the standards.** `CLAUDE.md` (the repo's own agent-facing conventions, and the highest authority), `CONTEXT.md` (the charter), live ADRs under `docs/adr/`, and anything else the repo keeps for the purpose. On top of those the Standards axis carries the **smell baseline** below, so it has a floor on a repo that documents nothing. The repo always overrides: where a documented standard endorses what the baseline would flag, the smell is suppressed. Every smell is a judgement call, never a hard violation, and anything tooling already enforces is skipped — the linter ran, and it is not why a human is reading you.
+**Gather the standards.** `CLAUDE.md` (the repo's own agent-facing conventions, and the highest authority), `CONTEXT.md` (the charter), live ADRs under `docs/adr/`, and anything else the repo keeps for the purpose. These are the same files the implementers were pointed at, so a violation here is one they were told about and missed. On top of them the Standards axis carries the **smell baseline** below, so it has a floor on a repo that documents nothing. The repo always overrides: where a documented standard endorses what the baseline would flag, the smell is suppressed. Every smell is a judgement call, never a hard violation, and anything tooling already enforces is skipped — the linter ran, and it is not why a human is reading you.
 
-- **Mysterious Name** — a name that doesn't reveal what it does or holds. → rename it; if no honest name comes, the design's murky.
-- **Duplicated Code** — the same logic shape in more than one hunk or file. → extract it, call it from both.
-- **Feature Envy** — a method that reaches into another object's data more than its own. → move it onto the data it envies.
-- **Data Clumps** — the same few fields or params keep travelling together. → bundle them into one type.
-- **Primitive Obsession** — a primitive standing in for a domain concept. → give the concept its own small type.
-- **Repeated Switches** — the same switch/if-cascade on the same type recurs. → polymorphism, or one shared map.
-- **Shotgun Surgery** — one logical change forces scattered edits across many files. → gather what changes together.
-- **Divergent Change** — one file edited for several unrelated reasons. → split so each module changes for one reason.
-- **Speculative Generality** — abstraction or hooks for needs the spec doesn't have. → delete it.
-- **Message Chains** — long `a.b().c().d()` navigation. → hide the walk behind one method.
-- **Middle Man** — a function that mostly just delegates onward. → cut it, call the real target.
-- **Refused Bequest** — an implementer that ignores most of what it inherits. → composition, not inheritance.
+Mysterious Name · Duplicated Code · Feature Envy · Data Clumps · Primitive Obsession · Repeated Switches · Shotgun Surgery · Divergent Change · Speculative Generality · Message Chains · Middle Man · Refused Bequest.
 
-**Spawn both axes in parallel**, in one dispatch, so neither pollutes the other's context:
+**Spawn both axes in parallel**, in one dispatch, so neither pollutes the other's context. Hand each the two git commands above verbatim — a sub-agent that re-derives the refs makes the same `HEAD` mistake.
 
-- **Standards** — hand it the diff command, the commit list, the standards files by path, and the smell baseline **pasted in full** (it has no other access to it). Brief: *"Report — per file/hunk where relevant — (a) every place the diff violates a documented standard: cite the standard (file + rule); (b) any baseline smell: name it and quote the hunk. Distinguish hard violations from judgement calls; a documented repo standard overrides the baseline. Skip what tooling enforces. Under 400 words. Do not spawn further agents — perform this review yourself."*
-- **Spec** — hand it the diff command, the commit list, and the spec above (`spec.md` plus `decisions.md`; read `docs/features/<slug>/` if you need them unabridged). Brief: *"Report: (a) requirements the spec asked for that are missing or partial; (b) behaviour in the diff that wasn't asked for (scope creep); (c) requirements that look implemented but where the implementation looks wrong. Quote the spec line for each finding. Under 400 words. Do not spawn further agents — perform this review yourself."*
+- **Standards** — plus the standards files **by path** (it can read them itself; do not paste their contents) and the smell list above. Brief: *"Report — per file/hunk where relevant — (a) every place the diff violates a documented standard: cite the standard (file + rule); (b) any smell from this list: name it and quote the hunk. Distinguish hard violations from judgement calls; a documented repo standard overrides the list. Skip what tooling enforces. Under 400 words. Do not spawn further agents — perform this review yourself."*
+- **Spec** — plus the acceptance criteria of the review ticket and the paths `docs/features/<slug>/spec.md` and `decisions.md`, which it reads itself. Brief: *"Report: (a) requirements the spec asked for that are missing or partial; (b) behaviour in the diff that wasn't asked for (scope creep); (c) requirements that look implemented but where the implementation looks wrong. Quote the spec line for each finding. Under 400 words. Do not spawn further agents — perform this review yourself."*
 
 That last sentence in each brief is load-bearing: without it a sub-agent can rediscover this review and fan out again. Two sub-agents, one level deep, and that is the whole tree.
 
@@ -140,7 +139,7 @@ At exactly:
 
 `{{DIGEST_PATH}}`
 
-**This is not a review log. It is the lap's summary, written for a human, and the review page renders it verbatim as the first thing they read.** They arrive at the review screen wanting one question answered — *what did this lap actually do?* — and you are the only agent in the burn that can answer it: you ran last, you hold the spec, and you have just read every commit and every hunk on the branch.
+**This is not a review log. It is the lap's summary, written for a human, and the review page renders it verbatim as the first thing they read.** They arrive at the review screen wanting one question answered — *what did this lap actually do?* — and you are the agent best placed to answer it: you ran last, you hold the spec, you have every implementer's own account above, and you have just read every commit and every hunk on the branch. Synthesizing those into one honest paragraph is work only you can do; none of the implementers could see past its own ticket.
 
 So write **prose**, roughly 10–15 lines, for a reader who has none of your context:
 
@@ -159,8 +158,8 @@ The bar is now high, because the code review needs almost nothing: no app, no br
 
 The review **failed** only when the code review itself could not run:
 
-- the repository is unreadable, or the base ref cannot be resolved at all,
-- there is no diff between the base and `{{FEATURE_BRANCH}}` and no branch to review.
+- the repository is unreadable, or `{{BASE_BRANCH}}` / `{{FEATURE_BRANCH}}` cannot be resolved at all,
+- `git diff {{BASE_BRANCH}}...{{FEATURE_BRANCH}}` is empty *and* `{{FEATURE_BRANCH}}` does not exist. An empty diff on a branch that does exist is a **finding**, not a failed review — write the note and carry on.
 
 When that happens: run the step 5 cleanup for whatever you got as far as starting — recorder, browser, drive — write **`{{BLOCKED_PATH}}`** — that path, not the repo — saying in one or two sentences precisely what stopped you, and print `<promise>COMPLETE</promise>`. Write no digest; the blocked file is your record. Do not write notes speculating about a feature you never saw.
 

@@ -37,7 +37,7 @@ import {
   reviewTemplatePath,
 } from '../src/workflows/review-ticket'
 import type { BurnDeps, TicketOutcome } from '../src/workflows/ticket-burner'
-import { buildBurnAgent, burnRun } from '../src/workflows/ticket-burner'
+import { buildBurnAgent, buildLapDigestsBlock, burnRun } from '../src/workflows/ticket-burner'
 import { makeTestCtx } from './helpers/db'
 import { seedFeature, seedProject } from './helpers/fixtures'
 
@@ -347,13 +347,28 @@ describe('what the review agent is handed', () => {
       TICKET_JSON: '{"seq":3}',
       FEATURE_BRIEF: 'Demo feature',
       DOCS_DIGEST: 'the docs',
+      LAP_DIGESTS: buildLapDigestsBlock([
+        { seq: 1, title: 'Add the ledger', digest: 'Built it. Surprises: the API lied.' },
+      ]),
       FEATURE_BRANCH: 'feature/demo',
+      BASE_BRANCH: 'main',
       DIGEST_PATH: '/data/reviews/tkt_3/DIGEST.md',
       BLOCKED_PATH: '/data/reviews/tkt_3/BLOCKED.md',
       WALKTHROUGH_PATH: '/data/reviews/tkt_3/walkthrough.webm',
     })
 
     expect(prompt).not.toContain('{{')
+    // The correctness fix: the diff is pinned to the two refs it was handed,
+    // never to HEAD — which is still the base branch when step 1 runs.
+    expect(prompt).toContain('git diff main...feature/demo')
+    expect(prompt).toContain('git log main...feature/demo --oneline')
+    expect(prompt).not.toMatch(/\.\.\.HEAD/)
+    expect(prompt).not.toContain('symbolic-ref')
+    // The implementers' own accounts, which the reviewer used to be told did
+    // not exist.
+    expect(prompt).toContain('ticket 1 — Add the ledger')
+    expect(prompt).toContain('the API lied')
+    expect(prompt).not.toMatch(/only agent in the burn that can answer/)
     // The two wires and the report paths are the contract with the burner.
     expect(prompt).toContain('review_drive')
     expect(prompt).toContain('add_test_note')
@@ -415,6 +430,8 @@ describe('the agent-browser probe', () => {
         config: { sandbox: 'docker' } as RuncastleConfig,
         token: 'sk-token',
         model: 'opus',
+        docsDigest: 'the docs',
+        lapDigests: [],
       })
 
       expect(outcome.status).toBe('failed')
@@ -570,5 +587,67 @@ describe('a run containing a review ticket still lands the feature in review', (
     expect(reviewTicket).toMatchObject({ status: 'done', commits: [] })
     const run = listRunsByFeature(ctx, featureId)[0]
     expect(run?.digest).toContain('reviewed the app: 1 finding')
+  })
+})
+
+describe('the run hands each ticket what its siblings already reported', () => {
+  /**
+   * The starving-consumers fix: `burnTickets` was already accumulating every
+   * finished ticket's digest into an in-process array whose only consumer was
+   * the run row, while an implementer was handed its blockers as bare integers
+   * and the reviewer was told nobody could say what landed.
+   */
+  it('gives a later ticket the digests of the tickets that finished before it', async () => {
+    const tickets = [ticket(1), ticket(2, { blockedBy: [1] }), review(3)]
+    const seen = new Map<number, readonly { seq: number; title: string; digest: string }[]>()
+    const gates = new Map<number, () => void>()
+    const execute: BurnDeps['executeTicketRun'] = (_c, t, run) => {
+      seen.set(t.seq, run.digests)
+      return new Promise<TicketOutcome>((resolve) => {
+        gates.set(t.seq, () =>
+          resolve({ status: 'done', commits: ['sha'], digest: `digest of ${t.seq}` }),
+        )
+      })
+    }
+    const release = async (seq: number): Promise<void> => {
+      gates.get(seq)?.()
+      for (let i = 0; i < 20; i++) await Promise.resolve()
+    }
+
+    const run = burnRun(makeCtx(tickets), deps(execute, 1))
+    await Promise.resolve()
+    expect(seen.get(1)).toEqual([])
+
+    await release(1)
+    // Ticket 2 was blocked by 1, and now holds 1's own account of its work.
+    expect(seen.get(2)).toEqual([{ seq: 1, title: 'Ticket 1', digest: 'digest of 1' }])
+
+    await release(2)
+    // The reviewer gets the whole lap, not a claim that nobody wrote one.
+    expect(seen.get(3)?.map((d) => d.seq)).toEqual([1, 2])
+
+    await release(3)
+    await run
+  })
+
+  it('snapshots the digests, so a sibling landing mid-flight cannot mutate a live prompt', async () => {
+    const tickets = [ticket(1), ticket(2)]
+    const seen: (readonly { seq: number }[])[] = []
+    const gates = new Map<number, () => void>()
+    const execute: BurnDeps['executeTicketRun'] = (_c, t, run) => {
+      seen.push(run.digests)
+      return new Promise<TicketOutcome>((resolve) => {
+        gates.set(t.seq, () => resolve({ status: 'done', commits: ['s'], digest: `d${t.seq}` }))
+      })
+    }
+    const run = burnRun(makeCtx(tickets), deps(execute, 2))
+    await Promise.resolve()
+    gates.get(1)?.()
+    for (let i = 0; i < 20; i++) await Promise.resolve()
+    // Ticket 2 started before 1 finished — its array must still be the one it
+    // was given, not a live view that grew under it.
+    expect(seen[1]).toEqual([])
+    gates.get(2)?.()
+    await run
   })
 })

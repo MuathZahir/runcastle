@@ -23,7 +23,10 @@ import { featureDocsRel } from '@runcastle/core/paths'
  * on a runcastle-owned branch, and its commits are the point of the session.
  *
  * A `prepare` session gets a narrow path exception instead of a kind exemption —
- * see {@link PREPARE_WRITABLE}.
+ * see {@link DRIVE_MACHINERY_WRITABLE}.
+ *
+ * A `prototype` waypoint gets the other narrow path exception: its spikes go
+ * under `docs/features/<slug>/prototypes/` — see {@link prototypesRel}.
  *
  * The one exempt PURPOSE is `resolve-conflict`, and only while a merge is
  * actually in progress in the session's worktree. Both conflict-resolve launch
@@ -80,7 +83,7 @@ export interface EditGuardInput {
  * and the machinery it repairs is these same files — on the feature branch,
  * where the branch that broke the drive can carry its own fix.
  */
-const DRIVE_MACHINERY_WRITABLE = ['.runcastle/', '.gitignore'] as const
+export const DRIVE_MACHINERY_WRITABLE = ['.runcastle/', '.gitignore'] as const
 
 /** Is `target` one of the {@link DRIVE_MACHINERY_WRITABLE} paths in this checkout? */
 function isDriveMachinery(worktreePath: string, target: string): boolean {
@@ -134,6 +137,15 @@ export function evaluateEditGuard(input: EditGuardInput): EditDenial | null {
   }
 
   const docs = featureDocsRel(input.featureSlug)
+  // The prototype spike exemption. A `prototype` waypoint's job is to BUILD the
+  // throwaway thing that answers its question, which is code — so it is given
+  // one place to put code and told where it is. That place is deliberately
+  // inside the feature's own docs dir, so a spike travels with the decision it
+  // was written to settle and dies with the feature rather than landing in
+  // `src/`. Checked explicitly rather than left to fall out of the docs rule
+  // above: the allow is a decision, not a coincidence of nesting, and the
+  // denial below has to be able to name it.
+  if (within(resolve(input.worktreePath, prototypesRel(input.featureSlug)), target)) return null
   if (within(resolve(input.worktreePath, docs), target)) return null
 
   return {
@@ -141,8 +153,19 @@ export function evaluateEditGuard(input: EditGuardInput): EditDenial | null {
       `Talk sessions do not write code. This ${input.kind} session may only write this ` +
       `feature's docs under \`${docs}/\` — ${input.filePath} is outside them. The change you ` +
       'want belongs in a ticket: capture the decision in `decisions.md`, amend `spec.md`, and ' +
-      'emit a ticket for the work. An implementation agent burns it in its own sandbox.',
+      'emit a ticket for the work. An implementation agent burns it in its own sandbox. ' +
+      `If this is a throwaway spike for a prototype waypoint, write it under ` +
+      `\`${prototypesRel(input.featureSlug)}/\` — that is the one place code may land here, ` +
+      'and it is not a route to landing the real change.',
   }
+}
+
+/**
+ * Where a `prototype` waypoint's spikes go: `docs/features/<slug>/prototypes/`.
+ * One path, named once, so the guard and the waypoint skill cannot drift.
+ */
+export function prototypesRel(slug: string): string {
+  return `${featureDocsRel(slug)}/prototypes`
 }
 
 /** The writable paths, as a denial names them ("`.runcastle/` and `.gitignore`"). */

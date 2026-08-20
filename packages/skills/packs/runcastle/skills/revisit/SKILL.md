@@ -1,7 +1,7 @@
 ---
 name: revisit
 description: Fold late-arriving information into a feature whose sessions are finished — amend the docs, then reconcile tickets (update/cancel/emit); an ordinary revisit never advances phases. Also the lap session: on a Rethink from review, digest the test drive, amend decisions + spec, emit the lap's tickets and complete ideation → spec → tickets in the one session. Entry skill for kind=revisit sessions.
-disable-model-invocation: false
+disable-model-invocation: true
 ---
 
 # Revisit
@@ -13,7 +13,7 @@ That is the ordinary revisit, and it is what the moves below describe. The one e
 ## Order of operations
 
 1. **Listen first.** The human opens with what changed. If this terminal resumed the previous conversation, use that context; do not re-grill what is already settled. Ask only the questions the NEW information raises.
-2. **Context.** Call `mcp__runcastle__get_feature_context` — it returns the feature, phase, all docs, and all tickets with their ids and statuses. You need the ticket list before any surgery.
+2. **Context.** Call `mcp__runcastle__get_feature_context` — the feature, its `phase` and `lap`, the canonical docs inlined in `docs[]` (brief, map, decisions, spec), an index of everything else in `moreDocs[]` (test notes, `research/*.md`; fetch one with `mcp__runcastle__read_feature_doc({ relPath })`), and every ticket with its id and status. The injected system prompt carries the slug and paths; trust `get_feature_context` for the live state. When all you need is ticket ids to operate on, `mcp__runcastle__list_tickets({ status? })` is the cheap call — it returns the queue without the docs.
 3. **Docs.** Capture the change as decision prose:
    - Append to `docs/features/<slug>/decisions.md` under a dated `## Revisited <date>` heading — never rewrite old decisions, supersede them ("Supersedes: <old decision>").
    - If `spec.md` exists and the change touches it, amend the affected sections in place.
@@ -29,8 +29,8 @@ That is the ordinary revisit, and it is what the moves below describe. The one e
 
 Your kickoff line reads `LAP <n> REVIEW ITERATION`. The human burned the last lap, test-drove the branch, and clicked **Rethink**: the code was right, the *spec* wasn't. `feature.rethink` has already incremented the lap and looped the feature back, so it sits at **ideation**, not review. One trip round the pipeline is a lap, and this session is the whole front half of lap `<n>` — you carry it from what-the-drive-taught to ticket cards waiting on the human's **Burn** click, in this one conversation:
 
-1. **Digest what the drive taught.** Your inputs are the previous lap's section of `docs/features/<slug>/test-notes.md` and the spec's `## Later laps` section, both injected into your context. **Both may be absent** — that is not an error and not something to go hunting for: interview the human from scratch instead. What did they hit, what surprised them, what do they want instead now they've used it?
-2. **Context.** `mcp__runcastle__get_feature_context` — the feature (including its `lap`), the docs, and the full ticket history across every lap. Skim what the last lap actually landed and what failed before you interview.
+1. **Digest what the drive taught.** Your two inputs are the previous lap's section of `docs/features/<slug>/test-notes.md` — it is in `moreDocs[]`, so read it with `mcp__runcastle__read_feature_doc({ relPath: "test-notes.md" })` (or off disk) — and the `## Later laps` section of `spec.md`, which is inlined in `docs[]`. **Both may be absent** — that is not an error and not something to go hunting for: interview the human from scratch instead. What did they hit, what surprised them, what do they want instead now they've used it?
+2. **Context.** `mcp__runcastle__get_feature_context` — the feature (including its `lap`), the docs, and the full ticket history across every lap; each ticket's own `lap` is what separates them. Skim what the last lap actually landed and what failed before you interview.
 3. **Never re-emit a promoted note.** Notes the human already promoted from the review checklist are tickets in *this* lap and arrive as ids in your context. However well such a note reads as a ticket, if its id is in front of you the work is already carded — emitting it again gives the burner the same job twice.
 4. **Grill, briefly.** A small rethink is a short grilling: a few questions, one at a time, each with your recommended answer attached. Prune and promote `## Later laps` entries with the human as part of that conversation — what the drive taught is usually what decides which deferred scope this lap picks up and which stays parked.
 5. **Amend the docs.** Append this lap's learning to `docs/features/<slug>/decisions.md` under a `## Lap <n>` heading (the convention) — never rewrite old decisions, supersede them. Then amend `spec.md` in place: the sections this lap changes, plus the pruned `## Later laps`.
@@ -46,12 +46,12 @@ If the rethink turns out to be genuinely big — whole branches of design reopen
 
 - **Never call `complete_phase` in an ordinary revisit.** It has no gates to cross; the human drives the pipeline from the UI. **Lap mode is the one exception** — advancing ideation → spec → tickets is its job (move 7), and nothing else here licenses it.
 - **Never resolve or reopen waypoints.** If a resolved waypoint's answer is now wrong, record the superseding decision in `decisions.md` — the map's history stays intact.
-- **Never implement changes.** Code changes ride tickets; the burner (or a human) implements them.
+- **Code changes ride tickets** — the burner (or a human) implements them, never this session. (The no-code rule itself is in your injected prompt and enforced by the edit guard.)
 
 ## Scope check
 
-If what the human brings is not an amendment but a whole new capability, say so:
+If what the human brings is not an amendment but a whole new capability, say so — and park it rather than losing it:
 
-> That reads like a new feature, not a revision of this one. Create it in the runcastle UI and grill it there — I can record a pointer note here.
+> That reads like a new feature, not a revision of this one. I'll park it as a draft so it isn't lost; you can start it from the runcastle UI when you want it, and it gets grilled there.
 
-Then `record_event` a one-line note so the idea is not lost.
+`mcp__runcastle__create_feature({ title, oneLiner, brief, draft: true })` — a parked draft, no branch cut and nothing written, with the `brief` carrying why you deferred it and what it must not swallow. `draft: true` is the only door open to you; a full create belongs to the project session.

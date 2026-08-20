@@ -136,7 +136,14 @@ describe('the `project` session kind', () => {
     )
   })
 
-  it('briefs the session with its branch, its worktree, and its four tools', () => {
+  /**
+   * The prompt no longer enumerates the tools. Tool registration is filtered by
+   * audience, so the session already has each one in its tool list with a
+   * schema-backed description — and a hand-written copy could only drift or, now
+   * that the roster changes, name something this session was never given. It
+   * keeps the POLICY (no pipeline tools here) and drops the field-level list.
+   */
+  it('briefs the session with its branch, its worktree, and its tool policy', () => {
     const out = renderProjectPrompt({
       project: { id: 'proj_1', name: 'acme', repoPath: '/repo', mainBranch: 'main' },
       branch: PROJECT_BRANCH,
@@ -147,15 +154,12 @@ describe('the `project` session kind', () => {
     // the consequence of the branch, stated where the agent will read it
     expect(out).toContain('/repo')
     expect(out).toContain('main')
-    for (const tool of [
-      'create_feature',
-      'get_project_context',
-      'get_work_record',
-      'record_event',
-    ]) {
-      expect(out).toContain(tool)
-    }
-    // …and none of the pipeline tools it is deliberately not given.
+    // the one tool whose BEHAVIOUR is surprising is still named: create_feature
+    // does not open a terminal on what it creates.
+    expect(out).toContain('create_feature')
+    // …but the roster is not restated, and no pipeline tool is offered.
+    expect(out).not.toContain('## runcastle MCP tools')
+    expect(out).not.toContain('get_work_record')
     expect(out).not.toContain('emit_tickets')
     expect(out).not.toContain('complete_phase')
     expect(out).toContain('/runcastle:project')

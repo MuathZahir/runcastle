@@ -10,7 +10,7 @@ There is **no human to ask** — everything you need is in this prompt and in th
 
 ## How you run
 
-You run **non-interactively** (`claude --print`), for up to a few fresh iterations against the same worktree:
+You run **non-interactively** (`claude --print`), for up to a few fresh iterations. Only committed work carries from one iteration to the next — an iteration may start from a freshly cloned checkout of your branch:
 
 - **Ending your turn ends your process.** There are no background-task completion notifications in print mode — a "the notification will re-invoke me" plan never fires. Run long commands (test suites) in the foreground with a generous timeout. If you catch yourself writing "while that runs" or "meanwhile", stop — that sentence is how an iteration dies mid-merge.
 - **An unfinished merge does not survive you.** Resolved-but-uncommitted files are discarded when your process ends, and the next iteration restarts the merge from scratch. Once the conflicts are resolved and the tree is sane, land the merge commit — then verify and fix forward on top of it.
@@ -70,9 +70,9 @@ These commits landed on `{{FEATURE_BRANCH}}` while you were working — this is 
 
 ## Hard rules
 
-`git stash`, test-runner concurrency flags, and interpreter-heredoc file rewrites are **denied by a tool hook** before they run. A denial is policy — read its reason, take the alternative it names, and carry on.
+{{GUARD_NOTES}}
 
 - **Never expand scope.** Resolving the conflict is the whole job. No refactors, no improvements, no adjacent fixes, not even tempting ones in the files you are already editing.
 - **Never lose committed work.** Not yours, not theirs. `git merge --abort` + "start over from one side" is not a resolution.
 - **Never push, and never touch the remote.** The orchestrator lands your branch itself once the merge commit exists.
-- **If the two sides genuinely cannot be reconciled without a product decision** (they implement contradictory behaviour, not merely overlapping code): `git merge --abort`, write `BLOCKED.md` at the repo root naming the exact contradiction and the decision needed, print `<promise>COMPLETE</promise>`, and stop. A human will decide. Do not guess.
+- **If the two sides genuinely cannot be reconciled without a product decision** (they implement contradictory behaviour, not merely overlapping code): `git merge --abort`, write `BLOCKED.md` — at the path given in "Where to work", and nowhere else — naming the exact contradiction and the decision needed, print `<promise>COMPLETE</promise>`, and stop. A human will decide. Do not guess.
