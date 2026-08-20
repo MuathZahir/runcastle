@@ -732,6 +732,31 @@ export async function excludePath(repoPath: string, pattern: string): Promise<vo
 }
 
 /**
+ * Take `pattern` back out of the repo's `info/exclude`, restoring the file as
+ * {@link excludePath} found it.
+ *
+ * The counterpart is not optional book-keeping: because git resolves
+ * `info/exclude` against the COMMON git dir, a line left behind does not expire
+ * with the burn worktree that needed it — it goes on hiding that pattern from
+ * the human's own `git status`, in every worktree of the clone, forever.
+ *
+ * Only whole lines equal to `pattern` go. Everything else is written back
+ * byte-for-byte, line endings included, so a file the human has their own
+ * entries in comes out unchanged; a pattern that is not there (never added,
+ * already removed by a concurrent burn) is a no-op, and so is a missing file.
+ */
+export async function unexcludePath(repoPath: string, pattern: string): Promise<void> {
+  const raw = (await git(repoPath).raw(['rev-parse', '--git-path', 'info/exclude'])).trim()
+  const file = resolve(repoPath, raw)
+  if (!existsSync(file)) return
+  const current = readFileSync(file, 'utf8')
+  // Split AFTER each newline so every surviving line keeps its own terminator.
+  const kept = current.split(/(?<=\n)/).filter((line) => line.replace(/\r?\n$/, '') !== pattern)
+  const next = kept.join('')
+  if (next !== current) writeFileSync(file, next)
+}
+
+/**
  * Best-effort removal of a burn worktree sandcastle could not delete at
  * teardown. On Windows `git worktree remove` hits `Directory not empty` when a
  * handle inside the dir is still open — typically the just-`rm -f`'d

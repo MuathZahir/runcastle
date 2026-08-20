@@ -40,6 +40,7 @@ import {
   excludePath,
   mergeTempBranch,
   ticketBranchName,
+  unexcludePath,
 } from '../services/git'
 import type { TempBranchMergeResult } from '../services/git'
 import type {
@@ -523,7 +524,7 @@ export function resolveBurnWorkspaceMode(
 
 /**
  * The `sandbox.onSandboxReady` command for `isolated` mode (runs in-container
- * via `sh -c`, cwd = the mounted workspace). Six steps:
+ * via `sh -c`, cwd = the mounted workspace). Seven steps:
  *
  * 1. Whitelist every repo path for git (`safe.directory '*'`). Bind-mounted
  *    paths are owned by the host UID, and when the workspace is a worktree its
@@ -534,7 +535,15 @@ export function resolveBurnWorkspaceMode(
  * 2. Clone the workspace onto the container's native filesystem — one bulk
  *    transfer across the mount instead of a per-file tax on every later
  *    install/typecheck/test.
- * 3. Install a `post-commit` hook in the clone that, on every commit, pushes
+ * 3. Carry any attachments across (spec.md "Riding into the burn"). The
+ *    host-side copy put them in the mounted workspace, but they are untracked
+ *    and git-excluded by design, so a clone cannot bring them — and the ticket
+ *    context names their path relative to wherever the agent works, which in
+ *    this mode is the clone. Guarded on the directory existing, because most
+ *    burns have no attachments at all; re-excluded inside the clone, because
+ *    step 4 pushes the clone's commits back and `info/exclude` is not something
+ *    a clone inherits.
+ * 4. Install a `post-commit` hook in the clone that, on every commit, pushes
  *    `HEAD:<tempBranch>` back to the workspace and then hard-resets the
  *    workspace checkout to the freshly-pushed ref — syncing needs no agent
  *    discipline at all, and the mounted working tree tracks the branch, so
@@ -547,17 +556,17 @@ export function resolveBurnWorkspaceMode(
  *    The hook unsets GIT_DIR/GIT_WORK_TREE/GIT_INDEX_FILE first: git exports
  *    them to hook processes, and they would otherwise pin the
  *    `git -C <workspace>` reset to the clone's repo instead of the workspace.
- * 4. For corepack-managed managers (pnpm/yarn), shim the bare binary onto
+ * 5. For corepack-managed managers (pnpm/yarn), shim the bare binary onto
  *    `~/.local/bin` (on PATH in the node:22 image). Neither manager is
  *    preinstalled — only `corepack` is — and in real burns every agent
  *    independently burned iterations rediscovering `pnpm: command not found`
  *    and hand-writing this exact shim.
- * 5. Run the deps install inside the clone, where pnpm's hardlinks actually
+ * 6. Run the deps install inside the clone, where pnpm's hardlinks actually
  *    work (ADR-0004) and node_modules materializes on native FS.
- * 6. LAST, re-pin `core.hooksPath` to the clone's `.git/hooks`. A husky
+ * 7. LAST, re-pin `core.hooksPath` to the clone's `.git/hooks`. A husky
  *    `prepare` script run by the install sets `core.hooksPath=.husky/_`, which
  *    makes git ignore `.git/hooks/` entirely — silently disarming the sync
- *    hook from step 3, so every commit stays trapped in the clone and the
+ *    hook from step 4, so every commit stays trapped in the clone and the
  *    ticket fails with "agent made no commits" despite completed work. The
  *    re-pin must follow the install (last writer wins); it also disables the
  *    repo's own commit hooks (e.g. commitlint), which would otherwise reject
@@ -573,9 +582,11 @@ export function buildIsolatedSetupCommand(
   pm?: PackageManager,
 ): string {
   const hookFile = `${ISOLATED_REPO_PATH}/.git/hooks/post-commit`
+  const attachments = `${SANDBOX_WORKSPACE_PATH}/${ATTACHMENTS_DIR}`
   const parts = [
     `git config --global --add safe.directory '*'`,
     `git clone ${SANDBOX_WORKSPACE_PATH} ${ISOLATED_REPO_PATH}`,
+    `if [ -d "${attachments}" ]; then cp -r "${attachments}" "${ISOLATED_REPO_PATH}/" && mkdir -p "${ISOLATED_REPO_PATH}/.git/info" && printf '%s\\n' '${ATTACHMENTS_DIR}/' >> "${ISOLATED_REPO_PATH}/.git/info/exclude"; fi`,
     `printf '#!/bin/sh\\nunset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE\\ngit push --quiet origin HEAD:%s && exec git -C ${SANDBOX_WORKSPACE_PATH} reset --hard --quiet %s\\n' '${tempBranch}' '${tempBranch}' > ${hookFile}`,
     `chmod +x ${hookFile}`,
   ]
@@ -690,14 +701,23 @@ export function buildAttachmentCopyCommands(
 }
 
 /**
- * Take the attachments back out of a workspace once the run is over. Belt and
- * braces: the directory is excluded from git before it is ever written, so it
- * cannot be committed and cannot ride the merge — but a worktree sandcastle
- * PRESERVES (the agent left uncommitted work) would otherwise keep the images
- * around for as long as the leftover does.
+ * Undo the workspace preparation once the run is over — both halves of it.
+ *
+ * The images go first. Belt and braces: the directory is excluded from git
+ * before it is ever written, so it cannot be committed and cannot ride the
+ * merge — but a worktree sandcastle PRESERVES (the agent left uncommitted work)
+ * would otherwise keep the images around for as long as the leftover does.
+ *
+ * Then the exclude itself, which is load-bearing only while the agent commits.
+ * It is written against the repo's COMMON git dir, so leaving it behind would
+ * hide any `.runcastle-attachments/` from the human's own `git status` in every
+ * worktree, forever (decisions.md #10). Two burns overlapping can un-exclude
+ * each other's live directory; the cost is the directory showing up in
+ * `git status` until that burn cleans up too, which is not worth coordinating.
  */
-export function clearAttachments(workspacePath: string): void {
+export async function clearAttachments(workspacePath: string, repoPath: string): Promise<void> {
   rmSync(join(workspacePath, ATTACHMENTS_DIR), { recursive: true, force: true })
+  await unexcludePath(repoPath, `${ATTACHMENTS_DIR}/`)
 }
 
 /**
@@ -1981,8 +2001,12 @@ async function realExecuteTicketRun(
   const attachments = attachmentSources(ticket.context)
   const attachmentCommands = buildAttachmentCopyCommands(attachments)
   if (attachments.length > 0) await excludePath(project.repoPath, `${ATTACHMENTS_DIR}/`)
-  const clearAttachmentsFor = (branch: string) => {
-    if (attachments.length > 0) clearAttachments(burnWorktreePath(project.repoPath, branch))
+  // Undone however the run ends: the images out of the worktree, the exclude
+  // line back out of the repo (it covers the human's checkout too).
+  const clearAttachmentsFor = async (branch: string) => {
+    if (attachments.length > 0) {
+      await clearAttachments(burnWorktreePath(project.repoPath, branch), project.repoPath)
+    }
   }
 
   // Shared by both prompts: a resolver spawned after the fact gets the SAME
@@ -2418,10 +2442,10 @@ async function realExecuteTicketRun(
       try {
         result = await run(runOptions)
         // Before anything lands: a preserved worktree must not keep the images.
-        clearAttachmentsFor(tempBranch)
+        await clearAttachmentsFor(tempBranch)
         break
       } catch (err) {
-        clearAttachmentsFor(tempBranch)
+        await clearAttachmentsFor(tempBranch)
         if (ctx.signal.aborted) throw err // let the runner mark the run cancelled
         const msg = err instanceof Error ? err.message : String(err)
         // Whatever the dead attempt committed survives on its temp branch —

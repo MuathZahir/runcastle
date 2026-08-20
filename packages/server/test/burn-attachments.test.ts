@@ -1,7 +1,7 @@
 import { exec } from 'node:child_process'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 import { promisify } from 'node:util'
 import { ATTACHMENTS_DIR, annotationPath, attachmentRelPath } from '@runcastle/core/paths'
 import { simpleGit } from 'simple-git'
@@ -9,9 +9,12 @@ import type { SimpleGit } from 'simple-git'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { burnWorktreePath, excludePath } from '../src/services/git'
 import {
+  ISOLATED_REPO_PATH,
+  SANDBOX_WORKSPACE_PATH,
   attachedNoteIds,
   attachmentSources,
   buildAttachmentCopyCommands,
+  buildIsolatedSetupCommand,
   clearAttachments,
 } from '../src/workflows/ticket-burner'
 import { useDataDir } from './helpers/data-dir'
@@ -26,6 +29,9 @@ import { useDataDir } from './helpers/data-dir'
  * unchanged. That is what the tests here drive: the real commands, in a real
  * worktree of a real repo, with git asked afterwards what it thinks of them.
  */
+
+/** Exactly how sandcastle runs a hook command: through a shell. */
+const runCommand = promisify(exec)
 
 const PNG = Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 1, 2, 3])
 const NOTE = 'n_Ab3-xY_9qWer'
@@ -97,14 +103,13 @@ describe('burn attachments — which screenshots actually ride along', () => {
 
 describe('burn attachments — preparing the workspace', () => {
   const branch = 'runcastle/ticket/wide-app/3-6erDoFV'
-  // Exactly how sandcastle runs a host hook: through the platform shell.
-  const runCommand = promisify(exec)
 
   let home: string
   let restoreDataDir: () => void
   let repo: string
   let g: SimpleGit
   let workspace: string
+  let excludeFile: string
 
   beforeEach(async () => {
     home = mkdtempSync(join(tmpdir(), 'rc-burn-attach-home-'))
@@ -127,6 +132,9 @@ describe('burn attachments — preparing the workspace', () => {
     workspace = burnWorktreePath(repo, branch)
     mkdirSync(join(repo, '.sandcastle', 'worktrees'), { recursive: true })
     await g.raw(['worktree', 'add', '-b', branch, workspace, 'main'])
+
+    excludeFile = join(repo, '.git', 'info', 'exclude')
+    mkdirSync(dirname(excludeFile), { recursive: true })
   })
 
   afterEach(() => {
@@ -177,12 +185,51 @@ describe('burn attachments — preparing the workspace', () => {
     await runWorkspacePrep(contextNaming(NOTE))
     expect(existsSync(join(workspace, ATTACHMENTS_DIR))).toBe(true)
 
-    clearAttachments(workspace)
+    await clearAttachments(workspace, repo)
 
     expect(existsSync(join(workspace, ATTACHMENTS_DIR))).toBe(false)
     // Called again on a workspace sandcastle already removed: still no throw.
     rmSync(workspace, { recursive: true, force: true })
-    expect(() => clearAttachments(workspace)).not.toThrow()
+    await expect(clearAttachments(workspace, repo)).resolves.toBeUndefined()
+  })
+
+  // The exclude is load-bearing while the agent commits, but `info/exclude`
+  // resolves against the COMMON git dir — a line left behind outlives the burn
+  // worktree and hides the directory from the human's own `git status` in every
+  // worktree, forever. So the run brackets it: added before the copy, removed
+  // after, whichever way the run ended.
+  for (const ending of ['returns', 'throws'] as const) {
+    it(`puts info/exclude back exactly as it found it when the run ${ending}`, async () => {
+      const before = '# the human`s own entries\r\nbuild/\r\nscratch.txt\n'
+      writeFileSync(excludeFile, before)
+
+      await runWorkspacePrep(contextNaming(NOTE))
+      expect(readFileSync(excludeFile, 'utf8')).toContain(`${ATTACHMENTS_DIR}/`)
+
+      try {
+        if (ending === 'throws') throw new Error('the agent run died')
+      } catch {
+        // the burner's catch does the same cleanup its success path does
+      } finally {
+        await clearAttachments(workspace, repo)
+      }
+
+      // Byte-identical: the comment, the CRLF endings and the human's own
+      // patterns all survive; only our one line is gone.
+      expect(readFileSync(excludeFile, 'utf8')).toBe(before)
+    })
+  }
+
+  it('tolerates the exclude line being absent — never added, or already taken out', async () => {
+    const untouched = 'build/\n'
+    writeFileSync(excludeFile, untouched)
+
+    // A burn with no attachments never wrote the line; cleanup must still be a
+    // no-op on the file rather than a failure or a rewrite.
+    await clearAttachments(workspace, repo)
+    await clearAttachments(workspace, repo)
+
+    expect(readFileSync(excludeFile, 'utf8')).toBe(untouched)
   })
 
   it('prepares nothing, and fails nothing, when the promoted note`s PNG is gone', async () => {
@@ -207,5 +254,109 @@ describe('burn attachments — preparing the workspace', () => {
         { command: `cp "/home/dev/.runcastle/annotations/a.png" ".runcastle-attachments/a.png"` },
       ],
     )
+  })
+})
+
+/**
+ * Isolated mode — the `burnWorkspace: 'auto'` default on Windows and macOS,
+ * where the agent works in a container-native `git clone` of the mounted
+ * workspace. The host-side copy lands the PNG in the workspace; a clone carries
+ * tracked content only, so without a second copy the relative path the ticket
+ * context names resolves to nothing (decisions.md #9).
+ */
+describe('burn attachments — riding the clone into isolated mode', () => {
+  const branch = 'runcastle/ticket/wide-app/5-nNFSXHBi'
+
+  it('copies the attachments into the clone, after the clone and only if they are there', () => {
+    const cmd = buildIsolatedSetupCommand(branch, undefined)
+    const src = `${SANDBOX_WORKSPACE_PATH}/${ATTACHMENTS_DIR}`
+
+    expect(cmd).toContain(`[ -d "${src}" ]`)
+    expect(cmd).toContain(`cp -r "${src}" "${ISOLATED_REPO_PATH}/"`)
+    expect(cmd.indexOf(src)).toBeGreaterThan(cmd.indexOf(`git clone ${SANDBOX_WORKSPACE_PATH}`))
+  })
+
+  // The script runs inside the burn container by construction, so it is `sh` —
+  // driven here for real rather than matched as a string. A Windows host has no
+  // sh to drive it with; the shape assertion above covers that host.
+  describe.skipIf(process.platform === 'win32')('driven for real', () => {
+    let home: string
+    let restoreDataDir: () => void
+    let workspace: string
+    let clone: string
+
+    /** The setup script with its two container paths pointed at real dirs. */
+    function setupScript(): string {
+      return buildIsolatedSetupCommand(branch, undefined)
+        .replaceAll(SANDBOX_WORKSPACE_PATH, workspace)
+        .replaceAll(ISOLATED_REPO_PATH, clone)
+    }
+
+    async function runSetup(): Promise<void> {
+      // `git config --global` is a real write: keep it in the temp home.
+      await runCommand(setupScript(), {
+        cwd: workspace,
+        env: { ...process.env, HOME: home, GIT_CONFIG_GLOBAL: join(home, 'gitconfig') },
+      })
+    }
+
+    beforeEach(async () => {
+      home = mkdtempSync(join(tmpdir(), 'rc-burn-isolated-home-'))
+      restoreDataDir = useDataDir(home)
+      mkdirSync(join(home, '.runcastle', 'annotations'), { recursive: true })
+      writeFileSync(annotationPath(NOTE), PNG)
+
+      workspace = mkdtempSync(join(tmpdir(), 'rc-burn-isolated-ws-'))
+      clone = join(mkdtempSync(join(tmpdir(), 'rc-burn-isolated-clone-')), 'repo')
+      const g = simpleGit(workspace)
+      await g.init(['-b', branch])
+      await g.addConfig('user.email', 'test@runcastle.dev')
+      await g.addConfig('user.name', 'Runcastle Test')
+      writeFileSync(join(workspace, 'README.md'), 'base\n')
+      await g.add(['README.md'])
+      await g.commit('initial commit')
+    })
+
+    afterEach(() => {
+      restoreDataDir()
+      for (const dir of [home, workspace, dirname(clone)]) {
+        rmSync(dir, { recursive: true, force: true })
+      }
+    })
+
+    /** What the host-side hook leaves behind before the sandbox starts. */
+    async function prepareWorkspace(): Promise<void> {
+      await excludePath(workspace, `${ATTACHMENTS_DIR}/`)
+      for (const { command } of buildAttachmentCopyCommands(attachmentSources(contextNaming(NOTE)))) {
+        await runCommand(command, { cwd: workspace })
+      }
+    }
+
+    it('lands the PNG at the same relative path the ticket context named', async () => {
+      await prepareWorkspace()
+
+      await runSetup()
+
+      // The agent is told to `cd` here and Read that exact relative path.
+      expect(readFileSync(resolve(clone, attachmentRelPath(NOTE)))).toEqual(Buffer.from(PNG))
+    })
+
+    it('leaves the clone clean, so nothing the agent commits can push them back', async () => {
+      await prepareWorkspace()
+
+      await runSetup()
+
+      // Isolated mode lands work by pushing the clone's commits to the
+      // workspace, so the images must be unstageable in the clone too — its
+      // `info/exclude` is not one the clone inherits.
+      expect(await simpleGit(clone).raw(['status', '--porcelain'])).toBe('')
+    })
+
+    it('sets up a burn with no attachments at all, without failing', async () => {
+      await runSetup()
+
+      expect(existsSync(join(clone, ATTACHMENTS_DIR))).toBe(false)
+      expect(existsSync(join(clone, 'README.md'))).toBe(true)
+    })
   })
 })
