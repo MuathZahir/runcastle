@@ -566,3 +566,73 @@ The shape that landed matches what was specified, with one deliberate narrowing:
 What deserves your attention before anyone leans on this. If you install Codex, paste an OpenAI API key, but never run `codex login`, onboarding will wave you through and seed GPT models as your defaults — and then every talk session will refuse to open, because a session copies your real login and an API key is not one. That is the exact user this feature was built for, so it is worth fixing first. Two smaller versions of the same gap: a ticket you assign to a GPT model inside an otherwise-Claude burn gets no advance auth check and no doctor warning, so a missing key surfaces as a container failure rather than a refusal up front; and a project session on a GPT model auto-approves edits across your whole repo where the same session on Claude would ask you.
 
 Be aware this review is code-only. The drive would not start — your checkout has uncommitted work in progress, which it refuses to move — so nothing here was confirmed by running the app. The test suites, the settings walkthrough, the ticket-card model chip, the doctor screen and the generated Codex session files are all unverified. Commit or stash those two files and this review will run properly.
+
+## 9. Fix: Codex hooks.json test is platform-blind to commandWindows on win32
+
+# Ticket 9 — Codex hooks.json test was platform-blind to `commandWindows`
+
+## What was done
+
+One test file changed; no production code, as the ticket predicted.
+
+`launch-artifacts.test.ts › codexRuntime.writeArtifacts › registers the five lifecycle
+events…` writes a real `hooks.json` on whatever platform the suite runs on, then asserted
+the SessionStart entry with `toEqual` against the POSIX shape — so it passed in the
+burner's Linux sandbox and failed on a Windows dev machine, where `renderCodexHooks` adds
+`commandWindows` by design. That assertion is now `toMatchObject`, which is already this
+file's idiom for hook entries (the `renderSettings` tests at lines 218 and 242 use it for
+exactly the same shape). It still proves the command string, all five events and the
+PreToolUse matcher, none of which are platform-dependent.
+
+The exhaustiveness given up there is recovered — and then some — in the sibling test that
+*names* its platform instead of inheriting the host's. It previously checked only that
+SessionStart lacked `commandWindows` on `'linux'`. It now pins the full entry shape with
+`toEqual` against known-good literals on both branches: `commandWindows` equal to `command`
+on every win32 hook, absent from every hook on `'linux'` *and* `'darwin'`. That test runs
+identically on every host, which is what makes the win32 criterion provable from here.
+
+## Surprises
+
+The ticket asked me to "add an explicit assertion that `commandWindows` equals `command` on
+win32" — but such a test already existed on the branch (added by ticket 3, `git log` on the
+file confirms). So the work was strengthening it, not writing it: extending the absence
+check from one hook to all five and from one platform to two, and adding the exhaustive
+win32 literal that recovers what the other test stopped asserting.
+
+Verifying "passes on win32 and darwin" from a Linux sandbox needed a trick, since the whole
+bug is a platform branch this container never takes. I ran the *real* test file under a
+throwaway vitest config whose setup file stubs `process.platform`: 57/57 passed as `win32`
+and as `darwin`, and 57/57 natively on linux. One wrinkle worth recording — a naive stub
+makes 16 tests fail for an unrelated reason: `os.tmpdir()` switches to reading `TEMP`/`TMP`
+once it believes it is on win32, and neither is set on Linux, so every `mkdtempSync` in the
+file blows up on `undefined`. Setting those two vars in the stub cleared it. The scratch
+config, setup and probe test were deleted before committing; nothing of that harness ships.
+
+I also mutation-checked the strengthened test rather than trusting a green run: flipping
+`platform === 'win32'` to `!==` in `renderCodexHooks` turns it red, and `codex.ts` was
+reverted immediately (`git status` confirms the committed diff is the one test file).
+
+`env -u GIT_ASKPASS bun run test` is **2177 passed / 4 skipped / 1 failed**. The one failure
+is `packages/server/test/dev-pane.test.ts › kills the child process tree`, which asserts a
+real OS process group is reaped 400ms after a kill (`expect(pidAlive(-pgid)).toBe(false)`).
+It is not mine: it fails on a targeted single-file run with nothing else in the process, and
+my diff touches exactly one file that dev-pane does not import. Every prior ticket digest on
+this branch (1, 2, 3, 4, 5, 6, 7) reports the same failure, so treat the prompt's
+"fully green" baseline as stale for this one test in this container. `bun run typecheck` is
+clean across all four packages plus `scripts/`.
+
+## Left undone
+
+Nothing this ticket asked for. Two adjacent observations for whoever follows:
+
+The `platform` seam only exists on `renderCodexHooks`. `codexRuntime.writeArtifacts` reads
+`process.platform` through that default argument, so there is no way to drive a full
+artifact write at a chosen platform from a test — which is exactly why the shape assertion
+had to move down to `renderCodexHooks`. If more of the Codex artifact set ever grows
+platform-dependent branches (`config.toml` paths are the obvious candidate), that seam wants
+widening to `writeArtifacts` rather than repeating this split per field. I did not do it
+here: the ticket says no production change is needed, and none was.
+
+The same latent hazard exists on the Claude side and I left it alone as out of scope —
+`renderSettings` takes no `platform` parameter at all, so if Claude's hook entries ever gain
+a win32 spelling, its tests will be blind in precisely the way this one was.
