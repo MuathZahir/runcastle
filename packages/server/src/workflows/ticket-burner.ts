@@ -582,11 +582,11 @@ export function buildIsolatedSetupCommand(
   pm?: PackageManager,
 ): string {
   const hookFile = `${ISOLATED_REPO_PATH}/.git/hooks/post-commit`
-  const attachments = `${SANDBOX_WORKSPACE_PATH}/${ATTACHMENTS_DIR}`
+  const attachmentsDir = `${SANDBOX_WORKSPACE_PATH}/${ATTACHMENTS_DIR}`
   const parts = [
     `git config --global --add safe.directory '*'`,
     `git clone ${SANDBOX_WORKSPACE_PATH} ${ISOLATED_REPO_PATH}`,
-    `if [ -d "${attachments}" ]; then cp -r "${attachments}" "${ISOLATED_REPO_PATH}/" && mkdir -p "${ISOLATED_REPO_PATH}/.git/info" && printf '%s\\n' '${ATTACHMENTS_DIR}/' >> "${ISOLATED_REPO_PATH}/.git/info/exclude"; fi`,
+    `if [ -d "${attachmentsDir}" ]; then cp -r "${attachmentsDir}" "${ISOLATED_REPO_PATH}/" && mkdir -p "${ISOLATED_REPO_PATH}/.git/info" && printf '%s\\n' '${ATTACHMENTS_DIR}/' >> "${ISOLATED_REPO_PATH}/.git/info/exclude"; fi`,
     `printf '#!/bin/sh\\nunset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE\\ngit push --quiet origin HEAD:%s && exec git -C ${SANDBOX_WORKSPACE_PATH} reset --hard --quiet %s\\n' '${tempBranch}' '${tempBranch}' > ${hookFile}`,
     `chmod +x ${hookFile}`,
   ]
