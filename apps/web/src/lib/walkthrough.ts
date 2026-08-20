@@ -23,8 +23,13 @@ export interface Point {
 /** One freehand stroke: the points a pointer travelled through, in frame space. */
 export type Stroke = readonly Point[]
 
-/** Red, and only red (decisions #6) — one high-visibility pen, no palette. */
-export const STROKE_COLOR = '#ff2b2b'
+/**
+ * Red, and only red (decisions #6) — one high-visibility pen, no palette
+ * choice. The hex is the palette's own failed/danger red (docs/UI-SPEC.md), not
+ * a fresh one: lap 1 picked a more saturated `#ff2b2b` by hand, and a one-off
+ * hex in a lib file is how a pinned palette stops being exhaustive.
+ */
+export const STROKE_COLOR = '#F85149'
 
 /**
  * Stroke width in frame pixels. Wide enough to survive the downscale to the

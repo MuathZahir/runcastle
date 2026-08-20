@@ -243,7 +243,10 @@ describe('burn attachments — preparing the workspace', () => {
     expect(await simpleGit(workspace).raw(['status', '--porcelain'])).toBe('')
   })
 
-  it('copies with the shell each host actually has', () => {
+  // Destinations are the `node:path` join of the attachments dir and the
+  // source's basename — in the TARGET platform's namespace, so these literals
+  // hold whichever host runs the suite.
+  it('copies with the shell each host actually has, separator and all', () => {
     const src = join('C:', 'Users', 'dev', '.runcastle', 'annotations', `${NOTE}.png`)
 
     expect(buildAttachmentCopyCommands([src], 'win32')).toEqual([

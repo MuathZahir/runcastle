@@ -1,6 +1,11 @@
 import { createReadStream, statSync } from 'node:fs'
 import { Readable } from 'node:stream'
-import type { TestNote, Ticket } from '@runcastle/core'
+import {
+  NOTE_SCREENSHOT_ROUTE,
+  NOTE_SCREENSHOT_UPLOAD_ROUTE,
+  type TestNote,
+  type Ticket,
+} from '@runcastle/core'
 import { annotationPath, reviewWalkthroughPath } from '@runcastle/core/paths'
 import { Hono } from 'hono'
 import type { AppCtx } from '../db/types'
@@ -51,6 +56,24 @@ function fileSize(path: string): number | undefined {
 }
 
 /**
+ * What a service lookup returned, or `undefined` when the id matched no row.
+ *
+ * Every route here turns a URL segment into a row before it touches the
+ * filesystem, and to a browser asking for media there is only one kind of
+ * absence: a 404. So the services' `NotFoundError` — the right answer to a tRPC
+ * caller — is folded into `undefined` at this boundary. Any other error is
+ * still a fault and propagates.
+ */
+function lookupOrUndefined<T>(lookup: () => T): T | undefined {
+  try {
+    return lookup()
+  } catch (e) {
+    if (e instanceof NotFoundError) return undefined
+    throw e
+  }
+}
+
+/**
  * The review ticket this id names, or `undefined` — an id no row matches, or one
  * belonging to an implementation ticket.
  *
@@ -59,14 +82,8 @@ function fileSize(path: string): number | undefined {
  * so nothing a caller sent is ever joined into a path.
  */
 function findReviewTicket(ctx: AppCtx, ticketId: string): Ticket | undefined {
-  let ticket: Ticket
-  try {
-    ticket = getTicket(ctx, ticketId)
-  } catch (e) {
-    if (e instanceof NotFoundError) return undefined
-    throw e
-  }
-  return ticket.kind === 'review' ? ticket : undefined
+  const ticket = lookupOrUndefined(() => getTicket(ctx, ticketId))
+  return ticket?.kind === 'review' ? ticket : undefined
 }
 
 /** GET /api/reviews/:featureId — what this feature's reviews left behind. */
@@ -180,12 +197,7 @@ reviews.get('/ticket/:ticketId/walkthrough.webm', async (c) => {
  * {@link annotationPath}, so a URL segment never reaches the filesystem.
  */
 function findNote(ctx: AppCtx, noteId: string): TestNote | undefined {
-  try {
-    return getNote(ctx, noteId)
-  } catch (e) {
-    if (e instanceof NotFoundError) return undefined
-    throw e
-  }
+  return lookupOrUndefined(() => getNote(ctx, noteId))
 }
 
 /** The 8-byte PNG signature every PNG file starts with (RFC 2083 §3.1). */
@@ -204,7 +216,7 @@ function isPng(bytes: Uint8Array): boolean {
  * The signature check is what keeps the GET below honest — it answers
  * `image/png` unconditionally, so it must never have been handed something else.
  */
-reviews.post('/note/:noteId/screenshot', async (c) => {
+reviews.post(NOTE_SCREENSHOT_UPLOAD_ROUTE, async (c) => {
   const ctx = await getRuntimeCtx()
   const note = findNote(ctx, c.req.param('noteId'))
   if (!note) return c.notFound()
@@ -222,7 +234,7 @@ reviews.post('/note/:noteId/screenshot', async (c) => {
  * kind of absence — unknown note, a note nobody annotated — because to the
  * browser they are the same fact: there is no image here.
  */
-reviews.get('/note/:noteId/screenshot.png', async (c) => {
+reviews.get(NOTE_SCREENSHOT_ROUTE, async (c) => {
   const ctx = await getRuntimeCtx()
   const note = findNote(ctx, c.req.param('noteId'))
   if (!note) return c.notFound()

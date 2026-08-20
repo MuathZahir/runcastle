@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { fmtClock, humanizeTimestamps } from '../src/lib/format'
+import { humanizeTimestamps } from '../src/lib/format'
 
 /**
  * Findings F10.9 / F18 — agent-authored docs stamp themselves the way a program
@@ -39,28 +39,5 @@ describe('humanizeTimestamps', () => {
     const out = humanizeTimestamps('Created: 2026-07-14T14:58:23.231Z')
     expect(out).not.toContain('T14:58:23.231Z')
     expect(out.startsWith('Created: ')).toBe(true)
-  })
-})
-
-/**
- * The walkthrough player's time readout (video-annotation ticket 3). Reads a
- * `<video>`'s seconds, so it has to survive the two values an element hands out
- * before it knows the recording: NaN and Infinity.
- */
-describe('fmtClock', () => {
-  it('reads as a clock, with seconds always two digits', () => {
-    expect(fmtClock(0)).toBe('0:00')
-    expect(fmtClock(7.4)).toBe('0:07')
-    expect(fmtClock(151)).toBe('2:31')
-  })
-
-  it('grows an hours field only when there are hours', () => {
-    expect(fmtClock(3599)).toBe('59:59')
-    expect(fmtClock(3852)).toBe('1:04:12')
-  })
-
-  it('says unknown rather than a number it does not have', () => {
-    expect(fmtClock(Number.NaN)).toBe('--:--')
-    expect(fmtClock(Number.POSITIVE_INFINITY)).toBe('--:--')
   })
 })

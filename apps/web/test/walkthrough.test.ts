@@ -7,7 +7,6 @@ import {
   paintStrokes,
   playableDuration,
   saveAnnotatedNote,
-  STROKE_COLOR,
   STROKE_WIDTH,
   type Stroke,
 } from '../src/lib/walkthrough'
@@ -139,7 +138,10 @@ describe('paintStrokes', () => {
 
     paintStrokes(ctx, strokes)
 
-    expect(log.strokeStyle).toBe(STROKE_COLOR)
+    // The literal, not the constant: the pen is the palette's failed/danger red
+    // (docs/UI-SPEC.md), and asserting the constant against itself would let a
+    // fresh off-palette hex through.
+    expect(log.strokeStyle).toBe('#F85149')
     expect(log.lineWidth).toBe(STROKE_WIDTH)
     expect(log.ops).toEqual(['beginPath', 'moveTo(10,10)', 'lineTo(20,30)', 'lineTo(25,35)', 'stroke'])
   })

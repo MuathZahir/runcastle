@@ -1,5 +1,5 @@
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync } from 'node:fs'
-import { basename, dirname, join } from 'node:path'
+import { basename, dirname, join, posix as posixPath, win32 as winPath } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type {
   Feature,
@@ -682,6 +682,13 @@ export function attachmentSources(context: string): string[] {
  * One command per file (plus the mkdir) because `cmd.exe` does not chain an
  * `if not exist` with `&&` the way `sh` chains `mkdir -p`, and sandcastle runs
  * the list in order anyway.
+ *
+ * Destinations are built with `node:path`, in the namespace of the TARGET
+ * platform rather than the host's: `platform` is a parameter here, so the
+ * separator has to follow the shell the command is written for, not the machine
+ * that wrote it. (In production the two are the same — the only caller takes the
+ * default — but a `join` that answered `/` for a `cmd.exe` copy under test would
+ * be describing a Windows this code never runs on.)
  */
 export function buildAttachmentCopyCommands(
   sources: string[],
@@ -689,15 +696,17 @@ export function buildAttachmentCopyCommands(
 ): { command: string }[] {
   if (sources.length === 0) return []
   const win = platform === 'win32'
+  const path = win ? winPath : posixPath
   const dir = ATTACHMENTS_DIR
   const mkdir = win ? `if not exist "${dir}" mkdir "${dir}"` : `mkdir -p "${dir}"`
   return [
     { command: mkdir },
-    ...sources.map((src) => ({
-      command: win
-        ? `copy /Y "${src}" "${dir}\\${basename(src)}" >nul`
-        : `cp "${src}" "${dir}/${basename(src)}"`,
-    })),
+    ...sources.map((src) => {
+      const dest = path.join(dir, path.basename(src))
+      return {
+        command: win ? `copy /Y "${src}" "${dest}" >nul` : `cp "${src}" "${dest}"`,
+      }
+    }),
   ]
 }
 

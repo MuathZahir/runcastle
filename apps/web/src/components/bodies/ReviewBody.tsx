@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import type { TestNote } from '@runcastle/core'
+import { fmtClock, type TestNote } from '@runcastle/core'
 import { Button, CheckLine, LapSections, NoteAuthorChip, SectionTitle } from '../../ui'
 import { trpc } from '../../trpc'
 import type { FeatureFull, SettingsView } from '../../lib/api'
@@ -25,7 +25,7 @@ import {
   type MergeConflictState,
 } from '../../lib/feature-ui'
 import { useReviewArtifacts } from '../../lib/reviews'
-import { fmtClock, fmtDateTime, relTime } from '../../lib/format'
+import { fmtDateTime, relTime } from '../../lib/format'
 import { useLivePoll } from '../../lib/live'
 import { useResolveConflict } from '../../lib/use-resolve-conflict'
 import { useToast } from '../../lib/toast'

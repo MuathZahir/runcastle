@@ -56,21 +56,9 @@ export function relTime(ts: number, now: number = Date.now()): string {
   return `${d}d`
 }
 
-/**
- * A player position as a clock: `0:07`, `2:31`, `1:04:12`. Seconds in, not
- * epochs — this reads a `<video>`'s `currentTime`, which is why a duration the
- * element does not know yet (`Infinity`, `NaN`) has to render as unknown rather
- * than as a number.
- */
-export function fmtClock(seconds: number): string {
-  if (!Number.isFinite(seconds) || seconds < 0) return '--:--'
-  const total = Math.floor(seconds)
-  const h = Math.floor(total / 3600)
-  const m = Math.floor((total % 3600) / 60)
-  const s = total % 60
-  const mm = h > 0 ? String(m).padStart(2, '0') : String(m)
-  return `${h > 0 ? `${h}:` : ''}${mm}:${String(s).padStart(2, '0')}`
-}
+// A player position as a clock (`0:07`, `1:04:12`) is `fmtClock` in
+// @runcastle/core — the promoted ticket's context paragraph renders the same
+// walkthrough moment server-side, and the two copies had drifted.
 
 /** Elapsed duration between two epochs as `1m 04s` / `12s` / `1h 03m`. */
 export function fmtDuration(from: number, to: number): string {

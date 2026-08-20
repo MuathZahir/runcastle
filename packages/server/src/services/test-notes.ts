@@ -7,7 +7,7 @@ import type {
   Ticket,
   TicketInput,
 } from '@runcastle/core'
-import { TestNote, newId } from '@runcastle/core'
+import { TestNote, fmtClock, newId, noteScreenshotUrl } from '@runcastle/core'
 import {
   annotationPath,
   annotationsDir,
@@ -35,20 +35,15 @@ import { getTicket, storeTickets } from './tickets'
 type TestNoteSelect = typeof testNotes.$inferSelect
 
 /**
- * Where the browser fetches a note's annotated frame from. Must stay in step
- * with the route that serves it (`routes/reviews.ts`); the HTTP round-trip test
- * follows a stamped URL back through that route, so a drift shows up as a 404
- * rather than as a silently broken thumbnail.
- */
-function noteScreenshotUrl(noteId: string): string {
-  return `/api/reviews/note/${noteId}/screenshot.png`
-}
-
-/**
  * The row plus the one fact that is not in it: whether this note's annotated
  * frame is on disk (decisions.md #5). Every read path funnels through here, so
  * a screenshot written or deleted is reflected the moment the next read runs —
  * there is no row to keep in sync.
+ *
+ * This stat is the ONLY place the question "does this note have a screenshot?"
+ * is answered; everything downstream reads the stamped `screenshotUrl` instead
+ * of asking the disk again. The URL itself comes from core, which is also where
+ * the route that serves it gets its pattern.
  */
 function rowToNote(row: TestNoteSelect): TestNote {
   return TestNote.parse({
@@ -259,12 +254,6 @@ export function toggleNote(ctx: AppCtx, noteId: string): TestNote {
 /** Longest a derived ticket title runs before it is elided. */
 const TITLE_MAX = 60
 
-/** `92.4` → `1:32` — the walkthrough moment as the player would show it. */
-function clockTime(seconds: number): string {
-  const whole = Math.floor(seconds)
-  return `${Math.floor(whole / 60)}:${String(whole % 60).padStart(2, '0')}`
-}
-
 /**
  * The paragraph that carries an annotated note's screenshot into the burn
  * (spec.md "Riding into the burn"). It names the WORKSPACE-relative path the
@@ -272,17 +261,18 @@ function clockTime(seconds: number): string {
  * has no attachment field, so this sentence is the entire contract, and
  * `attachmentRelPath` is what keeps both ends spelling it the same way.
  *
- * Written only when the PNG is on disk at promotion time. The reverse case (a
- * PNG deleted between promotion and burn) is left to degrade on its own: the
- * agent's Read fails and it proceeds on the note text, which is exactly what an
- * unannotated note gives it.
+ * Written only when the PNG was on disk when the note was read — every note
+ * reaching here came through {@link rowToNote}, which is where that stat
+ * happens. The reverse case (a PNG deleted between promotion and burn) is left
+ * to degrade on its own: the agent's Read fails and it proceeds on the note
+ * text, which is exactly what an unannotated note gives it.
  */
 function screenshotParagraph(note: TestNote): string | undefined {
-  if (!existsSync(annotationPath(note.id))) return undefined
+  if (!note.screenshotUrl) return undefined
   const moment =
     note.videoTimestamp === undefined
       ? ''
-      : `, captured at ${clockTime(note.videoTimestamp)} of the review walkthrough`
+      : `, captured at ${fmtClock(note.videoTimestamp)} of the review walkthrough`
   return `An annotated screenshot of the problem is at ${attachmentRelPath(note.id)} in your workspace${moment} — Read it before starting; the drawing marks the problem area.`
 }
 

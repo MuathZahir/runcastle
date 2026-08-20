@@ -1,3 +1,4 @@
+import { noteScreenshotUploadUrl } from '@runcastle/core'
 import { useQuery, type UseQueryResult } from '@tanstack/react-query'
 
 /**
@@ -47,12 +48,12 @@ export function useReviewArtifacts(featureId: string): UseQueryResult<ReviewArti
  * body — the shape the route expects, and the one thing the tRPC surface beside
  * it cannot carry.
  *
- * The URL this uploads to is the same one the server stamps back onto the note
- * as `screenshotUrl`, so the thumbnail in the notes list is literally a GET of
- * what was posted here.
+ * The URL comes from core, which is also where the route that serves it and the
+ * service that stamps `screenshotUrl` onto the note get theirs — so the
+ * thumbnail in the notes list is literally a GET of what was posted here.
  */
 export async function uploadScreenshot(noteId: string, png: Blob): Promise<void> {
-  const res = await fetch(`/api/reviews/note/${encodeURIComponent(noteId)}/screenshot`, {
+  const res = await fetch(noteScreenshotUploadUrl(noteId), {
     method: 'POST',
     headers: { 'content-type': 'image/png' },
     body: png,

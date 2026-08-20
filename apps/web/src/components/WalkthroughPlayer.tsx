@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
+import { fmtClock } from '@runcastle/core'
 import { Button } from '../ui'
 import { trpc } from '../trpc'
-import { fmtClock } from '../lib/format'
 import { uploadScreenshot } from '../lib/reviews'
 import { useToast } from '../lib/toast'
 import {
