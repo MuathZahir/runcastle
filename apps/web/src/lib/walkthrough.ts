@@ -54,6 +54,35 @@ export function playableDuration(video: HTMLVideoElement): number {
 }
 
 /**
+ * Where a "jump to this moment" click lands the playhead, or `null` when the
+ * jump must not happen at all (decisions #12).
+ *
+ * Two ways it comes back null. While a drawing is in progress the request is
+ * inert: lap 1 locked that the frame must not move under an annotation, and the
+ * strokes are recorded against the frame that is showing, so moving it would
+ * leave them pointing at nothing. And before anything has loaded there is no
+ * playhead to move — seeking a video with no readable range to "0" would look
+ * like the click rewound the recording.
+ *
+ * Otherwise the moment is clamped into what the recording can actually reach.
+ * A note keeps no record of which walkthrough it was taken from (decisions #7),
+ * so a timestamp from a longer, since-replaced recording is expected rather than
+ * exceptional — it lands on the last frame there is.
+ */
+export function seekTarget(
+  seconds: number,
+  player: {
+    /** How far the recording can be seeked — {@link playableDuration}. */
+    playable: number
+    annotating: boolean
+  },
+): number | null {
+  if (player.annotating) return null
+  if (!Number.isFinite(seconds) || player.playable <= 0) return null
+  return Math.min(Math.max(seconds, 0), player.playable)
+}
+
+/**
  * Where a pointer event landed, in frame pixels. The canvas is sized to the
  * video's intrinsic resolution and scaled down by CSS, so every client
  * coordinate has to be mapped back through that scale before it is a stroke.

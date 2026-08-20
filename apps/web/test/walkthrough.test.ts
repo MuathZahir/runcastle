@@ -7,6 +7,7 @@ import {
   paintStrokes,
   playableDuration,
   saveAnnotatedNote,
+  seekTarget,
   STROKE_WIDTH,
   type Stroke,
 } from '../src/lib/walkthrough'
@@ -103,6 +104,53 @@ describe('playableDuration', () => {
 
   it('is zero while nothing has loaded yet', () => {
     expect(playableDuration(video(Number.NaN, []))).toBe(0)
+  })
+})
+
+/** Video-annotation ticket 7 — jump to this moment (decisions #12). */
+describe('seekTarget', () => {
+  it('lands on the moment the note was taken at', () => {
+    expect(seekTarget(42.5, { playable: 94.5, annotating: false })).toBe(42.5)
+  })
+
+  /**
+   * A note carries no record of which recording it was taken from (decisions
+   * #7), so a timestamp past the end of the one on screen is expected: it lands
+   * on the last frame there is rather than erroring.
+   */
+  it('clamps a moment beyond the end of the recording', () => {
+    expect(seekTarget(600, { playable: 94.5, annotating: false })).toBe(94.5)
+  })
+
+  /**
+   * The live-recorded WebM case {@link playableDuration} exists for: the element
+   * reports Infinity, the seekable range is the real length, and the jump is
+   * bounded by that.
+   */
+  it('is bounded by how far a live-recorded WebM can be seeked', () => {
+    const video = {
+      duration: Number.POSITIVE_INFINITY,
+      seekable: { length: 1, end: () => 61.25 },
+    } as unknown as HTMLVideoElement
+
+    expect(seekTarget(80, { playable: playableDuration(video), annotating: false })).toBe(61.25)
+  })
+
+  /** The frame must not move under an in-progress drawing (lap 1). */
+  it('is inert while the human is annotating', () => {
+    expect(seekTarget(12, { playable: 94.5, annotating: true })).toBeNull()
+  })
+
+  it('is inert before the recording can be seeked at all', () => {
+    expect(seekTarget(12, { playable: 0, annotating: false })).toBeNull()
+  })
+
+  it('is inert for a moment that is not a number', () => {
+    expect(seekTarget(Number.NaN, { playable: 94.5, annotating: false })).toBeNull()
+  })
+
+  it('never seeks before the start', () => {
+    expect(seekTarget(-3, { playable: 94.5, annotating: false })).toBe(0)
   })
 })
 
