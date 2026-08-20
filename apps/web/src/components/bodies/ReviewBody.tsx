@@ -460,18 +460,16 @@ function NotesPanel({
         )}
 
         {/* An annotated note carries a picture of what it is about (decisions
-            #3). The full PNG opens in a tab — the row is a list, not a viewer. */}
+            #3). The full PNG opens in a tab — the row is a list, not a viewer.
+            The moment it was taken at used to hide in this tooltip; it is the
+            control beside it now. */}
         {note.screenshotUrl && (
           <a
             className="note-shot"
             href={note.screenshotUrl}
             target="_blank"
             rel="noreferrer noopener"
-            title={
-              moment === undefined
-                ? 'the annotated frame'
-                : `the annotated frame, at ${fmtClock(moment)}`
-            }
+            title="the annotated frame"
           >
             <img src={note.screenshotUrl} alt="the annotated frame this note is about" />
           </a>
