@@ -1,7 +1,6 @@
 /**
- * The burn guard — a Claude Code `PreToolUse` hook installed inside each burn
- * sandbox, which DENIES a small set of tool calls the burner prompt already
- * forbids.
+ * The burn guard — a `PreToolUse` hook installed inside each burn sandbox, which
+ * DENIES a small set of tool calls the burner prompt already forbids.
  *
  * Why a hook and not more prompt text: the prompt has told agents to "run any
  * full suite once" since before the performance work, and measurement showed
@@ -13,12 +12,21 @@
  * that binds. Hooks can only TIGHTEN, never loosen, so the guard cannot
  * accidentally grant an agent anything.
  *
+ * Both runtimes get the same guard. Codex's hook protocol is Claude-shaped —
+ * same `tool_name`/`tool_input` stdin payload, same
+ * `hookSpecificOutput.permissionDecision: "deny"` verdict on exit 0 (verified
+ * against codex-rs `hooks/src/events/pre_tool_use.rs`) — so the SCRIPT is
+ * literally the same file; only where it is installed and which config file
+ * registers it differ. One rule set, rendered twice.
+ *
  * Scope discipline: every rule here is one an agent cannot reasonably need. A
  * false deny in an unattended agent is expensive — it burns turns arguing with
  * a wall — so "re-running a full suite" is deliberately NOT a rule (the prompt
  * explicitly permits a second run after a fix, and the guard cannot tell the
  * two apart). Kill switch: `burnGuard: false`.
  */
+
+import type { AgentRuntime } from '@runcastle/core'
 
 /** A single guard rule: an ERE pattern, and what to tell the agent instead. */
 export interface GuardRule {
@@ -73,10 +81,28 @@ export const GUARD_RULES: readonly GuardRule[] = [
   },
 ]
 
-/** The container path the guard script is installed at. */
-export const GUARD_SCRIPT_PATH = '$HOME/.claude/hooks/burn-guard.sh'
-/** The container path of the settings file that registers the hook. */
-export const GUARD_SETTINGS_PATH = '$HOME/.claude/settings.json'
+/**
+ * Where each runtime's guard lives inside the container. Every runtime reads its
+ * hooks out of its own home, so the twin is a matter of paths and one config
+ * shape — never a second copy of the rules.
+ */
+export const GUARD_INSTALL_PATHS: Record<AgentRuntime, { script: string; config: string }> = {
+  'claude-code': {
+    script: '$HOME/.claude/hooks/burn-guard.sh',
+    config: '$HOME/.claude/settings.json',
+  },
+  codex: {
+    script: '$HOME/.codex/hooks/burn-guard.sh',
+    config: '$HOME/.codex/hooks.json',
+  },
+}
+
+/**
+ * The container path the Claude Code guard script is installed at. Kept as a
+ * name of its own because it is the path this module's own history is written
+ * against; new code should read {@link GUARD_INSTALL_PATHS} and pass a runtime.
+ */
+export const GUARD_SCRIPT_PATH = GUARD_INSTALL_PATHS['claude-code'].script
 
 /**
  * Evaluate a Bash command against the rules — the same decision the in-sandbox
@@ -149,18 +175,41 @@ function shSingleQuote(value: string): string {
   return `'${value.split("'").join(`'\\''`)}'`
 }
 
-/** The `settings.json` registering the guard for every Bash call. */
-export function renderGuardSettings(): {
-  hooks: { PreToolUse: Array<{ matcher: string; hooks: Array<{ type: 'command'; command: string; timeout: number }> }> }
-} {
+/** The hook registration both runtimes take — same shape, different matcher dialect. */
+export interface GuardHookConfig {
+  hooks: {
+    PreToolUse: Array<{
+      matcher: string
+      hooks: Array<{ type: 'command'; command: string; timeout: number }>
+    }>
+  }
+}
+
+/**
+ * How each runtime spells "every Bash tool call". Claude Code matches tool names
+ * literally; Codex treats the matcher as a regex (its own fixtures use `^Bash$`).
+ */
+const GUARD_MATCHER: Record<AgentRuntime, string> = {
+  'claude-code': 'Bash',
+  codex: '^Bash$',
+}
+
+/**
+ * The config registering the guard for every Bash call. Claude Code reads this
+ * as `settings.json`, Codex as `hooks.json` — the object is the same either way,
+ * which is why the twin costs a path and a matcher rather than a second format.
+ */
+export function renderGuardSettings(runtime: AgentRuntime = 'claude-code'): GuardHookConfig {
   return {
     hooks: {
       PreToolUse: [
         {
-          matcher: 'Bash',
+          matcher: GUARD_MATCHER[runtime],
           // 5s is far more than a few greps need; the script exits 0 on any
           // internal failure, so a timeout can only ever fail open.
-          hooks: [{ type: 'command', command: `sh ${GUARD_SCRIPT_PATH}`, timeout: 5 }],
+          hooks: [
+            { type: 'command', command: `sh ${GUARD_INSTALL_PATHS[runtime].script}`, timeout: 5 },
+          ],
         },
       ],
     },
@@ -172,18 +221,34 @@ export function renderGuardSettings(): {
  * `onSandboxReady` hook. Both files are delivered base64-encoded so no amount
  * of quoting in a rule's pattern or reason can break the setup command.
  *
- * Container sandboxes ONLY — see the caller. On `noSandbox` this would write
- * over the human's real `~/.claude/settings.json`.
+ * Installed for the runtime the burn is about to launch, into that runtime's
+ * home. Container sandboxes ONLY — see the caller. On `noSandbox` this would
+ * write over the human's real `~/.claude/settings.json` or `~/.codex/hooks.json`.
+ *
+ * Codex additionally ignores hooks it has no persisted trust for, so the burn
+ * passes `--dangerously-bypass-hook-trust` alongside this — writing the file is
+ * necessary but not sufficient there (see `BurnAgentOptions.bypassHookTrust`).
  */
-export function buildGuardInstallCommand(): string {
+export function buildGuardInstallCommand(runtime: AgentRuntime = 'claude-code'): string {
+  const paths = GUARD_INSTALL_PATHS[runtime]
   const script = Buffer.from(renderGuardScript(), 'utf8').toString('base64')
-  const settings = Buffer.from(JSON.stringify(renderGuardSettings(), null, 2), 'utf8').toString(
-    'base64',
-  )
+  const settings = Buffer.from(
+    JSON.stringify(renderGuardSettings(runtime), null, 2),
+    'utf8',
+  ).toString('base64')
   return [
-    `mkdir -p "$HOME/.claude/hooks"`,
-    `printf %s '${script}' | base64 -d > "${GUARD_SCRIPT_PATH}"`,
-    `chmod +x "${GUARD_SCRIPT_PATH}"`,
-    `printf %s '${settings}' | base64 -d > "${GUARD_SETTINGS_PATH}"`,
+    `mkdir -p "${posixDirname(paths.script)}" "${posixDirname(paths.config)}"`,
+    `printf %s '${script}' | base64 -d > "${paths.script}"`,
+    `chmod +x "${paths.script}"`,
+    `printf %s '${settings}' | base64 -d > "${paths.config}"`,
   ].join(' && ')
+}
+
+/**
+ * The directory part of a container path. Deliberately NOT `node:path` — these
+ * are always-POSIX container paths carrying an unexpanded `$HOME`, and on a
+ * Windows host `dirname` would hand back backslashes for the sandbox's `sh`.
+ */
+function posixDirname(path: string): string {
+  return path.slice(0, path.lastIndexOf('/'))
 }

@@ -30,6 +30,16 @@ describe('TicketInput — happy path', () => {
     const r = TicketInput.safeParse({ ...validTicket, kind: 'review' })
     expect(r.success && r.data.kind).toBe('review')
   })
+
+  it('leaves model unset when the emitter assigns none', () => {
+    const r = TicketInput.safeParse(validTicket)
+    expect(r.success && r.data.model).toBeUndefined()
+  })
+
+  it('accepts an assigned model id', () => {
+    const r = TicketInput.safeParse({ ...validTicket, model: 'gpt-5.6-sol' })
+    expect(r.success && r.data.model).toBe('gpt-5.6-sol')
+  })
 })
 
 describe('TicketInput — failure cases', () => {
@@ -55,6 +65,10 @@ describe('TicketInput — failure cases', () => {
 
   it('rejects an unknown kind', () => {
     expect(TicketInput.safeParse({ ...validTicket, kind: 'audit' }).success).toBe(false)
+  })
+
+  it('rejects a non-string model', () => {
+    expect(TicketInput.safeParse({ ...validTicket, model: 7 }).success).toBe(false)
   })
 })
 

@@ -2,6 +2,7 @@ import type { TicketInput } from '@runcastle/core'
 import { beforeEach, describe, expect, it } from 'vitest'
 import type { AppCtx } from '../src/db/types'
 import { InvalidInputError } from '../src/errors'
+import { listAfter } from '../src/services/events'
 import { cancelTicket, editTicket, listByFeature, storeTickets, updateTicket } from '../src/services/tickets'
 import { makeTestCtx } from './helpers/db'
 import { seedFeature, seedProject } from './helpers/fixtures'
@@ -122,6 +123,52 @@ describe('tickets service', () => {
     expect(() => editTicket(ctx, t.id, { title: 'x' })).toThrow(InvalidInputError)
     updateTicket(ctx, t.id, { status: 'cancelled' })
     expect(() => editTicket(ctx, t.id, { title: 'x' })).toThrow(InvalidInputError)
+  })
+
+  it('stores a per-ticket model assignment, leaving unassigned tickets blank', () => {
+    const stored = storeTickets(ctx, featureId, [
+      { ...ticket('mechanical refactor'), model: 'gpt-5.6-sol' },
+      ticket('taste work'),
+    ])
+    expect(stored.map((t) => t.model)).toEqual(['gpt-5.6-sol', undefined])
+    expect(listByFeature(ctx, featureId).map((t) => t.model)).toEqual(['gpt-5.6-sol', undefined])
+  })
+
+  it('storeTickets rejects a model the roster does not offer, storing nothing', () => {
+    expect(() =>
+      storeTickets(ctx, featureId, [ticket('a'), { ...ticket('b'), model: 'gpt-9-imaginary' }]),
+    ).toThrow(InvalidInputError)
+    expect(listByFeature(ctx, featureId)).toEqual([])
+  })
+
+  it('storeTickets accepts an operator-added roster entry, not just a curated one', () => {
+    ctx.config = { ...ctx.config, models: [{ id: 'my-proxy-model', runtime: 'codex' }] }
+    const [stored] = storeTickets(ctx, featureId, [
+      { ...ticket('a'), model: 'my-proxy-model' },
+    ])
+    expect(stored.model).toBe('my-proxy-model')
+  })
+
+  it('editTicket reassigns and clears the model, emitting the change', () => {
+    const [t] = storeTickets(ctx, featureId, [{ ...ticket('a'), model: 'gpt-5.6-sol' }])
+
+    expect(editTicket(ctx, t.id, { model: 'claude-opus-5' }).model).toBe('claude-opus-5')
+    // Blank clears the assignment: the ticket falls back to the default chain.
+    expect(editTicket(ctx, t.id, { model: '' }).model).toBeUndefined()
+
+    const edits = listAfter(ctx, featureId).filter((e) => e.type === 'ticket.edited')
+    expect(edits.map((e) => (e.data as { fields: string[] }).fields)).toEqual([
+      ['model'],
+      ['model'],
+    ])
+  })
+
+  it('editTicket rejects an unknown model and refuses a burning ticket', () => {
+    const [t] = storeTickets(ctx, featureId, [ticket('a')])
+    expect(() => editTicket(ctx, t.id, { model: 'gpt-9-imaginary' })).toThrow(InvalidInputError)
+
+    updateTicket(ctx, t.id, { status: 'burning' })
+    expect(() => editTicket(ctx, t.id, { model: 'claude-opus-5' })).toThrow(InvalidInputError)
   })
 
   it('cancelTicket marks pending/failed tickets cancelled with the reason', () => {

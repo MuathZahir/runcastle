@@ -1,5 +1,6 @@
 import { existsSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 /**
  * Skills-root resolution (issue #51, workstream G). The server reads the
@@ -45,4 +46,41 @@ export function resolveSkillsRoot(fromDir: string): string {
     dir = parent
   }
   throw new Error(`runcastle skills root not found; searched:\n  ${searched.join('\n  ')}`)
+}
+
+/**
+ * Resolve the `runcastle` plugin dir (`packages/skills/packs/runcastle`).
+ * Ascends from `fromDir` looking for the marker dir (robust against the server
+ * being run from anywhere). If no ancestor contains it, throws an error naming
+ * every location searched — never a silent fallback to a path that doesn't
+ * exist (a missing pack must surface loudly, not fail later at launch time).
+ */
+export function resolvePluginDir(
+  fromDir: string = dirname(fileURLToPath(import.meta.url)),
+): string {
+  const rel = join('packages', 'skills', 'packs', 'runcastle')
+
+  // Published install: skills are vendored as real files and RUNCASTLE_SKILLS_DIR
+  // names their root — read the pack straight from there (issue #51). A bad
+  // override throws loudly rather than silently falling back to a workspace path.
+  const override = process.env[SKILLS_DIR_ENV]
+  if (override) {
+    const dir = join(resolve(override), 'packs', 'runcastle')
+    if (existsSync(dir)) return dir
+    throw new Error(`${SKILLS_DIR_ENV}=${override} has no plugin dir at ${dir}`)
+  }
+
+  const searched: string[] = []
+  let dir = fromDir
+  for (let i = 0; i < 8; i += 1) {
+    const candidate = join(dir, rel)
+    searched.push(candidate)
+    if (existsSync(candidate)) return candidate
+    const parent = dirname(dir)
+    if (parent === dir) break
+    dir = parent
+  }
+  throw new Error(
+    `runcastle plugin dir (${rel}) not found; searched:\n  ${searched.join('\n  ')}`,
+  )
 }

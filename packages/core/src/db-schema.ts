@@ -1,4 +1,5 @@
 import { index, integer, primaryKey, real, sqliteTable, text } from 'drizzle-orm/sqlite-core'
+import type { AgentRuntime } from './config'
 import type {
   FeatureStatus,
   FindingSource,
@@ -197,6 +198,20 @@ export const sessions = sqliteTable('sessions', {
   awaitingInput: integer('awaiting_input', { mode: 'boolean' }).notNull().default(false),
   worktreePath: text('worktree_path').notNull(),
   /**
+   * The model this session was launched with, and the agent runtime that model
+   * runs on — the pair `resolveModelEntry` yielded at launch, stamped here so
+   * later readers never have to re-derive it from a config that has since moved
+   * on.
+   *
+   * Both are nullable, and not only for the rows that predate the columns: a
+   * session row created outside a launch (a fixture, a test) resolved no model,
+   * and stamping the current default onto one would be a fabrication read back
+   * later as fact. Readers treat a null `runtime` as `DEFAULT_RUNTIME`
+   * (config.ts), which is what every historical session in fact ran on.
+   */
+  model: text('model'),
+  runtime: text('runtime').$type<AgentRuntime>(),
+  /**
    * This conversation's human-readable name, derived from the first thing the
    * human said in it and cached here (see `services/conversations.ts`). Null
    * until that derivation runs — the transcript does not exist at insert time,
@@ -234,6 +249,13 @@ export const tickets = sqliteTable('tickets', {
    * implementation tickets.
    */
   kind: text('kind').notNull().$type<TicketKind>().default('implementation'),
+  /**
+   * The model this ticket burns on, or null for "resolve it the ordinary way"
+   * (decisions.md #4). Nullable and additive: every ticket written before
+   * per-ticket assignment existed reads back unassigned, which is exactly the
+   * default chain it burned on.
+   */
+  model: text('model'),
   /**
    * The feature's lap when this ticket was stored (ADR-0010 / SPEC §15.1).
    * Stamped server-side by `storeTickets` — sessions never choose it. G3 scopes

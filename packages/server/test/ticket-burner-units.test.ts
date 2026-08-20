@@ -2,9 +2,9 @@ import type { AgentStreamEvent } from '@ai-hero/sandcastle'
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
-import type { Feature, Ticket } from '@runcastle/core'
+import type { Feature, ModelEntry, Ticket } from '@runcastle/core'
 import { worktreeDir } from '@runcastle/core/paths'
-import { afterAll, describe, expect, it } from 'vitest'
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   ISOLATED_REPO_PATH,
   SANDBOX_WORKSPACE_PATH,
@@ -35,12 +35,16 @@ import {
   isWorktreeTeardownError,
   landWithResolve,
   parseEnvFile,
+  readTokenFromEnvFile,
   renderTemplate,
   renderTicketPrompt,
   resolveBurnWorkspaceMode,
   resolveMergeCommand,
   resolveSetupCommand,
+  resolveTicketModel,
+  resolverTemplatePath,
   selectSandbox,
+  burnerAssetPath,
   burnerTemplatePath,
   RUN_CONSTANT_PLACEHOLDERS,
   TICKET_SPECIFIC_PLACEHOLDERS,
@@ -197,6 +201,43 @@ describe('renderTicketPrompt', () => {
     expect(out).not.toMatch(/BLOCKED\.md at the repo root/i)
     expect(out).toMatch(/BLOCKED\.md`? — \*\*at the path given in "Where to work"/i)
     expect(out).toContain(`${ISOLATED_REPO_PATH}/BLOCKED.md`)
+  })
+
+  /**
+   * The same prompts are handed to a codex agent, which does not run
+   * `claude --print` and would be told a plain falsehood about its own process.
+   * Naming the CLI is the only thing that has to go — the completion contract is
+   * runtime-neutral already (sandcastle matches the signal against accumulated
+   * stdout, whichever provider produced it).
+   */
+  it('names no runtime in any burner prompt', () => {
+    const templates = [
+      burnerTemplatePath(),
+      resolverTemplatePath(),
+      burnerAssetPath('review-ticket.md'),
+      burnerAssetPath('research-waypoint.md'),
+    ]
+
+    for (const path of templates) {
+      const template = readFileSync(path, 'utf8')
+      // CLAUDE.md is a FILE in the repo, not a runtime — the review prompt
+      // still points at it as the standards authority.
+      const runtimeMentions = template.match(/claude(?!\.md)/gi) ?? []
+      expect(runtimeMentions, `${path} mentions: ${runtimeMentions.join(', ')}`).toEqual([])
+    }
+  })
+
+  it('keeps the completion contract in every prompt that signals one', () => {
+    // Unchanged by the runtime work: sandcastle matches the signal against the
+    // agent's accumulated stdout, so it is honoured identically on both
+    // providers. (The research prompt has never signalled — it completes on git.)
+    for (const path of [
+      burnerTemplatePath(),
+      resolverTemplatePath(),
+      burnerAssetPath('review-ticket.md'),
+    ]) {
+      expect(readFileSync(path, 'utf8'), path).toContain('<promise>COMPLETE</promise>')
+    }
   })
 
   it('drops the branches its sandbox cannot run', () => {
@@ -669,6 +710,47 @@ describe('isWorktreeTeardownError', () => {
   })
 })
 
+/** A resolved model per runtime — what `resolveModelEntry` hands the chokepoint. */
+const CLAUDE_MODEL: ModelEntry = { id: 'claude-opus-5', runtime: 'claude-code' }
+const CODEX_MODEL: ModelEntry = { id: 'gpt-5.6-sol', runtime: 'codex' }
+
+describe('resolveTicketModel — an assignment is that ticket’s run override', () => {
+  const config = {
+    model: 'claude-sonnet-5',
+    stepModels: { implement: 'claude-opus-5' },
+    models: [{ id: 'gpt-5.6-sol', runtime: 'codex' as const, note: 'mechanical refactors' }],
+  }
+
+  it('burns an assigned ticket on its own model, runtime and all', () => {
+    expect(
+      resolveTicketModel(config, null, null, ticket(1, [], { model: 'gpt-5.6-sol' })),
+    ).toEqual({ id: 'gpt-5.6-sol', runtime: 'codex', note: 'mechanical refactors' })
+  })
+
+  it('leaves an unassigned ticket on the unchanged default chain', () => {
+    // No assignment: the `implement` step override wins, exactly as before
+    // per-ticket models existed.
+    expect(resolveTicketModel(config, null, null, ticket(2))).toEqual({
+      id: 'claude-opus-5',
+      runtime: 'claude-code',
+    })
+    // …and the per-project override still beats that step override.
+    expect(resolveTicketModel(config, { model: 'claude-haiku-4-5' }, null, ticket(2)).id).toBe(
+      'claude-haiku-4-5',
+    )
+  })
+
+  it('beats the run-level override for the ticket that carries one, not for the rest', () => {
+    expect(
+      resolveTicketModel(config, null, 'claude-haiku-4-5', ticket(3, [], { model: 'gpt-5.6-sol' }))
+        .id,
+    ).toBe('gpt-5.6-sol')
+    expect(resolveTicketModel(config, null, 'claude-haiku-4-5', ticket(4)).id).toBe(
+      'claude-haiku-4-5',
+    )
+  })
+})
+
 describe('selectSandbox — provider for the configured sandbox', () => {
   const config = (sandbox: RuncastleConfig['sandbox']): RuncastleConfig => ({
     serverPort: 4512,
@@ -693,18 +775,60 @@ describe('selectSandbox — provider for the configured sandbox', () => {
   })
 
   /**
-   * The env handed to the spawned `claude`. A replacement env
-   * (`{ CLAUDE_CODE_OAUTH_TOKEN }` alone) strips HOME/USERPROFILE, and a claude
-   * with no home writes its state to a LITERAL `~/` under its cwd — that is how
-   * a 284 KB transcript for an unrelated project got committed under
-   * `packages/server/`. In a container the opposite holds: the host env must not
-   * cross the boundary, because both providers turn this map into `-e` flags.
+   * `~/.runcastle/.env` holds both providers' credentials side by side; which
+   * one a run needs follows from its resolved model's runtime.
+   */
+  describe('readTokenFromEnvFile — the runtime picks the key', () => {
+    const envFile = (content: string): string => {
+      const path = join(mkdtempSync(join(tmpdir(), 'rc-env-')), '.env')
+      writeFileSync(path, content, 'utf8')
+      return path
+    }
+
+    // The reader falls back to the host env, so the "unauthed" cases below only
+    // mean anything with the real ones cleared.
+    beforeEach(() => {
+      vi.stubEnv('CLAUDE_CODE_OAUTH_TOKEN', '')
+      vi.stubEnv('CODEX_API_KEY', '')
+    })
+    afterEach(() => vi.unstubAllEnvs())
+
+    it('reads each runtime its own key out of one file', () => {
+      const path = envFile('CLAUDE_CODE_OAUTH_TOKEN=sk-claude\nCODEX_API_KEY=sk-openai\n')
+
+      expect(readTokenFromEnvFile(path, 'claude-code')).toBe('sk-claude')
+      expect(readTokenFromEnvFile(path, 'codex')).toBe('sk-openai')
+    })
+
+    it('reports a runtime unauthed when only the other one is — the precheck seam', () => {
+      // The whole point of the fail-early check: a Claude token in the file
+      // does nothing for a codex burn, and the run must say so before it
+      // spends minutes building a container that cannot authenticate.
+      const path = envFile('CLAUDE_CODE_OAUTH_TOKEN=sk-claude\n')
+
+      expect(readTokenFromEnvFile(path, 'claude-code')).toBe('sk-claude')
+      expect(readTokenFromEnvFile(path, 'codex')).toBeUndefined()
+    })
+
+    it('treats an empty value and a missing file alike', () => {
+      expect(readTokenFromEnvFile(envFile('CODEX_API_KEY=\n'), 'codex')).toBeUndefined()
+      expect(readTokenFromEnvFile('/no/such/.env', 'codex')).toBeUndefined()
+    })
+  })
+
+  /**
+   * The env handed to the spawned CLI. A replacement env (the token alone)
+   * strips HOME/USERPROFILE, and an agent with no home writes its state to a
+   * LITERAL `~/` under its cwd — that is how a 284 KB transcript for an
+   * unrelated project got committed under `packages/server/`. In a container the
+   * opposite holds: the host env must not cross the boundary, because both
+   * providers turn this map into `-e` flags.
    */
   describe('buildBurnAgent — child environment', () => {
     const homeKeys = ['HOME', 'USERPROFILE'] as const
 
     it('keeps the host environment alongside the token when running on the host', () => {
-      const env = buildBurnAgent(config('noSandbox'), 'sk-token', 'opus').env
+      const env = buildBurnAgent(config('noSandbox'), 'sk-token', CLAUDE_MODEL).env
 
       expect(env.CLAUDE_CODE_OAUTH_TOKEN).toBe('sk-token')
       const present = homeKeys.filter((key) => process.env[key] !== undefined)
@@ -713,14 +837,86 @@ describe('selectSandbox — provider for the configured sandbox', () => {
     })
 
     it('keeps the host environment when there is no token to pass', () => {
-      const env = buildBurnAgent(config('noSandbox'), undefined, 'opus').env
+      const env = buildBurnAgent(config('noSandbox'), undefined, CLAUDE_MODEL).env
       expect(env.CLAUDE_CODE_OAUTH_TOKEN).toBeUndefined()
       expect(env.PATH ?? env.Path).toBeDefined()
     })
 
     it('sends only the overrides into a container, never the host env', () => {
-      const env = buildBurnAgent(config('docker'), 'sk-token', 'opus').env
+      const env = buildBurnAgent(config('docker'), 'sk-token', CLAUDE_MODEL).env
       expect(env).toEqual({ CLAUDE_CODE_OAUTH_TOKEN: 'sk-token' })
+    })
+
+    // A container's env starts empty, so the key the codex CLI authenticates
+    // with has to be put there explicitly — and under ITS name, not Claude's.
+    it('authenticates a codex burn with CODEX_API_KEY, not the Claude token', () => {
+      const env = buildBurnAgent(config('docker'), 'sk-openai', CODEX_MODEL).env
+      expect(env).toEqual({ CODEX_API_KEY: 'sk-openai' })
+    })
+  })
+
+  /**
+   * The chokepoint every headless agent is built at. The model's runtime picks
+   * the CLI — that is the whole of decision 2 — and the rendered print command
+   * is where it becomes observable without spawning anything.
+   */
+  describe('buildBurnAgent — runtime selection', () => {
+    const printCommand = (agent: ReturnType<typeof buildBurnAgent>): string =>
+      agent.buildPrintCommand({ prompt: 'do the ticket' }).command
+
+    it('builds a claude agent for a claude-runtime model', () => {
+      const agent = buildBurnAgent(config('docker'), 'sk-token', CLAUDE_MODEL)
+      expect(agent.name).toBe('claude-code')
+      expect(printCommand(agent)).toContain("--model 'claude-opus-5'")
+    })
+
+    it('builds a codex agent for a codex-runtime model', () => {
+      const agent = buildBurnAgent(config('docker'), 'sk-openai', CODEX_MODEL)
+      expect(agent.name).toBe('codex')
+      const command = printCommand(agent)
+      expect(command).toContain('codex exec')
+      expect(command).toContain("-m 'gpt-5.6-sol'")
+      expect(command).not.toContain('claude')
+    })
+
+    // Writing $HOME/.codex/hooks.json is necessary but not sufficient: codex
+    // runs no hook it has no persisted trust for, so without the flag the guard
+    // we just installed is silently inert.
+    it('un-gates the guard hooks it installed itself, and only those', () => {
+      const guarded = buildBurnAgent(config('docker'), 'k', CODEX_MODEL, { bypassHookTrust: true })
+      expect(printCommand(guarded)).toContain('--dangerously-bypass-hook-trust')
+
+      const unguarded = buildBurnAgent(config('docker'), 'k', CODEX_MODEL)
+      expect(printCommand(unguarded)).not.toContain('--dangerously-bypass-hook-trust')
+    })
+
+    it('gives a codex review agent the same run-scoped MCP server as claude', () => {
+      const mcp = {
+        path: '/data/review/mcp.json',
+        config: {
+          mcpServers: {
+            runcastle: {
+              type: 'http' as const,
+              url: 'http://127.0.0.1:4512/mcp',
+              headers: { 'X-Runcastle-Run': 'run_abc123' },
+            },
+          },
+        },
+      }
+
+      const claudeCommand = printCommand(
+        buildBurnAgent(config('noSandbox'), undefined, CLAUDE_MODEL, { onHost: true, mcp }),
+      )
+      expect(claudeCommand).toContain('--mcp-config "/data/review/mcp.json"')
+
+      // Codex has no --mcp-config; the same server rides `-c` dotted overrides.
+      const codexCommand = printCommand(
+        buildBurnAgent(config('noSandbox'), undefined, CODEX_MODEL, { onHost: true, mcp }),
+      )
+      expect(codexCommand).toContain('-c mcp_servers.runcastle.url="http://127.0.0.1:4512/mcp"')
+      expect(codexCommand).toContain(
+        '-c mcp_servers.runcastle.http_headers.X-Runcastle-Run="run_abc123"',
+      )
     })
   })
 

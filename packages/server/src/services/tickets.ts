@@ -1,5 +1,5 @@
 import type { TicketInput } from '@runcastle/core'
-import { BlockingEdgeError, Ticket, newId, resolveBatchBlocking } from '@runcastle/core'
+import { BlockingEdgeError, Ticket, modelRoster, newId, resolveBatchBlocking } from '@runcastle/core'
 import { and, asc, eq } from 'drizzle-orm'
 import type { AppCtx } from '../db/types'
 import { tickets } from '../db/schema'
@@ -28,6 +28,7 @@ function rowToTicket(row: TicketSelect): Ticket {
     seams: row.seams,
     blockedBy: row.blockedBy,
     kind: row.kind,
+    model: row.model ?? undefined,
     lap: row.lap,
     status: row.status,
     commits: row.commits,
@@ -50,6 +51,27 @@ function resolveBlocking(inputs: TicketInput[], startSeq: number) {
     if (e instanceof BlockingEdgeError) throw new InvalidInputError(e.message)
     throw e
   }
+}
+
+/**
+ * A ticket's model assignment as it is stored: the trimmed id, or `null` for
+ * "resolve it the ordinary way" (decisions.md #4). Blank and whitespace clear
+ * the assignment rather than persisting an id nothing can launch, and any id
+ * that survives must be one the operator actually configured — the roster is
+ * the curated list with their own entries over it, so a valid assignment is
+ * always something the settings dropdown offers. An invented id would launch
+ * nothing and only surface at burn time, so it is refused here.
+ */
+function normalizeModel(ctx: AppCtx, value: string | null | undefined): string | null {
+  const id = value?.trim()
+  if (!id) return null
+  const roster = modelRoster(ctx.config)
+  if (!roster.some((m) => m.id === id)) {
+    throw new InvalidInputError(
+      `unknown model "${id}" — assign one of the configured models: ${roster.map((m) => m.id).join(', ')}`,
+    )
+  }
+  return id
 }
 
 export function listByFeature(ctx: AppCtx, featureId: string): Ticket[] {
@@ -106,6 +128,9 @@ export function storeTickets(
     // Pass-through, defaulted here rather than left to the column so the rows
     // this function returns carry the kind without a re-read.
     kind: t.kind ?? ('implementation' as const),
+    // Validated before anything is written, so one bad id fails the whole batch
+    // rather than storing a half-assigned one.
+    model: normalizeModel(ctx, t.model),
     lap,
     status: 'pending' as const,
     commits: [] as string[],
@@ -134,7 +159,13 @@ export function getTicket(ctx: AppCtx, id: string): Ticket {
 /** Content fields a human/agent may rewrite after the fact (revisit sessions). */
 export type TicketContentPatch = Partial<
   Pick<Ticket, 'title' | 'goal' | 'context' | 'acceptanceCriteria' | 'seams'>
->
+> & {
+  /**
+   * Reassign the burn model, or clear it with `null`/`''` so the ticket falls
+   * back to the ordinary `resolveModel` chain (decisions.md #4).
+   */
+  model?: string | null
+}
 
 /** Statuses whose content may still change / that may still be cancelled. */
 const MUTABLE_STATUSES = new Set<Ticket['status']>(['pending', 'failed'])
@@ -148,10 +179,13 @@ function assertMutable(t: Ticket, verb: string): void {
 }
 
 /**
- * Rewrite a ticket's content (title/goal/context/acceptanceCriteria/seams) —
- * the ticket-surgery half of a revisit session. Only `pending`/`failed` tickets
- * are editable: a `burning` ticket's prompt is already rendered, and rewriting
- * `done`/`cancelled` history would lie about what was burned.
+ * Rewrite a ticket's content (title/goal/context/acceptanceCriteria/seams) or
+ * its model assignment — the ticket-surgery half of a revisit session. Only
+ * `pending`/`failed` tickets are editable: a `burning` ticket's prompt is
+ * already rendered (and its agent already launched on whatever model it had),
+ * and rewriting `done`/`cancelled` history would lie about what was burned.
+ * That status guard is what makes the card's model editable exactly while the
+ * ticket is still burnable.
  */
 export function editTicket(ctx: AppCtx, id: string, patch: TicketContentPatch): Ticket {
   const current = getTicket(ctx, id)
@@ -163,8 +197,9 @@ export function editTicket(ctx: AppCtx, id: string, patch: TicketContentPatch): 
   if (patch.context !== undefined) set.context = patch.context
   if (patch.acceptanceCriteria !== undefined) set.acceptanceCriteria = patch.acceptanceCriteria
   if (patch.seams !== undefined) set.seams = patch.seams
+  if (patch.model !== undefined) set.model = normalizeModel(ctx, patch.model)
   if (Object.keys(set).length === 0) {
-    throw new InvalidInputError('nothing to edit — pass at least one content field')
+    throw new InvalidInputError('nothing to edit — pass at least one field')
   }
 
   ctx.db.update(tickets).set(set).where(eq(tickets.id, id)).run()

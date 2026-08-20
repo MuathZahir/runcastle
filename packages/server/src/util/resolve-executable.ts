@@ -55,6 +55,7 @@ const WIN_EXTS = ['.exe', '.cmd', '.bat', '.ps1', '']
  */
 export const BIN_OVERRIDE_ENV: Readonly<Record<string, string>> = {
   claude: 'RUNCASTLE_CLAUDE_BIN',
+  codex: 'RUNCASTLE_CODEX_BIN',
   node: 'RUNCASTLE_NODE_BIN',
 }
 

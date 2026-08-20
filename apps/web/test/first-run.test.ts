@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { firstSetupStep, wizardSteps, type ProbeLike } from '../src/lib/first-run'
+import {
+  firstSetupStep,
+  nextSetupStep,
+  readyRuntimes,
+  runtimeReadiness,
+  wizardSteps,
+  type ProbeLike,
+} from '../src/lib/first-run'
 
 /**
  * The wizard's promise to a first-time user: nothing was skipped behind your
@@ -12,7 +19,7 @@ const unset: ProbeLike = { status: 'unset', detail: 'user.email not set — comm
 
 describe('firstSetupStep', () => {
   it('skips the identity form when git already has one', () => {
-    expect(firstSetupStep(ok)).toBe('afk')
+    expect(firstSetupStep(ok)).toBe('runtimes')
   })
 
   it('asks for an identity when it is missing, or while the probe is in flight', () => {
@@ -23,16 +30,21 @@ describe('firstSetupStep', () => {
 
 describe('wizardSteps', () => {
   it('keeps the whole sequence on the rail, whichever step is showing', () => {
-    expect(wizardSteps('afk', ok).map((s) => s.key)).toEqual(['identity', 'afk', 'project'])
+    expect(wizardSteps('afk', ok).map((s) => s.key)).toEqual([
+      'identity',
+      'runtimes',
+      'afk',
+      'project',
+    ])
   })
 
   // The bug this fixes: landing on AFK burns with "Git identity" listed first and
   // never shown, so the user cannot tell whether it passed or needs attention.
   it('shows a step the host satisfied as passed, with what was detected', () => {
-    const [identity, afk] = wizardSteps('afk', ok)
-    expect(identity?.state).toBe('passed')
-    expect(identity?.detected).toBe('detected from git config: Ada Lovelace <ada@example.com>')
-    expect(afk?.state).toBe('current')
+    const rows = wizardSteps('afk', ok)
+    expect(rows[0]?.state).toBe('passed')
+    expect(rows[0]?.detected).toBe('detected from git config: Ada Lovelace <ada@example.com>')
+    expect(rows.find((s) => s.key === 'afk')?.state).toBe('current')
   })
 
   // An unset probe's detail is a complaint ("commits would fail"), not a value —
@@ -46,10 +58,110 @@ describe('wizardSteps', () => {
   it('claims nothing is passed on the step the user is being shown', () => {
     const rows = wizardSteps('identity', unset)
     expect(rows[0]?.detected).toBeUndefined()
-    expect(rows.map((s) => s.state)).toEqual(['current', 'todo', 'todo'])
+    expect(rows.map((s) => s.state)).toEqual(['current', 'todo', 'todo', 'todo'])
   })
 
   it('walks forward as the user advances', () => {
-    expect(wizardSteps('project', unset).map((s) => s.state)).toEqual(['done', 'done', 'current'])
+    expect(wizardSteps('project', unset).map((s) => s.state)).toEqual([
+      'done',
+      'done',
+      'done',
+      'current',
+    ])
+  })
+})
+
+/**
+ * Both providers are peers (decision 6): the wizard shows what each host has,
+ * lets the operator auth any subset, and leaves only once ONE of them can
+ * actually open a session — never once a particular vendor can.
+ */
+describe('runtimeReadiness', () => {
+  const probe = (
+    runtime: string,
+    check: string,
+    status: string,
+    over: Partial<ProbeLike> = {},
+  ): ProbeLike => ({
+    status,
+    detail: `${runtime} ${check} ${status}`,
+    runtime: runtime as ProbeLike['runtime'],
+    check,
+    ...over,
+  })
+
+  const claudeReady = [
+    probe('claude-code', 'binary', 'ok'),
+    probe('claude-code', 'auth', 'ok'),
+    probe('claude-code', 'afk-key', 'unset'),
+  ]
+  const codexMissing = [
+    probe('codex', 'binary', 'missing', { fix: 'Install Codex: npm install -g @openai/codex' }),
+    probe('codex', 'auth', 'missing'),
+    probe('codex', 'afk-key', 'unset'),
+  ]
+
+  it('shows both providers, whichever the host has', () => {
+    const cards = runtimeReadiness([...claudeReady, ...codexMissing])
+    expect(cards.map((c) => c.runtime)).toEqual(['claude-code', 'codex'])
+    expect(cards.map((c) => c.label)).toEqual(['Claude Code', 'Codex'])
+  })
+
+  it('carries the install line for a provider that is not here', () => {
+    const [, codex] = runtimeReadiness([...claudeReady, ...codexMissing])
+    expect(codex?.installed).toBe(false)
+    expect(codex?.talkReady).toBe(false)
+    expect(codex?.installFix).toContain('Install Codex')
+  })
+
+  it('counts a runtime ready for sessions once it is installed and logged in', () => {
+    const [claude] = runtimeReadiness([...claudeReady, ...codexMissing])
+    expect(claude).toMatchObject({ installed: true, authed: true, afkReady: false, talkReady: true })
+  })
+
+  // The unattended credential authenticates a session too — an operator who
+  // pasted a key is not sent back to log in a second time.
+  it('accepts the AFK credential in place of an interactive login', () => {
+    const [, codex] = runtimeReadiness([
+      probe('codex', 'binary', 'ok'),
+      probe('codex', 'auth', 'unset'),
+      probe('codex', 'afk-key', 'ok'),
+    ])
+    expect(codex?.talkReady).toBe(true)
+  })
+
+  it('never calls an installed-but-unauthed runtime ready', () => {
+    const [, codex] = runtimeReadiness([
+      probe('codex', 'binary', 'ok'),
+      probe('codex', 'auth', 'unset'),
+      probe('codex', 'afk-key', 'unset'),
+    ])
+    expect(codex?.installed).toBe(true)
+    expect(codex?.talkReady).toBe(false)
+  })
+
+  it('reports nothing ready while the probe is still in flight', () => {
+    expect(readyRuntimes(runtimeReadiness([]))).toEqual([])
+  })
+
+  it('names every ready runtime — a codex-only host included', () => {
+    const cards = runtimeReadiness([
+      probe('codex', 'binary', 'ok'),
+      probe('codex', 'auth', 'ok'),
+      probe('codex', 'afk-key', 'unset'),
+      probe('claude-code', 'binary', 'missing'),
+      probe('claude-code', 'auth', 'missing'),
+      probe('claude-code', 'afk-key', 'unset'),
+    ])
+    expect(readyRuntimes(cards)).toEqual(['codex'])
+  })
+})
+
+describe('nextSetupStep', () => {
+  it('walks the setup order and stops at the end', () => {
+    expect(nextSetupStep('identity')).toBe('runtimes')
+    expect(nextSetupStep('runtimes')).toBe('afk')
+    expect(nextSetupStep('afk')).toBe('project')
+    expect(nextSetupStep('project')).toBeUndefined()
   })
 })

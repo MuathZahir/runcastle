@@ -2,8 +2,8 @@ import { existsSync, mkdtempSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { resolvePluginDir } from '../src/launcher/launcher'
-import { KICKOFF_LINES } from '../src/launcher/sessions'
+import { KICKOFF_LINES } from '../src/launcher/runtimes/claude'
+import { resolvePluginDir } from '../src/launcher/skills-root'
 
 describe('resolvePluginDir', () => {
   it('resolves the real runcastle plugin dir from the module location', () => {

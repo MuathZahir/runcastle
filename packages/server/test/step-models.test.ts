@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import { beforeEach, describe, expect, it } from 'vitest'
 import type { AppCtx } from '../src/db/types'
 import { InvalidInputError } from '../src/errors'
+import { listByProject } from '../src/services/events'
 import { getSettings, updateSettings } from '../src/services/settings'
 import { makeTestCtx } from './helpers/db'
 
@@ -92,5 +93,52 @@ describe('per-step models (#48)', () => {
     updateSettings(ctx, { key: 'stepModels.qa', value: 'claude-haiku-4-5-20251001' }, io())
     const raw = JSON.parse(readFileSync(configFile, 'utf8'))
     expect(raw.stepModels.qa).toBe('claude-haiku-4-5-20251001')
+  })
+
+  /**
+   * The `models` roster is where the settings UI persists a free-text model id
+   * together with the runtime the operator declared for it and its optional
+   * use-case note — the one place a custom id's runtime is stated rather than
+   * guessed. Global-only, like the step overrides.
+   */
+  describe('models roster', () => {
+    const entry = { id: 'gpt-5.6-terra', runtime: 'codex', note: 'mechanical refactors' }
+
+    it('reports an empty roster until one is written', () => {
+      expect(field(getSettings(ctx, undefined, io()), 'models').value).toEqual([])
+      expect(field(getSettings(ctx, undefined, io()), 'models').source).toBe('default')
+    })
+
+    it('round-trips a custom Codex entry with its note through the config file', () => {
+      updateSettings(ctx, { key: 'models', value: [entry] }, io())
+
+      expect(JSON.parse(readFileSync(configFile, 'utf8')).models).toEqual([entry])
+      expect(field(getSettings(ctx, undefined, io()), 'models').value).toEqual([entry])
+      expect(field(getSettings(ctx, undefined, io()), 'models').source).toBe('file')
+      // write-through: the next launch reads ctx.config, not the file
+      expect(ctx.config.models).toEqual([entry])
+    })
+
+    it('rejects an entry with no declared runtime, or an unknown one', () => {
+      expect(() =>
+        updateSettings(ctx, { key: 'models', value: [{ id: 'gpt-5.6-terra' }] }, io()),
+      ).toThrow(InvalidInputError)
+      expect(() =>
+        updateSettings(
+          ctx,
+          { key: 'models', value: [{ id: 'gpt-5.6-terra', runtime: 'gemini' }] },
+          io(),
+        ),
+      ).toThrow(InvalidInputError)
+    })
+
+    it('describes the written roster in its event rather than [object Object]', () => {
+      updateSettings(ctx, { key: 'models', value: [entry] }, io())
+      const message = listByProject(ctx, 'global', 0).find(
+        (e) => e.type === 'settings.updated',
+      )?.message
+      expect(message).toContain('gpt-5.6-terra')
+      expect(message).not.toContain('[object Object]')
+    })
   })
 })

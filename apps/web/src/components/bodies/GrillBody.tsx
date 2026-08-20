@@ -27,7 +27,7 @@ import { SessionPanel } from '../SessionPanel'
  * fills everything to its right at full height. An unmapped feature is the
  * terminal pane alone (with the spec doc-card above it in the `spec` phase).
  *
- * The terminal is the real live Claude Code session, inline over the /ws PTY
+ * The terminal is the real live agent session, inline over the /ws PTY
  * stream. An ended session renders as the quiet ended card, which offers Resume
  * when its conversation is still on disk (see {@link SessionPanel}). With no
  * session at all the panel is an empty state — the next-step bar owns starting
@@ -91,7 +91,8 @@ export function GrillBody({
             <EmptyState
               icon={<IconTerminal size={16} />}
               title="No session yet"
-              hint="Start a session from the bar above — you and Claude shape the idea here before any code is written."
+              // No session, so no resolved model and no runtime to name yet.
+              hint="Start a session from the bar above — you and the agent shape the idea here before any code is written."
             />
           </div>
         )}

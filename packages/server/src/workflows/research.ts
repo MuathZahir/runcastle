@@ -1,8 +1,16 @@
 import { existsSync, mkdirSync, readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import type { Feature, RuncastleConfig, Waypoint, WorkflowCtx, WorkflowDef } from '@runcastle/core'
-import { newId, resolveModel } from '@runcastle/core'
+import type {
+  AgentRuntime,
+  Feature,
+  ModelEntry,
+  RuncastleConfig,
+  Waypoint,
+  WorkflowCtx,
+  WorkflowDef,
+} from '@runcastle/core'
+import { newId, resolveModelEntry } from '@runcastle/core'
 import { loadConfig } from '@runcastle/core/config-load'
 import { envPath, featureDocsRel, logsDir } from '@runcastle/core/paths'
 import { resolveSkillsRoot } from '../launcher/skills-root'
@@ -15,18 +23,20 @@ import {
   researchBranchName,
 } from '../services/git'
 import type { StreamThrottle, ThrottledEvent } from './ticket-burner'
+import { RUNTIME_AUTH_SETUP_HINT } from '../services/setup'
 import {
+  AUTH_MISSING_EVENT,
   buildBurnAgent,
   buildFeatureBrief,
   createStreamThrottle,
   isWorktreeTeardownError,
-  parseEnvFile,
   // The ONE docs-digest reader. This module used to carry a private copy of the
   // old unbounded `*.md` glob — the third independent instance of that bug, after
   // the burner's and the MCP tool's — so a research waypoint was handed the same
   // ~25k-token payload (outcome.md + test-notes.md and all) that the allowlist
   // exists to prevent. Importing it keeps the three callers on one contract.
   readDocsDigestFromDisk,
+  readTokenFromEnvFile,
   selectSandbox,
 } from './ticket-burner'
 
@@ -52,10 +62,6 @@ import {
  * testable against a fake, with no real sandcastle involvement.
  */
 
-const AUTH_MISSING_EVENT = 'auth.missing'
-const AUTH_MISSING_MESSAGE =
-  'run `claude setup-token` and put CLAUDE_CODE_OAUTH_TOKEN in ~/.runcastle/.env'
-
 /** What one research run resolves to. Aborts are thrown, never returned here. */
 export type ResearchOutcome =
   | { readonly status: 'done'; readonly commits: string[]; readonly docRelPath: string }
@@ -63,7 +69,9 @@ export type ResearchOutcome =
 
 export interface ResearchDeps {
   config: RuncastleConfig
-  /** Whether a CLAUDE_CODE_OAUTH_TOKEN is available (docker requires it). */
+  /** The runtime this waypoint's resolved model launches — whose auth key must be set. */
+  runtime: AgentRuntime
+  /** Whether {@link runtime}'s auth key is available (docker requires it). */
   hasAuthToken: boolean
   /** Runs the waypoint to a terminal outcome. Real impl calls sandcastle `run()`. */
   executeResearchRun: (ctx: WorkflowCtx, waypoint: Waypoint) => Promise<ResearchOutcome>
@@ -101,9 +109,10 @@ export async function researchRun(
   }
 
   // Auth precheck: container sandboxes (docker/podman) need a token before we
-  // start any container; noSandbox runs `claude` on the already-authed host.
+  // start any container; noSandbox runs the CLI on the already-authed host. The
+  // message names the fix for THIS run's runtime.
   if (deps.config.sandbox !== 'noSandbox' && !deps.hasAuthToken) {
-    ctx.emitEvent({ type: AUTH_MISSING_EVENT, message: AUTH_MISSING_MESSAGE })
+    ctx.emitEvent({ type: AUTH_MISSING_EVENT, message: RUNTIME_AUTH_SETUP_HINT[deps.runtime] })
     return { status: 'failed', summary: 'research aborted: auth token missing' }
   }
 
@@ -236,7 +245,7 @@ async function realExecuteResearchRun(
   waypoint: Waypoint,
   config: RuncastleConfig,
   token: string | undefined,
-  model: string,
+  model: ModelEntry,
 ): Promise<ResearchOutcome> {
   const { project, feature } = ctx
   const docRelPath = researchDocRel(feature.slug, waypoint)
@@ -335,27 +344,14 @@ async function realExecuteResearchRun(
  */
 function resolveResearchDeps(ctx: WorkflowCtx): ResearchDeps {
   const config = loadConfig()
-  const token = readTokenFromEnvFile(envPath())
-  const model = resolveModel('research', config, ctx.project, ctx.modelOverride)
+  const model = resolveModelEntry('research', config, ctx.project, ctx.modelOverride)
+  const token = readTokenFromEnvFile(envPath(), model.runtime)
   return {
     config,
+    runtime: model.runtime,
     hasAuthToken: token !== undefined,
     executeResearchRun: (c, waypoint) => realExecuteResearchRun(c, waypoint, config, token, model),
   }
-}
-
-/** Read CLAUDE_CODE_OAUTH_TOKEN from the .env file, falling back to process env. */
-function readTokenFromEnvFile(path: string): string | undefined {
-  let fromFile: string | undefined
-  if (existsSync(path)) {
-    try {
-      fromFile = parseEnvFile(readFileSync(path, 'utf8')).CLAUDE_CODE_OAUTH_TOKEN
-    } catch {
-      fromFile = undefined
-    }
-  }
-  const token = fromFile && fromFile.length > 0 ? fromFile : process.env.CLAUDE_CODE_OAUTH_TOKEN
-  return token && token.length > 0 ? token : undefined
 }
 
 export const research: WorkflowDef = {

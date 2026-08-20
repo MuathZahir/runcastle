@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { delimiter, join } from 'node:path'
-import type { RuncastleConfig, Ticket, WorkflowCtx } from '@runcastle/core'
+import type { ModelEntry, RuncastleConfig, Ticket, WorkflowCtx } from '@runcastle/core'
 import { logsDir, reviewDir, reviewWalkthroughPath } from '@runcastle/core/paths'
 import { run } from '@ai-hero/sandcastle'
 import type { AgentStreamEvent, RunOptions } from '@ai-hero/sandcastle'
@@ -8,7 +8,7 @@ import { noSandbox } from '@ai-hero/sandcastle/sandboxes/no-sandbox'
 import { renderRunMcpConfig } from '../launcher/artifacts'
 import { appendTranscript, beginTranscript, endTranscript } from '../services/agent-stream'
 import { releaseReviewDrive } from '../services/git'
-import type { HarvestedDigest, TicketOutcome } from './ticket-burner'
+import type { BurnAgentMcp, HarvestedDigest, TicketOutcome } from './ticket-burner'
 import {
   buildBurnAgent,
   buildFeatureBrief,
@@ -111,7 +111,8 @@ export function findOnPath(
  */
 interface ReviewArtifacts {
   dir: string
-  mcpConfigPath: string
+  /** The run-scoped runcastle MCP server, in both the forms a runtime can take it. */
+  mcp: BurnAgentMcp
   digestPath: string
   blockedPath: string
   /** Where a browser review points `agent-browser record start`. */
@@ -129,10 +130,13 @@ function writeReviewArtifacts(
   rmSync(dir, { recursive: true, force: true })
   mkdirSync(dir, { recursive: true })
   const mcpConfigPath = join(dir, 'mcp.json')
-  writeFileSync(mcpConfigPath, JSON.stringify(renderRunMcpConfig(runId, config), null, 2), 'utf8')
+  const mcpConfig = renderRunMcpConfig(runId, config)
+  writeFileSync(mcpConfigPath, JSON.stringify(mcpConfig, null, 2), 'utf8')
   return {
     dir,
-    mcpConfigPath,
+    // The file is what Claude Code reads; the values are what Codex takes as
+    // `-c` overrides. Same server, same `X-Runcastle-Run` header, either way.
+    mcp: { path: mcpConfigPath, config: mcpConfig },
     digestPath: join(dir, 'DIGEST.md'),
     blockedPath: join(dir, 'BLOCKED.md'),
     walkthroughPath: reviewWalkthroughPath(ticket.id),
@@ -159,7 +163,7 @@ async function releaseDriveQuietly(): Promise<void> {
 export interface ReviewDeps {
   config: RuncastleConfig
   token: string | undefined
-  model: string
+  model: ModelEntry
   /**
    * The run's docs digest, already built (and already charged to the timeline)
    * once for the whole burn. Re-reading it here would be the thirteenth
@@ -238,7 +242,7 @@ export async function executeReviewTicket(
     // tickets: the app, its database and its browser only exist out here.
     agent: buildBurnAgent(deps.config, deps.token, deps.model, {
       onHost: true,
-      mcpConfigPath: artifacts.mcpConfigPath,
+      mcp: artifacts.mcp,
     }),
     sandbox: noSandbox(),
     cwd: project.repoPath,

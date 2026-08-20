@@ -130,6 +130,57 @@ describe('mcp tools', () => {
     expect(types).toContain('ticket.cancelled')
   })
 
+  it('emit_tickets stamps an annotated model and refuses one off the roster', () => {
+    ctx.config = {
+      ...ctx.config,
+      models: [{ id: 'gpt-5.6-sol', runtime: 'codex', note: 'mechanical refactors' }],
+    }
+    const out = toolEmitTickets(ctx, session, {
+      tickets: [{ ...ticket('refactor'), model: 'gpt-5.6-sol' }, ticket('design')],
+    })
+    expect(listByFeature(ctx, featureId).map((t) => t.model)).toEqual(['gpt-5.6-sol', undefined])
+    expect(out.stored).toBe(2)
+
+    expect(() =>
+      toolEmitTickets(ctx, session, { tickets: [{ ...ticket('x'), model: 'gpt-9-imaginary' }] }),
+    ).toThrow(InvalidInputError)
+  })
+
+  it('update_ticket reassigns and clears a ticket model, refusing an unknown id', () => {
+    const out = toolEmitTickets(ctx, session, { tickets: [ticket('one')] })
+    const [{ id }] = out.tickets
+
+    expect(toolUpdateTicket(ctx, session, { id, model: 'gpt-5.6-sol' }).ticket.model).toBe(
+      'gpt-5.6-sol',
+    )
+    expect(toolUpdateTicket(ctx, session, { id, model: '' }).ticket.model).toBeUndefined()
+    expect(() => toolUpdateTicket(ctx, session, { id, model: 'gpt-9-imaginary' })).toThrow(
+      InvalidInputError,
+    )
+  })
+
+  it('get_feature_context offers only the annotated roster entries, empty when none', () => {
+    // Nothing annotated: the emitting session is offered no candidates at all,
+    // which is what keeps today's behaviour (never assign) the default.
+    expect(toolGetFeatureContext(ctx, session).annotatedModels).toEqual([])
+
+    ctx.config = {
+      ...ctx.config,
+      models: [
+        // A curated entry the operator annotated in place…
+        { id: 'claude-opus-5', runtime: 'claude-code', note: 'UI/UX taste' },
+        // …one of their own, annotated…
+        { id: 'my-proxy-model', runtime: 'codex', note: 'cheap bulk edits' },
+        // …and one they added but never described.
+        { id: 'unlabelled-model', runtime: 'codex' },
+      ],
+    }
+    expect(toolGetFeatureContext(ctx, session).annotatedModels).toEqual([
+      { id: 'claude-opus-5', runtime: 'claude-code', note: 'UI/UX taste' },
+      { id: 'my-proxy-model', runtime: 'codex', note: 'cheap bulk edits' },
+    ])
+  })
+
   it('update_ticket/cancel_ticket refuse a ticket from another feature', () => {
     const otherFeature = seedFeature(ctx, seedProject(ctx, repoPath).id, { slug: 'other' })
     const [foreign] = storeTickets(ctx, otherFeature.id, [ticket('foreign')])

@@ -1,22 +1,57 @@
 import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { DEFAULT_RUNTIME, RUNTIME_DEFAULT_MODELS, type AgentRuntime } from '@runcastle/core'
 import { envPath, sandboxBuildDir } from '@runcastle/core/paths'
 import type { ExecFn, ProbeResult } from '../doctor/doctor'
-import { gitIdentityProbe } from '../doctor/doctor'
+import { RUNTIME_SPECS, gitIdentityProbe } from '../doctor/doctor'
+import type { AppCtx } from '../db/types'
 import { InvalidInputError, NotFoundError } from '../errors'
 import { ASSET_ENV, resolveAsset } from '../launcher/asset-paths'
+import { updateSettings, type SettingsIO } from './settings'
 
 /**
  * First-run / Enable-AFK setup service (issue #50). The wizard's one hard step
- * (git identity) and the AFK card's actions (capture the OAuth token into the
- * data-dir env file, tell the embedded terminals their exact command, offer an
- * OS-specific runtime install line) all live here as a small, injected core so
+ * (git identity) and the AFK card's actions (capture each runtime's unattended
+ * credential into the data-dir env file, tell the embedded terminals their exact
+ * command, offer an OS-specific runtime install line, seed the model defaults
+ * from whatever the operator authed) all live here as a small, injected core so
  * the host is never touched under test. Everything IO is a passed-in seam:
- * {@link ExecFn} for git, {@link AfkTokenIo} for the env file + live token check.
+ * {@link ExecFn} for git, {@link AfkTokenIo} for the env file + live check.
+ *
+ * Nothing here names one provider: which binary, which env var and which words
+ * describe a credential all come from the runtime's {@link RUNTIME_SPECS} entry.
  */
 
-const AFK_TOKEN_KEY = 'CLAUDE_CODE_OAUTH_TOKEN'
+/**
+ * The env var each runtime's AFK burns authenticate with. Codex's is an OpenAI
+ * API key — verified against codex-rs, `CODEX_API_KEY` is its highest-precedence
+ * auth path and the one designed for headless use. Interactive Codex sessions
+ * are NOT this: they inherit the human's own `codex login` (decision 5).
+ */
+export const AFK_TOKEN_KEY = RUNTIME_SPECS['claude-code'].afkKey
+export const CODEX_API_KEY = RUNTIME_SPECS.codex.afkKey
+
+/**
+ * The env var each runtime's unattended burns authenticate with, by runtime. One
+ * map so the env-file reader, the burn env builder and the setup UI never
+ * disagree about which key a runtime needs.
+ */
+export const RUNTIME_AUTH_KEY: Record<AgentRuntime, string> = {
+  'claude-code': AFK_TOKEN_KEY,
+  codex: CODEX_API_KEY,
+}
+
+/**
+ * What to tell a human whose burn aborted for missing auth, per runtime. Both
+ * end in the same place — a key in `~/.runcastle/.env` — but only the Claude one
+ * has a command that produces the value, so the words come from each runtime's
+ * own {@link RUNTIME_SPECS} entry rather than being written twice.
+ */
+export const RUNTIME_AUTH_SETUP_HINT: Record<AgentRuntime, string> = {
+  'claude-code': RUNTIME_SPECS['claude-code'].afkFix,
+  codex: RUNTIME_SPECS.codex.afkFix,
+}
 
 /** Result of a live token validity check (a real `claude` call, injected). */
 export interface TokenValidity {
@@ -69,7 +104,7 @@ export function upsertEnvVar(content: string, key: string, value: string): strin
   return `${next.join('\n')}\n`
 }
 
-/** Injected IO for the AFK-token capture: read/write the env file, verify live. */
+/** Injected IO for the AFK-credential capture: read/write the env file, verify live. */
 export interface AfkTokenIo {
   read: () => string
   write: (content: string) => void
@@ -77,17 +112,80 @@ export interface AfkTokenIo {
 }
 
 /**
- * Captures the AFK OAuth token from the embedded `claude setup-token` flow into
- * the data-dir env file, then runs a live validity check. Always persists a
- * non-empty token (so a transient verify failure doesn't lose it) and reports
- * the check's verdict for the UI. Rejects an empty token without touching disk.
+ * Captures a runtime's AFK credential — Claude Code's `setup-token` OAuth token,
+ * Codex's OpenAI API key — into the data-dir env file under that runtime's own
+ * key, then runs a live validity check. Always persists a non-empty value (so a
+ * transient verify failure doesn't lose it) and reports the check's verdict for
+ * the UI. Rejects an empty value without touching disk.
  */
-export async function saveAfkToken(io: AfkTokenIo, rawToken: string): Promise<TokenValidity> {
-  const token = rawToken.trim()
-  if (token.length === 0) throw new InvalidInputError('AFK token cannot be empty')
-  if (/[\r\n]/.test(token)) throw new InvalidInputError('AFK token cannot contain a newline')
-  io.write(upsertEnvVar(io.read(), AFK_TOKEN_KEY, token))
-  return io.verify(token)
+export async function saveAfkCredential(
+  io: AfkTokenIo,
+  rawValue: string,
+  runtime: AgentRuntime = DEFAULT_RUNTIME,
+): Promise<TokenValidity> {
+  const spec = RUNTIME_SPECS[runtime]
+  const value = rawValue.trim()
+  if (value.length === 0) throw new InvalidInputError(`${spec.label} ${spec.afkNoun} cannot be empty`)
+  if (/[\r\n]/.test(value)) {
+    throw new InvalidInputError(`${spec.label} ${spec.afkNoun} cannot contain a newline`)
+  }
+  io.write(upsertEnvVar(io.read(), spec.afkKey, value))
+  return io.verify(value)
+}
+
+/**
+ * Which runtime's curated default pair onboarding seeds from (decision 7):
+ * Claude Code when it is one of the ready ones — so an operator who authed both
+ * keeps today's behaviour — and otherwise whichever single runtime they did
+ * auth. `undefined` when nothing is ready, which is the case the wizard refuses
+ * to complete in.
+ */
+export function seedRuntimeFor(ready: readonly AgentRuntime[]): AgentRuntime | undefined {
+  return ready.includes(DEFAULT_RUNTIME) ? DEFAULT_RUNTIME : ready[0]
+}
+
+/** What onboarding wrote: the runtime it seeded from and the values that landed. */
+export interface SeededModelDefaults {
+  runtime: AgentRuntime
+  /** Values actually written — a key the environment pins is left alone and absent. */
+  model?: string
+  smoke?: string
+}
+
+/**
+ * Seed the global default and smoke models from an authed runtime's curated pair
+ * when onboarding completes (decision 7). Hardcoded Claude defaults are dead
+ * values for a Codex-only operator, so the wizard writes real ones once — as
+ * ORDINARY settings mutations, events and all, not magic that keeps re-deciding.
+ *
+ * A value the environment pins (`RUNCASTLE_MODEL`) is left exactly as the
+ * operator pinned it: that is already a decision, and onboarding does not get to
+ * overrule it. Returns `null` when no runtime is ready to seed from.
+ */
+export function seedModelDefaults(
+  ctx: AppCtx,
+  ready: readonly AgentRuntime[],
+  io: SettingsIO = {},
+): SeededModelDefaults | null {
+  const runtime = seedRuntimeFor(ready)
+  if (!runtime) return null
+  const pair = RUNTIME_DEFAULT_MODELS[runtime]
+  const write = (key: string, value: string): string | undefined => {
+    try {
+      updateSettings(ctx, { key, value }, io)
+      return value
+    } catch (err) {
+      if (err instanceof InvalidInputError) return undefined
+      throw err
+    }
+  }
+  const model = write('model', pair.flagship)
+  const smoke = write('stepModels.smoke', pair.smoke)
+  return {
+    runtime,
+    ...(model ? { model } : {}),
+    ...(smoke ? { smoke } : {}),
+  }
 }
 
 /** OS-specific guided-manual runtime install: a copyable command + a follow-up note. */
@@ -141,8 +239,20 @@ export async function resolveRuntime(exec: ExecFn, preferred: Runtime): Promise<
   return preferred
 }
 
-/** Which embedded-terminal flow to launch. */
-export type TerminalKind = 'setup-token' | 'build-image'
+/**
+ * Which embedded-terminal flow to launch. Each runtime contributes a login flow
+ * (`claude auth login`, `codex login`) so onboarding can auth whichever
+ * providers the operator has; `setup-token` is Claude Code's separate long-lived
+ * AFK-token flow, which Codex has no analogue for (its AFK credential is an API
+ * key pasted straight in).
+ */
+export type TerminalKind = 'setup-token' | 'build-image' | 'claude-login' | 'codex-login'
+
+/** The login terminal kind for each runtime, as the wizard and settings offer it. */
+export const LOGIN_TERMINAL_KIND: Record<AgentRuntime, TerminalKind> = {
+  'claude-code': 'claude-login',
+  codex: 'codex-login',
+}
 
 /** The exact command an embedded terminal runs, resolved for the active runtime. */
 export interface TerminalSpec {
@@ -194,8 +304,10 @@ export function resolveSandcastleBin(): string | null {
 
 /**
  * The command each embedded-terminal / streaming flow runs. `setup-token` drives
- * the interactive `claude setup-token` login; `build-image` builds the sandcastle
- * image with whichever runtime is present (its output streams into the card).
+ * the interactive `claude setup-token` login; `claude-login`/`codex-login` drive
+ * each runtime's own interactive sign-in, which is what talk sessions run on;
+ * `build-image` builds the sandcastle image with whichever runtime is present
+ * (its output streams into the card).
  *
  * `build-image` launches the resolved sandcastle CLI (`opts.sandcastleBin`) under
  * `node` — its shebang runtime and a Tier-1 prerequisite — rather than a bare
@@ -210,6 +322,9 @@ export function terminalSpec(
   opts: { runtime: Runtime; imageName: string; sandcastleBin?: string },
 ): TerminalSpec {
   if (kind === 'setup-token') return { cmd: 'claude', args: ['setup-token'] }
+  for (const spec of Object.values(RUNTIME_SPECS)) {
+    if (kind === LOGIN_TERMINAL_KIND[spec.runtime]) return { cmd: spec.bin, args: spec.loginArgs }
+  }
   if (!opts.sandcastleBin) {
     throw new NotFoundError(
       'The bundled sandcastle CLI (@ai-hero/sandcastle) could not be located — reinstall runcastle.',
@@ -278,40 +393,44 @@ export function prepareSandboxBuildContext(): string {
 // ---------------------------------------------------------------------------
 
 /**
- * A live AFK-token validity check: run `claude --version`-equivalent auth probe
- * with the token in the environment. We can't fully round-trip the API here
- * without a paid call, so we treat a resolvable `claude` binary that accepts the
- * token env as valid presence; a missing binary is reported honestly.
+ * A live AFK-credential validity check: run the runtime's CLI `--version` with
+ * the credential saved. We can't fully round-trip the API here without a paid
+ * call, so we treat a resolvable binary as valid presence; a missing one is
+ * reported honestly.
  *
  * The two ways that probe can fail are kept *distinct*, because they have
  * opposite fixes and conflating them is what made this step a dead end for real
  * users: `ok:false` is a spawn failure (nothing to run — almost always a PATH the
- * server can't see, not a missing install), while a non-zero exit means `claude`
- * ran and rejected the call, which is a Claude Code problem, not a runcastle one.
- * Either way the token is already on disk, so we say so — the user's next move is
- * never "paste it again".
+ * server can't see, not a missing install), while a non-zero exit means the CLI
+ * ran and rejected the call, which is a runtime problem, not a runcastle one.
+ * Either way the credential is already on disk, so we say so — the user's next
+ * move is never "paste it again".
  */
-export function createTokenVerifier(exec: ExecFn): (token: string) => Promise<TokenValidity> {
-  return async (token) => {
-    if (token.length < 8) {
+export function createCredentialVerifier(
+  exec: ExecFn,
+  runtime: AgentRuntime = DEFAULT_RUNTIME,
+): (value: string) => Promise<TokenValidity> {
+  const spec = RUNTIME_SPECS[runtime]
+  return async (value) => {
+    if (value.length < 8) {
       return {
         valid: false,
-        detail: 'token looks malformed (too short) — saved to ~/.runcastle/.env anyway',
-        fix: 'Re-run `claude setup-token` and paste the whole line it prints (it starts with `sk-ant-oat`).',
+        detail: `${spec.afkNoun} looks malformed (too short) — saved to ~/.runcastle/.env anyway`,
+        fix: `${spec.afkFix}. It starts with \`sk-\`.`,
       }
     }
-    const out = await exec('claude', ['--version'])
+    const out = await exec(spec.bin, ['--version'])
     if (!out.ok) {
       return {
         valid: false,
         detail:
-          'Token saved to ~/.runcastle/.env, but runcastle could not launch `claude` to verify it. ' +
+          `${spec.afkNoun} saved to ~/.runcastle/.env, but runcastle could not launch \`${spec.bin}\` to verify it. ` +
           'That is a PATH problem in this server process, not a missing install — a terminal that finds ' +
-          '`claude` proves nothing about the PATH runcastle was started with.',
+          `\`${spec.bin}\` proves nothing about the PATH runcastle was started with.`,
         fix:
-          'Quit runcastle and start it again from a terminal where `claude --version` works. ' +
-          'If it still fails, pin the path: set RUNCASTLE_CLAUDE_BIN to the full path from ' +
-          '`where.exe claude` (Windows) or `which claude` (macOS/Linux), then restart runcastle.',
+          `Quit runcastle and start it again from a terminal where \`${spec.bin} --version\` works. ` +
+          `If it still fails, pin the path: set ${spec.binOverrideEnv} to the full path from ` +
+          `\`where.exe ${spec.bin}\` (Windows) or \`which ${spec.bin}\` (macOS/Linux), then restart runcastle.`,
       }
     }
     if (out.code !== 0) {
@@ -319,17 +438,17 @@ export function createTokenVerifier(exec: ExecFn): (token: string) => Promise<To
       return {
         valid: false,
         detail:
-          `Token saved to ~/.runcastle/.env, but \`claude --version\` exited ${out.code}` +
+          `${spec.afkNoun} saved to ~/.runcastle/.env, but \`${spec.bin} --version\` exited ${out.code}` +
           `${why ? `: ${why}` : ' with no output'}.`,
-        fix: 'Run `claude --version` yourself and fix what it reports — the Claude Code install is broken, not the token.',
+        fix: `Run \`${spec.bin} --version\` yourself and fix what it reports — the ${spec.label} install is broken, not the ${spec.afkNoun}.`,
       }
     }
-    return { valid: true, detail: 'token captured to ~/.runcastle/.env' }
+    return { valid: true, detail: `${spec.afkNoun} captured to ~/.runcastle/.env` }
   }
 }
 
 /** File-backed {@link AfkTokenIo} over the data-dir env file (`~/.runcastle/.env`). */
-export function fileAfkTokenIo(exec: ExecFn): AfkTokenIo {
+export function fileAfkTokenIo(exec: ExecFn, runtime: AgentRuntime = DEFAULT_RUNTIME): AfkTokenIo {
   const path = envPath()
   return {
     read: () => (existsSync(path) ? readFileSync(path, 'utf8') : ''),
@@ -337,6 +456,6 @@ export function fileAfkTokenIo(exec: ExecFn): AfkTokenIo {
       mkdirSync(dirname(path), { recursive: true })
       writeFileSync(path, content, 'utf8')
     },
-    verify: createTokenVerifier(exec),
+    verify: createCredentialVerifier(exec, runtime),
   }
 }

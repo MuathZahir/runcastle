@@ -30,16 +30,60 @@ export const MODEL_STEPS = [
 export const ModelStep = z.enum(MODEL_STEPS)
 export type ModelStep = z.infer<typeof ModelStep>
 
-/** A model offered in the settings UI's Default-model dropdown. */
-export interface CuratedModel {
-  id: string
-  label: string
+/**
+ * The agent runtimes a model can run on. Runtime is a property of the MODEL, not
+ * a separate knob: whichever model wins the {@link resolveModel} chain decides
+ * which CLI a session or burn launches.
+ */
+export const AGENT_RUNTIMES = ['claude-code', 'codex'] as const
+export const AgentRuntime = z.enum(AGENT_RUNTIMES)
+export type AgentRuntime = z.infer<typeof AgentRuntime>
+
+/**
+ * The runtime a model id with no roster entry runs on. Every model was a Claude
+ * model before Codex support existed, so a bare id stored by an older runcastle
+ * — or typed as free text without a declared runtime — must keep launching
+ * Claude Code. Never infer a runtime from the id string: pattern matching fails
+ * silently on proxies, local models, and unguessable future ids, and the failure
+ * mode is launching the wrong CLI.
+ */
+export const DEFAULT_RUNTIME: AgentRuntime = 'claude-code'
+
+/** One model offered in the settings UI's model dropdowns. */
+export const ModelEntry = z.object({
+  id: z.string().min(1),
+  runtime: AgentRuntime,
+  /**
+   * Free-text use-case note ("opus 5 — UI/UX", "gpt-5.6-sol — mechanical
+   * refactors"). Optional, and the opt-in for per-ticket model assignment: only
+   * annotated entries are offered to the agent that stamps a model on a ticket.
+   */
+  note: z.string().optional(),
+})
+export type ModelEntry = z.infer<typeof ModelEntry>
+
+/** A runtime's curated flagship + cheap/smoke pair. */
+export interface ModelDefaultPair {
+  flagship: string
+  smoke: string
+}
+
+/**
+ * The curated default pair per runtime, so onboarding can seed the global
+ * default and smoke models from whichever runtime the operator actually authed
+ * — hardcoded Claude defaults are dead values for a Codex-only user. Thereafter
+ * they are ordinary settings values, not magic that keeps re-deciding.
+ */
+export const RUNTIME_DEFAULT_MODELS: Record<AgentRuntime, ModelDefaultPair> = {
+  'claude-code': { flagship: 'claude-opus-5', smoke: 'claude-haiku-4-5' },
+  codex: { flagship: 'gpt-5.6-sol', smoke: 'gpt-5.6-luna' },
 }
 
 /**
  * The curated model list surfaced by the settings UI (issue #48). Lives in core
  * so server and web share one source of truth (web's hardcoded constant is
- * retired). Any model id not in this list is still accepted as free text.
+ * retired). Any model id not in this list is still accepted as free text — with
+ * an explicitly declared runtime, stored in the config's `models` roster.
  *
  * The `[1m]` suffix is a Claude Code model-id modifier that opts the session
  * into the 1M-token context window; a bare id runs at the model's default
@@ -52,19 +96,22 @@ export interface CuratedModel {
  *   - some plans meter 1M separately and fail with `Usage credits required for
  *     1M context`, which is why the default below stays on a bare id.
  */
-export const CURATED_MODELS: readonly CuratedModel[] = [
-  { id: 'claude-opus-5', label: 'Opus 5' },
-  { id: 'claude-opus-5[1m]', label: 'Opus 5 (1M context)' },
-  { id: 'claude-sonnet-5', label: 'Sonnet 5' },
-  { id: 'claude-sonnet-5[1m]', label: 'Sonnet 5 (1M context)' },
-  { id: 'claude-fable-5', label: 'Fable 5' },
-  { id: 'claude-fable-5[1m]', label: 'Fable 5 (1M context)' },
-  { id: 'claude-opus-4-8', label: 'Opus 4.8' },
-  { id: 'claude-haiku-4-5', label: 'Haiku 4.5' },
+export const CURATED_MODELS: readonly ModelEntry[] = [
+  { id: 'claude-opus-5', runtime: 'claude-code' },
+  { id: 'claude-opus-5[1m]', runtime: 'claude-code' },
+  { id: 'claude-sonnet-5', runtime: 'claude-code' },
+  { id: 'claude-sonnet-5[1m]', runtime: 'claude-code' },
+  { id: 'claude-fable-5', runtime: 'claude-code' },
+  { id: 'claude-fable-5[1m]', runtime: 'claude-code' },
+  { id: 'claude-opus-4-8', runtime: 'claude-code' },
+  { id: 'claude-haiku-4-5', runtime: 'claude-code' },
+  { id: 'gpt-5.6-sol', runtime: 'codex' },
+  { id: 'gpt-5.6-terra', runtime: 'codex' },
+  { id: 'gpt-5.6-luna', runtime: 'codex' },
 ]
 
 /** Cheap default for the scripted smoke so an end-to-end run stays inexpensive. */
-const DEFAULT_SMOKE_MODEL = 'claude-haiku-4-5'
+const DEFAULT_SMOKE_MODEL = RUNTIME_DEFAULT_MODELS[DEFAULT_RUNTIME].smoke
 
 /**
  * Read-compat for the legacy `smokeModel` field (issue #48): fold it into
@@ -97,12 +144,19 @@ export const RuncastleConfig = z.preprocess(
      * plans, so a 1M default would fail the very first launch for those
      * operators. Pick a `(1M context)` entry in settings to opt in.
      */
-    model: z.string().default('claude-opus-5'),
+    model: z.string().default(RUNTIME_DEFAULT_MODELS[DEFAULT_RUNTIME].flagship),
     /**
      * Sparse per-step model overrides (issue #48). Global-only; a step absent
      * here inherits the default `model`. Seeds `smoke` with a cheap model.
      */
     stepModels: z.partialRecord(ModelStep, z.string()).default({ smoke: DEFAULT_SMOKE_MODEL }),
+    /**
+     * The operator's own model roster, merged OVER {@link CURATED_MODELS} by id.
+     * This is where the settings UI writes a free-text model id together with
+     * the runtime the operator declared for it and an optional use-case note,
+     * and where annotating a curated entry with a note lands.
+     */
+    models: z.array(ModelEntry).default([]),
     sandbox: z.enum(['docker', 'podman', 'noSandbox']).default('docker'),
     /**
      * Whether a launched terminal also sees the human's OWN MCP servers.
@@ -336,9 +390,88 @@ export function resolvePreparedSettings(
  */
 export function resolveModel(
   step: ModelStep,
-  config: Pick<RuncastleConfig, 'model' | 'stepModels'>,
+  config: ModelConfig,
   project?: { model?: string | null } | null,
   runOverride?: string | null,
 ): string {
-  return runOverride ?? project?.model ?? config.stepModels[step] ?? config.model
+  return resolveModelEntry(step, config, project, runOverride).id
+}
+
+/**
+ * The model config {@link resolveModel} and friends read. `models` is optional
+ * so a caller holding only the two model fields (tests, and the settings view's
+ * partial shapes) still typechecks; an absent roster simply means "curated only".
+ */
+export type ModelConfig = Pick<RuncastleConfig, 'model' | 'stepModels'> & {
+  models?: readonly ModelEntry[]
+}
+
+/** What a config knows about models: its own roster, or none. */
+export type ModelRosterConfig = { models?: readonly ModelEntry[] }
+
+/**
+ * Upsert `overrides` into `base` by model id, preserving `base`'s order and
+ * appending genuinely new entries. Pure — used both to merge an operator's
+ * roster over the curated one and to add a single entry to that roster.
+ */
+export function mergeModelEntries(
+  base: readonly ModelEntry[],
+  overrides: readonly ModelEntry[],
+): ModelEntry[] {
+  const byId = new Map(overrides.map((m) => [m.id, m]))
+  const merged = base.map((m) => byId.get(m.id) ?? m)
+  const seen = new Set(base.map((m) => m.id))
+  return [...merged, ...overrides.filter((m) => !seen.has(m.id))]
+}
+
+/** Every model the UI offers: {@link CURATED_MODELS} with the operator's roster over it. */
+export function modelRoster(config: ModelRosterConfig): ModelEntry[] {
+  return mergeModelEntries(CURATED_MODELS, config.models ?? [])
+}
+
+/**
+ * The roster entry for a model id — the operator's declaration when there is
+ * one, else the curated entry, else a {@link DEFAULT_RUNTIME} entry. Pure.
+ */
+export function modelEntryFor(id: string, config: ModelRosterConfig): ModelEntry {
+  return modelRoster(config).find((m) => m.id === id) ?? { id, runtime: DEFAULT_RUNTIME }
+}
+
+/**
+ * Every runtime some CONFIGURED model resolves to — the global default, every
+ * per-step override, and whatever extra ids the caller holds (per-project
+ * overrides, per-ticket assignments). Pure.
+ *
+ * This is what makes a runtime's readiness conditional: a host with no `codex`
+ * binary is perfectly healthy until some model the operator actually configured
+ * runs on Codex, at which point the missing CLI is a real, fixable error. Blank
+ * ids are ignored (an unset override inherits rather than selecting a runtime),
+ * and the result is ordered by {@link AGENT_RUNTIMES} so a report's runtime
+ * sections never shuffle between calls.
+ */
+export function configuredRuntimes(
+  config: ModelConfig,
+  extraModelIds: readonly (string | null | undefined)[] = [],
+): AgentRuntime[] {
+  const ids = [config.model, ...Object.values(config.stepModels), ...extraModelIds]
+  const found = new Set<AgentRuntime>()
+  for (const id of ids) {
+    if (id) found.add(modelEntryFor(id, config).runtime)
+  }
+  return AGENT_RUNTIMES.filter((r) => found.has(r))
+}
+
+/**
+ * {@link resolveModel}'s chain, resolved all the way to the `{ id, runtime }`
+ * pair a launch needs — the runtime a session or burn runs on is a property of
+ * whichever model won the chain, never a knob of its own. Pure.
+ */
+export function resolveModelEntry(
+  step: ModelStep,
+  config: ModelConfig,
+  project?: { model?: string | null } | null,
+  runOverride?: string | null,
+): ModelEntry {
+  const id = runOverride ?? project?.model ?? config.stepModels[step] ?? config.model
+  return modelEntryFor(id, config)
 }

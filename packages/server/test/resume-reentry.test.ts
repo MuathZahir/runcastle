@@ -3,8 +3,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { AppCtx } from '../src/db/types'
+import { KICKOFF_LINES } from '../src/launcher/runtimes/claude'
 import {
-  KICKOFF_LINES,
   RESUME_KICKOFF_PREFIX,
   RESUME_MAX_REENTRIES,
   RESUME_MAX_TRANSCRIPT_BYTES,

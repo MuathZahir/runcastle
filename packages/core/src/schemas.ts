@@ -1,4 +1,5 @@
 import * as z from 'zod'
+import { AgentRuntime, ModelEntry } from './config'
 
 /**
  * Wire types for tRPC and MCP. Every schema here is the single source of
@@ -154,6 +155,14 @@ export const TicketInput = z.object({
   /** seq numbers of other tickets in the same batch this one depends on */
   blockedBy: z.array(z.number()),
   kind: TicketKind.default('implementation'),
+  /**
+   * The model this ticket burns on (decisions.md #4). Stamped by the tickets
+   * session from the operator's annotated roster, and changeable by the human
+   * on the card before Burn. Unset — the ordinary case — means the burn resolves
+   * its model through the unchanged `resolveModel` chain; set, it is that burn's
+   * run override.
+   */
+  model: z.string().optional(),
 })
 /**
  * The pre-parse shape, so `kind` stays optional for every caller that builds a
@@ -479,6 +488,10 @@ export const SessionRow = z.object({
    */
   awaitingInput: z.boolean(),
   worktreePath: z.string(),
+  /** The model this session launched with; unset on a row created outside a launch. */
+  model: z.string().optional(),
+  /** The runtime that model runs on — see the db schema; unset reads as `DEFAULT_RUNTIME`. */
+  runtime: AgentRuntime.optional(),
   /** The conversation's derived name; unset until its transcript has one to give. */
   title: z.string().optional(),
   /** Insert time; unset on rows written before `sessions` had a timestamp. */
@@ -541,11 +554,15 @@ export type SettingsView = z.infer<typeof SettingsView>
  * `settings.update` input: set `projectId` to write a per-project override
  * (only for project-overridable fields), omit it to write the global default.
  * A `null` value clears a project override (falls back to the global).
+ *
+ * `ModelEntry[]` is the one non-scalar value: the `models` roster is written
+ * whole (the settings UI sends the full list), because an entry's id, runtime,
+ * and note only mean anything together.
  */
 export const SettingsUpdateInput = z.object({
   projectId: z.string().optional(),
   key: z.string(),
-  value: z.union([z.string(), z.number(), z.boolean(), z.null()]),
+  value: z.union([z.string(), z.number(), z.boolean(), z.array(ModelEntry), z.null()]),
 })
 export type SettingsUpdateInput = z.infer<typeof SettingsUpdateInput>
 

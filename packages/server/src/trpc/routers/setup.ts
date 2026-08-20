@@ -1,5 +1,7 @@
-import { newId, resolveSandboxImage } from '@runcastle/core'
+import { AgentRuntime, configuredRuntimes, newId, resolveSandboxImage } from '@runcastle/core'
+import { isNotNull } from 'drizzle-orm'
 import * as z from 'zod'
+import { projects } from '../../db/schema'
 import { runDoctor } from '../../doctor/doctor'
 import { createSystemExec } from '../../doctor/system-exec'
 import { ptyRegistry } from '../../pty/registry'
@@ -9,7 +11,8 @@ import {
   resolveRuntime,
   resolveSandcastleBin,
   runtimeInstallGuide,
-  saveAfkToken,
+  saveAfkCredential,
+  seedModelDefaults,
   terminalSpec,
   writeGitIdentity,
 } from '../../services/setup'
@@ -25,13 +28,24 @@ import { publicProcedure, router } from '../context'
  * (setup-token login, image build) over the existing PTY/WS transport.
  */
 export const setupRouter = router({
-  /** The full prerequisite report the AFK card reads (runtime, image, token, …). */
-  doctor: publicProcedure.query(({ ctx }) =>
-    runDoctor({
+  /** The full prerequisite report the wizard and AFK card read (per-runtime readiness, runtime, image, …). */
+  doctor: publicProcedure.query(({ ctx }) => {
+    // Which runtimes count as errors when they are missing: every one some
+    // configured model resolves to. Per-project overrides join the global
+    // default and the step matrix here; per-ticket assignments will too once
+    // tickets carry a model of their own.
+    const projectModels = ctx.db
+      .select({ model: projects.model })
+      .from(projects)
+      .where(isNotNull(projects.model))
+      .all()
+      .map((p) => p.model)
+    return runDoctor({
       exec: createSystemExec(),
+      runtimes: configuredRuntimes(ctx.config, projectModels),
       ...(ctx.config.sandboxImage ? { imageName: ctx.config.sandboxImage } : {}),
-    }),
-  ),
+    })
+  }),
 
   /** OS-specific guided-manual runtime install line + follow-up note. */
   runtimeGuide: publicProcedure.query(() => runtimeInstallGuide(process.platform)),
@@ -41,19 +55,38 @@ export const setupRouter = router({
     .input(z.object({ name: z.string(), email: z.string() }))
     .mutation(({ input }) => writeGitIdentity(createSystemExec(), input)),
 
-  /** Capture the AFK OAuth token into `~/.runcastle/.env` and validity-check it. */
+  /**
+   * Capture a runtime's AFK credential into `~/.runcastle/.env` (Claude Code's
+   * OAuth token, Codex's `CODEX_API_KEY`) and validity-check it.
+   */
   afkToken: publicProcedure
-    .input(z.object({ token: z.string() }))
-    .mutation(({ input }) => saveAfkToken(fileAfkTokenIo(createSystemExec()), input.token)),
+    .input(z.object({ token: z.string(), runtime: AgentRuntime.default('claude-code') }))
+    .mutation(({ input }) =>
+      saveAfkCredential(
+        fileAfkTokenIo(createSystemExec(), input.runtime),
+        input.token,
+        input.runtime,
+      ),
+    ),
+
+  /**
+   * Onboarding completion: seed the global default + smoke model from the pair
+   * of a runtime the operator actually authed (decision 7). Ordinary settings
+   * writes — each emits its own `settings.updated` event.
+   */
+  seedModelDefaults: publicProcedure
+    .input(z.object({ runtimes: z.array(AgentRuntime) }))
+    .mutation(({ ctx, input }) => seedModelDefaults(ctx, input.runtimes)),
 
   /**
    * Spawn one of the embedded-terminal flows and return its session id; the web
    * `TerminalView` attaches over `/ws/terminal/:sessionId`. `build-image` streams
-   * its output there; `setup-token` runs the interactive login (which self-heals
-   * its own host-login prompt — we never probe host login ourselves).
+   * its output there; `claude-login`/`codex-login` run each runtime's own
+   * interactive sign-in; `setup-token` runs Claude Code's long-lived AFK-token
+   * flow (which self-heals its own host-login prompt on the way).
    */
   startTerminal: publicProcedure
-    .input(z.object({ kind: z.enum(['setup-token', 'build-image']) }))
+    .input(z.object({ kind: z.enum(['setup-token', 'build-image', 'claude-login', 'codex-login']) }))
     .mutation(async ({ ctx, input }) => {
       const exec = createSystemExec()
       const preferred = ctx.config.sandbox === 'podman' ? 'podman' : 'docker'

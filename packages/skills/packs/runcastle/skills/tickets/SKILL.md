@@ -63,6 +63,17 @@ Each ticket:
 - **seams** — `string[]`, the public interfaces to test at (carry them from the spec's Seams section; prefer existing, prefer the highest, prefer one).
 - **blockedBy** — `number[]`, **required**, the seq numbers (from your 1..N ordering) of the tickets that *genuinely* gate this one. Only true gates; pass `[]` when there are none — omitting it fails validation.
 - **kind** — `"implementation"` (the default, omit it) or `"review"` for the one review ticket described above.
+- **model** — optional, and usually omitted. See below.
+
+### Assigning a model (only from the annotated roster)
+
+`mcp__runcastle__get_feature_context` returns `annotatedModels`: `{ id, runtime, note }` for the models the human wrote a use-case note against, and only those. That list is the *entire* set of ids you may put in a ticket's `model`.
+
+- **Empty list → never set `model`.** The human annotated nothing, so there is no stated reason to prefer one model over another. Omit the field on every ticket.
+- **Non-empty → set it only where a note actually fits the ticket.** The note is the human's own vocabulary for what that model is good at ("UI/UX taste", "mechanical refactors"); assign it when this ticket's work is plainly that, and leave the field unset when nothing in the list speaks to it. Unset is the good default — it falls through to the model the project already burns on.
+- **Never invent an id**, never copy one from these docs or from memory, and never write a model that is not in `annotatedModels` — the store rejects it and the whole batch fails to emit.
+
+The human sees the assignment on the ticket card and can change or clear it before Burn, so a wrong-but-reasonable choice is cheap; a fabricated id is not.
 
 ## 3. Self-check, then emit
 

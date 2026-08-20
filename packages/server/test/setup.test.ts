@@ -2,11 +2,16 @@ import { existsSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import type { ExecFn, ExecOutcome } from '../src/doctor/doctor'
 import {
-  createTokenVerifier,
+  AFK_TOKEN_KEY,
+  CODEX_API_KEY,
+  RUNTIME_AUTH_KEY,
+  RUNTIME_AUTH_SETUP_HINT,
+  createCredentialVerifier,
   resolveRuntime,
   resolveSandcastleBin,
   runtimeInstallGuide,
-  saveAfkToken,
+  saveAfkCredential,
+  seedRuntimeFor,
   terminalSpec,
   upsertEnvVar,
   writeGitIdentity,
@@ -93,7 +98,43 @@ describe('upsertEnvVar', () => {
   })
 })
 
-describe('saveAfkToken', () => {
+/**
+ * Which key an unattended burn authenticates with is a property of the runtime,
+ * and this is the one table that says so — the env-file reader, the burn env
+ * builder and the setup UI all read it, so a disagreement here is a burn that
+ * starts with no credentials at all.
+ */
+describe('per-runtime AFK auth', () => {
+  it('gives each runtime its own env key', () => {
+    expect(RUNTIME_AUTH_KEY['claude-code']).toBe(AFK_TOKEN_KEY)
+    expect(RUNTIME_AUTH_KEY['claude-code']).toBe('CLAUDE_CODE_OAUTH_TOKEN')
+    // Verified against codex-rs: CODEX_API_KEY is the highest-precedence auth
+    // path and the one meant for headless use.
+    expect(RUNTIME_AUTH_KEY.codex).toBe(CODEX_API_KEY)
+    expect(RUNTIME_AUTH_KEY.codex).toBe('CODEX_API_KEY')
+  })
+
+  it('sends a stuck human to their own provider, and to the same env file', () => {
+    // A codex burn that aborts telling the human to run `claude setup-token`
+    // sends them to a CLI they may not even have installed.
+    expect(RUNTIME_AUTH_SETUP_HINT['claude-code']).toContain('claude setup-token')
+    expect(RUNTIME_AUTH_SETUP_HINT.codex).not.toContain('claude')
+    expect(RUNTIME_AUTH_SETUP_HINT.codex).toContain('CODEX_API_KEY')
+    expect(RUNTIME_AUTH_SETUP_HINT.codex).toContain('OpenAI API key')
+    for (const hint of Object.values(RUNTIME_AUTH_SETUP_HINT)) {
+      expect(hint).toContain('~/.runcastle/.env')
+    }
+  })
+
+  it('writes a codex key into the env file the same way as a claude one', () => {
+    const after = upsertEnvVar('CLAUDE_CODE_OAUTH_TOKEN=sk-claude\n', CODEX_API_KEY, 'sk-openai')
+    // Both runtimes coexist in one file — authing codex must not evict claude.
+    expect(after).toContain('CLAUDE_CODE_OAUTH_TOKEN=sk-claude')
+    expect(after).toContain('CODEX_API_KEY=sk-openai')
+  })
+})
+
+describe('saveAfkCredential', () => {
   function io(over: Partial<AfkTokenIo> & { seed?: string } = {}): AfkTokenIo & { written: () => string } {
     let content = over.seed ?? ''
     return {
@@ -106,32 +147,63 @@ describe('saveAfkToken', () => {
 
   it('captures the token into the env file and reports the validity result', async () => {
     const deps = io()
-    const res = await saveAfkToken(deps, '  sk-ant-oat01-abc  ')
+    const res = await saveAfkCredential(deps, '  sk-ant-oat01-abc  ')
     expect(deps.written()).toBe('CLAUDE_CODE_OAUTH_TOKEN=sk-ant-oat01-abc\n')
     expect(res.valid).toBe(true)
     expect(res.detail).toBe('token accepted')
   })
 
+  // Codex burns authenticate with an OpenAI API key, in the SAME env file the
+  // Claude token lives in — one place for the operator to look, one for the
+  // burner to read.
+  it('captures a codex API key under CODEX_API_KEY, beside the claude token', async () => {
+    const deps = io({ seed: 'CLAUDE_CODE_OAUTH_TOKEN=sk-ant-oat01-abc\n' })
+    await saveAfkCredential(deps, 'sk-openai-abcdefgh', 'codex')
+    expect(deps.written()).toContain('CLAUDE_CODE_OAUTH_TOKEN=sk-ant-oat01-abc')
+    expect(deps.written()).toContain(`${CODEX_API_KEY}=sk-openai-abcdefgh`)
+  })
+
   it('still saves but reports invalid when the live check rejects it', async () => {
     const deps = io({ verify: async () => ({ valid: false, detail: 'rejected by API' }) })
-    const res = await saveAfkToken(deps, 'sk-bad')
+    const res = await saveAfkCredential(deps, 'sk-bad')
     expect(deps.written()).toContain('CLAUDE_CODE_OAUTH_TOKEN=sk-bad')
     expect(res.valid).toBe(false)
     expect(res.detail).toBe('rejected by API')
   })
 
-  it('rejects an empty token without touching the file', async () => {
+  it('rejects an empty credential without touching the file, naming the runtime', async () => {
     let touched = false
     const deps = io({ write: () => (touched = true) })
-    await expect(saveAfkToken(deps, '   ')).rejects.toThrow()
+    await expect(saveAfkCredential(deps, '   ')).rejects.toThrow()
+    await expect(saveAfkCredential(deps, '  ', 'codex')).rejects.toThrow(/API key/)
     expect(touched).toBe(false)
   })
 
   it('rejects a token with an embedded newline without touching the file', async () => {
     let touched = false
     const deps = io({ write: () => (touched = true) })
-    await expect(saveAfkToken(deps, 'sk-ant-oat01-abc\nOTHER=evil')).rejects.toThrow()
+    await expect(saveAfkCredential(deps, 'sk-ant-oat01-abc\nOTHER=evil')).rejects.toThrow()
     expect(touched).toBe(false)
+  })
+})
+
+/**
+ * Decision 7: onboarding seeds the global defaults from a runtime the operator
+ * actually authed — hardcoded Claude defaults are dead values for a Codex-only
+ * one, and an operator with both keeps today's behaviour.
+ */
+describe('seedRuntimeFor', () => {
+  it('prefers Claude Code when it is authed, alone or alongside codex', () => {
+    expect(seedRuntimeFor(['claude-code'])).toBe('claude-code')
+    expect(seedRuntimeFor(['codex', 'claude-code'])).toBe('claude-code')
+  })
+
+  it('seeds from codex for a codex-only operator', () => {
+    expect(seedRuntimeFor(['codex'])).toBe('codex')
+  })
+
+  it('has nothing to seed from when no runtime is ready', () => {
+    expect(seedRuntimeFor([])).toBeUndefined()
   })
 })
 
@@ -142,7 +214,7 @@ describe('saveAfkToken', () => {
  * non-zero exit (`claude` ran and refused) both rendered as the same dead-end
  * "claude CLI not found", with no fix line and no hint the token was saved.
  */
-describe('createTokenVerifier', () => {
+describe('createCredentialVerifier', () => {
   const version = (out: Partial<ExecOutcome>): ExecFn => async () => ({
     ok: true,
     code: 0,
@@ -152,13 +224,13 @@ describe('createTokenVerifier', () => {
   })
 
   it('accepts a plausible token when claude runs', async () => {
-    const res = await createTokenVerifier(version({ stdout: '2.0.1' }))('sk-ant-oat01-abcdefgh')
+    const res = await createCredentialVerifier(version({ stdout: '2.0.1' }))('sk-ant-oat01-abcdefgh')
     expect(res.valid).toBe(true)
     expect(res.fix).toBeUndefined()
   })
 
   it('blames PATH — not a missing install — when claude cannot be spawned', async () => {
-    const res = await createTokenVerifier(version({ ok: false, code: null, stderr: 'ENOENT' }))(
+    const res = await createCredentialVerifier(version({ ok: false, code: null, stderr: 'ENOENT' }))(
       'sk-ant-oat01-abcdefgh',
     )
     expect(res.valid).toBe(false)
@@ -169,7 +241,7 @@ describe('createTokenVerifier', () => {
   })
 
   it('reports a broken install distinctly when claude runs but exits non-zero', async () => {
-    const res = await createTokenVerifier(version({ code: 1, stderr: 'bad install\nmore' }))(
+    const res = await createCredentialVerifier(version({ code: 1, stderr: 'bad install\nmore' }))(
       'sk-ant-oat01-abcdefgh',
     )
     expect(res.valid).toBe(false)
@@ -185,10 +257,25 @@ describe('createTokenVerifier', () => {
       spawned = true
       return { ok: true, code: 0, stdout: '', stderr: '' }
     }
-    const res = await createTokenVerifier(exec)('short')
+    const res = await createCredentialVerifier(exec)('short')
     expect(res.valid).toBe(false)
     expect(res.detail).toContain('malformed')
     expect(spawned).toBe(false)
+  })
+
+  // The same verdicts for codex, spoken in codex's terms: its binary is what
+  // gets probed, and its own override is what pins the path.
+  it('verifies a codex key against the codex CLI, with codex wording', async () => {
+    let probed = ''
+    const exec: ExecFn = async (command) => {
+      probed = command
+      return { ok: false, code: null, stdout: '', stderr: 'ENOENT' }
+    }
+    const res = await createCredentialVerifier(exec, 'codex')('sk-openai-abcdefgh')
+    expect(probed).toBe('codex')
+    expect(res.valid).toBe(false)
+    expect(res.detail).toContain('API key')
+    expect(res.fix).toContain('RUNCASTLE_CODEX_BIN')
   })
 })
 
@@ -216,6 +303,12 @@ describe('terminalSpec', () => {
       cmd: 'claude',
       args: ['setup-token'],
     })
+  })
+
+  it('runs each runtime own interactive login, the same way for both', () => {
+    const opts = { runtime: 'docker' as const, imageName: 'sandcastle:runcastle' }
+    expect(terminalSpec('claude-login', opts)).toEqual({ cmd: 'claude', args: ['auth', 'login'] })
+    expect(terminalSpec('codex-login', opts)).toEqual({ cmd: 'codex', args: ['login'] })
   })
 
   it('launches the resolved sandcastle CLI under node with a pinned image name', () => {

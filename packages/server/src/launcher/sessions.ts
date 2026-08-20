@@ -1,12 +1,14 @@
 import { statSync } from 'node:fs'
 import type {
+  AgentRuntime,
   MergeBranchPair,
+  ModelEntry,
   Project,
   SessionKind,
   SessionPurpose,
   SessionRow,
 } from '@runcastle/core'
-import { newId } from '@runcastle/core'
+import { DEFAULT_RUNTIME, newId } from '@runcastle/core'
 import { and, desc, eq, inArray, isNotNull, sql } from 'drizzle-orm'
 import type { AppCtx } from '../db/types'
 import { sessions } from '../db/schema'
@@ -16,6 +18,8 @@ import { emit, emitForSession, emitProject } from '../services/events'
 import { landProjectBranch, PROJECT_BRANCH, type ProjectLandResult } from '../services/git'
 import { promoteLastSession } from '../services/waypoints'
 import { getFeatureRow, getProjectById, rowToSession } from '../services/repo'
+import { runtimeAdapterFor } from './runtimes'
+import { prepareConfirmKickoffFor } from './runtimes/skills'
 
 /**
  * Session-row persistence for the launcher + hook receiver + MCP server. There
@@ -37,6 +41,13 @@ export type CreateSessionInput = {
   purpose?: SessionPurpose
   /** The purpose's data — for `resolve-conflict`, the branch pair being merged. */
   purposeData?: MergeBranchPair
+  /**
+   * The `{ id, runtime }` pair this session launches on, resolved by
+   * `resolveModelEntry`. Optional because a row can be created outside a launch
+   * (fixtures, tests) and such a row resolved no model — see the db schema for
+   * why a default is not stamped in its place.
+   */
+  model?: ModelEntry
 } & ({ featureId: string; projectId?: never } | { projectId: string; featureId?: never })
 
 /** Insert a fresh session row in the `launching` state; returns it (with id). */
@@ -57,6 +68,8 @@ export function createSessionRow(ctx: AppCtx, input: CreateSessionInput): Sessio
       transcriptPath: null,
       status: 'launching',
       worktreePath: input.worktreePath,
+      model: input.model?.id ?? null,
+      runtime: input.model?.runtime ?? null,
       // Named lazily from the transcript once there is one (see
       // `services/conversations.ts`) — a row born a millisecond ago has
       // nothing to be called yet.
@@ -207,52 +220,6 @@ export const CLEAR_INPUT = '\x15'
  */
 export const SESSION_READY_TIMEOUT_MS = 25_000
 
-/** The converge kickoff line, unchanged (E2E-proven — kept named for clarity). */
-export const CONVERGE_KICKOFF_LINE =
-  'Proceed with your task: invoke /runcastle:converge and drive spec then tickets ' +
-  'from map.md + decisions.md, per your system prompt.'
-
-/**
- * The per-kind kickoff line typed into a freshly-live session so no session
- * starts dead. Each line names the same opening skill its appended system prompt
- * does (`renderSystemPrompt` in artifacts.ts) so the injected line and the brief
- * agree on the first move. A later ticket's per-purpose revisit briefings arrive
- * via the `launchSession` override (see `setKickoffOverride`), not this table.
- */
-export const KICKOFF_LINES: Record<SessionKind, string> = {
-  ideation:
-    'Proceed with your task: invoke the /runcastle:ideate skill and drive the ideation session.',
-  qa:
-    'Proceed with your task: invoke the /runcastle:qa skill and answer questions from the ' +
-    'docs and code — do not advance phases or emit tickets.',
-  waypoint:
-    'Proceed with your task: invoke the /runcastle:waypoint skill and work your assigned ' +
-    'waypoint to a resolution.',
-  converge: CONVERGE_KICKOFF_LINE,
-  revisit:
-    'Proceed with your task: invoke the /runcastle:revisit skill and work through what the ' +
-    'human brings up.',
-  // The method moved out of the prompt and into a skill, so this names it like
-  // every other entry line does. The rest of the line is the opening MOVE — a
-  // headless run already measured what it could, so the useful first thing is
-  // naming the gap, not re-deriving the repo.
-  prepare:
-    'Proceed with your task: invoke the /runcastle:prepare skill and work through the ' +
-    'unestablished preparation fields with the human. Start by telling them which fields are ' +
-    'still open and what you need from them for each; ask before running anything that touches ' +
-    'their database or services.',
-  project:
-    'Proceed with your task: invoke the /runcastle:project skill and drive the project session.',
-  // No skill either: the failure, the drive's own environment and the branch
-  // delta all arrive as the appended system prompt (renderDriveFixPrompt), so
-  // the line only has to point at the first move — read the failure, do not
-  // start repairing anything before saying what you are about to do.
-  'drive-fix':
-    'Proceed with your task: the drive whose setup just failed is in your system prompt. Read ' +
-    'the failure, work out what the environment is missing, and tell me what you propose to ' +
-    'change before you change it; then fix it and retry the drive with retry_drive.',
-}
-
 /**
  * The lap briefing (SPEC §15.2) — the `revisit` kickoff override a Rethink
  * passes, and the whole of a lap's ceremony: one terminal digests what the test
@@ -280,24 +247,26 @@ export function lapKickoff(lap: number): string {
 }
 
 /**
- * The prepare kickoff for a project with NOTHING left to establish.
- *
- * The 0-keys path used to give the session four instructions, three of which
- * were to work an empty list: the prompt rendered "_Nothing is unset… say so and
- * **stop**_" while its task line still said to tell the human which fields were
- * open and its closing move still ordered a dry-run drive — and this line, typed
- * into the terminal ahead of all of it, said "Start by telling them which fields
- * are still open". All four now say confirm-and-stop.
+ * The kickoff line for a session: an explicit override wins, else the per-kind
+ * default of the runtime the session runs on — the skill invocation is spelled
+ * differently per runtime, so the line comes from the adapter and never from a
+ * table here. `runtime` is optional because a session row written before the
+ * column existed has none; those all ran on {@link DEFAULT_RUNTIME}.
  */
-export const PREPARE_CONFIRM_KICKOFF =
-  'Proceed with your task: invoke the /runcastle:prepare skill. Every prepared field already ' +
-  'has a value, so this is a confirmation, not a preparation — tell me what is recorded and ' +
-  'how stale it is, ask whether it still holds, and stop. Do not re-derive a settled value.'
-
-/** The kickoff line for a session: an explicit override wins, else the per-kind default. */
-export function kickoffLineFor(kind: SessionKind, override?: string): string {
-  return override ?? KICKOFF_LINES[kind]
+export function kickoffLineFor(
+  kind: SessionKind,
+  override?: string,
+  runtime: AgentRuntime = DEFAULT_RUNTIME,
+): string {
+  return override ?? runtimeAdapterFor(runtime).kickoffLine(kind)
 }
+
+/**
+ * The prepare kickoff for a project with NOTHING left to establish, spelled for
+ * the default runtime (see {@link prepareConfirmKickoffFor} for the per-runtime
+ * form the launcher uses).
+ */
+export const PREPARE_CONFIRM_KICKOFF = prepareConfirmKickoffFor(DEFAULT_RUNTIME)
 
 /** What a launch is going to type into its terminal, and what that implies. */
 export interface KickoffPlan {
@@ -417,14 +386,21 @@ export const RESUME_KICKOFF_PREFIX =
  * which is not always the kind of the row being created. A revisit resumes
  * `mostRecentResumableSession` with NO kind filter — deliberately, because
  * "revisit" means "pick up the last thing we talked about", whatever that was —
- * so quoting `KICKOFF_LINES['revisit']` told an ideation conversation that its
- * original instruction had been "invoke the /runcastle:revisit skill", which it
+ * so quoting the revisit line told an ideation conversation that its original
+ * instruction had been "invoke the /runcastle:revisit skill", which it
  * demonstrably was not, with the real opening turn visible directly above in the
  * restored transcript. Quote what was actually said; fall back to the new kind's
  * line only when the resumed row's kind is unknown.
+ *
+ * `runtime` is the runtime that conversation ran on — the skill invocation is
+ * spelled per runtime, so the quote has to match the spelling it was given.
  */
-export function resumeKickoffLine(kind: SessionKind, resumedKind?: SessionKind): string {
-  return RESUME_KICKOFF_PREFIX + KICKOFF_LINES[resumedKind ?? kind]
+export function resumeKickoffLine(
+  kind: SessionKind,
+  resumedKind?: SessionKind,
+  runtime: AgentRuntime = DEFAULT_RUNTIME,
+): string {
+  return RESUME_KICKOFF_PREFIX + runtimeAdapterFor(runtime).kickoffLine(resumedKind ?? kind)
 }
 
 /**
@@ -688,7 +664,7 @@ export function resendKickoff(ctx: AppCtx, sessionId: string): { line: string } 
     // never scheduled). The override outlives its consumption precisely for this
     // moment: without it, "Send briefing" on a lap terminal silently downgraded
     // the lap briefing to the generic per-kind line (F6).
-    line: kickoffLineFor(session.kind, pendingKickoffOverrides.get(sessionId)),
+    line: kickoffLineFor(session.kind, pendingKickoffOverrides.get(sessionId), session.runtime),
     attempts: 0,
     confirmed: false,
     written: false,
@@ -734,7 +710,7 @@ function scheduleKickoff(ctx: AppCtx, session: SessionRow): void {
   // The override is NOT dropped here. It is the only record of what this
   // terminal was opened to say, and `resendKickoff` needs it verbatim long
   // after go-live; `forgetKickoff` clears it when the session ends (F6).
-  const line = kickoffLineFor(session.kind, pendingKickoffOverrides.get(session.id))
+  const line = kickoffLineFor(session.kind, pendingKickoffOverrides.get(session.id), session.runtime)
   const existing = deliveries.get(session.id)
   if (existing) stopTimers(existing)
   const d: KickoffDelivery = {

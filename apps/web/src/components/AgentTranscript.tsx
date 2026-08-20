@@ -7,7 +7,7 @@ import { DimLine } from '../ui'
 type TranscriptChunk = RouterOutputs['run']['agentTranscript']['chunks'][number]
 
 /**
- * Live agent transcript for one burning ticket, rendered Claude Code-style:
+ * Live agent transcript for one burning ticket, rendered agent-style:
  * assistant prose as `⏺` blocks, tool calls as `●  Name(args)` lines, an
  * animated activity footer while the agent is live. Polls the server's
  * in-memory transcript (`run.agentTranscript`) at 1s with a chunk-index

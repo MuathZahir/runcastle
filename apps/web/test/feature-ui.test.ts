@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { modelRoster } from '@runcastle/core'
 import type { EventRow, TicketStatus } from '@runcastle/core'
 import {
   activeSession,
@@ -35,6 +36,7 @@ import {
   sortForSidebar,
   testDriveTaken,
   ticketConflictKickoff,
+  ticketModelChip,
   ticketProgress,
   triage,
   triageOf,
@@ -2844,5 +2846,97 @@ describe('capLane', () => {
       expect(capped.visible).toHaveLength(12)
       expect(capped.expanderLabel).toBeNull()
     }
+  })
+})
+
+describe('ticketModelChip — what a card says about its burn model', () => {
+  const roster = modelRoster({ models: [{ id: 'my-proxy', runtime: 'codex', note: 'bulk edits' }] })
+
+  it('says nothing for an unassigned ticket', () => {
+    expect(ticketModelChip({ model: undefined }, roster)).toBeNull()
+    expect(ticketModelChip({ model: '' }, roster)).toBeNull()
+  })
+
+  it('names the assigned model with the runtime it launches', () => {
+    expect(ticketModelChip({ model: 'gpt-5.6-sol' }, roster)).toEqual({
+      id: 'gpt-5.6-sol',
+      runtime: 'codex',
+      runtimeLabel: 'Codex',
+    })
+    expect(ticketModelChip({ model: 'claude-opus-5' }, roster)?.runtimeLabel).toBe('Claude Code')
+  })
+
+  it('reads the runtime an operator declared for their own entry', () => {
+    // Never inferred from the id string (decisions.md #3) — "my-proxy" says
+    // nothing about its provider; the roster entry does.
+    expect(ticketModelChip({ model: 'my-proxy' }, roster)?.runtime).toBe('codex')
+  })
+
+  it('falls back to the default runtime for an id no longer on the roster', () => {
+    expect(ticketModelChip({ model: 'retired-model' }, roster)).toEqual({
+      id: 'retired-model',
+      runtime: 'claude-code',
+      runtimeLabel: 'Claude Code',
+    })
+  })
+})
+
+/**
+ * The next-step bar names whoever the human is actually about to talk to
+ * (decision 11). It has one honest source for that — the live session's own
+ * runtime — and where there is no session it must say "the agent" rather than
+ * print the historical default at a Codex-only human.
+ */
+describe('nextStep — naming the runtime in the copy', () => {
+  const ideation = (sessions: unknown[]) =>
+    ({
+      feature: { id: 'f1', phase: 'ideation', mapped: false, status: 'active' },
+      tickets: [],
+      sessions,
+      runs: [],
+      gate: { next: { id: 'G1' }, satisfied: false, reason: 'no decisions yet' },
+    }) as unknown as FeatureFull
+
+  const liveGrill = (runtime: string | null) => [
+    { id: 's1', status: 'live', kind: 'ideation', runtime },
+  ]
+
+  it('names the runtime the live grill session is running on', () => {
+    expect(nextStep(ideation(liveGrill('codex')), { driving: false }).desc).toContain(
+      'Shape the idea with Codex',
+    )
+    expect(nextStep(ideation(liveGrill('claude-code')), { driving: false }).desc).toContain(
+      'Shape the idea with Claude',
+    )
+  })
+
+  // Sessions launched before the column existed carry no runtime; the historical
+  // default is the right READ there (the db schema says so), and it is what the
+  // human was in fact talking to.
+  it('reads a session with no recorded runtime as the historical default', () => {
+    expect(nextStep(ideation(liveGrill(null)), { driving: false }).desc).toContain(
+      'Shape the idea with Claude',
+    )
+  })
+
+  it('says "the agent" when no session has resolved a runtime yet', () => {
+    const ns = nextStep(ideation([]), { driving: false })
+    expect(ns.title).toBe('Shape the idea with the agent')
+    expect(ns.title).not.toMatch(/Claude|Codex/)
+  })
+
+  // Tickets can each carry their own model (decision 4), so a batch may span
+  // both runtimes — there is no single one to name.
+  it('does not name a runtime for a ticket batch that may span both', () => {
+    const full = {
+      feature: { id: 'f1', phase: 'tickets', mapped: false, status: 'active' },
+      tickets: [{ id: 't1', seq: 1, status: 'todo' }],
+      sessions: [],
+      runs: [],
+      gate: { next: { id: 'G3' }, satisfied: false, reason: 'not burned' },
+    } as unknown as FeatureFull
+    const ns = nextStep(full, { driving: false })
+    expect(ns.desc).toContain('one atomic task the agent will implement')
+    expect(ns.desc).not.toMatch(/Claude|Codex/)
   })
 })

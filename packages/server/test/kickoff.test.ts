@@ -2,12 +2,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { SessionKind } from '@runcastle/core'
 import type { PtyEntry } from '../src/pty/registry'
 import { ptyRegistry } from '../src/pty/registry'
+import { CONVERGE_KICKOFF_LINE, KICKOFF_LINES } from '../src/launcher/runtimes/claude'
+import { KICKOFF_LINES as CODEX_KICKOFF_LINES } from '../src/launcher/runtimes/codex'
 import {
   CLEAR_INPUT,
-  CONVERGE_KICKOFF_LINE,
   KICKOFF_CONFIRM_MS,
   KICKOFF_DELAY_MS,
-  KICKOFF_LINES,
   KICKOFF_MAX_ATTEMPTS,
   KICKOFF_SUBMIT_DELAY_MS,
   createSessionRow,
@@ -143,6 +143,20 @@ describe('kickoff registry + override', () => {
     for (const kind of KINDS) {
       expect(kickoffLineFor(kind)).toBe(KICKOFF_LINES[kind])
     }
+  })
+
+  /**
+   * The kickoff a session is typed depends on the runtime its row records, not
+   * on a table the launcher holds: `scheduleKickoff` and `resendKickoff` both
+   * pass `session.runtime` through. A Codex session typed `/runcastle:ideate`
+   * would sit there doing nothing.
+   */
+  it('kickoffLineFor spells the line for the runtime the session runs on', () => {
+    for (const kind of KINDS) {
+      expect(kickoffLineFor(kind, undefined, 'codex')).toBe(CODEX_KICKOFF_LINES[kind])
+      expect(kickoffLineFor(kind, undefined, 'claude-code')).toBe(KICKOFF_LINES[kind])
+    }
+    expect(kickoffLineFor('ideation', undefined, 'codex')).toContain('$ideate')
   })
 
   it('kickoffLineFor lets an explicit override replace the default', () => {

@@ -9,6 +9,7 @@ import type {
 } from '@runcastle/core'
 import {
   MODEL_STEPS,
+  ModelEntry,
   RuncastleConfig as RuncastleConfigSchema,
   foldLegacyModelConfig,
 } from '@runcastle/core'
@@ -86,6 +87,16 @@ const DESCRIPTORS: FieldDescriptor[] = [
     projectColumn: 'model',
     restartRequired: false,
     valueSchema: z.string().min(1),
+    parseEnv: idEnv,
+  },
+  // The operator's model roster: custom ids with the runtime they declared and
+  // an optional use-case note, merged over core's curated list. Global-only and
+  // written whole — there is no env var, because a roster is not a scalar.
+  {
+    key: 'models',
+    configKey: 'models',
+    restartRequired: false,
+    valueSchema: z.array(ModelEntry),
     parseEnv: idEnv,
   },
   {
@@ -455,10 +466,20 @@ export function updateSettings(
   ;(ctx.config as Record<string, unknown>)[desc.configKey] = value
   emitProject(ctx, GLOBAL_EVENT_KEY, {
     type: 'settings.updated',
-    message: `${desc.key} set to ${String(value)}`,
+    message: `${desc.key} set to ${describeValue(value)}`,
     data: { key: desc.key, scope: 'global', value },
   })
   return field(getSettings(ctx, input.projectId, io), desc.key)
+}
+
+/**
+ * A written value as event-message text. Every field but the `models` roster is
+ * a scalar `String()` renders fine; the roster is an array, which `String()`
+ * would flatten to `[object Object]` — an event that says nothing about what
+ * changed.
+ */
+function describeValue(value: unknown): string {
+  return typeof value === 'object' && value !== null ? JSON.stringify(value) : String(value)
 }
 
 /** Merge one key into the config file, preserving the rest. */

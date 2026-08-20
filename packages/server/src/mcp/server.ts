@@ -11,6 +11,7 @@ import type {
   PreparedKey as PreparedKeyT,
   Project,
   RunStatus as RunStatusT,
+  ModelEntry,
   SessionKind as SessionKindT,
   SessionRow,
   TestNote,
@@ -30,6 +31,7 @@ import {
   agentDigestDocOrder,
   isAgentDigestDoc,
   isProjectSessionKind,
+  modelRoster,
   nextGate,
   nextPhase,
   WITHHELD_FEATURE_DOCS,
@@ -195,6 +197,23 @@ function refuseIfReadOnly(session: SessionRow, action: string): void {
 
 // --- tool implementations (pure over AppCtx + session — unit-tested) ---------
 
+/** One annotated roster entry, as the tickets session is offered it. */
+export interface AnnotatedModel {
+  id: string
+  runtime: ModelEntry['runtime']
+  note: string
+}
+
+/**
+ * The roster entries carrying a use-case note, in roster order. A blank note is
+ * no note — the operator cleared the field rather than describing a use case.
+ */
+function annotatedModels(ctx: AppCtx): AnnotatedModel[] {
+  return modelRoster(ctx.config).flatMap((m) =>
+    m.note?.trim() ? [{ id: m.id, runtime: m.runtime, note: m.note.trim() }] : [],
+  )
+}
+
 /**
  * Who a feature READ is for: the feature to read, plus the session that asked
  * when a session asked at all.
@@ -279,6 +298,13 @@ export interface FeatureContext {
   /** Says, in the payload itself, that `moreDocs` is fetchable rather than gone. */
   docsNote: string
   tickets: FeatureContextTicket[]
+  /**
+   * The models the operator annotated with a use-case note, and the only ones a
+   * ticket may be assigned (decisions.md #4). Notes ARE the opt-in: an operator
+   * who annotated nothing gets an empty array here, and the emitting session
+   * then never assigns a model at all — today's behaviour, unchanged.
+   */
+  annotatedModels: AnnotatedModel[]
   /** Mapped features only (ADR-0001 §13.3): every waypoint on the map… */
   waypoints?: WaypointT[]
   /**
@@ -344,6 +370,7 @@ export function featureContext(ctx: AppCtx, reader: FeatureReader): FeatureConte
     moreDocs,
     docsNote: DOCS_NOTE,
     tickets: listByFeature(ctx, feature.id).map(stripDigest),
+    annotatedModels: annotatedModels(ctx),
   }
   // A mapped feature also exposes its map state so any session can read the
   // waypoints and pick up the frontier (claiming stays a server-only effect).
@@ -1836,7 +1863,9 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
           'docs/features/<slug>/ (read one with `read_feature_doc`), and its tickets. Mapped ' +
           'features also get their waypoints, `frontierIds`, and `assignedWaypointId` when this ' +
           'session claimed one. Tickets carry their goal, context and acceptance criteria but ' +
-          'not the burner’s post-hoc digest — ask `get_work_record` for that.',
+          'not the burner’s post-hoc digest — ask `get_work_record` for that. `annotatedModels` ' +
+          'lists the models the operator described a use case for — the only ones `emit_tickets` ' +
+          'may assign (empty when they annotated none).',
         inputSchema: {},
       },
       async (_args, extra) => {
@@ -1907,7 +1936,9 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
           'Store this session’s ticket batch. Returns each stored ticket’s id, assigned `seq` ' +
           'and title — `seq` is the number the UI shows and the number later blockedBy edges ' +
           'speak in. Send the whole batch in one call: positions in `blockedBy` are positions ' +
-          'within THIS call.',
+          'within THIS call. A ticket’s optional `model` takes an id from `get_feature_context`’s ' +
+          'annotatedModels whose note gives a reason to deviate — omit it otherwise and the burn ' +
+          'resolves the model the ordinary way.',
         inputSchema: {
           tickets: z
             .array(TicketInput)
@@ -1933,7 +1964,9 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
         description:
           'Rewrite a stored ticket’s content (any subset of the fields). Only pending or failed ' +
           'tickets can be edited: done/cancelled ones are history and burning ones are already ' +
-          'running. Use during a revisit when a decision change makes a ticket stale.',
+          'running. Use during a revisit when a decision change makes a ticket stale. `model` ' +
+          'reassigns the ticket’s model; pass "" to clear it and let the burn resolve the model ' +
+          'the ordinary way.',
         inputSchema: {
           id: z
             .string()
@@ -1950,6 +1983,10 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
             .array(z.string())
             .optional()
             .describe('Replaces the whole list. The surfaces this ticket touches, in free prose.'),
+          model: z
+            .string()
+            .optional()
+            .describe('An id from `get_feature_context`’s annotatedModels; "" clears the assignment.'),
         },
       },
       async (args, extra) => {

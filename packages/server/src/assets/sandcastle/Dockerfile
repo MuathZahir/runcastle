@@ -15,6 +15,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 ENV BUN_INSTALL=/usr/local
 RUN curl -fsSL https://bun.sh/install | bash
 
+# Codex CLI (the second agent runtime) — authenticated at runtime via CODEX_API_KEY.
+# Installed as root, before the user switch, so it lands in the system-wide npm
+# prefix: after `USER` a global install has nowhere writable to go.
+RUN npm install -g @openai/codex
+
 # Rootless-podman invariant (research #32): the in-container agent user MUST be at
 # UID/GID 1000 so bind-mounted host files share an owner. Sandcastle passes the host
 # uid/gid as build args (defaulting here to 1000); rename the stock `node` user to match.
@@ -24,7 +29,10 @@ RUN groupmod -o -g "$AGENT_GID" node \
   && usermod -o -u "$AGENT_UID" -g "$AGENT_GID" -d /home/agent -m -l agent node
 USER ${AGENT_UID}:${AGENT_GID}
 
-# Claude Code CLI (the agent runtime) — authenticated at runtime via CLAUDE_CODE_OAUTH_TOKEN.
+# Claude Code CLI (the other agent runtime) — authenticated at runtime via
+# CLAUDE_CODE_OAUTH_TOKEN. Installed per-user, so it must follow the switch.
+# One image serves both runtimes: which CLI a burn invokes is decided by the
+# resolved model's runtime, not by the image.
 RUN curl -fsSL https://claude.ai/install.sh | bash
 ENV PATH="/home/agent/.local/bin:$PATH"
 

@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import {
   AFK_BURN_EXPLAINER,
+  agentName,
   BURN_EXPLAINER,
   GATE_EXPLAINER,
   GRILL_EXPLAINER,
   lapExplainer,
+  sessionAgentName,
   testDriveExplainer,
 } from '../src/lib/vocabulary'
 
@@ -23,6 +25,12 @@ describe('the explainers', () => {
   it('says a grill is a conversation, before any code', () => {
     expect(GRILL_EXPLAINER).toMatch(/conversation/)
     expect(GRILL_EXPLAINER).toMatch(/before any code/)
+  })
+
+  // The form that shows this has not launched anything, so it cannot know which
+  // runtime the session will open on (decision 11).
+  it('does not name a runtime it cannot know yet', () => {
+    expect(GRILL_EXPLAINER).not.toMatch(/Claude|Codex/)
   })
 
   it('says a gate is where runcastle waits for the human', () => {
@@ -105,5 +113,39 @@ describe('testDriveExplainer', () => {
   it('claims nothing about commands when the project is still unknown', () => {
     const copy = testDriveExplainer(undefined)
     expect(copy).not.toMatch(/dev server|database|setup command|Preparation/)
+  })
+})
+
+/**
+ * Naming the correspondent (decision 11). A Codex-only human reading "Claude"
+ * is a broken product, not a cosmetic nit — and guessing a runtime where none
+ * has been resolved is the same bug wearing a default.
+ */
+describe('agentName', () => {
+  it('names the runtime a session is actually running on', () => {
+    expect(agentName('claude-code')).toBe('Claude')
+    expect(agentName('codex')).toBe('Codex')
+  })
+
+  // Shorter than RUNTIME_LABEL's product name on purpose: this word goes into a
+  // sentence ("shape the idea with Claude"), not into a settings dropdown.
+  it('names the correspondent, not the product', () => {
+    expect(agentName('claude-code')).not.toContain('Code')
+  })
+
+  it('says "the agent" rather than guessing when no runtime is settled', () => {
+    expect(agentName(undefined)).toBe('the agent')
+    expect(agentName(null)).toBe('the agent')
+  })
+
+  /**
+   * A session that exists always ran on SOMETHING, so it is never "the agent" —
+   * a row written before the runtime column reads as the historical default,
+   * which is the convention the db schema states and the server applies.
+   */
+  it('names a session that predates the runtime column as the historical default', () => {
+    expect(sessionAgentName({ runtime: 'codex' })).toBe('Codex')
+    expect(sessionAgentName({ runtime: null })).toBe('Claude')
+    expect(sessionAgentName({})).toBe('Claude')
   })
 })

@@ -2,14 +2,15 @@ import { execFileSync } from 'node:child_process'
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import type { Project } from '@runcastle/core'
+import type { AgentRuntime, Project } from '@runcastle/core'
 import { eq } from 'drizzle-orm'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { AppCtx } from '../src/db/types'
 import { sessions } from '../src/db/schema'
 import { launchProjectSession } from '../src/launcher/launcher'
+import { KICKOFF_LINES } from '../src/launcher/runtimes/claude'
+import { KICKOFF_LINES as CODEX_KICKOFF_LINES } from '../src/launcher/runtimes/codex'
 import {
-  KICKOFF_LINES,
   awaitProjectLandings,
   getSessionRow,
   resumeKickoffLine,
@@ -185,7 +186,7 @@ describe('reading a conversation back', () => {
   let seq = 0
 
   /** A session row with a transcript, without spawning anything. */
-  function seedSession(lines: string[] | null): string {
+  function seedSession(lines: string[] | null, runtime: AgentRuntime | null = null): string {
     const id = `sess_seeded_${(seq += 1)}`
     let transcriptPath: string | null = null
     if (lines) {
@@ -201,6 +202,7 @@ describe('reading a conversation back', () => {
         status: 'ended',
         worktreePath: '/wt',
         transcriptPath,
+        runtime,
         createdAt: Date.now(),
       })
       .run()
@@ -223,11 +225,86 @@ describe('reading a conversation back', () => {
       'not json at all',
     ])
 
-    expect(await caller().project.conversationTranscript({ sessionId: id })).toEqual([
-      { role: 'user', text: 'add a settings page' },
-      { role: 'assistant', text: 'Looking at what exists.' },
-      { role: 'assistant', text: 'I would split that in two.' },
-    ])
+    expect(await caller().project.conversationTranscript({ sessionId: id })).toEqual({
+      status: 'ok',
+      runtime: 'claude-code',
+      turns: [
+        { role: 'user', text: 'add a settings page' },
+        { role: 'assistant', text: 'Looking at what exists.' },
+        { role: 'assistant', text: 'I would split that in two.' },
+      ],
+    })
+  })
+
+  /**
+   * The other runtime, through the same pane (decision 10). A Codex session
+   * records a rollout instead of a Claude transcript, and the pane must not have
+   * to know that — including the `$`-spelled kickoff, which is dropped by the
+   * same matcher because the adapter is what spells it.
+   */
+  it('reads a Codex session’s rollout into the same turns', async () => {
+    const said = (role: 'user' | 'assistant', text: string) =>
+      JSON.stringify({
+        timestamp: '2026-01-01T00:00:00.000Z',
+        type: 'response_item',
+        payload: {
+          type: 'message',
+          role,
+          content: [{ type: role === 'user' ? 'input_text' : 'output_text', text }],
+        },
+      })
+    const id = seedSession(
+      [
+        JSON.stringify({ timestamp: '2026-01-01T00:00:00.000Z', type: 'session_meta', payload: { id: 'r1' } }),
+        said('user', CODEX_KICKOFF_LINES.project),
+        said('assistant', 'What are we building?'),
+        said('user', 'offline mode for the mobile app'),
+      ],
+      'codex',
+    )
+
+    expect(await caller().project.conversationTranscript({ sessionId: id })).toEqual({
+      status: 'ok',
+      runtime: 'codex',
+      turns: [
+        { role: 'assistant', text: 'What are we building?' },
+        { role: 'user', text: 'offline mode for the mobile app' },
+      ],
+    })
+  })
+
+  /**
+   * The derived title runs through the same kickoff matcher, so it needs the
+   * same runtime — the adapters spell the kickoff differently, and a Codex
+   * conversation matched against Claude's spelling would be NAMED after the
+   * launcher's own opening line.
+   */
+  it('titles a Codex conversation from the human’s first message, not its kickoff', async () => {
+    const said = (role: 'user' | 'assistant', text: string) =>
+      JSON.stringify({
+        timestamp: '2026-01-01T00:00:00.000Z',
+        type: 'response_item',
+        payload: { type: 'message', role, content: [{ type: 'input_text', text }] },
+      })
+    const id = seedSession(
+      [said('user', CODEX_KICKOFF_LINES.project), said('user', 'rework the review page')],
+      'codex',
+    )
+
+    const list = await caller().project.conversations({ projectId: project.id })
+
+    expect(list.find((c) => c.id === id)?.title).toBe('rework the review page')
+  })
+
+  /** A rollout format we do not recognise is said so, not rendered as silence. */
+  it('reports a transcript it cannot parse as unavailable', async () => {
+    const id = seedSession(['{"some":"format we have never seen"}'], 'codex')
+
+    expect(await caller().project.conversationTranscript({ sessionId: id })).toEqual({
+      status: 'unavailable',
+      runtime: 'codex',
+      turns: [],
+    })
   })
 
   /**
@@ -242,7 +319,7 @@ describe('reading a conversation back', () => {
       entry('user', 'offline mode for the mobile app'),
     ])
 
-    expect(await caller().project.conversationTranscript({ sessionId: id })).toEqual([
+    expect((await caller().project.conversationTranscript({ sessionId: id })).turns).toEqual([
       { role: 'assistant', text: 'What are we building?' },
       { role: 'user', text: 'offline mode for the mobile app' },
     ])
@@ -258,7 +335,7 @@ describe('reading a conversation back', () => {
       entry('assistant', 'We were slicing offline mode.'),
     ])
 
-    const turns = await caller().project.conversationTranscript({ sessionId: id })
+    const { turns } = await caller().project.conversationTranscript({ sessionId: id })
 
     expect(turns.filter((t) => t.role === 'user')).toEqual([{ role: 'user', text: 'offline mode' }])
   })
@@ -270,21 +347,27 @@ describe('reading a conversation back', () => {
       entry('assistant', 'Tell me what you have in mind.'),
     ])
 
-    const turns = await caller().project.conversationTranscript({ sessionId: id })
+    const { turns } = await caller().project.conversationTranscript({ sessionId: id })
 
     expect(turns.some((t) => t.role === 'user')).toBe(false)
   })
 
+  /** A record that is gone is an empty conversation, NOT a format we failed to read. */
   it('is empty rather than an error when the transcript file is gone', async () => {
     const id = seedSession([entry('user', 'hello')])
     rmSync(join(scratch, `${id}.jsonl`))
 
-    expect(await caller().project.conversationTranscript({ sessionId: id })).toEqual([])
+    expect(await caller().project.conversationTranscript({ sessionId: id })).toEqual({
+      status: 'ok',
+      runtime: 'claude-code',
+      turns: [],
+    })
   })
 
   it('is empty for a conversation that never recorded a transcript, or does not exist', async () => {
-    expect(await caller().project.conversationTranscript({ sessionId: seedSession(null) })).toEqual([])
-    expect(await caller().project.conversationTranscript({ sessionId: 'sess_nope' })).toEqual([])
+    const empty = { status: 'ok', runtime: 'claude-code', turns: [] }
+    expect(await caller().project.conversationTranscript({ sessionId: seedSession(null) })).toEqual(empty)
+    expect(await caller().project.conversationTranscript({ sessionId: 'sess_nope' })).toEqual(empty)
   })
 })
 

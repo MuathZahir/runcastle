@@ -326,10 +326,26 @@ describe('what the review agent is handed', () => {
   it('reaches that config through the print command, and runs on the host', () => {
     // `config.sandbox` is docker — the review agent still gets the host build,
     // because the app it reviews only exists out here.
-    const agent = buildBurnAgent(config, 'sk-token', 'opus', {
-      onHost: true,
-      mcpConfigPath: '/tmp/reviews/tkt_9/mcp.json',
-    })
+    const agent = buildBurnAgent(
+      config,
+      'sk-token',
+      { id: 'claude-opus-5', runtime: 'claude-code' },
+      {
+        onHost: true,
+        mcp: {
+          path: '/tmp/reviews/tkt_9/mcp.json',
+          config: {
+            mcpServers: {
+              runcastle: {
+                type: 'http',
+                url: 'http://127.0.0.1:4512/mcp',
+                headers: { 'X-Runcastle-Run': 'run_1' },
+              },
+            },
+          },
+        },
+      },
+    )
 
     const { command } = agent.buildPrintCommand({
       prompt: 'review it',

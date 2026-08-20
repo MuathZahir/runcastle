@@ -34,6 +34,18 @@ describe('sandcastleTemplateDir', () => {
     expect(containerfile).toMatch(/AGENT_GID=1000/)
     expect(containerfile).toMatch(/usermod[^\n]*agent/)
   })
+
+  // One image serves both runtimes — a burn picks its CLI from the resolved
+  // model's runtime, so a codex-runtime ticket must find `codex` in the same
+  // image a claude one finds `claude`.
+  it.each(['Containerfile', 'Dockerfile'])('installs both agent CLIs in the %s', (file) => {
+    const image = readFileSync(join(sandcastleTemplateDir(), file), 'utf8')
+    expect(image).toMatch(/claude\.ai\/install\.sh/)
+    expect(image).toMatch(/npm install -g @openai\/codex/)
+    // The codex install must precede the USER switch: a global npm install has
+    // nowhere writable to go once the build drops to the unprivileged agent.
+    expect(image.indexOf('@openai/codex')).toBeLessThan(image.indexOf('USER ${AGENT_UID}'))
+  })
 })
 
 describe('scaffoldSandcastleConfig', () => {
