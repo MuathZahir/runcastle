@@ -154,7 +154,9 @@ describe('burn attachments — preparing the workspace', () => {
   it('lands the PNG at the relative path the ticket context named', async () => {
     await runWorkspacePrep(contextNaming(NOTE))
 
-    expect(readFileSync(join(workspace, ATTACHMENTS_DIR, `${NOTE}.png`))).toEqual(Buffer.from(PNG))
+    // Mounted mode: the agent works in this directory, so the context's
+    // relative path resolves from here. (Isolated mode, below, is the clone.)
+    expect(readFileSync(resolve(workspace, attachmentRelPath(NOTE)))).toEqual(Buffer.from(PNG))
   })
 
   it('leaves the workspace clean, so no commit of the agent`s can pick it up', async () => {

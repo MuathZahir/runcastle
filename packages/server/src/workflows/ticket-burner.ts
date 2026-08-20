@@ -1993,16 +1993,18 @@ async function realExecuteTicketRun(
   if (workspaceMode === 'isolated') await ensureIsolatedPushTarget()
 
   // Screenshots the promoted note carried in (spec.md "Riding into the burn").
+  const attachments = attachmentSources(ticket.context)
+  const attachmentCommands = buildAttachmentCopyCommands(attachments)
   // The exclude goes in BEFORE the first copy and covers every worktree of this
   // repo at once (git resolves `info/exclude` against the common git dir), so
   // the images are unstageable from the moment they exist — no commit of the
   // agent's can pick them up, and sandcastle's end-of-run dirty check still
-  // sees a clean tree.
-  const attachments = attachmentSources(ticket.context)
-  const attachmentCommands = buildAttachmentCopyCommands(attachments)
-  if (attachments.length > 0) await excludePath(project.repoPath, `${ATTACHMENTS_DIR}/`)
-  // Undone however the run ends: the images out of the worktree, the exclude
-  // line back out of the repo (it covers the human's checkout too).
+  // sees a clean tree. Bracketed by `clearAttachmentsFor`, so the line lives
+  // exactly as long as the run it protects: it reaches the human's own checkout
+  // too, which is why it may not outlive the burn.
+  const excludeAttachments = async () => {
+    if (attachments.length > 0) await excludePath(project.repoPath, `${ATTACHMENTS_DIR}/`)
+  }
   const clearAttachmentsFor = async (branch: string) => {
     if (attachments.length > 0) {
       await clearAttachments(burnWorktreePath(project.repoPath, branch), project.repoPath)
@@ -2440,6 +2442,10 @@ async function realExecuteTicketRun(
       }
 
       try {
+        // Immediately before the host hook that copies them in — a run that
+        // never gets here (a conflict resume lands without an agent) must not
+        // leave the line behind.
+        await excludeAttachments()
         result = await run(runOptions)
         // Before anything lands: a preserved worktree must not keep the images.
         await clearAttachmentsFor(tempBranch)
