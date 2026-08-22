@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Feature } from '@runcastle/core'
 import type { AppCtx } from '../src/db/types'
 import { handlePtyExit, launchSession } from '../src/launcher/launcher'
+import { claudeRuntime } from '../src/launcher/runtimes/claude'
 import { getSessionRow, markSessionEnded } from '../src/launcher/sessions'
 import type { PtyEntry } from '../src/pty/registry'
 import { ptyRegistry } from '../src/pty/registry'
@@ -205,8 +206,19 @@ describe('docs watcher lifecycle — bound to the session', () => {
     return feature
   }
 
-  /** Let the terminal "spawn" without starting a real Claude Code process. */
-  function stubPty(): void {
+  /**
+   * Let the terminal "spawn" without starting a real Claude Code process.
+   *
+   * Both halves are needed. The watcher starts inside the branch that creates
+   * the PTY, so these tests cannot take the `spawn:false` door the other session
+   * tests use — and the real spawn path runs the runtime-readiness gate first,
+   * which fails wherever the `claude` CLI is not installed. Stubbing readiness
+   * keeps this file about the watcher's lifetime rather than about what happens
+   * to be on the machine's PATH; `claudeRuntime.checkReady` has its own coverage
+   * in launch-artifacts.test.ts.
+   */
+  function stubSpawn(): void {
+    vi.spyOn(claudeRuntime, 'checkReady').mockReturnValue({ ok: true })
     vi.spyOn(ptyRegistry(), 'create').mockReturnValue({
       pty: { pid: 4512 },
     } as unknown as PtyEntry)
@@ -214,7 +226,7 @@ describe('docs watcher lifecycle — bound to the session', () => {
 
   it('starts on spawn and stops when the PTY exits', async () => {
     const feature = await featureWithWorktree('pty-exit')
-    stubPty()
+    stubSpawn()
 
     const { sessionId } = await launchSession(ctx, { featureId: feature.id, kind: 'ideation' })
     cleanup.push(sessionDir(sessionId))
@@ -226,7 +238,7 @@ describe('docs watcher lifecycle — bound to the session', () => {
 
   it('stops on the marked-ended path (Stop hook, boot reconciliation)', async () => {
     const feature = await featureWithWorktree('marked-ended')
-    stubPty()
+    stubSpawn()
 
     const { sessionId } = await launchSession(ctx, { featureId: feature.id, kind: 'ideation' })
     cleanup.push(sessionDir(sessionId))
