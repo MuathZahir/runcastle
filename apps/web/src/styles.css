@@ -928,6 +928,26 @@ button {
   line-height: 1.5;
   color: var(--text-3);
 }
+/* …and lets you change it, beside the sentence that states it (decision 5). */
+.pw-landing { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.pw-landing .nf-base-label { font-size: 12px; color: var(--text-3); }
+/* The note wraps onto its own line — it is a sentence, not a chip. */
+.pw-landing .size-hint { flex-basis: 100%; }
+.pw-landing-origin {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--hairline);
+  color: var(--text-3);
+}
+/* A pick whose branch is gone refuses the next launch — said in colour too. */
+.pw-landing-origin.is-vanished {
+  border-color: color-mix(in srgb, var(--danger) 55%, var(--hairline));
+  color: var(--danger);
+}
 .pw-frame {
   border: 1px solid var(--hairline);
   border-radius: var(--radius-lg);

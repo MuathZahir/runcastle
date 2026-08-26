@@ -7,7 +7,8 @@ import { sessionStatusLabel } from '../lib/feature-ui'
 import { fmtDateTime } from '../lib/format'
 import { projectStats } from '../lib/projects'
 import { useLivePoll } from '../lib/live'
-import { PROJECT_BRANCH, projectBranchNote } from '../lib/project-workspace'
+import { PROJECT_BRANCH, projectBranchNote, sessionBranchState } from '../lib/project-workspace'
+import { useToast } from '../lib/toast'
 import type { ProjectTalkApi } from '../lib/use-project-talk'
 import { ConversationTranscript } from './ConversationTranscript'
 import { EndSessionButton } from './EndSessionButton'
@@ -72,7 +73,7 @@ export function ProjectWorkspace({
             {PROJECT_BRANCH}
           </span>
         </div>
-        <div className="pw-consequence">{projectBranchNote(project?.mainBranch ?? '')}</div>
+        <SessionLanding projectId={projectId} />
       </div>
 
       <div className="ws-body">
@@ -129,6 +130,74 @@ export function ProjectWorkspace({
         </div>
       </div>
     </section>
+  )
+}
+
+/**
+ * Where this chat's work lands, said and chosen in the same place (decision 5).
+ *
+ * It used to be `project.mainBranch` — a field in the settings overlay called
+ * "Main branch", which nobody would guess also decided where the project chat's
+ * charter commits went, and which detection overwrote on every project open. The
+ * control belongs beside the thing it controls, named for what it does, so it
+ * lives in this chrome rather than in settings.
+ *
+ * Reading never writes (decision 6): an unpicked project shows the detected main
+ * line and stays unpicked until somebody chooses here. Options are LOCAL
+ * branches only — a remote-only pick is what `resolveSessionBranch` would reject
+ * as vanished at launch.
+ */
+function SessionLanding({ projectId }: { projectId: string }) {
+  const utils = trpc.useUtils()
+  const toast = useToast()
+  const viewQ = trpc.project.sessionBranch.useQuery({ projectId })
+  const branchesQ = trpc.project.branches.useQuery({ projectId })
+  const landing = sessionBranchState(viewQ.data, branchesQ.data?.branches)
+  const update = trpc.settings.update.useMutation({
+    onSuccess: () => {
+      void utils.project.sessionBranch.invalidate()
+      // The same value is a row in the settings overlay; one write, both readers.
+      void utils.settings.get.invalidate()
+    },
+    onError: (e) => toast.push(e.message),
+  })
+
+  // A stored pick whose branch is gone is not in the list, and a select whose
+  // value is not among its options renders blank — so the value on screen is
+  // always an option, even when it is the problem being reported.
+  const options = branchesQ.data?.branches ?? []
+  const offered =
+    landing && landing.value && !options.includes(landing.value)
+      ? [landing.value, ...options]
+      : options
+
+  return (
+    <>
+      <div className="pw-consequence">{projectBranchNote(landing?.value ?? '')}</div>
+      <div className="pw-landing">
+        <label className="nf-base-label" htmlFor="session-branch-select">
+          This chat’s work lands on
+        </label>
+        <select
+          id="session-branch-select"
+          className="nf-base-select"
+          value={landing?.value ?? ''}
+          disabled={!landing || offered.length === 0 || update.isPending}
+          onChange={(e) => update.mutate({ projectId, key: 'sessionBranch', value: e.target.value })}
+        >
+          {!landing && <option value="">loading…</option>}
+          {offered.map((b) => (
+            <option key={b} value={b}>
+              {b}
+            </option>
+          ))}
+        </select>
+        {landing && (
+          <span className={`pw-landing-origin is-${landing.origin}`}>{landing.origin}</span>
+        )}
+        {landing && <span className="size-hint">{landing.note}</span>}
+      </div>
+    </>
   )
 }
 
