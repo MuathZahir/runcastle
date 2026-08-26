@@ -332,10 +332,9 @@ export async function listBranches(project: Project): Promise<BranchList> {
   // simple-git reports a detached HEAD as a pseudo-branch named for the short
   // sha. Nobody can fork a feature off it, so it is neither the current branch
   // nor a pick — the checkout simply has no base to offer.
+  const detachedRef = local.detached ? local.current : null
   const current = local.detached ? '' : local.current
-  const branches = local.all.filter(
-    (name) => !name.startsWith('feature/') && !(local.detached && name === local.current),
-  )
+  const branches = local.all.filter((name) => !name.startsWith('feature/') && name !== detachedRef)
 
   const localSet = new Set(local.all)
   let remoteBranches: string[] = []

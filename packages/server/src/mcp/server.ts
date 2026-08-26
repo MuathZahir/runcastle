@@ -1189,7 +1189,7 @@ export async function toolGetProjectContext(
     adrs: listLiveAdrs(session.worktreePath).map(adrRef),
     adrsNote: ADRS_NOTE,
     featureIndex: listFeatures(ctx, project.id).map(featureIndexLine),
-    baseBranches: await baseBranches(project),
+    baseBranches: await readBaseBranches(project),
   }
 }
 
@@ -1199,7 +1199,7 @@ export async function toolGetProjectContext(
  * excluded, remote-only lines as `origin/<name>` — so a base the agent picks
  * here and a base a human picks in the form are the same set of things.
  */
-async function baseBranches(project: Project): Promise<BaseBranches> {
+async function readBaseBranches(project: Project): Promise<BaseBranches> {
   const { current, branches, remoteBranches } = await git.listBranches(project)
   const selectable = [...branches, ...remoteBranches]
   return {
