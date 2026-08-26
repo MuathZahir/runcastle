@@ -585,9 +585,8 @@ describe("the project session's landing branch", () => {
 
     await expect(resolveSessionBranch(picked)).rejects.toThrow(/no longer exists/)
     // and the launch itself refuses rather than quietly re-detecting `main`
-    await expect(launchProjectSession(ctx, { projectId: project.id }, { spawn: false })).rejects.toThrow(
-      /where this chat's work should land/,
-    )
+    const launch = launchProjectSession(ctx, { projectId: project.id }, { spawn: false })
+    await expect(launch).rejects.toThrow(/where this chat's work should land/)
   })
 
   it('cuts the project branch from the picked branch and lands back onto it', async () => {
@@ -621,7 +620,8 @@ describe("the project session's landing branch", () => {
   })
 
   it('applies a pick at the next launch, never under the session already running', async () => {
-    const { sessionId } = await launchProjectSession(ctx, { projectId: project.id }, { spawn: false })
+    const launch = { projectId: project.id }
+    const { sessionId } = await launchProjectSession(ctx, launch, { spawn: false })
     const cutFromMain = git(repoPath, 'rev-parse', PROJECT_BRANCH)
     expect(cutFromMain).toBe(git(repoPath, 'rev-parse', 'main'))
 

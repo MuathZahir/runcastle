@@ -221,6 +221,11 @@ const META: Record<string, FieldMeta> = {
     help: 'Branch features merge back into.',
     control: 'text',
   },
+  sessionBranch: {
+    label: 'Project chat lands on',
+    help: "Branch the project chat's commits (charter, ADRs) land on when its terminal closes. Blank means the repo's detected main line; a pick takes effect at the next chat you open.",
+    control: 'text',
+  },
   devCommand: {
     label: 'Dev command',
     help: "Command that starts this project's dev server.",

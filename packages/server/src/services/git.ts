@@ -634,7 +634,8 @@ export async function ensureProjectWorktree(
     if (await checkoutInWorktree(worktreePath, PROJECT_BRANCH)) return { worktreePath, base }
   }
 
-  return { worktreePath: await addWorktree(g, worktreePath, PROJECT_BRANCH, 'project worktree'), base }
+  const added = await addWorktree(g, worktreePath, PROJECT_BRANCH, 'project worktree')
+  return { worktreePath: added, base }
 }
 
 /**
