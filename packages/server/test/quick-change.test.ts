@@ -101,6 +101,19 @@ describe('quickChange service — a one-ticket feature born at implementation', 
     expect(feature.baseBranch).toBe('release')
   })
 
+  it('falls back to the branch the checkout is standing on when none is given', async () => {
+    await simpleGit(repoPath).checkoutLocalBranch('develop')
+
+    const feature = await features.quickChange(ctx, {
+      projectId,
+      title: 'Off whatever we are on',
+      tickets: [PROSE],
+    })
+
+    expect(feature.baseBranch).toBe('develop')
+    expect(getFeatureRow(ctx, feature.id).baseBranch).toBe('develop')
+  })
+
   /**
    * decisions.md #9 — "a review always runs". The tickets skill mandates a
    * review ticket per batch, but no agent emits tickets on this path, so the

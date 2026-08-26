@@ -65,6 +65,7 @@ const feature: Feature = {
   mapped: false,
   phase: 'implementation',
   branch: 'feature/demo',
+  baseBranch: 'main',
   status: 'active',
   createdAt: 0,
 }
@@ -408,6 +409,25 @@ describe('what the review agent is handed', () => {
   })
 })
 
+describe('the base the review diffs against', () => {
+  it('refuses a feature with no recorded base instead of diffing against a main line', async () => {
+    const ctx = { ...makeCtx([]), feature: { ...feature, baseBranch: undefined } }
+
+    const outcome = await executeReviewTicket(ctx, review(3), {
+      config: { sandbox: 'docker' } as RuncastleConfig,
+      token: 'sk-token',
+      model: 'opus',
+      docsDigest: 'the docs',
+      lapDigests: [],
+    })
+
+    expect(outcome.status).toBe('failed')
+    if (outcome.status !== 'failed') return
+    expect(outcome.error).toContain('no recorded base branch')
+    expect(outcome.error).toContain('feature/demo')
+  })
+})
+
 describe('the agent-browser probe', () => {
   let dir: string
 
@@ -497,7 +517,7 @@ describe.skipIf(!PTY)('releasing the drive a review agent left behind', () => {
     await g.commit('initial commit')
     proj = await openProject(ctx, repo)
     feat = seedFeature(ctx, proj.id, { slug: 'reviewed', phase: 'implementation' })
-    await createFeatureBranch(proj, feat.slug)
+    await createFeatureBranch(proj, feat.slug, 'main')
     ctx.db
       .insert(runs)
       .values({

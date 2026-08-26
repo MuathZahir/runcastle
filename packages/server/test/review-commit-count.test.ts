@@ -68,7 +68,7 @@ describe('feature.commitCount', () => {
   })
 
   it('reports git’s count for a branch one commit ahead, with the branch it merges into', async () => {
-    await createFeatureBranch(project, 'ahead')
+    await createFeatureBranch(project, 'ahead', 'main')
     await g.checkout('feature/ahead')
     writeFileSync(join(project.repoPath, 'work.txt'), 'work\n')
     await g.add(['work.txt'])

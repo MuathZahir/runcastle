@@ -162,7 +162,7 @@ describe('reconcileStaleRuns — git side effects (fixture repo)', () => {
     await initRepo(repo)
     const project = seedProject(ctx, repo)
     const feature = seedFeature(ctx, project.id, { slug: 'stale' })
-    await createFeatureBranch(project, feature.slug)
+    await createFeatureBranch(project, feature.slug, 'main')
     const talkWt = await ensureTalkWorktree(project, feature)
     // the crashed burner run detached the talk worktree and never reattached it
     expect(await detachWorktree(talkWt)).toBe(true)
@@ -180,7 +180,7 @@ describe('reconcileStaleRuns — git side effects (fixture repo)', () => {
     await initRepo(repo)
     const project = seedProject(ctx, repo)
     seedFeature(ctx, project.id, { slug: 'swept' })
-    await createFeatureBranch(project, 'swept')
+    await createFeatureBranch(project, 'swept', 'main')
 
     const g = simpleGit(repo)
     const merged = researchBranchName('swept', 1, 'aaa111')

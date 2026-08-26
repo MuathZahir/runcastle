@@ -58,11 +58,16 @@ describe('feature.create', () => {
     expect(existsSync(join(repoPath, 'docs', 'features', 'brancher', 'brief.md'))).toBe(true)
   })
 
-  it('defaults baseBranch to the project mainBranch and forks from it', async () => {
+  it('falls back to the branch the checkout is standing on, not a stored default', async () => {
+    // The project's stored main line is `main`; the human is working on develop.
+    const g = simpleGit(repoPath)
+    await g.checkoutLocalBranch('develop')
+
     const f = await createFeature(ctx, { projectId, title: 'Defaulted', oneLiner: 'x' })
-    expect(f.baseBranch).toBe('main')
+
+    expect(f.baseBranch).toBe('develop')
     const created = listAfter(ctx, f.id, 0).find((e) => e.type === 'feature.created')
-    expect(created?.message).toContain('← main')
+    expect(created?.message).toContain('← develop')
   })
 
   it('forks the feature off an explicit baseBranch when given', async () => {

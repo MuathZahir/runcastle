@@ -110,9 +110,11 @@ export interface CreateFeatureInput {
   title: string
   oneLiner: string
   /**
-   * Branch to fork `feature/<slug>` off. Defaults to the project's `mainBranch`.
-   * Any existing local branch is valid (the current branch, a release line,
-   * another feature) — the merge target stays `mainBranch` regardless.
+   * Branch to fork `feature/<slug>` off, and the branch it later merges back
+   * into. Any existing local branch is valid (the current branch, a release
+   * line, another feature). Every shipped caller states one; omitting it falls
+   * back to the project checkout's current branch, never a stored default
+   * (decision 2).
    */
   baseBranch?: string
   /**
@@ -138,12 +140,13 @@ export async function createFeature(
   const project = requireProjectById(ctx, input.projectId)
   const slug = uniqueSlug(ctx, project.id, input.title)
   const branch = `feature/${slug}`
-  const requestedBase = input.baseBranch?.trim() || project.mainBranch
 
   // A draft cuts nothing (decision 3): its base is chosen and resolved later, at
   // Start. Otherwise the stored base is the RESOLVED local branch (a remote pick
   // materialized a local tracking branch), always a real merge target at ship time.
-  const cut = input.draft ? null : await ensureFeatureBranch(project, slug, requestedBase)
+  const cut = input.draft
+    ? null
+    : await ensureFeatureBranch(project, slug, await requestedBase(project, input.baseBranch))
 
   const row = {
     id: newId('feat'),
@@ -240,9 +243,9 @@ export async function startDraft(
     throw new GateError(`feature ${feature.slug} is not a draft — it has already been started`)
   }
   const project = projectForFeature(ctx, feature)
-  const requestedBase = opts.baseBranch?.trim() || project.mainBranch
+  const base = await requestedBase(project, opts.baseBranch)
 
-  const { branchReady, baseBranch } = await ensureFeatureBranch(project, feature.slug, requestedBase)
+  const { branchReady, baseBranch } = await ensureFeatureBranch(project, feature.slug, base)
 
   ctx.db
     .update(features)
@@ -397,8 +400,8 @@ export async function quickChange(ctx: AppCtx, input: QuickChangeInput): Promise
 
   const slug = uniqueSlug(ctx, project.id, title)
   const branch = `feature/${slug}`
-  const requestedBase = input.baseBranch?.trim() || project.mainBranch
-  const { branchReady, baseBranch } = await ensureFeatureBranch(project, slug, requestedBase)
+  const base = await requestedBase(project, input.baseBranch)
+  const { branchReady, baseBranch } = await ensureFeatureBranch(project, slug, base)
 
   const inserted = ctx.db
     .insert(features)
@@ -481,6 +484,16 @@ export async function quickChange(ctx: AppCtx, input: QuickChangeInput): Promise
 }
 
 /**
+ * The base a feature is cut from: what the caller named, else the branch the
+ * project checkout is standing on (decision 2). Never a stored project default —
+ * a base nobody chose, that no surface showed, is exactly what this replaced.
+ * Every shipped surface names one, so the fallback is a backstop, not a path.
+ */
+async function requestedBase(project: Project, picked: string | undefined): Promise<string> {
+  return picked?.trim() || (await git.currentCheckoutBranch(project))
+}
+
+/**
  * Create the feature's git branch if B2's git service is available, tolerating
  * its typed stub so the feature is created without a branch pre-B2. When B2
  * lands this transparently starts creating real branches — no caller change.
@@ -488,16 +501,16 @@ export async function quickChange(ctx: AppCtx, input: QuickChangeInput): Promise
 async function ensureFeatureBranch(
   project: Project,
   slug: string,
-  requestedBase: string,
+  base: string,
 ): Promise<{ branchReady: boolean; baseBranch: string }> {
   try {
-    const baseBranch = await git.resolveBaseBranch(project, requestedBase)
+    const baseBranch = await git.resolveBaseBranch(project, base)
     await git.createFeatureBranch(project, slug, baseBranch)
     return { branchReady: true, baseBranch }
   } catch (e) {
     // Pre-B2 the git service is a stub — the feature is created branchless and
     // the requested base is recorded as-is (resolution happens when B2 lands).
-    if (isNotImplemented(e)) return { branchReady: false, baseBranch: requestedBase }
+    if (isNotImplemented(e)) return { branchReady: false, baseBranch: base }
     throw e
   }
 }

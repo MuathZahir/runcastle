@@ -463,8 +463,9 @@ export const Feature = z.object({
   phase: Phase,
   branch: z.string(),
   /**
-   * The branch `branch` was forked from at creation (choosable base; defaults to
-   * the project's `mainBranch`). Unset on features created before this existed.
+   * The branch `branch` was forked from at creation, and the branch it merges
+   * back into — read from here and nowhere else. Unset only on a parked draft,
+   * which picks its base at Start.
    */
   baseBranch: z.string().optional(),
   status: FeatureStatus,

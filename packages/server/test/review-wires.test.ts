@@ -88,7 +88,7 @@ describe('the review agent wires', () => {
     await initRepo(repo)
     project = await openProject(ctx, repo)
     feature = seedFeature(ctx, project.id, { slug: 'reviewed', phase: 'implementation' })
-    await createFeatureBranch(project, feature.slug)
+    await createFeatureBranch(project, feature.slug, 'main')
     // A review ticket only ever burns inside its own run, so that run is the
     // identity every call below arrives with.
     run = seedRun('running')

@@ -59,7 +59,7 @@ describe('rethink refuses while the feature is being test-driven', () => {
     await initRepo(repo)
     project = seedProject(ctx, repo)
     feature = seedFeature(ctx, project.id, { slug: 'driven', phase: 'review' })
-    await createFeatureBranch(project, feature.slug)
+    await createFeatureBranch(project, feature.slug, 'main')
   })
 
   afterEach(() => {
@@ -89,7 +89,7 @@ describe('rethink refuses while the feature is being test-driven', () => {
 
   it('leaves a DIFFERENT feature`s drive alone', async () => {
     const other = seedFeature(ctx, project.id, { slug: 'other', phase: 'review' })
-    await createFeatureBranch(project, other.slug)
+    await createFeatureBranch(project, other.slug, 'main')
     await testDrive(ctx, project, other, 'start')
 
     expect(rethink(ctx, feature.id).lap).toBe(2)

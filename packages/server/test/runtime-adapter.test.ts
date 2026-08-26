@@ -90,7 +90,7 @@ describe('runtime dispatch at launch', () => {
 
     const project = seedProject(ctx, repoPath)
     const feature = seedFeature(ctx, project.id, { slug: 'codex-pick' })
-    await createFeatureBranch(project, 'codex-pick')
+    await createFeatureBranch(project, 'codex-pick', 'main')
     cleanup.push(worktreeDir(project.id, 'codex-pick'))
 
     const { sessionId } = await launchSession(
@@ -116,7 +116,7 @@ describe('runtime dispatch at launch', () => {
 
     const project = seedProject(ctx, repoPath)
     const feature = seedFeature(ctx, project.id, { slug: 'codex-smoke' })
-    await createFeatureBranch(project, 'codex-smoke')
+    await createFeatureBranch(project, 'codex-smoke', 'main')
     cleanup.push(worktreeDir(project.id, 'codex-smoke'))
 
     const { sessionId } = await launchSession(
@@ -144,7 +144,7 @@ describe('runtime dispatch at launch', () => {
 
     const project = seedProject(ctx, repoPath)
     const feature = seedFeature(ctx, project.id, { slug: 'codex-resume' })
-    await createFeatureBranch(project, 'codex-resume')
+    await createFeatureBranch(project, 'codex-resume', 'main')
     cleanup.push(worktreeDir(project.id, 'codex-resume'))
 
     const first = await launchSession(
@@ -212,7 +212,7 @@ describe('runtime dispatch at launch', () => {
   it('stamps the resolved model and runtime on the session row and its event', async () => {
     const project = seedProject(ctx, repoPath)
     const feature = seedFeature(ctx, project.id, { slug: 'stamped' })
-    await createFeatureBranch(project, 'stamped')
+    await createFeatureBranch(project, 'stamped', 'main')
     cleanup.push(worktreeDir(project.id, 'stamped'))
 
     const { sessionId } = await launchSession(

@@ -124,9 +124,10 @@ export const features = sqliteTable('features', {
   phase: text('phase').notNull().$type<Phase>(),
   branch: text('branch').notNull(),
   /**
-   * The branch `branch` was created from (issue: choosable base). Null for
-   * features created before this column existed — historically always the
-   * project's `mainBranch`. New rows always store the resolved base explicitly.
+   * The branch `branch` was created from (issue: choosable base), and the only
+   * source for the branch it merges back into. Null on a parked draft, which has
+   * cut nothing and picks its base at Start; rows predating the column were
+   * back-filled from the project's old `mainBranch`, the base they in fact had.
    */
   baseBranch: text('base_branch'),
   status: text('status').notNull().$type<FeatureStatus>(),
