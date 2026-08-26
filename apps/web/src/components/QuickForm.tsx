@@ -257,7 +257,7 @@ export function QuickForm({
                 branches={branchesQ.data}
                 value={base}
                 onPick={setBasePick}
-                hint="This feature forks off here — and merges back into it when shipped."
+                hint="This feature forks off this branch — and merges back into it when shipped."
               />
 
               {/* The review ticket is named here because the server appends one

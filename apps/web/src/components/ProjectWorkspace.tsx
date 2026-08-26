@@ -166,14 +166,12 @@ function SessionLanding({ projectId }: { projectId: string }) {
   // value is not among its options renders blank — so the value on screen is
   // always an option, even when it is the problem being reported.
   const options = branchesQ.data?.branches ?? []
-  const offered =
-    landing && landing.value && !options.includes(landing.value)
-      ? [landing.value, ...options]
-      : options
+  const shown = landing?.value
+  const offered = shown && !options.includes(shown) ? [shown, ...options] : options
 
   return (
     <>
-      <div className="pw-consequence">{projectBranchNote(landing?.value ?? '')}</div>
+      <div className="pw-consequence">{projectBranchNote(shown ?? '')}</div>
       <div className="pw-landing">
         <label className="nf-base-label" htmlFor="session-branch-select">
           This chat’s work lands on
@@ -181,7 +179,7 @@ function SessionLanding({ projectId }: { projectId: string }) {
         <select
           id="session-branch-select"
           className="nf-base-select"
-          value={landing?.value ?? ''}
+          value={shown ?? ''}
           disabled={!landing || offered.length === 0 || update.isPending}
           onChange={(e) => update.mutate({ projectId, key: 'sessionBranch', value: e.target.value })}
         >
@@ -193,9 +191,11 @@ function SessionLanding({ projectId }: { projectId: string }) {
           ))}
         </select>
         {landing && (
-          <span className={`pw-landing-origin is-${landing.origin}`}>{landing.origin}</span>
+          <>
+            <span className={`pw-landing-origin is-${landing.origin}`}>{landing.label}</span>
+            <span className="size-hint">{landing.note}</span>
+          </>
         )}
-        {landing && <span className="size-hint">{landing.note}</span>}
       </div>
     </>
   )

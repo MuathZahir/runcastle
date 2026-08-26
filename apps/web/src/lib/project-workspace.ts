@@ -62,12 +62,20 @@ export interface SessionBranchState {
   /** The branch shown as chosen — the stored pick if there is one, else detection. */
   value: string
   origin: SessionBranchOrigin
+  /** The chip beside the control: whose choice this is, in two words. */
+  label: string
   /** The one line under the control: where the value came from, and when a change bites. */
   note: string
 }
 
 /** Said by every note, because a live chat's branch was cut before you got here. */
 const NEXT_LAUNCH = 'A change applies to the next chat you open, not one already running.'
+
+const ORIGIN_LABEL: Record<SessionBranchOrigin, string> = {
+  picked: 'your pick',
+  detected: 'detected',
+  vanished: 'branch gone',
+}
 
 const ORIGIN_NOTE: Record<SessionBranchOrigin, string> = {
   picked: `You picked this branch, and nothing re-detects over it. ${NEXT_LAUNCH}`,
@@ -97,7 +105,12 @@ export function sessionBranchState(
     : branches && !branches.includes(view.stored)
       ? 'vanished'
       : 'picked'
-  return { value: view.effective, origin, note: ORIGIN_NOTE[origin] }
+  return {
+    value: view.effective,
+    origin,
+    label: ORIGIN_LABEL[origin],
+    note: ORIGIN_NOTE[origin],
+  }
 }
 
 /** Which surface owns the workspace body. */

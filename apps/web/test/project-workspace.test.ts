@@ -233,7 +233,7 @@ describe('sessionBranchState', () => {
       { stored: null, effective: 'main', detected: 'main' },
       branches,
     )
-    expect(state).toMatchObject({ value: 'main', origin: 'detected' })
+    expect(state).toMatchObject({ value: 'main', origin: 'detected', label: 'detected' })
     expect(state?.note).toContain('nobody has picked')
     expect(state?.note).toContain('next chat you open')
   })
@@ -243,7 +243,7 @@ describe('sessionBranchState', () => {
       { stored: 'develop', effective: 'develop', detected: 'main' },
       branches,
     )
-    expect(state).toMatchObject({ value: 'develop', origin: 'picked' })
+    expect(state).toMatchObject({ value: 'develop', origin: 'picked', label: 'your pick' })
     expect(state?.note).toContain('nothing re-detects over it')
   })
 
@@ -254,7 +254,7 @@ describe('sessionBranchState', () => {
       { stored: 'release/1.2', effective: 'release/1.2', detected: 'main' },
       branches,
     )
-    expect(state).toMatchObject({ value: 'release/1.2', origin: 'vanished' })
+    expect(state).toMatchObject({ value: 'release/1.2', origin: 'vanished', label: 'branch gone' })
     expect(state?.note).toContain('refuse to launch')
   })
 
