@@ -14,9 +14,8 @@
  */
 
 import { existsSync } from 'node:fs'
-import { homedir } from 'node:os'
-import { join } from 'node:path'
 import { AGENT_RUNTIMES, DEFAULT_RUNTIME, DEFAULT_SANDBOX_IMAGE, type AgentRuntime } from '@runcastle/core'
+import { codexAuthFile } from '../services/codex-auth'
 
 /** Outcome of one injected command. `ok:false` = spawn failed (ENOENT / not on PATH). */
 export interface ExecOutcome {
@@ -210,11 +209,6 @@ export interface RuntimeSpec {
    * missing file there would be a false negative).
    */
   authFile?: (env: Record<string, string | undefined>) => string
-}
-
-/** `$CODEX_HOME/auth.json` — where `codex login` writes ChatGPT/API credentials. */
-function codexAuthFile(env: Record<string, string | undefined>): string {
-  return join(env.CODEX_HOME ?? join(env.HOME ?? env.USERPROFILE ?? homedir(), '.codex'), 'auth.json')
 }
 
 export const RUNTIME_SPECS: Record<AgentRuntime, RuntimeSpec> = {
