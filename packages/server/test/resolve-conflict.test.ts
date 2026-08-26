@@ -431,7 +431,7 @@ describe('launchSession — the purpose reaches the session row', () => {
     const project = seedProject(ctx, repo)
     const feature = seedFeature(ctx, project.id, { slug: 'dark-mode', phase: 'review' })
     featureId = feature.id
-    await createFeatureBranch(project, 'dark-mode')
+    await createFeatureBranch(project, 'dark-mode', 'main')
     cleanup.push(worktreeDir(project.id, 'dark-mode'))
   })
 

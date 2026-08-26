@@ -139,7 +139,7 @@ describe('launchSession — an explicit briefing launches fresh', () => {
   ): Promise<{ featureId: string }> {
     const project = seedProject(ctx, repoPath)
     const feature = seedFeature(ctx, project.id, { slug, ...overrides })
-    await createFeatureBranch(project, slug)
+    await createFeatureBranch(project, slug, 'main')
     cleanup.push(worktreeDir(project.id, slug))
     const prior = createSessionRow(ctx, {
       featureId: feature.id,

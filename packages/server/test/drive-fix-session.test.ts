@@ -74,7 +74,7 @@ describe('launching a drive-fix session', () => {
     await initRepo(repo)
     project = await openProject(ctx, repo)
     feature = seedFeature(ctx, project.id, { slug: 'drivefix', title: 'Billing rewrite' })
-    await createFeatureBranch(project, feature.slug)
+    await createFeatureBranch(project, feature.slug, 'main')
   })
 
   afterEach(() => {
@@ -228,7 +228,7 @@ describe('retry_drive', () => {
     await initRepo(repo)
     project = await openProject(ctx, repo)
     feature = seedFeature(ctx, project.id, { slug: 'retrydrive' })
-    await createFeatureBranch(project, feature.slug)
+    await createFeatureBranch(project, feature.slug, 'main')
   })
 
   afterEach(() => {

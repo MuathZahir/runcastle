@@ -155,7 +155,7 @@ export interface DriveInfo {
 export interface MergeResult {
   ok: boolean
   conflict?: boolean
-  /** The branch the feature was merged into (its base; default `mainBranch`). */
+  /** The branch the feature was merged into — the base it was cut from. */
   target: string
   /** Repo-relative paths that conflicted (only on `conflict`), for the review UI. */
   files?: string[]
@@ -196,9 +196,22 @@ function featureBranch(slug: string): string {
   return `feature/${slug}`
 }
 
-/** The branch a feature merges into: its own base, else the project main line. */
-function mergeTarget(project: Project, feature: Feature): string {
-  return feature.baseBranch ?? project.mainBranch
+/**
+ * The branch a feature was cut from — the one it merges back into, and the one
+ * its branch is recut from if it ever goes missing. It is recorded on the row at
+ * creation and read from nowhere else: there is no project-level fallback, so a
+ * feature cut from `develop` can never be measured against `main` (decision 4).
+ *
+ * Only a draft carries no base, and a draft has cut no branch to merge or recut,
+ * so an absent one here is a caller error and says so rather than guessing.
+ */
+function featureBase(feature: Feature): string {
+  if (!feature.baseBranch) {
+    throw new GateError(
+      `feature ${feature.slug} has no recorded base branch — it has not been cut from one yet`,
+    )
+  }
+  return feature.baseBranch
 }
 
 function git(repoPath: string): SimpleGit {
@@ -314,21 +327,41 @@ export async function sessionBranchView(project: Project): Promise<SessionBranch
 // --- feature branch ---------------------------------------------------------
 
 /**
- * Create branch `feature/<slug>` from `base` (default `project.mainBranch`)
- * WITHOUT switching the main working copy (`git branch <name> <base>`). `base`
- * lets the caller fork a feature off any existing local branch — the current
- * branch, another feature, a release line — not just the project default.
- * Idempotent: if the branch already exists this is a no-op (the base is
- * ignored). Throws a clear error if `base` is not an existing local branch.
- * Returns the branch name.
+ * The branch the project checkout is on right now — what a feature forks from
+ * when its creator named no base (decision 2). The branch a human is standing on
+ * is the branch they chose to work on, which is exactly why it beats a stored
+ * default: it is a choice somebody actually made.
+ *
+ * A detached checkout is standing on no branch at all, so there is nothing to
+ * fall back to and this says so rather than handing back simple-git's sha
+ * pseudo-branch, which would fail later and less legibly.
+ */
+export async function currentCheckoutBranch(project: Project): Promise<string> {
+  const local = await git(project.repoPath).branchLocal()
+  if (local.detached || !local.current) {
+    throw new InvalidInputError(
+      `${project.repoPath} has no branch checked out (detached HEAD) — name the branch to fork from`,
+    )
+  }
+  return local.current
+}
+
+/**
+ * Create branch `feature/<slug>` from `base` WITHOUT switching the main working
+ * copy (`git branch <name> <base>`). `base` is required and names any existing
+ * local branch — the current branch, another feature, a release line: every
+ * caller has already decided which, and there is no default to fall back to
+ * (decision 4). Idempotent: if the branch already exists this is a no-op (the
+ * base is ignored). Throws a clear error if `base` is not an existing local
+ * branch. Returns the branch name.
  */
 export async function createFeatureBranch(
   project: Project,
   slug: string,
-  base?: string,
+  base: string,
 ): Promise<string> {
   const branch = featureBranch(slug)
-  const from = base?.trim() || project.mainBranch
+  const from = base.trim()
   const g = git(project.repoPath)
   const branches = await g.branchLocal()
   if (branches.all.includes(branch)) return branch
@@ -437,8 +470,9 @@ export async function ensureTalkWorktree(project: Project, feature: Feature): Pr
 
   // The worktree can only be checked out to an existing branch. Normally the
   // branch already exists (created at feature.create); this only recreates it if
-  // it went missing — from the feature's recorded base, falling back to main.
-  await ensureBranchExists(g, branch, feature.baseBranch ?? project.mainBranch)
+  // it went missing — from the feature's own recorded base, the same branch it
+  // was cut from the first time.
+  await ensureBranchExists(g, branch, featureBase(feature))
 
   if (await worktreeIsValid(g, worktreePath, branch)) return worktreePath
 
@@ -1003,7 +1037,7 @@ export async function branchCommitsAhead(
  * rather than from ticket rows (a branch a human or an Iterate session committed
  * to has commits and no ticket commit rows at all: findings F23).
  *
- * The base is `mergeTarget`, the very branch {@link mergeFeature} will merge into,
+ * The base is {@link featureBase}, the very branch {@link mergeFeature} will merge into,
  * so the figure the review summary paints cannot drift from what the click does.
  * `rev-list <base>..<branch>` is merge-base-relative, so a base that moved ahead
  * underneath the feature does not inflate the count.
@@ -1015,7 +1049,7 @@ export async function reviewCommitCount(
   project: Project,
   feature: Feature,
 ): Promise<{ base: string; count?: number }> {
-  const base = mergeTarget(project, feature)
+  const base = featureBase(feature)
   const branch = featureBranch(feature.slug)
   try {
     const out = (
@@ -1030,7 +1064,7 @@ export async function reviewCommitCount(
 
 /** What a feature branch changed against its base — the drive-fix agent's map. */
 export interface BranchDelta {
-  /** The branch this feature merges into (its own base, else the main line). */
+  /** The branch this feature was cut from and merges back into. */
   base: string
   branch: string
   /** `git diff --stat <base>...<branch>`, empty when the diff cannot be taken. */
@@ -1043,14 +1077,14 @@ export interface BranchDelta {
  * Three-dot, so it reads "what this branch added" rather than "how the two
  * differ" — a base that moved ahead underneath the feature is not this branch's
  * doing, and listing its files would send a fix agent hunting in the wrong half
- * of the diff. Never throws: a delta is context, and a drive-fix session with no
- * delta is still worth opening.
+ * of the diff. Never throws over git: a delta is context, and a drive-fix session
+ * with no delta is still worth opening.
  */
 export async function featureBranchDelta(
   project: Project,
   feature: Feature,
 ): Promise<BranchDelta> {
-  const base = mergeTarget(project, feature)
+  const base = featureBase(feature)
   const branch = featureBranch(feature.slug)
   try {
     const out = await git(project.repoPath).raw(['diff', '--stat', `${base}...${branch}`])
@@ -2614,7 +2648,7 @@ async function detectDbDrift(
  * normal flow this only fires when a DIFFERENT feature is being test-driven.
  */
 export async function mergeFeature(project: Project, feature: Feature): Promise<MergeResult> {
-  const target = mergeTarget(project, feature)
+  const target = featureBase(feature)
 
   if (testDriveState) {
     throw new GateError('Cannot merge while a test drive is active — stop it first')

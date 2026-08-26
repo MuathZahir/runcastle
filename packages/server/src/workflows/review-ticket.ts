@@ -55,7 +55,7 @@ const PLACEHOLDERS = [
   'DOCS_DIGEST',
   'LAP_DIGESTS',
   'FEATURE_BRANCH',
-  /** The ref the branch forked from — `project.mainBranch`, not a shell guess. */
+  /** The ref the branch forked from — the feature's own base, not a shell guess. */
   'BASE_BRANCH',
   'DIGEST_PATH',
   'BLOCKED_PATH',
@@ -198,6 +198,16 @@ export async function executeReviewTicket(
     )
   }
 
+  // The diff is taken against the branch this feature forked from, so without a
+  // recorded base there is no diff to review — and no main line to substitute,
+  // which is precisely the substitution that used to review the wrong commits.
+  if (!feature.baseBranch) {
+    return couldNotReview(
+      ticket,
+      `feature ${feature.slug} has no recorded base branch, so there is nothing to diff \`${feature.branch}\` against.`,
+    )
+  }
+
   const artifacts = writeReviewArtifacts(ticket, ctx.runId, deps.config)
   const prompt = renderReviewPrompt(readFileSync(reviewTemplatePath(), 'utf8'), {
     TICKET_JSON: buildTicketJson(ticket),
@@ -205,14 +215,16 @@ export async function executeReviewTicket(
     DOCS_DIGEST: deps.docsDigest,
     LAP_DIGESTS: buildLapDigestsBlock(deps.lapDigests),
     FEATURE_BRANCH: feature.branch,
-    // The base the branch forked from, stated rather than guessed. The agent
-    // runs with `branchStrategy: {type:'head'}` in the human's own checkout,
-    // where HEAD is still the main branch at step 1 — the merge that landed the
-    // lap fast-forwards the feature REF without any checkout, and the runner
-    // detached the talk worktree — so the template's old `<base>...HEAD` diff
-    // was empty on a perfectly healthy lap, and its own failure criterion then
-    // made it report "could not review".
-    BASE_BRANCH: project.mainBranch,
+    // The base the branch forked from, read off the feature rather than guessed
+    // — a feature cut from `develop` used to be diffed against main, which reads
+    // every commit develop is behind main as this feature's work. The agent runs
+    // with `branchStrategy: {type:'head'}` in the human's own checkout, where
+    // HEAD is still the base branch at step 1 — the merge that landed the lap
+    // fast-forwards the feature REF without any checkout, and the runner detached
+    // the talk worktree — so the template's old `<base>...HEAD` diff was empty on
+    // a perfectly healthy lap, and its own failure criterion then made it report
+    // "could not review".
+    BASE_BRANCH: feature.baseBranch,
     DIGEST_PATH: artifacts.digestPath,
     BLOCKED_PATH: artifacts.blockedPath,
     WALKTHROUGH_PATH: artifacts.walkthroughPath,

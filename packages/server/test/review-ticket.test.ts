@@ -497,7 +497,7 @@ describe.skipIf(!PTY)('releasing the drive a review agent left behind', () => {
     await g.commit('initial commit')
     proj = await openProject(ctx, repo)
     feat = seedFeature(ctx, proj.id, { slug: 'reviewed', phase: 'implementation' })
-    await createFeatureBranch(proj, feat.slug)
+    await createFeatureBranch(proj, feat.slug, 'main')
     ctx.db
       .insert(runs)
       .values({

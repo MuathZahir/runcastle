@@ -148,7 +148,7 @@ describe('one-live-session guard — sessions and runs, never claims', () => {
 
   async function mappedFeature(slug: string) {
     const feature = seedFeature(ctx, projectId, { slug, mapped: true })
-    await createFeatureBranch({ id: projectId, name: 't', repoPath, mainBranch: 'main' }, slug)
+    await createFeatureBranch({ id: projectId, name: 't', repoPath, mainBranch: 'main' }, slug, 'main')
     cleanup.push(worktreeDir(projectId, slug))
     return feature
   }
@@ -246,7 +246,7 @@ describe('failed resume — lastSessionId preservation + events', () => {
 
   async function mappedFeature(slug: string) {
     const feature = seedFeature(ctx, projectId, { slug, mapped: true })
-    await createFeatureBranch({ id: projectId, name: 't', repoPath, mainBranch: 'main' }, slug)
+    await createFeatureBranch({ id: projectId, name: 't', repoPath, mainBranch: 'main' }, slug, 'main')
     cleanup.push(worktreeDir(projectId, slug))
     return feature
   }
@@ -365,7 +365,7 @@ describe('relaunching a terminal resumes its own conversation', () => {
 
   async function feature(slug: string) {
     const f = seedFeature(ctx, projectId, { slug })
-    await createFeatureBranch({ id: projectId, name: 't', repoPath, mainBranch: 'main' }, slug)
+    await createFeatureBranch({ id: projectId, name: 't', repoPath, mainBranch: 'main' }, slug, 'main')
     cleanup.push(worktreeDir(projectId, slug))
     return f
   }

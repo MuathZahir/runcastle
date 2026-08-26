@@ -172,7 +172,7 @@ describe('talk worktree detach — only for branch-claiming workflows (ADR-0001 
 
     project = seedProject(ctx, repo)
     feature = seedFeature(ctx, project.id, { slug: 'runwt', phase: 'implementation' })
-    await createFeatureBranch(project, feature.slug)
+    await createFeatureBranch(project, feature.slug, 'main')
     talkWt = await ensureTalkWorktree(project, feature)
   })
 

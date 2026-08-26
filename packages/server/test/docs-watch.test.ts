@@ -201,7 +201,7 @@ describe('docs watcher lifecycle — bound to the session', () => {
     const git = simpleGit(repoPath)
     await git.add('.')
     await git.commit(`scaffold docs for ${slug}`)
-    await createFeatureBranch({ id: projectId, name: 't', repoPath, mainBranch: 'main' }, slug)
+    await createFeatureBranch({ id: projectId, name: 't', repoPath, mainBranch: 'main' }, slug, 'main')
     cleanup.push(worktreeDir(projectId, slug))
     return feature
   }

@@ -218,7 +218,7 @@ describe('the preparation dry-run drive', () => {
 
   it('refuses to start while a feature test drive holds the slot', async () => {
     const feature = seedFeature(ctx, project.id, { slug: 'drive' })
-    await createFeatureBranch(project, feature.slug)
+    await createFeatureBranch(project, feature.slug, 'main')
     expect((await testDrive(ctx, project, feature, 'start')).ok).toBe(true)
 
     const start = await drive('start')
@@ -230,7 +230,7 @@ describe('the preparation dry-run drive', () => {
 
   it('refuses a feature test drive while it holds the slot itself', async () => {
     const feature = seedFeature(ctx, project.id, { slug: 'drive' })
-    await createFeatureBranch(project, feature.slug)
+    await createFeatureBranch(project, feature.slug, 'main')
     expect((await drive('start')).ok).toBe(true)
 
     const denied = await testDrive(ctx, project, feature, 'start')

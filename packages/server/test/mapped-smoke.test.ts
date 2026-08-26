@@ -95,7 +95,7 @@ describe('mapped-path smoke (issue #9)', () => {
     const slug = 'mapped-play'
     const feature = seedFeature(ctx, project.id, { slug, mapped: false })
     const featureId = feature.id
-    await createFeatureBranch(project, slug)
+    await createFeatureBranch(project, slug, 'main')
     cleanup.push(worktreeDir(project.id, slug))
     const { sessionId } = await launchSession(ctx, { featureId, kind: 'ideation' }, { spawn: false })
     cleanup.push(sessionDir(sessionId))

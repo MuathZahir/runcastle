@@ -71,7 +71,7 @@ describe('workWaypoint — claim before spawn', () => {
 
   async function mappedFeature(slug: string) {
     const feature = seedFeature(ctx, projectId, { slug, mapped: true })
-    await createFeatureBranch({ id: projectId, name: 't', repoPath, mainBranch: 'main' }, slug)
+    await createFeatureBranch({ id: projectId, name: 't', repoPath, mainBranch: 'main' }, slug, 'main')
     cleanup.push(worktreeDir(projectId, slug))
     return feature
   }
@@ -214,7 +214,7 @@ describe('workWaypoint — implicit handoff', () => {
 
   async function mappedFeature(slug: string) {
     const feature = seedFeature(ctx, projectId, { slug, mapped: true })
-    await createFeatureBranch({ id: projectId, name: 't', repoPath, mainBranch: 'main' }, slug)
+    await createFeatureBranch({ id: projectId, name: 't', repoPath, mainBranch: 'main' }, slug, 'main')
     cleanup.push(worktreeDir(projectId, slug))
     return feature
   }
