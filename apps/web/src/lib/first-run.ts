@@ -79,7 +79,7 @@ export interface RuntimeReadiness {
   installed: boolean
   /** Its CLI reports an interactive login. */
   authed: boolean
-  /** Its unattended credential is in `~/.runcastle/.env`. */
+  /** Its unattended credential is in place — see {@link runtimeReadiness}. */
   afkReady: boolean
   /** Enough to open talk sessions on this runtime. */
   talkReady: boolean
@@ -98,6 +98,10 @@ export interface RuntimeReadiness {
  * `talkReady` accepts EITHER an interactive login or the unattended credential,
  * because both really do authenticate a session — an operator who pasted a
  * token is not sent back to log in a second time.
+ *
+ * For Codex the two are one thing: a burn borrows the very file `codex login`
+ * writes, so its AFK credential IS the login (decision 4) and there is no key
+ * that could make it ready without one. Claude Code keeps the separate token.
  */
 export function runtimeReadiness(probes: readonly ProbeLike[]): RuntimeReadiness[] {
   return AGENT_RUNTIMES.map((runtime) => {
@@ -105,7 +109,7 @@ export function runtimeReadiness(probes: readonly ProbeLike[]): RuntimeReadiness
     const binary = of('binary')
     const installed = binary?.status === 'ok'
     const authed = of('auth')?.status === 'ok'
-    const afkReady = of('afk-key')?.status === 'ok'
+    const afkReady = runtime === 'codex' ? authed : of('afk-key')?.status === 'ok'
     return {
       runtime,
       label: RUNTIME_LABEL[runtime],

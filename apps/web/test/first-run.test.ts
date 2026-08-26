@@ -119,15 +119,36 @@ describe('runtimeReadiness', () => {
     expect(claude).toMatchObject({ installed: true, authed: true, afkReady: false, talkReady: true })
   })
 
-  // The unattended credential authenticates a session too — an operator who
-  // pasted a key is not sent back to log in a second time.
-  it('accepts the AFK credential in place of an interactive login', () => {
+  // Claude Code's unattended token authenticates a session too — an operator who
+  // pasted one is not sent back to log in a second time.
+  it('accepts Claude Code’s AFK token in place of an interactive login', () => {
+    const [claude] = runtimeReadiness([
+      probe('claude-code', 'binary', 'ok'),
+      probe('claude-code', 'auth', 'unset'),
+      probe('claude-code', 'afk-key', 'ok'),
+    ])
+    expect(claude?.talkReady).toBe(true)
+  })
+
+  // Codex burns borrow the file `codex login` writes (decision 4), so the login
+  // is the AFK credential — being signed in makes Codex ready for both.
+  it('counts a signed-in Codex ready for sessions and for burns', () => {
+    const [, codex] = runtimeReadiness([
+      probe('codex', 'binary', 'ok'),
+      probe('codex', 'auth', 'ok'),
+    ])
+    expect(codex).toMatchObject({ installed: true, authed: true, afkReady: true, talkReady: true })
+  })
+
+  // The bug this prevents: the wizard calling Codex ready off a pasted key while
+  // the launcher, which wants the login file, refuses to spawn it.
+  it('never counts a key alone as a Codex login', () => {
     const [, codex] = runtimeReadiness([
       probe('codex', 'binary', 'ok'),
       probe('codex', 'auth', 'unset'),
       probe('codex', 'afk-key', 'ok'),
     ])
-    expect(codex?.talkReady).toBe(true)
+    expect(codex).toMatchObject({ authed: false, afkReady: false, talkReady: false })
   })
 
   it('never calls an installed-but-unauthed runtime ready', () => {
