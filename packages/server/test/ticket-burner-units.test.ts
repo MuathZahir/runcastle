@@ -5,9 +5,12 @@ import { dirname, join } from 'node:path'
 import type { Feature, ModelEntry, Ticket } from '@runcastle/core'
 import { worktreeDir } from '@runcastle/core/paths'
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { buildGuardInstallCommand } from '../src/workflows/burn-guard'
 import {
+  CODEX_HOST_MOUNT_PATH,
   ISOLATED_REPO_PATH,
   SANDBOX_WORKSPACE_PATH,
+  buildCodexAuthCopyCommand,
   buildConflictFilesBlock,
   buildDocsDigest,
   buildFeatureBrief,
@@ -19,6 +22,8 @@ import {
   buildVerifyNotes,
   buildWorkspaceNotes,
   cacheMountFor,
+  chainSetupCommands,
+  codexAuthMountFor,
   composeRunDigest,
   harvestDigest,
   classifyTicketRunError,
@@ -847,11 +852,19 @@ describe('selectSandbox — provider for the configured sandbox', () => {
       expect(env).toEqual({ CLAUDE_CODE_OAUTH_TOKEN: 'sk-token' })
     })
 
-    // A container's env starts empty, so the key the codex CLI authenticates
-    // with has to be put there explicitly — and under ITS name, not Claude's.
-    it('authenticates a codex burn with CODEX_API_KEY, not the Claude token', () => {
+    // A hand-set CODEX_API_KEY still crosses the boundary, where Codex's own
+    // precedence lets it win over the borrowed login (decision 3) — an
+    // upgrade-safe escape hatch for deliberate API billing.
+    it('still carries a CODEX_API_KEY the operator set by hand', () => {
       const env = buildBurnAgent(config('docker'), 'sk-openai', CODEX_MODEL).env
       expect(env).toEqual({ CODEX_API_KEY: 'sk-openai' })
+    })
+
+    // The normal case now: no key anywhere, and the burn proceeds regardless —
+    // it authenticates on the `auth.json` copied out of the read-only mount.
+    it('burns codex with an empty container env when there is no key to pass', () => {
+      const env = buildBurnAgent(config('docker'), undefined, CODEX_MODEL).env
+      expect(env).toEqual({})
     })
   })
 
@@ -940,6 +953,99 @@ describe('selectSandbox — provider for the configured sandbox', () => {
 
     it('omits mounts when there are none, so the provider default applies', () => {
       expect('mounts' in buildSandboxOptions(config('docker'))).toBe(false)
+    })
+  })
+
+  /**
+   * The borrowed ChatGPT login (decision 1). A container burn authenticates on
+   * the operator's own `codex login` — the host Codex home rides in read-only
+   * and the sandbox-ready command copies the one file out of it — so there is
+   * no second, differently-billed credential to mint.
+   */
+  describe('codexAuthMountFor — lending a container the host login', () => {
+    const HOME_ENV = { CODEX_HOME: join('/host', '.codex') }
+    const loggedIn = () => true
+    const loggedOut = () => false
+
+    it('mounts the host Codex home read-only for a codex container burn', () => {
+      const mount = codexAuthMountFor('codex', 'docker', HOME_ENV, loggedIn)
+
+      expect(mount).toEqual({
+        hostPath: join('/host', '.codex'),
+        sandboxPath: '/mnt/host-codex',
+        readonly: true,
+      })
+      // podman borrows the same way — the mount follows the runtime, not the provider.
+      expect(codexAuthMountFor('codex', 'podman', HOME_ENV, loggedIn)).toEqual(mount)
+      expect(buildSandboxOptions(config('docker'), [mount!]).mounts).toEqual([mount])
+    })
+
+    it('lends nothing to a noSandbox burn, which already runs in the real home', () => {
+      expect(codexAuthMountFor('codex', 'noSandbox', HOME_ENV, loggedIn)).toBeUndefined()
+    })
+
+    it('lends nothing to a claude-code burn, in any sandbox', () => {
+      expect(codexAuthMountFor('claude-code', 'docker', HOME_ENV, loggedIn)).toBeUndefined()
+      expect(codexAuthMountFor('claude-code', 'noSandbox', HOME_ENV, loggedIn)).toBeUndefined()
+    })
+
+    // A hostPath that does not exist fails sandbox creation outright, and an
+    // operator burning on a hand-set CODEX_API_KEY has no login to lend.
+    it('lends nothing when the host has never logged in', () => {
+      expect(codexAuthMountFor('codex', 'docker', HOME_ENV, loggedOut)).toBeUndefined()
+    })
+  })
+
+  describe('buildCodexAuthCopyCommand — auth.json and nothing else', () => {
+    it('copies auth.json from the mount into the container’s own Codex home', () => {
+      const command = buildCodexAuthCopyCommand()
+
+      expect(command).toBe(
+        'mkdir -p "$HOME/.codex" && cp "/mnt/host-codex/auth.json" "$HOME/.codex/auth.json"',
+      )
+      // The image runs as a non-root user, so the home is whoever that is.
+      expect(command).not.toContain('/home/agent')
+    })
+
+    // An operator's interactive settings — sandbox mode, approval policy,
+    // trusted projects — must not leak into a print-mode burn.
+    it('never copies config.toml', () => {
+      expect(buildCodexAuthCopyCommand()).not.toContain('config.toml')
+    })
+  })
+
+  describe('chainSetupCommands — the sandbox-ready order', () => {
+    it('borrows the login, arms the guard, then installs deps', () => {
+      expect(chainSetupCommands('borrow-login', 'install-guard', 'bun install')).toBe(
+        'borrow-login && install-guard && bun install',
+      )
+    })
+
+    it('drops the steps that do not apply', () => {
+      expect(chainSetupCommands(undefined, 'install-guard', undefined)).toBe('install-guard')
+      expect(chainSetupCommands(undefined, undefined, undefined)).toBeUndefined()
+    })
+
+    // The whole point of the order: the agent cannot authenticate at all until
+    // the copy has run, and the guard must be armed before its first tool call.
+    it('renders a codex burn’s command with the copy ahead of the guard and the install', () => {
+      const command = chainSetupCommands(
+        buildCodexAuthCopyCommand(),
+        buildGuardInstallCommand('codex'),
+        'bun install',
+      )
+
+      expect(command?.startsWith(buildCodexAuthCopyCommand())).toBe(true)
+      expect(command?.indexOf(CODEX_HOST_MOUNT_PATH)).toBeLessThan(
+        command?.indexOf('$HOME/.codex/hooks.json') ?? -1,
+      )
+      expect(command?.endsWith('bun install')).toBe(true)
+    })
+
+    it('leaves a claude-code burn’s command exactly as it was — guard, then install', () => {
+      const guard = buildGuardInstallCommand('claude-code')
+
+      expect(chainSetupCommands(undefined, guard, 'bun install')).toBe(`${guard} && bun install`)
     })
   })
 })

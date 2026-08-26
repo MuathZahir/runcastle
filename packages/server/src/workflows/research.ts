@@ -27,7 +27,9 @@ import { RUNTIME_AUTH_SETUP_HINT } from '../services/setup'
 import {
   AUTH_MISSING_EVENT,
   buildBurnAgent,
+  buildCodexAuthCopyCommand,
   buildFeatureBrief,
+  codexAuthMountFor,
   createStreamThrottle,
   isWorktreeTeardownError,
   // The ONE docs-digest reader. This module used to carry a private copy of the
@@ -265,12 +267,16 @@ async function realExecuteResearchRun(
   const logFilePath = join(logsDir(), `research-${feature.id}-${waypoint.seq}.log`)
   const throttle = createResearchStreamThrottle((e) => ctx.emitEvent(e))
 
+  // A container Codex waypoint burns on the operator's ChatGPT login exactly as
+  // an implementation ticket does — same mount, same copy, same helpers.
+  const codexAuthMount = codexAuthMountFor(model.runtime, config.sandbox)
+
   const runOptions: RunOptions = {
     agent: buildBurnAgent(config, token, model),
     // Shared with the burner, never hand-rolled here: the local
     // `sandbox === 'docker' ? docker() : noSandbox()` this replaces is how a
     // `podman` config silently became "run the AFK agent on the host".
-    sandbox: selectSandbox(config),
+    sandbox: selectSandbox(config, codexAuthMount ? [codexAuthMount] : []),
     cwd: project.repoPath,
     prompt,
     // Temp branch based on the feature branch tip — the feature branch itself
@@ -278,6 +284,9 @@ async function realExecuteResearchRun(
     branchStrategy: { type: 'branch', branch: tempBranch, baseBranch: feature.branch },
     signal: ctx.signal,
     name: `research-${waypoint.seq}`,
+    ...(codexAuthMount
+      ? { hooks: { sandbox: { onSandboxReady: [{ command: buildCodexAuthCopyCommand() }] } } }
+      : {}),
     logging: { type: 'file', path: logFilePath, onAgentStreamEvent: throttle.onEvent },
   }
 

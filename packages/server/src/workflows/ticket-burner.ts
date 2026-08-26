@@ -33,6 +33,7 @@ import {
 } from '@runcastle/core/paths'
 import type { McpConfig } from '../launcher/artifacts'
 import { resolveSkillsRoot } from '../launcher/skills-root'
+import { codexHomeDir, codexLoggedIn } from '../services/codex-auth'
 import { ADR_DIR_REL, CHARTER_FILE, MAP_SECTIONS, listLiveAdrs } from '../services/knowledge'
 import { RUNTIME_AUTH_KEY, RUNTIME_AUTH_SETUP_HINT } from '../services/setup'
 import {
@@ -846,6 +847,58 @@ export interface CacheMount {
 export function cacheMountFor(pm: PackageManager, hostPath: string): CacheMount | undefined {
   const sandboxPath = PM_CACHE_SANDBOX_PATHS[pm]
   return sandboxPath ? { hostPath, sandboxPath } : undefined
+}
+
+// ---------------------------------------------------------------------------
+// Pure unit — borrowing the host's Codex login (decision 1)
+// ---------------------------------------------------------------------------
+
+/** Where a burn container sees the host's Codex home — read-only, never written. */
+export const CODEX_HOST_MOUNT_PATH = '/mnt/host-codex'
+
+/**
+ * The bind-mount that lends a container burn the operator's `codex login`, or
+ * `undefined` when there is nothing to lend: a Claude burn, a `noSandbox` burn
+ * (which runs as the operator and inherits the real home), or a host that has
+ * never logged in. Read-only, so a container refreshing its token cannot
+ * corrupt the host file (decision 1) — and a logged-out host is skipped rather
+ * than mounted, because a missing `hostPath` fails sandbox creation outright
+ * and an operator burning on a hand-set `CODEX_API_KEY` needs no login at all.
+ */
+export function codexAuthMountFor(
+  runtime: AgentRuntime,
+  sandbox: RuncastleConfig['sandbox'],
+  env: Record<string, string | undefined> = process.env,
+  loggedIn: (env: Record<string, string | undefined>) => boolean = codexLoggedIn,
+): CacheMount | undefined {
+  if (runtime !== 'codex' || sandbox === 'noSandbox' || !loggedIn(env)) return undefined
+  return { hostPath: codexHomeDir(env), sandboxPath: CODEX_HOST_MOUNT_PATH, readonly: true }
+}
+
+/**
+ * The sandbox-ready step that copies the borrowed login into the container's
+ * own Codex home, where the CLI looks for it. ONLY `auth.json`: burns pass
+ * their model with `-m` and the run-scoped MCP server with `-c`, and an
+ * operator's `config.toml` (sandbox mode, approval policy, trusted projects)
+ * must not leak into a print-mode burn. `$HOME` is expanded by the container's
+ * own shell, so this is correct for whichever user the image runs as.
+ */
+export function buildCodexAuthCopyCommand(): string {
+  return `mkdir -p "$HOME/.codex" && cp "${CODEX_HOST_MOUNT_PATH}/auth.json" "$HOME/.codex/auth.json"`
+}
+
+/**
+ * Chain the sandbox-ready steps in the only order that works: borrow the Codex
+ * login first (nothing else authenticates the agent), arm the burn guard next
+ * (before the agent's first tool call), install dependencies last. Absent steps
+ * drop out; `undefined` means there is nothing to run at all, which is what
+ * sandcastle wants rather than an empty hook.
+ */
+export function chainSetupCommands(
+  ...steps: readonly (string | undefined)[]
+): string | undefined {
+  const present = steps.filter((step): step is string => !!step)
+  return present.length > 0 ? present.join(' && ') : undefined
 }
 
 // ---------------------------------------------------------------------------
@@ -2683,6 +2736,11 @@ async function realExecuteTicketRun(
       mounts.push(mount)
     }
   }
+  // A container Codex burn runs on the operator's ChatGPT login: the host Codex
+  // home rides in as a read-only mount, and the sandbox-ready hook copies
+  // `auth.json` out of it before anything else runs.
+  const codexAuthMount = codexAuthMountFor(model.runtime, config.sandbox)
+  if (codexAuthMount) mounts.push(codexAuthMount)
   // The burn guard (PreToolUse deny hook) is installed by the same
   // onSandboxReady hook that installs deps, so it is armed before the agent's
   // first tool call. Container sandboxes only: under `noSandbox` the agent runs
@@ -2691,8 +2749,12 @@ async function realExecuteTicketRun(
   // to install this makes the hook run where it previously did not — intended.
   // Installed for the runtime that is about to run, into that runtime's home.
   const guardInstall = guardInstalled ? buildGuardInstallCommand(model.runtime) : undefined
-  const withGuard = (setup: string | undefined): string | undefined =>
-    guardInstall === undefined ? setup : setup ? `${guardInstall} && ${setup}` : guardInstall
+  const withPrelude = (setup: string | undefined): string | undefined =>
+    chainSetupCommands(
+      codexAuthMount ? buildCodexAuthCopyCommand() : undefined,
+      guardInstall,
+      setup,
+    )
   // Codex runs no hooks it has no persisted trust for; the flag is what makes
   // the file we just wrote bind. Paired with the install so it is never passed
   // when there is no guard of ours to un-gate.
@@ -2808,7 +2870,7 @@ async function realExecuteTicketRun(
       OTHER_SIDE: buildOtherSideBlock(otherSide),
       MERGE_COMMAND: resolveMergeCommand(workspaceMode, feature.branch),
     })
-    const hookCommand = withGuard(
+    const hookCommand = withPrelude(
       workspaceMode === 'isolated'
         ? buildIsolatedSetupCommand(resolveBranch, setupCommand, pm)
         : setupCommand,
@@ -3005,7 +3067,7 @@ async function realExecuteTicketRun(
       // wiring is needed even with nothing to install) and embeds THIS
       // attempt's temp branch; mounted mode keeps the hook only when there is
       // an install to run.
-      const hookCommand = withGuard(
+      const hookCommand = withPrelude(
         workspaceMode === 'isolated'
           ? buildIsolatedSetupCommand(tempBranch, setupCommand, pm)
           : setupCommand,
