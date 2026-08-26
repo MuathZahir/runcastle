@@ -70,7 +70,7 @@ export interface ProbeResult {
   fix?: string
   /** Set on the per-runtime probes: whose readiness this reports. */
   runtime?: AgentRuntime
-  /** Set on the per-runtime probes: which of the three questions this answers. */
+  /** Set on the per-runtime probes: which readiness question this answers. */
   check?: RuntimeCheck
 }
 
@@ -184,15 +184,26 @@ export interface RuntimeSpec {
   label: string
   /** The CLI binary. */
   bin: string
-  /** Probe ids, pinned rather than derived so existing ids stay stable. */
-  ids: { binary: string; auth: string; afkKey: string }
+  /**
+   * Probe ids, pinned rather than derived so existing ids stay stable. `afkKey`
+   * is absent for a runtime whose unattended burns borrow the interactive login
+   * the human already made rather than a credential runcastle asks them for
+   * (Codex — decision 4): no id, no AFK-key probe, nothing to paste on the card.
+   */
+  ids: { binary: string; auth: string; afkKey?: string }
   /** Argv that makes the CLI report its interactive login state (exit 0 = logged in). */
   authStatusArgs: string[]
   /** The command a human runs to log in interactively. */
   loginCommand: string
   /** Argv for that login command, as an embedded terminal runs it. */
   loginArgs: string[]
-  /** Env var carrying the unattended credential AFK burns authenticate with. */
+  /**
+   * Env var carrying an unattended credential AFK burns can authenticate with.
+   * For Claude Code that IS the AFK credential, minted and pasted in. For Codex
+   * it is only the hand-set override an operator can still put in
+   * `~/.runcastle/.env` to bill an API key instead of their ChatGPT login
+   * (decision 3) — which is why Codex has no `ids.afkKey` to probe for.
+   */
   afkKey: string
   /** What that credential is called, for messages ("OAuth token" / "API key"). */
   afkNoun: string
@@ -203,10 +214,12 @@ export interface RuntimeSpec {
   /** `RUNCASTLE_*_BIN` escape hatch for a PATH the server cannot see. */
   binOverrideEnv: string
   /**
-   * Where the CLI stores interactive credentials, consulted ONLY when the CLI is
-   * too old to answer {@link authStatusArgs}. Absent when there is no file to
-   * check (Claude Code keeps credentials in the macOS Keychain on darwin, so a
-   * missing file there would be a false negative).
+   * Where the CLI stores the credentials its interactive login writes — the file
+   * a session or a burn actually borrows, and therefore what decides whether
+   * this runtime is logged in (Codex: `codexAuthFile`, the same path
+   * `codexLoggedIn` tests). Absent when there is no file to check (Claude Code
+   * keeps credentials in the macOS Keychain on darwin, so a missing file there
+   * would be a false negative) — those runtimes are judged by the CLI instead.
    */
   authFile?: (env: Record<string, string | undefined>) => string
 }
@@ -231,14 +244,17 @@ export const RUNTIME_SPECS: Record<AgentRuntime, RuntimeSpec> = {
     runtime: 'codex',
     label: 'Codex',
     bin: 'codex',
-    ids: { binary: 'codex', auth: 'codex-auth', afkKey: 'codex-api-key' },
+    // No `ids.afkKey`, so the doctor reports `binary` + `auth` only: a Codex burn
+    // borrows the `auth.json` that `codex login` wrote (decision 4), so the login
+    // IS the AFK credential and there is nothing separate to probe for.
+    ids: { binary: 'codex', auth: 'codex-auth' },
     authStatusArgs: ['login', 'status'],
     loginCommand: 'codex login',
     loginArgs: ['login'],
     afkKey: 'CODEX_API_KEY',
     afkNoun: 'API key',
     afkFix:
-      'Create an OpenAI API key (platform.openai.com/api-keys) and put CODEX_API_KEY in ~/.runcastle/.env',
+      'Set CODEX_API_KEY in ~/.runcastle/.env to bill an OpenAI API key instead of your ChatGPT login',
     installFix: 'Install Codex: npm install -g @openai/codex (or: brew install codex)',
     binOverrideEnv: 'RUNCASTLE_CODEX_BIN',
     authFile: codexAuthFile,
@@ -269,12 +285,20 @@ async function runtimeBinaryProbe(
 }
 
 /**
- * The runtime's interactive login — what a talk session runs on. Asked of the
- * CLI itself (`claude auth status` / `codex login status`), because that is the
- * only place that knows: credentials live in a keychain on some hosts and a
- * relocatable home dir on others. A CLI too old to answer falls back to its
- * credential file where it has one, and otherwise reports ok rather than
- * inventing a failure out of a question we could not ask.
+ * The runtime's interactive login — which, for a runtime whose burns borrow it,
+ * is also what an unattended burn runs on.
+ *
+ * Where the runtime keeps that login in a file ({@link RuntimeSpec.authFile}),
+ * the file decides: it is the artifact a session and a burn actually copy, so
+ * testing for it is the only verdict that can never disagree with what a burn
+ * does. `<bin> <status args>` still runs, but only to enrich the detail line —
+ * a CLI that says "logged out" over a file that is there, or "logged in" over a
+ * file that is not, is a discrepancy worth reporting, not the answer.
+ *
+ * Where there is no file to check (Claude Code keeps credentials in the macOS
+ * Keychain on darwin), the CLI itself is the only place that knows, so its exit
+ * code decides — and a CLI too old to answer reports ok rather than inventing a
+ * failure out of a question we could not ask.
  */
 async function runtimeAuthProbe(
   spec: RuntimeSpec,
@@ -291,11 +315,12 @@ async function runtimeAuthProbe(
     runtime: spec.runtime,
     check: 'auth' as const,
   }
+  const fix = `Run \`${spec.loginCommand}\` (the wizard and Settings can run it for you).`
   const loggedOut = {
     ...base,
     status: 'unset' as const,
     detail: `${spec.bin} reports no interactive login — sessions on ${spec.label} would stop to log in`,
-    fix: `Run \`${spec.loginCommand}\` (the wizard and Settings can run it for you).`,
+    fix,
   }
 
   const out = await exec(spec.bin, spec.authStatusArgs)
@@ -307,34 +332,53 @@ async function runtimeAuthProbe(
       fix: spec.installFix,
     }
   }
-  if (out.code === 0) return { ...base, status: 'ok', detail: `${spec.bin} reports a login` }
-  if (!statusUnsupported(out)) return loggedOut
 
   const authFile = spec.authFile?.(env)
-  if (!authFile) {
-    return {
-      ...base,
-      status: 'ok',
-      detail: `this ${spec.bin} cannot report login state — it prompts at launch`,
+  if (authFile) {
+    const present = fileExists(authFile)
+    const statusCommand = `${spec.bin} ${spec.authStatusArgs.join(' ')}`
+    // What the CLI said, appended to the file's verdict — spelled out when the
+    // two disagree, because that is the state this probe exists to stop lying about.
+    let aside: string
+    if (statusUnsupported(out)) aside = ` — this ${spec.bin} cannot report login state`
+    else if ((out.code === 0) === present) aside = ` — \`${statusCommand}\` agrees`
+    else if (present) {
+      aside = `, but \`${statusCommand}\` reports logged out — burns borrow the file, so this host counts as signed in`
+    } else {
+      aside = `, but \`${statusCommand}\` reports a login — a burn borrows the file, and it is not there`
     }
+    return present
+      ? { ...base, status: 'ok', detail: `credentials found at ${authFile}${aside}` }
+      : { ...loggedOut, detail: `no credentials at ${authFile}${aside}` }
   }
-  return fileExists(authFile)
-    ? { ...base, status: 'ok', detail: `credentials found at ${authFile}` }
-    : { ...loggedOut, detail: `no credentials at ${authFile}` }
+
+  if (out.code === 0) return { ...base, status: 'ok', detail: `${spec.bin} reports a login` }
+  if (!statusUnsupported(out)) return loggedOut
+  return {
+    ...base,
+    status: 'ok',
+    detail: `this ${spec.bin} cannot report login state — it prompts at launch`,
+  }
 }
 
 /**
  * The runtime's unattended credential — presence only (validity needs a live
  * call). Read from the injected env; the CLI merges `~/.runcastle/.env` in
  * before calling.
+ *
+ * `undefined` for a runtime with no `ids.afkKey`: its burns borrow the human's
+ * own login, which the `auth` check already reports, so a second row asking for
+ * a credential they need not have would be the setup step this feature removed.
  */
 export function runtimeAfkKeyProbe(
   spec: RuntimeSpec,
   env: Record<string, string | undefined>,
   severity: ProbeSeverity = 'error',
-): ProbeResult {
+): ProbeResult | undefined {
+  const id = spec.ids.afkKey
+  if (!id) return undefined
   const base = {
-    id: spec.ids.afkKey,
+    id,
     label: `${spec.label} AFK ${spec.afkNoun} (${spec.afkKey})`,
     tier: 2 as const,
     severity,
@@ -354,9 +398,11 @@ export function runtimeAfkKeyProbe(
 }
 
 /**
- * All three readiness checks for one runtime. `severity` is the whole point:
- * the same missing `codex` binary is an error for an operator who configured a
- * GPT model and mere context for one who never did (decision 6).
+ * Every readiness check one runtime answers — `binary` and `auth` always, plus
+ * `afk-key` for a runtime that has an unattended credential of its own.
+ * `severity` is the whole point: the same missing `codex` binary is an error for
+ * an operator who configured a GPT model and mere context for one who never did
+ * (decision 6).
  */
 export async function runtimeProbes(
   spec: RuntimeSpec,
@@ -368,10 +414,11 @@ export async function runtimeProbes(
   },
 ): Promise<ProbeResult[]> {
   const fileExists = deps.fileExists ?? existsSync
+  const afkKey = runtimeAfkKeyProbe(spec, deps.env, deps.severity)
   return [
     await runtimeBinaryProbe(spec, deps.exec, deps.severity),
     await runtimeAuthProbe(spec, deps.exec, deps.env, fileExists, deps.severity),
-    runtimeAfkKeyProbe(spec, deps.env, deps.severity),
+    ...(afkKey ? [afkKey] : []),
   ]
 }
 
