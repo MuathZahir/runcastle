@@ -6,7 +6,7 @@ import { projectStats, type ProjectStats } from '../lib/projects'
 import { useLivePoll } from '../lib/live'
 import type { ProjectNavApi } from '../lib/use-project-nav'
 import type { Project } from '../lib/api'
-import { IconBranch, IconPlus, LogoMark, LogoWordmark } from '../icons'
+import { IconPlus, LogoMark, LogoWordmark } from '../icons'
 
 /**
  * The portfolio home (issue #45): the canonical cross-project surface. One card
@@ -156,10 +156,6 @@ function ProjectCard({
           <span className={`pc-health-dot health-dot-${stats.health}`} title={HEALTH_LABEL[stats.health]} />
         </div>
         <span className="pc-path mono">{project.repoPath}</span>
-        <span className="pc-branch">
-          <IconBranch size={11} />
-          {project.mainBranch}
-        </span>
 
         <div className="pc-stats">
           <Stat n={stats.total} label={stats.total === 1 ? 'feature' : 'features'} />

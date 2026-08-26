@@ -254,13 +254,12 @@ describe('listBranches', () => {
     project = seedProject(ctx, repo)
   })
 
-  it('reports current + mainBranch and excludes feature/* branches', async () => {
+  it('reports the current branch and excludes feature/* branches', async () => {
     const g = simpleGit(project.repoPath)
     await g.raw(['branch', 'dev'])
     await createFeatureBranch(project, 'hidden', 'main')
 
     const res = await listBranches(project)
-    expect(res.mainBranch).toBe('main')
     expect(res.current).toBe('main')
     expect(res.branches).toContain('main')
     expect(res.branches).toContain('dev')

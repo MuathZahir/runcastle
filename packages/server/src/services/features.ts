@@ -224,8 +224,8 @@ export function requireNotDraft(feature: Feature): void {
 
 /**
  * Start a parked draft (decision 7): resolve the base AT THIS MOMENT (an
- * explicit pick, else the project's main branch — the current-checkout default
- * lives client-side), cut `feature/<slug>`, scaffold `brief.md` from the parked
+ * explicit pick, else the checkout's current branch — see {@link requestedBase}),
+ * cut `feature/<slug>`, scaffold `brief.md` from the parked
  * column and auto-commit it, then flip the row to `active` with the resolved
  * base and emit `feature.started`.
  *

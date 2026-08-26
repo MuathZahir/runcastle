@@ -16,7 +16,7 @@ export function tmpRepo(): string {
 export function seedProject(ctx: AppCtx, repoPath: string = tmpRepo()): Project {
   const inserted = ctx.db
     .insert(projects)
-    .values({ id: newId('proj'), name: 'test', repoPath, mainBranch: 'main', devCommand: null })
+    .values({ id: newId('proj'), name: 'test', repoPath, devCommand: null })
     .returning()
     .get()
   return rowToProject(inserted)

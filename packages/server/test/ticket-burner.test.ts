@@ -30,7 +30,6 @@ const project: Project = {
   id: 'proj_1',
   name: 'test',
   repoPath: '/repo',
-  mainBranch: 'main',
 }
 
 const feature: Feature = {
@@ -95,7 +94,7 @@ function deps(
   over: Partial<Omit<BurnDeps, 'executeTicketRun'>> = {},
 ): BurnDeps {
   return {
-    config: { serverPort: 4512, model: 'm', stepModels: {}, sandbox: 'noSandbox', mainBranch: 'main', burnConcurrency: 3 },
+    config: { serverPort: 4512, model: 'm', stepModels: {}, sandbox: 'noSandbox', burnConcurrency: 3 },
     hasAuthToken: true,
     concurrency: 1,
     executeTicketRun: execute,
@@ -318,7 +317,7 @@ describe('burnRun — scheduling and summary', () => {
     const calls: number[] = []
     const execute = fakeExecute({}, calls)
 
-    const res = await burnRun(ctx, deps(execute, { config: { serverPort: 4512, model: 'm', stepModels: {}, sandbox: 'docker', mainBranch: 'main' }, hasAuthToken: false }))
+    const res = await burnRun(ctx, deps(execute, { config: { serverPort: 4512, model: 'm', stepModels: {}, sandbox: 'docker' }, hasAuthToken: false }))
 
     expect(calls).toEqual([])
     expect(res.status).toBe('failed')
@@ -332,7 +331,7 @@ describe('burnRun — scheduling and summary', () => {
 
     const res = await burnRun(
       ctx,
-      deps(execute, { config: { serverPort: 4512, model: 'm', stepModels: {}, sandbox: 'docker', mainBranch: 'main' }, hasAuthToken: true }),
+      deps(execute, { config: { serverPort: 4512, model: 'm', stepModels: {}, sandbox: 'docker' }, hasAuthToken: true }),
     )
 
     expect(res).toEqual({ status: 'succeeded', summary: '1/1 tickets done' })
@@ -344,7 +343,7 @@ describe('burnRun — scheduling and summary', () => {
     const calls: number[] = []
     const execute = fakeExecute({}, calls)
 
-    const res = await burnRun(ctx, deps(execute, { config: { serverPort: 4512, model: 'm', stepModels: {}, sandbox: 'podman', mainBranch: 'main' }, hasAuthToken: false }))
+    const res = await burnRun(ctx, deps(execute, { config: { serverPort: 4512, model: 'm', stepModels: {}, sandbox: 'podman' }, hasAuthToken: false }))
 
     expect(calls).toEqual([])
     expect(res.status).toBe('failed')
@@ -358,7 +357,7 @@ describe('burnRun — scheduling and summary', () => {
 
     const res = await burnRun(
       ctx,
-      deps(execute, { config: { serverPort: 4512, model: 'm', stepModels: {}, sandbox: 'podman', mainBranch: 'main' }, hasAuthToken: true }),
+      deps(execute, { config: { serverPort: 4512, model: 'm', stepModels: {}, sandbox: 'podman' }, hasAuthToken: true }),
     )
 
     expect(res).toEqual({ status: 'succeeded', summary: '1/1 tickets done' })

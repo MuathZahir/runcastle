@@ -198,14 +198,6 @@ const DESCRIPTORS: FieldDescriptor[] = [
     parseEnv: idEnv,
   },
   {
-    key: 'mainBranch',
-    configKey: 'mainBranch',
-    envVar: 'RUNCASTLE_MAIN_BRANCH',
-    restartRequired: false,
-    valueSchema: z.string().min(1),
-    parseEnv: idEnv,
-  },
-  {
     key: 'devCommand',
     projectColumn: 'devCommand',
     restartRequired: false,

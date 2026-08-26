@@ -190,8 +190,7 @@ async function main(): Promise<void> {
   banner('STEP 2 — tRPC project.open')
   const project = await trpc.project.open({ repoPath: TARGET })
   assert(project.repoPath === TARGET, 'project.repoPath === target')
-  assert(project.mainBranch === 'main', 'project.mainBranch === main')
-  record('project.open', `project ${project.id} @ ${project.mainBranch}`)
+  record('project.open', `project ${project.id} at ${project.repoPath}`)
 
   // (3) feature.create ---------------------------------------------------------
   banner('STEP 3 — tRPC feature.create')

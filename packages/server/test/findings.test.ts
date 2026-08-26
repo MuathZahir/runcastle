@@ -41,7 +41,6 @@ function project(over: Partial<Project> = {}): Project {
     id: PROJECT_ID,
     name: 'acme',
     repoPath: '/repo',
-    mainBranch: 'main',
     ...over,
   }
 }
@@ -51,7 +50,7 @@ beforeEach(async () => {
   configFile = join(mkdtempSync(join(tmpdir(), 'rc-settings-')), 'config.json')
   ctx.db
     .insert(projects)
-    .values({ id: PROJECT_ID, name: 'acme', repoPath: '/repo', mainBranch: 'main' })
+    .values({ id: PROJECT_ID, name: 'acme', repoPath: '/repo' })
     .run()
 })
 

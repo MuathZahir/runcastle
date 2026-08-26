@@ -20,7 +20,6 @@ const proj = (id: string): Project => ({
   id,
   name: id,
   repoPath: `/repos/${id}`,
-  mainBranch: 'main',
 })
 
 const feat = (over: Partial<FeatureListItem>): FeatureListItem =>

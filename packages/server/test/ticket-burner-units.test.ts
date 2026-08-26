@@ -757,7 +757,6 @@ describe('selectSandbox — provider for the configured sandbox', () => {
     model: 'm',
     stepModels: {},
     sandbox,
-    mainBranch: 'main',
   })
 
   it('maps each choice to its sandcastle provider', () => {

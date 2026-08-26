@@ -3,7 +3,7 @@ import { PREPARED_KEYS } from '@runcastle/core'
 import { and, eq } from 'drizzle-orm'
 import type { AppCtx } from '../db/types'
 import { projectFindings, projects } from '../db/schema'
-import { commitsSince } from './git'
+import { commitsSince, detectMainBranch } from './git'
 
 /**
  * Prepared-field provenance (project preparation).
@@ -233,9 +233,11 @@ export function markVerified(
 
 /**
  * Every finding for a project, with staleness resolved against the repo's
- * current main branch. One `git rev-list --count` per distinct sha (prep stamps
- * all of a run's findings with the same one, so this is normally a single git
- * call for the whole set).
+ * current main line — detected on demand, once per call (decision 4: nothing
+ * stores a project-level branch any more, and this measuring stick is cheap
+ * enough to read from git when it is needed). One `git rev-list --count` per
+ * distinct sha on top of that (prep stamps all of a run's findings with the
+ * same one, so this is normally a single count call for the whole set).
  */
 export async function listFindings(ctx: AppCtx, project: Project): Promise<ProjectFinding[]> {
   const rows = ctx.db
@@ -245,10 +247,12 @@ export async function listFindings(ctx: AppCtx, project: Project): Promise<Proje
     .all()
 
   const distances = new Map<string, number | undefined>()
-  for (const row of rows) {
-    const sha = row.establishedSha
-    if (!sha || distances.has(sha)) continue
-    distances.set(sha, await commitsSince(project.repoPath, sha, project.mainBranch))
+  const shas = new Set(rows.flatMap((row) => (row.establishedSha ? [row.establishedSha] : [])))
+  if (shas.size > 0) {
+    const mainLine = await detectMainBranch(project.repoPath)
+    for (const sha of shas) {
+      distances.set(sha, await commitsSince(project.repoPath, sha, mainLine))
+    }
   }
 
   const order = new Map<string, number>(PREPARED_KEYS.map((k, i) => [k, i]))

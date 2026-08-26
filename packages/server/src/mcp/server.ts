@@ -1773,7 +1773,12 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
           baseBranch: z
             .string()
             .optional()
-            .describe('Branch to cut from; defaults to the project’s main branch.'),
+            .describe(
+              'Branch to cut from — always pass it explicitly, naming the base you told the ' +
+                'human you would use (see `get_project_context`’s `baseBranches`). Omitted, it ' +
+                'falls back to whatever the project checkout happens to be on. Drafts pass none: ' +
+                'a parked feature picks its base at Start.',
+            ),
           brief: z
             .string()
             .optional()

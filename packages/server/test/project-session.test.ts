@@ -151,7 +151,7 @@ describe('the `project` session kind', () => {
    */
   it('briefs the session with its branch, its worktree, and its tool policy', () => {
     const out = renderProjectPrompt({
-      project: { id: 'proj_1', name: 'acme', repoPath: '/repo', mainBranch: 'main' },
+      project: { id: 'proj_1', name: 'acme', repoPath: '/repo' },
       branch: PROJECT_BRANCH,
       worktreePath: '/wt/__project',
       base: 'develop',
@@ -181,7 +181,7 @@ describe('the `project` session kind', () => {
    */
   it('tells the session to open by asking the human, not by exploring', () => {
     const out = renderProjectPrompt({
-      project: { id: 'proj_1', name: 'acme', repoPath: '/repo', mainBranch: 'main' },
+      project: { id: 'proj_1', name: 'acme', repoPath: '/repo' },
       branch: PROJECT_BRANCH,
       worktreePath: '/wt/__project',
       base: 'main',
@@ -530,7 +530,7 @@ describe('launching, resuming and landing a project session', () => {
 
 /**
  * Where the project session's work lands (base-branch-control, decisions 5–6).
- * It used to be `project.mainBranch` — a column re-detected at every project
+ * It used to be a stored project-level column, re-detected at every project
  * open, so a human's correction could not stick and nobody could see what it
  * controlled. It is now its own setting: null until somebody picks, resolved
  * stored-else-detected at each launch, and loud when a pick has gone missing.

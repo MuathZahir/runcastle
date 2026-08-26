@@ -32,7 +32,6 @@ export const FIELD_ENV_VAR: Record<string, string> = {
   setupCommand: 'RUNCASTLE_SETUP_COMMAND',
   verifyCommands: 'RUNCASTLE_VERIFY_COMMANDS',
   knownFailures: 'RUNCASTLE_KNOWN_FAILURES',
-  mainBranch: 'RUNCASTLE_MAIN_BRANCH',
 }
 
 /** How each runtime is named to a human. */
@@ -127,9 +126,6 @@ const STEP_LABEL: Record<string, string> = {
 }
 export const STEP_KEYS: string[] = MODEL_STEPS.map((s) => `${STEP_PREFIX}${s}`)
 
-/** Fields detected from the repo — always read-only in the UI (issue #47). */
-const GIT_DETECTED = new Set(['mainBranch'])
-
 export type ControlKind = 'text' | 'number' | 'select' | 'textarea'
 
 interface FieldMeta {
@@ -215,11 +211,6 @@ const META: Record<string, FieldMeta> = {
     label: 'Known failing tests',
     help: 'Tests already red on main — a count plus suite names is enough. Saves every burn agent a full pre-work suite run to establish its own baseline.',
     control: 'textarea',
-  },
-  mainBranch: {
-    label: 'Main branch',
-    help: 'Branch features merge back into.',
-    control: 'text',
   },
   sessionBranch: {
     label: 'Project chat lands on',
@@ -537,15 +528,12 @@ export function describeField(
 ): SettingRow {
   const meta = metaFor(field.key)
   const isModel = isModelKey(field.key)
-  const gitDetected = GIT_DETECTED.has(field.key)
-  const readOnly = !field.editable || gitDetected
+  const readOnly = !field.editable
   const overridden = field.source === 'project'
 
   let note: string | null = null
   if (field.source === 'env') {
     note = `Set by ${FIELD_ENV_VAR[field.key] ?? 'the environment'}`
-  } else if (gitDetected) {
-    note = 'Read-only — detected from git'
   } else if (finding && overridden) {
     note = describeFinding(finding)
   } else if (field.scope === 'project') {

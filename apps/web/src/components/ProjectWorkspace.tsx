@@ -136,8 +136,8 @@ export function ProjectWorkspace({
 /**
  * Where this chat's work lands, said and chosen in the same place (decision 5).
  *
- * It used to be `project.mainBranch` — a field in the settings overlay called
- * "Main branch", which nobody would guess also decided where the project chat's
+ * It used to be a stored project-level "Main branch" field in the settings
+ * overlay, which nobody would guess also decided where the project chat's
  * charter commits went, and which detection overwrote on every project open. The
  * control belongs beside the thing it controls, named for what it does, so it
  * lives in this chrome rather than in settings.

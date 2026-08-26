@@ -32,7 +32,7 @@ import { hasActiveRun } from './repo'
  * Git service (SPEC §7) — the only wave-B service that shells out to real git
  * (via `simple-git`). It manages the feature-branch / talk-worktree lifecycle
  * plus the two human gates that touch the working copy: the checkout-switch
- * "test drive" and the `--no-ff` merge back to the main branch.
+ * "test drive" and the `--no-ff` merge back to the feature's recorded base.
  *
  * Path handling is Windows-safe: repo paths are computed with `node:path` and
  * compared against `git worktree list` output through `canon()`, which collapses
@@ -379,8 +379,6 @@ export interface BranchList {
    * there is nothing to default to.
    */
   current: string
-  /** The project's stored default base. */
-  mainBranch: string
   /** Local branches, `feature/*` excluded. */
   branches: string[]
   /**
@@ -425,7 +423,7 @@ export async function listBranches(project: Project): Promise<BranchList> {
     // No remotes (or a bare/odd repo) — remote picks simply aren't offered.
   }
 
-  return { current, mainBranch: project.mainBranch, branches, remoteBranches }
+  return { current, branches, remoteBranches }
 }
 
 /**
@@ -2351,7 +2349,7 @@ async function stopDryRun(
 
   const { participating, failure } = dryRunVerdict(project, state)
   if (!failure && participating.length > 0) {
-    const sha = (await headSha(project.repoPath, project.mainBranch)) ?? null
+    const sha = (await headSha(project.repoPath, await detectMainBranch(project.repoPath))) ?? null
     markVerified(ctx, project.id, participating, sha)
     emitProject(ctx, project.id, {
       type: 'prep.dryrun.verified',

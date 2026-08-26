@@ -54,7 +54,7 @@ import { seedFeature, seedProject } from './helpers/fixtures'
  * the failure it reaches before any agent exists.
  */
 
-const project: Project = { id: 'proj_1', name: 'test', repoPath: '/repo', mainBranch: 'main' }
+const project: Project = { id: 'proj_1', name: 'test', repoPath: '/repo' }
 
 const feature: Feature = {
   id: 'feat_1',

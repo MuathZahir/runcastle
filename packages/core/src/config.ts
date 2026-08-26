@@ -177,7 +177,6 @@ export const RuncastleConfig = z.preprocess(
      * window.
      */
     sessionMcp: z.enum(['inherit', 'runcastleOnly']).default('inherit'),
-    mainBranch: z.string().default('main'),
     /**
      * Docker image name for the sandcastle burner sandbox (B3 / SPEC §8). When
      * unset, runcastle uses {@link DEFAULT_SANDBOX_IMAGE} everywhere — build,

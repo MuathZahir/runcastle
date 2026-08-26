@@ -407,20 +407,6 @@ button {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.tb-branch {
-  display: inline-flex;
-  align-items: center;
-  flex: 0 0 auto;
-  white-space: nowrap;
-  gap: 5px;
-  color: var(--text-3);
-  font-family: var(--mono);
-  font-size: 11.5px;
-  padding: 3px 8px;
-  border-radius: var(--radius-pill);
-  background: var(--panel-inset);
-  border: 1px solid var(--hairline-soft);
-}
 .tb-spacer { flex: 1; }
 .tb-search {
   display: flex;
@@ -3865,7 +3851,6 @@ select.settings-input { cursor: pointer; }
 .tb-menu-item:hover { background: var(--panel-3); color: var(--text); }
 .tb-menu-item.is-current { color: var(--text); }
 .tb-menu-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
-.tb-menu-branch { font-size: 11px; color: var(--text-4); }
 .tb-menu-check { color: var(--accent-hi); display: inline-flex; align-items: center; }
 .tb-menu-sep { height: 1px; margin: 5px 4px; background: var(--hairline-soft); }
 button.tb-runs { cursor: pointer; }
@@ -3968,7 +3953,6 @@ button.tb-runs { cursor: pointer; }
 .health-dot-empty { background: var(--text-4); }
 
 .pc-path { font-size: 11px; color: var(--text-4); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.pc-branch { display: inline-flex; align-items: center; gap: 4px; font-family: var(--mono); font-size: 11px; color: var(--text-3); }
 
 .pc-stats { display: flex; gap: 16px; margin-top: 10px; }
 .pc-stat { display: inline-flex; align-items: baseline; gap: 5px; color: var(--text-3); }

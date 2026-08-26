@@ -144,7 +144,6 @@ async function seed(): Promise<{ ctx: AppCtx; projectId: string; featureId: stri
       id: projectId,
       name: 'MyApp',
       repoPath: '/nonexistent/myapp',
-      mainBranch: 'main',
       devCommand: 'bun dev',
       closedAt: null,
       setupCommand: 'bun install',
@@ -223,7 +222,6 @@ describe('resolveProjects', () => {
       id: newId('proj'),
       name: 'Closed',
       repoPath: '/nonexistent/closed',
-      mainBranch: 'main',
       devCommand: null,
       closedAt: Date.now(),
     }).run()

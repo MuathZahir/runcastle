@@ -290,7 +290,7 @@ describe('retry_drive', () => {
 
 describe('the drive-fix brief', () => {
   const brief = {
-    project: { id: 'proj_1', name: 'acme', repoPath: '/home/dev/acme', mainBranch: 'main' },
+    project: { id: 'proj_1', name: 'acme', repoPath: '/home/dev/acme' },
     feature: {
       id: 'feat_1',
       projectId: 'proj_1',

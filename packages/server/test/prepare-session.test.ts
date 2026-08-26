@@ -47,7 +47,7 @@ const FEATURE_ID = 'feat_1'
 let ctx: AppCtx
 
 function project(over: Partial<Project> = {}): Project {
-  return { id: PROJECT_ID, name: 'acme', repoPath: '/repo', mainBranch: 'main', ...over }
+  return { id: PROJECT_ID, name: 'acme', repoPath: '/repo', ...over }
 }
 
 function seedProject(over: Partial<Project> = {}): Project {
@@ -58,7 +58,6 @@ function seedProject(over: Partial<Project> = {}): Project {
       id: p.id,
       name: p.name,
       repoPath: p.repoPath,
-      mainBranch: p.mainBranch,
       createdAt: Date.now(),
     })
     .run()

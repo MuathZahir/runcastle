@@ -35,7 +35,7 @@ export function OpenProject({
   const open = trpc.project.open.useMutation({
     onSuccess: async (project) => {
       await utils.project.list.invalidate()
-      toast.push(`opened ${project.name} on ${project.mainBranch}`, 'info')
+      toast.push(`opened ${project.name}`, 'info')
       onOpened(project.id)
     },
     // No toast: a rejected path is a fact about the field two inches away, and
