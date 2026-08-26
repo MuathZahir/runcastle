@@ -148,12 +148,15 @@ describe('the `project` session kind', () => {
       project: { id: 'proj_1', name: 'acme', repoPath: '/repo', mainBranch: 'main' },
       branch: PROJECT_BRANCH,
       worktreePath: '/wt/__project',
+      base: 'develop',
     })
     expect(out).toContain(PROJECT_BRANCH)
     expect(out).toContain('/wt/__project')
     // the consequence of the branch, stated where the agent will read it
     expect(out).toContain('/repo')
-    expect(out).toContain('main')
+    // the RESOLVED session branch — the picked one, not the project's main line
+    expect(out).toContain('cut from `develop`')
+    expect(out).toContain('land on `develop`')
     // the one tool whose BEHAVIOUR is surprising is still named: create_feature
     // does not open a terminal on what it creates.
     expect(out).toContain('create_feature')
@@ -175,6 +178,7 @@ describe('the `project` session kind', () => {
       project: { id: 'proj_1', name: 'acme', repoPath: '/repo', mainBranch: 'main' },
       branch: PROJECT_BRANCH,
       worktreePath: '/wt/__project',
+      base: 'main',
     })
     const task = out.slice(out.lastIndexOf('## Your task'))
     expect(task).toMatch(/open by asking/i)
@@ -207,7 +211,7 @@ describe('ensureProjectWorktree', () => {
   })
 
   it('cuts the branch from the base tip into its own worktree, never the checkout', async () => {
-    const worktreePath = await ensureProjectWorktree(project)
+    const { worktreePath } = await ensureProjectWorktree(project)
 
     expect(worktreePath).toBe(worktreeDir(project.id, PROJECT_WORKTREE_SLUG))
     expect(worktreePath).not.toBe(project.repoPath)
@@ -221,8 +225,8 @@ describe('ensureProjectWorktree', () => {
   it('is idempotent across relaunches', async () => {
     const first = await ensureProjectWorktree(project)
     const second = await ensureProjectWorktree(project)
-    expect(second).toBe(first)
-    expect(git(second, 'rev-parse', '--abbrev-ref', 'HEAD')).toBe(PROJECT_BRANCH)
+    expect(second.worktreePath).toBe(first.worktreePath)
+    expect(git(second.worktreePath, 'rev-parse', '--abbrev-ref', 'HEAD')).toBe(PROJECT_BRANCH)
   })
 
   /**
@@ -234,7 +238,7 @@ describe('ensureProjectWorktree', () => {
   it('lands a crashed session’s leftovers before recutting from the base tip', async () => {
     const leftoverTip = commitOnBranch(repoPath, PROJECT_BRANCH, 'NOTES.md', 'from a dead session\n')
 
-    const worktreePath = await ensureProjectWorktree(project)
+    const { worktreePath } = await ensureProjectWorktree(project)
 
     // the work is on the base branch (and so in the human's checkout)…
     expect(git(repoPath, 'rev-parse', 'main')).toBe(leftoverTip)
@@ -257,7 +261,7 @@ describe('ensureProjectWorktree', () => {
     git(repoPath, 'commit', '-m', 'human edit')
     const mainTip = git(repoPath, 'rev-parse', 'main')
 
-    const worktreePath = await ensureProjectWorktree(project)
+    const { worktreePath } = await ensureProjectWorktree(project)
 
     expect(git(repoPath, 'rev-parse', PROJECT_BRANCH)).toBe(leftoverTip)
     expect(git(repoPath, 'rev-parse', 'main')).toBe(mainTip)
@@ -321,7 +325,7 @@ describe('ensureProjectWorktree', () => {
    * terminal stayed unlaunchable until the directory was deleted by hand.
    */
   it('reopens over a checkout whose worktree registration went missing', async () => {
-    const worktreePath = await ensureProjectWorktree(project)
+    const { worktreePath } = await ensureProjectWorktree(project)
     // the orphan is a stale checkout: files from an older commit, edits nobody
     // recorded, and no way left to tell which commit it belonged to
     writeFileSync(join(worktreePath, 'README.md'), 'months out of date\n')
@@ -336,7 +340,7 @@ describe('ensureProjectWorktree', () => {
     })
     expect(git(repoPath, 'worktree', 'list', '--porcelain')).not.toContain(PROJECT_WORKTREE_SLUG)
 
-    const reopened = await ensureProjectWorktree(project)
+    const { worktreePath: reopened } = await ensureProjectWorktree(project)
 
     expect(reopened).toBe(worktreePath)
     expect(existsSync(join(repoPath, '.git', 'worktrees', PROJECT_WORKTREE_SLUG))).toBe(true)

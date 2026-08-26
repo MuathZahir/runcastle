@@ -28,6 +28,12 @@ export const projects = sqliteTable('projects', {
   name: text('name').notNull(),
   repoPath: text('repo_path').notNull(),
   mainBranch: text('main_branch').notNull(),
+  // Where the PROJECT SESSION's work lands (charter, ADRs) — human-owned and
+  // null until somebody explicitly picks. Resolution is stored-else-detected at
+  // use, so a zero-config project needs no setup click; detection never writes
+  // here, which is the whole point: `mainBranch` was re-detected at every
+  // project open, so a corrected value could not stick.
+  sessionBranch: text('session_branch'),
   devCommand: text('dev_command'),
   // Per-project settings overrides (issue #46): nullable columns holding a
   // project's override of the global default. `null` means "inherit the global"

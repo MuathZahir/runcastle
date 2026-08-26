@@ -382,6 +382,11 @@ export const Project = z.object({
   name: z.string(),
   repoPath: z.string(),
   mainBranch: z.string(),
+  /**
+   * Where the project session's work lands; unset until a human picks, and
+   * resolved stored-else-detected at use (`git.resolveSessionBranch`).
+   */
+  sessionBranch: z.string().optional(),
   devCommand: z.string().optional(),
   /** Per-project default-model override (issue #48); unset → inherit global. */
   model: z.string().optional(),
