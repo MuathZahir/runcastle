@@ -119,7 +119,7 @@ export const AUTH_MISSING_EVENT = 'auth.missing'
 export function burnAuthReady(
   runtime: AgentRuntime,
   token: string | undefined,
-  loggedIn: () => boolean = () => codexLoggedIn(),
+  loggedIn: () => boolean = codexLoggedIn,
 ): boolean {
   if (token !== undefined) return true
   return runtime === 'codex' && loggedIn()
@@ -920,9 +920,7 @@ export function buildCodexAuthCopyCommand(): string {
  * drop out; `undefined` means there is nothing to run at all, which is what
  * sandcastle wants rather than an empty hook.
  */
-export function chainSetupCommands(
-  ...steps: readonly (string | undefined)[]
-): string | undefined {
+export function chainSetupCommands(...steps: readonly (string | undefined)[]): string | undefined {
   const present = steps.filter((step): step is string => !!step)
   return present.length > 0 ? present.join(' && ') : undefined
 }
@@ -2187,11 +2185,9 @@ function gateTicketAuth(deps: BurnDeps): BurnDeps['executeTicketRun'] {
   return async (ctx, ticket, run) => {
     const runtime = authMissing(ticket)
     if (!runtime) return deps.executeTicketRun(ctx, ticket, run)
-    ctx.emitEvent({ type: AUTH_MISSING_EVENT, message: RUNTIME_AUTH_SETUP_HINT[runtime] })
-    return {
-      status: 'failed',
-      error: `${runtime} is not authenticated on this host — ${RUNTIME_AUTH_SETUP_HINT[runtime]}`,
-    }
+    const hint = `${runtime} is not authenticated — ${RUNTIME_AUTH_SETUP_HINT[runtime]}`
+    ctx.emitEvent({ type: AUTH_MISSING_EVENT, message: hint, ticketId: ticket.id })
+    return { status: 'failed', error: hint }
   }
 }
 
