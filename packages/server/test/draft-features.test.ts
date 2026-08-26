@@ -213,6 +213,17 @@ describe('draft features', () => {
       expect(mergeBase).toBe(developTip)
     })
 
+    it('cuts from the branch the checkout is standing on when Start names none', async () => {
+      const draft = await parkDraft()
+      const g = simpleGit(repoPath)
+      await g.checkoutLocalBranch('develop')
+
+      const started = await startDraft(ctx, draft.id)
+
+      expect(started.baseBranch).toBe('develop')
+      expect(getFeatureRow(ctx, draft.id).baseBranch).toBe('develop')
+    })
+
     it('refuses a feature that is not a draft', async () => {
       const live = seedFeature(ctx, project.id, { slug: 'live' })
       await expect(startDraft(ctx, live.id)).rejects.toThrow(GateError)

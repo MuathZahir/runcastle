@@ -191,13 +191,6 @@ export async function executeReviewTicket(
 ): Promise<TicketOutcome> {
   const { project, feature } = ctx
 
-  if (!findOnPath(AGENT_BROWSER_BIN)) {
-    return couldNotReview(
-      ticket,
-      `\`${AGENT_BROWSER_BIN}\` is not on this machine's PATH, so there is no way to drive the app. Install it and re-burn this ticket.`,
-    )
-  }
-
   // The diff is taken against the branch this feature forked from, so without a
   // recorded base there is no diff to review — and no main line to substitute,
   // which is precisely the substitution that used to review the wrong commits.
@@ -205,6 +198,13 @@ export async function executeReviewTicket(
     return couldNotReview(
       ticket,
       `feature ${feature.slug} has no recorded base branch, so there is nothing to diff \`${feature.branch}\` against.`,
+    )
+  }
+
+  if (!findOnPath(AGENT_BROWSER_BIN)) {
+    return couldNotReview(
+      ticket,
+      `\`${AGENT_BROWSER_BIN}\` is not on this machine's PATH, so there is no way to drive the app. Install it and re-burn this ticket.`,
     )
   }
 

@@ -65,6 +65,7 @@ const feature: Feature = {
   mapped: false,
   phase: 'implementation',
   branch: 'feature/demo',
+  baseBranch: 'main',
   status: 'active',
   createdAt: 0,
 }
@@ -405,6 +406,25 @@ describe('what the review agent is handed', () => {
     expect(template).toContain('A recording failure never fails the review.')
     expect(template).toContain('skip the browser and the recording entirely')
     expect(template).toMatch(/partially-built feature/)
+  })
+})
+
+describe('the base the review diffs against', () => {
+  it('refuses a feature with no recorded base instead of diffing against a main line', async () => {
+    const ctx = { ...makeCtx([]), feature: { ...feature, baseBranch: undefined } }
+
+    const outcome = await executeReviewTicket(ctx, review(3), {
+      config: { sandbox: 'docker' } as RuncastleConfig,
+      token: 'sk-token',
+      model: 'opus',
+      docsDigest: 'the docs',
+      lapDigests: [],
+    })
+
+    expect(outcome.status).toBe('failed')
+    if (outcome.status !== 'failed') return
+    expect(outcome.error).toContain('no recorded base branch')
+    expect(outcome.error).toContain('feature/demo')
   })
 })
 

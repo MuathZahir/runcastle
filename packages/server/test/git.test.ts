@@ -402,6 +402,25 @@ describe('ensureTalkWorktree', () => {
     expect(list.match(/^worktree /gm)?.length).toBe(2) // the main checkout + the talk worktree
   })
 
+  it('recuts a vanished branch from the feature base, not from the main line', async () => {
+    // A feature forked off develop, whose branch was deleted out from under it.
+    const g = simpleGit(project.repoPath)
+    await g.checkoutLocalBranch('develop')
+    writeFileSync(join(project.repoPath, 'DEV.md'), 'dev\n')
+    await g.add(['DEV.md'])
+    await g.commit('develop-only commit')
+    const developTip = (await g.revparse(['develop'])).trim()
+    await g.checkout('main')
+
+    const onDev = seedFeature(ctx, project.id, { slug: 'on-dev', baseBranch: 'develop' })
+
+    const wt = await ensureTalkWorktree(project, onDev)
+
+    expect(await currentBranch(simpleGit(wt))).toBe('feature/on-dev')
+    // Recut from develop's tip — off main it would carry no develop commit.
+    expect((await g.revparse(['feature/on-dev'])).trim()).toBe(developTip)
+  })
+
   it('recovers from a stale worktree (dir removed) via prune + retry', async () => {
     const first = await ensureTalkWorktree(project, feature)
     // Delete the worktree dir out from under git: registry now disagrees.
@@ -1321,6 +1340,13 @@ describe('mergeFeature', () => {
     const contains = await g.raw(['branch', '--contains', 'feature/on-dev'])
     expect(contains).toMatch(/\bdevelop\b/)
     expect(contains).not.toMatch(/\bmain\b/)
+  })
+
+  it('refuses a feature with no recorded base rather than reaching for the main line', async () => {
+    await createFeatureBranch(project, 'baseless', 'main')
+    const feature = seedFeature(ctx, project.id, { slug: 'baseless', baseBranch: null })
+
+    await expect(mergeFeature(project, feature)).rejects.toThrow(/no recorded base branch/)
   })
 
   it('restores the pre-merge branch even when merging into main', async () => {
