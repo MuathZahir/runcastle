@@ -1,7 +1,7 @@
 import { execFileSync } from 'node:child_process'
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import type { EventRow, Project, SessionRow } from '@runcastle/core'
 import { SessionKind, isProjectSessionKind } from '@runcastle/core'
 import { PROJECT_WORKTREE_SLUG, sessionDir, worktreeDir } from '@runcastle/core/paths'
@@ -24,7 +24,13 @@ import {
 import { endSession } from '../src/pty/end-session'
 import { listByProject } from '../src/services/events'
 import type { ProjectLandResult } from '../src/services/git'
-import { PROJECT_BRANCH, ensureProjectWorktree } from '../src/services/git'
+import {
+  PROJECT_BRANCH,
+  ensureProjectWorktree,
+  landProjectBranch,
+  resolveSessionBranch,
+} from '../src/services/git'
+import { requireProjectById } from '../src/services/repo'
 import { createCallerFactory } from '../src/trpc/context'
 import { appRouter } from '../src/trpc/router'
 import { useDataDir } from './helpers/data-dir'
@@ -519,5 +525,146 @@ describe('launching, resuming and landing a project session', () => {
 
     endSession(ctx, sessionId)
     expect(await trpc.project.projectSession({ projectId: project.id })).toBeNull()
+  })
+})
+
+/**
+ * Where the project session's work lands (base-branch-control, decisions 5–6).
+ * It used to be `project.mainBranch` — a column re-detected at every project
+ * open, so a human's correction could not stick and nobody could see what it
+ * controlled. It is now its own setting: null until somebody picks, resolved
+ * stored-else-detected at each launch, and loud when a pick has gone missing.
+ */
+describe("the project session's landing branch", () => {
+  let ctx: AppCtx
+  let project: Project
+  let repoPath: string
+  const cleanup: string[] = []
+  let restoreDataDir: () => void
+
+  beforeEach(async () => {
+    const home = mkdtempSync(join(tmpdir(), 'rc-sessbranch-home-'))
+    cleanup.push(home)
+    restoreDataDir = useDataDir(home)
+
+    ctx = await makeTestCtx()
+    repoPath = mkdtempSync(join(tmpdir(), 'rc-sessbranch-repo-'))
+    cleanup.push(repoPath)
+    initRepo(repoPath)
+    git(repoPath, 'branch', 'develop')
+    project = seedProject(ctx, repoPath)
+  })
+
+  afterEach(async () => {
+    await awaitProjectLandings()
+    restoreDataDir()
+    removeAll(cleanup)
+  })
+
+  const trpc = (): ReturnType<ReturnType<typeof createCallerFactory<typeof appRouter>>> =>
+    createCallerFactory(appRouter)(ctx)
+
+  /** Pick a landing branch the way the picker does, and re-read the row. */
+  async function pick(value: string | null): Promise<Project> {
+    await trpc().settings.update({ key: 'sessionBranch', value, projectId: project.id })
+    return requireProjectById(ctx, project.id)
+  }
+
+  it('resolves to the detected main line while nobody has picked', async () => {
+    expect(project.sessionBranch).toBeUndefined()
+    expect(await resolveSessionBranch(project)).toBe('main')
+  })
+
+  it('resolves to the pick once a human makes one', async () => {
+    expect(await resolveSessionBranch(await pick('develop'))).toBe('develop')
+  })
+
+  it('fails the launch, pointing at the picker, when a pick has gone missing', async () => {
+    const picked = await pick('develop')
+    git(repoPath, 'branch', '-D', 'develop')
+
+    await expect(resolveSessionBranch(picked)).rejects.toThrow(/no longer exists/)
+    // and the launch itself refuses rather than quietly re-detecting `main`
+    await expect(launchProjectSession(ctx, { projectId: project.id }, { spawn: false })).rejects.toThrow(
+      /where this chat's work should land/,
+    )
+  })
+
+  it('cuts the project branch from the picked branch and lands back onto it', async () => {
+    // a commit only `develop` has, so cutting from `main` would be visible
+    const wt = join(mkdtempSync(join(tmpdir(), 'rc-dev-wt-')), 'wt')
+    cleanup.push(dirname(wt))
+    git(repoPath, 'worktree', 'add', wt, 'develop')
+    writeFileSync(join(wt, 'DEV.md'), 'develop only\n')
+    git(wt, 'add', 'DEV.md')
+    git(wt, 'commit', '-m', 'develop-only commit')
+    const developTip = git(repoPath, 'rev-parse', 'develop')
+    git(repoPath, 'worktree', 'remove', wt, '--force')
+
+    const { worktreePath, base } = await ensureProjectWorktree(await pick('develop'))
+
+    expect(base).toBe('develop')
+    expect(git(repoPath, 'rev-parse', PROJECT_BRANCH)).toBe(developTip)
+    expect(existsSync(join(worktreePath, 'DEV.md'))).toBe(true)
+
+    // and the session's work lands there, not on main
+    writeFileSync(join(worktreePath, 'CONTEXT.md'), 'the charter\n')
+    git(worktreePath, 'add', 'CONTEXT.md')
+    git(worktreePath, 'commit', '-m', 'project session: charter')
+
+    const landed = await landProjectBranch(requireProjectById(ctx, project.id), 'develop')
+    expect(landed).toMatchObject({ base: 'develop', commits: 1, landed: true })
+    expect(git(repoPath, 'show', 'develop:CONTEXT.md')).toBe('the charter')
+    // main is where it would have gone before, and is untouched
+    expect(git(repoPath, 'branch', '--contains', 'develop', '--list', 'main')).toBe('')
+    expect(existsSync(join(repoPath, 'CONTEXT.md'))).toBe(false)
+  })
+
+  it('applies a pick at the next launch, never under the session already running', async () => {
+    const { sessionId } = await launchProjectSession(ctx, { projectId: project.id }, { spawn: false })
+    const cutFromMain = git(repoPath, 'rev-parse', PROJECT_BRANCH)
+    expect(cutFromMain).toBe(git(repoPath, 'rev-parse', 'main'))
+
+    // the pick lands mid-session: the live session keeps the branch it was cut
+    const picked = await pick('develop')
+    expect(git(repoPath, 'rev-parse', PROJECT_BRANCH)).toBe(cutFromMain)
+
+    endSession(ctx, sessionId)
+    await awaitProjectLandings()
+    expect((await ensureProjectWorktree(picked)).base).toBe('develop')
+  })
+
+  it('reports stored, effective and detected over tRPC for the picker', async () => {
+    expect(await trpc().project.sessionBranch({ projectId: project.id })).toEqual({
+      stored: null,
+      effective: 'main',
+      detected: 'main',
+    })
+
+    await pick('develop')
+    expect(await trpc().project.sessionBranch({ projectId: project.id })).toEqual({
+      stored: 'develop',
+      effective: 'develop',
+      detected: 'main',
+    })
+
+    // clearing goes back to detection — reading never wrote the column
+    await pick(null)
+    expect(await trpc().project.sessionBranch({ projectId: project.id })).toEqual({
+      stored: null,
+      effective: 'main',
+      detected: 'main',
+    })
+  })
+
+  it('announces every pick on the project timeline', async () => {
+    await pick('develop')
+    await pick(null)
+
+    const updates = listByProject(ctx, project.id).filter((e) => e.type === 'settings.updated')
+    expect(updates.map((e) => e.data)).toEqual([
+      { key: 'sessionBranch', scope: 'project', value: 'develop' },
+      { key: 'sessionBranch', scope: 'project', value: null },
+    ])
   })
 })
