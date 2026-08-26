@@ -2628,13 +2628,13 @@ async function detectDbDrift(
 // --- merge ------------------------------------------------------------------
 
 /**
- * Merge `feature/<slug>` into its base branch (`feature.baseBranch`, default
- * `project.mainBranch`) with `--no-ff` — a feature lands back on the branch it
- * was forked from, not unconditionally on main. Denies (via `GateError` →
- * PRECONDITION_FAILED) while a test drive is active or the main checkout is
- * dirty. On conflict it aborts and reports `{ ok: false, conflict: true }`,
- * leaving the checkout clean either way. The resolved `target` is always
- * returned so the caller can report/record it.
+ * Merge `feature/<slug>` into its base branch (`feature.baseBranch`) with
+ * `--no-ff` — a feature lands back on the branch it was forked from, and on no
+ * other, main included. Denies (via `GateError` → PRECONDITION_FAILED) while a
+ * test drive is active or the main checkout is dirty. On conflict it aborts and
+ * reports `{ ok: false, conflict: true }`, leaving the checkout clean either
+ * way. The resolved `target` is always returned so the caller can report/record
+ * it.
  *
  * The merge has to check out `target` to build the `--no-ff` commit, but the
  * user's checkout is a shared surface — silently parking them on `develop` after
