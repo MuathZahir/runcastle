@@ -149,6 +149,25 @@ describe('researchRun — control flow (stubbed sandcastle)', () => {
     expect(events.map((e) => e.type)).toContain('auth.missing')
   })
 
+  // The same predicate and the same words as a ticket burn: a codex waypoint
+  // that cannot authenticate is a host that has not run `codex login`.
+  it('sends an unauthed codex waypoint to `codex login`', async () => {
+    const { ctx, events } = makeCtx(makeWaypoint())
+    const { deps, calls } = fakeDeps(
+      { status: 'done', commits: ['x'], docRelPath: 'p' },
+      RuncastleConfig.parse({ sandbox: 'docker' }),
+      false,
+    )
+
+    const result = await researchRun(ctx, { ...deps, runtime: 'codex' })
+
+    expect(result.status).toBe('failed')
+    expect(calls).toHaveLength(0)
+    const missing = events.find((e) => e.type === 'auth.missing')
+    expect(missing?.message).toContain('codex login')
+    expect(missing?.message).not.toContain('CODEX_API_KEY')
+  })
+
   it('fails when started without a waypoint input', async () => {
     const { ctx } = makeCtx(undefined)
     const { deps, calls } = fakeDeps({ status: 'done', commits: ['x'], docRelPath: 'p' })
