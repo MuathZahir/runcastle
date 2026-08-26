@@ -839,6 +839,25 @@ describe('codexRuntime.writeArtifacts', () => {
     expect(toml).toContain('http_headers = { "X-Runcastle-Session" = "sess_codex_ideation" }')
   })
 
+  it('maps the project session\'s `default` posture to an approval policy that asks', async () => {
+    await launchSpec('project', {
+      permissionMode: 'default',
+      projectBrief: { project, branch: 'runcastle/project', worktreePath: worktree },
+    })
+    const projected = configToml('sess_codex_project')
+    // decision 18: a project session runs against the whole repo checkout, which
+    // is why the Claude path is downgraded to `default` — `untrusted` is Codex's
+    // "always ask", so the same session on a Codex model asks too
+    expect(projected).toContain('approval_policy = "untrusted"')
+    // only the approval gate moves; the sandbox is the same one every kind runs in
+    expect(projected).toContain('sandbox_mode = "workspace-write"')
+
+    // a worktree-scoped kind keeps the acceptEdits analogue: it writes inside its
+    // own checkout unattended
+    await launchSpec('qa')
+    expect(configToml('sess_codex_qa')).toContain('approval_policy = "never"')
+  })
+
   it('registers the five lifecycle events against the same runtime-neutral hook client', async () => {
     await launchSpec('ideation')
     const hooks = JSON.parse(
