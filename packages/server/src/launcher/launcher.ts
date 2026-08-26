@@ -858,7 +858,7 @@ export async function launchProjectSession(
   const runtime = runtimeAdapterFor(model.runtime)
   assertRuntimeReady(runtime, opts)
 
-  const worktreePath = await git.ensureProjectWorktree(project, (res) =>
+  const { worktreePath, base } = await git.ensureProjectWorktree(project, (res) =>
     reportProjectLanding(ctx, project, res, { retried: true }),
   )
   const session = createSessionRow(ctx, {
@@ -922,7 +922,7 @@ export async function launchProjectSession(
     session,
     project,
     config: ctx.config,
-    projectBrief: { project, branch: git.PROJECT_BRANCH, worktreePath },
+    projectBrief: { project, branch: git.PROJECT_BRANCH, worktreePath, base },
     worktreePath,
     serverUrl: serverUrlFor(ctx.config),
     model: model.id,

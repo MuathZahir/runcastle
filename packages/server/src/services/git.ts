@@ -272,6 +272,45 @@ export async function detectMainBranch(repoPath: string): Promise<string> {
   return 'main'
 }
 
+/** The project session's landing branch, as the picker needs to render it. */
+export interface SessionBranchView {
+  /** What a human explicitly picked, or `null` while nobody has. */
+  stored: string | null
+  /** What the session will actually use: `stored` if set, else `detected`. */
+  effective: string
+  /** The repo's main line right now, as {@link detectMainBranch} reads it. */
+  detected: string
+}
+
+/**
+ * Where the project session's work lands: the stored pick if a human made one,
+ * otherwise the detected main line (decisions 5–6). Detection NEVER writes the
+ * column — a zero-config project resolves fresh on every read, which is what
+ * lets the field stay null until somebody deliberately chooses.
+ *
+ * A stored branch that no longer exists is loud, not silent: re-detecting would
+ * quietly land a session's charter commits somewhere the human never picked, so
+ * this throws and names the picker instead.
+ */
+export async function resolveSessionBranch(project: Project): Promise<string> {
+  const stored = project.sessionBranch?.trim()
+  if (!stored) return detectMainBranch(project.repoPath)
+  const local = await git(project.repoPath).branchLocal()
+  if (!local.all.includes(stored)) {
+    throw new GateError(
+      `the configured session landing branch \`${stored}\` no longer exists in ${project.repoPath} — pick where this chat's work should land`,
+    )
+  }
+  return stored
+}
+
+/** {@link resolveSessionBranch}'s three values, for the picker; never throws on a vanished pick. */
+export async function sessionBranchView(project: Project): Promise<SessionBranchView> {
+  const stored = project.sessionBranch?.trim() || null
+  const detected = await detectMainBranch(project.repoPath)
+  return { stored, effective: stored ?? detected, detected }
+}
+
 // --- feature branch ---------------------------------------------------------
 
 /**
@@ -542,12 +581,25 @@ function slash(path: string): string {
   return path.replace(/\\/g, '/')
 }
 
+/** The project worktree and the branch this launch resolved it against. */
+export interface ProjectWorktree {
+  worktreePath: string
+  /** The resolved session branch the worktree was cut from and will land on. */
+  base: string
+}
+
 /**
  * Ensure the PROJECT session's worktree exists at
  * `worktreeDir(projectId, '__project')`, checked out on {@link PROJECT_BRANCH}
- * cut from the base tip (decision 18). Never the human's checkout: this session
- * writes the whole repo, so it works on a runcastle-owned branch and lands via
- * {@link mergeTempBranch}, exactly like every other AFK writer.
+ * cut from the resolved session branch ({@link resolveSessionBranch}, decision
+ * 18). Never the human's checkout: this session writes the whole repo, so it
+ * works on a runcastle-owned branch and lands via {@link mergeTempBranch},
+ * exactly like every other AFK writer.
+ *
+ * The resolved base comes back with the path because this is the launch's one
+ * resolution: the prompt the session is handed has to name the same branch the
+ * worktree was cut from, and a pick made while the previous session was live
+ * takes effect here, at the next launch, not under a running one.
  *
  * A previous session that crashed (or whose landing hit a conflict) leaves
  * commits on the branch, so this lands them BEFORE recutting — best-effort,
@@ -560,16 +612,18 @@ function slash(path: string): string {
 export async function ensureProjectWorktree(
   project: Project,
   onLanded?: (res: ProjectLandResult) => void,
-): Promise<string> {
+): Promise<ProjectWorktree> {
   const worktreePath = worktreeDir(project.id, PROJECT_WORKTREE_SLUG)
   const g = git(project.repoPath)
-  const base = project.mainBranch
+  // Resolved once, before anything is cut or landed: a stored pick that has
+  // vanished fails the launch here, rather than after the work has moved.
+  const base = await resolveSessionBranch(project)
 
   // The retry the landing protocol promises. Reported through `onLanded`,
   // because this merge puts commits on the human's own branch: a silent success
   // leaves the earlier `project.land_conflict` standing as the timeline's last
   // word, so the UI keeps claiming the work is stranded after it has landed.
-  const landed = await landProjectBranch(project)
+  const landed = await landProjectBranch(project, base)
   if (landed) onLanded?.(landed)
 
   const stillAhead = await branchCommitsAhead(project.repoPath, base, PROJECT_BRANCH)
@@ -580,16 +634,17 @@ export async function ensureProjectWorktree(
     await g.raw(['branch', PROJECT_BRANCH, base])
   }
 
-  if (await worktreeIsValid(g, worktreePath, PROJECT_BRANCH)) return worktreePath
+  if (await worktreeIsValid(g, worktreePath, PROJECT_BRANCH)) return { worktreePath, base }
 
   // A registered worktree that is merely detached (landing deletes the branch it
   // held) or sitting on the previous cut just needs the new branch checked out —
   // recreating it would be a needless delete of a directory git still owns.
   if (existsSync(worktreePath) && (await registeredWorktrees(g)).has(canon(worktreePath))) {
-    if (await checkoutInWorktree(worktreePath, PROJECT_BRANCH)) return worktreePath
+    if (await checkoutInWorktree(worktreePath, PROJECT_BRANCH)) return { worktreePath, base }
   }
 
-  return addWorktree(g, worktreePath, PROJECT_BRANCH, 'project worktree')
+  const added = await addWorktree(g, worktreePath, PROJECT_BRANCH, 'project worktree')
+  return { worktreePath: added, base }
 }
 
 /**
@@ -1353,6 +1408,8 @@ async function deleteBranchDetachingWorktrees(
 }
 
 export interface ProjectLandResult {
+  /** The branch it landed onto — carried so every report names it without re-resolving. */
+  base: string
   /** How many commits were ahead of the base branch when landing started. */
   commits: number
   landed: boolean
@@ -1372,12 +1429,20 @@ export interface ProjectLandResult {
  * disposable worktree when the base moved ahead. On conflict it refuses rather
  * than clobbers, and `runcastle/project` survives with the work on it —
  * {@link ensureProjectWorktree} retries the landing at the next launch.
+ *
+ * `base` is the already-resolved session branch ({@link resolveSessionBranch}) —
+ * passed in rather than resolved here so one launch resolves once and every
+ * message about it names the same branch.
  */
-export async function landProjectBranch(project: Project): Promise<ProjectLandResult | null> {
-  const ahead = await branchCommitsAhead(project.repoPath, project.mainBranch, PROJECT_BRANCH)
+export async function landProjectBranch(
+  project: Project,
+  base: string,
+): Promise<ProjectLandResult | null> {
+  const ahead = await branchCommitsAhead(project.repoPath, base, PROJECT_BRANCH)
   if (ahead.length === 0) return null
-  const res = await mergeTempBranch(project.repoPath, project.mainBranch, PROJECT_BRANCH)
+  const res = await mergeTempBranch(project.repoPath, base, PROJECT_BRANCH)
   return {
+    base,
     commits: ahead.length,
     landed: res.ok,
     ...(res.conflict ? { conflict: true } : {}),
