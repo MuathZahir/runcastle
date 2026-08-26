@@ -301,7 +301,11 @@ export async function createFeatureBranch(
 }
 
 export interface BranchList {
-  /** The branch the main checkout is on right now (the "use current" default). */
+  /**
+   * The branch the main checkout is on right now (the "use current" default),
+   * or `''` when HEAD is detached — a detached checkout is on no branch, so
+   * there is nothing to default to.
+   */
   current: string
   /** The project's stored default base. */
   mainBranch: string
@@ -325,7 +329,13 @@ export interface BranchList {
 export async function listBranches(project: Project): Promise<BranchList> {
   const g = git(project.repoPath)
   const local = await g.branchLocal()
-  const branches = local.all.filter((name) => !name.startsWith('feature/'))
+  // simple-git reports a detached HEAD as a pseudo-branch named for the short
+  // sha. Nobody can fork a feature off it, so it is neither the current branch
+  // nor a pick — the checkout simply has no base to offer.
+  const current = local.detached ? '' : local.current
+  const branches = local.all.filter(
+    (name) => !name.startsWith('feature/') && !(local.detached && name === local.current),
+  )
 
   const localSet = new Set(local.all)
   let remoteBranches: string[] = []
@@ -344,7 +354,7 @@ export async function listBranches(project: Project): Promise<BranchList> {
     // No remotes (or a bare/odd repo) — remote picks simply aren't offered.
   }
 
-  return { current: local.current, mainBranch: project.mainBranch, branches, remoteBranches }
+  return { current, mainBranch: project.mainBranch, branches, remoteBranches }
 }
 
 /**

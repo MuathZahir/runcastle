@@ -1113,6 +1113,26 @@ export interface AdrRef {
   bytes: number
 }
 
+/**
+ * Where a new feature would cut from, so intake can STATE its base instead of
+ * cutting one silently (decisions 1, 2, 7). The agent assumes `current`, says so
+ * in the create proposal, and passes it back as `create_feature`'s `baseBranch`.
+ */
+export interface BaseBranches {
+  /** The human checkout's branch — the base to assume. `''` when HEAD is detached. */
+  current: string
+  /**
+   * Whether `current` is a base a feature may actually fork from. False when the
+   * checkout is parked on a `feature/*` branch (mid test drive) or detached —
+   * the one case where there is no default and the agent must ask.
+   */
+  currentIsSelectable: boolean
+  /** Every base a feature may fork from: local non-`feature/*` plus remote-only `origin/<name>`. */
+  selectable: string[]
+  /** The repo's main line — the suggestion to offer when `current` is unselectable. */
+  detectedMain: string
+}
+
 export interface ProjectContext {
   project: Project
   /** `CONTEXT.md` in full; absent when the project has no charter yet. */
@@ -1126,6 +1146,8 @@ export interface ProjectContext {
   adrsNote: string
   /** One line per feature (decision 14 part 2); see {@link featureIndexLine}. */
   featureIndex: string[]
+  /** The base a new feature would cut from; see {@link BaseBranches}. */
+  baseBranches: BaseBranches
 }
 
 const ADRS_NOTE =
@@ -1135,11 +1157,14 @@ const ADRS_NOTE =
 
 /**
  * Everything that is true of the project right now: the row, the charter, an
- * index of the live ADRs, and a one-line index of every feature.
+ * index of the live ADRs, a one-line index of every feature, and the base a new
+ * feature would cut from.
  *
  * The docs are read from THIS SESSION's worktree, not the human's checkout —
  * the project session works on a runcastle-owned branch (decision 18), so its
  * own tree is the state it is editing and the state it should be told about.
+ * The branches are the other way round: the base a feature should fork off is
+ * the branch the HUMAN is on, which is the checkout's, never this session's.
  *
  * The ADRs were once inlined in full on decision 16's reasoning: a ceiling would
  * silently turn "this binds you" into "this binds you unless it did not fit".
@@ -1152,7 +1177,10 @@ const ADRS_NOTE =
  * `docs/features/project-session-open-by-asking-orient-lazily/brief.md:13` is
  * this work.
  */
-export function toolGetProjectContext(ctx: AppCtx, session: SessionRow): ProjectContext {
+export async function toolGetProjectContext(
+  ctx: AppCtx,
+  session: SessionRow,
+): Promise<ProjectContext> {
   const project = requireProject(ctx, session)
   const charter = readCharter(session.worktreePath)
   return {
@@ -1161,6 +1189,24 @@ export function toolGetProjectContext(ctx: AppCtx, session: SessionRow): Project
     adrs: listLiveAdrs(session.worktreePath).map(adrRef),
     adrsNote: ADRS_NOTE,
     featureIndex: listFeatures(ctx, project.id).map(featureIndexLine),
+    baseBranches: await baseBranches(project),
+  }
+}
+
+/**
+ * The branch facts intake needs to state a base rather than cut one silently.
+ * `listBranches` is the same vocabulary the web base pickers use — `feature/*`
+ * excluded, remote-only lines as `origin/<name>` — so a base the agent picks
+ * here and a base a human picks in the form are the same set of things.
+ */
+async function baseBranches(project: Project): Promise<BaseBranches> {
+  const { current, branches, remoteBranches } = await git.listBranches(project)
+  const selectable = [...branches, ...remoteBranches]
+  return {
+    current,
+    currentIsSelectable: selectable.includes(current),
+    selectable,
+    detectedMain: await git.detectMainBranch(project.repoPath),
   }
 }
 
@@ -1774,13 +1820,16 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
           'ADR bodies are not inlined — read the ones your work touches with `read_adr`. Shipped ' +
           'features carry their one-liner and docs path (readable on disk); in-flight ones carry ' +
           'slug, phase, lap and ticket counts but no docs path, because their docs live on an ' +
-          'unmerged branch. Use the slug with `get_work_record` to see what one actually did.',
+          'unmerged branch. Use the slug with `get_work_record` to see what one actually did. ' +
+          'Plus `baseBranches` — the branch a new feature would cut from: the checkout’s `current` ' +
+          'branch, `currentIsSelectable` (false mid test drive or on a detached HEAD, the one case ' +
+          'with no default), every `selectable` base, and the `detectedMain` line to suggest then.',
         inputSchema: {},
       },
       async (_args, extra) => {
         const rs = await resolveCtxSession(extra)
         if (!rs) return noSession()
-        return ok(toolGetProjectContext(rs.ctx, rs.session))
+        return ok(await toolGetProjectContext(rs.ctx, rs.session))
       },
     )
   }

@@ -281,6 +281,19 @@ describe('listBranches', () => {
     expect(res.remoteBranches.some((b) => b.endsWith('/HEAD'))).toBe(false)
     expect(res.branches).not.toContain('origin/release')
   })
+
+  it('reports a detached HEAD as no current branch, and never as a pickable one', async () => {
+    const g = simpleGit(project.repoPath)
+    const head = (await g.revparse(['HEAD'])).trim()
+    await g.checkout(['--detach', head])
+
+    const res = await listBranches(project)
+    // simple-git names the detached pseudo-branch for the short sha; nobody can
+    // fork a feature off it, so it is neither the current branch nor a pick.
+    expect(res.current).toBe('')
+    expect(res.branches.join(' ')).not.toContain(head.slice(0, 7))
+    expect(res.branches).toContain('main')
+  })
 })
 
 describe('resolveBaseBranch', () => {

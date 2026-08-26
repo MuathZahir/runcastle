@@ -121,16 +121,13 @@ describe('project-session MCP tools', () => {
     await expect(
       toolCreateFeature(ctx, featureSession, { title: 'T', oneLiner: 'o' }),
     ).rejects.toThrow(GateError)
-    expect(() => toolGetProjectContext(ctx, featureSession)).toThrow(GateError)
+    await expect(toolGetProjectContext(ctx, featureSession)).rejects.toThrow(GateError)
     expect(() => toolGetWorkRecord(ctx, featureSession, { featureSlug: 'dark-mode' })).toThrow(
       GateError,
     )
 
-    try {
-      toolGetProjectContext(ctx, featureSession)
-    } catch (e) {
-      expect((e as GateError).message).toMatch(/get_feature_context/)
-    }
+    const thrown = await toolGetProjectContext(ctx, featureSession).catch((e: unknown) => e)
+    expect((thrown as GateError).message).toMatch(/get_feature_context/)
   })
 
   it('record_event stays available to both kinds, at each one’s own scope', () => {
@@ -347,7 +344,7 @@ describe('project-session MCP tools', () => {
       { title: 'b', goal: 'g', context: 'c', acceptanceCriteria: ['a'], seams: [], blockedBy: [] },
     ])
 
-    const out = toolGetProjectContext(ctx, session)
+    const out = await toolGetProjectContext(ctx, session)
 
     expect(out.project.id).toBe(projectId)
     expect(out.charter).toContain('**Seam**: an observable boundary.')
@@ -391,10 +388,71 @@ describe('project-session MCP tools', () => {
     expect(out.featureIndex.join('\n')).not.toContain('docs/features/promotion-at-merge')
   })
 
-  it('reports an absent charter as absent, with no error', () => {
-    const out = toolGetProjectContext(ctx, session)
+  it('reports an absent charter as absent, with no error', async () => {
+    const out = await toolGetProjectContext(ctx, session)
     expect(out.charter).toBeUndefined()
     expect(out.adrs).toEqual([])
+  })
+
+  /**
+   * Intake can only STATE the base it will cut from (decisions 1, 2, 7) if the
+   * context says what that base is — so the payload carries the checkout's
+   * branch, the bases a feature may fork off, and the main line to fall back on
+   * suggesting.
+   */
+  it('reports the base a new feature would cut from: current, selectable, detected main', async () => {
+    const g = simpleGit(repoPath)
+    await g.raw(['branch', 'develop'])
+    await g.checkout('develop')
+
+    const out = await toolGetProjectContext(ctx, session)
+
+    expect(out.baseBranches.current).toBe('develop')
+    expect(out.baseBranches.currentIsSelectable).toBe(true)
+    expect(out.baseBranches.selectable).toEqual(expect.arrayContaining(['develop', 'main']))
+    expect(out.baseBranches.detectedMain).toBe('main')
+  })
+
+  it('excludes talk branches from the selectable bases', async () => {
+    const g = simpleGit(repoPath)
+    await g.raw(['branch', 'feature/dark-mode'])
+
+    const out = await toolGetProjectContext(ctx, session)
+
+    expect(out.baseBranches.selectable).not.toContain('feature/dark-mode')
+  })
+
+  /**
+   * Mid test drive the checkout is parked on the feature's own talk branch, and
+   * every silent substitution is wrong there — so the payload has to make the
+   * "there is no default" case something the agent can SEE, not infer.
+   */
+  it('marks the checkout unselectable when it is parked on a feature branch', async () => {
+    const g = simpleGit(repoPath)
+    await g.raw(['branch', 'feature/dark-mode'])
+    await g.checkout('feature/dark-mode')
+
+    const out = await toolGetProjectContext(ctx, session)
+
+    expect(out.baseBranches.current).toBe('feature/dark-mode')
+    expect(out.baseBranches.currentIsSelectable).toBe(false)
+    // …and the suggestion to offer instead is right there.
+    expect(out.baseBranches.detectedMain).toBe('main')
+    expect(out.baseBranches.selectable).toContain('main')
+  })
+
+  it('marks the checkout unselectable when HEAD is detached, offering no sha as a base', async () => {
+    const g = simpleGit(repoPath)
+    const head = (await g.revparse(['HEAD'])).trim()
+    await g.checkout(['--detach', head])
+
+    const out = await toolGetProjectContext(ctx, session)
+
+    expect(out.baseBranches.current).toBe('')
+    expect(out.baseBranches.currentIsSelectable).toBe(false)
+    // A detached HEAD is no branch at all — the sha must not be offered as one.
+    expect(out.baseBranches.selectable.join(' ')).not.toContain(head.slice(0, 7))
+    expect(out.baseBranches.selectable).toContain('main')
   })
 
   // --- get_work_record -------------------------------------------------------
