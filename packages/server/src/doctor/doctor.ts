@@ -315,12 +315,11 @@ async function runtimeAuthProbe(
     runtime: spec.runtime,
     check: 'auth' as const,
   }
-  const fix = `Run \`${spec.loginCommand}\` (the wizard and Settings can run it for you).`
   const loggedOut = {
     ...base,
     status: 'unset' as const,
     detail: `${spec.bin} reports no interactive login — sessions on ${spec.label} would stop to log in`,
-    fix,
+    fix: `Run \`${spec.loginCommand}\` (the wizard and Settings can run it for you).`,
   }
 
   const out = await exec(spec.bin, spec.authStatusArgs)
@@ -337,19 +336,21 @@ async function runtimeAuthProbe(
   if (authFile) {
     const present = fileExists(authFile)
     const statusCommand = `${spec.bin} ${spec.authStatusArgs.join(' ')}`
-    // What the CLI said, appended to the file's verdict — spelled out when the
-    // two disagree, because that is the state this probe exists to stop lying about.
-    let aside: string
-    if (statusUnsupported(out)) aside = ` — this ${spec.bin} cannot report login state`
-    else if ((out.code === 0) === present) aside = ` — \`${statusCommand}\` agrees`
-    else if (present) {
-      aside = `, but \`${statusCommand}\` reports logged out — burns borrow the file, so this host counts as signed in`
+    // What the CLI said, as a coda to the file's verdict — spelled out when the
+    // two disagree, since that mismatch is what this probe exists to stop hiding.
+    let coda: string
+    if (statusUnsupported(out)) {
+      coda = ` — this ${spec.bin} cannot report login state`
+    } else if ((out.code === 0) === present) {
+      coda = ` — \`${statusCommand}\` agrees`
+    } else if (present) {
+      coda = `, but \`${statusCommand}\` reports logged out — burns borrow the file, so this host counts as signed in`
     } else {
-      aside = `, but \`${statusCommand}\` reports a login — a burn borrows the file, and it is not there`
+      coda = `, but \`${statusCommand}\` reports a login — a burn borrows the file, and it is not there`
     }
     return present
-      ? { ...base, status: 'ok', detail: `credentials found at ${authFile}${aside}` }
-      : { ...loggedOut, detail: `no credentials at ${authFile}${aside}` }
+      ? { ...base, status: 'ok', detail: `credentials found at ${authFile}${coda}` }
+      : { ...loggedOut, detail: `no credentials at ${authFile}${coda}` }
   }
 
   if (out.code === 0) return { ...base, status: 'ok', detail: `${spec.bin} reports a login` }
@@ -414,11 +415,11 @@ export async function runtimeProbes(
   },
 ): Promise<ProbeResult[]> {
   const fileExists = deps.fileExists ?? existsSync
-  const afkKey = runtimeAfkKeyProbe(spec, deps.env, deps.severity)
+  const afkKeyProbe = runtimeAfkKeyProbe(spec, deps.env, deps.severity)
   return [
     await runtimeBinaryProbe(spec, deps.exec, deps.severity),
     await runtimeAuthProbe(spec, deps.exec, deps.env, fileExists, deps.severity),
-    ...(afkKey ? [afkKey] : []),
+    ...(afkKeyProbe ? [afkKeyProbe] : []),
   ]
 }
 
