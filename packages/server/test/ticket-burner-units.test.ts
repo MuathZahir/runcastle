@@ -18,6 +18,7 @@ import {
   buildBurnAgent,
   buildOtherSideBlock,
   buildSandboxOptions,
+  burnAuthReady,
   buildTicketJson,
   buildVerifyNotes,
   buildWorkspaceNotes,
@@ -993,6 +994,33 @@ describe('selectSandbox — provider for the configured sandbox', () => {
     // operator burning on a hand-set CODEX_API_KEY has no login to lend.
     it('lends nothing when the host has never logged in', () => {
       expect(codexAuthMountFor('codex', 'docker', HOME_ENV, loggedOut)).toBeUndefined()
+    })
+  })
+
+  /**
+   * What "ready to burn unattended" means per runtime. Claude Code needs the
+   * long-lived token; Codex needs a login, and a key is only the silent
+   * override an operator may already have in `~/.runcastle/.env`.
+   */
+  describe('burnAuthReady — the fail-early predicate', () => {
+    const loggedIn = () => true
+    const loggedOut = () => false
+
+    it('burns codex on the host login alone, with no key anywhere', () => {
+      expect(burnAuthReady('codex', undefined, loggedIn)).toBe(true)
+    })
+
+    it('refuses a codex burn when the host is logged out and has no key', () => {
+      expect(burnAuthReady('codex', undefined, loggedOut)).toBe(false)
+    })
+
+    it('accepts a hand-set CODEX_API_KEY as the override it is', () => {
+      expect(burnAuthReady('codex', 'sk-openai', loggedOut)).toBe(true)
+    })
+
+    it('leaves claude-code on its token, whatever codex’s login says', () => {
+      expect(burnAuthReady('claude-code', 'sk-token', loggedOut)).toBe(true)
+      expect(burnAuthReady('claude-code', undefined, loggedIn)).toBe(false)
     })
   })
 

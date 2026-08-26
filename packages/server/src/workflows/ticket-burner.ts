@@ -107,6 +107,24 @@ import { noSandbox } from '@ai-hero/sandcastle/sandboxes/no-sandbox'
 
 export const AUTH_MISSING_EVENT = 'auth.missing'
 
+/**
+ * Whether a runtime can authenticate an unattended container burn. The two
+ * runtimes answer it differently: Claude Code needs the long-lived token from
+ * `~/.runcastle/.env`, while Codex burns on the operator's own `codex login`,
+ * borrowed into the container — so for Codex a token is merely the silent
+ * `CODEX_API_KEY` override (decision 3), never the requirement.
+ *
+ * `loggedIn` is injected so the whole precheck is testable without a real home.
+ */
+export function burnAuthReady(
+  runtime: AgentRuntime,
+  token: string | undefined,
+  loggedIn: () => boolean = () => codexLoggedIn(),
+): boolean {
+  if (token !== undefined) return true
+  return runtime === 'codex' && loggedIn()
+}
+
 // ---------------------------------------------------------------------------
 // Outcome + dependency shapes (the sandcastle boundary)
 // ---------------------------------------------------------------------------
@@ -168,8 +186,16 @@ export interface BurnDeps {
   config: RuncastleConfig
   /** The runtime this run's resolved model launches — whose auth key must be set. */
   runtime: AgentRuntime
-  /** Whether {@link runtime}'s auth key is available (container sandboxes require it). */
+  /** Whether {@link runtime} can authenticate this run (container sandboxes require it). */
   hasAuthToken: boolean
+  /**
+   * The runtime of a ticket whose OWN model cannot authenticate a container
+   * burn, or `undefined` when it can. A ticket assigned to the other runtime
+   * re-resolves its model AND its credential, so the run-level check above says
+   * nothing about it — this is what stops a Codex ticket inside a Claude run
+   * from spending a container to discover it has no login.
+   */
+  ticketAuthMissing?: (ticket: Ticket) => AgentRuntime | undefined
   /** Worker-pool width — how many tickets burn in parallel (`config.burnConcurrency`). */
   concurrency: number
   /** Runs one ticket to a terminal outcome. Real impl calls sandcastle `run()`. */
@@ -2140,6 +2166,26 @@ export function composeRunDigest(entries: readonly HarvestedDigest[]): string | 
 }
 
 /**
+ * The run-level precheck, per ticket: a ticket assigned to the other runtime
+ * fails with the same `auth.missing` event rather than spending a container to
+ * find out it cannot authenticate. Nothing wraps the executor when there is no
+ * container to save or no per-ticket answer to give.
+ */
+function gateTicketAuth(deps: BurnDeps): BurnDeps['executeTicketRun'] {
+  const authMissing = deps.ticketAuthMissing
+  if (!authMissing || deps.config.sandbox === 'noSandbox') return deps.executeTicketRun
+  return async (ctx, ticket, run) => {
+    const runtime = authMissing(ticket)
+    if (!runtime) return deps.executeTicketRun(ctx, ticket, run)
+    ctx.emitEvent({ type: AUTH_MISSING_EVENT, message: RUNTIME_AUTH_SETUP_HINT[runtime] })
+    return {
+      status: 'failed',
+      error: `${runtime} is not authenticated on this host — ${RUNTIME_AUTH_SETUP_HINT[runtime]}`,
+    }
+  }
+}
+
+/**
  * The testable core of the burner: everything except how `BurnDeps` are
  * resolved (config load, token read, real sandcastle call). Tests pass a fake
  * `executeTicketRun` + config to exercise success/failure/conflict/zero-commit,
@@ -2157,9 +2203,9 @@ export async function burnRun(
   const cancelled = tickets.length - burnable.length
   const total = burnable.length
 
-  // Auth precheck: container sandboxes (docker/podman) need a token before we
-  // start any container; noSandbox runs the CLI on the already-authed host. The
-  // message names the fix for THIS run's runtime — a Codex burn that aborts
+  // Auth precheck: container sandboxes (docker/podman) need credentials before
+  // we start any container; noSandbox runs the CLI on the already-authed host.
+  // The message names the fix for THIS run's runtime — a Codex burn that aborts
   // pointing at `claude setup-token` sends the human to the wrong provider.
   if (deps.config.sandbox !== 'noSandbox' && !deps.hasAuthToken) {
     ctx.emitEvent({ type: AUTH_MISSING_EVENT, message: RUNTIME_AUTH_SETUP_HINT[deps.runtime] })
@@ -2180,7 +2226,7 @@ export async function burnRun(
     return { status: 'failed', summary: `dependency cycle: ${path}` }
   }
 
-  const { done, digests } = await burnTickets(ctx, tickets, deps.executeTicketRun, deps.concurrency)
+  const { done, digests } = await burnTickets(ctx, tickets, gateTicketAuth(deps), deps.concurrency)
   const summary =
     cancelled > 0 ? `${done}/${total} tickets done (${cancelled} cancelled)` : `${done}/${total} tickets done`
   ctx.emitEvent({ type: 'burn.summary', message: summary, data: { done, total, cancelled } })
@@ -3346,17 +3392,34 @@ function resolveBurnDeps(ctx: WorkflowCtx): BurnDeps {
     }),
   }
 
+  /**
+   * A ticket's own model and the credential that model burns on — re-read for a
+   * ticket assigned to the other runtime, which authenticates with the other
+   * key. Resolved in one place so the per-ticket precheck and the executor can
+   * never disagree about what this ticket would run with.
+   */
+  const ticketCredentials = (ticket: Ticket): { model: ModelEntry; token: string | undefined } => {
+    const ticketModel = resolveTicketModel(config, ctx.project, ctx.modelOverride, ticket)
+    return {
+      model: ticketModel,
+      token:
+        ticketModel.runtime === model.runtime
+          ? token
+          : readTokenFromEnvFile(envPath(), ticketModel.runtime),
+    }
+  }
+
   return {
     config,
     runtime: model.runtime,
-    hasAuthToken: token !== undefined,
+    hasAuthToken: burnAuthReady(model.runtime, token),
+    ticketAuthMissing: (ticket) => {
+      const { model: ticketModel, token: ticketToken } = ticketCredentials(ticket)
+      return burnAuthReady(ticketModel.runtime, ticketToken) ? undefined : ticketModel.runtime
+    },
     concurrency: config.burnConcurrency,
     executeTicketRun: (c, ticket, run) => {
-      const ticketModel = resolveTicketModel(config, ctx.project, ctx.modelOverride, ticket)
-      const ticketToken =
-        ticketModel.runtime === model.runtime
-          ? token
-          : readTokenFromEnvFile(envPath(), ticketModel.runtime)
+      const { model: ticketModel, token: ticketToken } = ticketCredentials(ticket)
       return isReviewTicket(ticket)
         ? executeReviewTicket(c, ticket, {
             config,

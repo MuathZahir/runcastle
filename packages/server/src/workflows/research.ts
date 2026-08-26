@@ -29,6 +29,7 @@ import {
   buildBurnAgent,
   buildCodexAuthCopyCommand,
   buildFeatureBrief,
+  burnAuthReady,
   codexAuthMountFor,
   createStreamThrottle,
   isWorktreeTeardownError,
@@ -358,7 +359,7 @@ function resolveResearchDeps(ctx: WorkflowCtx): ResearchDeps {
   return {
     config,
     runtime: model.runtime,
-    hasAuthToken: token !== undefined,
+    hasAuthToken: burnAuthReady(model.runtime, token),
     executeResearchRun: (c, waypoint) => realExecuteResearchRun(c, waypoint, config, token, model),
   }
 }

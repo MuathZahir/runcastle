@@ -351,6 +351,81 @@ describe('burnRun — scheduling and summary', () => {
     expect(events).toContainEqual(expect.objectContaining({ type: 'auth.missing' }))
   })
 
+  /**
+   * A Codex burn's credential is the operator's own `codex login`, borrowed
+   * into the container — so "ready" is a login, and the hint that aborts a run
+   * must send them to `codex login`, never to an API key they need not mint.
+   */
+  it('sends an unauthed codex run to `codex login`, and never names an API key', async () => {
+    const tickets = [ticket(1)]
+    const { ctx, events } = makeCtx(tickets)
+    const calls: number[] = []
+    const execute = fakeExecute({}, calls)
+
+    const res = await burnRun(
+      ctx,
+      deps(execute, {
+        config: { serverPort: 4512, model: 'm', stepModels: {}, sandbox: 'docker', mainBranch: 'main' },
+        runtime: 'codex',
+        hasAuthToken: false,
+      }),
+    )
+
+    expect(calls).toEqual([])
+    expect(res.status).toBe('failed')
+    const missing = events.find((e) => e.type === 'auth.missing')
+    expect(missing?.message).toContain('codex login')
+    expect(missing?.message).not.toContain('CODEX_API_KEY')
+  })
+
+  /**
+   * The cross-runtime gap: a Codex-assigned ticket inside a Claude run passed
+   * the run-level check (the Claude token is there) and only discovered it had
+   * no Codex credentials after building a container.
+   */
+  it('fails a ticket whose OWN runtime is unauthed, without touching the rest', async () => {
+    const tickets = [ticket(1), ticket(2)]
+    const { ctx, events, patches } = makeCtx(tickets)
+    const calls: number[] = []
+    const execute = fakeExecute({ 2: { status: 'done', commits: ['a'] } }, calls)
+
+    const res = await burnRun(
+      ctx,
+      deps(execute, {
+        config: { serverPort: 4512, model: 'm', stepModels: {}, sandbox: 'docker', mainBranch: 'main' },
+        hasAuthToken: true,
+        ticketAuthMissing: (t) => (t.seq === 1 ? 'codex' : undefined),
+      }),
+    )
+
+    // Ticket 1 never reached the executor; ticket 2 burned as usual.
+    expect(calls).toEqual([2])
+    expect(res.status).toBe('failed')
+    expect(events).toContainEqual(
+      expect.objectContaining({ type: 'auth.missing', message: expect.stringContaining('codex login') }),
+    )
+    const failed = patches.find((p) => p.patch.status === 'failed')
+    expect(failed?.patch.error).toContain('codex login')
+  })
+
+  it('leaves every ticket alone when each one’s own runtime is authed', async () => {
+    const tickets = [ticket(1)]
+    const { ctx } = makeCtx(tickets)
+    const calls: number[] = []
+    const execute = fakeExecute({ 1: { status: 'done', commits: ['a'] } }, calls)
+
+    const res = await burnRun(
+      ctx,
+      deps(execute, {
+        config: { serverPort: 4512, model: 'm', stepModels: {}, sandbox: 'docker', mainBranch: 'main' },
+        ticketAuthMissing: () => undefined,
+      }),
+    )
+
+    expect(calls).toEqual([1])
+    expect(res).toEqual({ status: 'succeeded', summary: '1/1 tickets done' })
+  })
+
   it('proceeds under podman when a token is present', async () => {
     const tickets = [ticket(1)]
     const { ctx } = makeCtx(tickets)
