@@ -5,6 +5,7 @@ import { useLivePoll } from '../lib/live'
 import { useToast } from '../lib/toast'
 import { BURN_EXPLAINER } from '../lib/vocabulary'
 import { Button } from '../ui'
+import { BaseSelect } from './BaseSelect'
 import { FormOverlay } from './FormOverlay'
 
 /**
@@ -55,11 +56,14 @@ export function QuickForm({
     setFocusRow(null)
   }, [focusRow])
 
-  // Quick change cuts its branch now, so it still forks off the same default the
-  // rest of the app shows (the branch you are checked out on). A draft cuts
-  // nothing and picks its base at Start, so it never waits on this.
+  // Quick change cuts its branch now, so it shows the base it will use and
+  // prefills it with the same default the rest of the app does — the branch you
+  // are checked out on (decision 8). This mode used to cut silently off that
+  // default with no control at all. A draft cuts nothing and picks its base at
+  // Start, so it never waits on this.
   const branchesQ = trpc.project.branches.useQuery({ projectId })
-  const base = branchesQ.data ? defaultBaseBranch(branchesQ.data) : ''
+  const [basePick, setBasePick] = useState('')
+  const base = basePick || (branchesQ.data ? defaultBaseBranch(branchesQ.data) : '')
 
   // Same query key the rail polls — one fetch, and the warning is against the
   // list the user can already see, including a feature created in another tab
@@ -86,8 +90,12 @@ export function QuickForm({
   const busy = quickChange.isPending || create.isPending
   const written = tickets.map((t) => t.trim()).filter((t) => t !== '')
   const dirty = title.trim() !== '' || oneLiner.trim() !== '' || written.length > 0
+  // An empty base blocks quick change outright: the branch list may still be in
+  // flight, or it arrived and the checkout is not a base anything can fork from
+  // — either way there is nothing to cut off, and guessing one is the behaviour
+  // this control exists to end. Park has no base to be missing.
   const ready =
-    mode === 'change' ? !!title.trim() && written.length > 0 && !branchesQ.isPending : !!title.trim()
+    mode === 'change' ? !!title.trim() && written.length > 0 && base !== '' : !!title.trim()
 
   const submit = () => {
     if (!ready || busy) return
@@ -98,7 +106,7 @@ export function QuickForm({
         // Blank rows are dropped server-side too; sending only what was written
         // keeps the wire honest about how many tickets this is.
         tickets: written,
-        baseBranch: base || undefined,
+        baseBranch: base,
       })
     } else {
       // No base on the park path (decisions.md #12): a draft can sit for weeks,
@@ -242,6 +250,15 @@ export function QuickForm({
               <button className="qf-add" onClick={() => addRow(tickets.length - 1)}>
                 + Add another ticket
               </button>
+
+              <BaseSelect
+                id="quick-base-select"
+                label="Branch from"
+                branches={branchesQ.data}
+                value={base}
+                onPick={setBasePick}
+                hint="This feature forks off here — and merges back into it when shipped."
+              />
 
               {/* The review ticket is named here because the server appends one
                   to every quick change (decisions.md #9) — without it the

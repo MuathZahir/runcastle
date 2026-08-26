@@ -15,16 +15,20 @@ import { PREPARED_LABEL, RUNTIME_LABEL } from './settings'
 import { sessionAgentName } from './vocabulary'
 
 /**
- * The New Feature form's default base branch. A new feature forks off the branch
- * the user is currently on — that's the branch they chose to work on, and burns
- * never touch the checkout. Fall back to the project main branch when the current
- * checkout isn't a selectable base: a detached HEAD, or a test drive holding
- * runcastle itself on a `feature/*` branch (which the picker excludes).
+ * The default base branch every cutting form prefills with. A new feature forks
+ * off the branch the user is currently on — that's the branch they chose to work
+ * on, and burns never touch the checkout.
+ *
+ * When the current checkout isn't a selectable base — a detached HEAD, or a test
+ * drive holding runcastle itself on a `feature/*` branch (which the picker
+ * excludes) — there is NO default: `''`, which every form renders as an empty,
+ * mandatory select that blocks submit until a human picks (decision 8). It used
+ * to fall back to the project main branch, and that silent substitution is the
+ * one this feature exists to remove: mid-drive the checkout is parked on
+ * something unrelated, so any guess about where to fork from is wrong.
  */
-export function defaultBaseBranch(
-  data: Pick<BranchList, 'current' | 'mainBranch' | 'branches'>,
-): string {
-  return data.branches.includes(data.current) ? data.current : data.mainBranch
+export function defaultBaseBranch(data: Pick<BranchList, 'current' | 'branches'>): string {
+  return data.branches.includes(data.current) ? data.current : ''
 }
 
 /**
@@ -1304,6 +1308,21 @@ function unverifiedWarning(keys: string[]): string {
 }
 
 /**
+ * Why a parked draft has no base branch to Start from: the branch list has not
+ * arrived (`loading`), or it has and the project's checkout is not a selectable
+ * base (`unpicked`) — a detached HEAD, or a test drive holding a `feature/*`
+ * branch. Only the second is the human's to answer, and it is the state
+ * decision 8 exists for: no surface cuts a branch on a guess.
+ */
+export type DraftBaseMissing = 'loading' | 'unpicked'
+
+/** Why Start is disabled, in the bar's words — one sentence per reason. */
+const DRAFT_BASE_BLOCKED: Record<DraftBaseMissing, string> = {
+  loading: 'Loading the branch list…',
+  unpicked: 'Pick the branch to fork from under Advanced below.',
+}
+
+/**
  * The single guided next step for a feature's *current* phase (app-redesign).
  * Two rules order the cases:
  *
@@ -1339,12 +1358,13 @@ export function nextStep(
     /** A preparation dry run holds the singleton drive slot (decision 9). */
     dryRunActive?: boolean
     /**
-     * A draft's Start has no base to send yet — the branch list is still
-     * loading, so the base the body is showing is not known. Starting now would
-     * silently fall back to the project main branch, the same trap the New
-     * Feature form guards against.
+     * Why a draft's Start has no base to send, or absent when it has one.
+     * Start never fires baseless — nothing that cuts a branch may guess at where
+     * (decision 8) — but the two reasons need different words: `loading` waits
+     * on the branch list, `unpicked` has it and found the checkout unselectable,
+     * which only the human can answer.
      */
-    draftBaseUnresolved?: boolean
+    draftBaseMissing?: DraftBaseMissing
     /**
      * Open test-drive notes standing on this feature (decisions.md #11). Set and
      * non-zero puts the "Address notes" triage in review's bar — the one place
@@ -1390,7 +1410,9 @@ export function nextStep(
       primary: {
         label: 'Start',
         kind: 'startDraft',
-        ...(ctx.draftBaseUnresolved ? { disabled: 'Loading the branch list…' } : {}),
+        ...(ctx.draftBaseMissing
+          ? { disabled: DRAFT_BASE_BLOCKED[ctx.draftBaseMissing] }
+          : {}),
       },
       secondary: [],
       busy: false,

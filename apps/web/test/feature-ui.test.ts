@@ -52,36 +52,30 @@ import {
 import type { FeatureFull, FeatureListItem } from '../src/lib/api'
 
 /**
- * Streamlining-ux ticket 2 — the New Feature form defaults Branch-from to the
- * branch the project is currently checked out on, falling back to the project
- * main branch when that checkout isn't a selectable base. Tested at the pure
+ * Every cutting form prefills Branch-from with the branch the project is
+ * currently checked out on — and prefills NOTHING when that checkout isn't a
+ * selectable base (decision 8), which is what makes the select empty and
+ * mandatory rather than silently forking off main. Tested at the pure
  * derivation, no DOM.
  */
 describe('defaultBaseBranch', () => {
   it('defaults to the current checkout when it is a selectable base', () => {
-    expect(
-      defaultBaseBranch({ current: 'develop', mainBranch: 'main', branches: ['main', 'develop'] }),
-    ).toBe('develop')
+    expect(defaultBaseBranch({ current: 'develop', branches: ['main', 'develop'] })).toBe('develop')
   })
 
   it('defaults to main when the current checkout is main', () => {
-    expect(
-      defaultBaseBranch({ current: 'main', mainBranch: 'main', branches: ['main', 'develop'] }),
-    ).toBe('main')
+    expect(defaultBaseBranch({ current: 'main', branches: ['main', 'develop'] })).toBe('main')
   })
 
-  it('falls back to main on a detached HEAD (current not in the list)', () => {
-    expect(
-      defaultBaseBranch({ current: '', mainBranch: 'main', branches: ['main', 'develop'] }),
-    ).toBe('main')
+  it('offers no default on a detached HEAD (current not in the list)', () => {
+    expect(defaultBaseBranch({ current: '', branches: ['main', 'develop'] })).toBe('')
   })
 
-  it('falls back to main when a test drive holds a feature/* checkout (excluded)', () => {
+  it('offers no default when a test drive holds a feature/* checkout (excluded)', () => {
     // The picker excludes feature/* branches, so a test-drive checkout is never
-    // a selectable base — the default lands on the project main branch.
-    expect(
-      defaultBaseBranch({ current: 'feature/x', mainBranch: 'main', branches: ['main'] }),
-    ).toBe('main')
+    // a selectable base. Main is NOT the answer here — mid-drive the checkout is
+    // parked on something unrelated, so the human has to say where to fork from.
+    expect(defaultBaseBranch({ current: 'feature/x', branches: ['main'] })).toBe('')
   })
 })
 
@@ -2097,10 +2091,21 @@ describe('draft derivations', () => {
   it('disables Start until the branch list resolves the base it would send', () => {
     const ns = nextStep(full({ status: 'draft', phase: 'ideation' }), {
       driving: false,
-      draftBaseUnresolved: true,
+      draftBaseMissing: 'loading',
     })
     expect(ns.primary?.kind).toBe('startDraft')
     expect(ns.primary?.disabled).toBe('Loading the branch list…')
+  })
+
+  // The list arrived and the checkout is not a selectable base (decision 8), so
+  // there is nothing left to wait for — the block is a question for the human,
+  // and "Loading…" over a loaded list would send them nowhere.
+  it('sends the human to the picker when the checkout offers no base at all', () => {
+    const ns = nextStep(full({ status: 'draft', phase: 'ideation' }), {
+      driving: false,
+      draftBaseMissing: 'unpicked',
+    })
+    expect(ns.primary?.disabled).toBe('Pick the branch to fork from under Advanced below.')
   })
 })
 
