@@ -109,7 +109,7 @@ interface CodexConfigInput {
  * human's prompt would then hang on state the launcher does not set, which is
  * the same silent divergence this mapping exists to close.
  */
-function approvalPolicyFor(permissionMode: string | undefined): string {
+function approvalPolicyFor(permissionMode: string | undefined): 'never' | 'untrusted' {
   return permissionMode === undefined || permissionMode === 'acceptEdits' ? 'never' : 'untrusted'
 }
 
