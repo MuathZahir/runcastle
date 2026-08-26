@@ -1622,6 +1622,11 @@ const FATAL_ERROR_PATTERNS: RegExp[] = [
  * `invalid_api_key` code, an exhausted account as `insufficient_quota` (a
  * billing fact no retry fixes, despite arriving as a 429), and an unusable
  * model as `model_not_found`.
+ *
+ * A container burn runs on the operator's borrowed `codex login`, so the auth
+ * wording it fails with is the CLI's own — "not logged in", a refused refresh
+ * token — and none of it is worth a retry: the fix is `codex login` on the
+ * host, which no attempt of ours can perform.
  */
 const RUNTIME_FATAL_ERROR_PATTERNS: Record<AgentRuntime, RegExp[]> = {
   'claude-code': [],
@@ -1631,6 +1636,11 @@ const RUNTIME_FATAL_ERROR_PATTERNS: Record<AgentRuntime, RegExp[]> = {
     /insufficient_quota|exceeded your current quota/i,
     /model_not_found|does not exist or you do not have access/i,
     /CODEX_API_KEY/,
+    // "unauthorized" and "authentication …" are already fatal for every runtime
+    // (see FATAL_ERROR_PATTERNS); these are the login wordings that are not.
+    /not logged in/i,
+    /\bauth (failed|required)\b/i,
+    /refresh token/i,
   ],
 }
 
