@@ -34,6 +34,8 @@ import {
 import type { McpConfig } from '../launcher/artifacts'
 import { resolveSkillsRoot } from '../launcher/skills-root'
 import { codexHomeDir, codexLoggedIn } from '../services/codex-auth'
+import type { ExecFn, ExecOutcome } from '../doctor/doctor'
+import { createSystemExec } from '../doctor/system-exec'
 import { ADR_DIR_REL, CHARTER_FILE, MAP_SECTIONS, listLiveAdrs } from '../services/knowledge'
 import { RUNTIME_AUTH_KEY, RUNTIME_AUTH_SETUP_HINT } from '../services/setup'
 import {
@@ -106,6 +108,17 @@ import { noSandbox } from '@ai-hero/sandcastle/sandboxes/no-sandbox'
  */
 
 export const AUTH_MISSING_EVENT = 'auth.missing'
+export const IMAGE_RUNTIME_MISSING_EVENT = 'burn.image_runtime_missing'
+
+const RUNTIME_BINARY: Record<AgentRuntime, string> = {
+  'claude-code': 'claude',
+  codex: 'codex',
+}
+
+export function missingImageRuntimeMessage(runtime: AgentRuntime, image: string): string {
+  const binary = RUNTIME_BINARY[runtime]
+  return `${binary} is not installed in image ${image} — the image predates the burner Dockerfile. Rebuild it from Settings → AFK burns (Rebuild image).`
+}
 
 /**
  * Whether a runtime can authenticate an unattended container burn. The two
@@ -188,6 +201,8 @@ export interface BurnDeps {
   runtime: AgentRuntime
   /** Whether {@link runtime} can authenticate this run (container sandboxes require it). */
   hasAuthToken: boolean
+  /** Doctor-style injected command runner used for the pre-container image probe. */
+  exec?: ExecFn
   /**
    * The runtime of a ticket whose OWN model cannot authenticate a container
    * burn, or `undefined` when it can. A ticket assigned to the other runtime
@@ -1671,6 +1686,31 @@ const RUNTIME_RETRYABLE_ERROR_PATTERNS: Record<AgentRuntime, RegExp[]> = {
   codex: [/rate_limit_exceeded/i, /\b429\b/, /server_error/i, /stream (disconnected|interrupted)/i],
 }
 
+const AGENT_BINARY: Record<AgentRuntime, string> = {
+  'claude-code': 'claude',
+  codex: 'codex',
+}
+
+/**
+ * Turn the shell's missing-command failure into the operator action that can
+ * actually fix it. The binary must precede the shell wording so an unrelated
+ * missing file in the agent's output is not mistaken for a stale image.
+ */
+export function missingAgentBinaryMessage(
+  err: unknown,
+  runtime: AgentRuntime,
+  image: string,
+): string | undefined {
+  const msg = err instanceof Error ? err.message : typeof err === 'string' ? err : String(err)
+  const binary = AGENT_BINARY[runtime]
+  const missing = new RegExp(
+    `\\b${binary}\\b[^\\n]*(?:exited with code 127|command not found|not found|no such file or directory)`,
+    'i',
+  )
+  if (!missing.test(msg)) return undefined
+  return `${binary} is not installed in image ${image} — the image predates the burner Dockerfile. Rebuild it from Settings → AFK burns (Rebuild image).`
+}
+
 /**
  * Should a failed sandcastle attempt be retried? Fatal patterns win over
  * retryable ones; anything unrecognized is fatal — an unknown throw (git
@@ -1691,6 +1731,7 @@ export function classifyTicketRunError(
   const forRuntimes = (table: Record<AgentRuntime, RegExp[]>): RegExp[] =>
     runtimes.flatMap((r) => table[r])
 
+  if (runtimes.some((r) => missingAgentBinaryMessage(msg, r, 'image'))) return 'fatal'
   if ([...FATAL_ERROR_PATTERNS, ...forRuntimes(RUNTIME_FATAL_ERROR_PATTERNS)].some((p) => p.test(msg)))
     return 'fatal'
   if (
@@ -2216,6 +2257,27 @@ export async function burnRun(
   if (deps.config.sandbox !== 'noSandbox' && !deps.hasAuthToken) {
     ctx.emitEvent({ type: AUTH_MISSING_EVENT, message: RUNTIME_AUTH_SETUP_HINT[deps.runtime] })
     return { status: 'failed', summary: 'burn aborted: auth token missing' }
+  }
+
+  // Prove the selected image can launch this burn's agent before sandcastle
+  // creates a ticket container. The host CLI is the right one for noSandbox,
+  // so probing an image there would be both wasteful and misleading.
+  if (deps.config.sandbox !== 'noSandbox' && deps.exec) {
+    const image = resolveSandboxImage(deps.config)
+    const binary = RUNTIME_BINARY[deps.runtime]
+    const probe = await deps.exec(deps.config.sandbox, [
+      'run',
+      '--rm',
+      '--entrypoint',
+      binary,
+      image,
+      '--version',
+    ])
+    if (!probe.ok || probe.code !== 0) {
+      const message = missingImageRuntimeMessage(deps.runtime, image)
+      ctx.emitEvent({ type: IMAGE_RUNTIME_MISSING_EVENT, message })
+      return { status: 'failed', summary: message }
+    }
   }
 
   // Cycle guard: fail the whole run before touching any ticket. Cancelled
@@ -3199,6 +3261,11 @@ async function realExecuteTicketRun(
         await clearAttachmentsFor(tempBranch)
         if (ctx.signal.aborted) throw err // let the runner mark the run cancelled
         const msg = err instanceof Error ? err.message : String(err)
+        const missingBinary = missingAgentBinaryMessage(
+          err,
+          model.runtime,
+          resolveSandboxImage(config),
+        )
         // Whatever the dead attempt committed survives on its temp branch —
         // chain the next attempt (or a later run) onto it.
         const salvaged = await branchCommitsAhead(project.repoPath, feature.branch, tempBranch)
@@ -3255,6 +3322,10 @@ async function realExecuteTicketRun(
               message: `ticket ${ticket.seq}: merge conflict on ${feature.branch}${salvaged.length > 0 ? ' — resolve it from the run lane' : ' — resolve manually per the error, then re-burn'}`,
             },
           }
+        }
+        if (missingBinary) {
+          if (salvaged.length > 0) preserveChain(tempBranch)
+          return { status: 'failed', error: missingBinary }
         }
         if (classifyTicketRunError(err, model.runtime) === 'retryable' && attempt < maxAttempts) {
           const headline = errorHeadline(msg)
@@ -3375,6 +3446,17 @@ function resolveBurnDeps(ctx: WorkflowCtx): BurnDeps {
   const config = loadConfig()
   const model = resolveModelEntry('implement', config, ctx.project, ctx.modelOverride)
   const token = readTokenFromEnvFile(envPath(), model.runtime)
+  const exec = createSystemExec({ cwd: ctx.project.repoPath })
+  const imageProbeCache = new Map<string, Promise<ExecOutcome>>()
+  const cachedExec: ExecFn = (command, args) => {
+    const key = `${resolveSandboxImage(config)}\0${model.runtime}`
+    let result = imageProbeCache.get(key)
+    if (!result) {
+      result = exec(command, args)
+      imageProbeCache.set(key, result)
+    }
+    return result
+  }
   const land = createSerialQueue()
   // Memoized so the whole run performs the parent-repo config write exactly
   // once, no matter how many tickets burn in parallel (see git.ts).
@@ -3419,6 +3501,7 @@ function resolveBurnDeps(ctx: WorkflowCtx): BurnDeps {
     config,
     runtime: model.runtime,
     hasAuthToken: burnAuthReady(model.runtime, token),
+    exec: cachedExec,
     ticketAuthMissing: (ticket) => {
       const { model: ticketModel, token: ticketToken } = ticketCredentials(ticket)
       return burnAuthReady(ticketModel.runtime, ticketToken) ? undefined : ticketModel.runtime

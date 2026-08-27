@@ -79,17 +79,19 @@ type Probe = RouterOutputs['setup']['doctor']['results'][number]
 function Row({
   probe,
   label,
+  showAction = probe?.status !== 'ok',
   children,
 }: {
   probe: Probe | undefined
   /** Overrides the probe's own label, for a row asking a narrower question than it. */
   label?: string
+  showAction?: boolean
   children?: React.ReactNode
 }) {
   if (!probe) return null
   const ok = probe.status === 'ok'
   return (
-    <div className={`afk-row${ok ? ' is-ok' : ''}`}>
+    <div className={`afk-row${ok ? ' is-ok' : probe.status === 'stale' ? ' is-stale' : ''}`}>
       <div className="afk-row-head">
         <span className={`afk-dot afk-dot-${ok ? 'ok' : 'warn'}`} aria-hidden />
         <div className="afk-row-text">
@@ -97,7 +99,7 @@ function Row({
           <div className="afk-row-detail mono">{probe.detail}</div>
         </div>
       </div>
-      {!ok && <div className="afk-row-action">{children}</div>}
+      {showAction && <div className="afk-row-action">{children}</div>}
     </div>
   )
 }
@@ -157,7 +159,7 @@ function ImageRow({
   if (!probe) return null
 
   return (
-    <Row probe={probe}>
+    <Row probe={probe} showAction>
       {sessionId ? (
         <>
           <div className="afk-term">
@@ -178,16 +180,41 @@ function ImageRow({
           </div>
         </>
       ) : (
-        <Button
-          variant="solid"
-          disabled={!runtimeOk || start.isPending}
-          title={runtimeOk ? undefined : 'Install a container runtime first'}
-          onClick={() => start.mutate({ kind: 'build-image' })}
-        >
-          {start.isPending ? 'Starting…' : 'Build image'}
-        </Button>
+        <ImageBuildAction
+          probe={probe}
+          runtimeOk={runtimeOk}
+          pending={start.isPending}
+          onStart={() => start.mutate({ kind: 'build-image' })}
+        />
       )}
     </Row>
+  )
+}
+
+/** Status-specific image action, split from the tRPC wrapper for component testing. */
+export function ImageBuildAction({
+  probe,
+  runtimeOk,
+  pending,
+  onStart,
+}: {
+  probe: Probe
+  runtimeOk: boolean
+  pending: boolean
+  onStart: () => void
+}) {
+  return (
+    <>
+      {probe.status === 'stale' && probe.fix && <div className="afk-note">{probe.fix}</div>}
+      <Button
+        variant={probe.status === 'ok' ? 'ghost' : 'solid'}
+        disabled={!runtimeOk || pending}
+        title={runtimeOk ? undefined : 'Install a container runtime first'}
+        onClick={onStart}
+      >
+        {pending ? 'Starting…' : probe.status === 'missing' ? 'Build image' : 'Rebuild image'}
+      </Button>
+    </>
   )
 }
 
