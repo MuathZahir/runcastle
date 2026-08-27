@@ -375,6 +375,16 @@ export function scaffoldSandcastleConfig(templateDir: string, targetDir: string)
   return { scaffolded: true, dir }
 }
 
+/** Refresh the runcastle-owned build scaffold from the currently bundled template. */
+export function refreshSandcastleConfig(templateDir: string, targetDir: string): string {
+  const dir = join(targetDir, '.sandcastle')
+  mkdirSync(dir, { recursive: true })
+  for (const name of readdirSync(templateDir)) {
+    copyFileSync(join(templateDir, name), join(dir, name))
+  }
+  return dir
+}
+
 /**
  * Ensure the runcastle-owned build context exists and return its dir. The AFK
  * image is generic and app-global (not per-project — per-project deps install at
@@ -382,10 +392,12 @@ export function scaffoldSandcastleConfig(templateDir: string, targetDir: string)
  * exists, so the context lives under the data dir rather than in a project repo.
  * `build-image` runs here with the freshly-scaffolded `.sandcastle/`.
  */
-export function prepareSandboxBuildContext(): string {
-  const target = sandboxBuildDir()
+export function prepareSandboxBuildContext(
+  templateDir = sandcastleTemplateDir(),
+  target = sandboxBuildDir(),
+): string {
   mkdirSync(target, { recursive: true })
-  scaffoldSandcastleConfig(sandcastleTemplateDir(), target)
+  refreshSandcastleConfig(templateDir, target)
   return target
 }
 

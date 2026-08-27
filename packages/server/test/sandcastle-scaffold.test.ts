@@ -3,7 +3,11 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { ASSET_ENV } from '../src/launcher/asset-paths'
-import { sandcastleTemplateDir, scaffoldSandcastleConfig } from '../src/services/setup'
+import {
+  prepareSandboxBuildContext,
+  sandcastleTemplateDir,
+  scaffoldSandcastleConfig,
+} from '../src/services/setup'
 
 /**
  * Issue #50 — clicking "Build image" must never dead-end on sandcastle's
@@ -84,5 +88,21 @@ describe('scaffoldSandcastleConfig', () => {
 
     expect(scaffoldSandcastleConfig(template, target).scaffolded).toBe(true)
     expect(scaffoldSandcastleConfig(template, target).scaffolded).toBe(false)
+  })
+})
+
+describe('prepareSandboxBuildContext', () => {
+  it('refreshes an existing runcastle-owned scaffold from the current template', () => {
+    const template = tmp()
+    writeFileSync(join(template, 'Containerfile'), 'FROM current\n')
+    writeFileSync(join(template, 'Dockerfile'), 'FROM current-docker\n')
+    const target = tmp()
+    const existing = join(target, '.sandcastle')
+    mkdirSync(existing, { recursive: true })
+    writeFileSync(join(existing, 'Containerfile'), 'FROM stale\n')
+
+    expect(prepareSandboxBuildContext(template, target)).toBe(target)
+    expect(readFileSync(join(existing, 'Containerfile'), 'utf8')).toBe('FROM current\n')
+    expect(readFileSync(join(existing, 'Dockerfile'), 'utf8')).toBe('FROM current-docker\n')
   })
 })
