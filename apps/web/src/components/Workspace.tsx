@@ -110,7 +110,10 @@ export function Workspace({
   // What the review agent made of this branch, for the confirmation's status
   // line — the same two reads the review card derives it from, so the dialog
   // cannot report a different review than the screen behind it.
-  const review = reviewOutcome({ tickets: q.data?.tickets, notes: notes.data })
+  const review = reviewOutcome({
+    tickets: q.data?.tickets,
+    findings: findings.data?.findings.length,
+  })
   const [confirmMerge, setConfirmMerge] = useState(false)
   // The Address-notes triage fork is open (decisions.md #11).
   const [addressing, setAddressing] = useState(false)

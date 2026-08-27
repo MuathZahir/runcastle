@@ -116,7 +116,7 @@ export function ReviewBody({
     tickets,
     run,
     commitCount: commits.data?.count,
-    notes: notes.data,
+    findings: findings.data?.findings.length,
   })
   // What the lap delivered, in the agents' own prose (decisions #8) — the thing
   // the human came to this screen to read, so it leads the card the figures are

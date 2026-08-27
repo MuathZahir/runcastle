@@ -1515,41 +1515,32 @@ describe('reviewChecks', () => {
  */
 describe('reviewOutcome', () => {
   const impl = (status: string) => ({ kind: 'implementation' as const, status })
-  const agentNote = { author: 'agent' as const }
-  const humanNote = { author: 'human' as const }
 
   it('reports none when the batch held no review ticket', () => {
-    expect(reviewOutcome({ tickets: [impl('done')], notes: [] })).toEqual({ state: 'none' })
+    expect(reviewOutcome({ tickets: [impl('done')], findings: 0 })).toEqual({ state: 'none' })
     expect(reviewOutcome({})).toEqual({ state: 'none' })
   })
 
-  it('counts agent notes as findings, and never the human’s own', () => {
-    const o = reviewOutcome({
-      tickets: [{ kind: 'review', status: 'done' }],
-      notes: [agentNote, humanNote, agentNote],
-    })
-    expect(o).toEqual({ state: 'ran', findings: 2 })
-  })
-
-  it('counts a finding the human has already handled — it was still found', () => {
-    const notes = [
-      { author: 'agent' as const, status: 'done' },
-      { author: 'agent' as const, status: 'promoted' },
-    ]
-    expect(reviewOutcome({ tickets: [{ kind: 'review', status: 'done' }], notes })).toEqual({
+  /**
+   * Counted from the review's own `review_findings` rows, not from the notes
+   * ledger: the review agent no longer writes notes at all, so counting those
+   * would report every review as a clean pass.
+   */
+  it('counts what the review reported, whatever became of it', () => {
+    expect(reviewOutcome({ tickets: [{ kind: 'review', status: 'done' }], findings: 2 })).toEqual({
       state: 'ran',
       findings: 2,
     })
   })
 
   it('reports a clean review as ran with zero findings, not as nothing', () => {
-    expect(reviewOutcome({ tickets: [{ kind: 'review', status: 'done' }], notes: [] })).toEqual({
+    expect(reviewOutcome({ tickets: [{ kind: 'review', status: 'done' }], findings: 0 })).toEqual({
       state: 'ran',
       findings: 0,
     })
   })
 
-  it('leaves findings unknown while the notes are still in flight', () => {
+  it('leaves findings unknown while the count is still in flight', () => {
     expect(reviewOutcome({ tickets: [{ kind: 'review', status: 'done' }] })).toEqual({
       state: 'ran',
     })
@@ -1559,7 +1550,7 @@ describe('reviewOutcome', () => {
     expect(
       reviewOutcome({
         tickets: [{ kind: 'review', status: 'failed', error: 'the drive slot was held' }],
-        notes: [agentNote],
+        findings: 1,
       }),
     ).toEqual({ state: 'failed', reason: 'the drive slot was held' })
   })
@@ -1571,10 +1562,9 @@ describe('reviewOutcome', () => {
   })
 
   it('reports a review ticket that has not finished as waiting, not as ran', () => {
-    expect(reviewOutcome({ tickets: [{ kind: 'review', status: 'running' }], notes: [] })).toEqual({
-      state: 'waiting',
-      status: 'running',
-    })
+    expect(reviewOutcome({ tickets: [{ kind: 'review', status: 'running' }], findings: 0 })).toEqual(
+      { state: 'waiting', status: 'running' },
+    )
   })
 })
 
@@ -1650,14 +1640,14 @@ describe('reviewChecks — the review agent row', () => {
   })
 
   it('leads the card with the agent’s report, so it cannot be missed', () => {
-    const keys = reviewChecks({ tickets: reviewTicket({ status: 'done' }), notes: [] }).map(
+    const keys = reviewChecks({ tickets: reviewTicket({ status: 'done' }), findings: 0 }).map(
       (r) => r.key,
     )
     expect(keys).toEqual(['review agent', 'tickets', 'run', 'changes'])
   })
 
   it('greens a review that found nothing — a clean pass is a positive signal', () => {
-    expect(row({ tickets: reviewTicket({ status: 'done' }), notes: [] })).toEqual({
+    expect(row({ tickets: reviewTicket({ status: 'done' }), findings: 0 })).toEqual({
       key: 'review agent',
       value: 'no findings',
       tone: 'ok',
@@ -1665,14 +1655,14 @@ describe('reviewChecks — the review agent row', () => {
   })
 
   it('ambers findings and pluralises them, without calling them a failure', () => {
-    const notes = [{ author: 'agent' as const }]
-    expect(row({ tickets: reviewTicket({ status: 'done' }), notes })).toEqual({
+    expect(row({ tickets: reviewTicket({ status: 'done' }), findings: 1 })).toEqual({
       key: 'review agent',
       value: '1 finding',
       tone: 'warn',
     })
-    expect(row({ tickets: reviewTicket({ status: 'done' }), notes: [...notes, ...notes] })?.value)
-      .toBe('2 findings')
+    expect(row({ tickets: reviewTicket({ status: 'done' }), findings: 2 })?.value).toBe(
+      '2 findings',
+    )
   })
 
   it('says a review could not run, and why', () => {

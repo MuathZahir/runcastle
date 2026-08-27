@@ -5,7 +5,6 @@ import type {
   GateId,
   ModelEntry,
   Phase,
-  TestNoteAuthor,
   Ticket,
   TicketKind,
 } from '@runcastle/core'
@@ -797,11 +796,6 @@ interface ReviewTicketFigure {
   error?: string
 }
 
-/** A note as the review surfaces read it — only who wrote it matters here. */
-interface NoteFigure {
-  author?: TestNoteAuthor
-}
-
 /**
  * What the review agent's pass amounted to (decisions #7). The human's review
  * now starts from the agent's report, so every review surface has to be able to
@@ -818,14 +812,15 @@ export type ReviewOutcome =
   | { state: 'waiting'; status: string }
 
 /**
- * The review agent's outcome, read off the feature's tickets and notes.
+ * The review agent's outcome, read off the feature's tickets and its findings.
  *
- * Findings are counted from agent-authored notes rather than asked of the
- * ticket, because the notes ARE the deliverable (decisions #2): a review that
- * filed four notes found four things. All of them count, whatever became of
- * them — a finding the human has since ticked off or promoted was still a
- * finding. `undefined` notes means the list has not arrived, which reports as
- * unknown rather than as 0: a clean bill of health is a claim, not a default.
+ * Findings are counted from the `review_findings` rows rather than asked of the
+ * ticket, because those rows ARE the deliverable: a review that reported four
+ * things found four things. All of them count, whatever became of them — a
+ * defect that has since been fixed or dismissed was still a finding.
+ * `undefined` means the count has not arrived, which reports as unknown rather
+ * than as 0: a clean bill of health is a claim, not a default, and this row used
+ * to make that claim off a notes list the review no longer writes to.
  *
  * Lap 1 emits at most one review ticket per feature (spec, "Later laps"), so
  * the last review ticket in the batch is *the* review. If multiplicity ever
@@ -833,8 +828,11 @@ export type ReviewOutcome =
  */
 export function reviewOutcome(input: {
   tickets?: readonly ReviewTicketFigure[]
-  /** The feature's test notes, or undefined while the list is still in flight. */
-  notes?: readonly NoteFigure[]
+  /**
+   * How many findings the review reported (defects and observations both), or
+   * undefined while the findings query is still in flight.
+   */
+  findings?: number
 }): ReviewOutcome {
   const review = (input.tickets ?? []).filter((t) => t.kind === 'review').at(-1)
   if (!review) return { state: 'none' }
@@ -842,8 +840,7 @@ export function reviewOutcome(input: {
     return { state: 'failed', ...(review.error ? { reason: review.error } : {}) }
   }
   if (review.status !== 'done') return { state: 'waiting', status: review.status }
-  const findings = input.notes?.filter((n) => n.author === 'agent').length
-  return { state: 'ran', ...(findings === undefined ? {} : { findings }) }
+  return { state: 'ran', ...(input.findings === undefined ? {} : { findings: input.findings }) }
 }
 
 /** One review ticket's artifacts as the player reads them (see lib/reviews.ts). */
@@ -962,13 +959,13 @@ export function reviewChecks(input: {
   tickets?: readonly ReviewTicketFigure[]
   run?: RunFigure
   commitCount?: number
-  /** The feature's test notes — where the agent's findings are counted from. */
-  notes?: readonly NoteFigure[]
+  /** How many findings the review reported ({@link reviewOutcome}). */
+  findings?: number
 }): CheckRow[] {
   // The agent's report LEADS the card (decisions #7). The human arrives at this
   // screen to read it, and a line appended under the commit count is exactly the
   // "easy to miss" that decision exists to prevent.
-  const review = reviewRow(reviewOutcome({ tickets: input.tickets, notes: input.notes }))
+  const review = reviewRow(reviewOutcome({ tickets: input.tickets, findings: input.findings }))
   return [
     review ?? NO_REVIEW_ROW,
     ticketRow(input.tickets ?? []),
