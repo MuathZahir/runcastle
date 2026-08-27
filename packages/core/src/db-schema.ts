@@ -2,6 +2,10 @@ import { index, integer, primaryKey, real, sqliteTable, text } from 'drizzle-orm
 import type { AgentRuntime } from './config'
 import type {
   FeatureStatus,
+  FindingKind,
+  FindingOpenReason,
+  FindingSeverity,
+  FindingStatus,
   FindingSource,
   MergeBranchPair,
   Phase,
@@ -280,6 +284,26 @@ export const tickets = sqliteTable('tickets', {
    * `digest.missing` event instead).
    */
   digest: text('digest'),
+  originFindingId: text('origin_finding_id'),
+})
+
+export const reviewFindings = sqliteTable('review_findings', {
+  id: text('id').primaryKey(),
+  featureId: text('feature_id').notNull(),
+  lap: integer('lap').notNull(),
+  reviewTicketId: text('review_ticket_id').notNull(),
+  kind: text('kind').notNull().$type<FindingKind>(),
+  severity: text('severity').notNull().$type<FindingSeverity>(),
+  title: text('title').notNull(),
+  location: text('location').notNull(),
+  citation: text('citation').notNull(),
+  detail: text('detail').notNull(),
+  reproStep: text('repro_step').notNull(),
+  status: text('status').notNull().$type<FindingStatus>(),
+  openReason: text('open_reason').$type<FindingOpenReason>(),
+  failureReason: text('failure_reason'),
+  fixTicketId: text('fix_ticket_id'),
+  createdAt: integer('created_at').notNull(),
 })
 
 export const testNotes = sqliteTable('test_notes', {

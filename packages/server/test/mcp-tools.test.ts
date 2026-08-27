@@ -685,14 +685,15 @@ describe('mcp tool registration by audience', () => {
     expect(toolsForAudience('drive-fix')).toContain('retry_drive')
     expect(toolsForAudience('ideation')).not.toContain('retry_drive')
 
-    // A run agent gets its two write wires plus the reads bound to its feature.
+    // A run agent gets its review wires plus the reads bound to its feature.
     expect(toolsForAudience('run').sort()).toEqual([
-      'add_test_note',
       'get_feature_context',
       'list_tickets',
       'read_feature_doc',
+      'report_finding',
       'review_drive',
     ])
+    expect(toolsForAudience('run')).not.toContain('add_test_note')
   })
 
   it('registers EVERYTHING for an audience it cannot identify', () => {

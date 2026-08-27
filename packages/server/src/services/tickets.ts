@@ -36,6 +36,7 @@ function rowToTicket(row: TicketSelect): Ticket {
     attemptBranch: row.attemptBranch ?? undefined,
     conflictFiles: row.conflictFiles ?? undefined,
     digest: row.digest ?? undefined,
+    originFindingId: row.originFindingId ?? undefined,
   })
 }
 
@@ -101,6 +102,7 @@ export function storeTickets(
   ctx: AppCtx,
   featureId: string,
   inputs: TicketInput[],
+  options: { blockedByAreGlobal?: boolean } = {},
 ): Ticket[] {
   if (inputs.length === 0) return []
 
@@ -113,7 +115,9 @@ export function storeTickets(
     .all()
   const startSeq = existing.reduce((max, r) => Math.max(max, r.seq), 0) + 1
 
-  const resolved = resolveBlocking(inputs, startSeq)
+  const resolved = options.blockedByAreGlobal
+    ? inputs.map((input, index) => ({ seq: startSeq + index, blockedBy: input.blockedBy }))
+    : resolveBlocking(inputs, startSeq)
 
   const rows = inputs.map((t, i) => ({
     id: newId('tkt'),
@@ -138,6 +142,7 @@ export function storeTickets(
     attemptBranch: null,
     conflictFiles: null,
     digest: null,
+    originFindingId: t.originFindingId ?? null,
   }))
 
   ctx.db.insert(tickets).values(rows).run()

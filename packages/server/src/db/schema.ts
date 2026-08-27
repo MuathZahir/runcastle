@@ -4,6 +4,7 @@ import {
   gateOverrides,
   projectFindings,
   projects,
+  reviewFindings,
   runs,
   sessions,
   testNotes,
@@ -19,6 +20,7 @@ import {
  */
 export const schema = {
   projects,
+  reviewFindings,
   features,
   sessions,
   tickets,
@@ -38,6 +40,7 @@ export {
   gateOverrides,
   projectFindings,
   projects,
+  reviewFindings,
   runs,
   sessions,
   testNotes,
