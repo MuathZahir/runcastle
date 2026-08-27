@@ -52,6 +52,14 @@ import {
  * supplies the half of it the agent cannot cheaply observe — whether a drive is
  * available at all ({@link buildDriveAvailability}) — and the gate commands the
  * other mode runs ({@link buildGateNotes}).
+ *
+ * So neither a missing `agent-browser` nor a drive that refused is a failure:
+ * both just mean Gates mode. The template tells the agent to say `could not
+ * drive: <reason>` in its digest, fall back to Gates, and forbids it from
+ * building an environment of its own — a worktree, an install, a codegen — to
+ * drive in instead: that improvisation was the most expensive single act
+ * observed in any review, and it verified nothing, because an app the agent
+ * assembled for itself is not the app the human runs.
  */
 
 /** The prompt the review agent is spawned with. */
