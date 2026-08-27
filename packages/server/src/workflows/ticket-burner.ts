@@ -1671,6 +1671,31 @@ const RUNTIME_RETRYABLE_ERROR_PATTERNS: Record<AgentRuntime, RegExp[]> = {
   codex: [/rate_limit_exceeded/i, /\b429\b/, /server_error/i, /stream (disconnected|interrupted)/i],
 }
 
+const AGENT_BINARY: Record<AgentRuntime, string> = {
+  'claude-code': 'claude',
+  codex: 'codex',
+}
+
+/**
+ * Turn the shell's missing-command failure into the operator action that can
+ * actually fix it. The binary must precede the shell wording so an unrelated
+ * missing file in the agent's output is not mistaken for a stale image.
+ */
+export function missingAgentBinaryMessage(
+  err: unknown,
+  runtime: AgentRuntime,
+  image: string,
+): string | undefined {
+  const msg = err instanceof Error ? err.message : typeof err === 'string' ? err : String(err)
+  const binary = AGENT_BINARY[runtime]
+  const missing = new RegExp(
+    `\\b${binary}\\b[^\\n]*(?:exited with code 127|command not found|not found|no such file or directory)`,
+    'i',
+  )
+  if (!missing.test(msg)) return undefined
+  return `${binary} is not installed in image ${image} — the image predates the burner Dockerfile. Rebuild it from Settings → AFK burns (Rebuild image).`
+}
+
 /**
  * Should a failed sandcastle attempt be retried? Fatal patterns win over
  * retryable ones; anything unrecognized is fatal — an unknown throw (git
@@ -1691,6 +1716,7 @@ export function classifyTicketRunError(
   const forRuntimes = (table: Record<AgentRuntime, RegExp[]>): RegExp[] =>
     runtimes.flatMap((r) => table[r])
 
+  if (runtimes.some((r) => missingAgentBinaryMessage(msg, r, 'image'))) return 'fatal'
   if ([...FATAL_ERROR_PATTERNS, ...forRuntimes(RUNTIME_FATAL_ERROR_PATTERNS)].some((p) => p.test(msg)))
     return 'fatal'
   if (
@@ -3199,6 +3225,11 @@ async function realExecuteTicketRun(
         await clearAttachmentsFor(tempBranch)
         if (ctx.signal.aborted) throw err // let the runner mark the run cancelled
         const msg = err instanceof Error ? err.message : String(err)
+        const missingBinary = missingAgentBinaryMessage(
+          err,
+          model.runtime,
+          resolveSandboxImage(config),
+        )
         // Whatever the dead attempt committed survives on its temp branch —
         // chain the next attempt (or a later run) onto it.
         const salvaged = await branchCommitsAhead(project.repoPath, feature.branch, tempBranch)
@@ -3255,6 +3286,10 @@ async function realExecuteTicketRun(
               message: `ticket ${ticket.seq}: merge conflict on ${feature.branch}${salvaged.length > 0 ? ' — resolve it from the run lane' : ' — resolve manually per the error, then re-burn'}`,
             },
           }
+        }
+        if (missingBinary) {
+          if (salvaged.length > 0) preserveChain(tempBranch)
+          return { status: 'failed', error: missingBinary }
         }
         if (classifyTicketRunError(err, model.runtime) === 'retryable' && attempt < maxAttempts) {
           const headline = errorHeadline(msg)
