@@ -12,18 +12,10 @@ import { configPath } from './paths'
  * `loadConfig` merges `~/.runcastle/config.json` (if present) with a handful of
  * env overrides. The file read is lazy (inside the function) so that importing
  * this module performs no IO — only calling `loadConfig()` touches disk. A
- * missing/invalid file falls back to schema defaults.
+ * missing/invalid file falls back to schema defaults, except for the one
+ * default that depends on the machine: `burnConcurrency`, resolved here from
+ * {@link hostLogicalCpus} because core's schema may not count cores.
  */
-
-/**
- * Logical CPUs this host exposes. `availableParallelism()` rather than
- * `cpus().length` because it respects CPU affinity and cgroup limits, so a
- * container that was given two of the box's sixteen cores reports two.
- */
-export function hostLogicalCpus(): number {
-  return availableParallelism()
-}
-
 export function loadConfig(
   env: Record<string, string | undefined> = process.env,
   /** Host core count behind the `burnConcurrency` default; injected by tests. */
@@ -93,4 +85,13 @@ export function loadConfig(
     merged.burnConcurrency = resolveDefaultBurnConcurrency(logicalCpus)
   }
   return RuncastleConfig.parse(merged)
+}
+
+/**
+ * Logical CPUs this host exposes. `availableParallelism()` rather than
+ * `cpus().length` because it respects CPU affinity and cgroup limits, so a
+ * container that was given two of the box's sixteen cores reports two.
+ */
+export function hostLogicalCpus(): number {
+  return availableParallelism()
 }

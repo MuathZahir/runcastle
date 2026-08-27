@@ -352,7 +352,7 @@ export function resolveSandboxImage(config: Pick<RuncastleConfig, 'sandboxImage'
  * default width drops to 1. Eight is the line because a 6C/12T box — the audited
  * machine — sits under it while a 16-thread workstation sits above.
  */
-export const SMALL_HOST_LOGICAL_CPUS = 8
+const SMALL_HOST_LOGICAL_CPUS = 8
 
 /**
  * The `burnConcurrency` an operator who set nothing gets on a host with

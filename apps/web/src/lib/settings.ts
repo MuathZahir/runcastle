@@ -184,7 +184,7 @@ const META: Record<string, FieldMeta> = {
   },
   burnConcurrency: {
     label: 'Burn concurrency',
-    help: 'Max tickets burned in parallel per run (1–8). Each is a full agent. Left blank it follows this machine: 1 on hosts with 8 logical CPUs or fewer, 3 above, because parallel agents each size their test workers from the whole core count.',
+    help: 'Max tickets burned in parallel per run (1–8). Each is a full agent. Until you set one it follows this machine: 1 on hosts with 8 logical CPUs or fewer, 3 above — parallel agents each size their test workers from the whole core count.',
     control: 'number',
   },
   burnAttempts: {
