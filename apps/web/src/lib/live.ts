@@ -290,6 +290,11 @@ export function useLiveSync(): LiveStatus {
       // ticked, edited or promoted has to show up at push speed, not on the 30s
       // safety poll.
       void u.notes.invalidate()
+      // The review agent's findings: `finding.*` events arrive one per finding
+      // AS the review reports them, and the fix wave that follows moves them
+      // again — the review page's counts line and its open-defects list are only
+      // honest if they move on the same push.
+      void u.findings.invalidate()
       // Findings carry the dry-run stamps the next-step bar warns on, and a
       // clean dry run stamps them mid-session — without this the warning would
       // outlive the run that disproved it until the next remount.

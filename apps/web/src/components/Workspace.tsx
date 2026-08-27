@@ -97,10 +97,23 @@ export function Workspace({
   const notes = trpc.notes.list.useQuery({ featureId }, { refetchInterval: useLivePoll() })
   const openNoteRows = notes.data?.filter((n) => n.status === 'open') ?? []
   const openNotes = notes.data ? openNoteRows.length : undefined
+  // The review agent's findings, counted server-side (findings joined to their
+  // fix tickets) — the bar's Fix primary acts on exactly the rows the review
+  // body lists, because both read this one query key. Review agents no longer
+  // write test notes at all, so `openNotes` above is the human's own inbox and
+  // nothing else.
+  const findings = trpc.findings.listByFeature.useQuery(
+    { featureId },
+    { refetchInterval: useLivePoll() },
+  )
+  const openDefects = findings.data?.summary.open
   // What the review agent made of this branch, for the confirmation's status
   // line — the same two reads the review card derives it from, so the dialog
   // cannot report a different review than the screen behind it.
-  const review = reviewOutcome({ tickets: q.data?.tickets, notes: notes.data })
+  const review = reviewOutcome({
+    tickets: q.data?.tickets,
+    findings: findings.data?.findings.length,
+  })
   const [confirmMerge, setConfirmMerge] = useState(false)
   // The Address-notes triage fork is open (decisions.md #11).
   const [addressing, setAddressing] = useState(false)
@@ -214,6 +227,21 @@ export function Workspace({
       void utils.notes.list.invalidate({ featureId })
       setAddressing(false)
       toast.push(`${tickets.length} fix ticket${tickets.length === 1 ? '' : 's'} added`, 'success')
+    },
+    onError: (e) => toast.push(e.message),
+  })
+  // The review's still-open defects, in one click and no dialog (decisions #7):
+  // the server mints a fix ticket for each on this lap and starts the burn, so
+  // the only thing left to do here is snap the view back to live.
+  const fixDefects = trpc.findings.fixOpenDefects.useMutation({
+    onSuccess: ({ tickets }) => {
+      invalidate()
+      void utils.findings.listByFeature.invalidate({ featureId })
+      onViewPhase(null)
+      toast.push(
+        `${tickets.length} fix ticket${tickets.length === 1 ? '' : 's'} burning`,
+        'success',
+      )
     },
     onError: (e) => toast.push(e.message),
   })
@@ -347,6 +375,7 @@ export function Workspace({
     dryRunActive: !!driveQ.data?.dryRun,
     ...(draftBaseMissing ? { draftBaseMissing } : {}),
     openNotes,
+    openDefects,
     laterLaps,
   })
   // The terminal the resolve compound has to close on its way in — one read, so
@@ -374,6 +403,7 @@ export function Workspace({
     testDrive.isPending ||
     merge.isPending ||
     promoteNotes.isPending ||
+    fixDefects.isPending ||
     unarchive.isPending ||
     resolveConflict.pending
 
@@ -451,6 +481,13 @@ export function Workspace({
       // opens it, exactly as `merge` opens its confirmation.
       case 'addressNotes':
         setAddressing(true)
+        break
+      // The review's own findings never enter that dialog (decisions #7): one
+      // click fixes every open defect, with nothing to confirm and nothing to
+      // choose — the whole point is that the human's arrival at review costs
+      // them one line read and one button.
+      case 'fixDefects':
+        fixDefects.mutate({ featureId })
         break
       // Resolve a recorded merge conflict: a revisit session briefed to merge the
       // base into this branch in the talk worktree — the same launch the conflict
