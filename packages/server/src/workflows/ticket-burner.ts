@@ -1550,10 +1550,15 @@ export function buildTicketTiming(
   return { ...summary, startedAt, endedAt, wallMs: Math.max(0, endedAt - startedAt) }
 }
 
-/** The timing event's message: wall clock first, then where that time went. */
+/**
+ * The timing event's message: wall clock first, then where that time went. An
+ * execution with nothing to break down — a review refused before its agent
+ * started — says only the clock, rather than appending an empty breakdown.
+ */
 export function formatTicketTiming(t: TicketTiming): string {
   const clock = fmtClock(Math.round(t.wallMs / 1000))
-  return t.calls === 0 ? clock : `${clock} (${formatTimingSummary(t)})`
+  const bare = t.calls === 0 && t.totalMs === 0
+  return bare ? clock : `${clock} (${formatTimingSummary(t)})`
 }
 
 /**
@@ -2758,6 +2763,9 @@ async function realExecuteTicketRun(
   runCtx: TicketRunContext,
 ): Promise<TicketOutcome> {
   const { project, feature } = ctx
+  // Opens the span the ticket's `ticket.timing` closes in the finally below —
+  // taken here, not beside the stream timer, so it covers the whole execution.
+  const startedAt = Date.now()
 
   // Where the agent's hot path lives (ADR-0005): on win32/darwin container
   // hosts the bind-mounted worktree pays Docker Desktop's per-file translation
@@ -2882,7 +2890,6 @@ async function realExecuteTicketRun(
   // sandcastle stream already carries a timestamp on every event; this just
   // stops throwing it away.
   const timer = createToolTimer()
-  const startedAt = Date.now()
   const onStreamEvent = (event: AgentStreamEvent): void => {
     throttle.onEvent(event)
     timer.onEvent(event)
