@@ -95,7 +95,9 @@ function deps(
 ): BurnDeps {
   return {
     config: { serverPort: 4512, model: 'm', stepModels: {}, sandbox: 'noSandbox', burnConcurrency: 3 },
+    runtime: 'claude-code',
     hasAuthToken: true,
+    exec: async () => ({ ok: true, code: 0, stdout: '', stderr: '' }),
     concurrency: 1,
     executeTicketRun: execute,
     ...over,
@@ -103,6 +105,97 @@ function deps(
 }
 
 describe('burnRun — scheduling and summary', () => {
+  it('probes the container image runtime before proceeding with a docker burn', async () => {
+    const tickets = [ticket(1), ticket(2)]
+    const { ctx } = makeCtx(tickets)
+    const calls: number[] = []
+    const probes: Array<{ command: string; args: string[] }> = []
+    const execute = fakeExecute(
+      { 1: { status: 'done', commits: ['a'] }, 2: { status: 'done', commits: ['b'] } },
+      calls,
+    )
+
+    const res = await burnRun(
+      ctx,
+      deps(execute, {
+        config: {
+          serverPort: 4512,
+          model: 'm',
+          stepModels: {},
+          sandbox: 'docker',
+          sandboxImage: 'sandcastle:test',
+        },
+        runtime: 'codex',
+        exec: async (command, args) => {
+          probes.push({ command, args })
+          return { ok: true, code: 0, stdout: 'codex 1.0', stderr: '' }
+        },
+      }),
+    )
+
+    expect(probes).toEqual([
+      {
+        command: 'docker',
+        args: ['run', '--rm', '--entrypoint', 'codex', 'sandcastle:test', '--version'],
+      },
+    ])
+    expect(calls).toEqual([1, 2])
+    expect(res.status).toBe('succeeded')
+  })
+
+  it('aborts before creating a sandbox when the image lacks the runtime binary', async () => {
+    const tickets = [ticket(1)]
+    const { ctx, events } = makeCtx(tickets)
+    const calls: number[] = []
+    const execute = fakeExecute({}, calls)
+
+    const res = await burnRun(
+      ctx,
+      deps(execute, {
+        config: {
+          serverPort: 4512,
+          model: 'm',
+          stepModels: {},
+          sandbox: 'podman',
+          sandboxImage: 'sandcastle:runcastle-demo',
+        },
+        runtime: 'claude-code',
+        exec: async () => ({ ok: true, code: 127, stdout: '', stderr: 'claude: not found' }),
+      }),
+    )
+
+    expect(calls).toEqual([])
+    expect(res.status).toBe('failed')
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: 'burn.image_runtime_missing',
+        message:
+          'claude is not installed in image sandcastle:runcastle-demo — the image predates the burner Dockerfile. Rebuild it from Settings → AFK burns (Rebuild image).',
+      }),
+    )
+  })
+
+  it('never probes the image for noSandbox burns', async () => {
+    const tickets = [ticket(1)]
+    const { ctx } = makeCtx(tickets)
+    const execute = fakeExecute({ 1: { status: 'done', commits: ['a'] } })
+    let probes = 0
+
+    const res = await burnRun(
+      ctx,
+      deps(execute, {
+        runtime: 'codex',
+        exec: async () => {
+          probes += 1
+          return { ok: true, code: 0, stdout: '', stderr: '' }
+        },
+      }),
+    )
+
+    expect(probes).toBe(0)
+    expect(res.status).toBe('succeeded')
+  })
+
   it('runs blocked tickets in dependency order and succeeds when all are done', async () => {
     const tickets = [ticket(1), ticket(2, [1])]
     const { ctx, events, patches } = makeCtx(tickets)

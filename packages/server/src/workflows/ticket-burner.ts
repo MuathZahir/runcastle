@@ -34,6 +34,8 @@ import {
 import type { McpConfig } from '../launcher/artifacts'
 import { resolveSkillsRoot } from '../launcher/skills-root'
 import { codexHomeDir, codexLoggedIn } from '../services/codex-auth'
+import type { ExecFn, ExecOutcome } from '../doctor/doctor'
+import { createSystemExec } from '../doctor/system-exec'
 import { ADR_DIR_REL, CHARTER_FILE, MAP_SECTIONS, listLiveAdrs } from '../services/knowledge'
 import { RUNTIME_AUTH_KEY, RUNTIME_AUTH_SETUP_HINT } from '../services/setup'
 import {
@@ -106,6 +108,17 @@ import { noSandbox } from '@ai-hero/sandcastle/sandboxes/no-sandbox'
  */
 
 export const AUTH_MISSING_EVENT = 'auth.missing'
+export const IMAGE_RUNTIME_MISSING_EVENT = 'burn.image_runtime_missing'
+
+const RUNTIME_BINARY: Record<AgentRuntime, string> = {
+  'claude-code': 'claude',
+  codex: 'codex',
+}
+
+export function missingImageRuntimeMessage(runtime: AgentRuntime, image: string): string {
+  const binary = RUNTIME_BINARY[runtime]
+  return `${binary} is not installed in image ${image} — the image predates the burner Dockerfile. Rebuild it from Settings → AFK burns (Rebuild image).`
+}
 
 /**
  * Whether a runtime can authenticate an unattended container burn. The two
@@ -188,6 +201,8 @@ export interface BurnDeps {
   runtime: AgentRuntime
   /** Whether {@link runtime} can authenticate this run (container sandboxes require it). */
   hasAuthToken: boolean
+  /** Doctor-style injected command runner used for the pre-container image probe. */
+  exec?: ExecFn
   /**
    * The runtime of a ticket whose OWN model cannot authenticate a container
    * burn, or `undefined` when it can. A ticket assigned to the other runtime
@@ -2218,6 +2233,27 @@ export async function burnRun(
     return { status: 'failed', summary: 'burn aborted: auth token missing' }
   }
 
+  // Prove the selected image can launch this burn's agent before sandcastle
+  // creates a ticket container. The host CLI is the right one for noSandbox,
+  // so probing an image there would be both wasteful and misleading.
+  if (deps.config.sandbox !== 'noSandbox' && deps.exec) {
+    const image = resolveSandboxImage(deps.config)
+    const binary = RUNTIME_BINARY[deps.runtime]
+    const probe = await deps.exec(deps.config.sandbox, [
+      'run',
+      '--rm',
+      '--entrypoint',
+      binary,
+      image,
+      '--version',
+    ])
+    if (!probe.ok || probe.code !== 0) {
+      const message = missingImageRuntimeMessage(deps.runtime, image)
+      ctx.emitEvent({ type: IMAGE_RUNTIME_MISSING_EVENT, message })
+      return { status: 'failed', summary: message }
+    }
+  }
+
   // Cycle guard: fail the whole run before touching any ticket. Cancelled
   // tickets are excluded — they never run, so their edges cannot deadlock the
   // schedule (edges pointing at them from burnable tickets resolve as satisfied).
@@ -3375,6 +3411,17 @@ function resolveBurnDeps(ctx: WorkflowCtx): BurnDeps {
   const config = loadConfig()
   const model = resolveModelEntry('implement', config, ctx.project, ctx.modelOverride)
   const token = readTokenFromEnvFile(envPath(), model.runtime)
+  const exec = createSystemExec({ cwd: ctx.project.repoPath })
+  const imageProbeCache = new Map<string, Promise<ExecOutcome>>()
+  const cachedExec: ExecFn = (command, args) => {
+    const key = `${resolveSandboxImage(config)}\0${model.runtime}`
+    let result = imageProbeCache.get(key)
+    if (!result) {
+      result = exec(command, args)
+      imageProbeCache.set(key, result)
+    }
+    return result
+  }
   const land = createSerialQueue()
   // Memoized so the whole run performs the parent-repo config write exactly
   // once, no matter how many tickets burn in parallel (see git.ts).
@@ -3419,6 +3466,7 @@ function resolveBurnDeps(ctx: WorkflowCtx): BurnDeps {
     config,
     runtime: model.runtime,
     hasAuthToken: burnAuthReady(model.runtime, token),
+    exec: cachedExec,
     ticketAuthMissing: (ticket) => {
       const { model: ticketModel, token: ticketToken } = ticketCredentials(ticket)
       return burnAuthReady(ticketModel.runtime, ticketToken) ? undefined : ticketModel.runtime
