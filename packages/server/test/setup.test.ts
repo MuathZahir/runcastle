@@ -114,16 +114,18 @@ describe('per-runtime AFK auth', () => {
     expect(RUNTIME_AUTH_KEY.codex).toBe('CODEX_API_KEY')
   })
 
-  it('sends a stuck human to their own provider, and to the same env file', () => {
+  it('sends a stuck human to their own provider, and to their own one setup step', () => {
     // A codex burn that aborts telling the human to run `claude setup-token`
     // sends them to a CLI they may not even have installed.
     expect(RUNTIME_AUTH_SETUP_HINT['claude-code']).toContain('claude setup-token')
+    expect(RUNTIME_AUTH_SETUP_HINT['claude-code']).toContain('~/.runcastle/.env')
+    // A codex burn borrows the operator's ChatGPT login, so its only setup step
+    // is `codex login` — naming the API key here would sell them a credential
+    // the feature exists to remove.
+    expect(RUNTIME_AUTH_SETUP_HINT.codex).toContain('codex login')
     expect(RUNTIME_AUTH_SETUP_HINT.codex).not.toContain('claude')
-    expect(RUNTIME_AUTH_SETUP_HINT.codex).toContain('CODEX_API_KEY')
-    expect(RUNTIME_AUTH_SETUP_HINT.codex).toContain('OpenAI API key')
-    for (const hint of Object.values(RUNTIME_AUTH_SETUP_HINT)) {
-      expect(hint).toContain('~/.runcastle/.env')
-    }
+    expect(RUNTIME_AUTH_SETUP_HINT.codex).not.toContain('CODEX_API_KEY')
+    expect(RUNTIME_AUTH_SETUP_HINT.codex).not.toContain('API key')
   })
 
   it('writes a codex key into the env file the same way as a claude one', () => {

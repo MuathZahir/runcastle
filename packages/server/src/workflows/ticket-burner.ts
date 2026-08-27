@@ -33,6 +33,7 @@ import {
 } from '@runcastle/core/paths'
 import type { McpConfig } from '../launcher/artifacts'
 import { resolveSkillsRoot } from '../launcher/skills-root'
+import { codexHomeDir, codexLoggedIn } from '../services/codex-auth'
 import { ADR_DIR_REL, CHARTER_FILE, MAP_SECTIONS, listLiveAdrs } from '../services/knowledge'
 import { RUNTIME_AUTH_KEY, RUNTIME_AUTH_SETUP_HINT } from '../services/setup'
 import {
@@ -106,6 +107,24 @@ import { noSandbox } from '@ai-hero/sandcastle/sandboxes/no-sandbox'
 
 export const AUTH_MISSING_EVENT = 'auth.missing'
 
+/**
+ * Whether a runtime can authenticate an unattended container burn. The two
+ * runtimes answer it differently: Claude Code needs the long-lived token from
+ * `~/.runcastle/.env`, while Codex burns on the operator's own `codex login`,
+ * borrowed into the container — so for Codex a token is merely the silent
+ * `CODEX_API_KEY` override (decision 3), never the requirement.
+ *
+ * `loggedIn` is injected so the whole precheck is testable without a real home.
+ */
+export function burnAuthReady(
+  runtime: AgentRuntime,
+  token: string | undefined,
+  loggedIn: () => boolean = codexLoggedIn,
+): boolean {
+  if (token !== undefined) return true
+  return runtime === 'codex' && loggedIn()
+}
+
 // ---------------------------------------------------------------------------
 // Outcome + dependency shapes (the sandcastle boundary)
 // ---------------------------------------------------------------------------
@@ -167,8 +186,16 @@ export interface BurnDeps {
   config: RuncastleConfig
   /** The runtime this run's resolved model launches — whose auth key must be set. */
   runtime: AgentRuntime
-  /** Whether {@link runtime}'s auth key is available (container sandboxes require it). */
+  /** Whether {@link runtime} can authenticate this run (container sandboxes require it). */
   hasAuthToken: boolean
+  /**
+   * The runtime of a ticket whose OWN model cannot authenticate a container
+   * burn, or `undefined` when it can. A ticket assigned to the other runtime
+   * re-resolves its model AND its credential, so the run-level check above says
+   * nothing about it — this is what stops a Codex ticket inside a Claude run
+   * from spending a container to discover it has no login.
+   */
+  ticketAuthMissing?: (ticket: Ticket) => AgentRuntime | undefined
   /** Worker-pool width — how many tickets burn in parallel (`config.burnConcurrency`). */
   concurrency: number
   /** Runs one ticket to a terminal outcome. Real impl calls sandcastle `run()`. */
@@ -846,6 +873,56 @@ export interface CacheMount {
 export function cacheMountFor(pm: PackageManager, hostPath: string): CacheMount | undefined {
   const sandboxPath = PM_CACHE_SANDBOX_PATHS[pm]
   return sandboxPath ? { hostPath, sandboxPath } : undefined
+}
+
+// ---------------------------------------------------------------------------
+// Pure unit — borrowing the host's Codex login (decision 1)
+// ---------------------------------------------------------------------------
+
+/** Where a burn container sees the host's Codex home — read-only, never written. */
+export const CODEX_HOST_MOUNT_PATH = '/mnt/host-codex'
+
+/**
+ * The bind-mount that lends a container burn the operator's `codex login`, or
+ * `undefined` when there is nothing to lend: a Claude burn, a `noSandbox` burn
+ * (which runs as the operator and inherits the real home), or a host that has
+ * never logged in. Read-only, so a container refreshing its token cannot
+ * corrupt the host file (decision 1) — and a logged-out host is skipped rather
+ * than mounted, because a missing `hostPath` fails sandbox creation outright
+ * and an operator burning on a hand-set `CODEX_API_KEY` needs no login at all.
+ */
+export function codexAuthMountFor(
+  runtime: AgentRuntime,
+  sandbox: RuncastleConfig['sandbox'],
+  env: Record<string, string | undefined> = process.env,
+  loggedIn: (env: Record<string, string | undefined>) => boolean = codexLoggedIn,
+): CacheMount | undefined {
+  if (runtime !== 'codex' || sandbox === 'noSandbox' || !loggedIn(env)) return undefined
+  return { hostPath: codexHomeDir(env), sandboxPath: CODEX_HOST_MOUNT_PATH, readonly: true }
+}
+
+/**
+ * The sandbox-ready step that copies the borrowed login into the container's
+ * own Codex home, where the CLI looks for it. ONLY `auth.json`: burns pass
+ * their model with `-m` and the run-scoped MCP server with `-c`, and an
+ * operator's `config.toml` (sandbox mode, approval policy, trusted projects)
+ * must not leak into a print-mode burn. `$HOME` is expanded by the container's
+ * own shell, so this is correct for whichever user the image runs as.
+ */
+export function buildCodexAuthCopyCommand(): string {
+  return `mkdir -p "$HOME/.codex" && cp "${CODEX_HOST_MOUNT_PATH}/auth.json" "$HOME/.codex/auth.json"`
+}
+
+/**
+ * Chain the sandbox-ready steps in the only order that works: borrow the Codex
+ * login first (nothing else authenticates the agent), arm the burn guard next
+ * (before the agent's first tool call), install dependencies last. Absent steps
+ * drop out; `undefined` means there is nothing to run at all, which is what
+ * sandcastle wants rather than an empty hook.
+ */
+export function chainSetupCommands(...steps: readonly (string | undefined)[]): string | undefined {
+  const present = steps.filter((step): step is string => !!step)
+  return present.length > 0 ? present.join(' && ') : undefined
 }
 
 // ---------------------------------------------------------------------------
@@ -1543,6 +1620,11 @@ const FATAL_ERROR_PATTERNS: RegExp[] = [
  * `invalid_api_key` code, an exhausted account as `insufficient_quota` (a
  * billing fact no retry fixes, despite arriving as a 429), and an unusable
  * model as `model_not_found`.
+ *
+ * A container burn runs on the operator's borrowed `codex login`, so the auth
+ * wording it fails with is the CLI's own — "not logged in", a refused refresh
+ * token — and none of it is worth a retry: the fix is `codex login` on the
+ * host, which no attempt of ours can perform.
  */
 const RUNTIME_FATAL_ERROR_PATTERNS: Record<AgentRuntime, RegExp[]> = {
   'claude-code': [],
@@ -1552,6 +1634,11 @@ const RUNTIME_FATAL_ERROR_PATTERNS: Record<AgentRuntime, RegExp[]> = {
     /insufficient_quota|exceeded your current quota/i,
     /model_not_found|does not exist or you do not have access/i,
     /CODEX_API_KEY/,
+    // "unauthorized" and "authentication …" are already fatal for every runtime
+    // (see FATAL_ERROR_PATTERNS); these are the login wordings that are not.
+    /not logged in/i,
+    /\bauth (failed|required)\b/i,
+    /refresh token/i,
   ],
 }
 
@@ -2087,6 +2174,24 @@ export function composeRunDigest(entries: readonly HarvestedDigest[]): string | 
 }
 
 /**
+ * The run-level precheck, per ticket: a ticket assigned to the other runtime
+ * fails with the same `auth.missing` event rather than spending a container to
+ * find out it cannot authenticate. Nothing wraps the executor when there is no
+ * container to save or no per-ticket answer to give.
+ */
+function gateTicketAuth(deps: BurnDeps): BurnDeps['executeTicketRun'] {
+  const authMissing = deps.ticketAuthMissing
+  if (!authMissing || deps.config.sandbox === 'noSandbox') return deps.executeTicketRun
+  return async (ctx, ticket, run) => {
+    const runtime = authMissing(ticket)
+    if (!runtime) return deps.executeTicketRun(ctx, ticket, run)
+    const hint = `${runtime} is not authenticated — ${RUNTIME_AUTH_SETUP_HINT[runtime]}`
+    ctx.emitEvent({ type: AUTH_MISSING_EVENT, message: hint, ticketId: ticket.id })
+    return { status: 'failed', error: hint }
+  }
+}
+
+/**
  * The testable core of the burner: everything except how `BurnDeps` are
  * resolved (config load, token read, real sandcastle call). Tests pass a fake
  * `executeTicketRun` + config to exercise success/failure/conflict/zero-commit,
@@ -2104,9 +2209,9 @@ export async function burnRun(
   const cancelled = tickets.length - burnable.length
   const total = burnable.length
 
-  // Auth precheck: container sandboxes (docker/podman) need a token before we
-  // start any container; noSandbox runs the CLI on the already-authed host. The
-  // message names the fix for THIS run's runtime — a Codex burn that aborts
+  // Auth precheck: container sandboxes (docker/podman) need credentials before
+  // we start any container; noSandbox runs the CLI on the already-authed host.
+  // The message names the fix for THIS run's runtime — a Codex burn that aborts
   // pointing at `claude setup-token` sends the human to the wrong provider.
   if (deps.config.sandbox !== 'noSandbox' && !deps.hasAuthToken) {
     ctx.emitEvent({ type: AUTH_MISSING_EVENT, message: RUNTIME_AUTH_SETUP_HINT[deps.runtime] })
@@ -2127,7 +2232,7 @@ export async function burnRun(
     return { status: 'failed', summary: `dependency cycle: ${path}` }
   }
 
-  const { done, digests } = await burnTickets(ctx, tickets, deps.executeTicketRun, deps.concurrency)
+  const { done, digests } = await burnTickets(ctx, tickets, gateTicketAuth(deps), deps.concurrency)
   const summary =
     cancelled > 0 ? `${done}/${total} tickets done (${cancelled} cancelled)` : `${done}/${total} tickets done`
   ctx.emitEvent({ type: 'burn.summary', message: summary, data: { done, total, cancelled } })
@@ -2683,6 +2788,11 @@ async function realExecuteTicketRun(
       mounts.push(mount)
     }
   }
+  // A container Codex burn runs on the operator's ChatGPT login: the host Codex
+  // home rides in as a read-only mount, and the sandbox-ready hook copies
+  // `auth.json` out of it before anything else runs.
+  const codexAuthMount = codexAuthMountFor(model.runtime, config.sandbox)
+  if (codexAuthMount) mounts.push(codexAuthMount)
   // The burn guard (PreToolUse deny hook) is installed by the same
   // onSandboxReady hook that installs deps, so it is armed before the agent's
   // first tool call. Container sandboxes only: under `noSandbox` the agent runs
@@ -2691,8 +2801,12 @@ async function realExecuteTicketRun(
   // to install this makes the hook run where it previously did not — intended.
   // Installed for the runtime that is about to run, into that runtime's home.
   const guardInstall = guardInstalled ? buildGuardInstallCommand(model.runtime) : undefined
-  const withGuard = (setup: string | undefined): string | undefined =>
-    guardInstall === undefined ? setup : setup ? `${guardInstall} && ${setup}` : guardInstall
+  const withPrelude = (setup: string | undefined): string | undefined =>
+    chainSetupCommands(
+      codexAuthMount ? buildCodexAuthCopyCommand() : undefined,
+      guardInstall,
+      setup,
+    )
   // Codex runs no hooks it has no persisted trust for; the flag is what makes
   // the file we just wrote bind. Paired with the install so it is never passed
   // when there is no guard of ours to un-gate.
@@ -2808,7 +2922,7 @@ async function realExecuteTicketRun(
       OTHER_SIDE: buildOtherSideBlock(otherSide),
       MERGE_COMMAND: resolveMergeCommand(workspaceMode, feature.branch),
     })
-    const hookCommand = withGuard(
+    const hookCommand = withPrelude(
       workspaceMode === 'isolated'
         ? buildIsolatedSetupCommand(resolveBranch, setupCommand, pm)
         : setupCommand,
@@ -3005,7 +3119,7 @@ async function realExecuteTicketRun(
       // wiring is needed even with nothing to install) and embeds THIS
       // attempt's temp branch; mounted mode keeps the hook only when there is
       // an install to run.
-      const hookCommand = withGuard(
+      const hookCommand = withPrelude(
         workspaceMode === 'isolated'
           ? buildIsolatedSetupCommand(tempBranch, setupCommand, pm)
           : setupCommand,
@@ -3284,17 +3398,34 @@ function resolveBurnDeps(ctx: WorkflowCtx): BurnDeps {
     }),
   }
 
+  /**
+   * A ticket's own model and the credential that model burns on — re-read for a
+   * ticket assigned to the other runtime, which authenticates with the other
+   * key. Resolved in one place so the per-ticket precheck and the executor can
+   * never disagree about what this ticket would run with.
+   */
+  const ticketCredentials = (ticket: Ticket): { model: ModelEntry; token: string | undefined } => {
+    const ticketModel = resolveTicketModel(config, ctx.project, ctx.modelOverride, ticket)
+    return {
+      model: ticketModel,
+      token:
+        ticketModel.runtime === model.runtime
+          ? token
+          : readTokenFromEnvFile(envPath(), ticketModel.runtime),
+    }
+  }
+
   return {
     config,
     runtime: model.runtime,
-    hasAuthToken: token !== undefined,
+    hasAuthToken: burnAuthReady(model.runtime, token),
+    ticketAuthMissing: (ticket) => {
+      const { model: ticketModel, token: ticketToken } = ticketCredentials(ticket)
+      return burnAuthReady(ticketModel.runtime, ticketToken) ? undefined : ticketModel.runtime
+    },
     concurrency: config.burnConcurrency,
     executeTicketRun: (c, ticket, run) => {
-      const ticketModel = resolveTicketModel(config, ctx.project, ctx.modelOverride, ticket)
-      const ticketToken =
-        ticketModel.runtime === model.runtime
-          ? token
-          : readTokenFromEnvFile(envPath(), ticketModel.runtime)
+      const { model: ticketModel, token: ticketToken } = ticketCredentials(ticket)
       return isReviewTicket(ticket)
         ? executeReviewTicket(c, ticket, {
             config,

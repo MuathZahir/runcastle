@@ -43,14 +43,15 @@ export const RUNTIME_AUTH_KEY: Record<AgentRuntime, string> = {
 }
 
 /**
- * What to tell a human whose burn aborted for missing auth, per runtime. Both
- * end in the same place — a key in `~/.runcastle/.env` — but only the Claude one
- * has a command that produces the value, so the words come from each runtime's
- * own {@link RUNTIME_SPECS} entry rather than being written twice.
+ * What to tell a human whose burn aborted for missing auth, per runtime. The
+ * two runtimes end in different places: Claude Code burns on a long-lived token
+ * captured into `~/.runcastle/.env`, while a Codex burn borrows the operator's
+ * own ChatGPT login, so its only setup step is `codex login` and naming
+ * `CODEX_API_KEY` here would send them to a credential they need not have.
  */
 export const RUNTIME_AUTH_SETUP_HINT: Record<AgentRuntime, string> = {
   'claude-code': RUNTIME_SPECS['claude-code'].afkFix,
-  codex: RUNTIME_SPECS.codex.afkFix,
+  codex: `Run \`${RUNTIME_SPECS.codex.loginCommand}\` on this host, then burn again`,
 }
 
 /** Result of a live token validity check (a real `claude` call, injected). */

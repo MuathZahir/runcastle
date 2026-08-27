@@ -1,3 +1,4 @@
+import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import {
   runDoctor,
@@ -147,12 +148,16 @@ describe('runDoctor — per-runtime readiness with conditional severity', () => 
     fileExists: () => false,
   }
 
-  it('reports each runtime as three checks, tagged with runtime and question', async () => {
+  // Codex burns borrow the login `codex login` wrote (decision 4), so the login
+  // IS the AFK credential — a third row asking for an API key would sell the
+  // operator the setup step this feature exists to remove.
+  it('reports codex as two checks and claude as three, tagged with runtime and question', async () => {
     const report = await runDoctor({ ...base, exec: cannedExec(ALL_HEALTHY) })
     const codex = report.results.filter((r) => r.runtime === 'codex')
-    expect(codex.map((r) => r.check)).toEqual(['binary', 'auth', 'afk-key'])
+    expect(codex.map((r) => r.check)).toEqual(['binary', 'auth'])
     const claude = report.results.filter((r) => r.runtime === 'claude-code')
     expect(claude.map((r) => r.check)).toEqual(['binary', 'auth', 'afk-key'])
+    expect(report.results.some((r) => r.id === 'codex-api-key')).toBe(false)
   })
 
   it('stays green when codex is absent and nothing is configured to run on it', async () => {
@@ -184,15 +189,15 @@ describe('runDoctor — per-runtime readiness with conditional severity', () => 
     delete table['claude auth status']
     const report = await runDoctor({
       ...base,
-      env: { CODEX_API_KEY: 'sk-openai-xxx' },
       runtimes: ['codex'],
+      fileExists: (p) => p.endsWith('auth.json'),
       exec: cannedExec({ ...table, 'codex --version': {}, 'codex login status': {} }),
     })
     expect(byId(report.results, 'claude').severity).toBe('info')
     expect(byId(report.results, 'afk-token').severity).toBe('info')
     expect(byId(report.results, 'codex').status).toBe('ok')
     expect(byId(report.results, 'codex-auth').status).toBe('ok')
-    expect(byId(report.results, 'codex-api-key').status).toBe('ok')
+    // A codex-only operator who ran `codex login` is done — nothing else to set up.
     expect(report.ok).toBe(true)
   })
 
@@ -218,36 +223,85 @@ describe('runDoctor — per-runtime readiness with conditional severity', () => 
     expect(report.tier1Ok).toBe(true)
   })
 
-  it('falls back to the codex credentials file when the CLI is too old for `login status`', async () => {
-    const exec = cannedExec({
-      ...ALL_HEALTHY,
-      'codex --version': {},
-      'codex login status': { code: 1, stderr: "error: unrecognized subcommand 'status'" },
-    })
-    const authed = await runDoctor({
+  it('reads the claude AFK token from its own env var', async () => {
+    const report = await runDoctor({
       ...base,
-      runtimes: ['codex'],
-      exec,
+      env: {},
+      runtimes: ['claude-code', 'codex'],
+      exec: cannedExec(ALL_HEALTHY),
+    })
+    const claudeKey = byId(report.results, 'afk-token')
+    expect(claudeKey.status).toBe('unset')
+    expect(claudeKey.detail).toContain('CLAUDE_CODE_OAUTH_TOKEN')
+  })
+})
+
+/**
+ * Decision 4: `auth.json` at the Codex home is the artifact every surface
+ * borrows — the launcher copies it into a session's home, a burn copies it out
+ * of a read-only mount — so its presence, not what `codex login status` says, is
+ * what "Codex ready" means. Anything else lets the doctor call a host ready that
+ * a burn then refuses to run on.
+ */
+describe('runDoctor — codex login is decided by the credentials file', () => {
+  const base = {
+    env: { CLAUDE_CODE_OAUTH_TOKEN: 'sk-oauth-xxx' },
+    platform: 'linux' as const,
+    imageName: 'sandcastle:runcastle',
+    runtimes: ['codex'] as const,
+  }
+  const withStatus = (status: Partial<ExecOutcome>) =>
+    cannedExec({ ...ALL_HEALTHY, 'codex --version': {}, 'codex login status': status })
+
+  it('is ok when the file is there even though `codex login status` says logged out', async () => {
+    const report = await runDoctor({
+      ...base,
+      exec: withStatus({ code: 1, stdout: 'Not logged in' }),
       fileExists: (p) => p.endsWith('auth.json'),
     })
+    const auth = byId(report.results, 'codex-auth')
+    expect(auth.status).toBe('ok')
+    // The disagreement is reported, not hidden — it is the only clue an operator
+    // gets that the CLI and the burn see different things.
+    expect(auth.detail).toContain('auth.json')
+    expect(auth.detail).toContain('codex login status')
+    expect(report.ok).toBe(true)
+  })
+
+  it('is not ok when the file is absent even though `codex login status` exits 0', async () => {
+    const report = await runDoctor({ ...base, exec: withStatus({}), fileExists: () => false })
+    const auth = byId(report.results, 'codex-auth')
+    expect(auth.status).toBe('unset')
+    expect(auth.detail).toContain('auth.json')
+    expect(auth.fix).toContain('codex login')
+    // The one setup step is the login — never a credential to paste.
+    expect(auth.fix).not.toContain('CODEX_API_KEY')
+    expect(report.ok).toBe(false)
+  })
+
+  it('still decides by the file when the CLI is too old for `login status`', async () => {
+    const exec = withStatus({ code: 1, stderr: "error: unrecognized subcommand 'status'" })
+    const authed = await runDoctor({ ...base, exec, fileExists: (p) => p.endsWith('auth.json') })
     expect(byId(authed.results, 'codex-auth').status).toBe('ok')
 
-    const loggedOut = await runDoctor({ ...base, runtimes: ['codex'], exec })
+    const loggedOut = await runDoctor({ ...base, exec, fileExists: () => false })
     expect(byId(loggedOut.results, 'codex-auth').status).toBe('unset')
     expect(byId(loggedOut.results, 'codex-auth').detail).toContain('auth.json')
   })
 
-  it('reads each runtime AFK credential from its own env var', async () => {
+  it('honours CODEX_HOME when deciding where the credentials live', async () => {
+    const looked: string[] = []
     const report = await runDoctor({
       ...base,
-      env: { CODEX_API_KEY: 'sk-openai-xxx' },
-      runtimes: ['claude-code', 'codex'],
-      exec: cannedExec(ALL_HEALTHY),
+      env: { CODEX_HOME: '/custom/codex' },
+      exec: withStatus({}),
+      fileExists: (p) => {
+        looked.push(p)
+        return false
+      },
     })
-    expect(byId(report.results, 'codex-api-key').status).toBe('ok')
-    const claudeKey = byId(report.results, 'afk-token')
-    expect(claudeKey.status).toBe('unset')
-    expect(claudeKey.detail).toContain('CLAUDE_CODE_OAUTH_TOKEN')
+    expect(looked).toContain(join('/custom/codex', 'auth.json'))
+    expect(byId(report.results, 'codex-auth').status).toBe('unset')
   })
 })
 

@@ -89,6 +89,19 @@ describe('classifyTicketRunError', () => {
       expect(classifyTicketRunError(new Error(msg), 'codex')).toBe('fatal')
     })
 
+    // A burn runs on the operator's borrowed `codex login`. When that login is
+    // revoked or lapses mid-run the CLI says so in login words, and no retry of
+    // ours fixes it — the human has to run `codex login` on the host.
+    it.each([
+      'codex exited with code 1: not logged in',
+      'stream error: Unauthorized',
+      'authentication failed for the ChatGPT account',
+      'auth required: run codex login',
+      'could not exchange refresh token',
+    ])('fatal, on a lapsed borrowed login: %s', (msg) => {
+      expect(classifyTicketRunError(new Error(msg), 'codex')).toBe('fatal')
+    })
+
     // 429 means two different things to OpenAI: a rate limit worth waiting out,
     // and an exhausted account that no retry will fix. Quota wins.
     it('reads an exhausted quota as fatal even though it arrives as a 429', () => {

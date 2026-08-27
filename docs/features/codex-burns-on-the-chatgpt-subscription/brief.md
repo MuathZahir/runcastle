@@ -1,5 +1,7 @@
 # Codex burns on the ChatGPT subscription
 
+Make AFK Codex ticket burns run on the user's ChatGPT login (borrowed `~/.codex/auth.json`) instead of requiring a pay-per-token `CODEX_API_KEY`, and make "Codex ready" mean the same thing everywhere: logged in.
+
 ## Why this exists
 
 `codex-runtime-support` (shipped 2026-08-20) split Codex auth by surface in its decision #5 (`docs/features/codex-runtime-support/decisions.md#5`): talk sessions borrow `~/.codex/auth.json` (ChatGPT login), but AFK ticket burns require `CODEX_API_KEY` — a pay-per-token OpenAI key. That was never the intent. Codex should run on the user's subscription everywhere, the way Claude burns run on the subscription via `CLAUDE_CODE_OAUTH_TOKEN`.

@@ -1,6 +1,6 @@
 # Runcastle
 
-An opinionated programming system layered on Claude Code — the IDE to Claude Code's text editor. It makes feature work concrete: every feature gets a persistent **feature session** that moves through phases, every agent spawned inside it inherits the feature's full context, and the stretch between human ideation and human testing runs AFK through sandboxed agent workflows.
+An opinionated programming system layered on coding-agent CLIs (Claude Code, Codex) — the IDE to their text editor. It makes feature work concrete: every feature gets a persistent **feature session** that moves through phases, every agent spawned inside it inherits the feature's full context, and the stretch between human ideation and human testing runs AFK through sandboxed agent workflows.
 
 **The core loop:** you get grilled on a feature → spec + tickets fall out → AFK agents burn the tickets in sandboxes → you test-drive and merge. Human-in-the-loop only at the two ends. Many features run this loop in parallel.
 
@@ -15,7 +15,7 @@ An opinionated programming system layered on Claude Code — the IDE to Claude C
 
 2. **Form factor: local web app.** Bun server on the user's machine owns sessions, workflows, sandcastle, transcript indexing; browser UI at localhost is the IDE surface. Tauri-wrappable later.
 
-3. **Claude Code driving: hybrid.** Interactive work happens in **real Claude Code terminals** launched by the app with context pre-injected. AFK work runs headless via sandcastle. The app never rebuilds the chat UX — it is the orchestration + memory + observation layer.
+3. **Agent-CLI driving: hybrid.** Interactive work happens in **real agent terminals** (Claude Code or Codex) launched by the app with context pre-injected. AFK work runs headless via sandcastle. The app never rebuilds the chat UX — it is the orchestration + memory + observation layer.
 
 4. **Context injection toolkit** (all interactive-mode capable, per official docs):
    - `--settings '<inline JSON>'` → per-session hooks without touching user config (keystone).
@@ -62,7 +62,7 @@ An opinionated programming system layered on Claude Code — the IDE to Claude C
 ## Deferred / open threads
 
 - Ticket schema design (first build task — the burner and `/to-tickets` fork both consume it).
-- Sandcastle auth for AFK agents (`claude setup-token` → `CLAUDE_CODE_OAUTH_TOKEN` in `.sandcastle/.env`) — setup prerequisite.
+- Sandcastle auth for AFK agents, per runtime — setup prerequisite. Claude Code burns run on a long-lived token (`claude setup-token` → `CLAUDE_CODE_OAUTH_TOKEN` in `~/.runcastle/.env`); Codex burns borrow the operator's own `codex login`, bind-mounting the host Codex home read-only and copying `auth.json` into the container, so their only setup step is the login itself. A `CODEX_API_KEY` set by hand in `~/.runcastle/.env` is still honoured as an override for deliberate API billing, but nothing asks for one.
 - Automated testing workflow (browser agents) to shrink human click #2.
 - Per-burn overhead (sandbox spin-up, burner orientation) — attack independently so laps never feel slower than "I could've done it in one Claude session" (warm/reused sandboxes per feature, tighter burner context).
 - Fork-a-feature mechanics (new session seeded from parent knowledge; CC `--fork-session` where applicable).

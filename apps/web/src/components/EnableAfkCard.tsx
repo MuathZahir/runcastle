@@ -1,7 +1,10 @@
 import { useState } from 'react'
 import type { AgentRuntime } from '@runcastle/core'
 import { trpc } from '../trpc'
+import { afkCredentialRows, type AfkCredentialRow } from '../lib/afk-rows'
 import type { RouterOutputs } from '../lib/api'
+import { RUNTIME_LOGIN } from '../lib/first-run'
+import { RUNTIME_LABEL } from '../lib/settings'
 import { useToast } from '../lib/toast'
 import { Button, DimLine } from '../ui'
 import { ErrorBoundary } from './ErrorBoundary'
@@ -26,7 +29,7 @@ export function EnableAfkCard({ onDismiss }: { onDismiss?: () => void }) {
   const probe = (id: string) => report?.results.find((r) => r.id === id)
   const runtime = probe('container-runtime')
   const image = probe('sandcastle-image')
-  const credentials = (report?.results ?? []).filter((r) => r.check === 'afk-key')
+  const credentials = afkCredentialRows(report?.results ?? [])
 
   const recheck = () => doctor.refetch()
 
@@ -45,9 +48,9 @@ export function EnableAfkCard({ onDismiss }: { onDismiss?: () => void }) {
       </div>
       <p className="afk-card-sub">
         AFK burns run each feature to completion in a sandbox — no interactive
-        session. They need a container runtime, the sandcastle image, and a key
-        for each agent you want to burn with. Set them up now or anytime from
-        Settings.
+        session. They need a container runtime, the sandcastle image, and the
+        unattended credential of each agent you want to burn with. Set them up
+        now or anytime from Settings.
       </p>
 
       {doctor.isLoading && <DimLine>checking prerequisites…</DimLine>}
@@ -57,9 +60,13 @@ export function EnableAfkCard({ onDismiss }: { onDismiss?: () => void }) {
         <div className="afk-rows">
           <RuntimeRow probe={runtime} onRecheck={recheck} />
           <ImageRow probe={image} runtimeOk={runtime?.status === 'ok'} onDone={recheck} />
-          {credentials.map((c) => (
-            <CredentialRow key={c.id} probe={c} onDone={recheck} />
-          ))}
+          {credentials.map((row) =>
+            row.kind === 'token' ? (
+              <CredentialRow key={row.runtime} probe={row.probe} onDone={recheck} />
+            ) : (
+              <SignInRow key={row.runtime} row={row} onDone={recheck} />
+            ),
+          )}
         </div>
       )}
     </div>
@@ -71,9 +78,12 @@ type Probe = RouterOutputs['setup']['doctor']['results'][number]
 /** One prerequisite row: status dot, label + observed detail, and its action slot. */
 function Row({
   probe,
+  label,
   children,
 }: {
   probe: Probe | undefined
+  /** Overrides the probe's own label, for a row asking a narrower question than it. */
+  label?: string
   children?: React.ReactNode
 }) {
   if (!probe) return null
@@ -83,7 +93,7 @@ function Row({
       <div className="afk-row-head">
         <span className={`afk-dot afk-dot-${ok ? 'ok' : 'warn'}`} aria-hidden />
         <div className="afk-row-text">
-          <div className="afk-row-label">{probe.label}</div>
+          <div className="afk-row-label">{label ?? probe.label}</div>
           <div className="afk-row-detail mono">{probe.detail}</div>
         </div>
       </div>
@@ -182,24 +192,22 @@ function ImageRow({
 }
 
 /**
- * How each runtime's unattended credential is obtained. Claude Code mints a
- * long-lived token with its own `setup-token` flow, so the card runs it in an
- * embedded terminal and takes the printed line; Codex has no such flow — its
- * unattended credential is an OpenAI API key the operator already holds, pasted
- * straight in.
+ * How each runtime that has a credential to *capture* obtains it. Claude Code
+ * mints a long-lived token with its own `setup-token` flow, so the card runs it
+ * in an embedded terminal and takes the printed line. Codex is absent by design:
+ * a Codex burn borrows the login the operator already has (decision 4), so there
+ * is nothing to paste and its row is a {@link SignInRow}.
  */
-const AFK_CREDENTIAL: Record<
-  AgentRuntime,
-  { mint?: { kind: 'setup-token'; label: string }; prompt: string; placeholder: string }
+const AFK_CREDENTIAL: Partial<
+  Record<
+    AgentRuntime,
+    { mint?: { kind: 'setup-token'; label: string }; prompt: string; placeholder: string }
+  >
 > = {
   'claude-code': {
     mint: { kind: 'setup-token', label: 'Run claude setup-token' },
     prompt: 'Paste the token it prints',
     placeholder: 'sk-ant-oat01-…',
-  },
-  codex: {
-    prompt: 'Paste an OpenAI API key (platform.openai.com/api-keys)',
-    placeholder: 'sk-…',
   },
 }
 
@@ -226,6 +234,7 @@ function CredentialRow({ probe, onDone }: { probe: Probe | undefined; onDone: ()
   if (!probe?.runtime) return null
   const runtime = probe.runtime
   const flow = AFK_CREDENTIAL[runtime]
+  if (!flow) return null
   const inputId = `afk-credential-${runtime}`
 
   return (
@@ -279,6 +288,60 @@ function CredentialRow({ probe, onDone }: { probe: Probe | undefined; onDone: ()
               user with nothing to try but re-pasting the same token. */}
           {verdict.fix && <div className="afk-verdict-fix">{verdict.fix}</div>}
         </div>
+      )}
+    </Row>
+  )
+}
+
+/**
+ * One runtime whose unattended credential IS its interactive login: the burn
+ * container borrows the file that login wrote (decision 4), so signing in is the
+ * whole of the setup and the row has exactly one thing to offer — the sign-in
+ * terminal the wizard runs. Once it closes, the doctor is re-run and the row
+ * turns green on its own.
+ */
+function SignInRow({ row, onDone }: { row: AfkCredentialRow<Probe>; onDone: () => void }) {
+  const [sessionId, setSessionId] = useState<string | null>(null)
+  const toast = useToast()
+  const start = trpc.setup.startTerminal.useMutation({
+    onSuccess: ({ sessionId }) => setSessionId(sessionId),
+    onError: (e) => toast.push(e.message),
+  })
+  const login = RUNTIME_LOGIN[row.runtime]
+  const signedIn = row.probe.status === 'ok'
+
+  return (
+    <Row
+      probe={row.probe}
+      label={`${RUNTIME_LABEL[row.runtime]} — ${signedIn ? 'Signed in' : 'Sign in'}`}
+    >
+      {sessionId ? (
+        <>
+          <div className="afk-term">
+            <ErrorBoundary label={login.kind}>
+              <TerminalView sessionId={sessionId} />
+            </ErrorBoundary>
+          </div>
+          <div className="afk-term-actions">
+            <Button
+              variant="solid"
+              onClick={() => {
+                setSessionId(null)
+                onDone()
+              }}
+            >
+              Done — re-check
+            </Button>
+          </div>
+        </>
+      ) : (
+        <Button
+          variant="solid"
+          disabled={start.isPending}
+          onClick={() => start.mutate({ kind: login.kind })}
+        >
+          {start.isPending ? 'Starting…' : 'Sign in'}
+        </Button>
       )}
     </Row>
   )

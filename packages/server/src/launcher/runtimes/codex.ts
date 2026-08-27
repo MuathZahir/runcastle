@@ -7,11 +7,11 @@ import {
   statSync,
   writeFileSync,
 } from 'node:fs'
-import { homedir } from 'node:os'
 import { basename, dirname, join, resolve } from 'node:path'
 import type { RuncastleConfig, SessionKind, SessionRow } from '@runcastle/core'
 import { sessionDir } from '@runcastle/core/paths'
 import { RUNTIME_SPECS } from '../../doctor/doctor'
+import { codexAuthFile } from '../../services/codex-auth'
 import { resolveTool } from '../../util/resolve-executable'
 import { hookClientPath, renderSessionPrompt, serverUrlFor } from '../artifacts'
 import { EDIT_TOOL_MATCHER, guardsEdits } from '../edit-guard'
@@ -57,13 +57,12 @@ export function codexHomeDir(sessionId: string): string {
 
 /**
  * The human's REAL `auth.json`, which an interactive session borrows (decision
- * 5). Asked of the doctor's own probe so the launcher and the "Codex login"
- * check can never disagree about where credentials live; `authFile` is optional
- * on the shared spec type (Claude Code has none on darwin), so the same default
- * it uses stands in.
+ * 5). Resolved through the one shared predicate every surface reads — the
+ * doctor's `auth` check, the burner's precheck and this launcher — so nothing
+ * can disagree about where credentials live.
  */
 function realCodexAuthFile(env: NodeJS.ProcessEnv = process.env): string {
-  return CODEX.authFile?.(env) ?? join(homedir(), '.codex', 'auth.json')
+  return codexAuthFile(env)
 }
 
 // --- config.toml ------------------------------------------------------------
