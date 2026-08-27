@@ -109,6 +109,28 @@ describe('burn guard rules', () => {
       expect(denied("cat >> src/a.ts <<'EOF'\nx\nEOF")).toBe('no-cat-heredoc-edit')
     })
 
+    it('denies interpreter one-liners used to edit files', () => {
+      expect(denied(`node -e "const fs = require('fs'); fs.writeFileSync('a', 'x')"`)).toBe(
+        'no-interpreter-inline-edit',
+      )
+      expect(denied("perl -0pi -e 's/old/new/g' src/a.ts")).toBe('no-perl-in-place-edit')
+      expect(denied("perl -i -pe 's/old/new/g' src/a.ts")).toBe('no-perl-in-place-edit')
+    })
+
+    it('denies multi-range sed in-place surgery', () => {
+      expect(denied("sed -i '10,20d;30,40d' src/a.ts")).toBe('no-sed-multi-range-edit')
+      expect(denied("cd /repo && sed -i.bak '/start/,/end/d;/left/,/right/d' src/a.ts")).toBe(
+        'no-sed-multi-range-edit',
+      )
+    })
+
+    it('allows non-editing interpreter and sed commands', () => {
+      expect(denied('node script.js')).toBeNull()
+      expect(denied("perl -e 'print 1'")).toBeNull()
+      expect(denied("sed -n '10,20p' src/a.ts")).toBeNull()
+      expect(denied("while read line; do printf '%s\\n' \"$line\"; done < src/a.ts")).toBeNull()
+    })
+
     it('allows the commit-message heredoc the burner prompt itself mandates', () => {
       // `git commit -F - <<'EOF'` is the documented commit convention; denying
       // it would block the one thing the guard exists to protect.

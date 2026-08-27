@@ -5,7 +5,7 @@ import { dirname, join } from 'node:path'
 import type { Feature, ModelEntry, Ticket } from '@runcastle/core'
 import { worktreeDir } from '@runcastle/core/paths'
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { buildGuardInstallCommand } from '../src/workflows/burn-guard'
+import { GUARD_RULES, buildGuardInstallCommand } from '../src/workflows/burn-guard'
 import {
   CODEX_HOST_MOUNT_PATH,
   ISOLATED_REPO_PATH,
@@ -364,8 +364,16 @@ describe('buildLapDigestsBlock', () => {
 describe('buildGuardNotes', () => {
   it('claims enforcement only when the hook is actually installed', () => {
     expect(buildGuardNotes(true)).toMatch(/denied before they run/i)
-    expect(buildGuardNotes(false)).not.toMatch(/denied/i)
-    expect(buildGuardNotes(false)).toMatch(/machine-enforced/i)
+    expect(buildGuardNotes(false)).not.toMatch(/denied before they run/i)
+    expect(buildGuardNotes(false)).toMatch(/not machine-enforced/i)
+  })
+
+  it('renders every denial reason verbatim from the guard rule table', () => {
+    const notes = buildGuardNotes(true)
+
+    for (const rule of GUARD_RULES) {
+      expect(notes).toContain(`- ${rule.reason}`)
+    }
   })
 })
 
