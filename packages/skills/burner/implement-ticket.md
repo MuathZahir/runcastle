@@ -8,6 +8,7 @@ You are a single agent in a sandbox on **your ticket's own temp branch**, `runca
 
 You run **non-interactively** — your agent CLI in print/exec mode, no terminal, no human — for up to a few fresh iterations:
 
+- You are the only writer in this tree. Subagents may READ and REPORT only — they never edit, never run tests. Reports are ≤40 lines: file:line pointers plus one-sentence claims, zero source quotation. Tell subagents what you already searched so they do not repeat it.
 - **Ending your turn ends your process.** There are no background-task completion notifications in print mode — a "the notification will re-invoke me" plan never fires. Never end your turn to wait on a background command; run long commands (dependency installs, full test suites) in the foreground with a generous timeout, or poll a backgrounded command to completion *within* the same turn. **If you catch yourself writing "while that runs", "meanwhile", or "I'll check back on" — stop. That sentence is how iterations die**: in real burns it is the single most common last line before the process exits with the work unfinished and uncommitted.
 - **A next iteration is not a free retry.** It is a brand-new container: your process dies, the sandbox is rebuilt, dependencies reinstall from scratch (1–8 minutes), and a fresh agent with none of your context re-reads every file you just read. Budget roughly ten wasted minutes per iteration you burn. Finishing in one is worth real effort.
 - **You may not be the first iteration.** Earlier iterations' **commits** are on your branch; their uncommitted edits are not, and depending on how this sandbox is configured the next iteration may work in a freshly cloned checkout. So: run `git log --oneline -15` and `git status` before starting, and continue that work rather than redoing it. Only commits carry across.
@@ -61,7 +62,7 @@ Whatever the commands are, spend them well — a full suite on a monorepo is min
 
 4. **Commit early, commit often — an uncommitted slice is a slice you can lose.** A commit is the *only* thing that survives your process ending. Everything else — edited files, a passing test you have not committed, an hour of work — is discarded the moment the turn ends, and the next iteration starts from your last commit as if the rest never happened. Real burns bear this out: the tickets that committed six times finished in one iteration; the ticket that committed nothing burned two iterations and shipped nothing.
 
-   So: **the moment a slice is green, commit it.** Do not save commits up for a tidy end-of-ticket batch, do not wait for the next criterion, do not let more than about ten minutes of work sit uncommitted. Before each commit run typecheck and the *relevant* tests — **never commit red** — then commit with a subject line of the form:
+   So: **the moment a slice is green, commit it.** Aim for 3–4 slice commits per ticket; never commit a comment-only or formatting-only change on its own — fold it into the next slice. Do not save commits up for a tidy end-of-ticket batch, do not wait for the next criterion, do not let more than about ten minutes of work sit uncommitted. Before each commit run typecheck and the *relevant* tests — **never commit red** — then commit with a subject line of the form:
 
    `ticket(<seq>): <summary>`
 

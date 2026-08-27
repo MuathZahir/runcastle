@@ -66,7 +66,7 @@ import type {
   RunResult,
 } from '@ai-hero/sandcastle'
 import { claudeCode, codex, run } from '@ai-hero/sandcastle'
-import { buildGuardInstallCommand } from './burn-guard'
+import { GUARD_RULES, buildGuardInstallCommand } from './burn-guard'
 // The other execution kind. Imported for its one entry point only — everything
 // it needs from here it takes from the exported pure units, and neither module
 // touches the other while it is being evaluated.
@@ -621,9 +621,11 @@ export function buildDriveNotes(settings: DriveSettings): string {
  * conditional.
  */
 export function buildGuardNotes(guardInstalled: boolean): string {
-  return guardInstalled
-    ? 'Three of the rules below are enforced by a tool hook, not merely stated: `git stash`, test-runner concurrency flags, and rewriting files through interpreter heredocs are **denied before they run**. A denial is policy, not a broken environment — read its reason, take the alternative it names, and carry on. Do not try to route around it.'
-    : 'Nothing below is machine-enforced in this burn — the deny hook is not installed, so the rules hold on your discipline alone. They are not style preferences: each one is a measured way burns lose work.'
+  const introduction = guardInstalled
+    ? 'The following commands are **denied before they run** by a tool hook. Each denial and its prescribed alternative comes verbatim from the guard that enforces it. A denial is policy, not a broken environment — follow the alternative and do not try to route around it.'
+    : 'The deny hook is not installed in this burn, so the following guard rules are not machine-enforced. Follow them on discipline alone; each denial and its prescribed alternative comes verbatim from the guard used in protected burns.'
+
+  return [introduction, '', ...GUARD_RULES.map((rule) => `- ${rule.reason}`)].join('\n')
 }
 
 /**

@@ -60,6 +60,42 @@ describe('burn guard rules', () => {
     })
   })
 
+  describe('long sleeps and verification polling', () => {
+    it('denies sleep durations above 30 seconds', () => {
+      expect(denied('sleep 31')).toBe('no-long-sleep')
+      expect(denied('cd /repo && sleep 120 && bun test')).toBe('no-long-sleep')
+      expect(denied('sleep 31s')).toBe('no-long-sleep')
+      expect(denied('sleep 1m')).toBe('no-long-sleep')
+    })
+
+    it('allows short sleeps', () => {
+      expect(denied('sleep 5')).toBeNull()
+      expect(denied('sleep 30')).toBeNull()
+    })
+
+    it('denies until and while loops that poll verification commands', () => {
+      expect(denied('until bun run typecheck; do sleep 20; done')).toBe(
+        'no-verification-polling-loop',
+      )
+      expect(denied('while ! pnpm test; do sleep 5; done')).toBe(
+        'no-verification-polling-loop',
+      )
+      expect(denied('while true; do\n  bun vitest run\n  sleep 5\ndone')).toBe(
+        'no-verification-polling-loop',
+      )
+      expect(denied('until turbo run test; do echo waiting; done')).toBe(
+        'no-verification-polling-loop',
+      )
+      expect(denied('while bun test; do echo retrying; done')).toBe(
+        'no-verification-polling-loop',
+      )
+    })
+
+    it('allows a while-read loop over a file', () => {
+      expect(denied('while read -r line; do echo "$line"; done < file.txt')).toBeNull()
+    })
+  })
+
   describe('file edits through the shell', () => {
     it('denies rewriting a file through an interpreter heredoc', () => {
       expect(denied("cd /repo && python3 - <<'PY'\nopen('a','w')\nPY")).toBe(
@@ -71,6 +107,28 @@ describe('burn guard rules', () => {
     it('denies `cat > file <<EOF`', () => {
       expect(denied("cat > src/a.ts <<'EOF'\nx\nEOF")).toBe('no-cat-heredoc-edit')
       expect(denied("cat >> src/a.ts <<'EOF'\nx\nEOF")).toBe('no-cat-heredoc-edit')
+    })
+
+    it('denies interpreter one-liners used to edit files', () => {
+      expect(denied(`node -e "const fs = require('fs'); fs.writeFileSync('a', 'x')"`)).toBe(
+        'no-interpreter-inline-edit',
+      )
+      expect(denied("perl -0pi -e 's/old/new/g' src/a.ts")).toBe('no-perl-in-place-edit')
+      expect(denied("perl -i -pe 's/old/new/g' src/a.ts")).toBe('no-perl-in-place-edit')
+    })
+
+    it('denies multi-range sed in-place surgery', () => {
+      expect(denied("sed -i '10,20d;30,40d' src/a.ts")).toBe('no-sed-multi-range-edit')
+      expect(denied("cd /repo && sed -i.bak '/start/,/end/d;/left/,/right/d' src/a.ts")).toBe(
+        'no-sed-multi-range-edit',
+      )
+    })
+
+    it('allows non-editing interpreter and sed commands', () => {
+      expect(denied('node script.js')).toBeNull()
+      expect(denied("perl -e 'print 1'")).toBeNull()
+      expect(denied("sed -n '10,20p' src/a.ts")).toBeNull()
+      expect(denied("while read line; do printf '%s\\n' \"$line\"; done < src/a.ts")).toBeNull()
     })
 
     it('allows the commit-message heredoc the burner prompt itself mandates', () => {
