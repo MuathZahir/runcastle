@@ -1,4 +1,4 @@
-import type { ReviewFinding, ReviewFindingInput, Ticket, TicketInput } from '@runcastle/core'
+import type { FixProgress, ReviewFinding, ReviewFindingInput, Ticket, TicketInput } from '@runcastle/core'
 import { ReviewFinding as ReviewFindingSchema, newId } from '@runcastle/core'
 import { and, asc, eq, isNotNull } from 'drizzle-orm'
 import type { AppCtx } from '../db/types'
@@ -149,6 +149,22 @@ export function markFailed(ctx: AppCtx, findingId: string, reason?: string): Rev
     openReason: 'fix-failed',
     failureReason: reason ?? null,
   })
+}
+
+/**
+ * Drive a finding through its fix ticket's lifecycle. The burn knows a ticket
+ * status and a finding id and nothing else about findings, so the mapping from
+ * one to the other lives here rather than in the scheduler.
+ */
+export function markFixProgress(
+  ctx: AppCtx,
+  findingId: string,
+  progress: FixProgress,
+  reason?: string,
+): ReviewFinding {
+  if (progress === 'fixing') return markFixing(ctx, findingId)
+  if (progress === 'fixed') return markFixed(ctx, findingId)
+  return markFailed(ctx, findingId, reason)
 }
 
 export function dismiss(ctx: AppCtx, findingId: string): ReviewFinding {

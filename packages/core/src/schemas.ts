@@ -157,6 +157,15 @@ export type FindingStatus = z.infer<typeof FindingStatus>
 export const FindingOpenReason = z.enum(['over-cap', 'fix-failed'])
 export type FindingOpenReason = z.infer<typeof FindingOpenReason>
 
+/**
+ * The subset of {@link FindingStatus} a defect's own fix ticket drives it
+ * through: it starts burning, then lands or fails. The burn mirrors its fix
+ * ticket's lifecycle onto the finding so the review page counts fixed and open
+ * from one source (decision 6) — the statuses outside this set belong to the
+ * human (`dismissed`) or to the report itself (`open`).
+ */
+export type FixProgress = Extract<FindingStatus, 'fixing' | 'fixed' | 'failed'>
+
 export const ReviewFindingInput = z
   .object({
     kind: FindingKind,
