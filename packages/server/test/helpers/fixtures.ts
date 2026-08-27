@@ -16,17 +16,22 @@ export function tmpRepo(): string {
 export function seedProject(ctx: AppCtx, repoPath: string = tmpRepo()): Project {
   const inserted = ctx.db
     .insert(projects)
-    .values({ id: newId('proj'), name: 'test', repoPath, mainBranch: 'main', devCommand: null })
+    .values({ id: newId('proj'), name: 'test', repoPath, devCommand: null })
     .returning()
     .get()
   return rowToProject(inserted)
 }
 
-/** Insert a feature row directly with sensible defaults. */
+/**
+ * Insert a feature row directly with sensible defaults. A seeded feature is a
+ * cut one, so it records a base (`main`) like every real feature does; pass
+ * `baseBranch: null` for the two rows that genuinely have none — a parked draft,
+ * or a legacy row from before the column existed.
+ */
 export function seedFeature(
   ctx: AppCtx,
   projectId: string,
-  overrides: Partial<Feature> = {},
+  overrides: Partial<Feature> & { baseBranch?: string | null } = {},
 ): Feature {
   const slug = overrides.slug ?? 'demo'
   const inserted = ctx.db
@@ -42,7 +47,7 @@ export function seedFeature(
       lap: overrides.lap ?? 1,
       phase: overrides.phase ?? 'ideation',
       branch: overrides.branch ?? `feature/${slug}`,
-      baseBranch: overrides.baseBranch ?? null,
+      baseBranch: overrides.baseBranch === undefined ? 'main' : overrides.baseBranch,
       status: overrides.status ?? 'active',
       createdAt: overrides.createdAt ?? Date.now(),
     })

@@ -6,6 +6,7 @@ import {
   prepRailRow,
   projectBranchNote,
   projectSessionState,
+  sessionBranchState,
   showsInspector,
   workspaceView,
 } from '../src/lib/project-workspace'
@@ -210,9 +211,62 @@ describe('projectBranchNote', () => {
     expect(note).toContain('checkout')
   })
 
-  // `project.list` has not landed on the first paint; naming no branch beats
-  // promising commits land somewhere they do not.
+  // The session-branch query has not landed on the first paint; naming no branch
+  // beats promising commits land somewhere they do not.
   it('names no branch rather than the wrong one before the project loads', () => {
     expect(projectBranchNote('')).toContain('the base branch')
+  })
+})
+
+/**
+ * Where the project chat's work lands is its own visible, per-project setting
+ * (decisions 5–6): stored if a human picked, else detected at read time, and
+ * only an explicit pick ever writes. The picker has to say which of those it is
+ * showing — "main, because we looked" and "main, because you said so" are
+ * different promises — and that a change waits for the next chat.
+ */
+describe('sessionBranchState', () => {
+  const branches = ['main', 'develop']
+
+  it('reads an unpicked project as detected, and never as a choice', () => {
+    const state = sessionBranchState(
+      { stored: null, effective: 'main', detected: 'main' },
+      branches,
+    )
+    expect(state).toMatchObject({ value: 'main', origin: 'detected', label: 'detected' })
+    expect(state?.note).toContain('nobody has picked')
+    expect(state?.note).toContain('next chat you open')
+  })
+
+  it('shows a human pick as theirs, over the detected main line', () => {
+    const state = sessionBranchState(
+      { stored: 'develop', effective: 'develop', detected: 'main' },
+      branches,
+    )
+    expect(state).toMatchObject({ value: 'develop', origin: 'picked', label: 'your pick' })
+    expect(state?.note).toContain('nothing re-detects over it')
+  })
+
+  // The one state the picker exists to fix (spec, "Seams"): the launch refuses
+  // to run and points here, so here has to admit what is wrong.
+  it('says a pick whose branch is gone will refuse to launch', () => {
+    const state = sessionBranchState(
+      { stored: 'release/1.2', effective: 'release/1.2', detected: 'main' },
+      branches,
+    )
+    expect(state).toMatchObject({ value: 'release/1.2', origin: 'vanished', label: 'branch gone' })
+    expect(state?.note).toContain('refuse to launch')
+  })
+
+  it('never accuses a pick of being gone while the branch list is in flight', () => {
+    expect(
+      sessionBranchState({ stored: 'develop', effective: 'develop', detected: 'main' }, undefined),
+    ).toMatchObject({ origin: 'picked' })
+  })
+
+  // "Detected" and "your pick" read as opposites, so there is no safe guess
+  // before the answer arrives — the picker renders nothing at all.
+  it('renders nothing until the query answers', () => {
+    expect(sessionBranchState(undefined, branches)).toBeNull()
   })
 })

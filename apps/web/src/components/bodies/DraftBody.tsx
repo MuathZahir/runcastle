@@ -1,6 +1,7 @@
 import type { BranchList, FeatureFull } from '../../lib/api'
-import { DRAFT_GLYPH } from '../../lib/feature-ui'
+import { DRAFT_GLYPH, type DraftBaseMissing } from '../../lib/feature-ui'
 import { DimLine } from '../../ui'
+import { BaseSelect } from '../BaseSelect'
 import { Markdown } from '../Markdown'
 
 /**
@@ -8,8 +9,10 @@ import { Markdown } from '../Markdown'
  * branch, no docs on disk — so there is nothing to peek at and no session to
  * host: what it holds is the idea itself, and that is what this shows. The
  * next-step bar above owns the one action (Start), and the base Start forks from
- * sits here behind an Advanced disclosure, because the default is right almost
- * every time.
+ * sits here behind an Advanced disclosure, because the default — the branch the
+ * project is checked out on — is right almost every time. When there is no
+ * default at all the disclosure opens itself: nothing cuts a branch on a guess
+ * (decision 8), so the pick the human owes has to be on screen.
  *
  * The branch list and the chosen base belong to the workspace rather than to
  * this component: Start fires from the bar, so the base has to be readable at
@@ -20,6 +23,7 @@ export function DraftBody({
   full,
   branches,
   base,
+  baseMissing,
   onPick,
 }: {
   full: FeatureFull
@@ -27,13 +31,16 @@ export function DraftBody({
   branches: BranchList | undefined
   /** The base the picker shows — the explicit pick, else the client default. */
   base: string
+  /** Why there is no base yet, when there is none ({@link DraftBaseMissing}). */
+  baseMissing: DraftBaseMissing | undefined
   onPick: (base: string) => void
 }) {
   const { feature } = full
-  const branchList = branches?.branches ?? []
-  // Remote-only branches (origin/…); picking one materializes a local base.
-  const remoteList = branches?.remoteBranches ?? []
-  const noBranches = branchList.length === 0 && remoteList.length === 0
+  // The branch list arrived and offered no default (decision 8): the checkout is
+  // not a base a feature can fork from, so Start is blocked and the disclosure
+  // that normally hides the picker has to give it up — a control the human must
+  // use cannot sit behind a summary reading "Advanced".
+  const mustPick = baseMissing === 'unpicked'
 
   return (
     <div className="draft-body">
@@ -63,40 +70,18 @@ export function DraftBody({
         </div>
       )}
 
-      <details className="draft-advanced">
-        <summary className="draft-advanced-summary">Advanced</summary>
-        <div className="nf-base">
-          <label className="nf-base-label" htmlFor="draft-base-select">
-            Branch from
-          </label>
-          <select
-            id="draft-base-select"
-            className="nf-base-select"
-            value={base}
-            disabled={!branches || noBranches}
-            onChange={(e) => onPick(e.target.value)}
-          >
-            {branchList.map((b) => (
-              <option key={b} value={b}>
-                {b}
-                {b === branches?.mainBranch ? ' (default)' : ''}
-                {b === branches?.current && b !== branches?.mainBranch ? ' (current)' : ''}
-              </option>
-            ))}
-            {remoteList.length > 0 && (
-              <optgroup label="Remote (creates a local branch)">
-                {remoteList.map((b) => (
-                  <option key={b} value={b}>
-                    {b}
-                  </option>
-                ))}
-              </optgroup>
-            )}
-          </select>
-          <span className="size-hint">
-            Start forks off this branch — and merges back into it when shipped.
-          </span>
-        </div>
+      <details className="draft-advanced" open={mustPick}>
+        <summary className="draft-advanced-summary">
+          {mustPick ? 'Choose a branch to fork from' : 'Advanced'}
+        </summary>
+        <BaseSelect
+          id="draft-base-select"
+          label="Branch from"
+          branches={branches}
+          value={base}
+          onPick={onPick}
+          hint="Start forks off this branch — and merges back into it when shipped."
+        />
       </details>
     </div>
   )

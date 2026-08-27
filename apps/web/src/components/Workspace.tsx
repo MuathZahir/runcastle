@@ -26,6 +26,7 @@ import {
   testDriveTaken,
   unresolvedMergeConflict,
   type ActionKind,
+  type DraftBaseMissing,
   type LapBanner,
   type MergeConflictState,
   type NextAction,
@@ -147,11 +148,16 @@ export function Workspace({
   // feature it was made on — this component is not remounted between features,
   // so an unstamped pick would follow the user to the next draft and quietly
   // fork it off a branch they chose for a different idea. No pick (or a stale
-  // one) means the client default: the current checkout, falling back to main.
+  // one) means the client default: the current checkout, and nothing at all when
+  // that checkout is not a base a feature can fork from (decision 8).
   const [draftPick, setDraftPick] = useState<{ featureId: string; base: string } | null>(null)
   const effectiveDraftBase =
     (draftPick?.featureId === featureId ? draftPick.base : '') ||
     (branchesQ.data ? defaultBaseBranch(branchesQ.data) : '')
+  // Why Start has no base to send, when it has none — read by the bar (which
+  // says so on the disabled button) and by the body (which opens the picker).
+  const draftBaseMissing: DraftBaseMissing | undefined =
+    !isDraft || effectiveDraftBase ? undefined : branchesQ.data ? 'unpicked' : 'loading'
 
   const invalidate = () => {
     void utils.feature.get.invalidate({ id: featureId })
@@ -339,7 +345,7 @@ export function Workspace({
     conflict,
     unverifiedDriveKeys: unverifiedDriveKeys((prepQ.data as PrepView | undefined)?.findings ?? []),
     dryRunActive: !!driveQ.data?.dryRun,
-    draftBaseUnresolved: isDraft && !effectiveDraftBase,
+    ...(draftBaseMissing ? { draftBaseMissing } : {}),
     openNotes,
     laterLaps,
   })
@@ -375,9 +381,9 @@ export function Workspace({
     switch (kind) {
       case 'startDraft':
         // Send the base the body is SHOWING, not just an explicit pick: omitting
-        // it lets the server fall back to the project main branch, silently
-        // contradicting the current-branch default in the picker. The bar's
-        // Start is disabled until this resolves, so it is never empty here.
+        // it falls back to the checkout's current branch server-side, which is
+        // not necessarily what the picker has on screen. The bar's Start is
+        // disabled while this is empty, so it never sends nothing.
         start.mutate({ featureId, baseBranch: effectiveDraftBase })
         break
       case 'startGrill':
@@ -579,6 +585,7 @@ export function Workspace({
               full={full}
               branches={branchesQ.data}
               base={effectiveDraftBase}
+              baseMissing={draftBaseMissing}
               onPick={(base) => setDraftPick({ featureId, base })}
             />
           ) : (

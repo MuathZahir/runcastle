@@ -304,6 +304,11 @@ export function useLiveSync(): LiveStatus {
       // change under a running agent, and each one used to depend on its own
       // hardcoded interval (or on a remount) to notice.
       void u.settings.get.invalidate()
+      // The project chat's landing branch is a settings write like any other, so
+      // the picker that shows it has to move on the same push — it has no
+      // polling interval of its own, and the settings overlay carries a row for
+      // the same value.
+      void u.project.sessionBranch.invalidate()
       void u.feature.commitCount.invalidate()
       void u.project.prepSession.invalidate()
       void u.project.projectSession.invalidate()

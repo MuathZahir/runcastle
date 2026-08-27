@@ -32,7 +32,7 @@ type ActionKind = 'home' | 'openProject' | 'settings' | 'preparation' | 'project
 
 type Row =
   | { kind: 'feature'; feature: FeatureListItem }
-  | { kind: 'project'; id: string; name: string; branch: string; current: boolean }
+  | { kind: 'project'; id: string; name: string; current: boolean }
   | { kind: 'action'; action: Action }
 
 interface Action {
@@ -146,7 +146,7 @@ export function CommandPalette(props: CommandPaletteProps) {
   const rows = useMemo<Row[]>(() => {
     const r: Row[] = filteredFeatures.map((f) => ({ kind: 'feature' as const, feature: f }))
     for (const p of filteredProjects)
-      r.push({ kind: 'project', id: p.id, name: p.name, branch: p.mainBranch, current: false })
+      r.push({ kind: 'project', id: p.id, name: p.name, current: false })
     for (const action of actions) r.push({ kind: 'action', action })
     return r
   }, [filteredFeatures, filteredProjects, actions])
@@ -258,7 +258,6 @@ export function CommandPalette(props: CommandPaletteProps) {
                       <IconFolder size={13} />
                     </span>
                     <span className="cmdk-item-label">{p.name}</span>
-                    <span className="cmdk-item-slug">{p.mainBranch}</span>
                     <span className="cmdk-item-hint">project</span>
                   </div>
                 )

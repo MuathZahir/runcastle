@@ -71,7 +71,7 @@ describe('workWaypoint — claim before spawn', () => {
 
   async function mappedFeature(slug: string) {
     const feature = seedFeature(ctx, projectId, { slug, mapped: true })
-    await createFeatureBranch({ id: projectId, name: 't', repoPath, mainBranch: 'main' }, slug)
+    await createFeatureBranch({ id: projectId, name: 't', repoPath }, slug, 'main')
     cleanup.push(worktreeDir(projectId, slug))
     return feature
   }
@@ -131,7 +131,7 @@ describe('workWaypoint — claim before spawn', () => {
     // concurrent calls see it as already valid — otherwise they'd race on
     // `git worktree add` instead, masking the waypoint-claim race this guards.
     await ensureTalkWorktree(
-      { id: projectId, name: 't', repoPath, mainBranch: 'main' },
+      { id: projectId, name: 't', repoPath },
       feature,
     )
     const [a, b] = storeWaypoints(ctx, feature.id, [wp('a'), wp('b')])
@@ -214,7 +214,7 @@ describe('workWaypoint — implicit handoff', () => {
 
   async function mappedFeature(slug: string) {
     const feature = seedFeature(ctx, projectId, { slug, mapped: true })
-    await createFeatureBranch({ id: projectId, name: 't', repoPath, mainBranch: 'main' }, slug)
+    await createFeatureBranch({ id: projectId, name: 't', repoPath }, slug, 'main')
     cleanup.push(worktreeDir(projectId, slug))
     return feature
   }

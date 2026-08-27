@@ -23,9 +23,8 @@ import { EnableAfkCard } from './EnableAfkCard'
  * overlay over the shell — no router, no tabs. Two sections: Global (machine
  * defaults) and This project (per-project overrides), each rendering fields from
  * the `settings.get` value/source/editable contract. Env-locked fields read-only
- * with the variable named; serverPort flags restart-required; git-detected
- * mainBranch read-only. Edits persist via `settings.update` and the query
- * invalidates so the new value shows immediately.
+ * with the variable named; serverPort flags restart-required. Edits persist via
+ * `settings.update` and the query invalidates so the new value shows immediately.
  */
 export function SettingsOverlay({
   projectId,

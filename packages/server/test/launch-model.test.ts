@@ -56,7 +56,7 @@ describe('launch model resolution (#48)', () => {
       ctx.db.update(projects).set({ model: projectModel }).where(eq(projects.id, project.id)).run()
     }
     const feature = seedFeature(ctx, project.id, { slug })
-    await createFeatureBranch(project, slug)
+    await createFeatureBranch(project, slug, 'main')
     cleanup.push(worktreeDir(project.id, slug))
     const { sessionId } = await launchSession(
       ctx,

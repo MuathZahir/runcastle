@@ -194,7 +194,7 @@ describe('createFeatureBranch', () => {
   })
 
   it('creates feature/<slug> from main without switching the main checkout', async () => {
-    const branch = await createFeatureBranch(project, 'my-feat')
+    const branch = await createFeatureBranch(project, 'my-feat', 'main')
     expect(branch).toBe('feature/my-feat')
 
     const g = simpleGit(project.repoPath)
@@ -205,14 +205,14 @@ describe('createFeatureBranch', () => {
   })
 
   it('is idempotent when the branch already exists', async () => {
-    await createFeatureBranch(project, 'dup')
-    const again = await createFeatureBranch(project, 'dup')
+    await createFeatureBranch(project, 'dup', 'main')
+    const again = await createFeatureBranch(project, 'dup', 'main')
     expect(again).toBe('feature/dup')
     const branches = await simpleGit(project.repoPath).branchLocal()
     expect(branches.all.filter((b) => b === 'feature/dup')).toHaveLength(1)
   })
 
-  it('forks off an explicit base branch, not just mainBranch', async () => {
+  it('forks off the base it is given, not the repo main line', async () => {
     const g = simpleGit(project.repoPath)
     // A release line diverged from main by one commit.
     await g.raw(['branch', 'release'])
@@ -230,11 +230,10 @@ describe('createFeatureBranch', () => {
     expect(await currentBranch(g)).toBe('main')
   })
 
-  it('falls back to mainBranch when base is blank/undefined', async () => {
-    const g = simpleGit(project.repoPath)
-    const mainTip = (await g.revparse(['main'])).trim()
-    await createFeatureBranch(project, 'blank-base', '   ')
-    expect((await g.revparse(['feature/blank-base'])).trim()).toBe(mainTip)
+  it('refuses a blank base rather than falling back to a main line', async () => {
+    await expect(createFeatureBranch(project, 'blank-base', '   ')).rejects.toThrow(/does not exist/)
+    const branches = await simpleGit(project.repoPath).branchLocal()
+    expect(branches.all).not.toContain('feature/blank-base')
   })
 
   it('throws a clear error when the base branch does not exist', async () => {
@@ -255,13 +254,12 @@ describe('listBranches', () => {
     project = seedProject(ctx, repo)
   })
 
-  it('reports current + mainBranch and excludes feature/* branches', async () => {
+  it('reports the current branch and excludes feature/* branches', async () => {
     const g = simpleGit(project.repoPath)
     await g.raw(['branch', 'dev'])
-    await createFeatureBranch(project, 'hidden')
+    await createFeatureBranch(project, 'hidden', 'main')
 
     const res = await listBranches(project)
-    expect(res.mainBranch).toBe('main')
     expect(res.current).toBe('main')
     expect(res.branches).toContain('main')
     expect(res.branches).toContain('dev')
@@ -280,6 +278,19 @@ describe('listBranches', () => {
     expect(res.remoteBranches).not.toContain('origin/main')
     expect(res.remoteBranches.some((b) => b.endsWith('/HEAD'))).toBe(false)
     expect(res.branches).not.toContain('origin/release')
+  })
+
+  it('reports a detached HEAD as no current branch, and never as a pickable one', async () => {
+    const g = simpleGit(project.repoPath)
+    const head = (await g.revparse(['HEAD'])).trim()
+    await g.checkout(['--detach', head])
+
+    const res = await listBranches(project)
+    // simple-git names the detached pseudo-branch for the short sha; nobody can
+    // fork a feature off it, so it is neither the current branch nor a pick.
+    expect(res.current).toBe('')
+    expect(res.branches.join(' ')).not.toContain(head.slice(0, 7))
+    expect(res.branches).toContain('main')
   })
 })
 
@@ -353,7 +364,7 @@ describe('ensureTalkWorktree', () => {
     await initRepo(repo)
     project = seedProject(ctx, repo)
     feature = seedFeature(ctx, project.id, { slug: 'wt' })
-    await createFeatureBranch(project, feature.slug)
+    await createFeatureBranch(project, feature.slug, 'main')
   })
 
   afterEach(() => {
@@ -390,6 +401,25 @@ describe('ensureTalkWorktree', () => {
     expect(list.match(/^worktree /gm)?.length).toBe(2) // the main checkout + the talk worktree
   })
 
+  it('recuts a vanished branch from the feature base, not from the main line', async () => {
+    // A feature forked off develop, whose branch was deleted out from under it.
+    const g = simpleGit(project.repoPath)
+    await g.checkoutLocalBranch('develop')
+    writeFileSync(join(project.repoPath, 'DEV.md'), 'dev\n')
+    await g.add(['DEV.md'])
+    await g.commit('develop-only commit')
+    const developTip = (await g.revparse(['develop'])).trim()
+    await g.checkout('main')
+
+    const onDev = seedFeature(ctx, project.id, { slug: 'on-dev', baseBranch: 'develop' })
+
+    const wt = await ensureTalkWorktree(project, onDev)
+
+    expect(await currentBranch(simpleGit(wt))).toBe('feature/on-dev')
+    // Recut from develop's tip — off main it would carry no develop commit.
+    expect((await g.revparse(['feature/on-dev'])).trim()).toBe(developTip)
+  })
+
   it('recovers from a stale worktree (dir removed) via prune + retry', async () => {
     const first = await ensureTalkWorktree(project, feature)
     // Delete the worktree dir out from under git: registry now disagrees.
@@ -418,7 +448,7 @@ describe('detachWorktree / reattachWorktree', () => {
     await initRepo(repo)
     project = seedProject(ctx, repo)
     feature = seedFeature(ctx, project.id, { slug: 'dt' })
-    await createFeatureBranch(project, feature.slug)
+    await createFeatureBranch(project, feature.slug, 'main')
   })
 
   afterEach(() => {
@@ -469,7 +499,7 @@ describe('testDrive with a live talk worktree', () => {
     await initRepo(repo)
     project = seedProject(ctx, repo)
     feature = seedFeature(ctx, project.id, { slug: 'drivewt' })
-    await createFeatureBranch(project, feature.slug)
+    await createFeatureBranch(project, feature.slug, 'main')
     // A live talk worktree holds feature/drivewt checked out (the collision).
     await ensureTalkWorktree(project, feature)
   })
@@ -565,7 +595,7 @@ describe('testDrive', () => {
     await initRepo(repo)
     project = seedProject(ctx, repo)
     feature = seedFeature(ctx, project.id, { slug: 'drive' })
-    await createFeatureBranch(project, feature.slug)
+    await createFeatureBranch(project, feature.slug, 'main')
   })
 
   it('denies start when the main checkout is dirty', async () => {
@@ -911,7 +941,7 @@ describe('mergeTempBranch', () => {
     await initRepo(repo)
     project = seedProject(ctx, repo)
     feature = seedFeature(ctx, project.id, { slug: 'rsr' })
-    await createFeatureBranch(project, feature.slug)
+    await createFeatureBranch(project, feature.slug, 'main')
   })
 
   afterEach(() => {
@@ -1107,7 +1137,7 @@ describe('cleanupTempBranches', () => {
     const repo = mkTmp('rc-sweep-')
     await initRepo(repo)
     project = seedProject(ctx, repo)
-    await createFeatureBranch(project, 'swp')
+    await createFeatureBranch(project, 'swp', 'main')
   })
 
   it('deletes merged temp branches, keeps unmerged ones, never touches foreign branches', async () => {
@@ -1151,7 +1181,7 @@ describe('cleanupTempBranches', () => {
   it('maps truncated slug segments to their feature branch and still sweeps old full-slug leftovers', async () => {
     const g = simpleGit(project.repoPath)
     const longSlug = 'add-the-rest-of-the-act-2-assistant-tools-and-functionalities'
-    await createFeatureBranch(project, longSlug)
+    await createFeatureBranch(project, longSlug, 'main')
     // current format (ADR-0003): segment is the truncated slug
     const merged = ticketBranchName(longSlug, 1, 'eee555')
     await g.raw(['branch', merged, `feature/${longSlug}`])
@@ -1201,7 +1231,7 @@ describe('reviewCommitCount', () => {
   }
 
   it('counts a branch that is one commit ahead as 1, never 0', async () => {
-    await createFeatureBranch(project, 'ahead')
+    await createFeatureBranch(project, 'ahead', 'main')
     await commitOn('feature/ahead', 'one')
 
     const feature = seedFeature(ctx, project.id, { slug: 'ahead' })
@@ -1209,7 +1239,7 @@ describe('reviewCommitCount', () => {
   })
 
   it('counts every commit on the branch', async () => {
-    await createFeatureBranch(project, 'three')
+    await createFeatureBranch(project, 'three', 'main')
     for (const n of ['a', 'b', 'c']) await commitOn('feature/three', n)
 
     const feature = seedFeature(ctx, project.id, { slug: 'three' })
@@ -1217,7 +1247,7 @@ describe('reviewCommitCount', () => {
   })
 
   it('is merge-base relative — commits that land on the base afterwards do not count', async () => {
-    await createFeatureBranch(project, 'forked')
+    await createFeatureBranch(project, 'forked', 'main')
     await commitOn('feature/forked', 'mine')
     // main moves on underneath the feature — that is the base's work, not ours.
     await commitOn('main', 'theirs')
@@ -1240,7 +1270,7 @@ describe('reviewCommitCount', () => {
   })
 
   it('reports 0 for a branch with nothing on it', async () => {
-    await createFeatureBranch(project, 'empty')
+    await createFeatureBranch(project, 'empty', 'main')
     const feature = seedFeature(ctx, project.id, { slug: 'empty' })
     expect((await reviewCommitCount(project, feature)).count).toBe(0)
   })
@@ -1265,7 +1295,7 @@ describe('mergeFeature', () => {
   })
 
   it('happy path: merges the feature branch with --no-ff and stays on main', async () => {
-    await createFeatureBranch(project, 'happy')
+    await createFeatureBranch(project, 'happy', 'main')
     const g = simpleGit(project.repoPath)
     await g.checkout('feature/happy')
     writeFileSync(join(project.repoPath, 'feature.txt'), 'hello\n')
@@ -1311,10 +1341,17 @@ describe('mergeFeature', () => {
     expect(contains).not.toMatch(/\bmain\b/)
   })
 
+  it('refuses a feature with no recorded base rather than reaching for the main line', async () => {
+    await createFeatureBranch(project, 'baseless', 'main')
+    const feature = seedFeature(ctx, project.id, { slug: 'baseless', baseBranch: null })
+
+    await expect(mergeFeature(project, feature)).rejects.toThrow(/no recorded base branch/)
+  })
+
   it('restores the pre-merge branch even when merging into main', async () => {
     // Checkout sits on a scratch branch at merge time; after merging into main it
     // must come back to that scratch branch, not stay on main.
-    await createFeatureBranch(project, 'scratchy')
+    await createFeatureBranch(project, 'scratchy', 'main')
     const g = simpleGit(project.repoPath)
     await g.checkout('feature/scratchy')
     writeFileSync(join(project.repoPath, 'f.txt'), 'x\n')
@@ -1345,7 +1382,7 @@ describe('mergeFeature', () => {
   })
 
   it('conflict: aborts, reports conflict, and leaves a clean checkout on main', async () => {
-    await createFeatureBranch(project, 'clash')
+    await createFeatureBranch(project, 'clash', 'main')
     const g = simpleGit(project.repoPath)
 
     // Both branches edit the same line of README.md (seeded as 'base').
@@ -1373,7 +1410,7 @@ describe('mergeFeature', () => {
   })
 
   it('denies merge while a test drive is active', async () => {
-    await createFeatureBranch(project, 'guard')
+    await createFeatureBranch(project, 'guard', 'main')
     const feature = seedFeature(ctx, project.id, { slug: 'guard' })
 
     const start = await testDrive(ctx, project, feature, 'start')
@@ -1385,7 +1422,7 @@ describe('mergeFeature', () => {
   })
 
   it('denies merge when the checkout is dirty', async () => {
-    await createFeatureBranch(project, 'dirtymerge')
+    await createFeatureBranch(project, 'dirtymerge', 'main')
     writeFileSync(join(project.repoPath, 'junk.txt'), 'x')
     const feature = seedFeature(ctx, project.id, { slug: 'dirtymerge' })
 
@@ -1393,7 +1430,7 @@ describe('mergeFeature', () => {
   })
 
   it('activeTestDriveFeatureId reports the driven feature and clears on stop', async () => {
-    await createFeatureBranch(project, 'whichfeat')
+    await createFeatureBranch(project, 'whichfeat', 'main')
     const feature = seedFeature(ctx, project.id, { slug: 'whichfeat' })
 
     expect(activeTestDriveFeatureId()).toBeUndefined()
@@ -1404,7 +1441,7 @@ describe('mergeFeature', () => {
   })
 
   it('ship flow: stopping the active drive first lets the merge proceed', async () => {
-    await createFeatureBranch(project, 'shipflow')
+    await createFeatureBranch(project, 'shipflow', 'main')
     const g = simpleGit(project.repoPath)
     await g.checkout('feature/shipflow')
     writeFileSync(join(project.repoPath, 'feature.txt'), 'hi\n')

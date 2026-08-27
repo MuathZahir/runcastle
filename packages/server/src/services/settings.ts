@@ -46,6 +46,7 @@ const GLOBAL_EVENT_KEY = 'global'
 type ProjectColumn =
   | 'model'
   | 'sandbox'
+  | 'sessionBranch'
   | 'devCommand'
   | 'setupCommand'
   | 'verifyCommands'
@@ -197,16 +198,20 @@ const DESCRIPTORS: FieldDescriptor[] = [
     parseEnv: idEnv,
   },
   {
-    key: 'mainBranch',
-    configKey: 'mainBranch',
-    envVar: 'RUNCASTLE_MAIN_BRANCH',
+    key: 'devCommand',
+    projectColumn: 'devCommand',
     restartRequired: false,
     valueSchema: z.string().min(1),
     parseEnv: idEnv,
   },
+  // Project-only, and deliberately without a global twin or an env var: where
+  // the project session's commits land is a fact about ONE repo, and a machine
+  // -wide default is exactly the silent state this field exists to replace.
+  // Null means "not picked" — `git.resolveSessionBranch` detects at read time —
+  // and only a write through here ever fills it.
   {
-    key: 'devCommand',
-    projectColumn: 'devCommand',
+    key: 'sessionBranch',
+    projectColumn: 'sessionBranch',
     restartRequired: false,
     valueSchema: z.string().min(1),
     parseEnv: idEnv,
@@ -299,6 +304,7 @@ function projectOverrides(ctx: AppCtx, projectId: string): Record<ProjectColumn,
     .select({
       model: projects.model,
       sandbox: projects.sandbox,
+      sessionBranch: projects.sessionBranch,
       devCommand: projects.devCommand,
       setupCommand: projects.setupCommand,
       verifyCommands: projects.verifyCommands,
@@ -313,6 +319,7 @@ function projectOverrides(ctx: AppCtx, projectId: string): Record<ProjectColumn,
   return {
     model: row?.model ?? null,
     sandbox: row?.sandbox ?? null,
+    sessionBranch: row?.sessionBranch ?? null,
     devCommand: row?.devCommand ?? null,
     setupCommand: row?.setupCommand ?? null,
     verifyCommands: row?.verifyCommands ?? null,

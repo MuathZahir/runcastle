@@ -15,7 +15,12 @@ import { sessions } from '../db/schema'
 import { ptyRegistry } from '../pty/registry'
 import { stopDocsWatch } from '../services/docs-watch'
 import { emit, emitForSession, emitProject } from '../services/events'
-import { landProjectBranch, PROJECT_BRANCH, type ProjectLandResult } from '../services/git'
+import {
+  landProjectBranch,
+  PROJECT_BRANCH,
+  resolveSessionBranch,
+  type ProjectLandResult,
+} from '../services/git'
 import { promoteLastSession } from '../services/waypoints'
 import { getFeatureRow, getProjectById, rowToSession } from '../services/repo'
 import { runtimeAdapterFor } from './runtimes'
@@ -782,24 +787,30 @@ export function landProjectSession(ctx: AppCtx, session: SessionRow): void {
   const project = getProjectById(ctx, session.projectId)
   if (!project) return
 
-  const landing = landProjectBranch(project)
-    .then((res) => {
-      // The conversation wrote nothing — no timeline noise.
-      if (res) reportProjectLanding(ctx, project, res, { sessionId: session.id })
+  // `base` is null only when resolving it is what failed — a stored pick that
+  // has vanished — and that GateError already names the branch and the picker.
+  const landFailed = (base: string | null, e: unknown): void => {
+    const error = e instanceof Error ? e.message : String(e)
+    emitProject(ctx, project.id, {
+      type: 'project.land_failed',
+      message: `could not land the project session's work${
+        base ? ` onto ${base}` : ''
+      }: ${error} — ${LANDING_KEPT}`,
+      data: { sessionId: session.id, branch: PROJECT_BRANCH, error },
     })
-    .catch((e: unknown) => {
-      emitProject(ctx, project.id, {
-        type: 'project.land_failed',
-        message: `could not land the project session's work onto ${project.mainBranch}: ${
-          e instanceof Error ? e.message : String(e)
-        } — ${LANDING_KEPT}`,
-        data: {
-          sessionId: session.id,
-          branch: PROJECT_BRANCH,
-          error: e instanceof Error ? e.message : String(e),
+  }
+
+  const landing = resolveSessionBranch(project).then(
+    (base) =>
+      landProjectBranch(project, base).then(
+        (res) => {
+          // The conversation wrote nothing — no timeline noise.
+          if (res) reportProjectLanding(ctx, project, res, { sessionId: session.id })
         },
-      })
-    })
+        (e: unknown) => landFailed(base, e),
+      ),
+    (e: unknown) => landFailed(null, e),
+  )
   inFlightLandings.add(landing)
   void landing.finally(() => inFlightLandings.delete(landing))
 }
@@ -831,19 +842,19 @@ export function reportProjectLanding(
   if (res.landed) {
     report(
       'project.landed',
-      `landed ${res.commits} commit(s) from the project session onto ${project.mainBranch}`,
+      `landed ${res.commits} commit(s) from the project session onto ${res.base}`,
       { commits: res.commits },
     )
   } else if (res.conflict) {
     report(
       'project.land_conflict',
-      `the project session's ${res.commits} commit(s) conflict with ${project.mainBranch} — nothing was overwritten; ${LANDING_KEPT}`,
+      `the project session's ${res.commits} commit(s) conflict with ${res.base} — nothing was overwritten; ${LANDING_KEPT}`,
       { commits: res.commits, files: res.files ?? [] },
     )
   } else {
     report(
       'project.land_failed',
-      `could not land the project session's ${res.commits} commit(s) onto ${project.mainBranch}: ${res.error ?? 'unknown error'} — ${LANDING_KEPT}`,
+      `could not land the project session's ${res.commits} commit(s) onto ${res.base}: ${res.error ?? 'unknown error'} — ${LANDING_KEPT}`,
       { commits: res.commits, error: res.error ?? null },
     )
   }

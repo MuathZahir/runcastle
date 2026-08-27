@@ -32,7 +32,7 @@ import { hasActiveRun } from './repo'
  * Git service (SPEC §7) — the only wave-B service that shells out to real git
  * (via `simple-git`). It manages the feature-branch / talk-worktree lifecycle
  * plus the two human gates that touch the working copy: the checkout-switch
- * "test drive" and the `--no-ff` merge back to the main branch.
+ * "test drive" and the `--no-ff` merge back to the feature's recorded base.
  *
  * Path handling is Windows-safe: repo paths are computed with `node:path` and
  * compared against `git worktree list` output through `canon()`, which collapses
@@ -155,7 +155,7 @@ export interface DriveInfo {
 export interface MergeResult {
   ok: boolean
   conflict?: boolean
-  /** The branch the feature was merged into (its base; default `mainBranch`). */
+  /** The branch the feature was merged into — the base it was cut from. */
   target: string
   /** Repo-relative paths that conflicted (only on `conflict`), for the review UI. */
   files?: string[]
@@ -196,9 +196,22 @@ function featureBranch(slug: string): string {
   return `feature/${slug}`
 }
 
-/** The branch a feature merges into: its own base, else the project main line. */
-function mergeTarget(project: Project, feature: Feature): string {
-  return feature.baseBranch ?? project.mainBranch
+/**
+ * The branch a feature was cut from — the one it merges back into, and the one
+ * its branch is recut from if it ever goes missing. It is recorded on the row at
+ * creation and read from nowhere else: there is no project-level fallback, so a
+ * feature cut from `develop` can never be measured against `main` (decision 4).
+ *
+ * Only a draft carries no base, and a draft has cut no branch to merge or recut,
+ * so an absent one here is a caller error and says so rather than guessing.
+ */
+function featureBase(feature: Feature): string {
+  if (!feature.baseBranch) {
+    throw new GateError(
+      `feature ${feature.slug} has no recorded base branch — it has not been cut from one yet`,
+    )
+  }
+  return feature.baseBranch
 }
 
 function git(repoPath: string): SimpleGit {
@@ -272,24 +285,83 @@ export async function detectMainBranch(repoPath: string): Promise<string> {
   return 'main'
 }
 
+/** The project session's landing branch, as the picker needs to render it. */
+export interface SessionBranchView {
+  /** What a human explicitly picked, or `null` while nobody has. */
+  stored: string | null
+  /** What the session will actually use: `stored` if set, else `detected`. */
+  effective: string
+  /** The repo's main line right now, as {@link detectMainBranch} reads it. */
+  detected: string
+}
+
+/**
+ * Where the project session's work lands: the stored pick if a human made one,
+ * otherwise the detected main line (decisions 5–6). Detection NEVER writes the
+ * column — a zero-config project resolves fresh on every read, which is what
+ * lets the field stay null until somebody deliberately chooses.
+ *
+ * A stored branch that no longer exists is loud, not silent: re-detecting would
+ * quietly land a session's charter commits somewhere the human never picked, so
+ * this throws and names the picker instead.
+ */
+export async function resolveSessionBranch(project: Project): Promise<string> {
+  const stored = project.sessionBranch?.trim()
+  if (!stored) return detectMainBranch(project.repoPath)
+  const local = await git(project.repoPath).branchLocal()
+  if (!local.all.includes(stored)) {
+    throw new GateError(
+      `the configured session landing branch \`${stored}\` no longer exists in ${project.repoPath} — pick where this chat's work should land`,
+    )
+  }
+  return stored
+}
+
+/** {@link resolveSessionBranch}'s three values, for the picker; never throws on a vanished pick. */
+export async function sessionBranchView(project: Project): Promise<SessionBranchView> {
+  const stored = project.sessionBranch?.trim() || null
+  const detected = await detectMainBranch(project.repoPath)
+  return { stored, effective: stored ?? detected, detected }
+}
+
 // --- feature branch ---------------------------------------------------------
 
 /**
- * Create branch `feature/<slug>` from `base` (default `project.mainBranch`)
- * WITHOUT switching the main working copy (`git branch <name> <base>`). `base`
- * lets the caller fork a feature off any existing local branch — the current
- * branch, another feature, a release line — not just the project default.
- * Idempotent: if the branch already exists this is a no-op (the base is
- * ignored). Throws a clear error if `base` is not an existing local branch.
- * Returns the branch name.
+ * The branch the project checkout is on right now — what a feature forks from
+ * when its creator named no base (decision 2). The branch a human is standing on
+ * is the branch they chose to work on, which is exactly why it beats a stored
+ * default: it is a choice somebody actually made.
+ *
+ * A detached checkout is standing on no branch at all, so there is nothing to
+ * fall back to and this says so rather than handing back simple-git's sha
+ * pseudo-branch, which would fail later and less legibly.
+ */
+export async function currentCheckoutBranch(project: Project): Promise<string> {
+  const local = await git(project.repoPath).branchLocal()
+  if (local.detached || !local.current) {
+    throw new InvalidInputError(
+      `${project.repoPath} has no branch checked out (detached HEAD) — name the branch to fork from`,
+    )
+  }
+  return local.current
+}
+
+/**
+ * Create branch `feature/<slug>` from `base` WITHOUT switching the main working
+ * copy (`git branch <name> <base>`). `base` is required and names any existing
+ * local branch — the current branch, another feature, a release line: every
+ * caller has already decided which, and there is no default to fall back to
+ * (decision 4). Idempotent: if the branch already exists this is a no-op (the
+ * base is ignored). Throws a clear error if `base` is not an existing local
+ * branch. Returns the branch name.
  */
 export async function createFeatureBranch(
   project: Project,
   slug: string,
-  base?: string,
+  base: string,
 ): Promise<string> {
   const branch = featureBranch(slug)
-  const from = base?.trim() || project.mainBranch
+  const from = base.trim()
   const g = git(project.repoPath)
   const branches = await g.branchLocal()
   if (branches.all.includes(branch)) return branch
@@ -301,10 +373,12 @@ export async function createFeatureBranch(
 }
 
 export interface BranchList {
-  /** The branch the main checkout is on right now (the "use current" default). */
+  /**
+   * The branch the main checkout is on right now (the "use current" default),
+   * or `''` when HEAD is detached — a detached checkout is on no branch, so
+   * there is nothing to default to.
+   */
   current: string
-  /** The project's stored default base. */
-  mainBranch: string
   /** Local branches, `feature/*` excluded. */
   branches: string[]
   /**
@@ -325,7 +399,12 @@ export interface BranchList {
 export async function listBranches(project: Project): Promise<BranchList> {
   const g = git(project.repoPath)
   const local = await g.branchLocal()
-  const branches = local.all.filter((name) => !name.startsWith('feature/'))
+  // simple-git reports a detached HEAD as a pseudo-branch named for the short
+  // sha. Nobody can fork a feature off it, so it is neither the current branch
+  // nor a pick — the checkout simply has no base to offer.
+  const detachedRef = local.detached ? local.current : null
+  const current = local.detached ? '' : local.current
+  const branches = local.all.filter((name) => !name.startsWith('feature/') && name !== detachedRef)
 
   const localSet = new Set(local.all)
   let remoteBranches: string[] = []
@@ -344,7 +423,7 @@ export async function listBranches(project: Project): Promise<BranchList> {
     // No remotes (or a bare/odd repo) — remote picks simply aren't offered.
   }
 
-  return { current: local.current, mainBranch: project.mainBranch, branches, remoteBranches }
+  return { current, branches, remoteBranches }
 }
 
 /**
@@ -389,8 +468,9 @@ export async function ensureTalkWorktree(project: Project, feature: Feature): Pr
 
   // The worktree can only be checked out to an existing branch. Normally the
   // branch already exists (created at feature.create); this only recreates it if
-  // it went missing — from the feature's recorded base, falling back to main.
-  await ensureBranchExists(g, branch, feature.baseBranch ?? project.mainBranch)
+  // it went missing — from the feature's own recorded base, the same branch it
+  // was cut from the first time.
+  await ensureBranchExists(g, branch, featureBase(feature))
 
   if (await worktreeIsValid(g, worktreePath, branch)) return worktreePath
 
@@ -533,12 +613,25 @@ function slash(path: string): string {
   return path.replace(/\\/g, '/')
 }
 
+/** The project worktree and the branch this launch resolved it against. */
+export interface ProjectWorktree {
+  worktreePath: string
+  /** The resolved session branch the worktree was cut from and will land on. */
+  base: string
+}
+
 /**
  * Ensure the PROJECT session's worktree exists at
  * `worktreeDir(projectId, '__project')`, checked out on {@link PROJECT_BRANCH}
- * cut from the base tip (decision 18). Never the human's checkout: this session
- * writes the whole repo, so it works on a runcastle-owned branch and lands via
- * {@link mergeTempBranch}, exactly like every other AFK writer.
+ * cut from the resolved session branch ({@link resolveSessionBranch}, decision
+ * 18). Never the human's checkout: this session writes the whole repo, so it
+ * works on a runcastle-owned branch and lands via {@link mergeTempBranch},
+ * exactly like every other AFK writer.
+ *
+ * The resolved base comes back with the path because this is the launch's one
+ * resolution: the prompt the session is handed has to name the same branch the
+ * worktree was cut from, and a pick made while the previous session was live
+ * takes effect here, at the next launch, not under a running one.
  *
  * A previous session that crashed (or whose landing hit a conflict) leaves
  * commits on the branch, so this lands them BEFORE recutting — best-effort,
@@ -551,16 +644,18 @@ function slash(path: string): string {
 export async function ensureProjectWorktree(
   project: Project,
   onLanded?: (res: ProjectLandResult) => void,
-): Promise<string> {
+): Promise<ProjectWorktree> {
   const worktreePath = worktreeDir(project.id, PROJECT_WORKTREE_SLUG)
   const g = git(project.repoPath)
-  const base = project.mainBranch
+  // Resolved once, before anything is cut or landed: a stored pick that has
+  // vanished fails the launch here, rather than after the work has moved.
+  const base = await resolveSessionBranch(project)
 
   // The retry the landing protocol promises. Reported through `onLanded`,
   // because this merge puts commits on the human's own branch: a silent success
   // leaves the earlier `project.land_conflict` standing as the timeline's last
   // word, so the UI keeps claiming the work is stranded after it has landed.
-  const landed = await landProjectBranch(project)
+  const landed = await landProjectBranch(project, base)
   if (landed) onLanded?.(landed)
 
   const stillAhead = await branchCommitsAhead(project.repoPath, base, PROJECT_BRANCH)
@@ -571,16 +666,17 @@ export async function ensureProjectWorktree(
     await g.raw(['branch', PROJECT_BRANCH, base])
   }
 
-  if (await worktreeIsValid(g, worktreePath, PROJECT_BRANCH)) return worktreePath
+  if (await worktreeIsValid(g, worktreePath, PROJECT_BRANCH)) return { worktreePath, base }
 
   // A registered worktree that is merely detached (landing deletes the branch it
   // held) or sitting on the previous cut just needs the new branch checked out —
   // recreating it would be a needless delete of a directory git still owns.
   if (existsSync(worktreePath) && (await registeredWorktrees(g)).has(canon(worktreePath))) {
-    if (await checkoutInWorktree(worktreePath, PROJECT_BRANCH)) return worktreePath
+    if (await checkoutInWorktree(worktreePath, PROJECT_BRANCH)) return { worktreePath, base }
   }
 
-  return addWorktree(g, worktreePath, PROJECT_BRANCH, 'project worktree')
+  const added = await addWorktree(g, worktreePath, PROJECT_BRANCH, 'project worktree')
+  return { worktreePath: added, base }
 }
 
 /**
@@ -939,7 +1035,7 @@ export async function branchCommitsAhead(
  * rather than from ticket rows (a branch a human or an Iterate session committed
  * to has commits and no ticket commit rows at all: findings F23).
  *
- * The base is `mergeTarget`, the very branch {@link mergeFeature} will merge into,
+ * The base is {@link featureBase}, the very branch {@link mergeFeature} will merge into,
  * so the figure the review summary paints cannot drift from what the click does.
  * `rev-list <base>..<branch>` is merge-base-relative, so a base that moved ahead
  * underneath the feature does not inflate the count.
@@ -951,7 +1047,7 @@ export async function reviewCommitCount(
   project: Project,
   feature: Feature,
 ): Promise<{ base: string; count?: number }> {
-  const base = mergeTarget(project, feature)
+  const base = featureBase(feature)
   const branch = featureBranch(feature.slug)
   try {
     const out = (
@@ -966,7 +1062,7 @@ export async function reviewCommitCount(
 
 /** What a feature branch changed against its base — the drive-fix agent's map. */
 export interface BranchDelta {
-  /** The branch this feature merges into (its own base, else the main line). */
+  /** The branch this feature was cut from and merges back into. */
   base: string
   branch: string
   /** `git diff --stat <base>...<branch>`, empty when the diff cannot be taken. */
@@ -979,14 +1075,14 @@ export interface BranchDelta {
  * Three-dot, so it reads "what this branch added" rather than "how the two
  * differ" — a base that moved ahead underneath the feature is not this branch's
  * doing, and listing its files would send a fix agent hunting in the wrong half
- * of the diff. Never throws: a delta is context, and a drive-fix session with no
- * delta is still worth opening.
+ * of the diff. Never throws over git: a delta is context, and a drive-fix session
+ * with no delta is still worth opening.
  */
 export async function featureBranchDelta(
   project: Project,
   feature: Feature,
 ): Promise<BranchDelta> {
-  const base = mergeTarget(project, feature)
+  const base = featureBase(feature)
   const branch = featureBranch(feature.slug)
   try {
     const out = await git(project.repoPath).raw(['diff', '--stat', `${base}...${branch}`])
@@ -1344,6 +1440,8 @@ async function deleteBranchDetachingWorktrees(
 }
 
 export interface ProjectLandResult {
+  /** The branch it landed onto — carried so every report names it without re-resolving. */
+  base: string
   /** How many commits were ahead of the base branch when landing started. */
   commits: number
   landed: boolean
@@ -1363,12 +1461,20 @@ export interface ProjectLandResult {
  * disposable worktree when the base moved ahead. On conflict it refuses rather
  * than clobbers, and `runcastle/project` survives with the work on it —
  * {@link ensureProjectWorktree} retries the landing at the next launch.
+ *
+ * `base` is the already-resolved session branch ({@link resolveSessionBranch}) —
+ * passed in rather than resolved here so one launch resolves once and every
+ * message about it names the same branch.
  */
-export async function landProjectBranch(project: Project): Promise<ProjectLandResult | null> {
-  const ahead = await branchCommitsAhead(project.repoPath, project.mainBranch, PROJECT_BRANCH)
+export async function landProjectBranch(
+  project: Project,
+  base: string,
+): Promise<ProjectLandResult | null> {
+  const ahead = await branchCommitsAhead(project.repoPath, base, PROJECT_BRANCH)
   if (ahead.length === 0) return null
-  const res = await mergeTempBranch(project.repoPath, project.mainBranch, PROJECT_BRANCH)
+  const res = await mergeTempBranch(project.repoPath, base, PROJECT_BRANCH)
   return {
+    base,
     commits: ahead.length,
     landed: res.ok,
     ...(res.conflict ? { conflict: true } : {}),
@@ -2243,7 +2349,7 @@ async function stopDryRun(
 
   const { participating, failure } = dryRunVerdict(project, state)
   if (!failure && participating.length > 0) {
-    const sha = (await headSha(project.repoPath, project.mainBranch)) ?? null
+    const sha = (await headSha(project.repoPath, await detectMainBranch(project.repoPath))) ?? null
     markVerified(ctx, project.id, participating, sha)
     emitProject(ctx, project.id, {
       type: 'prep.dryrun.verified',
@@ -2520,13 +2626,13 @@ async function detectDbDrift(
 // --- merge ------------------------------------------------------------------
 
 /**
- * Merge `feature/<slug>` into its base branch (`feature.baseBranch`, default
- * `project.mainBranch`) with `--no-ff` — a feature lands back on the branch it
- * was forked from, not unconditionally on main. Denies (via `GateError` →
- * PRECONDITION_FAILED) while a test drive is active or the main checkout is
- * dirty. On conflict it aborts and reports `{ ok: false, conflict: true }`,
- * leaving the checkout clean either way. The resolved `target` is always
- * returned so the caller can report/record it.
+ * Merge `feature/<slug>` into its base branch (`feature.baseBranch`) with
+ * `--no-ff` — a feature lands back on the branch it was forked from, and on no
+ * other, main included. Denies (via `GateError` → PRECONDITION_FAILED) while a
+ * test drive is active or the main checkout is dirty. On conflict it aborts and
+ * reports `{ ok: false, conflict: true }`, leaving the checkout clean either
+ * way. The resolved `target` is always returned so the caller can report/record
+ * it.
  *
  * The merge has to check out `target` to build the `--no-ff` commit, but the
  * user's checkout is a shared surface — silently parking them on `develop` after
@@ -2540,7 +2646,7 @@ async function detectDbDrift(
  * normal flow this only fires when a DIFFERENT feature is being test-driven.
  */
 export async function mergeFeature(project: Project, feature: Feature): Promise<MergeResult> {
-  const target = mergeTarget(project, feature)
+  const target = featureBase(feature)
 
   if (testDriveState) {
     throw new GateError('Cannot merge while a test drive is active — stop it first')

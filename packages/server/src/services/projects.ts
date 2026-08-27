@@ -22,9 +22,11 @@ import {
  * `openProject` upserts by repo path (re-open returns the same project and
  * clears its closed state), `closeProject` hides a project (refusing while runs
  * are in flight), `listProjects` returns the open projects, `renameProject` sets
- * the display name. Repo validation + main-branch detection are B2's git
- * service; until B2 lands we tolerate its stub and fall back to a lightweight
- * `.git` existence check + the configured default branch.
+ * the display name. Opening detects and stores nothing about branches (decision
+ * 4): every surface that cuts one names its own base, so there is no
+ * project-level default left to refresh. Repo validation is B2's git service;
+ * until B2 lands we tolerate its stub and fall back to a lightweight `.git`
+ * existence check.
  *
  * Project-level events (open/close/rename) are emitted with `emitProject` — they
  * carry the project id and no feature id (issue #44), so a project stream shows
@@ -77,7 +79,6 @@ export async function openProject(ctx: AppCtx, rawPath: string): Promise<Project
   // string would file those as separate projects.
   const repoPath = expandPath(rawPath)
   await assertRepoTolerant(ctx, repoPath)
-  const mainBranch = await detectMainBranchTolerant(ctx, repoPath)
   const name = basename(repoPath) || repoPath
 
   const existing = getProjectByRepoPath(ctx, repoPath) ?? findProjectByCanonPath(ctx, repoPath)
@@ -86,15 +87,15 @@ export async function openProject(ctx: AppCtx, rawPath: string): Promise<Project
       .update(projects)
       // Rewrite `repoPath` to the normalized form so a row stored raw by an
       // older build converges the first time it is re-opened.
-      .set({ mainBranch, repoPath, closedAt: null })
+      .set({ repoPath, closedAt: null })
       .where(eq(projects.id, existing.id))
       .run()
     // `closedAt: undefined` mirrors the column we just cleared — a re-opened
     // project must not return carrying the closed stamp it had a line ago.
-    const reopened = { ...existing, mainBranch, repoPath, closedAt: undefined }
+    const reopened = { ...existing, repoPath, closedAt: undefined }
     emitProject(ctx, existing.id, {
       type: 'project.opened',
-      message: `project ${existing.name} re-opened at ${repoPath} (${mainBranch})`,
+      message: `project ${existing.name} re-opened at ${repoPath}`,
     })
     warnIfTranslatedMount(ctx, existing.id, repoPath)
     return reopened
@@ -104,7 +105,6 @@ export async function openProject(ctx: AppCtx, rawPath: string): Promise<Project
     id: newId('proj'),
     name,
     repoPath,
-    mainBranch,
     devCommand: null,
     closedAt: null,
   }
@@ -112,7 +112,7 @@ export async function openProject(ctx: AppCtx, rawPath: string): Promise<Project
   const project = rowToProject(inserted)
   emitProject(ctx, project.id, {
     type: 'project.opened',
-    message: `project ${name} at ${repoPath} (${mainBranch})`,
+    message: `project ${name} at ${repoPath}`,
   })
   warnIfTranslatedMount(ctx, project.id, repoPath)
   return project
@@ -177,14 +177,5 @@ async function assertRepoTolerant(ctx: AppCtx, repoPath: string): Promise<void> 
     if (!existsSync(join(repoPath, '.git'))) {
       throw new InvalidInputError(`not a git repository: ${repoPath}`)
     }
-  }
-}
-
-async function detectMainBranchTolerant(ctx: AppCtx, repoPath: string): Promise<string> {
-  try {
-    return await git.detectMainBranch(repoPath)
-  } catch (e) {
-    if (!isNotImplemented(e)) throw e
-    return ctx.config.mainBranch
   }
 }

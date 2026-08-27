@@ -49,12 +49,6 @@ describe('describeField', () => {
     expect(row.value).toBe('4512')
   })
 
-  it('shows mainBranch read-only as a git-detected field', () => {
-    const row = describeField(field({ key: 'mainBranch', value: 'main', source: 'file' }))
-    expect(row.readOnly).toBe(true)
-    expect(row.note?.toLowerCase()).toContain('git')
-  })
-
   it('renders sandbox as a select with its options', () => {
     const row = describeField(field({ key: 'sandbox', value: 'docker' }))
     expect(row.control).toBe('select')
@@ -294,10 +288,8 @@ const view = (fields: Partial<SettingField>[], projectId?: string): SettingsView
 
 describe('globalRows', () => {
   it('maps every field in the global view to a row', () => {
-    const rows = globalRows(
-      view([{ key: 'serverPort' }, { key: 'model' }, { key: 'mainBranch' }]),
-    )
-    expect(rows.map((r) => r.key)).toEqual(['serverPort', 'model', 'mainBranch'])
+    const rows = globalRows(view([{ key: 'serverPort' }, { key: 'model' }, { key: 'sandbox' }]))
+    expect(rows.map((r) => r.key)).toEqual(['serverPort', 'model', 'sandbox'])
   })
 })
 

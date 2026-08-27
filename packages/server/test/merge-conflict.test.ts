@@ -81,7 +81,7 @@ async function initRepo(dir: string): Promise<SimpleGit> {
 
 /** Land a `README.md` edit on feature/<slug> AND a clashing one on main. */
 async function makeConflict(project: Project, g: SimpleGit, slug: string): Promise<void> {
-  await createFeatureBranch(project, slug)
+  await createFeatureBranch(project, slug, 'main')
   await g.checkout(`feature/${slug}`)
   writeFileSync(join(project.repoPath, 'README.md'), 'feature-line\n')
   await g.add(['README.md'])
@@ -172,7 +172,7 @@ describe('feature.merge — conflict surfacing (ticket 9)', () => {
   }, 20_000)
 
   it('clean merge still ships: phase → shipped, status → shipped (regression)', async () => {
-    await createFeatureBranch(project, 'happy')
+    await createFeatureBranch(project, 'happy', 'main')
     await g.checkout('feature/happy')
     writeFileSync(join(project.repoPath, 'feature.txt'), 'hi\n')
     await g.add(['feature.txt'])
@@ -192,12 +192,12 @@ describe('feature.merge — conflict surfacing (ticket 9)', () => {
   })
 
   it('merge is denied while another feature is being test-driven (guard holds)', async () => {
-    await createFeatureBranch(project, 'target')
+    await createFeatureBranch(project, 'target', 'main')
     const target = seedFeature(ctx, project.id, { slug: 'target', phase: 'review' })
     // A DIFFERENT feature holds an active drive — the merge handler only stops
     // THIS feature's drive, so the git-service guard must still deny the merge.
     const other = seedFeature(ctx, project.id, { slug: 'other' })
-    await createFeatureBranch(project, 'other')
+    await createFeatureBranch(project, 'other', 'main')
     const start = await testDrive(ctx, project, other, 'start')
     expect(start.ok).toBe(true)
 
@@ -237,7 +237,7 @@ describe('feature.merge — outcome.md promotion (the-work-record ticket 3)', ()
 
   /** A feature with a branch carrying one commit, sitting in review. */
   async function seedShippableFeature(slug: string): Promise<Feature> {
-    await createFeatureBranch(project, slug)
+    await createFeatureBranch(project, slug, 'main')
     await g.checkout(`feature/${slug}`)
     writeFileSync(join(project.repoPath, `${slug}.txt`), 'work\n')
     await g.add([`${slug}.txt`])

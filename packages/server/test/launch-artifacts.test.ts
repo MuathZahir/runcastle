@@ -600,7 +600,6 @@ describe('writeSessionArtifacts', () => {
         id: 'proj_1',
         name: 'p',
         repoPath: 'C:\\repo',
-        mainBranch: 'main',
       },
       config,
     })
@@ -639,7 +638,7 @@ describe('claudeRuntime.writeArtifacts', () => {
     created.length = 0
   })
 
-  const project: Project = { id: 'proj_1', name: 'p', repoPath: 'C:\\repo', mainBranch: 'main' }
+  const project: Project = { id: 'proj_1', name: 'p', repoPath: 'C:\\repo' }
 
   /** The brief each kind is launched with — exactly the one its launch site passes. */
   function briefFor(kind: SessionKind): Partial<WriteArtifactsInput> {
@@ -755,7 +754,7 @@ describe('claudeRuntime.writeArtifacts', () => {
  * on whether they happen to be logged in.
  */
 describe('codexRuntime.writeArtifacts', () => {
-  const project: Project = { id: 'proj_1', name: 'p', repoPath: '/repo', mainBranch: 'main' }
+  const project: Project = { id: 'proj_1', name: 'p', repoPath: '/repo' }
   const created: string[] = []
   let userHome: string
   let worktree: string

@@ -3,12 +3,12 @@ import { aggregateRuns, projectStats } from '../lib/projects'
 import { useLivePoll } from '../lib/live'
 import { modKey } from '../lib/platform'
 import type { ProjectNavApi } from '../lib/use-project-nav'
-import { IconBranch, IconPanelRight, IconSearch, IconSettings, LogoMark, LogoWordmark } from '../icons'
+import { IconPanelRight, IconSearch, IconSettings, LogoMark, LogoWordmark } from '../icons'
 import { ProjectSwitcher } from './ProjectSwitcher'
 
 /**
- * The IDE title bar (app-redesign, multi-project #45): brand · project switcher ·
- * main branch on the left; a ⌘K search launcher, an aggregate cross-project runs
+ * The IDE title bar (app-redesign, multi-project #45): brand · project switcher
+ * on the left; a ⌘K search launcher, an aggregate cross-project runs
  * pill, the server-health dot, and the inspector toggle on the right. The runs
  * pill counts runs across every open project so background work stays visible
  * whichever project you're in. The brand mark returns to the portfolio home.
@@ -52,10 +52,6 @@ export function Titlebar({
       </button>
       <span className="tb-arrow">/</span>
       <ProjectSwitcher nav={nav} />
-      <span className="tb-branch">
-        <IconBranch size={12} />
-        {nav.currentProject?.mainBranch ?? 'main'}
-      </span>
 
       <span className="tb-spacer" />
 

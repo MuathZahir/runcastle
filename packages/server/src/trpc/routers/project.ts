@@ -38,6 +38,17 @@ export const projectRouter = router({
     .input(z.object({ projectId: z.string() }))
     .query(({ ctx, input }) => git.listBranches(requireProjectById(ctx, input.projectId))),
 
+  /**
+   * Where the project session's work lands, as the picker needs it: what a human
+   * picked (`stored`, null until one does), what the next launch will actually
+   * use (`effective`), and the detected main line behind the unpicked default
+   * (`detected`). Reading never writes — the pick is made through
+   * `settings.update` with key `sessionBranch`.
+   */
+  sessionBranch: publicProcedure
+    .input(z.object({ projectId: z.string() }))
+    .query(({ ctx, input }) => git.sessionBranchView(requireProjectById(ctx, input.projectId))),
+
   open: publicProcedure
     .input(z.object({ repoPath: z.string().min(1) }))
     .mutation(({ ctx, input }) => openProject(ctx, input.repoPath)),

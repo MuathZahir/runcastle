@@ -62,7 +62,6 @@ export function ProjectSwitcher({ nav }: { nav: ProjectNavApi }) {
               }}
             >
               <span className="tb-menu-name">{p.name}</span>
-              <span className="tb-menu-branch mono">{p.mainBranch}</span>
               {p.id === nav.currentProjectId && (
                 <span className="tb-menu-check">
                   <IconCheck size={11} />

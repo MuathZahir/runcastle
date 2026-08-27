@@ -27,7 +27,12 @@ export const projects = sqliteTable('projects', {
   id: text('id').primaryKey(),
   name: text('name').notNull(),
   repoPath: text('repo_path').notNull(),
-  mainBranch: text('main_branch').notNull(),
+  // Where the PROJECT SESSION's work lands (charter, ADRs) — human-owned and
+  // null until somebody explicitly picks. Resolution is stored-else-detected at
+  // use, so a zero-config project needs no setup click; detection never writes
+  // here, which is the whole point: the stored default this replaced was
+  // re-detected at every project open, so a corrected value could not stick.
+  sessionBranch: text('session_branch'),
   devCommand: text('dev_command'),
   // Per-project settings overrides (issue #46): nullable columns holding a
   // project's override of the global default. `null` means "inherit the global"
@@ -118,9 +123,10 @@ export const features = sqliteTable('features', {
   phase: text('phase').notNull().$type<Phase>(),
   branch: text('branch').notNull(),
   /**
-   * The branch `branch` was created from (issue: choosable base). Null for
-   * features created before this column existed — historically always the
-   * project's `mainBranch`. New rows always store the resolved base explicitly.
+   * The branch `branch` was created from (issue: choosable base), and the only
+   * source for the branch it merges back into. Null on a parked draft, which has
+   * cut nothing and picks its base at Start; rows predating the column were
+   * back-filled from the project-level default they in fact had.
    */
   baseBranch: text('base_branch'),
   status: text('status').notNull().$type<FeatureStatus>(),

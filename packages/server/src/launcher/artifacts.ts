@@ -815,6 +815,8 @@ export interface ProjectBrief {
   branch: string
   /** Its worktree — never the human's checkout (decision 18). */
   worktreePath: string
+  /** The resolved session branch it was cut from and lands back on. */
+  base: string
 }
 
 /**
@@ -840,7 +842,7 @@ export function renderProjectPrompt(
   brief: ProjectBrief,
   runtime: AgentRuntime = DEFAULT_RUNTIME,
 ): string {
-  const { project, branch, worktreePath } = brief
+  const { project, branch, worktreePath, base } = brief
   return [
     `# runcastle — ${project.name} (project session)`,
     '',
@@ -866,8 +868,8 @@ export function renderProjectPrompt(
     '## Where you are working — and where your writes go',
     `- Working directory: \`${worktreePath}\` — a runcastle-owned worktree, NOT the human's`,
     `  checkout at \`${project.repoPath}\`.`,
-    `- Branch: \`${branch}\`, cut from \`${project.mainBranch}\` when this session launched.`,
-    `- **Your commits land on \`${project.mainBranch}\` when this terminal closes**, arriving`,
+    `- Branch: \`${branch}\`, cut from \`${base}\` when this session launched.`,
+    `- **Your commits land on \`${base}\` when this terminal closes**, arriving`,
     "  in the human's checkout the way a `git pull` does. Write real code and real docs —",
     '  there is no sandbox here — and commit everything you write before you finish.',
     '  A session that edits without committing leaves a dirty tree, which is exactly what',

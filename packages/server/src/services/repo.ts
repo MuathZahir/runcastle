@@ -50,7 +50,7 @@ export function rowToProject(row: ProjectSelect): Project {
     id: row.id,
     name: row.name,
     repoPath: row.repoPath,
-    mainBranch: row.mainBranch,
+    sessionBranch: row.sessionBranch ?? undefined,
     devCommand: row.devCommand ?? undefined,
     model: row.model ?? undefined,
     setupCommand: row.setupCommand ?? undefined,
