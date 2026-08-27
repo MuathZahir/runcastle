@@ -1647,6 +1647,30 @@ export async function commitDocs(worktreePath: string, message: string): Promise
   await g.commit(message, [DOCS_PATHSPEC])
 }
 
+/**
+ * Land the docs runcastle itself wrote, before a guard reads the tree.
+ *
+ * `docs/features/**` is the pipeline's own artifact: every creation path
+ * scaffolds `brief.md` there and commits it best-effort, so a commit that does
+ * not land — an unset git identity, a hook that refused — leaves the brief
+ * STAGED. The next drive is then denied over a file the human never wrote and
+ * cannot be asked to explain; that is how three of four review drives were
+ * refused with nothing dirty but a brief.
+ *
+ * Committing rather than looking away, because those docs are meant to be
+ * versioned (CONTEXT.md decision 5) — and on the branch the checkout is on,
+ * which is where the creation paths commit them too. Best-effort like every
+ * other `commitDocs` caller: if it still cannot commit, the dirty check denies
+ * exactly as before and the file it names is at least a visible one.
+ */
+async function commitPipelineDocs(repoPath: string): Promise<void> {
+  try {
+    await commitDocs(repoPath, 'runcastle: docs the pipeline left uncommitted')
+  } catch {
+    // best-effort — the dirty check still denies, and now names a real edit
+  }
+}
+
 // --- test drive -------------------------------------------------------------
 
 /** Module-level in-memory drive state (SPEC §7). At most one active, of either
@@ -1940,6 +1964,8 @@ export async function testDrive(
   }
 
   // action === 'start' — deny checks in SPEC order: dirty | active | active-run.
+  // Runcastle's own docs are landed first, never counted as the human's dirt.
+  await commitPipelineDocs(project.repoPath)
   const porcelain = (await g.raw(['status', '--porcelain'])).trim()
   if (porcelain !== '') return { ok: false, deniedReason: DENY_DIRTY }
   if (testDriveState) {

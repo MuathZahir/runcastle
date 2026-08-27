@@ -14,8 +14,11 @@ import {
   buildFeatureBrief,
   buildLapDigestsBlock,
   buildTicketJson,
+  buildTicketTiming,
   burnerAssetPath,
   createStreamThrottle,
+  createToolTimer,
+  emitTicketTiming,
   errorHeadline,
   harvestDigest,
   readAgentFile,
@@ -38,10 +41,28 @@ import {
  *
  * Semantics, from decision 6: **findings are not failure.** The ticket is done
  * when the review ran to completion, however many bugs it wrote up. It fails
- * only when the review could not run at all — no `agent-browser` on the machine,
- * a drive it could not get, an agent that crashed — and that reason rides the
- * ticket's digest into the run digest, because "review could not run: X" is the
- * one thing the human arriving at the review screen needs to know.
+ * only when the review could not run at all — an unresolvable base, an agent
+ * that crashed — and that reason rides the ticket's digest into the run digest,
+ * because "review could not run: X" is the one thing the human arriving at the
+ * review screen needs to know.
+ *
+ * A review runs in exactly ONE of two modes, never both: a browser **Drive** of
+ * the app against the ticket's acceptance criteria, or **Gates** — the project's
+ * verify commands plus a two-axis read of the branch's diff. Measured across a
+ * burn's worth of reviews, the ones that did exactly one delivered in around
+ * half an hour and the ones that attempted both ran long or died having
+ * delivered neither. The prompt makes the choice in its first step; this path
+ * supplies the half of it the agent cannot cheaply observe — whether a drive is
+ * available at all ({@link buildDriveAvailability}) — and the gate commands the
+ * other mode runs ({@link buildGateNotes}).
+ *
+ * So neither a missing `agent-browser` nor a drive that refused is a failure:
+ * both just mean Gates mode. The template tells the agent to say `could not
+ * drive: <reason>` in its digest, fall back to Gates, and forbids it from
+ * building an environment of its own — a worktree, an install, a codegen — to
+ * drive in instead: that improvisation was the most expensive single act
+ * observed in any review, and it verified nothing, because an app the agent
+ * assembled for itself is not the app the human runs.
  */
 
 /** The prompt the review agent is spawned with. */
@@ -57,6 +78,10 @@ const PLACEHOLDERS = [
   'FEATURE_BRANCH',
   /** The ref the branch forked from — the feature's own base, not a shell guess. */
   'BASE_BRANCH',
+  /** Whether Drive mode is open at all, decided host-side (see {@link buildDriveAvailability}). */
+  'DRIVE_AVAILABILITY',
+  /** Gates mode's commands and their known-failure baseline. */
+  'GATE_NOTES',
   'DIGEST_PATH',
   'BLOCKED_PATH',
   'WALKTHROUGH_PATH',
@@ -78,6 +103,10 @@ export const AGENT_BROWSER_BIN = 'agent-browser'
  * spawned: a review that discovers halfway through that it cannot open a browser
  * has already switched the human's checkout and burned an agent to say so, and
  * "the CLI is not installed" is a fact the burner can establish for free.
+ *
+ * It selects the mode rather than failing the ticket. A machine with no browser
+ * can still run Gates mode, which needs nothing but the repository — refusing
+ * the whole review there withheld the mode that was still perfectly available.
  *
  * PATH is walked directly rather than shelling out to `which`/`where`, which
  * differ per platform and cost a process either way.
@@ -101,6 +130,101 @@ export function findOnPath(
     }
   }
   return undefined
+}
+
+/**
+ * The `{{DRIVE_AVAILABILITY}}` block: whether Drive mode is open at all.
+ *
+ * The prompt's first step asks two questions — does this lap have a surface a
+ * human could operate, and is a drive available. The first is a judgement only
+ * the agent can make from the ticket and the diff; the second is a host fact it
+ * would otherwise pay a `review_drive` start to discover, on the human's real
+ * checkout. So it is answered here, and when the answer is no the block says so
+ * flatly: the mode is already decided, and the agent should not call the tool.
+ *
+ * Pure — the caller does the PATH probe and passes the result.
+ */
+export function buildDriveAvailability(
+  browserPath: string | undefined,
+  devCommand: string | undefined,
+): string {
+  const missing: string[] = []
+  if (!browserPath) {
+    missing.push(
+      `\`${AGENT_BROWSER_BIN}\` is not on this machine's PATH, so there is no browser to walk the app with`,
+    )
+  }
+  if (!devCommand?.trim()) {
+    missing.push('this project has no dev command configured, so a drive has no app to boot')
+  }
+  if (missing.length === 0) {
+    return (
+      `A drive **is** available: \`${AGENT_BROWSER_BIN}\` is on this machine's PATH and the ` +
+      'project has a dev command, so `review_drive` can boot the app and you can walk it. Drive ' +
+      'mode is open to you — take it if, and only if, this lap has a surface a human could operate.'
+    )
+  }
+  return (
+    `A drive is **not** available: ${missing.join(', and ')}. So the mode is already decided — ` +
+    'run Gates mode, whatever this lap touched, and do not call `review_drive`. This is not a ' +
+    'degraded review; it is the whole review this lap gets.'
+  )
+}
+
+/**
+ * The `{{GATE_NOTES}}` block: the gates Gates mode runs, and the failures they
+ * already produce without this lap's help.
+ *
+ * The implementers were handed the same two config fields through
+ * `buildVerifyNotes`, but in the opposite voice — theirs says which failures are
+ * "yours to fix", and a reviewer fixes nothing. Same facts, read for a different
+ * purpose: the reviewer runs the gates to find out what the lap broke, so what
+ * it needs from the baseline is what to subtract.
+ *
+ * With nothing configured the answer is to run nothing. A reviewer guessing at a
+ * monorepo's filter names — and discovering them by running the wrong suite — is
+ * the long-review failure mode this whole mode split exists to end.
+ */
+export function buildGateNotes(
+  config: Pick<RuncastleConfig, 'verifyCommands' | 'knownFailures'>,
+): string {
+  const commands = config.verifyCommands?.trim()
+  const failures = config.knownFailures?.trim()
+  const out: string[] = []
+
+  if (commands) {
+    out.push(
+      "Run exactly these, once each — they are this project's own verify commands, so do not go looking for alternatives, add concurrency flags, or re-run one to re-read its output (redirect to a file and read that instead):",
+      '',
+      '```',
+      commands,
+      '```',
+    )
+  } else {
+    out.push(
+      'This project has no verify commands configured, so there are no gates to run. Do not go hunting for them — say so in one line of your summary note and spend the whole mode on the diff.',
+    )
+  }
+
+  out.push('')
+
+  if (failures) {
+    out.push(
+      "These already fail on this repo without this lap's help:",
+      '',
+      '```',
+      failures,
+      '```',
+      '',
+      "Subtract that baseline: a failure inside it is not this lap's and is not a finding. A failure outside it is one this lap introduced, and it is the finding worth the human's attention above every other.",
+    )
+  } else {
+    out.push(
+      "No pre-existing-failure baseline is configured, so a red gate may well predate this lap. Run it once, then check whether the failure touches the diff before writing it up as this lap's — and never re-run a suite to establish what was already red.",
+    )
+  }
+
+  return out.join('\n')
 }
 
 /**
@@ -180,14 +304,36 @@ export interface ReviewDeps {
 }
 
 /**
- * Run one review ticket to a terminal outcome. The sandcastle boundary, so not
- * exercised by unit tests — the pure units around it (prompt rendering, the
- * artifacts the agent is handed, the PATH probe, the outcome shapes) are.
+ * Run one review ticket to a terminal outcome, and put its `ticket.timing` on
+ * the event log however it ends — including the two refusals below, which end
+ * the ticket before an agent ever starts. A review used to emit no timing at
+ * all, which left every reader of a review's duration reconstructing it from
+ * the append-only log file (see {@link buildTicketTiming}).
  */
 export async function executeReviewTicket(
   ctx: WorkflowCtx,
   ticket: Ticket,
   deps: ReviewDeps,
+): Promise<TicketOutcome> {
+  const startedAt = Date.now()
+  const timer = createToolTimer()
+  try {
+    return await reviewTicketOutcome(ctx, ticket, deps, timer)
+  } finally {
+    emitTicketTiming(ctx, ticket, buildTicketTiming(timer.summary(), startedAt, Date.now()))
+  }
+}
+
+/**
+ * The review itself. The sandcastle boundary, so not exercised by unit tests —
+ * the pure units around it (prompt rendering, the artifacts the agent is handed,
+ * the PATH probe, the outcome shapes) are.
+ */
+async function reviewTicketOutcome(
+  ctx: WorkflowCtx,
+  ticket: Ticket,
+  deps: ReviewDeps,
+  timer: ReturnType<typeof createToolTimer>,
 ): Promise<TicketOutcome> {
   const { project, feature } = ctx
 
@@ -198,13 +344,6 @@ export async function executeReviewTicket(
     return couldNotReview(
       ticket,
       `feature ${feature.slug} has no recorded base branch, so there is nothing to diff \`${feature.branch}\` against.`,
-    )
-  }
-
-  if (!findOnPath(AGENT_BROWSER_BIN)) {
-    return couldNotReview(
-      ticket,
-      `\`${AGENT_BROWSER_BIN}\` is not on this machine's PATH, so there is no way to drive the app. Install it and re-burn this ticket.`,
     )
   }
 
@@ -225,6 +364,8 @@ export async function executeReviewTicket(
     // a perfectly healthy lap, and its own failure criterion then made it report
     // "could not review".
     BASE_BRANCH: feature.baseBranch,
+    DRIVE_AVAILABILITY: buildDriveAvailability(findOnPath(AGENT_BROWSER_BIN), project.devCommand),
+    GATE_NOTES: buildGateNotes(deps.config),
     DIGEST_PATH: artifacts.digestPath,
     BLOCKED_PATH: artifacts.blockedPath,
     WALKTHROUGH_PATH: artifacts.walkthroughPath,
@@ -235,6 +376,7 @@ export async function executeReviewTicket(
   beginTranscript(ticket.id)
   const onStreamEvent = (event: AgentStreamEvent): void => {
     throttle.onEvent(event)
+    timer.onEvent(event)
     if (event.type === 'text') {
       appendTranscript(ticket.id, { kind: 'text', text: event.message })
     } else if (event.type === 'toolCall') {

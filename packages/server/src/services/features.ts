@@ -315,29 +315,32 @@ function quickBrief(title: string, proses: string[]): string {
  *
  * `blockedBy` names every typed ticket by its 1-based batch position — the
  * space `storeTickets` resolves — so it burns last, against the integrated
- * branch. Its prose says what the skill says a hand-written one must: the code
- * review is unconditional, the drive happens only when there is something a
- * human can operate, and the digest is the lap's summary.
+ * branch. Its prose says what the skill says a hand-written one must: the review
+ * runs in exactly one mode, the drive is what varies, and the digest is the
+ * lap's summary.
  */
 function quickReviewTicket(proses: string[]): TicketInput {
   return {
     title: 'Review the integrated change',
     goal:
-      "Review the integrated feature branch and report what you find. Code-review the branch's " +
-      'diff against its base — always, whatever this change turned out to be — and additionally ' +
-      'drive the app when the diff touches something a human can operate. Write one note per ' +
-      'finding; finding bugs is a successful review, and the notes are the deliverable.',
+      'Review the integrated feature branch and report what you find, in exactly one mode: ' +
+      'drive the app in a browser against the criteria below when this change touched something ' +
+      'a human can operate and a drive is available, and otherwise run the verify gates and ' +
+      "code-review the branch's diff against its base. Write one note per finding; finding bugs " +
+      'is a successful review, and the notes are the deliverable.',
     context:
       'This feature came through the quick-change door, so there was no grill session and there ' +
       'is no spec.md or decisions.md to review it against: the whole statement of intent is the ' +
       `${proses.length === 1 ? 'sentence' : `${proses.length} sentences`} the human typed, which ` +
       'are the other tickets in this batch and are reproduced verbatim in brief.md. Nobody ' +
       'prescribed a walkthrough for you either — judge from the diff whether there is anything ' +
-      'drivable, and if there is not, say so and let the code review stand alone. Your digest is ' +
-      "the lap's prose summary of what landed; the review page leads with it.",
+      'drivable, and if there is not, take the gates-and-diff mode. Your digest is ' +
+      "the lap's prose summary of what landed, and its first line names the mode you ran; the " +
+      'review page leads with it.',
     acceptanceCriteria: [
-      "The branch's diff against its base is code-reviewed on both axes — the repo's own " +
-        'standards, and the change against what was asked for.',
+      'Reviewed in one mode — either walked in a browser, or put through the verify gates and ' +
+        "code-reviewed on both axes (the repo's own standards, and the change against what was " +
+        'asked for).',
       ...proses.map((prose) => `Landed and does what it says: ${prose}`),
     ],
     // Nothing to name: the review agent edits no code, and nobody read the

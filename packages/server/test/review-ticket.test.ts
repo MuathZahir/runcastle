@@ -31,6 +31,8 @@ import { appRouter } from '../src/trpc/router'
 import { workflowRegistry } from '../src/workflows/registry'
 import {
   AGENT_BROWSER_BIN,
+  buildDriveAvailability,
+  buildGateNotes,
   executeReviewTicket,
   findOnPath,
   renderReviewPrompt,
@@ -369,6 +371,8 @@ describe('what the review agent is handed', () => {
       ]),
       FEATURE_BRANCH: 'feature/demo',
       BASE_BRANCH: 'main',
+      DRIVE_AVAILABILITY: buildDriveAvailability('/usr/bin/agent-browser', 'bun dev'),
+      GATE_NOTES: buildGateNotes({ verifyCommands: 'bun run typecheck' }),
       DIGEST_PATH: '/data/reviews/tkt_3/DIGEST.md',
       BLOCKED_PATH: '/data/reviews/tkt_3/BLOCKED.md',
       WALKTHROUGH_PATH: '/data/reviews/tkt_3/walkthrough.webm',
@@ -395,17 +399,101 @@ describe('what the review agent is handed', () => {
     // stopped in the same cleanup that stops the drive.
     expect(prompt).toContain('agent-browser record start /data/reviews/tkt_3/walkthrough.webm')
     expect(prompt).toContain('agent-browser record stop')
+    // Gates mode runs the project's own commands rather than guessing at them.
+    expect(prompt).toContain('bun run typecheck')
   })
 
   it('tells the agent where the recording is optional and where it is not', () => {
     const template = readFileSync(reviewTemplatePath(), 'utf8')
 
-    // A recording failure is never a review failure (decision 8), a review that
-    // is not a browser walkthrough records nothing, and a partially-failed
-    // feature is stated in the closing summary note (decision 9).
+    // A recording failure is never a review failure (decision 8), and a
+    // partially-failed feature is stated in the closing summary note
+    // (decision 9).
     expect(template).toContain('A recording failure never fails the review.')
-    expect(template).toContain('skip the browser and the recording entirely')
     expect(template).toMatch(/partially-built feature/)
+  })
+
+  it('forbids improvising an environment when the drive will not start', () => {
+    const template = readFileSync(reviewTemplatePath(), 'utf8')
+
+    // A drive that refuses leaves the agent with the diff and the repo's own
+    // verify commands — never a worktree it built and installed for itself,
+    // which was the most expensive single act observed in any review.
+    expect(template).toContain('Never build your own environment')
+    expect(template).toContain('could not drive: <reason>')
+    expect(template).toMatch(/[Dd]o not create a worktree/)
+    expect(template).toMatch(/No worktrees, no dependency installs/)
+    expect(template).toMatch(/verify commands/)
+  })
+
+  it('makes the agent pick one mode and forbids running both', () => {
+    const template = readFileSync(reviewTemplatePath(), 'utf8')
+
+    // The whole point of the split: the reviews that did exactly one delivered,
+    // and the ones that attempted both ran long or died with nothing.
+    expect(template).toContain('**One mode, never both.**')
+    expect(template).toContain('**Never run both modes.**')
+    // The choice is step 1, before any tool call — not something discovered
+    // partway through a drive that has already switched the human's checkout.
+    expect(template).toMatch(/### 1\. Choose your mode — before anything else/)
+    expect(template).toMatch(/### 2a\. Drive mode/)
+    expect(template).toMatch(/### 2b\. Gates mode/)
+    // Drive mode stops at the walk; it does not go on to read the diff.
+    expect(template).toContain('Do not read the diff afterwards')
+    // A refused drive falls back rather than sinking the review.
+    expect(template).toContain('switch to Gates mode')
+    // The digest leads with the mode, so the human knows what kind of look the
+    // lap got before reading a word of the summary.
+    expect(template).toContain('**Open with one short line naming the mode**')
+    // The superseded contract — "code review always, drive additionally" — is
+    // gone, not merely deprioritised.
+    expect(template).not.toContain('A code review — always')
+    expect(template).not.toContain('Never skip the code review.')
+  })
+})
+
+describe('the mode the review is handed', () => {
+  it('opens Drive mode when the browser and a dev command are both there', () => {
+    const block = buildDriveAvailability('/usr/bin/agent-browser', 'bun dev')
+
+    expect(block).toContain('A drive **is** available')
+    expect(block).toContain('take it if, and only if')
+  })
+
+  it('closes Drive mode, and says which half is missing', () => {
+    const noBrowser = buildDriveAvailability(undefined, 'bun dev')
+    expect(noBrowser).toContain('not** available')
+    expect(noBrowser).toContain(AGENT_BROWSER_BIN)
+    expect(noBrowser).toContain('run Gates mode')
+    // Calling the tool anyway would switch the human's checkout for nothing.
+    expect(noBrowser).toContain('do not call `review_drive`')
+
+    const noDev = buildDriveAvailability('/usr/bin/agent-browser', undefined)
+    expect(noDev).toContain('no dev command configured')
+    expect(noDev).not.toContain(AGENT_BROWSER_BIN)
+
+    // Whitespace is not a dev command, and both halves missing reads as both.
+    const neither = buildDriveAvailability(undefined, '   ')
+    expect(neither).toContain(AGENT_BROWSER_BIN)
+    expect(neither).toContain('no dev command configured')
+  })
+
+  it('hands Gates mode the project commands, or tells it to run none', () => {
+    const configured = buildGateNotes({
+      verifyCommands: 'bun run typecheck\nbun run test',
+      knownFailures: 'one flaky spec',
+    })
+    expect(configured).toContain('bun run typecheck\nbun run test')
+    expect(configured).toContain('one flaky spec')
+    expect(configured).toContain('Subtract that baseline')
+
+    // Unconfigured, the answer is to run nothing — a reviewer discovering a
+    // monorepo's filter names by running the wrong suite is the long review
+    // this mode split exists to end.
+    const bare = buildGateNotes({})
+    expect(bare).toContain('no verify commands configured')
+    expect(bare).toContain('Do not go hunting for them')
+    expect(bare).toContain('may well predate this lap')
   })
 })
 
@@ -458,25 +546,18 @@ describe('the agent-browser probe', () => {
     expect(findOnPath('agent-browser', { PATH: dir }, 'linux')).toBeUndefined()
   })
 
-  it('fails the ticket before spawning anything when the CLI is missing', async () => {
+  it('turns a missing CLI into the mode, not into a failed review', () => {
     const original = process.env.PATH
     process.env.PATH = dir // empty — no agent-browser here
     try {
-      const outcome = await executeReviewTicket(makeCtx([]), review(3), {
-        config: { sandbox: 'docker' } as RuncastleConfig,
-        token: 'sk-token',
-        model: 'opus',
-        docsDigest: 'the docs',
-        lapDigests: [],
-      })
+      // What the probe now feeds: the block that closes Drive mode. It used to
+      // fail the whole ticket here, which withheld Gates mode — a review that
+      // needs no browser at all — because the browser was missing.
+      const block = buildDriveAvailability(findOnPath(AGENT_BROWSER_BIN), 'bun dev')
 
-      expect(outcome.status).toBe('failed')
-      if (outcome.status !== 'failed') return
-      expect(outcome.error).toContain(AGENT_BROWSER_BIN)
-      // The reason has to reach the digest — that is where the human reads what
-      // the burn produced.
-      expect(outcome.digest).toContain('Review could not run')
-      expect(outcome.digest).toContain(AGENT_BROWSER_BIN)
+      expect(block).toContain('not** available')
+      expect(block).toContain('run Gates mode')
+      expect(block).not.toContain('could not run')
     } finally {
       process.env.PATH = original
     }
