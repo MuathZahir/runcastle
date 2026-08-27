@@ -98,12 +98,15 @@ describe('findings router', () => {
     const view = await caller.findings.listByFeature({ featureId: feature.id })
 
     expect(view.summary).toEqual({ found: 2, fixed: 1, open: 1, observations: 1 })
-    expect(view.findings.map((f) => f.title)).toEqual([
-      'the save drops the value',
-      'the chip goes grey',
+    expect(view.findings.map((f) => f.title).sort()).toEqual([
       'mobile was not verified',
+      'the chip goes grey',
+      'the save drops the value',
     ])
-    expect(view.findings[1]).toMatchObject({
+    // The one still open is the one whose fix ticket failed, with its reason.
+    expect(view.openDefects).toHaveLength(1)
+    expect(view.openDefects[0]).toMatchObject({
+      title: 'the chip goes grey',
       status: 'failed',
       openReason: 'fix-failed',
       failureReason: 'tests still red',
@@ -116,7 +119,9 @@ describe('findings router', () => {
     const view = await caller.findings.listByFeature({ featureId: feature.id })
 
     expect(view.summary).toMatchObject({ found: 9, open: 1, observations: 0 })
-    expect(view.findings.at(-1)).toMatchObject({ openReason: 'over-cap', fixTicketId: null })
+    expect(view.openDefects).toHaveLength(1)
+    expect(view.openDefects[0]).toMatchObject({ openReason: 'over-cap', fixTicketId: null })
+    expect(view.findings.filter((f) => f.fixTicketId === null)).toHaveLength(1)
   })
 
   it('dismisses a finding, and the open count drops', async () => {
@@ -146,18 +151,18 @@ describe('findings router', () => {
 
     expect(result.runId).toMatch(/^run/)
     expect(result.tickets).toHaveLength(2)
-    expect(result.tickets.map((t) => t.title)).toEqual([
-      'the save drops the value',
+    expect(result.tickets.map((t) => t.title).sort()).toEqual([
       'defect 9',
+      'the save drops the value',
     ])
     // Built mechanically from the finding, on the CURRENT lap, blocking on nothing.
-    expect(result.tickets[0]).toMatchObject({
+    expect(result.tickets.find((t) => t.originFindingId === failed.finding.id)).toMatchObject({
+      title: 'the save drops the value',
       goal: 'Fix: the save drops the value',
       kind: 'implementation',
       status: 'pending',
       lap: feature.lap,
       blockedBy: [],
-      originFindingId: failed.finding.id,
     })
     expect(result.findings.every((f) => f.status === 'fixing')).toBe(true)
     // The Fix loop-back: review → implementation, same lap.
