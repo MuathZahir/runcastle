@@ -304,6 +304,7 @@ const PLACEHOLDERS = [
   // --- ticket-specific (must stay last) ---
   'TICKET_JSON',
   'BLOCKERS',
+  'FIX_NOTES',
 ] as const
 type PlaceholderKey = (typeof PLACEHOLDERS)[number]
 
@@ -319,7 +320,11 @@ export const RUN_CONSTANT_PLACEHOLDERS: readonly PlaceholderKey[] = [
 ]
 
 /** The keys whose value differs between two tickets of the same burn. */
-export const TICKET_SPECIFIC_PLACEHOLDERS: readonly PlaceholderKey[] = ['TICKET_JSON', 'BLOCKERS']
+export const TICKET_SPECIFIC_PLACEHOLDERS: readonly PlaceholderKey[] = [
+  'TICKET_JSON',
+  'BLOCKERS',
+  'FIX_NOTES',
+]
 
 /**
  * Replace every `{{KEY}}` placeholder in a burner template with its value.
@@ -641,6 +646,25 @@ export function buildBlockersBlock(
     return `### ticket ${seq} — ${d.title}\n\n${d.digest.trim()}`
   })
   return [head, '', 'In their own words:', '', ...bodies].join('\n')
+}
+
+/**
+ * The `{{FIX_NOTES}}` block: the one instruction a fix ticket carries that an
+ * ordinary one does not.
+ *
+ * A ticket minted from a review defect is checked against the reviewer's own
+ * repro step and nothing else (decision 8) — there is no second review pass over
+ * the fix, so re-running that step IS the evidence the defect is gone, and the
+ * digest is where the human reads that it was re-run. Ordinary tickets render an
+ * empty block: the standing brief stays byte-identical for the rest of the burn.
+ */
+export function buildFixNotes(ticket: Ticket): string {
+  if (!ticket.originFindingId) return ''
+  return [
+    '### This ticket fixes a review finding',
+    '',
+    "It was minted from a defect the review of this same lap reported, and its `context` carries the reviewer's repro step verbatim. **Before you declare done, re-run that repro step exactly, and say in your digest that you re-ran it and what happened.** Nothing reviews your change afterwards — that repro step is the check, and the verify commands run on top of it.",
+  ].join('\n')
 }
 
 /**
@@ -2833,6 +2857,7 @@ async function realExecuteTicketRun(
     GUARD_NOTES: buildGuardNotes(guardInstalled),
     TICKET_JSON: ticketJson,
     BLOCKERS: buildBlockersBlock(ticket.blockedBy, runCtx.digests),
+    FIX_NOTES: buildFixNotes(ticket),
   })
 
   // Dependency setup: detect the repo's install command (or take the config

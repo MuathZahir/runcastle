@@ -108,4 +108,6 @@ Everything above is the standing brief for this burn. This is the part that is y
 
 {{BLOCKERS}}
 
+{{FIX_NOTES}}
+
 Now do it.
