@@ -9,6 +9,7 @@ import {
   mergeModelEntries,
   modelEntryFor,
   modelRoster,
+  resolveDefaultBurnConcurrency,
   resolveModel,
   resolveModelEntry,
 } from '../src/config'
@@ -172,6 +173,8 @@ describe('model vocabulary — runtime-aware entries', () => {
 })
 
 describe('RuncastleConfig — burnConcurrency (M2)', () => {
+  // The schema-level floor only. What an operator who set nothing actually gets
+  // is host-aware and applied by `loadConfig` — see `resolveDefaultBurnConcurrency`.
   it('defaults to 3', () => {
     expect(RuncastleConfig.parse({}).burnConcurrency).toBe(3)
   })
@@ -185,6 +188,35 @@ describe('RuncastleConfig — burnConcurrency (M2)', () => {
     expect(RuncastleConfig.safeParse({ burnConcurrency: 0 }).success).toBe(false)
     expect(RuncastleConfig.safeParse({ burnConcurrency: 9 }).success).toBe(false)
     expect(RuncastleConfig.safeParse({ burnConcurrency: 2.5 }).success).toBe(false)
+  })
+})
+
+/**
+ * The host-aware half of that default. Three concurrent burns each size their
+ * worker pools from the full visible core count, so on a small box they
+ * oversubscribe it and manufacture test flakes; the threshold is 8.
+ */
+describe('resolveDefaultBurnConcurrency', () => {
+  it('burns one ticket at a time on a small host', () => {
+    expect(resolveDefaultBurnConcurrency(6)).toBe(1)
+    expect(resolveDefaultBurnConcurrency(8)).toBe(1)
+  })
+
+  it('keeps width 3 above the threshold', () => {
+    expect(resolveDefaultBurnConcurrency(12)).toBe(3)
+    expect(resolveDefaultBurnConcurrency(16)).toBe(3)
+  })
+
+  it('treats a host that cannot say how many cores it has as small', () => {
+    expect(resolveDefaultBurnConcurrency(Number.NaN)).toBe(1)
+    expect(resolveDefaultBurnConcurrency(0)).toBe(1)
+  })
+
+  it('stays inside the width the schema accepts', () => {
+    for (const cores of [1, 6, 8, 12, 16, 128]) {
+      const width = resolveDefaultBurnConcurrency(cores)
+      expect(RuncastleConfig.safeParse({ burnConcurrency: width }).success).toBe(true)
+    }
   })
 })
 

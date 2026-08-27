@@ -12,7 +12,9 @@ import {
   ModelEntry,
   RuncastleConfig as RuncastleConfigSchema,
   foldLegacyModelConfig,
+  resolveDefaultBurnConcurrency,
 } from '@runcastle/core'
+import { hostLogicalCpus } from '@runcastle/core/config-load'
 import { configPath } from '@runcastle/core/paths'
 import * as z from 'zod'
 import { eq } from 'drizzle-orm'
@@ -249,11 +251,24 @@ const DESCRIPTORS: FieldDescriptor[] = [
 
 const DEFAULTS = RuncastleConfigSchema.parse({})
 
+/**
+ * The defaults an operator who set nothing gets on THIS machine: the schema's,
+ * with `burnConcurrency` resolved from the host's core count exactly as
+ * `loadConfig` resolves it. The settings view is where that number is read out,
+ * so it has to be the width a run would really use rather than the schema's
+ * host-blind 3 — a UI that promises 3 on a box that burns 1 is just wrong.
+ */
+function hostDefaults(logicalCpus: number): RuncastleConfig {
+  return { ...DEFAULTS, burnConcurrency: resolveDefaultBurnConcurrency(logicalCpus) }
+}
+
 export interface SettingsIO {
   /** Env source (default `process.env`); tests inject a fake map. */
   env?: Record<string, string | undefined>
   /** Config-file path (default `~/.runcastle/config.json`); tests inject a temp file. */
   configFile?: string
+  /** Host core count behind the `burnConcurrency` default; tests inject a fixed one. */
+  logicalCpus?: number
 }
 
 /**
@@ -336,6 +351,7 @@ function resolveField(
     env: Record<string, string | undefined>
     fileRaw: Record<string, unknown>
     overrides: Record<ProjectColumn, string | null> | null
+    defaults: RuncastleConfig
   },
 ): SettingField {
   const scoped = layers.overrides !== null
@@ -364,7 +380,7 @@ function resolveField(
   }
 
   // 4. schema default (or null for a project-only field with no default).
-  const value = desc.configKey ? (DEFAULTS[desc.configKey] ?? null) : null
+  const value = desc.configKey ? (layers.defaults[desc.configKey] ?? null) : null
   return { ...base, value, source: 'default', editable: true }
 }
 
@@ -378,8 +394,10 @@ export function getSettings(ctx: AppCtx, projectId?: string, io: SettingsIO = {}
   const fileRaw = readRawConfig(io.configFile ?? configPath())
   const overrides = projectId !== undefined ? projectOverrides(ctx, projectId) : null
 
+  const defaults = hostDefaults(io.logicalCpus ?? hostLogicalCpus())
+
   const visible = DESCRIPTORS.filter((d) => projectId !== undefined || d.configKey !== undefined)
-  const fields = visible.map((d) => resolveField(d, { env, fileRaw, overrides }))
+  const fields = visible.map((d) => resolveField(d, { env, fileRaw, overrides, defaults }))
   // Per-step model overrides (issue #48) are global-only, so they resolve the
   // same in both scopes — append them to whichever view was requested.
   return { projectId, fields: [...fields, ...stepModelFields(fileRaw)] }
