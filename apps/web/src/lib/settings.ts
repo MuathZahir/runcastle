@@ -184,7 +184,7 @@ const META: Record<string, FieldMeta> = {
   },
   burnConcurrency: {
     label: 'Burn concurrency',
-    help: 'Max tickets burned in parallel per run (1–8). Each is a full agent.',
+    help: 'Max tickets burned in parallel per run (1–8). Each is a full agent. Left blank it follows this machine: 1 on hosts with 8 logical CPUs or fewer, 3 above, because parallel agents each size their test workers from the whole core count.',
     control: 'number',
   },
   burnAttempts: {
@@ -503,6 +503,20 @@ function isModelKey(key: string): boolean {
   return key === 'model' || isStepModelKey(key)
 }
 
+/**
+ * The note under a field whose default the SERVER resolved from this host — only
+ * `burnConcurrency`, whose width depends on the machine's core count.
+ *
+ * The number is read off the field rather than recomputed here: the web has no
+ * way to count the host's cores, and the value the server sent for an unset
+ * field already IS the width this machine would burn at. Only worth saying while
+ * the field is unset — once a width is chosen, the machine no longer decides.
+ */
+function hostDefaultNote(field: SettingField): string | null {
+  if (field.key !== 'burnConcurrency' || field.source !== 'default') return null
+  return `Default on this machine: ${toDisplay(field.value)}.`
+}
+
 /** The provenance a prepared field carries, when one has been established. */
 export interface FindingLike {
   key: string
@@ -538,6 +552,8 @@ export function describeField(
     note = describeFinding(finding)
   } else if (field.scope === 'project') {
     note = overridden ? 'Overridden for this project' : 'Inherited from global'
+  } else {
+    note = hostDefaultNote(field)
   }
 
   return {
