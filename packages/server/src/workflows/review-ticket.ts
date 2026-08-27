@@ -14,8 +14,11 @@ import {
   buildFeatureBrief,
   buildLapDigestsBlock,
   buildTicketJson,
+  buildTicketTiming,
   burnerAssetPath,
   createStreamThrottle,
+  createToolTimer,
+  emitTicketTiming,
   errorHeadline,
   harvestDigest,
   readAgentFile,
@@ -187,14 +190,36 @@ export interface ReviewDeps {
 }
 
 /**
- * Run one review ticket to a terminal outcome. The sandcastle boundary, so not
- * exercised by unit tests — the pure units around it (prompt rendering, the
- * artifacts the agent is handed, the PATH probe, the outcome shapes) are.
+ * Run one review ticket to a terminal outcome, and put its `ticket.timing` on
+ * the event log however it ends — including the two refusals below, which end
+ * the ticket before an agent ever starts. A review used to emit no timing at
+ * all, which left every reader of a review's duration reconstructing it from
+ * the append-only log file (see {@link buildTicketTiming}).
  */
 export async function executeReviewTicket(
   ctx: WorkflowCtx,
   ticket: Ticket,
   deps: ReviewDeps,
+): Promise<TicketOutcome> {
+  const startedAt = Date.now()
+  const timer = createToolTimer()
+  try {
+    return await reviewTicketOutcome(ctx, ticket, deps, timer)
+  } finally {
+    emitTicketTiming(ctx, ticket, buildTicketTiming(timer.summary(), startedAt, Date.now()))
+  }
+}
+
+/**
+ * The review itself. The sandcastle boundary, so not exercised by unit tests —
+ * the pure units around it (prompt rendering, the artifacts the agent is handed,
+ * the PATH probe, the outcome shapes) are.
+ */
+async function reviewTicketOutcome(
+  ctx: WorkflowCtx,
+  ticket: Ticket,
+  deps: ReviewDeps,
+  timer: ReturnType<typeof createToolTimer>,
 ): Promise<TicketOutcome> {
   const { project, feature } = ctx
 
@@ -242,6 +267,7 @@ export async function executeReviewTicket(
   beginTranscript(ticket.id)
   const onStreamEvent = (event: AgentStreamEvent): void => {
     throttle.onEvent(event)
+    timer.onEvent(event)
     if (event.type === 'text') {
       appendTranscript(ticket.id, { kind: 'text', text: event.message })
     } else if (event.type === 'toolCall') {
