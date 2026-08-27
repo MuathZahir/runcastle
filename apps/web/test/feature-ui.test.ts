@@ -11,7 +11,10 @@ import {
   driveFailure,
   driveWheel,
   duplicateTitleWarning,
+  findingCountsLine,
+  findingOpenReason,
   groupByLap,
+  headline,
   lapAccount,
   kickoffTrouble,
   lapBanner,
@@ -876,6 +879,141 @@ describe('nextStep at review', () => {
       const ns = nextStep(reviewFull({}), { driving: false, laterLaps, openNotes: 2 })
       expect(ns.secondary).toContainEqual({ label: 'Address notes', kind: 'addressNotes' })
     })
+  })
+
+  /**
+   * Review findings are fixed in-run, decisions #7 — the human's decision on
+   * arrival at review must be one line read and one click, never "what do I do
+   * now". Defects the run could not close (over the auto-fix cap, or a fix
+   * ticket that failed) take the primary; Merge & ship stays one click away and
+   * is never nagged about.
+   */
+  describe('with defects the review left open', () => {
+    it('makes fixing them the primary and drops Merge & ship to a secondary', () => {
+      const ns = nextStep(reviewFull({}), { driving: false, openDefects: 3 })
+      expect(ns.primary).toEqual({ label: 'Fix 3 open defects', kind: 'fixDefects' })
+      expect(labels(ns.secondary)).toEqual(['Merge & ship', 'Start test drive', 'Iterate'])
+      // Information, never a block: the demoted merge carries no warning of its own.
+      expect(ns.warning).toBeUndefined()
+    })
+
+    it('says one defect in the singular', () => {
+      const ns = nextStep(reviewFull({}), { driving: false, openDefects: 1 })
+      expect(ns.primary?.label).toBe('Fix 1 open defect')
+      expect(ns.desc).toContain('1 defect')
+    })
+
+    it('behaves exactly as today with nothing open', () => {
+      for (const openDefects of [0, undefined]) {
+        const ns = nextStep(reviewFull({}), { driving: false, openDefects })
+        expect(ns.primary).toEqual({ label: 'Merge & ship', kind: 'merge' })
+      }
+    })
+
+    it('outranks the deferred-scope flip — this lap is not done yet', () => {
+      const ns = nextStep(reviewFull({}), {
+        driving: false,
+        openDefects: 2,
+        laterLaps: '- the conversation inspector',
+      })
+      expect(ns.primary?.kind).toBe('fixDefects')
+    })
+
+    // The one rule that outranks everything review says (findings F8).
+    it('never outranks a standing merge conflict', () => {
+      const ns = nextStep(reviewFull({}), {
+        driving: false,
+        openDefects: 2,
+        conflict: { base: 'main', files: ['a.ts'], at: 1 },
+      })
+      expect(ns.primary?.kind).toBe('resolveConflict')
+      expect(ns.secondary.map((a) => a.kind)).not.toContain('fixDefects')
+    })
+
+    // A burn already queued must not lose its button to the one that queues more.
+    it('keeps Burn reachable when fix tickets are already waiting', () => {
+      const ns = nextStep(reviewFull({ ticketStatuses: ['pending'] }), {
+        driving: false,
+        openDefects: 1,
+      })
+      expect(ns.primary?.kind).toBe('fixDefects')
+      expect(ns.secondary).toContainEqual({ label: 'Burn 1 ticket', kind: 'burn' })
+    })
+
+    it('keeps the drive toggle and the notes triage alongside it', () => {
+      const ns = nextStep(reviewFull({}), { driving: true, openDefects: 2, openNotes: 1 })
+      expect(labels(ns.secondary)).toEqual([
+        'Merge & ship',
+        'Stop test drive',
+        'Address notes',
+        'Iterate',
+      ])
+    })
+  })
+})
+
+/**
+ * Review findings are fixed in-run, decisions #7 and #4 — what the review card
+ * says in one line, why a defect is still open, and the headline/detail split
+ * that stops every list on the page being a wall of prose.
+ */
+describe('finding rendering', () => {
+  it('reads out found, fixed, open and observations in that order', () => {
+    expect(findingCountsLine({ found: 9, fixed: 8, open: 1, observations: 3 })).toBe(
+      '9 defects found · 8 fixed automatically · 1 still open · 3 observations',
+    )
+  })
+
+  it('drops every clause whose count is zero', () => {
+    expect(findingCountsLine({ found: 0, fixed: 0, open: 0, observations: 1 })).toBe(
+      'no defects found · 1 observation',
+    )
+    expect(findingCountsLine({ found: 1, fixed: 1, open: 0, observations: 0 })).toBe(
+      '1 defect found · 1 fixed automatically',
+    )
+  })
+
+  it('has nothing to say when the review reported nothing at all', () => {
+    expect(findingCountsLine({ found: 0, fixed: 0, open: 0, observations: 0 })).toBeNull()
+    expect(findingCountsLine(undefined)).toBeNull()
+  })
+
+  it('names why a defect is still open', () => {
+    expect(findingOpenReason({ openReason: 'over-cap' })).toBe('over the auto-fix cap')
+    expect(findingOpenReason({ openReason: 'fix-failed', failureReason: 'tests red' })).toBe(
+      'fix failed: tests red',
+    )
+    expect(findingOpenReason({ openReason: 'fix-failed', failureReason: null })).toBe('fix failed')
+    expect(findingOpenReason({ openReason: null })).toBeNull()
+  })
+
+  it('leaves a short single-line note whole, with nothing to expand', () => {
+    expect(headline('the run chip goes grey')).toEqual({
+      head: 'the run chip goes grey',
+      rest: '',
+    })
+  })
+
+  it('splits a note at its own first line', () => {
+    expect(headline('the run chip goes grey\n\nonly while burning')).toEqual({
+      head: 'the run chip goes grey',
+      rest: 'only while burning',
+    })
+  })
+
+  it('cuts a long first line on a word boundary and keeps the remainder', () => {
+    const long = `${'word '.repeat(30)}end`
+    const { head, rest } = headline(long)
+    expect(head.endsWith('…')).toBe(true)
+    expect(head.length).toBeLessThanOrEqual(81)
+    expect(head).not.toContain('wor…')
+    expect(rest.endsWith('end')).toBe(true)
+  })
+
+  it('cuts at the limit when there is no word boundary to prefer', () => {
+    const { head, rest } = headline('x'.repeat(200))
+    expect(head).toBe(`${'x'.repeat(80)}…`)
+    expect(rest).toBe('x'.repeat(120))
   })
 })
 

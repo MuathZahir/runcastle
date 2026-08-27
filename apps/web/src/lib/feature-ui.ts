@@ -440,6 +440,7 @@ export type ActionKind =
   | 'resolveConflict' // launchSession { kind: 'revisit', kickoffLine: mergeConflictKickoff(…) }
   | 'rethink' // feature.rethink — start the next lap (review → ideation)
   | 'addressNotes' // opens the triage fork over the open notes (promote or iterate)
+  | 'fixDefects' // findings.fixOpenDefects — a fix ticket per open review defect, then burn
   | 'unarchive' // feature.unarchive — restore an archived feature to its lane (next-step bar)
 
 /**
@@ -1043,6 +1044,88 @@ export function lapAccount(
   return entries.length > 0 ? { source: 'tickets', entries } : null
 }
 
+// --- the review agent's structured findings ---------------------------------
+
+/** The server-computed counts behind the review card's one-line verdict. */
+export interface FindingCounts {
+  found: number
+  fixed: number
+  open: number
+  observations: number
+}
+
+/**
+ * The line the human reads on arrival at review (decisions #7): "9 defects found
+ * · 8 fixed automatically · 1 still open · 3 observations".
+ *
+ * Every clause is dropped when its count is zero, so a clean lap says "no
+ * defects found" and nothing else rather than parading three zeroes. Null when
+ * the review reported nothing at all — there is no verdict to render, and a card
+ * claiming "no defects found" over a review that never ran is the same green lie
+ * the summary row is careful not to tell.
+ */
+export function findingCountsLine(summary?: FindingCounts): string | null {
+  if (!summary || summary.found + summary.observations === 0) return null
+  const parts = [
+    summary.found === 0
+      ? 'no defects found'
+      : `${summary.found} defect${summary.found === 1 ? '' : 's'} found`,
+  ]
+  if (summary.fixed > 0) parts.push(`${summary.fixed} fixed automatically`)
+  if (summary.open > 0) parts.push(`${summary.open} still open`)
+  if (summary.observations > 0) {
+    parts.push(`${summary.observations} observation${summary.observations === 1 ? '' : 's'}`)
+  }
+  return parts.join(' · ')
+}
+
+/** A finding as the open-defects list reads it — only why it is still open. */
+interface OpenFindingFigure {
+  openReason?: 'over-cap' | 'fix-failed' | null
+  failureReason?: string | null
+}
+
+/**
+ * Why a defect is still the human's problem, in one line (decisions #7). A
+ * defect with no reason recorded is one the burn never reached, so there is
+ * nothing honest to say about it and the row shows its title alone.
+ */
+export function findingOpenReason(finding: OpenFindingFigure): string | null {
+  if (finding.openReason === 'over-cap') return 'over the auto-fix cap'
+  if (finding.openReason === 'fix-failed') {
+    const why = finding.failureReason?.trim()
+    return why ? `fix failed: ${why}` : 'fix failed'
+  }
+  return null
+}
+
+/** How much of a note or finding its one-line headline may carry. */
+export const HEADLINE_MAX = 80
+
+/**
+ * A block of text split into the line a list row shows and the rest, which the
+ * row hides behind a disclosure (decisions #4).
+ *
+ * This is what stops the notes panel being a wall — for the human's own notes as
+ * much as for anything an agent wrote. The cut prefers the text's own first
+ * line, then a word boundary, so a headline never ends mid-word; `rest` is empty
+ * when the whole thing already fits, and the row renders plain text.
+ */
+export function headline(text: string, max: number = HEADLINE_MAX): {
+  head: string
+  rest: string
+} {
+  const trimmed = text.trim()
+  const firstBreak = trimmed.indexOf('\n')
+  const firstLine = firstBreak === -1 ? trimmed : trimmed.slice(0, firstBreak)
+  if (firstLine.length <= max) {
+    return { head: firstLine, rest: trimmed.slice(firstLine.length).trim() }
+  }
+  const lastSpace = firstLine.lastIndexOf(' ', max)
+  const cut = lastSpace > max / 2 ? lastSpace : max
+  return { head: `${firstLine.slice(0, cut).trimEnd()}…`, rest: trimmed.slice(cut).trim() }
+}
+
 /**
  * The spec's path, or undefined until it is written. Same shape as {@link
  * mapDocPath} and for the same reason: the review body's Planned-next-lap card
@@ -1372,6 +1455,13 @@ export function nextStep(
      * findings inbox.
      */
     openNotes?: number
+    /**
+     * Defects the review agent found that are still open — over the auto-fix cap,
+     * or left behind by a fix ticket that failed (the `open` count of the
+     * findings summary). Non-zero makes fixing them review's primary: the human's
+     * arrival at review is meant to be one line read and one button clicked.
+     */
+    openDefects?: number
     /**
      * Scope the spec has left for a later lap ({@link deferredScope}). Set means
      * review's primary flips from Merge & ship to starting the next lap
@@ -1785,6 +1875,41 @@ export function nextStep(
           // The compound's own explanation outranks the drive caveat, exactly as
           // a drive refusal does: it is about the button the eye is on.
           ...(live ? { warning: ONE_TERMINAL_WARNING } : driveWarning),
+        }
+      }
+
+      // Defects the review found and the run could not close — over the auto-fix
+      // cap, or a fix ticket that failed (decisions #7). One click mints a ticket
+      // for each and burns them, so the human's whole decision on arrival is one
+      // line read and one button; Merge & ship drops to a secondary and is NOT
+      // nagged about, because open findings are information, never a block.
+      const openDefects = ctx.openDefects ?? 0
+      if (openDefects > 0) {
+        // Reachable exactly as it is on the conflict bar: a burn that is already
+        // queued must not lose its button to the one that queues more.
+        const burn: NextAction[] =
+          pending > 0
+            ? [{ label: `Burn ${pending} ticket${pending === 1 ? '' : 's'}`, kind: 'burn' }]
+            : []
+        return {
+          kick: 'NEXT STEP',
+          title: 'Fix what the review found',
+          desc: `${openDefects} defect${openDefects === 1 ? '' : 's'} the review found ${
+            openDefects === 1 ? 'is' : 'are'
+          } still open — fixing ${openDefects === 1 ? 'it' : 'them'} runs one ticket each on this lap. Or dismiss them below and ship.`,
+          primary: {
+            label: `Fix ${openDefects} open defect${openDefects === 1 ? '' : 's'}`,
+            kind: 'fixDefects',
+          },
+          secondary: [
+            { label: 'Merge & ship', kind: 'merge' },
+            ...burn,
+            testDriveAction,
+            ...addressNotes,
+            ...iterate,
+          ],
+          busy: false,
+          ...driveWarning,
         }
       }
 
