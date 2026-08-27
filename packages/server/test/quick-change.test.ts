@@ -156,8 +156,9 @@ describe('quickChange service — a one-ticket feature born at implementation', 
   /**
    * The prose is the whole deliverable of this ticket — it is what the review
    * agent is handed, and the quick door has no session to write it. It carries
-   * the contract the tickets skill states: code review always, drive only when
-   * there is something drivable, digest = the lap's summary.
+   * the contract the tickets skill states: one mode and not both, the drive when
+   * there is something drivable and the gates otherwise, digest = the lap's
+   * summary, led by the mode it ran in.
    */
   it('gives the review ticket the contract prose the tickets skill mandates', async () => {
     const feature = await features.quickChange(ctx, {
@@ -168,15 +169,20 @@ describe('quickChange service — a one-ticket feature born at implementation', 
 
     const review = listByFeature(ctx, feature.id)[2]
     expect(review.title).toBe('Review the integrated change')
-    expect(review.goal).toContain('always')
-    expect(review.goal).toContain('drive the app when the diff touches something a human can')
+    expect(review.goal).toContain('in exactly one mode')
+    expect(review.goal).toContain('a drive is available')
+    expect(review.goal).toContain('otherwise run the verify gates')
+    // The superseded contract: never "always the code review, and additionally
+    // the drive" — that phrasing is what produced the reviews that did both.
+    expect(review.goal).not.toContain('additionally')
     expect(review.context).toContain('no spec.md or decisions.md')
-    expect(review.context).toContain('let the code review stand alone')
+    expect(review.context).toContain('take the gates-and-diff mode')
     expect(review.context).toContain("Your digest is the lap's prose summary")
-    // One criterion for the unconditional code review, then one per sentence
-    // the human typed — the review agent walks them in order.
+    expect(review.context).toContain('its first line names the mode you ran')
+    // One criterion for the review itself — either mode satisfies it — then one
+    // per sentence the human typed, which the review agent walks in order.
     expect(review.acceptanceCriteria).toEqual([
-      "The branch's diff against its base is code-reviewed on both axes — the repo's own standards, and the change against what was asked for.",
+      "Reviewed in one mode — either walked in a browser, or put through the verify gates and code-reviewed on both axes (the repo's own standards, and the change against what was asked for).",
       `Landed and does what it says: ${PROSE}`,
       'Landed and does what it says: Fix the run chip.',
     ])
