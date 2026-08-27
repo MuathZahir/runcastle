@@ -32,7 +32,9 @@ const ALL_HEALTHY: Record<string, Partial<ExecOutcome>> = {
   'git config --get user.name': { stdout: 'Dev' },
   'docker --version': { stdout: 'Docker version 27.0.0' },
   'docker info': { stdout: 'Server: ...' },
-  'docker image inspect sandcastle:runcastle': { stdout: '[{}]' },
+  'docker image inspect --format {{.Created}} sandcastle:runcastle': {
+    stdout: '2030-01-01T12:00:00Z',
+  },
 }
 
 function byId(results: ProbeResult[], id: string): ProbeResult {
@@ -46,6 +48,7 @@ describe('runDoctor — canned environments', () => {
     env: { CLAUDE_CODE_OAUTH_TOKEN: 'sk-oauth-xxx' },
     platform: 'linux' as const,
     imageName: 'sandcastle:runcastle',
+    fileMtime: () => new Date('2026-08-18T12:00:00Z'),
   }
 
   it('reports every probe healthy on a fully-provisioned host', async () => {
@@ -128,9 +131,31 @@ describe('runDoctor — canned environments', () => {
 
   it('reports a missing sandcastle image when inspect fails', async () => {
     const table = { ...ALL_HEALTHY }
-    delete table['docker image inspect sandcastle:runcastle']
+    delete table['docker image inspect --format {{.Created}} sandcastle:runcastle']
     const report = await runDoctor({ ...base, exec: cannedExec(table) })
     expect(byId(report.results, 'sandcastle-image').status).toBe('missing')
+  })
+
+  it('reports a sandcastle image as stale when the burner Dockerfile is newer', async () => {
+    const table = {
+      ...ALL_HEALTHY,
+      'docker image inspect --format {{.Created}} sandcastle:runcastle': {
+        stdout: '2026-08-20T12:00:00Z',
+      },
+    }
+    const report = await runDoctor({
+      ...base,
+      exec: cannedExec(table),
+      fileMtime: () => new Date('2026-08-21T12:00:00Z'),
+    })
+    const image = byId(report.results, 'sandcastle-image')
+    expect(image.status).toBe('stale')
+    expect(image.severity).toBe('error')
+    expect(image.detail).toBe(
+      'sandcastle:runcastle built 2026-08-20, burner Dockerfile changed 2026-08-21 — rebuild',
+    )
+    expect(image.fix).toMatch(/Rebuild image/)
+    expect(report.ok).toBe(false)
   })
 })
 

@@ -13,7 +13,8 @@
  * fixes.
  */
 
-import { existsSync } from 'node:fs'
+import { existsSync, statSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
 import { AGENT_RUNTIMES, DEFAULT_RUNTIME, DEFAULT_SANDBOX_IMAGE, type AgentRuntime } from '@runcastle/core'
 import { codexAuthFile } from '../services/codex-auth'
 
@@ -37,6 +38,7 @@ export type ExecFn = (command: string, args: string[]) => Promise<ExecOutcome>
  */
 export type ProbeStatus =
   | 'ok'
+  | 'stale' // present, but built before the current burner Dockerfile
   | 'missing' // presence check failed — not installed / not on PATH
   | 'daemon-dead' // container CLI present, daemon not responding (docker)
   | 'machine-stopped' // container CLI present, VM not initialized/started (podman)
@@ -92,6 +94,10 @@ export interface DoctorEnv {
   runtimes?: readonly AgentRuntime[]
   /** Injected file-existence check for the auth-file fallback; defaults to real fs. */
   fileExists?: (path: string) => boolean
+  /** Injected mtime read for the bundled burner Dockerfile; defaults to real fs. */
+  fileMtime?: (path: string) => Date
+  /** Override for the bundled burner Dockerfile path (primarily for packaging tests). */
+  burnerDockerfile?: string
 }
 
 export interface DoctorReport {
@@ -531,14 +537,33 @@ export async function containerRuntimeProbe(exec: ExecFn): Promise<ProbeResult> 
  * global install). AFK burns are opt-in, so a missing image is a warning, not a
  * block. Reuses whichever runtime is present.
  */
-export async function sandcastleImageProbe(exec: ExecFn, imageName: string): Promise<ProbeResult> {
+export async function sandcastleImageProbe(
+  exec: ExecFn,
+  imageName: string,
+  burnerDockerfile: string,
+  fileMtime: (path: string) => Date,
+): Promise<ProbeResult> {
   const id = 'sandcastle-image'
   const label = 'Sandcastle container image'
   for (const runtime of ['docker', 'podman'] as const) {
     const present = await exec(runtime, ['--version'])
     if (!(present.ok && present.code === 0)) continue
-    const inspect = await exec(runtime, ['image', 'inspect', imageName])
+    const inspect = await exec(runtime, ['image', 'inspect', '--format', '{{.Created}}', imageName])
     if (inspect.ok && inspect.code === 0) {
+      const created = new Date(inspect.stdout.trim())
+      const dockerfileChanged = fileMtime(burnerDockerfile)
+      if (dockerfileChanged > created) {
+        const date = (value: Date) => value.toISOString().slice(0, 10)
+        return {
+          id,
+          label,
+          tier: 2,
+          status: 'stale',
+          severity: 'error',
+          detail: `${imageName} built ${date(created)}, burner Dockerfile changed ${date(dockerfileChanged)} — rebuild`,
+          fix: 'Open Settings → AFK burns and click "Rebuild image".',
+        }
+      }
       return { id, label, tier: 2, status: 'ok', severity: 'error', detail: `${imageName} present` }
     }
     return {
@@ -575,6 +600,10 @@ export async function runDoctor(env: DoctorEnv): Promise<DoctorReport> {
   const { exec } = env
   const processEnv = env.env ?? process.env
   const imageName = env.imageName ?? DEFAULT_SANDBOX_IMAGE
+  const burnerDockerfile =
+    env.burnerDockerfile ??
+    fileURLToPath(new URL('../assets/sandcastle/Dockerfile', import.meta.url))
+  const fileMtime = env.fileMtime ?? ((path: string) => statSync(path).mtime)
   const required = new Set(env.runtimes ?? [DEFAULT_RUNTIME])
 
   const results: ProbeResult[] = [
@@ -595,7 +624,7 @@ export async function runDoctor(env: DoctorEnv): Promise<DoctorReport> {
   results.push(
     await gitIdentityProbe(exec, env.cwd),
     await containerRuntimeProbe(exec),
-    await sandcastleImageProbe(exec, imageName),
+    await sandcastleImageProbe(exec, imageName, burnerDockerfile, fileMtime),
   )
 
   const counts = (r: ProbeResult) => r.severity === 'error'

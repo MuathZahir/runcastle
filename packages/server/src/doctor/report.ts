@@ -8,6 +8,7 @@ import type { DoctorMode, DoctorReport, ProbeResult, ProbeStatus } from './docto
 
 const GLYPH: Record<ProbeStatus, string> = {
   ok: '✓',
+  stale: '✗',
   missing: '✗',
   'daemon-dead': '✗',
   'machine-stopped': '✗',
