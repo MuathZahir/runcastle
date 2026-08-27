@@ -1,10 +1,11 @@
-import { existsSync, writeFileSync } from 'node:fs'
+import { existsSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { simpleGit } from 'simple-git'
-import { beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { AppCtx } from '../src/db/types'
 import { listAfter } from '../src/services/events'
 import { createFeature } from '../src/services/features'
+import { useDataDir } from './helpers/data-dir'
 import { makeTestCtx } from './helpers/db'
 import { seedProject, tmpRepo } from './helpers/fixtures'
 
@@ -12,8 +13,15 @@ describe('feature.create', () => {
   let ctx: AppCtx
   let repoPath: string
   let projectId: string
+  let home: string
+  let restoreDataDir: () => void
 
   beforeEach(async () => {
+    // Creation now cuts the feature's talk worktree (that is where the scaffolded
+    // docs are written and committed), so the data dir has to be a temp tree.
+    home = tmpRepo()
+    restoreDataDir = useDataDir(home)
+
     ctx = await makeTestCtx()
     // A project always points at a real git repo (validated by project.init);
     // now that B2's git service is live, createFeature creates a real branch,
@@ -28,6 +36,11 @@ describe('feature.create', () => {
     await g.add(['README.md'])
     await g.commit('initial commit')
     projectId = seedProject(ctx, repoPath).id
+  })
+
+  afterEach(() => {
+    restoreDataDir()
+    rmSync(home, { recursive: true, force: true })
   })
 
   it('slugifies the title and dedupes against existing slugs', async () => {
@@ -54,8 +67,12 @@ describe('feature.create', () => {
     const branches = await simpleGit(repoPath).branchLocal()
     expect(branches.all).toContain('feature/brancher')
 
-    // brief.md scaffolded into the target repo docs dir
-    expect(existsSync(join(repoPath, 'docs', 'features', 'brancher', 'brief.md'))).toBe(true)
+    // brief.md scaffolded onto the FEATURE branch — never into the human's checkout
+    const brief = await simpleGit(repoPath).show([
+      'feature/brancher:docs/features/brancher/brief.md',
+    ])
+    expect(brief).toContain('# Brancher')
+    expect(existsSync(join(repoPath, 'docs', 'features', 'brancher', 'brief.md'))).toBe(false)
   })
 
   it('falls back to the branch the checkout is standing on, not a stored default', async () => {
@@ -129,14 +146,24 @@ describe('feature.create', () => {
     expect(f.mapped).toBe(false)
   })
 
-  it('commits the scaffolded brief so the working tree stays clean (ship gates)', async () => {
-    await createFeature(ctx, { projectId, title: 'Cleanly', oneLiner: 'z' })
+  it('commits the scaffolded brief onto the feature branch, leaving the checkout alone', async () => {
+    // The bug this pins: the scaffold was written into the human's checkout and
+    // committed there, so it landed on whatever branch they were standing on (in
+    // practice `main`) and the feature branch reached its grill session with no
+    // brief.md at all — the grill worktree is cut from the branch.
     const g = simpleGit(repoPath)
+    const tipBefore = (await g.revparse(['HEAD'])).trim()
+    const body = '# Cleanly\n\nThe reasoning the intake conversation settled.\n'
 
-    // The brief must be committed, not left untracked — an untracked doc would
-    // dirty the checkout and block test-drive / merge.
+    await createFeature(ctx, { projectId, title: 'Cleanly', oneLiner: 'z', brief: body })
+
+    // (a) the brief is on the FEATURE branch, verbatim
+    expect(await g.show(['feature/cleanly:docs/features/cleanly/brief.md'])).toBe(body)
+    // (b) the checkout's own branch gained no commit
+    expect((await g.revparse(['HEAD'])).trim()).toBe(tipBefore)
+    expect((await g.revparse(['--abbrev-ref', 'HEAD'])).trim()).toBe('main')
+    // (c) and no untracked doc dirties it — a dirty tree is what test-drive and
+    // merge both refuse on
     expect((await g.raw(['status', '--porcelain'])).trim()).toBe('')
-    const tracked = (await g.raw(['ls-files', 'docs/features/cleanly/brief.md'])).trim()
-    expect(tracked).toBe('docs/features/cleanly/brief.md')
   })
 })
