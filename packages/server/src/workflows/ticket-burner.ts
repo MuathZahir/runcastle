@@ -202,7 +202,7 @@ export interface BurnDeps {
   /** Whether {@link runtime} can authenticate this run (container sandboxes require it). */
   hasAuthToken: boolean
   /** Doctor-style injected command runner used for the pre-container image probe. */
-  exec: ExecFn
+  exec?: ExecFn
   /**
    * The runtime of a ticket whose OWN model cannot authenticate a container
    * burn, or `undefined` when it can. A ticket assigned to the other runtime
@@ -2236,7 +2236,7 @@ export async function burnRun(
   // Prove the selected image can launch this burn's agent before sandcastle
   // creates a ticket container. The host CLI is the right one for noSandbox,
   // so probing an image there would be both wasteful and misleading.
-  if (deps.config.sandbox !== 'noSandbox') {
+  if (deps.config.sandbox !== 'noSandbox' && deps.exec) {
     const image = resolveSandboxImage(deps.config)
     const binary = RUNTIME_BINARY[deps.runtime]
     const probe = await deps.exec(deps.config.sandbox, [
