@@ -184,7 +184,7 @@ function ImageRow({
           title={runtimeOk ? undefined : 'Install a container runtime first'}
           onClick={() => start.mutate({ kind: 'build-image' })}
         >
-          {start.isPending ? 'Starting…' : 'Build image'}
+          {start.isPending ? 'Starting…' : probe.status === 'stale' ? 'Rebuild image' : 'Build image'}
         </Button>
       )}
     </Row>
