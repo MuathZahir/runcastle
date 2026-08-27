@@ -17,6 +17,7 @@ import {
   buildRetryNotes,
   classifyTicketRunError,
   delayUnlessAborted,
+  missingAgentBinaryMessage,
   retryDelayMs,
   stopTicketRun,
 } from '../src/workflows/ticket-burner'
@@ -31,6 +32,32 @@ import { seedFeature, seedProject } from './helpers/fixtures'
  */
 
 describe('classifyTicketRunError', () => {
+  it.each([
+    ['codex', 'codex exited with code 127', 'sandcastle:runcastle-demo'],
+    ['claude-code', '/bin/sh: claude: command not found', 'sandcastle:claude-demo'],
+  ] as const)('fails fast when the %s binary is absent from the image', (runtime, error, image) => {
+    expect(classifyTicketRunError(new Error(error), runtime)).toBe('fatal')
+    expect(missingAgentBinaryMessage(new Error(error), runtime, image)).toBe(
+      `${runtime === 'claude-code' ? 'claude' : 'codex'} is not installed in image ${image} — the image predates the burner Dockerfile. Rebuild it from Settings → AFK burns (Rebuild image).`,
+    )
+  })
+
+  it.each([
+    ['codex', '/bin/sh: codex: not found'],
+    ['claude-code', 'env: claude: No such file or directory'],
+  ] as const)('recognizes the %s shell missing-command wording', (runtime, error) => {
+    expect(classifyTicketRunError(new Error(error), runtime)).toBe('fatal')
+  })
+
+  it.each(['codex', 'claude-code'] as const)(
+    'keeps an ordinary %s exit code 1 retryable',
+    (runtime) => {
+      expect(classifyTicketRunError(new Error(`${runtime} exited with code 1`), runtime)).toBe(
+        'retryable',
+      )
+    },
+  )
+
   it.each([
     'claude-code exited with code 1:\n',
     'claude-code exited with code 137:\nkilled',
