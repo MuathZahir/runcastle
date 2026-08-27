@@ -60,6 +60,42 @@ describe('burn guard rules', () => {
     })
   })
 
+  describe('long sleeps and verification polling', () => {
+    it('denies sleep durations above 30 seconds', () => {
+      expect(denied('sleep 31')).toBe('no-long-sleep')
+      expect(denied('cd /repo && sleep 120 && bun test')).toBe('no-long-sleep')
+      expect(denied('sleep 31s')).toBe('no-long-sleep')
+      expect(denied('sleep 1m')).toBe('no-long-sleep')
+    })
+
+    it('allows short sleeps', () => {
+      expect(denied('sleep 5')).toBeNull()
+      expect(denied('sleep 30')).toBeNull()
+    })
+
+    it('denies until and while loops that poll verification commands', () => {
+      expect(denied('until bun run typecheck; do sleep 20; done')).toBe(
+        'no-verification-polling-loop',
+      )
+      expect(denied('while ! pnpm test; do sleep 5; done')).toBe(
+        'no-verification-polling-loop',
+      )
+      expect(denied('while true; do\n  bun vitest run\n  sleep 5\ndone')).toBe(
+        'no-verification-polling-loop',
+      )
+      expect(denied('until turbo run test; do echo waiting; done')).toBe(
+        'no-verification-polling-loop',
+      )
+      expect(denied('while bun test; do echo retrying; done')).toBe(
+        'no-verification-polling-loop',
+      )
+    })
+
+    it('allows a while-read loop over a file', () => {
+      expect(denied('while read -r line; do echo "$line"; done < file.txt')).toBeNull()
+    })
+  })
+
   describe('file edits through the shell', () => {
     it('denies rewriting a file through an interpreter heredoc', () => {
       expect(denied("cd /repo && python3 - <<'PY'\nopen('a','w')\nPY")).toBe(
