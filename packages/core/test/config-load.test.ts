@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
@@ -16,6 +16,13 @@ import { loadConfig } from '../src/config-load'
  * empty temp data dir: the values under test are then the env's alone.
  */
 describe('loadConfig — numeric env overrides', () => {
+  /**
+   * A core count above the small-host threshold, so `burnConcurrency`'s fallback
+   * here is the flat 3 this table asserts rather than whatever the machine
+   * running the suite happens to have. The narrowing itself is tested below.
+   */
+  const WIDE_HOST = 16
+
   let dataDir: string
   let previousDataDir: string | undefined
 
@@ -48,17 +55,17 @@ describe('loadConfig — numeric env overrides', () => {
   for (const { envVar, field, set, fallback } of KNOBS) {
     describe(envVar, () => {
       it('takes a number', () => {
-        const cfg = loadConfig({ [envVar]: set }) as unknown as Record<string, unknown>
+        const cfg = loadConfig({ [envVar]: set }, WIDE_HOST) as unknown as Record<string, unknown>
         expect(cfg[field]).toBe(Number(set))
       })
 
       it('falls back to the default when unset', () => {
-        const cfg = loadConfig({}) as unknown as Record<string, unknown>
+        const cfg = loadConfig({}, WIDE_HOST) as unknown as Record<string, unknown>
         expect(cfg[field]).toBe(fallback)
       })
 
       it('treats an exported-but-empty value as unset', () => {
-        const cfg = loadConfig({ [envVar]: '' }) as unknown as Record<string, unknown>
+        const cfg = loadConfig({ [envVar]: '' }, WIDE_HOST) as unknown as Record<string, unknown>
         expect(cfg[field]).toBe(fallback)
       })
     })
@@ -75,5 +82,54 @@ describe('loadConfig — numeric env overrides', () => {
   it('treats an exported-but-empty burn guard as unset', () => {
     expect(loadConfig({ RUNCASTLE_BURN_GUARD: '' }).burnGuard).toBe(true)
     expect(loadConfig({ RUNCASTLE_BURN_GUARD: '0' }).burnGuard).toBe(false)
+  })
+})
+
+/**
+ * `burnConcurrency` is the one default that depends on the machine: three
+ * parallel burns each size their worker pools from the full core count, so a
+ * small host gets width 1. The rule lives in core's pure
+ * `resolveDefaultBurnConcurrency`; what these pin down is that the loader
+ * applies it, and that anything the operator actually chose still wins.
+ */
+describe('loadConfig — host-aware burnConcurrency default', () => {
+  let dataDir: string
+  let previousDataDir: string | undefined
+
+  beforeAll(() => {
+    dataDir = mkdtempSync(join(tmpdir(), 'runcastle-cores-'))
+    previousDataDir = process.env.RUNCASTLE_DATA_DIR
+    process.env.RUNCASTLE_DATA_DIR = dataDir
+  })
+
+  afterAll(() => {
+    if (previousDataDir === undefined) delete process.env.RUNCASTLE_DATA_DIR
+    else process.env.RUNCASTLE_DATA_DIR = previousDataDir
+    rmSync(dataDir, { recursive: true, force: true })
+  })
+
+  it('narrows to 1 on a small host and keeps 3 on a wide one', () => {
+    expect(loadConfig({}, 6).burnConcurrency).toBe(1)
+    expect(loadConfig({}, 8).burnConcurrency).toBe(1)
+    expect(loadConfig({}, 12).burnConcurrency).toBe(3)
+    expect(loadConfig({}, 16).burnConcurrency).toBe(3)
+  })
+
+  it('lets an env width win on a small host', () => {
+    expect(loadConfig({ RUNCASTLE_BURN_CONCURRENCY: '4' }, 6).burnConcurrency).toBe(4)
+  })
+
+  it('lets a config-file width win on a small host', () => {
+    const file = join(dataDir, 'config.json')
+    writeFileSync(file, JSON.stringify({ burnConcurrency: 3 }))
+    try {
+      expect(loadConfig({}, 6).burnConcurrency).toBe(3)
+    } finally {
+      rmSync(file, { force: true })
+    }
+  })
+
+  it('reads the host itself when no count is supplied', () => {
+    expect([1, 3]).toContain(loadConfig({}).burnConcurrency)
   })
 })
