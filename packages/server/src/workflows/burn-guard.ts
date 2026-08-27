@@ -33,6 +33,8 @@ export interface GuardRule {
   readonly id: string
   /** POSIX ERE — used verbatim by `grep -E` in the container AND by the tests. */
   readonly pattern: string
+  /** Inspect quoted text when the prohibited syntax itself lives inside it. */
+  readonly inspectQuotedArguments?: boolean
   /** Shown to the agent as `permissionDecisionReason`; must name the alternative. */
   readonly reason: string
 }
@@ -72,6 +74,29 @@ export const GUARD_RULES: readonly GuardRule[] = [
     pattern: `${CMD_START}(python3?|node|bun|perl|ruby)[[:space:]]+-[[:space:]]*<<`,
     reason:
       'Do not rewrite files by piping a heredoc into an interpreter — individual such calls have been measured at 29s, 57s, 120s and 761s, and a half-written file survives if this process dies mid-command. Use the Edit tool, which is faster, atomic, and fails loudly when its target text is not found.',
+  },
+  {
+    id: 'no-interpreter-inline-edit',
+    pattern: `${CMD_START}node[[:space:]]+-e([[:space:]]|$)`,
+    reason:
+      'Do not rewrite files with a `node -e` program. Use the Edit tool, which is faster, atomic, and fails loudly when its target text is not found.',
+  },
+  {
+    id: 'no-perl-in-place-edit',
+    // Match an `i` in perl's compact option cluster (`-i`, `-pi`, `-0pi`,
+    // `-i.bak`) without denying ordinary `perl -e` programs.
+    pattern: `${CMD_START}perl[[:space:]]+-[0-9p]*i[^[:space:]]*`,
+    reason:
+      'Do not rewrite files with Perl in-place editing. Use the Edit tool, which is faster, atomic, and fails loudly when its target text is not found.',
+  },
+  {
+    id: 'no-sed-multi-range-edit',
+    // The prohibited syntax lives inside the quoted sed program. Anchoring it
+    // to an in-place sed command keeps argument false-denies out.
+    pattern: `${CMD_START}sed[[:space:]]+-[^[:space:]]*i[^[:space:]]*[[:space:]]+[^;]*,[^;]*d;[^;]*,[^;]*d`,
+    inspectQuotedArguments: true,
+    reason:
+      'Do not perform multi-range file surgery with `sed -i`. Use the Edit tool, which is atomic and fails loudly when its target text is not found.',
   },
   {
     id: 'no-cat-heredoc-edit',
@@ -118,7 +143,7 @@ export function evaluateGuard(command: string): GuardRule | null {
     const js = rule.pattern
       .replace(/\[\[:space:\]\]/g, '[ \\t\\n]')
       .replace(/\[:space:\]/g, ' \\t\\n')
-    if (new RegExp(js).test(stripped)) return rule
+    if (new RegExp(js).test(rule.inspectQuotedArguments ? command : stripped)) return rule
   }
   return null
 }
@@ -140,12 +165,13 @@ export function renderGuardScript(rules: readonly GuardRule[] = GUARD_RULES): st
     'command -v jq >/dev/null 2>&1 || exit 0',
     'tool=$(printf %s "$payload" | jq -r ".tool_name // empty" 2>/dev/null || true)',
     '[ "$tool" = "Bash" ] || exit 0',
-    'cmd=$(printf %s "$payload" | jq -r ".tool_input.command // empty" 2>/dev/null || true)',
-    '[ -n "$cmd" ] || exit 0',
+    'raw_cmd=$(printf %s "$payload" | jq -r ".tool_input.command // empty" 2>/dev/null || true)',
+    '[ -n "$raw_cmd" ] || exit 0',
     '',
     '# Match against the command with quoted spans blanked, so an argument is',
     '# never read as a command: `grep -rn "git stash" docs/` searches for a',
     '# string, it does not run one.',
+    'cmd=$raw_cmd',
     `cmd=$(printf %s "$cmd" | sed "s/'[^']*'/ /g; s/\\"[^\\"]*\\"/ /g")`,
     '',
     'deny() {',
@@ -155,12 +181,13 @@ export function renderGuardScript(rules: readonly GuardRule[] = GUARD_RULES): st
     '',
   ]
   for (const rule of rules) {
+    const commandVariable = rule.inspectQuotedArguments ? '$raw_cmd' : '$cmd'
     lines.push(
       `# ${rule.id}`,
       // `--` ends grep's option parsing: a pattern starting with `--` (the
       // test-concurrency flags) is otherwise read as an unknown flag and the
       // rule silently never fires. Found by running this in a container.
-      `if printf %s "$cmd" | grep -Eq -- ${shSingleQuote(rule.pattern)}; then`,
+      `if printf %s "${commandVariable}" | grep -Eq -- ${shSingleQuote(rule.pattern)}; then`,
       `  deny ${shSingleQuote(rule.reason)}`,
       'fi',
       '',
