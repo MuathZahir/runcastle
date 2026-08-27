@@ -71,12 +71,11 @@ describe('FindingsSummaryBlock', () => {
 })
 
 describe('OpenDefectsCard', () => {
-  const dismissed: string[] = []
   const props = (open: ReviewFinding[], over: Record<string, unknown> = {}) => ({
     open,
     busy: false,
     readonly: false,
-    onDismiss: (id: string) => dismissed.push(id),
+    onDismiss: () => {},
     ...over,
   })
 

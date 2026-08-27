@@ -97,9 +97,9 @@ export function ReviewBody({
   // be a straight misattribution.
   const ownDrive = drive.data?.featureId === feature.id ? drive.data : undefined
   const dryRun = drive.data?.dryRun ?? false
-  // Read once here and handed down: the summary counts the review agent's
-  // findings out of these same rows the panel lists, so a count that disagreed
-  // with the list below it would be unrepresentable.
+  // The human's own test-drive notes — read once here and handed down to the
+  // panel. Nothing but the human writes these any more: the review agent reports
+  // structured findings instead (`report_finding`), which is the query below.
   const notes = trpc.notes.list.useQuery(
     { featureId: feature.id },
     { refetchInterval: useLivePoll() },

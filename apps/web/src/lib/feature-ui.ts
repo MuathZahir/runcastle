@@ -1097,7 +1097,7 @@ export function findingOpenReason(finding: OpenFindingFigure): string | null {
 }
 
 /** How much of a note or finding its one-line headline may carry. */
-export const HEADLINE_MAX = 80
+const HEADLINE_MAX = 80
 
 /**
  * A block of text split into the line a list row shows and the rest, which the
@@ -1108,18 +1108,15 @@ export const HEADLINE_MAX = 80
  * line, then a word boundary, so a headline never ends mid-word; `rest` is empty
  * when the whole thing already fits, and the row renders plain text.
  */
-export function headline(text: string, max: number = HEADLINE_MAX): {
-  head: string
-  rest: string
-} {
+export function headline(text: string): { head: string; rest: string } {
   const trimmed = text.trim()
   const firstBreak = trimmed.indexOf('\n')
   const firstLine = firstBreak === -1 ? trimmed : trimmed.slice(0, firstBreak)
-  if (firstLine.length <= max) {
+  if (firstLine.length <= HEADLINE_MAX) {
     return { head: firstLine, rest: trimmed.slice(firstLine.length).trim() }
   }
-  const lastSpace = firstLine.lastIndexOf(' ', max)
-  const cut = lastSpace > max / 2 ? lastSpace : max
+  const lastSpace = firstLine.lastIndexOf(' ', HEADLINE_MAX)
+  const cut = lastSpace > HEADLINE_MAX / 2 ? lastSpace : HEADLINE_MAX
   return { head: `${firstLine.slice(0, cut).trimEnd()}…`, rest: trimmed.slice(cut).trim() }
 }
 
