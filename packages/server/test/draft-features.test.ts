@@ -164,6 +164,7 @@ describe('draft features', () => {
 
     it('cuts the branch, writes and commits the parked brief, and activates', async () => {
       const draft = await parkDraft('the reasoning we worked out before deferring this')
+      const tipBefore = (await simpleGit(repoPath).revparse(['HEAD'])).trim()
 
       const started = await startDraft(ctx, draft.id)
 
@@ -174,16 +175,16 @@ describe('draft features', () => {
       const g = simpleGit(repoPath)
       expect((await g.branchLocal()).all).toContain('feature/parked-idea')
 
-      // brief.md carries the PARKED column verbatim, not a regenerated stub.
-      const briefPath = join(repoPath, 'docs', 'features', 'parked-idea', 'brief.md')
-      expect(existsSync(briefPath)).toBe(true)
-      expect((await g.raw(['ls-files', 'docs/features/parked-idea/brief.md'])).trim()).toBe(
-        'docs/features/parked-idea/brief.md',
-      )
+      // brief.md carries the PARKED column verbatim, not a regenerated stub — and
+      // it is committed on the FEATURE branch, which is the branch the grill
+      // worktree is cut from. Start leaves the human's checkout untouched: no
+      // commit of its own, and no untracked doc to dirty it.
+      expect(
+        (await g.show(['feature/parked-idea:docs/features/parked-idea/brief.md'])).trim(),
+      ).toBe('the reasoning we worked out before deferring this')
+      expect(existsSync(join(repoPath, 'docs', 'features', 'parked-idea', 'brief.md'))).toBe(false)
+      expect((await g.revparse(['HEAD'])).trim()).toBe(tipBefore)
       expect((await g.raw(['status', '--porcelain'])).trim()).toBe('')
-      expect((await g.raw(['show', 'HEAD:docs/features/parked-idea/brief.md'])).trim()).toBe(
-        'the reasoning we worked out before deferring this',
-      )
     })
 
     it('emits feature.started carrying the branch and the resolved base', async () => {

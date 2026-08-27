@@ -21,7 +21,7 @@ import { emit, emitProject, latestTsByFeature } from './events'
 import { checkGate } from './gates'
 import * as git from './git'
 import { listDocs, scaffoldDocs, scaffoldMapDoc } from './knowledge'
-import type { DocSummary } from './knowledge'
+import type { DocSummary, ScaffoldOptions } from './knowledge'
 import {
   getFeatureRow,
   hasActiveRun,
@@ -193,19 +193,7 @@ export async function createFeature(
   // commit until Start, so parked scribbles never land on the current branch.
   if (!cut) return feature
 
-  scaffoldDocs(ctx, feature, { brief: input.brief })
-
-  // Commit the scaffolded brief so it does not linger as an untracked file in the
-  // target repo's working tree. An untracked doc dirties the checkout and blocks
-  // the ship gates (test-drive and merge both require `git status` to be clean).
-  // Best-effort: a git stub (pre-B2) or a commit hiccup must never fail creation.
-  if (cut.branchReady) {
-    try {
-      await git.commitDocs(project.repoPath, `runcastle: scaffold ${slug} docs`)
-    } catch {
-      // best-effort — the brief stays on disk; only the auto-commit is skipped
-    }
-  }
+  await scaffoldDocsOnFeatureBranch(ctx, project, feature, { brief: input.brief })
 
   return feature
 }
@@ -263,16 +251,8 @@ export async function startDraft(
   })
 
   // The brief parked in the column becomes the file, through the same verbatim
-  // scaffold path create uses — and the same best-effort auto-commit, so an
-  // untracked doc never dirties the checkout and blocks the ship gates.
-  scaffoldDocs(ctx, started, { brief: feature.brief })
-  if (branchReady) {
-    try {
-      await git.commitDocs(project.repoPath, `runcastle: scaffold ${feature.slug} docs`)
-    } catch {
-      // best-effort — the brief stays on disk; only the auto-commit is skipped
-    }
-  }
+  // scaffold path create uses — and onto the feature branch, the same way.
+  await scaffoldDocsOnFeatureBranch(ctx, project, started, { brief: feature.brief })
 
   return started
 }
@@ -437,7 +417,7 @@ export async function quickChange(ctx: AppCtx, input: QuickChangeInput): Promise
     data: { slug, branch, baseBranch, branchReady },
   })
 
-  scaffoldDocs(ctx, feature, { brief: quickBrief(title, proses) })
+  await scaffoldDocsOnFeatureBranch(ctx, project, feature, { brief: quickBrief(title, proses) })
 
   // One batch, not two: the review ticket's `blockedBy` names batch positions,
   // which only resolve against the typed tickets it is stored alongside.
@@ -469,16 +449,6 @@ export async function quickChange(ctx: AppCtx, input: QuickChangeInput): Promise
     message: `quick change — born at implementation on lap 1 with ${tally} (${typed.map((t) => `#${t.seq}`).join(', ')}) plus a review ticket (#${review.seq}); no grill session, no spec.md`,
     data: { slug, ticketSeqs: stored.map((t) => t.seq), phase: 'implementation' },
   })
-
-  // Same best-effort auto-commit as `createFeature` — an untracked brief dirties
-  // the checkout, and a dirty tree is what test-drive and merge both refuse on.
-  if (branchReady) {
-    try {
-      await git.commitDocs(project.repoPath, `runcastle: scaffold ${slug} docs`)
-    } catch {
-      // best-effort — the brief stays on disk; only the auto-commit is skipped
-    }
-  }
 
   return feature
 }
@@ -512,6 +482,56 @@ async function ensureFeatureBranch(
     // the requested base is recorded as-is (resolution happens when B2 lands).
     if (isNotImplemented(e)) return { branchReady: false, baseBranch: base }
     throw e
+  }
+}
+
+/**
+ * Scaffold the feature's docs and commit them onto the FEATURE branch — the one
+ * step every creation door shares (create, Start a draft, quick change).
+ *
+ * The work happens inside the feature's talk worktree, which is git's own
+ * checkout of `feature/<slug>`, and never in the human's checkout. Committing at
+ * `project.repoPath` landed the scaffold on whatever branch the human happened
+ * to be standing on — in practice `main` — so `feature/<slug>` reached its grill
+ * session carrying no `brief.md`, and the ideation agent re-derived a design the
+ * intake conversation had already settled.
+ *
+ * Ensuring the worktree first is also what puts the docs where the rest of the
+ * app looks for them: `featureDocsDir` prefers the worktree when it exists, so
+ * the scaffold, the docs list and every later session read one copy of the docs,
+ * on the branch that owns them.
+ *
+ * Best-effort throughout, like every other docs checkpoint: neither a worktree
+ * that cannot be created nor a commit hiccup may cost the human their feature.
+ */
+async function scaffoldDocsOnFeatureBranch(
+  ctx: AppCtx,
+  project: Project,
+  feature: Feature,
+  opts: ScaffoldOptions,
+): Promise<void> {
+  let worktreePath: string
+  try {
+    worktreePath = await git.ensureTalkWorktree(project, feature)
+  } catch (e) {
+    // Pre-B2 the git service is a stub: no branch was cut and no worktree can be,
+    // so the docs stay in the checkout, uncommitted, exactly as they did then.
+    if (isNotImplemented(e)) {
+      scaffoldDocs(ctx, feature, opts)
+      return
+    }
+    emit(ctx, feature.id, {
+      type: 'docs.scaffold_failed',
+      message: `docs not scaffolded onto ${feature.branch}: ${e instanceof Error ? e.message : String(e)}`,
+    })
+    return
+  }
+
+  scaffoldDocs(ctx, feature, opts)
+  try {
+    await git.commitDocs(worktreePath, `runcastle: scaffold ${feature.slug} docs`)
+  } catch {
+    // best-effort — the docs sit in the worktree; only the auto-commit is skipped
   }
 }
 
