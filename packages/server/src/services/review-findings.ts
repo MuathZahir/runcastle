@@ -198,6 +198,12 @@ export interface FindingSummary {
 
 export interface FindingsView {
   findings: ReviewFinding[]
+  /**
+   * The rows the page lists — the defects `summary.open` counts, in report order.
+   * Sent rather than filtered client-side so the count and the list under it are
+   * one derivation: only this side can see the fix tickets they are joined to.
+   */
+  openDefects: ReviewFinding[]
   summary: FindingSummary
 }
 
@@ -206,6 +212,7 @@ export function viewByFeature(ctx: AppCtx, featureId: string): FindingsView {
   const findings = listByFeature(ctx, featureId)
   const tickets = listTickets(ctx, featureId)
   const summary: FindingSummary = { found: 0, fixed: 0, open: 0, observations: 0 }
+  const openDefects: ReviewFinding[] = []
   for (const finding of findings) {
     if (finding.kind === 'observation') {
       summary.observations += 1
@@ -214,21 +221,16 @@ export function viewByFeature(ctx: AppCtx, featureId: string): FindingsView {
     summary.found += 1
     const state = defectState(finding, fixTicketOf(finding, tickets))
     if (state === 'fixed') summary.fixed += 1
-    else if (state === 'open') summary.open += 1
+    else if (state === 'open') {
+      summary.open += 1
+      openDefects.push(finding)
+    }
   }
-  return { findings, summary }
+  return { findings, openDefects, summary }
 }
 
 function fixTicketOf(finding: ReviewFinding, tickets: Ticket[]): Ticket | undefined {
   return finding.fixTicketId ? tickets.find((t) => t.id === finding.fixTicketId) : undefined
-}
-
-/** The defects the summary counts as `open` — what the Fix button acts on. */
-export function openDefects(ctx: AppCtx, featureId: string): ReviewFinding[] {
-  const tickets = listTickets(ctx, featureId)
-  return listByFeature(ctx, featureId).filter(
-    (f) => f.kind === 'defect' && defectState(f, fixTicketOf(f, tickets)) === 'open',
-  )
 }
 
 /**
@@ -245,7 +247,7 @@ export function promoteOpenDefects(
   ctx: AppCtx,
   featureId: string,
 ): { findings: ReviewFinding[]; tickets: Ticket[] } {
-  const defects = openDefects(ctx, featureId)
+  const defects = viewByFeature(ctx, featureId).openDefects
   if (defects.length === 0) throw new InvalidInputError('no open defects to fix')
 
   const tickets = storeTickets(ctx, featureId, defects.map(buildFixTicket))
