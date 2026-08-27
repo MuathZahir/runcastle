@@ -36,6 +36,7 @@ import {
   sortForSidebar,
   testDriveTaken,
   ticketConflictKickoff,
+  ticketDurations,
   ticketModelChip,
   ticketProgress,
   triage,
@@ -1205,6 +1206,61 @@ describe('testDriveTaken', () => {
 
   it('stays true after the drive stops — it still happened', () => {
     expect(testDriveTaken([ev(1, 'testdrive.started'), ev(2, 'testdrive.stopped')])).toBe(true)
+  })
+})
+
+/**
+ * A lane's duration is the burner's own measurement of one execution, not the
+ * spread of everything the run happened to say about the ticket — and never a
+ * log file's span, which covers every attempt at once.
+ */
+describe('ticketDurations', () => {
+  const ev = (id: number, ts: number, type: string, ticketId?: string, data?: unknown): EventRow =>
+    ({ id, projectId: 'p', ts, type, message: type, ticketId, data }) as EventRow
+
+  it('takes the wall clock the timing event carries, not the event spread', () => {
+    // The ticket was created at the top of the run and burned much later: the
+    // spread is 2 hours, the execution was 5m 35s.
+    const events = [
+      ev(1, 0, 'ticket.created', 'tk_1'),
+      ev(2, 7_200_000, 'ticket.timing', 'tk_1', { wallMs: 335_000, calls: 0, byCategory: {} }),
+    ]
+    expect(ticketDurations(events).get('tk_1')).toBe(335_000)
+  })
+
+  it('takes the last timing event when a ticket was burned twice in one run', () => {
+    const events = [
+      ev(1, 0, 'ticket.timing', 'tk_1', { wallMs: 60_000 }),
+      ev(2, 600_000, 'ticket.timing', 'tk_1', { wallMs: 90_000 }),
+    ]
+    expect(ticketDurations(events).get('tk_1')).toBe(90_000)
+  })
+
+  it('falls back to the event spread while a lane is still burning', () => {
+    const events = [ev(1, 1_000, 'ticket.started', 'tk_1'), ev(2, 4_000, 'agent.text', 'tk_1')]
+    expect(ticketDurations(events).get('tk_1')).toBe(3_000)
+  })
+
+  it('ignores a timing event carrying no usable wall clock', () => {
+    const events = [
+      ev(1, 1_000, 'ticket.started', 'tk_1'),
+      ev(2, 4_000, 'ticket.timing', 'tk_1', { calls: 3 }),
+    ]
+    expect(ticketDurations(events).get('tk_1')).toBe(3_000)
+  })
+
+  it('reports a zero-length execution the timing event measured', () => {
+    // A review refused before its agent started: 0s is the truth, and a lane
+    // that reports nothing is a lane that falls back to guessing.
+    const events = [
+      ev(1, 0, 'ticket.created', 'tk_1'),
+      ev(2, 7_200_000, 'ticket.timing', 'tk_1', { wallMs: 0 }),
+    ]
+    expect(ticketDurations(events).get('tk_1')).toBe(0)
+  })
+
+  it('skips events with no ticket of their own', () => {
+    expect(ticketDurations([ev(1, 0, 'run.started'), ev(2, 5_000, 'run.finished')]).size).toBe(0)
   })
 })
 

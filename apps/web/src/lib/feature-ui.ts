@@ -655,6 +655,48 @@ export function testDriveTaken(events: EventRow[]): boolean {
   return events.some((e) => e.type === 'testdrive.started')
 }
 
+/** The wall clock a `ticket.timing` event carries, if it carries a usable one. */
+function timingWallMs(data: unknown): number | undefined {
+  if (typeof data !== 'object' || data === null) return undefined
+  const ms = (data as { wallMs?: unknown }).wallMs
+  return typeof ms === 'number' && Number.isFinite(ms) && ms >= 0 ? ms : undefined
+}
+
+/**
+ * How long each ticket's lane says it took, from the event feed alone.
+ *
+ * The burner emits `ticket.timing` on every exit path of both execution kinds,
+ * and its `wallMs` bounds exactly one execution — so that is the figure, and the
+ * last such event wins when a ticket has been burned more than once in a run.
+ * The spread of a ticket's other events is only the fallback, for a lane still
+ * burning: it starts at whatever the run first said about the ticket, which for
+ * a ticket that waited on a blocker is minutes before its agent existed.
+ *
+ * Never a log file. `run()` appends to `burn-<feature>-<seq>.log` and
+ * `review-<feature>-<seq>.log` across attempts, so a log's own span is every
+ * attempt at once — that is how a 5m 35s review once read as 5.2 hours.
+ */
+export function ticketDurations(events: readonly EventRow[]): Map<string, number> {
+  const span = new Map<string, { min: number; max: number }>()
+  const measured = new Map<string, number>()
+  for (const e of events) {
+    if (!e.ticketId) continue
+    if (e.type === 'ticket.timing') {
+      const ms = timingWallMs(e.data)
+      if (ms !== undefined) measured.set(e.ticketId, ms)
+    }
+    const s = span.get(e.ticketId)
+    if (!s) span.set(e.ticketId, { min: e.ts, max: e.ts })
+    else {
+      s.min = Math.min(s.min, e.ts)
+      s.max = Math.max(s.max, e.ts)
+    }
+  }
+  const out = new Map(measured)
+  for (const [id, s] of span) if (!out.has(id) && s.max > s.min) out.set(id, s.max - s.min)
+  return out
+}
+
 /** The "Open app" affordance, as the polled drive currently justifies it. */
 export interface OpenApp {
   url: string
