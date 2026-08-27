@@ -89,7 +89,9 @@ Skip this whole step when the ticket says there is nothing to run. Otherwise:
 
 The URL is **not** ready when `start` returns — the dev server has to print it first. Poll `mcp__runcastle__review_drive({ action: "status" })` until `drive.devUrl` appears, waiting a few seconds between calls. Give it a couple of minutes before you conclude it is never coming.
 
-A refusal is **final** — a dirty tree, or a drive the human is already running. Do not retry it in a loop. It no longer sinks the review, though: your code review already ran and still has to land. Write a note saying the drive could not start and why, say it again in the summary note and the digest, and carry on to step 6.
+A refusal is **final** — a dirty tree, or a drive the human is already running. Do not retry it in a loop. It no longer sinks the review, though: your code review already ran and still has to land. Write a note saying the drive could not start and why, put the words `could not drive: <reason>` in your digest, say it again in the summary note, and carry on to step 6.
+
+**Never build your own environment to drive in.** When `review_drive` refuses, or never yields a URL, the drive is over — an app you reached some other way is not the app the human runs, so what it shows you is not evidence about their machine. Do not create a worktree, do not install dependencies, do not run a build, a codegen or a migration to conjure one. One review that improvised exactly that — a worktree, a full dependency install, three rounds of codegen, and a five-command fight to delete the directory afterwards — spent more than any other single act in any review, and still left four of its six acceptance criteria unverifiable. What is left to you is the diff you have already read and the repo's own verify commands as its manifest defines them: run those, report what they say, and mark every criterion the drive would have covered as unverified in the summary note.
 
 **Walk the app with `agent-browser`.** Its core loop, which you repeat:
 
@@ -145,7 +147,7 @@ So write **prose**, roughly 10–15 lines, for a reader who has none of your con
 
 - **What the lap delivered**, in the language of the product, not the codebase. "The tickets ledger and the notes panel now group by lap, with prior laps collapsed" — not "modified TicketList.tsx and NotesPanel.tsx".
 - **Synthesize, don't enumerate.** Not a ticket-by-ticket walk, not a changed-files list, not a commit log — those all exist elsewhere on the page. Say what the lap adds up to, and where the shape that landed differs from what the spec promised.
-- **Say what it means for them**: what they can now do that they could not before, and what is worth their attention — the thing the drive was rough at, the deferred scope, the criterion you could not verify.
+- **Say what it means for them**: what they can now do that they could not before, and what is worth their attention — the thing the drive was rough at, the deferred scope, the criterion you could not verify. If the drive never started, say `could not drive: <reason>` in those words, so the human knows at a glance why there is no walkthrough to watch.
 - **Plain sentences.** No headings, no bullet lists, no "I did X then Y", no tool names, no `<promise>` markers, no acceptance-criteria checklists. If it reads like an agent's log, rewrite it as something you would say out loud.
 
 Findings belong in the notes, not here. One honest line about the headline problem is right; the catalogue is not.
@@ -170,6 +172,7 @@ When that happens: run the step 5 cleanup for whatever you got as far as startin
 - **Never merge or re-rank the two review axes**, and never report a finding without its citation.
 - **Never let a sub-agent spawn more agents.** The guard line goes in both briefs, every time.
 - **Never leave the drive — or the recorder — running.** Stop both on every path, including the failure path.
+- **Never build your own environment.** No worktrees, no dependency installs, no builds, no generated artifacts. If `review_drive` did not hand you the app, the drive did not happen: say `could not drive: <reason>`, review from the diff and the repo's verify commands, and leave it there.
 - **Never report a finding you did not observe.** Every note traces to something you saw in a snapshot, a response body, a test run, or a hunk you opened and confirmed. A plausible-sounding bug that is really a stale ref — or an unverified sub-agent claim — costs the human a fix ticket for nothing.
 - **Never write the digest as a log.** It is the lap's prose summary and it is rendered verbatim to the human.
 - **Stay inside this ticket.** Review what it names and the diff it landed. Adjacent things you notice go in the summary note, not into a sprawl of speculative findings.

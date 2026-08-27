@@ -407,6 +407,19 @@ describe('what the review agent is handed', () => {
     expect(template).toContain('skip the browser and the recording entirely')
     expect(template).toMatch(/partially-built feature/)
   })
+
+  it('forbids improvising an environment when the drive will not start', () => {
+    const template = readFileSync(reviewTemplatePath(), 'utf8')
+
+    // A drive that refuses leaves the agent with the diff and the repo's own
+    // verify commands — never a worktree it built and installed for itself,
+    // which was the most expensive single act observed in any review.
+    expect(template).toContain('Never build your own environment')
+    expect(template).toContain('could not drive: <reason>')
+    expect(template).toMatch(/[Dd]o not create a worktree/)
+    expect(template).toMatch(/No worktrees, no dependency installs/)
+    expect(template).toMatch(/verify commands/)
+  })
 })
 
 describe('the base the review diffs against', () => {
