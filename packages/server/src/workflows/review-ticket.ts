@@ -70,7 +70,7 @@ const PLACEHOLDERS = [
   /** Whether Drive mode is open at all, decided host-side (see {@link buildDriveAvailability}). */
   'DRIVE_AVAILABILITY',
   /** Gates mode's commands and their known-failure baseline. */
-  'VERIFY_NOTES',
+  'GATE_NOTES',
   'DIGEST_PATH',
   'BLOCKED_PATH',
   'WALKTHROUGH_PATH',
@@ -161,7 +161,7 @@ export function buildDriveAvailability(
 }
 
 /**
- * The `{{VERIFY_NOTES}}` block: the gates Gates mode runs, and the failures they
+ * The `{{GATE_NOTES}}` block: the gates Gates mode runs, and the failures they
  * already produce without this lap's help.
  *
  * The implementers were handed the same two config fields through
@@ -332,7 +332,7 @@ export async function executeReviewTicket(
     // "could not review".
     BASE_BRANCH: feature.baseBranch,
     DRIVE_AVAILABILITY: buildDriveAvailability(findOnPath(AGENT_BROWSER_BIN), project.devCommand),
-    VERIFY_NOTES: buildGateNotes(deps.config),
+    GATE_NOTES: buildGateNotes(deps.config),
     DIGEST_PATH: artifacts.digestPath,
     BLOCKED_PATH: artifacts.blockedPath,
     WALKTHROUGH_PATH: artifacts.walkthroughPath,

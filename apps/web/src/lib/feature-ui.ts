@@ -944,9 +944,10 @@ function reviewRow(outcome: ReviewOutcome): CheckRow | null {
 
 /**
  * The review row when no review ticket ran at all (decisions #9). A review is a
- * constant of the pipeline now — the code review always runs, the drive rides
- * along when the change is drivable — so its absence is a fact about THIS lap
- * rather than a feature that never asked for one. Amber for the same reason
+ * constant of the pipeline now — every lap gets one of the two modes, a browser
+ * drive when there is a surface to walk and the gates-and-diff read otherwise —
+ * so its absence is a fact about THIS lap rather than a feature that never asked
+ * for one. Amber for the same reason
  * "never test-driven" is: nothing was checked for the human, and the card that
  * used to omit the row entirely is how "no review happened" stayed silent.
  */

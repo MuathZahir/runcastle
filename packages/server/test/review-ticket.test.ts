@@ -372,7 +372,7 @@ describe('what the review agent is handed', () => {
       FEATURE_BRANCH: 'feature/demo',
       BASE_BRANCH: 'main',
       DRIVE_AVAILABILITY: buildDriveAvailability('/usr/bin/agent-browser', 'bun dev'),
-      VERIFY_NOTES: buildGateNotes({ verifyCommands: 'bun run typecheck' }),
+      GATE_NOTES: buildGateNotes({ verifyCommands: 'bun run typecheck' }),
       DIGEST_PATH: '/data/reviews/tkt_3/DIGEST.md',
       BLOCKED_PATH: '/data/reviews/tkt_3/BLOCKED.md',
       WALKTHROUGH_PATH: '/data/reviews/tkt_3/walkthrough.webm',

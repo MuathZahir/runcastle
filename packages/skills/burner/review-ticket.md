@@ -104,7 +104,7 @@ No app, no browser, no drive slot: this mode needs only the repository.
 
 **Run the gates first.** They are cheap next to the reading and they fail loudly.
 
-{{VERIFY_NOTES}}
+{{GATE_NOTES}}
 
 A gate that fails is a finding like any other, and one worth the human's attention above the rest — name the command, quote the failure, and carry on to the diff rather than stopping there. A gate you could not run at all is also a note.
 
