@@ -5,7 +5,7 @@ import { useToast } from '../../lib/toast'
 import { eventLevel } from '../../lib/activity'
 import { useEventLog } from '../../lib/events'
 import { useLivePoll } from '../../lib/live'
-import { sessionActive, ticketConflictKickoff } from '../../lib/feature-ui'
+import { sessionActive, ticketConflictKickoff, ticketDurations } from '../../lib/feature-ui'
 import { fmtDuration, fmtTime, shortSha } from '../../lib/format'
 import { BURN_EXPLAINER } from '../../lib/vocabulary'
 import { DimLine, EmptyState, RunStatusChip, TicketKindChip, TicketStatusChip } from '../../ui'
@@ -466,21 +466,4 @@ function EventStream({ events }: { events: EventRow[] }) {
       )}
     </div>
   )
-}
-
-/** Best-effort per-ticket duration from its first→last event timestamps. */
-function ticketDurations(events: EventRow[]): Map<string, number> {
-  const span = new Map<string, { min: number; max: number }>()
-  for (const e of events) {
-    if (!e.ticketId) continue
-    const s = span.get(e.ticketId)
-    if (!s) span.set(e.ticketId, { min: e.ts, max: e.ts })
-    else {
-      s.min = Math.min(s.min, e.ts)
-      s.max = Math.max(s.max, e.ts)
-    }
-  }
-  const out = new Map<string, number>()
-  for (const [id, s] of span) if (s.max > s.min) out.set(id, s.max - s.min)
-  return out
 }

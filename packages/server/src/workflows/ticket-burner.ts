@@ -15,6 +15,7 @@ import type {
 import {
   WITHHELD_FEATURE_DOCS,
   agentDigestDocOrder,
+  fmtClock,
   isAgentDigestDoc,
   newId,
   resolveModelEntry,
@@ -1521,6 +1522,65 @@ export function formatTimingSummary(s: ToolTimingSummary): string {
   return `${Math.round(s.totalMs / 60_000)}min across ${s.calls} tool call(s) — ${parts.join(', ')}`
 }
 
+/**
+ * The `ticket.timing` payload: ONE execution of one ticket, whichever kind it
+ * is. The category breakdown is best-effort — it needs a sandcastle stream, and
+ * an execution that never reached one (a review with no base branch, no
+ * `agent-browser` on PATH) has none — but the wall clock always bounds exactly
+ * this execution, and it is the only span a ticket's duration may be read from.
+ *
+ * The per-kind log files are NOT that span: `run()` appends to
+ * `review-<feature>-<seq>.log` on every attempt, so the gap between a log's
+ * first and last line is every attempt of that ticket ever, which is how a
+ * 5m 35s review once read as 5.2 hours.
+ */
+export interface TicketTiming extends ToolTimingSummary {
+  /** Epoch ms this execution started and ended. */
+  startedAt: number
+  endedAt: number
+  wallMs: number
+}
+
+/** Pure: close a timer's summary over the execution's wall clock. */
+export function buildTicketTiming(
+  summary: ToolTimingSummary,
+  startedAt: number,
+  endedAt: number,
+): TicketTiming {
+  return { ...summary, startedAt, endedAt, wallMs: Math.max(0, endedAt - startedAt) }
+}
+
+/**
+ * The timing event's message: wall clock first, then where that time went. An
+ * execution with nothing to break down — a review refused before its agent
+ * started — says only the clock, rather than appending an empty breakdown.
+ */
+export function formatTicketTiming(t: TicketTiming): string {
+  const clock = fmtClock(Math.round(t.wallMs / 1000))
+  const bare = t.calls === 0 && t.totalMs === 0
+  return bare ? clock : `${clock} (${formatTimingSummary(t)})`
+}
+
+/**
+ * Emit one execution's `ticket.timing`. Shared by both execution kinds so a
+ * reader never has to know which kind produced an event to read a duration off
+ * it — and unconditional, because a ticket that made no tool calls still took
+ * time, and a lane with no timing event is a lane left guessing from the spread
+ * of its other events.
+ */
+export function emitTicketTiming(
+  ctx: WorkflowCtx,
+  ticket: Pick<Ticket, 'id' | 'seq'>,
+  timing: TicketTiming,
+): void {
+  ctx.emitEvent({
+    type: 'ticket.timing',
+    message: `ticket ${ticket.seq} spent ${formatTicketTiming(timing)}`,
+    ticketId: ticket.id,
+    data: timing,
+  })
+}
+
 // ---------------------------------------------------------------------------
 // Pure unit — run-result interpretation
 // ---------------------------------------------------------------------------
@@ -2703,6 +2763,9 @@ async function realExecuteTicketRun(
   runCtx: TicketRunContext,
 ): Promise<TicketOutcome> {
   const { project, feature } = ctx
+  // Opens the span the ticket's `ticket.timing` closes in the finally below —
+  // taken here, not beside the stream timer, so it covers the whole execution.
+  const startedAt = Date.now()
 
   // Where the agent's hot path lives (ADR-0005): on win32/darwin container
   // hosts the bind-mounted worktree pays Docker Desktop's per-file translation
@@ -3326,16 +3389,9 @@ async function realExecuteTicketRun(
     throttle.flush()
     endTranscript(ticket.id)
     // Emitted on EVERY exit path — a ticket that failed or was stopped is
-    // exactly the one whose time breakdown you want.
-    const timing = timer.summary()
-    if (timing.calls > 0) {
-      ctx.emitEvent({
-        type: 'ticket.timing',
-        message: `ticket ${ticket.seq} spent ${formatTimingSummary(timing)}`,
-        ticketId: ticket.id,
-        data: timing,
-      })
-    }
+    // exactly the one whose time breakdown you want, and the wall clock is what
+    // the run lane reads its duration from either way.
+    emitTicketTiming(ctx, ticket, buildTicketTiming(timer.summary(), startedAt, Date.now()))
   }
 }
 

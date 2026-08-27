@@ -31,6 +31,9 @@ import {
   classifyToolCall,
   createToolTimer,
   formatTimingSummary,
+  buildTicketTiming,
+  emitTicketTiming,
+  formatTicketTiming,
   createSerialQueue,
   createStreamThrottle,
   detectCycle,
@@ -1192,6 +1195,48 @@ describe('createToolTimer — category shares from the sandcastle stream', () =>
     t.onEvent(text(80_000))
     expect(formatTimingSummary(t.summary())).toMatch(/tests 75%/)
     expect(formatTimingSummary({ totalMs: 0, calls: 0, byCategory: {} })).toMatch(/no measurable/)
+  })
+})
+
+describe('ticket.timing — the one span a ticket duration may be read from', () => {
+  const empty = { totalMs: 0, calls: 0, byCategory: {} }
+
+  it('bounds the execution with its own wall clock, whatever the stream said', () => {
+    // 5m 35s of wall clock and no attributable tool time at all: the review
+    // that read as 5.2 hours off its append-only log file.
+    const t = buildTicketTiming(empty, 1_000_000, 1_335_000)
+    expect(t.wallMs).toBe(335_000)
+    expect(t.startedAt).toBe(1_000_000)
+    expect(t.endedAt).toBe(1_335_000)
+    expect(formatTicketTiming(t)).toBe('5:35')
+  })
+
+  it('keeps the category breakdown alongside the wall clock', () => {
+    const t = buildTicketTiming(
+      { totalMs: 60_000, calls: 2, byCategory: { tests: { calls: 1, ms: 60_000 } } },
+      0,
+      120_000,
+    )
+    expect(t.byCategory.tests).toEqual({ calls: 1, ms: 60_000 })
+    expect(formatTicketTiming(t)).toMatch(/^2:00 \(.*tests 100%\)$/)
+  })
+
+  it('never reports a negative span when the clock steps back mid-execution', () => {
+    expect(buildTicketTiming(empty, 5_000, 4_000).wallMs).toBe(0)
+  })
+
+  it('emits the same event shape for a ticket that made no tool calls', () => {
+    const events: { type: string; ticketId?: string; data?: unknown }[] = []
+    const ctx = { emitEvent: (e: (typeof events)[number]) => events.push(e) }
+    emitTicketTiming(
+      ctx as unknown as Parameters<typeof emitTicketTiming>[0],
+      { id: 'tk_1', seq: 4 },
+      buildTicketTiming(empty, 0, 335_000),
+    )
+    expect(events).toHaveLength(1)
+    expect(events[0]?.type).toBe('ticket.timing')
+    expect(events[0]?.ticketId).toBe('tk_1')
+    expect(events[0]?.data).toMatchObject({ wallMs: 335_000, startedAt: 0, endedAt: 335_000 })
   })
 })
 
