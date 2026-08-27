@@ -576,3 +576,101 @@ describe('burnRun — cancelled tickets (revisit surgery)', () => {
     expect(res).toEqual({ status: 'succeeded', summary: '2/2 tickets done (1 cancelled)' })
   })
 })
+
+/**
+ * The fix wave (decision 1): a review reports its defects as it finds them, each
+ * one minting a fix ticket into the store, and the run those tickets were born
+ * into burns them itself rather than leaving them for a human to start.
+ */
+describe('burnRun — fix tickets minted while the run is live', () => {
+  const reviewTicket = (seq: number, blockedBy: number[] = []): Ticket => ({
+    ...ticket(seq, blockedBy),
+    kind: 'review',
+  })
+
+  const fixTicket = (seq: number, findingId: string, reviewSeq: number): Ticket => ({
+    ...ticket(seq, [reviewSeq]),
+    kind: 'implementation',
+    originFindingId: findingId,
+  })
+
+  /** A ctx whose store the review can mint into, plus the finding mirror. */
+  function makeFixCtx(tickets: Ticket[]) {
+    const base = makeCtx(tickets)
+    const findings: { id: string; progress: string; reason?: string }[] = []
+    base.ctx.listTickets = () => tickets
+    base.ctx.updateFinding = (id, progress, reason) => {
+      findings.push({ id, progress, ...(reason ? { reason } : {}) })
+    }
+    return { ...base, findings }
+  }
+
+  it('admits them once the review is terminal and burns them in the same run', async () => {
+    const tickets = [ticket(1), reviewTicket(2, [1])]
+    const { ctx, events } = makeFixCtx(tickets)
+    const calls: number[] = []
+    const execute: BurnDeps['executeTicketRun'] = async (_c, t) => {
+      calls.push(t.seq)
+      if (t.kind !== 'review') return { status: 'done', commits: ['sha'] }
+      // What `report_finding` does while the review is still burning.
+      tickets.push(fixTicket(3, 'find_a', 2), fixTicket(4, 'find_b', 2))
+      return { status: 'done', commits: [] }
+    }
+
+    const res = await burnRun(ctx, deps(execute))
+
+    expect(calls).toEqual([1, 2, 3, 4])
+    // The denominator counts what the run ended up burning, not what it opened
+    // with — and it finalizes once, after the fix wave is terminal too.
+    expect(res).toEqual({ status: 'succeeded', summary: '4/4 tickets done' })
+    expect(events.filter((e) => e.type === 'burn.summary')).toHaveLength(1)
+    expect(events.filter((e) => e.type === 'burn.admitted')).toMatchObject([
+      { data: { seqs: [3, 4] } },
+    ])
+  })
+
+  it('leaves the run alone when the review minted nothing', async () => {
+    const tickets = [ticket(1), reviewTicket(2, [1])]
+    const { ctx, events, findings } = makeFixCtx(tickets)
+    const execute = fakeExecute({
+      1: { status: 'done', commits: ['a'] },
+      2: { status: 'done', commits: [] },
+    })
+
+    const res = await burnRun(ctx, deps(execute))
+
+    expect(res).toEqual({ status: 'succeeded', summary: '2/2 tickets done' })
+    expect(events.map((e) => e.type)).not.toContain('burn.admitted')
+    expect(findings).toEqual([]) // no ticket here came from a finding
+  })
+
+  it('fails one fix ticket without touching its siblings, and marks each finding', async () => {
+    const tickets = [reviewTicket(1)]
+    const { ctx, findings } = makeFixCtx(tickets)
+    const calls: number[] = []
+    const execute: BurnDeps['executeTicketRun'] = async (_c, t) => {
+      calls.push(t.seq)
+      if (t.kind === 'review') {
+        tickets.push(fixTicket(2, 'find_a', 1), fixTicket(3, 'find_b', 1))
+        return { status: 'done', commits: [] }
+      }
+      return t.seq === 2
+        ? { status: 'failed', error: 'the repro still reproduces' }
+        : { status: 'done', commits: ['sha'] }
+    }
+
+    const res = await burnRun(ctx, deps(execute))
+
+    // A fix ticket is blocked by the review, which is done — a sibling that
+    // fails is not its blocker, so the cascade never reaches it.
+    expect(calls).toEqual([1, 2, 3])
+    expect(tickets[2]).toMatchObject({ status: 'done' })
+    expect(res).toEqual({ status: 'failed', summary: '2/3 tickets done' })
+    expect(findings).toEqual([
+      { id: 'find_a', progress: 'fixing' },
+      { id: 'find_a', progress: 'failed', reason: 'the repro still reproduces' },
+      { id: 'find_b', progress: 'fixing' },
+      { id: 'find_b', progress: 'fixed' },
+    ])
+  })
+})
