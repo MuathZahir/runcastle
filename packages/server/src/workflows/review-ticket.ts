@@ -39,9 +39,16 @@ import {
  * Semantics, from decision 6: **findings are not failure.** The ticket is done
  * when the review ran to completion, however many bugs it wrote up. It fails
  * only when the review could not run at all — no `agent-browser` on the machine,
- * a drive it could not get, an agent that crashed — and that reason rides the
+ * no base to diff against, an agent that crashed — and that reason rides the
  * ticket's digest into the run digest, because "review could not run: X" is the
  * one thing the human arriving at the review screen needs to know.
+ *
+ * A drive that refused is NOT one of those. The template tells the agent to say
+ * `could not drive: <reason>` in its digest and review the diff, and forbids it
+ * from building an environment of its own — a worktree, an install, a codegen —
+ * to drive in instead: that improvisation was the most expensive single act
+ * observed in any review, and it verified nothing, because an app the agent
+ * assembled for itself is not the app the human runs.
  */
 
 /** The prompt the review agent is spawned with. */
