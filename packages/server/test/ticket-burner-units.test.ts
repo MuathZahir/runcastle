@@ -183,6 +183,17 @@ describe('renderTicketPrompt', () => {
     expect(template).toMatch(/`seq` field of the ticket JSON/i)
   })
 
+  it('makes the parent the only writer and bounds read-only subagent reports', () => {
+    const out = renderTicketPrompt(readFileSync(burnerTemplatePath(), 'utf8'), promptValues())
+
+    expect(out).toContain('You are the only writer in this tree.')
+    expect(out).toContain('Subagents may READ and REPORT only — they never edit, never run tests.')
+    expect(out).toContain(
+      'Reports are ≤40 lines: file:line pointers plus one-sentence claims, zero source quotation.',
+    )
+    expect(out).toContain('Tell subagents what you already searched so they do not repeat it.')
+  })
+
   it('carries the DIGEST.md contract into the prompt the burner actually gets', () => {
     const out = renderTicketPrompt(readFileSync(burnerTemplatePath(), 'utf8'), promptValues())
 
