@@ -61,7 +61,7 @@ Whatever the commands are, spend them well — a full suite on a monorepo is min
 
 4. **Commit early, commit often — an uncommitted slice is a slice you can lose.** A commit is the *only* thing that survives your process ending. Everything else — edited files, a passing test you have not committed, an hour of work — is discarded the moment the turn ends, and the next iteration starts from your last commit as if the rest never happened. Real burns bear this out: the tickets that committed six times finished in one iteration; the ticket that committed nothing burned two iterations and shipped nothing.
 
-   So: **the moment a slice is green, commit it.** Do not save commits up for a tidy end-of-ticket batch, do not wait for the next criterion, do not let more than about ten minutes of work sit uncommitted. Before each commit run typecheck and the *relevant* tests — **never commit red** — then commit with a subject line of the form:
+   So: **the moment a slice is green, commit it.** Aim for 3–4 slice commits per ticket; never commit a comment-only or formatting-only change on its own — fold it into the next slice. Do not save commits up for a tidy end-of-ticket batch, do not wait for the next criterion, do not let more than about ten minutes of work sit uncommitted. Before each commit run typecheck and the *relevant* tests — **never commit red** — then commit with a subject line of the form:
 
    `ticket(<seq>): <summary>`
 
