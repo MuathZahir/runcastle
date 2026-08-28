@@ -2,6 +2,7 @@ import { trpc } from '../trpc'
 import { humanizeTimestamps } from '../lib/format'
 import { Dialog, DimLine } from '../ui'
 import { Markdown } from './Markdown'
+import type { RefObject } from 'react'
 
 /**
  * Read-only doc peek overlay (UI-SPEC §2 Knowledge). Renders a doc as formatted
@@ -12,16 +13,25 @@ export function DocPeek({
   relPath,
   title,
   onClose,
+  returnFocusRef,
 }: {
   featureId: string
   relPath: string
   title: string
   onClose: () => void
+  returnFocusRef?: RefObject<HTMLElement | null>
 }) {
   const query = trpc.docs.read.useQuery({ featureId, relPath })
 
   return (
-    <Dialog open onClose={onClose} label={title} backdropClassName="peek-backdrop" className="peek">
+    <Dialog
+      open
+      onClose={onClose}
+      label={title}
+      returnFocusRef={returnFocusRef}
+      backdropClassName="peek-backdrop"
+      className="peek"
+    >
       <div className="peek-head">
         <span className="mono peek-path">{relPath}</span>
         <button className="peek-close" onClick={onClose} aria-label="Close (Esc)">

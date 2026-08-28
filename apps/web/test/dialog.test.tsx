@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
-import { useState } from 'react'
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { useEffect, useRef, useState } from 'react'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'vitest'
 import { Dialog } from '../src/ui'
 
@@ -98,6 +98,47 @@ describe('Dialog', () => {
     fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' })
 
     expect(document.activeElement).toBe(opener)
+  })
+
+  it('captures the opener before a newly mounted child passive effect changes focus', async () => {
+    function PassiveFocus() {
+      useEffect(() => {
+        document.body.focus()
+      }, [])
+      return null
+    }
+
+    function PeekHarness() {
+      const [open, setOpen] = useState(false)
+      const openerRef = useRef<HTMLButtonElement>(null)
+      return (
+        <>
+          <button ref={openerRef} onClick={() => setOpen(true)}>
+            brief.md
+          </button>
+          {open && (
+            <Dialog
+              open
+              onClose={() => setOpen(false)}
+              returnFocusRef={openerRef}
+              label="Document peek"
+            >
+              <PassiveFocus />
+              <div>brief contents</div>
+            </Dialog>
+          )}
+        </>
+      )
+    }
+
+    render(<PeekHarness />)
+    const opener = screen.getByRole('button', { name: 'brief.md' })
+    opener.focus()
+    fireEvent.click(opener)
+    fireEvent.mouseDown(screen.getByRole('dialog').parentElement!)
+
+    expect(screen.queryByRole('dialog')).toBeNull()
+    await waitFor(() => expect(document.activeElement).toBe(opener))
   })
 
   it('closes on backdrop mousedown without letting its default action steal restored focus', () => {
