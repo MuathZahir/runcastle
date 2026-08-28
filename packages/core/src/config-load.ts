@@ -75,6 +75,10 @@ export function loadConfig(
   if (env.RUNCASTLE_VERIFY_COMMANDS) overrides.verifyCommands = env.RUNCASTLE_VERIFY_COMMANDS
   if (env.RUNCASTLE_KNOWN_FAILURES) overrides.knownFailures = env.RUNCASTLE_KNOWN_FAILURES
   if (env.RUNCASTLE_BURN_WORKSPACE) overrides.burnWorkspace = env.RUNCASTLE_BURN_WORKSPACE
+  // Kill switch for the persistent burn cache volume. Config-file + env only,
+  // for the same reason as `burnWorkspace`: it exists so cache-induced weirdness
+  // is diagnosable in one change, not so it is routinely tuned.
+  if (env.RUNCASTLE_BURN_CACHE) overrides.burnCache = env.RUNCASTLE_BURN_CACHE
 
   const base = typeof fileConfig === 'object' && fileConfig !== null ? fileConfig : {}
   const merged: Record<string, unknown> = { ...base, ...overrides }

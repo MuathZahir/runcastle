@@ -123,6 +123,17 @@ describe('settings service (#46)', () => {
     expect(() => updateSettings(ctx, { key: 'bogus', value: '1' }, io())).toThrow(InvalidInputError)
   })
 
+  // Burn-internals escape hatches: config file + env var, no descriptor. They
+  // are deliberately invisible here so the overlay never grows a control for
+  // them — `burnCache` joins `burnWorkspace` and `burnGuard` on that list.
+  it('keeps the config-only burn knobs out of the settings surface', () => {
+    const view = getSettings(ctx, undefined, io())
+    for (const key of ['burnCache', 'burnWorkspace', 'burnGuard']) {
+      expect(view.fields.find((f) => f.key === key), key).toBeUndefined()
+      expect(() => updateSettings(ctx, { key, value: 'off' }, io()), key).toThrow(InvalidInputError)
+    }
+  })
+
   it('global write persists to the config file AND refreshes the in-memory config in place', () => {
     updateSettings(ctx, { key: 'model', value: 'claude-sonnet-5' }, io())
 

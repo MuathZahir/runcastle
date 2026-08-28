@@ -9,6 +9,7 @@ import {
   mergeModelEntries,
   modelEntryFor,
   modelRoster,
+  resolveBurnCacheMode,
   resolveDefaultBurnConcurrency,
   resolveModel,
   resolveModelEntry,
@@ -243,6 +244,29 @@ describe('RuncastleConfig — burn iteration + setup knobs', () => {
     expect(RuncastleConfig.parse({ burnWorkspace: 'mounted' }).burnWorkspace).toBe('mounted')
     expect(RuncastleConfig.parse({ burnWorkspace: 'isolated' }).burnWorkspace).toBe('isolated')
     expect(RuncastleConfig.safeParse({ burnWorkspace: 'wsl' }).success).toBe(false)
+  })
+
+  it('burnCache defaults to volume and accepts only the two modes', () => {
+    expect(RuncastleConfig.parse({}).burnCache).toBe('volume')
+    expect(RuncastleConfig.parse({ burnCache: 'off' }).burnCache).toBe('off')
+    expect(RuncastleConfig.safeParse({ burnCache: 'disabled' }).success).toBe(false)
+  })
+})
+
+/**
+ * The burn cache lives in a Docker/Podman named volume, so the operator's `on`
+ * only means anything when the sandbox is one of those engines. Everything else
+ * degrades to today's behaviour rather than failing at container-create time.
+ */
+describe('resolveBurnCacheMode', () => {
+  it('keeps the configured mode on the two engines that own volumes', () => {
+    expect(resolveBurnCacheMode({ burnCache: 'volume', sandbox: 'docker' })).toBe('volume')
+    expect(resolveBurnCacheMode({ burnCache: 'volume', sandbox: 'podman' })).toBe('volume')
+    expect(resolveBurnCacheMode({ burnCache: 'off', sandbox: 'docker' })).toBe('off')
+  })
+
+  it('is off for noSandbox — there is no container to mount a volume into', () => {
+    expect(resolveBurnCacheMode({ burnCache: 'volume', sandbox: 'noSandbox' })).toBe('off')
   })
 })
 
