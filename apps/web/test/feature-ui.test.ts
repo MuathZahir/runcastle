@@ -1453,9 +1453,13 @@ describe('driveFailure', () => {
   }
 
   it('is nothing at all for a drive that came up', () => {
+    // Bound to a const so the polled drive's other fields read as the wider
+    // object they come from rather than as excess properties on a literal, and
+    // spelling `hookFailure` so the all-optional parameter is not a weak type.
+    const cameUp = { devReady: true, hookFailure: undefined }
     expect(driveFailure(undefined)).toBeNull()
     expect(driveFailure(null)).toBeNull()
-    expect(driveFailure({ devReady: true })).toBeNull()
+    expect(driveFailure(cameUp)).toBeNull()
   })
 
   it('surfaces the command, how it ended and its own output', () => {

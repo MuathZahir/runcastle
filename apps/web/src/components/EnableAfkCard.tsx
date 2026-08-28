@@ -85,7 +85,8 @@ export function EnableAfkCard({
   )
 }
 
-type Probe = RouterOutputs['setup']['doctor']['results'][number]
+/** Exported for the same reason `ImageBuildAction` is: so a test can build one. */
+export type Probe = RouterOutputs['setup']['doctor']['results'][number]
 
 /** One prerequisite row: status dot, label + observed detail, and its action slot. */
 function Row({

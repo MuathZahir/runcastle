@@ -9,6 +9,7 @@ import {
   unverifiedDriveKeys,
   verificationBadge,
 } from '../src/lib/settings'
+import type { FindingLike } from '../src/lib/settings'
 import type { SettingField, SettingsView } from '../src/lib/api'
 
 /**
@@ -20,7 +21,7 @@ import type { SettingField, SettingsView } from '../src/lib/api'
 const HOUR = 3600_000
 const DAY = 24 * HOUR
 
-const finding = (over: Partial<Parameters<typeof describeFinding>[0]> = {}) => ({
+const finding = (over: Partial<FindingLike> = {}): FindingLike => ({
   key: 'verifyCommands',
   source: 'prep',
   establishedAt: Date.now(),
