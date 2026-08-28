@@ -9,6 +9,8 @@ import {
   mergeModelEntries,
   modelEntryFor,
   modelRoster,
+  resolveBurnCacheMode,
+  resolveDefaultBurnConcurrency,
   resolveModel,
   resolveModelEntry,
 } from '../src/config'
@@ -172,6 +174,8 @@ describe('model vocabulary — runtime-aware entries', () => {
 })
 
 describe('RuncastleConfig — burnConcurrency (M2)', () => {
+  // The schema-level floor only. What an operator who set nothing actually gets
+  // is host-aware and applied by `loadConfig` — see `resolveDefaultBurnConcurrency`.
   it('defaults to 3', () => {
     expect(RuncastleConfig.parse({}).burnConcurrency).toBe(3)
   })
@@ -185,6 +189,35 @@ describe('RuncastleConfig — burnConcurrency (M2)', () => {
     expect(RuncastleConfig.safeParse({ burnConcurrency: 0 }).success).toBe(false)
     expect(RuncastleConfig.safeParse({ burnConcurrency: 9 }).success).toBe(false)
     expect(RuncastleConfig.safeParse({ burnConcurrency: 2.5 }).success).toBe(false)
+  })
+})
+
+/**
+ * The host-aware half of that default. Three concurrent burns each size their
+ * worker pools from the full visible core count, so on a small box they
+ * oversubscribe it and manufacture test flakes; the threshold is 8.
+ */
+describe('resolveDefaultBurnConcurrency', () => {
+  it('burns one ticket at a time on a small host', () => {
+    expect(resolveDefaultBurnConcurrency(6)).toBe(1)
+    expect(resolveDefaultBurnConcurrency(8)).toBe(1)
+  })
+
+  it('keeps width 3 above the threshold', () => {
+    expect(resolveDefaultBurnConcurrency(12)).toBe(3)
+    expect(resolveDefaultBurnConcurrency(16)).toBe(3)
+  })
+
+  it('treats a host that cannot say how many cores it has as small', () => {
+    expect(resolveDefaultBurnConcurrency(Number.NaN)).toBe(1)
+    expect(resolveDefaultBurnConcurrency(0)).toBe(1)
+  })
+
+  it('stays inside the width the schema accepts', () => {
+    for (const cores of [1, 6, 8, 12, 16, 128]) {
+      const width = resolveDefaultBurnConcurrency(cores)
+      expect(RuncastleConfig.safeParse({ burnConcurrency: width }).success).toBe(true)
+    }
   })
 })
 
@@ -211,6 +244,29 @@ describe('RuncastleConfig — burn iteration + setup knobs', () => {
     expect(RuncastleConfig.parse({ burnWorkspace: 'mounted' }).burnWorkspace).toBe('mounted')
     expect(RuncastleConfig.parse({ burnWorkspace: 'isolated' }).burnWorkspace).toBe('isolated')
     expect(RuncastleConfig.safeParse({ burnWorkspace: 'wsl' }).success).toBe(false)
+  })
+
+  it('burnCache defaults to volume and accepts only the two modes', () => {
+    expect(RuncastleConfig.parse({}).burnCache).toBe('volume')
+    expect(RuncastleConfig.parse({ burnCache: 'off' }).burnCache).toBe('off')
+    expect(RuncastleConfig.safeParse({ burnCache: 'disabled' }).success).toBe(false)
+  })
+})
+
+/**
+ * The burn cache lives in a Docker/Podman named volume, so the operator's `on`
+ * only means anything when the sandbox is one of those engines. Everything else
+ * degrades to today's behaviour rather than failing at container-create time.
+ */
+describe('resolveBurnCacheMode', () => {
+  it('keeps the configured mode on the two engines that own volumes', () => {
+    expect(resolveBurnCacheMode({ burnCache: 'volume', sandbox: 'docker' })).toBe('volume')
+    expect(resolveBurnCacheMode({ burnCache: 'volume', sandbox: 'podman' })).toBe('volume')
+    expect(resolveBurnCacheMode({ burnCache: 'off', sandbox: 'docker' })).toBe('off')
+  })
+
+  it('is off for noSandbox — there is no container to mount a volume into', () => {
+    expect(resolveBurnCacheMode({ burnCache: 'volume', sandbox: 'noSandbox' })).toBe('off')
   })
 })
 

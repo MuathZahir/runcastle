@@ -201,6 +201,11 @@ export const RuncastleConfig = z.preprocess(
      * tickets live, and test runners OOM-ing inside the sandbox. {@link
      * burnCpus} bounds the CPU side of that; the memory side is bounded only by
      * the container runtime's own VM limit, so lower this if suites die.
+     *
+     * Default: 3, or 1 on ≤8 logical CPUs. The schema cannot count cores (core
+     * is IO-free), so the `.default(3)` below is only the floor a raw
+     * `parse({})` sees; the host-aware value an operator actually gets is
+     * applied by `loadConfig` via {@link resolveDefaultBurnConcurrency}.
      */
     burnConcurrency: z.number().int().min(1).max(8).default(3),
     /**
@@ -319,6 +324,21 @@ export const RuncastleConfig = z.preprocess(
      * `noSandbox` (no container, nothing to isolate).
      */
     burnWorkspace: z.enum(['auto', 'mounted', 'isolated']).default('auto'),
+    /**
+     * Whether burns share a persistent per-project cache volume. `volume`
+     * (default) mounts one Docker/Podman named volume per project holding the
+     * package-manager store and one persistent checkout per burn-concurrency
+     * slot, so install, `.tsbuildinfo`, the test runner's cache and turbo's
+     * cache all survive the container rebuild that happens between iterations.
+     * `off` is today's behaviour byte for byte: a fresh clone and a cold install
+     * every time.
+     *
+     * Config-file + env only, like {@link burnWorkspace} — a burn-internals
+     * escape hatch, not a setting the overlay offers. Non-container sandboxes
+     * resolve to `off` on their own; go through {@link resolveBurnCacheMode}
+     * rather than reading this field.
+     */
+    burnCache: z.enum(['volume', 'off']).default('volume'),
   }),
 )
 export type RuncastleConfig = z.infer<typeof RuncastleConfig>
@@ -340,6 +360,49 @@ export const DEFAULT_SANDBOX_IMAGE = 'sandcastle:runcastle'
  */
 export function resolveSandboxImage(config: Pick<RuncastleConfig, 'sandboxImage'>): string {
   return config.sandboxImage ?? DEFAULT_SANDBOX_IMAGE
+}
+
+/** The sandboxes whose engine can hold a named volume for the burn cache. */
+const BURN_CACHE_SANDBOXES: readonly RuncastleConfig['sandbox'][] = ['docker', 'podman']
+
+/**
+ * The burn cache mode actually in force. `off` whenever the sandbox is not one
+ * whose engine owns named volumes — `noSandbox` has no container to mount into,
+ * and a provider that is neither docker nor podman has no volume vocabulary at
+ * all, so both degrade to today's behaviour rather than failing. Pure; the
+ * single reader of `config.burnCache`.
+ */
+export function resolveBurnCacheMode(
+  config: Pick<RuncastleConfig, 'burnCache' | 'sandbox'>,
+): RuncastleConfig['burnCache'] {
+  return BURN_CACHE_SANDBOXES.includes(config.sandbox) ? config.burnCache : 'off'
+}
+
+/**
+ * At or below this many logical CPUs a host is too small to burn wide, and the
+ * default width drops to 1. Eight is the line because a 6C/12T box — the audited
+ * machine — sits under it while a 16-thread workstation sits above.
+ */
+const SMALL_HOST_LOGICAL_CPUS = 8
+
+/**
+ * The `burnConcurrency` an operator who set nothing gets on a host with
+ * `logicalCpus` cores: 1 at or below {@link SMALL_HOST_LOGICAL_CPUS}, else 3.
+ * Pure — the caller supplies the count, because core may not import `node:os`;
+ * `loadConfig` is where the host is actually asked.
+ *
+ * Three was a flat default until the 2026-08-27 audit on a 6C/12T host. Each
+ * concurrent burn sizes its install and test worker pools from the FULL visible
+ * core count, so width 3 oversubscribes a small box threefold and every agent's
+ * commands slow down together. The cost is not only wall-clock: a known set of
+ * frontend suites goes red under that contention and green in isolation, and six
+ * burns spent tickets re-triaging flakes the width had manufactured.
+ *
+ * A count that is not a positive number (a runtime with no answer) is read as a
+ * small host — the conservative width is the right answer to not knowing.
+ */
+export function resolveDefaultBurnConcurrency(logicalCpus: number): number {
+  return Number.isFinite(logicalCpus) && logicalCpus > SMALL_HOST_LOGICAL_CPUS ? 3 : 1
 }
 
 /**

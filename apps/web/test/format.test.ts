@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { humanizeTimestamps } from '../src/lib/format'
+import { fmtBytes, humanizeTimestamps } from '../src/lib/format'
 
 /**
  * Findings F10.9 / F18 — agent-authored docs stamp themselves the way a program
@@ -39,5 +39,23 @@ describe('humanizeTimestamps', () => {
     const out = humanizeTimestamps('Created: 2026-07-14T14:58:23.231Z')
     expect(out).not.toContain('T14:58:23.231Z')
     expect(out.startsWith('Created: ')).toBe(true)
+  })
+})
+
+/**
+ * The burn cache volume's size, as the AFK card shows it. Decimal units on
+ * purpose: the operator can compare the number against what `docker system df`
+ * prints, and a binary division would quietly disagree with it.
+ */
+describe('fmtBytes', () => {
+  it('scales to the unit that keeps the number short', () => {
+    expect(fmtBytes(512)).toBe('512 B')
+    expect(fmtBytes(940_000_000)).toBe('940 MB')
+    expect(fmtBytes(2_400_000_000)).toBe('2.4 GB')
+    expect(fmtBytes(12_000_000_000)).toBe('12 GB')
+  })
+
+  it('reads an empty cache as zero rather than a fraction of a unit', () => {
+    expect(fmtBytes(0)).toBe('0 B')
   })
 })

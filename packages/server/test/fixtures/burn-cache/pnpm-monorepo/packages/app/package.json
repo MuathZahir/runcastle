@@ -1,0 +1,19 @@
+{
+  "name": "@burn-cache-fixture/app",
+  "version": "0.0.0",
+  "private": true,
+  "main": "src/index.ts",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "typecheck": "tsc -b",
+    "test": "vitest run",
+    "build": "mkdir -p .out && cp package.json .out/bundle.json"
+  },
+  "dependencies": {
+    "@burn-cache-fixture/lib": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "5.9.3",
+    "vitest": "3.2.7"
+  }
+}

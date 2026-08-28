@@ -33,6 +33,8 @@ export interface GuardRule {
   readonly id: string
   /** POSIX ERE — used verbatim by `grep -E` in the container AND by the tests. */
   readonly pattern: string
+  /** Inspect quoted text when the prohibited syntax itself lives inside it. */
+  readonly inspectQuotedArguments?: boolean
   /** Shown to the agent as `permissionDecisionReason`; must name the alternative. */
   readonly reason: string
 }
@@ -65,6 +67,23 @@ export const GUARD_RULES: readonly GuardRule[] = [
       'Do not override the test runner\'s concurrency. Measured in this sandbox, a suite that runs in ~55s at its configured concurrency takes 10-20 minutes serialised, so this "safe" flag is the single most expensive habit in a burn. Run the repo\'s test command as configured. If it is killed for memory, run only the test files your change touches and say so in your final message.',
   },
   {
+    id: 'no-long-sleep',
+    // Integer seconds above 30, or any positive whole minutes/hours/days. The
+    // trailing boundary keeps values such as `310ms` from being mistaken for
+    // 310 seconds.
+    pattern: `${CMD_START}sleep[[:space:]]+((3[1-9]|[4-9][0-9]|[1-9][0-9]{2,})s?|[1-9][0-9]*(m|h|d))([^A-Za-z0-9_]|$)`,
+    reason:
+      'Polling and long sleeps are never needed in a burn. Run the command directly and read its output.',
+  },
+  {
+    id: 'no-verification-polling-loop',
+    // The command is flattened before matching so this covers multiline shell
+    // without relying on a grep implementation's multiline behavior.
+    pattern: `${CMD_START}(until|while)[[:space:]].*(tsc|typecheck|vitest|jest|pytest|mocha|(npm|pnpm|yarn|bun)[[:space:]]+(run[[:space:]]+)?test|turbo[[:space:]]+run[[:space:]]+test).*[;[:space:]][[:space:]]*done`,
+    reason:
+      'Polling and long sleeps are never needed in a burn. Run the command directly and read its output.',
+  },
+  {
     id: 'no-interpreter-heredoc-edit',
     // `python3 - <<'PY' … PY` and friends: rewriting a file through an
     // interpreter. Deliberately does NOT match `git commit -F - <<'EOF'`, which
@@ -72,6 +91,29 @@ export const GUARD_RULES: readonly GuardRule[] = [
     pattern: `${CMD_START}(python3?|node|bun|perl|ruby)[[:space:]]+-[[:space:]]*<<`,
     reason:
       'Do not rewrite files by piping a heredoc into an interpreter — individual such calls have been measured at 29s, 57s, 120s and 761s, and a half-written file survives if this process dies mid-command. Use the Edit tool, which is faster, atomic, and fails loudly when its target text is not found.',
+  },
+  {
+    id: 'no-interpreter-inline-edit',
+    pattern: `${CMD_START}node[[:space:]]+-e([[:space:]]|$)`,
+    reason:
+      'Do not rewrite files with a `node -e` program. Use the Edit tool, which is faster, atomic, and fails loudly when its target text is not found.',
+  },
+  {
+    id: 'no-perl-in-place-edit',
+    // Match an `i` in perl's compact option cluster (`-i`, `-pi`, `-0pi`,
+    // `-i.bak`) without denying ordinary `perl -e` programs.
+    pattern: `${CMD_START}perl[[:space:]]+-[0-9p]*i[^[:space:]]*`,
+    reason:
+      'Do not rewrite files with Perl in-place editing. Use the Edit tool, which is faster, atomic, and fails loudly when its target text is not found.',
+  },
+  {
+    id: 'no-sed-multi-range-edit',
+    // The prohibited syntax lives inside the quoted sed program. Anchoring it
+    // to an in-place sed command keeps argument false-denies out.
+    pattern: `${CMD_START}sed[[:space:]]+-[^[:space:]]*i[^[:space:]]*[[:space:]]+[^;]*,[^;]*d;[^;]*,[^;]*d`,
+    inspectQuotedArguments: true,
+    reason:
+      'Do not perform multi-range file surgery with `sed -i`. Use the Edit tool, which is atomic and fails loudly when its target text is not found.',
   },
   {
     id: 'no-cat-heredoc-edit',
@@ -111,14 +153,17 @@ export const GUARD_SCRIPT_PATH = GUARD_INSTALL_PATHS['claude-code'].script
  */
 export function evaluateGuard(command: string): GuardRule | null {
   // Mirrors the script's `sed`: blank quoted spans before matching.
-  const stripped = command.replace(/'[^']*'/g, ' ').replace(/"[^"]*"/g, ' ')
+  const stripped = command
+    .replace(/'[^']*'/g, ' ')
+    .replace(/"[^"]*"/g, ' ')
+    .replace(/\n/g, ' ')
   for (const rule of GUARD_RULES) {
     // ERE is a subset of JS regex for the constructs used here; POSIX classes
     // are the one exception, so they are expanded for the JS engine.
     const js = rule.pattern
       .replace(/\[\[:space:\]\]/g, '[ \\t\\n]')
       .replace(/\[:space:\]/g, ' \\t\\n')
-    if (new RegExp(js).test(stripped)) return rule
+    if (new RegExp(js).test(rule.inspectQuotedArguments ? command : stripped)) return rule
   }
   return null
 }
@@ -140,13 +185,15 @@ export function renderGuardScript(rules: readonly GuardRule[] = GUARD_RULES): st
     'command -v jq >/dev/null 2>&1 || exit 0',
     'tool=$(printf %s "$payload" | jq -r ".tool_name // empty" 2>/dev/null || true)',
     '[ "$tool" = "Bash" ] || exit 0',
-    'cmd=$(printf %s "$payload" | jq -r ".tool_input.command // empty" 2>/dev/null || true)',
-    '[ -n "$cmd" ] || exit 0',
+    'raw_cmd=$(printf %s "$payload" | jq -r ".tool_input.command // empty" 2>/dev/null || true)',
+    '[ -n "$raw_cmd" ] || exit 0',
     '',
     '# Match against the command with quoted spans blanked, so an argument is',
     '# never read as a command: `grep -rn "git stash" docs/` searches for a',
-    '# string, it does not run one.',
-    `cmd=$(printf %s "$cmd" | sed "s/'[^']*'/ /g; s/\\"[^\\"]*\\"/ /g")`,
+    '# string, it does not run one. Flatten newlines so one grep sees a whole',
+    '# multiline loop.',
+    'cmd=$raw_cmd',
+    `cmd=$(printf %s "$cmd" | sed "s/'[^']*'/ /g; s/\\"[^\\"]*\\"/ /g" | tr '\\n' ' ')`,
     '',
     'deny() {',
     '  printf %s "$1" | jq -R -s \'{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"deny",permissionDecisionReason:.}}\'',
@@ -155,12 +202,13 @@ export function renderGuardScript(rules: readonly GuardRule[] = GUARD_RULES): st
     '',
   ]
   for (const rule of rules) {
+    const commandVariable = rule.inspectQuotedArguments ? '$raw_cmd' : '$cmd'
     lines.push(
       `# ${rule.id}`,
       // `--` ends grep's option parsing: a pattern starting with `--` (the
       // test-concurrency flags) is otherwise read as an unknown flag and the
       // rule silently never fires. Found by running this in a container.
-      `if printf %s "$cmd" | grep -Eq -- ${shSingleQuote(rule.pattern)}; then`,
+      `if printf %s "${commandVariable}" | grep -Eq -- ${shSingleQuote(rule.pattern)}; then`,
       `  deny ${shSingleQuote(rule.reason)}`,
       'fi',
       '',

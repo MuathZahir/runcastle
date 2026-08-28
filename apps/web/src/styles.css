@@ -4346,6 +4346,7 @@ button.tb-runs { cursor: pointer; }
   background: var(--panel-2);
 }
 .afk-row.is-ok { opacity: 0.72; }
+.afk-row.is-stale .afk-dot { background: var(--amber, #d99a32); }
 .afk-row-head { display: flex; align-items: flex-start; gap: 9px; }
 .afk-dot {
   width: 8px;

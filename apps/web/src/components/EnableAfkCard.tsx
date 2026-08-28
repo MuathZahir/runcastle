@@ -4,6 +4,7 @@ import { trpc } from '../trpc'
 import { afkCredentialRows, type AfkCredentialRow } from '../lib/afk-rows'
 import type { RouterOutputs } from '../lib/api'
 import { RUNTIME_LOGIN } from '../lib/first-run'
+import { fmtBytes } from '../lib/format'
 import { RUNTIME_LABEL } from '../lib/settings'
 import { useToast } from '../lib/toast'
 import { Button, DimLine } from '../ui'
@@ -21,8 +22,18 @@ import { TerminalView } from './TerminalView'
  * Everything is non-blocking: the user can act on any row now or leave it. The
  * card is rendered inside the first-run wizard and, dismissed there, stays
  * reachable from Settings — same component, `onDismiss` omitted.
+ *
+ * `projectId` is the one thing the wizard cannot supply: the burn cache is one
+ * volume per project, so its row appears only where a project is open (from
+ * Settings), and the wizard — which may run before any project exists — omits it.
  */
-export function EnableAfkCard({ onDismiss }: { onDismiss?: () => void }) {
+export function EnableAfkCard({
+  projectId,
+  onDismiss,
+}: {
+  projectId?: string
+  onDismiss?: () => void
+}) {
   const doctor = trpc.setup.doctor.useQuery(undefined, { refetchOnWindowFocus: false })
   const report = doctor.data
 
@@ -60,6 +71,7 @@ export function EnableAfkCard({ onDismiss }: { onDismiss?: () => void }) {
         <div className="afk-rows">
           <RuntimeRow probe={runtime} onRecheck={recheck} />
           <ImageRow probe={image} runtimeOk={runtime?.status === 'ok'} onDone={recheck} />
+          {projectId && <ProjectBurnCache projectId={projectId} />}
           {credentials.map((row) =>
             row.kind === 'token' ? (
               <CredentialRow key={row.runtime} probe={row.probe} onDone={recheck} />
@@ -79,17 +91,19 @@ type Probe = RouterOutputs['setup']['doctor']['results'][number]
 function Row({
   probe,
   label,
+  showAction = probe?.status !== 'ok',
   children,
 }: {
   probe: Probe | undefined
   /** Overrides the probe's own label, for a row asking a narrower question than it. */
   label?: string
+  showAction?: boolean
   children?: React.ReactNode
 }) {
   if (!probe) return null
   const ok = probe.status === 'ok'
   return (
-    <div className={`afk-row${ok ? ' is-ok' : ''}`}>
+    <div className={`afk-row${ok ? ' is-ok' : probe.status === 'stale' ? ' is-stale' : ''}`}>
       <div className="afk-row-head">
         <span className={`afk-dot afk-dot-${ok ? 'ok' : 'warn'}`} aria-hidden />
         <div className="afk-row-text">
@@ -97,7 +111,7 @@ function Row({
           <div className="afk-row-detail mono">{probe.detail}</div>
         </div>
       </div>
-      {!ok && <div className="afk-row-action">{children}</div>}
+      {showAction && <div className="afk-row-action">{children}</div>}
     </div>
   )
 }
@@ -157,7 +171,7 @@ function ImageRow({
   if (!probe) return null
 
   return (
-    <Row probe={probe}>
+    <Row probe={probe} showAction>
       {sessionId ? (
         <>
           <div className="afk-term">
@@ -178,16 +192,117 @@ function ImageRow({
           </div>
         </>
       ) : (
-        <Button
-          variant="solid"
-          disabled={!runtimeOk || start.isPending}
-          title={runtimeOk ? undefined : 'Install a container runtime first'}
-          onClick={() => start.mutate({ kind: 'build-image' })}
-        >
-          {start.isPending ? 'Starting…' : 'Build image'}
-        </Button>
+        <ImageBuildAction
+          probe={probe}
+          runtimeOk={runtimeOk}
+          pending={start.isPending}
+          onStart={() => start.mutate({ kind: 'build-image' })}
+        />
       )}
     </Row>
+  )
+}
+
+/** Status-specific image action, split from the tRPC wrapper for component testing. */
+export function ImageBuildAction({
+  probe,
+  runtimeOk,
+  pending,
+  onStart,
+}: {
+  probe: Probe
+  runtimeOk: boolean
+  pending: boolean
+  onStart: () => void
+}) {
+  return (
+    <>
+      {probe.status === 'stale' && probe.fix && <div className="afk-note">{probe.fix}</div>}
+      <Button
+        variant={probe.status === 'ok' ? 'ghost' : 'solid'}
+        disabled={!runtimeOk || pending}
+        title={runtimeOk ? undefined : 'Install a container runtime first'}
+        onClick={onStart}
+      >
+        {pending ? 'Starting…' : probe.status === 'missing' ? 'Build image' : 'Rebuild image'}
+      </Button>
+    </>
+  )
+}
+
+type BurnCacheStatus = RouterOutputs['system']['burnCache']['status']
+
+/**
+ * The burn cache volume's size and its one Clear button (decision 6). A cache
+ * the operator can neither see nor drop is a support ticket waiting to happen —
+ * and clearing it is refused while a burn is working out of it, so the server's
+ * reason is rendered where the click happened rather than thrown away.
+ *
+ * Split from the tRPC wrapper for component testing, like {@link ImageBuildAction}.
+ */
+export function BurnCacheRow({
+  status,
+  pending,
+  refusal,
+  onClear,
+}: {
+  status: BurnCacheStatus | undefined
+  pending: boolean
+  /** The server's reason for refusing the last clear, shown verbatim. */
+  refusal: string | null
+  onClear: () => void
+}) {
+  // Nothing to show until the size is known, and nothing to offer when the
+  // cache is off — that mode is byte-for-byte the behaviour that predates it.
+  if (status?.mode !== 'volume') return null
+
+  return (
+    <div className="afk-row is-ok">
+      <div className="afk-row-head">
+        <span className="afk-dot afk-dot-ok" aria-hidden />
+        <div className="afk-row-text">
+          <div className="afk-row-label">Burn cache</div>
+          <div className="afk-row-detail mono">
+            {status.volumeName} — {status.sizeBytes === null ? 'empty' : fmtBytes(status.sizeBytes)}
+          </div>
+        </div>
+      </div>
+      <div className="afk-row-action">
+        <Button variant="ghost" disabled={pending} onClick={onClear}>
+          {pending ? 'Clearing…' : 'Clear'}
+        </Button>
+        {refusal && <div className="afk-verdict is-warn">{refusal}</div>}
+      </div>
+    </div>
+  )
+}
+
+/** {@link BurnCacheRow} wired to the project's cache: size in, clear out. */
+function ProjectBurnCache({ projectId }: { projectId: string }) {
+  const utils = trpc.useUtils()
+  const [refusal, setRefusal] = useState<string | null>(null)
+  // Not on the SSE invalidation allowlist: reading the size shells out to the
+  // engine, so — like `setup.doctor` — it refetches when something actually
+  // changed it rather than on every burn event.
+  const status = trpc.system.burnCache.status.useQuery(
+    { projectId },
+    { refetchOnWindowFocus: false },
+  )
+  const clear = trpc.system.burnCache.clear.useMutation({
+    onSuccess: () => {
+      setRefusal(null)
+      void utils.system.burnCache.status.invalidate()
+    },
+    onError: (e) => setRefusal(e.message),
+  })
+
+  return (
+    <BurnCacheRow
+      status={status.data}
+      pending={clear.isPending}
+      refusal={refusal}
+      onClear={() => clear.mutate({ projectId })}
+    />
   )
 }
 

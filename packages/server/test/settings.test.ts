@@ -40,7 +40,14 @@ describe('settings service (#46)', () => {
     configFile = join(mkdtempSync(join(tmpdir(), 'runcastle-cfg-')), 'config.json')
   })
 
-  const io = (env: Record<string, string | undefined> = {}) => ({ env, configFile })
+  // A core count above the small-host threshold, so the `burnConcurrency` these
+  // tests read back is a fixed 3 rather than whatever box runs the suite.
+  const WIDE_HOST = 16
+  const io = (env: Record<string, string | undefined> = {}) => ({
+    env,
+    configFile,
+    logicalCpus: WIDE_HOST,
+  })
 
   it('globals: with no config file, every field resolves to its schema default', () => {
     const view = getSettings(ctx, undefined, io())
@@ -116,6 +123,17 @@ describe('settings service (#46)', () => {
     expect(() => updateSettings(ctx, { key: 'bogus', value: '1' }, io())).toThrow(InvalidInputError)
   })
 
+  // Burn-internals escape hatches: config file + env var, no descriptor. They
+  // are deliberately invisible here so the overlay never grows a control for
+  // them — `burnCache` joins `burnWorkspace` and `burnGuard` on that list.
+  it('keeps the config-only burn knobs out of the settings surface', () => {
+    const view = getSettings(ctx, undefined, io())
+    for (const key of ['burnCache', 'burnWorkspace', 'burnGuard']) {
+      expect(view.fields.find((f) => f.key === key), key).toBeUndefined()
+      expect(() => updateSettings(ctx, { key, value: 'off' }, io()), key).toThrow(InvalidInputError)
+    }
+  })
+
   it('global write persists to the config file AND refreshes the in-memory config in place', () => {
     updateSettings(ctx, { key: 'model', value: 'claude-sonnet-5' }, io())
 
@@ -162,6 +180,29 @@ describe('settings service (#46)', () => {
     expect(() => updateSettings(ctx, { key: 'burnConcurrency', value: 9 }, io())).toThrow(
       InvalidInputError,
     )
+  })
+
+  // The number under a field an operator has not set is a promise about what
+  // will happen if they leave it alone, so it has to be the width THIS host
+  // burns at — 1 where three parallel agents would oversubscribe the machine.
+  it('reports the width a small host actually defaults to, not the schema 3', () => {
+    const small = field(
+      getSettings(ctx, undefined, { env: {}, configFile, logicalCpus: 6 }),
+      'burnConcurrency',
+    )
+    expect(small.value).toBe(1)
+    expect(small.source).toBe('default')
+    expect(small.editable).toBe(true)
+  })
+
+  it('a config-file width still wins on a small host', () => {
+    updateSettings(ctx, { key: 'burnConcurrency', value: 3 }, io())
+    const f = field(
+      getSettings(ctx, undefined, { env: {}, configFile, logicalCpus: 6 }),
+      'burnConcurrency',
+    )
+    expect(f.value).toBe(3)
+    expect(f.source).toBe('file')
   })
 
   it('burnConcurrency env override coerces the string and locks the field', () => {

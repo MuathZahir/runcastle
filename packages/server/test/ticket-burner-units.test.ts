@@ -5,7 +5,7 @@ import { dirname, join } from 'node:path'
 import type { Feature, ModelEntry, Ticket } from '@runcastle/core'
 import { worktreeDir } from '@runcastle/core/paths'
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { buildGuardInstallCommand } from '../src/workflows/burn-guard'
+import { GUARD_RULES, buildGuardInstallCommand } from '../src/workflows/burn-guard'
 import {
   CODEX_HOST_MOUNT_PATH,
   ISOLATED_REPO_PATH,
@@ -31,6 +31,9 @@ import {
   classifyToolCall,
   createToolTimer,
   formatTimingSummary,
+  buildTicketTiming,
+  emitTicketTiming,
+  formatTicketTiming,
   createSerialQueue,
   createStreamThrottle,
   detectCycle,
@@ -183,6 +186,17 @@ describe('renderTicketPrompt', () => {
     expect(template).not.toContain('{{COMMIT_CONVENTION}}')
     expect(template).toContain('ticket(<seq>): <summary>')
     expect(template).toMatch(/`seq` field of the ticket JSON/i)
+  })
+
+  it('makes the parent the only writer and bounds read-only subagent reports', () => {
+    const out = renderTicketPrompt(readFileSync(burnerTemplatePath(), 'utf8'), promptValues())
+
+    expect(out).toContain('You are the only writer in this tree.')
+    expect(out).toContain('Subagents may READ and REPORT only — they never edit, never run tests.')
+    expect(out).toContain(
+      'Reports are ≤40 lines: file:line pointers plus one-sentence claims, zero source quotation.',
+    )
+    expect(out).toContain('Tell subagents what you already searched so they do not repeat it.')
   })
 
   it('carries the DIGEST.md contract into the prompt the burner actually gets', () => {
@@ -383,8 +397,16 @@ describe('buildLapDigestsBlock', () => {
 describe('buildGuardNotes', () => {
   it('claims enforcement only when the hook is actually installed', () => {
     expect(buildGuardNotes(true)).toMatch(/denied before they run/i)
-    expect(buildGuardNotes(false)).not.toMatch(/denied/i)
-    expect(buildGuardNotes(false)).toMatch(/machine-enforced/i)
+    expect(buildGuardNotes(false)).not.toMatch(/denied before they run/i)
+    expect(buildGuardNotes(false)).toMatch(/not machine-enforced/i)
+  })
+
+  it('renders every denial reason verbatim from the guard rule table', () => {
+    const notes = buildGuardNotes(true)
+
+    for (const rule of GUARD_RULES) {
+      expect(notes).toContain(`- ${rule.reason}`)
+    }
   })
 })
 
@@ -1214,6 +1236,48 @@ describe('createToolTimer — category shares from the sandcastle stream', () =>
   })
 })
 
+describe('ticket.timing — the one span a ticket duration may be read from', () => {
+  const empty = { totalMs: 0, calls: 0, byCategory: {} }
+
+  it('bounds the execution with its own wall clock, whatever the stream said', () => {
+    // 5m 35s of wall clock and no attributable tool time at all: the review
+    // that read as 5.2 hours off its append-only log file.
+    const t = buildTicketTiming(empty, 1_000_000, 1_335_000)
+    expect(t.wallMs).toBe(335_000)
+    expect(t.startedAt).toBe(1_000_000)
+    expect(t.endedAt).toBe(1_335_000)
+    expect(formatTicketTiming(t)).toBe('5:35')
+  })
+
+  it('keeps the category breakdown alongside the wall clock', () => {
+    const t = buildTicketTiming(
+      { totalMs: 60_000, calls: 2, byCategory: { tests: { calls: 1, ms: 60_000 } } },
+      0,
+      120_000,
+    )
+    expect(t.byCategory.tests).toEqual({ calls: 1, ms: 60_000 })
+    expect(formatTicketTiming(t)).toMatch(/^2:00 \(.*tests 100%\)$/)
+  })
+
+  it('never reports a negative span when the clock steps back mid-execution', () => {
+    expect(buildTicketTiming(empty, 5_000, 4_000).wallMs).toBe(0)
+  })
+
+  it('emits the same event shape for a ticket that made no tool calls', () => {
+    const events: { type: string; ticketId?: string; data?: unknown }[] = []
+    const ctx = { emitEvent: (e: (typeof events)[number]) => events.push(e) }
+    emitTicketTiming(
+      ctx as unknown as Parameters<typeof emitTicketTiming>[0],
+      { id: 'tk_1', seq: 4 },
+      buildTicketTiming(empty, 0, 335_000),
+    )
+    expect(events).toHaveLength(1)
+    expect(events[0]?.type).toBe('ticket.timing')
+    expect(events[0]?.ticketId).toBe('tk_1')
+    expect(events[0]?.data).toMatchObject({ wallMs: 335_000, startedAt: 0, endedAt: 335_000 })
+  })
+})
+
 describe('buildVerifyNotes — the prompt block that bounds verification spend', () => {
   it('states configured commands verbatim and forbids hunting for alternatives', () => {
     const out = buildVerifyNotes({ verifyCommands: 'pnpm --filter @acme/web test' })
@@ -1375,10 +1439,12 @@ describe('cacheMountFor — package-manager cache bind-mounts', () => {
 })
 
 describe('burn workspace mode (ADR-0005 — keep the hot path off the mount)', () => {
+  // `burnCache: 'off'` throughout: with the cache on the mode is always `slot`
+  // and the platform stops mattering, which is its own describe below.
   const cfg = (
     sandbox: RuncastleConfig['sandbox'],
     burnWorkspace: RuncastleConfig['burnWorkspace'],
-  ) => ({ sandbox, burnWorkspace })
+  ) => ({ sandbox, burnWorkspace, burnCache: 'off' as const })
 
   it('auto isolates on win32/darwin container hosts, stays mounted on linux', () => {
     expect(resolveBurnWorkspaceMode(cfg('docker', 'auto'), 'win32')).toBe('isolated')

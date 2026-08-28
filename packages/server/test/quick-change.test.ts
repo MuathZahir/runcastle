@@ -1,18 +1,20 @@
-import { existsSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import type { Ticket } from '@runcastle/core'
+import type { Feature, Ticket } from '@runcastle/core'
 import { simpleGit } from 'simple-git'
-import { beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { AppCtx } from '../src/db/types'
 import { listAfter } from '../src/services/events'
+import { featureDocsDir } from '../src/services/feature-docs'
 import * as features from '../src/services/features'
 import { checkGate } from '../src/services/gates'
 import { scaffoldDocs } from '../src/services/knowledge'
 import { openProject } from '../src/services/projects'
-import { getFeatureRow } from '../src/services/repo'
+import { getFeatureRow, projectForFeature } from '../src/services/repo'
 import { listByFeature } from '../src/services/tickets'
 import { createCallerFactory } from '../src/trpc/context'
 import { appRouter } from '../src/trpc/router'
+import { useDataDir } from './helpers/data-dir'
 import { makeTestCtx } from './helpers/db'
 import { seedFeature, seedProject, tmpRepo } from './helpers/fixtures'
 
@@ -50,6 +52,33 @@ const PROSE = 'Make the empty state darker — it washes out on the light theme.
 function typedTickets(ctx: AppCtx, featureId: string): Ticket[] {
   return listByFeature(ctx, featureId).filter((t) => t.kind === 'implementation')
 }
+
+/**
+ * Where a feature's docs actually live — the talk worktree, which creation cuts
+ * so the scaffold can be committed onto `feature/<slug>` instead of onto
+ * whatever branch the human's checkout happens to be standing on.
+ */
+function docsDir(ctx: AppCtx, feature: Feature): string {
+  return featureDocsDir(projectForFeature(ctx, feature), feature)
+}
+
+/**
+ * That worktree lives under the data dir, so every test in this file pins it at
+ * a temp tree — otherwise a run writes worktrees into the developer's real
+ * `~/.runcastle`.
+ */
+let dataHome: string
+let restoreDataDir: () => void
+
+beforeEach(() => {
+  dataHome = tmpRepo()
+  restoreDataDir = useDataDir(dataHome)
+})
+
+afterEach(() => {
+  restoreDataDir()
+  rmSync(dataHome, { recursive: true, force: true })
+})
 
 describe('quickChange service — a one-ticket feature born at implementation', () => {
   let ctx: AppCtx
@@ -156,8 +185,9 @@ describe('quickChange service — a one-ticket feature born at implementation', 
   /**
    * The prose is the whole deliverable of this ticket — it is what the review
    * agent is handed, and the quick door has no session to write it. It carries
-   * the contract the tickets skill states: code review always, drive only when
-   * there is something drivable, digest = the lap's summary.
+   * the contract the tickets skill states: one mode and not both, the drive when
+   * there is something drivable and the gates otherwise, digest = the lap's
+   * summary, led by the mode it ran in.
    */
   it('gives the review ticket the contract prose the tickets skill mandates', async () => {
     const feature = await features.quickChange(ctx, {
@@ -168,15 +198,20 @@ describe('quickChange service — a one-ticket feature born at implementation', 
 
     const review = listByFeature(ctx, feature.id)[2]
     expect(review.title).toBe('Review the integrated change')
-    expect(review.goal).toContain('always')
-    expect(review.goal).toContain('drive the app when the diff touches something a human can')
+    expect(review.goal).toContain('in exactly one mode')
+    expect(review.goal).toContain('a drive is available')
+    expect(review.goal).toContain('otherwise run the verify gates')
+    // The superseded contract: never "always the code review, and additionally
+    // the drive" — that phrasing is what produced the reviews that did both.
+    expect(review.goal).not.toContain('additionally')
     expect(review.context).toContain('no spec.md or decisions.md')
-    expect(review.context).toContain('let the code review stand alone')
+    expect(review.context).toContain('take the gates-and-diff mode')
     expect(review.context).toContain("Your digest is the lap's prose summary")
-    // One criterion for the unconditional code review, then one per sentence
-    // the human typed — the review agent walks them in order.
+    expect(review.context).toContain('its first line names the mode you ran')
+    // One criterion for the review itself — either mode satisfies it — then one
+    // per sentence the human typed, which the review agent walks in order.
     expect(review.acceptanceCriteria).toEqual([
-      "The branch's diff against its base is code-reviewed on both axes — the repo's own standards, and the change against what was asked for.",
+      "Reviewed in one mode — either walked in a browser, or put through the verify gates and code-reviewed on both axes (the repo's own standards, and the change against what was asked for).",
       `Landed and does what it says: ${PROSE}`,
       'Landed and does what it says: Fix the run chip.',
     ])
@@ -260,9 +295,9 @@ describe('quickChange service — a one-ticket feature born at implementation', 
     // brief header), so it gets the first line only.
     expect(feature.oneLiner).toBe(PROSE)
     expect(listByFeature(ctx, feature.id)[0].goal).toBe(multiline)
-    expect(
-      readFileSync(join(repoPath, 'docs', 'features', feature.slug, 'brief.md'), 'utf8'),
-    ).toContain('Repro: open a fresh project')
+    expect(readFileSync(join(docsDir(ctx, feature), 'brief.md'), 'utf8')).toContain(
+      'Repro: open a fresh project',
+    )
   })
 
   it('writes the prose verbatim into brief.md and creates no spec.md or decisions.md', async () => {
@@ -272,7 +307,7 @@ describe('quickChange service — a one-ticket feature born at implementation', 
       tickets: [PROSE],
     })
 
-    const dir = join(repoPath, 'docs', 'features', feature.slug)
+    const dir = docsDir(ctx, feature)
     expect(readFileSync(join(dir, 'brief.md'), 'utf8')).toContain(PROSE)
     expect(existsSync(join(dir, 'spec.md'))).toBe(false)
     expect(existsSync(join(dir, 'decisions.md'))).toBe(false)
@@ -286,10 +321,7 @@ describe('quickChange service — a one-ticket feature born at implementation', 
       tickets: ['Darken the empty state.', 'Drop the lap chip.'],
     })
 
-    const brief = readFileSync(
-      join(repoPath, 'docs', 'features', feature.slug, 'brief.md'),
-      'utf8',
-    )
+    const brief = readFileSync(join(docsDir(ctx, feature), 'brief.md'), 'utf8')
     // Numbered to match the seqs the sentences were stored under, so the burner
     // reading the brief can tell which paragraph is which ticket.
     expect(brief).toBe(
@@ -297,17 +329,22 @@ describe('quickChange service — a one-ticket feature born at implementation', 
     )
   })
 
-  it('commits the scaffolded brief so the checkout stays clean', async () => {
+  it('commits the scaffolded brief onto the feature branch, leaving the checkout alone', async () => {
+    const g = simpleGit(repoPath)
+    const tipBefore = (await g.revparse(['HEAD'])).trim()
+
     const feature = await features.quickChange(ctx, {
       projectId,
       title: 'Darker empty state',
       tickets: [PROSE],
     })
 
-    const status = await simpleGit(repoPath).status()
-    expect(status.isClean()).toBe(true)
-    const log = await simpleGit(repoPath).log()
-    expect(log.latest?.message).toContain(feature.slug)
+    expect(
+      await g.show([`feature/${feature.slug}:docs/features/${feature.slug}/brief.md`]),
+    ).toContain(PROSE)
+    // The human's checkout gained neither a commit nor an untracked doc.
+    expect((await g.revparse(['HEAD'])).trim()).toBe(tipBefore)
+    expect((await g.status()).isClean()).toBe(true)
   })
 
   it('emits a timeline that spells out the born-at-implementation path', async () => {

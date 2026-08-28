@@ -27,6 +27,7 @@ import { emit, listByProject } from '../src/services/events'
 import { openProject } from '../src/services/projects'
 import { getFeatureRow, listSessionsByFeature, setFeatureStatus } from '../src/services/repo'
 import { listByFeature, storeTickets, updateTicket } from '../src/services/tickets'
+import { useDataDir } from './helpers/data-dir'
 import { makeTestCtx } from './helpers/db'
 import { seedFeature, tmpRepo } from './helpers/fixtures'
 
@@ -65,8 +66,12 @@ describe('project-session MCP tools', () => {
   let repoPath: string
   let projectId: string
   let session: ReturnType<typeof createSessionRow>
+  let restoreDataDir: () => void
 
   beforeEach(async () => {
+    // `create_feature` cuts the feature's talk worktree to commit its brief onto
+    // the feature branch, so the data dir has to be a temp tree.
+    restoreDataDir = useDataDir(tmpRepo())
     ctx = await makeTestCtx()
     repoPath = await gitRepo()
     projectId = (await openProject(ctx, repoPath)).id
@@ -76,7 +81,10 @@ describe('project-session MCP tools', () => {
     setRuntimeCtx(ctx)
   })
 
-  afterEach(() => clearRuntimeCtx())
+  afterEach(() => {
+    clearRuntimeCtx()
+    restoreDataDir()
+  })
 
   // --- scoping ---------------------------------------------------------------
 
@@ -178,8 +186,12 @@ describe('project-session MCP tools', () => {
     expect(getFeatureRow(ctx, out.id).phase).toBe('ideation')
     expect(listByFeature(ctx, out.id)).toHaveLength(0)
 
-    const briefPath = join(repoPath, 'docs', 'features', out.slug, 'brief.md')
-    expect(readFileSync(briefPath, 'utf8').trim()).toBe(brief.trim())
+    // On the FEATURE branch, which is what the grill worktree is cut from — the
+    // whole point of passing a brief is that the ideation agent reads it there.
+    const onBranch = await simpleGit(repoPath).show([
+      `feature/${out.slug}:docs/features/${out.slug}/brief.md`,
+    ])
+    expect(onBranch.trim()).toBe(brief.trim())
 
     // It creates; it does not open a terminal on what it created — the new card
     // appearing in the rail is the feedback, and the human picks what is next.
@@ -191,7 +203,9 @@ describe('project-session MCP tools', () => {
       title: 'Fork door',
       oneLiner: 'branch-from prefilled from the parent feature',
     })
-    const body = readFileSync(join(repoPath, 'docs', 'features', out.slug, 'brief.md'), 'utf8')
+    const body = await simpleGit(repoPath).show([
+      `feature/${out.slug}:docs/features/${out.slug}/brief.md`,
+    ])
     expect(body).toContain('# Fork door')
     expect(body).toContain('branch-from prefilled from the parent feature')
     expect(body).toContain('- Slug: fork-door')

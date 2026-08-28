@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { Feature, Project, Run, RunStatus, SessionRow } from '@runcastle/core'
@@ -223,6 +223,27 @@ describe('the review agent wires', () => {
     })
     expect(await currentBranch()).toBe('main')
     expect(activeDriveInfo()).toBeNull()
+  })
+
+  it('starts when the only dirt is a brief runcastle staged and never committed', async () => {
+    // How three of four review drives were really refused: the creation paths
+    // scaffold `brief.md` and commit it best-effort, so a commit that did not
+    // land leaves it staged — dirt the human never made and cannot explain.
+    const docsDir = join(repo, 'docs', 'features', feature.slug)
+    mkdirSync(docsDir, { recursive: true })
+    writeFileSync(join(docsDir, 'brief.md'), '# Reviewed\n')
+    await simpleGit(repo).add(['docs/features'])
+
+    const start = await drive('start')
+
+    expect(start).toMatchObject({ ok: true, action: 'start' })
+    expect(await currentBranch()).toBe('feature/reviewed')
+    // Committed, not waved through: the brief is versioned like every other doc.
+    expect((await simpleGit(repo).status()).isClean()).toBe(true)
+    const subject = (await simpleGit(repo).raw(['log', '-1', '--pretty=%s', 'main'])).trim()
+    expect(subject).toMatch(/^runcastle: /)
+
+    await drive('stop')
   })
 
   it('fails fast when the human holds the drive slot, and never touches their drive', async () => {

@@ -104,6 +104,31 @@ describe('describeField', () => {
     expect(locked.note).toBe('Set by RUNCASTLE_BURN_CONCURRENCY')
   })
 
+  // The burn width defaults off the host's core count, so an operator looking at
+  // an unset field has to be told which way this machine went — and the help has
+  // to say the rule, since a set field no longer shows the note.
+  it('says what burn concurrency defaults to on this machine while it is unset', () => {
+    expect(describeField(field({ key: 'burnConcurrency', value: 1 })).note).toBe(
+      'Default on this machine: 1.',
+    )
+    expect(describeField(field({ key: 'burnConcurrency', value: 3 })).note).toBe(
+      'Default on this machine: 3.',
+    )
+    expect(describeField(field({ key: 'burnConcurrency', value: 1 })).help).toContain(
+      '8 logical CPUs or fewer',
+    )
+  })
+
+  it('drops the machine-default note once a width is actually set', () => {
+    const row = describeField(field({ key: 'burnConcurrency', value: 5, source: 'file' }))
+    expect(row.note).toBeNull()
+  })
+
+  it('leaves every other unset global field without a note', () => {
+    expect(describeField(field({ key: 'burnCpus', value: null })).note).toBeNull()
+    expect(describeField(field({ key: 'model', value: 'claude-opus-5' })).note).toBeNull()
+  })
+
   it('marks a project-sourced field as overridden', () => {
     const row = describeField(field({ key: 'model', source: 'project', scope: 'project' }))
     expect(row.overridden).toBe(true)

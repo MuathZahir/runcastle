@@ -16,8 +16,10 @@ import type {
 import {
   WITHHELD_FEATURE_DOCS,
   agentDigestDocOrder,
+  fmtClock,
   isAgentDigestDoc,
   newId,
+  resolveBurnCacheMode,
   resolveModelEntry,
   resolvePreparedSettings,
   resolveSandboxImage,
@@ -35,6 +37,8 @@ import {
 import type { McpConfig } from '../launcher/artifacts'
 import { resolveSkillsRoot } from '../launcher/skills-root'
 import { codexHomeDir, codexLoggedIn } from '../services/codex-auth'
+import type { ExecFn, ExecOutcome } from '../doctor/doctor'
+import { createSystemExec } from '../doctor/system-exec'
 import { ADR_DIR_REL, CHARTER_FILE, MAP_SECTIONS, listLiveAdrs } from '../services/knowledge'
 import { RUNTIME_AUTH_KEY, RUNTIME_AUTH_SETUP_HINT } from '../services/setup'
 import {
@@ -65,7 +69,19 @@ import type {
   RunResult,
 } from '@ai-hero/sandcastle'
 import { claudeCode, codex, run } from '@ai-hero/sandcastle'
-import { buildGuardInstallCommand } from './burn-guard'
+import { GUARD_RULES, buildGuardInstallCommand } from './burn-guard'
+import type { BurnCacheEngine, SlotAllocator } from './burn-cache'
+import {
+  BURN_CACHE_MOUNT,
+  BurnSlotsExhaustedError,
+  burnCacheEnv,
+  burnCacheVolumeName,
+  ensureBurnCacheVolume,
+  getBurnSlotAllocator,
+  slotDirPath,
+  slotRepoPath,
+  slotStampPath,
+} from './burn-cache'
 // The other execution kind. Imported for its one entry point only — everything
 // it needs from here it takes from the exported pure units, and neither module
 // touches the other while it is being evaluated.
@@ -107,6 +123,17 @@ import { noSandbox } from '@ai-hero/sandcastle/sandboxes/no-sandbox'
  */
 
 export const AUTH_MISSING_EVENT = 'auth.missing'
+export const IMAGE_RUNTIME_MISSING_EVENT = 'burn.image_runtime_missing'
+
+const RUNTIME_BINARY: Record<AgentRuntime, string> = {
+  'claude-code': 'claude',
+  codex: 'codex',
+}
+
+export function missingImageRuntimeMessage(runtime: AgentRuntime, image: string): string {
+  const binary = RUNTIME_BINARY[runtime]
+  return `${binary} is not installed in image ${image} — the image predates the burner Dockerfile. Rebuild it from Settings → AFK burns (Rebuild image).`
+}
 
 /**
  * Whether a runtime can authenticate an unattended container burn. The two
@@ -189,6 +216,8 @@ export interface BurnDeps {
   runtime: AgentRuntime
   /** Whether {@link runtime} can authenticate this run (container sandboxes require it). */
   hasAuthToken: boolean
+  /** Doctor-style injected command runner used for the pre-container image probe. */
+  exec?: ExecFn
   /**
    * The runtime of a ticket whose OWN model cannot authenticate a container
    * burn, or `undefined` when it can. A ticket assigned to the other runtime
@@ -612,9 +641,11 @@ export function buildDriveNotes(settings: DriveSettings): string {
  * conditional.
  */
 export function buildGuardNotes(guardInstalled: boolean): string {
-  return guardInstalled
-    ? 'Three of the rules below are enforced by a tool hook, not merely stated: `git stash`, test-runner concurrency flags, and rewriting files through interpreter heredocs are **denied before they run**. A denial is policy, not a broken environment — read its reason, take the alternative it names, and carry on. Do not try to route around it.'
-    : 'Nothing below is machine-enforced in this burn — the deny hook is not installed, so the rules hold on your discipline alone. They are not style preferences: each one is a measured way burns lose work.'
+  const introduction = guardInstalled
+    ? 'The following commands are **denied before they run** by a tool hook. Each denial and its prescribed alternative comes verbatim from the guard that enforces it. A denial is policy, not a broken environment — follow the alternative and do not try to route around it.'
+    : 'The deny hook is not installed in this burn, so the following guard rules are not machine-enforced. Follow them on discipline alone; each denial and its prescribed alternative comes verbatim from the guard used in protected burns.'
+
+  return [introduction, '', ...GUARD_RULES.map((rule) => `- ${rule.reason}`)].join('\n')
 }
 
 /**
@@ -883,21 +914,71 @@ export const PM_CACHE_SANDBOX_PATHS: Partial<Record<PackageManager, string>> = {
   npm: '~/.npm',
 }
 
-/** Structurally matches sandcastle's `MountConfig` (not exported from its barrel). */
-export interface CacheMount {
+/** A host directory bind-mounted into the sandbox. */
+export interface HostPathMount {
   readonly hostPath: string
   readonly sandboxPath: string
   readonly readonly?: boolean
 }
+/** An engine-managed named volume mounted into the sandbox (the burn cache). */
+export interface VolumeMount {
+  readonly volume: string
+  readonly sandboxPath: string
+  readonly readonly?: boolean
+}
+/**
+ * Structurally matches sandcastle's patched `MountConfig` (not exported from
+ * its barrel): a mount names EITHER a host directory or, since the runcastle
+ * named-volume patch, a Docker/Podman volume. Kept as a union rather than one
+ * interface with two optional keys so a caller that needs the host path (the
+ * `mkdirSync` that stops a missing dir failing sandbox creation) is handed one.
+ */
+export type CacheMount = HostPathMount | VolumeMount
 
 /**
  * The bind-mount for one package manager's persistent host cache, or
  * `undefined` for a manager that is better off with its cache inside the
  * container (pnpm — see {@link PM_CACHE_SANDBOX_PATHS}).
+ *
+ * ADR-0004's mechanism, and only reachable with `burnCache: 'off'`: with the
+ * cache volume on, every manager's store lives on the volume instead
+ * (decision 10) and none of these mounts is attached.
  */
-export function cacheMountFor(pm: PackageManager, hostPath: string): CacheMount | undefined {
+export function cacheMountFor(pm: PackageManager, hostPath: string): HostPathMount | undefined {
   const sandboxPath = PM_CACHE_SANDBOX_PATHS[pm]
   return sandboxPath ? { hostPath, sandboxPath } : undefined
+}
+
+/**
+ * The cache mounts and environment one burn's container gets — the two designs
+ * are alternatives, never a mixture:
+ *
+ * - **Cache volume on** (the burn holds a slot): the project's named volume,
+ *   and every package manager's store pointed onto it (decision 10). None of
+ *   the ADR-0004 bind mounts is attached — the volume replaces them, and it is
+ *   the only one of the two that shares a filesystem with the checkouts, which
+ *   is the whole reason pnpm and bun can hardlink out of it.
+ * - **Cache off**: exactly ADR-0004, byte for byte — one bind mount for the
+ *   detected manager if it has a download cache worth mounting, and no env.
+ *
+ * Pure, so the choice is observable without a container; the caller creates any
+ * host directory a returned bind mount names, since a missing `hostPath` fails
+ * sandbox creation outright.
+ */
+export function buildBurnCacheMounts(
+  slot: number | undefined,
+  projectId: string,
+  sandbox: RuncastleConfig['sandbox'],
+  pm: PackageManager | undefined,
+): { mounts: CacheMount[]; env: Record<string, string> } {
+  if (slot !== undefined) {
+    return {
+      mounts: [{ volume: burnCacheVolumeName(projectId), sandboxPath: BURN_CACHE_MOUNT }],
+      env: pm ? burnCacheEnv(pm) : {},
+    }
+  }
+  const mount = sandbox !== 'noSandbox' && pm ? cacheMountFor(pm, burnCacheDir(pm)) : undefined
+  return { mounts: mount ? [mount] : [], env: {} }
 }
 
 // ---------------------------------------------------------------------------
@@ -921,7 +1002,7 @@ export function codexAuthMountFor(
   sandbox: RuncastleConfig['sandbox'],
   env: Record<string, string | undefined> = process.env,
   loggedIn: (env: Record<string, string | undefined>) => boolean = codexLoggedIn,
-): CacheMount | undefined {
+): HostPathMount | undefined {
   if (runtime !== 'codex' || sandbox === 'noSandbox' || !loggedIn(env)) return undefined
   return { hostPath: codexHomeDir(env), sandboxPath: CODEX_HOST_MOUNT_PATH, readonly: true }
 }
@@ -959,7 +1040,7 @@ export const SANDBOX_WORKSPACE_PATH = '/home/agent/workspace'
 /** Container-native clone the agent works in under `isolated` mode. */
 export const ISOLATED_REPO_PATH = '/home/agent/repo'
 
-export type BurnWorkspaceMode = 'mounted' | 'isolated'
+export type BurnWorkspaceMode = 'mounted' | 'isolated' | 'slot'
 
 /**
  * Resolve the effective workspace mode for a burn (ADR-0005). `noSandbox` is
@@ -969,11 +1050,19 @@ export type BurnWorkspaceMode = 'mounted' | 'isolated'
  * operation pays (measured on Windows: 2000 small-file writes 4891ms on the
  * mount vs 82ms on the container's native FS), while a Linux host bind mount is
  * a native kernel path where isolation would only add clone overhead.
+ *
+ * With the burn cache on (decision 8) that trade flips and the platform stops
+ * mattering: the agent works in a PERSISTENT checkout on the cache volume, so
+ * there is no clone to amortise — and that checkout is where every warm cache
+ * (`node_modules`, `.tsbuildinfo`, the test runner's, turbo's) actually lives.
+ * `resolveBurnCacheMode` already answers `off` for `noSandbox` and for any
+ * provider whose `-v` cannot name a volume, so `slot` implies a container.
  */
 export function resolveBurnWorkspaceMode(
-  config: Pick<RuncastleConfig, 'sandbox' | 'burnWorkspace'>,
+  config: Pick<RuncastleConfig, 'sandbox' | 'burnWorkspace' | 'burnCache'>,
   platform: NodeJS.Platform = process.platform,
 ): BurnWorkspaceMode {
+  if (resolveBurnCacheMode(config) === 'volume') return 'slot'
   if (config.sandbox === 'noSandbox') return 'mounted'
   if (config.burnWorkspace === 'auto') return platform === 'linux' ? 'mounted' : 'isolated'
   return config.burnWorkspace
@@ -1038,29 +1127,193 @@ export function buildIsolatedSetupCommand(
   setupCommand: string | undefined,
   pm?: PackageManager,
 ): string {
-  const hookFile = `${ISOLATED_REPO_PATH}/.git/hooks/post-commit`
-  const attachmentsDir = `${SANDBOX_WORKSPACE_PATH}/${ATTACHMENTS_DIR}`
-  const cloneAttachmentsDir = `${ISOLATED_REPO_PATH}/${ATTACHMENTS_DIR}`
-  const parts = [
+  const steps = buildRepoSetupSteps(ISOLATED_REPO_PATH, tempBranch, setupCommand, pm)
+  return [
     `git config --global --add safe.directory '*'`,
     `git clone ${SANDBOX_WORKSPACE_PATH} ${ISOLATED_REPO_PATH}`,
-    `if [ -d "${attachmentsDir}" ]; then mkdir -p "${cloneAttachmentsDir}" && cp -r "${attachmentsDir}/." "${cloneAttachmentsDir}/" && mkdir -p "${ISOLATED_REPO_PATH}/.git/info" && printf '%s\\n' '${ATTACHMENTS_DIR}/' >> "${ISOLATED_REPO_PATH}/.git/info/exclude"; fi`,
+    ...steps.pre,
+    ...steps.install,
+    ...steps.post,
+  ].join(' && ')
+}
+
+/**
+ * Steps 3–7 above, addressed by `repoPath` — everything that happens once the
+ * agent's checkout exists, whichever mode produced it: the container clone
+ * under `isolated`, the persistent slot checkout under `slot`. Split around the
+ * install because the slot script times that phase separately (decision 9).
+ */
+interface RepoSetupSteps {
+  /** Attachments, the post-commit sync hook, the corepack shim. */
+  pre: string[]
+  /** The dependency install, inside the checkout — empty when there is none. */
+  install: string[]
+  /** The `core.hooksPath` re-pin, which must stay the LAST writer. */
+  post: string[]
+}
+
+function buildRepoSetupSteps(
+  repoPath: string,
+  tempBranch: string,
+  setupCommand: string | undefined,
+  pm: PackageManager | undefined,
+): RepoSetupSteps {
+  const hookFile = `${repoPath}/.git/hooks/post-commit`
+  const attachmentsDir = `${SANDBOX_WORKSPACE_PATH}/${ATTACHMENTS_DIR}`
+  const repoAttachmentsDir = `${repoPath}/${ATTACHMENTS_DIR}`
+  const excludeFile = `${repoPath}/.git/info/exclude`
+  const pre = [
+    // The exclude line is appended only when it is not already there: a slot
+    // checkout outlives the burn that wrote it, and an unguarded `>>` would add
+    // one line per attachment-carrying burn for the life of the slot.
+    `if [ -d "${attachmentsDir}" ]; then mkdir -p "${repoAttachmentsDir}" && cp -r "${attachmentsDir}/." "${repoAttachmentsDir}/" && mkdir -p "${repoPath}/.git/info" && { grep -qxF '${ATTACHMENTS_DIR}/' "${excludeFile}" 2>/dev/null || printf '%s\\n' '${ATTACHMENTS_DIR}/' >> "${excludeFile}"; }; fi`,
     `printf '#!/bin/sh\\nunset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE\\ngit push --quiet origin HEAD:%s && exec git -C ${SANDBOX_WORKSPACE_PATH} reset --hard --quiet %s\\n' '${tempBranch}' '${tempBranch}' > ${hookFile}`,
     `chmod +x ${hookFile}`,
   ]
   if (pm === 'pnpm' || pm === 'yarn') {
     const shim = `$HOME/.local/bin/${pm}`
-    parts.push(
+    pre.push(
       `mkdir -p "$HOME/.local/bin"`,
       `printf '#!/bin/sh\\nexec corepack ${pm} "$@"\\n' > "${shim}"`,
       `chmod +x "${shim}"`,
     )
   }
-  if (setupCommand) parts.push(`cd ${ISOLATED_REPO_PATH} && ${setupCommand}`)
-  parts.push(
-    `git -C ${ISOLATED_REPO_PATH} config core.hooksPath ${ISOLATED_REPO_PATH}/.git/hooks`,
-  )
-  return parts.join(' && ')
+  return {
+    pre,
+    install: setupCommand ? [`cd ${repoPath} && ${setupCommand}`] : [],
+    post: [`git -C ${repoPath} config core.hooksPath ${repoPath}/.git/hooks`],
+  }
+}
+
+/**
+ * The file the slot setup script leaves in the mounted workspace with its one
+ * marker line, and the token that line starts with. The workspace is the only
+ * writable path both the container and the host can see, and in `slot` mode it
+ * is a pure sync mirror the agent never works in — so nothing the agent commits
+ * can pick this up, and the host deletes it as soon as it has read it.
+ */
+export const SETUP_MARKER_FILE = '.runcastle-setup'
+const SETUP_MARKER = 'RUNCASTLE_SETUP'
+
+/** What one iteration's setup hook cost, and whether it started warm. */
+export interface SetupMarker {
+  /** The slot was cloned or wiped this iteration — the caches started empty. */
+  cold: boolean
+  syncMs: number
+  installMs: number
+}
+
+/**
+ * Read the marker line out of whatever the setup script wrote. `undefined` for
+ * anything that is not a complete marker: a truncated file, an older
+ * container's leftover, a mode that writes none at all.
+ */
+export function parseSetupMarker(text: string): SetupMarker | undefined {
+  const m = new RegExp(
+    String.raw`${SETUP_MARKER} cold=([01]) sync_ms=(\d+) install_ms=(\d+)`,
+  ).exec(text)
+  if (!m) return undefined
+  return { cold: m[1] === '1', syncMs: Number(m[2]), installMs: Number(m[3]) }
+}
+
+/**
+ * Read the marker out of a worktree and delete it, so the same line is never
+ * reported twice and the tree it was written into ends the run clean. A missing
+ * or unreadable file is simply no marker — every mode but `slot` writes none.
+ */
+function takeSetupMarker(worktreePath: string): SetupMarker | undefined {
+  const file = join(worktreePath, SETUP_MARKER_FILE)
+  let text: string
+  try {
+    text = readFileSync(file, 'utf8')
+  } catch {
+    return undefined
+  }
+  rmSync(file, { force: true })
+  return parseSetupMarker(text)
+}
+
+/** `1.4s` — setup phases are seconds, not the minutes `fmtClock` is shaped for. */
+export function fmtSeconds(ms: number): string {
+  return `${(ms / 1000).toFixed(1)}s`
+}
+
+/**
+ * The toolchain slot `n` is expected to hold (decision 5) — the ground the warm
+ * `node_modules` and build outputs were laid on. A mismatch is the ONLY
+ * automatic wipe: a new Node ABI breaks native modules and a package-manager
+ * major changes the store and `node_modules` layout, and neither is something a
+ * `--frozen-lockfile` install reconciles. A changed lockfile deliberately does
+ * NOT wipe — reconciling one is the package manager's normal job, and wiping
+ * there would throw the warm state away on exactly the burns that touch deps.
+ *
+ * The Node version is a `$(…)` the CONTAINER resolves, because the host cannot
+ * know what the image ships; everything else the host already knows.
+ */
+export function buildSlotStamp(imageName: string, packageManagerField?: string): string {
+  const pm = packageManagerField?.split('@')[0] ?? 'none'
+  const major = packageManagerField?.split('@')[1]?.split('.')[0] ?? 'any'
+  return `${imageName} node=$(node --version 2>/dev/null) pm=${pm}@${major}`
+}
+
+/**
+ * The `sandbox.onSandboxReady` command for `slot` mode: sync the persistent
+ * checkout on the cache volume instead of cloning a fresh one (decision 2).
+ *
+ * A slot is never TRUSTED clean, only MADE clean — it survived some earlier
+ * burn that may have been killed mid-write — so, in order:
+ *
+ * 1. Whitelist every repo path for git, exactly as `isolated` does.
+ * 2. Drop stale `.git/*.lock` files a killed container left behind, which would
+ *    otherwise make every git command in this script fail.
+ * 3. No valid git dir (never used, or corrupt) → delete the slot's checkout and
+ *    clone it fresh. That is one cold burn, which is the worst a cache may ever
+ *    cost. Otherwise fetch this attempt's temp branch straight from the mounted
+ *    workspace and hard-reset onto it, then re-point the local branch at it so
+ *    the post-commit hook's `HEAD:<tempBranch>` push still has its name.
+ * 4. `git clean -fd` — untracked files from the previous burn go, IGNORED ones
+ *    stay. That is the entire point of the slot: `node_modules`, `dist`,
+ *    `.turbo`, `.tsbuildinfo` and the test runner's cache survive to be warm.
+ * 5. Compare the toolchain stamp ({@link buildSlotStamp}); on a mismatch wipe
+ *    `node_modules` and the ignored build outputs (`clean -fdX`) and only THEN
+ *    rewrite the stamp, so a wipe interrupted halfway is retried rather than
+ *    recorded as done.
+ * 6. The shared steps — attachments, sync hook, corepack shim, install,
+ *    `core.hooksPath` re-pin — unchanged but addressed at the slot checkout.
+ * 7. Leave the marker line the host reads its telemetry from.
+ *
+ * The install is the same `--frozen-lockfile` command as ever; on a warm slot
+ * it is close to a no-op, which is what turns ADR-0008's per-iteration
+ * re-install into a seconds-long re-sync.
+ */
+export function buildSlotSetupCommand(
+  slot: number,
+  tempBranch: string,
+  setupCommand: string | undefined,
+  pm: PackageManager | undefined,
+  stamp: string,
+): string {
+  const repo = slotRepoPath(slot)
+  const stampFile = slotStampPath(slot)
+  const steps = buildRepoSetupSteps(repo, tempBranch, setupCommand, pm)
+  return [
+    `git config --global --add safe.directory '*'`,
+    `RC_COLD=0`,
+    `RC_STAMP="${stamp}"`,
+    `RC_SYNC_START=$(date +%s%3N)`,
+    `mkdir -p ${slotDirPath(slot)}`,
+    `rm -f ${repo}/.git/*.lock`,
+    `if ! git -C ${repo} rev-parse --git-dir >/dev/null 2>&1; then rm -rf ${repo} && git clone ${SANDBOX_WORKSPACE_PATH} ${repo} && RC_COLD=1; else git -C ${repo} fetch ${SANDBOX_WORKSPACE_PATH} ${tempBranch} && git -C ${repo} reset --hard FETCH_HEAD && git -C ${repo} checkout -B ${tempBranch}; fi`,
+    `git -C ${repo} clean -fd`,
+    `if [ "$(cat ${stampFile} 2>/dev/null)" != "$RC_STAMP" ]; then rm -rf ${repo}/node_modules && git -C ${repo} clean -fdX && RC_COLD=1 && printf '%s\\n' "$RC_STAMP" > ${stampFile}; fi`,
+    ...steps.pre,
+    `RC_SYNC_MS=$(( $(date +%s%3N) - RC_SYNC_START ))`,
+    `RC_INSTALL_START=$(date +%s%3N)`,
+    ...steps.install,
+    `RC_INSTALL_MS=$(( $(date +%s%3N) - RC_INSTALL_START ))`,
+    ...steps.post,
+    `printf '${SETUP_MARKER} cold=%s sync_ms=%s install_ms=%s\\n' "$RC_COLD" "$RC_SYNC_MS" "$RC_INSTALL_MS" > ${SANDBOX_WORKSPACE_PATH}/${SETUP_MARKER_FILE}`,
+  ].join(' && ')
 }
 
 /**
@@ -1073,7 +1326,10 @@ export function buildIsolatedSetupCommand(
  * ignores this and works in the workspace anyway: today's mounted behavior —
  * slow, but correct.
  */
-export function buildWorkspaceNotes(mode: BurnWorkspaceMode): string {
+export function buildWorkspaceNotes(
+  mode: BurnWorkspaceMode,
+  repoPath: string = ISOLATED_REPO_PATH,
+): string {
   if (mode === 'mounted') {
     return [
       'Work in the current directory — it is the repo checkout on your branch.',
@@ -1084,13 +1340,13 @@ export function buildWorkspaceNotes(mode: BurnWorkspaceMode): string {
     ].join('\n')
   }
   return [
-    `Your working repository is \`${ISOLATED_REPO_PATH}\` — a clone on the container's fast native filesystem, with dependencies already installed. Do ALL work there: \`cd ${ISOLATED_REPO_PATH}\` first; every file you read, edit, test, and commit lives under it.`,
+    `Your working repository is \`${repoPath}\` — a clone on the container's fast native filesystem, with dependencies already installed. Do ALL work there: \`cd ${repoPath}\` first; every file you read, edit, test, and commit lives under it.`,
     '',
-    `The directory you start in (\`${SANDBOX_WORKSPACE_PATH}\`) is a slow mounted mirror used only to collect your commits — never edit files, install, or run tests there. Your commits sync back automatically (a post-commit hook pushes them); just commit as normal. If you re-run the dependency install and it reconfigures git hooks (husky), run \`git -C ${ISOLATED_REPO_PATH} config core.hooksPath ${ISOLATED_REPO_PATH}/.git/hooks\` afterwards so the sync hook stays armed.`,
+    `The directory you start in (\`${SANDBOX_WORKSPACE_PATH}\`) is a slow mounted mirror used only to collect your commits — never edit files, install, or run tests there. Your commits sync back automatically (a post-commit hook pushes them); just commit as normal. If you re-run the dependency install and it reconfigures git hooks (husky), run \`git -C ${repoPath} config core.hooksPath ${repoPath}/.git/hooks\` afterwards so the sync hook stays armed.`,
     '',
-    `If you are blocked and write \`BLOCKED.md\`, write it at \`${ISOLATED_REPO_PATH}/BLOCKED.md\` AND copy it to \`${SANDBOX_WORKSPACE_PATH}/BLOCKED.md\` so the orchestrator can see it.`,
+    `If you are blocked and write \`BLOCKED.md\`, write it at \`${repoPath}/BLOCKED.md\` AND copy it to \`${SANDBOX_WORKSPACE_PATH}/BLOCKED.md\` so the orchestrator can see it.`,
     '',
-    `Write \`DIGEST.md\` at \`${SANDBOX_WORKSPACE_PATH}/DIGEST.md\` — the mounted mirror, so the host can see it — and NOT inside \`${ISOLATED_REPO_PATH}\`, where it would be committed with your work.`,
+    `Write \`DIGEST.md\` at \`${SANDBOX_WORKSPACE_PATH}/DIGEST.md\` — the mounted mirror, so the host can see it — and NOT inside \`${repoPath}\`, where it would be committed with your work.`,
     '',
     '**Those paths are the only authoritative ones** — nothing later in this prompt overrides them.',
   ].join('\n')
@@ -1373,6 +1629,12 @@ export const TOOL_CATEGORIES = [
   'file-edit',
   'search',
   'model',
+  // Not a tool call either: the pre-agent container build + `onSandboxReady`
+  // hook, charged once per iteration (decision 9). Before this it fell into
+  // `wallMs` with no bucket, so the whole point of the cache volume — setup
+  // dropping from minutes to seconds — was the one thing the breakdown could
+  // not show.
+  'setup',
   'other',
 ] as const
 export type ToolCategory = (typeof TOOL_CATEGORIES)[number]
@@ -1490,11 +1752,20 @@ const MAX_ATTRIBUTABLE_GAP_MS = 20 * 60_000
  * SHARES across burns, before and after a change — and it needs no coupling to
  * Claude Code's stream-json internals.
  *
- * Iteration boundaries reset the accumulator: a new iteration is a new
- * container, and the setup hook between them is not agent time.
+ * The gap across an iteration boundary is not agent time — it is the previous
+ * container dying and the next one being built and set up — so it is charged to
+ * `setup` rather than to whatever the dead iteration left open. `beginSetup`
+ * opens the same span for the FIRST container of a `run()`, which has no
+ * previous event to measure from.
  */
 export function createToolTimer(): {
   onEvent(event: AgentStreamEvent): void
+  /**
+   * Mark the start of a container's setup — call it immediately before each
+   * `run()`. The interval from here to that run's first agent event is the
+   * container build plus the `onSandboxReady` hook.
+   */
+  beginSetup(at?: number): void
   summary(): ToolTimingSummary
 } {
   const byCategory: Partial<Record<ToolCategory, CategoryTiming>> = {}
@@ -1513,8 +1784,11 @@ export function createToolTimer(): {
     if (event.type === 'raw') return
     const at = event.timestamp.getTime()
 
-    // A new container: whatever was open belongs to the dead iteration.
-    if (iteration !== null && event.iteration !== iteration) pending = null
+    // A new container: whatever was open belongs to the dead iteration, and
+    // the gap since it is the rebuild plus the setup hook.
+    if (iteration !== null && event.iteration !== iteration && pending) {
+      pending = { category: 'setup', at: pending.at }
+    }
     iteration = event.iteration
 
     if (pending) {
@@ -1533,7 +1807,14 @@ export function createToolTimer(): {
     }
   }
 
-  return { onEvent, summary: () => ({ totalMs, calls, byCategory }) }
+  const beginSetup = (at: number = Date.now()): void => {
+    pending = { category: 'setup', at }
+    // A fresh `run()` restarts sandcastle's iteration counter, so the boundary
+    // check above must not read the previous run's last iteration as "same".
+    iteration = null
+  }
+
+  return { onEvent, beginSetup, summary: () => ({ totalMs, calls, byCategory }) }
 }
 
 /** A one-line `category share%` digest for the timing event's message. */
@@ -1544,6 +1825,65 @@ export function formatTimingSummary(s: ToolTimingSummary): string {
     .slice(0, 5)
     .map(([c, t]) => `${c} ${Math.round(((t?.ms ?? 0) / s.totalMs) * 100)}%`)
   return `${Math.round(s.totalMs / 60_000)}min across ${s.calls} tool call(s) — ${parts.join(', ')}`
+}
+
+/**
+ * The `ticket.timing` payload: ONE execution of one ticket, whichever kind it
+ * is. The category breakdown is best-effort — it needs a sandcastle stream, and
+ * an execution that never reached one (a review with no base branch, no
+ * `agent-browser` on PATH) has none — but the wall clock always bounds exactly
+ * this execution, and it is the only span a ticket's duration may be read from.
+ *
+ * The per-kind log files are NOT that span: `run()` appends to
+ * `review-<feature>-<seq>.log` on every attempt, so the gap between a log's
+ * first and last line is every attempt of that ticket ever, which is how a
+ * 5m 35s review once read as 5.2 hours.
+ */
+export interface TicketTiming extends ToolTimingSummary {
+  /** Epoch ms this execution started and ended. */
+  startedAt: number
+  endedAt: number
+  wallMs: number
+}
+
+/** Pure: close a timer's summary over the execution's wall clock. */
+export function buildTicketTiming(
+  summary: ToolTimingSummary,
+  startedAt: number,
+  endedAt: number,
+): TicketTiming {
+  return { ...summary, startedAt, endedAt, wallMs: Math.max(0, endedAt - startedAt) }
+}
+
+/**
+ * The timing event's message: wall clock first, then where that time went. An
+ * execution with nothing to break down — a review refused before its agent
+ * started — says only the clock, rather than appending an empty breakdown.
+ */
+export function formatTicketTiming(t: TicketTiming): string {
+  const clock = fmtClock(Math.round(t.wallMs / 1000))
+  const bare = t.calls === 0 && t.totalMs === 0
+  return bare ? clock : `${clock} (${formatTimingSummary(t)})`
+}
+
+/**
+ * Emit one execution's `ticket.timing`. Shared by both execution kinds so a
+ * reader never has to know which kind produced an event to read a duration off
+ * it — and unconditional, because a ticket that made no tool calls still took
+ * time, and a lane with no timing event is a lane left guessing from the spread
+ * of its other events.
+ */
+export function emitTicketTiming(
+  ctx: WorkflowCtx,
+  ticket: Pick<Ticket, 'id' | 'seq'>,
+  timing: TicketTiming,
+): void {
+  ctx.emitEvent({
+    type: 'ticket.timing',
+    message: `ticket ${ticket.seq} spent ${formatTicketTiming(timing)}`,
+    ticketId: ticket.id,
+    data: timing,
+  })
 }
 
 // ---------------------------------------------------------------------------
@@ -1696,6 +2036,31 @@ const RUNTIME_RETRYABLE_ERROR_PATTERNS: Record<AgentRuntime, RegExp[]> = {
   codex: [/rate_limit_exceeded/i, /\b429\b/, /server_error/i, /stream (disconnected|interrupted)/i],
 }
 
+const AGENT_BINARY: Record<AgentRuntime, string> = {
+  'claude-code': 'claude',
+  codex: 'codex',
+}
+
+/**
+ * Turn the shell's missing-command failure into the operator action that can
+ * actually fix it. The binary must precede the shell wording so an unrelated
+ * missing file in the agent's output is not mistaken for a stale image.
+ */
+export function missingAgentBinaryMessage(
+  err: unknown,
+  runtime: AgentRuntime,
+  image: string,
+): string | undefined {
+  const msg = err instanceof Error ? err.message : typeof err === 'string' ? err : String(err)
+  const binary = AGENT_BINARY[runtime]
+  const missing = new RegExp(
+    `\\b${binary}\\b[^\\n]*(?:exited with code 127|command not found|not found|no such file or directory)`,
+    'i',
+  )
+  if (!missing.test(msg)) return undefined
+  return `${binary} is not installed in image ${image} — the image predates the burner Dockerfile. Rebuild it from Settings → AFK burns (Rebuild image).`
+}
+
 /**
  * Should a failed sandcastle attempt be retried? Fatal patterns win over
  * retryable ones; anything unrecognized is fatal — an unknown throw (git
@@ -1716,6 +2081,7 @@ export function classifyTicketRunError(
   const forRuntimes = (table: Record<AgentRuntime, RegExp[]>): RegExp[] =>
     runtimes.flatMap((r) => table[r])
 
+  if (runtimes.some((r) => missingAgentBinaryMessage(msg, r, 'image'))) return 'fatal'
   if ([...FATAL_ERROR_PATTERNS, ...forRuntimes(RUNTIME_FATAL_ERROR_PATTERNS)].some((p) => p.test(msg)))
     return 'fatal'
   if (
@@ -2300,6 +2666,27 @@ export async function burnRun(
     return { status: 'failed', summary: 'burn aborted: auth token missing' }
   }
 
+  // Prove the selected image can launch this burn's agent before sandcastle
+  // creates a ticket container. The host CLI is the right one for noSandbox,
+  // so probing an image there would be both wasteful and misleading.
+  if (deps.config.sandbox !== 'noSandbox' && deps.exec) {
+    const image = resolveSandboxImage(deps.config)
+    const binary = RUNTIME_BINARY[deps.runtime]
+    const probe = await deps.exec(deps.config.sandbox, [
+      'run',
+      '--rm',
+      '--entrypoint',
+      binary,
+      image,
+      '--version',
+    ])
+    if (!probe.ok || probe.code !== 0) {
+      const message = missingImageRuntimeMessage(deps.runtime, image)
+      ctx.emitEvent({ type: IMAGE_RUNTIME_MISSING_EVENT, message })
+      return { status: 'failed', summary: message }
+    }
+  }
+
   // Cycle guard: fail the whole run before touching any ticket. Cancelled
   // tickets are excluded — they never run, so their edges cannot deadlock the
   // schedule (edges pointing at them from burnable tickets resolve as satisfied).
@@ -2698,9 +3085,10 @@ function quoteArg(value: string): string {
  * fallback, so the tag matches what build-image/doctor built (SPEC §8; the
  * "Image not found locally" mismatch). podman keeps sandcastle's rootless
  * defaults (SELinux `:z` relabel + `keep-id` userns) — runcastle passes no
- * volume-label/userns flags of its own. `mounts` (package-manager cache dirs)
- * apply to the container providers only — noSandbox runs on the host, where the
- * real cache is already in place.
+ * volume-label/userns flags of its own. `mounts` (the burn cache volume, or
+ * ADR-0004's package-manager cache dirs) and `env` (where each manager's store
+ * lives on that volume — decision 10) apply to the container providers only:
+ * noSandbox runs on the host, where the real caches are already in place.
  *
  * `config.burnCpus`, when set, becomes `--cpus` on both container providers: at
  * width N every container otherwise sees the host's full core count and sizes
@@ -2709,8 +3097,12 @@ function quoteArg(value: string): string {
  * `--memory` (see the `burnCpus` config doc for why that is the right call
  * anyway). noSandbox ignores it: no container, nothing to constrain.
  */
-export function selectSandbox(config: RuncastleConfig, mounts: readonly CacheMount[] = []) {
-  const imageOpts = buildSandboxOptions(config, mounts)
+export function selectSandbox(
+  config: RuncastleConfig,
+  mounts: readonly CacheMount[] = [],
+  env: Record<string, string> = {},
+) {
+  const imageOpts = buildSandboxOptions(config, mounts, env)
   switch (config.sandbox) {
     case 'docker':
       return docker(imageOpts)
@@ -2738,11 +3130,18 @@ export function selectSandbox(config: RuncastleConfig, mounts: readonly CacheMou
 export function buildSandboxOptions(
   config: Pick<RuncastleConfig, 'sandboxImage' | 'burnCpus'>,
   mounts: readonly CacheMount[] = [],
-): { imageName: string; mounts?: readonly CacheMount[]; cpus?: number } {
+  env: Record<string, string> = {},
+): {
+  imageName: string
+  mounts?: readonly CacheMount[]
+  cpus?: number
+  env?: Record<string, string>
+} {
   return {
     imageName: resolveSandboxImage(config),
     ...(mounts.length > 0 ? { mounts } : {}),
     ...(config.burnCpus !== undefined ? { cpus: config.burnCpus } : {}),
+    ...(Object.keys(env).length > 0 ? { env } : {}),
   }
 }
 
@@ -2789,20 +3188,105 @@ async function realExecuteTicketRun(
   model: ModelEntry,
   land: <T>(task: () => Promise<T>) => Promise<T>,
   ensureIsolatedPushTarget: () => Promise<void>,
+  ensureCacheVolume: () => Promise<void>,
   blocks: BurnPromptBlocks,
   runCtx: TicketRunContext,
 ): Promise<TicketOutcome> {
+  const allocator =
+    resolveBurnCacheMode(config) === 'volume'
+      ? getBurnSlotAllocator(config.burnConcurrency)
+      : undefined
+  return withBurnCacheSlot(allocator, async (slot) => {
+    // Before the ticket's first container, and memoized per run: the volume has
+    // to exist and be writable by the burn user or the mount lands root-owned.
+    if (slot !== undefined) await ensureCacheVolume()
+    return burnTicket(
+      ctx,
+      ticket,
+      config,
+      token,
+      model,
+      land,
+      ensureIsolatedPushTarget,
+      blocks,
+      runCtx,
+      slot,
+    )
+  })
+}
+
+/**
+ * Hold one persistent cache slot for the whole of a ticket's run, and give it
+ * back on EVERY exit path — success, failure, abort, crash (decision 4).
+ *
+ * Per-ticket rather than per-iteration: sandcastle rebuilds the container for
+ * each iteration, and it is the slot outliving that rebuild which turns
+ * ADR-0008's per-iteration re-install into a seconds-long re-sync. The lock is
+ * the burner's in-memory allocator and nothing about ownership is written to
+ * the volume — the server is the only spawner and a restart kills the burns, so
+ * a "stuck slot" cannot outlive the process that held it.
+ *
+ * No allocator (`burnCache: 'off'`, or a sandbox whose `-v` cannot name a
+ * volume) means no slot: the body runs with `undefined` and behaves exactly as
+ * it did before the cache existed. So does an EXHAUSTED allocator — the
+ * server's active-run guard is per feature, so two features burning at once can
+ * want more slots between them than `burnConcurrency` provides, and a ticket
+ * that cannot have a warm checkout must run cold rather than fail. A slot is a
+ * cache, and the worst a cache may ever cost is one cold burn.
+ */
+export async function withBurnCacheSlot<T>(
+  allocator: SlotAllocator | undefined,
+  body: (slot: number | undefined) => Promise<T>,
+): Promise<T> {
+  if (!allocator) return body(undefined)
+  let slot: number | undefined
+  try {
+    slot = allocator.claim()
+  } catch (err) {
+    if (!(err instanceof BurnSlotsExhaustedError)) throw err
+  }
+  if (slot === undefined) return body(undefined)
+  try {
+    return await body(slot)
+  } finally {
+    allocator.release(slot)
+  }
+}
+
+async function burnTicket(
+  ctx: WorkflowCtx,
+  ticket: Ticket,
+  config: RuncastleConfig,
+  token: string | undefined,
+  model: ModelEntry,
+  land: <T>(task: () => Promise<T>) => Promise<T>,
+  ensureIsolatedPushTarget: () => Promise<void>,
+  blocks: BurnPromptBlocks,
+  runCtx: TicketRunContext,
+  /** The cache slot this ticket holds, or `undefined` with the cache off. */
+  slot: number | undefined,
+): Promise<TicketOutcome> {
   const { project, feature } = ctx
+  // Opens the span the ticket's `ticket.timing` closes in the finally below —
+  // taken here, not beside the stream timer, so it covers the whole execution.
+  const startedAt = Date.now()
 
   // Where the agent's hot path lives (ADR-0005): on win32/darwin container
   // hosts the bind-mounted worktree pays Docker Desktop's per-file translation
   // tax, so `auto` isolates the working tree onto the container's native FS.
-  const workspaceMode = resolveBurnWorkspaceMode(config)
+  // With the cache on it is the slot checkout on the volume, on every host —
+  // and the SLOT, not the config, is what says the cache is on, so a ticket
+  // that could not claim one resolves the mode it would have had without it.
+  const workspaceMode = resolveBurnWorkspaceMode(
+    slot === undefined ? { ...config, burnCache: 'off' } : config,
+  )
+  const agentRepoPath = slot !== undefined ? slotRepoPath(slot) : ISOLATED_REPO_PATH
 
-  // Isolated mode pushes commits back into the mounted worktree, which the
-  // parent repo's config must permit. Host-side and shared across tickets —
-  // in-sandbox this write raced N containers on the shared `config.lock`.
-  if (workspaceMode === 'isolated') await ensureIsolatedPushTarget()
+  // Isolated and slot mode both push commits back into the mounted worktree,
+  // which the parent repo's config must permit. Host-side and shared across
+  // tickets — in-sandbox this write raced N containers on the shared
+  // `config.lock`.
+  if (workspaceMode !== 'mounted') await ensureIsolatedPushTarget()
 
   // Screenshots the promoted note carried in (spec.md "Riding into the burn").
   const attachments = attachmentSources(ticket.context)
@@ -2829,7 +3313,7 @@ async function realExecuteTicketRun(
   const ticketJson = buildTicketJson(ticket)
   const featureBrief = buildFeatureBrief(feature)
   const docsDigest = blocks.docsDigest
-  const workspaceNotes = buildWorkspaceNotes(workspaceMode)
+  const workspaceNotes = buildWorkspaceNotes(workspaceMode, agentRepoPath)
   // Whether the deny hook will actually be installed below — the prompt states
   // the rules either way, but only claims enforcement when it is true.
   const guardInstalled = config.burnGuard && config.sandbox !== 'noSandbox'
@@ -2868,16 +3352,20 @@ async function realExecuteTicketRun(
   // managers with a download cache, a persistent host dir is mounted so later
   // installs skip the network; pnpm opts out (`cacheMountFor` → undefined)
   // because a mounted store cannot hardlink — see PM_CACHE_SANDBOX_PATHS.
+  //
+  // With the cache volume on, none of those bind mounts is attached: every
+  // manager's store moves onto the volume instead (decision 10), where it does
+  // share a filesystem with the checkouts and pnpm/bun CAN hardlink out of it.
   const toolchain = readRepoToolchain(project.repoPath)
   const pm = detectPackageManager(toolchain)
   const setupCommand = resolveSetupCommand(toolchain, prepared.setupCommand)
-  const mounts: CacheMount[] = []
-  if (config.sandbox !== 'noSandbox' && pm) {
-    const mount = cacheMountFor(pm, burnCacheDir(pm))
-    if (mount) {
-      mkdirSync(mount.hostPath, { recursive: true }) // a missing hostPath fails sandbox creation
-      mounts.push(mount)
-    }
+  const cache = buildBurnCacheMounts(slot, project.id, config.sandbox, pm)
+  const sandboxEnv = cache.env
+  const mounts: CacheMount[] = [...cache.mounts]
+  for (const mount of cache.mounts) {
+    // A missing hostPath fails sandbox creation; a named volume is the engine's
+    // to create and has no host directory to make.
+    if ('hostPath' in mount) mkdirSync(mount.hostPath, { recursive: true })
   }
   // A container Codex burn runs on the operator's ChatGPT login: the host Codex
   // home rides in as a read-only mount, and the sandbox-ready hook copies
@@ -2903,6 +3391,20 @@ async function realExecuteTicketRun(
   // when there is no guard of ours to un-gate.
   const agentOptions: BurnAgentOptions = guardInstalled ? { bypassHookTrust: true } : {}
 
+  // The `onSandboxReady` command for a run on `branch`. Slot mode syncs the
+  // persistent checkout, isolated mode clones a fresh one, mounted mode only
+  // installs — and the resolver run below takes the same one, so it inherits
+  // this ticket's slot rather than claiming a second.
+  const slotStamp = buildSlotStamp(resolveSandboxImage(config), toolchain.packageManagerField)
+  const setupHookFor = (branch: string): string | undefined =>
+    withPrelude(
+      slot !== undefined
+        ? buildSlotSetupCommand(slot, branch, setupCommand, pm, slotStamp)
+        : workspaceMode === 'isolated'
+          ? buildIsolatedSetupCommand(branch, setupCommand, pm)
+          : setupCommand,
+    )
+
   mkdirSync(logsDir(), { recursive: true })
   const logFilePath = join(logsDir(), `burn-${feature.id}-${ticket.seq}.log`)
   const throttle = createStreamThrottle((e) => ctx.emitEvent({ ...e, ticketId: ticket.id }))
@@ -2918,9 +3420,38 @@ async function realExecuteTicketRun(
   // sandcastle stream already carries a timestamp on every event; this just
   // stops throwing it away.
   const timer = createToolTimer()
+
+  // Fourth consumer, slot mode only: the setup hook's own marker line. Sandcastle
+  // discards a sandbox hook's stdout, so the script leaves the line in the
+  // mounted worktree instead and the host picks it up on that iteration's first
+  // agent event — which is by construction the moment after setup finished.
+  // Read once per iteration and deleted, so it never outlives the run that
+  // wrote it (an undeleted file would leave every worktree dirty at teardown).
+  const setupRun = { worktree: undefined as string | undefined, iteration: null as number | null }
+  const consumeSetupMarker = (iteration: number): void => {
+    if (slot === undefined || !setupRun.worktree || setupRun.iteration === iteration) return
+    setupRun.iteration = iteration
+    const marker = takeSetupMarker(setupRun.worktree)
+    if (!marker) return
+    ctx.emitEvent({
+      type: 'burn.setup',
+      message: `ticket ${ticket.seq}: cache slot ${slot} ${marker.cold ? 'cold' : 'warm'} — synced in ${fmtSeconds(marker.syncMs)}, installed in ${fmtSeconds(marker.installMs)}`,
+      ticketId: ticket.id,
+      data: { slot, cold: marker.cold, syncMs: marker.syncMs, installMs: marker.installMs },
+    })
+  }
+
+  /** Open a container's setup span: whose worktree to read, and start the clock. */
+  const beginSetupSpan = (branch: string): void => {
+    setupRun.worktree = burnWorktreePath(project.repoPath, branch)
+    setupRun.iteration = null
+    timer.beginSetup()
+  }
+
   const onStreamEvent = (event: AgentStreamEvent): void => {
     throttle.onEvent(event)
     timer.onEvent(event)
+    consumeSetupMarker(event.iteration)
     if (event.type === 'text') {
       appendTranscript(ticket.id, { kind: 'text', text: event.message })
     } else if (event.type === 'toolCall') {
@@ -3013,11 +3544,7 @@ async function realExecuteTicketRun(
       OTHER_SIDE: buildOtherSideBlock(otherSide),
       MERGE_COMMAND: resolveMergeCommand(workspaceMode, feature.branch),
     })
-    const hookCommand = withPrelude(
-      workspaceMode === 'isolated'
-        ? buildIsolatedSetupCommand(resolveBranch, setupCommand, pm)
-        : setupCommand,
-    )
+    const hookCommand = setupHookFor(resolveBranch)
 
     appendTranscript(ticket.id, {
       kind: 'text',
@@ -3032,9 +3559,10 @@ async function realExecuteTicketRun(
 
     let result: RunResult | undefined
     try {
+      beginSetupSpan(resolveBranch)
       result = await run({
         agent: buildBurnAgent(config, token, model, agentOptions),
-        sandbox: selectSandbox(config, mounts),
+        sandbox: selectSandbox(config, mounts, sandboxEnv),
         cwd: project.repoPath,
         prompt,
         branchStrategy: { type: 'branch', branch: resolveBranch, baseBranch: input.branch },
@@ -3206,29 +3734,28 @@ async function realExecuteTicketRun(
       // Unique per attempt (nanoid alphabet is branch-name-safe) so an attempt
       // never reuses a stale sandcastle worktree or a conflict leftover.
       tempBranch = ticketBranchName(feature.slug, ticket.seq, newId('b').slice(2, 10))
-      // In isolated mode the onSandboxReady hook always runs (the clone + sync
-      // wiring is needed even with nothing to install) and embeds THIS
-      // attempt's temp branch; mounted mode keeps the hook only when there is
-      // an install to run.
-      const hookCommand = withPrelude(
-        workspaceMode === 'isolated'
-          ? buildIsolatedSetupCommand(tempBranch, setupCommand, pm)
-          : setupCommand,
-      )
+      // In slot and isolated mode the onSandboxReady hook always runs (the
+      // sync/clone wiring is needed even with nothing to install) and embeds
+      // THIS attempt's temp branch; mounted mode keeps the hook only when there
+      // is an install to run.
+      const hookCommand = setupHookFor(tempBranch)
       if (hookCommand && attempt === 1) {
         ctx.emitEvent({
           type: 'burn.setup',
           message:
-            workspaceMode === 'isolated'
-              ? `preparing isolated workspace (native-FS clone)${setupCommand ? ` + deps install: ${setupCommand}` : ''}`
-              : `installing deps before agent start: ${setupCommand}`,
+            slot !== undefined
+              ? `preparing cache slot ${slot}${setupCommand ? ` + deps install: ${setupCommand}` : ''}`
+              : workspaceMode === 'isolated'
+                ? `preparing isolated workspace (native-FS clone)${setupCommand ? ` + deps install: ${setupCommand}` : ''}`
+                : `installing deps before agent start: ${setupCommand}`,
           ticketId: ticket.id,
+          ...(slot !== undefined ? { data: { slot } } : {}),
         })
       }
 
       const runOptions: RunOptions = {
         agent: buildBurnAgent(config, token, model, agentOptions),
-        sandbox: selectSandbox(config, mounts),
+        sandbox: selectSandbox(config, mounts, sandboxEnv),
         cwd: project.repoPath,
         prompt: retryNotes ? `${basePrompt}\n\n${retryNotes}` : basePrompt,
         // Temp branch off the chain tip (the feature branch, or the previous
@@ -3282,6 +3809,7 @@ async function realExecuteTicketRun(
         // never gets here (a conflict resume lands without an agent) must not
         // leave the line behind.
         await excludeAttachments()
+        beginSetupSpan(tempBranch)
         result = await run(runOptions)
         // Before anything lands: a preserved worktree must not keep the images.
         await clearAttachmentsFor(tempBranch)
@@ -3290,6 +3818,11 @@ async function realExecuteTicketRun(
         await clearAttachmentsFor(tempBranch)
         if (ctx.signal.aborted) throw err // let the runner mark the run cancelled
         const msg = err instanceof Error ? err.message : String(err)
+        const missingBinary = missingAgentBinaryMessage(
+          err,
+          model.runtime,
+          resolveSandboxImage(config),
+        )
         // Whatever the dead attempt committed survives on its temp branch —
         // chain the next attempt (or a later run) onto it.
         const salvaged = await branchCommitsAhead(project.repoPath, feature.branch, tempBranch)
@@ -3346,6 +3879,10 @@ async function realExecuteTicketRun(
               message: `ticket ${ticket.seq}: merge conflict on ${feature.branch}${salvaged.length > 0 ? ' — resolve it from the run lane' : ' — resolve manually per the error, then re-burn'}`,
             },
           }
+        }
+        if (missingBinary) {
+          if (salvaged.length > 0) preserveChain(tempBranch)
+          return { status: 'failed', error: missingBinary }
         }
         if (classifyTicketRunError(err, model.runtime) === 'retryable' && attempt < maxAttempts) {
           const headline = errorHeadline(msg)
@@ -3417,16 +3954,9 @@ async function realExecuteTicketRun(
     throttle.flush()
     endTranscript(ticket.id)
     // Emitted on EVERY exit path — a ticket that failed or was stopped is
-    // exactly the one whose time breakdown you want.
-    const timing = timer.summary()
-    if (timing.calls > 0) {
-      ctx.emitEvent({
-        type: 'ticket.timing',
-        message: `ticket ${ticket.seq} spent ${formatTimingSummary(timing)}`,
-        ticketId: ticket.id,
-        data: timing,
-      })
-    }
+    // exactly the one whose time breakdown you want, and the wall clock is what
+    // the run lane reads its duration from either way.
+    emitTicketTiming(ctx, ticket, buildTicketTiming(timer.summary(), startedAt, Date.now()))
   }
 }
 
@@ -3466,12 +3996,37 @@ function resolveBurnDeps(ctx: WorkflowCtx): BurnDeps {
   const config = loadConfig()
   const model = resolveModelEntry('implement', config, ctx.project, ctx.modelOverride)
   const token = readTokenFromEnvFile(envPath(), model.runtime)
+  const exec = createSystemExec({ cwd: ctx.project.repoPath })
+  const imageProbeCache = new Map<string, Promise<ExecOutcome>>()
+  const cachedExec: ExecFn = (command, args) => {
+    const key = `${resolveSandboxImage(config)}\0${model.runtime}`
+    let result = imageProbeCache.get(key)
+    if (!result) {
+      result = exec(command, args)
+      imageProbeCache.set(key, result)
+    }
+    return result
+  }
   const land = createSerialQueue()
   // Memoized so the whole run performs the parent-repo config write exactly
   // once, no matter how many tickets burn in parallel (see git.ts).
   let pushTargetReady: Promise<void> | undefined
   const ensureIsolatedPushTarget = () =>
     (pushTargetReady ??= allowPushToCheckedOutBranches(ctx.project.repoPath))
+  // Same shape for the cache volume: `volume create` plus the one-shot chown a
+  // fresh (root-owned) volume needs is run-constant, so every ticket awaits the
+  // same promise instead of re-issuing it per burn.
+  let cacheVolumeReady: Promise<void> | undefined
+  const ensureCacheVolume = (): Promise<void> => {
+    if (resolveBurnCacheMode(config) !== 'volume') return Promise.resolve()
+    const engine: BurnCacheEngine = config.sandbox === 'podman' ? 'podman' : 'docker'
+    return (cacheVolumeReady ??= ensureBurnCacheVolume({
+      engine,
+      imageName: resolveSandboxImage(config),
+      projectId: ctx.project.id,
+      exec,
+    }))
+  }
 
   // Run-constant, so read once per run and not once per ticket — and the digest
   // read is the one that puts its size (or its absence) on the timeline.
@@ -3510,6 +4065,7 @@ function resolveBurnDeps(ctx: WorkflowCtx): BurnDeps {
     config,
     runtime: model.runtime,
     hasAuthToken: burnAuthReady(model.runtime, token),
+    exec: cachedExec,
     ticketAuthMissing: (ticket) => {
       const { model: ticketModel, token: ticketToken } = ticketCredentials(ticket)
       return burnAuthReady(ticketModel.runtime, ticketToken) ? undefined : ticketModel.runtime
@@ -3533,6 +4089,7 @@ function resolveBurnDeps(ctx: WorkflowCtx): BurnDeps {
             ticketModel,
             land,
             ensureIsolatedPushTarget,
+            ensureCacheVolume,
             blocks,
             run,
           )
