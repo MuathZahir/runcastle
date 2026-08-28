@@ -1209,7 +1209,7 @@ function takeSetupMarker(worktreePath: string): SetupMarker | undefined {
 }
 
 /** `1.4s` — setup phases are seconds, not the minutes `fmtClock` is shaped for. */
-function fmtSeconds(ms: number): string {
+export function fmtSeconds(ms: number): string {
   return `${(ms / 1000).toFixed(1)}s`
 }
 

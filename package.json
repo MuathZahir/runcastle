@@ -18,6 +18,7 @@
     "typecheck": "bun run --filter '@runcastle/core' --filter '@runcastle/server' --filter '@runcastle/web' --filter '@runcastle/design-system' typecheck && tsc --noEmit -p scripts/tsconfig.json",
     "test": "vitest run",
     "test:watch": "vitest",
+    "burn-cache:probe": "bun scripts/burn-cache-probe.ts",
     "deploy:worker": "bun run --filter '@runcastle/ping' deploy",
     "release": "bun run scripts/release.ts",
     "postinstall": "bun scripts/postinstall-node-pty.ts"
