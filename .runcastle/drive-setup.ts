@@ -20,7 +20,7 @@
  */
 import { spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { copyFileSync, existsSync, mkdirSync, writeFileSync } from 'node:fs'
+import { copyFileSync, existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:net'
 import { homedir } from 'node:os'
 import { join, resolve } from 'node:path'
@@ -43,6 +43,20 @@ function required(name: string): string {
 
 const id = required('RUNCASTLE_ID')
 const slug = required('RUNCASTLE_SLUG')
+
+/**
+ * The retired design-system and its sync tooling may survive branch switches as
+ * ignored build, dependency, or cache directories. Remove that residue before
+ * `bun install` discovers workspaces so the driven checkout matches the branch.
+ */
+for (const retiredPath of ['packages/design-system', '.design-sync']) {
+  rmSync(join(repoRoot, retiredPath), {
+    recursive: true,
+    force: true,
+    maxRetries: 10,
+    retryDelay: 100,
+  })
+}
 
 /** Truncate first: a rerun must not inherit a stale line from the last drive. */
 writeFileSync(driveEnvPath, '')

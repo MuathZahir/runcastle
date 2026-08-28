@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import type { RefObject } from 'react'
 import { Button, Dialog } from '../ui'
 
 /**
@@ -15,12 +16,14 @@ export function DeleteFeatureDialog({
   busy,
   onConfirm,
   onCancel,
+  returnFocusRef,
 }: {
   title: string
   slug: string
   busy: boolean
   onConfirm: () => void
   onCancel: () => void
+  returnFocusRef?: RefObject<HTMLElement | null>
 }) {
   const [typed, setTyped] = useState('')
   const armed = typed.trim() === slug
@@ -29,6 +32,7 @@ export function DeleteFeatureDialog({
     <Dialog
       open
       onClose={onCancel}
+      returnFocusRef={returnFocusRef}
       label={`Delete feature ${slug}`}
       backdropClassName="peek-backdrop"
       className="peek delete-dialog"

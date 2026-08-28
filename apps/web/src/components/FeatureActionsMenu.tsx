@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import type { RefObject } from 'react'
 import { IconMore } from '../icons'
 
 /**
@@ -13,12 +14,13 @@ export interface FeatureAction {
   label: string
   /** Rendered in a danger color (destructive actions, e.g. Delete). */
   danger?: boolean
-  onSelect: () => void
+  onSelect: (triggerRef: RefObject<HTMLButtonElement | null>) => void
 }
 
 export function FeatureActionsMenu({ actions }: { actions: FeatureAction[] }) {
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
+  const triggerRef = useRef<HTMLButtonElement>(null)
 
   // Close on any outside click or Escape — the menu floats over the rail.
   useEffect(() => {
@@ -42,6 +44,7 @@ export function FeatureActionsMenu({ actions }: { actions: FeatureAction[] }) {
   return (
     <div className="row-actions" ref={ref}>
       <button
+        ref={triggerRef}
         className="row-actions-btn"
         aria-label="feature actions"
         aria-haspopup="menu"
@@ -63,7 +66,11 @@ export function FeatureActionsMenu({ actions }: { actions: FeatureAction[] }) {
               onClick={(e) => {
                 e.stopPropagation()
                 setOpen(false)
-                a.onSelect()
+                // The menu item disappears as this selection opens a dialog.
+                // Put focus on the surviving trigger first so Dialog records a
+                // connected opener and can restore keyboard position on close.
+                triggerRef.current?.focus()
+                a.onSelect(triggerRef)
               }}
             >
               {a.label}

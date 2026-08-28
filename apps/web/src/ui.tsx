@@ -188,7 +188,7 @@ export function Dialog({
   discardPrompt?: string
   /** Focused on open. Defaults to the panel, and never steals from `autoFocus`. */
   initialFocusRef?: RefObject<HTMLElement | null>
-  /** Element that opened a conditionally mounted dialog. */
+  /** Stable focus target for a conditionally mounted dialog or transient opener. */
   returnFocusRef?: RefObject<HTMLElement | null>
   /**
    * Render in place instead of portalling, for a "dialog" that is really a
@@ -217,15 +217,17 @@ export function Dialog({
       ;(initialFocusRef?.current ?? panel).focus()
     }
     return () => {
-      if (!(opener instanceof HTMLElement)) return
-      if (opener.isConnected) opener.focus()
+      const target = opener instanceof HTMLElement && opener.isConnected ? opener : returnFocusRef?.current
+      if (!target?.isConnected) return
+      target.focus()
       // A backdrop mousedown can finish its native focus action after React has
       // synchronously unmounted the portal. Reassert the return focus once that
       // event has completed; this is especially relevant to conditionally
       // mounted peeks whose panel was the last focused element.
       queueMicrotask(() => {
         const focused = document.activeElement
-        if (opener.isConnected && (focused === null || focused === document.body)) opener.focus()
+        const fallback = target.isConnected ? target : returnFocusRef?.current
+        if (fallback?.isConnected && (focused === null || focused === document.body)) fallback.focus()
       })
     }
     // Deliberately keyed on `open` alone: `initialFocusRef` is read once, at
