@@ -98,10 +98,7 @@ export class BurnCacheBusyError extends Error {
   /** The slot numbers held when the clear was attempted. */
   readonly slots: readonly number[]
   constructor(slots: readonly number[]) {
-    super(
-      `burn cache is in use by ${slots.length} running burn${slots.length === 1 ? '' : 's'} ` +
-        `(slot${slots.length === 1 ? '' : 's'} ${slots.join(', ')}) — stop them before clearing it`,
-    )
+    super(`burn cache is in use — slots ${slots.join(', ')} are held; stop those burns before clearing it`)
     this.name = 'BurnCacheBusyError'
     this.slots = slots
   }
@@ -110,12 +107,16 @@ export class BurnCacheBusyError extends Error {
 /** The UID:GID every burn container runs as (research #32; the image bakes it in). */
 const CONTAINER_USER = '1000:1000'
 
-async function run(exec: ExecFn, engine: BurnCacheEngine, args: string[]): Promise<string> {
+/**
+ * Run one engine command, throwing its stderr on failure. Volume setup has no
+ * sensible degraded mode — a burn that silently proceeds without its cache
+ * would look like nothing more than a slow burn.
+ */
+async function execOrThrow(exec: ExecFn, engine: BurnCacheEngine, args: string[]): Promise<void> {
   const out = await exec(engine, args)
   if (!out.ok || out.code !== 0) {
     throw new Error(`${engine} ${args.join(' ')} failed: ${out.stderr.trim() || `exit ${out.code}`}`)
   }
-  return out.stdout
 }
 
 export interface EnsureBurnCacheVolumeOptions {
@@ -143,10 +144,10 @@ export async function ensureBurnCacheVolume(opts: EnsureBurnCacheVolumeOptions):
   const inspect = await exec(engine, ['volume', 'inspect', name])
   const existed = inspect.ok && inspect.code === 0
 
-  await run(exec, engine, ['volume', 'create', name])
+  await execOrThrow(exec, engine, ['volume', 'create', name])
   if (existed) return
 
-  await run(exec, engine, [
+  await execOrThrow(exec, engine, [
     'run',
     '--rm',
     '--user',
@@ -176,7 +177,7 @@ export interface RemoveBurnCacheVolumeOptions {
  */
 export async function removeBurnCacheVolume(opts: RemoveBurnCacheVolumeOptions): Promise<void> {
   if (opts.slots.length > 0) throw new BurnCacheBusyError([...opts.slots].sort((a, b) => a - b))
-  await run(opts.exec, opts.engine, ['volume', 'rm', burnCacheVolumeName(opts.projectId)])
+  await execOrThrow(opts.exec, opts.engine, ['volume', 'rm', burnCacheVolumeName(opts.projectId)])
 }
 
 export interface BurnCacheVolumeSizeOptions {

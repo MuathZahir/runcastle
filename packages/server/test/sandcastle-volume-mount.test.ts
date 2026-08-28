@@ -56,7 +56,10 @@ beforeEach(() => {
 })
 
 describe('sandcastle named-volume mounts (patched)', () => {
-  it('emits -v <volume>:<sandboxPath> for a mount naming a volume', async () => {
+  // The pair is bare: `:z` on a named volume asks the engine to relabel the
+  // volume's entire tree on every container start, which is ruinous for a cache
+  // measured in gigabytes and pointless for a volume the engine created itself.
+  it('emits a bare -v <volume>:<sandboxPath> for a mount naming a volume', async () => {
     const provider = docker({
       imageName: 'sandcastle:runcastle',
       mounts: [{ volume: 'runcastle-proj_abcdef123456', sandboxPath: SANDBOX_PATH }],
@@ -99,21 +102,6 @@ describe('sandcastle named-volume mounts (patched)', () => {
 
     // `:z` — the SELinux shared label sandcastle applies to every bind mount.
     expect(volumeFlagsOfDockerRun()).toContain(`${process.cwd()}:/home/agent/host-cache:z`)
-  })
-
-  // `:z` on a named volume asks the engine to relabel the volume's entire tree
-  // on every container start — the burn cache is measured in gigabytes, so the
-  // label is suppressed for volumes and kept for bind mounts.
-  it('applies no SELinux label to a volume mount', async () => {
-    const provider = docker({
-      imageName: 'sandcastle:runcastle',
-      mounts: [{ volume: 'runcastle-cache', sandboxPath: SANDBOX_PATH }],
-    })
-
-    const handle = await provider.create(createOptions)
-    await handle.close()
-
-    expect(volumeFlagsOfDockerRun()).toContain(`runcastle-cache:${SANDBOX_PATH}`)
   })
 
   it('carries readonly through as a volume mount option', async () => {
