@@ -28,6 +28,7 @@ import {
   resolveBurnWorkspaceMode,
   withBurnCacheSlot,
 } from '../src/workflows/ticket-burner'
+import { postCommitHookBody } from './helpers/setup-hook'
 
 const runCommand = promisify(exec)
 
@@ -173,6 +174,22 @@ describe('buildSlotSetupCommand — the slot-sync script', () => {
     // The local branch name is what the post-commit hook's HEAD:<branch> push
     // reports against, so a re-synced slot has to be put back on it.
     expect(cmd).toContain(`git -C ${repo} checkout -B ${BRANCH}`)
+  })
+
+  // The slot shares the isolated mode's post-commit hook (one builder feeds
+  // both), so it inherits push-only syncing: the `reset --hard FETCH_HEAD`
+  // above is the once-per-setup slot sync, not a per-commit cost.
+  it('installs a push-only post-commit hook that retries once and never resets the workspace', () => {
+    const hook = postCommitHookBody(script(), BRANCH)
+    expect(hook).not.toContain('reset')
+    expect(hook).not.toContain(SANDBOX_WORKSPACE_PATH)
+    const push = `git push --quiet origin HEAD:${BRANCH}`
+    expect(hook.split(push)).toHaveLength(3)
+    expect(hook).toContain(`${push} && exit 0\nsleep 2\n${push}`)
+    expect(hook).toContain(
+      'echo "runcastle: commit sync failed (will retry on your next commit); do not re-commit" >&2',
+    )
+    expect(hook.trimEnd().endsWith('exit 0')).toBe(true)
   })
 
   // `-fd` and NOT `-fdX`/`-fdx`: the ignored files ARE the cache. node_modules,
@@ -348,9 +365,34 @@ describe.skipIf(process.platform === 'win32')('buildSlotSetupCommand — driven 
     await repo.add('.')
     await repo.commit('ticket(2): work')
 
-    // The hook pushed the ref AND hard-reset the workspace onto it.
-    expect(existsSync(join(workspace, 'WORK.md'))).toBe(true)
+    // The hook pushed the REF — which is all anything reads: commit collection,
+    // later iterations, and landing all go through it.
     expect(await simpleGit(workspace).revparse(['HEAD'])).toBe(await repo.revparse(['HEAD']))
+    // ...and did NOT check the commit out into the mounted working tree. That
+    // reset is the 15–90s-per-commit mount tax this hook no longer pays; the
+    // worktree is left dirty on purpose and removed host-side after the run.
+    expect(existsSync(join(workspace, 'WORK.md'))).toBe(false)
+  })
+
+  it('retries a failed push, then tells the agent once — without failing the commit', async () => {
+    await runSetup(1, BRANCH)
+    const repo = simpleGit(slotRepo(1))
+    await repo.addConfig('user.email', 'agent@runcastle.dev')
+    await repo.addConfig('user.name', 'Burn Agent')
+    // Break the sync target the way a dead bind mount would.
+    await repo.removeRemote('origin')
+    writeFileSync(join(slotRepo(1), 'WORK.md'), 'done\n')
+    await repo.add('.')
+
+    // Git ignores a post-commit hook's exit status, so the commit still lands —
+    // and a later push of HEAD carries it, which is why the line says so.
+    const { stderr } = await runCommand('git commit -m "ticket(2): work"', { cwd: slotRepo(1) })
+    expect(stderr).toContain(
+      'runcastle: commit sync failed (will retry on your next commit); do not re-commit',
+    )
+    expect(await repo.log({ maxCount: 1 })).toMatchObject({
+      latest: { message: 'ticket(2): work' },
+    })
   })
 })
 

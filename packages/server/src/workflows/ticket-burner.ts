@@ -1090,18 +1090,26 @@ export function resolveBurnWorkspaceMode(
  *    step 4 pushes the clone's commits back and `info/exclude` is not something
  *    a clone inherits.
  * 4. Install a `post-commit` hook in the clone that, on every commit, pushes
- *    `HEAD:<tempBranch>` back to the workspace and then hard-resets the
- *    workspace checkout to the freshly-pushed ref — syncing needs no agent
- *    discipline at all, and the mounted working tree tracks the branch, so
- *    sandcastle's end-of-run dirty check stays clean (no worktree pile-up).
+ *    `HEAD:<tempBranch>` back to the workspace — and stops there. Syncing needs
+ *    no agent discipline at all, and the cost is one pack write; the hook does
+ *    NOT reset the mounted checkout, because nothing reads that working tree
+ *    (commit collection, later iterations and landing all go through the ref)
+ *    and the reset stats every tracked file across the bind mount, at 15–90s a
+ *    commit. The mounted worktree is therefore always dirty at sandcastle's
+ *    end-of-run check, so sandcastle preserves it and the burner removes it
+ *    host-side with `cleanupBurnWorktree` once the run is over.
  *    The push moves the REF only: the host wrote
  *    `receive.denyCurrentBranch=ignore` before any container started
  *    (`allowPushToCheckedOutBranches`), because `updateInstead`
  *    push-to-checkout resolves the branch's checkout via its registered HOST
  *    path (`C:\...`) — nonexistent in-container — and refuses every push.
  *    The hook unsets GIT_DIR/GIT_WORK_TREE/GIT_INDEX_FILE first: git exports
- *    them to hook processes, and they would otherwise pin the
- *    `git -C <workspace>` reset to the clone's repo instead of the workspace.
+ *    them to hook processes, and they would otherwise pin the push to whatever
+ *    repo the committing command was addressing rather than the clone.
+ *    A failed push is retried once; a second failure prints one stderr line and
+ *    exits 0 — git ignores a post-commit hook's status, and the next commit's
+ *    push of `HEAD` carries everything not yet synced, so the honest thing to
+ *    tell the agent is "it will heal; do not re-commit".
  * 5. For corepack-managed managers (pnpm/yarn), shim the bare binary onto
  *    `~/.local/bin` (on PATH in the node:22 image). Neither manager is
  *    preinstalled — only `corepack` is — and in real burns every agent
@@ -1167,7 +1175,12 @@ function buildRepoSetupSteps(
     // checkout outlives the burn that wrote it, and an unguarded `>>` would add
     // one line per attachment-carrying burn for the life of the slot.
     `if [ -d "${attachmentsDir}" ]; then mkdir -p "${repoAttachmentsDir}" && cp -r "${attachmentsDir}/." "${repoAttachmentsDir}/" && mkdir -p "${repoPath}/.git/info" && { grep -qxF '${ATTACHMENTS_DIR}/' "${excludeFile}" 2>/dev/null || printf '%s\\n' '${ATTACHMENTS_DIR}/' >> "${excludeFile}"; }; fi`,
-    `printf '#!/bin/sh\\nunset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE\\ngit push --quiet origin HEAD:%s && exec git -C ${SANDBOX_WORKSPACE_PATH} reset --hard --quiet %s\\n' '${tempBranch}' '${tempBranch}' > ${hookFile}`,
+    // Push-only, and synchronous: the hook runs inside a container sandcastle
+    // removes seconds after the agent exits, so a backgrounded push would put
+    // the LAST commit — the one that matters most — at risk. The branch is a
+    // printf ARG, never interpolated into the format string, so no branch text
+    // is ever shell-interpreted.
+    `printf '#!/bin/sh\\nunset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE\\ngit push --quiet origin HEAD:%s && exit 0\\nsleep 2\\ngit push --quiet origin HEAD:%s && exit 0\\necho "runcastle: commit sync failed (will retry on your next commit); do not re-commit" >&2\\nexit 0\\n' '${tempBranch}' '${tempBranch}' > ${hookFile}`,
     `chmod +x ${hookFile}`,
   ]
   if (pm === 'pnpm' || pm === 'yarn') {
@@ -3511,6 +3524,29 @@ async function burnTicket(
   }
 
   /**
+   * Remove one agent branch's mounted sandcastle worktree, host-side.
+   *
+   * The post-commit sync hook is push-only, so the mounted checkout is always
+   * dirty at sandcastle's end-of-run check — sandcastle preserves it and never
+   * attempts its own `worktree remove` (which is where the Windows `Directory
+   * not empty` teardown flake came from). Left alone the preserved dirs pile up
+   * under `.sandcastle/worktrees/`, so we tidy up ourselves, on every exit path
+   * of an attempt, once the agent files have been harvested out of it.
+   *
+   * Removing a worktree never touches refs: the temp branch survives, and with
+   * it `preserveChain`, attempt chaining and conflict resume.
+   *
+   * Memoized per branch — the teardown-error path wants the removal's outcome
+   * for its event and must not pay the retry loop a second time to get it.
+   */
+  const discards = new Map<string, Promise<boolean>>()
+  const discardWorktree = (branch: string): Promise<boolean> => {
+    const pending = discards.get(branch) ?? cleanupBurnWorktree(project.repoPath, branch)
+    discards.set(branch, pending)
+    return pending
+  }
+
+  /**
    * One conflict-resolver pass: an agent on a fresh branch off `branch` that
    * merges the feature branch IN and resolves. Same sandbox, model, workspace
    * mode and stream wiring as the implementer — and the same ticket/feature/docs
@@ -3581,6 +3617,9 @@ async function burnTicket(
         logging: { type: 'file', path: logFilePath, onAgentStreamEvent: onStreamEvent },
       })
     } catch (err) {
+      // Nothing reads a dead resolver's worktree — `result` never got assigned,
+      // so the BLOCKED.md read below cannot reach it either.
+      await discardWorktree(resolveBranch)
       if (ctx.signal.aborted) throw err // run cancelled — the runner finalizes it
       const tip = await bestTip()
       // Teardown-only failure (see `isWorktreeTeardownError`) on a branch that
@@ -3598,10 +3637,11 @@ async function burnTicket(
             : errorHeadline(err instanceof Error ? err.message : String(err)),
         }
       }
-      await cleanupBurnWorktree(project.repoPath, resolveBranch)
     }
 
     const blocked = readAgentFile([result?.preservedWorktreePath, project.repoPath], 'BLOCKED.md')
+    // Read out of the preserved worktree, so removal waits until now.
+    await discardWorktree(resolveBranch)
     if (blocked !== undefined && blocked.trim().length > 0) {
       return {
         ok: false,
@@ -3816,6 +3856,10 @@ async function burnTicket(
         break
       } catch (err) {
         await clearAttachmentsFor(tempBranch)
+        // Every failure path below either returns or `continue`s onto a fresh
+        // temp branch, and none of them reads the worktree — so this attempt's
+        // is finished with, whatever happens next.
+        await discardWorktree(tempBranch)
         if (ctx.signal.aborted) throw err // let the runner mark the run cancelled
         const msg = err instanceof Error ? err.message : String(err)
         const missingBinary = missingAgentBinaryMessage(
@@ -3847,7 +3891,7 @@ async function burnTicket(
         // error would discard finished work and spend another whole agent run
         // rediscovering it, so land the chain and tidy up best-effort instead.
         if (isWorktreeTeardownError(err)) {
-          const removed = await cleanupBurnWorktree(project.repoPath, tempBranch)
+          const removed = await discardWorktree(tempBranch)
           if (salvaged.length > 0) {
             ctx.emitEvent({
               type: 'burn.worktree.teardown-failed',
@@ -3929,6 +3973,9 @@ async function burnTicket(
     const blocked = readAgentFile(agentFileDirs, 'BLOCKED.md')
     // Harvested before the landing, attached after it — see `harvestedDigest`.
     harvestedDigest = harvestDigest(agentFileDirs)
+    // Both agent files are out of the preserved worktree now, and attachments
+    // were cleared before the break — nothing reads it after this point.
+    await discardWorktree(tempBranch)
     const chain = await branchCommitsAhead(project.repoPath, feature.branch, tempBranch)
     let outcome: TicketOutcome
     if (result.commits.length === 0 && blocked !== undefined && blocked.trim().length > 0) {

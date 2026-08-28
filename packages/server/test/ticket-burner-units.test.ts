@@ -6,6 +6,7 @@ import type { Feature, ModelEntry, Ticket } from '@runcastle/core'
 import { worktreeDir } from '@runcastle/core/paths'
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { GUARD_RULES, buildGuardInstallCommand } from '../src/workflows/burn-guard'
+import { postCommitHookBody } from './helpers/setup-hook'
 import {
   CODEX_HOST_MOUNT_PATH,
   ISOLATED_REPO_PATH,
@@ -1503,21 +1504,45 @@ describe('buildIsolatedSetupCommand — clone + auto-sync wiring for the sandbox
     expect(steps[0]).toBe(`git config --global --add safe.directory '*'`)
     expect(steps[1]).toBe(`git clone ${SANDBOX_WORKSPACE_PATH} ${ISOLATED_REPO_PATH}`)
     // the post-commit hook pushes HEAD to the ticket's temp branch (ref-only —
-    // receive.denyCurrentBranch=ignore host-side) and then hard-resets the
-    // mounted workspace checkout to it, so the worktree tracks the branch and
-    // sandcastle's dirty check stays clean. Sync requires no agent discipline.
-    // (Asserted on `cmd`, not a ' && '-split step: the hook body itself
-    // contains ' && '.)
+    // receive.denyCurrentBranch=ignore host-side) and stops there. Sync
+    // requires no agent discipline. (Asserted on `cmd`, not a ' && '-split
+    // step: the hook body itself contains ' && '.)
     expect(cmd).toContain(`HEAD:%s`)
-    expect(cmd).toContain(`git -C ${SANDBOX_WORKSPACE_PATH} reset --hard --quiet %s`)
-    // git exports GIT_DIR & co to hooks — without unsetting them the -C reset
-    // would operate on the clone's repo, not the workspace
+    // git exports GIT_DIR & co to hooks — without unsetting them the push would
+    // address whatever repo the committing command was pointed at
     expect(cmd).toContain('unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE')
     expect(cmd).toContain(`'${branch}' '${branch}'`)
     expect(cmd).toContain(`> ${ISOLATED_REPO_PATH}/.git/hooks/post-commit`)
     expect(cmd).toContain(`chmod +x ${ISOLATED_REPO_PATH}/.git/hooks/post-commit`)
     // install runs INSIDE the clone, on the container's native filesystem
     expect(cmd).toContain(`cd ${ISOLATED_REPO_PATH} && corepack pnpm install --frozen-lockfile`)
+  })
+
+  it('pushes and nothing else — the hook never resets the mounted workspace', () => {
+    // The reset was the expensive half: it stats every tracked file across the
+    // bind mount, 15–90s per commit, for a working tree nothing reads (commit
+    // collection, later iterations and landing all go through the ref).
+    const hook = postCommitHookBody(buildIsolatedSetupCommand(branch, 'npm ci'), branch)
+    expect(hook).not.toContain('reset')
+    expect(hook).not.toContain(SANDBOX_WORKSPACE_PATH)
+    // agents wrapped the old hook in `timeout` to get their prompt back; there
+    // is nothing left to wrap
+    expect(hook).not.toContain('timeout')
+  })
+
+  it('retries a failed push once, then says one calm line and exits 0', () => {
+    const hook = postCommitHookBody(buildIsolatedSetupCommand(branch, 'npm ci'), branch)
+    const push = `git push --quiet origin HEAD:${branch}`
+    // exactly two pushes: the first, and one retry after a pause
+    expect(hook.split(push)).toHaveLength(3)
+    expect(hook).toContain(`${push} && exit 0\nsleep 2\n${push}`)
+    // git ignores a post-commit hook's exit status, so the commit is safe
+    // either way — and a later push of HEAD carries everything still unsynced,
+    // which is why the line tells the agent NOT to re-commit.
+    expect(hook).toContain(
+      'echo "runcastle: commit sync failed (will retry on your next commit); do not re-commit" >&2',
+    )
+    expect(hook.trimEnd().endsWith('exit 0')).toBe(true)
   })
 
   it('re-pins core.hooksPath to .git/hooks AFTER the install — husky must not disarm the sync hook', () => {
