@@ -26,6 +26,9 @@ the correction in `docs/research/CORRECTIONS.md`.
   invalidates the affected queries at once. Polling is only the fallback for a
   stream that is down (1.5s), backed off to 30s while it is live — so a missed
   emit costs the UI half a minute of staleness, not a tick.
+- **Styling `apps/web`: read `apps/web/STYLE.md` first** — the theme tokens and
+  scale, the primitives, the two component-test tiers, and the rule that retires
+  `styles.css` one flow at a time.
 - **Commit your own work when done**: conventional message `feat(scope): ...`.
 - **For library/API shapes, use `npx ctx7@latest library|docs`** (≤3 calls per
   question) — don't trust training data for API shapes.
