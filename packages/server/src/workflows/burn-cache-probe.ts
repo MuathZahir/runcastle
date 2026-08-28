@@ -2,14 +2,16 @@ import { createHash } from 'node:crypto'
 import { cpSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { basename, join } from 'node:path'
+import type { Sandbox } from '@ai-hero/sandcastle'
 import { createSandbox } from '@ai-hero/sandcastle'
 import { RuncastleConfig, resolveSandboxImage } from '@runcastle/core'
 import type { ExecFn, ExecOutcome } from '../doctor/doctor'
 import { createSystemExec } from '../doctor/system-exec'
 import {
   type BurnCacheEngine,
+  burnCacheVolumeName,
+  createSlotAllocator,
   ensureBurnCacheVolume,
-  getBurnSlotAllocator,
   removeBurnCacheVolume,
   slotRepoPath,
 } from './burn-cache'
@@ -17,6 +19,7 @@ import {
   type PackageManager,
   SANDBOX_WORKSPACE_PATH,
   SETUP_MARKER_FILE,
+  type SetupMarker,
   buildBurnCacheMounts,
   buildSlotSetupCommand,
   buildSlotStamp,
@@ -42,9 +45,9 @@ import {
  * install → the repo's own verify commands — through two consecutive
  * containers, and prints what each cache did between them.
  *
- * Everything except {@link runBurnCacheProbe} is pure, which is what makes the
- * table's verdict testable without an engine: the container run produces
- * measurements, and the measurements alone decide the rows and the exit code.
+ * Everything that decides the VERDICT is pure, which is what makes it testable
+ * without an engine: the containers produce measurements, and the measurements
+ * alone decide the rows, the table and the exit code.
  */
 
 /** The file a probed repo names its verify commands in, at the repo root. */
@@ -193,7 +196,7 @@ export function buildSnapshotCommand(repoPath: string, pm: PackageManager | unde
     // jest derives its cache dir from `os.tmpdir()`, which follows TMPDIR — the
     // burn cache env points that at the volume (decision 10). The exact leaf
     // name is a base-36 uid (`jest_rs`), so it is globbed.
-    count('jest', `find "\${TMPDIR:-/tmp}"/jest* `),
+    count('jest', `find "\${TMPDIR:-/tmp}"/jest*`),
     count('turbo', `find ${repoPath}/.turbo/cache`),
     pm === 'pnpm'
       ? links(`${repoPath}/node_modules/.pnpm`)
@@ -261,6 +264,10 @@ function durationOf(run: ProbeRun, key: ProbeCommandKey): number {
   return run.commands[key]?.durationMs ?? 0
 }
 
+/** The install cell reads the same on both sides — the hook's own timing. */
+const installCell = (run: ProbeRun): string =>
+  `${fmtSeconds(run.installMs)}${run.cold ? ' (cold slot)' : ''}`
+
 /**
  * How each cache reads cold, reads warm, and what counts as a hit. Table-driven
  * so a new cache is one entry rather than another branch in three places.
@@ -280,8 +287,8 @@ const CACHE_ROWS: Record<
   }
 > = {
   install: {
-    cold: (run) => `${fmtSeconds(run.installMs)}${run.cold ? ' (cold slot)' : ''}`,
-    warm: (run) => `${fmtSeconds(run.installMs)}${run.cold ? ' (cold slot)' : ''}`,
+    cold: installCell,
+    warm: installCell,
     hit: (cold, warm) => !warm.cold && warm.installMs < cold.installMs,
   },
   tsbuildinfo: {
@@ -493,8 +500,15 @@ export async function runBurnCacheProbe(
   if (failure) throw new ProbeError(failure)
 
   const projectId = probeProjectId(opts.repoPath)
+  const volume = burnCacheVolumeName(projectId)
   const scratch = await createProbeScratchRepo(opts.repoPath, exec)
   log(`probe repo: ${scratch}`)
+  log(`probe volume: ${volume}${opts.keep ? ' (kept)' : ''}`)
+  // Width 1, and the probe's OWN allocator rather than the process-wide one:
+  // the two runs are sequential by design (run 2 is warm only because run 1
+  // left the slot behind), and resizing the shared allocator to 1 would be a
+  // trap the day anything imports this into the server.
+  const allocator = createSlotAllocator(1)
   try {
     const commands = parseProbeCommands(readProbeConfig(scratch))
     const toolchain = readRepoToolchain(scratch)
@@ -503,42 +517,44 @@ export async function runBurnCacheProbe(
     const stamp = buildSlotStamp(imageName, toolchain.packageManagerField)
 
     await ensureBurnCacheVolume({ engine: opts.engine, imageName, projectId, exec })
-    // Width 1: the probe's two runs are sequential BY DESIGN — run 2 is warm
-    // only because run 1 left the slot behind.
-    const allocator = getBurnSlotAllocator(1)
     const slot = allocator.claim()
-    let runs: ProbeRun[]
+    const container = (attempt: number): Promise<ProbeRun> => {
+      log(`run ${attempt}/2 — starting container`)
+      return probeOneContainer({
+        attempt,
+        slot,
+        config,
+        projectId,
+        scratch,
+        pm,
+        setupCommand,
+        stamp,
+        commands,
+        log,
+      })
+    }
+    let rows: CacheRow[]
     try {
-      runs = []
-      for (const attempt of [1, 2]) {
-        log(`run ${attempt}/2 — starting container`)
-        runs.push(
-          await probeOneContainer({
-            attempt,
-            slot,
-            config,
-            projectId,
-            scratch,
-            pm,
-            setupCommand,
-            stamp,
-            commands,
-            log,
-          }),
-        )
-      }
+      const cold = await container(1)
+      const warm = await container(2)
+      rows = buildCacheRows(expectedCaches(pm, commands), cold, warm)
     } finally {
       allocator.release(slot)
-    }
-
-    const [cold, warm] = runs as [ProbeRun, ProbeRun]
-    const rows = buildCacheRows(expectedCaches(pm, commands), cold, warm)
-    if (!opts.keep) {
-      await removeBurnCacheVolume({ engine: opts.engine, projectId, exec, slots: allocator.held() })
     }
     return { rows, exitCode: probeExitCode(rows) }
   } finally {
     rmSync(scratch, { recursive: true, force: true })
+    // On EVERY exit path, not just success: a failed probe that left a volume
+    // behind would silently make the next probe's "cold" run warm.
+    if (!opts.keep) {
+      const removal = await removeBurnCacheVolume({
+        engine: opts.engine,
+        projectId,
+        exec,
+        slots: allocator.held(),
+      }).catch((err: unknown) => err)
+      if (removal) log(`could not remove ${volume}: ${String(removal)}`)
+    }
   }
 }
 
@@ -560,10 +576,12 @@ function readProbeConfig(repoPath: string): string {
  * behind so the copy is small and run 1 is genuinely cold.
  */
 export async function createProbeScratchRepo(repoPath: string, exec: ExecFn): Promise<string> {
-  const scratch = join(mkdtempSync(join(tmpdir(), 'runcastle-probe-')), basename(repoPath))
+  const scratch = mkdtempSync(join(tmpdir(), 'runcastle-probe-'))
   cpSync(repoPath, scratch, {
     recursive: true,
-    filter: (source) => !SCRATCH_SKIP.has(basename(source)),
+    // The root itself is never skipped — probing a directory that happens to be
+    // called `dist` must still copy it.
+    filter: (source) => source === repoPath || !SCRATCH_SKIP.has(basename(source)),
   })
   const git = async (...args: string[]): Promise<void> => {
     const out = await exec('git', ['-C', scratch, ...args])
@@ -674,9 +692,7 @@ async function probeOneContainer(opts: ProbeContainerOptions): Promise<ProbeRun>
  * instead; read it from inside the container and delete it, so the worktree is
  * not dirty when sandcastle tears it down.
  */
-async function readSetupMarker(sandbox: {
-  exec: (command: string) => Promise<{ stdout: string }>
-}): Promise<{ cold: boolean; syncMs: number; installMs: number }> {
+async function readSetupMarker(sandbox: Sandbox): Promise<SetupMarker> {
   const file = `${SANDBOX_WORKSPACE_PATH}/${SETUP_MARKER_FILE}`
   const result = await sandbox.exec(`cat ${file} 2>/dev/null; rm -f ${file}`)
   const marker = parseSetupMarker(result.stdout)
