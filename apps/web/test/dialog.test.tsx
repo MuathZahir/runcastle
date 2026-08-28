@@ -100,14 +100,17 @@ describe('Dialog', () => {
     expect(document.activeElement).toBe(opener)
   })
 
-  it('closes on a mousedown that lands on the backdrop itself', () => {
+  it('closes on backdrop mousedown without letting its default action steal restored focus', () => {
     render(<Harness />)
-    open()
+    const opener = open()
 
     const backdrop = screen.getByRole('dialog').parentElement
-    fireEvent.mouseDown(backdrop!)
+    const mouseDown = new MouseEvent('mousedown', { bubbles: true, cancelable: true })
+    fireEvent(backdrop!, mouseDown)
 
     expect(screen.queryByRole('dialog')).toBeNull()
+    expect(mouseDown.defaultPrevented).toBe(true)
+    expect(document.activeElement).toBe(opener)
   })
 
   it('stays open for a mousedown inside the panel', () => {
