@@ -9,7 +9,11 @@
  *   1. Bundle the server + bin entrypoints to plain JS with `@runcastle/core`
  *      resolved INTO the output (NOT `--compile`); every real dependency
  *      (node-pty, simple-git, hono, drizzle, …) stays external so it installs
- *      normally and keeps its prebuilds.
+ *      normally and keeps its prebuilds — EXCEPT the patched ones listed in
+ *      `BUNDLED_DEPENDENCIES` (sandcastle), which are inlined so the workspace
+ *      patch ships with them. The output is then checked for the patch's code:
+ *      a registry copy of the dep would bundle just as happily and fail on the
+ *      user's first burn instead (that was v1.2.11).
  *   2. Copy the runtime-spawned / runtime-read assets as REAL files: drizzle
  *      migrations, the hook client (spawned by `bun`), the PTY sidecar host
  *      (spawned by `node`), the skills pack + burner prompts, the built SPA, and
@@ -27,7 +31,14 @@ import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } fr
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { $ } from 'bun'
-import { buildPublishedManifest, type PackageJson } from './publish-manifest'
+import {
+  BUNDLED_DEPENDENCIES,
+  buildPublishedManifest,
+  checkPatchedDependencies,
+  findMissingPatchMarkers,
+  importsExternally,
+  type PackageJson,
+} from './publish-manifest'
 
 const SERVER_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const REPO_ROOT = resolve(SERVER_DIR, '..', '..')
@@ -40,16 +51,47 @@ function readPkg(dir: string): PackageJson {
   return JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8')) as PackageJson
 }
 
+/**
+ * The manifest of a dependency as resolved FROM THE SERVER PACKAGE — i.e. the
+ * copy the bundle will inline. Resolved through the entry module rather than
+ * `<name>/package.json` because an `exports` map (sandcastle has one) refuses
+ * the latter; the manifest is then found by walking up from the entry file.
+ */
+function readDependencyPkg(name: string): PackageJson {
+  let dir = dirname(Bun.resolveSync(name, SERVER_DIR))
+  for (;;) {
+    const candidate = join(dir, 'package.json')
+    if (existsSync(candidate)) {
+      const pkg = readPkg(dir)
+      if (pkg.name === name) return pkg
+    }
+    const parent = dirname(dir)
+    if (parent === dir) throw new Error(`cannot find the package.json of ${name}`)
+    dir = parent
+  }
+}
+
 async function main(): Promise<void> {
   const serverPkg = readPkg(SERVER_DIR)
   const corePkg = readPkg(CORE_DIR)
+  const rootPkg = readPkg(REPO_ROOT) as PackageJson & { patchedDependencies?: Record<string, string> }
+
+  // Every workspace patch must either ship (bundled) or be provably unneeded.
+  const patchErrors = checkPatchedDependencies(rootPkg.patchedDependencies ?? {})
+  if (patchErrors.length > 0) throw new Error(patchErrors.join('\n'))
+
+  const bundledNames = Object.keys(BUNDLED_DEPENDENCIES)
+  const bundledPkgs = Object.fromEntries(bundledNames.map((name) => [name, readDependencyPkg(name)]))
   const manifest = buildPublishedManifest({
     serverPkg,
     corePkg,
+    bundledPkgs,
     version: process.env.RUNCASTLE_RELEASE_VERSION,
   })
   // Every real dependency stays external so it resolves from node_modules at
-  // runtime (prebuilds intact); only `@runcastle/*` is bundled in.
+  // runtime (prebuilds intact); `@runcastle/*` and the bundled (patched) deps
+  // are inlined. Bundled deps are already absent from the manifest's deps, so
+  // `external` is exactly what the tarball will install.
   const external = Object.keys(manifest.dependencies ?? {})
 
   rmSync(OUT, { recursive: true, force: true })
@@ -69,6 +111,11 @@ async function main(): Promise<void> {
     for (const log of bundle.logs) console.error(log)
     throw new Error('bun build failed')
   }
+
+  console.log('• verifying bundled (patched) dependencies made it into the output')
+  verifyBundledDependencies(
+    bundle.outputs.filter((o) => o.kind === 'entry-point').map((o) => o.path),
+  )
 
   console.log('• building web SPA')
   await $`bun run build`.cwd(WEB_DIR)
@@ -97,6 +144,30 @@ async function main(): Promise<void> {
 
   console.log(`✓ publishable package assembled at ${OUT}`)
   console.log(`  next: cd ${OUT} && bun pm pack`)
+}
+
+/**
+ * Prove the emitted entrypoints inline every bundled dependency WITH its patch:
+ * no entrypoint may still import it from node_modules, and the patch's code
+ * markers must appear in at least one of them (the bin dynamically imports the
+ * server, so which file carries the code is the bundler's call).
+ */
+function verifyBundledDependencies(entrypoints: string[]): void {
+  const sources = entrypoints.map((path) => ({ path, source: readFileSync(path, 'utf8') }))
+  const problems: string[] = []
+  for (const name of Object.keys(BUNDLED_DEPENDENCIES)) {
+    for (const { path, source } of sources) {
+      if (importsExternally(name, source)) problems.push(`${path} still imports ${name} from node_modules`)
+    }
+    const missingEverywhere = sources
+      .map(({ source }) => findMissingPatchMarkers(name, source))
+      .reduce((acc, missing) => acc.filter((m) => missing.includes(m)))
+    for (const marker of missingEverywhere) {
+      problems.push(`${name}: the patch code ${marker} is in none of ${entrypoints.join(', ')} — was an unpatched copy bundled?`)
+    }
+  }
+  if (problems.length > 0) throw new Error(problems.join('\n'))
+  for (const name of Object.keys(BUNDLED_DEPENDENCIES)) console.log(`  ✓ ${name} inlined with its patch`)
 }
 
 main().catch((err) => {
