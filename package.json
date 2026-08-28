@@ -29,6 +29,7 @@
     "wrangler": "^4.122.0"
   },
   "patchedDependencies": {
+    "@ai-hero/sandcastle@0.12.0": "patches/@ai-hero%2Fsandcastle@0.12.0.patch",
     "node-pty@1.1.0": "patches/node-pty@1.1.0.patch"
   }
 }

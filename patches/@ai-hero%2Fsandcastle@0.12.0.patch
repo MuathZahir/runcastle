@@ -1,0 +1,138 @@
+diff --git a/dist/MountConfig-CmXclHA5.d.ts b/dist/MountConfig-CmXclHA5.d.ts
+index 9ad1fdd590d0b19998e2c55eb6a412dce165028c..cd43332576d0d4040b1ef7611a0147acf6ab8585 100644
+--- a/dist/MountConfig-CmXclHA5.d.ts
++++ b/dist/MountConfig-CmXclHA5.d.ts
+@@ -3,8 +3,8 @@
+  *
+  * Each entry describes a host directory to mount into the sandbox container.
+  */
+-/** A single bind-mount descriptor for docker()/podman() providers. */
+-interface MountConfig {
++/** A host directory bind-mounted into the sandbox. */
++interface HostPathMountConfig {
+     /**
+      * Path on the host. Supports:
+      * - Absolute paths (`/data/cache`)
+@@ -21,6 +21,25 @@ interface MountConfig {
+     readonly sandboxPath: string;
+     /** Mount as read-only. Defaults to `false`. */
+     readonly readonly?: boolean;
++    readonly volume?: undefined;
+ }
++/**
++ * runcastle patch — an engine-managed named volume mounted into the sandbox.
++ *
++ * A named volume is owned by Docker/Podman, not the host filesystem, so there is
++ * no host path to expand, resolve or stat; the engine creates it on demand. The
++ * `-v` flag the providers already emit accepts `<name>:<path>` verbatim.
++ */
++interface VolumeMountConfig {
++    /** Docker/Podman volume name, emitted as `-v <volume>:<sandboxPath>`. */
++    readonly volume: string;
++    /** Path inside the sandbox container — same resolution rules as a host-path mount. */
++    readonly sandboxPath: string;
++    /** Mount as read-only. Defaults to `false`. */
++    readonly readonly?: boolean;
++    readonly hostPath?: undefined;
++}
++/** A single mount descriptor for docker()/podman() providers. */
++type MountConfig = HostPathMountConfig | VolumeMountConfig;
+ 
+ export type { MountConfig as M };
+diff --git a/dist/chunk-CP3TYXZA.js b/dist/chunk-CP3TYXZA.js
+index 7d097321871cfee95a8ba7e6d12a7fe002190cc5..8ca697af90c70f98483e7d5e421764504e81a59a 100644
+--- a/dist/chunk-CP3TYXZA.js
++++ b/dist/chunk-CP3TYXZA.js
+@@ -138,7 +138,11 @@ var docker = (options) => {
+       const volumeMounts = allMounts.map((m) => ({
+         hostPath: m.hostPath,
+         sandboxPath: m.sandboxPath,
+-        readonly: m.readonly
++        readonly: m.readonly,
++        // runcastle patch: carry the named-volume marker through to
++        // formatVolumeMount, which suppresses the SELinux label for one. Podman
++        // passes the resolved mount straight through and needs no equivalent.
++        volume: m.volume
+       }));
+       const imageName = configuredImageName ?? defaultImageName(createOptions.hostRepoPath);
+       const containerUid = options?.containerUid ?? process.getuid?.() ?? 1e3;
+diff --git a/dist/chunk-VOG34SRF.js b/dist/chunk-VOG34SRF.js
+index 93f24d139b795c284915a10c34d82f2fa769eab0..e8df2f56ddf9cd38cd2c31267c64c4ac5b947fa8 100644
+--- a/dist/chunk-VOG34SRF.js
++++ b/dist/chunk-VOG34SRF.js
+@@ -26821,6 +26821,21 @@ var resolveSandboxPath = (sandboxPath, sandboxHomedir) => {
+   return isAbsolute(expanded) ? expanded : resolve(SANDBOX_REPO_DIR, expanded);
+ };
+ var resolveUserMounts = (mounts, sandboxHomedir) => mounts.map((m) => {
++  // runcastle patch: a mount entry may name a Docker/Podman *named volume*
++  // instead of a host directory. A volume is owned by the container engine, so
++  // there is no host path to expand, resolve or stat — and the engine creates
++  // it on demand, so the existence check below would reject a perfectly valid
++  // mount. The name is carried through as both `hostPath` (what the `-v` flag
++  // wants on the left of the colon) and `volume` (the marker formatVolumeMount
++  // reads). Host-path mounts fall through and behave exactly as before.
++  if (m.volume !== void 0) {
++    return {
++      hostPath: m.volume,
++      sandboxPath: resolveSandboxPath(m.sandboxPath, sandboxHomedir),
++      volume: m.volume,
++      ...m.readonly ? { readonly: true } : {}
++    };
++  }
+   const resolvedHostPath = resolveHostPath(m.hostPath);
+   if (!existsSync(resolvedHostPath)) {
+     throw new Error(
+@@ -26937,7 +26952,12 @@ var patchGitMountsForWindows = (gitMounts, worktreeHostPath, sandboxRepoDir, rea
+ });
+ var formatVolumeMount = (mount, selinuxLabel) => {
+   const base = `${mount.hostPath}:${mount.sandboxPath}`;
+-  const options = [mount.readonly ? "ro" : void 0, selinuxLabel || void 0].filter((option5) => option5 !== void 0).join(",");
++  // runcastle patch: SELinux relabelling is a bind-mount concern. An
++  // engine-managed named volume is created with the correct label already, and
++  // `:z` on one asks the engine to chcon the volume's whole tree every time a
++  // container starts — ruinous for a multi-GB dependency cache.
++  const selinux = mount.volume !== void 0 ? void 0 : selinuxLabel || void 0;
++  const options = [mount.readonly ? "ro" : void 0, selinux].filter((option5) => option5 !== void 0).join(",");
+   return options ? `${base}:${options}` : base;
+ };
+ var processFileMountParents = (mounts, sandboxHomedir, statFn = statSync) => {
+diff --git a/dist/sandboxes/docker.d.ts b/dist/sandboxes/docker.d.ts
+index c7cc9e78dd3f14021ae64061d70e715bb98f768f..dc131407b07d81943c5b9f993ea4a76b96afcf33 100644
+--- a/dist/sandboxes/docker.d.ts
++++ b/dist/sandboxes/docker.d.ts
+@@ -36,10 +36,12 @@ interface DockerOptions {
+      */
+     readonly selinuxLabel?: SelinuxLabel;
+     /**
+-     * Additional host directories to bind-mount into the sandbox.
++     * Additional host directories or named volumes to mount into the sandbox.
+      *
+-     * Each entry specifies a `hostPath` (tilde-expanded) and `sandboxPath`.
+-     * If `hostPath` does not exist, sandbox creation fails with a clear error.
++     * Each entry specifies a `sandboxPath` plus EITHER a `hostPath`
++     * (tilde-expanded) or, for an engine-managed named volume, a `volume`.
++     * If `hostPath` does not exist, sandbox creation fails with a clear error;
++     * a `volume` is created on demand by the engine and is never checked.
+      */
+     readonly mounts?: readonly MountConfig[];
+     /** Environment variables injected by this provider. Merged at launch time with env resolver and agent provider env. */
+diff --git a/dist/sandboxes/podman.d.ts b/dist/sandboxes/podman.d.ts
+index 61e7b4832b63d2859839f3d68ac2af3cbc5d16e0..9bb26af38fa173abe340479370e03620e41fda3c 100644
+--- a/dist/sandboxes/podman.d.ts
++++ b/dist/sandboxes/podman.d.ts
+@@ -46,10 +46,12 @@ interface PodmanOptions {
+      */
+     readonly containerGid?: number;
+     /**
+-     * Additional host directories to bind-mount into the sandbox.
++     * Additional host directories or named volumes to mount into the sandbox.
+      *
+-     * Each entry specifies a `hostPath` (tilde-expanded) and `sandboxPath`.
+-     * If `hostPath` does not exist, sandbox creation fails with a clear error.
++     * Each entry specifies a `sandboxPath` plus EITHER a `hostPath`
++     * (tilde-expanded) or, for an engine-managed named volume, a `volume`.
++     * If `hostPath` does not exist, sandbox creation fails with a clear error;
++     * a `volume` is created on demand by the engine and is never checked.
+      */
+     readonly mounts?: readonly MountConfig[];
+     /** Environment variables injected by this provider. Merged at launch time with env resolver and agent provider env. */
