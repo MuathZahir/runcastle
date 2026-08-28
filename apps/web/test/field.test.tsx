@@ -59,14 +59,23 @@ describe('Field', () => {
     expect(screen.getByRole('alert').textContent).toBe('Pick a branch.')
   })
 
-  it('leaves an id the caller set on the control alone', () => {
+  it('follows an id already on the control rather than renaming it', () => {
     render(
       <Field label="Base branch" htmlFor="base-branch">
         <input id="mine" />
       </Field>,
     )
 
-    expect(document.getElementById('mine')).not.toBeNull()
-    expect(screen.getByText('Base branch').getAttribute('for')).toBe('base-branch')
+    expect(screen.getByLabelText('Base branch').id).toBe('mine')
+  })
+
+  it('takes the id it was given when the control has none', () => {
+    render(
+      <Field label="Base branch" htmlFor="base-branch">
+        <input />
+      </Field>,
+    )
+
+    expect(screen.getByLabelText('Base branch').id).toBe('base-branch')
   })
 })

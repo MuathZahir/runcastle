@@ -299,8 +299,8 @@ export function Dialog({
  *
  * The control is the child: it is cloned with the generated `id` and
  * `aria-describedby` so the call site stays `<Field label="Base"><select …/></Field>`.
- * An `id` the caller set on the control wins, because a caller who set one is
- * pointing something else at it.
+ * An `id` already on the control wins — something else is pointing at it — and
+ * the label follows it there rather than dangling on the generated one.
  */
 export function Field({
   label,
@@ -317,24 +317,25 @@ export function Field({
   children: ReactNode
 }) {
   const generated = useId()
-  const id = htmlFor ?? generated
+  const control = isValidElement<{ id?: string; 'aria-describedby'?: string }>(children)
+    ? children
+    : null
+  const id = control?.props.id ?? htmlFor ?? generated
   const helpId = `${id}-help`
   const errorId = `${id}-error`
   const describedBy = cx(help ? helpId : null, error ? errorId : null) || undefined
-
-  const control = isValidElement<{ id?: string; 'aria-describedby'?: string }>(children)
-    ? cloneElement(children, {
-        id: children.props.id ?? id,
-        'aria-describedby': cx(children.props['aria-describedby'], describedBy) || undefined,
-      })
-    : children
 
   return (
     <div className="flex flex-col gap-1.5">
       <label className="text-sm font-medium text-text-2" htmlFor={id}>
         {label}
       </label>
-      {control}
+      {control
+        ? cloneElement(control, {
+            id,
+            'aria-describedby': cx(control.props['aria-describedby'], describedBy) || undefined,
+          })
+        : children}
       {help && (
         <div id={helpId} className="text-sm text-text-3">
           {help}
