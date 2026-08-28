@@ -126,32 +126,6 @@ button {
 /* ============================================================================
    ATOMS
    ========================================================================== */
-/* ---- designed empty state (replaces dashed placeholder boxes) ---- */
-.empty-state {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  text-align: center;
-  padding: 44px 24px;
-}
-.empty-state.is-compact { padding: 26px 20px; }
-.empty-state-icon {
-  width: 34px;
-  height: 34px;
-  border-radius: 9px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--text-3);
-  background: var(--panel-3);
-  border: 1px solid var(--hairline);
-  margin-bottom: 4px;
-}
-.empty-state-title { font-size: 13px; font-weight: 500; color: var(--text-2); }
-.empty-state-hint { font-size: 12px; color: var(--text-3); line-height: 1.55; max-width: 42ch; text-wrap: pretty; }
-.empty-state-action { margin-top: 8px; }
 .mono {
   font-family: var(--mono);
   font-size: 12.5px;
@@ -173,12 +147,6 @@ button {
   font-weight: 600;
   padding: 4px 0;
 }
-.phase-fg-ideation { color: var(--ph-ideation); }
-.phase-fg-spec { color: var(--ph-spec); }
-.phase-fg-tickets { color: var(--ph-tickets); }
-.phase-fg-implementation { color: var(--ph-implementation); }
-.phase-fg-review { color: var(--ph-review); }
-.phase-fg-shipped { color: var(--ph-shipped); }
 
 /* ---- buttons ---- */
 .btn {
@@ -281,44 +249,6 @@ button {
 }
 .chip-neutral { color: var(--text-2); }
 .chip-blocked { color: var(--needs); border-color: color-mix(in srgb, var(--needs) 40%, transparent); }
-.chip-ticket-pending { color: var(--text-3); }
-.chip-ticket-burning {
-  color: var(--ph-implementation);
-  border-color: color-mix(in srgb, var(--ph-implementation) 45%, transparent);
-  background: color-mix(in srgb, var(--ph-implementation) 8%, transparent);
-  animation: pulse 1.5s ease-in-out infinite;
-}
-.chip-ticket-done { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 40%, transparent); }
-.chip-ticket-failed { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 45%, transparent); }
-.chip-ticket-cancelled { color: var(--text-3); text-decoration: line-through; }
-/* The two review-flavoured badges: a ticket that verifies the branch, and a note
-   the agent that verified it wrote. Both mark WHOSE work a row is, not a status
-   the human has to act on, so they share the review phase's colour. */
-.chip-kind-review,
-.chip-note-agent {
-  color: var(--ph-review);
-  border-color: color-mix(in srgb, var(--ph-review) 40%, transparent);
-  background: color-mix(in srgb, var(--ph-review) 8%, transparent);
-}
-/* The note text takes the slack; the author badge never gets squeezed by it. */
-.chip-note-agent { flex: 0 0 auto; }
-/* How bad the review thought a finding was — read, never enforced (decisions
-   #8), so even `high` is amber: an open defect is information the human decides
-   about, and red would read as a merge this app is refusing. */
-.chip-severity-high {
-  color: var(--warn, #d9a441);
-  border-color: color-mix(in srgb, var(--warn, #d9a441) 45%, transparent);
-}
-.chip-severity-medium { color: var(--text-2); }
-.chip-severity-low { color: var(--text-3); }
-.chip-run-running {
-  color: var(--ph-implementation);
-  border-color: color-mix(in srgb, var(--ph-implementation) 45%, transparent);
-  animation: pulse 1.5s ease-in-out infinite;
-}
-.chip-run-succeeded { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 40%, transparent); }
-.chip-run-failed { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 45%, transparent); }
-.chip-run-cancelled { color: var(--text-3); }
 
 .tag {
   font-family: var(--mono);
@@ -326,18 +256,6 @@ button {
   text-transform: lowercase;
   font-weight: 600;
 }
-
-.status-dot {
-  display: inline-block;
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--text-3);
-  flex: 0 0 auto;
-}
-.sess-dot-launching { background: var(--needs); animation: pulse 1.3s ease-in-out infinite; }
-.sess-dot-live { background: var(--ok); box-shadow: 0 0 0 3px rgba(63, 185, 80, 0.16); }
-.sess-dot-ended { background: var(--text-3); }
 
 .spinner,
 .spin-ring {
@@ -1850,34 +1768,10 @@ details.wp-group-done > summary { cursor: pointer; list-style: revert; }
 .converge-resume-text { font-size: 12.5px; color: var(--text-2); }
 
 /* ---- lap grouping (decisions.md #6) ----
-   Shared by the ticket ledger and the findings inbox — the two places a human
-   looks for "what was done this lap". Rendered only past lap 1: a feature that
-   never iterated gets no headers at all, the same stance as the pipeline chip. */
-.lap-group-head {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  padding: 8px 0;
-  font-family: var(--mono);
-  font-size: 10.5px;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--text-3);
-}
-.lap-group.is-current > .lap-group-head { color: var(--text-2); }
-.lap-group-meta { color: var(--text-4); }
-/* The caret is drawn here: a flex summary drops the native marker entirely, and
-   a collapsed lap with no affordance reads as a lap with nothing in it. */
-details.lap-group > summary.lap-group-head { cursor: pointer; list-style: none; }
-details.lap-group > summary::-webkit-details-marker { display: none; }
-details.lap-group > summary.lap-group-head::before {
-  content: '▸';
-  color: var(--text-4);
-  flex: 0 0 auto;
-}
-details.lap-group[open] > summary.lap-group-head::before { content: '▾'; }
-/* Inside the bordered ledger the header is a band, and it lines up with the
-   rows' own gutter rather than the card edge. */
+   The group itself is a primitive now (`LapSections` in ui.tsx) and carries its
+   own utilities; `lap-group` / `lap-group-head` survive only as the hooks the
+   two rules below place inside the bordered ledger, where the header is a band
+   that lines up with the rows' own gutter rather than the card edge. */
 .ledger .lap-group-head { padding: 8px 14px; background: var(--panel-3); }
 .ledger .lap-group + .lap-group { border-top: 1px solid var(--hairline); }
 
@@ -1916,8 +1810,6 @@ details.lap-group[open] > summary.lap-group-head::before { content: '▾'; }
 .lg-seq { color: var(--text-3); font-family: var(--mono); font-size: 11.5px; width: 22px; flex: 0 0 auto; }
 .lg-title { flex: 1; min-width: 0; color: var(--text); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .lg-block { font-family: var(--mono); font-size: 10.5px; color: var(--needs); flex: 0 0 auto; }
-/* The title takes the slack; the kind badge never gets squeezed by it. */
-.ledger-head .chip-kind-review { flex: 0 0 auto; }
 .lg-meta { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
 .lg-commits { color: var(--text-2); font-size: 11px; }
 .ledger-detail {
@@ -2037,7 +1929,6 @@ details.lap-group[open] > summary.lap-group-head::before { content: '▾'; }
 .lane-head { display: flex; align-items: center; gap: 8px; }
 .lane-seq { color: var(--text-3); font-family: var(--mono); font-size: 11.5px; flex: 0 0 auto; }
 .lane-title { flex: 1; min-width: 0; font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.lane-head .chip-kind-review { flex: 0 0 auto; }
 .lane-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 6px; }
 .lane-commits { display: flex; flex-wrap: wrap; gap: 4px; }
 .lane-dur { color: var(--text-3); font-family: var(--mono); font-size: 11px; }
@@ -2244,20 +2135,6 @@ details.lap-group[open] > summary.lap-group-head::before { content: '▾'; }
   background: var(--panel-2);
   padding: 14px 16px;
 }
-.check-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-top: 11px;
-}
-.check-dot { width: 7px; height: 7px; border-radius: 50%; flex: 0 0 7px; }
-/* Review-figure tones (findings F23): absence is grey, never green. */
-.check-dot.is-ok { background: var(--ok); }
-.check-dot.is-warn { background: var(--warn, #d9a441); }
-.check-dot.is-danger { background: var(--danger); }
-.check-dot.is-idle { background: var(--text-3); }
-.check-k { font-family: var(--mono); font-size: 12px; color: var(--text); width: 92px; flex: 0 0 auto; }
-.check-v { font-family: var(--mono); font-size: 11.5px; color: var(--text-3); }
 /* "What landed this lap" (decisions #8) — the prose the review page leads with,
    above the figures rather than under them, because it is what the human came
    to read. Bounded and scrollable: a digest is a dozen lines, and the card must
