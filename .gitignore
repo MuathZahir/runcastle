@@ -8,13 +8,6 @@ coverage/
 .DS_Store
 .vite/
 
-# design-sync (staged scripts, build output, machine state — durable inputs under
-# .design-sync/ such as config.json, NOTES.md, conventions.md, previews/ stay tracked)
-.ds-sync/
-ds-bundle/
-.design-sync/.cache/
-.design-sync/learnings/
-
 # AFK
 .afk/
 AFK-REPORT.md

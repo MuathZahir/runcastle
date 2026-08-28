@@ -4,6 +4,10 @@
 > and kept as part of the dogfooding record — it may describe states the code
 > has since moved past. The code and README are authoritative for current
 > behavior.
+>
+> **`apps/web/STYLE.md` supersedes §4 (visual language / primitives).** The
+> tokens, the scale, the primitives catalogue and how to test them live there
+> now. The rest of this document still stands.
 
 Binding spec for the apps/web rework + embedded terminal. Supersedes SPEC.md §10. Written after walking the user stories; agents implement EXACTLY this and flag friction rather than redesigning.
 

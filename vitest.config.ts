@@ -2,7 +2,14 @@ import { configDefaults, defineConfig } from 'vitest/config'
 
 export default defineConfig({
   test: {
-    include: ['packages/*/test/**/*.test.ts', 'apps/*/test/**/*.test.ts', 'services/*/test/**/*.test.ts'],
+    // The apps glob takes `.tsx` too: component tests that need a DOM opt into
+    // one per file with `// @vitest-environment happy-dom` (apps/web/STYLE.md),
+    // and JSX is easier to read than `createElement` once there is a DOM.
+    include: [
+      'packages/*/test/**/*.test.ts',
+      'apps/*/test/**/*.test.{ts,tsx}',
+      'services/*/test/**/*.test.ts',
+    ],
     // Fixture repos under `test/fixtures/` carry their OWN test files — the
     // burn-cache probe fixtures exist precisely to be typechecked and tested by
     // their own toolchain (vitest 3, jest) inside a burn container. `include`

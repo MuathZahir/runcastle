@@ -8,5 +8,5 @@
       "@runcastle/server": ["../../packages/server/src/trpc/router.ts"]
     }
   },
-  "include": ["src", "vite.config.ts"]
+  "include": ["src", "test", "vite.config.ts"]
 }

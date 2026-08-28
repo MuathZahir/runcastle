@@ -5,77 +5,69 @@
    production app (Linear / Cursor): transforms + opacity only, always cheap,
    always interruptible, and fully disabled under prefers-reduced-motion. */
 
+/* LEGACY ALIASES — delete with the last of styles.css. Do not add tokens here;
+   add them to theme.css.
+   Every value now lives in the `@theme` block in theme.css (decision 3). These
+   are the short names the ~4,300 rules below already spell, mapped onto their
+   namespaced source so those rules keep resolving untouched. Names that are
+   already identical in theme.css — --radius-sm/-lg/-pill, --control-h,
+   --sidebar-w, --inspector-w, --maprail-w, --content-max, --shadow-menu,
+   --shadow-overlay, --dur-1/-2/-3, --ring — are deliberately absent: theme.css
+   emits them on :root under exactly those names, and redeclaring them here
+   would shadow the theme from an unlayered rule. */
 :root {
-  /* ---- surfaces (near-black, layered by hairlines not shadows) ---- */
-  --bg: #090b10; /* app canvas — the darkest layer */
-  --panel: #0e1117; /* raised bars (title bar, toolbars, next-step) */
-  --panel-2: #0b0e14; /* sunken rails (sidebar, inspector) */
-  --panel-3: #12151d; /* hover / elevated row */
-  --panel-inset: #07080b; /* deepest inset (inputs, event stream) */
+  /* ---- surfaces ---- */
+  --bg: var(--color-bg);
+  --panel: var(--color-panel);
+  --panel-2: var(--color-panel-2);
+  --panel-3: var(--color-panel-3);
+  --panel-inset: var(--color-panel-inset);
 
-  /* ---- hairlines (the only separators; 1px) ---- */
-  --hairline: #1c2230; /* standard 1px divider / control border */
-  --hairline-soft: #151a26; /* fainter internal divider */
-  --hairline-strong: #2a3242; /* hover border */
+  /* ---- hairlines ---- */
+  --hairline: var(--color-hairline);
+  --hairline-soft: var(--color-hairline-soft);
+  --hairline-strong: var(--color-hairline-strong);
 
-  /* ---- text ramp (high -> low emphasis) ---- */
-  --text: #dde3ed; /* primary text, active identifiers */
-  --text-2: #96a0b0; /* secondary text, labels */
-  --text-3: #5f6a7a; /* tertiary / dim, timestamps, glyphs */
-  --text-4: #3a4354; /* faintest — separators, empty ticks */
+  /* ---- text ramp ---- */
+  --text: var(--color-text);
+  --text-2: var(--color-text-2);
+  --text-3: var(--color-text-3);
+  --text-4: var(--color-text-4);
 
-  /* ---- violet accent (exactly one solid accent surface per view) ---- */
-  --accent: #7c6cf6; /* solid button / active markers */
-  --accent-hi: #a49bff; /* hover / links / headings */
-  --accent-2: #8f80f8; /* solid button hover */
-  --accent-ink: #0d0722; /* text on a solid accent surface */
-  --accent-soft: #161329; /* faint violet wash (hover on violet ghost) */
-  --accent-line: #3d3670; /* violet-tinted hairline */
+  /* ---- violet accent ---- */
+  --accent: var(--color-accent);
+  --accent-hi: var(--color-accent-hi);
+  --accent-2: var(--color-accent-2);
+  --accent-ink: var(--color-accent-ink);
+  --accent-soft: var(--color-accent-soft);
+  --accent-line: var(--color-accent-line);
 
-  /* ---- phase palette (feature lifecycle — the semantic spine) ---- */
-  --ph-ideation: #8b7cf8;
-  --ph-spec: #8a94a2;
-  --ph-tickets: #d7a94a;
-  --ph-implementation: #f0883e;
-  --ph-review: #58a6ff;
-  --ph-shipped: #3fb950;
+  /* ---- phase palette ---- */
+  --ph-ideation: var(--color-ph-ideation);
+  --ph-spec: var(--color-ph-spec);
+  --ph-tickets: var(--color-ph-tickets);
+  --ph-implementation: var(--color-ph-implementation);
+  --ph-review: var(--color-ph-review);
+  --ph-shipped: var(--color-ph-shipped);
 
   /* ---- status ---- */
-  --danger: #f4594e; /* error / destructive */
-  --needs: #d7a94a; /* needs-attention / warning (amber) */
-  /* The same amber under the name 17 warning rules ask for. They all carried a
-     hardcoded `#d9a441` fallback, so the app shipped two ambers a shade apart —
-     an alias costs nothing and puts every warning surface back on the palette. */
-  --warn: var(--needs);
-  --ok: #3fb950; /* success / healthy */
-  --drive: #58a6ff; /* test-drive blue */
+  --danger: var(--color-danger);
+  --needs: var(--color-needs);
+  --warn: var(--color-warn);
+  --ok: var(--color-ok);
+  --drive: var(--color-drive);
 
   /* ---- type ---- */
-  --mono: "JetBrains Mono Variable", "Cascadia Code", Consolas, ui-monospace, monospace;
-  --sans: "Inter Variable", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --mono: var(--font-mono);
+  --sans: var(--font-sans);
 
-  /* ---- metrics ---- */
-  --radius-sm: 5px;
-  --radius: 7px;
-  --radius-lg: 10px;
-  --radius-pill: 999px;
-  --control-h: 28px;
-  --sidebar-w: 252px;
-  --inspector-w: 300px;
-  --maprail-w: 300px;
-  --content-max: 1060px; /* centered column for document-style phase bodies */
+  /* ---- metrics ---- The bare `--radius` is the medium step. */
+  --radius: var(--radius-md);
 
-  /* ---- elevation (floating surfaces only — content stays flat) ---- */
-  --shadow-menu: 0 8px 28px -10px rgba(0, 0, 0, 0.7), 0 2px 8px -2px rgba(0, 0, 0, 0.5);
-  --shadow-overlay: 0 24px 70px -24px rgba(0, 0, 0, 0.85), 0 8px 24px -12px rgba(0, 0, 0, 0.6);
-
-  /* ---- motion ---- */
-  --dur-1: 0.12s; /* micro (hover, color) */
-  --dur-2: 0.19s; /* small (rows, chips) */
-  --dur-3: 0.32s; /* content enter */
-  --ease: cubic-bezier(0.22, 0.61, 0.24, 1); /* decelerate */
-  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
-  --ring: 0 0 0 2px var(--bg), 0 0 0 4px rgba(124, 108, 246, 0.5);
+  /* ---- motion ---- Suffixed `-app` in theme.css so they do not redefine
+     Tailwind's own `ease-out` utility. */
+  --ease: var(--ease-app);
+  --ease-out: var(--ease-out-app);
 }
 
 * {
@@ -92,8 +84,11 @@ body {
   background: var(--bg);
   color: var(--text);
   font-family: var(--sans);
-  font-size: 13px;
-  line-height: 1.45;
+  /* The base step of the theme ramp — one notch up from the old 13px/1.45
+     (decision 4). Legacy rules below keep their hardcoded px until the flow
+     that owns them migrates the surface. */
+  font-size: var(--text-base);
+  line-height: 1.5;
   letter-spacing: 0.004em;
   font-feature-settings: "tnum" 1, "cv05" 1;
   -webkit-font-smoothing: antialiased;
