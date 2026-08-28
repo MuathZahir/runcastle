@@ -1,4 +1,6 @@
-import type { ButtonHTMLAttributes, ReactNode } from 'react'
+import { cloneElement, isValidElement, useEffect, useId, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
+import type { ButtonHTMLAttributes, ReactNode, RefObject } from 'react'
 import type {
   FindingSeverity,
   Phase,
@@ -121,6 +123,283 @@ export function EmptyState({
       {hint && <div className="max-w-[42ch] text-sm text-pretty text-text-3">{hint}</div>}
       {action && <div className="mt-2">{action}</div>}
     </div>
+  )
+}
+
+type DialogSize = 'sm' | 'md' | 'lg'
+
+const DIALOG_SIZE: Record<DialogSize, string> = {
+  sm: 'max-w-[460px]',
+  md: 'max-w-[620px]',
+  lg: 'max-w-[780px]',
+}
+
+/**
+ * The one modal shell. Every overlay in the app runs its mechanics through this
+ * — portal, Escape, backdrop dismissal, focus — because those mechanics were
+ * copy-pasted into five components and had already drifted apart between them
+ * (one closed on `click`, the rest on `mousedown`; one asked before discarding,
+ * the rest threw prose away; none restored focus).
+ *
+ * The three mechanics that look like details and are not:
+ *
+ * - **Escape only answers when the focus is ours.** The command palette and the
+ *   settings pane can be open ON TOP of another dialog, and the topmost one owns
+ *   the key. Focus is the only thing that says which that is, so a dialog that
+ *   answered unconditionally would close underneath the one the user is looking
+ *   at. `null`/`<body>` counts as ours — that is where a click on our own
+ *   backdrop leaves it.
+ * - **The backdrop dismisses on `mousedown`, not `click`.** A drag that starts
+ *   inside the panel (selecting a slug, a summary, a field value) and releases
+ *   outside it is a selection, not a dismissal.
+ * - **Focus returns to the opener.** Otherwise closing a dialog drops the
+ *   keyboard back at the top of the document.
+ *
+ * The panel keeps whatever `className` the caller passes and the backdrop
+ * whatever `backdropClassName` it passes: the five existing overlays hand over
+ * their own legacy class names and so keep their present look, which their own
+ * flow feature redesigns later.
+ */
+export function Dialog({
+  open,
+  onClose,
+  size = 'md',
+  label,
+  labelledBy,
+  dirty = false,
+  discardPrompt = 'Discard what you have typed?',
+  initialFocusRef,
+  inline = false,
+  backdropClassName,
+  className,
+  children,
+}: {
+  open: boolean
+  onClose: () => void
+  size?: DialogSize
+  /** Accessible name, when no visible element in the panel can supply one. */
+  label?: string
+  /** Id of the element that names the panel — takes precedence over `label`. */
+  labelledBy?: string
+  /** Something has been typed that dismissing would throw away. */
+  dirty?: boolean
+  /** The question asked before a dirty dialog is dismissed. */
+  discardPrompt?: string
+  /** Focused on open. Defaults to the panel, and never steals from `autoFocus`. */
+  initialFocusRef?: RefObject<HTMLElement | null>
+  /**
+   * Render in place instead of portalling, for a "dialog" that is really a
+   * region: the feature-creation form fills the workspace column and leaves the
+   * sidebar live behind it, so portalling it to `<body>` would blank the
+   * workspace and cover navigation that is still meant to work. Such a dialog is
+   * not `aria-modal` either — the content around it genuinely is reachable.
+   */
+  inline?: boolean
+  backdropClassName?: string
+  className?: string
+  /** A function child receives the guarded `dismiss`, so a Cancel button in the
+   *  content goes through the discard question rather than around it. */
+  children: ReactNode | ((dismiss: () => void) => ReactNode)
+}) {
+  const [confirming, setConfirming] = useState(false)
+  const panelRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+    const opener = document.activeElement
+    const panel = panelRef.current
+    // React has already honoured any `autoFocus` in the content by now, so only
+    // take the focus when nothing inside the panel holds it.
+    if (panel && !panel.contains(document.activeElement)) {
+      ;(initialFocusRef?.current ?? panel).focus()
+    }
+    return () => {
+      if (opener instanceof HTMLElement && opener.isConnected) opener.focus()
+    }
+    // Deliberately keyed on `open` alone: `initialFocusRef` is read once, at
+    // open, and re-running this would re-grab the focus mid-dialog.
+  }, [open])
+
+  useEffect(() => {
+    if (!open) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return
+      const focused = document.activeElement
+      const mine =
+        focused === null || focused === document.body || !!panelRef.current?.contains(focused)
+      if (!mine) return
+      // Escape out of the question first — it is the smaller of the two things
+      // open, and answering it with the same key that raised it would be a trap.
+      if (confirming) setConfirming(false)
+      else if (dirty) setConfirming(true)
+      else onClose()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [open, confirming, dirty, onClose])
+
+  if (!open) return null
+
+  const dismiss = () => {
+    if (dirty) setConfirming(true)
+    else onClose()
+  }
+
+  const tree = (
+    <div
+      className={cx(
+        inline
+          ? 'flex flex-1 items-center justify-center p-6'
+          : 'fixed inset-0 z-[200] flex items-start justify-center bg-bg/70 px-4 pt-[8vh] pb-4',
+        backdropClassName,
+      )}
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) dismiss()
+      }}
+    >
+      <div
+        ref={panelRef}
+        role="dialog"
+        aria-modal={inline ? undefined : true}
+        aria-label={label}
+        aria-labelledby={labelledBy}
+        tabIndex={-1}
+        className={cx(
+          'w-full rounded-lg border border-hairline-strong bg-panel shadow-overlay',
+          DIALOG_SIZE[size],
+          className,
+        )}
+      >
+        {typeof children === 'function' ? children(dismiss) : children}
+        {confirming && (
+          <div
+            className="mt-4 flex items-center gap-2 rounded-sm border border-warn/45 bg-warn/8 px-3 py-2.5"
+            role="alert"
+          >
+            <span className="flex-1 text-base text-text">{discardPrompt}</span>
+            <Button variant="ghost" onClick={() => setConfirming(false)}>
+              Keep editing
+            </Button>
+            <Button variant="danger" onClick={onClose}>
+              Discard
+            </Button>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+
+  return inline ? tree : createPortal(tree, document.body)
+}
+
+/**
+ * A labelled control with its help and error text wired to it — the three ids
+ * an assistive technology needs in order to read a field as one thing rather
+ * than as three unrelated strings near each other.
+ *
+ * The control is the child: it is cloned with the generated `id` and
+ * `aria-describedby` so the call site stays `<Field label="Base"><select …/></Field>`.
+ * An `id` the caller set on the control wins, because a caller who set one is
+ * pointing something else at it.
+ */
+export function Field({
+  label,
+  help,
+  error,
+  htmlFor,
+  children,
+}: {
+  label: ReactNode
+  help?: ReactNode
+  error?: ReactNode
+  /** Force the control's id, rather than generating one. */
+  htmlFor?: string
+  children: ReactNode
+}) {
+  const generated = useId()
+  const id = htmlFor ?? generated
+  const helpId = `${id}-help`
+  const errorId = `${id}-error`
+  const describedBy = cx(help ? helpId : null, error ? errorId : null) || undefined
+
+  const control = isValidElement<{ id?: string; 'aria-describedby'?: string }>(children)
+    ? cloneElement(children, {
+        id: children.props.id ?? id,
+        'aria-describedby': cx(children.props['aria-describedby'], describedBy) || undefined,
+      })
+    : children
+
+  return (
+    <div className="flex flex-col gap-1.5">
+      <label className="text-sm font-medium text-text-2" htmlFor={id}>
+        {label}
+      </label>
+      {control}
+      {help && (
+        <div id={helpId} className="text-sm text-text-3">
+          {help}
+        </div>
+      )}
+      {error && (
+        <div id={errorId} role="alert" className="text-sm text-danger">
+          {error}
+        </div>
+      )}
+    </div>
+  )
+}
+
+/** A bounded surface for a group of related content, with an optional header. */
+export function Card({
+  header,
+  className,
+  children,
+}: {
+  header?: ReactNode
+  className?: string
+  children: ReactNode
+}) {
+  return (
+    <div className={cx('rounded-lg border border-hairline bg-panel p-4', className)}>
+      {header && (
+        <div className="mb-3 flex items-center justify-between gap-2 border-b border-hairline-soft pb-3">
+          {header}
+        </div>
+      )}
+      {children}
+    </div>
+  )
+}
+
+/**
+ * A titled {@link Card} — the shape most of the app's panels are. Kept a
+ * separate export rather than a `Card` title prop (the spec left the choice
+ * open) so the title stays outside the card's border, which is where every
+ * existing {@link SectionTitle} in the app sits.
+ */
+export function Section({
+  title,
+  className,
+  children,
+}: {
+  title: ReactNode
+  className?: string
+  children: ReactNode
+}) {
+  return (
+    <section>
+      <SectionTitle>{title}</SectionTitle>
+      <Card className={className}>{children}</Card>
+    </section>
+  )
+}
+
+/** One key in a keyboard hint. */
+export function Kbd({ children }: { children: ReactNode }) {
+  return (
+    <kbd className="inline-flex h-5 min-w-5 items-center justify-center rounded-sm border border-hairline bg-panel-3 px-1.5 font-mono text-xs text-text-2">
+      {children}
+    </kbd>
   )
 }
 
