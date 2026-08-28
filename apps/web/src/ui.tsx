@@ -297,8 +297,8 @@ export function Dialog({
  * an assistive technology needs in order to read a field as one thing rather
  * than as three unrelated strings near each other.
  *
- * The control is the child: it is cloned with the generated `id` and
- * `aria-describedby` so the call site stays `<Field label="Base"><select …/></Field>`.
+ * The control is the child: it is cloned with an `id` and `aria-describedby` so
+ * the call site stays `<Field label="Base"><select …/></Field>`.
  * An `id` already on the control wins — something else is pointing at it — and
  * the label follows it there rather than dangling on the generated one.
  */
