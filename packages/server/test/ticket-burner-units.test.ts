@@ -767,6 +767,9 @@ describe('resolveTicketModel — an assignment is that ticket’s run override',
     stepModels: { implement: 'claude-opus-5' },
     models: [{ id: 'gpt-5.6-sol', runtime: 'codex' as const, note: 'mechanical refactors' }],
   }
+  /** The burn's review ticket — the one the `review` step model is chosen for. */
+  const reviewTicket = (seq: number, overrides: Partial<Ticket> = {}): Ticket =>
+    ticket(seq, [], { kind: 'review', ...overrides })
 
   it('burns an assigned ticket on its own model, runtime and all', () => {
     expect(
@@ -795,6 +798,30 @@ describe('resolveTicketModel — an assignment is that ticket’s run override',
     expect(resolveTicketModel(config, null, 'claude-haiku-4-5', ticket(4)).id).toBe(
       'claude-haiku-4-5',
     )
+  })
+
+  it('burns a review ticket on the review step, not the implement one', () => {
+    const reviewed = { ...config, stepModels: { ...config.stepModels, review: 'gpt-5.6-sol' } }
+    expect(resolveTicketModel(reviewed, null, null, reviewTicket(5))).toEqual({
+      id: 'gpt-5.6-sol',
+      runtime: 'codex',
+      note: 'mechanical refactors',
+    })
+    // …and the implementers alongside it are untouched by that choice.
+    expect(resolveTicketModel(reviewed, null, null, ticket(6)).id).toBe('claude-opus-5')
+  })
+
+  it('leaves a review with no review override on the default model', () => {
+    // No `stepModels.review`: the reviewer inherits the global default rather
+    // than the implementers' step override.
+    expect(resolveTicketModel(config, null, null, reviewTicket(7)).id).toBe('claude-sonnet-5')
+  })
+
+  it('lets a review ticket’s own assignment beat the review step', () => {
+    const reviewed = { ...config, stepModels: { ...config.stepModels, review: 'claude-haiku-4-5' } }
+    expect(
+      resolveTicketModel(reviewed, null, null, reviewTicket(8, { model: 'gpt-5.6-sol' })).id,
+    ).toBe('gpt-5.6-sol')
   })
 })
 

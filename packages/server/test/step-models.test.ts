@@ -32,12 +32,20 @@ describe('per-step models (#48)', () => {
 
   const io = (env: Record<string, string | undefined> = {}) => ({ env, configFile })
 
-  it('exposes a field per step and never a review step', () => {
+  it('exposes a field per step, the burn’s reviewer included', () => {
     const view = getSettings(ctx, undefined, io())
-    for (const step of ['ideation', 'qa', 'waypoint', 'converge', 'research', 'implement', 'smoke']) {
+    for (const step of [
+      'ideation',
+      'qa',
+      'waypoint',
+      'converge',
+      'research',
+      'implement',
+      'review',
+      'smoke',
+    ]) {
       expect(view.fields.find((f) => f.key === `stepModels.${step}`)).toBeDefined()
     }
-    expect(view.fields.find((f) => f.key === 'stepModels.review')).toBeUndefined()
   })
 
   it('an unset step reports the default; smoke seeds a cheap model', () => {
@@ -67,10 +75,15 @@ describe('per-step models (#48)', () => {
     expect(field(getSettings(ctx, undefined, io()), 'stepModels.implement').source).toBe('default')
   })
 
-  it('rejects an unknown / reserved step', () => {
-    expect(() => updateSettings(ctx, { key: 'stepModels.review', value: 'x' }, io())).toThrow(
-      InvalidInputError,
-    )
+  it('writes the review step, so the reviewer runs on its own model', () => {
+    updateSettings(ctx, { key: 'stepModels.review', value: 'claude-opus-5' }, io())
+    expect(ctx.config.stepModels.review).toBe('claude-opus-5')
+    expect(JSON.parse(readFileSync(configFile, 'utf8')).stepModels).toEqual({
+      review: 'claude-opus-5',
+    })
+  })
+
+  it('rejects an unknown step', () => {
     expect(() => updateSettings(ctx, { key: 'stepModels.bogus', value: 'x' }, io())).toThrow(
       InvalidInputError,
     )

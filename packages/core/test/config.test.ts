@@ -40,10 +40,15 @@ describe('RuncastleConfig — model shape', () => {
   it('keeps stepModels sparse and rejects unknown steps', () => {
     const cfg = RuncastleConfig.parse({ stepModels: { implement: 'claude-x' } })
     expect(cfg.stepModels).toEqual({ implement: 'claude-x' })
-    expect(RuncastleConfig.safeParse({ stepModels: { review: 'x' } }).success).toBe(false)
+    expect(RuncastleConfig.safeParse({ stepModels: { nonsense: 'x' } }).success).toBe(false)
   })
 
-  it('exposes the model steps without review (reserved)', () => {
+  it('accepts a review model, so the burn’s reviewer is settable on its own', () => {
+    const cfg = RuncastleConfig.parse({ stepModels: { review: 'claude-opus-5' } })
+    expect(cfg.stepModels).toEqual({ review: 'claude-opus-5' })
+  })
+
+  it('exposes the model steps, review among them', () => {
     expect(MODEL_STEPS).toEqual([
       'ideation',
       'qa',
@@ -52,11 +57,12 @@ describe('RuncastleConfig — model shape', () => {
       'revisit',
       'research',
       'implement',
+      'review',
       'prepare',
       'project',
       'smoke',
     ])
-    expect(ModelStep.safeParse('review').success).toBe(false)
+    expect(ModelStep.safeParse('review').success).toBe(true)
   })
 
   it('ships a curated model list', () => {
@@ -302,6 +308,15 @@ describe('resolveModel — chain runOverride ?? project.model ?? stepModels[step
   it('ignores a null/undefined project model and run override', () => {
     expect(resolveModel('qa', config, { model: null }, null)).toBe('global-default')
     expect(resolveModel('qa', config, null, undefined)).toBe('global-default')
+  })
+
+  it('resolves review independently of implement, and inherits when unset', () => {
+    // Unset: the reviewer follows the default, so a machine that never touches
+    // the setting behaves exactly as it did before the step existed.
+    expect(resolveModel('review', config)).toBe('global-default')
+    const reviewed = { ...config, stepModels: { ...config.stepModels, review: 'step-review' } }
+    expect(resolveModel('review', reviewed)).toBe('step-review')
+    expect(resolveModel('implement', reviewed)).toBe('step-implement')
   })
 })
 

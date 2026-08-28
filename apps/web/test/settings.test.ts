@@ -267,12 +267,14 @@ describe('per-step model rows (#48)', () => {
     expect(globalRows(v).map((r) => r.key)).toEqual(['model'])
   })
 
-  it('offers the unset steps (never review) for adding', () => {
+  it('offers the unset steps — review among them — for adding', () => {
     const v = view([{ key: 'stepModels.smoke', value: 'h', source: 'file' }])
-    const keys = unsetStepKeys(v).map((s) => s.key)
+    const offered = unsetStepKeys(v)
+    const keys = offered.map((s) => s.key)
     expect(keys).toContain('stepModels.implement')
     expect(keys).not.toContain('stepModels.smoke')
-    expect(keys).not.toContain('stepModels.review')
+    // The reviewer is chosen here, and reads as a name rather than a config key.
+    expect(offered).toContainEqual({ key: 'stepModels.review', label: 'Review' })
   })
 })
 

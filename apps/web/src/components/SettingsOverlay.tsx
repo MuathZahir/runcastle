@@ -487,9 +487,11 @@ function CustomModelForm({
 /**
  * The collapsed "Advanced — per-step models" section (issue #48). Sparse: only
  * steps that are actually set are listed (each editable + resettable); an
- * "Add override" picker adds one for a not-yet-set step. `review` is never
- * offered. Global-only, so writes carry no projectId — and being machine-wide,
- * these lose to a project's own model, which the body states outright.
+ * "Add override" picker adds one for a not-yet-set step. This is where the
+ * burn's reviewer is put on a different model from its implementers — `review`
+ * is one of the steps the picker offers. Global-only, so writes carry no
+ * projectId — and being machine-wide, these lose to a project's own model,
+ * which the body states outright.
  */
 function AdvancedModels({ query }: { query: QueryResult<SettingsView> }) {
   const utils = trpc.useUtils()
