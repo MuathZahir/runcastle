@@ -18,6 +18,7 @@ import {
   __setAppReadinessTiming,
   activeDriveInfo,
   activeTestDriveFeatureId,
+  branchCommitsAhead,
   burnWorktreePath,
   cleanupBurnWorktree,
   cleanupTempBranches,
@@ -1529,5 +1530,28 @@ describe('burn worktree cleanup (sandcastle teardown flake)', () => {
   it('never throws when there is nothing to clean (or no repo at all)', async () => {
     expect(await cleanupBurnWorktree(repo, branch, fast)).toBe(true)
     expect(await cleanupBurnWorktree(mkTmp('rc-norepo-'), branch, fast)).toBe(true)
+  })
+
+  it('leaves the temp branch and its commits behind — chaining depends on it', async () => {
+    // Every attempt's worktree is now removed host-side (the push-only sync hook
+    // leaves it dirty, so sandcastle preserves rather than removes it). That
+    // must NOT cost the attempt its branch: `preserveChain` records it, the next
+    // attempt forks from it, and conflict resume lands it — all by ref, long
+    // after the directory is gone.
+    const path = await addBurnWorktree()
+    const wt = simpleGit(path)
+    await wt.addConfig('user.email', 'agent@runcastle.dev')
+    await wt.addConfig('user.name', 'Burn Agent')
+    writeFileSync(join(path, 'WORK.md'), 'done\n')
+    await wt.add('.')
+    await wt.commit('ticket(1): work')
+    // ...and left dirty, exactly as the push-only hook leaves it.
+    writeFileSync(join(path, 'WORK.md'), 'more\n')
+
+    expect(await cleanupBurnWorktree(repo, branch, fast)).toBe(true)
+    expect(existsSync(path)).toBe(false)
+
+    expect((await g.branchLocal()).all).toContain(branch)
+    expect(await branchCommitsAhead(repo, 'main', branch)).toHaveLength(1)
   })
 })
