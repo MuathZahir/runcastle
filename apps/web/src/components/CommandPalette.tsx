@@ -189,6 +189,10 @@ export function CommandPalette(props: CommandPaletteProps) {
       activate(activeIndex)
     } else if (e.key === 'Escape') {
       e.preventDefault()
+      // The palette can sit above Dialog-owned overlays such as Settings.
+      // Do not let this same Escape reach Dialog's window listener after the
+      // palette unmounts and focus returns to the overlay underneath it.
+      e.stopPropagation()
       onClose()
     }
   }

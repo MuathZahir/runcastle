@@ -258,7 +258,13 @@ export function Dialog({
         backdropClassName,
       )}
       onMouseDown={(e) => {
-        if (e.target === e.currentTarget) dismiss()
+        if (e.target === e.currentTarget) {
+          // Closing unmounts the dialog and restores the opener's focus. Cancel
+          // this mousedown's later native focus step, or the browser moves focus
+          // from that opener back to <body> after the restore has completed.
+          e.preventDefault()
+          dismiss()
+        }
       }}
     >
       <div
