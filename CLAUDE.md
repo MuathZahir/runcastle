@@ -40,8 +40,9 @@ the correction in `docs/research/CORRECTIONS.md`.
 | `packages/skills`   | `@runcastle/skills`  | Vendored/forked skill packs + burner prompt template (content only). |
 | `apps/web`          | `@runcastle/web`     | Vite + React + tRPC client + TanStack Query. |
 
-`packages/design-system` is deliberately absent from that map: it is the Claude Design
-round-trip surface owned by `.design-sync/`, not a peer package, and nothing imports it.
+Those four are the whole map. `packages/design-system` and the `.design-sync/` Claude
+Design round-trip were retired with the Tailwind adoption — `apps/web/src/theme.css` is
+the single token source now.
 
 `@runcastle/core` is the only package with no IO (except `paths.ts` pure path
 computation and `config.ts` lazy file read inside `loadConfig`). Everything else
