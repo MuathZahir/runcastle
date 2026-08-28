@@ -43,6 +43,21 @@ export function shortSha(sha: string): string {
   return sha.slice(0, 7)
 }
 
+/**
+ * Decimal byte units, matching what the container engines print — a cache the
+ * engine calls 2.4GB must not read as 2.2GB here just because we divided by
+ * 1024. One decimal only below ten of a unit, so sizes stay glanceable.
+ */
+const BYTE_UNITS = ['B', 'kB', 'MB', 'GB', 'TB'] as const
+
+/** A byte count as a short human size: `0 B`, `940 MB`, `2.4 GB`, `12 GB`. */
+export function fmtBytes(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes <= 0) return '0 B'
+  const unit = Math.min(Math.floor(Math.log10(bytes) / 3), BYTE_UNITS.length - 1)
+  const value = bytes / 1000 ** unit
+  return `${value.toFixed(unit > 0 && value < 10 ? 1 : 0)} ${BYTE_UNITS[unit]}`
+}
+
 /** Compact relative time: `now`, `12s`, `4m`, `3h`, `2d`. */
 export function relTime(ts: number, now: number = Date.now()): string {
   const s = Math.max(0, Math.floor((now - ts) / 1000))

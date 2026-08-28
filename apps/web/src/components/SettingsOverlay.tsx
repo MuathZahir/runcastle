@@ -94,7 +94,7 @@ export function SettingsOverlay({
                 Prerequisites for unattended sandbox runs.
               </span>
             </div>
-            <EnableAfkCard />
+            <EnableAfkCard projectId={projectId} />
           </section>
         </div>
       </div>
