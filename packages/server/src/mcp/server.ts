@@ -10,6 +10,7 @@ import type {
   Phase as PhaseT,
   PreparedKey as PreparedKeyT,
   Project,
+  ReviewFindingInput as ReviewFindingInputT,
   RunStatus as RunStatusT,
   ModelEntry,
   SessionKind as SessionKindT,
@@ -24,6 +25,7 @@ import type {
 import {
   Phase,
   PreparedKey,
+  ReviewFindingInput,
   TicketInput,
   TicketStatus,
   WaypointDisposition,
@@ -54,6 +56,7 @@ import {
 } from '../services/features'
 import { emit, emitForSession, emitProject, latestEventTs } from '../services/events'
 import { isOverwritable, recordFinding } from '../services/findings'
+import { reportFinding } from '../services/review-findings'
 import * as git from '../services/git'
 import type { AdrDoc } from '../services/knowledge'
 import { ADR_DIR_REL, listDocs, listLiveAdrs, readCharter, readDoc } from '../services/knowledge'
@@ -933,6 +936,30 @@ export function toolAddTestNote(
   return addNote(ctx, identity.featureId, input.text, 'agent')
 }
 
+export function toolReportFinding(
+  ctx: AppCtx,
+  caller: RunCaller,
+  input: ReviewFindingInputT,
+): { findingId: string; fixTicketSeq: number | null; overCap: boolean } {
+  const identity = requireRunIdentity(ctx, caller, 'report_finding')
+  const reviewTicket = listByFeature(ctx, identity.featureId).find(
+    (ticket) => ticket.kind === 'review' && ticket.status === 'burning',
+  )
+  if (!reviewTicket) {
+    throw new GateError('report_finding requires a burning review ticket on this run’s feature')
+  }
+  const result = reportFinding(ctx, {
+    featureId: identity.featureId,
+    reviewTicket,
+    input,
+  })
+  return {
+    findingId: result.finding.id,
+    fixTicketSeq: result.fixTicket?.seq ?? null,
+    overCap: result.overCap,
+  }
+}
+
 /** What one `retry_drive` attempt observed, as the drive-fix agent reads it. */
 export interface RetryDriveResult {
   /**
@@ -1501,7 +1528,10 @@ const TOOL_AUDIENCES: Record<string, readonly McpAudience[]> = {
   retry_drive: ['drive-fix'],
   // Run-scoped: `requireRunIdentity`.
   review_drive: ['run'],
-  add_test_note: ['run'],
+  report_finding: ['run'],
+  // Retained for compatibility with unidentified/legacy clients, but no
+  // recognized session kind receives it; review runs use report_finding.
+  add_test_note: [],
   // The one tool both halves share — it emits at whatever scope the caller has.
   // Not a run agent, though: `emitForSession` needs a session row.
   record_event: [...FEATURE_KINDS, ...PROJECT_KINDS],
@@ -1688,6 +1718,23 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
       async (args, extra) => {
         const rc = await resolveRunCaller(extra)
         return ok(toolAddTestNote(rc.ctx, rc.caller, args))
+      },
+    )
+  }
+
+  if (wants('report_finding')) {
+    server.registerTool(
+      'report_finding',
+      {
+        title: 'Report a structured review finding',
+        description:
+          'Report one typed finding for the feature under review. Actionable defects mint fix ' +
+          'tickets automatically up to the review cap; observations are retained for the digest.',
+        inputSchema: ReviewFindingInput.shape,
+      },
+      async (args, extra) => {
+        const rc = await resolveRunCaller(extra)
+        return ok(toolReportFinding(rc.ctx, rc.caller, ReviewFindingInput.parse(args)))
       },
     )
   }

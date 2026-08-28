@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url'
 import type {
   AgentRuntime,
   Feature,
+  FixProgress,
   ModelConfig,
   ModelEntry,
   RuncastleConfig,
@@ -332,6 +333,7 @@ const PLACEHOLDERS = [
   // --- ticket-specific (must stay last) ---
   'TICKET_JSON',
   'BLOCKERS',
+  'FIX_NOTES',
 ] as const
 type PlaceholderKey = (typeof PLACEHOLDERS)[number]
 
@@ -347,7 +349,11 @@ export const RUN_CONSTANT_PLACEHOLDERS: readonly PlaceholderKey[] = [
 ]
 
 /** The keys whose value differs between two tickets of the same burn. */
-export const TICKET_SPECIFIC_PLACEHOLDERS: readonly PlaceholderKey[] = ['TICKET_JSON', 'BLOCKERS']
+export const TICKET_SPECIFIC_PLACEHOLDERS: readonly PlaceholderKey[] = [
+  'TICKET_JSON',
+  'BLOCKERS',
+  'FIX_NOTES',
+]
 
 /**
  * Replace every `{{KEY}}` placeholder in a burner template with its value.
@@ -671,6 +677,25 @@ export function buildBlockersBlock(
     return `### ticket ${seq} — ${d.title}\n\n${d.digest.trim()}`
   })
   return [head, '', 'In their own words:', '', ...bodies].join('\n')
+}
+
+/**
+ * The `{{FIX_NOTES}}` block: the one instruction a fix ticket carries that an
+ * ordinary one does not.
+ *
+ * A ticket minted from a review defect is checked against the reviewer's own
+ * repro step and nothing else (decision 8) — there is no second review pass over
+ * the fix, so re-running that step IS the evidence the defect is gone, and the
+ * digest is where the human reads that it was re-run. Ordinary tickets render an
+ * empty block: the standing brief stays byte-identical for the rest of the burn.
+ */
+export function buildFixNotes(ticket: Ticket): string {
+  if (!ticket.originFindingId) return ''
+  return [
+    '### This ticket fixes a review finding',
+    '',
+    "It was minted from a defect the review of this same lap reported, and its `context` carries the reviewer's repro step verbatim. **Before you declare done, re-run that repro step exactly, and say in your digest that you re-ran it and what happened.** Nothing reviews your change afterwards — that repro step is the check, and the verify commands run on top of it.",
+  ].join('\n')
 }
 
 /**
@@ -2326,19 +2351,30 @@ function failedBlockerNote(seqs: readonly number[]): string {
  * ticket would review a half-landed feature. In exchange it is exempt from the
  * cascade — a blocker that failed still lets it start, and its run-digest entry
  * says which ones did (see {@link failedBlockerNote}).
+ *
+ * It is also the one ticket that grows the schedule: every defect it reports
+ * mints a fix ticket as it is reported, so when it goes terminal the feature
+ * holds pending tickets this run never saw. `admitNewTickets` folds them in and
+ * the same run burns them (decision 1) — which is the human click this feature
+ * exists to remove.
  */
 export async function burnTickets(
   ctx: WorkflowCtx,
   tickets: Ticket[],
   execute: (ctx: WorkflowCtx, ticket: Ticket, run: TicketRunContext) => Promise<TicketOutcome>,
   concurrency = 1,
-): Promise<{ done: number; digests: HarvestedDigest[] }> {
+): Promise<{ done: number; admitted: number; digests: HarvestedDigest[] }> {
   const width = Math.max(1, Math.floor(concurrency))
-  const bySeq = indexBySeq(tickets)
-  const status = new Map<number, TicketStatus>(tickets.map((t) => [t.seq, t.status]))
-  const pending = new Set<number>(tickets.filter((t) => t.status === 'pending').map((t) => t.seq))
+  // The scheduler's own view of the run, opened as a COPY of the caller's list
+  // because `admitNewTickets` extends it mid-run; `ctx.tickets` stays the
+  // snapshot the run started from.
+  const scheduled = [...tickets]
+  const bySeq = indexBySeq(scheduled)
+  const status = new Map<number, TicketStatus>(scheduled.map((t) => [t.seq, t.status]))
+  const pending = new Set<number>(scheduled.filter((t) => t.status === 'pending').map((t) => t.seq))
   const inFlight = new Map<number, Promise<void>>()
   const digests: HarvestedDigest[] = []
+  let admitted = 0
 
   // A blocker is satisfied when `done` OR `cancelled` — a human cancelled it
   // because the work is unnecessary, so dependents proceed without it. For a
@@ -2358,7 +2394,47 @@ export async function burnTickets(
    * does not strand the review behind it forever.
    */
   const implementationsSettled = (): boolean =>
-    tickets.every((t) => isReviewTicket(t) || (!pending.has(t.seq) && !inFlight.has(t.seq)))
+    scheduled.every((t) => isReviewTicket(t) || (!pending.has(t.seq) && !inFlight.has(t.seq)))
+
+  /**
+   * Fold in the tickets minted while this run was live — the fix tickets a
+   * review's defects mint as each one is reported (decision 5). They are blocked
+   * by the review ticket alone, so by the time it is terminal they are ready,
+   * and admitting them here is what keeps the whole fix wave inside one `runs`
+   * row: the loop below simply has more to do.
+   *
+   * Called when a review ticket settles, the only moment new rows appear. A
+   * workflow whose ctx cannot re-read the store (a test fake) admits nothing and
+   * schedules exactly as it did before.
+   */
+  const admitNewTickets = (): void => {
+    const added: number[] = []
+    for (const t of ctx.listTickets?.() ?? []) {
+      if (bySeq.has(t.seq)) continue
+      scheduled.push(t)
+      bySeq.set(t.seq, t)
+      status.set(t.seq, t.status)
+      if (t.status !== 'pending') continue
+      pending.add(t.seq)
+      added.push(t.seq)
+    }
+    if (added.length === 0) return
+    admitted += added.length
+    ctx.emitEvent({
+      type: 'burn.admitted',
+      message: `${added.length} ticket(s) minted during this run joined it: ${added.join(', ')}`,
+      data: { seqs: added },
+    })
+  }
+
+  /**
+   * Mirror a fix ticket's own lifecycle onto the finding it was minted from.
+   * Ordinary tickets have no origin and pass straight through.
+   */
+  const mirrorFinding = (t: Ticket, progress: FixProgress, reason?: string): void => {
+    if (!t.originFindingId) return
+    ctx.updateFinding?.(t.originFindingId, progress, reason)
+  }
 
   const readyState = (seq: number): ReadyState => {
     const t = bySeq.get(seq)
@@ -2387,7 +2463,7 @@ export async function burnTickets(
    */
   const harvestDigest = (t: Ticket, digest: string | undefined): void => {
     const failed = isReviewTicket(t)
-      ? tickets.filter((x) => !isReviewTicket(x) && status.get(x.seq) === 'failed').map((x) => x.seq)
+      ? scheduled.filter((x) => !isReviewTicket(x) && status.get(x.seq) === 'failed').map((x) => x.seq)
       : []
     const body = [failed.length > 0 ? failedBlockerNote(failed) : undefined, digest]
       .filter(Boolean)
@@ -2405,6 +2481,7 @@ export async function burnTickets(
     status.set(seq, 'failed')
     if (!t) return
     ctx.updateTicket(t.id, { status: 'failed', error, ...(digest ? { digest } : {}) })
+    mirrorFinding(t, 'failed', error)
     harvestDigest(t, digest)
     if (extra) ctx.emitEvent({ ...extra, ticketId: t.id })
   }
@@ -2414,6 +2491,7 @@ export async function burnTickets(
     if (!t) return
     status.set(seq, 'burning')
     ctx.updateTicket(t.id, { status: 'burning' })
+    mirrorFinding(t, 'fixing')
     ctx.emitEvent({
       type: 'ticket.burning',
       message: `burning ticket ${t.seq}: ${t.title}`,
@@ -2426,6 +2504,7 @@ export async function burnTickets(
     if (outcome.status === 'done') {
       status.set(seq, 'done')
       ctx.updateTicket(t.id, { status: 'done', commits: outcome.commits, digest: outcome.digest })
+      mirrorFinding(t, 'fixed')
       ctx.emitEvent({
         type: 'ticket.done',
         message: `ticket ${t.seq} done — ${outcome.commits.length} commit(s)`,
@@ -2451,6 +2530,10 @@ export async function burnTickets(
         data: { error: outcome.error },
       })
     }
+    // Before this lane leaves the pool, so the loop's next condition check
+    // already sees the fix tickets the review reported on its way through — a
+    // review that is the run's last ticket would otherwise end the loop.
+    if (isReviewTicket(t)) admitNewTickets()
   }
 
   while (pending.size > 0 || inFlight.size > 0) {
@@ -2518,7 +2601,7 @@ export async function burnTickets(
 
   let done = 0
   for (const s of status.values()) if (s === 'done') done += 1
-  return { done, digests }
+  return { done, admitted, digests }
 }
 
 // ---------------------------------------------------------------------------
@@ -2573,7 +2656,6 @@ export async function burnRun(
   // satisfied (`burnTickets` receives the full list).
   const burnable = tickets.filter((t) => t.status !== 'cancelled')
   const cancelled = tickets.length - burnable.length
-  const total = burnable.length
 
   // Auth precheck: container sandboxes (docker/podman) need credentials before
   // we start any container; noSandbox runs the CLI on the already-authed host.
@@ -2619,7 +2701,15 @@ export async function burnRun(
     return { status: 'failed', summary: `dependency cycle: ${path}` }
   }
 
-  const { done, digests } = await burnTickets(ctx, tickets, gateTicketAuth(deps), deps.concurrency)
+  const { done, admitted, digests } = await burnTickets(
+    ctx,
+    tickets,
+    gateTicketAuth(deps),
+    deps.concurrency,
+  )
+  // Fix tickets minted by the review joined the run after it opened, so the
+  // denominator is what the run ended up burning, not what it started with.
+  const total = burnable.length + admitted
   const summary =
     cancelled > 0 ? `${done}/${total} tickets done (${cancelled} cancelled)` : `${done}/${total} tickets done`
   ctx.emitEvent({ type: 'burn.summary', message: summary, data: { done, total, cancelled } })
@@ -3251,6 +3341,7 @@ async function burnTicket(
     GUARD_NOTES: buildGuardNotes(guardInstalled),
     TICKET_JSON: ticketJson,
     BLOCKERS: buildBlockersBlock(ticket.blockedBy, runCtx.digests),
+    FIX_NOTES: buildFixNotes(ticket),
   })
 
   // Dependency setup: detect the repo's install command (or take the config

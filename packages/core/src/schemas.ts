@@ -145,6 +145,58 @@ export type SessionStatus = z.infer<typeof SessionStatus>
 export const TicketKind = z.enum(['implementation', 'review'])
 export type TicketKind = z.infer<typeof TicketKind>
 
+export const FindingKind = z.enum(['defect', 'observation'])
+export type FindingKind = z.infer<typeof FindingKind>
+
+export const FindingSeverity = z.enum(['high', 'medium', 'low'])
+export type FindingSeverity = z.infer<typeof FindingSeverity>
+
+export const FindingStatus = z.enum(['open', 'fixing', 'fixed', 'failed', 'dismissed'])
+export type FindingStatus = z.infer<typeof FindingStatus>
+
+export const FindingOpenReason = z.enum(['over-cap', 'fix-failed'])
+export type FindingOpenReason = z.infer<typeof FindingOpenReason>
+
+/**
+ * The subset of {@link FindingStatus} a defect's own fix ticket drives it
+ * through: it starts burning, then lands or fails. The burn mirrors its fix
+ * ticket's lifecycle onto the finding so the review page counts fixed and open
+ * from one source (decision 6) — the statuses outside this set belong to the
+ * human (`dismissed`) or to the report itself (`open`).
+ */
+export type FixProgress = Extract<FindingStatus, 'fixing' | 'fixed' | 'failed'>
+
+export const ReviewFindingInput = z
+  .object({
+    kind: FindingKind,
+    severity: FindingSeverity,
+    title: z.string().min(1),
+    location: z.string().min(1),
+    citation: z.string().min(1),
+    detail: z.string().min(1),
+    reproStep: z.string().optional(),
+  })
+  .superRefine((finding, ctx) => {
+    if (finding.kind === 'defect' && !finding.reproStep?.trim()) {
+      ctx.addIssue({ code: 'custom', path: ['reproStep'], message: 'defects require a repro step' })
+    }
+  })
+export type ReviewFindingInput = z.infer<typeof ReviewFindingInput>
+
+export const ReviewFinding = ReviewFindingInput.safeExtend({
+  id: z.string(),
+  featureId: z.string(),
+  lap: z.number(),
+  reviewTicketId: z.string(),
+  reproStep: z.string(),
+  status: FindingStatus,
+  openReason: FindingOpenReason.nullable(),
+  failureReason: z.string().nullable(),
+  fixTicketId: z.string().nullable(),
+  createdAt: z.number(),
+})
+export type ReviewFinding = z.infer<typeof ReviewFinding>
+
 /** What an ideation session emits via MCP `emit_tickets`. */
 export const TicketInput = z.object({
   title: z.string(),
@@ -163,6 +215,7 @@ export const TicketInput = z.object({
    * run override.
    */
   model: z.string().optional(),
+  originFindingId: z.string().optional(),
 })
 /**
  * The pre-parse shape, so `kind` stays optional for every caller that builds a

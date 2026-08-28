@@ -1,5 +1,6 @@
 import type { ButtonHTMLAttributes, ReactNode } from 'react'
 import type {
+  FindingSeverity,
   Phase,
   RunStatus,
   SessionStatus,
@@ -176,6 +177,16 @@ export function NoteAuthorChip({ author }: { author: TestNoteAuthor }) {
       {author}
     </span>
   )
+}
+
+/**
+ * How bad the review agent thought a finding was. Display and ordering only —
+ * severity never gates anything (decisions #8), so every level gets a chip: a
+ * list where only the loud rows are labelled reads as if the quiet ones were
+ * unclassified.
+ */
+export function FindingSeverityChip({ severity }: { severity: FindingSeverity }) {
+  return <span className={`chip chip-severity-${severity}`}>{severity}</span>
 }
 
 export function RunStatusChip({ status }: { status: RunStatus }) {

@@ -8,6 +8,8 @@ import type { AppCtx } from '../src/db/types'
 import { listAfter } from '../src/services/events'
 import { createFeatureBranch, ensureTalkWorktree } from '../src/services/git'
 import { getRunRow } from '../src/services/repo'
+import { listByFeature as listFindings, reportFinding } from '../src/services/review-findings'
+import { storeTickets } from '../src/services/tickets'
 import { workflowRegistry } from '../src/workflows/registry'
 import { startRun, workflowClaimsFeatureBranch } from '../src/workflows/runner'
 import { useDataDir } from './helpers/data-dir'
@@ -114,6 +116,62 @@ describe('workflow runner', () => {
     } finally {
       workflowRegistry.delete(captureDef.id)
     }
+  })
+
+  it('re-reads tickets minted mid-run and mirrors a fix ticket onto its finding', async () => {
+    const reviewTicket = storeTickets(ctx, featureId, [
+      {
+        title: 'Review',
+        goal: 'Review the lap',
+        context: '',
+        acceptanceCriteria: [],
+        seams: [],
+        blockedBy: [],
+        kind: 'review',
+      },
+    ])[0]
+
+    let opened = 0
+    let reread: number[] = []
+    const findingDef: WorkflowDef = {
+      id: 'test-findings',
+      async run(wctx) {
+        opened = wctx.tickets.length
+        // What `report_finding` does while the review ticket is burning.
+        const { finding } = reportFinding(ctx, {
+          featureId,
+          reviewTicket,
+          input: {
+            kind: 'defect',
+            severity: 'high',
+            title: 'Save loses edits',
+            location: 'screen: editor',
+            citation: 'spec.md: edits persist',
+            detail: 'The old value returns.',
+            reproStep: 'Edit the title, save, reload.',
+          },
+        })
+        reread = (wctx.listTickets?.() ?? []).map((t) => t.seq)
+        wctx.updateFinding?.(finding.id, 'failed', 'the repro still reproduces')
+        return { status: 'succeeded', summary: 'ok' }
+      },
+    }
+    workflowRegistry.set(findingDef.id, findingDef)
+    try {
+      await (await startRun(ctx, featureId, findingDef.id)).done
+    } finally {
+      workflowRegistry.delete(findingDef.id)
+    }
+
+    // The snapshot the run opened with held only the review; the re-read sees
+    // the fix ticket its finding minted.
+    expect(opened).toBe(1)
+    expect(reread).toEqual([reviewTicket.seq, reviewTicket.seq + 1])
+    expect(listFindings(ctx, featureId)[0]).toMatchObject({
+      status: 'failed',
+      openReason: 'fix-failed',
+      failureReason: 'the repro still reproduces',
+    })
   })
 })
 

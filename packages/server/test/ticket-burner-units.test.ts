@@ -59,6 +59,7 @@ import {
   TICKET_SPECIFIC_PLACEHOLDERS,
   buildBlockersBlock,
   buildDriveNotes,
+  buildFixNotes,
   buildGuardNotes,
   buildLapDigestsBlock,
   buildProjectStandards,
@@ -160,6 +161,7 @@ function promptValues(
     GUARD_NOTES: buildGuardNotes(true),
     TICKET_JSON: buildTicketJson(ticket(4)),
     BLOCKERS: buildBlockersBlock([], []),
+    FIX_NOTES: buildFixNotes(ticket(4)),
     ...overrides,
   }
 }
@@ -282,6 +284,23 @@ describe('renderTicketPrompt', () => {
 
   it('buildDocsDigest notes when no canonical docs are present', () => {
     expect(buildDocsDigest([])).toMatch(/No canonical feature docs/i)
+  })
+
+  /**
+   * A fix ticket's only extra obligation (decision 8): nothing reviews it
+   * afterwards, so it re-runs the reviewer's repro step itself and says so.
+   */
+  it('makes a fix ticket re-run its finding’s repro step, and leaves other tickets alone', () => {
+    const template = readFileSync(burnerTemplatePath(), 'utf8')
+    const fix = ticket(7, [], { originFindingId: 'finding_1' })
+
+    const fixPrompt = renderTicketPrompt(template, promptValues({ FIX_NOTES: buildFixNotes(fix) }))
+    expect(fixPrompt).toMatch(/re-run that repro step exactly/i)
+    expect(fixPrompt).toMatch(/say in your digest that you re-ran it/i)
+
+    const ordinary = renderTicketPrompt(template, promptValues())
+    expect(buildFixNotes(ticket(4))).toBe('')
+    expect(ordinary).not.toMatch(/repro step/i)
   })
 })
 

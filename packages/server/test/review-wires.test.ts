@@ -9,7 +9,7 @@ import { runs } from '../src/db/schema'
 import type { AppCtx } from '../src/db/types'
 import { GateError } from '../src/errors'
 import { createSessionRow } from '../src/launcher/sessions'
-import { toolAddTestNote, toolReviewDrive } from '../src/mcp/server'
+import { toolAddTestNote, toolReportFinding, toolReviewDrive } from '../src/mcp/server'
 import { createNativePtySession } from '../src/pty/pty'
 import { listAfter } from '../src/services/events'
 import { recordFinding } from '../src/services/findings'
@@ -22,7 +22,7 @@ import {
 import { openProject } from '../src/services/projects'
 import { rowToRun } from '../src/services/repo'
 import { addNote, listByFeature as listNotes, promoteNote } from '../src/services/test-notes'
-import { listByFeature as listTickets } from '../src/services/tickets'
+import { listByFeature as listTickets, storeTickets, updateTicket } from '../src/services/tickets'
 import { createCallerFactory } from '../src/trpc/context'
 import { appRouter } from '../src/trpc/router'
 import { makeTestCtx } from './helpers/db'
@@ -174,6 +174,41 @@ describe('the review agent wires', () => {
 
     await drive('stop')
     expect(await createCallerFactory(appRouter)(ctx).feature.driveInfo()).toBeNull()
+  })
+
+  it('reports a structured finding under the burning review ticket', () => {
+    const reviewTicket = storeTickets(ctx, feature.id, [
+      {
+        title: 'Review',
+        goal: 'Review the feature',
+        context: '',
+        acceptanceCriteria: [],
+        seams: [],
+        blockedBy: [],
+        kind: 'review',
+      },
+    ])[0]
+    updateTicket(ctx, reviewTicket.id, { status: 'burning' })
+
+    const result = toolReportFinding(ctx, { runId: run.id }, {
+      kind: 'defect',
+      severity: 'high',
+      title: 'Save loses edits',
+      location: 'screen: editor; click Save',
+      citation: 'spec.md requires edits to persist',
+      detail: 'The old value returns after saving.',
+      reproStep: 'Edit the title, click Save, and reload.',
+    })
+
+    expect(result).toEqual({
+      findingId: expect.any(String),
+      fixTicketSeq: 2,
+      overCap: false,
+    })
+    expect(listTickets(ctx, feature.id)[1]).toMatchObject({
+      blockedBy: [reviewTicket.seq],
+      originFindingId: result.findingId,
+    })
   })
 
   it('still denies a dirty tree, and leaves the checkout where it was', async () => {

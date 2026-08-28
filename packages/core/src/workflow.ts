@@ -1,4 +1,4 @@
-import type { Feature, Project, Ticket } from './schemas'
+import type { Feature, FixProgress, Project, Ticket } from './schemas'
 
 /**
  * The workflow contract (CONTEXT.md decision #10, SPEC §1). Workflows
@@ -34,6 +34,21 @@ export interface WorkflowCtx {
       conflictFiles?: string[] | null
     },
   ): void
+  /**
+   * Re-read this feature's tickets from the store. `tickets` above is the set
+   * the run opened with, and a review's findings mint their fix tickets WHILE
+   * the run is live — so a scheduler that only ever sees the opening snapshot
+   * leaves them pending for a human to burn by hand. Optional: a workflow that
+   * never mints tickets mid-run needs it, and neither does a test fake.
+   */
+  listTickets?(): Ticket[]
+  /**
+   * Mirror a fix ticket's lifecycle onto the review finding it was minted from
+   * (`ticket.originFindingId`), so found/fixed/open is counted from findings
+   * joined to their tickets rather than from two ledgers that can disagree.
+   * `reason` is the ticket's error and belongs to `failed` alone.
+   */
+  updateFinding?(findingId: string, progress: FixProgress, reason?: string): void
   /**
    * Per-run payload wired by the runner (SPEC §13.1). The research workflow reads
    * the `Waypoint` it was started on from here; the ticket-burner ignores it.

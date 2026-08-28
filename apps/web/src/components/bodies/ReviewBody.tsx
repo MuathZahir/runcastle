@@ -1,5 +1,5 @@
 import { useRef, useState, type RefObject } from 'react'
-import { fmtClock, type TestNote } from '@runcastle/core'
+import { fmtClock, type ReviewFinding, type TestNote } from '@runcastle/core'
 import { Button, CheckLine, LapSections, NoteAuthorChip, SectionTitle } from '../../ui'
 import { trpc } from '../../trpc'
 import type { FeatureFull, SettingsView } from '../../lib/api'
@@ -12,6 +12,7 @@ import {
   driveFailure,
   driveWheel,
   groupByLap,
+  headline,
   lapAccount,
   latestRun,
   ONE_TERMINAL_WARNING,
@@ -31,6 +32,7 @@ import { useResolveConflict } from '../../lib/use-resolve-conflict'
 import { useToast } from '../../lib/toast'
 import { ErrorBoundary } from '../ErrorBoundary'
 import { Markdown } from '../Markdown'
+import { FindingsSummaryBlock, OpenDefectsCard } from '../ReviewFindings'
 import { SessionPanel } from '../SessionPanel'
 import { TerminalView } from '../TerminalView'
 import { WalkthroughPlayer, type SeekWalkthrough } from '../WalkthroughPlayer'
@@ -95,10 +97,18 @@ export function ReviewBody({
   // be a straight misattribution.
   const ownDrive = drive.data?.featureId === feature.id ? drive.data : undefined
   const dryRun = drive.data?.dryRun ?? false
-  // Read once here and handed down: the summary counts the review agent's
-  // findings out of these same rows the panel lists, so a count that disagreed
-  // with the list below it would be unrepresentable.
+  // The human's own test-drive notes — read once here and handed down to the
+  // panel. Nothing but the human writes these any more: the review agent reports
+  // structured findings instead (`report_finding`), which is the query below.
   const notes = trpc.notes.list.useQuery(
+    { featureId: feature.id },
+    { refetchInterval: useLivePoll() },
+  )
+  // What the review agent found, typed and counted server-side — the counts line
+  // and the open-defects list below both come out of this one read, and the
+  // next-step bar reads the same query key, so the button that offers to fix N
+  // defects and the list of them cannot disagree.
+  const findings = trpc.findings.listByFeature.useQuery(
     { featureId: feature.id },
     { refetchInterval: useLivePoll() },
   )
@@ -106,7 +116,7 @@ export function ReviewBody({
     tickets,
     run,
     commitCount: commits.data?.count,
-    notes: notes.data,
+    findings: findings.data?.findings.length,
   })
   // What the lap delivered, in the agents' own prose (decisions #8) — the thing
   // the human came to this screen to read, so it leads the card the figures are
@@ -171,6 +181,10 @@ export function ReviewBody({
       <div className="review-card">
         <SectionTitle>Summary</SectionTitle>
         {account && <LapAccountBlock account={account} />}
+        <FindingsSummaryBlock
+          summary={findings.data?.summary}
+          findings={findings.data?.findings ?? []}
+        />
         {checks.map((row) => (
           <CheckLine key={row.key} row={row} />
         ))}
@@ -203,6 +217,12 @@ export function ReviewBody({
         {ownDrive?.purpose === 'review' && <StopReviewDrive featureId={feature.id} />}
       </div>
       </div>
+
+      <OpenDefects
+        featureId={feature.id}
+        open={findings.data?.openDefects ?? []}
+        readonly={readonly}
+      />
 
       {laterLaps && <PlannedNextLapCard lap={feature.lap} scope={laterLaps} readonly={readonly} />}
 
@@ -263,6 +283,38 @@ function LapAccountBlock({ account }: { account: LapAccount }) {
         </>
       )}
     </div>
+  )
+}
+
+/**
+ * Dismiss, wired: the card itself is hook-free (so the rendering is testable and
+ * the counts come from one read), and this is the mutation behind its per-row
+ * button. Dismissing is how the open count reaches zero without a burn — a
+ * defect the human judged shippable is a decision, not a fix (decisions #7).
+ */
+function OpenDefects({
+  featureId,
+  open,
+  readonly,
+}: {
+  featureId: string
+  open: ReviewFinding[]
+  readonly: boolean
+}) {
+  const utils = trpc.useUtils()
+  const toast = useToast()
+  const dismiss = trpc.findings.dismiss.useMutation({
+    onSuccess: () => void utils.findings.listByFeature.invalidate({ featureId }),
+    onError: (e) => toast.push(e.message),
+  })
+
+  return (
+    <OpenDefectsCard
+      open={open}
+      busy={dismiss.isPending}
+      readonly={readonly}
+      onDismiss={(findingId) => dismiss.mutate({ findingId })}
+    />
   )
 }
 
@@ -495,7 +547,7 @@ function NotesPanel({
             </span>
           ))}
 
-        <span className="note-text">{note.text}</span>
+        <NoteText text={note.text} />
 
         <NoteAuthorChip author={note.author} />
 
@@ -577,6 +629,31 @@ function NotesPanel({
         </div>
       )}
     </div>
+  )
+}
+
+/**
+ * A note, compact (decisions #4): its first line on the row, the rest one click
+ * away. The human's own notes get this too — the panel stops being a wall in
+ * every case, and the capture, edit and promote flows are untouched.
+ *
+ * A note that already fits on its row renders as the plain text it always was,
+ * with no disclosure to click: most notes are one short sentence, and a triangle
+ * that opens nothing is worse than no triangle.
+ */
+function NoteText({ text }: { text: string }) {
+  const { head, rest } = headline(text)
+  return (
+    <span className="note-text">
+      {rest ? (
+        <details className="note-more">
+          <summary>{head}</summary>
+          <div className="note-rest">{rest}</div>
+        </details>
+      ) : (
+        text
+      )}
+    </span>
   )
 }
 

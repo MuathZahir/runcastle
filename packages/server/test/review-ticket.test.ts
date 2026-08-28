@@ -392,7 +392,7 @@ describe('what the review agent is handed', () => {
     expect(prompt).not.toMatch(/only agent in the burn that can answer/)
     // The two wires and the report paths are the contract with the burner.
     expect(prompt).toContain('review_drive')
-    expect(prompt).toContain('add_test_note')
+    expect(prompt).toContain('report_finding')
     expect(prompt).toContain('/data/reviews/tkt_3/DIGEST.md')
     expect(prompt).toContain('/data/reviews/tkt_3/BLOCKED.md')
     // The recording is aimed at the file the artifact routes serve, and is
@@ -401,6 +401,30 @@ describe('what the review agent is handed', () => {
     expect(prompt).toContain('agent-browser record stop')
     // Gates mode runs the project's own commands rather than guessing at them.
     expect(prompt).toContain('bun run typecheck')
+  })
+
+  /**
+   * The findings channel (decisions 1, 2, 8): typed reports the run can act on,
+   * not prose in the human's own notes ledger — and no closing summary note,
+   * because the digest IS the summary and observations render under it.
+   */
+  it('sends every finding through report_finding, typed, worst first', () => {
+    const template = readFileSync(reviewTemplatePath(), 'utf8')
+
+    expect(template).toContain('mcp__runcastle__report_finding')
+    expect(template).not.toContain('add_test_note')
+    expect(template).not.toMatch(/summary note/i)
+
+    // What separates the two kinds, and which way to fall when unsure.
+    expect(template).toMatch(/`defect` is what a fix ticket can act on/i)
+    expect(template).toMatch(/`observation` is everything else/i)
+    expect(template).toMatch(/unsure → observation/i)
+    // The severity scale, and that it never gates.
+    expect(template).toMatch(/severity is `high` when an acceptance criterion is unmet/i)
+    expect(template).toContain('"high" | "medium" | "low"')
+    // Order decides what the cap reaches.
+    expect(template).toMatch(/report defects highest severity first/i)
+    expect(template).toMatch(/only the first 8/i)
   })
 
   it('tells the agent where the recording is optional and where it is not', () => {
