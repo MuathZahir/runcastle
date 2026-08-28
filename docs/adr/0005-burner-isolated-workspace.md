@@ -1,6 +1,8 @@
 # ADR-0005: Burner isolated workspace — keep the agent's hot path off the bind mount
 
 - **Status:** accepted (2026-07-20)
+- **Amended:** 2026-08-28 — post-commit hook is push-only; the mounted worktree
+  is removed host-side after the run (feature post-commit-sync-once)
 - **Extends:** ADR-0004 (which fixed the pnpm store mount but left the worktree
   bind mount — "an environment problem" — to the environment). This ADR brings
   that problem back into the code, because the environmental answer had the
@@ -56,8 +58,8 @@ sync commits back to the mounted worktree automatically.**
    - The value was originally `updateInstead`, but push-to-checkout resolves
      the branch's checkout via the worktree path registered in the parent
      repo's metadata — the HOST path (`C:\...`), which does not exist inside
-     the container — so every push was refused. `ignore` moves the ref only;
-     the post-commit hook then hard-resets the mounted checkout itself.
+     the container — so every push was refused. `ignore` moves the ref only,
+     which is all anything downstream reads.
 
    The hook's steps:
    - `git config --global --add safe.directory '*'` — bind-mounted paths are
@@ -68,13 +70,35 @@ sync commits back to the mounted worktree automatically.**
    - `git clone /home/agent/workspace /home/agent/repo` — one bulk transfer
      across the mount instead of a per-file tax on every later operation.
    - A `post-commit` hook in the clone pushes `HEAD:<tempBranch>` back to the
-     workspace on **every commit**, then runs
-     `git -C /home/agent/workspace reset --hard <tempBranch>` so the mounted
-     working tree tracks the ref (sandcastle's end-of-run dirty check stays
-     clean — no preserved-worktree pile-up). Sync requires zero agent
+     workspace on **every commit**, and stops there. Sync requires zero agent
      discipline; if the agent commits, the host sees it. The hook unsets
      `GIT_DIR`/`GIT_WORK_TREE`/`GIT_INDEX_FILE` first — git exports them to
-     hook processes, and they would pin the `-C` reset to the clone's repo.
+     hook processes, and they would otherwise point the push at whatever repo
+     the committing command was addressing. A failed push sleeps briefly and
+     pushes once more; a second failure prints one stderr line
+     (`runcastle: commit sync failed (will retry on your next commit); do not
+     re-commit`) and exits 0. Git ignores a post-commit hook's status, so the
+     commit is never at risk, and the next commit's push of `HEAD` carries
+     everything not yet synced.
+
+     The hook does **not** reset the mounted working tree. That reset stats
+     every tracked file across the bind mount — 15–90s per commit, ~19–25
+     minutes over a feature's 28–37 commits — for a working tree nothing
+     reads: commit collection takes the ref, later iterations clone or fetch
+     through refs, landing merges the ref, and `BLOCKED.md`/`DIGEST.md` are
+     untracked files the agent copies in. The push stays synchronous because
+     the hook runs inside a container sandcastle removes seconds after the
+     agent exits; a backgrounded push would put the last commit at risk with
+     nothing on the host to reconcile against.
+
+     The mounted worktree is therefore always dirty at sandcastle's end-of-run
+     check, so sandcastle **preserves** it and never attempts its own
+     `worktree remove`. Runcastle removes it host-side with
+     `cleanupBurnWorktree` on every exit path of a ticket attempt and of a
+     resolver pass — after the `BLOCKED.md`/`DIGEST.md` harvest that reads out
+     of the preserved path, and before landing. Removing a worktree never
+     touches refs, so the temp branch (and with it attempt chaining and
+     conflict resume) survives untouched.
    - The deps install runs **inside the clone**, where pnpm's hardlinks work
      (ADR-0004) and `node_modules` materializes on native FS.
 
@@ -89,6 +113,13 @@ sync commits back to the mounted worktree automatically.**
 - The burn hot path (install, typecheck, tests) runs at native speed on every
   host OS with no user setup. WSL becomes an optional power-user choice, not a
   prerequisite; the bootstrap wizard and db migration are not built.
+- Syncing a commit costs one pack push and nothing else, so ADR-0008's "commit
+  every green slice" is cheap to obey — where before, agents visibly fought the
+  hook (one wrapped every commit in `timeout`, another re-committed after a
+  stall). Two side effects, both wanted: sandcastle's own `worktree remove` no
+  longer runs on the happy path, so the Windows `Directory not empty` teardown
+  flake does not arise there; and the preserved worktrees that used to
+  accumulate under `.sandcastle/worktrees/` are now cleaned up.
 - Uncommitted work in the clone is not synced back. That matches the product
   contract — commits are the deliverable (`interpretRunResult`), and the
   transcript, sandcastle log, and captured sessions cover debugging.

@@ -133,13 +133,15 @@ prompt text demonstrably could not.**
   fallback is to run only the touched test files and say so, NOT to serialise.
   If that proves wrong in practice, `burnGuard: false` reverts to prompt-only.
 - Committing every green slice multiplies the one operation still crossing the
-  host mount under ADR-0005 (the post-commit push + reset). `reset --hard`
-  syncs only differing files, so more frequent commits mean smaller syncs and
-  roughly constant total bytes; what is added is ~3–5 extra round-trips per
-  ticket, against an average 27 min lost per failed attempt. Judged clearly
-  net-positive, but no longer free. If measurement shows otherwise, deferring
-  the reset to once per run needs a sandcastle teardown hook, which does not
-  exist (`SandboxHooks` has only `onWorktreeReady`/`onSandboxReady`).
+  host mount under ADR-0005 (the post-commit push). It was originally a push
+  *plus* a `reset --hard` of the mounted working tree, which stats every tracked
+  file across the mount — 15–90s a commit, ~19–25 min over a feature — and that
+  reset is gone: the hook is push-only, so a synced commit now costs one pack
+  write. The mounted worktree is left dirty as a result, which means sandcastle
+  preserves it rather than removing it, and runcastle removes it host-side with
+  `cleanupBurnWorktree` once the run is over — no sandcastle teardown hook
+  required (`SandboxHooks` has only `onWorktreeReady`/`onSandboxReady`, and none
+  is needed).
 
 ## Rejected
 
