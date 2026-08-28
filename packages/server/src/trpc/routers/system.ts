@@ -1,4 +1,4 @@
-import { resolveBurnCacheMode } from '@runcastle/core'
+import { type RuncastleConfig, resolveBurnCacheMode } from '@runcastle/core'
 import * as z from 'zod'
 import { createSystemExec } from '../../doctor/system-exec'
 import { InvalidInputError } from '../../errors'
@@ -33,7 +33,7 @@ const projectInput = z.object({ projectId: z.string() })
  * is not one that has volumes at all. `resolveBurnCacheMode` already reads
  * `off` for that case; this is the same fact in the shape the commands need.
  */
-function burnCacheEngine(sandbox: string): BurnCacheEngine | null {
+function burnCacheEngine(sandbox: RuncastleConfig['sandbox']): BurnCacheEngine | null {
   return sandbox === 'docker' || sandbox === 'podman' ? sandbox : null
 }
 
@@ -53,7 +53,11 @@ export const systemRouter = router({
       const engine = burnCacheEngine(ctx.config.sandbox)
       const sizeBytes =
         mode === 'volume' && engine
-          ? await burnCacheVolumeSize({ engine, projectId: input.projectId, exec: createSystemExec() })
+          ? await burnCacheVolumeSize({
+              engine,
+              projectId: input.projectId,
+              exec: createSystemExec(),
+            })
           : null
       return { mode, engine, volumeName: burnCacheVolumeName(input.projectId), sizeBytes }
     }),
