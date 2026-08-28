@@ -121,6 +121,7 @@ const STEP_LABEL: Record<string, string> = {
   converge: 'Converge',
   research: 'Research',
   implement: 'Implement',
+  review: 'Review',
   prepare: 'Prepare',
   smoke: 'Smoke',
 }

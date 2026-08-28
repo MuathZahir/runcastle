@@ -11,9 +11,15 @@ import * as z from 'zod'
 /**
  * The pipeline steps a model can be chosen for (issue #48). Each interactive
  * session kind (`ideation`/`qa`/`waypoint`/`converge`) and each AFK agent
- * (`research`, `implement`) plus the scripted `smoke` maps to one step. `review`
- * is intentionally RESERVED and undefined — the review workflow does not yet
- * exist, so it is never exposed as an override.
+ * (`research`, `implement`, `review`) plus the scripted `smoke` maps to one
+ * step.
+ *
+ * `review` is the burn's review pass — the agent that runs host-side once every
+ * implementation ticket is terminal. It is a step of its own rather than a share
+ * of `implement` because the model that reads a finished branch is usually not
+ * the model that wrote it: a reviewer is chosen for judgement, an implementer
+ * for throughput, and forcing them onto one setting meant paying the reviewer's
+ * price on every ticket or the implementer's on the review.
  */
 export const MODEL_STEPS = [
   'ideation',
@@ -23,6 +29,7 @@ export const MODEL_STEPS = [
   'revisit',
   'research',
   'implement',
+  'review',
   'prepare',
   'project',
   'smoke',

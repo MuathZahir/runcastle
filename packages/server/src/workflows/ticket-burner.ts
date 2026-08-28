@@ -241,7 +241,7 @@ export interface BurnDeps {
  * no per-ticket branch, no container, no merge-queue entry — and everything
  * below that reads `kind` reads it through here.
  */
-export function isReviewTicket(ticket: Ticket): boolean {
+export function isReviewTicket(ticket: Pick<Ticket, 'kind'>): boolean {
   return ticket.kind === 'review'
 }
 
@@ -3876,6 +3876,12 @@ async function burnTicket(
  * change it on the card. A ticket with no assignment resolves through the
  * unchanged chain, run override (smoke) included.
  *
+ * Which step of that chain it resolves is the ticket's KIND: a review ticket is
+ * the `review` step, every other ticket the `implement` step. That is the whole
+ * of the review model chooser — the reviewer reads a finished branch and the
+ * implementers write it, so they are separately settable, and a machine with no
+ * `review` override simply inherits the default model exactly as before.
+ *
  * Pure, and exported so the assignment is observable without a container: the
  * runtime it yields is what decides which CLI and which auth key the burn uses.
  */
@@ -3883,9 +3889,10 @@ export function resolveTicketModel(
   config: ModelConfig,
   project: { model?: string | null } | null | undefined,
   runOverride: string | null | undefined,
-  ticket: Pick<Ticket, 'model'>,
+  ticket: Pick<Ticket, 'model' | 'kind'>,
 ): ModelEntry {
-  return resolveModelEntry('implement', config, project, ticket.model ?? runOverride)
+  const step = isReviewTicket(ticket) ? 'review' : 'implement'
+  return resolveModelEntry(step, config, project, ticket.model ?? runOverride)
 }
 
 /**
@@ -3897,9 +3904,10 @@ export function resolveTicketModel(
  * ticket's execute closure, so landings on the feature branch never overlap.
  *
  * The run-level `model`/`token` are the run's default pair — what the auth
- * precheck reports on and what every unassigned ticket burns with; a ticket that
- * carries its own assignment re-resolves both, because a model on the other
- * runtime authenticates with the other key.
+ * precheck reports on and what every unassigned implementation ticket burns
+ * with; a ticket that carries its own assignment, or that is a review (the
+ * `review` step, see {@link resolveTicketModel}), re-resolves both, because a
+ * model on the other runtime authenticates with the other key.
  */
 function resolveBurnDeps(ctx: WorkflowCtx): BurnDeps {
   const config = loadConfig()

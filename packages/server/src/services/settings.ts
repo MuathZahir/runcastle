@@ -297,9 +297,9 @@ function rawStepModels(fileRaw: Record<string, unknown>): Record<string, unknown
 }
 
 /**
- * The per-step model fields (issue #48), one per `ModelStep` (never `review`).
- * Global-only: a step present in the config file reports source `file`,
- * otherwise the schema default (only `smoke` has one) with source `default`.
+ * The per-step model fields (issue #48), one per `ModelStep`. Global-only: a
+ * step present in the config file reports source `file`, otherwise the schema
+ * default (only `smoke` has one) with source `default`.
  */
 function stepModelFields(fileRaw: Record<string, unknown>): SettingField[] {
   const set = rawStepModels(fileRaw)
