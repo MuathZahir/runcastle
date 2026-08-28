@@ -1,0 +1,16 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "dist",
+    // Declared per package, not in the shared base: `tsBuildInfoFile` resolves
+    // against the config that declares it, so a base-level value would point
+    // every project at one colliding file. Inside the gitignored `dist/`
+    // because the slot sync's `git clean -fd` keeps ignored files and deletes
+    // untracked ones — TypeScript's own default (beside the config) would be
+    // swept away before every burn.
+    "tsBuildInfoFile": "dist/tsconfig.tsbuildinfo"
+  },
+  "include": ["src"],
+  "exclude": ["src/**/*.test.ts"]
+}

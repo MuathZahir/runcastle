@@ -1,8 +1,14 @@
-import { defineConfig } from 'vitest/config'
+import { configDefaults, defineConfig } from 'vitest/config'
 
 export default defineConfig({
   test: {
     include: ['packages/*/test/**/*.test.ts', 'apps/*/test/**/*.test.ts', 'services/*/test/**/*.test.ts'],
+    // Fixture repos under `test/fixtures/` carry their OWN test files — the
+    // burn-cache probe fixtures exist precisely to be typechecked and tested by
+    // their own toolchain (vitest 3, jest) inside a burn container. `include`
+    // above reaches them, so they have to be excluded here or this suite tries
+    // to run another project's tests with the wrong runner and no deps.
+    exclude: [...configDefaults.exclude, '**/test/fixtures/**'],
     // Strips inherited RUNCASTLE_* state before anything imports core's paths.
     setupFiles: ['./vitest.setup.ts'],
     server: {

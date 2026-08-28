@@ -1,0 +1,4 @@
+{
+  "typecheck": "npx tsc -b",
+  "test": "npx jest"
+}

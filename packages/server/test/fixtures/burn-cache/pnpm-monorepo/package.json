@@ -1,0 +1,16 @@
+{
+  "name": "burn-cache-fixture-pnpm-monorepo",
+  "version": "0.0.0",
+  "private": true,
+  "packageManager": "pnpm@10.15.0",
+  "scripts": {
+    "typecheck": "tsc -b",
+    "test": "vitest run",
+    "build": "turbo run build"
+  },
+  "devDependencies": {
+    "turbo": "2.10.12",
+    "typescript": "5.9.3",
+    "vitest": "3.2.7"
+  }
+}
