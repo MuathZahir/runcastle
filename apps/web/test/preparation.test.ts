@@ -8,8 +8,8 @@ import {
   relativeAge,
   unverifiedDriveKeys,
   verificationBadge,
+  type FindingLike,
 } from '../src/lib/settings'
-import type { FindingLike } from '../src/lib/settings'
 import type { SettingField, SettingsView } from '../src/lib/api'
 
 /**

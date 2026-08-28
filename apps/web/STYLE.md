@@ -55,11 +55,15 @@ Single dark theme. There is no light mode and no `dark:` variant.
 
 ## Primitives
 
-`src/ui.tsx` holds the shared primitives. Styling is Tailwind utility classes
-written inline in the TSX, with variants composed by the local `cx()` helper — no
-`@apply` component classes, and no runtime styling dependency (`clsx`, `cva`,
-`tailwind-merge` are all deliberately absent). `@utility` in `theme.css` is the
-escape hatch for what utilities genuinely cannot express, kept to a minimum.
+`src/ui.tsx` holds the shared primitives. Build one there rather than styling the
+same thing twice in two surfaces.
+
+How they are to be styled (decision 5): Tailwind utility classes written inline
+in the TSX, variants composed by a local `cx()` helper. No `@apply` component
+classes — that just grows a second semantic stylesheet to replace the one being
+retired — and no runtime styling dependency; `clsx`, `cva` and `tailwind-merge`
+are deliberately absent. `@utility` in `theme.css` is the escape hatch for what
+utilities genuinely cannot express, kept to a minimum.
 
 <!-- Catalogue filled in by the primitives ticket: Button, SectionTitle, DimLine,
      EmptyState, CheckLine, PhaseTag, chips, dots, LapSections, Dialog, Field,

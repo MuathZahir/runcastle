@@ -1,8 +1,7 @@
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
-import { BurnCacheRow, ImageBuildAction } from '../src/components/EnableAfkCard'
-import type { Probe } from '../src/components/EnableAfkCard'
+import { BurnCacheRow, ImageBuildAction, type Probe } from '../src/components/EnableAfkCard'
 
 /** Shaped like the real `sandcastle-image` probe: tier 2, AFK-only, an error. */
 const probe = (status: 'missing' | 'stale' | 'ok', fix?: string): Probe => ({
