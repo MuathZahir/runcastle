@@ -1,0 +1,23 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022"],
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "strict": true,
+    "composite": true,
+    "declaration": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "rootDir": "src",
+    "outDir": "dist",
+    // Inside the gitignored `dist/`: the slot sync runs `git clean -fd`, which
+    // keeps ignored files and deletes untracked ones — a `.tsbuildinfo` at the
+    // repo root would be swept away before every burn. TypeScript's own default
+    // is the config's directory, so this has to be said.
+    "tsBuildInfoFile": "dist/tsconfig.tsbuildinfo",
+    "types": ["jest"]
+  },
+  "include": ["src"],
+  "exclude": ["src/**/*.test.ts"]
+}

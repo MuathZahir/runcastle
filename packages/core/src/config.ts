@@ -324,6 +324,21 @@ export const RuncastleConfig = z.preprocess(
      * `noSandbox` (no container, nothing to isolate).
      */
     burnWorkspace: z.enum(['auto', 'mounted', 'isolated']).default('auto'),
+    /**
+     * Whether burns share a persistent per-project cache volume. `volume`
+     * (default) mounts one Docker/Podman named volume per project holding the
+     * package-manager store and one persistent checkout per burn-concurrency
+     * slot, so install, `.tsbuildinfo`, the test runner's cache and turbo's
+     * cache all survive the container rebuild that happens between iterations.
+     * `off` is today's behaviour byte for byte: a fresh clone and a cold install
+     * every time.
+     *
+     * Config-file + env only, like {@link burnWorkspace} — a burn-internals
+     * escape hatch, not a setting the overlay offers. Non-container sandboxes
+     * resolve to `off` on their own; go through {@link resolveBurnCacheMode}
+     * rather than reading this field.
+     */
+    burnCache: z.enum(['volume', 'off']).default('volume'),
   }),
 )
 export type RuncastleConfig = z.infer<typeof RuncastleConfig>
@@ -345,6 +360,22 @@ export const DEFAULT_SANDBOX_IMAGE = 'sandcastle:runcastle'
  */
 export function resolveSandboxImage(config: Pick<RuncastleConfig, 'sandboxImage'>): string {
   return config.sandboxImage ?? DEFAULT_SANDBOX_IMAGE
+}
+
+/** The sandboxes whose engine can hold a named volume for the burn cache. */
+const BURN_CACHE_SANDBOXES: readonly RuncastleConfig['sandbox'][] = ['docker', 'podman']
+
+/**
+ * The burn cache mode actually in force. `off` whenever the sandbox is not one
+ * whose engine owns named volumes — `noSandbox` has no container to mount into,
+ * and a provider that is neither docker nor podman has no volume vocabulary at
+ * all, so both degrade to today's behaviour rather than failing. Pure; the
+ * single reader of `config.burnCache`.
+ */
+export function resolveBurnCacheMode(
+  config: Pick<RuncastleConfig, 'burnCache' | 'sandbox'>,
+): RuncastleConfig['burnCache'] {
+  return BURN_CACHE_SANDBOXES.includes(config.sandbox) ? config.burnCache : 'off'
 }
 
 /**

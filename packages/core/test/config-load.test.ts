@@ -83,6 +83,12 @@ describe('loadConfig — numeric env overrides', () => {
     expect(loadConfig({ RUNCASTLE_BURN_GUARD: '' }).burnGuard).toBe(true)
     expect(loadConfig({ RUNCASTLE_BURN_GUARD: '0' }).burnGuard).toBe(false)
   })
+
+  it('reads the burn cache kill switch from the environment', () => {
+    expect(loadConfig({}).burnCache).toBe('volume')
+    expect(loadConfig({ RUNCASTLE_BURN_CACHE: 'off' }).burnCache).toBe('off')
+    expect(() => loadConfig({ RUNCASTLE_BURN_CACHE: 'nope' })).toThrow()
+  })
 })
 
 /**
