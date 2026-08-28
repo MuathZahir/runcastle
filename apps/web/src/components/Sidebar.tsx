@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import type { RefObject } from 'react'
 import { trpc } from '../trpc'
 import { DimLine } from '../ui'
 import { useToast } from '../lib/toast'
@@ -75,7 +76,10 @@ export function Sidebar({
   // persisted: it is a glance at a lane, not a standing choice about the rail.
   const [showAllShipped, setShowAllShipped] = useState(false)
   // The feature awaiting delete confirmation (decision #8), or null.
-  const [pendingDelete, setPendingDelete] = useState<FeatureListItem | null>(null)
+  const [pendingDelete, setPendingDelete] = useState<{
+    feature: FeatureListItem
+    returnFocusRef: RefObject<HTMLButtonElement | null>
+  } | null>(null)
 
   const list = trpc.feature.list.useQuery({ projectId }, { refetchInterval: useLivePoll() })
   // Same query key the preparation workspace polls — one fetch, two readers.
@@ -141,7 +145,12 @@ export function Sidebar({
     // Delete is non-shipped only (shipped features are merged — archive covers
     // them; the server refuses them too). Opens a destructive confirm dialog.
     if (f.status !== 'shipped') {
-      actions.push({ key: 'delete', label: 'Delete…', danger: true, onSelect: () => setPendingDelete(f) })
+      actions.push({
+        key: 'delete',
+        label: 'Delete…',
+        danger: true,
+        onSelect: (returnFocusRef) => setPendingDelete({ feature: f, returnFocusRef }),
+      })
     }
     return actions
   }
@@ -245,11 +254,12 @@ export function Sidebar({
 
       {pendingDelete && (
         <DeleteFeatureDialog
-          title={pendingDelete.title}
-          slug={pendingDelete.slug}
+          title={pendingDelete.feature.title}
+          slug={pendingDelete.feature.slug}
           busy={del.isPending}
-          onConfirm={() => del.mutate({ featureId: pendingDelete.id })}
+          onConfirm={() => del.mutate({ featureId: pendingDelete.feature.id })}
           onCancel={() => setPendingDelete(null)}
+          returnFocusRef={pendingDelete.returnFocusRef}
         />
       )}
     </nav>

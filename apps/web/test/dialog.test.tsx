@@ -1,8 +1,11 @@
 // @vitest-environment happy-dom
 import { useState } from 'react'
+import type { RefObject } from 'react'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'vitest'
 import { Dialog } from '../src/ui'
+import { DeleteFeatureDialog } from '../src/components/DeleteFeatureDialog'
+import { FeatureActionsMenu } from '../src/components/FeatureActionsMenu'
 
 /**
  * The mechanics five overlays used to each own a copy of (apps/web/STYLE.md).
@@ -98,6 +101,40 @@ describe('Dialog', () => {
     fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' })
 
     expect(document.activeElement).toBe(opener)
+  })
+
+  it('returns focus to feature actions when Delete opened from its transient menu item', () => {
+    function DeleteHarness() {
+      const [returnFocusRef, setReturnFocusRef] = useState<RefObject<HTMLButtonElement | null> | null>(null)
+      return (
+        <>
+          <FeatureActionsMenu
+            actions={[{ key: 'delete', label: 'Delete…', onSelect: setReturnFocusRef }]}
+          />
+          {returnFocusRef && (
+            <DeleteFeatureDialog
+              title="Draft feature"
+              slug="draft-feature"
+              busy={false}
+              onConfirm={() => {}}
+              onCancel={() => setReturnFocusRef(null)}
+              returnFocusRef={returnFocusRef}
+            />
+          )}
+        </>
+      )
+    }
+
+    render(<DeleteHarness />)
+    const actions = screen.getByRole('button', { name: 'feature actions' })
+    fireEvent.click(actions)
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Delete…' }))
+
+    expect(document.activeElement).toBe(screen.getByPlaceholderText('draft-feature'))
+    fireEvent.keyDown(document.activeElement!, { key: 'Escape' })
+
+    expect(screen.queryByRole('dialog')).toBeNull()
+    expect(document.activeElement).toBe(actions)
   })
 
   it('closes on a mousedown that lands on the backdrop itself', () => {

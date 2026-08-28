@@ -169,6 +169,7 @@ export function Dialog({
   dirty = false,
   discardPrompt = 'Discard what you have typed?',
   initialFocusRef,
+  returnFocusRef,
   inline = false,
   backdropClassName,
   className,
@@ -187,6 +188,8 @@ export function Dialog({
   discardPrompt?: string
   /** Focused on open. Defaults to the panel, and never steals from `autoFocus`. */
   initialFocusRef?: RefObject<HTMLElement | null>
+  /** Stable fallback when the element that opened the dialog is transient. */
+  returnFocusRef?: RefObject<HTMLElement | null>
   /**
    * Render in place instead of portalling, for a "dialog" that is really a
    * region: the feature-creation form fills the workspace column and leaves the
@@ -214,7 +217,8 @@ export function Dialog({
       ;(initialFocusRef?.current ?? panel).focus()
     }
     return () => {
-      if (opener instanceof HTMLElement && opener.isConnected) opener.focus()
+      const target = opener instanceof HTMLElement && opener.isConnected ? opener : returnFocusRef?.current
+      if (target?.isConnected) target.focus()
     }
     // Deliberately keyed on `open` alone: `initialFocusRef` is read once, at
     // open, and re-running this would re-grab the focus mid-dialog.
