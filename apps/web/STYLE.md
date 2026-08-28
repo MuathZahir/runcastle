@@ -73,6 +73,11 @@ utilities genuinely cannot express, kept to a minimum.
 | `SectionTitle` | 11px uppercase tracked label over a section. | — |
 | `DimLine` | One dim mono line — an inline empty or error state for a tight spot. | — |
 | `EmptyState` | A designed blank area: quiet icon chip, plain-language title, one-line hint, optional action. | `compact` |
+| `Dialog` | The one modal shell — see [Dialog](#dialog) below. | `size`: `sm` 460 · `md` 620 · `lg` 780 · plus `inline` |
+| `Field` | A control with its label, help and error wired to it by id. The child control is cloned with the generated `id` and `aria-describedby`; an `id` the caller set wins. The error carries `role="alert"`. | — |
+| `Card` | A bounded surface — `bg-panel`, hairline border, `rounded-lg`, `p-4` — with an optional `header` slot. | — |
+| `Section` | `SectionTitle` + `Card`. A **separate export**, not a `Card` title prop (the spec left the choice open): the title belongs outside the card's border, which is where every `SectionTitle` in the app already sits. | — |
+| `Kbd` | One key in a keyboard hint. | — |
 | `CheckLine` | One review figure — tone dot, label, value — from a `CheckRow`. | tone comes from the row: `ok` · `warn` · `danger` · `idle` |
 | `LapSections<T>` | Rows under `Lap N` headers. Current lap is an open `<section>`, earlier laps a `<details>` with a caret. Suppressed entirely below lap 2 (ADR-0010 §4). | — |
 | `PhaseTag` | A feature's phase, in the phase's own colour. | one per `Phase` |
@@ -97,6 +102,42 @@ Two more house rules the primitives already follow:
   so Tailwind's content scanner can see it. `` `text-ph-${phase}` `` generates
   nothing. No `@utility` escape hatch was needed for any of them.
 
+### Dialog
+
+Every overlay in the app runs its mechanics through `Dialog`. Do not hand-roll
+another one — these five were each a copy, and the copies had already drifted
+(one closed on `click`, the rest on `mousedown`; one asked before discarding
+typed prose, the rest threw it away; none restored focus).
+
+What it owns: a portal into `<body>`, `role="dialog"` + `aria-modal`, Escape,
+backdrop dismissal, focus on open and focus restore on close, and — with
+`dirty` — the discard question before a dismissal throws typed prose away.
+
+Three of those look like details and are not:
+
+- **Escape only answers when the focus is inside the dialog.** The palette and
+  the settings pane can be open *on top of* another dialog, and focus is the only
+  thing that says which one is on top. A dialog that answered unconditionally
+  would close underneath the one being looked at. `null` / `<body>` counts as
+  inside — that is where a click on its own backdrop leaves the focus.
+- **The backdrop dismisses on `mousedown`, not `click`.** A drag that starts
+  inside the panel and releases outside it is a text selection, not a dismissal.
+- **Focus is not stolen from a child that asked for it.** `Dialog` focuses the
+  panel on open only when nothing inside it already has the focus, so an
+  `autoFocus` control (or `initialFocusRef`) still wins.
+
+`className` lands on the panel and `backdropClassName` on the backdrop, which is
+how the five existing overlays keep their present look while their flow feature
+waits its turn: they pass `peek`, `peek settings`, `nf-card` and so on, and those
+unlayered legacy rules beat the utilities underneath.
+
+`inline` is the one escape from the portal, and there is exactly one consumer:
+`FormOverlay`, which fills the workspace column rather than the viewport and
+leaves the sidebar live beside it. Portalling that one to `<body>` would blank
+the workspace behind a backdrop and cover navigation that still works, so it
+renders in place and claims no `aria-modal` — content around it genuinely *is*
+reachable. Reach for `inline` only when that is true of your dialog too.
+
 ### Legacy hook classes
 
 Some primitives still carry one pre-Tailwind class name. It is a **hook, not
@@ -114,6 +155,52 @@ also still exists — `.section-title` and `.dim-line` do, because raw spans
 elsewhere in the app carry those names — it wins over the utilities beside it.
 **When your flow migrates one of those surfaces, delete the rule and the hook
 together**, and check whether the base rule has any raw callers left.
+
+## Concern modules
+
+`lib/feature-ui.ts` and `components/Workspace.tsx` used to be one 2,378-line
+view-model and one 1,007-line component that every phase's logic passed through.
+They are now directories, one module per concern, so two flow features touching
+different phases touch different files. **Find the module your flow owns and edit
+that** — a change that lands back in the barrel or in `Workspace.tsx` is the
+collision this split exists to prevent.
+
+`src/lib/feature-ui/` — the derivations. `feature-ui.ts` is a barrel that
+re-exports all of it, so the 21 existing importers are unchanged; new code may
+import a module directly, and removing the barrel is a later cleanup.
+
+| Module | What it derives |
+|---|---|
+| `creation.ts` | The cutting form: default base branch, slug preview, duplicate-title warning. |
+| `pipeline.ts` | Phase vocabulary — order, glyphs, labels, tips — and the stepper's steps. |
+| `sidebar.ts` | Feature rows: needs-me, row chips, ticket progress, sort, triage lanes and their caps. |
+| `gates.ts` | Gates and what blocks them: merge/ticket conflict kickoffs, overrides, check-in and kickoff trouble, session activity. |
+| `drive.ts` | Test drive: the open-app URL and its wait state, drive failures, the drive wheel. |
+| `review.ts` | Review figures — run/commit/review rows, `CheckRow`/`CheckTone`, outcome, finding counts and reasons. |
+| `laps.ts` | Lap grouping: lap accounts, `groupByLap`, ticket model chips, the lap banner. |
+| `summary.ts` | Docs and the merge confirmation: headline, spec path, deferred scope, `mergeSummary`. |
+| `map.ts` | Mapped features: `map.md` sections, waypoints and their groups. |
+| `session.ts` | Session lifecycle: done state, live-session blockers, shipped QA sessions, shipped-at. |
+| `internal.ts` | Shared private helpers. **Not** re-exported by the barrel. |
+
+`src/lib/feature-ui/next-step/` — the next-step bar. `index.ts` keeps the exact
+`nextStep` signature, resolves the shared preamble, and dispatches to one
+resolver per phase; `types.ts` holds `ActionKind`/`NextStep`/`NextAction` and
+`resolver-input.ts` the `ResolverInput` every resolver takes. One file per phase:
+`draft.ts`, `ideation.ts`, `spec.ts`, `tickets.ts`, `implementation.ts`,
+`review.ts`, `shipped.ts`.
+
+`src/components/workspace/` — the pieces `Workspace.tsx` used to inline. It keeps
+the phase-body dispatch and the action switch; these moved out:
+
+| File | What it is |
+|---|---|
+| `NextStepBar.tsx` | The next-step bar: the one primary action, its secondaries, reason prompts. |
+| `PipelineStepper.tsx` | The phase stepper across the top of a feature. |
+| `LapBannerRow.tsx` | From lap 2 on, the line saying which lap this is and what put the feature on it. |
+| `FeaturePanes.tsx` | The crash and unrecognised-phase panes — a feature view that cannot do its job. |
+| `use-resume-failed-alert.ts` | Raises a banner on a new `session.resume_failed` event. |
+| `copy-text.ts` | Copy to the clipboard, with the toast either way. |
 
 ## Testing
 
@@ -136,7 +223,7 @@ on line 1 of a `.tsx` file and use `@testing-library/react`. The environment is
 **not** switched on globally — the existing suite keeps running in `node`
 unchanged — and because `globals` is off there is no auto-cleanup, so a tier-2
 file unmounts its own renders (`afterEach(cleanup)`). Pattern:
-`test/dom-environment.test.tsx`.
+`test/dom-environment.test.tsx`, and `test/dialog.test.tsx` for the real thing.
 
 Reach for tier 2 only when tier 1 cannot answer the question. It costs a DOM per
 file.
