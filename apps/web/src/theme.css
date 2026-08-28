@@ -1,0 +1,119 @@
+/* runcastle web — the theme (decision 3).
+   THIS FILE IS THE SINGLE TOKEN SOURCE. Every design token lives in the
+   `@theme` block below; `styles.css` only aliases them (see its LEGACY ALIASES
+   header) and is deleted flow by flow. Add a token here, never there.
+   See apps/web/STYLE.md.
+
+   Preflight is deliberately omitted. The documented "add Tailwind to a project
+   with existing CSS" import below pulls in the theme and utilities layers but
+   not the base reset, because the reset would silently change the legacy sheet:
+   `ol, ul { list-style: none }` alone kills every markdown bullet (`.md ul` at
+   styles.css sets margin/padding only, and `.md li::marker` exists to colour
+   the marker preflight would remove). The feature's contract is that legacy
+   rules render unchanged, so the reset waits until the legacy sheet is gone.
+
+   `source("../")` scopes content detection to apps/web instead of letting
+   automatic detection walk up to the monorepo root and scan every package. */
+@layer theme, base, components, utilities;
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css" layer(utilities) source("../");
+
+/* `static` emits every token below even when no utility references it: the
+   legacy alias block reads these through `var()` from a stylesheet Tailwind
+   does not process, so it cannot see those uses and would tree-shake them. */
+@theme static {
+  /* Tailwind's own palette is not part of this design language — the ramp
+     below is. Dropping it keeps `bg-red-500` from ever resolving. */
+  --color-*: initial;
+
+  /* ---- surfaces (near-black, layered by hairlines not shadows) ---- */
+  --color-bg: #090b10; /* app canvas — the darkest layer */
+  --color-panel: #0e1117; /* raised bars (title bar, toolbars, next-step) */
+  --color-panel-2: #0b0e14; /* sunken rails (sidebar, inspector) */
+  --color-panel-3: #12151d; /* hover / elevated row */
+  --color-panel-inset: #07080b; /* deepest inset (inputs, event stream) */
+
+  /* ---- hairlines (the only separators; 1px) ---- */
+  --color-hairline: #1c2230; /* standard 1px divider / control border */
+  --color-hairline-soft: #151a26; /* fainter internal divider */
+  --color-hairline-strong: #2a3242; /* hover border */
+
+  /* ---- text ramp (high -> low emphasis) ---- */
+  --color-text: #dde3ed; /* primary text, active identifiers */
+  --color-text-2: #96a0b0; /* secondary text, labels */
+  --color-text-3: #5f6a7a; /* tertiary / dim, timestamps, glyphs */
+  --color-text-4: #3a4354; /* faintest — separators, empty ticks */
+
+  /* ---- violet accent (exactly one solid accent surface per view) ---- */
+  --color-accent: #7c6cf6; /* solid button / active markers */
+  --color-accent-hi: #a49bff; /* hover / links / headings */
+  --color-accent-2: #8f80f8; /* solid button hover */
+  --color-accent-ink: #0d0722; /* text on a solid accent surface */
+  --color-accent-soft: #161329; /* faint violet wash (hover on violet ghost) */
+  --color-accent-line: #3d3670; /* violet-tinted hairline */
+
+  /* ---- phase palette (feature lifecycle — the semantic spine) ---- */
+  --color-ph-ideation: #8b7cf8;
+  --color-ph-spec: #8a94a2;
+  --color-ph-tickets: #d7a94a;
+  --color-ph-implementation: #f0883e;
+  --color-ph-review: #58a6ff;
+  --color-ph-shipped: #3fb950;
+
+  /* ---- status ---- */
+  --color-danger: #f4594e; /* error / destructive */
+  --color-needs: #d7a94a; /* needs-attention / warning (amber) */
+  --color-warn: var(--color-needs); /* the name warning rules ask for */
+  --color-ok: #3fb950; /* success / healthy */
+  --color-drive: #58a6ff; /* test-drive blue */
+
+  /* ---- type ---- */
+  --font-mono: "JetBrains Mono Variable", "Cascadia Code", Consolas, ui-monospace, monospace;
+  --font-sans: "Inter Variable", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+
+  /* ---- type ramp: 11 / 12 / 14 / 16 / 20 (decision 4; 10px is gone) ----
+     11px is for uppercase micro-labels only. Tailwind's larger default steps
+     are dropped so the ramp is exactly these five. */
+  --text-*: initial;
+  --text-xs: 11px;
+  --text-xs--line-height: 1.45;
+  --text-sm: 12px;
+  --text-sm--line-height: 1.5;
+  --text-base: 14px;
+  --text-base--line-height: 1.5;
+  --text-lg: 16px;
+  --text-lg--line-height: 1.4;
+  --text-xl: 20px;
+  --text-xl--line-height: 1.3;
+
+  /* ---- radii: 6 / 8 / 12 (decision 4, one notch up from 5 / 7 / 10) ---- */
+  --radius-*: initial;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-pill: 999px;
+
+  /* ---- elevation (floating surfaces only — content stays flat) ----
+     Tailwind's generic shadow scale is dropped: this app has exactly two. */
+  --shadow-*: initial;
+  --shadow-menu: 0 8px 28px -10px rgba(0, 0, 0, 0.7), 0 2px 8px -2px rgba(0, 0, 0, 0.5);
+  --shadow-overlay: 0 24px 70px -24px rgba(0, 0, 0, 0.85), 0 8px 24px -12px rgba(0, 0, 0, 0.6);
+
+  /* ---- motion ---- Suffixed `-app` so they sit beside Tailwind's own
+     `ease-out` rather than redefining what that utility means. */
+  --ease-app: cubic-bezier(0.22, 0.61, 0.24, 1); /* decelerate */
+  --ease-out-app: cubic-bezier(0.16, 1, 0.3, 1);
+
+  /* ---- metrics ---- Not in a Tailwind namespace, so no utility is generated:
+     these are read with `var()` / arbitrary values (`h-(--control-h)`).
+     Spacing stays on Tailwind's default 4px scale — no custom tokens. */
+  --control-h: 32px; /* decision 4, was 28px */
+  --sidebar-w: 252px;
+  --inspector-w: 300px;
+  --maprail-w: 300px;
+  --content-max: 1060px; /* centered column for document-style phase bodies */
+  --dur-1: 0.12s; /* micro (hover, color) */
+  --dur-2: 0.19s; /* small (rows, chips) */
+  --dur-3: 0.32s; /* content enter */
+  --ring: 0 0 0 2px var(--color-bg), 0 0 0 4px rgba(124, 108, 246, 0.5);
+}
