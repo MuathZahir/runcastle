@@ -15,7 +15,7 @@ import {
 } from '../lib/settings'
 import { AGENT_RUNTIMES, mergeModelEntries, type ModelEntry } from '@runcastle/core'
 import type { QueryResult, SettingsView } from '../lib/api'
-import { DimLine } from '../ui'
+import { Dialog, DimLine } from '../ui'
 import { EnableAfkCard } from './EnableAfkCard'
 
 /**
@@ -40,65 +40,53 @@ export function SettingsOverlay({
   const prep = trpc.project.prep.useQuery({ projectId })
   const findings = prep.data?.findings ?? []
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose()
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [onClose])
-
   return (
-    <div
-      className="peek-backdrop"
-      // mousedown, not click: a click that STARTS inside the panel and ends on
-      // the backdrop (selecting a field value and releasing outside) is not a
-      // dismissal — the same guard FormOverlay makes.
-      onMouseDown={(e) => {
-        if (e.target === e.currentTarget) onClose()
-      }}
+    <Dialog
+      open
+      onClose={onClose}
+      label="Settings"
+      backdropClassName="peek-backdrop"
+      className="peek settings"
     >
-      <div className="peek settings" role="dialog" aria-modal="true" aria-label="Settings">
-        <div className="peek-head">
-          <span className="settings-title">Settings</span>
-          <button className="peek-close" onClick={onClose} aria-label="Close (Esc)">
-            ✕
-          </button>
-        </div>
-        <div className="peek-body settings-body">
-          {/* There is no Save button and there never was — values persist the
-              moment a field is left. Nothing said so, which made the whole
-              persistence model unknowable (findings F17.7 / F25.4). */}
-          <div className="settings-autosave">
-            Changes save automatically — there is no Save button. A field commits when you leave it
-            (Enter to commit, Escape to revert), and a dropdown the moment you pick.
-          </div>
-          <Section
-            title="Global"
-            hint="Machine-wide defaults for every project."
-            query={globals}
-            rowsOf={globalRows}
-          />
-          <AdvancedModels query={globals} />
-          <Section
-            title="This project"
-            hint="Overrides that apply only to the current project."
-            query={scoped}
-            rowsOf={(view) => projectRows(view, findings)}
-            projectId={projectId}
-          />
-          <section className="settings-section">
-            <div className="settings-section-head">
-              <h3 className="settings-section-title">AFK burns</h3>
-              <span className="settings-section-hint">
-                Prerequisites for unattended sandbox runs.
-              </span>
-            </div>
-            <EnableAfkCard projectId={projectId} />
-          </section>
-        </div>
+      <div className="peek-head">
+        <span className="settings-title">Settings</span>
+        <button className="peek-close" onClick={onClose} aria-label="Close (Esc)">
+          ✕
+        </button>
       </div>
-    </div>
+      <div className="peek-body settings-body">
+        {/* There is no Save button and there never was — values persist the
+            moment a field is left. Nothing said so, which made the whole
+            persistence model unknowable (findings F17.7 / F25.4). */}
+        <div className="settings-autosave">
+          Changes save automatically — there is no Save button. A field commits when you leave it
+          (Enter to commit, Escape to revert), and a dropdown the moment you pick.
+        </div>
+        <Section
+          title="Global"
+          hint="Machine-wide defaults for every project."
+          query={globals}
+          rowsOf={globalRows}
+        />
+        <AdvancedModels query={globals} />
+        <Section
+          title="This project"
+          hint="Overrides that apply only to the current project."
+          query={scoped}
+          rowsOf={(view) => projectRows(view, findings)}
+          projectId={projectId}
+        />
+        <section className="settings-section">
+          <div className="settings-section-head">
+            <h3 className="settings-section-title">AFK burns</h3>
+            <span className="settings-section-hint">
+              Prerequisites for unattended sandbox runs.
+            </span>
+          </div>
+          <EnableAfkCard projectId={projectId} />
+        </section>
+      </div>
+    </Dialog>
   )
 }
 

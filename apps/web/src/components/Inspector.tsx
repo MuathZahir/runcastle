@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { nextPhase, parsePhase, type EventRow, type Phase } from '@runcastle/core'
 import { trpc } from '../trpc'
 import { useToast } from '../lib/toast'
@@ -290,6 +290,7 @@ function basename(relPath: string): string {
 
 function Knowledge({ featureId, docs }: { featureId: string; docs: DocSummary[] }) {
   const [peek, setPeek] = useState<{ relPath: string; title: string } | null>(null)
+  const peekOpenerRef = useRef<HTMLButtonElement>(null)
   return (
     <section className="insp-section">
       <div className="insp-cap">Knowledge</div>
@@ -303,7 +304,10 @@ function Knowledge({ featureId, docs }: { featureId: string; docs: DocSummary[] 
             <li key={d.relPath}>
               <button
                 className="doc-link"
-                onClick={() => setPeek({ relPath: d.relPath, title: d.title })}
+                onClick={(event) => {
+                  peekOpenerRef.current = event.currentTarget
+                  setPeek({ relPath: d.relPath, title: d.title })
+                }}
               >
                 <span className="doc-link-icon">
                   <IconDoc size={13} />
@@ -320,6 +324,7 @@ function Knowledge({ featureId, docs }: { featureId: string; docs: DocSummary[] 
           featureId={featureId}
           relPath={peek.relPath}
           title={peek.title}
+          returnFocusRef={peekOpenerRef}
           onClose={() => setPeek(null)}
         />
       )}

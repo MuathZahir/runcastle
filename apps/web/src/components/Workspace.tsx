@@ -1,5 +1,5 @@
-import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react'
-import { parsePhase, type EventRow, type Phase } from '@runcastle/core'
+import { useState } from 'react'
+import { parsePhase, type Phase } from '@runcastle/core'
 import { trpc } from '../trpc'
 import { useEventLog } from '../lib/events'
 import { useLivePoll } from '../lib/live'
@@ -27,15 +27,8 @@ import {
   unresolvedMergeConflict,
   type ActionKind,
   type DraftBaseMissing,
-  type LapBanner,
   type MergeConflictState,
-  type NextAction,
-  type NextStep,
-  type PipelineStep,
-  type ReasonPrompt,
 } from '../lib/feature-ui'
-import { LAP_KICKOFF, lapExplainer } from '../lib/vocabulary'
-import { relTime } from '../lib/format'
 import { useResolveConflict } from '../lib/use-resolve-conflict'
 import { IconBranch } from '../icons'
 import { AddressNotesDialog } from './AddressNotesDialog'
@@ -46,6 +39,14 @@ import { ReviewBody } from './bodies/ReviewBody'
 import { ShippedBody } from './bodies/ShippedBody'
 import { TicketsBody } from './bodies/TicketsBody'
 import { RunBody } from './bodies/RunBody'
+import { FeatureCrash, UnrecognizedPhase } from './workspace/FeaturePanes'
+import { LapBannerRow } from './workspace/LapBannerRow'
+import { NextStepBar } from './workspace/NextStepBar'
+import { PipelineStepper } from './workspace/PipelineStepper'
+import { copyText } from './workspace/copy-text'
+import { useResumeFailedAlert } from './workspace/use-resume-failed-alert'
+
+export { FeatureCrash } from './workspace/FeaturePanes'
 
 /**
  * The pipeline-first workspace (app-redesign). A selected feature fills the
@@ -643,32 +644,6 @@ export function Workspace({
   )
 }
 
-/**
- * The lap banner (decisions.md #6) — from lap 2 on, under the workspace header:
- * which lap this is, what put the feature on it, and what the lap before it
- * landed. The user reported not knowing there WAS another lap; every surface
- * below this line is lap-scoped, so the line that says which lap comes first.
- *
- * Never rendered on lap 1 (the caller checks): no iteration ceremony on a
- * feature that merges first try, the same stance as the pipeline's lap chip.
- */
-function LapBannerRow({ banner }: { banner: LapBanner }) {
-  return (
-    <div className="ws-lap" role="note">
-      <span className="ws-lap-tag" title={lapExplainer(banner.lap)}>
-        LAP {banner.lap}
-      </span>
-      <div className="ws-lap-body">
-        <div className="ws-lap-why">{LAP_KICKOFF}</div>
-        <div className="ws-lap-facts">
-          {banner.startedAt !== null && <span>started {relTime(banner.startedAt)} ago</span>}
-          <span>{banner.landed}</span>
-        </div>
-      </div>
-    </div>
-  )
-}
-
 function PhaseBody({
   effective,
   full,
@@ -717,291 +692,4 @@ function PhaseBody({
     case 'shipped':
       return <ShippedBody full={full} />
   }
-}
-
-function PipelineStepper({
-  steps,
-  lap,
-  onView,
-}: {
-  steps: PipelineStep[]
-  lap: number
-  onView: (phase: Phase) => void
-}) {
-  return (
-    <div className="pipeline">
-      {steps.map((s, i) => (
-        <Fragment key={s.phase}>
-          <button
-            className={`pstep is-${s.state}${s.isViewed ? ' is-viewed' : ''}${s.clickable ? ' is-clickable' : ''}`}
-            title={s.tip}
-            disabled={!s.clickable}
-            onClick={() => s.clickable && onView(s.phase)}
-          >
-            <span className="pstep-dot" />
-            <span className="pstep-label">{s.label}</span>
-          </button>
-          {i < steps.length - 1 && (
-            <span className={`pconn${s.state === 'done' ? ' is-done' : ''}`} />
-          )}
-        </Fragment>
-      ))}
-      {/* A feature merged on lap 1 looks exactly like the old linear flow
-          (ADR-0010 §4) — the chip only appears once Iterate has looped. */}
-      {lap > 1 && (
-        <span className="pipeline-lap" title={lapExplainer(lap)}>
-          Lap {lap}
-        </span>
-      )}
-    </div>
-  )
-}
-
-function NextStepBar({
-  ns,
-  guidance,
-  busy,
-  onAction,
-}: {
-  ns: NextStep
-  guidance: boolean
-  busy: boolean
-  onAction: (kind: ActionKind, reason?: string) => void
-}) {
-  // An action carrying a `reason` prompt (Override & converge…) doesn't fire on
-  // click: it replaces the buttons with an inline input until the human commits
-  // or cancels.
-  const [asking, setAsking] = useState<{ kind: ActionKind; prompt: ReasonPrompt } | null>(null)
-  const [reason, setReason] = useState('')
-  const stopAsking = () => {
-    setAsking(null)
-    setReason('')
-  }
-  const click = (a: NextAction) =>
-    a.reason ? setAsking({ kind: a.kind, prompt: a.reason }) : onAction(a.kind)
-
-  const kickClass =
-    ns.kick === 'IN PROGRESS'
-      ? 'is-progress'
-      : ns.kick === 'SHIPPED'
-        ? 'is-shipped'
-        : ns.kick === 'WAITING'
-          ? 'is-waiting'
-          : ''
-
-  return (
-    <div className="nextstep">
-      {ns.busy && <span className="spin-ring nextstep-spin" />}
-      <div className="nextstep-main">
-        <div className={`nextstep-kick ${kickClass}`}>{ns.kick}</div>
-        <div className="nextstep-title">{ns.title}</div>
-        {guidance && <div className="nextstep-desc">{ns.desc}</div>}
-        {/* Fog is shown, never enforced — it warns beside the action without
-            gating it (ADR-0001 §13.6). */}
-        {ns.fog && (
-          <div className="nextstep-fog" role="note">
-            <span className="nextstep-fog-icon" aria-hidden="true">
-              ⚑
-            </span>
-            <span>Fog remains — still not specified: {ns.fog}. You can converge anyway.</span>
-          </div>
-        )}
-        {/* Shown, never enforced (decision 7): the drive keys nothing has ever
-            proven, said where the eye already is before the click. The button
-            beside it stays live. */}
-        {ns.warning && (
-          <div className="nextstep-warn" role="note">
-            <span className="nextstep-warn-icon" aria-hidden="true">
-              ⚑
-            </span>
-            <span>{ns.warning}</span>
-          </div>
-        )}
-      </div>
-      <div className="nextstep-actions">
-        {asking ? (
-          <div className="nextstep-override">
-            <input
-              className="override-input"
-              placeholder={asking.prompt.placeholder}
-              value={reason}
-              autoFocus
-              onChange={(e) => setReason(e.target.value)}
-            />
-            <Button
-              variant="solid"
-              className="btn-xs"
-              disabled={busy || !reason.trim()}
-              onClick={() => {
-                onAction(asking.kind, reason.trim())
-                stopAsking()
-              }}
-            >
-              {asking.prompt.submitLabel}
-            </Button>
-            <Button variant="ghost" className="btn-xs" onClick={stopAsking}>
-              Cancel
-            </Button>
-          </div>
-        ) : (
-          <>
-            {/* `a.disabled` is the reason the server would refuse this action in
-                the current state — shown as the tooltip beside the dead button,
-                so the user reads why instead of hunting for a vanished verb. */}
-            {ns.secondary.map((a, i) => (
-              <Button
-                key={i}
-                variant="ghost"
-                className="btn-xs"
-                disabled={busy || !!a.disabled}
-                title={a.disabled}
-                onClick={() => click(a)}
-              >
-                {a.label}
-              </Button>
-            ))}
-            {ns.primary && (
-              <Button
-                variant={ns.primary.danger ? 'danger' : 'solid'}
-                disabled={busy || !!ns.primary.disabled}
-                title={ns.primary.disabled}
-                onClick={() => click(ns.primary!)}
-              >
-                {busy ? 'Working…' : ns.primary.label}
-              </Button>
-            )}
-          </>
-        )}
-      </div>
-    </div>
-  )
-}
-
-/**
- * Surface `session.resume_failed` events prominently (a Resume attempt died
- * before going live — previously just a silent flicker-and-relabel). Watches
- * the feature's event log and raises a banner for ~8s on each NEW failure;
- * history replayed on mount is skipped so stale failures don't re-alert. The
- * event also stays in the inspector's activity feed permanently.
- */
-function useResumeFailedAlert(featureId: string): { message: string | null; dismiss: () => void } {
-  const events = useEventLog(featureId)
-  const [message, setMessage] = useState<string | null>(null)
-  // null until the first batch lands — everything in that batch is history.
-  const lastSeenRef = useRef<number | null>(null)
-
-  useEffect(() => {
-    if (events.length === 0) return
-    const maxId = events[events.length - 1].id
-    if (lastSeenRef.current === null) {
-      lastSeenRef.current = maxId
-      return
-    }
-    const cutoff = lastSeenRef.current
-    lastSeenRef.current = maxId
-    const failed = events.filter(
-      (e: EventRow) => e.id > cutoff && e.type === 'session.resume_failed',
-    )
-    const last = failed[failed.length - 1]
-    if (last) setMessage(last.message || 'session resume failed — relaunch to continue')
-  }, [events])
-
-  useEffect(() => {
-    if (!message) return
-    const t = setTimeout(() => setMessage(null), 8000)
-    return () => clearTimeout(t)
-  }, [message])
-
-  return { message, dismiss: () => setMessage(null) }
-}
-
-/**
- * The shared face of a feature view that cannot do its job (findings F19): what
- * went wrong in words, and the exact detail line to paste into a bug report.
- * `details` is deliberately one copyable string — the two cases differ in what
- * they know, not in how the user gets it out.
- */
-function BrokenFeaturePane({
-  tag,
-  details,
-  children,
-}: {
-  tag: string
-  details: string
-  children: ReactNode
-}) {
-  const toast = useToast()
-  return (
-    <>
-      <div className="ws-banner is-broken" role="alert">
-        <span className="ws-banner-tag">{tag}</span>
-        <span>{children}</span>
-      </div>
-      <div className="ws-body">
-        <div className="ws-body-inner">
-          <div className="broken-detail">
-            <DimLine>{details}</DimLine>
-            <Button variant="ghost" className="btn-xs" onClick={() => copyText(details, toast)}>
-              Copy details
-            </Button>
-          </div>
-        </div>
-      </div>
-    </>
-  )
-}
-
-/**
- * What the feature view shows when it crashed outright — the fallback for the
- * error boundary ProjectShell mounts around it (findings F19). Containment is
- * the point: the sidebar, the other features and every other project keep
- * working, and this pane carries the feature id + the error so the crash is
- * reportable rather than mysterious. No title row: a crash this deep means the
- * feature's own data is not trustworthy enough to render.
- */
-export function FeatureCrash({ featureId, error }: { featureId: string; error: Error }) {
-  return (
-    <section className="workspace">
-      <BrokenFeaturePane
-        tag="BROKEN"
-        details={`feature ${featureId} — ${error.name}: ${error.message}`}
-      >
-        This feature couldn't be rendered. Everything else still works.
-      </BrokenFeaturePane>
-    </section>
-  )
-}
-
-/**
- * The degraded feature view for a phase this build does not recognize (findings
- * F19). Read-only by construction: it offers no pipeline, no next step and no
- * action, because every one of those is derived from a phase we cannot place.
- * What it does offer is the bad value itself and the feature's identity, so the
- * user can report it or fix the row instead of staring at a blank page.
- */
-function UnrecognizedPhase({ feature }: { feature: FeatureFull['feature'] }) {
-  return (
-    <section className="workspace">
-      <div className="ws-head">
-        <div className="ws-title-row">
-          <span className="tag">unknown</span>
-          <span className="ws-title">{feature.title}</span>
-        </div>
-      </div>
-      <BrokenFeaturePane
-        tag="UNRECOGNIZED"
-        details={`feature ${feature.id} (${feature.slug}) has phase "${feature.phase}"`}
-      >
-        This feature's phase is <strong className="mono">{feature.phase}</strong>, which this version
-        of runcastle doesn't know. Nothing here can be acted on until the row is fixed.
-      </BrokenFeaturePane>
-    </section>
-  )
-}
-
-function copyText(text: string, toast: { push: (m: string, k?: 'error' | 'info' | 'success') => void }): void {
-  navigator.clipboard
-    .writeText(text)
-    .then(() => toast.push(`copied ${text}`, 'info'))
-    .catch(() => toast.push('copy failed'))
 }

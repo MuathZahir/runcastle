@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react'
-import { Button } from '../ui'
+import { useState } from 'react'
+import type { RefObject } from 'react'
+import { Button, Dialog } from '../ui'
 
 /**
  * Destructive confirmation for `feature.delete` (decision #8). Delete is
@@ -15,76 +16,62 @@ export function DeleteFeatureDialog({
   busy,
   onConfirm,
   onCancel,
+  returnFocusRef,
 }: {
   title: string
   slug: string
   busy: boolean
   onConfirm: () => void
   onCancel: () => void
+  returnFocusRef?: RefObject<HTMLElement | null>
 }) {
   const [typed, setTyped] = useState('')
   const armed = typed.trim() === slug
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onCancel()
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [onCancel])
-
   return (
-    <div
-      className="peek-backdrop"
-      // mousedown, not click: a click that STARTS inside the panel and ends on
-      // the backdrop (selecting the slug and releasing outside) is not a
-      // dismissal — the same guard FormOverlay makes.
-      onMouseDown={(e) => {
-        if (e.target === e.currentTarget) onCancel()
-      }}
+    <Dialog
+      open
+      onClose={onCancel}
+      returnFocusRef={returnFocusRef}
+      label={`Delete feature ${slug}`}
+      backdropClassName="peek-backdrop"
+      className="peek delete-dialog"
     >
-      <div
-        className="peek delete-dialog"
-        role="dialog"
-        aria-modal="true"
-        aria-label={`Delete feature ${slug}`}
-      >
-        <div className="peek-head">
-          <span className="delete-dialog-title">Delete feature</span>
-          <button className="peek-close" onClick={onCancel} aria-label="Close (Esc)">
-            ✕
-          </button>
-        </div>
-        <div className="peek-body delete-dialog-body">
-          <p className="delete-dialog-lead">
-            Permanently delete <strong>{title}</strong>? This stops any running agent,
-            removes its worktree and branches, and erases all of its runcastle data.
-            Committed docs stay in git history. <strong>This cannot be undone.</strong>
-          </p>
-          <label className="delete-dialog-field">
-            <span>
-              Type <code className="mono">{slug}</code> to confirm
-            </span>
-            <input
-              className="settings-input mono"
-              value={typed}
-              onChange={(e) => setTyped(e.target.value)}
-              autoFocus
-              spellCheck={false}
-              autoComplete="off"
-              placeholder={slug}
-            />
-          </label>
-          <div className="delete-dialog-actions">
-            <Button variant="ghost" onClick={onCancel} disabled={busy}>
-              Cancel
-            </Button>
-            <Button variant="danger" onClick={onConfirm} disabled={!armed || busy}>
-              {busy ? 'Deleting…' : 'Delete feature'}
-            </Button>
-          </div>
+      <div className="peek-head">
+        <span className="delete-dialog-title">Delete feature</span>
+        <button className="peek-close" onClick={onCancel} aria-label="Close (Esc)">
+          ✕
+        </button>
+      </div>
+      <div className="peek-body delete-dialog-body">
+        <p className="delete-dialog-lead">
+          Permanently delete <strong>{title}</strong>? This stops any running agent,
+          removes its worktree and branches, and erases all of its runcastle data.
+          Committed docs stay in git history. <strong>This cannot be undone.</strong>
+        </p>
+        <label className="delete-dialog-field">
+          <span>
+            Type <code className="mono">{slug}</code> to confirm
+          </span>
+          <input
+            className="settings-input mono"
+            value={typed}
+            onChange={(e) => setTyped(e.target.value)}
+            autoFocus
+            spellCheck={false}
+            autoComplete="off"
+            placeholder={slug}
+          />
+        </label>
+        <div className="delete-dialog-actions">
+          <Button variant="ghost" onClick={onCancel} disabled={busy}>
+            Cancel
+          </Button>
+          <Button variant="danger" onClick={onConfirm} disabled={!armed || busy}>
+            {busy ? 'Deleting…' : 'Delete feature'}
+          </Button>
         </div>
       </div>
-    </div>
+    </Dialog>
   )
 }

@@ -7,6 +7,8 @@ import { unhandledMutationError } from './lib/mutation-errors'
 import { pushToast, ToastProvider } from './lib/toast'
 import '@fontsource-variable/inter'
 import '@fontsource-variable/jetbrains-mono'
+// theme.css first: it declares the tokens styles.css aliases (apps/web/STYLE.md).
+import './theme.css'
 import './styles.css'
 import { trpc } from './trpc'
 

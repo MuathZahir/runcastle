@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import type { Phase } from '@runcastle/core'
 import { trpc } from '../../trpc'
 import { DimLine, EmptyState, SectionTitle } from '../../ui'
@@ -109,6 +109,7 @@ export function GrillBody({
  */
 function SpecCard({ featureId, relPath }: { featureId: string; relPath?: string }) {
   const [open, setOpen] = useState(false)
+  const openerRef = useRef<HTMLButtonElement>(null)
   if (!relPath) {
     return (
       <div className="doc-card is-empty">
@@ -120,7 +121,7 @@ function SpecCard({ featureId, relPath }: { featureId: string; relPath?: string 
   }
   return (
     <>
-      <button className="doc-card" onClick={() => setOpen(true)} title="View the spec">
+      <button ref={openerRef} className="doc-card" onClick={() => setOpen(true)} title="View the spec">
         <IconDoc size={14} />
         <span className="doc-card-title">Specification</span>
         <span className="doc-card-meta">{relPath.split(/[\\/]/).pop()}</span>
@@ -130,7 +131,13 @@ function SpecCard({ featureId, relPath }: { featureId: string; relPath?: string 
         </span>
       </button>
       {open && (
-        <DocPeek featureId={featureId} relPath={relPath} title="Specification" onClose={() => setOpen(false)} />
+        <DocPeek
+          featureId={featureId}
+          relPath={relPath}
+          title="Specification"
+          returnFocusRef={openerRef}
+          onClose={() => setOpen(false)}
+        />
       )}
     </>
   )

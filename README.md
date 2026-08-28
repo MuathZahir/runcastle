@@ -220,10 +220,9 @@ Bun workspaces, TypeScript strict, ESM only.
 | `apps/web` | `@runcastle/web` | Vite + React + tRPC client + TanStack Query. |
 | `site/` | | The static landing page. No build step. |
 
-`packages/design-system` is **not** a fifth package in that sense: it is the surface of the
-Claude Design round-trip, owned by `.design-sync/`, holding the near-black IDE-grammar
-primitives as they come back from design. Nothing imports it yet — `apps/web` still owns its
-own styles — so treat it as a design artifact, not a shared dependency.
+There is no separate design-system package. `apps/web` owns its own styling: the design
+tokens live in a Tailwind `@theme` block at `apps/web/src/theme.css` and the primitives in
+`apps/web/src/ui.tsx`. See `apps/web/STYLE.md`.
 
 ---
 

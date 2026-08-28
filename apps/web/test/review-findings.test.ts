@@ -98,8 +98,8 @@ describe('OpenDefectsCard', () => {
     )
 
     expect(html).toContain('Open defects')
-    expect(html).toContain('chip-severity-high')
-    expect(html).toContain('chip-severity-medium')
+    expect(html).toContain('>high<')
+    expect(html).toContain('>medium<')
     expect(html).toContain('over the auto-fix cap')
     expect(html).toContain('fix failed: typecheck still red')
     // The detail is present but behind a disclosure — the row itself is one line.

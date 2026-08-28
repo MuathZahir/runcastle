@@ -1,3 +1,4 @@
+import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
 import { defineConfig } from 'vite'
 
@@ -9,7 +10,7 @@ import { defineConfig } from 'vite'
  * same-origin in dev without an explicit `wsBase`.
  */
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), tailwindcss()],
   server: {
     port: 4513,
     strictPort: true,

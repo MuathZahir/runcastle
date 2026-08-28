@@ -5,77 +5,69 @@
    production app (Linear / Cursor): transforms + opacity only, always cheap,
    always interruptible, and fully disabled under prefers-reduced-motion. */
 
+/* LEGACY ALIASES — delete with the last of styles.css. Do not add tokens here;
+   add them to theme.css.
+   Every value now lives in the `@theme` block in theme.css (decision 3). These
+   are the short names the ~4,300 rules below already spell, mapped onto their
+   namespaced source so those rules keep resolving untouched. Names that are
+   already identical in theme.css — --radius-sm/-lg/-pill, --control-h,
+   --sidebar-w, --inspector-w, --maprail-w, --content-max, --shadow-menu,
+   --shadow-overlay, --dur-1/-2/-3, --ring — are deliberately absent: theme.css
+   emits them on :root under exactly those names, and redeclaring them here
+   would shadow the theme from an unlayered rule. */
 :root {
-  /* ---- surfaces (near-black, layered by hairlines not shadows) ---- */
-  --bg: #090b10; /* app canvas — the darkest layer */
-  --panel: #0e1117; /* raised bars (title bar, toolbars, next-step) */
-  --panel-2: #0b0e14; /* sunken rails (sidebar, inspector) */
-  --panel-3: #12151d; /* hover / elevated row */
-  --panel-inset: #07080b; /* deepest inset (inputs, event stream) */
+  /* ---- surfaces ---- */
+  --bg: var(--color-bg);
+  --panel: var(--color-panel);
+  --panel-2: var(--color-panel-2);
+  --panel-3: var(--color-panel-3);
+  --panel-inset: var(--color-panel-inset);
 
-  /* ---- hairlines (the only separators; 1px) ---- */
-  --hairline: #1c2230; /* standard 1px divider / control border */
-  --hairline-soft: #151a26; /* fainter internal divider */
-  --hairline-strong: #2a3242; /* hover border */
+  /* ---- hairlines ---- */
+  --hairline: var(--color-hairline);
+  --hairline-soft: var(--color-hairline-soft);
+  --hairline-strong: var(--color-hairline-strong);
 
-  /* ---- text ramp (high -> low emphasis) ---- */
-  --text: #dde3ed; /* primary text, active identifiers */
-  --text-2: #96a0b0; /* secondary text, labels */
-  --text-3: #5f6a7a; /* tertiary / dim, timestamps, glyphs */
-  --text-4: #3a4354; /* faintest — separators, empty ticks */
+  /* ---- text ramp ---- */
+  --text: var(--color-text);
+  --text-2: var(--color-text-2);
+  --text-3: var(--color-text-3);
+  --text-4: var(--color-text-4);
 
-  /* ---- violet accent (exactly one solid accent surface per view) ---- */
-  --accent: #7c6cf6; /* solid button / active markers */
-  --accent-hi: #a49bff; /* hover / links / headings */
-  --accent-2: #8f80f8; /* solid button hover */
-  --accent-ink: #0d0722; /* text on a solid accent surface */
-  --accent-soft: #161329; /* faint violet wash (hover on violet ghost) */
-  --accent-line: #3d3670; /* violet-tinted hairline */
+  /* ---- violet accent ---- */
+  --accent: var(--color-accent);
+  --accent-hi: var(--color-accent-hi);
+  --accent-2: var(--color-accent-2);
+  --accent-ink: var(--color-accent-ink);
+  --accent-soft: var(--color-accent-soft);
+  --accent-line: var(--color-accent-line);
 
-  /* ---- phase palette (feature lifecycle — the semantic spine) ---- */
-  --ph-ideation: #8b7cf8;
-  --ph-spec: #8a94a2;
-  --ph-tickets: #d7a94a;
-  --ph-implementation: #f0883e;
-  --ph-review: #58a6ff;
-  --ph-shipped: #3fb950;
+  /* ---- phase palette ---- */
+  --ph-ideation: var(--color-ph-ideation);
+  --ph-spec: var(--color-ph-spec);
+  --ph-tickets: var(--color-ph-tickets);
+  --ph-implementation: var(--color-ph-implementation);
+  --ph-review: var(--color-ph-review);
+  --ph-shipped: var(--color-ph-shipped);
 
   /* ---- status ---- */
-  --danger: #f4594e; /* error / destructive */
-  --needs: #d7a94a; /* needs-attention / warning (amber) */
-  /* The same amber under the name 17 warning rules ask for. They all carried a
-     hardcoded `#d9a441` fallback, so the app shipped two ambers a shade apart —
-     an alias costs nothing and puts every warning surface back on the palette. */
-  --warn: var(--needs);
-  --ok: #3fb950; /* success / healthy */
-  --drive: #58a6ff; /* test-drive blue */
+  --danger: var(--color-danger);
+  --needs: var(--color-needs);
+  --warn: var(--color-warn);
+  --ok: var(--color-ok);
+  --drive: var(--color-drive);
 
   /* ---- type ---- */
-  --mono: "JetBrains Mono Variable", "Cascadia Code", Consolas, ui-monospace, monospace;
-  --sans: "Inter Variable", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --mono: var(--font-mono);
+  --sans: var(--font-sans);
 
-  /* ---- metrics ---- */
-  --radius-sm: 5px;
-  --radius: 7px;
-  --radius-lg: 10px;
-  --radius-pill: 999px;
-  --control-h: 28px;
-  --sidebar-w: 252px;
-  --inspector-w: 300px;
-  --maprail-w: 300px;
-  --content-max: 1060px; /* centered column for document-style phase bodies */
+  /* ---- metrics ---- The bare `--radius` is the medium step. */
+  --radius: var(--radius-md);
 
-  /* ---- elevation (floating surfaces only — content stays flat) ---- */
-  --shadow-menu: 0 8px 28px -10px rgba(0, 0, 0, 0.7), 0 2px 8px -2px rgba(0, 0, 0, 0.5);
-  --shadow-overlay: 0 24px 70px -24px rgba(0, 0, 0, 0.85), 0 8px 24px -12px rgba(0, 0, 0, 0.6);
-
-  /* ---- motion ---- */
-  --dur-1: 0.12s; /* micro (hover, color) */
-  --dur-2: 0.19s; /* small (rows, chips) */
-  --dur-3: 0.32s; /* content enter */
-  --ease: cubic-bezier(0.22, 0.61, 0.24, 1); /* decelerate */
-  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
-  --ring: 0 0 0 2px var(--bg), 0 0 0 4px rgba(124, 108, 246, 0.5);
+  /* ---- motion ---- Suffixed `-app` in theme.css so they do not redefine
+     Tailwind's own `ease-out` utility. */
+  --ease: var(--ease-app);
+  --ease-out: var(--ease-out-app);
 }
 
 * {
@@ -92,8 +84,11 @@ body {
   background: var(--bg);
   color: var(--text);
   font-family: var(--sans);
-  font-size: 13px;
-  line-height: 1.45;
+  /* The base step of the theme ramp — one notch up from the old 13px/1.45
+     (decision 4). Legacy rules below keep their hardcoded px until the flow
+     that owns them migrates the surface. */
+  font-size: var(--text-base);
+  line-height: 1.5;
   letter-spacing: 0.004em;
   font-feature-settings: "tnum" 1, "cv05" 1;
   -webkit-font-smoothing: antialiased;
@@ -131,32 +126,6 @@ button {
 /* ============================================================================
    ATOMS
    ========================================================================== */
-/* ---- designed empty state (replaces dashed placeholder boxes) ---- */
-.empty-state {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  text-align: center;
-  padding: 44px 24px;
-}
-.empty-state.is-compact { padding: 26px 20px; }
-.empty-state-icon {
-  width: 34px;
-  height: 34px;
-  border-radius: 9px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--text-3);
-  background: var(--panel-3);
-  border: 1px solid var(--hairline);
-  margin-bottom: 4px;
-}
-.empty-state-title { font-size: 13px; font-weight: 500; color: var(--text-2); }
-.empty-state-hint { font-size: 12px; color: var(--text-3); line-height: 1.55; max-width: 42ch; text-wrap: pretty; }
-.empty-state-action { margin-top: 8px; }
 .mono {
   font-family: var(--mono);
   font-size: 12.5px;
@@ -178,12 +147,6 @@ button {
   font-weight: 600;
   padding: 4px 0;
 }
-.phase-fg-ideation { color: var(--ph-ideation); }
-.phase-fg-spec { color: var(--ph-spec); }
-.phase-fg-tickets { color: var(--ph-tickets); }
-.phase-fg-implementation { color: var(--ph-implementation); }
-.phase-fg-review { color: var(--ph-review); }
-.phase-fg-shipped { color: var(--ph-shipped); }
 
 /* ---- buttons ---- */
 .btn {
@@ -286,44 +249,6 @@ button {
 }
 .chip-neutral { color: var(--text-2); }
 .chip-blocked { color: var(--needs); border-color: color-mix(in srgb, var(--needs) 40%, transparent); }
-.chip-ticket-pending { color: var(--text-3); }
-.chip-ticket-burning {
-  color: var(--ph-implementation);
-  border-color: color-mix(in srgb, var(--ph-implementation) 45%, transparent);
-  background: color-mix(in srgb, var(--ph-implementation) 8%, transparent);
-  animation: pulse 1.5s ease-in-out infinite;
-}
-.chip-ticket-done { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 40%, transparent); }
-.chip-ticket-failed { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 45%, transparent); }
-.chip-ticket-cancelled { color: var(--text-3); text-decoration: line-through; }
-/* The two review-flavoured badges: a ticket that verifies the branch, and a note
-   the agent that verified it wrote. Both mark WHOSE work a row is, not a status
-   the human has to act on, so they share the review phase's colour. */
-.chip-kind-review,
-.chip-note-agent {
-  color: var(--ph-review);
-  border-color: color-mix(in srgb, var(--ph-review) 40%, transparent);
-  background: color-mix(in srgb, var(--ph-review) 8%, transparent);
-}
-/* The note text takes the slack; the author badge never gets squeezed by it. */
-.chip-note-agent { flex: 0 0 auto; }
-/* How bad the review thought a finding was — read, never enforced (decisions
-   #8), so even `high` is amber: an open defect is information the human decides
-   about, and red would read as a merge this app is refusing. */
-.chip-severity-high {
-  color: var(--warn, #d9a441);
-  border-color: color-mix(in srgb, var(--warn, #d9a441) 45%, transparent);
-}
-.chip-severity-medium { color: var(--text-2); }
-.chip-severity-low { color: var(--text-3); }
-.chip-run-running {
-  color: var(--ph-implementation);
-  border-color: color-mix(in srgb, var(--ph-implementation) 45%, transparent);
-  animation: pulse 1.5s ease-in-out infinite;
-}
-.chip-run-succeeded { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 40%, transparent); }
-.chip-run-failed { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 45%, transparent); }
-.chip-run-cancelled { color: var(--text-3); }
 
 .tag {
   font-family: var(--mono);
@@ -331,18 +256,6 @@ button {
   text-transform: lowercase;
   font-weight: 600;
 }
-
-.status-dot {
-  display: inline-block;
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--text-3);
-  flex: 0 0 auto;
-}
-.sess-dot-launching { background: var(--needs); animation: pulse 1.3s ease-in-out infinite; }
-.sess-dot-live { background: var(--ok); box-shadow: 0 0 0 3px rgba(63, 185, 80, 0.16); }
-.sess-dot-ended { background: var(--text-3); }
 
 .spinner,
 .spin-ring {
@@ -1855,34 +1768,10 @@ details.wp-group-done > summary { cursor: pointer; list-style: revert; }
 .converge-resume-text { font-size: 12.5px; color: var(--text-2); }
 
 /* ---- lap grouping (decisions.md #6) ----
-   Shared by the ticket ledger and the findings inbox — the two places a human
-   looks for "what was done this lap". Rendered only past lap 1: a feature that
-   never iterated gets no headers at all, the same stance as the pipeline chip. */
-.lap-group-head {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  padding: 8px 0;
-  font-family: var(--mono);
-  font-size: 10.5px;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--text-3);
-}
-.lap-group.is-current > .lap-group-head { color: var(--text-2); }
-.lap-group-meta { color: var(--text-4); }
-/* The caret is drawn here: a flex summary drops the native marker entirely, and
-   a collapsed lap with no affordance reads as a lap with nothing in it. */
-details.lap-group > summary.lap-group-head { cursor: pointer; list-style: none; }
-details.lap-group > summary::-webkit-details-marker { display: none; }
-details.lap-group > summary.lap-group-head::before {
-  content: '▸';
-  color: var(--text-4);
-  flex: 0 0 auto;
-}
-details.lap-group[open] > summary.lap-group-head::before { content: '▾'; }
-/* Inside the bordered ledger the header is a band, and it lines up with the
-   rows' own gutter rather than the card edge. */
+   The group itself is a primitive now (`LapSections` in ui.tsx) and carries its
+   own utilities; `lap-group` / `lap-group-head` survive only as the hooks the
+   two rules below place inside the bordered ledger, where the header is a band
+   that lines up with the rows' own gutter rather than the card edge. */
 .ledger .lap-group-head { padding: 8px 14px; background: var(--panel-3); }
 .ledger .lap-group + .lap-group { border-top: 1px solid var(--hairline); }
 
@@ -1921,8 +1810,6 @@ details.lap-group[open] > summary.lap-group-head::before { content: '▾'; }
 .lg-seq { color: var(--text-3); font-family: var(--mono); font-size: 11.5px; width: 22px; flex: 0 0 auto; }
 .lg-title { flex: 1; min-width: 0; color: var(--text); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .lg-block { font-family: var(--mono); font-size: 10.5px; color: var(--needs); flex: 0 0 auto; }
-/* The title takes the slack; the kind badge never gets squeezed by it. */
-.ledger-head .chip-kind-review { flex: 0 0 auto; }
 .lg-meta { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
 .lg-commits { color: var(--text-2); font-size: 11px; }
 .ledger-detail {
@@ -2042,7 +1929,6 @@ details.lap-group[open] > summary.lap-group-head::before { content: '▾'; }
 .lane-head { display: flex; align-items: center; gap: 8px; }
 .lane-seq { color: var(--text-3); font-family: var(--mono); font-size: 11.5px; flex: 0 0 auto; }
 .lane-title { flex: 1; min-width: 0; font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.lane-head .chip-kind-review { flex: 0 0 auto; }
 .lane-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 6px; }
 .lane-commits { display: flex; flex-wrap: wrap; gap: 4px; }
 .lane-dur { color: var(--text-3); font-family: var(--mono); font-size: 11px; }
@@ -2249,20 +2135,6 @@ details.lap-group[open] > summary.lap-group-head::before { content: '▾'; }
   background: var(--panel-2);
   padding: 14px 16px;
 }
-.check-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-top: 11px;
-}
-.check-dot { width: 7px; height: 7px; border-radius: 50%; flex: 0 0 7px; }
-/* Review-figure tones (findings F23): absence is grey, never green. */
-.check-dot.is-ok { background: var(--ok); }
-.check-dot.is-warn { background: var(--warn, #d9a441); }
-.check-dot.is-danger { background: var(--danger); }
-.check-dot.is-idle { background: var(--text-3); }
-.check-k { font-family: var(--mono); font-size: 12px; color: var(--text); width: 92px; flex: 0 0 auto; }
-.check-v { font-family: var(--mono); font-size: 11.5px; color: var(--text-3); }
 /* "What landed this lap" (decisions #8) — the prose the review page leads with,
    above the figures rather than under them, because it is what the human came
    to read. Bounded and scrollable: a digest is a dozen lines, and the card must
@@ -2692,13 +2564,6 @@ button.note-at:hover { color: var(--accent); }
 /* ============================================================================
    NEW-FEATURE workspace form
    ========================================================================== */
-.nf-overlay {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 24px;
-}
 .nf-card {
   width: 540px;
   max-width: 100%;
@@ -2757,19 +2622,6 @@ button.note-at:hover { color: var(--accent); }
 .nf-base-select:disabled { opacity: 0.5; cursor: default; }
 .nf-branch { margin-top: 16px; font-family: var(--mono); font-size: 11.5px; color: var(--text-3); }
 .nf-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 22px; }
-/* the one dismissal question, asked before typed prose is thrown away (F25.2) */
-.nf-discard {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-top: 16px;
-  padding: 10px 12px;
-  border: 1px solid color-mix(in srgb, var(--warn, #d9a441) 45%, var(--hairline));
-  border-radius: var(--radius);
-  background: color-mix(in srgb, var(--warn, #d9a441) 7%, var(--panel-2));
-}
-.nf-discard-text { font-size: 12.5px; color: var(--text); }
-.nf-discard-spacer { flex: 1; }
 /* the inline "you already have one of these" note under the title field (F25.3) */
 .nf-dupe {
   margin-top: 8px;
