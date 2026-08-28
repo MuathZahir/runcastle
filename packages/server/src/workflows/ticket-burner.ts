@@ -76,6 +76,7 @@ import {
   burnCacheVolumeName,
   ensureBurnCacheVolume,
   getBurnSlotAllocator,
+  slotDirPath,
   slotRepoPath,
   slotStampPath,
 } from './burn-cache'
@@ -922,9 +923,36 @@ export function cacheMountFor(pm: PackageManager, hostPath: string): HostPathMou
   return sandboxPath ? { hostPath, sandboxPath } : undefined
 }
 
-/** The project's persistent burn cache volume, mounted at {@link BURN_CACHE_MOUNT}. */
-export function burnCacheMountFor(projectId: string): VolumeMount {
-  return { volume: burnCacheVolumeName(projectId), sandboxPath: BURN_CACHE_MOUNT }
+/**
+ * The cache mounts and environment one burn's container gets — the two designs
+ * are alternatives, never a mixture:
+ *
+ * - **Cache volume on** (the burn holds a slot): the project's named volume,
+ *   and every package manager's store pointed onto it (decision 10). None of
+ *   the ADR-0004 bind mounts is attached — the volume replaces them, and it is
+ *   the only one of the two that shares a filesystem with the checkouts, which
+ *   is the whole reason pnpm and bun can hardlink out of it.
+ * - **Cache off**: exactly ADR-0004, byte for byte — one bind mount for the
+ *   detected manager if it has a download cache worth mounting, and no env.
+ *
+ * Pure, so the choice is observable without a container; the caller creates any
+ * host directory a returned bind mount names, since a missing `hostPath` fails
+ * sandbox creation outright.
+ */
+export function buildBurnCacheMounts(
+  slot: number | undefined,
+  projectId: string,
+  sandbox: RuncastleConfig['sandbox'],
+  pm: PackageManager | undefined,
+): { mounts: CacheMount[]; env: Record<string, string> } {
+  if (slot !== undefined) {
+    return {
+      mounts: [{ volume: burnCacheVolumeName(projectId), sandboxPath: BURN_CACHE_MOUNT }],
+      env: pm ? burnCacheEnv(pm) : {},
+    }
+  }
+  const mount = sandbox !== 'noSandbox' && pm ? cacheMountFor(pm, burnCacheDir(pm)) : undefined
+  return { mounts: mount ? [mount] : [], env: {} }
 }
 
 // ---------------------------------------------------------------------------
@@ -1247,7 +1275,7 @@ export function buildSlotSetupCommand(
     `RC_COLD=0`,
     `RC_STAMP="${stamp}"`,
     `RC_SYNC_START=$(date +%s%3N)`,
-    `mkdir -p ${dirnamePosix(repo)}`,
+    `mkdir -p ${slotDirPath(slot)}`,
     `rm -f ${repo}/.git/*.lock`,
     `if ! git -C ${repo} rev-parse --git-dir >/dev/null 2>&1; then rm -rf ${repo} && git clone ${SANDBOX_WORKSPACE_PATH} ${repo} && RC_COLD=1; else git -C ${repo} fetch ${SANDBOX_WORKSPACE_PATH} ${tempBranch} && git -C ${repo} reset --hard FETCH_HEAD && git -C ${repo} checkout -B ${tempBranch}; fi`,
     `git -C ${repo} clean -fd`,
@@ -1260,15 +1288,6 @@ export function buildSlotSetupCommand(
     ...steps.post,
     `printf '${SETUP_MARKER} cold=%s sync_ms=%s install_ms=%s\\n' "$RC_COLD" "$RC_SYNC_MS" "$RC_INSTALL_MS" > ${SANDBOX_WORKSPACE_PATH}/${SETUP_MARKER_FILE}`,
   ].join(' && ')
-}
-
-/**
- * The parent of a container path. Deliberately NOT `node:path` — these are
- * always-POSIX container paths, and on a Windows host `dirname` would hand the
- * sandbox's `sh` a backslash.
- */
-function dirnamePosix(path: string): string {
-  return path.slice(0, path.lastIndexOf('/'))
 }
 
 /**
@@ -3234,17 +3253,13 @@ async function burnTicket(
   const toolchain = readRepoToolchain(project.repoPath)
   const pm = detectPackageManager(toolchain)
   const setupCommand = resolveSetupCommand(toolchain, prepared.setupCommand)
-  const mounts: CacheMount[] = []
-  const sandboxEnv: Record<string, string> = {}
-  if (slot !== undefined) {
-    mounts.push(burnCacheMountFor(project.id))
-    if (pm) Object.assign(sandboxEnv, burnCacheEnv(pm))
-  } else if (config.sandbox !== 'noSandbox' && pm) {
-    const mount = cacheMountFor(pm, burnCacheDir(pm))
-    if (mount) {
-      mkdirSync(mount.hostPath, { recursive: true }) // a missing hostPath fails sandbox creation
-      mounts.push(mount)
-    }
+  const cache = buildBurnCacheMounts(slot, project.id, config.sandbox, pm)
+  const sandboxEnv = cache.env
+  const mounts: CacheMount[] = [...cache.mounts]
+  for (const mount of cache.mounts) {
+    // A missing hostPath fails sandbox creation; a named volume is the engine's
+    // to create and has no host directory to make.
+    if ('hostPath' in mount) mkdirSync(mount.hostPath, { recursive: true })
   }
   // A container Codex burn runs on the operator's ChatGPT login: the host Codex
   // home rides in as a read-only mount, and the sandbox-ready hook copies

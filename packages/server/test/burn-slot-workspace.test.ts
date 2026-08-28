@@ -5,12 +5,12 @@ import { join } from 'node:path'
 import { promisify } from 'node:util'
 import type { RuncastleConfig } from '@runcastle/core'
 import { DEFAULT_SANDBOX_IMAGE } from '@runcastle/core'
+import { burnCacheDir } from '@runcastle/core/paths'
 import { simpleGit } from 'simple-git'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import {
   BURN_CACHE_MOUNT,
   burnCacheEnv,
-  burnCacheVolumeName,
   createSlotAllocator,
   slotRepoPath,
   slotStampPath,
@@ -18,6 +18,7 @@ import {
 import {
   SANDBOX_WORKSPACE_PATH,
   SETUP_MARKER_FILE,
+  buildBurnCacheMounts,
   buildSandboxOptions,
   buildSlotSetupCommand,
   buildSlotStamp,
@@ -48,36 +49,48 @@ function config(
   return { sandbox, burnWorkspace: 'auto', burnCache }
 }
 
-describe('buildSandboxOptions — what the burn container is handed by cache mode', () => {
-  it('mounts the project volume and points every store at it when the cache is on', () => {
-    const mount = { volume: burnCacheVolumeName(PROJECT_ID), sandboxPath: BURN_CACHE_MOUNT }
-    const opts = buildSandboxOptions(config('docker'), [mount], burnCacheEnv('pnpm'))
+describe('what the burn container is handed, by cache mode', () => {
+  /** The burner's own composition: assemble the cache mounts, then the options. */
+  const optionsFor = (slot: number | undefined, sandbox: RuncastleConfig['sandbox'] = 'docker') => {
+    const cache = buildBurnCacheMounts(slot, PROJECT_ID, sandbox, 'pnpm')
+    return buildSandboxOptions(config(sandbox), cache.mounts, cache.env)
+  }
 
-    expect(opts.mounts).toEqual([{ volume: `runcastle-${PROJECT_ID}`, sandboxPath: BURN_CACHE_MOUNT }])
-    expect(opts.env).toEqual({
-      npm_config_store_dir: `${BURN_CACHE_MOUNT}/store/pnpm`,
-      pnpm_config_store_dir: `${BURN_CACHE_MOUNT}/store/pnpm`,
-      BUN_INSTALL_CACHE_DIR: `${BURN_CACHE_MOUNT}/store/pnpm`,
-      npm_config_cache: `${BURN_CACHE_MOUNT}/store/pnpm`,
-      YARN_GLOBAL_FOLDER: `${BURN_CACHE_MOUNT}/store/pnpm`,
-      TMPDIR: `${BURN_CACHE_MOUNT}/tmp`,
-      NODE_COMPILE_CACHE: `${BURN_CACHE_MOUNT}/node-compile`,
-    })
+  it('mounts the project volume and points every store at it when the cache is on', () => {
+    const opts = optionsFor(1)
+
+    expect(opts.mounts).toEqual([
+      { volume: `runcastle-${PROJECT_ID}`, sandboxPath: BURN_CACHE_MOUNT },
+    ])
+    expect(opts.mounts?.[0]?.sandboxPath).toBe('/home/agent/cache')
+    expect(opts.env).toEqual(burnCacheEnv('pnpm'))
+    expect(opts.env?.pnpm_config_store_dir).toBe(`${BURN_CACHE_MOUNT}/store/pnpm`)
+    expect(opts.env?.TMPDIR).toBe(`${BURN_CACHE_MOUNT}/tmp`)
     // The volume mount is the ONLY mount: ADR-0004's per-manager bind mounts
-    // are what the volume replaces, not something it sits alongside.
+    // are what the volume replaces, not something it sits alongside. (pnpm has
+    // no bind mount anyway — npm does, and gets none either.)
     expect(opts.mounts?.some((m) => 'hostPath' in m)).toBe(false)
+    expect(buildBurnCacheMounts(1, PROJECT_ID, 'docker', 'npm').mounts).toEqual([
+      { volume: `runcastle-${PROJECT_ID}`, sandboxPath: BURN_CACHE_MOUNT },
+    ])
   })
 
   // `'off'` must be byte-for-byte today's behaviour, env included — a provider
   // handed `env: {}` is not the same as one handed nothing, because sandcastle
   // only applies its own defaults for an absent key.
-  it('yields exactly the ADR-0004 bind mount and NO env with the cache off', () => {
-    const mount = { hostPath: '/host/.npm', sandboxPath: '~/.npm' }
-    const opts = buildSandboxOptions(config('docker', 'off'), [mount])
+  it('yields exactly the ADR-0004 bind mounts and NO env with the cache off', () => {
+    const npm = buildBurnCacheMounts(undefined, PROJECT_ID, 'docker', 'npm')
+    expect(npm.mounts).toEqual([{ hostPath: burnCacheDir('npm'), sandboxPath: '~/.npm' }])
+    expect(npm.env).toEqual({})
 
-    expect(opts.mounts).toEqual([mount])
+    const opts = buildSandboxOptions(config('docker', 'off'), npm.mounts, npm.env)
+    expect(opts.mounts).toEqual(npm.mounts)
     expect('env' in opts).toBe(false)
     expect(opts.imageName).toBe(DEFAULT_SANDBOX_IMAGE)
+
+    // pnpm still opts out of a bind mount entirely — a mounted store cannot
+    // hardlink, which is what the volume exists to fix.
+    expect(optionsFor(undefined).mounts).toBeUndefined()
   })
 
   it('omits an empty env map so the provider default applies', () => {
