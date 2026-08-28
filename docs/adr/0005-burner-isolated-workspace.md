@@ -73,9 +73,9 @@ sync commits back to the mounted worktree automatically.**
      workspace on **every commit**, and stops there. Sync requires zero agent
      discipline; if the agent commits, the host sees it. The hook unsets
      `GIT_DIR`/`GIT_WORK_TREE`/`GIT_INDEX_FILE` first — git exports them to
-     hook processes, and they would otherwise point the push at whatever repo
-     the committing command was addressing. A failed push sleeps briefly and
-     pushes once more; a second failure prints one stderr line
+     hook processes, and an inherited pin is what made the hook's original
+     `git -C <workspace>` step address the clone instead. A failed push sleeps
+     briefly and pushes once more; a second failure prints one stderr line
      (`runcastle: commit sync failed (will retry on your next commit); do not
      re-commit`) and exits 0. Git ignores a post-commit hook's status, so the
      commit is never at risk, and the next commit's push of `HEAD` carries

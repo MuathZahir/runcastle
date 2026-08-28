@@ -1104,8 +1104,9 @@ export function resolveBurnWorkspaceMode(
  *    push-to-checkout resolves the branch's checkout via its registered HOST
  *    path (`C:\...`) — nonexistent in-container — and refuses every push.
  *    The hook unsets GIT_DIR/GIT_WORK_TREE/GIT_INDEX_FILE first: git exports
- *    them to hook processes, and they would otherwise pin the push to whatever
- *    repo the committing command was addressing rather than the clone.
+ *    them to hook processes, and an inherited pin is exactly what made the old
+ *    hook's `git -C <workspace>` step address the clone instead of the
+ *    workspace. Unset, the push is unambiguously the clone's own.
  *    A failed push is retried once; a second failure prints one stderr line and
  *    exits 0 — git ignores a post-commit hook's status, and the next commit's
  *    push of `HEAD` carries everything not yet synced, so the honest thing to

@@ -1508,8 +1508,8 @@ describe('buildIsolatedSetupCommand — clone + auto-sync wiring for the sandbox
     // requires no agent discipline. (Asserted on `cmd`, not a ' && '-split
     // step: the hook body itself contains ' && '.)
     expect(cmd).toContain(`HEAD:%s`)
-    // git exports GIT_DIR & co to hooks — without unsetting them the push would
-    // address whatever repo the committing command was pointed at
+    // git exports GIT_DIR & co to hooks, and an inherited pin is what made the
+    // old hook's `git -C <workspace>` step address the clone instead
     expect(cmd).toContain('unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE')
     expect(cmd).toContain(`'${branch}' '${branch}'`)
     expect(cmd).toContain(`> ${ISOLATED_REPO_PATH}/.git/hooks/post-commit`)
