@@ -65,9 +65,55 @@ retired — and no runtime styling dependency; `clsx`, `cva` and `tailwind-merge
 are deliberately absent. `@utility` in `theme.css` is the escape hatch for what
 utilities genuinely cannot express, kept to a minimum.
 
-<!-- Catalogue filled in by the primitives ticket: Button, SectionTitle, DimLine,
-     EmptyState, CheckLine, PhaseTag, chips, dots, LapSections, Dialog, Field,
-     Card/Section, Kbd. -->
+### Catalogue
+
+| Primitive | What it is | Variants |
+|---|---|---|
+| `Button` | The app's button. 32px tall, `rounded-md`, forwards every `<button>` attribute; a `className` you pass is appended. | `ghost` (default) · `solid` · `danger` |
+| `SectionTitle` | 11px uppercase tracked label over a section. | — |
+| `DimLine` | One dim mono line — an inline empty or error state for a tight spot. | — |
+| `EmptyState` | A designed blank area: quiet icon chip, plain-language title, one-line hint, optional action. | `compact` |
+| `CheckLine` | One review figure — tone dot, label, value — from a `CheckRow`. | tone comes from the row: `ok` · `warn` · `danger` · `idle` |
+| `LapSections<T>` | Rows under `Lap N` headers. Current lap is an open `<section>`, earlier laps a `<details>` with a caret. Suppressed entirely below lap 2 (ADR-0010 §4). | — |
+| `PhaseTag` | A feature's phase, in the phase's own colour. | one per `Phase` |
+| `TicketStatusChip` | A ticket's status. `burning` breathes. | one per `TicketStatus` |
+| `TicketKindChip` | Marks a `review` ticket. Renders **nothing** for `implementation` — the default would be noise on every row. | — |
+| `NoteAuthorChip` | Marks the review agent's note. Renders **nothing** for `human`. | — |
+| `FindingSeverityChip` | How bad the review thought a finding was. Even `high` is amber: severity is read, never enforced. | `high` · `medium` · `low` |
+| `RunStatusChip` | A burn run's status. `running` breathes. | one per `RunStatus` |
+| `SessionStatusDot` | A 8px dot for a session's lifecycle. | `launching` · `live` · `ended` |
+
+**Exactly one `solid` button is visible per view.** Everything else is `ghost`;
+`danger` is for destructive confirmations, and it is still not the solid one. If
+a view needs a second primary action, the view is the thing to rethink.
+
+Two more house rules the primitives already follow:
+
+- **Focus rings are not written here.** `styles.css` sets
+  `:focus-visible { box-shadow: var(--ring) }` globally and unlayered, so it
+  paints every one and would shadow a utility that repeated it.
+- **Colour families are lookup maps, not string interpolation.** A phase or
+  status maps to a whole literal class (`implementation → 'text-ph-implementation'`)
+  so Tailwind's content scanner can see it. `` `text-ph-${phase}` `` generates
+  nothing. No `@utility` escape hatch was needed for any of them.
+
+### Legacy hook classes
+
+Some primitives still carry one pre-Tailwind class name. It is a **hook, not
+styling**: a surviving `styles.css` rule places the primitive inside a specific
+surface, and dropping the name would silently lose that placement.
+
+| Primitive | Hook | The rule that needs it |
+|---|---|---|
+| `SectionTitle` | `section-title` | `.body-title .section-title`, `.mr-head .section-title` |
+| `DimLine` | `dim-line mono` | `.map-waypoints > .dim-line` (the dashed placeholder) |
+| `LapSections` | `lap-group`, `lap-group-head` | `.ledger .lap-group-head`, `.ledger .lap-group + .lap-group` |
+
+Remember that an unlayered legacy rule beats a utility, so where the base rule
+also still exists — `.section-title` and `.dim-line` do, because raw spans
+elsewhere in the app carry those names — it wins over the utilities beside it.
+**When your flow migrates one of those surfaces, delete the rule and the hook
+together**, and check whether the base rule has any raw callers left.
 
 ## Testing
 
