@@ -392,6 +392,18 @@ describe('withBurnCacheSlot — one slot per ticket run, back on every exit path
     expect(await withBurnCacheSlot(undefined, async (slot) => slot)).toBeUndefined()
   })
 
+  // The server's active-run guard is per feature, so two features burning at
+  // once can want more slots between them than burnConcurrency provides. A
+  // slot is a cache: the worst it may cost is one cold burn, never a failure.
+  it('runs cold instead of failing when every slot is taken', async () => {
+    const allocator = createSlotAllocator(1)
+    let holder = (): void => {}
+    const held = withBurnCacheSlot(allocator, () => new Promise<void>((r) => (holder = () => r())))
+    expect(await withBurnCacheSlot(allocator, async (slot) => slot)).toBeUndefined()
+    holder()
+    await held
+  })
+
   it('gives concurrent tickets distinct slots and reuses a freed one', async () => {
     const allocator = createSlotAllocator(2)
     const held: number[] = []

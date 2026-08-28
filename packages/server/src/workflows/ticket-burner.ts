@@ -72,6 +72,7 @@ import { GUARD_RULES, buildGuardInstallCommand } from './burn-guard'
 import type { BurnCacheEngine, SlotAllocator } from './burn-cache'
 import {
   BURN_CACHE_MOUNT,
+  BurnSlotsExhaustedError,
   burnCacheEnv,
   burnCacheVolumeName,
   ensureBurnCacheVolume,
@@ -3137,14 +3138,24 @@ async function realExecuteTicketRun(
  *
  * No allocator (`burnCache: 'off'`, or a sandbox whose `-v` cannot name a
  * volume) means no slot: the body runs with `undefined` and behaves exactly as
- * it did before the cache existed.
+ * it did before the cache existed. So does an EXHAUSTED allocator — the
+ * server's active-run guard is per feature, so two features burning at once can
+ * want more slots between them than `burnConcurrency` provides, and a ticket
+ * that cannot have a warm checkout must run cold rather than fail. A slot is a
+ * cache, and the worst a cache may ever cost is one cold burn.
  */
 export async function withBurnCacheSlot<T>(
   allocator: SlotAllocator | undefined,
   body: (slot: number | undefined) => Promise<T>,
 ): Promise<T> {
   if (!allocator) return body(undefined)
-  const slot = allocator.claim()
+  let slot: number | undefined
+  try {
+    slot = allocator.claim()
+  } catch (err) {
+    if (!(err instanceof BurnSlotsExhaustedError)) throw err
+  }
+  if (slot === undefined) return body(undefined)
   try {
     return await body(slot)
   } finally {
@@ -3173,8 +3184,12 @@ async function burnTicket(
   // Where the agent's hot path lives (ADR-0005): on win32/darwin container
   // hosts the bind-mounted worktree pays Docker Desktop's per-file translation
   // tax, so `auto` isolates the working tree onto the container's native FS.
-  // With the cache on it is the slot checkout on the volume, on every host.
-  const workspaceMode = resolveBurnWorkspaceMode(config)
+  // With the cache on it is the slot checkout on the volume, on every host —
+  // and the SLOT, not the config, is what says the cache is on, so a ticket
+  // that could not claim one resolves the mode it would have had without it.
+  const workspaceMode = resolveBurnWorkspaceMode(
+    slot === undefined ? { ...config, burnCache: 'off' } : config,
+  )
   const agentRepoPath = slot !== undefined ? slotRepoPath(slot) : ISOLATED_REPO_PATH
 
   // Isolated and slot mode both push commits back into the mounted worktree,
