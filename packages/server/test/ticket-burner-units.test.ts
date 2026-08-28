@@ -1420,10 +1420,12 @@ describe('cacheMountFor — package-manager cache bind-mounts', () => {
 })
 
 describe('burn workspace mode (ADR-0005 — keep the hot path off the mount)', () => {
+  // `burnCache: 'off'` throughout: with the cache on the mode is always `slot`
+  // and the platform stops mattering, which is its own describe below.
   const cfg = (
     sandbox: RuncastleConfig['sandbox'],
     burnWorkspace: RuncastleConfig['burnWorkspace'],
-  ) => ({ sandbox, burnWorkspace })
+  ) => ({ sandbox, burnWorkspace, burnCache: 'off' as const })
 
   it('auto isolates on win32/darwin container hosts, stays mounted on linux', () => {
     expect(resolveBurnWorkspaceMode(cfg('docker', 'auto'), 'win32')).toBe('isolated')

@@ -52,7 +52,22 @@ export function burnCacheVolumeName(projectId: string): string {
  * `ISOLATED_REPO_PATH` as the agent's hot path when the cache is on.
  */
 export function slotRepoPath(slot: number): string {
-  return `${BURN_CACHE_MOUNT}/slots/${slot}/repo`
+  return `${slotDirPath(slot)}/repo`
+}
+
+/** Slot `n`'s own directory on the volume — the checkout plus its stamp. */
+export function slotDirPath(slot: number): string {
+  return `${BURN_CACHE_MOUNT}/slots/${slot}`
+}
+
+/**
+ * The toolchain stamp slot `n` was last used with (decision 5). Deliberately
+ * BESIDE the checkout rather than inside it: the sync step runs `git clean` in
+ * the checkout, and a stamp that a clean could delete would read as a mismatch
+ * on every burn and wipe the warm state it exists to protect.
+ */
+export function slotStampPath(slot: number): string {
+  return `${slotDirPath(slot)}/.runcastle-stamp`
 }
 
 /**
