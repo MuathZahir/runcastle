@@ -25,22 +25,24 @@ describe('EnableAfkCard image action', () => {
       }),
     )
 
+  /** The one solid button per view is the primary action; `bg-accent` is it. */
   it('offers a primary Build image action when the image is missing', () => {
     const html = render('missing')
-    expect(html).toContain('btn-solid')
+    expect(html).toContain('bg-accent')
     expect(html).toContain('Build image')
   })
 
   it('shows the doctor fix and a primary Rebuild image action when stale', () => {
     const html = render('stale', 'Rebuild the bundled image')
     expect(html).toContain('Rebuild the bundled image')
-    expect(html).toContain('btn-solid')
+    expect(html).toContain('bg-accent')
     expect(html).toContain('Rebuild image')
   })
 
   it('offers a secondary Rebuild image action when the image is ok', () => {
     const html = render('ok')
-    expect(html).toContain('btn-ghost')
+    expect(html).not.toContain('bg-accent')
+    expect(html).toContain('bg-transparent')
     expect(html).toContain('Rebuild image')
   })
 })

@@ -52,8 +52,8 @@ describe('LapSections', () => {
     expect(html).toContain('Lap 1')
     expect(html).toContain('Lap 2')
     // Earlier laps are a click away; the current one is always open.
-    expect(html).toMatch(/<details class="lap-group">.*Lap 1/)
-    expect(html).toMatch(/<section class="lap-group is-current">.*Lap 2/)
+    expect(html).toMatch(/<details class="lap-group group"[^>]*>.*Lap 1/)
+    expect(html).toMatch(/<section class="lap-group"[^>]*>.*Lap 2/)
   })
 
   it('renders nothing when there are no rows at all', () => {
