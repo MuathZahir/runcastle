@@ -64,7 +64,25 @@ Alternatives considered and rejected:
    - `sandcastle-volume-mount.test.ts` must go red with the patch removed and
      green with it back (it relies on `server.deps.inline: ['@ai-hero/sandcastle']`
      in `vitest.config.ts`).
-3. **Triggers to revisit** (fork, or migrate to sandbox-agent): a *second* patch
+3. **The patch ships by bundling, and the build proves it.** `patchedDependencies`
+   reaches only this workspace's `node_modules`: a user's `bun add -g runcastle`
+   resolves every external dependency from the registry, unpatched. v1.2.11
+   shipped exactly that — sandcastle external, patch absent — and every burn
+   with the cache on died in `resolveUserMounts` (`undefined is not an object
+   (evaluating 'p.startsWith')`: a `{ volume }` mount has no `hostPath` to
+   tilde-expand). So `@ai-hero/sandcastle` is listed in `BUNDLED_DEPENDENCIES`
+   (`packages/server/scripts/publish-manifest.ts`): `build-package.ts` inlines it
+   into `index.js`, folds its own runtime deps (`@clack/prompts`) into the
+   published manifest, and fails the build unless the emitted bundles contain
+   the patch's code (three regex markers on the hunks above) and no longer
+   import sandcastle from `node_modules`. The same check fails the build for any
+   *new* `patchedDependencies` entry that is neither bundled nor listed in
+   `PATCHED_EXTERNAL_DEPENDENCIES` with the reason its patch is not needed in
+   the published package (node-pty is the one such entry today).
+   Regenerating the patch (item 2) therefore also means checking the markers
+   still match the new hunks — the manifest test pins them against both a
+   patched and an unpatched bundle shape.
+4. **Triggers to revisit** (fork, or migrate to sandbox-agent): a *second* patch
    becomes necessary; an upstream bug blocks a burn and no fix is coming; or
    Claude Code changes something sandcastle's `claudeCode()` adapter cannot
    follow. Until one fires, a stalled dependency that does what we need is a
@@ -74,6 +92,8 @@ Alternatives considered and rejected:
 
 - One known maintenance tax, paid only on a sandcastle bump, with the procedure
   written down here rather than in a feature outcome doc.
+- The published `index.js` carries sandcastle (~2 MB of Effect-ts) rather than
+  installing it; `@clack/prompts` becomes a direct dependency of `runcastle`.
 - `docs/research/SANDCASTLE-NOTES.md` remains accurate for 0.12.0; anyone
   bumping should re-verify §1/§9 there and this ADR's hunks together.
 - The `upstream-named-volume-mounts-to-sandcastle` feature is deleted, not

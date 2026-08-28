@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest'
 import type { ExecFn, ExecOutcome } from '../src/doctor/doctor'
 import {
   BURN_CACHE_MOUNT,
+  BURN_CACHE_VOLUME_LABEL,
+  BURN_CACHE_VOLUME_VERSION,
   BurnCacheBusyError,
   BurnSlotsExhaustedError,
   burnCacheEnv,
@@ -10,6 +12,7 @@ import {
   createSlotAllocator,
   ensureBurnCacheVolume,
   getBurnSlotAllocator,
+  inspectBurnCacheVolume,
   removeBurnCacheVolume,
   slotRepoPath,
   storePath,
@@ -36,11 +39,43 @@ function fakeExec(reply: (command: string, args: string[]) => Partial<ExecOutcom
   return { exec, calls }
 }
 
-/** `true` when the volume-inspect probe should report the volume as missing. */
+const isInspect = (args: string[]) => args[0] === 'volume' && args[1] === 'inspect'
+
+/** The volume-inspect probe reports the volume as missing. */
 const volumeMissing = (_command: string, args: string[]): Partial<ExecOutcome> =>
-  args[0] === 'volume' && args[1] === 'inspect'
-    ? { ok: true, code: 1, stderr: 'no such volume' }
-    : {}
+  isInspect(args) ? { ok: true, code: 1, stderr: 'no such volume' } : {}
+
+/** The volume exists and carries this version's label: created and chowned by us. */
+const volumeCurrent = (_command: string, args: string[]): Partial<ExecOutcome> =>
+  isInspect(args) ? { stdout: `${BURN_CACHE_VOLUME_VERSION}\n` } : {}
+
+/** The volume exists but is unlabelled — left behind by v1.2.11's failed chown. */
+const volumeStale = (_command: string, args: string[]): Partial<ExecOutcome> =>
+  isInspect(args) ? { stdout: '\n' } : {}
+
+const CHOWN_ONE_SHOT = [
+  'docker',
+  'run',
+  '--rm',
+  '--user',
+  'root',
+  '--entrypoint',
+  'chown',
+  '-v',
+  `${VOLUME}:${BURN_CACHE_MOUNT}`,
+  IMAGE,
+  '-R',
+  '1000:1000',
+  BURN_CACHE_MOUNT,
+]
+const CREATE_LABELLED = [
+  'docker',
+  'volume',
+  'create',
+  '--label',
+  `${BURN_CACHE_VOLUME_LABEL}=${BURN_CACHE_VOLUME_VERSION}`,
+  VOLUME,
+]
 
 describe('burnCacheVolumeName', () => {
   // Project ids are already legal volume names, and sanitising one would risk
@@ -50,43 +85,88 @@ describe('burnCacheVolumeName', () => {
   })
 })
 
+describe('inspectBurnCacheVolume', () => {
+  it('asks the engine for the runcastle label only', async () => {
+    const { exec, calls } = fakeExec(volumeCurrent)
+    await inspectBurnCacheVolume(exec, 'docker', PROJECT)
+    expect(calls).toEqual([
+      ['docker', 'volume', 'inspect', '--format', `{{index .Labels "${BURN_CACHE_VOLUME_LABEL}"}}`, VOLUME],
+    ])
+  })
+
+  it('distinguishes missing, current and stale', async () => {
+    expect(await inspectBurnCacheVolume(fakeExec(volumeMissing).exec, 'docker', PROJECT)).toBe('missing')
+    expect(await inspectBurnCacheVolume(fakeExec(volumeCurrent).exec, 'docker', PROJECT)).toBe('current')
+    expect(await inspectBurnCacheVolume(fakeExec(volumeStale).exec, 'docker', PROJECT)).toBe('stale')
+    // A label from a different layout version is stale too, not current.
+    const other = fakeExec((_c, args) => (isInspect(args) ? { stdout: '0\n' } : {}))
+    expect(await inspectBurnCacheVolume(other.exec, 'docker', PROJECT)).toBe('stale')
+  })
+
+  it('reads an engine that is not even installed as missing', async () => {
+    const { exec } = fakeExec(() => ({ ok: false, code: null }))
+    expect(await inspectBurnCacheVolume(exec, 'docker', PROJECT)).toBe('missing')
+  })
+})
+
 describe('ensureBurnCacheVolume', () => {
-  it('creates the volume and chowns it to the burn user on first creation', async () => {
+  it('creates a labelled volume and chowns it to the burn user on first creation', async () => {
     const { exec, calls } = fakeExec(volumeMissing)
 
     await ensureBurnCacheVolume({ engine: 'docker', imageName: IMAGE, projectId: PROJECT, exec })
 
-    expect(calls).toEqual([
-      ['docker', 'volume', 'inspect', VOLUME],
-      ['docker', 'volume', 'create', VOLUME],
-      [
-        'docker',
-        'run',
-        '--rm',
-        '--user',
-        'root',
-        '-v',
-        `${VOLUME}:${BURN_CACHE_MOUNT}`,
-        IMAGE,
-        'chown',
-        '-R',
-        '1000:1000',
-        BURN_CACHE_MOUNT,
-      ],
-    ])
+    expect(calls.slice(1)).toEqual([CREATE_LABELLED, CHOWN_ONE_SHOT])
+  })
+
+  // The sandbox image's ENTRYPOINT is `sleep infinity`; without `--entrypoint`
+  // the one-shot became `sleep infinity chown -R …` and died on `-R` (v1.2.11).
+  it('overrides the image ENTRYPOINT so chown actually runs', () => {
+    const entrypoint = CHOWN_ONE_SHOT.indexOf('--entrypoint')
+    expect(entrypoint).toBeGreaterThan(-1)
+    expect(CHOWN_ONE_SHOT[entrypoint + 1]).toBe('chown')
+    // and the image is followed by chown's own args, not by a second `chown`.
+    expect(CHOWN_ONE_SHOT.slice(CHOWN_ONE_SHOT.indexOf(IMAGE) + 1)).toEqual(['-R', '1000:1000', BURN_CACHE_MOUNT])
   })
 
   // A recursive chown of a multi-gigabyte cache, once per burn, is exactly the
   // cost this feature exists to remove.
-  it('never re-chowns a volume that already existed', async () => {
-    const { exec, calls } = fakeExec()
+  it('never touches a volume that exists with the current label', async () => {
+    const { exec, calls } = fakeExec(volumeCurrent)
 
     await ensureBurnCacheVolume({ engine: 'docker', imageName: IMAGE, projectId: PROJECT, exec })
 
-    expect(calls).toEqual([
-      ['docker', 'volume', 'inspect', VOLUME],
-      ['docker', 'volume', 'create', VOLUME],
-    ])
+    expect(calls.map((c) => c.slice(0, 3))).toEqual([['docker', 'volume', 'inspect']])
+  })
+
+  it('drops and recreates an unlabelled (root-owned) volume left by an older version', async () => {
+    const { exec, calls } = fakeExec(volumeStale)
+
+    await ensureBurnCacheVolume({ engine: 'docker', imageName: IMAGE, projectId: PROJECT, exec })
+
+    expect(calls.slice(1)).toEqual([['docker', 'volume', 'rm', VOLUME], CREATE_LABELLED, CHOWN_ONE_SHOT])
+  })
+
+  it('rolls the volume back when the chown fails, so the next burn retries from scratch', async () => {
+    const { exec, calls } = fakeExec((c, args) =>
+      args[0] === 'run' ? { code: 1, stderr: "sleep: invalid option -- 'R'" } : volumeMissing(c, args),
+    )
+
+    await expect(
+      ensureBurnCacheVolume({ engine: 'docker', imageName: IMAGE, projectId: PROJECT, exec }),
+    ).rejects.toThrow(/invalid option/)
+    expect(calls.at(-1)).toEqual(['docker', 'volume', 'rm', VOLUME])
+  })
+
+  it('reports the chown error even if the rollback itself fails', async () => {
+    const { exec } = fakeExec((c, args) => {
+      if (args[0] === 'run') return { code: 125, stderr: 'no such image' }
+      if (args[1] === 'rm') return { code: 1, stderr: 'volume is in use' }
+      return volumeMissing(c, args)
+    })
+
+    await expect(
+      ensureBurnCacheVolume({ engine: 'docker', imageName: IMAGE, projectId: PROJECT, exec }),
+    ).rejects.toThrow(/no such image/)
   })
 
   it('issues the same commands through podman', async () => {
@@ -95,11 +175,13 @@ describe('ensureBurnCacheVolume', () => {
     await ensureBurnCacheVolume({ engine: 'podman', imageName: IMAGE, projectId: PROJECT, exec })
 
     expect(calls.map((call) => call[0])).toEqual(['podman', 'podman', 'podman'])
-    expect(calls[2]?.slice(1, 7)).toEqual([
+    expect(calls[2]?.slice(1, 9)).toEqual([
       'run',
       '--rm',
       '--user',
       'root',
+      '--entrypoint',
+      'chown',
       '-v',
       `${VOLUME}:${BURN_CACHE_MOUNT}`,
     ])

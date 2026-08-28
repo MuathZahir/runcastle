@@ -143,38 +143,100 @@ export interface EnsureBurnCacheVolumeOptions {
 }
 
 /**
+ * The label stamped on every cache volume runcastle creates, and the version of
+ * the volume layout it vouches for. Its presence is the proof that the volume
+ * came from {@link ensureBurnCacheVolume} — created AND chowned, or rolled back.
+ *
+ * Bump the version if the on-volume layout ever changes incompatibly: a volume
+ * carrying an older (or no) version is dropped and recreated rather than trusted.
+ * Unlabelled volumes exist in the wild: v1.2.11 created the volume, then failed
+ * its chown (the one-shot ran through the image's `sleep` ENTRYPOINT), and left
+ * a root-owned, empty volume behind that every later burn "found" and skipped.
+ */
+export const BURN_CACHE_VOLUME_LABEL = 'io.runcastle.burn-cache'
+export const BURN_CACHE_VOLUME_VERSION = '1'
+
+/** What `volume inspect` says about the project's cache volume. */
+export type BurnCacheVolumeState = 'missing' | 'current' | 'stale'
+
+/**
+ * Inspect the project's cache volume: absent, created by this version of the
+ * code (label matches), or `stale` — present but without a matching label, so
+ * nothing is known about its ownership and it must not be burned against.
+ * An inspect that fails for any reason other than "no such volume" is treated
+ * as missing and left for `volume create` to report properly.
+ */
+export async function inspectBurnCacheVolume(
+  exec: ExecFn,
+  engine: BurnCacheEngine,
+  projectId: string,
+): Promise<BurnCacheVolumeState> {
+  const out = await exec(engine, [
+    'volume',
+    'inspect',
+    '--format',
+    `{{index .Labels "${BURN_CACHE_VOLUME_LABEL}"}}`,
+    burnCacheVolumeName(projectId),
+  ])
+  if (!out.ok || out.code !== 0) return 'missing'
+  return out.stdout.trim() === BURN_CACHE_VOLUME_VERSION ? 'current' : 'stale'
+}
+
+/**
  * Make the project's cache volume exist and be writable by the burn user.
  *
  * A freshly created volume is owned by root, and the burn container always runs
  * `--user 1000:1000` and so cannot fix that itself — hence the one-shot
- * `run --rm --user root` that chowns the mount point. That runs ONLY on first
- * creation: on an existing volume it would be a pointless recursive chown of
- * every file in a multi-gigabyte cache, once per burn. `volume create` is
- * issued either way because it is idempotent and is what actually guarantees
- * the volume exists.
+ * `run --rm --user root` that chowns the mount point. It runs with
+ * `--entrypoint chown`: the sandbox image's ENTRYPOINT is `sleep infinity`
+ * (that is how the burn container is kept alive), so a bare `<image> chown …`
+ * would have Docker run `sleep infinity chown -R …` and die on `-R`.
+ *
+ * The chown runs ONLY on first creation: on an existing volume it would be a
+ * pointless recursive chown of every file in a multi-gigabyte cache, once per
+ * burn. That makes "exists" load-bearing — it has to mean "chowned" — so a
+ * volume whose chown fails is removed again before the error propagates, and
+ * the volume is labelled ({@link BURN_CACHE_VOLUME_LABEL}) so one that exists
+ * WITHOUT the label is known to have been left by a version that did not roll
+ * back. Such a volume is dropped and recreated: it is root-owned, nothing could
+ * ever have written to it, and burning against it would fail on the first write.
  */
 export async function ensureBurnCacheVolume(opts: EnsureBurnCacheVolumeOptions): Promise<void> {
   const { engine, exec } = opts
   const name = burnCacheVolumeName(opts.projectId)
-  const inspect = await exec(engine, ['volume', 'inspect', name])
-  const existed = inspect.ok && inspect.code === 0
-
-  await execOrThrow(exec, engine, ['volume', 'create', name])
-  if (existed) return
+  const state = await inspectBurnCacheVolume(exec, engine, opts.projectId)
+  if (state === 'current') return
+  if (state === 'stale') await execOrThrow(exec, engine, ['volume', 'rm', name])
 
   await execOrThrow(exec, engine, [
-    'run',
-    '--rm',
-    '--user',
-    'root',
-    '-v',
-    `${name}:${BURN_CACHE_MOUNT}`,
-    opts.imageName,
-    'chown',
-    '-R',
-    CONTAINER_USER,
-    BURN_CACHE_MOUNT,
+    'volume',
+    'create',
+    '--label',
+    `${BURN_CACHE_VOLUME_LABEL}=${BURN_CACHE_VOLUME_VERSION}`,
+    name,
   ])
+  try {
+    await execOrThrow(exec, engine, [
+      'run',
+      '--rm',
+      '--user',
+      'root',
+      '--entrypoint',
+      'chown',
+      '-v',
+      `${name}:${BURN_CACHE_MOUNT}`,
+      opts.imageName,
+      '-R',
+      CONTAINER_USER,
+      BURN_CACHE_MOUNT,
+    ])
+  } catch (err) {
+    // Roll back so the next burn creates and chowns afresh instead of finding
+    // a root-owned volume and trusting it. Best-effort: the chown error is the
+    // one worth surfacing, and a leftover volume is caught by the label check.
+    await exec(engine, ['volume', 'rm', name])
+    throw err
+  }
 }
 
 export interface RemoveBurnCacheVolumeOptions {

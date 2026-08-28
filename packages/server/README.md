@@ -25,6 +25,14 @@ self-contained package under `build/`:
   Every real dependency (node-pty, simple-git, hono, drizzle, …) stays external
   so it installs normally and keeps its prebuilds — the tarball's dependency tree
   carries no `workspace:*`.
+- **Patched dependencies are bundled in too.** A workspace `patchedDependencies`
+  patch never reaches a user's install, so a patched dep must either be inlined
+  (`BUNDLED_DEPENDENCIES` in `scripts/publish-manifest.ts` — sandcastle, with
+  its own runtime deps folded into the manifest) or be listed as external with a
+  written reason the patch is unnecessary there (`PATCHED_EXTERNAL_DEPENDENCIES`
+  — node-pty). The build fails on any patch with neither fate, and checks the
+  emitted bundle for the patch's code so a registry copy cannot slip in
+  (ADR-0011; this is how v1.2.11's burns all died).
 - **Runtime assets ship as real files.** The drizzle migrations, the hook client
   (spawned by `bun`), the PTY sidecar host (spawned by `node`), the skills pack +
   burner prompts, and the built SPA are copied beside the bin — they can't live
