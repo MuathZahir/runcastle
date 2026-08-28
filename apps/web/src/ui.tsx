@@ -296,9 +296,8 @@ export function NoteAuthorChip({ author }: { author: TestNoteAuthor }) {
 }
 
 /**
- * How bad the review thought a finding was — read, never enforced (decisions
- * #8), so even `high` is amber: an open defect is information the human decides
- * about, and red would read as a merge this app is refusing.
+ * Even `high` is amber: an open defect is information the human decides about,
+ * and red would read as a merge this app is refusing.
  */
 const SEVERITY_CHIP: Record<FindingSeverity, string> = {
   high: 'border-warn/45 text-warn',
