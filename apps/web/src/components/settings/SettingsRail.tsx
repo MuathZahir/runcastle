@@ -22,6 +22,10 @@ export const SETTINGS_PAGES: readonly {
   { page: 'project', label: 'This project', Icon: IconFolder },
 ]
 
+const NAV = 'flex h-8 w-full items-center gap-2.5 rounded-sm px-2 text-left text-sm'
+const NAV_CURRENT = 'bg-accent-soft text-text'
+const NAV_IDLE = 'text-text-2 hover:bg-panel-3 hover:text-text'
+
 export function SettingsRail({
   page,
   filter,
@@ -41,9 +45,11 @@ export function SettingsRail({
   const filtering = filter.query.trim() !== ''
   return (
     <nav className="flex flex-col gap-1.5 border-r border-hairline bg-panel-2 px-2.5 py-3.5">
-      <h2 className="mb-1.5 ml-2 text-xs font-semibold tracking-[0.08em] text-text-3 uppercase">
+      {/* A micro-label, not a heading: the dialog is already named "Settings",
+          and the page beside this rail owns the one heading on screen. */}
+      <div className="mb-1.5 ml-2 text-xs font-semibold tracking-[0.08em] text-text-3 uppercase">
         Settings
-      </h2>
+      </div>
       <div className="relative mb-1.5">
         <IconSearch
           size={12}
@@ -67,13 +73,9 @@ export function SettingsRail({
             type="button"
             onClick={() => onSelect(id)}
             {...(current ? { 'aria-current': 'page' as const } : {})}
-            className={
-              current
-                ? 'flex h-8 w-full items-center gap-2.5 rounded-sm px-2 text-left text-sm text-text bg-accent-soft'
-                : 'flex h-8 w-full items-center gap-2.5 rounded-sm px-2 text-left text-sm text-text-2 hover:bg-panel-3 hover:text-text'
-            }
+            className={`${NAV} ${current ? NAV_CURRENT : NAV_IDLE}`}
           >
-            <Icon size={14} className={current ? 'shrink-0 text-accent-hi' : 'shrink-0 text-text-3'} />
+            <Icon size={14} className={`shrink-0 ${current ? 'text-accent-hi' : 'text-text-3'}`} />
             {label}
             {/* Only while someone is actually searching — a row of zeroes on a
                 rail nobody is filtering is noise. */}

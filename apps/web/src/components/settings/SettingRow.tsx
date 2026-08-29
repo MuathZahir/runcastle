@@ -236,12 +236,14 @@ function RowControl({
   // number, so the control is mono unless it is a list of choices.
   const wiring = { id, 'aria-describedby': describedBy, disabled }
   const mono = row.control === 'select' ? '' : 'font-mono text-sm'
+  const revertKey = (e: KeyboardEvent<HTMLElement>) => {
+    if (e.key !== 'Escape') return
+    onRevert()
+    e.currentTarget.blur()
+  }
   const commitKeys = (e: KeyboardEvent<HTMLElement>) => {
     if (e.key === 'Enter') e.currentTarget.blur()
-    if (e.key === 'Escape') {
-      onRevert()
-      e.currentTarget.blur()
-    }
+    revertKey(e)
   }
 
   return (
@@ -300,12 +302,8 @@ function RowControl({
             value={draft}
             onChange={(e) => onDraft(e.target.value)}
             onBlur={(e) => onCommit(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Escape') {
-                onRevert()
-                e.currentTarget.blur()
-              }
-            }}
+            // No Enter-to-commit: here it is a newline, which is the point.
+            onKeyDown={revertKey}
           />
         ) : (
           <input
@@ -367,7 +365,7 @@ const SOURCE_CHIP: Record<SourceChipKind, { text: string; className: string }> =
 }
 
 /** Where the value on screen came from — the whole of the override signal. */
-export function SourceChip({ kind, envVar }: { kind: SourceChipKind; envVar?: string }) {
+function SourceChip({ kind, envVar }: { kind: SourceChipKind; envVar?: string }) {
   const chip = SOURCE_CHIP[kind]
   return (
     <span
@@ -391,7 +389,7 @@ const PROVENANCE_DOT: Record<ProvenanceChipData['tone'], string> = {
  * thousands of words and is never inline (decision 5) — `onOpenEvidence` is
  * what turns the chip into the button that reveals it.
  */
-export function ProvenanceChip({
+function ProvenanceChip({
   chip,
   onOpenEvidence,
 }: {
