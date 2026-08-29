@@ -82,10 +82,12 @@ describe('ProjectCard', () => {
     expect(face.textContent).toContain('needs you')
     expect(face.textContent).toContain('Needs you')
 
-    // The path truncates from its left, where a repo path is least interesting.
+    // The path truncates from its left, where a repo path is least interesting;
+    // the name truncates the usual way rather than widening the card.
     const path = container.querySelector('[dir="rtl"]')
     expect(path?.textContent).toBe('/home/you/code/runcastle')
     expect(path?.className).toContain('truncate')
+    expect(screen.getByText('runcastle').className).toContain('truncate')
 
     fireEvent.click(face)
     expect(onOpen).toHaveBeenCalled()
