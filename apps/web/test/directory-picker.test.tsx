@@ -32,7 +32,10 @@ const fsStub = vi.hoisted(() => {
         entry('/home/you/code', 'mirror', { isSymlink: true }),
       ],
       '/home/you/code/runcastle': [],
+      '/home/you/huge': [entry('/home/you/huge', 'first-of-many')],
     } as Record<string, ReturnType<typeof entry>[] | undefined>,
+    /** The one directory the stub reports as more than it would list. */
+    truncatedDir: '/home/you/huge',
   }
 })
 
@@ -65,7 +68,7 @@ vi.mock('../src/trpc', () => ({
               })),
               entries: entries.filter((e) => showHidden || !e.isSymlink),
               isRepo: false,
-              truncated: false,
+              truncated: target === fsStub.truncatedDir,
             },
             isError: false as const,
             isLoading: false,
@@ -170,6 +173,11 @@ describe('DirectoryPicker', () => {
   it('says so when a folder has nothing to descend into', () => {
     show('/home/you/code/runcastle')
     expect(screen.getByText(/No subfolders here/)).toBeTruthy()
+  })
+
+  it('owns up when the server stopped short of listing everything', () => {
+    show('/home/you/huge')
+    expect(screen.getByText(/Listing truncated/)).toBeTruthy()
   })
 
   it('commits the folder it is showing', () => {

@@ -7,12 +7,15 @@ export interface Crumb {
   path: string
 }
 
+/** How many trailing segments survive a collapse — where you are, and its way in. */
+const CRUMB_TAIL = 3
+
 /**
- * Beyond this many segments the middle collapses. Four is the most that fits a
- * dialog header beside the Hidden toggle at the widths this app is read at, and
- * it is also the shape the collapse keeps: root, then the last three.
+ * Beyond this many segments the middle collapses to `root … last three`. Four is
+ * the most that fits a dialog header beside the Hidden toggle at the widths this
+ * app is read at, and it is what the collapsed form itself costs.
  */
-const MAX_CRUMBS = 4
+const MAX_CRUMBS = CRUMB_TAIL + 1
 
 /**
  * The directory picker's header: breadcrumbs you can click, or a path you can
@@ -48,8 +51,8 @@ export function PathCrumbs({
   const [draft, setDraft] = useState<string | null>(null)
   const editing = draft !== null
 
-  const shown = crumbs.length > MAX_CRUMBS ? crumbs.slice(-3) : crumbs
   const elided = crumbs.length > MAX_CRUMBS
+  const shown = elided ? crumbs.slice(-CRUMB_TAIL) : crumbs
 
   if (editing) {
     return (
@@ -89,7 +92,7 @@ export function PathCrumbs({
       role="group"
       aria-label="Current path"
     >
-      {crumbs.length > 0 && elided && (
+      {elided && (
         <>
           <CrumbButton crumb={crumbs[0]} onNavigate={onNavigate} />
           <IconChevronRight size={11} />
