@@ -53,6 +53,17 @@ describe('Dialog', () => {
     expect(panel.getAttribute('aria-label')).toBe('Test dialog')
   })
 
+  // Settings needs a page rail beside a five-column model roster; `lg`'s 780
+  // clipped it (flow-redesign-settings, decision 14).
+  it('offers an xl width for a dialog that holds a rail and a table', () => {
+    render(
+      <Dialog open onClose={() => {}} size="xl" label="Wide dialog">
+        <p>body</p>
+      </Dialog>,
+    )
+    expect(screen.getByRole('dialog').className).toContain('max-w-[940px]')
+  })
+
   it('closes on Escape when the focus is inside it', () => {
     render(<Harness />)
     open()
