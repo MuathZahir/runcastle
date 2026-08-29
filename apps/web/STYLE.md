@@ -74,7 +74,7 @@ utilities genuinely cannot express, kept to a minimum.
 | `DimLine` | One dim mono line — an inline empty or error state for a tight spot. | — |
 | `EmptyState` | A designed blank area: quiet icon chip, plain-language title, one-line hint, optional action. | `compact` |
 | `Dialog` | The one modal shell — see [Dialog](#dialog) below. | `size`: `sm` 460 · `md` 620 · `lg` 780 · `xl` 940 (settings: rail + roster table) · plus `inline` |
-| `Field` | A control with its label, help and error wired to it by id. The child control is cloned with an `id` and `aria-describedby`; an `id` already on the control wins and the label follows it there. The error carries `role="alert"`. | — |
+| `Field` | A control with its label, help and error wired to it by id. The child control is cloned with an `id` and `aria-describedby`; an `id` already on the control wins and the label follows it there. The error carries `role="alert"`. `layout` replaces the default stacked column (settings' rows are a two-column grid) and `labelAside` puts an affordance *beside* the label — a `<label>` may not contain another labelable element, so a help button or a save flash cannot be its child. | — |
 | `Card` | A bounded surface — `bg-panel`, hairline border, `rounded-lg`, `p-4` — with an optional `header` slot. | — |
 | `Section` | `SectionTitle` + `Card`. A **separate export**, not a `Card` title prop (the spec left the choice open): the title belongs outside the card's border, which is where every `SectionTitle` in the app already sits. | — |
 | `Kbd` | One key in a keyboard hint. | — |
