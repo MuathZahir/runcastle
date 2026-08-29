@@ -43,7 +43,7 @@ const CONTROL =
 
 /**
  * The 11px uppercase heading over a group of rows, with the hairline that runs
- * out to the edge of the page. Not {@link SectionTitle}: that primitive still
+ * out to the edge of the page. Not the `SectionTitle` primitive: that one still
  * carries the `section-title` legacy hook, and an unlayered `styles.css` rule
  * would beat every utility beside it.
  *
@@ -149,6 +149,12 @@ export function SettingRow({
     },
   })
 
+  /** Typing is the answer to a refusal, so it takes the message down. */
+  const edit = (raw: string) => {
+    setDraft(raw)
+    if (invalid) setInvalid(null)
+  }
+
   const save = (raw: string) => {
     if (raw.trim() === committed.trim()) return
     const commit = fieldCommit(row.control, raw)
@@ -193,7 +199,7 @@ export function SettingRow({
           draft={draft}
           disabled={update.isPending}
           restart={restart}
-          onDraft={setDraft}
+          onDraft={edit}
           onCommit={save}
           onRevert={() => setDraft(committed)}
           onOpenEvidence={onOpenEvidence}

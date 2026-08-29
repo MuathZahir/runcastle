@@ -172,6 +172,10 @@ describe('SettingsDialog', () => {
     expect(screen.getByRole('alert').textContent).toBe('sandboxImage must be a tag')
     expect(image.value).toBe('')
     expect(screen.queryByText('Saved ✓')).toBeNull()
+
+    // It stays until the next edit — which is the answer to it.
+    fireEvent.change(image, { target: { value: 'sandcastle:mine' } })
+    expect(screen.queryByRole('alert')).toBeNull()
   })
 
   it('asks for a restart only once the port has actually been changed', () => {
