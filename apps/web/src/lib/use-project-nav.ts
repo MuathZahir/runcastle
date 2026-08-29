@@ -3,7 +3,7 @@ import { trpc } from '../trpc'
 import { setupComplete } from './first-run'
 import { useLivePoll } from './live'
 import {
-  initialView,
+  replacementLanding,
   restoredView,
   type AppView,
   type Landing,
@@ -105,12 +105,14 @@ export function useProjectNav(): ProjectNavApi {
   const view: AppView = landing?.view ?? 'home'
   const currentProjectId = landing?.projectId ?? null
 
-  // If the bound project disappears (closed elsewhere), fall back gracefully.
+  // If the list moves out from under where the user is standing — the bound
+  // project closed elsewhere, or the last card removed from the home — fall
+  // back to the landing rule rather than leaving them on a surface that is no
+  // longer about anything.
   useEffect(() => {
     if (!projects || !landing) return
-    if (landing.view === 'project' && !projects.some((p) => p.id === landing.projectId)) {
-      setChosen(initialView(projects))
-    }
+    const replacement = replacementLanding(landing, projects)
+    if (replacement) setChosen(replacement)
   }, [projects, landing])
 
   // Deliberate navigation is what gets remembered — the chooser as much as a
