@@ -196,6 +196,19 @@ describe('DirectoryPicker', () => {
     expect(onCancel).toHaveBeenCalledTimes(2)
   })
 
+  it('gives every control a background, since no preflight supplies one', () => {
+    show('/home/you/code')
+
+    // A bare <button> with no background utility falls back to the user agent's
+    // `buttonface` grey and inherits the theme's near-white text — a light-grey
+    // pill you cannot read. Every control here declares its own instead.
+    const naked = [...screen.getByRole('dialog').querySelectorAll('button')]
+      // Unprefixed: a `hover:bg-*` alone leaves the control grey at rest.
+      .filter((button) => !/(^|\s)bg-/.test(button.className))
+      .map((button) => button.getAttribute('aria-label') ?? button.textContent)
+    expect(naked).toEqual([])
+  })
+
   it('carries no legacy class names the deleted rules would have beaten', () => {
     show('/home/you/code')
     // Unlayered legacy CSS wins over utilities whatever the specificity, so a

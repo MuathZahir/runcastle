@@ -63,4 +63,13 @@ describe('PathCrumbs', () => {
   it('offers a keyboard route into the field, not only a click on the strip', () => {
     expect(render(['home'])).toContain('aria-label="Edit path"')
   })
+
+  it('paints its own background — the app ships no preflight to reset one', () => {
+    // Without a background of its own a bare <button> keeps the user agent's
+    // `buttonface` grey under the dark theme's near-white text: a light pill
+    // with unreadable text where the header's navigation should be.
+    const classes = [...render(['home', 'you', 'code']).matchAll(/<button[^>]*class="([^"]*)"/g)]
+    expect(classes).toHaveLength(4) // three crumbs and the pencil
+    for (const [, className] of classes) expect(className).toMatch(/\bbg-transparent\b/)
+  })
 })
