@@ -18,9 +18,19 @@ import { IconCheck, IconChevronDown } from '../icons'
  * component's own root and its classes are migrated here.
  */
 
+/*
+ * Both button class lists below name `bg-transparent` on purpose. There is no
+ * Tailwind preflight while the legacy sheet lives (STYLE.md: "do not assume a
+ * reset: style what you render"), so a `<button>` with no background utility of
+ * its own keeps the user-agent `buttonface` — a light grey slab under this
+ * theme's near-white text, which is what these rows rendered as when they were
+ * first migrated. Trigger and rows let the panel behind them show through, and
+ * only hover paints.
+ */
+
 const TRIGGER =
   'inline-flex h-6 min-w-0 items-center gap-1.5 rounded-md border border-transparent px-1.5 ' +
-  'transition-[border-color,background-color] duration-(--dur-1) ease-app ' +
+  'bg-transparent transition-[border-color,background-color] duration-(--dur-1) ease-app ' +
   'hover:border-hairline hover:bg-panel-3'
 
 const MENU =
@@ -28,7 +38,7 @@ const MENU =
   'border border-hairline bg-panel p-1.5 shadow-overlay'
 
 const MENU_ITEM =
-  'flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-text-2 ' +
+  'flex w-full items-center gap-2 rounded-md bg-transparent px-2 py-1.5 text-left text-text-2 ' +
   'transition-[color,background-color] duration-(--dur-1) ease-app hover:bg-panel-3 hover:text-text'
 
 export function ProjectSwitcher({ nav }: { nav: ProjectNavApi }) {
