@@ -19,6 +19,8 @@ export type WizardScreen = 'intro' | SetupStep
 
 /** The shape of a doctor probe result, structurally (keeps this module IO-free). */
 export interface ProbeLike {
+  /** Which probe this is — `git-identity` is the only id read here. */
+  id?: string
   status: string
   detail: string
   fix?: string
@@ -130,6 +132,23 @@ export function runtimeReadiness(probes: readonly ProbeLike[]): RuntimeReadiness
  */
 export function readyRuntimes(cards: readonly RuntimeReadiness[]): AgentRuntime[] {
   return cards.filter((c) => c.talkReady).map((c) => c.runtime)
+}
+
+/**
+ * Whether the host is set up far enough that the wizard has nothing left to ask
+ * (decision 3): git can attribute a commit, and at least one coding agent is
+ * ready to open a session.
+ *
+ * First run used to be "the projects table is empty", which replayed the whole
+ * wizard the moment someone closed their last project. This is computed from the
+ * doctor on every load instead, so it cannot go stale in either direction — an
+ * agent signed out later brings its step back rather than being remembered as
+ * done.
+ */
+export function setupComplete(results: readonly ProbeLike[]): boolean {
+  const identity = results.find((r) => r.id === 'git-identity')
+  if (identity?.status !== 'ok') return false
+  return readyRuntimes(runtimeReadiness(results)).length > 0
 }
 
 /**

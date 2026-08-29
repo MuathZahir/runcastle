@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { trpc } from '../trpc'
+import { setupComplete } from './first-run'
 import { useLivePoll } from './live'
 import {
   initialView,
@@ -60,6 +61,7 @@ export function writeStoredNav(nav: StoredNav): void {
 export interface ProjectNavApi {
   /** Open projects (undefined while the first list load is in flight). */
   projects: Project[] | undefined
+  /** True until both facts the landing is decided from have arrived. */
   loading: boolean
   view: AppView
   currentProjectId: string | null
@@ -77,6 +79,9 @@ export interface ProjectNavApi {
 export function useProjectNav(): ProjectNavApi {
   const q = trpc.project.list.useQuery(undefined, { refetchInterval: useLivePoll(5000) })
   const projects = q.data
+  // Onboarding is decided from what the host actually has, not from an empty
+  // projects table (decision 3), so the doctor is the landing's second input.
+  const doctor = trpc.setup.doctor.useQuery(undefined, { refetchOnWindowFocus: false })
 
   // Read once, at mount: where the last session left off.
   const [stored] = useState(readStoredNav)
@@ -87,7 +92,14 @@ export function useProjectNav(): ProjectNavApi {
   // way into the restored project. Latched once resolved, so a project opened
   // elsewhere later cannot re-decide where the user is standing.
   const resolved = useRef<Landing | null>(null)
-  if (!resolved.current && projects) resolved.current = restoredView(projects, stored)
+  // A doctor still in flight leaves the landing unresolved rather than assuming
+  // an answer: guessing "set up" flashes the home, guessing "not set up" flashes
+  // the wizard at someone who finished onboarding months ago. A doctor that
+  // failed outright reads as no evidence of setup, which is the safe way to be
+  // wrong — the wizard can be walked out of, a missing runtime cannot.
+  if (!resolved.current && projects && !doctor.isLoading) {
+    resolved.current = restoredView(projects, stored, setupComplete(doctor.data?.results ?? []))
+  }
 
   const landing = chosen ?? resolved.current
   const view: AppView = landing?.view ?? 'home'
@@ -129,7 +141,7 @@ export function useProjectNav(): ProjectNavApi {
 
   return {
     projects,
-    loading: q.isLoading,
+    loading: q.isLoading || doctor.isLoading,
     view,
     currentProjectId,
     currentProject,

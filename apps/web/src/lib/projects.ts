@@ -11,7 +11,7 @@ import type { FeatureListItem, Project } from './api'
  */
 
 /** Which top-level surface fills the shell. */
-export type AppView = 'home' | 'project' | 'open'
+export type AppView = 'home' | 'project' | 'open' | 'setup'
 
 /** Where the shell is pointed: a surface, plus the project it is bound to. */
 export interface Landing {
@@ -43,8 +43,20 @@ export type StoredNav = { view: 'home' } | { view: 'project'; projectId: string 
  * project the user was last in, or on the chooser if that is where they left
  * off. Everything else — nothing stored, storage corrupted, or a stored project
  * that has since been closed — falls back to the count-based landing rule.
+ *
+ * Setup outranks all of it (decision 3): while the host still owes us a git
+ * identity or a ready coding agent there is nothing useful to do in a project,
+ * so an incomplete setup lands on the wizard whatever is open or remembered.
+ * It is *only* incomplete setup that does — a finished setup with no projects
+ * lands on the plain first-project screen, so closing the last project never
+ * replays onboarding.
  */
-export function restoredView(projects: Project[], stored: StoredNav | null): Landing {
+export function restoredView(
+  projects: Project[],
+  stored: StoredNav | null,
+  setupComplete: boolean,
+): Landing {
+  if (!setupComplete) return { view: 'setup', projectId: null }
   if (stored?.view === 'project' && projects.some((p) => p.id === stored.projectId)) {
     return { view: 'project', projectId: stored.projectId }
   }
@@ -116,21 +128,37 @@ export function aggregateRuns(stats: ProjectStats[]): number {
  * next move the toast never mentioned.
  */
 export interface RepoOpenFailure {
+  /** The problem, said once and in full — never with the path spliced into it. */
   message: string
   /** What to do about it, when the failure has a known remedy. */
   hint: string | null
+  /**
+   * The rejected path, for the caller to render exactly once (decision 5). The
+   * server's message names it too, so a recognised failure is restated as a
+   * short statement and the path shown separately — long paths are truncated
+   * from the left, which a sentence with one buried in it cannot be.
+   */
+  path: string | null
 }
 
 export function repoOpenFailure(message: string, path: string): RepoOpenFailure {
-  const where = path.trim() || 'that folder'
+  const where = path.trim() || null
   if (/not a git repository/i.test(message)) {
     return {
-      message,
-      hint: `runcastle tracks work as branches, so it needs a git repository. Run \`git init\` in ${where}, or pick a folder that already is one.`,
+      message: 'Not a git repository',
+      hint: 'runcastle tracks work as branches, so it needs a git repository. Run `git init` there, or pick a folder that already is one.',
+      path: where,
     }
   }
-  if (/does not exist|cannot read/i.test(message)) {
-    return { message, hint: 'Check the path, or use Browse… to find the folder.' }
+  const missing = /does not exist/i.test(message)
+  if (missing || /cannot read/i.test(message)) {
+    return {
+      // A path that is there but unreadable is a different fact from one that
+      // is not there at all, and the same advice answers both.
+      message: missing ? 'Path does not exist' : 'Cannot read that path',
+      hint: 'Check the path, or use Browse… to find the folder.',
+      path: where,
+    }
   }
-  return { message, hint: null }
+  return { message, hint: null, path: null }
 }

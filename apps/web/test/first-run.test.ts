@@ -4,6 +4,7 @@ import {
   nextSetupStep,
   readyRuntimes,
   runtimeReadiness,
+  setupComplete,
   wizardSteps,
   type ProbeLike,
 } from '../src/lib/first-run'
@@ -184,5 +185,48 @@ describe('nextSetupStep', () => {
     expect(nextSetupStep('runtimes')).toBe('afk')
     expect(nextSetupStep('afk')).toBe('project')
     expect(nextSetupStep('project')).toBeUndefined()
+  })
+})
+
+/**
+ * Decision 3 — first run is what the doctor says about the host, not whether the
+ * projects table happens to be empty. Both halves must hold: an identity to
+ * attribute commits with, and something that can open a session.
+ */
+describe('setupComplete', () => {
+  const identity = (status: string): ProbeLike => ({
+    id: 'git-identity',
+    status,
+    detail: status === 'ok' ? 'Ada Lovelace <ada@example.com>' : 'user.email not set',
+  })
+  const runtime = (check: string, status: string): ProbeLike => ({
+    status,
+    detail: `codex ${check} ${status}`,
+    runtime: 'codex',
+    check,
+  })
+  const signedIn = [runtime('binary', 'ok'), runtime('auth', 'ok')]
+  const signedOut = [runtime('binary', 'ok'), runtime('auth', 'unset')]
+
+  it('is complete with a git identity and a ready runtime', () => {
+    expect(setupComplete([identity('ok'), ...signedIn])).toBe(true)
+  })
+
+  it('is incomplete without a git identity, however ready the agents are', () => {
+    expect(setupComplete([identity('unset'), ...signedIn])).toBe(false)
+  })
+
+  it('is incomplete while no runtime can open a session', () => {
+    expect(setupComplete([identity('ok'), ...signedOut])).toBe(false)
+  })
+
+  it('is incomplete when neither is in place', () => {
+    expect(setupComplete([identity('unset'), ...signedOut])).toBe(false)
+  })
+
+  // An empty report is the probe still in flight, or a doctor that failed: the
+  // safe reading is "not set up", never "set up enough to skip onboarding".
+  it('is incomplete when the report says nothing at all', () => {
+    expect(setupComplete([])).toBe(false)
   })
 })
