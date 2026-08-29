@@ -323,19 +323,30 @@ export function Dialog({
  * the call site stays `<Field label="Base"><select …/></Field>`.
  * An `id` already on the control wins — something else is pointing at it — and
  * the label follows it there rather than dangling on the generated one.
+ *
+ * `layout` and `labelAside` are what let the settings dialog render the same
+ * wiring as a two-column row: a `<label>` may not contain another labelable
+ * element, so the ⓘ tooltip and the "Saved ✓" flash beside it have to be the
+ * label's siblings rather than its children.
  */
 export function Field({
   label,
+  labelAside,
   help,
   error,
   htmlFor,
+  layout = 'flex flex-col gap-1.5',
   children,
 }: {
   label: ReactNode
+  /** Sits beside the label, outside it — a help affordance, a save indicator. */
+  labelAside?: ReactNode
   help?: ReactNode
   error?: ReactNode
   /** Force the control's id, rather than generating one. */
   htmlFor?: string
+  /** Root layout classes, REPLACING the default stacked column. */
+  layout?: string
   children: ReactNode
 }) {
   const generated = useId()
@@ -347,11 +358,24 @@ export function Field({
   const errorId = `${id}-error`
   const describedBy = cx(help ? helpId : null, error ? errorId : null) || undefined
 
+  const labelEl = (
+    <label className="text-sm font-medium text-text-2" htmlFor={id}>
+      {label}
+    </label>
+  )
+
   return (
-    <div className="flex flex-col gap-1.5">
-      <label className="text-sm font-medium text-text-2" htmlFor={id}>
-        {label}
-      </label>
+    <div className={layout}>
+      {labelAside ? (
+        // The cell is control-height so the label reads as being on the
+        // control's line, which is what a two-column row needs.
+        <div className="flex min-h-(--control-h) items-center gap-1.5">
+          {labelEl}
+          {labelAside}
+        </div>
+      ) : (
+        labelEl
+      )}
       {control
         ? cloneElement(control, {
             id,

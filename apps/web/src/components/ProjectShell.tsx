@@ -17,7 +17,7 @@ import { ProjectWorkspace } from './ProjectWorkspace'
 import { QuickForm } from './QuickForm'
 import { PreparationWorkspace } from './PreparationWorkspace'
 import { CommandPalette } from './CommandPalette'
-import { SettingsOverlay } from './SettingsOverlay'
+import { SettingsDialog } from './settings/SettingsDialog'
 
 /**
  * The runcastle IDE shell for a single project (app-redesign, multi-project #45).
@@ -165,8 +165,9 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
       />
 
       {ws.settings && (
-        <SettingsOverlay
+        <SettingsDialog
           projectId={projectId}
+          projectName={nav.currentProject?.name ?? ''}
           location={ws.settings}
           onClose={ws.closeSettings}
         />

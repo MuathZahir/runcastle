@@ -182,6 +182,35 @@ export function IconFolder(p: IconProps) {
   )
 }
 
+/** The model roster — one shape holding many faces. */
+export function IconCube(p: IconProps) {
+  return (
+    <svg {...base(p)}>
+      <path d="M8 1.6l5.4 3v6.8L8 14.4l-5.4-3V4.6z" />
+      <path d="M8 7.6l5.4-3M8 7.6L2.6 4.6M8 7.6v6.8" />
+    </svg>
+  )
+}
+
+/** Unattended burns. */
+export function IconFlame(p: IconProps) {
+  return (
+    <svg {...base(p)}>
+      <path d="M8 14.4c2.7 0 4.7-2 4.7-4.7 0-2-1.3-3.4-2-4.7-.7 1.3-1.3 2-2 2 0-2-.7-4-2.7-5.4 0 2.7-2.7 4-2.7 8.1 0 2.7 2 4.7 4.7 4.7z" />
+    </svg>
+  )
+}
+
+/** A value the environment owns — this app cannot change it. */
+export function IconLock(p: IconProps) {
+  return (
+    <svg {...base(p)}>
+      <rect x="3.4" y="7.2" width="9.2" height="6.6" rx="1.3" />
+      <path d="M5.6 7.2V5a2.4 2.4 0 0 1 4.8 0v2.2" />
+    </svg>
+  )
+}
+
 export function IconArrowRight(p: IconProps) {
   return (
     <svg {...base(p)}>
