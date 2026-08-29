@@ -11,7 +11,7 @@ import {
   isStale,
   relativeAge,
   verificationBadge,
-} from '../lib/settings'
+} from '../lib/prep-findings'
 import type { PrepView, ProjectFinding } from '../lib/api'
 import { EndSessionButton } from './EndSessionButton'
 import { ErrorBoundary } from './ErrorBoundary'

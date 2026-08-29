@@ -698,9 +698,9 @@ describe('nextStep at review', () => {
         driving: false,
         unverifiedDriveKeys: ['driveSetupCommand', 'driveStopCommand'],
       })
-      expect(ns.warning).toContain('Test drive setup')
-      expect(ns.warning).toContain('Test drive teardown')
-      expect(ns.warning).not.toContain('Dev command')
+      expect(ns.warning).toContain('Before a test drive')
+      expect(ns.warning).toContain('After a test drive')
+      expect(ns.warning).not.toContain('Dev server')
       expect(ns.warning).toContain('never proven by a dry run')
       expect(ns.warning).toContain('preparation')
     })

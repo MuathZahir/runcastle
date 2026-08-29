@@ -126,12 +126,14 @@ export function EmptyState({
   )
 }
 
-type DialogSize = 'sm' | 'md' | 'lg'
+type DialogSize = 'sm' | 'md' | 'lg' | 'xl'
 
 const DIALOG_SIZE: Record<DialogSize, string> = {
   sm: 'max-w-[460px]',
   md: 'max-w-[620px]',
   lg: 'max-w-[780px]',
+  // Settings: a page rail beside a five-column model roster. `lg` clipped it.
+  xl: 'max-w-[940px]',
 }
 
 /**

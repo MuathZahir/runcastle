@@ -3,7 +3,6 @@ import {
   customModelCommit,
   customModelsFromView,
   describeField,
-  driveCapabilities,
   effectiveStepModel,
   fieldCommit,
   globalRows,
@@ -78,9 +77,9 @@ describe('describeField', () => {
 
   it('gives burnMaxIterations a human label instead of printing the key', () => {
     const row = describeField(field({ key: 'burnMaxIterations', value: 3 }))
-    expect(row.label).toBe('Burn iterations')
+    expect(row.label).toBe('Iterations per attempt')
     expect(row.control).toBe('number')
-    expect(row.help).not.toBe('')
+    expect(row.tooltip).not.toBe('')
     expect(
       describeField(field({ key: 'burnMaxIterations', source: 'env', editable: false })).note,
     ).toBe('Set by RUNCASTLE_BURN_MAX_ITERATIONS')
@@ -92,7 +91,7 @@ describe('describeField', () => {
 
   it('renders burnConcurrency as an editable number control with an env-lock note when locked', () => {
     const row = describeField(field({ key: 'burnConcurrency', value: 3 }))
-    expect(row.label).toBe('Burn concurrency')
+    expect(row.label).toBe('Concurrency')
     expect(row.control).toBe('number')
     expect(row.value).toBe('3')
     expect(row.readOnly).toBe(false)
@@ -105,26 +104,25 @@ describe('describeField', () => {
   })
 
   // The burn width defaults off the host's core count, so an operator looking at
-  // an unset field has to be told which way this machine went — and the help has
-  // to say the rule, since a set field no longer shows the note.
+  // an unset field has to be told which way this machine went — and it belongs
+  // beside the input, where the empty control is, not in a tooltip.
   it('says what burn concurrency defaults to on this machine while it is unset', () => {
-    expect(describeField(field({ key: 'burnConcurrency', value: 1 })).note).toBe(
-      'Default on this machine: 1.',
+    expect(describeField(field({ key: 'burnConcurrency', value: 1 })).unit).toBe(
+      'tickets at once · default on this machine: 1',
     )
-    expect(describeField(field({ key: 'burnConcurrency', value: 3 })).note).toBe(
-      'Default on this machine: 3.',
-    )
-    expect(describeField(field({ key: 'burnConcurrency', value: 1 })).help).toContain(
-      '8 logical CPUs or fewer',
+    expect(describeField(field({ key: 'burnConcurrency', value: 3 })).unit).toBe(
+      'tickets at once · default on this machine: 3',
     )
   })
 
-  it('drops the machine-default note once a width is actually set', () => {
+  it('drops the machine-default once a width is actually set', () => {
     const row = describeField(field({ key: 'burnConcurrency', value: 5, source: 'file' }))
+    expect(row.unit).toBe('tickets at once')
     expect(row.note).toBeNull()
   })
 
-  it('leaves every other unset global field without a note', () => {
+  it('leaves every unset global field without a note', () => {
+    expect(describeField(field({ key: 'burnConcurrency', value: 3 })).note).toBeNull()
     expect(describeField(field({ key: 'burnCpus', value: null })).note).toBeNull()
     expect(describeField(field({ key: 'model', value: 'claude-opus-5' })).note).toBeNull()
   })
@@ -162,7 +160,7 @@ describe('describeField', () => {
 
   it('describes the default model without naming one runtime', () => {
     const row = describeField(field({ key: 'model', value: 'claude-opus-5' }))
-    expect(row.help).not.toContain('Claude')
+    expect(row.tooltip).not.toContain('Claude')
   })
 })
 
@@ -334,53 +332,6 @@ describe('projectRows', () => {
       ),
     )
     expect(rows.map((r) => r.key)).toEqual(['model', 'sandbox', 'devCommand'])
-  })
-})
-
-/**
- * What a test drive will actually do here, read off the same values the server
- * branches on. `runDriveHookStep` skips an empty command and the dev pane is
- * spawned only `if (project.devCommand)` — so "configured" has to mean a
- * non-blank string, or the review page promises a database nobody creates.
- */
-describe('driveCapabilities', () => {
-  it('reports nothing configured on a project with no drive fields set', () => {
-    expect(driveCapabilities(view([{ key: 'model', value: 'claude' }]))).toEqual({
-      setup: false,
-      dev: false,
-      teardown: false,
-    })
-  })
-
-  it('reports each drive field that carries a command', () => {
-    expect(
-      driveCapabilities(
-        view([
-          { key: 'driveSetupCommand', value: 'bash .runcastle/drive-setup.sh' },
-          { key: 'devCommand', value: 'bun dev' },
-          { key: 'driveStopCommand', value: 'bash .runcastle/drive-stop.sh' },
-        ]),
-      ),
-    ).toEqual({ setup: true, dev: true, teardown: true })
-  })
-
-  // A field cleared back to blank (or to whitespace) is a field the drive skips.
-  it('treats a blank or whitespace-only value as not configured', () => {
-    expect(
-      driveCapabilities(
-        view([
-          { key: 'devCommand', value: '' },
-          { key: 'driveSetupCommand', value: '   ' },
-          { key: 'driveStopCommand', value: null },
-        ]),
-      ),
-    ).toEqual({ setup: false, dev: false, teardown: false })
-  })
-
-  // Before settings land there is no answer, and guessing "false" would print
-  // "this project has no drive commands" at every mount of the review page.
-  it('has no answer until the settings view has loaded', () => {
-    expect(driveCapabilities(undefined)).toBeUndefined()
   })
 })
 

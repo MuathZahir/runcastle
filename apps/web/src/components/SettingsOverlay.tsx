@@ -12,6 +12,7 @@ import {
   unsetStepKeys,
   type ModelOptionGroup,
   type SettingRow,
+  type SettingsLocation,
 } from '../lib/settings'
 import { AGENT_RUNTIMES, mergeModelEntries, type ModelEntry } from '@runcastle/core'
 import type { QueryResult, SettingsView } from '../lib/api'
@@ -32,6 +33,12 @@ export function SettingsOverlay({
 }: {
   projectId: string
   onClose: () => void
+  /**
+   * Where the opener wants to land. The redesigned dialog honours it; this
+   * overlay has no pages to land on yet, so it accepts and ignores it — callers
+   * already pass one so the switch is a swap of this component alone.
+   */
+  location?: SettingsLocation
 }) {
   const globals = trpc.settings.get.useQuery()
   const scoped = trpc.settings.get.useQuery({ projectId })
@@ -212,7 +219,7 @@ function Field({
         )}
         {update.isPending && <span className="settings-saving">saving…</span>}
       </label>
-      {row.help && <div className="settings-field-help">{row.help}</div>}
+      {row.tooltip && <div className="settings-field-help">{row.tooltip}</div>}
 
       {row.readOnly ? (
         <div className="settings-readonly mono" id={controlId}>

@@ -77,7 +77,7 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
       <Titlebar
         nav={nav}
         onOpenCmdk={() => ws.setCmdk(true)}
-        onOpenSettings={() => ws.setSettings(true)}
+        onOpenSettings={() => ws.openSettings()}
         onToggleInspector={ws.toggleInspector}
         inspectorCollapsed={ws.inspectorCollapsed}
       />
@@ -156,7 +156,7 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
         features={list.data ?? []}
         selectedFeatureId={ws.selectedFeatureId}
         onSelect={ws.select}
-        onOpenSettings={() => ws.setSettings(true)}
+        onOpenSettings={() => ws.openSettings()}
         onOpenPreparation={ws.startPreparation}
         // The palette navigates, it never launches: this opens the project
         // workspace, where the conversation list decides new-versus-resume.
@@ -164,8 +164,12 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
         nav={nav}
       />
 
-      {ws.settingsOpen && (
-        <SettingsOverlay projectId={projectId} onClose={() => ws.setSettings(false)} />
+      {ws.settings && (
+        <SettingsOverlay
+          projectId={projectId}
+          location={ws.settings}
+          onClose={ws.closeSettings}
+        />
       )}
     </div>
   )
