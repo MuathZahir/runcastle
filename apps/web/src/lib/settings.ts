@@ -61,14 +61,6 @@ export const RUNTIME_LABEL: Record<AgentRuntime, string> = {
  * "This project" by a source chip, never by a page.
  */
 export type SettingsPage = 'general' | 'models' | 'burns' | 'project'
-export const SETTINGS_PAGES = ['general', 'models', 'burns', 'project'] as const
-
-export const PAGE_LABEL: Record<SettingsPage, string> = {
-  general: 'General',
-  models: 'Models',
-  burns: 'Burns',
-  project: 'This project',
-}
 
 /** A section within a page. */
 export type SettingsGroup =
@@ -80,18 +72,8 @@ export type SettingsGroup =
   | 'commands'
   | 'chat'
 
-export const GROUP_LABEL: Record<SettingsGroup, string> = {
-  server: 'Server',
-  sessions: 'Sessions',
-  default: 'Default model',
-  width: 'Width & retries',
-  model: 'Model & sandbox',
-  commands: 'Commands',
-  chat: 'Project chat',
-}
-
-/** Each page's groups in render order; `pageRows` sorts by it. */
-export const PAGE_GROUPS: Record<SettingsPage, readonly SettingsGroup[]> = {
+/** Each page's groups in render order; `pageRows` sorts its rows by it. */
+const PAGE_GROUPS: Record<SettingsPage, readonly SettingsGroup[]> = {
   general: ['server', 'sessions'],
   models: ['default'],
   burns: ['width'],
@@ -208,17 +190,19 @@ const STEP_META: readonly {
   description: string
   group: StepGroup
 }[] = [
-  { step: 'ideation', label: 'Ideation', description: 'Grills you and writes the spec', group: 'sessions' },
-  { step: 'qa', label: 'Q&A', description: 'Answers questions about a feature', group: 'sessions' },
-  { step: 'waypoint', label: 'Waypoint', description: 'Works one waypoint of a mapped feature', group: 'sessions' },
-  { step: 'converge', label: 'Converge', description: 'Folds a map back into one spec', group: 'sessions' },
-  { step: 'revisit', label: 'Revisit', description: 'Reopens a feature after test-drive notes', group: 'sessions' },
-  { step: 'project', label: 'Project chat', description: 'The project-level conversation', group: 'sessions' },
-  { step: 'research', label: 'Research', description: 'Reads the repo before a burn', group: 'unattended' },
-  { step: 'implement', label: 'Implement', description: 'Burns a ticket in the sandbox', group: 'unattended' },
-  { step: 'review', label: 'Review', description: 'Reads the finished branch', group: 'unattended' },
-  { step: 'prepare', label: 'Prepare', description: 'Measures setup, verify and baseline', group: 'unattended' },
-  { step: 'smoke', label: 'Smoke', description: 'Cheap scripted end-to-end check', group: 'unattended' },
+  // Sessions — you are in the terminal.
+  { step: 'ideation', label: 'Ideation', group: 'sessions', description: 'Grills you and writes the spec' },
+  { step: 'qa', label: 'Q&A', group: 'sessions', description: 'Answers questions about a feature' },
+  { step: 'waypoint', label: 'Waypoint', group: 'sessions', description: 'Works one waypoint of a mapped feature' },
+  { step: 'converge', label: 'Converge', group: 'sessions', description: 'Folds a map back into one spec' },
+  { step: 'revisit', label: 'Revisit', group: 'sessions', description: 'Reopens a feature after test-drive notes' },
+  { step: 'project', label: 'Project chat', group: 'sessions', description: 'The project-level conversation' },
+  // Unattended — burns and scripted runs.
+  { step: 'research', label: 'Research', group: 'unattended', description: 'Reads the repo before a burn' },
+  { step: 'implement', label: 'Implement', group: 'unattended', description: 'Burns a ticket in the sandbox' },
+  { step: 'review', label: 'Review', group: 'unattended', description: 'Reads the finished branch' },
+  { step: 'prepare', label: 'Prepare', group: 'unattended', description: 'Measures setup, verify and baseline' },
+  { step: 'smoke', label: 'Smoke', group: 'unattended', description: 'Cheap scripted end-to-end check' },
 ]
 
 const STEP_LABEL: Record<string, string> = Object.fromEntries(
