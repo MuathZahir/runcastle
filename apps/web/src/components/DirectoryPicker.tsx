@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react'
 import { trpc } from '../trpc'
 import { pathPlaceholder } from '../lib/platform'
-import { IconBranch, IconChevronRight, IconFolder } from '../icons'
-import { Button, DimLine } from '../ui'
+import { pickerStartDir } from '../lib/projects'
+import { IconBranch, IconFolder, IconX } from '../icons'
+import { Button, Dialog, DimLine } from '../ui'
+import { PathCrumbs } from './PathCrumbs'
 
 /**
  * Repo picker for the open-a-project flow — the alternative to hand-pasting an
@@ -32,13 +34,15 @@ export function DirectoryPicker({
   onPick: (path: string) => void
   onCancel: () => void
 }) {
+  const handed = initialPath?.trim() || undefined
   // `undefined` asks the server for its default (the user's home directory), so
   // the client never has to know what home is.
-  const [dir, setDir] = useState<string | undefined>(initialPath?.trim() || undefined)
+  const [dir, setDir] = useState<string | undefined>(handed)
   const [showHidden, setShowHidden] = useState(false)
-  // The path box's draft. It follows navigation (so it always shows where you
-  // are) but a typed edit wins until it is committed or abandoned.
-  const [typed, setTyped] = useState<string | null>(null)
+  // What the path control edits. It is the handed path until the user goes
+  // somewhere themselves, so a path that turned out not to exist survives the
+  // walk up to its nearest listable ancestor and can be corrected in place.
+  const [typed, setTyped] = useState<string | null>(handed ?? null)
 
   const roots = trpc.project.roots.useQuery()
   const browse = trpc.project.browse.useQuery(
@@ -48,14 +52,6 @@ export function DirectoryPicker({
     { placeholderData: (prev) => prev, retry: false },
   )
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onCancel()
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [onCancel])
-
   const data = browse.data
   const current = data?.dir ?? dir
 
@@ -64,156 +60,153 @@ export function DirectoryPicker({
     setDir(path)
   }
 
+  /**
+   * A path the caller handed us that cannot be listed is not a dead end
+   * (decision 6): drop a segment and try again, one failure at a time, until
+   * something lists or we are at home. Only the handed path is treated this way
+   * — once the user has navigated themselves, `typed` is null and an error is
+   * theirs to see and answer.
+   */
+  useEffect(() => {
+    if (typed === null || !browse.isError) return
+    const start = pickerStartDir(dir, browse.error.message)
+    if (start.dir !== dir) setDir(start.dir)
+  }, [typed, browse.isError, browse.error?.message, dir])
+
   return (
-    <div
-      className="peek-backdrop"
-      // mousedown, not click: a click that STARTS inside the panel and ends on
-      // the backdrop (selecting a path and releasing outside) is not a
-      // dismissal — the same guard FormOverlay makes.
-      onMouseDown={(e) => {
-        if (e.target === e.currentTarget) onCancel()
-      }}
+    <Dialog
+      open
+      onClose={onCancel}
+      size="lg"
+      label="Choose a repository"
+      className="flex h-[66vh] flex-col overflow-hidden"
     >
-      <div
-        className="peek dir-picker"
-        role="dialog"
-        aria-modal="true"
-        aria-label="Choose a repository"
-      >
-        <div className="peek-head">
-          <span className="dir-picker-title">Choose a repository</span>
-          <button className="peek-close" onClick={onCancel} aria-label="Close (Esc)">
-            ✕
-          </button>
-        </div>
+      <div className="flex shrink-0 items-center justify-between gap-3 border-b border-hairline px-4 py-3">
+        <span className="text-base font-semibold text-text">Choose a repository</span>
+        <button
+          className="rounded-sm p-0.5 text-text-3 hover:text-text"
+          onClick={onCancel}
+          aria-label="Close (Esc)"
+        >
+          <IconX size={14} />
+        </button>
+      </div>
 
-        <div className="dir-picker-bar">
-          <Button
-            variant="ghost"
-            className="dir-up"
-            onClick={() => data?.parent && navigate(data.parent)}
-            disabled={!data?.parent}
-            aria-label="Up one level"
-            title="Up one level"
-          >
-            ↑
-          </Button>
-          <div className="dir-crumbs mono" aria-label="Current path">
-            {(data?.crumbs ?? []).map((crumb, i) => (
-              <span key={crumb.path} className="dir-crumb-wrap">
-                {i > 0 && <IconChevronRight size={11} />}
-                <button className="dir-crumb" onClick={() => navigate(crumb.path)}>
-                  {crumb.name}
-                </button>
-              </span>
-            ))}
-          </div>
-          <label className="dir-hidden-toggle">
-            <input
-              type="checkbox"
-              checked={showHidden}
-              onChange={(e) => setShowHidden(e.target.checked)}
-            />
-            <span>Hidden</span>
-          </label>
-        </div>
-
-        {/* Typing a path was the fast way in and the dialog did not offer it —
-            deep directories cost eight clicks (findings F17.3). */}
-        <div className="dir-path-row">
-          <label className="dir-path-label" htmlFor="dir-path-input">
-            Path
-          </label>
+      <div className="flex shrink-0 items-center gap-2 border-b border-hairline px-4 py-2.5">
+        <Button
+          variant="ghost"
+          className="shrink-0 px-2.5"
+          onClick={() => data?.parent && navigate(data.parent)}
+          disabled={!data?.parent}
+          aria-label="Up one level"
+          title="Up one level"
+        >
+          ↑
+        </Button>
+        <PathCrumbs
+          crumbs={data?.crumbs ?? []}
+          value={typed ?? current ?? ''}
+          onNavigate={navigate}
+          placeholder={pathPlaceholder()}
+        />
+        <label className="flex shrink-0 cursor-pointer items-center gap-1.5 text-sm text-text-3 select-none">
           <input
-            id="dir-path-input"
-            className="dir-path-input mono"
-            spellCheck={false}
-            value={typed ?? current ?? ''}
-            placeholder={pathPlaceholder()}
-            onChange={(e) => setTyped(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && typed !== null) navigate(typed.trim())
-              // Escape abandons the edit and shows where we actually are; the
-              // dialog's own Escape-to-close only applies once it is not being
-              // typed into.
-              if (e.key === 'Escape' && typed !== null) {
-                e.stopPropagation()
-                setTyped(null)
-              }
-            }}
+            type="checkbox"
+            className="accent-accent"
+            checked={showHidden}
+            onChange={(e) => setShowHidden(e.target.checked)}
           />
+          <span>Hidden</span>
+        </label>
+      </div>
+
+      <div className="flex min-h-0 flex-1">
+        <div className="flex w-40 shrink-0 flex-col gap-px overflow-y-auto border-r border-hairline p-2">
+          {(roots.data ?? []).map((root) => (
+            <button
+              key={root.path}
+              className={
+                'flex items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-panel-inset hover:text-text ' +
+                (current === root.path ? 'bg-accent-soft text-text' : 'text-text-3')
+              }
+              onClick={() => navigate(root.path)}
+              title={root.path}
+            >
+              <IconFolder size={13} />
+              <span className="truncate font-mono">{root.label}</span>
+            </button>
+          ))}
         </div>
 
-        <div className="dir-picker-body">
-          <div className="dir-rail">
-            {(roots.data ?? []).map((root) => (
+        <div className="min-w-0 flex-1 overflow-y-auto p-2">
+          {browse.isError ? (
+            <DimLine>{browse.error.message}</DimLine>
+          ) : browse.isLoading ? (
+            <DimLine>Loading…</DimLine>
+          ) : (data?.entries.length ?? 0) === 0 ? (
+            <DimLine>
+              No subfolders here
+              {showHidden ? '' : ' (hidden folders, junctions and node_modules are filtered)'}.
+            </DimLine>
+          ) : (
+            (data?.entries ?? []).map((entry) => (
               <button
-                key={root.path}
-                className={`dir-rail-item${current === root.path ? ' is-active' : ''}`}
-                onClick={() => navigate(root.path)}
-                title={root.path}
+                key={entry.path}
+                className={
+                  'flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-panel-inset hover:text-text ' +
+                  (entry.isRepo ? 'text-text' : 'text-text-2')
+                }
+                onClick={() => navigate(entry.path)}
+                // A repo is usually the destination, so let a double-click
+                // both enter and commit it in one gesture.
+                onDoubleClick={() => entry.isRepo && onPick(entry.path)}
+                title={entry.path}
               >
                 <IconFolder size={13} />
-                <span className="dir-rail-label mono">{root.label}</span>
+                <span className="min-w-0 flex-1 truncate font-mono">{entry.name}</span>
+                {entry.isSymlink && <span className="shrink-0 text-xs text-text-4">link</span>}
+                {entry.isRepo && (
+                  <span className="flex shrink-0 items-center gap-1 text-xs tracking-[0.04em] text-accent-hi uppercase">
+                    <IconBranch size={11} /> git
+                  </span>
+                )}
               </button>
-            ))}
-          </div>
-
-          <div className="dir-list">
-            {browse.isError ? (
-              <DimLine>{browse.error.message}</DimLine>
-            ) : browse.isLoading ? (
-              <DimLine>Loading…</DimLine>
-            ) : (data?.entries.length ?? 0) === 0 ? (
-              <DimLine>
-                No subfolders here
-                {showHidden ? '' : ' (hidden folders, junctions and node_modules are filtered)'}.
-              </DimLine>
-            ) : (
-              (data?.entries ?? []).map((entry) => (
-                <button
-                  key={entry.path}
-                  className={`dir-item${entry.isRepo ? ' is-repo' : ''}`}
-                  onClick={() => navigate(entry.path)}
-                  // A repo is usually the destination, so let a double-click
-                  // both enter and commit it in one gesture.
-                  onDoubleClick={() => entry.isRepo && onPick(entry.path)}
-                  title={entry.path}
-                >
-                  <IconFolder size={13} />
-                  <span className="dir-item-name mono">{entry.name}</span>
-                  {entry.isSymlink && <span className="dir-item-tag">link</span>}
-                  {entry.isRepo && (
-                    <span className="dir-item-repo">
-                      <IconBranch size={11} /> git
-                    </span>
-                  )}
-                </button>
-              ))
-            )}
-            {data?.truncated && <DimLine>Listing truncated — this folder is very large.</DimLine>}
-          </div>
-        </div>
-
-        <div className="dir-picker-foot">
-          <div className="dir-picked mono" title={current}>
-            {/* <bdi> keeps the path rendering left-to-right inside the
-                right-to-left truncation container — see .dir-picked. */}
-            <bdi>{current ?? '—'}</bdi>
-          </div>
-          <div className="dir-picker-actions">
-            <Button variant="ghost" onClick={onCancel}>
-              Cancel
-            </Button>
-            {/* Enabled even when `.git` was not spotted: the server's git check
-                is the authority (bare repos and worktrees do not look like a
-                plain checkout), and its error message is the better teacher. */}
-            <Button variant="solid" onClick={() => current && onPick(current)} disabled={!current}>
-              Open this folder
-            </Button>
-          </div>
+            ))
+          )}
+          {data?.truncated && <DimLine>Listing truncated — this folder is very large.</DimLine>}
         </div>
       </div>
-    </div>
+
+      <div className="flex shrink-0 items-center gap-3 border-t border-hairline px-4 py-3">
+        {/* A long path is truncated at its *start* — the tail (the folder you
+            picked) is the part worth reading. `dir="rtl"` moves the ellipsis to
+            the left; <bdi> isolates the path so bidi reordering cannot move
+            direction-neutral characters around to the wrong end. */}
+        <div
+          className="min-w-0 flex-1 truncate text-left font-mono text-sm text-text-3"
+          dir="rtl"
+          title={current}
+        >
+          <bdi>{current ?? '—'}</bdi>
+        </div>
+        <div className="flex shrink-0 gap-2">
+          <Button variant="ghost" onClick={onCancel}>
+            Cancel
+          </Button>
+          {/* Enabled even when `.git` was not spotted: the server's git check
+              is the authority (bare repos and worktrees do not look like a
+              plain checkout), and its error message is the better teacher. A
+              directory that would not even list is another matter — that is the
+              garbage the primary button used to happily submit. */}
+          <Button
+            variant="solid"
+            onClick={() => current && onPick(current)}
+            disabled={!current || browse.isError}
+          >
+            Open this folder
+          </Button>
+        </div>
+      </div>
+    </Dialog>
   )
 }
