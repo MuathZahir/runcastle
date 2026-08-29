@@ -32,9 +32,16 @@ export function WizardRail({ steps }: { steps: WizardStepRow[] }) {
   const passed = steps.filter((s) => s.state === 'passed')
   return (
     <>
-      <ol className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs" aria-label="Setup progress">
+      <ol
+        className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs"
+        aria-label="Setup progress"
+      >
         {steps.map((s) => (
-          <li key={s.key} className={`flex items-center gap-1.5 ${STEP_TEXT[s.state]}`} title={s.detected}>
+          <li
+            key={s.key}
+            className={`flex items-center gap-1.5 ${STEP_TEXT[s.state]}`}
+            title={s.detected}
+          >
             {s.state === 'passed' ? (
               <IconCheck size={11} />
             ) : (
