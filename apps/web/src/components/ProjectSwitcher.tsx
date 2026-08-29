@@ -18,6 +18,15 @@ import { IconCheck, IconChevronDown } from '../icons'
  * component's own root and its classes are migrated here.
  */
 
+const TRIGGER =
+  'inline-flex h-6 min-w-0 items-center gap-1.5 rounded-md border border-transparent px-1.5 ' +
+  'transition-[border-color,background-color] duration-(--dur-1) ease-app ' +
+  'hover:border-hairline hover:bg-panel-3'
+
+const MENU =
+  'absolute top-7.5 left-0 z-40 flex min-w-60 flex-col gap-0.5 rounded-lg ' +
+  'border border-hairline bg-panel p-1.5 shadow-overlay'
+
 const MENU_ITEM =
   'flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-text-2 ' +
   'transition-[color,background-color] duration-(--dur-1) ease-app hover:bg-panel-3 hover:text-text'
@@ -46,7 +55,7 @@ export function ProjectSwitcher({ nav }: { nav: ProjectNavApi }) {
   return (
     <div className="relative inline-flex min-w-0" ref={ref}>
       <button
-        className="inline-flex h-6 min-w-0 items-center gap-1.5 rounded-md border border-transparent px-1.5 transition-[border-color,background-color] duration-(--dur-1) ease-app hover:border-hairline hover:bg-panel-3"
+        className={TRIGGER}
         onClick={() => setOpen((v) => !v)}
         title="Switch project"
         aria-haspopup="menu"
@@ -55,7 +64,10 @@ export function ProjectSwitcher({ nav }: { nav: ProjectNavApi }) {
         {/* Truncated before it can push the search box off the row (findings
             F20) — the title carries the whole name, so nothing is unreadable,
             only unshown. */}
-        <span className="max-w-56 min-w-0 truncate text-sm text-text-2" title={nav.currentProject?.name}>
+        <span
+          className="max-w-56 min-w-0 truncate text-sm text-text-2"
+          title={nav.currentProject?.name}
+        >
           {nav.currentProject?.name ?? '…'}
         </span>
         <span className="inline-flex items-center text-text-4">
@@ -64,10 +76,7 @@ export function ProjectSwitcher({ nav }: { nav: ProjectNavApi }) {
       </button>
 
       {open && (
-        <div
-          className="absolute top-7.5 left-0 z-40 flex min-w-60 flex-col gap-0.5 rounded-lg border border-hairline bg-panel p-1.5 shadow-overlay"
-          role="menu"
-        >
+        <div className={MENU} role="menu">
           <div className="px-2 pt-1 pb-1 text-xs tracking-[0.08em] text-text-4 uppercase">
             Projects
           </div>

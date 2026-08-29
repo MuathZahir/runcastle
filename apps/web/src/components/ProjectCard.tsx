@@ -37,6 +37,14 @@ const HEALTH_DOT: Record<ProjectHealth, string> = {
 /** The card's inner surface — the same box whether it is a button or not. */
 const FACE = 'flex flex-1 flex-col gap-1.5 p-4 text-left'
 
+const CARD =
+  'relative flex flex-col rounded-lg border border-hairline bg-panel ' +
+  'transition-[border-color] duration-(--dur-2) ease-app hover:border-hairline-strong'
+
+const RENAME_INPUT =
+  'h-6 min-w-0 flex-1 rounded-sm border border-accent-line bg-panel-inset px-1.5 ' +
+  'text-base text-text focus:outline-none'
+
 /** The reason removal is refused while the project still has a run going. */
 const IN_FLIGHT_REASON = 'A run is in flight — it has to finish before this project can go.'
 
@@ -100,7 +108,7 @@ export function ProjectCard({
       name={
         renaming ? (
           <input
-            className="h-6 min-w-0 flex-1 rounded-sm border border-accent-line bg-panel-inset px-1.5 text-base text-text focus:outline-none"
+            className={RENAME_INPUT}
             value={name}
             aria-label="Project name"
             // Same cap the server enforces (findings F20) — refusing the 81st
@@ -128,7 +136,7 @@ export function ProjectCard({
   )
 
   return (
-    <div className="relative flex flex-col rounded-lg border border-hairline bg-panel transition-[border-color] duration-(--dur-2) ease-app hover:border-hairline-strong">
+    <div className={CARD}>
       {confirming ? (
         <div className={FACE}>
           <p className="text-base text-text-2">
