@@ -62,6 +62,19 @@ export function Button({
 }
 
 /**
+ * The reset a plain `<button>` needs when it is not a {@link Button} — a
+ * breadcrumb, a rail row, a close ✕. There is no preflight (apps/web/STYLE.md),
+ * so a bare button keeps the user agent's `buttonface` grey and its outset
+ * border while inheriting the dark theme's near-white text: an unreadable
+ * light-grey pill. `Button` states both itself, which is why it never showed.
+ *
+ * A control that wants a background of its own writes that one *instead* of
+ * this — two background utilities on one element collide, and which wins is
+ * the order Tailwind emits them in, not the order they are written.
+ */
+export const BARE_BUTTON = 'border-0 bg-transparent'
+
+/**
  * The app's text input, as a class list rather than a component: the surfaces
  * that need one already have their own `<input>` wired to state, an id, an
  * `aria-describedby` from {@link Field} and their own key handling, so what they

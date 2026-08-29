@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { IconChevronRight } from '../icons'
+import { BARE_BUTTON } from '../ui'
 
 /** One clickable segment of the current path, as the server spelled it. */
 export interface Crumb {
@@ -111,7 +112,7 @@ export function PathCrumbs({
       ))}
       <button
         type="button"
-        className="ml-1 shrink-0 rounded-sm px-1 text-sm text-text-4 hover:text-text"
+        className={`${BARE_BUTTON} ml-1 shrink-0 rounded-sm px-1 text-sm text-text-4 hover:text-text`}
         aria-label="Edit path"
         title="Edit path"
         onClick={() => setDraft(value)}
@@ -126,7 +127,7 @@ function CrumbButton({ crumb, onNavigate }: { crumb: Crumb; onNavigate: (path: s
   return (
     <button
       type="button"
-      className="shrink-0 rounded-sm px-1 py-0.5 font-mono text-sm text-text-2 hover:bg-panel-inset hover:text-text"
+      className={`${BARE_BUTTON} shrink-0 rounded-sm px-1 py-0.5 font-mono text-sm text-text-2 hover:bg-panel-inset hover:text-text`}
       // Navigating is not "click the empty area", so it must not also open the
       // editor the strip around it opens.
       onClick={(e) => {

@@ -3,8 +3,22 @@ import { trpc } from '../trpc'
 import { pathPlaceholder } from '../lib/platform'
 import { pickerStartDir } from '../lib/projects'
 import { IconBranch, IconFolder, IconX } from '../icons'
-import { Button, Dialog, DimLine } from '../ui'
+import { BARE_BUTTON, Button, Dialog, DimLine } from '../ui'
 import { PathCrumbs } from './PathCrumbs'
+
+/**
+ * The roots rail's rows. Their background is written into each tone rather than
+ * once into the base: two `bg-*` utilities on one element collide, and which
+ * one wins is the order Tailwind emits them in, not the order they are written.
+ */
+const RAIL_ROW =
+  'flex items-center gap-2 rounded-md border-0 px-2 py-1.5 text-left text-sm ' +
+  'hover:bg-panel-inset hover:text-text'
+
+/** One folder in the listing. */
+const ENTRY_ROW =
+  `${BARE_BUTTON} flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm ` +
+  'hover:bg-panel-inset hover:text-text'
 
 /**
  * Repo picker for the open-a-project flow — the alternative to hand-pasting an
@@ -84,7 +98,7 @@ export function DirectoryPicker({
       <div className="flex shrink-0 items-center justify-between gap-3 border-b border-hairline px-4 py-3">
         <span className="text-base font-semibold text-text">Choose a repository</span>
         <button
-          className="rounded-sm p-0.5 text-text-3 hover:text-text"
+          className={`${BARE_BUTTON} rounded-sm p-0.5 text-text-3 hover:text-text`}
           onClick={onCancel}
           aria-label="Close (Esc)"
         >
@@ -126,8 +140,8 @@ export function DirectoryPicker({
             <button
               key={root.path}
               className={
-                'flex items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-panel-inset hover:text-text ' +
-                (current === root.path ? 'bg-accent-soft text-text' : 'text-text-3')
+                RAIL_ROW +
+                (current === root.path ? ' bg-accent-soft text-text' : ' bg-transparent text-text-3')
               }
               onClick={() => navigate(root.path)}
               title={root.path}
@@ -152,10 +166,7 @@ export function DirectoryPicker({
             (data?.entries ?? []).map((entry) => (
               <button
                 key={entry.path}
-                className={
-                  'flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-panel-inset hover:text-text ' +
-                  (entry.isRepo ? 'text-text' : 'text-text-2')
-                }
+                className={ENTRY_ROW + (entry.isRepo ? ' text-text' : ' text-text-2')}
                 onClick={() => navigate(entry.path)}
                 // A repo is usually the destination, so let a double-click
                 // both enter and commit it in one gesture.
