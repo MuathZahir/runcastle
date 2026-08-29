@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   firstSetupStep,
   nextSetupStep,
+  prevSetupStep,
   readyRuntimes,
   runtimeReadiness,
   setupComplete,
@@ -185,6 +186,31 @@ describe('nextSetupStep', () => {
     expect(nextSetupStep('runtimes')).toBe('afk')
     expect(nextSetupStep('afk')).toBe('project')
     expect(nextSetupStep('project')).toBeUndefined()
+  })
+})
+
+/**
+ * Decision 4 — Back on every step after the intro. Back walks the steps the user
+ * was actually shown: a step the host satisfied was never presented, so landing
+ * on it would ask for something git already has.
+ */
+describe('prevSetupStep', () => {
+  it('walks back down the setup order', () => {
+    expect(prevSetupStep('project', unset)).toBe('afk')
+    expect(prevSetupStep('afk', unset)).toBe('runtimes')
+    expect(prevSetupStep('runtimes', unset)).toBe('identity')
+  })
+
+  // The first shown step's Back goes to the intro, which is not a setup step.
+  it('has nowhere earlier to go from the first step it showed', () => {
+    expect(prevSetupStep('identity', unset)).toBeUndefined()
+    expect(prevSetupStep('identity', undefined)).toBeUndefined()
+  })
+
+  it('never lands on an identity step the host passed for us', () => {
+    expect(prevSetupStep('runtimes', ok)).toBeUndefined()
+    expect(prevSetupStep('afk', ok)).toBe('runtimes')
+    expect(prevSetupStep('project', ok)).toBe('afk')
   })
 })
 
