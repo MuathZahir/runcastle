@@ -141,6 +141,63 @@ export interface RepoOpenFailure {
   path: string | null
 }
 
+/** Where the directory picker should browse, and what to keep of what was typed. */
+export interface PickerStart {
+  /** The directory to list; `undefined` asks the server for the user's home. */
+  dir: string | undefined
+  /**
+   * Whether the path the picker was handed is still worth keeping in the path
+   * control's edit value — true when we walked away from it because it was not
+   * there, so the user can see and correct what they meant.
+   */
+  keepTyped: boolean
+}
+
+/** Server wordings for "that path is not somewhere I can list" (see fsbrowse). */
+const UNBROWSABLE = /does not exist|cannot read/i
+
+/**
+ * Where the picker opens when the path it was handed cannot be listed
+ * (decision 6).
+ *
+ * A field holding a half-typed or stale path used to open a dialog that was
+ * only an error message: no listing, no crumbs, and a primary button that would
+ * happily submit the garbage. Walking one segment up per failure lands on the
+ * nearest ancestor that does exist, with home as the floor — every machine has
+ * one, and the roots rail is right there for anything above it.
+ *
+ * Only a missing/unreadable path is fallen back from. Any other failure (a
+ * relative path, a permission error the server phrased its own way) is left
+ * alone: it is not a claim about *this* directory being the wrong one, and
+ * silently browsing somewhere else would hide it.
+ */
+export function pickerStartDir(
+  typed: string | undefined,
+  errorMessage: string | undefined,
+): PickerStart {
+  const path = typed?.trim() || undefined
+  if (!path || !errorMessage || !UNBROWSABLE.test(errorMessage)) {
+    return { dir: path, keepTyped: false }
+  }
+  return { dir: parentPath(path), keepTyped: true }
+}
+
+/**
+ * `path` minus its last segment, on either separator so one helper answers for
+ * both platforms, and `undefined` once nothing addressable is left.
+ */
+function parentPath(path: string): string | undefined {
+  const trimmed = path.replace(/[\\/]+$/, '')
+  const cut = Math.max(trimmed.lastIndexOf('/'), trimmed.lastIndexOf('\\'))
+  if (cut <= 0) return undefined
+  const parent = trimmed.slice(0, cut)
+  // `C:` on its own is drive-*relative*, not a directory — keep the separator so
+  // the drive root is a real place to land.
+  if (/^[A-Za-z]:$/.test(parent)) return `${parent}\\`
+  // A UNC path stripped past its host leaves bare separators, which name nothing.
+  return /^[\\/]+$/.test(parent) ? undefined : parent
+}
+
 export function repoOpenFailure(message: string, path: string): RepoOpenFailure {
   const where = path.trim() || null
   if (/not a git repository/i.test(message)) {

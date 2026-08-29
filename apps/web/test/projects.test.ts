@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import {
   aggregateRuns,
   initialView,
+  pickerStartDir,
   projectStats,
   repoOpenFailure,
   restoredView,
@@ -278,6 +279,78 @@ describe('repoOpenFailure', () => {
     expect(repoOpenFailure('not a git repository', '')).toMatchObject({
       message: 'Not a git repository',
       path: null,
+    })
+  })
+})
+
+/**
+ * Decision 6 — the picker used to open on whatever the path field held, so a
+ * stale or half-typed path produced a dialog that was nothing but an error. One
+ * segment is dropped per failure until something lists, with home as the floor.
+ */
+describe('pickerStartDir', () => {
+  it('browses the handed path when nothing has failed', () => {
+    expect(pickerStartDir('/home/you/code', undefined)).toEqual({
+      dir: '/home/you/code',
+      keepTyped: false,
+    })
+  })
+
+  it('asks for home when it was handed nothing', () => {
+    expect(pickerStartDir(undefined, undefined)).toEqual({ dir: undefined, keepTyped: false })
+    expect(pickerStartDir('   ', 'path does not exist:    ')).toEqual({
+      dir: undefined,
+      keepTyped: false,
+    })
+  })
+
+  it('steps up one segment from a path that is not there, and keeps the text', () => {
+    expect(pickerStartDir('/home/you/code/typo', 'path does not exist: /home/you/code/typo')).toEqual(
+      { dir: '/home/you/code', keepTyped: true },
+    )
+  })
+
+  it('steps up from an unreadable path too', () => {
+    expect(pickerStartDir('/root/private/x', 'cannot read path: /root/private/x (EACCES)')).toEqual({
+      dir: '/root/private',
+      keepTyped: true,
+    })
+  })
+
+  it('walks a windows path up to its drive root and then to home', () => {
+    const missing = 'path does not exist: x'
+    expect(pickerStartDir('C:\\Users\\you\\code', missing)).toEqual({
+      dir: 'C:\\Users\\you',
+      keepTyped: true,
+    })
+    // `C:` alone is drive-relative and names no directory, so the drive root
+    // keeps its separator.
+    expect(pickerStartDir('C:\\Users', missing)).toEqual({ dir: 'C:\\', keepTyped: true })
+    expect(pickerStartDir('C:\\', missing)).toEqual({ dir: undefined, keepTyped: true })
+  })
+
+  it('bottoms out at home rather than below the last segment', () => {
+    const missing = 'path does not exist: x'
+    expect(pickerStartDir('/gone', missing)).toEqual({ dir: undefined, keepTyped: true })
+    expect(pickerStartDir('/', missing)).toEqual({ dir: undefined, keepTyped: true })
+    expect(pickerStartDir('\\\\server', missing)).toEqual({ dir: undefined, keepTyped: true })
+  })
+
+  it('ignores a trailing separator rather than stepping up twice', () => {
+    expect(pickerStartDir('/home/you/code/', 'path does not exist: /home/you/code/')).toEqual({
+      dir: '/home/you',
+      keepTyped: true,
+    })
+  })
+
+  it('leaves any other failure where it is', () => {
+    expect(pickerStartDir('code/repo', 'path is not absolute: code/repo')).toEqual({
+      dir: 'code/repo',
+      keepTyped: false,
+    })
+    expect(pickerStartDir('/home/you', 'EMFILE: too many open files')).toEqual({
+      dir: '/home/you',
+      keepTyped: false,
     })
   })
 })
