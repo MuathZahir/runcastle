@@ -17,7 +17,14 @@ export interface FeatureAction {
   onSelect: (triggerRef: RefObject<HTMLButtonElement | null>) => void
 }
 
-export function FeatureActionsMenu({ actions }: { actions: FeatureAction[] }) {
+export function FeatureActionsMenu({
+  actions,
+  label = 'feature actions',
+}: {
+  actions: FeatureAction[]
+  /** The trigger's accessible name — the rows it serves are not all features. */
+  label?: string
+}) {
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
   const triggerRef = useRef<HTMLButtonElement>(null)
@@ -46,7 +53,7 @@ export function FeatureActionsMenu({ actions }: { actions: FeatureAction[] }) {
       <button
         ref={triggerRef}
         className="row-actions-btn"
-        aria-label="feature actions"
+        aria-label={label}
         aria-haspopup="menu"
         aria-expanded={open}
         onClick={(e) => {
