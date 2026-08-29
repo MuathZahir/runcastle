@@ -87,6 +87,14 @@ describe('OpenProject', () => {
     expect(container.innerHTML).not.toMatch(/class="[^"]*\b(op-|open-project)/)
   })
 
+  // The kicker locates you; the heading names the action. Printing the
+  // heading's own words above it in caps carries nothing (decision 1).
+  it('does not repeat the heading in its kicker', () => {
+    open()
+    expect(screen.getByText('Your projects')).toBeTruthy()
+    expect(screen.queryAllByText('Open a project')).toHaveLength(1)
+  })
+
   it('welcomes a first run and gives it nowhere to cancel back to', () => {
     open(true)
     expect(screen.getByRole('heading', { name: 'Open your first project' })).toBeTruthy()

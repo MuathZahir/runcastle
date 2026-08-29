@@ -108,8 +108,13 @@ export function OpenProject({
         <div className="mb-6 flex size-9 items-center justify-center rounded-md bg-accent">
           <LogoMark size={22} variant="ink" />
         </div>
+        {/*
+         * The kicker says where you are, the heading says what you are doing
+         * (decision 1) — so it never repeats the heading's own words back at
+         * you in caps, which is all "Open a project" over "Open a project" was.
+         */}
         <div className="text-xs font-semibold tracking-[0.09em] text-accent-hi uppercase">
-          {firstRun ? 'Welcome to runcastle' : 'Open a project'}
+          {firstRun ? 'Welcome to runcastle' : 'Your projects'}
         </div>
         <h1 className="mt-2 text-xl font-semibold text-text">
           {firstRun ? 'Open your first project' : 'Open a project'}
