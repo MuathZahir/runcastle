@@ -2,7 +2,7 @@ import { useProjectNav } from '../lib/use-project-nav'
 import { ProjectShell } from './ProjectShell'
 import { PortfolioHome } from './PortfolioHome'
 import { OpenProject } from './OpenProject'
-import { FirstRunWizard } from './FirstRunWizard'
+import { FirstRunWizard } from './first-run/FirstRunWizard'
 import { UpdateBanner } from './UpdateBanner'
 import { DimLine } from '../ui'
 

@@ -4084,40 +4084,6 @@ button.tb-runs { cursor: pointer; }
 .dir-picked > bdi { unicode-bidi: isolate; }
 .dir-picker-actions { display: flex; gap: 8px; flex: none; }
 
-/* First-run wizard (issue #50) — reuses the op-card frame with a step rail. */
-.wizard-card { max-width: 520px; }
-.wizard-steps {
-  display: flex;
-  gap: 16px;
-  list-style: none;
-  margin: 0 0 6px;
-  padding: 0;
-  font-size: 11px;
-  color: var(--text-4);
-}
-.wizard-step { display: flex; align-items: center; gap: 6px; }
-.wizard-step.is-current { color: var(--accent-hi); }
-.wizard-step.is-done { color: var(--text-2); }
-/* Satisfied by the host before the user arrived — a checkmark, not a skipped row. */
-.wizard-step.is-passed { color: var(--ok); }
-.wizard-passed {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-bottom: 8px;
-  font-size: 11.5px;
-  color: var(--text-3);
-}
-.wizard-passed > svg { color: var(--ok); flex: none; }
-.wizard-step-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--hairline);
-}
-.wizard-step.is-current .wizard-step-dot { background: var(--accent); }
-.wizard-step.is-done .wizard-step-dot { background: var(--text-3); }
-
 /* Enable AFK burns card (issue #50). */
 .afk-card { display: flex; flex-direction: column; gap: 10px; }
 .afk-card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
