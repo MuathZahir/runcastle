@@ -77,4 +77,20 @@ describe('PortfolioHome', () => {
     fireEvent.click(opens[0])
     expect(nav.showOpen).toHaveBeenCalled()
   })
+
+  // Same missing reset as the card face: without a background of its own the
+  // dashed card is a grey panel with a white-on-white title.
+  it('leaves the dashed card transparent rather than the user agent’s grey', () => {
+    render(
+      <ToastProvider>
+        <PortfolioHome nav={nav} />
+      </ToastProvider>,
+    )
+
+    const open = screen
+      .getAllByRole('button')
+      .find((el) => el.textContent?.startsWith('Open a project'))
+    expect(open?.className).toContain('bg-transparent')
+    expect(open?.className).toContain('cursor-pointer')
+  })
 })
