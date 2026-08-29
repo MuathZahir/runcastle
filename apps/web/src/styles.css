@@ -3182,44 +3182,13 @@ button.note-at:hover { color: var(--accent); }
 }
 
 /* ============================================================================
-   SETTINGS OVERLAY (issue #47)
+   OUTLIVED THE SETTINGS OVERLAY (issue #47 → flow-redesign-settings)
+
+   Settings is Tailwind on the theme tokens now and its own rules are gone. What
+   is left below is only what OTHER surfaces borrowed from it — preparation's
+   badges and Back link, and the delete dialog's confirm input. Those are their
+   own flow's rules to migrate and delete; nothing in settings reads them.
    ========================================================================== */
-.peek.settings { max-width: 620px; }
-.settings-title { color: var(--text); font-size: 13px; font-weight: 600; }
-.settings-body { display: flex; flex-direction: column; gap: 26px; }
-/* the overlay has no Save button; say so rather than leaving it to be guessed */
-.settings-autosave {
-  font-size: 11.5px;
-  line-height: 1.55;
-  color: var(--text-3);
-  border-left: 2px solid var(--accent-line, var(--hairline));
-  padding-left: 10px;
-}
-
-.settings-section { display: flex; flex-direction: column; gap: 14px; }
-.settings-section-head {
-  display: flex;
-  align-items: baseline;
-  gap: 10px;
-  padding-bottom: 8px;
-  border-bottom: 1px solid var(--hairline);
-}
-.settings-section-title {
-  margin: 0;
-  font-size: 11px;
-  letter-spacing: 0.09em;
-  text-transform: uppercase;
-  color: var(--text-2);
-  font-weight: 700;
-}
-.settings-section-hint { font-size: 11.5px; color: var(--text-4); }
-
-.settings-field { display: flex; flex-direction: column; gap: 5px; }
-.settings-field-head { display: flex; align-items: center; gap: 8px; }
-.settings-field-label { font-size: 12.5px; color: var(--text); }
-.settings-field.is-locked .settings-field-label { color: var(--text-2); }
-.settings-field-help { font-size: 11.5px; color: var(--text-4); line-height: 1.4; }
-
 .settings-badge {
   font-size: 9.5px;
   letter-spacing: 0.04em;
@@ -3229,13 +3198,11 @@ button.note-at:hover { color: var(--accent); }
   border: 1px solid var(--hairline-strong);
   color: var(--text-3);
 }
-.settings-badge.is-warn { color: var(--drive); border-color: color-mix(in srgb, var(--drive) 40%, transparent); }
 .settings-badge.is-override { color: var(--accent-hi); border-color: var(--accent-line); }
 /* The dry-run stamp (decision 10): proven by the real drive machinery, or never
    proven at all. Amber rather than red — unverified is doubt, not a failure. */
 .settings-badge.is-verified { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 40%, transparent); }
 .settings-badge.is-unverified { color: var(--needs); border-color: color-mix(in srgb, var(--needs) 40%, transparent); }
-.settings-saving { font-size: 10.5px; color: var(--text-4); font-style: italic; }
 
 .settings-input {
   width: 100%;
@@ -3252,35 +3219,8 @@ button.note-at:hover { color: var(--accent); }
 }
 .settings-input:focus { border-color: var(--accent); }
 .settings-input:disabled { opacity: 0.6; cursor: progress; }
-select.settings-input { cursor: pointer; }
-/* Multi-line settings (verify commands, known failures) — height comes from
-   `rows`, and the fixed `.settings-input` height/padding would collapse it. */
-.settings-textarea {
-  height: auto;
-  padding: 7px 10px;
-  line-height: 1.5;
-  resize: vertical;
-  min-height: 32px;
-}
 
-.settings-readonly {
-  min-height: 32px;
-  display: flex;
-  align-items: center;
-  padding: 0 10px;
-  background: var(--panel-inset);
-  border: 1px dashed var(--hairline);
-  border-radius: var(--radius);
-  color: var(--text-2);
-  font-size: 12.5px;
-}
-
-.settings-field-note { font-size: 11px; color: var(--text-4); }
-/* A value the field refused to commit — beside the control, not in a toast. */
-.settings-field-error { font-size: 11px; color: var(--danger); }
-
-/* What preparation observed to justify a value (settings row + prep card). */
-.settings-field-evidence,
+/* What preparation observed to justify a value. */
 .prep-finding-evidence {
   font-size: 11px;
   line-height: 1.45;
@@ -3456,53 +3396,6 @@ select.settings-input { cursor: pointer; }
 }
 .settings-clear:hover:not(:disabled) { color: var(--accent-hi); }
 .settings-clear:disabled { opacity: 0.5; cursor: default; }
-
-/* Default-model combobox: curated select + a free-text field in custom mode. */
-.settings-combo { display: flex; flex-direction: column; gap: 6px; }
-
-/* Custom-model form: id + required runtime picker + optional use-case note. */
-.settings-custom-model {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding: 8px;
-  border: 1px solid var(--hairline);
-  border-radius: 4px;
-}
-.settings-runtime-picker { border: none; padding: 0; margin: 0; display: flex; gap: 12px; flex-wrap: wrap; }
-.settings-runtime-picker legend { padding: 0; margin-bottom: 4px; }
-.settings-runtime-option {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 12px;
-  color: var(--text-2);
-  cursor: pointer;
-}
-
-/* Collapsed "Advanced — per-step models" section (issue #48). */
-.settings-advanced-toggle {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 8px;
-  width: 100%;
-  background: none;
-  border: none;
-  padding: 0;
-  cursor: pointer;
-  text-align: left;
-  color: inherit;
-}
-.settings-advanced-toggle:hover .settings-section-title { color: var(--accent-hi); }
-.settings-advanced-body {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  margin-top: 4px;
-  padding-left: 10px;
-  border-left: 1px solid var(--border-1, var(--text-5, #333));
-}
 
 /* ============================================================================
    DELETE FEATURE DIALOG (decision #8) + MERGE CONFIRMATION (findings F21)
