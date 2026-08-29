@@ -21,6 +21,12 @@ import { DirectoryPicker } from './DirectoryPicker'
  * states the problem alone and the path is shown exactly once beneath it,
  * truncated from the left, where the interesting end of a path is.
  */
+/** The path field: the app's first Tailwind text input, in the ui.tsx idiom. */
+const PATH_INPUT =
+  'h-(--control-h) min-w-0 flex-1 rounded-md border border-hairline bg-panel-inset px-3 ' +
+  'font-mono text-sm text-text transition-[border-color] duration-(--dur-1) ease-app ' +
+  'placeholder:text-text-4 focus:border-accent-line focus:outline-none'
+
 export function OpenProject({
   firstRun,
   onOpened,
@@ -121,7 +127,7 @@ export function OpenProject({
         <div className="mt-7 flex items-center gap-2">
           <input
             id="open-repo-path"
-            className="h-(--control-h) min-w-0 flex-1 rounded-md border border-hairline bg-panel-inset px-3 font-mono text-sm text-text transition-[border-color] duration-(--dur-1) ease-app placeholder:text-text-4 focus:border-accent-line focus:outline-none"
+            className={PATH_INPUT}
             value={repoPath}
             onChange={(e) => setRepoPath(e.target.value)}
             placeholder={pathPlaceholder()}
