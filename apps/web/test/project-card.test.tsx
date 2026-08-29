@@ -93,6 +93,18 @@ describe('ProjectCard', () => {
     expect(onOpen).toHaveBeenCalled()
   })
 
+  // The app ships no CSS reset while the legacy sheet lives (STYLE.md), so a
+  // <button> with only layout utilities paints the whole card in the user
+  // agent's grey behind near-white text.
+  it('resets the button the face is, so the card keeps the panel behind it', () => {
+    card()
+
+    const face = screen.getByTitle('Open runcastle')
+    expect(face.className).toContain('bg-transparent')
+    expect(face.className).toContain('border-0')
+    expect(face.className).toContain('cursor-pointer')
+  })
+
   it('offers Rename and Remove from list without being hovered', () => {
     card()
     fireEvent.click(screen.getByRole('button', { name: 'runcastle actions' }))

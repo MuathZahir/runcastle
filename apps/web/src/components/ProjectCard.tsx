@@ -37,6 +37,15 @@ const HEALTH_DOT: Record<ProjectHealth, string> = {
 /** The card's inner surface — the same box whether it is a button or not. */
 const FACE = 'flex flex-1 flex-col gap-1.5 p-4 text-left'
 
+/**
+ * The face when it *is* the button into the project. The app ships no CSS reset
+ * while the legacy sheet is alive (STYLE.md: "do not assume a reset: style what
+ * you render"), so without these three the whole card body paints in the user
+ * agent's `buttonface` grey, behind the dark theme's near-white text, inside a
+ * 2px outset border. `.pc-main` used to say exactly this in the stylesheet.
+ */
+const FACE_BUTTON = `${FACE} cursor-pointer border-0 bg-transparent`
+
 const CARD =
   'relative flex flex-col rounded-lg border border-hairline bg-panel ' +
   'transition-[border-color] duration-(--dur-2) ease-app hover:border-hairline-strong'
@@ -160,7 +169,7 @@ export function ProjectCard({
       ) : renaming ? (
         <div className={FACE}>{face}</div>
       ) : (
-        <button className={FACE} onClick={onOpen} title={`Open ${project.name}`}>
+        <button className={FACE_BUTTON} onClick={onOpen} title={`Open ${project.name}`}>
           {face}
         </button>
       )}

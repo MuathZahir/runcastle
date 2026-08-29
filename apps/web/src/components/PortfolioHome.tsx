@@ -16,9 +16,12 @@ import { ProjectCard } from './ProjectCard'
  * so it has no empty state: the shell lands on the first-project screen instead.
  */
 
+// `cursor-pointer bg-transparent` are the button reset this app has to write
+// itself: it ships no preflight while the legacy sheet is alive (STYLE.md), so
+// an unstyled background here paints the card in the user agent's grey.
 const OPEN_CARD =
-  'flex min-h-38 flex-col items-start justify-center gap-1 rounded-lg border border-dashed ' +
-  'border-hairline-strong p-4 text-left text-text-3 ' +
+  'flex min-h-38 cursor-pointer flex-col items-start justify-center gap-1 rounded-lg ' +
+  'border border-dashed border-hairline-strong bg-transparent p-4 text-left text-text-3 ' +
   'transition-[color,background-color,border-color] duration-(--dur-2) ease-app ' +
   'hover:border-accent-line hover:bg-accent-soft hover:text-text'
 export function PortfolioHome({ nav }: { nav: ProjectNavApi }) {
