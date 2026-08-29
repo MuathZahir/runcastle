@@ -4,6 +4,7 @@ import {
   initialView,
   pickerStartDir,
   projectStats,
+  repoFolderName,
   repoOpenFailure,
   restoredView,
 } from '../src/lib/projects'
@@ -352,5 +353,24 @@ describe('pickerStartDir', () => {
       dir: '/home/you',
       keepTyped: false,
     })
+  })
+})
+
+describe('repoFolderName', () => {
+  it('is the last segment of a posix path', () => {
+    expect(repoFolderName('/home/you/code/runcastle')).toBe('runcastle')
+  })
+
+  it('is the last segment of a windows path', () => {
+    expect(repoFolderName('C:\\Users\\you\\code\\runcastle')).toBe('runcastle')
+  })
+
+  it('ignores trailing separators', () => {
+    expect(repoFolderName('/home/you/code/runcastle/')).toBe('runcastle')
+    expect(repoFolderName('C:\\Users\\you\\code\\runcastle\\\\')).toBe('runcastle')
+  })
+
+  it('answers with the whole thing when there is no separator to cut at', () => {
+    expect(repoFolderName('runcastle')).toBe('runcastle')
   })
 })

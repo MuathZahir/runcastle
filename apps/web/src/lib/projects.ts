@@ -119,6 +119,26 @@ export function aggregateRuns(stats: ProjectStats[]): number {
 }
 
 /**
+ * The repo's folder name — the last segment of its path (decision 8).
+ *
+ * Two projects can carry the same name, and the switcher's rows are then
+ * indistinguishable; the folder the repo actually lives in is what tells them
+ * apart. Written here rather than with `node:path` because this runs in the
+ * browser, and it answers for both separators because the path is the *server's*
+ * and may be a Windows one however the browser is running.
+ */
+export function repoFolderName(repoPath: string): string {
+  const trimmed = withoutTrailingSeparators(repoPath)
+  const cut = Math.max(trimmed.lastIndexOf('/'), trimmed.lastIndexOf('\\'))
+  return cut < 0 ? trimmed : trimmed.slice(cut + 1)
+}
+
+/** A path with any trailing separators dropped, so its last segment is nameable. */
+function withoutTrailingSeparators(path: string): string {
+  return path.replace(/[\\/]+$/, '')
+}
+
+/**
  * The inline failure the open-a-project form shows, from the server's error.
  *
  * It used to be a bottom-right toast that auto-dismissed six seconds later,
@@ -187,7 +207,7 @@ export function pickerStartDir(
  * both platforms, and `undefined` once nothing addressable is left.
  */
 function parentPath(path: string): string | undefined {
-  const trimmed = path.replace(/[\\/]+$/, '')
+  const trimmed = withoutTrailingSeparators(path)
   const cut = Math.max(trimmed.lastIndexOf('/'), trimmed.lastIndexOf('\\'))
   if (cut <= 0) return undefined
   const parent = trimmed.slice(0, cut)
