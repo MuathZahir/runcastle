@@ -319,16 +319,6 @@ button {
 .wordmark-castle { color: var(--text); }
 .tb-home:hover .wordmark-castle { color: var(--accent-hi); }
 .tb-arrow, .tb-dot { color: var(--text-4); flex: 0 0 auto; }
-/* The breadcrumb is the one titlebar slot holding user-supplied text, so it is
-   the one that has to give: it shrinks and ellipsises rather than widening the
-   shell until the workspace and details rail slide off-canvas (findings F20). */
-.tb-project {
-  color: var(--text-2);
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
 .tb-spacer { flex: 1; }
 .tb-search {
   display: flex;
@@ -3711,65 +3701,6 @@ select.settings-input { cursor: pointer; }
   color: inherit;
 }
 .tb-home:hover .tb-app { color: var(--accent-hi); }
-
-/* `min-width: 0` all the way down to `.tb-project`, or the flex default of
-   min-content wins and the ellipsis never engages (findings F20). */
-.tb-switcher { position: relative; display: inline-flex; min-width: 0; }
-.tb-switcher-btn {
-  display: inline-flex;
-  align-items: center;
-  min-width: 0;
-  gap: 5px;
-  height: 24px;
-  padding: 0 7px;
-  background: transparent;
-  border: 1px solid transparent;
-  border-radius: var(--radius);
-  cursor: pointer;
-  transition: border-color var(--dur-1), background var(--dur-1);
-}
-.tb-switcher-btn:hover { border-color: var(--hairline); background: var(--panel-3); }
-.tb-switcher-caret { color: var(--text-4); display: inline-flex; align-items: center; }
-
-.tb-menu {
-  position: absolute;
-  top: 30px;
-  left: 0;
-  z-index: 40;
-  min-width: 240px;
-  padding: 5px;
-  background: var(--panel);
-  border: 1px solid var(--hairline);
-  border-radius: var(--radius-lg);
-  box-shadow: 0 18px 44px -18px rgba(0, 0, 0, 0.85);
-  animation: cmdkIn var(--dur-2) var(--ease-out);
-}
-.tb-menu-label {
-  padding: 6px 8px 4px;
-  font-size: 10px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--text-4);
-}
-.tb-menu-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-  padding: 7px 8px;
-  background: transparent;
-  border: 0;
-  border-radius: var(--radius);
-  cursor: pointer;
-  color: var(--text-2);
-  text-align: left;
-  transition: background var(--dur-1), color var(--dur-1);
-}
-.tb-menu-item:hover { background: var(--panel-3); color: var(--text); }
-.tb-menu-item.is-current { color: var(--text); }
-.tb-menu-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
-.tb-menu-check { color: var(--accent-hi); display: inline-flex; align-items: center; }
-.tb-menu-sep { height: 1px; margin: 5px 4px; background: var(--hairline-soft); }
 button.tb-runs { cursor: pointer; }
 
 /* ============================================================================
