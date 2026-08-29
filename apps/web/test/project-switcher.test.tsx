@@ -86,6 +86,17 @@ describe('ProjectSwitcher', () => {
     expect(screen.queryByRole('menu')).toBeNull()
   })
 
+  it('gives the trigger and every row a background, so no user-agent grey shows', () => {
+    // There is no Tailwind preflight yet (STYLE.md), so a button that names no
+    // background renders as `buttonface` grey under near-white theme text.
+    openMenu()
+
+    const trigger = screen.getByRole('button', { name: /runcastle/ })
+    for (const el of [trigger, ...screen.getAllByRole('menuitem')]) {
+      expect(el.className).toContain('bg-transparent')
+    }
+  })
+
   it('truncates a long project name rather than widening the titlebar', () => {
     const long = { id: 'p3', name: 'a-project-name-long-enough-to-swallow-the-row', repoPath: '/r' }
     render(<ProjectSwitcher nav={navApi({ currentProjectId: 'p3', currentProject: long })} />)
