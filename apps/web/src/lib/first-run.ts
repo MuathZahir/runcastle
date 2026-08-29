@@ -62,6 +62,24 @@ export function nextSetupStep(current: SetupStep): SetupStep | undefined {
 }
 
 /**
+ * The step Back returns to, or `undefined` when there is no earlier step and
+ * Back therefore goes to the intro (decision 4).
+ *
+ * "Earlier step" means earlier *shown* step: an identity the host already
+ * configured was never presented, so walking back onto it would show a form
+ * asking for something already in `git config` — which is the same silent
+ * mismatch {@link firstSetupStep} exists to avoid, only in reverse. The rail
+ * still carries that step as a passed row, so nothing has been hidden.
+ */
+export function prevSetupStep(
+  current: SetupStep,
+  identity: ProbeLike | undefined,
+): SetupStep | undefined {
+  if (current === firstSetupStep(identity)) return undefined
+  return SETUP_ORDER[SETUP_ORDER.findIndex((s) => s.key === current) - 1]?.key
+}
+
+/**
  * Each runtime's interactive sign-in: the embedded-terminal flow to spawn and
  * the command it runs, named so the button says exactly what will happen.
  */

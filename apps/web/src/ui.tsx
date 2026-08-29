@@ -62,6 +62,23 @@ export function Button({
 }
 
 /**
+ * The app's text input, as a class list rather than a component: the surfaces
+ * that need one already have their own `<input>` wired to state, an id, an
+ * `aria-describedby` from {@link Field} and their own key handling, so what they
+ * share is the look and nothing else. Shared because it IS shared — the open
+ * screen's path field and the wizard's identity fields are the same control.
+ *
+ * Deliberately not `flex-1`: a `flex-basis` of 0 would collapse the height this
+ * sets when the input is the child of a column flex container, which is what
+ * {@link Field} makes it. A row that wants the input to take the slack appends
+ * `flex-1` itself.
+ */
+export const TEXT_INPUT =
+  'h-(--control-h) w-full min-w-0 rounded-md border border-hairline bg-panel-inset px-3 ' +
+  'font-mono text-sm text-text transition-[border-color] duration-(--dur-1) ease-app ' +
+  'placeholder:text-text-4 focus:border-accent-line focus:outline-none'
+
+/**
  * 11px uppercase tracked section title.
  *
  * Keeps the `section-title` class as a hook: two surviving legacy rules place it
