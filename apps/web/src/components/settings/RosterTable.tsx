@@ -32,9 +32,17 @@ import { showsSetting, type FilterState } from './types'
 /** Fits the 940px dialog's page column without a horizontal scrollbar. */
 const COLUMNS = 'grid grid-cols-[168px_86px_minmax(140px,1fr)_118px_92px_24px] items-center gap-2'
 
-/** Every roster write is one write of the whole `models` array, per model id. */
-const cellOf = (id: string) => `models:${id}`
+/**
+ * A row's feedback slot: one row, one place its "Saved ✓" or its refusal
+ * appears, whichever of the row's controls issued the write.
+ */
+const rowCell = (id: string) => `models:${id}`
 const ADD_CELL = 'models:new'
+
+/** The add row's controls, which are ordinary 32px fields rather than cells. */
+const ADD_FIELD =
+  'h-(--control-h) min-w-0 rounded-sm border border-hairline bg-panel-inset px-2.5 text-sm ' +
+  'text-text placeholder:text-text-4 hover:border-hairline-strong'
 
 export function RosterTable({
   rows,
@@ -111,7 +119,7 @@ function ModelRow({
   customModels: ModelEntry[]
   writes: SettingWrites
 }) {
-  const cell = cellOf(row.id)
+  const cell = rowCell(row.id)
   const usedFor = row.usedFor.map((step) => stepLabels.get(step) ?? step).join(', ')
 
   const saveNote = (note: string) => {
@@ -171,7 +179,9 @@ function ModelRow({
           <button
             type="button"
             aria-label={`Make ${row.id} the default`}
-            onClick={() => writes.save('model', 'model', row.id)}
+            // Attributed to this row, not to the card at the top of the page:
+            // a refusal belongs where the click was.
+            onClick={() => writes.save(cell, 'model', row.id)}
             className="justify-self-start rounded-pill border border-transparent px-2 py-0.5 text-xs whitespace-nowrap text-text-3 opacity-0 group-hover:border-hairline group-hover:opacity-100 hover:border-accent-line hover:text-accent-hi focus-visible:opacity-100"
           >
             Make default
@@ -252,9 +262,6 @@ function AddModelRow({
   const onEnter = (e: KeyboardEvent<HTMLElement>) => {
     if (e.key === 'Enter') add()
   }
-  const field =
-    'h-(--control-h) min-w-0 rounded-sm border border-hairline bg-panel-inset px-2.5 text-sm ' +
-    'text-text placeholder:text-text-4 hover:border-hairline-strong'
 
   return (
     <div className="border-t border-hairline-soft bg-panel-2">
@@ -265,14 +272,14 @@ function AddModelRow({
           type="text"
           aria-label="New model id"
           placeholder="model id, e.g. claude-opus-5[1m]"
-          className={`${field} font-mono`}
+          className={`${ADD_FIELD} font-mono`}
           value={id}
           onChange={(e) => setId(e.target.value)}
           onKeyDown={onEnter}
         />
         <select
           aria-label="Runtime (required)"
-          className={`${field} cursor-pointer`}
+          className={`${ADD_FIELD} cursor-pointer`}
           value={runtime}
           onChange={(e) => setRuntime(e.target.value)}
         >
@@ -287,7 +294,7 @@ function AddModelRow({
           type="text"
           aria-label="New model note"
           placeholder="use-case note (optional)"
-          className={field}
+          className={ADD_FIELD}
           value={note}
           onChange={(e) => setNote(e.target.value)}
           onKeyDown={onEnter}
