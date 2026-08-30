@@ -967,7 +967,33 @@ export function filterSettings(
  * burner's missing-binary message carry that wording.
  */
 export function settingsLocationFromMessage(text: string): SettingsLocation | null {
-  return /Settings\s*→\s*(AFK burns|Burns)/i.test(text)
-    ? { page: 'burns', field: 'sandcastle-image' }
-    : null
+  return SETTINGS_POINTER.test(text) ? { page: 'burns', field: 'sandcastle-image' } : null
+}
+
+/** "Settings → AFK burns", in either the old wording or the new. */
+const SETTINGS_POINTER = /Settings\s*→\s*(?:AFK burns|Burns)/i
+
+/** A message split around the settings pointer inside it, ready to render. */
+export interface SettingsMention {
+  before: string
+  /** The phrase itself — this is what becomes the link. */
+  phrase: string
+  after: string
+  location: SettingsLocation
+}
+
+/**
+ * Where the pointer sits in a message, so the phrase can be a link and the rest
+ * of the sentence stays prose. `null` when the message points nowhere.
+ */
+export function settingsMention(text: string): SettingsMention | null {
+  const match = SETTINGS_POINTER.exec(text)
+  const location = settingsLocationFromMessage(text)
+  if (!match || !location) return null
+  return {
+    before: text.slice(0, match.index),
+    phrase: match[0],
+    after: text.slice(match.index + match[0].length),
+    location,
+  }
 }

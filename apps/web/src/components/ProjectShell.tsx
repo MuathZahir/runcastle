@@ -17,6 +17,7 @@ import { ProjectWorkspace } from './ProjectWorkspace'
 import { QuickForm } from './QuickForm'
 import { PreparationWorkspace } from './PreparationWorkspace'
 import { CommandPalette } from './CommandPalette'
+import { OpenSettingsProvider } from './settings/MessageWithSettingsLink'
 import { SettingsDialog } from './settings/SettingsDialog'
 
 /**
@@ -72,7 +73,7 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
   const view = workspaceView({ ...ws, featureCount: list.data?.length ?? 0, prepared })
   const showInspector = showsInspector(view, ws.inspectorCollapsed)
 
-  return (
+  const shell = (
     <div className={`shell${ws.inspectorCollapsed ? ' inspector-collapsed' : ''}`}>
       <Titlebar
         nav={nav}
@@ -174,6 +175,10 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
       )}
     </div>
   )
+
+  // Anything under the shell — a ticket's error, a burn lane — can turn a
+  // "Settings → Burns" pointer into a link that lands on the row it names.
+  return <OpenSettingsProvider open={ws.openSettings}>{shell}</OpenSettingsProvider>
 }
 
 /**
