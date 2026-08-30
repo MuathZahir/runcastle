@@ -3,8 +3,7 @@ import type { KeyboardEvent, ReactNode } from 'react'
 import { trpc } from '../../trpc'
 import {
   filterSettings,
-  pageRows,
-  rowSearchTerms,
+  pageSearchItems,
   type SearchableSetting,
   type SettingsLocation,
   type SettingsPage,
@@ -143,8 +142,9 @@ export function SettingsDialog({
 
 /**
  * Everything the filter box searches, from every page at once — so the rail can
- * count hits on pages that are not on screen. Rows are all a page contributes
- * today; the roster and the per-step table add their own as those pages land.
+ * count hits on pages that are not on screen. What each page contributes is the
+ * page's own business (`pageSearchItems`): its rows, plus anything else it
+ * renders that a reader searches for by name.
  */
 function searchableSettings(
   globals: SettingsView | undefined,
@@ -152,11 +152,6 @@ function searchableSettings(
 ): SearchableSetting[] {
   return SETTINGS_PAGES.flatMap(({ page }) => {
     const view = page === 'project' ? scoped : globals
-    if (!view) return []
-    return pageRows(view, page).map((row) => ({
-      id: row.key,
-      page,
-      terms: rowSearchTerms(row),
-    }))
+    return view ? pageSearchItems(view, page) : []
   })
 }

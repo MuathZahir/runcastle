@@ -254,8 +254,8 @@ describe('SettingsDialog', () => {
     )
   })
 
-  it('leaves Models, Burns and This project to their own tickets', () => {
-    open({ page: 'models' })
+  it('leaves Burns and This project to their own tickets', () => {
+    open({ page: 'burns' })
 
     expect(screen.getByText('this page is not built yet.')).toBeTruthy()
   })
