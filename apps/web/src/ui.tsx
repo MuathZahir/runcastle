@@ -156,6 +156,44 @@ export function EmptyState({
   )
 }
 
+/**
+ * An inline failure about a path: the problem stated once, the path it is about
+ * shown once beneath it, and what to do next.
+ *
+ * The path gets its own line because a long one has to be truncated from the
+ * *left* — the interesting end of a path is its tail — and a sentence with the
+ * path spliced into the middle cannot be. `dir="rtl"` moves the ellipsis to the
+ * left; `<bdi>` isolates the path so bidi reordering cannot carry
+ * direction-neutral characters round to the wrong end.
+ */
+export function FailureNote({
+  message,
+  path,
+  hint,
+  id,
+}: {
+  message: string
+  path?: string | null
+  hint?: string | null
+  id?: string
+}) {
+  return (
+    <div
+      className="rounded-md border border-danger/45 bg-danger/8 px-3 py-2.5"
+      id={id}
+      role="alert"
+    >
+      <div className="text-sm font-medium text-danger">{message}</div>
+      {path && (
+        <div className="mt-1 truncate text-left font-mono text-sm text-text-3" dir="rtl" title={path}>
+          <bdi>{path}</bdi>
+        </div>
+      )}
+      {hint && <p className="mt-1.5 text-sm text-text-2">{hint}</p>}
+    </div>
+  )
+}
+
 type DialogSize = 'sm' | 'md' | 'lg'
 
 const DIALOG_SIZE: Record<DialogSize, string> = {

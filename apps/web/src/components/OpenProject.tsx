@@ -4,7 +4,7 @@ import { isAbsolutePath, pathPlaceholder } from '../lib/platform'
 import { repoOpenFailure, type RepoOpenFailure } from '../lib/projects'
 import { useToast } from '../lib/toast'
 import { LogoMark } from '../icons'
-import { Button, TEXT_INPUT } from '../ui'
+import { Button, FailureNote, TEXT_INPUT } from '../ui'
 import { DirectoryPicker } from './DirectoryPicker'
 
 /**
@@ -153,24 +153,8 @@ export function OpenProject({
         </div>
 
         {failure ? (
-          <div
-            className="mt-3 rounded-md border border-danger/45 bg-danger/8 px-3 py-2.5"
-            id="open-repo-error"
-            role="alert"
-          >
-            <div className="text-sm font-medium text-danger">{failure.message}</div>
-            {failure.path && (
-              // `dir="rtl"` truncates from the left and <bdi> keeps the path
-              // itself rendering left-to-right inside it.
-              <div
-                className="mt-1 truncate text-left font-mono text-sm text-text-3"
-                dir="rtl"
-                title={failure.path}
-              >
-                <bdi>{failure.path}</bdi>
-              </div>
-            )}
-            {failure.hint && <p className="mt-1.5 text-sm text-text-2">{failure.hint}</p>}
+          <div className="mt-3">
+            <FailureNote {...failure} id="open-repo-error" />
           </div>
         ) : (
           <p className="mt-3 text-sm text-text-3">
