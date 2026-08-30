@@ -132,7 +132,7 @@ const RUNTIME_BINARY: Record<AgentRuntime, string> = {
 
 export function missingImageRuntimeMessage(runtime: AgentRuntime, image: string): string {
   const binary = RUNTIME_BINARY[runtime]
-  return `${binary} is not installed in image ${image} — the image predates the burner Dockerfile. Rebuild it from Settings → AFK burns (Rebuild image).`
+  return `${binary} is not installed in image ${image} — the image predates the burner Dockerfile. Rebuild it from Settings → Burns (Rebuild image).`
 }
 
 /**
@@ -2072,7 +2072,7 @@ export function missingAgentBinaryMessage(
     'i',
   )
   if (!missing.test(msg)) return undefined
-  return `${binary} is not installed in image ${image} — the image predates the burner Dockerfile. Rebuild it from Settings → AFK burns (Rebuild image).`
+  return `${binary} is not installed in image ${image} — the image predates the burner Dockerfile. Rebuild it from Settings → Burns (Rebuild image).`
 }
 
 /**
