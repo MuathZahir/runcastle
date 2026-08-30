@@ -25,11 +25,7 @@ export function BurnsPage({ globals, projectId, filter, highlightField }: Settin
     <div className="flex flex-col gap-5.5">
       {anyPrerequisite && (
         <SettingSection title="Prerequisites for unattended burns">
-          <EnableAfkCard
-            projectId={projectId}
-            filter={filter}
-            {...(highlightField ? { highlightField } : {})}
-          />
+          <EnableAfkCard projectId={projectId} filter={filter} highlightField={highlightField} />
         </SettingSection>
       )}
       <SettingGroup
