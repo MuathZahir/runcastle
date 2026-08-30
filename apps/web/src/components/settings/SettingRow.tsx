@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, useState } from 'react'
 import type { KeyboardEvent } from 'react'
 import { trpc } from '../../trpc'
+import { HIGHLIGHT_RING, useHighlight } from './highlight'
 import {
   FIELD_ENV_VAR,
   fieldCommit,
@@ -24,9 +25,6 @@ import { showsSetting, type FilterState } from './types'
 
 /** How long "Saved ✓" stays up after a commit lands. */
 const SAVED_MS = 1400
-
-/** How long a deep-linked row keeps its accent outline. */
-const HIGHLIGHT_MS = 1500
 
 /** Join the parts that are present. Falsy branches drop out. */
 function cx(...parts: Array<string | false | null | undefined>): string {
@@ -110,21 +108,12 @@ export function SettingRow({
   const [saved, setSaved] = useState(false)
   /** Set once this field has been changed — serverPort's amber restart line. */
   const [restart, setRestart] = useState(false)
-  const [flash, setFlash] = useState(false)
-  const rowRef = useRef<HTMLDivElement>(null)
+  const { ref: rowRef, flash } = useHighlight<HTMLDivElement>(highlight)
   const savedTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
 
   // Keep the draft in sync when a refetch changes the resolved value.
   useEffect(() => setDraft(committed), [committed])
   useEffect(() => () => clearTimeout(savedTimer.current), [])
-
-  useEffect(() => {
-    if (!highlight) return
-    rowRef.current?.scrollIntoView?.({ block: 'center' })
-    setFlash(true)
-    const timer = setTimeout(() => setFlash(false), HIGHLIGHT_MS)
-    return () => clearTimeout(timer)
-  }, [highlight])
 
   const update = trpc.settings.update.useMutation({
     onSuccess: () => {
@@ -176,7 +165,7 @@ export function SettingRow({
       ref={rowRef}
       className={cx(
         'border-b border-hairline-soft py-2 last:border-b-0',
-        flash && 'rounded-sm outline-2 outline-offset-2 outline-accent',
+        flash && HIGHLIGHT_RING,
       )}
     >
       <Field

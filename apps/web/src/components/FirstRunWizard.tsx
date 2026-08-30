@@ -17,10 +17,8 @@ import { useToast } from '../lib/toast'
 import { AFK_BURN_EXPLAINER } from '../lib/vocabulary'
 import { Button, DimLine } from '../ui'
 import { IconCheck, LogoMark } from '../icons'
-import { EnableAfkCard } from './EnableAfkCard'
-import { ErrorBoundary } from './ErrorBoundary'
+import { Checklist, ChecklistRow, EnableAfkCard, RowTerminal } from './EnableAfkCard'
 import { OpenProject } from './OpenProject'
-import { TerminalView } from './TerminalView'
 
 /**
  * First-run wizard (issue #50). Shown only when the projects table is empty; it
@@ -258,11 +256,11 @@ function RuntimesStep({
         later.
       </div>
 
-      <div className="afk-rows">
+      <Checklist>
         {runtimes.map((r) => (
           <RuntimeCard key={r.runtime} runtime={r} />
         ))}
-      </div>
+      </Checklist>
 
       <div className="op-actions">
         <Button variant="solid" onClick={onNext} disabled={ready.length === 0}>
@@ -290,69 +288,55 @@ function RuntimeCard({ runtime }: { runtime: RuntimeReadiness }) {
   const state = runtime.talkReady ? 'ready' : runtime.installed ? 'sign in' : 'not installed'
 
   return (
-    <div className={`afk-row${runtime.talkReady ? ' is-ok' : ''}`}>
-      <div className="afk-row-head">
-        <span className={`afk-dot afk-dot-${runtime.talkReady ? 'ok' : 'warn'}`} aria-hidden />
-        <div className="afk-row-text">
-          <div className="afk-row-label">
-            {runtime.label} — {state}
-          </div>
-          <div className="afk-row-detail mono">{runtime.detail}</div>
-        </div>
-      </div>
-      <div className="afk-row-action">
-        {runtime.installFix && (
-          <div className="afk-cmd">
-            <code className="afk-cmd-text mono">{runtime.installFix}</code>
-            <Button
-              variant="ghost"
-              onClick={() => {
-                void navigator.clipboard?.writeText(runtime.installFix ?? '')
-                toast.push('copied', 'info')
-              }}
-            >
-              Copy
-            </Button>
-          </div>
-        )}
-        {runtime.installed &&
-          !runtime.talkReady &&
-          (sessionId ? (
-            <>
-              <div className="afk-term">
-                <ErrorBoundary label={login.kind}>
-                  <TerminalView sessionId={sessionId} />
-                </ErrorBoundary>
-              </div>
-              <div className="afk-term-actions">
-                <Button
-                  variant="solid"
-                  onClick={() => {
-                    setSessionId(null)
-                    void utils.setup.doctor.invalidate()
-                  }}
-                >
-                  Done — re-check
-                </Button>
-              </div>
-            </>
-          ) : (
-            <Button
-              variant="solid"
-              disabled={start.isPending}
-              onClick={() => start.mutate({ kind: login.kind })}
-            >
-              {start.isPending ? 'Starting…' : `Run ${login.command}`}
-            </Button>
-          ))}
-        {runtime.talkReady && !runtime.afkReady && (
-          <div className="afk-note">
-            Signed in for sessions you watch. Unattended burns on {runtime.label} also need its key —
-            the next step sets that up.
-          </div>
-        )}
-      </div>
-    </div>
+    <ChecklistRow
+      label={`${runtime.label} — ${state}`}
+      detail={runtime.detail}
+      ok={runtime.talkReady}
+      below={
+        sessionId && (
+          <RowTerminal
+            sessionId={sessionId}
+            label={login.kind}
+            onDone={() => {
+              setSessionId(null)
+              void utils.setup.doctor.invalidate()
+            }}
+          />
+        )
+      }
+    >
+      {runtime.installFix && (
+        <>
+          <code className="max-w-full truncate rounded-sm border border-hairline bg-panel-inset px-2 py-1 font-mono text-xs text-accent-hi">
+            {runtime.installFix}
+          </code>
+          <Button
+            variant="ghost"
+            onClick={() => {
+              void navigator.clipboard?.writeText(runtime.installFix ?? '')
+              toast.push('copied', 'info')
+            }}
+          >
+            Copy
+          </Button>
+        </>
+      )}
+      {runtime.installed && !runtime.talkReady && !sessionId && (
+        <Button
+          variant="solid"
+          disabled={start.isPending}
+          onClick={() => start.mutate({ kind: login.kind })}
+        >
+          {start.isPending ? 'Starting…' : `Run ${login.command}`}
+        </Button>
+      )}
+      {runtime.talkReady && !runtime.afkReady && (
+        <span className="basis-full text-right text-xs text-text-3">
+          Signed in for sessions you watch. Unattended burns on {runtime.label} also need its key —
+          the next step sets that up.
+        </span>
+      )}
+    </ChecklistRow>
   )
 }
 

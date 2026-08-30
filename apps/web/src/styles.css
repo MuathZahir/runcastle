@@ -4075,60 +4075,6 @@ button.tb-runs { cursor: pointer; }
 .wizard-step.is-current .wizard-step-dot { background: var(--accent); }
 .wizard-step.is-done .wizard-step-dot { background: var(--text-3); }
 
-/* Enable AFK burns card (issue #50). */
-.afk-card { display: flex; flex-direction: column; gap: 10px; }
-.afk-card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
-.afk-card-title { font-size: 16px; font-weight: 600; }
-.afk-card-sub { color: var(--text-3); font-size: 12.5px; line-height: 1.5; margin: 0; }
-.afk-rows { display: flex; flex-direction: column; gap: 8px; }
-.afk-row {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 12px;
-  border: 1px solid var(--hairline);
-  border-radius: var(--radius);
-  background: var(--panel-2);
-}
-.afk-row.is-ok { opacity: 0.72; }
-.afk-row.is-stale .afk-dot { background: var(--amber, #d99a32); }
-.afk-row-head { display: flex; align-items: flex-start; gap: 9px; }
-.afk-dot {
-  width: 8px;
-  height: 8px;
-  margin-top: 4px;
-  border-radius: 50%;
-  flex: none;
-}
-.afk-dot-ok { background: var(--ok, #3fb950); }
-.afk-dot-warn { background: var(--warn, #d9a441); }
-.afk-row-text { display: flex; flex-direction: column; gap: 2px; }
-.afk-row-label { font-size: 13px; font-weight: 500; }
-.afk-row-detail { font-size: 11px; color: var(--text-4); }
-.afk-row-action { display: flex; flex-direction: column; gap: 8px; padding-left: 17px; }
-.afk-cmd {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 10px;
-  background: var(--panel-inset);
-  border: 1px solid var(--hairline);
-  border-radius: var(--radius);
-}
-.afk-cmd-text { flex: 1; font-size: 12px; color: var(--accent-hi); word-break: break-all; }
-.afk-note { font-size: 11px; color: var(--text-4); }
-.afk-term {
-  height: 280px;
-  border: 1px solid var(--hairline);
-  border-radius: var(--radius);
-  overflow: hidden;
-}
-.afk-term-actions { display: flex; justify-content: flex-end; gap: 8px; }
-.afk-verdict { font-size: 12px; display: flex; flex-direction: column; gap: 4px; }
-.afk-verdict.is-ok { color: var(--ok, #3fb950); }
-.afk-verdict.is-warn { color: var(--warn, #d9a441); }
-.afk-verdict-fix { color: var(--text-4); }
-
 /* ============================================================================
    ANIMATIONS
    ========================================================================== */
