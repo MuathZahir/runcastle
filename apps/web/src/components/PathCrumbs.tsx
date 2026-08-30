@@ -37,6 +37,7 @@ export function PathCrumbs({
   crumbs,
   value,
   onNavigate,
+  onEnterPath,
   placeholder,
 }: {
   crumbs: Crumb[]
@@ -46,7 +47,14 @@ export function PathCrumbs({
    * not there, this is still what the user typed, so they can fix it in place.
    */
   value: string
+  /** A crumb was clicked — a path this control was handed, so it is a real one. */
   onNavigate: (path: string) => void
+  /**
+   * A path was typed and entered. Kept apart from {@link onNavigate} because it
+   * is a claim rather than a place: nothing has established that it exists, and
+   * the picker answers for that difference.
+   */
+  onEnterPath: (path: string) => void
   placeholder: string
 }) {
   const [draft, setDraft] = useState<string | null>(null)
@@ -69,7 +77,7 @@ export function PathCrumbs({
         onBlur={() => setDraft(null)}
         onKeyDown={(e) => {
           if (e.key === 'Enter') {
-            onNavigate(draft.trim())
+            onEnterPath(draft.trim())
             setDraft(null)
           }
           // Escape abandons the edit and shows where we actually are. The dialog

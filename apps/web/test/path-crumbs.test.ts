@@ -18,6 +18,7 @@ const render = (segments: string[]) =>
       crumbs: crumbs(...segments),
       value: `/${segments.join('/')}`,
       onNavigate: () => undefined,
+      onEnterPath: () => undefined,
       placeholder: '/path/to/your/repo',
     }),
   )

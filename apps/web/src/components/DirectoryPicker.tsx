@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react'
 import { trpc } from '../trpc'
 import { pathPlaceholder } from '../lib/platform'
-import { pickerStartDir } from '../lib/projects'
+import { browseFailure, pickerStartDir, type RepoOpenFailure } from '../lib/projects'
 import { IconBranch, IconFolder, IconX } from '../icons'
-import { BARE_BUTTON, Button, Dialog, DimLine } from '../ui'
+import { BARE_BUTTON, Button, Dialog, DimLine, FailureNote } from '../ui'
 import { PathCrumbs } from './PathCrumbs'
 
 /**
@@ -57,6 +57,9 @@ export function DirectoryPicker({
   // somewhere themselves, so a path that turned out not to exist survives the
   // walk up to its nearest listable ancestor and can be corrected in place.
   const [typed, setTyped] = useState<string | null>(handed ?? null)
+  // The path we walked away from, kept so the jump is explained rather than
+  // silent. Cleared the moment the user goes anywhere themselves.
+  const [refused, setRefused] = useState<RepoOpenFailure | null>(null)
 
   const roots = trpc.project.roots.useQuery()
   const browse = trpc.project.browse.useQuery(
@@ -71,21 +74,43 @@ export function DirectoryPicker({
 
   const navigate = (path: string) => {
     setTyped(null)
+    setRefused(null)
     setDir(path)
   }
 
   /**
-   * A path the caller handed us that cannot be listed is not a dead end
-   * (decision 6): drop a segment and try again, one failure at a time, until
-   * something lists or we are at home. Only the handed path is treated this way
-   * — once the user has navigated themselves, `typed` is null and an error is
-   * theirs to see and answer.
+   * A path typed into the header is a claim, not a place — nothing says it is
+   * there. Holding on to it as `typed` puts it through the same walk-up as the
+   * path the picker was handed, which is the difference between landing on the
+   * nearest folder that lists and collapsing the whole dialog onto the server's
+   * sentence with no crumbs and no way up.
    */
+  const enterPath = (path: string) => {
+    setTyped(path || null)
+    setRefused(null)
+    setDir(path || undefined)
+  }
+
+  /**
+   * A path we were given that cannot be listed is not a dead end (decision 6):
+   * drop a segment and try again, one failure at a time, until something lists
+   * or we are at home. Only a path someone typed is treated this way — clicking
+   * a crumb, a root or an entry names a directory the server just listed, so a
+   * failure there is a real one and stays on screen.
+   */
+  const fallback =
+    typed !== null && browse.isError ? pickerStartDir(dir, browse.error.message) : null
+  const settling = fallback !== null && fallback.dir !== dir
+  const settlingTo = fallback?.dir
+  const failureMessage = browse.error?.message
+
   useEffect(() => {
-    if (typed === null || !browse.isError) return
-    const start = pickerStartDir(dir, browse.error.message)
-    if (start.dir !== dir) setDir(start.dir)
-  }, [typed, browse.isError, browse.error?.message, dir])
+    if (!settling) return
+    // Only the first failure is about the path the user actually named; the
+    // ones after it are about ancestors they never typed.
+    if (dir === typed && failureMessage) setRefused(browseFailure(failureMessage))
+    setDir(settlingTo)
+  }, [settling, settlingTo, dir, typed, failureMessage])
 
   return (
     <Dialog
@@ -121,6 +146,7 @@ export function DirectoryPicker({
           crumbs={data?.crumbs ?? []}
           value={typed ?? current ?? ''}
           onNavigate={navigate}
+          onEnterPath={enterPath}
           placeholder={pathPlaceholder()}
         />
         <label className="flex shrink-0 cursor-pointer items-center gap-1.5 text-sm text-text-3 select-none">
@@ -133,6 +159,18 @@ export function DirectoryPicker({
           <span>Hidden</span>
         </label>
       </div>
+
+      {refused && (
+        <div className="shrink-0 border-b border-hairline px-4 py-2.5">
+          <FailureNote
+            message={refused.message}
+            path={refused.path}
+            // Not the classifier's hint: nothing needs checking or picking, the
+            // picker has already moved — what is missing is the fact that it did.
+            hint="Showing the closest folder that could be listed. Edit the path to try again."
+          />
+        </div>
+      )}
 
       <div className="flex min-h-0 flex-1">
         <div className="flex w-40 shrink-0 flex-col gap-px overflow-y-auto border-r border-hairline p-2">
@@ -153,10 +191,13 @@ export function DirectoryPicker({
         </div>
 
         <div className="min-w-0 flex-1 overflow-y-auto p-2">
-          {browse.isError ? (
-            <DimLine>{browse.error.message}</DimLine>
-          ) : browse.isLoading ? (
+          {/* Mid walk-up the failing directory is one render from being
+              replaced, so the pane must not flash a failure that is already
+              being answered. */}
+          {settling || browse.isLoading ? (
             <DimLine>Loading…</DimLine>
+          ) : browse.isError ? (
+            <FailureNote {...browseFailure(browse.error.message)} />
           ) : (data?.entries.length ?? 0) === 0 ? (
             <DimLine>
               No subfolders here

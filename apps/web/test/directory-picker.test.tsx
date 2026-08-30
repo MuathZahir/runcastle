@@ -87,6 +87,15 @@ const show = (initialPath?: string) =>
   render(<DirectoryPicker initialPath={initialPath} onPick={onPick} onCancel={onCancel} />)
 
 const openButton = () => screen.getByRole('button', { name: 'Open this folder' }) as HTMLButtonElement
+const upButton = () => screen.getByRole('button', { name: 'Up one level' }) as HTMLButtonElement
+
+/** Type a path into the merged crumb/path control and commit it. */
+function enterPath(path: string) {
+  fireEvent.click(screen.getByRole('group', { name: 'Current path' }))
+  const field = screen.getByRole('textbox', { name: 'Path' })
+  fireEvent.change(field, { target: { value: path } })
+  fireEvent.keyDown(field, { key: 'Enter' })
+}
 
 describe('DirectoryPicker', () => {
   beforeEach(() => {
@@ -118,13 +127,55 @@ describe('DirectoryPicker', () => {
     )
   })
 
-  it('will not submit a folder the server refused to read', () => {
+  it('will not submit a folder the server refused to read, and says so in its own words', () => {
     // Not a missing path, so there is no ancestor to walk to — the failure is
     // shown and the primary button stops offering to send it anyway.
     show('code/typo')
 
-    expect(screen.getByText(/path is not absolute/)).toBeTruthy()
+    const failure = screen.getByRole('alert')
+    expect(failure.textContent).toContain('Enter an absolute path')
+    expect(failure.textContent).toContain('code/typo')
+    // The server's own lowercase sentence, with the path spliced into it, is
+    // not what the rest of this flow sounds like.
+    expect(screen.queryByText(/path is not absolute/)).toBeNull()
     expect(openButton().disabled).toBe(true)
+  })
+
+  it('walks up from a path typed mid-session, the way it does for one it was handed', () => {
+    show('/home/you')
+    enterPath('/home/you/nope/deeper')
+
+    // It landed somewhere it can list, so the header still says where you are
+    // and the way out of it is still there.
+    expect(screen.getByRole('group', { name: 'Current path' }).textContent).toContain('you')
+    expect(upButton().disabled).toBe(false)
+    expect(screen.getByRole('button', { name: /code/ })).toBeTruthy()
+    expect(openButton().disabled).toBe(false)
+  })
+
+  it('says why it is not where the path said, once, and keeps the path to correct', () => {
+    show('/home/you')
+    enterPath('/home/you/nope/deeper')
+
+    const note = screen.getByRole('alert')
+    expect(note.textContent).toContain('Path does not exist')
+    expect(note.textContent).toContain('/home/you/nope/deeper')
+    expect(note.textContent).not.toContain('path does not exist:')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit path' }))
+    expect((screen.getByRole('textbox', { name: 'Path' }) as HTMLInputElement).value).toBe(
+      '/home/you/nope/deeper',
+    )
+  })
+
+  it('drops the notice as soon as the user goes somewhere themselves', () => {
+    show('/home/you')
+    enterPath('/home/you/nope/deeper')
+    expect(screen.getByRole('alert')).toBeTruthy()
+
+    fireEvent.click(screen.getByRole('button', { name: /code/ }))
+
+    expect(screen.queryByRole('alert')).toBeNull()
   })
 
   it('navigates on a single click and picks a repo on a double click', () => {
