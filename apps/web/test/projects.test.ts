@@ -5,6 +5,7 @@ import {
   pickerStartDir,
   projectStats,
   repoFolderName,
+  replacementLanding,
   repoOpenFailure,
   restoredView,
 } from '../src/lib/projects'
@@ -188,6 +189,41 @@ describe('landing by setup state', () => {
       projectId: 'proj_b',
     })
     expect(restoredView(one, { view: 'home' }, true)).toEqual({ view: 'home', projectId: null })
+  })
+})
+
+/**
+ * The same table, applied after the list changes under the user rather than on
+ * load. Removing the last card from the home used to leave them standing on
+ * "Projects (0)" — the empty home decision 7 says cannot happen, which was only
+ * ever guaranteed by the landing rule at boot.
+ */
+describe('replacementLanding', () => {
+  const home = { view: 'home' as const, projectId: null }
+  const one = [proj('proj_a')]
+
+  it('sends the home to the first-project screen when the last project goes', () => {
+    expect(replacementLanding(home, [])).toEqual({ view: 'open', projectId: null })
+  })
+
+  it('leaves the home alone while anything is still open', () => {
+    expect(replacementLanding(home, one)).toBeNull()
+    expect(replacementLanding(home, [proj('proj_a'), proj('proj_b')])).toBeNull()
+  })
+
+  it('falls back off a project that has been closed elsewhere', () => {
+    const inB = { view: 'project' as const, projectId: 'proj_b' }
+    expect(replacementLanding(inB, one)).toEqual({ view: 'project', projectId: 'proj_a' })
+    expect(replacementLanding(inB, [])).toEqual({ view: 'open', projectId: null })
+  })
+
+  it('stays put in a project that is still open', () => {
+    expect(replacementLanding({ view: 'project', projectId: 'proj_a' }, one)).toBeNull()
+  })
+
+  it('never moves the setup wizard or the open screen, which own no project', () => {
+    expect(replacementLanding({ view: 'setup', projectId: null }, [])).toBeNull()
+    expect(replacementLanding({ view: 'open', projectId: null }, [])).toBeNull()
   })
 })
 

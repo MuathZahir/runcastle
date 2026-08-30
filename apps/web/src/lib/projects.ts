@@ -65,6 +65,25 @@ export function restoredView(
 }
 
 /**
+ * Where to go when the project list has moved out from under the surface the
+ * user is standing on — `null` while that surface still exists.
+ *
+ * The landing rule only runs on load, so decision 3's promise that the home is
+ * never reached with nothing open held for boot and not for the home's own
+ * Remove: taking the last card left the user on "Projects (0)", a state no one
+ * designed, that a reload would have replaced with the first-project screen. A
+ * bound project closed in another window is the same fact — the place underfoot
+ * is gone — and both answer with {@link initialView}.
+ */
+export function replacementLanding(landing: Landing, projects: Project[]): Landing | null {
+  const vacated =
+    landing.view === 'project'
+      ? !projects.some((p) => p.id === landing.projectId)
+      : landing.view === 'home' && projects.length === 0
+  return vacated ? initialView(projects) : null
+}
+
+/**
  * Whether a feature is waiting on a human. Mirrors `needsMe` in feature-ui as a
  * boolean; kept inline (not imported) so this module has no runtime deps and the
  * portfolio derivations stay unit-testable in the workspace's node test env.
