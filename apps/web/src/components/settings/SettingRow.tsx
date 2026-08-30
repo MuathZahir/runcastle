@@ -34,6 +34,11 @@ function cx(...parts: Array<string | false | null | undefined>): string {
 const CHIP =
   'inline-flex h-5 shrink-0 items-center gap-1 whitespace-nowrap rounded-pill border px-2 text-xs'
 
+/** An action that reads as prose rather than as a button — "Use global". */
+const LINK =
+  'cursor-pointer text-xs whitespace-nowrap text-accent-hi underline decoration-accent-line ' +
+  'underline-offset-2 hover:decoration-accent-hi'
+
 const CONTROL =
   'h-(--control-h) w-full min-w-0 rounded-sm border border-hairline bg-panel-inset px-2.5 ' +
   'text-text placeholder:text-text-4 hover:border-hairline-strong ' +
@@ -54,12 +59,18 @@ export function SettingGroup({
   projectId,
   filter,
   highlightField,
+  onOpenEvidence,
+  evidence,
 }: {
   title: string
   rows: Row[]
   projectId?: string
   filter: FilterState
   highlightField?: string
+  /** Toggles a row's preparation evidence — the project page's chips. */
+  onOpenEvidence?: (key: string) => void
+  /** The open evidence popover, rendered beside that row's provenance chip. */
+  evidence?: (row: Row) => ReactNode
 }) {
   const visible = rows.filter((row) => showsSetting(filter, row.key))
   if (visible.length === 0) return null
@@ -72,6 +83,12 @@ export function SettingGroup({
             row={row}
             projectId={projectId}
             highlight={highlightField === row.key}
+            // A finding with nothing behind it leaves the chip a plain chip —
+            // a button that opens an empty card is worse than no button.
+            {...(onOpenEvidence && row.provenanceChip?.evidence
+              ? { onOpenEvidence: () => onOpenEvidence(row.key) }
+              : {})}
+            {...(evidence ? { evidence: evidence(row) } : {})}
           />
         ))}
       </div>
@@ -101,6 +118,7 @@ export function SettingRow({
   projectId,
   highlight,
   onOpenEvidence,
+  evidence,
 }: {
   row: Row
   /** Present → writes target this project's overrides; absent → the global store. */
@@ -109,6 +127,8 @@ export function SettingRow({
   highlight?: boolean
   /** Opens the preparation evidence behind the provenance chip. */
   onOpenEvidence?: () => void
+  /** The open evidence popover, positioned against the provenance chip. */
+  evidence?: ReactNode
 }) {
   const utils = trpc.useUtils()
   // An unset project field shows the inherited global value as a GHOST rather
@@ -157,6 +177,12 @@ export function SettingRow({
     if (invalid) setInvalid(null)
   }
 
+  /** Write this field in whichever scope the row was rendered for. */
+  const write = (value: string | number | null) => {
+    setInvalid(null)
+    update.mutate({ ...(projectId ? { projectId } : {}), key: row.key, value })
+  }
+
   const save = (raw: string) => {
     if (raw.trim() === committed.trim()) return
     const commit = fieldCommit(row.control, raw)
@@ -164,9 +190,13 @@ export function SettingRow({
       setInvalid(commit.error)
       return
     }
-    setInvalid(null)
-    update.mutate({ ...(projectId ? { projectId } : {}), key: row.key, value: commit.value })
+    write(commit.value)
   }
+
+  // "Use global" is the whole of the un-override affordance (decision 7): a null
+  // write drops this project's value, and the row goes back to showing the
+  // global one as a ghost. No Clear-override button, no OVERRIDDEN badge.
+  const useGlobal = () => write(null)
 
   // Scoped, because most keys appear in both the global and the project view.
   // Two controls sharing one id made every `htmlFor` resolve to the global one,
@@ -204,7 +234,9 @@ export function SettingRow({
           onDraft={edit}
           onCommit={save}
           onRevert={() => setDraft(committed)}
+          onUseGlobal={useGlobal}
           onOpenEvidence={onOpenEvidence}
+          evidence={evidence}
         />
       </Field>
     </div>
@@ -227,7 +259,9 @@ function RowControl({
   onDraft,
   onCommit,
   onRevert,
+  onUseGlobal,
   onOpenEvidence,
+  evidence,
 }: {
   id?: string
   'aria-describedby'?: string
@@ -238,7 +272,9 @@ function RowControl({
   onDraft: (value: string) => void
   onCommit: (value: string) => void
   onRevert: () => void
+  onUseGlobal: () => void
   onOpenEvidence?: () => void
+  evidence?: ReactNode
 }) {
   // Every editable value on this surface is an identifier, a command or a
   // number, so the control is mono unless it is a list of choices.
@@ -280,7 +316,11 @@ function RowControl({
           >
             {/* An unset project field leads with what it inherits, so the first
                 choice states the effective value rather than looking empty. */}
-            {row.ghostValue && <option value="">Use global ({row.ghostValue})</option>}
+            {row.ghostValue && (
+              <option value="">
+                Use global ({row.optionLabels[row.ghostValue] ?? row.ghostValue})
+              </option>
+            )}
             {row.modelGroups.length > 0
               ? row.modelGroups.map((group) => (
                   <optgroup key={group.runtime} label={group.label}>
@@ -326,11 +366,41 @@ function RowControl({
           />
         )}
         {row.unit && <span className="text-sm whitespace-nowrap text-text-3">{row.unit}</span>}
-        {row.sourceChip && <SourceChip kind={row.sourceChip} envVar={FIELD_ENV_VAR[row.key]} />}
+        {row.sourceChip && (
+          <div
+            className={cx(
+              'flex shrink-0 items-center gap-2',
+              // Beside a two-line control the chip and its link stack at the top
+              // rather than floating halfway down the textarea.
+              row.control === 'textarea' && 'flex-col items-start gap-1.5 self-start pt-1.5',
+            )}
+          >
+            <SourceChip kind={row.sourceChip} envVar={FIELD_ENV_VAR[row.key]} />
+            {row.sourceChip === 'project' && (
+              <button type="button" onClick={onUseGlobal} className={LINK}>
+                Use global
+              </button>
+            )}
+          </div>
+        )}
       </div>
       {row.provenanceChip && (
-        <div className="flex">
-          <ProvenanceChip chip={row.provenanceChip} onOpenEvidence={onOpenEvidence} />
+        <div className="flex items-center gap-1.5">
+          <div className="relative flex">
+            <ProvenanceChip chip={row.provenanceChip} onOpenEvidence={onOpenEvidence} />
+            {evidence}
+          </div>
+          {row.stale && (
+            // Says where the refresh lives, because for a long time it said
+            // "re-prepare to refresh it" while offering no way to and nothing on
+            // screen mentioning one.
+            <span
+              className={cx(CHIP, 'border-warn/45 bg-panel-2 text-warn')}
+              title="Measured a long time ago — “Re-prepare the project”, at the foot of the features rail, refreshes it"
+            >
+              Stale
+            </span>
+          )}
         </div>
       )}
       {restart && <div className="text-sm text-warn">Restart the server to apply</div>}

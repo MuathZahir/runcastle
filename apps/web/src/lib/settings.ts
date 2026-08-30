@@ -208,7 +208,11 @@ const STEP_META: readonly {
 const STEP_LABEL: Record<string, string> = Object.fromEntries(
   STEP_META.map((s) => [s.step, s.label]),
 )
-export const STEP_KEYS: string[] = MODEL_STEPS.map((s) => `${STEP_PREFIX}${s}`)
+/** The settings key a step's own model is written to. */
+export function stepModelKey(step: ModelStep): string {
+  return `${STEP_PREFIX}${step}`
+}
+export const STEP_KEYS: string[] = MODEL_STEPS.map(stepModelKey)
 
 // ---------------------------------------------------------------------------
 // Field metadata
@@ -806,7 +810,7 @@ export function unsetStepKeys(view: SettingsView): { key: string; label: string 
 // ---------------------------------------------------------------------------
 
 /** The global default model as a display string ('' while unset). */
-function defaultModelOf(view: SettingsView): string {
+export function defaultModelOf(view: SettingsView): string {
   return toDisplay(view.fields.find((f) => f.key === 'model')?.value)
 }
 
@@ -936,6 +940,35 @@ export interface SettingsFilter {
 /** What a settings row offers the filter box. */
 export function rowSearchTerms(row: SettingRow): string[] {
   return [row.label, row.key, row.tooltip]
+}
+
+/**
+ * Everything on one page the filter box can match. Most pages are only their
+ * rows; the Models page also renders the roster and all eleven steps, which are
+ * things a reader searches for by name and which no `settings.get` field
+ * describes — so they contribute their own items here rather than being
+ * unreachable by the filter.
+ */
+export function pageSearchItems(view: SettingsView, page: SettingsPage): SearchableSetting[] {
+  const rows: SearchableSetting[] = pageRows(view, page).map((row) => ({
+    id: row.key,
+    page,
+    terms: rowSearchTerms(row),
+  }))
+  if (page !== 'models') return rows
+  return [
+    ...rows,
+    ...rosterRows(view).map((model) => ({
+      id: model.id,
+      page,
+      terms: [model.id, model.note, RUNTIME_LABEL[model.runtime]],
+    })),
+    ...stepRows(view).map((step) => ({
+      id: stepModelKey(step.step),
+      page,
+      terms: [step.label, step.description, step.step],
+    })),
+  ]
 }
 
 /**

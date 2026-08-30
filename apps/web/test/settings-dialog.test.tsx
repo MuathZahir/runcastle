@@ -271,10 +271,4 @@ describe('SettingsDialog', () => {
       'outline-accent',
     )
   })
-
-  it('leaves Models, Burns and This project to their own tickets', () => {
-    open({ page: 'models' })
-
-    expect(screen.getByText('this page is not built yet.')).toBeTruthy()
-  })
 })
