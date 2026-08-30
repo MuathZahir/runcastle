@@ -11,6 +11,7 @@ import { PathCrumbs } from '../src/components/PathCrumbs'
  */
 
 const onNavigate = vi.fn()
+const onEnterPath = vi.fn()
 
 function show(value = '/home/you/code') {
   return render(
@@ -23,6 +24,7 @@ function show(value = '/home/you/code') {
       ]}
       value={value}
       onNavigate={onNavigate}
+      onEnterPath={onEnterPath}
       placeholder="/path/to/your/repo"
     />,
   )
@@ -32,7 +34,10 @@ const field = () => screen.getByRole('textbox', { name: 'Path' }) as HTMLInputEl
 const strip = () => screen.getByRole('group', { name: 'Current path' })
 
 describe('PathCrumbs editing', () => {
-  beforeEach(() => onNavigate.mockClear())
+  beforeEach(() => {
+    onNavigate.mockClear()
+    onEnterPath.mockClear()
+  })
   afterEach(cleanup)
 
   it('turns into a field pre-filled with the current path when clicked', () => {
@@ -54,13 +59,16 @@ describe('PathCrumbs editing', () => {
     expect(field().value).toBe('/home/you/code/typo')
   })
 
-  it('navigates to what was typed on Enter, trimmed', () => {
+  it('hands a typed path over on Enter, trimmed, as a claim rather than a crumb', () => {
+    // Not `onNavigate`: nothing has said this path exists, and the picker owes
+    // it the walk-up a crumb never needs.
     show()
     fireEvent.click(strip())
     fireEvent.change(field(), { target: { value: '  /var/tmp  ' } })
     fireEvent.keyDown(field(), { key: 'Enter' })
 
-    expect(onNavigate).toHaveBeenCalledWith('/var/tmp')
+    expect(onEnterPath).toHaveBeenCalledWith('/var/tmp')
+    expect(onNavigate).not.toHaveBeenCalled()
     expect(screen.queryByRole('textbox')).toBeNull()
   })
 
@@ -77,7 +85,7 @@ describe('PathCrumbs editing', () => {
 
       expect(onWindowKey).not.toHaveBeenCalled()
       expect(strip()).toBeTruthy()
-      expect(onNavigate).not.toHaveBeenCalled()
+      expect(onEnterPath).not.toHaveBeenCalled()
 
       // The second Escape is the dialog's — nothing here is listening for it now.
       fireEvent.keyDown(strip(), { key: 'Escape' })
@@ -94,7 +102,7 @@ describe('PathCrumbs editing', () => {
     fireEvent.blur(field())
 
     expect(strip()).toBeTruthy()
-    expect(onNavigate).not.toHaveBeenCalled()
+    expect(onEnterPath).not.toHaveBeenCalled()
   })
 
   it('navigates from a crumb without opening the field under it', () => {

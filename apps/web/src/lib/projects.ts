@@ -158,7 +158,8 @@ function withoutTrailingSeparators(path: string): string {
 }
 
 /**
- * The inline failure the open-a-project form shows, from the server's error.
+ * The inline failure this flow shows about a path — the open-a-project form's
+ * rejected repo, and the picker's refused listing.
  *
  * It used to be a bottom-right toast that auto-dismissed six seconds later,
  * fired from the far corner of the screen while the user was still looking at
@@ -235,6 +236,48 @@ function parentPath(path: string): string | undefined {
   if (/^[A-Za-z]:$/.test(parent)) return `${parent}\\`
   // A UNC path stripped past its host leaves bare separators, which name nothing.
   return /^[\\/]+$/.test(parent) ? undefined : parent
+}
+
+/**
+ * The wordings `browseDir` throws, and what the picker says in their place.
+ * Each pattern captures the path out of the sentence so it can be shown once,
+ * on its own line, truncated from the left — which a sentence with a path
+ * buried in the middle of it cannot be.
+ */
+const BROWSE_FAILURES: { match: RegExp; message: string; hint: string }[] = [
+  {
+    match: /path does not exist: (.*)$/i,
+    message: 'Path does not exist',
+    hint: 'Check the path, or pick a folder from the rail.',
+  },
+  {
+    // The server appends the errno in brackets; that is a fact about the
+    // filesystem, not about the folder the user asked for.
+    match: /cannot read (?:path|directory): (.*?)(?: \(.*\))?$/i,
+    message: 'Cannot read that folder',
+    hint: 'It may need permissions this machine does not have.',
+  },
+  {
+    match: /path is not absolute: (.*)$/i,
+    message: 'Enter an absolute path',
+    hint: 'A path from the root of the machine runcastle runs on.',
+  },
+]
+
+/**
+ * What the picker says when a listing fails (decision 5's error style).
+ *
+ * The dialog used to print the server's sentence into the file pane verbatim —
+ * lowercase, unstyled, with the rejected path spliced into it. It is the same
+ * condition the open screen states as "Path does not exist", so it is said the
+ * same way here.
+ */
+export function browseFailure(message: string): RepoOpenFailure {
+  for (const failure of BROWSE_FAILURES) {
+    const hit = failure.match.exec(message)
+    if (hit) return { message: failure.message, hint: failure.hint, path: hit[1].trim() || null }
+  }
+  return { message, hint: null, path: null }
 }
 
 export function repoOpenFailure(message: string, path: string): RepoOpenFailure {
