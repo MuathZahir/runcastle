@@ -175,6 +175,12 @@ export function SettingRow({
     if (invalid) setInvalid(null)
   }
 
+  /** Write this field in whichever scope the row was rendered for. */
+  const write = (value: string | number | null) => {
+    setInvalid(null)
+    update.mutate({ ...(projectId ? { projectId } : {}), key: row.key, value })
+  }
+
   const save = (raw: string) => {
     if (raw.trim() === committed.trim()) return
     const commit = fieldCommit(row.control, raw)
@@ -182,17 +188,13 @@ export function SettingRow({
       setInvalid(commit.error)
       return
     }
-    setInvalid(null)
-    update.mutate({ ...(projectId ? { projectId } : {}), key: row.key, value: commit.value })
+    write(commit.value)
   }
 
   // "Use global" is the whole of the un-override affordance (decision 7): a null
   // write drops this project's value, and the row goes back to showing the
   // global one as a ghost. No Clear-override button, no OVERRIDDEN badge.
-  const useGlobal = () => {
-    setInvalid(null)
-    update.mutate({ ...(projectId ? { projectId } : {}), key: row.key, value: null })
-  }
+  const useGlobal = () => write(null)
 
   // Scoped, because most keys appear in both the global and the project view.
   // Two controls sharing one id made every `htmlFor` resolve to the global one,
