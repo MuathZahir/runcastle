@@ -13,7 +13,7 @@ import {
   type ModelOptionGroup,
 } from '../../lib/settings'
 import { DimLine } from '../../ui'
-import { ModelOptions, RosterTable, SaveMark } from './RosterTable'
+import { ModelOptions, Refusal, RosterTable, SaveMark } from './RosterTable'
 import { StepTable } from './StepTable'
 import { showsSetting, type SettingsPageProps } from './types'
 
@@ -32,6 +32,9 @@ import { showsSetting, type SettingsPageProps } from './types'
 
 /** How long "Saved ✓" stays up after a commit, as on the shared setting row. */
 const SAVED_MS = 1400
+
+/** The default card's feedback slot; its key is the setting it writes. */
+const DEFAULT_CELL = 'model'
 
 /** What a settings write on this page may carry: a model id, or the roster. */
 type SettingValue = ModelEntry[] | string | null
@@ -204,11 +207,9 @@ function DefaultModelCard({
   return (
     <div
       ref={card}
-      className={
-        'grid grid-cols-[auto_1fr] items-center gap-x-4.5 gap-y-1 rounded-md border ' +
-        'border-accent-line bg-accent-soft p-3' +
-        (highlight ? ' outline-2 outline-offset-2 outline-accent' : '')
-      }
+      className={`grid grid-cols-[auto_1fr] items-center gap-x-4.5 gap-y-1 rounded-md border border-accent-line bg-accent-soft p-3 ${
+        highlight ? 'outline-2 outline-offset-2 outline-accent' : ''
+      }`}
     >
       <label htmlFor="settings-default-model" className="text-base font-semibold text-text">
         Default model
@@ -218,21 +219,17 @@ function DefaultModelCard({
           id="settings-default-model"
           className="h-(--control-h) max-w-85 min-w-0 flex-1 cursor-pointer rounded-sm border border-accent-line bg-panel-inset px-2.5 font-mono text-sm text-text"
           value={value}
-          onChange={(e) => writes.save('model', 'model', e.target.value)}
+          onChange={(e) => writes.save(DEFAULT_CELL, 'model', e.target.value)}
         >
           <ModelOptions groups={groups} />
         </select>
-        {writes.saved === 'model' && <SaveMark />}
+        {writes.saved === DEFAULT_CELL && <SaveMark />}
       </div>
       <p className="col-span-2 text-sm text-text-2">
         Runs every step that has no model of its own below — and every project that has not set
         one.
       </p>
-      {writes.error?.cell === 'model' && (
-        <p role="alert" className="col-span-2 text-sm text-danger">
-          {writes.error.message}
-        </p>
-      )}
+      <Refusal writes={writes} cell={DEFAULT_CELL} className="col-span-2" />
     </div>
   )
 }

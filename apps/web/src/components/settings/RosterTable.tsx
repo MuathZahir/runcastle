@@ -308,11 +308,19 @@ function AddModelRow({
   )
 }
 
-/** Why a write was refused, under the row that asked for it. */
-export function Refusal({ writes, cell }: { writes: SettingWrites; cell: string }) {
+/** Why a write was refused, under the row — or the card — that asked for it. */
+export function Refusal({
+  writes,
+  cell,
+  className = 'px-2.5 pb-1.5',
+}: {
+  writes: SettingWrites
+  cell: string
+  className?: string
+}) {
   if (writes.error?.cell !== cell) return null
   return (
-    <p role="alert" className="px-2.5 pb-1.5 text-sm text-danger">
+    <p role="alert" className={`text-sm text-danger ${className}`}>
       {writes.error.message}
     </p>
   )
