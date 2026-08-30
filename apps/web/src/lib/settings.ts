@@ -336,7 +336,7 @@ const FIELD_META: Record<string, FieldMeta> = {
     page: 'burns',
     group: 'width',
     placeholder: 'unlimited',
-    unit: 'cores',
+    unit: 'cores · e.g. 4 on a 12-thread box at width 3',
   },
   // The five keys with a global twin render ONCE, on "This project", where a
   // source chip says whether the value came from here or from the global
@@ -581,12 +581,20 @@ function unitFor(field: SettingField, meta: FieldMeta): string | undefined {
 /**
  * The inherited global value for an unset project-scope twin, or undefined.
  *
+ * Burn concurrency is the one machine-wide field with a ghost of its own: while
+ * nothing is set, the width comes from this host's core count, and showing it as
+ * a value would read as a choice someone made (spec §Burns).
+ *
  * `env` is excluded deliberately: an env-locked field is not inheriting the
  * global default, it is overriding everything, and a ghost would read as "this
  * is what you would get" when it is not.
  */
 function ghostValueFor(field: SettingField): string | undefined {
-  if (field.scope !== 'project' || !TWIN_KEYS.has(field.key)) return undefined
+  if (field.scope !== 'project') {
+    const hostDefault = field.key === 'burnConcurrency' && field.source === 'default'
+    return hostDefault ? toDisplay(field.value) || undefined : undefined
+  }
+  if (!TWIN_KEYS.has(field.key)) return undefined
   if (field.source !== 'file' && field.source !== 'default') return undefined
   return toDisplay(field.value) || undefined
 }

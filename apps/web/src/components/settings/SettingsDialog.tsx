@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { KeyboardEvent, ReactNode } from 'react'
 import { trpc } from '../../trpc'
+import { BURN_PREREQUISITES } from '../../lib/afk-rows'
 import {
   filterSettings,
   pageRows,
@@ -143,14 +144,15 @@ export function SettingsDialog({
 
 /**
  * Everything the filter box searches, from every page at once — so the rail can
- * count hits on pages that are not on screen. Rows are all a page contributes
- * today; the roster and the per-step table add their own as those pages land.
+ * count hits on pages that are not on screen. Setting rows plus the Burns
+ * checklist, which is a set of rows with no setting key behind them; the roster
+ * and the per-step table add their own as those pages land.
  */
 function searchableSettings(
   globals: SettingsView | undefined,
   scoped: SettingsView | undefined,
 ): SearchableSetting[] {
-  return SETTINGS_PAGES.flatMap(({ page }) => {
+  const rows = SETTINGS_PAGES.flatMap(({ page }) => {
     const view = page === 'project' ? scoped : globals
     if (!view) return []
     return pageRows(view, page).map((row) => ({
@@ -159,4 +161,10 @@ function searchableSettings(
       terms: rowSearchTerms(row),
     }))
   })
+  const prerequisites = BURN_PREREQUISITES.map((p) => ({
+    id: p.field,
+    page: 'burns' as const,
+    terms: [p.label, ...p.terms],
+  }))
+  return [...rows, ...prerequisites]
 }

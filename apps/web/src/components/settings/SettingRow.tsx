@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState } from 'react'
-import type { KeyboardEvent } from 'react'
+import type { KeyboardEvent, ReactNode } from 'react'
 import { trpc } from '../../trpc'
 import { HIGHLIGHT_RING, useHighlight } from './highlight'
 import {
@@ -64,11 +64,7 @@ export function SettingGroup({
   const visible = rows.filter((row) => showsSetting(filter, row.key))
   if (visible.length === 0) return null
   return (
-    <section className="flex flex-col gap-2.5">
-      <h3 className="flex items-center gap-2 text-xs font-semibold tracking-[0.08em] text-text-3 uppercase">
-        {title}
-        <span className="h-px flex-1 bg-hairline-soft" />
-      </h3>
+    <SettingSection title={title}>
       <div>
         {visible.map((row) => (
           <SettingRow
@@ -79,6 +75,23 @@ export function SettingGroup({
           />
         ))}
       </div>
+    </SettingSection>
+  )
+}
+
+/**
+ * A titled section of a page. Exported because not every group is a list of
+ * setting rows — the Burns page opens with the prerequisites checklist, which
+ * has to wear the same heading as the fields under it.
+ */
+export function SettingSection({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <section className="flex flex-col gap-2.5">
+      <h3 className="flex items-center gap-2 text-xs font-semibold tracking-[0.08em] text-text-3 uppercase">
+        {title}
+        <span className="h-px flex-1 bg-hairline-soft" />
+      </h3>
+      {children}
     </section>
   )
 }

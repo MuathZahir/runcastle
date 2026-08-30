@@ -123,11 +123,14 @@ describe('describeField', () => {
     expect(describeField(field({ key: 'burnConcurrency', value: 3 })).unit).toBe(
       'tickets at once · default on this machine: 3',
     )
+    // …and the control stays empty over it: nobody chose this width.
+    expect(describeField(field({ key: 'burnConcurrency', value: 3 })).ghostValue).toBe('3')
   })
 
   it('drops the machine-default once a width is actually set', () => {
     const row = describeField(field({ key: 'burnConcurrency', value: 5, source: 'file' }))
     expect(row.unit).toBe('tickets at once')
+    expect(row.ghostValue).toBeUndefined()
     expect(row.note).toBeNull()
   })
 
@@ -464,7 +467,7 @@ describe('pageRows — one page per task', () => {
       'turns',
       'attempts',
       'passes before asking you',
-      'cores',
+      'cores · e.g. 4 on a 12-thread box at width 3',
     ])
     // The one place a label alone is ambiguous, and the only short help line.
     expect(rows.find((r) => r.key === 'burnMaxIterations')?.shortHelp).toBe(

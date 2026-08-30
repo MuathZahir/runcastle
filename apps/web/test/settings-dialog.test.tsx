@@ -22,6 +22,8 @@ const server = vi.hoisted(() => ({
   reject: null as string | null,
 }))
 
+vi.mock('../src/lib/toast', () => ({ useToast: () => ({ push: () => undefined }) }))
+
 vi.mock('../src/trpc', () => ({
   // Cast because tRPC's generated proxy type cannot be partially implemented;
   // everything below is exactly what the dialog calls.
@@ -29,7 +31,23 @@ vi.mock('../src/trpc', () => ({
     useUtils: () => ({
       settings: { get: { invalidate: () => undefined } },
       project: { prep: { invalidate: () => undefined } },
+      setup: { doctor: { invalidate: () => undefined } },
+      system: { burnCache: { status: { invalidate: () => undefined } } },
     }),
+    // The Burns page's prerequisites checklist. It has its own suite
+    // (`settings-burns.test.tsx`); here it only has to render.
+    setup: {
+      doctor: { useQuery: () => ({ data: undefined, isLoading: true, error: null }) },
+      runtimeGuide: { useQuery: () => ({ data: undefined }) },
+      startTerminal: { useMutation: () => ({ isPending: false, mutate: () => undefined }) },
+      afkToken: { useMutation: () => ({ isPending: false, mutate: () => undefined }) },
+    },
+    system: {
+      burnCache: {
+        status: { useQuery: () => ({ data: undefined }) },
+        clear: { useMutation: () => ({ isPending: false, mutate: () => undefined }) },
+      },
+    },
     settings: {
       get: {
         useQuery: (input?: { projectId?: string }) => ({
