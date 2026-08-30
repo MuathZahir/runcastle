@@ -54,7 +54,11 @@ vi.mock('../src/trpc', () => ({
             isLoading: false,
             error: { message },
           })
-          if (!target.startsWith('/')) return fail(`path is not absolute: ${target}`)
+          // The server runs on the user's machine, so a drive letter is as
+          // absolute as a leading slash — the stub has to agree, or a Windows
+          // path would be refused here for the wrong reason.
+          const absolute = target.startsWith('/') || /^[A-Za-z]:[\\/]/.test(target)
+          if (!absolute) return fail(`path is not absolute: ${target}`)
           const entries = fsStub.tree[target]
           if (!entries) return fail(`path does not exist: ${target}`)
           const segments = target.split('/')
@@ -166,6 +170,19 @@ describe('DirectoryPicker', () => {
     expect((screen.getByRole('textbox', { name: 'Path' }) as HTMLInputElement).value).toBe(
       '/home/you/nope/deeper',
     )
+  })
+
+  it('survives a drive that is not there at all, not only a missing folder', () => {
+    // The reported repro: every segment of `Z:\nope\deeper` fails, so the walk
+    // runs out of ancestors and bottoms out on home rather than leaving the
+    // header with nothing in it but the pencil.
+    show('/home/you/code')
+    enterPath('Z:\\nope\\deeper')
+
+    expect(screen.getByRole('group', { name: 'Current path' }).textContent).toContain('you')
+    expect(upButton().disabled).toBe(false)
+    expect(screen.queryByText(/path does not exist:/)).toBeNull()
+    expect(screen.getByRole('alert').textContent).toContain('Z:\\nope\\deeper')
   })
 
   it('drops the notice as soon as the user goes somewhere themselves', () => {
