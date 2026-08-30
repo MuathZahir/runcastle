@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import {
   aggregateRuns,
+  browseFailure,
   initialView,
   pickerStartDir,
   projectStats,
@@ -372,5 +373,46 @@ describe('repoFolderName', () => {
 
   it('answers with the whole thing when there is no separator to cut at', () => {
     expect(repoFolderName('runcastle')).toBe('runcastle')
+  })
+})
+
+/**
+ * What the picker says when a listing fails. The server's own sentences are
+ * lowercase and splice the path into the middle of them, which is neither the
+ * flow's error voice (decision 5) nor something a long path can be truncated
+ * out of.
+ */
+describe('browseFailure', () => {
+  it('states a missing path once, with the path pulled out of the sentence', () => {
+    expect(browseFailure('path does not exist: Z:\\nope\\deeper')).toEqual({
+      message: 'Path does not exist',
+      hint: 'Check the path, or pick a folder from the rail.',
+      path: 'Z:\\nope\\deeper',
+    })
+  })
+
+  it('separates a path it cannot read from the errno the server appended', () => {
+    expect(browseFailure('cannot read path: /root/private (EACCES: permission denied)')).toEqual({
+      message: 'Cannot read that folder',
+      hint: 'It may need permissions this machine does not have.',
+      path: '/root/private',
+    })
+    expect(browseFailure('cannot read directory: /proc/1 (EACCES)').path).toBe('/proc/1')
+  })
+
+  it('says what a relative path is missing rather than repeating the server', () => {
+    expect(browseFailure('path is not absolute: code/repo')).toEqual({
+      message: 'Enter an absolute path',
+      hint: 'A path from the root of the machine runcastle runs on.',
+      path: 'code/repo',
+    })
+  })
+
+  it('passes an unrecognised failure through untouched, with no path to show', () => {
+    expect(browseFailure('EMFILE: too many open files')).toEqual({
+      message: 'EMFILE: too many open files',
+      hint: null,
+      path: null,
+    })
   })
 })
