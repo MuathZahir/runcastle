@@ -185,7 +185,11 @@ export function FailureNote({
     >
       <div className="text-sm font-medium text-danger">{message}</div>
       {path && (
-        <div className="mt-1 truncate text-left font-mono text-sm text-text-3" dir="rtl" title={path}>
+        <div
+          className="mt-1 truncate text-left font-mono text-sm text-text-3"
+          dir="rtl"
+          title={path}
+        >
           <bdi>{path}</bdi>
         </div>
       )}

@@ -53,13 +53,14 @@ export function DirectoryPicker({
   // the client never has to know what home is.
   const [dir, setDir] = useState<string | undefined>(handed)
   const [showHidden, setShowHidden] = useState(false)
-  // What the path control edits. It is the handed path until the user goes
-  // somewhere themselves, so a path that turned out not to exist survives the
-  // walk up to its nearest listable ancestor and can be corrected in place.
+  // What the path control edits, and the last path someone claimed rather than
+  // clicked — the handed one, or one typed into the header since. Either way it
+  // survives the walk up to its nearest listable ancestor, so a path that turned
+  // out not to exist can be corrected in place instead of retyped.
   const [typed, setTyped] = useState<string | null>(handed ?? null)
-  // The path we walked away from, kept so the jump is explained rather than
-  // silent. Cleared the moment the user goes anywhere themselves.
-  const [refused, setRefused] = useState<RepoOpenFailure | null>(null)
+  // The failure that made the picker walk away from that path, kept so the jump
+  // is explained rather than silent. Cleared the moment the user moves.
+  const [refusal, setRefusal] = useState<RepoOpenFailure | null>(null)
 
   const roots = trpc.project.roots.useQuery()
   const browse = trpc.project.browse.useQuery(
@@ -74,7 +75,7 @@ export function DirectoryPicker({
 
   const navigate = (path: string) => {
     setTyped(null)
-    setRefused(null)
+    setRefusal(null)
     setDir(path)
   }
 
@@ -87,7 +88,7 @@ export function DirectoryPicker({
    */
   const enterPath = (path: string) => {
     setTyped(path || null)
-    setRefused(null)
+    setRefusal(null)
     setDir(path || undefined)
   }
 
@@ -108,7 +109,7 @@ export function DirectoryPicker({
     if (!settling) return
     // Only the first failure is about the path the user actually named; the
     // ones after it are about ancestors they never typed.
-    if (dir === typed && failureMessage) setRefused(browseFailure(failureMessage))
+    if (dir === typed && failureMessage) setRefusal(browseFailure(failureMessage))
     setDir(settlingTo)
   }, [settling, settlingTo, dir, typed, failureMessage])
 
@@ -160,11 +161,11 @@ export function DirectoryPicker({
         </label>
       </div>
 
-      {refused && (
+      {refusal && (
         <div className="shrink-0 border-b border-hairline px-4 py-2.5">
           <FailureNote
-            message={refused.message}
-            path={refused.path}
+            message={refusal.message}
+            path={refusal.path}
             // Not the classifier's hint: nothing needs checking or picking, the
             // picker has already moved — what is missing is the fact that it did.
             hint="Showing the closest folder that could be listed. Edit the path to try again."
