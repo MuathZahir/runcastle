@@ -343,8 +343,9 @@ function RuntimeCard({ runtime }: { runtime: RuntimeReadiness }) {
 function AfkStep({ onNext }: { onNext: () => void }) {
   return (
     <>
-      {/* The card itself opens on "ENABLE AFK BURNS" — three unexplained letters
-          at the first thing a new user is asked to set up (F13/F16). */}
+      {/* The checklist itself says only what is missing, so the one sentence
+          explaining what AFK burns even are belongs here — a new user meets the
+          three letters at the first thing they are asked to set up (F13/F16). */}
       <div className="op-sub">
         {AFK_BURN_EXPLAINER} It is optional — skip it and burns run in a terminal you watch.
       </div>

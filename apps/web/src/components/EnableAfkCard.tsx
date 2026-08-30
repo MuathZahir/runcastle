@@ -106,11 +106,11 @@ export function EnableAfkCard({
           )}
         </span>
         {report && (
-          <span className="ml-auto flex shrink-0 gap-[3px]" aria-hidden>
+          <span className="ml-auto flex shrink-0 gap-1" aria-hidden>
             {gates.map((gate) => (
-              <i
+              <span
                 key={gate.field}
-                className={cx('h-1.5 w-5.5 rounded-[2px]', gate.ok ? 'bg-ok' : 'bg-hairline-strong')}
+                className={cx('h-1.5 w-5.5 rounded-pill', gate.ok ? 'bg-ok' : 'bg-hairline-strong')}
               />
             ))}
           </span>
