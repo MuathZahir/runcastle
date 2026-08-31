@@ -739,19 +739,6 @@ button {
   line-height: 1.5;
 }
 
-/* new-feature inline form (sidebar) */
-.nf-form {
-  margin: 6px;
-  padding: 10px;
-  border: 1px solid var(--hairline);
-  border-radius: var(--radius);
-  background: var(--panel);
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  animation: fadeUp var(--dur-2) var(--ease-out);
-}
-
 /* ============================================================================
    WORKSPACE — pipeline-first center
    ========================================================================== */
@@ -811,8 +798,6 @@ button {
 }
 .talk-door:hover:not(:disabled) { color: var(--accent-hi); }
 .talk-door:disabled { opacity: 0.5; cursor: default; }
-.nf-actions-spacer { flex: 1; }
-
 /* ---- the project workspace (decision 20) ---- */
 .pw-tag {
   display: inline-flex;
@@ -2438,48 +2423,8 @@ button.note-at:hover { color: var(--accent); }
 .draft-advanced[open] .draft-advanced-summary { margin-bottom: 8px; }
 .tag.is-draft { color: var(--text-4); }
 
-/* ============================================================================
-   NEW-FEATURE workspace form
-   ========================================================================== */
-.nf-card {
-  width: 540px;
-  max-width: 100%;
-  border: 1px solid var(--hairline);
-  border-radius: var(--radius-lg);
-  background: var(--panel);
-  padding: 26px 28px;
-  animation: popIn var(--dur-3) var(--ease-out);
-}
-.nf-kick { font-size: 11px; letter-spacing: 0.09em; color: var(--accent-hi); font-weight: 700; }
-.nf-h { font-size: 16px; font-weight: 600; margin-top: 6px; }
-.nf-sub { margin-top: 5px; font-size: 12.5px; color: var(--text-2); line-height: 1.55; }
-.nf-input {
-  width: 100%;
-  margin-top: 18px;
-  height: 36px;
-  background: var(--panel-inset);
-  border: 1px solid var(--hairline);
-  border-radius: var(--radius);
-  color: var(--text);
-  padding: 0 12px;
-  font-size: 13px;
-  outline: none;
-  font-family: inherit;
-  transition: border-color var(--dur-1);
-}
-.nf-input:focus { border-color: var(--accent); }
-/* the optional one-liner sits tight under the title input, slightly quieter */
-.nf-oneliner { margin-top: 8px; height: 32px; font-size: 12.5px; }
-/* the quick-change door's one prose field — the ticket, in the human's words */
-.nf-textarea {
-  margin-top: 8px;
-  height: 132px;
-  padding: 10px 12px;
-  font-size: 12.5px;
-  line-height: 1.55;
-  resize: vertical;
-}
 .size-hint { font-size: 12px; color: var(--text-3); }
+/* DraftBody remains BaseSelect's last consumer until ticket 5 migrates it. */
 .nf-base { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin-top: 16px; }
 .nf-base-label { font-size: 13px; color: var(--text); }
 .nf-base-select {
@@ -2497,87 +2442,6 @@ button.note-at:hover { color: var(--accent); }
 }
 .nf-base-select:focus { border-color: var(--accent); }
 .nf-base-select:disabled { opacity: 0.5; cursor: default; }
-.nf-branch { margin-top: 16px; font-family: var(--mono); font-size: 11.5px; color: var(--text-3); }
-.nf-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 22px; }
-/* the inline "you already have one of these" note under the title field (F25.3) */
-.nf-dupe {
-  margin-top: 8px;
-  font-size: 12px;
-  line-height: 1.5;
-  color: var(--warn, #d9a441);
-}
-.nf-advanced { margin-top: 16px; }
-.nf-advanced-summary {
-  font-size: 12.5px;
-  color: var(--text-2);
-  cursor: pointer;
-  user-select: none;
-  width: fit-content;
-}
-.nf-advanced-summary:hover { color: var(--text); }
-.nf-advanced[open] .nf-advanced-summary { color: var(--text); margin-bottom: 4px; }
-.nf-advanced .nf-base { margin-top: 10px; }
-
-/* the Quick door's two modes, and its list of prose tickets (decisions.md #12) */
-.qf-modes {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  margin-top: 12px;
-  border-bottom: 1px solid var(--hairline-soft);
-}
-.qf-mode {
-  background: none;
-  border: none;
-  border-bottom: 2px solid transparent;
-  color: var(--text-3);
-  font-size: 12.5px;
-  font-weight: 500;
-  padding: 6px 10px 8px;
-  cursor: pointer;
-  transition: color var(--dur-1);
-}
-.qf-mode:hover { color: var(--text-2); }
-.qf-mode.is-active { color: var(--text); border-bottom-color: var(--accent); }
-.qf-tickets { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
-.qf-ticket { display: flex; align-items: flex-start; gap: 8px; }
-.qf-ticket-num {
-  flex: 0 0 auto;
-  margin-top: 12px;
-  width: 16px;
-  text-align: right;
-  font-family: var(--mono);
-  font-size: 11.5px;
-  color: var(--text-3);
-}
-/* shorter than the single-field textarea it inherits from — a quick change is a
-   sentence, and several of them have to fit in the card at once */
-.qf-ticket-text { flex: 1; height: 62px; margin-top: 0; }
-.qf-ticket-remove {
-  flex: 0 0 auto;
-  margin-top: 8px;
-  background: none;
-  border: none;
-  color: var(--text-3);
-  font-size: 15px;
-  line-height: 1;
-  padding: 4px 6px;
-  cursor: pointer;
-  transition: color var(--dur-1);
-}
-.qf-ticket-remove:hover { color: var(--danger); }
-.qf-add {
-  margin-top: 8px;
-  background: none;
-  border: none;
-  padding: 0;
-  color: var(--accent);
-  font-size: 12.5px;
-  cursor: pointer;
-  width: fit-content;
-}
-.qf-add:hover { color: var(--accent-hi); }
-
 /* ============================================================================
    INSPECTOR RAIL
    ========================================================================== */

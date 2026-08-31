@@ -289,9 +289,11 @@ describe('draft features', () => {
       projectId: project.id,
       title: 'Over The Wire',
       oneLiner: 'someday',
+      brief: 'Notes carried through the creation door.',
       draft: true,
     })
     expect(draft.status).toBe('draft')
+    expect(draft.brief).toBe('Notes carried through the creation door.')
     expect((await simpleGit(repoPath).branchLocal()).all).not.toContain('feature/over-the-wire')
 
     const started = await caller.feature.start({ featureId: draft.id })
