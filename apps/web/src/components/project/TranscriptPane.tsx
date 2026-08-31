@@ -36,8 +36,11 @@ export function TranscriptPane({
             {relTime(conversation.createdAt)}
           </span>
         )}
-        <span className="flex-1" />
-        <Button disabled={reopening || !conversation.resumable} onClick={onReopen}>
+        <Button
+          className="ml-auto"
+          disabled={reopening || !conversation.resumable}
+          onClick={onReopen}
+        >
           {reopening ? 'Opening…' : 'Reopen'}
         </Button>
       </div>

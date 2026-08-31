@@ -41,7 +41,11 @@ export function NewChatCard({
         <Button
           variant="solid"
           disabled={starting || landing.missing}
-          title={landing.missing ? 'the branch this chat would land on is gone — pick another' : undefined}
+          title={
+            landing.missing
+              ? 'the branch this chat would land on is gone — pick another'
+              : undefined
+          }
           onClick={onStart}
         >
           {starting ? 'Opening…' : 'New chat'}
