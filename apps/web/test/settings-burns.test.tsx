@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { SettingField, SettingsView } from '../src/lib/api'
 import type { SettingsLocation } from '../src/lib/settings'
@@ -17,6 +17,10 @@ import type { SettingsLocation } from '../src/lib/settings'
 const server = vi.hoisted(() => ({
   globals: { fields: [] } as { fields: unknown[] },
   probes: [] as Record<string, unknown>[],
+  /** The doctor call is still out — the state a slow container runtime leaves. */
+  doctorPending: false,
+  /** What the checklist asked of the doctor query, in order. */
+  doctorCalls: [] as string[],
 }))
 
 vi.mock('../src/lib/toast', () => ({ useToast: () => ({ push: () => undefined }) }))
@@ -28,7 +32,15 @@ vi.mock('../src/trpc', () => {
       useUtils: () => ({
         settings: { get: { invalidate: () => undefined } },
         project: { prep: { invalidate: () => undefined } },
-        setup: { doctor: { invalidate: () => undefined } },
+        setup: {
+          doctor: {
+            invalidate: () => undefined,
+            cancel: () => {
+              server.doctorCalls.push('cancel')
+              return Promise.resolve()
+            },
+          },
+        },
         system: { burnCache: { status: { invalidate: () => undefined } } },
       }),
       settings: {
@@ -40,10 +52,12 @@ vi.mock('../src/trpc', () => {
       setup: {
         doctor: {
           useQuery: () => ({
-            data: { results: server.probes, ok: false, tier1Ok: true },
-            isLoading: false,
+            data: server.doctorPending
+              ? undefined
+              : { results: server.probes, ok: false, tier1Ok: true },
+            isLoading: server.doctorPending,
             error: null,
-            refetch: () => undefined,
+            refetch: () => server.doctorCalls.push('refetch'),
           }),
         },
         runtimeGuide: { useQuery: () => ({ data: undefined }) },
@@ -129,6 +143,8 @@ describe('Settings → Burns', () => {
   beforeEach(() => {
     server.globals = { fields: burnFields } as unknown as SettingsView
     server.probes = doctorProbes()
+    server.doctorPending = false
+    server.doctorCalls = []
   })
   afterEach(cleanup)
 
@@ -203,6 +219,48 @@ describe('Settings → Burns', () => {
 
     expect(screen.queryByText('Prerequisites for unattended burns')).toBeNull()
     expect(screen.getByLabelText('Attempts per ticket')).toBeTruthy()
+  })
+})
+
+/**
+ * A doctor call that never comes back. `setup.doctor` shells out to the
+ * container runtime, and a Docker Desktop that is still starting up can leave
+ * `docker image inspect` outstanding for minutes — so the pending branch needs
+ * the same way out decision 9 gave the failed one.
+ */
+describe('Settings → Burns, while the checks are still out', () => {
+  beforeEach(() => {
+    server.globals = { fields: burnFields } as unknown as SettingsView
+    server.probes = doctorProbes()
+    server.doctorPending = true
+    server.doctorCalls = []
+    vi.useFakeTimers()
+  })
+  afterEach(() => {
+    vi.useRealTimers()
+    cleanup()
+  })
+
+  it('waits quietly while the wait is still an ordinary one', () => {
+    open()
+    act(() => vi.advanceTimersByTime(5_000))
+
+    expect(screen.getByText('checking prerequisites…')).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull()
+  })
+
+  it('says the wait is long and offers a Retry once it is', async () => {
+    open()
+    act(() => vi.advanceTimersByTime(15_000))
+
+    expect(screen.getByText('still checking — this is taking longer than usual')).toBeTruthy()
+    expect(screen.getByText(/A container runtime that is starting up/)).toBeTruthy()
+
+    // The retry has to interrupt the call already out, or it retries nothing.
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
+    })
+    expect(server.doctorCalls).toEqual(['cancel', 'refetch'])
   })
 })
 

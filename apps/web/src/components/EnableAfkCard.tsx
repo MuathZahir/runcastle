@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
 import type { AgentRuntime } from '@runcastle/core'
 import { trpc } from '../trpc'
@@ -54,16 +54,27 @@ export function EnableAfkCard({
   highlightField?: string
   onDismiss?: () => void
 }) {
+  const utils = trpc.useUtils()
   const doctor = trpc.setup.doctor.useQuery(undefined, { refetchOnWindowFocus: false })
   const report = doctor.data
+  const slow = useSlowSince(doctor.isLoading)
 
   const probe = (id: string) => report?.results.find((r) => r.id === id)
   const runtime = probe('container-runtime')
   const image = probe('sandcastle-image')
   const credentials = afkCredentialRows(report?.results ?? [])
 
-  const recheck = () => void doctor.refetch()
+  // Cancel before refetching: a re-check asked for while the probe is still out
+  // has to be able to interrupt it. React Query folds a plain refetch into the
+  // request already in flight, so against a daemon that never answers the
+  // button would do nothing at all.
+  const recheck = () => void utils.setup.doctor.cancel().then(() => doctor.refetch())
   const shows = (field: string) => (filter ? showsSetting(filter, field) : true)
+
+  // The one thing standing between the human and the checklist, with the Retry
+  // that takes it away. A probe that fails and a probe that never comes back are
+  // the same dead end (decision 9) and get the same way out.
+  const trouble = doctor.error?.message ?? (slow ? SLOW_DETAIL : null)
 
   // Everything a burn is actually blocked on, in checklist order. The burn cache
   // is deliberately not one of them: a burn runs without it, so counting it
@@ -95,7 +106,11 @@ export function EnableAfkCard({
       <div className="flex items-center gap-2.5 border-b border-hairline-soft bg-panel-2 px-3 py-2.5 text-sm text-text-2">
         <span className="min-w-0">
           {doctor.isLoading ? (
-            'checking prerequisites…'
+            slow ? (
+              SLOW_SUMMARY
+            ) : (
+              'checking prerequisites…'
+            )
           ) : doctor.error ? (
             'could not run checks'
           ) : (
@@ -123,11 +138,12 @@ export function EnableAfkCard({
       </div>
 
       <div>
-        {doctor.error && (
+        {trouble && (
           // Not a dead end: the probe shells out to a container runtime, and the
-          // commonest reason it fails is one the human just fixed elsewhere.
+          // commonest reason it fails — or hangs — is one the human just fixed
+          // elsewhere.
           <div className="flex items-center gap-2.5 px-3 py-2.5">
-            <span className="min-w-0 grow text-sm text-warn">{doctor.error.message}</span>
+            <span className="min-w-0 grow text-sm text-warn">{trouble}</span>
             <Button variant="ghost" onClick={recheck}>
               Retry
             </Button>
@@ -169,6 +185,43 @@ export function EnableAfkCard({
 
 /** Exported for the same reason `ImageBuildAction` is: so a test can build one. */
 export type Probe = RouterOutputs['setup']['doctor']['results'][number]
+
+/**
+ * How long the checks may run before the wait itself is reported. A healthy
+ * doctor answers in a second or two; the bound is loose enough that an ordinary
+ * run never trips it.
+ */
+const SLOW_MS = 10_000
+
+/** The summary line and the detail once {@link SLOW_MS} has passed. */
+const SLOW_SUMMARY = 'still checking — this is taking longer than usual'
+const SLOW_DETAIL =
+  'The checks have not come back. A container runtime that is starting up — or wedged — ' +
+  'can leave them outstanding for minutes.'
+
+/**
+ * True once `active` has stayed true for {@link SLOW_MS}; false again the moment
+ * it lets go.
+ *
+ * The doctor shells out to the container runtime, and a runtime that is still
+ * starting up answers slowly or not at all — `docker version` has been measured
+ * at 90s on a booting Docker Desktop, with `docker image inspect` not returning
+ * at all. Without a bound the checklist sits at "checking prerequisites…"
+ * forever, with no control on it: the dead end decision 9 removed from the
+ * failed branch, reached through a slow daemon instead.
+ */
+function useSlowSince(active: boolean): boolean {
+  const [slow, setSlow] = useState(false)
+  useEffect(() => {
+    if (!active) {
+      setSlow(false)
+      return
+    }
+    const timer = setTimeout(() => setSlow(true), SLOW_MS)
+    return () => clearTimeout(timer)
+  }, [active])
+  return slow
+}
 
 /** Join the parts that are present. Falsy branches drop out. */
 function cx(...parts: Array<string | false | null | undefined>): string {
