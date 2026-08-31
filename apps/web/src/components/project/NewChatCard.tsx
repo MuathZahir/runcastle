@@ -15,42 +15,59 @@ export function NewChatCard({
   landing,
   onStart,
   starting,
+  openSession,
 }: {
   landing: SessionBranchApi
   onStart: () => void
   starting: boolean
+  openSession?: { onOpen: () => void; onReplace: () => void }
 }) {
-  return (
-    <div className="flex items-center gap-6 rounded-lg border border-hairline bg-panel px-6 py-5">
-      <div className="flex flex-1 flex-col gap-2">
-        <h2 className="text-lg font-semibold text-text">Talk it through</h2>
-        <p className="max-w-[46ch] text-sm text-text-2">
-          Bring a raw idea; the chat checks it against what’s built and cuts it into features.
-        </p>
-      </div>
-      <div className="flex shrink-0 items-center gap-2">
-        <BranchMenu
-          prefix="landing on"
-          value={landing.value}
-          branches={landing.branches}
-          detected={landing.detected}
-          missing={landing.missing}
-          disabled={landing.picking}
-          onPick={landing.pick}
-        />
-        <Button
-          variant="solid"
-          disabled={starting || landing.missing}
-          title={
-            landing.missing
-              ? 'the branch this chat would land on is gone — pick another'
-              : undefined
-          }
-          onClick={onStart}
-        >
-          {starting ? 'Opening…' : 'New chat'}
+  if (openSession) {
+    return (
+      <div
+        role="status"
+        className="flex items-center gap-2 rounded-md border border-hairline bg-panel-2 px-4 py-3"
+      >
+        <span className="mr-auto text-sm text-text-2">A chat is already open.</span>
+        <Button onClick={openSession.onOpen}>Open it</Button>
+        <Button variant="solid" disabled={starting} onClick={openSession.onReplace}>
+          {starting ? 'Opening…' : 'End it and start new'}
         </Button>
       </div>
+    )
+  }
+
+  return (
+    <div className="flex items-center gap-6 rounded-lg border border-hairline bg-panel px-6 py-5">
+        <div className="flex flex-1 flex-col gap-2">
+          <h2 className="text-lg font-semibold text-text">Talk it through</h2>
+          <p className="max-w-[46ch] text-sm text-text-2">
+            Bring a raw idea; the chat checks it against what’s built and cuts it into features.
+          </p>
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
+          <BranchMenu
+            prefix="landing on"
+            value={landing.value}
+            branches={landing.branches}
+            detected={landing.detected}
+            missing={landing.missing}
+            disabled={landing.picking}
+            onPick={landing.pick}
+          />
+          <Button
+            variant="solid"
+            disabled={starting || landing.missing}
+            title={
+              landing.missing
+                ? 'the branch this chat would land on is gone — pick another'
+                : undefined
+            }
+            onClick={onStart}
+          >
+            {starting ? 'Opening…' : 'New chat'}
+          </Button>
+        </div>
     </div>
   )
 }

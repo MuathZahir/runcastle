@@ -1,8 +1,6 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { trpc } from '../trpc'
-import { SessionStatusDot } from '../ui'
 import type { ProjectConversation } from '../lib/api'
-import { sessionStatusLabel } from '../lib/feature-ui'
 import { PROJECT_BRANCH } from '../lib/project-workspace'
 import type { ProjectTalkApi } from '../lib/use-project-talk'
 import { useSessionBranch } from '../lib/use-session-branch'
@@ -13,6 +11,7 @@ import { TerminalView } from './TerminalView'
 import { ConversationList } from './project/ConversationList'
 import { NewChatCard } from './project/NewChatCard'
 import { TranscriptPane } from './project/TranscriptPane'
+import { LiveChat } from './project/LiveChat'
 
 /**
  * The project workspace (decision 20) — what the rail's pinned row swaps in.
@@ -36,9 +35,13 @@ import { TranscriptPane } from './project/TranscriptPane'
 export function ProjectWorkspace({
   projectId,
   talk,
+  newChatRequest = 0,
+  onConsumeNewChatRequest,
 }: {
   projectId: string
   talk: ProjectTalkApi
+  newChatRequest?: number
+  onConsumeNewChatRequest?: () => void
 }) {
   const utils = trpc.useUtils()
   // Same query key the nav already polls, so this costs no extra fetch.
@@ -46,16 +49,24 @@ export function ProjectWorkspace({
   const project = projectsQ.data?.find((p) => p.id === projectId)
   const landing = useSessionBranch(projectId)
   const session = talk.session
-  // The conversation being read back, if any. A live session outranks it — the
-  // terminal owns the body, whoever opened it and from wherever.
   const [viewing, setViewing] = useState<ProjectConversation | null>(null)
-  const reading = session ? null : viewing
+  // Keep the terminal mounted behind the list so xterm retains its client-side
+  // buffer and socket; `TerminalView` tears both down when it unmounts.
+  const [showList, setShowList] = useState(Boolean(session && newChatRequest > 0))
+  useEffect(() => {
+    if (newChatRequest > 0 && session) {
+      setShowList(true)
+      onConsumeNewChatRequest?.()
+    }
+  }, [newChatRequest, onConsumeNewChatRequest, session])
+  const reading = viewing
   // Reopening leaves the read-only pane behind: what comes back is the terminal,
   // and closing that should land on the list, not on the transcript of the
   // conversation you have just been having.
   const reopen = (sessionId: string): void => {
     talk.resume(sessionId)
     setViewing(null)
+    setShowList(false)
   }
 
   return (
@@ -64,7 +75,10 @@ export function ProjectWorkspace({
           header, 24px between the body's cards, 32px from header to body. The
           width and gutter are the shell's, so swapping to this page does not
           shift the column the feature workspace beside it uses. */}
-      <div className="min-h-0 flex-1 overflow-y-auto pt-6 pb-8">
+      <div
+        className="min-h-0 flex-1 overflow-y-auto pt-6 pb-8"
+        hidden={Boolean(session && !showList && !reading)}
+      >
         <div className="mx-auto flex w-full max-w-[calc(var(--content-max)+56px)] flex-col gap-8 px-7">
           <header className="flex flex-col gap-2">
             <div className="flex items-center gap-3">
@@ -81,55 +95,73 @@ export function ProjectWorkspace({
             </p>
           </header>
 
-          {session ? (
-            <div className="grill-panel pw-session">
-              <div className="grill-strip">
-                <span className="grill-kind">
-                  {titleFor(talk.conversations, session.id) ?? 'project'}
-                </span>
-                <SessionStatusDot status={session.status} />
-                <span className="grill-live-label">{sessionStatusLabel(session)}</span>
-                <span className="grill-strip-spacer" />
-                <span className="grill-sid" title={session.ccSessionId ?? session.id}>
-                  {(session.ccSessionId ?? session.id).slice(0, 8)}
-                </span>
-                <EndSessionButton
-                  sessionId={session.id}
-                  onEnded={() => {
-                    void utils.project.projectSession.invalidate()
-                    void utils.project.conversations.invalidate()
-                  }}
-                />
-              </div>
-              <div className="grill-term pw-term">
-                <ErrorBoundary label="terminal">
-                  <TerminalView sessionId={session.id} />
-                </ErrorBoundary>
-              </div>
-            </div>
-          ) : reading ? (
+          {reading ? (
             <TranscriptPane
               conversation={reading}
               onBack={() => setViewing(null)}
-              onReopen={() => reopen(reading.id)}
+              onReopen={() => {
+                if (reading.status === 'ended') reopen(reading.id)
+                else {
+                  setViewing(null)
+                  setShowList(false)
+                }
+              }}
               reopening={talk.starting}
             >
               <ConversationTranscript sessionId={reading.id} />
             </TranscriptPane>
-          ) : (
+          ) : !session || showList ? (
             <div className="flex flex-col gap-6">
-              <NewChatCard landing={landing} onStart={talk.start} starting={talk.starting} />
+              <NewChatCard
+                landing={landing}
+                onStart={talk.start}
+                starting={talk.starting}
+                openSession={
+                  session
+                    ? {
+                        onOpen: () => setShowList(false),
+                        onReplace: () => {
+                          talk.replace()
+                          setShowList(false)
+                        },
+                      }
+                    : undefined
+                }
+              />
               <ConversationList
                 conversations={talk.conversations}
                 pending={talk.conversationsPending}
                 busy={talk.starting}
                 onResume={reopen}
+                onOpen={() => setShowList(false)}
                 onView={setViewing}
               />
             </div>
-          )}
+          ) : null}
         </div>
       </div>
+      {session && (
+        <LiveChat
+          session={session}
+          title={titleFor(talk.conversations, session.id) ?? 'project'}
+          branch={landing.value}
+          hidden={showList || reading !== null}
+          onBack={() => setShowList(true)}
+          endControl={
+            <EndSessionButton
+              sessionId={session.id}
+              onEnded={() => {
+                void utils.project.projectSession.invalidate()
+                void utils.project.conversations.invalidate()
+              }}
+            />
+          }
+        >
+          <ErrorBoundary label="terminal">
+            <TerminalView sessionId={session.id} />
+          </ErrorBoundary>
+        </LiveChat>
+      )}
     </section>
   )
 }

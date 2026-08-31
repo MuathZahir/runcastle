@@ -16,6 +16,7 @@ export function ConversationList({
   pending,
   busy,
   onResume,
+  onOpen,
   onView,
 }: {
   conversations: ProjectConversation[]
@@ -23,6 +24,7 @@ export function ConversationList({
   pending: boolean
   busy: boolean
   onResume: (sessionId: string) => void
+  onOpen?: (sessionId: string) => void
   onView: (conversation: ProjectConversation) => void
 }) {
   if (pending) return null
@@ -34,33 +36,35 @@ export function ConversationList({
         <DimLine>No conversations yet.</DimLine>
       ) : (
         <div className="flex flex-col">
-          {conversations.map((c) => (
-            <div
-              key={c.id}
-              className="group -mx-3 grid h-11 grid-cols-[1fr_auto_auto] items-center gap-4 rounded-md border-t border-hairline-soft px-3 first:border-t-0 hover:bg-panel-3"
-            >
-              <button
-                className="flex min-w-0 items-center gap-2.5 text-left text-base text-text"
-                onClick={() => onView(c)}
+          {[...conversations]
+            .sort((a, b) => Number(b.status !== 'ended') - Number(a.status !== 'ended'))
+            .map((c) => (
+              <div
+                key={c.id}
+                className="group -mx-3 grid h-11 grid-cols-[1fr_auto_auto] items-center gap-4 rounded-md border-t border-hairline-soft px-3 first:border-t-0 hover:bg-panel-3"
               >
-                {c.status !== 'ended' && <SessionStatusDot status={c.status} />}
-                <span className="truncate">{c.title}</span>
-              </button>
-              <span className="font-mono text-sm text-text-3 tabular-nums">
-                {c.createdAt === null ? '' : relTime(c.createdAt)}
-              </span>
-              {/* A conversation Claude Code never picked up has nothing to resume —
+                <button
+                  className="flex min-w-0 items-center gap-2.5 text-left text-base text-text"
+                  onClick={() => onView(c)}
+                >
+                  {c.status !== 'ended' && <SessionStatusDot status={c.status} />}
+                  <span className="truncate">{c.title}</span>
+                </button>
+                <span className="font-mono text-sm text-text-3 tabular-nums">
+                  {c.createdAt === null ? '' : relTime(c.createdAt)}
+                </span>
+                {/* A conversation Claude Code never picked up has nothing to resume —
                   reopening it would silently be a new chat, so it does not offer. */}
-              <Button
-                className="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100"
-                disabled={busy || !c.resumable}
-                title={c.resumable ? undefined : 'this one never got started'}
-                onClick={() => onResume(c.id)}
-              >
-                Reopen
-              </Button>
-            </div>
-          ))}
+                <Button
+                  className="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100"
+                  disabled={busy || !c.resumable}
+                  title={c.resumable ? undefined : 'this one never got started'}
+                  onClick={() => (c.status === 'ended' ? onResume(c.id) : onOpen?.(c.id))}
+                >
+                  {c.status === 'ended' ? 'Reopen' : 'Open'}
+                </Button>
+              </div>
+            ))}
         </div>
       )}
     </section>
