@@ -54,6 +54,7 @@ export function EnableAfkCard({
   highlightField?: string
   onDismiss?: () => void
 }) {
+  const utils = trpc.useUtils()
   const doctor = trpc.setup.doctor.useQuery(undefined, { refetchOnWindowFocus: false })
   const report = doctor.data
 
@@ -62,15 +63,25 @@ export function EnableAfkCard({
   const image = probe('sandcastle-image')
   const credentials = afkCredentialRows(report?.results ?? [])
 
-  // Counted so that a retry starts the wait over rather than inheriting a line
-  // that is already complaining.
+  // Attempts are counted so that a retry starts the wait over rather than
+  // inheriting a line that is already complaining. Cancel before refetching: a
+  // re-check asked for while the probe is still out has to be able to interrupt
+  // it. React Query folds a plain refetch into the request already in flight, so
+  // against a daemon that never answers the button would do nothing at all.
   const [attempt, setAttempt] = useState(0)
   const recheck = () => {
     setAttempt((n) => n + 1)
-    void doctor.refetch()
+    void utils.setup.doctor.cancel().then(() => doctor.refetch())
   }
   const slow = useSlowWait(doctor.isLoading, attempt)
   const shows = (field: string) => (filter ? showsSetting(filter, field) : true)
+
+  // How the summary reads while the checks are still out, and — when something
+  // is in the way — the line that says what, above the Retry that takes it away.
+  // A probe that fails and a probe that never comes back are the same dead end
+  // (decision 9) and get the same way out.
+  const checking = slow ? SLOW_SUMMARY : 'checking prerequisites…'
+  const trouble = doctor.error?.message ?? (slow ? SLOW_DETAIL : null)
 
   // Everything a burn is actually blocked on, in checklist order. The burn cache
   // is deliberately not one of them: a burn runs without it, so counting it
@@ -102,7 +113,7 @@ export function EnableAfkCard({
       <div className="flex items-center gap-2.5 border-b border-hairline-soft bg-panel-2 px-3 py-2.5 text-sm text-text-2">
         <span className="min-w-0">
           {doctor.isLoading ? (
-            'checking prerequisites…'
+            checking
           ) : doctor.error ? (
             'could not run checks'
           ) : (
@@ -130,27 +141,15 @@ export function EnableAfkCard({
       </div>
 
       <div>
-        {doctor.isLoading && slow && (
-          // The other half of "no dead end": a probe that fails gets a Retry
-          // below, but a probe that never answers used to get nothing at all,
-          // and the checklist sat at "checking prerequisites…" for as long as
-          // the runtime took. Retrying is worth offering because it abandons the
-          // request in flight — which is what gets an answer out of a Docker
-          // Desktop that has finished starting since.
+        {trouble && (
+          // Not a dead end, whichever way the checks went wrong: a probe that
+          // fails and a probe that never answers both land here, and the
+          // commonest reason for either is one the human just fixed elsewhere.
+          // Retrying is worth offering while the call is still out because it
+          // abandons the request in flight — which is what gets an answer out of
+          // a Docker Desktop that has finished starting since.
           <div className="flex items-center gap-2.5 px-3 py-2.5">
-            <span className="min-w-0 grow text-sm text-warn">
-              The container runtime has not answered yet — it may still be starting up.
-            </span>
-            <Button variant="ghost" onClick={recheck}>
-              Retry
-            </Button>
-          </div>
-        )}
-        {doctor.error && (
-          // Not a dead end: the probe shells out to a container runtime, and the
-          // commonest reason it fails is one the human just fixed elsewhere.
-          <div className="flex items-center gap-2.5 px-3 py-2.5">
-            <span className="min-w-0 grow text-sm text-warn">{doctor.error.message}</span>
+            <span className="min-w-0 grow text-sm text-warn">{trouble}</span>
             <Button variant="ghost" onClick={recheck}>
               Retry
             </Button>
@@ -193,11 +192,6 @@ export function EnableAfkCard({
 /** Exported for the same reason `ImageBuildAction` is: so a test can build one. */
 export type Probe = RouterOutputs['setup']['doctor']['results'][number]
 
-/** Join the parts that are present. Falsy branches drop out. */
-function cx(...parts: Array<string | false | null | undefined>): string {
-  return parts.filter(Boolean).join(' ')
-}
-
 /**
  * How long the checklist waits for `setup.doctor` before it admits the wait and
  * offers a way out. The probes shell out to the container runtime and neither
@@ -207,9 +201,21 @@ function cx(...parts: Array<string | false | null | undefined>): string {
  */
 const SLOW_DOCTOR_MS = 10_000
 
+/** The summary line and the detail once {@link SLOW_DOCTOR_MS} has passed. */
+const SLOW_SUMMARY = 'still checking — this is taking longer than usual'
+const SLOW_DETAIL =
+  'The container runtime has not answered yet. A runtime that is starting up — or wedged — ' +
+  'can leave the checks outstanding for minutes.'
+
 /**
  * Whether `waiting` has stayed true for longer than {@link SLOW_DOCTOR_MS}.
  * Changing `attempt` restarts the clock, so each retry gets its own full wait.
+ *
+ * `docker version` has been measured at 90s on a booting Docker Desktop, with
+ * `docker image inspect` not returning at all. Without a bound the checklist
+ * sits at "checking prerequisites…" forever, with no control on it: the dead
+ * end decision 9 removed from the failed branch, reached through a slow daemon
+ * instead.
  */
 function useSlowWait(waiting: boolean, attempt: number): boolean {
   const [slow, setSlow] = useState(false)
@@ -220,6 +226,11 @@ function useSlowWait(waiting: boolean, attempt: number): boolean {
     return () => clearTimeout(timer)
   }, [waiting, attempt])
   return slow
+}
+
+/** Join the parts that are present. Falsy branches drop out. */
+function cx(...parts: Array<string | false | null | undefined>): string {
+  return parts.filter(Boolean).join(' ')
 }
 
 /** The checklist's rows by field, so a row and its metadata never drift apart. */
