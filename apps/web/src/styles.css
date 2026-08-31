@@ -827,34 +827,12 @@ button {
   font-weight: 700;
   letter-spacing: 0.09em;
 }
-/* The branch is stated, not copied — this one is runcastle's, not yours. */
-.ws-branch.is-static { cursor: default; }
 /* Says where the commits go, in the chrome, before you type anything. */
 .pw-consequence {
   margin-top: 8px;
   font-size: 12px;
   line-height: 1.5;
   color: var(--text-3);
-}
-/* …and lets you change it, beside the sentence that states it (decision 5). */
-.pw-landing { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
-.pw-landing .nf-base-label { font-size: 12px; color: var(--text-3); }
-/* The note wraps onto its own line — it is a sentence, not a chip. */
-.pw-landing .size-hint { flex-basis: 100%; }
-.pw-landing-origin {
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.09em;
-  text-transform: uppercase;
-  padding: 2px 6px;
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--hairline);
-  color: var(--text-3);
-}
-/* A pick whose branch is gone refuses the next launch — said in colour too. */
-.pw-landing-origin.is-vanished {
-  border-color: color-mix(in srgb, var(--danger) 55%, var(--hairline));
-  color: var(--danger);
 }
 .pw-frame {
   border: 1px solid var(--hairline);
@@ -884,107 +862,6 @@ button {
 .pw-frame-list b { color: var(--text-2); font-weight: 600; }
 .pw-frame-list code { font-family: var(--mono); font-size: 11.5px; }
 .pw-term { height: clamp(300px, calc(100dvh - 420px), 1200px); }
-.pw-rest-title { font-size: 14px; font-weight: 500; color: var(--text-2); }
-.pw-rest-sub {
-  font-size: 12.5px;
-  line-height: 1.6;
-  color: var(--text-3);
-  max-width: 52ch;
-}
-
-/* ---- the conversation list (decision 5) ---- */
-/* New chat is the default action, so it gets the accented card at the top and
-   the only solid button on the screen; the past ones are a quiet list under it. */
-.pw-newchat {
-  display: flex;
-  align-items: center;
-  gap: 20px;
-  border: 1px solid var(--accent-line);
-  border-radius: var(--radius-lg);
-  background: var(--accent-soft);
-  padding: 20px 22px;
-  margin-bottom: 18px;
-}
-.pw-newchat-copy {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  flex: 1;
-}
-.pw-convos {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  margin-bottom: 18px;
-}
-.pw-convos .pw-frame-head { margin-bottom: 6px; }
-.pw-convo {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 9px 12px;
-  border: 1px solid transparent;
-  border-radius: var(--radius);
-  transition: background var(--dur-1) var(--ease), border-color var(--dur-1) var(--ease);
-}
-.pw-convo:hover { background: var(--panel-2); border-color: var(--hairline); }
-.pw-convo-glyph { display: inline-flex; color: var(--text-3); }
-.pw-convo-main {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-  flex: 1;
-}
-.pw-convo-title {
-  font-size: 12.5px;
-  color: var(--text-2);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.pw-convo-when { font-size: 11px; color: var(--text-3); }
-
-/* ---- one conversation, read back ---- */
-.pw-reading { display: flex; flex-direction: column; gap: 14px; }
-.pw-reading-head { display: flex; align-items: center; gap: 12px; }
-.convo-transcript {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  max-height: clamp(300px, calc(100dvh - 340px), 1200px);
-  overflow-y: auto;
-  padding-right: 4px;
-}
-.convo-bubble {
-  border: 1px solid var(--hairline);
-  border-radius: var(--radius-lg);
-  background: var(--panel-2);
-  padding: 10px 14px;
-  max-width: 76ch;
-}
-/* The human's own turns sit right and accented — a transcript you are scanning
-   for "what did I ask for?" is read by finding your own side of it. */
-.convo-bubble.is-user {
-  align-self: flex-end;
-  border-color: var(--accent-line);
-  background: var(--accent-soft);
-}
-.convo-bubble-role {
-  font-size: 9.5px;
-  font-weight: 700;
-  letter-spacing: 0.09em;
-  text-transform: uppercase;
-  color: var(--text-3);
-  margin-bottom: 4px;
-}
-.convo-bubble-text {
-  font-size: 12.5px;
-  line-height: 1.6;
-  color: var(--text-2);
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-}
 
 /* every direct workspace block sits in a centered rail — no more left-hugging
    content with a dead void on the right */
