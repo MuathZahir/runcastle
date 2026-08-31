@@ -19,7 +19,9 @@ function draft(brief: string | null): FeatureFull {
 
 describe('draft creation surfaces', () => {
   it('shows the parked idea and renders its notes as Markdown', () => {
-    const html = renderToStaticMarkup(createElement(DraftBody, { full: draft('## Scope\n\n**Builds** only.') }))
+    const html = renderToStaticMarkup(
+      createElement(DraftBody, { full: draft('## Scope\n\n**Builds** only.') }),
+    )
 
     expect(html).toContain('PARKED')
     expect(html).toContain('Slack alerts')

@@ -45,7 +45,17 @@ export function DeleteFeatureDialog({
           </p>
           <strong className="font-semibold text-text">This cannot be undone.</strong>
         </div>
-        <Field label={<>Type <code className="rounded-sm bg-panel-inset px-1.5 py-0.5 font-mono text-text">{slug}</code> to confirm</>}>
+        <Field
+          label={
+            <>
+              Type{' '}
+              <code className="rounded-sm bg-panel-inset px-1.5 py-0.5 font-mono text-text">
+                {slug}
+              </code>{' '}
+              to confirm
+            </>
+          }
+        >
           <input
             className="h-(--control-h) rounded-md border border-hairline-strong bg-panel-inset px-3 font-mono text-base text-text outline-none placeholder:text-text-4 focus:border-danger"
             value={typed}
