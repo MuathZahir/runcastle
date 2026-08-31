@@ -1,7 +1,8 @@
 // @vitest-environment happy-dom
+import { useState } from 'react'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { BranchMenu } from '../src/ui'
+import { BranchMenu, Dialog } from '../src/ui'
 
 /**
  * The inline branch picker (decisions.md #3). Tier 2 rather than tier 1: the
@@ -72,6 +73,25 @@ describe('BranchMenu', () => {
 
     expect(screen.queryByRole('listbox')).toBeNull()
     expect(onPick).not.toHaveBeenCalled()
+  })
+
+  // The Quick footer and the draft bar put this menu inside a Dialog, and both
+  // answer Escape. One key must not close two things.
+  it('answers Escape without the dialog it sits in also closing', () => {
+    function InDialog() {
+      const [open, setOpen] = useState(true)
+      return (
+        <Dialog open={open} onClose={() => setOpen(false)} label="Quick">
+          <BranchMenu prefix="from" value="main" branches={BRANCHES} onPick={() => {}} />
+        </Dialog>
+      )
+    }
+    render(<InDialog />)
+    open()
+    fireEvent.keyDown(window, { key: 'Escape' })
+
+    expect(screen.queryByRole('listbox')).toBeNull()
+    expect(screen.queryByRole('dialog')).toBeTruthy()
   })
 
   it('says the list is still in flight by refusing to open, not by claiming none', () => {

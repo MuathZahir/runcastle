@@ -489,17 +489,19 @@ export function BranchMenu({
     }
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return
-      // The menu is the smaller thing open: it answers Escape before whatever
-      // dialog it was opened inside gets to, and hands the focus back.
+      // The menu is the smaller thing open, so it answers Escape and the dialog
+      // it was opened inside does not — this one key would otherwise close both.
+      // Captured on the way down for exactly that: `Dialog` listens on the way
+      // back up, and only a capture listener is guaranteed to have gone first.
       e.stopPropagation()
       setOpen(false)
       triggerRef.current?.focus()
     }
     window.addEventListener('mousedown', onDown)
-    window.addEventListener('keydown', onKey)
+    window.addEventListener('keydown', onKey, true)
     return () => {
       window.removeEventListener('mousedown', onDown)
-      window.removeEventListener('keydown', onKey)
+      window.removeEventListener('keydown', onKey, true)
     }
   }, [open])
 
