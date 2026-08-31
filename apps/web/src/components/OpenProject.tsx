@@ -102,7 +102,15 @@ export function OpenProject({
   }
 
   return (
-    <div className="flex h-full items-center justify-center px-6 py-10">
+    <div
+      className="flex h-full items-center justify-center px-6 py-10"
+      onKeyDown={(event) => {
+        // The picker restores focus to Browse when it closes. Keep Escape as a
+        // screen-level way back from there (and from every other control), but
+        // let the open dialog consume its own first Escape.
+        if (event.key === 'Escape' && !firstRun && !picking) onCancel()
+      }}
+    >
       <div className="w-full max-w-[560px]">
         {/* inverse treatment (logo spec): accent tile, ink mark */}
         <div className="mb-6 flex size-9 items-center justify-center rounded-md bg-accent">
@@ -137,7 +145,6 @@ export function OpenProject({
             aria-describedby={failure ? 'open-repo-error' : undefined}
             onKeyDown={(e) => {
               if (e.key === 'Enter') submit()
-              if (e.key === 'Escape' && !firstRun) onCancel()
             }}
           />
           <Button variant="ghost" onClick={browse} disabled={open.isPending}>

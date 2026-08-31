@@ -110,6 +110,20 @@ describe('OpenProject', () => {
     expect(onCancel).toHaveBeenCalledTimes(2)
   })
 
+  it('lets Escape back out after dismissing the picker', () => {
+    open()
+    const browse = screen.getByRole('button', { name: 'Browse…' })
+    browse.focus()
+    fireEvent.click(browse)
+
+    fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' })
+    expect(screen.queryByRole('dialog')).toBeNull()
+    expect(document.activeElement).toBe(browse)
+
+    fireEvent.keyDown(browse, { key: 'Escape' })
+    expect(onCancel).toHaveBeenCalledOnce()
+  })
+
   it('says a folder is not a repository once, with the path and git init', () => {
     stub.rejectWith = { message: 'not a git repository: /tmp/notes' }
     open()
