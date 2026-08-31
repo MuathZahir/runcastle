@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Button } from '../../ui'
+import { BranchMenu, Button } from '../../ui'
 import type { ActionKind, NextAction, NextStep, ReasonPrompt } from '../../lib/feature-ui'
 
 export function NextStepBar({
@@ -7,11 +7,19 @@ export function NextStepBar({
   guidance,
   busy,
   onAction,
+  draftBranch,
 }: {
   ns: NextStep
   guidance: boolean
   busy: boolean
   onAction: (kind: ActionKind, reason?: string) => void
+  draftBranch?: {
+    branches: string[] | undefined
+    value: string | null
+    detected?: string
+    missing: boolean
+    onPick: (branch: string) => void
+  }
 }) {
   // An action carrying a `reason` prompt (Override & converge…) doesn't fire on
   // click: it replaces the buttons with an inline input until the human commits
@@ -106,14 +114,26 @@ export function NextStepBar({
               </Button>
             ))}
             {ns.primary && (
-              <Button
-                variant={ns.primary.danger ? 'danger' : 'solid'}
-                disabled={busy || !!ns.primary.disabled}
-                title={ns.primary.disabled}
-                onClick={() => click(ns.primary!)}
-              >
-                {busy ? 'Working…' : ns.primary.label}
-              </Button>
+              <>
+                {draftBranch && (
+                  <BranchMenu
+                    prefix="from"
+                    value={draftBranch.value}
+                    branches={draftBranch.branches}
+                    detected={draftBranch.detected}
+                    missing={draftBranch.missing}
+                    onPick={draftBranch.onPick}
+                  />
+                )}
+                <Button
+                  variant={ns.primary.danger ? 'danger' : 'solid'}
+                  disabled={busy || !!ns.primary.disabled}
+                  title={ns.primary.disabled}
+                  onClick={() => click(ns.primary!)}
+                >
+                  {busy ? 'Working…' : ns.primary.label}
+                </Button>
+              </>
             )}
           </>
         )}

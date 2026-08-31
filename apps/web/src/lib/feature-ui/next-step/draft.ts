@@ -3,7 +3,7 @@ import type { ResolverInput } from './resolver-input'
 
 const DRAFT_BASE_BLOCKED = {
   loading: 'Loading the branch list…',
-  unpicked: 'Pick the branch to fork from under Advanced below.',
+  unpicked: 'pick a branch first',
 } as const
 
 export function resolveDraft({ ctx }: ResolverInput): NextStep {
@@ -22,4 +22,3 @@ return {
   busy: false,
 }
 }
-

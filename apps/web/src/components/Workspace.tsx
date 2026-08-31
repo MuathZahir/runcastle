@@ -563,7 +563,23 @@ export function Workspace({
           </button>
         </div>
       ) : (
-        <NextStepBar ns={ns} guidance={guidance} busy={busy} onAction={runAction} />
+        <NextStepBar
+          ns={ns}
+          guidance={guidance}
+          busy={busy}
+          onAction={runAction}
+          draftBranch={
+            isDraft
+              ? {
+                  branches: branchesQ.data?.branches,
+                  value: effectiveDraftBase || null,
+                  detected: branchesQ.data?.current,
+                  missing: draftBaseMissing === 'unpicked',
+                  onPick: (base) => setDraftPick({ featureId, base }),
+                }
+              : undefined
+          }
+        />
       )}
 
       {offline && (
@@ -619,13 +635,7 @@ export function Workspace({
               `ideation`, and the grill body would offer a terminal on a feature
               that has no branch to open one against. */}
           {isDraft ? (
-            <DraftBody
-              full={full}
-              branches={branchesQ.data}
-              base={effectiveDraftBase}
-              baseMissing={draftBaseMissing}
-              onPick={(base) => setDraftPick({ featureId, base })}
-            />
+            <DraftBody full={full} />
           ) : (
             <PhaseBody
               effective={effective}
