@@ -2293,7 +2293,7 @@ describe('draft derivations', () => {
       driving: false,
       draftBaseMissing: 'unpicked',
     })
-    expect(ns.primary?.disabled).toBe('Pick the branch to fork from under Advanced below.')
+    expect(ns.primary?.disabled).toBe('pick a branch first')
   })
 })
 
