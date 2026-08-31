@@ -40,12 +40,19 @@ const BUTTON_BASE =
   'duration-(--dur-1) ease-app enabled:active:scale-[0.99] ' +
   'disabled:cursor-not-allowed disabled:opacity-40'
 
+/**
+ * Every variant states its own background, `danger` included. There is no
+ * preflight (see {@link BARE_BUTTON}), so a variant that names only a border and
+ * a colour leaves the user agent's `buttonface` behind it — which is how the
+ * danger button rendered as white-on-white until it said `bg-transparent`.
+ */
 const BUTTON_VARIANT: Record<Variant, string> = {
   ghost:
     'border-hairline bg-transparent text-text enabled:hover:border-hairline-strong enabled:hover:bg-panel',
   solid:
     'border-accent bg-accent font-semibold text-accent-ink enabled:hover:border-accent-2 enabled:hover:bg-accent-2',
-  danger: 'border-danger/55 text-danger enabled:hover:border-danger enabled:hover:bg-danger/12',
+  danger:
+    'border-danger/55 bg-transparent text-danger enabled:hover:border-danger enabled:hover:bg-danger/12',
 }
 
 export function Button({

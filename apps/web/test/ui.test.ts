@@ -51,6 +51,18 @@ describe('Button', () => {
     expect(new Set([ghost, solid, danger]).size).toBe(3)
   })
 
+  // No preflight (STYLE.md), so a variant that names only a border and a colour
+  // renders on the user agent's `buttonface` — white, under near-white text.
+  // The background has to be unconditional: an `enabled:hover:bg-*` is exactly
+  // what `danger` had while it rendered white at rest and disabled.
+  it('states a resting background on every variant, enabled and disabled', () => {
+    const restingBg = /(?:^|[\s"])bg-/
+    for (const variant of ['ghost', 'solid', 'danger'] as const) {
+      expect(render({ variant })).toMatch(restingBg)
+      expect(render({ variant, disabled: true })).toMatch(restingBg)
+    }
+  })
+
   it('keeps a caller`s className and forwards button attributes', () => {
     const out = render({ className: 'btn-xs', disabled: true, type: 'submit' })
     expect(out).toContain('btn-xs')
