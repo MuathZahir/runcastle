@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { SettingField, SettingsView } from '../src/lib/api'
 import type { SettingsLocation } from '../src/lib/settings'
@@ -17,6 +17,10 @@ import type { SettingsLocation } from '../src/lib/settings'
 const server = vi.hoisted(() => ({
   globals: { fields: [] } as { fields: unknown[] },
   probes: [] as Record<string, unknown>[],
+  /** The doctor is still shelling out to the container runtime: no report yet. */
+  doctorPending: false,
+  /** How many times the checklist has asked for the report again. */
+  doctorAsks: 0,
 }))
 
 vi.mock('../src/lib/toast', () => ({ useToast: () => ({ push: () => undefined }) }))
@@ -40,10 +44,14 @@ vi.mock('../src/trpc', () => {
       setup: {
         doctor: {
           useQuery: () => ({
-            data: { results: server.probes, ok: false, tier1Ok: true },
-            isLoading: false,
+            data: server.doctorPending
+              ? undefined
+              : { results: server.probes, ok: false, tier1Ok: true },
+            isLoading: server.doctorPending,
             error: null,
-            refetch: () => undefined,
+            refetch: () => {
+              server.doctorAsks += 1
+            },
           }),
         },
         runtimeGuide: { useQuery: () => ({ data: undefined }) },
@@ -129,6 +137,8 @@ describe('Settings → Burns', () => {
   beforeEach(() => {
     server.globals = { fields: burnFields } as unknown as SettingsView
     server.probes = doctorProbes()
+    server.doctorPending = false
+    server.doctorAsks = 0
   })
   afterEach(cleanup)
 
@@ -203,6 +213,46 @@ describe('Settings → Burns', () => {
 
     expect(screen.queryByText('Prerequisites for unattended burns')).toBeNull()
     expect(screen.getByLabelText('Attempts per ticket')).toBeTruthy()
+  })
+
+  /**
+   * The probes shell out to a container runtime that is under no obligation to
+   * answer, so "no dead end" (decision 9) has to cover the report that never
+   * arrives as well as the one that fails.
+   */
+  describe('while the doctor has not answered', () => {
+    beforeEach(() => {
+      server.doctorPending = true
+      vi.useFakeTimers()
+    })
+    afterEach(() => vi.useRealTimers())
+
+    it('just says it is checking while the wait is still ordinary', () => {
+      open()
+      act(() => vi.advanceTimersByTime(9_000))
+
+      expect(screen.getByText('checking prerequisites…')).toBeTruthy()
+      expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull()
+    })
+
+    it('says the runtime has not answered, and offers Retry, once it drags', () => {
+      open()
+      act(() => vi.advanceTimersByTime(10_000))
+
+      expect(screen.getByText(/has not answered yet/)).toBeTruthy()
+      fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
+      expect(server.doctorAsks).toBe(1)
+    })
+
+    it('gives the retry its own wait rather than complaining again at once', () => {
+      open()
+      act(() => vi.advanceTimersByTime(10_000))
+      fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
+
+      expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull()
+      act(() => vi.advanceTimersByTime(10_000))
+      expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy()
+    })
   })
 })
 

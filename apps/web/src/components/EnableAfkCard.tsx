@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
 import type { AgentRuntime } from '@runcastle/core'
 import { trpc } from '../trpc'
@@ -62,7 +62,15 @@ export function EnableAfkCard({
   const image = probe('sandcastle-image')
   const credentials = afkCredentialRows(report?.results ?? [])
 
-  const recheck = () => void doctor.refetch()
+  // A retry starts the wait over: `refetch` abandons the request in flight and
+  // asks again, so the slow line below should stop complaining until the new one
+  // has had its own full wait.
+  const [attempt, setAttempt] = useState(0)
+  const recheck = () => {
+    setAttempt((n) => n + 1)
+    void doctor.refetch()
+  }
+  const slow = useSlow(doctor.isLoading, attempt)
   const shows = (field: string) => (filter ? showsSetting(filter, field) : true)
 
   // Everything a burn is actually blocked on, in checklist order. The burn cache
@@ -123,6 +131,22 @@ export function EnableAfkCard({
       </div>
 
       <div>
+        {doctor.isLoading && slow && (
+          // The other half of "no dead end": a probe that fails gets a Retry
+          // below, but a probe that never answers used to get nothing at all,
+          // and the checklist sat at "checking prerequisites…" for as long as
+          // the runtime took. Retrying is worth offering because it abandons the
+          // request in flight — which is what gets an answer out of a Docker
+          // Desktop that has finished starting since.
+          <div className="flex items-center gap-2.5 px-3 py-2.5">
+            <span className="min-w-0 grow text-sm text-warn">
+              The container runtime has not answered yet — it may still be starting up.
+            </span>
+            <Button variant="ghost" onClick={recheck}>
+              Retry
+            </Button>
+          </div>
+        )}
         {doctor.error && (
           // Not a dead end: the probe shells out to a container runtime, and the
           // commonest reason it fails is one the human just fixed elsewhere.
@@ -173,6 +197,30 @@ export type Probe = RouterOutputs['setup']['doctor']['results'][number]
 /** Join the parts that are present. Falsy branches drop out. */
 function cx(...parts: Array<string | false | null | undefined>): string {
   return parts.filter(Boolean).join(' ')
+}
+
+/**
+ * How long the checklist waits for `setup.doctor` before it admits the wait and
+ * offers a way out. The probes shell out to the container runtime and neither
+ * they nor the query have a timeout, so on a machine where Docker Desktop is
+ * still starting — an ordinary Windows state — the report can be minutes away.
+ * Long enough that the second or two a healthy machine takes never shows it.
+ */
+const SLOW_DOCTOR_MS = 10_000
+
+/**
+ * Whether `active` has stayed true for longer than {@link SLOW_DOCTOR_MS}.
+ * `attempt` restarts the clock, so a retry is given its own full wait.
+ */
+function useSlow(active: boolean, attempt: number): boolean {
+  const [slow, setSlow] = useState(false)
+  useEffect(() => {
+    setSlow(false)
+    if (!active) return
+    const timer = setTimeout(() => setSlow(true), SLOW_DOCTOR_MS)
+    return () => clearTimeout(timer)
+  }, [active, attempt])
+  return slow
 }
 
 /** The checklist's rows by field, so a row and its metadata never drift apart. */
