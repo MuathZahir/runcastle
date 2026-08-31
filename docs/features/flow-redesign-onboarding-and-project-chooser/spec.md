@@ -33,6 +33,7 @@ A first-time user meets a wizard that cannot go back, that shows them the entire
 - **Picker** gets one new component for the crumb/path control; the ancestor-fallback on a bad initial path is a pure function over the browse error plus the typed path, with the existing browse/roots queries unchanged. `Open this folder` gates on the browse query's error state.
 - **Switcher** takes the repo path it already has from the project list and shows its last segment.
 - **Styles.** All `.op-*`, `.wizard-*`, `.home*`, `.pc-*`, `.open-card*`, `.dir-*`, `.tb-switcher*` and `.tb-menu*` rules become Tailwind utilities on the new markup and are deleted from the legacy stylesheet, moving the ratchet baseline down. `.afk-*` stays — Settings still renders that card. No rule is added to the legacy sheet.
+- **UA button reset (lap 2).** There is no preflight, so every `<button>` must fully reset the user agent's `buttonface` styles: it is either the shared `Button` — whose every variant, `danger` included, states its own background — or it carries `BARE_BUTTON` (`border-0 bg-transparent`), or it states both border and background itself. Lap 2 fixes the two known leaks (the backgroundless `danger` variant; the switcher rows' unreset border) and sweeps `apps/web/src` for the rest.
 - **Tests.** Every one of the five components gets component tests: tier 1 (static markup) where markup is the behaviour, tier 2 (happy-dom) for Back/Esc/menu/inline-confirm/keyboard paths. The pure logic gets unit tests for the new landing table and the path helpers.
 
 ## Seams
@@ -49,6 +50,7 @@ A first-time user meets a wizard that cannot go back, that shows them the entire
 - **Switcher component** *(existing)* — observes the second line per project row and the three fixed rows.
 - **Project tRPC procedures** *(existing, unchanged)* — `open`, `close`, `rename`, `list`, `browse`, `roots`; `setup.doctor`, `setup.seedModelDefaults`. No server changes in this feature.
 - **Stylesheet ratchet** *(existing)* — asserts the legacy sheet shrank by this surface's rules.
+- **Button variants** *(existing, lap 2)* — every `Button` variant states its own background; observes that a `danger` button renders on the app's dark ground, enabled and disabled.
 
 ## Out of scope
 
