@@ -1,6 +1,7 @@
 import { createContext, useContext } from 'react'
 import type { ReactNode } from 'react'
 import { settingsMention, type SettingsLocation } from '../../lib/settings'
+import { BARE_BUTTON } from './button'
 
 /**
  * Turning "…Rebuild it from Settings → Burns (Rebuild image)." into a link that
@@ -39,7 +40,7 @@ export function MessageWithSettingsLink({ text }: { text: string }) {
       {mention.before}
       <button
         type="button"
-        className="cursor-pointer text-accent-hi underline underline-offset-2 hover:text-accent-2"
+        className={`${BARE_BUTTON} cursor-pointer text-accent-hi underline underline-offset-2 hover:text-accent-2`}
         onClick={(event) => {
           // The lane this can sit in is itself a click target.
           event.stopPropagation()

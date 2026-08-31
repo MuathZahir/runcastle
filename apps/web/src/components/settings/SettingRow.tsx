@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, useState } from 'react'
 import type { KeyboardEvent, ReactNode } from 'react'
 import { trpc } from '../../trpc'
+import { BARE_BUTTON, PLAIN_BUTTON } from './button'
 import { HIGHLIGHT_RING, useHighlight } from './highlight'
 import {
   FIELD_ENV_VAR,
@@ -36,8 +37,8 @@ const CHIP =
 
 /** An action that reads as prose rather than as a button — "Use global". */
 const LINK =
-  'cursor-pointer text-xs whitespace-nowrap text-accent-hi underline decoration-accent-line ' +
-  'underline-offset-2 hover:decoration-accent-hi'
+  `${BARE_BUTTON} cursor-pointer text-xs whitespace-nowrap text-accent-hi underline ` +
+  'decoration-accent-line underline-offset-2 hover:decoration-accent-hi'
 
 const CONTROL =
   'h-(--control-h) w-full min-w-0 rounded-sm border border-hairline bg-panel-inset px-2.5 ' +
@@ -421,7 +422,7 @@ function InfoTip({ about, text }: { about: string; text: string }) {
         type="button"
         aria-label={`About ${about}`}
         aria-describedby={tipId}
-        className="peer grid size-4 cursor-default place-items-center rounded-pill border border-hairline-strong text-[10px] text-text-3 hover:border-accent-line hover:text-accent-hi"
+        className={`${PLAIN_BUTTON} peer grid size-4 cursor-default place-items-center rounded-pill border border-hairline-strong text-[10px] text-text-3 hover:border-accent-line hover:text-accent-hi`}
       >
         i
       </button>
@@ -486,7 +487,7 @@ function ProvenanceChip({
     <button
       type="button"
       onClick={onOpenEvidence}
-      className={cx(CHIP, 'bg-panel-2 hover:border-hairline-strong hover:text-text', tone)}
+      className={cx(PLAIN_BUTTON, CHIP, 'bg-panel-2 hover:border-hairline-strong hover:text-text', tone)}
     >
       {body}
     </button>

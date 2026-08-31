@@ -1,6 +1,7 @@
 import { Fragment } from 'react'
 import { stepModelKey, type ModelOptionGroup, type StepGroup, type StepRow } from '../../lib/settings'
 import { IconX } from '../../icons'
+import { BARE_BUTTON } from './button'
 import type { SettingWrites } from './ModelsPage'
 import { ModelOptions, Refusal, RuntimeChip, SaveMark } from './RosterTable'
 import { showsSetting, type FilterState } from './types'
@@ -123,7 +124,7 @@ function StepModelRow({
             aria-label={`Reset ${row.label} to default`}
             title="Use the default"
             onClick={() => writes.save(key, key, null)}
-            className="grid size-6 place-items-center rounded-sm text-text-4 hover:bg-panel-3 hover:text-text"
+            className={`${BARE_BUTTON} grid size-6 place-items-center rounded-sm text-text-4 hover:bg-panel-3 hover:text-text`}
           >
             <IconX size={12} />
           </button>

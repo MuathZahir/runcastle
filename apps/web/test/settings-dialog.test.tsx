@@ -48,6 +48,11 @@ vi.mock('../src/trpc', () => ({
         clear: { useMutation: () => ({ isPending: false, mutate: () => undefined }) },
       },
     },
+    // "This project" reads the preparation findings for its provenance chips.
+    // What they say has its own suite (`settings-project.test.tsx`).
+    project: {
+      prep: { useQuery: () => ({ data: { findings: [] }, isLoading: false }) },
+    },
     settings: {
       get: {
         useQuery: (input?: { projectId?: string }) => ({
@@ -270,5 +275,29 @@ describe('SettingsDialog', () => {
     expect(screen.getByLabelText('Server port').closest('div.border-b')?.className).not.toContain(
       'outline-accent',
     )
+  })
+
+  /**
+   * `theme.css` imports Tailwind without preflight on purpose, so a `<button>`
+   * that names neither keeps Chrome's `buttonface` background and 2px outset
+   * border: a light-grey pill with near-invisible text on this dark theme. That
+   * is what the rail's pages, every ⓘ and the close ✕ rendered as, and no test
+   * caught it because a role and a name look the same either way.
+   */
+  it('paints every button itself rather than leaving the browser to', () => {
+    open()
+
+    const unpainted: string[] = []
+    for (const page of ['General', 'Models', 'Burns', 'This project']) {
+      fireEvent.click(screen.getByRole('button', { name: new RegExp(page) }))
+      for (const button of screen.getAllByRole('button')) {
+        const background = /(?:^| )bg-/.test(button.className)
+        const border = /(?:^| )border(?:-\d+)?(?: |$)/.test(button.className)
+        if (background && border) continue
+        unpainted.push(`${page} / ${button.getAttribute('aria-label') ?? button.textContent}`)
+      }
+    }
+
+    expect(unpainted).toEqual([])
   })
 })

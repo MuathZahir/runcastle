@@ -1,6 +1,7 @@
 import type { RefObject } from 'react'
 import type { SettingsPage } from '../../lib/settings'
 import { IconCube, IconFlame, IconFolder, IconSearch, IconSettings } from '../../icons'
+import { BARE_BUTTON } from './button'
 import type { FilterState } from './types'
 
 /**
@@ -22,7 +23,7 @@ export const SETTINGS_PAGES: readonly {
   { page: 'project', label: 'This project', Icon: IconFolder },
 ]
 
-const NAV = 'flex h-8 w-full items-center gap-2.5 rounded-sm px-2 text-left text-sm'
+const NAV = `${BARE_BUTTON} flex h-8 w-full items-center gap-2.5 rounded-sm px-2 text-left text-sm`
 const NAV_CURRENT = 'bg-accent-soft text-text'
 const NAV_IDLE = 'text-text-2 hover:bg-panel-3 hover:text-text'
 
