@@ -939,12 +939,12 @@ export function activeProjectSession(
 }
 
 /**
- * Every project-scoped session of this kind, newest first — the conversation
- * list behind `project.conversations`. Unlike {@link activeProjectSession} it
- * filters on nothing else: an ended conversation is still a conversation you can
- * read back, and one that never went live is still a row that says an attempt
- * was made. Ordered by the implicit sqlite `rowid`, which is insertion order and
- * so agrees with `createdAt` for every row that has one.
+ * Every project-scoped session of this kind, newest first — the rows behind
+ * `project.conversations`, which groups them into conversations and decides
+ * which are worth showing. Unlike {@link activeProjectSession} this filters on
+ * nothing else: an ended conversation is still a conversation you can read back.
+ * Ordered by the implicit sqlite `rowid`, which is insertion order and so agrees
+ * with `createdAt` for every row that has one.
  */
 export function projectSessions(
   ctx: AppCtx,

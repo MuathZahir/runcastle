@@ -21,22 +21,32 @@ import { readTranscript, type SessionTranscript, type TranscriptTurn } from './t
  * workspace, and the read-only transcript behind each ended row.
  *
  * The project chat used to be one endless conversation that reopening silently
- * resumed. It is a list now: every launch is a row, "New chat" is the default,
- * and resuming a particular past conversation is an explicit click. Which makes
- * one thing suddenly matter that never did before — a row has to be *nameable*,
- * because a list of nine "project session"s is not a list anyone can use.
+ * resumed. It is a list now: every conversation is a row, "New chat" is the
+ * default, and resuming a particular past conversation is an explicit click.
+ * Which makes one thing suddenly matter that never did before — a row has to be
+ * *nameable*, because a list of nine "project session"s is not a list anyone can
+ * use. A row is a CONVERSATION rather than a launch (decision 4): reopening one
+ * inserts another session row of the same thread, and the list is unusable if
+ * every reopen shows up as another entry.
  */
 
-/** One row of the conversation list. */
+/** One row of the conversation list — one Claude Code conversation, not one session. */
 export interface ProjectConversation {
-  /** The session row's id — what `talkToProject`'s `resumeSessionId` takes. */
+  /**
+   * The LATEST session of the conversation — what `talkToProject`'s
+   * `resumeSessionId` takes, because resuming means picking up where it got to.
+   */
   id: string
   /** Derived from the first thing the human said (see {@link conversationTitle}). */
   title: string
-  /** Null on the rows written before `sessions` carried a timestamp. */
+  /** The first launch; null on rows written before `sessions` carried a timestamp. */
   createdAt: number | null
+  /** The latest session's — a conversation is open while its latest session is. */
   status: SessionStatus
-  /** There is a Claude Code conversation behind this row for `--resume` to find. */
+  /**
+   * Always true: a conversation with nothing for `--resume` to find is not
+   * listed at all (decision 4). Kept because the client still reads it.
+   */
   resumable: boolean
 }
 
@@ -174,8 +184,6 @@ export function listProjectConversations(ctx: AppCtx, projectId: string): Projec
       title: conversationTitle(ctx, earliest),
       createdAt: stamps.length ? Math.min(...stamps) : null,
       status: latest.status,
-      // Every listed conversation has a Claude Code session behind it; the field
-      // stays because the client still reads it.
       resumable: true,
     }
   })
