@@ -966,6 +966,15 @@ export function setSessionTitle(ctx: AppCtx, id: string, title: string): void {
 }
 
 /**
+ * Forget a cached name, putting the row back to deriving one on every read.
+ * The list clears the titles it can tell were derived by an older, worse
+ * derivation (see `junkTitle` in `services/conversations.ts`).
+ */
+export function clearSessionTitle(ctx: AppCtx, id: string): void {
+  ctx.db.update(sessions).set({ title: null }).where(eq(sessions.id, id)).run()
+}
+
+/**
  * Whether this project has ever had a project-scoped conversation of this kind
  * run to an end. The signal behind "has the human done preparation" — a session
  * they opened and closed is one they sat through, whatever it managed to record.

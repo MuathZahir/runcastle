@@ -147,14 +147,22 @@ describe('the project conversation list', () => {
     return path
   }
 
-  /** End a session and give it the Claude Code id a live one would have recorded. */
-  function endWithCcId(sessionId: string, ccSessionId: string): void {
-    endSession(ctx, sessionId)
+  /** Record the Claude Code session id the SessionStart hook reports a beat later. */
+  function giveCcId(sessionId: string, ccSessionId: string): void {
     ctx.db.update(sessions).set({ ccSessionId }).where(eq(sessions.id, sessionId)).run()
   }
 
-  async function launch(): Promise<{ sessionId: string }> {
-    return launchProjectSession(ctx, { projectId: project.id }, { spawn: false })
+  let ccSeq = 0
+
+  /**
+   * A launch the CLI picked up. Every listed row has a Claude Code conversation
+   * behind it (decision 4), so a fixture without one is a fixture of the case
+   * the list deliberately hides.
+   */
+  async function launch(ccSessionId = `cc-${(ccSeq += 1)}`): Promise<{ sessionId: string }> {
+    const launched = await launchProjectSession(ctx, { projectId: project.id }, { spawn: false })
+    giveCcId(launched.sessionId, ccSessionId)
+    return launched
   }
 
   it('is empty for a project nobody has talked to', async () => {
@@ -163,15 +171,79 @@ describe('the project conversation list', () => {
 
   it('lists every conversation newest first, with its date, status and resumability', async () => {
     const first = await launch()
-    endWithCcId(first.sessionId, 'cc-1')
+    endSession(ctx, first.sessionId)
     const second = await launch()
 
     const list = await caller().project.conversations({ projectId: project.id })
 
     expect(list.map((c) => c.id)).toEqual([second.sessionId, first.sessionId])
-    expect(list[0]).toMatchObject({ status: 'launching', resumable: false })
+    expect(list[0]).toMatchObject({ status: 'launching', resumable: true })
     expect(list[1]).toMatchObject({ status: 'ended', resumable: true })
     expect(list[0].createdAt).toBeGreaterThan(0)
+  })
+
+  /**
+   * The duplication this collapses (decision 4): `--resume` keeps the CLI's
+   * session id, so every reopen inserted a second row of the SAME conversation
+   * — three duplicate pairs on the runcastle project itself.
+   */
+  it('collapses the rows of one Claude Code conversation into a single row', async () => {
+    const first = await launch('cc-same')
+    endSession(ctx, first.sessionId)
+    const reopened = await launchProjectSession(
+      ctx,
+      { projectId: project.id, resumeSessionId: first.sessionId },
+      { spawn: false },
+    )
+    giveCcId(reopened.sessionId, 'cc-same')
+
+    const list = await caller().project.conversations({ projectId: project.id })
+
+    expect(list).toHaveLength(1)
+    // Reopen hands this id straight back to `talkToProject`, which must resume
+    // the LATEST session of the conversation, not the one it started as.
+    expect(list[0].id).toBe(reopened.sessionId)
+    expect(list[0].status).toBe('launching')
+  })
+
+  it('dates a collapsed conversation by its first launch', async () => {
+    const first = await launch('cc-same')
+    const firstAt = getSessionRow(ctx, first.sessionId)?.createdAt
+    endSession(ctx, first.sessionId)
+    const reopened = await launch('cc-same')
+    ctx.db
+      .update(sessions)
+      .set({ createdAt: (firstAt ?? 0) + 60_000 })
+      .where(eq(sessions.id, reopened.sessionId))
+      .run()
+
+    const [conversation] = await caller().project.conversations({ projectId: project.id })
+
+    expect(conversation.createdAt).toBe(firstAt)
+  })
+
+  /** Nothing to read and nothing to resume: a row the CLI never picked up. */
+  it('does not list a launch that never reached Claude Code', async () => {
+    const orphan = await launchProjectSession(ctx, { projectId: project.id }, { spawn: false })
+    endSession(ctx, orphan.sessionId)
+    const real = await launch()
+
+    const list = await caller().project.conversations({ projectId: project.id })
+
+    expect(list.map((c) => c.id)).toEqual([real.sessionId])
+  })
+
+  /** The conversation's real first words are in the transcript it began with. */
+  it('names a collapsed conversation from its earliest session', async () => {
+    const first = await launch('cc-same')
+    giveTranscript(first.sessionId, [entry('user', 'rework the review page')])
+    endSession(ctx, first.sessionId)
+    const reopened = await launch('cc-same')
+    giveTranscript(reopened.sessionId, [entry('user', 'now the burn view')])
+
+    const [conversation] = await caller().project.conversations({ projectId: project.id })
+
+    expect(conversation.title).toBe('rework the review page')
   })
 
   it('titles a conversation from the human’s first message, not the injected kickoff', async () => {
@@ -212,12 +284,49 @@ describe('the project conversation list', () => {
     expect(conversation.title.endsWith('…')).toBe(true)
   })
 
-  it('falls back to the date when nothing has been said yet, and does not cache that', async () => {
+  it('is Untitled when nothing has been said yet, and does not cache that', async () => {
     const { sessionId } = await launch()
 
     const [conversation] = await caller().project.conversations({ projectId: project.id })
 
-    expect(conversation.title).toMatch(/^Chat from \d{4}-\d{2}-\d{2}$/)
+    expect(conversation.title).toBe('Untitled')
+    expect(getSessionRow(ctx, sessionId)?.title).toBeUndefined()
+  })
+
+  /**
+   * The one-time self-heal (decision 5). Rows named before the derivation
+   * learned to skip a `/clear` carry that junk in the cache, where no amount of
+   * fixing the derivation would ever reach it.
+   */
+  it('clears a junk cached title and re-derives it', async () => {
+    const { sessionId } = await launch()
+    giveTranscript(sessionId, [
+      entry('user', '<command-name>/clear</command-name>'),
+      entry('user', 'rework the review page'),
+    ])
+    ctx.db
+      .update(sessions)
+      .set({ title: '<command-name>/clear</command-name> <command-message>clear</comman…' })
+      .where(eq(sessions.id, sessionId))
+      .run()
+
+    const [conversation] = await caller().project.conversations({ projectId: project.id })
+
+    expect(conversation.title).toBe('rework the review page')
+    expect(getSessionRow(ctx, sessionId)?.title).toBe('rework the review page')
+  })
+
+  it('forgets a junk cached title even when there is nothing to re-derive', async () => {
+    const { sessionId } = await launch()
+    ctx.db
+      .update(sessions)
+      .set({ title: '[Request interrupted by user]' })
+      .where(eq(sessions.id, sessionId))
+      .run()
+
+    const [conversation] = await caller().project.conversations({ projectId: project.id })
+
+    expect(conversation.title).toBe('Untitled')
     expect(getSessionRow(ctx, sessionId)?.title).toBeUndefined()
   })
 })
@@ -258,6 +367,8 @@ describe('reading a conversation back', () => {
         kind: 'project',
         status: 'ended',
         worktreePath: '/wt',
+        // A conversation the CLI picked up, so the list shows it (decision 4).
+        ccSessionId: id,
         transcriptPath,
         runtime,
         createdAt: Date.now(),

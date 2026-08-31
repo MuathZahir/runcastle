@@ -1,6 +1,13 @@
-import { type AgentRuntime, DEFAULT_RUNTIME, type SessionKind, type SessionStatus } from '@runcastle/core'
+import {
+  type AgentRuntime,
+  DEFAULT_RUNTIME,
+  type SessionKind,
+  type SessionRow,
+  type SessionStatus,
+} from '@runcastle/core'
 import type { AppCtx } from '../db/types'
 import {
+  clearSessionTitle,
   getSessionRow,
   kickoffLineFor,
   projectSessions,
@@ -107,43 +114,101 @@ function elide(text: string): string {
 }
 
 /** What a conversation with nothing said in it yet is called. */
-function untitled(createdAt: number | null): string {
-  return createdAt ? `Chat from ${new Date(createdAt).toISOString().slice(0, 10)}` : 'Untitled chat'
+const UNTITLED = 'Untitled'
+
+/**
+ * A cached title from before {@link deriveTitle} learned what a human turn is,
+ * or null for one worth keeping.
+ *
+ * The derivation is a pure function of the transcript, so fixing it fixes every
+ * name — except the ones already written to the `title` column, which no amount
+ * of fixing can reach. These two openings are what the junk looked like on the
+ * runcastle project: a slash command's own markup, and the bracketed tokens of
+ * an interruption or an image paste. Nothing anyone types starts that way.
+ */
+function junkTitle(title: string): boolean {
+  return title.startsWith('<command-name>') || title.startsWith('[')
 }
 
 /**
- * The project's conversations, newest first.
+ * The sessions of one Claude Code conversation, newest first — see
+ * {@link listProjectConversations} for why a conversation is more than one row.
+ */
+type ConversationGroup = SessionRow[]
+
+/**
+ * The project's conversations, newest first — ONE row per Claude Code
+ * conversation (decision 4).
+ *
+ * A conversation is not a session row. Reopening one relaunches the CLI with
+ * `--resume`, which keeps the Claude Code session id and gets us a second row of
+ * the same thread, so the rows are grouped on `ccSessionId`: dated by the first
+ * launch, statused by the latest session (which is the one still live, if any),
+ * and identified by that latest session — `id` goes back to `talkToProject` as
+ * `resumeSessionId`, and resuming a conversation means resuming where it got to.
+ * A row with no `ccSessionId` was never picked up by the CLI: nothing to read
+ * and nothing to resume, so it is not a conversation and is not listed.
  *
  * Titles are derived here rather than at launch — the transcript does not exist
  * when the row is inserted, and what the conversation turns out to be about is
- * the human's first message, which lands later still. A derived title is cached
- * onto the row: it can never change (the first message is the first message),
- * and re-reading every transcript on every poll of a live list is exactly the
- * cost the column exists to avoid. A conversation with no title yet falls back
- * to its date and is NOT cached — the transcript may still gain one.
+ * the human's first message, which lands later still. It is derived from the
+ * conversation's EARLIEST transcript (its real first words) and cached on that
+ * row: it can never change (the first message is the first message), and
+ * re-reading every transcript on every poll of a live list is exactly the cost
+ * the column exists to avoid. A conversation with no title yet falls back to
+ * {@link UNTITLED} and is NOT cached — the transcript may still gain one.
  *
  * The one write in a read path, and deliberately eventless (SPEC §12 asks every
  * mutating service function to emit): caching a name the same call already
  * returned changes nothing a client could observe, so an event would be a
- * timeline entry per row per poll saying nothing happened.
+ * timeline entry per row per poll saying nothing happened. Clearing a
+ * {@link junkTitle} is the same write from the other side.
  */
 export function listProjectConversations(ctx: AppCtx, projectId: string): ProjectConversation[] {
-  return projectSessions(ctx, projectId, 'project').map((session) => {
-    const createdAt = session.createdAt ?? null
-    const runtime = session.runtime ?? DEFAULT_RUNTIME
-    let title = session.title ?? null
-    if (!title) {
-      title = deriveTitle(readTranscript(session.transcriptPath, runtime).turns, runtime)
-      if (title) setSessionTitle(ctx, session.id, title)
-    }
+  return groupByConversation(projectSessions(ctx, projectId, 'project')).map((group) => {
+    const [latest] = group
+    const earliest = group[group.length - 1]
+    const stamps = group.map((s) => s.createdAt).filter((at): at is number => at !== undefined)
     return {
-      id: session.id,
-      title: title ?? untitled(createdAt),
-      createdAt,
-      status: session.status,
-      resumable: !!session.ccSessionId,
+      id: latest.id,
+      title: conversationTitle(ctx, earliest),
+      createdAt: stamps.length ? Math.min(...stamps) : null,
+      status: latest.status,
+      // Every listed conversation has a Claude Code session behind it; the field
+      // stays because the client still reads it.
+      resumable: true,
     }
   })
+}
+
+/**
+ * The listable sessions of `projectId`, grouped into conversations — newest
+ * conversation first, and newest session first within each.
+ *
+ * Order comes from {@link projectSessions} (insertion order, reversed) and is
+ * carried by the `Map`, so a reopened conversation sorts by the reopen: the list
+ * reads as "what I was last talking about", not "what I once started".
+ */
+function groupByConversation(rows: SessionRow[]): ConversationGroup[] {
+  const groups = new Map<string, ConversationGroup>()
+  for (const row of rows) {
+    if (!row.ccSessionId) continue
+    const group = groups.get(row.ccSessionId)
+    if (group) group.push(row)
+    else groups.set(row.ccSessionId, [row])
+  }
+  return [...groups.values()]
+}
+
+/** The conversation's cached name, derived and cached now if it has none worth having. */
+function conversationTitle(ctx: AppCtx, earliest: SessionRow): string {
+  const cached = earliest.title
+  if (cached && !junkTitle(cached)) return cached
+  const runtime = earliest.runtime ?? DEFAULT_RUNTIME
+  const derived = deriveTitle(readTranscript(earliest.transcriptPath, runtime).turns, runtime)
+  if (derived) setSessionTitle(ctx, earliest.id, derived)
+  else if (cached) clearSessionTitle(ctx, earliest.id)
+  return derived ?? UNTITLED
 }
 
 /** A conversation's transcript, and the runtime whose voice the pane is labelling. */
