@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 /**
@@ -17,6 +17,7 @@ const server = vi.hoisted(() => ({
   results: [] as Record<string, unknown>[],
   error: null as { message: string } | null,
   refetches: 0,
+  cancels: 0,
 }))
 
 vi.mock('../src/trpc', () => {
@@ -24,7 +25,15 @@ vi.mock('../src/trpc', () => {
   return {
     trpc: {
       useUtils: () => ({
-        setup: { doctor: { invalidate: () => undefined } },
+        setup: {
+          doctor: {
+            invalidate: () => undefined,
+            cancel: () => {
+              server.cancels += 1
+              return Promise.resolve()
+            },
+          },
+        },
         system: { burnCache: { status: { invalidate: () => undefined } } },
       }),
       setup: {
@@ -190,6 +199,7 @@ describe('EnableAfkCard prerequisites checklist', () => {
     server.results = readyReport()
     server.error = null
     server.refetches = 0
+    server.cancels = 0
   })
   afterEach(cleanup)
 
@@ -239,12 +249,16 @@ describe('EnableAfkCard prerequisites checklist', () => {
     expect(solid.map((b) => b.textContent)).toEqual(['Save & verify'])
   })
 
-  it('offers a Retry rather than a dead end when the probe run fails', () => {
+  it('offers a Retry rather than a dead end when the probe run fails', async () => {
     server.error = { message: 'docker: no such host' }
     open()
 
     expect(screen.getByText('docker: no such host')).toBeTruthy()
-    fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
+    // Cancel first: a re-check has to be able to interrupt a probe still out.
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
+    })
+    expect(server.cancels).toBe(1)
     expect(server.refetches).toBe(1)
   })
 

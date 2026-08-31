@@ -241,12 +241,16 @@ describe('Settings → Burns, while the checks are still out', () => {
     cleanup()
   })
 
+  /** The reviewer's own check: what a human can actually click in the dialog. */
+  const dialogButtons = () =>
+    [...document.querySelectorAll('[role=dialog] button')].map((b) => b.textContent)
+
   it('waits quietly while the wait is still an ordinary one', () => {
     open()
     act(() => vi.advanceTimersByTime(5_000))
 
     expect(screen.getByText('checking prerequisites…')).toBeTruthy()
-    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull()
+    expect(dialogButtons()).not.toContain('Retry')
   })
 
   it('says the wait is long and offers a Retry once it is', async () => {
@@ -255,6 +259,7 @@ describe('Settings → Burns, while the checks are still out', () => {
 
     expect(screen.getByText('still checking — this is taking longer than usual')).toBeTruthy()
     expect(screen.getByText(/A container runtime that is starting up/)).toBeTruthy()
+    expect(dialogButtons()).toContain('Retry')
 
     // The retry has to interrupt the call already out, or it retries nothing.
     await act(async () => {
