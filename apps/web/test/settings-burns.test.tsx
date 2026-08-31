@@ -17,10 +17,12 @@ import type { SettingsLocation } from '../src/lib/settings'
 const server = vi.hoisted(() => ({
   globals: { fields: [] } as { fields: unknown[] },
   probes: [] as Record<string, unknown>[],
-  /** The doctor call is still out — the state a slow container runtime leaves. */
+  /** The doctor is still shelling out to the container runtime: no report yet. */
   doctorPending: false,
   /** What the checklist asked of the doctor query, in order. */
   doctorCalls: [] as string[],
+  /** How many times the checklist has asked for the report again. */
+  doctorAsks: 0,
 }))
 
 vi.mock('../src/lib/toast', () => ({ useToast: () => ({ push: () => undefined }) }))
@@ -57,7 +59,10 @@ vi.mock('../src/trpc', () => {
               : { results: server.probes, ok: false, tier1Ok: true },
             isLoading: server.doctorPending,
             error: null,
-            refetch: () => server.doctorCalls.push('refetch'),
+            refetch: () => {
+              server.doctorCalls.push('refetch')
+              server.doctorAsks += 1
+            },
           }),
         },
         runtimeGuide: { useQuery: () => ({ data: undefined }) },
@@ -145,6 +150,7 @@ describe('Settings → Burns', () => {
     server.probes = doctorProbes()
     server.doctorPending = false
     server.doctorCalls = []
+    server.doctorAsks = 0
   })
   afterEach(cleanup)
 
@@ -220,52 +226,59 @@ describe('Settings → Burns', () => {
     expect(screen.queryByText('Prerequisites for unattended burns')).toBeNull()
     expect(screen.getByLabelText('Attempts per ticket')).toBeTruthy()
   })
-})
 
-/**
- * A doctor call that never comes back. `setup.doctor` shells out to the
- * container runtime, and a Docker Desktop that is still starting up can leave
- * `docker image inspect` outstanding for minutes — so the pending branch needs
- * the same way out decision 9 gave the failed one.
- */
-describe('Settings → Burns, while the checks are still out', () => {
-  beforeEach(() => {
-    server.globals = { fields: burnFields } as unknown as SettingsView
-    server.probes = doctorProbes()
-    server.doctorPending = true
-    server.doctorCalls = []
-    vi.useFakeTimers()
-  })
-  afterEach(() => {
-    vi.useRealTimers()
-    cleanup()
-  })
+  /**
+   * The probes shell out to a container runtime that is under no obligation to
+   * answer, so "no dead end" (decision 9) has to cover the report that never
+   * arrives as well as the one that fails.
+   */
+  describe('while the doctor has not answered', () => {
+    /** Every control the page offers, as the repro asked the live page for them. */
+    const dialogButtons = () =>
+      [...document.querySelectorAll('[role=dialog] button')].map((b) => b.textContent)
 
-  /** The reviewer's own check: what a human can actually click in the dialog. */
-  const dialogButtons = () =>
-    [...document.querySelectorAll('[role=dialog] button')].map((b) => b.textContent)
-
-  it('waits quietly while the wait is still an ordinary one', () => {
-    open()
-    act(() => vi.advanceTimersByTime(5_000))
-
-    expect(screen.getByText('checking prerequisites…')).toBeTruthy()
-    expect(dialogButtons()).not.toContain('Retry')
-  })
-
-  it('says the wait is long and offers a Retry once it is', async () => {
-    open()
-    act(() => vi.advanceTimersByTime(15_000))
-
-    expect(screen.getByText('still checking — this is taking longer than usual')).toBeTruthy()
-    expect(screen.getByText(/A container runtime that is starting up/)).toBeTruthy()
-    expect(dialogButtons()).toContain('Retry')
-
-    // The retry has to interrupt the call already out, or it retries nothing.
-    await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
+    beforeEach(() => {
+      server.doctorPending = true
+      vi.useFakeTimers()
     })
-    expect(server.doctorCalls).toEqual(['cancel', 'refetch'])
+    afterEach(() => vi.useRealTimers())
+
+    it('just says it is checking while the wait is still ordinary', () => {
+      open()
+      act(() => vi.advanceTimersByTime(9_000))
+
+      expect(screen.getByText('checking prerequisites…')).toBeTruthy()
+      expect(dialogButtons()).not.toContain('Retry')
+    })
+
+    it('says the wait is long, names it, and offers a Retry once it drags', async () => {
+      open()
+      act(() => vi.advanceTimersByTime(10_000))
+
+      expect(screen.getByText('still checking — this is taking longer than usual')).toBeTruthy()
+      expect(screen.getByText(/has not answered yet/)).toBeTruthy()
+      expect(screen.getByText(/A runtime that is starting up/)).toBeTruthy()
+      expect(dialogButtons()).toContain('Retry')
+
+      // The retry has to interrupt the call already out, or it retries nothing.
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
+      })
+      expect(server.doctorCalls).toEqual(['cancel', 'refetch'])
+      expect(server.doctorAsks).toBe(1)
+    })
+
+    it('gives the retry its own wait rather than complaining again at once', async () => {
+      open()
+      act(() => vi.advanceTimersByTime(10_000))
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
+      })
+
+      expect(dialogButtons()).not.toContain('Retry')
+      act(() => vi.advanceTimersByTime(10_000))
+      expect(dialogButtons()).toContain('Retry')
+    })
   })
 })
 

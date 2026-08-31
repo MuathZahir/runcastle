@@ -57,18 +57,23 @@ export function EnableAfkCard({
   const utils = trpc.useUtils()
   const doctor = trpc.setup.doctor.useQuery(undefined, { refetchOnWindowFocus: false })
   const report = doctor.data
-  const slow = useSlowWait(doctor.isLoading)
 
   const probe = (id: string) => report?.results.find((r) => r.id === id)
   const runtime = probe('container-runtime')
   const image = probe('sandcastle-image')
   const credentials = afkCredentialRows(report?.results ?? [])
 
-  // Cancel before refetching: a re-check asked for while the probe is still out
-  // has to be able to interrupt it. React Query folds a plain refetch into the
-  // request already in flight, so against a daemon that never answers the
-  // button would do nothing at all.
-  const recheck = () => void utils.setup.doctor.cancel().then(() => doctor.refetch())
+  // Attempts are counted so that a retry starts the wait over rather than
+  // inheriting a line that is already complaining. Cancel before refetching: a
+  // re-check asked for while the probe is still out has to be able to interrupt
+  // it. React Query folds a plain refetch into the request already in flight, so
+  // against a daemon that never answers the button would do nothing at all.
+  const [attempt, setAttempt] = useState(0)
+  const recheck = () => {
+    setAttempt((n) => n + 1)
+    void utils.setup.doctor.cancel().then(() => doctor.refetch())
+  }
+  const slow = useSlowWait(doctor.isLoading, attempt)
   const shows = (field: string) => (filter ? showsSetting(filter, field) : true)
 
   // How the summary reads while the checks are still out, and — when something
@@ -137,9 +142,12 @@ export function EnableAfkCard({
 
       <div>
         {trouble && (
-          // Not a dead end: the probe shells out to a container runtime, and the
-          // commonest reason it fails — or hangs — is one the human just fixed
-          // elsewhere.
+          // Not a dead end, whichever way the checks went wrong: a probe that
+          // fails and a probe that never answers both land here, and the
+          // commonest reason for either is one the human just fixed elsewhere.
+          // Retrying is worth offering while the call is still out because it
+          // abandons the request in flight — which is what gets an answer out of
+          // a Docker Desktop that has finished starting since.
           <div className="flex items-center gap-2.5 px-3 py-2.5">
             <span className="min-w-0 grow text-sm text-warn">{trouble}</span>
             <Button variant="ghost" onClick={recheck}>
@@ -185,39 +193,38 @@ export function EnableAfkCard({
 export type Probe = RouterOutputs['setup']['doctor']['results'][number]
 
 /**
- * How long the checks may run before the wait itself is reported. A healthy
- * doctor answers in a second or two; the bound is loose enough that an ordinary
- * run never trips it.
+ * How long the checklist waits for `setup.doctor` before it admits the wait and
+ * offers a way out. The probes shell out to the container runtime and neither
+ * they nor the query have a timeout, so on a machine where Docker Desktop is
+ * still starting — an ordinary Windows state — the report can be minutes away.
+ * Long enough that the second or two a healthy machine takes never shows it.
  */
-const SLOW_MS = 10_000
+const SLOW_DOCTOR_MS = 10_000
 
-/** The summary line and the detail once {@link SLOW_MS} has passed. */
+/** The summary line and the detail once {@link SLOW_DOCTOR_MS} has passed. */
 const SLOW_SUMMARY = 'still checking — this is taking longer than usual'
 const SLOW_DETAIL =
-  'The checks have not come back. A container runtime that is starting up — or wedged — ' +
-  'can leave them outstanding for minutes.'
+  'The container runtime has not answered yet. A runtime that is starting up — or wedged — ' +
+  'can leave the checks outstanding for minutes.'
 
 /**
- * True once `active` has stayed true for {@link SLOW_MS}; false again the moment
- * it lets go.
+ * Whether `waiting` has stayed true for longer than {@link SLOW_DOCTOR_MS}.
+ * Changing `attempt` restarts the clock, so each retry gets its own full wait.
  *
- * The doctor shells out to the container runtime, and a runtime that is still
- * starting up answers slowly or not at all — `docker version` has been measured
- * at 90s on a booting Docker Desktop, with `docker image inspect` not returning
- * at all. Without a bound the checklist sits at "checking prerequisites…"
- * forever, with no control on it: the dead end decision 9 removed from the
- * failed branch, reached through a slow daemon instead.
+ * `docker version` has been measured at 90s on a booting Docker Desktop, with
+ * `docker image inspect` not returning at all. Without a bound the checklist
+ * sits at "checking prerequisites…" forever, with no control on it: the dead
+ * end decision 9 removed from the failed branch, reached through a slow daemon
+ * instead.
  */
-function useSlowWait(active: boolean): boolean {
+function useSlowWait(waiting: boolean, attempt: number): boolean {
   const [slow, setSlow] = useState(false)
   useEffect(() => {
-    if (!active) {
-      setSlow(false)
-      return
-    }
-    const timer = setTimeout(() => setSlow(true), SLOW_MS)
+    setSlow(false)
+    if (!waiting) return
+    const timer = setTimeout(() => setSlow(true), SLOW_DOCTOR_MS)
     return () => clearTimeout(timer)
-  }, [active])
+  }, [waiting, attempt])
   return slow
 }
 
