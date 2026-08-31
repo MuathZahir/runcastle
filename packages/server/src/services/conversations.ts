@@ -68,10 +68,35 @@ function withoutKickoff(
   return turns.filter((turn) => !(turn.role === 'user' && promptMatchesKickoff(kickoff, turn.text)))
 }
 
-/** The human's first line of a conversation, as a title (see {@link withoutKickoff}). */
+/** How the runtime records a turn the human abandoned half-way through. */
+const INTERRUPTED = '[Request interrupted by user]'
+
+/**
+ * What a `user` turn actually contributes to a name, or null for one that
+ * contributes nothing (decision 5).
+ *
+ * The first `user` turn on disk is routinely not the first thing the human
+ * *said*: a slash command is recorded as `<command-name>/clear</command-name>…`,
+ * an abandoned turn as {@link INTERRUPTED}, and a pasted screenshot as an
+ * `[Image #n]` token. On the runcastle project those three had named 15 of 19
+ * conversations. None of them is a sentence anyone typed to describe the work,
+ * so a turn made only of them is skipped and the search moves on.
+ */
+function saidText(text: string): string | null {
+  const trimmed = text.trim()
+  if (trimmed.startsWith('<command-name>')) return null
+  if (trimmed === INTERRUPTED) return null
+  return trimmed.replace(/\[Image #\d+\]/g, ' ').trim() || null
+}
+
+/** The human's first real line of a conversation, as a title (see {@link saidText}). */
 export function deriveTitle(turns: TranscriptTurn[], runtime: AgentRuntime): string | null {
-  const first = withoutKickoff(turns, 'project', runtime).find((turn) => turn.role === 'user')
-  return first ? elide(first.text) : null
+  for (const turn of withoutKickoff(turns, 'project', runtime)) {
+    if (turn.role !== 'user') continue
+    const said = saidText(turn.text)
+    if (said) return elide(said)
+  }
+  return null
 }
 
 /** Collapse to one line and cut to {@link TITLE_MAX}, marking the cut. */

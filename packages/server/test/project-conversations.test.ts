@@ -16,7 +16,8 @@ import {
   resumeKickoffLine,
 } from '../src/launcher/sessions'
 import { endSession } from '../src/pty/end-session'
-import { TITLE_MAX } from '../src/services/conversations'
+import { deriveTitle, TITLE_MAX } from '../src/services/conversations'
+import type { TranscriptTurn } from '../src/services/transcripts'
 import { listByProject } from '../src/services/events'
 import { createCallerFactory } from '../src/trpc/context'
 import { appRouter } from '../src/trpc/router'
@@ -50,6 +51,62 @@ function initRepo(dir: string): void {
 function entry(type: string, content: unknown, extra: Record<string, unknown> = {}): string {
   return JSON.stringify({ type, message: { role: type, content }, ...extra })
 }
+
+/**
+ * Naming a conversation (decision 5). The first `user` turn on disk is not the
+ * first thing the human SAID: slash commands, image pastes and interruptions are
+ * all recorded as user turns, and on the runcastle project they had named 15 of
+ * 19 rows.
+ */
+describe('deriving a conversation’s name', () => {
+  const said = (role: 'user' | 'assistant', text: string): TranscriptTurn => ({ role, text })
+
+  it('skips a slash command, which the runtime records as a user turn', () => {
+    expect(
+      deriveTitle(
+        [
+          said('user', '<command-name>/clear</command-name>\n<command-message>clear</command-message>'),
+          said('user', 'rework the review page'),
+        ],
+        'claude-code',
+      ),
+    ).toBe('rework the review page')
+  })
+
+  it('skips an interruption', () => {
+    expect(
+      deriveTitle(
+        [said('user', '[Request interrupted by user]'), said('user', 'rework the review page')],
+        'claude-code',
+      ),
+    ).toBe('rework the review page')
+  })
+
+  it('strips the image tokens out of the turn it names the conversation after', () => {
+    expect(
+      deriveTitle([said('user', '[Image #1] this list is unusable')], 'claude-code'),
+    ).toBe('this list is unusable')
+  })
+
+  /** A bare paste says nothing about what the conversation is; keep looking. */
+  it('skips a turn that is nothing but images', () => {
+    expect(
+      deriveTitle(
+        [said('user', '[Image #1] [Image #2]'), said('user', 'make the dot green')],
+        'claude-code',
+      ),
+    ).toBe('make the dot green')
+  })
+
+  it('has no name for a conversation the human never spoke in', () => {
+    expect(
+      deriveTitle(
+        [said('user', '<command-name>/model</command-name>'), said('assistant', 'Switched.')],
+        'claude-code',
+      ),
+    ).toBeNull()
+  })
+})
 
 describe('the project conversation list', () => {
   let ctx: AppCtx
