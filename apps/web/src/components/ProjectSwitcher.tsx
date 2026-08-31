@@ -3,6 +3,7 @@ import type { ReactNode } from 'react'
 import { repoFolderName } from '../lib/projects'
 import type { ProjectNavApi } from '../lib/use-project-nav'
 import { IconCheck, IconChevronDown } from '../icons'
+import { BARE_BUTTON } from '../ui'
 
 /**
  * Titlebar project switcher (issue #45). Click the project name to drop a menu
@@ -19,13 +20,14 @@ import { IconCheck, IconChevronDown } from '../icons'
  */
 
 /*
- * Both button class lists below name `bg-transparent` on purpose. There is no
+ * Both buttons below state a background AND a border on purpose. There is no
  * Tailwind preflight while the legacy sheet lives (STYLE.md: "do not assume a
- * reset: style what you render"), so a `<button>` with no background utility of
- * its own keeps the user-agent `buttonface` — a light grey slab under this
- * theme's near-white text, which is what these rows rendered as when they were
- * first migrated. Trigger and rows let the panel behind them show through, and
- * only hover paints.
+ * reset: style what you render"), so a `<button>` that names neither keeps the
+ * user-agent `buttonface` — a light grey slab under this theme's near-white
+ * text — and its outset border, which the rows drew as a rounded outline apiece.
+ * The trigger wants a border of its own to fade in on hover, so it names a
+ * transparent one; the rows have none to fade, so they take BARE_BUTTON. Both
+ * let the panel behind them show through, and only hover paints.
  */
 
 const TRIGGER =
@@ -38,7 +40,7 @@ const MENU =
   'border border-hairline bg-panel p-1.5 shadow-overlay'
 
 const MENU_ITEM =
-  'flex w-full items-center gap-2 rounded-md bg-transparent px-2 py-1.5 text-left text-text-2 ' +
+  `${BARE_BUTTON} flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-text-2 ` +
   'transition-[color,background-color] duration-(--dur-1) ease-app hover:bg-panel-3 hover:text-text'
 
 export function ProjectSwitcher({ nav }: { nav: ProjectNavApi }) {

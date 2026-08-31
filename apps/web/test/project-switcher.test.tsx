@@ -86,14 +86,23 @@ describe('ProjectSwitcher', () => {
     expect(screen.queryByRole('menu')).toBeNull()
   })
 
-  it('gives the trigger and every row a background, so no user-agent grey shows', () => {
+  it('resets both user-agent button styles on the trigger and every row', () => {
     // There is no Tailwind preflight yet (STYLE.md), so a button that names no
-    // background renders as `buttonface` grey under near-white theme text.
+    // background renders as `buttonface` grey under near-white theme text, and
+    // one that names no border draws the agent's outset ring — which is what
+    // the rows each did, as a rounded outline in the menu.
     openMenu()
 
     const trigger = screen.getByRole('button', { name: /runcastle/ })
     for (const el of [trigger, ...screen.getAllByRole('menuitem')]) {
       expect(el.className).toContain('bg-transparent')
+    }
+    // The trigger keeps a transparent border to fade in on hover; the rows have
+    // nothing to fade, so they drop the border outright.
+    expect(trigger.className).toContain('border-transparent')
+    for (const row of screen.getAllByRole('menuitem')) {
+      expect(row.className).toContain('border-0')
+      expect(row.className).toContain('hover:bg-panel-3')
     }
   })
 
