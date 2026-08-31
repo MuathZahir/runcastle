@@ -57,7 +57,7 @@ export function EnableAfkCard({
   const utils = trpc.useUtils()
   const doctor = trpc.setup.doctor.useQuery(undefined, { refetchOnWindowFocus: false })
   const report = doctor.data
-  const slow = useSlowSince(doctor.isLoading)
+  const slow = useSlowWait(doctor.isLoading)
 
   const probe = (id: string) => report?.results.find((r) => r.id === id)
   const runtime = probe('container-runtime')
@@ -71,9 +71,11 @@ export function EnableAfkCard({
   const recheck = () => void utils.setup.doctor.cancel().then(() => doctor.refetch())
   const shows = (field: string) => (filter ? showsSetting(filter, field) : true)
 
-  // The one thing standing between the human and the checklist, with the Retry
-  // that takes it away. A probe that fails and a probe that never comes back are
-  // the same dead end (decision 9) and get the same way out.
+  // How the summary reads while the checks are still out, and — when something
+  // is in the way — the line that says what, above the Retry that takes it away.
+  // A probe that fails and a probe that never comes back are the same dead end
+  // (decision 9) and get the same way out.
+  const checking = slow ? SLOW_SUMMARY : 'checking prerequisites…'
   const trouble = doctor.error?.message ?? (slow ? SLOW_DETAIL : null)
 
   // Everything a burn is actually blocked on, in checklist order. The burn cache
@@ -106,11 +108,7 @@ export function EnableAfkCard({
       <div className="flex items-center gap-2.5 border-b border-hairline-soft bg-panel-2 px-3 py-2.5 text-sm text-text-2">
         <span className="min-w-0">
           {doctor.isLoading ? (
-            slow ? (
-              SLOW_SUMMARY
-            ) : (
-              'checking prerequisites…'
-            )
+            checking
           ) : doctor.error ? (
             'could not run checks'
           ) : (
@@ -210,7 +208,7 @@ const SLOW_DETAIL =
  * forever, with no control on it: the dead end decision 9 removed from the
  * failed branch, reached through a slow daemon instead.
  */
-function useSlowSince(active: boolean): boolean {
+function useSlowWait(active: boolean): boolean {
   const [slow, setSlow] = useState(false)
   useEffect(() => {
     if (!active) {
