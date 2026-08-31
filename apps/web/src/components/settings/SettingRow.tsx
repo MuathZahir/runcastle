@@ -487,7 +487,12 @@ function ProvenanceChip({
     <button
       type="button"
       onClick={onOpenEvidence}
-      className={cx(PLAIN_BUTTON, CHIP, 'bg-panel-2 hover:border-hairline-strong hover:text-text', tone)}
+      className={cx(
+        PLAIN_BUTTON,
+        CHIP,
+        'bg-panel-2 hover:border-hairline-strong hover:text-text',
+        tone,
+      )}
     >
       {body}
     </button>
