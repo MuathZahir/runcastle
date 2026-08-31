@@ -12,6 +12,7 @@ import {
 import type { SettingsView } from '../../lib/api'
 import { Dialog } from '../../ui'
 import { IconX } from '../../icons'
+import { BARE_BUTTON } from './button'
 import { SETTINGS_PAGES, SettingsRail } from './SettingsRail'
 import { GeneralPage } from './GeneralPage'
 import { ModelsPage } from './ModelsPage'
@@ -113,7 +114,7 @@ export function SettingsDialog({
               type="button"
               onClick={onClose}
               aria-label="Close (Esc)"
-              className="ml-auto grid size-7 shrink-0 place-items-center rounded-sm text-text-3 hover:bg-panel-3 hover:text-text"
+              className={`${BARE_BUTTON} ml-auto grid size-7 shrink-0 place-items-center rounded-sm text-text-3 hover:bg-panel-3 hover:text-text`}
             >
               <IconX size={14} />
             </button>

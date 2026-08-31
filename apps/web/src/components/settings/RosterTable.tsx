@@ -12,6 +12,7 @@ import {
 } from '../../lib/settings'
 import { Button } from '../../ui'
 import { IconX } from '../../icons'
+import { BARE_BUTTON, PLAIN_BUTTON } from './button'
 import type { SettingWrites } from './ModelsPage'
 import { showsSetting, type FilterState } from './types'
 
@@ -97,7 +98,7 @@ export function RosterTable({
           {hidden} curated {hidden === 1 ? 'model' : 'models'} not shown:{' '}
           <button
             type="button"
-            className="text-accent-hi hover:underline"
+            className={`${BARE_BUTTON} text-accent-hi hover:underline`}
             onClick={() => setShowAll(true)}
           >
             show all
@@ -182,7 +183,7 @@ function ModelRow({
             // Attributed to this row, not to the card at the top of the page:
             // a refusal belongs where the click was.
             onClick={() => writes.save(cell, 'model', row.id)}
-            className="justify-self-start rounded-pill border border-transparent px-2 py-0.5 text-xs whitespace-nowrap text-text-3 opacity-0 group-hover:border-hairline group-hover:opacity-100 hover:border-accent-line hover:text-accent-hi focus-visible:opacity-100"
+            className={`${PLAIN_BUTTON} justify-self-start rounded-pill border border-transparent px-2 py-0.5 text-xs whitespace-nowrap text-text-3 opacity-0 group-hover:border-hairline group-hover:opacity-100 hover:border-accent-line hover:text-accent-hi focus-visible:opacity-100`}
           >
             Make default
           </button>
@@ -192,7 +193,7 @@ function ModelRow({
             type="button"
             aria-label={`Remove ${row.id}`}
             onClick={remove}
-            className="grid size-6 place-items-center rounded-sm text-text-4 hover:bg-panel-3 hover:text-danger"
+            className={`${BARE_BUTTON} grid size-6 place-items-center rounded-sm text-text-4 hover:bg-panel-3 hover:text-danger`}
           >
             <IconX size={12} />
           </button>
