@@ -62,15 +62,14 @@ export function EnableAfkCard({
   const image = probe('sandcastle-image')
   const credentials = afkCredentialRows(report?.results ?? [])
 
-  // A retry starts the wait over: `refetch` abandons the request in flight and
-  // asks again, so the slow line below should stop complaining until the new one
-  // has had its own full wait.
+  // Counted so that a retry starts the wait over rather than inheriting a line
+  // that is already complaining.
   const [attempt, setAttempt] = useState(0)
   const recheck = () => {
     setAttempt((n) => n + 1)
     void doctor.refetch()
   }
-  const slow = useSlow(doctor.isLoading, attempt)
+  const slow = useSlowWait(doctor.isLoading, attempt)
   const shows = (field: string) => (filter ? showsSetting(filter, field) : true)
 
   // Everything a burn is actually blocked on, in checklist order. The burn cache
@@ -209,17 +208,17 @@ function cx(...parts: Array<string | false | null | undefined>): string {
 const SLOW_DOCTOR_MS = 10_000
 
 /**
- * Whether `active` has stayed true for longer than {@link SLOW_DOCTOR_MS}.
- * `attempt` restarts the clock, so a retry is given its own full wait.
+ * Whether `waiting` has stayed true for longer than {@link SLOW_DOCTOR_MS}.
+ * Changing `attempt` restarts the clock, so each retry gets its own full wait.
  */
-function useSlow(active: boolean, attempt: number): boolean {
+function useSlowWait(waiting: boolean, attempt: number): boolean {
   const [slow, setSlow] = useState(false)
   useEffect(() => {
     setSlow(false)
-    if (!active) return
+    if (!waiting) return
     const timer = setTimeout(() => setSlow(true), SLOW_DOCTOR_MS)
     return () => clearTimeout(timer)
-  }, [active, attempt])
+  }, [waiting, attempt])
   return slow
 }
 

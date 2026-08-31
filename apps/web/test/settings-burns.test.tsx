@@ -221,6 +221,10 @@ describe('Settings → Burns', () => {
    * arrives as well as the one that fails.
    */
   describe('while the doctor has not answered', () => {
+    /** Every control the page offers, as the repro asked the live page for them. */
+    const dialogButtons = () =>
+      [...document.querySelectorAll('[role=dialog] button')].map((b) => b.textContent)
+
     beforeEach(() => {
       server.doctorPending = true
       vi.useFakeTimers()
@@ -232,7 +236,7 @@ describe('Settings → Burns', () => {
       act(() => vi.advanceTimersByTime(9_000))
 
       expect(screen.getByText('checking prerequisites…')).toBeTruthy()
-      expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull()
+      expect(dialogButtons()).not.toContain('Retry')
     })
 
     it('says the runtime has not answered, and offers Retry, once it drags', () => {
@@ -240,6 +244,8 @@ describe('Settings → Burns', () => {
       act(() => vi.advanceTimersByTime(10_000))
 
       expect(screen.getByText(/has not answered yet/)).toBeTruthy()
+      expect(dialogButtons()).toContain('Retry')
+
       fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
       expect(server.doctorAsks).toBe(1)
     })
@@ -249,9 +255,9 @@ describe('Settings → Burns', () => {
       act(() => vi.advanceTimersByTime(10_000))
       fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
 
-      expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull()
+      expect(dialogButtons()).not.toContain('Retry')
       act(() => vi.advanceTimersByTime(10_000))
-      expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy()
+      expect(dialogButtons()).toContain('Retry')
     })
   })
 })
