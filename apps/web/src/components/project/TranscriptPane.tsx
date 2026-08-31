@@ -41,7 +41,7 @@ export function TranscriptPane({
           disabled={reopening || !conversation.resumable}
           onClick={onReopen}
         >
-          {reopening ? 'Opening…' : 'Reopen'}
+          {reopening ? 'Opening…' : conversation.status === 'ended' ? 'Reopen' : 'Open'}
         </Button>
       </div>
       {children}

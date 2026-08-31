@@ -846,8 +846,6 @@ button {
 }
 .pw-frame-list b { color: var(--text-2); font-weight: 600; }
 .pw-frame-list code { font-family: var(--mono); font-size: 11.5px; }
-.pw-term { height: clamp(300px, calc(100dvh - 420px), 1200px); }
-
 /* every direct workspace block sits in a centered rail — no more left-hugging
    content with a dead void on the right */
 .ws-head,
