@@ -285,6 +285,18 @@ describe('SettingsDialog', () => {
    * caught it because a role and a name look the same either way.
    */
   it('paints every button itself rather than leaving the browser to', () => {
+    // A roster and a set step as well, so the Models page's own buttons — the
+    // remove ✕, "Make default", "show all", the step reset — are on screen.
+    server.globals = view([
+      ...globalFields(),
+      field({ key: 'model', value: 'claude-opus-5' }),
+      field({ key: 'models', value: [{ id: 'my-proxy', runtime: 'codex', note: 'a spare' }] }),
+      field({ key: 'stepModels.implement', value: 'my-proxy' }),
+    ])
+    // …and a project that set its own model, for that row's "Use global".
+    server.scoped = view(
+      projectFields.map((f) => (f.key === 'model' ? { ...f, source: 'project' } : f)),
+    )
     open()
 
     const unpainted: string[] = []
