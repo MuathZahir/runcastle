@@ -59,7 +59,7 @@ export function TranscriptBubbles({ turns, assistant }: { turns: Turn[]; assista
         return (
           <div
             key={i}
-            className={`flex max-w-[80%] flex-col gap-1.5 ${user ? 'self-end' : 'self-start'}`}
+            className={`flex max-w-[80%] flex-col gap-2 ${user ? 'self-end' : 'self-start'}`}
           >
             <span className="text-xs font-semibold tracking-[0.06em] text-text-3 uppercase">
               {user ? 'You' : assistant}

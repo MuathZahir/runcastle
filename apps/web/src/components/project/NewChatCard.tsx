@@ -22,7 +22,7 @@ export function NewChatCard({
 }) {
   return (
     <div className="flex items-center gap-6 rounded-lg border border-hairline bg-panel px-6 py-5">
-      <div className="flex flex-1 flex-col gap-1">
+      <div className="flex flex-1 flex-col gap-2">
         <h2 className="text-lg font-semibold text-text">Talk it through</h2>
         <p className="max-w-[46ch] text-sm text-text-2">
           Bring a raw idea; the chat checks it against what’s built and cuts it into features.

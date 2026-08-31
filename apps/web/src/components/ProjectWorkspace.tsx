@@ -60,25 +60,27 @@ export function ProjectWorkspace({
 
   return (
     <section className="workspace">
-      <div className="ws-head">
-        <div className="flex flex-col gap-2">
-          <div className="flex items-center gap-3">
-            <span className="inline-flex items-center rounded-pill border border-accent-line bg-accent-soft px-2 py-0.5 text-xs font-semibold tracking-[0.1em] text-accent-hi uppercase">
-              Project
-            </span>
-            <h1 className="text-xl leading-tight font-semibold tracking-[-0.01em] text-text">
-              {project?.name ?? 'This project'}
-            </h1>
-          </div>
-          <p className="text-sm text-text-3">
-            Chats run on <code className="font-mono text-text-2">{PROJECT_BRANCH}</code> and land on{' '}
-            <code className="font-mono text-text-2">{landing.value ?? '…'}</code>.
-          </p>
-        </div>
-      </div>
+      {/* The page's own rail, on the rhythm of decisions.md #9 — 8px inside the
+          header, 24px between the body's cards, 32px from header to body. The
+          width and gutter are the shell's, so swapping to this page does not
+          shift the column the feature workspace beside it uses. */}
+      <div className="min-h-0 flex-1 overflow-y-auto pt-6 pb-8">
+        <div className="mx-auto flex w-full max-w-[calc(var(--content-max)+56px)] flex-col gap-8 px-7">
+          <header className="flex flex-col gap-2">
+            <div className="flex items-center gap-3">
+              <span className="inline-flex items-center rounded-pill border border-accent-line bg-accent-soft px-2 py-0.5 text-xs font-semibold tracking-[0.1em] text-accent-hi uppercase">
+                Project
+              </span>
+              <h1 className="text-xl leading-tight font-semibold tracking-[-0.01em] text-text">
+                {project?.name ?? 'This project'}
+              </h1>
+            </div>
+            <p className="text-sm text-text-3">
+              Chats run on <code className="font-mono text-text-2">{PROJECT_BRANCH}</code> and land
+              on <code className="font-mono text-text-2">{landing.value ?? '…'}</code>.
+            </p>
+          </header>
 
-      <div className="ws-body">
-        <div className="ws-body-inner">
           {session ? (
             <div className="grill-panel pw-session">
               <div className="grill-strip">
