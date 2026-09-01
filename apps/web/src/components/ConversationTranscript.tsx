@@ -34,12 +34,6 @@ export function ConversationTranscript({ sessionId }: { sessionId: string }) {
     return <DimLine>transcript not available for this session.</DimLine>
   const turns = q.data?.turns ?? []
   if (turns.length === 0) return <DimLine>no transcript kept for this conversation.</DimLine>
-  // The server hands back what was said, with the launcher's kickoff lines taken
-  // out. A conversation nobody answered leaves only the reply that kickoff drew,
-  // which is not an exchange the human was part of — say so instead of rendering
-  // half of one.
-  if (!turns.some((turn) => turn.role === 'user'))
-    return <DimLine>nothing was said in this conversation.</DimLine>
 
   return <TranscriptBubbles turns={turns} assistant={agentName(q.data?.runtime)} />
 }
