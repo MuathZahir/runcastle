@@ -481,6 +481,7 @@ export function BranchMenu({
   const [open, setOpen] = useState(false)
   const rootRef = useRef<HTMLDivElement>(null)
   const triggerRef = useRef<HTMLButtonElement>(null)
+  const optionRefs = useRef(new Map<string, HTMLButtonElement>())
 
   useEffect(() => {
     if (!open) return
@@ -509,9 +510,24 @@ export function BranchMenu({
   const main = detected && offered.includes(detected) ? detected : null
   const others = offered.filter((b) => b !== main)
 
+  useEffect(() => {
+    if (!open) return
+    optionRefs.current.get(value ?? '')?.focus() ?? optionRefs.current.get(offered[0] ?? '')?.focus()
+  }, [open, value, branches])
+
+  const pick = (branch: string) => {
+    onPick(branch)
+    setOpen(false)
+    triggerRef.current?.focus()
+  }
+
   const item = (branch: string) => (
     <button
       key={branch}
+      ref={(node) => {
+        if (node) optionRefs.current.set(branch, node)
+        else optionRefs.current.delete(branch)
+      }}
       type="button"
       role="option"
       aria-selected={branch === value}
@@ -519,10 +535,32 @@ export function BranchMenu({
         'flex justify-between gap-3 rounded-sm px-2.5 py-1.5 text-left hover:bg-accent-soft hover:text-text',
         branch === value ? 'text-accent-hi' : 'text-text-2',
       )}
-      onClick={() => {
-        onPick(branch)
-        setOpen(false)
-        triggerRef.current?.focus()
+      onMouseDown={(event) => {
+        if (event.button !== 0) return
+        // Commit before the browser's click phase. Ancestor popovers and dialogs
+        // also answer mouse-down, and can otherwise unmount this option before
+        // its click is delivered, making a choice look as though it reverted.
+        event.preventDefault()
+        pick(branch)
+      }}
+      // Keyboard activation has no mouse-down and produces a zero-detail click.
+      onClick={(event) => event.detail === 0 && pick(branch)}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault()
+          pick(branch)
+          return
+        }
+        if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return
+        event.preventDefault()
+        const index = offered.indexOf(branch)
+        const next =
+          event.key === 'Home'
+            ? 0
+            : event.key === 'End'
+              ? offered.length - 1
+              : (index + (event.key === 'ArrowDown' ? 1 : -1) + offered.length) % offered.length
+        optionRefs.current.get(offered[next] ?? '')?.focus()
       }}
     >
       {branch}
