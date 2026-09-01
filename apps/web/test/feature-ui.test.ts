@@ -57,10 +57,8 @@ import type { FeatureFull, FeatureListItem } from '../src/lib/api'
 
 /**
  * Every cutting form prefills Branch-from with the branch the project is
- * currently checked out on — and prefills NOTHING when that checkout isn't a
- * selectable base (decision 8), which is what makes the select empty and
- * mandatory rather than silently forking off main. Tested at the pure
- * derivation, no DOM.
+ * currently checked out on, falling back to main when runcastle's own internal
+ * branch is the checkout. Tested at the pure derivation, no DOM.
  */
 describe('defaultBaseBranch', () => {
   it('defaults to the current checkout when it is a selectable base', () => {
@@ -75,11 +73,10 @@ describe('defaultBaseBranch', () => {
     expect(defaultBaseBranch({ current: '', branches: ['main', 'develop'] })).toBe('')
   })
 
-  it('offers no default when a test drive holds a feature/* checkout (excluded)', () => {
-    // The picker excludes feature/* branches, so a test-drive checkout is never
-    // a selectable base. Main is NOT the answer here — mid-drive the checkout is
-    // parked on something unrelated, so the human has to say where to fork from.
-    expect(defaultBaseBranch({ current: 'feature/x', branches: ['main'] })).toBe('')
+  it('defaults to main when runcastle runs from an internal checkout', () => {
+    expect(defaultBaseBranch({ current: 'runcastle/project', branches: ['main', 'develop'] })).toBe(
+      'main',
+    )
   })
 })
 
