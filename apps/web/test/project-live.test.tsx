@@ -96,10 +96,13 @@ describe('live project chat', () => {
 
     fireEvent.click(screen.getByRole('button', { name: '← Conversations' }))
     const open = screen.getByRole('button', { name: 'Open' })
-    expect(screen.getByTestId('terminal')).toBeTruthy()
+    const terminal = screen.getByTestId('terminal')
+    expect(terminal).toBeTruthy()
+    expect(terminal.closest('[data-live-chat]')?.classList.contains('hidden')).toBe(true)
 
     fireEvent.click(open)
     expect(launches).toBe(0)
+    expect(terminal.closest('[data-live-chat]')?.classList.contains('hidden')).toBe(false)
     expect(screen.queryByText('An older idea')).toBeNull()
   })
 

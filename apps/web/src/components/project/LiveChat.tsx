@@ -22,7 +22,11 @@ export function LiveChat({
   children: ReactNode
 }) {
   return (
-    <div className="flex min-h-0 flex-1 flex-col" hidden={hidden}>
+    <div
+      className={hidden ? 'hidden' : 'flex min-h-0 flex-1 flex-col'}
+      data-live-chat
+      aria-hidden={hidden}
+    >
       <div className="flex h-12 shrink-0 items-center gap-3 border-b border-hairline-soft bg-panel px-4">
         <Button className="border-transparent text-text-2" onClick={onBack}>
           ← Conversations
