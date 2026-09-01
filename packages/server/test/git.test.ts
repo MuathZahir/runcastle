@@ -268,6 +268,14 @@ describe('listBranches', () => {
     expect(res.remoteBranches).toEqual([])
   })
 
+  it('includes feature/* branches when listing project-chat landing targets', async () => {
+    await createFeatureBranch(project, 'existing-work', 'main')
+
+    const res = await listBranches(project, { includeFeatureBranches: true })
+
+    expect(res.branches).toContain('feature/existing-work')
+  })
+
   it('surfaces remote-only branches and hides ones shadowed by a local twin', async () => {
     const g = simpleGit(project.repoPath)
     await addRemoteOnlyBranch(g, project.repoPath, 'release')

@@ -30,7 +30,9 @@ export function useSessionBranch(projectId: string): SessionBranchApi {
   const utils = trpc.useUtils()
   const toast = useToast()
   const viewQ = trpc.project.sessionBranch.useQuery({ projectId })
-  const branchesQ = trpc.project.branches.useQuery({ projectId })
+  // Existing feature branches are valid landing targets for a project chat.
+  // Creation forms intentionally keep the endpoint's narrower default.
+  const branchesQ = trpc.project.branches.useQuery({ projectId, includeFeatureBranches: true })
   const landing = sessionBranchState(viewQ.data, branchesQ.data?.branches)
   const update = trpc.settings.update.useMutation({
     onSuccess: () => {

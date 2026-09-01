@@ -15,6 +15,7 @@ describe('BranchMenu', () => {
   const BRANCHES = [
     'main',
     'develop',
+    'feature/existing-work',
     'runcastle/project',
     'runcastle/ticket/foo/1-abc',
     'worktree-scratch',
@@ -32,7 +33,7 @@ describe('BranchMenu', () => {
     render(<BranchMenu prefix="landing on" value="main" branches={BRANCHES} onPick={() => {}} />)
     open()
 
-    expect(options()).toEqual(['main', 'develop'])
+    expect(options()).toEqual(['main', 'develop', 'feature/existing-work'])
   })
 
   it('heads the detected main line off from the rest', () => {
@@ -49,7 +50,7 @@ describe('BranchMenu', () => {
 
     expect(screen.getByText('Detected main line')).toBeTruthy()
     expect(screen.getByText('Other local branches')).toBeTruthy()
-    expect(options()).toEqual(['main', 'develop'])
+    expect(options()).toEqual(['main', 'develop', 'feature/existing-work'])
   })
 
   it('marks the current value and reports a pick once, then closes', () => {
