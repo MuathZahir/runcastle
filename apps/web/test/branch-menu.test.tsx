@@ -65,6 +65,28 @@ describe('BranchMenu', () => {
     expect(screen.queryByRole('listbox')).toBeNull()
   })
 
+  it('commits a mouse pick before dismissal and updates the controlled trigger', () => {
+    function ControlledMenu() {
+      const [branch, setBranch] = useState('main')
+      return (
+        <BranchMenu
+          prefix="landing on"
+          value={branch}
+          branches={BRANCHES}
+          onPick={setBranch}
+        />
+      )
+    }
+
+    render(<ControlledMenu />)
+    open()
+    fireEvent.mouseDown(screen.getByRole('option', { name: 'develop' }), { button: 0 })
+
+    expect(screen.getByRole('button').textContent).toContain('landing on develop')
+    open()
+    expect(screen.getByRole('option', { selected: true }).textContent).toContain('develop')
+  })
+
   it('closes on Escape without picking anything', () => {
     const onPick = vi.fn()
     render(<BranchMenu prefix="from" value="main" branches={BRANCHES} onPick={onPick} />)

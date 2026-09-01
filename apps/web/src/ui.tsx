@@ -509,6 +509,12 @@ export function BranchMenu({
   const main = detected && offered.includes(detected) ? detected : null
   const others = offered.filter((b) => b !== main)
 
+  const pick = (branch: string) => {
+    onPick(branch)
+    setOpen(false)
+    triggerRef.current?.focus()
+  }
+
   const item = (branch: string) => (
     <button
       key={branch}
@@ -519,11 +525,16 @@ export function BranchMenu({
         'flex justify-between gap-3 rounded-sm px-2.5 py-1.5 text-left hover:bg-accent-soft hover:text-text',
         branch === value ? 'text-accent-hi' : 'text-text-2',
       )}
-      onClick={() => {
-        onPick(branch)
-        setOpen(false)
-        triggerRef.current?.focus()
+      onMouseDown={(event) => {
+        if (event.button !== 0) return
+        // Commit before the browser's click phase. Ancestor popovers and dialogs
+        // also answer mouse-down, and can otherwise unmount this option before
+        // its click is delivered, making a choice look as though it reverted.
+        event.preventDefault()
+        pick(branch)
       }}
+      // Keyboard activation has no mouse-down and produces a zero-detail click.
+      onClick={(event) => event.detail === 0 && pick(branch)}
     >
       {branch}
       {branch === value && <span aria-hidden>✓</span>}
