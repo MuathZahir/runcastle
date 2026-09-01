@@ -22,8 +22,9 @@ export function NewChatCard({
   starting: boolean
   openSession?: { onOpen: () => void; onReplace: () => void }
 }) {
-  if (openSession) {
-    return (
+  return (
+    <div className="flex flex-col gap-2 rounded-lg border border-hairline bg-panel px-6 py-5">
+      {openSession && (
       <div
         role="status"
         className="flex items-center gap-2 rounded-md border border-hairline bg-panel-2 px-4 py-3"
@@ -34,11 +35,8 @@ export function NewChatCard({
           {starting ? 'Opening…' : 'End it and start new'}
         </Button>
       </div>
-    )
-  }
-
-  return (
-    <div className="flex items-center gap-6 rounded-lg border border-hairline bg-panel px-6 py-5">
+      )}
+      <div className="flex items-center gap-6">
         <div className="flex flex-1 flex-col gap-2">
           <h2 className="text-lg font-semibold text-text">Talk it through</h2>
           <p className="max-w-[46ch] text-sm text-text-2">
@@ -68,6 +66,7 @@ export function NewChatCard({
             {starting ? 'Opening…' : 'New chat'}
           </Button>
         </div>
+      </div>
     </div>
   )
 }

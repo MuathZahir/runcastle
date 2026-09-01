@@ -53,9 +53,11 @@ export function ProjectWorkspace({
   // Keep the terminal mounted behind the list so xterm retains its client-side
   // buffer and socket; `TerminalView` tears both down when it unmounts.
   const [showList, setShowList] = useState(Boolean(session && newChatRequest > 0))
+  const [showOpenNotice, setShowOpenNotice] = useState(Boolean(session && newChatRequest > 0))
   useEffect(() => {
     if (newChatRequest > 0 && session) {
       setShowList(true)
+      setShowOpenNotice(true)
       onConsumeNewChatRequest?.()
     }
   }, [newChatRequest, onConsumeNewChatRequest, session])
@@ -117,10 +119,14 @@ export function ProjectWorkspace({
                 onStart={talk.start}
                 starting={talk.starting}
                 openSession={
-                  session
+                  session && showOpenNotice
                     ? {
-                        onOpen: () => setShowList(false),
+                        onOpen: () => {
+                          setShowOpenNotice(false)
+                          setShowList(false)
+                        },
                         onReplace: () => {
+                          setShowOpenNotice(false)
                           talk.replace()
                           setShowList(false)
                         },
@@ -146,7 +152,10 @@ export function ProjectWorkspace({
           title={titleFor(talk.conversations, session.id) ?? 'project'}
           branch={landing.value}
           hidden={showList || reading !== null}
-          onBack={() => setShowList(true)}
+          onBack={() => {
+            setShowOpenNotice(false)
+            setShowList(true)
+          }}
           endControl={
             <EndSessionButton
               sessionId={session.id}
