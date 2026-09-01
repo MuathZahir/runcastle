@@ -61,6 +61,9 @@ export function ProjectWorkspace({
       onConsumeNewChatRequest?.()
     }
   }, [newChatRequest, onConsumeNewChatRequest, session])
+  useEffect(() => {
+    if (!session) setShowOpenNotice(false)
+  }, [session])
   const reading = viewing
   // Reopening leaves the read-only pane behind: what comes back is the terminal,
   // and closing that should land on the list, not on the transcript of the
