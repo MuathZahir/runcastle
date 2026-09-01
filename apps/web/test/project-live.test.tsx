@@ -80,14 +80,21 @@ describe('live project chat', () => {
             <div data-testid="terminal">terminal</div>
           </LiveChat>
           {list && (
-            <ConversationList
-              conversations={[endedConversation, openConversation]}
-              pending={false}
-              busy={false}
-              onResume={() => launches++}
-              onOpen={() => setList(false)}
-              onView={() => {}}
-            />
+            <>
+              <NewChatCard
+                landing={landing}
+                onStart={() => launches++}
+                starting={false}
+              />
+              <ConversationList
+                conversations={[endedConversation, openConversation]}
+                pending={false}
+                busy={false}
+                onResume={() => launches++}
+                onOpen={() => setList(false)}
+                onView={() => {}}
+              />
+            </>
           )}
         </>
       )
@@ -99,6 +106,8 @@ describe('live project chat', () => {
     const terminal = screen.getByTestId('terminal')
     expect(terminal).toBeTruthy()
     expect(terminal.closest('[data-live-chat]')?.classList.contains('hidden')).toBe(true)
+    expect(screen.getByText('Talk it through')).toBeTruthy()
+    expect(screen.queryByText('A chat is already open.')).toBeNull()
 
     fireEvent.click(open)
     expect(launches).toBe(0)
@@ -138,6 +147,9 @@ describe('live project chat', () => {
     )
 
     expect(screen.getByRole('status').textContent).toContain('A chat is already open.')
+    expect(screen.getByText('Talk it through')).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'New chat' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'landing on main' })).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: 'Open it' }))
     fireEvent.click(screen.getByRole('button', { name: 'End it and start new' }))
     expect({ opened, replaced }).toEqual({ opened: 1, replaced: 1 })
