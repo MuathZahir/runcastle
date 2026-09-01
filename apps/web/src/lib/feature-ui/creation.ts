@@ -5,16 +5,14 @@ import type { BranchList, FeatureListItem } from '../api'
  * off the branch the user is currently on — that's the branch they chose to work
  * on, and burns never touch the checkout.
  *
- * When the current checkout isn't a selectable base — a detached HEAD, or a test
- * drive holding runcastle itself on a `feature/*` branch (which the picker
- * excludes) — there is NO default: `''`, which every form renders as an empty,
- * mandatory select that blocks submit until a human picks (decision 8). It used
- * to fall back to the project main branch, and that silent substitution is the
- * one this feature exists to remove: mid-drive the checkout is parked on
- * something unrelated, so any guess about where to fork from is wrong.
+ * Runcastle commonly serves the app from one of its own internal branches,
+ * which is intentionally absent from creation pickers. In that case `main` is
+ * the launch-time default promised by the Quick footer. A detached HEAD remains
+ * empty because it supplies no checkout context from which to choose safely.
  */
 export function defaultBaseBranch(data: Pick<BranchList, 'current' | 'branches'>): string {
-  return data.branches.includes(data.current) ? data.current : ''
+  if (data.branches.includes(data.current)) return data.current
+  return data.current && data.branches.includes('main') ? 'main' : ''
 }
 
 /**
@@ -59,4 +57,3 @@ export function duplicateTitleWarning(
  * Client-side feature derivations (UI-SPEC §2/§3): sidebar glyph, needs-me
  * classification, and the guided next step. Pure functions over wire data — no IO.
  */
-
