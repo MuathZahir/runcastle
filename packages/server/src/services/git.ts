@@ -379,7 +379,7 @@ export interface BranchList {
    * there is nothing to default to.
    */
   current: string
-  /** Local branches, `feature/*` excluded. */
+  /** Local branches; feature branches are included only when explicitly requested. */
   branches: string[]
   /**
    * Remote-tracking branches with NO local counterpart, as `origin/<name>` — for
@@ -393,10 +393,14 @@ export interface BranchList {
 /**
  * List branches for the create-feature base picker (§4 `project.branches`). You
  * fork a NEW feature off a base, not off another in-flight talk branch, so
- * `feature/*` is excluded everywhere; remote refs already shadowed by a local
- * branch of the same name are dropped (the local one is the real target).
+ * `feature/*` is excluded by default for create-feature base pickers, but the
+ * project-chat landing picker may request it. Remote refs already shadowed by a
+ * local branch of the same name are dropped (the local one is the real target).
  */
-export async function listBranches(project: Project): Promise<BranchList> {
+export async function listBranches(
+  project: Project,
+  options: { includeFeatureBranches?: boolean } = {},
+): Promise<BranchList> {
   const g = git(project.repoPath)
   const local = await g.branchLocal()
   // simple-git reports a detached HEAD as a pseudo-branch named for the short
@@ -404,7 +408,10 @@ export async function listBranches(project: Project): Promise<BranchList> {
   // nor a pick — the checkout simply has no base to offer.
   const detachedRef = local.detached ? local.current : null
   const current = local.detached ? '' : local.current
-  const branches = local.all.filter((name) => !name.startsWith('feature/') && name !== detachedRef)
+  const branches = local.all.filter(
+    (name) =>
+      (options.includeFeatureBranches || !name.startsWith('feature/')) && name !== detachedRef,
+  )
 
   const localSet = new Set(local.all)
   let remoteBranches: string[] = []
