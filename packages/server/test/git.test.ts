@@ -262,6 +262,7 @@ describe('listBranches', () => {
 
     const res = await listBranches(project)
     expect(res.current).toBe('main')
+    expect(res.detected).toBe('main')
     expect(res.branches).toContain('main')
     expect(res.branches).toContain('dev')
     expect(res.branches).not.toContain('feature/hidden')

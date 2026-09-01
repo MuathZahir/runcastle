@@ -573,7 +573,7 @@ export function Workspace({
               ? {
                   branches: branchesQ.data?.branches,
                   value: effectiveDraftBase || null,
-                  detected: branchesQ.data?.current,
+                  detected: branchesQ.data?.detected,
                   missing: draftBaseMissing === 'unpicked',
                   onPick: (base) => setDraftPick({ featureId, base }),
                 }

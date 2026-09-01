@@ -64,6 +64,7 @@ describe('draft creation surfaces', () => {
     expect(html).toContain('from …')
     expect(html).toContain('border-warn text-warn')
     expect(html).toContain('title="pick a branch first"')
+    expect(html).toContain('>pick a branch first<')
     expect(html).toMatch(/<button[^>]*disabled=""[^>]*>Start<\/button>/)
   })
 })

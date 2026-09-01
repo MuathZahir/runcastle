@@ -64,22 +64,25 @@ import type { FeatureFull, FeatureListItem } from '../src/lib/api'
  */
 describe('defaultBaseBranch', () => {
   it('defaults to the current checkout when it is a selectable base', () => {
-    expect(defaultBaseBranch({ current: 'develop', branches: ['main', 'develop'] })).toBe('develop')
+    expect(defaultBaseBranch({ current: 'develop', detected: 'main', branches: ['main', 'develop'] })).toBe('develop')
   })
 
   it('defaults to main when the current checkout is main', () => {
-    expect(defaultBaseBranch({ current: 'main', branches: ['main', 'develop'] })).toBe('main')
+    expect(defaultBaseBranch({ current: 'main', detected: 'main', branches: ['main', 'develop'] })).toBe('main')
   })
 
-  it('offers no default on a detached HEAD (current not in the list)', () => {
-    expect(defaultBaseBranch({ current: '', branches: ['main', 'develop'] })).toBe('')
+  it('uses the detected main line on a detached HEAD', () => {
+    expect(defaultBaseBranch({ current: '', detected: 'main', branches: ['main', 'develop'] })).toBe('main')
   })
 
-  it('offers no default when a test drive holds a feature/* checkout (excluded)', () => {
-    // The picker excludes feature/* branches, so a test-drive checkout is never
-    // a selectable base. Main is NOT the answer here — mid-drive the checkout is
-    // parked on something unrelated, so the human has to say where to fork from.
-    expect(defaultBaseBranch({ current: 'feature/x', branches: ['main'] })).toBe('')
+  it('offers no default when neither current nor detected is available', () => {
+    expect(defaultBaseBranch({ current: '', detected: 'missing', branches: ['develop'] })).toBe('')
+  })
+
+  it('falls back to the detected main line when a test drive holds an excluded checkout', () => {
+    expect(
+      defaultBaseBranch({ current: 'feature/x', detected: 'main', branches: ['main'] }),
+    ).toBe('main')
   })
 })
 

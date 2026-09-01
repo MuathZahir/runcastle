@@ -67,7 +67,7 @@ export function QuickForm({ projectId, onCancel, onCreated }: { projectId: strin
         {mode === 'change' ? <QuickChangeMode
           title={title} duplicate={duplicate} tickets={tickets} writtenCount={written.length}
           slug={slugPreview(title)} base={base} branches={branchesQ.data?.branches}
-          detectedBranch={branchesQ.data?.current} busy={busy} ready={ready} rowRefs={rowRefs}
+          detectedBranch={branchesQ.data?.detected} busy={busy} ready={ready} rowRefs={rowRefs}
           onTitleChange={setTitle}
           onTicketChange={(index, value) => setTickets((rows) => rows.map((row, position) => position === index ? value : row))}
           onAddTicket={addTicket} onRemoveTicket={removeTicket} onBasePick={setBasePick}

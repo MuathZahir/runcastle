@@ -133,6 +133,9 @@ export function NextStepBar({
                 >
                   {busy ? 'Working…' : ns.primary.label}
                 </Button>
+                {draftBranch && ns.primary.disabled === 'pick a branch first' && (
+                  <span className="text-sm text-warn">pick a branch first</span>
+                )}
               </>
             )}
           </>

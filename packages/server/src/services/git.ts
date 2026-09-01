@@ -379,6 +379,8 @@ export interface BranchList {
    * there is nothing to default to.
    */
   current: string
+  /** The repository's detected main line, used when the checkout is not a usable base. */
+  detected: string
   /** Local branches; feature branches are included only when explicitly requested. */
   branches: string[]
   /**
@@ -430,7 +432,8 @@ export async function listBranches(
     // No remotes (or a bare/odd repo) — remote picks simply aren't offered.
   }
 
-  return { current, branches, remoteBranches }
+  const detected = await detectMainBranch(project.repoPath)
+  return { current, detected, branches, remoteBranches }
 }
 
 /**
