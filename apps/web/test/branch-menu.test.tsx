@@ -87,6 +87,18 @@ describe('BranchMenu', () => {
     expect(screen.getByRole('option', { selected: true }).textContent).toContain('develop')
   })
 
+  it('moves through options with arrows and commits with Enter', () => {
+    const onPick = vi.fn()
+    render(<BranchMenu prefix="landing on" value="main" branches={BRANCHES} onPick={onPick} />)
+    open()
+
+    fireEvent.keyDown(document.activeElement as Element, { key: 'ArrowDown' })
+    fireEvent.keyDown(document.activeElement as Element, { key: 'Enter' })
+
+    expect(onPick).toHaveBeenCalledWith('develop')
+    expect(screen.queryByRole('listbox')).toBeNull()
+  })
+
   it('closes on Escape without picking anything', () => {
     const onPick = vi.fn()
     render(<BranchMenu prefix="from" value="main" branches={BRANCHES} onPick={onPick} />)
