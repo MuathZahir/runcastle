@@ -38,8 +38,8 @@ export function NewChatCard({
       )}
       <div className="flex items-center gap-6">
         <div className="flex flex-1 flex-col gap-2">
-          <h2 className="text-lg font-semibold text-text">Talk it through</h2>
-          <p className="max-w-[46ch] text-sm text-text-2">
+          <h2 className="m-0 text-lg font-semibold text-text">Talk it through</h2>
+          <p className="m-0 max-w-[46ch] text-sm text-text-2">
             Bring a raw idea; the chat checks it against what’s built and cuts it into features.
           </p>
         </div>

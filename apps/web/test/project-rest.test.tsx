@@ -58,6 +58,12 @@ describe('NewChatCard', () => {
     expect(html).toContain('New chat')
   })
 
+  it('keeps the heading and copy on the 8px card rhythm', () => {
+    const html = render()
+    expect(tagBefore(html, 'Talk it through')).toContain('m-0')
+    expect(tagBefore(html, 'Bring a raw idea;')).toContain('m-0')
+  })
+
   // The card carried a paragraph about what the chat would do with the idea, on
   // every visit; the chat's own greeting says it better on arrival.
   it('explains nothing a returning human has already read', () => {
