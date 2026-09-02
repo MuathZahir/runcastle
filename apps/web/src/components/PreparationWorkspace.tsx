@@ -115,7 +115,7 @@ export function PreparationWorkspace({
           )}
 
           {session ? (
-            <div className="grill-panel pw-session">
+            <div className="grill-panel">
               <div className="grill-strip">
                 <span className="grill-kind">prepare</span>
                 <SessionStatusDot status={session.status} />
@@ -132,7 +132,7 @@ export function PreparationWorkspace({
                   }}
                 />
               </div>
-              <div className="grill-term pw-term">
+              <div className="grill-term h-[clamp(300px,calc(100dvh-420px),1200px)]">
                 <ErrorBoundary label="terminal">
                   <TerminalView sessionId={session.id} />
                 </ErrorBoundary>

@@ -61,7 +61,7 @@ export function Sidebar({
   selectedFeatureId: string | null
   projectSelected: boolean
   talk: ProjectTalkApi
-  onSelect: (featureId: string) => void
+  onSelect: (featureId: string | null) => void
   onSelectProject: () => void
   /** New — open the project workspace on a fresh conversation. */
   onNewChat: () => void
@@ -108,11 +108,12 @@ export function Sidebar({
   const del = trpc.feature.delete.useMutation({
     onSuccess: (_res, vars) => {
       invalidate()
-      // If the deleted feature was open, jump to another one so the workspace
-      // never dead-ends on a now-missing feature (delete is irreversible).
+      // If the deleted feature was open, clear its persisted selection before
+      // opening the project workspace. Keeping either reference strands this
+      // render (or the next reload) on a feature that no longer exists.
       if (vars.featureId === selectedFeatureId) {
-        const next = (list.data ?? []).find((f) => f.id !== vars.featureId)
-        if (next) onSelect(next.id)
+        onSelect(null)
+        onSelectProject()
       }
       setPendingDelete(null)
     },

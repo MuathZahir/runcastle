@@ -53,6 +53,14 @@ function writeLS(key: string, value: string): void {
   }
 }
 
+function removeLS(key: string): void {
+  try {
+    localStorage.removeItem(key)
+  } catch {
+    // storage may be unavailable (private mode) — non-fatal
+  }
+}
+
 export interface WorkspaceApi {
   /** The feature whose pipeline fills the workspace, or null (empty state). */
   selectedFeatureId: string | null
@@ -146,6 +154,7 @@ export function useWorkspace(projectId: string): WorkspaceApi {
 
   useEffect(() => {
     if (selectedFeatureId) writeLS(selectedKey, selectedFeatureId)
+    else removeLS(selectedKey)
   }, [selectedFeatureId, selectedKey])
   useEffect(() => {
     writeLS(preparingKey, preparing ? '1' : '0')

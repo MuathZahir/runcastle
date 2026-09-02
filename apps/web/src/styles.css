@@ -739,19 +739,6 @@ button {
   line-height: 1.5;
 }
 
-/* new-feature inline form (sidebar) */
-.nf-form {
-  margin: 6px;
-  padding: 10px;
-  border: 1px solid var(--hairline);
-  border-radius: var(--radius);
-  background: var(--panel);
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  animation: fadeUp var(--dur-2) var(--ease-out);
-}
-
 /* ============================================================================
    WORKSPACE — pipeline-first center
    ========================================================================== */
@@ -811,8 +798,6 @@ button {
 }
 .talk-door:hover:not(:disabled) { color: var(--accent-hi); }
 .talk-door:disabled { opacity: 0.5; cursor: default; }
-.nf-actions-spacer { flex: 1; }
-
 /* ---- the project workspace (decision 20) ---- */
 .pw-tag {
   display: inline-flex;
@@ -827,34 +812,12 @@ button {
   font-weight: 700;
   letter-spacing: 0.09em;
 }
-/* The branch is stated, not copied — this one is runcastle's, not yours. */
-.ws-branch.is-static { cursor: default; }
 /* Says where the commits go, in the chrome, before you type anything. */
 .pw-consequence {
   margin-top: 8px;
   font-size: 12px;
   line-height: 1.5;
   color: var(--text-3);
-}
-/* …and lets you change it, beside the sentence that states it (decision 5). */
-.pw-landing { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
-.pw-landing .nf-base-label { font-size: 12px; color: var(--text-3); }
-/* The note wraps onto its own line — it is a sentence, not a chip. */
-.pw-landing .size-hint { flex-basis: 100%; }
-.pw-landing-origin {
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.09em;
-  text-transform: uppercase;
-  padding: 2px 6px;
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--hairline);
-  color: var(--text-3);
-}
-/* A pick whose branch is gone refuses the next launch — said in colour too. */
-.pw-landing-origin.is-vanished {
-  border-color: color-mix(in srgb, var(--danger) 55%, var(--hairline));
-  color: var(--danger);
 }
 .pw-frame {
   border: 1px solid var(--hairline);
@@ -883,109 +846,6 @@ button {
 }
 .pw-frame-list b { color: var(--text-2); font-weight: 600; }
 .pw-frame-list code { font-family: var(--mono); font-size: 11.5px; }
-.pw-term { height: clamp(300px, calc(100dvh - 420px), 1200px); }
-.pw-rest-title { font-size: 14px; font-weight: 500; color: var(--text-2); }
-.pw-rest-sub {
-  font-size: 12.5px;
-  line-height: 1.6;
-  color: var(--text-3);
-  max-width: 52ch;
-}
-
-/* ---- the conversation list (decision 5) ---- */
-/* New chat is the default action, so it gets the accented card at the top and
-   the only solid button on the screen; the past ones are a quiet list under it. */
-.pw-newchat {
-  display: flex;
-  align-items: center;
-  gap: 20px;
-  border: 1px solid var(--accent-line);
-  border-radius: var(--radius-lg);
-  background: var(--accent-soft);
-  padding: 20px 22px;
-  margin-bottom: 18px;
-}
-.pw-newchat-copy {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  flex: 1;
-}
-.pw-convos {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  margin-bottom: 18px;
-}
-.pw-convos .pw-frame-head { margin-bottom: 6px; }
-.pw-convo {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 9px 12px;
-  border: 1px solid transparent;
-  border-radius: var(--radius);
-  transition: background var(--dur-1) var(--ease), border-color var(--dur-1) var(--ease);
-}
-.pw-convo:hover { background: var(--panel-2); border-color: var(--hairline); }
-.pw-convo-glyph { display: inline-flex; color: var(--text-3); }
-.pw-convo-main {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-  flex: 1;
-}
-.pw-convo-title {
-  font-size: 12.5px;
-  color: var(--text-2);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.pw-convo-when { font-size: 11px; color: var(--text-3); }
-
-/* ---- one conversation, read back ---- */
-.pw-reading { display: flex; flex-direction: column; gap: 14px; }
-.pw-reading-head { display: flex; align-items: center; gap: 12px; }
-.convo-transcript {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  max-height: clamp(300px, calc(100dvh - 340px), 1200px);
-  overflow-y: auto;
-  padding-right: 4px;
-}
-.convo-bubble {
-  border: 1px solid var(--hairline);
-  border-radius: var(--radius-lg);
-  background: var(--panel-2);
-  padding: 10px 14px;
-  max-width: 76ch;
-}
-/* The human's own turns sit right and accented — a transcript you are scanning
-   for "what did I ask for?" is read by finding your own side of it. */
-.convo-bubble.is-user {
-  align-self: flex-end;
-  border-color: var(--accent-line);
-  background: var(--accent-soft);
-}
-.convo-bubble-role {
-  font-size: 9.5px;
-  font-weight: 700;
-  letter-spacing: 0.09em;
-  text-transform: uppercase;
-  color: var(--text-3);
-  margin-bottom: 4px;
-}
-.convo-bubble-text {
-  font-size: 12.5px;
-  line-height: 1.6;
-  color: var(--text-2);
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-}
-
 /* every direct workspace block sits in a centered rail — no more left-hugging
    content with a dead void on the right */
 .ws-head,
@@ -2525,84 +2385,10 @@ button.note-at:hover { color: var(--accent); }
 .shipped-body { display: flex; flex-direction: column; gap: 18px; }
 .shipped-session .grill-term { height: clamp(300px, calc(100dvh - 420px), 1200px); }
 
-/* ============================================================================
-   DRAFT body — a parked idea (decision 9). One reading column: what the idea
-   is, then its brief, then the base Start will fork from. No terminal, no doc
-   cards, no pipeline — a draft is a DB row and nothing else yet.
-   ========================================================================== */
-.draft-body {
-  max-width: 640px;
-  margin: 0 auto;
-  display: flex;
-  flex-direction: column;
-  gap: 18px;
-}
-.draft-hero { margin-top: 28px; animation: fadeUp var(--dur-3) var(--ease-out); }
-.draft-kick {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.09em;
-  color: var(--text-4);
-}
-.draft-glyph { font-size: 12px; line-height: 1; }
-.draft-title { margin-top: 8px; font-size: 16px; font-weight: 600; }
-.draft-oneliner { margin-top: 6px; font-size: 13px; color: var(--text-2); line-height: 1.55; }
-.draft-sub { margin-top: 12px; font-size: 12.5px; color: var(--text-3); line-height: 1.55; }
-.draft-brief.is-empty { color: var(--text-4); }
-.draft-advanced-summary {
-  cursor: pointer;
-  font-size: 11.5px;
-  color: var(--text-3);
-  user-select: none;
-}
-.draft-advanced[open] .draft-advanced-summary { margin-bottom: 8px; }
 .tag.is-draft { color: var(--text-4); }
 
-/* ============================================================================
-   NEW-FEATURE workspace form
-   ========================================================================== */
-.nf-card {
-  width: 540px;
-  max-width: 100%;
-  border: 1px solid var(--hairline);
-  border-radius: var(--radius-lg);
-  background: var(--panel);
-  padding: 26px 28px;
-  animation: popIn var(--dur-3) var(--ease-out);
-}
-.nf-kick { font-size: 11px; letter-spacing: 0.09em; color: var(--accent-hi); font-weight: 700; }
-.nf-h { font-size: 16px; font-weight: 600; margin-top: 6px; }
-.nf-sub { margin-top: 5px; font-size: 12.5px; color: var(--text-2); line-height: 1.55; }
-.nf-input {
-  width: 100%;
-  margin-top: 18px;
-  height: 36px;
-  background: var(--panel-inset);
-  border: 1px solid var(--hairline);
-  border-radius: var(--radius);
-  color: var(--text);
-  padding: 0 12px;
-  font-size: 13px;
-  outline: none;
-  font-family: inherit;
-  transition: border-color var(--dur-1);
-}
-.nf-input:focus { border-color: var(--accent); }
-/* the optional one-liner sits tight under the title input, slightly quieter */
-.nf-oneliner { margin-top: 8px; height: 32px; font-size: 12.5px; }
-/* the quick-change door's one prose field — the ticket, in the human's words */
-.nf-textarea {
-  margin-top: 8px;
-  height: 132px;
-  padding: 10px 12px;
-  font-size: 12.5px;
-  line-height: 1.55;
-  resize: vertical;
-}
 .size-hint { font-size: 12px; color: var(--text-3); }
+/* DraftBody remains BaseSelect's last consumer until ticket 5 migrates it. */
 .nf-base { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin-top: 16px; }
 .nf-base-label { font-size: 13px; color: var(--text); }
 .nf-base-select {
@@ -2620,87 +2406,6 @@ button.note-at:hover { color: var(--accent); }
 }
 .nf-base-select:focus { border-color: var(--accent); }
 .nf-base-select:disabled { opacity: 0.5; cursor: default; }
-.nf-branch { margin-top: 16px; font-family: var(--mono); font-size: 11.5px; color: var(--text-3); }
-.nf-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 22px; }
-/* the inline "you already have one of these" note under the title field (F25.3) */
-.nf-dupe {
-  margin-top: 8px;
-  font-size: 12px;
-  line-height: 1.5;
-  color: var(--warn, #d9a441);
-}
-.nf-advanced { margin-top: 16px; }
-.nf-advanced-summary {
-  font-size: 12.5px;
-  color: var(--text-2);
-  cursor: pointer;
-  user-select: none;
-  width: fit-content;
-}
-.nf-advanced-summary:hover { color: var(--text); }
-.nf-advanced[open] .nf-advanced-summary { color: var(--text); margin-bottom: 4px; }
-.nf-advanced .nf-base { margin-top: 10px; }
-
-/* the Quick door's two modes, and its list of prose tickets (decisions.md #12) */
-.qf-modes {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  margin-top: 12px;
-  border-bottom: 1px solid var(--hairline-soft);
-}
-.qf-mode {
-  background: none;
-  border: none;
-  border-bottom: 2px solid transparent;
-  color: var(--text-3);
-  font-size: 12.5px;
-  font-weight: 500;
-  padding: 6px 10px 8px;
-  cursor: pointer;
-  transition: color var(--dur-1);
-}
-.qf-mode:hover { color: var(--text-2); }
-.qf-mode.is-active { color: var(--text); border-bottom-color: var(--accent); }
-.qf-tickets { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
-.qf-ticket { display: flex; align-items: flex-start; gap: 8px; }
-.qf-ticket-num {
-  flex: 0 0 auto;
-  margin-top: 12px;
-  width: 16px;
-  text-align: right;
-  font-family: var(--mono);
-  font-size: 11.5px;
-  color: var(--text-3);
-}
-/* shorter than the single-field textarea it inherits from — a quick change is a
-   sentence, and several of them have to fit in the card at once */
-.qf-ticket-text { flex: 1; height: 62px; margin-top: 0; }
-.qf-ticket-remove {
-  flex: 0 0 auto;
-  margin-top: 8px;
-  background: none;
-  border: none;
-  color: var(--text-3);
-  font-size: 15px;
-  line-height: 1;
-  padding: 4px 6px;
-  cursor: pointer;
-  transition: color var(--dur-1);
-}
-.qf-ticket-remove:hover { color: var(--danger); }
-.qf-add {
-  margin-top: 8px;
-  background: none;
-  border: none;
-  padding: 0;
-  color: var(--accent);
-  font-size: 12.5px;
-  cursor: pointer;
-  width: fit-content;
-}
-.qf-add:hover { color: var(--accent-hi); }
-
 /* ============================================================================
    INSPECTOR RAIL
    ========================================================================== */
@@ -3398,11 +3103,9 @@ button.note-at:hover { color: var(--accent); }
 .settings-clear:disabled { opacity: 0.5; cursor: default; }
 
 /* ============================================================================
-   DELETE FEATURE DIALOG (decision #8) + MERGE CONFIRMATION (findings F21)
+   MERGE CONFIRMATION (findings F21)
    ========================================================================== */
-.peek.delete-dialog,
 .peek.merge-dialog { max-width: 460px; }
-.delete-dialog-title { color: var(--danger); font-size: 13px; font-weight: 600; }
 /* Merging is the intended ending, not a destructive act — same shape, not red. */
 .merge-dialog-title { color: var(--text); font-size: 13px; font-weight: 600; }
 .merge-dialog-warnings {
@@ -3415,27 +3118,14 @@ button.note-at:hover { color: var(--accent); }
   font-size: 12px;
   line-height: 1.6;
 }
-.delete-dialog-body,
 .merge-dialog-body { display: flex; flex-direction: column; gap: 16px; }
-.delete-dialog-lead,
 .merge-dialog-lead {
   margin: 0;
   font-size: 12.5px;
   line-height: 1.6;
   color: var(--text-2);
 }
-.delete-dialog-lead strong,
 .merge-dialog-lead strong { color: var(--text); font-weight: 600; }
-.delete-dialog-field { display: flex; flex-direction: column; gap: 6px; }
-.delete-dialog-field > span { font-size: 12px; color: var(--text-2); }
-.delete-dialog-field code {
-  padding: 1px 5px;
-  border-radius: var(--radius);
-  background: var(--panel-inset);
-  color: var(--text);
-}
-.delete-dialog-field .settings-input:focus { border-color: var(--danger); }
-.delete-dialog-actions,
 .merge-dialog-actions {
   display: flex;
   justify-content: flex-end;

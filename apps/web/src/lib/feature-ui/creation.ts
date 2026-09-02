@@ -5,16 +5,15 @@ import type { BranchList, FeatureListItem } from '../api'
  * off the branch the user is currently on — that's the branch they chose to work
  * on, and burns never touch the checkout.
  *
- * When the current checkout isn't a selectable base — a detached HEAD, or a test
- * drive holding runcastle itself on a `feature/*` branch (which the picker
- * excludes) — there is NO default: `''`, which every form renders as an empty,
- * mandatory select that blocks submit until a human picks (decision 8). It used
- * to fall back to the project main branch, and that silent substitution is the
- * one this feature exists to remove: mid-drive the checkout is parked on
- * something unrelated, so any guess about where to fork from is wrong.
+ * When the current checkout isn't selectable — most often because a test drive
+ * temporarily holds it on an excluded `feature/*` branch — use Git's detected
+ * main line when it is offered. This keeps creation usable without mistaking
+ * the temporary drive checkout for the base. If neither is offered there is no
+ * default, and the form blocks until the human picks one.
  */
-export function defaultBaseBranch(data: Pick<BranchList, 'current' | 'branches'>): string {
-  return data.branches.includes(data.current) ? data.current : ''
+export function defaultBaseBranch(data: Pick<BranchList, 'current' | 'detected' | 'branches'>): string {
+  if (data.branches.includes(data.current)) return data.current
+  return data.branches.includes(data.detected) ? data.detected : ''
 }
 
 /**
@@ -59,4 +58,3 @@ export function duplicateTitleWarning(
  * Client-side feature derivations (UI-SPEC §2/§3): sidebar glyph, needs-me
  * classification, and the guided next step. Pure functions over wire data — no IO.
  */
-

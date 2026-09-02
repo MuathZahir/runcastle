@@ -243,3 +243,27 @@ describe('Dialog', () => {
     expect(panel.getAttribute('aria-modal')).toBeNull()
   })
 })
+
+describe('DeleteFeatureDialog', () => {
+  afterEach(cleanup)
+
+  it('arms deletion only when the exact slug is typed', () => {
+    render(
+      <DeleteFeatureDialog
+        title="Draft feature"
+        slug="draft-feature"
+        busy={false}
+        onConfirm={() => {}}
+        onCancel={() => {}}
+      />,
+    )
+
+    const input = screen.getByLabelText('Type draft-feature to confirm')
+    const button = screen.getByRole('button', { name: 'Delete feature' })
+    fireEvent.change(input, { target: { value: 'wrong-feature' } })
+    expect(button.hasAttribute('disabled')).toBe(true)
+
+    fireEvent.change(input, { target: { value: 'draft-feature' } })
+    expect(button.hasAttribute('disabled')).toBe(false)
+  })
+})

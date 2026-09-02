@@ -30,7 +30,7 @@ export function FormOverlay({
   children: (dismiss: () => void) => ReactNode
 }) {
   return (
-    <Dialog open onClose={onDismiss} dirty={dirty} inline className="nf-card">
+    <Dialog open onClose={onDismiss} dirty={dirty} inline className="max-w-[640px] p-6">
       {children}
     </Dialog>
   )
