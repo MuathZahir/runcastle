@@ -3,8 +3,7 @@ import { trpc } from '../../trpc'
 import { readyRuntimes, RUNTIME_LOGIN, type RuntimeReadiness } from '../../lib/first-run'
 import { useToast } from '../../lib/toast'
 import { Button, DimLine } from '../../ui'
-import { ErrorBoundary } from '../ErrorBoundary'
-import { TerminalView } from '../TerminalView'
+import { Checklist, ChecklistRow, RowTerminal } from '../EnableAfkCard'
 import { StepActions, StepHeading } from './StepLayout'
 
 /**
@@ -13,9 +12,9 @@ import { StepActions, StepHeading } from './StepLayout'
  * whichever they have or want. The step continues once ONE runtime can open a
  * session — that is the invariant the pipeline actually needs.
  *
- * The rows keep their `afk-*` class names: they are the Enable-AFK card's rows,
- * whose stylesheet rules the Settings flow still owns (decision 9), and the two
- * surfaces genuinely do render the same row.
+ * The rows are the Enable-AFK card's own checklist primitives: the two surfaces
+ * genuinely do render the same row, and the Settings flow owns the shared
+ * component (decision 9).
  */
 export function RuntimesStep({
   runtimes,
@@ -35,10 +34,12 @@ export function RuntimesStep({
         choose from later.
       </StepHeading>
 
-      <div className="afk-rows mt-7">
-        {runtimes.map((r) => (
-          <RuntimeCard key={r.runtime} runtime={r} />
-        ))}
+      <div className="mt-7">
+        <Checklist>
+          {runtimes.map((r) => (
+            <RuntimeCard key={r.runtime} runtime={r} />
+          ))}
+        </Checklist>
       </div>
 
       <StepActions onBack={onBack}>
@@ -55,7 +56,7 @@ export function RuntimesStep({
   )
 }
 
-/** One provider card: detected state, its sign-in flow, and what AFK adds. */
+/** One provider row: detected state, its sign-in flow, and what AFK adds. */
 function RuntimeCard({ runtime }: { runtime: RuntimeReadiness }) {
   const [sessionId, setSessionId] = useState<string | null>(null)
   const toast = useToast()
@@ -69,68 +70,54 @@ function RuntimeCard({ runtime }: { runtime: RuntimeReadiness }) {
   const state = runtime.talkReady ? 'ready' : runtime.installed ? 'sign in' : 'not installed'
 
   return (
-    <div className={`afk-row${runtime.talkReady ? ' is-ok' : ''}`}>
-      <div className="afk-row-head">
-        <span className={`afk-dot afk-dot-${runtime.talkReady ? 'ok' : 'warn'}`} aria-hidden />
-        <div className="afk-row-text">
-          <div className="afk-row-label">
-            {runtime.label} — {state}
-          </div>
-          <div className="afk-row-detail mono">{runtime.detail}</div>
-        </div>
-      </div>
-      <div className="afk-row-action">
-        {runtime.installFix && (
-          <div className="afk-cmd">
-            <code className="afk-cmd-text mono">{runtime.installFix}</code>
-            <Button
-              variant="ghost"
-              onClick={() => {
-                void navigator.clipboard?.writeText(runtime.installFix ?? '')
-                toast.push('copied', 'info')
-              }}
-            >
-              Copy
-            </Button>
-          </div>
-        )}
-        {runtime.installed &&
-          !runtime.talkReady &&
-          (sessionId ? (
-            <>
-              <div className="afk-term">
-                <ErrorBoundary label={login.kind}>
-                  <TerminalView sessionId={sessionId} />
-                </ErrorBoundary>
-              </div>
-              <div className="afk-term-actions">
-                <Button
-                  variant="solid"
-                  onClick={() => {
-                    setSessionId(null)
-                    void utils.setup.doctor.invalidate()
-                  }}
-                >
-                  Done — re-check
-                </Button>
-              </div>
-            </>
-          ) : (
-            <Button
-              variant="solid"
-              disabled={start.isPending}
-              onClick={() => start.mutate({ kind: login.kind })}
-            >
-              {start.isPending ? 'Starting…' : `Run ${login.command}`}
-            </Button>
-          ))}
-        {runtime.talkReady && !runtime.afkReady && (
-          <div className="afk-note">
-            Signed in for sessions you watch. Unattended burns on {runtime.label} also need its key
-            — the next step sets that up.
-          </div>
-        )}
-      </div>
-    </div>
+    <ChecklistRow
+      label={`${runtime.label} — ${state}`}
+      detail={runtime.detail}
+      ok={runtime.talkReady}
+      below={
+        sessionId && (
+          <RowTerminal
+            sessionId={sessionId}
+            label={login.kind}
+            onDone={() => {
+              setSessionId(null)
+              void utils.setup.doctor.invalidate()
+            }}
+          />
+        )
+      }
+    >
+      {runtime.installFix && (
+        <>
+          <code className="max-w-full truncate rounded-sm border border-hairline bg-panel-inset px-2 py-1 font-mono text-xs text-accent-hi">
+            {runtime.installFix}
+          </code>
+          <Button
+            variant="ghost"
+            onClick={() => {
+              void navigator.clipboard?.writeText(runtime.installFix ?? '')
+              toast.push('copied', 'info')
+            }}
+          >
+            Copy
+          </Button>
+        </>
+      )}
+      {runtime.installed && !runtime.talkReady && !sessionId && (
+        <Button
+          variant="solid"
+          disabled={start.isPending}
+          onClick={() => start.mutate({ kind: login.kind })}
+        >
+          {start.isPending ? 'Starting…' : `Run ${login.command}`}
+        </Button>
+      )}
+      {runtime.talkReady && !runtime.afkReady && (
+        <span className="basis-full text-right text-xs text-text-3">
+          Signed in for sessions you watch. Unattended burns on {runtime.label} also need its key —
+          the next step sets that up.
+        </span>
+      )}
+    </ChecklistRow>
   )
 }

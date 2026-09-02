@@ -1,0 +1,426 @@
+<title>Creation Doors Prototype</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+  :root {
+    --bg:#090b10; --panel:#0e1117; --panel-2:#0b0e14; --panel-3:#12151d; --inset:#07080b;
+    --hair:#1c2230; --hair-soft:#151a26; --hair-strong:#2a3242;
+    --t1:#dde3ed; --t2:#96a0b0; --t3:#5f6a7a; --t4:#3a4354;
+    --acc:#7c6cf6; --acc-hi:#a49bff; --acc-2:#8f80f8; --acc-ink:#0d0722; --acc-soft:#161329; --acc-line:#3d3670;
+    --danger:#f4594e; --warn:#d7a94a; --ok:#3fb950;
+    --sans:"Inter",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    --mono:"JetBrains Mono","Cascadia Code",Consolas,ui-monospace,monospace;
+    color-scheme: dark;
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--t1); font:14px/1.5 var(--sans); }
+  button { font:inherit; color:inherit; background:none; border:0; cursor:pointer; }
+  button:focus-visible, input:focus-visible, textarea:focus-visible, [tabindex]:focus-visible { outline:2px solid var(--acc-hi); outline-offset:2px; }
+  code, .mono { font-family:var(--mono); font-size:12px; }
+  h1,h2,h3,p { margin:0; }
+
+  /* ---------- picker ---------- */
+  .picker { position:sticky; top:0; z-index:5; background:var(--panel-2); border-bottom:1px solid var(--hair); padding:12px 20px; display:flex; flex-wrap:wrap; gap:8px 16px; align-items:center; }
+  .picker .eyebrow { font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--t3); margin-right:8px; }
+  .picker button { height:28px; padding:0 10px; border-radius:6px; color:var(--t2); font-size:12px; font-weight:500; }
+  .picker button:hover { background:var(--panel-3); color:var(--t1); }
+  .picker button[aria-selected="true"] { background:var(--acc-soft); color:var(--acc-hi); box-shadow:inset 0 0 0 1px var(--acc-line); }
+  .note { max-width:1240px; margin:16px auto 0; padding:0 20px; color:var(--t2); font-size:13px; }
+  .note b { color:var(--t1); font-weight:500; }
+
+  /* ---------- shell ---------- */
+  .frame { max-width:1240px; margin:16px auto 40px; padding:0 20px; overflow-x:auto; }
+  .shell { min-width:960px; border:1px solid var(--hair); border-radius:12px; overflow:hidden; background:var(--bg); display:grid; grid-template-rows:44px 1fr 28px; height:640px; }
+  .titlebar { display:flex; align-items:center; gap:12px; padding:0 16px; background:var(--panel); border-bottom:1px solid var(--hair); font-size:13px; }
+  .brand { font-weight:600; letter-spacing:-.01em; } .brand span { color:var(--acc-hi); }
+  .crumb { color:var(--t3); } .search { margin-left:auto; height:28px; width:220px; border:1px solid var(--hair); border-radius:6px; background:var(--inset); color:var(--t3); font-size:12px; display:flex; align-items:center; padding:0 10px; gap:8px; }
+  .kbd { margin-left:auto; font-family:var(--mono); font-size:10px; border:1px solid var(--hair); border-radius:4px; padding:0 4px; color:var(--t3); }
+  .main { display:grid; grid-template-columns:252px 1fr; min-height:0; }
+  .rail { background:var(--panel-2); border-right:1px solid var(--hair); padding:16px 12px; display:flex; flex-direction:column; gap:16px; overflow:hidden; }
+  .rail-head { display:flex; align-items:center; gap:8px; }
+  .rail-head .eyebrow { font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--t3); font-weight:500; flex:1; }
+  .door { height:28px; padding:0 10px; border-radius:6px; border:1px solid var(--hair); font-size:12px; font-weight:500; color:var(--t2); display:inline-flex; align-items:center; gap:6px; }
+  .door.new { border-color:var(--acc-line); color:var(--acc-hi); }
+  .pinned { display:flex; align-items:center; gap:8px; height:36px; padding:0 10px; border-radius:8px; border:1px solid var(--hair); background:var(--panel-3); font-size:13px; }
+  .pinned.sel { border-color:var(--acc-line); box-shadow:inset 0 0 0 1px var(--acc-line); }
+  .pinned .tag { margin-left:auto; font-size:10px; letter-spacing:.08em; color:var(--t3); }
+  .pinned .live { margin-left:auto; font-size:11px; color:var(--acc-hi); display:flex; gap:5px; align-items:center; }
+  .lane { display:flex; flex-direction:column; gap:2px; }
+  .lane .eyebrow { font-size:11px; letter-spacing:.08em; text-transform:uppercase; font-weight:600; padding:4px 10px; }
+  .lane .eyebrow.needs { color:var(--warn);} .lane .eyebrow.prog { color:var(--t3);} .lane .eyebrow.drafts { color:var(--t3);} .lane .eyebrow.ship { color:var(--ok);}
+  .row { display:grid; grid-template-columns:8px 1fr auto; gap:8px; align-items:center; padding:6px 10px; border-radius:6px; font-size:13px; }
+  .row.sel { background:var(--panel-3); }
+  .row .dot { width:6px; height:6px; border-radius:99px; background:var(--t3); }
+  .row .dot.w { background:var(--warn);} .row .dot.b { background:var(--acc);} .row .dot.g{background:var(--ok);} .row .dot.o{background:transparent; box-shadow:inset 0 0 0 1px var(--t3);}
+  .row .name { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .row .slug { font-family:var(--mono); font-size:11px; color:var(--t3); }
+  .row .meta { font-size:11px; color:var(--t3); }
+  .statusbar { background:var(--panel); border-top:1px solid var(--hair); display:flex; align-items:center; gap:16px; padding:0 16px; font-size:11px; color:var(--t3); font-family:var(--mono); }
+  .statusbar .r { margin-left:auto; display:flex; gap:16px; }
+  .ok { color:var(--ok); }
+
+  /* ---------- workspace ---------- */
+  .ws { position:relative; overflow:auto; padding:32px 40px 40px; }
+  .ws-inner { max-width:720px; display:flex; flex-direction:column; gap:24px; }
+  .head { display:flex; flex-direction:column; gap:8px; }
+  .head .kick { display:flex; align-items:center; gap:12px; }
+  .pill { font-size:10px; letter-spacing:.1em; text-transform:uppercase; font-weight:600; color:var(--acc-hi); background:var(--acc-soft); border:1px solid var(--acc-line); border-radius:999px; padding:2px 8px; }
+  .pill.parked { color:var(--t2); background:var(--panel-3); border-color:var(--hair-strong); }
+  .head h1 { font-size:20px; line-height:1.3; font-weight:600; letter-spacing:-.01em; text-wrap:balance; }
+  .head .line { color:var(--t3); font-size:13px; }
+  .head .line code { color:var(--t2); }
+
+  .card { background:var(--panel); border:1px solid var(--hair); border-radius:12px; padding:20px 24px; }
+  .card.talk { display:flex; align-items:center; gap:24px; }
+  .card.talk .copy { flex:1; display:flex; flex-direction:column; gap:4px; }
+  .card.talk h2 { font-size:16px; font-weight:600; }
+  .card.talk p { color:var(--t2); font-size:13px; max-width:46ch; }
+  .actions { display:flex; align-items:center; gap:8px; flex-shrink:0; }
+
+  .btn { height:32px; padding:0 14px; border-radius:8px; border:1px solid var(--hair); color:var(--t1); font-weight:500; font-size:13px; display:inline-flex; align-items:center; gap:6px; white-space:nowrap; }
+  .btn:hover { border-color:var(--hair-strong); background:var(--panel-3); }
+  .btn.solid { background:var(--acc); border-color:var(--acc); color:#fff; }
+  .btn.solid:hover { background:var(--acc-2); }
+  .btn.solid:disabled { opacity:.45; cursor:not-allowed; }
+  .btn.ghost { border-color:transparent; color:var(--t2); }
+  .btn.ghost:hover { color:var(--t1); }
+  .btn.danger { background:var(--danger); border-color:var(--danger); color:#fff; }
+  .btn.danger:disabled { opacity:.4; cursor:not-allowed; }
+  .btn.xs { height:26px; padding:0 10px; font-size:12px; border-radius:6px; }
+
+  .bmenu { height:32px; padding:0 10px; border-radius:8px; color:var(--t2); font-family:var(--mono); font-size:12px; display:inline-flex; align-items:center; gap:6px; border:1px solid transparent; position:relative; }
+  .bmenu:hover { border-color:var(--hair); background:var(--panel-3); color:var(--t1); }
+  .bmenu .caret { color:var(--t3); font-size:10px; }
+  .bmenu.warn { color:var(--warn); border-color:var(--warn); }
+  .bmenu.inline { height:24px; padding:0 6px; }
+  .menu { position:absolute; top:calc(100% + 6px); right:0; background:var(--panel-3); border:1px solid var(--hair-strong); border-radius:8px; padding:6px; min-width:200px; box-shadow:0 12px 32px rgba(0,0,0,.5); display:flex; flex-direction:column; gap:2px; z-index:3; font-family:var(--mono); font-size:12px; text-align:left; }
+  .menu .item { padding:6px 10px; border-radius:6px; color:var(--t2); display:flex; justify-content:space-between; gap:12px; }
+  .menu .item:hover { background:var(--acc-soft); color:var(--t1); }
+  .menu .item.on { color:var(--acc-hi); }
+  .menu .lbl { font-family:var(--sans); font-size:11px; color:var(--t3); padding:4px 10px 2px; letter-spacing:.06em; text-transform:uppercase; }
+
+  .section { display:flex; flex-direction:column; gap:8px; }
+  .section > .eyebrow { font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--t3); font-weight:600; }
+  .convos { display:flex; flex-direction:column; }
+  .convo { display:grid; grid-template-columns:1fr auto auto; align-items:center; gap:16px; height:44px; padding:0 12px; margin:0 -12px; border-radius:8px; text-align:left; }
+  .convo:hover { background:var(--panel-3); }
+  .convo + .convo { border-top:1px solid var(--hair-soft); }
+  .convo .t { display:flex; align-items:center; gap:10px; min-width:0; }
+  .convo .t span { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .convo .open { width:7px; height:7px; border-radius:99px; background:var(--ok); flex-shrink:0; box-shadow:0 0 0 3px rgba(63,185,80,.15); }
+  .convo .when { color:var(--t3); font-size:12px; font-variant-numeric:tabular-nums; }
+  .convo .act { opacity:0; transition:opacity .12s; }
+  .convo:hover .act, .convo:focus-within .act { opacity:1; }
+  .dim { font-family:var(--mono); font-size:12px; color:var(--t3); }
+
+  .notice { display:flex; align-items:center; gap:12px; padding:12px 14px; border-radius:8px; background:var(--acc-soft); border:1px solid var(--acc-line); font-size:13px; }
+  .notice .msg { flex:1; color:var(--t1); }
+
+  /* live */
+  .live-wrap { display:flex; flex-direction:column; gap:16px; height:100%; }
+  .strip { display:flex; align-items:center; gap:12px; height:36px; }
+  .strip .chip { font-family:var(--mono); font-size:12px; color:var(--acc-hi); background:var(--acc-soft); border:1px solid var(--acc-line); border-radius:6px; padding:2px 8px; }
+  .strip .st { display:flex; align-items:center; gap:6px; font-size:12px; color:var(--t2); }
+  .strip .st i { width:7px; height:7px; border-radius:99px; background:var(--ok); }
+  .strip .br { font-family:var(--mono); font-size:12px; color:var(--t3); }
+  .strip .id { margin-left:auto; font-family:var(--mono); font-size:11px; color:var(--t3); }
+  .term { flex:1; min-height:360px; background:var(--inset); border:1px solid var(--hair); border-radius:12px; padding:20px 24px; font-family:var(--mono); font-size:12.5px; line-height:1.6; color:var(--t2); white-space:pre-wrap; overflow:hidden; }
+  .term b { color:var(--t1); font-weight:500; } .term .p { color:var(--acc-hi); }
+
+  /* transcript */
+  .pane { display:flex; flex-direction:column; gap:24px; }
+  .pane-head { display:flex; align-items:center; gap:12px; }
+  .pane-head .title { font-weight:600; font-size:16px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .pane-head .when { color:var(--t3); font-size:12px; }
+  .pane-head .spacer { flex:1; }
+  .bubbles { display:flex; flex-direction:column; gap:16px; }
+  .bub { max-width:80%; display:flex; flex-direction:column; gap:6px; }
+  .bub .who { font-size:11px; letter-spacing:.06em; text-transform:uppercase; color:var(--t3); font-weight:600; }
+  .bub .txt { border-radius:12px; padding:12px 16px; font-size:13px; line-height:1.55; }
+  .bub.me { align-self:flex-end; } .bub.me .txt { background:var(--acc-soft); border:1px solid var(--acc-line); border-top-right-radius:4px; }
+  .bub.ai .txt { background:var(--panel); border:1px solid var(--hair); border-top-left-radius:4px; color:var(--t2); }
+  .bub .txt h4 { margin:0 0 6px; font-size:13px; color:var(--t1); } .bub .txt ul { margin:6px 0 0; padding-left:18px; } .bub .txt p + p { margin-top:8px; }
+
+  /* quick overlay */
+  .overlay { position:absolute; inset:0; display:flex; justify-content:center; padding:32px 40px; background:rgba(9,11,16,.6); overflow:auto; }
+  .qcard { width:560px; align-self:flex-start; background:var(--panel); border:1px solid var(--hair-strong); border-radius:12px; padding:24px 28px 20px; display:flex; flex-direction:column; gap:24px; box-shadow:0 24px 64px rgba(0,0,0,.5); }
+  .tabs { display:flex; gap:4px; border-bottom:1px solid var(--hair); }
+  .tab { padding:0 12px 10px; font-size:13px; font-weight:500; color:var(--t3); border-bottom:2px solid transparent; margin-bottom:-1px; }
+  .tab[aria-selected="true"] { color:var(--t1); border-color:var(--acc); }
+  .qhead { display:flex; flex-direction:column; gap:4px; }
+  .qhead h2 { font-size:16px; font-weight:600; }
+  .qhead p { color:var(--t2); font-size:13px; }
+  .fields { display:flex; flex-direction:column; gap:16px; }
+  .field { display:flex; flex-direction:column; gap:8px; }
+  .field label { font-size:12px; font-weight:500; color:var(--t2); }
+  .field label small { color:var(--t3); font-weight:400; margin-left:6px; }
+  .in { height:32px; width:100%; padding:0 10px; border-radius:8px; border:1px solid var(--hair); background:var(--inset); color:var(--t1); font:13px var(--sans); }
+  .in::placeholder { color:var(--t4); }
+  textarea.in { height:auto; padding:8px 10px; resize:vertical; line-height:1.5; }
+  .tickets { display:flex; flex-direction:column; gap:8px; }
+  .trow { display:grid; grid-template-columns:20px 1fr 20px; gap:8px; align-items:start; }
+  .trow .n { font-family:var(--mono); font-size:12px; color:var(--t3); padding-top:8px; text-align:right; }
+  .trow .x { color:var(--t4); padding-top:6px; } .trow .x:hover { color:var(--danger); }
+  .addrow { align-self:flex-start; color:var(--acc-hi); font-size:13px; padding:0; }
+  .foot { display:flex; align-items:center; gap:12px; padding-top:16px; border-top:1px solid var(--hair-soft); }
+  .foot .sum { flex:1; font-family:var(--mono); font-size:12px; color:var(--t3); display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+  .foot .sum b { color:var(--t2); font-weight:500; }
+
+  /* draft */
+  .bar { display:flex; align-items:center; gap:16px; padding:16px 20px; background:var(--panel); border:1px solid var(--hair); border-radius:12px; }
+  .bar .copy { flex:1; display:flex; flex-direction:column; gap:2px; }
+  .bar .eyebrow { font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--acc-hi); font-weight:600; }
+  .bar h2 { font-size:15px; font-weight:600; }
+  .bar p { color:var(--t2); font-size:13px; }
+  .draft { display:flex; flex-direction:column; gap:16px; padding:8px 4px; }
+  .draft .one { font-size:14px; color:var(--t2); max-width:60ch; }
+  .draft .brief { color:var(--t2); font-size:13.5px; line-height:1.6; max-width:65ch; display:flex; flex-direction:column; gap:10px; padding-top:8px; border-top:1px solid var(--hair-soft); }
+  .draft .brief h3 { font-size:13px; color:var(--t1); font-weight:600; } .draft .brief ul { margin:0; padding-left:18px; }
+
+  /* delete dialog */
+  .modal { position:absolute; inset:0; background:rgba(9,11,16,.7); display:flex; align-items:flex-start; justify-content:center; padding-top:64px; }
+  .dlg { width:460px; background:var(--panel); border:1px solid var(--hair-strong); border-radius:12px; box-shadow:0 24px 64px rgba(0,0,0,.6); display:flex; flex-direction:column; }
+  .dlg .dh { display:flex; align-items:center; padding:16px 20px; border-bottom:1px solid var(--hair); font-weight:600; color:var(--danger); }
+  .dlg .dh .x { margin-left:auto; color:var(--t3); }
+  .dlg .db { padding:20px; display:flex; flex-direction:column; gap:16px; }
+  .dlg p { color:var(--t2); font-size:13px; } .dlg p b { color:var(--t1); }
+  .dlg .df { display:flex; justify-content:flex-end; gap:8px; padding:0 20px 20px; }
+  .backdrop-dim { filter:blur(1px); opacity:.55; pointer-events:none; }
+  [hidden] { display:none !important; }
+  @media (prefers-reduced-motion: reduce) { * { transition:none !important; } }
+</style>
+
+<div class="picker" role="tablist" aria-label="Screens">
+  <span class="eyebrow">Screen</span>
+  <button role="tab" data-s="rest" aria-selected="true">Project at rest</button>
+  <button role="tab" data-s="menu">Landing menu</button>
+  <button role="tab" data-s="live">Live chat</button>
+  <button role="tab" data-s="back">Back to list (chat open)</button>
+  <button role="tab" data-s="newlive">New while live</button>
+  <button role="tab" data-s="transcript">Transcript</button>
+  <button role="tab" data-s="quick">Quick change</button>
+  <button role="tab" data-s="park">Park a draft</button>
+  <button role="tab" data-s="draft">Draft body</button>
+  <button role="tab" data-s="delete">Delete</button>
+</div>
+<p class="note" id="note"></p>
+
+<div class="frame">
+<div class="shell">
+  <div class="titlebar">
+    <span class="brand">run<span>castle</span></span><span class="crumb">/</span><span>runcastle-demo</span>
+    <div class="search">🔍 Search or jump to… <span class="kbd">Ctrl+K</span></div>
+  </div>
+  <div class="main">
+    <nav class="rail" aria-label="Features">
+      <div class="rail-head"><span class="eyebrow">Features</span><button class="door">⚡ Quick</button><button class="door new">＋ New</button></div>
+      <div class="pinned sel" id="pinned"><span>▣</span><span>runcastle-demo</span><span class="tag" id="pinned-tag">PROJECT</span></div>
+      <div class="lane"><div class="eyebrow needs">Needs you · 2</div>
+        <div class="row"><i class="dot w"></i><span><span class="name">Realtime team collaboration</span><br><span class="slug">realtime-team-collaboration</span></span><span class="meta">0/10</span></div>
+        <div class="row"><i class="dot b"></i><span><span class="name">Entry tags</span><br><span class="slug">entry-tags</span></span><span class="meta">2/2</span></div>
+      </div>
+      <div class="lane"><div class="eyebrow prog">In progress · 2</div>
+        <div class="row"><i class="dot"></i><span><span class="name">Kickoff probe (throwaway)</span><br><span class="slug">kickoff-probe-throwaway</span></span><span class="meta">34d</span></div>
+        <div class="row"><i class="dot w"></i><span><span class="name">Weekly digest email</span><br><span class="slug">weekly-digest-email</span></span><span class="meta">42d</span></div>
+      </div>
+      <div class="lane" id="draftlane" hidden><div class="eyebrow drafts">Drafts · 1</div>
+        <div class="row sel"><i class="dot o"></i><span><span class="name">Slack alerts on failed runs</span><br><span class="slug">slack-alerts-on-failed-runs</span></span><span class="meta">Draft</span></div>
+      </div>
+      <div class="lane"><div class="eyebrow ship">Shipped · 1</div>
+        <div class="row"><i class="dot g"></i><span><span class="name">mood-filter</span><br><span class="slug">mood-filter</span></span><span class="meta">✓</span></div>
+      </div>
+    </nav>
+
+    <section class="ws" id="ws">
+
+      <!-- REST -->
+      <div class="screen ws-inner" data-screen="rest menu newlive back">
+        <div class="head">
+          <div class="kick"><span class="pill">Project</span><h1>runcastle-demo</h1></div>
+          <p class="line">Chats run on <code>runcastle/project</code> and land on <code>main</code>.</p>
+        </div>
+
+        <div class="notice" data-only="newlive">
+          <span class="msg">A chat is already open.</span>
+          <button class="btn xs">Open it</button>
+          <button class="btn xs solid">End it and start new</button>
+        </div>
+
+        <div class="card talk">
+          <div class="copy"><h2>Talk it through</h2><p>Bring a raw idea; the chat checks it against what's built and cuts it into features.</p></div>
+          <div class="actions">
+            <button class="bmenu" id="bm" aria-haspopup="menu">landing on main <span class="caret">▾</span>
+              <div class="menu" data-only="menu" role="menu">
+                <div class="lbl">Detected main line</div>
+                <div class="item on">main <span>✓</span></div>
+                <div class="lbl">Other local branches</div>
+                <div class="item">develop</div>
+                <div class="item">release/1.2</div>
+                <div class="item">fix/ship-path-bugs</div>
+              </div>
+            </button>
+            <button class="btn solid">New chat</button>
+          </div>
+        </div>
+
+        <div class="section">
+          <span class="eyebrow">Conversations</span>
+          <div class="convos">
+            <button class="convo" data-only="back newlive"><span class="t"><i class="open"></i><span>Untitled</span></span><span class="when">just now</span><span class="act btn xs">Open</span></button>
+            <button class="convo"><span class="t"><span>I'm thinking of making the whole workflow of runcastle custom…</span></span><span class="when">Aug 24</span><span class="act btn xs">Reopen</span></button>
+            <button class="convo"><span class="t"><span>Codex burns on the ChatGPT subscription</span></span><span class="when">Aug 22</span><span class="act btn xs">Reopen</span></button>
+            <button class="convo"><span class="t"><span>Read the audit handoff and turn it into features</span></span><span class="when">Aug 21</span><span class="act btn xs">Reopen</span></button>
+            <button class="convo"><span class="t"><span>I'm getting: codex exited with code 127 when I try to run…</span></span><span class="when">Aug 20</span><span class="act btn xs">Reopen</span></button>
+          </div>
+        </div>
+      </div>
+
+      <!-- LIVE -->
+      <div class="screen live-wrap" data-screen="live" hidden>
+        <div class="strip">
+          <button class="btn ghost xs">← Conversations</button>
+          <span class="chip">Untitled</span>
+          <span class="st"><i></i>live</span>
+          <span class="br">→ main</span>
+          <span class="id">f5b41d9e</span>
+          <button class="btn xs">End session</button>
+        </div>
+        <div class="term"><b>●</b> Hi — this is the runcastle-demo project session.
+
+  What are we cutting into features today? Bring the idea however it's shaped — a
+  rough thought, a bug, a "did we ever…" question — and I'll check it against
+  what's shipped and in flight before proposing a cut.
+
+<span class="p">❯</span> ▍</div>
+      </div>
+
+      <!-- TRANSCRIPT -->
+      <div class="screen ws-inner pane" data-screen="transcript" hidden>
+        <div class="pane-head">
+          <button class="btn ghost xs">← Conversations</button>
+          <span class="title">I'm thinking of making the whole workflow of runcastle custom…</span>
+          <span class="when">Aug 24</span>
+          <span class="spacer"></span>
+          <button class="btn">Reopen</button>
+        </div>
+        <div class="bubbles">
+          <div class="bub ai"><span class="who">Claude</span><div class="txt"><p>Morning! This is the runcastle project session — the intake desk.</p><p><b>What are we cutting into features today?</b></p></div></div>
+          <div class="bub me"><span class="who">You</span><div class="txt">I'm thinking of making the whole workflow of runcastle custom. Making it a lot more flexible. For example, there can be a canvas workflow editor.</div></div>
+          <div class="bub ai"><span class="who">Claude</span><div class="txt"><p>That's a big strategic question — let me look at the charter and what's settled before I weigh in.</p></div></div>
+          <div class="bub ai"><span class="who">Claude</span><div class="txt"><h4>What's already decided</h4><p>The charter already has an opinion on this: the pipeline is fixed on purpose so the gates mean the same thing in every project.</p><ul><li>Decision 3 — the six phases are the product</li><li>Decision 9 — skills are the customisation surface</li></ul></div></div>
+        </div>
+      </div>
+
+      <!-- QUICK -->
+      <div class="screen" data-screen="quick park" hidden>
+        <div class="ws-inner backdrop-dim" aria-hidden="true">
+          <div class="head"><div class="kick"><span class="pill">Project</span><h1>runcastle-demo</h1></div><p class="line">Chats run on <code>runcastle/project</code> and land on <code>main</code>.</p></div>
+          <div class="card talk"><div class="copy"><h2>Talk it through</h2><p>Bring a raw idea; the chat checks it against what's built and cuts it into features.</p></div></div>
+        </div>
+        <div class="overlay">
+          <div class="qcard" role="dialog" aria-label="Quick">
+            <div class="tabs" role="tablist"><button class="tab" data-tab="quick" role="tab">Quick change</button><button class="tab" data-tab="park" role="tab">Park a draft</button></div>
+
+            <div data-only="quick" style="display:contents">
+              <div class="qhead"><h2>What needs changing?</h2><p>Each sentence becomes a ticket; you review, then burn.</p></div>
+              <div class="fields">
+                <div class="field"><label>Title</label><input class="in" value="Darker empty state"></div>
+                <div class="field"><label>Changes <small>Enter for the next one · ⌘Enter to create</small></label>
+                  <div class="tickets">
+                    <div class="trow"><span class="n">1</span><textarea class="in" rows="2">the run chip stays grey after a cancelled run; expected amber</textarea><button class="x" aria-label="Remove ticket 1">×</button></div>
+                    <div class="trow"><span class="n">2</span><textarea class="in" rows="2" placeholder="Another change…"></textarea><button class="x" aria-label="Remove ticket 2">×</button></div>
+                  </div>
+                  <button class="addrow">+ Add another</button>
+                </div>
+              </div>
+              <div class="foot">
+                <span class="sum"><b>feature/darker-empty-state</b> · <button class="bmenu inline">from main <span class="caret">▾</span></button> · 1 ticket + review</span>
+                <button class="btn ghost">Cancel</button><button class="btn solid">Create feature</button>
+              </div>
+            </div>
+
+            <div data-only="park" style="display:contents">
+              <div class="qhead"><h2>Park it for later</h2><p>A row and a title. Nothing is cut until you Start it.</p></div>
+              <div class="fields">
+                <div class="field"><label>Title</label><input class="in" value="Slack alerts on failed runs"></div>
+                <div class="field"><label>One-liner <small>optional</small></label><input class="in" value="Post to #builds when a burn fails, with the ticket and the last log lines"></div>
+                <div class="field"><label>Notes <small>optional — becomes the brief</small></label><textarea class="in" rows="4">Ops asked for this twice. Should reuse the notify toggle in the status bar rather than a new settings page. Out of scope: email.</textarea></div>
+              </div>
+              <div class="foot">
+                <span class="sum"><b>feature/slack-alerts-on-failed-runs</b> · draft</span>
+                <button class="btn ghost">Cancel</button><button class="btn solid">Park it</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- DRAFT -->
+      <div class="screen ws-inner" data-screen="draft delete" hidden>
+        <div class="head"><div class="kick"><span class="pill parked">Draft</span><h1>Slack alerts on failed runs</h1></div><p class="line"><code>feature/slack-alerts-on-failed-runs</code></p></div>
+        <div class="bar">
+          <div class="copy"><span class="eyebrow">Next step</span><h2>Start this feature</h2><p>Cuts the branch, commits the brief, opens the grill session.</p></div>
+          <button class="bmenu">from main <span class="caret">▾</span></button>
+          <button class="btn solid">Start</button>
+        </div>
+        <div class="draft">
+          <p class="one">Post to #builds when a burn fails, with the ticket and the last log lines.</p>
+          <div class="brief">
+            <p>Ops asked for this twice. Should reuse the notify toggle in the status bar rather than a new settings page.</p>
+            <h3>Out of scope</h3><ul><li>Email</li></ul>
+          </div>
+        </div>
+      </div>
+
+      <!-- DELETE -->
+      <div class="screen modal" data-screen="delete" hidden>
+        <div class="dlg" role="dialog" aria-label="Delete feature slack-alerts-on-failed-runs">
+          <div class="dh">Delete feature <button class="x" aria-label="Close">✕</button></div>
+          <div class="db">
+            <p>Permanently delete <b>Slack alerts on failed runs</b>? Its worktree, branches, running agent and all runcastle data go with it; committed docs stay in git history. <b>This cannot be undone.</b></p>
+            <div class="field"><label>Type <code>slack-alerts-on-failed-runs</code> to confirm</label><input class="in mono" placeholder="slack-alerts-on-failed-runs" style="font-family:var(--mono)"></div>
+          </div>
+          <div class="df"><button class="btn ghost">Cancel</button><button class="btn danger" disabled>Delete feature</button></div>
+        </div>
+      </div>
+
+    </section>
+  </div>
+  <div class="statusbar"><span>⎇ feature/kickoff-probe-throwaway</span><span>docker</span><span class="r"><span>notify off</span><span>0 runs</span><span class="ok">● live</span><span class="ok">● server ok</span></span></div>
+</div>
+</div>
+
+<script>
+  const NOTES = {
+    rest: "<b>Decision 6.</b> Header line replaces the consequence sentence, branch chip and landing note. One-line Talk card. Rows open the transcript; Reopen appears on hover. The 'what every chat has' card is gone.",
+    menu: "<b>Decision 3.</b> The landing branch is chosen where it applies — beside New chat. Detected main is the default; noise branches (runcastle/*, worktree-*, afk/*) are not offered.",
+    live: "<b>Decision 7.</b> Terminal fills the body. Strip: back · title · live · → main (static) · id · End session. No control on screen that cannot act.",
+    back: "<b>Decision 7.</b> Left the chat without ending it: it sits at the top with an open dot and an Open action that re-shows the running terminal.",
+    newlive: "<b>Decision 12.</b> Rail New while a chat is live: no toast. The one-at-a-time rule is shown on the card with the two ways out.",
+    transcript: "<b>Decision 11.</b> Read-only pane; assistant bubbles render Markdown; header carries back · title · date · Reopen.",
+    quick: "<b>Decision 8.</b> No paragraphs. Ticket rows as before. The base picker lives in the footer summary line; the button says Create feature.",
+    park: "<b>Decision 8.</b> Park gains Notes, stored as the brief, so a parked draft is never empty.",
+    draft: "<b>Decision 10.</b> The bar owns Start and the base picker (always visible). The body is the idea: one-liner and the brief as Markdown.",
+    delete: "<b>Decision 11.</b> Same type-the-slug arming, on the Dialog primitive; two-sentence lead."
+  };
+  const tabs = [...document.querySelectorAll('.picker [role=tab]')];
+  const screens = [...document.querySelectorAll('.screen')];
+  const onlys = [...document.querySelectorAll('[data-only]')];
+  function show(s){
+    tabs.forEach(t=>t.setAttribute('aria-selected', t.dataset.s===s));
+    screens.forEach(el=>{ el.hidden = !el.dataset.screen.split(' ').includes(s); });
+    onlys.forEach(el=>{ el.hidden = !el.dataset.only.split(' ').includes(s); });
+    document.querySelectorAll('.tab').forEach(t=>t.setAttribute('aria-selected', t.dataset.tab===s));
+    document.getElementById('note').innerHTML = NOTES[s];
+    const live = ['live','back','newlive'].includes(s);
+    const tag = document.getElementById('pinned-tag');
+    tag.className = live ? 'live' : 'tag'; tag.textContent = live ? '◌ live' : 'PROJECT';
+    document.getElementById('pinned').classList.toggle('sel', !['draft','delete'].includes(s));
+    document.getElementById('draftlane').hidden = !['draft','delete','park'].includes(s);
+    try { localStorage.setItem('cd-screen', s); } catch {}
+  }
+  tabs.forEach(t=>t.addEventListener('click',()=>show(t.dataset.s)));
+  document.querySelectorAll('.tab').forEach(t=>t.addEventListener('click',()=>show(t.dataset.tab)));
+  document.getElementById('bm').addEventListener('click',(e)=>{ e.stopPropagation(); show('menu'); });
+  let start='rest'; try { start = localStorage.getItem('cd-screen') || 'rest'; } catch {}
+  show(NOTES[start] ? start : 'rest');
+</script>

@@ -561,7 +561,10 @@ export async function sandcastleImageProbe(
           status: 'stale',
           severity: 'error',
           detail: `${imageName} built ${date(created)}, burner Dockerfile changed ${date(dockerfileChanged)} — rebuild`,
-          fix: 'Open Settings → AFK burns and click "Rebuild image".',
+          // The wording names the settings page the web turns into a link
+          // (flow-redesign-settings decision 9), so this fix lands the reader on
+          // the image row rather than telling them to go looking for it.
+          fix: 'Open Settings → Burns (Rebuild image).',
         }
       }
       return { id, label, tier: 2, status: 'ok', severity: 'error', detail: `${imageName} present` }

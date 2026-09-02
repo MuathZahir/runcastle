@@ -1,0 +1,557 @@
+<title>Runcastle Settings</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+  :root{
+    --bg:#090b10;--panel:#0e1117;--panel-2:#0b0e14;--panel-3:#12151d;--inset:#07080b;
+    --hair:#1c2230;--hair-soft:#151a26;--hair-strong:#2a3242;
+    --t1:#dde3ed;--t2:#96a0b0;--t3:#5f6a7a;--t4:#3a4354;
+    --acc:#7c6cf6;--acc-hi:#a49bff;--acc-2:#8f80f8;--acc-ink:#0d0722;--acc-soft:#161329;--acc-line:#3d3670;
+    --ok:#3fb950;--warn:#d7a94a;--danger:#f4594e;--drive:#58a6ff;
+    --sans:"Inter",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    --mono:"JetBrains Mono","Cascadia Code",Consolas,ui-monospace,monospace;
+    --r-sm:6px;--r-md:8px;--r-lg:12px;--ctl:32px;
+    --ring:0 0 0 2px var(--bg),0 0 0 4px rgba(124,108,246,.5);
+    --shadow:0 24px 70px -24px rgba(0,0,0,.85),0 8px 24px -12px rgba(0,0,0,.6);
+    color-scheme:dark;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--t1);font:14px/1.5 var(--sans);min-height:100vh;overflow:hidden}
+  button,input,select,textarea{font:inherit;color:inherit}
+  :focus-visible{outline:none;box-shadow:var(--ring)}
+  .mono{font-family:var(--mono)}
+
+  /* ---- mock shell behind the dialog ---- */
+  .shell{position:fixed;inset:0;display:grid;grid-template-rows:44px 1fr;filter:blur(1.5px) brightness(.55);pointer-events:none}
+  .tb{background:var(--panel);border-bottom:1px solid var(--hair);display:flex;align-items:center;gap:14px;padding:0 14px;color:var(--t2);font-size:12px}
+  .tb b{color:var(--t1);font-weight:600;letter-spacing:.02em}
+  .cols{display:grid;grid-template-columns:252px 1fr 300px}
+  .cols>div{border-right:1px solid var(--hair);padding:18px 16px}
+  .cols>div:last-child{border:0}
+  .ph{height:10px;border-radius:999px;background:var(--panel-3);margin:10px 0}
+  .ph.w1{width:60%}.ph.w2{width:85%}.ph.w3{width:40%}
+  .backdrop{position:fixed;inset:0;background:rgba(3,4,8,.55)}
+
+  /* ---- toast trigger (demo of a deep link) ---- */
+  .demo{position:fixed;right:16px;top:56px;z-index:5;display:flex;flex-direction:column;gap:8px;max-width:340px}
+  .demo .card{background:var(--panel);border:1px solid var(--hair);border-left:3px solid var(--danger);border-radius:var(--r-md);padding:10px 12px;font-size:12px;color:var(--t2);box-shadow:var(--shadow)}
+  .demo .card a{color:var(--acc-hi);cursor:pointer;text-decoration:underline;text-underline-offset:2px}
+  .demo .hint{font-size:11px;color:var(--t3);letter-spacing:.04em;text-transform:uppercase}
+
+  /* ---- dialog ---- */
+  .dlg{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);width:min(940px,calc(100vw - 32px));height:min(700px,calc(100vh - 48px));
+    background:var(--panel);border:1px solid var(--hair);border-radius:var(--r-lg);box-shadow:var(--shadow);display:grid;grid-template-columns:184px 1fr;overflow:hidden}
+  .rail{background:var(--panel-2);border-right:1px solid var(--hair);display:flex;flex-direction:column;padding:14px 10px;gap:6px}
+  .rail h1{font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--t3);margin:0 0 6px 8px}
+  .filter{position:relative;margin-bottom:6px}
+  .filter input{width:100%;height:30px;background:var(--inset);border:1px solid var(--hair);border-radius:var(--r-sm);padding:0 8px 0 28px;font-size:12px;color:var(--t1)}
+  .filter input::placeholder{color:var(--t3)}
+  .filter svg{position:absolute;left:9px;top:8px;color:var(--t3)}
+  .nav{display:flex;align-items:center;gap:9px;height:32px;padding:0 8px;border-radius:var(--r-sm);border:0;background:transparent;color:var(--t2);text-align:left;cursor:pointer;width:100%}
+  .nav svg{flex:none;color:var(--t3)}
+  .nav:hover{background:var(--panel-3);color:var(--t1)}
+  .nav[aria-current=page]{background:var(--acc-soft);color:var(--t1)}
+  .nav[aria-current=page] svg{color:var(--acc-hi)}
+  .nav .n{margin-left:auto;font-size:11px;color:var(--t3);font-variant-numeric:tabular-nums}
+  .nav .n:empty{display:none}
+  .rail .sp{flex:1}
+  .rail .proj{font-size:11px;color:var(--t3);padding:8px;border-top:1px solid var(--hair-soft)}
+  .rail .proj b{display:block;color:var(--t2);font-weight:500;font-family:var(--mono);font-size:12px;margin-top:2px}
+
+  .pane{display:grid;grid-template-rows:48px minmax(0,1fr);min-width:0;min-height:0}
+  .head{display:flex;align-items:center;padding:0 12px 0 22px;border-bottom:1px solid var(--hair);gap:10px}
+  .head h2{font-size:16px;font-weight:600;margin:0;letter-spacing:-.01em}
+  .head .sub{color:var(--t3);font-size:12px}
+  .x{margin-left:auto;width:28px;height:28px;border:0;background:transparent;border-radius:var(--r-sm);color:var(--t3);cursor:pointer;display:grid;place-items:center}
+  .x:hover{background:var(--panel-3);color:var(--t1)}
+  .body{overflow-y:auto;overflow-x:hidden;min-height:0;padding:18px 22px 28px;scroll-behavior:smooth}
+  .page{display:none;flex-direction:column;gap:22px}
+  .page.on{display:flex}
+
+  .grp{display:flex;flex-direction:column;gap:10px}
+  .grp>h3{font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--t3);margin:0;display:flex;align-items:center;gap:8px}
+  .grp>h3 .line{flex:1;height:1px;background:var(--hair-soft)}
+  .note{font-size:12px;color:var(--t3);margin:-4px 0 0}
+  .note.warn{color:var(--warn)}
+
+  /* field row */
+  .f{display:grid;grid-template-columns:210px 1fr;gap:6px 16px;align-items:start;padding:8px 0;border-bottom:1px solid var(--hair-soft)}
+  .f:last-child{border-bottom:0}
+  .f.hide{display:none}
+  .lbl{display:flex;align-items:center;gap:6px;min-height:var(--ctl);font-size:13px;font-weight:500;color:var(--t2)}
+  .lbl .i{width:16px;height:16px;border-radius:50%;border:1px solid var(--hair-strong);color:var(--t3);font-size:10px;display:grid;place-items:center;cursor:default;background:transparent;padding:0;position:relative}
+  .lbl .i:hover{color:var(--acc-hi);border-color:var(--acc-line)}
+  .tip{position:absolute;left:0;top:22px;z-index:3;width:300px;background:var(--panel-3);border:1px solid var(--hair-strong);border-radius:var(--r-md);padding:8px 10px;font-size:12px;font-weight:400;line-height:1.5;color:var(--t2);box-shadow:var(--shadow);display:none;text-align:left}
+  .i:hover .tip,.i:focus-visible .tip{display:block}
+  .ctl{display:flex;flex-direction:column;gap:6px;min-width:0}
+  .row{display:flex;align-items:center;gap:8px;min-width:0}
+  .in,.sel,.ta{background:var(--inset);border:1px solid var(--hair);border-radius:var(--r-sm);height:var(--ctl);padding:0 10px;color:var(--t1);width:100%;min-width:0}
+  .in:hover,.sel:hover,.ta:hover{border-color:var(--hair-strong)}
+  .in::placeholder,.ta::placeholder{color:var(--t4)}
+  .in.ghost::placeholder{color:var(--t3)}
+  .in[disabled]{color:var(--t3);background:var(--panel-2);cursor:not-allowed}
+  .in.num{width:96px;font-family:var(--mono);font-variant-numeric:tabular-nums}
+  .in.cmd,.ta{font-family:var(--mono);font-size:12.5px}
+  .ta{height:auto;min-height:64px;padding:7px 10px;resize:vertical;line-height:1.5}
+  .sel{appearance:none;background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'><path d='M1 1l4 4 4-4' fill='none' stroke='%235f6a7a' stroke-width='1.5'/></svg>");background-repeat:no-repeat;background-position:right 10px center;padding-right:26px;cursor:pointer}
+  .unit{font-size:12px;color:var(--t3);white-space:nowrap}
+  .help{font-size:12px;color:var(--t3)}
+  .saved{font-size:11px;color:var(--ok);opacity:0;transition:opacity .4s;margin-left:2px}
+  .saved.on{opacity:1}
+  .err{font-size:12px;color:var(--danger)}
+  .restart{display:none;font-size:12px;color:var(--warn);align-items:center;gap:6px}
+  .restart.on{display:flex}
+
+  /* chips */
+  .chip{display:inline-flex;align-items:center;gap:5px;height:20px;padding:0 7px;border-radius:999px;font-size:11px;font-weight:500;letter-spacing:.01em;border:1px solid var(--hair);color:var(--t2);background:var(--panel-2);white-space:nowrap;cursor:default}
+  .chip.env{color:var(--t3)}
+  .chip.proj{border-color:var(--acc-line);color:var(--acc-hi);background:var(--acc-soft)}
+  .chip.prep{color:var(--t2)}
+  .chip.prep .d{width:6px;height:6px;border-radius:50%;background:var(--ok)}
+  .chip.prep .d.u{background:var(--t4)}
+  .chip.stale{border-color:#4a3c14;color:var(--warn)}
+  .chip.rt{font-family:var(--mono);font-weight:400}
+  .chip.rt.cc{color:#c7a2ff;border-color:#3a2c55}
+  .chip.rt.cx{color:#8ad3c4;border-color:#1e3f3a}
+  .chip.btn{cursor:pointer}
+  .chip.btn:hover{border-color:var(--hair-strong);color:var(--t1)}
+  .link{background:none;border:0;padding:0;color:var(--acc-hi);font-size:12px;cursor:pointer;white-space:nowrap;text-decoration:underline;text-underline-offset:2px;text-decoration-color:var(--acc-line)}
+  .link:hover{text-decoration-color:var(--acc-hi)}
+
+  /* evidence popover */
+  .pop{position:relative}
+  .pop .card{display:none;position:absolute;z-index:4;left:0;top:26px;width:420px;max-height:260px;overflow:auto;background:var(--panel-3);border:1px solid var(--hair-strong);border-radius:var(--r-md);box-shadow:var(--shadow);padding:10px 12px;font-size:12px;color:var(--t2)}
+  .pop.open .card{display:block}
+  .pop .card h4{margin:0 0 6px;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--t3);font-weight:600}
+  .pop .card pre{margin:0;white-space:pre-wrap;font-family:var(--mono);font-size:11.5px;line-height:1.5;color:var(--t2)}
+
+  /* buttons */
+  .b{height:var(--ctl);padding:0 12px;border-radius:var(--r-md);border:1px solid var(--hair);background:transparent;color:var(--t1);cursor:pointer;font-size:13px;font-weight:500;white-space:nowrap;display:inline-flex;align-items:center;gap:6px}
+  .b:hover{border-color:var(--hair-strong);background:var(--panel-3)}
+  .b.solid{background:var(--acc);border-color:var(--acc);color:var(--acc-ink)}
+  .b.solid:hover{background:var(--acc-2)}
+  .b.sm{height:26px;padding:0 9px;font-size:12px;border-radius:var(--r-sm)}
+  .b[disabled]{opacity:.5;cursor:not-allowed}
+
+  /* models page */
+  .tbl{border:1px solid var(--hair);border-radius:var(--r-md);overflow:hidden}
+  .dcard{display:grid;grid-template-columns:auto 1fr;gap:4px 18px;align-items:center;padding:12px 14px;border:1px solid var(--acc-line);background:var(--acc-soft);border-radius:var(--r-md)}
+  .dcard .t{font-size:13px;font-weight:600;color:var(--t1)}
+  .dcard .s{grid-column:1/3;font-size:12px;color:var(--t2)}
+  .dcard .sel{max-width:340px;font-family:var(--mono);font-size:12.5px;border-color:var(--acc-line);background:var(--inset)}
+  .tr{display:grid;grid-template-columns:168px 86px minmax(140px,1fr) 118px 92px 24px;gap:8px;align-items:center;padding:6px 10px;min-height:40px;border-top:1px solid var(--hair-soft);font-size:12.5px}
+  .tr:first-child{border-top:0}
+  .tr.h{min-height:30px;padding:0 10px;background:var(--panel-2);color:var(--t3);font-size:11px;letter-spacing:.06em;text-transform:uppercase;font-weight:600}
+  .tr.hide{display:none}
+  .tr .rad{height:22px;padding:0 8px;border-radius:999px;border:1px solid transparent;background:transparent;color:var(--t3);font-size:11px;font-weight:500;cursor:pointer;white-space:nowrap;opacity:0;justify-self:start}
+  .tr:hover .rad,.tr .rad:focus-visible{opacity:1;border-color:var(--hair)}
+  .tr .rad:hover{color:var(--acc-hi);border-color:var(--acc-line)}
+  .tr.dflt .rad{opacity:1;cursor:default;color:var(--acc-hi);border-color:var(--acc-line);background:var(--acc-soft);letter-spacing:.06em;text-transform:uppercase;font-size:10.5px;font-weight:600}
+  .tr .id{font-family:var(--mono);color:var(--t1);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .tr.dflt .id{color:var(--acc-hi)}
+  .tr .nt{height:26px;background:transparent;border:1px solid transparent;border-radius:var(--r-sm);padding:0 8px;width:100%;color:var(--t1);font-size:12.5px}
+  .tr .nt::placeholder{color:var(--t4);font-style:italic}
+  .tr .nt:hover{border-color:var(--hair);background:var(--inset)}
+  .tr .nt:focus{border-color:var(--acc-line);background:var(--inset)}
+  .tr .used{font-size:11px;color:var(--t3);line-height:1.3}
+  .tr .used b{color:var(--t2);font-weight:500}
+  .tr .rm{width:24px;height:24px;border:0;background:transparent;color:var(--t4);border-radius:var(--r-sm);cursor:pointer;display:grid;place-items:center}
+  .tr .rm:hover{color:var(--danger);background:var(--panel-3)}
+  .tr.add{background:var(--panel-2)}
+  .tr.add .in{height:26px;font-size:12.5px}
+  .tr.add .sel{height:26px;font-size:12px}
+  .tr.add .b{grid-column:5/7;justify-self:end}
+  /* per-step table */
+  .stt{border:1px solid var(--hair);border-radius:var(--r-md);overflow:hidden}
+  .stg{display:flex;align-items:center;gap:8px;padding:0 12px;height:30px;background:var(--panel-2);border-top:1px solid var(--hair-soft);font-size:11px;letter-spacing:.06em;text-transform:uppercase;font-weight:600;color:var(--t3)}
+  .stg:first-child{border-top:0}
+  .stg .c{margin-left:auto;font-weight:500;letter-spacing:0;text-transform:none;color:var(--t4)}
+  .st{display:grid;grid-template-columns:1fr 250px 84px 24px;align-items:center;gap:12px;padding:6px 12px;min-height:44px;border-top:1px solid var(--hair-soft)}
+  .st.hide{display:none}
+  .st .k{font-size:13px;font-weight:500;color:var(--t1)}
+  .st .k small{display:block;font-size:11.5px;font-weight:400;color:var(--t3);line-height:1.3;margin-top:1px}
+  .st .sel{height:30px;font-size:12.5px;font-family:var(--mono)}
+  .st .sel.unset{color:var(--t3);font-family:var(--sans)}
+  .st .rtc{justify-self:start}
+  .st .rs{width:22px;height:22px;border:0;background:transparent;color:var(--t4);border-radius:var(--r-sm);cursor:pointer;display:grid;place-items:center;visibility:hidden}
+  .st.set .rs{visibility:visible}
+  .st .rs:hover{color:var(--t1);background:var(--panel-3)}
+
+  /* burns: prerequisites checklist */
+  .ck{border:1px solid var(--hair);border-radius:var(--r-md);overflow:hidden}
+  .ck .sum{display:flex;align-items:center;gap:10px;padding:10px 12px;background:var(--panel-2);border-bottom:1px solid var(--hair-soft);font-size:12.5px;color:var(--t2)}
+  .ck .sum b{color:var(--t1);font-weight:600}
+  .ck .sum .meter{display:flex;gap:3px;margin-left:auto}
+  .ck .sum .meter i{width:22px;height:5px;border-radius:2px;background:var(--hair-strong)}
+  .ck .sum .meter i.ok{background:var(--ok)}
+  .cr{display:grid;grid-template-columns:18px minmax(160px,1fr) auto;gap:10px;align-items:center;padding:9px 12px;border-top:1px solid var(--hair-soft)}
+  .cr:nth-child(2){border-top:0}
+  .cr.hide{display:none}
+  .dot{width:8px;height:8px;border-radius:50%;background:var(--ok);margin:0 auto}
+  .dot.warn{background:var(--warn);box-shadow:0 0 0 3px rgba(215,169,74,.15)}
+  .dot.off{background:var(--t4)}
+  .cr .t{font-size:13px;font-weight:500;color:var(--t1)}
+  .cr .d{font-size:11.5px;color:var(--t3);font-family:var(--mono);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .cr .act{display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end;max-width:360px}
+  .term{grid-column:1/-1;background:var(--inset);border:1px solid var(--hair);border-radius:var(--r-sm);padding:8px 10px;font-family:var(--mono);font-size:11.5px;color:var(--t2);line-height:1.55;display:none;max-height:120px;overflow:auto}
+  .term.on{display:block}
+  .term .g{color:var(--ok)}.term .a{color:var(--acc-hi)}
+
+  /* filter empty state */
+  .empty{display:none;color:var(--t3);font-size:13px;padding:40px 0;text-align:center}
+  .empty.on{display:block}
+  .hit{background:rgba(124,108,246,.18);border-radius:2px;padding:0 1px}
+  @media (prefers-reduced-motion: reduce){.saved{transition:none}.body{scroll-behavior:auto}}
+</style>
+
+<!-- mock shell -->
+<div class="shell" aria-hidden="true">
+  <div class="tb"><b>runcastle</b> · runcastle <span style="margin-left:auto">⌘K</span></div>
+  <div class="cols">
+    <div><div class="ph w1"></div><div class="ph w2"></div><div class="ph w3"></div><div class="ph w2"></div><div class="ph w1"></div><div class="ph w3"></div></div>
+    <div><div class="ph w3"></div><div class="ph w2"></div><div class="ph w2"></div><div class="ph w1"></div><div class="ph w2"></div></div>
+    <div><div class="ph w2"></div><div class="ph w1"></div><div class="ph w3"></div></div>
+  </div>
+</div>
+<div class="backdrop"></div>
+
+<div class="demo" aria-label="Deep-link demo">
+  <div class="hint">Demo — a burner error that deep-links</div>
+  <div class="card">bun is not installed in image <span class="mono">sandcastle:runcastle-demo</span> — the image predates the burner Dockerfile. <a id="deep">Rebuild it in Settings → Burns</a>.</div>
+</div>
+
+<div class="dlg" role="dialog" aria-modal="true" aria-label="Settings">
+  <nav class="rail">
+    <h1>Settings</h1>
+    <div class="filter">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+      <input id="q" placeholder="Filter settings…" aria-label="Filter settings" autocomplete="off">
+    </div>
+    <button class="nav" data-page="general" aria-current="page"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>General<span class="n"></span></button>
+    <button class="nav" data-page="models"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l8 4.5v9L12 20l-8-4.5v-9z"/><path d="M12 11l8-4.5M12 11L4 6.5M12 11v9"/></svg>Models<span class="n"></span></button>
+    <button class="nav" data-page="burns"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22c4 0 7-3 7-7 0-3-2-5-3-7-1 2-2 3-3 3 0-3-1-6-4-8 0 4-4 6-4 12 0 4 3 7 7 7z"/></svg>Burns<span class="n"></span></button>
+    <button class="nav" data-page="project"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>This project<span class="n"></span></button>
+    <div class="sp"></div>
+    <div class="proj">Open project<b>runcastle</b></div>
+  </nav>
+
+  <section class="pane">
+    <div class="head">
+      <h2 id="title">General</h2><span class="sub" id="sub">Machine-wide.</span>
+      <button class="x" aria-label="Close (Esc)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+    </div>
+    <div class="body">
+
+      <!-- ============ GENERAL ============ -->
+      <div class="page on" data-page="general">
+        <div class="grp">
+          <h3>Server<span class="line"></span></h3>
+          <div class="f" data-k="server port">
+            <div class="lbl">Server port <button class="i" aria-label="About server port">i<span class="tip">The port the runcastle server listens on. Changing it takes effect at the next server restart.</span></button></div>
+            <div class="ctl">
+              <div class="row"><input class="in num" value="4514" disabled aria-label="Server port"><span class="chip env" title="Set by RUNCASTLE_SERVER_PORT"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>Env</span></div>
+              <div class="restart on" style="display:none"></div>
+            </div>
+          </div>
+        </div>
+        <div class="grp">
+          <h3>Sessions<span class="line"></span></h3>
+          <div class="f" data-k="sandbox where sessions run docker">
+            <div class="lbl">Sandbox <button class="i" aria-label="About sandbox">i<span class="tip">Where launched sessions and burns run. A Docker container isolates them from this machine; “no sandbox” runs them directly on it.</span></button></div>
+            <div class="ctl"><div class="row"><select class="sel" data-save aria-label="Sandbox"><option>Docker container (isolated)</option><option>No sandbox — run directly on this machine</option></select><span class="saved">Saved ✓</span></div></div>
+          </div>
+          <div class="f" data-k="sandbox image docker">
+            <div class="lbl">Sandbox image <button class="i" aria-label="About sandbox image">i<span class="tip">The Docker image sessions and burns are sandboxed in. Leave blank to use <span class="mono">sandcastle:runcastle</span>, the image “Build image” on the Burns page produces.</span></button></div>
+            <div class="ctl"><div class="row"><input class="in cmd" data-save value="sandcastle:runcastle-demo" placeholder="sandcastle:runcastle" aria-label="Sandbox image"><span class="saved">Saved ✓</span></div></div>
+          </div>
+          <div class="f" data-k="mcp servers in sessions inherit">
+            <div class="lbl">MCP servers in sessions <button class="i" aria-label="About MCP servers">i<span class="tip"><b>Inherit mine</b> — sessions see your own MCP servers (user, project and plugin) alongside runcastle’s. <b>runcastle only</b> — sessions see runcastle’s server and nothing else; use it for a reproducible tool surface or to keep a heavy personal MCP set out of the context window.</span></button></div>
+            <div class="ctl"><div class="row"><select class="sel" data-save aria-label="MCP servers in sessions"><option>Inherit mine — alongside runcastle’s</option><option>runcastle only</option></select><span class="saved">Saved ✓</span></div></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ============ MODELS ============ -->
+      <div class="page" data-page="models">
+        <div class="grp">
+          <div class="dcard" data-k="default model">
+            <span class="t">Default model</span>
+            <select class="sel" id="dflt" aria-label="Default model"></select>
+            <span class="s">Runs every step that has no model of its own below — and every project that has not set one.</span>
+          </div>
+        </div>
+
+        <div class="grp">
+          <h3>Roster<span class="line"></span></h3>
+          <p class="note">A model with a <b>use-case note</b> is offered to the tickets agent, which may pick it per ticket; models without a note are never picked automatically.</p>
+          <div class="tbl" id="roster">
+            <div class="tr h"><span>Model</span><span>Runtime</span><span>Use-case note</span><span>Used for</span><span>Default</span><span></span></div>
+            <div class="tr dflt" data-k="claude-opus-5[1m] claude code" data-id="claude-opus-5[1m]"><span class="id" title="claude-opus-5[1m]">claude-opus-5[1m]</span><span class="chip rt cc">Claude Code</span><input class="nt" data-save placeholder="e.g. UI/UX work, design-heavy tickets" aria-label="Note for claude-opus-5[1m]"><span class="used"><b>Default</b> · Converge, Research, Review, Prepare</span><button class="rad" aria-label="Make claude-opus-5[1m] the default">Default</button><span></span></div>
+            <div class="tr" data-k="claude-fable-5[1m] claude code" data-id="claude-fable-5[1m]"><span class="id" title="claude-fable-5[1m]">claude-fable-5[1m]</span><span class="chip rt cc">Claude Code</span><input class="nt" data-save value="UI/UX and anything design-heavy" aria-label="Note for claude-fable-5[1m]"><span class="used">Ideation, Q&amp;A, Waypoint, Revisit, Project</span><button class="rad" aria-label="Make claude-fable-5[1m] the default">Make default</button><span></span></div>
+            <div class="tr" data-k="gpt-5.6-sol codex" data-id="gpt-5.6-sol"><span class="id" title="gpt-5.6-sol">gpt-5.6-sol</span><span class="chip rt cx">Codex</span><input class="nt" data-save value="Logic, backend, mechanical refactors" aria-label="Note for gpt-5.6-sol"><span class="used">Implement</span><button class="rad" aria-label="Make gpt-5.6-sol the default">Make default</button><span></span></div>
+            <div class="tr" data-k="claude-haiku-4-5 claude code" data-id="claude-haiku-4-5"><span class="id" title="claude-haiku-4-5">claude-haiku-4-5</span><span class="chip rt cc">Claude Code</span><input class="nt" data-save placeholder="Add a note to offer it per ticket" aria-label="Note for claude-haiku-4-5"><span class="used">Smoke</span><button class="rad" aria-label="Make claude-haiku-4-5 the default">Make default</button><span></span></div>
+            <div class="tr" data-k="gpt-5.6-sol medium codex custom" data-id="gpt-5.6-sol medium"><span class="id" title="gpt-5.6-sol medium">gpt-5.6-sol medium</span><span class="chip rt cx">Codex</span><input class="nt" data-save placeholder="Add a note to offer it per ticket" aria-label="Note for gpt-5.6-sol medium"><span class="used">—</span><button class="rad" aria-label="Make gpt-5.6-sol medium the default">Make default</button><button class="rm" aria-label="Remove gpt-5.6-sol medium"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
+            <div class="tr" data-k="claude-sonnet-5 claude code" data-id="claude-sonnet-5"><span class="id" title="claude-sonnet-5">claude-sonnet-5</span><span class="chip rt cc">Claude Code</span><input class="nt" data-save placeholder="Add a note to offer it per ticket" aria-label="Note for claude-sonnet-5"><span class="used">—</span><button class="rad" aria-label="Make claude-sonnet-5 the default">Make default</button><span></span></div>
+            <div class="tr" data-k="gpt-5.6-luna codex" data-id="gpt-5.6-luna"><span class="id" title="gpt-5.6-luna">gpt-5.6-luna</span><span class="chip rt cx">Codex</span><input class="nt" data-save placeholder="Add a note to offer it per ticket" aria-label="Note for gpt-5.6-luna"><span class="used">—</span><button class="rad" aria-label="Make gpt-5.6-luna the default">Make default</button><span></span></div>
+            <div class="tr add" data-k="add model custom">
+              <input class="in cmd" placeholder="model id, e.g. claude-opus-5[1m]" aria-label="New model id">
+              <select class="sel" aria-label="Runtime (required)"><option value="">Runs on…</option><option>Claude Code</option><option>Codex</option></select>
+              <input class="in" placeholder="use-case note (optional)" aria-label="New model note" style="height:26px;font-size:12.5px">
+              <button class="b sm" id="addm">Add model</button>
+            </div>
+          </div>
+          <p class="note">4 curated models not shown: <button class="link" id="showall">show all</button></p>
+        </div>
+
+        <div class="grp">
+          <h3>Per step<span class="line"></span></h3>
+          <p class="note warn" id="projwarn" hidden>This project runs everything on <span class="mono">gpt-5.6-sol</span> — these apply to other projects.</p>
+          <div class="stt" id="steps"></div>
+        </div>
+      </div>
+
+      <!-- ============ BURNS ============ -->
+      <div class="page" data-page="burns">
+        <div class="grp">
+          <h3>Prerequisites for unattended burns<span class="line"></span></h3>
+          <div class="ck" id="ck">
+            <div class="sum" data-k="prerequisites ready"><span id="sumtxt"><b>3 of 4</b> ready — burns with Claude Code need a token</span><span class="meter"><i class="ok"></i><i class="ok"></i><i></i><i class="ok"></i></span></div>
+            <div class="cr" data-k="container runtime docker"><span class="dot"></span><div><div class="t">Container runtime</div><div class="d">docker 28.5.2 — daemon running</div></div><div class="act"><button class="b sm">Re-check</button></div></div>
+            <div class="cr" id="imgrow" data-k="sandcastle image build rebuild"><span class="dot"></span><div><div class="t">Sandcastle image</div><div class="d">sandcastle:runcastle-demo present · 2.12 GB · built 9d ago</div></div><div class="act"><button class="b sm" id="rebuild">Rebuild image</button></div>
+              <div class="term" id="imgterm"><span class="a">$ docker build -t sandcastle:runcastle-demo …</span><br>#1 [internal] load build definition<br>#2 FROM oven/bun:1.3 … CACHED<br>#7 RUN bun add -g @anthropic-ai/claude-code … <span class="g">DONE 41.2s</span><br><span class="g">✓ image built — re-checking</span></div></div>
+            <div class="cr" data-k="claude code token afk credential"><span class="dot warn"></span><div><div class="t">Claude Code token</div><div class="d">No unattended token — burns on Claude models cannot start</div></div><div class="act"><button class="b sm">Run claude setup-token</button><input class="in cmd" placeholder="paste sk-ant-oat01-…" style="width:190px;height:26px;font-size:12px" aria-label="Claude Code token"><button class="b sm solid" disabled>Save &amp; verify</button></div></div>
+            <div class="cr" data-k="codex sign in"><span class="dot"></span><div><div class="t">Codex</div><div class="d">Signed in — credentials at ~/.codex/auth.json</div></div><div class="act"><span class="chip"><span class="d" style="width:6px;height:6px;border-radius:50%;background:var(--ok)"></span>Ready</span></div></div>
+            <div class="cr" data-k="burn cache volume clear"><span class="dot"></span><div><div class="t">Burn cache</div><div class="d">runcastle-burn-cache-runcastle — 1.8 GB</div></div><div class="act"><button class="b sm">Clear</button></div></div>
+          </div>
+        </div>
+        <div class="grp">
+          <h3>Width &amp; retries<span class="line"></span></h3>
+          <div class="f" data-k="burn concurrency parallel tickets">
+            <div class="lbl">Concurrency <button class="i" aria-label="About concurrency">i<span class="tip">Tickets burned in parallel per run (1–8). Each is a full agent with its own container, sizing its install and test workers from the whole core count — lower it if suites die under load.</span></button></div>
+            <div class="ctl"><div class="row"><input class="in num ghost" data-save placeholder="3" aria-label="Concurrency"><span class="unit">tickets at once · default on this machine: 3</span><span class="saved">Saved ✓</span></div></div>
+          </div>
+          <div class="f" data-k="burn iterations turns">
+            <div class="lbl">Iterations per attempt <button class="i" aria-label="About iterations">i<span class="tip">Turns one healthy burn agent may take before it is stopped (1–10). A ticket that finishes early stops the loop itself.</span></button></div>
+            <div class="ctl"><div class="row"><input class="in num" data-save value="3" aria-label="Iterations per attempt"><span class="unit">turns</span><span class="saved">Saved ✓</span></div><div class="help">Distinct from attempts: an attempt restarts an agent that crashed.</div></div>
+          </div>
+          <div class="f" data-k="burn attempts retry crash">
+            <div class="lbl">Attempts per ticket <button class="i" aria-label="About attempts">i<span class="tip">Fresh agent attempts per ticket per run (1–5). A transient crash — API drop, network, rate limit — retries with committed work preserved; auth errors and conflicts never retry.</span></button></div>
+            <div class="ctl"><div class="row"><input class="in num" data-save value="3" aria-label="Attempts per ticket"><span class="unit">attempts</span><span class="saved">Saved ✓</span></div></div>
+          </div>
+          <div class="f" data-k="conflict resolver passes merge">
+            <div class="lbl">Conflict resolver passes <button class="i" aria-label="About conflict passes">i<span class="tip">Agent passes spent resolving a ticket’s landing conflict before asking you (0–3). 0 sends every conflict straight to you.</span></button></div>
+            <div class="ctl"><div class="row"><input class="in num" data-save value="2" aria-label="Conflict resolver passes"><span class="unit">passes before asking you</span><span class="saved">Saved ✓</span></div></div>
+          </div>
+          <div class="f" data-k="cpu limit cores">
+            <div class="lbl">CPU limit per burn <button class="i" aria-label="About CPU limit">i<span class="tip">CPU ceiling per burn container (<span class="mono">--cpus</span>). Blank leaves it unconstrained. Roughly cores ÷ concurrency keeps parallel tickets from oversubscribing the machine.</span></button></div>
+            <div class="ctl"><div class="row"><input class="in num" data-save placeholder="unlimited" aria-label="CPU limit per burn"><span class="unit">cores · e.g. 4 on a 12-thread box at width 3</span><span class="saved">Saved ✓</span></div></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ============ THIS PROJECT ============ -->
+      <div class="page" data-page="project">
+        <div class="grp">
+          <h3>Model &amp; sandbox<span class="line"></span></h3>
+          <div class="f" data-k="project model override">
+            <div class="lbl">Model <button class="i" aria-label="About project model">i<span class="tip">A model set here runs <b>every</b> step of this project — it beats the global default and the per-step models.</span></button></div>
+            <div class="ctl"><div class="row"><select class="sel ov" data-save data-global="Use global (claude-opus-5[1m])" aria-label="Project model" style="max-width:360px">
+              <option value="">Use global (claude-opus-5[1m])</option>
+              <optgroup label="Claude Code"><option>claude-opus-5</option><option>claude-opus-5[1m]</option><option>claude-sonnet-5</option><option>claude-fable-5[1m]</option></optgroup>
+              <optgroup label="Codex"><option>gpt-5.6-sol</option><option>gpt-5.6-terra</option></optgroup>
+            </select><span class="chip src">Global</span><button class="link ug" hidden>Use global</button><span class="saved">Saved ✓</span></div></div>
+          </div>
+          <div class="f" data-k="project sandbox override">
+            <div class="lbl">Sandbox</div>
+            <div class="ctl"><div class="row"><select class="sel ov" data-save aria-label="Project sandbox" style="max-width:360px"><option value="">Use global (Docker container)</option><option>Docker container (isolated)</option><option>No sandbox — run directly on this machine</option></select><span class="chip src">Global</span><button class="link ug" hidden>Use global</button><span class="saved">Saved ✓</span></div></div>
+          </div>
+        </div>
+
+        <div class="grp">
+          <h3>Commands<span class="line"></span></h3>
+          <div class="f" data-k="setup command install">
+            <div class="lbl">Setup <button class="i" aria-label="About setup command">i<span class="tip">Takes a clean checkout to a buildable state inside the burn sandbox — dependency install plus any codegen. Blank auto-detects from the lockfile.</span></button></div>
+            <div class="ctl">
+              <div class="row"><input class="in cmd ov" data-save value="bun install" placeholder="e.g. pnpm install --frozen-lockfile && pnpm prisma:generate" aria-label="Setup command"><span class="chip src proj">This project</span><button class="link ug">Use global</button><span class="saved">Saved ✓</span></div>
+              <div class="row"><span class="pop"><span class="chip prep btn" tabindex="0"><span class="d"></span>Prepared · 11d ago · main +213</span><div class="card"><h4>Evidence · established by preparation</h4><pre>UNCHANGED and re-confirmed on main at 7f27860 (213 commits past the commit where it was first measured), clean tree.
+
+Root package.json is still a bun workspace ("workspaces": ["packages/*", "apps/*"]), so the single root install covers core, server, skills and apps/web; there is still no second setup step in the repo. The postinstall hook (scripts/postinstall-node-pty.ts) still runs automatically and is a no-op on win32.
+
+Caveat re-measured and still standing, still not blocking: `bun --version` is 1.3.4 while root package.json engines.bun requires >=1.3.14. Bun does not enforce engines, so install passes silently.</pre></div></span></div>
+            </div>
+          </div>
+          <div class="f" data-k="verify commands typecheck test lint">
+            <div class="lbl">Verify <button class="i" aria-label="About verify commands">i<span class="tip">The exact typecheck / test / lint commands a burn agent runs, one per line. Rendered verbatim into the agent’s prompt; runcastle never runs them itself.</span></button></div>
+            <div class="ctl">
+              <div class="row"><textarea class="ta ov" data-save rows="2" placeholder="one per line, e.g.&#10;pnpm --filter @acme/web test" aria-label="Verify commands">bun run typecheck
+env -u GIT_ASKPASS bun run test</textarea><div style="display:flex;flex-direction:column;gap:6px;align-self:start"><span class="chip src proj">This project</span><button class="link ug">Use global</button></div><span class="saved">Saved ✓</span></div>
+              <div class="row"><span class="pop"><span class="chip prep btn" tabindex="0"><span class="d"></span>Prepared · 11d ago · main +213</span><div class="card"><h4>Evidence · established by preparation</h4><pre>REDUCED FROM THREE LINES TO TWO. Re-measured on main at 7f27860, clean tree.
+
+DROPPED: `bun run --filter '@runcastle/web' typecheck` — now redundant: the root typecheck covers web.
+
+KEPT: `env -u GIT_ASKPASS`. Every Claude Code session exports GIT_ASKPASS as an EMPTY string and simple-git's block-unsafe-operations plugin rejects the variable regardless of value; 3 failed / 34 passed with it set, green with it removed.</pre></div></span></div>
+            </div>
+          </div>
+          <div class="f" data-k="known failing tests baseline">
+            <div class="lbl">Known failing tests <button class="i" aria-label="About known failures">i<span class="tip">Tests already red on main — a count plus suite names is enough. Saves every burn agent a full pre-work run to establish its own baseline.</span></button></div>
+            <div class="ctl">
+              <div class="row"><textarea class="ta ov" data-save rows="2" placeholder="e.g. 2 failing: dev-pane.test.ts (Windows only)" aria-label="Known failing tests">Both verify commands are expected FULLY GREEN. Any failure is yours.</textarea><div style="display:flex;flex-direction:column;gap:6px;align-self:start"><span class="chip src proj">This project</span><button class="link ug">Use global</button></div><span class="saved">Saved ✓</span></div>
+              <div class="row"><span class="pop"><span class="chip prep btn" tabindex="0"><span class="d"></span>Set in a session · 11d ago</span><div class="card"><h4>Evidence · established in a conversation on this machine</h4><pre>Test suite measured twice on main at 7f27860, clean tree:
+  - Run 1: 1 failed / 1767 passed / 10 skipped, 92.8s.
+  - Run 2: 0 failed / 1768 passed / 10 skipped, 93.4s, exit 0.
+
+The single run-1 failure (dev-pane.test.ts, Windows teardown race in afterEach) is deliberately NOT listed: knownFailures is consumed only by the Linux burner sandbox, where it would train an agent to dismiss a real failure.</pre></div></span></div>
+            </div>
+          </div>
+          <div class="f" data-k="dev command server">
+            <div class="lbl">Dev server <button class="i" aria-label="About dev command">i<span class="tip">Starts this project’s dev server for a test drive. The URL it prints becomes the “Open app” link.</span></button></div>
+            <div class="ctl">
+              <div class="row"><input class="in cmd" data-save value="bun packages/server/src/bin/runcastle.ts serve" placeholder="e.g. pnpm dev" aria-label="Dev command"><span class="saved">Saved ✓</span></div>
+              <div class="row"><span class="pop"><span class="chip prep btn" tabindex="0"><span class="d"></span>Set in a session · 11d ago · verified by a dry run 10d ago</span><div class="card"><h4>Evidence</h4><pre>Pane spawned: devConfigured true, devPaneLive true, devReady true. GET /health returned the drive tree (~/.runcastle-drive-prep_dry_run), not ~/.runcastle. URL sniffed at the script's chosen port: http://localhost:24259.</pre></div></span></div>
+            </div>
+          </div>
+          <div class="f" data-k="test drive setup before">
+            <div class="lbl">Before a test drive <button class="i" aria-label="About drive setup">i<span class="tip">Runs on your machine before the dev server starts a test drive — bring up services, apply schema. A failure is reported, never fatal.</span></button></div>
+            <div class="ctl">
+              <div class="row"><input class="in cmd" data-save value="bun .runcastle/drive-setup.ts" placeholder="e.g. docker compose up -d && pnpm db:migrate" aria-label="Test drive setup"><span class="saved">Saved ✓</span></div>
+              <div class="row"><span class="pop"><span class="chip prep btn" tabindex="0"><span class="d"></span>Set in a session · 11d ago · verified by a dry run 10d ago</span><div class="card"><h4>Evidence</h4><pre>REPLACES the inline `bun install && bun run --filter "@runcastle/web" build`, broken under the current drive contract. The script emits RUNCASTLE_DATA_DIR, RUNCASTLE_SERVER_PORT and six asset paths into .runcastle/drive.env and seeds the drive tree from the real install.</pre></div></span></div>
+            </div>
+          </div>
+          <div class="f" data-k="test drive teardown stop after">
+            <div class="lbl">After a test drive <button class="i" aria-label="About drive teardown">i<span class="tip">Runs when a test drive stops, while the feature branch is still checked out — stop services, drop the branch database.</span></button></div>
+            <div class="ctl">
+              <div class="row"><input class="in cmd" data-save value="bun .runcastle/drive-stop.ts" placeholder="e.g. docker compose down" aria-label="Test drive teardown"><span class="saved">Saved ✓</span></div>
+              <div class="row"><span class="pop"><span class="chip prep btn" tabindex="0"><span class="d u"></span>Set in a session · 11d ago · unverified</span><div class="card"><h4>Evidence</h4><pre>THE COMMAND IS STILL CORRECT AND HAS NEVER BEEN REACHED: teardown hung before the stop hook ran (fourth reproduction, server bug upstream of the hook). Guard tested in both directions in the scratchpad; refuses any path not named .runcastle-drive-*.</pre></div></span></div>
+            </div>
+          </div>
+          <div class="f" data-k="database reset migrations">
+            <div class="lbl">Reset dev database <button class="i" aria-label="About database reset">i<span class="tip">Rebuilds the dev database from the migrations in the working tree. Offered — never run automatically — after a test drive whose branch carried migrations this one does not have.</span></button></div>
+            <div class="ctl">
+              <div class="row"><input class="in cmd" data-save value='if exist "C:\Users\user\.runcastle-dev\runcastle.db" del /f /q "C:\Users\user\.runcastle-dev\runcastle.db" & …' placeholder="e.g. pnpm db:reset" aria-label="Database reset command"><span class="saved">Saved ✓</span></div>
+              <div class="row"><span class="pop"><span class="chip prep btn" tabindex="0"><span class="d u"></span>You · 17d ago</span><span class="chip stale">Destructive</span><div class="card"><h4>Evidence · set by you</h4><pre>DESTRUCTIVE BY DESIGN, on the human's explicit instruction: "yes ~/.runcastle-dev is disposable". All THREE files (db, -shm, -wal) — the tree is in WAL mode, so deleting only runcastle.db would strand a 4 MB write-ahead log.</pre></div></span></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="grp">
+          <h3>Project chat<span class="line"></span></h3>
+          <div class="f" data-k="project chat lands on branch session">
+            <div class="lbl">Commits land on <button class="i" aria-label="About project chat branch">i<span class="tip">The branch the project chat’s commits (charter, ADRs) land on when its terminal closes. Blank uses the repo’s detected main line; a pick takes effect at the next chat you open.</span></button></div>
+            <div class="ctl"><div class="row"><input class="in cmd ghost" data-save placeholder="main (detected)" aria-label="Project chat branch" style="max-width:280px"><span class="saved">Saved ✓</span></div></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="empty" id="empty">Nothing matches. Try “model”, “verify” or “image”.</div>
+    </div>
+  </section>
+</div>
+
+<script>
+(function(){
+  const $=(s,r=document)=>r.querySelector(s), $$=(s,r=document)=>[...r.querySelectorAll(s)];
+  const titles={general:['General','Machine-wide.'],models:['Models','Machine-wide — the roster, the default, and which model runs each step.'],burns:['Burns','Machine-wide — unattended runs.'],project:['This project','Only runcastle. Global values show as ghost text.']};
+
+  // ---- pages ----
+  function go(p,focus){
+    $$('.nav').forEach(b=>b.toggleAttribute('aria-current',false)||b.removeAttribute('aria-current'));
+    $(`.nav[data-page=${p}]`).setAttribute('aria-current','page');
+    $$('.page').forEach(x=>x.classList.toggle('on',x.dataset.page===p));
+    $('#title').textContent=titles[p][0];$('#sub').textContent=titles[p][1];
+    $('.body').scrollTop=0;
+    if(focus){const el=$(focus);if(el){el.scrollIntoView({block:'center'});el.style.outline='2px solid var(--acc)';el.style.outlineOffset='2px';setTimeout(()=>{el.style.outline='';},1600);}}
+  }
+  $$('.nav').forEach(b=>b.addEventListener('click',()=>go(b.dataset.page)));
+  $('#deep').addEventListener('click',()=>go('burns','#imgrow'));
+
+  // ---- save feedback ----
+  function saved(el){
+    const row=el.closest('.row')||el.closest('.tr');const s=row&&row.querySelector('.saved');
+    if(s){s.classList.add('on');setTimeout(()=>s.classList.remove('on'),1400);}
+    if(!s&&row&&row.classList.contains('tr')){el.style.borderColor='var(--ok)';setTimeout(()=>el.style.borderColor='',900);}
+    // override chip flip
+    if(el.classList.contains('ov')){
+      const r=el.closest('.row'),chip=$('.src',r),ug=$('.ug',r);
+      const set=el.tagName==='SELECT'?el.value!=='':el.value.trim()!=='';
+      chip.textContent=set?'This project':'Global';chip.classList.toggle('proj',set);ug.hidden=!set;
+      if(el.getAttribute('aria-label')==='Project model'){$('#projwarn').hidden=!set;if(set)$('#projwarn .mono').textContent=el.value;}
+    }
+  }
+  $$('[data-save]').forEach(el=>{
+    if(el.tagName==='SELECT')el.addEventListener('change',()=>saved(el));
+    else{el.addEventListener('blur',()=>saved(el));el.addEventListener('keydown',e=>{if(e.key==='Enter'&&el.tagName!=='TEXTAREA')el.blur();});}
+  });
+  $$('.ug').forEach(b=>b.addEventListener('click',()=>{const r=b.closest('.row'),el=$('.ov',r);el.value='';saved(el);}));
+
+  // ---- restart-required demo: server port is env-locked here, so demo on a copy? keep semantic: show line when value would change ----
+  // (env-locked in this instance — nothing to demo; the line is shown on the Burns page instead when width changes? no: restart is serverPort-only.)
+
+  // ---- evidence popovers ----
+  $$('.chip.prep').forEach(c=>{c.addEventListener('click',e=>{e.stopPropagation();const p=c.closest('.pop');const was=p.classList.contains('open');$$('.pop.open').forEach(x=>x.classList.remove('open'));p.classList.toggle('open',!was);});
+    c.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();c.click();}});});
+  document.addEventListener('click',e=>{if(!e.target.closest('.pop'))$$('.pop.open').forEach(x=>x.classList.remove('open'));});
+  document.addEventListener('keydown',e=>{if(e.key==='Escape')$$('.pop.open').forEach(x=>x.classList.remove('open'));});
+
+  // ---- default model: the radio column ----
+  const RT={'claude-opus-5':'cc','claude-opus-5[1m]':'cc','claude-sonnet-5':'cc','claude-sonnet-5[1m]':'cc','claude-fable-5':'cc','claude-fable-5[1m]':'cc','claude-opus-4-8':'cc','claude-haiku-4-5':'cc','gpt-5.6-sol':'cx','gpt-5.6-terra':'cx','gpt-5.6-luna':'cx','gpt-5.6-sol medium':'cx'};
+  const X='<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M6 6l12 12M18 6L6 18"/></svg>';
+  const dflt=()=> $('#roster .tr.dflt').dataset.id;
+  const dsel=$('#dflt');
+  function syncDefault(){dsel.innerHTML=$$('#roster .tr[data-id]').map(r=>`<option ${r.classList.contains('dflt')?'selected':''}>${r.dataset.id}</option>`).join('');$$('#steps select').forEach(s=>s.options[0].textContent=`Default (${dflt()})`);refreshRt();}
+  function setDefault(id){$$('#roster .tr[data-id]').forEach(x=>{const is=x.dataset.id===id;x.classList.toggle('dflt',is);$('.rad',x).textContent=is?'Default':'Make default';});syncDefault();}
+  function bindRadio(r){$('.rad',r).addEventListener('click',()=>{if(r.classList.contains('dflt'))return;setDefault(r.dataset.id);dsel.style.borderColor='var(--ok)';setTimeout(()=>dsel.style.borderColor='var(--acc-line)',900);});}
+  $$('#roster .tr[data-id]').forEach(bindRadio);
+  dsel.addEventListener('change',()=>{setDefault(dsel.value);dsel.style.borderColor='var(--ok)';setTimeout(()=>dsel.style.borderColor='var(--acc-line)',900);});
+
+  // ---- per-step table ----
+  const GROUPS=[
+    ['Sessions','interactive — you are in the terminal',[['ideation','Ideation','Grills you and writes the spec','claude-fable-5[1m]'],['qa','Q&A','Answers questions about a feature','claude-fable-5[1m]'],['waypoint','Waypoint','Works one waypoint of a mapped feature','claude-fable-5[1m]'],['converge','Converge','Folds a map back into one spec',''],['revisit','Revisit','Reopens a feature after test-drive notes','claude-fable-5[1m]'],['project','Project chat','The project-level conversation','claude-fable-5[1m]']]],
+    ['Unattended','burns and scripted runs',[['research','Research','Reads the repo before a burn',''],['implement','Implement','Burns a ticket in the sandbox','gpt-5.6-sol'],['review','Review','Reads the finished branch',''],['prepare','Prepare','Measures setup, verify and baseline',''],['smoke','Smoke','Cheap scripted end-to-end check','claude-haiku-4-5']]],
+  ];
+  const MODELS=Object.keys(RT);
+  const tbl=$('#steps');
+  function refreshRt(){$$('#steps .st').forEach(d=>{const v=$('select',d).value||dflt();const c=$('.rtc',d);c.className='chip rt rtc '+(RT[v]||'cc');c.textContent=RT[v]==='cx'?'Codex':'Claude Code';});}
+  GROUPS.forEach(([g,desc,steps])=>{
+    const h=document.createElement('div');h.className='stg';h.innerHTML=`${g}<span class="c">${desc}</span>`;tbl.appendChild(h);
+    steps.forEach(([k,label,what,val])=>{
+      const d=document.createElement('div');d.className='st'+(val?' set':'');d.dataset.k=`${label} ${what} step model`.toLowerCase();
+      d.innerHTML=`<span class="k">${label}<small>${what}</small></span><select class="sel ${val?'':'unset'}" aria-label="Model for ${label}"><option value="">Default (${dflt()})</option>${MODELS.map(m=>`<option ${m===val?'selected':''}>${m}</option>`).join('')}</select><span class="chip rt rtc"></span><button class="rs" aria-label="Reset ${label} to default" title="Use the default">${X}</button>`;
+      const sel=$('select',d);
+      sel.addEventListener('change',()=>{d.classList.toggle('set',sel.value!=='');sel.classList.toggle('unset',sel.value==='');refreshRt();sel.style.borderColor='var(--ok)';setTimeout(()=>sel.style.borderColor='',900);});
+      $('.rs',d).addEventListener('click',()=>{sel.value='';sel.dispatchEvent(new Event('change'));});
+      tbl.appendChild(d);
+    });
+  });
+  syncDefault();
+
+  // ---- roster: add / remove / show-all ----
+  const hiddenCurated=[['claude-opus-5','cc','Claude Code'],['claude-sonnet-5[1m]','cc','Claude Code'],['claude-fable-5','cc','Claude Code'],['claude-opus-4-8','cc','Claude Code'],['gpt-5.6-terra','cx','Codex']];
+  function rosterRow(id,cls,rt,note,custom){
+    const r=document.createElement('div');r.className='tr';r.dataset.k=`${id} ${rt}`.toLowerCase();r.dataset.id=id;RT[id]=cls;
+    r.innerHTML=`<span class="id" title="${id}">${id}</span><span class="chip rt ${cls}">${rt}</span><input class="nt" data-save value="${note.replace(/"/g,'&quot;')}" placeholder="Add a note to offer it per ticket" aria-label="Note for ${id}"><span class="used">—</span><button class="rad" aria-label="Make ${id} the default">Make default</button>${custom?`<button class="rm" aria-label="Remove ${id}">${X}</button>`:'<span></span>'}`;
+    $('input',r).addEventListener('blur',()=>saved($('input',r)));bindRadio(r);
+    const rm=$('.rm',r);if(rm)rm.addEventListener('click',()=>{r.remove();syncDefault();});
+    return r;
+  }
+  $('#showall').addEventListener('click',()=>{const add=$('#roster .tr.add');hiddenCurated.forEach(([id,cls,rt])=>add.before(rosterRow(id,cls,rt,'',false)));$('#showall').closest('p').remove();syncDefault();});
+  $('#addm').addEventListener('click',()=>{const add=$('#roster .tr.add');const [id,rt,nt]=[$('input',add),$('select',add),$$('input',add)[1]];if(!id.value.trim()){id.focus();id.style.borderColor='var(--danger)';return;}if(!rt.value){rt.style.borderColor='var(--danger)';rt.focus();return;}
+    const r=rosterRow(id.value.trim(),rt.value==='Codex'?'cx':'cc',rt.value,nt.value,true);add.before(r);syncDefault();id.value='';rt.value='';nt.value='';id.style.borderColor='';rt.style.borderColor='';r.style.background='var(--acc-soft)';setTimeout(()=>r.style.background='',900);});
+  $$('#roster .rm').forEach(b=>b.addEventListener('click',()=>b.closest('.tr').remove()));
+
+  // ---- burns: rebuild terminal demo ----
+  $('#rebuild').addEventListener('click',()=>{const t=$('#imgterm');t.classList.add('on');const b=$('#rebuild');b.textContent='Building…';b.disabled=true;setTimeout(()=>{b.textContent='Rebuild image';b.disabled=false;$('#imgrow .d').textContent='sandcastle:runcastle-demo present · 2.12 GB · built just now';setTimeout(()=>t.classList.remove('on'),2200);},2600);});
+
+  // ---- filter ----
+  const q=$('#q');
+  q.addEventListener('input',()=>{
+    const v=q.value.trim().toLowerCase();
+    const items=$$('[data-k]');
+    const counts={general:0,models:0,burns:0,project:0};let total=0;
+    items.forEach(it=>{const hit=!v||it.dataset.k.includes(v)||it.textContent.toLowerCase().includes(v);it.classList.toggle('hide',!hit);if(hit&&v){const p=it.closest('.page').dataset.page;counts[p]++;total++;}});
+    $$('.grp').forEach(g=>{const any=$$('[data-k]:not(.hide)',g).length>0||!$$('[data-k]',g).length;g.style.display=any||!v?'':'none';});
+    $$('.nav').forEach(b=>$('.n',b).textContent=v?(counts[b.dataset.page]||''):'');
+    if(v){const cur=$('.page.on').dataset.page;if(!counts[cur]){const first=Object.keys(counts).find(k=>counts[k]);if(first)go(first);}}
+    $('#empty').classList.toggle('on',!!v&&total===0);
+  });
+  document.addEventListener('keydown',e=>{if((e.ctrlKey||e.metaKey)&&e.key==='f'){e.preventDefault();q.focus();q.select();}});
+})();
+</script>

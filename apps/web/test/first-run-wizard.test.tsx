@@ -150,7 +150,7 @@ describe('FirstRunWizard', () => {
     click('Continue')
 
     expect(screen.getByText(/An AFK burn is a burn you walk away from/)).toBeTruthy()
-    expect(screen.queryByText('Run features unattended')).toBeNull()
+    expect(screen.queryByText('Ready for unattended burns')).toBeNull()
     expect(screen.queryByRole('button', { name: 'Continue to your first project' })).toBeNull()
   })
 
@@ -160,8 +160,10 @@ describe('FirstRunWizard', () => {
     click('Continue')
     click('Set up now')
 
-    // The card's own "Set up later" is now the step's single continue.
-    expect(screen.getByText('Run features unattended')).toBeTruthy()
+    // The card's own "Set up later" is now the step's single continue. The card
+    // is the prerequisites checklist Settings owns (flow-redesign-settings); its
+    // summary line is what says it arrived.
+    expect(screen.getByText('Ready for unattended burns')).toBeTruthy()
     expect(screen.queryByRole('button', { name: 'Set up now' })).toBeNull()
     expect(screen.queryByRole('button', { name: 'Skip for now' })).toBeNull()
     expect(screen.getByRole('button', { name: 'Set up later' })).toBeTruthy()

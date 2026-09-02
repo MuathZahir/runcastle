@@ -28,3 +28,8 @@ AFK-REPORT.md
 # before the child env was fixed. `.claude/` is the same state under a real home.
 ~/
 .claude/
+
+# Claude Design round-trip output (.ds-sync tooling + generated ds-bundle).
+# Retired with the Tailwind adoption; apps/web/src/theme.css is the token source.
+.ds-sync/
+ds-bundle/

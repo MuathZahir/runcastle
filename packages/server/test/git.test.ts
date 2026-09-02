@@ -262,10 +262,19 @@ describe('listBranches', () => {
 
     const res = await listBranches(project)
     expect(res.current).toBe('main')
+    expect(res.detected).toBe('main')
     expect(res.branches).toContain('main')
     expect(res.branches).toContain('dev')
     expect(res.branches).not.toContain('feature/hidden')
     expect(res.remoteBranches).toEqual([])
+  })
+
+  it('includes feature/* branches when listing project-chat landing targets', async () => {
+    await createFeatureBranch(project, 'existing-work', 'main')
+
+    const res = await listBranches(project, { includeFeatureBranches: true })
+
+    expect(res.branches).toContain('feature/existing-work')
   })
 
   it('surfaces remote-only branches and hides ones shadowed by a local twin', async () => {

@@ -4,7 +4,7 @@ import { Button, CheckLine, LapSections, NoteAuthorChip, SectionTitle } from '..
 import { trpc } from '../../trpc'
 import type { FeatureFull, SettingsView } from '../../lib/api'
 import type { DriveState } from '../../lib/workspace'
-import { driveCapabilities } from '../../lib/settings'
+import { driveCapabilities } from '../../lib/prep-findings'
 import { testDriveExplainer } from '../../lib/vocabulary'
 import {
   activeSession,
