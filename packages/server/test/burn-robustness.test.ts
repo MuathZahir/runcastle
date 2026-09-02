@@ -38,7 +38,7 @@ describe('classifyTicketRunError', () => {
   ] as const)('fails fast when the %s binary is absent from the image', (runtime, error, image) => {
     expect(classifyTicketRunError(new Error(error), runtime)).toBe('fatal')
     expect(missingAgentBinaryMessage(new Error(error), runtime, image)).toBe(
-      `${runtime === 'claude-code' ? 'claude' : 'codex'} is not installed in image ${image} — the image predates the burner Dockerfile. Rebuild it from Settings → AFK burns (Rebuild image).`,
+      `${runtime === 'claude-code' ? 'claude' : 'codex'} is not installed in image ${image} — the image predates the burner Dockerfile. Rebuild it from Settings → Burns (Rebuild image).`,
     )
   })
 

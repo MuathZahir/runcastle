@@ -1,20 +1,31 @@
 import {
   AGENT_RUNTIMES,
   CURATED_MODELS,
-  DRIVE_LOOP_KEYS,
   MODEL_STEPS,
   ModelEntry,
+  modelEntryFor,
   modelRoster,
 } from '@runcastle/core'
 import type { AgentRuntime, ModelStep } from '@runcastle/core'
 import type { SettingField, SettingsView } from './api'
+import {
+  describeFinding,
+  isStale,
+  isVerifiable,
+  relativeAge,
+  type FindingLike,
+} from './prep-findings'
 
 /**
- * Settings-overlay presentation logic (issue #47). `settings.get` returns the
- * per-field value/source/editable contract (issue #46); these pure helpers turn
- * a field into the row the overlay renders — its label, control kind, and the
- * read-only / restart-required / env-lock / project-override notes — so the
- * overlay component stays a thin view over `describeField`.
+ * Settings presentation logic. `settings.get` returns the per-field
+ * value/source/editable contract; these pure helpers turn it into everything the
+ * settings dialog renders — which page a field belongs on, its label /
+ * placeholder / tooltip, the chips that say where a value came from, the model
+ * roster and per-step tables, and the filter — so every component stays a thin
+ * view over this module.
+ *
+ * Prepared-field provenance lives in `./prep-findings`, which this module reads
+ * and never writes to.
  */
 
 /** Env var backing each field, mirroring the server's DESCRIPTORS (issue #46). */
@@ -39,6 +50,50 @@ export const RUNTIME_LABEL: Record<AgentRuntime, string> = {
   'claude-code': 'Claude Code',
   codex: 'Codex',
 }
+
+// ---------------------------------------------------------------------------
+// Where a setting lives
+// ---------------------------------------------------------------------------
+
+/**
+ * The dialog's four task pages (decision 3). Cut by what the human came to do,
+ * not by the config file's global/project split — that split is expressed inside
+ * "This project" by a source chip, never by a page.
+ */
+export type SettingsPage = 'general' | 'models' | 'burns' | 'project'
+
+/** A section within a page. */
+export type SettingsGroup =
+  | 'server'
+  | 'sessions'
+  | 'default'
+  | 'width'
+  | 'model'
+  | 'commands'
+  | 'chat'
+
+/** Each page's groups in render order; `pageRows` sorts its rows by it. */
+const PAGE_GROUPS: Record<SettingsPage, readonly SettingsGroup[]> = {
+  general: ['server', 'sessions'],
+  models: ['default'],
+  burns: ['width'],
+  project: ['model', 'commands', 'chat'],
+}
+
+/**
+ * Somewhere in settings: a page, and optionally a field (a setting key, or a
+ * doctor probe id on the Burns checklist) to scroll to and highlight. Anything
+ * that points at settings — the titlebar, the palette, an error message — hands
+ * one of these over so the human lands on the row rather than on the dialog.
+ */
+export interface SettingsLocation {
+  page: SettingsPage
+  field?: string
+}
+
+// ---------------------------------------------------------------------------
+// The model roster
+// ---------------------------------------------------------------------------
 
 /** One `<optgroup>` of the model dropdown: every model of a single runtime. */
 export interface ModelOptionGroup {
@@ -104,6 +159,10 @@ export function customModelCommit(id: string, runtime: string, note: string): Cu
   }
 }
 
+// ---------------------------------------------------------------------------
+// Per-step models
+// ---------------------------------------------------------------------------
+
 /** `stepModels.<step>` is the key convention for a per-step override (issue #48). */
 const STEP_PREFIX = 'stepModels.'
 export function isStepModelKey(key: string): boolean {
@@ -113,26 +172,68 @@ export function stepOf(key: string): string {
   return key.slice(STEP_PREFIX.length)
 }
 
-/** Human labels for each model step (issue #48). */
-const STEP_LABEL: Record<string, string> = {
-  ideation: 'Ideation',
-  qa: 'Q&A',
-  waypoint: 'Waypoint',
-  converge: 'Converge',
-  research: 'Research',
-  implement: 'Implement',
-  review: 'Review',
-  prepare: 'Prepare',
-  smoke: 'Smoke',
+/**
+ * Which half of the pipeline a step belongs to — the Models page groups them,
+ * because "you are in the terminal" and "this runs while you are away" are
+ * different spending decisions.
+ */
+export type StepGroup = 'sessions' | 'unattended'
+
+/**
+ * Every model step in display order, with the name and the one-line description
+ * that make the eleven step names self-explanatory without help text
+ * (decision 15). `revisit` and `project` used to render as raw keys.
+ */
+const STEP_META: readonly {
+  step: ModelStep
+  label: string
+  description: string
+  group: StepGroup
+}[] = [
+  // Sessions — you are in the terminal.
+  { step: 'ideation', label: 'Ideation', group: 'sessions', description: 'Grills you and writes the spec' },
+  { step: 'qa', label: 'Q&A', group: 'sessions', description: 'Answers questions about a feature' },
+  { step: 'waypoint', label: 'Waypoint', group: 'sessions', description: 'Works one waypoint of a mapped feature' },
+  { step: 'converge', label: 'Converge', group: 'sessions', description: 'Folds a map back into one spec' },
+  { step: 'revisit', label: 'Revisit', group: 'sessions', description: 'Reopens a feature after test-drive notes' },
+  { step: 'project', label: 'Project chat', group: 'sessions', description: 'The project-level conversation' },
+  // Unattended — burns and scripted runs.
+  { step: 'research', label: 'Research', group: 'unattended', description: 'Reads the repo before a burn' },
+  { step: 'implement', label: 'Implement', group: 'unattended', description: 'Burns a ticket in the sandbox' },
+  { step: 'review', label: 'Review', group: 'unattended', description: 'Reads the finished branch' },
+  { step: 'prepare', label: 'Prepare', group: 'unattended', description: 'Measures setup, verify and baseline' },
+  { step: 'smoke', label: 'Smoke', group: 'unattended', description: 'Cheap scripted end-to-end check' },
+]
+
+const STEP_LABEL: Record<string, string> = Object.fromEntries(
+  STEP_META.map((s) => [s.step, s.label]),
+)
+/** The settings key a step's own model is written to. */
+export function stepModelKey(step: ModelStep): string {
+  return `${STEP_PREFIX}${step}`
 }
-export const STEP_KEYS: string[] = MODEL_STEPS.map((s) => `${STEP_PREFIX}${s}`)
+export const STEP_KEYS: string[] = MODEL_STEPS.map(stepModelKey)
+
+// ---------------------------------------------------------------------------
+// Field metadata
+// ---------------------------------------------------------------------------
 
 export type ControlKind = 'text' | 'number' | 'select' | 'textarea'
 
 interface FieldMeta {
   label: string
-  help: string
+  /** The full explanation, shown on demand behind the row's ⓘ (decision 5). */
+  tooltip: string
   control: ControlKind
+  /** Where the field renders when it is a machine-wide value. */
+  page: SettingsPage
+  group: SettingsGroup
+  /** Example value shown in the empty control. */
+  placeholder?: string
+  /** The one short line shown always, where the label alone is ambiguous. */
+  shortHelp?: string
+  /** What the number counts, printed beside a numeric input. */
+  unit?: string
   options?: string[]
   /**
    * Human wording for an option whose stored value is a config identifier.
@@ -142,21 +243,30 @@ interface FieldMeta {
   optionLabels?: Record<string, string>
 }
 
-const META: Record<string, FieldMeta> = {
+const FIELD_META: Record<string, FieldMeta> = {
   serverPort: {
     label: 'Server port',
-    help: 'Port the runcastle server listens on.',
+    tooltip:
+      'The port the runcastle server listens on. Changing it takes effect at the next server restart.',
     control: 'number',
+    page: 'general',
+    group: 'server',
   },
   model: {
     label: 'Default model',
-    help: "Model every step inherits, and the runtime it runs on. A project's own model wins over the per-step models below.",
+    tooltip:
+      'Runs every step that has no model of its own below — and every project that has not set one.',
     control: 'select',
+    page: 'models',
+    group: 'default',
   },
   sandbox: {
     label: 'Sandbox',
-    help: 'Where launched sessions run.',
+    tooltip:
+      'Where launched sessions and burns run. A Docker container isolates them from this machine; “no sandbox” runs them directly on it.',
     control: 'select',
+    page: 'general',
+    group: 'sessions',
     options: ['docker', 'noSandbox'],
     optionLabels: {
       docker: 'Docker container (isolated)',
@@ -165,272 +275,227 @@ const META: Record<string, FieldMeta> = {
   },
   sandboxImage: {
     label: 'Sandbox image',
-    help: 'Docker image used when a session is sandboxed.',
+    tooltip:
+      'The Docker image sessions and burns are sandboxed in. Leave blank to use sandcastle:runcastle, the image “Build image” on the Burns page produces.',
     control: 'text',
+    page: 'general',
+    group: 'sessions',
+    placeholder: 'sandcastle:runcastle',
   },
   sessionMcp: {
     label: 'MCP servers in sessions',
-    help: 'inherit — sessions get your own MCP servers (user, project, and plugin) alongside runcastle’s. runcastleOnly — sessions see runcastle’s MCP server and nothing else.',
+    tooltip:
+      'Inherit mine — sessions see your own MCP servers (user, project and plugin) alongside runcastle’s. runcastle only — sessions see runcastle’s server and nothing else; use it for a reproducible tool surface or to keep a heavy personal MCP set out of the context window.',
     control: 'select',
+    page: 'general',
+    group: 'sessions',
     options: ['inherit', 'runcastleOnly'],
     optionLabels: {
       inherit: 'Inherit mine — my servers alongside runcastle’s',
       runcastleOnly: 'runcastle only — nothing else',
     },
   },
-  burnMaxIterations: {
-    label: 'Burn iterations',
-    help: 'Max turns a single burn agent takes within one healthy attempt (1–10) before it is stopped. Distinct from Burn attempts, which restarts a crashed agent.',
-    control: 'number',
-  },
   burnConcurrency: {
-    label: 'Burn concurrency',
-    help: 'Max tickets burned in parallel per run (1–8). Each is a full agent. Until you set one it follows this machine: 1 on hosts with 8 logical CPUs or fewer, 3 above — parallel agents each size their test workers from the whole core count.',
+    label: 'Concurrency',
+    tooltip:
+      'Tickets burned in parallel per run (1–8). Each is a full agent with its own container, sizing its install and test workers from the whole core count — lower it if suites die under load.',
     control: 'number',
+    page: 'burns',
+    group: 'width',
+    unit: 'tickets at once',
+  },
+  burnMaxIterations: {
+    label: 'Iterations per attempt',
+    tooltip:
+      'Turns one healthy burn agent may take before it is stopped (1–10). A ticket that finishes early stops the loop itself.',
+    control: 'number',
+    page: 'burns',
+    group: 'width',
+    shortHelp: 'Distinct from attempts: an attempt restarts an agent that crashed.',
+    unit: 'turns',
   },
   burnAttempts: {
-    label: 'Burn attempts',
-    help: 'Max agent attempts per ticket per run (1–5). A transient crash (API drop, network) retries with committed work preserved.',
+    label: 'Attempts per ticket',
+    tooltip:
+      'Fresh agent attempts per ticket per run (1–5). A transient crash — API drop, network, rate limit — retries with committed work preserved; auth errors and conflicts never retry.',
     control: 'number',
+    page: 'burns',
+    group: 'width',
+    unit: 'attempts',
   },
   burnConflictAttempts: {
     label: 'Conflict resolver passes',
-    help: 'Max agent passes spent resolving a ticket’s landing conflict before asking you (0–3). 0 sends every conflict straight to you.',
+    tooltip:
+      'Agent passes spent resolving a ticket’s landing conflict before asking you (0–3). 0 sends every conflict straight to you.',
     control: 'number',
+    page: 'burns',
+    group: 'width',
+    unit: 'passes before asking you',
   },
   burnCpus: {
-    label: 'Burn CPU limit',
-    help: 'CPU ceiling per burn container (--cpus). Blank leaves it unconstrained. Roughly cores ÷ concurrency keeps parallel tickets from oversubscribing the machine.',
+    label: 'CPU limit per burn',
+    tooltip:
+      'CPU ceiling per burn container (--cpus). Blank leaves it unconstrained. Roughly cores ÷ concurrency keeps parallel tickets from oversubscribing the machine.',
     control: 'number',
+    page: 'burns',
+    group: 'width',
+    placeholder: 'unlimited',
+    unit: 'cores · e.g. 4 on a 12-thread box at width 3',
+  },
+  // The five keys with a global twin render ONCE, on "This project", where a
+  // source chip says whether the value came from here or from the global
+  // default (decision 7) — the old surface listed each of them twice.
+  setupCommand: {
+    label: 'Setup',
+    tooltip:
+      'Takes a clean checkout to a buildable state inside the burn sandbox — dependency install plus any codegen. Blank auto-detects from the lockfile.',
+    control: 'text',
+    page: 'project',
+    group: 'commands',
+    placeholder: 'e.g. pnpm install --frozen-lockfile && pnpm prisma:generate',
   },
   verifyCommands: {
-    label: 'Verify commands',
-    help: 'Exact typecheck/test/lint commands for this repo, one per line. Given these, burn agents stop discovering workspace filter names by running suites that error out.',
+    label: 'Verify',
+    tooltip:
+      'The exact typecheck / test / lint commands a burn agent runs, one per line. Rendered verbatim into the agent’s prompt; runcastle never runs them itself.',
     control: 'textarea',
+    page: 'project',
+    group: 'commands',
+    placeholder: 'one per line, e.g.\npnpm --filter @acme/web test',
   },
   knownFailures: {
     label: 'Known failing tests',
-    help: 'Tests already red on main — a count plus suite names is enough. Saves every burn agent a full pre-work suite run to establish its own baseline.',
+    tooltip:
+      'Tests already red on main — a count plus suite names is enough. Saves every burn agent a full pre-work run to establish its own baseline.',
     control: 'textarea',
-  },
-  sessionBranch: {
-    label: 'Project chat lands on',
-    help: "Branch the project chat's commits (charter, ADRs) land on when its terminal closes. Blank means the repo's detected main line; a pick takes effect at the next chat you open.",
-    control: 'text',
+    page: 'project',
+    group: 'commands',
+    placeholder: 'e.g. 2 failing: dev-pane.test.ts (Windows only)',
   },
   devCommand: {
-    label: 'Dev command',
-    help: "Command that starts this project's dev server.",
+    label: 'Dev server',
+    tooltip:
+      'Starts this project’s dev server for a test drive. The URL it prints becomes the “Open app” link.',
     control: 'text',
-  },
-  setupCommand: {
-    label: 'Setup command',
-    help: 'Command that takes a clean checkout to a buildable state — dependency install plus any codegen every task would otherwise discover it needed mid-flight.',
-    control: 'text',
+    page: 'project',
+    group: 'commands',
+    placeholder: 'e.g. pnpm dev',
   },
   driveSetupCommand: {
-    label: 'Test drive setup',
-    help: 'Command run before the dev server starts a test drive — bring up services, apply schema, whatever this project needs. Chain steps with &&. Runs on your machine; a failure is reported, never fatal.',
+    label: 'Before a test drive',
+    tooltip:
+      'Runs on your machine before the dev server starts a test drive — bring up services, apply schema. A failure is reported, never fatal.',
     control: 'text',
+    page: 'project',
+    group: 'commands',
+    placeholder: 'e.g. docker compose up -d && pnpm db:migrate',
   },
   driveStopCommand: {
-    label: 'Test drive teardown',
-    help: 'Command run when a test drive stops, while the feature branch is still checked out. The counterpart to setup — stop services, drop the branch database.',
+    label: 'After a test drive',
+    tooltip:
+      'Runs when a test drive stops, while the feature branch is still checked out — stop services, drop the branch database.',
     control: 'text',
+    page: 'project',
+    group: 'commands',
+    placeholder: 'e.g. docker compose down',
   },
   dbResetCommand: {
-    label: 'Database reset command',
-    help: 'Command that rebuilds the dev database from the migrations in the working tree. Offered (never run automatically) after a test drive whose branch carried migrations this one does not have.',
+    label: 'Reset dev database',
+    tooltip:
+      'Rebuilds the dev database from the migrations in the working tree. Offered — never run automatically — after a test drive whose branch carried migrations this one does not have.',
     control: 'text',
+    page: 'project',
+    group: 'commands',
+    placeholder: 'e.g. pnpm db:reset',
+  },
+  sessionBranch: {
+    label: 'Commits land on',
+    tooltip:
+      'The branch the project chat’s commits (charter, ADRs) land on when its terminal closes. Blank uses the repo’s detected main line; a pick takes effect at the next chat you open.',
+    control: 'text',
+    page: 'project',
+    group: 'chat',
+    placeholder: 'main (detected)',
   },
 }
 
+/** Field order within a group — the order they are declared above. */
+const FIELD_ORDER = Object.keys(FIELD_META)
+
 /**
- * Human labels for prepared fields, used by the preparation card (which lists
- * findings by key, not by settings row). Kept in sync with `META` labels.
+ * How the two keys that appear on BOTH a global page and "This project" read in
+ * project scope. Everything else keeps one placement and one wording.
  */
-export const PREPARED_LABEL: Record<string, string> = {
-  setupCommand: 'Setup command',
-  verifyCommands: 'Verify commands',
-  knownFailures: 'Known failing tests',
-  devCommand: 'Dev command',
-  dbResetCommand: 'Database reset command',
-  driveSetupCommand: 'Test drive setup',
-  driveStopCommand: 'Test drive teardown',
+const PROJECT_META: Record<string, Partial<FieldMeta>> = {
+  model: {
+    label: 'Model',
+    tooltip:
+      'A model set here runs every step of this project — it beats the global default and the per-step models.',
+    page: 'project',
+    group: 'model',
+  },
+  sandbox: { page: 'project', group: 'model' },
 }
 
 /**
- * Keys preparation proposes from configuration WITHOUT executing them — they
- * describe the developer's own machine, which a throwaway sandbox cannot stand
- * in for. Surfaced so a proposed value is never mistaken for a measured one.
+ * The five keys a project can override that also have a global default. Only
+ * these carry a `Global` / `This project` chip; a project-only key has no twin
+ * to inherit from, so a chip would be answering a question nobody asked.
  */
-export const HOST_ONLY_PREPARED = new Set([
-  'devCommand',
-  'dbResetCommand',
-  'driveSetupCommand',
-  'driveStopCommand',
-])
+const TWIN_KEYS = new Set(['model', 'sandbox', 'setupCommand', 'verifyCommands', 'knownFailures'])
 
-/** Coarse "3 days ago" for a finding's age. Exact enough to judge staleness by. */
-export function relativeAge(ts: number, now = Date.now()): string {
-  const secs = Math.max(0, Math.round((now - ts) / 1000))
-  if (secs < 90) return 'just now'
-  const mins = Math.round(secs / 60)
-  if (mins < 60) return `${mins}m ago`
-  const hours = Math.round(mins / 60)
-  if (hours < 36) return `${hours}h ago`
-  return `${Math.round(hours / 24)}d ago`
-}
-
-/**
- * Whether a dry run can prove this key at all. Only the three drive-loop keys
- * have an observable a host drive produces; the rest carry no verification
- * wording anywhere, which reads as "unverifiable", not "failed" (decision 10).
- */
-function isVerifiable(key: string): boolean {
-  return (DRIVE_LOOP_KEYS as readonly string[]).includes(key)
-}
-
-/**
- * The verification badge for a finding — `null` for a key no dry run can prove.
- *
- * Deliberately independent of `source`: the stamp records that this exact value
- * was seen working by the real drive machinery, not who chose it, so a value the
- * human typed carries a badge exactly like one preparation measured.
- */
-export function verificationBadge(
-  f: { key: string; verifiedAt?: number },
-  now = Date.now(),
-): string | null {
-  if (!isVerifiable(f.key)) return null
-  return f.verifiedAt === undefined ? 'unverified' : `verified ${relativeAge(f.verifiedAt, now)}`
-}
-
-/**
- * The drive-loop keys a test drive is about to depend on that no dry run has
- * ever proven — what the next-step bar warns about (decision 7), in the canonical
- * key order so the sentence is stable between polls.
- *
- * A key with no finding row has no value, and a drive that runs nothing for it
- * has nothing to doubt: a checkout-only drive warns about nothing at all.
- */
-export function unverifiedDriveKeys(
-  findings: readonly { key: string; verifiedAt?: number }[],
-): string[] {
-  return DRIVE_LOOP_KEYS.filter((k) =>
-    findings.some((f) => f.key === k && f.verifiedAt === undefined),
-  )
-}
-
-/** Which halves of a test drive this project has actually configured. */
-export interface DriveCapabilities {
-  /** `driveSetupCommand` — run before the dev server starts. */
-  setup: boolean
-  /** `devCommand` — the dev pane, and the "Open app" URL sniffed out of it. */
-  dev: boolean
-  /** `driveStopCommand` — run on stop, while the feature branch is still checked out. */
-  teardown: boolean
-}
-
-/**
- * What a test drive on this project will do, read off the settings view.
- *
- * Mirrors the emptiness checks the drive itself makes — a hook step returns
- * early on a blank command and the dev pane is spawned only when `devCommand`
- * is set — so the review page describes the drive the human is about to get
- * rather than the fully-prepared one we wish they had. `undefined` while the
- * settings query is in flight: unknown is not the same answer as "none".
- */
-export function driveCapabilities(view: SettingsView | undefined): DriveCapabilities | undefined {
-  if (!view) return undefined
-  const set = (key: string): boolean => {
-    const value = view.fields.find((f) => f.key === key)?.value
-    return typeof value === 'string' && value.trim().length > 0
+/** Meta for a field, synthesising per-step model entries not in the static table. */
+function metaFor(key: string, scope: SettingField['scope'] = 'global'): FieldMeta {
+  if (isStepModelKey(key)) {
+    const step = stepOf(key)
+    const label = STEP_LABEL[step] ?? step
+    return {
+      label,
+      tooltip: `Model for the ${label} step.`,
+      control: 'select',
+      page: 'models',
+      group: 'default',
+    }
   }
-  return {
-    setup: set('driveSetupCommand'),
-    dev: set('devCommand'),
-    teardown: set('driveStopCommand'),
+  const base = FIELD_META[key] ?? {
+    label: key,
+    tooltip: '',
+    control: 'text' as const,
+    page: 'general' as const,
+    group: 'server' as const,
   }
+  return scope === 'project' ? { ...base, ...PROJECT_META[key] } : base
 }
 
-/**
- * The one-line provenance note under a prepared field.
- *
- * The staleness half is the point: a value measured 200 commits ago is not
- * obviously wrong, which is exactly why it needs saying out loud — a test
- * baseline that has silently rotted gets trusted by every agent that reads it.
- * An unknown distance (rebased-away sha) says "unknown", never "fresh".
- *
- * A drive-loop key's note also carries its dry-run stamp, because settings is
- * where a human edits the value and any edit clears the stamp (decision 6) — the
- * place it goes away has to be the place it was visible.
- */
-export function describeFinding(f: {
-  source: string
-  establishedAt: number
-  establishedSha?: string
-  staleCommits?: number
-  verifiedAt?: number
-  key: string
-}): string {
-  return `${provenanceNote(f)}${verificationNote(f)}`
+// ---------------------------------------------------------------------------
+// Rows
+// ---------------------------------------------------------------------------
+
+/** Where the value on screen came from, as a chip beside the control. */
+export type SourceChip = 'global' | 'project' | 'env'
+
+/** The provenance chip on a prepared field; clicking it opens the evidence. */
+export interface ProvenanceChip {
+  text: string
+  tone: 'ok' | 'muted' | 'warn'
+  evidence?: string
 }
 
-/** The dry-run half of the note; empty for a key no dry run can prove. */
-function verificationNote(f: { key: string; verifiedAt?: number }): string {
-  if (!isVerifiable(f.key)) return ''
-  return f.verifiedAt === undefined
-    ? ' Unverified — never proven by a dry run.'
-    : ` Verified ${relativeAge(f.verifiedAt)} by a dry run.`
-}
-
-/** Who established the value and how far the repo has moved since. */
-function provenanceNote(f: {
-  source: string
-  establishedAt: number
-  establishedSha?: string
-  staleCommits?: number
-  key: string
-}): string {
-  if (f.source === 'human') return `You set this ${relativeAge(f.establishedAt)}.`
-
-  // A `session` value was established on the developer's own machine with them
-  // present, so the host-only caveat does not apply to it — that caveat exists
-  // because a container cannot execute those keys, and this one can.
-  const how =
-    f.source === 'session'
-      ? 'Established in a conversation on this machine'
-      : HOST_ONLY_PREPARED.has(f.key)
-        ? 'Proposed by preparation from config (not executed)'
-        : 'Established by preparation'
-  const when = relativeAge(f.establishedAt)
-
-  if (f.staleCommits === undefined) {
-    return `${how} ${when}${f.establishedSha ? ' — age against main unknown' : ''}.`
-  }
-  if (f.staleCommits === 0) return `${how} ${when} — main has not moved since.`
-  return `${how} ${when} — main has moved ${f.staleCommits} commit${f.staleCommits === 1 ? '' : 's'} since.`
-}
-
-/**
- * How many commits of drift before a finding is worth flagging rather than just
- * reporting. Under this, movement is normal churn; over it, a re-prepare is the
- * suggestion. A round number by design — there is no principled threshold, and
- * pretending otherwise would be false precision.
- */
-export const STALE_COMMIT_THRESHOLD = 100
-
-/** Whether a finding is stale enough to nudge about. Human values never are. */
-export function isStale(f: { source: string; staleCommits?: number }): boolean {
-  return f.source !== 'human' && (f.staleCommits ?? 0) >= STALE_COMMIT_THRESHOLD
-}
-
-/** One field ready to render in the overlay. */
+/** One field ready to render in the settings dialog. */
 export interface SettingRow {
   key: string
   label: string
-  help: string
+  /** The full explanation, behind the row's ⓘ. */
+  tooltip: string
+  /** The one short line shown always, where the label alone is ambiguous. */
+  shortHelp?: string
+  /** Example value for the empty control ('' when the label says enough). */
+  placeholder: string
+  /** What a numeric value counts, printed beside the input. */
+  unit?: string
+  /** Which page and section this row renders on, in this field's scope. */
+  page: SettingsPage
+  group: SettingsGroup
   /** Effective value as a display string ('' for null). */
   value: string
   control: ControlKind
@@ -447,6 +512,17 @@ export interface SettingRow {
   source: SettingField['source']
   /** One-line status note under the field, or null. */
   note: string | null
+  /**
+   * The inherited global value, for an unset project-scope field with a global
+   * twin: the control renders EMPTY with this as its ghost placeholder (a select
+   * as a first "Use global (<value>)" option), so what will actually run is on
+   * screen without a second copy of the field (decision 7).
+   */
+  ghostValue?: string
+  /** Where this value came from, as a chip. Absent when there is nothing to say. */
+  sourceChip?: SourceChip
+  /** Who established a prepared value, and the evidence behind the chip. */
+  provenanceChip?: ProvenanceChip
   /** A `select` may also accept a free-text model id (the Default-model combobox). */
   allowCustom: boolean
   /** `options` grouped by runtime — model rows only, empty for every other control. */
@@ -472,7 +548,7 @@ export type FieldCommit = { value: string | number | null } | { error: string }
  * The value a settings field commits for what was typed into it.
  *
  * Numeric fields used to go through a bare `Number(trimmed)`, and `Number('')`
- * is `0`: blanking "Burn CPU limit" — the documented way to unconstrain it —
+ * is `0`: blanking "CPU limit per burn" — the documented way to unconstrain it —
  * wrote a zero the server's `z.number().positive()` then rejected, and anything
  * non-numeric wrote `NaN`. A blank numeric field means "unset this"; anything
  * that is not a number is a question for the human, not a value to send.
@@ -486,62 +562,91 @@ export function fieldCommit(control: ControlKind, raw: string): FieldCommit {
   return { value: parsed }
 }
 
-/** Meta for a field, synthesising per-step model entries not in the static table. */
-function metaFor(key: string): FieldMeta {
-  if (isStepModelKey(key)) {
-    const step = stepOf(key)
-    return {
-      label: STEP_LABEL[step] ?? step,
-      help: `Model for the ${STEP_LABEL[step] ?? step} step.`,
-      control: 'select',
-    }
-  }
-  return META[key] ?? { label: key, help: '', control: 'text' as const }
-}
-
 /** Whether a field's value is a model id — the rows that offer the runtime groups. */
 function isModelKey(key: string): boolean {
   return key === 'model' || isStepModelKey(key)
 }
 
 /**
- * The note under a field whose default the SERVER resolved from this host — only
- * `burnConcurrency`, whose width depends on the machine's core count.
+ * What the number counts, and — for `burnConcurrency` alone — the width this
+ * machine would burn at while nothing is set.
  *
- * The number is read off the field rather than recomputed here: the web has no
- * way to count the host's cores, and the value the server sent for an unset
- * field already IS the width this machine would burn at. Only worth saying while
- * the field is unset — once a width is chosen, the machine no longer decides.
+ * That number is read off the field rather than recomputed: the web has no way
+ * to count the host's cores, and the value the server sent for an unset field
+ * already IS the default it resolved. Only worth saying while the field is
+ * unset; once a width is chosen, the machine no longer decides.
  */
-function hostDefaultNote(field: SettingField): string | null {
-  if (field.key !== 'burnConcurrency' || field.source !== 'default') return null
-  return `Default on this machine: ${toDisplay(field.value)}.`
+function unitFor(field: SettingField, meta: FieldMeta): string | undefined {
+  if (meta.unit === undefined) return undefined
+  if (field.key !== 'burnConcurrency' || field.source !== 'default') return meta.unit
+  return `${meta.unit} · default on this machine: ${toDisplay(field.value)}`
 }
 
-/** The provenance a prepared field carries, when one has been established. */
-export interface FindingLike {
-  key: string
-  source: string
-  evidence?: string
-  establishedAt: number
-  establishedSha?: string
-  staleCommits?: number
-  /** When a dry run last proved this value; drive-loop keys only (decision 10). */
-  verifiedAt?: number
+/**
+ * The inherited global value for an unset project-scope twin, or undefined.
+ *
+ * Burn concurrency is the one machine-wide field with a ghost of its own: while
+ * nothing is set, the width comes from this host's core count, and showing it as
+ * a value would read as a choice someone made (spec §Burns).
+ *
+ * `env` is excluded deliberately: an env-locked field is not inheriting the
+ * global default, it is overriding everything, and a ghost would read as "this
+ * is what you would get" when it is not.
+ */
+function ghostValueFor(field: SettingField): string | undefined {
+  if (field.scope !== 'project') {
+    const hostDefault = field.key === 'burnConcurrency' && field.source === 'default'
+    return hostDefault ? toDisplay(field.value) || undefined : undefined
+  }
+  if (!TWIN_KEYS.has(field.key)) return undefined
+  if (field.source !== 'file' && field.source !== 'default') return undefined
+  return toDisplay(field.value) || undefined
+}
+
+/** Which of the three chips a row shows for where its value came from. */
+function sourceChipFor(field: SettingField): SourceChip | undefined {
+  if (field.source === 'env') return 'env'
+  if (field.scope !== 'project' || !TWIN_KEYS.has(field.key)) return undefined
+  return field.source === 'project' ? 'project' : 'global'
+}
+
+/**
+ * The provenance chip for a prepared value — who established it, how long ago,
+ * how far main has moved, and whether a dry run ever proved it. The evidence
+ * that justified it rides along for the popover; it is never rendered inline
+ * (decision 5), because it runs to thousands of words.
+ */
+function provenanceChipFor(f: FindingLike): ProvenanceChip {
+  const who = f.source === 'human' ? 'You' : f.source === 'session' ? 'Set in a session' : 'Prepared'
+  const parts = [who, relativeAge(f.establishedAt)]
+  // Distance from main is meaningless for a value the human owns — nothing
+  // measured it, so nothing about it has rotted.
+  if (f.source !== 'human' && f.staleCommits) parts.push(`main +${f.staleCommits}`)
+  const dryRun = isVerifiable(f.key)
+    ? f.verifiedAt === undefined
+      ? 'unverified'
+      : `verified by a dry run ${relativeAge(f.verifiedAt)}`
+    : null
+  if (dryRun) parts.push(dryRun)
+  return {
+    text: parts.join(' · '),
+    tone: isStale(f) ? 'warn' : dryRun === 'unverified' ? 'muted' : 'ok',
+    ...(f.evidence ? { evidence: f.evidence } : {}),
+  }
 }
 
 /**
  * Turn one resolved `settings.get` field into a render row. A `finding` (for
- * prepared fields) replaces the generic scope note with real provenance — who
- * established the value and how far the repo has moved since — because "where
- * did this come from" is the question that decides whether to trust it.
+ * prepared fields) adds real provenance — who established the value and how far
+ * the repo has moved since — because "where did this come from" is the question
+ * that decides whether to trust it.
  */
 export function describeField(
   field: SettingField,
   finding?: FindingLike,
   roster: readonly ModelEntry[] = CURATED_MODELS,
 ): SettingRow {
-  const meta = metaFor(field.key)
+  const meta = metaFor(field.key, field.scope)
   const isModel = isModelKey(field.key)
   const readOnly = !field.editable
   const overridden = field.source === 'project'
@@ -553,14 +658,21 @@ export function describeField(
     note = describeFinding(finding)
   } else if (field.scope === 'project') {
     note = overridden ? 'Overridden for this project' : 'Inherited from global'
-  } else {
-    note = hostDefaultNote(field)
   }
+
+  const unit = unitFor(field, meta)
+  const ghostValue = ghostValueFor(field)
+  const sourceChip = sourceChipFor(field)
 
   return {
     key: field.key,
     label: meta.label,
-    help: meta.help,
+    tooltip: meta.tooltip,
+    ...(meta.shortHelp ? { shortHelp: meta.shortHelp } : {}),
+    placeholder: meta.placeholder ?? '',
+    ...(unit ? { unit } : {}),
+    page: meta.page,
+    group: meta.group,
     value: toDisplay(field.value),
     control: meta.control,
     // A model row's choices are the roster (curated + the operator's own), so a
@@ -573,12 +685,50 @@ export function describeField(
     overridden,
     source: field.source,
     note,
+    ...(ghostValue ? { ghostValue } : {}),
+    ...(sourceChip ? { sourceChip } : {}),
+    ...(finding ? { provenanceChip: provenanceChipFor(finding) } : {}),
     ...(finding?.evidence ? { evidence: finding.evidence } : {}),
     stale: finding ? isStale(finding) : false,
     // The Default-model dropdown and each per-step override accept a roster
     // choice OR a free-text model id (issue #48).
     allowCustom: isModel,
   }
+}
+
+/** A field that renders as a row — not a per-step model, not the roster itself. */
+function isRowKey(key: string): boolean {
+  return !isStepModelKey(key) && key !== 'models'
+}
+
+/**
+ * The rows of one page, in group order.
+ *
+ * `general` and `burns` are machine-wide and read the GLOBAL view; `project`
+ * reads the project-scoped view and takes exactly the fields a project can
+ * override. `models` has no rows — it renders the roster and per-step tables.
+ */
+export function pageRows(
+  view: SettingsView,
+  page: SettingsPage,
+  findings: readonly FindingLike[] = [],
+): SettingRow[] {
+  const byKey = new Map(findings.map((f) => [f.key, f]))
+  const roster = rosterFromView(view)
+  const groups = PAGE_GROUPS[page]
+  return view.fields
+    .filter((f) => {
+      if (!isRowKey(f.key)) return false
+      return page === 'project'
+        ? f.scope === 'project'
+        : f.scope !== 'project' && metaFor(f.key).page === page
+    })
+    .map((f) => describeField(f, byKey.get(f.key), roster))
+    .sort(
+      (a, b) =>
+        groups.indexOf(a.group) - groups.indexOf(b.group) ||
+        FIELD_ORDER.indexOf(a.key) - FIELD_ORDER.indexOf(b.key),
+    )
 }
 
 /**
@@ -591,9 +741,7 @@ export function globalRows(view: SettingsView): SettingRow[] {
   const roster = rosterFromView(view)
   // Not `.map(describeField)` — `describeField`'s optional second parameter
   // would bind to Array#map's index argument.
-  return view.fields
-    .filter((f) => !isStepModelKey(f.key) && f.key !== 'models')
-    .map((f) => describeField(f, undefined, roster))
+  return view.fields.filter((f) => isRowKey(f.key)).map((f) => describeField(f, undefined, roster))
 }
 
 /**
@@ -655,4 +803,230 @@ export function unsetStepKeys(view: SettingsView): { key: string; label: string 
     key: k,
     label: STEP_LABEL[stepOf(k)] ?? stepOf(k),
   }))
+}
+
+// ---------------------------------------------------------------------------
+// The Models page
+// ---------------------------------------------------------------------------
+
+/** The global default model as a display string ('' while unset). */
+export function defaultModelOf(view: SettingsView): string {
+  return toDisplay(view.fields.find((f) => f.key === 'model')?.value)
+}
+
+/**
+ * The model set for one step in the config file, or null when it follows the
+ * default. Only a `file` source counts: an unset step reports the schema default
+ * and must not shadow the default model.
+ */
+function ownStepModel(view: SettingsView, step: ModelStep): string | null {
+  const f = view.fields.find((x) => x.key === `${STEP_PREFIX}${step}`)
+  return f?.source === 'file' && typeof f.value === 'string' && f.value !== '' ? f.value : null
+}
+
+/** One line of the roster table (decision 15/16). */
+export interface RosterRow {
+  id: string
+  runtime: AgentRuntime
+  /** The use-case note; '' when the model has none and is not offered per ticket. */
+  note: string
+  /** The steps that resolve to this model — the "Used for" column. */
+  usedFor: ModelStep[]
+  isDefault: boolean
+  /** The operator added this id themselves, so it can be removed again. */
+  custom: boolean
+}
+
+/**
+ * The roster table: every model this machine offers, with what it is used for.
+ * Read off the GLOBAL view — the roster and the per-step map are machine-wide,
+ * and a project's own model is called out separately (`projectModelWarning`).
+ */
+export function rosterRows(view: SettingsView): RosterRow[] {
+  const defaultModel = defaultModelOf(view)
+  const resolved = new Map(
+    MODEL_STEPS.map((step) => [step, ownStepModel(view, step) ?? defaultModel] as const),
+  )
+  const curated = new Set(CURATED_MODELS.map((m) => m.id))
+  return rosterFromView(view).map((m) => ({
+    id: m.id,
+    runtime: m.runtime,
+    note: m.note ?? '',
+    usedFor: MODEL_STEPS.filter((step) => resolved.get(step) === m.id),
+    isDefault: m.id === defaultModel,
+    custom: !curated.has(m.id),
+  }))
+}
+
+/**
+ * The roster rows worth showing by default: the default, anything a step uses,
+ * anything annotated, and everything the operator added. A curated model nobody
+ * has touched is noise — it collapses behind "show all" (spec, Models page).
+ */
+export function rosterVisibleRows(rows: readonly RosterRow[]): RosterRow[] {
+  return rows.filter((r) => r.isDefault || r.usedFor.length > 0 || r.note !== '' || r.custom)
+}
+
+/** How many curated models "show all" would reveal. */
+export function hiddenCuratedCount(rows: readonly RosterRow[]): number {
+  return rows.length - rosterVisibleRows(rows).length
+}
+
+/** One line of the per-step table: all eleven steps, always (decision 15). */
+export interface StepRow {
+  step: ModelStep
+  label: string
+  description: string
+  group: StepGroup
+  /** The model set for this step, or null when it follows the default. */
+  value: string | null
+  /** What it will actually run — `value`, else the default model. */
+  effectiveModel: string
+  /** The runtime `effectiveModel` launches, never inferred from the id. */
+  effectiveRuntime: AgentRuntime
+}
+
+/**
+ * The per-step table, grouped Sessions then Unattended. Every step is listed
+ * whether or not it is set: the old surface hid unset steps behind an "add an
+ * override" picker, which made the whole per-step idea a two-step discovery.
+ */
+export function stepRows(view: SettingsView): StepRow[] {
+  const config = { models: customModelsFromView(view) }
+  const fallback = defaultModelOf(view)
+  return STEP_META.map((meta) => {
+    const value = ownStepModel(view, meta.step)
+    const effectiveModel = value ?? fallback
+    return {
+      ...meta,
+      value,
+      effectiveModel,
+      effectiveRuntime: modelEntryFor(effectiveModel, config).runtime,
+    }
+  })
+}
+
+/**
+ * The model this project runs everything on, when it sets one — the amber line
+ * above the per-step table saying those apply to other projects. Reads the
+ * PROJECT-scoped view, where an override reports source `project`.
+ */
+export function projectModelWarning(view: SettingsView | undefined): string | null {
+  const model = view?.fields.find((f) => f.key === 'model')
+  if (model?.source !== 'project') return null
+  return toDisplay(model.value) || null
+}
+
+// ---------------------------------------------------------------------------
+// Filtering and deep links
+// ---------------------------------------------------------------------------
+
+/** Something the filter box can match: a row, a roster model, a step, a probe. */
+export interface SearchableSetting {
+  /** Stable id — a setting key, a model id, a step key, or a doctor probe id. */
+  id: string
+  page: SettingsPage
+  /** Everything a query may match: label, key, tooltip, and anything else. */
+  terms: readonly string[]
+}
+
+export interface SettingsFilter {
+  /** Hits per page, shown beside each name in the rail. Zero for an empty query. */
+  counts: Record<SettingsPage, number>
+  /** The ids still on screen. Everything, for an empty query. */
+  matches: Set<string>
+}
+
+/** What a settings row offers the filter box. */
+export function rowSearchTerms(row: SettingRow): string[] {
+  return [row.label, row.key, row.tooltip]
+}
+
+/**
+ * Everything on one page the filter box can match. Most pages are only their
+ * rows; the Models page also renders the roster and all eleven steps, which are
+ * things a reader searches for by name and which no `settings.get` field
+ * describes — so they contribute their own items here rather than being
+ * unreachable by the filter.
+ */
+export function pageSearchItems(view: SettingsView, page: SettingsPage): SearchableSetting[] {
+  const rows: SearchableSetting[] = pageRows(view, page).map((row) => ({
+    id: row.key,
+    page,
+    terms: rowSearchTerms(row),
+  }))
+  if (page !== 'models') return rows
+  return [
+    ...rows,
+    ...rosterRows(view).map((model) => ({
+      id: model.id,
+      page,
+      terms: [model.id, model.note, RUNTIME_LABEL[model.runtime]],
+    })),
+    ...stepRows(view).map((step) => ({
+      id: stepModelKey(step.step),
+      page,
+      terms: [step.label, step.description, step.step],
+    })),
+  ]
+}
+
+/**
+ * Filter every page at once: a case-insensitive substring over each item's
+ * terms. An empty query matches everything and counts nothing — the rail shows
+ * no numbers until someone is actually searching.
+ */
+export function filterSettings(
+  query: string,
+  items: readonly SearchableSetting[],
+): SettingsFilter {
+  const counts: Record<SettingsPage, number> = { general: 0, models: 0, burns: 0, project: 0 }
+  const needle = query.trim().toLowerCase()
+  if (needle === '') return { counts, matches: new Set(items.map((i) => i.id)) }
+
+  const matches = new Set<string>()
+  for (const item of items) {
+    if (!item.terms.some((t) => t.toLowerCase().includes(needle))) continue
+    matches.add(item.id)
+    counts[item.page] += 1
+  }
+  return { counts, matches }
+}
+
+/**
+ * The settings location an error message points at, so "Settings → AFK burns
+ * (Rebuild image)" can be a link that lands on the image row instead of an
+ * instruction to go looking. Both the doctor's stale-image detail and the
+ * burner's missing-binary message carry that wording.
+ */
+export function settingsLocationFromMessage(text: string): SettingsLocation | null {
+  return SETTINGS_POINTER.test(text) ? { page: 'burns', field: 'sandcastle-image' } : null
+}
+
+/** "Settings → AFK burns", in either the old wording or the new. */
+const SETTINGS_POINTER = /Settings\s*→\s*(?:AFK burns|Burns)/i
+
+/** A message split around the settings pointer inside it, ready to render. */
+export interface SettingsMention {
+  before: string
+  /** The phrase itself — this is what becomes the link. */
+  phrase: string
+  after: string
+  location: SettingsLocation
+}
+
+/**
+ * Where the pointer sits in a message, so the phrase can be a link and the rest
+ * of the sentence stays prose. `null` when the message points nowhere.
+ */
+export function settingsMention(text: string): SettingsMention | null {
+  const match = SETTINGS_POINTER.exec(text)
+  const location = settingsLocationFromMessage(text)
+  if (!match || !location) return null
+  return {
+    before: text.slice(0, match.index),
+    phrase: match[0],
+    after: text.slice(match.index + match[0].length),
+    location,
+  }
 }
