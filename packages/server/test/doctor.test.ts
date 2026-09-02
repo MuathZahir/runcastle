@@ -154,7 +154,8 @@ describe('runDoctor — canned environments', () => {
     expect(image.detail).toBe(
       'sandcastle:runcastle built 2026-08-20, burner Dockerfile changed 2026-08-21 — rebuild',
     )
-    expect(image.fix).toMatch(/Rebuild image/)
+    // Names the settings page the web deep-links from (decision 9).
+    expect(image.fix).toBe('Open Settings → Burns (Rebuild image).')
     expect(report.ok).toBe(false)
   })
 })

@@ -13,6 +13,7 @@ import { IconChevronRight, IconTerminal } from '../../icons'
 import { AgentTranscript } from '../AgentTranscript'
 import { ErrorBoundary } from '../ErrorBoundary'
 import { Markdown } from '../Markdown'
+import { MessageWithSettingsLink } from '../settings/MessageWithSettingsLink'
 import { SessionPanel } from '../SessionPanel'
 
 /**
@@ -271,7 +272,7 @@ function Lane({
       </div>
       {errorHeadline && !conflict && (
         <div className="lane-error" title={ticket.error}>
-          {errorHeadline}
+          <MessageWithSettingsLink text={errorHeadline} />
         </div>
       )}
       {conflict && (
@@ -289,9 +290,9 @@ function Lane({
               ))}
             </ul>
           )}
-          {ticket.error && (
+          {errorHeadline && (
             <div className="lane-error" title={ticket.error}>
-              {errorHeadline}
+              <MessageWithSettingsLink text={errorHeadline} />
             </div>
           )}
         </div>

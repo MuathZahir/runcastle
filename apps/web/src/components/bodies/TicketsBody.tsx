@@ -20,6 +20,7 @@ import {
 } from '../../ui'
 import { IconChevronRight, IconDoc } from '../../icons'
 import { Markdown } from '../Markdown'
+import { MessageWithSettingsLink } from '../settings/MessageWithSettingsLink'
 import { SessionPanel } from '../SessionPanel'
 
 /**
@@ -227,14 +228,18 @@ export function TicketsBody({
             {t.status === 'failed' && t.error && (
               <div className="td-section td-error">
                 <div className="td-heading">Error</div>
-                <div className="td-error-body">{t.error}</div>
+                <div className="td-error-body">
+                  <MessageWithSettingsLink text={t.error} />
+                </div>
               </div>
             )}
 
             {t.status === 'cancelled' && t.error && (
               <div className="td-section">
                 <div className="td-heading">Cancelled</div>
-                <div className="td-body">{t.error}</div>
+                <div className="td-body">
+                  <MessageWithSettingsLink text={t.error} />
+                </div>
               </div>
             )}
           </div>

@@ -13,7 +13,7 @@ import {
   triage,
 } from '../lib/feature-ui'
 import { prepRailRow } from '../lib/project-workspace'
-import { isStale } from '../lib/settings'
+import { isStale } from '../lib/prep-findings'
 import { useLivePoll } from '../lib/live'
 import type { ProjectTalkApi } from '../lib/use-project-talk'
 import { IconBolt, IconCheck, IconPlus, LogoMark } from '../icons'

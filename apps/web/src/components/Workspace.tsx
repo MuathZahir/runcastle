@@ -6,7 +6,7 @@ import { useLivePoll } from '../lib/live'
 import { useToast } from '../lib/toast'
 import { Button, DimLine, PhaseTag } from '../ui'
 import type { FeatureFull, PrepView } from '../lib/api'
-import { unverifiedDriveKeys } from '../lib/settings'
+import { unverifiedDriveKeys } from '../lib/prep-findings'
 import type { DriveState } from '../lib/workspace'
 import {
   activeSession,

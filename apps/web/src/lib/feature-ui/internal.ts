@@ -1,5 +1,5 @@
 import type { FeatureFull } from '../api'
-import { PREPARED_LABEL } from '../settings'
+import { PREPARED_LABEL } from '../prep-findings'
 
 export function hasResumable(sessions: FeatureFull['sessions'], kind?: string): boolean {
   return sessions.some(
