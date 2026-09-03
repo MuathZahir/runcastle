@@ -40,12 +40,19 @@ const BUTTON_BASE =
   'duration-(--dur-1) ease-app enabled:active:scale-[0.99] ' +
   'disabled:cursor-not-allowed disabled:opacity-40'
 
+/**
+ * Every variant states its own background, `danger` included. There is no
+ * preflight (see {@link BARE_BUTTON}), so a variant that names only a border and
+ * a colour leaves the user agent's `buttonface` behind it — which is how the
+ * danger button rendered as white-on-white until it said `bg-transparent`.
+ */
 const BUTTON_VARIANT: Record<Variant, string> = {
   ghost:
     'border-hairline bg-transparent text-text enabled:hover:border-hairline-strong enabled:hover:bg-panel',
   solid:
     'border-accent bg-accent font-semibold text-accent-ink enabled:hover:border-accent-2 enabled:hover:bg-accent-2',
-  danger: 'border-danger/55 text-danger enabled:hover:border-danger enabled:hover:bg-danger/12',
+  danger:
+    'border-danger/55 bg-transparent text-danger enabled:hover:border-danger enabled:hover:bg-danger/12',
 }
 
 export function Button({
@@ -60,6 +67,36 @@ export function Button({
     </button>
   )
 }
+
+/**
+ * The reset a plain `<button>` needs when it is not a {@link Button} — a
+ * breadcrumb, a rail row, a close ✕. There is no preflight (apps/web/STYLE.md),
+ * so a bare button keeps the user agent's `buttonface` grey and its outset
+ * border while inheriting the dark theme's near-white text: an unreadable
+ * light-grey pill. `Button` states both itself, which is why it never showed.
+ *
+ * A control that wants a background of its own writes that one *instead* of
+ * this — two background utilities on one element collide, and which wins is
+ * the order Tailwind emits them in, not the order they are written.
+ */
+export const BARE_BUTTON = 'border-0 bg-transparent'
+
+/**
+ * The app's text input, as a class list rather than a component: the surfaces
+ * that need one already have their own `<input>` wired to state, an id, an
+ * `aria-describedby` from {@link Field} and their own key handling, so what they
+ * share is the look and nothing else. Shared because it IS shared — the open
+ * screen's path field and the wizard's identity fields are the same control.
+ *
+ * Deliberately not `flex-1`: a `flex-basis` of 0 would collapse the height this
+ * sets when the input is the child of a column flex container, which is what
+ * {@link Field} makes it. A row that wants the input to take the slack appends
+ * `flex-1` itself.
+ */
+export const TEXT_INPUT =
+  'h-(--control-h) w-full min-w-0 rounded-md border border-hairline bg-panel-inset px-3 ' +
+  'font-mono text-sm text-text transition-[border-color] duration-(--dur-1) ease-app ' +
+  'placeholder:text-text-4 focus:border-accent-line focus:outline-none'
 
 /**
  * 11px uppercase tracked section title.
@@ -122,6 +159,48 @@ export function EmptyState({
       <div className="text-base font-medium text-text-2">{title}</div>
       {hint && <div className="max-w-[42ch] text-sm text-pretty text-text-3">{hint}</div>}
       {action && <div className="mt-2">{action}</div>}
+    </div>
+  )
+}
+
+/**
+ * An inline failure about a path: the problem stated once, the path it is about
+ * shown once beneath it, and what to do next.
+ *
+ * The path gets its own line because a long one has to be truncated from the
+ * *left* — the interesting end of a path is its tail — and a sentence with the
+ * path spliced into the middle cannot be. `dir="rtl"` moves the ellipsis to the
+ * left; `<bdi>` isolates the path so bidi reordering cannot carry
+ * direction-neutral characters round to the wrong end.
+ */
+export function FailureNote({
+  message,
+  path,
+  hint,
+  id,
+}: {
+  message: string
+  path?: string | null
+  hint?: string | null
+  id?: string
+}) {
+  return (
+    <div
+      className="rounded-md border border-danger/45 bg-danger/8 px-3 py-2.5"
+      id={id}
+      role="alert"
+    >
+      <div className="text-sm font-medium text-danger">{message}</div>
+      {path && (
+        <div
+          className="mt-1 truncate text-left font-mono text-sm text-text-3"
+          dir="rtl"
+          title={path}
+        >
+          <bdi>{path}</bdi>
+        </div>
+      )}
+      {hint && <p className="mt-1.5 text-sm text-text-2">{hint}</p>}
     </div>
   )
 }
