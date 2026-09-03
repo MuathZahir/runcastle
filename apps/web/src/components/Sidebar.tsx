@@ -53,7 +53,7 @@ const BUTTON_RESET = 'cursor-pointer'
 
 /** The rail's two quiet expanders — show-archived and the Shipped lane's — as one idiom. */
 const EXPANDER_CLASS =
-  `group ${BUTTON_RESET} mt-2 w-full rounded-md border-0 bg-transparent px-2.5 py-1.5 ` +
+  `group ${BUTTON_RESET} mt-2 w-full rounded-md border-0 bg-transparent px-3 py-2 ` +
   'text-left text-sm transition-colors duration-(--dur-1) ease-app hover:bg-panel-3'
 const EXPANDER_LABEL_CLASS = 'text-text-3 group-hover:text-text-2'
 
@@ -261,12 +261,12 @@ export function Sidebar({
 
       <div className="min-h-0 flex-1 overflow-y-auto px-3 pt-2 pb-3">
         {list.isLoading && (
-          <div className="px-2 py-2.5">
+          <div className="px-2 py-3">
             <DimLine>loading features…</DimLine>
           </div>
         )}
         {list.data && list.data.length === 0 && (
-          <div className="px-2.5 py-3.5 text-sm leading-relaxed text-text-3">
+          <div className="px-3 py-4 text-sm leading-relaxed text-text-3">
             No features yet.
             <br />
             Create one to start the pipeline.
@@ -276,7 +276,7 @@ export function Sidebar({
           const lane = capLane(g, showAllShipped)
           return (
             <div key={g.key} className="mt-4 first:mt-2">
-              <div className="flex items-baseline gap-2 px-1.5 pb-1.5">
+              <div className="flex items-baseline gap-2 px-2 pb-2">
                 <span className={`${CAPTION_CLASS} ${LANE_FG[g.key]}`}>{g.label}</span>
                 {/* The lane's true total, capped or not — the count is what the
                     lane HOLDS, and the expander says what it is showing. */}
@@ -438,7 +438,7 @@ function ProjectRow({
   return (
     <div className="shrink-0 border-b border-hairline-soft px-3 pb-3">
       <button
-        className={`${BUTTON_RESET} flex w-full items-center gap-2.5 rounded-md border-0 px-2.5 py-2.5 text-left transition-colors duration-(--dur-1) ease-app ${
+        className={`${BUTTON_RESET} flex w-full items-center gap-2 rounded-md border-0 px-3 py-3 text-left transition-colors duration-(--dur-1) ease-app ${
           active ? 'bg-accent-soft' : 'bg-transparent hover:bg-panel-3'
         }`}
         onClick={onSelect}
@@ -548,7 +548,7 @@ export function FeatureRow({
       } ${dimmed ? 'opacity-70 hover:opacity-100' : ''}`}
     >
       <button
-        className={`${BUTTON_RESET} flex min-w-0 flex-1 items-start gap-2.5 border-0 bg-transparent px-2.5 py-2.5 text-left`}
+        className={`${BUTTON_RESET} flex min-w-0 flex-1 items-start gap-2 border-0 bg-transparent px-3 py-3 text-left`}
         onClick={() => onSelect(f.id)}
         title={f.title}
       >
@@ -562,7 +562,7 @@ export function FeatureRow({
         ) : (
           <span className={`mt-1.5 size-2 shrink-0 rounded-full ${PHASE_DOT_BG[f.phase]}`} />
         )}
-        <span className="flex min-w-0 flex-1 flex-col gap-1.5">
+        <span className="flex min-w-0 flex-1 flex-col gap-2">
           <span className="flex items-start gap-2">
             <span
               className={`line-clamp-2 min-w-0 flex-1 text-base leading-snug ${
@@ -583,7 +583,7 @@ export function FeatureRow({
               {chip.text}
             </span>
           </span>
-          <span className="flex items-center gap-2.5">
+          <span className="flex items-center gap-2">
             <span className="inline-flex gap-[3px]">
               {segs.map((s, i) => (
                 <span
