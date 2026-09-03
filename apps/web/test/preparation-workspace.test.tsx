@@ -74,6 +74,8 @@ describe('EstablishedFrame', () => {
     expect(screen.getByText(/Established in a conversation/)).toBeTruthy()
     const evidence = screen.getByText(/First line/)
     expect(evidence.className).toContain('line-clamp-3')
+    expect(evidence.className).not.toContain('py-[5px]')
+    expect(evidence.parentElement?.className).toContain('py-[5px]')
 
     fireEvent.click(screen.getByRole('button', { name: 'Show full evidence for Verify commands' }))
     expect(evidence.className).not.toContain('line-clamp-3')

@@ -411,10 +411,12 @@ function FindingRow({ finding: f, label }: { finding: ProjectFinding; label: str
       </div>
       {f.evidence && (
         <>
-          <div
-            className={`whitespace-pre-wrap break-words rounded-r-md border-l-2 border-accent-line bg-panel-inset px-[7px] py-[5px] font-mono text-xs leading-[1.45] text-text-3 ${expanded ? '' : 'line-clamp-3'}`}
-          >
-            {f.evidence}
+          <div className="rounded-r-md border-l-2 border-accent-line bg-panel-inset px-[7px] py-[5px]">
+            <div
+              className={`whitespace-pre-wrap break-words font-mono text-xs leading-[1.45] text-text-3 ${expanded ? '' : 'line-clamp-3'}`}
+            >
+              {f.evidence}
+            </div>
           </div>
           <button
             className="self-start border-0 bg-transparent p-0 text-xs text-accent-hi hover:text-accent"
