@@ -1,5 +1,6 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { RefObject } from 'react'
+import type { Phase } from '@runcastle/core'
 import { trpc } from '../trpc'
 import { DimLine } from '../ui'
 import { useToast } from '../lib/toast'
@@ -11,12 +12,18 @@ import {
   rowChip,
   ticketProgress,
   triage,
+  type NeedsMeKind,
+  type RowChipKind,
+  type TriageKey,
 } from '../lib/feature-ui'
 import { prepRailRow } from '../lib/project-workspace'
+import { pathFor } from '../lib/routes'
 import { isStale } from '../lib/settings'
 import { useLivePoll } from '../lib/live'
+import { clampSidebarWidth } from '../lib/sidebar-width'
 import type { ProjectTalkApi } from '../lib/use-project-talk'
 import { IconBolt, IconCheck, IconPlus, LogoMark } from '../icons'
+import { copyText } from './workspace/copy-text'
 import { FeatureActionsMenu, type FeatureAction } from './FeatureActionsMenu'
 import { DeleteFeatureDialog } from './DeleteFeatureDialog'
 
@@ -31,35 +38,57 @@ function readShowArchived(): boolean {
   }
 }
 
+/** The rail's two quiet expanders — show-archived and the Shipped lane's — as one idiom. */
+const EXPANDER_CLASS =
+  'mt-2 w-full rounded-md px-2.5 py-1.5 text-left text-sm text-text-3 ' +
+  'transition-colors duration-(--dur-1) ease-app hover:bg-panel-3 hover:text-text-2'
+
+/** The 11px uppercase micro-label the head and every lane share. */
+const CAPTION_CLASS = 'text-xs font-semibold tracking-[0.09em] uppercase'
+
+/** Both doors are ghost: the rail holds no primary action (apps/web/STYLE.md). */
+const DOOR_CLASS =
+  'inline-flex h-7 shrink-0 items-center gap-1.5 rounded-md border border-hairline px-2.5 ' +
+  'text-sm font-medium text-text-2 transition-colors duration-(--dur-1) ease-app ' +
+  'hover:border-hairline-strong hover:bg-panel-3 hover:text-text'
+
 /**
- * The features rail (app-redesign): a triage list, not a flat one. Features are
+ * The features rail (decision 10): a triage list, not a flat one. Features are
  * grouped by who's blocked — Needs you (amber) · Agent working (spinner) ·
- * In progress · Shipped (dimmed ✓). Each row carries a phase glyph, its mono
- * slug, a compact six-segment pipeline map, and a kebab actions menu (Archive /
- * Unarchive). Archived features are hidden behind the show-archived toggle
- * (persisted in localStorage), and the Shipped lane — the only one that grows
- * without bound — collapses to its newest few behind its own expander
- * (`capLane`). Polls `feature.list` at 1.5s.
+ * In progress · Drafts · Shipped (dimmed ✓) — and each row is a roomy two-liner:
+ * phase dot, title over up to two lines, one status chip, then the six-segment
+ * pipeline map and ticket progress. The slug is not on the row any more; it is
+ * in the URL and the feature header, and the kebab's Copy link hands over that
+ * URL. Archived features hide behind the show-archived toggle (persisted), and
+ * the Shipped lane — the only one that grows without bound — collapses to its
+ * newest few behind its own expander (`capLane`). Polls `feature.list` at 1.5s.
  *
  * Above the lanes — outside them, always present — sits the pinned project row
  * (decision 20). The rail already is the project's list of things to work on, and
  * the project session is the one entry on it that is not a feature, so it belongs
  * here rather than in any triage lane.
+ *
+ * The rail's own width is the shell's to apply (it owns the grid); this renders
+ * the drag handle and reports the new width up.
  */
 export function Sidebar({
   projectId,
   selectedFeatureId,
   projectSelected,
+  width,
   talk,
   onSelect,
   onSelectProject,
   onNewChat,
   onQuickChange,
   onOpenPreparation,
+  onResize,
 }: {
   projectId: string
   selectedFeatureId: string | null
   projectSelected: boolean
+  /** The rail's current width in px — the drag's starting point. */
+  width: number
   talk: ProjectTalkApi
   onSelect: (featureId: string) => void
   onSelectProject: () => void
@@ -68,6 +97,8 @@ export function Sidebar({
   /** Quick — open the two-mode overlay (a change to burn, or a draft to park). */
   onQuickChange: () => void
   onOpenPreparation: () => void
+  /** A drag produced a new width; the shell clamps, applies and persists it. */
+  onResize: (px: number) => void
 }) {
   const utils = trpc.useUtils()
   const toast = useToast()
@@ -132,16 +163,37 @@ export function Sidebar({
   }
 
   const actionsFor = (f: FeatureListItem): FeatureAction[] => {
+    // The row no longer wears its slug, so the address it used to hint at is
+    // handed over here instead (decision 10) — the same URL the rail navigates
+    // to, absolute so it survives a paste into anything.
+    const actions: FeatureAction[] = [
+      {
+        key: 'copy-link',
+        label: 'Copy link',
+        onSelect: () =>
+          copyText(
+            window.location.origin + pathFor({ kind: 'feature', projectId, featureSlug: f.slug }),
+            toast,
+          ),
+      },
+    ]
     // A draft's verb set is Start and delete (decision 8). Archive is refused
     // server-side — unarchiving derives status from phase and would resurrect it
     // as active-without-a-branch — so the menu never offers a dead item; a draft
     // IS the shelf, and Delete below covers the ideas that die on it.
-    const actions: FeatureAction[] =
-      f.status === 'draft'
-        ? []
-        : f.status === 'archived'
-          ? [{ key: 'unarchive', label: 'Unarchive', onSelect: () => unarchive.mutate({ featureId: f.id }) }]
-          : [{ key: 'archive', label: 'Archive', onSelect: () => archive.mutate({ featureId: f.id }) }]
+    if (f.status === 'archived') {
+      actions.push({
+        key: 'unarchive',
+        label: 'Unarchive',
+        onSelect: () => unarchive.mutate({ featureId: f.id }),
+      })
+    } else if (f.status !== 'draft') {
+      actions.push({
+        key: 'archive',
+        label: 'Archive',
+        onSelect: () => archive.mutate({ featureId: f.id }),
+      })
+    }
     // Delete is non-shipped only (shipped features are merged — archive covers
     // them; the server refuses them too). Opens a destructive confirm dialog.
     if (f.status !== 'shipped') {
@@ -156,13 +208,15 @@ export function Sidebar({
   }
 
   return (
-    <nav className="sidebar">
-      <div className="sidebar-head">
-        <span className="pane-title">Features</span>
+    <nav className="relative flex min-h-0 flex-col border-r border-hairline bg-panel-2">
+      <SidebarResizeHandle width={width} onResize={onResize} />
+
+      <div className="flex items-center gap-2 px-4 pt-4 pb-3">
+        <span className={`${CAPTION_CLASS} flex-1 text-text-3`}>Features</span>
         {/* Two doors, side by side, split by how much thinking you want
             (decisions.md #12): New talks it through, Quick types it in. */}
         <button
-          className="new-btn is-quick"
+          className={DOOR_CLASS}
           onClick={onQuickChange}
           title="Quick — a change to burn now, or a draft to park. No conversation."
         >
@@ -170,7 +224,7 @@ export function Sidebar({
           Quick
         </button>
         <button
-          className="new-btn"
+          className={DOOR_CLASS}
           onClick={onNewChat}
           title="New — open a fresh conversation with the project, which turns intent into features"
         >
@@ -186,14 +240,14 @@ export function Sidebar({
         onSelect={onSelectProject}
       />
 
-      <div className="sidebar-list">
+      <div className="min-h-0 flex-1 overflow-y-auto px-3 pt-2 pb-3">
         {list.isLoading && (
-          <div style={{ padding: '10px 8px' }}>
+          <div className="px-2 py-2.5">
             <DimLine>loading features…</DimLine>
           </div>
         )}
         {list.data && list.data.length === 0 && (
-          <div className="sidebar-empty">
+          <div className="px-2.5 py-3.5 text-sm leading-relaxed text-text-3">
             No features yet.
             <br />
             Create one to start the pipeline.
@@ -202,12 +256,12 @@ export function Sidebar({
         {groups.map((g) => {
           const lane = capLane(g, showAllShipped)
           return (
-            <div key={g.key} className={`triage-group triage-${g.key}`}>
-              <div className="triage-label">
-                <span className="triage-name">{g.label}</span>
+            <div key={g.key} className="mt-4 first:mt-2">
+              <div className="flex items-baseline gap-2 px-1.5 pb-1.5">
+                <span className={`${CAPTION_CLASS} ${LANE_FG[g.key]}`}>{g.label}</span>
                 {/* The lane's true total, capped or not — the count is what the
                     lane HOLDS, and the expander says what it is showing. */}
-                <span className="triage-count">{g.features.length}</span>
+                <span className="font-mono text-xs text-text-4">{g.features.length}</span>
               </div>
               {lane.visible.map((f) => (
                 <FeatureRow
@@ -219,7 +273,7 @@ export function Sidebar({
                 />
               ))}
               {lane.expanderLabel && (
-                <button className="lane-expander" onClick={() => setShowAllShipped((v) => !v)}>
+                <button className={EXPANDER_CLASS} onClick={() => setShowAllShipped((v) => !v)}>
                   {lane.expanderLabel}
                 </button>
               )}
@@ -227,7 +281,7 @@ export function Sidebar({
           )
         })}
         {archivedCount > 0 && (
-          <button className="show-archived-toggle" onClick={toggleArchived}>
+          <button className={EXPANDER_CLASS} onClick={toggleArchived}>
             {showArchived ? 'Hide' : 'Show'} archived ({archivedCount})
           </button>
         )}
@@ -239,16 +293,29 @@ export function Sidebar({
           still has to be findable to be re-run or read. */}
       {prepRow && (
         <button
-          className={`prep-nudge is-${prepRow.variant}`}
+          className={
+            'flex w-full shrink-0 items-center gap-2 border-t border-hairline px-4 py-3 ' +
+            'text-left text-sm transition-colors duration-(--dur-1) ease-app hover:bg-panel-3 ' +
+            'hover:text-text ' +
+            (prepRow.variant === 'done' ? 'text-text-4' : 'text-text-3')
+          }
           onClick={onOpenPreparation}
           title={prepRow.title}
           // The badge is a fragment ("8 to establish"); a screen reader should
           // get the sentence that explains it, not the fragment.
           aria-label={`${prepRow.label} — ${prepRow.title}`}
         >
-          <span className="prep-nudge-dot" aria-hidden="true" />
-          <span className="prep-nudge-text">{prepRow.label}</span>
-          {prepRow.badge && <span className="prep-nudge-count">{prepRow.badge}</span>}
+          {/* Done asks for nothing: a hollow dot reads as a marker, not a nudge. */}
+          <span
+            className={`size-[7px] shrink-0 rounded-full ${
+              prepRow.variant === 'done' ? 'inset-ring-1 inset-ring-text-4' : 'bg-drive'
+            }`}
+            aria-hidden="true"
+          />
+          <span className="min-w-0 flex-1">{prepRow.label}</span>
+          {prepRow.badge && (
+            <span className="shrink-0 text-xs whitespace-nowrap text-text-4">{prepRow.badge}</span>
+          )}
         </button>
       )}
 
@@ -263,6 +330,60 @@ export function Sidebar({
         />
       )}
     </nav>
+  )
+}
+
+/**
+ * The rail's drag handle (decision 10). Straddles the rail's right edge so the
+ * cursor finds it a pixel or two either side of the hairline.
+ *
+ * The drag is measured as a delta from where it started rather than from the
+ * pointer's absolute position, so it never jumps when the grab lands off-centre.
+ * Mouse only this lap. Text selection is suspended while dragging — without it,
+ * sweeping across the rail selects every title on the way past.
+ */
+export function SidebarResizeHandle({
+  width,
+  onResize,
+}: {
+  width: number
+  onResize: (px: number) => void
+}) {
+  const [dragging, setDragging] = useState(false)
+  // The grab point and the width it started from; read by the move listener.
+  const origin = useRef({ x: 0, width })
+
+  useEffect(() => {
+    if (!dragging) return
+    const onMove = (e: MouseEvent) =>
+      onResize(clampSidebarWidth(origin.current.width + e.clientX - origin.current.x))
+    const onUp = () => setDragging(false)
+    const previousUserSelect = document.body.style.userSelect
+    document.body.style.userSelect = 'none'
+    document.addEventListener('mousemove', onMove)
+    document.addEventListener('mouseup', onUp)
+    return () => {
+      document.body.style.userSelect = previousUserSelect
+      document.removeEventListener('mousemove', onMove)
+      document.removeEventListener('mouseup', onUp)
+    }
+  }, [dragging, onResize])
+
+  return (
+    <div
+      role="separator"
+      aria-orientation="vertical"
+      aria-label="Resize the features rail"
+      title="Drag to resize"
+      className={`absolute top-0 -right-[3px] z-10 h-full w-1.5 cursor-col-resize hover:bg-accent-line ${
+        dragging ? 'bg-accent-line' : ''
+      }`}
+      onMouseDown={(e) => {
+        e.preventDefault()
+        origin.current = { x: e.clientX, width }
+        setDragging(true)
+      }}
+    />
   )
 }
 
@@ -289,20 +410,26 @@ function ProjectRow({
   const project = projects.data?.find((p) => p.id === projectId)
 
   return (
-    <div className="project-pin">
+    <div className="shrink-0 border-b border-hairline-soft px-3 pb-3">
       <button
-        className={`project-row${active ? ' is-active' : ''}`}
+        className={`flex w-full items-center gap-2.5 rounded-md px-2.5 py-2.5 text-left transition-colors duration-(--dur-1) ease-app ${
+          active ? 'bg-accent-soft' : 'hover:bg-panel-3'
+        }`}
         onClick={onSelect}
         title="Talk to the project — intake, decomposition, and portfolio questions"
       >
-        <span className="project-row-mark">
-          <LogoMark size={13} variant="outline" />
+        <span className={`flex shrink-0 items-center ${active ? '' : 'opacity-85'}`}>
+          <LogoMark size={14} variant="outline" />
         </span>
-        <span className="project-row-name">{project?.name ?? 'This project'}</span>
+        <span
+          className={`min-w-0 flex-1 truncate text-base font-medium ${active ? 'text-text' : 'text-text-2'}`}
+        >
+          {project?.name ?? 'This project'}
+        </span>
         {state === 'none' ? (
-          <span className="project-row-kick">Project</span>
+          <span className="shrink-0 text-xs tracking-[0.07em] text-text-3 uppercase">Project</span>
         ) : (
-          <span className="project-row-live">
+          <span className="inline-flex shrink-0 items-center gap-1.5 text-xs text-accent-hi">
             <span className="spin-ring" />
             {state === 'launching' ? 'opening' : 'live'}
           </span>
@@ -312,16 +439,64 @@ function ProjectRow({
   )
 }
 
+/** A lane's label colour — the lane's own meaning, said once. */
+const LANE_FG: Record<TriageKey, string> = {
+  needsYou: 'text-needs',
+  agentWorking: 'text-ph-implementation',
+  inProgress: 'text-text-3',
+  drafts: 'text-text-4',
+  shipped: 'text-ph-shipped',
+  archived: 'text-text-4',
+}
+
+/** The phase dot's colour. A whole class per phase so Tailwind can see it. */
+const PHASE_DOT_BG: Record<Phase, string> = {
+  ideation: 'bg-ph-ideation',
+  spec: 'bg-ph-spec',
+  tickets: 'bg-ph-tickets',
+  implementation: 'bg-ph-implementation',
+  review: 'bg-ph-review',
+  shipped: 'bg-ph-shipped',
+}
+
+/** The status chip's colour, by what `rowChip` chose to say. */
+const CHIP_FG: Record<RowChipKind, string> = {
+  needsMe: 'border-needs/35 text-needs',
+  working: 'border-accent-line text-accent-hi',
+  shipped: 'border-ok/30 text-ok',
+  draft: 'border-hairline text-text-4',
+  age: 'border-hairline text-text-3',
+}
+
+/** The needs-me dot: attention is the one flavour that is a failure, not a queue. */
+const NEEDS_DOT_BG: Record<NeedsMeKind, string> = {
+  attention: 'bg-danger',
+  grill: 'bg-needs',
+  burn: 'bg-needs',
+  ship: 'bg-needs',
+}
+
+/** A pipeline segment's fill, by how far the feature has got past it. */
+const MINI_SEG_CLASS = {
+  done: 'bg-text-4',
+  current: 'bg-accent',
+  upcoming: 'border border-hairline-soft bg-panel-3',
+} as const
+
 /**
- * One feature, as a two-line card (decisions §1). Line 1 is what the feature IS
- * — its phase dot, its title, and the one status chip that says who it is
- * waiting on. Line 2 is where it stands: the mono slug, its ticket progress when
- * it has tickets, and the six-segment pipeline map at the end.
+ * One feature, as a roomy two-line row (decision 10). Line 1 is what the feature
+ * IS — its phase dot, its title over up to two lines, and the one status chip
+ * that says who it is waiting on. Line 2 is where it stands: the six-segment
+ * pipeline map and, when the feature has tickets, their progress.
+ *
+ * The slug is deliberately absent. It used to open line 2 and it is what made
+ * five "Flow redesign: …" features indistinguishable — the address bar names it
+ * now, the feature header prints it, and the kebab's Copy link hands it over.
  *
  * The chip slot holds exactly one thing and `rowChip` picks it; this renders
  * that decision without making one of its own.
  */
-function FeatureRow({
+export function FeatureRow({
   f,
   active,
   onSelect,
@@ -339,37 +514,59 @@ function FeatureRow({
   // Parked ideas dim with shipped history rather than sitting at the brightness
   // of work in motion (decision 9).
   const dimmed = draft || f.status === 'shipped' || f.status === 'archived'
-  const cls = `feature-row${active ? ' is-active' : ''}${dimmed ? ' is-dim' : ''}`
 
   return (
-    <div className={cls}>
-      <button className="feature-row-main" onClick={() => onSelect(f.id)} title={`${f.title} — ${f.slug}`}>
-        <span className="feature-line">
-          {/* A draft has no pipeline position, so it wears the parked glyph
-              instead of a phase dot — its phase is `ideation` like every new
-              feature, and that colour would claim it had started. */}
-          {draft ? (
-            <span className="feature-draft-glyph" aria-hidden="true">
-              {DRAFT_GLYPH}
-            </span>
-          ) : (
-            <span className={`feature-dot phase-bg-${f.phase}`} />
-          )}
-          <span className="feature-title">{f.title}</span>
-          <span className={`feature-chip is-${chip.kind}`} title={chip.title}>
-            {chip.kind === 'needsMe' && <span className={`needs-dot needs-${chip.needs}`} />}
-            {chip.kind === 'working' && <span className="spin-ring" />}
-            {chip.kind === 'shipped' && <IconCheck size={10} />}
-            {chip.text}
+    <div
+      className={`relative mb-0.5 flex items-center rounded-md transition-colors duration-(--dur-1) ease-app ${
+        active ? 'bg-accent-soft shadow-[inset_2px_0_0_var(--color-accent)]' : 'hover:bg-panel-3'
+      } ${dimmed ? 'opacity-70 hover:opacity-100' : ''}`}
+    >
+      <button
+        className="flex min-w-0 flex-1 items-start gap-2.5 px-2.5 py-2.5 text-left"
+        onClick={() => onSelect(f.id)}
+        title={f.title}
+      >
+        {/* A draft has no pipeline position, so it wears the parked glyph
+            instead of a phase dot — its phase is `ideation` like every new
+            feature, and that colour would claim it had started. */}
+        {draft ? (
+          <span className="mt-1 w-2 shrink-0 text-xs leading-none text-text-4" aria-hidden="true">
+            {DRAFT_GLYPH}
           </span>
-        </span>
-        <span className="feature-line is-meta">
-          <span className="feature-slug">{f.slug}</span>
-          {progress && <span className="feature-progress">{progress}</span>}
-          <span className="mini-map">
-            {segs.map((s, i) => (
-              <span key={i} className={`mini-seg is-${s.state}`} />
-            ))}
+        ) : (
+          <span className={`mt-1.5 size-2 shrink-0 rounded-full ${PHASE_DOT_BG[f.phase]}`} />
+        )}
+        <span className="flex min-w-0 flex-1 flex-col gap-1.5">
+          <span className="flex items-start gap-2">
+            <span
+              className={`line-clamp-2 min-w-0 flex-1 text-base leading-snug ${
+                active ? 'font-medium text-text' : dimmed ? 'text-text-3' : 'font-medium text-text-2'
+              }`}
+            >
+              {f.title}
+            </span>
+            <span
+              className={`mt-px inline-flex shrink-0 items-center gap-1.5 rounded-pill border px-2 py-0.5 text-xs whitespace-nowrap ${CHIP_FG[chip.kind]}`}
+              title={chip.title}
+            >
+              {chip.kind === 'needsMe' && chip.needs && (
+                <span className={`size-[7px] rounded-full ${NEEDS_DOT_BG[chip.needs]}`} />
+              )}
+              {chip.kind === 'working' && <span className="spin-ring" />}
+              {chip.kind === 'shipped' && <IconCheck size={10} />}
+              {chip.text}
+            </span>
+          </span>
+          <span className="flex items-center gap-2.5">
+            <span className="inline-flex gap-[3px]">
+              {segs.map((s, i) => (
+                <span
+                  key={i}
+                  className={`h-1 w-2.5 rounded-[2px] ${MINI_SEG_CLASS[s.state]}`}
+                />
+              ))}
+            </span>
+            {progress && <span className="font-mono text-xs text-text-3">{progress}</span>}
           </span>
         </span>
       </button>

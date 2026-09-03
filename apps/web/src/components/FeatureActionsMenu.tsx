@@ -42,10 +42,10 @@ export function FeatureActionsMenu({ actions }: { actions: FeatureAction[] }) {
   if (actions.length === 0) return null
 
   return (
-    <div className="row-actions" ref={ref}>
+    <div className="relative shrink-0 pr-1" ref={ref}>
       <button
         ref={triggerRef}
-        className="row-actions-btn"
+        className="rounded-md px-1.5 py-1 text-text-3 transition-colors duration-(--dur-1) ease-app hover:bg-panel-3 hover:text-text"
         aria-label="feature actions"
         aria-haspopup="menu"
         aria-expanded={open}
@@ -57,12 +57,17 @@ export function FeatureActionsMenu({ actions }: { actions: FeatureAction[] }) {
         <IconMore size={14} />
       </button>
       {open && (
-        <div className="row-actions-menu" role="menu">
+        <div
+          className="absolute top-[calc(100%-2px)] right-1 z-20 flex min-w-32 flex-col rounded-md border border-hairline bg-panel-2 p-1 shadow-menu"
+          role="menu"
+        >
           {actions.map((a) => (
             <button
               key={a.key}
               role="menuitem"
-              className={`row-actions-item${a.danger ? ' is-danger' : ''}`}
+              className={`rounded-md px-2 py-1.5 text-left text-sm transition-colors duration-(--dur-1) ease-app hover:bg-panel-3 ${
+                a.danger ? 'text-danger' : 'text-text-2 hover:text-text'
+              }`}
               onClick={(e) => {
                 e.stopPropagation()
                 setOpen(false)

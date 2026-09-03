@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import type { CSSProperties } from 'react'
 import { LogoMark } from '../icons'
 import { trpc } from '../trpc'
 import { useWorkspace, type DriveState } from '../lib/workspace'
@@ -15,6 +16,7 @@ import {
   type AppLocation,
 } from '../lib/routes'
 import { currentPath, useHistorySync } from '../lib/use-history-sync'
+import { useSidebarWidth } from '../lib/sidebar-width'
 import type { FeatureListItem, PrepView } from '../lib/api'
 import { Titlebar } from './Titlebar'
 import { Sidebar } from './Sidebar'
@@ -53,6 +55,10 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
     setCmdk,
   } = ws
   const [driving, setDriving] = useState<DriveState | null>(null)
+  // The rail's width is a screen preference, kept globally (decision 10). It
+  // lives here rather than in the rail because the frame's grid is what reads
+  // it — the rail only reports what a drag measured.
+  const sidebar = useSidebarWidth()
   const list = trpc.feature.list.useQuery({ projectId }, { refetchInterval: useLivePoll() })
   // The project conversation, polled once here and read by the pinned rail row,
   // the project workspace and both "talk it through" doors.
@@ -160,7 +166,10 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
     // The frame's grid, migrated off `styles.css` (apps/web/STYLE.md). The rail
     // width is read from `--sidebar-w` so the resizable rail can drive it
     // without this file knowing how wide it is.
-    <div className="grid h-full grid-rows-[44px_1fr_28px]">
+    <div
+      className="grid h-full grid-rows-[44px_1fr_28px]"
+      style={{ '--sidebar-w': `${sidebar.width}px` } as CSSProperties}
+    >
       <Titlebar
         nav={nav}
         view={view}
@@ -184,12 +193,14 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
           projectId={projectId}
           selectedFeatureId={ws.selectedFeatureId}
           projectSelected={ws.projectSelected}
+          width={sidebar.width}
           talk={talk}
           onSelect={ws.select}
           onSelectProject={ws.selectProject}
           onNewChat={newChat}
           onQuickChange={ws.startQuickChange}
           onOpenPreparation={ws.startPreparation}
+          onResize={sidebar.setWidth}
         />
 
         {view === 'create' ? (
