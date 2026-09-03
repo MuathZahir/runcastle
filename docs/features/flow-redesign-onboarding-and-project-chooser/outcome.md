@@ -2,7 +2,7 @@
 
 Redesign the first-run and open/choose-a-project flow end to end — FirstRunWizard, PortfolioHome, OpenProject, DirectoryPicker, ProjectSwitcher — walked and confirmed with the human before design.
 
-- Shipped: 2026-09-02
+- Shipped: 2026-09-03
 - Lap: 2
 
 ## 1. Landing from setup state + redesigned Open-a-project screen
