@@ -3,6 +3,7 @@ import { aggregateRuns, projectStats } from '../lib/projects'
 import { useLivePoll } from '../lib/live'
 import { modKey } from '../lib/platform'
 import type { ProjectNavApi } from '../lib/use-project-nav'
+import type { WorkspaceView } from '../lib/project-workspace'
 import { IconPanelRight, IconSearch, IconSettings, LogoMark, LogoWordmark } from '../icons'
 import { ProjectSwitcher } from './ProjectSwitcher'
 
@@ -21,6 +22,12 @@ export function Titlebar({
   inspectorCollapsed,
 }: {
   nav: ProjectNavApi
+  /**
+   * Which surface owns the workspace body. The seam the titlebar redesign
+   * consumes (decisions 5 and 11): the third breadcrumb level names the current
+   * thing, and the inspector toggle is hidden where there is no inspector.
+   */
+  view: WorkspaceView
   onOpenCmdk: () => void
   onOpenSettings: () => void
   onToggleInspector: () => void

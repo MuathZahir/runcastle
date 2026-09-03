@@ -5,6 +5,7 @@ import { useLivePoll, useLiveStatus } from '../lib/live'
 import { SANDBOX_MODE } from '../lib/env'
 import { notifyButton } from '../lib/notifications'
 import type { DriveState } from '../lib/workspace'
+import type { WorkspaceView } from '../lib/project-workspace'
 import { IconBell, IconBellOff, IconBranch, IconShield } from '../icons'
 
 /** Where this page's tRPC calls go — the links are same-origin `/api/trpc`. */
@@ -24,6 +25,13 @@ export function StatusBar({
   onDriveChange,
 }: {
   projectId: string
+  /**
+   * Which surface owns the workspace body. The seam the status-bar redesign
+   * consumes (decision 8): the branch segment states the selected feature's
+   * branch on feature views and nothing anywhere else, rather than leaving the
+   * previous feature's branch up as though it were current.
+   */
+  view: WorkspaceView
   activeFeatureId: string | null
   driving: DriveState | null
   onDriveChange: (d: DriveState | null) => void

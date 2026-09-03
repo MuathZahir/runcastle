@@ -272,20 +272,6 @@ button {
 /* ============================================================================
    SHELL FRAME
    ========================================================================== */
-.shell {
-  height: 100%;
-  display: grid;
-  grid-template-rows: 44px 1fr 28px;
-}
-.shell-body {
-  display: grid;
-  grid-template-columns: var(--sidebar-w) 1fr var(--inspector-w);
-  min-height: 0;
-}
-.shell.inspector-collapsed .shell-body {
-  grid-template-columns: var(--sidebar-w) 1fr;
-}
-
 /* ---- titlebar ---- */
 .titlebar {
   display: flex;
