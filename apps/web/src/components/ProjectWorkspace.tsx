@@ -65,7 +65,7 @@ export function ProjectWorkspace({
     <section className="workspace">
       <div className="ws-head">
         <div className="ws-title-row">
-          <span className="pw-tag">PROJECT</span>
+          <span className="inline-flex h-[18px] items-center rounded-pill border border-accent-line bg-accent-soft px-2 text-[9.5px] font-bold tracking-[0.09em] text-accent-hi">PROJECT</span>
           <span className="ws-title">{project?.name ?? 'This project'}</span>
           <span className="ws-title-spacer" />
           <span className="ws-branch is-static" title="the branch this session works on">
@@ -81,7 +81,7 @@ export function ProjectWorkspace({
           {session ? (
             <>
               <SessionFrame stats={stats} inFlight={inFlight} />
-              <div className="grill-panel pw-session">
+              <div className="grill-panel">
                 <div className="grill-strip">
                   <span className="grill-kind">
                     {titleFor(talk.conversations, session.id) ?? 'project'}
@@ -100,7 +100,7 @@ export function ProjectWorkspace({
                     }}
                   />
                 </div>
-                <div className="grill-term pw-term">
+                <div className="grill-term h-[clamp(300px,calc(100dvh-420px),1200px)]">
                   <ErrorBoundary label="terminal">
                     <TerminalView sessionId={session.id} />
                   </ErrorBoundary>
@@ -171,9 +171,9 @@ function SessionLanding({ projectId }: { projectId: string }) {
 
   return (
     <>
-      <div className="pw-consequence">{projectBranchNote(shown ?? '')}</div>
-      <div className="pw-landing">
-        <label className="nf-base-label" htmlFor="session-branch-select">
+      <div className="mt-2 text-sm leading-6 text-text-3">{projectBranchNote(shown ?? '')}</div>
+      <div className="mt-2 flex flex-wrap items-center gap-2">
+        <label className="nf-base-label text-sm text-text-3" htmlFor="session-branch-select">
           This chat’s work lands on
         </label>
         <select
@@ -192,8 +192,8 @@ function SessionLanding({ projectId }: { projectId: string }) {
         </select>
         {landing && (
           <>
-            <span className={`pw-landing-origin is-${landing.origin}`}>{landing.label}</span>
-            <span className="size-hint">{landing.note}</span>
+            <span className={`rounded-sm border px-1.5 py-0.5 text-xs font-bold tracking-[0.09em] uppercase ${landing.origin === 'vanished' ? 'border-danger/55 text-danger' : 'border-hairline text-text-3'}`}>{landing.label}</span>
+            <span className="size-hint basis-full">{landing.note}</span>
           </>
         )}
       </div>
@@ -218,9 +218,9 @@ function SessionFrame({
   inFlight: number
 }) {
   return (
-    <div className="pw-frame">
-      <div className="pw-frame-head">What every chat here already has</div>
-      <ul className="pw-frame-list">
+    <div className="mb-[18px] rounded-lg border border-hairline bg-panel-2 px-4 py-3.5">
+      <div className="mb-2 text-xs font-bold tracking-[0.09em] text-text-3 uppercase">What every chat here already has</div>
+      <ul className="m-0 flex flex-col gap-1.5 pl-[18px] text-sm leading-[1.55] text-text-3 [&_b]:font-semibold [&_b]:text-text-2 [&_code]:font-mono [&_code]:text-xs">
         <li>
           <b>
             {stats.total} feature{stats.total === 1 ? '' : 's'}
@@ -242,10 +242,10 @@ function SessionFrame({
 /** The default action, and the only one on a project nobody has talked to yet. */
 function NewChatCard({ onStart, starting }: { onStart: () => void; starting: boolean }) {
   return (
-    <div className="pw-newchat">
-      <div className="pw-newchat-copy">
-        <div className="pw-rest-title">Talk it through</div>
-        <div className="pw-rest-sub">
+    <div className="mb-[18px] flex items-center gap-5 rounded-lg border border-accent-line bg-accent-soft px-[22px] py-5">
+      <div className="flex flex-1 flex-col gap-1.5">
+        <div className="text-base font-medium text-text-2">Talk it through</div>
+        <div className="max-w-[52ch] text-sm leading-[1.6] text-text-3">
           Bring a lump of raw intent. The chat looks at what this project has already built and
           decided, asks what it needs to, suggests how to split the work — then creates the
           features.
@@ -281,16 +281,16 @@ function ConversationList({
     return <DimLine>No conversations yet — the first one starts above.</DimLine>
 
   return (
-    <div className="pw-convos">
-      <div className="pw-frame-head">Past conversations</div>
+    <div className="mb-[18px] flex flex-col gap-0.5">
+      <div className="mb-1.5 text-xs font-bold tracking-[0.09em] text-text-3 uppercase">Past conversations</div>
       {conversations.map((c) => (
-        <div key={c.id} className="pw-convo">
-          <span className="pw-convo-glyph">
+        <div key={c.id} className="flex items-center gap-2.5 rounded-md border border-transparent px-3 py-[9px] transition-colors duration-(--dur-1) ease-app hover:border-hairline hover:bg-panel-2">
+          <span className="inline-flex text-text-3">
             <IconMessage size={13} />
           </span>
-          <span className="pw-convo-main">
-            <span className="pw-convo-title">{c.title}</span>
-            <span className="pw-convo-when">
+          <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+            <span className="overflow-hidden text-ellipsis whitespace-nowrap text-sm text-text-2">{c.title}</span>
+            <span className="text-xs text-text-3">
               {c.createdAt ? fmtDateTime(c.createdAt) : 'date unknown'}
               {c.status !== 'ended' && ' · open'}
             </span>
@@ -327,12 +327,12 @@ function ReadingPane({
   reopening: boolean
 }) {
   return (
-    <div className="pw-reading">
-      <div className="pw-reading-head">
+    <div className="flex flex-col gap-3.5">
+      <div className="flex items-center gap-3">
         <button className="btn btn-ghost btn-xs" onClick={onBack}>
           ← Conversations
         </button>
-        <span className="pw-convo-title">{conversation.title}</span>
+        <span className="overflow-hidden text-ellipsis whitespace-nowrap text-sm text-text-2">{conversation.title}</span>
         <span className="grill-strip-spacer" />
         <Button disabled={reopening || !conversation.resumable} onClick={onReopen}>
           {reopening ? 'Opening…' : 'Reopen'}
