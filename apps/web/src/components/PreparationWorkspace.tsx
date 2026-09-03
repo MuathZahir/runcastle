@@ -219,10 +219,10 @@ export function PrepCallToAction({
             Start fresh
           </Button>
         </div>
-        <DimLine>
+        <div className="max-w-[52ch] text-sm leading-6 text-text-3">
           Resume continues your last preparation conversation; Start fresh opens one that has never
           seen it — values you typed by hand are never overwritten.
-        </DimLine>
+        </div>
         {findings.length > 0 && <EstablishedFrame findings={findings} />}
       </div>
     )

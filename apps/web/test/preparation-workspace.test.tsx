@@ -55,11 +55,10 @@ describe('PreparationWorkspace resting states', () => {
     ).toBeTruthy()
 
     rerender(<PrepCallToAction {...props} prepared />)
-    expect(
-      screen.getByText(
-        'Resume continues your last preparation conversation; Start fresh opens one that has never seen it — values you typed by hand are never overwritten.',
-      ),
-    ).toBeTruthy()
+    const explainer = screen.getByText(
+      'Resume continues your last preparation conversation; Start fresh opens one that has never seen it — values you typed by hand are never overwritten.',
+    )
+    expect(explainer.className).toBe('max-w-[52ch] text-sm leading-6 text-text-3')
   })
 })
 
