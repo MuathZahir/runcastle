@@ -1,8 +1,9 @@
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { eq } from 'drizzle-orm'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { simpleGit } from 'simple-git'
 import type { Project, SessionRow } from '@runcastle/core'
 import { PREPARED_KEYS, isProjectSessionKind } from '@runcastle/core'
 import { events, projects, sessions } from '../src/db/schema'
@@ -22,7 +23,7 @@ import { launchPrepareSession } from '../src/launcher/launcher'
 import { reconcileStaleSessions } from '../src/launcher/reconcile'
 import { endSession } from '../src/pty/end-session'
 import { emitForSession } from '../src/services/events'
-import { preparedValue, recordFinding } from '../src/services/findings'
+import { listFindings, preparedValue, recordFinding } from '../src/services/findings'
 import { preparedAt } from '../src/services/prep'
 import { toolRecordFinding } from '../src/mcp/server'
 import { renderPreparePrompt } from '../src/launcher/artifacts'
@@ -161,9 +162,9 @@ describe('record_finding provenance', () => {
    * else. An agent stamping its own measurement `human` would silently retire
    * the field from preparation forever.
    */
-  it('marks an agent measurement `session`, leaving it improvable', () => {
+  it('marks an agent measurement `session`, leaving it improvable', async () => {
     const s = prepareSession()
-    const res = toolRecordFinding(ctx, s, {
+    const res = await toolRecordFinding(ctx, s, {
       key: 'verifyCommands',
       value: 'bun run test',
       evidence: 'ran it, exit 0',
@@ -172,9 +173,9 @@ describe('record_finding provenance', () => {
     expect(preparedValue(ctx, PROJECT_ID, 'verifyCommands')).toBe('bun run test')
   })
 
-  it('marks a user-supplied value `human`, which locks it', () => {
+  it('marks a user-supplied value `human`, which locks it', async () => {
     const s = prepareSession()
-    const res = toolRecordFinding(ctx, s, {
+    const res = await toolRecordFinding(ctx, s, {
       key: 'driveSetupCommand',
       value: 'bash .runcastle/drive-setup.sh',
       userSupplied: true,
@@ -182,16 +183,65 @@ describe('record_finding provenance', () => {
     expect(res.source).toBe('human')
 
     // Locked: a subsequent agent measurement must not overwrite it.
-    const second = toolRecordFinding(ctx, s, { key: 'driveSetupCommand', value: 'something else' })
+    const second = await toolRecordFinding(ctx, s, {
+      key: 'driveSetupCommand',
+      value: 'something else',
+    })
     expect(second.skipped).toBeTruthy()
     expect(preparedValue(ctx, PROJECT_ID, 'driveSetupCommand')).toBe(
       'bash .runcastle/drive-setup.sh',
     )
   })
 
-  it('refuses when the session has no project', () => {
+  it('refuses when the session has no project', async () => {
     const orphan = { ...prepareSession(), projectId: undefined }
-    expect(() => toolRecordFinding(ctx, orphan, { key: 'devCommand', value: 'x' })).toThrow()
+    await expect(toolRecordFinding(ctx, orphan, { key: 'devCommand', value: 'x' })).rejects.toThrow()
+  })
+
+  it('stamps session and user-supplied findings at main HEAD and reports their commit distance', async () => {
+    const repoPath = mkdtempSync(join(tmpdir(), 'rc-finding-staleness-'))
+    try {
+      const g = simpleGit(repoPath)
+      await g.init(['-b', 'main'])
+      await g.addConfig('user.email', 'test@runcastle.dev')
+      await g.addConfig('user.name', 'Runcastle Test')
+      writeFileSync(join(repoPath, 'README.md'), 'base\n')
+      await g.add(['README.md'])
+      await g.commit('initial commit')
+      const establishedSha = (await g.revparse(['main'])).trim()
+      ctx.db.update(projects).set({ repoPath }).where(eq(projects.id, PROJECT_ID)).run()
+      const p = project({ repoPath })
+      const s = prepareSession()
+
+      await toolRecordFinding(ctx, s, { key: 'verifyCommands', value: 'bun test' })
+      await toolRecordFinding(ctx, s, {
+        key: 'devCommand',
+        value: 'bun dev',
+        userSupplied: true,
+      })
+
+      const fresh = await listFindings(ctx, p)
+      expect(fresh.find((finding) => finding.key === 'verifyCommands')).toMatchObject({
+        source: 'session',
+        establishedSha,
+        staleCommits: 0,
+      })
+      expect(fresh.find((finding) => finding.key === 'devCommand')).toMatchObject({
+        source: 'human',
+        establishedSha,
+        staleCommits: 0,
+      })
+
+      writeFileSync(join(repoPath, 'README.md'), 'base\nafter preparation\n')
+      await g.add(['README.md'])
+      await g.commit('commit after preparation')
+
+      const aged = await listFindings(ctx, p)
+      expect(aged.find((finding) => finding.key === 'verifyCommands')?.staleCommits).toBe(1)
+      expect(aged.find((finding) => finding.key === 'devCommand')?.staleCommits).toBe(1)
+    } finally {
+      rmSync(repoPath, { recursive: true, force: true })
+    }
   })
 })
 
