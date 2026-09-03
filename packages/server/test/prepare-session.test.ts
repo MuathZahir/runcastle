@@ -252,7 +252,9 @@ describe('record_finding provenance', () => {
     ).resolves.toMatchObject({ ok: true, key: 'knownFailures' })
 
     expect(preparedValue(ctx, PROJECT_ID, 'knownFailures')).toBe('one existing failure')
-    expect((await listFindings(ctx, project()))[0]).not.toHaveProperty('establishedSha')
+    expect(
+      (await listFindings(ctx, project())).find((finding) => finding.key === 'knownFailures'),
+    ).not.toHaveProperty('establishedSha')
   })
 })
 
