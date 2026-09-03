@@ -243,6 +243,17 @@ describe('record_finding provenance', () => {
       rmSync(repoPath, { recursive: true, force: true })
     }
   })
+
+  it('records the finding without a stamp when the repository is unavailable', async () => {
+    const s = prepareSession()
+
+    await expect(
+      toolRecordFinding(ctx, s, { key: 'knownFailures', value: 'one existing failure' }),
+    ).resolves.toMatchObject({ ok: true, key: 'knownFailures' })
+
+    expect(preparedValue(ctx, PROJECT_ID, 'knownFailures')).toBe('one existing failure')
+    expect((await listFindings(ctx, project()))[0]).not.toHaveProperty('establishedSha')
+  })
 })
 
 /**
