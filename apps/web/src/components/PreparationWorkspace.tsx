@@ -83,7 +83,9 @@ export function PreparationWorkspace({
     <section className="workspace">
       <div className="ws-head">
         <div className="ws-title-row">
-          <span className="inline-flex h-[18px] items-center rounded-pill border border-accent-line bg-accent-soft px-2 text-[9.5px] font-bold tracking-[0.09em] text-accent-hi">PREPARE</span>
+          <span className="inline-flex h-[18px] items-center rounded-pill border border-accent-line bg-accent-soft px-2 text-[9.5px] font-bold tracking-[0.09em] text-accent-hi">
+            PREPARE
+          </span>
           <span className="ws-title">{project?.name ?? 'This project'}</span>
           <span className="ws-title-spacer" />
           {onClose && (
@@ -353,7 +355,9 @@ function StaleWarning({ count }: { count: number }) {
 export function EstablishedFrame({ findings }: { findings: readonly ProjectFinding[] }) {
   return (
     <div className="w-full max-w-[62ch] rounded-lg border border-hairline bg-panel-2 px-4 py-3.5 text-left">
-      <div className="mb-2 text-xs font-bold tracking-[0.09em] text-text-3 uppercase">Established</div>
+      <div className="mb-2 text-xs font-bold tracking-[0.09em] text-text-3 uppercase">
+        Established
+      </div>
       <ul className="m-0 flex list-none flex-col gap-2.5 p-0">
         {findings.map((f) => {
           const label = PREPARED_LABEL[f.key] ?? f.key
@@ -367,9 +371,9 @@ export function EstablishedFrame({ findings }: { findings: readonly ProjectFindi
 function FindingRow({ finding: f, label }: { finding: ProjectFinding; label: string }) {
   const [expanded, setExpanded] = useState(false)
   return (
-          <li className="flex flex-col gap-1">
-            <div className="flex items-baseline gap-[7px]">
-              <span className="text-sm text-text">{label}</span>
+    <li className="flex flex-col gap-1">
+      <div className="flex items-baseline gap-[7px]">
+        <span className="text-sm text-text">{label}</span>
               {/* Three sources, and the distinction that matters is which ones a
                   later conversation may replace. Only `yours` is locked;
                   `verified` was established with you present but stays
@@ -401,23 +405,27 @@ function FindingRow({ finding: f, label }: { finding: ProjectFinding; label: str
                   absence of proof, not failure, and a badge reading "unverified"
                   on a key no dry run will ever touch would say the opposite. */}
               <VerificationBadge finding={f} />
-            </div>
-            <div className={`text-xs ${isStale(f) ? 'text-drive' : 'text-text-4'}`}>{describeFinding(f)}</div>
-            {f.evidence && (
-              <>
-                <div className={`whitespace-pre-wrap break-words rounded-r-md border-l-2 border-accent-line bg-panel-inset px-[7px] py-[5px] font-mono text-xs leading-[1.45] text-text-3 ${expanded ? '' : 'line-clamp-3'}`}>
-                  {f.evidence}
-                </div>
-                <button
-                  className="self-start border-0 bg-transparent p-0 text-xs text-accent-hi hover:text-accent"
-                  onClick={() => setExpanded((value) => !value)}
-                  aria-expanded={expanded}
-                  aria-label={`${expanded ? 'Collapse' : 'Show full'} evidence for ${label}`}
-                >
-                  {expanded ? 'Show less' : 'Show full evidence'}
-                </button>
-              </>
-            )}
-          </li>
+      </div>
+      <div className={`text-xs ${isStale(f) ? 'text-drive' : 'text-text-4'}`}>
+        {describeFinding(f)}
+      </div>
+      {f.evidence && (
+        <>
+          <div
+            className={`whitespace-pre-wrap break-words rounded-r-md border-l-2 border-accent-line bg-panel-inset px-[7px] py-[5px] font-mono text-xs leading-[1.45] text-text-3 ${expanded ? '' : 'line-clamp-3'}`}
+          >
+            {f.evidence}
+          </div>
+          <button
+            className="self-start border-0 bg-transparent p-0 text-xs text-accent-hi hover:text-accent"
+            onClick={() => setExpanded((value) => !value)}
+            aria-expanded={expanded}
+            aria-label={`${expanded ? 'Collapse' : 'Show full'} evidence for ${label}`}
+          >
+            {expanded ? 'Show less' : 'Show full evidence'}
+          </button>
+        </>
+      )}
+    </li>
   )
 }

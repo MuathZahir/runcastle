@@ -65,7 +65,9 @@ export function ProjectWorkspace({
     <section className="workspace">
       <div className="ws-head">
         <div className="ws-title-row">
-          <span className="inline-flex h-[18px] items-center rounded-pill border border-accent-line bg-accent-soft px-2 text-[9.5px] font-bold tracking-[0.09em] text-accent-hi">PROJECT</span>
+          <span className="inline-flex h-[18px] items-center rounded-pill border border-accent-line bg-accent-soft px-2 text-[9.5px] font-bold tracking-[0.09em] text-accent-hi">
+            PROJECT
+          </span>
           <span className="ws-title">{project?.name ?? 'This project'}</span>
           <span className="ws-title-spacer" />
           <span className="ws-branch is-static" title="the branch this session works on">
