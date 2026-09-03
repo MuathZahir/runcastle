@@ -38,19 +38,34 @@ function readShowArchived(): boolean {
   }
 }
 
+/**
+ * What every button here has to say for itself, because there is no preflight
+ * (apps/web/STYLE.md) — an unstyled `<button>` is grey, bordered and
+ * un-clickable-looking. Its *colour* is not here: `styles.css` still carries an
+ * unlayered `button { color: inherit }`, which beats any `text-*` utility on the
+ * button itself, so each button carries `group` and colours a span inside it.
+ *
+ * Nor are its border and background: two utilities for one property on one
+ * element are a coin flip without `tailwind-merge` (which this app deliberately
+ * does not have), so each button states those itself, exactly once.
+ */
+const BUTTON_RESET = 'cursor-pointer'
+
 /** The rail's two quiet expanders — show-archived and the Shipped lane's — as one idiom. */
 const EXPANDER_CLASS =
-  'mt-2 w-full rounded-md px-2.5 py-1.5 text-left text-sm text-text-3 ' +
-  'transition-colors duration-(--dur-1) ease-app hover:bg-panel-3 hover:text-text-2'
+  `group ${BUTTON_RESET} mt-2 w-full rounded-md border-0 bg-transparent px-2.5 py-1.5 ` +
+  'text-left text-sm transition-colors duration-(--dur-1) ease-app hover:bg-panel-3'
+const EXPANDER_LABEL_CLASS = 'text-text-3 group-hover:text-text-2'
 
 /** The 11px uppercase micro-label the head and every lane share. */
 const CAPTION_CLASS = 'text-xs font-semibold tracking-[0.09em] uppercase'
 
 /** Both doors are ghost: the rail holds no primary action (apps/web/STYLE.md). */
 const DOOR_CLASS =
-  'inline-flex h-7 shrink-0 items-center gap-1.5 rounded-md border border-hairline px-2.5 ' +
-  'text-sm font-medium text-text-2 transition-colors duration-(--dur-1) ease-app ' +
-  'hover:border-hairline-strong hover:bg-panel-3 hover:text-text'
+  `group ${BUTTON_RESET} inline-flex h-7 shrink-0 items-center rounded-md border ` +
+  'border-hairline bg-transparent px-2.5 text-sm font-medium ' +
+  'transition-colors duration-(--dur-1) ease-app hover:border-hairline-strong hover:bg-panel-3'
+const DOOR_LABEL_CLASS = 'flex items-center gap-1.5 text-text-2 group-hover:text-text'
 
 /**
  * The features rail (decision 10): a triage list, not a flat one. Features are
@@ -177,10 +192,10 @@ export function Sidebar({
           ),
       },
     ]
-    // A draft's verb set is Start and delete (decision 8). Archive is refused
-    // server-side — unarchiving derives status from phase and would resurrect it
-    // as active-without-a-branch — so the menu never offers a dead item; a draft
-    // IS the shelf, and Delete below covers the ideas that die on it.
+    // A draft is never offered Archive (decision 8): it is refused server-side —
+    // unarchiving derives status from phase and would resurrect it as
+    // active-without-a-branch — so the menu never offers a dead item. A draft IS
+    // the shelf, and Delete below covers the ideas that die on it.
     if (f.status === 'archived') {
       actions.push({
         key: 'unarchive',
@@ -220,16 +235,20 @@ export function Sidebar({
           onClick={onQuickChange}
           title="Quick — a change to burn now, or a draft to park. No conversation."
         >
-          <IconBolt size={11} />
-          Quick
+          <span className={DOOR_LABEL_CLASS}>
+            <IconBolt size={11} />
+            Quick
+          </span>
         </button>
         <button
           className={DOOR_CLASS}
           onClick={onNewChat}
           title="New — open a fresh conversation with the project, which turns intent into features"
         >
-          <IconPlus size={11} />
-          New
+          <span className={DOOR_LABEL_CLASS}>
+            <IconPlus size={11} />
+            New
+          </span>
         </button>
       </div>
 
@@ -274,7 +293,7 @@ export function Sidebar({
               ))}
               {lane.expanderLabel && (
                 <button className={EXPANDER_CLASS} onClick={() => setShowAllShipped((v) => !v)}>
-                  {lane.expanderLabel}
+                  <span className={EXPANDER_LABEL_CLASS}>{lane.expanderLabel}</span>
                 </button>
               )}
             </div>
@@ -282,7 +301,9 @@ export function Sidebar({
         })}
         {archivedCount > 0 && (
           <button className={EXPANDER_CLASS} onClick={toggleArchived}>
-            {showArchived ? 'Hide' : 'Show'} archived ({archivedCount})
+            <span className={EXPANDER_LABEL_CLASS}>
+              {showArchived ? 'Hide' : 'Show'} archived ({archivedCount})
+            </span>
           </button>
         )}
       </div>
@@ -294,10 +315,9 @@ export function Sidebar({
       {prepRow && (
         <button
           className={
-            'flex w-full shrink-0 items-center gap-2 border-t border-hairline px-4 py-3 ' +
-            'text-left text-sm transition-colors duration-(--dur-1) ease-app hover:bg-panel-3 ' +
-            'hover:text-text ' +
-            (prepRow.variant === 'done' ? 'text-text-4' : 'text-text-3')
+            `group ${BUTTON_RESET} flex w-full shrink-0 items-center gap-2 border-0 ` +
+            'border-t border-hairline bg-transparent px-4 py-3 text-left text-sm ' +
+            'transition-colors duration-(--dur-1) ease-app hover:bg-panel-3'
           }
           onClick={onOpenPreparation}
           title={prepRow.title}
@@ -312,7 +332,13 @@ export function Sidebar({
             }`}
             aria-hidden="true"
           />
-          <span className="min-w-0 flex-1">{prepRow.label}</span>
+          <span
+            className={`min-w-0 flex-1 group-hover:text-text ${
+              prepRow.variant === 'done' ? 'text-text-4' : 'text-text-3'
+            }`}
+          >
+            {prepRow.label}
+          </span>
           {prepRow.badge && (
             <span className="shrink-0 text-xs whitespace-nowrap text-text-4">{prepRow.badge}</span>
           )}
@@ -412,8 +438,8 @@ function ProjectRow({
   return (
     <div className="shrink-0 border-b border-hairline-soft px-3 pb-3">
       <button
-        className={`flex w-full items-center gap-2.5 rounded-md px-2.5 py-2.5 text-left transition-colors duration-(--dur-1) ease-app ${
-          active ? 'bg-accent-soft' : 'hover:bg-panel-3'
+        className={`${BUTTON_RESET} flex w-full items-center gap-2.5 rounded-md border-0 px-2.5 py-2.5 text-left transition-colors duration-(--dur-1) ease-app ${
+          active ? 'bg-accent-soft' : 'bg-transparent hover:bg-panel-3'
         }`}
         onClick={onSelect}
         title="Talk to the project — intake, decomposition, and portfolio questions"
@@ -522,7 +548,7 @@ export function FeatureRow({
       } ${dimmed ? 'opacity-70 hover:opacity-100' : ''}`}
     >
       <button
-        className="flex min-w-0 flex-1 items-start gap-2.5 px-2.5 py-2.5 text-left"
+        className={`${BUTTON_RESET} flex min-w-0 flex-1 items-start gap-2.5 border-0 bg-transparent px-2.5 py-2.5 text-left`}
         onClick={() => onSelect(f.id)}
         title={f.title}
       >
