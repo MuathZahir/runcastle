@@ -2,9 +2,11 @@ import { afterEach, describe, expect, it } from 'vitest'
 import {
   aggregateRuns,
   initialView,
+  launchView,
   projectStats,
   repoOpenFailure,
   restoredView,
+  type StoredNav,
 } from '../src/lib/projects'
 import { readStoredNav, writeStoredNav } from '../src/lib/use-project-nav'
 import type { FeatureListItem } from '../src/lib/api'
@@ -153,6 +155,50 @@ describe('restored navigation', () => {
   it('leaves the fresh install on the open-a-project flow whatever is stored', () => {
     storage({ [NAV_KEY]: JSON.stringify({ view: 'home' }) })
     expect(restoredView([], readStoredNav())).toEqual({ view: 'open', projectId: null })
+  })
+})
+
+/**
+ * flow-redesign shell ticket 1 / decision 1 — the address bar joins the boot
+ * order ahead of storage. The rule stays pure: the URL arrives already parsed,
+ * so nothing here needs a DOM.
+ */
+describe('launchView', () => {
+  const both = [proj('proj_a'), proj('proj_b')]
+
+  it('lands where the URL points, over anything stored', () => {
+    const stored: StoredNav = { view: 'project', projectId: 'proj_b' }
+    expect(launchView(both, { kind: 'project', projectId: 'proj_a' }, stored)).toEqual({
+      view: 'project',
+      projectId: 'proj_a',
+    })
+    expect(
+      launchView(both, { kind: 'feature', projectId: 'proj_a', featureSlug: 'x' }, stored),
+    ).toEqual({ view: 'project', projectId: 'proj_a' })
+  })
+
+  it('lets storage answer a bare / launch — the one job it has left', () => {
+    const stored: StoredNav = { view: 'project', projectId: 'proj_b' }
+    expect(launchView(both, { kind: 'home' }, stored)).toEqual({
+      view: 'project',
+      projectId: 'proj_b',
+    })
+  })
+
+  it('falls through to storage when the URL names a project that is gone', () => {
+    const stored: StoredNav = { view: 'project', projectId: 'proj_b' }
+    expect(launchView(both, { kind: 'project', projectId: 'closed' }, stored)).toEqual({
+      view: 'project',
+      projectId: 'proj_b',
+    })
+  })
+
+  it('falls all the way to the count-based rule with an unknown path and nothing stored', () => {
+    expect(launchView(both, null, null)).toEqual({ view: 'home', projectId: null })
+    expect(launchView([proj('proj_a')], null, null)).toEqual({
+      view: 'project',
+      projectId: 'proj_a',
+    })
   })
 })
 

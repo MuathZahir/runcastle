@@ -17,6 +17,7 @@ import {
   headline,
   lapAccount,
   kickoffTrouble,
+  landingFeature,
   lapBanner,
   liveSessionBlocker,
   mergeConflictKickoff,
@@ -3039,6 +3040,48 @@ describe('capLane', () => {
       expect(capped.visible).toHaveLength(12)
       expect(capped.expanderLabel).toBeNull()
     }
+  })
+})
+
+/**
+ * flow-redesign shell ticket 1 / decision 4 — where entering a project puts
+ * you. It used to be `list.data[0]`: newest-created and lane-blind, which is how
+ * a parked draft or a shipped retrospective became the first screen (F10.4).
+ * The rule reads the rail's own triage order instead, so the workspace opens on
+ * the row the eye lands on.
+ */
+describe('landingFeature', () => {
+  const working = listItem({ id: 'working', activeRun: true })
+  const needsYou = listItem({ id: 'needs', phase: 'ideation' })
+  const inProgress = listItem({ id: 'spec', phase: 'spec' })
+  const draft = listItem({ id: 'draft', status: 'draft' })
+  const shipped = listItem({ id: 'shipped', status: 'shipped', phase: 'shipped' })
+  const archived = listItem({ id: 'archived', status: 'archived' })
+
+  it('prefers the top Needs-you row over everything below it', () => {
+    expect(landingFeature([shipped, inProgress, working, needsYou])?.id).toBe('needs')
+  })
+
+  it('falls to Agent working when nothing needs you', () => {
+    expect(landingFeature([draft, inProgress, working])?.id).toBe('working')
+  })
+
+  it('falls to In progress when no agent is working either', () => {
+    expect(landingFeature([shipped, draft, inProgress])?.id).toBe('spec')
+  })
+
+  it('keeps the incoming order within a lane', () => {
+    const first = listItem({ id: 'first', phase: 'ideation' })
+    const second = listItem({ id: 'second', phase: 'ideation' })
+    expect(landingFeature([first, second])?.id).toBe('first')
+  })
+
+  it('lands on the project home rather than a draft, a shipped or an archived feature', () => {
+    expect(landingFeature([draft, shipped, archived])).toBeNull()
+  })
+
+  it('lands on the project home when the project has no features at all', () => {
+    expect(landingFeature([])).toBeNull()
   })
 })
 

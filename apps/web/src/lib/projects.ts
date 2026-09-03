@@ -1,4 +1,5 @@
 import type { FeatureListItem, Project } from './api'
+import type { AppLocation } from './routes'
 
 /**
  * Multi-project navigation + portfolio derivations (issue #45).
@@ -50,6 +51,28 @@ export function restoredView(projects: Project[], stored: StoredNav | null): Lan
   }
   if (stored?.view === 'home' && projects.length > 0) return { view: 'home', projectId: null }
   return initialView(projects)
+}
+
+/**
+ * Where the app lands on boot now that locations have URLs (decision 1). Three
+ * sources, in order: the address bar, then what the last session stored, then
+ * the count-based rule.
+ *
+ * A bare `/` is not an opinion — it is how the app is launched from a bookmark
+ * or a fresh window, and it is precisely the case localStorage exists to answer.
+ * Only a URL naming a project beats storage, and a URL naming a project that has
+ * since been closed falls all the way through rather than dead-ending.
+ */
+export function launchView(
+  projects: Project[],
+  url: AppLocation | null,
+  stored: StoredNav | null,
+): Landing {
+  const projectId = url && url.kind !== 'home' ? url.projectId : null
+  if (projectId && projects.some((p) => p.id === projectId)) {
+    return { view: 'project', projectId }
+  }
+  return restoredView(projects, stored)
 }
 
 /**
