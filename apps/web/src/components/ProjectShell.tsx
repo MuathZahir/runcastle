@@ -7,7 +7,13 @@ import { useProjectTalk } from '../lib/use-project-talk'
 import { useLivePoll } from '../lib/live'
 import { showsInspector, workspaceView } from '../lib/project-workspace'
 import { landingFeature } from '../lib/feature-ui'
-import { locationFor, parsePath, type AppLocation } from '../lib/routes'
+import {
+  insideProject,
+  locationFor,
+  parsePath,
+  projectIdOf,
+  type AppLocation,
+} from '../lib/routes'
 import { currentPath, useHistorySync } from '../lib/use-history-sync'
 import type { FeatureListItem, PrepView } from '../lib/api'
 import { Titlebar } from './Titlebar'
@@ -70,32 +76,26 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
    * so silently restoring some unrelated feature would be the wrong repair.
    */
   const [landed, setLanded] = useState(false)
-  const urlAtMount = useRef(parsePath(currentPath()))
+  const [urlAtMount] = useState(() => parsePath(currentPath()))
   useEffect(() => {
     if (landed || !features) return
-    const url = urlAtMount.current
-    // `home` and a bare `/p/<id>` name no place inside the project, so they
-    // leave the answer to storage and the triage rule below.
-    const addressed =
-      url && (url.kind === 'chat' || url.kind === 'prepare' || url.kind === 'feature')
-        ? url.projectId === projectId
-          ? url
-          : null
-        : null
+    const addressed = insideProject(urlAtMount, projectId)
 
     if (addressed?.kind === 'chat') selectProject()
     else if (addressed?.kind === 'prepare') startPreparation()
-    else {
-      const named = addressed && features.find((f) => f.slug === addressed.featureSlug)
-      if (named) select(named.id)
-      else if (addressed || (!selectedFeatureId && !projectSelected && !preparing))
-        select(landingFeature(features)?.id ?? null)
+    else if (addressed) {
+      const named = features.find((f) => f.slug === addressed.featureSlug)
+      select(named?.id ?? landingFeature(features)?.id ?? null)
+    } else if (!selectedFeatureId && !projectSelected && !preparing) {
+      const target = landingFeature(features)
+      if (target) select(target.id)
     }
     setLanded(true)
   }, [
     landed,
     features,
     projectId,
+    urlAtMount,
     selectedFeatureId,
     projectSelected,
     preparing,
@@ -105,23 +105,31 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
   ])
 
   // The address this shell is showing, and the setters a Back or Forward drives.
-  // Null until the landing above has run: an address written before then would
-  // be normalized away a render later, leaving a stray history entry behind.
+  //
+  // Null in the two windows where the shell has no address to state: before the
+  // landing above has run (an address written then would be corrected a render
+  // later, leaving a stray entry behind), and while the Quick form owns the body
+  // — an overlay is not a place, and opening it clears the pinned project row
+  // and any open preparation underneath it (decision 1).
   const selectedSlug = features?.find((f) => f.id === selectedFeatureId)?.slug ?? null
-  const location: AppLocation | null = landed
-    ? locationFor({ projectId, preparing, projectSelected, featureSlug: selectedSlug })
-    : null
+  const location: AppLocation | null =
+    landed && !ws.creating
+      ? locationFor({ projectId, preparing, projectSelected, featureSlug: selectedSlug })
+      : null
 
   useHistorySync(location, (popped) => {
-    // A pop that changed project is the outer nav's to handle: it remounts this
-    // shell, which then reads the popped URL through the landing above.
-    if (!popped || popped.kind === 'home' || popped.projectId !== projectId) return
-    if (popped.kind === 'chat') selectProject()
-    else if (popped.kind === 'prepare') startPreparation()
-    else if (popped.kind === 'feature') {
-      const named = features?.find((f) => f.slug === popped.featureSlug)
+    // A pop that changed project — or left for the portfolio home — is the outer
+    // nav's to handle: it remounts this shell, which reads the popped URL
+    // through the landing above.
+    if (!popped || projectIdOf(popped) !== projectId) return
+    const inside = insideProject(popped, projectId)
+    if (!inside) select(null) // a bare `/p/<id>`: the project home
+    else if (inside.kind === 'chat') selectProject()
+    else if (inside.kind === 'prepare') startPreparation()
+    else {
+      const named = features?.find((f) => f.slug === inside.featureSlug)
       select(named?.id ?? landingFeature(features ?? [])?.id ?? null)
-    } else select(null)
+    }
   })
 
   // The New door (decisions.md #12): open the project workspace and start a

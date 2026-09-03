@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  insideProject,
   locationFor,
   parsePath,
   pathFor,
@@ -74,6 +75,29 @@ describe('projectIdOf', () => {
   it('names the project a location is inside, and nothing for the home', () => {
     expect(projectIdOf({ kind: 'home' })).toBeNull()
     expect(projectIdOf({ kind: 'chat', projectId: 'proj_a' })).toBe('proj_a')
+  })
+})
+
+describe('insideProject', () => {
+  it('names the place inside the project it was asked about', () => {
+    expect(insideProject({ kind: 'chat', projectId: 'p1' }, 'p1')).toEqual({
+      kind: 'chat',
+      projectId: 'p1',
+    })
+    expect(insideProject({ kind: 'prepare', projectId: 'p1' }, 'p1')?.kind).toBe('prepare')
+    expect(
+      insideProject({ kind: 'feature', projectId: 'p1', featureSlug: 'a' }, 'p1')?.kind,
+    ).toBe('feature')
+  })
+
+  it('has nothing to say about a bare project path — where to land is undecided', () => {
+    expect(insideProject({ kind: 'project', projectId: 'p1' }, 'p1')).toBeNull()
+  })
+
+  it('has nothing to say about the home, another project, or an unknown path', () => {
+    expect(insideProject({ kind: 'home' }, 'p1')).toBeNull()
+    expect(insideProject({ kind: 'chat', projectId: 'p2' }, 'p1')).toBeNull()
+    expect(insideProject(null, 'p1')).toBeNull()
   })
 })
 

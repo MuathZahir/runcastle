@@ -116,6 +116,47 @@ describe('useHistorySync', () => {
     expect(path()).toBe('/p/p1/f/alpha')
   })
 
+  /**
+   * The Quick form is the awkward overlay: opening it clears the pinned project
+   * row and any open preparation, so the location genuinely moves underneath it.
+   * A caller passes `null` for the span the overlay owns the screen, and the
+   * address is squared up with a replace when it comes back — one place, no
+   * entry, whichever view the form was opened from.
+   */
+  it('adds no entry when a location goes away and comes back somewhere else', () => {
+    function Overlaid() {
+      const [hidden, setHidden] = useState(false)
+      const [location, setLocation] = useState<AppLocation | null>({
+        kind: 'chat',
+        projectId: 'p1',
+      })
+      useHistorySync(hidden ? null : location, () => {})
+      return (
+        <>
+          <button
+            onClick={() => {
+              setHidden(true)
+              setLocation({ kind: 'feature', projectId: 'p1', featureSlug: 'alpha' })
+            }}
+          >
+            open
+          </button>
+          <button onClick={() => setHidden(false)}>close</button>
+        </>
+      )
+    }
+    render(<Overlaid />)
+    expect(path()).toBe('/p/p1/chat')
+    const depth = window.history.length
+
+    go('open')
+    expect(path()).toBe('/p/p1/chat')
+    go('close')
+
+    expect(path()).toBe('/p/p1/f/alpha')
+    expect(window.history.length).toBe(depth)
+  })
+
   it('stops listening once unmounted', () => {
     const { unmount } = render(<Harness start={{ kind: 'project', projectId: 'p1' }} />)
     unmount()

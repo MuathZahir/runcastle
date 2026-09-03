@@ -37,11 +37,16 @@ export function replacePath(path: string): void {
 /**
  * Keep the address bar and `location` in step, both ways.
  *
- * Pass `null` while the location is still unknown (a list query in flight) —
- * the hook then writes nothing at all, rather than addressing a half-resolved
- * place and pushing over it a moment later. The FIRST write after that is a
- * replace (the normalization above); every write after it is a push, because by
- * then the user has actually gone somewhere.
+ * Pass `null` whenever the address is not the caller's to state: a list query
+ * still in flight, or an overlay owning the screen. The hook then writes
+ * nothing, and the next write once a location returns is a REPLACE — because
+ * coming back from "not mine to say" is squaring the address up, not going
+ * somewhere. That is what keeps an overlay out of history even when opening it
+ * disturbs the navigation flags underneath it (the Quick form clears the pinned
+ * project row and any open preparation).
+ *
+ * Every write after that first one is a push: by then the user has actually
+ * navigated.
  *
  * `onPopState` receives the parsed location, or `null` for a path this app does
  * not own — the caller decides what to do with a stranger.
@@ -54,7 +59,10 @@ export function useHistorySync(
   const normalized = useRef(false)
 
   useEffect(() => {
-    if (path === null) return
+    if (path === null) {
+      normalized.current = false
+      return
+    }
     if (currentPath() !== path) {
       if (normalized.current) window.history.pushState(null, '', path)
       else window.history.replaceState(null, '', path)

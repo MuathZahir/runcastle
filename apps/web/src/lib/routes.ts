@@ -84,6 +84,29 @@ export function parsePath(path: string): AppLocation | null {
 }
 
 /**
+ * The addressable places *inside* a project — everything the in-project state
+ * machine can be pointed at. A bare `/p/<id>` is deliberately not one of them:
+ * it names the project and leaves where to land inside it to be decided.
+ */
+export type InProjectLocation = Extract<
+  AppLocation,
+  { kind: 'feature' | 'chat' | 'prepare' }
+>
+
+/**
+ * The place a location names inside `projectId`, or `null` — for the portfolio
+ * home, for a bare project path, and for another project's address, which is
+ * the outer navigation's business rather than this project's shell.
+ */
+export function insideProject(
+  location: AppLocation | null,
+  projectId: string,
+): InProjectLocation | null {
+  if (!location || location.kind === 'home' || location.kind === 'project') return null
+  return location.projectId === projectId ? location : null
+}
+
+/**
  * Where the shell currently *is*, from the in-project navigation flags — the
  * same precedence `workspaceView` applies, minus the two cases that have no
  * address: the Quick overlay (transient, decision 1) and the automatic
