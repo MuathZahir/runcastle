@@ -69,6 +69,14 @@ export function isTerminal(w: Waypoint): boolean {
   return w.status === 'resolved' || w.status === 'dropped'
 }
 
+/** The next authored ready waypoint: lowest sequence among server frontier ids. */
+export function nextReadyWaypoint(full: FeatureFull): Waypoint | undefined {
+  const ready = new Set(full.frontierIds)
+  return full.waypoints
+    .filter((waypoint) => ready.has(waypoint.id))
+    .sort((a, b) => a.seq - b.seq)[0]
+}
+
 /**
  * The map rail's waypoint groups (decision #4), in display order: frontier,
  * claimed, blocked, then the resolved/dropped tail. Empty groups are omitted.

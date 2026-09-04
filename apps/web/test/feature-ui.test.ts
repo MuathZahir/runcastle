@@ -159,42 +159,42 @@ describe('nextStep — Resume vs Start wording for the grill', () => {
 
   it('says Start when the feature has never had a grill conversation', () => {
     const ns = nextStep(grillFull({}), { driving: false })
-    expect(ns.primary).toEqual({ label: 'Start grill session', kind: 'startGrill' })
+    expect(ns.primary).toEqual({ label: 'Start session', kind: 'startGrill' })
   })
 
   it('says Resume once an ended grill session left a resumable conversation', () => {
     const ns = nextStep(grillFull({ sessions: endedGrill }), { driving: false })
-    expect(ns.primary).toEqual({ label: 'Resume grill session', kind: 'startGrill' })
+    expect(ns.primary).toEqual({ label: 'Resume session', kind: 'startGrill' })
     expect(ns.desc).toContain('still on disk')
   })
 
   it('keeps saying Start when the ended session never reached live (no cc id)', () => {
     const stillborn = [{ id: 's1', status: 'ended', kind: 'ideation', ccSessionId: null }]
     const ns = nextStep(grillFull({ sessions: stillborn }), { driving: false })
-    expect(ns.primary?.label).toBe('Start grill session')
+    expect(ns.primary?.label).toBe('Start session')
   })
 
   it('ignores a resumable session of a DIFFERENT kind (the launcher would not pick it)', () => {
     const qaOnly = [{ id: 's1', status: 'ended', kind: 'qa', ccSessionId: 'cc-qa' }]
     const ns = nextStep(grillFull({ sessions: qaOnly }), { driving: false })
-    expect(ns.primary?.label).toBe('Start grill session')
+    expect(ns.primary?.label).toBe('Start session')
   })
 
   it('carries the same wording into the spec and tickets phases', () => {
     expect(nextStep(grillFull({ phase: 'spec' }), { driving: false }).primary?.label).toBe(
-      'Open grill',
+      'Start session',
     )
     expect(
       nextStep(grillFull({ phase: 'spec', sessions: endedGrill }), { driving: false }).primary
         ?.label,
-    ).toBe('Resume grill')
+    ).toBe('Resume session')
     expect(nextStep(grillFull({ phase: 'tickets' }), { driving: false }).primary?.label).toBe(
-      'Open grill to emit tickets',
+      'Start session',
     )
     expect(
       nextStep(grillFull({ phase: 'tickets', sessions: endedGrill }), { driving: false }).primary
         ?.label,
-    ).toBe('Resume grill to emit tickets')
+    ).toBe('Resume session')
   })
 })
 
@@ -368,7 +368,7 @@ describe('nextStep — live sessions go status-only', () => {
 
   it('shows ideation status-only while a grill is live, even once G1 is satisfied', () => {
     const ns = nextStep(auditFull({ live: true, satisfied: true }), { driving: false })
-    expect(ns.kick).toBe('GRILL LIVE')
+    expect(ns.kick).toBe('SESSION LIVE')
     expect(ns.primary).toBeUndefined()
     expect(ns.secondary).toEqual([])
     expect(kinds(ns)).not.toContain('advance')
@@ -379,15 +379,15 @@ describe('nextStep — live sessions go status-only', () => {
   // human was already typing in still offered to start one.
   it('never offers to start a grill while the terminal is still launching', () => {
     const ns = nextStep(auditFull({ live: true, sessionStatus: 'launching' }), { driving: false })
-    expect(ns.kick).toBe('GRILL LIVE')
+    expect(ns.kick).toBe('SESSION LIVE')
     expect(ns.primary).toBeUndefined()
     expect(kinds(ns)).not.toContain('startGrill')
   })
 
-  it('demotes the ideation promotion to a secondary once the grill has ended', () => {
+  it('offers only the session door once ideation is idle', () => {
     const ns = nextStep(auditFull({ satisfied: true }), { driving: false })
-    expect(ns.primary).toEqual({ label: 'Start grill session', kind: 'startGrill' })
-    expect(ns.secondary).toEqual([{ label: 'Promote to spec', kind: 'advance' }])
+    expect(ns.primary).toEqual({ label: 'Start session', kind: 'startGrill' })
+    expect(ns.secondary).toEqual([])
   })
 
   it('says Resume on the idle satisfied-gate primary when the conversation survives', () => {
@@ -397,26 +397,26 @@ describe('nextStep — live sessions go status-only', () => {
       sessions: [{ id: 's1', status: 'ended', kind: 'ideation', ccSessionId: 'cc-1' }],
     } as unknown as FeatureFull
     const ns = nextStep(resumable, { driving: false })
-    expect(ns.primary).toEqual({ label: 'Resume grill session', kind: 'startGrill' })
-    expect(ns.secondary).toEqual([{ label: 'Promote to spec', kind: 'advance' }])
+    expect(ns.primary).toEqual({ label: 'Resume session', kind: 'startGrill' })
+    expect(ns.secondary).toEqual([])
   })
 
   it('shows spec status-only while a session is live, even once the spec exists', () => {
     const ns = nextStep(auditFull({ phase: 'spec', gateId: 'G2', live: true, satisfied: true }), {
       driving: false,
     })
-    expect(ns.kick).toBe('GRILL LIVE')
+    expect(ns.kick).toBe('SESSION LIVE')
     expect(ns.title).toBe('Writing the spec')
     expect(ns.primary).toBeUndefined()
     expect(ns.secondary).toEqual([])
   })
 
-  it('demotes the spec approval to a secondary once the session has ended', () => {
+  it('offers only the session door once spec is idle', () => {
     const ns = nextStep(auditFull({ phase: 'spec', gateId: 'G2', satisfied: true }), {
       driving: false,
     })
-    expect(ns.primary).toEqual({ label: 'Open grill', kind: 'startGrill' })
-    expect(ns.secondary).toEqual([{ label: 'Approve spec → tickets', kind: 'advance' }])
+    expect(ns.primary).toEqual({ label: 'Start session', kind: 'startGrill' })
+    expect(ns.secondary).toEqual([])
   })
 
   it('keeps Burn primary at tickets while live — emit_tickets lands one batch', () => {
@@ -430,7 +430,7 @@ describe('nextStep — live sessions go status-only', () => {
       driving: false,
     })
     expect(idle.primary).toEqual({ label: 'Burn 2 tickets', kind: 'burn' })
-    expect(idle.secondary).toEqual([{ label: 'Revisit', kind: 'revisit' }])
+    expect(idle.secondary).toEqual([{ label: 'Ask for changes', kind: 'revisit', hint: 'Open a session to change the tickets before burning' }])
   })
 
   it('waits status-only for the first tickets while the session is emitting them', () => {
@@ -445,7 +445,7 @@ describe('nextStep — live sessions go status-only', () => {
 
   it('still offers a grill to emit the first tickets when nothing is live', () => {
     const ns = nextStep(auditFull({ phase: 'tickets', gateId: 'G3' }), { driving: false })
-    expect(ns.primary).toEqual({ label: 'Open grill to emit tickets', kind: 'startGrill' })
+    expect(ns.primary).toEqual({ label: 'Start session', kind: 'startGrill' })
   })
 
   it('never offers the scroll-to-terminal action in any live state', () => {
@@ -666,14 +666,14 @@ describe('nextStep at review', () => {
     it('never drops the resolve affordance — live, it becomes the compound', () => {
       const ns = nextStep(reviewFull({ sessionLive: true }), { driving: false, conflict })
       expect(ns.primary).toEqual({ label: 'End session & resolve', kind: 'resolveConflict' })
-      expect(ns.warning).toContain('One terminal per feature')
-      expect(ns.warning).toContain('will be closed')
+      expect(ns.note).toContain('One terminal per feature')
+      expect(ns.note).toContain('will be closed')
     })
 
     it('says the plain thing when nothing is live', () => {
       const ns = nextStep(reviewFull({}), { driving: false, conflict })
       expect(ns.primary).toEqual({ label: 'Resolve the merge conflict', kind: 'resolveConflict' })
-      expect(ns.warning).toBeUndefined()
+      expect(ns.note).toBeUndefined()
     })
 
     // A caveat about a drive the human has not asked for must not displace the
@@ -684,8 +684,8 @@ describe('nextStep at review', () => {
         conflict,
         unverifiedDriveKeys: ['devCommand'],
       })
-      expect(ns.warning).toContain('One terminal per feature')
-      expect(ns.warning).not.toContain('dry run')
+      expect(ns.note).toContain('One terminal per feature')
+      expect(ns.note).not.toContain('dry run')
     })
 
     it('goes back to the ordinary merge bar once the conflict clears', () => {
@@ -709,37 +709,37 @@ describe('nextStep at review', () => {
         driving: false,
         unverifiedDriveKeys: ['driveSetupCommand', 'driveStopCommand'],
       })
-      expect(ns.warning).toContain('Before a test drive')
-      expect(ns.warning).toContain('After a test drive')
-      expect(ns.warning).not.toContain('Dev server')
-      expect(ns.warning).toContain('never proven by a dry run')
-      expect(ns.warning).toContain('preparation')
+      expect(ns.note).toContain('Before a test drive')
+      expect(ns.note).toContain('After a test drive')
+      expect(ns.note).not.toContain('Dev server')
+      expect(ns.note).toContain('never proven by a dry run')
+      expect(ns.note).toContain('preparation')
     })
 
     it('never disables the drive — one click still starts it, warning and all', () => {
       const ns = nextStep(reviewFull({}), { driving: false, unverifiedDriveKeys: ['devCommand'] })
-      expect(ns.warning).toBeTruthy()
+      expect(ns.note).toBeTruthy()
       expect(start(ns)).toEqual({ label: 'Start test drive', kind: 'testDriveStart' })
     })
 
     it('stays silent when every participating key is stamped, and when none exist', () => {
-      expect(nextStep(reviewFull({}), { driving: false, unverifiedDriveKeys: [] }).warning)
+      expect(nextStep(reviewFull({}), { driving: false, unverifiedDriveKeys: [] }).note)
         .toBeUndefined()
-      expect(nextStep(reviewFull({}), { driving: false }).warning).toBeUndefined()
+      expect(nextStep(reviewFull({}), { driving: false }).note).toBeUndefined()
     })
 
     it('warns beside the fix-ticket burn and the merge conflict too', () => {
       const ctx = { driving: false, unverifiedDriveKeys: ['devCommand'] }
       const standing = { base: 'main', files: ['a.ts'], at: 1_000 }
-      expect(nextStep(reviewFull({ ticketStatuses: ['pending'] }), ctx).warning).toBeTruthy()
-      expect(nextStep(reviewFull({}), { ...ctx, conflict: standing }).warning).toBeTruthy()
+      expect(nextStep(reviewFull({ ticketStatuses: ['pending'] }), ctx).note).toBeTruthy()
+      expect(nextStep(reviewFull({}), { ...ctx, conflict: standing }).note).toBeTruthy()
     })
 
     // The warning is about the click that starts a drive; mid-drive the offer is
     // Stop, and repeating the doubt there is noise the human cannot act on.
     it('goes quiet once the drive is running', () => {
       const ns = nextStep(reviewFull({}), { driving: true, unverifiedDriveKeys: ['devCommand'] })
-      expect(ns.warning).toBeUndefined()
+      expect(ns.note).toBeUndefined()
     })
 
     it('disables the start with the dry-run reason while one is up', () => {
@@ -759,7 +759,7 @@ describe('nextStep at review', () => {
         dryRunActive: true,
         unverifiedDriveKeys: ['devCommand'],
       })
-      expect(ns.warning).toBeUndefined()
+      expect(ns.note).toBeUndefined()
       expect(start(ns)?.disabled).toBe('A preparation dry-run is in progress — stop it first')
     })
   })
@@ -906,7 +906,7 @@ describe('nextStep at review', () => {
       expect(ns.primary).toEqual({ label: 'Fix 3 open defects', kind: 'fixDefects' })
       expect(labels(ns.secondary)).toEqual(['Merge & ship', 'Start test drive', 'Iterate'])
       // Information, never a block: the demoted merge carries no warning of its own.
-      expect(ns.warning).toBeUndefined()
+      expect(ns.note).toBeUndefined()
     })
 
     it('says one defect in the singular', () => {
@@ -1149,7 +1149,16 @@ describe('nextStep at ideation on a later lap', () => {
     expect(ns.primary).toEqual({ label: 'Start lap 2 session', kind: 'revisit' })
     expect(ns.secondary).toEqual([])
     expect(ns.title).toBe('Work lap 2')
-    expect(ns.desc).toContain('Promoting is refused')
+    expect(ns.desc).toContain('test-drive notes')
+  })
+
+  it('starts lap 2 before considering a completed map', () => {
+    const full = lapFull({ lap: 2, satisfied: true })
+    full.feature.mapped = true
+    expect(nextStep(full, { driving: false }).primary).toEqual({
+      label: 'Start lap 2 session',
+      kind: 'revisit',
+    })
   })
 
   it('says Resume once the lap has a conversation on disk', () => {
@@ -1172,8 +1181,8 @@ describe('nextStep at ideation on a later lap', () => {
 
   it('leaves lap 1 exactly as it was — a satisfied G1 still offers the promotion', () => {
     const ns = nextStep(lapFull({ lap: 1 }), { driving: false })
-    expect(ns.primary?.kind).toBe('startGrill')
-    expect(ns.secondary.map((a) => a.kind)).toContain('advance')
+    expect(ns.primary).toEqual({ label: 'Start session', kind: 'startGrill' })
+    expect(ns.secondary).toEqual([])
   })
 })
 
@@ -2455,8 +2464,12 @@ describe('nextStep — mapped ideation owns Converge', () => {
         satisfied,
         reason: opts.reason === undefined ? '2 waypoints still open' : opts.reason,
       },
-      waypoints: [],
-      frontierIds: [],
+      waypoints: [
+        wp({ id: 'late', seq: 8, title: 'Later choice' }),
+        wp({ id: 'done', seq: 1, title: 'Finished', status: 'resolved' }),
+        wp({ id: 'next', seq: 3, title: 'Choose storage' }),
+      ],
+      frontierIds: satisfied ? [] : ['late', 'next'],
     } as unknown as FeatureFull
   }
 
@@ -2472,53 +2485,30 @@ describe('nextStep — mapped ideation owns Converge', () => {
     const ns = nextStep(mappedIdeation({ satisfied: true }), { driving: false })
     expect(ns.primary).toEqual({ label: 'Converge', kind: 'converge' })
     expect(ns.secondary).toEqual([])
-    expect(ns.title).toBe('Converge the map')
+    expect(ns.title).toBe('The map is complete')
   })
 
-  it('exposes the override affordance and the blocking reason while waypoints are open', () => {
-    const ns = nextStep(
-      mappedIdeation({ reason: '2 waypoints still open — resolve or drop them' }),
-      { driving: false },
-    )
-    expect(ns.primary).toBeUndefined()
-    expect(ns.desc).toBe('2 waypoints still open — resolve or drop them')
-    expect(ns.secondary).toEqual([
-      {
-        label: 'Override & converge…',
-        kind: 'convergeOverride',
-        reason: {
-          placeholder: 'reason to converge past open waypoints',
-          submitLabel: 'Converge anyway',
-        },
-      },
-    ])
+  it('works the lowest-seq ready waypoint and puts orientation in the description', () => {
+    const ns = nextStep(mappedIdeation(), { driving: false })
+    expect(ns.primary).toEqual({ label: 'Work next', kind: 'workNext', waypointId: 'next' })
+    expect(ns.desc).toContain('1 of 3 waypoints done · 2 ready to work')
+    expect(ns.desc).toContain('next: Choose storage')
+    expect(ns.secondary).toEqual([])
   })
 
-  it('falls back to a plain instruction when the gate gives no reason', () => {
-    const ns = nextStep(mappedIdeation({ reason: null }), { driving: false })
-    expect(ns.desc).toBe('Resolve the open waypoints; converge once the frontier clears.')
-  })
-
-  it('surfaces the map’s remaining fog without gating Converge', () => {
-    const ns = nextStep(mappedIdeation({ satisfied: true }), {
+  it('surfaces unspecified map text as one note without gating Work next', () => {
+    const ns = nextStep(mappedIdeation(), {
       driving: false,
       mapContent: MAP_WITH_FOG,
     })
-    expect(ns.fog).toBe('the keyboard shortcut for “work next waypoint”')
-    // Shown, never enforced: the primary is still Converge, and nothing about it
-    // changes because fog remains.
-    expect(ns.primary).toEqual({ label: 'Converge', kind: 'converge' })
+    expect(ns.note).toBe('Still unspecified: the keyboard shortcut for “work next waypoint”')
+    expect(ns.primary?.kind).toBe('workNext')
   })
 
-  it('shows the same fog while the gate is still blocking', () => {
-    const ns = nextStep(mappedIdeation(), { driving: false, mapContent: MAP_WITH_FOG })
-    expect(ns.fog).toBe('the keyboard shortcut for “work next waypoint”')
-  })
-
-  it('carries no fog when the map has none, or has not loaded yet', () => {
+  it('carries no note when the map has no unspecified text, or has not loaded yet', () => {
     const clear = '## Destination\nShip the rail.\n\n## Not yet specified\n\n'
-    expect(nextStep(mappedIdeation(), { driving: false, mapContent: clear }).fog).toBeUndefined()
-    expect(nextStep(mappedIdeation(), { driving: false }).fog).toBeUndefined()
+    expect(nextStep(mappedIdeation(), { driving: false, mapContent: clear }).note).toBeUndefined()
+    expect(nextStep(mappedIdeation(), { driving: false }).note).toBeUndefined()
   })
 
   it('never offers the scroll-to-terminal action, live session or not', () => {
@@ -2527,6 +2517,39 @@ describe('nextStep — mapped ideation owns Converge', () => {
       const kinds = [ns.primary, ...ns.secondary].map((a) => a?.kind)
       expect(kinds).not.toContain('openGrill')
     }
+  })
+
+  it('waits when research owns the only open waypoint', () => {
+    const mapped = mappedIdeation()
+    mapped.waypoints = [wp({ id: 'research', seq: 1, title: 'Research', status: 'claimed', claimedBy: 'run_1' })]
+    mapped.frontierIds = []
+    const ns = nextStep(mapped, { driving: false })
+    expect(ns.title).toBe('Waiting on 1 research run')
+    expect(ns.primary).toBeUndefined()
+  })
+})
+
+describe('nextStep — spec and tickets use one lap-scoped door', () => {
+  it('resumes a mapped converge that ended before artifacts landed', () => {
+    const mapped = full({ phase: 'spec', mapped: true })
+    mapped.feature = { ...mapped.feature, phase: 'spec', mapped: true }
+    expect(nextStep(mapped, { driving: false }).primary).toEqual({
+      label: 'Resume converge',
+      kind: 'resumeConverge',
+    })
+  })
+
+  it('counts only current-lap non-cancelled tickets', () => {
+    const feature = full({ phase: 'tickets', lap: 2 })
+    feature.feature = { ...feature.feature, phase: 'tickets', lap: 2 }
+    feature.tickets = [
+      ...Array.from({ length: 11 }, (_, i) => ({ id: `old-${i}`, lap: 1, status: 'done' })),
+    ] as FeatureFull['tickets']
+    expect(nextStep(feature, { driving: false }).title).toBe('Waiting for tickets')
+    feature.tickets.push(
+      ...(['a', 'b', 'c'].map((id) => ({ id, lap: 2, status: 'pending' })) as FeatureFull['tickets']),
+    )
+    expect(nextStep(feature, { driving: false }).primary).toEqual({ label: 'Burn 3 tickets', kind: 'burn' })
   })
 })
 
@@ -3140,7 +3163,7 @@ describe('nextStep — naming the runtime in the copy', () => {
       gate: { next: { id: 'G3' }, satisfied: false, reason: 'not burned' },
     } as unknown as FeatureFull
     const ns = nextStep(full, { driving: false })
-    expect(ns.desc).toContain('one atomic task the agent will implement')
+    expect(ns.desc).toContain('Each one runs as its own sandboxed agent')
     expect(ns.desc).not.toMatch(/Claude|Codex/)
   })
 })

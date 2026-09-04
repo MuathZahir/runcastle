@@ -1,42 +1,16 @@
-import type { NextStep } from './types'
+import { hasResumable } from '../internal'
 import type { ResolverInput } from './resolver-input'
+import type { NextStep } from './types'
 
 export function resolveSpec(input: ResolverInput): NextStep {
-  const { live, resumableGrill, canAdvance } = input
-  if (live) {
-    return {
-      kick: 'GRILL LIVE',
-      title: 'Writing the spec',
-      desc: 'The spec takes shape beside the conversation — the session advances the phase when it’s written.',
-      primary: undefined,
-      secondary: [],
-      busy: false,
-    }
-  }
-  if (canAdvance) {
-    return {
-      kick: 'NEXT STEP',
-      title: 'Refine the spec, or approve it',
-      desc: 'The spec is written — reopen the grill to work on it, or approve it to move into tickets.',
-      primary: {
-        label: resumableGrill ? 'Resume grill' : 'Open grill',
-        kind: 'startGrill',
-      },
-      secondary: [{ label: 'Approve spec → tickets', kind: 'advance' }],
-      busy: false,
-    }
-  }
-  return {
-    kick: 'NEXT STEP',
-    title: 'Write the spec',
-    desc: resumableGrill
-      ? 'No spec yet — resume the grill conversation to draft it.'
-      : 'No spec yet — open a grill session to draft it.',
-    primary: {
-      label: resumableGrill ? 'Resume grill' : 'Open grill',
-      kind: 'startGrill',
-    },
-    secondary: [],
-    busy: false,
-  }
+  const { full, live, lapTicketCount } = input
+  if (live) return step('SESSION LIVE', 'Writing the spec', 'The spec takes shape on the left as the session writes it. The session moves the feature on to tickets when it is done.')
+  const hasSpec = (full.docs ?? []).some((doc) => doc.relPath.endsWith('spec.md'))
+  if (full.feature.mapped && !hasSpec && lapTicketCount === 0) return step('NEXT STEP', 'Finish converging', 'The converge session ended before the spec and tickets were written. Resume it — it picks up from the map and the decisions.', { label: 'Resume converge', kind: 'resumeConverge' })
+  const resumable = hasResumable(full.sessions, 'ideation') || hasResumable(full.sessions, 'converge')
+  return step('NEXT STEP', 'Write the spec', `No spec yet — ${resumable ? 'resume the session' : 'start a session'} to draft it.`, { label: resumable ? 'Resume session' : 'Start session', kind: 'startGrill' })
+}
+
+function step(kick: string, title: string, desc: string, primary?: NextStep['primary']): NextStep {
+  return { kick, title, desc, primary, secondary: [], busy: false }
 }

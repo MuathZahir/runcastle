@@ -1,126 +1,44 @@
-import { sessionAgentName } from '../../vocabulary'
-import { parseMapSections } from '../map'
 import { hasResumable } from '../internal'
-import type { NextStep } from './types'
+import { isTerminal, nextReadyWaypoint, parseMapSections } from '../map'
+import { sessionAgentName } from '../../vocabulary'
 import type { ResolverInput } from './resolver-input'
+import type { NextStep } from './types'
 
 export function resolveIdeation(input: ResolverInput): NextStep {
-  const { full, ctx, live, resumableGrill, canAdvance, promoteLabel } = input
-  const { feature, gate, sessions } = full
-  // Mapped features converge instead of promoting: Converge crosses G1 and
-  // spawns the converge session, and the bar owns it (decision #4) — it never
-  // shows a plain `advance`, which would bump the phase without a session
-  // (ADR-0001 §13.6). Remaining fog — the map's still-unspecified prose —
-  // rides along as a warning: shown, never enforced, so it neither gates nor
-  // disables Converge.
+  const { full, ctx, live } = input
+  const { feature, gate, sessions, waypoints, frontierIds } = full
+  if (feature.lap > 1 && live) return step('LAP LIVE', `Lap ${feature.lap} in progress`, 'The lap session digests the drive, amends the docs and emits this lap’s tickets.')
+
+  const lapWorked = sessions.some((session) => session.lap === feature.lap && ['ideation', 'revisit', 'converge'].includes(session.kind))
+  if (feature.lap > 1 && !lapWorked) {
+    const resumable = hasResumable(sessions, 'revisit')
+    return step('NEXT STEP', `Work lap ${feature.lap}`, 'Your test-drive notes are waiting. The lap session reads them, amends the spec, and emits this lap’s tickets — then hands back to Burn.', { label: `${resumable ? 'Resume' : 'Start'} lap ${feature.lap} session`, kind: 'revisit' })
+  }
+  if (feature.mapped && gate.satisfied) return step('MAP', 'The map is complete', 'Every waypoint is done. Converge to turn the map and its decisions into a spec and tickets in one session.', { label: 'Converge', kind: 'converge' })
+  if (feature.mapped && live) return liveStep(live)
+
   if (feature.mapped) {
-    const fog = ctx.mapContent
-      ? parseMapSections(ctx.mapContent)['Not yet specified']?.trim() || undefined
-      : undefined
-    if (gate.satisfied) {
+    const next = nextReadyWaypoint(full)
+    const unspecified = ctx.mapContent ? parseMapSections(ctx.mapContent)['Not yet specified']?.trim() : undefined
+    if (next) {
+      const done = waypoints.filter(isTerminal).length
       return {
-        kick: 'MAP',
-        title: 'Converge the map',
-        desc: 'Every waypoint is resolved — converge to draft the spec and tickets.',
-        primary: { label: 'Converge', kind: 'converge' },
-        secondary: [],
-        busy: false,
-        fog,
+        ...step('MAP', 'Work the map', `${done} of ${waypoints.length} waypoints done · ${frontierIds.length} ready to work — next: ${next.title} · pick a different one in the map.`, { label: 'Work next', kind: 'workNext', waypointId: next.id }),
+        ...(unspecified ? { note: `Still unspecified: ${unspecified}` } : {}),
       }
     }
-    return {
-      kick: 'MAP',
-      title: 'Work the frontier',
-      desc: gate.reason ?? 'Resolve the open waypoints; converge once the frontier clears.',
-      // The override is the seatbelt, not the cage: a quiet secondary that
-      // asks for a reason before it forces G1.
-      secondary: [
-        {
-          label: 'Override & converge…',
-          kind: 'convergeOverride',
-          reason: {
-            placeholder: 'reason to converge past open waypoints',
-            submitLabel: 'Converge anyway',
-          },
-        },
-      ],
-      busy: false,
-      fog,
-    }
+    const researchRuns = waypoints.filter((waypoint) => waypoint.claimedBy?.startsWith('run_')).length
+    if (researchRuns > 0) return step('WAITING', `Waiting on ${researchRuns} research run${researchRuns === 1 ? '' : 's'}`, 'Research is running unattended. Its waypoints open up when it finishes.')
   }
-  // From lap 2 on, ideation belongs to the LAP's session (SPEC §15.2): one
-  // terminal digests what the drive taught, amends the docs, emits this lap's
-  // tickets and advances itself through ideation → spec → tickets. So the bar
-  // never offers a bare promote here — lap 1's decisions.md is still on disk,
-  // and promoting on it skips the whole lap and dead-ends at `tickets` with
-  // nothing to burn (findings F4). The lap-scoped gates refuse it server-side;
-  // this is the same truth in the copy, pointing at the session instead.
-  if (feature.lap > 1) {
-    if (live) {
-      return {
-        kick: 'LAP LIVE',
-        title: `Lap ${feature.lap} in progress`,
-        desc: 'The lap session digests the drive, amends the docs and emits this lap’s tickets.',
-        primary: undefined,
-        secondary: [],
-        busy: false,
-      }
-    }
-    const resumableLap = hasResumable(sessions)
-    return {
-      kick: 'NEXT STEP',
-      title: `Work lap ${feature.lap}`,
-      desc: `Lap ${feature.lap} is open — its session amends the docs and emits this lap’s tickets, then hands back to Burn. Promoting is refused until it has run.`,
-      primary: {
-        label: resumableLap
-          ? `Resume lap ${feature.lap} session`
-          : `Start lap ${feature.lap} session`,
-        kind: 'revisit',
-      },
-      secondary: [],
-      busy: false,
-    }
-  }
-  if (live) {
-    return {
-      kick: 'GRILL LIVE',
-      title: 'Grill session in progress',
-      desc: `Shape the idea with ${sessionAgentName(live)} — it promotes the phase itself when the grilling is done.`,
-      primary: undefined,
-      secondary: [],
-      busy: false,
-    }
-  }
-  if (canAdvance) {
-    return {
-      kick: 'NEXT STEP',
-      title: 'Shape the idea, or promote it',
-      desc: 'Decisions are captured — carry on in a grill session, or promote the idea when it feels concrete.',
-      primary: {
-        label: resumableGrill ? 'Resume grill session' : 'Start grill session',
-        kind: 'startGrill',
-      },
-      secondary: [{ label: promoteLabel, kind: 'advance' }],
-      busy: false,
-    }
-  }
-  return resumableGrill
-    ? {
-        kick: 'NEXT STEP',
-        title: 'Pick the conversation back up',
-        desc: 'The grill session ended, but its conversation is still on disk — resume it to carry on where you left off.',
-        primary: { label: 'Resume grill session', kind: 'startGrill' },
-        secondary: [],
-        busy: false,
-      }
-    : {
-        kick: 'NEXT STEP',
-        // No session and none to resume: nothing has resolved a model yet,
-        // so there is no runtime to name (decision 11).
-        title: 'Shape the idea with the agent',
-        desc: 'Launch a grill session to shape the idea before any code is written.',
-        primary: { label: 'Start grill session', kind: 'startGrill' },
-        secondary: [],
-        busy: false,
-      }
+  if (live) return liveStep(live)
+  if (hasResumable(sessions, 'ideation')) return step('NEXT STEP', 'Pick the conversation back up', 'The ideation session ended. Resume it to carry on where you left off — the conversation is still on disk.', { label: 'Resume session', kind: 'startGrill' })
+  return step('NEXT STEP', 'Shape the idea with the agent', 'Start a session: the agent asks about the idea until it is concrete enough to write up, and every decision lands in the pane on the left.', { label: 'Start session', kind: 'startGrill' })
+}
+
+function liveStep(live: ResolverInput['live']): NextStep {
+  return step('SESSION LIVE', 'Ideation session in progress', `Shape the idea with ${sessionAgentName(live!)} in the terminal. It writes each decision to the pane on the left and moves the feature on to spec itself when the idea is concrete.`)
+}
+
+function step(kick: string, title: string, desc: string, primary?: NextStep['primary']): NextStep {
+  return { kick, title, desc, primary, secondary: [], busy: false }
 }

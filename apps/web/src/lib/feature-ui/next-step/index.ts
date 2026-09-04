@@ -1,8 +1,6 @@
-import { nextPhase } from '@runcastle/core'
 import type { FeatureFull } from '../../api'
 import { activeSession } from '../gates'
 import { hasResumable } from '../internal'
-import { PHASE_LABELS } from '../pipeline'
 import { latestRun } from '../sidebar'
 import { resolveDraft } from './draft'
 import { resolveIdeation } from './ideation'
@@ -20,6 +18,8 @@ export function nextStep(full: FeatureFull, ctx: NextStepContext): NextStep {
   const { feature, tickets, sessions, runs, gate } = full
   const live = activeSession(sessions)
   const resumableGrill = hasResumable(sessions, 'ideation')
+  const lapTickets = tickets.filter((ticket) => ticket.lap === feature.lap)
+  const lapTicketCount = lapTickets.filter((ticket) => ticket.status !== 'cancelled').length
   const ticketCount = tickets.length
   const done = tickets.filter((ticket) => ticket.status === 'done').length
   const failed = tickets.filter((ticket) => ticket.status === 'failed').length
@@ -32,15 +32,14 @@ export function nextStep(full: FeatureFull, ctx: NextStepContext): NextStep {
   ).length
   const run = latestRun(runs)
   const running = run?.status === 'running'
-  const nextName = nextPhase(feature)
-  const canAdvance =
-    !!gate.next && gate.satisfied && gate.next.id !== 'G3' && gate.next.id !== 'G5'
-  const promoteLabel = nextName ? `Promote to ${PHASE_LABELS[nextName]}` : 'Promote'
+  const nextName = null
   const input: ResolverInput = {
     full,
     ctx,
     live,
     resumableGrill,
+    lapTickets,
+    lapTicketCount,
     ticketCount,
     done,
     failed,
@@ -48,8 +47,6 @@ export function nextStep(full: FeatureFull, ctx: NextStepContext): NextStep {
     run,
     running,
     nextName,
-    canAdvance,
-    promoteLabel,
   }
 
   // A parked draft and an archived feature are outside the phase pipeline.

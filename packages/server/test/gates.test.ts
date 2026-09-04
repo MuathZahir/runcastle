@@ -7,6 +7,7 @@ import { checkGate, overrideGate, undoGateOverride } from '../src/services/gates
 import { listAfter } from '../src/services/events'
 import { featureDocsDir } from '../src/services/feature-docs'
 import { getFeatureRow } from '../src/services/repo'
+import { createSessionRow } from '../src/launcher/sessions'
 import { storeTickets } from '../src/services/tickets'
 import { updateTicket } from '../src/services/tickets'
 import { claim, resolve as resolveWaypoint, storeWaypoints } from '../src/services/waypoints'
@@ -99,6 +100,21 @@ describe('gates service', () => {
     // a drop counts as terminal exactly like a resolve
     resolveWaypoint(ctx, b.id, 'dropped', 'out of scope')
     expect(checkGate(ctx, 'all-waypoints-terminal', feature).satisfied).toBe(true)
+  })
+
+  it('all-waypoints-terminal requires the current lap to have been worked', () => {
+    const feature = seedFeature(ctx, project.id, { slug: 'g1-lap', mapped: true, lap: 2 })
+    const [only] = storeWaypoints(ctx, feature.id, [
+      { title: 'done', type: 'grilling', question: 'q', blockedBy: [] },
+    ])
+    resolveWaypoint(ctx, only.id, 'resolved', 'answered')
+
+    expect(checkGate(ctx, 'all-waypoints-terminal', feature)).toEqual({
+      satisfied: false,
+      reason: "the map is an earlier lap's — no lap 2 session has worked this feature yet; open the lap's session before converging",
+    })
+    createSessionRow(ctx, { featureId: feature.id, kind: 'revisit', worktreePath: project.repoPath })
+    expect(checkGate(ctx, 'all-waypoints-terminal', feature)).toEqual({ satisfied: true })
   })
 
   it('all-waypoints-terminal reason aggregates status counts (no per-item dump)', () => {

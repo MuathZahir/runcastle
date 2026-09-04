@@ -184,13 +184,6 @@ export function Workspace({
   }
 
   const launch = trpc.feature.launchSession.useMutation({ onSuccess: invalidate, onError: (e) => toast.push(e.message) })
-  const advance = trpc.feature.advance.useMutation({
-    onSuccess: () => {
-      invalidate()
-      onViewPhase(null)
-    },
-    onError: (e) => toast.push(e.message),
-  })
   const burn = trpc.feature.burn.useMutation({
     onSuccess: () => {
       invalidate()
@@ -206,6 +199,10 @@ export function Workspace({
       invalidate()
       onViewPhase(null)
     },
+    onError: (e) => toast.push(e.message),
+  })
+  const workWaypoint = trpc.feature.workWaypoint.useMutation({
+    onSuccess: invalidate,
     onError: (e) => toast.push(e.message),
   })
   // Iterate is the review verb that starts the next lap (ADR-0010 §3; the
@@ -396,9 +393,9 @@ export function Workspace({
   const busy =
     start.isPending ||
     launch.isPending ||
-    advance.isPending ||
     burn.isPending ||
     converge.isPending ||
+    workWaypoint.isPending ||
     rethink.isPending ||
     cancel.isPending ||
     testDrive.isPending ||
@@ -408,7 +405,7 @@ export function Workspace({
     unarchive.isPending ||
     resolveConflict.pending
 
-  const runAction = (kind: ActionKind, reason?: string) => {
+  const runAction = (kind: ActionKind, waypointId?: string) => {
     switch (kind) {
       case 'startDraft':
         // Send the base the body is SHOWING, not just an explicit pick: omitting
@@ -430,14 +427,11 @@ export function Workspace({
         rethink.mutate({ featureId })
         break
       case 'converge':
+      case 'resumeConverge':
         converge.mutate({ featureId })
         break
-      case 'convergeOverride':
-        // The bar only dispatches this once the human has typed a reason.
-        if (reason) converge.mutate({ featureId, overrideReason: reason })
-        break
-      case 'advance':
-        advance.mutate({ featureId })
+      case 'workNext':
+        if (waypointId) workWaypoint.mutate({ featureId, waypointId })
         break
       case 'burn':
         burn.mutate({ featureId })

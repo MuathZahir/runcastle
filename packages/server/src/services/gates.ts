@@ -38,12 +38,15 @@ export function checkGate(ctx: AppCtx, check: GateCheckId, feature: Feature): Ga
         return { satisfied: false, reason: 'no waypoints charted yet — chart the map before converging' }
       }
       const open = wps.filter((w) => w.status !== 'resolved' && w.status !== 'dropped')
-      return open.length === 0
-        ? { satisfied: true }
-        : {
-            satisfied: false,
-            reason: notYetTerminal('waypoint', open.map((w) => w.status), ['open', 'claimed']),
-          }
+      if (open.length > 0) return {
+        satisfied: false,
+        reason: notYetTerminal('waypoint', open.map((w) => w.status), ['open', 'claimed']),
+      }
+      if (feature.lap > 1 && !lapWorked(ctx, feature)) return {
+        satisfied: false,
+        reason: `the map is an earlier lap's — no lap ${feature.lap} session has worked this feature yet; open the lap's session before converging`,
+      }
+      return { satisfied: true }
     }
 
     case 'spec-file-exists':
@@ -124,6 +127,14 @@ function fileGate(
  */
 const DOC_WRITING_KINDS: readonly SessionKind[] = ['ideation', 'revisit', 'converge']
 
+function lapWorked(ctx: AppCtx, feature: Feature): boolean {
+  return ctx.db
+    .select({ id: sessions.id })
+    .from(sessions)
+    .where(and(eq(sessions.featureId, feature.id), eq(sessions.lap, feature.lap), inArray(sessions.kind, [...DOC_WRITING_KINDS])))
+    .all().length > 0
+}
+
 /**
  * G1/G2 — the doc gates, scoped to the CURRENT lap from lap 2 on for the same
  * reason G3 is (SPEC §15.1): lap 1's `decisions.md` and `spec.md` are still on
@@ -140,19 +151,7 @@ function docGate(ctx: AppCtx, feature: Feature, fileName: string, reason: string
   const file = fileGate(ctx, feature, fileName, reason)
   if (!file.satisfied || feature.lap === 1) return file
 
-  const worked = ctx.db
-    .select({ id: sessions.id })
-    .from(sessions)
-    .where(
-      and(
-        eq(sessions.featureId, feature.id),
-        eq(sessions.lap, feature.lap),
-        inArray(sessions.kind, [...DOC_WRITING_KINDS]),
-      ),
-    )
-    .all()
-
-  return worked.length > 0
+  return lapWorked(ctx, feature)
     ? { satisfied: true }
     : {
         satisfied: false,

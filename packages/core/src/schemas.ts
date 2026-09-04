@@ -531,6 +531,8 @@ export const SessionRow = z.object({
   featureId: z.string().optional(),
   /** Set on project-scoped sessions only; feature sessions derive it via the feature. */
   projectId: z.string().optional(),
+  /** The feature lap when this session was created. */
+  lap: z.number(),
   kind: SessionKind,
   /** Why this session was opened, when `kind` cannot say it — see {@link SessionPurpose}. */
   purpose: SessionPurpose.optional(),

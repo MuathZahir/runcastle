@@ -33,7 +33,7 @@ export function resolveReview(input: ResolverInput): NextStep {
   // three bars, so the doubt rides along whatever else the phase is saying.
   const unverified = ctx.driving || ctx.dryRunActive ? [] : (ctx.unverifiedDriveKeys ?? [])
   const driveWarning =
-    unverified.length > 0 ? { warning: unverifiedWarning(unverified) } : {}
+    unverified.length > 0 ? { note: unverifiedWarning(unverified) } : {}
   const iterate: NextAction[] = live
     ? []
     : [
@@ -88,7 +88,7 @@ export function resolveReview(input: ResolverInput): NextStep {
       busy: false,
       // The compound's own explanation outranks the drive caveat, exactly as
       // a drive refusal does: it is about the button the eye is on.
-      ...(live ? { warning: ONE_TERMINAL_WARNING } : driveWarning),
+      ...(live ? { note: ONE_TERMINAL_WARNING } : driveWarning),
     }
   }
 
