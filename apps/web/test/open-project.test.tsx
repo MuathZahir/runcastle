@@ -59,15 +59,13 @@ const onOpened = vi.fn()
  * the file asks the same thing on every machine — the Windows-vs-POSIX rule
  * itself is covered by the pure-function tests in `platform.test.ts`.
  */
-const realPlatform = Object.getOwnPropertyDescriptor(navigator, 'platform')
-
 function pinPosixPlatform(): void {
   Object.defineProperty(navigator, 'platform', { value: 'Linux x86_64', configurable: true })
 }
 
+/** Drops the pin, leaving the environment's own `platform` getter in charge. */
 function restorePlatform(): void {
-  if (realPlatform) Object.defineProperty(navigator, 'platform', realPlatform)
-  else delete (navigator as { platform?: string }).platform
+  delete (navigator as { platform?: string }).platform
 }
 
 function open(firstRun = false) {
