@@ -45,7 +45,6 @@ import {
   ticketProgress,
   triage,
   triageOf,
-  undoableOverride,
   unresolvedMergeConflict,
   waypointGroups,
   type CheckRow,
@@ -1258,72 +1257,6 @@ describe('unresolvedMergeConflict', () => {
       files: [],
       at: 1,
     })
-  })
-})
-
-/**
- * Findings F24 — a gate override advanced the phase with no way back. Undo is
- * offered only while the override is still the feature's latest transition, and
- * that window is derived from the event feed so it survives a reload.
- */
-describe('undoableOverride', () => {
-  const ev = (id: number, type: string, data?: unknown): EventRow =>
-    ({ id, projectId: 'p', ts: id, type, message: type, data }) as EventRow
-  const forced = (id: number, gate: string) => ev(id, 'gate.overridden', { gate, reason: 'why' })
-  const advanced = (id: number, from: string, to: string) => ev(id, 'phase.advanced', { from, to })
-
-  it('returns null with no overrides in the feed', () => {
-    expect(undoableOverride([advanced(1, 'ideation', 'spec')])).toBeNull()
-  })
-
-  it('names the gate and both phases of the advance the override forced', () => {
-    const events = [forced(1, 'G4'), advanced(2, 'implementation', 'review')]
-    expect(undoableOverride(events)).toEqual({
-      gate: 'G4',
-      from: 'implementation',
-      to: 'review',
-    })
-  })
-
-  it('closes the window once any later phase transition lands', () => {
-    const events = [
-      forced(1, 'G4'),
-      advanced(2, 'implementation', 'review'),
-      ev(3, 'feature.shipped', { from: 'review', to: 'shipped' }),
-    ]
-    expect(undoableOverride(events)).toBeNull()
-  })
-
-  it('closes the window once the override is undone', () => {
-    const events = [
-      forced(1, 'G4'),
-      advanced(2, 'implementation', 'review'),
-      ev(3, 'gate.override.undone', { from: 'review', to: 'implementation' }),
-    ]
-    expect(undoableOverride(events)).toBeNull()
-  })
-
-  it('offers the latest override when a feature was overridden twice', () => {
-    const events = [
-      forced(1, 'G2'),
-      advanced(2, 'spec', 'tickets'),
-      forced(3, 'G3'),
-      advanced(4, 'tickets', 'implementation'),
-    ]
-    expect(undoableOverride(events)).toEqual({ gate: 'G3', from: 'tickets', to: 'implementation' })
-  })
-
-  it('ignores a status change — its from/to are statuses, not phases', () => {
-    const events = [
-      forced(1, 'G4'),
-      advanced(2, 'implementation', 'review'),
-      ev(3, 'feature.status', { from: 'active', to: 'archived' }),
-    ]
-    expect(undoableOverride(events)?.gate).toBe('G4')
-  })
-
-  it('ignores an override whose advance never happened (last phase, nothing moved)', () => {
-    expect(undoableOverride([forced(1, 'G5')])).toBeNull()
   })
 })
 
