@@ -31,14 +31,14 @@ export function PinnedBody({
   if (effective === 'tickets') return <PinnedTickets full={full} />
   if (effective === 'spec') {
     return (
-      <div className="flex h-full min-h-0">
+      <div className="flex h-full min-h-0 min-w-0 flex-1">
         <ArtifactPane featureId={full.feature.id} kind="spec" docs={full.docs} mode="static" />
       </div>
     )
   }
   const sessions = phaseSessions({ full, events })
   return (
-    <div className="flex h-full min-h-0 gap-4">
+    <div className="flex h-full min-h-0 min-w-0 flex-1 gap-4">
       {full.feature.mapped && (
         <MapRail full={full} relPath={mapDocPath(full)} collapsed={mapRailCollapsed} onToggle={onToggleMapRail} readonly />
       )}
@@ -90,7 +90,7 @@ function PinnedTickets({ full }: { full: FeatureFull }) {
     projectId: full.feature.projectId,
   })
   return (
-    <div className="flex min-h-0 flex-col overflow-y-auto">
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto">
       <TicketLedger tickets={full.tickets} currentLap={full.feature.lap} roster={rosterFromView(settings.data)} readonly docs={full.docs} />
     </div>
   )
