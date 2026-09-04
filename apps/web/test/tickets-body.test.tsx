@@ -69,3 +69,15 @@ describe('TicketsBody wire actions', () => {
     expect(server.cancels).toEqual([{ ticketId: 'current' }])
   })
 })
+
+describe('TicketsBody layout', () => {
+  // The stack is a flex item of the workspace's row-direction two-pane wrapper,
+  // so one that does not grow is laid out at its content width and the ledger is
+  // read in half the window — the squeeze decision 6 chose a stack to avoid.
+  it('grows the vertical stack to fill the workspace', () => {
+    const { container } = render(<TicketsBody featureId="f1" />)
+    const stack = container.firstElementChild!
+    expect(stack.className).toMatch(/\bflex-1\b/)
+    expect(stack.className).toMatch(/\bmin-w-0\b/)
+  })
+})
