@@ -40,13 +40,11 @@ const NOTIFY_FG: Record<NotifyState, string> = {
  * keep the previous feature's branch up on chat and preparation, stating a stale
  * fact as though it were current.
  */
-export function StatusBar({
-  projectId,
-  view,
-  activeFeatureId,
-  driving,
-  onDriveChange,
-}: {
+export function StatusBar(props: StatusBarProps) {
+  return <StatusBarChrome {...useStatusBar(props)} />
+}
+
+interface StatusBarProps {
   projectId: string
   /**
    * Which surface owns the workspace body. The seam the status-bar redesign
@@ -57,9 +55,6 @@ export function StatusBar({
   activeFeatureId: string | null
   driving: DriveState | null
   onDriveChange: (d: DriveState | null) => void
-}) {
-  const bar = useStatusBar({ projectId, view, activeFeatureId, driving, onDriveChange })
-  return <StatusBarChrome {...bar} />
 }
 
 /** Everything the bar renders, once the queries behind it have answered. */
@@ -84,13 +79,7 @@ function useStatusBar({
   activeFeatureId,
   driving,
   onDriveChange,
-}: {
-  projectId: string
-  view: WorkspaceView
-  activeFeatureId: string | null
-  driving: DriveState | null
-  onDriveChange: (d: DriveState | null) => void
-}): StatusBarState {
+}: StatusBarProps): StatusBarState {
   const toast = useToast()
   const utils = trpc.useUtils()
   const live = useLiveStatus()
