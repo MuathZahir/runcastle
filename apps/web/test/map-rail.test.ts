@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest'
 import type { FeatureFull } from '../src/lib/api'
 import type { Waypoint } from '../src/lib/feature-ui'
 import { ToastProvider } from '../src/lib/toast'
+import { WAYPOINT_EXPLAINER } from '../src/lib/vocabulary'
 
 vi.mock('../src/trpc', () => ({
   trpc: {
@@ -66,6 +67,8 @@ describe('MapRail', () => {
     const html = render()
     expect(html).toContain('1/2 done')
     expect(html).toContain('width:50%')
+    expect(html).toContain(`title="${WAYPOINT_EXPLAINER}"`)
+    expect(html).toContain('map.md ▾')
     expect(html.indexOf('Ready · 1')).toBeLessThan(html.indexOf('Done · 1'))
     expect(html).toContain('<details')
     expect(html).not.toContain('<details open=""')

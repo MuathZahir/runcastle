@@ -93,9 +93,9 @@ export function mapProgress(
 }
 
 /**
- * The map rail's waypoint groups (decision #4), in display order: frontier,
- * claimed, blocked, then the resolved/dropped tail. Empty groups are omitted.
- * The frontier is server-derived (open, unclaimed, every blocker terminal) and
+ * The map rail's waypoint groups, in display order: ready, working, waiting,
+ * then done. Empty groups are omitted. Ready membership is server-derived
+ * (open, unclaimed, every blocker terminal) and
  * is ordered by ascending seq — charting order, the closest thing to authored
  * intent. Every other group keeps the order the server sent.
  */
