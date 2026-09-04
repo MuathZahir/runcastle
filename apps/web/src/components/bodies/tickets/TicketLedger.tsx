@@ -49,6 +49,6 @@ export function TicketLedger({ tickets, currentLap, roster, readonly, docs, sand
         {(rows) => rows.map((ticket) => <TicketRow key={ticket.id} ticket={ticket} roster={roster} readonly={readonly} onEdit={onEdit} onModel={onModel} onCancel={onCancel} onCopySha={onCopySha} />)}
       </LapSections>
     </div>}
-    <div className="border-t border-hairline px-3 py-2 font-mono text-xs text-text-4">Edit and Cancel are available on pending and failed tickets until you burn.</div>
+    {!readonly && <div className="border-t border-hairline px-3 py-2 font-mono text-xs text-text-4">Edit and Cancel are available on pending and failed tickets until you burn.</div>}
   </div>
 }
