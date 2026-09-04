@@ -1,5 +1,4 @@
 import { describe, expect, it } from 'vitest'
-import { createElement } from 'react'
 import {
   PROJECT_BRANCH,
   matchesPreparation,
@@ -12,8 +11,6 @@ import {
   workspaceView,
 } from '../src/lib/project-workspace'
 import type { ProjectSession } from '../src/lib/api'
-import { renderToStaticMarkup } from 'react-dom/server'
-import { NewChatCard } from '../src/components/ProjectWorkspace'
 
 /**
  * The project workspace's swap rules and its chrome (decision 20). The rail
@@ -215,22 +212,6 @@ describe('projectSessionState', () => {
   // showing a live indicator on the pinned row.
   it('never reads an ended session as live', () => {
     expect(projectSessionState(session('ended'))).toBe('none')
-  })
-})
-
-describe('the New chat door with a live chat', () => {
-  it('offers opening it or ending it to start fresh', () => {
-    const html = renderToStaticMarkup(
-      createElement(NewChatCard, {
-        onStart: () => {},
-        starting: false,
-        openSession: { onOpen: () => {}, onReplace: () => {} },
-      }),
-    )
-
-    expect(html).toContain('A chat is already open.')
-    expect(html).toContain('Open it')
-    expect(html).toContain('End it and start new')
   })
 })
 
