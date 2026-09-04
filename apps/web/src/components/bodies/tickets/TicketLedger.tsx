@@ -27,7 +27,7 @@ export function TicketLedger({ tickets, currentLap, roster, readonly, docs, sand
   sandbox: string
   defaultModel: string
   onDoc: (relPath: string) => void
-  onEdit: (ticketId: string, patch: TicketPatch) => void
+  onEdit: (ticketId: string, patch: TicketPatch) => Promise<void>
   onModel: (ticketId: string, model: string) => void
   onBulkModel: (model: string) => void
   onCancel: (ticketId: string) => void
@@ -38,7 +38,9 @@ export function TicketLedger({ tickets, currentLap, roster, readonly, docs, sand
   return <div className="flex min-h-0 flex-col rounded-lg border border-hairline bg-panel">
     <header className="flex min-h-12 flex-wrap items-center gap-2 border-b border-hairline px-3">
       <SectionTitle>Tickets</SectionTitle><span className="font-mono text-xs text-text-3">{ticketLedgerMeta(tickets, currentLap)}</span>
-      <DocsMenu docs={docs} onPick={onDoc} />
+      {/* The menu carries its own `ml-auto` for the artifact pane's header; here
+          it belongs beside the counts, so the wrapper absorbs that margin. */}
+      <span className="inline-flex"><DocsMenu docs={docs} onPick={onDoc} /></span>
       <span className="ml-auto inline-flex h-5 items-center rounded-pill border border-hairline px-2 font-mono text-xs text-text-3">sandbox · {sandbox}</span>
       <span className="inline-flex h-5 items-center rounded-pill border border-hairline px-2 font-mono text-xs text-text-3">{defaultModel}</span>
       {!readonly && <ModelMenu value="" roster={roster} disabled={pending.length === 0} label="Model for all pending" onChange={onBulkModel} />}

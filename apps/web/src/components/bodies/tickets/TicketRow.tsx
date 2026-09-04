@@ -15,7 +15,7 @@ export function TicketRow({ ticket, roster, readonly, onEdit, onModel, onCancel,
   ticket: Ticket
   roster: readonly ModelEntry[]
   readonly: boolean
-  onEdit: (ticketId: string, patch: TicketPatch) => void
+  onEdit: (ticketId: string, patch: TicketPatch) => Promise<void>
   onModel: (ticketId: string, model: string) => void
   onCancel: (ticketId: string) => void
   onCopySha: (sha: string) => void
@@ -23,6 +23,7 @@ export function TicketRow({ ticket, roster, readonly, onEdit, onModel, onCancel,
   const [open, setOpen] = useState(false)
   const [editing, setEditing] = useState(false)
   const [confirming, setConfirming] = useState(false)
+  const [saving, setSaving] = useState(false)
   const editable = EDITABLE_STATUSES.has(ticket.status)
   const assigned = ticketModelChip(ticket, roster)
   const heading = 'font-mono text-xs uppercase tracking-wider text-text-4'
@@ -40,7 +41,10 @@ export function TicketRow({ ticket, roster, readonly, onEdit, onModel, onCancel,
       {editable && !readonly ? <ModelMenu value={ticket.model ?? ''} roster={roster} onChange={(model) => onModel(ticket.id, model)} /> : assigned && <span className="inline-flex h-5 items-center rounded-pill border border-hairline px-2 font-mono text-xs text-text-2">{assigned.id} · {assigned.runtimeLabel}</span>}
       <TicketStatusChip status={ticket.status} />
     </div>
-    {open && editing && <TicketEditor ticket={ticket} busy={false} onCancel={() => setEditing(false)} onSave={(patch) => { onEdit(ticket.id, patch); setEditing(false) }} />}
+    {open && editing && <TicketEditor ticket={ticket} busy={saving} onCancel={() => setEditing(false)} onSave={(patch) => {
+      setSaving(true)
+      void onEdit(ticket.id, patch).then(() => setEditing(false), () => undefined).finally(() => setSaving(false))
+    }} />}
     {open && !editing && <div className="grid gap-4 border-t border-hairline bg-panel-2 p-4">
       {!readonly && editable && (confirming ? <div className="flex flex-wrap items-center gap-2 rounded-md border border-danger/40 bg-danger/6 p-3 text-sm text-text-2"><span className="mr-auto">Cancel #{ticket.seq}? Tickets that depend on it treat it as done. Its text stays in the ledger.</span><Button className="h-7 text-xs" onClick={() => setConfirming(false)}>Keep it</Button><Button variant="danger" className="h-7 text-xs" onClick={() => onCancel(ticket.id)}>Cancel ticket</Button></div> : <div className="flex gap-2"><Button className="h-7 text-xs" onClick={() => setEditing(true)}>Edit ticket</Button><Button className="h-7 text-xs" onClick={() => setConfirming(true)}>Cancel ticket</Button></div>)}
       <div className={section}><div className={heading}>Goal</div><div className="text-sm text-text-2"><Markdown source={ticket.goal} /></div></div>

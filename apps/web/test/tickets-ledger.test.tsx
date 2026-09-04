@@ -20,6 +20,8 @@ const ticket = (over: Partial<Ticket> = {}): Ticket => ({
 })
 const session = { id: 's1', featureId: 'f1', kind: 'ideation', lap: 2, status: 'live', createdAt: Date.now() } as Parameters<typeof TicketsTerminal>[0]['live']
 
+const saveStub = () => vi.fn(async () => undefined)
+
 afterEach(() => { cleanup(); sessionStorage.clear() })
 
 describe('ModelMenu', () => {
@@ -40,7 +42,7 @@ describe('ModelMenu', () => {
 describe('TicketRow', () => {
   it('changes the row model and cancels after an inline confirmation', () => {
     const model = vi.fn(); const cancel = vi.fn()
-    render(<TicketRow ticket={ticket()} roster={roster} readonly={false} onEdit={vi.fn()} onModel={model} onCancel={cancel} onCopySha={vi.fn()} />)
+    render(<TicketRow ticket={ticket()} roster={roster} readonly={false} onEdit={saveStub()} onModel={model} onCancel={cancel} onCopySha={vi.fn()} />)
     fireEvent.click(screen.getByRole('button', { name: 'default model ▾' }))
     fireEvent.click(screen.getByRole('option', { name: /claude-opus-5/ }))
     expect(model).toHaveBeenCalledWith('t1', 'claude-opus-5')
@@ -51,8 +53,25 @@ describe('TicketRow', () => {
     expect(cancel).toHaveBeenCalledWith('t1')
   })
 
+  it('edits text only, and keeps the editor open until the save lands', async () => {
+    let land = (): void => {}
+    const save = vi.fn(() => new Promise<void>((resolve) => { land = resolve }))
+    render(<TicketRow ticket={ticket()} roster={roster} readonly={false} onEdit={save} onModel={vi.fn()} onCancel={vi.fn()} onCopySha={vi.fn()} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Expand ticket #1' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Edit ticket' }))
+    expect(screen.getAllByRole('textbox').length).toBe(4)
+    expect(screen.queryByRole('combobox')).toBeNull()
+    expect(screen.queryByText('MODEL')).toBeNull()
+    fireEvent.change(screen.getByDisplayValue('Build it'), { target: { value: 'Build it well' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save ticket' }))
+    expect(save).toHaveBeenCalledWith('t1', { title: 'Build it well', goal: 'Goal', context: 'Context', acceptanceCriteria: ['Works'] })
+    expect(screen.getByRole('button', { name: 'Saving…' })).toBeTruthy()
+    land()
+    await vi.waitFor(() => expect(screen.queryByRole('button', { name: /Sav/ })).toBeNull())
+  })
+
   it('hides editing and cancellation in a readonly ledger', () => {
-    render(<TicketRow ticket={ticket()} roster={roster} readonly onEdit={vi.fn()} onModel={vi.fn()} onCancel={vi.fn()} onCopySha={vi.fn()} />)
+    render(<TicketRow ticket={ticket()} roster={roster} readonly onEdit={saveStub()} onModel={vi.fn()} onCancel={vi.fn()} onCopySha={vi.fn()} />)
     fireEvent.click(screen.getByRole('button', { name: 'Expand ticket #1' }))
     expect(screen.queryByRole('button', { name: 'Edit ticket' })).toBeNull()
     expect(screen.queryByRole('button', { name: 'Cancel ticket' })).toBeNull()
@@ -66,7 +85,7 @@ describe('TicketLedger', () => {
 
   it('offers one bulk model control when pending tickets exist', () => {
     const bulk = vi.fn()
-    render(<TicketLedger tickets={[ticket(), ticket({ id: 't2', seq: 2, lap: 1 }), ticket({ id: 't3', seq: 3, status: 'failed' })]} currentLap={2} roster={roster} readonly={false} docs={[]} sandbox="docker" defaultModel="opus" onDoc={vi.fn()} onEdit={vi.fn()} onModel={vi.fn()} onBulkModel={bulk} onCancel={vi.fn()} onCopySha={vi.fn()} />)
+    render(<TicketLedger tickets={[ticket(), ticket({ id: 't2', seq: 2, lap: 1 }), ticket({ id: 't3', seq: 3, status: 'failed' })]} currentLap={2} roster={roster} readonly={false} docs={[]} sandbox="docker" defaultModel="opus" onDoc={vi.fn()} onEdit={saveStub()} onModel={vi.fn()} onBulkModel={bulk} onCancel={vi.fn()} onCopySha={vi.fn()} />)
     fireEvent.click(screen.getByRole('button', { name: 'Model for all pending ▾' }))
     fireEvent.click(screen.getAllByRole('option', { name: /gpt-5.6-sol/ })[0]!)
     expect(bulk).toHaveBeenCalledWith('gpt-5.6-sol')

@@ -3,7 +3,7 @@ import { cleanup, fireEvent, render, screen, within } from '@testing-library/rea
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Ticket } from '@runcastle/core'
 
-const server = vi.hoisted(() => ({ edits: [] as Record<string, unknown>[], directEdits: [] as Record<string, unknown>[], cancels: [] as Record<string, unknown>[], toasts: [] as string[] }))
+const server = vi.hoisted(() => ({ edits: [] as Record<string, unknown>[], directEdits: [] as Record<string, unknown>[], cancels: [] as Record<string, unknown>[], toasts: [] as string[], sessions: [] as Record<string, unknown>[] }))
 const rows = [
   { id: 'current', featureId: 'f1', seq: 1, lap: 2, title: 'Current pending', goal: 'Goal', context: '', acceptanceCriteria: ['Works'], seams: [], blockedBy: [], kind: 'implementation', status: 'pending', commits: [] },
   { id: 'failed', featureId: 'f1', seq: 2, lap: 2, title: 'Current failed', goal: 'Goal', context: '', acceptanceCriteria: ['Works'], seams: [], blockedBy: [], kind: 'implementation', status: 'failed', commits: [] },
@@ -18,7 +18,7 @@ vi.mock('../src/trpc', () => ({ trpc: {
     events: { invalidate: async () => undefined },
   }),
   feature: {
-    get: { useQuery: () => ({ data: { feature: { id: 'f1', projectId: 'p1', lap: 2 }, tickets: rows, sessions: [], docs: [] }, isLoading: false, error: null }) },
+    get: { useQuery: () => ({ data: { feature: { id: 'f1', projectId: 'p1', lap: 2 }, tickets: rows, sessions: server.sessions, docs: [] }, isLoading: false, error: null }) },
     endSession: { useMutation: () => ({ isPending: false, mutate: vi.fn() }) },
   },
   settings: { get: { useQuery: () => ({ data: { fields: [] }, isLoading: false, error: null }) } },
@@ -30,7 +30,7 @@ vi.mock('../src/trpc', () => ({ trpc: {
 
 const { TicketsBody } = await import('../src/components/bodies/tickets/TicketsBody')
 
-beforeEach(() => { server.edits = []; server.directEdits = []; server.cancels = []; server.toasts = [] })
+beforeEach(() => { server.edits = []; server.directEdits = []; server.cancels = []; server.toasts = []; server.sessions = [] })
 afterEach(cleanup)
 
 describe('TicketsBody wire actions', () => {
@@ -48,6 +48,16 @@ describe('TicketsBody wire actions', () => {
     fireEvent.click(within(screen.getByRole('listbox', { name: 'Model for all pending' })).getByRole('option', { name: /gpt-5.6-sol/ }))
     await vi.waitFor(() => expect(server.directEdits).toEqual([{ ticketId: 'current', model: 'gpt-5.6-sol' }]))
     await vi.waitFor(() => expect(server.toasts).toContain('1 tickets set to gpt-5.6-sol'))
+  })
+
+  it('shows an ended session as one quiet line, with no terminal and no doors', () => {
+    server.sessions = [{ id: 's1', featureId: 'f1', kind: 'ideation', lap: 2, status: 'ended', createdAt: Date.now() }]
+    render(<TicketsBody featureId="f1" />)
+    expect(screen.getByText(/Ideation session/)).toBeTruthy()
+    expect(screen.getByText(/ended/)).toBeTruthy()
+    expect(screen.queryByRole('button', { name: /Show terminal/ })).toBeNull()
+    expect(screen.queryByRole('button', { name: /End session/ })).toBeNull()
+    expect(screen.queryByRole('button', { name: /Resume/ })).toBeNull()
   })
 
   it('calls ticket.cancel after the row confirmation', () => {

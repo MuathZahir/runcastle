@@ -43,8 +43,15 @@ export function TicketsBody({ featureId, readonly = false }: { featureId: string
   const live = [...sessions].reverse().find(sessionActive)
   const ended = [...sessions].reverse().find((session) => session.status === 'ended')
 
-  const save = (ticketId: string, patch: TicketPatch) => edit.mutate({ ticketId, ...patch })
+  // The row awaits this so the editor stays open — and keeps the human's text —
+  // when the save fails; the mutation's own handler raises the error toast.
+  const save = async (ticketId: string, patch: TicketPatch) => {
+    await edit.mutateAsync({ ticketId, ...patch })
+    toast.push('ticket updated', 'success')
+  }
   const setModel = (ticketId: string, model: string) => edit.mutate({ ticketId, model })
+  // One edit per ticket, in sequence: the wire takes a single ticket at a time
+  // and a burst of parallel writes would race the invalidation below.
   const bulkModel = async (model: string) => {
     const pending = pendingTicketsForLap(tickets, feature.lap)
     try {
@@ -69,12 +76,21 @@ export function pendingTicketsForLap<T extends { lap: number; status: string }>(
   return tickets.filter((ticket) => ticket.lap === lap && ticket.status === 'pending')
 }
 
+/**
+ * The session as a strip above the ledger (decision 6). While the session is
+ * still emitting, the terminal IS the work and holds the full body height; once
+ * tickets exist the ledger is the work and the terminal folds to one line, one
+ * click away. The choice is remembered per session, so a human who opened the
+ * terminal keeps it open as further tickets land.
+ */
 export function TicketsTerminal({ featureId, live, ticketCount }: { featureId: string; live: Parameters<typeof SessionStrip>[0]['session']; ticketCount: number }) {
   const key = `runcastle.tickets.term:${live.id}`
   const [open, setOpen] = useState(() => {
     if (ticketCount === 0) return true
     try { return sessionStorage.getItem(key) === 'open' } catch { return false }
   })
+  // The first ticket of a session lands while the panel is open: fold it then,
+  // but only until the human has said otherwise — `toggle` writes that choice.
   useEffect(() => {
     if (ticketCount === 0) return
     try {
