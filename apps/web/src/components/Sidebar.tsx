@@ -240,16 +240,16 @@ export function Sidebar({
           still has to be findable to be re-run or read. */}
       {prepRow && (
         <button
-          className={`prep-nudge is-${prepRow.variant}`}
+          className={`flex w-full flex-none cursor-pointer items-center gap-2 border-0 border-t border-hairline bg-transparent px-3 py-[9px] text-left text-sm transition-colors duration-(--dur-1) ease-app hover:bg-panel-3 hover:text-text-2 ${prepRow.variant === 'done' ? 'text-text-4' : 'text-text-3'}`}
           onClick={onOpenPreparation}
           title={prepRow.title}
           // The badge is a fragment ("8 to establish"); a screen reader should
           // get the sentence that explains it, not the fragment.
           aria-label={`${prepRow.label} — ${prepRow.title}`}
         >
-          <span className="prep-nudge-dot" aria-hidden="true" />
-          <span className="prep-nudge-text">{prepRow.label}</span>
-          {prepRow.badge && <span className="prep-nudge-count">{prepRow.badge}</span>}
+          <span className={`h-[7px] w-[7px] flex-none rounded-pill ${prepRow.variant === 'done' ? 'bg-transparent shadow-[inset_0_0_0_1px_var(--color-text-4)]' : 'bg-drive'}`} aria-hidden="true" />
+          <span className="min-w-0 flex-1">{prepRow.label}</span>
+          {prepRow.badge && <span className="flex-none whitespace-nowrap text-xs text-text-4">{prepRow.badge}</span>}
         </button>
       )}
 
