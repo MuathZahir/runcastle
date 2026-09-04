@@ -13,10 +13,10 @@ export function GrillBody({ full, effective, readonly = false, mapRailCollapsed,
   const selection = artifactSelection({ phase: effective, mapped: full.feature.mapped, docs: full.docs })
   return (
     <div className="flex h-full min-h-0 gap-4">
-      {selection.kind === 'map' ? (
-        <MapRail full={full} relPath={mapDocPath(full)} collapsed={mapRailCollapsed} onToggle={onToggleMapRail} />
+      {full.feature.mapped && effective === 'ideation' && selection.kind === 'map' ? (
+        <MapRail full={full} relPath={mapDocPath(full)} collapsed={mapRailCollapsed} onToggle={onToggleMapRail} readonly={readonly} />
       ) : (
-        <ArtifactPane featureId={full.feature.id} kind={selection.kind} docs={full.docs} collapsed={artifactPaneCollapsed} onToggle={onToggleArtifactPane} mapped={full.feature.mapped} />
+        <ArtifactPane featureId={full.feature.id} kind={effective === 'spec' ? 'spec' : 'decisions'} docs={full.docs} collapsed={artifactPaneCollapsed} onToggle={onToggleArtifactPane} mapped={full.feature.mapped} />
       )}
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         {full.sessions.length > 0 ? (

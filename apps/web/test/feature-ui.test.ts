@@ -19,6 +19,7 @@ import {
   kickoffTrouble,
   lapBanner,
   liveSessionBlocker,
+  mapProgress,
   mergeConflictKickoff,
   mergeSummary,
   needsMe,
@@ -2576,16 +2577,16 @@ describe('waypointGroups', () => {
       wp({ id: 'w5', seq: 5, title: 'dropped one', status: 'dropped' }),
     ]
     const groups = waypointGroups(ws, ['w3'])
-    expect(keys(groups)).toEqual(['frontier', 'claimed', 'blocked', 'done'])
-    expect(titles(groups, 'frontier')).toEqual(['open one'])
-    expect(titles(groups, 'claimed')).toEqual(['claimed one'])
-    expect(titles(groups, 'blocked')).toEqual(['blocked one'])
+    expect(keys(groups)).toEqual(['ready', 'working', 'waiting', 'done'])
+    expect(titles(groups, 'ready')).toEqual(['open one'])
+    expect(titles(groups, 'working')).toEqual(['claimed one'])
+    expect(titles(groups, 'waiting')).toEqual(['blocked one'])
     expect(titles(groups, 'done')).toEqual(['resolved one', 'dropped one'])
   })
 
   it('omits groups that have no waypoints', () => {
     const ws = [wp({ id: 'w1', seq: 1, title: 'only one' })]
-    expect(keys(waypointGroups(ws, ['w1']))).toEqual(['frontier'])
+    expect(keys(waypointGroups(ws, ['w1']))).toEqual(['ready'])
   })
 
   it('orders the frontier by ascending seq whatever order the server sent', () => {
@@ -2595,7 +2596,7 @@ describe('waypointGroups', () => {
       wp({ id: 'w5', seq: 5, title: 'fifth' }),
     ]
     const groups = waypointGroups(ws, ['w9', 'w2', 'w5'])
-    expect(titles(groups, 'frontier')).toEqual(['second', 'fifth', 'ninth'])
+    expect(titles(groups, 'ready')).toEqual(['second', 'fifth', 'ninth'])
   })
 
   it('resolves blockedBy seqs to blocker titles, dropping the ones already terminal', () => {
@@ -2605,14 +2606,14 @@ describe('waypointGroups', () => {
       wp({ id: 'w3', seq: 3, title: 'waits on both', blockedBy: [1, 2] }),
     ]
     const groups = waypointGroups(ws, ['w2'])
-    const blocked = groups.find((g) => g.key === 'blocked')?.waypoints ?? []
+    const blocked = groups.find((g) => g.key === 'waiting')?.waypoints ?? []
     expect(blocked.map((r) => r.blockerTitles)).toEqual([['still open']])
   })
 
   it('ignores a blockedBy seq that names no waypoint', () => {
     const ws = [wp({ id: 'w1', seq: 1, title: 'orphan edge', blockedBy: [42] })]
     const groups = waypointGroups(ws, [])
-    expect(groups.find((g) => g.key === 'blocked')?.waypoints[0].blockerTitles).toEqual([])
+    expect(groups.find((g) => g.key === 'waiting')?.waypoints[0].blockerTitles).toEqual([])
   })
 
   it('names the waypoint that surfaced a later one, and leaves origin-less ones bare', () => {
@@ -2622,7 +2623,7 @@ describe('waypointGroups', () => {
       wp({ id: 'w3', seq: 3, title: 'charted up front' }),
     ]
     const groups = waypointGroups(ws, ['w2', 'w3'])
-    const frontier = groups.find((g) => g.key === 'frontier')?.waypoints ?? []
+    const frontier = groups.find((g) => g.key === 'ready')?.waypoints ?? []
     expect(frontier.map((r) => r.originTitle)).toEqual(['the origin', undefined])
   })
 
@@ -2634,7 +2635,7 @@ describe('waypointGroups', () => {
       wp({ id: 'w4', seq: 4, title: 'done', status: 'resolved' }),
     ]
     const groups = waypointGroups(ws, ['w1'])
-    expect(groups.map((g) => g.waypoints.map((r) => r.expanded))).toEqual([
+    expect(groups.map((g) => g.waypoints.map((r) => r.openByDefault))).toEqual([
       [true],
       [false],
       [false],
@@ -2648,7 +2649,36 @@ describe('waypointGroups', () => {
       wp({ id: 'w2', seq: 2, title: 'done', status: 'dropped' }),
     ]
     const groups = waypointGroups(ws, ['w1'])
-    expect(groups.map((g) => g.label)).toEqual(['Frontier', 'Resolved / dropped'])
+    expect(groups.map((g) => g.label)).toEqual(['Ready', 'Done'])
+  })
+
+  it('derives each state word and names the first open blocker', () => {
+    const ws = [
+      wp({ id: 'w1', seq: 1, title: 'ready' }),
+      wp({ id: 'w2', seq: 2, title: 'working', status: 'claimed' }),
+      wp({ id: 'w3', seq: 3, title: 'waiting', blockedBy: [2] }),
+      wp({ id: 'w4', seq: 4, title: 'done', status: 'resolved' }),
+    ]
+    expect(waypointGroups(ws, ['w1']).flatMap((group) => group.waypoints.map((row) => row.stateWord)))
+      .toEqual(['Ready', 'Working', 'Waiting on "working"', 'Done'])
+  })
+
+  it('opens every card in a read-only record', () => {
+    const ws = [wp({ id: 'w1', seq: 1, title: 'waiting' }), wp({ id: 'w2', seq: 2, title: 'done', status: 'resolved' })]
+    expect(waypointGroups(ws, [], true).flatMap((group) => group.waypoints.map((row) => row.openByDefault)))
+      .toEqual([true, true])
+  })
+})
+
+describe('mapProgress', () => {
+  it('counts resolved and dropped as done and server-frontier ids as ready', () => {
+    const ws = [
+      wp({ id: 'w1', seq: 1, title: 'resolved', status: 'resolved' }),
+      wp({ id: 'w2', seq: 2, title: 'dropped', status: 'dropped' }),
+      wp({ id: 'w3', seq: 3, title: 'ready' }),
+      wp({ id: 'w4', seq: 4, title: 'waiting' }),
+    ]
+    expect(mapProgress(ws, ['w3'])).toEqual({ done: 2, total: 4, ready: 1 })
   })
 })
 

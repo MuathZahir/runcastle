@@ -33,7 +33,7 @@ export function parseMapSections(content: string): Record<string, string> {
 
 export type Waypoint = FeatureFull['waypoints'][number]
 
-export type WaypointGroupKey = 'frontier' | 'claimed' | 'blocked' | 'done'
+export type WaypointGroupKey = 'ready' | 'working' | 'waiting' | 'done'
 
 /**
  * One waypoint as the rail renders it: the row itself plus the bits the wire
@@ -47,8 +47,10 @@ export interface RailWaypoint {
   blockerTitles: string[]
   /** Title of the waypoint that surfaced this one, when it has an origin. */
   originTitle?: string
-  /** Starts expanded in the rail: the frontier is what the human chooses between. */
-  expanded: boolean
+  /** Plain-language status shown before the waypoint type. */
+  stateWord: string
+  /** Ready cards open live; every card opens in a frozen read-only record. */
+  openByDefault: boolean
 }
 
 export interface WaypointGroup {
@@ -58,10 +60,10 @@ export interface WaypointGroup {
 }
 
 const WAYPOINT_GROUP_LABELS: Record<WaypointGroupKey, string> = {
-  frontier: 'Frontier',
-  claimed: 'Claimed',
-  blocked: 'Blocked',
-  done: 'Resolved / dropped',
+  ready: 'Ready',
+  working: 'Working',
+  waiting: 'Waiting',
+  done: 'Done',
 }
 
 /** A waypoint that is finished with, either way it went. */
@@ -77,6 +79,19 @@ export function nextReadyWaypoint(full: FeatureFull): Waypoint | undefined {
     .sort((a, b) => a.seq - b.seq)[0]
 }
 
+/** Counts the map states used by both expanded and collapsed rail headers. */
+export function mapProgress(
+  waypoints: Waypoint[],
+  frontierIds: string[],
+): { done: number; total: number; ready: number } {
+  const ready = new Set(frontierIds)
+  return {
+    done: waypoints.filter(isTerminal).length,
+    total: waypoints.length,
+    ready: waypoints.filter((waypoint) => ready.has(waypoint.id)).length,
+  }
+}
+
 /**
  * The map rail's waypoint groups (decision #4), in display order: frontier,
  * claimed, blocked, then the resolved/dropped tail. Empty groups are omitted.
@@ -87,6 +102,7 @@ export function nextReadyWaypoint(full: FeatureFull): Waypoint | undefined {
 export function waypointGroups(
   waypoints: Waypoint[],
   frontierIds: string[],
+  readonly = false,
 ): WaypointGroup[] {
   const front = new Set(frontierIds)
   const byId = new Map(waypoints.map((w) => [w.id, w]))
@@ -94,31 +110,38 @@ export function waypointGroups(
 
   const groupOf = (w: Waypoint): WaypointGroupKey => {
     if (isTerminal(w)) return 'done'
-    if (w.status === 'claimed') return 'claimed'
-    return front.has(w.id) ? 'frontier' : 'blocked'
+    if (w.status === 'claimed') return 'working'
+    return front.has(w.id) ? 'ready' : 'waiting'
   }
 
   const buckets: Record<WaypointGroupKey, RailWaypoint[]> = {
-    frontier: [],
-    claimed: [],
-    blocked: [],
+    ready: [],
+    working: [],
+    waiting: [],
     done: [],
   }
   for (const w of waypoints) {
     const key = groupOf(w)
+    const blockerTitles = w.blockedBy
+      .map((seq) => bySeq.get(seq))
+      .filter((b): b is Waypoint => !!b && !isTerminal(b))
+      .map((b) => b.title)
     buckets[key].push({
       waypoint: w,
-      blockerTitles: w.blockedBy
-        .map((seq) => bySeq.get(seq))
-        .filter((b): b is Waypoint => !!b && !isTerminal(b))
-        .map((b) => b.title),
+      blockerTitles,
       originTitle: w.originWaypointId ? byId.get(w.originWaypointId)?.title : undefined,
-      expanded: key === 'frontier',
+      stateWord:
+        key === 'ready' ? 'Ready'
+        : key === 'working' ? 'Working'
+        : key === 'waiting' && blockerTitles[0] ? `Waiting on "${blockerTitles[0]}"`
+        : key === 'waiting' ? 'Waiting'
+        : 'Done',
+      openByDefault: readonly || key === 'ready',
     })
   }
-  buckets.frontier.sort((a, b) => a.waypoint.seq - b.waypoint.seq)
+  buckets.ready.sort((a, b) => a.waypoint.seq - b.waypoint.seq)
 
-  const order: WaypointGroupKey[] = ['frontier', 'claimed', 'blocked', 'done']
+  const order: WaypointGroupKey[] = ['ready', 'working', 'waiting', 'done']
   return order
     .map((key) => ({ key, label: WAYPOINT_GROUP_LABELS[key], waypoints: buckets[key] }))
     .filter((g) => g.waypoints.length > 0)

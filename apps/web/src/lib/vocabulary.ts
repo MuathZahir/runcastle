@@ -47,6 +47,9 @@ export function sessionAgentName(session: { runtime?: AgentRuntime | null }): st
 export const GRILL_EXPLAINER =
   'A grill session is a Q&A conversation with the agent to pin the idea down before any code is written.'
 
+export const WAYPOINT_EXPLAINER =
+  'A map breaks a big idea into waypoints — questions each worked in its own session. The feature converges once every waypoint is done.'
+
 /**
  * Tickets + build bodies: the mechanics behind Burn, which the bar's "review,
  * then burn" never says (finding F12) — where the work runs and where it lands.

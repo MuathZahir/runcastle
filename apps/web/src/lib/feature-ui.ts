@@ -19,7 +19,7 @@ export type {
 } from './feature-ui/review'
 export * from './feature-ui/laps'
 export * from './feature-ui/summary'
-export { mapDocPath, nextReadyWaypoint, parseMapSections, waypointGroups } from './feature-ui/map'
+export { mapDocPath, mapProgress, nextReadyWaypoint, parseMapSections, waypointGroups } from './feature-ui/map'
 export type {
   RailWaypoint,
   Waypoint,
