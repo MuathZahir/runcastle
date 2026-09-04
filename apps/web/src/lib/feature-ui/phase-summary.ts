@@ -87,12 +87,9 @@ function ideationFacts({
  * event dates it first (the last one that named `spec.md`): it is real history,
  * where a checkout restamps every file on disk. A feed that never saw one falls
  * back to the file's own timestamp, so a spec written before the watcher ran —
- * or after the feed was trimmed — is still dated. Neither says nothing.
+ * or after the feed was trimmed — is still dated. With neither, it says nothing.
  */
-function specFacts(
-  full: Pick<FeatureFull, 'docs'>,
-  events: readonly EventRow[],
-): string[] {
+function specFacts(full: Pick<FeatureFull, 'docs'>, events: readonly EventRow[]): string[] {
   const changed = [...events]
     .reverse()
     .find((event) => event.type === 'docs.changed' && changedFiles(event).some(isSpecFile))

@@ -123,13 +123,10 @@ describe('phaseSummary', () => {
         }),
       ).toBe('Spec · written 3d ago')
       // A spec that was never written says nothing, however many other docs are.
-      expect(
-        phaseSummary({
-          phase: 'spec',
-          full: full({ docs: [{ relPath: 'brief.md', title: 'Brief', updatedAt: START }] as FeatureFull['docs'] }),
-          events: [],
-        }),
-      ).toBe('Spec')
+      const briefOnly = full({
+        docs: [{ relPath: 'brief.md', title: 'Brief', updatedAt: START }] as FeatureFull['docs'],
+      })
+      expect(phaseSummary({ phase: 'spec', full: briefOnly, events: [] })).toBe('Spec')
     } finally {
       vi.useRealTimers()
     }

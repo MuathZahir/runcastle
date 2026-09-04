@@ -1,6 +1,6 @@
 import { mkdirSync, utimesSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import type { Project } from '@runcastle/core'
+import type { Feature, Project } from '@runcastle/core'
 import { beforeEach, describe, expect, it } from 'vitest'
 import type { AppCtx } from '../src/db/types'
 import { featureDocsDir } from '../src/services/feature-docs'
@@ -17,7 +17,7 @@ import { seedFeature, seedProject, tmpRepo } from './helpers/fixtures'
 describe('listDocs timestamps', () => {
   let ctx: AppCtx
   let project: Project
-  let feature: ReturnType<typeof seedFeature>
+  let feature: Feature
   let dir: string
 
   beforeEach(async () => {

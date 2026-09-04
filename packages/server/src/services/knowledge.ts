@@ -197,11 +197,10 @@ export function listDocs(ctx: AppCtx, feature: Feature): DocSummary[] {
 
   return readdirSync(dir, { withFileTypes: true })
     .filter((e) => e.isFile() && e.name.endsWith('.md'))
-    .map((e) => ({
-      relPath: e.name,
-      title: readTitle(join(dir, e.name), e.name),
-      ...writtenAt(join(dir, e.name)),
-    }))
+    .map((e) => {
+      const path = join(dir, e.name)
+      return { relPath: e.name, title: readTitle(path, e.name), ...writtenAt(path) }
+    })
     .sort((a, b) => a.relPath.localeCompare(b.relPath))
 }
 
