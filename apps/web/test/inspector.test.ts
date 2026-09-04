@@ -73,7 +73,7 @@ describe('gate card', () => {
   it('keeps the explainer in flow so opening it moves the gate card down', () => {
     const html = gate()
     const tip = html.match(/class="([^"]*)"\s*>Gates are the human/)
-    expect(tip?.[1]).toContain('basis-full')
+    expect(html).toContain('group/info flex flex-col items-start')
     expect(tip?.[1]).not.toContain('absolute')
   })
 

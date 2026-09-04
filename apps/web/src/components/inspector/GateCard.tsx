@@ -80,19 +80,21 @@ const INFO_MARK =
  * opening it moves the gate card down instead of covering what it explains.
  */
 const INFO_TIP =
-  'pointer-events-none mt-2 hidden w-[230px] basis-full rounded-md border ' +
+  'pointer-events-none hidden w-[230px] rounded-md border ' +
   'border-hairline-strong bg-panel-3 px-3 py-2 text-sm leading-snug font-normal tracking-normal ' +
   'text-pretty text-text-2 normal-case shadow-menu group-hover/info:block group-focus-within/info:block'
 
 function CurrentGateCaption() {
   return (
-    <div className="group/info flex flex-wrap items-center gap-x-1.5">
-      <span className="text-xs font-semibold tracking-[0.09em] text-text-3 uppercase">
-        Current gate
-      </span>
-      <button type="button" className={INFO_MARK} aria-label="What a gate is">
-        i
-      </button>
+    <div className="group/info flex flex-col items-start gap-2">
+      <div className="flex items-center gap-1.5">
+        <span className="text-xs font-semibold tracking-[0.09em] text-text-3 uppercase">
+          Current gate
+        </span>
+        <button type="button" className={INFO_MARK} aria-label="What a gate is">
+          i
+        </button>
+      </div>
       <span className={INFO_TIP}>{GATE_EXPLAINER}</span>
     </div>
   )
