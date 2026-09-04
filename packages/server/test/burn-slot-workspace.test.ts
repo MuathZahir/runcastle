@@ -246,11 +246,25 @@ describe.skipIf(process.platform === 'win32')('buildSlotSetupCommand — driven 
   let workspace: string
   let volume: string
 
-  /** The script with its two container paths pointed at real directories. */
+  /**
+   * The script with its two container paths pointed at real directories.
+   *
+   * One pass, not two chained `replaceAll`s: the temp dirs come from
+   * `os.tmpdir()`, and inside a burn container that is `/home/agent/cache/tmp`
+   * (`burnCacheEnv` sets `TMPDIR`) — so a second pass rewrites the
+   * `BURN_CACHE_MOUNT` prefix of the workspace path the first pass just
+   * inserted, and the script clones from a directory that never existed. Both
+   * constants are plain absolute paths, so they carry no regex metacharacters.
+   */
   function slotScript(slot: number, branch: string, setup?: string): string {
-    return buildSlotSetupCommand(slot, branch, setup, undefined, STAMP)
-      .replaceAll(SANDBOX_WORKSPACE_PATH, workspace)
-      .replaceAll(BURN_CACHE_MOUNT, volume)
+    const real: Record<string, string> = {
+      [SANDBOX_WORKSPACE_PATH]: workspace,
+      [BURN_CACHE_MOUNT]: volume,
+    }
+    return buildSlotSetupCommand(slot, branch, setup, undefined, STAMP).replace(
+      new RegExp(`${SANDBOX_WORKSPACE_PATH}|${BURN_CACHE_MOUNT}`, 'g'),
+      (match) => real[match],
+    )
   }
 
   async function runSetup(slot: number, branch: string, setup?: string): Promise<void> {
