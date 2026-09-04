@@ -76,7 +76,7 @@ export function TicketsBody({ featureId }: { featureId: string }) {
     {/* Collapsed, the ledger owns the body and scrolls inside itself; with the
         terminal open it keeps its natural height below a full-height panel and
         the body scrolls instead — neither may shrink to share the space. */}
-    <div className={terminal.open ? 'flex min-h-0 shrink-0 flex-col' : 'flex min-h-0 flex-col'}>{ledger}</div>
+    <div className={`flex min-h-0 flex-col${terminal.open ? ' shrink-0' : ''}`}>{ledger}</div>
     {peek && <DocPeek featureId={featureId} relPath={peek} title={docs.find((doc) => doc.relPath === peek)?.title ?? peek} onClose={() => setPeek(null)} />}
   </div>
 }
@@ -117,7 +117,7 @@ function useTerminalStrip(sessionId: string | undefined, ticketCount: number) {
  * it, so the wrapper is sized to the body and refuses to shrink; the panel's own
  * `flex-1` then fills it.
  */
-export function TicketsTerminal({ featureId, live, ticketCount, open, onToggle }: { featureId: string; live: Parameters<typeof SessionStrip>[0]['session']; ticketCount: number; open: boolean; onToggle: (value: boolean) => void }) {
+function TicketsTerminal({ featureId, live, ticketCount, open, onToggle }: { featureId: string; live: Parameters<typeof SessionStrip>[0]['session']; ticketCount: number; open: boolean; onToggle: (value: boolean) => void }) {
   if (open) return <div className="flex h-full shrink-0 flex-col"><SessionPanel featureId={featureId} sessions={[live]} right={<Button className="h-7 text-xs" onClick={() => onToggle(false)}>Hide terminal</Button>} /></div>
   return <div className="flex-none rounded-lg border border-hairline bg-panel-2"><SessionStrip session={live} right={<><span className="font-mono text-xs text-text-3">· {ticketCount} tickets emitted</span><Button className="h-7 text-xs" onClick={() => onToggle(true)}>Show terminal ▸</Button><EndSessionButton featureId={featureId} sessionId={live.id} /></>} /></div>
 }
