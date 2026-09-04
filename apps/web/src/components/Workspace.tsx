@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { parsePhase, type Phase } from '@runcastle/core'
+import { parsePhase, type EventRow, type Phase } from '@runcastle/core'
 import { trpc } from '../trpc'
 import { useEventLog } from '../lib/events'
 import { useLivePoll } from '../lib/live'
@@ -19,7 +19,8 @@ import {
   mapDocPath,
   mergeSummary,
   nextStep,
-  PHASE_LABELS,
+  phaseFacts,
+  phaseSummary,
   pipelineSteps,
   reviewOutcome,
   specDocPath,
@@ -30,11 +31,13 @@ import {
   type MergeConflictState,
 } from '../lib/feature-ui'
 import { useResolveConflict } from '../lib/use-resolve-conflict'
+import { docPath, useFeatureDoc } from '../lib/use-feature-doc'
 import { IconBranch } from '../icons'
 import { AddressNotesDialog } from './AddressNotesDialog'
 import { MergeFeatureDialog } from './MergeFeatureDialog'
 import { DraftBody } from './bodies/DraftBody'
 import { GrillBody } from './bodies/grill/GrillBody'
+import { PinnedBody } from './bodies/PinnedBody'
 import { ReviewBody } from './bodies/ReviewBody'
 import { ShippedBody } from './bodies/ShippedBody'
 import { TicketsBody } from './bodies/tickets/TicketsBody'
@@ -43,6 +46,7 @@ import { FeatureCrash, UnrecognizedPhase } from './workspace/FeaturePanes'
 import { LapBannerRow } from './workspace/LapBannerRow'
 import { NextStepBar } from './workspace/NextStepBar'
 import { PipelineStepper } from './workspace/PipelineStepper'
+import { ReadonlyBanner } from './workspace/ReadonlyBanner'
 import { copyText } from './workspace/copy-text'
 import { useResumeFailedAlert } from './workspace/use-resume-failed-alert'
 
@@ -176,6 +180,11 @@ export function Workspace({
   // warns on the picker and says so on the disabled button.
   const draftBaseMissing: DraftBaseMissing | undefined =
     !isDraft || effectiveDraftBase ? undefined : branchesQ.data ? 'unpicked' : 'loading'
+  // How many decisions ideation settled — the one fact the phase summary cannot
+  // read off the feed (decision 10). Same `docs.read` query key the artifact
+  // pane resolves, so the banner, the stepper's tooltip and the pane the human
+  // is reading all share one fetch.
+  const decisions = useFeatureDoc(featureId, docPath(q.data?.docs ?? [], 'decisions.md')).content
 
   const invalidate = () => {
     void utils.feature.get.invalidate({ id: featureId })
@@ -366,7 +375,15 @@ export function Workspace({
   }
   const effective = effectivePhase(feature, viewedPhase)
   const readonly = isReadonlyView(feature, effective)
-  const steps = pipelineSteps(feature, effective)
+  // What each finished phase produced (decision 10) — one derivation, read by
+  // the stepper's done-step tooltips and by the read-only banner, so the two can
+  // never tell a different story about the same phase.
+  const summaryOf = (phase: Phase) => phaseSummary({ phase, full, events, decisions })
+  const steps = pipelineSteps(feature, effective, {
+    ideation: summaryOf('ideation'),
+    spec: summaryOf('spec'),
+    tickets: summaryOf('tickets'),
+  })
   const run = latestRun(full.runs)
   const isDriving = driving?.featureId === feature.id
   const ns = nextStep(full, {
@@ -553,13 +570,12 @@ export function Workspace({
       {banner && <LapBannerRow banner={banner} />}
 
       {readonly ? (
-        <div className="readonly-bar">
-          <span className="readonly-tag">READ-ONLY</span>
-          <span>You're viewing the {PHASE_LABELS[effective]} phase.</span>
-          <button className="readonly-back" onClick={() => onViewPhase(null)}>
-            Back to {PHASE_LABELS[feature.phase]} →
-          </button>
-        </div>
+        <ReadonlyBanner
+          phase={effective}
+          livePhase={feature.phase}
+          facts={phaseFacts({ phase: effective, full, events, decisions })}
+          onBack={() => onViewPhase(null)}
+        />
       ) : (
         <NextStepBar
           ns={ns}
@@ -638,6 +654,7 @@ export function Workspace({
             <PhaseBody
               effective={effective}
               full={full}
+              events={events}
               driving={driving}
               conflict={conflict}
               runId={run?.id ?? null}
@@ -657,6 +674,7 @@ export function Workspace({
 function PhaseBody({
   effective,
   full,
+  events,
   driving,
   conflict,
   runId,
@@ -668,6 +686,7 @@ function PhaseBody({
 }: {
   effective: Phase
   full: FeatureFull
+  events: readonly EventRow[]
   driving: DriveState | null
   conflict: MergeConflictState | null
   runId: string | null
@@ -677,6 +696,19 @@ function PhaseBody({
   artifactPaneCollapsed: boolean
   onToggleArtifactPane: () => void
 }) {
+  // A pinned phase this flow owns is a frozen record, not the live body with its
+  // buttons hidden (decision 10) — a different body altogether.
+  if (readonly && (effective === 'ideation' || effective === 'spec' || effective === 'tickets')) {
+    return (
+      <PinnedBody
+        full={full}
+        effective={effective}
+        events={events}
+        mapRailCollapsed={mapRailCollapsed}
+        onToggleMapRail={onToggleMapRail}
+      />
+    )
+  }
   switch (effective) {
     case 'ideation':
     case 'spec':
@@ -684,7 +716,6 @@ function PhaseBody({
         <GrillBody
           full={full}
           effective={effective}
-          readonly={readonly}
           mapRailCollapsed={mapRailCollapsed}
           onToggleMapRail={onToggleMapRail}
           artifactPaneCollapsed={artifactPaneCollapsed}
@@ -692,7 +723,7 @@ function PhaseBody({
         />
       )
     case 'tickets':
-      return <TicketsBody featureId={full.feature.id} readonly={readonly} />
+      return <TicketsBody featureId={full.feature.id} />
     case 'implementation':
       // Before the first burn there is no run to narrate, so an empty run pane
       // is the wrong thing to show — the tickets about to burn are. This is the
@@ -701,7 +732,7 @@ function PhaseBody({
       return runId ? (
         <RunBody featureId={full.feature.id} runId={runId} readonly={readonly} />
       ) : (
-        <TicketsBody featureId={full.feature.id} readonly={readonly} />
+        <TicketsBody featureId={full.feature.id} />
       )
     case 'review':
       return <ReviewBody full={full} driving={driving} conflict={conflict} readonly={readonly} />

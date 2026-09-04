@@ -26,6 +26,8 @@ describe('workspace parts', () => {
     expect(html.match(/class="pstep /g)).toHaveLength(PHASE_ORDER.length)
     expect(html).toContain('class="pstep is-current is-viewed is-clickable"')
     for (const phase of PHASE_ORDER) expect(html).toContain(PHASE_LABELS[phase])
+    // Each step carries its own tip — what it teaches depends on its state.
+    for (const phase of PHASE_ORDER) expect(html).toContain(`title="${phase}"`)
   })
 
   it('renders an unrecognized phase value', () => {

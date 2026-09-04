@@ -43,14 +43,27 @@ export const PHASE_LABELS: Record<Phase, string> = {
   shipped: 'shipped',
 }
 
-/** One-line tooltip per phase for the pipeline stepper. */
+/** What the phase the feature is ON is for — the current step's tooltip. */
 export const PHASE_TIP: Record<Phase, string> = {
-  ideation: 'Shape the idea in a grill session',
-  spec: 'Write it up as a spec',
-  tickets: 'Break the work into atomic tickets',
-  implementation: 'Burn the tickets into commits',
+  ideation: 'Shape the idea with the agent in a session',
+  spec: 'The session writes the idea up as a spec',
+  tickets: 'The spec is broken into tickets you review, then burn',
+  implementation: 'Agents implement each ticket in a sandbox',
   review: 'Test-drive the branch, then merge',
-  shipped: 'Merged to the main branch',
+  shipped: 'Merged to main',
+}
+
+/**
+ * What unlocks a phase the feature has not reached — the upcoming step's
+ * tooltip (decision 13). Ideation has no entry: it is where every feature
+ * starts, so it is never upcoming.
+ */
+export const PHASE_UNLOCK: Record<Exclude<Phase, 'ideation'>, string> = {
+  spec: 'Opens when the idea is concrete — the session moves it on',
+  tickets: 'Opens when the spec is written',
+  implementation: 'Opens when you click Burn',
+  review: 'Opens when the burn finishes',
+  shipped: 'Opens when you merge',
 }
 
 export function phaseIndex(phase: Phase): number {
@@ -100,10 +113,28 @@ export function isReadonlyView(feature: { phase: Phase }, effective: Phase): boo
   return phaseIndex(effective) < phaseIndex(feature.phase)
 }
 
-/** The full workspace pipeline stepper for a feature at a given viewed phase. */
+/**
+ * What a step's tooltip says (decision 13): a done step reports what the phase
+ * produced and that it can be reviewed, the current step says what the phase is
+ * for, and an upcoming step says what unlocks it. A done phase whose summary
+ * could not be derived falls back to its own name rather than teaching the
+ * pipeline twice.
+ */
+function stepTip(phase: Phase, state: StepState, summary?: string | null): string {
+  if (state === 'done') return `${summary || PHASE_LABELS[phase]} — click to review`
+  if (state === 'current' || phase === 'ideation') return PHASE_TIP[phase]
+  return PHASE_UNLOCK[phase]
+}
+
+/**
+ * The full workspace pipeline stepper for a feature at a given viewed phase.
+ * `summaries` carries the one-line record of each finished phase the workspace
+ * could derive (see `phaseSummary`); phases it has nothing for fall back.
+ */
 export function pipelineSteps(
   feature: { phase: Phase },
   effective: Phase,
+  summaries: Partial<Record<Phase, string | null>> = {},
 ): PipelineStep[] {
   return PHASE_ORDER.map((phase) => {
     const state = stepState(feature, phase)
@@ -113,7 +144,7 @@ export function pipelineSteps(
       state,
       isViewed: phase === effective,
       clickable: state === 'done' || state === 'current',
-      tip: PHASE_TIP[phase],
+      tip: stepTip(phase, state, summaries[phase]),
     }
   })
 }

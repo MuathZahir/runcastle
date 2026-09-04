@@ -27,7 +27,10 @@ import {
   openApp,
   openAppWaitingLabel,
   parseMapSections,
+  PHASE_TIP,
+  PHASE_UNLOCK,
   phaseGlyph,
+  pipelineSteps,
   reviewChecks,
   reviewOutcome,
   reviewWalkthroughUrl,
@@ -3195,5 +3198,45 @@ describe('nextStep — naming the runtime in the copy', () => {
     const ns = nextStep(full, { driving: false })
     expect(ns.desc).toContain('Each one runs as its own sandboxed agent')
     expect(ns.desc).not.toMatch(/Claude|Codex/)
+  })
+})
+
+/**
+ * Ticket 5 / decision 13 — the stepper is the only place the pipeline is taught,
+ * and each step teaches a different thing depending on where the feature is.
+ */
+describe('pipelineSteps tooltips', () => {
+  const steps = (phase: 'ideation' | 'tickets', summaries = {}) =>
+    Object.fromEntries(
+      pipelineSteps({ phase }, phase, summaries).map((step) => [step.phase, step.tip]),
+    )
+
+  it('says what a done phase produced, what the current one is for and what unlocks the rest', () => {
+    const tips = steps('tickets', {
+      ideation: 'Ideation · 2d · 3 sessions · 12 decisions',
+      spec: 'Spec · written 2d ago',
+    })
+
+    expect(tips.ideation).toBe('Ideation · 2d · 3 sessions · 12 decisions — click to review')
+    expect(tips.spec).toBe('Spec · written 2d ago — click to review')
+    expect(tips.tickets).toBe(PHASE_TIP.tickets)
+    expect(tips.implementation).toBe(PHASE_UNLOCK.implementation)
+    expect(tips.review).toBe(PHASE_UNLOCK.review)
+    expect(tips.shipped).toBe(PHASE_UNLOCK.shipped)
+  })
+
+  it('names the phase when no summary could be derived for it', () => {
+    expect(steps('tickets').ideation).toBe('ideation — click to review')
+    expect(steps('tickets', { ideation: null }).spec).toBe('spec — click to review')
+  })
+
+  it('teaches ideation as the phase every feature starts in, never as one to unlock', () => {
+    expect(steps('ideation').ideation).toBe(PHASE_TIP.ideation)
+    expect(steps('ideation').spec).toBe(PHASE_UNLOCK.spec)
+  })
+
+  it('retires the grill from the copy it teaches the pipeline with', () => {
+    const all = [...Object.values(PHASE_TIP), ...Object.values(PHASE_UNLOCK)].join(' ')
+    expect(all).not.toMatch(/grill|frontier|promote/i)
   })
 })

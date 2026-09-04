@@ -15,7 +15,7 @@ import { SessionStrip } from '../../session/SessionStrip'
 import { TicketLedger } from './TicketLedger'
 import type { TicketPatch } from './TicketEditor'
 
-export function TicketsBody({ featureId, readonly = false }: { featureId: string; readonly?: boolean }) {
+export function TicketsBody({ featureId }: { featureId: string }) {
   const toast = useToast()
   const utils = trpc.useUtils()
   const full = trpc.feature.get.useQuery({ id: featureId }, { refetchInterval: useLivePoll() })
@@ -62,11 +62,11 @@ export function TicketsBody({ featureId, readonly = false }: { featureId: string
       toast.push(error instanceof Error ? error.message : 'could not update ticket models')
     }
   }
-  const ledger = <TicketLedger tickets={tickets} currentLap={feature.lap} roster={roster} readonly={readonly} docs={docs} sandbox={SANDBOX_MODE} defaultModel={defaultModel} onDoc={setPeek} onEdit={save} onModel={setModel} onBulkModel={(model) => { void bulkModel(model) }} onCancel={(ticketId) => cancel.mutate({ ticketId })} onCopySha={(sha) => { void navigator.clipboard.writeText(sha); toast.push(`copied ${shortSha(sha)}`, 'info') }} />
+  const ledger = <TicketLedger tickets={tickets} currentLap={feature.lap} roster={roster} readonly={false} docs={docs} sandbox={SANDBOX_MODE} defaultModel={defaultModel} onDoc={setPeek} onEdit={save} onModel={setModel} onBulkModel={(model) => { void bulkModel(model) }} onCancel={(ticketId) => cancel.mutate({ ticketId })} onCopySha={(sha) => { void navigator.clipboard.writeText(sha); toast.push(`copied ${shortSha(sha)}`, 'info') }} />
 
   return <div className="flex min-h-0 flex-col gap-3 overflow-y-auto">
-    {!readonly && live && <TicketsTerminal featureId={featureId} live={live} ticketCount={lapTickets.length} />}
-    {!readonly && !live && ended && <SessionStrip session={ended} />}
+    {live && <TicketsTerminal featureId={featureId} live={live} ticketCount={lapTickets.length} />}
+    {!live && ended && <SessionStrip session={ended} />}
     {ledger}
     {peek && <DocPeek featureId={featureId} relPath={peek} title={docs.find((doc) => doc.relPath === peek)?.title ?? peek} onClose={() => setPeek(null)} />}
   </div>

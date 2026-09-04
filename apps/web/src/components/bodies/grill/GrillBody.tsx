@@ -7,13 +7,18 @@ import { SessionPanel } from '../../SessionPanel'
 import { ArtifactPane } from './ArtifactPane'
 import { MapRail } from './MapRail'
 
-export function GrillBody({ full, effective, readonly = false, mapRailCollapsed, onToggleMapRail, artifactPaneCollapsed, onToggleArtifactPane }: {
-  full: FeatureFull; effective: Phase; readonly?: boolean; mapRailCollapsed: boolean; onToggleMapRail: () => void; artifactPaneCollapsed: boolean; onToggleArtifactPane: () => void
+/**
+ * Live ideation and spec: the artifact on the left, the terminal on the right
+ * (decision 11). A pinned view of either phase is a different body — see
+ * `PinnedBody` — so nothing here is ever read-only.
+ */
+export function GrillBody({ full, effective, mapRailCollapsed, onToggleMapRail, artifactPaneCollapsed, onToggleArtifactPane }: {
+  full: FeatureFull; effective: Phase; mapRailCollapsed: boolean; onToggleMapRail: () => void; artifactPaneCollapsed: boolean; onToggleArtifactPane: () => void
 }) {
   return (
     <div className="flex h-full min-h-0 gap-4">
       {full.feature.mapped && effective === 'ideation' ? (
-        <MapRail full={full} relPath={mapDocPath(full)} collapsed={mapRailCollapsed} onToggle={onToggleMapRail} readonly={readonly} />
+        <MapRail full={full} relPath={mapDocPath(full)} collapsed={mapRailCollapsed} onToggle={onToggleMapRail} />
       ) : (
         <ArtifactPane featureId={full.feature.id} kind={effective === 'spec' ? 'spec' : 'decisions'} docs={full.docs} collapsed={artifactPaneCollapsed} onToggle={onToggleArtifactPane} mapped={full.feature.mapped} />
       )}
@@ -22,7 +27,7 @@ export function GrillBody({ full, effective, readonly = false, mapRailCollapsed,
           <SessionPanel featureId={full.feature.id} sessions={full.sessions} full={full} />
         ) : (
           <div className="flex min-h-0 flex-1 rounded-lg border border-hairline bg-panel-2">
-            <EmptyState icon={<IconTerminal size={16} />} title="No session yet" hint={readonly ? 'No session was recorded for this phase.' : 'Start a session from the bar above — you and the agent shape the idea here before any code is written.'} />
+            <EmptyState icon={<IconTerminal size={16} />} title="No session yet" hint="Start a session from the bar above — you and the agent shape the idea here before any code is written." />
           </div>
         )}
       </div>

@@ -24,14 +24,17 @@ export function TicketLedger({ tickets, currentLap, roster, readonly, docs, sand
   roster: readonly ModelEntry[]
   readonly: boolean
   docs: FeatureFull['docs']
-  sandbox: string
-  defaultModel: string
-  onDoc: (relPath: string) => void
-  onEdit: (ticketId: string, patch: TicketPatch) => Promise<void>
-  onModel: (ticketId: string, model: string) => void
-  onBulkModel: (model: string) => void
-  onCancel: (ticketId: string) => void
-  onCopySha: (sha: string) => void
+  // Everything below belongs to the live ledger. A pinned phase is a frozen
+  // record (decision 10) — no header menus, nothing to mutate — so it passes
+  // none of them and the header carries the counts alone.
+  sandbox?: string
+  defaultModel?: string
+  onDoc?: (relPath: string) => void
+  onEdit?: (ticketId: string, patch: TicketPatch) => Promise<void>
+  onModel?: (ticketId: string, model: string) => void
+  onBulkModel?: (model: string) => void
+  onCancel?: (ticketId: string) => void
+  onCopySha?: (sha: string) => void
 }) {
   const lapTickets = tickets.filter((ticket) => ticket.lap === currentLap)
   const pending = lapTickets.filter((ticket) => ticket.status === 'pending')
@@ -40,12 +43,16 @@ export function TicketLedger({ tickets, currentLap, roster, readonly, docs, sand
       <SectionTitle>Tickets</SectionTitle><span className="font-mono text-xs text-text-3">{ticketLedgerMeta(tickets, currentLap)}</span>
       {/* The menu carries its own `ml-auto` for the artifact pane's header; here
           it belongs beside the counts, so the wrapper absorbs that margin. */}
-      <span className="inline-flex"><DocsMenu docs={docs} onPick={onDoc} /></span>
-      <span className="ml-auto inline-flex h-5 items-center rounded-pill border border-hairline px-2 font-mono text-xs text-text-3">sandbox · {sandbox}</span>
-      <span className="inline-flex h-5 items-center rounded-pill border border-hairline px-2 font-mono text-xs text-text-3">{defaultModel}</span>
-      {!readonly && <ModelMenu value="" roster={roster} disabled={pending.length === 0} label="Model for all pending" onChange={onBulkModel} />}
+      {onDoc && <span className="inline-flex"><DocsMenu docs={docs} onPick={onDoc} /></span>}
+      {!readonly && <>
+        <span className="ml-auto inline-flex h-5 items-center rounded-pill border border-hairline px-2 font-mono text-xs text-text-3">sandbox · {sandbox}</span>
+        <span className="inline-flex h-5 items-center rounded-pill border border-hairline px-2 font-mono text-xs text-text-3">{defaultModel}</span>
+        {onBulkModel && <ModelMenu value="" roster={roster} disabled={pending.length === 0} label="Model for all pending" onChange={onBulkModel} />}
+      </>}
     </header>
-    {lapTickets.length === 0 && <EmptyState icon={<IconDoc size={16} />} title="No tickets yet" hint="The session breaks the spec into tickets — they appear here as they land." compact />}
+    {lapTickets.length === 0 && (readonly
+      ? <EmptyState icon={<IconDoc size={16} />} title="No tickets in this lap." compact />
+      : <EmptyState icon={<IconDoc size={16} />} title="No tickets yet" hint="The session breaks the spec into tickets — they appear here as they land." compact />)}
     {tickets.length > 0 && <div className="min-h-0 overflow-y-auto">
       <LapSections groups={groupByLap(tickets, currentLap)} currentLap={currentLap} meta={(group) => `${group.rows.filter((ticket) => ticket.status === 'done').length}/${group.rows.filter((ticket) => ticket.status !== 'cancelled').length} done`}>
         {(rows) => rows.map((ticket) => <TicketRow key={ticket.id} ticket={ticket} roster={roster} readonly={readonly} onEdit={onEdit} onModel={onModel} onCancel={onCancel} onCopySha={onCopySha} />)}
