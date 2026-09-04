@@ -58,6 +58,7 @@ import {
   type Waypoint,
 } from '../src/lib/feature-ui'
 import type { FeatureFull, FeatureListItem } from '../src/lib/api'
+import { full, listItem, wp } from './fixtures'
 
 /**
  * Every cutting form prefills Branch-from with the branch the project is
@@ -2157,52 +2158,12 @@ describe('ticketConflictKickoff', () => {
  * pipeline next-step action — only a way back (Unarchive).
  */
 
-function listItem(over: Partial<FeatureListItem> = {}): FeatureListItem {
-  return {
-    id: over.id ?? 'feat_1',
-    projectId: 'proj_1',
-    slug: over.slug ?? 'demo',
-    title: 'Demo',
-    oneLiner: '',
-    mapped: false,
-    phase: over.phase ?? 'tickets',
-    branch: 'feature/demo',
-    baseBranch: 'main',
-    status: over.status ?? 'active',
-    createdAt: 0,
-    ticketCounts: over.ticketCounts ?? {
-      total: 0,
-      pending: 0,
-      burning: 0,
-      done: 0,
-      failed: 0,
-      cancelled: 0,
-    },
-    activeRun: over.activeRun ?? false,
-    liveSession: over.liveSession ?? null,
-    lastActivityAt: over.lastActivityAt ?? 0,
-  } as FeatureListItem
-}
-
 /** A feature whose terminal is open, with its agent mid-turn or waiting. */
 function withSession(
   awaitingInput: boolean,
   over: Partial<FeatureListItem> = {},
 ): FeatureListItem {
   return listItem({ liveSession: { status: 'live', awaitingInput }, ...over })
-}
-
-function full(over: Partial<FeatureFull['feature']> = {}): FeatureFull {
-  return {
-    feature: { ...listItem(over as Partial<FeatureListItem>) } as FeatureFull['feature'],
-    tickets: [],
-    sessions: [],
-    runs: [],
-    docs: [],
-    gate: { next: null, satisfied: false },
-    waypoints: [],
-    frontierIds: [],
-  } as unknown as FeatureFull
 }
 
 describe('archive derivations', () => {
@@ -2430,21 +2391,6 @@ describe('parseMapSections', () => {
 })
 
 /** A waypoint row as the wire sends it, for the two rail derivations below. */
-function wp(over: Partial<Waypoint> & Pick<Waypoint, 'id' | 'seq' | 'title'>): Waypoint {
-  return {
-    featureId: 'feat_1',
-    type: 'grilling',
-    question: `what about ${over.title}?`,
-    blockedBy: [],
-    originWaypointId: null,
-    status: 'open',
-    claimedBy: null,
-    lastSessionId: null,
-    summary: null,
-    ...over,
-  } as Waypoint
-}
-
 /**
  * Improve-map-workflow ticket 6 — the next-step bar owns convergence. For a
  * mapped feature at ideation the bar's primary IS Converge once G1 is satisfied;
