@@ -3,13 +3,10 @@ import { cleanup, fireEvent, render, screen, within } from '@testing-library/rea
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { ModelEntry, Ticket } from '@runcastle/core'
 
-vi.mock('../src/components/SessionPanel', () => ({ SessionPanel: ({ right }: { right?: unknown }) => <div data-testid="terminal">terminal {right as never}</div> }))
-vi.mock('../src/components/EndSessionButton', () => ({ EndSessionButton: () => <button>End session</button> }))
-
 const { ModelMenu } = await import('../src/components/bodies/tickets/ModelMenu')
 const { TicketRow } = await import('../src/components/bodies/tickets/TicketRow')
 const { TicketLedger, ticketLedgerMeta } = await import('../src/components/bodies/tickets/TicketLedger')
-const { TicketsTerminal, pendingTicketsForLap } = await import('../src/components/bodies/tickets/TicketsBody')
+const { pendingTicketsForLap } = await import('../src/components/bodies/tickets/TicketsBody')
 
 const roster: ModelEntry[] = [
   { id: 'claude-opus-5', runtime: 'claude-code', note: 'hard problems' },
@@ -18,8 +15,6 @@ const roster: ModelEntry[] = [
 const ticket = (over: Partial<Ticket> = {}): Ticket => ({
   id: 't1', featureId: 'f1', seq: 1, lap: 2, title: 'Build it', goal: 'Goal', context: 'Context', acceptanceCriteria: ['Works'], seams: ['UI'], blockedBy: [], kind: 'implementation', status: 'pending', commits: [], ...over,
 })
-const session = { id: 's1', featureId: 'f1', kind: 'ideation', lap: 2, status: 'live', createdAt: Date.now() } as Parameters<typeof TicketsTerminal>[0]['live']
-
 const saveStub = () => vi.fn(async () => undefined)
 
 afterEach(() => { cleanup(); sessionStorage.clear() })
@@ -94,22 +89,5 @@ describe('TicketLedger', () => {
   it('bulk targeting includes only pending tickets in the current lap', () => {
     const rows = [ticket(), ticket({ id: 't2', lap: 1 }), ticket({ id: 't3', status: 'failed' })]
     expect(pendingTicketsForLap(rows, 2).map((row) => row.id)).toEqual(['t1'])
-  })
-})
-
-describe('tickets terminal strip', () => {
-  it('starts open before tickets are emitted', () => {
-    render(<TicketsTerminal featureId="f1" live={session} ticketCount={0} />)
-    expect(screen.getByTestId('terminal')).toBeTruthy()
-  })
-
-  it('starts collapsed once tickets exist and remembers expansion per session', () => {
-    const first = render(<TicketsTerminal featureId="f1" live={session} ticketCount={2} />)
-    expect(screen.queryByTestId('terminal')).toBeNull()
-    fireEvent.click(screen.getByRole('button', { name: /Show terminal/ }))
-    expect(screen.getByTestId('terminal')).toBeTruthy()
-    first.unmount()
-    render(<TicketsTerminal featureId="f1" live={session} ticketCount={2} />)
-    expect(screen.getByTestId('terminal')).toBeTruthy()
   })
 })
