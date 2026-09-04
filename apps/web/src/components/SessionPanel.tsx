@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import type { EventRow } from '@runcastle/core'
 import { trpc } from '../trpc'
 import { useEventLog } from '../lib/events'
@@ -31,6 +31,7 @@ export function SessionPanel({
   sessions,
   full,
   className,
+  right,
 }: {
   featureId: string
   sessions: Session[]
@@ -38,6 +39,8 @@ export function SessionPanel({
   full?: FeatureFull
   /** Extra class on the live panel (bodies scope their own terminal sizing). */
   className?: string
+  /** Extra controls owned by the embedding surface, before End session. */
+  right?: ReactNode
 }) {
   const session = pickPanelSession(sessions)
   if (!session) return null
@@ -45,7 +48,7 @@ export function SessionPanel({
   if (sessionActive(session)) {
     return (
       <div className={`flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-hairline bg-panel-2${className ? ` ${className}` : ''}`}>
-        <SessionStrip session={session} full={full} right={<EndSessionButton featureId={featureId} sessionId={session.id} />} />
+        <SessionStrip session={session} full={full} right={<>{right}<EndSessionButton featureId={featureId} sessionId={session.id} /></>} />
         <SessionNotices featureId={featureId} session={session} />
         <div className="min-h-0 flex-1" id="session-terminal">
           <ErrorBoundary label="terminal">
