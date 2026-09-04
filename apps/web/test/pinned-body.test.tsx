@@ -57,13 +57,17 @@ const events: EventRow[] = [
   { id: 2, ts: START + 2 * HOUR, type: 'phase.advanced', message: '', projectId: 'project-1', data: { from: 'ideation', to: 'spec' } },
 ] as EventRow[]
 
-function pinned(effective: 'ideation' | 'spec' | 'tickets', over: Partial<FeatureFull> = {}): HTMLElement {
+function pinned(
+  effective: 'ideation' | 'spec' | 'tickets',
+  over: Partial<FeatureFull> = {},
+  feed: readonly EventRow[] = events,
+): HTMLElement {
   const { container } = render(
     <ToastProvider>
       <PinnedBody
         full={full(over)}
         effective={effective}
-        events={events}
+        events={feed}
         mapRailCollapsed={false}
         onToggleMapRail={() => undefined}
       />
@@ -142,6 +146,27 @@ describe('PinnedBody', () => {
     expect(container.textContent).toContain('Ideation session')
     // A question session is not part of how the idea was shaped.
     expect(container.textContent).not.toContain('Question session')
+    expectFrozen(container)
+  })
+
+  it('lists the sessions of a shipped feature whose rows the feed cannot date', () => {
+    const container = pinned(
+      'ideation',
+      {
+        feature: { id: 'feature-1', projectId: 'project-1', phase: 'shipped', mapped: false, lap: 2, createdAt: START } as FeatureFull['feature'],
+        sessions: [
+          { id: 'session-1', kind: 'ideation', lap: 1, status: 'ended' },
+          { id: 'session-2', kind: 'waypoint', lap: 1, status: 'ended' },
+          { id: 'session-3', kind: 'converge', lap: 1, status: 'ended' },
+        ] as unknown as FeatureFull['sessions'],
+      },
+      [],
+    )
+
+    expect(container.textContent).toContain('Sessions · 3')
+    expect(container.textContent).toContain('Ideation session')
+    expect(container.textContent).toContain('Waypoint session')
+    expect(container.textContent).toContain('Converge session')
     expectFrozen(container)
   })
 
