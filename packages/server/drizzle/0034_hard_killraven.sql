@@ -1,0 +1,1 @@
+ALTER TABLE `sessions` ADD `ended_at` integer;
