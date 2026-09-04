@@ -86,7 +86,7 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
         nav={nav}
         onOpenCmdk={() => ws.setCmdk(true)}
         onOpenSettings={() => ws.openSettings()}
-        onToggleInspector={ws.toggleInspector}
+        onToggleInspector={() => ws.toggleInspector(inspectorCollapsed)}
         inspectorCollapsed={inspectorCollapsed}
       />
 

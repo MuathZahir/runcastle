@@ -130,7 +130,7 @@ export interface WorkspaceApi {
   cancelCreate: () => void
   /** Leave a deliberately-opened preparation. */
   closePreparation: () => void
-  toggleInspector: () => void
+  toggleInspector: (current?: boolean) => void
   toggleMapRail: () => void
   toggleArtifactPane: () => void
   setCmdk: (open: boolean) => void
@@ -233,7 +233,7 @@ export function useWorkspace(projectId: string): WorkspaceApi {
   const cancelCreate = useCallback(() => setCreating(false), [])
   const closePreparation = useCallback(() => setPreparing(false), [])
   const toggleInspector = useCallback(
-    () => setInspectorPreference((value) => !(value ?? false)),
+    (current?: boolean) => setInspectorPreference((value) => !(current ?? value ?? false)),
     [],
   )
   const toggleMapRail = useCallback(() => setMapRailCollapsed((v) => !v), [])

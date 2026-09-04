@@ -34,6 +34,13 @@ describe('useWorkspace — pane preferences', () => {
     expect(inspectorCollapsedForPhase(true, 'review')).toBe(true)
     expect(inspectorCollapsedForPhase(false, 'ideation')).toBe(false)
   })
+
+  it('opens a phase-defaulted collapsed inspector on the first toggle', () => {
+    const { result } = renderHook(() => useWorkspace('proj_1'))
+    act(() => result.current.toggleInspector(true))
+    expect(result.current.inspectorPreference).toBe(false)
+    expect(localStorage.getItem('runcastle.inspector.collapsed')).toBe('0')
+  })
 })
 
 /**
