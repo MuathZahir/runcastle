@@ -37,7 +37,7 @@ export function TicketRow({ ticket, roster, readonly, onEdit, onModel, onCancel,
         <TicketKindChip kind={ticket.kind} />
         {ticket.blockedBy.length > 0 && <span className="font-mono text-xs text-text-4" title="Runs after these tickets land">after #{ticket.blockedBy.join(', #')}</span>}
       </button>
-      {editable ? <ModelMenu value={ticket.model ?? ''} roster={roster} disabled={readonly} onChange={(model) => onModel(ticket.id, model)} /> : assigned && <span className="inline-flex h-5 items-center rounded-pill border border-hairline px-2 font-mono text-xs text-text-2">{assigned.id} · {assigned.runtimeLabel}</span>}
+      {editable && !readonly ? <ModelMenu value={ticket.model ?? ''} roster={roster} onChange={(model) => onModel(ticket.id, model)} /> : assigned && <span className="inline-flex h-5 items-center rounded-pill border border-hairline px-2 font-mono text-xs text-text-2">{assigned.id} · {assigned.runtimeLabel}</span>}
       <TicketStatusChip status={ticket.status} />
     </div>
     {open && editing && <TicketEditor ticket={ticket} busy={false} onCancel={() => setEditing(false)} onSave={(patch) => { onEdit(ticket.id, patch); setEditing(false) }} />}

@@ -43,7 +43,8 @@ export function TicketLedger({ tickets, currentLap, roster, readonly, docs, sand
       <span className="inline-flex h-5 items-center rounded-pill border border-hairline px-2 font-mono text-xs text-text-3">{defaultModel}</span>
       {!readonly && <ModelMenu value="" roster={roster} disabled={pending.length === 0} label="Model for all pending" onChange={onBulkModel} />}
     </header>
-    {lapTickets.length === 0 ? <EmptyState icon={<IconDoc size={16} />} title="No tickets yet" hint="The session breaks the spec into tickets — they appear here as they land." compact /> : <div className="min-h-0 overflow-y-auto">
+    {lapTickets.length === 0 && <EmptyState icon={<IconDoc size={16} />} title="No tickets yet" hint="The session breaks the spec into tickets — they appear here as they land." compact />}
+    {tickets.length > 0 && <div className="min-h-0 overflow-y-auto">
       <LapSections groups={groupByLap(tickets, currentLap)} currentLap={currentLap} meta={(group) => `${group.rows.filter((ticket) => ticket.status === 'done').length}/${group.rows.filter((ticket) => ticket.status !== 'cancelled').length} done`}>
         {(rows) => rows.map((ticket) => <TicketRow key={ticket.id} ticket={ticket} roster={roster} readonly={readonly} onEdit={onEdit} onModel={onModel} onCancel={onCancel} onCopySha={onCopySha} />)}
       </LapSections>

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { trpc } from '../../../trpc'
 import type { QueryResult, SettingsView } from '../../../lib/api'
 import { SANDBOX_MODE } from '../../../lib/env'
@@ -46,7 +46,7 @@ export function TicketsBody({ featureId, readonly = false }: { featureId: string
   const save = (ticketId: string, patch: TicketPatch) => edit.mutate({ ticketId, ...patch })
   const setModel = (ticketId: string, model: string) => edit.mutate({ ticketId, model })
   const bulkModel = async (model: string) => {
-    const pending = lapTickets.filter((ticket) => ticket.status === 'pending')
+    const pending = pendingTicketsForLap(tickets, feature.lap)
     try {
       for (const ticket of pending) await utils.client.ticket.edit.mutate({ ticketId: ticket.id, model })
       await utils.feature.get.invalidate({ id: featureId })
@@ -65,12 +65,22 @@ export function TicketsBody({ featureId, readonly = false }: { featureId: string
   </div>
 }
 
-function TicketsTerminal({ featureId, live, ticketCount }: { featureId: string; live: Parameters<typeof SessionStrip>[0]['session']; ticketCount: number }) {
+export function pendingTicketsForLap<T extends { lap: number; status: string }>(tickets: readonly T[], lap: number): T[] {
+  return tickets.filter((ticket) => ticket.lap === lap && ticket.status === 'pending')
+}
+
+export function TicketsTerminal({ featureId, live, ticketCount }: { featureId: string; live: Parameters<typeof SessionStrip>[0]['session']; ticketCount: number }) {
   const key = `runcastle.tickets.term:${live.id}`
   const [open, setOpen] = useState(() => {
     if (ticketCount === 0) return true
     try { return sessionStorage.getItem(key) === 'open' } catch { return false }
   })
+  useEffect(() => {
+    if (ticketCount === 0) return
+    try {
+      if (sessionStorage.getItem(key) === null) setOpen(false)
+    } catch { /* storage may be unavailable */ }
+  }, [key, ticketCount])
   const toggle = (value: boolean) => {
     setOpen(value)
     try { sessionStorage.setItem(key, value ? 'open' : 'closed') } catch { /* storage may be unavailable */ }
