@@ -179,20 +179,21 @@ function BriefingBanner({
  * rather than growing a second Converge button.
  */
 /**
- * The session a body should render. A live/launching one always wins; otherwise
- * the most recent RESUMABLE ended session (one that reached `live` and so
- * recorded a `ccSessionId`), falling back to the most recent session of any
- * kind. That fallback order mirrors the launcher's own resume target, so the
- * card never offers to resume a conversation the server would not pick — and a
- * session that died before starting still renders as plainly ended.
+ * The session a body should render: a live/launching one, else simply the most
+ * recent.
+ *
+ * It used to prefer the most recent RESUMABLE ended session — one that reached
+ * `live` and so recorded a `ccSessionId` — because the card carried its own
+ * Resume button and had to name the conversation the server would actually
+ * reopen. Decision #3 moved every resume into the next-step bar, and the strip
+ * that remains reports which conversation this is and when it stopped. Under
+ * that job the preference was a lie: end a terminal that never got past its
+ * trust prompt and the strip would quietly report the previous conversation
+ * instead, ageing the line from an ending the human never watched.
  */
 function pickPanelSession(sessions: Session[]): Session | undefined {
   const ordered = [...sessions].reverse()
-  return (
-    ordered.find(sessionActive) ??
-    ordered.find((s) => s.status === 'ended' && !!s.ccSessionId) ??
-    ordered[0]
-  )
+  return ordered.find(sessionActive) ?? ordered[0]
 }
 
 /** True when this session's runtime-side conversation can be picked back up. */
