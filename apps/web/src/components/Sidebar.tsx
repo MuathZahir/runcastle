@@ -1,8 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { RefObject } from 'react'
-import type { Phase } from '@runcastle/core'
 import { trpc } from '../trpc'
-import { DimLine } from '../ui'
+import { DimLine, PhaseDot } from '../ui'
 import { useToast } from '../lib/toast'
 import type { FeatureListItem, PrepView } from '../lib/api'
 import {
@@ -475,16 +474,6 @@ const LANE_FG: Record<TriageKey, string> = {
   archived: 'text-text-4',
 }
 
-/** The phase dot's colour. A whole class per phase so Tailwind can see it. */
-const PHASE_DOT_BG: Record<Phase, string> = {
-  ideation: 'bg-ph-ideation',
-  spec: 'bg-ph-spec',
-  tickets: 'bg-ph-tickets',
-  implementation: 'bg-ph-implementation',
-  review: 'bg-ph-review',
-  shipped: 'bg-ph-shipped',
-}
-
 /** The status chip's colour, by what `rowChip` chose to say. */
 const CHIP_FG: Record<RowChipKind, string> = {
   needsMe: 'border-needs/35 text-needs',
@@ -560,7 +549,7 @@ export function FeatureRow({
             {DRAFT_GLYPH}
           </span>
         ) : (
-          <span className={`mt-1.5 size-2 shrink-0 rounded-full ${PHASE_DOT_BG[f.phase]}`} />
+          <PhaseDot phase={f.phase} className="mt-1.5" />
         )}
         <span className="flex min-w-0 flex-1 flex-col gap-2">
           <span className="flex items-start gap-2">
