@@ -34,8 +34,21 @@ describe('SessionStrip', () => {
   })
 
   it('renders an ended session as one quiet line with no resume action', () => {
-    const html = renderToStaticMarkup(createElement(SessionStrip, { session: session({ status: 'ended', createdAt: Date.now() - 7_200_000 }) }))
+    const html = renderToStaticMarkup(createElement(SessionStrip, { session: session({ status: 'ended', createdAt: Date.now() - 7_200_000, endedAt: Date.now() - 7_200_000 }) }))
     expect(html).toContain('ended 2h ago')
     expect(html).not.toContain('Resume')
+  })
+
+  it('ages the ended line from when the session stopped, not from when it started', () => {
+    const html = renderToStaticMarkup(createElement(SessionStrip, { session: session({ status: 'ended', createdAt: Date.now() - 7_200_000, endedAt: Date.now() - 1_000 }) }))
+    expect(html).toContain('ended just now')
+    expect(html).not.toContain('2h')
+  })
+
+  it('says only "ended" for a session that stopped before endings were recorded', () => {
+    const html = renderToStaticMarkup(createElement(SessionStrip, { session: session({ status: 'ended', createdAt: Date.now() - 1_020_000, endedAt: undefined }) }))
+    expect(html).toContain('ended')
+    expect(html).not.toContain('ago')
+    expect(html).not.toContain('17m')
   })
 })

@@ -556,6 +556,12 @@ export const SessionRow = z.object({
   title: z.string().optional(),
   /** Insert time; unset on rows written before `sessions` had a timestamp. */
   createdAt: z.number().optional(),
+  /**
+   * When this session ended; unset while it is still running and on rows that
+   * ended before the column existed. Never substituted with `createdAt` — see
+   * the db schema.
+   */
+  endedAt: z.number().optional(),
 })
 export type SessionRow = z.infer<typeof SessionRow>
 

@@ -94,6 +94,7 @@ export function rowToSession(row: SessionSelect): SessionRow {
     runtime: row.runtime ?? undefined,
     title: row.title ?? undefined,
     createdAt: row.createdAt ?? undefined,
+    endedAt: row.endedAt ?? undefined,
   })
 }
 
