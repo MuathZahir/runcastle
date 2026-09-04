@@ -40,7 +40,7 @@ const liveSession = { id: 's1', featureId: 'f1', kind: 'ideation', lap: 2, statu
 /** The body's own scroll column — the element the layout below is measured on. */
 function bodyColumn(container: HTMLElement): HTMLElement {
   const column = container.firstElementChild as HTMLElement
-  expect(column.className).toBe('flex min-h-0 flex-col gap-3 overflow-y-auto')
+  expect(column.className).toBe('flex min-h-0 min-w-0 flex-1 flex-col gap-3 overflow-y-auto')
   return column
 }
 
@@ -119,5 +119,17 @@ describe('TicketsBody wire actions', () => {
     const confirm = screen.getByText(/Tickets that depend on it treat it as done/).parentElement!
     fireEvent.click(within(confirm).getByRole('button', { name: 'Cancel ticket' }))
     expect(server.cancels).toEqual([{ ticketId: 'current' }])
+  })
+})
+
+describe('TicketsBody layout', () => {
+  // The stack is a flex item of the workspace's row-direction two-pane wrapper,
+  // so one that does not grow is laid out at its content width and the ledger is
+  // read in half the window — the squeeze decision 6 chose a stack to avoid.
+  it('grows the vertical stack to fill the workspace', () => {
+    const { container } = render(<TicketsBody featureId="f1" />)
+    const stack = container.firstElementChild!
+    expect(stack.className).toMatch(/\bflex-1\b/)
+    expect(stack.className).toMatch(/\bmin-w-0\b/)
   })
 })

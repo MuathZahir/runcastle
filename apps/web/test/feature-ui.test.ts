@@ -2489,6 +2489,27 @@ describe('nextStep — spec and tickets use one lap-scoped door', () => {
     })
   })
 
+  it('stops claiming "no spec yet" once spec.md sits in the pane beside the bar', () => {
+    const written = full({ phase: 'spec' })
+    written.docs = [{ relPath: 'docs/features/demo/spec.md' }] as FeatureFull['docs']
+    const ns = nextStep(written, { driving: false })
+    expect(ns.title).toBe('Break the spec into tickets')
+    expect(ns.desc).not.toContain('No spec yet')
+    expect(ns.desc).toContain('The spec is written')
+    expect(ns.primary).toEqual({ label: 'Start session', kind: 'startGrill' })
+  })
+
+  it('offers Resume on a written spec whose conversation is still on disk', () => {
+    const written = full({ phase: 'spec', mapped: true })
+    written.docs = [{ relPath: 'docs/features/demo/spec.md' }] as FeatureFull['docs']
+    written.sessions = [
+      { id: 's1', status: 'ended', kind: 'converge', ccSessionId: 'cc-1' },
+    ] as unknown as FeatureFull['sessions']
+    const ns = nextStep(written, { driving: false })
+    expect(ns.title).toBe('Break the spec into tickets')
+    expect(ns.primary).toEqual({ label: 'Resume session', kind: 'startGrill' })
+  })
+
   it('counts only current-lap non-cancelled tickets', () => {
     const feature = full({ phase: 'tickets', lap: 2 })
     feature.feature = { ...feature.feature, phase: 'tickets', lap: 2 }

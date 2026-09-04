@@ -70,7 +70,11 @@ export function TicketsBody({ featureId }: { featureId: string }) {
   }
   const ledger = <TicketLedger tickets={tickets} currentLap={feature.lap} roster={roster} docs={docs} sandbox={SANDBOX_MODE} defaultModel={defaultModel} onDoc={setPeek} onEdit={save} onModel={setModel} onBulkModel={(model) => { void bulkModel(model) }} onCancel={(ticketId) => cancel.mutate({ ticketId })} onCopySha={(sha) => { void navigator.clipboard.writeText(sha); toast.push(`copied ${shortSha(sha)}`, 'info') }} />
 
-  return <div className="flex min-h-0 flex-col gap-3 overflow-y-auto">
+  // `flex-1` because the workspace's two-pane wrapper lays its body out in a
+  // row: a stack that only takes its content width leaves the ledger's titles,
+  // dependency chips and model menus crowded into half the window — the squeeze
+  // decision 6 chose a vertical stack to avoid.
+  return <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-3 overflow-y-auto">
     {live && <TicketsTerminal featureId={featureId} live={live} ticketCount={lapTickets.length} open={terminal.open} onToggle={terminal.toggle} />}
     {!live && ended && <SessionStrip session={ended} />}
     {/* Collapsed, the ledger owns the body and scrolls inside itself; with the
