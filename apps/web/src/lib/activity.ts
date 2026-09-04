@@ -15,6 +15,11 @@ import type { EventRow, RunStatus } from '@runcastle/core'
  *
  * So each event becomes a plain-text summary that always reads as a sentence,
  * plus the full text underneath for the rows worth opening.
+ *
+ * "Always" now includes the third kind the walk found (decision 5): events whose
+ * message IS their own type slug with the facts bolted on after it, like
+ * `feature.created (feature/x ← main)`. A slug is what a developer calls an
+ * event; the feed states what happened, so no summary is ever one.
  */
 
 export interface ActivityLine {
@@ -76,6 +81,69 @@ function isToolEvent(type: string): boolean {
   return type.endsWith('.tool')
 }
 
+/**
+ * An event type read as words: `session.pty_exited` → `Session pty exited`.
+ *
+ * The feed's floor (decision 5). A slug is a developer's name for an event, and
+ * a human-facing timeline must never print one as its summary — so wherever the
+ * message cannot supply a sentence, the type supplies one instead of being
+ * dumped verbatim.
+ */
+function typeSentence(type: string): string {
+  const words = type.replace(/[._]+/g, ' ').trim()
+  return words === '' ? '' : `${words[0].toUpperCase()}${words.slice(1)}`
+}
+
+/**
+ * A message that leads with its own event type, re-read as a sentence:
+ * `feature.created (branch pending)` → `Feature created — branch pending`.
+ *
+ * Returns null for the messages that were already written as prose, which is
+ * most of them — the slug prefix is the habit of a handful of emit sites, not
+ * a convention.
+ */
+function deslug(type: string, message: string): string | null {
+  if (!message.startsWith(type)) return null
+  const rest = message
+    .slice(type.length)
+    .replace(/^[\s:;,—–-]+/, '')
+    .trim()
+    .replace(/^\((.*)\)$/s, '$1')
+    .trim()
+  const sentence = typeSentence(type)
+  return rest === '' ? sentence : `${sentence} — ${rest}`
+}
+
+function fields(data: unknown): Record<string, unknown> | null {
+  return typeof data === 'object' && data !== null ? (data as Record<string, unknown>) : null
+}
+
+function text(value: unknown): string | null {
+  return typeof value === 'string' && value !== '' ? value : null
+}
+
+/**
+ * The sentence an event writes better from its payload than from its message.
+ *
+ * `feature.created` is the offender the walk caught in the feed: its message is
+ * its own type with the branch bolted on in parentheses, while its `data`
+ * carries the same facts in named fields — a far better source than parsing the
+ * string back apart. Events written before a field existed fall through to
+ * {@link deslug}, which is why every read here is defensive.
+ */
+function fromPayload(event: Pick<EventRow, 'type' | 'data'>): string | null {
+  if (event.type !== 'feature.created') return null
+  const d = fields(event.data)
+  const branch = text(d?.branch)
+  if (!d || !branch) return null
+  if (d.draft === true) return `Feature created as a draft — ${branch} is not cut yet`
+  if (d.branchReady !== true) return `Feature created — branch ${branch} is still being cut`
+  const base = text(d.baseBranch)
+  return base
+    ? `Feature created on branch ${branch}, from ${base}`
+    : `Feature created on branch ${branch}`
+}
+
 export function activityLine(
   event: Pick<EventRow, 'type' | 'message' | 'data'>,
 ): ActivityLine {
@@ -86,7 +154,7 @@ export function activityLine(
     if (!call) {
       const line = firstLine(event.message)
       return {
-        summary: truncate(line, SUMMARY_MAX) || event.type,
+        summary: truncate(line, SUMMARY_MAX) || typeSentence(event.type),
         detail: event.message.trim() === line ? null : event.message.trim(),
       }
     }
@@ -97,12 +165,13 @@ export function activityLine(
     }
   }
 
-  const plain = stripMarkdown(event.message)
+  const written = stripMarkdown(event.message)
+  const plain = fromPayload(event) ?? deslug(event.type, written) ?? written
   const line = firstLine(plain)
   const summary = truncate(line, SUMMARY_MAX)
   // Worth opening only when the summary genuinely dropped something.
   const detail = plain === summary ? null : plain
-  return { summary: summary || event.type, detail }
+  return { summary: summary || typeSentence(event.type), detail }
 }
 
 // --- laps in the feed --------------------------------------------------------
