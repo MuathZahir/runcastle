@@ -774,11 +774,11 @@ export interface RecordFindingResult {
  * set is never overwritten here, and the refusal is reported rather than
  * swallowed, so the agent can say so instead of believing it succeeded.
  */
-export function toolRecordFinding(
+export async function toolRecordFinding(
   ctx: AppCtx,
   session: SessionRow,
   input: { key: PreparedKeyT; value: string; evidence?: string; userSupplied?: boolean },
-): RecordFindingResult {
+): Promise<RecordFindingResult> {
   const project = requireProject(ctx, session)
   const source: FindingSourceT = input.userSupplied ? 'human' : 'session'
 
@@ -791,11 +791,21 @@ export function toolRecordFinding(
     }
   }
 
+  let establishedSha: string | undefined
+  try {
+    const mainLine = await git.detectMainBranch(project.repoPath)
+    establishedSha = await git.headSha(project.repoPath, mainLine)
+  } catch {
+    // Preserve the finding when the repo cannot currently be inspected. Its
+    // staleness will be unknown, which is safer than losing the value entirely.
+  }
+
   recordFinding(ctx, project.id, {
     key: input.key,
     value: input.value,
     source,
     ...(input.evidence ? { evidence: input.evidence } : {}),
+    ...(establishedSha ? { establishedSha } : {}),
   })
 
   emitProject(ctx, project.id, {
@@ -1625,7 +1635,7 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
       async (args, extra) => {
         const rs = await resolveCtxSession(extra)
         if (!rs) return noSession()
-        return ok(toolRecordFinding(rs.ctx, rs.session, args))
+        return ok(await toolRecordFinding(rs.ctx, rs.session, args))
       },
     )
   }
