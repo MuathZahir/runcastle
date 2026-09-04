@@ -71,28 +71,29 @@ export function CurrentGate({ gate, phase }: { gate: GateState; phase: Phase }) 
  */
 /** The ⓘ itself. No preflight, so it states its own face, size and background. */
 const INFO_MARK =
-  'group/info grid size-4 shrink-0 cursor-help place-items-center rounded-full border ' +
+  'grid size-4 shrink-0 cursor-help place-items-center rounded-full border ' +
   'border-hairline-strong bg-transparent p-0 font-sans text-xs leading-none text-text-3 ' +
   'hover:border-text-3 hover:text-text'
 
 /**
- * The sentence it holds. Anchored to the caption row rather than the mark, and
- * opening DOWNWARD, so the rail's own `overflow-y-auto` cannot clip it.
+ * The sentence it holds. It takes a full row in the caption's normal flow, so
+ * opening it moves the gate card down instead of covering what it explains.
  */
 const INFO_TIP =
-  'pointer-events-none absolute top-full left-0 z-30 mt-2 hidden w-[230px] rounded-md border ' +
+  'pointer-events-none mt-2 hidden w-[230px] basis-full rounded-md border ' +
   'border-hairline-strong bg-panel-3 px-3 py-2 text-sm leading-snug font-normal tracking-normal ' +
-  'text-pretty text-text-2 normal-case shadow-menu group-hover/info:block group-focus-visible/info:block'
+  'text-pretty text-text-2 normal-case shadow-menu group-hover/info:block group-focus-within/info:block'
 
 function CurrentGateCaption() {
   return (
-    <div className="relative flex items-center gap-1.5">
+    <div className="group/info flex flex-wrap items-center gap-x-1.5">
       <span className="text-xs font-semibold tracking-[0.09em] text-text-3 uppercase">
         Current gate
       </span>
       <button type="button" className={INFO_MARK} aria-label="What a gate is">
-        i<span className={INFO_TIP}>{GATE_EXPLAINER}</span>
+        i
       </button>
+      <span className={INFO_TIP}>{GATE_EXPLAINER}</span>
     </div>
   )
 }

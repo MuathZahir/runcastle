@@ -70,6 +70,13 @@ describe('gate card', () => {
     expect(tip?.[1]).toContain('group-hover/info:block')
   })
 
+  it('keeps the explainer in flow so opening it moves the gate card down', () => {
+    const html = gate()
+    const tip = html.match(/class="([^"]*)"\s*>Gates are the human/)
+    expect(tip?.[1]).toContain('basis-full')
+    expect(tip?.[1]).not.toContain('absolute')
+  })
+
   it('distinguishes a shipped feature from a phase it cannot place', () => {
     expect(gate({ gate: { next: null, satisfied: true } })).toContain('no gates left')
     expect(gate({ phase: 'nonsense' as Phase })).toContain('recognized, so no gate applies')
