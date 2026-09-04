@@ -16,6 +16,7 @@ export function ArtifactPane({ featureId, kind, docs, collapsed, onToggle, mappe
   const query = trpc.docs.read.useQuery({ featureId, relPath: selectedPath ?? `${kind}.md` }, { enabled: !!selectedPath, refetchInterval: useLivePoll() })
   const content = query.data?.content ?? ''
   useEffect(() => {
+    if (query.data === undefined) return
     if (previousContent.current !== undefined && previousContent.current !== content && kind === 'spec') {
       setUpdating(true)
       const timer = window.setTimeout(() => setUpdating(false), 3000)
@@ -23,7 +24,7 @@ export function ArtifactPane({ featureId, kind, docs, collapsed, onToggle, mappe
       return () => window.clearTimeout(timer)
     }
     previousContent.current = content
-  }, [content, kind])
+  }, [content, kind, query.data])
   const count = countDecisions(content)
   if (collapsed) return <button type="button" className="flex w-10 flex-none items-center justify-center rounded-lg border border-hairline bg-panel-2 font-mono text-xs text-text-3 [writing-mode:vertical-rl]" title={`Expand the ${kind} pane`} onClick={onToggle}>{kind === 'decisions' ? count : 'spec'}</button>
   const showingPrimary = selectedPath === defaultPath

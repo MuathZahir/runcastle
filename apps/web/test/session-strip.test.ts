@@ -25,6 +25,14 @@ describe('SessionStrip', () => {
     expect(renderToStaticMarkup(createElement(SessionStrip, { session: session({ kind: 'revisit', lap: 3 }) }))).toContain('Lap 3 session')
   })
 
+  it.each([
+    ['converge', 'Converge session'],
+    ['qa', 'Question session'],
+    ['waypoint', 'Waypoint session'],
+  ] as const)('gives %s a plain kind name', (kind, label) => {
+    expect(renderToStaticMarkup(createElement(SessionStrip, { session: session({ kind }) }))).toContain(label)
+  })
+
   it('renders an ended session as one quiet line with no resume action', () => {
     const html = renderToStaticMarkup(createElement(SessionStrip, { session: session({ status: 'ended', createdAt: Date.now() - 7_200_000 }) }))
     expect(html).toContain('ended 2h ago')

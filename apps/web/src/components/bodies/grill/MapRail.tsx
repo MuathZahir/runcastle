@@ -29,7 +29,7 @@ export function MapRail({ full, relPath, collapsed, onToggle }: { full: FeatureF
         <div className="mr-scroll">
           {q.isLoading && <DimLine>loading map…</DimLine>}
           {charted ? <><WaypointGroupList featureId={featureId} groups={groups} blocker={liveSessionBlocker(full.sessions, full.waypoints)} />{relPath && <MapDoc sections={sections} />}</> : (
-            <div className="doc-card is-empty"><IconDoc size={14} /><span className="doc-card-title">Not charted yet</span><span className="doc-card-hint">the session writes the map as you explore the idea</span></div>
+            <div className="m-3 flex items-center gap-2 rounded-md border border-hairline bg-panel-3 p-3 text-text-3"><IconDoc size={14} /><span className="font-semibold text-text-2">Not charted yet</span><span className="text-sm">the session writes the map as you explore the idea</span></div>
           )}
         </div>
       )}

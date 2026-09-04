@@ -74,7 +74,10 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
 
   const view = workspaceView({ ...ws, featureCount: list.data?.length ?? 0, prepared })
   const selectedPhase = list.data?.find((feature) => feature.id === selectedFeatureId)?.phase
-  const inspectorCollapsed = inspectorCollapsedForPhase(ws.inspectorPreference, selectedPhase)
+  const inspectorCollapsed = inspectorCollapsedForPhase(
+    ws.inspectorPreference,
+    ws.viewedPhase ?? selectedPhase,
+  )
   const showInspector = showsInspector(view, inspectorCollapsed)
 
   const shell = (
