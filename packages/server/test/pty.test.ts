@@ -15,11 +15,15 @@ import { RingBuffer } from '../src/pty/ring-buffer'
  *  3. kill of a long-lived process,
  *  4. ring-buffer replay through the registry.
  *
- * Two backends are exercised: `native` (in-process node-pty — what runs off-win32
- * and under this node/vitest runtime) and `sidecar` (node-pty hosted in a system
- * `node` child — what ships under Bun on win32, where the native write path throws
- * `ERR_SOCKET_CLOSED`). Both must pass the WRITE→ECHO assertion. Cases skip
+ * Two backends are exercised: `native` (in-process node-pty — what runs off-win32)
+ * and `sidecar` (node-pty hosted in a system `node` child — what ships under Bun
+ * on win32, where the native write path throws `ERR_SOCKET_CLOSED`). Both must
+ * pass the WRITE→ECHO assertion wherever they are the shipped backend. Cases skip
  * gracefully where the native addon cannot load (CI without prebuilds).
+ *
+ * The suite itself runs under Bun (`bun run test`), so on win32 it sits on the
+ * same side of that incompatibility as the product does — see the native
+ * write→echo case for the one assertion that cannot hold there.
  */
 
 const isWin = process.platform === 'win32'
@@ -118,7 +122,13 @@ describe.skipIf(!AVAILABLE)('createPtySession (native backend)', () => {
     15000,
   )
 
-  it(
+  // Platform-fundamental on win32: node-pty v1.1.0's ConPTY backend writes
+  // keystrokes through a `node:net` socket that is unusable under Bun, so
+  // `write()` throws `ERR_SOCKET_CLOSED` and input is silently dropped. This
+  // suite runs under Bun (`bun run test`), which is exactly why `selectBackend`
+  // routes Bun+win32 to the sidecar — the native backend is never the shipped
+  // input path there, and the sidecar case below covers the one that is.
+  it.skipIf(isWin)(
     'delivers written keystrokes to the process (write→echo INPUT path)',
     async () => {
       const marker = `mark_native_${Date.now()}`
