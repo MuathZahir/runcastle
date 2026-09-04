@@ -31,7 +31,7 @@ import { TerminalView } from './TerminalView'
  * default, past conversations are named and dated, reopening one is a click on
  * that one, and an ended conversation can be read without being reopened. Only
  * one runs at a time — the launcher's rule — so a live conversation takes the
- * body over, exactly as the single session used to.
+ * body over except when a New door asks for the inline open-or-replace choice.
  */
 export function ProjectWorkspace({
   projectId,
@@ -58,7 +58,7 @@ export function ProjectWorkspace({
     if (newChatRequest > 0 && session) {
       setShowNewChat(true)
       onConsumeNewChatRequest?.()
-    }
+    } else if (!session) setShowNewChat(false)
   }, [newChatRequest, onConsumeNewChatRequest, session])
   // The conversation being read back, if any. A live session outranks it — the
   // terminal owns the body, whoever opened it and from wherever.
