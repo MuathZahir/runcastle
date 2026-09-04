@@ -29,8 +29,19 @@ Server start (from the feature worktree root):
         RUNCASTLE_WEB_DIST=<worktree>/apps/web/dist \
         bash -c 'set -a; . ~/.runcastle/.env; set +a; exec bun packages/server/src/bin/runcastle.ts serve'
 
-State left for the next walk (updated after walks B–F, 2026-09-04):
-**`greetings-pages` sits in review on lap 2** — 8/8 tickets done (lap 1: #1–#3
+Final fixture state (after walk G, 2026-09-04): **`greetings-pages` is
+shipped.** The scratch repo's `main` now carries `15388ae main: rebrand landing
+page` (the collision), `522c6a5` (the hand-resolved base-into-branch merge) and
+`116a3b4 Merge branch 'feature/greetings-pages'` (the ship). The standalone
+server was stopped at end of walk (was PID 62208 on :4612); relaunch it with the
+command below to re-walk. `doomed-run`, `cancel-me`, `empty-tickets` untouched.
+The scratch project is **noted, not torn down** — the shipped feature is the
+useful record for the confirm/grill sessions. A throwaway probe used to diagnose
+the ConflictCard click lives at
+`prototypes/walk-fixtures/probe-launch.ts`.
+
+Pre-walk-G state (updated after walks B–F, 2026-09-04):
+**`greetings-pages` sat in review on lap 2** — 8/8 tickets done (lap 1: #1–#3
 implementation, #4 a hand-seeded `review` ticket with a digest and a staged
 `walkthrough.webm`, #5–#6 fix tickets promoted from notes; lap 2: #7–#8 seeded
 by `seed-lap2.ts` and burned for real), 12 commits, no lap-2 review ticket.
@@ -517,3 +528,312 @@ tickets) and burned from the UI.
    burned in lap 2's run, counted in "Lap 1 landed 6".
 5. **Notes for triage are not lap-scoped**: the dialog's "7 open notes from the
    drive" mixes laps.
+
+## G. Conflict, merge and the shipped view — plus the two drive branches walk C/D left
+
+Walked 2026-09-04 on `greetings-pages` (still in lap 2, 8/8 done). Committed a
+colliding change to the scratch repo's `main` (`15388ae main: rebrand landing
+page` — rewrites the `<h1>` and footer of `index.html`, the same lines the
+feature branch styles), then merged from the UI. Screenshots `m01`–`m25` in
+`shots/`. **`DriveFailureCard` and `StopReviewDrive` (walk C dead end 4,
+unreached) are covered here too** — a broken `drive_setup_command` for the
+failure card, and a review-purpose drive started under a spoofed run identity
+(`X-Runcastle-Run` header, the socket `toolReviewDrive`/`requireRunIdentity`
+plug into) for the stop card.
+
+### The two drive branches (from walk C's "not reached")
+
+**DriveFailureCard** (`ReviewBody.tsx:875`, shots m02–m04). Set
+`drive_setup_command` to a missing script and Start test drive: the drive holds
+the branch but the setup command exits non-zero, and the failure gets the
+loudest card on the page — `DRIVE SETUP FAILED` · the command · "exited 1" · a
+`<pre>` with its output (`error: Script not found "definitely-missing-script"`)
+· **Fix drive**. The drive is deliberately left running (branch checked out).
+Fix drive opens a `drive-fix` session (m05–m06) that boots straight onto Claude
+Code's `Quick safety check: Is this a project you… trust?` prompt with a
+**Send briefing** nudge and "This terminal has not reported ready — answer
+anything waiting in it… then send the briefing." **The bar never learns the
+setup failed** (walk C dead end 2, confirmed for the failure path too): it still
+reads "Merge when it looks right" above a card saying the environment is down.
+
+**StopReviewDrive** (`ReviewBody.tsx:774`, shots m07–m08). When THIS feature's
+review drive holds the slot (`ownDrive?.purpose === 'review'`), the Test-drive
+card flips to `review agent driving` + "The review agent is driving this branch
+and writing what it finds as notes below. Watch, or stop the drive to take the
+wheel yourself." · **Stop the review drive**. Clicking Start test drive over it
+toasts "A test drive is already active — stop it first" (m09). Stop the review
+drive reclaims the slot (the stop is purpose-blind by design, so the human can
+take a review drive that a dead agent left holding the branch).
+
+### Merge dialog (F21) and Merge & ship over a conflict (F8)
+
+**F21 is closed** (shot m01). Merge & ship is no longer one-click — it opens
+`MergeFeatureDialog`, a *read-to-confirm* dialog (no type-to-arm): "Merge
+Greetings pages from `feature/greetings-pages` into `main`? This ships the
+feature." then **WHAT LANDS** as green check-rows — `changes 12 commits` ·
+`run succeeded · 8/8 tickets done` · `test drive taken` · `review agent no
+findings` — and a warnings box below (`• 7 open test-drive notes.`). Cancel /
+Esc / backdrop close it.
+
+**F8 — Merge & ship over an active conflict:**
+
+| Surface | Over a standing conflict |
+|---|---|
+| next-step bar primary | flips to **Resolve the merge conflict** (kick `MERGE CONFLICT`); Merge & ship demotes to a secondary **Retry Merge & ship** (`next-step/review.ts:66`) |
+| nothing is disabled | Retry Merge & ship, Start test drive, Address notes, Iterate all stay live (decisions 2b/3 — a disabled Merge & ship deadlocked resolutions runcastle could not see) |
+| Retry Merge & ship dialog | opens the **same all-green MergeFeatureDialog** — its only warning is still "7 open test-drive notes", it **does not mention the standing conflict** (verified: `mentionsConflict: false`). It just re-runs the merge, which re-emits a fresh `merge.conflict` and toasts "merge conflict in 1 file — resolve below and retry" |
+
+So F8's "the one trusted button re-runs a merge that can't land" is fixed at the
+*bar* (resolve is primary), but the retry dialog itself is blind — a human who
+reads only the dialog sees an all-green "what lands" over a branch that will
+conflict again.
+
+### ConflictCard (`ReviewBody.tsx:810`, shots m10–m11, m18)
+
+After a conflicted merge: `MERGE CONFLICT / recorded Ns ago` · "Merging `main`
+into `feature/greetings-pages` hit conflicts. An agent can merge the base into
+this branch in the talk worktree, resolve with full spec context, and commit —
+then retry Merge & ship." · the conflicting file list (`index.html`) ·
+**Resolve with agent**. The F8 stale-date fix is present (a relative timestamp,
+never a bare red panel) — but a **copy bug**: a freshly re-emitted conflict
+reads `recorded now ago` (`relTime(now)` → "now", then " ago" is appended).
+
+Resolve with agent (m13–m17) launches a `revisit` session (purpose
+`resolve-conflict`, `purposeData {mergeFrom, mergeInto}`) whose cwd is the talk
+worktree already on the feature branch — and it too boots onto Claude Code's
+trust prompt. With a live session the button and the bar both become **End
+session & resolve** and show `One terminal per feature — your live session will
+be closed to open the resolve session.` (decisions #10, verified).
+
+The clear-the-card mechanism (`hooks.ts:319 noteResolvedMerge` → `merge.resolved`
+→ `unresolvedMergeConflict` returns null): on the resolve session's END the
+server probes `isAncestor(mergeFrom, mergeInto)` in the worktree and, only if the
+merge actually landed, emits `merge.resolved`. It is **best-effort — teardown
+outranks detection**: I ended a resolve session before its merge was committed
+and the card stood (no event), exactly as designed; the always-enabled Retry
+Merge & ship is the human's guaranteed way through. Resolving the merge in the
+worktree by hand and then Retry Merge & ship merged cleanly and shipped
+(`116a3b4 Merge branch 'feature/greetings-pages'` on `main`).
+
+### The next-step bar layout breaks while the conflict card is up
+
+Shots m10, m11, m18: with the ConflictCard rendered, the next-step bar's
+kick/title/desc column collapses to a **one-word-per-line** ribbon ("Resolve /
+the / merge / conflict / Merging / main / in / hit / conflicts. …") down the
+left margin while the action buttons keep their row. A real layout break, not a
+copy issue — the bar is unreadable in the exact state that most needs reading.
+
+### Shipped view (`ShippedBody.tsx`, shots m19, m22, m25)
+
+A clean merge advances to `shipped`. The body is a calm hero: green check ·
+**Shipped to main** · `feature/greetings-pages · merged now ago` · "The branch
+is merged and the pipeline is complete. The full history lives in the Activity
+tab." The next-step card reads `SHIPPED / Shipped to main / The branch is merged
+and the pipeline is complete. Ask a question anytime.` · **Ask a question**; the
+gate rail reads "Shipped — no gates left."
+
+- **Copy bug (again):** `merged now ago` — `relTime(shippedAt)` → "now", then
+  " ago" appended, on the hero and matching the conflict card's "recorded now
+  ago". `shippedAt` reads `feature.shipped` correctly (the fix its own comment
+  documents), so this is purely the "now" + " ago" concatenation.
+- **The lap banner still narrates on a shipped feature:** `LAP 2 / Iterate sent
+  this feature back through the pipeline… Lap 1 landed 6 tickets` renders above
+  the shipped hero (walk F dead end 3 carries all the way into shipped).
+
+### The outcome doc (`the-work-record-gets-thick`)
+
+`docs/features/greetings-pages/outcome.md` is committed to the branch (Knowledge
+rail: `Outcome — Greetings pages`). It is `# Outcome — Greetings pages` + the
+one-line feature summary + `Shipped: 2026-09-04 · Lap: 2` + **one section per
+ticket, all eight, laps mixed** (`## 1.`…`## 8.`), each carrying the burner's
+own `# Ticket N` / What was done / Surprises / Left undone verbatim.
+
+- It was committed at `1bba73d runcastle: outcome for greetings-pages`, which is
+  a **parent of the merge** — so the `Shipped:` date is stamped and the doc
+  written *before* the branch actually reached `main`. On a merge that then
+  conflicts (as this one did on the first attempt), the outcome doc claims
+  shipped while the feature is still stuck in review.
+- It reproduces the burner-digest noise wholesale ("Surprises: None." · "Left
+  undone: Nothing." ×8) — the same undigested wall the run view and review
+  landing show (walk A dead end 6, walk B dead end 1), now the permanent record.
+
+### Read-only review view on the shipped feature (shots m20–m21)
+
+Clicking the `review` stepper on a shipped feature opens the read-only
+retrospective (`READ-ONLY / You're viewing the review phase. · Back to shipped
+→`). The **`ux-issues` "left undone" item is confirmed live**:
+
+1. **The ConflictCard is still rendered, with its live "Resolve with agent"
+   button** (m20). The `readonly` flag threads into `PlannedNextLapCard`,
+   `OpenDefects`, the notes checkboxes (disabled) and the walkthrough (Annotate
+   gone) — but the conflict card at `ReviewBody.tsx:169` is gated only on
+   `conflict &&`, never on `readonly`, so a merge conflict that shipped-through
+   is shown as if still actionable in a history view. (The conflict was cleared
+   before ship in my walk, so the card is absent on *this* shipped feature's
+   review view — it appears only while a conflict still stands. But the code
+   offers the live action regardless of `readonly`, which is the finding.)
+2. The **Test-drive card still says "Start it from the next step — the merge
+   gate wants a human behind the wheel"** (m21) — a live instruction rendered in
+   a read-only view.
+3. The cross-lap vouching (walk F) is **frozen into the record**: the read-only
+   Summary shows "No review summary this lap" beside a green review row and
+   lap-1 walkthrough, preserved as the feature's permanent review history.
+
+### The "Ask a question" Q&A terminal (shots m22–m25)
+
+Ask a question spawns a `qa` session — and, like every other session spawn on
+this surface, **it opens on Claude Code's trust prompt** (`Quick safety check…
+No, exit / Yes, I trust this folder`). It renders under the shipped hero
+(`shippedQaSessions`).
+
+- **An ended Q&A leaves no trace.** `shippedQaSessions` keeps a conversation only
+  while `status !== 'ended' || !!ccSessionId`. A session the human opened and
+  closed without it ever capturing a transcript (trust prompt unanswered)
+  **vanishes on reload** (verified m25 — the hero returns to bare "Ask a
+  question"). There is no list of questions asked; each Q&A is ephemeral.
+
+### Dead ends / gaps (conflict, merge, shipped)
+
+1. **The next-step bar collapses to one-word-per-line** whenever the ConflictCard
+   is up — the bar is unreadable in the state that most needs reading.
+2. **The Retry-Merge-&-ship dialog is blind to the standing conflict** — an
+   all-green "what lands" over a branch that will re-conflict; its only warning
+   is the open-notes count.
+3. **`recorded now ago` / `merged now ago`** — the conflict card's timestamp and
+   the shipped hero both append " ago" to `relTime`'s "now".
+4. **The lap banner narrates a shipped feature** (walk F dead end 3, into
+   shipped).
+5. **The outcome doc is written and dated at the pre-merge commit**, so it claims
+   `Shipped:` while a conflicted merge is still stuck in review, and it reprints
+   the burner-digest noise verbatim as the permanent record.
+6. **The read-only review view offers a live conflict action** (`ux-issues`
+   confirmed) — the conflict card is gated on `conflict &&`, never on `readonly`
+   — and its Test-drive card gives a live "start it from the next step"
+   instruction.
+7. **Every session this surface spawns boots onto Claude Code's trust prompt** —
+   resolve-conflict, drive-fix, and Ask-a-question all make the human's first
+   act "Yes, I trust this folder" (walk E's resolve/drive-fix, and the shipped
+   Q&A), the same friction walk D found for the lap session.
+8. **An ended Q&A conversation disappears** — no record of what was asked or
+   answered survives a reload.
+9. **DriveFailureCard leaves the bar out of sync** — "Merge when it looks right"
+   over a card that says the environment is down (same shape as walk C dead
+   end 2).
+
+## Dead ends / gaps found in the walk — the whole flow (A–G)
+
+Consolidated across all three walks. Each item names its section; the priority
+loop (annotation) is starred.
+
+**The break (★ priority, walk D):**
+1. **The second stroke crashes the whole feature view** (D). `startStroke` reads
+   `e.currentTarget.getBoundingClientRect()` inside a lazily-run state updater;
+   any stroke after the first lands on `null.getBoundingClientRect()` and drops
+   the feature to the error boundary. A circle-plus-arrow is impossible; one
+   single-stroke annotation per page load is the ceiling. This is the human's
+   "doesn't work".
+
+**Player + annotation ergonomics (★ area, walk D):**
+2. No loading state and no error state — a 20-min recording (31 s to metadata)
+   and a corrupt file look identical to a healthy player still loading; play is
+   "refused" via toast on a broken file.
+3. The frame's top sits under the sticky next-step bar whenever the controls are
+   in view; the video is sixth on the page and never fully visible with its
+   controls in a 1000 px viewport.
+4. No frame accuracy on a long recording (2 s per slider pixel at 20 min); slider
+   arrows move 0.05 s; no play/pause, frame-step or seek shortcuts anywhere.
+5. Save is gated on text (a drawing alone can't be saved); one-line note input;
+   Escape/Cancel discard a drawing silently, and Escape is bound inside the very
+   text box being typed in.
+6. Pen is 2.5 px, one colour, no shapes/arrows/eraser; a text-only annotation is
+   indistinguishable from a drawn one.
+7. Jump-to-moment moves the playhead but never scrolls the player into view;
+   editing an annotated note drops its picture and timestamp; Delete is one
+   unconfirmed click; the thumbnail opens the raw PNG in a new tab.
+
+**Triage (walk E):**
+8. Batch-promote appends no review ticket (`ux-issues` dec. 9, confirmed) — a
+   fix batch would burn and return to review unreviewed.
+9. Triage is blind to the evidence: the Address-notes dialog shows text + author
+   only, no thumbnail, timestamp or jump — the picture that justified the note is
+   invisible where the promote decision is made.
+10. Ticket titles are the note text truncated with a trailing "…" in the title.
+11. Iterate over pending fix tickets is silent; a failed Iterate leaves no trace
+    on the page beyond the Activity feed; notes for triage are not lap-scoped.
+
+**Review landing / cross-lap vouching (walks B, F):**
+12. The digest wall is the first thing on the page — three burner digests push
+    the four check rows (incl. the amber "no review ran this lap") off the first
+    screen; the one line the card exists to shout is last.
+13. From lap 2 the review-agent row and the walkthrough card vouch for lap 1's
+    review beside a correctly lap-scoped account block (server: `reviewOutcome`/
+    `reviewChecks`/`reviewWalkthroughUrl` are cross-lap, `lapAccount` is not);
+    `NO_REVIEW_ROW` can never fire again.
+14. "tickets 4/4 / 8/8 done" counts the review ticket as a delivered ticket;
+    "0 runs" on a feature with a succeeded run; a stale "Session ended — captured
+    to Knowledge" card for a lap session that captured nothing.
+
+**Test drive (walks C, E, G):**
+15. Open app is below the fold; the bar doesn't know when nothing started (no dev
+    command) or when setup failed (DriveFailureCard); the explainer disappears
+    once live.
+
+**Run view (walk A):**
+16. Windows long-path fragility kills a burn in ~1 s with a raw git/docker error;
+    a failed run has no exit but retry (a permanently-failing ticket loops); Cancel
+    run is one unconfirmed click; stop/cancel outcomes wear the same red `failed`
+    chip as a crash; blank agent pane during container boot; the burner protocol
+    (`<promise>COMPLETE</promise>`, sandbox paths) leaks into the transcript; a
+    "made no commits" verdict contradicts a confident transcript; no way back to
+    an old run.
+
+**Laps (walk F):**
+17. Burn N counts and burns every pending ticket across laps with no lap grouping
+    in the run view; the lap banner is a past-tense fiction on arrival and its
+    "landed N" drifts as older laps' tickets burn later; lap-1 fix tickets ride
+    into lap 2 silently.
+
+**Conflict / merge / shipped (walk G):**
+18. The next-step bar collapses to one-word-per-line while the ConflictCard is
+    up; the Retry-Merge dialog is blind to the standing conflict; `recorded now
+    ago` / `merged now ago` copy bug; the lap banner narrates a shipped feature;
+    the outcome doc is written/dated at the pre-merge commit and reprints the
+    burner-digest noise; the read-only review view offers a live conflict action
+    and a live "start the drive" instruction (`ux-issues` confirmed); every
+    session spawn boots onto Claude Code's trust prompt; an ended Q&A leaves no
+    trace.
+
+## styles.css rules this flow owns (by prefix)
+
+`apps/web/src/styles.css` at charting: **3337 lines, 496 distinct class
+selectors.** The rules this flow's surface owns (RunBody, ReviewBody, the player
+and annotation, notes/triage, laps, merge/conflict, shipped) counted by class
+prefix — a prefix followed by `-`, `_` or a selector boundary, distinct
+selectors:
+
+| Prefix | Selectors | Belongs to |
+|---|---:|---|
+| `.drive*` (incl. `.drive-failure*` 3, `.drive-pane*` 6, `.drive-stop*` 1) | 17 | test drive (C, G) |
+| `.lane*` | 15 | run view ticket lanes (A) |
+| `.finding*` | 10 | review defects (B) — plus `.findings*` 5 |
+| `.agent*` | 14 | run transcript (A) |
+| `.notes*` 12 · `.note*` 10 | 22 | notes panel + note rows (D, E) |
+| `.player*` | 7 | walkthrough player (D) |
+| `.shipped*` | 7 | shipped body (G) |
+| `.conflict*` | 6 | conflict card (G) |
+| `.lap*` | 6 | lap banner + account (F) — plus `.planned-lap*` 2 |
+| `.merge*` | 5 | merge dialog (G) |
+| `.run*` | 5 | run body (A) |
+| `.review*` | 5 | review body shell (B) |
+| `.walkthrough*` | 3 | walkthrough card (D) |
+| `.annotate*` | 1 | annotation overlay (D) — most annotation CSS is under `.player*` |
+
+**Flow-owned subtotal (all the prefixes above): ~130 distinct class
+selectors** of the file's 496. On top of those, this surface *uses* but does not
+solely own ~28 shared shell selectors — `.peek*` (7, the dialog primitive the
+merge dialog rides), `.nextstep*` (12, the next-step bar), `.session-ended*` (6),
+`.session-briefing*` (2), `.session-checkin*` (1); their retirement is
+coordinated with whichever flow lands the shell, not owned here. The CSS-retirement
+waypoint (10) decides the ~130 → Tailwind, and whether the ~28 shared + the
+remaining ~340 non-flow selectors mean `styles.css` survives this flow or is
+finally deleted.
