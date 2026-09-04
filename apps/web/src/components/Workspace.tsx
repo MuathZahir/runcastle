@@ -375,6 +375,8 @@ export function Workspace({
   }
   const effective = effectivePhase(feature, viewedPhase)
   const readonly = isReadonlyView(feature, effective)
+  const twoPane =
+    !isDraft && (effective === 'ideation' || effective === 'spec' || effective === 'tickets')
   // What each finished phase produced (decision 10) — one derivation, read by
   // the stepper's done-step tooltips and by the read-only banner, so the two can
   // never tell a different story about the same phase.
@@ -548,7 +550,11 @@ export function Workspace({
           {isDraft ? <span className="tag is-draft">draft</span> : <PhaseTag phase={feature.phase} />}
           <span className="ws-title">{feature.title}</span>
           <span className="ws-title-spacer" />
-          <button className="ws-branch" title="Copy branch name" onClick={() => copyText(feature.branch, toast)}>
+          <button
+            className="inline-flex items-center gap-1.5 border-0 bg-transparent p-0 font-mono text-xs text-text-3 transition-colors duration-(--dur-1) hover:text-text"
+            title="Copy branch name"
+            onClick={() => copyText(feature.branch, toast)}
+          >
             <IconBranch size={11} />
             {feature.branch}
           </button>
@@ -643,8 +649,14 @@ export function Workspace({
         />
       )}
 
-      <div className="ws-body">
-        <div className="ws-body-inner" key={isDraft ? 'draft' : effective}>
+      {/* Ideation, spec and tickets fill the body rather than scroll it
+          (decisions 6, 11): each pane scrolls itself, so for them the body stops
+          being the scroll container and stops centering on --content-max. */}
+      <div className={twoPane ? 'flex min-h-0 flex-1 overflow-hidden' : 'ws-body'}>
+        <div
+          className={twoPane ? 'flex min-h-0 min-w-0 flex-1' : 'ws-body-inner'}
+          key={isDraft ? 'draft' : effective}
+        >
           {/* Status wins over phase here (decision 9): a draft is created at
               `ideation`, and the grill body would offer a terminal on a feature
               that has no branch to open one against. */}

@@ -31,8 +31,8 @@ describe('LapSections', () => {
 
   it('renders a lap-1 feature flat, with no lap header', () => {
     const html = render([row(1, 'a'), row(1, 'b')], 1)
-    expect(html).not.toContain('lap-group')
-    expect(html).toContain('<span>a</span><span>b</span>')
+    expect(html).not.toContain('Lap 1')
+    expect(html).toBe('<span>a</span><span>b</span>')
   })
 
   /**
@@ -52,8 +52,26 @@ describe('LapSections', () => {
     expect(html).toContain('Lap 1')
     expect(html).toContain('Lap 2')
     // Earlier laps are a click away; the current one is always open.
-    expect(html).toMatch(/<details class="lap-group group"[^>]*>.*Lap 1/)
-    expect(html).toMatch(/<section class="lap-group"[^>]*>.*Lap 2/)
+    expect(html).toMatch(/<details class="group"[^>]*>.*Lap 1/)
+    expect(html).toMatch(/<section>.*Lap 2/)
+  })
+
+  /**
+   * The ledger frames its rows, so its lap headers are bands on the rows'
+   * gutter. That placement used to be a legacy rule reaching in through a hook
+   * class; the surface passes the utilities now.
+   */
+  it('puts a surface`s own utilities on every lap header', () => {
+    const html = renderToStaticMarkup(
+      createElement(LapSections<Row>, {
+        groups: groupByLap([row(1, 'a'), row(2, 'b')], 2),
+        currentLap: 2,
+        meta: () => '',
+        headClassName: 'bg-panel-3 px-3',
+        children: (visible) => visible.map((r) => createElement('span', { key: r.id }, r.id)),
+      }),
+    )
+    expect(html.match(/bg-panel-3 px-3/g)).toHaveLength(2)
   })
 
   it('renders nothing when there are no rows at all', () => {

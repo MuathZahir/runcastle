@@ -54,8 +54,10 @@ export function TicketLedger({ tickets, currentLap, roster, readonly = false, do
     {lapTickets.length === 0 && (readonly
       ? <EmptyState icon={<IconDoc size={16} />} title="No tickets in this lap." compact />
       : <EmptyState icon={<IconDoc size={16} />} title="No tickets yet" hint="The session breaks the spec into tickets — they appear here as they land." compact />)}
-    {tickets.length > 0 && <div className="min-h-0 overflow-y-auto">
-      <LapSections groups={groupByLap(tickets, currentLap)} currentLap={currentLap} meta={(group) => `${group.rows.filter((ticket) => ticket.status === 'done').length}/${group.rows.filter((ticket) => ticket.status !== 'cancelled').length} done`}>
+    {/* Lap headers are bands on the rows' own gutter, and one lap is divided
+        from the next — the frame the ledger puts around LapSections. */}
+    {tickets.length > 0 && <div className="min-h-0 overflow-y-auto [&>*+*]:border-t [&>*+*]:border-hairline">
+      <LapSections groups={groupByLap(tickets, currentLap)} currentLap={currentLap} headClassName="bg-panel-3 px-3" meta={(group) => `${group.rows.filter((ticket) => ticket.status === 'done').length}/${group.rows.filter((ticket) => ticket.status !== 'cancelled').length} done`}>
         {(rows) => rows.map((ticket) => <TicketRow key={ticket.id} ticket={ticket} roster={roster} readonly={readonly} onEdit={onEdit} onModel={onModel} onCancel={onCancel} onCopySha={onCopySha} />)}
       </LapSections>
     </div>}

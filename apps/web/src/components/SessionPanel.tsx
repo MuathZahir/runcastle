@@ -7,6 +7,7 @@ import { useToast } from '../lib/toast'
 import { sessionAgentName } from '../lib/vocabulary'
 import type { FeatureFull } from '../lib/api'
 import { type KickoffTrouble } from '../lib/feature-ui'
+import { Button } from '../ui'
 import { EndSessionButton } from './EndSessionButton'
 import { ErrorBoundary } from './ErrorBoundary'
 import { TerminalView } from './TerminalView'
@@ -99,7 +100,11 @@ function CheckInHint({ session, events }: { session: Session; events: EventRow[]
   // view on its own — the panel is otherwise driven by session and event data.
   const now = useNow(CHECK_IN_TICK_MS)
   if (!awaitingCheckIn(session, events, now)) return null
-  return <div className="session-checkin-hint">agent hasn’t checked in yet</div>
+  return (
+    <div className="border-b border-hairline px-3 py-1.5 text-xs text-text-3">
+      agent hasn’t checked in yet
+    </div>
+  )
 }
 
 /** The wall clock, re-read every `intervalMs` so age-derived UI keeps up. */
@@ -150,20 +155,20 @@ function BriefingBanner({
   if (!trouble) return null
 
   return (
-    <div className="session-briefing-warn">
-      <span className="session-briefing-text">
+    <div className="flex items-center gap-3 border-b border-warn/35 bg-warn/8 px-3 py-2 text-sm text-warn">
+      <span className="flex-1">
         {trouble === 'not-ready'
           ? 'This terminal has not reported ready — answer anything waiting in it (a trust or resume prompt), then send the briefing.'
           : `The opening briefing never reached ${sessionAgentName(session)} — this session has not been told what it is here for.`}
       </span>
-      <button
+      <Button
         type="button"
-        className="btn btn-xs btn-ghost"
+        className="h-7 text-xs"
         disabled={resend.isPending}
         onClick={() => resend.mutate({ sessionId: session.id })}
       >
         {resend.isPending ? 'Sending…' : 'Send briefing'}
-      </button>
+      </Button>
     </div>
   )
 }
