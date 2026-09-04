@@ -15,15 +15,14 @@ export function Knowledge({ featureId, docs }: { featureId: string; docs: DocSum
     <section className="flex flex-col gap-2">
       <div className="text-xs font-semibold tracking-[0.09em] text-text-3 uppercase">Knowledge</div>
       {docs.length === 0 ? (
-        <p className="text-sm leading-relaxed text-pretty text-text-3">
+        <div className="text-sm leading-relaxed text-pretty text-text-3">
           Docs the sessions write — decisions, the spec, the map — collect here.
-        </p>
+        </div>
       ) : (
-        <ul className="-mx-2 m-0 list-none p-0">
+        // No preflight (apps/web/STYLE.md): the list states its own reset.
+        <ul className="m-0 list-none p-0">
           {docs.map((d) => (
             <li key={d.relPath}>
-              {/* No preflight (apps/web/STYLE.md): the button names its own face
-                  and size, and the list its own reset. */}
               <button
                 className="flex w-full cursor-pointer items-center gap-2 rounded-sm border-0 bg-transparent px-2 py-2 text-left font-sans text-sm hover:bg-panel-3"
                 onClick={(event) => {

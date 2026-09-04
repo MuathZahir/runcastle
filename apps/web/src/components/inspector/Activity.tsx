@@ -23,9 +23,9 @@ export function Activity({ events }: { events: EventRow[] }) {
   const recent = events.slice(-FEED_DEPTH).reverse()
   if (recent.length === 0)
     return (
-      <p className="text-sm leading-relaxed text-pretty text-text-3">
+      <div className="text-sm leading-relaxed text-pretty text-text-3">
         Everything that happens to this feature shows up here.
-      </p>
+      </div>
     )
   return (
     <div className="flex flex-col">
@@ -90,7 +90,9 @@ export function ActivityRow({ event }: { event: EventRow }) {
           <div className="text-sm leading-snug text-text-2">{line.summary}</div>
         )}
         {open && line.detail && (
-          <pre className="mt-1.5 max-h-[260px] overflow-auto rounded-md border border-hairline bg-panel-inset px-2 py-1.5 font-mono text-xs leading-relaxed break-words whitespace-pre-wrap text-text-2">
+          // `pre` arrives with the UA's margin and 13.33px face — no preflight
+          // (apps/web/STYLE.md), so the detail box states both.
+          <pre className="m-0 mt-1.5 max-h-[260px] overflow-auto rounded-md border border-hairline bg-panel-inset px-2 py-1.5 font-mono text-xs leading-relaxed break-words whitespace-pre-wrap text-text-2">
             {line.detail}
           </pre>
         )}
