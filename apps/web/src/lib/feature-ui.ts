@@ -27,4 +27,5 @@ export type {
   WaypointGroupKey,
 } from './feature-ui/map'
 export * from './feature-ui/session'
+export * from './feature-ui/phase-summary'
 export * from './feature-ui/next-step'
