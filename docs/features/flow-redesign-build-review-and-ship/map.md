@@ -13,3 +13,6 @@ Constraints from the brief: reflect, don't change, the burner/review workflows (
 ## Not yet specified
 
 ## Out of scope
+
+- Claude Code's "trust this folder" prompt on spawned sessions (lap, resolve-conflict, drive-fix, Q&A) — the human hit it only once, not routinely; parked in decision 28, revisit if it recurs.
+- Distinguishing a text-only annotation from a drawn one in the notes list — the bare-frame PNG makes the note real evidence either way (decision 28).
