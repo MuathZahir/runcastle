@@ -69,23 +69,29 @@ export function CurrentGate({ gate, phase }: { gate: GateState; phase: Phase }) 
  * every feature, every time — a sentence you need once and then read forever.
  * Help on demand is the text policy the settings and chat flows already locked.
  */
+/** The ⓘ itself. No preflight, so it states its own face, size and background. */
+const INFO_MARK =
+  'group/info grid size-4 shrink-0 cursor-help place-items-center rounded-full border ' +
+  'border-hairline-strong bg-transparent p-0 font-sans text-xs leading-none text-text-3 ' +
+  'hover:border-text-3 hover:text-text'
+
+/**
+ * The sentence it holds. Anchored to the caption row rather than the mark, and
+ * opening DOWNWARD, so the rail's own `overflow-y-auto` cannot clip it.
+ */
+const INFO_TIP =
+  'pointer-events-none absolute top-full left-0 z-30 mt-2 hidden w-[230px] rounded-md border ' +
+  'border-hairline-strong bg-panel-3 px-3 py-2 text-sm leading-snug font-normal tracking-normal ' +
+  'text-pretty text-text-2 normal-case shadow-menu group-hover/info:block group-focus-visible/info:block'
+
 function CurrentGateCaption() {
   return (
     <div className="relative flex items-center gap-1.5">
       <span className="text-xs font-semibold tracking-[0.09em] text-text-3 uppercase">
         Current gate
       </span>
-      {/* No preflight (apps/web/STYLE.md), so the button states its own face,
-          size and background rather than inheriting the UA's. */}
-      <button
-        type="button"
-        className="group/info grid size-4 shrink-0 cursor-help place-items-center rounded-full border border-hairline-strong bg-transparent p-0 font-sans text-xs leading-none text-text-3 hover:border-text-3 hover:text-text"
-        aria-label="What a gate is"
-      >
-        i
-        <span className="pointer-events-none absolute top-full left-0 z-30 mt-2 hidden w-[230px] rounded-md border border-hairline-strong bg-panel-3 px-3 py-2 text-sm leading-snug font-normal tracking-normal text-pretty text-text-2 normal-case shadow-menu group-hover/info:block group-focus-visible/info:block">
-          {GATE_EXPLAINER}
-        </span>
+      <button type="button" className={INFO_MARK} aria-label="What a gate is">
+        i<span className={INFO_TIP}>{GATE_EXPLAINER}</span>
       </button>
     </div>
   )
@@ -116,9 +122,7 @@ function GateCard({
         <span className="font-mono text-xs text-text-4">{gateId}</span>
       </div>
       <div className="text-sm leading-relaxed text-pretty text-text-2">{description}</div>
-      <div
-        className={`flex items-center gap-2 text-sm ${satisfied ? 'text-ok' : 'text-needs'}`}
-      >
+      <div className={`flex items-center gap-2 text-sm ${satisfied ? 'text-ok' : 'text-needs'}`}>
         <span className="size-1.5 shrink-0 rounded-full bg-current" />
         <span>{satisfied ? 'Ready to advance' : (reason ?? 'Blocked')}</span>
       </div>

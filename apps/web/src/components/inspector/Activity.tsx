@@ -30,7 +30,11 @@ export function Activity({ events }: { events: EventRow[] }) {
   return (
     <div className="flex flex-col">
       {recent.map((e) =>
-        isLapDivider(e.type) ? <LapDivider key={e.id} event={e} /> : <ActivityRow key={e.id} event={e} />,
+        isLapDivider(e.type) ? (
+          <LapDivider key={e.id} event={e} />
+        ) : (
+          <ActivityRow key={e.id} event={e} />
+        ),
       )}
     </div>
   )
