@@ -206,7 +206,7 @@ export function phaseSessions({
   full,
   events,
 }: {
-  full: Pick<FeatureFull, 'feature' | 'sessions' | 'tickets' | 'waypoints'>
+  full: Pick<FeatureFull, 'sessions' | 'tickets' | 'waypoints'>
   events: readonly EventRow[]
 }): PhaseSessionRow[] {
   return ideationSessions(full).map((session) => {
