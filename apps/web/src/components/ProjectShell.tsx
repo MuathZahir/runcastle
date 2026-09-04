@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { LogoMark } from '../icons'
 import { trpc } from '../trpc'
-import { useWorkspace, type DriveState } from '../lib/workspace'
+import { inspectorCollapsedForPhase, useWorkspace, type DriveState } from '../lib/workspace'
 import type { ProjectNavApi } from '../lib/use-project-nav'
 import { useProjectTalk } from '../lib/use-project-talk'
 import { useLivePoll } from '../lib/live'
@@ -73,16 +73,18 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
   }, [setCmdk])
 
   const view = workspaceView({ ...ws, featureCount: list.data?.length ?? 0, prepared })
-  const showInspector = showsInspector(view, ws.inspectorCollapsed)
+  const selectedPhase = list.data?.find((feature) => feature.id === selectedFeatureId)?.phase
+  const inspectorCollapsed = inspectorCollapsedForPhase(ws.inspectorPreference, selectedPhase)
+  const showInspector = showsInspector(view, inspectorCollapsed)
 
   const shell = (
-    <div className={`shell${ws.inspectorCollapsed ? ' inspector-collapsed' : ''}`}>
+    <div className={`shell${inspectorCollapsed ? ' inspector-collapsed' : ''}`}>
       <Titlebar
         nav={nav}
         onOpenCmdk={() => ws.setCmdk(true)}
         onOpenSettings={() => ws.openSettings()}
         onToggleInspector={ws.toggleInspector}
-        inspectorCollapsed={ws.inspectorCollapsed}
+        inspectorCollapsed={inspectorCollapsed}
       />
 
       <div className="shell-body">
@@ -136,6 +138,8 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
               guidance={ws.guidance}
               mapRailCollapsed={ws.mapRailCollapsed}
               onToggleMapRail={ws.toggleMapRail}
+              artifactPaneCollapsed={ws.artifactPaneCollapsed}
+              onToggleArtifactPane={ws.toggleArtifactPane}
               driving={driving}
               onDriveChange={setDriving}
             />

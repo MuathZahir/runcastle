@@ -34,7 +34,7 @@ import { IconBranch } from '../icons'
 import { AddressNotesDialog } from './AddressNotesDialog'
 import { MergeFeatureDialog } from './MergeFeatureDialog'
 import { DraftBody } from './bodies/DraftBody'
-import { GrillBody } from './bodies/GrillBody'
+import { GrillBody } from './bodies/grill/GrillBody'
 import { ReviewBody } from './bodies/ReviewBody'
 import { ShippedBody } from './bodies/ShippedBody'
 import { TicketsBody } from './bodies/TicketsBody'
@@ -62,6 +62,8 @@ export function Workspace({
   guidance,
   mapRailCollapsed,
   onToggleMapRail,
+  artifactPaneCollapsed,
+  onToggleArtifactPane,
   driving,
   onDriveChange,
 }: {
@@ -71,6 +73,8 @@ export function Workspace({
   guidance: boolean
   mapRailCollapsed: boolean
   onToggleMapRail: () => void
+  artifactPaneCollapsed: boolean
+  onToggleArtifactPane: () => void
   driving: DriveState | null
   onDriveChange: (d: DriveState | null) => void
 }) {
@@ -640,6 +644,8 @@ export function Workspace({
               readonly={readonly}
               mapRailCollapsed={mapRailCollapsed}
               onToggleMapRail={onToggleMapRail}
+              artifactPaneCollapsed={artifactPaneCollapsed}
+              onToggleArtifactPane={onToggleArtifactPane}
             />
           )}
         </div>
@@ -657,6 +663,8 @@ function PhaseBody({
   readonly,
   mapRailCollapsed,
   onToggleMapRail,
+  artifactPaneCollapsed,
+  onToggleArtifactPane,
 }: {
   effective: Phase
   full: FeatureFull
@@ -666,6 +674,8 @@ function PhaseBody({
   readonly: boolean
   mapRailCollapsed: boolean
   onToggleMapRail: () => void
+  artifactPaneCollapsed: boolean
+  onToggleArtifactPane: () => void
 }) {
   switch (effective) {
     case 'ideation':
@@ -677,6 +687,8 @@ function PhaseBody({
           readonly={readonly}
           mapRailCollapsed={mapRailCollapsed}
           onToggleMapRail={onToggleMapRail}
+          artifactPaneCollapsed={artifactPaneCollapsed}
+          onToggleArtifactPane={onToggleArtifactPane}
         />
       )
     case 'tickets':

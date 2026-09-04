@@ -254,7 +254,6 @@ export function TicketsBody({
         featureId={featureId}
         sessions={full.data.sessions}
         className="tickets-session"
-        showResume={!readonly}
       />
 
       <div className="body-title">

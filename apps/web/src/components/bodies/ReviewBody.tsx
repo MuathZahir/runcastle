@@ -163,7 +163,6 @@ export function ReviewBody({
         featureId={feature.id}
         sessions={full.sessions}
         className="review-session"
-        showResume={!readonly}
       />
 
       {conflict && (

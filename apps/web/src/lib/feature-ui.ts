@@ -1,4 +1,5 @@
 export * from './feature-ui/creation'
+export * from './feature-ui/artifact'
 export * from './feature-ui/pipeline'
 export * from './feature-ui/sidebar'
 export * from './feature-ui/gates'
