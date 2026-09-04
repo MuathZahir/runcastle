@@ -50,18 +50,20 @@ describe('phaseSummary', () => {
         sessions: [
           session({ id: 'session-1' }),
           session({ id: 'session-2', kind: 'converge', createdAt: START + DAY }),
-          // Outside the window: the lap-2 session ran long after the first
-          // transition into spec.
-          session({ id: 'session-3', createdAt: START + 9 * DAY }),
-          // Never an ideation session, even inside the window.
-          session({ id: 'session-4', kind: 'qa', createdAt: START + DAY }),
+          // A later lap's ideation session shaped the idea too, long after the
+          // first transition into spec.
+          session({ id: 'session-3', lap: 2, createdAt: START + 9 * DAY }),
+          // A row written before `sessions` was stamped: undated, but it ran.
+          session({ id: 'session-4', kind: 'waypoint', createdAt: undefined }),
+          // Never an ideation session, whenever it ran.
+          session({ id: 'session-5', kind: 'qa', createdAt: START + DAY }),
         ] as FeatureFull['sessions'],
       }),
       events,
       decisions: '# Decisions\n\n## One\n\n## Two\n\n## Three\n',
     })
 
-    expect(summary).toBe('Ideation · 2d · 2 sessions · 3 decisions')
+    expect(summary).toBe('Ideation · 2d · 4 sessions · 3 decisions')
   })
 
   it('adds the waypoint count for a mapped feature', () => {
@@ -204,6 +206,23 @@ describe('phaseSessions', () => {
         duration: '24h 00m',
         fact: 'wrote spec, 2 tickets',
       },
+    ])
+  })
+
+  it('lists a session the feed cannot date rather than dropping it from the record', () => {
+    expect(
+      phaseSessions({
+        full: full({
+          sessions: [
+            session({ id: 'session-1', createdAt: undefined }),
+            session({ id: 'session-2', kind: 'converge', createdAt: undefined }),
+          ] as FeatureFull['sessions'],
+        }),
+        events: [],
+      }),
+    ).toEqual([
+      { id: 'session-1', name: 'Ideation session' },
+      { id: 'session-2', name: 'Converge session' },
     ])
   })
 })
