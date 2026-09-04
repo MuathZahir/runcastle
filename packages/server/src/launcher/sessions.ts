@@ -939,12 +939,12 @@ export function activeProjectSession(
 }
 
 /**
- * Every project-scoped session of this kind, newest first — the conversation
- * list behind `project.conversations`. Unlike {@link activeProjectSession} it
- * filters on nothing else: an ended conversation is still a conversation you can
- * read back, and one that never went live is still a row that says an attempt
- * was made. Ordered by the implicit sqlite `rowid`, which is insertion order and
- * so agrees with `createdAt` for every row that has one.
+ * Every project-scoped session of this kind, newest first — the rows behind
+ * `project.conversations`, which groups them into conversations and decides
+ * which are worth showing. Unlike {@link activeProjectSession} this filters on
+ * nothing else: an ended conversation is still a conversation you can read back.
+ * Ordered by the implicit sqlite `rowid`, which is insertion order and so agrees
+ * with `createdAt` for every row that has one.
  */
 export function projectSessions(
   ctx: AppCtx,
@@ -963,6 +963,15 @@ export function projectSessions(
 /** Cache a conversation's derived name on its row (see `services/conversations.ts`). */
 export function setSessionTitle(ctx: AppCtx, id: string, title: string): void {
   ctx.db.update(sessions).set({ title }).where(eq(sessions.id, id)).run()
+}
+
+/**
+ * Forget a cached name, putting the row back to deriving one on every read.
+ * The list clears the titles it can tell were derived by an older, worse
+ * derivation (see `junkTitle` in `services/conversations.ts`).
+ */
+export function clearSessionTitle(ctx: AppCtx, id: string): void {
+  ctx.db.update(sessions).set({ title: null }).where(eq(sessions.id, id)).run()
 }
 
 /**

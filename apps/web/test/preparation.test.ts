@@ -1,15 +1,14 @@
 import { describe, expect, it } from 'vitest'
+import { describeField, projectRows } from '../src/lib/settings'
 import {
   STALE_COMMIT_THRESHOLD,
-  describeField,
   describeFinding,
   isStale,
-  projectRows,
   relativeAge,
   unverifiedDriveKeys,
   verificationBadge,
   type FindingLike,
-} from '../src/lib/settings'
+} from '../src/lib/prep-findings'
 import type { SettingField, SettingsView } from '../src/lib/api'
 
 /**
@@ -136,7 +135,7 @@ describe('drive field presentation', () => {
 
     for (const row of rows) {
       expect(row.label).not.toBe(row.key)
-      expect(row.help.length).toBeGreaterThan(0)
+      expect(row.tooltip.length).toBeGreaterThan(0)
     }
     expect(rows.find((r) => r.key === 'verifyCommands')?.control).toBe('textarea')
   })

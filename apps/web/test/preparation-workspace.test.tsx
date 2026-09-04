@@ -68,7 +68,7 @@ describe('EstablishedFrame', () => {
   it('keeps finding context visible while evidence expands per finding', () => {
     render(<EstablishedFrame findings={[finding()]} />)
 
-    expect(screen.getByText('Verify commands')).toBeTruthy()
+    expect(screen.getByText('Verify')).toBeTruthy()
     expect(screen.getByText('verified', { selector: 'span' })).toBeTruthy()
     expect(screen.getByText(/Established in a conversation/)).toBeTruthy()
     const evidence = screen.getByText(/First line/)
@@ -76,10 +76,10 @@ describe('EstablishedFrame', () => {
     expect(evidence.className).not.toContain('py-[5px]')
     expect(evidence.parentElement?.className).toContain('py-[5px]')
 
-    fireEvent.click(screen.getByRole('button', { name: 'Show full evidence for Verify commands' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Show full evidence for Verify' }))
     expect(evidence.className).not.toContain('line-clamp-3')
     expect(
-      screen.getByRole('button', { name: 'Collapse evidence for Verify commands' }),
+      screen.getByRole('button', { name: 'Collapse evidence for Verify' }),
     ).toBeTruthy()
   })
 })

@@ -17,7 +17,8 @@ import { ProjectWorkspace } from './ProjectWorkspace'
 import { QuickForm } from './QuickForm'
 import { PreparationWorkspace } from './PreparationWorkspace'
 import { CommandPalette } from './CommandPalette'
-import { SettingsOverlay } from './SettingsOverlay'
+import { OpenSettingsProvider } from './settings/MessageWithSettingsLink'
+import { SettingsDialog } from './settings/SettingsDialog'
 
 /**
  * The runcastle IDE shell for a single project (app-redesign, multi-project #45).
@@ -32,6 +33,7 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
   const ws = useWorkspace(projectId)
   const { selectedFeatureId, projectSelected, select, selectProject, setCmdk } = ws
   const [driving, setDriving] = useState<DriveState | null>(null)
+  const [newChatRequest, setNewChatRequest] = useState(0)
   const list = trpc.feature.list.useQuery({ projectId }, { refetchInterval: useLivePoll() })
   // The project conversation, polled once here and read by the pinned rail row,
   // the project workspace and both "talk it through" doors.
@@ -54,7 +56,8 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
   // and the workspace's list is what you land on instead.
   const newChat = () => {
     selectProject()
-    talk.start()
+    if (talk.session) setNewChatRequest((request) => request + 1)
+    else talk.start()
   }
 
   // Global ⌘K / Ctrl-K → command palette.
@@ -72,12 +75,12 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
   const view = workspaceView({ ...ws, featureCount: list.data?.length ?? 0, prepared })
   const showInspector = showsInspector(view, ws.inspectorCollapsed)
 
-  return (
+  const shell = (
     <div className={`shell${ws.inspectorCollapsed ? ' inspector-collapsed' : ''}`}>
       <Titlebar
         nav={nav}
         onOpenCmdk={() => ws.setCmdk(true)}
-        onOpenSettings={() => ws.setSettings(true)}
+        onOpenSettings={() => ws.openSettings()}
         onToggleInspector={ws.toggleInspector}
         inspectorCollapsed={ws.inspectorCollapsed}
       />
@@ -108,7 +111,12 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
             {...(ws.preparing ? { onClose: ws.closePreparation } : {})}
           />
         ) : view === 'project' ? (
-          <ProjectWorkspace projectId={projectId} talk={talk} />
+          <ProjectWorkspace
+            projectId={projectId}
+            talk={talk}
+            newChatRequest={newChatRequest}
+            onConsumeNewChatRequest={() => setNewChatRequest(0)}
+          />
         ) : view === 'feature' && selectedFeatureId ? (
           // The feature view is the app's one unbounded render surface — it
           // renders whatever a feature's row, tickets and sessions say. Contain
@@ -156,7 +164,7 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
         features={list.data ?? []}
         selectedFeatureId={ws.selectedFeatureId}
         onSelect={ws.select}
-        onOpenSettings={() => ws.setSettings(true)}
+        onOpenSettings={() => ws.openSettings()}
         onOpenPreparation={ws.startPreparation}
         // The palette navigates, it never launches: this opens the project
         // workspace, where the conversation list decides new-versus-resume.
@@ -164,11 +172,20 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
         nav={nav}
       />
 
-      {ws.settingsOpen && (
-        <SettingsOverlay projectId={projectId} onClose={() => ws.setSettings(false)} />
+      {ws.settings && (
+        <SettingsDialog
+          projectId={projectId}
+          projectName={nav.currentProject?.name ?? ''}
+          location={ws.settings}
+          onClose={ws.closeSettings}
+        />
       )}
     </div>
   )
+
+  // Anything under the shell — a ticket's error, a burn lane — can turn a
+  // "Settings → Burns" pointer into a link that lands on the row it names.
+  return <OpenSettingsProvider open={ws.openSettings}>{shell}</OpenSettingsProvider>
 }
 
 /**

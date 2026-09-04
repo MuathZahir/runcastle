@@ -26,6 +26,7 @@ export const featureRouter = router({
         projectId: z.string(),
         title: z.string().min(1),
         oneLiner: z.string(),
+        brief: z.string().optional(),
         baseBranch: z.string().optional(),
         // Park it instead of starting it (decision 5): the form's "Save as
         // draft" button. No branch, no docs, no commit until Start.

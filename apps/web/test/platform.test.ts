@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  isAbsoluteRepoPath,
   isMacLike,
   isWindowsLike,
   modKeyLabel,
@@ -57,5 +58,47 @@ describe('repoPathPlaceholder', () => {
   it('looks like a posix path everywhere else', () => {
     expect(repoPathPlaceholder(MAC.platform, MAC.ua)).toBe('/path/to/your/repo')
     expect(repoPathPlaceholder(LINUX.platform, LINUX.ua)).toBe('/path/to/your/repo')
+  })
+})
+
+/**
+ * Decision 5 — a relative path used to reach the server, which resolved it
+ * against its own working directory and reported that back. What counts as
+ * absolute is a fact about the user's machine, so it is decided here.
+ */
+describe('isAbsoluteRepoPath', () => {
+  const onWindows = (p: string) => isAbsoluteRepoPath(p, WIN.platform, WIN.ua)
+  const onPosix = (p: string) => isAbsoluteRepoPath(p, LINUX.platform, LINUX.ua)
+
+  it('accepts a drive letter and a UNC share on windows', () => {
+    expect(onWindows('C:\\Users\\you\\code\\repo')).toBe(true)
+    expect(onWindows('c:/Users/you/code/repo')).toBe(true)
+    expect(onWindows('\\\\build\\share\\repo')).toBe(true)
+  })
+
+  it('rejects a relative path on windows, drive-relative included', () => {
+    expect(onWindows('code\\repo')).toBe(false)
+    expect(onWindows('..\\repo')).toBe(false)
+    expect(onWindows('C:repo')).toBe(false) // relative to the drive's own cwd
+    expect(onWindows('')).toBe(false)
+  })
+
+  // A leading slash is not a windows path: the drive it means is the server's
+  // guess, which is exactly the leak this check exists to close.
+  it('rejects a bare posix path on windows', () => {
+    expect(onWindows('/home/you/repo')).toBe(false)
+  })
+
+  it('accepts a leading slash and rejects relatives everywhere else', () => {
+    expect(onPosix('/home/you/repo')).toBe(true)
+    expect(onPosix('not-a-path')).toBe(false)
+    expect(onPosix('./repo')).toBe(false)
+    expect(onPosix('~/code/repo')).toBe(false) // the shell expands ~, we do not
+    expect(onPosix('')).toBe(false)
+  })
+
+  it('judges the path the user typed, not the whitespace around it', () => {
+    expect(onPosix('  /home/you/repo  ')).toBe(true)
+    expect(onWindows('  C:\\repo ')).toBe(true)
   })
 })
