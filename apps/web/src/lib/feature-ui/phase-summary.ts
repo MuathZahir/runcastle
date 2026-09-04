@@ -56,7 +56,15 @@ export function phaseFacts({ phase, full, events, decisions }: PhaseSummaryInput
   return parts.length > 0 ? parts.join(' · ') : null
 }
 
-/** The session kinds that belong to ideation — the ones the map and grill open. */
+/**
+ * The session kinds that belong to ideation — the ones ideation opens, on any
+ * lap. Kind is the whole test: it is the session's own statement of what it was
+ * opened to do, whereas a phase window is derived from a feed that may never
+ * have recorded the transition, and `sessions.created_at` is nullable, so a
+ * window would silently drop real conversations. `revisit` is deliberately out:
+ * it is also the tickets phase's "Ask for changes" and implementation's
+ * "Revisit", so its phase cannot be read off its kind.
+ */
 const IDEATION_KINDS = new Set(['ideation', 'waypoint', 'converge'])
 
 function ideationFacts({
@@ -64,11 +72,10 @@ function ideationFacts({
   events,
   decisions,
 }: Omit<PhaseSummaryInput, 'phase'>): string[] {
-  const window = phaseWindow('ideation', full, events)
   const parts: string[] = []
-  const span = windowSpan(window)
+  const span = windowSpan(phaseWindow('ideation', full, events))
   if (span) parts.push(span)
-  const sessions = ideationSessions(full, window)
+  const sessions = ideationSessions(full)
   parts.push(`${sessions.length} session${sessions.length === 1 ? '' : 's'}`)
   if (decisions !== undefined) {
     const count = countDecisions(decisions)
@@ -190,19 +197,19 @@ export interface PhaseSessionRow {
 
 /**
  * The ideation sessions that ran, oldest first — the record of how the idea was
- * worked. A session with no `createdAt` (a row written before sessions were
- * stamped) cannot be placed in the window and is left out rather than dated
- * wrongly.
+ * worked. A session with no `createdAt` (a row written before `sessions` was
+ * stamped) still ran, so it is listed undated rather than hidden: the record's
+ * job is to be honest about what happened, and reporting no conversation on a
+ * feature that had four is the one thing it must not do.
  */
 export function phaseSessions({
   full,
   events,
 }: {
-  full: Pick<FeatureFull, 'feature' | 'sessions' | 'tickets' | 'waypoints'>
+  full: Pick<FeatureFull, 'sessions' | 'tickets' | 'waypoints'>
   events: readonly EventRow[]
 }): PhaseSessionRow[] {
-  const window = phaseWindow('ideation', full, events)
-  return ideationSessions(full, window).map((session) => {
+  return ideationSessions(full).map((session) => {
     const endedAt = sessionEnd(events, session.id)
     return {
       id: session.id,
@@ -216,12 +223,9 @@ export function phaseSessions({
   })
 }
 
-function ideationSessions(
-  full: Pick<FeatureFull, 'sessions'>,
-  window: PhaseWindow,
-): FeatureFull['sessions'] {
+function ideationSessions(full: Pick<FeatureFull, 'sessions'>): FeatureFull['sessions'] {
   return full.sessions
-    .filter((session) => IDEATION_KINDS.has(session.kind) && inWindow(session.createdAt, window))
+    .filter((session) => IDEATION_KINDS.has(session.kind))
     .sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0))
 }
 
