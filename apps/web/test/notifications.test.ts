@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { EventRow } from '@runcastle/core'
 import { eventToNotification, notifyButton } from '../src/lib/notifications'
+import { NOTIFY_OFFER } from '../src/lib/vocabulary'
 
 /**
  * Streamlining-ux ticket 10 — the events poll turns a finishing burn into a
@@ -82,6 +83,18 @@ describe('notifyButton', () => {
     const b = notifyButton({ enabled: false, permission: 'default' })
     expect(b.state).toBe('off')
     expect(b.label).toBe('notify off')
+  })
+
+  /**
+   * Decision 9 — the offer used to read "Notify me when a burn finishes", which
+   * is the insider verb meeting a newcomer at the moment of a click. The
+   * sentence comes from `lib/vocabulary.ts` so every surface says the same one.
+   */
+  it('offers the ping in a sentence that reads without the jargon', () => {
+    const b = notifyButton({ enabled: false, permission: 'default' })
+    expect(b.title).toBe(NOTIFY_OFFER)
+    expect(b.title).toBe('Notify me when agents finish a run')
+    expect(b.title).not.toMatch(/burn/i)
   })
 
   it('reads blocked — and says how to unblock — when the browser denied it', () => {

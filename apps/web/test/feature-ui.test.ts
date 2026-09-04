@@ -17,6 +17,7 @@ import {
   headline,
   lapAccount,
   kickoffTrouble,
+  landingFeature,
   lapBanner,
   liveSessionBlocker,
   mergeConflictKickoff,
@@ -44,7 +45,6 @@ import {
   ticketProgress,
   triage,
   triageOf,
-  undoableOverride,
   unresolvedMergeConflict,
   waypointGroups,
   type CheckRow,
@@ -1268,72 +1268,6 @@ describe('unresolvedMergeConflict', () => {
       files: [],
       at: 1,
     })
-  })
-})
-
-/**
- * Findings F24 — a gate override advanced the phase with no way back. Undo is
- * offered only while the override is still the feature's latest transition, and
- * that window is derived from the event feed so it survives a reload.
- */
-describe('undoableOverride', () => {
-  const ev = (id: number, type: string, data?: unknown): EventRow =>
-    ({ id, projectId: 'p', ts: id, type, message: type, data }) as EventRow
-  const forced = (id: number, gate: string) => ev(id, 'gate.overridden', { gate, reason: 'why' })
-  const advanced = (id: number, from: string, to: string) => ev(id, 'phase.advanced', { from, to })
-
-  it('returns null with no overrides in the feed', () => {
-    expect(undoableOverride([advanced(1, 'ideation', 'spec')])).toBeNull()
-  })
-
-  it('names the gate and both phases of the advance the override forced', () => {
-    const events = [forced(1, 'G4'), advanced(2, 'implementation', 'review')]
-    expect(undoableOverride(events)).toEqual({
-      gate: 'G4',
-      from: 'implementation',
-      to: 'review',
-    })
-  })
-
-  it('closes the window once any later phase transition lands', () => {
-    const events = [
-      forced(1, 'G4'),
-      advanced(2, 'implementation', 'review'),
-      ev(3, 'feature.shipped', { from: 'review', to: 'shipped' }),
-    ]
-    expect(undoableOverride(events)).toBeNull()
-  })
-
-  it('closes the window once the override is undone', () => {
-    const events = [
-      forced(1, 'G4'),
-      advanced(2, 'implementation', 'review'),
-      ev(3, 'gate.override.undone', { from: 'review', to: 'implementation' }),
-    ]
-    expect(undoableOverride(events)).toBeNull()
-  })
-
-  it('offers the latest override when a feature was overridden twice', () => {
-    const events = [
-      forced(1, 'G2'),
-      advanced(2, 'spec', 'tickets'),
-      forced(3, 'G3'),
-      advanced(4, 'tickets', 'implementation'),
-    ]
-    expect(undoableOverride(events)).toEqual({ gate: 'G3', from: 'tickets', to: 'implementation' })
-  })
-
-  it('ignores a status change — its from/to are statuses, not phases', () => {
-    const events = [
-      forced(1, 'G4'),
-      advanced(2, 'implementation', 'review'),
-      ev(3, 'feature.status', { from: 'active', to: 'archived' }),
-    ]
-    expect(undoableOverride(events)?.gate).toBe('G4')
-  })
-
-  it('ignores an override whose advance never happened (last phase, nothing moved)', () => {
-    expect(undoableOverride([forced(1, 'G5')])).toBeNull()
   })
 })
 
@@ -3050,6 +2984,48 @@ describe('capLane', () => {
       expect(capped.visible).toHaveLength(12)
       expect(capped.expanderLabel).toBeNull()
     }
+  })
+})
+
+/**
+ * flow-redesign shell ticket 1 / decision 4 — where entering a project puts
+ * you. It used to be `list.data[0]`: newest-created and lane-blind, which is how
+ * a parked draft or a shipped retrospective became the first screen (F10.4).
+ * The rule reads the rail's own triage order instead, so the workspace opens on
+ * the row the eye lands on.
+ */
+describe('landingFeature', () => {
+  const working = listItem({ id: 'working', activeRun: true })
+  const needsYou = listItem({ id: 'needs', phase: 'ideation' })
+  const inProgress = listItem({ id: 'spec', phase: 'spec' })
+  const draft = listItem({ id: 'draft', status: 'draft' })
+  const shipped = listItem({ id: 'shipped', status: 'shipped', phase: 'shipped' })
+  const archived = listItem({ id: 'archived', status: 'archived' })
+
+  it('prefers the top Needs-you row over everything below it', () => {
+    expect(landingFeature([shipped, inProgress, working, needsYou])?.id).toBe('needs')
+  })
+
+  it('falls to Agent working when nothing needs you', () => {
+    expect(landingFeature([draft, inProgress, working])?.id).toBe('working')
+  })
+
+  it('falls to In progress when no agent is working either', () => {
+    expect(landingFeature([shipped, draft, inProgress])?.id).toBe('spec')
+  })
+
+  it('keeps the incoming order within a lane', () => {
+    const first = listItem({ id: 'first', phase: 'ideation' })
+    const second = listItem({ id: 'second', phase: 'ideation' })
+    expect(landingFeature([first, second])?.id).toBe('first')
+  })
+
+  it('lands on the project home rather than a draft, a shipped or an archived feature', () => {
+    expect(landingFeature([draft, shipped, archived])).toBeNull()
+  })
+
+  it('lands on the project home when the project has no features at all', () => {
+    expect(landingFeature([])).toBeNull()
   })
 })
 

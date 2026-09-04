@@ -196,6 +196,33 @@ export function triage(
     .filter((g) => g.features.length > 0)
 }
 
+/**
+ * The lanes a project can land you in (decision 4), in the rail's own order.
+ * Drafts, Shipped and Archived are deliberately absent: entering a project used
+ * to open `list.data[0]` — newest-created, lane-blind — which is how a parked
+ * draft or a shipped feature's retrospective became the first thing you saw
+ * (findings F10.4).
+ */
+const LANDING_LANES: readonly TriageKey[] = ['needsYou', 'agentWorking', 'inProgress']
+
+/**
+ * The feature to land on when entering a project with nothing stored, or `null`
+ * for the project home — which is where a project with only drafts, shipped and
+ * archived features lands, because none of those is work in motion.
+ *
+ * The rail already answers "what should I look at": this reads the same triage
+ * order over the same list, so the workspace opens on the row the eye lands on.
+ * A stored selection still wins over this, and a URL naming a feature wins over
+ * both — both of those are decided by the caller.
+ */
+export function landingFeature(features: FeatureListItem[]): FeatureListItem | null {
+  for (const lane of LANDING_LANES) {
+    const first = features.find((f) => triageOf(f) === lane)
+    if (first) return first
+  }
+  return null
+}
+
 /** How many Shipped rows the rail shows collapsed (decisions §2). */
 const SHIPPED_LANE_CAP = 5
 

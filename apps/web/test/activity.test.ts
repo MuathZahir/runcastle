@@ -95,7 +95,75 @@ describe('activityLine', () => {
   })
 
   it('never renders an empty row', () => {
-    expect(activityLine(ev({ type: 'phase.advanced', message: '' })).summary).toBe('phase.advanced')
+    expect(activityLine(ev({ type: 'phase.advanced', message: '' })).summary).toBe('Phase advanced')
+  })
+})
+
+/**
+ * Decision 5 — an Activity row is a sentence, always. The feed still carried
+ * rows like `feature.created (feature/kickoff-probe ← main)`: the event's own
+ * type slug, printed as the human-facing summary, with the facts stuffed into a
+ * parenthesis after it (F10.5 / F18 residue).
+ */
+describe('activityLine — no event type slug is ever the summary', () => {
+  it('states a created feature as a sentence, off the payload', () => {
+    const line = activityLine(
+      ev({
+        type: 'feature.created',
+        message: 'feature.created (feature/x ← main)',
+        data: { slug: 'x', branch: 'feature/x', baseBranch: 'main', branchReady: true },
+      }),
+    )
+    expect(line.summary).toBe('Feature created on branch feature/x, from main')
+    expect(line.detail).toBeNull()
+  })
+
+  it('says a draft has no branch yet rather than naming one that is not cut', () => {
+    const line = activityLine(
+      ev({
+        type: 'feature.created',
+        message: 'feature.created (draft — feature/x not cut yet)',
+        data: { slug: 'x', branch: 'feature/x', branchReady: false, draft: true },
+      }),
+    )
+    expect(line.summary).toBe('Feature created as a draft — feature/x is not cut yet')
+  })
+
+  it('says a branch is still being cut when the feature is not a draft', () => {
+    const line = activityLine(
+      ev({
+        type: 'feature.created',
+        message: 'feature.created (branch pending)',
+        data: { slug: 'x', branch: 'feature/x', branchReady: false, draft: false },
+      }),
+    )
+    expect(line.summary).toBe('Feature created — branch feature/x is still being cut')
+  })
+
+  it('humanizes the slug off the front of any message that leads with it', () => {
+    // The same event as written before the payload carried the branch — the
+    // fallback every other slug-led message lands on.
+    expect(
+      activityLine(ev({ type: 'feature.created', message: 'feature.created (branch pending)' }))
+        .summary,
+    ).toBe('Feature created — branch pending')
+    expect(
+      activityLine(ev({ type: 'session.pty_exited', message: 'session.pty_exited: code 1' }))
+        .summary,
+    ).toBe('Session pty exited — code 1')
+  })
+
+  it('leaves a message that does not lead with its slug alone', () => {
+    expect(activityLine(ev({ type: 'feature.archived', message: 'feature x archived' }))).toEqual({
+      summary: 'feature x archived',
+      detail: null,
+    })
+  })
+
+  it('names a tool event that carries neither payload nor message', () => {
+    expect(activityLine(ev({ type: 'burn.tool', message: '', data: null })).summary).toBe(
+      'Burn tool',
+    )
   })
 })
 

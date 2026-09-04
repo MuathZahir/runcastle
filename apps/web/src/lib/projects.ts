@@ -1,4 +1,5 @@
 import type { FeatureListItem, Project } from './api'
+import type { AppLocation } from './routes'
 
 /**
  * Multi-project navigation + portfolio derivations (issue #45).
@@ -62,6 +63,32 @@ export function restoredView(
   }
   if (stored?.view === 'home' && projects.length > 0) return { view: 'home', projectId: null }
   return initialView(projects)
+}
+
+/**
+ * Where the app lands on boot now that locations have URLs (decision 1). Three
+ * sources, in order: the address bar, then what the last session stored, then
+ * the count-based rule — all outranked by an incomplete setup (the onboarding
+ * flow's decision 3): while the host still owes a git identity or a coding
+ * agent there is nothing useful behind any address, so the wizard wins even
+ * over a URL naming a project.
+ *
+ * A bare `/` is not an opinion — it is how the app is launched from a bookmark
+ * or a fresh window, and it is precisely the case localStorage exists to answer.
+ * Only a URL naming a project beats storage, and a URL naming a project that has
+ * since been closed falls all the way through rather than dead-ending.
+ */
+export function launchView(
+  projects: Project[],
+  url: AppLocation | null,
+  stored: StoredNav | null,
+  setupComplete: boolean,
+): Landing {
+  const projectId = url && url.kind !== 'home' ? url.projectId : null
+  if (setupComplete && projectId && projects.some((p) => p.id === projectId)) {
+    return { view: 'project', projectId }
+  }
+  return restoredView(projects, stored, setupComplete)
 }
 
 /**
@@ -132,9 +159,21 @@ export function projectStats(features: FeatureListItem[]): ProjectStats {
   return { total, needsYou, activeRuns, shipped, health }
 }
 
-/** Total runs in flight across every open project (the titlebar runs pill). */
-export function aggregateRuns(stats: ProjectStats[]): number {
-  return stats.reduce((n, s) => n + s.activeRuns, 0)
+/**
+ * Runs in flight in projects OTHER than the one being looked at — the titlebar
+ * pill's number (decision 7).
+ *
+ * It used to be the total across every project, which double-counted work the
+ * rail's own "Agent working" lane was already itemising by name three inches
+ * away, and left the titlebar and the lane disagreeing by whatever this project
+ * was running. The one number a frame earns is the work you cannot see from
+ * here, so the current project is subtracted and the pill says "elsewhere".
+ */
+export function runsElsewhere(
+  stats: readonly { projectId: string; activeRuns: number }[],
+  currentProjectId: string | null,
+): number {
+  return stats.reduce((n, s) => (s.projectId === currentProjectId ? n : n + s.activeRuns), 0)
 }
 
 /**

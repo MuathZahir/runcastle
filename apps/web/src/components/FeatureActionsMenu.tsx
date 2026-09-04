@@ -49,10 +49,13 @@ export function FeatureActionsMenu({
   if (actions.length === 0) return null
 
   return (
-    <div className="row-actions" ref={ref}>
+    <div className="relative shrink-0 pr-1" ref={ref}>
       <button
         ref={triggerRef}
-        className="row-actions-btn"
+        // No preflight (apps/web/STYLE.md), and `styles.css` still carries an
+        // unlayered `button { color: inherit }` that beats a `text-*` utility
+        // here — so the colour goes on the span, switched by `group-hover`.
+        className="group cursor-pointer rounded-md border-0 bg-transparent px-1.5 py-1 transition-colors duration-(--dur-1) ease-app hover:bg-panel-3"
         aria-label={label}
         aria-haspopup="menu"
         aria-expanded={open}
@@ -61,15 +64,20 @@ export function FeatureActionsMenu({
           setOpen((o) => !o)
         }}
       >
-        <IconMore size={14} />
+        <span className="flex text-text-3 group-hover:text-text">
+          <IconMore size={14} />
+        </span>
       </button>
       {open && (
-        <div className="row-actions-menu" role="menu">
+        <div
+          className="absolute top-[calc(100%-2px)] right-1 z-20 flex min-w-32 flex-col rounded-md border border-hairline bg-panel-2 p-1 shadow-menu"
+          role="menu"
+        >
           {actions.map((a) => (
             <button
               key={a.key}
               role="menuitem"
-              className={`row-actions-item${a.danger ? ' is-danger' : ''}`}
+              className="group cursor-pointer rounded-md border-0 bg-transparent px-2 py-1.5 text-left text-sm transition-colors duration-(--dur-1) ease-app hover:bg-panel-3"
               onClick={(e) => {
                 e.stopPropagation()
                 setOpen(false)
@@ -80,7 +88,9 @@ export function FeatureActionsMenu({
                 a.onSelect(triggerRef)
               }}
             >
-              {a.label}
+              <span className={a.danger ? 'text-danger' : 'text-text-2 group-hover:text-text'}>
+                {a.label}
+              </span>
             </button>
           ))}
         </div>

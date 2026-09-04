@@ -1,5 +1,4 @@
-import { parsePhase } from '@runcastle/core'
-import type { EventRow, GateId, Phase } from '@runcastle/core'
+import type { EventRow } from '@runcastle/core'
 
 export function mergeConflictKickoff(base: string, branch: string, files: string[]): string {
   const list = files.length ? files.join(', ') : '(run git status to see the conflicts)'
@@ -94,60 +93,6 @@ export function unresolvedMergeConflict(events: EventRow[]): MergeConflictState 
     }
   }
   return conflict
-}
-
-export interface UndoableOverride {
-  /** The gate that was forced. */
-  gate: GateId
-  /** The phase the feature was on before the override advanced it. */
-  from: Phase
-  /** Where the override put it — the feature's phase, while the undo stands. */
-  to: Phase
-}
-
-/**
- * The phase move an event records, or null if it records none. Every phase
- * change goes through the server's `setPhase`, which carries `{ from, to }` on
- * the event whatever it types the event as — so the data SHAPE identifies a
- * transition where a list of event types would go stale. Status changes carry
- * `{ from, to }` too, but of statuses, so requiring BOTH to parse as phases
- * separates them.
- */
-function phaseTransition(e: EventRow): { from: Phase; to: Phase } | null {
-  const d = (e.data ?? {}) as { from?: unknown; to?: unknown }
-  const from = parsePhase(d.from)
-  const to = parsePhase(d.to)
-  return from && to ? { from, to } : null
-}
-
-/**
- * The gate override that can still be taken back, derived from the event feed
- * (so the affordance survives a reload, like the conflict card).
- *
- * Override is the pipeline's quietest irreversible action: Apply advanced the
- * phase instantly, and the only ways back were an agent action or DB surgery
- * (findings F24). Undo is offered only while the override is the feature's
- * LATEST transition — `overrideGate` emits `gate.overridden` and then the
- * advance, so any later phase transition (a burn, a lap, a merge, another
- * advance) means the pipeline has moved on and stepping back one phase would no
- * longer be the reversal of anything. `events` must be in id order.
- */
-export function undoableOverride(events: EventRow[]): UndoableOverride | null {
-  let forcedGate: GateId | null = null
-  let undoable: UndoableOverride | null = null
-  for (const e of events) {
-    if (e.type === 'gate.overridden') {
-      forcedGate = ((e.data ?? {}) as { gate?: GateId }).gate ?? null
-      continue
-    }
-    const moved = phaseTransition(e)
-    if (!moved) continue
-    // The advance that the override just forced — or any other transition, which
-    // closes the window on whatever was open.
-    undoable = forcedGate ? { gate: forcedGate, ...moved } : null
-    forcedGate = null
-  }
-  return undoable
 }
 
 /**

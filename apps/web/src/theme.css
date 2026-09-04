@@ -108,7 +108,7 @@
      these are read with `var()` / arbitrary values (`h-(--control-h)`).
      Spacing stays on Tailwind's default 4px scale — no custom tokens. */
   --control-h: 32px; /* decision 4, was 28px */
-  --sidebar-w: 252px;
+  --sidebar-w: 300px; /* decision 10 default; the shell overrides it as you drag */
   --inspector-w: 300px;
   --maprail-w: 300px;
   --content-max: 1060px; /* centered column for document-style phase bodies */
