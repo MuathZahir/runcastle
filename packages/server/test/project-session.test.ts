@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process'
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import type { EventRow, Project, SessionRow } from '@runcastle/core'
@@ -35,7 +35,7 @@ import { createCallerFactory } from '../src/trpc/context'
 import { appRouter } from '../src/trpc/router'
 import { useDataDir } from './helpers/data-dir'
 import { makeTestCtx } from './helpers/db'
-import { seedProject } from './helpers/fixtures'
+import { rmTemp, seedProject } from './helpers/fixtures'
 
 /**
  * The project session (feature-grouping decisions 17–20): a project-scoped
@@ -80,9 +80,7 @@ function commitOnBranch(repoPath: string, branch: string, file: string, body: st
  * They stay only for handles nothing in this file can account for.
  */
 function removeAll(dirs: string[]): void {
-  for (const d of dirs) {
-    rmSync(d, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 })
-  }
+  for (const d of dirs) rmTemp(d)
   dirs.length = 0
 }
 
@@ -340,10 +338,7 @@ describe('ensureProjectWorktree', () => {
     writeFileSync(join(worktreePath, '.gitignore'), 'node_modules-marker\n')
     git(worktreePath, 'add', '.gitignore')
     git(worktreePath, 'commit', '-m', 'ignore the marker')
-    rmSync(join(repoPath, '.git', 'worktrees', PROJECT_WORKTREE_SLUG), {
-      recursive: true,
-      force: true,
-    })
+    rmTemp(join(repoPath, '.git', 'worktrees', PROJECT_WORKTREE_SLUG))
     expect(git(repoPath, 'worktree', 'list', '--porcelain')).not.toContain(PROJECT_WORKTREE_SLUG)
 
     const { worktreePath: reopened } = await ensureProjectWorktree(project)

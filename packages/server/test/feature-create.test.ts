@@ -1,4 +1,4 @@
-import { existsSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { simpleGit } from 'simple-git'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -7,7 +7,7 @@ import { listAfter } from '../src/services/events'
 import { createFeature } from '../src/services/features'
 import { useDataDir } from './helpers/data-dir'
 import { makeTestCtx } from './helpers/db'
-import { seedProject, tmpRepo } from './helpers/fixtures'
+import { rmTemp, seedProject, tmpRepo } from './helpers/fixtures'
 
 describe('feature.create', () => {
   let ctx: AppCtx
@@ -40,7 +40,7 @@ describe('feature.create', () => {
 
   afterEach(() => {
     restoreDataDir()
-    rmSync(home, { recursive: true, force: true })
+    rmTemp(home)
   })
 
   it('slugifies the title and dedupes against existing slugs', async () => {

@@ -23,7 +23,7 @@ import { createCallerFactory } from '../src/trpc/context'
 import { appRouter } from '../src/trpc/router'
 import { useDataDir } from './helpers/data-dir'
 import { makeTestCtx } from './helpers/db'
-import { seedProject } from './helpers/fixtures'
+import { rmTemp, seedProject } from './helpers/fixtures'
 
 /**
  * The project chat as a conversation LIST (decision 5). What is worth pinning is
@@ -133,7 +133,7 @@ describe('the project conversation list', () => {
   afterEach(async () => {
     await awaitProjectLandings()
     restoreDataDir()
-    for (const d of cleanup) rmSync(d, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 })
+    for (const d of cleanup) rmTemp(d)
     cleanup.length = 0
   })
 
@@ -345,7 +345,7 @@ describe('reading a conversation back', () => {
   })
 
   afterEach(() => {
-    for (const d of cleanup) rmSync(d, { recursive: true, force: true })
+    for (const d of cleanup) rmTemp(d)
     cleanup.length = 0
   })
 
@@ -561,7 +561,7 @@ describe('opening a project conversation', () => {
   afterEach(async () => {
     await awaitProjectLandings()
     restoreDataDir()
-    for (const d of cleanup) rmSync(d, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 })
+    for (const d of cleanup) rmTemp(d)
     cleanup.length = 0
   })
 
