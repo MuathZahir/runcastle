@@ -35,14 +35,16 @@ export function ArtifactPane({ featureId, kind, docs, collapsed = false, onToggl
   }, [content, doc.content, kind])
   const count = countDecisions(content)
   if (collapsed && onToggle) return <button type="button" className="flex w-10 flex-none items-center justify-center rounded-lg border border-hairline bg-panel-2 font-mono text-xs text-text-3 [writing-mode:vertical-rl]" title={`Expand the ${kind} pane`} onClick={onToggle}>{kind === 'decisions' ? count : 'spec'}</button>
-  const showingPrimary = selectedPath === defaultPath
+  // A frozen pane has no docs menu, so it always shows the phase's own document.
+  const showingPrimary = frozen || selectedPath === defaultPath
+  const title = kind === 'spec' ? 'Spec' : frozen ? 'Decisions' : 'Decisions so far'
   return (
     <aside className={`flex min-h-0 flex-col rounded-lg border border-hairline bg-panel-2 ${frozen ? 'min-w-0 flex-1' : 'w-(--artifact-w) flex-none'}`}>
       <div className="flex min-h-12 items-center gap-2 border-b border-hairline px-3">
-        <SectionTitle>{!showingPrimary ? selectedPath?.split(/[\\/]/).pop() : kind === 'spec' ? 'Spec' : frozen ? 'Decisions' : 'Decisions so far'}</SectionTitle>
-        {showingPrimary && frozen && <span className="font-mono text-xs text-text-3">{kind}.md{kind === 'decisions' ? ` · ${count}` : ''}</span>}
-        {showingPrimary && !frozen && kind === 'decisions' && <span className="font-mono text-xs text-text-3">· {count}</span>}
-        {showingPrimary && !frozen && kind === 'spec' && updating && <span className="font-mono text-xs text-ok">updating</span>}
+        <SectionTitle>{showingPrimary ? title : selectedPath?.split(/[\\/]/).pop()}</SectionTitle>
+        {frozen && <span className="font-mono text-xs text-text-3">{kind}.md{kind === 'decisions' ? ` · ${count}` : ''}</span>}
+        {!frozen && showingPrimary && kind === 'decisions' && <span className="font-mono text-xs text-text-3">· {count}</span>}
+        {!frozen && showingPrimary && kind === 'spec' && updating && <span className="font-mono text-xs text-ok">updating</span>}
         {!frozen && <DocsMenu docs={docs} value={selectedPath} onPick={setSelectedPath} />}
         {!frozen && onToggle && <button type="button" className="size-8 rounded-md text-text-3 hover:bg-panel-3 hover:text-text" title={`Collapse the ${kind} pane`} onClick={onToggle}>‹</button>}
       </div>

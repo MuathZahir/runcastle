@@ -18,11 +18,12 @@ export function ticketLedgerMeta(tickets: readonly Ticket[], lap: number): strin
   return parts.join(' · ')
 }
 
-export function TicketLedger({ tickets, currentLap, roster, readonly, docs, sandbox, defaultModel, onDoc, onEdit, onModel, onBulkModel, onCancel, onCopySha }: {
+export function TicketLedger({ tickets, currentLap, roster, readonly = false, docs, sandbox, defaultModel, onDoc, onEdit, onModel, onBulkModel, onCancel, onCopySha }: {
   tickets: Ticket[]
   currentLap: number
   roster: readonly ModelEntry[]
-  readonly: boolean
+  /** A frozen record: counts and rows only (decision 10). */
+  readonly?: boolean
   docs: FeatureFull['docs']
   // Everything below belongs to the live ledger. A pinned phase is a frozen
   // record (decision 10) — no header menus, nothing to mutate — so it passes

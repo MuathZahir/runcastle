@@ -86,10 +86,9 @@ function SessionList({ sessions }: { sessions: PhaseSessionRow[] }) {
  * that query key, so this costs no extra fetch.
  */
 function PinnedTickets({ full }: { full: FeatureFull }) {
-  const settings: QueryResult<SettingsView> = trpc.settings.get.useQuery(
-    { projectId: full.feature.projectId },
-    { enabled: !!full.feature.projectId },
-  )
+  const settings: QueryResult<SettingsView> = trpc.settings.get.useQuery({
+    projectId: full.feature.projectId,
+  })
   return (
     <div className="flex min-h-0 flex-col overflow-y-auto">
       <TicketLedger tickets={full.tickets} currentLap={full.feature.lap} roster={rosterFromView(settings.data)} readonly docs={full.docs} />

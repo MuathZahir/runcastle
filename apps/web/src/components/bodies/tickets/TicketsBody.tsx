@@ -62,7 +62,7 @@ export function TicketsBody({ featureId }: { featureId: string }) {
       toast.push(error instanceof Error ? error.message : 'could not update ticket models')
     }
   }
-  const ledger = <TicketLedger tickets={tickets} currentLap={feature.lap} roster={roster} readonly={false} docs={docs} sandbox={SANDBOX_MODE} defaultModel={defaultModel} onDoc={setPeek} onEdit={save} onModel={setModel} onBulkModel={(model) => { void bulkModel(model) }} onCancel={(ticketId) => cancel.mutate({ ticketId })} onCopySha={(sha) => { void navigator.clipboard.writeText(sha); toast.push(`copied ${shortSha(sha)}`, 'info') }} />
+  const ledger = <TicketLedger tickets={tickets} currentLap={feature.lap} roster={roster} docs={docs} sandbox={SANDBOX_MODE} defaultModel={defaultModel} onDoc={setPeek} onEdit={save} onModel={setModel} onBulkModel={(model) => { void bulkModel(model) }} onCancel={(ticketId) => cancel.mutate({ ticketId })} onCopySha={(sha) => { void navigator.clipboard.writeText(sha); toast.push(`copied ${shortSha(sha)}`, 'info') }} />
 
   return <div className="flex min-h-0 flex-col gap-3 overflow-y-auto">
     {live && <TicketsTerminal featureId={featureId} live={live} ticketCount={lapTickets.length} />}
