@@ -685,6 +685,20 @@ button {
 .nextstep-warn-icon { flex-shrink: 0; color: var(--needs); }
 .nextstep-override { display: flex; align-items: center; gap: 8px; }
 .nextstep-override .override-input { width: 260px; }
+/* The reason input the gate card and this bar once shared. The gate card's
+   override form is gone (decision 6), so the bar is the only caller left and the
+   rule moved here with it — the next-step-bar flow migrates it. */
+.override-input {
+  height: 26px;
+  background: var(--panel-inset);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  padding: 0 8px;
+  font-size: 12px;
+  outline: none;
+}
+.override-input:focus { border-color: var(--accent); }
 
 /* read-only banner (viewing a past phase) */
 .readonly-bar {
@@ -2236,238 +2250,6 @@ button.note-at:hover { color: var(--accent); }
   width: fit-content;
 }
 .qf-add:hover { color: var(--accent-hi); }
-
-/* ============================================================================
-   INSPECTOR RAIL
-   ========================================================================== */
-.inspector {
-  border-left: 1px solid var(--hairline);
-  background: var(--panel-2);
-  overflow: hidden;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-}
-.insp-tabs {
-  flex: 0 0 auto;
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  padding: 8px 10px 0;
-  border-bottom: 1px solid var(--hairline-soft);
-}
-.insp-tab {
-  background: none;
-  border: none;
-  border-bottom: 2px solid transparent;
-  color: var(--text-3);
-  font-size: 12px;
-  font-weight: 500;
-  padding: 6px 10px 8px;
-  cursor: pointer;
-  transition: color var(--dur-1);
-}
-.insp-tab:hover { color: var(--text-2); }
-.insp-tab.is-active { color: var(--text); border-bottom-color: var(--accent); }
-.insp-pane {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  padding: 16px;
-  display: flex;
-  flex-direction: column;
-  gap: 22px;
-  animation: fadeUp var(--dur-2) var(--ease-out);
-}
-.insp-pane-activity { padding: 10px 12px; gap: 0; }
-.insp-empty { font-size: 12px; color: var(--text-3); line-height: 1.55; text-wrap: pretty; }
-.insp-section > .insp-cap {
-  font-size: 10.5px;
-  font-weight: 600;
-  letter-spacing: 0.09em;
-  text-transform: uppercase;
-  color: var(--text-3);
-  margin-bottom: 8px;
-}
-/* Plain-language gloss under a rail cap (finding F16). */
-.insp-hint {
-  font-size: 11.5px;
-  color: var(--text-3);
-  line-height: 1.5;
-  text-wrap: pretty;
-  margin-bottom: 8px;
-}
-.gate-shipped {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 12.5px;
-  color: var(--ok);
-}
-.gate-card {
-  border: 1px solid var(--hairline);
-  border-radius: var(--radius-lg);
-  background: var(--panel);
-  padding: 12px 14px;
-}
-.gate-override-link {
-  margin-top: 10px;
-  background: none;
-  border: none;
-  padding: 0;
-  font-size: 11.5px;
-  color: var(--text-3);
-  cursor: pointer;
-  transition: color var(--dur-1);
-}
-.gate-override-link:hover { color: var(--accent-hi); }
-.override-actions { display: flex; gap: 6px; }
-.gate-idrow { display: flex; align-items: center; gap: 8px; }
-.gate-id { font-family: var(--mono); font-size: 11px; color: var(--accent-hi); }
-.gate-name { font-weight: 600; font-size: 12.5px; color: var(--text); }
-.gate-req { margin-top: 6px; font-size: 11.5px; color: var(--text-2); line-height: 1.5; text-wrap: pretty; }
-.gate-state { margin-top: 11px; display: flex; align-items: center; gap: 8px; font-size: 12px; }
-.gate-state.is-ok { color: var(--ok); }
-.gate-state.is-block { color: var(--needs); }
-.gate-state-dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; flex: 0 0 auto; }
-.gate-hint { margin-top: 10px; font-size: 11px; color: var(--text-4); line-height: 1.5; }
-.gate-empty {
-  border: 1px dashed var(--hairline-strong);
-  border-radius: var(--radius);
-  padding: 12px 14px;
-  font-size: 11.5px;
-  color: var(--text-3);
-}
-.override-form { display: flex; flex-direction: column; gap: 6px; margin-top: 11px; }
-.override-input {
-  height: 26px;
-  background: var(--panel-inset);
-  border: 1px solid var(--hairline);
-  border-radius: var(--radius-sm);
-  color: var(--text);
-  padding: 0 8px;
-  font-size: 12px;
-  outline: none;
-}
-.override-input:focus { border-color: var(--accent); }
-/* what Apply is about to do, said before it is clicked (findings F24) */
-.override-consequence {
-  font-size: 11.5px;
-  line-height: 1.5;
-  color: var(--needs);
-  text-wrap: pretty;
-}
-/* the way back, for as long as the override is the latest transition */
-.gate-undo {
-  margin-top: 10px;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 7px;
-  padding: 10px 12px;
-  border: 1px dashed var(--hairline-strong);
-  border-radius: var(--radius);
-  font-size: 11.5px;
-  line-height: 1.5;
-  color: var(--text-3);
-  text-wrap: pretty;
-}
-
-.doc-list { list-style: none; margin: 0; padding: 0; }
-.doc-link {
-  width: 100%;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  background: none;
-  border: none;
-  cursor: pointer;
-  text-align: left;
-  padding: 7px 8px;
-  margin: 0 -8px;
-  border-radius: var(--radius-sm);
-  transition: background var(--dur-1);
-}
-.doc-link:hover { background: var(--panel-3); }
-.doc-link-icon { color: var(--text-4); display: inline-flex; flex: 0 0 auto; }
-.doc-title { color: var(--text); font-size: 12.5px; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.doc-meta { font-size: 11px; color: var(--text-4); flex: 0 0 auto; }
-
-.activity-log { display: flex; flex-direction: column; }
-.act-line { display: flex; gap: 10px; padding: 8px 4px; border-top: 1px solid var(--hairline-soft); }
-.act-line:first-child { border-top: none; }
-/* a lap boundary, drawn across the feed rather than listed in it (decisions #6) */
-.act-lap {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin: 6px 0;
-  padding: 0 4px;
-  font-family: var(--mono);
-  font-size: 10px;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--accent-2);
-}
-.act-lap::after {
-  content: '';
-  flex: 1;
-  height: 1px;
-  background: var(--accent-line);
-}
-.act-lap-time { color: var(--text-4); order: 1; }
-.act-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--text-4);
-  flex: 0 0 auto;
-  margin-top: 5px;
-}
-.act-dot.is-ok { background: var(--ok); }
-.act-dot.is-danger { background: var(--danger); }
-.act-dot.is-accent { background: var(--accent); }
-.act-body { min-width: 0; flex: 1; }
-.act-msg {
-  font-size: 12px;
-  color: var(--text-2);
-  line-height: 1.45;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
-/* the summary is one line of plain text; the rest opens below it (F10.5/F18) */
-.act-msg-toggle {
-  width: 100%;
-  background: none;
-  border: none;
-  padding: 0;
-  margin: 0;
-  text-align: left;
-  font: inherit;
-  color: inherit;
-  cursor: pointer;
-}
-.act-msg-toggle:hover { color: var(--text); }
-.act-more { color: var(--text-4); margin-left: 6px; }
-.act-detail {
-  margin: 6px 0 0;
-  padding: 7px 9px;
-  max-height: 260px;
-  overflow: auto;
-  background: var(--panel-inset);
-  border: 1px solid var(--hairline);
-  border-radius: var(--radius);
-  font-size: 11px;
-  line-height: 1.5;
-  color: var(--text-2);
-  white-space: pre-wrap;
-  word-break: break-word;
-}
-.act-sub { display: flex; align-items: baseline; gap: 8px; margin-top: 2px; }
-.act-type { font-size: 10.5px; color: var(--text-4); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.act-time { font-size: 10.5px; color: var(--text-4); flex: 0 0 auto; margin-left: auto; }
 
 /* ============================================================================
    MARKDOWN — the shared <Markdown> component (decision #3)
