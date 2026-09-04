@@ -14,6 +14,7 @@ function full(over: Partial<FeatureFull> = {}): Input {
     sessions: [],
     tickets: [],
     waypoints: [],
+    docs: [],
     ...over,
   } as unknown as Input
 }
@@ -94,6 +95,41 @@ describe('phaseSummary', () => {
     try {
       expect(phaseSummary({ phase: 'spec', full: full(), events })).toBe('Spec · written 2d ago')
       expect(phaseSummary({ phase: 'spec', full: full(), events: [] })).toBe('Spec')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('dates the spec from the file on disk when the feed never saw it change', () => {
+    const withSpec = full({
+      docs: [
+        { relPath: 'brief.md', title: 'Brief', updatedAt: START + 2 * DAY },
+        { relPath: 'spec.md', title: 'Spec', updatedAt: START + DAY },
+      ] as FeatureFull['docs'],
+    })
+    vi.useFakeTimers()
+    vi.setSystemTime(START + 3 * DAY)
+    try {
+      expect(phaseSummary({ phase: 'spec', full: withSpec, events: [] })).toBe(
+        'Spec · written 2d ago',
+      )
+      // The feed outranks the file: a checkout restamps every mtime, but the
+      // watcher's event is real history.
+      expect(
+        phaseSummary({
+          phase: 'spec',
+          full: withSpec,
+          events: [event({ ts: START, type: 'docs.changed', data: { files: ['spec.md'] } })],
+        }),
+      ).toBe('Spec · written 3d ago')
+      // A spec that was never written says nothing, however many other docs are.
+      expect(
+        phaseSummary({
+          phase: 'spec',
+          full: full({ docs: [{ relPath: 'brief.md', title: 'Brief', updatedAt: START }] as FeatureFull['docs'] }),
+          events: [],
+        }),
+      ).toBe('Spec')
     } finally {
       vi.useRealTimers()
     }

@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs'
 import { join, relative, resolve, sep } from 'node:path'
 import type { Feature, Project } from '@runcastle/core'
 import type { AppCtx } from '../db/types'
@@ -16,6 +16,15 @@ import { projectForFeature } from './repo'
 export interface DocSummary {
   relPath: string
   title: string
+  /**
+   * When the file was last written, as the filesystem has it. The read-only
+   * banner dates a doc with it (decision 10: `Spec · written 2d ago`) when the
+   * event feed never saw the file change — a feed that has been trimmed, or a
+   * feature whose docs were written before the watcher ran, still knows how old
+   * its spec is. Omitted when the file cannot be stat'd, which is the honest
+   * answer: no date rather than a wrong one.
+   */
+  updatedAt?: number
 }
 
 /** Overrides for the docs a fresh feature is seeded with. */
@@ -188,7 +197,11 @@ export function listDocs(ctx: AppCtx, feature: Feature): DocSummary[] {
 
   return readdirSync(dir, { withFileTypes: true })
     .filter((e) => e.isFile() && e.name.endsWith('.md'))
-    .map((e) => ({ relPath: e.name, title: readTitle(join(dir, e.name), e.name) }))
+    .map((e) => ({
+      relPath: e.name,
+      title: readTitle(join(dir, e.name), e.name),
+      ...writtenAt(join(dir, e.name)),
+    }))
     .sort((a, b) => a.relPath.localeCompare(b.relPath))
 }
 
@@ -207,6 +220,14 @@ export function readDoc(ctx: AppCtx, feature: Feature, relPath: string): { conte
 
   if (!existsSync(target)) throw new NotFoundError(`doc not found: ${relPath}`)
   return { content: readFileSync(target, 'utf8') }
+}
+
+function writtenAt(path: string): { updatedAt?: number } {
+  try {
+    return { updatedAt: Math.floor(statSync(path).mtimeMs) }
+  } catch {
+    return {}
+  }
 }
 
 function readTitle(path: string, fallback: string): string {

@@ -27,7 +27,7 @@ export function isSummaryPhase(phase: Phase): phase is SummaryPhase {
 /** What the summary is derived from — the feature, the feed, and one doc read. */
 export interface PhaseSummaryInput {
   phase: Phase
-  full: Pick<FeatureFull, 'feature' | 'sessions' | 'tickets' | 'waypoints'>
+  full: Pick<FeatureFull, 'feature' | 'sessions' | 'tickets' | 'waypoints' | 'docs'>
   events: readonly EventRow[]
   /** `decisions.md`, when the caller has read it; absent omits the count. */
   decisions?: string
@@ -51,7 +51,7 @@ export function phaseFacts({ phase, full, events, decisions }: PhaseSummaryInput
     phase === 'ideation'
       ? ideationFacts({ full, events, decisions })
       : phase === 'spec'
-        ? specFacts(events)
+        ? specFacts(full, events)
         : ticketFacts(full)
   return parts.length > 0 ? parts.join(' · ') : null
 }
@@ -82,15 +82,22 @@ function ideationFacts({
 }
 
 /**
- * When the spec was written. `DocSummary` carries no timestamp, so the docs
- * watcher's `docs.changed` event is what dates the file — the last one that
- * named `spec.md`. A feed that never saw one says nothing.
+ * When the spec was written — the one fact a human pinning the finished phase is
+ * there for, and the only one this phase has. The docs watcher's `docs.changed`
+ * event dates it first (the last one that named `spec.md`): it is real history,
+ * where a checkout restamps every file on disk. A feed that never saw one falls
+ * back to the file's own timestamp, so a spec written before the watcher ran —
+ * or after the feed was trimmed — is still dated. Neither says nothing.
  */
-function specFacts(events: readonly EventRow[]): string[] {
-  const written = [...events]
+function specFacts(
+  full: Pick<FeatureFull, 'docs'>,
+  events: readonly EventRow[],
+): string[] {
+  const changed = [...events]
     .reverse()
     .find((event) => event.type === 'docs.changed' && changedFiles(event).some(isSpecFile))
-  return written ? [`written ${relTime(written.ts)} ago`] : []
+  const written = changed?.ts ?? full.docs.find((doc) => isSpecFile(doc.relPath))?.updatedAt
+  return written === undefined ? [] : [`written ${relTime(written)} ago`]
 }
 
 function isSpecFile(file: string): boolean {
