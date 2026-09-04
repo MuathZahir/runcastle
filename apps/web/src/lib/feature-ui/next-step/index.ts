@@ -32,7 +32,6 @@ export function nextStep(full: FeatureFull, ctx: NextStepContext): NextStep {
   ).length
   const run = latestRun(runs)
   const running = run?.status === 'running'
-  const nextName = null
   const input: ResolverInput = {
     full,
     ctx,
@@ -46,7 +45,6 @@ export function nextStep(full: FeatureFull, ctx: NextStepContext): NextStep {
     pending,
     run,
     running,
-    nextName,
   }
 
   // A parked draft and an archived feature are outside the phase pipeline.

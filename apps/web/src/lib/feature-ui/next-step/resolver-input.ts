@@ -1,4 +1,3 @@
-import type { Phase } from '@runcastle/core'
 import type { FeatureFull } from '../../api'
 import type { MergeConflictState } from '../gates'
 import type { DraftBaseMissing } from './types'
@@ -28,5 +27,4 @@ export interface ResolverInput {
   pending: number
   run: FeatureFull['runs'][number] | undefined
   running: boolean
-  nextName: Phase | null
 }
