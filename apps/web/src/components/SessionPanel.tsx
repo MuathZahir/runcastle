@@ -13,25 +13,16 @@ import { TerminalView } from './TerminalView'
 import { SessionStrip } from './session/SessionStrip'
 
 type Session = FeatureFull['sessions'][number]
-/** The done cases of {@link SessionDoneState} — everything but `notDone`. */
 
 /**
- * The one terminal panel every phase body renders (grill / tickets / run /
+ * The one terminal panel every phase body renders (ideation / tickets / run /
  * review / shipped). A live or launching session shows the strip + inline PTY
- * terminal; an ENDED one shows the quiet ended card — with a Resume control when
- * the conversation behind it is still resumable.
- *
- * Resume matters because a terminal is a real CLI process in a server-owned
- * PTY: quitting runcastle kills it and boot reconciliation marks the row ended,
- * so every session is "ended" on the next launch. The conversation itself
- * survives — the runtime keeps the transcript on disk and the row kept its
- * `ccSessionId` — and the launcher resumes the latest same-kind conversation
- * for the kind it is asked to open. So Resume is just "open this kind of
- * terminal again"; the server picks the target.
+ * terminal; an ended one is a quiet status line. Session actions live in the
+ * next-step bar, so the ended line never duplicates them.
  *
  * Pass `full` where the feature's waypoints are known (mapped ideation) and the
  * strip additionally flips from "live" to a done state once this session's
- * waypoint goes terminal — a label plus at most one button, never a modal: the
+ * waypoint goes terminal — a status label, never another action: the
  * terminal below stays mounted and usable, because the agent may resolve while
  * the human still has things to say to that session.
  */
@@ -47,18 +38,11 @@ export function SessionPanel({
   full?: FeatureFull
   /** Extra class on the live panel (bodies scope their own terminal sizing). */
   className?: string
-  /**
-   * Set false where the body already offers a better-framed relaunch for this
-   * exact state (the grill body's converge-recovery bar), so the two don't sit
-   * side by side doing the same thing.
-   */
 }) {
   const session = pickPanelSession(sessions)
   if (!session) return null
 
   if (sessionActive(session)) {
-    // Without `full` (the tickets / review / run bodies) there are no waypoints
-    // to be done with, so those strips render exactly as they always have.
     return (
       <div className={`flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-hairline bg-panel-2${className ? ` ${className}` : ''}`}>
         <SessionStrip session={session} full={full} right={<EndSessionButton featureId={featureId} sessionId={session.id} />} />
