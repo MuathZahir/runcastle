@@ -1,8 +1,12 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import {
+  browseFailure,
   initialView,
   launchView,
+  pickerStartDir,
   projectStats,
+  repoFolderName,
+  replacementLanding,
   repoOpenFailure,
   restoredView,
   runsElsewhere,
@@ -101,15 +105,15 @@ describe('restored navigation', () => {
   it('comes back to the project you were in, without passing the chooser', () => {
     storage()
     writeStoredNav({ view: 'project', projectId: 'proj_b' })
-    expect(restoredView(both, readStoredNav())).toEqual({ view: 'project', projectId: 'proj_b' })
+    expect(restoredView(both, readStoredNav(), true)).toEqual({ view: 'project', projectId: 'proj_b' })
   })
 
   it('keeps a deliberate visit to the chooser, so reload stays on it', () => {
     storage()
     writeStoredNav({ view: 'home' })
-    expect(restoredView(both, readStoredNav())).toEqual({ view: 'home', projectId: null })
+    expect(restoredView(both, readStoredNav(), true)).toEqual({ view: 'home', projectId: null })
     // Even against the count rule, which would otherwise walk straight in.
-    expect(restoredView([proj('proj_a')], readStoredNav())).toEqual({
+    expect(restoredView([proj('proj_a')], readStoredNav(), true)).toEqual({
       view: 'home',
       projectId: null,
     })
@@ -117,8 +121,8 @@ describe('restored navigation', () => {
 
   it('falls back to the landing rule when the stored project is gone', () => {
     storage({ [NAV_KEY]: JSON.stringify({ view: 'project', projectId: 'proj_closed' }) })
-    expect(restoredView(both, readStoredNav())).toEqual({ view: 'home', projectId: null })
-    expect(restoredView([proj('proj_a')], readStoredNav())).toEqual({
+    expect(restoredView(both, readStoredNav(), true)).toEqual({ view: 'home', projectId: null })
+    expect(restoredView([proj('proj_a')], readStoredNav(), true)).toEqual({
       view: 'project',
       projectId: 'proj_a',
     })
@@ -127,7 +131,7 @@ describe('restored navigation', () => {
   it('falls back to the landing rule when nothing is stored', () => {
     storage()
     expect(readStoredNav()).toBeNull()
-    expect(restoredView(both, readStoredNav())).toEqual({ view: 'home', projectId: null })
+    expect(restoredView(both, readStoredNav(), true)).toEqual({ view: 'home', projectId: null })
   })
 
   it('treats corrupted or unusable storage as nothing stored', () => {
@@ -135,7 +139,7 @@ describe('restored navigation', () => {
     expect(readStoredNav()).toBeNull()
     storage({ [NAV_KEY]: JSON.stringify({ view: 'project' }) }) // no id
     expect(readStoredNav()).toBeNull()
-    expect(restoredView(both, readStoredNav())).toEqual({ view: 'home', projectId: null })
+    expect(restoredView(both, readStoredNav(), true)).toEqual({ view: 'home', projectId: null })
   })
 
   it('survives storage being unavailable at all (private mode)', () => {
@@ -149,12 +153,80 @@ describe('restored navigation', () => {
   it('never restores the open-a-project flow', () => {
     storage({ [NAV_KEY]: JSON.stringify({ view: 'open', projectId: null }) })
     expect(readStoredNav()).toBeNull()
-    expect(restoredView(both, readStoredNav())).toEqual({ view: 'home', projectId: null })
+    expect(restoredView(both, readStoredNav(), true)).toEqual({ view: 'home', projectId: null })
   })
 
   it('leaves the fresh install on the open-a-project flow whatever is stored', () => {
     storage({ [NAV_KEY]: JSON.stringify({ view: 'home' }) })
-    expect(restoredView([], readStoredNav())).toEqual({ view: 'open', projectId: null })
+    expect(restoredView([], readStoredNav(), true)).toEqual({ view: 'open', projectId: null })
+  })
+})
+
+/**
+ * Decision 3 — where the app lands, as a table over the two facts it has: is the
+ * host set up (git identity + a ready coding agent), and what is open. The bug
+ * this closes: onboarding used to be "no projects", so closing your last project
+ * replayed the whole wizard at someone who had already been through it.
+ */
+describe('landing by setup state', () => {
+  const one = [proj('proj_a')]
+  const both = [proj('proj_a'), proj('proj_b')]
+
+  it('sends an unfinished setup to the wizard, whatever is open', () => {
+    const wizard = { view: 'setup', projectId: null }
+    expect(restoredView([], null, false)).toEqual(wizard)
+    expect(restoredView(one, null, false)).toEqual(wizard)
+    expect(restoredView(both, { view: 'home' }, false)).toEqual(wizard)
+    expect(restoredView(both, { view: 'project', projectId: 'proj_b' }, false)).toEqual(wizard)
+  })
+
+  it('sends a finished setup with nothing open to the first-project screen', () => {
+    expect(restoredView([], null, true)).toEqual({ view: 'open', projectId: null })
+  })
+
+  it('leaves every other landing to the count and the remembered navigation', () => {
+    expect(restoredView(one, null, true)).toEqual({ view: 'project', projectId: 'proj_a' })
+    expect(restoredView(both, null, true)).toEqual({ view: 'home', projectId: null })
+    expect(restoredView(both, { view: 'project', projectId: 'proj_b' }, true)).toEqual({
+      view: 'project',
+      projectId: 'proj_b',
+    })
+    expect(restoredView(one, { view: 'home' }, true)).toEqual({ view: 'home', projectId: null })
+  })
+})
+
+/**
+ * The same table, applied after the list changes under the user rather than on
+ * load. Removing the last card from the home used to leave them standing on
+ * "Projects (0)" — the empty home decision 7 says cannot happen, which was only
+ * ever guaranteed by the landing rule at boot.
+ */
+describe('replacementLanding', () => {
+  const home = { view: 'home' as const, projectId: null }
+  const one = [proj('proj_a')]
+
+  it('sends the home to the first-project screen when the last project goes', () => {
+    expect(replacementLanding(home, [])).toEqual({ view: 'open', projectId: null })
+  })
+
+  it('leaves the home alone while anything is still open', () => {
+    expect(replacementLanding(home, one)).toBeNull()
+    expect(replacementLanding(home, [proj('proj_a'), proj('proj_b')])).toBeNull()
+  })
+
+  it('falls back off a project that has been closed elsewhere', () => {
+    const inB = { view: 'project' as const, projectId: 'proj_b' }
+    expect(replacementLanding(inB, one)).toEqual({ view: 'project', projectId: 'proj_a' })
+    expect(replacementLanding(inB, [])).toEqual({ view: 'open', projectId: null })
+  })
+
+  it('stays put in a project that is still open', () => {
+    expect(replacementLanding({ view: 'project', projectId: 'proj_a' }, one)).toBeNull()
+  })
+
+  it('never moves the setup wizard or the open screen, which own no project', () => {
+    expect(replacementLanding({ view: 'setup', projectId: null }, [])).toBeNull()
+    expect(replacementLanding({ view: 'open', projectId: null }, [])).toBeNull()
   })
 })
 
@@ -168,18 +240,18 @@ describe('launchView', () => {
 
   it('lands where the URL points, over anything stored', () => {
     const stored: StoredNav = { view: 'project', projectId: 'proj_b' }
-    expect(launchView(both, { kind: 'project', projectId: 'proj_a' }, stored)).toEqual({
+    expect(launchView(both, { kind: 'project', projectId: 'proj_a' }, stored, true)).toEqual({
       view: 'project',
       projectId: 'proj_a',
     })
     expect(
-      launchView(both, { kind: 'feature', projectId: 'proj_a', featureSlug: 'x' }, stored),
+      launchView(both, { kind: 'feature', projectId: 'proj_a', featureSlug: 'x' }, stored, true),
     ).toEqual({ view: 'project', projectId: 'proj_a' })
   })
 
   it('lets storage answer a bare / launch — the one job it has left', () => {
     const stored: StoredNav = { view: 'project', projectId: 'proj_b' }
-    expect(launchView(both, { kind: 'home' }, stored)).toEqual({
+    expect(launchView(both, { kind: 'home' }, stored, true)).toEqual({
       view: 'project',
       projectId: 'proj_b',
     })
@@ -187,15 +259,22 @@ describe('launchView', () => {
 
   it('falls through to storage when the URL names a project that is gone', () => {
     const stored: StoredNav = { view: 'project', projectId: 'proj_b' }
-    expect(launchView(both, { kind: 'project', projectId: 'closed' }, stored)).toEqual({
+    expect(launchView(both, { kind: 'project', projectId: 'closed' }, stored, true)).toEqual({
       view: 'project',
       projectId: 'proj_b',
     })
   })
 
+  it('sends an unfinished setup to the wizard even over a URL naming a project', () => {
+    expect(launchView(both, { kind: 'project', projectId: 'proj_a' }, null, false)).toEqual({
+      view: 'setup',
+      projectId: null,
+    })
+  })
+
   it('falls all the way to the count-based rule with an unknown path and nothing stored', () => {
-    expect(launchView(both, null, null)).toEqual({ view: 'home', projectId: null })
-    expect(launchView([proj('proj_a')], null, null)).toEqual({
+    expect(launchView(both, null, null, true)).toEqual({ view: 'home', projectId: null })
+    expect(launchView([proj('proj_a')], null, null, true)).toEqual({
       view: 'project',
       projectId: 'proj_a',
     })
@@ -269,26 +348,178 @@ describe('runsElsewhere', () => {
 
 /**
  * Findings F17.2 — repo-open failures arrived as auto-dismissing toasts in the
- * far corner, with no hint for the commonest one of all.
+ * far corner, with no hint for the commonest one of all. Decision 5 then asked
+ * for the problem said *once*: the server's message names the path, and the card
+ * printed it a second time in the hint, so a recognised failure is restated
+ * short and hands the path back separately to be shown exactly once.
  */
 describe('repoOpenFailure', () => {
-  it('names git init for a folder that is not a repository', () => {
+  it('states a non-repository once and names git init', () => {
     const f = repoOpenFailure('not a git repository: /tmp/notes', '/tmp/notes')
+    expect(f.message).toBe('Not a git repository')
     expect(f.hint).toContain('git init')
-    expect(f.hint).toContain('/tmp/notes')
+    expect(f.hint).not.toContain('/tmp/notes')
+    expect(f.path).toBe('/tmp/notes')
   })
 
-  it('points at Browse when the path is not there at all', () => {
-    expect(repoOpenFailure('path does not exist: /tmp/typo', '/tmp/typo').hint).toContain('Browse')
+  it('states a missing path once and points at Browse', () => {
+    const f = repoOpenFailure('path does not exist: /tmp/typo', '/tmp/typo')
+    expect(f.message).toBe('Path does not exist')
+    expect(f.hint).toContain('Browse')
+    expect(f.path).toBe('/tmp/typo')
+  })
+
+  it('keeps an unreadable path apart from a missing one', () => {
+    expect(repoOpenFailure('cannot read path: /root/x', '/root/x').message).toBe(
+      'Cannot read that path',
+    )
   })
 
   it('passes an unrecognised failure through with no invented advice', () => {
     const f = repoOpenFailure('EACCES: permission denied', '/root/secret')
     expect(f.message).toBe('EACCES: permission denied')
     expect(f.hint).toBeNull()
+    // The server's own wording is the whole message; a path beside it would be
+    // the second printing this classifier exists to stop.
+    expect(f.path).toBeNull()
   })
 
-  it('still reads sensibly when the attempted path is unknown', () => {
-    expect(repoOpenFailure('not a git repository', '')?.hint).toContain('that folder')
+  it('claims no path when the attempted one is unknown', () => {
+    expect(repoOpenFailure('not a git repository', '')).toMatchObject({
+      message: 'Not a git repository',
+      path: null,
+    })
+  })
+})
+
+/**
+ * Decision 6 — the picker used to open on whatever the path field held, so a
+ * stale or half-typed path produced a dialog that was nothing but an error. One
+ * segment is dropped per failure until something lists, with home as the floor.
+ */
+describe('pickerStartDir', () => {
+  it('browses the handed path when nothing has failed', () => {
+    expect(pickerStartDir('/home/you/code', undefined)).toEqual({
+      dir: '/home/you/code',
+      keepTyped: false,
+    })
+  })
+
+  it('asks for home when it was handed nothing', () => {
+    expect(pickerStartDir(undefined, undefined)).toEqual({ dir: undefined, keepTyped: false })
+    expect(pickerStartDir('   ', 'path does not exist:    ')).toEqual({
+      dir: undefined,
+      keepTyped: false,
+    })
+  })
+
+  it('steps up one segment from a path that is not there, and keeps the text', () => {
+    expect(pickerStartDir('/home/you/code/typo', 'path does not exist: /home/you/code/typo')).toEqual(
+      { dir: '/home/you/code', keepTyped: true },
+    )
+  })
+
+  it('steps up from an unreadable path too', () => {
+    expect(pickerStartDir('/root/private/x', 'cannot read path: /root/private/x (EACCES)')).toEqual({
+      dir: '/root/private',
+      keepTyped: true,
+    })
+  })
+
+  it('walks a windows path up to its drive root and then to home', () => {
+    const missing = 'path does not exist: x'
+    expect(pickerStartDir('C:\\Users\\you\\code', missing)).toEqual({
+      dir: 'C:\\Users\\you',
+      keepTyped: true,
+    })
+    // `C:` alone is drive-relative and names no directory, so the drive root
+    // keeps its separator.
+    expect(pickerStartDir('C:\\Users', missing)).toEqual({ dir: 'C:\\', keepTyped: true })
+    expect(pickerStartDir('C:\\', missing)).toEqual({ dir: undefined, keepTyped: true })
+  })
+
+  it('bottoms out at home rather than below the last segment', () => {
+    const missing = 'path does not exist: x'
+    expect(pickerStartDir('/gone', missing)).toEqual({ dir: undefined, keepTyped: true })
+    expect(pickerStartDir('/', missing)).toEqual({ dir: undefined, keepTyped: true })
+    expect(pickerStartDir('\\\\server', missing)).toEqual({ dir: undefined, keepTyped: true })
+  })
+
+  it('ignores a trailing separator rather than stepping up twice', () => {
+    expect(pickerStartDir('/home/you/code/', 'path does not exist: /home/you/code/')).toEqual({
+      dir: '/home/you',
+      keepTyped: true,
+    })
+  })
+
+  it('leaves any other failure where it is', () => {
+    expect(pickerStartDir('code/repo', 'path is not absolute: code/repo')).toEqual({
+      dir: 'code/repo',
+      keepTyped: false,
+    })
+    expect(pickerStartDir('/home/you', 'EMFILE: too many open files')).toEqual({
+      dir: '/home/you',
+      keepTyped: false,
+    })
+  })
+})
+
+describe('repoFolderName', () => {
+  it('is the last segment of a posix path', () => {
+    expect(repoFolderName('/home/you/code/runcastle')).toBe('runcastle')
+  })
+
+  it('is the last segment of a windows path', () => {
+    expect(repoFolderName('C:\\Users\\you\\code\\runcastle')).toBe('runcastle')
+  })
+
+  it('ignores trailing separators', () => {
+    expect(repoFolderName('/home/you/code/runcastle/')).toBe('runcastle')
+    expect(repoFolderName('C:\\Users\\you\\code\\runcastle\\\\')).toBe('runcastle')
+  })
+
+  it('answers with the whole thing when there is no separator to cut at', () => {
+    expect(repoFolderName('runcastle')).toBe('runcastle')
+  })
+})
+
+/**
+ * What the picker says when a listing fails. The server's own sentences are
+ * lowercase and splice the path into the middle of them, which is neither the
+ * flow's error voice (decision 5) nor something a long path can be truncated
+ * out of.
+ */
+describe('browseFailure', () => {
+  it('states a missing path once, with the path pulled out of the sentence', () => {
+    expect(browseFailure('path does not exist: Z:\\nope\\deeper')).toEqual({
+      message: 'Path does not exist',
+      hint: 'Check the path, or pick a folder from the rail.',
+      path: 'Z:\\nope\\deeper',
+    })
+  })
+
+  it('separates a path it cannot read from the errno the server appended', () => {
+    expect(browseFailure('cannot read path: /root/private (EACCES: permission denied)')).toEqual({
+      message: 'Cannot read that folder',
+      hint: 'It may need permissions this machine does not have.',
+      path: '/root/private',
+    })
+    expect(browseFailure('cannot read directory: /proc/1 (EACCES)').path).toBe('/proc/1')
+  })
+
+  it('says what a relative path is missing rather than repeating the server', () => {
+    expect(browseFailure('path is not absolute: code/repo')).toEqual({
+      message: 'Enter an absolute path',
+      hint: 'A path from the root of the machine runcastle runs on.',
+      path: 'code/repo',
+    })
+  })
+
+  it('passes an unrecognised failure through untouched, with no path to show', () => {
+    expect(browseFailure('EMFILE: too many open files')).toEqual({
+      message: 'EMFILE: too many open files',
+      hint: null,
+      path: null,
+    })
   })
 })

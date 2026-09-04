@@ -78,4 +78,30 @@ describe('Field', () => {
 
     expect(screen.getByLabelText('Base branch').id).toBe('base-branch')
   })
+
+  // A <label> may not contain another labelable element, so a help button
+  // beside the label has to be its sibling — which is what the settings dialog
+  // hangs its ⓘ tooltip and its "Saved ✓" on.
+  it('keeps an aside beside the label rather than inside it', () => {
+    render(
+      <Field label="Base branch" labelAside={<button>About</button>}>
+        <input />
+      </Field>,
+    )
+
+    const label = screen.getByText('Base branch')
+    const aside = screen.getByRole('button', { name: 'About' })
+    expect(label.contains(aside)).toBe(false)
+    expect(label.parentElement?.contains(aside)).toBe(true)
+  })
+
+  it('lays the field out however the caller needs it to', () => {
+    const { container } = render(
+      <Field label="Base branch" layout="grid grid-cols-[210px_1fr]">
+        <input />
+      </Field>,
+    )
+
+    expect(container.firstElementChild?.className).toBe('grid grid-cols-[210px_1fr]')
+  })
 })

@@ -35,19 +35,6 @@ export function projectSessionState(
   return session.status === 'launching' ? 'launching' : 'live'
 }
 
-/**
- * The chrome's consequence sentence (decision 18). The session writes the repo
- * for real, so the workspace has to say plainly where those commits go — landing
- * on the landing branch fast-forwards the human's working tree exactly like a
- * pull, which is reassuring only if it was stated up front.
- */
-export function projectBranchNote(landingBranch: string): string {
-  // Empty only in the window before the session-branch query lands; naming no
-  // branch beats naming the wrong one.
-  const target = landingBranch || 'the base branch'
-  return `Runs on ${PROJECT_BRANCH} — commits land on ${target} and arrive in your checkout like a git pull.`
-}
-
 /** Where the landing branch on screen came from (decisions 5–6). */
 export type SessionBranchOrigin =
   /** A human picked it, and it is still a branch this repo has. */
@@ -57,43 +44,25 @@ export type SessionBranchOrigin =
   /** A human picked it and it is gone — the next chat launch will refuse to run. */
   | 'vanished'
 
-/** What the "this chat's work lands on" picker renders (decisions 5–6). */
+/** What the landing menu renders (decisions 5–6, and decisions.md #3). */
 export interface SessionBranchState {
   /** The branch shown as chosen — the stored pick if there is one, else detection. */
   value: string
   origin: SessionBranchOrigin
-  /** The chip beside the control: whose choice this is, in two words. */
-  label: string
-  /** The one line under the control: where the value came from, and when a change bites. */
-  note: string
-}
-
-/** Said by every note, because a live chat's branch was cut before you got here. */
-const NEXT_LAUNCH = 'A change applies to the next chat you open, not one already running.'
-
-const ORIGIN_LABEL: Record<SessionBranchOrigin, string> = {
-  picked: 'your pick',
-  detected: 'detected',
-  vanished: 'branch gone',
-}
-
-const ORIGIN_NOTE: Record<SessionBranchOrigin, string> = {
-  picked: `You picked this branch, and nothing re-detects over it. ${NEXT_LAUNCH}`,
-  detected: `Detected — nobody has picked, so chats follow this repo's main line. ${NEXT_LAUNCH}`,
-  vanished: `The branch you picked is gone from this repo, so the next chat will refuse to launch until you pick another. ${NEXT_LAUNCH}`,
 }
 
 /**
- * The picker's state, from `project.sessionBranch`'s `{ stored, effective,
+ * The menu's state, from `project.sessionBranch`'s `{ stored, effective,
  * detected }` and the project's local branches — `null` until the query lands,
  * because "detected" and "your pick" read as opposites and there is no safe
  * guess between them.
  *
  * The vanished case is why the query reports `stored` separately rather than
  * just an effective string: a pick whose branch has been deleted still shows,
- * still reads as the human's, and says out loud that the next launch will fail
- * — the picker being the one place that state can be fixed (spec, "Seams").
- * Unknown branches (list still in flight) never accuse a pick of being gone.
+ * and it is the one error state the menu paints — New chat is blocked until
+ * another branch is picked, the menu being the one place that can be fixed
+ * (spec, "Seams"). Unknown branches (list still in flight) never accuse a pick
+ * of being gone.
  */
 export function sessionBranchState(
   view: { stored: string | null; effective: string; detected: string } | undefined,
@@ -105,12 +74,7 @@ export function sessionBranchState(
     : branches && !branches.includes(view.stored)
       ? 'vanished'
       : 'picked'
-  return {
-    value: view.effective,
-    origin,
-    label: ORIGIN_LABEL[origin],
-    note: ORIGIN_NOTE[origin],
-  }
+  return { value: view.effective, origin }
 }
 
 /** Which surface owns the workspace body. */

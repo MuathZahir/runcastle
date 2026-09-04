@@ -19,6 +19,8 @@ export type WizardScreen = 'intro' | SetupStep
 
 /** The shape of a doctor probe result, structurally (keeps this module IO-free). */
 export interface ProbeLike {
+  /** Which probe this is — `git-identity` is the only id read here. */
+  id?: string
   status: string
   detail: string
   fix?: string
@@ -57,6 +59,24 @@ export function firstSetupStep(identity: ProbeLike | undefined): SetupStep {
 /** The step after `current`, or `undefined` on the last one. */
 export function nextSetupStep(current: SetupStep): SetupStep | undefined {
   return SETUP_ORDER[SETUP_ORDER.findIndex((s) => s.key === current) + 1]?.key
+}
+
+/**
+ * The step Back returns to, or `undefined` when there is no earlier step and
+ * Back therefore goes to the intro (decision 4).
+ *
+ * "Earlier step" means earlier *shown* step: an identity the host already
+ * configured was never presented, so walking back onto it would show a form
+ * asking for something already in `git config` — which is the same silent
+ * mismatch {@link firstSetupStep} exists to avoid, only in reverse. The rail
+ * still carries that step as a passed row, so nothing has been hidden.
+ */
+export function prevSetupStep(
+  current: SetupStep,
+  identity: ProbeLike | undefined,
+): SetupStep | undefined {
+  if (current === firstSetupStep(identity)) return undefined
+  return SETUP_ORDER[SETUP_ORDER.findIndex((s) => s.key === current) - 1]?.key
 }
 
 /**
@@ -130,6 +150,23 @@ export function runtimeReadiness(probes: readonly ProbeLike[]): RuntimeReadiness
  */
 export function readyRuntimes(cards: readonly RuntimeReadiness[]): AgentRuntime[] {
   return cards.filter((c) => c.talkReady).map((c) => c.runtime)
+}
+
+/**
+ * Whether the host is set up far enough that the wizard has nothing left to ask
+ * (decision 3): git can attribute a commit, and at least one coding agent is
+ * ready to open a session.
+ *
+ * First run used to be "the projects table is empty", which replayed the whole
+ * wizard the moment someone closed their last project. This is computed from the
+ * doctor on every load instead, so it cannot go stale in either direction — an
+ * agent signed out later brings its step back rather than being remembered as
+ * done.
+ */
+export function setupComplete(results: readonly ProbeLike[]): boolean {
+  const identity = results.find((r) => r.id === 'git-identity')
+  if (identity?.status !== 'ok') return false
+  return readyRuntimes(runtimeReadiness(results)).length > 0
 }
 
 /**

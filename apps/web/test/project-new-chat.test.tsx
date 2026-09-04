@@ -1,7 +1,17 @@
 // @vitest-environment happy-dom
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'vitest'
-import { NewChatCard } from '../src/components/ProjectWorkspace'
+import { NewChatCard } from '../src/components/project/NewChatCard'
+import type { SessionBranchApi } from '../src/lib/use-session-branch'
+
+const landing: SessionBranchApi = {
+  value: 'main',
+  branches: ['main'],
+  detected: 'main',
+  missing: false,
+  pick: () => {},
+  picking: false,
+}
 
 describe('the New chat door with a live chat', () => {
   afterEach(cleanup)
@@ -11,6 +21,7 @@ describe('the New chat door with a live chat', () => {
     let replaced = 0
     render(
       <NewChatCard
+        landing={landing}
         onStart={() => {}}
         starting={false}
         openSession={{ onOpen: () => opened++, onReplace: () => replaced++ }}

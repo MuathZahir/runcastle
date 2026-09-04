@@ -1,20 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
+import type { ReactNode } from 'react'
+import { repoFolderName } from '../lib/projects'
 import type { ProjectNavApi } from '../lib/use-project-nav'
 import { IconCheck, IconChevronDown } from '../icons'
-
-/**
- * There is no preflight, so every button here states its own reset; and the
- * unlayered `button { color: inherit }` beats a `text-*` utility written on the
- * button, so the colour lives on a span inside (apps/web/STYLE.md).
- */
-const SWITCHER_BUTTON =
-  'group inline-flex min-w-0 cursor-pointer items-center gap-1.5 rounded-md border-0 ' +
-  'bg-transparent px-2 py-1 transition-colors duration-(--dur-1) ease-app hover:bg-panel-3'
-
-/** A row in the dropped menu. */
-const MENU_ITEM =
-  'group flex w-full cursor-pointer items-center gap-2 rounded-md border-0 bg-transparent ' +
-  'px-2 py-1.5 text-left transition-colors duration-(--dur-1) ease-app hover:bg-panel-3'
+import { BARE_BUTTON } from '../ui'
 
 /**
  * The breadcrumb's middle level (decision 11). Click the project name to drop a
@@ -22,9 +11,39 @@ const MENU_ITEM =
  * background runs), plus "All projects" (the portfolio home) and "Open a
  * project…". The command palette carries the same project mode for keyboarding.
  *
- * `min-w-0` runs all the way down to the name, or the flex default of min-content
- * wins and the ellipsis never engages (findings F20).
+ * `min-w-0` runs all the way down to the name, or the flex default of
+ * min-content wins and the ellipsis never engages (findings F20).
+ *
+ * Each project row carries its repo folder underneath (the onboarding flow's
+ * decision 8): two projects can share a name — a fork and its original
+ * routinely do — and the folder is the only thing on the row that tells them
+ * apart.
  */
+
+/*
+ * Both buttons below state a background AND a border on purpose. There is no
+ * Tailwind preflight while the legacy sheet lives (STYLE.md: "do not assume a
+ * reset: style what you render"), so a `<button>` that names neither keeps the
+ * user-agent `buttonface` — a light grey slab under this theme's near-white
+ * text — and its outset border, which the rows drew as a rounded outline apiece.
+ * The trigger wants a border of its own to fade in on hover, so it names a
+ * transparent one; the rows have none to fade, so they take BARE_BUTTON. Both
+ * let the panel behind them show through, and only hover paints.
+ */
+
+const TRIGGER =
+  'inline-flex h-6 min-w-0 items-center gap-1.5 rounded-md border border-transparent px-1.5 ' +
+  'bg-transparent transition-[border-color,background-color] duration-(--dur-1) ease-app ' +
+  'hover:border-hairline hover:bg-panel-3'
+
+const MENU =
+  'absolute top-7.5 left-0 z-40 flex min-w-60 flex-col gap-0.5 rounded-lg ' +
+  'border border-hairline bg-panel p-1.5 shadow-overlay'
+
+const MENU_ITEM =
+  `${BARE_BUTTON} flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-text-2 ` +
+  'transition-[color,background-color] duration-(--dur-1) ease-app hover:bg-panel-3 hover:text-text'
+
 export function ProjectSwitcher({ nav }: { nav: ProjectNavApi }) {
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
@@ -49,84 +68,98 @@ export function ProjectSwitcher({ nav }: { nav: ProjectNavApi }) {
   return (
     <div className="relative inline-flex min-w-0" ref={ref}>
       <button
-        className={SWITCHER_BUTTON}
+        className={TRIGGER}
         onClick={() => setOpen((v) => !v)}
         title="Switch project"
         aria-haspopup="menu"
         aria-expanded={open}
       >
-        {/* Truncated when long (findings F20) — the title carries the whole
-            name so nothing is unreadable, only unshown. */}
+        {/* Truncated before it can push the search box off the row (findings
+            F20) — the title carries the whole name, so nothing is unreadable,
+            only unshown. */}
         <span
-          className="truncate text-base font-medium text-text-2 group-hover:text-text"
+          className="max-w-56 min-w-0 truncate text-sm text-text-2"
           title={nav.currentProject?.name}
         >
           {nav.currentProject?.name ?? '…'}
         </span>
-        <span className="flex shrink-0 items-center text-text-4">
+        <span className="inline-flex items-center text-text-4">
           <IconChevronDown size={11} />
         </span>
       </button>
 
       {open && (
-        <div
-          className="absolute top-8 left-0 z-40 min-w-60 rounded-lg border border-hairline bg-panel p-1 shadow-menu"
-          role="menu"
-        >
-          <div className="px-2 pt-1.5 pb-1 text-xs tracking-[0.08em] text-text-4 uppercase">
+        <div className={MENU} role="menu">
+          <div className="px-2 pt-1 pb-1 text-xs tracking-[0.08em] text-text-4 uppercase">
             Projects
           </div>
-          {projects.map((p) => (
-            <button
-              key={p.id}
-              className={MENU_ITEM}
-              role="menuitem"
-              onClick={() => {
-                nav.enterProject(p.id)
-                setOpen(false)
-              }}
-            >
-              <span
-                className={`min-w-0 flex-1 truncate text-base group-hover:text-text ${
-                  p.id === nav.currentProjectId ? 'text-text' : 'text-text-2'
-                }`}
+          {projects.map((p) => {
+            const current = p.id === nav.currentProjectId
+            return (
+              <MenuItem
+                key={p.id}
+                current={current}
+                onSelect={() => {
+                  nav.enterProject(p.id)
+                  setOpen(false)
+                }}
               >
-                {p.name}
-              </span>
-              {p.id === nav.currentProjectId && (
-                <span className="flex shrink-0 items-center text-accent-hi">
-                  <IconCheck size={11} />
+                <span className="min-w-0 flex-1">
+                  <span className={`block truncate text-base ${current ? 'text-text' : ''}`}>
+                    {p.name}
+                  </span>
+                  <span className="block truncate font-mono text-xs text-text-4">
+                    {repoFolderName(p.repoPath)}
+                  </span>
                 </span>
-              )}
-            </button>
-          ))}
-          <div className="mx-1 my-1.5 h-px bg-hairline-soft" />
-          <button
-            className={MENU_ITEM}
-            role="menuitem"
-            onClick={() => {
+                {current && (
+                  <span className="inline-flex items-center text-accent-hi">
+                    <IconCheck size={11} />
+                  </span>
+                )}
+              </MenuItem>
+            )
+          })}
+          <div className="my-1 h-px bg-hairline-soft" />
+          <MenuItem
+            onSelect={() => {
               nav.goHome()
               setOpen(false)
             }}
           >
-            <span className="min-w-0 flex-1 truncate text-base text-text-2 group-hover:text-text">
-              All projects
-            </span>
-          </button>
-          <button
-            className={MENU_ITEM}
-            role="menuitem"
-            onClick={() => {
+            <span className="min-w-0 flex-1 truncate text-base">All projects</span>
+          </MenuItem>
+          <MenuItem
+            onSelect={() => {
               nav.showOpen()
               setOpen(false)
             }}
           >
-            <span className="min-w-0 flex-1 truncate text-base text-text-2 group-hover:text-text">
-              Open a project…
-            </span>
-          </button>
+            <span className="min-w-0 flex-1 truncate text-base">Open a project…</span>
+          </MenuItem>
         </div>
       )}
     </div>
+  )
+}
+
+function MenuItem({
+  current,
+  onSelect,
+  children,
+}: {
+  current?: boolean
+  onSelect: () => void
+  children: ReactNode
+}) {
+  return (
+    <button
+      className={MENU_ITEM}
+      role="menuitem"
+      aria-current={current ? 'true' : undefined}
+      onClick={onSelect}
+    >
+      {children}
+    </button>
   )
 }

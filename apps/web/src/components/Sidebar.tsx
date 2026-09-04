@@ -17,7 +17,7 @@ import {
 } from '../lib/feature-ui'
 import { prepRailRow } from '../lib/project-workspace'
 import { pathFor } from '../lib/routes'
-import { isStale } from '../lib/settings'
+import { isStale } from '../lib/prep-findings'
 import { useLivePoll } from '../lib/live'
 import { clampSidebarWidth } from '../lib/sidebar-width'
 import type { ProjectTalkApi } from '../lib/use-project-talk'
@@ -104,7 +104,7 @@ export function Sidebar({
   /** The rail's current width in px — the drag's starting point. */
   width: number
   talk: ProjectTalkApi
-  onSelect: (featureId: string) => void
+  onSelect: (featureId: string | null) => void
   onSelectProject: () => void
   /** New — open the project workspace on a fresh conversation. */
   onNewChat: () => void
@@ -153,11 +153,12 @@ export function Sidebar({
   const del = trpc.feature.delete.useMutation({
     onSuccess: (_res, vars) => {
       invalidate()
-      // If the deleted feature was open, jump to another one so the workspace
-      // never dead-ends on a now-missing feature (delete is irreversible).
+      // If the deleted feature was open, clear its persisted selection before
+      // opening the project workspace. Keeping either reference strands this
+      // render (or the next reload) on a feature that no longer exists.
       if (vars.featureId === selectedFeatureId) {
-        const next = (list.data ?? []).find((f) => f.id !== vars.featureId)
-        if (next) onSelect(next.id)
+        onSelect(null)
+        onSelectProject()
       }
       setPendingDelete(null)
     },

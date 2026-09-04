@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { Phase } from '@runcastle/core'
+import type { SettingsLocation } from './settings'
 
 /**
  * Workspace navigation state for the pipeline-first shell (app-redesign).
@@ -52,6 +53,14 @@ function writeLS(key: string, value: string): void {
   }
 }
 
+function removeLS(key: string): void {
+  try {
+    localStorage.removeItem(key)
+  } catch {
+    // storage may be unavailable (private mode) — non-fatal
+  }
+}
+
 export interface WorkspaceApi {
   /** The feature whose pipeline fills the workspace, or null (empty state). */
   selectedFeatureId: string | null
@@ -84,8 +93,13 @@ export interface WorkspaceApi {
   mapRailCollapsed: boolean
   /** Command palette (⌘K) open. */
   cmdkOpen: boolean
-  /** Settings overlay open (issue #47). */
-  settingsOpen: boolean
+  /**
+   * Where settings is open, or null for closed. A location rather than a flag:
+   * every caller — the titlebar, the palette, an error message pointing at
+   * "Settings → Burns" — says which page (and optionally which field) it wants,
+   * so the human lands on the row instead of on the dialog.
+   */
+  settings: SettingsLocation | null
   /** Show the one-line guide captions on the next-step bar and phase bodies. */
   guidance: boolean
 
@@ -107,7 +121,9 @@ export interface WorkspaceApi {
   toggleInspector: () => void
   toggleMapRail: () => void
   setCmdk: (open: boolean) => void
-  setSettings: (open: boolean) => void
+  /** Open settings, on General unless the caller names somewhere else. */
+  openSettings: (location?: SettingsLocation) => void
+  closeSettings: () => void
   toggleGuidance: () => void
 }
 
@@ -133,11 +149,12 @@ export function useWorkspace(projectId: string): WorkspaceApi {
     () => readLS(MAPRAIL_KEY) === '1',
   )
   const [cmdkOpen, setCmdk] = useState(false)
-  const [settingsOpen, setSettings] = useState(false)
+  const [settings, setSettings] = useState<SettingsLocation | null>(null)
   const [guidance, setGuidance] = useState(() => readLS(GUIDANCE_KEY) !== '0')
 
   useEffect(() => {
     if (selectedFeatureId) writeLS(selectedKey, selectedFeatureId)
+    else removeLS(selectedKey)
   }, [selectedFeatureId, selectedKey])
   useEffect(() => {
     writeLS(preparingKey, preparing ? '1' : '0')
@@ -187,10 +204,11 @@ export function useWorkspace(projectId: string): WorkspaceApi {
     setCmdk(false)
   }, [])
   // Opening settings closes the palette so only one overlay is up at a time.
-  const openSettings = useCallback((open: boolean) => {
-    setSettings(open)
-    if (open) setCmdk(false)
+  const openSettings = useCallback((location: SettingsLocation = { page: 'general' }) => {
+    setSettings(location)
+    setCmdk(false)
   }, [])
+  const closeSettings = useCallback(() => setSettings(null), [])
   const cancelCreate = useCallback(() => setCreating(false), [])
   const closePreparation = useCallback(() => setPreparing(false), [])
   const toggleInspector = useCallback(() => setInspectorCollapsed((v) => !v), [])
@@ -206,7 +224,7 @@ export function useWorkspace(projectId: string): WorkspaceApi {
     inspectorCollapsed,
     mapRailCollapsed,
     cmdkOpen,
-    settingsOpen,
+    settings,
     guidance,
     select,
     selectProject,
@@ -218,7 +236,8 @@ export function useWorkspace(projectId: string): WorkspaceApi {
     toggleInspector,
     toggleMapRail,
     setCmdk,
-    setSettings: openSettings,
+    openSettings,
+    closeSettings,
     toggleGuidance,
   }
 }

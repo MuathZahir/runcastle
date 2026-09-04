@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { trpc } from '../trpc'
+import { setupComplete } from './first-run'
 import { useLivePoll } from './live'
 import {
-  initialView,
   launchView,
+  replacementLanding,
   type AppView,
   type Landing,
   type StoredNav,
@@ -69,6 +70,7 @@ export function writeStoredNav(nav: StoredNav): void {
 export interface ProjectNavApi {
   /** Open projects (undefined while the first list load is in flight). */
   projects: Project[] | undefined
+  /** True until both facts the landing is decided from have arrived. */
   loading: boolean
   view: AppView
   currentProjectId: string | null
@@ -86,6 +88,9 @@ export interface ProjectNavApi {
 export function useProjectNav(): ProjectNavApi {
   const q = trpc.project.list.useQuery(undefined, { refetchInterval: useLivePoll(5000) })
   const projects = q.data
+  // Onboarding is decided from what the host actually has, not from an empty
+  // projects table (decision 3), so the doctor is the landing's second input.
+  const doctor = trpc.setup.doctor.useQuery(undefined, { refetchOnWindowFocus: false })
 
   // Read once, at mount: where the last session left off, and where the address
   // bar says we are. The URL wins where it names a project; a bare `/` is a
@@ -99,7 +104,19 @@ export function useProjectNav(): ProjectNavApi {
   // way into the restored project. Latched once resolved, so a project opened
   // elsewhere later cannot re-decide where the user is standing.
   const resolved = useRef<Landing | null>(null)
-  if (!resolved.current && projects) resolved.current = launchView(projects, urlLocation, stored)
+  // A doctor still in flight leaves the landing unresolved rather than assuming
+  // an answer: guessing "set up" flashes the home, guessing "not set up" flashes
+  // the wizard at someone who finished onboarding months ago. A doctor that
+  // failed outright reads as no evidence of setup, which is the safe way to be
+  // wrong — the wizard can be walked out of, a missing runtime cannot.
+  if (!resolved.current && projects && !doctor.isLoading) {
+    resolved.current = launchView(
+      projects,
+      urlLocation,
+      stored,
+      setupComplete(doctor.data?.results ?? []),
+    )
+  }
 
   const landing = chosen ?? resolved.current
   const view: AppView = landing?.view ?? 'home'
@@ -108,13 +125,18 @@ export function useProjectNav(): ProjectNavApi {
   // Whether the address has been squared with the resolved landing yet.
   const normalized = useRef(false)
 
-  // If the bound project disappears (closed elsewhere), fall back gracefully.
+  // If the list moves out from under where the user is standing — the bound
+  // project closed elsewhere, or the last card removed from the home — fall
+  // back to the landing rule rather than leaving them on a surface that is no
+  // longer about anything.
   useEffect(() => {
     if (!projects || !landing) return
-    if (landing.view === 'project' && !projects.some((p) => p.id === landing.projectId)) {
-      // Re-arm the normalizer: the address still names the project that is gone.
+    const replacement = replacementLanding(landing, projects)
+    if (replacement) {
+      // Re-arm the normalizer: the address may still name the surface that is
+      // gone.
       normalized.current = false
-      setChosen(initialView(projects))
+      setChosen(replacement)
     }
   }, [projects, landing])
 
@@ -179,7 +201,7 @@ export function useProjectNav(): ProjectNavApi {
 
   return {
     projects,
-    loading: q.isLoading,
+    loading: q.isLoading || doctor.isLoading,
     view,
     currentProjectId,
     currentProject,

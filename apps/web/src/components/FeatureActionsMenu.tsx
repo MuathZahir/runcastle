@@ -17,7 +17,14 @@ export interface FeatureAction {
   onSelect: (triggerRef: RefObject<HTMLButtonElement | null>) => void
 }
 
-export function FeatureActionsMenu({ actions }: { actions: FeatureAction[] }) {
+export function FeatureActionsMenu({
+  actions,
+  label = 'feature actions',
+}: {
+  actions: FeatureAction[]
+  /** The trigger's accessible name — the rows it serves are not all features. */
+  label?: string
+}) {
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
   const triggerRef = useRef<HTMLButtonElement>(null)
@@ -49,7 +56,7 @@ export function FeatureActionsMenu({ actions }: { actions: FeatureAction[] }) {
         // unlayered `button { color: inherit }` that beats a `text-*` utility
         // here — so the colour goes on the span, switched by `group-hover`.
         className="group cursor-pointer rounded-md border-0 bg-transparent px-1.5 py-1 transition-colors duration-(--dur-1) ease-app hover:bg-panel-3"
-        aria-label="feature actions"
+        aria-label={label}
         aria-haspopup="menu"
         aria-expanded={open}
         onClick={(e) => {

@@ -6,7 +6,7 @@ import { useLivePoll } from '../lib/live'
 import { useToast } from '../lib/toast'
 import { Button, DimLine, PhaseTag } from '../ui'
 import type { FeatureFull, PrepView } from '../lib/api'
-import { unverifiedDriveKeys } from '../lib/settings'
+import { unverifiedDriveKeys } from '../lib/prep-findings'
 import type { DriveState } from '../lib/workspace'
 import {
   activeSession,
@@ -152,13 +152,13 @@ export function Workspace({
   // A parked draft picks its base at Start, not at creation (decision 3), so the
   // branch list is read HERE — Start fires from the next-step bar, and the base
   // has to be readable at that click, not buried in the body that shows the
-  // picker. Only fetched for a draft; every other feature already has a branch.
+  // picker beside it. Only fetched for a draft; every other feature already has a branch.
   const isDraft = q.data?.feature.status === 'draft'
   const branchesQ = trpc.project.branches.useQuery(
     { projectId: projectId ?? '' },
     { enabled: !!projectId && isDraft },
   )
-  // An explicit pick from the body's Advanced disclosure, stamped with the
+  // An explicit pick from the bar's branch menu, stamped with the
   // feature it was made on — this component is not remounted between features,
   // so an unstamped pick would follow the user to the next draft and quietly
   // fork it off a branch they chose for a different idea. No pick (or a stale
@@ -168,8 +168,8 @@ export function Workspace({
   const effectiveDraftBase =
     (draftPick?.featureId === featureId ? draftPick.base : '') ||
     (branchesQ.data ? defaultBaseBranch(branchesQ.data) : '')
-  // Why Start has no base to send, when it has none — read by the bar (which
-  // says so on the disabled button) and by the body (which opens the picker).
+  // Why Start has no base to send, when it has none — read by the bar, which
+  // warns on the picker and says so on the disabled button.
   const draftBaseMissing: DraftBaseMissing | undefined =
     !isDraft || effectiveDraftBase ? undefined : branchesQ.data ? 'unpicked' : 'loading'
 
@@ -563,7 +563,23 @@ export function Workspace({
           </button>
         </div>
       ) : (
-        <NextStepBar ns={ns} guidance={guidance} busy={busy} onAction={runAction} />
+        <NextStepBar
+          ns={ns}
+          guidance={guidance}
+          busy={busy}
+          onAction={runAction}
+          draftBranch={
+            isDraft
+              ? {
+                  branches: branchesQ.data?.branches,
+                  value: effectiveDraftBase || null,
+                  detected: branchesQ.data?.detected,
+                  missing: draftBaseMissing === 'unpicked',
+                  onPick: (base) => setDraftPick({ featureId, base }),
+                }
+              : undefined
+          }
+        />
       )}
 
       {offline && (
@@ -619,13 +635,7 @@ export function Workspace({
               `ideation`, and the grill body would offer a terminal on a feature
               that has no branch to open one against. */}
           {isDraft ? (
-            <DraftBody
-              full={full}
-              branches={branchesQ.data}
-              base={effectiveDraftBase}
-              baseMissing={draftBaseMissing}
-              onPick={(base) => setDraftPick({ featureId, base })}
-            />
+            <DraftBody full={full} />
           ) : (
             <PhaseBody
               effective={effective}

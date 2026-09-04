@@ -32,11 +32,15 @@ export const projectRouter = router({
     )
     .query(({ input }) => browseDir(input?.dir, input?.showHidden ?? false)),
 
-  // Local branches for the create-feature base picker (§4). Returns the current
-  // checkout branch, the project default, and all non-`feature/*` local branches.
+  // Local branches for base and landing pickers. Feature creation keeps the
+  // narrow default; project-chat landing may explicitly include feature branches.
   branches: publicProcedure
-    .input(z.object({ projectId: z.string() }))
-    .query(({ ctx, input }) => git.listBranches(requireProjectById(ctx, input.projectId))),
+    .input(z.object({ projectId: z.string(), includeFeatureBranches: z.boolean().optional() }))
+    .query(({ ctx, input }) =>
+      git.listBranches(requireProjectById(ctx, input.projectId), {
+        includeFeatureBranches: input.includeFeatureBranches,
+      }),
+    ),
 
   /**
    * Where the project session's work lands, as the picker needs it: what a human

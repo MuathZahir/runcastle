@@ -9,7 +9,7 @@
 
 import { DEFAULT_RUNTIME } from '@runcastle/core'
 import type { AgentRuntime } from '@runcastle/core'
-import type { DriveCapabilities } from './settings'
+import type { DriveCapabilities } from './prep-findings'
 
 /**
  * What to call the thing on the other side of a session (decision 11).

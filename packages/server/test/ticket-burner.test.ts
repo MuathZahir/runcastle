@@ -170,7 +170,7 @@ describe('burnRun — scheduling and summary', () => {
       expect.objectContaining({
         type: 'burn.image_runtime_missing',
         message:
-          'claude is not installed in image sandcastle:runcastle-demo — the image predates the burner Dockerfile. Rebuild it from Settings → AFK burns (Rebuild image).',
+          'claude is not installed in image sandcastle:runcastle-demo — the image predates the burner Dockerfile. Rebuild it from Settings → Burns (Rebuild image).',
       }),
     )
   })
