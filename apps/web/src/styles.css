@@ -270,27 +270,11 @@ button {
 }
 
 /* ============================================================================
-   SHELL FRAME
+   LOGO WORDMARK — the two-tone brand mark (`LogoWordmark` in icons.tsx)
+   All that survives the migrated titlebar. It is not the titlebar's: the
+   portfolio home renders the same primitive, so these rules go when that flow
+   migrates its own surface.
    ========================================================================== */
-/* ---- titlebar ---- */
-.titlebar {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  padding: 0 14px;
-  border-bottom: 1px solid var(--hairline);
-  background: var(--panel);
-  font-size: 13px;
-}
-/* brand mark container — the castle mark IS the logo now, no tile behind it */
-.tb-logo {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex: 0 0 auto;
-}
-.tb-app { color: var(--text); font-weight: 600; letter-spacing: 0.02em; }
-
 /* two-tone wordmark (logo spec): mono semibold, `run` in accent */
 .wordmark {
   font-family: var(--mono);
@@ -303,104 +287,6 @@ button {
 .wordmark.is-lg { font-size: 21px; letter-spacing: -0.5px; }
 .wordmark-run { color: var(--accent-hi); }
 .wordmark-castle { color: var(--text); }
-.tb-home:hover .wordmark-castle { color: var(--accent-hi); }
-.tb-arrow, .tb-dot { color: var(--text-4); flex: 0 0 auto; }
-/* The breadcrumb is the one titlebar slot holding user-supplied text, so it is
-   the one that has to give: it shrinks and ellipsises rather than widening the
-   shell until the workspace and details rail slide off-canvas (findings F20). */
-.tb-project {
-  color: var(--text-2);
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.tb-spacer { flex: 1; }
-.tb-search {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  height: 28px;
-  padding: 0 8px 0 10px;
-  background: var(--panel-inset);
-  border: 1px solid var(--hairline);
-  border-radius: var(--radius);
-  color: var(--text-3);
-  font-size: 12px;
-  cursor: pointer;
-  transition: border-color var(--dur-1), color var(--dur-1), background var(--dur-1);
-  min-width: 220px;
-}
-.tb-search:hover { border-color: var(--hairline-strong); color: var(--text-2); background: var(--panel-3); }
-.tb-search-spacer { flex: 1; }
-.kbd {
-  font-family: var(--mono);
-  font-size: 10px;
-  border: 1px solid var(--hairline-strong);
-  border-radius: 4px;
-  padding: 1px 5px;
-  color: var(--text-3);
-  line-height: 1.4;
-}
-.tb-runs {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  height: 24px;
-  padding: 0 10px;
-  border-radius: var(--radius-pill);
-  border: 1px solid color-mix(in srgb, var(--ph-implementation) 30%, transparent);
-  background: color-mix(in srgb, var(--ph-implementation) 9%, transparent);
-  color: var(--ph-implementation);
-  font-family: var(--mono);
-  font-size: 11px;
-  animation: fadeUp var(--dur-3) var(--ease-out);
-}
-.health-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  display: inline-block;
-  background: var(--text-3);
-  transition: background var(--dur-2);
-}
-.tb-health.is-ok .health-dot, .sb-health.is-ok .health-dot { background: var(--ok); }
-.tb-health.is-down .health-dot, .sb-health.is-down .health-dot { background: var(--danger); animation: pulse 1s ease-in-out infinite; }
-.tb-icon-btn {
-  width: 28px;
-  height: 28px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  background: transparent;
-  border: none;
-  border-radius: var(--radius);
-  color: var(--text-3);
-  cursor: pointer;
-  transition: color var(--dur-1), background var(--dur-1);
-}
-.tb-icon-btn:hover { color: var(--text); background: var(--panel-3); }
-.tb-icon-btn.is-on { color: var(--text-2); background: var(--panel-3); }
-
-/* ============================================================================
-   PHASE DOT — all that survives the migrated triage rail
-   The rail is on utilities now (Sidebar.tsx maps a phase to a whole class), but
-   the ⌘K palette still interpolates `phase-bg-${phase}` and would lose its dots
-   with these. They go when the palette's own flow migrates.
-   ========================================================================== */
-.feature-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 3px;
-  flex: 0 0 auto;
-  opacity: 0.9;
-}
-.phase-bg-ideation { background: var(--ph-ideation); }
-.phase-bg-spec { background: var(--ph-spec); }
-.phase-bg-tickets { background: var(--ph-tickets); }
-.phase-bg-implementation { background: var(--ph-implementation); }
-.phase-bg-review { background: var(--ph-review); }
-.phase-bg-shipped { background: var(--ph-shipped); }
 
 /* ============================================================================
    WORKSPACE — pipeline-first center
@@ -2584,60 +2470,6 @@ button.note-at:hover { color: var(--accent); }
 .act-time { font-size: 10.5px; color: var(--text-4); flex: 0 0 auto; margin-left: auto; }
 
 /* ============================================================================
-   STATUS BAR
-   ========================================================================== */
-.statusbar {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  padding: 0 12px;
-  border-top: 1px solid var(--hairline);
-  background: var(--panel);
-  font-size: 11px;
-  color: var(--text-3);
-}
-.sb-item { display: inline-flex; align-items: center; gap: 5px; }
-.sb-branch {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  background: none;
-  border: none;
-  color: var(--text-3);
-  cursor: pointer;
-  font-family: var(--mono);
-  font-size: 11px;
-  padding: 0;
-  transition: color var(--dur-1);
-}
-.sb-branch:hover { color: var(--text); }
-.sb-driving { color: var(--drive); display: flex; gap: 7px; align-items: center; }
-.sb-driving-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--drive); animation: pulse 1.4s ease-in-out infinite; }
-.sb-stop {
-  height: 16px;
-  padding: 0 6px;
-  background: transparent;
-  border: 1px solid color-mix(in srgb, var(--drive) 40%, transparent);
-  border-radius: 4px;
-  color: var(--drive);
-  font-size: 10px;
-  cursor: pointer;
-}
-.sb-stop:hover:not(:disabled) { background: rgba(88, 166, 255, 0.12); }
-.sb-spacer { flex: 1; }
-.sb-notify { display: inline-flex; align-items: center; gap: 5px; background: none; border: none; color: var(--text-3); cursor: pointer; font-size: 11px; padding: 0; transition: color var(--dur-1); }
-.sb-notify:hover { color: var(--text); }
-.sb-notify.is-on { color: var(--ok); }
-.sb-notify.is-blocked { color: var(--warn, #d9a441); }
-.sb-health { display: inline-flex; align-items: center; gap: 6px; color: var(--ph-shipped); }
-/* live data-stream indicator: a quiet dot while push is flowing, an amber word
-   while it is not. Deliberately smaller and calmer than the terminal's
-   `.ws-banner.is-offline` — different connection, different message. */
-.sb-live-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--ok); flex: 0 0 auto; }
-.sb-live.is-degraded { color: var(--warn, #d9a441); }
-.sb-live.is-degraded .sb-live-dot { background: var(--warn, #d9a441); animation: pulse 1.4s ease-in-out infinite; }
-
-/* ============================================================================
    COMMAND PALETTE (⌘K)
    ========================================================================== */
 .cmdk-backdrop {
@@ -3297,8 +3129,8 @@ select.settings-input { cursor: pointer; }
 .update-banner-dismiss:hover { color: var(--text); background: var(--panel-3); }
 
 /* ============================================================================
-   MULTI-PROJECT — app loading, titlebar switcher, portfolio home, open flow
-   (issue #45)
+   MULTI-PROJECT — app loading, portfolio home, open flow (issue #45)
+   The titlebar switcher's rules left with the rest of the migrated titlebar.
    ========================================================================== */
 .app-loading {
   height: 100%;
@@ -3306,80 +3138,6 @@ select.settings-input { cursor: pointer; }
   align-items: center;
   justify-content: center;
 }
-
-/* ---- titlebar: brand-as-home + project switcher ---- */
-.tb-home {
-  display: inline-flex;
-  align-items: center;
-  flex: 0 0 auto;
-  gap: 9px;
-  background: transparent;
-  border: 0;
-  padding: 0;
-  cursor: pointer;
-  color: inherit;
-}
-.tb-home:hover .tb-app { color: var(--accent-hi); }
-
-/* `min-width: 0` all the way down to `.tb-project`, or the flex default of
-   min-content wins and the ellipsis never engages (findings F20). */
-.tb-switcher { position: relative; display: inline-flex; min-width: 0; }
-.tb-switcher-btn {
-  display: inline-flex;
-  align-items: center;
-  min-width: 0;
-  gap: 5px;
-  height: 24px;
-  padding: 0 7px;
-  background: transparent;
-  border: 1px solid transparent;
-  border-radius: var(--radius);
-  cursor: pointer;
-  transition: border-color var(--dur-1), background var(--dur-1);
-}
-.tb-switcher-btn:hover { border-color: var(--hairline); background: var(--panel-3); }
-.tb-switcher-caret { color: var(--text-4); display: inline-flex; align-items: center; }
-
-.tb-menu {
-  position: absolute;
-  top: 30px;
-  left: 0;
-  z-index: 40;
-  min-width: 240px;
-  padding: 5px;
-  background: var(--panel);
-  border: 1px solid var(--hairline);
-  border-radius: var(--radius-lg);
-  box-shadow: 0 18px 44px -18px rgba(0, 0, 0, 0.85);
-  animation: cmdkIn var(--dur-2) var(--ease-out);
-}
-.tb-menu-label {
-  padding: 6px 8px 4px;
-  font-size: 10px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--text-4);
-}
-.tb-menu-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-  padding: 7px 8px;
-  background: transparent;
-  border: 0;
-  border-radius: var(--radius);
-  cursor: pointer;
-  color: var(--text-2);
-  text-align: left;
-  transition: background var(--dur-1), color var(--dur-1);
-}
-.tb-menu-item:hover { background: var(--panel-3); color: var(--text); }
-.tb-menu-item.is-current { color: var(--text); }
-.tb-menu-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
-.tb-menu-check { color: var(--accent-hi); display: inline-flex; align-items: center; }
-.tb-menu-sep { height: 1px; margin: 5px 4px; background: var(--hairline-soft); }
-button.tb-runs { cursor: pointer; }
 
 /* ============================================================================
    PORTFOLIO HOME — a card per open project

@@ -1,4 +1,5 @@
 import type { EventRow } from '@runcastle/core'
+import { NOTIFY_OFFER } from './vocabulary'
 
 /**
  * Event → desktop-notification mapping (streamlining-ux, ticket 10).
@@ -64,7 +65,7 @@ export function notifyButton(input: {
   return {
     state: 'off',
     label: 'notify off',
-    title: 'Notify me when a burn finishes',
+    title: NOTIFY_OFFER,
   }
 }
 

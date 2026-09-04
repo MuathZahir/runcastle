@@ -117,7 +117,10 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
   // later, leaving a stray entry behind), and while the Quick form owns the body
   // — an overlay is not a place, and opening it clears the pinned project row
   // and any open preparation underneath it (decision 1).
-  const selectedSlug = features?.find((f) => f.id === selectedFeatureId)?.slug ?? null
+  // The selected feature, read once: the URL wants its slug, the titlebar's
+  // third breadcrumb level wants its title (decision 11).
+  const selectedFeature = features?.find((f) => f.id === selectedFeatureId)
+  const selectedSlug = selectedFeature?.slug ?? null
   const location: AppLocation | null =
     landed && !ws.creating
       ? locationFor({ projectId, preparing, projectSelected, featureSlug: selectedSlug })
@@ -173,8 +176,10 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
       <Titlebar
         nav={nav}
         view={view}
+        featureTitle={selectedFeature?.title ?? null}
         onOpenCmdk={() => ws.setCmdk(true)}
         onOpenSettings={() => ws.setSettings(true)}
+        onGoToProjectHome={() => ws.select(null)}
         onToggleInspector={ws.toggleInspector}
         inspectorCollapsed={ws.inspectorCollapsed}
       />

@@ -172,6 +172,18 @@ describe('matchesProjectChat', () => {
   })
 })
 
+/**
+ * Decision 12 — the palette opens on its whole hand. Both project-scoped rows
+ * are the ones with no home in the feature pipeline, so a palette that hid them
+ * until the right noun was typed was the discoverability failure over again.
+ */
+describe('the palette on an empty query', () => {
+  it('shows both project-scoped action rows', () => {
+    expect(matchesPreparation('')).toBe(true)
+    expect(matchesProjectChat('')).toBe(true)
+  })
+})
+
 describe('showsInspector', () => {
   // Every Inspector panel is feature-scoped, so the project workspace hides it
   // rather than showing panels about a feature you are not looking at.

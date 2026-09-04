@@ -28,13 +28,16 @@ export function PortfolioHome({ nav }: { nav: ProjectNavApi }) {
   return (
     <div className="home-frame">
       <header className="home-topbar">
-        <span className="tb-home">
-          <span className="tb-logo">
+        {/* Inline utilities, not `.tb-home` / `.tb-logo` / `.tb-spacer`: those
+            rules were the in-project titlebar's, and the shell flow deleted
+            them with the rest of that surface (apps/web/STYLE.md). */}
+        <span className="inline-flex shrink-0 items-center gap-2">
+          <span className="inline-flex shrink-0 items-center">
             <LogoMark size={17} />
           </span>
           <LogoWordmark />
         </span>
-        <span className="tb-spacer" />
+        <span className="flex-1" />
         <button className="btn btn-ghost btn-xs" onClick={nav.showOpen}>
           <IconPlus size={11} />
           Open a project

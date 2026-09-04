@@ -1,11 +1,11 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import {
-  aggregateRuns,
   initialView,
   launchView,
   projectStats,
   repoOpenFailure,
   restoredView,
+  runsElsewhere,
   type StoredNav,
 } from '../src/lib/projects'
 import { readStoredNav, writeStoredNav } from '../src/lib/use-project-nav'
@@ -240,12 +240,30 @@ describe('projectStats', () => {
   })
 })
 
-describe('aggregateRuns', () => {
-  it('sums active runs across every open project', () => {
-    const a = projectStats([feat({ activeRun: true }), feat({ activeRun: true })])
-    const b = projectStats([feat({ activeRun: true })])
-    const c = projectStats([])
-    expect(aggregateRuns([a, b, c])).toBe(3)
+/**
+ * Decision 7 — the titlebar pill counts the work you cannot see from here. The
+ * current project's runs are the rail's "Agent working" lane's job, and having
+ * both say a number was how the frame ended up with four run counts carrying
+ * three meanings.
+ */
+describe('runsElsewhere', () => {
+  const stats = [
+    { projectId: 'p1', ...projectStats([feat({ activeRun: true }), feat({ activeRun: true })]) },
+    { projectId: 'p2', ...projectStats([feat({ activeRun: true })]) },
+    { projectId: 'p3', ...projectStats([]) },
+  ]
+
+  it('leaves out the runs of the project being looked at', () => {
+    expect(runsElsewhere(stats, 'p1')).toBe(1)
+    expect(runsElsewhere(stats, 'p2')).toBe(2)
+  })
+
+  it('counts every project when none of them is the current one', () => {
+    expect(runsElsewhere(stats, null)).toBe(3)
+  })
+
+  it('is zero when the only runs are in this project', () => {
+    expect(runsElsewhere([stats[0], stats[2]], 'p1')).toBe(0)
   })
 })
 
