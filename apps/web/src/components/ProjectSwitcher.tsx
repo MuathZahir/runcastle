@@ -58,7 +58,7 @@ export function ProjectSwitcher({ nav }: { nav: ProjectNavApi }) {
         {/* Truncated when long (findings F20) — the title carries the whole
             name so nothing is unreadable, only unshown. */}
         <span
-          className="truncate font-medium text-text-2 group-hover:text-text"
+          className="truncate text-base font-medium text-text-2 group-hover:text-text"
           title={nav.currentProject?.name}
         >
           {nav.currentProject?.name ?? '…'}
@@ -87,7 +87,7 @@ export function ProjectSwitcher({ nav }: { nav: ProjectNavApi }) {
               }}
             >
               <span
-                className={`min-w-0 flex-1 truncate group-hover:text-text ${
+                className={`min-w-0 flex-1 truncate text-base group-hover:text-text ${
                   p.id === nav.currentProjectId ? 'text-text' : 'text-text-2'
                 }`}
               >
@@ -109,7 +109,7 @@ export function ProjectSwitcher({ nav }: { nav: ProjectNavApi }) {
               setOpen(false)
             }}
           >
-            <span className="min-w-0 flex-1 truncate text-text-2 group-hover:text-text">
+            <span className="min-w-0 flex-1 truncate text-base text-text-2 group-hover:text-text">
               All projects
             </span>
           </button>
@@ -121,7 +121,7 @@ export function ProjectSwitcher({ nav }: { nav: ProjectNavApi }) {
               setOpen(false)
             }}
           >
-            <span className="min-w-0 flex-1 truncate text-text-2 group-hover:text-text">
+            <span className="min-w-0 flex-1 truncate text-base text-text-2 group-hover:text-text">
               Open a project…
             </span>
           </button>

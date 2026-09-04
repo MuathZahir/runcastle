@@ -231,7 +231,7 @@ export function CommandPalette(props: CommandPaletteProps) {
 
   return (
     <div
-      className="fixed inset-0 z-[300] flex animate-[backdropIn_var(--dur-2)_var(--ease-out-app)] items-start justify-center bg-[rgba(4,6,10,0.55)] px-4 pt-[12vh] backdrop-blur-[2px]"
+      className="fixed inset-0 z-[300] flex animate-[backdropIn_var(--dur-2)_var(--ease-out-app)] items-start justify-center bg-[rgba(4,6,10,0.55)] px-4 pt-[12vh] pb-4 backdrop-blur-[2px]"
       onClick={onClose}
     >
       <div
@@ -240,7 +240,9 @@ export function CommandPalette(props: CommandPaletteProps) {
       >
         <input
           ref={inputRef}
-          className="h-12 w-full border-0 border-b border-hairline bg-transparent px-4 text-base text-text outline-none placeholder:text-text-3"
+          // `font-sans` because there is no preflight: an `<input>` keeps the
+          // UA's own face and size unless it is told otherwise.
+          className="h-12 w-full border-0 border-b border-hairline bg-transparent px-4 font-sans text-base text-text outline-none placeholder:text-text-3"
           placeholder="Search features, projects, or jump to…"
           value={query}
           onChange={(e) => setQuery(e.target.value)}

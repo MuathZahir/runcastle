@@ -168,7 +168,7 @@ export function StatusBarChrome({
           <span className="size-1.5 animate-[pulse_1.4s_ease-in-out_infinite] rounded-full bg-drive" />
           driving <span className="font-mono">{driving.branch}</span>
           <button
-            className="h-4 cursor-pointer rounded-[4px] border border-drive/40 bg-transparent px-1.5 disabled:cursor-default"
+            className="h-4 cursor-pointer rounded-[4px] border border-drive/40 bg-transparent px-1.5 text-xs disabled:cursor-default"
             disabled={stopPending}
             onClick={onStopDrive}
           >

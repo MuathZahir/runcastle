@@ -13,9 +13,14 @@ import { ProjectSwitcher } from './ProjectSwitcher'
  * unstyled `<button>` is grey and bordered, and the unlayered
  * `button { color: inherit }` beats a `text-*` utility written on the button
  * itself — the colour goes on a span inside (apps/web/STYLE.md).
+ *
+ * The *background* is not here, because the inspector toggle has two of them:
+ * two utilities for one property on one element are a coin flip without
+ * `tailwind-merge`, which this app deliberately does not have. Each button
+ * states its own, exactly once.
  */
 const TB_BUTTON =
-  'group inline-flex cursor-pointer items-center rounded-md border-0 bg-transparent ' +
+  'group inline-flex cursor-pointer items-center rounded-md border-0 ' +
   'transition-colors duration-(--dur-1) ease-app hover:bg-panel-3'
 
 /** The third crumb for the views that are not a feature (decision 11). */
@@ -98,7 +103,7 @@ export function TitlebarChrome({
     <header className="flex items-center gap-2 border-b border-hairline bg-panel px-3 text-base">
       <nav className="flex min-w-0 items-center gap-2" aria-label="Breadcrumb">
         <button
-          className={`${TB_BUTTON} shrink-0 gap-2 px-2 py-1`}
+          className={`${TB_BUTTON} shrink-0 gap-2 bg-transparent px-2 py-1`}
           onClick={nav.goHome}
           title={projects.length > 1 ? 'All projects' : 'runcastle'}
         >
@@ -113,11 +118,11 @@ export function TitlebarChrome({
           <>
             <Crumb />
             <button
-              className={`${TB_BUTTON} min-w-0 max-w-[34vw] px-2 py-1`}
+              className={`${TB_BUTTON} min-w-0 max-w-[34vw] bg-transparent px-2 py-1`}
               onClick={onGoToProjectHome}
               title="Back to the project home"
             >
-              <span className="truncate font-medium text-text">{here}</span>
+              <span className="truncate text-base font-medium text-text">{here}</span>
             </button>
           </>
         )}
@@ -161,7 +166,7 @@ export function TitlebarChrome({
       )}
 
       <button
-        className={`${TB_BUTTON} size-8 shrink-0 justify-center`}
+        className={`${TB_BUTTON} size-8 shrink-0 justify-center bg-transparent`}
         title="Settings"
         aria-label="Settings"
         onClick={onOpenSettings}
@@ -176,7 +181,7 @@ export function TitlebarChrome({
       {view === 'feature' && (
         <button
           className={`${TB_BUTTON} size-8 shrink-0 justify-center ${
-            inspectorCollapsed ? '' : 'bg-panel-3'
+            inspectorCollapsed ? 'bg-transparent' : 'bg-panel-3'
           }`}
           title={inspectorCollapsed ? 'Show details panel' : 'Hide details panel'}
           aria-label={inspectorCollapsed ? 'Show details panel' : 'Hide details panel'}
