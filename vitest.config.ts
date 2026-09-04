@@ -16,7 +16,9 @@ export default defineConfig({
     // above reaches them, so they have to be excluded here or this suite tries
     // to run another project's tests with the wrong runner and no deps.
     exclude: [...configDefaults.exclude, '**/test/fixtures/**'],
-    // Strips inherited RUNCASTLE_* state before anything imports core's paths.
+    // Test-env firewall: strips inherited RUNCASTLE_* state before anything
+    // imports core's paths, and swaps Bun's throwing `localStorage` placeholder
+    // for a working in-memory one.
     setupFiles: ['./vitest.setup.ts'],
     // The git-heavy server tests each spawn dozens of `git` children (init,
     // config, add, commit, worktree add). Off win32 that is ~600–1100ms against
