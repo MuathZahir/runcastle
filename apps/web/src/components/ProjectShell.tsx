@@ -55,6 +55,7 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
     setCmdk,
   } = ws
   const [driving, setDriving] = useState<DriveState | null>(null)
+  const [newChatRequest, setNewChatRequest] = useState(0)
   // The rail's width is a screen preference, kept globally (decision 10). It
   // lives here rather than in the rail because the frame's grid is what reads
   // it — the rail only reports what a drag measured.
@@ -147,7 +148,8 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
   // and the workspace's list is what you land on instead.
   const newChat = () => {
     selectProject()
-    talk.start()
+    if (talk.session) setNewChatRequest((request) => request + 1)
+    else talk.start()
   }
 
   // Global ⌘K / Ctrl-K → command palette.
@@ -221,7 +223,12 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
             {...(ws.preparing ? { onClose: ws.closePreparation } : {})}
           />
         ) : view === 'project' ? (
-          <ProjectWorkspace projectId={projectId} talk={talk} />
+          <ProjectWorkspace
+            projectId={projectId}
+            talk={talk}
+            newChatRequest={newChatRequest}
+            onConsumeNewChatRequest={() => setNewChatRequest(0)}
+          />
         ) : view === 'feature' && selectedFeatureId ? (
           // The feature view is the app's one unbounded render surface — it
           // renders whatever a feature's row, tickets and sessions say. Contain

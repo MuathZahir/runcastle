@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { trpc } from '../trpc'
 import { IconBranch, IconMessage } from '../icons'
 import { Button, DimLine, SessionStatusDot } from '../ui'
@@ -31,14 +31,18 @@ import { TerminalView } from './TerminalView'
  * default, past conversations are named and dated, reopening one is a click on
  * that one, and an ended conversation can be read without being reopened. Only
  * one runs at a time — the launcher's rule — so a live conversation takes the
- * body over, exactly as the single session used to.
+ * body over except when a New door asks for the inline open-or-replace choice.
  */
 export function ProjectWorkspace({
   projectId,
   talk,
+  newChatRequest = 0,
+  onConsumeNewChatRequest,
 }: {
   projectId: string
   talk: ProjectTalkApi
+  newChatRequest?: number
+  onConsumeNewChatRequest?: () => void
 }) {
   const utils = trpc.useUtils()
   // Same query key the nav already polls, so this costs no extra fetch.
@@ -49,6 +53,13 @@ export function ProjectWorkspace({
   const stats = projectStats(featuresQ.data ?? [])
   const inFlight = stats.total - stats.shipped
   const session = talk.session
+  const [showNewChat, setShowNewChat] = useState(Boolean(session && newChatRequest > 0))
+  useEffect(() => {
+    if (newChatRequest > 0 && session) {
+      setShowNewChat(true)
+      onConsumeNewChatRequest?.()
+    } else if (!session) setShowNewChat(false)
+  }, [newChatRequest, onConsumeNewChatRequest, session])
   // The conversation being read back, if any. A live session outranks it — the
   // terminal owns the body, whoever opened it and from wherever.
   const [viewing, setViewing] = useState<ProjectConversation | null>(null)
@@ -78,7 +89,7 @@ export function ProjectWorkspace({
 
       <div className="ws-body">
         <div className="ws-body-inner">
-          {session ? (
+          {session && !showNewChat ? (
             <>
               <SessionFrame stats={stats} inFlight={inFlight} />
               <div className="grill-panel pw-session">
@@ -116,7 +127,21 @@ export function ProjectWorkspace({
             />
           ) : (
             <>
-              <NewChatCard onStart={talk.start} starting={talk.starting} />
+              <NewChatCard
+                onStart={talk.start}
+                starting={talk.starting}
+                openSession={
+                  session
+                    ? {
+                        onOpen: () => setShowNewChat(false),
+                        onReplace: () => {
+                          talk.replace()
+                          setShowNewChat(false)
+                        },
+                      }
+                    : undefined
+                }
+              />
               <ConversationList
                 conversations={talk.conversations}
                 pending={talk.conversationsPending}
@@ -240,7 +265,29 @@ function SessionFrame({
 }
 
 /** The default action, and the only one on a project nobody has talked to yet. */
-function NewChatCard({ onStart, starting }: { onStart: () => void; starting: boolean }) {
+export function NewChatCard({
+  onStart,
+  starting,
+  openSession,
+}: {
+  onStart: () => void
+  starting: boolean
+  openSession?: { onOpen: () => void; onReplace: () => void }
+}) {
+  if (openSession) {
+    return (
+      <div role="status" className="pw-newchat">
+        <div className="pw-newchat-copy">
+          <div className="pw-rest-title">A chat is already open.</div>
+        </div>
+        <Button onClick={openSession.onOpen}>Open it</Button>
+        <Button variant="solid" disabled={starting} onClick={openSession.onReplace}>
+          {starting ? 'Opening…' : 'End it and start new'}
+        </Button>
+      </div>
+    )
+  }
+
   return (
     <div className="pw-newchat">
       <div className="pw-newchat-copy">
