@@ -25,6 +25,8 @@ export interface ProjectTalkApi {
   conversationsPending: boolean
   /** Open a NEW conversation; no-op while one is open. */
   start: () => void
+  /** End the open conversation and launch a fresh one as one user action. */
+  replace: () => void
   /** Reopen a specific past conversation; no-op while one is open. */
   resume: (sessionId: string) => void
   starting: boolean
@@ -50,6 +52,10 @@ export function useProjectTalk(projectId: string): ProjectTalkApi {
     // refused server-side; it lands as a toast rather than taking the shell down.
     onError: (e) => toast.push(e.message),
   })
+  const end = trpc.feature.endSession.useMutation({
+    onSuccess: () => launch.mutate({ projectId, fresh: true }),
+    onError: (e) => toast.push(e.message),
+  })
 
   const session = q.data ?? null
   const state = projectSessionState(session)
@@ -67,9 +73,12 @@ export function useProjectTalk(projectId: string): ProjectTalkApi {
     start: () => {
       if (canLaunch()) launch.mutate({ projectId, fresh: true })
     },
+    replace: () => {
+      if (session && !launch.isPending && !end.isPending) end.mutate({ sessionId: session.id })
+    },
     resume: (sessionId) => {
       if (canLaunch()) launch.mutate({ projectId, resumeSessionId: sessionId })
     },
-    starting: launch.isPending,
+    starting: launch.isPending || end.isPending,
   }
 }
