@@ -6,7 +6,6 @@ import { appRouter } from '../src/trpc/router'
 import { storeTickets } from '../src/services/tickets'
 import { makeTestCtx } from './helpers/db'
 import { seedFeature, seedProject } from './helpers/fixtures'
-import { storeTickets } from '../src/services/tickets'
 
 /**
  * The wire the review screen's notes checklist talks to. The lifecycle itself is
