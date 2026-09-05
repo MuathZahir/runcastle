@@ -57,6 +57,36 @@ export function useReviewArtifacts(featureId: string): UseQueryResult<ReviewArti
  * service that stamps `screenshotUrl` onto the note get theirs — so the
  * thumbnail in the notes list is literally a GET of what was posted here.
  */
+/**
+ * A picture the human pasted or attached, as the PNG bytes the note-screenshot
+ * route accepts (decision 7a).
+ *
+ * The route checks the PNG signature — everything downstream of it, from the
+ * `.png` on disk to the `.runcastle-attachments/<id>.png` a promoted ticket
+ * hands its burner, assumes that one format — so a screenshot pasted as JPEG or
+ * WebP is re-encoded here rather than rejected at the door. A PNG passes through
+ * untouched: re-encoding one would cost a decode for no change.
+ */
+export async function toPngBlob(image: Blob): Promise<Blob> {
+  if (image.type === 'image/png') return image
+
+  const bitmap = await createImageBitmap(image)
+  const canvas = document.createElement('canvas')
+  canvas.width = bitmap.width
+  canvas.height = bitmap.height
+  const ctx = canvas.getContext('2d')
+  if (!ctx) throw new Error('this browser offered no 2d canvas to convert the image with')
+  ctx.drawImage(bitmap, 0, 0)
+  bitmap.close()
+
+  return await new Promise<Blob>((resolve, reject) => {
+    canvas.toBlob((blob) => {
+      if (blob) resolve(blob)
+      else reject(new Error('the browser produced no PNG from that image'))
+    }, 'image/png')
+  })
+}
+
 export async function uploadScreenshot(noteId: string, png: Blob): Promise<void> {
   const res = await fetch(noteScreenshotUploadUrl(noteId), {
     method: 'POST',
