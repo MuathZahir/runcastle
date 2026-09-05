@@ -1,352 +1,445 @@
-import {
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-  type PointerEvent as ReactPointerEvent,
-  type RefObject,
-} from 'react'
+import { useCallback, useEffect, useRef, useState, type RefObject } from 'react'
 import { fmtClock } from '@runcastle/core'
 import { Button } from '../ui'
 import { trpc } from '../trpc'
 import { uploadScreenshot } from '../lib/reviews'
+import { fmtBytes } from '../lib/format'
 import { useToast } from '../lib/toast'
-import {
-  captureAnnotation,
-  framePoint,
-  paintStrokes,
-  playableDuration,
-  saveAnnotatedNote,
-  seekTarget,
-  type Point,
-  type Stroke,
-} from '../lib/walkthrough'
+import { AnnotationOverlay } from './review/AnnotationOverlay'
+import { playableDuration, saveAnnotatedNote, seekTarget } from '../lib/walkthrough'
 
 /**
- * Sending the playhead to a moment, from outside this component (decisions #12).
- * The player publishes one of these into a ref its parent holds, which is how a
- * note's timestamp in the list below reaches a player that is its sibling.
+ * What the page outside this player can do to the recording on stage
+ * (decision 25b): a note row seeks to its own moment, the triage step pauses
+ * what is playing behind it, and both first ask which recording this *is* —
+ * a timestamp only ever seeks the recording it was taken against (decision 22).
+ *
+ * Published into a ref the parent holds, and taken back down on unmount: a
+ * handle left behind would be a click into a video element that no longer
+ * exists.
  */
-export type SeekWalkthrough = (seconds: number) => void
+export interface WalkthroughHandle {
+  seek: (seconds: number) => void
+  pause: () => void
+  getTicketId: () => string
+}
+
+/** One scrub-bar dot: a moment, and the notes that were taken at it. */
+export interface WalkthroughMarker {
+  at: number
+  noteIds: string[]
+}
 
 /**
- * The walkthrough player and its annotation surface (video-annotation
- * decisions #6).
+ * Playback speeds, and the one a walkthrough opens at (decision 23a). 1.5× is
+ * the default because these recordings are an AI driving a browser: every click
+ * is preceded by a think, and 1× is slower than anyone watches them.
+ */
+const SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2]
+const DEFAULT_SPEED = 1.5
+
+/** Five seconds is the jump; a thirtieth is a frame at the recorder's rate. */
+const JUMP_SECONDS = 5
+const FRAME_SECONDS = 1 / 30
+
+/** Wraps at both ends, so the on-screen `1.5×` control alone reaches them all. */
+function cycleSpeed(current: number, delta: number): number {
+  const index = SPEEDS.indexOf(current)
+  const from = index === -1 ? SPEEDS.indexOf(DEFAULT_SPEED) : index
+  return SPEEDS[(from + delta + SPEEDS.length) % SPEEDS.length]!
+}
+
+/** Whether a keystroke belongs to something being typed into rather than to us. */
+function isTyping(target: EventTarget | null): boolean {
+  const el = target as HTMLElement | null
+  return el?.tagName === 'INPUT' || el?.tagName === 'TEXTAREA' || el?.isContentEditable === true
+}
+
+/**
+ * The walkthrough player (decisions 23–24).
  *
  * The native `<video controls>` is gone, and not for looks: the browser's own
  * bar sits across the bottom of the frame — exactly where a human draws — and
- * swallows the pointer events an overlay needs. What replaces it is the minimum
- * a silent screencast wants: play/pause, a scrub bar, and where you are in it.
- * `preload="metadata"` stays as it was: a walkthrough is evidence to reach for,
- * not something to fetch in full every time the review screen opens.
+ * swallows the pointer events an overlay needs. What replaces it is sized for
+ * this recording's actual job (an agent's browser tour, watched fast and paused
+ * on the exact frame of a defect): keyboard-first transport, frame-stepping,
+ * a speed control, and note markers on the scrub bar so the video indexes its
+ * own notes.
  *
- * Annotating is offered only on a paused frame, and while it is on, play and
- * scrub are dead: a frame that moves under a drawing would leave the strokes
- * pointing at nothing. The overlay canvas is sized to the recording's INTRINSIC
- * resolution and scaled down by CSS, so what is captured is full quality however
- * small the player happens to be laid out.
+ * The two states the walked player had no vocabulary for are explicit here. A
+ * 20-minute recording still loading and a corrupt file rendered identically —
+ * as a dead card — for as long as they took, so loading says it is loading and
+ * how big the file is, and a decode error says the recording cannot be played
+ * and offers a retry.
  *
- * Saving is two steps ({@link saveAnnotatedNote}) and produces an ordinary test
- * note: it lands in the list below with the same lifecycle as one typed by hand,
- * carrying the moment it was taken from and a thumbnail of the frame.
+ * Drawing lives in {@link AnnotationOverlay}, a sibling rather than more of this
+ * component; the Annotate button is never disabled, because a control that is
+ * greyed out with a tooltip is the pattern this redesign removes — clicking it
+ * while the recording plays pauses on the frame and opens the overlay in one
+ * act.
  */
-/** Why Annotate is greyed out, said on hover rather than left to be guessed. */
-function annotateHint(playing: boolean, ready: boolean): string | undefined {
-  if (playing) return 'pause on the frame you want to draw on'
-  if (!ready) return 'the recording has not loaded a frame to draw on yet'
-  return undefined
-}
-
 export function WalkthroughPlayer({
   url,
   featureId,
+  ticketId,
+  passKind,
   readonly,
-  seekRef,
+  markers = [],
+  onMarkerClick,
+  onAnnotationSaved,
+  handleRef,
 }: {
   url: string
   featureId: string
+  /** The review ticket whose pass recorded this — what a note binds itself to. */
+  ticketId: string
+  /** Whether this recording is a first review or a verification pass. */
+  passKind: 'review' | 'verification'
   /** Looking back at a shipped feature — the recording plays, nothing is captured. */
   readonly: boolean
-  /** Filled in with this player's {@link SeekWalkthrough} while it is mounted. */
-  seekRef?: RefObject<SeekWalkthrough | null>
+  /** Clustered note moments for THIS recording ({@link clusterMarkers}). */
+  markers?: readonly WalkthroughMarker[]
+  onMarkerClick?: (noteIds: string[]) => void
+  /** A note has just been captured, so the list below can scroll to it. */
+  onAnnotationSaved?: (noteId: string) => void
+  /** Filled with this player's {@link WalkthroughHandle} while it is mounted. */
+  handleRef?: RefObject<WalkthroughHandle | null>
 }) {
   const utils = trpc.useUtils()
   const toast = useToast()
   const videoRef = useRef<HTMLVideoElement>(null)
-  const overlayRef = useRef<HTMLCanvasElement>(null)
+  const stageRef = useRef<HTMLDivElement>(null)
 
   const [playing, setPlaying] = useState(false)
   const [at, setAt] = useState(0)
   const [span, setSpan] = useState(0)
-  // Whether there is a decoded frame to draw on and to capture. Metadata-only
-  // preloading has the dimensions long before it has pixels, and `drawImage` of
-  // a video with no current frame silently draws NOTHING — so annotating before
-  // this is true would bake a blank PNG.
-  const [ready, setReady] = useState(false)
+  const [speed, setSpeed] = useState(DEFAULT_SPEED)
+  const [phase, setPhase] = useState<'loading' | 'ready' | 'error'>('loading')
+  const [bytes, setBytes] = useState<number | null>(null)
   const [annotating, setAnnotating] = useState(false)
-  const [strokes, setStrokes] = useState<Stroke[]>([])
-  const [text, setText] = useState('')
-  const [saving, setSaving] = useState(false)
-  // Whether the pointer that went down on the canvas is still drawing. A ref, not
-  // state: it is read inside the move handler and changing it must never re-render.
-  const drawing = useRef(false)
+  const [hover, setHover] = useState<number | null>(null)
 
   const add = trpc.notes.add.useMutation({ onError: (e) => toast.push(e.message) })
 
-  // Repaint the overlay from the stroke list — the list is the record, the canvas
-  // only ever a rendering of it, which is what makes undo and clear one-liners.
-  // Sizing lives here too: the canvas mounts with the annotation, by which point
-  // the video's intrinsic dimensions are known.
+  // How big the file being waited on is, so "loading" is a measured wait rather
+  // than an indefinite one. Best effort: a HEAD that fails just leaves the copy
+  // shorter.
   useEffect(() => {
-    const canvas = overlayRef.current
+    let live = true
+    void fetch(url, { method: 'HEAD' })
+      .then((res) => {
+        const length = Number(res.headers.get('content-length'))
+        if (live && Number.isFinite(length) && length > 0) setBytes(length)
+      })
+      .catch(() => undefined)
+    return () => {
+      live = false
+    }
+  }, [url])
+
+  const seek = useCallback(
+    (seconds: number): void => {
+      const video = videoRef.current
+      if (!video) return
+      const target = seekTarget(seconds, { playable: playableDuration(video), annotating })
+      if (target === null) return
+      video.currentTime = target
+      setAt(target)
+    },
+    [annotating],
+  )
+
+  /**
+   * Jump to this moment (decision 25b): the playhead goes there and STOPS —
+   * the human clicked a note to look at the frame it is about, and a player
+   * that carried on would have moved past it before they arrived.
+   */
+  const jumpTo = useCallback(
+    (seconds: number): void => {
+      videoRef.current?.pause()
+      seek(seconds)
+    },
+    [seek],
+  )
+
+  useEffect(() => {
+    if (!handleRef) return
+    handleRef.current = {
+      seek: jumpTo,
+      pause: () => videoRef.current?.pause(),
+      getTicketId: () => ticketId,
+    }
+    return () => {
+      handleRef.current = null
+    }
+  }, [handleRef, jumpTo, ticketId])
+
+  const togglePlay = useCallback((): void => {
     const video = videoRef.current
-    if (!canvas || !video) return
-
-    if (canvas.width !== video.videoWidth) canvas.width = video.videoWidth
-    if (canvas.height !== video.videoHeight) canvas.height = video.videoHeight
-
-    const ctx = canvas.getContext('2d')
-    if (!ctx) return
-    ctx.clearRect(0, 0, canvas.width, canvas.height)
-    paintStrokes(ctx, strokes)
-  }, [strokes, annotating])
-
-  const togglePlay = (): void => {
-    const video = videoRef.current
-    if (!video || annotating) return
+    if (!video || annotating || phase !== 'ready') return
     if (video.paused) {
       void video.play().catch(() => toast.push('the browser refused to play this recording'))
     } else {
       video.pause()
     }
-  }
+  }, [annotating, phase, toast])
 
-  const seek = (seconds: number): void => {
+  /** Coarse transport: ±5s, playing or paused. */
+  const jump = useCallback((delta: number): void => {
     const video = videoRef.current
-    if (!video || annotating) return
-    video.currentTime = seconds
-    setAt(seconds)
-  }
+    if (video) seek(video.currentTime + delta)
+  }, [seek])
 
   /**
-   * Jump to this moment (decisions #12): the playhead goes to `seconds` and
-   * STOPS there — the human clicked a note to look at the frame it is about, and
-   * a player that carried on past it would have moved on before they got there.
-   * Whether the jump happens at all, and where it lands, is {@link seekTarget}.
+   * Frame accuracy, and only while paused (decision 23a): stepping a thirtieth
+   * of a second under a running playhead lands nowhere in particular.
    */
-  const jumpTo = useCallback((seconds: number): void => {
+  const frameStep = useCallback((delta: number): void => {
     const video = videoRef.current
-    if (!video) return
-    const target = seekTarget(seconds, { playable: playableDuration(video), annotating })
-    if (target === null) return
-    video.pause()
-    video.currentTime = target
-    setAt(target)
-  }, [annotating])
+    if (video?.paused) seek(video.currentTime + delta)
+  }, [seek])
 
-  // Published for as long as this player is on the page, and taken back down
-  // when it leaves: a seek left behind in the parent's ref would be a click into
-  // a video element that no longer exists.
-  useEffect(() => {
-    if (!seekRef) return
-    seekRef.current = jumpTo
-    return () => {
-      seekRef.current = null
-    }
-  }, [seekRef, jumpTo])
+  const applySpeed = useCallback((next: number): void => {
+    setSpeed(next)
+    const video = videoRef.current
+    if (video) video.playbackRate = next
+  }, [])
 
+  /**
+   * Open the overlay on the frame that is showing, pausing first if it is
+   * moving (decision 24a). One act, from a control that is never disabled.
+   */
   const startAnnotating = (): void => {
+    if (phase !== 'ready') return
     videoRef.current?.pause()
-    setStrokes([])
-    setText('')
     setAnnotating(true)
   }
 
-  const stopAnnotating = (): void => {
-    setAnnotating(false)
-    setStrokes([])
-    setText('')
-  }
+  const toggleFullscreen = useCallback((): void => {
+    const stage = stageRef.current
+    if (!stage) return
+    if (document.fullscreenElement) void document.exitFullscreen?.()
+    else void stage.requestFullscreen?.()
+  }, [])
 
-  const pointIn = (e: ReactPointerEvent<HTMLCanvasElement>): Point => {
-    const canvas = e.currentTarget
-    return framePoint(
-      canvas.getBoundingClientRect(),
-      { width: canvas.width, height: canvas.height },
-      { x: e.clientX, y: e.clientY },
-    )
-  }
-
-  const startStroke = (e: ReactPointerEvent<HTMLCanvasElement>): void => {
-    e.currentTarget.setPointerCapture(e.pointerId)
-    drawing.current = true
-    setStrokes((s) => [...s, [pointIn(e)]])
-  }
-
-  // Capture means the pointer can leave the frame mid-stroke and come back, so
-  // only the newest stroke ever grows.
-  const extendStroke = (e: ReactPointerEvent<HTMLCanvasElement>): void => {
-    if (!drawing.current) return
-    const point = pointIn(e)
-    setStrokes((s) => s.map((stroke, i) => (i === s.length - 1 ? [...stroke, point] : stroke)))
-  }
-
-  const endStroke = (e: ReactPointerEvent<HTMLCanvasElement>): void => {
-    drawing.current = false
-    if (e.currentTarget.hasPointerCapture(e.pointerId)) {
-      e.currentTarget.releasePointerCapture(e.pointerId)
-    }
-  }
-
-  const save = async (): Promise<void> => {
-    const video = videoRef.current
-    const body = text.trim()
-    if (!video || !body || saving) return
-    setSaving(true)
-
-    let png: Blob
-    try {
-      png = await captureAnnotation(document.createElement('canvas'), video, strokes)
-    } catch (e) {
-      toast.push(e instanceof Error ? e.message : 'the annotated frame could not be captured')
-      setSaving(false)
-      return
-    }
-
-    try {
-      const saved = await saveAnnotatedNote({
-        createNote: () =>
-          add.mutateAsync({ featureId, text: body, videoTimestamp: video.currentTime }),
-        uploadScreenshot: (noteId) => uploadScreenshot(noteId, png),
-      })
-      // The upload emits a note event, and the stream invalidates this key on it
-      // — asking here as well is what keeps the thumbnail from depending on the
-      // stream being up at the moment of the save.
-      void utils.notes.list.invalidate({ featureId })
-      if (saved.uploadError) {
-        toast.push(`the note was saved, but its annotated frame was not: ${saved.uploadError}`)
+  // Keyboard-first transport (decision 23a). On `window` rather than the stage
+  // so the keys work while the eye is on the frame and the focus is wherever the
+  // last click left it; the overlay owns the keyboard while it is open.
+  useEffect(() => {
+    if (annotating) return
+    const onKey = (e: KeyboardEvent): void => {
+      if (isTyping(e.target) || e.metaKey || e.ctrlKey || e.altKey) return
+      const handled = (): void => e.preventDefault()
+      switch (e.key) {
+        case ' ':
+        case 'k':
+        case 'K':
+          handled()
+          return togglePlay()
+        case 'j':
+        case 'J':
+        case 'ArrowLeft':
+          handled()
+          return jump(-JUMP_SECONDS)
+        case 'l':
+        case 'L':
+        case 'ArrowRight':
+          handled()
+          return jump(JUMP_SECONDS)
+        case ',':
+          handled()
+          return frameStep(-FRAME_SECONDS)
+        case '.':
+          handled()
+          return frameStep(FRAME_SECONDS)
+        case '<':
+          handled()
+          return applySpeed(cycleSpeed(speed, -1))
+        case '>':
+          handled()
+          return applySpeed(cycleSpeed(speed, 1))
+        case 'f':
+        case 'F':
+          handled()
+          return toggleFullscreen()
       }
-      stopAnnotating()
-    } catch {
-      // `notes.add` failed and has already said why. The overlay stays open: the
-      // strokes live only in this component, so closing would throw them away.
-    } finally {
-      setSaving(false)
     }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [annotating, togglePlay, jump, frameStep, applySpeed, speed, toggleFullscreen])
+
+  const retry = (): void => {
+    setPhase('loading')
+    videoRef.current?.load()
   }
 
-  const scrubbable = span > 0 && !annotating
+  const saveAnnotation = async (png: Blob, text: string): Promise<void> => {
+    const video = videoRef.current
+    if (!video) return
+    const moment = video.currentTime
+    const saved = await saveAnnotatedNote({
+      // `notes.add` requires text (decision 24c leaves it optional here), so a
+      // drawing-only note says what it is: the picture and the moment are the
+      // observation, and the human can type over it from the list.
+      createNote: () =>
+        add.mutateAsync({
+          featureId,
+          text: text || `Annotated ${fmtClock(moment)}`,
+          videoTimestamp: moment,
+          reviewTicketId: ticketId,
+        }),
+      uploadScreenshot: (noteId) => uploadScreenshot(noteId, png),
+    })
+    // The upload emits a note event and the stream invalidates this key on it —
+    // asking here as well is what keeps the thumbnail from depending on the
+    // stream being up at the moment of the save.
+    void utils.notes.list.invalidate({ featureId })
+    if (saved.uploadError) {
+      toast.push(`the note was saved, but its annotated frame was not: ${saved.uploadError}`)
+    }
+    setAnnotating(false)
+    onAnnotationSaved?.(saved.note.id)
+  }
+
+  const scrubbable = span > 0 && !annotating && phase === 'ready'
+  const hint = bytes === null ? 'Loading the recording' : `Loading the recording — ${fmtBytes(bytes)}`
 
   return (
-    <div className="walkthrough-player">
-      <div className="player-stage">
+    // The frame and its bar are one unit that fits the viewport together
+    // (decision 23e): annotating never pushes the frame off the top of the page.
+    <div className="flex flex-col gap-2">
+      <div
+        ref={stageRef}
+        className="relative aspect-video max-h-[calc(100vh-320px)] w-full overflow-hidden rounded-md border border-hairline bg-black"
+      >
         <video
           ref={videoRef}
-          className="walkthrough-video"
+          // Letterboxed inside the stage: black behind the frame reads as film
+          // rather than as a gap in the page.
+          className="block h-full w-full object-contain"
           src={url}
           preload="metadata"
-          onLoadedMetadata={(e) => setSpan(playableDuration(e.currentTarget))}
+          aria-label={passKind === 'verification' ? 'verification walkthrough' : 'review walkthrough'}
+          onClick={togglePlay}
+          onLoadedMetadata={(e) => {
+            const video = e.currentTarget
+            setSpan(playableDuration(video))
+            video.playbackRate = speed
+            // WebM written by a live recorder carries no poster frame, so the
+            // first frame is decoded by nudging off zero — otherwise the stage
+            // is black behind the loading copy.
+            if (video.currentTime === 0) video.currentTime = 0.01
+          }}
           onDurationChange={(e) => setSpan(playableDuration(e.currentTarget))}
           onProgress={(e) => setSpan(playableDuration(e.currentTarget))}
-          onLoadedData={() => setReady(true)}
-          onCanPlay={() => setReady(true)}
+          onCanPlay={() => setPhase((p) => (p === 'error' ? p : 'ready'))}
+          onError={() => setPhase('error')}
           onTimeUpdate={(e) => setAt(e.currentTarget.currentTime)}
           onPlay={() => setPlaying(true)}
           onPause={() => setPlaying(false)}
           onEnded={() => setPlaying(false)}
         />
-        {annotating && (
-          <canvas
-            ref={overlayRef}
-            className="player-canvas"
-            onPointerDown={startStroke}
-            onPointerMove={extendStroke}
-            onPointerUp={endStroke}
-            onPointerCancel={endStroke}
+
+        {phase === 'loading' && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-bg/55">
+            <span
+              className="h-6 w-6 animate-spin rounded-pill border-2 border-hairline border-t-accent"
+              aria-hidden="true"
+            />
+            <span className="text-sm text-text-2">{hint}</span>
+          </div>
+        )}
+
+        {phase === 'error' && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-bg/85 px-4 text-center" role="alert">
+            <span className="text-base text-text">This recording can’t be played (file may be corrupt)</span>
+            <code className="max-w-full truncate font-mono text-xs text-text-3">{url}</code>
+            <Button onClick={retry}>Retry</Button>
+          </div>
+        )}
+
+        {annotating && videoRef.current && (
+          <AnnotationOverlay
+            video={videoRef.current}
+            timestamp={at}
+            onSave={saveAnnotation}
+            onCancel={() => setAnnotating(false)}
           />
         )}
       </div>
 
-      <div className="player-bar">
-        <button
-          type="button"
-          className="btn btn-xs btn-ghost player-play"
-          disabled={annotating}
+      <div className="flex items-center gap-2">
+        <Button
+          className="w-11 px-0 font-mono"
+          disabled={annotating || phase !== 'ready'}
           aria-label={playing ? 'pause' : 'play'}
           onClick={togglePlay}
         >
           {playing ? '❚❚' : '▶'}
-        </button>
-        <input
-          type="range"
-          className="player-scrub"
-          min={0}
-          max={span || 1}
-          step={0.05}
-          value={Math.min(at, span || 1)}
-          disabled={!scrubbable}
-          aria-label="scrub the walkthrough"
-          onChange={(e) => seek(Number(e.target.value))}
-        />
-        <span className="player-clock mono">
+        </Button>
+
+        <div
+          className="relative flex-1"
+          onMouseMove={(e) => {
+            const box = e.currentTarget.getBoundingClientRect()
+            if (box.width <= 0 || span <= 0) return
+            setHover(((e.clientX - box.left) / box.width) * span)
+          }}
+          onMouseLeave={() => setHover(null)}
+        >
+          <input
+            type="range"
+            className="h-1 w-full cursor-pointer accent-accent disabled:cursor-default disabled:opacity-50"
+            min={0}
+            // Coarse navigation only — a given second is reached with `,`/`.`
+            // (decision 23b), not by hunting for it on a 20-minute slider.
+            step={1}
+            max={span || 1}
+            value={Math.min(at, span || 1)}
+            disabled={!scrubbable}
+            aria-label="scrub the walkthrough"
+            onChange={(e) => seek(Number(e.target.value))}
+          />
+          {hover !== null && (
+            <span
+              className="pointer-events-none absolute -top-6 -translate-x-1/2 rounded-sm border border-hairline bg-panel px-1.5 font-mono text-xs text-text-2"
+              style={{ left: `${Math.min(100, Math.max(0, (hover / (span || 1)) * 100))}%` }}
+            >
+              {fmtClock(hover)}
+            </span>
+          )}
+          {span > 0 &&
+            markers.map((marker) => (
+              <button
+                key={marker.at}
+                type="button"
+                className="absolute -top-1.5 h-4 w-4 -translate-x-1/2 rounded-pill border-0 bg-danger text-xs leading-4 text-accent-ink"
+                style={{ left: `${Math.min(100, (marker.at / span) * 100)}%` }}
+                aria-label={`${marker.noteIds.length} note${marker.noteIds.length > 1 ? 's' : ''} at ${fmtClock(marker.at)}`}
+                onClick={() => {
+                  jumpTo(marker.at)
+                  onMarkerClick?.(marker.noteIds)
+                }}
+              >
+                {marker.noteIds.length > 1 ? marker.noteIds.length : ''}
+              </button>
+            ))}
+        </div>
+
+        <span className="font-mono text-xs text-text-3">
           {fmtClock(at)} / {fmtClock(span)}
         </span>
-        {!readonly && !annotating && (
-          <Button
-            variant="ghost"
-            className="player-annotate"
-            disabled={playing || !ready}
-            title={annotateHint(playing, ready)}
-            onClick={startAnnotating}
-          >
-            Annotate
-          </Button>
-        )}
-      </div>
 
-      {annotating && (
-        <>
-          <div className="annotate-bar">
-            <input
-              className="notes-input"
-              value={text}
-              onChange={(e) => setText(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') void save()
-                if (e.key === 'Escape') stopAnnotating()
-              }}
-              placeholder="What’s wrong in this frame?"
-              autoFocus
-            />
-            <button
-              type="button"
-              className="btn btn-xs btn-ghost"
-              disabled={strokes.length === 0}
-              onClick={() => setStrokes((s) => s.slice(0, -1))}
-            >
-              Undo
-            </button>
-            <button
-              type="button"
-              className="btn btn-xs btn-ghost"
-              disabled={strokes.length === 0}
-              onClick={() => setStrokes([])}
-            >
-              Clear
-            </button>
-            <Button variant="ghost" disabled={!text.trim() || saving} onClick={() => void save()}>
-              {saving ? 'Saving…' : 'Save note'}
-            </Button>
-            <button type="button" className="btn btn-xs btn-ghost" onClick={stopAnnotating}>
-              Cancel
-            </button>
-          </div>
-          <div className="notes-hint">
-            Draw on the frame, then say what you saw — it lands in the notes below as an ordinary
-            note, carrying this moment ({fmtClock(at)}) and a picture of it.
-          </div>
-        </>
-      )}
+        <Button
+          className="px-2 font-mono"
+          aria-label={`playback speed ${speed}×`}
+          onClick={() => applySpeed(cycleSpeed(speed, 1))}
+        >
+          {speed}×
+        </Button>
+
+        {!readonly && !annotating && <Button onClick={startAnnotating}>Annotate</Button>}
+      </div>
     </div>
   )
 }

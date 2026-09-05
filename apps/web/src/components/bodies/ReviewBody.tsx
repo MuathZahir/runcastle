@@ -14,12 +14,12 @@ import {
   groupByLap,
   headline,
   lapAccount,
+  latestReview,
   latestRun,
   ONE_TERMINAL_WARNING,
   openApp,
   openAppWaitingLabel,
   reviewChecks,
-  reviewWalkthroughUrl,
   specDocPath,
   type DriveFailure,
   type LapAccount,
@@ -35,7 +35,12 @@ import { Markdown } from '../Markdown'
 import { FindingsSummaryBlock, OpenDefectsCard } from '../ReviewFindings'
 import { SessionPanel } from '../SessionPanel'
 import { TerminalView } from '../TerminalView'
-import { WalkthroughPlayer, type SeekWalkthrough } from '../WalkthroughPlayer'
+import {
+  WalkthroughPlayer,
+  type WalkthroughHandle,
+  type WalkthroughMarker,
+} from '../WalkthroughPlayer'
+import { clusterMarkers } from '../../lib/walkthrough'
 
 /**
  * The review phase body (app-redesign): a summary of the finished run on the
@@ -137,7 +142,10 @@ export function ReviewBody({
   // walkthrough sits with the summary rather than under the notes: the card
   // above says what the agent found, this one shows it happening.
   const artifacts = useReviewArtifacts(feature.id)
-  const walkthrough = reviewWalkthroughUrl(artifacts.data)
+  // The whole artifact rather than just its URL: a note binds itself to the
+  // recording it was drawn on (decision 22), so the player needs the pass's
+  // identity as much as its file.
+  const recording = latestReview((artifacts.data ?? []).filter((a) => a.hasVideo))
   // What a drive on THIS project does — a prepared one renders an environment,
   // runs the setup command and boots a dev server; an unprepared one checks the
   // branch out and stops. The card used to promise the first to everyone.
@@ -153,7 +161,7 @@ export function ReviewBody({
   // player writes its seek in here while it is mounted, and the rows below call
   // whatever is in it. Nothing fills it when there is no recording on the page,
   // and the timestamps down there stay plain text.
-  const seekWalkthrough = useRef<SeekWalkthrough | null>(null)
+  const walkthroughHandle = useRef<WalkthroughHandle | null>(null)
 
   return (
     <div className="review-body">
@@ -228,12 +236,15 @@ export function ReviewBody({
 
       {isDriving && ownDrive && <DrivePane drive={ownDrive} />}
 
-      {walkthrough && (
+      {recording?.videoUrl && (
         <WalkthroughCard
-          url={walkthrough}
+          url={recording.videoUrl}
           featureId={feature.id}
+          ticketId={recording.ticketId}
+          passKind={recording.passKind}
           readonly={readonly}
-          seekRef={seekWalkthrough}
+          markers={clusterMarkers(notes.data ?? [], recording.ticketId)}
+          handleRef={walkthroughHandle}
         />
       )}
 
@@ -243,7 +254,7 @@ export function ReviewBody({
         tickets={tickets}
         rows={notes.data ?? []}
         readonly={readonly}
-        onJump={walkthrough ? (seconds) => seekWalkthrough.current?.(seconds) : undefined}
+        onJump={recording ? (seconds) => walkthroughHandle.current?.seek(seconds) : undefined}
       />
     </div>
   )
@@ -362,26 +373,39 @@ function PlannedNextLapCard({
  * so scrubbing works. The controls are custom because the frame is a drawing
  * surface — see {@link WalkthroughPlayer}.
  *
- * Rendered only when a recording exists ({@link reviewWalkthroughUrl} returns
- * null otherwise): a backend review records nothing, and an empty player frame
- * would read as a video that failed to load.
+ * Rendered only when a review pass left a recording: a backend review records
+ * nothing, and an empty player frame would read as a video that failed to load.
  */
 function WalkthroughCard({
   url,
   featureId,
+  ticketId,
+  passKind,
   readonly,
-  seekRef,
+  markers,
+  handleRef,
 }: {
   url: string
   featureId: string
+  ticketId: string
+  passKind: 'review' | 'verification'
   readonly: boolean
-  /** Where the player publishes its seek, for the notes list below to reach. */
-  seekRef: RefObject<SeekWalkthrough | null>
+  markers: WalkthroughMarker[]
+  /** Where the player publishes its handle, for the notes list below to reach. */
+  handleRef: RefObject<WalkthroughHandle | null>
 }) {
   return (
     <div className="review-card walkthrough-card">
       <SectionTitle>Review walkthrough</SectionTitle>
-      <WalkthroughPlayer url={url} featureId={featureId} readonly={readonly} seekRef={seekRef} />
+      <WalkthroughPlayer
+        url={url}
+        featureId={featureId}
+        ticketId={ticketId}
+        passKind={passKind}
+        readonly={readonly}
+        markers={markers}
+        handleRef={handleRef}
+      />
       <div className="drive-copy">
         What the review agent did on this branch, as it did it. Pause on anything that looks wrong
         and Annotate it — the drawing lands in the notes below.
