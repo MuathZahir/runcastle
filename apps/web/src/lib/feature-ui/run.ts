@@ -1,3 +1,5 @@
+import type { RunStatus } from '@runcastle/core'
+
 export interface LaneTicketFigure {
   seq: number
   status: string
@@ -49,7 +51,7 @@ export function runHeadline(
   // A run that has stopped speaks in the past tense — the record view reads
   // terminal lanes, and "Burning 3 tickets" over three settled ones is the same
   // kind of lie the redesign is removing everywhere else.
-  run: { status?: string } = {},
+  run: { status?: RunStatus } = {},
   retryOf?: number,
 ): string {
   if (retryOf !== undefined) return `Retrying #${retryOf}`

@@ -177,4 +177,3 @@ function useTicketTranscript(ticketId: string, poll: boolean): TranscriptState {
 
   return { chunks, live, trimmed }
 }
-
