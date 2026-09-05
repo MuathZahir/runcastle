@@ -6,6 +6,7 @@ import { tickets } from '../db/schema'
 import { InvalidInputError, NotFoundError } from '../errors'
 import { emit } from './events'
 import { getFeatureRow } from './repo'
+import { markFailed } from './review-findings'
 
 /**
  * Ticket storage. The ideation session emits `TicketInput[]` in one batch via
@@ -28,6 +29,9 @@ function rowToTicket(row: TicketSelect): Ticket {
     seams: row.seams,
     blockedBy: row.blockedBy,
     kind: row.kind,
+    passKind: row.passKind,
+    reviewedCommit: row.reviewedCommit,
+    completedAt: row.completedAt,
     model: row.model ?? undefined,
     lap: row.lap,
     status: row.status,
@@ -132,6 +136,9 @@ export function storeTickets(
     // Pass-through, defaulted here rather than left to the column so the rows
     // this function returns carry the kind without a re-read.
     kind: t.kind ?? ('implementation' as const),
+    passKind: t.passKind ?? ('review' as const),
+    reviewedCommit: null,
+    completedAt: null,
     // Validated before anything is written, so one bad id fails the whole batch
     // rather than storing a half-assigned one.
     model: normalizeModel(ctx, t.model),
@@ -228,7 +235,11 @@ export function cancelTicket(ctx: AppCtx, id: string, reason?: string): Ticket {
 
   ctx.db
     .update(tickets)
-    .set({ status: 'cancelled', error: reason?.trim() ? reason.trim() : null })
+    .set({
+      status: 'cancelled',
+      error: reason?.trim() ? reason.trim() : null,
+      completedAt: Date.now(),
+    })
     .where(eq(tickets.id, id))
     .run()
   emit(ctx, current.featureId, {
@@ -265,8 +276,10 @@ export function sweepOrphanedBurning(ctx: AppCtx, featureId: string, reason: str
     .all()
     .map(rowToTicket)
 
+  const swept: Ticket[] = []
   for (const t of orphaned) {
-    updateTicket(ctx, t.id, { status: 'failed', error: reason })
+    swept.push(updateTicket(ctx, t.id, { status: 'failed', error: reason }))
+    if (t.originFindingId) markFailed(ctx, t.originFindingId, reason)
     emit(ctx, featureId, {
       type: 'ticket.failed',
       message: `ticket ${t.seq} failed: ${reason}`,
@@ -274,7 +287,7 @@ export function sweepOrphanedBurning(ctx: AppCtx, featureId: string, reason: str
       data: { error: reason, orphaned: true },
     })
   }
-  return orphaned.map((t) => ({ ...t, status: 'failed' as const, error: reason }))
+  return swept
 }
 
 export function updateTicket(
@@ -286,6 +299,7 @@ export function updateTicket(
     error?: string | null
     attemptBranch?: string | null
     conflictFiles?: string[] | null
+    reviewedCommit?: string | null
   },
 ): Ticket {
   const current = ctx.db.select().from(tickets).where(eq(tickets.id, id)).get()
@@ -293,11 +307,15 @@ export function updateTicket(
 
   const set: Partial<TicketSelect> = {}
   if (patch.status !== undefined) set.status = patch.status
+  if (patch.status !== undefined) {
+    set.completedAt = ['done', 'failed', 'cancelled'].includes(patch.status) ? Date.now() : null
+  }
   if (patch.commits !== undefined) set.commits = patch.commits
   if (patch.error !== undefined) set.error = patch.error
   if (patch.attemptBranch !== undefined) set.attemptBranch = patch.attemptBranch
   if (patch.conflictFiles !== undefined) set.conflictFiles = patch.conflictFiles
   if (patch.digest !== undefined) set.digest = patch.digest
+  if (patch.reviewedCommit !== undefined) set.reviewedCommit = patch.reviewedCommit
 
   ctx.db.update(tickets).set(set).where(eq(tickets.id, id)).run()
 

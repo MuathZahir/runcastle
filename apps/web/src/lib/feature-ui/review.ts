@@ -222,7 +222,7 @@ export function findingCountsLine(summary?: FindingCounts): string | null {
 
 /** A finding as the open-defects list reads it — only why it is still open. */
 interface OpenFindingFigure {
-  openReason?: 'over-cap' | 'fix-failed' | null
+  openReason?: 'over-cap' | 'fix-failed' | 'verification' | null
   failureReason?: string | null
 }
 
@@ -236,6 +236,9 @@ export function findingOpenReason(finding: OpenFindingFigure): string | null {
   if (finding.openReason === 'fix-failed') {
     const why = finding.failureReason?.trim()
     return why ? `fix failed: ${why}` : 'fix failed'
+  }
+  if (finding.openReason === 'verification') {
+    return 'found by the verification pass — not auto-fixed'
   }
   return null
 }

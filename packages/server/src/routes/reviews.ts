@@ -3,7 +3,9 @@ import { Readable } from 'node:stream'
 import {
   NOTE_SCREENSHOT_ROUTE,
   NOTE_SCREENSHOT_UPLOAD_ROUTE,
-  type TestNote,
+  REVIEW_ARTIFACTS_ROUTE,
+  REVIEW_WALKTHROUGH_ROUTE,
+  reviewWalkthroughUrl,
   type Ticket,
 } from '@runcastle/core'
 import { annotationPath, reviewWalkthroughPath } from '@runcastle/core/paths'
@@ -31,15 +33,15 @@ import { getTicket, listByFeature } from '../services/tickets'
  */
 const reviews = new Hono()
 
-/** Where a review ticket's recording streams from — the mount point in `index.ts`. */
-function walkthroughUrl(ticketId: string): string {
-  return `/api/reviews/ticket/${ticketId}/walkthrough.webm`
-}
-
 /** One review ticket's artifacts, as the listing reports them. */
 export interface ReviewTicketArtifacts {
   ticketId: string
   seq: number
+  lap: number
+  passKind: 'review' | 'verification'
+  reviewedCommit: string | null
+  completedAt: number | null
+  landedSince: number
   hasVideo: boolean
   /** Where to stream the recording, or `null` when there is none to stream. */
   videoUrl: string | null
@@ -87,18 +89,34 @@ function findReviewTicket(ctx: AppCtx, ticketId: string): Ticket | undefined {
 }
 
 /** GET /api/reviews/:featureId — what this feature's reviews left behind. */
-reviews.get('/:featureId', async (c) => {
+reviews.get(REVIEW_ARTIFACTS_ROUTE, async (c) => {
   const ctx = await getRuntimeCtx()
-  const artifacts: ReviewTicketArtifacts[] = listByFeature(ctx, c.req.param('featureId'))
+  const allTickets = listByFeature(ctx, c.req.param('featureId'))
+  const artifacts: ReviewTicketArtifacts[] = allTickets
     .filter((t) => t.kind === 'review')
     .map((t) => {
       const hasVideo = fileSize(reviewWalkthroughPath(t.id)) !== undefined
       return {
         ticketId: t.id,
         seq: t.seq,
+        lap: t.lap,
+        passKind: t.passKind,
+        reviewedCommit: t.reviewedCommit,
+        completedAt: t.completedAt,
+        landedSince: t.completedAt === null ? 0 : allTickets.filter((candidate) =>
+          candidate.kind === 'implementation' &&
+          candidate.status === 'done' &&
+          candidate.completedAt !== null &&
+          candidate.completedAt > t.completedAt!,
+        ).length,
         hasVideo,
-        videoUrl: hasVideo ? walkthroughUrl(t.id) : null,
+        videoUrl: hasVideo ? reviewWalkthroughUrl(t.id) : null,
       }
+    })
+    .sort((a, b) => {
+      if (a.completedAt === null) return b.completedAt === null ? a.seq - b.seq : 1
+      if (b.completedAt === null) return -1
+      return a.completedAt - b.completedAt || a.seq - b.seq
     })
   // A feature with no review tickets — or no feature at all — has no artifacts.
   // That is a normal state (decision 8), not an error.
@@ -159,7 +177,7 @@ function fileStream(path: string, start: number, end: number): ReadableStream {
  * implementation ticket, a review that recorded nothing — since to the player
  * they are the same fact: there is no video here.
  */
-reviews.get('/ticket/:ticketId/walkthrough.webm', async (c) => {
+reviews.get(REVIEW_WALKTHROUGH_ROUTE, async (c) => {
   const ctx = await getRuntimeCtx()
   const ticket = findReviewTicket(ctx, c.req.param('ticketId'))
   if (!ticket) return c.notFound()
@@ -196,10 +214,6 @@ reviews.get('/ticket/:ticketId/walkthrough.webm', async (c) => {
  * the screenshot path is computed from the row's own id via
  * {@link annotationPath}, so a URL segment never reaches the filesystem.
  */
-function findNote(ctx: AppCtx, noteId: string): TestNote | undefined {
-  return lookupOrUndefined(() => getNote(ctx, noteId))
-}
-
 /** The 8-byte PNG signature every PNG file starts with (RFC 2083 §3.1). */
 const PNG_MAGIC = Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
 
@@ -218,7 +232,7 @@ function isPng(bytes: Uint8Array): boolean {
  */
 reviews.post(NOTE_SCREENSHOT_UPLOAD_ROUTE, async (c) => {
   const ctx = await getRuntimeCtx()
-  const note = findNote(ctx, c.req.param('noteId'))
+  const note = lookupOrUndefined(() => getNote(ctx, c.req.param('noteId')))
   if (!note) return c.notFound()
 
   const png = new Uint8Array(await c.req.arrayBuffer())
@@ -236,7 +250,7 @@ reviews.post(NOTE_SCREENSHOT_UPLOAD_ROUTE, async (c) => {
  */
 reviews.get(NOTE_SCREENSHOT_ROUTE, async (c) => {
   const ctx = await getRuntimeCtx()
-  const note = findNote(ctx, c.req.param('noteId'))
+  const note = lookupOrUndefined(() => getNote(ctx, c.req.param('noteId')))
   if (!note) return c.notFound()
 
   const path = annotationPath(note.id)

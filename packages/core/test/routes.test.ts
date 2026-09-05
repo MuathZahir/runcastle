@@ -2,8 +2,12 @@ import { describe, expect, it } from 'vitest'
 import {
   NOTE_SCREENSHOT_ROUTE,
   NOTE_SCREENSHOT_UPLOAD_ROUTE,
+  REVIEW_ARTIFACTS_ROUTE,
+  REVIEW_WALKTHROUGH_ROUTE,
   noteScreenshotUploadUrl,
   noteScreenshotUrl,
+  reviewArtifactsUrl,
+  reviewWalkthroughUrl,
 } from '../src/routes'
 
 /**
@@ -27,5 +31,14 @@ describe('note screenshot URLs', () => {
 
   it('escapes an id that is not URL-safe, rather than emitting it raw', () => {
     expect(noteScreenshotUrl('a/b')).toBe('/api/reviews/note/a%2Fb/screenshot.png')
+  })
+})
+
+describe('review artifact URLs', () => {
+  it('builds listing and walkthrough URLs from their route patterns', () => {
+    expect(REVIEW_ARTIFACTS_ROUTE).toBe('/:featureId')
+    expect(REVIEW_WALKTHROUGH_ROUTE).toBe('/ticket/:ticketId/walkthrough.webm')
+    expect(reviewArtifactsUrl('feature/a')).toBe('/api/reviews/feature%2Fa')
+    expect(reviewWalkthroughUrl('ticket/a')).toBe('/api/reviews/ticket/ticket%2Fa/walkthrough.webm')
   })
 })

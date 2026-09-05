@@ -53,6 +53,7 @@ import {
   cleanupBurnWorktree,
   commitSummaries,
   excludePath,
+  headSha,
   mergeTempBranch,
   ticketBranchName,
   unexcludePath,
@@ -2517,7 +2518,15 @@ export async function burnTickets(
     const outcome = await execute(ctx, t, { digests: [...digests] }) // throws on abort — propagates
     if (outcome.status === 'done') {
       status.set(seq, 'done')
-      ctx.updateTicket(t.id, { status: 'done', commits: outcome.commits, digest: outcome.digest })
+      const reviewedCommit = isReviewTicket(t)
+        ? await headSha(ctx.project.repoPath, ctx.feature.branch)
+        : undefined
+      ctx.updateTicket(t.id, {
+        status: 'done',
+        commits: outcome.commits,
+        digest: outcome.digest,
+        ...(reviewedCommit ? { reviewedCommit } : {}),
+      })
       mirrorFinding(t, 'fixed')
       ctx.emitEvent({
         type: 'ticket.done',
