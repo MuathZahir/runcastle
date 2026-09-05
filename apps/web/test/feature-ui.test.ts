@@ -513,12 +513,70 @@ describe('nextStep at review', () => {
 
   it('disables Iterate while the test drive holds the branch, with the reason', () => {
     // The lap's talk worktree needs the feature branch the drive has checked out;
-    // the server refuses outright (findings F3), so the bar says why here.
+    // the server refuses outright (findings F3), so the bar says why here — and
+    // since decision 20 the reason carries the one click that clears it.
     const ns = nextStep(reviewFull({}), { driving: true })
     expect(ns.secondary).toContainEqual({
       label: 'Iterate',
       kind: 'rethink',
       disabled: 'Stop the test drive first — the branch is checked out',
+      escape: { label: 'Stop drive and iterate', kind: 'stopDriveAndIterate' },
+    })
+  })
+
+  /**
+   * Decision 20 — the bar and the evidence stage read ONE drive-state value, so
+   * the two walked lies ("merge when it looks right" printed over a bare
+   * checkout and over a failed setup command) are structurally impossible.
+   */
+  describe('from the server’s drive state', () => {
+    const MERGE_COPY = 'Test-driving the branch — merge when it looks right'
+
+    it('prints the merge invitation only while the dev server is serving', () => {
+      const serving = nextStep(reviewFull({}), { driving: false, driveState: 'serving' })
+      expect(serving.desc).toContain(MERGE_COPY)
+
+      for (const driveState of ['starting', 'bare-checkout', 'setup-failed', 'review-agent-driving'] as const) {
+        const ns = nextStep(reviewFull({}), { driving: false, driveState })
+        expect(ns.desc).not.toContain(MERGE_COPY)
+        expect(ns.title).not.toContain(MERGE_COPY)
+      }
+    })
+
+    it('reads a bare checkout as inspection, with Stop primary and Merge one click below', () => {
+      const ns = nextStep(reviewFull({}), { driving: false, driveState: 'bare-checkout' })
+      expect(ns.title).toBe('Branch checked out for inspection')
+      expect(ns.primary).toEqual({ label: 'Stop test drive', kind: 'testDriveStop' })
+      expect(labels(ns.secondary)).toEqual(['Merge & ship', 'Iterate'])
+    })
+
+    it('offers Fix drive over a failed setup, with the stop beside it', () => {
+      const ns = nextStep(reviewFull({}), { driving: false, driveState: 'setup-failed' })
+      expect(ns.title).toBe('Drive setup failed — fix it or stop the drive')
+      expect(ns.primary).toEqual({ label: 'Fix drive', kind: 'fixDrive' })
+      expect(labels(ns.secondary)).toEqual(['Merge & ship', 'Stop test drive', 'Iterate'])
+    })
+
+    it('says who is driving when the drive is the review agent’s', () => {
+      const ns = nextStep(reviewFull({}), { driving: false, driveState: 'review-agent-driving' })
+      expect(ns.title).toBe('Review agent driving')
+      expect(ns.desc).toContain('notes land below as it finds things')
+    })
+
+    it('treats any live drive as a drive: Iterate is refused, with its escape', () => {
+      const ns = nextStep(reviewFull({}), { driving: false, driveState: 'bare-checkout' })
+      expect(ns.secondary).toContainEqual({
+        label: 'Iterate',
+        kind: 'rethink',
+        disabled: 'Stop the test drive first — the branch is checked out',
+        escape: { label: 'Stop drive and iterate', kind: 'stopDriveAndIterate' },
+      })
+    })
+
+    it('falls back to this browser’s own record while the server still says idle', () => {
+      const ns = nextStep(reviewFull({}), { driving: true, driveState: 'idle' })
+      expect(ns.desc).toContain(MERGE_COPY)
+      expect(labels(ns.secondary)).toContain('Stop test drive')
     })
   })
 
@@ -864,6 +922,7 @@ describe('nextStep at review', () => {
         label: 'Start lap 2',
         kind: 'rethink',
         disabled: 'Stop the test drive first — the branch is checked out',
+        escape: { label: 'Stop drive and iterate', kind: 'stopDriveAndIterate' },
       })
       expect(labels(ns.secondary)).toEqual(['Merge & ship', 'Stop test drive'])
     })

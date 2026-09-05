@@ -33,6 +33,11 @@ export function NextStepBar({
   const click = (a: NextAction) =>
     a.reason ? setAsking({ kind: a.kind, prompt: a.reason }) : onAction(a.kind)
 
+  // Disabled actions that carry a way out of their own reason.
+  const escapes = [ns.primary, ...ns.secondary].filter(
+    (a): a is NextAction & { disabled: string; escape: NextAction } => !!a?.disabled && !!a.escape,
+  )
+
   const kickClass =
     ns.kick === 'IN PROGRESS'
       ? 'is-progress'
@@ -70,6 +75,18 @@ export function NextStepBar({
             <span>{ns.warning}</span>
           </div>
         )}
+        {/* A refusal with a way out of it (decision 20). The tooltip on the dead
+            button says why; this says why WHERE THE EYE IS and puts the one
+            click that clears it beside the sentence, so "Stop the test drive
+            first" stops being a dead end. */}
+        {escapes.map((a) => (
+          <div key={a.kind} className="mt-2 flex flex-wrap items-center gap-2 text-sm text-text-3">
+            <span>{a.disabled}</span>
+            <Button className="btn-xs" onClick={() => onAction(a.escape.kind)} disabled={busy}>
+              {a.escape.label}
+            </Button>
+          </div>
+        ))}
       </div>
       <div className="nextstep-actions">
         {asking ? (

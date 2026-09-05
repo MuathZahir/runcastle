@@ -1,11 +1,39 @@
+import type { DriveState } from '@runcastle/core'
+import { driveView } from '../drive'
 import { ONE_TERMINAL_WARNING } from '../gates'
 import { unverifiedWarning } from '../internal'
 import type { NextAction, NextStep } from './types'
 import type { ResolverInput } from './resolver-input'
 
+/**
+ * The drive states that own the bar outright (decision 20).
+ *
+ * In each of them the drive is either not up yet, deliberately inert, or broken,
+ * and the walked bug is the bar carrying on regardless — "merge when it looks
+ * right" printed over a bare checkout and over a failed setup command. So the
+ * copy and the primary come from the drive table, and the review verbs stay
+ * reachable underneath as secondaries. `serving` is not here: a drive that is
+ * actually serving is the state the ordinary review bar was already written for.
+ */
+const DRIVE_OWNS_BAR: readonly DriveState[] = [
+  'starting',
+  'bare-checkout',
+  'setup-failed',
+  'review-agent-driving',
+]
+
 export function resolveReview(input: ResolverInput): NextStep {
   const { full, ctx, live, failed, pending, run } = input
   const { feature } = full
+  // One drive truth for the bar and the stage (decision 20). The server's value
+  // wins whenever it says something is happening; with nothing from it yet, this
+  // browser's own record of a drive it started stands in, so a start that has
+  // not reached the poll still reads as a drive rather than as an offer to begin
+  // one.
+  const driveState: DriveState =
+    ctx.driveState && ctx.driveState !== 'idle' ? ctx.driveState : ctx.driving ? 'serving' : 'idle'
+  const driving = driveState !== 'idle'
+  const view = driveView(driveState)
   // Review offers three verbs (ADR-0010 §3): Fix — the Burn primary below,
   // for when the spec was right and the code wasn't; Iterate — the spec was
   // wrong, so start lap N+1 back at ideation (the `rethink` procedure keeps
@@ -19,7 +47,7 @@ export function resolveReview(input: ResolverInput): NextStep {
   // than on click. Unverified keys never disable: they are a caveat about
   // what the drive may do, not a reason it cannot run (decision 7), and the
   // refusal outranks the caveat when both apply.
-  const testDriveAction: NextAction = ctx.driving
+  const testDriveAction: NextAction = driving
     ? { label: 'Stop test drive', kind: 'testDriveStop' }
     : {
         label: 'Start test drive',
@@ -31,7 +59,7 @@ export function resolveReview(input: ResolverInput): NextStep {
   // Nothing to caveat mid-drive — the offer there is Stop — and nothing to
   // caveat when the drive cannot start at all. Spread into each of review's
   // three bars, so the doubt rides along whatever else the phase is saying.
-  const unverified = ctx.driving || ctx.dryRunActive ? [] : (ctx.unverifiedDriveKeys ?? [])
+  const unverified = driving || ctx.dryRunActive ? [] : (ctx.unverifiedDriveKeys ?? [])
   const driveWarning =
     unverified.length > 0 ? { warning: unverifiedWarning(unverified) } : {}
   const iterate: NextAction[] = live
@@ -40,8 +68,15 @@ export function resolveReview(input: ResolverInput): NextStep {
         {
           label: 'Iterate',
           kind: 'rethink',
-          ...(ctx.driving
-            ? { disabled: 'Stop the test drive first — the branch is checked out' }
+          // The refusal stands (findings F3 — the server will not open a lap
+          // worktree on a branch the drive holds), but it is no longer a dead
+          // end: one click stops the drive and takes the road anyway
+          // (decision 20).
+          ...(driving
+            ? {
+                disabled: 'Stop the test drive first — the branch is checked out',
+                escape: { label: 'Stop drive and iterate', kind: 'stopDriveAndIterate' },
+              }
             : {}),
         },
       ]
@@ -92,6 +127,36 @@ export function resolveReview(input: ResolverInput): NextStep {
     }
   }
 
+  // A drive that is not serving owns the bar (decision 20). The two states this
+  // exists for are the walked lies: a bare checkout and a failed setup command
+  // both used to read "Test-driving the branch — merge when it looks right",
+  // because the bar derived drive truth of its own instead of reading the one
+  // the stage reads. Everything else review offers stays a click away below.
+  if (DRIVE_OWNS_BAR.includes(driveState)) {
+    const burn: NextAction[] =
+      pending > 0
+        ? [{ label: `Burn ${pending} ticket${pending === 1 ? '' : 's'}`, kind: 'burn' }]
+        : []
+    // "fix it or stop the drive": whichever of the two the table did not make
+    // the primary is the secondary beside it.
+    const primary: NextAction =
+      view.primary === 'fixDrive' ? { label: 'Fix drive', kind: 'fixDrive' } : testDriveAction
+    return {
+      kick: 'NEXT STEP',
+      title: view.barTitle,
+      desc: view.barDesc,
+      primary,
+      secondary: [
+        { label: 'Merge & ship', kind: 'merge' },
+        ...burn,
+        ...(primary.kind === 'testDriveStop' ? [] : [testDriveAction]),
+        ...addressNotes,
+        ...iterate,
+      ],
+      busy: false,
+    }
+  }
+
   // Defects the review found and the run could not close — over the auto-fix
   // cap, or a fix ticket that failed (decisions #7). One click mints a ticket
   // for each and burns them, so the human's whole decision on arrival is one
@@ -134,7 +199,7 @@ export function resolveReview(input: ResolverInput): NextStep {
     return {
       kick: 'NEXT STEP',
       title: 'Burn the fix tickets',
-      desc: ctx.driving
+      desc: driving
         ? 'Test-driving the branch — burn the fix tickets when you’re ready.'
         : `${pending} fix ticket${pending === 1 ? '' : 's'} ready — burn to run them, then review again.`,
       primary: { label: `Burn ${pending} ticket${pending === 1 ? '' : 's'}`, kind: 'burn' },
@@ -177,8 +242,10 @@ export function resolveReview(input: ResolverInput): NextStep {
   // "Checks are in" is an all-clear, so it needs checks to have run: the audit
   // found it over a feature with no run recorded at all (findings F23), which
   // is the state a quick-change or an overridden gate lands in.
-  const desc = ctx.driving
-    ? 'Test-driving the branch — merge when it looks right.'
+  // The merge invitation is the drive table's own sentence, so the one state it
+  // is true of — `serving` — is the only state that can print it (decision 20).
+  const desc = driving
+    ? `${view.barTitle}.`
     : failed > 0
       ? `Run finished with ${failed} failed ticket${failed === 1 ? '' : 's'} — review, then ship.`
       : run
@@ -186,7 +253,7 @@ export function resolveReview(input: ResolverInput): NextStep {
         : 'No run has been recorded on this branch — test-drive it yourself before merging.'
   return {
     kick: 'NEXT STEP',
-    title: ctx.driving ? 'Merge when it looks right' : 'Test drive, then ship',
+    title: driving ? 'Merge when it looks right' : 'Test drive, then ship',
     desc,
     primary: { label: 'Merge & ship', kind: 'merge' },
     secondary: [testDriveAction, ...addressNotes, ...iterate],
