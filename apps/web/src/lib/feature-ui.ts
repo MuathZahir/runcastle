@@ -3,6 +3,7 @@ export * from './feature-ui/pipeline'
 export * from './feature-ui/sidebar'
 export * from './feature-ui/gates'
 export * from './feature-ui/drive'
+export * from './feature-ui/run'
 export {
   findingCountsLine,
   findingOpenReason,
