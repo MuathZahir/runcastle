@@ -95,7 +95,14 @@ export function Workspace({
   // Test-drive notes, for the confirmation's open-notes line — same query key the
   // review body's checklist reads, so the two share one fetch. The open ones are
   // also what the bar's Address-notes triage acts on (decisions.md #11).
-  const notes = trpc.notes.list.useQuery({ featureId }, { refetchInterval: useLivePoll() })
+  // Both this and the findings read below are review-phase data: everything that
+  // consumes them — the merge confirmation, the bar's Iterate triage, the review
+  // page's own bands — only exists at review. They used to poll in every phase
+  // (research still-open 24), a timer per surface for rows nothing on screen was
+  // showing; the SSE feed invalidates both keys whatever the phase.
+  const poll = useLivePoll()
+  const reviewPoll = q.data?.feature.phase === 'review' ? poll : (false as const)
+  const notes = trpc.notes.list.useQuery({ featureId }, { refetchInterval: reviewPoll })
   const openNoteRows = notes.data?.filter((n) => n.status === 'open') ?? []
   const openNotes = notes.data ? openNoteRows.length : undefined
   // The review agent's findings, counted server-side (findings joined to their
@@ -105,7 +112,7 @@ export function Workspace({
   // nothing else.
   const findings = trpc.findings.listByFeature.useQuery(
     { featureId },
-    { refetchInterval: useLivePoll() },
+    { refetchInterval: reviewPoll },
   )
   const openDefects = findings.data?.summary.open
   // What the review agent made of this branch, for the confirmation's status

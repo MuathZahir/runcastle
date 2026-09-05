@@ -1972,54 +1972,11 @@ details.wp-group-done > summary { cursor: pointer; list-style: revert; }
 /* ============================================================================
    PHASE BODY — review + shipped
    ========================================================================== */
-.review-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 14px;
-  max-width: 1000px;
-}
-@media (max-width: 900px) { .review-grid { grid-template-columns: 1fr; } }
 .review-card {
   border: 1px solid var(--hairline);
   border-radius: var(--radius-lg);
   background: var(--panel-2);
   padding: 14px 16px;
-}
-/* "What landed this lap" (decisions #8) — the prose the review page leads with,
-   above the figures rather than under them, because it is what the human came
-   to read. Bounded and scrollable: a digest is a dozen lines, and the card must
-   not push the drive panel beside it off the screen. */
-.lap-account {
-  margin-top: 12px;
-  padding-bottom: 12px;
-  border-bottom: 1px solid var(--hairline-soft);
-}
-.lap-account-head {
-  font-family: var(--mono);
-  font-size: 11px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--text-3);
-  margin-bottom: 8px;
-}
-.lap-account-prose { max-height: 320px; overflow: auto; }
-/* The fallback is labelled, because per-ticket accounts are not a lap summary. */
-.lap-account-note {
-  font-size: 11.5px;
-  line-height: 1.5;
-  color: var(--text-3);
-  margin-bottom: 10px;
-}
-.lap-account-entry + .lap-account-entry {
-  margin-top: 10px;
-  padding-top: 10px;
-  border-top: 1px solid var(--hairline-soft);
-}
-.lap-account-ticket {
-  font-family: var(--mono);
-  font-size: 11.5px;
-  color: var(--text-2);
-  margin-bottom: 6px;
 }
 /* What the review found, in one computed line under the digest, with the
    observations beneath it — the wall of ~200-word notes this replaces is the
@@ -2077,26 +2034,9 @@ details.wp-group-done > summary { cursor: pointer; list-style: revert; }
   text-wrap: pretty;
 }
 
-/* the scope the spec deferred, verbatim beside what this lap delivered */
-.planned-lap-card {
-  max-width: 1000px;
-  border-color: color-mix(in srgb, var(--warn, #d9a441) 40%, var(--hairline));
-}
-.planned-lap-scope { margin-top: 12px; }
-.review-foot {
-  margin-top: 14px;
-  padding-top: 12px;
-  border-top: 1px solid var(--hairline-soft);
-  font-family: var(--mono);
-  font-size: 11.5px;
-  color: var(--text-2);
-}
-.drive-live {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  margin-top: 12px;
-}
+/* Both outlived the review rebuild that owned them: `.drive-pulse` is now only
+   preparation's dry-run row, and `.drive-copy` only the notes inbox and the
+   address-notes dialog, which are tickets 8 and 10's to retire. */
 .drive-pulse {
   width: 8px;
   height: 8px;
@@ -2104,123 +2044,7 @@ details.wp-group-done > summary { cursor: pointer; list-style: revert; }
   background: var(--drive);
   animation: pulse 1.4s ease-in-out infinite;
 }
-.drive-label { color: var(--drive); font-weight: 600; font-size: 12.5px; }
-.drive-loc { font-family: var(--mono); font-size: 11.5px; color: var(--text-2); }
 .drive-copy { margin-top: 12px; color: var(--text-2); font-size: 12.5px; line-height: 1.55; text-wrap: pretty; }
-.drive-stop-review { margin-top: 12px; }
-
-/* merge-conflict card (ticket 9) — conflict surfaced at review, resolved in-loop */
-.conflict-card {
-  max-width: 1000px;
-  border-color: color-mix(in srgb, var(--danger) 45%, var(--hairline));
-}
-.conflict-files {
-  margin: 12px 0 0;
-  padding: 0;
-  list-style: none;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-.conflict-files li {
-  font-family: var(--mono);
-  font-size: 11.5px;
-  color: var(--danger);
-  padding: 3px 8px;
-  border-radius: var(--radius-sm);
-  background: color-mix(in srgb, var(--danger) 9%, transparent);
-}
-.conflict-resolve { margin-top: 14px; }
-/* the one-terminal explanation, which replaced the button hiding itself */
-.conflict-note {
-  margin-top: 8px;
-  font-size: 11.5px;
-  line-height: 1.5;
-  color: var(--text-3);
-}
-/* drive setup failure (multi-service decision 4) — the loudest card at review,
-   because a drive that did not come up is where a human gets stranded */
-.drive-failure-card {
-  max-width: 1000px;
-  border-color: color-mix(in srgb, var(--danger) 45%, var(--hairline));
-}
-.drive-failure-fix { margin-top: 14px; }
-/* the hook's own output, monospaced and scrollable */
-.drive-failure-output {
-  margin: 12px 0 0;
-  padding: 10px 12px;
-  max-height: 220px;
-  overflow: auto;
-  font-family: var(--mono);
-  font-size: 11.5px;
-  line-height: 1.5;
-  white-space: pre-wrap;
-  color: var(--text-2);
-  border-radius: var(--radius-sm);
-  background: color-mix(in srgb, var(--danger) 9%, transparent);
-}
-.conflict-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
-.conflict-when { font-family: var(--mono); font-size: 11px; color: var(--text-3); }
-/* A drive that checked the branch out and started nothing is not "driving". */
-.drive-label.is-quiet { color: var(--text-2); }
-
-/* test-drive embedded dev pane (issue #41) */
-.review-body { display: flex; flex-direction: column; gap: 14px; }
-.drive-pane {
-  max-width: 1000px;
-  border: 1px solid var(--hairline);
-  border-radius: var(--radius-lg);
-  background: var(--panel-2);
-  overflow: hidden;
-}
-.drive-pane-strip {
-  height: 38px;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 0 12px;
-  background: var(--panel);
-  border-bottom: 1px solid var(--hairline-soft);
-}
-.drive-pane-kind {
-  display: inline-flex;
-  align-items: center;
-  height: 18px;
-  padding: 0 8px;
-  border-radius: var(--radius-pill);
-  border: 1px solid var(--drive-line, var(--accent-line));
-  background: var(--accent-soft);
-  color: var(--drive);
-  font-family: var(--mono);
-  font-size: 10.5px;
-}
-.drive-pane-loc { font-family: var(--mono); font-size: 11.5px; color: var(--text-3); }
-.drive-pane-spacer { flex: 1; }
-.drive-open {
-  font-family: var(--mono);
-  font-size: 11.5px;
-  font-weight: 600;
-  color: var(--drive);
-  text-decoration: none;
-  padding: 4px 10px;
-  border: 1px solid color-mix(in srgb, var(--drive) 40%, var(--hairline));
-  border-radius: var(--radius-pill);
-  background: var(--accent-soft);
-}
-.drive-open:hover { border-color: var(--drive); }
-/* The same pill before the app answers: muted and inert, so the shape reads as
-   "not yet" rather than as a link that happens to be styled quietly. */
-.drive-open-waiting {
-  color: var(--text-3);
-  font-weight: 500;
-  border-color: var(--hairline);
-  background: transparent;
-  cursor: default;
-}
-.drive-pane-term { height: 420px; min-height: 260px; background: var(--bg); position: relative; }
-
-/* the review agent's walkthrough — evidence for the report in the summary card */
-.walkthrough-card { max-width: 1000px; margin-top: 14px; }
 
 /* the findings inbox — capture box + lap-grouped checklist (decisions.md #11) */
 .notes-card { max-width: 1000px; margin-top: 14px; }
