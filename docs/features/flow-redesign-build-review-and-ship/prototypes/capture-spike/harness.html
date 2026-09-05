@@ -1,0 +1,108 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>capture spike — runcastle origin</title>
+<style>
+  body { margin: 0; font: 14px system-ui; background: #1a1a1a; color: #ddd; }
+  header { padding: 8px 12px; display: flex; gap: 8px; align-items: center; }
+  button { font: inherit; padding: 6px 12px; }
+  #panel { position: relative; margin: 0 12px; width: 900px; height: 500px; }
+  #app { width: 100%; height: 100%; border: 1px solid #444; background: #fff; }
+  #overlay {
+    position: absolute; inset: 0; cursor: crosshair; display: none;
+    background: rgba(0, 0, 0, 0.15);
+  }
+  #overlay.armed { display: block; }
+  #marquee { position: absolute; border: 2px solid #e74c3c; background: rgba(231, 76, 60, 0.15); display: none; }
+  #status { padding: 8px 12px; white-space: pre-wrap; font-family: monospace; }
+</style>
+<header>
+  <button id="start">1. Start capture session</button>
+  <button id="annotate" disabled>2. Annotate (drag-select)</button>
+  <span id="state">no stream</span>
+</header>
+<div id="panel">
+  <iframe id="app" src="http://localhost:5599/"></iframe>
+  <div id="overlay"><div id="marquee"></div></div>
+</div>
+<div id="status"></div>
+<video id="tap" muted playsinline style="display:none"></video>
+<script>
+  const $ = (id) => document.getElementById(id);
+  const log = (m) => { $("status").textContent += m + "\n"; console.log(m); };
+  let stream = null;
+  const video = $("tap");
+
+  $("start").onclick = async () => {
+    try {
+      const t0 = performance.now();
+      // preferCurrentTab: the picker offers only this tab -> one prompt,
+      // and the captured surface is guaranteed to be this viewport, which
+      // makes selection-rect -> video-pixel mapping exact.
+      stream = await navigator.mediaDevices.getDisplayMedia({
+        video: { displaySurface: "browser" },
+        audio: false,
+        preferCurrentTab: true,
+        selfBrowserSurface: "include",
+      });
+      video.srcObject = stream;
+      await video.play();
+      $("state").textContent = `stream live ${video.videoWidth}x${video.videoHeight} (prompt+attach ${Math.round(performance.now() - t0)}ms)`;
+      $("annotate").disabled = false;
+      log("STREAM_OK " + video.videoWidth + "x" + video.videoHeight);
+    } catch (e) {
+      $("state").textContent = "getDisplayMedia failed: " + e;
+      log("STREAM_FAIL " + e);
+    }
+  };
+
+  $("annotate").onclick = () => $("overlay").classList.add("armed");
+
+  const overlay = $("overlay"), marquee = $("marquee");
+  let anchor = null;
+  overlay.addEventListener("pointerdown", (e) => {
+    anchor = { x: e.clientX, y: e.clientY };
+    overlay.setPointerCapture(e.pointerId);
+  });
+  overlay.addEventListener("pointermove", (e) => {
+    if (!anchor) return;
+    const r = rect(anchor, e);
+    marquee.style.display = "block";
+    Object.assign(marquee.style, {
+      left: r.x - overlay.getBoundingClientRect().left + "px",
+      top: r.y - overlay.getBoundingClientRect().top + "px",
+      width: r.w + "px", height: r.h + "px",
+    });
+  });
+  overlay.addEventListener("pointerup", async (e) => {
+    const sel = rect(anchor, e);
+    anchor = null;
+    // Hide the chrome so the marquee/dim never bakes into the shot, let the
+    // compositor push a clean frame to the stream, then grab it.
+    overlay.classList.remove("armed");
+    marquee.style.display = "none";
+    const t0 = performance.now();
+    await new Promise((res) => setTimeout(res, 120));
+    const scaleX = video.videoWidth / window.innerWidth;
+    const scaleY = video.videoHeight / window.innerHeight;
+    const c = document.createElement("canvas");
+    c.width = Math.round(sel.w * scaleX);
+    c.height = Math.round(sel.h * scaleY);
+    c.getContext("2d").drawImage(
+      video,
+      sel.x * scaleX, sel.y * scaleY, sel.w * scaleX, sel.h * scaleY,
+      0, 0, c.width, c.height,
+    );
+    const png = c.toDataURL("image/png");
+    const grabMs = Math.round(performance.now() - t0);
+    const r = await fetch("/capture", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ png, grabMs, sel }),
+    });
+    log("CAPTURE_SAVED " + (await r.text()) + " grabMs=" + grabMs + " sel=" + JSON.stringify(sel));
+  });
+  const rect = (a, e) => ({
+    x: Math.min(a.x, e.clientX), y: Math.min(a.y, e.clientY),
+    w: Math.abs(e.clientX - a.x), h: Math.abs(e.clientY - a.y),
+  });
+</script>
