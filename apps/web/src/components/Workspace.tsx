@@ -149,6 +149,14 @@ export function Workspace({
     { enabled: !!projectId, refetchInterval: useLivePoll() },
   )
   const driveQ = trpc.feature.driveInfo.useQuery(undefined, { refetchInterval: useLivePoll() })
+  // How long tickets have actually been taking in THIS project, for the pre-burn
+  // bar's time expectation (decision #16b). History, so it does not poll — a
+  // median over every ticket the project has ever finished cannot move within a
+  // sitting by enough to matter.
+  const burnStatsQ = trpc.ticket.durationStats.useQuery(
+    { projectId: projectId ?? '' },
+    { enabled: !!projectId },
+  )
   // A parked draft picks its base at Start, not at creation (decision 3), so the
   // branch list is read HERE — Start fires from the next-step bar, and the base
   // has to be readable at that click, not buried in the body that shows the
@@ -374,6 +382,7 @@ export function Workspace({
     conflict,
     unverifiedDriveKeys: unverifiedDriveKeys((prepQ.data as PrepView | undefined)?.findings ?? []),
     dryRunActive: !!driveQ.data?.dryRun,
+    ...(burnStatsQ.data ? { burnStats: burnStatsQ.data } : {}),
     ...(draftBaseMissing ? { draftBaseMissing } : {}),
     openNotes,
     openDefects,

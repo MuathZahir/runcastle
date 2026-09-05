@@ -58,6 +58,35 @@ export function runHeadline(tickets: readonly LaneTicketFigure[], _run: object =
   return parts.join(' · ')
 }
 
+/** The project's own ticket history, as `ticket.durationStats` reports it. */
+export interface BurnDurationStats {
+  medianMs: number
+  sampleSize: number
+}
+
+/** A median rendered at the coarseness a time expectation is actually read at. */
+function coarseDuration(ms: number): string {
+  const minutes = ms / 60_000
+  if (minutes < 1) return 'under a minute'
+  if (minutes < 60) return `~${Math.round(minutes)} min`
+  const hours = minutes / 60
+  return `~${hours < 10 ? String(Math.round(hours * 10) / 10) : Math.round(hours)}h`
+}
+
+/**
+ * What the pre-burn bar says a burn is about to cost (decision #16b).
+ *
+ * The number comes from this project's own finished tickets, never from a
+ * constant: a hardcoded "a few minutes" was written once against one machine and
+ * one model, and it rots the moment either changes. With no history to quote the
+ * copy stays honestly generic rather than inventing a figure.
+ */
+export function burnExpectation(stats?: BurnDurationStats): string {
+  if (!stats || stats.sampleSize === 0 || stats.medianMs <= 0)
+    return 'Typically a few minutes per ticket.'
+  return `Tickets have been taking ${coarseDuration(stats.medianMs)} each.`
+}
+
 /** The burner prompt's completion signal — a marker for the harness, not prose. */
 const COMPLETE_TOKEN = /<promise>\s*COMPLETE\s*<\/promise>/i
 const COMPLETE_TOKENS = new RegExp(COMPLETE_TOKEN, 'gi')

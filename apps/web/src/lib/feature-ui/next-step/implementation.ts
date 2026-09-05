@@ -1,8 +1,13 @@
+import { burnExpectation } from '../run'
 import type { NextStep } from './types'
 import type { ResolverInput } from './resolver-input'
 
 export function resolveImplementation(input: ResolverInput): NextStep {
-  const { live, resumableGrill, ticketCount: t, done, failed, pending, run, running } = input
+  const { ctx, live, resumableGrill, ticketCount: t, done, failed, pending, run, running } = input
+  // What the burn is about to cost, from this project's finished tickets
+  // (decision #16b). Said on both roads into a burn — the first one and the
+  // resume — because the human is answering the same question at both.
+  const expectation = burnExpectation(ctx.burnStats)
   if (running) {
     return {
       kick: 'IN PROGRESS',
@@ -47,7 +52,7 @@ export function resolveImplementation(input: ResolverInput): NextStep {
     return {
       kick: 'NEXT STEP',
       title: pending === 1 ? 'Review & burn the ticket' : 'Review & burn the tickets',
-      desc: 'Read the card — edit it if it is not quite right — then burn it into commits.',
+      desc: `Read the card — edit it if it is not quite right — then burn it into commits. ${expectation}`,
       primary: { label: `Burn ${t} ticket${t === 1 ? '' : 's'}`, kind: 'burn' },
       secondary: live ? [] : [{ label: 'Revisit', kind: 'revisit' }],
       busy: false,
@@ -67,7 +72,7 @@ export function resolveImplementation(input: ResolverInput): NextStep {
   return {
     kick: 'NEXT STEP',
     title: 'Resume the burn',
-    desc: why,
+    desc: `${why} ${expectation}`,
     primary: { label: 'Resume burn', kind: 'burn' },
     // Failed tickets are reset to pending on resume; Revisit instead opens
     // a session to amend docs and edit/cancel tickets before re-burning.
