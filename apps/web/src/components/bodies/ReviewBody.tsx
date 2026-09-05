@@ -5,6 +5,7 @@ import type { DriveState as BrowserDrive } from '../../lib/workspace'
 import { driveCapabilities } from '../../lib/prep-findings'
 import {
   activeSession,
+  conflictResolveEnded,
   deferredScope,
   driveFailure,
   lapAccount,
@@ -16,6 +17,7 @@ import {
   verificationState,
   type MergeConflictState,
 } from '../../lib/feature-ui'
+import { useEventLog } from '../../lib/events'
 import { useReviewArtifacts } from '../../lib/reviews'
 import { useLivePoll } from '../../lib/live'
 import { useToast } from '../../lib/toast'
@@ -62,6 +64,9 @@ export function ReviewBody({
   const utils = trpc.useUtils()
   const liveSession = activeSession(full.sessions)
   const run = latestRun(runs)
+  // The same query key the workspace shell reads, so the conflict card's state
+  // and the bar's conflict branch come out of one fetch of one feed.
+  const events = useEventLog(feature.id)
 
   // Commits come from git, not from ticket commit rows (findings F23). Polled
   // slower than the 1.5s shell: a `rev-list --count` is cheap but this figure
@@ -165,6 +170,7 @@ export function ReviewBody({
           conflict={conflict}
           readonly={readonly}
           liveSessionId={liveSession?.id ?? null}
+          resolveEnded={conflictResolveEnded(events, full.sessions)}
         />
       )}
 

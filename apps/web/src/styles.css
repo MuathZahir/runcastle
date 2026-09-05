@@ -955,12 +955,19 @@ button {
   border-radius: var(--radius-lg);
   display: flex;
   align-items: center;
+  /* Wrapping is the fix for decision 30e. The conflict bar carries the most
+     buttons of any state (Resolve, Retry Merge & ship, the drive, Iterate, Burn)
+     and `.nextstep-actions` cannot shrink, so on one line they squeezed the
+     kick/title/desc down to one word per line in exactly the state that most
+     needs reading. Now the actions drop to their own row instead. */
+  flex-wrap: wrap;
   gap: 14px;
   padding: 13px 16px;
   animation: fadeUp var(--dur-3) var(--ease-out);
 }
 .nextstep-spin { flex: 0 0 auto; }
-.nextstep-main { flex: 1; min-width: 0; }
+/* Never narrower than a readable measure — below it the actions wrap away. */
+.nextstep-main { flex: 1 1 26rem; min-width: 0; }
 .nextstep-kick {
   font-size: 10px;
   font-weight: 700;
@@ -978,7 +985,7 @@ button {
   line-height: 1.5;
   text-wrap: pretty;
 }
-.nextstep-actions { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
+.nextstep-actions { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; margin-left: auto; }
 
 /* Convergence lives in the bar (ADR-0001 §13.6): remaining map fog as a soft
    warning under the description, and the override's inline reason input. The

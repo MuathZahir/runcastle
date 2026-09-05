@@ -1,5 +1,5 @@
 import { parsePhase, unresolvedMergeConflict } from '@runcastle/core'
-import type { EventRow, GateId, MergeConflictState, Phase } from '@runcastle/core'
+import type { EventRow, GateId, MergeConflictState, Phase, SessionPurpose } from '@runcastle/core'
 export { unresolvedMergeConflict }
 export type { MergeConflictState }
 
@@ -72,6 +72,55 @@ export const ONE_TERMINAL_WARNING =
  * last step instead of standing forever.
  * Returns null when there is no standing conflict. `events` must be in id order.
  */
+
+/** The events that supersede a recorded conflict — see `unresolvedMergeConflict`. */
+const CONFLICT_CLEARED = ['burn.started', 'merge.resolved', 'feature.shipped']
+
+/** How a session's lifecycle events name the session they are about. */
+function eventSessionId(event: EventRow): string | undefined {
+  const id = (event.data as { sessionId?: unknown } | null)?.sessionId
+  return typeof id === 'string' ? id : undefined
+}
+
+/**
+ * Whether a resolve-conflict session has ENDED since the standing conflict was
+ * recorded, without the merge landing (decision 30d).
+ *
+ * `merge.resolved` is emitted at session end only when the server's own probe
+ * finds the base already merged in, and that probe is best-effort by design — a
+ * worktree that has gone, a branch renamed, an agent that quit halfway. So the
+ * card used to sit there unchanged after a resolve session came and went, which
+ * reads as the button having done nothing at all. This is what lets it say so.
+ *
+ * There is no negative event to look for: `session.ended` carries only the
+ * session's id, so the sessions are what say which of them was the resolve. Both
+ * closing events count — a terminal the human closed emits `session.ended`, one
+ * the server found dead at boot emits `session.reconciled`, and either way the
+ * session is over and the merge has not landed.
+ *
+ * Answers for whatever conflict is standing at the end of the feed, so callers
+ * only ask it where {@link unresolvedMergeConflict} already returned one.
+ * `events` must be in id order.
+ */
+export function conflictResolveEnded(
+  events: EventRow[],
+  sessions: readonly { id: string; purpose?: SessionPurpose }[],
+): boolean {
+  const resolvers = new Set(
+    sessions.filter((s) => s.purpose === 'resolve-conflict').map((s) => s.id),
+  )
+  let ended = false
+  for (const event of events) {
+    // A fresh conflict, or anything that retires the old one, starts the
+    // question over: what matters is the resolve attempt on the CURRENT one.
+    if (event.type === 'merge.conflict' || CONFLICT_CLEARED.includes(event.type)) ended = false
+    else if (event.type === 'session.ended' || event.type === 'session.reconciled') {
+      const id = eventSessionId(event)
+      if (id && resolvers.has(id)) ended = true
+    }
+  }
+  return ended
+}
 
 export interface UndoableOverride {
   /** The gate that was forced. */
