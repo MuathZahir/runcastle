@@ -178,6 +178,56 @@ export function lapBanner(
   }
 }
 
+export interface LapChipFigure {
+  label: string
+  story: string
+  promotedFromEarlier: number
+}
+
+export function lapChip(
+  tickets: readonly { kind?: TicketKind; status: string; lap: number; landedLap?: number }[],
+  feature: { lap: number; lapSessionRan?: boolean },
+): LapChipFigure {
+  const implementation = tickets.filter((ticket) => ticket.kind !== 'review' && (ticket.landedLap ?? ticket.lap) === feature.lap)
+  const landed = implementation.filter((ticket) => ticket.status === 'done').length
+  const promotedFromEarlier = implementation.filter((ticket) => ticket.lap < feature.lap).length
+  const story = feature.lapSessionRan
+    ? `Lap ${feature.lap}'s session digested your notes and emitted this lap's tickets`
+    : `Lap ${feature.lap} is open — its session will digest your notes and emit this lap's tickets`
+  return { label: `Lap ${feature.lap} · ${landed} of ${implementation.length} tickets landed`, story, promotedFromEarlier }
+}
+
+const noun = (count: number, singular: string) => `${count} ${singular}${count === 1 ? '' : 's'}`
+
+export function triageFooter(input: {
+  quickFix: number
+  carried: number
+  nextLap: number
+  standing: readonly { count: number; lap: number }[]
+}): string {
+  const parts: string[] = []
+  if (input.quickFix > 0) parts.push(`${noun(input.quickFix, 'ticket')} will mint`)
+  if (input.carried > 0) parts.push(`${noun(input.carried, 'note')} carried into the lap conversation`)
+  if (input.quickFix === 0 && input.carried > 0) parts.push(`review what you're bringing to the conversation → Start lap ${input.nextLap}`)
+  for (const debt of input.standing) {
+    if (debt.count > 0) parts.push(`${noun(debt.count, 'unburned fix ticket')} from lap ${debt.lap} will burn with these`)
+  }
+  return parts.join(' · ')
+}
+
+export function burnLabel(
+  pending: readonly { lap: number }[],
+  lap: number,
+): string {
+  const current = pending.filter((ticket) => ticket.lap === lap).length
+  const carried = pending.length - current
+  const base = `Burn ${noun(pending.length, 'ticket')}`
+  if (carried === 0) return base
+  const previousLaps = [...new Set(pending.filter((ticket) => ticket.lap !== lap).map((ticket) => ticket.lap))]
+  const carriedLabel = previousLaps.length === 1 ? ` · ${carried} carried from lap ${previousLaps[0]}` : ` · ${carried} carried from earlier laps`
+  return `${base} — ${current} from lap ${lap}${carriedLabel}`
+}
+
 // --- the map rail (mapped ideation) ----------------------------------------
 
 /**
