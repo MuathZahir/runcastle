@@ -13,6 +13,9 @@ describe('annotation stroke model', () => {
     expect(redo(undo(drawn))).toEqual(drawn)
     expect(clear(drawn).shapes).toEqual([])
   })
+  it('keeps a one-point pen mark as saveable content', () => {
+    expect(canSave(commitShape(beginShape(emptyAnnotation(), { x: 2, y: 3 })))).toBe(true)
+  })
   it.each([[emptyAnnotation(), false], [setText(emptyAnnotation(), '  '), false], [setText(emptyAnnotation(), 'note'), true], [commitShape(extendShape(beginShape(emptyAnnotation(), { x: 0, y: 0 }), { x: 1, y: 1 })), true]] as const)('derives save and dirty state', (state, expected) => {
     expect(canSave(state)).toBe(expected); expect(isDirty(state)).toBe(expected)
   })

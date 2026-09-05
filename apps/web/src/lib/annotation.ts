@@ -19,9 +19,10 @@ export function extendShape(state: AnnotationState, point: Point): AnnotationSta
 }
 
 export function commitShape(state: AnnotationState): AnnotationState {
-  const current = state.shapes.at(-1)
-  if (!current || current.points.length > 1) return state
-  return { ...state, shapes: state.shapes.slice(0, -1) }
+  // A shape is accumulated directly in `shapes`; committing is deliberately a
+  // pure boundary marker. A one-point pen shape is a valid dot, not an empty
+  // gesture to discard.
+  return state
 }
 
 export function undo(state: AnnotationState): AnnotationState {
