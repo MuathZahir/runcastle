@@ -74,8 +74,12 @@ const render = (props: Partial<Parameters<typeof EvidenceStage>[0]> = {}): strin
 afterEach(() => vi.unstubAllGlobals())
 
 /** A browser that can capture its own tab — Chromium, with the API present. */
-const asChromium = (): void =>
-  vi.stubGlobal('navigator', { mediaDevices: { getDisplayMedia: () => undefined }, userAgentData: {} })
+const asChromium = (): void => {
+  vi.stubGlobal('navigator', {
+    mediaDevices: { getDisplayMedia: () => undefined },
+    userAgentData: {},
+  })
+}
 
 describe('the stage while the drive is starting', () => {
   it('says the dev server is coming up rather than showing an empty frame', () => {
