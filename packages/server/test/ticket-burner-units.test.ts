@@ -66,6 +66,7 @@ import {
   buildProjectStandards,
   readDocsDigest,
   trimMapDoc,
+  verificationDue,
 } from '../src/workflows/ticket-burner'
 import type {
   HarvestedDigest,
@@ -105,6 +106,37 @@ const feature: Feature = {
   status: 'active',
   createdAt: 0,
 }
+
+describe('verificationDue', () => {
+  const runIds = (...seqs: number[]) => new Set(seqs.map((seq) => `tkt_${seq}`))
+  const done = (seq: number, completedAt: number, overrides: Partial<Ticket> = {}) =>
+    ticket(seq, [], { status: 'done', completedAt, ...overrides })
+  const review = (seq: number, completedAt: number, overrides: Partial<Ticket> = {}) =>
+    done(seq, completedAt, { kind: 'review', passKind: 'review', ...overrides })
+
+  it('is due when a fix wave landed after a completed review', () => {
+    const result = verificationDue([review(1, 10), done(2, 20)], runIds(1, 2))
+    expect(result).toMatchObject({ due: true, landed: [{ seq: 2 }], verifies: { seq: 1 } })
+  })
+
+  it('is due for landed work in a run with no review', () => {
+    expect(verificationDue([done(1, 10)], runIds(1))).toMatchObject({ due: true, verifies: null })
+  })
+
+  it('is not due after a failed review', () => {
+    const failed = ticket(1, [], { kind: 'review', status: 'failed', completedAt: 20 })
+    expect(verificationDue([done(2, 10), failed], runIds(1, 2)).due).toBe(false)
+  })
+
+  it('is not due when no implementation landed after the review', () => {
+    expect(verificationDue([done(1, 10), review(2, 20)], runIds(1, 2)).due).toBe(false)
+  })
+
+  it('is not due when a verification already ran after the last landing', () => {
+    const verification = review(3, 30, { passKind: 'verification' })
+    expect(verificationDue([review(1, 10), done(2, 20), verification], runIds(1, 2, 3)).due).toBe(false)
+  })
+})
 
 function textEvent(message: string, iteration = 0): AgentStreamEvent {
   return { type: 'text', message, iteration, timestamp: new Date() }

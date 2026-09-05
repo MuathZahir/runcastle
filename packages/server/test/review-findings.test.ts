@@ -76,6 +76,17 @@ describe('review findings service', () => {
     expect(listAfter(ctx, featureId).map((event) => event.type)).toContain('finding.reported')
   })
 
+  it('keeps verification defects open without minting another fix wave', () => {
+    const verification = storeTickets(ctx, featureId, [{
+      title: 'Verify fixes', goal: 'Verify', context: '', acceptanceCriteria: [], seams: [],
+      blockedBy: [], kind: 'review', passKind: 'verification',
+    }])[0]
+    const result = reportFinding(ctx, { featureId, reviewTicket: verification, input: defect() })
+    expect(result).toMatchObject({ fixTicket: null, overCap: false })
+    expect(result.finding).toMatchObject({ status: 'open', openReason: 'verification', fixTicketId: null })
+    expect(listTickets(ctx, featureId)).toHaveLength(2)
+  })
+
   it('caps auto-fixes at eight and never mints a ticket for an observation', () => {
     for (let index = 1; index <= 8; index += 1) {
       expect(reportFinding(ctx, { featureId, reviewTicket, input: defect(`Defect ${index}`) }).overCap).toBe(false)

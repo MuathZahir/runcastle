@@ -156,7 +156,7 @@ Findings from **either** mode go through it — a cited Standards or Spec findin
 
 **Severity is `high` when an acceptance criterion is unmet or data/flow is broken**, `medium` for a real defect that is not that, `low` for the rest. It orders and labels; it never gates.
 
-**Report defects highest severity first.** Each defect mints a fix ticket that burns in this same run, and only the first 8 do — everything after the cap is stored for the human to decide on, so the order you report in decides what gets fixed.
+**Report defects highest severity first.** Each defect mints a fix ticket that burns in this same run, and only the first {{AUTO_FIX_CAP}} do — everything after the cap is stored for the human to decide on, so the order you report in decides what gets fixed.
 
 Report as you find things, never in a batch at the end: a finding you have sent survives an iteration that ends early, and one you were saving up does not. There is no closing wrap-up call — the digest (step 5) is the summary, and your observations render beneath it.
 
