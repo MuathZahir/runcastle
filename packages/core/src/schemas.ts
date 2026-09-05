@@ -319,7 +319,7 @@ export type Waypoint = z.infer<typeof Waypoint>
  * scratch-off (toggleable back to `open`); `promoted` is terminal and freezes
  * the note as the record of what its ticket was built from.
  */
-export const TestNoteStatus = z.enum(['open', 'done', 'promoted'])
+export const TestNoteStatus = z.enum(['open', 'done', 'promoted', 'carried'])
 export type TestNoteStatus = z.infer<typeof TestNoteStatus>
 
 /**
@@ -351,6 +351,8 @@ export const TestNote = z.object({
   status: TestNoteStatus,
   author: TestNoteAuthor.default('human'),
   ticketId: z.string().optional(),
+  reviewTicketId: z.string().optional(),
+  carriedLap: z.number().optional(),
   videoTimestamp: z.number().optional(),
   screenshotUrl: z.string().optional(),
   createdAt: z.number(),

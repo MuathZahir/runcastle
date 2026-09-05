@@ -25,3 +25,14 @@ export function fmtClock(seconds: number): string {
   const mm = h > 0 ? String(m).padStart(2, '0') : String(m)
   return `${h > 0 ? `${h}:` : ''}${mm}:${String(s).padStart(2, '0')}`
 }
+
+/** Build a compact ticket title from the first sentence of a test note. */
+export function ticketTitleFromNote(text: string): string {
+  const clean = text.trim()
+  const boundary = clean.search(/(?:[.!?](?:\s|$)|\n)/)
+  const sentence = (boundary < 0 ? clean : clean.slice(0, boundary + (clean[boundary] === '\n' ? 0 : 1))).trim()
+  if (sentence.length <= 80) return sentence
+  const cut = sentence.slice(0, 80)
+  const wordBoundary = cut.lastIndexOf(' ')
+  return (wordBoundary > 0 ? cut.slice(0, wordBoundary) : cut).trimEnd()
+}

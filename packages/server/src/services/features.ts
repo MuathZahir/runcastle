@@ -765,6 +765,17 @@ export async function burn(
  * one-terminal-per-feature guard would refuse must not leave the feature already
  * bumped onto a lap with no session to work it.
  */
+export function assertIterable(ctx: AppCtx, feature: Feature): void {
+  if (hasActiveRun(ctx, feature.id)) {
+    throw new GateError('a run is burning this feature — cancel or wait for it before iterating')
+  }
+  if (git.activeTestDriveFeatureId() === feature.id) {
+    throw new GateError(
+      `${feature.slug} is being test-driven — stop the test drive first, it holds the feature branch`,
+    )
+  }
+}
+
 export function rethink(ctx: AppCtx, featureId: string): Feature {
   const feature = getFeatureRow(ctx, featureId)
   requireNotDraft(feature)
@@ -773,9 +784,7 @@ export function rethink(ctx: AppCtx, featureId: string): Feature {
       `feature must be in the review phase to rethink (currently ${feature.phase})`,
     )
   }
-  if (hasActiveRun(ctx, featureId)) {
-    throw new GateError('a run is burning this feature — cancel or wait for it before rethinking')
-  }
+  assertIterable(ctx, feature)
   const live = activeSessionsForFeature(ctx, featureId)
   if (live.length > 0) {
     throw new GateError(
@@ -786,12 +795,6 @@ export function rethink(ctx: AppCtx, featureId: string): Feature {
   // and the lap's terminal needs it for the talk worktree — git refuses two
   // checkouts of one branch, so the launch would fail with the lap already
   // bumped (findings F3). Same guard shape as merge and delete.
-  if (git.activeTestDriveFeatureId() === featureId) {
-    throw new GateError(
-      `${feature.slug} is being test-driven — stop the test drive first, it holds the feature branch`,
-    )
-  }
-
   const lap = feature.lap + 1
   ctx.db.update(features).set({ lap }).where(eq(features.id, featureId)).run()
   return setPhase(ctx, featureId, RETHINK_LOOP_BACK.to, 'lap.started', `rethink — lap ${lap}`)

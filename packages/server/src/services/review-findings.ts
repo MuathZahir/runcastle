@@ -262,8 +262,15 @@ function fixTicketOf(finding: ReviewFinding, tickets: Ticket[]): Ticket | undefi
 export function promoteOpenDefects(
   ctx: AppCtx,
   featureId: string,
+  findingIds?: string[],
 ): { findings: ReviewFinding[]; tickets: Ticket[] } {
-  const defects = viewByFeature(ctx, featureId).openDefects
+  const open = viewByFeature(ctx, featureId).openDefects
+  const defects = findingIds ? findingIds.map((id) => {
+    const finding = open.find((candidate) => candidate.id === id)
+    if (!finding) throw new InvalidInputError(`finding ${id} is not an open defect of this feature`)
+    return finding
+  }) : open
+  if (findingIds && new Set(findingIds).size !== findingIds.length) throw new InvalidInputError('duplicate finding selected')
   if (defects.length === 0) throw new InvalidInputError('no open defects to fix')
 
   const tickets = storeTickets(ctx, featureId, defects.map(buildFixTicket))

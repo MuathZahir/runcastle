@@ -324,6 +324,8 @@ export const testNotes = sqliteTable('test_notes', {
   author: text('author').notNull().$type<TestNoteAuthor>().default('human'),
   /** The ticket a `promoted` note was turned into; null for every other status. */
   ticketId: text('ticket_id'),
+  reviewTicketId: text('review_ticket_id'),
+  carriedLap: integer('carried_lap'),
   /**
    * Seconds into the review walkthrough the note was captured at, when it was
    * captured from the annotation player; null for every note typed into the
