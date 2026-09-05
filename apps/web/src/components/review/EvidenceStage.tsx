@@ -54,7 +54,7 @@ function stageShows(state: DriveState, hasRecording: boolean): 'player' | 'drive
  * an approximation from the landed-since counts rather than a read of the pass's
  * own brief, which is why the header carries it with a title saying so.
  */
-export function stageIdentity(
+function stageIdentity(
   recording: Pick<ReviewArtifacts, 'passKind' | 'reviewedCommit' | 'landedSince'>,
   duration: number | null,
   fixes: number | null,
@@ -134,7 +134,13 @@ export function EvidenceStage({
       <header className="flex flex-wrap items-center gap-x-4 gap-y-2">
         <span className="font-mono text-sm text-text-2">
           {onStage ? (
-            <span title="the fix count is derived from what landed between passes">
+            <span
+              title={
+                onStage.passKind === 'verification'
+                  ? 'the fix count is derived from what landed between the two passes'
+                  : undefined
+              }
+            >
               {stageIdentity(onStage, duration, fixes)}
             </span>
           ) : (
