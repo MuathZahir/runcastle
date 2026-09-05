@@ -1688,16 +1688,16 @@ export async function commitDocs(worktreePath: string, message: string): Promise
 }
 
 /** Commit generated docs on a named branch in the main checkout, then restore its prior branch. */
-export async function commitDocsOnBranch(
+export async function onBranch<T>(
   repoPath: string,
   branch: string,
-  message: string,
-): Promise<void> {
+  action: () => Promise<T>,
+): Promise<T> {
   const g = git(repoPath)
   const previous = (await g.revparse(['--abbrev-ref', 'HEAD'])).trim()
   if (previous !== branch) await g.checkout(branch)
   try {
-    await commitDocs(repoPath, message)
+    return await action()
   } finally {
     if (previous !== branch && previous !== 'HEAD') await g.checkout(previous)
   }

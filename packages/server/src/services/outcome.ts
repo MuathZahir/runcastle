@@ -116,10 +116,12 @@ export async function promoteOutcomeDoc(
       feature, tickets, findings: listFindings(ctx, feature.id), notes: listNotes(ctx, feature.id), artifacts,
       shippedAt: Date.now(), delta: { commits: delta.commits ?? 0, files: delta.files ?? 0 },
     })
-    const docsDir = join(project.repoPath, ...featureDocsRel(feature.slug).split('/'))
-    mkdirSync(docsDir, { recursive: true })
-    writeFileSync(join(docsDir, 'outcome.md'), doc, 'utf8')
-    await git.commitDocsOnBranch(project.repoPath, target, `runcastle: outcome for ${feature.slug}`)
+    await git.onBranch(project.repoPath, target, async () => {
+      const docsDir = join(project.repoPath, ...featureDocsRel(feature.slug).split('/'))
+      mkdirSync(docsDir, { recursive: true })
+      writeFileSync(join(docsDir, 'outcome.md'), doc, 'utf8')
+      await git.commitDocs(project.repoPath, `runcastle: outcome for ${feature.slug}`)
+    })
   } catch (error) {
     emit(ctx, feature.id, {
       type: 'docs.outcome_failed',
