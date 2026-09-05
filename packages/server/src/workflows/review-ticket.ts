@@ -185,6 +185,14 @@ export function buildDriveAvailability(
   )
 }
 
+/** A verification inherits Drive exactly when the pass it follows recorded a walkthrough. */
+export function inheritedReviewMode(
+  verifiedTicketId: string | undefined,
+  fileExists: (path: string) => boolean = existsSync,
+): 'drive' | 'gates' {
+  return verifiedTicketId && fileExists(reviewWalkthroughPath(verifiedTicketId)) ? 'drive' : 'gates'
+}
+
 /**
  * The `{{GATE_NOTES}}` block: the gates Gates mode runs, and the failures they
  * already produce without this lap's help.
@@ -367,9 +375,7 @@ async function reviewTicketOutcome(
     .filter((candidate) => candidate.kind === 'review' && candidate.id !== ticket.id && candidate.status === 'done')
     .sort((a, b) => (a.completedAt ?? 0) - (b.completedAt ?? 0))
     .at(-1)
-  const inheritedMode = ticket.passKind === 'verification'
-    ? verifies && existsSync(reviewWalkthroughPath(verifies.id)) ? 'drive' as const : 'gates' as const
-    : undefined
+  const inheritedMode = ticket.passKind === 'verification' ? inheritedReviewMode(verifies?.id) : undefined
   const prompt = renderReviewPrompt(ticket, {
     TICKET_JSON: buildTicketJson(ticket),
     FEATURE_BRIEF: buildFeatureBrief(feature),

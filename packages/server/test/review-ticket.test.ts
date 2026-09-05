@@ -37,6 +37,7 @@ import {
   buildGateNotes,
   executeReviewTicket,
   findOnPath,
+  inheritedReviewMode,
   renderReviewPrompt,
   reviewTemplatePath,
 } from '../src/workflows/review-ticket'
@@ -500,6 +501,11 @@ describe('what the review agent is handed', () => {
 })
 
 describe('the mode the review is handed', () => {
+  it('inherits Drive only when the verified pass left a recording on disk', () => {
+    expect(inheritedReviewMode('review_1', () => true)).toBe('drive')
+    expect(inheritedReviewMode('review_1', () => false)).toBe('gates')
+    expect(inheritedReviewMode(undefined, () => true)).toBe('gates')
+  })
   it('states both inherited verification modes without offering a choice', () => {
     expect(buildDriveAvailability(undefined, undefined, 'drive')).toContain('Inherited mode: **Drive**')
     expect(buildDriveAvailability('/browser', 'bun dev', 'gates')).toContain('Inherited mode: **Gates**')
