@@ -223,14 +223,12 @@ describe('RunHeader', () => {
       createElement(RunHeader, {
         headline: 'Burning 3 tickets · +2 fixes from review · 2 done · 1 stopped',
         elapsed: '4m 10s',
-        expectation: 'tickets have been taking ~2 min each',
         burning: 1,
         onCancelRun: () => {},
       }),
     )
     expect(html).toContain('Burning 3 tickets · +2 fixes from review · 2 done · 1 stopped')
     expect(html).toContain('4m 10s')
-    expect(html).toContain('tickets have been taking ~2 min each')
     expect(html).toContain('Cancel run')
   })
 

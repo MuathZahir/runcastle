@@ -16,7 +16,6 @@ import {
   ticketDurations,
   ticketModelChip,
   runHeadline,
-  summaryCounts,
 } from '../../lib/feature-ui'
 import { fmtDuration, shortSha } from '../../lib/format'
 import { BURN_EXPLAINER } from '../../lib/vocabulary'
@@ -143,7 +142,6 @@ export function RunBody({
     )
   }
 
-  const counts = summaryCounts(tickets)
   const burning = tickets.filter((t) => t.status === 'burning').length
   const copySha = (sha: string) => {
     navigator.clipboard?.writeText(sha).then(
@@ -279,7 +277,9 @@ export function RunBody({
         burning={burning}
         busy={busy}
         onCancelRun={
-          readonly || !runId ? undefined : () => cancelRun.mutate({ runId })
+          readonly || !runId || run.data?.status !== 'running'
+            ? undefined
+            : () => cancelRun.mutate({ runId })
         }
       />
 
@@ -318,12 +318,6 @@ export function RunBody({
 
       <RunTimeline events={runEvents} />
       {run.data?.digest && <RunDigest digest={run.data.digest} />}
-      {counts.waived > 0 && (
-        <p className="mt-3 text-sm text-text-3">
-          {counts.waived} ticket{counts.waived === 1 ? '' : 's'} set aside — carried into review as
-          unfinished work.
-        </p>
-      )}
     </div>
   )
 }

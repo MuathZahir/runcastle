@@ -180,24 +180,23 @@ export function Lane({
         <span className={`${CHIP} ${LANE_CHIP[state]}`}>{LANE_LABEL[state]}</span>
       </button>
 
-      {sha &&
-        (onCopySha ? (
-          <div className="px-3 pb-2.5">
+      {sha && (
+        <div className="px-3 pb-2.5">
+          {onCopySha ? (
             <button
-              className={`${CHIP} border-hairline font-mono text-text-2`}
+              className={`${CHIP} cursor-pointer border-hairline text-text-2`}
               title="copy sha"
               onClick={() => onCopySha(sha)}
             >
               {shortSha(sha)}
             </button>
-          </div>
-        ) : (
-          <div className="px-3 pb-2.5">
+          ) : (
             <span className={`${CHIP} border-hairline text-text-2`} title={sha}>
               {shortSha(sha)}
             </span>
-          </div>
-        ))}
+          )}
+        </div>
+      )}
 
       {errorHeadline && !conflict && (
         <div

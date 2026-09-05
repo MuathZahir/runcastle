@@ -99,7 +99,7 @@ export function LaneTranscript({
         <div className="mt-1 flex items-center gap-2 text-ph-implementation">
           <span className="inline-block animate-[spin_1.2s_linear_infinite]">✳</span>
           <span className="text-xs text-text-3">Burning…</span>
-          <span className="animate-[pulse_1.1s_steps(1)_infinite] text-text-2">▍</span>
+          <span className="animate-[pulse_1.1s_ease-in-out_infinite] text-text-2">▍</span>
         </div>
       )}
       {!following && (

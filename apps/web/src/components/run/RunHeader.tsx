@@ -17,7 +17,6 @@ import { ConfirmDialog } from './ConfirmDialog'
 export function RunHeader({
   headline,
   elapsed,
-  expectation,
   status,
   burning,
   busy,
@@ -25,16 +24,14 @@ export function RunHeader({
 }: {
   headline: string
   elapsed: string
-  /** How long tickets have been taking on this project, when history can say. */
-  expectation?: string
   status?: RunStatus
   /** Lanes with a live agent — the blast radius Cancel run states. */
   burning: number
   busy?: boolean
+  /** Set only while the run can still be cancelled. */
   onCancelRun?: () => void
 }) {
   const [confirming, setConfirming] = useState(false)
-  const cancellable = !!onCancelRun && burning > 0
 
   return (
     <div className="mb-6 flex flex-col gap-2">
@@ -42,7 +39,7 @@ export function RunHeader({
         <SectionTitle>Run</SectionTitle>
         {status && <RunStatusChip status={status} />}
         <span className="flex-1" />
-        {cancellable && (
+        {onCancelRun && (
           <Button variant="danger" disabled={busy} onClick={() => setConfirming(true)}>
             Cancel run
           </Button>
@@ -52,17 +49,20 @@ export function RunHeader({
         <span className="text-lg text-text">{headline}</span>
         <span className="font-mono text-sm text-text-3">{elapsed}</span>
       </div>
-      {expectation && <p className="m-0 text-sm text-text-3">{expectation}</p>}
 
-      {cancellable && (
+      {onCancelRun && (
         <ConfirmDialog
           open={confirming}
           title="Cancel this run?"
           body={
-            <>
-              Stops {burning} burning agent{burning === 1 ? '' : 's'}. Finished work is kept; the
-              burn can resume later.
-            </>
+            burning > 0 ? (
+              <>
+                Stops {burning} burning agent{burning === 1 ? '' : 's'}. Finished work is kept; the
+                burn can resume later.
+              </>
+            ) : (
+              'Stops the run before its remaining tickets start. Finished work is kept; the burn can resume later.'
+            )
           }
           confirmLabel="Cancel run"
           busy={busy}
