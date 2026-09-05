@@ -58,12 +58,34 @@ export function runHeadline(tickets: readonly LaneTicketFigure[], _run: object =
   return parts.join(' · ')
 }
 
+/** The burner prompt's completion signal — a marker for the harness, not prose. */
+const COMPLETE_TOKEN = /<promise>\s*COMPLETE\s*<\/promise>/i
+
 export function stripProtocolTokens(text: string): string {
-  return text.replace(/<promise>\s*COMPLETE\s*<\/promise>/gi, '').replace(/\n{3,}/g, '\n\n').trim()
+  return text.replace(new RegExp(COMPLETE_TOKEN, 'gi'), '').replace(/\n{3,}/g, '\n\n').trim()
+}
+
+/** Whether the agent signed off with the completion marker (decision #13a). */
+export function reportedComplete(text: string): boolean {
+  return COMPLETE_TOKEN.test(text)
 }
 
 export function repoRelative(path: string): string {
   return path.replace(/^.*?(?:\/|\\)repo(?:\/|\\)/, '')
+}
+
+/** Path-shaped runs of a tool line, so a line rewrites without losing its prose. */
+const PATH_IN_LINE = /[^\s"'`,)]*[/\\]repo[/\\][^\s"'`,)]*/g
+
+/**
+ * A tool line with its sandbox-internal paths rewritten repo-relative
+ * (decision #13b) — `/home/agent/cache/slots/1/repo/src/App.tsx` reads as
+ * `src/App.tsx`. The container's own layout means nothing to the human reading
+ * the lane, and repeated at the head of every path it crowds out the part that
+ * does.
+ */
+export function repoRelativeLine(line: string): string {
+  return line.replace(PATH_IN_LINE, repoRelative)
 }
 
 // --- how the lanes are grouped and what the feed says about them ------------
