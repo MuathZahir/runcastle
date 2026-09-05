@@ -251,6 +251,28 @@ export function IconSparkle(p: IconProps) {
   )
 }
 
+/**
+ * The two agent runtimes a lane can burn on (decisions.md #10). Marks, not
+ * logos: a radiating burst for Claude Code and the angle brackets for Codex,
+ * drawn on the same 16×16 stroke grid as everything else here so a lane's
+ * runtime reads at a glance without a second typeface arriving with it.
+ */
+export function IconClaude(p: IconProps) {
+  return (
+    <svg {...base(p)}>
+      <path d="M8 2.4v11.2M3.2 5.2l9.6 5.6M12.8 5.2l-9.6 5.6" />
+    </svg>
+  )
+}
+
+export function IconCodex(p: IconProps) {
+  return (
+    <svg {...base(p)}>
+      <path d="M5.6 4.8 2.4 8l3.2 3.2M10.4 4.8 13.6 8l-3.2 3.2" />
+    </svg>
+  )
+}
+
 /* ============================================================================
    BRAND — castle mark with a play-triangle gate (Runcastle Logo template,
    Runcastle Design System). One silhouette: a crenellated wall whose gate is
