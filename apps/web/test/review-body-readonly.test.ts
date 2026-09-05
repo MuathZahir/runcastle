@@ -31,6 +31,7 @@ vi.mock('../src/trpc', () => {
         edit: { useMutation: mutation },
         remove: { useMutation: mutation },
         toggle: { useMutation: mutation },
+        reopen: { useMutation: mutation },
       },
       findings: { dismiss: { useMutation: mutation } },
       feature: {
@@ -47,7 +48,7 @@ vi.mock('../src/lib/toast', () => ({ useToast: () => ({ push: vi.fn() }) }))
 const { ConflictAlert } = await import('../src/components/review/ConflictCard')
 const { EvidenceStage } = await import('../src/components/review/EvidenceStage')
 const { FullAccounts } = await import('../src/components/review/FullAccounts')
-const { OpenWorkSlot } = await import('../src/components/review/OpenWorkSlot')
+const { OpenWork } = await import('../src/components/review/OpenWork')
 const { StatusStrip } = await import('../src/components/review/StatusStrip')
 
 const RECORDING: ReviewArtifacts = {
@@ -132,7 +133,7 @@ function bands(readonly: boolean): ReactNode[] {
       laterLaps: 'A settings pane for the roster.',
       readonly,
     }),
-    createElement(OpenWorkSlot, {
+    createElement(OpenWork, {
       key: 'work',
       featureId: 'ftr_1',
       lap: 2,
@@ -142,6 +143,7 @@ function bands(readonly: boolean): ReactNode[] {
       summary: { found: 1, fixed: 0, open: 1, observations: 0 },
       openDefects: [DEFECT],
       readonly,
+      onStage: { ticketId: RECORDING.ticketId },
     }),
     createElement(FullAccounts, {
       key: 'accounts',

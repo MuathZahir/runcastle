@@ -27,7 +27,12 @@ import { timestampMode } from '../../lib/walkthrough'
 
 /** A row's subject: a test note, or a defect the review agent reported. */
 export type NoteItem =
-  | { kind: 'note'; note: TestNote }
+  | {
+      kind: 'note'
+      note: TestNote
+      /** The ticket a quick-fixed note was frozen into, when it was one. */
+      ticket?: { seq: number; title: string }
+    }
   | {
       kind: 'defect'
       finding: ReviewFinding
@@ -45,9 +50,9 @@ export function itemLap(item: NoteItem): number {
   return item.kind === 'note' ? item.note.lap : item.finding.lap
 }
 
-/** The DOM id a jump or a highlight addresses this row by. */
-export function rowElementId(item: NoteItem): string {
-  return `work-${itemId(item)}`
+/** The DOM id a jump or a highlight addresses a row by, from its item id. */
+export function rowElementId(id: string): string {
+  return `work-${id}`
 }
 
 /** What a defect wrote, one click away — the walls decision 5(4) demoted. */
@@ -104,6 +109,14 @@ export function NoteRow({
 }) {
   const note = item.kind === 'note' ? item.note : undefined
   const finding = item.kind === 'defect' ? item.finding : undefined
+  // Where a note ended up, as a statement rather than a control: it is part of
+  // the record and so survives `readonly`, which drops every action (decision 33a).
+  const standing =
+    note?.status === 'promoted'
+      ? `→ ${item.kind === 'note' && item.ticket ? `#${item.ticket.seq} ${item.ticket.title}` : 'quick-fixed into a ticket'}`
+      : note?.status === 'carried'
+        ? `carried into lap ${note.carriedLap}`
+        : null
   const text = note?.text ?? finding?.title ?? ''
   const picture = note?.screenshotUrl
   const moment = note?.videoTimestamp
@@ -120,7 +133,7 @@ export function NoteRow({
 
   return (
     <div
-      id={rowElementId(item)}
+      id={rowElementId(itemId(item))}
       className={`flex gap-3 border-t border-hairline-soft py-3 transition-colors duration-(--dur-2) ease-app first:border-t-0 ${
         highlighted ? 'bg-accent-soft' : ''
       }`}
@@ -169,9 +182,18 @@ export function NoteRow({
           {!readonly && controls}
         </div>
 
-        {editor ?? <p className="m-0 text-sm text-pretty whitespace-pre-wrap text-text">{text}</p>}
+        {editor ?? (
+          <p
+            className={`m-0 text-sm text-pretty whitespace-pre-wrap ${
+              note?.status === 'done' ? 'text-text-3 line-through' : 'text-text'
+            }`}
+          >
+            {text}
+          </p>
+        )}
 
         {why && <div className="font-mono text-xs text-warn">{why}</div>}
+        {standing && <div className="font-mono text-xs text-text-3">{standing}</div>}
 
         {fixing &&
           (readonly || !onViewLane ? (
