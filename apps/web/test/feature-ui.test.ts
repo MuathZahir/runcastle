@@ -2379,6 +2379,47 @@ describe('nextStep at implementation', () => {
       { label: 'Revisit', kind: 'revisit' },
     ])
   })
+
+  /**
+   * Decision 11(b) — a permanently-failing ticket used to loop forever on
+   * Retry, with the only exit the gate's generic "Override with reason…". Once
+   * every lane is terminal and something landed, G4's own belief ("every ticket
+   * reached a terminal state") is offered by name, beside the resume.
+   */
+  it('offers Continue to review once every lane is terminal and one landed', () => {
+    const ns = nextStep(
+      buildFull({
+        runs: [{ id: 'r1', status: 'failed', startedAt: 1 }],
+        ticketStatuses: ['done', 'failed', 'cancelled'],
+      }),
+      { driving: false },
+    )
+    expect(ns.primary).toEqual({ label: 'Resume burn', kind: 'burn' })
+    expect(ns.secondary).toEqual([
+      { label: 'Continue to review', kind: 'advance' },
+      { label: 'Revisit', kind: 'revisit' },
+    ])
+  })
+
+  it('withholds Continue to review while a lane is still to run, or nothing landed', () => {
+    const unfinished = nextStep(
+      buildFull({
+        runs: [{ id: 'r1', status: 'failed', startedAt: 1 }],
+        ticketStatuses: ['done', 'pending'],
+      }),
+      { driving: false },
+    )
+    const nothingLanded = nextStep(
+      buildFull({
+        runs: [{ id: 'r1', status: 'failed', startedAt: 1 }],
+        ticketStatuses: ['failed', 'cancelled'],
+      }),
+      { driving: false },
+    )
+    for (const ns of [unfinished, nothingLanded]) {
+      expect(ns.secondary.map((a) => a.kind)).not.toContain('advance')
+    }
+  })
 })
 
 /**

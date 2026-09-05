@@ -59,6 +59,11 @@ export function resolveImplementation(input: ResolverInput): NextStep {
       : run.status === 'cancelled'
         ? 'The run was cancelled — resume the burn to continue.'
         : 'The burn has not started — resume to run the tickets.'
+  // The honest partial-completion exit (decision #11b). Every lane is terminal
+  // and something landed, which is exactly what G4 already believes — so rather
+  // than leaving a permanently-failing ticket looping on Retry behind the
+  // gate's scary generic override, the step forward is offered by name.
+  const terminal = pending === 0 && done > 0
   return {
     kick: 'NEXT STEP',
     title: 'Resume the burn',
@@ -66,7 +71,10 @@ export function resolveImplementation(input: ResolverInput): NextStep {
     primary: { label: 'Resume burn', kind: 'burn' },
     // Failed tickets are reset to pending on resume; Revisit instead opens
     // a session to amend docs and edit/cancel tickets before re-burning.
-    secondary: live ? [] : [{ label: 'Revisit', kind: 'revisit' }],
+    secondary: [
+      ...(terminal ? [{ label: 'Continue to review', kind: 'advance' as const }] : []),
+      ...(live ? [] : [{ label: 'Revisit', kind: 'revisit' as const }]),
+    ],
     busy: false,
   }
 }

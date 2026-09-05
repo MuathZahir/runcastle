@@ -870,12 +870,30 @@ export function TicketStatusChip({ status }: { status: TicketStatus }) {
  * The kind badge, shown only for `review` tickets: implementation is the
  * default and the overwhelming majority, so badging it would be noise on every
  * row without distinguishing anything.
+ *
+ * A `verification` pass says so instead of `review` (decisions.md #41b): it
+ * tours the build and confirms the fixes that landed rather than auditing the
+ * branch, and a run whose last two lanes both read "review" hides that.
  */
-export function TicketKindChip({ kind }: { kind: TicketKind }) {
+export function TicketKindChip({
+  kind,
+  passKind,
+}: {
+  kind: TicketKind
+  passKind?: 'review' | 'verification'
+}) {
   if (kind === 'implementation') return null
+  const verification = passKind === 'verification'
   return (
-    <span className={cx(CHIP_BASE, CHIP_REVIEW)} title="Verifies the integrated feature branch">
-      {kind}
+    <span
+      className={cx(CHIP_BASE, CHIP_REVIEW)}
+      title={
+        verification
+          ? 'Confirms the fixes that landed since the last review'
+          : 'Verifies the integrated feature branch'
+      }
+    >
+      {verification ? 'verification' : kind}
     </span>
   )
 }
