@@ -87,6 +87,7 @@ export function WalkthroughPlayer({
   markers = [],
   onMarkerClick,
   onAnnotationSaved,
+  onDuration,
   handleRef,
 }: {
   url: string
@@ -102,6 +103,13 @@ export function WalkthroughPlayer({
   onMarkerClick?: (noteIds: string[]) => void
   /** A note has just been captured, so the list below can scroll to it. */
   onAnnotationSaved?: (noteId: string) => void
+  /**
+   * How long the recording turns out to be, as soon as the element can say —
+   * the stage header above puts it in the identity line (`Walkthrough · 12:34`),
+   * and only the element knows it (decision 41b). Fires again as a live
+   * recorder's WebM reveals more of itself.
+   */
+  onDuration?: (seconds: number) => void
   /** Filled with this player's {@link WalkthroughHandle} while it is mounted. */
   handleRef?: RefObject<WalkthroughHandle | null>
 }) {
@@ -301,6 +309,17 @@ export function WalkthroughPlayer({
     onAnnotationSaved?.(saved.note.id)
   }
 
+  /**
+   * How long the recording is, from the only thing that knows: the element. A
+   * WebM written by a live recorder reveals its length as it loads, so this is
+   * read at every event that can move it, and the stage header is told each time.
+   */
+  const readSpan = (video: HTMLVideoElement): void => {
+    const seconds = playableDuration(video)
+    setSpan(seconds)
+    onDuration?.(seconds)
+  }
+
   const scrubbable = span > 0 && !annotating && phase === 'ready'
   const hint = bytes === null ? 'Loading the recording' : `Loading the recording — ${fmtBytes(bytes)}`
 
@@ -323,15 +342,15 @@ export function WalkthroughPlayer({
           onClick={togglePlay}
           onLoadedMetadata={(e) => {
             const video = e.currentTarget
-            setSpan(playableDuration(video))
+            readSpan(video)
             video.playbackRate = speed
             // WebM written by a live recorder carries no poster frame, so the
             // first frame is decoded by nudging off zero — otherwise the stage
             // is black behind the loading copy.
             if (video.currentTime === 0) video.currentTime = 0.01
           }}
-          onDurationChange={(e) => setSpan(playableDuration(e.currentTarget))}
-          onProgress={(e) => setSpan(playableDuration(e.currentTarget))}
+          onDurationChange={(e) => readSpan(e.currentTarget)}
+          onProgress={(e) => readSpan(e.currentTarget)}
           onCanPlay={() => setPhase((p) => (p === 'error' ? p : 'ready'))}
           onError={() => setPhase('error')}
           onTimeUpdate={(e) => setAt(e.currentTarget.currentTime)}
