@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type RefObject } from 'react'
 import { fmtClock } from '@runcastle/core'
-import { Button, BARE_BUTTON } from '../ui'
+import { Button } from '../ui'
 import { trpc } from '../trpc'
 import { uploadScreenshot } from '../lib/reviews'
 import { fmtBytes } from '../lib/format'
@@ -310,12 +310,13 @@ export function WalkthroughPlayer({
     <div className="flex flex-col gap-2">
       <div
         ref={stageRef}
-        className="relative max-h-[calc(100vh-320px)] w-full overflow-hidden rounded-md border border-hairline bg-black"
+        className="relative aspect-video max-h-[calc(100vh-320px)] w-full overflow-hidden rounded-md border border-hairline bg-black"
       >
         <video
           ref={videoRef}
-          // Letterboxing reads as film rather than as a gap in the page.
-          className="block aspect-video h-full w-full object-contain"
+          // Letterboxed inside the stage: black behind the frame reads as film
+          // rather than as a gap in the page.
+          className="block h-full w-full object-contain"
           src={url}
           preload="metadata"
           aria-label={passKind === 'verification' ? 'verification walkthrough' : 'review walkthrough'}
@@ -412,7 +413,7 @@ export function WalkthroughPlayer({
               <button
                 key={marker.at}
                 type="button"
-                className={`${BARE_BUTTON} absolute -top-1 h-3 w-3 -translate-x-1/2 rounded-pill bg-danger text-[9px] leading-3 text-accent-ink`}
+                className="absolute -top-1.5 h-4 w-4 -translate-x-1/2 rounded-pill border-0 bg-danger text-xs leading-4 text-accent-ink"
                 style={{ left: `${Math.min(100, (marker.at / span) * 100)}%` }}
                 aria-label={`${marker.noteIds.length} note${marker.noteIds.length > 1 ? 's' : ''} at ${fmtClock(marker.at)}`}
                 onClick={() => {

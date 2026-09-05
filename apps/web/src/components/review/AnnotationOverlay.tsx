@@ -230,12 +230,16 @@ export function AnnotationOverlay({
 
       <div className="pointer-events-none absolute inset-x-0 top-0 flex flex-wrap items-center gap-2 p-2">
         <div className="pointer-events-auto flex items-center gap-1 rounded-md border border-hairline bg-panel/90 p-1">
+          {/* The selected tool is marked with the accent, not with `solid`:
+              exactly one solid button is visible per view (apps/web/STYLE.md)
+              and here that is Save. */}
           {TOOLS.map(({ tool, label, key }) => (
             <Button
               key={tool}
-              variant={state.tool === tool ? 'solid' : 'ghost'}
               aria-pressed={state.tool === tool}
-              className="px-2"
+              className={
+                state.tool === tool ? 'border-accent-line bg-accent-soft px-2 text-accent' : 'px-2'
+              }
               onClick={() => dispatch({ kind: 'tool', tool })}
             >
               {label} <Kbd>{key}</Kbd>
