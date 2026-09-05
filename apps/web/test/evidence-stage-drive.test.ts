@@ -118,6 +118,14 @@ describe('the stage while the dev server is serving', () => {
     expect(html).toContain('>Open app ↗<')
   })
 
+  /** Decision 33a: a history view shows the app and writes nothing. */
+  it('drops Select area on a readonly view even where the tab could be captured', () => {
+    asChromium()
+    const html = render({ driveState: 'serving', drive: SERVING, readonly: true })
+    expect(html).toContain('<iframe')
+    expect(html).not.toContain('>Select area<')
+  })
+
   it('footers the dev-server chip, the branch and its output', () => {
     const html = render({ driveState: 'serving', drive: SERVING })
     expect(html).toContain('dev server')

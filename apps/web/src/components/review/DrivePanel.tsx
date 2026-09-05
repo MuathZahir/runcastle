@@ -31,30 +31,55 @@ import { saveAnnotatedNote } from '../../lib/walkthrough'
 /** How long an iframe gets to load before the panel offers the way out. */
 const EMBED_TIMEOUT_MS = 6000
 
+/** The compositor's settle when a browser cannot say which frame is fresh. */
+const FRAME_SETTLE_MS = 120
+
+/**
+ * The next frame the capture stream actually decodes.
+ *
+ * `requestVideoFrameCallback` answers this exactly and is available on every
+ * browser this path runs in; the timeout is the spike's measured settle, kept as
+ * the fallback so a missing API costs a slower capture rather than a marquee
+ * baked into the shot.
+ */
+function nextStreamFrame(video: HTMLVideoElement): Promise<void> {
+  return new Promise((resolve) => {
+    if (typeof video.requestVideoFrameCallback === 'function') {
+      video.requestVideoFrameCallback(() => resolve())
+      return
+    }
+    setTimeout(resolve, FRAME_SETTLE_MS)
+  })
+}
+
 export function DrivePanel({
   featureId,
   url,
   /** The review agent is holding this drive — the human watches (decision 20). */
   agentDriving = false,
+  /** Looking back at a shipped feature: the app is shown, nothing is written. */
+  readonly = false,
 }: {
   featureId: string
   url: string
   agentDriving?: boolean
+  readonly?: boolean
 }) {
   const toast = useToast()
   const utils = trpc.useUtils()
   const add = trpc.notes.add.useMutation()
 
   const panelRef = useRef<HTMLDivElement>(null)
-  const frameRef = useRef<HTMLIFrameElement>(null)
   // The capture stream, kept for the whole drive session: the prompt is the one
   // cost of reading cross-origin pixels, and paying it per capture would make
   // annotating the live app worse than annotating the video.
   const tapRef = useRef<HTMLVideoElement>(null)
   const streamRef = useRef<MediaStream | null>(null)
 
-  const [supported] = useState(() =>
-    tabCaptureSupported(typeof navigator === 'undefined' ? undefined : navigator),
+  // Capture writes a note, so a history view has no business offering it
+  // (decision 33a) — and neither has a browser that cannot read its own tab.
+  const [canCapture] = useState(
+    () => !readonly && tabCaptureSupported(typeof navigator === 'undefined' ? undefined : navigator),
   )
   const [arming, setArming] = useState(false)
   const [selecting, setSelecting] = useState(false)
@@ -90,7 +115,9 @@ export function DrivePanel({
     [],
   )
 
-  useEffect(() => () => { if (shot) URL.revokeObjectURL(shot.preview) }, [shot])
+  // One owner for the preview URL: whoever replaces or clears `shot` releases
+  // the one it displaced, unmount included.
+  useEffect(() => () => URL.revokeObjectURL(shot?.preview ?? ''), [shot])
 
   /** Attach the stream if this is the session's first capture, then arm the drag. */
   const armSelection = async (): Promise<void> => {
@@ -110,6 +137,15 @@ export function DrivePanel({
           // browser that would ignore them.
         } as DisplayMediaStreamOptions)
         streamRef.current = stream
+        // Chrome's own "stop sharing" ends the track without telling this
+        // component, and a dead stream draws a frozen frame. Dropping the
+        // reference makes the next Select area ask again, which is the honest
+        // behaviour — one prompt per SESSION, not one per capture.
+        stream.getVideoTracks().forEach((track) => {
+          track.addEventListener('ended', () => {
+            if (streamRef.current === stream) streamRef.current = null
+          })
+        })
         const tap = tapRef.current
         if (tap) {
           tap.srcObject = stream
@@ -134,10 +170,18 @@ export function DrivePanel({
     const tap = tapRef.current
     if (!panel || !tap) return
     // Two frames with the marquee and the dim already gone, so the selection
-    // chrome never bakes into the shot the human is selecting.
+    // chrome never bakes into the shot the human is selecting — then the first
+    // stream frame decoded after that paint, which is the frame that actually
+    // shows the app without the overlay on it.
     await new Promise(requestAnimationFrame)
     await new Promise(requestAnimationFrame)
+    await nextStreamFrame(tap)
 
+    if (!tap.videoWidth) {
+      toast.push('the tab is no longer being shared — click Select area again')
+      streamRef.current = null
+      return
+    }
     const box = panel.getBoundingClientRect()
     const crop = cropRect(selection, box, tap.videoWidth, window.innerWidth)
     const canvas = document.createElement('canvas')
@@ -180,7 +224,6 @@ export function DrivePanel({
   }
 
   const discard = (): void => {
-    if (shot) URL.revokeObjectURL(shot.preview)
     setShot(null)
     setText('')
   }
@@ -213,7 +256,6 @@ export function DrivePanel({
     <div ref={panelRef} className="relative flex min-h-0 flex-1 flex-col overflow-hidden rounded-md border border-hairline bg-black">
       <iframe
         key={generation}
-        ref={frameRef}
         className="min-h-0 flex-1 border-0 bg-white"
         src={url}
         title="the app on this branch"
@@ -225,7 +267,7 @@ export function DrivePanel({
           and every row of chrome is a row the app does not get. */}
       <div className="pointer-events-none absolute inset-x-0 top-0 flex flex-wrap items-center gap-2 p-2">
         <div className="pointer-events-auto flex items-center gap-1 rounded-md border border-hairline bg-panel/90 p-1">
-          {supported ? (
+          {canCapture ? (
             <Button
               className="px-2"
               aria-pressed={selecting}
@@ -317,7 +359,7 @@ export function DrivePanel({
       {/* The tab's own pixels, never shown: the panel reads frames off it. In
           the document rather than detached, because that is what the spike
           proved; absent entirely where there is nothing to capture from. */}
-      {supported && <video ref={tapRef} muted playsInline className="hidden" />}
+      {canCapture && <video ref={tapRef} muted playsInline className="hidden" />}
     </div>
   )
 }

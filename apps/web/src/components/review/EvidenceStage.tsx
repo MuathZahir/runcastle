@@ -384,7 +384,7 @@ function DriveStage({
       return (
         <>
           {drive?.devUrl ? (
-            <DrivePanel featureId={featureId} url={drive.devUrl} agentDriving />
+            <DrivePanel featureId={featureId} url={drive.devUrl} agentDriving readonly={readonly} />
           ) : (
             <div className="flex flex-col gap-3 p-4">
               <div className="flex items-center gap-2.5">
@@ -408,7 +408,7 @@ function DriveStage({
 
     default:
       return drive?.devUrl ? (
-        <DrivePanel featureId={featureId} url={drive.devUrl} />
+        <DrivePanel featureId={featureId} url={drive.devUrl} readonly={readonly} />
       ) : (
         <div className="p-4 text-sm text-text-2">
           The dev server is up but has not printed an address yet — its output is under the stage.
