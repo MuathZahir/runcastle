@@ -56,6 +56,10 @@ export function runHeadline(
   const implementation = tickets.filter((t) => t.kind !== 'review' && !t.reviewFix).length
   const fixes = tickets.filter((t) => t.reviewFix).length
   const counts = summaryCounts(tickets)
+  // The all-green beat a run is held on screen for after it succeeds (#15a) —
+  // and what a clean run's record says ever after.
+  if (run.status === 'succeeded' && tickets.length > 0 && counts.done === tickets.length)
+    return `All ${tickets.length} ticket${tickets.length === 1 ? '' : 's'} landed ✓`
   const verb = run.status && run.status !== 'running' ? 'Burned' : 'Burning'
   const parts = [`${verb} ${implementation} ticket${implementation === 1 ? '' : 's'}`]
   if (fixes) parts.push(`+${fixes} fixes from review`)
