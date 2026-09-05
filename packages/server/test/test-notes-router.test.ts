@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import type { AppCtx } from '../src/db/types'
 import { createCallerFactory } from '../src/trpc/context'
 import { appRouter } from '../src/trpc/router'
+import { storeTickets } from '../src/services/tickets'
 import { makeTestCtx } from './helpers/db'
 import { seedFeature, seedProject } from './helpers/fixtures'
 
@@ -42,14 +43,19 @@ describe('notes router', () => {
   })
 
   it('carries a note captured from the annotation player, timestamp and all', async () => {
+    const reviewTicket = storeTickets(ctx, feature.id, [{
+      title: 'Review the lap', goal: 'review', context: '', acceptanceCriteria: [], seams: [], blockedBy: [], kind: 'review',
+    }])[0]
     const annotated = await caller.notes.add({
       featureId: feature.id,
       text: 'the panel is misaligned',
       videoTimestamp: 12.5,
+      reviewTicketId: reviewTicket.id,
     })
     const typed = await caller.notes.add({ featureId: feature.id, text: 'just typed this one' })
 
     expect(annotated.videoTimestamp).toBe(12.5)
+    expect(annotated.reviewTicketId).toBe(reviewTicket.id)
     expect(typed.videoTimestamp).toBeUndefined()
     expect(
       (await caller.notes.list({ featureId: feature.id })).map((n) => n.videoTimestamp),
