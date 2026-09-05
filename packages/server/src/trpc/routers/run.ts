@@ -1,13 +1,23 @@
 import * as z from 'zod'
 import { readTranscript } from '../../services/agent-stream'
 import { getRunRow } from '../../services/repo'
+import { getRunWithTickets, listRunSummaries } from '../../services/runs'
 import { cancelRun } from '../../workflows/runner'
 import { publicProcedure, router } from '../context'
 
 export const runRouter = router({
+  // The run row plus the ticket rows this run burned, so a run that has already
+  // finished can still draw its lanes (decision #15b). The tickets ride along
+  // rather than sitting on their own procedure because there is no reader of
+  // one without the other.
   get: publicProcedure
     .input(z.object({ runId: z.string() }))
-    .query(({ ctx, input }) => getRunRow(ctx, input.runId)),
+    .query(({ ctx, input }) => getRunWithTickets(ctx, input.runId)),
+
+  /** Every run of a feature, newest first — what the runs counter opens. */
+  listByFeature: publicProcedure
+    .input(z.object({ featureId: z.string() }))
+    .query(({ ctx, input }) => listRunSummaries(ctx, input.featureId)),
 
   // Live agent transcript for one burning (or recently burned) ticket — the
   // unthrottled sandcastle stream captured in memory by services/agent-stream.

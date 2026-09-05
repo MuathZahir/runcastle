@@ -1,3 +1,5 @@
+import type { RunStatus } from '@runcastle/core'
+
 export interface LaneTicketFigure {
   seq: number
   status: string
@@ -44,18 +46,59 @@ export function summaryCounts(tickets: readonly LaneTicketFigure[]) {
   }
 }
 
-export function runHeadline(tickets: readonly LaneTicketFigure[], _run: object = {}, retryOf?: number): string {
+export function runHeadline(
+  tickets: readonly LaneTicketFigure[],
+  // A run that has stopped speaks in the past tense — the record view reads
+  // terminal lanes, and "Burning 3 tickets" over three settled ones is the same
+  // kind of lie the redesign is removing everywhere else.
+  run: { status?: RunStatus } = {},
+  retryOf?: number,
+): string {
   if (retryOf !== undefined) return `Retrying #${retryOf}`
   const implementation = tickets.filter((t) => t.kind !== 'review' && !t.reviewFix).length
   const fixes = tickets.filter((t) => t.reviewFix).length
   const counts = summaryCounts(tickets)
-  const parts = [`Burning ${implementation} ticket${implementation === 1 ? '' : 's'}`]
+  // The all-green beat a run is held on screen for after it succeeds (#15a) —
+  // and what a clean run's record says ever after.
+  if (run.status === 'succeeded' && tickets.length > 0 && counts.done === tickets.length)
+    return `All ${tickets.length} ticket${tickets.length === 1 ? '' : 's'} landed ✓`
+  const verb = run.status && run.status !== 'running' ? 'Burned' : 'Burning'
+  const parts = [`${verb} ${implementation} ticket${implementation === 1 ? '' : 's'}`]
   if (fixes) parts.push(`+${fixes} fixes from review`)
   if (counts.done) parts.push(`${counts.done} done`)
   if (counts.failed) parts.push(`${counts.failed} failed`)
   if (counts.stopped) parts.push(`${counts.stopped} stopped`)
   if (counts.waived) parts.push(`${counts.waived} waived`)
   return parts.join(' · ')
+}
+
+/** The project's own ticket history, as `ticket.durationStats` reports it. */
+export interface BurnDurationStats {
+  medianMs: number
+  sampleSize: number
+}
+
+/** A median rendered at the coarseness a time expectation is actually read at. */
+function coarseDuration(ms: number): string {
+  const minutes = ms / 60_000
+  if (minutes < 1) return 'under a minute'
+  if (minutes < 60) return `~${Math.round(minutes)} min`
+  const hours = minutes / 60
+  return `~${hours < 10 ? String(Math.round(hours * 10) / 10) : Math.round(hours)}h`
+}
+
+/**
+ * What the pre-burn bar says a burn is about to cost (decision #16b).
+ *
+ * The number comes from this project's own finished tickets, never from a
+ * constant: a hardcoded "a few minutes" was written once against one machine and
+ * one model, and it rots the moment either changes. With no history to quote the
+ * copy stays honestly generic rather than inventing a figure.
+ */
+export function burnExpectation(stats?: BurnDurationStats): string {
+  if (!stats || stats.sampleSize === 0 || stats.medianMs <= 0)
+    return 'Typically a few minutes per ticket.'
+  return `Tickets have been taking ${coarseDuration(stats.medianMs)} each.`
 }
 
 /** The burner prompt's completion signal — a marker for the harness, not prose. */
@@ -87,6 +130,60 @@ const PATH_IN_LINE = /[^\s"'`,)]*[/\\]repo[/\\][^\s"'`,)]*/g
  */
 export function repoRelativeLine(line: string): string {
   return line.replace(PATH_IN_LINE, repoRelative)
+}
+
+/** One chunk of the agent stream, as the transcript poll delivers it. */
+export interface TranscriptChunkFigure {
+  kind: string
+  text: string
+  name?: string | null
+}
+
+/** A transcript line as the lane renders it. */
+export type TranscriptBlock =
+  | { kind: 'text'; text: string }
+  | { kind: 'tool'; name: string; args: string }
+
+/**
+ * The agent stream as displayable lines, with decision #13's hygiene applied
+ * (a–b).
+ *
+ * Consecutive raw text chunks merge into one prose block — the stream slices
+ * text arbitrarily — while tool calls stay one line each, their sandbox paths
+ * rewritten repo-relative and their payload cut to something a lane can show.
+ * The burner's completion marker is swallowed and reported as `completed`
+ * instead: it is a signal to the harness, not the agent's last words, and a text
+ * block that was nothing else disappears with it.
+ */
+export function transcriptBlocks(chunks: readonly TranscriptChunkFigure[]): {
+  blocks: TranscriptBlock[]
+  completed: boolean
+} {
+  const out: TranscriptBlock[] = []
+  for (const chunk of chunks) {
+    if (chunk.kind === 'tool') {
+      out.push({ kind: 'tool', name: chunk.name ?? 'tool', args: toolArgs(chunk.text) })
+      continue
+    }
+    const last = out[out.length - 1]
+    if (last && last.kind === 'text') last.text += chunk.text
+    else out.push({ kind: 'text', text: chunk.text })
+  }
+  let completed = false
+  const blocks = out
+    .map((block) => {
+      if (block.kind !== 'text') return block
+      if (reportedComplete(block.text)) completed = true
+      return { ...block, text: stripProtocolTokens(block.text) }
+    })
+    .filter((block) => (block.kind === 'text' ? block.text.length > 0 : true))
+  return { blocks, completed }
+}
+
+/** Collapse a tool-arg payload to one repo-relative displayable line. */
+function toolArgs(text: string): string {
+  const flat = repoRelativeLine(text.replace(/\s+/g, ' ').trim())
+  return flat.length > 300 ? `${flat.slice(0, 300)}…` : flat
 }
 
 // --- how the lanes are grouped and what the feed says about them ------------
