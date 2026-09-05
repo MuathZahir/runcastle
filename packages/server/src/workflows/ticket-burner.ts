@@ -258,7 +258,7 @@ export function verificationDue(
   const reviews = inRun
     .filter(isReviewTicket)
     .filter((ticket) => ticket.completedAt !== null)
-    .sort((a, b) => (a.completedAt ?? 0) - (b.completedAt ?? 0))
+    .sort((a, b) => (a.completedAt ?? 0) - (b.completedAt ?? 0) || a.seq - b.seq)
   const lastReview = reviews.at(-1) ?? null
   const verifies = [...reviews].reverse().find((ticket) => ticket.status === 'done') ?? null
 

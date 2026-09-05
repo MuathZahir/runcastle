@@ -373,7 +373,7 @@ async function reviewTicketOutcome(
   const allTickets = ctx.listTickets?.() ?? ctx.tickets
   const verifies = allTickets
     .filter((candidate) => candidate.kind === 'review' && candidate.id !== ticket.id && candidate.status === 'done')
-    .sort((a, b) => (a.completedAt ?? 0) - (b.completedAt ?? 0))
+    .sort((a, b) => (a.completedAt ?? 0) - (b.completedAt ?? 0) || a.seq - b.seq)
     .at(-1)
   const inheritedMode = ticket.passKind === 'verification' ? inheritedReviewMode(verifies?.id) : undefined
   const prompt = renderReviewPrompt(ticket, {
