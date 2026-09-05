@@ -559,7 +559,9 @@ export const SessionRow = z.object({
   /** The runtime that model runs on — see the db schema; unset reads as `DEFAULT_RUNTIME`. */
   runtime: AgentRuntime.optional(),
   /** The conversation's derived name; unset until its transcript has one to give. */
-  title: z.string().optional(),
+  title: z.string().nullable().optional(),
+  /** Ended Q&A rows remain visible even when the runtime captured no conversation. */
+  transcriptMissing: z.boolean().optional(),
   /** Insert time; unset on rows written before `sessions` had a timestamp. */
   createdAt: z.number().optional(),
 })

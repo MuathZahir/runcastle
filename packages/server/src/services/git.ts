@@ -1082,6 +1082,24 @@ export async function reviewCommitCount(
   }
 }
 
+/** Commit and file scale of the feature branch over the branch it will merge into. */
+export async function mergeDelta(
+  project: Project,
+  feature: Feature,
+): Promise<{ base: string; commits?: number; files?: number }> {
+  const counted = await reviewCommitCount(project, feature)
+  const branch = featureBranch(feature.slug)
+  try {
+    const files = (await git(project.repoPath).raw(['diff', '--name-only', `${counted.base}...${branch}`]))
+      .split('\n')
+      .map((path) => path.trim())
+      .filter(Boolean).length
+    return { base: counted.base, commits: counted.count, files }
+  } catch {
+    return { base: counted.base, commits: counted.count }
+  }
+}
+
 /** What a feature branch changed against its base — the drive-fix agent's map. */
 export interface BranchDelta {
   /** The branch this feature was cut from and merges back into. */

@@ -1,150 +1,51 @@
-import type { Feature, Ticket } from '@runcastle/core'
+import type { Feature, ReviewFinding, TestNote, Ticket } from '@runcastle/core'
 import { describe, expect, it } from 'vitest'
-import { composeOutcomeDoc } from '../src/services/outcome'
+import { composeOutcomeDoc, digestHasSubstance, type OutcomeInput } from '../src/services/outcome'
 
-/**
- * The outcome-doc composer (the-work-record ticket 3) — the feature's single new
- * seam, deliberately IO-free: feature + tickets in, markdown out, no git.
- */
-
-const SHIPPED_AT = Date.parse('2026-08-11T09:30:00.000Z')
-
-function feature(overrides: Partial<Feature> = {}): Feature {
-  return {
-    id: 'feat_1',
-    projectId: 'proj_1',
-    slug: 'thick-record',
-    title: 'The work record gets thick',
-    oneLiner: 'burners write digests that survive the sandbox',
-    mapped: false,
-    lap: 1,
-    phase: 'review',
-    branch: 'feature/thick-record',
-    status: 'active',
-    createdAt: SHIPPED_AT,
-    ...overrides,
-  }
+const feature: Feature = {
+  id: 'feat_1', projectId: 'proj_1', slug: 'record', title: 'A durable record',
+  oneLiner: 'Evidence and state first.', mapped: false, lap: 2, phase: 'review',
+  branch: 'feature/record', status: 'active', createdAt: 1,
 }
-
-function ticket(seq: number, overrides: Partial<Ticket> = {}): Ticket {
-  return {
-    id: `tkt_${seq}`,
-    featureId: 'feat_1',
-    seq,
-    title: `Ticket ${seq}`,
-    goal: 'do the thing',
-    context: 'somewhere',
-    acceptanceCriteria: [],
-    seams: [],
-    blockedBy: [],
-    lap: 1,
-    status: 'done',
-    commits: [],
-    ...overrides,
-  }
+const ticket = (seq: number, overrides: Partial<Ticket> = {}): Ticket => ({
+  id: `tkt_${seq}`, featureId: feature.id, seq, title: `Ticket ${seq}`, goal: 'ship', context: '',
+  acceptanceCriteria: [], seams: [], blockedBy: [], kind: 'implementation', passKind: 'review',
+  lap: seq === 1 ? 1 : 2, status: 'done', commits: [], reviewedCommit: null, completedAt: 20 + seq,
+  ...overrides,
+})
+const review = ticket(3, { kind: 'review', passKind: 'verification', reviewedCommit: 'abc123' })
+const finding: ReviewFinding = {
+  id: 'finding_1', featureId: feature.id, lap: 2, reviewTicketId: review.id, kind: 'defect',
+  severity: 'must-fix', title: 'Broken button', location: 'app.ts', citation: 'criterion', detail: 'bad',
+  reproStep: 'click', status: 'fixed', openReason: null, failureReason: null, fixTicketId: 'tkt_2', createdAt: 1,
+}
+const note: TestNote = {
+  id: 'note_1', featureId: feature.id, lap: 1, text: 'Align the title', status: 'carried', author: 'human',
+  carriedLap: 2, createdAt: 1, updatedAt: 2,
+}
+const input: OutcomeInput = {
+  feature, tickets: [ticket(1, { digest: '## Surprises\n- None\n## Left undone\n- Nothing' }), ticket(2, { status: 'cancelled' }), review],
+  findings: [finding], notes: [note], shippedAt: Date.parse('2026-09-05T12:00:00Z'),
+  delta: { commits: 7, files: 12 },
+  artifacts: [{ ticketId: review.id, lap: 2, passKind: 'verification', reviewedCommit: 'abc123', completedAt: 23, landedSince: 0 }],
 }
 
 describe('composeOutcomeDoc', () => {
-  it('renders the feature header: title, one-liner, shipped date and lap', () => {
-    const doc = composeOutcomeDoc(feature({ lap: 3 }), [], SHIPPED_AT)
-
-    expect(doc).toContain('# Outcome — The work record gets thick')
-    expect(doc).toContain('burners write digests that survive the sandbox')
-    expect(doc).toContain('- Shipped: 2026-08-11')
-    expect(doc).toContain('- Lap: 3')
+  it('synthesizes shipped scale, per-lap work, stamped review, and note disposition', () => {
+    const doc = composeOutcomeDoc(input)
+    expect(doc).toContain('- Shipped: 2026-09-05\n- Laps run: 2')
+    expect(doc).toContain('7 commits · 12 files')
+    expect(doc).toContain('### Lap 1\n- 1 tickets landed')
+    expect(doc).toContain('### Lap 2\n- 0 tickets landed\n- 1 waived: #2 Ticket 2')
+    expect(doc).toContain('### Lap 2 · verification')
+    expect(doc).toContain('- Reviewed commit: abc123\n- Landed since: 0')
+    expect(doc).toContain('**Broken button** — fixed')
+    expect(doc).toContain('Align the title — carried → lap 2')
   })
 
-  it('gives each done ticket a numbered section carrying its digest', () => {
-    const doc = composeOutcomeDoc(
-      feature(),
-      [ticket(1, { title: 'Add digest columns', digest: 'Added the columns.\nHarvest is best-effort.' })],
-      SHIPPED_AT,
-    )
-
-    expect(doc).toContain('## 1. Add digest columns')
-    expect(doc).toContain('Added the columns.\nHarvest is best-effort.')
-  })
-
-  it('marks a done ticket whose burner captured no digest', () => {
-    const doc = composeOutcomeDoc(feature(), [ticket(1), ticket(2, { digest: '   ' })], SHIPPED_AT)
-
-    expect(doc).toContain('## 1. Ticket 1\n\n_no digest captured_')
-    expect(doc).toContain('## 2. Ticket 2\n\n_no digest captured_')
-  })
-
-  it('renders tickets in seq order regardless of the order passed in', () => {
-    const doc = composeOutcomeDoc(
-      feature(),
-      [ticket(3), ticket(1), ticket(2)],
-      SHIPPED_AT,
-    )
-
-    expect(doc.indexOf('## 1.')).toBeLessThan(doc.indexOf('## 2.'))
-    expect(doc.indexOf('## 2.')).toBeLessThan(doc.indexOf('## 3.'))
-  })
-
-  it('reduces a failed ticket to one line carrying its status and error headline', () => {
-    const doc = composeOutcomeDoc(
-      feature(),
-      [ticket(1, { status: 'failed', title: 'Wire the hook', error: 'agent gave up' })],
-      SHIPPED_AT,
-    )
-
-    expect(doc).toContain('- **1. Wire the hook** — failed: agent gave up')
-    expect(doc).not.toContain('## 1.')
-  })
-
-  it('takes the last fatal/error line of a noisy error as the headline', () => {
-    const error = 'Preparing worktree (x)\nfatal: could not create leading directories\nnoise'
-    const doc = composeOutcomeDoc(feature(), [ticket(1, { status: 'failed', error })], SHIPPED_AT)
-
-    expect(doc).toContain('— failed: fatal: could not create leading directories')
-  })
-
-  it('truncates a headline too long to sit on one line', () => {
-    const error = `fatal: ${'x'.repeat(400)}`
-    const doc = composeOutcomeDoc(feature(), [ticket(1, { status: 'failed', error })], SHIPPED_AT)
-
-    const line = doc.split('\n').find((l) => l.startsWith('- **1.')) ?? ''
-    expect(line.length).toBeLessThan(200)
-    expect(line.endsWith('…')).toBe(true)
-  })
-
-  it('gives a cancelled ticket a one-liner with no headline when it has no error', () => {
-    const doc = composeOutcomeDoc(
-      feature(),
-      [ticket(1, { status: 'cancelled', title: 'Dropped work' })],
-      SHIPPED_AT,
-    )
-
-    expect(doc).toContain('- **1. Dropped work** — cancelled')
-  })
-
-  it('keeps a run of non-done tickets in one tight list between digest sections', () => {
-    const doc = composeOutcomeDoc(
-      feature(),
-      [
-        ticket(1, { digest: 'did it' }),
-        ticket(2, { status: 'failed', error: 'boom' }),
-        ticket(3, { status: 'cancelled' }),
-        ticket(4, { digest: 'did it too' }),
-      ],
-      SHIPPED_AT,
-    )
-
-    expect(doc).toContain('- **2. Ticket 2** — failed: boom\n- **3. Ticket 3** — cancelled')
-    expect(doc.indexOf('## 1.')).toBeLessThan(doc.indexOf('- **2.'))
-    expect(doc.indexOf('- **3.')).toBeLessThan(doc.indexOf('## 4.'))
-  })
-
-  it('is regenerated wholesale: same inputs, same day → byte-identical markdown', () => {
-    const tickets = [ticket(1, { digest: 'did it' }), ticket(2, { status: 'failed', error: 'boom' })]
-    // Two merges hours apart on the same day must produce nothing for
-    // `commitDocs` to commit — hence a shipped DATE, not a timestamp.
-    const laterSameDay = SHIPPED_AT + 6 * 60 * 60 * 1000
-
-    expect(composeOutcomeDoc(feature(), tickets, SHIPPED_AT)).toBe(
-      composeOutcomeDoc(feature(), tickets, laterSameDay),
-    )
+  it('drops digests containing only empty None/Nothing rows', () => {
+    expect(digestHasSubstance('## Surprises\n- None\n## Left undone\n- Nothing')).toBe(false)
+    expect(digestHasSubstance('## Surprises\n- A coupling mattered')).toBe(true)
+    expect(composeOutcomeDoc(input)).not.toContain('## Per-ticket digests')
   })
 })
