@@ -60,9 +60,10 @@ export function runHeadline(tickets: readonly LaneTicketFigure[], _run: object =
 
 /** The burner prompt's completion signal — a marker for the harness, not prose. */
 const COMPLETE_TOKEN = /<promise>\s*COMPLETE\s*<\/promise>/i
+const COMPLETE_TOKENS = new RegExp(COMPLETE_TOKEN, 'gi')
 
 export function stripProtocolTokens(text: string): string {
-  return text.replace(new RegExp(COMPLETE_TOKEN, 'gi'), '').replace(/\n{3,}/g, '\n\n').trim()
+  return text.replace(COMPLETE_TOKENS, '').replace(/\n{3,}/g, '\n\n').trim()
 }
 
 /** Whether the agent signed off with the completion marker (decision #13a). */
