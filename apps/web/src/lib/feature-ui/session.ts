@@ -91,7 +91,7 @@ export function liveSessionBlocker(
  */
 export function shippedQaSessions(sessions: FeatureFull['sessions']): FeatureFull['sessions'] {
   const qa = sessions.filter((s) => s.kind === 'qa')
-  return qa.some((s) => s.status !== 'ended' || !!s.ccSessionId) ? qa : []
+  return qa.some((s) => s.status !== 'ended' || !!s.ccSessionId || s.transcriptMissing) ? qa : []
 }
 
 /**

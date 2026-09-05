@@ -80,6 +80,11 @@ describe('feature.commitCount', () => {
       base: 'main',
       count: 1,
     })
+    expect(await caller.feature.mergeDelta({ featureId: feature.id })).toEqual({
+      base: 'main',
+      commits: 1,
+      files: 1,
+    })
   })
 
   it('reports an unknown count as undefined when the branch was never created', async () => {

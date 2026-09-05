@@ -1,5 +1,7 @@
-import { parsePhase } from '@runcastle/core'
-import type { EventRow, GateId, Phase } from '@runcastle/core'
+import { parsePhase, unresolvedMergeConflict } from '@runcastle/core'
+import type { EventRow, GateId, MergeConflictState, Phase } from '@runcastle/core'
+export { unresolvedMergeConflict }
+export type { MergeConflictState }
 
 export function mergeConflictKickoff(base: string, branch: string, files: string[]): string {
   const list = files.length ? files.join(', ') : '(run git status to see the conflicts)'
@@ -58,18 +60,6 @@ export function ticketConflictKickoff(input: {
 export const ONE_TERMINAL_WARNING =
   'One terminal per feature — your live session will be closed to open the resolve session.'
 
-export interface MergeConflictState {
-  /** The base branch that failed to merge in (the merge target). */
-  base: string
-  /** Repo-relative paths that conflicted. */
-  files: string[]
-  /**
-   * When the conflict was recorded (the event's `ts`). The panel is undated
-   * without it, and an undated red panel reads as "happening now" — the audit
-   * found one that was fifteen days old (findings F8).
-   */
-  at: number
-}
 
 /**
  * The standing (unresolved) merge conflict for a feature, derived from its event
@@ -82,19 +72,6 @@ export interface MergeConflictState {
  * last step instead of standing forever.
  * Returns null when there is no standing conflict. `events` must be in id order.
  */
-export function unresolvedMergeConflict(events: EventRow[]): MergeConflictState | null {
-  let conflict: MergeConflictState | null = null
-  for (const e of events) {
-    if (e.type === 'merge.conflict') {
-      const d = (e.data ?? {}) as { base?: unknown; files?: unknown }
-      const files = Array.isArray(d.files) ? d.files.filter((f): f is string => typeof f === 'string') : []
-      conflict = { base: typeof d.base === 'string' ? d.base : '', files, at: e.ts }
-    } else if (e.type === 'burn.started' || e.type === 'merge.resolved') {
-      conflict = null
-    }
-  }
-  return conflict
-}
 
 export interface UndoableOverride {
   /** The gate that was forced. */
