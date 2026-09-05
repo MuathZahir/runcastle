@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { fmtBytes, humanizeTimestamps } from '../src/lib/format'
+import { fmtBytes, humanizeTimestamps, relTimeAgo } from '../src/lib/format'
 
 /**
  * Findings F10.9 / F18 — agent-authored docs stamp themselves the way a program
@@ -57,5 +57,12 @@ describe('fmtBytes', () => {
 
   it('reads an empty cache as zero rather than a fraction of a unit', () => {
     expect(fmtBytes(0)).toBe('0 B')
+  })
+})
+
+describe('relTimeAgo', () => {
+  it('never produces now ago', () => {
+    expect(relTimeAgo(9_999, 10_000)).toBe('just now')
+    expect(relTimeAgo(0, 12_000)).toBe('12s ago')
   })
 })

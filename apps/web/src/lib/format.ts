@@ -71,6 +71,12 @@ export function relTime(ts: number, now: number = Date.now()): string {
   return `${d}d`
 }
 
+/** Relative time as a phrase; owns its suffix so the present stays grammatical. */
+export function relTimeAgo(ts: number, now: number = Date.now()): string {
+  const compact = relTime(ts, now)
+  return compact === 'now' ? 'just now' : `${compact} ago`
+}
+
 // A player position as a clock (`0:07`, `1:04:12`) is `fmtClock` in
 // @runcastle/core — the promoted ticket's context paragraph renders the same
 // walkthrough moment server-side, and the two copies had drifted.

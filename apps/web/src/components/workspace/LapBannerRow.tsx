@@ -1,5 +1,5 @@
 import type { LapBanner } from '../../lib/feature-ui'
-import { relTime } from '../../lib/format'
+import { relTimeAgo } from '../../lib/format'
 import { LAP_KICKOFF, lapExplainer } from '../../lib/vocabulary'
 
 /**
@@ -20,7 +20,7 @@ export function LapBannerRow({ banner }: { banner: LapBanner }) {
       <div className="ws-lap-body">
         <div className="ws-lap-why">{LAP_KICKOFF}</div>
         <div className="ws-lap-facts">
-          {banner.startedAt !== null && <span>started {relTime(banner.startedAt)} ago</span>}
+          {banner.startedAt !== null && <span>started {relTimeAgo(banner.startedAt)}</span>}
           <span>{banner.landed}</span>
         </div>
       </div>

@@ -8,7 +8,7 @@ import { emit } from './events'
 import { getFeatureRow } from './repo'
 import { listByFeature as listTickets, storeTickets } from './tickets'
 
-const AUTO_FIX_CAP = 8
+export const AUTO_FIX_CAP = 8
 type FindingRow = typeof reviewFindings.$inferSelect
 
 function rowToFinding(row: FindingRow): ReviewFinding {
@@ -70,7 +70,8 @@ export function reportFinding(
       ),
     )
     .all().length
-  const overCap = input.kind === 'defect' && ticketCount >= AUTO_FIX_CAP
+  const verification = reviewTicket.passKind === 'verification'
+  const overCap = input.kind === 'defect' && !verification && ticketCount >= AUTO_FIX_CAP
 
   ctx.db
     .insert(reviewFindings)
@@ -82,7 +83,7 @@ export function reportFinding(
       ...input,
       reproStep: input.reproStep ?? '',
       status: 'open',
-      openReason: overCap ? 'over-cap' : null,
+      openReason: verification && input.kind === 'defect' ? 'verification' : overCap ? 'over-cap' : null,
       failureReason: null,
       fixTicketId: null,
       createdAt: Date.now(),
@@ -90,7 +91,7 @@ export function reportFinding(
     .run()
 
   let fixTicket: Ticket | null = null
-  if (input.kind === 'defect' && !overCap) {
+  if (input.kind === 'defect' && !overCap && !verification) {
     const finding = getFinding(ctx, id)
     fixTicket = storeTickets(ctx, featureId, [
       { ...buildFixTicket(finding), blockedBy: [reviewTicket.seq] },
@@ -266,6 +267,7 @@ export function promoteOpenDefects(
   featureId: string,
   findingIds?: string[],
 ): { findings: ReviewFinding[]; tickets: Ticket[] } {
+  // The scheduler appends the verification pass after this fix-only burn drains (decision 40a).
   const open = viewByFeature(ctx, featureId).openDefects
   const defects = findingIds ? findingIds.map((id) => {
     const finding = open.find((candidate) => candidate.id === id)

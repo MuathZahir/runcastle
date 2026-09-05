@@ -26,7 +26,7 @@ import {
   type MergeConflictState,
 } from '../../lib/feature-ui'
 import { useReviewArtifacts } from '../../lib/reviews'
-import { fmtDateTime, relTime } from '../../lib/format'
+import { fmtDateTime, relTimeAgo } from '../../lib/format'
 import { useLivePoll } from '../../lib/live'
 import { useResolveConflict } from '../../lib/use-resolve-conflict'
 import { useToast } from '../../lib/toast'
@@ -828,7 +828,7 @@ function ConflictCard({
         {/* When, because a red panel with no date reads as "right now" — the
             audit found one that was fifteen days stale (findings F8). */}
         <span className="conflict-when" title={fmtDateTime(conflict.at)}>
-          recorded {relTime(conflict.at)} ago
+          recorded {relTimeAgo(conflict.at)}
         </span>
       </div>
       <div className="drive-copy">

@@ -2,6 +2,7 @@ import type { TestNote } from '@runcastle/core'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { uploadScreenshot } from '../src/lib/reviews'
 import {
+  clusterMarkers,
   captureAnnotation,
   framePoint,
   paintStrokes,
@@ -9,6 +10,7 @@ import {
   saveAnnotatedNote,
   seekTarget,
   STROKE_WIDTH,
+  timestampMode,
   type Stroke,
 } from '../src/lib/walkthrough'
 
@@ -314,5 +316,22 @@ describe('uploadScreenshot', () => {
   it('throws with the status when the server refuses the upload', async () => {
     stubFetch({ ok: false, status: 400 })
     await expect(uploadScreenshot('note_a', new Blob([]))).rejects.toThrow('screenshot upload: 400')
+  })
+})
+
+describe('recording-bound note navigation', () => {
+  it('distinguishes live, earlier-walkthrough, and image-only evidence', () => {
+    expect(timestampMode({ id: 'a', videoTimestamp: 42, reviewTicketId: 'review_a' }, { ticketId: 'review_a' })).toBe('live-seek')
+    expect(timestampMode({ id: 'a', videoTimestamp: 42, reviewTicketId: 'review_a' }, { ticketId: 'review_b' })).toBe('orphan-label')
+    expect(timestampMode({ id: 'a', videoTimestamp: null, reviewTicketId: 'review_a' }, { ticketId: 'review_a' })).toBe('png-only')
+  })
+
+  it('clusters close markers only for the recording on stage', () => {
+    expect(clusterMarkers([
+      { id: 'a', videoTimestamp: 2, reviewTicketId: 'review_a' },
+      { id: 'b', videoTimestamp: 2.8, reviewTicketId: 'review_a' },
+      { id: 'c', videoTimestamp: 4.1, reviewTicketId: 'review_a' },
+      { id: 'other', videoTimestamp: 2.2, reviewTicketId: 'review_b' },
+    ], 'review_a')).toEqual([{ at: 2, noteIds: ['a', 'b'] }, { at: 4.1, noteIds: ['c'] }])
   })
 })

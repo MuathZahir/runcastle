@@ -1,4 +1,5 @@
 import type { TestNote } from '@runcastle/core'
+import type { Shape } from './annotation'
 
 /**
  * The walkthrough player's logic, kept out of the component: what the scrub bar
@@ -37,6 +38,71 @@ export const STROKE_COLOR = '#F85149'
  * wide is invisible at 200px.
  */
 export const STROKE_WIDTH = 4
+
+/** Paint the annotation model at the intrinsic-frame scale. */
+export function paintShapes(
+  ctx: CanvasRenderingContext2D,
+  shapes: readonly Shape[],
+  scale = 1,
+): void {
+  ctx.lineWidth = 6 * scale
+  ctx.lineCap = 'round'
+  ctx.lineJoin = 'round'
+  ctx.strokeStyle = STROKE_COLOR
+  for (const shape of shapes) {
+    const [first, ...rest] = shape.points
+    if (!first) continue
+    const last = shape.points.at(-1) ?? first
+    ctx.beginPath()
+    if (shape.tool === 'rect') {
+      const rect = { x: Math.min(first.x, last.x), y: Math.min(first.y, last.y), width: Math.abs(last.x - first.x), height: Math.abs(last.y - first.y) }
+      ctx.rect(rect.x, rect.y, rect.width, rect.height)
+    } else {
+      ctx.moveTo(first.x, first.y)
+      for (const point of rest) ctx.lineTo(point.x, point.y)
+      if (shape.tool === 'arrow' && rest.length > 0) {
+        const angle = Math.atan2(last.y - first.y, last.x - first.x)
+        const size = 12 * scale
+        ctx.lineTo(last.x - size * Math.cos(angle - Math.PI / 6), last.y - size * Math.sin(angle - Math.PI / 6))
+        ctx.moveTo(last.x, last.y)
+        ctx.lineTo(last.x - size * Math.cos(angle + Math.PI / 6), last.y - size * Math.sin(angle + Math.PI / 6))
+      }
+    }
+    ctx.stroke()
+  }
+}
+
+export interface TimestampNoteFigure {
+  id: string
+  videoTimestamp?: number | null
+  reviewTicketId?: string | null
+}
+
+export function timestampMode(
+  note: TimestampNoteFigure,
+  onStage: { ticketId: string } | null,
+): 'live-seek' | 'orphan-label' | 'png-only' {
+  if (note.videoTimestamp == null) return 'png-only'
+  return onStage && note.reviewTicketId === onStage.ticketId ? 'live-seek' : 'orphan-label'
+}
+
+export function clusterMarkers(
+  notes: readonly TimestampNoteFigure[],
+  onStageTicketId: string,
+  toleranceSec = 1,
+): { at: number; noteIds: string[] }[] {
+  const rows = notes
+    .filter((note) => note.reviewTicketId === onStageTicketId && note.videoTimestamp != null)
+    .sort((a, b) => a.videoTimestamp! - b.videoTimestamp!)
+  const clusters: { at: number; noteIds: string[] }[] = []
+  for (const note of rows) {
+    const at = note.videoTimestamp!
+    const current = clusters.at(-1)
+    if (current && at - current.at <= toleranceSec) current.noteIds.push(note.id)
+    else clusters.push({ at, noteIds: [note.id] })
+  }
+  return clusters
+}
 
 /**
  * How long the scrub bar is allowed to be, in seconds.
