@@ -53,7 +53,7 @@ const render = (props: Partial<Parameters<typeof EvidenceStage>[0]> = {}): strin
       driveState: 'idle',
       dryRun: false,
       failure: null,
-      devConfigured: true,
+      caps: { setup: true, dev: true, teardown: true },
       starting: false,
       onStartDrive: () => undefined,
       ...props,
@@ -127,7 +127,7 @@ describe('EvidenceStage', () => {
   })
 
   it('disables Open app with its reason when the project has no dev command', () => {
-    const html = render({ recordings: [], devConfigured: false })
+    const html = render({ recordings: [], caps: { setup: false, dev: false, teardown: false } })
     expect(html).toMatch(/<button[^>]*disabled[^>]*>Open app ▶<\/button>/)
     expect(html).toContain('no dev command · set one in Settings')
   })
@@ -136,7 +136,7 @@ describe('EvidenceStage', () => {
   it('swaps the recording out for the drive while a drive is up', () => {
     const html = render({
       driveState: 'serving',
-      drive: { branch: 'feature/x', devConfigured: true, devPaneId: 'pane_1' },
+      drive: { branch: 'feature/x', devPaneId: 'pane_1', devUrl: 'http://localhost:5173', devReady: true },
     })
     expect(html).not.toContain('<video')
     expect(html).toContain('dev server')
@@ -146,7 +146,7 @@ describe('EvidenceStage', () => {
   it('renders a failed drive setup where the video would be', () => {
     const html = render({
       driveState: 'setup-failed',
-      drive: { branch: 'feature/x', devConfigured: true },
+      drive: { branch: 'feature/x' },
       failure: { command: 'bun setup', outcome: 'exited 3', output: 'boom', canFix: true },
     })
     expect(html).toContain('Drive setup failed')

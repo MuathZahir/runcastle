@@ -1,7 +1,7 @@
 import { createElement, type ReactNode } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it, vi } from 'vitest'
-import type { ReviewFinding, TestNote } from '@runcastle/core'
+import type { DriveState, ReviewFinding, TestNote } from '@runcastle/core'
 import type { FeatureFull } from '../src/lib/api'
 import { lapChip, reviewChecks } from '../src/lib/feature-ui'
 import type { ReviewArtifacts } from '../src/lib/reviews'
@@ -108,7 +108,7 @@ function bands(readonly: boolean): ReactNode[] {
       driveState: 'idle',
       dryRun: false,
       failure: null,
-      devConfigured: true,
+      caps: { setup: true, dev: true, teardown: true },
       starting: false,
       onStartDrive: () => undefined,
     }),
@@ -158,7 +158,7 @@ const render = (readonly: boolean): string =>
 const LIVE_CONTROLS = ['Resolve with agent', 'Annotate', 'Open app ▶', 'Dismiss', 'Add', 'Edit', 'Delete']
 
 /** The stage while a drive of this feature is up — its own set of controls. */
-const drivingStage = (readonly: boolean): string =>
+const drivingStage = (readonly: boolean, driveState: DriveState = 'setup-failed'): string =>
   renderToStaticMarkup(
     createElement(EvidenceStage, {
       featureId: 'ftr_1',
@@ -166,11 +166,11 @@ const drivingStage = (readonly: boolean): string =>
       recordings: [RECORDING],
       notes: [],
       readonly,
-      driveState: 'setup-failed',
-      drive: { branch: 'feature/x', devConfigured: true, purpose: 'review' },
+      driveState,
+      drive: { branch: 'feature/x' },
       dryRun: false,
       failure: { command: 'bun setup', outcome: 'exited 3', output: 'boom', canFix: true },
-      devConfigured: true,
+      caps: { setup: true, dev: true, teardown: true },
       starting: false,
       onStartDrive: () => undefined,
     }),
@@ -216,12 +216,17 @@ describe('the review bands under readonly', () => {
   it('keeps the drive`s account and drops its actions on a readonly view', () => {
     const live = drivingStage(false)
     expect(live).toContain('>Fix drive<')
-    expect(live).toContain('>Stop the review drive<')
+    expect(live).toContain('>Stop test drive<')
 
     const history = drivingStage(true)
     expect(history).toContain('Drive setup failed')
     expect(history).toContain('bun setup')
     expect(history).not.toContain('>Fix drive<')
-    expect(history).not.toContain('>Stop the review drive<')
+    expect(history).not.toContain('>Stop test drive<')
+  })
+
+  it('drops the review drive`s own stop on a readonly view', () => {
+    expect(drivingStage(false, 'review-agent-driving')).toContain('>Stop the review drive<')
+    expect(drivingStage(true, 'review-agent-driving')).not.toContain('>Stop the review drive<')
   })
 })

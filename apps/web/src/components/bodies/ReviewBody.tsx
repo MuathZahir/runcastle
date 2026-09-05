@@ -146,7 +146,7 @@ export function ReviewBody({
         drive={ownDrive}
         dryRun={drive.data?.dryRun ?? false}
         failure={driveFailure(ownDrive, { sessionLive: !!liveSession })}
-        devConfigured={caps?.dev ?? false}
+        caps={caps}
         // The one drive slot is taken — by this feature, another one, or a
         // preparation dry run — or this browser has a start in flight the server
         // poll has not caught up with yet.

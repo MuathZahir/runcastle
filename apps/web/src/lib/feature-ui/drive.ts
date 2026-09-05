@@ -95,56 +95,6 @@ export function driveView(state: DriveState, _info: object = {}): DriveView {
 // --- review honesty: the SUMMARY card and the merge confirmation -------------
 
 /**
- * How much trust a review figure has earned, as a dot colour: `ok` green,
- * `warn` amber, `danger` red, `idle` grey for "there is nothing here".
- *
- * The distinction that matters is `idle` vs `ok`. The audit found the SUMMARY
- * card painting "0 commits", "0/0 done" and a missing run in all-clear green
- * (findings F23) — the one card meant to inform an irreversible merge reassuring
- * the user about data it did not have. Absence is never `ok` here.
- */
-interface DriveFigure {
-  purpose?: 'human' | 'review'
-}
-
-/** What an active drive on a feature branch says about itself. */
-export interface DriveWheel {
-  /** The live-state label beside the pulse. */
-  label: string
-  /** The sentence under it: what to do while this drive is up. */
-  copy: string
-}
-
-/**
- * Who is behind the wheel, in the words the drive surfaces show (decisions #10).
- *
- * A review drive is the same machinery on the same checkout, so every surface
- * used to announce it as the human's own test drive — the screen lying about who
- * is at the keyboard at the one moment the human is meant to be watching rather
- * than clicking. The human's wording is untouched: this only adds the case that
- * had no words of its own.
- *
- * A drive with no purpose is the human's. `purpose` arrives on the wire only
- * with this feature, and every drive that predates it was started by hand.
- */
-export function driveWheel(drive?: DriveFigure | null): DriveWheel {
-  if (drive?.purpose === 'review') {
-    return {
-      label: 'review agent driving',
-      copy:
-        'The review agent is driving this branch and writing what it finds as notes below. ' +
-        'Watch, or stop the drive to take the wheel yourself.',
-    }
-  }
-  return {
-    label: 'driving now',
-    copy:
-      'Click through the feature. When it feels right, merge — or stop the drive and send ' +
-      'feedback back through tickets.',
-  }
-}
-
-/**
  * The review agent's figure, as both review surfaces render it — or null when
  * there is nothing to say because no review was ever asked for.
  *

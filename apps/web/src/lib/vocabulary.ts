@@ -96,6 +96,19 @@ export function testDriveExplainer(caps: DriveCapabilities | undefined): string 
   return `${checkout}, then ${joinSteps(steps)}.${restore}`
 }
 
+/**
+ * The same sentence at one line (decision 20). The evidence stage leads with
+ * this and keeps {@link testDriveExplainer}'s full account behind a disclosure —
+ * the stretched explainer card that used to take a band of the review page said
+ * everything at once, to a reader who already knew.
+ */
+export function testDriveLead(caps: DriveCapabilities | undefined): string {
+  if (!caps?.dev) return 'A test drive checks this branch out — nothing else starts.'
+  return caps.setup
+    ? 'A test drive checks this branch out, runs the setup command and starts the dev server.'
+    : 'A test drive checks this branch out and starts the dev server.'
+}
+
 /** "a", "a and b", "a, b and c" — read aloud, not comma-spliced. */
 function joinSteps(steps: string[]): string {
   const last = steps[steps.length - 1] ?? ''

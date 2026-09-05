@@ -9,7 +9,6 @@ import {
   deferredScope,
   DRAFT_GLYPH,
   driveFailure,
-  driveWheel,
   duplicateTitleWarning,
   findingCountsLine,
   findingOpenReason,
@@ -1734,29 +1733,6 @@ describe('reviewWalkthroughUrl', () => {
     expect(reviewWalkthroughUrl([recorded('t1'), silent])).toBe(
       '/api/reviews/ticket/t1/walkthrough.webm',
     )
-  })
-})
-
-describe('driveWheel', () => {
-  const human = driveWheel({ purpose: 'human' })
-
-  it('names the review agent when the drive is its own', () => {
-    const wheel = driveWheel({ purpose: 'review' })
-    expect(wheel.label).toBe('review agent driving')
-    expect(wheel.copy).toContain('review agent')
-  })
-
-  it('leaves the human’s wording exactly as it was', () => {
-    expect(human.label).toBe('driving now')
-    expect(human.copy).toBe(
-      'Click through the feature. When it feels right, merge — or stop the drive and send feedback back through tickets.',
-    )
-  })
-
-  it('reads a drive with no purpose as the human’s — every drive predating the wire was', () => {
-    expect(driveWheel({})).toEqual(human)
-    expect(driveWheel()).toEqual(human)
-    expect(driveWheel(null)).toEqual(human)
   })
 })
 
