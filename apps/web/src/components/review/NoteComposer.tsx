@@ -53,7 +53,7 @@ function imageOnClipboard(data: DataTransfer | null): Blob | null {
 /** Stage a picture for a note, converting whatever was pasted into PNG bytes. */
 function useStagedImage(): {
   staged: StagedImage | null
-  stage: (image: Blob) => Promise<StagedImage | null>
+  stage: (image: Blob) => Promise<void>
   drop: () => void
 } {
   const toast = useToast()
@@ -75,7 +75,7 @@ function useStagedImage(): {
     })
   }
 
-  const stage = async (image: Blob): Promise<StagedImage | null> => {
+  const stage = async (image: Blob): Promise<void> => {
     try {
       const png = await toPngBlob(image)
       const next = { png, preview: URL.createObjectURL(png) }
@@ -83,10 +83,8 @@ function useStagedImage(): {
         if (current) URL.revokeObjectURL(current.preview)
         return next
       })
-      return next
     } catch (e) {
       toast.push(e instanceof Error ? e.message : 'that image could not be read')
-      return null
     }
   }
 

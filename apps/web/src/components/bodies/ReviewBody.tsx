@@ -237,8 +237,9 @@ export function ReviewBody({
           onViewPhase
             ? (ticketId) => {
                 onViewPhase('implementation')
-                // The lane is not mounted until the phase body swaps, so the
-                // scroll waits a frame for it.
+                // Best effort: the run body has to mount before its lanes exist,
+                // so the scroll waits a frame. Landing on the run view is the
+                // part that matters; the scroll is the courtesy on top.
                 requestAnimationFrame(() =>
                   document
                     .getElementById(`lane-${ticketId}`)

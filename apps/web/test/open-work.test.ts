@@ -122,6 +122,8 @@ describe('OpenWork', () => {
       onViewLane: () => undefined,
     })
     expect(html).toContain('being fixed in the running burn · lane #9')
+    // ...and the tally does not call it the human's problem.
+    expect(html).toContain('0 open · 1 being fixed')
   })
 
   it('moves a landed fix out of the list and into the collapsed group', () => {

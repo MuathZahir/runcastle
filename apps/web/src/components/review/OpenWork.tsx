@@ -7,8 +7,7 @@ import { findingCountsLine, groupByLap, headline, type FindingCounts } from '../
 import { useToast } from '../../lib/toast'
 import { DeleteNoteDialog, NoteComposer, NoteEditor } from './NoteComposer'
 import { Lightbox } from './Lightbox'
-import { NoteRow, itemId, rowElementId, type NoteItem } from './NoteRow'
-
+import { NoteRow, itemId, itemLap, rowElementId, type NoteItem } from './NoteRow'
 
 /**
  * "What still needs attention" — the review agent's defects and the human's
@@ -61,6 +60,20 @@ function byUrgency(a: WorkRow, b: WorkRow): number {
   return bt - at
 }
 
+/** What an observation says: its first line, and the rest only if there is one. */
+function Observation({ detail }: { detail: string }) {
+  const { head, rest } = headline(detail)
+  if (!rest) return <span className="text-sm text-text-3">{head}</span>
+  return (
+    <details className="min-w-0">
+      <summary className="cursor-pointer list-none text-sm text-text-3 underline decoration-dotted">
+        {head}
+      </summary>
+      <p className="m-0 mt-1.5 text-sm leading-relaxed text-pretty text-text-2">{rest}</p>
+    </details>
+  )
+}
+
 /**
  * The counts line and the observations, at the head of the section they are a
  * verdict about (this was the deleted Summary card's lead block). Observations
@@ -86,14 +99,7 @@ function FindingsSummaryBlock({
           {observations.map((finding) => (
             <li key={finding.id} className="flex flex-col">
               <span className="text-sm text-text-2">{finding.title}</span>
-              <details className="min-w-0">
-                <summary className="cursor-pointer list-none text-sm text-text-3 underline decoration-dotted">
-                  {headline(finding.detail).head}
-                </summary>
-                <div className="mt-1.5 text-sm leading-relaxed text-pretty text-text-2">
-                  {finding.detail}
-                </div>
-              </details>
+              <Observation detail={finding.detail} />
             </li>
           ))}
         </ul>
@@ -164,30 +170,41 @@ export function OpenWork({
 
   const attention: WorkRow[] = []
   const settled: WorkRow[] = []
+  const file = (item: NoteItem, needsAttention: boolean): void => {
+    ;(needsAttention ? attention : settled).push({ lap: itemLap(item), item })
+  }
   for (const finding of findings) {
     if (finding.kind !== 'defect') continue
     const fix = ticketOf(finding.fixTicketId)
     const standing = defectStanding(finding, openIds, fix)
-    const item: NoteItem = {
-      kind: 'defect',
-      finding,
-      ...(standing === 'fixing' && fix ? { fixTicket: { id: fix.id, seq: fix.seq } } : {}),
-    }
-    ;(standing === 'open' || standing === 'fixing' ? attention : settled).push({
-      lap: finding.lap,
-      item,
-    })
+    file(
+      {
+        kind: 'defect',
+        finding,
+        ...(standing === 'fixing' && fix ? { fixTicket: { id: fix.id, seq: fix.seq } } : {}),
+      },
+      standing === 'open' || standing === 'fixing',
+    )
   }
   for (const note of notes) {
     const ticket = ticketOf(note.ticketId ?? null)
-    const row: WorkRow = {
-      lap: note.lap,
-      item: { kind: 'note', note, ...(ticket ? { ticket: { seq: ticket.seq, title: ticket.title } } : {}) },
-    }
-    ;(note.status === 'open' ? attention : settled).push(row)
+    file(
+      {
+        kind: 'note',
+        note,
+        ...(ticket ? { ticket: { seq: ticket.seq, title: ticket.title } } : {}),
+      },
+      note.status === 'open',
+    )
   }
   attention.sort(byUrgency)
   settled.sort(byUrgency)
+
+  // A defect the burn is fixing still needs watching but is not the human's
+  // problem, so the tally says both rather than calling it open.
+  const beingFixed = attention.filter((r) => r.item.kind === 'defect' && r.item.fixTicket).length
+  const tally = [`${attention.length - beingFixed} open`]
+  if (beingFixed > 0) tally.push(`${beingFixed} being fixed`)
 
   // Both directions of a jump are visible (decision 25b): a marker click or a
   // fresh annotation brings its row into view rather than changing the list off
@@ -278,9 +295,7 @@ export function OpenWork({
 
       <div className="flex items-baseline gap-3">
         <SectionTitle>What still needs attention</SectionTitle>
-        <span className="font-mono text-xs text-text-3">
-          {attention.length === 0 ? 'nothing open' : `${attention.length} open`}
-        </span>
+        <span className="font-mono text-xs text-text-3">{tally.join(' · ')}</span>
       </div>
 
       {attention.length === 0 ? (
