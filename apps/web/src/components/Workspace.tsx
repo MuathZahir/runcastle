@@ -672,6 +672,7 @@ export function Workspace({
               readonly={readonly}
               mapRailCollapsed={mapRailCollapsed}
               onToggleMapRail={onToggleMapRail}
+              onViewPhase={onViewPhase}
             />
           )}
         </div>
@@ -689,6 +690,7 @@ function PhaseBody({
   readonly,
   mapRailCollapsed,
   onToggleMapRail,
+  onViewPhase,
 }: {
   effective: Phase
   full: FeatureFull
@@ -698,6 +700,7 @@ function PhaseBody({
   readonly: boolean
   mapRailCollapsed: boolean
   onToggleMapRail: () => void
+  onViewPhase: (phase: Phase | null) => void
 }) {
   switch (effective) {
     case 'ideation':
@@ -724,7 +727,17 @@ function PhaseBody({
         <TicketsBody featureId={full.feature.id} readonly={readonly} />
       )
     case 'review':
-      return <ReviewBody full={full} driving={driving} conflict={conflict} readonly={readonly} />
+      return (
+        <ReviewBody
+          full={full}
+          driving={driving}
+          conflict={conflict}
+          readonly={readonly}
+          // A defect being fixed links to its lane, which lives in the run view
+          // one phase back (decision 18c).
+          onViewPhase={onViewPhase}
+        />
+      )
     case 'shipped':
       return <ShippedBody full={full} />
   }
