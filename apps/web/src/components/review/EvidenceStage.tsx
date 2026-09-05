@@ -266,7 +266,12 @@ function DriveStage({
   return (
     <>
       {failure ? (
-        <DriveFailureCard featureId={featureId} failure={failure} />
+        // Readonly keeps the account of what went wrong and drops the offer to
+        // go and fix it (decision 33a) — history explains, it never acts.
+        <DriveFailureCard
+          featureId={featureId}
+          failure={readonly ? { ...failure, canFix: false } : failure}
+        />
       ) : (
         <DriveStatus branch={drive?.branch ?? branch} drive={drive} />
       )}
