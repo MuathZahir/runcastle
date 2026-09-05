@@ -91,6 +91,7 @@ export interface DbDrift {
 /** Active test-drive info the UI polls (`feature.driveInfo`): the branch under
  *  the wheel plus the embedded dev pane's PTY id and its sniffed "Open app" URL. */
 export interface DriveInfo {
+  state: import('@runcastle/core').DriveState
   /** Absent for a preparation dry run — that drive belongs to no feature. */
   featureId?: string
   /**
@@ -150,6 +151,17 @@ export interface DriveInfo {
    * What the drive-fix session is told this drive actually ran with.
    */
   envKeys?: string[]
+}
+
+type DriveStateInput = Omit<DriveInfo, 'state'>
+
+export function deriveDriveState(info: DriveStateInput | null): import('@runcastle/core').DriveState {
+  if (!info) return 'idle'
+  if (info.hookFailure) return 'setup-failed'
+  if (info.purpose === 'review') return 'review-agent-driving'
+  if (!info.devConfigured) return 'bare-checkout'
+  if (info.devReady) return 'serving'
+  return 'starting'
 }
 
 export interface MergeResult {
@@ -1798,7 +1810,7 @@ export function activeTestDriveFeatureId(): string | undefined {
 export function activeDriveInfo(): DriveInfo | null {
   const state = testDriveState
   if (!state) return null
-  return {
+  const info: DriveStateInput = {
     // What a feature drive has and a dry run does not: the feature it belongs
     // to, who is driving it, and what its setup made of the world (a dry run
     // reports all of that through its own `DryRunResult` instead).
@@ -1817,6 +1829,7 @@ export function activeDriveInfo(): DriveInfo | null {
     ...(state.devReadiness === 'timedOut' ? { devReadyTimedOut: true } : {}),
     devConfigured: state.devConfigured,
   }
+  return { ...info, state: deriveDriveState(info) }
 }
 
 /**

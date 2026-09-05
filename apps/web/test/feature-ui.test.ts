@@ -1186,6 +1186,12 @@ describe('nextStep at ideation on a later lap', () => {
  * briefs a merge-into-feature session. Tested at the pure derivations.
  */
 describe('unresolvedMergeConflict', () => {
+  it('retires a standing conflict when the feature ships', () => {
+    expect(unresolvedMergeConflict([
+      ev(1, 'merge.conflict', { base: 'main', files: ['a.ts'] }),
+      ev(2, 'feature.shipped'),
+    ])).toBeNull()
+  })
   const ev = (id: number, type: string, data?: unknown): EventRow =>
     ({ id, projectId: 'p', ts: id, type, message: type, data }) as EventRow
 

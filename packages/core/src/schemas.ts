@@ -645,3 +645,33 @@ export const EventRow = z.object({
   data: z.unknown().optional(),
 })
 export type EventRow = z.infer<typeof EventRow>
+
+export const DriveState = z.enum([
+  'idle', 'starting', 'serving', 'bare-checkout', 'setup-failed', 'review-agent-driving',
+])
+export type DriveState = z.infer<typeof DriveState>
+
+export interface MergeConflictState {
+  base: string
+  files: string[]
+  at: number
+}
+
+export function unresolvedMergeConflict(events: EventRow[]): MergeConflictState | null {
+  let conflict: MergeConflictState | null = null
+  for (const event of events) {
+    if (event.type === 'merge.conflict') {
+      const data = (event.data ?? {}) as { base?: unknown; files?: unknown }
+      conflict = {
+        base: typeof data.base === 'string' ? data.base : '',
+        files: Array.isArray(data.files)
+          ? data.files.filter((file): file is string => typeof file === 'string')
+          : [],
+        at: event.ts,
+      }
+    } else if (['burn.started', 'merge.resolved', 'feature.shipped'].includes(event.type)) {
+      conflict = null
+    }
+  }
+  return conflict
+}
