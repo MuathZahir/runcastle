@@ -1,7 +1,7 @@
 import type { FeatureFull } from '../../lib/api'
 import { useEventLog } from '../../lib/events'
 import { shippedAt, shippedQaSessions } from '../../lib/feature-ui'
-import { relTime } from '../../lib/format'
+import { relTimeAgo } from '../../lib/format'
 import { IconBranch, IconCheck } from '../../icons'
 import { SessionPanel } from '../SessionPanel'
 
@@ -18,7 +18,7 @@ import { SessionPanel } from '../SessionPanel'
 export function ShippedBody({ full }: { full: FeatureFull }) {
   const events = useEventLog(full.feature.id)
   const merged = shippedAt(events)
-  const when = merged === null ? '' : relTime(merged)
+  const when = merged === null ? '' : relTimeAgo(merged)
 
   return (
     <div className="shipped-body">
@@ -30,7 +30,7 @@ export function ShippedBody({ full }: { full: FeatureFull }) {
         <div className="shipped-meta">
           <IconBranch size={12} />
           {full.feature.branch}
-          {when ? ` · merged ${when} ago` : ''}
+          {when ? ` · merged ${when}` : ''}
         </div>
         <div className="shipped-sub">
           The branch is merged and the pipeline is complete. The full history lives in the
