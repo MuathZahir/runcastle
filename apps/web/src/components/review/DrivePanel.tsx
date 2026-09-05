@@ -105,6 +105,9 @@ export function DrivePanel({
           audio: false,
           preferCurrentTab: true,
           selfBrowserSurface: 'include',
+          // The last two are Chromium options the DOM typings do not carry;
+          // {@link tabCaptureSupported} is what keeps them from reaching a
+          // browser that would ignore them.
         } as DisplayMediaStreamOptions)
         streamRef.current = stream
         const tap = tapRef.current
