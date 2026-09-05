@@ -25,7 +25,9 @@ import {
   reviewDrive,
 } from '../src/services/git'
 import { openProject } from '../src/services/projects'
+import { listAfter } from '../src/services/events'
 import { listByFeature, storeTickets } from '../src/services/tickets'
+import { AUTO_FIX_CAP } from '../src/services/review-findings'
 import { createCallerFactory } from '../src/trpc/context'
 import { appRouter } from '../src/trpc/router'
 import { workflowRegistry } from '../src/workflows/registry'
@@ -35,6 +37,7 @@ import {
   buildGateNotes,
   executeReviewTicket,
   findOnPath,
+  inheritedReviewMode,
   renderReviewPrompt,
   reviewTemplatePath,
 } from '../src/workflows/review-ticket'
@@ -376,6 +379,9 @@ describe('what the review agent is handed', () => {
       DIGEST_PATH: '/data/reviews/tkt_3/DIGEST.md',
       BLOCKED_PATH: '/data/reviews/tkt_3/BLOCKED.md',
       WALKTHROUGH_PATH: '/data/reviews/tkt_3/walkthrough.webm',
+      LANDED_FIXES: '',
+      VERIFIES_PASS: '',
+      AUTO_FIX_CAP: String(AUTO_FIX_CAP),
     })
 
     expect(prompt).not.toContain('{{')
@@ -424,7 +430,25 @@ describe('what the review agent is handed', () => {
     expect(template).toContain('"high" | "medium" | "low"')
     // Order decides what the cap reaches.
     expect(template).toMatch(/report defects highest severity first/i)
-    expect(template).toMatch(/only the first 8/i)
+    expect(template).toContain('{{AUTO_FIX_CAP}}')
+  })
+
+  it('renders the verification variant with its landed fixes, prior pass, and cap', () => {
+    const verification = review(4, { passKind: 'verification' })
+    const prompt = renderReviewPrompt(verification, {
+      TICKET_JSON: '{"seq":4}', FEATURE_BRIEF: 'Demo', DOCS_DIGEST: 'docs', LAP_DIGESTS: 'digests',
+      FEATURE_BRANCH: 'feature/demo', BASE_BRANCH: 'main',
+      DRIVE_AVAILABILITY: buildDriveAvailability('/browser', 'bun dev', 'drive'),
+      GATE_NOTES: buildGateNotes({ verifyCommands: 'bun test' }), DIGEST_PATH: '/digest',
+      BLOCKED_PATH: '/blocked', WALKTHROUGH_PATH: '/walkthrough.webm',
+      LANDED_FIXES: '#2 Fix save — repro: click Save', VERIFIES_PASS: '#1 · Drive mode',
+      AUTO_FIX_CAP: String(AUTO_FIX_CAP),
+    })
+    expect(prompt).not.toContain('{{')
+    expect(prompt).toContain('#2 Fix save — repro: click Save')
+    expect(prompt).toContain('#1 · Drive mode')
+    expect(prompt).toContain(`auto-fix cap is ${AUTO_FIX_CAP}`)
+    expect(prompt).toContain('verification pass')
   })
 
   it('tells the agent where the recording is optional and where it is not', () => {
@@ -477,6 +501,15 @@ describe('what the review agent is handed', () => {
 })
 
 describe('the mode the review is handed', () => {
+  it('inherits Drive only when the verified pass left a recording on disk', () => {
+    expect(inheritedReviewMode('review_1', () => true)).toBe('drive')
+    expect(inheritedReviewMode('review_1', () => false)).toBe('gates')
+    expect(inheritedReviewMode(undefined, () => true)).toBe('gates')
+  })
+  it('states both inherited verification modes without offering a choice', () => {
+    expect(buildDriveAvailability(undefined, undefined, 'drive')).toContain('Inherited mode: **Drive**')
+    expect(buildDriveAvailability('/browser', 'bun dev', 'gates')).toContain('Inherited mode: **Gates**')
+  })
   it('opens Drive mode when the browser and a dev command are both there', () => {
     const block = buildDriveAvailability('/usr/bin/agent-browser', 'bun dev')
 
@@ -728,6 +761,29 @@ describe('a run containing a review ticket still lands the feature in review', (
     expect(reviewTicket).toMatchObject({ status: 'done', commits: [] })
     const run = listRunsByFeature(ctx, featureId)[0]
     expect(run?.digest).toContain('reviewed the app: 1 finding')
+  })
+
+  it('appends, admits, and completes one verification when landed work had no review', async () => {
+    const featureId = seedFeature(ctx, seedProject(ctx).id, { phase: 'tickets', lap: 2 }).id
+    storeTickets(ctx, featureId, [{
+      title: 'quick fix', goal: 'g', context: 'c', acceptanceCriteria: ['a'], seams: ['s'], blockedBy: [],
+    }])
+
+    await caller.feature.burn({ featureId })
+    for (let i = 0; i < 200 && getFeatureRow(ctx, featureId).phase !== 'review'; i++) {
+      await new Promise((resolve) => setTimeout(resolve, 5))
+    }
+
+    const stored = listByFeature(ctx, featureId)
+    expect(stored).toHaveLength(2)
+    expect(stored[1]).toMatchObject({
+      kind: 'review', passKind: 'verification', status: 'done', lap: 2,
+      title: 'Verify the fixes that landed',
+    })
+    expect(stored[1].context).toContain('#1 quick fix')
+    const eventTypes = listAfter(ctx, featureId).map((event) => event.type)
+    expect(eventTypes).toContain('ticket.verification_minted')
+    expect(eventTypes.filter((type) => type === 'ticket.verification_minted')).toHaveLength(1)
   })
 })
 

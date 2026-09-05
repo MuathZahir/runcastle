@@ -9,8 +9,8 @@ import { emit } from '../services/events'
 import { checkGate } from '../services/gates'
 import { detachWorktree, reattachWorktree } from '../services/git'
 import { getFeatureRow, projectForFeature, setPhase } from '../services/repo'
-import { markFixProgress } from '../services/review-findings'
-import { listByFeature, sweepOrphanedBurning, updateTicket } from '../services/tickets'
+import { listByFeature as listFindingsByFeature, markFixProgress } from '../services/review-findings'
+import { listByFeature, storeTickets, sweepOrphanedBurning, updateTicket } from '../services/tickets'
 import { claim as claimWaypoint, releaseForSession, resolve as resolveWaypoint } from '../services/waypoints'
 import { getWorkflow } from './registry'
 
@@ -163,6 +163,8 @@ export async function startRun(
       updateTicket(ctx, id, patch)
     },
     listTickets: () => listByFeature(ctx, featureId),
+    storeTickets: (inputs) => storeTickets(ctx, featureId, inputs),
+    listFindings: () => listFindingsByFeature(ctx, featureId),
     updateFinding: (findingId, progress, reason) => {
       markFixProgress(ctx, findingId, progress, reason)
     },

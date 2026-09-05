@@ -1,4 +1,4 @@
-import type { Feature, FixProgress, Project, Ticket } from './schemas'
+import type { Feature, FixProgress, Project, ReviewFinding, Ticket, TicketInput } from './schemas'
 
 /**
  * The workflow contract (CONTEXT.md decision #10, SPEC §1). Workflows
@@ -43,6 +43,10 @@ export interface WorkflowCtx {
    * never mints tickets mid-run needs it, and neither does a test fake.
    */
   listTickets?(): Ticket[]
+  /** Store scheduler-created tickets through the same service as human/agent batches. */
+  storeTickets?(inputs: TicketInput[]): Ticket[]
+  /** Read findings when a verification ticket records the fixes it is checking. */
+  listFindings?(): ReviewFinding[]
   /**
    * Mirror a fix ticket's lifecycle onto the review finding it was minted from
    * (`ticket.originFindingId`), so found/fixed/open is counted from findings

@@ -325,6 +325,7 @@ function freezeAsTickets(
   ctx: AppCtx,
   noteIds: string[],
 ): { feature: Feature; notes: TestNote[]; tickets: Ticket[] } {
+  // The scheduler appends the verification pass after this fix-only burn drains (decision 40a).
   if (noteIds.length === 0) throw new InvalidInputError('no notes selected to promote')
   if (new Set(noteIds).size !== noteIds.length)
     throw new InvalidInputError('the same note appears twice in the selection')
