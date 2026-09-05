@@ -6,6 +6,7 @@ import type { LaneBandTicket } from '../src/lib/feature-ui/run'
 import { RunHeader } from '../src/components/run/RunHeader'
 import { Lane } from '../src/components/run/Lane'
 import type { LaneRow } from '../src/components/run/Lane'
+import { RunLanes } from '../src/components/run/RunLanes'
 
 /**
  * The run view rebuilt lanes-first (decisions #10–#14, #16). Rendered to static
@@ -214,6 +215,54 @@ describe('Lane', () => {
     })
     expect(html).not.toContain('Retry')
     expect(html).not.toContain('Waive')
+  })
+})
+
+describe('RunLanes', () => {
+  const render = (tickets: (RunTicket & { lap: number })[], currentLap: number) =>
+    renderToStaticMarkup(
+      createElement(RunLanes<RunTicket & { lap: number }>, {
+        tickets,
+        currentLap,
+        lane: (t) => createElement('span', { key: t.id }, `#${t.seq}`),
+      }),
+    )
+
+  it('indents the review-fix wave under its band header and the verification after it', () => {
+    const html = render(
+      [
+        { ...row({ seq: 1 }), lap: 1 },
+        { ...row({ seq: 2, kind: 'review' }), lap: 1 },
+        { ...row({ seq: 3, originFindingId: 'fnd_1' }), lap: 1 },
+        { ...row({ seq: 4, kind: 'review', passKind: 'verification' }), lap: 1 },
+      ],
+      1,
+    )
+    expect(html).toContain('Review fixes')
+    expect(html).toContain('Verifying 1 fixes — recording a fresh walkthrough')
+    expect(html.indexOf('Review fixes')).toBeLessThan(html.indexOf('#3'))
+    expect(html.indexOf('#3')).toBeLessThan(html.indexOf('Verifying 1 fixes'))
+  })
+
+  /**
+   * A Burn burns every pending ticket across laps (decision #28a), so a lap-2
+   * run legitimately carries lap-1 leftovers — unlabelled, they read as this
+   * lap's work.
+   */
+  it('divides the lanes by lap once the ledger spans laps', () => {
+    const spanning = render(
+      [
+        { ...row({ seq: 1 }), lap: 1 },
+        { ...row({ seq: 2 }), lap: 2 },
+      ],
+      2,
+    )
+    expect(spanning).toContain('Lap 1')
+    expect(spanning).toContain('Lap 2')
+    expect(spanning).toContain('1 lane')
+
+    // A feature that never iterated gets no lap ceremony at all (ADR-0010 §4).
+    expect(render([{ ...row({ seq: 1 }), lap: 1 }], 1)).not.toContain('Lap 1')
   })
 })
 

@@ -7,8 +7,6 @@ import { useToast } from '../../lib/toast'
 import { useEventLog } from '../../lib/events'
 import { useLivePoll } from '../../lib/live'
 import {
-  groupByLap,
-  laneBands,
   laneFacts,
   sessionActive,
   soloRetrySeq,
@@ -19,7 +17,7 @@ import {
 } from '../../lib/feature-ui'
 import { fmtDuration, shortSha } from '../../lib/format'
 import { BURN_EXPLAINER } from '../../lib/vocabulary'
-import { EmptyState, LapSections, SectionTitle } from '../../ui'
+import { EmptyState } from '../../ui'
 import { IconTerminal } from '../../icons'
 import { ErrorBoundary } from '../ErrorBoundary'
 import { Markdown } from '../Markdown'
@@ -27,6 +25,7 @@ import { SessionPanel } from '../SessionPanel'
 import { Lane } from '../run/Lane'
 import { LaneTranscript } from '../run/LaneTranscript'
 import { RunHeader } from '../run/RunHeader'
+import { RunLanes } from '../run/RunLanes'
 import { RunTimeline } from '../run/RunTimeline'
 
 /**
@@ -290,30 +289,7 @@ export function RunBody({
           hint="This run has nothing to burn — a session breaks the work into tickets, and they appear here as lanes."
         />
       ) : (
-        <LapSections
-          groups={groupByLap(tickets, lap)}
-          currentLap={lap}
-          meta={(g) => `${g.rows.length} lane${g.rows.length === 1 ? '' : 's'}`}
-        >
-          {(rows) => (
-            <div className="flex flex-col gap-2">
-              {laneBands(rows).map((band) => (
-                <div key={band.kind} className="flex flex-col gap-2">
-                  {band.title && (
-                    <div className="mt-2 border-l-2 border-ph-review/40 pl-3">
-                      <SectionTitle>{band.title}</SectionTitle>
-                    </div>
-                  )}
-                  <div
-                    className={`flex flex-col gap-2${band.kind === 'plain' ? '' : ' pl-3'}`}
-                  >
-                    {band.rows.map(lane)}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </LapSections>
+        <RunLanes tickets={tickets} currentLap={lap} lane={lane} />
       )}
 
       <RunTimeline events={runEvents} />
