@@ -138,6 +138,8 @@ function bands(readonly: boolean): ReactNode[] {
       lap: 2,
       tickets,
       notes: [NOTE],
+      findings: [DEFECT],
+      summary: { found: 1, fixed: 0, open: 1, observations: 0 },
       openDefects: [DEFECT],
       readonly,
     }),

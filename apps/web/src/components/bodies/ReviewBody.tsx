@@ -1,5 +1,4 @@
 import { useRef } from 'react'
-import type { TicketKind } from '@runcastle/core'
 import { trpc } from '../../trpc'
 import type { FeatureFull, SettingsView } from '../../lib/api'
 import type { DriveState as BrowserDrive } from '../../lib/workspace'
@@ -14,6 +13,7 @@ import {
   latestRun,
   reviewChecks,
   specDocPath,
+  verificationState,
   type MergeConflictState,
 } from '../../lib/feature-ui'
 import { useReviewArtifacts } from '../../lib/reviews'
@@ -147,7 +147,10 @@ export function ReviewBody({
         dryRun={drive.data?.dryRun ?? false}
         failure={driveFailure(ownDrive, { sessionLive: !!liveSession })}
         devConfigured={caps?.dev ?? false}
-        starting={startDrive.isPending || !!driving}
+        // The one drive slot is taken — by this feature, another one, or a
+        // preparation dry run — or this browser has a start in flight the server
+        // poll has not caught up with yet.
+        starting={startDrive.isPending || !!driving || !!drive.data}
         onStartDrive={() => startDrive.mutate({ featureId: feature.id, action: 'start' })}
         handleRef={walkthroughHandle}
       />
@@ -193,6 +196,8 @@ export function ReviewBody({
         lap={feature.lap}
         tickets={tickets}
         notes={notes.data ?? []}
+        findings={findings.data?.findings ?? []}
+        summary={findings.data?.summary}
         openDefects={findings.data?.openDefects ?? []}
         readonly={readonly}
         onJump={
@@ -203,32 +208,4 @@ export function ReviewBody({
       <FullAccounts account={lapAccount(tickets, feature.lap)} tickets={tickets} />
     </div>
   )
-}
-
-/** A ticket as the verification stamp reads it. */
-interface VerificationTicketFigure {
-  kind?: TicketKind
-  passKind?: 'review' | 'verification'
-  status: string
-  error?: string
-}
-
-/**
- * Whether a verification pass is in flight or failed to run (decision 42b–c),
- * which is what turns the review chip amber over evidence that predates it.
- *
- * A finished pass is not a state: its recording and its findings ARE the
- * evidence the rest of the page is stamped against, so there is nothing left to
- * say about it here.
- */
-function verificationState(
-  tickets: readonly VerificationTicketFigure[],
-): { state: 'running' | 'failed'; reason?: string } | undefined {
-  const last = tickets
-    .filter((t) => t.kind === 'review' && t.passKind === 'verification')
-    .at(-1)
-  if (!last) return undefined
-  if (last.status === 'failed') return { state: 'failed', ...(last.error ? { reason: last.error } : {}) }
-  if (last.status === 'done' || last.status === 'cancelled') return undefined
-  return { state: 'running' }
 }

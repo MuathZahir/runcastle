@@ -1,8 +1,9 @@
 import type { ReviewFinding, TestNote } from '@runcastle/core'
 import { trpc } from '../../trpc'
 import type { FeatureFull } from '../../lib/api'
+import type { FindingCounts } from '../../lib/feature-ui'
 import { useToast } from '../../lib/toast'
-import { OpenDefectsCard } from '../ReviewFindings'
+import { FindingsSummaryBlock, OpenDefectsCard } from '../ReviewFindings'
 import { NotesPanel } from './NotesLegacy'
 
 /**
@@ -19,6 +20,8 @@ export function OpenWorkSlot({
   lap,
   tickets,
   notes,
+  findings,
+  summary,
   openDefects,
   readonly,
   onJump,
@@ -27,6 +30,9 @@ export function OpenWorkSlot({
   lap: number
   tickets: FeatureFull['tickets']
   notes: TestNote[]
+  /** Everything the review reported — the observations among them lead here. */
+  findings: readonly ReviewFinding[]
+  summary?: FindingCounts
   openDefects: readonly ReviewFinding[]
   readonly: boolean
   /** Send the recording on the stage to a moment, when its own recording is up. */
@@ -43,6 +49,11 @@ export function OpenWorkSlot({
 
   return (
     <div id="open-work" className="flex flex-col gap-6">
+      {/* What the review made of the branch in one computed line, with the
+          observations under it — everything it saw that no fix ticket could act
+          on. It led the deleted Summary card; the verdict belongs with the work
+          it is a verdict about. */}
+      <FindingsSummaryBlock summary={summary} findings={findings} />
       <OpenDefectsCard
         open={openDefects}
         busy={dismiss.isPending}

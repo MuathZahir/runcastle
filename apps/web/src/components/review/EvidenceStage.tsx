@@ -29,6 +29,17 @@ import { DriveFailureCard, DrivePane, DriveStatus, StopReviewDrive } from './dri
  * stage — is this component's and stays here.
  */
 
+/** The active drive as the stage and its parts read it. */
+export interface StageDrive {
+  branch: string
+  purpose?: 'human' | 'review'
+  devConfigured: boolean
+  devPaneId?: string
+  devUrl?: string
+  devReady?: boolean
+  devReadyTimedOut?: boolean
+}
+
 /** Which side of the swap is showing, from the server's one drive-state value. */
 function stageShows(state: DriveState, hasRecording: boolean): 'player' | 'drive' {
   return driveView(state).stageKind === 'player' && hasRecording ? 'player' : 'drive'
@@ -90,15 +101,7 @@ export function EvidenceStage({
   readonly: boolean
   /** The server's own drive-state value (decision 20) — one truth for bar and stage. */
   driveState: DriveState
-  drive?: {
-    branch: string
-    purpose?: 'human' | 'review'
-    devConfigured: boolean
-    devPaneId?: string
-    devUrl?: string
-    devReady?: boolean
-    devReadyTimedOut?: boolean
-  }
+  drive?: StageDrive
   /** A preparation dry run is holding the one drive slot (decision 9). */
   dryRun: boolean
   failure: DriveFailure | null
@@ -227,7 +230,7 @@ function DriveStage({
   featureId: string
   branch: string
   driveState: DriveState
-  drive?: Parameters<typeof DrivePane>[0]['drive'] & { purpose?: 'human' | 'review'; devConfigured: boolean }
+  drive?: StageDrive
   dryRun: boolean
   failure: DriveFailure | null
   devConfigured: boolean

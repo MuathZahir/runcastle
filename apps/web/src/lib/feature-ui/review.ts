@@ -173,6 +173,34 @@ export function freshness(
   return { tone: 'stale', text: `Reviewed ${age} · ${branch.landedSince} tickets landed since — evidence may be outdated` }
 }
 
+/** A ticket as the verification stamp reads it. */
+interface VerificationTicketFigure {
+  kind?: TicketKind
+  passKind?: 'review' | 'verification'
+  status: string
+  error?: string
+}
+
+/**
+ * Whether a verification pass is in flight or failed to run (decision 42b–c) —
+ * what turns the review chip amber over evidence the pass already predates.
+ *
+ * A FINISHED pass is not a state here: its recording and its findings ARE the
+ * evidence the page is stamped against, so {@link freshness} takes over from
+ * that point and there is nothing left to report.
+ */
+export function verificationState(
+  tickets: readonly VerificationTicketFigure[],
+): { state: 'running' | 'failed'; reason?: string } | undefined {
+  const last = tickets.filter((t) => t.kind === 'review' && t.passKind === 'verification').at(-1)
+  if (!last) return undefined
+  if (last.status === 'failed') {
+    return { state: 'failed', ...(last.error ? { reason: last.error } : {}) }
+  }
+  if (last.status === 'done' || last.status === 'cancelled') return undefined
+  return { state: 'running' }
+}
+
 export interface StatusChip { key: 'review' | 'checks' | 'lap' | 'run'; label: string; tone: CheckTone }
 export function statusChips(input: {
   artifact?: Pick<ReviewArtifactFigure, 'lap'> | null
