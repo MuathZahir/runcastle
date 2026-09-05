@@ -8,6 +8,9 @@ export {
   findingCountsLine,
   findingOpenReason,
   reviewChecks,
+  latestReview,
+  freshness,
+  statusChips,
   reviewOutcome,
   reviewWalkthroughUrl,
 } from './feature-ui/review'
@@ -16,6 +19,9 @@ export type {
   CheckTone,
   FindingCounts,
   ReviewOutcome,
+  ReviewArtifactFigure,
+  Freshness,
+  StatusChip,
 } from './feature-ui/review'
 export * from './feature-ui/laps'
 export * from './feature-ui/summary'

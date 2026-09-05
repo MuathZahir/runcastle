@@ -57,6 +57,13 @@ interface ReviewTicketFigure {
   kind?: TicketKind
   status: string
   error?: string
+  seq?: number
+  completedAt?: number | null
+  passKind?: 'review' | 'verification'
+}
+
+export function latestReview<T extends { seq: number; completedAt?: number | null }>(tickets: readonly T[]): T | undefined {
+  return [...tickets].sort((a, b) => (a.completedAt ?? -Infinity) - (b.completedAt ?? -Infinity) || a.seq - b.seq).at(-1)
 }
 
 /**
@@ -97,7 +104,8 @@ export function reviewOutcome(input: {
    */
   findings?: number
 }): ReviewOutcome {
-  const review = (input.tickets ?? []).filter((t) => t.kind === 'review').at(-1)
+  const candidates = (input.tickets ?? []).filter((t) => t.kind === 'review')
+  const review = latestReview(candidates.map((ticket, index) => ({ ...ticket, seq: ticket.seq ?? index })))
   if (!review) return { state: 'none' }
   if (review.status === 'failed') {
     return { state: 'failed', ...(review.error ? { reason: review.error } : {}) }
@@ -108,6 +116,9 @@ export function reviewOutcome(input: {
 
 /** One review ticket's artifacts as the player reads them (see lib/reviews.ts). */
 interface WalkthroughFigure {
+  ticketId?: string
+  seq?: number
+  completedAt?: number | null
   hasVideo: boolean
   /** Where to stream the recording, or null when there is none to stream. */
   videoUrl: string | null
@@ -126,7 +137,62 @@ interface WalkthroughFigure {
  * the seam that has to show several instead of one.
  */
 export function reviewWalkthroughUrl(artifacts?: readonly WalkthroughFigure[]): string | null {
-  return (artifacts ?? []).filter((a) => a.hasVideo).at(-1)?.videoUrl ?? null
+  const rows = (artifacts ?? []).filter((a) => a.hasVideo)
+  return latestReview(rows.map((row, index) => ({ ...row, seq: row.seq ?? index })))?.videoUrl ?? null
+}
+
+export interface ReviewArtifactFigure {
+  ticketId: string
+  seq: number
+  lap: number
+  passKind: 'review' | 'verification'
+  reviewedCommit: string | null
+  completedAt: number | null
+  landedSince: number
+  hasVideo: boolean
+  videoUrl: string | null
+}
+
+export type Freshness = { tone: 'fresh' | 'stale' | 'none' | 'verifying' | 'failed'; text: string }
+
+export function freshness(
+  artifact: Pick<ReviewArtifactFigure, 'lap'> | null | undefined,
+  branch: { landedSince: number; lap?: number },
+  verification?: { state: 'running' | 'failed'; reason?: string },
+): Freshness {
+  if (verification?.state === 'running') return { tone: 'verifying', text: 'Verification running — evidence below predates it' }
+  if (verification?.state === 'failed') {
+    const reason = verification.reason?.trim()
+    return { tone: 'failed', text: `verification could not run${reason ? `: ${reason}` : ''}` }
+  }
+  if (!artifact) return { tone: 'none', text: 'no review yet' }
+  if (branch.landedSince === 0) return { tone: 'fresh', text: 'Reviewed ✓ · this build' }
+  const age = branch.lap !== undefined && branch.lap > artifact.lap
+    ? `${branch.lap - artifact.lap} ${branch.lap - artifact.lap === 1 ? 'lap' : 'laps'} ago`
+    : 'earlier this lap'
+  return { tone: 'stale', text: `Reviewed ${age} · ${branch.landedSince} tickets landed since — evidence may be outdated` }
+}
+
+export interface StatusChip { key: 'review' | 'checks' | 'lap' | 'run'; label: string; tone: CheckTone }
+export function statusChips(input: {
+  artifact?: Pick<ReviewArtifactFigure, 'lap'> | null
+  currentLap: number
+  landedSince: number
+  tickets: readonly { kind?: TicketKind; status: string; lap?: number; landedLap?: number }[]
+  checks: { passed: number; total: number }
+  runState: string
+  verification?: { state: 'running' | 'failed'; reason?: string }
+}): StatusChip[] {
+  const stamp = freshness(input.artifact, { landedSince: input.landedSince, lap: input.currentLap }, input.verification)
+  const implementation = input.tickets.filter((t) => t.kind !== 'review' && (t.landedLap ?? t.lap) === input.currentLap)
+  const landed = implementation.filter((t) => t.status === 'done').length
+  const waived = implementation.filter((t) => t.status === 'cancelled').length
+  return [
+    { key: 'review', label: stamp.text, tone: stamp.tone === 'fresh' ? 'ok' : stamp.tone === 'none' ? 'idle' : 'warn' },
+    { key: 'checks', label: `${input.checks.passed}/${input.checks.total} checks passed`, tone: input.checks.total > 0 && input.checks.passed === input.checks.total ? 'ok' : 'warn' },
+    { key: 'lap', label: `Lap ${input.currentLap} · ${landed} of ${implementation.length} tickets landed · ${waived} waived`, tone: waived ? 'warn' : 'idle' },
+    { key: 'run', label: input.runState, tone: input.runState === 'succeeded' ? 'ok' : input.runState === 'failed' ? 'danger' : 'warn' },
+  ]
 }
 
 /** A drive as the review surfaces read it — only whose it is matters here. */
@@ -222,7 +288,7 @@ export function findingCountsLine(summary?: FindingCounts): string | null {
 
 /** A finding as the open-defects list reads it — only why it is still open. */
 interface OpenFindingFigure {
-  openReason?: 'over-cap' | 'fix-failed' | null
+  openReason?: 'over-cap' | 'fix-failed' | 'verification' | null
   failureReason?: string | null
 }
 
@@ -237,6 +303,7 @@ export function findingOpenReason(finding: OpenFindingFigure): string | null {
     const why = finding.failureReason?.trim()
     return why ? `fix failed: ${why}` : 'fix failed'
   }
+  if (finding.openReason === 'verification') return 'found during verification'
   return null
 }
 
