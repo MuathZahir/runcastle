@@ -1,4 +1,8 @@
 import type { Feature, Project, Ticket, WorkflowCtx } from '@runcastle/core'
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { execFileSync } from 'node:child_process'
 import { describe, expect, it } from 'vitest'
 import type { BurnDeps, TicketOutcome } from '../src/workflows/ticket-burner'
 import { burnRun } from '../src/workflows/ticket-burner'
@@ -21,8 +25,12 @@ function ticket(seq: number, blockedBy: number[] = []): Ticket {
     acceptanceCriteria: ['a'],
     seams: ['s'],
     blockedBy,
+    kind: 'implementation',
+    passKind: 'review',
     status: 'pending',
     commits: [],
+    reviewedCommit: null,
+    completedAt: null,
   }
 }
 
@@ -53,7 +61,7 @@ interface Emitted {
 }
 interface Patch {
   id: string
-  patch: Partial<Pick<Ticket, 'status' | 'commits' | 'error' | 'digest'>>
+  patch: Partial<Pick<Ticket, 'status' | 'commits' | 'error' | 'digest' | 'reviewedCommit'>>
 }
 
 function makeCtx(tickets: Ticket[], signal?: AbortSignal) {
@@ -105,6 +113,32 @@ function deps(
 }
 
 describe('burnRun — scheduling and summary', () => {
+  it('stamps a completed review with the feature branch head', async () => {
+    const repoPath = mkdtempSync(join(tmpdir(), 'runcastle-review-head-'))
+    try {
+      const git = (...args: string[]) => execFileSync('git', args, { cwd: repoPath })
+      git('init', '-b', 'feature/demo')
+      git('config', 'user.email', 'test@runcastle.dev')
+      git('config', 'user.name', 'Runcastle Test')
+      writeFileSync(join(repoPath, 'README.md'), 'reviewed build')
+      git('add', 'README.md')
+      git('commit', '-m', 'reviewed build')
+      const sha = git('rev-parse', 'HEAD').toString().trim()
+      const tickets = [{ ...ticket(1), kind: 'review' as const }]
+      const { ctx, patches } = makeCtx(tickets)
+      ctx.project = { ...project, repoPath }
+
+      await burnRun(ctx, deps(fakeExecute({ 1: { status: 'done', commits: [] } })))
+
+      expect(patches).toContainEqual({
+        id: 'tkt_1',
+        patch: { status: 'done', commits: [], digest: undefined, reviewedCommit: sha },
+      })
+    } finally {
+      rmSync(repoPath, { recursive: true, force: true })
+    }
+  })
+
   it('probes the container image runtime before proceeding with a docker burn', async () => {
     const tickets = [ticket(1), ticket(2)]
     const { ctx } = makeCtx(tickets)

@@ -996,6 +996,9 @@ describe('finding rendering', () => {
       'fix failed: tests red',
     )
     expect(findingOpenReason({ openReason: 'fix-failed', failureReason: null })).toBe('fix failed')
+    expect(findingOpenReason({ openReason: 'verification' })).toBe(
+      'found by the verification pass — not auto-fixed',
+    )
     expect(findingOpenReason({ openReason: null })).toBeNull()
   })
 

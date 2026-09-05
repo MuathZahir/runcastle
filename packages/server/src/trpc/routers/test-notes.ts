@@ -6,9 +6,13 @@ import {
   listByFeature,
   promoteMany,
   promoteNote,
+  reopenNote,
+  triageNotes,
+  triagePreview,
   toggleNote,
 } from '../../services/test-notes'
 import { publicProcedure, router } from '../context'
+import { InvalidInputError } from '../../errors'
 
 /**
  * Test-drive notes (SPEC test-drive-improvements): what the human observed while
@@ -36,11 +40,14 @@ export const testNotesRouter = router({
         featureId: z.string(),
         text: z.string().min(1),
         videoTimestamp: z.number().nonnegative().optional(),
+        reviewTicketId: z.string().optional(),
       }),
     )
-    .mutation(({ ctx, input }) =>
-      addNote(ctx, input.featureId, input.text, 'human', input.videoTimestamp),
-    ),
+    .mutation(({ ctx, input }) => {
+      if (input.videoTimestamp !== undefined && !input.reviewTicketId)
+        throw new InvalidInputError('a video timestamp must identify its review ticket')
+      return addNote(ctx, input.featureId, input.text, 'human', input.videoTimestamp, input.reviewTicketId)
+    }),
 
   edit: publicProcedure
     .input(z.object({ noteId: z.string(), text: z.string().min(1) }))
@@ -67,4 +74,16 @@ export const testNotesRouter = router({
   promoteMany: publicProcedure
     .input(z.object({ noteIds: z.array(z.string()).min(1) }))
     .mutation(({ ctx, input }) => promoteMany(ctx, input.noteIds)),
+
+  reopen: publicProcedure
+    .input(z.object({ noteId: z.string() }))
+    .mutation(({ ctx, input }) => reopenNote(ctx, input.noteId)),
+
+  triage: publicProcedure
+    .input(z.object({ featureId: z.string(), quickFixIds: z.array(z.string()), quickFixFindingIds: z.array(z.string()), dismissIds: z.array(z.string()), carry: z.boolean() }))
+    .mutation(({ ctx, input }) => triageNotes(ctx, input.featureId, input)),
+
+  triagePreview: publicProcedure
+    .input(z.object({ featureId: z.string() }))
+    .query(({ ctx, input }) => triagePreview(ctx, input.featureId)),
 })

@@ -259,6 +259,9 @@ export const tickets = sqliteTable('tickets', {
    * implementation tickets.
    */
   kind: text('kind').notNull().$type<TicketKind>().default('implementation'),
+  passKind: text('pass_kind').notNull().$type<'review' | 'verification'>().default('review'),
+  reviewedCommit: text('reviewed_commit'),
+  completedAt: integer('completed_at'),
   /**
    * The model this ticket burns on, or null for "resolve it the ordinary way"
    * (decisions.md #4). Nullable and additive: every ticket written before
@@ -324,6 +327,8 @@ export const testNotes = sqliteTable('test_notes', {
   author: text('author').notNull().$type<TestNoteAuthor>().default('human'),
   /** The ticket a `promoted` note was turned into; null for every other status. */
   ticketId: text('ticket_id'),
+  reviewTicketId: text('review_ticket_id'),
+  carriedLap: integer('carried_lap'),
   /**
    * Seconds into the review walkthrough the note was captured at, when it was
    * captured from the annotation player; null for every note typed into the

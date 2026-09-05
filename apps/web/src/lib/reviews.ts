@@ -1,4 +1,4 @@
-import { noteScreenshotUploadUrl } from '@runcastle/core'
+import { noteScreenshotUploadUrl, reviewArtifactsUrl } from '@runcastle/core'
 import { useQuery, type UseQueryResult } from '@tanstack/react-query'
 
 /**
@@ -15,6 +15,11 @@ import { useQuery, type UseQueryResult } from '@tanstack/react-query'
 export interface ReviewArtifacts {
   ticketId: string
   seq: number
+  lap: number
+  passKind: 'review' | 'verification'
+  reviewedCommit: string | null
+  completedAt: number | null
+  landedSince: number
   hasVideo: boolean
   /** Where to stream the recording, or null when there is none to stream. */
   videoUrl: string | null
@@ -36,7 +41,7 @@ export function useReviewArtifacts(featureId: string): UseQueryResult<ReviewArti
   return useQuery({
     queryKey: [REVIEW_ARTIFACTS_KEY, featureId],
     queryFn: async (): Promise<ReviewArtifacts[]> => {
-      const res = await fetch(`/api/reviews/${encodeURIComponent(featureId)}`)
+      const res = await fetch(reviewArtifactsUrl(featureId))
       if (!res.ok) throw new Error(`review artifacts: ${res.status}`)
       return (await res.json()) as ReviewArtifacts[]
     },

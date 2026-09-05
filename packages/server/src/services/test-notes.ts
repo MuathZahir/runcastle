@@ -7,21 +7,23 @@ import type {
   Ticket,
   TicketInput,
 } from '@runcastle/core'
-import { TestNote, fmtClock, newId, noteScreenshotUrl } from '@runcastle/core'
+import { TestNote, fmtClock, newId, noteScreenshotUrl, ticketTitleFromNote } from '@runcastle/core'
 import {
   annotationPath,
   annotationsDir,
   attachmentRelPath,
   featureDocsRel,
 } from '@runcastle/core/paths'
-import { asc, eq } from 'drizzle-orm'
+import { and, asc, eq, lt } from 'drizzle-orm'
 import type { AppCtx } from '../db/types'
-import { testNotes } from '../db/schema'
+import { testNotes, tickets } from '../db/schema'
 import { InvalidInputError, NotFoundError } from '../errors'
 import { emit } from './events'
 import { featureDocPath } from './feature-docs'
 import { getFeatureRow, projectForFeature } from './repo'
 import { getTicket, storeTickets } from './tickets'
+import { assertIterable } from './features'
+import { promoteOpenDefects, viewByFeature } from './review-findings'
 
 /**
  * Test-drive notes. The human captures observations while a feature is in
@@ -54,6 +56,8 @@ function rowToNote(row: TestNoteSelect): TestNote {
     status: row.status,
     author: row.author,
     ticketId: row.ticketId ?? undefined,
+    reviewTicketId: row.reviewTicketId ?? undefined,
+    carriedLap: row.carriedLap ?? undefined,
     videoTimestamp: row.videoTimestamp ?? undefined,
     screenshotUrl: existsSync(annotationPath(row.id)) ? noteScreenshotUrl(row.id) : undefined,
     createdAt: row.createdAt,
@@ -117,9 +121,15 @@ export function addNote(
   text: string,
   author: TestNoteAuthor = 'human',
   videoTimestamp?: number,
+  reviewTicketId?: string,
 ): TestNote {
   const body = cleanText(text)
   const feature = getFeatureRow(ctx, featureId)
+  if (reviewTicketId) {
+    const ticket = getTicket(ctx, reviewTicketId)
+    if (ticket.featureId !== featureId || ticket.kind !== 'review')
+      throw new InvalidInputError('review ticket must be a review of the same feature')
+  }
   const now = Date.now()
 
   const row = ctx.db
@@ -133,6 +143,8 @@ export function addNote(
       author,
       ticketId: null,
       videoTimestamp: videoTimestamp ?? null,
+      reviewTicketId: reviewTicketId ?? null,
+      carriedLap: null,
       createdAt: now,
       updatedAt: now,
     })
@@ -229,7 +241,7 @@ export function attachScreenshot(ctx: AppCtx, noteId: string, png: Uint8Array): 
  */
 export function toggleNote(ctx: AppCtx, noteId: string): TestNote {
   const current = getNote(ctx, noteId)
-  if (current.status === 'promoted') {
+  if (current.status === 'promoted' || current.status === 'carried') {
     throw new InvalidInputError(
       `cannot toggle note ${noteId} — it is promoted, and promoted notes are frozen`,
     )
@@ -250,9 +262,6 @@ export function toggleNote(ctx: AppCtx, noteId: string): TestNote {
   renderTestNotes(ctx, getFeatureRow(ctx, current.featureId))
   return getNote(ctx, noteId)
 }
-
-/** Longest a derived ticket title runs before it is elided. */
-const TITLE_MAX = 60
 
 /**
  * The paragraph that carries an annotated note's screenshot into the burn
@@ -282,14 +291,10 @@ function screenshotParagraph(note: TestNote): string | undefined {
  * agent. Thickness comes from provenance and doc pointers, not from prose.
  */
 function promotionTicket(feature: Feature, note: TestNote): TicketInput {
-  const firstLine = note.text.split('\n')[0].trim()
   const docs = featureDocsRel(feature.slug)
   const screenshot = screenshotParagraph(note)
   return {
-    title:
-      firstLine.length <= TITLE_MAX
-        ? firstLine
-        : `${firstLine.slice(0, TITLE_MAX - 1).trimEnd()}…`,
+    title: ticketTitleFromNote(note.text),
     goal: note.text,
     context: [
       `Found during lap ${note.lap} test drive of ${feature.slug}.`,
@@ -408,9 +413,58 @@ function screenshotSuffix(note: TestNote): string {
 function noteLine(ctx: AppCtx, note: TestNote): string {
   const shot = screenshotSuffix(note)
   if (note.status === 'open') return `- [ ] ${note.text}${shot}`
+  if (note.status === 'carried') return `- [→] ${note.text} (carried into lap ${note.carriedLap})${shot}`
   // A promoted note always carries its ticket; done notes never do.
   const ticket = note.ticketId ? ` (→ ticket ${getTicket(ctx, note.ticketId).seq})` : ''
   return `- [x] ${note.text}${ticket}${shot}`
+}
+
+export function carryNotes(ctx: AppCtx, featureId: string, noteIds: string[], lap: number): TestNote[] {
+  const selected = noteIds.map((id) => getNote(ctx, id))
+  for (const note of selected) {
+    if (note.featureId !== featureId) throw new InvalidInputError('every carried note must belong to the feature')
+    assertOpen(note, 'carry')
+    ctx.db.update(testNotes).set({ status: 'carried', carriedLap: lap, updatedAt: Date.now() }).where(eq(testNotes.id, note.id)).run()
+    emit(ctx, featureId, { type: 'note.carried', message: `note carried into lap ${lap}`, data: { noteId: note.id, lap } })
+  }
+  renderTestNotes(ctx, getFeatureRow(ctx, featureId))
+  return selected.map((note) => getNote(ctx, note.id))
+}
+
+export function reopenNote(ctx: AppCtx, noteId: string): TestNote {
+  const note = getNote(ctx, noteId)
+  if (note.status !== 'carried') throw new InvalidInputError('only a carried note can be reopened')
+  ctx.db.update(testNotes).set({ status: 'open', carriedLap: null, updatedAt: Date.now() }).where(eq(testNotes.id, noteId)).run()
+  emit(ctx, note.featureId, { type: 'note.reopened', message: 'note reopened', data: { noteId } })
+  renderTestNotes(ctx, getFeatureRow(ctx, note.featureId))
+  return getNote(ctx, noteId)
+}
+
+export interface TriageInput { quickFixIds: string[]; quickFixFindingIds: string[]; dismissIds: string[]; carry: boolean }
+
+/** Commit triage only; the caller subsequently invokes feature.burn or feature.rethink. */
+export function triageNotes(ctx: AppCtx, featureId: string, input: TriageInput): { minted: number; carried: number; dismissed: number } {
+  const feature = getFeatureRow(ctx, featureId)
+  assertIterable(ctx, feature)
+  for (const id of input.dismissIds) deleteNote(ctx, id)
+  const noteTickets = input.quickFixIds.length ? freezeAsTickets(ctx, input.quickFixIds).tickets.length : 0
+  const findingTickets = input.quickFixFindingIds.length ? promoteOpenDefects(ctx, featureId, input.quickFixFindingIds).tickets.length : 0
+  // No review ticket is appended here: queue-drain verification owns that invariant.
+  const remaining = input.carry ? listByFeature(ctx, featureId).filter((note) => note.status === 'open') : []
+  if (remaining.length) carryNotes(ctx, featureId, remaining.map((note) => note.id), feature.lap + 1)
+  return { minted: noteTickets + findingTickets, carried: remaining.length, dismissed: input.dismissIds.length }
+}
+
+export function triagePreview(ctx: AppCtx, featureId: string) {
+  const feature = getFeatureRow(ctx, featureId)
+  const standing = ctx.db.select().from(tickets).where(and(eq(tickets.featureId, featureId), eq(tickets.kind, 'implementation'), eq(tickets.status, 'pending'), lt(tickets.lap, feature.lap))).all()
+  const grouped = new Map<number, number>()
+  for (const ticket of standing) grouped.set(ticket.lap, (grouped.get(ticket.lap) ?? 0) + 1)
+  return {
+    openNotes: listByFeature(ctx, featureId).filter((note) => note.status === 'open').length,
+    openDefects: viewByFeature(ctx, featureId).openDefects.length,
+    standingFixTickets: [...grouped].sort(([a], [b]) => a - b).map(([lap, count]) => ({ count, lap })),
+  }
 }
 
 /**

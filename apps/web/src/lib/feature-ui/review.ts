@@ -303,7 +303,9 @@ export function findingOpenReason(finding: OpenFindingFigure): string | null {
     const why = finding.failureReason?.trim()
     return why ? `fix failed: ${why}` : 'fix failed'
   }
-  if (finding.openReason === 'verification') return 'found during verification'
+  if (finding.openReason === 'verification') {
+    return 'found by the verification pass — not auto-fixed'
+  }
   return null
 }
 
