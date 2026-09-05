@@ -194,7 +194,9 @@ function defectState(finding: ReviewFinding, fixTicket: Ticket | undefined): Def
   if (fixTicket && fixTicket.status !== 'failed' && fixTicket.status !== 'cancelled') {
     return 'fixing'
   }
-  return finding.status === 'open' || finding.status === 'failed' ? 'open' : 'fixing'
+  return finding.status === 'open' || finding.status === 'failed' || fixTicket?.status === 'failed' || fixTicket?.status === 'cancelled'
+    ? 'open'
+    : 'fixing'
 }
 
 /**

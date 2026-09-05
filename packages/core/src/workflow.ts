@@ -32,6 +32,7 @@ export interface WorkflowCtx {
       error?: string | null
       attemptBranch?: string | null
       conflictFiles?: string[] | null
+      reviewedCommit?: string | null
     },
   ): void
   /**

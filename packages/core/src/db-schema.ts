@@ -259,6 +259,9 @@ export const tickets = sqliteTable('tickets', {
    * implementation tickets.
    */
   kind: text('kind').notNull().$type<TicketKind>().default('implementation'),
+  passKind: text('pass_kind').notNull().$type<'review' | 'verification'>().default('review'),
+  reviewedCommit: text('reviewed_commit'),
+  completedAt: integer('completed_at'),
   /**
    * The model this ticket burns on, or null for "resolve it the ordinary way"
    * (decisions.md #4). Nullable and additive: every ticket written before

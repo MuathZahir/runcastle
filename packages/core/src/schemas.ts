@@ -154,7 +154,7 @@ export type FindingSeverity = z.infer<typeof FindingSeverity>
 export const FindingStatus = z.enum(['open', 'fixing', 'fixed', 'failed', 'dismissed'])
 export type FindingStatus = z.infer<typeof FindingStatus>
 
-export const FindingOpenReason = z.enum(['over-cap', 'fix-failed'])
+export const FindingOpenReason = z.enum(['over-cap', 'fix-failed', 'verification'])
 export type FindingOpenReason = z.infer<typeof FindingOpenReason>
 
 /**
@@ -207,6 +207,8 @@ export const TicketInput = z.object({
   /** seq numbers of other tickets in the same batch this one depends on */
   blockedBy: z.array(z.number()),
   kind: TicketKind.default('implementation'),
+  /** Review-pass variant; meaningful only when `kind` is `review`. */
+  passKind: z.enum(['review', 'verification']).default('review'),
   /**
    * The model this ticket burns on (decisions.md #4). Stamped by the tickets
    * session from the operator's annotated roster, and changeable by the human
@@ -238,6 +240,10 @@ export const Ticket = TicketInput.extend({
    */
   lap: z.number(),
   commits: z.array(z.string()),
+  /** Feature-branch head observed when a review pass completed. */
+  reviewedCommit: z.string().nullable().default(null),
+  /** Wall-clock time at which this ticket most recently became terminal. */
+  completedAt: z.number().nullable().default(null),
   error: z.string().optional(),
   /**
    * Tip of the last failed burn attempt's temp branch, when that attempt left
