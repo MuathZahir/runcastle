@@ -1687,6 +1687,22 @@ export async function commitDocs(worktreePath: string, message: string): Promise
   await g.commit(message, [DOCS_PATHSPEC])
 }
 
+/** Commit generated docs on a named branch in the main checkout, then restore its prior branch. */
+export async function commitDocsOnBranch(
+  repoPath: string,
+  branch: string,
+  message: string,
+): Promise<void> {
+  const g = git(repoPath)
+  const previous = (await g.revparse(['--abbrev-ref', 'HEAD'])).trim()
+  if (previous !== branch) await g.checkout(branch)
+  try {
+    await commitDocs(repoPath, message)
+  } finally {
+    if (previous !== branch && previous !== 'HEAD') await g.checkout(previous)
+  }
+}
+
 /**
  * Land the docs runcastle itself wrote, before a guard reads the tree.
  *

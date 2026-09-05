@@ -135,7 +135,7 @@ describe('test notes service', () => {
       seq: 1,
       status: 'pending',
       lap: 2,
-      title: 'the sidebar collapses when the window is narrower than the…',
+      title: 'the sidebar collapses when the window is narrower than the content, hiding the',
       goal: 'the sidebar collapses when the window is narrower than the content, hiding the nav',
       acceptanceCriteria: [
         'The noted behavior no longer reproduces: the sidebar collapses when the window is narrower than the content, hiding the nav',

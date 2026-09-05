@@ -37,7 +37,7 @@ describe('ticketTitleFromNote', () => {
     ['Short text', 'Short text'],
     ['First sentence. Second sentence.', 'First sentence.'],
     ['First line\nSecond line', 'First line'],
-    ['This sentence is deliberately made much longer than eighty characters so its title is cut cleanly at a word boundary without punctuation added', 'This sentence is deliberately made much longer than eighty characters so its title is'],
+    ['This sentence is deliberately made much longer than eighty characters so its title is cut cleanly at a word boundary without punctuation added', 'This sentence is deliberately made much longer than eighty characters so its'],
   ])('formats a note title', (text, expected) => {
     expect(ticketTitleFromNote(text)).toBe(expected)
     expect(ticketTitleFromNote(text)).not.toContain('…')

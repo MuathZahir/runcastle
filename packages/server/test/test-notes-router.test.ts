@@ -5,6 +5,7 @@ import { createCallerFactory } from '../src/trpc/context'
 import { appRouter } from '../src/trpc/router'
 import { makeTestCtx } from './helpers/db'
 import { seedFeature, seedProject } from './helpers/fixtures'
+import { storeTickets } from '../src/services/tickets'
 
 /**
  * The wire the review screen's notes checklist talks to. The lifecycle itself is
@@ -42,10 +43,14 @@ describe('notes router', () => {
   })
 
   it('carries a note captured from the annotation player, timestamp and all', async () => {
+    const [review] = storeTickets(ctx, feature.id, [{
+      title: 'Review', goal: 'review', context: '', acceptanceCriteria: [], seams: [], blockedBy: [], kind: 'review',
+    }])
     const annotated = await caller.notes.add({
       featureId: feature.id,
       text: 'the panel is misaligned',
       videoTimestamp: 12.5,
+      reviewTicketId: review.id,
     })
     const typed = await caller.notes.add({ featureId: feature.id, text: 'just typed this one' })
 
