@@ -127,6 +127,53 @@
   --ring: 0 0 0 2px var(--color-bg), 0 0 0 4px rgba(124, 108, 246, 0.5);
 }
 
+/* ---- native element reset ----
+   The slice of preflight this app can afford. The header above says why the
+   whole reset stays out; what its absence costs is a `<button>` and a `<select>`
+   that arrive wearing the user agent's own chrome — `buttonface` grey, a 2px
+   outset border, a white listbox — punched into a near-black app. Surfaces that
+   noticed wrote the reset out by hand (`BARE_BUTTON` in `ui.tsx` and in
+   `components/settings/button.ts`, `BUTTON_RESET` in `Sidebar.tsx`); surfaces
+   that did not — the conversation rows, the pipeline stepper's pills, the branch
+   pickers — rendered a white pill.
+
+   These two rules take only what those hand-written copies took, so nothing the
+   legacy sheet leans on moves: no `list-style`, no `margin`, nothing outside the
+   two elements named.
+
+   They sit in `@layer base`, which is what makes them safe to state globally.
+   Unlayered `styles.css` beats every layer, so `.btn`, `.nf-base-select` and the
+   other legacy controls keep every pixel they declare; the utilities layer beats
+   base, so a `bg-panel` on a raw button still wins. Only an element that named
+   nothing changes, and what it wore before was the OS.
+
+   The other half of the button reset — `font-family` and `color`, both
+   `inherit` — stays in `styles.css`. It is unlayered there and so beats the
+   `text-*` utility on a raw button; moving it here would repaint every one of
+   them, which is its own flow's migration and not this reset's to smuggle in. */
+@layer base {
+  button {
+    appearance: none;
+    background: none;
+    border: 0;
+    padding: 0;
+  }
+
+  /* A select cannot go bare the way a button can: with no background of its own
+     the list it drops is the platform's white one, so its reset is the themed
+     control rather than nothing. `appearance` is deliberately left alone —
+     taking it away removes the disclosure arrow, and a dropdown with no arrow
+     reads as a text input. */
+  select {
+    background-color: var(--color-panel-inset);
+    border: 1px solid var(--color-hairline);
+    border-radius: var(--radius-sm);
+    color: inherit;
+    font-family: inherit;
+    padding: 0 8px;
+  }
+}
+
 /* ---- keyframes ----
    Declared at the top level and not inside `@theme`, because most of them are
    named from rules Tailwind never reads: the `styles.css` sections still waiting
