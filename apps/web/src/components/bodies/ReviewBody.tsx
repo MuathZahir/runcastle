@@ -14,6 +14,7 @@ import {
   reviewChecks,
   specDocPath,
   verificationState,
+  type LapAbort,
   type MergeConflictState,
 } from '../../lib/feature-ui'
 import { useReviewArtifacts } from '../../lib/reviews'
@@ -21,6 +22,7 @@ import { useLivePoll } from '../../lib/live'
 import { useToast } from '../../lib/toast'
 import { SessionPanel } from '../SessionPanel'
 import { ConflictAlert } from '../review/ConflictCard'
+import { LapAbortAlert } from '../review/LapAbortAlert'
 import { EvidenceStage } from '../review/EvidenceStage'
 import { FullAccounts } from '../review/FullAccounts'
 import { OpenWork } from '../review/OpenWork'
@@ -49,16 +51,22 @@ export function ReviewBody({
   full,
   driving,
   conflict,
+  lapAbort = null,
   readonly = false,
   onViewPhase,
+  onIterate,
 }: {
   full: FeatureFull
   driving: BrowserDrive | null
   conflict: MergeConflictState | null
+  /** An Iterate that rolled back, or null when the last one started (26g). */
+  lapAbort?: LapAbort | null
   /** Looking back at review on a shipped feature — history, not work. */
   readonly?: boolean
   /** Go and look at another phase — how a defect reaches the lane fixing it. */
   onViewPhase?: (phase: 'implementation') => void
+  /** Take the Iterate door again — what the failed lap's Retry re-runs. */
+  onIterate?: () => void
 }) {
   const { feature, tickets, runs } = full
   const toast = useToast()
@@ -186,7 +194,7 @@ export function ReviewBody({
 
       {/* The alert slot (decision 18a): interruptions render between the stage
           and the strip — the loudest thing on the page, but never above the
-          evidence. Ticket 10's "Lap N+1 couldn't start" belongs here too. */}
+          evidence. */}
       {conflict && (
         <ConflictAlert
           featureId={feature.id}
@@ -194,6 +202,17 @@ export function ReviewBody({
           conflict={conflict}
           readonly={readonly}
           liveSessionId={liveSession?.id ?? null}
+        />
+      )}
+
+      {/* A lap that could not start rolls back in silence otherwise — the walked
+          page came back exactly as it was (decision 26g). */}
+      {lapAbort && onIterate && (
+        <LapAbortAlert
+          abort={lapAbort}
+          lap={feature.lap}
+          readonly={readonly}
+          onRetry={onIterate}
         />
       )}
 

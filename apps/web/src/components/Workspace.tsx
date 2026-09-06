@@ -27,6 +27,7 @@ import {
   unresolvedMergeConflict,
   type ActionKind,
   type DraftBaseMissing,
+  type LapAbort,
   type MergeConflictState,
 } from '../lib/feature-ui'
 import { useResolveConflict } from '../lib/use-resolve-conflict'
@@ -441,6 +442,10 @@ export function Workspace({
   // counts, so the bar and this click cannot disagree — and both roads land
   // here, so the escape off a test drive takes the same door.
   const enterIterate = () => {
+    // A second click while the first lap bump is in flight would bump two laps —
+    // and this road is reachable from the bar, the drive escape and the failed
+    // lap's Retry, so the guard lives here rather than on each button.
+    if (rethink.isPending) return
     if ((openNotes ?? 0) + (openDefects ?? 0) > 0) setTriaging(Date.now())
     else rethink.mutate({ featureId })
   }
@@ -708,11 +713,13 @@ export function Workspace({
               full={full}
               driving={driving}
               conflict={conflict}
+              lapAbort={abortedLap}
               runId={run?.id ?? null}
               readonly={readonly}
               mapRailCollapsed={mapRailCollapsed}
               onToggleMapRail={onToggleMapRail}
               onViewPhase={onViewPhase}
+              onIterate={enterIterate}
             />
           )}
         </div>
@@ -726,21 +733,25 @@ function PhaseBody({
   full,
   driving,
   conflict,
+  lapAbort,
   runId,
   readonly,
   mapRailCollapsed,
   onToggleMapRail,
   onViewPhase,
+  onIterate,
 }: {
   effective: Phase
   full: FeatureFull
   driving: DriveState | null
   conflict: MergeConflictState | null
+  lapAbort: LapAbort | null
   runId: string | null
   readonly: boolean
   mapRailCollapsed: boolean
   onToggleMapRail: () => void
   onViewPhase: (phase: Phase | null) => void
+  onIterate: () => void
 }) {
   switch (effective) {
     case 'ideation':
@@ -772,10 +783,13 @@ function PhaseBody({
           full={full}
           driving={driving}
           conflict={conflict}
+          lapAbort={lapAbort}
           readonly={readonly}
           // A defect being fixed links to its lane, which lives in the run view
           // one phase back (decision 18c).
           onViewPhase={onViewPhase}
+          // The failed lap's Retry takes the same door the bar's Iterate takes.
+          onIterate={onIterate}
         />
       )
     case 'shipped':
