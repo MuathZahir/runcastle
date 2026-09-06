@@ -14,7 +14,7 @@ import {
   deferredScope,
   effectivePhase,
   isReadonlyView,
-  lapBanner,
+  lapAbort,
   latestRun,
   mapDocPath,
   mergeSummary,
@@ -41,7 +41,6 @@ import { ShippedBody } from './bodies/ShippedBody'
 import { TicketsBody } from './bodies/TicketsBody'
 import { RunBody } from './bodies/RunBody'
 import { FeatureCrash, UnrecognizedPhase } from './workspace/FeaturePanes'
-import { LapBannerRow } from './workspace/LapBannerRow'
 import { NextStepBar } from './workspace/NextStepBar'
 import { PipelineStepper } from './workspace/PipelineStepper'
 import { copyText } from './workspace/copy-text'
@@ -419,9 +418,10 @@ export function Workspace({
   // the bar's "End session & resolve" and the click that follows it can never be
   // about different sessions.
   const liveSession = activeSession(full.sessions)
-  // The lap the workspace is on, from lap 2 (decisions.md #6). Derived from the
-  // same event feed as the conflict banner — one poll for all of it.
-  const banner = lapBanner(full, events)
+  // An Iterate whose lap session could not be opened (decision 26g), from the
+  // same event feed as the conflict — one poll for all of it. Handed to the
+  // review body, which renders it in the alert slot beside the conflict card.
+  const abortedLap = lapAbort(events)
   // Why the triage fork's rethink road cannot fire, read off the bar's OWN
   // Iterate action rather than re-derived: the dialog must not disagree with the
   // button beside it about whether the lap session can start.
@@ -608,10 +608,6 @@ export function Workspace({
           />
         )}
       </div>
-
-      {/* Lap 1 renders nothing here at all — a feature that merges first try
-          looks exactly like the plain linear flow (ADR-0010 §4). */}
-      {banner && <LapBannerRow banner={banner} />}
 
       {readonly ? (
         <div className="readonly-bar">

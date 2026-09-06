@@ -16,7 +16,7 @@ import {
   headline,
   lapAccount,
   kickoffTrouble,
-  lapBanner,
+  lapAbort,
   liveSessionBlocker,
   mergeConflictKickoff,
   mergeSummary,
@@ -1129,59 +1129,32 @@ describe('groupByLap', () => {
 })
 
 /**
- * Ticket 4 / decisions.md #6 — from lap 2 on, the workspace says which lap this
- * is, what kicked it off and what the lap before it landed. Lap 1 stays quiet: no
- * iteration ceremony on a feature that merges first try.
+ * Ticket 10 / decision 26g — an Iterate whose lap session could not be opened
+ * rolls the lap back whole, and the walked page came back looking exactly as it
+ * was. The alert slot needs to know, so the feed is asked.
  */
-describe('lapBanner', () => {
+describe('lapAbort', () => {
   const ev = (id: number, type: string, message: string): EventRow =>
     ({ id, projectId: 'p', ts: id, type, message }) as EventRow
   const started = (id: number, lap: number) => ev(id, 'lap.started', `rethink — lap ${lap}`)
-  const full = (lap: number, ticketLaps: { lap: number; status: TicketStatus }[] = []) =>
-    ({
-      feature: { id: 'f1', lap },
-      tickets: ticketLaps.map((t, i) => ({ id: `t${i}`, ...t })),
-    }) as unknown as FeatureFull
+  const aborted = (id: number, lap: number) =>
+    ev(id, 'lap.aborted', `lap ${lap} aborted — its terminal could not be opened (fatal: bad ref)`)
 
-  it('says nothing on lap 1', () => {
-    expect(lapBanner(full(1), [started(1, 1)])).toBeNull()
+  it('says nothing when no lap has ever failed', () => {
+    expect(lapAbort([ev(1, 'burn.started', 'burning'), started(2, 2)])).toBeNull()
+    expect(lapAbort([])).toBeNull()
   })
 
-  it('names the lap, when it started and what the lap before it landed', () => {
-    const banner = lapBanner(
-      full(2, [
-        { lap: 1, status: 'done' },
-        { lap: 1, status: 'done' },
-        { lap: 1, status: 'failed' },
-        { lap: 2, status: 'pending' },
-      ]),
-      [ev(1, 'burn.started', 'burning'), started(2, 2)],
-    )
-    expect(banner).toEqual({ lap: 2, startedAt: 2, landed: 'Lap 1 landed 2 tickets' })
+  it('carries the abort’s own account, git error and all', () => {
+    expect(lapAbort([started(1, 2), aborted(2, 3)])).toEqual({
+      at: 2,
+      message: 'lap 3 aborted — its terminal could not be opened (fatal: bad ref)',
+    })
   })
 
-  it('dates the lap from the LATEST lap start', () => {
-    expect(lapBanner(full(3), [started(1, 2), started(2, 3)])?.startedAt).toBe(2)
-  })
-
-  // A lap whose terminal could not be opened is rolled back to the previous lap
-  // and phase (`lap.aborted`), so its start no longer dates where we are.
-  it('drops a start a later abort took back', () => {
-    const events = [started(1, 2), ev(2, 'lap.aborted', 'lap 3 aborted — back at review')]
-    expect(lapBanner(full(2), events)?.startedAt).toBeNull()
-  })
-
-  it('has no date to show when the feed does not reach back that far', () => {
-    expect(lapBanner(full(2), [])?.startedAt).toBeNull()
-  })
-
-  it('says the previous lap landed nothing rather than counting zero', () => {
-    expect(lapBanner(full(2, [{ lap: 2, status: 'pending' }]), [])?.landed).toBe(
-      'Lap 1 landed no tickets',
-    )
-    expect(lapBanner(full(2, [{ lap: 1, status: 'done' }]), [])?.landed).toBe(
-      'Lap 1 landed 1 ticket',
-    )
+  // The retry is what takes the alert down — nothing dismisses it by hand.
+  it('clears once a later Iterate starts its lap', () => {
+    expect(lapAbort([aborted(1, 3), started(2, 3)])).toBeNull()
   })
 })
 

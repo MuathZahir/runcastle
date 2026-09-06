@@ -121,16 +121,6 @@ function joinSteps(steps: string[]): string {
  * lap-1 feature looks like the plain linear flow, ADR-0010 §4) so it can name
  * what put it there; the forms that print "lap 1" get the plainer half.
  */
-/**
- * The lap banner's middle line — what put the feature on the lap it is on
- * (decisions.md #6). A constant, not a lookup: Iterate is the ONLY thing that
- * bumps a lap, so the reason is always this, and the feed is left to supply the
- * one thing that does vary — when.
- */
-export const LAP_KICKOFF =
-  'Iterate sent this feature back through the pipeline: the lap session read your test-drive ' +
-  'notes, amended the spec, and emitted this lap’s tickets. Earlier laps are kept in full.'
-
 export function lapExplainer(lap: number): string {
   if (lap <= 1)
     return 'Lap 1 — this feature’s first pass through the pipeline. Iterate, from review, opens the next one.'

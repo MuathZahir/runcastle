@@ -1,6 +1,5 @@
 import { modelEntryFor } from '@runcastle/core'
 import type { AgentRuntime, EventRow, ModelEntry, Ticket, TicketKind } from '@runcastle/core'
-import type { FeatureFull } from '../api'
 import { RUNTIME_LABEL } from '../settings'
 
 export interface TicketAccount {
@@ -133,49 +132,31 @@ export function ticketModelChip(
   return { id, runtime, runtimeLabel: RUNTIME_LABEL[runtime] }
 }
 
-/** The workspace's lap banner (decisions.md #6), or null on lap 1. */
-export interface LapBanner {
-  lap: number
-  /** When Iterate put the feature on this lap, or null if the feed cannot say. */
-  startedAt: number | null
-  /** What the lap before this one landed, as one line. */
-  landed: string
+/** An Iterate whose lap session could not be opened, rolled back (decision 26g). */
+export interface LapAbort {
+  /** When the rollback was recorded. */
+  at: number
+  /** The server's own account of it, git error and all. */
+  message: string
 }
 
 /**
- * What the workspace says about the lap it is on, from lap 2 onward — which lap,
- * when it was kicked off, and what the lap before it landed. Lap 1 returns null:
- * a feature that merges first try looks exactly like the plain linear flow
- * (ADR-0010 §4), and iteration ceremony over it is noise.
+ * The Iterate that failed, or null when the last thing the feed says about laps
+ * is that one started.
  *
- * WHY this lap exists needs no lookup — Iterate is the only thing that bumps a
- * lap, so the reason is a constant the banner states in words. What the feed adds
- * is WHEN: the latest `lap.started`, UNLESS a later `lap.aborted` took that lap
- * back (a lap whose terminal could not be opened is rolled back to the previous
- * lap and phase, so its start no longer describes where the feature is). Absent
- * is a normal answer — a feed that does not reach back to the Iterate simply
- * cannot date it.
+ * A lap whose terminal cannot be opened is rolled back whole — lap and phase
+ * both — and the rollback is recorded as `lap.aborted` (`features.ts`
+ * `rethinkAndLaunch`). The walked failure looked like nothing had happened: the
+ * page came back exactly as it was, with the only trace of it buried in the
+ * Activity feed. So the alert slot reads this, and a later `lap.started`
+ * (the retry landing) is what takes it back down.
  */
-export function lapBanner(
-  full: Pick<FeatureFull, 'feature' | 'tickets'>,
-  events: readonly EventRow[],
-): LapBanner | null {
-  const lap = full.feature.lap
-  if (lap <= 1) return null
-
-  const lastLapEvent = [...events]
+export function lapAbort(events: readonly EventRow[]): LapAbort | null {
+  const last = [...events]
     .reverse()
     .find((e) => e.type === 'lap.started' || e.type === 'lap.aborted')
-  const previous = lap - 1
-  const landed = full.tickets.filter((t) => t.lap === previous && t.status === 'done').length
-
-  return {
-    lap,
-    startedAt: lastLapEvent?.type === 'lap.started' ? lastLapEvent.ts : null,
-    landed: `Lap ${previous} landed ${
-      landed === 0 ? 'no tickets' : `${landed} ticket${landed === 1 ? '' : 's'}`
-    }`,
-  }
+  if (last?.type !== 'lap.aborted') return null
+  return { at: last.ts, message: last.message }
 }
 
 export interface LapChipFigure {
