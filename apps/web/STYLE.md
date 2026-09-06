@@ -69,7 +69,7 @@ utilities genuinely cannot express, kept to a minimum.
 
 | Primitive | What it is | Variants |
 |---|---|---|
-| `Button` | The app's button. 32px tall, `rounded-md`, forwards every `<button>` attribute; a `className` you pass is appended. | `ghost` (default) · `solid` · `danger` |
+| `Button` | The app's button. 32px tall, `rounded-md`, forwards every `<button>` attribute; a `className` you pass is appended. `size="xs"` is the 22px one that sits inside a row — a lane's Retry, a bar secondary, an inspector action — and was the `btn-xs` class before the atoms migrated. | `variant`: `ghost` (default) · `solid` · `danger` · `size`: `md` (default) · `xs` |
 | `SectionTitle` | 11px uppercase tracked label over a section. | — |
 | `DimLine` | One dim mono line — an inline empty or error state for a tight spot. | — |
 | `EmptyState` | A designed blank area: quiet icon chip, plain-language title, one-line hint, optional action. | `compact` |
@@ -87,6 +87,7 @@ utilities genuinely cannot express, kept to a minimum.
 | `FindingSeverityChip` | How bad the review thought a finding was. Even `high` is amber: severity is read, never enforced. | `high` · `medium` · `low` |
 | `RunStatusChip` | A burn run's status. `running` breathes. | one per `RunStatus` |
 | `SessionStatusDot` | A 8px dot for a session's lifecycle. | `launching` · `live` · `ended` |
+| `Spinner` | The ring that says something is in flight. Decorative — whatever it sits beside says the state in words — so it is `aria-hidden`. | `size`: `md` (default) · `sm` (rides inside a chip's line) · `tone`: `work` (default) · `accent` |
 
 **Exactly one `solid` button is visible per view.** Everything else is `ghost`;
 `danger` is for destructive confirmations, and it is still not the solid one. If
@@ -147,14 +148,15 @@ surface, and dropping the name would silently lose that placement.
 | Primitive | Hook | The rule that needs it |
 |---|---|---|
 | `SectionTitle` | `section-title` | `.body-title .section-title`, `.mr-head .section-title` |
-| `DimLine` | `dim-line mono` | `.map-waypoints > .dim-line` (the dashed placeholder) |
+| `DimLine` | `dim-line` | `.map-waypoints > .dim-line` (the dashed placeholder) |
 | `LapSections` | `lap-group`, `lap-group-head` | `.ledger .lap-group-head`, `.ledger .lap-group + .lap-group` |
 
-Remember that an unlayered legacy rule beats a utility, so where the base rule
-also still exists — `.section-title` and `.dim-line` do, because raw spans
-elsewhere in the app carry those names — it wins over the utilities beside it.
-**When your flow migrates one of those surfaces, delete the rule and the hook
-together**, and check whether the base rule has any raw callers left.
+Every one of those rules is now a *descendant* rule — the base `.section-title`
+and `.dim-line` went with the ATOMS section, so the utilities beside the hook are
+the whole look and the rule only places the primitive inside its surface.
+Remember that an unlayered legacy rule still beats a utility, so a placement rule
+wins over the utility it overlaps. **When your flow migrates one of those
+surfaces, delete the rule and the hook together.**
 
 ## Concern modules
 
@@ -252,6 +254,30 @@ The legacy rules keep their hardcoded pixels until their flow migrates them, so
 the app reads slightly mixed mid-migration. That is accepted.
 
 ## Ratchet
+
+### What is left in the file, and whose it is
+
+The `build-review-and-ship` flow took its own sections (the run body, review and
+shipped, the merge and notes dialogs) **and adopted the six that belonged to
+nobody** — ATOMS, MARKDOWN, DOC PEEK, ERROR BOUNDARY / TERMINAL, TOASTS,
+ANIMATIONS. Their keyframes and the reduced-motion switch live in `theme.css`
+now; everything else in them is utilities at the consumer. What remains, by
+section banner:
+
+| Section | Whose |
+|---|---|
+| LEGACY ALIASES + the base reset at the top | the last flow to land |
+| SHELL FRAME · SIDEBAR · WORKSPACE · INSPECTOR RAIL · STATUS BAR · COMMAND PALETTE | `flow-redesign-project-shell-and-navigation` |
+| PHASE BODY — grill · PHASE BODY — tickets ledger | `flow-redesign-ideation-through-tickets` |
+| PHASE BODY — review + shipped (36 lines) | not this flow's any more — what outlived the rebuild is preparation's dry-run pulse, the grill terminal's height, and DraftBody's base-branch select |
+| OUTLIVED THE SETTINGS OVERLAY | preparation, and the delete dialog's confirm input |
+| MULTI-PROJECT | the portfolio / open-project flow |
+
+So **nobody deletes the file yet**: the condition below is "whoever measures
+zero after their own deletions", and none of the remainder is ours. Note also
+that several of those sections are *already gone on `main`* — this branch is
+behind it — so the number the ratchet holds here is larger than what the file
+will measure once main is merged in. Lower it again after that merge.
 
 `test/styles-ratchet.test.ts` asserts `styles.css` is at or below a baseline line
 count recorded as a constant in that file. The rule above is therefore enforced
