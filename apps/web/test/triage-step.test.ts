@@ -38,7 +38,11 @@ const defect = (over: Partial<ReviewFinding> & { id: string }): ReviewFinding =>
   location: 'packages/server/src/save.ts:42',
   citation: 'spec.md §Save',
   detail: 'The save writes the row and re-reads the stale copy.',
+  reproStep: 'Edit a ticket title, save, reload — the old title is back.',
   status: 'open',
+  openReason: null,
+  failureReason: null,
+  fixTicketId: null,
   createdAt: 100,
   ...over,
 })
