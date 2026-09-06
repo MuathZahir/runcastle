@@ -108,6 +108,7 @@
      live outside this block — see the note above them. */
   --animate-toast-in: toastIn var(--dur-3) var(--ease-out-app);
   --animate-backdrop-in: backdropIn var(--dur-2) var(--ease-out-app);
+  /* `cmdkIn` is the command palette's entrance, which every overlay shares. */
   --animate-overlay-in: cmdkIn var(--dur-2) var(--ease-out-app);
   --animate-dot-glow: dotGlow 2.2s var(--ease-app) infinite;
 

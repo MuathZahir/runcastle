@@ -32,7 +32,7 @@ function cx(...parts: Array<string | false | null | undefined>): string {
 }
 
 type Variant = 'solid' | 'ghost' | 'danger'
-type Size = 'md' | 'xs'
+type ButtonSize = 'md' | 'xs'
 
 const BUTTON_BASE =
   'inline-flex items-center justify-center gap-1.5 whitespace-nowrap border font-medium ' +
@@ -46,7 +46,7 @@ const BUTTON_BASE =
  * `btn-xs` legacy class every one of those surfaces reached for, which is why it
  * is a variant here and not a class list copied around.
  */
-const BUTTON_SIZE: Record<Size, string> = {
+const BUTTON_SIZE: Record<ButtonSize, string> = {
   md: 'h-(--control-h) rounded-md px-3 text-sm',
   xs: 'h-5.5 rounded-sm px-2.5 text-xs',
 }
@@ -72,7 +72,7 @@ export function Button({
   className,
   children,
   ...rest
-}: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: Variant; size?: Size }) {
+}: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: Variant; size?: ButtonSize }) {
   return (
     <button
       className={cx(BUTTON_BASE, BUTTON_SIZE[size], BUTTON_VARIANT[variant], className)}

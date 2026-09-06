@@ -4,8 +4,8 @@ import { useLivePoll } from '../lib/live'
 import { modKey } from '../lib/platform'
 import type { ProjectNavApi } from '../lib/use-project-nav'
 import { IconPanelRight, IconSearch, IconSettings, LogoMark, LogoWordmark } from '../icons'
-import { ProjectSwitcher } from './ProjectSwitcher'
 import { Spinner } from '../ui'
+import { ProjectSwitcher } from './ProjectSwitcher'
 
 /**
  * The IDE title bar (app-redesign, multi-project #45): brand · project switcher

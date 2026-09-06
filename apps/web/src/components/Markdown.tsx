@@ -48,6 +48,7 @@ export const MARKDOWN_CLASSES = {
   pre:
     'mb-2 overflow-x-auto rounded-sm border border-hairline-soft bg-panel-inset px-2.5 py-2 ' +
     '[&>code]:border-0 [&>code]:bg-transparent [&>code]:p-0 [&>code]:text-text-2',
+  blockquote: 'mb-2 border-l-2 border-accent-line pl-2.5 text-text-3',
   table: 'mb-2 w-full border-collapse text-xs',
   th: 'border border-hairline bg-panel px-1.5 py-1 text-left font-semibold text-text-2',
   td: 'border border-hairline px-1.5 py-1 text-left',
@@ -84,7 +85,7 @@ const COMPONENTS: Components = {
   code: ({ node: _n, className: _c, ...p }) => <code className={MARKDOWN_CLASSES.code} {...p} />,
   pre: ({ node: _n, ...p }) => <pre className={MARKDOWN_CLASSES.pre} {...p} />,
   blockquote: ({ node: _n, ...p }) => (
-    <blockquote className="mb-2 border-l-2 border-accent-line pl-2.5 text-text-3" {...p} />
+    <blockquote className={MARKDOWN_CLASSES.blockquote} {...p} />
   ),
   table: ({ node: _n, ...p }) => <table className={MARKDOWN_CLASSES.table} {...p} />,
   th: ({ node: _n, ...p }) => <th className={MARKDOWN_CLASSES.th} {...p} />,

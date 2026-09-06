@@ -7,6 +7,7 @@ import { useProjectTalk } from '../lib/use-project-talk'
 import { useLivePoll } from '../lib/live'
 import { showsInspector, workspaceView } from '../lib/project-workspace'
 import type { PrepView } from '../lib/api'
+import { Button } from '../ui'
 import { Titlebar } from './Titlebar'
 import { Sidebar } from './Sidebar'
 import { Inspector } from './Inspector'
@@ -19,7 +20,6 @@ import { PreparationWorkspace } from './PreparationWorkspace'
 import { CommandPalette } from './CommandPalette'
 import { OpenSettingsProvider } from './settings/MessageWithSettingsLink'
 import { SettingsDialog } from './settings/SettingsDialog'
-import { Button } from '../ui'
 
 /**
  * The runcastle IDE shell for a single project (app-redesign, multi-project #45).
