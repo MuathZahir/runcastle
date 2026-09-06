@@ -185,6 +185,26 @@ export function testDriveTaken(events: EventRow[]): boolean {
   return events.some((e) => e.type === 'testdrive.started')
 }
 
+/**
+ * Which lap the last test drive was taken in, or null when the branch was never
+ * driven — what the shipped record states instead of an instruction to drive it
+ * (decision 33a, "test drive taken · lap 2").
+ *
+ * Counted from `lap.started`, the one event a new lap emits, rather than from
+ * `feature.lap`: on a shipped feature that is the LAST lap, and a drive taken in
+ * lap 1 of a two-lap feature would be filed under the wrong one. `events` must
+ * be in id order.
+ */
+export function lastTestDriveLap(events: EventRow[]): number | null {
+  let lap = 1
+  let driven: number | null = null
+  for (const event of events) {
+    if (event.type === 'lap.started') lap += 1
+    else if (event.type === 'testdrive.started') driven = lap
+  }
+  return driven
+}
+
 /** The wall clock a `ticket.timing` event carries, if it carries a usable one. */
 function timingWallMs(data: unknown): number | undefined {
   if (typeof data !== 'object' || data === null) return undefined

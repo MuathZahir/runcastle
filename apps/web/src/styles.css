@@ -1898,38 +1898,8 @@ button.note-at:hover { color: var(--accent); }
 /* an open editor's Save/Cancel are the row's whole point — never hover-gated */
 .note-row.is-editing .note-actions { opacity: 1; }
 
-.shipped-hero {
-  max-width: 560px;
-  margin: 36px auto 0;
-  text-align: center;
-  animation: fadeUp var(--dur-3) var(--ease-out);
-}
-.shipped-check {
-  width: 40px;
-  height: 40px;
-  margin: 0 auto;
-  border-radius: 50%;
-  border: 1px solid color-mix(in srgb, var(--ok) 45%, transparent);
-  color: var(--ok);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 17px;
-  animation: popIn var(--dur-3) var(--ease-out);
-}
-.shipped-title { margin-top: 14px; font-size: 16px; font-weight: 600; }
-.shipped-meta {
-  margin-top: 6px;
-  font-family: var(--mono);
-  font-size: 12px;
-  color: var(--text-2);
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-}
-.shipped-sub { margin-top: 10px; font-size: 12.5px; color: var(--text-3); line-height: 1.55; }
-/* the Q&A session shown under the shipped hero — nothing but the hero when quiet */
-.shipped-body { display: flex; flex-direction: column; gap: 18px; }
+/* The shipped body is Tailwind now (decision 37a); this one rule stays because
+   it sizes the still-legacy grill terminal, which the grill flow owns. */
 .shipped-session .grill-term { height: clamp(300px, calc(100dvh - 420px), 1200px); }
 
 .tag.is-draft { color: var(--text-4); }

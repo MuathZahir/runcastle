@@ -18,6 +18,7 @@ import {
   lapAccount,
   kickoffTrouble,
   lapBanner,
+  lastTestDriveLap,
   liveSessionBlocker,
   mergeConflictKickoff,
   needsMe,
@@ -1363,6 +1364,34 @@ describe('testDriveTaken', () => {
 
   it('stays true after the drive stops — it still happened', () => {
     expect(testDriveTaken([ev(1, 'testdrive.started'), ev(2, 'testdrive.stopped')])).toBe(true)
+  })
+
+  /**
+   * Ticket 11 / decision 33a — the shipped record states the drive that WAS
+   * taken, and a drive filed under the wrong lap is not a record.
+   */
+  describe('lastTestDriveLap', () => {
+    it('is null for a feature that was never driven', () => {
+      expect(lastTestDriveLap([ev(1, 'burn.started')])).toBeNull()
+    })
+
+    it('is lap 1 for a feature that never iterated', () => {
+      expect(lastTestDriveLap([ev(1, 'testdrive.started')])).toBe(1)
+    })
+
+    it('counts the laps that started before the drive, not the ones after', () => {
+      const feed = [ev(1, 'lap.started'), ev(2, 'testdrive.started'), ev(3, 'lap.started')]
+      expect(lastTestDriveLap(feed)).toBe(2)
+    })
+
+    it('reports the LAST drive when a feature was driven in several laps', () => {
+      const feed = [
+        ev(1, 'testdrive.started'),
+        ev(2, 'lap.started'),
+        ev(3, 'testdrive.started'),
+      ]
+      expect(lastTestDriveLap(feed)).toBe(2)
+    })
   })
 })
 

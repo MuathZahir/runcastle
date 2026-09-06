@@ -15,7 +15,7 @@ import { describe, expect, it } from 'vitest'
  *
  * A change that grows the sheet fails here rather than passing review on prose.
  */
-const STYLES_CSS_LINE_BASELINE = 2872
+const STYLES_CSS_LINE_BASELINE = 2842
 
 describe('styles.css ratchet', () => {
   it('never grows past the recorded baseline', () => {

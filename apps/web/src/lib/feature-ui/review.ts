@@ -215,7 +215,7 @@ export function verificationState(
   return { state: 'running' }
 }
 
-export interface StatusChip { key: 'review' | 'checks' | 'lap' | 'run'; label: string; tone: CheckTone }
+export interface StatusChip { key: 'review' | 'checks' | 'lap' | 'drive' | 'run'; label: string; tone: CheckTone }
 export function statusChips(input: {
   artifact?: Pick<ReviewArtifactFigure, 'lap'> | null
   currentLap: number
@@ -224,15 +224,33 @@ export function statusChips(input: {
   checks: { passed: number; total: number }
   runState: string
   verification?: { state: 'running' | 'failed'; reason?: string }
+  /**
+   * The lap the branch was last test-driven in, null when it never was, and
+   * undefined where the drive is not this strip's to report — the review page
+   * has the stage for that, the shipped record has only this (decision 33a).
+   */
+  driveLap?: number | null
+  /** The feature has shipped: the lap chip is a record, not a position. */
+  shipped?: boolean
 }): StatusChip[] {
   const stamp = freshness(input.artifact, { landedSince: input.landedSince, lap: input.currentLap }, input.verification)
   const implementation = input.tickets.filter((t) => t.kind !== 'review' && (t.landedLap ?? t.lap) === input.currentLap)
   const landed = implementation.filter((t) => t.status === 'done').length
   const waived = implementation.filter((t) => t.status === 'cancelled').length
+  const lapLabel = input.shipped
+    ? `Shipped after ${input.currentLap} lap${input.currentLap === 1 ? '' : 's'}`
+    : `Lap ${input.currentLap} · ${landed} of ${implementation.length} tickets landed · ${waived} waived`
   return [
     { key: 'review', label: stamp.text, tone: stamp.tone === 'fresh' ? 'ok' : stamp.tone === 'none' ? 'idle' : 'warn' },
     { key: 'checks', label: `${input.checks.passed}/${input.checks.total} checks passed`, tone: input.checks.total > 0 && input.checks.passed === input.checks.total ? 'ok' : 'warn' },
-    { key: 'lap', label: `Lap ${input.currentLap} · ${landed} of ${implementation.length} tickets landed · ${waived} waived`, tone: waived ? 'warn' : 'idle' },
+    { key: 'lap', label: lapLabel, tone: waived ? 'warn' : 'idle' },
+    ...(input.driveLap === undefined
+      ? []
+      : [
+          input.driveLap === null
+            ? { key: 'drive' as const, label: 'never test-driven', tone: 'warn' as const }
+            : { key: 'drive' as const, label: `test drive taken · lap ${input.driveLap}`, tone: 'ok' as const },
+        ]),
     { key: 'run', label: input.runState, tone: input.runState === 'succeeded' ? 'ok' : input.runState === 'failed' ? 'danger' : 'warn' },
   ]
 }
