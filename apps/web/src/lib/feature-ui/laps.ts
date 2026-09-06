@@ -196,6 +196,26 @@ export function triageFooter(input: {
   return parts.join(' · ')
 }
 
+/**
+ * Which exit the ticked boxes chose, and what its button says (decision 21).
+ *
+ * The human never picks the road up front — Fix and Iterate were the same
+ * decision entered through two doors, and asking again inside the door is the
+ * duplicate choice this removes. So the road falls out of the list: anything
+ * left to talk about opens lap N+1's conversation, and a list that is quick
+ * fixes all the way down has nothing to discuss, so its tickets just burn.
+ */
+export function triageRoad(input: { quickFix: number; carried: number; nextLap: number }): {
+  road: 'burn' | 'lap'
+  label: string
+} {
+  const { quickFix, carried, nextLap } = input
+  if (quickFix > 0 && carried === 0)
+    return { road: 'burn', label: `Mint ${noun(quickFix, 'ticket')} and burn` }
+  if (quickFix === 0) return { road: 'lap', label: `Start lap ${nextLap}` }
+  return { road: 'lap', label: `Mint ${quickFix} · carry ${carried} → Start lap ${nextLap}` }
+}
+
 export function burnLabel(
   pending: readonly { lap: number }[],
   lap: number,
