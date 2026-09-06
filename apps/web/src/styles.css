@@ -842,7 +842,6 @@ button {
 .nextstep,
 .readonly-bar,
 .ws-banner,
-.ws-lap,
 .ws-body-inner {
   width: 100%;
   max-width: calc(var(--content-max) + 56px);
@@ -1082,31 +1081,6 @@ button {
   padding: 1px 6px;
   flex-shrink: 0;
 }
-
-/* ---- lap banner (decisions.md #6) ----
-   Quiet by design: a standing statement of where the feature is, not an alert.
-   Never rendered on lap 1, so its mere presence already says "you iterated". */
-.ws-lap {
-  margin-top: 12px;
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-}
-.ws-lap-tag {
-  font-family: var(--mono);
-  font-size: 10px;
-  letter-spacing: 0.06em;
-  color: var(--accent-2);
-  border: 1px solid var(--accent-line);
-  border-radius: 4px;
-  padding: 2px 7px;
-  flex: 0 0 auto;
-  cursor: default;
-}
-.ws-lap-body { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-.ws-lap-why { font-size: 12px; color: var(--text-2); line-height: 1.5; text-wrap: pretty; }
-.ws-lap-facts { display: flex; gap: 10px; font-size: 11.5px; color: var(--text-3); }
-.ws-lap-facts > span + span::before { content: '· '; color: var(--text-4); }
 
 /* ---- workspace body (per-phase, scrollable) ---- */
 .ws-body {
@@ -1737,9 +1711,8 @@ details.wp-group-done > summary { cursor: pointer; list-style: revert; }
 /* ============================================================================
    PHASE BODY — review + shipped
    ========================================================================== */
-/* Both outlived the review rebuild that owned them: `.drive-pulse` is now only
-   preparation's dry-run row, and `.drive-copy` only the address-notes dialog,
-   which is ticket 10's to retire. */
+/* Outlived the review rebuild that owned it: preparation's dry-run row is the
+   only consumer left, and preparation's own flow owns that surface. */
 .drive-pulse {
   width: 8px;
   height: 8px;
@@ -1747,12 +1720,6 @@ details.wp-group-done > summary { cursor: pointer; list-style: revert; }
   background: var(--drive);
   animation: pulse 1.4s ease-in-out infinite;
 }
-.drive-copy { margin-top: 12px; color: var(--text-2); font-size: 12.5px; line-height: 1.55; text-wrap: pretty; }
-
-/* All that is left of the notes inbox: the address-notes dialog's own rows still
-   spell these two, and go with it when ticket 10 retires that dialog. */
-.note-check { accent-color: var(--accent); width: 13px; height: 13px; flex: 0 0 13px; }
-.note-text { flex: 1; min-width: 0; font-size: 12.5px; color: var(--text); text-wrap: pretty; }
 
 .shipped-hero {
   max-width: 560px;
@@ -2535,34 +2502,6 @@ details.wp-group-done > summary { cursor: pointer; list-style: revert; }
   gap: 8px;
   margin-top: 2px;
 }
-
-/* ---- address-notes triage (decisions.md #11) ----
-   Two roads, one door. Wider than the confirmations above because one of the
-   roads is a list the human reads and picks from, not a sentence they accept. */
-.peek.notes-dialog { max-width: 560px; }
-.notes-dialog-body { display: flex; flex-direction: column; gap: 20px; }
-.notes-dialog-road { display: flex; flex-direction: column; gap: 8px; }
-.notes-dialog-list {
-  display: flex;
-  flex-direction: column;
-  max-height: 260px;
-  overflow-y: auto;
-  border: 1px solid var(--hairline);
-  border-radius: var(--radius);
-  background: var(--panel-2);
-}
-.notes-dialog-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 7px 12px;
-  cursor: pointer;
-  transition: background var(--dur-1);
-}
-.notes-dialog-row + .notes-dialog-row { border-top: 1px solid var(--hairline-soft); }
-.notes-dialog-row:hover { background: var(--panel-3); }
-.notes-dialog-actions { display: flex; align-items: center; gap: 10px; }
-.notes-dialog-blocked { font-size: 11.5px; color: var(--text-3); text-wrap: pretty; }
 
 /* ============================================================================
    ERROR BOUNDARY / TERMINAL placeholders
