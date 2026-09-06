@@ -475,11 +475,16 @@ const LANE_FG: Record<TriageKey, string> = {
   archived: 'text-text-4',
 }
 
-/** The status chip's colour, by what `rowChip` chose to say. */
+/**
+ * The status chip's colour, by what `rowChip` chose to say. The tinted two sit
+ * at the same `/40` border as the chip family in `ui.tsx` — `shipped` is
+ * literally `TicketStatusChip`'s `done` — rather than the 30/35/40 spread of
+ * three opacities for one idea that they were.
+ */
 const CHIP_FG: Record<RowChipKind, string> = {
-  needsMe: 'border-needs/35 text-needs',
+  needsMe: 'border-needs/40 text-needs',
   working: 'border-accent-line text-accent-hi',
-  shipped: 'border-ok/30 text-ok',
+  shipped: 'border-ok/40 text-ok',
   draft: 'border-hairline text-text-4',
   age: 'border-hairline text-text-3',
 }
@@ -492,11 +497,18 @@ const NEEDS_DOT_BG: Record<NeedsMeKind, string> = {
   ship: 'bg-needs',
 }
 
-/** A pipeline segment's fill, by how far the feature has got past it. */
+/**
+ * A pipeline segment's fill, by how far the feature has got past it. All three
+ * are one flat mark and only the colour differs: a 1px border on a 4px-tall
+ * dash left `upcoming` with two hairlines around a 2px interior, and its
+ * `bg-panel-3` interior is the row's own hover colour — so hovering the row
+ * used to dissolve the upcoming half of the map into an outline. `hairline` is
+ * the token for a mark that is present but says nothing, which is the state.
+ */
 const MINI_SEG_CLASS = {
   done: 'bg-text-4',
   current: 'bg-accent',
-  upcoming: 'border border-hairline-soft bg-panel-3',
+  upcoming: 'bg-hairline',
 } as const
 
 /**
@@ -540,7 +552,7 @@ export function FeatureRow({
 
   return (
     <div
-      className={`relative mb-0.5 flex items-center rounded-md transition-colors duration-(--dur-1) ease-app ${
+      className={`relative mb-1 flex items-center rounded-md transition-colors duration-(--dur-1) ease-app ${
         active ? 'bg-accent-soft inset-ring-1 inset-ring-accent-line' : 'hover:bg-panel-3'
       } ${dimmed ? 'opacity-70 hover:opacity-100' : ''}`}
     >
@@ -569,19 +581,24 @@ export function FeatureRow({
               {f.title}
             </span>
             <span
-              className={`mt-px inline-flex shrink-0 items-center gap-1.5 rounded-pill border px-2 py-0.5 text-xs whitespace-nowrap ${CHIP_FG[chip.kind]}`}
+              className={`mt-px inline-flex h-5 shrink-0 items-center gap-1.5 rounded-pill border px-2 text-xs whitespace-nowrap ${CHIP_FG[chip.kind]}`}
               title={chip.title}
             >
+              {/* One glyph slot, three fillings, so they agree on a size: the
+                  dot is `size-2` like every other status dot in the app, and
+                  the check is 11px — the chip's own `text-xs` step, where 10
+                  was a step of nothing. `h-5` is the chip height `ui.tsx`
+                  states, so no filling can nudge one chip taller than another. */}
               {chip.kind === 'needsMe' && chip.needs && (
-                <span className={`size-[7px] rounded-full ${NEEDS_DOT_BG[chip.needs]}`} />
+                <span className={`size-2 shrink-0 rounded-full ${NEEDS_DOT_BG[chip.needs]}`} />
               )}
               {chip.kind === 'working' && <span className="spin-ring" />}
-              {chip.kind === 'shipped' && <IconCheck size={10} />}
+              {chip.kind === 'shipped' && <IconCheck size={11} />}
               {chip.text}
             </span>
           </span>
           <span className="flex items-center gap-2">
-            <span className="inline-flex gap-[3px]">
+            <span className="inline-flex gap-0.5">
               {segs.map((s, i) => (
                 <span
                   key={i}

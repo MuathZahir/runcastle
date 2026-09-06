@@ -102,10 +102,11 @@ describe('sidebar feature row', () => {
     const html = render(listItem({ phase: 'tickets' }))
 
     const segments = html.match(/rounded-\[2px\] [a-z0-9- ]+"/g) ?? []
-    // done · done · current · upcoming · upcoming · upcoming
+    // done · done · current · upcoming · upcoming · upcoming — six flat marks
+    // that differ only in colour, so no state renders a different shape.
     expect(segments).toHaveLength(6)
     expect(segments.filter((s) => s.endsWith('bg-text-4"'))).toHaveLength(2)
     expect(segments.filter((s) => s.endsWith('bg-accent"'))).toHaveLength(1)
-    expect(segments.filter((s) => s.endsWith('bg-panel-3"'))).toHaveLength(3)
+    expect(segments.filter((s) => s.endsWith('bg-hairline"'))).toHaveLength(3)
   })
 })
