@@ -104,9 +104,14 @@ export function SettingsDialog({
           onFilter={setQuery}
           onSelect={setPage}
         />
-        {/* `minmax(0,1fr)` on the body row, so the body scrolls rather than
-            stretching the dialog past its own height. */}
-        <section className="grid min-w-0 grid-rows-[48px_minmax(0,1fr)]">
+        {/* Both halves of one chain, and neither works without the other:
+            `minmax(0,1fr)` on the body row so the body scrolls rather than
+            stretching the dialog, and `min-h-0` here because a grid item's
+            automatic minimum size is its content — without it this section's
+            minimum is the whole page's height, the row above grows to match,
+            the body is handed exactly the height it asked for and so never
+            scrolls, and the panel's `overflow-hidden` cuts off the rest. */}
+        <section className="grid min-h-0 min-w-0 grid-rows-[48px_minmax(0,1fr)]">
           <header className="flex min-w-0 items-center gap-2.5 border-b border-hairline pr-3 pl-5.5">
             <h2 className="text-lg font-semibold">{title}</h2>
             <span className="truncate text-sm text-text-3">{PAGE_SUBTITLE[page]}</span>
