@@ -31,6 +31,11 @@ describe('workspace parts', () => {
     for (const phase of PHASE_ORDER) expect(html).toContain(PHASE_LABELS[phase])
     // Each step carries its own tip — what it teaches depends on its state.
     for (const phase of PHASE_ORDER) expect(html).toContain(`title="${phase}"`)
+    // Six pills are wider than a narrow workspace column and none of them can
+    // shrink below the phase it names, so the row wraps instead of running off
+    // the right edge of the header.
+    expect(html).toContain('flex-wrap')
+    expect(html.match(/shrink-0/g)?.length).toBeGreaterThanOrEqual(PHASE_ORDER.length)
   })
 
   it('renders an unrecognized phase value', () => {
