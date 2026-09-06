@@ -586,9 +586,9 @@ export function FeatureRow({
             >
               {/* One glyph slot, three fillings, so they agree on a size: the
                   dot is `size-2` like every other status dot in the app, and
-                  the check is 11px — the chip's own `text-xs` step, where 10
-                  was a step of nothing. `h-5` is the chip height `ui.tsx`
-                  states, so no filling can nudge one chip taller than another. */}
+                  the check is the chip's own 11px `text-xs` step. The chip
+                  states `ui.tsx`'s `h-5` rather than deriving a height from
+                  whichever of the three it happens to be holding. */}
               {chip.kind === 'needsMe' && chip.needs && (
                 <span className={`size-2 shrink-0 rounded-full ${NEEDS_DOT_BG[chip.needs]}`} />
               )}
