@@ -36,7 +36,7 @@ export function FeatureHeader({
 
   return (
     <div className="ws-head">
-      <div className="ws-title-row min-w-0">
+      <div className="ws-title-row">
         {/* Same reason the stepper is hidden below: a draft's phase is
             `ideation` by construction, and naming it here reads as progress. */}
         {isDraft ? (
