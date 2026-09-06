@@ -73,13 +73,13 @@ export function AddressNotesDialog({
     >
       <div className="peek notes-dialog" role="dialog" aria-modal="true" aria-label="Address notes">
         <div className="peek-head">
-          <span className="merge-dialog-title">Address notes</span>
+          <span className="notes-dialog-title">Address notes</span>
           <button className="peek-close" onClick={onCancel} aria-label="Close (Esc)">
             ✕
           </button>
         </div>
         <div className="peek-body notes-dialog-body">
-          <p className="merge-dialog-lead">
+          <p className="notes-dialog-lead">
             {notes.length} open note{notes.length === 1 ? '' : 's'} from the drive. Two ways to
             answer them — pick the one that matches what you found.
           </p>

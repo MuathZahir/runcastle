@@ -2650,40 +2650,18 @@ button.note-at:hover { color: var(--accent); }
 .settings-clear:disabled { opacity: 0.5; cursor: default; }
 
 /* ============================================================================
-   MERGE CONFIRMATION (findings F21)
+   ADDRESS-NOTES TRIAGE (decisions.md #11)
    ========================================================================== */
-.peek.merge-dialog { max-width: 460px; }
-/* Merging is the intended ending, not a destructive act — same shape, not red. */
-.merge-dialog-title { color: var(--text); font-size: 13px; font-weight: 600; }
-.merge-dialog-warnings {
-  margin: 0;
-  padding: 10px 12px 10px 26px;
-  border-radius: var(--radius-sm);
-  border: 1px solid color-mix(in srgb, var(--warn, #d9a441) 40%, var(--hairline));
-  background: color-mix(in srgb, var(--warn, #d9a441) 7%, var(--panel-2));
-  color: var(--warn, #d9a441);
-  font-size: 12px;
-  line-height: 1.6;
-}
-.merge-dialog-body { display: flex; flex-direction: column; gap: 16px; }
-.merge-dialog-lead {
-  margin: 0;
-  font-size: 12.5px;
-  line-height: 1.6;
-  color: var(--text-2);
-}
-.merge-dialog-lead strong { color: var(--text); font-weight: 600; }
-.merge-dialog-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-  margin-top: 2px;
-}
-
-/* ---- address-notes triage (decisions.md #11) ----
-   Two roads, one door. Wider than the confirmations above because one of the
-   roads is a list the human reads and picks from, not a sentence they accept. */
+/* Two roads, one door. Wider than the merge confirmation beside it because one
+   of the roads is a list the human reads and picks from, not a sentence they
+   accept. (The merge confirmation's own rules are gone — decision 37a: it is
+   built on the Dialog primitive and tokens now.) */
 .peek.notes-dialog { max-width: 560px; }
+/* Borrowed from the merge confirmation until this dialog is rebuilt as the
+   Iterate door's triage step (decision 21), which is when they go. */
+.notes-dialog-title { color: var(--text); font-size: 13px; font-weight: 600; }
+.notes-dialog-lead { margin: 0; font-size: 12.5px; line-height: 1.6; color: var(--text-2); }
+.notes-dialog-lead strong { color: var(--text); font-weight: 600; }
 .notes-dialog-body { display: flex; flex-direction: column; gap: 20px; }
 .notes-dialog-road { display: flex; flex-direction: column; gap: 8px; }
 .notes-dialog-list {

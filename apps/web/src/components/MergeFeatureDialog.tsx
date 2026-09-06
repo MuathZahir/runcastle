@@ -44,8 +44,6 @@ export function MergeFeatureDialog({
   onResolve?: () => void
   onCancel: () => void
 }) {
-  const conflicted = !!summary.conflictRow && !!onResolve
-
   return (
     <Dialog
       open
@@ -54,6 +52,52 @@ export function MergeFeatureDialog({
       size="sm"
       className="flex max-h-[82vh] flex-col overflow-hidden"
     >
+      <MergeConfirmation
+        title={title}
+        branch={branch}
+        base={base}
+        summary={summary}
+        busy={busy}
+        resolving={resolving}
+        onConfirm={onConfirm}
+        onResolve={onResolve}
+        onCancel={onCancel}
+      />
+    </Dialog>
+  )
+}
+
+/**
+ * Everything inside the panel. Its own component because {@link Dialog} portals
+ * into `<body>` and so cannot be rendered to static markup — this is what the
+ * dialog's content is tested at (decision 36, tier 1), while the portal, Escape
+ * and backdrop mechanics stay covered once in `dialog.test.tsx`.
+ */
+export function MergeConfirmation({
+  title,
+  branch,
+  base,
+  summary,
+  busy,
+  resolving,
+  onConfirm,
+  onResolve,
+  onCancel,
+}: {
+  title: string
+  branch: string
+  base?: string
+  summary: MergeSummary
+  busy: boolean
+  resolving?: boolean
+  onConfirm: () => void
+  onResolve?: () => void
+  onCancel: () => void
+}) {
+  const conflicted = !!summary.conflictRow && !!onResolve
+
+  return (
+    <>
       <div className="flex items-center justify-between border-b border-hairline px-4 py-2.5">
         <span className="text-sm font-semibold text-text">Merge &amp; ship</span>
         <button
@@ -135,6 +179,6 @@ export function MergeFeatureDialog({
           </div>
         </div>
       </div>
-    </Dialog>
+    </>
   )
 }
