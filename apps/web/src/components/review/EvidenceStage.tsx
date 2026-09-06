@@ -1,4 +1,4 @@
-import { useState, type RefObject } from 'react'
+import { useEffect, useState, type RefObject } from 'react'
 import { fmtClock, type DriveState, type TestNote } from '@runcastle/core'
 import { Button } from '../../ui'
 import { driveView, latestReview, type DriveFailure } from '../../lib/feature-ui'
@@ -98,6 +98,9 @@ export function EvidenceStage({
   starting,
   onStartDrive,
   handleRef,
+  onStageRecording,
+  onMarkerClick,
+  onAnnotationSaved,
 }: {
   featureId: string
   branch: string
@@ -121,6 +124,17 @@ export function EvidenceStage({
   starting: boolean
   onStartDrive: () => void
   handleRef?: RefObject<WalkthroughHandle | null>
+  /**
+   * Which recording is playing right now, or null when the stage is the drive.
+   * The open-work rows below need it reactively — a timestamp is only a live
+   * jump into the recording it was taken against (decision 22) — and the handle
+   * ref beside it cannot say so, because a ref does not re-render its readers.
+   */
+  onStageRecording?: (recording: { ticketId: string } | null) => void
+  /** A scrub-bar marker was clicked: highlight the notes taken at that moment. */
+  onMarkerClick?: (noteIds: string[]) => void
+  /** A note was just captured, so the list below can scroll to it. */
+  onAnnotationSaved?: (noteId: string) => void
 }) {
   const devConfigured = caps?.dev ?? false
   // Which recording is on the stage. Null means "the latest", so a verification
@@ -146,8 +160,15 @@ export function EvidenceStage({
   // card where the video would be.
   const fills = view.stageKind === 'panel' || view.stageKind === 'agent'
 
+  const playing = showing === 'player' && onStage?.videoUrl ? onStage.ticketId : null
+  useEffect(() => {
+    onStageRecording?.(playing ? { ticketId: playing } : null)
+  }, [onStageRecording, playing])
+
   return (
-    <section className="flex flex-col gap-2">
+    // `evidence-stage` is what a note's timestamp scrolls back to, so a jump
+    // never moves the playhead off screen (decision 25b).
+    <section id="evidence-stage" className="flex flex-col gap-2">
       <header className="flex flex-wrap items-center gap-x-4 gap-y-2">
         <span className="font-mono text-sm text-text-2">
           {onStage ? (
@@ -213,6 +234,8 @@ export function EvidenceStage({
           passKind={onStage.passKind}
           readonly={readonly}
           markers={clusterMarkers(notes, onStage.ticketId)}
+          onMarkerClick={onMarkerClick}
+          onAnnotationSaved={onAnnotationSaved}
           onDuration={setDuration}
           handleRef={handleRef}
         />

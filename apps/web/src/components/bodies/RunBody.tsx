@@ -23,6 +23,7 @@ import { ErrorBoundary } from '../ErrorBoundary'
 import { Markdown } from '../Markdown'
 import { SessionPanel } from '../SessionPanel'
 import { Lane } from '../run/Lane'
+import { LaneDigest } from '../run/LaneDigest'
 import { LaneTranscript } from '../run/LaneTranscript'
 import { RunHeader } from '../run/RunHeader'
 import { RunLanes } from '../run/RunLanes'
@@ -40,6 +41,12 @@ import { RunTimeline } from '../run/RunTimeline'
  *
  * Every read lives here and every lane is handed what it shows, so `Lane` stays
  * statically testable (`test/run-lanes.test.ts`).
+ *
+ * The same layout doubles as the run record (decision #15b). Picking an earlier
+ * run from the header's runs counter puts the page in RECORD mode: the lanes are
+ * the ones that run had — read from the run rather than from the feature's
+ * ledger, which by then has moved on — every control is withheld, and nothing
+ * polls, because a finished run has nothing left to say.
  */
 export function RunBody({
   featureId,
@@ -53,11 +60,19 @@ export function RunBody({
   const poll = useLivePoll()
   const toast = useToast()
   const utils = trpc.useUtils()
+  // An explicit pick from the runs counter. Null — the resting state — follows
+  // the feature's current run, so a burn started while the record is open is
+  // still what the human returns to.
+  const [pickedRunId, setPickedRunId] = useState<string | null>(null)
+  const record = !!pickedRunId && pickedRunId !== runId
+  const shownRunId = pickedRunId ?? runId
+  const frozen = readonly || record
   const feature = trpc.feature.get.useQuery({ id: featureId }, { refetchInterval: poll })
   const run = trpc.run.get.useQuery(
-    { runId: runId as string },
-    { refetchInterval: poll, enabled: !!runId },
+    { runId: shownRunId as string },
+    { refetchInterval: record ? false : poll, enabled: !!shownRunId },
   )
+  const runs = trpc.run.listByFeature.useQuery({ featureId }, { refetchInterval: poll })
   const events = useEventLog(featureId)
   const projectId = feature.data?.feature.projectId
   // Where a model's runtime is declared (decisions.md #3) — a lane says which
@@ -82,10 +97,16 @@ export function RunBody({
   const busy =
     retry.isPending || stop.isPending || waive.isPending || launch.isPending || cancelRun.isPending
 
-  const tickets = feature.data?.tickets ?? []
+  // A live run reads the feature's whole ledger — a ticket admitted mid-run (the
+  // review's fix wave) must appear the moment it exists. A record reads the run,
+  // which is exactly the lanes it had and nothing minted since.
+  const tickets = record ? (run.data?.tickets ?? []) : (feature.data?.tickets ?? [])
   const featureBranch = feature.data?.feature.branch ?? ''
   const lap = feature.data?.feature.lap ?? 1
-  const runEvents = useMemo(() => events.filter((e) => e.runId === runId), [events, runId])
+  const runEvents = useMemo(
+    () => events.filter((e) => e.runId === shownRunId),
+    [events, shownRunId],
+  )
   const durations = useMemo(() => ticketDurations(runEvents), [runEvents])
   const facts = useMemo(() => laneFacts(runEvents), [runEvents])
 
@@ -158,7 +179,7 @@ export function RunBody({
         key={ticket.id}
         ticket={ticket}
         featureBranch={featureBranch}
-        readonly={readonly}
+        readonly={frozen}
         expanded={expanded.has(ticket.id)}
         onToggle={() => toggle(ticket.id)}
         hadOutput={fact?.hadOutput}
@@ -242,10 +263,12 @@ export function RunBody({
             : undefined
         }
       >
+        <LaneDigest digest={ticket.digest} />
         <ErrorBoundary label="agent transcript">
           <LaneTranscript
             ticketId={ticket.id}
             bootEvents={runEvents.filter((e) => e.ticketId === ticket.id)}
+            poll={!record}
           />
         </ErrorBoundary>
       </Lane>
@@ -260,13 +283,13 @@ export function RunBody({
         featureId={featureId}
         sessions={sessions}
         className="tickets-session"
-        showResume={!readonly}
+        showResume={!frozen}
       />
 
       <RunHeader
         headline={runHeadline(
           tickets.map((t) => ({ ...t, hadOutput: facts.get(t.id)?.hadOutput, reviewFix: !!t.originFindingId })),
-          {},
+          { status: run.data?.status },
           soloRetrySeq(tickets, runEvents),
         )}
         elapsed={
@@ -276,10 +299,15 @@ export function RunBody({
         burning={burning}
         busy={busy}
         onCancelRun={
-          readonly || !runId || run.data?.status !== 'running'
+          frozen || !runId || run.data?.status !== 'running'
             ? undefined
             : () => cancelRun.mutate({ runId })
         }
+        runs={runs.data ?? []}
+        selectedRunId={shownRunId}
+        latestRunId={runId}
+        onPickRun={setPickedRunId}
+        {...(record ? { onBackToLatest: () => setPickedRunId(null) } : {})}
       />
 
       {tickets.length === 0 ? (

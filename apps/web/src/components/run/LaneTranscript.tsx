@@ -3,7 +3,7 @@ import type { EventRow } from '@runcastle/core'
 import { trpc } from '../../trpc'
 import type { RouterOutputs } from '../../lib/api'
 import { useLivePoll } from '../../lib/live'
-import { repoRelativeLine, reportedComplete, stripProtocolTokens } from '../../lib/feature-ui/run'
+import { transcriptBlocks } from '../../lib/feature-ui/run'
 import { fmtTime } from '../../lib/format'
 import { DimLine } from '../../ui'
 
@@ -32,16 +32,23 @@ type TranscriptChunk = RouterOutputs['run']['agentTranscript']['chunks'][number]
 export function LaneTranscript({
   ticketId,
   bootEvents,
+  poll = true,
 }: {
   ticketId: string
   /** This lane's own events, narrating the container while the agent is silent. */
   bootEvents: readonly EventRow[]
+  /**
+   * Off on a run record: the transcript of a finished run either is in memory
+   * or never will be, and a second-by-second poll for output that cannot arrive
+   * is the kind of standing cost a history view should not carry.
+   */
+  poll?: boolean
 }) {
-  const { chunks, live, trimmed } = useTicketTranscript(ticketId)
+  const { chunks, live, trimmed } = useTicketTranscript(ticketId, poll)
   const scrollRef = useRef<HTMLDivElement>(null)
   const [following, setFollowing] = useState(true)
 
-  const { blocks, completed } = useMemo(() => toBlocks(chunks), [chunks])
+  const { blocks, completed } = useMemo(() => transcriptBlocks(chunks), [chunks])
 
   useEffect(() => {
     if (!following) return
@@ -141,15 +148,16 @@ interface TranscriptState {
  * cursor means the server transcript restarted (re-burn or server bounce) —
  * drop the local log and start over from the top.
  */
-function useTicketTranscript(ticketId: string): TranscriptState {
+function useTicketTranscript(ticketId: string, poll: boolean): TranscriptState {
   const [chunks, setChunks] = useState<TranscriptChunk[]>([])
   const [live, setLive] = useState(false)
   const [trimmed, setTrimmed] = useState(false)
 
   const after = chunks.length > 0 ? chunks[chunks.length - 1].i : undefined
+  const interval = useLivePoll(1000)
   const query = trpc.run.agentTranscript.useQuery(
     { ticketId, after },
-    { refetchInterval: useLivePoll(1000) },
+    { refetchInterval: poll ? interval : false },
   )
 
   useEffect(() => {
@@ -168,40 +176,4 @@ function useTicketTranscript(ticketId: string): TranscriptState {
   }, [query.data])
 
   return { chunks, live, trimmed }
-}
-
-type Block = { kind: 'text'; text: string } | { kind: 'tool'; name: string; args: string }
-
-/**
- * Consecutive raw text chunks merge into one prose block (the stream slices
- * text arbitrarily); tool calls stay one line each. Blank-only text is dropped,
- * which is also what removes a text block that was nothing but the completion
- * marker — the marker is reported separately, as UI.
- */
-function toBlocks(chunks: TranscriptChunk[]): { blocks: Block[]; completed: boolean } {
-  const out: Block[] = []
-  for (const c of chunks) {
-    if (c.kind === 'tool') {
-      out.push({ kind: 'tool', name: c.name ?? 'tool', args: oneLine(c.text) })
-      continue
-    }
-    const last = out[out.length - 1]
-    if (last && last.kind === 'text') last.text += c.text
-    else out.push({ kind: 'text', text: c.text })
-  }
-  let completed = false
-  const blocks = out
-    .map((b) => {
-      if (b.kind !== 'text') return b
-      if (reportedComplete(b.text)) completed = true
-      return { ...b, text: stripProtocolTokens(b.text) }
-    })
-    .filter((b) => (b.kind === 'text' ? b.text.length > 0 : true))
-  return { blocks, completed }
-}
-
-/** Collapse a tool-arg payload to one displayable line. */
-function oneLine(s: string): string {
-  const flat = repoRelativeLine(s.replace(/\s+/g, ' ').trim())
-  return flat.length > 300 ? `${flat.slice(0, 300)}…` : flat
 }

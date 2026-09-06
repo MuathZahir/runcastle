@@ -2461,6 +2461,40 @@ describe('nextStep at implementation', () => {
       expect(ns.secondary.map((a) => a.kind)).not.toContain('advance')
     }
   })
+
+  /**
+   * Decision 16(b) — the bar sets a time expectation before a burn, and it is
+   * the project's own median rather than a number someone typed once.
+   */
+  it('quotes the project median before a burn, on both roads into one', () => {
+    const stats = { medianMs: 132_000, sampleSize: 9 }
+    const first = nextStep(buildFull({}), { driving: false, burnStats: stats })
+    expect(first.desc).toContain('Tickets have been taking ~2 min each.')
+
+    const resumed = nextStep(
+      buildFull({ runs: [{ id: 'r1', status: 'failed', startedAt: 1 }] }),
+      { driving: false, burnStats: stats },
+    )
+    expect(resumed.desc).toContain('The run failed')
+    expect(resumed.desc).toContain('Tickets have been taking ~2 min each.')
+  })
+
+  it('stays generic before the project has burned anything', () => {
+    const ns = nextStep(buildFull({}), { driving: false, burnStats: { medianMs: 0, sampleSize: 0 } })
+    expect(ns.desc).toContain('Typically a few minutes per ticket.')
+    // …and with the stats query still in flight, which is the same honest copy.
+    expect(nextStep(buildFull({}), { driving: false }).desc).toContain(
+      'Typically a few minutes per ticket.',
+    )
+  })
+
+  it('says nothing about duration while the burn is already running', () => {
+    const ns = nextStep(buildFull({ runs: [{ id: 'r1', status: 'running', startedAt: 1 }] }), {
+      driving: false,
+      burnStats: { medianMs: 132_000, sampleSize: 9 },
+    })
+    expect(ns.desc).not.toContain('have been taking')
+  })
 })
 
 /**

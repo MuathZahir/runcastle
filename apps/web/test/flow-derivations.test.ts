@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { driveView, type DriveState } from '../src/lib/feature-ui/drive'
-import { laneState, repoRelative, runHeadline, stripProtocolTokens, summaryCounts, verdictStrip } from '../src/lib/feature-ui/run'
+import { burnExpectation, laneState, repoRelative, runHeadline, stripProtocolTokens, summaryCounts, verdictStrip } from '../src/lib/feature-ui/run'
 
 describe('drive view', () => {
   const states: DriveState[] = ['idle', 'starting', 'serving', 'bare-checkout', 'setup-failed', 'review-agent-driving']
@@ -32,5 +32,12 @@ describe('run derivations', () => {
     expect(stripProtocolTokens('done\n<promise>COMPLETE</promise>')).toBe('done')
     expect(repoRelative('/home/agent/cache/slots/3/repo/src/App.tsx')).toBe('src/App.tsx')
     expect(repoRelative('C:\\temp\\repo\\src\\App.tsx')).toBe('src\\App.tsx')
+  })
+  it('sets a burn expectation from history, and stays generic without it', () => {
+    expect(burnExpectation({ medianMs: 132_000, sampleSize: 9 })).toBe('Tickets have been taking ~2 min each.')
+    expect(burnExpectation({ medianMs: 40_000, sampleSize: 2 })).toBe('Tickets have been taking under a minute each.')
+    expect(burnExpectation({ medianMs: 5_400_000, sampleSize: 4 })).toBe('Tickets have been taking ~1.5h each.')
+    expect(burnExpectation({ medianMs: 0, sampleSize: 0 })).toBe('Typically a few minutes per ticket.')
+    expect(burnExpectation()).toBe('Typically a few minutes per ticket.')
   })
 })

@@ -30,6 +30,7 @@ import {
   type MergeConflictState,
 } from '../lib/feature-ui'
 import { useResolveConflict } from '../lib/use-resolve-conflict'
+import { useSuccessSettle } from '../lib/use-success-settle'
 import { IconBranch } from '../icons'
 import { AddressNotesDialog } from './AddressNotesDialog'
 import { MergeFeatureDialog } from './MergeFeatureDialog'
@@ -156,6 +157,14 @@ export function Workspace({
     { enabled: !!projectId, refetchInterval: useLivePoll() },
   )
   const driveQ = trpc.feature.driveInfo.useQuery(undefined, { refetchInterval: useLivePoll() })
+  // How long tickets have actually been taking in THIS project, for the pre-burn
+  // bar's time expectation (decision #16b). History, so it does not poll — a
+  // median over every ticket the project has ever finished cannot move within a
+  // sitting by enough to matter.
+  const burnStatsQ = trpc.ticket.durationStats.useQuery(
+    { projectId: projectId ?? '' },
+    { enabled: !!projectId },
+  )
   // A parked draft picks its base at Start, not at creation (decision 3), so the
   // branch list is read HERE — Start fires from the next-step bar, and the base
   // has to be readable at that click, not buried in the body that shows the
@@ -179,6 +188,10 @@ export function Workspace({
   // warns on the picker and says so on the disabled button.
   const draftBaseMissing: DraftBaseMissing | undefined =
     !isDraft || effectiveDraftBase ? undefined : branchesQ.data ? 'unpicked' : 'loading'
+  // A run watched to success is seen to succeed before the page changes
+  // (decision #15a): the burn finalizer advances the phase itself, so the body
+  // swap — and only the body swap — waits out the lanes' all-green beat.
+  const settlingRunId = useSuccessSettle(latestRun(q.data?.runs ?? []))
 
   const invalidate = () => {
     void utils.feature.get.invalidate({ id: featureId })
@@ -380,6 +393,11 @@ export function Workspace({
   const readonly = isReadonlyView(feature, effective)
   const steps = pipelineSteps(feature, effective)
   const run = latestRun(full.runs)
+  // The beat is over the body only — the stepper and the bar tell the truth
+  // about the phase throughout, and a human who is not on the run view (viewing
+  // an earlier phase, or already past review) is never held.
+  const settling = !!settlingRunId && run?.id === settlingRunId && effective === 'review'
+  const bodyPhase = settling ? 'implementation' : effective
   const isDriving = driving?.featureId === feature.id
   const ns = nextStep(full, {
     driving: isDriving,
@@ -391,6 +409,7 @@ export function Workspace({
     conflict,
     unverifiedDriveKeys: unverifiedDriveKeys((prepQ.data as PrepView | undefined)?.findings ?? []),
     dryRunActive: !!driveQ.data?.dryRun,
+    ...(burnStatsQ.data ? { burnStats: burnStatsQ.data } : {}),
     ...(draftBaseMissing ? { draftBaseMissing } : {}),
     openNotes,
     openDefects,
@@ -670,7 +689,7 @@ export function Workspace({
       )}
 
       <div className="ws-body">
-        <div className="ws-body-inner" key={isDraft ? 'draft' : effective}>
+        <div className="ws-body-inner" key={isDraft ? 'draft' : bodyPhase}>
           {/* Status wins over phase here (decision 9): a draft is created at
               `ideation`, and the grill body would offer a terminal on a feature
               that has no branch to open one against. */}
@@ -678,7 +697,7 @@ export function Workspace({
             <DraftBody full={full} />
           ) : (
             <PhaseBody
-              effective={effective}
+              effective={bodyPhase}
               full={full}
               driving={driving}
               conflict={conflict}
@@ -686,6 +705,7 @@ export function Workspace({
               readonly={readonly}
               mapRailCollapsed={mapRailCollapsed}
               onToggleMapRail={onToggleMapRail}
+              onViewPhase={onViewPhase}
             />
           )}
         </div>
@@ -703,6 +723,7 @@ function PhaseBody({
   readonly,
   mapRailCollapsed,
   onToggleMapRail,
+  onViewPhase,
 }: {
   effective: Phase
   full: FeatureFull
@@ -712,6 +733,7 @@ function PhaseBody({
   readonly: boolean
   mapRailCollapsed: boolean
   onToggleMapRail: () => void
+  onViewPhase: (phase: Phase | null) => void
 }) {
   switch (effective) {
     case 'ideation':
@@ -738,7 +760,17 @@ function PhaseBody({
         <TicketsBody featureId={full.feature.id} readonly={readonly} />
       )
     case 'review':
-      return <ReviewBody full={full} driving={driving} conflict={conflict} readonly={readonly} />
+      return (
+        <ReviewBody
+          full={full}
+          driving={driving}
+          conflict={conflict}
+          readonly={readonly}
+          // A defect being fixed links to its lane, which lives in the run view
+          // one phase back (decision 18c).
+          onViewPhase={onViewPhase}
+        />
+      )
     case 'shipped':
       return <ShippedBody full={full} />
   }
