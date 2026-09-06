@@ -4,7 +4,7 @@ import { trpc } from '../trpc'
 import { useEventLog } from '../lib/events'
 import { useLivePoll } from '../lib/live'
 import { useToast } from '../lib/toast'
-import { Button, DimLine, PhaseTag } from '../ui'
+import { Button, DimLine } from '../ui'
 import type { FeatureFull, PrepView } from '../lib/api'
 import { unverifiedDriveKeys } from '../lib/prep-findings'
 import type { DriveState } from '../lib/workspace'
@@ -39,7 +39,6 @@ import { useReviewArtifacts } from '../lib/reviews'
 import { useResolveConflict } from '../lib/use-resolve-conflict'
 import { useSuccessSettle } from '../lib/use-success-settle'
 import { docPath, useFeatureDoc } from '../lib/use-feature-doc'
-import { IconBranch } from '../icons'
 import { MergeFeatureDialog } from './MergeFeatureDialog'
 import { TriageStep, type TriageSelection } from './review/TriageStep'
 import { DraftBody } from './bodies/DraftBody'
@@ -50,10 +49,9 @@ import { ShippedBody } from './bodies/ShippedBody'
 import { TicketsBody } from './bodies/tickets/TicketsBody'
 import { RunBody } from './bodies/RunBody'
 import { FeatureCrash, UnrecognizedPhase } from './workspace/FeaturePanes'
+import { FeatureHeader } from './workspace/FeatureHeader'
 import { NextStepBar } from './workspace/NextStepBar'
-import { PipelineStepper } from './workspace/PipelineStepper'
 import { ReadonlyBanner } from './workspace/ReadonlyBanner'
-import { copyText } from './workspace/copy-text'
 import { useResumeFailedAlert } from './workspace/use-resume-failed-alert'
 
 export { FeatureCrash } from './workspace/FeaturePanes'
@@ -627,37 +625,12 @@ export function Workspace({
 
   return (
     <section className="workspace">
-      <div className="ws-head">
-        <div className="ws-title-row">
-          {/* Same reason the stepper is hidden below: a draft's phase is
-              `ideation` by construction, and naming it here reads as progress. */}
-          {isDraft ? (
-            <span className="font-mono text-sm font-semibold lowercase text-text-4">draft</span>
-          ) : (
-            <PhaseTag phase={feature.phase} />
-          )}
-          <span className="ws-title">{feature.title}</span>
-          <span className="ws-title-spacer" />
-          <button
-            className="inline-flex items-center gap-1.5 border-0 bg-transparent p-0 font-mono text-xs text-text-3 transition-colors duration-(--dur-1) hover:text-text"
-            title="Copy branch name"
-            onClick={() => copyText(feature.branch, toast)}
-          >
-            <IconBranch size={11} />
-            {feature.branch}
-          </button>
-        </div>
-        {/* A draft has no meaningful pipeline position (decision 9): it is
-            created at `ideation` like everything else, and a stepper lit at that
-            first step would claim work has begun on a feature with no branch. */}
-        {!isDraft && (
-          <PipelineStepper
-            steps={steps}
-            lap={feature.lap}
-            onView={(p) => onViewPhase(p === feature.phase ? null : p)}
-          />
-        )}
-      </div>
+      <FeatureHeader
+        feature={feature}
+        isDraft={isDraft}
+        steps={steps}
+        onViewPhase={onViewPhase}
+      />
 
       {readonly ? (
         <ReadonlyBanner
