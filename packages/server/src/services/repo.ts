@@ -81,6 +81,7 @@ export function rowToSession(row: SessionSelect): SessionRow {
     id: row.id,
     featureId: row.featureId ?? undefined,
     projectId: row.projectId ?? undefined,
+    lap: row.lap,
     kind: row.kind,
     purpose: row.purpose ?? undefined,
     purposeData: row.purposeData ?? undefined,
@@ -93,6 +94,7 @@ export function rowToSession(row: SessionSelect): SessionRow {
     runtime: row.runtime ?? undefined,
     title: row.title ?? undefined,
     createdAt: row.createdAt ?? undefined,
+    endedAt: row.endedAt ?? undefined,
   })
 }
 

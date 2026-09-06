@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { CSSProperties } from 'react'
 import { LogoMark } from '../icons'
 import { trpc } from '../trpc'
-import { useWorkspace, type DriveState } from '../lib/workspace'
+import { inspectorCollapsedForPhase, useWorkspace, type DriveState } from '../lib/workspace'
 import type { ProjectNavApi } from '../lib/use-project-nav'
 import { useProjectTalk } from '../lib/use-project-talk'
 import { useLivePoll } from '../lib/live'
@@ -166,7 +166,14 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
   }, [setCmdk])
 
   const view = workspaceView({ ...ws, featureCount: features?.length ?? 0, prepared })
-  const showInspector = showsInspector(view, ws.inspectorCollapsed)
+  // The inspector starts collapsed in ideation/spec/tickets unless the human
+  // has expressed a preference (decision: docs menu makes the panel optional).
+  const selectedPhase = features?.find((feature) => feature.id === selectedFeatureId)?.phase
+  const inspectorCollapsed = inspectorCollapsedForPhase(
+    ws.inspectorPreference,
+    ws.viewedPhase ?? selectedPhase,
+  )
+  const showInspector = showsInspector(view, inspectorCollapsed)
 
   const shell = (
     // The frame's grid, migrated off `styles.css` (apps/web/STYLE.md). The rail
@@ -183,8 +190,8 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
         onOpenCmdk={() => ws.setCmdk(true)}
         onOpenSettings={() => ws.openSettings()}
         onGoToProjectHome={() => ws.select(null)}
-        onToggleInspector={ws.toggleInspector}
-        inspectorCollapsed={ws.inspectorCollapsed}
+        onToggleInspector={() => ws.toggleInspector(inspectorCollapsed)}
+        inspectorCollapsed={inspectorCollapsed}
       />
 
       {/* The inspector column exists only where the Inspector does — a third
@@ -249,6 +256,8 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
               guidance={ws.guidance}
               mapRailCollapsed={ws.mapRailCollapsed}
               onToggleMapRail={ws.toggleMapRail}
+              artifactPaneCollapsed={ws.artifactPaneCollapsed}
+              onToggleArtifactPane={ws.toggleArtifactPane}
               driving={driving}
               onDriveChange={setDriving}
             />

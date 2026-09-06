@@ -351,10 +351,7 @@ button {
 /* every direct workspace block sits in a centered rail — no more left-hugging
    content with a dead void on the right */
 .ws-head,
-.nextstep,
-.readonly-bar,
 .ws-banner,
-.ws-lap,
 .ws-body-inner {
   width: 100%;
   max-width: calc(var(--content-max) + 56px);
@@ -376,188 +373,6 @@ button {
 }
 .ws-title { font-size: 17px; font-weight: 600; letter-spacing: -0.01em; color: var(--text); }
 .ws-title-spacer { flex: 1; }
-.ws-branch {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  font-family: var(--mono);
-  font-size: 11.5px;
-  color: var(--text-3);
-  background: none;
-  border: none;
-  cursor: pointer;
-  transition: color var(--dur-1);
-}
-.ws-branch:hover { color: var(--text); }
-
-/* ---- pipeline stepper (horizontal) ---- */
-.pipeline {
-  display: flex;
-  align-items: center;
-  margin-top: 16px;
-}
-.pstep {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  height: 26px;
-  padding: 0 10px;
-  border-radius: var(--radius-pill);
-  border: 1px solid transparent;
-  background: none;
-  cursor: default;
-  color: var(--text-3);
-  font-size: 12px;
-  transition: background var(--dur-1), color var(--dur-1), border-color var(--dur-1),
-    transform var(--dur-1);
-}
-.pstep.is-clickable { cursor: pointer; }
-.pstep.is-clickable:hover { background: var(--panel); color: var(--text); }
-.pstep.is-clickable:active { transform: scale(0.97); }
-.pstep-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: currentColor;
-  opacity: 0.5;
-  flex: 0 0 auto;
-  transition: opacity var(--dur-2), box-shadow var(--dur-2);
-}
-.pstep-label { text-transform: lowercase; }
-.pstep.is-done { color: var(--text-2); }
-.pstep.is-done .pstep-dot { opacity: 1; }
-.pstep.is-current { color: var(--text); font-weight: 600; }
-.pstep.is-current .pstep-dot {
-  opacity: 1;
-  box-shadow: 0 0 0 3px rgba(124, 108, 246, 0.2);
-  background: var(--accent);
-  animation: dotGlow 2.4s ease-in-out infinite;
-}
-.pstep.is-upcoming { color: var(--text-4); }
-.pstep.is-skipped { color: var(--text-4); }
-.pstep.is-skipped .pstep-label { text-decoration: line-through; opacity: 0.7; }
-.pstep.is-viewed { border-color: var(--hairline); background: var(--panel); }
-.pstep.is-viewed.is-current { border-color: var(--accent-line); }
-.pconn {
-  width: 16px;
-  height: 1px;
-  background: var(--hairline);
-  flex: 0 0 auto;
-  transition: background var(--dur-2);
-}
-.pconn.is-done { background: var(--text-4); }
-/* lap chip — only rendered past lap 1, so the linear flow is unchanged */
-.pipeline-lap {
-  margin-left: 12px;
-  font-family: var(--mono);
-  font-size: 10px;
-  letter-spacing: 0.06em;
-  color: var(--text-3);
-  border: 1px solid var(--hairline);
-  border-radius: 4px;
-  padding: 1px 6px;
-  flex-shrink: 0;
-}
-
-/* ---- next-step bar (the guided spine) ---- */
-.nextstep {
-  margin-top: 14px;
-  border: 1px solid var(--hairline);
-  background: var(--panel);
-  border-radius: var(--radius-lg);
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  padding: 13px 16px;
-  animation: fadeUp var(--dur-3) var(--ease-out);
-}
-.nextstep-spin { flex: 0 0 auto; }
-.nextstep-main { flex: 1; min-width: 0; }
-.nextstep-kick {
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.1em;
-  color: var(--accent-hi);
-}
-.nextstep-kick.is-progress { color: var(--ph-implementation); }
-.nextstep-kick.is-shipped { color: var(--ph-shipped); }
-.nextstep-kick.is-waiting { color: var(--text-3); }
-.nextstep-title { font-size: 13.5px; font-weight: 600; margin-top: 2px; color: var(--text); }
-.nextstep-desc {
-  font-size: 12px;
-  color: var(--text-2);
-  margin-top: 2px;
-  line-height: 1.5;
-  text-wrap: pretty;
-}
-.nextstep-actions { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
-
-/* Convergence lives in the bar (ADR-0001 §13.6): remaining map fog as a soft
-   warning under the description, and the override's inline reason input. The
-   drive keys no dry run has proven (decision 7) get the same treatment — both
-   are doubts the bar states without gating the action beside them. */
-.nextstep-fog,
-.nextstep-warn {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  margin-top: 4px;
-  font-family: var(--mono);
-  font-size: 11.5px;
-  line-height: 1.6;
-  color: color-mix(in srgb, var(--needs) 82%, var(--text));
-}
-.nextstep-fog-icon,
-.nextstep-warn-icon { flex-shrink: 0; color: var(--needs); }
-.nextstep-override { display: flex; align-items: center; gap: 8px; }
-.nextstep-override .override-input { width: 260px; }
-/* The reason input the gate card and this bar once shared. The gate card's
-   override form is gone (decision 6), so the bar is the only caller left and the
-   rule moved here with it — the next-step-bar flow migrates it. */
-.override-input {
-  height: 26px;
-  background: var(--panel-inset);
-  border: 1px solid var(--hairline);
-  border-radius: var(--radius-sm);
-  color: var(--text);
-  padding: 0 8px;
-  font-size: 12px;
-  outline: none;
-}
-.override-input:focus { border-color: var(--accent); }
-
-/* read-only banner (viewing a past phase) */
-.readonly-bar {
-  margin-top: 12px;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 8px 14px;
-  border: 1px dashed var(--hairline-strong);
-  border-radius: var(--radius);
-  background: var(--panel-2);
-  font-size: 12px;
-  color: var(--text-2);
-  animation: fadeUp var(--dur-2) var(--ease-out);
-}
-.readonly-tag {
-  font-family: var(--mono);
-  font-size: 10px;
-  letter-spacing: 0.06em;
-  color: var(--text-3);
-  border: 1px solid var(--hairline);
-  border-radius: 4px;
-  padding: 1px 6px;
-}
-.readonly-back {
-  margin-left: auto;
-  background: none;
-  border: none;
-  color: var(--accent-hi);
-  font-size: 12px;
-  cursor: pointer;
-}
-.readonly-back:hover { color: var(--accent-2); }
 
 /* resume-failed alert banner (auto-dismisses; click to dismiss) */
 .ws-banner {
@@ -609,31 +424,6 @@ button {
   flex-shrink: 0;
 }
 
-/* ---- lap banner (decisions.md #6) ----
-   Quiet by design: a standing statement of where the feature is, not an alert.
-   Never rendered on lap 1, so its mere presence already says "you iterated". */
-.ws-lap {
-  margin-top: 12px;
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-}
-.ws-lap-tag {
-  font-family: var(--mono);
-  font-size: 10px;
-  letter-spacing: 0.06em;
-  color: var(--accent-2);
-  border: 1px solid var(--accent-line);
-  border-radius: 4px;
-  padding: 2px 7px;
-  flex: 0 0 auto;
-  cursor: default;
-}
-.ws-lap-body { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-.ws-lap-why { font-size: 12px; color: var(--text-2); line-height: 1.5; text-wrap: pretty; }
-.ws-lap-facts { display: flex; gap: 10px; font-size: 11.5px; color: var(--text-3); }
-.ws-lap-facts > span + span::before { content: '· '; color: var(--text-4); }
-
 /* ---- workspace body (per-phase, scrollable) ---- */
 .ws-body {
   flex: 1;
@@ -642,22 +432,6 @@ button {
   padding: 18px 0 32px;
 }
 .ws-body-inner { animation: bodyIn var(--dur-3) var(--ease-out); }
-/* The ideation/spec body is a two-pane split instead (decision #1/#5): the body
-   stops being the scroll container and stops centering on --content-max, so the
-   rail and the terminal each fill their share and scroll themselves. */
-.ws-body:has(.grill) {
-  display: flex;
-  overflow: hidden;
-  padding: 0;
-}
-.ws-body:has(.grill) > .ws-body-inner {
-  display: flex;
-  flex: 1;
-  min-width: 0;
-  min-height: 0;
-  max-width: none;
-  padding: 0;
-}
 .body-title {
   display: flex;
   align-items: baseline;
@@ -665,7 +439,6 @@ button {
   margin-bottom: 12px;
 }
 .body-title .section-title { padding: 0; }
-.body-hint { font-size: 12px; color: var(--text-3); text-wrap: pretty; margin-bottom: 12px; }
 .body-meta { font-family: var(--mono); font-size: 11.5px; color: var(--text-2); }
 
 /* generic bordered surface inside a body */
@@ -677,121 +450,8 @@ button {
 }
 
 /* ============================================================================
-   PHASE BODY — grill (ideation / spec)
+   SESSION PANEL — strip + terminal frame (preparation / run / review / shipped)
    ========================================================================== */
-/* map rail | terminal. Unmapped features have no rail, so the terminal pane
-   simply takes the whole body. */
-.grill {
-  max-width: none;
-  display: flex;
-  flex: 1;
-  min-width: 0;
-  min-height: 0;
-}
-
-/* ---- left: the map rail (decision #1/#7) ---- */
-.maprail {
-  flex: 0 0 var(--maprail-w);
-  width: var(--maprail-w);
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-  min-height: 0;
-  background: var(--panel-2);
-  border-right: 1px solid var(--hairline);
-}
-/* Manual collapse only — a fixed width and a stub, never drag-resized and never
-   re-opened by the viewport. */
-.maprail.is-collapsed {
-  flex-basis: 38px;
-  width: 38px;
-}
-.mr-head {
-  flex: 0 0 32px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 0 6px 0 12px;
-  border-bottom: 1px solid var(--hairline-soft);
-}
-.maprail.is-collapsed .mr-head { padding: 0 7px; }
-.mr-head .section-title { flex: 1; padding: 0; }
-.mr-toggle {
-  width: 22px;
-  height: 22px;
-  flex: 0 0 auto;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border: 0;
-  border-radius: var(--radius-sm);
-  background: none;
-  color: var(--text-3);
-  font-size: 13px;
-  cursor: pointer;
-  transition: background var(--dur-1), color var(--dur-1);
-}
-.mr-toggle:hover { background: var(--panel-3); color: var(--text); }
-/* Collapsed: the one thing worth seeing from a 38px strip is how many waypoints
-   are ready to be worked. Clicking anywhere on it reopens the rail. */
-.mr-stub {
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 0;
-  border: 0;
-  background: none;
-  cursor: pointer;
-}
-.mr-stub-count {
-  width: 22px;
-  height: 22px;
-  flex: 0 0 auto;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border: 1px solid var(--accent-line);
-  border-radius: 50%;
-  background: var(--accent-soft);
-  color: var(--accent-hi);
-  font-family: var(--mono);
-  font-size: 11px;
-}
-.mr-stub-label {
-  writing-mode: vertical-rl;
-  font-size: 9.5px;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: var(--text-4);
-}
-/* Each pane scrolls on its own — the body no longer scrolls as one column. */
-.mr-scroll {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  padding: 12px 12px 20px;
-}
-
-/* ---- right: the terminal pane, the hero ---- */
-.termpane {
-  flex: 1;
-  min-width: 0;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  overflow-y: auto;
-  padding: 14px 20px 18px;
-}
-/* The terminal measures its own height off the flex row instead of subtracting
-   guesses from 100dvh — nothing above it can push it off-screen any more. Only a
-   panel that really holds a terminal flexes; the empty state keeps its own size. */
-.termpane .grill-panel:has(.grill-term) { flex: 1; min-height: 0; }
-.termpane .grill-term { flex: 1; min-height: 0; }
-
 .grill-panel {
   border: 1px solid var(--hairline);
   border-radius: var(--radius-lg);
@@ -824,332 +484,16 @@ button {
 }
 .grill-sid { font-family: var(--mono); font-size: 11px; color: var(--text-3); }
 .grill-strip-spacer { flex: 1; }
-/* End-session: quiet but reachable even over a blank/dead terminal. */
-.sess-end { color: color-mix(in srgb, var(--danger) 70%, var(--text-2)); }
-.sess-end:hover:not(:disabled) {
-  color: var(--danger);
-  border-color: color-mix(in srgb, var(--danger) 55%, var(--hairline));
-}
-/* Height is the owning body's call: the grill body flexes it (see .termpane),
-   the tickets/review bodies still size it from the viewport. */
+/* Height is the owning body's call — these ones size it from the viewport. */
 .grill-term {
   background: var(--panel-inset);
   position: relative;
 }
-/* the live emit-tickets session shown above the ticket ledger */
+/* the live emit-tickets and Iterate (revisit) sessions, above their cards */
 .tickets-session { margin-bottom: 18px; }
 .tickets-session .grill-term { height: clamp(300px, calc(100dvh - 420px), 1200px); }
-/* the live Iterate (revisit) session shown above the review cards */
 .review-session .grill-term { height: clamp(300px, calc(100dvh - 420px), 1200px); }
-.grill-empty {
-  padding: 40px 24px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 10px;
-  text-align: center;
-  color: var(--text-3);
-}
 .grill-live-label { font-size: 11.5px; color: var(--text-3); }
-
-/* Briefing never landed: a warning bar between the strip and the terminal, with
-   the one-click resend. Sits above the PTY because it explains what you are
-   looking at — a live terminal that was never told what it is here for. */
-.session-briefing-warn {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 8px 12px;
-  font-size: 12px;
-  color: var(--warn, #d9a441);
-  background: color-mix(in srgb, var(--warn, #d9a441) 9%, var(--panel-2));
-  border-bottom: 1px solid color-mix(in srgb, var(--warn, #d9a441) 35%, var(--hairline));
-}
-.session-briefing-text { flex: 1; }
-
-/* The terminal is up but the agent has not said hello yet. Deliberately quieter
-   than the briefing warning above: nothing is wrong or actionable, it only names
-   what a long "launching…" means. */
-.session-checkin-hint {
-  padding: 6px 12px;
-  font-size: 11.5px;
-  color: var(--text-3);
-  border-bottom: 1px solid var(--hairline);
-}
-
-/* the done state: a strip label + at most one button, never a modal */
-.strip-done { display: flex; align-items: center; gap: 9px; flex: 1; min-width: 0; }
-.done-check {
-  width: 16px;
-  height: 16px;
-  flex-shrink: 0;
-  border-radius: 50%;
-  border: 1px solid color-mix(in srgb, var(--ok) 50%, transparent);
-  background: color-mix(in srgb, var(--ok) 18%, transparent);
-  color: var(--ok);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 9px;
-}
-.done-txt {
-  min-width: 0;
-  font-size: 11.5px;
-  color: var(--text-2);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.done-txt b { color: var(--text); font-weight: 560; }
-.strip-work-next { max-width: 260px; overflow: hidden; text-overflow: ellipsis; }
-
-/* ended session: a quiet one-line card instead of a dead 400px frame */
-.session-ended-card {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 14px 16px;
-  border: 1px solid var(--hairline);
-  border-radius: var(--radius-lg);
-  background: var(--panel-2);
-  animation: fadeUp var(--dur-2) var(--ease-out);
-}
-.session-ended-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--text-4);
-  flex: 0 0 auto;
-}
-.session-ended-main { flex: 1; min-width: 0; }
-.session-ended-title { font-size: 13px; font-weight: 500; color: var(--text-2); }
-.session-ended-sub { font-size: 12px; color: var(--text-3); margin-top: 1px; }
-.session-ended-resume { flex: 0 0 auto; }
-
-/* compact doc pointer (spec / knowledge docs) — opens a peek overlay */
-.doc-card {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  width: 100%;
-  padding: 11px 14px;
-  border: 1px solid var(--hairline);
-  border-radius: var(--radius-lg);
-  background: var(--panel-2);
-  color: var(--text-3);
-  font-size: 12.5px;
-  cursor: pointer;
-  text-align: left;
-  transition: border-color var(--dur-1), background var(--dur-1);
-}
-.doc-card:hover { border-color: var(--hairline-strong); background: var(--panel-3); }
-.doc-card:hover .doc-card-open { color: var(--accent-hi); }
-.doc-card.is-empty { cursor: default; }
-.doc-card.is-empty:hover { border-color: var(--hairline); background: var(--panel-2); }
-.doc-card-title { color: var(--text); font-weight: 500; }
-.doc-card-meta { font-family: var(--mono); font-size: 11px; color: var(--text-4); }
-.doc-card-hint { font-size: 12px; color: var(--text-3); }
-.doc-card-open {
-  margin-left: auto;
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-  color: var(--text-3);
-  font-size: 12px;
-  transition: color var(--dur-1);
-}
-
-/* spec document */
-.spec-doc {
-  border: 1px solid var(--hairline);
-  border-radius: var(--radius-lg);
-  background: var(--panel-2);
-  padding: 22px 26px;
-  max-width: 780px;
-}
-.spec-meta { font-family: var(--mono); font-size: 11px; color: var(--text-3); }
-.spec-body {
-  margin: 10px 0 0;
-  font-family: var(--mono);
-  font-size: 12.5px;
-  line-height: 1.7;
-  color: var(--text);
-  white-space: pre-wrap;
-  word-break: break-word;
-}
-
-/* mapped-ideation map (ADR-0001 §13.6) — the prose sits below the waypoints,
-   behind a disclosure that starts closed (decision #4). */
-.mapdoc {
-  margin-top: 4px;
-  padding-top: 12px;
-  border-top: 1px solid var(--hairline-soft);
-}
-.mapdoc-summary {
-  font-size: 10px;
-  letter-spacing: 0.09em;
-  text-transform: uppercase;
-  color: var(--text-3);
-  cursor: pointer;
-  padding: 2px;
-}
-.mapdoc-summary:hover { color: var(--text-2); }
-.map-section { margin-top: 12px; }
-.map-section-title {
-  font-family: var(--mono);
-  font-size: 10.5px;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--accent-hi);
-  margin-bottom: 6px;
-}
-/* nothing charted yet keeps the dashed placeholder; groups replace it */
-.map-waypoints > .dim-line {
-  padding: 18px;
-  border: 1px dashed var(--hairline);
-  border-radius: var(--radius-lg);
-  text-align: center;
-}
-
-.wp-group { margin-bottom: 14px; }
-.wp-group-title {
-  font-family: var(--mono);
-  font-size: 10.5px;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--text-3);
-  margin-bottom: 7px;
-}
-.wp-group-frontier .wp-group-title { color: var(--accent-hi); }
-.wp-group-claimed .wp-group-title { color: var(--drive); }
-details.wp-group-done { border-top: 1px solid var(--hairline-soft); padding-top: 12px; }
-details.wp-group-done > summary { cursor: pointer; list-style: revert; }
-
-/* An expandable card, not a row (decision #6): the body toggles, the Work
-   control keeps its own line, and the question only shows when expanded. */
-.wp {
-  padding: 9px 12px;
-  border: 1px solid var(--hairline);
-  border-radius: var(--radius-sm);
-  background: var(--panel-2);
-  margin-bottom: 6px;
-  cursor: pointer;
-  transition: border-color var(--dur-2) var(--ease-out);
-}
-.wp:hover { border-color: var(--hairline-strong); }
-.wp-frontier { border-color: var(--accent-line); }
-.wp-blocked { opacity: 0.55; }
-.wp-claimed { border-color: color-mix(in srgb, var(--drive) 45%, var(--hairline)); }
-.wp-done { opacity: 0.6; }
-
-.wp-top {
-  display: flex;
-  align-items: baseline;
-  gap: 9px;
-}
-.wp-caret {
-  color: var(--text-4);
-  font-size: 9px;
-  flex-shrink: 0;
-  transition: transform var(--dur-2) var(--ease-out);
-}
-.wp.is-open .wp-caret { transform: rotate(90deg); }
-
-.wp-detail {
-  margin-top: 8px;
-  padding-top: 8px;
-  border-top: 1px solid var(--hairline-soft);
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  cursor: default;
-}
-/* The question — the field this card exists to show — as rendered prose. */
-.wp-q { cursor: text; }
-
-.wp-type {
-  font-family: var(--mono);
-  font-size: 10px;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-  color: var(--text-2);
-  border: 1px solid var(--hairline-strong);
-  border-radius: var(--radius-sm);
-  padding: 1px 6px;
-  flex-shrink: 0;
-}
-/* The rail is only ~300px wide — a long title wraps rather than overflowing. */
-.wp-title { color: var(--text); font-size: 13px; flex: 1; min-width: 0; overflow-wrap: anywhere; }
-.wp-blockers, .wp-lineage, .wp-resume {
-  font-family: var(--mono);
-  font-size: 11px;
-  color: var(--text-3);
-}
-.wp-blockers { color: var(--needs); }
-.wp-resume { color: var(--drive); }
-/* Beats `.md`'s own colour — the resolution summary reads quieter than the question. */
-.wp-detail .wp-summary { color: var(--text-3); }
-/* AFK research run in flight on a claimed waypoint. */
-.wp-run-note {
-  font-family: var(--mono);
-  font-size: 11px;
-  color: var(--drive);
-  font-style: italic;
-}
-/* Work / Resume owns the card's second line. */
-.wp-actions {
-  margin-top: 8px;
-  display: flex;
-  align-items: center;
-  gap: 7px;
-}
-.wp-pulse {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--drive);
-  flex-shrink: 0;
-  animation: pulse 1.4s ease-in-out infinite;
-}
-
-/* The refused handoff, asked inline instead of thrown as a toast (decision #2). */
-.wp-confirm {
-  margin-top: 8px;
-  padding: 9px;
-  border: 1px solid color-mix(in srgb, var(--needs) 45%, var(--hairline));
-  border-radius: var(--radius-sm);
-  background: color-mix(in srgb, var(--needs) 7%, transparent);
-}
-.wp-confirm-text {
-  font-size: 11.5px;
-  line-height: 1.45;
-  color: var(--text-2);
-  margin-bottom: 8px;
-}
-.wp-confirm-text b { color: var(--text); font-weight: 600; }
-.wp-confirm-actions { display: flex; gap: 7px; }
-
-/* Converge re-entry (recovery, kept quiet): stranded at spec after a crash. */
-.converge-resume {
-  margin-top: 14px;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  flex-wrap: wrap;
-  padding: 10px 14px;
-  border: 1px solid var(--hairline);
-  border-radius: var(--radius);
-  background: var(--panel-2);
-}
-.converge-resume-text { font-size: 12.5px; color: var(--text-2); }
-
-/* ---- lap grouping (decisions.md #6) ----
-   The group itself is a primitive now (`LapSections` in ui.tsx) and carries its
-   own utilities; `lap-group` / `lap-group-head` survive only as the hooks the
-   two rules below place inside the bordered ledger, where the header is a band
-   that lines up with the rows' own gutter rather than the card edge. */
-.ledger .lap-group-head { padding: 8px 14px; background: var(--panel-3); }
-.ledger .lap-group + .lap-group { border-top: 1px solid var(--hairline); }
 
 /* ============================================================================
    PHASE BODY — tickets ledger
@@ -1183,11 +527,7 @@ details.wp-group-done > summary { cursor: pointer; list-style: revert; }
   transition: transform var(--dur-2) var(--ease);
 }
 .ledger-row.is-open .lg-caret { transform: rotate(90deg); }
-.lg-seq { color: var(--text-3); font-family: var(--mono); font-size: 11.5px; width: 22px; flex: 0 0 auto; }
 .lg-title { flex: 1; min-width: 0; color: var(--text); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.lg-block { font-family: var(--mono); font-size: 10.5px; color: var(--needs); flex: 0 0 auto; }
-.lg-meta { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
-.lg-commits { color: var(--text-2); font-size: 11px; }
 .ledger-detail {
   padding: 2px 16px 16px 46px;
   background: var(--panel-inset);
@@ -1196,54 +536,7 @@ details.wp-group-done > summary { cursor: pointer; list-style: revert; }
   animation: detailIn var(--dur-2) var(--ease-out);
 }
 .td-section { margin-top: 12px; }
-.td-heading { font-size: 10.5px; font-weight: 600; letter-spacing: 0.07em; text-transform: uppercase; color: var(--text-3); margin-bottom: 4px; }
 .td-body { color: var(--text); line-height: 1.55; white-space: pre-wrap; word-break: break-word; max-width: 640px; text-wrap: pretty; }
-.td-list { margin: 0; padding-left: 0; list-style: none; }
-.td-list li { display: flex; gap: 8px; padding: 2px 0; color: var(--text-2); line-height: 1.5; }
-.td-list li::before { content: "—"; color: var(--text-4); flex: 0 0 auto; }
-/* in-place ticket editing — a pending card is correctable before Burn, with no
-   terminal in between (the quick-change door's promise) */
-.td-edit-open {
-  margin-top: 12px;
-  background: transparent;
-  border: 1px solid var(--hairline);
-  border-radius: var(--radius);
-  color: var(--text-3);
-  font-size: 11.5px;
-  font-family: inherit;
-  padding: 3px 9px;
-  cursor: pointer;
-  transition: border-color var(--dur-1), color var(--dur-1);
-}
-.td-edit-open:hover { border-color: var(--hairline-strong); color: var(--text-2); }
-.td-edit label.td-section { display: block; max-width: 640px; }
-.td-input {
-  width: 100%;
-  background: var(--panel-inset);
-  border: 1px solid var(--hairline);
-  border-radius: var(--radius);
-  color: var(--text);
-  padding: 7px 10px;
-  font-size: 12.5px;
-  font-family: inherit;
-  line-height: 1.55;
-  outline: none;
-  transition: border-color var(--dur-1);
-}
-.td-input:focus { border-color: var(--accent); }
-.td-area { min-height: 68px; resize: vertical; }
-.td-edit-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; max-width: 640px; }
-.td-seams { display: flex; flex-wrap: wrap; gap: 6px; }
-.seam {
-  font-family: var(--mono);
-  font-size: 11px;
-  color: var(--text-2);
-  border: 1px solid var(--hairline);
-  background: var(--panel-2);
-  border-radius: var(--radius-sm);
-  padding: 2px 7px;
-}
-.td-commits { display: flex; flex-wrap: wrap; gap: 6px; }
 .commit-sha {
   font-family: var(--mono);
   font-size: 11px;
@@ -1256,9 +549,6 @@ details.wp-group-done > summary { cursor: pointer; list-style: revert; }
   transition: border-color var(--dur-1);
 }
 .commit-sha:hover { border-color: var(--ph-shipped); }
-.td-error .td-heading { color: var(--danger); }
-.td-error-body { color: var(--danger); white-space: pre-wrap; word-break: break-word; }
-.td-empty { font-family: var(--mono); font-size: 11.5px; color: var(--text-4); }
 
 /* ============================================================================
    PHASE BODY — run (lanes | stream)

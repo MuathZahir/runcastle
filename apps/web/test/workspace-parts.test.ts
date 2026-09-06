@@ -23,9 +23,14 @@ describe('workspace parts', () => {
       createElement(PipelineStepper, { steps, lap: 1, onView: () => undefined }),
     )
 
-    expect(html.match(/class="pstep /g)).toHaveLength(PHASE_ORDER.length)
-    expect(html).toContain('class="pstep is-current is-viewed is-clickable"')
+    expect(html.match(/<button/g)).toHaveLength(PHASE_ORDER.length)
+    // The current step is the only one that is lit, framed as the viewed step
+    // and clickable at once; every other step is disabled and unframed.
+    expect(html.match(/disabled=""/g)).toHaveLength(PHASE_ORDER.length - 1)
+    expect(html.match(/border-accent-line/g)).toHaveLength(1)
     for (const phase of PHASE_ORDER) expect(html).toContain(PHASE_LABELS[phase])
+    // Each step carries its own tip — what it teaches depends on its state.
+    for (const phase of PHASE_ORDER) expect(html).toContain(`title="${phase}"`)
   })
 
   it('renders an unrecognized phase value', () => {

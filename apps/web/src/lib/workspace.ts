@@ -25,7 +25,16 @@ const SELECTED_KEY = 'runcastle.selected.v1'
 const PREPARING_KEY = 'runcastle.preparing.v1'
 const INSPECTOR_KEY = 'runcastle.inspector.collapsed'
 const MAPRAIL_KEY = 'runcastle.maprail.collapsed'
+const ARTIFACT_KEY = 'runcastle.artifact.collapsed'
 const GUIDANCE_KEY = 'runcastle.guidance'
+
+export function inspectorCollapsedForPhase(
+  preference: boolean | null,
+  phase: Phase | undefined,
+): boolean {
+  if (preference !== null) return preference
+  return phase === 'ideation' || phase === 'spec' || phase === 'tickets'
+}
 
 /** Per-project selected-feature key so switching projects never restores a
  *  feature from another project (multi-project, issue #45). */
@@ -89,8 +98,11 @@ export interface WorkspaceApi {
   preparing: boolean
   /** Right inspector rail collapsed. */
   inspectorCollapsed: boolean
+  /** Explicit inspector choice, or null until the human has toggled it. */
+  inspectorPreference: boolean | null
   /** Mapped-ideation map rail collapsed to its frontier-count stub. */
   mapRailCollapsed: boolean
+  artifactPaneCollapsed: boolean
   /** Command palette (⌘K) open. */
   cmdkOpen: boolean
   /**
@@ -118,8 +130,9 @@ export interface WorkspaceApi {
   cancelCreate: () => void
   /** Leave a deliberately-opened preparation. */
   closePreparation: () => void
-  toggleInspector: () => void
+  toggleInspector: (current?: boolean) => void
   toggleMapRail: () => void
+  toggleArtifactPane: () => void
   setCmdk: (open: boolean) => void
   /** Open settings, on General unless the caller names somewhere else. */
   openSettings: (location?: SettingsLocation) => void
@@ -140,13 +153,17 @@ export function useWorkspace(projectId: string): WorkspaceApi {
   // Ephemeral like the phase pin: the pinned row is always in the rail, so a
   // reload landing back on your feature is the right resting state.
   const [projectSelected, setProjectSelected] = useState(false)
-  const [inspectorCollapsed, setInspectorCollapsed] = useState(
-    () => readLS(INSPECTOR_KEY) === '1',
-  )
+  const [inspectorPreference, setInspectorPreference] = useState<boolean | null>(() => {
+    const stored = readLS(INSPECTOR_KEY)
+    return stored === null ? null : stored === '1'
+  })
   // Global, not per-project (matching the inspector): a rail preference is about
   // how the human likes the screen, not about which project they are in.
   const [mapRailCollapsed, setMapRailCollapsed] = useState(
     () => readLS(MAPRAIL_KEY) === '1',
+  )
+  const [artifactPaneCollapsed, setArtifactPaneCollapsed] = useState(
+    () => readLS(ARTIFACT_KEY) === '1',
   )
   const [cmdkOpen, setCmdk] = useState(false)
   const [settings, setSettings] = useState<SettingsLocation | null>(null)
@@ -160,11 +177,15 @@ export function useWorkspace(projectId: string): WorkspaceApi {
     writeLS(preparingKey, preparing ? '1' : '0')
   }, [preparing, preparingKey])
   useEffect(() => {
-    writeLS(INSPECTOR_KEY, inspectorCollapsed ? '1' : '0')
-  }, [inspectorCollapsed])
+    if (inspectorPreference !== null)
+      writeLS(INSPECTOR_KEY, inspectorPreference ? '1' : '0')
+  }, [inspectorPreference])
   useEffect(() => {
     writeLS(MAPRAIL_KEY, mapRailCollapsed ? '1' : '0')
   }, [mapRailCollapsed])
+  useEffect(() => {
+    writeLS(ARTIFACT_KEY, artifactPaneCollapsed ? '1' : '0')
+  }, [artifactPaneCollapsed])
   useEffect(() => {
     writeLS(GUIDANCE_KEY, guidance ? '1' : '0')
   }, [guidance])
@@ -211,8 +232,12 @@ export function useWorkspace(projectId: string): WorkspaceApi {
   const closeSettings = useCallback(() => setSettings(null), [])
   const cancelCreate = useCallback(() => setCreating(false), [])
   const closePreparation = useCallback(() => setPreparing(false), [])
-  const toggleInspector = useCallback(() => setInspectorCollapsed((v) => !v), [])
+  const toggleInspector = useCallback(
+    (current?: boolean) => setInspectorPreference((value) => !(current ?? value ?? false)),
+    [],
+  )
   const toggleMapRail = useCallback(() => setMapRailCollapsed((v) => !v), [])
+  const toggleArtifactPane = useCallback(() => setArtifactPaneCollapsed((v) => !v), [])
   const toggleGuidance = useCallback(() => setGuidance((v) => !v), [])
 
   return {
@@ -221,8 +246,10 @@ export function useWorkspace(projectId: string): WorkspaceApi {
     viewedPhase,
     creating,
     preparing,
-    inspectorCollapsed,
+    inspectorCollapsed: inspectorPreference ?? false,
+    inspectorPreference,
     mapRailCollapsed,
+    artifactPaneCollapsed,
     cmdkOpen,
     settings,
     guidance,
@@ -235,6 +262,7 @@ export function useWorkspace(projectId: string): WorkspaceApi {
     closePreparation,
     toggleInspector,
     toggleMapRail,
+    toggleArtifactPane,
     setCmdk,
     openSettings,
     closeSettings,

@@ -111,6 +111,7 @@
   --sidebar-w: 300px; /* decision 10 default; the shell overrides it as you drag */
   --inspector-w: 300px;
   --maprail-w: 300px;
+  --artifact-w: 380px;
   --content-max: 1060px; /* centered column for document-style phase bodies */
   --dur-1: 0.12s; /* micro (hover, color) */
   --dur-2: 0.19s; /* small (rows, chips) */

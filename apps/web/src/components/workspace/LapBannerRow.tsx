@@ -13,15 +13,22 @@ import { LAP_KICKOFF, lapExplainer } from '../../lib/vocabulary'
  */
 export function LapBannerRow({ banner }: { banner: LapBanner }) {
   return (
-    <div className="ws-lap" role="note">
-      <span className="ws-lap-tag" title={lapExplainer(banner.lap)}>
+    <div className="flex items-start gap-3 border-b border-hairline bg-panel-2 px-6 py-3" role="note">
+      <span
+        className="shrink-0 cursor-default rounded-sm border border-accent-line px-1.5 py-0.5 font-mono text-[10.5px] tracking-wider text-accent-2"
+        title={lapExplainer(banner.lap)}
+      >
         LAP {banner.lap}
       </span>
-      <div className="ws-lap-body">
-        <div className="ws-lap-why">{LAP_KICKOFF}</div>
-        <div className="ws-lap-facts">
-          {banner.startedAt !== null && <span>started {relTime(banner.startedAt)} ago</span>}
-          <span>{banner.landed}</span>
+      <div className="flex min-w-0 flex-col gap-0.5">
+        <div className="text-sm text-text-2">{LAP_KICKOFF}</div>
+        <div className="font-mono text-xs text-text-3">
+          {[
+            banner.startedAt === null ? undefined : `started ${relTime(banner.startedAt)} ago`,
+            banner.landed,
+          ]
+            .filter(Boolean)
+            .join(' · ')}
         </div>
       </div>
     </div>

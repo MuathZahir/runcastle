@@ -1,4 +1,3 @@
-import type { Phase } from '@runcastle/core'
 import type { FeatureFull } from '../../api'
 import type { MergeConflictState } from '../gates'
 import type { DraftBaseMissing } from './types'
@@ -20,13 +19,12 @@ export interface ResolverInput {
   ctx: NextStepContext
   live: FeatureFull['sessions'][number] | undefined
   resumableGrill: boolean
+  lapTickets: FeatureFull['tickets']
+  lapTicketCount: number
   ticketCount: number
   done: number
   failed: number
   pending: number
   run: FeatureFull['runs'][number] | undefined
   running: boolean
-  nextName: Phase | null
-  canAdvance: boolean
-  promoteLabel: string
 }

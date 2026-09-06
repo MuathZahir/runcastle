@@ -147,15 +147,19 @@ surface, and dropping the name would silently lose that placement.
 
 | Primitive | Hook | The rule that needs it |
 |---|---|---|
-| `SectionTitle` | `section-title` | `.body-title .section-title`, `.mr-head .section-title` |
-| `DimLine` | `dim-line mono` | `.map-waypoints > .dim-line` (the dashed placeholder) |
-| `LapSections` | `lap-group`, `lap-group-head` | `.ledger .lap-group-head`, `.ledger .lap-group + .lap-group` |
+| `SectionTitle` | `section-title` | `.body-title .section-title` (the run body's heading row) |
+| `DimLine` | `dim-line mono` | none left — the base `.dim-line` rule, which raw spans still carry |
 
 Remember that an unlayered legacy rule beats a utility, so where the base rule
 also still exists — `.section-title` and `.dim-line` do, because raw spans
 elsewhere in the app carry those names — it wins over the utilities beside it.
 **When your flow migrates one of those surfaces, delete the rule and the hook
 together**, and check whether the base rule has any raw callers left.
+
+`LapSections` used to be on that list. Its replacement is the pattern to copy
+when you retire a hook whose rule only existed to place a shared primitive
+inside one surface: the placement becomes a `headClassName` the *surface* passes,
+so the utilities are written where the frame is known instead of reached in for.
 
 ## Concern modules
 

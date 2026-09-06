@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { parsePhase, type Phase } from '@runcastle/core'
+import { parsePhase, type EventRow, type Phase } from '@runcastle/core'
 import { trpc } from '../trpc'
 import { useEventLog } from '../lib/events'
 import { useLivePoll } from '../lib/live'
@@ -19,7 +19,8 @@ import {
   mapDocPath,
   mergeSummary,
   nextStep,
-  PHASE_LABELS,
+  phaseFacts,
+  phaseSummary,
   pipelineSteps,
   reviewOutcome,
   specDocPath,
@@ -30,19 +31,22 @@ import {
   type MergeConflictState,
 } from '../lib/feature-ui'
 import { useResolveConflict } from '../lib/use-resolve-conflict'
+import { docPath, useFeatureDoc } from '../lib/use-feature-doc'
 import { IconBranch } from '../icons'
 import { AddressNotesDialog } from './AddressNotesDialog'
 import { MergeFeatureDialog } from './MergeFeatureDialog'
 import { DraftBody } from './bodies/DraftBody'
-import { GrillBody } from './bodies/GrillBody'
+import { GrillBody } from './bodies/grill/GrillBody'
+import { PinnedBody } from './bodies/PinnedBody'
 import { ReviewBody } from './bodies/ReviewBody'
 import { ShippedBody } from './bodies/ShippedBody'
-import { TicketsBody } from './bodies/TicketsBody'
+import { TicketsBody } from './bodies/tickets/TicketsBody'
 import { RunBody } from './bodies/RunBody'
 import { FeatureCrash, UnrecognizedPhase } from './workspace/FeaturePanes'
 import { LapBannerRow } from './workspace/LapBannerRow'
 import { NextStepBar } from './workspace/NextStepBar'
 import { PipelineStepper } from './workspace/PipelineStepper'
+import { ReadonlyBanner } from './workspace/ReadonlyBanner'
 import { copyText } from './workspace/copy-text'
 import { useResumeFailedAlert } from './workspace/use-resume-failed-alert'
 
@@ -62,6 +66,8 @@ export function Workspace({
   guidance,
   mapRailCollapsed,
   onToggleMapRail,
+  artifactPaneCollapsed,
+  onToggleArtifactPane,
   driving,
   onDriveChange,
 }: {
@@ -71,6 +77,8 @@ export function Workspace({
   guidance: boolean
   mapRailCollapsed: boolean
   onToggleMapRail: () => void
+  artifactPaneCollapsed: boolean
+  onToggleArtifactPane: () => void
   driving: DriveState | null
   onDriveChange: (d: DriveState | null) => void
 }) {
@@ -172,6 +180,11 @@ export function Workspace({
   // warns on the picker and says so on the disabled button.
   const draftBaseMissing: DraftBaseMissing | undefined =
     !isDraft || effectiveDraftBase ? undefined : branchesQ.data ? 'unpicked' : 'loading'
+  // How many decisions ideation settled — the one fact the phase summary cannot
+  // read off the feed (decision 10). Same `docs.read` query key the artifact
+  // pane resolves, so the banner, the stepper's tooltip and the pane the human
+  // is reading all share one fetch.
+  const decisions = useFeatureDoc(featureId, docPath(q.data?.docs ?? [], 'decisions.md')).content
 
   const invalidate = () => {
     void utils.feature.get.invalidate({ id: featureId })
@@ -184,13 +197,6 @@ export function Workspace({
   }
 
   const launch = trpc.feature.launchSession.useMutation({ onSuccess: invalidate, onError: (e) => toast.push(e.message) })
-  const advance = trpc.feature.advance.useMutation({
-    onSuccess: () => {
-      invalidate()
-      onViewPhase(null)
-    },
-    onError: (e) => toast.push(e.message),
-  })
   const burn = trpc.feature.burn.useMutation({
     onSuccess: () => {
       invalidate()
@@ -206,6 +212,10 @@ export function Workspace({
       invalidate()
       onViewPhase(null)
     },
+    onError: (e) => toast.push(e.message),
+  })
+  const workWaypoint = trpc.feature.workWaypoint.useMutation({
+    onSuccess: invalidate,
     onError: (e) => toast.push(e.message),
   })
   // Iterate is the review verb that starts the next lap (ADR-0010 §3; the
@@ -365,7 +375,17 @@ export function Workspace({
   }
   const effective = effectivePhase(feature, viewedPhase)
   const readonly = isReadonlyView(feature, effective)
-  const steps = pipelineSteps(feature, effective)
+  const twoPane =
+    !isDraft && (effective === 'ideation' || effective === 'spec' || effective === 'tickets')
+  // What each finished phase produced (decision 10) — one derivation, read by
+  // the stepper's done-step tooltips and by the read-only banner, so the two can
+  // never tell a different story about the same phase.
+  const summaryOf = (phase: Phase) => phaseSummary({ phase, full, events, decisions })
+  const steps = pipelineSteps(feature, effective, {
+    ideation: summaryOf('ideation'),
+    spec: summaryOf('spec'),
+    tickets: summaryOf('tickets'),
+  })
   const run = latestRun(full.runs)
   const isDriving = driving?.featureId === feature.id
   const ns = nextStep(full, {
@@ -396,9 +416,9 @@ export function Workspace({
   const busy =
     start.isPending ||
     launch.isPending ||
-    advance.isPending ||
     burn.isPending ||
     converge.isPending ||
+    workWaypoint.isPending ||
     rethink.isPending ||
     cancel.isPending ||
     testDrive.isPending ||
@@ -408,7 +428,7 @@ export function Workspace({
     unarchive.isPending ||
     resolveConflict.pending
 
-  const runAction = (kind: ActionKind, reason?: string) => {
+  const runAction = (kind: ActionKind, waypointId?: string) => {
     switch (kind) {
       case 'startDraft':
         // Send the base the body is SHOWING, not just an explicit pick: omitting
@@ -430,14 +450,11 @@ export function Workspace({
         rethink.mutate({ featureId })
         break
       case 'converge':
+      case 'resumeConverge':
         converge.mutate({ featureId })
         break
-      case 'convergeOverride':
-        // The bar only dispatches this once the human has typed a reason.
-        if (reason) converge.mutate({ featureId, overrideReason: reason })
-        break
-      case 'advance':
-        advance.mutate({ featureId })
+      case 'workNext':
+        if (waypointId) workWaypoint.mutate({ featureId, waypointId })
         break
       case 'burn':
         burn.mutate({ featureId })
@@ -533,7 +550,11 @@ export function Workspace({
           {isDraft ? <span className="tag is-draft">draft</span> : <PhaseTag phase={feature.phase} />}
           <span className="ws-title">{feature.title}</span>
           <span className="ws-title-spacer" />
-          <button className="ws-branch" title="Copy branch name" onClick={() => copyText(feature.branch, toast)}>
+          <button
+            className="inline-flex items-center gap-1.5 border-0 bg-transparent p-0 font-mono text-xs text-text-3 transition-colors duration-(--dur-1) hover:text-text"
+            title="Copy branch name"
+            onClick={() => copyText(feature.branch, toast)}
+          >
             <IconBranch size={11} />
             {feature.branch}
           </button>
@@ -555,13 +576,12 @@ export function Workspace({
       {banner && <LapBannerRow banner={banner} />}
 
       {readonly ? (
-        <div className="readonly-bar">
-          <span className="readonly-tag">READ-ONLY</span>
-          <span>You're viewing the {PHASE_LABELS[effective]} phase.</span>
-          <button className="readonly-back" onClick={() => onViewPhase(null)}>
-            Back to {PHASE_LABELS[feature.phase]} →
-          </button>
-        </div>
+        <ReadonlyBanner
+          phase={effective}
+          livePhase={feature.phase}
+          facts={phaseFacts({ phase: effective, full, events, decisions })}
+          onBack={() => onViewPhase(null)}
+        />
       ) : (
         <NextStepBar
           ns={ns}
@@ -629,8 +649,14 @@ export function Workspace({
         />
       )}
 
-      <div className="ws-body">
-        <div className="ws-body-inner" key={isDraft ? 'draft' : effective}>
+      {/* Ideation, spec and tickets fill the body rather than scroll it
+          (decisions 6, 11): each pane scrolls itself, so for them the body stops
+          being the scroll container and stops centering on --content-max. */}
+      <div className={twoPane ? 'flex min-h-0 flex-1 overflow-hidden' : 'ws-body'}>
+        <div
+          className={twoPane ? 'flex min-h-0 min-w-0 flex-1' : 'ws-body-inner'}
+          key={isDraft ? 'draft' : effective}
+        >
           {/* Status wins over phase here (decision 9): a draft is created at
               `ideation`, and the grill body would offer a terminal on a feature
               that has no branch to open one against. */}
@@ -640,12 +666,15 @@ export function Workspace({
             <PhaseBody
               effective={effective}
               full={full}
+              events={events}
               driving={driving}
               conflict={conflict}
               runId={run?.id ?? null}
               readonly={readonly}
               mapRailCollapsed={mapRailCollapsed}
               onToggleMapRail={onToggleMapRail}
+              artifactPaneCollapsed={artifactPaneCollapsed}
+              onToggleArtifactPane={onToggleArtifactPane}
             />
           )}
         </div>
@@ -657,22 +686,41 @@ export function Workspace({
 function PhaseBody({
   effective,
   full,
+  events,
   driving,
   conflict,
   runId,
   readonly,
   mapRailCollapsed,
   onToggleMapRail,
+  artifactPaneCollapsed,
+  onToggleArtifactPane,
 }: {
   effective: Phase
   full: FeatureFull
+  events: readonly EventRow[]
   driving: DriveState | null
   conflict: MergeConflictState | null
   runId: string | null
   readonly: boolean
   mapRailCollapsed: boolean
   onToggleMapRail: () => void
+  artifactPaneCollapsed: boolean
+  onToggleArtifactPane: () => void
 }) {
+  // A pinned phase this flow owns is a frozen record, not the live body with its
+  // buttons hidden (decision 10) — a different body altogether.
+  if (readonly && (effective === 'ideation' || effective === 'spec' || effective === 'tickets')) {
+    return (
+      <PinnedBody
+        full={full}
+        effective={effective}
+        events={events}
+        mapRailCollapsed={mapRailCollapsed}
+        onToggleMapRail={onToggleMapRail}
+      />
+    )
+  }
   switch (effective) {
     case 'ideation':
     case 'spec':
@@ -680,13 +728,14 @@ function PhaseBody({
         <GrillBody
           full={full}
           effective={effective}
-          readonly={readonly}
           mapRailCollapsed={mapRailCollapsed}
           onToggleMapRail={onToggleMapRail}
+          artifactPaneCollapsed={artifactPaneCollapsed}
+          onToggleArtifactPane={onToggleArtifactPane}
         />
       )
     case 'tickets':
-      return <TicketsBody featureId={full.feature.id} readonly={readonly} />
+      return <TicketsBody featureId={full.feature.id} />
     case 'implementation':
       // Before the first burn there is no run to narrate, so an empty run pane
       // is the wrong thing to show — the tickets about to burn are. This is the
@@ -695,7 +744,7 @@ function PhaseBody({
       return runId ? (
         <RunBody featureId={full.feature.id} runId={runId} readonly={readonly} />
       ) : (
-        <TicketsBody featureId={full.feature.id} readonly={readonly} />
+        <TicketsBody featureId={full.feature.id} />
       )
     case 'review':
       return <ReviewBody full={full} driving={driving} conflict={conflict} readonly={readonly} />

@@ -1,7 +1,47 @@
 // @vitest-environment happy-dom
 import { act, cleanup, renderHook } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'vitest'
-import { useWorkspace } from '../src/lib/workspace'
+import { inspectorCollapsedForPhase, useWorkspace } from '../src/lib/workspace'
+
+describe('useWorkspace — pane preferences', () => {
+  afterEach(() => {
+    localStorage.clear()
+    cleanup()
+  })
+
+  it('distinguishes a never-written inspector preference from an explicit choice', () => {
+    const { result } = renderHook(() => useWorkspace('proj_1'))
+    expect(result.current.inspectorPreference).toBeNull()
+    act(() => result.current.toggleInspector())
+    expect(result.current.inspectorPreference).toBe(true)
+    expect(localStorage.getItem('runcastle.inspector.collapsed')).toBe('1')
+  })
+
+  it('persists the artifact pane collapse choice', () => {
+    const { result } = renderHook(() => useWorkspace('proj_1'))
+    expect(result.current.artifactPaneCollapsed).toBe(false)
+    act(() => result.current.toggleArtifactPane())
+    expect(result.current.artifactPaneCollapsed).toBe(true)
+    expect(localStorage.getItem('runcastle.artifact.collapsed')).toBe('1')
+  })
+
+  it('defaults Details closed only during ideation through tickets', () => {
+    expect(inspectorCollapsedForPhase(null, 'ideation')).toBe(true)
+    expect(inspectorCollapsedForPhase(null, 'spec')).toBe(true)
+    expect(inspectorCollapsedForPhase(null, 'tickets')).toBe(true)
+    expect(inspectorCollapsedForPhase(null, 'implementation')).toBe(false)
+    expect(inspectorCollapsedForPhase(null, 'review')).toBe(false)
+    expect(inspectorCollapsedForPhase(true, 'review')).toBe(true)
+    expect(inspectorCollapsedForPhase(false, 'ideation')).toBe(false)
+  })
+
+  it('opens a phase-defaulted collapsed inspector on the first toggle', () => {
+    const { result } = renderHook(() => useWorkspace('proj_1'))
+    act(() => result.current.toggleInspector(true))
+    expect(result.current.inspectorPreference).toBe(false)
+    expect(localStorage.getItem('runcastle.inspector.collapsed')).toBe('0')
+  })
+})
 
 /**
  * Settings is a place, not a flag (flow-redesign-settings, decision 9): the

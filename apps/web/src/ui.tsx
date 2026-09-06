@@ -101,9 +101,9 @@ export const TEXT_INPUT =
 /**
  * 11px uppercase tracked section title.
  *
- * Keeps the `section-title` class as a hook: two surviving legacy rules place it
- * in their surface (`.body-title`, `.mr-head`) and raw spans elsewhere still
- * carry the class, so its rule stays in `styles.css` until those flows migrate.
+ * Keeps the `section-title` class as a hook: one surviving legacy rule places it
+ * in its surface (`.body-title`, the run body's heading row) and raw spans
+ * elsewhere still carry the class, so its rule stays until that flow migrates.
  * The utilities below say the same thing the rule does — 11px is already the
  * theme's micro-label step — and are what is left when it goes.
  */
@@ -119,8 +119,8 @@ export function SectionTitle({ children }: { children: ReactNode }) {
  * One dim mono line — inline empty/error state for tight spots.
  *
  * Keeps `dim-line mono` for the same reason {@link SectionTitle} keeps its
- * class: `.map-waypoints > .dim-line` turns this into the map rail's dashed
- * placeholder, and the error boundary renders the pair raw.
+ * class: the base rule is still in `styles.css` because the error boundary and
+ * other raw spans render the pair by hand, and unlayered rules beat utilities.
  */
 export function DimLine({ children }: { children: ReactNode }) {
   return <div className="dim-line mono py-0.5 font-mono text-sm text-text-3">{children}</div>
@@ -749,8 +749,7 @@ export function CheckLine({ row }: { row: CheckRow }) {
   )
 }
 
-const LAP_HEAD =
-  'lap-group-head flex items-baseline gap-2 py-2 font-mono text-xs tracking-[0.06em] uppercase'
+const LAP_HEAD = 'flex items-baseline gap-2 py-2 font-mono text-xs tracking-[0.06em] uppercase'
 
 /**
  * Rows under `Lap N` headers (decisions.md #6) — the shared shape of the ticket
@@ -771,14 +770,16 @@ const LAP_HEAD =
  * 2, so a flat list there would have the two halves of the workspace disagreeing
  * about which lap the human is looking at.
  *
- * The `lap-group` / `lap-group-head` classes are hooks, not styling: inside the
- * bordered ledger a surviving legacy rule turns the header into a band that
- * lines up with the rows' gutter.
+ * A surface that needs its headers placed inside its own frame — the bordered
+ * ticket ledger wants a band on the rows' gutter — passes `headClassName`. That
+ * used to be a legacy rule reaching in through a `lap-group-head` hook class;
+ * the utilities come from the surface that knows where the header sits.
  */
 export function LapSections<T extends { lap: number }>({
   groups,
   currentLap,
   meta,
+  headClassName,
   children,
 }: {
   groups: LapGroup<T>[]
@@ -786,6 +787,8 @@ export function LapSections<T extends { lap: number }>({
   currentLap: number
   /** One line about what a lap holds, shown beside its number. */
   meta: (group: LapGroup<T>) => string
+  /** Extra utilities on each lap header, for a surface that frames its rows. */
+  headClassName?: string
   children: (rows: T[]) => ReactNode
 }) {
   if (currentLap <= 1) return <>{children(groups.flatMap((g) => g.rows))}</>
@@ -800,15 +803,16 @@ export function LapSections<T extends { lap: number }>({
           </>
         )
         return g.current ? (
-          <section className="lap-group" key={g.lap}>
-            <div className={cx(LAP_HEAD, 'text-text-2')}>{head}</div>
+          <section key={g.lap}>
+            <div className={cx(LAP_HEAD, headClassName, 'text-text-2')}>{head}</div>
             {children(g.rows)}
           </section>
         ) : (
-          <details className="lap-group group" key={g.lap}>
+          <details className="group" key={g.lap}>
             <summary
               className={cx(
                 LAP_HEAD,
+                headClassName,
                 "cursor-pointer list-none text-text-3 before:shrink-0 before:text-text-4 before:content-['▸']",
                 "group-open:before:content-['▾'] [&::-webkit-details-marker]:hidden",
               )}

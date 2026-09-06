@@ -4,10 +4,10 @@ import {
   agentName,
   BURN_EXPLAINER,
   GATE_EXPLAINER,
-  GRILL_EXPLAINER,
   lapExplainer,
   sessionAgentName,
   testDriveExplainer,
+  WAYPOINT_EXPLAINER,
 } from '../src/lib/vocabulary'
 
 /**
@@ -22,15 +22,11 @@ describe('the explainers', () => {
     expect(BURN_EXPLAINER).toContain('feature branch')
   })
 
-  it('says a grill is a conversation, before any code', () => {
-    expect(GRILL_EXPLAINER).toMatch(/conversation/)
-    expect(GRILL_EXPLAINER).toMatch(/before any code/)
-  })
-
-  // The form that shows this has not launched anything, so it cannot know which
-  // runtime the session will open on (decision 11).
+  // The surfaces that show these have not launched anything, so they cannot
+  // know which runtime the session will open on (decision 11).
   it('does not name a runtime it cannot know yet', () => {
-    expect(GRILL_EXPLAINER).not.toMatch(/Claude|Codex/)
+    expect(WAYPOINT_EXPLAINER).not.toMatch(/Claude|Codex/)
+    expect(BURN_EXPLAINER).not.toMatch(/Claude|Codex/)
   })
 
   it('says a gate is where runcastle waits for the human', () => {
