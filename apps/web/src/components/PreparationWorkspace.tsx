@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { trpc } from '../trpc'
 import { openApp, openAppWaitingLabel, sessionStatusLabel, type OpenApp } from '../lib/feature-ui'
 import { useLivePoll } from '../lib/live'
@@ -82,7 +83,9 @@ export function PreparationWorkspace({
     <section className="workspace">
       <div className="ws-head">
         <div className="ws-title-row">
-          <span className="pw-tag">PREPARE</span>
+          <span className="inline-flex h-[18px] items-center rounded-pill border border-accent-line bg-accent-soft px-2 text-[9.5px] font-bold tracking-[0.09em] text-accent-hi">
+            PREPARE
+          </span>
           <span className="ws-title">{project?.name ?? 'This project'}</span>
           <span className="ws-title-spacer" />
           {onClose && (
@@ -91,14 +94,14 @@ export function PreparationWorkspace({
             </button>
           )}
         </div>
-        <div className="pw-consequence">
+        <div className="mt-2 text-sm leading-6 text-text-3">
           Repo facts an agent establishes once — how to install, how to verify, what is already
           red — so no burn agent re-derives them per ticket.
         </div>
       </div>
 
       <div className="ws-body">
-        <div className="ws-body-inner prep-stack">
+        <div className="ws-body-inner flex flex-col gap-[18px]">
           {prep.isLoading && <DimLine>loading…</DimLine>}
           {prep.error && <DimLine>could not load preparation: {prep.error.message}</DimLine>}
 
@@ -173,7 +176,7 @@ export function PreparationWorkspace({
  * removing every mention of preparation from the app, leaving a settings tooltip
  * that said "re-prepare to refresh it" and no way to.
  */
-function PrepCallToAction({
+export function PrepCallToAction({
   prepared,
   preparedAt,
   pending,
@@ -196,26 +199,19 @@ function PrepCallToAction({
 
   if (prepared)
     return (
-      <div className="prep-cta">
-        <div className="prep-cta-logo">
+      <div className="flex flex-col items-center gap-3 py-7 pt-10 text-center">
+        <div className="flex opacity-85">
           <LogoMark size={44} variant="outline" />
         </div>
-        <div className="prep-cta-title">Re-prepare this project</div>
-        <div className="prep-cta-sub">
+        <div className="text-lg font-medium text-text">Re-prepare this project</div>
+        <div className="max-w-[52ch] text-sm leading-6 text-text-3">
           {preparedAt !== null
             ? `Prepared ${relativeAge(preparedAt)}. `
             : 'No preparation conversation on record — every field already had a value. '}
-          Repo facts drift: commands get renamed, the test baseline moves, a new service needs a
-          port. Going again re-measures them with you there.
+          Repo facts drift; re-preparing measures them again with you there.
         </div>
-
-        {/* Hoisted above the buttons: on this screen the drifted baseline is the
-            reason to act, not a footnote under the action. A stale one is the
-            single actively harmful thing here — agents trust it and file their
-            own breakage under "already red on main". */}
-        <PrepEvidence findings={findings} staleCount={staleCount} />
-
-        <div className="prep-cta-actions">
+        {staleCount > 0 && <StaleWarning count={staleCount} />}
+        <div className="flex items-center gap-2">
           <Button variant="solid" disabled={starting} onClick={onStart}>
             {starting ? 'Opening…' : 'Resume'}
           </Button>
@@ -223,29 +219,29 @@ function PrepCallToAction({
             Start fresh
           </Button>
         </div>
-        <DimLine>
-          Resume picks your last preparation conversation back up. Start fresh opens one that has
-          never seen it — the honest choice when what it concluded is what you are re-checking.
-          Values you typed by hand are never overwritten either way.
-        </DimLine>
+        <div className="max-w-[52ch] text-sm leading-6 text-text-3">
+          Resume continues your last preparation conversation; Start fresh opens one that has never
+          seen it — values you typed by hand are never overwritten.
+        </div>
+        {findings.length > 0 && <EstablishedFrame findings={findings} />}
       </div>
     )
 
   return (
-    <div className="prep-cta">
-      <div className="prep-cta-logo">
+    <div className="flex flex-col items-center gap-3 py-7 pt-10 text-center">
+      <div className="flex opacity-85">
         <LogoMark size={44} variant="outline" />
       </div>
-      <div className="prep-cta-title">
+      <div className="text-lg font-medium text-text">
         {anyEstablished ? 'Finish preparing this project' : 'Prepare this project first'}
       </div>
-      <div className="prep-cta-sub">
-        A short conversation in your own checkout. It runs this repo’s commands, watches what they
-        do, and records the answers — with you there to settle the ones only you know.
+      <div className="max-w-[52ch] text-sm leading-6 text-text-3">
+        Opens a terminal session here with an agent in your own checkout — it runs this repo's
+        commands, records the answers, and asks you the ones only you know.
       </div>
 
       {pending.length > 0 && (
-        <ul className="prep-cta-open">
+        <ul className="m-0 flex max-w-[56ch] list-none flex-wrap justify-center gap-1.5 p-0 [&_li]:rounded-pill [&_li]:border [&_li]:border-hairline [&_li]:bg-panel-3 [&_li]:px-2 [&_li]:py-[3px] [&_li]:text-xs [&_li]:text-text-3">
           {pending.map((k) => (
             <li key={k}>{PREPARED_LABEL[k] ?? k}</li>
           ))}
@@ -255,12 +251,6 @@ function PrepCallToAction({
       <Button variant="solid" disabled={starting} onClick={onStart}>
         {starting ? 'Opening…' : 'Start preparation'}
       </Button>
-      <DimLine>
-        {anyEstablished
-          ? 'Opening it again resumes your last preparation conversation.'
-          : 'It runs on your machine, and asks before touching anything stateful.'}
-      </DimLine>
-
       <PrepEvidence findings={findings} staleCount={staleCount} />
     </div>
   )
@@ -269,8 +259,8 @@ function PrepCallToAction({
 /**
  * What preparation has to show for itself, in the one order that reads: why to
  * act, then what is already there. Rendered under the terminal while a
- * conversation is open, under the button while there is still a job to do, and
- * above the buttons once there is not.
+ * conversation is open and under the button while there is still a job to do;
+ * the prepared call-to-action places those concerns separately around its actions.
  */
 function PrepEvidence({
   findings,
@@ -305,21 +295,21 @@ function DryRunRow({
   onStop: () => void
 }) {
   return (
-    <div className="prep-dryrun">
+    <div className="flex items-center gap-[9px] rounded-md border border-drive/35 bg-drive/10 px-[11px] py-2">
       <span className="drive-pulse" />
-      <span className="prep-dryrun-label">Preparation dry-run in progress</span>
+      <span className="text-sm font-semibold text-drive">Preparation dry-run in progress</span>
       {open &&
         (open.state === 'ready' ? (
-          <a className="prep-dryrun-url font-mono" href={open.url} target="_blank" rel="noreferrer">
+          <a className="font-mono text-sm text-text-2" href={open.url} target="_blank" rel="noreferrer">
             {open.url}
           </a>
         ) : (
-          <span className="prep-dryrun-url prep-dryrun-waiting font-mono">
+          <span className="font-mono text-sm text-text-3">
             {openAppWaitingLabel(open)}
           </span>
         ))}
-      <span className="prep-dryrun-spacer" />
-      <Button size="xs" disabled={stopping} onClick={onStop}>
+      <span className="flex-1" />
+      <Button className="btn-xs" disabled={stopping} onClick={onStop}>
         {stopping ? 'Stopping…' : 'Stop'}
       </Button>
     </div>
@@ -353,7 +343,7 @@ function VerificationBadge({ finding }: { finding: ProjectFinding }) {
 /** Why a re-prepare is worth the interruption: the baseline has gone off. */
 function StaleWarning({ count }: { count: number }) {
   return (
-    <div className="prep-warn">
+    <div className="w-full max-w-[62ch] rounded-md border border-drive/35 bg-drive/10 px-[9px] py-[7px] text-left text-sm leading-5 text-text-2">
       {count} finding{count === 1 ? ' has' : 's have'} not been re-measured in a long time. A stale
       test baseline is worse than none — agents trust it and file their own breakage under “already
       red on main”.
@@ -362,15 +352,28 @@ function StaleWarning({ count }: { count: number }) {
 }
 
 /** What preparation established, with the provenance that says whether to trust it. */
-function EstablishedFrame({ findings }: { findings: readonly ProjectFinding[] }) {
+export function EstablishedFrame({ findings }: { findings: readonly ProjectFinding[] }) {
   return (
-    <div className="pw-frame">
-      <div className="pw-frame-head">Established</div>
-      <ul className="prep-findings">
-        {findings.map((f) => (
-          <li key={f.key} className={`prep-finding${isStale(f) ? ' is-stale' : ''}`}>
-            <div className="prep-finding-head">
-              <span className="prep-finding-key">{PREPARED_LABEL[f.key] ?? f.key}</span>
+    <div className="w-full max-w-[62ch] rounded-lg border border-hairline bg-panel-2 px-4 py-3.5 text-left">
+      <div className="mb-2 text-xs font-bold tracking-[0.09em] text-text-3 uppercase">
+        Established
+      </div>
+      <ul className="m-0 flex list-none flex-col gap-2.5 p-0">
+        {findings.map((f) => {
+          const label = PREPARED_LABEL[f.key] ?? f.key
+          return <FindingRow key={f.key} finding={f} label={label} />
+        })}
+      </ul>
+    </div>
+  )
+}
+
+function FindingRow({ finding: f, label }: { finding: ProjectFinding; label: string }) {
+  const [expanded, setExpanded] = useState(false)
+  return (
+    <li className="flex flex-col gap-1">
+      <div className="flex items-baseline gap-[7px]">
+        <span className="text-sm text-text">{label}</span>
               {/* Three sources, and the distinction that matters is which ones a
                   later conversation may replace. Only `yours` is locked;
                   `verified` was established with you present but stays
@@ -402,12 +405,29 @@ function EstablishedFrame({ findings }: { findings: readonly ProjectFinding[] })
                   absence of proof, not failure, and a badge reading "unverified"
                   on a key no dry run will ever touch would say the opposite. */}
               <VerificationBadge finding={f} />
+      </div>
+      <div className={`text-xs ${isStale(f) ? 'text-drive' : 'text-text-4'}`}>
+        {describeFinding(f)}
+      </div>
+      {f.evidence && (
+        <>
+          <div className="rounded-r-md border-l-2 border-accent-line bg-panel-inset px-[7px] py-[5px]">
+            <div
+              className={`whitespace-pre-wrap break-words font-mono text-xs leading-[1.45] text-text-3 ${expanded ? '' : 'line-clamp-3'}`}
+            >
+              {f.evidence}
             </div>
-            <div className="prep-finding-note">{describeFinding(f)}</div>
-            {f.evidence && <div className="prep-finding-evidence font-mono">{f.evidence}</div>}
-          </li>
-        ))}
-      </ul>
-    </div>
+          </div>
+          <button
+            className="self-start border-0 bg-transparent p-0 text-xs text-accent-hi hover:text-accent"
+            onClick={() => setExpanded((value) => !value)}
+            aria-expanded={expanded}
+            aria-label={`${expanded ? 'Collapse' : 'Show full'} evidence for ${label}`}
+          >
+            {expanded ? 'Show less' : 'Show full evidence'}
+          </button>
+        </>
+      )}
+    </li>
   )
 }

@@ -16,9 +16,11 @@ import {
   headline,
   lapAccount,
   kickoffTrouble,
+  landingFeature,
   lapAbort,
   lastTestDriveLap,
   liveSessionBlocker,
+  mapProgress,
   mergeConflictKickoff,
   needsMe,
   nextStep,
@@ -26,7 +28,10 @@ import {
   openApp,
   openAppWaitingLabel,
   parseMapSections,
+  PHASE_TIP,
+  PHASE_UNLOCK,
   phaseGlyph,
+  pipelineSteps,
   reviewChecks,
   reviewOutcome,
   reviewWalkthroughUrl,
@@ -44,7 +49,6 @@ import {
   ticketProgress,
   triage,
   triageOf,
-  undoableOverride,
   unresolvedMergeConflict,
   waypointGroups,
   type CheckRow,
@@ -54,6 +58,7 @@ import {
   type Waypoint,
 } from '../src/lib/feature-ui'
 import type { FeatureFull, FeatureListItem } from '../src/lib/api'
+import { full, listItem, wp } from './fixtures'
 
 /**
  * Every cutting form prefills Branch-from with the branch the project is
@@ -159,42 +164,42 @@ describe('nextStep — Resume vs Start wording for the grill', () => {
 
   it('says Start when the feature has never had a grill conversation', () => {
     const ns = nextStep(grillFull({}), { driving: false })
-    expect(ns.primary).toEqual({ label: 'Start grill session', kind: 'startGrill' })
+    expect(ns.primary).toEqual({ label: 'Start session', kind: 'startGrill' })
   })
 
   it('says Resume once an ended grill session left a resumable conversation', () => {
     const ns = nextStep(grillFull({ sessions: endedGrill }), { driving: false })
-    expect(ns.primary).toEqual({ label: 'Resume grill session', kind: 'startGrill' })
+    expect(ns.primary).toEqual({ label: 'Resume session', kind: 'startGrill' })
     expect(ns.desc).toContain('still on disk')
   })
 
   it('keeps saying Start when the ended session never reached live (no cc id)', () => {
     const stillborn = [{ id: 's1', status: 'ended', kind: 'ideation', ccSessionId: null }]
     const ns = nextStep(grillFull({ sessions: stillborn }), { driving: false })
-    expect(ns.primary?.label).toBe('Start grill session')
+    expect(ns.primary?.label).toBe('Start session')
   })
 
   it('ignores a resumable session of a DIFFERENT kind (the launcher would not pick it)', () => {
     const qaOnly = [{ id: 's1', status: 'ended', kind: 'qa', ccSessionId: 'cc-qa' }]
     const ns = nextStep(grillFull({ sessions: qaOnly }), { driving: false })
-    expect(ns.primary?.label).toBe('Start grill session')
+    expect(ns.primary?.label).toBe('Start session')
   })
 
   it('carries the same wording into the spec and tickets phases', () => {
     expect(nextStep(grillFull({ phase: 'spec' }), { driving: false }).primary?.label).toBe(
-      'Open grill',
+      'Start session',
     )
     expect(
       nextStep(grillFull({ phase: 'spec', sessions: endedGrill }), { driving: false }).primary
         ?.label,
-    ).toBe('Resume grill')
+    ).toBe('Resume session')
     expect(nextStep(grillFull({ phase: 'tickets' }), { driving: false }).primary?.label).toBe(
-      'Open grill to emit tickets',
+      'Start session',
     )
     expect(
       nextStep(grillFull({ phase: 'tickets', sessions: endedGrill }), { driving: false }).primary
         ?.label,
-    ).toBe('Resume grill to emit tickets')
+    ).toBe('Resume session')
   })
 })
 
@@ -368,7 +373,7 @@ describe('nextStep — live sessions go status-only', () => {
 
   it('shows ideation status-only while a grill is live, even once G1 is satisfied', () => {
     const ns = nextStep(auditFull({ live: true, satisfied: true }), { driving: false })
-    expect(ns.kick).toBe('GRILL LIVE')
+    expect(ns.kick).toBe('SESSION LIVE')
     expect(ns.primary).toBeUndefined()
     expect(ns.secondary).toEqual([])
     expect(kinds(ns)).not.toContain('advance')
@@ -379,15 +384,15 @@ describe('nextStep — live sessions go status-only', () => {
   // human was already typing in still offered to start one.
   it('never offers to start a grill while the terminal is still launching', () => {
     const ns = nextStep(auditFull({ live: true, sessionStatus: 'launching' }), { driving: false })
-    expect(ns.kick).toBe('GRILL LIVE')
+    expect(ns.kick).toBe('SESSION LIVE')
     expect(ns.primary).toBeUndefined()
     expect(kinds(ns)).not.toContain('startGrill')
   })
 
-  it('demotes the ideation promotion to a secondary once the grill has ended', () => {
+  it('offers only the session door once ideation is idle', () => {
     const ns = nextStep(auditFull({ satisfied: true }), { driving: false })
-    expect(ns.primary).toEqual({ label: 'Start grill session', kind: 'startGrill' })
-    expect(ns.secondary).toEqual([{ label: 'Promote to spec', kind: 'advance' }])
+    expect(ns.primary).toEqual({ label: 'Start session', kind: 'startGrill' })
+    expect(ns.secondary).toEqual([])
   })
 
   it('says Resume on the idle satisfied-gate primary when the conversation survives', () => {
@@ -397,26 +402,26 @@ describe('nextStep — live sessions go status-only', () => {
       sessions: [{ id: 's1', status: 'ended', kind: 'ideation', ccSessionId: 'cc-1' }],
     } as unknown as FeatureFull
     const ns = nextStep(resumable, { driving: false })
-    expect(ns.primary).toEqual({ label: 'Resume grill session', kind: 'startGrill' })
-    expect(ns.secondary).toEqual([{ label: 'Promote to spec', kind: 'advance' }])
+    expect(ns.primary).toEqual({ label: 'Resume session', kind: 'startGrill' })
+    expect(ns.secondary).toEqual([])
   })
 
   it('shows spec status-only while a session is live, even once the spec exists', () => {
     const ns = nextStep(auditFull({ phase: 'spec', gateId: 'G2', live: true, satisfied: true }), {
       driving: false,
     })
-    expect(ns.kick).toBe('GRILL LIVE')
+    expect(ns.kick).toBe('SESSION LIVE')
     expect(ns.title).toBe('Writing the spec')
     expect(ns.primary).toBeUndefined()
     expect(ns.secondary).toEqual([])
   })
 
-  it('demotes the spec approval to a secondary once the session has ended', () => {
+  it('offers only the session door once spec is idle', () => {
     const ns = nextStep(auditFull({ phase: 'spec', gateId: 'G2', satisfied: true }), {
       driving: false,
     })
-    expect(ns.primary).toEqual({ label: 'Open grill', kind: 'startGrill' })
-    expect(ns.secondary).toEqual([{ label: 'Approve spec → tickets', kind: 'advance' }])
+    expect(ns.primary).toEqual({ label: 'Start session', kind: 'startGrill' })
+    expect(ns.secondary).toEqual([])
   })
 
   it('keeps Burn primary at tickets while live — emit_tickets lands one batch', () => {
@@ -430,7 +435,7 @@ describe('nextStep — live sessions go status-only', () => {
       driving: false,
     })
     expect(idle.primary).toEqual({ label: 'Burn 2 tickets', kind: 'burn' })
-    expect(idle.secondary).toEqual([{ label: 'Revisit', kind: 'revisit' }])
+    expect(idle.secondary).toEqual([{ label: 'Ask for changes', kind: 'revisit', hint: 'Open a session to change the tickets before burning' }])
   })
 
   it('waits status-only for the first tickets while the session is emitting them', () => {
@@ -445,7 +450,7 @@ describe('nextStep — live sessions go status-only', () => {
 
   it('still offers a grill to emit the first tickets when nothing is live', () => {
     const ns = nextStep(auditFull({ phase: 'tickets', gateId: 'G3' }), { driving: false })
-    expect(ns.primary).toEqual({ label: 'Open grill to emit tickets', kind: 'startGrill' })
+    expect(ns.primary).toEqual({ label: 'Start session', kind: 'startGrill' })
   })
 
   it('never offers the scroll-to-terminal action in any live state', () => {
@@ -742,14 +747,14 @@ describe('nextStep at review', () => {
     it('never drops the resolve affordance — live, it becomes the compound', () => {
       const ns = nextStep(reviewFull({ sessionLive: true }), { driving: false, conflict })
       expect(ns.primary).toEqual({ label: 'End session & resolve', kind: 'resolveConflict' })
-      expect(ns.warning).toContain('One terminal per feature')
-      expect(ns.warning).toContain('will be closed')
+      expect(ns.note).toContain('One terminal per feature')
+      expect(ns.note).toContain('will be closed')
     })
 
     it('says the plain thing when nothing is live', () => {
       const ns = nextStep(reviewFull({}), { driving: false, conflict })
       expect(ns.primary).toEqual({ label: 'Resolve the merge conflict', kind: 'resolveConflict' })
-      expect(ns.warning).toBeUndefined()
+      expect(ns.note).toBeUndefined()
     })
 
     // A caveat about a drive the human has not asked for must not displace the
@@ -760,8 +765,8 @@ describe('nextStep at review', () => {
         conflict,
         unverifiedDriveKeys: ['devCommand'],
       })
-      expect(ns.warning).toContain('One terminal per feature')
-      expect(ns.warning).not.toContain('dry run')
+      expect(ns.note).toContain('One terminal per feature')
+      expect(ns.note).not.toContain('dry run')
     })
 
     it('goes back to the ordinary merge bar once the conflict clears', () => {
@@ -785,37 +790,37 @@ describe('nextStep at review', () => {
         driving: false,
         unverifiedDriveKeys: ['driveSetupCommand', 'driveStopCommand'],
       })
-      expect(ns.warning).toContain('Before a test drive')
-      expect(ns.warning).toContain('After a test drive')
-      expect(ns.warning).not.toContain('Dev server')
-      expect(ns.warning).toContain('never proven by a dry run')
-      expect(ns.warning).toContain('preparation')
+      expect(ns.note).toContain('Before a test drive')
+      expect(ns.note).toContain('After a test drive')
+      expect(ns.note).not.toContain('Dev server')
+      expect(ns.note).toContain('never proven by a dry run')
+      expect(ns.note).toContain('preparation')
     })
 
     it('never disables the drive — one click still starts it, warning and all', () => {
       const ns = nextStep(reviewFull({}), { driving: false, unverifiedDriveKeys: ['devCommand'] })
-      expect(ns.warning).toBeTruthy()
+      expect(ns.note).toBeTruthy()
       expect(start(ns)).toEqual({ label: 'Start test drive', kind: 'testDriveStart' })
     })
 
     it('stays silent when every participating key is stamped, and when none exist', () => {
-      expect(nextStep(reviewFull({}), { driving: false, unverifiedDriveKeys: [] }).warning)
+      expect(nextStep(reviewFull({}), { driving: false, unverifiedDriveKeys: [] }).note)
         .toBeUndefined()
-      expect(nextStep(reviewFull({}), { driving: false }).warning).toBeUndefined()
+      expect(nextStep(reviewFull({}), { driving: false }).note).toBeUndefined()
     })
 
     it('warns beside the fix-ticket burn and the merge conflict too', () => {
       const ctx = { driving: false, unverifiedDriveKeys: ['devCommand'] }
       const standing = { base: 'main', files: ['a.ts'], at: 1_000 }
-      expect(nextStep(reviewFull({ ticketStatuses: ['pending'] }), ctx).warning).toBeTruthy()
-      expect(nextStep(reviewFull({}), { ...ctx, conflict: standing }).warning).toBeTruthy()
+      expect(nextStep(reviewFull({ ticketStatuses: ['pending'] }), ctx).note).toBeTruthy()
+      expect(nextStep(reviewFull({}), { ...ctx, conflict: standing }).note).toBeTruthy()
     })
 
     // The warning is about the click that starts a drive; mid-drive the offer is
     // Stop, and repeating the doubt there is noise the human cannot act on.
     it('goes quiet once the drive is running', () => {
       const ns = nextStep(reviewFull({}), { driving: true, unverifiedDriveKeys: ['devCommand'] })
-      expect(ns.warning).toBeUndefined()
+      expect(ns.note).toBeUndefined()
     })
 
     it('disables the start with the dry-run reason while one is up', () => {
@@ -835,7 +840,7 @@ describe('nextStep at review', () => {
         dryRunActive: true,
         unverifiedDriveKeys: ['devCommand'],
       })
-      expect(ns.warning).toBeUndefined()
+      expect(ns.note).toBeUndefined()
       expect(start(ns)?.disabled).toBe('A preparation dry-run is in progress — stop it first')
     })
   })
@@ -893,7 +898,7 @@ describe('nextStep at review', () => {
       expect(ns.desc).toContain('3 defects the review found and 2 notes you wrote')
       expect(labels(ns.secondary)).toEqual(['Merge & ship', 'Start test drive'])
       // Open work is information, never a block: the demoted merge is not nagged about.
-      expect(ns.warning).toBeUndefined()
+      expect(ns.note).toBeUndefined()
     })
 
     it('says one of each in the singular', () => {
@@ -1205,7 +1210,16 @@ describe('nextStep at ideation on a later lap', () => {
     expect(ns.primary).toEqual({ label: 'Start lap 2 session', kind: 'revisit' })
     expect(ns.secondary).toEqual([])
     expect(ns.title).toBe('Work lap 2')
-    expect(ns.desc).toContain('Promoting is refused')
+    expect(ns.desc).toContain('test-drive notes')
+  })
+
+  it('starts lap 2 before considering a completed map', () => {
+    const full = lapFull({ lap: 2, satisfied: true })
+    full.feature.mapped = true
+    expect(nextStep(full, { driving: false }).primary).toEqual({
+      label: 'Start lap 2 session',
+      kind: 'revisit',
+    })
   })
 
   it('says Resume once the lap has a conversation on disk', () => {
@@ -1228,8 +1242,8 @@ describe('nextStep at ideation on a later lap', () => {
 
   it('leaves lap 1 exactly as it was — a satisfied G1 still offers the promotion', () => {
     const ns = nextStep(lapFull({ lap: 1 }), { driving: false })
-    expect(ns.primary?.kind).toBe('startGrill')
-    expect(ns.secondary.map((a) => a.kind)).toContain('advance')
+    expect(ns.primary).toEqual({ label: 'Start session', kind: 'startGrill' })
+    expect(ns.secondary).toEqual([])
   })
 })
 
@@ -1330,72 +1344,6 @@ describe('unresolvedMergeConflict', () => {
       files: [],
       at: 1,
     })
-  })
-})
-
-/**
- * Findings F24 — a gate override advanced the phase with no way back. Undo is
- * offered only while the override is still the feature's latest transition, and
- * that window is derived from the event feed so it survives a reload.
- */
-describe('undoableOverride', () => {
-  const ev = (id: number, type: string, data?: unknown): EventRow =>
-    ({ id, projectId: 'p', ts: id, type, message: type, data }) as EventRow
-  const forced = (id: number, gate: string) => ev(id, 'gate.overridden', { gate, reason: 'why' })
-  const advanced = (id: number, from: string, to: string) => ev(id, 'phase.advanced', { from, to })
-
-  it('returns null with no overrides in the feed', () => {
-    expect(undoableOverride([advanced(1, 'ideation', 'spec')])).toBeNull()
-  })
-
-  it('names the gate and both phases of the advance the override forced', () => {
-    const events = [forced(1, 'G4'), advanced(2, 'implementation', 'review')]
-    expect(undoableOverride(events)).toEqual({
-      gate: 'G4',
-      from: 'implementation',
-      to: 'review',
-    })
-  })
-
-  it('closes the window once any later phase transition lands', () => {
-    const events = [
-      forced(1, 'G4'),
-      advanced(2, 'implementation', 'review'),
-      ev(3, 'feature.shipped', { from: 'review', to: 'shipped' }),
-    ]
-    expect(undoableOverride(events)).toBeNull()
-  })
-
-  it('closes the window once the override is undone', () => {
-    const events = [
-      forced(1, 'G4'),
-      advanced(2, 'implementation', 'review'),
-      ev(3, 'gate.override.undone', { from: 'review', to: 'implementation' }),
-    ]
-    expect(undoableOverride(events)).toBeNull()
-  })
-
-  it('offers the latest override when a feature was overridden twice', () => {
-    const events = [
-      forced(1, 'G2'),
-      advanced(2, 'spec', 'tickets'),
-      forced(3, 'G3'),
-      advanced(4, 'tickets', 'implementation'),
-    ]
-    expect(undoableOverride(events)).toEqual({ gate: 'G3', from: 'tickets', to: 'implementation' })
-  })
-
-  it('ignores a status change — its from/to are statuses, not phases', () => {
-    const events = [
-      forced(1, 'G4'),
-      advanced(2, 'implementation', 'review'),
-      ev(3, 'feature.status', { from: 'active', to: 'archived' }),
-    ]
-    expect(undoableOverride(events)?.gate).toBe('G4')
-  })
-
-  it('ignores an override whose advance never happened (last phase, nothing moved)', () => {
-    expect(undoableOverride([forced(1, 'G5')])).toBeNull()
   })
 })
 
@@ -2060,52 +2008,12 @@ describe('ticketConflictKickoff', () => {
  * pipeline next-step action — only a way back (Unarchive).
  */
 
-function listItem(over: Partial<FeatureListItem> = {}): FeatureListItem {
-  return {
-    id: over.id ?? 'feat_1',
-    projectId: 'proj_1',
-    slug: over.slug ?? 'demo',
-    title: 'Demo',
-    oneLiner: '',
-    mapped: false,
-    phase: over.phase ?? 'tickets',
-    branch: 'feature/demo',
-    baseBranch: 'main',
-    status: over.status ?? 'active',
-    createdAt: 0,
-    ticketCounts: over.ticketCounts ?? {
-      total: 0,
-      pending: 0,
-      burning: 0,
-      done: 0,
-      failed: 0,
-      cancelled: 0,
-    },
-    activeRun: over.activeRun ?? false,
-    liveSession: over.liveSession ?? null,
-    lastActivityAt: over.lastActivityAt ?? 0,
-  } as FeatureListItem
-}
-
 /** A feature whose terminal is open, with its agent mid-turn or waiting. */
 function withSession(
   awaitingInput: boolean,
   over: Partial<FeatureListItem> = {},
 ): FeatureListItem {
   return listItem({ liveSession: { status: 'live', awaitingInput }, ...over })
-}
-
-function full(over: Partial<FeatureFull['feature']> = {}): FeatureFull {
-  return {
-    feature: { ...listItem(over as Partial<FeatureListItem>) } as FeatureFull['feature'],
-    tickets: [],
-    sessions: [],
-    runs: [],
-    docs: [],
-    gate: { next: null, satisfied: false },
-    waypoints: [],
-    frontierIds: [],
-  } as unknown as FeatureFull
 }
 
 describe('archive derivations', () => {
@@ -2409,21 +2317,6 @@ describe('parseMapSections', () => {
 })
 
 /** A waypoint row as the wire sends it, for the two rail derivations below. */
-function wp(over: Partial<Waypoint> & Pick<Waypoint, 'id' | 'seq' | 'title'>): Waypoint {
-  return {
-    featureId: 'feat_1',
-    type: 'grilling',
-    question: `what about ${over.title}?`,
-    blockedBy: [],
-    originWaypointId: null,
-    status: 'open',
-    claimedBy: null,
-    lastSessionId: null,
-    summary: null,
-    ...over,
-  } as Waypoint
-}
-
 /**
  * Improve-map-workflow ticket 6 — the next-step bar owns convergence. For a
  * mapped feature at ideation the bar's primary IS Converge once G1 is satisfied;
@@ -2447,8 +2340,12 @@ describe('nextStep — mapped ideation owns Converge', () => {
         satisfied,
         reason: opts.reason === undefined ? '2 waypoints still open' : opts.reason,
       },
-      waypoints: [],
-      frontierIds: [],
+      waypoints: [
+        wp({ id: 'late', seq: 8, title: 'Later choice' }),
+        wp({ id: 'done', seq: 1, title: 'Finished', status: 'resolved' }),
+        wp({ id: 'next', seq: 3, title: 'Choose storage' }),
+      ],
+      frontierIds: satisfied ? [] : ['late', 'next'],
     } as unknown as FeatureFull
   }
 
@@ -2464,53 +2361,30 @@ describe('nextStep — mapped ideation owns Converge', () => {
     const ns = nextStep(mappedIdeation({ satisfied: true }), { driving: false })
     expect(ns.primary).toEqual({ label: 'Converge', kind: 'converge' })
     expect(ns.secondary).toEqual([])
-    expect(ns.title).toBe('Converge the map')
+    expect(ns.title).toBe('The map is complete')
   })
 
-  it('exposes the override affordance and the blocking reason while waypoints are open', () => {
-    const ns = nextStep(
-      mappedIdeation({ reason: '2 waypoints still open — resolve or drop them' }),
-      { driving: false },
-    )
-    expect(ns.primary).toBeUndefined()
-    expect(ns.desc).toBe('2 waypoints still open — resolve or drop them')
-    expect(ns.secondary).toEqual([
-      {
-        label: 'Override & converge…',
-        kind: 'convergeOverride',
-        reason: {
-          placeholder: 'reason to converge past open waypoints',
-          submitLabel: 'Converge anyway',
-        },
-      },
-    ])
+  it('works the lowest-seq ready waypoint and puts orientation in the description', () => {
+    const ns = nextStep(mappedIdeation(), { driving: false })
+    expect(ns.primary).toEqual({ label: 'Work next', kind: 'workNext', waypointId: 'next' })
+    expect(ns.desc).toContain('1 of 3 waypoints done · 2 ready to work')
+    expect(ns.desc).toContain('next: Choose storage')
+    expect(ns.secondary).toEqual([])
   })
 
-  it('falls back to a plain instruction when the gate gives no reason', () => {
-    const ns = nextStep(mappedIdeation({ reason: null }), { driving: false })
-    expect(ns.desc).toBe('Resolve the open waypoints; converge once the frontier clears.')
-  })
-
-  it('surfaces the map’s remaining fog without gating Converge', () => {
-    const ns = nextStep(mappedIdeation({ satisfied: true }), {
+  it('surfaces unspecified map text as one note without gating Work next', () => {
+    const ns = nextStep(mappedIdeation(), {
       driving: false,
       mapContent: MAP_WITH_FOG,
     })
-    expect(ns.fog).toBe('the keyboard shortcut for “work next waypoint”')
-    // Shown, never enforced: the primary is still Converge, and nothing about it
-    // changes because fog remains.
-    expect(ns.primary).toEqual({ label: 'Converge', kind: 'converge' })
+    expect(ns.note).toBe('Still unspecified: the keyboard shortcut for “work next waypoint”')
+    expect(ns.primary?.kind).toBe('workNext')
   })
 
-  it('shows the same fog while the gate is still blocking', () => {
-    const ns = nextStep(mappedIdeation(), { driving: false, mapContent: MAP_WITH_FOG })
-    expect(ns.fog).toBe('the keyboard shortcut for “work next waypoint”')
-  })
-
-  it('carries no fog when the map has none, or has not loaded yet', () => {
+  it('carries no note when the map has no unspecified text, or has not loaded yet', () => {
     const clear = '## Destination\nShip the rail.\n\n## Not yet specified\n\n'
-    expect(nextStep(mappedIdeation(), { driving: false, mapContent: clear }).fog).toBeUndefined()
-    expect(nextStep(mappedIdeation(), { driving: false }).fog).toBeUndefined()
+    expect(nextStep(mappedIdeation(), { driving: false, mapContent: clear }).note).toBeUndefined()
+    expect(nextStep(mappedIdeation(), { driving: false }).note).toBeUndefined()
   })
 
   it('never offers the scroll-to-terminal action, live session or not', () => {
@@ -2519,6 +2393,60 @@ describe('nextStep — mapped ideation owns Converge', () => {
       const kinds = [ns.primary, ...ns.secondary].map((a) => a?.kind)
       expect(kinds).not.toContain('openGrill')
     }
+  })
+
+  it('waits when research owns the only open waypoint', () => {
+    const mapped = mappedIdeation()
+    mapped.waypoints = [wp({ id: 'research', seq: 1, title: 'Research', status: 'claimed', claimedBy: 'run_1' })]
+    mapped.frontierIds = []
+    const ns = nextStep(mapped, { driving: false })
+    expect(ns.title).toBe('Waiting on 1 research run')
+    expect(ns.primary).toBeUndefined()
+  })
+})
+
+describe('nextStep — spec and tickets use one lap-scoped door', () => {
+  it('resumes a mapped converge that ended before artifacts landed', () => {
+    const mapped = full({ phase: 'spec', mapped: true })
+    mapped.feature = { ...mapped.feature, phase: 'spec', mapped: true }
+    expect(nextStep(mapped, { driving: false }).primary).toEqual({
+      label: 'Resume converge',
+      kind: 'resumeConverge',
+    })
+  })
+
+  it('stops claiming "no spec yet" once spec.md sits in the pane beside the bar', () => {
+    const written = full({ phase: 'spec' })
+    written.docs = [{ relPath: 'docs/features/demo/spec.md' }] as FeatureFull['docs']
+    const ns = nextStep(written, { driving: false })
+    expect(ns.title).toBe('Break the spec into tickets')
+    expect(ns.desc).not.toContain('No spec yet')
+    expect(ns.desc).toContain('The spec is written')
+    expect(ns.primary).toEqual({ label: 'Start session', kind: 'startGrill' })
+  })
+
+  it('offers Resume on a written spec whose conversation is still on disk', () => {
+    const written = full({ phase: 'spec', mapped: true })
+    written.docs = [{ relPath: 'docs/features/demo/spec.md' }] as FeatureFull['docs']
+    written.sessions = [
+      { id: 's1', status: 'ended', kind: 'converge', ccSessionId: 'cc-1' },
+    ] as unknown as FeatureFull['sessions']
+    const ns = nextStep(written, { driving: false })
+    expect(ns.title).toBe('Break the spec into tickets')
+    expect(ns.primary).toEqual({ label: 'Resume session', kind: 'startGrill' })
+  })
+
+  it('counts only current-lap non-cancelled tickets', () => {
+    const feature = full({ phase: 'tickets', lap: 2 })
+    feature.feature = { ...feature.feature, phase: 'tickets', lap: 2 }
+    feature.tickets = [
+      ...Array.from({ length: 11 }, (_, i) => ({ id: `old-${i}`, lap: 1, status: 'done' })),
+    ] as FeatureFull['tickets']
+    expect(nextStep(feature, { driving: false }).title).toBe('Waiting for tickets')
+    feature.tickets.push(
+      ...(['a', 'b', 'c'].map((id) => ({ id, lap: 2, status: 'pending' })) as FeatureFull['tickets']),
+    )
+    expect(nextStep(feature, { driving: false }).primary).toEqual({ label: 'Burn 3 tickets', kind: 'burn' })
   })
 })
 
@@ -2545,16 +2473,16 @@ describe('waypointGroups', () => {
       wp({ id: 'w5', seq: 5, title: 'dropped one', status: 'dropped' }),
     ]
     const groups = waypointGroups(ws, ['w3'])
-    expect(keys(groups)).toEqual(['frontier', 'claimed', 'blocked', 'done'])
-    expect(titles(groups, 'frontier')).toEqual(['open one'])
-    expect(titles(groups, 'claimed')).toEqual(['claimed one'])
-    expect(titles(groups, 'blocked')).toEqual(['blocked one'])
+    expect(keys(groups)).toEqual(['ready', 'working', 'waiting', 'done'])
+    expect(titles(groups, 'ready')).toEqual(['open one'])
+    expect(titles(groups, 'working')).toEqual(['claimed one'])
+    expect(titles(groups, 'waiting')).toEqual(['blocked one'])
     expect(titles(groups, 'done')).toEqual(['resolved one', 'dropped one'])
   })
 
   it('omits groups that have no waypoints', () => {
     const ws = [wp({ id: 'w1', seq: 1, title: 'only one' })]
-    expect(keys(waypointGroups(ws, ['w1']))).toEqual(['frontier'])
+    expect(keys(waypointGroups(ws, ['w1']))).toEqual(['ready'])
   })
 
   it('orders the frontier by ascending seq whatever order the server sent', () => {
@@ -2564,7 +2492,7 @@ describe('waypointGroups', () => {
       wp({ id: 'w5', seq: 5, title: 'fifth' }),
     ]
     const groups = waypointGroups(ws, ['w9', 'w2', 'w5'])
-    expect(titles(groups, 'frontier')).toEqual(['second', 'fifth', 'ninth'])
+    expect(titles(groups, 'ready')).toEqual(['second', 'fifth', 'ninth'])
   })
 
   it('resolves blockedBy seqs to blocker titles, dropping the ones already terminal', () => {
@@ -2574,14 +2502,14 @@ describe('waypointGroups', () => {
       wp({ id: 'w3', seq: 3, title: 'waits on both', blockedBy: [1, 2] }),
     ]
     const groups = waypointGroups(ws, ['w2'])
-    const blocked = groups.find((g) => g.key === 'blocked')?.waypoints ?? []
+    const blocked = groups.find((g) => g.key === 'waiting')?.waypoints ?? []
     expect(blocked.map((r) => r.blockerTitles)).toEqual([['still open']])
   })
 
   it('ignores a blockedBy seq that names no waypoint', () => {
     const ws = [wp({ id: 'w1', seq: 1, title: 'orphan edge', blockedBy: [42] })]
     const groups = waypointGroups(ws, [])
-    expect(groups.find((g) => g.key === 'blocked')?.waypoints[0].blockerTitles).toEqual([])
+    expect(groups.find((g) => g.key === 'waiting')?.waypoints[0].blockerTitles).toEqual([])
   })
 
   it('names the waypoint that surfaced a later one, and leaves origin-less ones bare', () => {
@@ -2591,7 +2519,7 @@ describe('waypointGroups', () => {
       wp({ id: 'w3', seq: 3, title: 'charted up front' }),
     ]
     const groups = waypointGroups(ws, ['w2', 'w3'])
-    const frontier = groups.find((g) => g.key === 'frontier')?.waypoints ?? []
+    const frontier = groups.find((g) => g.key === 'ready')?.waypoints ?? []
     expect(frontier.map((r) => r.originTitle)).toEqual(['the origin', undefined])
   })
 
@@ -2603,7 +2531,7 @@ describe('waypointGroups', () => {
       wp({ id: 'w4', seq: 4, title: 'done', status: 'resolved' }),
     ]
     const groups = waypointGroups(ws, ['w1'])
-    expect(groups.map((g) => g.waypoints.map((r) => r.expanded))).toEqual([
+    expect(groups.map((g) => g.waypoints.map((r) => r.openByDefault))).toEqual([
       [true],
       [false],
       [false],
@@ -2617,7 +2545,36 @@ describe('waypointGroups', () => {
       wp({ id: 'w2', seq: 2, title: 'done', status: 'dropped' }),
     ]
     const groups = waypointGroups(ws, ['w1'])
-    expect(groups.map((g) => g.label)).toEqual(['Frontier', 'Resolved / dropped'])
+    expect(groups.map((g) => g.label)).toEqual(['Ready', 'Done'])
+  })
+
+  it('derives each state word and names the first open blocker', () => {
+    const ws = [
+      wp({ id: 'w1', seq: 1, title: 'ready' }),
+      wp({ id: 'w2', seq: 2, title: 'working', status: 'claimed' }),
+      wp({ id: 'w3', seq: 3, title: 'waiting', blockedBy: [2] }),
+      wp({ id: 'w4', seq: 4, title: 'done', status: 'resolved' }),
+    ]
+    expect(waypointGroups(ws, ['w1']).flatMap((group) => group.waypoints.map((row) => row.stateWord)))
+      .toEqual(['Ready', 'Working', 'Waiting on "working"', 'Done'])
+  })
+
+  it('opens every card in a read-only record', () => {
+    const ws = [wp({ id: 'w1', seq: 1, title: 'waiting' }), wp({ id: 'w2', seq: 2, title: 'done', status: 'resolved' })]
+    expect(waypointGroups(ws, [], true).flatMap((group) => group.waypoints.map((row) => row.openByDefault)))
+      .toEqual([true, true])
+  })
+})
+
+describe('mapProgress', () => {
+  it('counts resolved and dropped as done and server-frontier ids as ready', () => {
+    const ws = [
+      wp({ id: 'w1', seq: 1, title: 'resolved', status: 'resolved' }),
+      wp({ id: 'w2', seq: 2, title: 'dropped', status: 'dropped' }),
+      wp({ id: 'w3', seq: 3, title: 'ready' }),
+      wp({ id: 'w4', seq: 4, title: 'waiting' }),
+    ]
+    expect(mapProgress(ws, ['w3'])).toEqual({ done: 2, total: 4, ready: 1 })
   })
 })
 
@@ -3045,6 +3002,48 @@ describe('capLane', () => {
   })
 })
 
+/**
+ * flow-redesign shell ticket 1 / decision 4 — where entering a project puts
+ * you. It used to be `list.data[0]`: newest-created and lane-blind, which is how
+ * a parked draft or a shipped retrospective became the first screen (F10.4).
+ * The rule reads the rail's own triage order instead, so the workspace opens on
+ * the row the eye lands on.
+ */
+describe('landingFeature', () => {
+  const working = listItem({ id: 'working', activeRun: true })
+  const needsYou = listItem({ id: 'needs', phase: 'ideation' })
+  const inProgress = listItem({ id: 'spec', phase: 'spec' })
+  const draft = listItem({ id: 'draft', status: 'draft' })
+  const shipped = listItem({ id: 'shipped', status: 'shipped', phase: 'shipped' })
+  const archived = listItem({ id: 'archived', status: 'archived' })
+
+  it('prefers the top Needs-you row over everything below it', () => {
+    expect(landingFeature([shipped, inProgress, working, needsYou])?.id).toBe('needs')
+  })
+
+  it('falls to Agent working when nothing needs you', () => {
+    expect(landingFeature([draft, inProgress, working])?.id).toBe('working')
+  })
+
+  it('falls to In progress when no agent is working either', () => {
+    expect(landingFeature([shipped, draft, inProgress])?.id).toBe('spec')
+  })
+
+  it('keeps the incoming order within a lane', () => {
+    const first = listItem({ id: 'first', phase: 'ideation' })
+    const second = listItem({ id: 'second', phase: 'ideation' })
+    expect(landingFeature([first, second])?.id).toBe('first')
+  })
+
+  it('lands on the project home rather than a draft, a shipped or an archived feature', () => {
+    expect(landingFeature([draft, shipped, archived])).toBeNull()
+  })
+
+  it('lands on the project home when the project has no features at all', () => {
+    expect(landingFeature([])).toBeNull()
+  })
+})
+
 describe('ticketModelChip — what a card says about its burn model', () => {
   const roster = modelRoster({ models: [{ id: 'my-proxy', runtime: 'codex', note: 'bulk edits' }] })
 
@@ -3132,7 +3131,47 @@ describe('nextStep — naming the runtime in the copy', () => {
       gate: { next: { id: 'G3' }, satisfied: false, reason: 'not burned' },
     } as unknown as FeatureFull
     const ns = nextStep(full, { driving: false })
-    expect(ns.desc).toContain('one atomic task the agent will implement')
+    expect(ns.desc).toContain('Each one runs as its own sandboxed agent')
     expect(ns.desc).not.toMatch(/Claude|Codex/)
+  })
+})
+
+/**
+ * Ticket 5 / decision 13 — the stepper is the only place the pipeline is taught,
+ * and each step teaches a different thing depending on where the feature is.
+ */
+describe('pipelineSteps tooltips', () => {
+  const steps = (phase: 'ideation' | 'tickets', summaries = {}) =>
+    Object.fromEntries(
+      pipelineSteps({ phase }, phase, summaries).map((step) => [step.phase, step.tip]),
+    )
+
+  it('says what a done phase produced, what the current one is for and what unlocks the rest', () => {
+    const tips = steps('tickets', {
+      ideation: 'Ideation · 2d · 3 sessions · 12 decisions',
+      spec: 'Spec · written 2d ago',
+    })
+
+    expect(tips.ideation).toBe('Ideation · 2d · 3 sessions · 12 decisions — click to review')
+    expect(tips.spec).toBe('Spec · written 2d ago — click to review')
+    expect(tips.tickets).toBe(PHASE_TIP.tickets)
+    expect(tips.implementation).toBe(PHASE_UNLOCK.implementation)
+    expect(tips.review).toBe(PHASE_UNLOCK.review)
+    expect(tips.shipped).toBe(PHASE_UNLOCK.shipped)
+  })
+
+  it('names the phase when no summary could be derived for it', () => {
+    expect(steps('tickets').ideation).toBe('ideation — click to review')
+    expect(steps('tickets', { ideation: null }).spec).toBe('spec — click to review')
+  })
+
+  it('teaches ideation as the phase every feature starts in, never as one to unlock', () => {
+    expect(steps('ideation').ideation).toBe(PHASE_TIP.ideation)
+    expect(steps('ideation').spec).toBe(PHASE_UNLOCK.spec)
+  })
+
+  it('retires the grill from the copy it teaches the pipeline with', () => {
+    const all = [...Object.values(PHASE_TIP), ...Object.values(PHASE_UNLOCK)].join(' ')
+    expect(all).not.toMatch(/grill|frontier|promote/i)
   })
 })

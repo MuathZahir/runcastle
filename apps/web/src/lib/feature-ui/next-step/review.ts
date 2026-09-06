@@ -62,7 +62,7 @@ export function resolveReview(input: ResolverInput): NextStep {
   // three bars, so the doubt rides along whatever else the phase is saying.
   const unverified = driving || ctx.dryRunActive ? [] : (ctx.unverifiedDriveKeys ?? [])
   const driveWarning =
-    unverified.length > 0 ? { warning: unverifiedWarning(unverified) } : {}
+    unverified.length > 0 ? { note: unverifiedWarning(unverified) } : {}
   // The review bar has exactly two forward decisions now — Merge & ship, or
   // Iterate (decision 21). "Address notes" and "Fix N open defects" were the
   // same decision as Iterate ("this isn't ready") entered through two more
@@ -125,7 +125,7 @@ export function resolveReview(input: ResolverInput): NextStep {
       busy: false,
       // The compound's own explanation outranks the drive caveat, exactly as
       // a drive refusal does: it is about the button the eye is on.
-      ...(live ? { warning: ONE_TERMINAL_WARNING } : driveWarning),
+      ...(live ? { note: ONE_TERMINAL_WARNING } : driveWarning),
     }
   }
 

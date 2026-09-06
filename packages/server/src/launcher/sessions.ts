@@ -872,7 +872,16 @@ export function markSessionEnded(ctx: AppCtx, id: string): SessionRow | null {
   // removal that follows a merge. Every end path funnels here — PTY exit, the
   // Stop hook, boot reconciliation — so this is the one place it must happen.
   if (existing.featureId) stopDocsWatch(existing.featureId)
-  ctx.db.update(sessions).set({ status: 'ended' }).where(eq(sessions.id, id)).run()
+  // The ending is timestamped here and nowhere else, so "ended 2h ago" is a
+  // recorded fact rather than the row's age wearing an end-time label. Those
+  // same three end paths can each fire on a row that is already ended (a Stop
+  // hook arriving after the PTY exit, say), and re-stamping would walk the time
+  // forward every time — so the first ending stands.
+  ctx.db
+    .update(sessions)
+    .set({ status: 'ended', ...(existing.endedAt === undefined ? { endedAt: Date.now() } : {}) })
+    .where(eq(sessions.id, id))
+    .run()
   return getSessionRow(ctx, id)
 }
 

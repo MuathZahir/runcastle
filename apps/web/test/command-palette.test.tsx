@@ -59,4 +59,32 @@ describe('CommandPalette', () => {
     expect(escapedToWindow).not.toHaveBeenCalled()
     window.removeEventListener('keydown', escapedToWindow)
   })
+
+  /**
+   * The three labeled groups are drawn separately but index into one flat row
+   * list, so ↑ from the first row has to land on the last ACTION — the group
+   * boundaries are arithmetic over that list, not three keyboardable lists.
+   */
+  it('wraps from the first row up to the last action and activates it', () => {
+    const showOpen = vi.fn()
+    render(
+      <CommandPalette
+        open
+        onClose={vi.fn()}
+        features={[]}
+        selectedFeatureId={null}
+        onSelect={vi.fn()}
+        onOpenSettings={vi.fn()}
+        onOpenPreparation={vi.fn()}
+        onOpenProjectChat={vi.fn()}
+        nav={{ ...nav, showOpen }}
+      />,
+    )
+
+    const input = screen.getByRole('textbox')
+    fireEvent.keyDown(input, { key: 'ArrowUp' })
+    fireEvent.keyDown(input, { key: 'Enter' })
+
+    expect(showOpen).toHaveBeenCalledOnce()
+  })
 })

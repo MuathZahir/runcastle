@@ -1,0 +1,615 @@
+<title>Runcastle Shell Redesign</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+  /* Single dark theme — mirrors apps/web/src/theme.css verbatim. The app has
+     no light mode by design, so this page commits to one world and paints
+     every colour explicitly. */
+  :root {
+    --bg: #090b10; --panel: #0e1117; --panel-2: #0b0e14; --panel-3: #12151d;
+    --panel-inset: #07080b;
+    --hairline: #1c2230; --hairline-soft: #151a26; --hairline-strong: #2a3242;
+    --text: #dde3ed; --text-2: #96a0b0; --text-3: #5f6a7a; --text-4: #3a4354;
+    --accent: #7c6cf6; --accent-hi: #a49bff; --accent-ink: #0d0722;
+    --accent-soft: #161329; --accent-line: #3d3670;
+    --ph-ideation: #8b7cf8; --ph-spec: #8a94a2; --ph-tickets: #d7a94a;
+    --ph-implementation: #f0883e; --ph-review: #58a6ff; --ph-shipped: #3fb950;
+    --danger: #f4594e; --needs: #d7a94a; --ok: #3fb950; --drive: #58a6ff;
+    --mono: "JetBrains Mono", Consolas, ui-monospace, monospace;
+    --sans: "Inter", system-ui, "Segoe UI", sans-serif;
+    --r-sm: 6px; --r-md: 8px; --r-lg: 12px;
+    --shadow-menu: 0 8px 28px -10px rgba(0,0,0,.7), 0 2px 8px -2px rgba(0,0,0,.5);
+    --shadow-overlay: 0 24px 70px -24px rgba(0,0,0,.85), 0 8px 24px -12px rgba(0,0,0,.6);
+    --sidebar-w: 300px; --inspector-w: 300px;
+  }
+  * { box-sizing: border-box; margin: 0; }
+  html, body { height: 100%; }
+  body {
+    background: var(--bg); color: var(--text);
+    font: 400 14px/1.5 var(--sans); overflow: hidden;
+  }
+  button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; }
+  .mono { font-family: var(--mono); }
+
+  /* ---------- frame ---------- */
+  .frame { display: flex; flex-direction: column; height: 100vh; }
+  .shell { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+  .shell-body { flex: 1; display: flex; min-height: 0; }
+
+  /* ---------- update banner (restyled row, decision 13) ---------- */
+  .banner {
+    display: flex; align-items: center; gap: 10px; padding: 6px 16px;
+    background: var(--accent-soft); border-bottom: 1px solid var(--accent-line);
+    font-size: 12px; color: var(--text-2);
+  }
+  .banner .dot { width: 6px; height: 6px; border-radius: 999px; background: var(--accent-hi); }
+  .banner strong { color: var(--text); font-weight: 600; }
+  .banner code {
+    font-family: var(--mono); font-size: 11px; background: var(--panel-inset);
+    border: 1px solid var(--hairline); border-radius: var(--r-sm); padding: 2px 8px;
+    color: var(--text-2); margin-left: auto;
+  }
+  .banner .x { color: var(--text-3); padding: 2px 6px; border-radius: var(--r-sm); }
+  .banner .x:hover { color: var(--text); background: var(--panel-3); }
+
+  /* ---------- titlebar ---------- */
+  .titlebar {
+    display: flex; align-items: center; gap: 8px; height: 46px; flex: none;
+    padding: 0 12px; background: var(--panel); border-bottom: 1px solid var(--hairline);
+  }
+  .crumb { display: flex; align-items: center; gap: 8px; min-width: 0; }
+  .crumb .sep { color: var(--text-4); font-size: 12px; }
+  .brand { display: flex; align-items: center; gap: 7px; padding: 5px 7px; border-radius: var(--r-sm); }
+  .brand:hover { background: var(--panel-3); }
+  .brand svg { display: block; }
+  .brand .word { font-weight: 600; font-size: 13px; letter-spacing: .01em; }
+  .tb-proj {
+    display: flex; align-items: center; gap: 5px; padding: 5px 8px;
+    border-radius: var(--r-sm); font-size: 13px; color: var(--text-2); font-weight: 500;
+  }
+  .tb-proj:hover { background: var(--panel-3); color: var(--text); }
+  .tb-here {
+    font-size: 13px; font-weight: 500; color: var(--text);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 34vw;
+    padding: 5px 8px; border-radius: var(--r-sm);
+  }
+  .tb-here:hover { background: var(--panel-3); }
+  .tb-spacer { flex: 1; }
+  .tb-search {
+    display: flex; align-items: center; gap: 8px; width: 300px; height: 30px;
+    padding: 0 10px; background: var(--panel-inset); border: 1px solid var(--hairline);
+    border-radius: var(--r-md); color: var(--text-3); font-size: 12.5px;
+  }
+  .tb-search:hover { border-color: var(--hairline-strong); color: var(--text-2); }
+  .tb-search .kbd { margin-left: auto; }
+  .kbd {
+    font-family: var(--mono); font-size: 10.5px; color: var(--text-3);
+    background: var(--panel-3); border: 1px solid var(--hairline);
+    border-radius: 4px; padding: 1px 5px;
+  }
+  .tb-runs {
+    display: flex; align-items: center; gap: 7px; height: 28px; padding: 0 11px;
+    border-radius: 999px; border: 1px solid var(--hairline);
+    color: var(--needs); font-size: 12px; font-weight: 500;
+  }
+  .tb-runs:hover { border-color: var(--hairline-strong); background: var(--panel-3); }
+  .spin { width: 10px; height: 10px; border-radius: 999px; border: 1.5px solid var(--needs);
+    border-top-color: transparent; animation: spin 1s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .tb-icon {
+    display: grid; place-items: center; width: 30px; height: 30px;
+    border-radius: var(--r-sm); color: var(--text-3);
+  }
+  .tb-icon:hover { background: var(--panel-3); color: var(--text); }
+  .tb-icon.on { color: var(--accent-hi); background: var(--accent-soft); }
+
+  /* ---------- sidebar ---------- */
+  .sidebar {
+    width: var(--sidebar-w); min-width: 240px; max-width: 420px; flex: none;
+    background: var(--panel-2); border-right: 1px solid var(--hairline);
+    display: flex; flex-direction: column; min-height: 0; position: relative;
+  }
+  .sb-resize {
+    position: absolute; top: 0; right: -3px; width: 6px; height: 100%;
+    cursor: col-resize; z-index: 5;
+  }
+  .sb-resize:hover, .sb-resize.on { background: var(--accent-line); }
+  .sb-head {
+    display: flex; align-items: center; gap: 8px; padding: 14px 14px 10px;
+  }
+  .cap {
+    font-size: 11px; font-weight: 600; letter-spacing: .09em; color: var(--text-3);
+    text-transform: uppercase;
+  }
+  .sb-head .cap { flex: 1; }
+  .door {
+    display: flex; align-items: center; gap: 5px; height: 26px; padding: 0 10px;
+    border: 1px solid var(--hairline); border-radius: var(--r-sm);
+    font-size: 12px; font-weight: 500; color: var(--text-2);
+  }
+  .door:hover { border-color: var(--hairline-strong); color: var(--text); background: var(--panel-3); }
+  .project-pin { padding: 0 10px 12px; border-bottom: 1px solid var(--hairline-soft); }
+  .project-row {
+    display: flex; align-items: center; gap: 9px; width: 100%; padding: 9px 10px;
+    border-radius: var(--r-md); text-align: left;
+  }
+  .project-row:hover { background: var(--panel-3); }
+  .project-row.active { background: var(--accent-soft); }
+  .project-row .name { flex: 1; font-weight: 500; font-size: 13px; }
+  .project-row .kick { font-size: 11px; color: var(--text-3); letter-spacing: .07em; text-transform: uppercase; }
+  .sb-list { flex: 1; overflow-y: auto; padding: 6px 10px 10px; min-height: 0; }
+  .lane { margin-top: 14px; }
+  .lane:first-child { margin-top: 8px; }
+  .lane-label { display: flex; align-items: baseline; gap: 7px; padding: 0 6px 6px; }
+  .lane-count { font-size: 11px; color: var(--text-4); font-family: var(--mono); }
+  .lane.needs .cap { color: var(--needs); }
+  .row {
+    display: flex; gap: 10px; width: 100%; padding: 10px 10px 11px;
+    border-radius: var(--r-md); text-align: left; align-items: flex-start;
+    margin-bottom: 2px;
+  }
+  .row:hover { background: var(--panel-3); }
+  .row.active { background: var(--accent-soft); box-shadow: inset 2px 0 0 var(--accent); }
+  .row .dot { width: 8px; height: 8px; border-radius: 999px; margin-top: 5px; flex: none; }
+  .row .body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+  .row .l1 { display: flex; align-items: flex-start; gap: 8px; }
+  .row .title {
+    flex: 1; font-size: 13px; font-weight: 500; line-height: 1.35;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+  }
+  .row.dim .title { color: var(--text-3); font-weight: 400; }
+  .chip {
+    flex: none; display: inline-flex; align-items: center; gap: 5px;
+    font-size: 11px; color: var(--text-3); padding: 2px 7px;
+    border-radius: 999px; border: 1px solid var(--hairline); white-space: nowrap; margin-top: 1px;
+  }
+  .chip.needs { color: var(--needs); border-color: rgba(215,169,74,.35); }
+  .chip.work { color: var(--accent-hi); border-color: var(--accent-line); }
+  .chip.ok { color: var(--ok); border-color: rgba(63,185,80,.3); }
+  .row .l2 { display: flex; align-items: center; gap: 10px; }
+  .minimap { display: inline-flex; gap: 3px; }
+  .minimap i { width: 9px; height: 4px; border-radius: 2px; background: var(--panel-3); border: 1px solid var(--hairline-soft); }
+  .minimap i.done { background: var(--text-4); border-color: transparent; }
+  .minimap i.here { background: var(--accent); border-color: transparent; }
+  .minimap i.ship { background: var(--ok); border-color: transparent; }
+  .prog { font-size: 11px; color: var(--text-3); font-family: var(--mono); }
+  .expander { display: block; width: 100%; padding: 7px 10px; text-align: left;
+    font-size: 12px; color: var(--text-3); border-radius: var(--r-sm); }
+  .expander:hover { color: var(--text-2); background: var(--panel-3); }
+  .prep {
+    display: flex; align-items: center; gap: 9px; margin: 0; padding: 12px 16px;
+    border-top: 1px solid var(--hairline-soft); font-size: 12.5px; color: var(--text-2);
+    text-align: left; width: 100%;
+  }
+  .prep:hover { background: var(--panel-3); color: var(--text); }
+  .prep .dot { width: 7px; height: 7px; border-radius: 999px; background: var(--ok); }
+  .prep .badge { margin-left: auto; font-size: 11px; color: var(--text-3); }
+
+  /* ---------- workspace ---------- */
+  .workspace { flex: 1; min-width: 0; display: flex; flex-direction: column; background: var(--bg); }
+  .ws-demo {
+    flex: 1; display: grid; place-items: center; color: var(--text-3);
+  }
+  .ws-demo-inner { text-align: center; max-width: 460px; padding: 24px; }
+  .ws-demo-inner h1 { font-size: 16px; font-weight: 600; color: var(--text-2); margin-bottom: 8px; }
+  .ws-demo-inner p { font-size: 13px; line-height: 1.6; margin-bottom: 24px; }
+  .viewpills { display: inline-flex; gap: 6px; padding: 4px; background: var(--panel-2);
+    border: 1px solid var(--hairline); border-radius: var(--r-md); }
+  .viewpills button { padding: 6px 14px; border-radius: var(--r-sm); font-size: 12.5px; color: var(--text-3); }
+  .viewpills button:hover { color: var(--text); }
+  .viewpills button.on { background: var(--accent); color: var(--accent-ink); font-weight: 600; }
+
+  /* ---------- inspector ---------- */
+  .inspector {
+    width: var(--inspector-w); flex: none; background: var(--panel-2);
+    border-left: 1px solid var(--hairline); display: flex; flex-direction: column; min-height: 0;
+  }
+  .insp-tabs { display: flex; gap: 2px; padding: 12px 14px 0; }
+  .insp-tab { padding: 6px 12px; font-size: 12.5px; color: var(--text-3);
+    border-radius: var(--r-sm) var(--r-sm) 0 0; border-bottom: 2px solid transparent; }
+  .insp-tab:hover { color: var(--text-2); }
+  .insp-tab.on { color: var(--text); border-bottom-color: var(--accent); }
+  .insp-pane { flex: 1; overflow-y: auto; padding: 20px 16px; display: flex; flex-direction: column; gap: 24px; }
+  .insp-sec { display: flex; flex-direction: column; gap: 10px; }
+  .cap-row { display: flex; align-items: center; gap: 6px; }
+  .info {
+    width: 14px; height: 14px; border-radius: 999px; border: 1px solid var(--hairline-strong);
+    color: var(--text-3); font-size: 9.5px; display: grid; place-items: center; cursor: help;
+    position: relative;
+  }
+  .info:hover { color: var(--text); border-color: var(--text-3); }
+  .info .tip {
+    display: none; position: absolute; left: 50%; transform: translateX(-50%);
+    bottom: calc(100% + 8px); width: 230px; background: var(--panel-3);
+    border: 1px solid var(--hairline-strong); border-radius: var(--r-md);
+    box-shadow: var(--shadow-menu); padding: 9px 11px; font-size: 12px;
+    color: var(--text-2); line-height: 1.45; z-index: 30; text-transform: none;
+    letter-spacing: 0; font-weight: 400;
+  }
+  .info:hover .tip { display: block; }
+  .gate {
+    background: var(--panel); border: 1px solid var(--hairline);
+    border-radius: var(--r-md); padding: 14px; display: flex; flex-direction: column; gap: 10px;
+  }
+  .gate .name { font-size: 13px; font-weight: 600; }
+  .gate .code { font-family: var(--mono); font-size: 10.5px; color: var(--text-4); margin-left: 7px; }
+  .gate .req { font-size: 12.5px; color: var(--text-2); line-height: 1.5; }
+  .gate .state { display: flex; align-items: center; gap: 7px; font-size: 12px; color: var(--needs); }
+  .gate .state .dot { width: 7px; height: 7px; border-radius: 999px; background: var(--needs); }
+  .doc {
+    display: flex; align-items: center; gap: 9px; padding: 9px 10px; width: 100%;
+    border-radius: var(--r-sm); text-align: left; font-size: 12.5px;
+  }
+  .doc:hover { background: var(--panel-3); }
+  .doc .file { margin-left: auto; font-family: var(--mono); font-size: 11px; color: var(--text-3); }
+  .act { display: flex; gap: 10px; padding: 8px 2px; }
+  .act .dot { width: 7px; height: 7px; border-radius: 999px; background: var(--text-4); margin-top: 5px; flex: none; }
+  .act .dot.ok { background: var(--ok); } .act .dot.acc { background: var(--accent); }
+  .act .msg { font-size: 12.5px; line-height: 1.45; }
+  .act .sub { display: flex; gap: 8px; font-size: 11px; color: var(--text-4); margin-top: 3px; }
+  .empty { font-size: 12.5px; color: var(--text-3); }
+
+  /* ---------- status bar ---------- */
+  .statusbar {
+    display: flex; align-items: center; gap: 14px; height: 30px; flex: none;
+    padding: 0 14px; background: var(--panel); border-top: 1px solid var(--hairline);
+    font-size: 11.5px; color: var(--text-3);
+  }
+  .sb-branch { display: flex; align-items: center; gap: 6px; font-family: var(--mono); font-size: 11px; }
+  .sb-branch:hover { color: var(--text); }
+  .sb-spacer { flex: 1; }
+  .sb-live .ldot { display: inline-block; width: 6px; height: 6px; border-radius: 999px; background: var(--ok); margin-right: 5px; }
+  .sb-item { display: flex; align-items: center; gap: 5px; }
+  .sb-item:hover { color: var(--text-2); }
+
+  /* ---------- palette ---------- */
+  .backdrop {
+    position: fixed; inset: 0; background: rgba(4,5,8,.6); z-index: 40;
+    display: none; align-items: flex-start; justify-content: center; padding-top: 12vh;
+  }
+  .backdrop.open { display: flex; }
+  .cmdk {
+    width: 560px; max-height: 60vh; background: var(--panel);
+    border: 1px solid var(--hairline-strong); border-radius: var(--r-lg);
+    box-shadow: var(--shadow-overlay); display: flex; flex-direction: column; overflow: hidden;
+  }
+  .cmdk input {
+    background: none; border: 0; outline: 0; color: var(--text);
+    font: 400 14px var(--sans); padding: 15px 18px;
+    border-bottom: 1px solid var(--hairline);
+  }
+  .cmdk input::placeholder { color: var(--text-3); }
+  .cmdk-list { overflow-y: auto; padding: 8px; }
+  .cmdk-group { font-size: 11px; font-weight: 600; letter-spacing: .09em;
+    text-transform: uppercase; color: var(--text-4); padding: 10px 10px 5px; }
+  .cmdk-item {
+    display: flex; align-items: center; gap: 10px; padding: 8px 10px;
+    border-radius: var(--r-sm); font-size: 13px; cursor: pointer;
+  }
+  .cmdk-item:hover, .cmdk-item.on { background: var(--panel-3); }
+  .cmdk-item .g { width: 14px; text-align: center; color: var(--text-3); flex: none; }
+  .cmdk-item .lbl { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .cmdk-item .hint { font-size: 11px; color: var(--text-3); }
+  .cmdk-item .open-mark { font-size: 10.5px; color: var(--accent-hi); border: 1px solid var(--accent-line);
+    padding: 1px 6px; border-radius: 999px; }
+  .cmdk-foot { display: flex; gap: 16px; padding: 9px 16px; border-top: 1px solid var(--hairline);
+    font-size: 11px; color: var(--text-3); }
+  .pdot { width: 8px; height: 8px; border-radius: 999px; display: inline-block; }
+</style>
+
+<div class="frame">
+  <div class="banner">
+    <span class="dot"></span>
+    <span>runcastle <strong>1.4.0</strong> is available · <span style="color:var(--text-3)">you're on 1.3.2</span></span>
+    <code>bun add -g runcastle@latest</code>
+    <button class="x" title="Dismiss">✕</button>
+  </div>
+
+  <div class="shell">
+    <header class="titlebar">
+      <nav class="crumb">
+        <button class="brand" title="All projects">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+            <path d="M2 14V6l2-1V3h2v2h4V3h2v2l2 1v8H2z" fill="#7c6cf6"/>
+            <rect x="7" y="9" width="2" height="5" fill="#0d0722"/>
+          </svg>
+          <span class="word">runcastle</span>
+        </button>
+        <span class="sep">/</span>
+        <button class="tb-proj">runcastle <span style="font-size:9px;color:var(--text-4)">▾</span></button>
+        <span class="sep">/</span>
+        <button class="tb-here" id="crumb-here" title="Back to the project home">Flow redesign: project shell and navigation</button>
+      </nav>
+      <span class="tb-spacer"></span>
+      <button class="tb-search" onclick="openCmdk()">
+        <span>⌕</span><span>Search or jump to…</span><span class="kbd">Ctrl K</span>
+      </button>
+      <button class="tb-runs" title="Runs in flight in other projects — open the portfolio">
+        <span class="spin"></span> 2 running elsewhere
+      </button>
+      <button class="tb-icon" title="Settings">⚙</button>
+      <button class="tb-icon on" id="insp-toggle" title="Hide details panel" onclick="toggleInsp()">▐</button>
+    </header>
+
+    <div class="shell-body">
+      <nav class="sidebar" id="sidebar">
+        <div class="sb-resize" id="sb-resize" title="Drag to resize"></div>
+        <div class="sb-head">
+          <span class="cap">Features</span>
+          <button class="door" title="Quick — a change to run now, or a draft to park. No conversation.">⚡ Quick</button>
+          <button class="door" title="New — open a fresh conversation with the project, which turns intent into features">＋ New</button>
+        </div>
+        <div class="project-pin">
+          <button class="project-row" id="row-chat" onclick="setView('chat')" title="Talk to the project — intake, decomposition, and portfolio questions">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+              <path d="M2 14V6l2-1V3h2v2h4V3h2v2l2 1v8H2z" stroke="#5f6a7a" stroke-width="1.2"/>
+            </svg>
+            <span class="name">runcastle</span>
+            <span class="kick">Project</span>
+          </button>
+        </div>
+        <div class="sb-list">
+          <div class="lane needs">
+            <div class="lane-label"><span class="cap">Needs you</span><span class="lane-count">1</span></div>
+            <button class="row active" id="row-feat" onclick="setView('feature')">
+              <span class="dot" style="background:var(--ph-ideation)"></span>
+              <span class="body">
+                <span class="l1">
+                  <span class="title">Flow redesign: project shell and navigation</span>
+                  <span class="chip needs">● Needs you</span>
+                </span>
+                <span class="l2">
+                  <span class="minimap"><i class="here"></i><i></i><i></i><i></i><i></i><i></i></span>
+                </span>
+              </span>
+            </button>
+          </div>
+          <div class="lane">
+            <div class="lane-label"><span class="cap">Agent working</span><span class="lane-count">2</span></div>
+            <button class="row">
+              <span class="dot" style="background:var(--ph-implementation)"></span>
+              <span class="body">
+                <span class="l1">
+                  <span class="title">Flow redesign: ideation, spec and tickets</span>
+                  <span class="chip work"><span class="spin" style="border-color:var(--accent-hi);border-top-color:transparent"></span> Working</span>
+                </span>
+                <span class="l2">
+                  <span class="minimap"><i class="done"></i><i class="done"></i><i class="done"></i><i class="here"></i><i></i><i></i></span>
+                  <span class="prog">4/9 done</span>
+                </span>
+              </span>
+            </button>
+            <button class="row">
+              <span class="dot" style="background:var(--ph-review)"></span>
+              <span class="body">
+                <span class="l1">
+                  <span class="title">Codex burns on the ChatGPT subscription</span>
+                  <span class="chip work"><span class="spin" style="border-color:var(--accent-hi);border-top-color:transparent"></span> Working</span>
+                </span>
+                <span class="l2">
+                  <span class="minimap"><i class="done"></i><i class="done"></i><i class="done"></i><i class="done"></i><i class="here"></i><i></i></span>
+                  <span class="prog">7/7 done</span>
+                </span>
+              </span>
+            </button>
+          </div>
+          <div class="lane">
+            <div class="lane-label"><span class="cap">In progress</span><span class="lane-count">1</span></div>
+            <button class="row">
+              <span class="dot" style="background:var(--ph-tickets)"></span>
+              <span class="body">
+                <span class="l1">
+                  <span class="title">Persistent burn cache volume</span>
+                  <span class="chip">12d</span>
+                </span>
+                <span class="l2">
+                  <span class="minimap"><i class="done"></i><i class="done"></i><i class="here"></i><i></i><i></i><i></i></span>
+                </span>
+              </span>
+            </button>
+          </div>
+          <div class="lane">
+            <div class="lane-label"><span class="cap">Drafts</span><span class="lane-count">2</span></div>
+            <button class="row dim">
+              <span class="dot" style="background:transparent;border:1px dashed var(--text-4)"></span>
+              <span class="body">
+                <span class="l1">
+                  <span class="title">Flow redesign: build, review, and ship</span>
+                  <span class="chip">Draft</span>
+                </span>
+              </span>
+            </button>
+            <button class="row dim">
+              <span class="dot" style="background:transparent;border:1px dashed var(--text-4)"></span>
+              <span class="body">
+                <span class="l1">
+                  <span class="title">Video annotation for reviews</span>
+                  <span class="chip">Draft</span>
+                </span>
+              </span>
+            </button>
+          </div>
+          <div class="lane">
+            <div class="lane-label"><span class="cap">Shipped</span><span class="lane-count">48</span></div>
+            <button class="row dim">
+              <span class="dot" style="background:var(--ph-shipped)"></span>
+              <span class="body">
+                <span class="l1">
+                  <span class="title">Flow redesign: project chat and creation doors</span>
+                  <span class="chip ok">✓ 1d</span>
+                </span>
+                <span class="l2"><span class="minimap"><i class="ship"></i><i class="ship"></i><i class="ship"></i><i class="ship"></i><i class="ship"></i><i class="ship"></i></span></span>
+              </span>
+            </button>
+            <button class="row dim">
+              <span class="dot" style="background:var(--ph-shipped)"></span>
+              <span class="body">
+                <span class="l1">
+                  <span class="title">Flow redesign: settings</span>
+                  <span class="chip ok">✓ 2d</span>
+                </span>
+                <span class="l2"><span class="minimap"><i class="ship"></i><i class="ship"></i><i class="ship"></i><i class="ship"></i><i class="ship"></i><i class="ship"></i></span></span>
+              </span>
+            </button>
+            <button class="expander">Show all (48)</button>
+          </div>
+          <button class="expander">Show archived (2)</button>
+        </div>
+        <button class="prep" title="See what was established about this repo, or establish it again">
+          <span class="dot"></span> Re-prepare the project
+          <span class="badge">1 stale</span>
+        </button>
+      </nav>
+
+      <section class="workspace">
+        <div class="ws-demo">
+          <div class="ws-demo-inner">
+            <h1>Workspace body</h1>
+            <p>The phase bodies, chat and preparation live in their own flows — this prototype
+               is the chrome around them. Flip the view to see the frame adapt: the inspector
+               column and the status-bar branch exist only on a feature.</p>
+            <div class="viewpills">
+              <button id="pill-feature" class="on" onclick="setView('feature')">Feature view</button>
+              <button id="pill-chat" onclick="setView('chat')">Project chat view</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <aside class="inspector" id="inspector">
+        <div class="insp-tabs">
+          <button class="insp-tab on" id="tab-details" onclick="setTab('details')">Details</button>
+          <button class="insp-tab" id="tab-activity" onclick="setTab('activity')">Activity</button>
+        </div>
+        <div class="insp-pane" id="pane-details">
+          <div class="insp-sec">
+            <div class="cap-row">
+              <span class="cap">Current gate</span>
+              <span class="info">i<span class="tip">Gates are the human approval points — runcastle stops at one and waits for you.</span></span>
+            </div>
+            <div class="gate">
+              <div><span class="name">Decisions captured</span><span class="code mono">G1</span></div>
+              <div class="req">Decisions recorded before the idea is promoted to a spec.</div>
+              <div class="state"><span class="dot"></span> record decisions in decisions.md</div>
+            </div>
+          </div>
+          <div class="insp-sec">
+            <div class="cap-row"><span class="cap">Knowledge</span></div>
+            <button class="doc">📄 <span>Shell redesign — decisions</span><span class="file">decisions.md</span></button>
+            <button class="doc">📄 <span>Shell redesign — brief</span><span class="file">brief.md</span></button>
+          </div>
+        </div>
+        <div class="insp-pane" id="pane-activity" hidden>
+          <div class="insp-sec">
+            <div class="act"><span class="dot acc"></span><div><div class="msg">Decision 13 recorded — prototype before spec</div><div class="sub"><span>decision · recorded</span><span>2m</span></div></div></div>
+            <div class="act"><span class="dot"></span><div><div class="msg">Ideation session picked the conversation back up</div><div class="sub"><span>session · resumed</span><span>1h</span></div></div></div>
+            <div class="act"><span class="dot ok"></span><div><div class="msg">Feature created on branch feature/flow-redesign-project-shell-and-navigation</div><div class="sub"><span>feature · created</span><span>4d</span></div></div></div>
+            <div class="act"><span class="dot"></span><div><div class="msg">Docs scaffolded — brief, decisions</div><div class="sub"><span>docs · scaffolded</span><span>4d</span></div></div></div>
+          </div>
+        </div>
+      </aside>
+    </div>
+
+    <footer class="statusbar">
+      <button class="sb-branch" id="sb-branch" title="Copy branch name">⎇ feature/flow-redesign-project-shell-and-navigation</button>
+      <span class="sb-item" title="Agent sessions run sandboxed via docker">🛡 docker</span>
+      <span class="sb-spacer"></span>
+      <button class="sb-item" title="Notify me when agents finish a run">🔕 notify off</button>
+      <span class="sb-item sb-live" title="Live updates are streaming from the server"><span class="ldot"></span>live</span>
+      <span class="sb-item" title="runcastle API at http://localhost:4513/api"><span class="ldot"></span>server ok</span>
+    </footer>
+  </div>
+</div>
+
+<div class="backdrop" id="cmdk-backdrop" onclick="closeCmdk()">
+  <div class="cmdk" onclick="event.stopPropagation()">
+    <input id="cmdk-input" placeholder="Search features, projects, or jump to…">
+    <div class="cmdk-list">
+      <div class="cmdk-group">Features</div>
+      <div class="cmdk-item on"><span class="g"><span class="pdot" style="background:var(--ph-ideation)"></span></span><span class="lbl">Flow redesign: project shell and navigation</span><span class="open-mark">open</span><span class="hint">Ideation</span></div>
+      <div class="cmdk-item"><span class="g"><span class="pdot" style="background:var(--ph-implementation)"></span></span><span class="lbl">Flow redesign: ideation, spec and tickets</span><span class="hint">Build</span></div>
+      <div class="cmdk-item"><span class="g"><span class="pdot" style="background:var(--ph-tickets)"></span></span><span class="lbl">Persistent burn cache volume</span><span class="hint">Tickets</span></div>
+      <div class="cmdk-group">Projects</div>
+      <div class="cmdk-item"><span class="g">▣</span><span class="lbl">runcastle-demo</span><span class="hint">project</span></div>
+      <div class="cmdk-item"><span class="g">▣</span><span class="lbl">terminal-wait-game</span><span class="hint">project</span></div>
+      <div class="cmdk-group">Actions</div>
+      <div class="cmdk-item"><span class="g">💬</span><span class="lbl">Project chat — talk an idea through, or reopen a past conversation</span><span class="hint">action</span></div>
+      <div class="cmdk-item"><span class="g">🔧</span><span class="lbl">Preparation — establish this repo's commands and baseline</span><span class="hint">action</span></div>
+      <div class="cmdk-item"><span class="g">⚙</span><span class="lbl">Settings</span><span class="hint">action</span></div>
+      <div class="cmdk-item"><span class="g">▦</span><span class="lbl">All projects (home)</span><span class="hint">action</span></div>
+      <div class="cmdk-item"><span class="g">▦</span><span class="lbl">Open a project…</span><span class="hint">action</span></div>
+    </div>
+    <div class="cmdk-foot">
+      <span><span class="kbd">↑↓</span> navigate</span>
+      <span><span class="kbd">↵</span> select</span>
+      <span><span class="kbd">esc</span> close</span>
+    </div>
+  </div>
+</div>
+
+<script>
+  // ---- sidebar resize (decision 10) ----
+  const sidebar = document.getElementById('sidebar');
+  const handle = document.getElementById('sb-resize');
+  let dragging = false;
+  handle.addEventListener('mousedown', (e) => {
+    dragging = true; handle.classList.add('on');
+    document.body.style.cursor = 'col-resize'; document.body.style.userSelect = 'none';
+    e.preventDefault();
+  });
+  window.addEventListener('mousemove', (e) => {
+    if (!dragging) return;
+    const w = Math.min(420, Math.max(240, e.clientX - sidebar.getBoundingClientRect().left));
+    sidebar.style.width = w + 'px';
+  });
+  window.addEventListener('mouseup', () => {
+    if (!dragging) return;
+    dragging = false; handle.classList.remove('on');
+    document.body.style.cursor = ''; document.body.style.userSelect = '';
+  });
+
+  // ---- inspector tabs ----
+  function setTab(t) {
+    document.getElementById('tab-details').classList.toggle('on', t === 'details');
+    document.getElementById('tab-activity').classList.toggle('on', t === 'activity');
+    document.getElementById('pane-details').hidden = t !== 'details';
+    document.getElementById('pane-activity').hidden = t !== 'activity';
+  }
+
+  // ---- inspector toggle ----
+  let inspOn = true, view = 'feature';
+  function applyChrome() {
+    const isFeature = view === 'feature';
+    // Decision 5: the inspector column exists only on a feature view.
+    document.getElementById('inspector').style.display = (isFeature && inspOn) ? 'flex' : 'none';
+    document.getElementById('insp-toggle').style.display = isFeature ? 'grid' : 'none';
+    // Decision 8: the branch segment follows the view.
+    document.getElementById('sb-branch').style.display = isFeature ? 'flex' : 'none';
+    // Decision 11: the breadcrumb names the current thing.
+    document.getElementById('crumb-here').textContent =
+      isFeature ? 'Flow redesign: project shell and navigation' : 'Chat';
+    document.getElementById('row-feat').classList.toggle('active', isFeature);
+    document.getElementById('row-chat').classList.toggle('active', !isFeature);
+    document.getElementById('pill-feature').classList.toggle('on', isFeature);
+    document.getElementById('pill-chat').classList.toggle('on', !isFeature);
+  }
+  function toggleInsp() {
+    inspOn = !inspOn;
+    const b = document.getElementById('insp-toggle');
+    b.classList.toggle('on', inspOn);
+    b.title = inspOn ? 'Hide details panel' : 'Show details panel';
+    applyChrome();
+  }
+  function setView(v) { view = v; applyChrome(); }
+  applyChrome();
+
+  // ---- palette ----
+  function openCmdk() {
+    document.getElementById('cmdk-backdrop').classList.add('open');
+    document.getElementById('cmdk-input').focus();
+  }
+  function closeCmdk() { document.getElementById('cmdk-backdrop').classList.remove('open'); }
+  window.addEventListener('keydown', (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); openCmdk(); }
+    if (e.key === 'Escape') closeCmdk();
+  });
+</script>

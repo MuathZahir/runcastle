@@ -124,41 +124,157 @@ button {
 }
 
 /* ============================================================================
-   SHELL FRAME
+   ATOMS
    ========================================================================== */
-.shell {
-  height: 100%;
-  display: grid;
-  grid-template-rows: 44px 1fr 28px;
+.mono {
+  font-family: var(--mono);
+  font-size: 12.5px;
 }
-.shell-body {
-  display: grid;
-  grid-template-columns: var(--sidebar-w) 1fr var(--inspector-w);
-  min-height: 0;
+.dim {
+  color: var(--text-3);
 }
-.shell.inspector-collapsed .shell-body {
-  grid-template-columns: var(--sidebar-w) 1fr;
+.dim-line {
+  color: var(--text-3);
+  font-family: var(--mono);
+  font-size: 12.5px;
+  padding: 2px 0;
+}
+.section-title {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  color: var(--text-3);
+  font-weight: 600;
+  padding: 4px 0;
 }
 
-/* ---- titlebar ---- */
-.titlebar {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  padding: 0 14px;
-  border-bottom: 1px solid var(--hairline);
-  background: var(--panel);
-  font-size: 13px;
-}
-/* brand mark container — the castle mark IS the logo now, no tile behind it */
-.tb-logo {
+/* ---- buttons ---- */
+.btn {
+  height: var(--control-h);
+  padding: 0 12px;
+  border-radius: var(--radius);
+  border: 1px solid var(--hairline);
+  background: transparent;
+  color: var(--text);
+  font-size: 12.5px;
+  cursor: pointer;
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  gap: 6px;
+  white-space: nowrap;
+  transition: border-color var(--dur-1) var(--ease),
+    background var(--dur-1) var(--ease), color var(--dur-1) var(--ease),
+    transform var(--dur-1) var(--ease), box-shadow var(--dur-2) var(--ease),
+    opacity var(--dur-1);
+}
+.btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.btn:active:not(:disabled) {
+  transform: translateY(0.5px) scale(0.99);
+}
+.btn-ghost:hover:not(:disabled) {
+  border-color: var(--hairline-strong);
+  background: var(--panel);
+  color: var(--text);
+}
+.btn-solid {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+  font-weight: 600;
+}
+.btn-solid:hover:not(:disabled) {
+  background: var(--accent-2);
+  border-color: var(--accent-2);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 16px -6px rgba(124, 108, 246, 0.7);
+}
+.btn-solid:active:not(:disabled) {
+  transform: translateY(0);
+  box-shadow: none;
+}
+.btn-danger {
+  border-color: color-mix(in srgb, var(--danger) 55%, var(--hairline));
+  color: var(--danger);
+}
+.btn-danger:hover:not(:disabled) {
+  background: rgba(244, 89, 78, 0.12);
+  border-color: var(--danger);
+}
+.btn-xs {
+  height: 22px;
+  padding: 0 9px;
+  font-size: 11.5px;
+  border-radius: var(--radius-sm);
+}
+.btn-lg {
+  height: 32px;
+  padding: 0 16px;
+  font-size: 13px;
+}
+
+.ghost-link {
+  background: none;
+  border: none;
+  color: var(--text-2);
+  font-size: 12.5px;
+  cursor: pointer;
+  padding: 2px 0;
+  transition: color var(--dur-1) var(--ease);
+}
+.ghost-link:hover:not(:disabled) {
+  color: var(--accent-hi);
+}
+.ghost-link:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* ---- chips / tags / dots ---- */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 19px;
+  padding: 0 8px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--hairline);
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--text-2);
+  white-space: nowrap;
+}
+.chip-neutral { color: var(--text-2); }
+.chip-blocked { color: var(--needs); border-color: color-mix(in srgb, var(--needs) 40%, transparent); }
+
+.tag {
+  font-family: var(--mono);
+  font-size: 12px;
+  text-transform: lowercase;
+  font-weight: 600;
+}
+
+.spinner,
+.spin-ring {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 1.6px solid var(--ph-implementation);
+  border-top-color: transparent;
+  display: inline-block;
+  animation: spin 0.8s linear infinite;
   flex: 0 0 auto;
 }
-.tb-app { color: var(--text); font-weight: 600; letter-spacing: 0.02em; }
 
+/* ============================================================================
+   LOGO WORDMARK — the two-tone brand mark (`LogoWordmark` in icons.tsx)
+   All that survives the migrated titlebar. It is not the titlebar's: the
+   portfolio home renders the same primitive, so these rules go when that flow
+   migrates its own surface.
+   ========================================================================== */
 /* two-tone wordmark (logo spec): mono semibold, `run` in accent */
 .wordmark {
   font-family: var(--mono);
@@ -171,408 +287,6 @@ button {
 .wordmark.is-lg { font-size: 21px; letter-spacing: -0.5px; }
 .wordmark-run { color: var(--accent-hi); }
 .wordmark-castle { color: var(--text); }
-.tb-home:hover .wordmark-castle { color: var(--accent-hi); }
-.tb-arrow, .tb-dot { color: var(--text-4); flex: 0 0 auto; }
-.tb-spacer { flex: 1; }
-.tb-search {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  height: 28px;
-  padding: 0 8px 0 10px;
-  background: var(--panel-inset);
-  border: 1px solid var(--hairline);
-  border-radius: var(--radius);
-  color: var(--text-3);
-  font-size: 12px;
-  cursor: pointer;
-  transition: border-color var(--dur-1), color var(--dur-1), background var(--dur-1);
-  min-width: 220px;
-}
-.tb-search:hover { border-color: var(--hairline-strong); color: var(--text-2); background: var(--panel-3); }
-.tb-search-spacer { flex: 1; }
-.kbd {
-  font-family: var(--mono);
-  font-size: 10px;
-  border: 1px solid var(--hairline-strong);
-  border-radius: 4px;
-  padding: 1px 5px;
-  color: var(--text-3);
-  line-height: 1.4;
-}
-.tb-runs {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  height: 24px;
-  padding: 0 10px;
-  border-radius: var(--radius-pill);
-  border: 1px solid color-mix(in srgb, var(--ph-implementation) 30%, transparent);
-  background: color-mix(in srgb, var(--ph-implementation) 9%, transparent);
-  color: var(--ph-implementation);
-  font-family: var(--mono);
-  font-size: 11px;
-  animation: fadeUp var(--dur-3) var(--ease-out);
-}
-.health-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  display: inline-block;
-  background: var(--text-3);
-  transition: background var(--dur-2);
-}
-.tb-health.is-ok .health-dot, .sb-health.is-ok .health-dot { background: var(--ok); }
-.tb-health.is-down .health-dot, .sb-health.is-down .health-dot { background: var(--danger); animation: pulse 1s ease-in-out infinite; }
-.tb-icon-btn {
-  width: 28px;
-  height: 28px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  background: transparent;
-  border: none;
-  border-radius: var(--radius);
-  color: var(--text-3);
-  cursor: pointer;
-  transition: color var(--dur-1), background var(--dur-1);
-}
-.tb-icon-btn:hover { color: var(--text); background: var(--panel-3); }
-.tb-icon-btn.is-on { color: var(--text-2); background: var(--panel-3); }
-
-/* ============================================================================
-   SIDEBAR — triage rail
-   ========================================================================== */
-.sidebar {
-  border-right: 1px solid var(--hairline);
-  background: var(--panel-2);
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-}
-.sidebar-head {
-  height: 40px;
-  flex: 0 0 40px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 12px;
-  border-bottom: 1px solid var(--hairline-soft);
-}
-.sidebar-head .pane-title {
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.09em;
-  color: var(--text-3);
-  font-weight: 600;
-}
-.new-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  height: 23px;
-  padding: 0 9px;
-  background: transparent;
-  border: 1px solid var(--accent-line);
-  border-radius: var(--radius);
-  color: var(--accent-hi);
-  font-size: 11.5px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: background var(--dur-1), border-color var(--dur-1), transform var(--dur-1);
-}
-.new-btn:hover { background: var(--accent-soft); border-color: var(--accent); }
-.new-btn:active { transform: scale(0.96); }
-/* two doors in the rail head: the title takes the slack, the buttons pair up */
-.sidebar-head .pane-title { margin-right: auto; }
-.sidebar-head .new-btn + .new-btn { margin-left: 6px; }
-/* the quick-change door is the quieter of the two — same shape, less voltage */
-.new-btn.is-quick { border-color: var(--hairline); color: var(--text-3); }
-.new-btn.is-quick:hover { background: var(--panel-3); border-color: var(--hairline-strong); color: var(--text-2); }
-.sidebar-empty {
-  padding: 14px 10px;
-  font-size: 12px;
-  line-height: 1.6;
-  color: var(--text-3);
-}
-
-.sidebar-list {
-  flex: 1;
-  overflow-y: auto;
-  padding: 4px 6px 12px;
-  min-height: 0;
-}
-.triage-group + .triage-group { margin-top: 4px; }
-.triage-label {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 11px 8px 5px;
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.09em;
-  text-transform: uppercase;
-}
-.triage-count { color: var(--text-4); font-family: var(--mono); font-weight: 500; }
-.triage-needsYou .triage-label > .triage-name { color: var(--needs); }
-.triage-agentWorking .triage-label > .triage-name { color: var(--ph-implementation); }
-.triage-inProgress .triage-label > .triage-name { color: var(--text-3); }
-.triage-drafts .triage-label > .triage-name { color: var(--text-4); }
-.triage-shipped .triage-label > .triage-name { color: var(--ph-shipped); }
-
-.feature-row {
-  width: 100%;
-  display: flex;
-  align-items: center;
-  border-radius: var(--radius-sm);
-  position: relative;
-  transition: background var(--dur-1) var(--ease);
-}
-/* A two-line card (decisions §1): line 1 is title + status chip, line 2 is the
-   mono slug, ticket progress and the pipeline map. */
-.feature-row-main {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  padding: 6px 4px 7px 9px;
-  border: none;
-  background: none;
-  cursor: pointer;
-  text-align: left;
-}
-.feature-line {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-}
-.feature-line.is-meta { gap: 7px; }
-.feature-row::before {
-  content: "";
-  position: absolute;
-  left: 1px;
-  top: 6px;
-  bottom: 6px;
-  width: 2px;
-  border-radius: 2px;
-  background: var(--accent);
-  transform: scaleY(0);
-  transform-origin: center;
-  transition: transform var(--dur-2) var(--ease-out);
-}
-.feature-row:hover { background: var(--panel-3); }
-.feature-row.is-active { background: var(--panel-3); }
-.feature-row.is-active::before { transform: scaleY(1); }
-.feature-row.is-active .feature-title { color: var(--text); }
-.feature-row.is-dim { opacity: 0.55; }
-.feature-row.is-dim:hover { opacity: 0.85; }
-
-/* The pinned project row (decision 20). Outside .sidebar-list on purpose: it is
-   always present and never scrolls away with the lanes, and it must not read as
-   a member of any triage lane. Visually distinct from a feature row — its own
-   hairline shelf, the project mark instead of a phase dot, no mini pipeline. */
-.project-pin {
-  flex: 0 0 auto;
-  padding: 6px;
-  border-bottom: 1px solid var(--hairline-soft);
-}
-.project-row {
-  width: 100%;
-  min-height: 32px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 0 9px;
-  border: 1px solid transparent;
-  border-radius: var(--radius-sm);
-  background: var(--panel-3);
-  cursor: pointer;
-  text-align: left;
-  transition: background var(--dur-1) var(--ease), border-color var(--dur-1) var(--ease);
-}
-.project-row:hover { border-color: var(--hairline-strong); }
-.project-row.is-active {
-  border-color: var(--accent-line);
-  background: var(--accent-soft);
-}
-.project-row-mark { display: flex; align-items: center; opacity: 0.85; }
-.project-row.is-active .project-row-mark { opacity: 1; }
-.project-row-name {
-  flex: 1;
-  min-width: 0;
-  font-size: 12.5px;
-  color: var(--text-2);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.project-row.is-active .project-row-name { color: var(--text); }
-.project-row-kick {
-  font-size: 9.5px;
-  font-weight: 700;
-  letter-spacing: 0.09em;
-  text-transform: uppercase;
-  color: var(--text-4);
-}
-/* Live while the conversation is up — the row's own version of the spinner a
-   feature row shows for a run. */
-.project-row-live {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  font-size: 10.5px;
-  color: var(--accent-hi);
-}
-/* per-row kebab actions menu (Archive / Unarchive; ticket 8 adds Delete) */
-.row-actions { position: relative; flex: 0 0 auto; padding-right: 4px; }
-.row-actions-btn {
-  border: none;
-  background: none;
-  color: var(--text-3);
-  cursor: pointer;
-  font-size: 15px;
-  line-height: 1;
-  padding: 2px 5px;
-  border-radius: var(--radius-sm);
-  transition: background var(--dur-1) var(--ease), color var(--dur-1) var(--ease);
-}
-.row-actions-btn:hover { background: var(--panel-3); color: var(--text); }
-.row-actions-menu {
-  position: absolute;
-  right: 4px;
-  top: calc(100% - 2px);
-  z-index: 20;
-  min-width: 128px;
-  display: flex;
-  flex-direction: column;
-  padding: 4px;
-  background: var(--panel-2);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  box-shadow: 0 6px 20px -8px rgba(0, 0, 0, 0.6);
-}
-.row-actions-item {
-  border: none;
-  background: none;
-  text-align: left;
-  padding: 5px 8px;
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-  color: var(--text-2);
-  font-size: 12.5px;
-  transition: background var(--dur-1) var(--ease), color var(--dur-1) var(--ease);
-}
-.row-actions-item:hover { background: var(--panel-3); color: var(--text); }
-.row-actions-item.is-danger { color: var(--danger); }
-
-/* The rail's two quiet expanders: show-archived (a standing choice) and the
-   Shipped lane's "Show all (N)" — one idiom, so they read as the same affordance. */
-.show-archived-toggle,
-.lane-expander {
-  width: 100%;
-  margin-top: 8px;
-  padding: 6px 9px;
-  border: none;
-  background: none;
-  color: var(--text-3);
-  cursor: pointer;
-  font-size: 11.5px;
-  text-align: left;
-  border-radius: var(--radius-sm);
-  transition: background var(--dur-1) var(--ease), color var(--dur-1) var(--ease);
-}
-.show-archived-toggle:hover,
-.lane-expander:hover { background: var(--panel-3); color: var(--text-2); }
-.feature-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 3px;
-  flex: 0 0 auto;
-  opacity: 0.9;
-}
-.phase-bg-ideation { background: var(--ph-ideation); }
-.phase-bg-spec { background: var(--ph-spec); }
-.phase-bg-tickets { background: var(--ph-tickets); }
-.phase-bg-implementation { background: var(--ph-implementation); }
-.phase-bg-review { background: var(--ph-review); }
-.phase-bg-shipped { background: var(--ph-shipped); }
-/* Occupies the phase dot's slot on a draft row, so line 1 still lines up. */
-.feature-draft-glyph {
-  width: 8px;
-  flex: 0 0 auto;
-  font-size: 11px;
-  line-height: 1;
-  color: var(--text-4);
-}
-.feature-title {
-  flex: 1;
-  min-width: 0;
-  color: var(--text-2);
-  font-size: 12.5px;
-  font-weight: 550;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  transition: color var(--dur-1);
-}
-/* Line 2's mono slug — the branch name, so it reads as one. Shrinks before the
-   progress and the map do: those are fixed-width figures, the slug can ellipsize. */
-.feature-slug {
-  min-width: 0;
-  flex: 0 1 auto;
-  font-family: var(--mono);
-  font-size: 10.5px;
-  color: var(--text-3);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.feature-progress {
-  flex: 0 0 auto;
-  font-size: 10.5px;
-  color: var(--text-3);
-}
-/* The row's single status slot. Whatever fills it sits at line 1's end. */
-.feature-chip {
-  flex: 0 0 auto;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 10.5px;
-  color: var(--text-3);
-}
-.feature-chip.is-needsMe { color: var(--needs); }
-.feature-chip.is-working { color: var(--ph-implementation); }
-.feature-chip.is-shipped { color: var(--ph-shipped); }
-.feature-chip.is-draft { color: var(--text-4); }
-/* The map keeps the line's end, so it lines up row to row whatever precedes it. */
-.feature-line.is-meta .mini-map { margin-left: auto; }
-.needs-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--needs); }
-.needs-attention { background: var(--danger); }
-.needs-grill, .needs-burn, .needs-ship { background: var(--needs); }
-
-/* sidebar mini pipeline map */
-.mini-map { display: flex; gap: 2px; align-items: center; }
-.mini-seg {
-  width: 6px;
-  height: 6px;
-  border-radius: 2px;
-  background: var(--text-4);
-  transition: background var(--dur-2);
-}
-.mini-seg.is-done { background: var(--text-3); }
-.mini-seg.is-current { background: var(--accent); box-shadow: 0 0 0 2px rgba(124, 108, 246, 0.22); }
-.mini-seg.is-skipped { background: transparent; border: 1px solid var(--text-4); }
-
-.sidebar-foot {
-  padding: 10px 12px;
-  border-top: 1px solid var(--hairline-soft);
-  font-size: 11px;
-  color: var(--text-4);
-  line-height: 1.5;
-}
 
 /* ============================================================================
    WORKSPACE — pipeline-first center
@@ -633,59 +347,10 @@ button {
 }
 .talk-door:hover:not(:disabled) { color: var(--accent-hi); }
 .talk-door:disabled { opacity: 0.5; cursor: default; }
-/* ---- the project workspace (decision 20) ---- */
-.pw-tag {
-  display: inline-flex;
-  align-items: center;
-  height: 18px;
-  padding: 0 8px;
-  border-radius: var(--radius-pill);
-  border: 1px solid var(--accent-line);
-  background: var(--accent-soft);
-  color: var(--accent-hi);
-  font-size: 9.5px;
-  font-weight: 700;
-  letter-spacing: 0.09em;
-}
-/* Says where the commits go, in the chrome, before you type anything. */
-.pw-consequence {
-  margin-top: 8px;
-  font-size: 12px;
-  line-height: 1.5;
-  color: var(--text-3);
-}
-.pw-frame {
-  border: 1px solid var(--hairline);
-  border-radius: var(--radius-lg);
-  background: var(--panel-2);
-  padding: 14px 16px;
-  margin-bottom: 18px;
-}
-.pw-frame-head {
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.09em;
-  text-transform: uppercase;
-  color: var(--text-3);
-  margin-bottom: 8px;
-}
-.pw-frame-list {
-  margin: 0;
-  padding-left: 18px;
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-  font-size: 12.5px;
-  line-height: 1.55;
-  color: var(--text-3);
-}
-.pw-frame-list b { color: var(--text-2); font-weight: 600; }
-.pw-frame-list code { font-family: var(--mono); font-size: 11.5px; }
+
 /* every direct workspace block sits in a centered rail — no more left-hugging
    content with a dead void on the right */
 .ws-head,
-.nextstep,
-.readonly-bar,
 .ws-banner,
 .ws-body-inner {
   width: 100%;
@@ -708,180 +373,6 @@ button {
 }
 .ws-title { font-size: 17px; font-weight: 600; letter-spacing: -0.01em; color: var(--text); }
 .ws-title-spacer { flex: 1; }
-.ws-branch {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  font-family: var(--mono);
-  font-size: 11.5px;
-  color: var(--text-3);
-  background: none;
-  border: none;
-  cursor: pointer;
-  transition: color var(--dur-1);
-}
-.ws-branch:hover { color: var(--text); }
-
-/* ---- pipeline stepper (horizontal) ---- */
-.pipeline {
-  display: flex;
-  align-items: center;
-  margin-top: 16px;
-}
-.pstep {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  height: 26px;
-  padding: 0 10px;
-  border-radius: var(--radius-pill);
-  border: 1px solid transparent;
-  background: none;
-  cursor: default;
-  color: var(--text-3);
-  font-size: 12px;
-  transition: background var(--dur-1), color var(--dur-1), border-color var(--dur-1),
-    transform var(--dur-1);
-}
-.pstep.is-clickable { cursor: pointer; }
-.pstep.is-clickable:hover { background: var(--panel); color: var(--text); }
-.pstep.is-clickable:active { transform: scale(0.97); }
-.pstep-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: currentColor;
-  opacity: 0.5;
-  flex: 0 0 auto;
-  transition: opacity var(--dur-2), box-shadow var(--dur-2);
-}
-.pstep-label { text-transform: lowercase; }
-.pstep.is-done { color: var(--text-2); }
-.pstep.is-done .pstep-dot { opacity: 1; }
-.pstep.is-current { color: var(--text); font-weight: 600; }
-.pstep.is-current .pstep-dot {
-  opacity: 1;
-  box-shadow: 0 0 0 3px rgba(124, 108, 246, 0.2);
-  background: var(--accent);
-  animation: dotGlow 2.4s ease-in-out infinite;
-}
-.pstep.is-upcoming { color: var(--text-4); }
-.pstep.is-skipped { color: var(--text-4); }
-.pstep.is-skipped .pstep-label { text-decoration: line-through; opacity: 0.7; }
-.pstep.is-viewed { border-color: var(--hairline); background: var(--panel); }
-.pstep.is-viewed.is-current { border-color: var(--accent-line); }
-.pconn {
-  width: 16px;
-  height: 1px;
-  background: var(--hairline);
-  flex: 0 0 auto;
-  transition: background var(--dur-2);
-}
-.pconn.is-done { background: var(--text-4); }
-/* lap chip — only rendered past lap 1, so the linear flow is unchanged */
-.pipeline-lap {
-  margin-left: 12px;
-  font-family: var(--mono);
-  font-size: 10px;
-  letter-spacing: 0.06em;
-  color: var(--text-3);
-  border: 1px solid var(--hairline);
-  border-radius: 4px;
-  padding: 1px 6px;
-  flex-shrink: 0;
-}
-
-/* ---- next-step bar (the guided spine) ---- */
-.nextstep {
-  margin-top: 14px;
-  border: 1px solid var(--hairline);
-  background: var(--panel);
-  border-radius: var(--radius-lg);
-  display: flex;
-  align-items: center;
-  /* Wrapping is the fix for decision 30e. The conflict bar carries the most
-     buttons of any state (Resolve, Retry Merge & ship, the drive, Iterate, Burn)
-     and `.nextstep-actions` cannot shrink, so on one line they squeezed the
-     kick/title/desc down to one word per line in exactly the state that most
-     needs reading. Now the actions drop to their own row instead. */
-  flex-wrap: wrap;
-  gap: 14px;
-  padding: 13px 16px;
-  animation: fadeUp var(--dur-3) var(--ease-out);
-}
-/* Never narrower than a readable measure — below it the actions wrap away. */
-.nextstep-main { flex: 1 1 26rem; min-width: 0; }
-.nextstep-kick {
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.1em;
-  color: var(--accent-hi);
-}
-.nextstep-kick.is-progress { color: var(--ph-implementation); }
-.nextstep-kick.is-shipped { color: var(--ph-shipped); }
-.nextstep-kick.is-waiting { color: var(--text-3); }
-.nextstep-title { font-size: 13.5px; font-weight: 600; margin-top: 2px; color: var(--text); }
-.nextstep-desc {
-  font-size: 12px;
-  color: var(--text-2);
-  margin-top: 2px;
-  line-height: 1.5;
-  text-wrap: pretty;
-}
-.nextstep-actions { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; margin-left: auto; }
-
-/* Convergence lives in the bar (ADR-0001 §13.6): remaining map fog as a soft
-   warning under the description, and the override's inline reason input. The
-   drive keys no dry run has proven (decision 7) get the same treatment — both
-   are doubts the bar states without gating the action beside them. */
-.nextstep-fog,
-.nextstep-warn {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  margin-top: 4px;
-  font-family: var(--mono);
-  font-size: 11.5px;
-  line-height: 1.6;
-  color: color-mix(in srgb, var(--needs) 82%, var(--text));
-}
-.nextstep-fog-icon,
-.nextstep-warn-icon { flex-shrink: 0; color: var(--needs); }
-.nextstep-override { display: flex; align-items: center; gap: 8px; }
-.nextstep-override .override-input { width: 260px; }
-
-/* read-only banner (viewing a past phase) */
-.readonly-bar {
-  margin-top: 12px;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 8px 14px;
-  border: 1px dashed var(--hairline-strong);
-  border-radius: var(--radius);
-  background: var(--panel-2);
-  font-size: 12px;
-  color: var(--text-2);
-  animation: fadeUp var(--dur-2) var(--ease-out);
-}
-.readonly-tag {
-  font-family: var(--mono);
-  font-size: 10px;
-  letter-spacing: 0.06em;
-  color: var(--text-3);
-  border: 1px solid var(--hairline);
-  border-radius: 4px;
-  padding: 1px 6px;
-}
-.readonly-back {
-  margin-left: auto;
-  background: none;
-  border: none;
-  color: var(--accent-hi);
-  font-size: 12px;
-  cursor: pointer;
-}
-.readonly-back:hover { color: var(--accent-2); }
 
 /* resume-failed alert banner (auto-dismisses; click to dismiss) */
 .ws-banner {
@@ -941,22 +432,6 @@ button {
   padding: 18px 0 32px;
 }
 .ws-body-inner { animation: bodyIn var(--dur-3) var(--ease-out); }
-/* The ideation/spec body is a two-pane split instead (decision #1/#5): the body
-   stops being the scroll container and stops centering on --content-max, so the
-   rail and the terminal each fill their share and scroll themselves. */
-.ws-body:has(.grill) {
-  display: flex;
-  overflow: hidden;
-  padding: 0;
-}
-.ws-body:has(.grill) > .ws-body-inner {
-  display: flex;
-  flex: 1;
-  min-width: 0;
-  min-height: 0;
-  max-width: none;
-  padding: 0;
-}
 .body-title {
   display: flex;
   align-items: baseline;
@@ -964,7 +439,6 @@ button {
   margin-bottom: 12px;
 }
 .body-title .section-title { padding: 0; }
-.body-hint { font-size: 12px; color: var(--text-3); text-wrap: pretty; margin-bottom: 12px; }
 .body-meta { font-family: var(--mono); font-size: 11.5px; color: var(--text-2); }
 
 /* generic bordered surface inside a body */
@@ -976,121 +450,8 @@ button {
 }
 
 /* ============================================================================
-   PHASE BODY — grill (ideation / spec)
+   SESSION PANEL — strip + terminal frame (preparation / run / review / shipped)
    ========================================================================== */
-/* map rail | terminal. Unmapped features have no rail, so the terminal pane
-   simply takes the whole body. */
-.grill {
-  max-width: none;
-  display: flex;
-  flex: 1;
-  min-width: 0;
-  min-height: 0;
-}
-
-/* ---- left: the map rail (decision #1/#7) ---- */
-.maprail {
-  flex: 0 0 var(--maprail-w);
-  width: var(--maprail-w);
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-  min-height: 0;
-  background: var(--panel-2);
-  border-right: 1px solid var(--hairline);
-}
-/* Manual collapse only — a fixed width and a stub, never drag-resized and never
-   re-opened by the viewport. */
-.maprail.is-collapsed {
-  flex-basis: 38px;
-  width: 38px;
-}
-.mr-head {
-  flex: 0 0 32px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 0 6px 0 12px;
-  border-bottom: 1px solid var(--hairline-soft);
-}
-.maprail.is-collapsed .mr-head { padding: 0 7px; }
-.mr-head .section-title { flex: 1; padding: 0; }
-.mr-toggle {
-  width: 22px;
-  height: 22px;
-  flex: 0 0 auto;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border: 0;
-  border-radius: var(--radius-sm);
-  background: none;
-  color: var(--text-3);
-  font-size: 13px;
-  cursor: pointer;
-  transition: background var(--dur-1), color var(--dur-1);
-}
-.mr-toggle:hover { background: var(--panel-3); color: var(--text); }
-/* Collapsed: the one thing worth seeing from a 38px strip is how many waypoints
-   are ready to be worked. Clicking anywhere on it reopens the rail. */
-.mr-stub {
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 0;
-  border: 0;
-  background: none;
-  cursor: pointer;
-}
-.mr-stub-count {
-  width: 22px;
-  height: 22px;
-  flex: 0 0 auto;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border: 1px solid var(--accent-line);
-  border-radius: 50%;
-  background: var(--accent-soft);
-  color: var(--accent-hi);
-  font-family: var(--mono);
-  font-size: 11px;
-}
-.mr-stub-label {
-  writing-mode: vertical-rl;
-  font-size: 9.5px;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: var(--text-4);
-}
-/* Each pane scrolls on its own — the body no longer scrolls as one column. */
-.mr-scroll {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  padding: 12px 12px 20px;
-}
-
-/* ---- right: the terminal pane, the hero ---- */
-.termpane {
-  flex: 1;
-  min-width: 0;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  overflow-y: auto;
-  padding: 14px 20px 18px;
-}
-/* The terminal measures its own height off the flex row instead of subtracting
-   guesses from 100dvh — nothing above it can push it off-screen any more. Only a
-   panel that really holds a terminal flexes; the empty state keeps its own size. */
-.termpane .grill-panel:has(.grill-term) { flex: 1; min-height: 0; }
-.termpane .grill-term { flex: 1; min-height: 0; }
-
 .grill-panel {
   border: 1px solid var(--hairline);
   border-radius: var(--radius-lg);
@@ -1123,333 +484,16 @@ button {
 }
 .grill-sid { font-family: var(--mono); font-size: 11px; color: var(--text-3); }
 .grill-strip-spacer { flex: 1; }
-/* End-session: quiet but reachable even over a blank/dead terminal. */
-.sess-end { color: color-mix(in srgb, var(--danger) 70%, var(--text-2)); }
-.sess-end:hover:not(:disabled) {
-  color: var(--danger);
-  border-color: color-mix(in srgb, var(--danger) 55%, var(--hairline));
-}
-/* Height is the owning body's call: the grill body flexes it (see .termpane),
-   the tickets/review bodies still size it from the viewport. */
+/* Height is the owning body's call — these ones size it from the viewport. */
 .grill-term {
   background: var(--panel-inset);
   position: relative;
 }
-/* the live emit-tickets session shown above the ticket ledger */
+/* the live emit-tickets and Iterate (revisit) sessions, above their cards */
 .tickets-session { margin-bottom: 18px; }
 .tickets-session .grill-term { height: clamp(300px, calc(100dvh - 420px), 1200px); }
-/* the live Iterate (revisit) session shown above the review cards */
 .review-session .grill-term { height: clamp(300px, calc(100dvh - 420px), 1200px); }
-.grill-empty {
-  padding: 40px 24px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 10px;
-  text-align: center;
-  color: var(--text-3);
-}
 .grill-live-label { font-size: 11.5px; color: var(--text-3); }
-
-/* Briefing never landed: a warning bar between the strip and the terminal, with
-   the one-click resend. Sits above the PTY because it explains what you are
-   looking at — a live terminal that was never told what it is here for. */
-.session-briefing-warn {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 8px 12px;
-  font-size: 12px;
-  color: var(--warn, #d9a441);
-  background: color-mix(in srgb, var(--warn, #d9a441) 9%, var(--panel-2));
-  border-bottom: 1px solid color-mix(in srgb, var(--warn, #d9a441) 35%, var(--hairline));
-}
-.session-briefing-text { flex: 1; }
-
-/* The terminal is up but the agent has not said hello yet. Deliberately quieter
-   than the briefing warning above: nothing is wrong or actionable, it only names
-   what a long "launching…" means. */
-.session-checkin-hint {
-  padding: 6px 12px;
-  font-size: 11.5px;
-  color: var(--text-3);
-  border-bottom: 1px solid var(--hairline);
-}
-
-/* the done state: a strip label + at most one button, never a modal */
-.strip-done { display: flex; align-items: center; gap: 9px; flex: 1; min-width: 0; }
-.done-check {
-  width: 16px;
-  height: 16px;
-  flex-shrink: 0;
-  border-radius: 50%;
-  border: 1px solid color-mix(in srgb, var(--ok) 50%, transparent);
-  background: color-mix(in srgb, var(--ok) 18%, transparent);
-  color: var(--ok);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 9px;
-}
-.done-txt {
-  min-width: 0;
-  font-size: 11.5px;
-  color: var(--text-2);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.done-txt b { color: var(--text); font-weight: 560; }
-.strip-work-next { max-width: 260px; overflow: hidden; text-overflow: ellipsis; }
-
-/* ended session: a quiet one-line card instead of a dead 400px frame */
-.session-ended-card {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 14px 16px;
-  border: 1px solid var(--hairline);
-  border-radius: var(--radius-lg);
-  background: var(--panel-2);
-  animation: fadeUp var(--dur-2) var(--ease-out);
-}
-.session-ended-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--text-4);
-  flex: 0 0 auto;
-}
-.session-ended-main { flex: 1; min-width: 0; }
-.session-ended-title { font-size: 13px; font-weight: 500; color: var(--text-2); }
-.session-ended-sub { font-size: 12px; color: var(--text-3); margin-top: 1px; }
-.session-ended-resume { flex: 0 0 auto; }
-
-/* compact doc pointer (spec / knowledge docs) — opens a peek overlay */
-.doc-card {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  width: 100%;
-  padding: 11px 14px;
-  border: 1px solid var(--hairline);
-  border-radius: var(--radius-lg);
-  background: var(--panel-2);
-  color: var(--text-3);
-  font-size: 12.5px;
-  cursor: pointer;
-  text-align: left;
-  transition: border-color var(--dur-1), background var(--dur-1);
-}
-.doc-card:hover { border-color: var(--hairline-strong); background: var(--panel-3); }
-.doc-card:hover .doc-card-open { color: var(--accent-hi); }
-.doc-card.is-empty { cursor: default; }
-.doc-card.is-empty:hover { border-color: var(--hairline); background: var(--panel-2); }
-.doc-card-title { color: var(--text); font-weight: 500; }
-.doc-card-meta { font-family: var(--mono); font-size: 11px; color: var(--text-4); }
-.doc-card-hint { font-size: 12px; color: var(--text-3); }
-.doc-card-open {
-  margin-left: auto;
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-  color: var(--text-3);
-  font-size: 12px;
-  transition: color var(--dur-1);
-}
-
-/* spec document */
-.spec-doc {
-  border: 1px solid var(--hairline);
-  border-radius: var(--radius-lg);
-  background: var(--panel-2);
-  padding: 22px 26px;
-  max-width: 780px;
-}
-.spec-meta { font-family: var(--mono); font-size: 11px; color: var(--text-3); }
-.spec-body {
-  margin: 10px 0 0;
-  font-family: var(--mono);
-  font-size: 12.5px;
-  line-height: 1.7;
-  color: var(--text);
-  white-space: pre-wrap;
-  word-break: break-word;
-}
-
-/* mapped-ideation map (ADR-0001 §13.6) — the prose sits below the waypoints,
-   behind a disclosure that starts closed (decision #4). */
-.mapdoc {
-  margin-top: 4px;
-  padding-top: 12px;
-  border-top: 1px solid var(--hairline-soft);
-}
-.mapdoc-summary {
-  font-size: 10px;
-  letter-spacing: 0.09em;
-  text-transform: uppercase;
-  color: var(--text-3);
-  cursor: pointer;
-  padding: 2px;
-}
-.mapdoc-summary:hover { color: var(--text-2); }
-.map-section { margin-top: 12px; }
-.map-section-title {
-  font-family: var(--mono);
-  font-size: 10.5px;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--accent-hi);
-  margin-bottom: 6px;
-}
-/* nothing charted yet keeps the dashed placeholder; groups replace it */
-.map-waypoints > .dim-line {
-  padding: 18px;
-  border: 1px dashed var(--hairline);
-  border-radius: var(--radius-lg);
-  text-align: center;
-}
-
-.wp-group { margin-bottom: 14px; }
-.wp-group-title {
-  font-family: var(--mono);
-  font-size: 10.5px;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--text-3);
-  margin-bottom: 7px;
-}
-.wp-group-frontier .wp-group-title { color: var(--accent-hi); }
-.wp-group-claimed .wp-group-title { color: var(--drive); }
-details.wp-group-done { border-top: 1px solid var(--hairline-soft); padding-top: 12px; }
-details.wp-group-done > summary { cursor: pointer; list-style: revert; }
-
-/* An expandable card, not a row (decision #6): the body toggles, the Work
-   control keeps its own line, and the question only shows when expanded. */
-.wp {
-  padding: 9px 12px;
-  border: 1px solid var(--hairline);
-  border-radius: var(--radius-sm);
-  background: var(--panel-2);
-  margin-bottom: 6px;
-  cursor: pointer;
-  transition: border-color var(--dur-2) var(--ease-out);
-}
-.wp:hover { border-color: var(--hairline-strong); }
-.wp-frontier { border-color: var(--accent-line); }
-.wp-blocked { opacity: 0.55; }
-.wp-claimed { border-color: color-mix(in srgb, var(--drive) 45%, var(--hairline)); }
-.wp-done { opacity: 0.6; }
-
-.wp-top {
-  display: flex;
-  align-items: baseline;
-  gap: 9px;
-}
-.wp-caret {
-  color: var(--text-4);
-  font-size: 9px;
-  flex-shrink: 0;
-  transition: transform var(--dur-2) var(--ease-out);
-}
-.wp.is-open .wp-caret { transform: rotate(90deg); }
-
-.wp-detail {
-  margin-top: 8px;
-  padding-top: 8px;
-  border-top: 1px solid var(--hairline-soft);
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  cursor: default;
-}
-/* The question — the field this card exists to show — as rendered prose. */
-.wp-q { cursor: text; }
-
-.wp-type {
-  font-family: var(--mono);
-  font-size: 10px;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-  color: var(--text-2);
-  border: 1px solid var(--hairline-strong);
-  border-radius: var(--radius-sm);
-  padding: 1px 6px;
-  flex-shrink: 0;
-}
-/* The rail is only ~300px wide — a long title wraps rather than overflowing. */
-.wp-title { color: var(--text); font-size: 13px; flex: 1; min-width: 0; overflow-wrap: anywhere; }
-.wp-blockers, .wp-lineage, .wp-resume {
-  font-family: var(--mono);
-  font-size: 11px;
-  color: var(--text-3);
-}
-.wp-blockers { color: var(--needs); }
-.wp-resume { color: var(--drive); }
-/* Beats the Markdown root's own colour — the resolution summary reads quieter
-   than the question. */
-.wp-detail .wp-summary { color: var(--text-3); }
-/* AFK research run in flight on a claimed waypoint. */
-.wp-run-note {
-  font-family: var(--mono);
-  font-size: 11px;
-  color: var(--drive);
-  font-style: italic;
-}
-/* Work / Resume owns the card's second line. */
-.wp-actions {
-  margin-top: 8px;
-  display: flex;
-  align-items: center;
-  gap: 7px;
-}
-.wp-pulse {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--drive);
-  flex-shrink: 0;
-  animation: pulse 1.4s ease-in-out infinite;
-}
-
-/* The refused handoff, asked inline instead of thrown as a toast (decision #2). */
-.wp-confirm {
-  margin-top: 8px;
-  padding: 9px;
-  border: 1px solid color-mix(in srgb, var(--needs) 45%, var(--hairline));
-  border-radius: var(--radius-sm);
-  background: color-mix(in srgb, var(--needs) 7%, transparent);
-}
-.wp-confirm-text {
-  font-size: 11.5px;
-  line-height: 1.45;
-  color: var(--text-2);
-  margin-bottom: 8px;
-}
-.wp-confirm-text b { color: var(--text); font-weight: 600; }
-.wp-confirm-actions { display: flex; gap: 7px; }
-
-/* Converge re-entry (recovery, kept quiet): stranded at spec after a crash. */
-.converge-resume {
-  margin-top: 14px;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  flex-wrap: wrap;
-  padding: 10px 14px;
-  border: 1px solid var(--hairline);
-  border-radius: var(--radius);
-  background: var(--panel-2);
-}
-.converge-resume-text { font-size: 12.5px; color: var(--text-2); }
-
-/* ---- lap grouping (decisions.md #6) ----
-   The group itself is a primitive now (`LapSections` in ui.tsx) and carries its
-   own utilities; `lap-group` / `lap-group-head` survive only as the hooks the
-   two rules below place inside the bordered ledger, where the header is a band
-   that lines up with the rows' own gutter rather than the card edge. */
-.ledger .lap-group-head { padding: 8px 14px; background: var(--panel-3); }
-.ledger .lap-group + .lap-group { border-top: 1px solid var(--hairline); }
 
 /* ============================================================================
    PHASE BODY — tickets ledger
@@ -1483,11 +527,7 @@ details.wp-group-done > summary { cursor: pointer; list-style: revert; }
   transition: transform var(--dur-2) var(--ease);
 }
 .ledger-row.is-open .lg-caret { transform: rotate(90deg); }
-.lg-seq { color: var(--text-3); font-family: var(--mono); font-size: 11.5px; width: 22px; flex: 0 0 auto; }
 .lg-title { flex: 1; min-width: 0; color: var(--text); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.lg-block { font-family: var(--mono); font-size: 10.5px; color: var(--needs); flex: 0 0 auto; }
-.lg-meta { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
-.lg-commits { color: var(--text-2); font-size: 11px; }
 .ledger-detail {
   padding: 2px 16px 16px 46px;
   background: var(--panel-inset);
@@ -1496,54 +536,7 @@ details.wp-group-done > summary { cursor: pointer; list-style: revert; }
   animation: detailIn var(--dur-2) var(--ease-out);
 }
 .td-section { margin-top: 12px; }
-.td-heading { font-size: 10.5px; font-weight: 600; letter-spacing: 0.07em; text-transform: uppercase; color: var(--text-3); margin-bottom: 4px; }
 .td-body { color: var(--text); line-height: 1.55; white-space: pre-wrap; word-break: break-word; max-width: 640px; text-wrap: pretty; }
-.td-list { margin: 0; padding-left: 0; list-style: none; }
-.td-list li { display: flex; gap: 8px; padding: 2px 0; color: var(--text-2); line-height: 1.5; }
-.td-list li::before { content: "—"; color: var(--text-4); flex: 0 0 auto; }
-/* in-place ticket editing — a pending card is correctable before Burn, with no
-   terminal in between (the quick-change door's promise) */
-.td-edit-open {
-  margin-top: 12px;
-  background: transparent;
-  border: 1px solid var(--hairline);
-  border-radius: var(--radius);
-  color: var(--text-3);
-  font-size: 11.5px;
-  font-family: inherit;
-  padding: 3px 9px;
-  cursor: pointer;
-  transition: border-color var(--dur-1), color var(--dur-1);
-}
-.td-edit-open:hover { border-color: var(--hairline-strong); color: var(--text-2); }
-.td-edit label.td-section { display: block; max-width: 640px; }
-.td-input {
-  width: 100%;
-  background: var(--panel-inset);
-  border: 1px solid var(--hairline);
-  border-radius: var(--radius);
-  color: var(--text);
-  padding: 7px 10px;
-  font-size: 12.5px;
-  font-family: inherit;
-  line-height: 1.55;
-  outline: none;
-  transition: border-color var(--dur-1);
-}
-.td-input:focus { border-color: var(--accent); }
-.td-area { min-height: 68px; resize: vertical; }
-.td-edit-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; max-width: 640px; }
-.td-seams { display: flex; flex-wrap: wrap; gap: 6px; }
-.seam {
-  font-family: var(--mono);
-  font-size: 11px;
-  color: var(--text-2);
-  border: 1px solid var(--hairline);
-  background: var(--panel-2);
-  border-radius: var(--radius-sm);
-  padding: 2px 7px;
-}
-.td-commits { display: flex; flex-wrap: wrap; gap: 6px; }
 .commit-sha {
   font-family: var(--mono);
   font-size: 11px;
@@ -1556,9 +549,6 @@ details.wp-group-done > summary { cursor: pointer; list-style: revert; }
   transition: border-color var(--dur-1);
 }
 .commit-sha:hover { border-color: var(--ph-shipped); }
-.td-error .td-heading { color: var(--danger); }
-.td-error-body { color: var(--danger); white-space: pre-wrap; word-break: break-word; }
-.td-empty { font-family: var(--mono); font-size: 11.5px; color: var(--text-4); }
 
 /* ============================================================================
    PHASE BODY — review + shipped
@@ -1596,378 +586,6 @@ details.wp-group-done > summary { cursor: pointer; list-style: revert; }
 }
 .nf-base-select:focus { border-color: var(--accent); }
 .nf-base-select:disabled { opacity: 0.5; cursor: default; }
-/* ============================================================================
-   INSPECTOR RAIL
-   ========================================================================== */
-.inspector {
-  border-left: 1px solid var(--hairline);
-  background: var(--panel-2);
-  overflow: hidden;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-}
-.insp-tabs {
-  flex: 0 0 auto;
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  padding: 8px 10px 0;
-  border-bottom: 1px solid var(--hairline-soft);
-}
-.insp-tab {
-  background: none;
-  border: none;
-  border-bottom: 2px solid transparent;
-  color: var(--text-3);
-  font-size: 12px;
-  font-weight: 500;
-  padding: 6px 10px 8px;
-  cursor: pointer;
-  transition: color var(--dur-1);
-}
-.insp-tab:hover { color: var(--text-2); }
-.insp-tab.is-active { color: var(--text); border-bottom-color: var(--accent); }
-.insp-pane {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  padding: 16px;
-  display: flex;
-  flex-direction: column;
-  gap: 22px;
-  animation: fadeUp var(--dur-2) var(--ease-out);
-}
-.insp-pane-activity { padding: 10px 12px; gap: 0; }
-.insp-empty { font-size: 12px; color: var(--text-3); line-height: 1.55; text-wrap: pretty; }
-.insp-section > .insp-cap {
-  font-size: 10.5px;
-  font-weight: 600;
-  letter-spacing: 0.09em;
-  text-transform: uppercase;
-  color: var(--text-3);
-  margin-bottom: 8px;
-}
-/* Plain-language gloss under a rail cap (finding F16). */
-.insp-hint {
-  font-size: 11.5px;
-  color: var(--text-3);
-  line-height: 1.5;
-  text-wrap: pretty;
-  margin-bottom: 8px;
-}
-.gate-shipped {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 12.5px;
-  color: var(--ok);
-}
-.gate-card {
-  border: 1px solid var(--hairline);
-  border-radius: var(--radius-lg);
-  background: var(--panel);
-  padding: 12px 14px;
-}
-.gate-override-link {
-  margin-top: 10px;
-  background: none;
-  border: none;
-  padding: 0;
-  font-size: 11.5px;
-  color: var(--text-3);
-  cursor: pointer;
-  transition: color var(--dur-1);
-}
-.gate-override-link:hover { color: var(--accent-hi); }
-.override-actions { display: flex; gap: 6px; }
-.gate-idrow { display: flex; align-items: center; gap: 8px; }
-.gate-id { font-family: var(--mono); font-size: 11px; color: var(--accent-hi); }
-.gate-name { font-weight: 600; font-size: 12.5px; color: var(--text); }
-.gate-req { margin-top: 6px; font-size: 11.5px; color: var(--text-2); line-height: 1.5; text-wrap: pretty; }
-.gate-state { margin-top: 11px; display: flex; align-items: center; gap: 8px; font-size: 12px; }
-.gate-state.is-ok { color: var(--ok); }
-.gate-state.is-block { color: var(--needs); }
-.gate-state-dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; flex: 0 0 auto; }
-.gate-hint { margin-top: 10px; font-size: 11px; color: var(--text-4); line-height: 1.5; }
-.gate-empty {
-  border: 1px dashed var(--hairline-strong);
-  border-radius: var(--radius);
-  padding: 12px 14px;
-  font-size: 11.5px;
-  color: var(--text-3);
-}
-.override-form { display: flex; flex-direction: column; gap: 6px; margin-top: 11px; }
-.override-input {
-  height: 26px;
-  background: var(--panel-inset);
-  border: 1px solid var(--hairline);
-  border-radius: var(--radius-sm);
-  color: var(--text);
-  padding: 0 8px;
-  font-size: 12px;
-  outline: none;
-}
-.override-input:focus { border-color: var(--accent); }
-/* what Apply is about to do, said before it is clicked (findings F24) */
-.override-consequence {
-  font-size: 11.5px;
-  line-height: 1.5;
-  color: var(--needs);
-  text-wrap: pretty;
-}
-/* the way back, for as long as the override is the latest transition */
-.gate-undo {
-  margin-top: 10px;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 7px;
-  padding: 10px 12px;
-  border: 1px dashed var(--hairline-strong);
-  border-radius: var(--radius);
-  font-size: 11.5px;
-  line-height: 1.5;
-  color: var(--text-3);
-  text-wrap: pretty;
-}
-
-.doc-list { list-style: none; margin: 0; padding: 0; }
-.doc-link {
-  width: 100%;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  background: none;
-  border: none;
-  cursor: pointer;
-  text-align: left;
-  padding: 7px 8px;
-  margin: 0 -8px;
-  border-radius: var(--radius-sm);
-  transition: background var(--dur-1);
-}
-.doc-link:hover { background: var(--panel-3); }
-.doc-link-icon { color: var(--text-4); display: inline-flex; flex: 0 0 auto; }
-.doc-title { color: var(--text); font-size: 12.5px; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.doc-meta { font-size: 11px; color: var(--text-4); flex: 0 0 auto; }
-
-.activity-log { display: flex; flex-direction: column; }
-.act-line { display: flex; gap: 10px; padding: 8px 4px; border-top: 1px solid var(--hairline-soft); }
-.act-line:first-child { border-top: none; }
-/* a lap boundary, drawn across the feed rather than listed in it (decisions #6) */
-.act-lap {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin: 6px 0;
-  padding: 0 4px;
-  font-family: var(--mono);
-  font-size: 10px;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--accent-2);
-}
-.act-lap::after {
-  content: '';
-  flex: 1;
-  height: 1px;
-  background: var(--accent-line);
-}
-.act-lap-time { color: var(--text-4); order: 1; }
-.act-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--text-4);
-  flex: 0 0 auto;
-  margin-top: 5px;
-}
-.act-dot.is-ok { background: var(--ok); }
-.act-dot.is-danger { background: var(--danger); }
-.act-dot.is-accent { background: var(--accent); }
-.act-body { min-width: 0; flex: 1; }
-.act-msg {
-  font-size: 12px;
-  color: var(--text-2);
-  line-height: 1.45;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
-/* the summary is one line of plain text; the rest opens below it (F10.5/F18) */
-.act-msg-toggle {
-  width: 100%;
-  background: none;
-  border: none;
-  padding: 0;
-  margin: 0;
-  text-align: left;
-  font: inherit;
-  color: inherit;
-  cursor: pointer;
-}
-.act-msg-toggle:hover { color: var(--text); }
-.act-more { color: var(--text-4); margin-left: 6px; }
-.act-detail {
-  margin: 6px 0 0;
-  padding: 7px 9px;
-  max-height: 260px;
-  overflow: auto;
-  background: var(--panel-inset);
-  border: 1px solid var(--hairline);
-  border-radius: var(--radius);
-  font-size: 11px;
-  line-height: 1.5;
-  color: var(--text-2);
-  white-space: pre-wrap;
-  word-break: break-word;
-}
-.act-sub { display: flex; align-items: baseline; gap: 8px; margin-top: 2px; }
-.act-type { font-size: 10.5px; color: var(--text-4); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.act-time { font-size: 10.5px; color: var(--text-4); flex: 0 0 auto; margin-left: auto; }
-
-/* ============================================================================
-   STATUS BAR
-   ========================================================================== */
-.statusbar {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  padding: 0 12px;
-  border-top: 1px solid var(--hairline);
-  background: var(--panel);
-  font-size: 11px;
-  color: var(--text-3);
-}
-.sb-item { display: inline-flex; align-items: center; gap: 5px; }
-.sb-branch {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  background: none;
-  border: none;
-  color: var(--text-3);
-  cursor: pointer;
-  font-family: var(--mono);
-  font-size: 11px;
-  padding: 0;
-  transition: color var(--dur-1);
-}
-.sb-branch:hover { color: var(--text); }
-.sb-driving { color: var(--drive); display: flex; gap: 7px; align-items: center; }
-.sb-driving-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--drive); animation: pulse 1.4s ease-in-out infinite; }
-.sb-stop {
-  height: 16px;
-  padding: 0 6px;
-  background: transparent;
-  border: 1px solid color-mix(in srgb, var(--drive) 40%, transparent);
-  border-radius: 4px;
-  color: var(--drive);
-  font-size: 10px;
-  cursor: pointer;
-}
-.sb-stop:hover:not(:disabled) { background: rgba(88, 166, 255, 0.12); }
-.sb-spacer { flex: 1; }
-.sb-notify { display: inline-flex; align-items: center; gap: 5px; background: none; border: none; color: var(--text-3); cursor: pointer; font-size: 11px; padding: 0; transition: color var(--dur-1); }
-.sb-notify:hover { color: var(--text); }
-.sb-notify.is-on { color: var(--ok); }
-.sb-notify.is-blocked { color: var(--warn, #d9a441); }
-.sb-health { display: inline-flex; align-items: center; gap: 6px; color: var(--ph-shipped); }
-/* live data-stream indicator: a quiet dot while push is flowing, an amber word
-   while it is not. Deliberately smaller and calmer than the terminal's
-   `.ws-banner.is-offline` — different connection, different message. */
-.sb-live-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--ok); flex: 0 0 auto; }
-.sb-live.is-degraded { color: var(--warn, #d9a441); }
-.sb-live.is-degraded .sb-live-dot { background: var(--warn, #d9a441); animation: pulse 1.4s ease-in-out infinite; }
-
-/* ============================================================================
-   COMMAND PALETTE (⌘K)
-   ========================================================================== */
-.cmdk-backdrop {
-  position: fixed;
-  inset: 0;
-  background: rgba(4, 6, 10, 0.55);
-  backdrop-filter: blur(2px);
-  display: flex;
-  align-items: flex-start;
-  justify-content: center;
-  padding: 12vh 16px 16px;
-  z-index: 300;
-  animation: backdropIn var(--dur-2) var(--ease-out);
-}
-.cmdk {
-  width: 100%;
-  max-width: 560px;
-  background: var(--panel);
-  border: 1px solid var(--hairline-strong);
-  border-radius: var(--radius-lg);
-  overflow: hidden;
-  box-shadow: 0 24px 60px -20px rgba(0, 0, 0, 0.8);
-  animation: cmdkIn var(--dur-2) var(--ease-out);
-}
-.cmdk-input {
-  width: 100%;
-  height: 46px;
-  background: transparent;
-  border: none;
-  border-bottom: 1px solid var(--hairline);
-  color: var(--text);
-  padding: 0 16px;
-  font-size: 14px;
-  outline: none;
-  font-family: inherit;
-}
-.cmdk-input::placeholder { color: var(--text-3); }
-.cmdk-list { max-height: 340px; overflow-y: auto; padding: 6px; }
-.cmdk-group-label {
-  font-size: 10px;
-  letter-spacing: 0.09em;
-  text-transform: uppercase;
-  color: var(--text-4);
-  padding: 8px 10px 4px;
-  font-weight: 700;
-}
-.cmdk-item {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 8px 10px;
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-  color: var(--text-2);
-}
-.cmdk-item.is-active { background: var(--panel-3); color: var(--text); }
-.cmdk-item-glyph {
-  width: 16px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--text-3);
-  flex: 0 0 auto;
-}
-.cmdk-item-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
-.cmdk-item-slug { font-family: var(--mono); font-size: 11px; color: var(--text-4); }
-.cmdk-item-hint { font-size: 11px; color: var(--text-4); }
-/* "this is the one already open" — beside the phase, never instead of it */
-.cmdk-item-current {
-  font-size: 10px;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--accent-hi);
-}
-.cmdk-empty { padding: 24px; text-align: center; color: var(--text-3); font-size: 13px; }
-.cmdk-foot {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  padding: 8px 14px;
-  border-top: 1px solid var(--hairline);
-  font-size: 11px;
-  color: var(--text-4);
-}
-.cmdk-foot .kbd { font-size: 10px; }
 
 /* ============================================================================
    OUTLIVED THE SETTINGS OVERLAY (issue #47 → flow-redesign-settings)
@@ -2008,168 +626,6 @@ details.wp-group-done > summary { cursor: pointer; list-style: revert; }
 .settings-input:focus { border-color: var(--accent); }
 .settings-input:disabled { opacity: 0.6; cursor: progress; }
 
-/* What preparation observed to justify a value. */
-.prep-finding-evidence {
-  font-size: 11px;
-  line-height: 1.45;
-  color: var(--text-3);
-  padding: 5px 7px;
-  background: var(--panel-inset);
-  border-left: 2px solid var(--accent-line);
-  border-radius: 0 var(--radius) var(--radius) 0;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-}
-
-/* --- Preparation ---------------------------------------------------------- */
-
-/* The body stacks three optional blocks (the conversation or its call-to-action,
-   a staleness warning, the established list), so the gap lives here rather than
-   as a margin on any one of them — any of the three can be the last on screen. */
-.prep-stack {
-  display: flex;
-  flex-direction: column;
-  gap: 18px;
-}
-.prep-stack .pw-frame { margin-bottom: 0; }
-
-.prep-warn {
-  font-size: 11.5px;
-  line-height: 1.5;
-  color: var(--text-2);
-  padding: 7px 9px;
-  background: color-mix(in srgb, var(--drive) 10%, transparent);
-  border: 1px solid color-mix(in srgb, var(--drive) 35%, transparent);
-  border-radius: var(--radius);
-}
-
-/* The preparation dry run, while it is up (decision 9). Reads as the live drive
-   it is — same pulse as a test drive — with the teardown always in reach. */
-.prep-dryrun {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  padding: 8px 11px;
-  border-radius: var(--radius);
-  background: color-mix(in srgb, var(--drive) 10%, transparent);
-  border: 1px solid color-mix(in srgb, var(--drive) 35%, transparent);
-}
-.prep-dryrun-label { color: var(--drive); font-weight: 600; font-size: 12.5px; }
-.prep-dryrun-url { font-size: 11.5px; color: var(--text-2); }
-.prep-dryrun-waiting { color: var(--text-3); }
-.prep-dryrun-spacer { flex: 1; }
-
-/* The call-to-action itself. Centred and roomy on purpose: on an unprepared
-   project with no features this IS the workspace, and it has one job — make the
-   single next step unmissable, where the old card was a footnote in settings. */
-.prep-cta {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 12px;
-  padding: 40px 0 28px;
-  text-align: center;
-}
-.prep-cta-logo { display: flex; opacity: 0.85; }
-.prep-cta-title { font-size: 15px; font-weight: 500; color: var(--text-1); }
-.prep-cta-sub {
-  font-size: 12.5px;
-  color: var(--text-3);
-  max-width: 52ch;
-  line-height: 1.6;
-}
-/* What is still open, as a plain list. The count alone reads as a chore; the
-   names read as a short agenda, which is what the conversation actually is. */
-.prep-cta-open {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 6px;
-  max-width: 56ch;
-}
-/* Prepared, the call-to-action carries what the screen used to stack below it —
-   the reason to act and what is already established — so both are constrained
-   to the reading width and left-aligned inside the centred column. */
-.prep-cta .prep-warn,
-.prep-cta .pw-frame {
-  width: 100%;
-  max-width: 62ch;
-  text-align: left;
-}
-/* Two ways to go again, side by side: resume is the cheap one and stays solid,
-   fresh is the deliberate one. */
-.prep-cta-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-.prep-cta-open li {
-  font-size: 11px;
-  color: var(--text-3);
-  padding: 3px 8px;
-  border: 1px solid var(--hairline);
-  border-radius: 999px;
-  background: var(--panel-3);
-}
-
-/* The rail's foot, once features exist. Quiet enough not to compete with the
-   triage lanes, present enough not to be forgotten again. Permanent: `is-todo`
-   is a job waiting, `is-done` is a door back to what was established. */
-.prep-nudge {
-  flex: none;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-  padding: 9px 12px;
-  border: none;
-  border-top: 1px solid var(--hairline);
-  background: none;
-  color: var(--text-3);
-  font-size: 11.5px;
-  text-align: left;
-  cursor: pointer;
-  transition: background var(--dur-1) var(--ease), color var(--dur-1) var(--ease);
-}
-.prep-nudge:hover { background: var(--panel-3); color: var(--text-2); }
-.prep-nudge-dot {
-  flex: none;
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--drive);
-}
-/* Done asks for nothing: a hollow dot reads as a marker, not a nudge. */
-.prep-nudge.is-done { color: var(--text-4); }
-.prep-nudge.is-done .prep-nudge-dot {
-  background: none;
-  box-shadow: inset 0 0 0 1px var(--text-4);
-}
-.prep-nudge-text { flex: 1; min-width: 0; }
-.prep-nudge-count {
-  flex: none;
-  font-size: 10.5px;
-  color: var(--text-4);
-  white-space: nowrap;
-}
-
-.prep-findings {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-.prep-finding { display: flex; flex-direction: column; gap: 4px; }
-.prep-finding-head { display: flex; align-items: baseline; gap: 7px; }
-.prep-finding-key { font-size: 12px; color: var(--text-1); }
-.prep-finding-note { font-size: 11px; color: var(--text-4); }
-.prep-finding.is-stale .prep-finding-note { color: var(--drive); }
-
 .settings-clear {
   align-self: flex-start;
   margin-top: 2px;
@@ -2186,8 +642,8 @@ details.wp-group-done > summary { cursor: pointer; list-style: revert; }
 .settings-clear:disabled { opacity: 0.5; cursor: default; }
 
 /* ============================================================================
-   MULTI-PROJECT — app loading, titlebar switcher, portfolio home, open flow
-   (issue #45)
+   MULTI-PROJECT — app loading, portfolio home, open flow (issue #45)
+   The titlebar switcher's rules left with the rest of the migrated titlebar.
    ========================================================================== */
 .app-loading {
   height: 100%;
@@ -2196,17 +652,3 @@ details.wp-group-done > summary { cursor: pointer; list-style: revert; }
   justify-content: center;
 }
 
-/* ---- titlebar: brand-as-home + project switcher ---- */
-.tb-home {
-  display: inline-flex;
-  align-items: center;
-  flex: 0 0 auto;
-  gap: 9px;
-  background: transparent;
-  border: 0;
-  padding: 0;
-  cursor: pointer;
-  color: inherit;
-}
-.tb-home:hover .tb-app { color: var(--accent-hi); }
-button.tb-runs { cursor: pointer; }

@@ -37,8 +37,7 @@ export function EndSessionButton({
   return (
     <Button
       type="button"
-      size="xs"
-      className="sess-end"
+      className="h-7 px-2 text-xs"
       disabled={end.isPending}
       title="end this session — recoverable, you can relaunch it"
       onClick={() => end.mutate({ sessionId })}

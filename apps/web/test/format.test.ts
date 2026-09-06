@@ -61,8 +61,14 @@ describe('fmtBytes', () => {
 })
 
 describe('relTimeAgo', () => {
-  it('never produces now ago', () => {
-    expect(relTimeAgo(9_999, 10_000)).toBe('just now')
-    expect(relTimeAgo(0, 12_000)).toBe('12s ago')
+  const now = Date.parse('2026-09-04T12:00:00Z')
+
+  it('suffixes the compact age so it reads in a sentence', () => {
+    expect(relTimeAgo(now - 30_000, now)).toBe('30s ago')
+    expect(relTimeAgo(now - 7_200_000, now)).toBe('2h ago')
+  })
+
+  it('says "just now" rather than the unspeakable "now ago"', () => {
+    expect(relTimeAgo(now - 1_000, now)).toBe('just now')
   })
 })

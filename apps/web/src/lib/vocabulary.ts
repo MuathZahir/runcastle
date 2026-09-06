@@ -1,10 +1,14 @@
 /**
  * Plain-language definitions for runcastle's insider words (findings F16).
  *
- * Grill, burn, gate and lap all appear at the moment the human is deciding
+ * Burn, waypoint, gate and lap all appear at the moment the human is deciding
  * whether to click something, and a newcomer meets them there for the first
  * time — so the definition belongs beside the action, not in a glossary nobody
  * opens. Keeping the sentences here means every surface says the same thing.
+ *
+ * A word only earns an entry if it survives the copy policy (decision 12).
+ * "Grill" did not: the buttons say `Start session` now and the phase is already
+ * named ideation, so the explainer that glossed it went with the word.
  */
 
 import { DEFAULT_RUNTIME } from '@runcastle/core'
@@ -43,9 +47,8 @@ export function sessionAgentName(session: { runtime?: AgentRuntime | null }): st
   return agentName(session.runtime ?? DEFAULT_RUNTIME)
 }
 
-/** New-feature form: what the session it offers to open actually is. */
-export const GRILL_EXPLAINER =
-  'A grill session is a Q&A conversation with the agent to pin the idea down before any code is written.'
+export const WAYPOINT_EXPLAINER =
+  'A map breaks a big idea into waypoints — questions each worked in its own session. The feature converges once every waypoint is done.'
 
 /**
  * Tickets + build bodies: the mechanics behind Burn, which the bar's "review,
@@ -53,6 +56,14 @@ export const GRILL_EXPLAINER =
  */
 export const BURN_EXPLAINER =
   'Burning runs each ticket as its own sandboxed agent, in parallel, committing to the feature branch.'
+
+/**
+ * Status bar, on the notify toggle. "Notify me when a burn finishes" met a
+ * newcomer with an unexplained verb at the moment of a click (decision 9): the
+ * chrome may *name* a burn, but a sentence about one has to read without the
+ * word.
+ */
+export const NOTIFY_OFFER = 'Notify me when agents finish a run'
 
 /** Inspector gate rail: why the pipeline is sitting still. */
 export const GATE_EXPLAINER =

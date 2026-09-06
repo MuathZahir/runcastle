@@ -81,6 +81,7 @@ utilities genuinely cannot express, kept to a minimum.
 | `CheckLine` | One review figure — tone dot, label, value — from a `CheckRow`. | tone comes from the row: `ok` · `warn` · `danger` · `idle` |
 | `LapSections<T>` | Rows under `Lap N` headers. Current lap is an open `<section>`, earlier laps a `<details>` with a caret. Suppressed entirely below lap 2 (ADR-0010 §4). | — |
 | `PhaseTag` | A feature's phase, in the phase's own colour. | one per `Phase` |
+| `PhaseDot` | The same phase where a row has no space to name it — the rail's rows and the palette's. | one per `Phase` |
 | `TicketStatusChip` | A ticket's status. `burning` breathes. | one per `TicketStatus` |
 | `TicketKindChip` | Marks a `review` ticket. Renders **nothing** for `implementation` — the default would be noise on every row. | — |
 | `NoteAuthorChip` | Marks the review agent's note. Renders **nothing** for `human`. | — |
@@ -147,16 +148,19 @@ surface, and dropping the name would silently lose that placement.
 
 | Primitive | Hook | The rule that needs it |
 |---|---|---|
-| `SectionTitle` | `section-title` | `.body-title .section-title`, `.mr-head .section-title` |
-| `DimLine` | `dim-line` | `.map-waypoints > .dim-line` (the dashed placeholder) |
-| `LapSections` | `lap-group`, `lap-group-head` | `.ledger .lap-group-head`, `.ledger .lap-group + .lap-group` |
+| `SectionTitle` | `section-title` | `.body-title .section-title` (the run body's heading row) |
+| `DimLine` | `dim-line mono` | none left — the base `.dim-line` rule, which raw spans still carry |
 
-Every one of those rules is now a *descendant* rule — the base `.section-title`
-and `.dim-line` went with the ATOMS section, so the utilities beside the hook are
-the whole look and the rule only places the primitive inside its surface.
-Remember that an unlayered legacy rule still beats a utility, so a placement rule
-wins over the utility it overlaps. **When your flow migrates one of those
-surfaces, delete the rule and the hook together.**
+Remember that an unlayered legacy rule beats a utility, so where the base rule
+also still exists — `.section-title` and `.dim-line` do, because raw spans
+elsewhere in the app carry those names — it wins over the utilities beside it.
+**When your flow migrates one of those surfaces, delete the rule and the hook
+together**, and check whether the base rule has any raw callers left.
+
+`LapSections` used to be on that list. Its replacement is the pattern to copy
+when you retire a hook whose rule only existed to place a shared primitive
+inside one surface: the placement becomes a `headClassName` the *surface* passes,
+so the utilities are written where the frame is known instead of reached in for.
 
 ## Concern modules
 
@@ -179,7 +183,7 @@ import a module directly, and removing the barrel is a later cleanup.
 | `gates.ts` | Gates and what blocks them: merge/ticket conflict kickoffs, overrides, check-in and kickoff trouble, session activity. |
 | `drive.ts` | Test drive: the open-app URL and its wait state, drive failures, the drive wheel. |
 | `review.ts` | Review figures — run/commit/review rows, `CheckRow`/`CheckTone`, outcome, finding counts and reasons. |
-| `laps.ts` | Lap grouping: lap accounts, `groupByLap`, ticket model chips, the lap banner. |
+| `laps.ts` | Lap grouping: lap accounts, `groupByLap`, ticket model chips, lap aborts. |
 | `summary.ts` | Docs and the merge confirmation: headline, spec path, deferred scope, `mergeSummary`. |
 | `map.ts` | Mapped features: `map.md` sections, waypoints and their groups. |
 | `session.ts` | Session lifecycle: done state, live-session blockers, shipped QA sessions, shipped-at. |
@@ -197,9 +201,8 @@ the phase-body dispatch and the action switch; these moved out:
 
 | File | What it is |
 |---|---|
-| `NextStepBar.tsx` | The next-step bar: the one primary action, its secondaries, reason prompts. |
+| `NextStepBar.tsx` | The next-step bar: the one primary action, its secondaries, escape lines on disabled actions. |
 | `PipelineStepper.tsx` | The phase stepper across the top of a feature. |
-| `LapBannerRow.tsx` | From lap 2 on, the line saying which lap this is and what put the feature on it. |
 | `FeaturePanes.tsx` | The crash and unrecognised-phase panes — a feature view that cannot do its job. |
 | `use-resume-failed-alert.ts` | Raises a banner on a new `session.resume_failed` event. |
 | `copy-text.ts` | Copy to the clipboard, with the toast either way. |
@@ -259,25 +262,27 @@ the app reads slightly mixed mid-migration. That is accepted.
 
 The `build-review-and-ship` flow took its own sections (the run body, review and
 shipped, the merge and notes dialogs) **and adopted the six that belonged to
-nobody** — ATOMS, MARKDOWN, DOC PEEK, ERROR BOUNDARY / TERMINAL, TOASTS,
-ANIMATIONS. Their keyframes and the reduced-motion switch live in `theme.css`
-now; everything else in them is utilities at the consumer. What remains, by
-section banner:
+nobody** — MARKDOWN, DOC PEEK, ERROR BOUNDARY / TERMINAL, TOASTS, ANIMATIONS,
+and ATOMS *except its base atoms*: the merge with `ideation-through-tickets`
+brought back surfaces (the grill and tickets bodies, the waypoint cards, the
+preparation workspace) that still render `btn`/`chip`/`mono`/`spin-ring` by
+name, so the ATOMS section stands until those flows' own migrations retire
+their callers. Keyframes and the reduced-motion switch live in `theme.css`;
+everything else that was adopted is utilities at the consumer. What remains,
+by section banner:
 
 | Section | Whose |
 |---|---|
 | LEGACY ALIASES + the base reset at the top | the last flow to land |
-| SHELL FRAME · SIDEBAR · WORKSPACE · INSPECTOR RAIL · STATUS BAR · COMMAND PALETTE | `flow-redesign-project-shell-and-navigation` |
-| PHASE BODY — grill · PHASE BODY — tickets ledger | `flow-redesign-ideation-through-tickets` |
-| PHASE BODY — review + shipped (36 lines) | not this flow's any more — what outlived the rebuild is preparation's dry-run pulse, the grill terminal's height, and DraftBody's base-branch select |
+| ATOMS | whoever migrates the last `btn`/`chip`/`mono`/`spin-ring` caller (grill + preparation surfaces today) |
+| LOGO WORDMARK · MULTI-PROJECT | the portfolio / open-project flow |
+| WORKSPACE · SESSION PANEL | `flow-redesign-project-shell-and-navigation` |
+| PHASE BODY — tickets ledger | `flow-redesign-ideation-through-tickets` |
+| PHASE BODY — review + shipped | not this flow's any more — what outlived the rebuild is preparation's dry-run pulse, the grill terminal's height, and DraftBody's base-branch select |
 | OUTLIVED THE SETTINGS OVERLAY | preparation, and the delete dialog's confirm input |
-| MULTI-PROJECT | the portfolio / open-project flow |
 
 So **nobody deletes the file yet**: the condition below is "whoever measures
-zero after their own deletions", and none of the remainder is ours. Note also
-that several of those sections are *already gone on `main`* — this branch is
-behind it — so the number the ratchet holds here is larger than what the file
-will measure once main is merged in. Lower it again after that merge.
+zero after their own deletions", and none of the remainder is ours.
 
 `test/styles-ratchet.test.ts` asserts `styles.css` is at or below a baseline line
 count recorded as a constant in that file. The rule above is therefore enforced

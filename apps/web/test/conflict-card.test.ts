@@ -1,10 +1,9 @@
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { readFileSync } from 'node:fs'
-import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import type { EventRow } from '@runcastle/core'
 import { ConflictCard } from '../src/components/review/ConflictCard'
+import { NextStepBar } from '../src/components/workspace/NextStepBar'
 import { conflictResolveEnded } from '../src/lib/feature-ui'
 
 /**
@@ -136,21 +135,37 @@ describe('conflictResolveEnded', () => {
 /**
  * Decision 30e — the bar's layout while this card is up. The conflict state
  * carries the most buttons of any next-step bar (Resolve, Retry Merge & ship,
- * the drive, Iterate, Burn), `.nextstep-actions` cannot shrink, and
- * `.nextstep-main` took whatever was left — one word per line, in the state that
- * most needs reading. The fix is a CSS rule, so the rule is what is asserted;
- * the markup carries no layout of its own to check.
+ * the drive, Iterate, Burn), the actions never shrink, and the copy column took
+ * whatever was left — one word per line, in the state that most needs reading.
+ * The bar is Tailwind now, so the layout lives in the rendered markup and the
+ * markup is what is asserted.
  */
 describe('the next-step bar beside the conflict card', () => {
-  const css = readFileSync(join(import.meta.dirname, '../src/styles.css'), 'utf8')
-  const rule = (selector: string): string =>
-    css.slice(css.indexOf(`${selector} {`)).split('}')[0]
+  const bar = renderToStaticMarkup(
+    createElement(NextStepBar, {
+      ns: {
+        kick: 'NEXT STEP',
+        title: 'Resolve the merge conflict',
+        desc: 'The last merge attempt hit conflicts.',
+        primary: { label: 'Resolve the merge conflict', kind: 'resolveConflict' as const },
+        secondary: [
+          { label: 'Retry Merge & ship', kind: 'merge' as const },
+          { label: 'Start test drive', kind: 'testDriveStart' as const },
+          { label: 'Iterate', kind: 'iterate' as const },
+        ],
+        busy: false,
+      },
+      guidance: true,
+      busy: false,
+      onAction: () => undefined,
+    }),
+  )
 
   it('lets the actions wrap to their own row instead of squeezing the copy', () => {
-    expect(rule('.nextstep')).toContain('flex-wrap: wrap')
+    expect(bar).toContain('flex-wrap')
   })
 
   it('keeps the kick, title and description on a readable measure', () => {
-    expect(rule('.nextstep-main')).toContain('flex: 1 1 26rem')
+    expect(bar).toContain('basis-[26rem]')
   })
 })

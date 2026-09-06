@@ -1,4 +1,4 @@
-import type { DriveState, Phase } from '@runcastle/core'
+import type { DriveState } from '@runcastle/core'
 import type { FeatureFull } from '../../api'
 import type { MergeConflictState } from '../gates'
 import type { BurnDurationStats } from '../run'
@@ -31,6 +31,8 @@ export interface ResolverInput {
   ctx: NextStepContext
   live: FeatureFull['sessions'][number] | undefined
   resumableGrill: boolean
+  lapTickets: FeatureFull['tickets']
+  lapTicketCount: number
   ticketCount: number
   done: number
   failed: number
@@ -39,7 +41,4 @@ export interface ResolverInput {
   pendingTickets: FeatureFull['tickets']
   run: FeatureFull['runs'][number] | undefined
   running: boolean
-  nextName: Phase | null
-  canAdvance: boolean
-  promoteLabel: string
 }

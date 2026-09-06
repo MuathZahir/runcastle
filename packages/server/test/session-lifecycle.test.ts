@@ -467,6 +467,45 @@ describe('relaunching a terminal resumes its own conversation', () => {
   })
 })
 
+describe('markSessionEnded — when the conversation stopped', () => {
+  afterEach(() => vi.useRealTimers())
+
+  it('stamps the ending, not the row age — a long session closed now ended now', async () => {
+    const ctx = await makeTestCtx()
+    const featureId = seedFeature(ctx, seedProject(ctx).id).id
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-09-04T10:00:00Z'))
+    const session = createSessionRow(ctx, { featureId, kind: 'ideation', worktreePath: 'w' })
+    markSessionLive(ctx, session.id, { ccSessionId: 'cc-1' })
+
+    vi.setSystemTime(new Date('2026-09-04T12:00:00Z'))
+    expect(markSessionEnded(ctx, session.id)?.endedAt).toBe(Date.parse('2026-09-04T12:00:00Z'))
+    expect(getSessionRow(ctx, session.id)?.createdAt).toBe(Date.parse('2026-09-04T10:00:00Z'))
+  })
+
+  it('leaves a running session with no end time at all', async () => {
+    const ctx = await makeTestCtx()
+    const featureId = seedFeature(ctx, seedProject(ctx).id).id
+    const session = createSessionRow(ctx, { featureId, kind: 'ideation', worktreePath: 'w' })
+    expect(getSessionRow(ctx, session.id)?.endedAt).toBeUndefined()
+    markSessionLive(ctx, session.id, { ccSessionId: 'cc-1' })
+    expect(getSessionRow(ctx, session.id)?.endedAt).toBeUndefined()
+  })
+
+  it('keeps the FIRST ending when a second end path fires on the same row', async () => {
+    const ctx = await makeTestCtx()
+    const featureId = seedFeature(ctx, seedProject(ctx).id).id
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-09-04T12:00:00Z'))
+    const session = createSessionRow(ctx, { featureId, kind: 'ideation', worktreePath: 'w' })
+    markSessionEnded(ctx, session.id)
+
+    // the Stop hook arriving after the PTY exit, or a boot reconciliation later
+    vi.setSystemTime(new Date('2026-09-04T13:00:00Z'))
+    expect(markSessionEnded(ctx, session.id)?.endedAt).toBe(Date.parse('2026-09-04T12:00:00Z'))
+  })
+})
+
 describe('mostRecentResumableSession — the revisit resume target', () => {
   it('narrows to one kind when asked, ignoring newer conversations of other kinds', async () => {
     const ctx = await makeTestCtx()

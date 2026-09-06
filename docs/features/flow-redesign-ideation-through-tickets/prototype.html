@@ -1,0 +1,626 @@
+<title>Ideation Through Tickets</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+  /* Single dark theme — mirrors apps/web/src/theme.css. The app has no light
+     mode by design, so this page commits to one world and paints every colour. */
+  :root {
+    --bg: #090b10; --panel: #0e1117; --panel-2: #0b0e14; --panel-3: #12151d; --panel-inset: #07080b;
+    --hairline: #1c2230; --hairline-soft: #151a26; --hairline-strong: #2a3242;
+    --text: #dde3ed; --text-2: #96a0b0; --text-3: #5f6a7a; --text-4: #3a4354;
+    --accent: #7c6cf6; --accent-hi: #a49bff; --accent-2: #8f80f8; --accent-ink: #0d0722;
+    --accent-soft: #161329; --accent-line: #3d3670;
+    --ph-ideation: #8b7cf8; --ph-spec: #8a94a2; --ph-tickets: #d7a94a; --ph-implementation: #f0883e;
+    --ph-review: #58a6ff; --ph-shipped: #3fb950;
+    --danger: #f4594e; --needs: #d7a94a; --ok: #3fb950;
+    --mono: "JetBrains Mono", Consolas, ui-monospace, monospace;
+    --sans: "Inter", system-ui, "Segoe UI", sans-serif;
+    --r-sm: 6px; --r-md: 8px; --r-lg: 12px;
+    --shadow-menu: 0 8px 28px -10px rgba(0,0,0,.7), 0 2px 8px -2px rgba(0,0,0,.5);
+    --sidebar-w: 300px; --inspector-w: 300px; --rail-w: 300px; --pane-w: 380px;
+  }
+  * { box-sizing: border-box; margin: 0; }
+  html, body { height: 100%; }
+  body { background: var(--bg); color: var(--text); font: 400 14px/1.5 var(--sans); overflow: hidden; }
+  button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; }
+  button:focus-visible, [tabindex]:focus-visible { outline: 0; box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px rgba(124,108,246,.5); }
+  .mono { font-family: var(--mono); }
+  .cap { font-size: 11px; font-weight: 600; letter-spacing: .09em; color: var(--text-3); text-transform: uppercase; }
+  @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+
+  /* ---------- prototype switcher (not part of the app) ---------- */
+  .proto {
+    display: flex; align-items: center; gap: 10px; height: 44px; flex: none; padding: 0 14px;
+    background: #05060a; border-bottom: 1px solid var(--accent-line); font-size: 12px; color: var(--text-3);
+    overflow-x: auto;
+  }
+  .proto .cap { color: var(--accent-hi); flex: none; }
+  .proto .pill { flex: none; padding: 5px 10px; border-radius: 999px; border: 1px solid var(--hairline); color: var(--text-2); font-size: 12px; white-space: nowrap; }
+  .proto .pill:hover { border-color: var(--hairline-strong); color: var(--text); }
+  .proto .pill.on { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 600; }
+  .proto .grp { flex: none; color: var(--text-4); font-family: var(--mono); font-size: 11px; margin-left: 6px; }
+
+  /* ---------- frame ---------- */
+  .frame { display: flex; flex-direction: column; height: 100vh; }
+  .shell-body { flex: 1; display: flex; min-height: 0; }
+  .titlebar { display: flex; align-items: center; gap: 8px; height: 46px; flex: none; padding: 0 12px; background: var(--panel); border-bottom: 1px solid var(--hairline); }
+  .crumb { display: flex; align-items: center; gap: 8px; min-width: 0; }
+  .crumb .sep { color: var(--text-4); font-size: 12px; }
+  .brand { display: flex; align-items: center; gap: 7px; padding: 5px 7px; border-radius: var(--r-sm); font-weight: 600; font-size: 13px; }
+  .brand i { width: 14px; height: 14px; border-radius: 4px; background: var(--accent); display: inline-block; }
+  .tb-proj, .tb-here { font-size: 13px; padding: 5px 8px; border-radius: var(--r-sm); white-space: nowrap; }
+  .tb-proj { color: var(--text-2); font-weight: 500; }
+  .tb-here { color: var(--text); font-weight: 500; max-width: 34vw; overflow: hidden; text-overflow: ellipsis; }
+  .tb-spacer { flex: 1; }
+  .tb-search { display: flex; align-items: center; gap: 8px; width: 300px; height: 30px; padding: 0 10px; background: var(--panel-inset); border: 1px solid var(--hairline); border-radius: var(--r-md); color: var(--text-3); font-size: 12.5px; }
+  .kbd { margin-left: auto; font-family: var(--mono); font-size: 10.5px; color: var(--text-3); background: var(--panel-3); border: 1px solid var(--hairline); border-radius: 4px; padding: 1px 5px; }
+  .tb-runs { display: flex; align-items: center; gap: 7px; height: 28px; padding: 0 11px; border-radius: 999px; border: 1px solid var(--hairline); color: var(--needs); font-size: 12px; font-weight: 500; }
+  .spin { width: 10px; height: 10px; border-radius: 999px; border: 1.5px solid currentColor; border-top-color: transparent; animation: spin 1s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .tb-icon { display: grid; place-items: center; width: 30px; height: 30px; border-radius: var(--r-sm); color: var(--text-3); }
+
+  /* ---------- sidebar (shell prototype, abbreviated) ---------- */
+  .sidebar { width: var(--sidebar-w); flex: none; background: var(--panel-2); border-right: 1px solid var(--hairline); display: flex; flex-direction: column; min-height: 0; }
+  .sb-head { display: flex; align-items: center; gap: 8px; padding: 14px 14px 10px; }
+  .sb-head .cap { flex: 1; }
+  .door { display: flex; align-items: center; gap: 5px; height: 26px; padding: 0 10px; border: 1px solid var(--hairline); border-radius: var(--r-sm); font-size: 12px; font-weight: 500; color: var(--text-2); }
+  .sb-list { flex: 1; overflow-y: auto; padding: 6px 10px 10px; }
+  .lane { margin-top: 14px; } .lane:first-child { margin-top: 4px; }
+  .lane-label { display: flex; align-items: baseline; gap: 7px; padding: 0 6px 6px; }
+  .lane.needs .cap { color: var(--needs); } .lane.work .cap { color: var(--accent-hi); } .lane.ship .cap { color: var(--ok); }
+  .lane-count { font-size: 11px; color: var(--text-4); font-family: var(--mono); }
+  .row { display: flex; gap: 10px; width: 100%; padding: 10px 10px 11px; border-radius: var(--r-md); text-align: left; align-items: flex-start; margin-bottom: 2px; }
+  .row.active { background: var(--accent-soft); box-shadow: inset 2px 0 0 var(--accent); }
+  .row .dot { width: 8px; height: 8px; border-radius: 999px; margin-top: 5px; flex: none; }
+  .row .body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+  .row .l1 { display: flex; align-items: flex-start; gap: 8px; }
+  .row .title { flex: 1; font-size: 13px; font-weight: 500; line-height: 1.35; }
+  .chip { flex: none; display: inline-flex; align-items: center; gap: 5px; font-size: 11px; color: var(--text-3); padding: 2px 7px; border-radius: 999px; border: 1px solid var(--hairline); white-space: nowrap; }
+  .chip.needs { color: var(--needs); border-color: rgba(215,169,74,.35); }
+  .chip.work { color: var(--accent-hi); border-color: var(--accent-line); }
+  .chip.ok { color: var(--ok); border-color: rgba(63,185,80,.3); }
+  .minimap { display: inline-flex; gap: 3px; }
+  .minimap i { width: 9px; height: 4px; border-radius: 2px; background: var(--panel-3); border: 1px solid var(--hairline-soft); }
+  .minimap i.done { background: var(--text-4); border-color: transparent; }
+  .minimap i.here { background: var(--accent); border-color: transparent; }
+  .minimap i.ship { background: var(--ok); border-color: transparent; }
+  .prog { font-size: 11px; color: var(--text-3); font-family: var(--mono); }
+
+  /* ---------- workspace column ---------- */
+  .workspace { flex: 1; min-width: 0; display: flex; flex-direction: column; background: var(--bg); }
+  .ws-head { flex: none; padding: 20px 24px 0; display: flex; flex-direction: column; gap: 16px; }
+  .ws-title-row { display: flex; align-items: baseline; gap: 12px; }
+  .ph-tag { font-family: var(--mono); font-size: 11px; letter-spacing: .04em; padding: 2px 8px; border-radius: 999px; border: 1px solid currentColor; flex: none; }
+  .ws-title { font-size: 20px; font-weight: 600; line-height: 1.3; flex: 1; min-width: 0; }
+  .ws-branch { font-family: var(--mono); font-size: 11px; color: var(--text-3); padding: 3px 8px; border-radius: var(--r-sm); white-space: nowrap; }
+  .ws-branch:hover { color: var(--text); background: var(--panel-3); }
+
+  .pipeline { display: flex; align-items: center; gap: 0; }
+  .pstep { display: flex; align-items: center; gap: 7px; padding: 5px 10px; border-radius: 999px; font-size: 12.5px; color: var(--text-4); border: 1px solid transparent; position: relative; }
+  .pstep .pdot { width: 7px; height: 7px; border-radius: 999px; background: currentColor; opacity: .4; }
+  .pstep.done { color: var(--text-2); } .pstep.done .pdot { opacity: 1; }
+  .pstep.current { color: var(--text); font-weight: 600; border-color: var(--accent-line); background: var(--accent-soft); }
+  .pstep.current .pdot { background: var(--accent); opacity: 1; box-shadow: 0 0 0 3px rgba(124,108,246,.2); }
+  .pstep.viewed { border-color: var(--hairline-strong); background: var(--panel); color: var(--text); }
+  .pstep[disabled] { cursor: default; }
+  .pconn { width: 18px; height: 1px; background: var(--hairline); }
+  .pconn.done { background: var(--text-4); }
+  .pipeline .lapchip { margin-left: 12px; font-family: var(--mono); font-size: 11px; color: var(--text-3); border: 1px solid var(--hairline); border-radius: 999px; padding: 2px 8px; }
+  .pstep .tip { display: none; position: absolute; left: 0; top: calc(100% + 8px); width: 240px; background: var(--panel-3); border: 1px solid var(--hairline-strong); border-radius: var(--r-md); box-shadow: var(--shadow-menu); padding: 9px 11px; font-size: 12px; color: var(--text-2); line-height: 1.45; z-index: 30; font-weight: 400; text-align: left; }
+  .pstep:hover .tip { display: block; }
+
+  .lapbanner { display: flex; align-items: center; gap: 12px; padding: 8px 12px; border: 1px solid var(--hairline); border-radius: var(--r-md); font-size: 12.5px; color: var(--text-2); background: var(--panel); }
+  .lapbanner .tag { font-family: var(--mono); font-size: 11px; color: var(--accent-hi); border: 1px solid var(--accent-line); border-radius: 999px; padding: 1px 7px; }
+  .lapbanner .facts { margin-left: auto; color: var(--text-3); font-family: var(--mono); font-size: 11px; white-space: nowrap; }
+
+  /* the next-step bar — one solid action, at most */
+  .bar { margin: 0 24px; padding: 14px 16px; background: var(--panel); border: 1px solid var(--hairline); border-radius: var(--r-lg); display: flex; align-items: center; gap: 20px; flex: none; }
+  .bar .main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+  .bar .kick { display: flex; align-items: center; gap: 7px; }
+  .bar .kick.live .cap { color: var(--ok); } .bar .kick.wait .cap { color: var(--needs); } .bar .kick.map .cap { color: var(--accent-hi); }
+  .bar .ldot { width: 7px; height: 7px; border-radius: 999px; background: var(--ok); animation: breathe 1.6s ease-in-out infinite; }
+  @keyframes breathe { 50% { opacity: .35; } }
+  .bar .title { font-size: 14px; font-weight: 600; }
+  .bar .desc { font-size: 12.5px; color: var(--text-2); line-height: 1.5; max-width: 68ch; }
+  .bar .desc em { color: var(--text); font-style: normal; font-weight: 500; }
+  .bar .desc .fog { color: var(--text-3); }
+  .bar .actions { display: flex; align-items: center; gap: 8px; flex: none; }
+  .btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 32px; padding: 0 14px; border-radius: var(--r-md); border: 1px solid var(--hairline); font-size: 13px; font-weight: 500; white-space: nowrap; color: var(--text); }
+  .btn:hover { border-color: var(--hairline-strong); background: var(--panel-3); }
+  .btn.solid { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 600; padding: 0 16px; }
+  .btn.solid:hover { background: var(--accent-2); border-color: var(--accent-2); }
+  .btn.xs { height: 26px; padding: 0 10px; font-size: 12px; }
+  .btn.danger { color: var(--danger); border-color: rgba(244,89,78,.35); }
+  .btn[disabled] { opacity: .4; cursor: not-allowed; }
+
+  .readonly { margin: 0 24px; padding: 10px 14px; border: 1px dashed var(--hairline-strong); border-radius: var(--r-lg); display: flex; align-items: center; gap: 12px; font-size: 12.5px; color: var(--text-2); flex: none; }
+  .readonly .tag { font-family: var(--mono); font-size: 10.5px; letter-spacing: .06em; color: var(--text-3); border: 1px solid var(--hairline); border-radius: 4px; padding: 1px 6px; }
+  .readonly .sum { color: var(--text); font-weight: 500; }
+  .readonly .sum span { color: var(--text-3); font-weight: 400; }
+  .readonly .back { margin-left: auto; color: var(--accent-hi); font-weight: 500; }
+
+  /* ---------- the body: artifact left, terminal right ---------- */
+  .ws-body { flex: 1; min-height: 0; margin: 16px 24px 20px; display: flex; gap: 16px; }
+  .ws-body.stack { flex-direction: column; gap: 12px; overflow-y: auto; }
+  .pane { flex: none; width: var(--pane-w); background: var(--panel-2); border: 1px solid var(--hairline); border-radius: var(--r-lg); display: flex; flex-direction: column; min-height: 0; }
+  .pane.rail { width: var(--rail-w); }
+  .pane.collapsed { width: 40px; }
+  .pane-head { display: flex; align-items: center; gap: 8px; padding: 12px 12px 10px; border-bottom: 1px solid var(--hairline-soft); flex: none; }
+  .pane-head .cap { flex: 1; display: flex; align-items: center; gap: 8px; }
+  .pane-head .count { font-family: var(--mono); font-size: 11px; color: var(--text-2); text-transform: none; letter-spacing: 0; }
+  .pane-head .live { font-family: var(--mono); font-size: 10.5px; color: var(--ok); text-transform: none; letter-spacing: 0; }
+  .info { width: 14px; height: 14px; border-radius: 999px; border: 1px solid var(--hairline-strong); color: var(--text-3); font-size: 9.5px; display: grid; place-items: center; cursor: help; position: relative; text-transform: none; letter-spacing: 0; font-weight: 500; }
+  .info .tip { display: none; position: absolute; left: 0; top: calc(100% + 8px); width: 240px; background: var(--panel-3); border: 1px solid var(--hairline-strong); border-radius: var(--r-md); box-shadow: var(--shadow-menu); padding: 9px 11px; font-size: 12px; color: var(--text-2); line-height: 1.45; z-index: 30; font-weight: 400; }
+  .info:hover .tip { display: block; }
+  .toggle { width: 22px; height: 22px; display: grid; place-items: center; border-radius: var(--r-sm); color: var(--text-3); font-size: 14px; }
+  .toggle:hover { background: var(--panel-3); color: var(--text); }
+  .pane-scroll { flex: 1; overflow-y: auto; min-height: 0; padding: 12px; display: flex; flex-direction: column; gap: 16px; }
+  .progress { height: 3px; background: var(--panel-3); border-radius: 2px; overflow: hidden; margin: 0 12px; flex: none; }
+  .progress i { display: block; height: 100%; background: var(--accent); border-radius: 2px; }
+  .pane.collapsed .pane-head, .pane.collapsed .pane-scroll, .pane.collapsed .progress { display: none; }
+  .stub { display: none; flex: 1; flex-direction: column; align-items: center; gap: 10px; padding: 12px 0; }
+  .pane.collapsed .stub { display: flex; }
+  .stub .n { font-family: var(--mono); font-size: 11.5px; color: var(--text-2); }
+  .stub .lbl { writing-mode: vertical-rl; font-size: 10.5px; letter-spacing: .1em; text-transform: uppercase; color: var(--text-4); }
+
+  /* waypoint cards — a progress checklist */
+  .group { display: flex; flex-direction: column; gap: 8px; }
+  .group-label { display: flex; align-items: baseline; gap: 6px; padding: 0 2px; }
+  .group-label .cap.ready { color: var(--accent-hi); } .group-label .cap.working { color: var(--ok); }
+  .wp { background: var(--panel); border: 1px solid var(--hairline); border-radius: var(--r-md); padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; }
+  .wp.open { border-color: var(--hairline-strong); }
+  .wp .l1 { display: flex; align-items: center; gap: 8px; }
+  .state { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 600; letter-spacing: .02em; }
+  .state.ready { color: var(--accent-hi); } .state.working { color: var(--ok); } .state.waiting { color: var(--text-3); } .state.done { color: var(--text-3); }
+  .state .sd { width: 6px; height: 6px; border-radius: 999px; background: currentColor; }
+  .state.working .sd { animation: breathe 1.6s ease-in-out infinite; }
+  .wp .type { font-family: var(--mono); font-size: 10.5px; color: var(--text-4); margin-left: auto; }
+  .wp .t { font-size: 13px; font-weight: 500; line-height: 1.4; }
+  .wp.done .t { color: var(--text-2); font-weight: 400; }
+  .wp .q { font-size: 12.5px; color: var(--text-2); line-height: 1.5; }
+  .wp .q code, .doc code { font-family: var(--mono); font-size: 11px; background: var(--panel-inset); border: 1px solid var(--hairline); border-radius: 4px; padding: 0 5px; color: var(--text-2); }
+  .wp .sum { font-size: 12.5px; color: var(--text-3); line-height: 1.5; }
+  .wp .meta { font-size: 11.5px; color: var(--text-3); }
+  .wp .acts { display: flex; gap: 8px; }
+  .wp.collapsed-card { padding: 9px 12px; } .wp.collapsed-card .q, .wp.collapsed-card .acts { display: none; }
+  details.mapdoc { border-top: 1px solid var(--hairline-soft); padding-top: 12px; }
+  details.mapdoc summary { list-style: none; cursor: pointer; display: flex; align-items: center; gap: 6px; }
+  details.mapdoc summary::before { content: "▸"; color: var(--text-4); font-size: 11px; }
+  details[open].mapdoc summary::before { content: "▾"; }
+
+  /* rendered docs (decisions / spec) */
+  .doc { display: flex; flex-direction: column; gap: 14px; font-size: 13px; line-height: 1.55; color: var(--text-2); }
+  .doc h3 { font-size: 13px; font-weight: 600; color: var(--text); line-height: 1.4; }
+  .doc h2 { font-size: 14px; font-weight: 600; color: var(--text); letter-spacing: 0; margin-top: 4px; }
+  .doc p strong { color: var(--text); font-weight: 600; }
+  .doc ul { padding-left: 18px; display: flex; flex-direction: column; gap: 4px; }
+  .doc .entry { display: flex; flex-direction: column; gap: 4px; padding-bottom: 12px; border-bottom: 1px solid var(--hairline-soft); }
+  .doc .entry:last-child { border-bottom: 0; }
+  .doc .cursor { display: inline-block; width: 7px; height: 13px; background: var(--accent); vertical-align: -2px; animation: breathe 1s steps(2) infinite; }
+
+  /* terminal */
+  .term { flex: 1; min-width: 0; background: var(--panel); border: 1px solid var(--hairline); border-radius: var(--r-lg); display: flex; flex-direction: column; min-height: 0; }
+  .strip { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-bottom: 1px solid var(--hairline-soft); flex: none; font-size: 12.5px; }
+  .strip .kind { font-weight: 600; color: var(--text); }
+  .strip .st { display: inline-flex; align-items: center; gap: 6px; color: var(--ok); }
+  .strip .st.ended { color: var(--text-3); }
+  .strip .st .sd { width: 7px; height: 7px; border-radius: 999px; background: currentColor; }
+  .strip .st:not(.ended) .sd { animation: breathe 1.6s ease-in-out infinite; }
+  .strip .sep { color: var(--text-4); }
+  .strip .dur { color: var(--text-3); font-family: var(--mono); font-size: 11px; }
+  .strip .sp { flex: 1; }
+  .term.stripped { flex: none; }
+  .termbody { flex: 1; min-height: 0; overflow: hidden; padding: 14px 18px; font-family: var(--mono); font-size: 12.5px; line-height: 1.6; color: var(--text-2); white-space: pre-wrap; background: var(--panel-inset); border-radius: 0 0 var(--r-lg) var(--r-lg); }
+  .termbody b { color: var(--text); font-weight: 500; } .termbody .u { color: var(--accent-hi); } .termbody .g { color: var(--ok); } .termbody .d { color: var(--text-4); }
+  .termbody .prompt { color: var(--accent-hi); }
+  .term-empty { flex: 1; display: grid; place-items: center; color: var(--text-3); font-size: 13px; text-align: center; padding: 24px; }
+  .term-empty .ic { width: 36px; height: 36px; border-radius: var(--r-md); border: 1px solid var(--hairline); display: grid; place-items: center; margin: 0 auto 12px; font-family: var(--mono); color: var(--text-4); }
+  .term-empty b { display: block; color: var(--text-2); font-weight: 500; margin-bottom: 4px; }
+
+  /* tickets */
+  .ledger-head { display: flex; align-items: center; gap: 10px; padding: 0 2px; flex: none; }
+  .ledger-head .cap { display: flex; align-items: baseline; gap: 8px; }
+  .ledger-head .count { font-family: var(--mono); font-size: 11.5px; color: var(--text-2); text-transform: none; letter-spacing: 0; }
+  .ledger-head .sp { flex: 1; }
+  .menu { display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 9px; border: 1px solid var(--hairline); border-radius: var(--r-sm); font-size: 11.5px; color: var(--text-2); font-family: var(--mono); white-space: nowrap; }
+  .menu:hover { border-color: var(--hairline-strong); color: var(--text); background: var(--panel-3); }
+  .menu.set { color: var(--text); border-color: var(--accent-line); }
+  .menu .car { color: var(--text-4); font-size: 10px; }
+  .menu.bulk { font-family: var(--sans); font-weight: 500; }
+  .ledger { display: flex; flex-direction: column; gap: 6px; }
+  .tk { background: var(--panel); border: 1px solid var(--hairline); border-radius: var(--r-md); }
+  .tk.open { border-color: var(--hairline-strong); }
+  .tk .head { display: flex; align-items: center; gap: 10px; padding: 10px 12px; }
+  .tk .car { color: var(--text-4); font-size: 11px; width: 10px; }
+  .tk .seq { font-family: var(--mono); font-size: 11.5px; color: var(--text-3); width: 26px; }
+  .tk .tt { flex: 1; min-width: 0; font-size: 13px; font-weight: 500; }
+  .tk .after { font-family: var(--mono); font-size: 10.5px; color: var(--text-3); border: 1px solid var(--hairline-soft); border-radius: 4px; padding: 1px 6px; white-space: nowrap; }
+  .tk .st { font-size: 11px; font-family: var(--mono); padding: 2px 8px; border-radius: 999px; border: 1px solid var(--hairline); color: var(--text-3); }
+  .tk .st.burning { color: var(--ph-implementation); border-color: rgba(240,136,62,.35); animation: breathe 1.6s ease-in-out infinite; }
+  .tk .st.done { color: var(--ok); border-color: rgba(63,185,80,.3); }
+  .tk .st.cancelled { color: var(--text-4); }
+  .tk.cancelled .tt { color: var(--text-4); text-decoration: line-through; }
+  .tk .detail { border-top: 1px solid var(--hairline-soft); padding: 14px 14px 14px 48px; display: flex; flex-direction: column; gap: 14px; }
+  .tk .sec { display: flex; flex-direction: column; gap: 5px; }
+  .tk .sec .cap { font-size: 10.5px; }
+  .tk .sec p, .tk .sec li { font-size: 12.5px; color: var(--text-2); line-height: 1.55; }
+  .tk .sec ul { padding-left: 16px; display: flex; flex-direction: column; gap: 3px; }
+  .tk .seams { display: flex; flex-wrap: wrap; gap: 6px; }
+  .tk .seam { font-family: var(--mono); font-size: 11px; color: var(--text-2); background: var(--panel-inset); border: 1px solid var(--hairline); border-radius: 4px; padding: 1px 7px; }
+  .tk .acts { display: flex; gap: 8px; }
+  .tk .confirm { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid rgba(244,89,78,.35); border-radius: var(--r-md); background: rgba(244,89,78,.05); font-size: 12.5px; color: var(--text-2); }
+  .tk .confirm .sp { flex: 1; }
+  .ledger-note { font-size: 12px; color: var(--text-3); padding: 0 2px; }
+
+  /* retrospective sessions list */
+  .sessions { display: flex; flex-direction: column; gap: 6px; }
+  .sess { display: flex; align-items: center; gap: 12px; font-size: 12.5px; color: var(--text-2); padding: 8px 10px; border: 1px solid var(--hairline-soft); border-radius: var(--r-sm); }
+  .sess .k { color: var(--text); font-weight: 500; width: 130px; }
+  .sess .m { font-family: var(--mono); font-size: 11px; color: var(--text-3); }
+
+  /* ---------- inspector ---------- */
+  .inspector { width: var(--inspector-w); flex: none; background: var(--panel-2); border-left: 1px solid var(--hairline); display: flex; flex-direction: column; min-height: 0; }
+  .inspector.hidden { display: none; }
+  .tb-icon.tog { cursor: pointer; }
+  .tb-icon.tog.on { color: var(--accent-hi); background: var(--accent-soft); }
+  .docs-menu { display: inline-flex; align-items: center; gap: 5px; height: 24px; padding: 0 8px; border: 1px solid var(--hairline); border-radius: var(--r-sm); font-family: var(--mono); font-size: 11px; color: var(--text-2); text-transform: none; letter-spacing: 0; font-weight: 500; }
+  .docs-menu:hover { border-color: var(--hairline-strong); color: var(--text); background: var(--panel-3); }
+  .docs-menu .car { color: var(--text-4); font-size: 10px; }
+  .insp-tabs { display: flex; gap: 2px; padding: 12px 14px 0; }
+  .insp-tab { padding: 6px 12px; font-size: 12.5px; color: var(--text-3); border-bottom: 2px solid transparent; }
+  .insp-tab.on { color: var(--text); border-bottom-color: var(--accent); }
+  .insp-pane { flex: 1; overflow-y: auto; padding: 20px 16px; display: flex; flex-direction: column; gap: 24px; }
+  .insp-sec { display: flex; flex-direction: column; gap: 10px; }
+  .cap-row { display: flex; align-items: center; gap: 6px; }
+  .gate { background: var(--panel); border: 1px solid var(--hairline); border-radius: var(--r-md); padding: 14px; display: flex; flex-direction: column; gap: 10px; }
+  .gate .name { font-size: 13px; font-weight: 600; }
+  .gate .code { font-family: var(--mono); font-size: 10.5px; color: var(--text-4); margin-left: 7px; }
+  .gate .req { font-size: 12.5px; color: var(--text-2); line-height: 1.5; }
+  .gate .state { display: flex; align-items: center; gap: 7px; font-size: 12px; color: var(--needs); }
+  .gate .state.ok { color: var(--ok); }
+  .gate .state .dot { width: 7px; height: 7px; border-radius: 999px; background: currentColor; }
+  .docrow { display: flex; align-items: center; gap: 9px; padding: 9px 10px; width: 100%; border-radius: var(--r-sm); text-align: left; font-size: 12.5px; }
+  .docrow:hover { background: var(--panel-3); }
+  .docrow .file { margin-left: auto; font-family: var(--mono); font-size: 11px; color: var(--text-3); }
+
+  /* ---------- status bar ---------- */
+  .statusbar { display: flex; align-items: center; gap: 14px; height: 30px; flex: none; padding: 0 14px; background: var(--panel); border-top: 1px solid var(--hairline); font-size: 11.5px; color: var(--text-3); }
+  .sb-branch { font-family: var(--mono); font-size: 11px; }
+  .sb-spacer { flex: 1; }
+  .ldot { display: inline-block; width: 6px; height: 6px; border-radius: 999px; background: var(--ok); margin-right: 5px; }
+</style>
+
+<div class="frame">
+  <div class="proto" id="proto"></div>
+  <div class="titlebar">
+    <div class="crumb">
+      <span class="brand"><i></i>runcastle</span><span class="sep">/</span>
+      <span class="tb-proj">runcastle ▾</span><span class="sep">/</span>
+      <span class="tb-here" id="tb-here">Flow redesign: ideation through tickets</span>
+    </div>
+    <div class="tb-spacer"></div>
+    <div class="tb-search">Search or jump to… <span class="kbd">Ctrl+K</span></div>
+    <span class="tb-runs"><span class="spin"></span>1 running elsewhere</span>
+    <span class="tb-icon">⚙</span><button class="tb-icon tog" id="insp-toggle" title="Show details panel">▥</button>
+  </div>
+  <div class="shell-body">
+    <aside class="sidebar">
+      <div class="sb-head"><span class="cap">Features</span><span class="door">⚡ Quick</span><span class="door">+ New</span></div>
+      <div class="sb-list" id="sb-list"></div>
+    </aside>
+    <main class="workspace" id="ws"></main>
+    <aside class="inspector hidden" id="inspector">
+      <div class="insp-tabs"><span class="insp-tab on">Details</span><span class="insp-tab">Activity</span></div>
+      <div class="insp-pane" id="insp"></div>
+    </aside>
+  </div>
+  <div class="statusbar">
+    <span class="sb-branch" id="sb-branch">⎇ feature/flow-redesign-ideation-through-tickets</span>
+    <span>⬡ docker</span>
+    <span class="sb-spacer"></span>
+    <span>notify off</span><span><span class="ldot"></span>live</span><span><span class="ldot"></span>server ok</span>
+  </div>
+</div>
+
+<script>
+// ---------- fixtures ----------
+const PHASES = ['ideation','spec','tickets','build','review','shipped'];
+const TIPS = {
+  ideation: 'Shape the idea with the agent in a session.',
+  spec: 'The session writes the idea up as a spec.',
+  tickets: 'The spec is broken into tickets you review, then burn.',
+  build: 'Opens when you click Burn — agents implement each ticket in a sandbox.',
+  review: 'Opens when the burn finishes — test-drive the branch, then merge.',
+  shipped: 'Merged to main.',
+};
+const DONE_TIPS = {
+  ideation: 'Ideation · 3 sessions · 12 decisions — click to review',
+  spec: 'Spec · written 2d ago — click to review',
+  tickets: 'Tickets · 11 emitted, 11 done — click to review',
+  build: 'Build · 2 runs · 11 tickets done — click to review',
+  review: 'Review · test-driven, merged 50m ago',
+};
+const WAYPOINTS = [
+  { s:'done', type:'research', t:'Reconcile the prior designs and audit findings with what is built', sum:'Seven prior features compared with the code; 14 gaps listed, three findings confirmed still open.' },
+  { s:'done', type:'task', t:'Walk the run view: Burn through success, failure and cancel', sum:'Run view mapped in flow-map.md §1; scratch project left in place for the next walk.' },
+  { s:'done', type:'task', t:'Walk review, test drive and the annotation loop', sum:'Annotation loop mapped; six moments where it is slow or lossy recorded with screenshots.' },
+  { s:'ready', type:'task', t:'Walk conflict, merge and the shipped view', q:'Continue on the scratch project. Force a merge conflict against main, resolve it with the agent, then merge and map the shipped view. Append sections to <code>flow-map.md</code>.' },
+  { s:'ready', type:'grilling', t:'Confirm the flow map with the human; lock the baseline and the visual bar', q:'Present the complete <code>flow-map.md</code> to the human and get it confirmed as decision 1, in the style of the onboarding flow.' },
+  { s:'working', type:'research', t:'Measure the walkthrough player against three real recordings', q:'Time load, scrub and annotate on a 2-minute, 10-minute and 40-minute recording; record where it drops frames.' },
+  { s:'waiting', type:'grilling', t:'Grill the run view redesign', by:'Confirm the flow map with the human' },
+  { s:'waiting', type:'grilling', t:'Grill the review landing and test drive', by:'Confirm the flow map with the human' },
+  { s:'waiting', type:'grilling', t:'Grill the walkthrough player, annotation, notes triage and laps', by:'Measure the walkthrough player' },
+  { s:'waiting', type:'grilling', t:'Grill merge, conflict and the shipped view', by:'Walk conflict, merge and the shipped view' },
+];
+const DECISIONS = [
+  ['The as-is flow map is confirmed; the goals are "never stuck" and a visible model choice', 'flow-map.md is the confirmed baseline; its 13 dead ends are the fix list.'],
+  ['One lap, whole flow, no map', 'Every branch is settled territory; the rail and the bar share one layout.'],
+  ['The next-step bar is the single door for session actions', 'The ended card loses Resume; the converge-recovery bar becomes a bar state.'],
+  ['On an open map, the bar\'s solid action is Work next', 'A short fixed label; the waypoint title lives in the description.'],
+];
+const TICKETS = [
+  { n:1, t:'Next-step resolvers: one door per state, lap-scoped counts, Work next', model:'' },
+  { n:2, t:'Artifact pane: decisions and spec beside the terminal', after:'#1', model:'' },
+  { n:3, t:'Map rail as a progress checklist; retrospective opens the done group', after:'#1', model:'claude-opus-5' },
+  { n:4, t:'Ticket ledger: row model menu, bulk model, cancel ticket, collapsible strip', after:'#1', model:'' },
+  { n:5, t:'Pinned phases as a frozen record with the docs inline', after:'#2, #3', model:'' },
+  { n:6, t:'Vocabulary pass and stepper tooltips', after:'#1', model:'claude-sonnet-5' },
+  { n:7, t:'styles.css migration for this surface; lower the ratchet', after:'#2, #3, #4, #5', model:'' },
+  { n:8, t:'Review: drive the redesigned flow end to end', after:'#7', model:'', review:true },
+];
+
+// ---------- states ----------
+const STATES = [
+  { id:'idea-live', grp:'ideation', label:'Ideation · live', phase:'ideation', title:'Flow redesign: ideation through tickets', branch:'feature/flow-redesign-ideation-through-tickets',
+    bar:{ kick:'session live', kkind:'live', title:'Ideation session in progress', desc:'You and the agent shape the idea in the terminal. It writes each decision to the pane on the left and moves the feature on to spec itself when the idea is concrete.' },
+    body:'grill', pane:'decisions', term:'live', gate:'g1' },
+  { id:'idea-idle', grp:'ideation', label:'Ideation · session ended', phase:'ideation', title:'Flow redesign: ideation through tickets', branch:'feature/flow-redesign-ideation-through-tickets',
+    bar:{ kick:'next step', title:'Pick the conversation back up', desc:'The ideation session ended with 4 decisions captured. Resume it to carry on where you left off — the conversation is still on disk.', solid:'Resume session' },
+    body:'grill', pane:'decisions', term:'ended', gate:'g1' },
+  { id:'idea-cold', grp:'ideation', label:'Ideation · never started', phase:'ideation', title:'Enter a course while it is still generating', branch:'feature/enter-a-course-while-it-is-still-generating',
+    bar:{ kick:'next step', title:'Shape the idea with the agent', desc:'Start a session: the agent asks about the idea until it is concrete enough to write up, and every decision lands in the pane on the left.', solid:'Start session' },
+    body:'grill', pane:'decisions-empty', term:'none', gate:'g1-cold' },
+  { id:'idea-map', grp:'ideation', label:'Mapped · open map', phase:'ideation', title:'Flow redesign: build, review, and ship', branch:'feature/flow-redesign-build-review-and-ship',
+    bar:{ kick:'map', kkind:'map', title:'Work the map', desc:'3 of 10 waypoints done · 2 ready to work — next: <em>Walk conflict, merge and the shipped view</em> · pick a different one in the map. <span class="fog">Still unspecified: how lap notes reach the walkthrough player.</span>', solid:'Work next' },
+    body:'grill', pane:'map', term:'ended-wp', gate:'g1-map' },
+  { id:'idea-map-done', grp:'ideation', label:'Mapped · all done', phase:'ideation', title:'Flow redesign: build, review, and ship', branch:'feature/flow-redesign-build-review-and-ship',
+    bar:{ kick:'map', kkind:'map', title:'The map is complete', desc:'Every waypoint is done. Converge to turn the map and its decisions into a spec and tickets in one session.', solid:'Converge' },
+    body:'grill', pane:'map-done', term:'ended-wp', gate:'g1-map-ok' },
+  { id:'idea-lap2', grp:'ideation', label:'Lap 2 · idle', phase:'ideation', lap:2, title:'Flow redesign: onboarding and project chooser', branch:'feature/flow-redesign-onboarding-and-project-chooser',
+    bar:{ kick:'next step', title:'Work lap 2', desc:'Your test-drive notes are waiting. The lap session reads them, amends the spec, and emits this lap\'s tickets — then hands back to Burn.', solid:'Start lap 2 session' },
+    body:'grill', pane:'decisions', term:'ended-lap', gate:'g1-lap' },
+  { id:'spec-live', grp:'spec', label:'Spec · live', phase:'spec', title:'Flow redesign: ideation through tickets', branch:'feature/flow-redesign-ideation-through-tickets',
+    bar:{ kick:'session live', kkind:'live', title:'Writing the spec', desc:'The spec takes shape on the left as the session writes it. The session moves the feature on to tickets when it is done.' },
+    body:'grill', pane:'spec', term:'live-spec', gate:'g2' },
+  { id:'spec-stranded', grp:'spec', label:'Spec · converge ended early', phase:'spec', title:'Kickoff probe (throwaway)', branch:'feature/kickoff-probe-throwaway',
+    bar:{ kick:'next step', title:'Finish converging', desc:'The converge session ended before the spec and tickets were written. Resume it — it picks up from the map and the decisions.', solid:'Resume converge' },
+    body:'grill', pane:'spec-empty', term:'ended-conv', gate:'g2-block' },
+  { id:'tix-emitting', grp:'tickets', label:'Tickets · emitting', phase:'tickets', title:'Flow redesign: ideation through tickets', branch:'feature/flow-redesign-ideation-through-tickets',
+    bar:{ kick:'waiting', kkind:'wait', title:'Emitting tickets', desc:'The session is breaking the spec into tickets. They appear below as they land; review them, then burn.' },
+    body:'tickets-emitting', gate:'g3-none' },
+  { id:'tix-ready', grp:'tickets', label:'Tickets · ready to burn', phase:'tickets', title:'Flow redesign: ideation through tickets', branch:'feature/flow-redesign-ideation-through-tickets',
+    bar:{ kick:'next step', title:'Review the tickets, then burn', desc:'8 tickets for this lap. Each one runs as its own sandboxed agent, in parallel, committing to the feature branch. Set a model per ticket, or for all of them, before you burn.', solid:'Burn 8 tickets', ghost:'Ask for changes', ghostTip:'Open a session to change the tickets before burning' },
+    body:'tickets', gate:'g3' },
+  { id:'retro-idea', grp:'pinned', label:'Pinned · ideation of a shipped map', phase:'shipped', view:'ideation', title:'Feature grouping, forking and referencing', branch:'feature/feature-grouping-forking-and-referencing',
+    readonly:{ phase:'Ideation', sum:'2 days · 4 sessions · 8 waypoints · 12 decisions', back:'shipped' },
+    body:'retro-ideation', gate:'shipped' },
+  { id:'retro-tix', grp:'pinned', label:'Pinned · tickets of a shipped feature', phase:'shipped', view:'tickets', lap:2, title:'Flow redesign: onboarding and project chooser', branch:'feature/flow-redesign-onboarding-and-project-chooser',
+    readonly:{ phase:'Tickets', sum:'lap 1 · 11 emitted, 11 done · lap 2 · 3 emitted, 3 done', back:'shipped' },
+    body:'retro-tickets', gate:'shipped' },
+];
+
+// ---------- render helpers ----------
+const h = (s) => s;
+function phaseTag(p) { const c = getComputedStyle(document.documentElement).getPropertyValue(`--ph-${p === 'build' ? 'implementation' : p}`); return `<span class="ph-tag" style="color:${c}">${p}</span>`; }
+function stepper(st) {
+  const cur = PHASES.indexOf(st.phase); const view = st.view ? PHASES.indexOf(st.view) : -1;
+  const out = [];
+  PHASES.forEach((p, i) => {
+    const k = i < cur ? 'done' : i === cur ? 'current' : 'upcoming';
+    const cls = ['pstep', k, i === view ? 'viewed' : ''].join(' ');
+    const tip = k === 'done' ? DONE_TIPS[p] : TIPS[p];
+    out.push(`<button class="${cls}" ${k==='upcoming'?'disabled':''}><span class="pdot"></span>${p}<span class="tip">${tip}</span></button>`);
+    if (i < PHASES.length - 1) out.push(`<span class="pconn ${i < cur ? 'done' : ''}"></span>`);
+  });
+  if (st.lap) out.push(`<span class="lapchip">Lap ${st.lap}</span>`);
+  return `<div class="pipeline">${out.join('')}</div>`;
+}
+function lapBanner(st) {
+  if (!st.lap || st.phase === 'shipped') return '';
+  return `<div class="lapbanner"><span class="tag">LAP ${st.lap}</span><span>Iterate sent this feature back through the pipeline. The lap session reads your test-drive notes, amends the spec and emits this lap's tickets. Earlier laps are kept in full.</span><span class="facts">started 2d ago · lap 1 landed 11 tickets</span></div>`;
+}
+function bar(st) {
+  if (st.readonly) {
+    const r = st.readonly;
+    return `<div class="readonly"><span class="tag">READ-ONLY</span><span class="sum">${r.phase} <span>· ${r.sum}</span></span><span class="back">Back to ${r.back} →</span></div>`;
+  }
+  const b = st.bar;
+  const kick = `<div class="kick ${b.kkind||''}">${b.kkind==='live'?'<span class="ldot"></span>':''}<span class="cap">${b.kick}</span></div>`;
+  const acts = [];
+  if (b.ghost) acts.push(`<button class="btn" title="${b.ghostTip||''}">${b.ghost}</button>`);
+  if (b.solid) acts.push(`<button class="btn solid">${b.solid}</button>`);
+  return `<div class="bar"><div class="main">${kick}<div class="title">${b.title}</div><div class="desc">${b.desc}</div></div>${acts.length?`<div class="actions">${acts.join('')}</div>`:''}</div>`;
+}
+
+function decisionsDoc(n) {
+  return `<div class="doc">${DECISIONS.slice(0, n).map((d, i) => `<div class="entry"><h3>${i+1}. ${d[0]}</h3><p>${d[1]}</p></div>`).join('')}</div>`;
+}
+function wpCard(w, opts = {}) {
+  const open = opts.open ?? (w.s === 'ready');
+  const stateWord = { ready:'Ready', working:'Working', waiting:`Waiting on “${w.by||''}”`, done:'Done' }[w.s];
+  const state = `<span class="state ${w.s}"><span class="sd"></span>${stateWord}</span>`;
+  const body = open ? (w.q ? `<div class="q">${w.q}</div>` : '') + (w.sum ? `<div class="sum">${w.sum}</div>` : '') : '';
+  const acts = open && w.s === 'ready' && !opts.readonly ? `<div class="acts"><button class="btn xs">Work</button>${w.type==='research'?'<span class="wp meta" style="border:0;padding:0;background:none">runs unattended</span>':''}</div>` : '';
+  return `<div class="wp ${w.s} ${open?'open':''}"><div class="l1">${state}<span class="type">${w.type}</span></div><div class="t">${w.t}</div>${body}${acts}</div>`;
+}
+function mapRail(allDone, readonly) {
+  const wps = allDone ? WAYPOINTS.map(w => ({ ...w, s:'done', sum: w.sum || 'Resolved in a session on 2026-09-02.' })) : WAYPOINTS;
+  const done = wps.filter(w => w.s === 'done').length;
+  const groups = [['ready','Ready'],['working','Working'],['waiting','Waiting'],['done','Done']];
+  const g = groups.map(([k, lbl]) => {
+    const items = wps.filter(w => w.s === k); if (!items.length) return '';
+    const isDone = k === 'done';
+    if (isDone && !readonly) return `<details class="group"><summary class="group-label" style="cursor:pointer;list-style:none"><span class="cap">▸ ${lbl}</span><span class="lane-count">${items.length}</span></summary>${items.map(w => wpCard(w, {open:false})).join('')}</details>`;
+    return `<div class="group"><div class="group-label"><span class="cap ${k}">${lbl}</span><span class="lane-count">${items.length}</span></div>${items.map(w => wpCard(w, {open: readonly ? true : (k==='ready'), readonly})).join('')}</div>`;
+  }).join('');
+  return `<aside class="pane rail">
+    <div class="pane-head"><span class="cap">Map <span class="count">${done}/${wps.length} done</span><span class="info">i<span class="tip">A map breaks a big idea into waypoints — questions each worked in its own session. The feature converges once every waypoint is done.</span></span></span><button class="docs-menu" title="Open another of this feature's docs here">map.md <span class="car">▾</span></button><button class="toggle" title="Collapse the map">‹</button></div>
+    <div class="progress"><i style="width:${Math.round(done/wps.length*100)}%"></i></div>
+    <div class="pane-scroll">${g}
+      <details class="mapdoc"><summary><span class="cap">Map document</span></summary><div class="doc" style="margin-top:12px"><h2>Destination</h2><p>The feature's second half redesigned end to end, with the annotation loop working perfectly and the last of <code>styles.css</code> deleted.</p><h2>Still unspecified</h2><p>How lap notes reach the walkthrough player.</p></div></details>
+    </div>
+    <div class="stub"><span class="n">${done}/${wps.length}</span><span class="lbl">map</span></div>
+  </aside>`;
+}
+function artifactPane(kind) {
+  if (kind === 'map') return mapRail(false);
+  if (kind === 'map-done') return mapRail(true);
+  if (kind === 'decisions' || kind === 'decisions-empty') {
+    const n = kind === 'decisions' ? 4 : 0;
+    const body = n ? decisionsDoc(n) + `<div class="doc"><p><span class="cursor"></span></p></div>` : `<div class="term-empty" style="min-height:220px"><div><b>No decisions yet</b>They land here one by one as the session settles them.</div></div>`;
+    return `<aside class="pane"><div class="pane-head"><span class="cap">Decisions so far <span class="count">${n}</span></span><button class="docs-menu" title="Open another of this feature's docs here">decisions.md <span class="car">▾</span></button><button class="toggle">‹</button></div><div class="pane-scroll">${body}</div><div class="stub"><span class="n">${n}</span><span class="lbl">decisions</span></div></aside>`;
+  }
+  if (kind === 'spec' || kind === 'spec-empty') {
+    const body = kind === 'spec' ? `<div class="doc"><h2>Flow redesign: ideation through tickets</h2><h3>Problem</h3><p>The first half of the pipeline offers the human two doors for every action, no solid action in the one state that needs guidance most, and read-only views that are not read-only. Roughly a thousand lines of the retiring stylesheet belong to these surfaces.</p><h3>Approach</h3><p><strong>The bar is the single door</strong> (decision 3). Every session action lives in the next-step bar; the body never repeats one.</p><p><strong>Artifact left, terminal right</strong> (decision 11). Decisions at ideation, the spec at spec, the map when mapped.</p><p><strong>The ledger owns the model</strong> (decision 7). A menu on every pending row, and one for all of them. <span class="cursor"></span></p></div>`
+      : `<div class="term-empty" style="min-height:220px"><div><b>No spec yet</b>The converge session writes it here from the map and the decisions.</div></div>`;
+    return `<aside class="pane"><div class="pane-head"><span class="cap">Spec ${kind==='spec'?'<span class="live">updating</span>':''}</span><button class="docs-menu" title="Open another of this feature's docs here">spec.md <span class="car">▾</span></button><button class="toggle">‹</button></div><div class="pane-scroll">${body}</div><div class="stub"><span class="n">spec</span></div></aside>`;
+  }
+  return '';
+}
+const TERM_TEXT = {
+  live: `<b>●</b> Locked decision 4. Next: the map rail itself — the surface you said is hardest to follow.
+
+<b>Proposal:</b> the rail reads as a progress checklist, not a status dump. Header becomes <b>MAP · 3/10 done</b> with a thin progress strip; each card carries a plain-word state chip — <b>Ready</b>, <b>Working</b>, <b>Waiting on "…"</b>, <b>Done</b> — with the type demoted to dim mono.
+
+Rail as a progress checklist, ideation-only, open in retrospectives?
+
+<span class="prompt">❯</span> Alright<span class="d">▍</span>`,
+  'live-spec': `<b>●</b> Writing spec.md — Problem and Approach are in; Seams next.
+
+<span class="g">✓</span> Write(docs/features/flow-redesign-ideation-through-tickets/spec.md)
+
+<b>●</b> Now the seams: the artifact pane, the model menu, the phase summary derivation…<span class="d">▍</span>`,
+};
+function terminal(kind, opts = {}) {
+  if (kind === 'none') return `<section class="term"><div class="term-empty"><div><div class="ic">›_</div><b>No session yet</b>Start one from the bar above — the conversation runs here, and the decisions it settles land on the left.</div></div></section>`;
+  const strips = {
+    live: `<span class="kind">Ideation session</span><span class="st"><span class="sd"></span>live</span><span class="sep">·</span><span class="dur">14 min</span><span class="sp"></span><button class="btn xs">End session</button>`,
+    'live-spec': `<span class="kind">Ideation session</span><span class="st"><span class="sd"></span>live</span><span class="sep">·</span><span class="dur">41 min</span><span class="sp"></span><button class="btn xs">End session</button>`,
+    ended: `<span class="kind">Ideation session</span><span class="st ended"><span class="sd"></span>ended 2h ago</span><span class="sep">·</span><span class="dur">4 decisions captured</span>`,
+    'ended-wp': `<span class="kind">Waypoint session</span><span class="st ended"><span class="sd"></span>ended 40m ago</span><span class="sep">·</span><span class="dur">resolved “Walk review, test drive and the annotation loop”</span>`,
+    'ended-lap': `<span class="kind">Converge session</span><span class="st ended"><span class="sd"></span>ended 3d ago · lap 1</span>`,
+    'ended-conv': `<span class="kind">Converge session</span><span class="st ended"><span class="sd"></span>ended 39d ago</span><span class="sep">·</span><span class="dur">no spec or tickets were written</span>`,
+  };
+  const body = TERM_TEXT[kind] ? `<div class="termbody">${TERM_TEXT[kind]}</div>` : `<div class="term-empty"><div><b>The conversation is on disk</b>Resume it from the bar above to keep going where it left off.</div></div>`;
+  return `<section class="term"><div class="strip">${strips[kind]}</div>${body}</section>`;
+}
+
+function modelMenu(m, status) {
+  if (status && status !== 'pending' && status !== 'failed') return m ? `<span class="menu" style="cursor:default">${m} · Claude Code</span>` : '';
+  return `<button class="menu ${m?'set':''}" title="The model this ticket burns on">${m ? m + ' · Claude Code' : 'default model'} <span class="car">▾</span></button>`;
+}
+function ticketRow(t, opts = {}) {
+  const status = opts.status || 'pending';
+  const open = opts.open;
+  const head = `<div class="head"><span class="car">${open?'▾':'▸'}</span><span class="seq">#${t.n}</span><span class="tt">${t.t}</span>${t.review?'<span class="chip">review</span>':''}${t.after?`<span class="after">after ${t.after}</span>`:''}${opts.readonly ? (t.model?`<span class="after">${t.model}</span>`:'') : modelMenu(t.model, status)}<span class="st ${status}">${status}</span></div>`;
+  if (!open) return `<div class="tk ${status}">${head}</div>`;
+  const acts = opts.readonly ? '' : opts.confirm
+    ? `<div class="confirm"><span>Cancel #${t.n}? Tickets that depend on it treat it as done. Its text stays in the ledger.</span><span class="sp"></span><button class="btn xs">Keep it</button><button class="btn xs danger">Cancel ticket</button></div>`
+    : `<div class="acts"><button class="btn xs">Edit ticket</button><button class="btn xs">Cancel ticket</button></div>`;
+  return `<div class="tk open">${head}<div class="detail">
+    <div class="sec"><span class="cap">Goal</span><p>The bar offers exactly one solid action in every ideation, spec and tickets state, counts are lap-scoped, and an open map gets <code>Work next</code> targeting the lowest-seq ready waypoint.</p></div>
+    <div class="sec"><span class="cap">Acceptance</span><ul><li>No state in the three resolvers returns both a solid action and a duplicate body door.</li><li><code>Burn N</code> counts the current lap's tickets only.</li><li>Lap ≥ 2 is resolved before <code>mapped</code>.</li></ul></div>
+    <div class="sec"><span class="cap">Seams</span><div class="seams"><span class="seam">next-step/ideation.ts</span><span class="seam">next-step/spec.ts</span><span class="seam">next-step/tickets.ts</span><span class="seam">feature-ui/laps.ts</span></div></div>
+    ${acts}</div></div>`;
+}
+function ticketsBody(st) {
+  if (st.body === 'tickets-emitting') {
+    return `<div class="ws-body"><section class="term"><div class="strip"><span class="kind">Ideation session</span><span class="st"><span class="sd"></span>live</span><span class="sep">·</span><span class="dur">emitting tickets · 3 so far</span><span class="sp"></span><button class="btn xs">End session</button></div><div class="termbody"><b>●</b> emit_tickets — batch 1 of 3 (tickets 1–3)
+<span class="g">✓</span> 3 tickets stored
+<b>●</b> update_ticket #1 — context and seams…<span class="d">▍</span></div></section></div>`;
+  }
+  const strip = `<section class="term stripped"><div class="strip"><span class="kind">Ideation session</span><span class="st"><span class="sd"></span>live</span><span class="sep">·</span><span class="dur">8 tickets emitted · 52 min</span><span class="sp"></span><button class="btn xs">Show terminal ▸</button><button class="btn xs">End session</button></div></section>`;
+  const rows = TICKETS.map((t, i) => ticketRow(t, { open: i === 0, status: 'pending' })).join('');
+  return `<div class="ws-body stack">${strip}
+    <div class="ledger-head"><span class="cap">Tickets <span class="count">0/8 done · lap 1</span></span><button class="docs-menu" title="Read this feature's docs">docs <span class="car">▾</span></button><span class="sp"></span><span class="menu" style="cursor:default">sandbox · docker</span><span class="menu" style="cursor:default">default: gpt-5.6-sol · Codex</span><button class="menu bulk">Model for all pending <span class="car">▾</span></button></div>
+    <div class="ledger">${rows}</div>
+    <div class="ledger-note">Edit and Cancel are available on pending and failed tickets until you burn. Seams are the agent's map of the codebase and are not edited here.</div>
+  </div>`;
+}
+function retroIdeation() {
+  const sessions = `<div class="sessions"><div class="sess"><span class="k">Ideation session</span><span class="m">2026-08-02 · 38 min · escalated to a map</span></div><div class="sess"><span class="k">Waypoint session</span><span class="m">2026-08-02 · 1 h 12 min · resolved 3</span></div><div class="sess"><span class="k">Research run</span><span class="m">2026-08-03 · 22 min · resolved 2</span></div><div class="sess"><span class="k">Converge session</span><span class="m">2026-08-04 · 54 min · wrote spec, 9 tickets</span></div></div>`;
+  return `<div class="ws-body">${mapRail(true, true)}<section class="pane" style="flex:1;width:auto"><div class="pane-head"><span class="cap">Decisions <span class="count">decisions.md · 12</span></span></div><div class="pane-scroll">${decisionsDoc(4)}<div class="doc"><p style="color:var(--text-3)">… 8 more</p></div><div><div class="cap" style="margin-bottom:8px">Sessions · 4</div>${sessions}</div></div></section></div>`;
+}
+function retroTickets() {
+  const lap1 = TICKETS.slice(0, 5).map((t, i) => ticketRow({ ...t, model:'' }, { status: 'done', readonly: true })).join('');
+  const lap2 = TICKETS.slice(5, 8).map((t) => ticketRow(t, { status: 'done', readonly: true })).join('');
+  return `<div class="ws-body stack">
+    <div class="ledger-head"><span class="cap">Tickets <span class="count">lap 2 · 3/3 done</span></span></div>
+    <div class="ledger">${lap2}</div>
+    <details open><summary class="ledger-head" style="cursor:pointer;list-style:none;margin:8px 0"><span class="cap">▾ Lap 1 <span class="count">11/11 done</span></span></summary><div class="ledger" style="margin-top:6px">${lap1}</div></details>
+  </div>`;
+}
+function body(st) {
+  if (st.body === 'grill') return `<div class="ws-body">${artifactPane(st.pane)}${terminal(st.term)}</div>`;
+  if (st.body.startsWith('tickets')) return ticketsBody(st);
+  if (st.body === 'retro-ideation') return retroIdeation();
+  if (st.body === 'retro-tickets') return retroTickets();
+  return '';
+}
+const GATES = {
+  g1: { name:'Decisions captured', code:'G1', req:'The ideation session writes decisions.md as it goes; the feature moves to spec when the idea is concrete.', state:'4 decisions captured — the session moves on when it is ready', ok:true },
+  'g1-cold': { name:'Decisions captured', code:'G1', req:'The ideation session writes decisions.md as it goes; the feature moves to spec when the idea is concrete.', state:'Waiting for a session' },
+  'g1-map': { name:'Waypoints done', code:'G1', req:'Every waypoint resolved or dropped before converging.', state:'7 waypoints still open' },
+  'g1-map-ok': { name:'Waypoints done', code:'G1', req:'Every waypoint resolved or dropped before converging.', state:'Ready to converge', ok:true },
+  'g1-lap': { name:'Decisions captured', code:'G1', req:'From lap 2, the lap\'s own session must have worked the feature.', state:'Waiting for the lap 2 session' },
+  g2: { name:'Spec written', code:'G2', req:'spec.md exists before the spec is broken into tickets.', state:'The session is writing it' },
+  'g2-block': { name:'Spec written', code:'G2', req:'spec.md exists before the spec is broken into tickets.', state:'No spec yet — the converge session ended early' },
+  'g3-none': { name:'Tickets approved', code:'G3', req:'You approve the tickets by clicking Burn.', state:'Waiting for tickets' },
+  g3: { name:'Tickets approved', code:'G3', req:'You approve the tickets by clicking Burn.', state:'8 tickets ready — Burn when you are', ok:true },
+  shipped: null,
+};
+function inspector(st) {
+  const g = GATES[st.gate];
+  const gateCard = g ? `<div class="gate"><div class="name">${g.name}<span class="code">${g.code}</span></div><div class="req">${g.req}</div><div class="state ${g.ok?'ok':''}"><span class="dot"></span>${g.state}</div></div>`
+    : `<div class="gate"><div class="state ok"><span class="dot"></span>Shipped — no gates left.</div></div>`;
+  const docs = [['brief.md','brief.md'],['Decisions — ' + st.title,'decisions.md']];
+  if (st.pane && st.pane.startsWith('map') || st.body === 'retro-ideation') docs.push([st.title + ' — map','map.md']);
+  if (st.phase !== 'ideation') docs.push([st.title,'spec.md']);
+  return `<div class="insp-sec"><div class="cap-row"><span class="cap">Current gate</span><span class="info">i<span class="tip">Gates are where runcastle stops and waits for you — the session crosses the first two itself; Burn and Merge are yours.</span></span></div>${gateCard}</div>
+  <div class="insp-sec"><span class="cap">Knowledge</span>${docs.map(d => `<button class="docrow">📄 ${d[0]}<span class="file">${d[1]}</span></button>`).join('')}</div>`;
+}
+function sidebar(st) {
+  const rows = [
+    ['needs','Flow redesign: build, review, and ship','Needs you','needs',[1,0,0,0,0,0]],
+    ['work','Flow redesign: ideation through tickets','Working','work',[1,0,0,0,0,0]],
+    ['work','Flow redesign: project shell and navigation','Working','work',[1,1,1,1,0,0], '0/5 done'],
+    ['ship','Flow redesign: settings','','ok',[1,1,1,1,1,1], '13/13 done'],
+  ];
+  const lane = (k, lbl, n) => `<div class="lane ${k}"><div class="lane-label"><span class="cap">${lbl}</span><span class="lane-count">${n}</span></div>`;
+  const row = (r) => `<button class="row ${r[1]===st.title?'active':''}"><span class="dot" style="background:var(--ph-${r[0]==='ship'?'shipped':'ideation'})"></span><span class="body"><span class="l1"><span class="title">${r[1]}</span>${r[2]?`<span class="chip ${r[3]}">${r[2]}</span>`:'<span class="chip ok">✓</span>'}</span><span class="l2"><span class="minimap">${r[4].map((d,i)=>`<i class="${r[0]==='ship'?'ship':d?(i===r[4].lastIndexOf(1)?'here':'done'):''}"></i>`).join('')}</span>${r[5]?`<span class="prog">${r[5]}</span>`:''}</span></span></button>`;
+  return lane('needs','Needs you',1) + row(rows[0]) + '</div>' + lane('work','Agent working',2) + row(rows[1]) + row(rows[2]) + '</div>' + lane('ship','Shipped',51) + row(rows[3]) + '</div>';
+}
+
+// ---------- mount ----------
+let current = 0;
+function render() {
+  const st = STATES[current];
+  document.getElementById('proto').innerHTML = `<span class="cap">Prototype</span>` + ['ideation','spec','tickets','pinned'].map(g => `<span class="grp">${g}</span>` + STATES.filter(s => s.grp === g).map(s => `<button class="pill ${s.id===st.id?'on':''}" data-id="${s.id}">${s.label}</button>`).join('')).join('');
+  document.getElementById('tb-here').textContent = st.title;
+  document.getElementById('sb-branch').textContent = '⎇ ' + st.branch;
+  document.getElementById('sb-list').innerHTML = sidebar(st);
+  document.getElementById('ws').innerHTML = `<div class="ws-head"><div class="ws-title-row">${phaseTag(st.phase)}<h1 class="ws-title">${st.title}</h1><button class="ws-branch" title="Copy branch name">${st.branch}</button></div>${stepper(st)}${lapBanner(st)}</div><div style="height:16px;flex:none"></div>${bar(st)}${body(st)}`;
+  document.getElementById('insp').innerHTML = inspector(st);
+  document.querySelectorAll('.proto .pill').forEach(b => b.addEventListener('click', () => { current = STATES.findIndex(s => s.id === b.dataset.id); try { localStorage.setItem('rc.proto.state', b.dataset.id); } catch (e) {} render(); }));
+  document.querySelectorAll('.pane .toggle').forEach(b => b.addEventListener('click', () => b.closest('.pane').classList.toggle('collapsed')));
+  document.querySelectorAll('.pane .stub').forEach(s => s.addEventListener('click', () => s.closest('.pane').classList.remove('collapsed')));
+  document.querySelectorAll('.tk .head').forEach(hd => hd.addEventListener('click', (e) => { if (e.target.closest('.menu')) return; const tk = hd.parentElement; if (tk.classList.contains('open')) { tk.classList.remove('open'); tk.querySelector('.detail')?.remove(); hd.querySelector('.car').textContent = '▸'; } }));
+}
+try { const saved = localStorage.getItem('rc.proto.state'); const i = STATES.findIndex(s => s.id === saved); if (i >= 0) current = i; } catch (e) {}
+// Decision 15: the details panel starts collapsed in these phases; the titlebar toggle reopens it.
+document.getElementById('insp-toggle').addEventListener('click', (e) => {
+  const insp = document.getElementById('inspector'); insp.classList.toggle('hidden');
+  e.currentTarget.classList.toggle('on', !insp.classList.contains('hidden'));
+  e.currentTarget.title = insp.classList.contains('hidden') ? 'Show details panel' : 'Hide details panel';
+});
+render();
+</script>

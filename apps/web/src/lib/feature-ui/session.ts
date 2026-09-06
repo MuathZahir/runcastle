@@ -110,3 +110,31 @@ export function shippedAt(events: EventRow[]): number | null {
   const shipped = [...events].reverse().find((e) => e.type === 'feature.shipped')
   return shipped ? shipped.ts : null
 }
+
+/**
+ * A session named in plain words (decision 13) — `Ideation`, `Converge`,
+ * `Lap 3`. The session strip leads with it and a pinned phase's session list
+ * repeats it, so it lives here rather than in either of them.
+ */
+export function sessionKindName(
+  session: Pick<FeatureFull['sessions'][number], 'kind' | 'lap'>,
+): string {
+  switch (session.kind) {
+    case 'ideation':
+      return 'Ideation'
+    case 'converge':
+      return 'Converge'
+    case 'revisit':
+      return session.lap > 1 ? `Lap ${session.lap}` : 'Revisit'
+    case 'qa':
+      return 'Question'
+    case 'waypoint':
+      return 'Waypoint'
+    case 'drive-fix':
+      return 'Drive fix'
+    case 'prepare':
+      return 'Preparation'
+    case 'project':
+      return 'Project'
+  }
+}

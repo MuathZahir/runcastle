@@ -283,7 +283,6 @@ export function RunBody({
         featureId={featureId}
         sessions={sessions}
         className="tickets-session"
-        showResume={!frozen}
       />
 
       <RunHeader

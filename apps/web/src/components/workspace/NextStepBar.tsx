@@ -1,6 +1,5 @@
-import { useState } from 'react'
-import { BranchMenu, Button, Spinner } from '../../ui'
-import type { ActionKind, NextAction, NextStep, ReasonPrompt } from '../../lib/feature-ui'
+import { BranchMenu, Button } from '../../ui'
+import type { ActionKind, NextAction, NextStep } from '../../lib/feature-ui'
 
 export function NextStepBar({
   ns,
@@ -12,7 +11,7 @@ export function NextStepBar({
   ns: NextStep
   guidance: boolean
   busy: boolean
-  onAction: (kind: ActionKind, reason?: string) => void
+  onAction: (kind: ActionKind, waypointId?: string) => void
   draftBranch?: {
     branches: string[] | undefined
     value: string | null
@@ -21,60 +20,24 @@ export function NextStepBar({
     onPick: (branch: string) => void
   }
 }) {
-  // An action carrying a `reason` prompt (Override & converge…) doesn't fire on
-  // click: it replaces the buttons with an inline input until the human commits
-  // or cancels.
-  const [asking, setAsking] = useState<{ kind: ActionKind; prompt: ReasonPrompt } | null>(null)
-  const [reason, setReason] = useState('')
-  const stopAsking = () => {
-    setAsking(null)
-    setReason('')
-  }
-  const click = (a: NextAction) =>
-    a.reason ? setAsking({ kind: a.kind, prompt: a.reason }) : onAction(a.kind)
-
   // Disabled actions that carry a way out of their own reason.
   const escapes = [ns.primary, ...ns.secondary].filter(
     (a): a is NextAction & { disabled: string; escape: NextAction } => !!a?.disabled && !!a.escape,
   )
 
-  const kickClass =
-    ns.kick === 'IN PROGRESS'
-      ? 'is-progress'
-      : ns.kick === 'SHIPPED'
-        ? 'is-shipped'
-        : ns.kick === 'WAITING'
-          ? 'is-waiting'
-          : ''
-
   return (
-    <div className="nextstep">
-      {ns.busy && <Spinner />}
-      <div className="nextstep-main">
-        <div className={`nextstep-kick ${kickClass}`}>{ns.kick}</div>
-        <div className="nextstep-title">{ns.title}</div>
-        {guidance && <div className="nextstep-desc">{ns.desc}</div>}
-        {/* Fog is shown, never enforced — it warns beside the action without
-            gating it (ADR-0001 §13.6). */}
-        {ns.fog && (
-          <div className="nextstep-fog" role="note">
-            <span className="nextstep-fog-icon" aria-hidden="true">
-              ⚑
-            </span>
-            <span>Fog remains — still not specified: {ns.fog}. You can converge anyway.</span>
-          </div>
-        )}
-        {/* Shown, never enforced (decision 7): the drive keys nothing has ever
-            proven, said where the eye already is before the click. The button
-            beside it stays live. */}
-        {ns.warning && (
-          <div className="nextstep-warn" role="note">
-            <span className="nextstep-warn-icon" aria-hidden="true">
-              ⚑
-            </span>
-            <span>{ns.warning}</span>
-          </div>
-        )}
+    // `flex-wrap` + the copy column's `basis-[26rem]` are decision 30e: the
+    // conflict state mounts the most buttons of any bar, the actions never
+    // shrink, and without a floor the kick/title/desc collapsed to one word
+    // per line in the state that most needs reading. Wide bars are unchanged;
+    // a crowded one wraps the actions to their own row instead.
+    <div className="flex min-h-24 flex-wrap items-center gap-6 border-b border-hairline bg-panel-2 px-6 py-4">
+      {ns.busy && <span className="size-4 animate-spin rounded-pill border-2 border-hairline-strong border-t-accent" />}
+      <div className="min-w-0 flex-1 basis-[26rem]">
+        <div className="font-mono text-xs uppercase tracking-[0.12em] text-text-3">{ns.kick}</div>
+        <div className="mt-1 text-lg font-semibold text-text">{ns.title}</div>
+        {guidance && <div className="mt-1 max-w-[68ch] text-sm text-text-2">{ns.desc}</div>}
+        {ns.note && <div className="mt-2 text-sm text-text-3" role="note">{ns.note}</div>}
         {/* A refusal with a way out of it (decision 20). The tooltip on the dead
             button says why; this says why WHERE THE EYE IS and puts the one
             click that clears it beside the sentence, so "Stop the test drive
@@ -88,33 +51,7 @@ export function NextStepBar({
           </div>
         ))}
       </div>
-      <div className="nextstep-actions">
-        {asking ? (
-          <div className="nextstep-override">
-            <input
-              className="override-input"
-              placeholder={asking.prompt.placeholder}
-              value={reason}
-              autoFocus
-              onChange={(e) => setReason(e.target.value)}
-            />
-            <Button
-              variant="solid"
-              size="xs"
-              disabled={busy || !reason.trim()}
-              onClick={() => {
-                onAction(asking.kind, reason.trim())
-                stopAsking()
-              }}
-            >
-              {asking.prompt.submitLabel}
-            </Button>
-            <Button variant="ghost" size="xs" onClick={stopAsking}>
-              Cancel
-            </Button>
-          </div>
-        ) : (
-          <>
+      <div className="flex shrink-0 items-center gap-2">
             {/* `a.disabled` is the reason the server would refuse this action in
                 the current state — shown as the tooltip beside the dead button,
                 so the user reads why instead of hunting for a vanished verb. */}
@@ -122,10 +59,9 @@ export function NextStepBar({
               <Button
                 key={i}
                 variant="ghost"
-                size="xs"
                 disabled={busy || !!a.disabled}
-                title={a.disabled}
-                onClick={() => click(a)}
+                title={a.disabled ?? a.hint}
+                onClick={() => onAction(a.kind, a.waypointId)}
               >
                 {a.label}
               </Button>
@@ -146,7 +82,7 @@ export function NextStepBar({
                   variant={ns.primary.danger ? 'danger' : 'solid'}
                   disabled={busy || !!ns.primary.disabled}
                   title={ns.primary.disabled}
-                  onClick={() => click(ns.primary!)}
+                  onClick={() => onAction(ns.primary!.kind, ns.primary!.waypointId)}
                 >
                   {busy ? 'Working…' : ns.primary.label}
                 </Button>
@@ -155,8 +91,6 @@ export function NextStepBar({
                 )}
               </>
             )}
-          </>
-        )}
       </div>
     </div>
   )

@@ -6,17 +6,18 @@ import { IconCheck, IconChevronDown } from '../icons'
 import { BARE_BUTTON } from '../ui'
 
 /**
- * Titlebar project switcher (issue #45). Click the project name to drop a menu
- * of every open project (fast in-project switching that never disturbs
+ * The breadcrumb's middle level (decision 11). Click the project name to drop a
+ * menu of every open project (fast in-project switching that never disturbs
  * background runs), plus "All projects" (the portfolio home) and "Open a
  * project…". The command palette carries the same project mode for keyboarding.
  *
- * Each project row carries its repo folder underneath (decision 8): two projects
- * can share a name — a fork and its original routinely do — and the folder is
- * the only thing on the row that tells them apart.
+ * `min-w-0` runs all the way down to the name, or the flex default of
+ * min-content wins and the ellipsis never engages (findings F20).
  *
- * The titlebar around this belongs to the project-shell flow; only this
- * component's own root and its classes are migrated here.
+ * Each project row carries its repo folder underneath (the onboarding flow's
+ * decision 8): two projects can share a name — a fork and its original
+ * routinely do — and the folder is the only thing on the row that tells them
+ * apart.
  */
 
 /*

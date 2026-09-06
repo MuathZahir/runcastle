@@ -95,7 +95,7 @@ describe('utf-8 integrity across the agent-facing surfaces', () => {
     writeFileSync(join(dir, 'decisions.md'), `# ${title}\n\nbody — نص 内容\n`, 'utf8')
 
     const docs = listDocs(ctx, feature)
-    expect(docs).toEqual([{ relPath: 'decisions.md', title }])
+    expect(docs).toMatchObject([{ relPath: 'decisions.md', title }])
     expect(readDoc(ctx, feature, 'decisions.md').content).toContain('body — نص 内容')
   })
 

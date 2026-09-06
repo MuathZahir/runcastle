@@ -67,4 +67,22 @@ describe('draft creation surfaces', () => {
     expect(html).toContain('>pick a branch first<')
     expect(html).toMatch(/<button[^>]*disabled=""[^>]*>Start<\/button>/)
   })
+
+  it('renders one dim note and action hints without legacy next-step classes', () => {
+    const ns: NextStep = {
+      kick: 'NEXT STEP',
+      title: 'Review the tickets, then burn',
+      desc: 'Three tickets for this lap.',
+      note: 'Still unspecified: keyboard behavior',
+      primary: { label: 'Burn 3 tickets', kind: 'burn' },
+      secondary: [{ label: 'Ask for changes', kind: 'revisit', hint: 'Open a session to change the tickets before burning' }],
+      busy: false,
+    }
+    const html = renderToStaticMarkup(createElement(NextStepBar, { ns, guidance: true, busy: false, onAction: () => undefined }))
+
+    expect(html).toContain('role="note"')
+    expect(html).toContain('Still unspecified: keyboard behavior')
+    expect(html).toContain('title="Open a session to change the tickets before burning"')
+    expect(html).not.toMatch(/class="[^"]*nextstep/)
+  })
 })

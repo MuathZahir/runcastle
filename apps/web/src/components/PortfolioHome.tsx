@@ -37,10 +37,11 @@ export function PortfolioHome({ nav }: { nav: ProjectNavApi }) {
   return (
     <div className="flex h-full flex-col">
       <header className="flex h-11 flex-none items-center border-b border-hairline bg-panel px-4">
-        {/* `tb-home`/`tb-logo` are the titlebar's own classes, shared with it
-            and migrated by the project-shell flow, not this one. */}
-        <span className="tb-home">
-          <span className="tb-logo">
+        {/* Inline utilities, not `.tb-home` / `.tb-logo`: those rules were the
+            in-project titlebar's, and the shell flow deleted them with the
+            rest of that surface (apps/web/STYLE.md). */}
+        <span className="inline-flex shrink-0 items-center gap-2">
+          <span className="inline-flex shrink-0 items-center">
             <LogoMark size={17} />
           </span>
           <LogoWordmark />

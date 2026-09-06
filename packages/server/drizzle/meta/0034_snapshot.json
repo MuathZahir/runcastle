@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "28789efe-673a-461d-a2e7-9dcdacb63c40",
+  "id": "73541a4e-a2af-4f11-ac21-c5d4506eb7a5",
   "prevId": "0ba48e15-5053-4eda-b20b-05e7b3cbc486",
   "tables": {
     "events": {
@@ -736,6 +736,13 @@
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
+        },
+        "ended_at": {
+          "name": "ended_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
         }
       },
       "indexes": {},
@@ -793,20 +800,6 @@
         "ticket_id": {
           "name": "ticket_id",
           "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "review_ticket_id": {
-          "name": "review_ticket_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "carried_lap": {
-          "name": "carried_lap",
-          "type": "integer",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false

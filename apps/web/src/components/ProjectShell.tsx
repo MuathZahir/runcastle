@@ -1,16 +1,26 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import type { CSSProperties } from 'react'
 import { LogoMark } from '../icons'
 import { trpc } from '../trpc'
-import { useWorkspace, type DriveState } from '../lib/workspace'
+import { inspectorCollapsedForPhase, useWorkspace, type DriveState } from '../lib/workspace'
 import type { ProjectNavApi } from '../lib/use-project-nav'
 import { useProjectTalk } from '../lib/use-project-talk'
 import { useLivePoll } from '../lib/live'
 import { showsInspector, workspaceView } from '../lib/project-workspace'
-import type { PrepView } from '../lib/api'
-import { Button } from '../ui'
+import { landingFeature } from '../lib/feature-ui'
+import {
+  insideProject,
+  locationFor,
+  parsePath,
+  projectIdOf,
+  type AppLocation,
+} from '../lib/routes'
+import { currentPath, useHistorySync } from '../lib/use-history-sync'
+import { useSidebarWidth } from '../lib/sidebar-width'
+import type { FeatureListItem, PrepView } from '../lib/api'
 import { Titlebar } from './Titlebar'
 import { Sidebar } from './Sidebar'
-import { Inspector } from './Inspector'
+import { Inspector } from './inspector/Inspector'
 import { StatusBar } from './StatusBar'
 import { FeatureCrash, Workspace } from './Workspace'
 import { ErrorBoundary } from './ErrorBoundary'
@@ -29,12 +39,28 @@ import { SettingsDialog } from './settings/SettingsDialog'
  * shell picks which project (or the portfolio home) is showing. The active test
  * drive (at most one globally) is shell state, shared by the workspace and status
  * bar.
+ *
+ * It also owns the in-project half of the URL (decision 1) — the feature, the
+ * chat and preparation — because it is the only place that can resolve a
+ * feature slug to the id the state machine selects by.
  */
 export function ProjectShell({ projectId, nav }: { projectId: string; nav: ProjectNavApi }) {
   const ws = useWorkspace(projectId)
-  const { selectedFeatureId, projectSelected, select, selectProject, setCmdk } = ws
+  const {
+    selectedFeatureId,
+    projectSelected,
+    preparing,
+    select,
+    selectProject,
+    startPreparation,
+    setCmdk,
+  } = ws
   const [driving, setDriving] = useState<DriveState | null>(null)
   const [newChatRequest, setNewChatRequest] = useState(0)
+  // The rail's width is a screen preference, kept globally (decision 10). It
+  // lives here rather than in the rail because the frame's grid is what reads
+  // it — the rail only reports what a drag measured.
+  const sidebar = useSidebarWidth()
   const list = trpc.feature.list.useQuery({ projectId }, { refetchInterval: useLivePoll() })
   // The project conversation, polled once here and read by the pinned rail row,
   // the project workspace and both "talk it through" doors.
@@ -44,12 +70,78 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
   const prep = trpc.project.prep.useQuery({ projectId }) as { data?: PrepView }
   const prepared = prep.data?.prepared ?? true
 
-  // Land on a feature: select the first one once, if nothing is selected yet.
-  // Never over the project workspace — `select` would swap it back out.
+  const features = list.data
+
+  /**
+   * Where to land, once and only once, when the feature list first arrives
+   * (decision 1 + decision 4). Three sources in order: the address bar, then
+   * what this project stored, then the rail's own triage order — the rule that
+   * replaced `list.data[0]`, which was newest-created and lane-blind and so
+   * opened parked drafts and shipped retrospectives (findings F10.4).
+   *
+   * A slug in the URL that no longer names a feature falls through to the same
+   * triage rule rather than to the stored selection: the address was explicit,
+   * so silently restoring some unrelated feature would be the wrong repair.
+   */
+  const [landed, setLanded] = useState(false)
+  const [urlAtMount] = useState(() => parsePath(currentPath()))
   useEffect(() => {
-    if (!selectedFeatureId && !projectSelected && list.data && list.data.length > 0)
-      select(list.data[0].id)
-  }, [selectedFeatureId, projectSelected, list.data, select])
+    if (landed || !features) return
+    const addressed = insideProject(urlAtMount, projectId)
+
+    if (addressed?.kind === 'chat') selectProject()
+    else if (addressed?.kind === 'prepare') startPreparation()
+    else if (addressed) {
+      const named = features.find((f) => f.slug === addressed.featureSlug)
+      select(named?.id ?? landingFeature(features)?.id ?? null)
+    } else if (!selectedFeatureId && !projectSelected && !preparing) {
+      const target = landingFeature(features)
+      if (target) select(target.id)
+    }
+    setLanded(true)
+  }, [
+    landed,
+    features,
+    projectId,
+    urlAtMount,
+    selectedFeatureId,
+    projectSelected,
+    preparing,
+    select,
+    selectProject,
+    startPreparation,
+  ])
+
+  // The address this shell is showing, and the setters a Back or Forward drives.
+  //
+  // Null in the two windows where the shell has no address to state: before the
+  // landing above has run (an address written then would be corrected a render
+  // later, leaving a stray entry behind), and while the Quick form owns the body
+  // — an overlay is not a place, and opening it clears the pinned project row
+  // and any open preparation underneath it (decision 1).
+  // The selected feature, read once: the URL wants its slug, the titlebar's
+  // third breadcrumb level wants its title (decision 11).
+  const selectedFeature = features?.find((f) => f.id === selectedFeatureId)
+  const selectedSlug = selectedFeature?.slug ?? null
+  const location: AppLocation | null =
+    landed && !ws.creating
+      ? locationFor({ projectId, preparing, projectSelected, featureSlug: selectedSlug })
+      : null
+
+  useHistorySync(location, (popped) => {
+    // A pop that changed project — or left for the portfolio home — is the outer
+    // nav's to handle: it remounts this shell, which reads the popped URL
+    // through the landing above.
+    if (!popped || projectIdOf(popped) !== projectId) return
+    const inside = insideProject(popped, projectId)
+    if (!inside) select(null) // a bare `/p/<id>`: the project home
+    else if (inside.kind === 'chat') selectProject()
+    else if (inside.kind === 'prepare') startPreparation()
+    else {
+      const named = features?.find((f) => f.slug === inside.featureSlug)
+      select(named?.id ?? landingFeature(features ?? [])?.id ?? null)
+    }
+  })
 
   // The New door (decisions.md #12): open the project workspace and start a
   // FRESH conversation in it — intake for anything that deserves talking about.
@@ -73,30 +165,57 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
     return () => window.removeEventListener('keydown', onKey)
   }, [setCmdk])
 
-  const view = workspaceView({ ...ws, featureCount: list.data?.length ?? 0, prepared })
-  const showInspector = showsInspector(view, ws.inspectorCollapsed)
+  const view = workspaceView({ ...ws, featureCount: features?.length ?? 0, prepared })
+  // The inspector starts collapsed in ideation/spec/tickets unless the human
+  // has expressed a preference (decision: docs menu makes the panel optional).
+  const selectedPhase = features?.find((feature) => feature.id === selectedFeatureId)?.phase
+  const inspectorCollapsed = inspectorCollapsedForPhase(
+    ws.inspectorPreference,
+    ws.viewedPhase ?? selectedPhase,
+  )
+  const showInspector = showsInspector(view, inspectorCollapsed)
 
   const shell = (
-    <div className={`shell${ws.inspectorCollapsed ? ' inspector-collapsed' : ''}`}>
+    // The frame's grid, migrated off `styles.css` (apps/web/STYLE.md). The rail
+    // width is read from `--sidebar-w` so the resizable rail can drive it
+    // without this file knowing how wide it is.
+    <div
+      className="grid h-full grid-rows-[44px_1fr_28px]"
+      style={{ '--sidebar-w': `${sidebar.width}px` } as CSSProperties}
+    >
       <Titlebar
         nav={nav}
+        view={view}
+        featureTitle={selectedFeature?.title ?? null}
         onOpenCmdk={() => ws.setCmdk(true)}
         onOpenSettings={() => ws.openSettings()}
-        onToggleInspector={ws.toggleInspector}
-        inspectorCollapsed={ws.inspectorCollapsed}
+        onGoToProjectHome={() => ws.select(null)}
+        onToggleInspector={() => ws.toggleInspector(inspectorCollapsed)}
+        inspectorCollapsed={inspectorCollapsed}
       />
 
-      <div className="shell-body">
+      {/* The inspector column exists only where the Inspector does — a third
+          column on a chat or preparation view was a dead ~300px strip, because
+          the old rule hid the content and kept the track (decision 5). */}
+      <div
+        className={`grid min-h-0 ${
+          showInspector
+            ? 'grid-cols-[var(--sidebar-w)_1fr_var(--inspector-w)]'
+            : 'grid-cols-[var(--sidebar-w)_1fr]'
+        }`}
+      >
         <Sidebar
           projectId={projectId}
           selectedFeatureId={ws.selectedFeatureId}
           projectSelected={ws.projectSelected}
+          width={sidebar.width}
           talk={talk}
           onSelect={ws.select}
           onSelectProject={ws.selectProject}
           onNewChat={newChat}
           onQuickChange={ws.startQuickChange}
           onOpenPreparation={ws.startPreparation}
+          onResize={sidebar.setWidth}
         />
 
         {view === 'create' ? (
@@ -137,6 +256,8 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
               guidance={ws.guidance}
               mapRailCollapsed={ws.mapRailCollapsed}
               onToggleMapRail={ws.toggleMapRail}
+              artifactPaneCollapsed={ws.artifactPaneCollapsed}
+              onToggleArtifactPane={ws.toggleArtifactPane}
               driving={driving}
               onDriveChange={setDriving}
             />
@@ -154,6 +275,7 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
 
       <StatusBar
         projectId={projectId}
+        view={view}
         activeFeatureId={ws.selectedFeatureId}
         driving={driving}
         onDriveChange={setDriving}
@@ -162,7 +284,7 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
       <CommandPalette
         open={ws.cmdkOpen}
         onClose={() => ws.setCmdk(false)}
-        features={list.data ?? []}
+        features={features ?? []}
         selectedFeatureId={ws.selectedFeatureId}
         onSelect={ws.select}
         onOpenSettings={() => ws.openSettings()}
@@ -213,8 +335,12 @@ function EmptyWorkspace({
         {/* The rail head's two doors, said again where a project with nothing
             selected is looking for them (decisions.md #12). */}
         <div className="ws-empty-actions">
-          <Button onClick={onNewChat}>New chat</Button>
-          <Button onClick={onQuickChange}>Quick</Button>
+          <button className="btn btn-ghost" onClick={onNewChat}>
+            New chat
+          </button>
+          <button className="btn btn-ghost" onClick={onQuickChange}>
+            Quick
+          </button>
         </div>
         <div className="ws-empty-hint">
           New opens a conversation with the project — it knows what you have already built, and cuts

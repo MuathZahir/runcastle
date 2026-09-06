@@ -239,6 +239,18 @@ export const sessions = sqliteTable('sessions', {
    * backfilled default would be a fabricated date shown to the human as fact.
    */
   createdAt: integer('created_at'),
+  /**
+   * When the session was marked `ended`. Null while it is still `launching` or
+   * `live`, and null forever on the rows that ended before this column existed
+   * — their ending was never recorded, and `created_at` is not a stand-in for
+   * it: a two-hour conversation closed a minute ago would read as two hours
+   * old. Readers say "ended" with no age rather than fabricate one.
+   *
+   * Stamped once, by `markSessionEnded`; the end paths that funnel through it
+   * (PTY exit, the Stop hook, boot reconciliation) can each fire on an
+   * already-ended row, and the FIRST ending is the true one.
+   */
+  endedAt: integer('ended_at'),
 })
 
 export const tickets = sqliteTable('tickets', {

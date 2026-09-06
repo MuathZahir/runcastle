@@ -10,7 +10,7 @@ export function resolveDraft({ ctx }: ResolverInput): NextStep {
   return {
     kick: 'NEXT STEP',
     title: 'Start this feature',
-    desc: 'Parked as a draft — Start cuts its branch, writes the brief, and opens the grill session.',
+    desc: 'Parked as a draft — Start cuts its branch, writes the brief, and opens the ideation session.',
     primary: {
       label: 'Start',
       kind: 'startDraft',
