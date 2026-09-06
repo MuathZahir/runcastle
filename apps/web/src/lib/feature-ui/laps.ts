@@ -196,24 +196,41 @@ export function triageFooter(input: {
   return parts.join(' · ')
 }
 
-/**
- * Which exit the ticked boxes chose, and what its button says (decision 21).
- *
- * The human never picks the road up front — Fix and Iterate were the same
- * decision entered through two doors, and asking again inside the door is the
- * duplicate choice this removes. So the road falls out of the list: anything
- * left to talk about opens lap N+1's conversation, and a list that is quick
- * fixes all the way down has nothing to discuss, so its tickets just burn.
- */
-export function triageRoad(input: { quickFix: number; carried: number; nextLap: number }): {
-  road: 'burn' | 'lap'
+/** A way out of the triage step: what the button says, and where it goes. */
+export interface TriageExit {
   label: string
-} {
+  /**
+   * Carry what is left into lap N+1's conversation (`feature.rethink`) rather
+   * than burning the minted tickets on this lap (`feature.burn`).
+   */
+  carry: boolean
+}
+
+/**
+ * The ways out of the triage step, in render order — the last is the primary
+ * (decision 21).
+ *
+ * The human never picks the road up front: Fix and Iterate were the same
+ * decision entered through two doors, and asking again inside the door is the
+ * duplicate choice this removes. So the road falls out of the list — anything
+ * left to talk about opens the conversation, and a list that is quick fixes all
+ * the way down has nothing to discuss, so its tickets just burn. That one case
+ * keeps the conversation reachable anyway, because "these are all quick fixes
+ * AND I want to talk" is the human's call to make, not this function's.
+ */
+export function triageExits(input: {
+  quickFix: number
+  carried: number
+  nextLap: number
+}): TriageExit[] {
   const { quickFix, carried, nextLap } = input
   if (quickFix > 0 && carried === 0)
-    return { road: 'burn', label: `Mint ${noun(quickFix, 'ticket')} and burn` }
-  if (quickFix === 0) return { road: 'lap', label: `Start lap ${nextLap}` }
-  return { road: 'lap', label: `Mint ${quickFix} · carry ${carried} → Start lap ${nextLap}` }
+    return [
+      { label: `Start lap ${nextLap} anyway`, carry: true },
+      { label: `Mint ${noun(quickFix, 'ticket')} and burn`, carry: false },
+    ]
+  if (quickFix === 0) return [{ label: `Start lap ${nextLap}`, carry: true }]
+  return [{ label: `Mint ${quickFix} · carry ${carried} → Start lap ${nextLap}`, carry: true }]
 }
 
 export function burnLabel(

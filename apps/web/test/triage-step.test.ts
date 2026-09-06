@@ -2,7 +2,7 @@ import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it, vi } from 'vitest'
 import type { ReviewFinding, TestNote } from '@runcastle/core'
-import { triageFooter, triageRoad } from '../src/lib/feature-ui'
+import { triageExits, triageFooter } from '../src/lib/feature-ui'
 import { TriagePanel, TriageStep } from '../src/components/review/TriageStep'
 
 /**
@@ -171,31 +171,34 @@ describe('the triage step', () => {
 })
 
 /**
- * What the ticked boxes decide — the road out and the footer's account of it.
+ * What the ticked boxes decide — the ways out and the footer's account of them.
  * Both are pure, so every combination is reachable here rather than through a
- * DOM per case.
+ * DOM per case. `carry` is the road itself: true opens lap N+1's conversation
+ * (`feature.rethink`), false burns the minted tickets (`feature.burn`).
  */
-describe('the road out of triage', () => {
+describe('the ways out of triage', () => {
   it('carries everything into the conversation when nothing is ticked', () => {
-    expect(triageRoad({ quickFix: 0, carried: 4, nextLap: 3 })).toEqual({
-      road: 'lap',
-      label: 'Start lap 3',
-    })
+    expect(triageExits({ quickFix: 0, carried: 4, nextLap: 3 })).toEqual([
+      { label: 'Start lap 3', carry: true },
+    ])
   })
 
   it('burns without a conversation when the whole list is quick fixes', () => {
-    expect(triageRoad({ quickFix: 2, carried: 0, nextLap: 3 })).toEqual({
-      road: 'burn',
-      label: 'Mint 2 tickets and burn',
-    })
-    expect(triageRoad({ quickFix: 1, carried: 0, nextLap: 3 }).label).toBe('Mint 1 ticket and burn')
+    expect(triageExits({ quickFix: 2, carried: 0, nextLap: 3 })).toEqual([
+      // ...with the conversation still one click away, because "all quick fixes
+      // AND I want to talk" is the human's call to make.
+      { label: 'Start lap 3 anyway', carry: true },
+      { label: 'Mint 2 tickets and burn', carry: false },
+    ])
+    expect(triageExits({ quickFix: 1, carried: 0, nextLap: 3 }).at(-1)?.label).toBe(
+      'Mint 1 ticket and burn',
+    )
   })
 
   it('mints and carries in one act when the list is mixed', () => {
-    expect(triageRoad({ quickFix: 2, carried: 4, nextLap: 3 })).toEqual({
-      road: 'lap',
-      label: 'Mint 2 · carry 4 → Start lap 3',
-    })
+    expect(triageExits({ quickFix: 2, carried: 4, nextLap: 3 })).toEqual([
+      { label: 'Mint 2 · carry 4 → Start lap 3', carry: true },
+    ])
   })
 
   it('states the same three cases in the footer', () => {

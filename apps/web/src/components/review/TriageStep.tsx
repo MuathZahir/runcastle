@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import type { ReviewFinding, TestNote } from '@runcastle/core'
 import { Button, Dialog, EmptyState, LapSections } from '../../ui'
-import { groupByLap, triageFooter, triageRoad } from '../../lib/feature-ui'
+import { groupByLap, triageExits, triageFooter } from '../../lib/feature-ui'
 import { Lightbox } from './Lightbox'
 import { NoteRow, itemId, itemLap, type NoteItem } from './NoteRow'
 
@@ -129,11 +129,7 @@ export function TriagePanel({
   // left unticked simply stays open work for the pass that comes back.
   const carried = rows.filter((row) => row.item.kind === 'note' && !picked(row))
   const nextLap = lap + 1
-  const { road, label } = triageRoad({
-    quickFix: minted.length,
-    carried: carried.length,
-    nextLap,
-  })
+  const exits = triageExits({ quickFix: minted.length, carried: carried.length, nextLap })
   const footer = triageFooter({
     quickFix: minted.length,
     carried: carried.length,
@@ -151,17 +147,6 @@ export function TriagePanel({
       dismissFindingIds: defects.filter((row) => dismissed.has(row.id)).map((row) => row.id),
       carry,
     })
-
-  const lapRoad = (text: string) => (
-    <Button
-      variant="solid"
-      disabled={busy || !!iterateBlocked}
-      title={iterateBlocked}
-      onClick={() => commit(true)}
-    >
-      {text}
-    </Button>
-  )
 
   return (
     <>
@@ -248,18 +233,19 @@ export function TriagePanel({
           <Button variant="ghost" disabled={busy} onClick={onClose}>
             Cancel
           </Button>
-          {road === 'burn' ? (
-            <>
-              {/* Nothing is left to carry, but the human may still want the
-                  conversation — the lap road stays one click away. */}
-              {lapRoad(`Start lap ${nextLap} anyway`)}
-              <Button variant="solid" disabled={busy} onClick={() => commit(false)}>
-                {label}
-              </Button>
-            </>
-          ) : (
-            lapRoad(label)
-          )}
+          {/* In render order, the primary last; only the road that opens the
+              conversation can be refused, and it says why. */}
+          {exits.map((exit) => (
+            <Button
+              key={exit.label}
+              variant="solid"
+              disabled={busy || (exit.carry && !!iterateBlocked)}
+              title={exit.carry ? iterateBlocked : undefined}
+              onClick={() => commit(exit.carry)}
+            >
+              {exit.label}
+            </Button>
+          ))}
         </div>
       </div>
 
