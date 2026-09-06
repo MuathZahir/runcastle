@@ -57,6 +57,14 @@ export const WAYPOINT_EXPLAINER =
 export const BURN_EXPLAINER =
   'Burning runs each ticket as its own sandboxed agent, in parallel, committing to the feature branch.'
 
+/**
+ * Status bar, on the notify toggle. "Notify me when a burn finishes" met a
+ * newcomer with an unexplained verb at the moment of a click (decision 9): the
+ * chrome may *name* a burn, but a sentence about one has to read without the
+ * word.
+ */
+export const NOTIFY_OFFER = 'Notify me when agents finish a run'
+
 /** Inspector gate rail: why the pipeline is sitting still. */
 export const GATE_EXPLAINER =
   'Gates are the human approval points — runcastle stops at one and waits for you.'

@@ -844,6 +844,25 @@ export function PhaseTag({ phase }: { phase: Phase }) {
   )
 }
 
+/** The phase dot's colour. A whole class per phase so Tailwind can see it. */
+const PHASE_DOT_BG: Record<Phase, string> = {
+  ideation: 'bg-ph-ideation',
+  spec: 'bg-ph-spec',
+  tickets: 'bg-ph-tickets',
+  implementation: 'bg-ph-implementation',
+  review: 'bg-ph-review',
+  shipped: 'bg-ph-shipped',
+}
+
+/**
+ * A feature's phase where a row has no space to name it — the rail's rows and
+ * the palette's both wear one, which is why the map lives here rather than
+ * being written out once per surface.
+ */
+export function PhaseDot({ phase, className }: { phase: Phase; className?: string }) {
+  return <span className={cx('size-2 shrink-0 rounded-full', PHASE_DOT_BG[phase], className)} />
+}
+
 const CHIP_BASE =
   'inline-flex h-5 items-center gap-1.5 whitespace-nowrap rounded-pill border px-2 font-mono text-xs'
 

@@ -81,6 +81,7 @@ utilities genuinely cannot express, kept to a minimum.
 | `CheckLine` | One review figure — tone dot, label, value — from a `CheckRow`. | tone comes from the row: `ok` · `warn` · `danger` · `idle` |
 | `LapSections<T>` | Rows under `Lap N` headers. Current lap is an open `<section>`, earlier laps a `<details>` with a caret. Suppressed entirely below lap 2 (ADR-0010 §4). | — |
 | `PhaseTag` | A feature's phase, in the phase's own colour. | one per `Phase` |
+| `PhaseDot` | The same phase where a row has no space to name it — the rail's rows and the palette's. | one per `Phase` |
 | `TicketStatusChip` | A ticket's status. `burning` breathes. | one per `TicketStatus` |
 | `TicketKindChip` | Marks a `review` ticket. Renders **nothing** for `implementation` — the default would be noise on every row. | — |
 | `NoteAuthorChip` | Marks the review agent's note. Renders **nothing** for `human`. | — |

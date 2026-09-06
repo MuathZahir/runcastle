@@ -1,14 +1,16 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import {
-  aggregateRuns,
   browseFailure,
   initialView,
+  launchView,
   pickerStartDir,
   projectStats,
   repoFolderName,
   replacementLanding,
   repoOpenFailure,
   restoredView,
+  runsElsewhere,
+  type StoredNav,
 } from '../src/lib/projects'
 import { readStoredNav, writeStoredNav } from '../src/lib/use-project-nav'
 import type { FeatureListItem } from '../src/lib/api'
@@ -228,6 +230,57 @@ describe('replacementLanding', () => {
   })
 })
 
+/**
+ * flow-redesign shell ticket 1 / decision 1 — the address bar joins the boot
+ * order ahead of storage. The rule stays pure: the URL arrives already parsed,
+ * so nothing here needs a DOM.
+ */
+describe('launchView', () => {
+  const both = [proj('proj_a'), proj('proj_b')]
+
+  it('lands where the URL points, over anything stored', () => {
+    const stored: StoredNav = { view: 'project', projectId: 'proj_b' }
+    expect(launchView(both, { kind: 'project', projectId: 'proj_a' }, stored, true)).toEqual({
+      view: 'project',
+      projectId: 'proj_a',
+    })
+    expect(
+      launchView(both, { kind: 'feature', projectId: 'proj_a', featureSlug: 'x' }, stored, true),
+    ).toEqual({ view: 'project', projectId: 'proj_a' })
+  })
+
+  it('lets storage answer a bare / launch — the one job it has left', () => {
+    const stored: StoredNav = { view: 'project', projectId: 'proj_b' }
+    expect(launchView(both, { kind: 'home' }, stored, true)).toEqual({
+      view: 'project',
+      projectId: 'proj_b',
+    })
+  })
+
+  it('falls through to storage when the URL names a project that is gone', () => {
+    const stored: StoredNav = { view: 'project', projectId: 'proj_b' }
+    expect(launchView(both, { kind: 'project', projectId: 'closed' }, stored, true)).toEqual({
+      view: 'project',
+      projectId: 'proj_b',
+    })
+  })
+
+  it('sends an unfinished setup to the wizard even over a URL naming a project', () => {
+    expect(launchView(both, { kind: 'project', projectId: 'proj_a' }, null, false)).toEqual({
+      view: 'setup',
+      projectId: null,
+    })
+  })
+
+  it('falls all the way to the count-based rule with an unknown path and nothing stored', () => {
+    expect(launchView(both, null, null, true)).toEqual({ view: 'home', projectId: null })
+    expect(launchView([proj('proj_a')], null, null, true)).toEqual({
+      view: 'project',
+      projectId: 'proj_a',
+    })
+  })
+})
+
 describe('projectStats', () => {
   it('reports an empty project as empty', () => {
     expect(projectStats([])).toEqual({
@@ -266,12 +319,30 @@ describe('projectStats', () => {
   })
 })
 
-describe('aggregateRuns', () => {
-  it('sums active runs across every open project', () => {
-    const a = projectStats([feat({ activeRun: true }), feat({ activeRun: true })])
-    const b = projectStats([feat({ activeRun: true })])
-    const c = projectStats([])
-    expect(aggregateRuns([a, b, c])).toBe(3)
+/**
+ * Decision 7 — the titlebar pill counts the work you cannot see from here. The
+ * current project's runs are the rail's "Agent working" lane's job, and having
+ * both say a number was how the frame ended up with four run counts carrying
+ * three meanings.
+ */
+describe('runsElsewhere', () => {
+  const stats = [
+    { projectId: 'p1', ...projectStats([feat({ activeRun: true }), feat({ activeRun: true })]) },
+    { projectId: 'p2', ...projectStats([feat({ activeRun: true })]) },
+    { projectId: 'p3', ...projectStats([]) },
+  ]
+
+  it('leaves out the runs of the project being looked at', () => {
+    expect(runsElsewhere(stats, 'p1')).toBe(1)
+    expect(runsElsewhere(stats, 'p2')).toBe(2)
+  })
+
+  it('counts every project when none of them is the current one', () => {
+    expect(runsElsewhere(stats, null)).toBe(3)
+  })
+
+  it('is zero when the only runs are in this project', () => {
+    expect(runsElsewhere([stats[0], stats[2]], 'p1')).toBe(0)
   })
 })
 

@@ -138,17 +138,26 @@ const PROJECT_CHAT_TERMS =
   'project chat talk ask conversation conversations idea intake discuss advice new chat'
 
 /**
- * Whether the palette shows Preparation for `q` (already trimmed+lowercased).
- * Substring-of-haystack, matching every other action row in the palette — the
- * query is the needle, so a partial word still finds it.
+ * Whether an action row's terms answer `q` (already trimmed+lowercased).
+ * Substring-of-haystack — the query is the needle, so a partial word still
+ * finds it — and an empty query shows the row unconditionally, because the
+ * palette opens on its whole hand (decision 12). Hiding Preparation and
+ * Settings until the right noun was typed is exactly what made preparation
+ * unfindable, so the empty case is stated here rather than left to the fact
+ * that every string contains ''.
  */
+function matchesTerms(terms: string, q: string): boolean {
+  return q === '' || terms.includes(q)
+}
+
+/** Whether the palette shows Preparation for `q`. */
 export function matchesPreparation(q: string): boolean {
-  return PREPARATION_TERMS.includes(q)
+  return matchesTerms(PREPARATION_TERMS, q)
 }
 
 /** The same rule for the project chat's row — see {@link matchesPreparation}. */
 export function matchesProjectChat(q: string): boolean {
-  return PROJECT_CHAT_TERMS.includes(q)
+  return matchesTerms(PROJECT_CHAT_TERMS, q)
 }
 
 /**

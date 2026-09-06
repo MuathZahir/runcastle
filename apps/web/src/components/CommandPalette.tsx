@@ -3,14 +3,24 @@ import type { FeatureListItem } from '../lib/api'
 import type { ProjectNavApi } from '../lib/use-project-nav'
 import { PHASE_LABELS } from '../lib/feature-ui'
 import { matchesPreparation, matchesProjectChat } from '../lib/project-workspace'
+import { Kbd, PhaseDot } from '../ui'
 import { IconFolder, IconMessage, IconSettings } from '../icons'
 
 /**
- * ⌘K command palette for the pipeline-first shell (app-redesign, multi-project
- * #45). A single flat list of navigable rows — features, then projects, then
- * actions — with Linear/Raycast keyboarding: ↑↓ wrap, ↵ activates, esc closes.
- * Query filters features by slug/title and projects by name; switching a project
- * from here never disturbs background runs. Dependency-free (React only).
+ * ⌘K command palette for the pipeline-first shell (decision 12). Three labeled
+ * groups — Features, Projects, Actions — over one flat row list, with
+ * Linear/Raycast keyboarding: ↑↓ wrap, ↵ activates, esc closes. Query filters
+ * features by slug/title, projects by name, and actions by their match terms;
+ * switching a project from here never disturbs background runs.
+ *
+ * The palette opens on its whole hand. Every action is listed on an empty query
+ * — hiding Preparation and Settings until the right noun was typed is what made
+ * preparation unfindable in the first place, and a palette whose job is
+ * discovery cannot ask you to already know the word. The group labels are
+ * always drawn for the same reason: they say what the palette can find, whether
+ * or not this query found any of it.
+ *
+ * Dependency-free (React only).
  */
 
 export interface CommandPaletteProps {
@@ -41,6 +51,15 @@ interface Action {
   label: string
   run: () => void
 }
+
+/** One selectable row. The colour is on the spans inside — see apps/web/STYLE.md. */
+const ITEM_CLASS = 'flex cursor-pointer items-center gap-2.5 rounded-sm px-2.5 py-2'
+
+/** The 11px uppercase micro-label over each group. */
+const GROUP_CLASS = 'px-2.5 pt-2.5 pb-1 text-xs font-semibold tracking-[0.09em] text-text-4 uppercase'
+
+/** A row's trailing note — the phase, "project", or "action". */
+const HINT_CLASS = 'shrink-0 text-xs text-text-3'
 
 export function CommandPalette(props: CommandPaletteProps) {
   const {
@@ -98,6 +117,8 @@ export function CommandPalette(props: CommandPaletteProps) {
   // a home in the feature pipeline, so neither is reachable except through the
   // rail row someone has to already know about. Their terms live in lib/ because
   // they are the searchable half of that discoverability, and are tested there.
+  // The three whose terms are written here answer to the same rule: an empty
+  // query shows the row, a typed one has to be found in its terms.
   const actions = useMemo<Action[]>(() => {
     const all: (Action & { shows: boolean })[] = [
       {
@@ -112,32 +133,32 @@ export function CommandPalette(props: CommandPaletteProps) {
         run: onOpenProjectChat,
       },
       {
+        kind: 'preparation',
+        shows: matchesPreparation(q),
+        glyph: <IconSettings size={13} />,
+        label: 'Preparation — establish this repo’s commands and baseline',
+        run: onOpenPreparation,
+      },
+      {
+        kind: 'settings',
+        shows: q === '' || 'settings preferences'.includes(q),
+        glyph: <IconSettings size={13} />,
+        label: 'Settings',
+        run: onOpenSettings,
+      },
+      {
         kind: 'home',
-        shows: 'all projects home'.includes(q),
+        shows: q === '' || 'all projects home'.includes(q),
         glyph: <IconFolder size={13} />,
         label: 'All projects (home)',
         run: nav.goHome,
       },
       {
         kind: 'openProject',
-        shows: 'open a project'.includes(q),
+        shows: q === '' || 'open a project'.includes(q),
         glyph: <IconFolder size={13} />,
         label: 'Open a project…',
         run: nav.showOpen,
-      },
-      {
-        kind: 'settings',
-        shows: 'settings preferences'.includes(q),
-        glyph: <IconSettings size={13} />,
-        label: 'Settings',
-        run: onOpenSettings,
-      },
-      {
-        kind: 'preparation',
-        shows: matchesPreparation(q),
-        glyph: <IconSettings size={13} />,
-        label: 'Preparation — establish this repo’s commands and baseline',
-        run: onOpenPreparation,
       },
     ]
     return all.filter((a) => a.shows)
@@ -205,133 +226,118 @@ export function CommandPalette(props: CommandPaletteProps) {
     rowRefs.current[i] = el
   }
 
+  const rowClass = (i: number) =>
+    `${ITEM_CLASS} ${i === activeIndex ? 'bg-panel-3 text-text' : 'text-text-2'}`
+
   return (
-    <div className="cmdk-backdrop" onClick={onClose}>
-      <div className="cmdk" onClick={(e) => e.stopPropagation()}>
+    <div
+      className="fixed inset-0 z-[300] flex animate-[backdropIn_var(--dur-2)_var(--ease-out-app)] items-start justify-center bg-[rgba(4,6,10,0.55)] px-4 pt-[12vh] pb-4 backdrop-blur-[2px]"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-[560px] animate-[cmdkIn_var(--dur-2)_var(--ease-out-app)] overflow-hidden rounded-lg border border-hairline-strong bg-panel shadow-overlay"
+        onClick={(e) => e.stopPropagation()}
+      >
         <input
           ref={inputRef}
-          className="cmdk-input"
+          // `font-sans` because there is no preflight: an `<input>` keeps the
+          // UA's own face and size unless it is told otherwise.
+          className="h-12 w-full border-0 border-b border-hairline bg-transparent px-4 font-sans text-base text-text outline-none placeholder:text-text-3"
           placeholder="Search features, projects, or jump to…"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           onKeyDown={onKeyDown}
           aria-label="Search features, projects, or jump to"
         />
-        <div className="cmdk-list">
-          {filteredFeatures.length > 0 && (
-            <>
-              <div className="cmdk-group-label">Features</div>
-              {filteredFeatures.map((f, i) => (
-                <div
-                  key={f.id}
-                  ref={bindRow(i)}
-                  className={`cmdk-item${i === activeIndex ? ' is-active' : ''}`}
-                  onMouseEnter={() => setActiveIndex(i)}
-                  onClick={() => activate(i)}
-                >
-                  <span className="cmdk-item-glyph">
-                    <span className={`feature-dot phase-bg-${f.phase}`} />
-                  </span>
-                  <span className="cmdk-item-label">{f.title}</span>
-                  <span className="cmdk-item-slug">{f.slug}</span>
-                  {/* The phase column used to read "current" for the selected
-                      feature, which meant the one feature you were most likely
-                      to be checking never showed its phase (findings F10.8).
-                      Being selected is a separate fact — it gets its own mark. */}
-                  {f.id === selectedFeatureId && <span className="cmdk-item-current">open</span>}
-                  <span className="cmdk-item-hint">{PHASE_LABELS[f.phase] ?? f.phase}</span>
-                </div>
-              ))}
-            </>
-          )}
+        <div className="max-h-[340px] overflow-y-auto p-1.5">
+          <div className={GROUP_CLASS}>Features</div>
+          {filteredFeatures.map((f, i) => (
+            <div
+              key={f.id}
+              ref={bindRow(i)}
+              className={rowClass(i)}
+              onMouseEnter={() => setActiveIndex(i)}
+              onClick={() => activate(i)}
+            >
+              <span className="flex w-3.5 shrink-0 justify-center">
+                <PhaseDot phase={f.phase} />
+              </span>
+              <span className="min-w-0 flex-1 truncate" title={f.title}>
+                {f.title}
+              </span>
+              {/* The phase column used to read "current" for the selected
+                  feature, which meant the one feature you were most likely to be
+                  checking never showed its phase (findings F10.8). Being
+                  selected is a separate fact — it gets its own mark. */}
+              {f.id === selectedFeatureId && (
+                <span className="shrink-0 rounded-pill border border-accent-line px-1.5 text-xs text-accent-hi">
+                  open
+                </span>
+              )}
+              <span className={HINT_CLASS}>{PHASE_LABELS[f.phase] ?? f.phase}</span>
+            </div>
+          ))}
 
-          {filteredProjects.length > 0 && (
-            <>
-              <div className="cmdk-group-label">Switch project</div>
-              {filteredProjects.map((p, j) => {
-                const i = featuresEnd + j
-                return (
-                  <div
-                    key={p.id}
-                    ref={bindRow(i)}
-                    className={`cmdk-item${i === activeIndex ? ' is-active' : ''}`}
-                    onMouseEnter={() => setActiveIndex(i)}
-                    onClick={() => activate(i)}
-                  >
-                    <span className="cmdk-item-glyph">
-                      <IconFolder size={13} />
-                    </span>
-                    <span className="cmdk-item-label">{p.name}</span>
-                    <span className="cmdk-item-hint">project</span>
-                  </div>
-                )
-              })}
-            </>
-          )}
+          <div className={GROUP_CLASS}>Projects</div>
+          {filteredProjects.map((p, j) => {
+            const i = featuresEnd + j
+            return (
+              <div
+                key={p.id}
+                ref={bindRow(i)}
+                className={rowClass(i)}
+                onMouseEnter={() => setActiveIndex(i)}
+                onClick={() => activate(i)}
+              >
+                <span className="flex w-3.5 shrink-0 justify-center text-text-3">
+                  <IconFolder size={13} />
+                </span>
+                <span className="min-w-0 flex-1 truncate" title={p.name}>
+                  {p.name}
+                </span>
+                <span className={HINT_CLASS}>project</span>
+              </div>
+            )
+          })}
 
-          {actions.length > 0 && (
-            <>
-              <div className="cmdk-group-label">Actions</div>
-              {actions.map((action, j) => (
-                <ActionRow
-                  key={action.kind}
-                  index={projectsEnd + j}
-                  activeIndex={activeIndex}
-                  bindRow={bindRow}
-                  setActiveIndex={setActiveIndex}
-                  activate={activate}
-                  glyph={action.glyph}
-                  label={action.label}
-                />
-              ))}
-            </>
-          )}
+          <div className={GROUP_CLASS}>Actions</div>
+          {actions.map((action, j) => {
+            const i = projectsEnd + j
+            return (
+              <div
+                key={action.kind}
+                ref={bindRow(i)}
+                className={rowClass(i)}
+                onMouseEnter={() => setActiveIndex(i)}
+                onClick={() => activate(i)}
+              >
+                <span className="flex w-3.5 shrink-0 justify-center text-text-3">
+                  {action.glyph}
+                </span>
+                <span className="min-w-0 flex-1 truncate" title={action.label}>
+                  {action.label}
+                </span>
+                <span className={HINT_CLASS}>action</span>
+              </div>
+            )
+          })}
 
-          {rows.length === 0 && <div className="cmdk-empty">No matches</div>}
+          {rows.length === 0 && (
+            <div className="p-6 text-center text-base text-text-3">No matches</div>
+          )}
         </div>
-        <div className="cmdk-foot">
-          <span>
-            <span className="kbd">↑↓</span> navigate
+        <div className="flex items-center gap-4 border-t border-hairline px-3.5 py-2 text-xs text-text-3">
+          <span className="flex items-center gap-1.5">
+            <Kbd>↑↓</Kbd> navigate
           </span>
-          <span>
-            <span className="kbd">↵</span> select
+          <span className="flex items-center gap-1.5">
+            <Kbd>↵</Kbd> select
           </span>
-          <span>
-            <span className="kbd">esc</span> close
+          <span className="flex items-center gap-1.5">
+            <Kbd>esc</Kbd> close
           </span>
         </div>
       </div>
-    </div>
-  )
-}
-
-function ActionRow({
-  index,
-  activeIndex,
-  bindRow,
-  setActiveIndex,
-  activate,
-  glyph,
-  label,
-}: {
-  index: number
-  activeIndex: number
-  bindRow: (i: number) => (el: HTMLDivElement | null) => void
-  setActiveIndex: (i: number) => void
-  activate: (i: number) => void
-  glyph: ReactNode
-  label: string
-}) {
-  return (
-    <div
-      ref={bindRow(index)}
-      className={`cmdk-item${index === activeIndex ? ' is-active' : ''}`}
-      onMouseEnter={() => setActiveIndex(index)}
-      onClick={() => activate(index)}
-    >
-      <span className="cmdk-item-glyph">{glyph}</span>
-      <span className="cmdk-item-label">{label}</span>
-      <span className="cmdk-item-hint">action</span>
     </div>
   )
 }

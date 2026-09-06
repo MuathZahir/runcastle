@@ -44,12 +44,14 @@ describe('Sidebar delete navigation', () => {
           projectId="project-1"
           selectedFeatureId="feat_deleted"
           projectSelected={false}
+          width={300}
           talk={{ state: 'none' } as never}
           onSelect={onSelect}
           onSelectProject={onSelectProject}
           onNewChat={() => {}}
           onQuickChange={() => {}}
           onOpenPreparation={() => {}}
+          onResize={() => {}}
         />
       </ToastProvider>,
     )
