@@ -92,9 +92,13 @@ export function Workspace({
   const driveTaken = testDriveTaken(events)
   // Commit and file scale from git, for the confirmation's "what lands" row
   // (decision 31a) — the base it reports is also the branch the dialog names.
+  // Only at review, where the dialog that reports it is: every earlier phase
+  // would be paying for two git reads whose answer it has nowhere to put
+  // (research still-open 24).
+  const atReview = q.data?.feature.phase === 'review'
   const delta = trpc.feature.mergeDelta.useQuery(
     { featureId },
-    { refetchInterval: useLivePoll(5000) },
+    { refetchInterval: useLivePoll(5000), enabled: atReview },
   )
   // Test-drive notes, for the confirmation's open-notes line — same query key the
   // review body's checklist reads, so the two share one fetch. The open ones are
@@ -105,7 +109,7 @@ export function Workspace({
   // (research still-open 24), a timer per surface for rows nothing on screen was
   // showing; the SSE feed invalidates both keys whatever the phase.
   const poll = useLivePoll()
-  const reviewPoll = q.data?.feature.phase === 'review' ? poll : (false as const)
+  const reviewPoll = atReview ? poll : (false as const)
   const notes = trpc.notes.list.useQuery({ featureId }, { refetchInterval: reviewPoll })
   const openNoteRows = notes.data?.filter((n) => n.status === 'open') ?? []
   const openNotes = notes.data ? openNoteRows.length : undefined
@@ -124,7 +128,7 @@ export function Workspace({
   // page's status strip reads, so the dialog and the screen behind it cannot
   // vouch for different builds — the walked bug was a green merge row over a
   // review of a build that fix tickets had already replaced.
-  const artifacts = useReviewArtifacts(featureId)
+  const artifacts = useReviewArtifacts(featureId, atReview)
   const stamped = stampedReview(artifacts.data ?? [])
   const reviewFreshness = freshness(
     stamped,
