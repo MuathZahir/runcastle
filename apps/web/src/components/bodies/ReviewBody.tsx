@@ -22,9 +22,9 @@ import { useLivePoll } from '../../lib/live'
 import { useToast } from '../../lib/toast'
 import { SessionPanel } from '../SessionPanel'
 import { ConflictAlert } from '../review/ConflictCard'
-import { LapAbortAlert } from '../review/LapAbortAlert'
 import { EvidenceStage } from '../review/EvidenceStage'
 import { FullAccounts } from '../review/FullAccounts'
+import { LapAbortAlert } from '../review/LapAbortAlert'
 import { OpenWork } from '../review/OpenWork'
 import { StatusStrip } from '../review/StatusStrip'
 import type { WalkthroughHandle } from '../WalkthroughPlayer'
@@ -66,7 +66,7 @@ export function ReviewBody({
   /** Go and look at another phase — how a defect reaches the lane fixing it. */
   onViewPhase?: (phase: 'implementation') => void
   /** Take the Iterate door again — what the failed lap's Retry re-runs. */
-  onIterate?: () => void
+  onIterate: () => void
 }) {
   const { feature, tickets, runs } = full
   const toast = useToast()
@@ -207,7 +207,7 @@ export function ReviewBody({
 
       {/* A lap that could not start rolls back in silence otherwise — the walked
           page came back exactly as it was (decision 26g). */}
-      {lapAbort && onIterate && (
+      {lapAbort && (
         <LapAbortAlert
           abort={lapAbort}
           lap={feature.lap}

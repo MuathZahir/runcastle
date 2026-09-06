@@ -712,7 +712,7 @@ export function Workspace({
               full={full}
               driving={driving}
               conflict={conflict}
-              lapAbort={abortedLap}
+              abortedLap={abortedLap}
               runId={run?.id ?? null}
               readonly={readonly}
               mapRailCollapsed={mapRailCollapsed}
@@ -732,7 +732,7 @@ function PhaseBody({
   full,
   driving,
   conflict,
-  lapAbort,
+  abortedLap,
   runId,
   readonly,
   mapRailCollapsed,
@@ -744,7 +744,7 @@ function PhaseBody({
   full: FeatureFull
   driving: DriveState | null
   conflict: MergeConflictState | null
-  lapAbort: LapAbort | null
+  abortedLap: LapAbort | null
   runId: string | null
   readonly: boolean
   mapRailCollapsed: boolean
@@ -782,7 +782,7 @@ function PhaseBody({
           full={full}
           driving={driving}
           conflict={conflict}
-          lapAbort={lapAbort}
+          lapAbort={abortedLap}
           readonly={readonly}
           // A defect being fixed links to its lane, which lives in the run view
           // one phase back (decision 18c).

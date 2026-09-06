@@ -137,6 +137,21 @@ export function TriagePanel({
     standing,
   })
 
+  // The row leaves the list on the confirm and is deleted by the commit — a
+  // dismissal that acted immediately would be the one destructive thing in a
+  // step whose whole point is deciding before anything happens.
+  const dismiss = (): void => {
+    if (!confirming) return
+    const id = itemId(confirming)
+    setDismissed((current) => new Set(current).add(id))
+    setQuickFix((current) => {
+      const next = new Set(current)
+      next.delete(id)
+      return next
+    })
+    setConfirming(null)
+  }
+
   const commit = (carry: boolean): void =>
     onCommit({
       quickFixIds: minted.flatMap((row) => (row.item.kind === 'note' ? [itemId(row.item)] : [])),
@@ -259,26 +274,17 @@ export function TriagePanel({
         label={confirming ? DISMISS_PROMPT[confirming.kind] : 'Dismiss'}
       >
         <div className="flex flex-col gap-4 p-4">
-          <p className="m-0 text-base text-text">
-            {confirming ? DISMISS_PROMPT[confirming.kind] : ''}
-          </p>
+          <div className="flex flex-col gap-1.5">
+            <p className="m-0 text-base text-text">
+              {confirming ? DISMISS_PROMPT[confirming.kind] : ''}
+            </p>
+            <p className="m-0 text-sm text-text-3">
+              It leaves the list now and goes for good when you commit this step.
+            </p>
+          </div>
           <div className="flex justify-end gap-2">
             <Button onClick={() => setConfirming(null)}>Keep it</Button>
-            <Button
-              variant="danger"
-              onClick={() => {
-                if (confirming) {
-                  const id = itemId(confirming)
-                  setDismissed((current) => new Set(current).add(id))
-                  setQuickFix((current) => {
-                    const next = new Set(current)
-                    next.delete(id)
-                    return next
-                  })
-                }
-                setConfirming(null)
-              }}
-            >
+            <Button variant="danger" onClick={dismiss}>
               Dismiss
             </Button>
           </div>
