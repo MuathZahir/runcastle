@@ -18,8 +18,8 @@ import {
 import { relTimeAgo } from '../../lib/format'
 import { useReviewArtifacts } from '../../lib/reviews'
 import { IconBranch, IconCheck } from '../../icons'
-import { Button, SectionTitle } from '../../ui'
-import { EvidenceStage } from '../review/EvidenceStage'
+import { Button, DimLine, SectionTitle } from '../../ui'
+import { EvidenceStage, NO_WALKTHROUGH_RECORDED } from '../review/EvidenceStage'
 import { StatusStrip } from '../review/StatusStrip'
 import { ConversationTranscript } from '../ConversationTranscript'
 import { DocPeek } from '../DocPeek'
@@ -88,24 +88,31 @@ export function ShippedBody({ full }: { full: FeatureFull }) {
         )}
       </div>
 
-      <EvidenceStage
-        featureId={feature.id}
-        branch={feature.branch}
-        recordings={recordings}
-        // No open-work band on this page, so no marker on the scrub bar has a
-        // row to jump to; the recording plays as the record it is.
-        notes={[]}
-        readonly
-        driveState="idle"
-        dryRun={false}
-        failure={null}
-        // Nothing on this page drives, so the stage needs no drive capabilities
-        // — undefined reads as "no dev command", which is what a shipped record
-        // should offer.
-        caps={undefined}
-        starting={false}
-        onStartDrive={() => undefined}
-      />
+      {recordings.length === 0 ? (
+        // Nothing was recorded and nothing on this page can ever record one, so
+        // the stage would be a screen of empty box between the hero and the
+        // strip. The fact is one line, and everything below moves up.
+        <DimLine>{NO_WALKTHROUGH_RECORDED}</DimLine>
+      ) : (
+        <EvidenceStage
+          featureId={feature.id}
+          branch={feature.branch}
+          recordings={recordings}
+          // No open-work band on this page, so no marker on the scrub bar has a
+          // row to jump to; the recording plays as the record it is.
+          notes={[]}
+          readonly
+          driveState="idle"
+          dryRun={false}
+          failure={null}
+          // Nothing on this page drives, so the stage needs no drive
+          // capabilities — undefined reads as "no dev command", which is what a
+          // shipped record should offer.
+          caps={undefined}
+          starting={false}
+          onStartDrive={() => undefined}
+        />
+      )}
 
       <StatusStrip
         artifact={stamped}

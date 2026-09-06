@@ -59,10 +59,13 @@ const RECORDINGS: ReviewArtifacts[] = [
   },
 ]
 
+/** What `useReviewArtifacts` hands the body — emptied by {@link renderUnrecorded}. */
+let artifacts: ReviewArtifacts[] = RECORDINGS
+
 vi.mock('../src/lib/events', () => ({ useEventLog: () => feed }))
 vi.mock('../src/lib/reviews', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../src/lib/reviews')>()),
-  useReviewArtifacts: () => ({ data: RECORDINGS }),
+  useReviewArtifacts: () => ({ data: artifacts }),
 }))
 vi.mock('../src/trpc', () => {
   const mutation = () => ({ mutate: vi.fn(), mutateAsync: vi.fn(), isPending: false })
@@ -124,7 +127,15 @@ const full = (over: Partial<FeatureFull> = {}): FeatureFull =>
 
 const render = (over: Partial<FeatureFull> = {}, events = SHIPPED_FEED): string => {
   feed = events
+  artifacts = RECORDINGS
   return renderToStaticMarkup(createElement(ShippedBody, { full: full(over) }))
+}
+
+/** The feature whose review reported without ever driving: no media to play. */
+const renderUnrecorded = (): string => {
+  feed = SHIPPED_FEED
+  artifacts = []
+  return renderToStaticMarkup(createElement(ShippedBody, { full: full() }))
 }
 
 describe('ShippedBody', () => {
@@ -166,6 +177,22 @@ describe('ShippedBody', () => {
       const html = render()
       expect(html).not.toContain('Annotate')
       expect(html).not.toContain('Open app')
+    })
+
+    /**
+     * An unrecorded feature used to state that fact inside the same 16:9 stage a
+     * recording plays in — a screen of dead space between the hero and the
+     * chips, on a page where no drive can ever fill it.
+     */
+    it('says a walkthrough was never recorded in one line, not a stage', () => {
+      const html = renderUnrecorded()
+      expect(html).toContain('No walkthrough was recorded for this feature')
+      expect(html).not.toContain('aspect-video')
+      expect(html).not.toContain('evidence-stage')
+    })
+
+    it('keeps the full stage for the feature that has media to play', () => {
+      expect(render()).toContain('aspect-video')
     })
   })
 
