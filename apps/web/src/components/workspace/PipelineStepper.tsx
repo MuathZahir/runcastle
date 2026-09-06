@@ -32,12 +32,15 @@ export function PipelineStepper({
   onView: (phase: Phase) => void
 }) {
   return (
-    <div className="mt-4 flex items-center">
+    // Six pills and their connectors do not fit a narrow workspace column, and
+    // a pill cannot shrink below the phase it names — so the row wraps onto a
+    // second line rather than running off the right edge of the header.
+    <div className="mt-4 flex flex-wrap items-center gap-y-1.5">
       {steps.map((s, i) => (
         <Fragment key={s.phase}>
           <button
             className={cx(
-              'inline-flex h-6.5 items-center gap-1.5 rounded-pill border border-transparent px-2.5 text-sm lowercase',
+              'inline-flex h-6.5 shrink-0 items-center gap-1.5 rounded-pill border border-transparent px-2.5 text-sm lowercase',
               'transition-[background-color,color,border-color] duration-(--dur-1)',
               STEP_STATE[s.state],
               s.isViewed && 'border-hairline bg-panel',

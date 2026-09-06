@@ -42,11 +42,16 @@ Single dark theme. There is no light mode and no `dark:` variant.
 
 ### Two things Tailwind does here that will surprise you
 
-- **No preflight.** `theme.css` imports the theme and utilities layers but not
-  Tailwind's base reset, because the reset changes the legacy sheet under it —
-  `ol, ul { list-style: none }` alone strips every markdown bullet. Preflight
-  arrives when the legacy sheet is gone. Until then, do not assume a reset:
-  style what you render.
+- **No preflight — except for two elements.** `theme.css` imports the theme and
+  utilities layers but not Tailwind's base reset, because the reset changes the
+  legacy sheet under it — `ol, ul { list-style: none }` alone strips every
+  markdown bullet. Preflight arrives when the legacy sheet is gone. What
+  `theme.css` hand-writes in the meantime is the one slice a near-black app
+  cannot go without: `button` and `select`, whose user-agent chrome is a light
+  pill and a white listbox. It sits in `@layer base`, so the unlayered legacy
+  sheet and the utilities layer both still beat it. Everything else is
+  un-reset — outside those two elements, do not assume one: style what you
+  render.
 - **Legacy rules beat utilities.** `styles.css` is unlayered and utilities live
   in `@layer utilities`, and unlayered CSS wins over layered CSS whatever the
   specificity. So a utility on an element that still carries a legacy class is

@@ -27,10 +27,10 @@ export function NextStepBar({
 
   return (
     // `flex-wrap` + the copy column's `basis-[26rem]` are decision 30e: the
-    // conflict state mounts the most buttons of any bar, the actions never
-    // shrink, and without a floor the kick/title/desc collapsed to one word
-    // per line in the state that most needs reading. Wide bars are unchanged;
-    // a crowded one wraps the actions to their own row instead.
+    // conflict state mounts the most buttons of any bar, the action buttons
+    // never shrink, and without a floor the kick/title/desc collapsed to one
+    // word per line in the state that most needs reading. Wide bars are
+    // unchanged; a crowded one wraps the actions to their own row instead.
     <div className="flex min-h-24 flex-wrap items-center gap-6 border-b border-hairline bg-panel-2 px-6 py-4">
       {ns.busy && <span className="size-4 animate-spin rounded-pill border-2 border-hairline-strong border-t-accent" />}
       <div className="min-w-0 flex-1 basis-[26rem]">
@@ -51,7 +51,12 @@ export function NextStepBar({
           </div>
         ))}
       </div>
-      <div className="flex shrink-0 items-center gap-2">
+      {/* The group shrinks and wraps; the buttons inside it do not. A group
+          that refused to shrink was sized to its widest possible row — a long
+          branch in the picker beside a secondary and the primary — and ran off
+          the right edge of the workspace, which the frame's hidden overflow
+          then clipped away with no scrollbar to reach it. */}
+      <div className="flex min-w-0 flex-wrap items-center justify-end gap-2">
             {/* `a.disabled` is the reason the server would refuse this action in
                 the current state — shown as the tooltip beside the dead button,
                 so the user reads why instead of hunting for a vanished verb. */}

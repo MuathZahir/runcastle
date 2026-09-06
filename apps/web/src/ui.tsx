@@ -594,7 +594,7 @@ export function Kbd({ children }: { children: ReactNode }) {
 const NOISE_BRANCH = /^(?:runcastle\/|worktree-|afk\/)/
 
 const BRANCH_TRIGGER =
-  'inline-flex h-(--control-h) items-center gap-1.5 rounded-md border px-2.5 font-mono text-sm ' +
+  'inline-flex h-(--control-h) min-w-0 items-center gap-1.5 rounded-md border px-2.5 font-mono text-sm ' +
   'transition-[color,background-color,border-color] duration-(--dur-1) ease-app ' +
   'disabled:cursor-not-allowed disabled:opacity-40'
 
@@ -744,8 +744,13 @@ export function BranchMenu({
         )}
         onClick={() => setOpen((o) => !o)}
       >
-        {prefix} {value ?? '…'}
-        <span aria-hidden className="text-xs text-text-3">
+        {/* A branch name is arbitrarily long and the trigger sits in a header
+            row, so it ellipsizes rather than widening the row past the window
+            — the caret stays, because it is what says this is a menu. */}
+        <span className="truncate">
+          {prefix} {value ?? '…'}
+        </span>
+        <span aria-hidden className="shrink-0 text-xs text-text-3">
           ▾
         </span>
       </button>

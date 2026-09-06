@@ -11,7 +11,9 @@ import type { FeatureListItem } from '../src/lib/api'
  *
  * What is being pinned here is the row's *anatomy* — a two-line clamp on the
  * title, exactly one status chip, the six-segment map, ticket progress only
- * when there are tickets, and no slug anywhere — not its colours.
+ * when there are tickets, and no slug anywhere. Colours are otherwise left
+ * alone; the one exception is the selected state, whose whole point is which
+ * treatment it wears.
  */
 function listItem(over: Partial<FeatureListItem> = {}): FeatureListItem {
   return {
@@ -77,14 +79,34 @@ describe('sidebar feature row', () => {
     expect(withTickets).toContain('4/7 done')
   })
 
+  it('marks the selected row with a tint and a ring, never an accent bar', () => {
+    const html = render(listItem(), true)
+
+    // The same tint every other selected surface in the app wears — the pinned
+    // project row above it, the settings rail's current tab, the run picker.
+    expect(html).toContain('bg-accent-soft')
+    expect(html).toContain('inset-ring-accent-line')
+    // The violet left-border accent is gone. It was the only one in the app,
+    // and an inset ring costs no layout, so unselected rows need no counterpart.
+    expect(html).not.toContain('inset_2px')
+  })
+
+  it('leaves an unselected row untinted and unringed', () => {
+    const html = render(listItem())
+
+    expect(html).not.toContain('bg-accent-soft')
+    expect(html).not.toContain('inset-ring')
+  })
+
   it('renders the six-segment pipeline map with the current phase marked', () => {
     const html = render(listItem({ phase: 'tickets' }))
 
     const segments = html.match(/rounded-\[2px\] [a-z0-9- ]+"/g) ?? []
-    // done · done · current · upcoming · upcoming · upcoming
+    // done · done · current · upcoming · upcoming · upcoming — six flat marks
+    // that differ only in colour, so no state renders a different shape.
     expect(segments).toHaveLength(6)
     expect(segments.filter((s) => s.endsWith('bg-text-4"'))).toHaveLength(2)
     expect(segments.filter((s) => s.endsWith('bg-accent"'))).toHaveLength(1)
-    expect(segments.filter((s) => s.endsWith('bg-panel-3"'))).toHaveLength(3)
+    expect(segments.filter((s) => s.endsWith('bg-hairline"'))).toHaveLength(3)
   })
 })

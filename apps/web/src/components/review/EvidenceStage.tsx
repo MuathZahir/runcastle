@@ -47,6 +47,17 @@ export interface StageDrive {
   devReadyTimedOut?: boolean
 }
 
+/**
+ * What a read-only view says when the review reported without ever driving.
+ *
+ * Exported because the shipped body says it *instead of* mounting the stage: a
+ * page where no drive can ever start has nothing to put in a 16:9 box, so the
+ * sentence is the whole band there (and the stage still says it where a
+ * read-only review view does mount).
+ */
+export const NO_WALKTHROUGH_RECORDED =
+  'No walkthrough was recorded for this feature — the review reported without driving.'
+
 /** Which side of the swap is showing, from the server's one drive-state value. */
 function stageShows(state: DriveState, hasRecording: boolean): 'player' | 'drive' {
   return driveView(state).stageKind === 'player' && hasRecording ? 'player' : 'drive'
@@ -327,7 +338,7 @@ function DriveStage({
     return (
       <div className="text-sm text-text-2">
         {readonly
-          ? 'No walkthrough was recorded for this feature — the review reported without driving.'
+          ? NO_WALKTHROUGH_RECORDED
           : 'No walkthrough yet — the review agent records one when it drives; you can open the app and take your own notes.'}
         {!devConfigured && !readonly && (
           <div className="mt-2 text-text-3">
