@@ -624,7 +624,16 @@ export function Workspace({
   }
 
   return (
-    <section className="workspace">
+    // `overflow-clip`, not `hidden`: the feature view is the app's one unbounded
+    // render surface, and anything that does escape its column must not become
+    // the frame's scrollable overflow. The app frame is `overflow: hidden`, which
+    // hides a scrollbar without removing the scroll — so one focus or
+    // `scrollIntoView` reaching for an escaped element scrolls the WHOLE app,
+    // and the header ends up cut off at the top or the left of the window with
+    // no way to bring it back. `clip` refuses the scroll instead of hiding it,
+    // and unlike `hidden` it creates no scroll container, so the body below
+    // keeps scrolling itself and the bar's branch menu still opens over it.
+    <section className="workspace overflow-clip">
       <FeatureHeader
         feature={feature}
         isDraft={isDraft}
