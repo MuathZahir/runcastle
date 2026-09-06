@@ -9,6 +9,7 @@ export {
   findingOpenReason,
   reviewChecks,
   latestReview,
+  stampedReview,
   freshness,
   statusChips,
   reviewOutcome,

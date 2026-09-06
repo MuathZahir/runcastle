@@ -27,6 +27,7 @@ export function ConflictCard({
   conflict,
   readonly,
   liveSessionId,
+  resolveEnded,
   busy,
   onResolve,
 }: {
@@ -36,6 +37,8 @@ export function ConflictCard({
   readonly: boolean
   /** The terminal the resolve has to close first, or null when none is open. */
   liveSessionId: string | null
+  /** A resolve session has come and gone without the merge landing (30d). */
+  resolveEnded: boolean
   busy: boolean
   onResolve: () => void
 }) {
@@ -69,14 +72,21 @@ export function ConflictCard({
           ))}
         </ul>
       )}
+      {/* The resolve came and went and the card is still here (decision 30d).
+          Detection is best-effort by design — teardown outranks it — so the card
+          says what it can see rather than standing unchanged, which reads as the
+          button having done nothing. Retry stays on the next-step bar. */}
+      {resolveEnded && (
+        <p className="mt-3 mb-0 rounded-sm border border-warn/45 bg-warn/8 px-3 py-2 text-sm leading-relaxed text-warn">
+          The resolve session ended but the merge hasn’t landed — resolve by hand or retry.
+        </p>
+      )}
       <Button variant="solid" className="mt-4" disabled={busy} onClick={onResolve}>
         {liveSessionId ? 'End session & resolve' : 'Resolve with agent'}
       </Button>
       {/* What the compound costs, said before the click — the honesty that
           replaces the button hiding itself. */}
       {liveSessionId && <div className="mt-2 text-xs leading-normal text-text-3">{ONE_TERMINAL_WARNING}</div>}
-      {/* TODO(ticket 11): decision 30d's "the resolve session ended but the merge
-          hasn't landed — resolve by hand or retry" state belongs here. */}
     </div>
   )
 }
@@ -88,12 +98,14 @@ export function ConflictAlert({
   conflict,
   readonly,
   liveSessionId,
+  resolveEnded,
 }: {
   featureId: string
   branch: string
   conflict: MergeConflictState
   readonly: boolean
   liveSessionId: string | null
+  resolveEnded: boolean
 }) {
   const resolve = useResolveConflict(featureId, branch)
 
@@ -103,6 +115,7 @@ export function ConflictAlert({
       conflict={conflict}
       readonly={readonly}
       liveSessionId={liveSessionId}
+      resolveEnded={resolveEnded}
       busy={resolve.pending}
       onResolve={() => void resolve.resolve(conflict, liveSessionId ?? undefined)}
     />

@@ -954,12 +954,19 @@ button {
   border-radius: var(--radius-lg);
   display: flex;
   align-items: center;
+  /* Wrapping is the fix for decision 30e. The conflict bar carries the most
+     buttons of any state (Resolve, Retry Merge & ship, the drive, Iterate, Burn)
+     and `.nextstep-actions` cannot shrink, so on one line they squeezed the
+     kick/title/desc down to one word per line in exactly the state that most
+     needs reading. Now the actions drop to their own row instead. */
+  flex-wrap: wrap;
   gap: 14px;
   padding: 13px 16px;
   animation: fadeUp var(--dur-3) var(--ease-out);
 }
 .nextstep-spin { flex: 0 0 auto; }
-.nextstep-main { flex: 1; min-width: 0; }
+/* Never narrower than a readable measure — below it the actions wrap away. */
+.nextstep-main { flex: 1 1 26rem; min-width: 0; }
 .nextstep-kick {
   font-size: 10px;
   font-weight: 700;
@@ -977,7 +984,7 @@ button {
   line-height: 1.5;
   text-wrap: pretty;
 }
-.nextstep-actions { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
+.nextstep-actions { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; margin-left: auto; }
 
 /* Convergence lives in the bar (ADR-0001 §13.6): remaining map fog as a soft
    warning under the description, and the override's inline reason input. The
@@ -1721,38 +1728,8 @@ details.wp-group-done > summary { cursor: pointer; list-style: revert; }
   animation: pulse 1.4s ease-in-out infinite;
 }
 
-.shipped-hero {
-  max-width: 560px;
-  margin: 36px auto 0;
-  text-align: center;
-  animation: fadeUp var(--dur-3) var(--ease-out);
-}
-.shipped-check {
-  width: 40px;
-  height: 40px;
-  margin: 0 auto;
-  border-radius: 50%;
-  border: 1px solid color-mix(in srgb, var(--ok) 45%, transparent);
-  color: var(--ok);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 17px;
-  animation: popIn var(--dur-3) var(--ease-out);
-}
-.shipped-title { margin-top: 14px; font-size: 16px; font-weight: 600; }
-.shipped-meta {
-  margin-top: 6px;
-  font-family: var(--mono);
-  font-size: 12px;
-  color: var(--text-2);
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-}
-.shipped-sub { margin-top: 10px; font-size: 12.5px; color: var(--text-3); line-height: 1.55; }
-/* the Q&A session shown under the shipped hero — nothing but the hero when quiet */
-.shipped-body { display: flex; flex-direction: column; gap: 18px; }
+/* The shipped body is Tailwind now (decision 37a); this one rule stays because
+   it sizes the still-legacy grill terminal, which the grill flow owns. */
 .shipped-session .grill-term { height: clamp(300px, calc(100dvh - 420px), 1200px); }
 
 .tag.is-draft { color: var(--text-4); }
@@ -2471,37 +2448,6 @@ details.wp-group-done > summary { cursor: pointer; list-style: revert; }
 }
 .settings-clear:hover:not(:disabled) { color: var(--accent-hi); }
 .settings-clear:disabled { opacity: 0.5; cursor: default; }
-
-/* ============================================================================
-   MERGE CONFIRMATION (findings F21)
-   ========================================================================== */
-.peek.merge-dialog { max-width: 460px; }
-/* Merging is the intended ending, not a destructive act — same shape, not red. */
-.merge-dialog-title { color: var(--text); font-size: 13px; font-weight: 600; }
-.merge-dialog-warnings {
-  margin: 0;
-  padding: 10px 12px 10px 26px;
-  border-radius: var(--radius-sm);
-  border: 1px solid color-mix(in srgb, var(--warn, #d9a441) 40%, var(--hairline));
-  background: color-mix(in srgb, var(--warn, #d9a441) 7%, var(--panel-2));
-  color: var(--warn, #d9a441);
-  font-size: 12px;
-  line-height: 1.6;
-}
-.merge-dialog-body { display: flex; flex-direction: column; gap: 16px; }
-.merge-dialog-lead {
-  margin: 0;
-  font-size: 12.5px;
-  line-height: 1.6;
-  color: var(--text-2);
-}
-.merge-dialog-lead strong { color: var(--text); font-weight: 600; }
-.merge-dialog-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-  margin-top: 2px;
-}
 
 /* ============================================================================
    ERROR BOUNDARY / TERMINAL placeholders

@@ -13,6 +13,7 @@ import {
   defaultBaseBranch,
   deferredScope,
   effectivePhase,
+  freshness,
   isReadonlyView,
   lapAbort,
   latestRun,
@@ -22,15 +23,17 @@ import {
   ONE_TERMINAL_ITERATE,
   PHASE_LABELS,
   pipelineSteps,
-  reviewOutcome,
   specDocPath,
+  stampedReview,
   testDriveTaken,
   unresolvedMergeConflict,
+  verificationState,
   type ActionKind,
   type DraftBaseMissing,
   type LapAbort,
   type MergeConflictState,
 } from '../lib/feature-ui'
+import { useReviewArtifacts } from '../lib/reviews'
 import { useResolveConflict } from '../lib/use-resolve-conflict'
 import { useSuccessSettle } from '../lib/use-success-settle'
 import { IconBranch } from '../icons'
@@ -88,11 +91,15 @@ export function Workspace({
   const events = useEventLog(featureId)
   const conflict = unresolvedMergeConflict(events)
   const driveTaken = testDriveTaken(events)
-  // Commits from git, for the confirmation's summary (same key as the review
-  // body's read — one fetch between them).
-  const commits = trpc.feature.commitCount.useQuery(
+  // Commit and file scale from git, for the confirmation's "what lands" row
+  // (decision 31a) — the base it reports is also the branch the dialog names.
+  // Only at review, where the dialog that reports it is: every earlier phase
+  // would be paying for two git reads whose answer it has nowhere to put
+  // (research still-open 24).
+  const atReview = q.data?.feature.phase === 'review'
+  const delta = trpc.feature.mergeDelta.useQuery(
     { featureId },
-    { refetchInterval: useLivePoll(5000) },
+    { refetchInterval: useLivePoll(5000), enabled: atReview },
   )
   // Test-drive notes, for the confirmation's open-notes line — same query key the
   // review body's checklist reads, so the two share one fetch. The open ones are
@@ -103,7 +110,7 @@ export function Workspace({
   // (research still-open 24), a timer per surface for rows nothing on screen was
   // showing; the SSE feed invalidates both keys whatever the phase.
   const poll = useLivePoll()
-  const reviewPoll = q.data?.feature.phase === 'review' ? poll : (false as const)
+  const reviewPoll = atReview ? poll : (false as const)
   const notes = trpc.notes.list.useQuery({ featureId }, { refetchInterval: reviewPoll })
   const openNoteRows = notes.data?.filter((n) => n.status === 'open') ?? []
   const openNotes = notes.data ? openNoteRows.length : undefined
@@ -117,13 +124,18 @@ export function Workspace({
   )
   const openDefectRows = findings.data?.openDefects ?? []
   const openDefects = findings.data?.summary.open
-  // What the review agent made of this branch, for the confirmation's status
-  // line — the same two reads the review card derives it from, so the dialog
-  // cannot report a different review than the screen behind it.
-  const review = reviewOutcome({
-    tickets: q.data?.tickets,
-    findings: findings.data?.findings.length,
-  })
+  // How fresh the review evidence is, for the confirmation's review row
+  // (decision 19d). The same artifacts listing and the same stamp the review
+  // page's status strip reads, so the dialog and the screen behind it cannot
+  // vouch for different builds — the walked bug was a green merge row over a
+  // review of a build that fix tickets had already replaced.
+  const artifacts = useReviewArtifacts(featureId, atReview)
+  const stamped = stampedReview(artifacts.data ?? [])
+  const reviewFreshness = freshness(
+    stamped,
+    { landedSince: stamped?.landedSince ?? 0, lap: q.data?.feature.lap ?? 1 },
+    verificationState(q.data?.tickets ?? []),
+  )
   const [confirmMerge, setConfirmMerge] = useState(false)
   // The Iterate door is open, stamped with the moment it opened so a note
   // written while it stands is marked as having arrived (decision 26f).
@@ -667,17 +679,29 @@ export function Workspace({
         <MergeFeatureDialog
           title={feature.title}
           branch={feature.branch}
-          base={commits.data?.base}
+          base={delta.data?.base}
           summary={mergeSummary({
-            commitCount: commits.data?.count,
-            run,
+            branch: feature.branch,
+            ...(delta.data?.base ? { base: delta.data.base } : {}),
+            ...(delta.data ? { delta: delta.data } : {}),
+            tickets: full.tickets,
+            lap: feature.lap,
             driveTaken,
             openNotes,
-            review,
+            freshness: reviewFreshness,
+            conflict,
             laterLaps,
           })}
           busy={merge.isPending}
+          resolving={resolveConflict.pending}
           onConfirm={runMerge}
+          // The same act as the conflict card's button, through the same hook —
+          // the dialog cannot brief the resolve agent differently (decision 29).
+          onResolve={
+            conflict
+              ? () => void resolveConflict.resolve(conflict, liveSession?.id ?? undefined)
+              : undefined
+          }
           onCancel={() => setConfirmMerge(false)}
         />
       )}

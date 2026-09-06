@@ -36,9 +36,17 @@ export const REVIEW_ARTIFACTS_KEY = 'review-artifacts'
  * What this feature's reviews left behind. No `refetchInterval`: the SSE feed
  * invalidates this key like every other live surface, and a video listing that
  * changes once per burn has nothing to poll for.
+ *
+ * `enabled` is for the readers that only sometimes have somewhere to put the
+ * answer — the workspace shell stamps the merge dialog's review row from this,
+ * and only at review is there a merge dialog to open.
  */
-export function useReviewArtifacts(featureId: string): UseQueryResult<ReviewArtifacts[], Error> {
+export function useReviewArtifacts(
+  featureId: string,
+  enabled = true,
+): UseQueryResult<ReviewArtifacts[], Error> {
   return useQuery({
+    enabled,
     queryKey: [REVIEW_ARTIFACTS_KEY, featureId],
     queryFn: async (): Promise<ReviewArtifacts[]> => {
       const res = await fetch(reviewArtifactsUrl(featureId))

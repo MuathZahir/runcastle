@@ -178,7 +178,9 @@ export function lapChip(
   return { label: `Lap ${feature.lap} · ${landed} of ${implementation.length} tickets landed`, story, promotedFromEarlier }
 }
 
-const noun = (count: number, singular: string) => `${count} ${singular}${count === 1 ? '' : 's'}`
+/** "1 ticket" / "3 tickets" — the pluralised count these summaries are made of. */
+export const noun = (count: number, singular: string): string =>
+  `${count} ${singular}${count === 1 ? '' : 's'}`
 
 export function triageFooter(input: {
   quickFix: number

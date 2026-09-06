@@ -116,4 +116,35 @@ describe('StatusStrip', () => {
     expect(html).toContain('href="#full-accounts"')
     expect(html).toContain('<details')
   })
+
+  /**
+   * The shipped record's own strip (decision 33a). Same chips, one page later:
+   * the lap is history rather than a position, the drive is a statement rather
+   * than an instruction, and there is no open-work band below to anchor into.
+   */
+  describe('on a shipped feature', () => {
+    it('states what shipped rather than where the feature stands', () => {
+      const html = render({ shipped: true })
+      expect(html).toContain('Shipped after 2 laps')
+      expect(html).not.toContain('tickets landed')
+    })
+
+    it('states the drive that was taken, and the lap it was taken in', () => {
+      expect(render({ shipped: true, driveLap: 2 })).toContain('test drive taken · lap 2')
+    })
+
+    it('says so when the branch was never driven', () => {
+      expect(render({ shipped: true, driveLap: null })).toContain('never test-driven')
+    })
+
+    it('leaves the drive unsaid where the stage is the one reporting it', () => {
+      expect(render()).not.toContain('test drive')
+    })
+
+    it('anchors nowhere — the bands it points at are not on that page', () => {
+      const html = render({ shipped: true })
+      expect(html).not.toContain('href="#open-work"')
+      expect(html).not.toContain('href="#full-accounts"')
+    })
+  })
 })

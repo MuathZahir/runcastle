@@ -73,6 +73,16 @@ function ChipAnchor({ chip, href }: { chip: StatusChip; href: string }) {
   )
 }
 
+/** A chip that is only a statement — nothing on this page to open or go to. */
+function ChipStatic({ chip }: { chip: StatusChip }) {
+  return (
+    <span className={`${CHIP_BASE} ${CHIP_TONE[chip.tone]}`}>
+      <Dot tone={chip.tone} />
+      {chip.label}
+    </span>
+  )
+}
+
 export function StatusStrip({
   artifact,
   currentLap,
@@ -84,6 +94,8 @@ export function StatusStrip({
   lap,
   laterLaps,
   readonly,
+  driveLap,
+  shipped = false,
 }: {
   /** The latest COMPLETED review pass, or null when none has finished. */
   artifact: Pick<ReviewArtifactFigure, 'lap'> | null
@@ -98,6 +110,14 @@ export function StatusStrip({
   /** The scope this spec deliberately deferred, in the spec's own words. */
   laterLaps: string | null
   readonly: boolean
+  /** The lap the branch was last driven in; omit where the strip is not to say. */
+  driveLap?: number | null
+  /**
+   * The shipped record's own strip: the lap chip states what shipped rather than
+   * where the feature stands, and the chips are statements — the open-work and
+   * full-accounts bands this strip anchors into are not on that page.
+   */
+  shipped?: boolean
 }) {
   const chips = statusChips({
     artifact,
@@ -107,16 +127,28 @@ export function StatusStrip({
     checks: { passed: checks.filter((row) => row.tone === 'ok').length, total: checks.length },
     runState,
     ...(verification ? { verification } : {}),
+    ...(driveLap === undefined ? {} : { driveLap }),
+    shipped,
   })
 
   return (
     <div className="flex flex-wrap items-center gap-2">
       {chips.map((chip) => {
         switch (chip.key) {
+          case 'drive':
+            return <ChipStatic key={chip.key} chip={chip} />
           case 'review':
-            return <ChipAnchor key={chip.key} chip={chip} href="#open-work" />
+            return shipped ? (
+              <ChipStatic key={chip.key} chip={chip} />
+            ) : (
+              <ChipAnchor key={chip.key} chip={chip} href="#open-work" />
+            )
           case 'run':
-            return <ChipAnchor key={chip.key} chip={chip} href="#full-accounts" />
+            return shipped ? (
+              <ChipStatic key={chip.key} chip={chip} />
+            ) : (
+              <ChipAnchor key={chip.key} chip={chip} href="#full-accounts" />
+            )
           case 'checks':
             return (
               <ChipDisclosure key={chip.key} chip={chip}>

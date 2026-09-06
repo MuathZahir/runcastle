@@ -121,6 +121,7 @@ function bands(readonly: boolean): ReactNode[] {
       conflict: { base: 'main', files: ['index.html'], at: 1 },
       readonly,
       liveSessionId: null,
+      resolveEnded: true,
     }),
     createElement(LapAbortAlert, {
       key: 'abort',
