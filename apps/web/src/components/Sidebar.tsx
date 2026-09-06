@@ -511,6 +511,13 @@ const MINI_SEG_CLASS = {
  *
  * The chip slot holds exactly one thing and `rowChip` picks it; this renders
  * that decision without making one of its own.
+ *
+ * Selected is a tint and a ring, not the violet left-hand bar it used to be:
+ * that bar was the only one of its kind in the app, while `bg-accent-soft` is
+ * what every other selected surface wears — the project row directly above,
+ * the settings rail's current tab, the run picker's current run. The ring is
+ * `inset-ring`, so a selected row is the same size as an unselected one and
+ * the rest of the lane needs no transparent counterpart to hold its place.
  */
 export function FeatureRow({
   f,
@@ -534,7 +541,7 @@ export function FeatureRow({
   return (
     <div
       className={`relative mb-0.5 flex items-center rounded-md transition-colors duration-(--dur-1) ease-app ${
-        active ? 'bg-accent-soft shadow-[inset_2px_0_0_var(--color-accent)]' : 'hover:bg-panel-3'
+        active ? 'bg-accent-soft inset-ring-1 inset-ring-accent-line' : 'hover:bg-panel-3'
       } ${dimmed ? 'opacity-70 hover:opacity-100' : ''}`}
     >
       <button
