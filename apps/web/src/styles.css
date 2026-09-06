@@ -1744,71 +1744,9 @@ details.wp-group-done > summary { cursor: pointer; list-style: revert; }
 /* ============================================================================
    PHASE BODY — review + shipped
    ========================================================================== */
-.review-card {
-  border: 1px solid var(--hairline);
-  border-radius: var(--radius-lg);
-  background: var(--panel-2);
-  padding: 14px 16px;
-}
-/* What the review found, in one computed line under the digest, with the
-   observations beneath it — the wall of ~200-word notes this replaces is the
-   whole reason the feature exists. */
-.findings-summary {
-  margin-top: 12px;
-  padding-bottom: 12px;
-  border-bottom: 1px solid var(--hairline-soft);
-}
-.findings-counts { font-family: var(--mono); font-size: 11.5px; color: var(--text-2); }
-.findings-observations { margin: 8px 0 0; padding: 0; list-style: none; }
-.findings-observations > li + li { margin-top: 6px; }
-/* the still-open defects: title + severity + why, detail one click away */
-.findings-card { max-width: 1000px; margin-top: 14px; }
-.findings-list { margin-top: 12px; display: flex; flex-direction: column; }
-.finding-row { padding: 8px 0; border-top: 1px solid var(--hairline-soft); }
-.finding-row:first-child { border-top: none; }
-.finding-head { display: flex; align-items: center; gap: 10px; }
-.finding-title { flex: 1; min-width: 0; font-size: 12.5px; color: var(--text); text-wrap: pretty; }
-/* why this one is still the human's problem — over the cap, or a fix that failed */
-.finding-why {
-  flex: 0 1 auto;
-  font-family: var(--mono);
-  font-size: 11px;
-  color: var(--warn, #d9a441);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.finding-actions { flex: 0 0 auto; opacity: 0; transition: opacity var(--dur-1); }
-.finding-row:hover .finding-actions,
-.finding-row:focus-within .finding-actions { opacity: 1; }
-/* the disclosure both findings and notes hide their detail behind */
-.finding-detail,
-.note-more { min-width: 0; }
-.finding-detail > summary,
-.note-more > summary {
-  cursor: pointer;
-  font-size: 12.5px;
-  color: var(--text-2);
-  text-wrap: pretty;
-}
-.finding-detail > summary { font-size: 12px; color: var(--text-3); margin-top: 4px; }
-.finding-body { margin-top: 6px; font-size: 12px; line-height: 1.55; color: var(--text-2); }
-.finding-body > p { margin: 0 0 6px; text-wrap: pretty; }
-.finding-where,
-.finding-cite,
-.finding-repro { font-family: var(--mono); font-size: 11px; color: var(--text-3); }
-.note-rest {
-  margin-top: 6px;
-  font-size: 12px;
-  line-height: 1.55;
-  color: var(--text-2);
-  white-space: pre-wrap;
-  text-wrap: pretty;
-}
-
 /* Both outlived the review rebuild that owned them: `.drive-pulse` is now only
-   preparation's dry-run row, and `.drive-copy` only the notes inbox and the
-   address-notes dialog, which are tickets 8 and 10's to retire. */
+   preparation's dry-run row, and `.drive-copy` only the address-notes dialog,
+   which is ticket 10's to retire. */
 .drive-pulse {
   width: 8px;
   height: 8px;
@@ -1818,85 +1756,10 @@ details.wp-group-done > summary { cursor: pointer; list-style: revert; }
 }
 .drive-copy { margin-top: 12px; color: var(--text-2); font-size: 12.5px; line-height: 1.55; text-wrap: pretty; }
 
-/* the findings inbox — capture box + lap-grouped checklist (decisions.md #11) */
-.notes-card { max-width: 1000px; margin-top: 14px; }
-.notes-head { display: flex; align-items: baseline; gap: 10px; }
-/* Where triage went, now that the rows no longer carry it themselves. */
-.notes-hint { margin-top: 8px; font-size: 12px; color: var(--text-3); text-wrap: pretty; }
-.notes-hint strong { color: var(--text-2); font-weight: 500; }
-.notes-form { display: flex; align-items: center; gap: 8px; margin-top: 14px; }
-.notes-input {
-  flex: 1;
-  min-width: 0;
-  height: 32px;
-  background: var(--panel-inset);
-  border: 1px solid var(--hairline);
-  border-radius: var(--radius);
-  color: var(--text);
-  padding: 0 12px;
-  font-size: 12.5px;
-  outline: none;
-  font-family: inherit;
-  transition: border-color var(--dur-1);
-}
-.notes-input:focus { border-color: var(--accent); }
-.notes-list { margin-top: 12px; display: flex; flex-direction: column; }
-.note-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 7px 0;
-  border-top: 1px solid var(--hairline-soft);
-}
-.note-row:first-child { border-top: none; }
+/* All that is left of the notes inbox: the address-notes dialog's own rows still
+   spell these two, and go with it when ticket 10 retires that dialog. */
 .note-check { accent-color: var(--accent); width: 13px; height: 13px; flex: 0 0 13px; }
-/* promoted notes are frozen — the arrow stands where the checkbox would be */
-.note-frozen { width: 13px; flex: 0 0 13px; text-align: center; color: var(--text-3); }
-/* an annotated note's frame, at a size that says "there is a picture here" and
-   leaves the row a row — the full PNG is one click away */
-.note-shot { flex: 0 0 auto; display: block; line-height: 0; }
-.note-shot img {
-  display: block;
-  max-height: 34px;
-  max-width: 60px;
-  border: 1px solid var(--hairline);
-  border-radius: 3px;
-  background: #000;
-}
-.note-shot:hover img { border-color: var(--accent); }
-/* the moment an annotated note was taken from — a control where there is a
-   player to send anywhere (decisions #12), and a label where there is not */
-.note-at {
-  flex: 0 0 auto;
-  padding: 0;
-  border: none;
-  background: none;
-  font-family: var(--mono);
-  font-size: 11px;
-  color: var(--text-3);
-  transition: color var(--dur-1);
-}
-button.note-at { cursor: pointer; }
-button.note-at:hover { color: var(--accent); }
 .note-text { flex: 1; min-width: 0; font-size: 12.5px; color: var(--text); text-wrap: pretty; }
-.note-row.is-done .note-text { color: var(--text-3); text-decoration: line-through; }
-.note-row.is-promoted .note-text { color: var(--text-2); }
-.note-ticket {
-  flex: 0 1 auto;
-  max-width: 40%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-family: var(--mono);
-  font-size: 11px;
-  color: var(--text-3);
-}
-/* actions stay out of the way until the row is under the cursor */
-.note-actions { display: flex; gap: 4px; flex: 0 0 auto; opacity: 0; transition: opacity var(--dur-1); }
-.note-row:hover .note-actions,
-.note-row:focus-within .note-actions { opacity: 1; }
-/* an open editor's Save/Cancel are the row's whole point — never hover-gated */
-.note-row.is-editing .note-actions { opacity: 1; }
 
 /* The shipped body is Tailwind now (decision 37a); this one rule stays because
    it sizes the still-legacy grill terminal, which the grill flow owns. */

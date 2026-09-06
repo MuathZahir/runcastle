@@ -8,6 +8,8 @@ export type ActionKind =
   | 'cancelRun' // run.cancel
   | 'testDriveStart' // feature.testDrive { action: 'start' }
   | 'testDriveStop' // feature.testDrive { action: 'stop' }
+  | 'stopDriveAndIterate' // feature.testDrive { action: 'stop' }, then feature.rethink
+  | 'fixDrive' // feature.fixDrive — an agent repairs the environment a drive's setup died in
   | 'merge' // feature.merge (G5)
   | 'askQuestions' // launchSession { kind: 'qa' }
   | 'revisit' // launchSession { kind: 'revisit' } — resume the old conversation, amend docs + tickets
@@ -41,6 +43,13 @@ export interface NextAction {
    * click teaches nothing (findings F3).
    */
   disabled?: string
+  /**
+   * The one click that clears {@link disabled} and takes this road anyway —
+   * rendered on the reason line beside the dead button (decision 20). Iterate
+   * during a test drive is the case it exists for: "Stop the test drive first"
+   * was a true sentence and a dead end, and the escape makes it a button.
+   */
+  escape?: NextAction
 }
 
 export interface NextStep {

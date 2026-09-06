@@ -1,4 +1,4 @@
-import { useRef } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { trpc } from '../../trpc'
 import type { FeatureFull, SettingsView } from '../../lib/api'
 import type { DriveState as BrowserDrive } from '../../lib/workspace'
@@ -25,7 +25,7 @@ import { SessionPanel } from '../SessionPanel'
 import { ConflictAlert } from '../review/ConflictCard'
 import { EvidenceStage } from '../review/EvidenceStage'
 import { FullAccounts } from '../review/FullAccounts'
-import { OpenWorkSlot } from '../review/OpenWorkSlot'
+import { OpenWork } from '../review/OpenWork'
 import { StatusStrip } from '../review/StatusStrip'
 import type { WalkthroughHandle } from '../WalkthroughPlayer'
 
@@ -52,12 +52,15 @@ export function ReviewBody({
   driving,
   conflict,
   readonly = false,
+  onViewPhase,
 }: {
   full: FeatureFull
   driving: BrowserDrive | null
   conflict: MergeConflictState | null
   /** Looking back at review on a shipped feature — history, not work. */
   readonly?: boolean
+  /** Go and look at another phase — how a defect reaches the lane fixing it. */
+  onViewPhase?: (phase: 'implementation') => void
 }) {
   const { feature, tickets, runs } = full
   const toast = useToast()
@@ -129,6 +132,29 @@ export function ReviewBody({
   // player writes its seek in here while it is mounted, and the rows call
   // whatever is in it. Nothing fills it when no recording is on the stage.
   const walkthroughHandle = useRef<WalkthroughHandle | null>(null)
+  // Which recording the stage is actually playing, so a note's timestamp is a
+  // live jump only into its own recording (decision 22). The stage reports it
+  // rather than the ref answering, because a ref does not re-render its readers.
+  const [staged, setStaged] = useState<{ ticketId: string } | null>(null)
+  // The other direction of a jump (decision 25b): a marker click marks the notes
+  // taken at that moment, and a fresh capture scrolls its new row into view.
+  // Both fade after a beat — a permanent mark would read as a selection.
+  const [spotlight, setSpotlight] = useState<{ ids: string[]; scrollTo: string | null }>({
+    ids: [],
+    scrollTo: null,
+  })
+  useEffect(() => {
+    if (spotlight.ids.length === 0) return
+    const timer = setTimeout(() => setSpotlight({ ids: [], scrollTo: null }), 2000)
+    return () => clearTimeout(timer)
+  }, [spotlight])
+
+  const jumpTo = useCallback((seconds: number): void => {
+    walkthroughHandle.current?.seek(seconds)
+    // The playhead must never move off screen — the walked jump seeked a player
+    // sitting above the fold and looked like nothing happened.
+    document.getElementById('evidence-stage')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }, [])
 
   return (
     <div className="flex flex-col gap-6">
@@ -151,13 +177,16 @@ export function ReviewBody({
         drive={ownDrive}
         dryRun={drive.data?.dryRun ?? false}
         failure={driveFailure(ownDrive, { sessionLive: !!liveSession })}
-        devConfigured={caps?.dev ?? false}
+        caps={caps}
         // The one drive slot is taken — by this feature, another one, or a
         // preparation dry run — or this browser has a start in flight the server
         // poll has not caught up with yet.
         starting={startDrive.isPending || !!driving || !!drive.data}
         onStartDrive={() => startDrive.mutate({ featureId: feature.id, action: 'start' })}
         handleRef={walkthroughHandle}
+        onStageRecording={setStaged}
+        onMarkerClick={(noteIds) => setSpotlight({ ids: noteIds, scrollTo: null })}
+        onAnnotationSaved={(noteId) => setSpotlight({ ids: [noteId], scrollTo: noteId })}
       />
 
       {/* The alert slot (decision 18a): interruptions render between the stage
@@ -197,7 +226,7 @@ export function ReviewBody({
         readonly={readonly}
       />
 
-      <OpenWorkSlot
+      <OpenWork
         featureId={feature.id}
         lap={feature.lap}
         tickets={tickets}
@@ -206,8 +235,24 @@ export function ReviewBody({
         summary={findings.data?.summary}
         openDefects={findings.data?.openDefects ?? []}
         readonly={readonly}
-        onJump={
-          recordings.length > 0 ? (seconds) => walkthroughHandle.current?.seek(seconds) : undefined
+        onStage={staged}
+        onSeek={jumpTo}
+        highlight={spotlight.ids}
+        scrollTo={spotlight.scrollTo}
+        onViewLane={
+          onViewPhase
+            ? (ticketId) => {
+                onViewPhase('implementation')
+                // Best effort: the run body has to mount before its lanes exist,
+                // so the scroll waits a frame. Landing on the run view is the
+                // part that matters; the scroll is the courtesy on top.
+                requestAnimationFrame(() =>
+                  document
+                    .getElementById(`lane-${ticketId}`)
+                    ?.scrollIntoView({ behavior: 'smooth', block: 'center' }),
+                )
+              }
+            : undefined
         }
       />
 

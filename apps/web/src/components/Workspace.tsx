@@ -285,6 +285,12 @@ export function Workspace({
     },
     onError: (e) => toast.push(e.message),
   })
+  // An agent sent at the environment a drive's setup command died in — the
+  // stage offers the same launch from inside the failure it explains.
+  const fixDrive = trpc.feature.fixDrive.useMutation({
+    onSuccess: invalidate,
+    onError: (e) => toast.push(e.message),
+  })
   const testDrive = trpc.feature.testDrive.useMutation({
     onSuccess: (res) => {
       // A drive takes and releases the branch and stamps the timeline; the bar
@@ -407,6 +413,10 @@ export function Workspace({
   const isDriving = driving?.featureId === feature.id
   const ns = nextStep(full, {
     driving: isDriving,
+    // The server's own drive state, scoped to THIS feature (decision 20) — the
+    // same value the evidence stage renders from, so the bar and the stage can
+    // no longer derive drive truth separately and disagree.
+    driveState: driveQ.data?.featureId === feature.id ? driveQ.data.state : 'idle',
     mapContent: mapQ.data?.content,
     conflict,
     unverifiedDriveKeys: unverifiedDriveKeys((prepQ.data as PrepView | undefined)?.findings ?? []),
@@ -443,6 +453,7 @@ export function Workspace({
     merge.isPending ||
     promoteNotes.isPending ||
     fixDefects.isPending ||
+    fixDrive.isPending ||
     unarchive.isPending ||
     resolveConflict.pending
 
@@ -508,6 +519,28 @@ export function Workspace({
             },
           },
         )
+        break
+      // The escape off Iterate's own refusal (decision 20): the lap's worktree
+      // needs the branch the drive is holding, so the stop has to land before
+      // the lap starts. Iterate is `rethink` today; ticket 10 replaces what it
+      // opens with the triage door, and this dispatch follows it there.
+      case 'stopDriveAndIterate':
+        testDrive.mutate(
+          { featureId, action: 'stop' },
+          {
+            onSuccess: () => {
+              invalidate()
+              onDriveChange(null)
+              rethink.mutate({ featureId })
+            },
+          },
+        )
+        break
+      // A drive whose setup command died: an agent reads the failure on the
+      // human's machine and repairs the environment, with the branch left
+      // checked out because that is the state it needs.
+      case 'fixDrive':
+        fixDrive.mutate({ featureId })
         break
       // The click opens the confirmation; `runMerge` below is what actually
       // merges (findings F21 — the pipeline's most irreversible action had no
@@ -696,6 +729,7 @@ export function Workspace({
               readonly={readonly}
               mapRailCollapsed={mapRailCollapsed}
               onToggleMapRail={onToggleMapRail}
+              onViewPhase={onViewPhase}
             />
           )}
         </div>
@@ -713,6 +747,7 @@ function PhaseBody({
   readonly,
   mapRailCollapsed,
   onToggleMapRail,
+  onViewPhase,
 }: {
   effective: Phase
   full: FeatureFull
@@ -722,6 +757,7 @@ function PhaseBody({
   readonly: boolean
   mapRailCollapsed: boolean
   onToggleMapRail: () => void
+  onViewPhase: (phase: Phase | null) => void
 }) {
   switch (effective) {
     case 'ideation':
@@ -748,7 +784,17 @@ function PhaseBody({
         <TicketsBody featureId={full.feature.id} readonly={readonly} />
       )
     case 'review':
-      return <ReviewBody full={full} driving={driving} conflict={conflict} readonly={readonly} />
+      return (
+        <ReviewBody
+          full={full}
+          driving={driving}
+          conflict={conflict}
+          readonly={readonly}
+          // A defect being fixed links to its lane, which lives in the run view
+          // one phase back (decision 18c).
+          onViewPhase={onViewPhase}
+        />
+      )
     case 'shipped':
       return <ShippedBody full={full} />
   }
