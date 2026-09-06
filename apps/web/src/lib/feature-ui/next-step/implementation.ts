@@ -1,9 +1,22 @@
+import { burnLabel } from '../laps'
 import { burnExpectation } from '../run'
 import type { NextStep } from './types'
 import type { ResolverInput } from './resolver-input'
 
 export function resolveImplementation(input: ResolverInput): NextStep {
-  const { ctx, live, resumableGrill, ticketCount: t, done, failed, pending, run, running } = input
+  const {
+    full,
+    ctx,
+    live,
+    resumableGrill,
+    ticketCount: t,
+    done,
+    failed,
+    pending,
+    pendingTickets,
+    run,
+    running,
+  } = input
   // What the burn is about to cost, from this project's finished tickets
   // (decision #16b). Said on both roads into a burn — the first one and the
   // resume — because the human is answering the same question at both.
@@ -53,7 +66,9 @@ export function resolveImplementation(input: ResolverInput): NextStep {
       kick: 'NEXT STEP',
       title: pending === 1 ? 'Review & burn the ticket' : 'Review & burn the tickets',
       desc: `Read the card — edit it if it is not quite right — then burn it into commits. ${expectation}`,
-      primary: { label: `Burn ${t} ticket${t === 1 ? '' : 's'}`, kind: 'burn' },
+      // Whose tickets these are, when laps mix (decision 28a) — the burn takes
+      // every pending ticket on the branch, and the count alone never said so.
+      primary: { label: burnLabel(pendingTickets, full.feature.lap), kind: 'burn' },
       secondary: live ? [] : [{ label: 'Revisit', kind: 'revisit' }],
       busy: false,
     }

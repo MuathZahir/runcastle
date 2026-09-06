@@ -14,9 +14,8 @@ export type ActionKind =
   | 'askQuestions' // launchSession { kind: 'qa' }
   | 'revisit' // launchSession { kind: 'revisit' } — resume the old conversation, amend docs + tickets
   | 'resolveConflict' // launchSession { kind: 'revisit', kickoffLine: mergeConflictKickoff(…) }
-  | 'rethink' // feature.rethink — start the next lap (review → ideation)
-  | 'addressNotes' // opens the triage fork over the open notes (promote or iterate)
-  | 'fixDefects' // findings.fixOpenDefects — a fix ticket per open review defect, then burn
+  | 'rethink' // feature.rethink — start the next lap with nothing to triage first
+  | 'iterate' // opens the triage step over the open notes and defects (decision 21)
   | 'unarchive' // feature.unarchive — restore an archived feature to its lane (next-step bar)
 
 /**

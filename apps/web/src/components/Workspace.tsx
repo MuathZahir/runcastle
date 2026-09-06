@@ -32,8 +32,8 @@ import {
 import { useResolveConflict } from '../lib/use-resolve-conflict'
 import { useSuccessSettle } from '../lib/use-success-settle'
 import { IconBranch } from '../icons'
-import { AddressNotesDialog } from './AddressNotesDialog'
 import { MergeFeatureDialog } from './MergeFeatureDialog'
+import { TriageStep, type TriageSelection } from './review/TriageStep'
 import { DraftBody } from './bodies/DraftBody'
 import { GrillBody } from './bodies/GrillBody'
 import { ReviewBody } from './bodies/ReviewBody'
@@ -94,7 +94,7 @@ export function Workspace({
   )
   // Test-drive notes, for the confirmation's open-notes line — same query key the
   // review body's checklist reads, so the two share one fetch. The open ones are
-  // also what the bar's Address-notes triage acts on (decisions.md #11).
+  // also what the Iterate door triages (decision 21).
   // Both this and the findings read below are review-phase data: everything that
   // consumes them — the merge confirmation, the bar's Iterate triage, the review
   // page's own bands — only exists at review. They used to poll in every phase
@@ -106,14 +106,14 @@ export function Workspace({
   const openNoteRows = notes.data?.filter((n) => n.status === 'open') ?? []
   const openNotes = notes.data ? openNoteRows.length : undefined
   // The review agent's findings, counted server-side (findings joined to their
-  // fix tickets) — the bar's Fix primary acts on exactly the rows the review
-  // body lists, because both read this one query key. Review agents no longer
-  // write test notes at all, so `openNotes` above is the human's own inbox and
-  // nothing else.
+  // fix tickets) — the triage step lists exactly the rows the review body lists,
+  // because both read this one query key. Review agents no longer write test
+  // notes at all, so `openNotes` above is the human's own inbox and nothing else.
   const findings = trpc.findings.listByFeature.useQuery(
     { featureId },
     { refetchInterval: reviewPoll },
   )
+  const openDefectRows = findings.data?.openDefects ?? []
   const openDefects = findings.data?.summary.open
   // What the review agent made of this branch, for the confirmation's status
   // line — the same two reads the review card derives it from, so the dialog
@@ -123,8 +123,16 @@ export function Workspace({
     findings: findings.data?.findings.length,
   })
   const [confirmMerge, setConfirmMerge] = useState(false)
-  // The Address-notes triage fork is open (decisions.md #11).
-  const [addressing, setAddressing] = useState(false)
+  // The Iterate door is open, stamped with the moment it opened so a note
+  // written while it stands is marked as having arrived (decision 26f).
+  const [triaging, setTriaging] = useState<number | null>(null)
+  // What the triage step's footer owes the human: fix tickets from earlier laps
+  // that will burn along with whatever is minted here (decision 26d). Read only
+  // while the door is open — it is one number on one screen.
+  const triagePreview = trpc.notes.triagePreview.useQuery(
+    { featureId },
+    { enabled: triaging !== null },
+  )
   // The next-step bar warns about remaining fog on a mapped feature, which lives
   // in the map doc's prose — same query key as the map rail's read, so the two
   // share one fetch.
@@ -239,32 +247,14 @@ export function Workspace({
     },
     onError: (e) => toast.push(e.message),
   })
-  // The triage fork's quick-fix road: the whole selection in ONE mutation, so
-  // the tickets appear together and the notes list is frozen once, not per note.
-  const promoteNotes = trpc.notes.promoteMany.useMutation({
-    onSuccess: ({ tickets }) => {
-      invalidate()
-      void utils.notes.list.invalidate({ featureId })
-      setAddressing(false)
-      toast.push(`${tickets.length} fix ticket${tickets.length === 1 ? '' : 's'} added`, 'success')
-    },
-    onError: (e) => toast.push(e.message),
-  })
-  // The review's still-open defects, in one click and no dialog (decisions #7):
-  // the server mints a fix ticket for each on this lap and starts the burn, so
-  // the only thing left to do here is snap the view back to live.
-  const fixDefects = trpc.findings.fixOpenDefects.useMutation({
-    onSuccess: ({ tickets }) => {
-      invalidate()
-      void utils.findings.listByFeature.invalidate({ featureId })
-      onViewPhase(null)
-      toast.push(
-        `${tickets.length} fix ticket${tickets.length === 1 ? '' : 's'} burning`,
-        'success',
-      )
-    },
-    onError: (e) => toast.push(e.message),
-  })
+  // The Iterate door's commit (decision 26): the whole triage in ONE mutation —
+  // tickets minted, dismissals deleted, everything left carried into the next
+  // lap — so the list is frozen once rather than per row, and the road out is
+  // taken after it lands.
+  const triage = trpc.notes.triage.useMutation()
+  // A defect is dismissed through the findings service, which owns that state;
+  // the notes mutation above only knows about notes.
+  const dismissDefect = trpc.findings.dismiss.useMutation()
   const cancel = trpc.run.cancel.useMutation({
     onSuccess: () => {
       invalidate()
@@ -422,13 +412,13 @@ export function Workspace({
   // same event feed as the conflict — one poll for all of it. Handed to the
   // review body, which renders it in the alert slot beside the conflict card.
   const abortedLap = lapAbort(events)
-  // Why the triage fork's rethink road cannot fire, read off the bar's OWN
-  // Iterate action rather than re-derived: the dialog must not disagree with the
-  // button beside it about whether the lap session can start.
-  const iterateAction = ns.secondary.find((a) => a.kind === 'rethink')
-  const iterateBlocked = iterateAction
-    ? iterateAction.disabled
-    : 'One terminal per feature — end the live session first.'
+  // Why the triage step's lap road cannot fire. The quick-fix road only writes
+  // ticket rows, so nothing takes it away; the conversation needs the one
+  // terminal this feature gets, which is the reason the step states beside its
+  // primary rather than letting the server refuse it after the fact.
+  const iterateBlocked = liveSession
+    ? 'One terminal per feature — end the live session first.'
+    : undefined
   const busy =
     start.isPending ||
     launch.isPending ||
@@ -439,11 +429,42 @@ export function Workspace({
     cancel.isPending ||
     testDrive.isPending ||
     merge.isPending ||
-    promoteNotes.isPending ||
-    fixDefects.isPending ||
+    triage.isPending ||
+    dismissDefect.isPending ||
     fixDrive.isPending ||
     unarchive.isPending ||
     resolveConflict.pending
+
+  // One door forward (decision 21). With something open, Iterate opens the
+  // triage step; with nothing open the step is skipped entirely and the lap
+  // starts empty-handed. The resolver picks its action kind off the same two
+  // counts, so the bar and this click cannot disagree — and both roads land
+  // here, so the escape off a test drive takes the same door.
+  const enterIterate = () => {
+    if ((openNotes ?? 0) + (openDefects ?? 0) > 0) setTriaging(Date.now())
+    else rethink.mutate({ featureId })
+  }
+
+  // Commit the triage, then take the road it chose: everything quick-fixed burns
+  // on the spot, anything carried opens lap N+1's conversation with those notes
+  // in it. Dismissed defects go first — the notes mutation only knows notes —
+  // and the whole thing is awaited so the burn cannot start before its tickets
+  // exist.
+  const commitTriage = async (selection: TriageSelection) => {
+    const { dismissFindingIds, ...notesTriage } = selection
+    try {
+      for (const findingId of dismissFindingIds) await dismissDefect.mutateAsync({ findingId })
+      await triage.mutateAsync({ featureId, ...notesTriage })
+      setTriaging(null)
+      invalidate()
+      void utils.notes.list.invalidate({ featureId })
+      void utils.findings.listByFeature.invalidate({ featureId })
+      if (selection.carry) rethink.mutate({ featureId })
+      else burn.mutate({ featureId })
+    } catch (e) {
+      toast.push(e instanceof Error ? e.message : String(e))
+    }
+  }
 
   const runAction = (kind: ActionKind, reason?: string) => {
     switch (kind) {
@@ -464,7 +485,8 @@ export function Workspace({
         launch.mutate({ featureId, kind: 'revisit' })
         break
       case 'rethink':
-        rethink.mutate({ featureId })
+      case 'iterate':
+        enterIterate()
         break
       case 'converge':
         converge.mutate({ featureId })
@@ -509,9 +531,8 @@ export function Workspace({
         )
         break
       // The escape off Iterate's own refusal (decision 20): the lap's worktree
-      // needs the branch the drive is holding, so the stop has to land before
-      // the lap starts. Iterate is `rethink` today; ticket 10 replaces what it
-      // opens with the triage door, and this dispatch follows it there.
+      // needs the branch the drive is holding — and the triage commit is refused
+      // for the same reason — so the stop has to land before the door opens.
       case 'stopDriveAndIterate':
         testDrive.mutate(
           { featureId, action: 'stop' },
@@ -519,7 +540,7 @@ export function Workspace({
             onSuccess: () => {
               invalidate()
               onDriveChange(null)
-              rethink.mutate({ featureId })
+              enterIterate()
             },
           },
         )
@@ -535,19 +556,6 @@ export function Workspace({
       // confirmation at all).
       case 'merge':
         setConfirmMerge(true)
-        break
-      // Triage for the findings inbox: the dialog offers the fork (promote the
-      // quick fixes, or start the lap session on all of them) — this click only
-      // opens it, exactly as `merge` opens its confirmation.
-      case 'addressNotes':
-        setAddressing(true)
-        break
-      // The review's own findings never enter that dialog (decisions #7): one
-      // click fixes every open defect, with nothing to confirm and nothing to
-      // choose — the whole point is that the human's arrival at review costs
-      // them one line read and one button.
-      case 'fixDefects':
-        fixDefects.mutate({ featureId })
         break
       // Resolve a recorded merge conflict: a revisit session briefed to merge the
       // base into this branch in the talk worktree — the same launch the conflict
@@ -670,17 +678,20 @@ export function Workspace({
         />
       )}
 
-      {addressing && (
-        <AddressNotesDialog
+      {/* The one door forward from review (decision 21): every open note and
+          defect in front of the human at the moment they choose. */}
+      {triaging !== null && (
+        <TriageStep
+          lap={feature.lap}
           notes={openNoteRows}
-          busy={promoteNotes.isPending || rethink.isPending}
+          defects={openDefectRows}
+          standing={triagePreview.data?.standingFixTickets ?? []}
+          openedAt={triaging}
+          busy={busy}
+          readonly={readonly}
           iterateBlocked={iterateBlocked}
-          onPromote={(noteIds) => promoteNotes.mutate({ noteIds })}
-          onIterate={() => {
-            setAddressing(false)
-            runAction('rethink')
-          }}
-          onCancel={() => setAddressing(false)}
+          onCommit={(selection) => void commitTriage(selection)}
+          onClose={() => setTriaging(null)}
         />
       )}
 

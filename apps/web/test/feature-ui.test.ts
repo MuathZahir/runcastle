@@ -470,11 +470,14 @@ describe('nextStep at review', () => {
     ticketStatuses?: TicketStatus[]
     sessionLive?: boolean
     lap?: number
+    /** Which lap each ticket belongs to, when the pending work spans laps. */
+    ticketLaps?: number[]
     runs?: { id: string; status: string; startedAt: number }[]
   }): FeatureFull => {
     const tickets = (opts.ticketStatuses ?? []).map((status, i) => ({
       id: `t${i}`,
       status,
+      lap: opts.ticketLaps?.[i] ?? opts.lap ?? 1,
       commits: [],
     }))
     const sessions = opts.sessionLive ? [{ id: 's1', status: 'live', kind: 'revisit' }] : []
@@ -502,12 +505,25 @@ describe('nextStep at review', () => {
     expect(ns.secondary).toContainEqual({ label: 'Iterate', kind: 'rethink' })
   })
 
-  it('hides Iterate while a session is live (one terminal per feature)', () => {
+  // Shown with its reason rather than vanishing (findings F3). With nothing open
+  // to triage the click is only the conversation, and one terminal per feature
+  // is exactly why it cannot start — so that sentence is the button's.
+  it('disables Iterate while a session is live and nothing is open to triage', () => {
     const ns = nextStep(reviewFull({ sessionLive: true }), { driving: false })
-    expect(labels(ns.secondary)).not.toContain('Iterate')
-    // Merge & ship + test drive remain available throughout.
     expect(ns.primary?.label).toBe('Merge & ship')
-    expect(labels(ns.secondary)).toEqual(['Start test drive'])
+    expect(labels(ns.secondary)).toEqual(['Start test drive', 'Iterate'])
+    expect(ns.secondary).toContainEqual({
+      label: 'Iterate',
+      kind: 'rethink',
+      disabled: 'One terminal per feature — end the live session first',
+    })
+  })
+
+  // ...but the door itself is not the conversation: its quick-fix road only
+  // writes ticket rows, so a live session cannot take it away.
+  it('keeps Iterate live-clickable when there is open work to triage', () => {
+    const ns = nextStep(reviewFull({ sessionLive: true }), { driving: false, openNotes: 2 })
+    expect(ns.primary).toEqual({ label: 'Iterate', kind: 'iterate' })
   })
 
   it('disables Iterate while the test drive holds the branch, with the reason', () => {
@@ -579,13 +595,13 @@ describe('nextStep at review', () => {
     })
   })
 
-  it('hides Iterate but still promotes Burn when a session is live with pending tickets', () => {
+  it('still promotes Burn when a session is live with pending tickets', () => {
     const ns = nextStep(
       reviewFull({ ticketStatuses: ['pending'], sessionLive: true }),
       { driving: false },
     )
     expect(ns.primary).toEqual({ label: 'Burn 1 ticket', kind: 'burn' })
-    expect(labels(ns.secondary)).toEqual(['Merge & ship', 'Start test drive'])
+    expect(labels(ns.secondary)).toEqual(['Merge & ship', 'Start test drive', 'Iterate'])
   })
 
   it('keeps the test-drive toggle and Merge & ship available while driving', () => {
@@ -682,6 +698,8 @@ describe('nextStep at review', () => {
         'Retry Merge & ship',
         'Burn 1 ticket',
         'Start test drive',
+        // Shown with the one-terminal reason rather than vanishing (findings F3).
+        'Iterate',
       ])
     })
 
@@ -822,55 +840,99 @@ describe('nextStep at review', () => {
   })
 
   /**
-   * Ticket 4 / decisions.md #11 — triage moved out of the notes panel (which was
-   * making the human mint tickets one click at a time) into ONE bar action that
-   * offers the fork: batch-promote the quick fixes, or start the lap session.
+   * Ticket 10 / decision 21 — the bar's forward choices collapse to two:
+   * Merge & ship, or Iterate. "Address notes" and "Fix N open defects" were the
+   * same decision ("this isn't ready") entered through two more doors, with the
+   * fork duplicated inside one of them; the triage step behind Iterate is where
+   * that choice is made now, once, over the whole list.
    */
-  describe('with open notes to address', () => {
-    const ADDRESS: NextAction = { label: 'Address notes', kind: 'addressNotes' }
-
-    it('offers Address notes when open notes stand', () => {
-      const ns = nextStep(reviewFull({}), { driving: false, openNotes: 3 })
-      expect(labels(ns.secondary)).toEqual(['Start test drive', 'Address notes', 'Iterate'])
-      expect(ns.secondary).toContainEqual(ADDRESS)
-    })
-
-    it('says nothing when every note is handled', () => {
-      for (const openNotes of [0, undefined]) {
-        const ns = nextStep(reviewFull({}), { driving: false, openNotes })
+  describe('the one door forward', () => {
+    it('offers exactly Merge & ship and Iterate, and neither retired verb', () => {
+      for (const ctx of [
+        { driving: false },
+        { driving: false, openNotes: 3 },
+        { driving: false, openDefects: 2 },
+        { driving: false, openNotes: 1, openDefects: 1 },
+      ]) {
+        const ns = nextStep(reviewFull({}), ctx)
+        const kinds = [ns.primary, ...ns.secondary].map((a) => a?.kind)
+        expect(kinds).toContain('merge')
+        expect(labels([ns.primary!, ...ns.secondary])).toContain('Iterate')
+        expect(kinds).not.toContain('addressNotes')
+        expect(kinds).not.toContain('fixDefects')
         expect(labels(ns.secondary)).not.toContain('Address notes')
       }
     })
 
-    // The two fixes the fork leads to are both still reachable from a bar that is
-    // already saying something else — a burn to run, a conflict to resolve.
-    it('rides along on the fix-ticket and conflict bars too', () => {
-      const burning = nextStep(reviewFull({ ticketStatuses: ['pending'] }), {
-        driving: false,
-        openNotes: 1,
-      })
-      expect(burning.primary?.kind).toBe('burn')
-      expect(burning.secondary).toContainEqual(ADDRESS)
-
-      const conflicted = nextStep(reviewFull({}), {
-        driving: false,
-        openNotes: 1,
-        conflict: { base: 'main', files: ['a.ts'], at: 1 },
-      })
-      expect(conflicted.primary?.kind).toBe('resolveConflict')
-      expect(conflicted.secondary).toContainEqual(ADDRESS)
+    // Nothing open to triage: the step would be an empty list, so it is skipped
+    // and the click is the lap itself.
+    it('goes straight to the lap when nothing is open', () => {
+      for (const ctx of [
+        { driving: false },
+        { driving: false, openNotes: 0, openDefects: 0 },
+      ]) {
+        const ns = nextStep(reviewFull({}), ctx)
+        expect(ns.secondary).toContainEqual({ label: 'Iterate', kind: 'rethink' })
+      }
     })
 
-    // Promoting notes writes ticket rows; it neither opens a terminal nor wants
-    // the branch, so neither a live session nor a drive can take it away. The
-    // fork's OTHER road (Iterate) is what those states constrain, in the dialog.
-    it('stays offered while a session is live and while the drive holds the branch', () => {
-      expect(
-        nextStep(reviewFull({ sessionLive: true }), { driving: false, openNotes: 2 }).secondary,
-      ).toContainEqual(ADDRESS)
-      expect(nextStep(reviewFull({}), { driving: true, openNotes: 2 }).secondary).toContainEqual(
-        ADDRESS,
-      )
+    it('opens the triage step when notes or defects stand', () => {
+      for (const ctx of [
+        { driving: false, openNotes: 3 },
+        { driving: false, openDefects: 1 },
+        { driving: false, openNotes: 1, openDefects: 2 },
+      ]) {
+        expect(nextStep(reviewFull({}), ctx).primary).toEqual({ label: 'Iterate', kind: 'iterate' })
+      }
+    })
+
+    it('makes answering the open work the primary, with Merge one click below', () => {
+      const ns = nextStep(reviewFull({}), { driving: false, openNotes: 2, openDefects: 3 })
+      expect(ns.title).toBe('Answer what is still open')
+      expect(ns.desc).toContain('3 defects the review found and 2 notes you wrote')
+      expect(labels(ns.secondary)).toEqual(['Merge & ship', 'Start test drive'])
+      // Open work is information, never a block: the demoted merge is not nagged about.
+      expect(ns.warning).toBeUndefined()
+    })
+
+    it('says one of each in the singular', () => {
+      const ns = nextStep(reviewFull({}), { driving: false, openDefects: 1 })
+      expect(ns.desc).toContain('1 defect the review found is still open')
+    })
+
+    // A burn already queued must not lose its button to the door that queues more.
+    it('keeps Burn reachable when fix tickets are already waiting', () => {
+      const ns = nextStep(reviewFull({ ticketStatuses: ['pending'] }), {
+        driving: false,
+        openDefects: 1,
+      })
+      expect(ns.primary?.kind).toBe('iterate')
+      expect(ns.secondary).toContainEqual({ label: 'Burn 1 ticket', kind: 'burn' })
+    })
+
+    // The one rule that outranks everything review says (findings F8).
+    it('never outranks a standing merge conflict', () => {
+      const ns = nextStep(reviewFull({}), {
+        driving: false,
+        openNotes: 2,
+        openDefects: 2,
+        conflict: { base: 'main', files: ['a.ts'], at: 1 },
+      })
+      expect(ns.primary?.kind).toBe('resolveConflict')
+      expect(ns.secondary).toContainEqual({ label: 'Iterate', kind: 'iterate' })
+    })
+
+    // The drive holds the branch the lap worktree needs, and the server refuses
+    // the triage commit for the same reason — so the door itself waits, with the
+    // one click that clears it (decision 20).
+    it('keeps the drive’s refusal and its escape on the door', () => {
+      const ns = nextStep(reviewFull({}), { driving: true, openNotes: 2 })
+      expect(ns.primary).toEqual({
+        label: 'Iterate',
+        kind: 'iterate',
+        disabled: 'Stop the test drive first — the branch is checked out',
+        escape: { label: 'Stop drive and iterate', kind: 'stopDriveAndIterate' },
+      })
     })
   })
 
@@ -945,79 +1007,38 @@ describe('nextStep at review', () => {
       expect(ns.primary?.kind).toBe('resolveConflict')
     })
 
-    it('keeps the notes triage alongside it', () => {
+    // Open work outranks it: the deferred scope is next lap's, and what is open
+    // is this one's — the door in front of the human triages both at once.
+    it('yields to open work — this lap is not answered yet', () => {
       const ns = nextStep(reviewFull({}), { driving: false, laterLaps, openNotes: 2 })
-      expect(ns.secondary).toContainEqual({ label: 'Address notes', kind: 'addressNotes' })
+      expect(ns.primary).toEqual({ label: 'Iterate', kind: 'iterate' })
+      expect(ns.title).toBe('Answer what is still open')
     })
   })
 
   /**
-   * Review findings are fixed in-run, decisions #7 — the human's decision on
-   * arrival at review must be one line read and one click, never "what do I do
-   * now". Defects the run could not close (over the auto-fix cap, or a fix
-   * ticket that failed) take the primary; Merge & ship stays one click away and
-   * is never nagged about.
+   * Decision 28a — burning takes every pending ticket on the branch, across
+   * laps, which is correct (ADR-0010 accumulates them); the count alone never
+   * said whose they were.
    */
-  describe('with defects the review left open', () => {
-    it('makes fixing them the primary and drops Merge & ship to a secondary', () => {
-      const ns = nextStep(reviewFull({}), { driving: false, openDefects: 3 })
-      expect(ns.primary).toEqual({ label: 'Fix 3 open defects', kind: 'fixDefects' })
-      expect(labels(ns.secondary)).toEqual(['Merge & ship', 'Start test drive', 'Iterate'])
-      // Information, never a block: the demoted merge carries no warning of its own.
-      expect(ns.warning).toBeUndefined()
+  describe('the Burn count says whose tickets it burns', () => {
+    it('names the carried laps when the pending work spans them', () => {
+      const ns = nextStep(
+        reviewFull({
+          lap: 2,
+          ticketStatuses: ['pending', 'pending', 'pending'],
+          ticketLaps: [2, 1, 1],
+        }),
+        { driving: false },
+      )
+      expect(ns.primary?.label).toBe('Burn 3 tickets — 1 from lap 2 · 2 carried from lap 1')
     })
 
-    it('says one defect in the singular', () => {
-      const ns = nextStep(reviewFull({}), { driving: false, openDefects: 1 })
-      expect(ns.primary?.label).toBe('Fix 1 open defect')
-      expect(ns.desc).toContain('1 defect')
-    })
-
-    it('behaves exactly as today with nothing open', () => {
-      for (const openDefects of [0, undefined]) {
-        const ns = nextStep(reviewFull({}), { driving: false, openDefects })
-        expect(ns.primary).toEqual({ label: 'Merge & ship', kind: 'merge' })
-      }
-    })
-
-    it('outranks the deferred-scope flip — this lap is not done yet', () => {
-      const ns = nextStep(reviewFull({}), {
+    it('stays a plain count when every pending ticket is this lap’s', () => {
+      const ns = nextStep(reviewFull({ ticketStatuses: ['pending', 'pending'] }), {
         driving: false,
-        openDefects: 2,
-        laterLaps: '- the conversation inspector',
       })
-      expect(ns.primary?.kind).toBe('fixDefects')
-    })
-
-    // The one rule that outranks everything review says (findings F8).
-    it('never outranks a standing merge conflict', () => {
-      const ns = nextStep(reviewFull({}), {
-        driving: false,
-        openDefects: 2,
-        conflict: { base: 'main', files: ['a.ts'], at: 1 },
-      })
-      expect(ns.primary?.kind).toBe('resolveConflict')
-      expect(ns.secondary.map((a) => a.kind)).not.toContain('fixDefects')
-    })
-
-    // A burn already queued must not lose its button to the one that queues more.
-    it('keeps Burn reachable when fix tickets are already waiting', () => {
-      const ns = nextStep(reviewFull({ ticketStatuses: ['pending'] }), {
-        driving: false,
-        openDefects: 1,
-      })
-      expect(ns.primary?.kind).toBe('fixDefects')
-      expect(ns.secondary).toContainEqual({ label: 'Burn 1 ticket', kind: 'burn' })
-    })
-
-    it('keeps the drive toggle and the notes triage alongside it', () => {
-      const ns = nextStep(reviewFull({}), { driving: true, openDefects: 2, openNotes: 1 })
-      expect(labels(ns.secondary)).toEqual([
-        'Merge & ship',
-        'Stop test drive',
-        'Address notes',
-        'Iterate',
-      ])
+      expect(ns.primary?.label).toBe('Burn 2 tickets')
     })
   })
 })
@@ -2342,6 +2363,7 @@ describe('nextStep at implementation', () => {
       tickets: (opts.ticketStatuses ?? ['pending']).map((status, i) => ({
         id: `t${i}`,
         status,
+        lap: 1,
         commits: [],
       })),
       sessions: opts.sessionLive ? [{ id: 's1', status: 'live', kind: 'revisit' }] : [],

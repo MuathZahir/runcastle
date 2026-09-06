@@ -35,6 +35,8 @@ export interface ResolverInput {
   done: number
   failed: number
   pending: number
+  /** The pending rows themselves, for the Burn label's lap breakdown (#28a). */
+  pendingTickets: FeatureFull['tickets']
   run: FeatureFull['runs'][number] | undefined
   running: boolean
   nextName: Phase | null
