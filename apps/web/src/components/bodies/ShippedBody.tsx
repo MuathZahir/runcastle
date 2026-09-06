@@ -18,7 +18,7 @@ import {
 import { relTimeAgo } from '../../lib/format'
 import { useReviewArtifacts } from '../../lib/reviews'
 import { IconBranch, IconCheck } from '../../icons'
-import { Button, DimLine, SectionTitle } from '../../ui'
+import { Button, SectionTitle } from '../../ui'
 import { EvidenceStage } from '../review/EvidenceStage'
 import { StatusStrip } from '../review/StatusStrip'
 import { ConversationTranscript } from '../ConversationTranscript'
@@ -174,7 +174,18 @@ function QaHistory({ sessions }: { sessions: FeatureFull['sessions'] }) {
 
 function QaRow({ session }: { session: FeatureFull['sessions'][number] }) {
   const [open, setOpen] = useState(false)
-  const recorded = !session.transcriptMissing
+  const when = session.createdAt === undefined ? null : relTimeAgo(session.createdAt)
+
+  // Nothing to open: the row IS the record, so it is a statement rather than a
+  // control that refuses to do anything (decisions #10 — no disabled affordances).
+  if (session.transcriptMissing) {
+    return (
+      <div className="flex items-center gap-3 rounded-md border border-hairline bg-panel px-3 py-2.5">
+        <span className="flex-1 text-base text-text-3">session opened · nothing recorded</span>
+        {when && <span className="font-mono text-xs text-text-3">{when}</span>}
+      </div>
+    )
+  }
 
   return (
     <div className="rounded-md border border-hairline bg-panel">
@@ -182,31 +193,17 @@ function QaRow({ session }: { session: FeatureFull['sessions'][number] }) {
         type="button"
         className="flex w-full cursor-pointer items-center gap-3 border-0 bg-transparent px-3 py-2.5 text-left"
         aria-expanded={open}
-        disabled={!recorded}
         onClick={() => setOpen((was) => !was)}
       >
-        <span className={`flex-1 text-base ${recorded ? 'text-text' : 'text-text-3'}`}>
-          {recorded
-            ? (session.title ?? 'Conversation')
-            : 'session opened · nothing recorded'}
+        <span className="flex-1 text-base text-text">{session.title ?? 'Conversation'}</span>
+        {when && <span className="font-mono text-xs text-text-3">{when}</span>}
+        <span className="font-mono text-xs text-text-3" aria-hidden="true">
+          {open ? '▾' : '▸'}
         </span>
-        {session.createdAt !== undefined && (
-          <span className="font-mono text-xs text-text-3">{relTimeAgo(session.createdAt)}</span>
-        )}
-        {recorded && (
-          <span className="font-mono text-xs text-text-3" aria-hidden="true">
-            {open ? '▾' : '▸'}
-          </span>
-        )}
       </button>
-      {open && recorded && (
+      {open && (
         <div className="border-t border-hairline p-3">
           <ConversationTranscript sessionId={session.id} />
-        </div>
-      )}
-      {!recorded && (
-        <div className="border-t border-hairline px-3 py-2">
-          <DimLine>the runtime captured no conversation for this session.</DimLine>
         </div>
       )}
     </div>

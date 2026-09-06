@@ -1,6 +1,7 @@
 import type { TicketKind } from '@runcastle/core'
 import type { FeatureFull } from '../api'
 import type { MergeConflictState } from './gates'
+import { noun } from './laps'
 import { parseMapSections } from './map'
 import type { CheckRow, Freshness } from './review'
 
@@ -104,8 +105,6 @@ interface MergeTicketFigure {
   lap: number
 }
 
-const count = (n: number, singular: string): string => `${n} ${singular}${n === 1 ? '' : 's'}`
-
 /**
  * What actually lands (decision 31a). Commits AND files, because the scale a
  * human senses is "nine files changed", not a commit count — and because a
@@ -114,10 +113,10 @@ const count = (n: number, singular: string): string => `${n} ${singular}${n === 
 function landsRow(delta: { commits?: number; files?: number } | undefined): CheckRow {
   const key = 'what lands'
   if (delta?.commits === undefined) return { key, value: 'scale unknown', tone: 'warn' }
-  const files = delta.files === undefined ? [] : [count(delta.files, 'file')]
+  const files = delta.files === undefined ? [] : [noun(delta.files, 'file')]
   return {
     key,
-    value: [count(delta.commits, 'commit'), ...files].join(' · '),
+    value: [noun(delta.commits, 'commit'), ...files].join(' · '),
     tone: delta.commits > 0 ? 'ok' : 'warn',
   }
 }
@@ -228,16 +227,16 @@ export function mergeSummary(input: {
   // human logged and never handled is the moment worth catching, but someone who
   // judged their open notes shippable must not be stopped.
   const open = input.openNotes ?? 0
-  if (open > 0) warnings.push(`${count(open, 'open test-drive note')}.`)
+  if (open > 0) warnings.push(`${noun(open, 'open test-drive note')}.`)
   const waived = tickets.filter((t) => t.kind !== 'review' && t.status === 'cancelled').length
   if (waived > 0) {
-    warnings.push(`${count(waived, 'ticket')} waived — set aside unfinished, not delivered.`)
+    warnings.push(`${noun(waived, 'ticket')} waived — set aside unfinished, not delivered.`)
   }
   // The debt decision 26(d) surfaces at triage, surfaced again at the last door:
   // these tickets exist, have never burned, and merging leaves them behind.
   for (const debt of standingFixTickets(tickets, input.lap ?? 1)) {
     warnings.push(
-      `${count(debt.count, 'unburned fix ticket')} from lap ${debt.lap} — merging leaves them behind.`,
+      `${noun(debt.count, 'unburned fix ticket')} from lap ${debt.lap} — merging leaves them behind.`,
     )
   }
   const stale = staleEvidenceWarning(input.freshness)
