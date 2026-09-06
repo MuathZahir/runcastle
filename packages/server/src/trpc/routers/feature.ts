@@ -1,4 +1,4 @@
-import { MergeBranchPair, SessionKind, SessionPurpose } from '@runcastle/core'
+import { MergeBranchPair, SessionKind, SessionPurpose, unresolvedMergeConflict } from '@runcastle/core'
 import * as z from 'zod'
 import {
   converge,
@@ -9,7 +9,7 @@ import {
   workWaypoint,
 } from '../../launcher/launcher'
 import { lapKickoff } from '../../launcher/sessions'
-import { emit } from '../../services/events'
+import { emit, listAfter } from '../../services/events'
 import * as features from '../../services/features'
 import { overrideGate, undoGateOverride } from '../../services/gates'
 import * as git from '../../services/git'
@@ -223,6 +223,13 @@ export const featureRouter = router({
       return git.reviewCommitCount(projectForFeature(ctx, feature), feature)
     }),
 
+  mergeDelta: publicProcedure
+    .input(z.object({ featureId: z.string() }))
+    .query(({ ctx, input }) => {
+      const feature = getFeatureRow(ctx, input.featureId)
+      return git.mergeDelta(projectForFeature(ctx, feature), feature)
+    }),
+
   // B2 behavior — the git stub throws; the success path (set phase shipped) is
   // wired now so B2 only fills in `mergeFeature`.
   merge: publicProcedure
@@ -237,13 +244,17 @@ export const featureRouter = router({
       if (git.activeTestDriveFeatureId() === feature.id) {
         await git.testDrive(ctx, project, feature, 'stop')
       }
-      // Regenerate the feature's outcome.md and commit it onto the feature
-      // branch first, so the account of what was done rides into the base
-      // branch with the merge (decision 6). On the conflict path below the
-      // commit simply stays on the branch — the retry regenerates it anyway.
-      await promoteOutcomeDoc(ctx, project, feature)
+      const delta = await git.mergeDelta(project, feature)
+      const standingConflict = unresolvedMergeConflict(listAfter(ctx, feature.id, 0))
       const res = await git.mergeFeature(project, feature)
       if (res.ok) {
+        if (standingConflict) {
+          emit(ctx, input.featureId, {
+            type: 'merge.resolved',
+            message: 'conflict retired by the merge',
+          })
+        }
+        await promoteOutcomeDoc(ctx, project, feature, res.target, delta)
         setPhase(ctx, input.featureId, 'shipped', 'feature.shipped', `merged to ${res.target}`)
         setFeatureStatus(ctx, input.featureId, 'shipped')
       } else {

@@ -13,28 +13,35 @@ import {
   defaultBaseBranch,
   deferredScope,
   effectivePhase,
+  freshness,
   isReadonlyView,
-  lapBanner,
+  lapAbort,
   latestRun,
   mapDocPath,
   mergeSummary,
   nextStep,
+  ONE_TERMINAL_ITERATE,
+  PHASE_LABELS,
   phaseFacts,
   phaseSummary,
   pipelineSteps,
-  reviewOutcome,
   specDocPath,
+  stampedReview,
   testDriveTaken,
   unresolvedMergeConflict,
+  verificationState,
   type ActionKind,
   type DraftBaseMissing,
+  type LapAbort,
   type MergeConflictState,
 } from '../lib/feature-ui'
+import { useReviewArtifacts } from '../lib/reviews'
 import { useResolveConflict } from '../lib/use-resolve-conflict'
+import { useSuccessSettle } from '../lib/use-success-settle'
 import { docPath, useFeatureDoc } from '../lib/use-feature-doc'
 import { IconBranch } from '../icons'
-import { AddressNotesDialog } from './AddressNotesDialog'
 import { MergeFeatureDialog } from './MergeFeatureDialog'
+import { TriageStep, type TriageSelection } from './review/TriageStep'
 import { DraftBody } from './bodies/DraftBody'
 import { GrillBody } from './bodies/grill/GrillBody'
 import { PinnedBody } from './bodies/PinnedBody'
@@ -43,7 +50,6 @@ import { ShippedBody } from './bodies/ShippedBody'
 import { TicketsBody } from './bodies/tickets/TicketsBody'
 import { RunBody } from './bodies/RunBody'
 import { FeatureCrash, UnrecognizedPhase } from './workspace/FeaturePanes'
-import { LapBannerRow } from './workspace/LapBannerRow'
 import { NextStepBar } from './workspace/NextStepBar'
 import { PipelineStepper } from './workspace/PipelineStepper'
 import { ReadonlyBanner } from './workspace/ReadonlyBanner'
@@ -94,38 +100,62 @@ export function Workspace({
   const events = useEventLog(featureId)
   const conflict = unresolvedMergeConflict(events)
   const driveTaken = testDriveTaken(events)
-  // Commits from git, for the confirmation's summary (same key as the review
-  // body's read — one fetch between them).
-  const commits = trpc.feature.commitCount.useQuery(
+  // Commit and file scale from git, for the confirmation's "what lands" row
+  // (decision 31a) — the base it reports is also the branch the dialog names.
+  // Only at review, where the dialog that reports it is: every earlier phase
+  // would be paying for two git reads whose answer it has nowhere to put
+  // (research still-open 24).
+  const atReview = q.data?.feature.phase === 'review'
+  const delta = trpc.feature.mergeDelta.useQuery(
     { featureId },
-    { refetchInterval: useLivePoll(5000) },
+    { refetchInterval: useLivePoll(5000), enabled: atReview },
   )
   // Test-drive notes, for the confirmation's open-notes line — same query key the
   // review body's checklist reads, so the two share one fetch. The open ones are
-  // also what the bar's Address-notes triage acts on (decisions.md #11).
-  const notes = trpc.notes.list.useQuery({ featureId }, { refetchInterval: useLivePoll() })
+  // also what the Iterate door triages (decision 21).
+  // Both this and the findings read below are review-phase data: everything that
+  // consumes them — the merge confirmation, the bar's Iterate triage, the review
+  // page's own bands — only exists at review. They used to poll in every phase
+  // (research still-open 24), a timer per surface for rows nothing on screen was
+  // showing; the SSE feed invalidates both keys whatever the phase.
+  const poll = useLivePoll()
+  const reviewPoll = atReview ? poll : (false as const)
+  const notes = trpc.notes.list.useQuery({ featureId }, { refetchInterval: reviewPoll })
   const openNoteRows = notes.data?.filter((n) => n.status === 'open') ?? []
   const openNotes = notes.data ? openNoteRows.length : undefined
   // The review agent's findings, counted server-side (findings joined to their
-  // fix tickets) — the bar's Fix primary acts on exactly the rows the review
-  // body lists, because both read this one query key. Review agents no longer
-  // write test notes at all, so `openNotes` above is the human's own inbox and
-  // nothing else.
+  // fix tickets) — the triage step lists exactly the rows the review body lists,
+  // because both read this one query key. Review agents no longer write test
+  // notes at all, so `openNotes` above is the human's own inbox and nothing else.
   const findings = trpc.findings.listByFeature.useQuery(
     { featureId },
-    { refetchInterval: useLivePoll() },
+    { refetchInterval: reviewPoll },
   )
+  const openDefectRows = findings.data?.openDefects ?? []
   const openDefects = findings.data?.summary.open
-  // What the review agent made of this branch, for the confirmation's status
-  // line — the same two reads the review card derives it from, so the dialog
-  // cannot report a different review than the screen behind it.
-  const review = reviewOutcome({
-    tickets: q.data?.tickets,
-    findings: findings.data?.findings.length,
-  })
+  // How fresh the review evidence is, for the confirmation's review row
+  // (decision 19d). The same artifacts listing and the same stamp the review
+  // page's status strip reads, so the dialog and the screen behind it cannot
+  // vouch for different builds — the walked bug was a green merge row over a
+  // review of a build that fix tickets had already replaced.
+  const artifacts = useReviewArtifacts(featureId, atReview)
+  const stamped = stampedReview(artifacts.data ?? [])
+  const reviewFreshness = freshness(
+    stamped,
+    { landedSince: stamped?.landedSince ?? 0, lap: q.data?.feature.lap ?? 1 },
+    verificationState(q.data?.tickets ?? []),
+  )
   const [confirmMerge, setConfirmMerge] = useState(false)
-  // The Address-notes triage fork is open (decisions.md #11).
-  const [addressing, setAddressing] = useState(false)
+  // The Iterate door is open, stamped with the moment it opened so a note
+  // written while it stands is marked as having arrived (decision 26f).
+  const [triaging, setTriaging] = useState<number | null>(null)
+  // What the triage step's footer owes the human: fix tickets from earlier laps
+  // that will burn along with whatever is minted here (decision 26d). Read only
+  // while the door is open — it is one number on one screen.
+  const triagePreview = trpc.notes.triagePreview.useQuery(
+    { featureId },
+    { enabled: triaging !== null },
+  )
   // The next-step bar warns about remaining fog on a mapped feature, which lives
   // in the map doc's prose — same query key as the map rail's read, so the two
   // share one fetch.
@@ -157,6 +187,14 @@ export function Workspace({
     { enabled: !!projectId, refetchInterval: useLivePoll() },
   )
   const driveQ = trpc.feature.driveInfo.useQuery(undefined, { refetchInterval: useLivePoll() })
+  // How long tickets have actually been taking in THIS project, for the pre-burn
+  // bar's time expectation (decision #16b). History, so it does not poll — a
+  // median over every ticket the project has ever finished cannot move within a
+  // sitting by enough to matter.
+  const burnStatsQ = trpc.ticket.durationStats.useQuery(
+    { projectId: projectId ?? '' },
+    { enabled: !!projectId },
+  )
   // A parked draft picks its base at Start, not at creation (decision 3), so the
   // branch list is read HERE — Start fires from the next-step bar, and the base
   // has to be readable at that click, not buried in the body that shows the
@@ -180,6 +218,10 @@ export function Workspace({
   // warns on the picker and says so on the disabled button.
   const draftBaseMissing: DraftBaseMissing | undefined =
     !isDraft || effectiveDraftBase ? undefined : branchesQ.data ? 'unpicked' : 'loading'
+  // A run watched to success is seen to succeed before the page changes
+  // (decision #15a): the burn finalizer advances the phase itself, so the body
+  // swap — and only the body swap — waits out the lanes' all-green beat.
+  const settlingRunId = useSuccessSettle(latestRun(q.data?.runs ?? []))
   // How many decisions ideation settled — the one fact the phase summary cannot
   // read off the feed (decision 10). Same `docs.read` query key the artifact
   // pane resolves, so the banner, the stepper's tooltip and the pane the human
@@ -230,37 +272,25 @@ export function Workspace({
     },
     onError: (e) => toast.push(e.message),
   })
-  // The triage fork's quick-fix road: the whole selection in ONE mutation, so
-  // the tickets appear together and the notes list is frozen once, not per note.
-  const promoteNotes = trpc.notes.promoteMany.useMutation({
-    onSuccess: ({ tickets }) => {
-      invalidate()
-      void utils.notes.list.invalidate({ featureId })
-      setAddressing(false)
-      toast.push(`${tickets.length} fix ticket${tickets.length === 1 ? '' : 's'} added`, 'success')
-    },
-    onError: (e) => toast.push(e.message),
-  })
-  // The review's still-open defects, in one click and no dialog (decisions #7):
-  // the server mints a fix ticket for each on this lap and starts the burn, so
-  // the only thing left to do here is snap the view back to live.
-  const fixDefects = trpc.findings.fixOpenDefects.useMutation({
-    onSuccess: ({ tickets }) => {
-      invalidate()
-      void utils.findings.listByFeature.invalidate({ featureId })
-      onViewPhase(null)
-      toast.push(
-        `${tickets.length} fix ticket${tickets.length === 1 ? '' : 's'} burning`,
-        'success',
-      )
-    },
-    onError: (e) => toast.push(e.message),
-  })
+  // The Iterate door's commit (decision 26): the whole triage in ONE mutation —
+  // tickets minted, dismissals deleted, everything left carried into the next
+  // lap — so the list is frozen once rather than per row, and the road out is
+  // taken after it lands.
+  const triage = trpc.notes.triage.useMutation()
+  // A defect is dismissed through the findings service, which owns that state;
+  // the notes mutation above only knows about notes.
+  const dismissDefect = trpc.findings.dismiss.useMutation()
   const cancel = trpc.run.cancel.useMutation({
     onSuccess: () => {
       invalidate()
       toast.push('cancel requested', 'info')
     },
+    onError: (e) => toast.push(e.message),
+  })
+  // An agent sent at the environment a drive's setup command died in — the
+  // stage offers the same launch from inside the failure it explains.
+  const fixDrive = trpc.feature.fixDrive.useMutation({
+    onSuccess: invalidate,
     onError: (e) => toast.push(e.message),
   })
   const testDrive = trpc.feature.testDrive.useMutation({
@@ -387,13 +417,23 @@ export function Workspace({
     tickets: summaryOf('tickets'),
   })
   const run = latestRun(full.runs)
+  // The beat is over the body only — the stepper and the bar tell the truth
+  // about the phase throughout, and a human who is not on the run view (viewing
+  // an earlier phase, or already past review) is never held.
+  const settling = !!settlingRunId && run?.id === settlingRunId && effective === 'review'
+  const bodyPhase = settling ? 'implementation' : effective
   const isDriving = driving?.featureId === feature.id
   const ns = nextStep(full, {
     driving: isDriving,
+    // The server's own drive state, scoped to THIS feature (decision 20) — the
+    // same value the evidence stage renders from, so the bar and the stage can
+    // no longer derive drive truth separately and disagree.
+    driveState: driveQ.data?.featureId === feature.id ? driveQ.data.state : 'idle',
     mapContent: mapQ.data?.content,
     conflict,
     unverifiedDriveKeys: unverifiedDriveKeys((prepQ.data as PrepView | undefined)?.findings ?? []),
     dryRunActive: !!driveQ.data?.dryRun,
+    ...(burnStatsQ.data ? { burnStats: burnStatsQ.data } : {}),
     ...(draftBaseMissing ? { draftBaseMissing } : {}),
     openNotes,
     openDefects,
@@ -403,16 +443,15 @@ export function Workspace({
   // the bar's "End session & resolve" and the click that follows it can never be
   // about different sessions.
   const liveSession = activeSession(full.sessions)
-  // The lap the workspace is on, from lap 2 (decisions.md #6). Derived from the
-  // same event feed as the conflict banner — one poll for all of it.
-  const banner = lapBanner(full, events)
-  // Why the triage fork's rethink road cannot fire, read off the bar's OWN
-  // Iterate action rather than re-derived: the dialog must not disagree with the
-  // button beside it about whether the lap session can start.
-  const iterateAction = ns.secondary.find((a) => a.kind === 'rethink')
-  const iterateBlocked = iterateAction
-    ? iterateAction.disabled
-    : 'One terminal per feature — end the live session first.'
+  // An Iterate whose lap session could not be opened (decision 26g), from the
+  // same event feed as the conflict — one poll for all of it. Handed to the
+  // review body, which renders it in the alert slot beside the conflict card.
+  const abortedLap = lapAbort(events)
+  // Why the triage step's lap road cannot fire. The quick-fix road only writes
+  // ticket rows, so nothing takes it away; the conversation needs the one
+  // terminal this feature gets, which is the reason the step states beside its
+  // primary rather than letting the server refuse it after the fact.
+  const iterateBlocked = liveSession ? ONE_TERMINAL_ITERATE : undefined
   const busy =
     start.isPending ||
     launch.isPending ||
@@ -423,10 +462,46 @@ export function Workspace({
     cancel.isPending ||
     testDrive.isPending ||
     merge.isPending ||
-    promoteNotes.isPending ||
-    fixDefects.isPending ||
+    triage.isPending ||
+    dismissDefect.isPending ||
+    fixDrive.isPending ||
     unarchive.isPending ||
     resolveConflict.pending
+
+  // One door forward (decision 21). With something open, Iterate opens the
+  // triage step; with nothing open the step is skipped entirely and the lap
+  // starts empty-handed. The resolver picks its action kind off the same two
+  // counts, so the bar and this click cannot disagree — and both roads land
+  // here, so the escape off a test drive takes the same door.
+  const enterIterate = () => {
+    // A second click while the first lap bump is in flight would bump two laps —
+    // and this road is reachable from the bar, the drive escape and the failed
+    // lap's Retry, so the guard lives here rather than on each button.
+    if (rethink.isPending) return
+    if ((openNotes ?? 0) + (openDefects ?? 0) > 0) setTriaging(Date.now())
+    else rethink.mutate({ featureId })
+  }
+
+  // Commit the triage, then take the road it chose: everything quick-fixed burns
+  // on the spot, anything carried opens lap N+1's conversation with those notes
+  // in it. Dismissed defects go first — the notes mutation only knows notes —
+  // and the whole thing is awaited so the burn cannot start before its tickets
+  // exist.
+  const commitTriage = async (selection: TriageSelection) => {
+    const { dismissFindingIds, ...notesTriage } = selection
+    try {
+      for (const findingId of dismissFindingIds) await dismissDefect.mutateAsync({ findingId })
+      await triage.mutateAsync({ featureId, ...notesTriage })
+      setTriaging(null)
+      invalidate()
+      void utils.notes.list.invalidate({ featureId })
+      void utils.findings.listByFeature.invalidate({ featureId })
+      if (selection.carry) rethink.mutate({ featureId })
+      else burn.mutate({ featureId })
+    } catch (e) {
+      toast.push(e instanceof Error ? e.message : String(e))
+    }
+  }
 
   const runAction = (kind: ActionKind, waypointId?: string) => {
     switch (kind) {
@@ -447,7 +522,8 @@ export function Workspace({
         launch.mutate({ featureId, kind: 'revisit' })
         break
       case 'rethink':
-        rethink.mutate({ featureId })
+      case 'iterate':
+        enterIterate()
         break
       case 'converge':
       case 'resumeConverge':
@@ -488,24 +564,32 @@ export function Workspace({
           },
         )
         break
+      // The escape off Iterate's own refusal (decision 20): the lap's worktree
+      // needs the branch the drive is holding — and the triage commit is refused
+      // for the same reason — so the stop has to land before the door opens.
+      case 'stopDriveAndIterate':
+        testDrive.mutate(
+          { featureId, action: 'stop' },
+          {
+            onSuccess: () => {
+              invalidate()
+              onDriveChange(null)
+              enterIterate()
+            },
+          },
+        )
+        break
+      // A drive whose setup command died: an agent reads the failure on the
+      // human's machine and repairs the environment, with the branch left
+      // checked out because that is the state it needs.
+      case 'fixDrive':
+        fixDrive.mutate({ featureId })
+        break
       // The click opens the confirmation; `runMerge` below is what actually
       // merges (findings F21 — the pipeline's most irreversible action had no
       // confirmation at all).
       case 'merge':
         setConfirmMerge(true)
-        break
-      // Triage for the findings inbox: the dialog offers the fork (promote the
-      // quick fixes, or start the lap session on all of them) — this click only
-      // opens it, exactly as `merge` opens its confirmation.
-      case 'addressNotes':
-        setAddressing(true)
-        break
-      // The review's own findings never enter that dialog (decisions #7): one
-      // click fixes every open defect, with nothing to confirm and nothing to
-      // choose — the whole point is that the human's arrival at review costs
-      // them one line read and one button.
-      case 'fixDefects':
-        fixDefects.mutate({ featureId })
         break
       // Resolve a recorded merge conflict: a revisit session briefed to merge the
       // base into this branch in the talk worktree — the same launch the conflict
@@ -547,7 +631,11 @@ export function Workspace({
         <div className="ws-title-row">
           {/* Same reason the stepper is hidden below: a draft's phase is
               `ideation` by construction, and naming it here reads as progress. */}
-          {isDraft ? <span className="tag is-draft">draft</span> : <PhaseTag phase={feature.phase} />}
+          {isDraft ? (
+            <span className="font-mono text-sm font-semibold lowercase text-text-4">draft</span>
+          ) : (
+            <PhaseTag phase={feature.phase} />
+          )}
           <span className="ws-title">{feature.title}</span>
           <span className="ws-title-spacer" />
           <button
@@ -570,10 +658,6 @@ export function Workspace({
           />
         )}
       </div>
-
-      {/* Lap 1 renders nothing here at all — a feature that merges first try
-          looks exactly like the plain linear flow (ADR-0010 §4). */}
-      {banner && <LapBannerRow banner={banner} />}
 
       {readonly ? (
         <ReadonlyBanner
@@ -620,32 +704,47 @@ export function Workspace({
         <MergeFeatureDialog
           title={feature.title}
           branch={feature.branch}
-          base={commits.data?.base}
+          base={delta.data?.base}
           summary={mergeSummary({
-            commitCount: commits.data?.count,
-            run,
+            branch: feature.branch,
+            ...(delta.data?.base ? { base: delta.data.base } : {}),
+            ...(delta.data ? { delta: delta.data } : {}),
+            tickets: full.tickets,
+            lap: feature.lap,
             driveTaken,
             openNotes,
-            review,
+            freshness: reviewFreshness,
+            conflict,
             laterLaps,
           })}
           busy={merge.isPending}
+          resolving={resolveConflict.pending}
           onConfirm={runMerge}
+          // The same act as the conflict card's button, through the same hook —
+          // the dialog cannot brief the resolve agent differently (decision 29).
+          onResolve={
+            conflict
+              ? () => void resolveConflict.resolve(conflict, liveSession?.id ?? undefined)
+              : undefined
+          }
           onCancel={() => setConfirmMerge(false)}
         />
       )}
 
-      {addressing && (
-        <AddressNotesDialog
+      {/* The one door forward from review (decision 21): every open note and
+          defect in front of the human at the moment they choose. */}
+      {triaging !== null && (
+        <TriageStep
+          lap={feature.lap}
           notes={openNoteRows}
-          busy={promoteNotes.isPending || rethink.isPending}
+          defects={openDefectRows}
+          standing={triagePreview.data?.standingFixTickets ?? []}
+          openedAt={triaging}
+          busy={busy}
+          readonly={readonly}
           iterateBlocked={iterateBlocked}
-          onPromote={(noteIds) => promoteNotes.mutate({ noteIds })}
-          onIterate={() => {
-            setAddressing(false)
-            runAction('rethink')
-          }}
-          onCancel={() => setAddressing(false)}
+          onCommit={(selection) => void commitTriage(selection)}
+          onClose={() => setTriaging(null)}
         />
       )}
 
@@ -655,7 +754,7 @@ export function Workspace({
       <div className={twoPane ? 'flex min-h-0 flex-1 overflow-hidden' : 'ws-body'}>
         <div
           className={twoPane ? 'flex min-h-0 min-w-0 flex-1' : 'ws-body-inner'}
-          key={isDraft ? 'draft' : effective}
+          key={isDraft ? 'draft' : bodyPhase}
         >
           {/* Status wins over phase here (decision 9): a draft is created at
               `ideation`, and the grill body would offer a terminal on a feature
@@ -664,15 +763,18 @@ export function Workspace({
             <DraftBody full={full} />
           ) : (
             <PhaseBody
-              effective={effective}
+              effective={bodyPhase}
               full={full}
               events={events}
               driving={driving}
               conflict={conflict}
+              abortedLap={abortedLap}
               runId={run?.id ?? null}
               readonly={readonly}
               mapRailCollapsed={mapRailCollapsed}
               onToggleMapRail={onToggleMapRail}
+              onViewPhase={onViewPhase}
+              onIterate={enterIterate}
               artifactPaneCollapsed={artifactPaneCollapsed}
               onToggleArtifactPane={onToggleArtifactPane}
             />
@@ -689,10 +791,13 @@ function PhaseBody({
   events,
   driving,
   conflict,
+  abortedLap,
   runId,
   readonly,
   mapRailCollapsed,
   onToggleMapRail,
+  onViewPhase,
+  onIterate,
   artifactPaneCollapsed,
   onToggleArtifactPane,
 }: {
@@ -701,10 +806,13 @@ function PhaseBody({
   events: readonly EventRow[]
   driving: DriveState | null
   conflict: MergeConflictState | null
+  abortedLap: LapAbort | null
   runId: string | null
   readonly: boolean
   mapRailCollapsed: boolean
   onToggleMapRail: () => void
+  onViewPhase: (phase: Phase | null) => void
+  onIterate: () => void
   artifactPaneCollapsed: boolean
   onToggleArtifactPane: () => void
 }) {
@@ -747,7 +855,20 @@ function PhaseBody({
         <TicketsBody featureId={full.feature.id} />
       )
     case 'review':
-      return <ReviewBody full={full} driving={driving} conflict={conflict} readonly={readonly} />
+      return (
+        <ReviewBody
+          full={full}
+          driving={driving}
+          conflict={conflict}
+          lapAbort={abortedLap}
+          readonly={readonly}
+          // A defect being fixed links to its lane, which lives in the run view
+          // one phase back (decision 18c).
+          onViewPhase={onViewPhase}
+          // The failed lap's Retry takes the same door the bar's Iterate takes.
+          onIterate={onIterate}
+        />
+      )
     case 'shipped':
       return <ShippedBody full={full} />
   }

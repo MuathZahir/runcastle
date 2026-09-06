@@ -104,6 +104,14 @@
   --ease-app: cubic-bezier(0.22, 0.61, 0.24, 1); /* decelerate */
   --ease-out-app: cubic-bezier(0.16, 1, 0.3, 1);
 
+  /* The named motions a surface asks for by utility. The keyframes they run
+     live outside this block — see the note above them. */
+  --animate-toast-in: toastIn var(--dur-3) var(--ease-out-app);
+  --animate-backdrop-in: backdropIn var(--dur-2) var(--ease-out-app);
+  /* `cmdkIn` is the command palette's entrance, which every overlay shares. */
+  --animate-overlay-in: cmdkIn var(--dur-2) var(--ease-out-app);
+  --animate-dot-glow: dotGlow 2.2s var(--ease-app) infinite;
+
   /* ---- metrics ---- Not in a Tailwind namespace, so no utility is generated:
      these are read with `var()` / arbitrary values (`h-(--control-h)`).
      Spacing stays on Tailwind's default 4px scale — no custom tokens. */
@@ -117,4 +125,55 @@
   --dur-2: 0.19s; /* small (rows, chips) */
   --dur-3: 0.32s; /* content enter */
   --ring: 0 0 0 2px var(--color-bg), 0 0 0 4px rgba(124, 108, 246, 0.5);
+}
+
+/* ---- keyframes ----
+   Declared at the top level and not inside `@theme`, because most of them are
+   named from rules Tailwind never reads: the `styles.css` sections still waiting
+   for their flow, and the `animate-[name_…]` arbitrary values the run and
+   shipped surfaces already write. Tailwind emits a `@theme` keyframe only when
+   an `--animate-*` utility naming it is used, so declaring them there would take
+   the animation out from under those callers. */
+@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.32; } }
+@keyframes dotGlow {
+  0%, 100% { box-shadow: 0 0 0 3px rgba(124, 108, 246, 0.22); }
+  50% { box-shadow: 0 0 0 5px rgba(124, 108, 246, 0.08); }
+}
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes bodyIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes detailIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes popIn {
+  from { opacity: 0; transform: scale(0.96); }
+  to { opacity: 1; transform: scale(1); }
+}
+@keyframes cmdkIn {
+  from { opacity: 0; transform: translateY(-10px) scale(0.985); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes backdropIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes toastIn {
+  from { opacity: 0; transform: translateX(16px) scale(0.98); }
+  to { opacity: 1; transform: translateX(0) scale(1); }
+}
+
+/* Motion here is always a garnish — transforms and opacity, never the only way
+   a state is said — so switching it off costs nothing. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
 }

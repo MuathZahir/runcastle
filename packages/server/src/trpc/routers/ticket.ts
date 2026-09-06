@@ -1,7 +1,13 @@
 import * as z from 'zod'
 import { retryTicket } from '../../services/features'
 import { hasActiveRun } from '../../services/repo'
-import { cancelTicket, editTicket, getTicket, sweepOrphanedBurning } from '../../services/tickets'
+import {
+  cancelTicket,
+  editTicket,
+  getTicket,
+  sweepOrphanedBurning,
+  ticketDurationStats,
+} from '../../services/tickets'
 import { stopTicketRun } from '../../workflows/ticket-burner'
 import { publicProcedure, router } from '../context'
 
@@ -26,6 +32,10 @@ import { publicProcedure, router } from '../context'
  *               exposed on the wire because the quick-change door (decision 21)
  *               promises a card the human can correct before Burn *without*
  *               opening a terminal to do it.
+ *
+ * Plus one read: `durationStats`, the project's own ticket history, which is
+ * what lets the pre-burn bar say how long a burn has been taking here instead
+ * of quoting a number someone hardcoded (decisions.md #16b).
  */
 export const ticketRouter = router({
   retry: publicProcedure
@@ -49,6 +59,10 @@ export const ticketRouter = router({
   cancel: publicProcedure
     .input(z.object({ ticketId: z.string(), reason: z.string().optional() }))
     .mutation(({ ctx, input }) => cancelTicket(ctx, input.ticketId, input.reason)),
+
+  durationStats: publicProcedure
+    .input(z.object({ projectId: z.string() }))
+    .query(({ ctx, input }) => ticketDurationStats(ctx, input.projectId)),
 
   edit: publicProcedure
     .input(

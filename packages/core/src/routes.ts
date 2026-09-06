@@ -18,6 +18,20 @@
 /** Where the reviews routes are mounted (server `index.ts`). */
 export const REVIEWS_BASE = '/api/reviews'
 
+/** GET listing of every review pass belonging to one feature. */
+export const REVIEW_ARTIFACTS_ROUTE = '/:featureId'
+
+/** GET route for one review pass's walkthrough recording. */
+export const REVIEW_WALKTHROUGH_ROUTE = '/ticket/:ticketId/walkthrough.webm'
+
+export function reviewArtifactsUrl(featureId: string): string {
+  return `${REVIEWS_BASE}${REVIEW_ARTIFACTS_ROUTE.replace(':featureId', encodeURIComponent(featureId))}`
+}
+
+export function reviewWalkthroughUrl(ticketId: string): string {
+  return `${REVIEWS_BASE}${REVIEW_WALKTHROUGH_ROUTE.replace(':ticketId', encodeURIComponent(ticketId))}`
+}
+
 /**
  * POST target for one note's annotated frame, relative to {@link REVIEWS_BASE}
  * — raw PNG bytes as the body.

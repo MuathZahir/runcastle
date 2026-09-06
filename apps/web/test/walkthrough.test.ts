@@ -2,15 +2,17 @@ import type { TestNote } from '@runcastle/core'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { uploadScreenshot } from '../src/lib/reviews'
 import {
+  clusterMarkers,
   captureAnnotation,
   framePoint,
-  paintStrokes,
+  paintShapes,
   playableDuration,
   saveAnnotatedNote,
   seekTarget,
   STROKE_WIDTH,
-  type Stroke,
+  timestampMode,
 } from '../src/lib/walkthrough'
+import type { Shape } from '../src/lib/annotation'
 
 /**
  * Video-annotation ticket 3 — the walkthrough player's logic, at the seams the
@@ -45,6 +47,7 @@ function fakeContext(): { ctx: CanvasRenderingContext2D; log: DrawLog } {
     beginPath: () => log.ops.push('beginPath'),
     moveTo: (x: number, y: number) => log.ops.push(`moveTo(${x},${y})`),
     lineTo: (x: number, y: number) => log.ops.push(`lineTo(${x},${y})`),
+    rect: (x: number, y: number, w: number, h: number) => log.ops.push(`rect(${x},${y},${w},${h})`),
     stroke: () => log.ops.push('stroke'),
   }
   return { ctx: ctx as unknown as CanvasRenderingContext2D, log }
@@ -173,18 +176,13 @@ describe('framePoint', () => {
   })
 })
 
-describe('paintStrokes', () => {
-  it('draws each stroke as one red path', () => {
-    const { ctx, log } = fakeContext()
-    const strokes: Stroke[] = [
-      [
-        { x: 10, y: 10 },
-        { x: 20, y: 30 },
-        { x: 25, y: 35 },
-      ],
-    ]
+describe('paintShapes', () => {
+  const pen = (...points: Shape['points']): Shape => ({ tool: 'pen', points })
 
-    paintStrokes(ctx, strokes)
+  it('draws each pen shape as one red path', () => {
+    const { ctx, log } = fakeContext()
+
+    paintShapes(ctx, [pen({ x: 10, y: 10 }, { x: 20, y: 30 }, { x: 25, y: 35 })])
 
     // The literal, not the constant: the pen is the palette's failed/danger red
     // (docs/UI-SPEC.md), and asserting the constant against itself would let a
@@ -194,15 +192,29 @@ describe('paintStrokes', () => {
     expect(log.ops).toEqual(['beginPath', 'moveTo(10,10)', 'lineTo(20,30)', 'lineTo(25,35)', 'stroke'])
   })
 
+  // Decision 24b: the stroke reads ~6px on screen whatever the player's layout
+  // size, so the width is multiplied back up into the frame's own pixels.
+  it('scales the stroke width into frame pixels', () => {
+    const { ctx, log } = fakeContext()
+    paintShapes(ctx, [pen({ x: 0, y: 0 }, { x: 1, y: 1 })], 2.5)
+    expect(log.lineWidth).toBe(STROKE_WIDTH * 2.5)
+  })
+
   it('leaves a dot where the pointer never moved', () => {
     const { ctx, log } = fakeContext()
-    paintStrokes(ctx, [[{ x: 7, y: 9 }]])
+    paintShapes(ctx, [pen({ x: 7, y: 9 })])
     expect(log.ops).toEqual(['beginPath', 'moveTo(7,9)', 'lineTo(7,9)', 'stroke'])
   })
 
-  it('draws nothing for an empty stroke list', () => {
+  it('draws a rectangle from the gesture’s first and last points', () => {
     const { ctx, log } = fakeContext()
-    paintStrokes(ctx, [[]])
+    paintShapes(ctx, [{ tool: 'rect', points: [{ x: 30, y: 40 }, { x: 10, y: 15 }] }])
+    expect(log.ops).toEqual(['beginPath', 'rect(10,15,20,25)', 'stroke'])
+  })
+
+  it('draws nothing for a shape with no points', () => {
+    const { ctx, log } = fakeContext()
+    paintShapes(ctx, [pen()])
     expect(log.ops).toEqual([])
   })
 })
@@ -210,21 +222,24 @@ describe('paintStrokes', () => {
 describe('captureAnnotation', () => {
   const png = new Blob([new Uint8Array([1])], { type: 'image/png' })
 
-  it('composites the frame first and the strokes on top, at the video’s own resolution', async () => {
+  it('composites the frame first and the shapes on top, at the video’s own resolution', async () => {
     const { ctx, log } = fakeContext()
     const { canvas, type } = fakeCanvas(ctx, png)
 
-    const blob = await captureAnnotation(canvas, fakeVideo(1920, 1080), [
-      [
-        { x: 1, y: 2 },
-        { x: 3, y: 4 },
-      ],
-    ])
+    const blob = await captureAnnotation(
+      canvas,
+      fakeVideo(1920, 1080),
+      [{ tool: 'pen', points: [{ x: 1, y: 2 }, { x: 3, y: 4 }] }],
+      3,
+    )
 
     expect(blob).toBe(png)
     expect(type()).toBe('image/png')
     expect(canvas.width).toBe(1920)
     expect(canvas.height).toBe(1080)
+    // The overlay's own scale rides through, so what was drawn on screen is the
+    // weight that lands in the PNG.
+    expect(log.lineWidth).toBe(STROKE_WIDTH * 3)
     expect(log.ops).toEqual([
       'drawImage(0,0,1920,1080)',
       'beginPath',
@@ -314,5 +329,22 @@ describe('uploadScreenshot', () => {
   it('throws with the status when the server refuses the upload', async () => {
     stubFetch({ ok: false, status: 400 })
     await expect(uploadScreenshot('note_a', new Blob([]))).rejects.toThrow('screenshot upload: 400')
+  })
+})
+
+describe('recording-bound note navigation', () => {
+  it('distinguishes live, earlier-walkthrough, and image-only evidence', () => {
+    expect(timestampMode({ id: 'a', videoTimestamp: 42, reviewTicketId: 'review_a' }, { ticketId: 'review_a' })).toBe('live-seek')
+    expect(timestampMode({ id: 'a', videoTimestamp: 42, reviewTicketId: 'review_a' }, { ticketId: 'review_b' })).toBe('orphan-label')
+    expect(timestampMode({ id: 'a', videoTimestamp: null, reviewTicketId: 'review_a' }, { ticketId: 'review_a' })).toBe('png-only')
+  })
+
+  it('clusters close markers only for the recording on stage', () => {
+    expect(clusterMarkers([
+      { id: 'a', videoTimestamp: 2, reviewTicketId: 'review_a' },
+      { id: 'b', videoTimestamp: 2.8, reviewTicketId: 'review_a' },
+      { id: 'c', videoTimestamp: 4.1, reviewTicketId: 'review_a' },
+      { id: 'other', videoTimestamp: 2.2, reviewTicketId: 'review_b' },
+    ], 'review_a')).toEqual([{ at: 2, noteIds: ['a', 'b'] }, { at: 4.1, noteIds: ['c'] }])
   })
 })

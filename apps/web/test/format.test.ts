@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { fmtBytes, humanizeTimestamps, relAgo } from '../src/lib/format'
+import { fmtBytes, humanizeTimestamps, relTimeAgo } from '../src/lib/format'
 
 /**
  * Findings F10.9 / F18 — agent-authored docs stamp themselves the way a program
@@ -60,15 +60,15 @@ describe('fmtBytes', () => {
   })
 })
 
-describe('relAgo', () => {
+describe('relTimeAgo', () => {
   const now = Date.parse('2026-09-04T12:00:00Z')
 
   it('suffixes the compact age so it reads in a sentence', () => {
-    expect(relAgo(now - 30_000, now)).toBe('30s ago')
-    expect(relAgo(now - 7_200_000, now)).toBe('2h ago')
+    expect(relTimeAgo(now - 30_000, now)).toBe('30s ago')
+    expect(relTimeAgo(now - 7_200_000, now)).toBe('2h ago')
   })
 
   it('says "just now" rather than the unspeakable "now ago"', () => {
-    expect(relAgo(now - 1_000, now)).toBe('just now')
+    expect(relTimeAgo(now - 1_000, now)).toBe('just now')
   })
 })

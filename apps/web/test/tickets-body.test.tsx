@@ -5,9 +5,9 @@ import type { Ticket } from '@runcastle/core'
 
 const server = vi.hoisted(() => ({ edits: [] as Record<string, unknown>[], directEdits: [] as Record<string, unknown>[], cancels: [] as Record<string, unknown>[], toasts: [] as string[], sessions: [] as Record<string, unknown>[], tickets: [] as unknown[] }))
 const rows = [
-  { id: 'current', featureId: 'f1', seq: 1, lap: 2, title: 'Current pending', goal: 'Goal', context: '', acceptanceCriteria: ['Works'], seams: [], blockedBy: [], kind: 'implementation', status: 'pending', commits: [] },
-  { id: 'failed', featureId: 'f1', seq: 2, lap: 2, title: 'Current failed', goal: 'Goal', context: '', acceptanceCriteria: ['Works'], seams: [], blockedBy: [], kind: 'implementation', status: 'failed', commits: [] },
-  { id: 'previous', featureId: 'f1', seq: 3, lap: 1, title: 'Previous pending', goal: 'Goal', context: '', acceptanceCriteria: ['Works'], seams: [], blockedBy: [], kind: 'implementation', status: 'pending', commits: [] },
+  { id: 'current', featureId: 'f1', seq: 1, lap: 2, title: 'Current pending', goal: 'Goal', context: '', acceptanceCriteria: ['Works'], seams: [], blockedBy: [], kind: 'implementation', passKind: 'review', reviewedCommit: null, completedAt: null, status: 'pending', commits: [] },
+  { id: 'failed', featureId: 'f1', seq: 2, lap: 2, title: 'Current failed', goal: 'Goal', context: '', acceptanceCriteria: ['Works'], seams: [], blockedBy: [], kind: 'implementation', passKind: 'review', reviewedCommit: null, completedAt: null, status: 'failed', commits: [] },
+  { id: 'previous', featureId: 'f1', seq: 3, lap: 1, title: 'Previous pending', goal: 'Goal', context: '', acceptanceCriteria: ['Works'], seams: [], blockedBy: [], kind: 'implementation', passKind: 'review', reviewedCommit: null, completedAt: null, status: 'pending', commits: [] },
 ] as Ticket[]
 
 vi.mock('../src/lib/toast', () => ({ useToast: () => ({ push: (message: string) => server.toasts.push(message) }) }))

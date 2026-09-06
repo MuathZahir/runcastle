@@ -24,7 +24,7 @@ describe('ConversationTranscript', () => {
   it('renders a populated conversation even when only the assistant spoke after kickoff filtering', () => {
     const html = renderToStaticMarkup(<ConversationTranscript sessionId="session-1" />)
 
-    expect(html).toContain('<h2>Welcome</h2>')
+    expect(html).toContain('>Welcome</h2>')
     expect(html).toContain('What are we building?')
     expect(html).not.toContain('nothing was said in this conversation')
   })

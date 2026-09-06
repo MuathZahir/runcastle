@@ -9,6 +9,9 @@ import { clearRuntimeCtx, setRuntimeCtx } from '../src/launcher/runtime'
 import reviewsApp from '../src/routes/reviews'
 import { addNote, deleteNote, listByFeature as listNotes } from '../src/services/test-notes'
 import { storeTickets } from '../src/services/tickets'
+import { updateTicket } from '../src/services/tickets'
+import { tickets } from '../src/db/schema'
+import { eq } from 'drizzle-orm'
 import { makeTestCtx } from './helpers/db'
 import { seedFeature, seedProject } from './helpers/fixtures'
 
@@ -96,12 +99,38 @@ describe('review artifacts over HTTP', () => {
         {
           ticketId: reviewId,
           seq: 2,
+          lap: 1,
+          passKind: 'review',
+          reviewedCommit: null,
+          completedAt: null,
+          landedSince: 0,
           hasVideo: true,
           videoUrl: `/api/reviews/ticket/${reviewId}/walkthrough.webm`,
         },
         // Nothing was recorded for this one — a normal state, not an error.
-        { ticketId: secondReviewId, seq: 3, hasVideo: false, videoUrl: null },
+        {
+          ticketId: secondReviewId, seq: 3, lap: 1, passKind: 'review',
+          reviewedCommit: null, completedAt: null, landedSince: 0,
+          hasVideo: false, videoUrl: null,
+        },
       ])
+    })
+
+    it('orders completed passes by completion time and counts later landed work', async () => {
+      const { reviewId, secondReviewId, implId } = seedTickets()
+      updateTicket(ctx, secondReviewId, { status: 'done', reviewedCommit: 'newer-seq-first' })
+      updateTicket(ctx, reviewId, { status: 'done', reviewedCommit: 'older-seq-last' })
+      updateTicket(ctx, implId, { status: 'done', commits: ['landed'] })
+      ctx.db.update(tickets).set({ completedAt: 100 }).where(eq(tickets.id, secondReviewId)).run()
+      ctx.db.update(tickets).set({ completedAt: 200 }).where(eq(tickets.id, reviewId)).run()
+      ctx.db.update(tickets).set({ completedAt: 300 }).where(eq(tickets.id, implId)).run()
+
+      const artifacts = await (await mount().request(`/api/reviews/${featureId}`)).json()
+      expect(artifacts.map((artifact: { ticketId: string }) => artifact.ticketId)).toEqual([
+        secondReviewId,
+        reviewId,
+      ])
+      expect(artifacts.map((artifact: { landedSince: number }) => artifact.landedSince)).toEqual([1, 1])
     })
 
     it('reads presence off the disk, not off the ticket row', async () => {

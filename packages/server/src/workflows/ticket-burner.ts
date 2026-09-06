@@ -1,5 +1,5 @@
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync } from 'node:fs'
-import { basename, dirname, join, posix as posixPath, win32 as winPath } from 'node:path'
+import { dirname, join, posix as posixPath, win32 as winPath } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type {
   AgentRuntime,
@@ -53,6 +53,7 @@ import {
   cleanupBurnWorktree,
   commitSummaries,
   excludePath,
+  headSha,
   mergeTempBranch,
   ticketBranchName,
   unexcludePath,
@@ -89,6 +90,8 @@ import { executeReviewTicket } from './review-ticket'
 import { docker } from '@ai-hero/sandcastle/sandboxes/docker'
 import { podman } from '@ai-hero/sandcastle/sandboxes/podman'
 import { noSandbox } from '@ai-hero/sandcastle/sandboxes/no-sandbox'
+
+const ATTACHMENTS_PREFIX = `${ATTACHMENTS_DIR}/`
 
 /**
  * Ticket burner — WAVE B3 (SPEC §8), the AFK engine over `@ai-hero/sandcastle`
@@ -244,6 +247,34 @@ export interface BurnDeps {
  */
 export function isReviewTicket(ticket: Pick<Ticket, 'kind'>): boolean {
   return ticket.kind === 'review'
+}
+
+/** Decide whether this run owes one final verification pass (decision 40a). */
+export function verificationDue(
+  tickets: Ticket[],
+  runTicketIds: Set<string>,
+): { due: boolean; landed: Ticket[]; verifies: Ticket | null } {
+  const inRun = tickets.filter((ticket) => runTicketIds.has(ticket.id))
+  const reviews = inRun
+    .filter(isReviewTicket)
+    .filter((ticket) => ticket.completedAt !== null)
+    .sort((a, b) => (a.completedAt ?? 0) - (b.completedAt ?? 0) || a.seq - b.seq)
+  const lastReview = reviews.at(-1) ?? null
+  const verifies = [...reviews].reverse().find((ticket) => ticket.status === 'done') ?? null
+
+  // A review that could not run is an amber human decision, not an automatic retry.
+  if (lastReview?.status === 'failed') return { due: false, landed: [], verifies }
+
+  const cutoff = verifies?.completedAt ?? Number.NEGATIVE_INFINITY
+  const landed = inRun.filter(
+    (ticket) =>
+      !isReviewTicket(ticket) &&
+      ticket.status === 'done' &&
+      ticket.completedAt !== null &&
+      (ticket.completedAt > cutoff ||
+        (ticket.completedAt === cutoff && verifies !== null && ticket.seq > verifies.seq)),
+  )
+  return { due: landed.length > 0, landed, verifies }
 }
 
 // ---------------------------------------------------------------------------
@@ -1175,7 +1206,7 @@ function buildRepoSetupSteps(
     // The exclude line is appended only when it is not already there: a slot
     // checkout outlives the burn that wrote it, and an unguarded `>>` would add
     // one line per attachment-carrying burn for the life of the slot.
-    `if [ -d "${attachmentsDir}" ]; then mkdir -p "${repoAttachmentsDir}" && cp -r "${attachmentsDir}/." "${repoAttachmentsDir}/" && mkdir -p "${repoPath}/.git/info" && { grep -qxF '${ATTACHMENTS_DIR}/' "${excludeFile}" 2>/dev/null || printf '%s\\n' '${ATTACHMENTS_DIR}/' >> "${excludeFile}"; }; fi`,
+    `if [ -d "${attachmentsDir}" ]; then mkdir -p "${repoAttachmentsDir}" && cp -r "${attachmentsDir}/." "${repoAttachmentsDir}/" && mkdir -p "${repoPath}/.git/info" && { grep -qxF '${ATTACHMENTS_PREFIX}' "${excludeFile}" 2>/dev/null || printf '%s\\n' '${ATTACHMENTS_PREFIX}' >> "${excludeFile}"; }; fi`,
     // Push-only, and synchronous: the hook runs inside a container sandcastle
     // removes seconds after the agent exits, so a backgrounded push would put
     // the LAST commit — the one that matters most — at risk. The branch is a
@@ -1381,7 +1412,7 @@ export function buildWorkspaceNotes(
  * cannot drift; a mention of a note that has no PNG is simply dropped later.
  */
 export function attachedNoteIds(context: string): string[] {
-  const marker = `${ATTACHMENTS_DIR}/`
+  const marker = ATTACHMENTS_PREFIX
   const ids: string[] = []
   for (let at = context.indexOf(marker); at !== -1; at = context.indexOf(marker, at + 1)) {
     const id = /^([\w-]+)\.png/.exec(context.slice(at + marker.length))?.[1]
@@ -1458,7 +1489,7 @@ export function buildAttachmentCopyCommands(
  */
 export async function clearAttachments(workspacePath: string, repoPath: string): Promise<void> {
   rmSync(join(workspacePath, ATTACHMENTS_DIR), { recursive: true, force: true })
-  await unexcludePath(repoPath, `${ATTACHMENTS_DIR}/`)
+  await unexcludePath(repoPath, ATTACHMENTS_PREFIX)
 }
 
 /**
@@ -2389,6 +2420,7 @@ export async function burnTickets(
   const inFlight = new Map<number, Promise<void>>()
   const digests: HarvestedDigest[] = []
   let admitted = 0
+  let verificationChecked = false
 
   // A blocker is satisfied when `done` OR `cancelled` — a human cancelled it
   // because the work is unnecessary, so dependents proceed without it. For a
@@ -2439,6 +2471,44 @@ export async function burnTickets(
       message: `${added.length} ticket(s) minted during this run joined it: ${added.join(', ')}`,
       data: { seqs: added },
     })
+  }
+
+  const appendVerificationIfDue = (): void => {
+    verificationChecked = true
+    if (!ctx.listTickets || !ctx.storeTickets) return
+    const allTickets = ctx.listTickets()
+    const runTicketIds = new Set(scheduled.map((ticket) => ticket.id))
+    const decision = verificationDue(allTickets, runTicketIds)
+    if (!decision.due) return
+
+    const findings = new Map((ctx.listFindings?.() ?? []).map((finding) => [finding.id, finding]))
+    const landedLines = decision.landed.map((ticket) => {
+      const finding = ticket.originFindingId ? findings.get(ticket.originFindingId) : undefined
+      const detail = finding
+        ? `\n  Finding: ${finding.title}\n  Location: ${finding.location}\n  Repro step: ${finding.reproStep}`
+        : ''
+      return `- #${ticket.seq} ${ticket.title}${detail}`
+    })
+    ctx.storeTickets([{
+      kind: 'review',
+      passKind: 'verification',
+      title: 'Verify the fixes that landed',
+      goal: 'Tour the current build and verify the fixes that landed in this run.',
+      context: [
+        `Verifies pass: ${decision.verifies ? `#${decision.verifies.seq}` : 'none in this run'}`,
+        'Landed implementation tickets:',
+        ...landedLines,
+      ].join('\n'),
+      acceptanceCriteria: ['Tour the current build and verify every landed fix listed in the context.'],
+      seams: ['review evidence and the landed fixes listed in the context'],
+      blockedBy: [],
+    }])
+    ctx.emitEvent({
+      type: 'ticket.verification_minted',
+      message: `verification pass appended — ${decision.landed.length} fixes landed after the review`,
+      data: { landedSeqs: decision.landed.map((ticket) => ticket.seq) },
+    })
+    admitNewTickets()
   }
 
   /**
@@ -2517,7 +2587,15 @@ export async function burnTickets(
     const outcome = await execute(ctx, t, { digests: [...digests] }) // throws on abort — propagates
     if (outcome.status === 'done') {
       status.set(seq, 'done')
-      ctx.updateTicket(t.id, { status: 'done', commits: outcome.commits, digest: outcome.digest })
+      const reviewedCommit = isReviewTicket(t)
+        ? await headSha(ctx.project.repoPath, ctx.feature.branch)
+        : undefined
+      ctx.updateTicket(t.id, {
+        status: 'done',
+        commits: outcome.commits,
+        digest: outcome.digest,
+        ...(reviewedCommit ? { reviewedCommit } : {}),
+      })
       mirrorFinding(t, 'fixed')
       ctx.emitEvent({
         type: 'ticket.done',
@@ -2550,8 +2628,13 @@ export async function burnTickets(
     if (isReviewTicket(t)) admitNewTickets()
   }
 
-  while (pending.size > 0 || inFlight.size > 0) {
+  while (pending.size > 0 || inFlight.size > 0 || !verificationChecked) {
     ctx.signal.throwIfAborted()
+
+    if (pending.size === 0 && inFlight.size === 0) {
+      appendVerificationIfDue()
+      if (pending.size === 0) break
+    }
 
     // 1) Cascade: fail every pending ticket blocked by a failed/missing blocker.
     for (const seq of [...pending]) {
@@ -3313,7 +3396,7 @@ async function burnTicket(
   // exactly as long as the run it protects: it reaches the human's own checkout
   // too, which is why it may not outlive the burn.
   const excludeAttachments = async () => {
-    if (attachments.length > 0) await excludePath(project.repoPath, `${ATTACHMENTS_DIR}/`)
+    if (attachments.length > 0) await excludePath(project.repoPath, ATTACHMENTS_PREFIX)
   }
   const clearAttachmentsFor = async (branch: string) => {
     if (attachments.length > 0) {

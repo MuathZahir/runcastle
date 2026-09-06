@@ -26,8 +26,8 @@ describe('draft creation surfaces', () => {
     expect(html).toContain('PARKED')
     expect(html).toContain('Slack alerts')
     expect(html).toContain('Tell the team when a burn fails.')
-    expect(html).toContain('<h2>Scope</h2>')
-    expect(html).toContain('<strong>Builds</strong> only.')
+    expect(html).toContain('>Scope</h2>')
+    expect(html).toContain('>Builds</strong> only.')
     expect(html).not.toContain('Advanced')
   })
 

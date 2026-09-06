@@ -447,17 +447,22 @@ machinery).
 
 ### 15.6 UI amendments (§10)
 
-- Test-drive panel: notes box (one-liner input, appends via
-  `feature.testNote`; list of this lap's notes below it).
-- Review bar: verbs **Fix** (visible when current-lap pending tickets exist;
-  = existing burn-from-review) / **Rethink** (`feature.rethink`; hidden while
-  a session is live) / **Merge** (unchanged). The old Iterate action is
-  subsumed by Rethink.
-- Notes checklist in review: bullets of the current lap with a "→ ticket"
-  action each (inline-editable text, calls `feature.promoteNote`); promoted
-  notes render with their ticket chip.
-- Lap trail: phase stepper gains a "Lap N" chip when `lap > 1`; the timeline
-  groups by lap (derived — no new endpoints, no new polling).
+- Notes live on the review body's open-work section — the review agent's
+  defects and the human's notes as one list, one row anatomy, written with a
+  multi-line composer that takes a pasted image (`notes.add`, then the
+  screenshot upload route keyed by note id).
+- Review bar: two forward decisions — **Merge & ship** and **Iterate**
+  (decision 21). Iterate opens the triage step over every open note and defect
+  (one Quick fix checkbox per row, unchecked); everything ticked mints tickets
+  through `notes.triage`, and anything left is carried into lap N+1's
+  conversation (`feature.rethink`). With nothing open the step is skipped and
+  the lap starts empty-handed. "Fix" survives as a capability — a triage that
+  ticks everything burns without a conversation — but is no longer a bar verb.
+- Burn labels say whose tickets they burn when laps mix (decision 28a).
+- Lap trail: phase stepper gains a "Lap N" chip when `lap > 1`; the review
+  page's status strip carries the lap chip and its story (decision 27a — the
+  standing lap banner is gone); the timeline groups by lap (derived — no new
+  endpoints, no new polling).
 
 ### 15.7 Tests
 

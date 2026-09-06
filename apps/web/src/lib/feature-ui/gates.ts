@@ -1,4 +1,7 @@
-import type { EventRow } from '@runcastle/core'
+import { unresolvedMergeConflict } from '@runcastle/core'
+import type { EventRow, MergeConflictState, SessionPurpose } from '@runcastle/core'
+export { unresolvedMergeConflict }
+export type { MergeConflictState }
 
 export function mergeConflictKickoff(base: string, branch: string, files: string[]): string {
   const list = files.length ? files.join(', ') : '(run git status to see the conflicts)'
@@ -57,18 +60,13 @@ export function ticketConflictKickoff(input: {
 export const ONE_TERMINAL_WARNING =
   'One terminal per feature — your live session will be closed to open the resolve session.'
 
-export interface MergeConflictState {
-  /** The base branch that failed to merge in (the merge target). */
-  base: string
-  /** Repo-relative paths that conflicted. */
-  files: string[]
-  /**
-   * When the conflict was recorded (the event's `ts`). The panel is undated
-   * without it, and an undated red panel reads as "happening now" — the audit
-   * found one that was fifteen days old (findings F8).
-   */
-  at: number
-}
+/**
+ * Why lap N+1's conversation cannot open while another terminal is live — said
+ * on the bar's Iterate when that conversation is all the click would do, and
+ * again on the triage step's own lap road, from here so the two cannot drift.
+ */
+export const ONE_TERMINAL_ITERATE = 'One terminal per feature — end the live session first.'
+
 
 /**
  * The standing (unresolved) merge conflict for a feature, derived from its event
@@ -81,18 +79,54 @@ export interface MergeConflictState {
  * last step instead of standing forever.
  * Returns null when there is no standing conflict. `events` must be in id order.
  */
-export function unresolvedMergeConflict(events: EventRow[]): MergeConflictState | null {
-  let conflict: MergeConflictState | null = null
-  for (const e of events) {
-    if (e.type === 'merge.conflict') {
-      const d = (e.data ?? {}) as { base?: unknown; files?: unknown }
-      const files = Array.isArray(d.files) ? d.files.filter((f): f is string => typeof f === 'string') : []
-      conflict = { base: typeof d.base === 'string' ? d.base : '', files, at: e.ts }
-    } else if (e.type === 'burn.started' || e.type === 'merge.resolved') {
-      conflict = null
+
+/** The events that supersede a recorded conflict — see `unresolvedMergeConflict`. */
+const CONFLICT_CLEARED = ['burn.started', 'merge.resolved', 'feature.shipped']
+
+/** How a session's lifecycle events name the session they are about. */
+function eventSessionId(event: EventRow): string | undefined {
+  const id = (event.data as { sessionId?: unknown } | null)?.sessionId
+  return typeof id === 'string' ? id : undefined
+}
+
+/**
+ * Whether a resolve-conflict session has ENDED since the standing conflict was
+ * recorded, without the merge landing (decision 30d).
+ *
+ * `merge.resolved` is emitted at session end only when the server's own probe
+ * finds the base already merged in, and that probe is best-effort by design — a
+ * worktree that has gone, a branch renamed, an agent that quit halfway. So the
+ * card used to sit there unchanged after a resolve session came and went, which
+ * reads as the button having done nothing at all. This is what lets it say so.
+ *
+ * There is no negative event to look for: `session.ended` carries only the
+ * session's id, so the sessions are what say which of them was the resolve. Both
+ * closing events count — a terminal the human closed emits `session.ended`, one
+ * the server found dead at boot emits `session.reconciled`, and either way the
+ * session is over and the merge has not landed.
+ *
+ * Answers for whatever conflict is standing at the end of the feed, so callers
+ * only ask it where {@link unresolvedMergeConflict} already returned one.
+ * `events` must be in id order.
+ */
+export function conflictResolveEnded(
+  events: EventRow[],
+  sessions: readonly { id: string; purpose?: SessionPurpose }[],
+): boolean {
+  const resolvers = new Set(
+    sessions.filter((s) => s.purpose === 'resolve-conflict').map((s) => s.id),
+  )
+  let ended = false
+  for (const event of events) {
+    // A fresh conflict, or anything that retires the old one, starts the
+    // question over: what matters is the resolve attempt on the CURRENT one.
+    if (event.type === 'merge.conflict' || CONFLICT_CLEARED.includes(event.type)) ended = false
+    else if (event.type === 'session.ended' || event.type === 'session.reconciled') {
+      const id = eventSessionId(event)
+      if (id && resolvers.has(id)) ended = true
     }
   }
-  return conflict
+  return ended
 }
 
 /**
@@ -102,6 +136,26 @@ export function unresolvedMergeConflict(events: EventRow[]): MergeConflictState 
  */
 export function testDriveTaken(events: EventRow[]): boolean {
   return events.some((e) => e.type === 'testdrive.started')
+}
+
+/**
+ * Which lap the last test drive was taken in, or null when the branch was never
+ * driven — what the shipped record states instead of an instruction to drive it
+ * (decision 33a, "test drive taken · lap 2").
+ *
+ * Counted from `lap.started`, the one event a new lap emits, rather than from
+ * `feature.lap`: on a shipped feature that is the LAST lap, and a drive taken in
+ * lap 1 of a two-lap feature would be filed under the wrong one. `events` must
+ * be in id order.
+ */
+export function lastTestDriveLap(events: EventRow[]): number | null {
+  let lap = 1
+  let driven: number | null = null
+  for (const event of events) {
+    if (event.type === 'lap.started') lap += 1
+    else if (event.type === 'testdrive.started') driven = lap
+  }
+  return driven
 }
 
 /** The wall clock a `ticket.timing` event carries, if it carries a usable one. */

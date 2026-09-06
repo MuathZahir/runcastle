@@ -1,0 +1,3 @@
+# Walk fixtures: scratch runcastle data dir + scratch project repo used by the
+# flow-map walk sessions (see flow-map.md). Living state, never committed.
+walk-fixtures/

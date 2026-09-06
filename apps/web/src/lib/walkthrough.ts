@@ -1,4 +1,5 @@
 import type { TestNote } from '@runcastle/core'
+import type { Shape } from './annotation'
 
 /**
  * The walkthrough player's logic, kept out of the component: what the scrub bar
@@ -20,9 +21,6 @@ export interface Point {
   y: number
 }
 
-/** One freehand stroke: the points a pointer travelled through, in frame space. */
-export type Stroke = readonly Point[]
-
 /**
  * Red, and only red (decisions #6) — one high-visibility pen, no palette
  * choice. The hex is the palette's own failed/danger red (docs/UI-SPEC.md), not
@@ -32,11 +30,81 @@ export type Stroke = readonly Point[]
 export const STROKE_COLOR = '#F85149'
 
 /**
- * Stroke width in frame pixels. Wide enough to survive the downscale to the
- * player's layout size and the thumbnail below it — a hairline drawn at 1920px
- * wide is invisible at 200px.
+ * Stroke width in ON-SCREEN pixels (decision 24b). The canvas is sized to the
+ * recording's intrinsic resolution and scaled down by CSS, so every caller
+ * multiplies this by `intrinsic width / rendered width` — which is what `scale`
+ * below is — and a stroke reads the same 6px whatever the player's layout size.
  */
-export const STROKE_WIDTH = 4
+export const STROKE_WIDTH = 6
+
+/** Paint the annotation model at the intrinsic-frame scale. */
+export function paintShapes(
+  ctx: CanvasRenderingContext2D,
+  shapes: readonly Shape[],
+  scale = 1,
+): void {
+  ctx.lineWidth = STROKE_WIDTH * scale
+  ctx.lineCap = 'round'
+  ctx.lineJoin = 'round'
+  ctx.strokeStyle = STROKE_COLOR
+  for (const shape of shapes) {
+    const [first, ...rest] = shape.points
+    if (!first) continue
+    const last = shape.points.at(-1) ?? first
+    ctx.beginPath()
+    if (shape.tool === 'rect') {
+      const rect = { x: Math.min(first.x, last.x), y: Math.min(first.y, last.y), width: Math.abs(last.x - first.x), height: Math.abs(last.y - first.y) }
+      ctx.rect(rect.x, rect.y, rect.width, rect.height)
+    } else {
+      ctx.moveTo(first.x, first.y)
+      // A tap that never moved is a mark the human made, and the model keeps it
+      // as saveable content — a zero-length line under a round cap is the dot
+      // they pointed at. Without this it is stroked as nothing.
+      if (rest.length === 0) ctx.lineTo(first.x, first.y)
+      for (const point of rest) ctx.lineTo(point.x, point.y)
+      if (shape.tool === 'arrow' && rest.length > 0) {
+        const angle = Math.atan2(last.y - first.y, last.x - first.x)
+        const size = 12 * scale
+        ctx.lineTo(last.x - size * Math.cos(angle - Math.PI / 6), last.y - size * Math.sin(angle - Math.PI / 6))
+        ctx.moveTo(last.x, last.y)
+        ctx.lineTo(last.x - size * Math.cos(angle + Math.PI / 6), last.y - size * Math.sin(angle + Math.PI / 6))
+      }
+    }
+    ctx.stroke()
+  }
+}
+
+export interface TimestampNoteFigure {
+  id: string
+  videoTimestamp?: number | null
+  reviewTicketId?: string | null
+}
+
+export function timestampMode(
+  note: TimestampNoteFigure,
+  onStage: { ticketId: string } | null,
+): 'live-seek' | 'orphan-label' | 'png-only' {
+  if (note.videoTimestamp == null) return 'png-only'
+  return onStage && note.reviewTicketId === onStage.ticketId ? 'live-seek' : 'orphan-label'
+}
+
+export function clusterMarkers(
+  notes: readonly TimestampNoteFigure[],
+  onStageTicketId: string,
+  toleranceSec = 1,
+): { at: number; noteIds: string[] }[] {
+  const rows = notes
+    .filter((note) => note.reviewTicketId === onStageTicketId && note.videoTimestamp != null)
+    .sort((a, b) => a.videoTimestamp! - b.videoTimestamp!)
+  const clusters: { at: number; noteIds: string[] }[] = []
+  for (const note of rows) {
+    const at = note.videoTimestamp!
+    const current = clusters.at(-1)
+    if (current && at - current.at <= toleranceSec) current.noteIds.push(note.id)
+    else clusters.push({ at, noteIds: [note.id] })
+  }
+  return clusters
+}
 
 /**
  * How long the scrub bar is allowed to be, in seconds.
@@ -100,39 +168,16 @@ export function framePoint(
 }
 
 /**
- * Paint strokes onto a context — the overlay while drawing, and the capture
- * canvas at save. One function for both, so what the human drew and what the
- * PNG carries cannot drift apart.
+ * The paused frame with the annotation baked into it, as PNG bytes
+ * (decision 22).
  *
- * Does not clear: the overlay clears itself before repainting, and the capture
- * paints over the frame it just drew.
- */
-export function paintStrokes(ctx: CanvasRenderingContext2D, strokes: readonly Stroke[]): void {
-  ctx.lineWidth = STROKE_WIDTH
-  ctx.lineCap = 'round'
-  ctx.lineJoin = 'round'
-  ctx.strokeStyle = STROKE_COLOR
-
-  for (const stroke of strokes) {
-    const [first, ...rest] = stroke
-    if (!first) continue
-    ctx.beginPath()
-    ctx.moveTo(first.x, first.y)
-    // A tap that never moved is still a mark the human made: a zero-length line
-    // under a round cap draws the dot they were pointing at.
-    if (rest.length === 0) ctx.lineTo(first.x, first.y)
-    for (const point of rest) ctx.lineTo(point.x, point.y)
-    ctx.stroke()
-  }
-}
-
-/**
- * The paused frame with the strokes baked into it, as PNG bytes (decisions #3).
- *
- * Frame first, strokes second, on one canvas sized to the video's intrinsic
+ * Frame first, shapes second, on one canvas sized to the video's intrinsic
  * resolution: the artifact is what the human saw plus what they drew on it, at
  * full quality. The video is served same-origin from `/api/reviews`, so the
  * canvas is untainted and `toBlob` is allowed to read it back.
+ *
+ * `scale` is the overlay's own — intrinsic width over rendered width — so the
+ * baked strokes are exactly the weight that was drawn on screen.
  *
  * The canvas is passed in rather than created here so the caller owns its
  * lifetime — and so this is drivable without a DOM.
@@ -140,7 +185,8 @@ export function paintStrokes(ctx: CanvasRenderingContext2D, strokes: readonly St
 export async function captureAnnotation(
   canvas: HTMLCanvasElement,
   video: HTMLVideoElement,
-  strokes: readonly Stroke[],
+  shapes: readonly Shape[],
+  scale = 1,
 ): Promise<Blob> {
   canvas.width = video.videoWidth
   canvas.height = video.videoHeight
@@ -149,7 +195,7 @@ export async function captureAnnotation(
   if (!ctx) throw new Error('this browser offered no 2d canvas to capture the frame with')
 
   ctx.drawImage(video, 0, 0, canvas.width, canvas.height)
-  paintStrokes(ctx, strokes)
+  paintShapes(ctx, shapes, scale)
 
   return await new Promise<Blob>((resolve, reject) => {
     canvas.toBlob((blob) => {

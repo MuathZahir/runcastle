@@ -69,57 +69,30 @@ export function driveFailure(
   }
 }
 
+export type DriveState = 'idle' | 'starting' | 'serving' | 'bare-checkout' | 'setup-failed' | 'review-agent-driving'
+export interface DriveView {
+  barTitle: string
+  barDesc: string
+  primary: 'start' | 'stop' | 'fixDrive'
+  stageKind: 'player' | 'panel' | 'bare' | 'failed' | 'agent' | 'starting'
+  footer: { showDevChip: boolean; showBranch: boolean; showOutput: boolean }
+}
+
+const footer = (active: boolean) => ({ showDevChip: active, showBranch: active, showOutput: active })
+const DRIVE_VIEWS: Record<DriveState, DriveView> = {
+  idle: { barTitle: 'Review the build', barDesc: 'Open the app when you are ready to test it.', primary: 'start', stageKind: 'player', footer: footer(false) },
+  starting: { barTitle: 'Starting the test drive', barDesc: 'Preparing the branch and development server.', primary: 'stop', stageKind: 'starting', footer: footer(true) },
+  serving: { barTitle: 'Test-driving the branch — merge when it looks right', barDesc: 'The development server is ready.', primary: 'stop', stageKind: 'panel', footer: footer(true) },
+  'bare-checkout': { barTitle: 'Branch checked out for inspection', barDesc: 'Branch checked out — nothing started. This project has no dev command · Set one in Settings', primary: 'stop', stageKind: 'bare', footer: footer(true) },
+  'setup-failed': { barTitle: 'Drive setup failed — fix it or stop the drive', barDesc: 'The project setup command did not complete.', primary: 'fixDrive', stageKind: 'failed', footer: footer(true) },
+  'review-agent-driving': { barTitle: 'Review agent driving', barDesc: 'review agent driving — notes land below as it finds things', primary: 'stop', stageKind: 'agent', footer: footer(true) },
+}
+
+export function driveView(state: DriveState, _info: object = {}): DriveView {
+  return DRIVE_VIEWS[state]
+}
+
 // --- review honesty: the SUMMARY card and the merge confirmation -------------
-
-/**
- * How much trust a review figure has earned, as a dot colour: `ok` green,
- * `warn` amber, `danger` red, `idle` grey for "there is nothing here".
- *
- * The distinction that matters is `idle` vs `ok`. The audit found the SUMMARY
- * card painting "0 commits", "0/0 done" and a missing run in all-clear green
- * (findings F23) — the one card meant to inform an irreversible merge reassuring
- * the user about data it did not have. Absence is never `ok` here.
- */
-interface DriveFigure {
-  purpose?: 'human' | 'review'
-}
-
-/** What an active drive on a feature branch says about itself. */
-export interface DriveWheel {
-  /** The live-state label beside the pulse. */
-  label: string
-  /** The sentence under it: what to do while this drive is up. */
-  copy: string
-}
-
-/**
- * Who is behind the wheel, in the words the drive surfaces show (decisions #10).
- *
- * A review drive is the same machinery on the same checkout, so every surface
- * used to announce it as the human's own test drive — the screen lying about who
- * is at the keyboard at the one moment the human is meant to be watching rather
- * than clicking. The human's wording is untouched: this only adds the case that
- * had no words of its own.
- *
- * A drive with no purpose is the human's. `purpose` arrives on the wire only
- * with this feature, and every drive that predates it was started by hand.
- */
-export function driveWheel(drive?: DriveFigure | null): DriveWheel {
-  if (drive?.purpose === 'review') {
-    return {
-      label: 'review agent driving',
-      copy:
-        'The review agent is driving this branch and writing what it finds as notes below. ' +
-        'Watch, or stop the drive to take the wheel yourself.',
-    }
-  }
-  return {
-    label: 'driving now',
-    copy:
-      'Click through the feature. When it feels right, merge — or stop the drive and send ' +
-      'feedback back through tickets.',
-  }
-}
 
 /**
  * The review agent's figure, as both review surfaces render it — or null when

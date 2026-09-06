@@ -14,7 +14,7 @@ const roster: ModelEntry[] = [
 ]
 const ticket = (over: Partial<Ticket> = {}): Ticket => ({
   id: 't1', featureId: 'f1', seq: 1, lap: 2, title: 'Build it', goal: 'Goal', context: 'Context', acceptanceCriteria: ['Works'], seams: ['UI'], blockedBy: [], kind: 'implementation', status: 'pending', commits: [], ...over,
-})
+}) as Ticket
 const saveStub = () => vi.fn(async () => undefined)
 
 afterEach(() => { cleanup(); sessionStorage.clear() })

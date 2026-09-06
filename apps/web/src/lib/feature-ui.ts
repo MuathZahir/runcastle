@@ -4,18 +4,27 @@ export * from './feature-ui/pipeline'
 export * from './feature-ui/sidebar'
 export * from './feature-ui/gates'
 export * from './feature-ui/drive'
+export * from './feature-ui/run'
 export {
   findingCountsLine,
   findingOpenReason,
   reviewChecks,
+  latestReview,
+  stampedReview,
+  freshness,
+  statusChips,
   reviewOutcome,
   reviewWalkthroughUrl,
+  verificationState,
 } from './feature-ui/review'
 export type {
   CheckRow,
   CheckTone,
   FindingCounts,
   ReviewOutcome,
+  ReviewArtifactFigure,
+  Freshness,
+  StatusChip,
 } from './feature-ui/review'
 export * from './feature-ui/laps'
 export * from './feature-ui/summary'

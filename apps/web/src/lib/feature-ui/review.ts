@@ -57,6 +57,27 @@ interface ReviewTicketFigure {
   kind?: TicketKind
   status: string
   error?: string
+  seq?: number
+  completedAt?: number | null
+  passKind?: 'review' | 'verification'
+}
+
+export function latestReview<T extends { seq: number; completedAt?: number | null }>(tickets: readonly T[]): T | undefined {
+  return [...tickets].sort((a, b) => (a.completedAt ?? -Infinity) - (b.completedAt ?? -Infinity) || a.seq - b.seq).at(-1)
+}
+
+/**
+ * The pass every evidence surface is stamped against: the latest COMPLETED one
+ * (decision 41a). A pass still burning vouches for nothing, and ordering on
+ * completion is what makes "latest" mean latest rather than highest-numbered.
+ *
+ * One implementation, because the review page's stage and the merge dialog's
+ * review row must never be stamped against different passes.
+ */
+export function stampedReview<T extends { seq: number; completedAt?: number | null }>(
+  rows: readonly T[],
+): T | null {
+  return latestReview(rows.filter((row) => row.completedAt !== null)) ?? null
 }
 
 /**
@@ -97,7 +118,8 @@ export function reviewOutcome(input: {
    */
   findings?: number
 }): ReviewOutcome {
-  const review = (input.tickets ?? []).filter((t) => t.kind === 'review').at(-1)
+  const candidates = (input.tickets ?? []).filter((t) => t.kind === 'review')
+  const review = latestReview(candidates.map((ticket, index) => ({ ...ticket, seq: ticket.seq ?? index })))
   if (!review) return { state: 'none' }
   if (review.status === 'failed') {
     return { state: 'failed', ...(review.error ? { reason: review.error } : {}) }
@@ -108,6 +130,9 @@ export function reviewOutcome(input: {
 
 /** One review ticket's artifacts as the player reads them (see lib/reviews.ts). */
 interface WalkthroughFigure {
+  ticketId?: string
+  seq?: number
+  completedAt?: number | null
   hasVideo: boolean
   /** Where to stream the recording, or null when there is none to stream. */
   videoUrl: string | null
@@ -126,7 +151,108 @@ interface WalkthroughFigure {
  * the seam that has to show several instead of one.
  */
 export function reviewWalkthroughUrl(artifacts?: readonly WalkthroughFigure[]): string | null {
-  return (artifacts ?? []).filter((a) => a.hasVideo).at(-1)?.videoUrl ?? null
+  const rows = (artifacts ?? []).filter((a) => a.hasVideo)
+  return latestReview(rows.map((row, index) => ({ ...row, seq: row.seq ?? index })))?.videoUrl ?? null
+}
+
+export interface ReviewArtifactFigure {
+  ticketId: string
+  seq: number
+  lap: number
+  passKind: 'review' | 'verification'
+  reviewedCommit: string | null
+  completedAt: number | null
+  landedSince: number
+  hasVideo: boolean
+  videoUrl: string | null
+}
+
+export type Freshness = { tone: 'fresh' | 'stale' | 'none' | 'verifying' | 'failed'; text: string }
+
+export function freshness(
+  artifact: Pick<ReviewArtifactFigure, 'lap'> | null | undefined,
+  branch: { landedSince: number; lap?: number },
+  verification?: { state: 'running' | 'failed'; reason?: string },
+): Freshness {
+  if (verification?.state === 'running') return { tone: 'verifying', text: 'Verification running — evidence below predates it' }
+  if (verification?.state === 'failed') {
+    const reason = verification.reason?.trim()
+    return { tone: 'failed', text: `verification could not run${reason ? `: ${reason}` : ''}` }
+  }
+  if (!artifact) return { tone: 'none', text: 'no review yet' }
+  if (branch.landedSince === 0) return { tone: 'fresh', text: 'Reviewed ✓ · this build' }
+  const age = branch.lap !== undefined && branch.lap > artifact.lap
+    ? `${branch.lap - artifact.lap} ${branch.lap - artifact.lap === 1 ? 'lap' : 'laps'} ago`
+    : 'earlier this lap'
+  return { tone: 'stale', text: `Reviewed ${age} · ${branch.landedSince} tickets landed since — evidence may be outdated` }
+}
+
+/** A ticket as the verification stamp reads it. */
+interface VerificationTicketFigure {
+  kind?: TicketKind
+  passKind?: 'review' | 'verification'
+  status: string
+  error?: string
+}
+
+/**
+ * Whether a verification pass is in flight or failed to run (decision 42b–c) —
+ * what turns the review chip amber over evidence the pass already predates.
+ *
+ * A FINISHED pass is not a state here: its recording and its findings ARE the
+ * evidence the page is stamped against, so {@link freshness} takes over from
+ * that point and there is nothing left to report.
+ */
+export function verificationState(
+  tickets: readonly VerificationTicketFigure[],
+): { state: 'running' | 'failed'; reason?: string } | undefined {
+  const last = tickets.filter((t) => t.kind === 'review' && t.passKind === 'verification').at(-1)
+  if (!last) return undefined
+  if (last.status === 'failed') {
+    return { state: 'failed', ...(last.error ? { reason: last.error } : {}) }
+  }
+  if (last.status === 'done' || last.status === 'cancelled') return undefined
+  return { state: 'running' }
+}
+
+export interface StatusChip { key: 'review' | 'checks' | 'lap' | 'drive' | 'run'; label: string; tone: CheckTone }
+export function statusChips(input: {
+  artifact?: Pick<ReviewArtifactFigure, 'lap'> | null
+  currentLap: number
+  landedSince: number
+  tickets: readonly { kind?: TicketKind; status: string; lap?: number; landedLap?: number }[]
+  checks: { passed: number; total: number }
+  runState: string
+  verification?: { state: 'running' | 'failed'; reason?: string }
+  /**
+   * The lap the branch was last test-driven in, null when it never was, and
+   * undefined where the drive is not this strip's to report — the review page
+   * has the stage for that, the shipped record has only this (decision 33a).
+   */
+  driveLap?: number | null
+  /** The feature has shipped: the lap chip is a record, not a position. */
+  shipped?: boolean
+}): StatusChip[] {
+  const stamp = freshness(input.artifact, { landedSince: input.landedSince, lap: input.currentLap }, input.verification)
+  const implementation = input.tickets.filter((t) => t.kind !== 'review' && (t.landedLap ?? t.lap) === input.currentLap)
+  const landed = implementation.filter((t) => t.status === 'done').length
+  const waived = implementation.filter((t) => t.status === 'cancelled').length
+  const lapLabel = input.shipped
+    ? `Shipped after ${input.currentLap} lap${input.currentLap === 1 ? '' : 's'}`
+    : `Lap ${input.currentLap} · ${landed} of ${implementation.length} tickets landed · ${waived} waived`
+  return [
+    { key: 'review', label: stamp.text, tone: stamp.tone === 'fresh' ? 'ok' : stamp.tone === 'none' ? 'idle' : 'warn' },
+    { key: 'checks', label: `${input.checks.passed}/${input.checks.total} checks passed`, tone: input.checks.total > 0 && input.checks.passed === input.checks.total ? 'ok' : 'warn' },
+    { key: 'lap', label: lapLabel, tone: waived ? 'warn' : 'idle' },
+    ...(input.driveLap === undefined
+      ? []
+      : [
+          input.driveLap === null
+            ? { key: 'drive' as const, label: 'never test-driven', tone: 'warn' as const }
+            : { key: 'drive' as const, label: `test drive taken · lap ${input.driveLap}`, tone: 'ok' as const },
+        ]),
+    { key: 'run', label: input.runState, tone: input.runState === 'succeeded' ? 'ok' : input.runState === 'failed' ? 'danger' : 'warn' },
+  ]
 }
 
 /** A drive as the review surfaces read it — only whose it is matters here. */
@@ -222,7 +348,7 @@ export function findingCountsLine(summary?: FindingCounts): string | null {
 
 /** A finding as the open-defects list reads it — only why it is still open. */
 interface OpenFindingFigure {
-  openReason?: 'over-cap' | 'fix-failed' | null
+  openReason?: 'over-cap' | 'fix-failed' | 'verification' | null
   failureReason?: string | null
 }
 
@@ -236,6 +362,9 @@ export function findingOpenReason(finding: OpenFindingFigure): string | null {
   if (finding.openReason === 'fix-failed') {
     const why = finding.failureReason?.trim()
     return why ? `fix failed: ${why}` : 'fix failed'
+  }
+  if (finding.openReason === 'verification') {
+    return 'found by the verification pass — not auto-fixed'
   }
   return null
 }

@@ -69,7 +69,7 @@ utilities genuinely cannot express, kept to a minimum.
 
 | Primitive | What it is | Variants |
 |---|---|---|
-| `Button` | The app's button. 32px tall, `rounded-md`, forwards every `<button>` attribute; a `className` you pass is appended. | `ghost` (default) · `solid` · `danger` |
+| `Button` | The app's button. 32px tall, `rounded-md`, forwards every `<button>` attribute; a `className` you pass is appended. `size="xs"` is the 22px one that sits inside a row — a lane's Retry, a bar secondary, an inspector action — and was the `btn-xs` class before the atoms migrated. | `variant`: `ghost` (default) · `solid` · `danger` · `size`: `md` (default) · `xs` |
 | `SectionTitle` | 11px uppercase tracked label over a section. | — |
 | `DimLine` | One dim mono line — an inline empty or error state for a tight spot. | — |
 | `EmptyState` | A designed blank area: quiet icon chip, plain-language title, one-line hint, optional action. | `compact` |
@@ -88,6 +88,7 @@ utilities genuinely cannot express, kept to a minimum.
 | `FindingSeverityChip` | How bad the review thought a finding was. Even `high` is amber: severity is read, never enforced. | `high` · `medium` · `low` |
 | `RunStatusChip` | A burn run's status. `running` breathes. | one per `RunStatus` |
 | `SessionStatusDot` | A 8px dot for a session's lifecycle. | `launching` · `live` · `ended` |
+| `Spinner` | The ring that says something is in flight. Decorative — whatever it sits beside says the state in words — so it is `aria-hidden`. | `size`: `md` (default) · `sm` (rides inside a chip's line) · `tone`: `work` (default) · `accent` |
 
 **Exactly one `solid` button is visible per view.** Everything else is `ghost`;
 `danger` is for destructive confirmations, and it is still not the solid one. If
@@ -182,7 +183,7 @@ import a module directly, and removing the barrel is a later cleanup.
 | `gates.ts` | Gates and what blocks them: merge/ticket conflict kickoffs, overrides, check-in and kickoff trouble, session activity. |
 | `drive.ts` | Test drive: the open-app URL and its wait state, drive failures, the drive wheel. |
 | `review.ts` | Review figures — run/commit/review rows, `CheckRow`/`CheckTone`, outcome, finding counts and reasons. |
-| `laps.ts` | Lap grouping: lap accounts, `groupByLap`, ticket model chips, the lap banner. |
+| `laps.ts` | Lap grouping: lap accounts, `groupByLap`, ticket model chips, lap aborts. |
 | `summary.ts` | Docs and the merge confirmation: headline, spec path, deferred scope, `mergeSummary`. |
 | `map.ts` | Mapped features: `map.md` sections, waypoints and their groups. |
 | `session.ts` | Session lifecycle: done state, live-session blockers, shipped QA sessions, shipped-at. |
@@ -200,9 +201,8 @@ the phase-body dispatch and the action switch; these moved out:
 
 | File | What it is |
 |---|---|
-| `NextStepBar.tsx` | The next-step bar: the one primary action, its secondaries, reason prompts. |
+| `NextStepBar.tsx` | The next-step bar: the one primary action, its secondaries, escape lines on disabled actions. |
 | `PipelineStepper.tsx` | The phase stepper across the top of a feature. |
-| `LapBannerRow.tsx` | From lap 2 on, the line saying which lap this is and what put the feature on it. |
 | `FeaturePanes.tsx` | The crash and unrecognised-phase panes — a feature view that cannot do its job. |
 | `use-resume-failed-alert.ts` | Raises a banner on a new `session.resume_failed` event. |
 | `copy-text.ts` | Copy to the clipboard, with the toast either way. |
@@ -257,6 +257,32 @@ The legacy rules keep their hardcoded pixels until their flow migrates them, so
 the app reads slightly mixed mid-migration. That is accepted.
 
 ## Ratchet
+
+### What is left in the file, and whose it is
+
+The `build-review-and-ship` flow took its own sections (the run body, review and
+shipped, the merge and notes dialogs) **and adopted the six that belonged to
+nobody** — MARKDOWN, DOC PEEK, ERROR BOUNDARY / TERMINAL, TOASTS, ANIMATIONS,
+and ATOMS *except its base atoms*: the merge with `ideation-through-tickets`
+brought back surfaces (the grill and tickets bodies, the waypoint cards, the
+preparation workspace) that still render `btn`/`chip`/`mono`/`spin-ring` by
+name, so the ATOMS section stands until those flows' own migrations retire
+their callers. Keyframes and the reduced-motion switch live in `theme.css`;
+everything else that was adopted is utilities at the consumer. What remains,
+by section banner:
+
+| Section | Whose |
+|---|---|
+| LEGACY ALIASES + the base reset at the top | the last flow to land |
+| ATOMS | whoever migrates the last `btn`/`chip`/`mono`/`spin-ring` caller (grill + preparation surfaces today) |
+| LOGO WORDMARK · MULTI-PROJECT | the portfolio / open-project flow |
+| WORKSPACE · SESSION PANEL | `flow-redesign-project-shell-and-navigation` |
+| PHASE BODY — tickets ledger | `flow-redesign-ideation-through-tickets` |
+| PHASE BODY — review + shipped | not this flow's any more — what outlived the rebuild is preparation's dry-run pulse, the grill terminal's height, and DraftBody's base-branch select |
+| OUTLIVED THE SETTINGS OVERLAY | preparation, and the delete dialog's confirm input |
+
+So **nobody deletes the file yet**: the condition below is "whoever measures
+zero after their own deletions", and none of the remainder is ours.
 
 `test/styles-ratchet.test.ts` asserts `styles.css` is at or below a baseline line
 count recorded as a constant in that file. The rule above is therefore enforced

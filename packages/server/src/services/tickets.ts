@@ -1,11 +1,12 @@
 import type { TicketInput } from '@runcastle/core'
 import { BlockingEdgeError, Ticket, modelRoster, newId, resolveBatchBlocking } from '@runcastle/core'
-import { and, asc, eq } from 'drizzle-orm'
+import { and, asc, eq, inArray } from 'drizzle-orm'
 import type { AppCtx } from '../db/types'
-import { tickets } from '../db/schema'
+import { events, tickets } from '../db/schema'
 import { InvalidInputError, NotFoundError } from '../errors'
 import { emit } from './events'
 import { getFeatureRow } from './repo'
+import { markFailed } from './review-findings'
 
 /**
  * Ticket storage. The ideation session emits `TicketInput[]` in one batch via
@@ -28,6 +29,9 @@ function rowToTicket(row: TicketSelect): Ticket {
     seams: row.seams,
     blockedBy: row.blockedBy,
     kind: row.kind,
+    passKind: row.passKind,
+    reviewedCommit: row.reviewedCommit,
+    completedAt: row.completedAt,
     model: row.model ?? undefined,
     lap: row.lap,
     status: row.status,
@@ -132,6 +136,9 @@ export function storeTickets(
     // Pass-through, defaulted here rather than left to the column so the rows
     // this function returns carry the kind without a re-read.
     kind: t.kind ?? ('implementation' as const),
+    passKind: t.passKind ?? ('review' as const),
+    reviewedCommit: null,
+    completedAt: null,
     // Validated before anything is written, so one bad id fails the whole batch
     // rather than storing a half-assigned one.
     model: normalizeModel(ctx, t.model),
@@ -228,7 +235,11 @@ export function cancelTicket(ctx: AppCtx, id: string, reason?: string): Ticket {
 
   ctx.db
     .update(tickets)
-    .set({ status: 'cancelled', error: reason?.trim() ? reason.trim() : null })
+    .set({
+      status: 'cancelled',
+      error: reason?.trim() ? reason.trim() : null,
+      completedAt: Date.now(),
+    })
     .where(eq(tickets.id, id))
     .run()
   emit(ctx, current.featureId, {
@@ -265,8 +276,10 @@ export function sweepOrphanedBurning(ctx: AppCtx, featureId: string, reason: str
     .all()
     .map(rowToTicket)
 
+  const swept: Ticket[] = []
   for (const t of orphaned) {
-    updateTicket(ctx, t.id, { status: 'failed', error: reason })
+    swept.push(updateTicket(ctx, t.id, { status: 'failed', error: reason }))
+    if (t.originFindingId) markFailed(ctx, t.originFindingId, reason)
     emit(ctx, featureId, {
       type: 'ticket.failed',
       message: `ticket ${t.seq} failed: ${reason}`,
@@ -274,7 +287,7 @@ export function sweepOrphanedBurning(ctx: AppCtx, featureId: string, reason: str
       data: { error: reason, orphaned: true },
     })
   }
-  return orphaned.map((t) => ({ ...t, status: 'failed' as const, error: reason }))
+  return swept
 }
 
 export function updateTicket(
@@ -286,6 +299,7 @@ export function updateTicket(
     error?: string | null
     attemptBranch?: string | null
     conflictFiles?: string[] | null
+    reviewedCommit?: string | null
   },
 ): Ticket {
   const current = ctx.db.select().from(tickets).where(eq(tickets.id, id)).get()
@@ -293,11 +307,15 @@ export function updateTicket(
 
   const set: Partial<TicketSelect> = {}
   if (patch.status !== undefined) set.status = patch.status
+  if (patch.status !== undefined) {
+    set.completedAt = ['done', 'failed', 'cancelled'].includes(patch.status) ? Date.now() : null
+  }
   if (patch.commits !== undefined) set.commits = patch.commits
   if (patch.error !== undefined) set.error = patch.error
   if (patch.attemptBranch !== undefined) set.attemptBranch = patch.attemptBranch
   if (patch.conflictFiles !== undefined) set.conflictFiles = patch.conflictFiles
   if (patch.digest !== undefined) set.digest = patch.digest
+  if (patch.reviewedCommit !== undefined) set.reviewedCommit = patch.reviewedCommit
 
   ctx.db.update(tickets).set(set).where(eq(tickets.id, id)).run()
 
@@ -310,4 +328,76 @@ export function updateTicket(
 
   const updated = ctx.db.select().from(tickets).where(eq(tickets.id, id)).get()
   return rowToTicket(updated as TicketSelect)
+}
+
+/**
+ * The ticket rows a given set of ids resolves to, in ledger (`seq`) order —
+ * what lets a finished run render the lanes it burned. Ids the ledger no longer
+ * holds are simply absent: a past run is history, and a hole in it is not worth
+ * an error.
+ */
+export function listByIds(ctx: AppCtx, ids: readonly string[]): Ticket[] {
+  if (ids.length === 0) return []
+  return ctx.db
+    .select()
+    .from(tickets)
+    .where(inArray(tickets.id, [...ids]))
+    .orderBy(asc(tickets.seq))
+    .all()
+    .map(rowToTicket)
+}
+
+/** What {@link ticketDurationStats} reports: a median and the sample behind it. */
+export interface TicketDurationStats {
+  /** Median wall time of a done implementation ticket; 0 when there is no sample. */
+  medianMs: number
+  sampleSize: number
+}
+
+/** `ticket.timing`'s wall clock, when the payload actually carries one. */
+function timingWallMs(data: unknown): number | undefined {
+  if (typeof data !== 'object' || data === null) return undefined
+  const ms = (data as { wallMs?: unknown }).wallMs
+  return typeof ms === 'number' && Number.isFinite(ms) && ms > 0 ? ms : undefined
+}
+
+/**
+ * How long this project's tickets have actually been taking, so the pre-burn
+ * bar sets its expectation from history rather than from a hardcoded number
+ * that rots (decisions.md #16b).
+ *
+ * The sample is every DONE implementation ticket across the project's features:
+ * a failed lane measures how long it took to give up, and a review pass is a
+ * different kind of work from the tickets the human is about to burn.
+ * `ticket.timing`'s `wallMs` bounds exactly one execution, so the last one wins
+ * for a ticket burned more than once — the same figure its lane shows.
+ */
+export function ticketDurationStats(ctx: AppCtx, projectId: string): TicketDurationStats {
+  const rows = ctx.db
+    .select({ ticketId: events.ticketId, data: events.data })
+    .from(events)
+    .innerJoin(tickets, eq(events.ticketId, tickets.id))
+    .where(
+      and(
+        eq(events.projectId, projectId),
+        eq(events.type, 'ticket.timing'),
+        eq(tickets.status, 'done'),
+        eq(tickets.kind, 'implementation'),
+      ),
+    )
+    .orderBy(asc(events.id))
+    .all()
+
+  const perTicket = new Map<string, number>()
+  for (const row of rows) {
+    const ms = timingWallMs(row.data)
+    if (row.ticketId && ms !== undefined) perTicket.set(row.ticketId, ms)
+  }
+
+  const samples = [...perTicket.values()].sort((a, b) => a - b)
+  if (samples.length === 0) return { medianMs: 0, sampleSize: 0 }
+  const mid = samples.length >> 1
+  const medianMs =
+    samples.length % 2 === 1 ? samples[mid] : Math.round((samples[mid - 1] + samples[mid]) / 2)
+  return { medianMs, sampleSize: samples.length }
 }

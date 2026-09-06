@@ -26,10 +26,11 @@ export function nextStep(full: FeatureFull, ctx: NextStepContext): NextStep {
   // Non-terminal tickets the burner still has to run — matches the server's
   // `burn` acceptance check (features.ts). Fix tickets from an Iterate session
   // land here as `pending`, driving the review → burn loop-back.
-  const pending = tickets.filter(
+  const pendingTickets = tickets.filter(
     (ticket) =>
       ticket.status !== 'done' && ticket.status !== 'failed' && ticket.status !== 'cancelled',
-  ).length
+  )
+  const pending = pendingTickets.length
   const run = latestRun(runs)
   const running = run?.status === 'running'
   const input: ResolverInput = {
@@ -43,6 +44,7 @@ export function nextStep(full: FeatureFull, ctx: NextStepContext): NextStep {
     done,
     failed,
     pending,
+    pendingTickets,
     run,
     running,
   }

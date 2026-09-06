@@ -27,6 +27,37 @@ export function OpenSettingsProvider({
 }
 
 /**
+ * A phrase that opens settings on the row it names. Where a surface knows its
+ * own destination — the drive states name the dev-command field directly — this
+ * is the link to reach for; {@link MessageWithSettingsLink} is for prose that has
+ * to be scanned for a pointer first. Renders as plain text outside the provider,
+ * because a link that goes nowhere is worse than none.
+ */
+export function SettingsLink({
+  location,
+  children,
+}: {
+  location: SettingsLocation
+  children: ReactNode
+}) {
+  const open = useContext(OpenSettings)
+  if (!open) return <>{children}</>
+  return (
+    <button
+      type="button"
+      className={`${BARE_BUTTON} cursor-pointer text-accent-hi underline underline-offset-2 hover:text-accent-2`}
+      onClick={(event) => {
+        // The lane or row this can sit in is itself a click target.
+        event.stopPropagation()
+        open(location)
+      }}
+    >
+      {children}
+    </button>
+  )
+}
+
+/**
  * A message with its settings pointer, if it has one, rendered as a link. Falls
  * back to the plain text — a message nobody can act on should not look like it
  * offers something.
@@ -38,17 +69,7 @@ export function MessageWithSettingsLink({ text }: { text: string }) {
   return (
     <>
       {mention.before}
-      <button
-        type="button"
-        className={`${BARE_BUTTON} cursor-pointer text-accent-hi underline underline-offset-2 hover:text-accent-2`}
-        onClick={(event) => {
-          // The lane this can sit in is itself a click target.
-          event.stopPropagation()
-          open(mention.location)
-        }}
-      >
-        {mention.phrase}
-      </button>
+      <SettingsLink location={mention.location}>{mention.phrase}</SettingsLink>
       {mention.after}
     </>
   )

@@ -1,5 +1,5 @@
 import { BranchMenu, Button } from '../../ui'
-import type { ActionKind, NextStep } from '../../lib/feature-ui'
+import type { ActionKind, NextAction, NextStep } from '../../lib/feature-ui'
 
 export function NextStepBar({
   ns,
@@ -20,14 +20,36 @@ export function NextStepBar({
     onPick: (branch: string) => void
   }
 }) {
+  // Disabled actions that carry a way out of their own reason.
+  const escapes = [ns.primary, ...ns.secondary].filter(
+    (a): a is NextAction & { disabled: string; escape: NextAction } => !!a?.disabled && !!a.escape,
+  )
+
   return (
-    <div className="flex min-h-24 items-center gap-6 border-b border-hairline bg-panel-2 px-6 py-4">
+    // `flex-wrap` + the copy column's `basis-[26rem]` are decision 30e: the
+    // conflict state mounts the most buttons of any bar, the actions never
+    // shrink, and without a floor the kick/title/desc collapsed to one word
+    // per line in the state that most needs reading. Wide bars are unchanged;
+    // a crowded one wraps the actions to their own row instead.
+    <div className="flex min-h-24 flex-wrap items-center gap-6 border-b border-hairline bg-panel-2 px-6 py-4">
       {ns.busy && <span className="size-4 animate-spin rounded-pill border-2 border-hairline-strong border-t-accent" />}
-      <div className="min-w-0 flex-1">
+      <div className="min-w-0 flex-1 basis-[26rem]">
         <div className="font-mono text-xs uppercase tracking-[0.12em] text-text-3">{ns.kick}</div>
         <div className="mt-1 text-lg font-semibold text-text">{ns.title}</div>
         {guidance && <div className="mt-1 max-w-[68ch] text-sm text-text-2">{ns.desc}</div>}
         {ns.note && <div className="mt-2 text-sm text-text-3" role="note">{ns.note}</div>}
+        {/* A refusal with a way out of it (decision 20). The tooltip on the dead
+            button says why; this says why WHERE THE EYE IS and puts the one
+            click that clears it beside the sentence, so "Stop the test drive
+            first" stops being a dead end. */}
+        {escapes.map((a) => (
+          <div key={a.kind} className="mt-2 flex flex-wrap items-center gap-2 text-sm text-text-3">
+            <span>{a.disabled}</span>
+            <Button size="xs" onClick={() => onAction(a.escape.kind)} disabled={busy}>
+              {a.escape.label}
+            </Button>
+          </div>
+        ))}
       </div>
       <div className="flex shrink-0 items-center gap-2">
             {/* `a.disabled` is the reason the server would refuse this action in

@@ -32,13 +32,24 @@ function cx(...parts: Array<string | false | null | undefined>): string {
 }
 
 type Variant = 'solid' | 'ghost' | 'danger'
+type ButtonSize = 'md' | 'xs'
 
 const BUTTON_BASE =
-  'inline-flex h-(--control-h) items-center justify-center gap-1.5 whitespace-nowrap ' +
-  'rounded-md border px-3 text-sm font-medium ' +
+  'inline-flex items-center justify-center gap-1.5 whitespace-nowrap border font-medium ' +
   'transition-[color,background-color,border-color,box-shadow,transform,opacity] ' +
   'duration-(--dur-1) ease-app enabled:active:scale-[0.99] ' +
   'disabled:cursor-not-allowed disabled:opacity-40'
+
+/**
+ * `xs` is the button that sits inside a row rather than under a form — a lane's
+ * Retry, the next-step bar's secondaries, an inspector action. It was the
+ * `btn-xs` legacy class every one of those surfaces reached for, which is why it
+ * is a variant here and not a class list copied around.
+ */
+const BUTTON_SIZE: Record<ButtonSize, string> = {
+  md: 'h-(--control-h) rounded-md px-3 text-sm',
+  xs: 'h-5.5 rounded-sm px-2.5 text-xs',
+}
 
 /**
  * Every variant states its own background, `danger` included. There is no
@@ -57,14 +68,58 @@ const BUTTON_VARIANT: Record<Variant, string> = {
 
 export function Button({
   variant = 'ghost',
+  size = 'md',
   className,
   children,
   ...rest
-}: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: Variant }) {
+}: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: Variant; size?: ButtonSize }) {
   return (
-    <button className={cx(BUTTON_BASE, BUTTON_VARIANT[variant], className)} {...rest}>
+    <button
+      className={cx(BUTTON_BASE, BUTTON_SIZE[size], BUTTON_VARIANT[variant], className)}
+      {...rest}
+    >
       {children}
     </button>
+  )
+}
+
+const SPINNER_SIZE: Record<'sm' | 'md', string> = {
+  sm: 'size-2.5 border-[1.4px]',
+  md: 'size-3 border-[1.6px]',
+}
+
+const SPINNER_TONE: Record<'work' | 'accent', string> = {
+  work: 'border-ph-implementation',
+  accent: 'border-accent',
+}
+
+/**
+ * The ring that says something is in flight — a burning run, a launching
+ * session, a project chat coming up. `sm` is the one that rides inside a chip's
+ * own line; `md` stands beside body text.
+ *
+ * Purely decorative: whatever it spins next to says the state in words, so it is
+ * hidden from assistive tech rather than given a label of its own.
+ */
+export function Spinner({
+  size = 'md',
+  tone = 'work',
+  className,
+}: {
+  size?: 'sm' | 'md'
+  tone?: 'work' | 'accent'
+  className?: string
+}) {
+  return (
+    <span
+      aria-hidden="true"
+      className={cx(
+        'inline-block shrink-0 animate-spin rounded-pill border-t-transparent',
+        SPINNER_SIZE[size],
+        SPINNER_TONE[tone],
+        className,
+      )}
+    />
   )
 }
 
@@ -123,7 +178,7 @@ export function SectionTitle({ children }: { children: ReactNode }) {
  * other raw spans render the pair by hand, and unlayered rules beat utilities.
  */
 export function DimLine({ children }: { children: ReactNode }) {
-  return <div className="dim-line mono py-0.5 font-mono text-sm text-text-3">{children}</div>
+  return <div className="dim-line py-0.5 font-mono text-sm text-text-3">{children}</div>
 }
 
 /**
@@ -893,12 +948,30 @@ export function TicketStatusChip({ status }: { status: TicketStatus }) {
  * The kind badge, shown only for `review` tickets: implementation is the
  * default and the overwhelming majority, so badging it would be noise on every
  * row without distinguishing anything.
+ *
+ * A `verification` pass says so instead of `review` (decisions.md #41b): it
+ * tours the build and confirms the fixes that landed rather than auditing the
+ * branch, and a run whose last two lanes both read "review" hides that.
  */
-export function TicketKindChip({ kind }: { kind: TicketKind }) {
+export function TicketKindChip({
+  kind,
+  passKind,
+}: {
+  kind: TicketKind
+  passKind?: 'review' | 'verification'
+}) {
   if (kind === 'implementation') return null
+  const verification = passKind === 'verification'
   return (
-    <span className={cx(CHIP_BASE, CHIP_REVIEW)} title="Verifies the integrated feature branch">
-      {kind}
+    <span
+      className={cx(CHIP_BASE, CHIP_REVIEW)}
+      title={
+        verification
+          ? 'Confirms the fixes that landed since the last review'
+          : 'Verifies the integrated feature branch'
+      }
+    >
+      {verification ? 'verification' : kind}
     </span>
   )
 }

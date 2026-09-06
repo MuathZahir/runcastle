@@ -300,6 +300,9 @@ export function useLiveSync(): LiveStatus {
       // outlive the run that disproved it until the next remount.
       void u.project.prep.invalidate()
       void u.run.get.invalidate()
+      // The run history behind the runs counter (decision #15b) — a burn that
+      // starts adds a row to it, and the counter is on screen while that happens.
+      void u.run.listByFeature.invalidate()
       void u.project.list.invalidate()
       // Spec/plan documents: these queries have no polling interval at all, so
       // before push they only ever refreshed on remount — this is what made an
@@ -315,6 +318,9 @@ export function useLiveSync(): LiveStatus {
       // the same value.
       void u.project.sessionBranch.invalidate()
       void u.feature.commitCount.invalidate()
+      // The merge confirmation's "what lands" row is the same git read one step
+      // further on (commits AND files), so it moves when the count does.
+      void u.feature.mergeDelta.invalidate()
       void u.project.prepSession.invalidate()
       void u.project.projectSession.invalidate()
       // The review agent's walkthrough appears mid-burn, at the tail of a run

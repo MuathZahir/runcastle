@@ -1,6 +1,5 @@
 import { modelEntryFor } from '@runcastle/core'
 import type { AgentRuntime, EventRow, ModelEntry, Ticket, TicketKind } from '@runcastle/core'
-import type { FeatureFull } from '../api'
 import { RUNTIME_LABEL } from '../settings'
 
 export interface TicketAccount {
@@ -133,49 +132,120 @@ export function ticketModelChip(
   return { id, runtime, runtimeLabel: RUNTIME_LABEL[runtime] }
 }
 
-/** The workspace's lap banner (decisions.md #6), or null on lap 1. */
-export interface LapBanner {
-  lap: number
-  /** When Iterate put the feature on this lap, or null if the feed cannot say. */
-  startedAt: number | null
-  /** What the lap before this one landed, as one line. */
-  landed: string
+/** An Iterate whose lap session could not be opened, rolled back (decision 26g). */
+export interface LapAbort {
+  /** When the rollback was recorded. */
+  at: number
+  /** The server's own account of it, git error and all. */
+  message: string
 }
 
 /**
- * What the workspace says about the lap it is on, from lap 2 onward — which lap,
- * when it was kicked off, and what the lap before it landed. Lap 1 returns null:
- * a feature that merges first try looks exactly like the plain linear flow
- * (ADR-0010 §4), and iteration ceremony over it is noise.
+ * The Iterate that failed, or null when the last thing the feed says about laps
+ * is that one started.
  *
- * WHY this lap exists needs no lookup — Iterate is the only thing that bumps a
- * lap, so the reason is a constant the banner states in words. What the feed adds
- * is WHEN: the latest `lap.started`, UNLESS a later `lap.aborted` took that lap
- * back (a lap whose terminal could not be opened is rolled back to the previous
- * lap and phase, so its start no longer describes where the feature is). Absent
- * is a normal answer — a feed that does not reach back to the Iterate simply
- * cannot date it.
+ * A lap whose terminal cannot be opened is rolled back whole — lap and phase
+ * both — and the rollback is recorded as `lap.aborted` (`features.ts`
+ * `rethinkAndLaunch`). The walked failure looked like nothing had happened: the
+ * page came back exactly as it was, with the only trace of it buried in the
+ * Activity feed. So the alert slot reads this, and a later `lap.started`
+ * (the retry landing) is what takes it back down.
  */
-export function lapBanner(
-  full: Pick<FeatureFull, 'feature' | 'tickets'>,
-  events: readonly EventRow[],
-): LapBanner | null {
-  const lap = full.feature.lap
-  if (lap <= 1) return null
-
-  const lastLapEvent = [...events]
+export function lapAbort(events: readonly EventRow[]): LapAbort | null {
+  const last = [...events]
     .reverse()
     .find((e) => e.type === 'lap.started' || e.type === 'lap.aborted')
-  const previous = lap - 1
-  const landed = full.tickets.filter((t) => t.lap === previous && t.status === 'done').length
+  if (last?.type !== 'lap.aborted') return null
+  return { at: last.ts, message: last.message }
+}
 
-  return {
-    lap,
-    startedAt: lastLapEvent?.type === 'lap.started' ? lastLapEvent.ts : null,
-    landed: `Lap ${previous} landed ${
-      landed === 0 ? 'no tickets' : `${landed} ticket${landed === 1 ? '' : 's'}`
-    }`,
+export interface LapChipFigure {
+  label: string
+  story: string
+  promotedFromEarlier: number
+}
+
+export function lapChip(
+  tickets: readonly { kind?: TicketKind; status: string; lap: number; landedLap?: number }[],
+  feature: { lap: number; lapSessionRan?: boolean },
+): LapChipFigure {
+  const implementation = tickets.filter((ticket) => ticket.kind !== 'review' && (ticket.landedLap ?? ticket.lap) === feature.lap)
+  const landed = implementation.filter((ticket) => ticket.status === 'done').length
+  const promotedFromEarlier = implementation.filter((ticket) => ticket.lap < feature.lap).length
+  const story = feature.lapSessionRan
+    ? `Lap ${feature.lap}'s session digested your notes and emitted this lap's tickets`
+    : `Lap ${feature.lap} is open — its session will digest your notes and emit this lap's tickets`
+  return { label: `Lap ${feature.lap} · ${landed} of ${implementation.length} tickets landed`, story, promotedFromEarlier }
+}
+
+/** "1 ticket" / "3 tickets" — the pluralised count these summaries are made of. */
+export const noun = (count: number, singular: string): string =>
+  `${count} ${singular}${count === 1 ? '' : 's'}`
+
+export function triageFooter(input: {
+  quickFix: number
+  carried: number
+  nextLap: number
+  standing: readonly { count: number; lap: number }[]
+}): string {
+  const parts: string[] = []
+  if (input.quickFix > 0) parts.push(`${noun(input.quickFix, 'ticket')} will mint`)
+  if (input.carried > 0) parts.push(`${noun(input.carried, 'note')} carried into the lap conversation`)
+  if (input.quickFix === 0 && input.carried > 0) parts.push(`review what you're bringing to the conversation → Start lap ${input.nextLap}`)
+  for (const debt of input.standing) {
+    if (debt.count > 0) parts.push(`${noun(debt.count, 'unburned fix ticket')} from lap ${debt.lap} will burn with these`)
   }
+  return parts.join(' · ')
+}
+
+/** A way out of the triage step: what the button says, and where it goes. */
+export interface TriageExit {
+  label: string
+  /**
+   * Carry what is left into lap N+1's conversation (`feature.rethink`) rather
+   * than burning the minted tickets on this lap (`feature.burn`).
+   */
+  carry: boolean
+}
+
+/**
+ * The ways out of the triage step, in render order — the last is the primary
+ * (decision 21).
+ *
+ * The human never picks the road up front: Fix and Iterate were the same
+ * decision entered through two doors, and asking again inside the door is the
+ * duplicate choice this removes. So the road falls out of the list — anything
+ * left to talk about opens the conversation, and a list that is quick fixes all
+ * the way down has nothing to discuss, so its tickets just burn. That one case
+ * keeps the conversation reachable anyway, because "these are all quick fixes
+ * AND I want to talk" is the human's call to make, not this function's.
+ */
+export function triageExits(input: {
+  quickFix: number
+  carried: number
+  nextLap: number
+}): TriageExit[] {
+  const { quickFix, carried, nextLap } = input
+  if (quickFix > 0 && carried === 0)
+    return [
+      { label: `Start lap ${nextLap} anyway`, carry: true },
+      { label: `Mint ${noun(quickFix, 'ticket')} and burn`, carry: false },
+    ]
+  if (quickFix === 0) return [{ label: `Start lap ${nextLap}`, carry: true }]
+  return [{ label: `Mint ${quickFix} · carry ${carried} → Start lap ${nextLap}`, carry: true }]
+}
+
+export function burnLabel(
+  pending: readonly { lap: number }[],
+  lap: number,
+): string {
+  const current = pending.filter((ticket) => ticket.lap === lap).length
+  const carried = pending.length - current
+  const base = `Burn ${noun(pending.length, 'ticket')}`
+  if (carried === 0) return base
+  const previousLaps = [...new Set(pending.filter((ticket) => ticket.lap !== lap).map((ticket) => ticket.lap))]
+  const carriedLabel = previousLaps.length === 1 ? ` · ${carried} carried from lap ${previousLaps[0]}` : ` · ${carried} carried from earlier laps`
+  return `${base} — ${current} from lap ${lap}${carriedLabel}`
 }
 
 // --- the map rail (mapped ideation) ----------------------------------------

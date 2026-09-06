@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 import type { FeatureFull } from '../../lib/api'
-import { fmtDuration, relAgo } from '../../lib/format'
+import { fmtDuration, relTimeAgo } from '../../lib/format'
 import { sessionDoneState, sessionKindName } from '../../lib/feature-ui'
 import { SessionStatusDot } from '../../ui'
 
@@ -32,7 +32,7 @@ export function SessionStrip({ session, full, right }: { session: Session; full?
   return (
     <div className="flex min-h-12 items-center gap-2 border-b border-hairline px-3 font-mono text-sm" title={id}>
       <span className="font-semibold text-text">{sessionKindName(session)} session</span>
-      {active ? <><span className="text-text-3">·</span><SessionStatusDot status={session.status} /><span className="text-text-2">{session.status === 'launching' ? 'starting…' : 'live'}</span>{session.createdAt && <span className="text-text-3">· {fmtDuration(session.createdAt, Date.now())}</span>}</> : <span className="text-text-3">· ended{session.endedAt === undefined ? '' : ` ${relAgo(session.endedAt)}`}</span>}
+      {active ? <><span className="text-text-3">·</span><SessionStatusDot status={session.status} /><span className="text-text-2">{session.status === 'launching' ? 'starting…' : 'live'}</span>{session.createdAt && <span className="text-text-3">· {fmtDuration(session.createdAt, Date.now())}</span>}</> : <span className="text-text-3">· ended{session.endedAt === undefined ? '' : ` ${relTimeAgo(session.endedAt)}`}</span>}
       {done && <span className="min-w-0 flex-1 truncate text-text-2" title={done}>{done}</span>}
       {!done && <span className="flex-1" />}
       {right}

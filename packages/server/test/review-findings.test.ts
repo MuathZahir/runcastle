@@ -10,8 +10,10 @@ import {
   markFixed,
   markFixing,
   reportFinding,
+  viewByFeature,
 } from '../src/services/review-findings'
-import { listByFeature as listTickets, storeTickets } from '../src/services/tickets'
+import { listByFeature as listTickets, storeTickets, sweepOrphanedBurning, updateTicket } from '../src/services/tickets'
+import { reviewFindings } from '../src/db/schema'
 import { makeTestCtx } from './helpers/db'
 import { seedFeature, seedProject } from './helpers/fixtures'
 
@@ -74,6 +76,17 @@ describe('review findings service', () => {
     expect(listAfter(ctx, featureId).map((event) => event.type)).toContain('finding.reported')
   })
 
+  it('keeps verification defects open without minting another fix wave', () => {
+    const verification = storeTickets(ctx, featureId, [{
+      title: 'Verify fixes', goal: 'Verify', context: '', acceptanceCriteria: [], seams: [],
+      blockedBy: [], kind: 'review', passKind: 'verification',
+    }])[0]
+    const result = reportFinding(ctx, { featureId, reviewTicket: verification, input: defect() })
+    expect(result).toMatchObject({ fixTicket: null, overCap: false })
+    expect(result.finding).toMatchObject({ status: 'open', openReason: 'verification', fixTicketId: null })
+    expect(listTickets(ctx, featureId)).toHaveLength(2)
+  })
+
   it('caps auto-fixes at eight and never mints a ticket for an observation', () => {
     for (let index = 1; index <= 8; index += 1) {
       expect(reportFinding(ctx, { featureId, reviewTicket, input: defect(`Defect ${index}`) }).overCap).toBe(false)
@@ -100,5 +113,31 @@ describe('review findings service', () => {
     })
     expect(dismiss(ctx, finding.id).status).toBe('dismissed')
     expect(listAfter(ctx, featureId).filter((event) => event.type === 'finding.updated')).toHaveLength(4)
+  })
+
+  it.each(['failed', 'cancelled'] as const)('returns a fixing defect to open when its fix ticket is %s', (status) => {
+    const { finding, fixTicket } = reportFinding(ctx, { featureId, reviewTicket, input: defect() })
+    markFixing(ctx, finding.id)
+    updateTicket(ctx, fixTicket!.id, { status })
+    expect(viewByFeature(ctx, featureId).openDefects.map((row) => row.id)).toContain(finding.id)
+  })
+
+  it('marks the finding failed when an orphaned burning fix ticket is swept', () => {
+    const { finding, fixTicket } = reportFinding(ctx, { featureId, reviewTicket, input: defect() })
+    markFixing(ctx, finding.id)
+    updateTicket(ctx, fixTicket!.id, { status: 'burning' })
+    sweepOrphanedBurning(ctx, featureId, 'agent vanished')
+    expect(listByFeature(ctx, featureId)[0]).toMatchObject({
+      status: 'failed', openReason: 'fix-failed', failureReason: 'agent vanished',
+    })
+  })
+
+  it('orders equal-time findings by id for a stable ledger', () => {
+    reportFinding(ctx, { featureId, reviewTicket, input: defect('Zulu') })
+    reportFinding(ctx, { featureId, reviewTicket, input: defect('Alpha') })
+    ctx.db.update(reviewFindings).set({ createdAt: 100 }).run()
+    const first = listByFeature(ctx, featureId).map((finding) => finding.id)
+    expect(first).toEqual([...first].sort())
+    expect(listByFeature(ctx, featureId).map((finding) => finding.id)).toEqual(first)
   })
 })

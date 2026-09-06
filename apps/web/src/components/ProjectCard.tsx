@@ -5,7 +5,7 @@ import { trpc } from '../trpc'
 import { useToast } from '../lib/toast'
 import type { ProjectHealth, ProjectStats } from '../lib/projects'
 import type { Project } from '../lib/api'
-import { Button } from '../ui'
+import { Button, Spinner } from '../ui'
 import { FeatureActionsMenu } from './FeatureActionsMenu'
 
 /**
@@ -274,7 +274,7 @@ function Stat({
 }) {
   return (
     <span className="inline-flex items-baseline gap-1.5 text-text-3">
-      {spin && <span className="spin-ring self-center" />}
+      {spin && <Spinner className="self-center" />}
       <span className={`font-mono text-lg ${tone ?? 'text-text'}`}>{n}</span>
       <span className="text-xs">{label}</span>
     </span>

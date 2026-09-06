@@ -1,8 +1,26 @@
+import { burnLabel } from '../laps'
+import { burnExpectation } from '../run'
 import type { NextStep } from './types'
 import type { ResolverInput } from './resolver-input'
 
 export function resolveImplementation(input: ResolverInput): NextStep {
-  const { live, resumableGrill, ticketCount: t, done, failed, pending, run, running } = input
+  const {
+    full,
+    ctx,
+    live,
+    resumableGrill,
+    ticketCount: t,
+    done,
+    failed,
+    pending,
+    pendingTickets,
+    run,
+    running,
+  } = input
+  // What the burn is about to cost, from this project's finished tickets
+  // (decision #16b). Said on both roads into a burn — the first one and the
+  // resume — because the human is answering the same question at both.
+  const expectation = burnExpectation(ctx.burnStats)
   if (running) {
     return {
       kick: 'IN PROGRESS',
@@ -47,8 +65,10 @@ export function resolveImplementation(input: ResolverInput): NextStep {
     return {
       kick: 'NEXT STEP',
       title: pending === 1 ? 'Review & burn the ticket' : 'Review & burn the tickets',
-      desc: 'Read the card — edit it if it is not quite right — then burn it into commits.',
-      primary: { label: `Burn ${t} ticket${t === 1 ? '' : 's'}`, kind: 'burn' },
+      desc: `Read the card — edit it if it is not quite right — then burn it into commits. ${expectation}`,
+      // Whose tickets these are, when laps mix (decision 28a) — the burn takes
+      // every pending ticket on the branch, and the count alone never said so.
+      primary: { label: burnLabel(pendingTickets, full.feature.lap), kind: 'burn' },
       secondary: live ? [] : [{ label: 'Revisit', kind: 'revisit' }],
       busy: false,
     }
@@ -59,14 +79,22 @@ export function resolveImplementation(input: ResolverInput): NextStep {
       : run.status === 'cancelled'
         ? 'The run was cancelled — resume the burn to continue.'
         : 'The burn has not started — resume to run the tickets.'
+  // The honest partial-completion exit (decision #11b). Every lane is terminal
+  // and something landed, which is exactly what G4 already believes — so rather
+  // than leaving a permanently-failing ticket looping on Retry behind the
+  // gate's scary generic override, the step forward is offered by name.
+  const terminal = pending === 0 && done > 0
   return {
     kick: 'NEXT STEP',
     title: 'Resume the burn',
-    desc: why,
+    desc: `${why} ${expectation}`,
     primary: { label: 'Resume burn', kind: 'burn' },
     // Failed tickets are reset to pending on resume; Revisit instead opens
     // a session to amend docs and edit/cancel tickets before re-burning.
-    secondary: live ? [] : [{ label: 'Revisit', kind: 'revisit' }],
+    secondary: [
+      ...(terminal ? [{ label: 'Continue to review', kind: 'advance' as const }] : []),
+      ...(live ? [] : [{ label: 'Revisit', kind: 'revisit' as const }]),
+    ],
     busy: false,
   }
 }

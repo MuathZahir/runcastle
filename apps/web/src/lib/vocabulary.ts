@@ -107,6 +107,19 @@ export function testDriveExplainer(caps: DriveCapabilities | undefined): string 
   return `${checkout}, then ${joinSteps(steps)}.${restore}`
 }
 
+/**
+ * The same sentence at one line (decision 20). The evidence stage leads with
+ * this and keeps {@link testDriveExplainer}'s full account behind a disclosure —
+ * the stretched explainer card that used to take a band of the review page said
+ * everything at once, to a reader who already knew.
+ */
+export function testDriveLead(caps: DriveCapabilities | undefined): string {
+  if (!caps?.dev) return 'A test drive checks this branch out — nothing else starts.'
+  return caps.setup
+    ? 'A test drive checks this branch out, runs the setup command and starts the dev server.'
+    : 'A test drive checks this branch out and starts the dev server.'
+}
+
 /** "a", "a and b", "a, b and c" — read aloud, not comma-spliced. */
 function joinSteps(steps: string[]): string {
   const last = steps[steps.length - 1] ?? ''
@@ -119,16 +132,6 @@ function joinSteps(steps: string[]): string {
  * lap-1 feature looks like the plain linear flow, ADR-0010 §4) so it can name
  * what put it there; the forms that print "lap 1" get the plainer half.
  */
-/**
- * The lap banner's middle line — what put the feature on the lap it is on
- * (decisions.md #6). A constant, not a lookup: Iterate is the ONLY thing that
- * bumps a lap, so the reason is always this, and the feed is left to supply the
- * one thing that does vary — when.
- */
-export const LAP_KICKOFF =
-  'Iterate sent this feature back through the pipeline: the lap session read your test-drive ' +
-  'notes, amended the spec, and emitted this lap’s tickets. Earlier laps are kept in full.'
-
 export function lapExplainer(lap: number): string {
   if (lap <= 1)
     return 'Lap 1 — this feature’s first pass through the pipeline. Iterate, from review, opens the next one.'

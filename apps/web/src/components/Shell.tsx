@@ -55,9 +55,9 @@ export function Shell() {
   }
 
   return (
-    <div className="app-frame">
+    <div className="flex h-full flex-col">
       <UpdateBanner />
-      <div className="app-frame-body">{content}</div>
+      <div className="min-h-0 flex-1">{content}</div>
     </div>
   )
 }

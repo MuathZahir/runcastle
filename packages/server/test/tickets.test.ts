@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import type { AppCtx } from '../src/db/types'
 import { InvalidInputError } from '../src/errors'
 import { listAfter } from '../src/services/events'
-import { cancelTicket, editTicket, listByFeature, storeTickets, updateTicket } from '../src/services/tickets'
+import { cancelTicket, editTicket, listByFeature, storeTickets, sweepOrphanedBurning, updateTicket } from '../src/services/tickets'
 import { makeTestCtx } from './helpers/db'
 import { seedFeature, seedProject } from './helpers/fixtures'
 
@@ -81,6 +81,20 @@ describe('tickets service', () => {
     const updated = updateTicket(ctx, t.id, { status: 'done', commits: ['abc123'] })
     expect(updated.status).toBe('done')
     expect(updated.commits).toEqual(['abc123'])
+    expect(updated.completedAt).toEqual(expect.any(Number))
+  })
+
+  it('timestamps every terminal service path and clears the stamp on retry', () => {
+    const [done, failed, cancelled, orphaned] = storeTickets(ctx, featureId, [
+      ticket('done'), ticket('failed'), ticket('cancelled'), ticket('orphaned'),
+    ])
+    expect(done).toMatchObject({ passKind: 'review', reviewedCommit: null, completedAt: null })
+    expect(updateTicket(ctx, done.id, { status: 'done' }).completedAt).toEqual(expect.any(Number))
+    expect(updateTicket(ctx, failed.id, { status: 'failed' }).completedAt).toEqual(expect.any(Number))
+    expect(cancelTicket(ctx, cancelled.id).completedAt).toEqual(expect.any(Number))
+    updateTicket(ctx, orphaned.id, { status: 'burning' })
+    expect(sweepOrphanedBurning(ctx, featureId, 'lost agent')[0].completedAt).toEqual(expect.any(Number))
+    expect(updateTicket(ctx, failed.id, { status: 'pending' }).completedAt).toBeNull()
   })
 
   it('updateTicket stores a digest that round-trips through listByFeature', () => {

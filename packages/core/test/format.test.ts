@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { fmtClock } from '../src/format'
+import { fmtClock, ticketTitleFromNote } from '../src/format'
 
 /**
  * The walkthrough moment, as every reader of it sees it: the player's time
@@ -29,5 +29,17 @@ describe('fmtClock', () => {
     expect(fmtClock(Number.NaN)).toBe('--:--')
     expect(fmtClock(Number.POSITIVE_INFINITY)).toBe('--:--')
     expect(fmtClock(-1)).toBe('--:--')
+  })
+})
+
+describe('ticketTitleFromNote', () => {
+  it.each([
+    ['Short text', 'Short text'],
+    ['First sentence. Second sentence.', 'First sentence.'],
+    ['First line\nSecond line', 'First line'],
+    ['This sentence is deliberately made much longer than eighty characters so its title is cut cleanly at a word boundary without punctuation added', 'This sentence is deliberately made much longer than eighty characters so its'],
+  ])('formats a note title', (text, expected) => {
+    expect(ticketTitleFromNote(text)).toBe(expected)
+    expect(ticketTitleFromNote(text)).not.toContain('…')
   })
 })

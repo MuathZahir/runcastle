@@ -8,6 +8,7 @@ import { noSandbox } from '@ai-hero/sandcastle/sandboxes/no-sandbox'
 import { renderRunMcpConfig } from '../launcher/artifacts'
 import { appendTranscript, beginTranscript, endTranscript } from '../services/agent-stream'
 import { releaseReviewDrive } from '../services/git'
+import { AUTO_FIX_CAP } from '../services/review-findings'
 import type { BurnAgentMcp, HarvestedDigest, TicketOutcome } from './ticket-burner'
 import {
   buildBurnAgent,
@@ -67,8 +68,8 @@ import {
  */
 
 /** The prompt the review agent is spawned with. */
-export function reviewTemplatePath(): string {
-  return burnerAssetPath('review-ticket.md')
+export function reviewTemplatePath(ticket?: Pick<Ticket, 'passKind'>): string {
+  return burnerAssetPath(ticket?.passKind === 'verification' ? 'verify-fixes.md' : 'review-ticket.md')
 }
 
 const PLACEHOLDERS = [
@@ -86,13 +87,19 @@ const PLACEHOLDERS = [
   'DIGEST_PATH',
   'BLOCKED_PATH',
   'WALKTHROUGH_PATH',
+  'LANDED_FIXES',
+  'VERIFIES_PASS',
+  'AUTO_FIX_CAP',
 ] as const
 
 /** {@link renderTemplate} over the review template's fixed key set. */
 export function renderReviewPrompt(
-  template: string,
+  templateOrTicket: string | Pick<Ticket, 'passKind'>,
   values: Record<(typeof PLACEHOLDERS)[number], string>,
 ): string {
+  const template = typeof templateOrTicket === 'string'
+    ? templateOrTicket
+    : readFileSync(reviewTemplatePath(templateOrTicket), 'utf8')
   return renderTemplate(template, values)
 }
 
@@ -148,7 +155,13 @@ export function findOnPath(
 export function buildDriveAvailability(
   browserPath: string | undefined,
   devCommand: string | undefined,
+  inheritedMode?: 'drive' | 'gates',
 ): string {
+  if (inheritedMode) {
+    return inheritedMode === 'drive'
+      ? 'Inherited mode: **Drive**. The pass being verified left a recording, so run Drive mode and record the full tour; do not choose Gates mode.'
+      : 'Inherited mode: **Gates**. The pass being verified left no recording, so run Gates mode; do not choose Drive mode or call `review_drive`.'
+  }
   const missing: string[] = []
   if (!browserPath) {
     missing.push(
@@ -170,6 +183,14 @@ export function buildDriveAvailability(
     'run Gates mode, whatever this lap touched, and do not call `review_drive`. This is not a ' +
     'degraded review; it is the whole review this lap gets.'
   )
+}
+
+/** A verification inherits Drive exactly when the pass it follows recorded a walkthrough. */
+export function inheritedReviewMode(
+  verifiedTicketId: string | undefined,
+  fileExists: (path: string) => boolean = existsSync,
+): 'drive' | 'gates' {
+  return verifiedTicketId && fileExists(reviewWalkthroughPath(verifiedTicketId)) ? 'drive' : 'gates'
 }
 
 /**
@@ -349,7 +370,13 @@ async function reviewTicketOutcome(
   }
 
   const artifacts = writeReviewArtifacts(ticket, ctx.runId, deps.config)
-  const prompt = renderReviewPrompt(readFileSync(reviewTemplatePath(), 'utf8'), {
+  const allTickets = ctx.listTickets?.() ?? ctx.tickets
+  const verifies = allTickets
+    .filter((candidate) => candidate.kind === 'review' && candidate.id !== ticket.id && candidate.status === 'done')
+    .sort((a, b) => (a.completedAt ?? 0) - (b.completedAt ?? 0) || a.seq - b.seq)
+    .at(-1)
+  const inheritedMode = ticket.passKind === 'verification' ? inheritedReviewMode(verifies?.id) : undefined
+  const prompt = renderReviewPrompt(ticket, {
     TICKET_JSON: buildTicketJson(ticket),
     FEATURE_BRIEF: buildFeatureBrief(feature),
     DOCS_DIGEST: deps.docsDigest,
@@ -365,11 +392,14 @@ async function reviewTicketOutcome(
     // a perfectly healthy lap, and its own failure criterion then made it report
     // "could not review".
     BASE_BRANCH: feature.baseBranch,
-    DRIVE_AVAILABILITY: buildDriveAvailability(findOnPath(AGENT_BROWSER_BIN), project.devCommand),
+    DRIVE_AVAILABILITY: buildDriveAvailability(findOnPath(AGENT_BROWSER_BIN), project.devCommand, inheritedMode),
     GATE_NOTES: buildGateNotes(deps.config),
     DIGEST_PATH: artifacts.digestPath,
     BLOCKED_PATH: artifacts.blockedPath,
     WALKTHROUGH_PATH: artifacts.walkthroughPath,
+    LANDED_FIXES: ticket.context,
+    VERIFIES_PASS: verifies ? `#${verifies.seq} · ${inheritedMode === 'drive' ? 'Drive' : 'Gates'} mode` : 'no earlier review in this run · Gates mode',
+    AUTO_FIX_CAP: String(AUTO_FIX_CAP),
   })
 
   mkdirSync(logsDir(), { recursive: true })

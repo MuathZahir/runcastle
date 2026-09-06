@@ -154,7 +154,7 @@ export type FindingSeverity = z.infer<typeof FindingSeverity>
 export const FindingStatus = z.enum(['open', 'fixing', 'fixed', 'failed', 'dismissed'])
 export type FindingStatus = z.infer<typeof FindingStatus>
 
-export const FindingOpenReason = z.enum(['over-cap', 'fix-failed'])
+export const FindingOpenReason = z.enum(['over-cap', 'fix-failed', 'verification'])
 export type FindingOpenReason = z.infer<typeof FindingOpenReason>
 
 /**
@@ -207,6 +207,8 @@ export const TicketInput = z.object({
   /** seq numbers of other tickets in the same batch this one depends on */
   blockedBy: z.array(z.number()),
   kind: TicketKind.default('implementation'),
+  /** Review-pass variant; meaningful only when `kind` is `review`. */
+  passKind: z.enum(['review', 'verification']).default('review'),
   /**
    * The model this ticket burns on (decisions.md #4). Stamped by the tickets
    * session from the operator's annotated roster, and changeable by the human
@@ -238,6 +240,10 @@ export const Ticket = TicketInput.extend({
    */
   lap: z.number(),
   commits: z.array(z.string()),
+  /** Feature-branch head observed when a review pass completed. */
+  reviewedCommit: z.string().nullable().default(null),
+  /** Wall-clock time at which this ticket most recently became terminal. */
+  completedAt: z.number().nullable().default(null),
   error: z.string().optional(),
   /**
    * Tip of the last failed burn attempt's temp branch, when that attempt left
@@ -319,7 +325,7 @@ export type Waypoint = z.infer<typeof Waypoint>
  * scratch-off (toggleable back to `open`); `promoted` is terminal and freezes
  * the note as the record of what its ticket was built from.
  */
-export const TestNoteStatus = z.enum(['open', 'done', 'promoted'])
+export const TestNoteStatus = z.enum(['open', 'done', 'promoted', 'carried'])
 export type TestNoteStatus = z.infer<typeof TestNoteStatus>
 
 /**
@@ -351,6 +357,8 @@ export const TestNote = z.object({
   status: TestNoteStatus,
   author: TestNoteAuthor.default('human'),
   ticketId: z.string().optional(),
+  reviewTicketId: z.string().optional(),
+  carriedLap: z.number().optional(),
   videoTimestamp: z.number().optional(),
   screenshotUrl: z.string().optional(),
   createdAt: z.number(),
@@ -553,7 +561,9 @@ export const SessionRow = z.object({
   /** The runtime that model runs on — see the db schema; unset reads as `DEFAULT_RUNTIME`. */
   runtime: AgentRuntime.optional(),
   /** The conversation's derived name; unset until its transcript has one to give. */
-  title: z.string().optional(),
+  title: z.string().nullable().optional(),
+  /** Ended Q&A rows remain visible even when the runtime captured no conversation. */
+  transcriptMissing: z.boolean().optional(),
   /** Insert time; unset on rows written before `sessions` had a timestamp. */
   createdAt: z.number().optional(),
   /**
@@ -645,3 +655,33 @@ export const EventRow = z.object({
   data: z.unknown().optional(),
 })
 export type EventRow = z.infer<typeof EventRow>
+
+export const DriveState = z.enum([
+  'idle', 'starting', 'serving', 'bare-checkout', 'setup-failed', 'review-agent-driving',
+])
+export type DriveState = z.infer<typeof DriveState>
+
+export interface MergeConflictState {
+  base: string
+  files: string[]
+  at: number
+}
+
+export function unresolvedMergeConflict(events: EventRow[]): MergeConflictState | null {
+  let conflict: MergeConflictState | null = null
+  for (const event of events) {
+    if (event.type === 'merge.conflict') {
+      const data = (event.data ?? {}) as { base?: unknown; files?: unknown }
+      conflict = {
+        base: typeof data.base === 'string' ? data.base : '',
+        files: Array.isArray(data.files)
+          ? data.files.filter((file): file is string => typeof file === 'string')
+          : [],
+        at: event.ts,
+      }
+    } else if (['burn.started', 'merge.resolved', 'feature.shipped'].includes(event.type)) {
+      conflict = null
+    }
+  }
+  return conflict
+}

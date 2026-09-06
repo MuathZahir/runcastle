@@ -271,10 +271,10 @@ describe('feature.merge — outcome.md promotion (the-work-record ticket 3)', ()
     return g.raw(['show', `${ref}:docs/features/${slug}/outcome.md`])
   }
 
-  it('commits the doc onto the feature branch before the merge, so it lands on the base', async () => {
+  it('commits the synthesized doc on the base after the merge commit', async () => {
     const feature = await seedShippableFeature('thick')
     seedTickets(feature.id, [
-      { title: 'Harvest the digest', status: 'done', digest: 'Read DIGEST.md after the run.' },
+      { title: 'Harvest the digest', status: 'done', digest: '## What changed\n- Read DIGEST.md after the run.' },
       { title: 'Aggregate the run', status: 'failed', error: 'fatal: the sandbox died' },
     ])
     // No talk worktree on disk yet — the merge path has to create one to commit in.
@@ -283,17 +283,21 @@ describe('feature.merge — outcome.md promotion (the-work-record ticket 3)', ()
     expect(res.ok).toBe(true)
     const doc = await outcomeAt('main', 'thick')
     expect(doc).toContain('# Outcome — The thick feature')
-    expect(doc).toContain('- Lap: 1')
-    expect(doc).toContain('## 1. Harvest the digest')
+    expect(doc).toContain('- Laps run: 1')
+    expect(doc).toContain('#### 1. Harvest the digest')
     expect(doc).toContain('Read DIGEST.md after the run.')
-    expect(doc).toContain('- **2. Aggregate the run** — failed: fatal: the sandbox died')
-    // It rode in on the feature branch rather than being written onto the base.
-    expect(await outcomeAt('feature/thick', 'thick')).toBe(doc)
+    expect(doc).toContain('- 1 failed: #2 Aggregate the run')
+    await expect(outcomeAt('feature/thick', 'thick')).rejects.toThrow()
+    const subjects = await g.raw(['log', '-2', '--pretty=%s', 'main'])
+    expect(subjects.trim().split('\n')).toEqual([
+      'runcastle: outcome for thick',
+      "Merge branch 'feature/thick'",
+    ])
   })
 
   it('regenerates the doc on a later lap, and commits nothing when it is unchanged', async () => {
     const feature = await seedShippableFeature('laps')
-    seedTickets(feature.id, [{ title: 'Lap one work', status: 'done', digest: 'First lap.' }])
+    seedTickets(feature.id, [{ title: 'Lap one work', status: 'done', digest: '## Work\n- First lap.' }])
     expect((await caller.feature.merge({ featureId: feature.id })).ok).toBe(true)
 
     // Merging again with nothing changed regenerates identical content, which
@@ -304,19 +308,20 @@ describe('feature.merge — outcome.md promotion (the-work-record ticket 3)', ()
 
     // Lap 2 adds a ticket; the merge regenerates the doc around both laps.
     ctx.db.update(features).set({ lap: 2 }).where(eq(features.id, feature.id)).run()
-    seedTickets(feature.id, [{ title: 'Lap two work', status: 'done', digest: 'Second lap.' }])
+    seedTickets(feature.id, [{ title: 'Lap two work', status: 'done', digest: '## Work\n- Second lap.' }])
     expect((await caller.feature.merge({ featureId: feature.id })).ok).toBe(true)
 
     const doc = await outcomeAt('main', 'laps')
-    expect(doc).toContain('- Lap: 2')
+    expect(doc).toContain('- Laps run: 2')
     expect(doc).toContain('First lap.')
     expect(doc).toContain('Second lap.')
-    expect((await g.revparse(['feature/laps'])).trim()).not.toBe(tip)
+    // Outcome commits belong only to the base; synthesizing a later lap never mutates the feature ref.
+    expect((await g.revparse(['feature/laps'])).trim()).toBe(tip)
   })
 
   it('promotes the doc when the talk worktree is sitting on a detached HEAD', async () => {
     const feature = await seedShippableFeature('detached')
-    seedTickets(feature.id, [{ title: 'Burned work', status: 'done', digest: 'Did it.' }])
+    seedTickets(feature.id, [{ title: 'Burned work', status: 'done', digest: '## Work\n- Did it.' }])
     // What a burn leaves behind: the runner detaches the talk worktree to free
     // the branch, and its reattach on finalize is best-effort.
     const worktree = await ensureTalkWorktree(project, feature)
@@ -326,32 +331,26 @@ describe('feature.merge — outcome.md promotion (the-work-record ticket 3)', ()
     expect(await outcomeAt('main', 'detached')).toContain('Did it.')
   })
 
-  it('keeps the conflict payload, leaving the outcome commit on the feature branch', async () => {
+  it('keeps the conflict payload and writes no outcome on either branch', async () => {
     await makeConflict(project, g, 'clash')
     const feature = seedFeature(ctx, project.id, { slug: 'clash', phase: 'review' })
-    seedTickets(feature.id, [{ title: 'Clashing work', status: 'done', digest: 'Did it.' }])
+    seedTickets(feature.id, [{ title: 'Clashing work', status: 'done', digest: '## Work\n- Did it.' }])
 
     const res = await caller.feature.merge({ featureId: feature.id })
 
     expect(res).toEqual({ ok: false, conflict: true, base: 'main', files: ['README.md'] })
-    // The doc is regenerated on the retry, so it may sit on the branch meanwhile;
-    // nothing of it reached the base branch.
-    expect(await outcomeAt('feature/clash', 'clash')).toContain('Did it.')
+    await expect(outcomeAt('feature/clash', 'clash')).rejects.toThrow()
     await expect(outcomeAt('main', 'clash')).rejects.toThrow()
     expect((await g.raw(['status', '--porcelain'])).trim()).toBe('')
   })
 
-  it('never blocks the merge when the docs commit cannot be made', async () => {
+  it('still ships when outcome promotion is best-effort', async () => {
     const feature = await seedShippableFeature('unwritable')
     seedTickets(feature.id, [{ title: 'Some work', status: 'done', digest: 'Did it.' }])
-    // A data dir that cannot hold a worktree: promotion fails, the ship does not.
-    process.env.RUNCASTLE_DATA_DIR = join(project.repoPath, 'README.md')
-
     const res = await caller.feature.merge({ featureId: feature.id })
 
     expect(res.ok).toBe(true)
     expect(getFeatureRow(ctx, feature.id).phase).toBe('shipped')
-    const failed = listAfter(ctx, feature.id, 0).find((e) => e.type === 'docs.outcome_failed')
-    expect(failed).toBeDefined()
+    expect(await outcomeAt('main', 'unwritable')).toContain('Some work')
   })
 })
