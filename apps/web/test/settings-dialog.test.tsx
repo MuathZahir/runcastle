@@ -107,6 +107,24 @@ const projectFields: SettingField[] = [
   field({ key: 'devCommand', value: 'bun dev', scope: 'project' }),
 ]
 
+/** The class that fixes the panel's height — where the scroll chain starts. */
+const FRAME_HEIGHT = 'h-[min(700px,80vh)]'
+
+const classes = (el: Element) => (el.getAttribute('class') ?? '').split(/\s+/)
+
+/**
+ * Every element between the scrolling body and the fixed-height frame, or
+ * `null` if walking up never reaches the frame at all.
+ */
+function heightChain(from: Element): Element[] | null {
+  const chain: Element[] = []
+  for (let el: Element | null = from; el; el = el.parentElement) {
+    if (classes(el).includes(FRAME_HEIGHT)) return chain
+    chain.push(el)
+  }
+  return null
+}
+
 function open(location: SettingsLocation = { page: 'general' }) {
   return render(
     <SettingsDialog
@@ -142,6 +160,48 @@ describe('SettingsDialog', () => {
     )
     // The rail names the project whose page sits at the bottom of it.
     expect(screen.getByText('runcastle')).toBeTruthy()
+  })
+
+  /**
+   * The panel's height is fixed, so exactly one element under it may scroll: the
+   * body beside the rail, whichever page is in it. Nothing here can measure a
+   * scroll — happy-dom lays nothing out — so what is asserted is the chain that
+   * decides it. A grid item's automatic minimum size is its content, and a
+   * `minmax(0,1fr)` row under an indefinite height resolves to its item's
+   * max-content contribution, so ONE intermediate element without `min-h-0`
+   * grows the frame to the whole page's height instead of bounding it: the body
+   * is then exactly as tall as its content and never scrolls, and the panel's
+   * `overflow-hidden` cuts off everything past 700px — which is how every page
+   * lost its last control with no way to reach past it.
+   */
+  it('scrolls one shared body on every page, with room past the last control', () => {
+    open()
+    const panel = screen.getByRole('dialog')
+    const bodies = new Set<Element>()
+
+    for (const page of ['General', 'Models', 'Burns', 'This project']) {
+      fireEvent.click(screen.getByRole('button', { name: page }))
+
+      const scrollers = [...panel.querySelectorAll('*')].filter((el) =>
+        classes(el).includes('overflow-y-auto'),
+      )
+      expect(scrollers.map((el) => el.getAttribute('class'))).toHaveLength(1)
+      const body = scrollers[0]!
+      bodies.add(body)
+
+      // Room under the last control, or it sits flush against the bottom edge.
+      expect(classes(body).some((c) => /^pb-\d/.test(c))).toBe(true)
+
+      const chain = heightChain(body)
+      expect(chain, `${page}: the body is not inside the fixed-height frame`).not.toBeNull()
+      for (const el of chain!) {
+        expect(classes(el), `${page}: ${el.tagName} may not shrink`).toContain('min-h-0')
+      }
+    }
+
+    // The same container throughout — one scroll position and one set of
+    // paddings, not a fresh one per page.
+    expect(bodies.size).toBe(1)
   })
 
   it('renders General as four named fields, each with its explanation on demand', () => {
