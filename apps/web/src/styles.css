@@ -1970,55 +1970,6 @@ details.wp-group-done > summary { cursor: pointer; list-style: revert; }
 .cmdk-foot .kbd { font-size: 10px; }
 
 /* ============================================================================
-   DOC PEEK OVERLAY
-   ========================================================================== */
-.peek-backdrop {
-  position: fixed;
-  inset: 0;
-  background: rgba(3, 5, 8, 0.72);
-  backdrop-filter: blur(2px);
-  display: flex;
-  align-items: flex-start;
-  justify-content: center;
-  padding: 8vh 16px 16px;
-  z-index: 200;
-  animation: backdropIn var(--dur-2) var(--ease-out);
-}
-.peek {
-  width: 100%;
-  max-width: 780px;
-  max-height: 82vh;
-  display: flex;
-  flex-direction: column;
-  background: var(--panel);
-  border: 1px solid var(--hairline-strong);
-  border-radius: var(--radius-lg);
-  overflow: hidden;
-  animation: cmdkIn var(--dur-2) var(--ease-out);
-}
-.peek-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 10px 14px;
-  border-bottom: 1px solid var(--hairline);
-}
-.peek-path { color: var(--text-2); font-size: 12px; }
-.peek-close { background: none; border: none; color: var(--text-3); cursor: pointer; font-size: 12px; }
-.peek-close:hover { color: var(--text); }
-.peek-body { overflow: auto; padding: 14px 18px; }
-.peek-body .md { font-size: 12.5px; }
-.peek-pre {
-  margin: 0;
-  font-family: var(--mono);
-  font-size: 12.5px;
-  line-height: 1.6;
-  white-space: pre-wrap;
-  word-break: break-word;
-  color: var(--text);
-}
-
-/* ============================================================================
    OUTLIVED THE SETTINGS OVERLAY (issue #47 → flow-redesign-settings)
 
    Settings is Tailwind on the theme tokens now and its own rules are gone. What
@@ -2233,18 +2184,6 @@ details.wp-group-done > summary { cursor: pointer; list-style: revert; }
 }
 .settings-clear:hover:not(:disabled) { color: var(--accent-hi); }
 .settings-clear:disabled { opacity: 0.5; cursor: default; }
-
-/* ============================================================================
-   ERROR BOUNDARY / TERMINAL placeholders
-   ========================================================================== */
-.terminal-placeholder,
-.boundary-fallback {
-  height: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--bg);
-}
 
 /* ============================================================================
    TOASTS

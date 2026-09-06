@@ -1,6 +1,6 @@
 import { trpc } from '../trpc'
 import { humanizeTimestamps } from '../lib/format'
-import { Dialog, DimLine } from '../ui'
+import { BARE_BUTTON, Dialog, DimLine } from '../ui'
 import { Markdown } from './Markdown'
 import type { RefObject } from 'react'
 
@@ -28,17 +28,24 @@ export function DocPeek({
       open
       onClose={onClose}
       label={title}
+      size="lg"
       returnFocusRef={returnFocusRef}
-      backdropClassName="peek-backdrop"
-      className="peek"
+      backdropClassName="animate-backdrop-in backdrop-blur-[2px]"
+      // A doc is as long as it is: the panel takes the height it can and the
+      // body below the head is the only part that scrolls.
+      className="flex max-h-[82vh] animate-overlay-in flex-col overflow-hidden"
     >
-      <div className="peek-head">
-        <span className="peek-path font-mono">{relPath}</span>
-        <button className="peek-close" onClick={onClose} aria-label="Close (Esc)">
+      <div className="flex items-center justify-between border-b border-hairline px-3.5 py-2.5">
+        <span className="font-mono text-sm text-text-2">{relPath}</span>
+        <button
+          className={`${BARE_BUTTON} cursor-pointer text-sm text-text-3 hover:text-text`}
+          onClick={onClose}
+          aria-label="Close (Esc)"
+        >
           ✕
         </button>
       </div>
-      <div className="peek-body">
+      <div className="overflow-auto px-4.5 py-3.5">
         {query.isLoading && <DimLine>loading {title}…</DimLine>}
         {query.error && <DimLine>could not read {relPath}: {query.error.message}</DimLine>}
         {/* Agents stamp docs the way a program does ("Created:
