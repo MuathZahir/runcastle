@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { Feature, Project } from '@runcastle/core'
@@ -22,7 +22,7 @@ import { createCallerFactory } from '../src/trpc/context'
 import { appRouter } from '../src/trpc/router'
 import { useDataDir } from './helpers/data-dir'
 import { makeTestCtx } from './helpers/db'
-import { seedFeature, seedProject } from './helpers/fixtures'
+import { rmTemp, seedFeature, seedProject } from './helpers/fixtures'
 
 /**
  * Streamlining-ux ticket 9 — a conflicted Merge & ship must surface the conflict
@@ -59,9 +59,10 @@ afterEach(() => {
     const dir = tmpDirs.pop()
     if (dir) {
       try {
-        rmSync(dir, { recursive: true, force: true })
+        rmTemp(dir)
       } catch {
-        // best-effort
+        // best-effort — a handle that outlives the retries on Windows is
+        // non-fatal
       }
     }
   }

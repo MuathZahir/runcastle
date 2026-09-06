@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { featureDocsRel, sessionDir, worktreeDir } from '@runcastle/core/paths'
@@ -26,7 +26,7 @@ import { featureDocsDir } from '../src/services/feature-docs'
 import { projectForFeature } from '../src/services/repo'
 import { useDataDir } from './helpers/data-dir'
 import { makeTestCtx } from './helpers/db'
-import { seedFeature, seedProject } from './helpers/fixtures'
+import { rmTemp, seedFeature, seedProject } from './helpers/fixtures'
 
 /**
  * The docs watcher seam: start/stop per feature, observable purely through the
@@ -63,7 +63,7 @@ describe('docs watcher', () => {
   afterEach(() => {
     unsubscribe()
     stopAllDocsWatch()
-    rmSync(docsDir, { recursive: true, force: true })
+    rmTemp(docsDir)
   })
 
   /** Every `docs.changed` event on the feature's timeline. */
@@ -129,7 +129,7 @@ describe('docs watcher', () => {
   })
 
   it('swallows a missing docs directory instead of throwing at the session', async () => {
-    rmSync(docsDir, { recursive: true, force: true })
+    rmTemp(docsDir)
 
     expect(() => startDocsWatch(ctx, feature)).not.toThrow()
     expect(docsWatchCount()).toBe(0)
@@ -184,7 +184,7 @@ describe('docs watcher lifecycle — bound to the session', () => {
     vi.restoreAllMocks()
     stopAllDocsWatch()
     restoreDataDir()
-    for (const dir of cleanup) rmSync(dir, { recursive: true, force: true })
+    for (const dir of cleanup) rmTemp(dir)
     cleanup.length = 0
   })
 

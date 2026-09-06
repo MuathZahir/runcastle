@@ -51,6 +51,23 @@ vi.mock('../src/trpc', async () => {
 const onCancel = vi.fn()
 const onOpened = vi.fn()
 
+/**
+ * The paths these tests type are POSIX, and the screen's own validation is
+ * deliberately platform-aware (`isAbsolutePath`, findings F17.4): on a Windows
+ * host `/tmp/notes` is refused before the stubbed mutation ever runs, and the
+ * screen answers a question nobody asked here. So the platform is pinned and
+ * the file asks the same thing on every machine — the Windows-vs-POSIX rule
+ * itself is covered by the pure-function tests in `platform.test.ts`.
+ */
+function pinPosixPlatform(): void {
+  Object.defineProperty(navigator, 'platform', { value: 'Linux x86_64', configurable: true })
+}
+
+/** Drops the pin, leaving the environment's own `platform` getter in charge. */
+function restorePlatform(): void {
+  delete (navigator as { platform?: string }).platform
+}
+
 function open(firstRun = false) {
   return render(
     <ToastProvider>
@@ -69,12 +86,16 @@ function tryPath(path: string) {
 
 describe('OpenProject', () => {
   beforeEach(() => {
+    pinPosixPlatform()
     stub.rejectWith = null
     stub.opened = []
     onCancel.mockClear()
     onOpened.mockClear()
   })
-  afterEach(cleanup)
+  afterEach(() => {
+    restorePlatform()
+    cleanup()
+  })
 
   it('is a kicker, a heading, a one-line lead and one row of controls', () => {
     const { container } = open()

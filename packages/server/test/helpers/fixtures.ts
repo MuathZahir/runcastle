@@ -1,4 +1,4 @@
-import { mkdtempSync } from 'node:fs'
+import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { Feature, Project } from '@runcastle/core'
@@ -10,6 +10,22 @@ import { rowToFeature, rowToProject } from '../../src/services/repo'
 /** A fresh writable temp dir to stand in for a target repo checkout. */
 export function tmpRepo(): string {
   return mkdtempSync(join(tmpdir(), 'runcastle-test-'))
+}
+
+/**
+ * Remove a temp tree, with the retry backstop win32 needs.
+ *
+ * `rmSync` defaults to `maxRetries: 0`. On POSIX an open handle never blocks an
+ * unlink, so that default is fine; on Windows a directory a git child or an
+ * `fs.watch` handle touched moments ago fails outright with `EBUSY`/`EPERM`
+ * because the handle is released asynchronously. That surfaces as a red test
+ * with nothing wrong in it — the assertions passed, the teardown threw.
+ *
+ * Retrying costs nothing when the first attempt succeeds, which is every
+ * removal off win32.
+ */
+export function rmTemp(dir: string): void {
+  rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 })
 }
 
 /** Insert a project row directly (bypasses the B2 git validation in services). */

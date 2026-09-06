@@ -1,4 +1,4 @@
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync, existsSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, existsSync } from 'node:fs'
 import { createServer } from 'node:http'
 import type { Server } from 'node:http'
 import type { AddressInfo } from 'node:net'
@@ -40,7 +40,7 @@ import {
 } from '../src/services/git'
 import { useDataDir } from './helpers/data-dir'
 import { makeTestCtx } from './helpers/db'
-import { seedFeature, seedProject } from './helpers/fixtures'
+import { rmTemp, seedFeature, seedProject } from './helpers/fixtures'
 
 /**
  * B2 git service against REAL git in temp fixture repos. Fixtures pin
@@ -175,9 +175,10 @@ afterEach(async () => {
     const dir = tmpDirs.pop()
     if (dir) {
       try {
-        rmSync(dir, { recursive: true, force: true })
+        rmTemp(dir)
       } catch {
-        // best-effort cleanup — a lingering handle on Windows is non-fatal
+        // best-effort cleanup — a handle that outlives the retries on Windows
+        // is non-fatal
       }
     }
   }
@@ -433,7 +434,7 @@ describe('ensureTalkWorktree', () => {
   it('recovers from a stale worktree (dir removed) via prune + retry', async () => {
     const first = await ensureTalkWorktree(project, feature)
     // Delete the worktree dir out from under git: registry now disagrees.
-    rmSync(first, { recursive: true, force: true })
+    rmTemp(first)
     expect(existsSync(first)).toBe(false)
 
     const second = await ensureTalkWorktree(project, feature)
@@ -1529,7 +1530,7 @@ describe('burn worktree cleanup (sandcastle teardown flake)', () => {
     // `.git/worktrees/<name>` entry, since it only drops that once the work-tree
     // delete succeeded. Stand in for it by deleting the dir out from under git.
     const path = await addBurnWorktree()
-    rmSync(path, { recursive: true, force: true })
+    rmTemp(path)
     expect((await registeredPaths()).length).toBe(2)
 
     expect(await cleanupBurnWorktree(repo, branch, fast)).toBe(true)
