@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import type { RefObject } from 'react'
 import { trpc } from '../trpc'
-import { DimLine } from '../ui'
+import { DimLine, Spinner } from '../ui'
 import { useToast } from '../lib/toast'
 import type { FeatureListItem, PrepView } from '../lib/api'
 import {
@@ -304,7 +304,7 @@ function ProjectRow({
           <span className="project-row-kick">Project</span>
         ) : (
           <span className="project-row-live">
-            <span className="spin-ring" />
+            <Spinner size="sm" tone="accent" />
             {state === 'launching' ? 'opening' : 'live'}
           </span>
         )}
@@ -359,7 +359,7 @@ function FeatureRow({
           <span className="feature-title">{f.title}</span>
           <span className={`feature-chip is-${chip.kind}`} title={chip.title}>
             {chip.kind === 'needsMe' && <span className={`needs-dot needs-${chip.needs}`} />}
-            {chip.kind === 'working' && <span className="spin-ring" />}
+            {chip.kind === 'working' && <Spinner size="sm" />}
             {chip.kind === 'shipped' && <IconCheck size={10} />}
             {chip.text}
           </span>

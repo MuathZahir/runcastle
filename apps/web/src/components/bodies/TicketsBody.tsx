@@ -24,6 +24,16 @@ import { MessageWithSettingsLink } from '../settings/MessageWithSettingsLink'
 import { SessionPanel } from '../SessionPanel'
 
 /**
+ * The ledger's own quiet badges — the sandbox mode, the resolved model, a
+ * ticket's assigned runtime. They state a fact about the row rather than a
+ * status the human acts on, so they take the chip shape in the neutral ramp
+ * instead of one of `ui.tsx`'s status chips.
+ */
+const NEUTRAL_CHIP =
+  'inline-flex h-5 items-center gap-1.5 whitespace-nowrap rounded-pill border border-hairline ' +
+  'px-2 font-mono text-xs text-text-2'
+
+/**
  * Tickets phase-body for the pipeline-first workspace: the session panel (the
  * emit-tickets grill this phase starts on, live as an inline terminal or ended
  * with a Resume), then a read-only ledger of the feature's tickets (ordered by
@@ -139,7 +149,7 @@ export function TicketsBody({
                 the model the ledger's own chip already names. */}
             {assigned && (
               <span
-                className="chip chip-neutral"
+                className={NEUTRAL_CHIP}
                 title={`Burns on ${assigned.id} (${assigned.runtimeLabel})`}
               >
                 {assigned.id} · {assigned.runtimeLabel}
@@ -261,8 +271,8 @@ export function TicketsBody({
         <SectionTitle>Tickets</SectionTitle>
         <span className="body-meta">{meta}</span>
         <span style={{ flex: 1 }} />
-        <span className="chip chip-neutral" title="sandbox">sandbox · {SANDBOX_MODE}</span>
-        <span className="chip chip-neutral" title="model">{model}</span>
+        <span className={NEUTRAL_CHIP} title="sandbox">sandbox · {SANDBOX_MODE}</span>
+        <span className={NEUTRAL_CHIP} title="model">{model}</span>
       </div>
       {/* The bar above this ledger says "review, then burn" without ever saying
           what burning does with them (finding F12/F16). */}
@@ -398,12 +408,12 @@ function TicketEditor({
       </label>
 
       <div className="td-edit-actions">
-        <Button variant="ghost" className="btn-xs" onClick={onCancel} disabled={busy}>
+        <Button variant="ghost" size="xs" onClick={onCancel} disabled={busy}>
           Cancel
         </Button>
         <Button
           variant="solid"
-          className="btn-xs"
+          size="xs"
           disabled={!ready || busy}
           onClick={() =>
             onSave({

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { BranchMenu, Button } from '../../ui'
+import { BranchMenu, Button, Spinner } from '../../ui'
 import type { ActionKind, NextAction, NextStep, ReasonPrompt } from '../../lib/feature-ui'
 
 export function NextStepBar({
@@ -49,7 +49,7 @@ export function NextStepBar({
 
   return (
     <div className="nextstep">
-      {ns.busy && <span className="spin-ring nextstep-spin" />}
+      {ns.busy && <Spinner />}
       <div className="nextstep-main">
         <div className={`nextstep-kick ${kickClass}`}>{ns.kick}</div>
         <div className="nextstep-title">{ns.title}</div>
@@ -82,7 +82,7 @@ export function NextStepBar({
         {escapes.map((a) => (
           <div key={a.kind} className="mt-2 flex flex-wrap items-center gap-2 text-sm text-text-3">
             <span>{a.disabled}</span>
-            <Button className="btn-xs" onClick={() => onAction(a.escape.kind)} disabled={busy}>
+            <Button size="xs" onClick={() => onAction(a.escape.kind)} disabled={busy}>
               {a.escape.label}
             </Button>
           </div>
@@ -100,7 +100,7 @@ export function NextStepBar({
             />
             <Button
               variant="solid"
-              className="btn-xs"
+              size="xs"
               disabled={busy || !reason.trim()}
               onClick={() => {
                 onAction(asking.kind, reason.trim())
@@ -109,7 +109,7 @@ export function NextStepBar({
             >
               {asking.prompt.submitLabel}
             </Button>
-            <Button variant="ghost" className="btn-xs" onClick={stopAsking}>
+            <Button variant="ghost" size="xs" onClick={stopAsking}>
               Cancel
             </Button>
           </div>
@@ -122,7 +122,7 @@ export function NextStepBar({
               <Button
                 key={i}
                 variant="ghost"
-                className="btn-xs"
+                size="xs"
                 disabled={busy || !!a.disabled}
                 title={a.disabled}
                 onClick={() => click(a)}

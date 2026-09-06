@@ -19,6 +19,7 @@ import { PreparationWorkspace } from './PreparationWorkspace'
 import { CommandPalette } from './CommandPalette'
 import { OpenSettingsProvider } from './settings/MessageWithSettingsLink'
 import { SettingsDialog } from './settings/SettingsDialog'
+import { Button } from '../ui'
 
 /**
  * The runcastle IDE shell for a single project (app-redesign, multi-project #45).
@@ -212,12 +213,8 @@ function EmptyWorkspace({
         {/* The rail head's two doors, said again where a project with nothing
             selected is looking for them (decisions.md #12). */}
         <div className="ws-empty-actions">
-          <button className="btn btn-ghost" onClick={onNewChat}>
-            New chat
-          </button>
-          <button className="btn btn-ghost" onClick={onQuickChange}>
-            Quick
-          </button>
+          <Button onClick={onNewChat}>New chat</Button>
+          <Button onClick={onQuickChange}>Quick</Button>
         </div>
         <div className="ws-empty-hint">
           New opens a conversation with the project — it knows what you have already built, and cuts

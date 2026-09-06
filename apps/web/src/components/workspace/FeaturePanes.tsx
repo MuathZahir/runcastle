@@ -30,7 +30,7 @@ export function BrokenFeaturePane({
         <div className="ws-body-inner">
           <div className="broken-detail">
             <DimLine>{details}</DimLine>
-            <Button variant="ghost" className="btn-xs" onClick={() => copyText(details, toast)}>
+            <Button variant="ghost" size="xs" onClick={() => copyText(details, toast)}>
               Copy details
             </Button>
           </div>
@@ -73,7 +73,7 @@ export function UnrecognizedPhase({ feature }: { feature: FeatureFull['feature']
     <section className="workspace">
       <div className="ws-head">
         <div className="ws-title-row">
-          <span className="tag">unknown</span>
+          <span className="font-mono text-sm font-semibold lowercase">unknown</span>
           <span className="ws-title">{feature.title}</span>
         </div>
       </div>
@@ -81,7 +81,7 @@ export function UnrecognizedPhase({ feature }: { feature: FeatureFull['feature']
         tag="UNRECOGNIZED"
         details={`feature ${feature.id} (${feature.slug}) has phase "${feature.phase}"`}
       >
-        This feature's phase is <strong className="mono">{feature.phase}</strong>, which this version
+        This feature's phase is <strong className="font-mono">{feature.phase}</strong>, which this version
         of runcastle doesn't know. Nothing here can be acted on until the row is fixed.
       </BrokenFeaturePane>
     </section>

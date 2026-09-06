@@ -33,7 +33,7 @@ export function DocPeek({
       className="peek"
     >
       <div className="peek-head">
-        <span className="mono peek-path">{relPath}</span>
+        <span className="peek-path font-mono">{relPath}</span>
         <button className="peek-close" onClick={onClose} aria-label="Close (Esc)">
           ✕
         </button>

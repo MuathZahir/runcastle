@@ -613,7 +613,11 @@ export function Workspace({
         <div className="ws-title-row">
           {/* Same reason the stepper is hidden below: a draft's phase is
               `ideation` by construction, and naming it here reads as progress. */}
-          {isDraft ? <span className="tag is-draft">draft</span> : <PhaseTag phase={feature.phase} />}
+          {isDraft ? (
+            <span className="font-mono text-sm font-semibold lowercase text-text-4">draft</span>
+          ) : (
+            <PhaseTag phase={feature.phase} />
+          )}
           <span className="ws-title">{feature.title}</span>
           <span className="ws-title-spacer" />
           <button className="ws-branch" title="Copy branch name" onClick={() => copyText(feature.branch, toast)}>

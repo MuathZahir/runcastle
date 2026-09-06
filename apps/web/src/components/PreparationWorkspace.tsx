@@ -310,16 +310,16 @@ function DryRunRow({
       <span className="prep-dryrun-label">Preparation dry-run in progress</span>
       {open &&
         (open.state === 'ready' ? (
-          <a className="prep-dryrun-url mono" href={open.url} target="_blank" rel="noreferrer">
+          <a className="prep-dryrun-url font-mono" href={open.url} target="_blank" rel="noreferrer">
             {open.url}
           </a>
         ) : (
-          <span className="prep-dryrun-url mono prep-dryrun-waiting">
+          <span className="prep-dryrun-url prep-dryrun-waiting font-mono">
             {openAppWaitingLabel(open)}
           </span>
         ))}
       <span className="prep-dryrun-spacer" />
-      <Button className="btn-xs" disabled={stopping} onClick={onStop}>
+      <Button size="xs" disabled={stopping} onClick={onStop}>
         {stopping ? 'Stopping…' : 'Stop'}
       </Button>
     </div>
@@ -404,7 +404,7 @@ function EstablishedFrame({ findings }: { findings: readonly ProjectFinding[] })
               <VerificationBadge finding={f} />
             </div>
             <div className="prep-finding-note">{describeFinding(f)}</div>
-            {f.evidence && <div className="prep-finding-evidence mono">{f.evidence}</div>}
+            {f.evidence && <div className="prep-finding-evidence font-mono">{f.evidence}</div>}
           </li>
         ))}
       </ul>

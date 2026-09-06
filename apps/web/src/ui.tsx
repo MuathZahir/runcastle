@@ -32,13 +32,24 @@ function cx(...parts: Array<string | false | null | undefined>): string {
 }
 
 type Variant = 'solid' | 'ghost' | 'danger'
+type Size = 'md' | 'xs'
 
 const BUTTON_BASE =
-  'inline-flex h-(--control-h) items-center justify-center gap-1.5 whitespace-nowrap ' +
-  'rounded-md border px-3 text-sm font-medium ' +
+  'inline-flex items-center justify-center gap-1.5 whitespace-nowrap border font-medium ' +
   'transition-[color,background-color,border-color,box-shadow,transform,opacity] ' +
   'duration-(--dur-1) ease-app enabled:active:scale-[0.99] ' +
   'disabled:cursor-not-allowed disabled:opacity-40'
+
+/**
+ * `xs` is the button that sits inside a row rather than under a form — a lane's
+ * Retry, the next-step bar's secondaries, an inspector action. It was the
+ * `btn-xs` legacy class every one of those surfaces reached for, which is why it
+ * is a variant here and not a class list copied around.
+ */
+const BUTTON_SIZE: Record<Size, string> = {
+  md: 'h-(--control-h) rounded-md px-3 text-sm',
+  xs: 'h-5.5 rounded-sm px-2.5 text-xs',
+}
 
 /**
  * Every variant states its own background, `danger` included. There is no
@@ -57,14 +68,58 @@ const BUTTON_VARIANT: Record<Variant, string> = {
 
 export function Button({
   variant = 'ghost',
+  size = 'md',
   className,
   children,
   ...rest
-}: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: Variant }) {
+}: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: Variant; size?: Size }) {
   return (
-    <button className={cx(BUTTON_BASE, BUTTON_VARIANT[variant], className)} {...rest}>
+    <button
+      className={cx(BUTTON_BASE, BUTTON_SIZE[size], BUTTON_VARIANT[variant], className)}
+      {...rest}
+    >
       {children}
     </button>
+  )
+}
+
+const SPINNER_SIZE: Record<'sm' | 'md', string> = {
+  sm: 'size-2.5 border-[1.4px]',
+  md: 'size-3 border-[1.6px]',
+}
+
+const SPINNER_TONE: Record<'work' | 'accent', string> = {
+  work: 'border-ph-implementation',
+  accent: 'border-accent',
+}
+
+/**
+ * The ring that says something is in flight — a burning run, a launching
+ * session, a project chat coming up. `sm` is the one that rides inside a chip's
+ * own line; `md` stands beside body text.
+ *
+ * Purely decorative: whatever it spins next to says the state in words, so it is
+ * hidden from assistive tech rather than given a label of its own.
+ */
+export function Spinner({
+  size = 'md',
+  tone = 'work',
+  className,
+}: {
+  size?: 'sm' | 'md'
+  tone?: 'work' | 'accent'
+  className?: string
+}) {
+  return (
+    <span
+      aria-hidden="true"
+      className={cx(
+        'inline-block shrink-0 animate-spin rounded-pill border-t-transparent',
+        SPINNER_SIZE[size],
+        SPINNER_TONE[tone],
+        className,
+      )}
+    />
   )
 }
 
@@ -101,11 +156,10 @@ export const TEXT_INPUT =
 /**
  * 11px uppercase tracked section title.
  *
- * Keeps the `section-title` class as a hook: two surviving legacy rules place it
- * in their surface (`.body-title`, `.mr-head`) and raw spans elsewhere still
- * carry the class, so its rule stays in `styles.css` until those flows migrate.
- * The utilities below say the same thing the rule does — 11px is already the
- * theme's micro-label step — and are what is left when it goes.
+ * Keeps the `section-title` class as a hook, not as styling: the base rule is
+ * gone and the utilities below are the whole look, but two surviving legacy
+ * rules place the title inside their surface (`.body-title`, `.mr-head`) and
+ * would lose it if the name went with the rule.
  */
 export function SectionTitle({ children }: { children: ReactNode }) {
   return (
@@ -118,12 +172,12 @@ export function SectionTitle({ children }: { children: ReactNode }) {
 /**
  * One dim mono line — inline empty/error state for tight spots.
  *
- * Keeps `dim-line mono` for the same reason {@link SectionTitle} keeps its
- * class: `.map-waypoints > .dim-line` turns this into the map rail's dashed
- * placeholder, and the error boundary renders the pair raw.
+ * Keeps `dim-line` for the same reason {@link SectionTitle} keeps its class:
+ * `.map-waypoints > .dim-line` turns this into the map rail's dashed
+ * placeholder.
  */
 export function DimLine({ children }: { children: ReactNode }) {
-  return <div className="dim-line mono py-0.5 font-mono text-sm text-text-3">{children}</div>
+  return <div className="dim-line py-0.5 font-mono text-sm text-text-3">{children}</div>
 }
 
 /**

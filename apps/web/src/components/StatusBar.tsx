@@ -70,7 +70,7 @@ export function StatusBar({
       {driving && (
         <span className="sb-driving">
           <span className="sb-driving-dot" />
-          driving <span className="mono">{driving.branch}</span>
+          driving <span className="font-mono">{driving.branch}</span>
           <button
             className="sb-stop"
             disabled={stopDrive.isPending}

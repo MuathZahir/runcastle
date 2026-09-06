@@ -156,7 +156,7 @@ function CurrentGate({
         // `nextGate` cannot place an unrecognized phase, so it returns no gate —
         // which reads identically to "shipped". Say which it is (findings F19).
         <div className="gate-empty">
-          Phase <span className="mono">{phase}</span> isn't recognized, so no gate applies.
+          Phase <span className="font-mono">{phase}</span> isn't recognized, so no gate applies.
         </div>
       ) : gate.next === null ? (
         <div className="gate-shipped">
@@ -197,7 +197,7 @@ function CurrentGate({
           </span>
           <Button
             variant="ghost"
-            className="btn-xs"
+            size="xs"
             disabled={undo.isPending}
             onClick={() => undo.mutate({ featureId, gate: undoable.gate })}
           >
@@ -264,13 +264,13 @@ function GateCard({
           <div className="override-actions">
             <Button
               variant="solid"
-              className="btn-xs"
+              size="xs"
               disabled={!reasonValue.trim() || pending}
               onClick={onApply}
             >
               Apply
             </Button>
-            <Button variant="ghost" className="btn-xs" onClick={onCancel}>
+            <Button variant="ghost" size="xs" onClick={onCancel}>
               Cancel
             </Button>
           </div>
@@ -332,7 +332,7 @@ function Knowledge({ featureId, docs }: { featureId: string; docs: DocSummary[] 
   )
 }
 
-/** Event level → dot color class; keeps the feed scannable without mono codes. */
+/** Event level → dot color class; keeps the feed scannable without codes. */
 function eventTone(type: string): string {
   if (type.includes('failed') || type.includes('error') || type.includes('blocked')) return 'is-danger'
   if (type.includes('done') || type.includes('shipped') || type.includes('merged')) return 'is-ok'
@@ -410,7 +410,7 @@ function ActivityRow({ event }: { event: EventRow }) {
         ) : (
           <div className="act-msg">{line.summary}</div>
         )}
-        {open && line.detail && <pre className="act-detail mono">{line.detail}</pre>}
+        {open && line.detail && <pre className="act-detail font-mono">{line.detail}</pre>}
         <div className="act-sub">
           <span className="act-type">{humanType(event.type)}</span>
           <span className="act-time">{relTime(event.ts)}</span>

@@ -13,6 +13,7 @@ import {
   RunStatusChip,
   SectionTitle,
   SessionStatusDot,
+  Spinner,
   TicketKindChip,
   TicketStatusChip,
 } from '../src/ui'
@@ -64,10 +65,33 @@ describe('Button', () => {
   })
 
   it('keeps a caller`s className and forwards button attributes', () => {
-    const out = render({ className: 'btn-xs', disabled: true, type: 'submit' })
-    expect(out).toContain('btn-xs')
+    const out = render({ className: 'self-start', disabled: true, type: 'submit' })
+    expect(out).toContain('self-start')
     expect(out).toContain('disabled=""')
     expect(out).toContain('type="submit"')
+  })
+
+  // `xs` is the row-height button the surfaces used to reach for as `btn-xs`.
+  it('sizes to the control height by default and shrinks on `xs`', () => {
+    expect(render({})).toContain('h-(--control-h)')
+    const xs = render({ size: 'xs' })
+    expect(xs).not.toContain('h-(--control-h)')
+    expect(xs).toContain('h-5.5')
+  })
+})
+
+describe('Spinner', () => {
+  it('spins, states no text of its own, and is hidden from assistive tech', () => {
+    const out = html(createElement(Spinner))
+    expect(out).toContain('animate-spin')
+    expect(out).toContain('aria-hidden="true"')
+    expect(out).toContain('border-ph-implementation')
+  })
+
+  it('takes the accent tone and the in-a-chip size', () => {
+    const out = html(createElement(Spinner, { size: 'sm', tone: 'accent' }))
+    expect(out).toContain('border-accent')
+    expect(out).toContain('size-2.5')
   })
 })
 

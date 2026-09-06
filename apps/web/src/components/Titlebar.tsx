@@ -5,6 +5,7 @@ import { modKey } from '../lib/platform'
 import type { ProjectNavApi } from '../lib/use-project-nav'
 import { IconPanelRight, IconSearch, IconSettings, LogoMark, LogoWordmark } from '../icons'
 import { ProjectSwitcher } from './ProjectSwitcher'
+import { Spinner } from '../ui'
 
 /**
  * The IDE title bar (app-redesign, multi-project #45): brand · project switcher
@@ -70,7 +71,7 @@ export function Titlebar({
           onClick={nav.goHome}
           title="Runs in flight across all projects — open the portfolio"
         >
-          <span className="spin-ring" />
+          <Spinner />
           {runCount} run{runCount === 1 ? '' : 's'}
         </button>
       )}

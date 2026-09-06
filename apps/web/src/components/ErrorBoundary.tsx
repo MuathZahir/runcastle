@@ -36,7 +36,7 @@ export class ErrorBoundary extends Component<Props, State> {
       if (this.props.fallback) return this.props.fallback(this.state.error)
       return (
         <div className="boundary-fallback">
-          <span className="dim-line mono">
+          <span className="font-mono text-sm text-text-3">
             {this.props.label ?? 'component'} failed: {this.state.error.message}
           </span>
         </div>

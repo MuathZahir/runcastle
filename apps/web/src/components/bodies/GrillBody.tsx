@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react'
 import type { Phase } from '@runcastle/core'
 import { trpc } from '../../trpc'
-import { DimLine, EmptyState, SectionTitle } from '../../ui'
+import { Button, DimLine, EmptyState, SectionTitle } from '../../ui'
 import type { FeatureFull } from '../../lib/api'
 import {
   liveSessionBlocker,
@@ -164,15 +164,15 @@ function ConvergeResume({ featureId }: { featureId: string }) {
       <span className="converge-resume-text">
         The converge session ended before tickets were emitted.
       </span>
-      <button
+      <Button
         type="button"
-        className="btn btn-xs btn-ghost"
+        size="xs"
         disabled={converge.isPending}
         title="Restart the converge session over map.md + decisions.md"
         onClick={() => converge.mutate({ featureId })}
       >
         {converge.isPending ? 'Resuming…' : 'Resume converge'}
-      </button>
+      </Button>
     </div>
   )
 }
@@ -441,9 +441,10 @@ function WaypointCard({
 
       {group === 'frontier' && (
         <div className="wp-actions">
-          <button
+          <Button
             type="button"
-            className="btn btn-xs btn-solid"
+            size="xs"
+            variant="solid"
             disabled={work.isPending}
             title={
               research
@@ -458,7 +459,7 @@ function WaypointCard({
             }}
           >
             {resuming ? 'Resume' : 'Work'}
-          </button>
+          </Button>
           {research && <span className="wp-run-note">runs AFK</span>}
         </div>
       )}
@@ -478,9 +479,10 @@ function WaypointCard({
             )}
           </div>
           <div className="wp-confirm-actions">
-            <button
+            <Button
               type="button"
-              className="btn btn-xs btn-danger"
+              size="xs"
+              variant="danger"
               disabled={work.isPending}
               onClick={(e) => {
                 e.stopPropagation()
@@ -488,17 +490,17 @@ function WaypointCard({
               }}
             >
               End &amp; work this
-            </button>
-            <button
+            </Button>
+            <Button
               type="button"
-              className="btn btn-xs btn-ghost"
+              size="xs"
               onClick={(e) => {
                 e.stopPropagation()
                 setConfirming(false)
               }}
             >
               Cancel
-            </button>
+            </Button>
           </div>
         </div>
       )}

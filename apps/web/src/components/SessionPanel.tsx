@@ -5,7 +5,7 @@ import { useEventLog } from '../lib/events'
 import { awaitingCheckIn, kickoffTrouble, sessionActive, sessionStatusLabel } from '../lib/feature-ui'
 import { useToast } from '../lib/toast'
 import { sessionAgentName } from '../lib/vocabulary'
-import { SessionStatusDot } from '../ui'
+import { Button, SessionStatusDot } from '../ui'
 import type { FeatureFull } from '../lib/api'
 import {
   sessionDoneState,
@@ -195,14 +195,14 @@ function BriefingBanner({
           ? 'This terminal has not reported ready — answer anything waiting in it (a trust or resume prompt), then send the briefing.'
           : `The opening briefing never reached ${sessionAgentName(session)} — this session has not been told what it is here for.`}
       </span>
-      <button
+      <Button
         type="button"
-        className="btn btn-xs btn-ghost"
+        size="xs"
         disabled={resend.isPending}
         onClick={() => resend.mutate({ sessionId: session.id })}
       >
         {resend.isPending ? 'Sending…' : 'Send briefing'}
-      </button>
+      </Button>
     </div>
   )
 }
@@ -264,15 +264,17 @@ function WorkNextButton({ featureId, next }: { featureId: string; next: Waypoint
     onError: (e) => toast.push(e.message),
   })
   return (
-    <button
+    <Button
       type="button"
-      className="btn btn-xs btn-solid strip-work-next"
+      size="xs"
+      variant="solid"
+      className="strip-work-next"
       disabled={work.isPending}
       title={`end this finished session and work the next waypoint: ${next.title}`}
       onClick={() => work.mutate({ featureId, waypointId: next.id })}
     >
       {work.isPending ? 'Starting…' : `Work next: ${next.title}`}
-    </button>
+    </Button>
   )
 }
 
@@ -337,15 +339,16 @@ function EndedSessionCard({
         </div>
       </div>
       {resumable && (
-        <button
+        <Button
           type="button"
-          className="btn btn-xs btn-ghost session-ended-resume"
+          size="xs"
+          className="session-ended-resume"
           disabled={launch.isPending}
           title={`resume the ${session.kind} conversation in a new terminal`}
           onClick={() => launch.mutate({ featureId, kind: session.kind })}
         >
           {launch.isPending ? 'Resuming…' : 'Resume session'}
-        </button>
+        </Button>
       )}
     </div>
   )
