@@ -182,6 +182,8 @@ describe('SettingsDialog', () => {
     for (const page of ['General', 'Models', 'Burns', 'This project']) {
       fireEvent.click(screen.getByRole('button', { name: page }))
 
+      // One page scroller, not one per page and not a second one nested inside
+      // it. Mapped to class lists so an unexpected one names itself here.
       const scrollers = [...panel.querySelectorAll('*')].filter((el) =>
         classes(el).includes('overflow-y-auto'),
       )
