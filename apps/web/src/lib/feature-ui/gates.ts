@@ -60,6 +60,13 @@ export function ticketConflictKickoff(input: {
 export const ONE_TERMINAL_WARNING =
   'One terminal per feature — your live session will be closed to open the resolve session.'
 
+/**
+ * Why lap N+1's conversation cannot open while another terminal is live — said
+ * on the bar's Iterate when that conversation is all the click would do, and
+ * again on the triage step's own lap road, from here so the two cannot drift.
+ */
+export const ONE_TERMINAL_ITERATE = 'One terminal per feature — end the live session first.'
+
 
 /**
  * The standing (unresolved) merge conflict for a feature, derived from its event

@@ -22,6 +22,7 @@ import {
   mergeSummary,
   needsMe,
   nextStep,
+  ONE_TERMINAL_ITERATE,
   openApp,
   openAppWaitingLabel,
   parseMapSections,
@@ -515,7 +516,7 @@ describe('nextStep at review', () => {
     expect(ns.secondary).toContainEqual({
       label: 'Iterate',
       kind: 'rethink',
-      disabled: 'One terminal per feature — end the live session first',
+      disabled: ONE_TERMINAL_ITERATE,
     })
   })
 

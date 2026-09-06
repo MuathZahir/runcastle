@@ -19,6 +19,7 @@ import {
   mapDocPath,
   mergeSummary,
   nextStep,
+  ONE_TERMINAL_ITERATE,
   PHASE_LABELS,
   pipelineSteps,
   reviewOutcome,
@@ -417,9 +418,7 @@ export function Workspace({
   // ticket rows, so nothing takes it away; the conversation needs the one
   // terminal this feature gets, which is the reason the step states beside its
   // primary rather than letting the server refuse it after the fact.
-  const iterateBlocked = liveSession
-    ? 'One terminal per feature — end the live session first.'
-    : undefined
+  const iterateBlocked = liveSession ? ONE_TERMINAL_ITERATE : undefined
   const busy =
     start.isPending ||
     launch.isPending ||

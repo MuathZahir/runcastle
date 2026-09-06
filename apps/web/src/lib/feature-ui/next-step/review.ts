@@ -1,8 +1,8 @@
 import type { DriveState } from '@runcastle/core'
 import { driveView } from '../drive'
-import { ONE_TERMINAL_WARNING } from '../gates'
-import { burnLabel } from '../laps'
+import { ONE_TERMINAL_ITERATE, ONE_TERMINAL_WARNING } from '../gates'
 import { unverifiedWarning } from '../internal'
+import { burnLabel } from '../laps'
 import type { NextAction, NextStep } from './types'
 import type { ResolverInput } from './resolver-input'
 
@@ -40,14 +40,9 @@ export function resolveReview(input: ResolverInput): NextStep {
     ctx.driveState && ctx.driveState !== 'idle' ? ctx.driveState : ctx.driving ? 'serving' : 'idle'
   const driving = driveState !== 'idle'
   const view = driveView(driveState)
-  // Review offers three verbs (ADR-0010 §3): Fix — the Burn primary below,
-  // for when the spec was right and the code wasn't; Iterate — the spec was
-  // wrong, so start lap N+1 back at ideation (the `rethink` procedure keeps
-  // the internal name, for continuity of the timeline); Merge & ship. Test
-  // drive stays available throughout. Iterate opens the lap's terminal, and
-  // there is one terminal per feature, so it's hidden while any session is
-  // live — and disabled while the drive holds the branch its worktree needs,
-  // which the server refuses outright (findings F3).
+  // Review offers two forward verbs (decision 21): Iterate — keep working, which
+  // is the triage door below — and Merge & ship. Test drive stays available
+  // throughout.
   // A dry run holds the same singleton drive slot, so the server refuses a
   // feature drive outright while one is up (decision 9) — said here rather
   // than on click. Unverified keys never disable: they are a caveat about
@@ -94,7 +89,7 @@ export function resolveReview(input: ResolverInput): NextStep {
           escape: { label: 'Stop drive and iterate', kind: 'stopDriveAndIterate' },
         }
       : live && openWork === 0
-        ? { disabled: 'One terminal per feature — end the live session first' }
+        ? { disabled: ONE_TERMINAL_ITERATE }
         : {}),
   }
   const iterate: NextAction[] = [iterateAction]
