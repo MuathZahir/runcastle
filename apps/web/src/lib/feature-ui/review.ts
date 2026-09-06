@@ -67,6 +67,20 @@ export function latestReview<T extends { seq: number; completedAt?: number | nul
 }
 
 /**
+ * The pass every evidence surface is stamped against: the latest COMPLETED one
+ * (decision 41a). A pass still burning vouches for nothing, and ordering on
+ * completion is what makes "latest" mean latest rather than highest-numbered.
+ *
+ * One implementation, because the review page's stage and the merge dialog's
+ * review row must never be stamped against different passes.
+ */
+export function stampedReview<T extends { seq: number; completedAt?: number | null }>(
+  rows: readonly T[],
+): T | null {
+  return latestReview(rows.filter((row) => row.completedAt !== null)) ?? null
+}
+
+/**
  * What the review agent's pass amounted to (decisions #7). The human's review
  * now starts from the agent's report, so every review surface has to be able to
  * say what that report was — including that there wasn't one.

@@ -318,6 +318,9 @@ export function useLiveSync(): LiveStatus {
       // the same value.
       void u.project.sessionBranch.invalidate()
       void u.feature.commitCount.invalidate()
+      // The merge confirmation's "what lands" row is the same git read one step
+      // further on (commits AND files), so it moves when the count does.
+      void u.feature.mergeDelta.invalidate()
       void u.project.prepSession.invalidate()
       void u.project.projectSession.invalidate()
       // The review agent's walkthrough appears mid-burn, at the tail of a run
