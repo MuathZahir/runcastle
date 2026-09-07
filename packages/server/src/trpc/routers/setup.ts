@@ -2,6 +2,7 @@ import { AgentRuntime, configuredRuntimes, newId, resolveSandboxImage } from '@r
 import { isNotNull } from 'drizzle-orm'
 import * as z from 'zod'
 import { projects } from '../../db/schema'
+import { envWithAfkCredentials } from '../../doctor/afk-env'
 import { runDoctor } from '../../doctor/doctor'
 import { createSystemExec } from '../../doctor/system-exec'
 import { burnerDockerfilePath } from '../../launcher/asset-paths'
@@ -44,6 +45,10 @@ export const setupRouter = router({
     return runDoctor({
       exec: createSystemExec(),
       burnerDockerfile: burnerDockerfilePath(),
+      // Read the data-dir `.env` fresh on every query: the AFK card writes the
+      // token there through `afkToken` while the server runs, so a probe that
+      // saw only `process.env` would keep reporting it missing forever.
+      env: envWithAfkCredentials(),
       runtimes: configuredRuntimes(ctx.config, projectModels),
       ...(ctx.config.sandboxImage ? { imageName: ctx.config.sandboxImage } : {}),
     })

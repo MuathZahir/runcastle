@@ -18,6 +18,12 @@ import { mapTerminalKey } from '../lib/terminal-keys'
 export interface TerminalViewProps {
   sessionId: string
   wsBase?: string
+  /**
+   * The server reported the PTY's process gone — whatever its exit code. Held in
+   * a ref so a caller passing an inline closure does not tear the terminal down
+   * and reconnect on every render.
+   */
+  onEnded?: () => void
 }
 
 const THEME = {
@@ -28,9 +34,11 @@ const THEME = {
   selectionBackground: 'rgba(124,108,246,0.25)',
 }
 
-export function TerminalView({ sessionId, wsBase }: TerminalViewProps) {
+export function TerminalView({ sessionId, wsBase, onEnded }: TerminalViewProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [status, setStatus] = useState<TerminalStatus>('connecting')
+  const endedRef = useRef(onEnded)
+  endedRef.current = onEnded
 
   useEffect(() => {
     const container = containerRef.current
@@ -71,6 +79,9 @@ export function TerminalView({ sessionId, wsBase }: TerminalViewProps) {
         // Sync the server PTY to our current grid once the socket is live (the
         // initial fit's resize may have fired before the socket opened).
         if (s === 'live') client.resize(term.cols, term.rows)
+        // `ended` is terminal — the client stops reconnecting — so this fires
+        // at most once per session.
+        if (s === 'ended') endedRef.current?.()
       },
     })
 

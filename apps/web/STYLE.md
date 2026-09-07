@@ -42,15 +42,16 @@ Single dark theme. There is no light mode and no `dark:` variant.
 
 ### Two things Tailwind does here that will surprise you
 
-- **No preflight — except for two elements.** `theme.css` imports the theme and
+- **No preflight — except for one element.** `theme.css` imports the theme and
   utilities layers but not Tailwind's base reset, because the reset changes the
   legacy sheet under it — `ol, ul { list-style: none }` alone strips every
   markdown bullet. Preflight arrives when the legacy sheet is gone. What
   `theme.css` hand-writes in the meantime is the one slice a near-black app
-  cannot go without: `button` and `select`, whose user-agent chrome is a light
-  pill and a white listbox. It sits in `@layer base`, so the unlayered legacy
-  sheet and the utilities layer both still beat it. Everything else is
-  un-reset — outside those two elements, do not assume one: style what you
+  cannot go without: `button`, whose user-agent chrome is a light pill. (A
+  `select` slice sat beside it until the floating primitives left no raw
+  `<select>` in the app to reset.) It sits in `@layer base`, so the unlayered
+  legacy sheet and the utilities layer both still beat it. Everything else is
+  un-reset — outside that one element, do not assume one: style what you
   render.
 - **Legacy rules beat utilities.** `styles.css` is unlayered and utilities live
   in `@layer utilities`, and unlayered CSS wins over layered CSS whatever the
@@ -60,8 +61,8 @@ Single dark theme. There is no light mode and no `dark:` variant.
 
 ## Primitives
 
-`src/ui.tsx` holds the shared primitives. Build one there rather than styling the
-same thing twice in two surfaces.
+`src/ui.tsx` holds the shared primitives, and `src/ui/` the floating ones (see
+below). Build one there rather than styling the same thing twice in two surfaces.
 
 How they are to be styled (decision 5): Tailwind utility classes written inline
 in the TSX, variants composed by a local `cx()` helper. No `@apply` component
@@ -69,6 +70,34 @@ classes — that just grows a second semantic stylesheet to replace the one bein
 retired — and no runtime styling dependency; `clsx`, `cva` and `tailwind-merge`
 are deliberately absent. `@utility` in `theme.css` is the escape hatch for what
 utilities genuinely cannot express, kept to a minimum.
+
+### Floating primitives (`src/ui/`)
+
+Anything that floats — a menu, a value picker, a searchable list — is one of the
+four in `src/ui/`, one file each: `popover.tsx`, `dropdown-menu.tsx`,
+`select.tsx`, `combobox.tsx`. Do not hand-roll another absolutely-positioned
+panel: the app had five and every one of them was clipped by an ancestor's
+overflow or ran off the bottom of the page.
+
+They are shadcn's floating family, restyled. That amends decision 5 for
+*behaviour only*: the per-primitive Radix packages and `cmdk` are in, because
+portals, collision-aware positioning, focus traps and keyboard nav are where
+hand-rolling fails; `clsx`, `cva` and `tailwind-merge` are still out, and the
+copied markup is rewritten onto `cx()`, lookup-map variants and these tokens.
+
+What they share (`src/ui/floating.ts`): the `cx()` helper and `FLOATING_SURFACE`,
+the one class list a floating layer wears — `bg-panel-3`, a hairline, `shadow-menu`
+and `z-[300]`, one band above `Dialog`'s `z-[200]` so a picker opened inside
+settings floats over its backdrop. Each content part portals to `<body>`, caps
+itself at the height Radix measured, and stops Escape so the keystroke that
+closes it does not also close the dialog around it.
+
+| Primitive | What it is | Where it is used |
+|---|---|---|
+| `Popover` | An anchored panel — and the Combobox's foundation. | the branch pickers, via Combobox |
+| `DropdownMenu` | A menu of **actions**, not a value picker. | DocsMenu, FeatureActionsMenu, ProjectSwitcher |
+| `Select` | A grouped single-select over a short, fixed list. `value=""` means *unset* and is translated at the primitive's edge, because Radix reads `''` as "nothing selected". | the model choosers, every settings dropdown |
+| `Combobox` | A single-select whose list is long enough to want searching. | the "lands on" picker, BaseSelect |
 
 ### Catalogue
 

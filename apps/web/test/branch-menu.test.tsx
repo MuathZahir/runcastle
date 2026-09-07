@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { useState } from 'react'
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { BranchMenu, Dialog } from '../src/ui'
 
@@ -8,6 +8,11 @@ import { BranchMenu, Dialog } from '../src/ui'
  * The inline branch picker (decisions.md #3). Tier 2 rather than tier 1: the
  * whole of what is worth asserting — what the popover offers, what a pick sends,
  * that Escape closes it — only exists once the trigger has been clicked.
+ *
+ * The list is a `Combobox` now, so what the picker itself still owns is the only
+ * thing tested here: which branches it offers, how it heads them, and the states
+ * its props describe. The floating behaviour is the primitive's, and
+ * `floating-primitives.test.tsx` holds it to that.
  */
 describe('BranchMenu', () => {
   afterEach(cleanup)
@@ -26,8 +31,7 @@ describe('BranchMenu', () => {
     fireEvent.click(screen.getByRole('button', { expanded: false }))
   }
 
-  const options = (): string[] =>
-    screen.getAllByRole('option').map((o) => o.textContent?.replace('✓', '') ?? '')
+  const options = (): string[] => screen.getAllByRole('option').map((o) => o.textContent ?? '')
 
   it('offers only branches a human would land on', () => {
     render(<BranchMenu prefix="landing on" value="main" branches={BRANCHES} onPick={() => {}} />)
@@ -58,7 +62,9 @@ describe('BranchMenu', () => {
     render(<BranchMenu prefix="landing on" value="main" branches={BRANCHES} onPick={onPick} />)
     open()
 
-    expect(screen.getByRole('option', { selected: true }).textContent).toContain('main')
+    // `aria-current`, not `aria-selected`: cmdk owns the latter and spends it on
+    // whichever row the keyboard is standing on.
+    expect(screen.getByRole('option', { current: true }).textContent).toContain('main')
     fireEvent.click(screen.getByRole('option', { name: 'develop' }))
 
     expect(onPick).toHaveBeenCalledTimes(1)
@@ -66,26 +72,35 @@ describe('BranchMenu', () => {
     expect(screen.queryByRole('listbox')).toBeNull()
   })
 
-  it('commits a mouse pick before dismissal and updates the controlled trigger', () => {
+  it('commits a mouse pick and updates the controlled trigger', () => {
     function ControlledMenu() {
       const [branch, setBranch] = useState('main')
       return (
-        <BranchMenu
-          prefix="landing on"
-          value={branch}
-          branches={BRANCHES}
-          onPick={setBranch}
-        />
+        <BranchMenu prefix="landing on" value={branch} branches={BRANCHES} onPick={setBranch} />
       )
     }
 
     render(<ControlledMenu />)
     open()
-    fireEvent.mouseDown(screen.getByRole('option', { name: 'develop' }), { button: 0 })
+    // The pick lands in the popover's own portal, so nothing outside it can
+    // unmount the row before the click arrives — the reason the hand-rolled menu
+    // this replaced had to commit on `mousedown` instead.
+    fireEvent.click(screen.getByRole('option', { name: 'develop' }))
 
     expect(screen.getByRole('button').textContent).toContain('landing on develop')
     open()
-    expect(screen.getByRole('option', { selected: true }).textContent).toContain('develop')
+    expect(screen.getByRole('option', { current: true }).textContent).toContain('develop')
+  })
+
+  it('filters the branches as the search is typed', () => {
+    render(<BranchMenu prefix="landing on" value="main" branches={BRANCHES} onPick={() => {}} />)
+    open()
+
+    fireEvent.change(screen.getByPlaceholderText('Find a branch…'), {
+      target: { value: 'existing' },
+    })
+
+    expect(options()).toEqual(['feature/existing-work'])
   })
 
   it('moves through options with arrows and commits with Enter', () => {
@@ -93,37 +108,40 @@ describe('BranchMenu', () => {
     render(<BranchMenu prefix="landing on" value="main" branches={BRANCHES} onPick={onPick} />)
     open()
 
-    fireEvent.keyDown(document.activeElement as Element, { key: 'ArrowDown' })
-    fireEvent.keyDown(document.activeElement as Element, { key: 'Enter' })
+    const search = screen.getByPlaceholderText('Find a branch…')
+    fireEvent.keyDown(search, { key: 'ArrowDown' })
+    fireEvent.keyDown(search, { key: 'Enter' })
 
     expect(onPick).toHaveBeenCalledWith('develop')
     expect(screen.queryByRole('listbox')).toBeNull()
   })
 
-  it('closes on Escape without picking anything', () => {
+  it('closes on Escape without picking anything', async () => {
     const onPick = vi.fn()
     render(<BranchMenu prefix="from" value="main" branches={BRANCHES} onPick={onPick} />)
+    const trigger = screen.getByRole('button', { expanded: false })
     open()
-    fireEvent.keyDown(window, { key: 'Escape' })
+    fireEvent.keyDown(document.activeElement ?? document.body, { key: 'Escape' })
 
     expect(screen.queryByRole('listbox')).toBeNull()
     expect(onPick).not.toHaveBeenCalled()
+    await waitFor(() => expect(document.activeElement).toBe(trigger))
   })
 
   // The Quick footer and the draft bar put this menu inside a Dialog, and both
   // answer Escape. One key must not close two things.
   it('answers Escape without the dialog it sits in also closing', () => {
     function InDialog() {
-      const [open, setOpen] = useState(true)
+      const [dialogOpen, setDialogOpen] = useState(true)
       return (
-        <Dialog open={open} onClose={() => setOpen(false)} label="Quick">
+        <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)} label="Quick">
           <BranchMenu prefix="from" value="main" branches={BRANCHES} onPick={() => {}} />
         </Dialog>
       )
     }
     render(<InDialog />)
     open()
-    fireEvent.keyDown(window, { key: 'Escape' })
+    fireEvent.keyDown(document.activeElement ?? document.body, { key: 'Escape' })
 
     expect(screen.queryByRole('listbox')).toBeNull()
     expect(screen.queryByRole('dialog')).toBeTruthy()

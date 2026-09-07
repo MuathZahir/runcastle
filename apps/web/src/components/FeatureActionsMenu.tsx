@@ -1,13 +1,19 @@
-import { useEffect, useRef, useState } from 'react'
+import { useRef } from 'react'
 import type { RefObject } from 'react'
 import { IconMore } from '../icons'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '../ui/dropdown-menu'
 
 /**
  * A per-feature actions menu (kebab) for a sidebar row. Deliberately a thin,
  * data-driven shell: it renders whatever {@link FeatureAction}s the caller
- * passes, so new items (ticket 8 adds Delete) drop in without touching this
- * component. Presentation + open/close only — the mutations live with the
- * caller.
+ * passes, so new items drop in without touching this component. Presentation
+ * only — the mutations live with the caller, and the open/close, the outside
+ * click and the portal are the `DropdownMenu` primitive's.
  */
 export interface FeatureAction {
   key: string
@@ -25,62 +31,57 @@ export function FeatureActionsMenu({
   /** The trigger's accessible name — the rows it serves are not all features. */
   label?: string
 }) {
-  const [open, setOpen] = useState(false)
-  const ref = useRef<HTMLDivElement>(null)
   const triggerRef = useRef<HTMLButtonElement>(null)
-
-  // Close on any outside click or Escape — the menu floats over the rail.
-  useEffect(() => {
-    if (!open) return
-    const onDown = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
-    }
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setOpen(false)
-    }
-    document.addEventListener('mousedown', onDown)
-    document.addEventListener('keydown', onKey)
-    return () => {
-      document.removeEventListener('mousedown', onDown)
-      document.removeEventListener('keydown', onKey)
-    }
-  }, [open])
 
   if (actions.length === 0) return null
 
   return (
-    <div className="relative shrink-0 pr-1" ref={ref}>
-      <button
-        ref={triggerRef}
-        // No preflight (apps/web/STYLE.md), and `styles.css` still carries an
-        // unlayered `button { color: inherit }` that beats a `text-*` utility
-        // here — so the colour goes on the span, switched by `group-hover`.
-        className="group cursor-pointer rounded-md border-0 bg-transparent px-1.5 py-1 transition-colors duration-(--dur-1) ease-app hover:bg-panel-3"
-        aria-label={label}
-        aria-haspopup="menu"
-        aria-expanded={open}
-        onClick={(e) => {
-          e.stopPropagation()
-          setOpen((o) => !o)
-        }}
-      >
-        <span className="flex text-text-3 group-hover:text-text">
-          <IconMore size={14} />
-        </span>
-      </button>
-      {open && (
-        <div
-          className="absolute top-[calc(100%-2px)] right-1 z-20 flex min-w-32 flex-col rounded-md border border-hairline bg-panel-2 p-1 shadow-menu"
-          role="menu"
+    <div className="shrink-0 pr-1">
+      <DropdownMenu>
+        <DropdownMenuTrigger
+          ref={triggerRef}
+          // No preflight (apps/web/STYLE.md), and `styles.css` still carries an
+          // unlayered `button { color: inherit }` that beats a `text-*` utility
+          // here — so the colour goes on the span, switched by `group-hover`.
+          className="group cursor-pointer rounded-md border-0 bg-transparent px-1.5 py-1 transition-colors duration-(--dur-1) ease-app hover:bg-panel-3"
+          aria-label={label}
+          // The row underneath is itself clickable: opening the menu must not
+          // also select the feature. Radix opens on the pointer-down, so that
+          // is the event the row must not see either.
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <span className="flex text-text-3 group-hover:text-text">
+            <IconMore size={14} />
+          </span>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent
+          align="end"
+          // Family here, size on the items. Tailwind emits `text-xs` after
+          // every other size, so `DropdownMenuContent`'s mono default is the
+          // later declaration whatever the class attribute says, and a size
+          // passed here would be silently ignored — these items rendered at
+          // 11px next to a 14px sidebar. `font-sans` is safe: it sorts after
+          // `font-mono`.
+          className="font-sans"
+          onCloseAutoFocus={(event) => {
+            // An action can hand the focus straight on — Delete opens a dialog
+            // that focuses its confirm input. Radix would pull it back to the
+            // trigger a tick after that, so when anything else already holds
+            // the focus, leave it where it is. Escape and an outside click land
+            // on <body> and still get the trigger back.
+            const focused = document.activeElement
+            if (focused && focused !== document.body && focused !== triggerRef.current) {
+              event.preventDefault()
+            }
+          }}
         >
           {actions.map((a) => (
-            <button
+            <DropdownMenuItem
               key={a.key}
-              role="menuitem"
-              className="group cursor-pointer rounded-md border-0 bg-transparent px-2 py-1.5 text-left text-sm transition-colors duration-(--dur-1) ease-app hover:bg-panel-3"
-              onClick={(e) => {
-                e.stopPropagation()
-                setOpen(false)
+              className="text-sm"
+              tone={a.danger ? 'danger' : 'default'}
+              onSelect={() => {
                 // The menu item disappears as this selection opens a dialog.
                 // Put focus on the surviving trigger first so Dialog records a
                 // connected opener and can restore keyboard position on close.
@@ -88,13 +89,11 @@ export function FeatureActionsMenu({
                 a.onSelect(triggerRef)
               }}
             >
-              <span className={a.danger ? 'text-danger' : 'text-text-2 group-hover:text-text'}>
-                {a.label}
-              </span>
-            </button>
+              {a.label}
+            </DropdownMenuItem>
           ))}
-        </div>
-      )}
+        </DropdownMenuContent>
+      </DropdownMenu>
     </div>
   )
 }

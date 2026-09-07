@@ -11,6 +11,15 @@ import {
   type SourceChip as SourceChipKind,
 } from '../../lib/settings'
 import { Field } from '../../ui'
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectLabel,
+  SelectTrigger,
+  SelectValue,
+} from '../../ui/select'
 import { IconLock } from '../../icons'
 import { showsSetting, type FilterState } from './types'
 
@@ -306,40 +315,44 @@ function RowControl({
             value={row.optionLabels[row.value] ?? row.value}
           />
         ) : row.control === 'select' ? (
-          <select
-            {...wiring}
-            className={cx(CONTROL, 'max-w-90 cursor-pointer')}
+          <Select
             value={draft}
-            onChange={(e) => {
-              onDraft(e.target.value)
-              onCommit(e.target.value)
+            onValueChange={(next) => {
+              onDraft(next)
+              onCommit(next)
             }}
           >
-            {/* An unset project field leads with what it inherits, so the first
-                choice states the effective value rather than looking empty. */}
-            {row.ghostValue && (
-              <option value="">
-                Use global ({row.optionLabels[row.ghostValue] ?? row.ghostValue})
-              </option>
-            )}
-            {row.modelGroups.length > 0
-              ? row.modelGroups.map((group) => (
-                  <optgroup key={group.runtime} label={group.label}>
-                    {group.entries.map((entry) => (
-                      <option key={entry.id} value={entry.id} title={entry.note}>
-                        {entry.note ? `${entry.id} — ${entry.note}` : entry.id}
-                      </option>
-                    ))}
-                  </optgroup>
-                ))
-              : row.options.map((opt) => (
-                  // The stored value is a config identifier ("noSandbox",
-                  // "inherit"); the dropdown reads out what it means.
-                  <option key={opt} value={opt}>
-                    {row.optionLabels[opt] ?? opt}
-                  </option>
-                ))}
-          </select>
+            <SelectTrigger {...wiring} className={cx(CONTROL, 'max-w-90')}>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent className="font-sans text-sm">
+              {/* An unset project field leads with what it inherits, so the first
+                  choice states the effective value rather than looking empty. */}
+              {row.ghostValue && (
+                <SelectItem value="">
+                  Use global ({row.optionLabels[row.ghostValue] ?? row.ghostValue})
+                </SelectItem>
+              )}
+              {row.modelGroups.length > 0
+                ? row.modelGroups.map((group) => (
+                    <SelectGroup key={group.runtime}>
+                      <SelectLabel>{group.label}</SelectLabel>
+                      {group.entries.map((entry) => (
+                        <SelectItem key={entry.id} value={entry.id} title={entry.note}>
+                          {entry.note ? `${entry.id} — ${entry.note}` : entry.id}
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
+                  ))
+                : row.options.map((opt) => (
+                    // The stored value is a config identifier ("noSandbox",
+                    // "inherit"); the dropdown reads out what it means.
+                    <SelectItem key={opt} value={opt}>
+                      {row.optionLabels[opt] ?? opt}
+                    </SelectItem>
+                  ))}
+            </SelectContent>
+          </Select>
         ) : row.control === 'textarea' ? (
           // Multi-line values (verify commands, known failures) — an <input>
           // silently drops the newlines that give them their meaning.

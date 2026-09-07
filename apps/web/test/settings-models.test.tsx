@@ -2,6 +2,7 @@
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { SettingField, SettingsView } from '../src/lib/api'
+import { pickOption } from './floating'
 
 /**
  * The Models page (flow-redesign-settings, ticket 7). Tier 2: nothing here is
@@ -130,9 +131,7 @@ describe('Models page', () => {
   it('states the default in the card and as the roster’s DEFAULT chip', () => {
     open()
 
-    expect((screen.getByLabelText('Default model') as HTMLSelectElement).value).toBe(
-      'claude-opus-5',
-    )
+    expect(screen.getByLabelText('Default model').textContent).toContain('claude-opus-5')
     const chip = within(rowOf('claude-opus-5'))
       .getAllByText('Default')
       .find((el) => el.className.includes('rounded-pill'))
@@ -145,9 +144,7 @@ describe('Models page', () => {
   it('writes the default model from the card and from a row alike', () => {
     open()
 
-    fireEvent.change(screen.getByLabelText('Default model'), {
-      target: { value: 'claude-sonnet-5' },
-    })
+    pickOption(screen.getByLabelText('Default model'), 'claude-sonnet-5')
     expect(lastUpdate()).toEqual({ key: 'model', value: 'claude-sonnet-5' })
     expect(screen.getByText('Saved ✓')).toBeTruthy()
 
@@ -206,7 +203,7 @@ describe('Models page', () => {
     expect(screen.getByRole('alert').textContent).toBe('Choose which runtime this model runs on.')
     expect(server.updates).toEqual([])
 
-    fireEvent.change(screen.getByLabelText('Runtime (required)'), { target: { value: 'codex' } })
+    pickOption(screen.getByLabelText('Runtime (required)'), 'Codex')
     fireEvent.change(screen.getByLabelText('New model note'), { target: { value: 'cheap' } })
     fireEvent.click(screen.getByRole('button', { name: 'Add model' }))
 
@@ -263,19 +260,14 @@ describe('Models page', () => {
       expect(screen.getByLabelText(`Model for ${step}`)).toBeTruthy()
     }
     // An unset step reads out what it will actually run.
-    expect(within(screen.getByLabelText('Model for Converge')).getByText('Default (claude-opus-5)'))
-      .toBeTruthy()
-    expect((screen.getByLabelText('Model for Implement') as HTMLSelectElement).value).toBe(
-      'gpt-5.6-sol',
-    )
+    expect(screen.getByLabelText('Model for Converge').textContent).toBe('Default (claude-opus-5)')
+    expect(screen.getByLabelText('Model for Implement').textContent).toContain('gpt-5.6-sol')
   })
 
   it('writes a step’s model, and clears it on reset', () => {
     open()
 
-    fireEvent.change(screen.getByLabelText('Model for Review'), {
-      target: { value: 'claude-haiku-4-5' },
-    })
+    pickOption(screen.getByLabelText('Model for Review'), /^claude-haiku-4-5/)
     expect(lastUpdate()).toEqual({ key: 'stepModels.review', value: 'claude-haiku-4-5' })
 
     fireEvent.click(screen.getByRole('button', { name: 'Reset Implement to default' }))

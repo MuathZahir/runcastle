@@ -60,14 +60,14 @@ describe('TicketsBody wire actions', () => {
   it('sends a model-only partial edit from the row menu', () => {
     render(<TicketsBody featureId="f1" />)
     const currentRow = screen.getByText('Current pending').closest('article')!
-    fireEvent.click(within(currentRow).getByRole('button', { name: 'default model ▾' }))
+    fireEvent.click(within(currentRow).getByRole('combobox', { name: 'Ticket model' }))
     fireEvent.click(within(screen.getByRole('listbox', { name: 'Ticket model' })).getByRole('option', { name: /gpt-5.6-sol/ }))
     expect(server.edits).toEqual([{ ticketId: 'current', model: 'gpt-5.6-sol' }])
   })
 
   it('bulk-edits only pending tickets from this lap and toasts the count', async () => {
     render(<TicketsBody featureId="f1" />)
-    fireEvent.click(screen.getByRole('button', { name: 'Model for all pending ▾' }))
+    fireEvent.click(screen.getByRole('combobox', { name: 'Model for all pending' }))
     fireEvent.click(within(screen.getByRole('listbox', { name: 'Model for all pending' })).getByRole('option', { name: /gpt-5.6-sol/ }))
     await vi.waitFor(() => expect(server.directEdits).toEqual([{ ticketId: 'current', model: 'gpt-5.6-sol' }]))
     await vi.waitFor(() => expect(server.toasts).toContain('1 tickets set to gpt-5.6-sol'))

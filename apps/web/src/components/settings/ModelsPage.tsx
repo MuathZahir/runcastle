@@ -13,6 +13,7 @@ import {
   type ModelOptionGroup,
 } from '../../lib/settings'
 import { DimLine } from '../../ui'
+import { Select, SelectContent, SelectTrigger, SelectValue } from '../../ui/select'
 import { ModelOptions, Refusal, RosterTable, SaveMark } from './RosterTable'
 import { StepTable } from './StepTable'
 import { showsSetting, type SettingsPageProps } from './types'
@@ -215,14 +216,17 @@ function DefaultModelCard({
         Default model
       </label>
       <div className="flex items-center gap-2">
-        <select
-          id="settings-default-model"
-          className="h-(--control-h) max-w-85 min-w-0 flex-1 cursor-pointer rounded-sm border border-accent-line bg-panel-inset px-2.5 font-mono text-sm text-text"
-          value={value}
-          onChange={(e) => writes.save(DEFAULT_CELL, 'model', e.target.value)}
-        >
-          <ModelOptions groups={groups} />
-        </select>
+        <Select value={value} onValueChange={(next) => writes.save(DEFAULT_CELL, 'model', next)}>
+          <SelectTrigger
+            id="settings-default-model"
+            className="h-(--control-h) max-w-85 min-w-0 flex-1 rounded-sm border border-accent-line bg-panel-inset px-2.5 font-mono text-sm text-text"
+          >
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent className="text-sm">
+            <ModelOptions groups={groups} />
+          </SelectContent>
+        </Select>
         {writes.saved === DEFAULT_CELL && <SaveMark />}
       </div>
       <p className="col-span-2 text-sm text-text-2">
