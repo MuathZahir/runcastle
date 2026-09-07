@@ -1,0 +1,3 @@
+# Project chat branch collision
+
+Clicking "New" to create a project chat session sometimes fails with: Branch with name runcastle/project already exists. A stale runcastle/project branch left by a previous project session is not cleaned up or reused when launching a new one. Find where the project-session launcher cuts its branch (packages/server — launcher/git services) and make launch resilient: reuse or delete-and-recut the stale branch (it is runcastle-owned, cut fresh from the base at every launch, so recreating it is safe as long as no live project session holds it). Add a regression test: launching a project session twice in a row, with the first one closed, succeeds.
