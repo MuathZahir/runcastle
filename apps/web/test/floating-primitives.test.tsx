@@ -10,6 +10,15 @@ import {
   DropdownMenuTrigger,
 } from '../src/ui/dropdown-menu'
 import { Popover, PopoverContent, PopoverTrigger } from '../src/ui/popover'
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectLabel,
+  SelectTrigger,
+  SelectValue,
+} from '../src/ui/select'
 import { openMenu } from './floating'
 
 /**
@@ -161,5 +170,160 @@ describe('Popover', () => {
     fireEvent.keyDown(document.activeElement ?? document.body, { key: 'Escape' })
 
     expect(screen.queryByText('main')).toBeNull()
+  })
+})
+
+describe('Select', () => {
+  afterEach(cleanup)
+
+  /** Long enough that the cap and the scroll are the only thing holding it in. */
+  const roster = Array.from({ length: 40 }, (_, i) => `model-${i}`)
+
+  /** The row the keyboard is on. Throws rather than asserting against `body`. */
+  function activeOption(): HTMLElement {
+    const active = document.activeElement
+    if (!(active instanceof HTMLElement) || active.getAttribute('role') !== 'option') {
+      throw new Error(`focus is on ${active?.nodeName ?? 'nothing'}, not an option`)
+    }
+    return active
+  }
+
+  function Harness({
+    value = '',
+    onValueChange = () => {},
+  }: {
+    value?: string
+    onValueChange?: (next: string) => void
+  }) {
+    return (
+      // The ancestor that used to clip the menu: the ticket card whose own
+      // overflow turned scrollable around the model chooser inside it.
+      <div className="overflow-hidden">
+        <Select value={value} onValueChange={onValueChange}>
+          <SelectTrigger aria-label="Ticket model">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent aria-label="Ticket model options">
+            <SelectItem value="">default (project model)</SelectItem>
+            <SelectGroup>
+              <SelectLabel>Claude Code</SelectLabel>
+              {roster.map((id) => (
+                <SelectItem key={id} value={id}>
+                  {id}
+                </SelectItem>
+              ))}
+            </SelectGroup>
+          </SelectContent>
+        </Select>
+      </div>
+    )
+  }
+
+  it('renders its list in a portal, outside the overflow ancestor it opened in', () => {
+    const { container } = render(<Harness />)
+    fireEvent.click(screen.getByRole('combobox', { name: 'Ticket model' }))
+
+    const list = screen.getByRole('listbox', { name: 'Ticket model options' })
+    expect(container.contains(list)).toBe(false)
+    expect(document.body.contains(list)).toBe(true)
+  })
+
+  it('caps a long list at the space Radix measured, and scrolls inside that', () => {
+    render(<Harness />)
+    fireEvent.click(screen.getByRole('combobox', { name: 'Ticket model' }))
+
+    const list = screen.getByRole('listbox', { name: 'Ticket model options' })
+    expect(screen.getAllByRole('option').length).toBe(roster.length + 1)
+    expect(list.className).toContain('max-h-(--radix-select-content-available-height)')
+    // Radix's own viewport is the scroller — `overflow: hidden auto`, inline.
+    expect(list.querySelector('[data-radix-select-viewport]')).toBeTruthy()
+  })
+
+  it('reads the empty choice out in the closed trigger, and reports a pick', () => {
+    const onValueChange = vi.fn()
+    render(<Harness value="" onValueChange={onValueChange} />)
+
+    const trigger = screen.getByRole('combobox', { name: 'Ticket model' })
+    // Radix reads `''` as "nothing selected" and would show its placeholder;
+    // the primitive's sentinel is what keeps the row's own text in the trigger.
+    expect(trigger.textContent).toContain('default (project model)')
+
+    fireEvent.click(trigger)
+    fireEvent.click(screen.getByRole('option', { name: 'model-3' }))
+    expect(onValueChange).toHaveBeenLastCalledWith('model-3')
+  })
+
+  it('hands back an empty string when the empty row is picked', () => {
+    const onValueChange = vi.fn()
+    render(<Harness value="model-3" onValueChange={onValueChange} />)
+
+    fireEvent.click(screen.getByRole('combobox', { name: 'Ticket model' }))
+    fireEvent.click(screen.getByRole('option', { name: 'default (project model)' }))
+
+    expect(onValueChange).toHaveBeenLastCalledWith('')
+  })
+
+  it('opens on ArrowDown, moves with the arrows, and picks with Enter', async () => {
+    const onValueChange = vi.fn()
+    render(<Harness value="" onValueChange={onValueChange} />)
+
+    fireEvent.keyDown(screen.getByRole('combobox', { name: 'Ticket model' }), { key: 'ArrowDown' })
+
+    // Radix hands the focus to the chosen row, but only once the layer has been
+    // placed — and it moves it between rows on a timeout — so every step of a
+    // keyboard walk has to be waited for rather than asserted straight after.
+    await waitFor(() => expect(activeOption().textContent).toContain('default (project model)'))
+    fireEvent.keyDown(activeOption(), { key: 'ArrowDown' })
+    await waitFor(() => expect(activeOption().textContent).toContain('model-0'))
+
+    fireEvent.keyDown(activeOption(), { key: 'Enter' })
+    expect(onValueChange).toHaveBeenLastCalledWith('model-0')
+    expect(screen.queryByRole('listbox')).toBeNull()
+  })
+
+  it('closes on Escape and puts the focus back on its trigger', async () => {
+    render(<Harness />)
+    const trigger = screen.getByRole('combobox', { name: 'Ticket model' })
+    fireEvent.click(trigger)
+
+    fireEvent.keyDown(document.activeElement ?? document.body, { key: 'Escape' })
+
+    expect(screen.queryByRole('listbox')).toBeNull()
+    await waitFor(() => expect(document.activeElement).toBe(trigger))
+  })
+
+  it('layers over a dialog it opened inside, and Escape closes only itself', async () => {
+    function InDialog() {
+      const [open, setOpen] = useState(true)
+      return (
+        <Dialog open={open} onClose={() => setOpen(false)} label="Settings">
+          <Select value="" onValueChange={() => {}}>
+            <SelectTrigger aria-label="Sandbox">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent aria-label="Sandbox options">
+              <SelectItem value="">Use global (Docker)</SelectItem>
+              <SelectItem value="noSandbox">No sandbox</SelectItem>
+            </SelectContent>
+          </Select>
+        </Dialog>
+      )
+    }
+
+    render(<InDialog />)
+    const trigger = screen.getByRole('combobox', { name: 'Sandbox' })
+    // The backdrop this has to float over, and the band that puts it there.
+    expect(document.querySelector('.z-\\[200\\]')).toBeTruthy()
+
+    fireEvent.click(trigger)
+    expect(screen.getByRole('listbox', { name: 'Sandbox options' }).className).toContain('z-[300]')
+
+    fireEvent.keyDown(document.activeElement ?? document.body, { key: 'Escape' })
+
+    expect(screen.queryByRole('listbox')).toBeNull()
+    // The dialog answers Escape only when the focus is inside it, and the list
+    // takes the keystroke before it can travel that far.
+    expect(screen.getByRole('dialog')).toBeTruthy()
+    await waitFor(() => expect(document.activeElement).toBe(trigger))
   })
 })
