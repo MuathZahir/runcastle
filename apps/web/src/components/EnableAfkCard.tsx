@@ -314,16 +314,22 @@ export function RowTerminal({
   sessionId,
   label,
   onDone,
+  onEnded,
 }: {
   sessionId: string
   label: string
   onDone?: () => void
+  /**
+   * The flow's process exited on its own. Distinct from `onDone`, which is the
+   * operator dismissing the terminal: an exit leaves the output up to be read.
+   */
+  onEnded?: () => void
 }) {
   return (
     <div className="col-span-full flex flex-col gap-2">
       <div className="h-70 overflow-hidden rounded-sm border border-hairline">
         <ErrorBoundary label={label}>
-          <TerminalView sessionId={sessionId} />
+          <TerminalView sessionId={sessionId} onEnded={onEnded} />
         </ErrorBoundary>
       </div>
       {onDone && (
@@ -409,6 +415,11 @@ function ImageRow({
           <RowTerminal
             sessionId={sessionId}
             label="build-image"
+            // The build's own exit is the signal — a build that took ten minutes
+            // should not then wait on someone noticing it finished. Success or
+            // failure both re-check: the probe decides whether the image is
+            // there now, and the log stays up to say why if it is not.
+            onEnded={onDone}
             onDone={() => {
               setSessionId(null)
               onDone()
