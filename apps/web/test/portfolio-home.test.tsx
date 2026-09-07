@@ -31,6 +31,8 @@ const projects = [
 const nav: ProjectNavApi = {
   projects,
   loading: false,
+  doctorError: null,
+  recheckDoctor: vi.fn(),
   view: 'home',
   currentProjectId: null,
   currentProject: undefined,

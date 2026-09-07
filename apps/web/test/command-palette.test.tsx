@@ -9,6 +9,8 @@ import { Dialog } from '../src/ui'
 const nav: ProjectNavApi = {
   projects: [],
   loading: false,
+  doctorError: null,
+  recheckDoctor: vi.fn(),
   view: 'project',
   currentProjectId: 'project-1',
   currentProject: undefined,

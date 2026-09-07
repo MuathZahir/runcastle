@@ -19,6 +19,8 @@ const projects = [
 const navApi = (over: Partial<ProjectNavApi> = {}): ProjectNavApi => ({
   projects,
   loading: false,
+  doctorError: null,
+  recheckDoctor: vi.fn(),
   view: 'project',
   currentProjectId: 'p1',
   currentProject: projects[0],

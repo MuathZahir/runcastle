@@ -72,6 +72,13 @@ export interface ProjectNavApi {
   projects: Project[] | undefined
   /** True until both facts the landing is decided from have arrived. */
   loading: boolean
+  /**
+   * Why the setup checks could not be run, when they failed. Nothing here gates
+   * anything — the shell shows it as a banner beside whatever it landed on.
+   */
+  doctorError: string | null
+  /** Run the setup checks again after a failure; they are not retried on their own. */
+  recheckDoctor: () => void
   view: AppView
   currentProjectId: string | null
   currentProject: Project | undefined
@@ -90,7 +97,18 @@ export function useProjectNav(): ProjectNavApi {
   const projects = q.data
   // Onboarding is decided from what the host actually has, not from an empty
   // projects table (decision 3), so the doctor is the landing's second input.
-  const doctor = trpc.setup.doctor.useQuery(undefined, { refetchOnWindowFocus: false })
+  //
+  // Never retried, and never re-fired when this hook remounts: the probes shell
+  // out to the machine, and a doctor that throws throws deterministically — a
+  // binary that is not on PATH is still not there on the next attempt. Left on
+  // the defaults a broken probe was re-requested on every remount, which is the
+  // tight loop that had the browser hammering a 500 for as long as the fault
+  // lasted. The banner carries the one manual re-run instead.
+  const doctor = trpc.setup.doctor.useQuery(undefined, {
+    refetchOnWindowFocus: false,
+    retry: false,
+    retryOnMount: false,
+  })
 
   // Read once, at mount: where the last session left off, and where the address
   // bar says we are. The URL wins where it names a project; a bare `/` is a
@@ -106,16 +124,18 @@ export function useProjectNav(): ProjectNavApi {
   const resolved = useRef<Landing | null>(null)
   // A doctor still in flight leaves the landing unresolved rather than assuming
   // an answer: guessing "set up" flashes the home, guessing "not set up" flashes
-  // the wizard at someone who finished onboarding months ago. A doctor that
-  // failed outright reads as no evidence of setup, which is the safe way to be
-  // wrong — the wizard can be walked out of, a missing runtime cannot.
+  // the wizard at someone who finished onboarding months ago. `isLoading` is
+  // false the moment the query settles either way, and it is not retried, so a
+  // failure is an answer here — the gate can never be held open by the doctor.
+  //
+  // Only a report that actually arrived can send anyone to onboarding. A doctor
+  // that threw is a broken probe, not a missing runtime, and reading it as "not
+  // set up" put everyone whose doctor 500'd in front of the wizard instead of
+  // their projects — diagnostics are not a prerequisite for listing them. The
+  // banner says the checks did not run and offers the re-run.
+  const hostSetUp = doctor.data ? setupComplete(doctor.data.results) : true
   if (!resolved.current && projects && !doctor.isLoading) {
-    resolved.current = launchView(
-      projects,
-      urlLocation,
-      stored,
-      setupComplete(doctor.data?.results ?? []),
-    )
+    resolved.current = launchView(projects, urlLocation, stored, hostSetUp)
   }
 
   const landing = chosen ?? resolved.current
@@ -199,9 +219,19 @@ export function useProjectNav(): ProjectNavApi {
 
   const currentProject = projects?.find((p) => p.id === currentProjectId)
 
+  // The one re-run the doctor gets, since it is never retried automatically.
+  // `refetch` is the query's own stable handle; the result object around it is
+  // new every render, so depending on that instead would rebuild this each time.
+  const refetchDoctor = doctor.refetch
+  const recheckDoctor = useCallback(() => {
+    void refetchDoctor()
+  }, [refetchDoctor])
+
   return {
     projects,
     loading: q.isLoading || doctor.isLoading,
+    doctorError: doctor.error?.message ?? null,
+    recheckDoctor,
     view,
     currentProjectId,
     currentProject,
