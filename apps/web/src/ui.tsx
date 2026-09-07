@@ -464,7 +464,7 @@ export function Dialog({
  * than as three unrelated strings near each other.
  *
  * The control is the child: it is cloned with an `id` and `aria-describedby` so
- * the call site stays `<Field label="Base"><select …/></Field>`.
+ * the call site stays `<Field label="Base"><input …/></Field>`.
  * An `id` already on the control wins — something else is pointing at it — and
  * the label follows it there rather than dangling on the generated one.
  *
