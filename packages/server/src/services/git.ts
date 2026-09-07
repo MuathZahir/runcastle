@@ -721,15 +721,22 @@ export async function ensureProjectWorktree(
  * a far better answer than refusing to open the session at all.
  */
 async function recutProjectBranch(g: SimpleGit, repoPath: string, base: string): Promise<void> {
-  if (!(await deleteBranchDetachingWorktrees(g, repoPath, PROJECT_BRANCH))) {
-    try {
-      await g.raw(['worktree', 'prune'])
-    } catch {
-      // best-effort — the branch check below decides what actually happened
+  const branchIsThere = async (): Promise<boolean> =>
+    (await g.branchLocal()).all.includes(PROJECT_BRANCH)
+
+  // Usually it is already gone — a landing deletes it — and then there is
+  // nothing to delete, prune or reuse, only a branch to cut.
+  if (await branchIsThere()) {
+    if (!(await deleteBranchDetachingWorktrees(g, repoPath, PROJECT_BRANCH))) {
+      try {
+        await g.raw(['worktree', 'prune'])
+      } catch {
+        // best-effort — the second attempt is what says whether this helped
+      }
+      await deleteBranchDetachingWorktrees(g, repoPath, PROJECT_BRANCH)
     }
-    await deleteBranchDetachingWorktrees(g, repoPath, PROJECT_BRANCH)
+    if (await branchIsThere()) return // survived both — reuse it as it stands
   }
-  if ((await g.branchLocal()).all.includes(PROJECT_BRANCH)) return // reused as it stands
   await g.raw(['branch', PROJECT_BRANCH, base])
 }
 
