@@ -5,6 +5,7 @@ import { projects } from '../../db/schema'
 import { envWithAfkCredentials } from '../../doctor/afk-env'
 import { runDoctor } from '../../doctor/doctor'
 import { createSystemExec } from '../../doctor/system-exec'
+import { burnerDockerfilePath } from '../../launcher/asset-paths'
 import { ptyRegistry } from '../../pty/registry'
 import {
   fileAfkTokenIo,
@@ -43,6 +44,7 @@ export const setupRouter = router({
       .map((p) => p.model)
     return runDoctor({
       exec: createSystemExec(),
+      burnerDockerfile: burnerDockerfilePath(),
       // Read the data-dir `.env` fresh on every query: the AFK card writes the
       // token there through `afkToken` while the server runs, so a probe that
       // saw only `process.env` would keep reporting it missing forever.

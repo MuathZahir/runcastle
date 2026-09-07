@@ -14,8 +14,8 @@
  */
 
 import { existsSync, statSync } from 'node:fs'
-import { fileURLToPath } from 'node:url'
 import { AGENT_RUNTIMES, DEFAULT_RUNTIME, DEFAULT_SANDBOX_IMAGE, type AgentRuntime } from '@runcastle/core'
+import { burnerDockerfilePath } from '../launcher/asset-paths'
 import { codexAuthFile } from '../services/codex-auth'
 
 /** Outcome of one injected command. `ok:false` = spawn failed (ENOENT / not on PATH). */
@@ -96,7 +96,7 @@ export interface DoctorEnv {
   fileExists?: (path: string) => boolean
   /** Injected mtime read for the bundled burner Dockerfile; defaults to real fs. */
   fileMtime?: (path: string) => Date
-  /** Override for the bundled burner Dockerfile path (primarily for packaging tests). */
+  /** The bundled burner Dockerfile; defaults to {@link burnerDockerfilePath}. */
   burnerDockerfile?: string
 }
 
@@ -603,9 +603,7 @@ export async function runDoctor(env: DoctorEnv): Promise<DoctorReport> {
   const { exec } = env
   const processEnv = env.env ?? process.env
   const imageName = env.imageName ?? DEFAULT_SANDBOX_IMAGE
-  const burnerDockerfile =
-    env.burnerDockerfile ??
-    fileURLToPath(new URL('../assets/sandcastle/Dockerfile', import.meta.url))
+  const burnerDockerfile = env.burnerDockerfile ?? burnerDockerfilePath()
   const fileMtime = env.fileMtime ?? ((path: string) => statSync(path).mtime)
   const required = new Set(env.runtimes ?? [DEFAULT_RUNTIME])
 

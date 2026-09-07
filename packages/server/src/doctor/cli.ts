@@ -1,5 +1,6 @@
 import { configuredRuntimes, resolveSandboxImage, type AgentRuntime } from '@runcastle/core'
 import { loadConfig } from '@runcastle/core/config-load'
+import { burnerDockerfilePath } from '../launcher/asset-paths'
 import { envWithAfkCredentials } from './afk-env'
 import { runDoctor, exitCodeFor, type DoctorEnv, type DoctorMode } from './doctor'
 import { formatReport } from './report'
@@ -37,6 +38,7 @@ export function resolveDoctorEnv(): DoctorEnv {
     env: envWithAfkCredentials(),
     platform: process.platform,
     cwd: process.cwd(),
+    burnerDockerfile: burnerDockerfilePath(),
     ...(imageName ? { imageName } : {}),
     ...(runtimes ? { runtimes } : {}),
   }

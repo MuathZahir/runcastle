@@ -1,5 +1,6 @@
 import { existsSync } from 'node:fs'
-import { join, resolve } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 /**
  * Runtime-asset resolution (issue #51, workstream G). A published `runcastle`
@@ -61,6 +62,53 @@ export function vendoredAssetPaths(pkgRoot: string): Record<string, string> {
     [ASSET_ENV.ptyHost]: join(pkgRoot, 'pty-host.cjs'),
     [ASSET_ENV.sandcastleTemplate]: join(pkgRoot, 'sandcastle-template'),
   }
+}
+
+/**
+ * Where the template dir sits relative to `moduleDir` — the dir of the module
+ * asking — in each layout this code runs from, for the case where nothing has
+ * set `RUNCASTLE_SANDCASTLE_TEMPLATE`: a contributor checkout, where it is the
+ * source `src/assets/sandcastle` beside `src/launcher/`; and a published
+ * install, where the build script renames that same dir to
+ * `<pkgRoot>/sandcastle-template` beside the bundled `index.js` (so `moduleDir`
+ * *is* the package root) or `bin/runcastle.js` (one level under it).
+ *
+ * The bin normally sets the env var at boot via {@link applyInstalledAssetEnv},
+ * but the server module is also importable on its own — and then a fallback that
+ * only knew the source layout named a path no published install has. The
+ * installed candidates come from {@link vendoredAssetPaths} so they cannot drift
+ * from where the build actually writes them. Takes `moduleDir` as an argument so
+ * both layouts are exercisable without assembling a tarball.
+ */
+export function sandcastleTemplateFallback(moduleDir: string): string {
+  const inSource = join(moduleDir, '..', 'assets', 'sandcastle')
+  const installed = [moduleDir, dirname(moduleDir)].map(
+    (pkgRoot) => vendoredAssetPaths(pkgRoot)[ASSET_ENV.sandcastleTemplate],
+  )
+  return [inSource, ...installed].find((dir) => existsSync(dir)) ?? inSource
+}
+
+/**
+ * The vetted burner-image template dir shipped as a package asset (real files
+ * under `src/`, so they ride the published tarball — where the build script
+ * renames them to `<pkgRoot>/sandcastle-template` and the bin points
+ * `RUNCASTLE_SANDCASTLE_TEMPLATE` at them).
+ */
+export function sandcastleTemplateDir(): string {
+  return resolveAsset(
+    ASSET_ENV.sandcastleTemplate,
+    sandcastleTemplateFallback(dirname(fileURLToPath(import.meta.url))),
+  )
+}
+
+/**
+ * The burner Dockerfile inside the resolved template dir — the file the doctor
+ * stats to tell a stale sandcastle image from a current one. Derived from
+ * {@link sandcastleTemplateDir} so it names the dir that exists in *both*
+ * layouts; a path hand-built from the source tree ENOENTs in a published install.
+ */
+export function burnerDockerfilePath(): string {
+  return join(sandcastleTemplateDir(), 'Dockerfile')
 }
 
 /**
