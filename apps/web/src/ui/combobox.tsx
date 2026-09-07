@@ -7,7 +7,7 @@ import {
   CommandList,
 } from 'cmdk'
 import { createContext, useContext, useState } from 'react'
-import type { ComponentPropsWithoutRef, ReactNode } from 'react'
+import type { ComponentPropsWithoutRef } from 'react'
 import { IconCheck, IconSearch } from '../icons'
 import { cx } from './floating'
 import { Popover, PopoverContent, PopoverTrigger } from './popover'
@@ -177,7 +177,7 @@ const GROUP_HEADING =
 export function ComboboxGroup({
   heading,
   ...props
-}: Omit<ComponentPropsWithoutRef<typeof CommandGroup>, 'heading'> & { heading?: ReactNode }) {
+}: ComponentPropsWithoutRef<typeof CommandGroup>) {
   return (
     <CommandGroup
       heading={heading === undefined ? undefined : <span className={GROUP_HEADING}>{heading}</span>}

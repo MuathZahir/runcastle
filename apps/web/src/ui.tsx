@@ -656,7 +656,6 @@ export function BranchMenu({
   const offered = (branches ?? []).filter((b) => !NOISE_BRANCH.test(b))
   const main = detected && offered.includes(detected) ? detected : null
   const others = offered.filter((b) => b !== main)
-  const label = `${prefix} branch`
 
   const row = (branch: string) => (
     <ComboboxItem
@@ -697,7 +696,7 @@ export function BranchMenu({
       </ComboboxTrigger>
       <ComboboxContent align="end" className="font-mono text-sm">
         <ComboboxInput placeholder="Find a branch…" />
-        <ComboboxList label={label}>
+        <ComboboxList label={`${prefix} branch`}>
           <ComboboxEmpty>
             {offered.length === 0 ? 'no branches to land on' : 'no branch matches'}
           </ComboboxEmpty>
