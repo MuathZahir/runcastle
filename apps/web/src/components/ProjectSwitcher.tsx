@@ -39,6 +39,22 @@ const TRIGGER =
   'bg-transparent transition-[border-color,background-color] duration-(--dur-1) ease-app ' +
   'hover:border-hairline hover:bg-panel-3'
 
+/*
+ * A project row reads at the app's 14px body scale — 11px is reserved for the
+ * uppercase micro-labels (STYLE.md), and the menu that dropped at it read as a
+ * different design system to the breadcrumb it hangs from.
+ *
+ * The size is stated here, on the row, rather than passed down to the menu
+ * surface: the surface carries `DropdownMenuContent`'s own `text-xs` — the mono
+ * 11px the docs menu wants — and Tailwind emits `text-xs` after `text-base`
+ * whatever the class attribute says, so a size beside it silently loses. On the
+ * row it is the row's own declaration and no ordering enters into it. Only the
+ * family travels down (`font-sans` does sort after `font-mono`).
+ *
+ * The repo folder under each name keeps the 11px mono step of its own.
+ */
+const ROW = 'text-base'
+
 export function ProjectSwitcher({ nav }: { nav: ProjectNavApi }) {
   const projects = nav.projects ?? []
 
@@ -60,13 +76,14 @@ export function ProjectSwitcher({ nav }: { nav: ProjectNavApi }) {
           </span>
         </DropdownMenuTrigger>
 
-        <DropdownMenuContent className="min-w-60 font-sans text-base">
+        <DropdownMenuContent className="min-w-60 font-sans">
           <DropdownMenuLabel>Projects</DropdownMenuLabel>
           {projects.map((p) => {
             const current = p.id === nav.currentProjectId
             return (
               <DropdownMenuItem
                 key={p.id}
+                className={ROW}
                 aria-current={current ? 'true' : undefined}
                 onSelect={() => nav.enterProject(p.id)}
               >
@@ -85,10 +102,10 @@ export function ProjectSwitcher({ nav }: { nav: ProjectNavApi }) {
             )
           })}
           <DropdownMenuSeparator />
-          <DropdownMenuItem onSelect={() => nav.goHome()}>
+          <DropdownMenuItem className={ROW} onSelect={() => nav.goHome()}>
             <span className="min-w-0 flex-1 truncate">All projects</span>
           </DropdownMenuItem>
-          <DropdownMenuItem onSelect={() => nav.showOpen()}>
+          <DropdownMenuItem className={ROW} onSelect={() => nav.showOpen()}>
             <span className="min-w-0 flex-1 truncate">Open a project…</span>
           </DropdownMenuItem>
         </DropdownMenuContent>

@@ -88,6 +88,23 @@ describe('ProjectSwitcher', () => {
     expect(trigger.className).toContain('border-transparent')
   })
 
+  it('drops its rows at the app body scale, not the menu default', () => {
+    // 11px is reserved for the uppercase micro-labels (STYLE.md); a project row
+    // reads at the 14px the rest of the interface does.
+    showMenu()
+
+    for (const item of screen.getAllByRole('menuitem')) {
+      expect(item.className).toContain('text-base')
+    }
+    // Stated on the row, and not on the surface: the surface already carries the
+    // primitive's own `text-xs`, which Tailwind emits last, so a size passed
+    // down beside it would lose. The family is safe there — `font-sans` sorts
+    // after `font-mono`.
+    const menu = screen.getByRole('menu')
+    expect(menu.className).toContain('font-sans')
+    expect(menu.className).not.toContain('text-base')
+  })
+
   it('truncates a long project name rather than widening the titlebar', () => {
     const long = { id: 'p3', name: 'a-project-name-long-enough-to-swallow-the-row', repoPath: '/r' }
     render(<ProjectSwitcher nav={navApi({ currentProjectId: 'p3', currentProject: long })} />)
