@@ -11,6 +11,16 @@ import type {
   TicketStatus,
 } from '@runcastle/core'
 import type { CheckRow, CheckTone, LapGroup } from './lib/feature-ui'
+import {
+  Combobox,
+  ComboboxContent,
+  ComboboxEmpty,
+  ComboboxGroup,
+  ComboboxInput,
+  ComboboxItem,
+  ComboboxList,
+  ComboboxTrigger,
+} from './ui/combobox'
 
 /**
  * Primitive UI atoms for the IDE shell (apps/web/STYLE.md). Exactly one `solid`
@@ -613,6 +623,11 @@ const BRANCH_TRIGGER =
  * error state: a pick whose branch this repo no longer has, or no usable base at
  * all. It paints the trigger in the warn colour and is the caller's cue to
  * disable whatever the branch is an argument to.
+ *
+ * The list itself is a `Combobox` (`src/ui/combobox.tsx`), which is what makes a
+ * repo with sixty branches usable: the panel is portalled and capped rather than
+ * a column drawn down the page, and the search filters it. This component keeps
+ * what is its own — which branches are worth offering, and how they are headed.
  */
 export function BranchMenu({
   prefix,
@@ -638,111 +653,37 @@ export function BranchMenu({
   disabled?: boolean
   className?: string
 }) {
-  const [open, setOpen] = useState(false)
-  const rootRef = useRef<HTMLDivElement>(null)
-  const triggerRef = useRef<HTMLButtonElement>(null)
-  const optionRefs = useRef(new Map<string, HTMLButtonElement>())
-
-  useEffect(() => {
-    if (!open) return
-    const onDown = (e: MouseEvent) => {
-      if (!rootRef.current?.contains(e.target as Node)) setOpen(false)
-    }
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape') return
-      // The menu is the smaller thing open, so it answers Escape and the dialog
-      // it was opened inside does not — this one key would otherwise close both.
-      // Captured on the way down for exactly that: `Dialog` listens on the way
-      // back up, and only a capture listener is guaranteed to have gone first.
-      e.stopPropagation()
-      setOpen(false)
-      triggerRef.current?.focus()
-    }
-    window.addEventListener('mousedown', onDown)
-    window.addEventListener('keydown', onKey, true)
-    return () => {
-      window.removeEventListener('mousedown', onDown)
-      window.removeEventListener('keydown', onKey, true)
-    }
-  }, [open])
-
   const offered = (branches ?? []).filter((b) => !NOISE_BRANCH.test(b))
   const main = detected && offered.includes(detected) ? detected : null
   const others = offered.filter((b) => b !== main)
+  const label = `${prefix} branch`
 
-  useEffect(() => {
-    if (!open) return
-    optionRefs.current.get(value ?? '')?.focus() ?? optionRefs.current.get(offered[0] ?? '')?.focus()
-  }, [open, value, branches])
-
-  const pick = (branch: string) => {
-    onPick(branch)
-    setOpen(false)
-    triggerRef.current?.focus()
-  }
-
-  const item = (branch: string) => (
-    <button
+  const row = (branch: string) => (
+    <ComboboxItem
       key={branch}
-      ref={(node) => {
-        if (node) optionRefs.current.set(branch, node)
-        else optionRefs.current.delete(branch)
-      }}
-      type="button"
-      role="option"
-      aria-selected={branch === value}
-      className={cx(
-        'flex justify-between gap-3 rounded-sm px-2.5 py-1.5 text-left hover:bg-accent-soft hover:text-text',
-        branch === value ? 'text-accent-hi' : 'text-text-2',
-      )}
-      onMouseDown={(event) => {
-        if (event.button !== 0) return
-        // Commit before the browser's click phase. Ancestor popovers and dialogs
-        // also answer mouse-down, and can otherwise unmount this option before
-        // its click is delivered, making a choice look as though it reverted.
-        event.preventDefault()
-        pick(branch)
-      }}
-      // Keyboard activation has no mouse-down and produces a zero-detail click.
-      onClick={(event) => event.detail === 0 && pick(branch)}
-      onKeyDown={(event) => {
-        if (event.key === 'Enter' || event.key === ' ') {
-          event.preventDefault()
-          pick(branch)
-          return
-        }
-        if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return
-        event.preventDefault()
-        const index = offered.indexOf(branch)
-        const next =
-          event.key === 'Home'
-            ? 0
-            : event.key === 'End'
-              ? offered.length - 1
-              : (index + (event.key === 'ArrowDown' ? 1 : -1) + offered.length) % offered.length
-        optionRefs.current.get(offered[next] ?? '')?.focus()
-      }}
+      value={branch}
+      current={branch === value}
+      // The row's own branch, not the value cmdk hands back: what is offered is
+      // what is picked, whatever cmdk's list does to its keys.
+      onSelect={() => onPick(branch)}
     >
       {branch}
-      {branch === value && <span aria-hidden>✓</span>}
-    </button>
+    </ComboboxItem>
   )
 
   return (
-    <div ref={rootRef} className={cx('relative inline-flex', className)}>
-      <button
-        ref={triggerRef}
-        type="button"
-        aria-haspopup="listbox"
-        aria-expanded={open}
+    <Combobox>
+      {/* No `aria-label`: the trigger is a plain button and its own words —
+          "landing on main" — are a better name than anything added here. */}
+      <ComboboxTrigger
         disabled={disabled || !branches}
         className={cx(
           BRANCH_TRIGGER,
           missing
             ? 'border-warn text-warn'
             : 'border-transparent text-text-2 enabled:hover:border-hairline enabled:hover:bg-panel-3 enabled:hover:text-text',
+          className,
         )}
-        onClick={() => setOpen((o) => !o)}
       >
         {/* A branch name is arbitrarily long and the trigger sits in a header
             row, so it ellipsizes rather than widening the row past the window
@@ -753,35 +694,26 @@ export function BranchMenu({
         <span aria-hidden className="shrink-0 text-xs text-text-3">
           ▾
         </span>
-      </button>
-      {open && (
-        <div
-          role="listbox"
-          aria-label={`${prefix} branch`}
-          className="absolute top-[calc(100%+6px)] right-0 z-30 flex min-w-[200px] flex-col gap-0.5 rounded-md border border-hairline-strong bg-panel-3 p-1.5 text-left font-mono text-sm shadow-menu"
-        >
-          {main && (
+      </ComboboxTrigger>
+      <ComboboxContent align="end" label={label} className="font-mono text-sm">
+        <ComboboxInput placeholder="Find a branch…" />
+        <ComboboxList label={label}>
+          <ComboboxEmpty>
+            {offered.length === 0 ? 'no branches to land on' : 'no branch matches'}
+          </ComboboxEmpty>
+          {main ? (
             <>
-              <BranchMenuLabel>Detected main line</BranchMenuLabel>
-              {item(main)}
-              {others.length > 0 && <BranchMenuLabel>Other local branches</BranchMenuLabel>}
+              <ComboboxGroup heading="Detected main line">{row(main)}</ComboboxGroup>
+              {others.length > 0 && (
+                <ComboboxGroup heading="Other local branches">{others.map(row)}</ComboboxGroup>
+              )}
             </>
+          ) : (
+            others.map(row)
           )}
-          {others.map(item)}
-          {offered.length === 0 && (
-            <div className="px-2.5 py-1.5 text-text-3">no branches to land on</div>
-          )}
-        </div>
-      )}
-    </div>
-  )
-}
-
-function BranchMenuLabel({ children }: { children: ReactNode }) {
-  return (
-    <div className="px-2.5 pt-1 pb-0.5 font-sans text-xs tracking-[0.06em] text-text-3 uppercase">
-      {children}
-    </div>
+        </ComboboxList>
+      </ComboboxContent>
+    </Combobox>
   )
 }
 
