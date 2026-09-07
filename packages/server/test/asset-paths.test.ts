@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -6,6 +6,8 @@ import {
   ASSET_ENV,
   applyInstalledAssetEnv,
   resolveAsset,
+  sandcastleTemplateDir,
+  sandcastleTemplateFallback,
   vendoredAssetPaths,
 } from '../src/launcher/asset-paths'
 
@@ -73,5 +75,45 @@ describe('applyInstalledAssetEnv', () => {
     process.env[ASSET_ENV.webDist] = '/custom/web'
     applyInstalledAssetEnv(root)
     expect(process.env[ASSET_ENV.webDist]).toBe('/custom/web')
+  })
+})
+
+/**
+ * The doctor stats `<template>/Dockerfile`, so the template fallback is what a
+ * published install falls back ON when nothing set the env var — the bin sets it
+ * at boot, but importing the server module on its own does not. A fallback that
+ * only knew the source `assets/sandcastle` layout named a file no install ships,
+ * and statting it threw the ENOENT that hung the home page on "loading projects…".
+ */
+describe('sandcastleTemplateFallback — no env var set', () => {
+  /** A published package root: the template vendored beside the bundled entry. */
+  function installedRoot(): string {
+    const root = mkdtempSync(join(tmpdir(), 'runcastle-pkg-'))
+    mkdirSync(join(root, 'sandcastle-template'))
+    writeFileSync(join(root, 'sandcastle-template', 'Dockerfile'), 'FROM oven/bun\n')
+    mkdirSync(join(root, 'bin'))
+    return root
+  }
+
+  it('finds the vendored template from the bundled index beside it', () => {
+    const root = installedRoot()
+    expect(sandcastleTemplateFallback(root)).toBe(join(root, 'sandcastle-template'))
+  })
+
+  it('finds it from the bin one level under the package root', () => {
+    const root = installedRoot()
+    expect(sandcastleTemplateFallback(join(root, 'bin'))).toBe(join(root, 'sandcastle-template'))
+  })
+
+  it('uses the source assets dir in a contributor checkout', () => {
+    const src = mkdtempSync(join(tmpdir(), 'runcastle-src-'))
+    mkdirSync(join(src, 'assets', 'sandcastle'), { recursive: true })
+    expect(sandcastleTemplateFallback(join(src, 'launcher'))).toBe(
+      join(src, 'assets', 'sandcastle'),
+    )
+  })
+
+  it('resolves this checkout to a template dir that is really on disk', () => {
+    expect(existsSync(join(sandcastleTemplateDir(), 'Dockerfile'))).toBe(true)
   })
 })
