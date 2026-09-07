@@ -66,15 +66,24 @@ const BUTTON_VARIANT: Record<Variant, string> = {
     'border-danger/55 bg-transparent text-danger enabled:hover:border-danger enabled:hover:bg-danger/12',
 }
 
+/**
+ * `type` is stated rather than left off. HTML's missing-value default for a
+ * `<button>` is `submit`, so every control that named no type was asking the
+ * browser to submit whatever form it lands in — the app's own `onClick` runs,
+ * and then the browser does its own thing on top of it. A caller that genuinely
+ * wants a submit still passes `type="submit"`.
+ */
 export function Button({
   variant = 'ghost',
   size = 'md',
+  type = 'button',
   className,
   children,
   ...rest
 }: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: Variant; size?: ButtonSize }) {
   return (
     <button
+      type={type}
       className={cx(BUTTON_BASE, BUTTON_SIZE[size], BUTTON_VARIANT[variant], className)}
       {...rest}
     >
