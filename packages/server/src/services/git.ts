@@ -681,12 +681,8 @@ export async function ensureProjectWorktree(
   if (landed) onLanded?.(landed)
 
   const stillAhead = await branchCommitsAhead(project.repoPath, base, PROJECT_BRANCH)
-  if (stillAhead.length === 0) {
-    // Nothing to lose: drop whatever the branch was (detaching the worktree that
-    // pins it, if any) and cut it again at the base tip.
-    await deleteBranchDetachingWorktrees(g, project.repoPath, PROJECT_BRANCH)
-    await g.raw(['branch', PROJECT_BRANCH, base])
-  }
+  // Nothing to lose: cut the branch again at the base tip.
+  if (stillAhead.length === 0) await recutProjectBranch(g, project.repoPath, base)
 
   if (await worktreeIsValid(g, worktreePath, PROJECT_BRANCH)) return { worktreePath, base }
 
@@ -699,6 +695,42 @@ export async function ensureProjectWorktree(
 
   const added = await addWorktree(g, worktreePath, PROJECT_BRANCH, 'project worktree')
   return { worktreePath: added, base }
+}
+
+/**
+ * Put {@link PROJECT_BRANCH} back at the base tip for a fresh launch — called
+ * only once the branch has nothing ahead of the base, so there is no work here
+ * to lose.
+ *
+ * Cutting it is `delete, then create`, and BOTH halves have to survive a branch
+ * that will not go: a launch is not allowed to die because the previous session
+ * left a mess. `git branch -D` refuses a branch any worktree has checked out,
+ * and the unconditional `git branch` behind it then failed the launch outright
+ * with "a branch named 'runcastle/project' already exists" — the report this
+ * function exists to answer.
+ *
+ * Two pins, two answers. A worktree that still has its checkout is detached, as
+ * ever. A worktree whose checkout is gone while its registration survived
+ * CANNOT be detached — there is nothing left to run `checkout` in — and only
+ * `worktree prune` drops such a registration, so an obstructed delete earns one
+ * prune and a second attempt.
+ *
+ * If the branch outlives both attempts, something we may not touch holds it
+ * (the human's own checkout sitting on it). Reuse it: it has nothing ahead of
+ * the base, so opening the session on it as it stands loses no work — and it is
+ * a far better answer than refusing to open the session at all.
+ */
+async function recutProjectBranch(g: SimpleGit, repoPath: string, base: string): Promise<void> {
+  if (!(await deleteBranchDetachingWorktrees(g, repoPath, PROJECT_BRANCH))) {
+    try {
+      await g.raw(['worktree', 'prune'])
+    } catch {
+      // best-effort — the branch check below decides what actually happened
+    }
+    await deleteBranchDetachingWorktrees(g, repoPath, PROJECT_BRANCH)
+  }
+  if ((await g.branchLocal()).all.includes(PROJECT_BRANCH)) return // reused as it stands
+  await g.raw(['branch', PROJECT_BRANCH, base])
 }
 
 /**
