@@ -18,6 +18,9 @@ const server = vi.hoisted(() => ({
   error: null as { message: string } | null,
   refetches: 0,
   cancels: 0,
+  /** The id `setup.startTerminal` hands back, and the terminal it mounted. */
+  sessionId: 'build-image-1',
+  terminal: null as { sessionId: string; onEnded?: () => void } | null,
 }))
 
 vi.mock('../src/trpc', () => {
@@ -48,7 +51,12 @@ vi.mock('../src/trpc', () => {
           }),
         },
         runtimeGuide: { useQuery: () => ({ data: undefined }) },
-        startTerminal: { useMutation: mutation },
+        startTerminal: {
+          useMutation: (opts?: { onSuccess?: (r: { sessionId: string }) => void }) => ({
+            isPending: false,
+            mutate: () => opts?.onSuccess?.({ sessionId: server.sessionId }),
+          }),
+        },
         afkToken: { useMutation: mutation },
       },
       system: {
@@ -62,6 +70,16 @@ vi.mock('../src/trpc', () => {
 })
 
 vi.mock('../src/lib/toast', () => ({ useToast: () => ({ push: () => undefined }) }))
+
+// xterm wants a laid-out canvas; the card only cares that the terminal is
+// mounted and that it reports the PTY's exit, so the view is a stub that hands
+// its props back to the test.
+vi.mock('../src/components/TerminalView', () => ({
+  TerminalView: (props: { sessionId: string; onEnded?: () => void }) => {
+    server.terminal = props
+    return createElement('div', { 'data-terminal': props.sessionId })
+  },
+}))
 
 import type { Probe } from '../src/components/EnableAfkCard'
 
@@ -269,5 +287,62 @@ describe('EnableAfkCard prerequisites checklist', () => {
 
     render(createElement(EnableAfkCard, { onDismiss: () => undefined }))
     expect(screen.getByRole('button', { name: 'Set up later' })).toBeTruthy()
+  })
+})
+
+/**
+ * The image build runs in a server-owned PTY, and the PTY already tells the
+ * client when its process exits — so the card re-checks itself rather than
+ * waiting for the operator to notice the build finished and click. The button
+ * stays: an exit that never arrives (a socket that dies mid-build) still needs
+ * a way out.
+ */
+describe('EnableAfkCard image build terminal', () => {
+  beforeEach(() => {
+    server.results = readyReport().map((r) =>
+      r.id === 'sandcastle-image' ? { ...r, status: 'missing', detail: 'no sandcastle image' } : r,
+    )
+    server.error = null
+    server.refetches = 0
+    server.cancels = 0
+    server.terminal = null
+  })
+  afterEach(cleanup)
+
+  /** Open the card and start the build, so its terminal is mounted. */
+  const build = () => {
+    const rendered = render(createElement(EnableAfkCard, {}))
+    fireEvent.click(screen.getByRole('button', { name: 'Build image' }))
+    return rendered
+  }
+
+  it('re-checks the doctor report when the build process exits, without a click', async () => {
+    build()
+    expect(server.terminal?.sessionId).toBe('build-image-1')
+    expect(server.refetches).toBe(0)
+
+    await act(async () => {
+      server.terminal?.onEnded?.()
+    })
+
+    expect(server.cancels).toBe(1)
+    expect(server.refetches).toBe(1)
+  })
+
+  // The build output is what says *why* a build failed, so an exit re-checks in
+  // place and leaves the log up; dismissing it stays the operator's call.
+  it('keeps the terminal and its manual re-check up after the exit', async () => {
+    const { container } = build()
+
+    await act(async () => {
+      server.terminal?.onEnded?.()
+    })
+
+    expect(container.querySelector('[data-terminal]')).toBeTruthy()
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Done — re-check' }))
+    })
+    expect(container.querySelector('[data-terminal]')).toBeNull()
+    expect(server.refetches).toBe(2)
   })
 })
