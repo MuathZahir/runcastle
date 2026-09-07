@@ -19,6 +19,8 @@ const nav: ProjectNavApi = {
     { id: 'p2', name: 'terminal-wait-game', repoPath: '/repo/twg' },
   ],
   loading: false,
+  doctorError: null,
+  recheckDoctor: () => undefined,
   view: 'project',
   currentProjectId: 'p1',
   currentProject: { id: 'p1', name: 'runcastle', repoPath: '/repo/runcastle' },

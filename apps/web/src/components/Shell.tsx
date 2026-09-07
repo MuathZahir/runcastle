@@ -4,6 +4,7 @@ import { PortfolioHome } from './PortfolioHome'
 import { OpenProject } from './OpenProject'
 import { FirstRunWizard } from './first-run/FirstRunWizard'
 import { UpdateBanner } from './UpdateBanner'
+import { SetupCheckBanner } from './SetupCheckBanner'
 import { DimLine } from '../ui'
 
 /**
@@ -27,7 +28,9 @@ export function Shell() {
 
   // First load in flight — one quiet line, per the empty-state house style. The
   // list alone is not enough to place the user: until the doctor answers too,
-  // showing anything risks showing onboarding to someone who is past it.
+  // showing anything risks showing onboarding to someone who is past it. A
+  // doctor that FAILS has answered as far as this gate is concerned — the
+  // project list is what the line is about, and a broken probe never holds it.
   if (nav.loading || nav.projects === undefined) {
     content = (
       <div className="app-loading">
@@ -57,6 +60,7 @@ export function Shell() {
   return (
     <div className="flex h-full flex-col">
       <UpdateBanner />
+      <SetupCheckBanner error={nav.doctorError} onRecheck={nav.recheckDoctor} />
       <div className="min-h-0 flex-1">{content}</div>
     </div>
   )
