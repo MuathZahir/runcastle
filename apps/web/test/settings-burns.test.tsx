@@ -221,9 +221,11 @@ describe('Settings → Burns', () => {
   /**
    * HTML's missing-value default for `<button>` is `submit`, so a control that
    * names no type asks the browser to submit as well as running the app's own
-   * handler. The checklist is where that bites hardest: it is the one settings
-   * page whose actions all come from the shared `Button`, and its rows are the
-   * ones a "Settings → Burns" link lands someone on.
+   * handler. The settings pane's own raw buttons — the rail, the close ✕, every
+   * ⓘ — state their type already; the checklist's five actions are the ones that
+   * did not, because all five come from the shared `Button`. Asserted over the
+   * whole dialog rather than over those five, so the next control added here
+   * cannot quietly be a submit either.
    */
   it('states what every control does rather than leaving the browser a default', () => {
     open()
