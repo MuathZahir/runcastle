@@ -57,7 +57,7 @@ export function QuickChangeMode({
         <h2 className="m-0 text-xl font-semibold text-text">What needs changing?</h2>
         <p className="m-0 text-base text-text-2">Each sentence becomes a ticket; you review, then burn.</p>
       </div>
-      <div className="mt-6 flex flex-col gap-4">
+      <div className="mt-4 flex flex-col gap-4">
         <Field label="Title" error={duplicate}>
           <input
             className="h-(--control-h) rounded-md border border-hairline-strong bg-panel-inset px-3 text-base text-text outline-none focus:border-accent"
@@ -100,7 +100,7 @@ export function QuickChangeMode({
           </div>
         </Field>
       </div>
-      <div className="mt-6 flex flex-wrap items-center gap-2 border-t border-hairline-soft pt-4">
+      <div className="mt-6 flex flex-wrap items-center gap-2 border-t border-hairline-soft pt-6">
         <span className="font-mono text-sm text-text-3"><strong className="font-medium text-text-2">feature/{slug || '…'}</strong> ·</span>
         <BranchMenu prefix="from" value={base || null} branches={branches} detected={detectedBranch} onPick={onBasePick} missing={!!branches && !base} />
         <span className="font-mono text-sm text-text-3">· {writtenCount || 1} ticket{(writtenCount || 1) === 1 ? '' : 's'} + review</span>

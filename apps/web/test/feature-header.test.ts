@@ -85,6 +85,29 @@ describe('the feature header', () => {
     expect(classesAround(header({}, true), 'draft')).toContain('shrink-0')
   })
 
+  it('sits the phase tag on the title baseline rather than centred beside it', () => {
+    const row = /<div class="ws-head"><div class="([^"]*)"/.exec(header())?.[1]?.split(' ') ?? []
+
+    expect(row).toContain('items-baseline')
+    // Centring is what made a 12px mono tag ride above a 17px title, and the
+    // legacy `.ws-title-row` rule that centres it is unlayered — so it beats
+    // the utility beside it (apps/web/STYLE.md) and has to be taken off, not
+    // overridden.
+    expect(row).not.toContain('ws-title-row')
+    // The chip leads with an icon, so its own baseline is the icon's edge and
+    // not its text: it keeps the centring the rest of the row gave up.
+    expect(classesAround(header(), 'Copy branch name')).toContain('self-center')
+  })
+
+  it('starts the stepper on the same left edge as the title above it', () => {
+    // A pill carries its own padding — the hover fill needs it — so the first
+    // step's dot would otherwise begin a nudge inside the header's text column.
+    // The row is pulled back by exactly that padding.
+    const stepper = /<div class="([^"]*)"><button/.exec(header())?.[1]?.split(' ') ?? []
+
+    expect(stepper).toContain('-ml-2.5')
+  })
+
   it('states the pipeline for a started feature and not for a draft', () => {
     // The step's own tip, which only the stepper renders — the label alone
     // could as easily have come from the title beside it.

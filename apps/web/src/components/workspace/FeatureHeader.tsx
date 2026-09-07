@@ -20,6 +20,15 @@ import { PipelineStepper } from './PipelineStepper'
  * squeezed), and the chip ellipsizes rather than escaping if even that is not
  * enough. The `ws-title-spacer` the row used to carry is gone with it: a title
  * that claims the middle already pushes the chip to the right edge.
+ *
+ * The row aligns on the BASELINE, which is why it no longer carries
+ * `ws-title-row`: that legacy rule centres the row, and centring two different
+ * type sizes lines up their boxes rather than their text — the 12px mono phase
+ * tag ends up riding visibly above the 17px title beside it. An unlayered
+ * `styles.css` rule beats a utility (apps/web/STYLE.md), so the fix is to stop
+ * wearing the class here and write the row in utilities. The branch chip opts
+ * back out with `self-center`: it leads with an icon, so its own baseline is
+ * the icon's edge rather than its text.
  */
 export function FeatureHeader({
   feature,
@@ -36,7 +45,7 @@ export function FeatureHeader({
 
   return (
     <div className="ws-head">
-      <div className="ws-title-row">
+      <div className="flex items-baseline gap-2.5">
         {/* Same reason the stepper is hidden below: a draft's phase is
             `ideation` by construction, and naming it here reads as progress. */}
         {isDraft ? (
@@ -50,7 +59,7 @@ export function FeatureHeader({
           {feature.title}
         </span>
         <button
-          className="inline-flex min-w-0 items-center gap-1.5 border-0 bg-transparent p-0 font-mono text-xs text-text-3 transition-colors duration-(--dur-1) hover:text-text"
+          className="inline-flex min-w-0 items-center gap-1.5 self-center border-0 bg-transparent p-0 font-mono text-xs text-text-3 transition-colors duration-(--dur-1) hover:text-text"
           title="Copy branch name"
           onClick={() => copyText(feature.branch, toast)}
         >

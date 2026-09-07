@@ -74,7 +74,7 @@ utilities genuinely cannot express, kept to a minimum.
 
 | Primitive | What it is | Variants |
 |---|---|---|
-| `Button` | The app's button. 32px tall, `rounded-md`, forwards every `<button>` attribute; a `className` you pass is appended. `size="xs"` is the 22px one that sits inside a row — a lane's Retry, a bar secondary, an inspector action — and was the `btn-xs` class before the atoms migrated. | `variant`: `ghost` (default) · `solid` · `danger` · `size`: `md` (default) · `xs` |
+| `Button` | The app's button. 32px tall, `rounded-md`, forwards every `<button>` attribute; a `className` you pass is appended. `type` defaults to `button` rather than to HTML's own `submit`, so a control runs its `onClick` and nothing else; pass `type="submit"` where a submit is what you want. `size="xs"` is the 22px one that sits inside a row — a lane's Retry, a bar secondary, an inspector action — and was the `btn-xs` class before the atoms migrated. | `variant`: `ghost` (default) · `solid` · `danger` · `size`: `md` (default) · `xs` |
 | `SectionTitle` | 11px uppercase tracked label over a section. | — |
 | `DimLine` | One dim mono line — an inline empty or error state for a tight spot. | — |
 | `EmptyState` | A designed blank area: quiet icon chip, plain-language title, one-line hint, optional action. | `compact` |
