@@ -163,6 +163,32 @@ describe('SettingsDialog', () => {
   })
 
   /**
+   * The rail is four buttons over one piece of state — no address, no anchor,
+   * nothing the browser acts on. Each one has to reach its own page from any
+   * other, which is what "Burns is unreachable" was a report of: the header, the
+   * `aria-current` and the body all move together, and the dialog stays open.
+   */
+  it('reaches every page from every other, in place', () => {
+    open()
+
+    const pages = ['General', 'Models', 'Burns', 'This project']
+    for (const from of pages) {
+      for (const to of pages) {
+        fireEvent.click(screen.getByRole('button', { name: from }))
+        fireEvent.click(screen.getByRole('button', { name: to }))
+
+        expect(screen.getByRole('dialog')).toBeTruthy()
+        expect(screen.getByRole('heading', { name: to })).toBeTruthy()
+        // One page is current, and it is the one just asked for.
+        const current = pages.filter(
+          (p) => screen.getByRole('button', { name: p }).getAttribute('aria-current') === 'page',
+        )
+        expect(current).toEqual([to])
+      }
+    }
+  })
+
+  /**
    * The panel's height is fixed, so exactly one element under it may scroll: the
    * body beside the rail, whichever page is in it. Nothing here can measure a
    * scroll — happy-dom lays nothing out — so what is asserted is the chain that

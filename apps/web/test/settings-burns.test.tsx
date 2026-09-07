@@ -218,6 +218,24 @@ describe('Settings → Burns', () => {
     expect(screen.queryByText('Width & retries')).toBeNull()
   })
 
+  /**
+   * HTML's missing-value default for `<button>` is `submit`, so a control that
+   * names no type asks the browser to submit as well as running the app's own
+   * handler. The checklist is where that bites hardest: it is the one settings
+   * page whose actions all come from the shared `Button`, and its rows are the
+   * ones a "Settings → Burns" link lands someone on.
+   */
+  it('states what every control does rather than leaving the browser a default', () => {
+    open()
+
+    const buttons = [...document.querySelectorAll('[role=dialog] button')]
+    expect(buttons.length).toBeGreaterThan(0)
+    const untyped = buttons
+      .filter((b) => b.getAttribute('type') !== 'button')
+      .map((b) => b.getAttribute('aria-label') ?? b.textContent)
+    expect(untyped).toEqual([])
+  })
+
   it('drops the prerequisites heading when the filter leaves no row of it', () => {
     open()
 
