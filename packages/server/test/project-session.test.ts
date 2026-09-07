@@ -353,6 +353,27 @@ describe('ensureProjectWorktree', () => {
     // …and the clean respects .gitignore, so an installed node_modules survives
     expect(existsSync(join(reopened, 'node_modules-marker'))).toBe(true)
   })
+
+  /**
+   * The mirror image of the case above, and the one that broke "New": the
+   * checkout went missing while git KEPT its registration, so that registration
+   * goes on pinning `runcastle/project` — and nothing can detach a worktree that
+   * has no checkout left to detach. `git branch -D` refused the pinned branch,
+   * the recut behind it hit "a branch named 'runcastle/project' already exists",
+   * and the launch died there. Only `worktree prune` drops such a registration.
+   */
+  it('recuts a stale branch pinned by a worktree whose checkout is gone', async () => {
+    const { worktreePath } = await ensureProjectWorktree(project)
+    rmTemp(worktreePath)
+    // git still has it registered — that is the pin the recut has to get past
+    expect(git(repoPath, 'worktree', 'list', '--porcelain')).toContain(PROJECT_WORKTREE_SLUG)
+
+    const { worktreePath: reopened } = await ensureProjectWorktree(project)
+
+    expect(reopened).toBe(worktreePath)
+    expect(git(reopened, 'rev-parse', '--abbrev-ref', 'HEAD')).toBe(PROJECT_BRANCH)
+    expect(git(repoPath, 'rev-parse', PROJECT_BRANCH)).toBe(git(repoPath, 'rev-parse', 'main'))
+  })
 })
 
 describe('launching, resuming and landing a project session', () => {
@@ -433,6 +454,32 @@ describe('launching, resuming and landing a project session', () => {
     await expect(
       launchProjectSession(ctx, { projectId: project.id }, { spawn: false }),
     ).rejects.toThrow(/already open/i)
+  })
+
+  /**
+   * Clicking "New", closing the terminal, and clicking "New" again — the whole
+   * report behind this ticket, which used to fail the second launch with
+   * "Branch with name runcastle/project already exists". The session is a
+   * singleton, so this is the ONLY way to open a second one.
+   */
+  it('launches again after the first session is closed', async () => {
+    const first = await launchProjectSession(ctx, { projectId: project.id }, { spawn: false })
+    const wt = sessionRow(first.sessionId).worktreePath
+    writeFileSync(join(wt, 'CONTEXT.md'), '# charter\n')
+    git(wt, 'add', 'CONTEXT.md')
+    git(wt, 'commit', '-m', 'project: draft the charter')
+    endSession(ctx, first.sessionId)
+    await awaitProjectLandings()
+
+    const second = await launchProjectSession(ctx, { projectId: project.id }, { spawn: false })
+
+    expect(second.sessionId).not.toBe(first.sessionId)
+    const reopened = sessionRow(second.sessionId).worktreePath
+    expect(reopened).toBe(wt)
+    expect(git(reopened, 'rev-parse', '--abbrev-ref', 'HEAD')).toBe(PROJECT_BRANCH)
+    // the second session starts from the tip the first one's work landed on
+    expect(git(repoPath, 'rev-parse', PROJECT_BRANCH)).toBe(git(repoPath, 'rev-parse', 'main'))
+    expect(existsSync(join(reopened, 'CONTEXT.md'))).toBe(true)
   })
 
   // Which conversation a launch opens — a new one by default, a named past one
