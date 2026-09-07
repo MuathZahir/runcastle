@@ -20,17 +20,29 @@ const saveStub = () => vi.fn(async () => undefined)
 afterEach(() => { cleanup(); sessionStorage.clear() })
 
 describe('ModelMenu', () => {
-  it('lists runtime groups and selects an id or the project default', () => {
+  it('lists runtime groups and selects an id', () => {
     const change = vi.fn()
     render(<ModelMenu value="" roster={roster} onChange={change} />)
-    fireEvent.click(screen.getByRole('button', { name: 'default model ▾' }))
+    fireEvent.click(screen.getByRole('combobox', { name: 'Ticket model' }))
     expect(screen.getByText('Claude Code')).toBeTruthy()
     expect(screen.getByText('Codex')).toBeTruthy()
     fireEvent.click(screen.getByRole('option', { name: /gpt-5.6-sol/ }))
     expect(change).toHaveBeenLastCalledWith('gpt-5.6-sol')
-    fireEvent.click(screen.getByRole('button', { name: 'default model ▾' }))
+  })
+
+  it('hands back the project default as an empty id', () => {
+    const change = vi.fn()
+    render(<ModelMenu value="gpt-5.6-sol" roster={roster} onChange={change} />)
+    fireEvent.click(screen.getByRole('combobox', { name: 'Ticket model' }))
     fireEvent.click(screen.getByRole('option', { name: /default \(project model\)/ }))
     expect(change).toHaveBeenLastCalledWith('')
+  })
+
+  it('names the runtime a chosen model launches, in the closed pill', () => {
+    render(<ModelMenu value="gpt-5.6-sol" roster={roster} onChange={vi.fn()} />)
+    expect(screen.getByRole('combobox', { name: 'Ticket model' }).textContent).toBe(
+      'gpt-5.6-sol · Codex',
+    )
   })
 })
 
@@ -38,7 +50,7 @@ describe('TicketRow', () => {
   it('changes the row model and cancels after an inline confirmation', () => {
     const model = vi.fn(); const cancel = vi.fn()
     render(<TicketRow ticket={ticket()} roster={roster} readonly={false} onEdit={saveStub()} onModel={model} onCancel={cancel} onCopySha={vi.fn()} />)
-    fireEvent.click(screen.getByRole('button', { name: 'default model ▾' }))
+    fireEvent.click(screen.getByRole('combobox', { name: 'Ticket model' }))
     fireEvent.click(screen.getByRole('option', { name: /claude-opus-5/ }))
     expect(model).toHaveBeenCalledWith('t1', 'claude-opus-5')
     fireEvent.click(screen.getByRole('button', { name: 'Expand ticket #1' }))
@@ -48,6 +60,15 @@ describe('TicketRow', () => {
     expect(cancel).toHaveBeenCalledWith('t1')
   })
 
+  it('opens the model menu outside the card, which no longer has to scroll for it', () => {
+    const { container } = render(<TicketRow ticket={ticket()} roster={roster} readonly={false} onEdit={saveStub()} onModel={vi.fn()} onCancel={vi.fn()} onCopySha={vi.fn()} />)
+    fireEvent.click(screen.getByRole('combobox', { name: 'Ticket model' }))
+
+    // The bug this replaced: the menu rendered inside the row, so the card's
+    // own overflow turned scrollable around it and clipped what it could not fit.
+    expect(container.contains(screen.getByRole('listbox', { name: 'Ticket model' }))).toBe(false)
+  })
+
   it('edits text only, and keeps the editor open until the save lands', async () => {
     let land = (): void => {}
     const save = vi.fn(() => new Promise<void>((resolve) => { land = resolve }))
@@ -55,7 +76,8 @@ describe('TicketRow', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Expand ticket #1' }))
     fireEvent.click(screen.getByRole('button', { name: 'Edit ticket' }))
     expect(screen.getAllByRole('textbox').length).toBe(4)
-    expect(screen.queryByRole('combobox')).toBeNull()
+    // Only the row's own model pill — the editor itself offers no model field.
+    expect(screen.getAllByRole('combobox').length).toBe(1)
     expect(screen.queryByText('MODEL')).toBeNull()
     fireEvent.change(screen.getByDisplayValue('Build it'), { target: { value: 'Build it well' } })
     fireEvent.click(screen.getByRole('button', { name: 'Save ticket' }))
@@ -81,7 +103,7 @@ describe('TicketLedger', () => {
   it('offers one bulk model control when pending tickets exist', () => {
     const bulk = vi.fn()
     render(<TicketLedger tickets={[ticket(), ticket({ id: 't2', seq: 2, lap: 1 }), ticket({ id: 't3', seq: 3, status: 'failed' })]} currentLap={2} roster={roster} readonly={false} docs={[]} sandbox="docker" defaultModel="opus" onDoc={vi.fn()} onEdit={saveStub()} onModel={vi.fn()} onBulkModel={bulk} onCancel={vi.fn()} onCopySha={vi.fn()} />)
-    fireEvent.click(screen.getByRole('button', { name: 'Model for all pending ▾' }))
+    fireEvent.click(screen.getByRole('combobox', { name: 'Model for all pending' }))
     fireEvent.click(screen.getAllByRole('option', { name: /gpt-5.6-sol/ })[0]!)
     expect(bulk).toHaveBeenCalledWith('gpt-5.6-sol')
   })
