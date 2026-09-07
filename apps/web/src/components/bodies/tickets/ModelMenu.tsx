@@ -33,26 +33,28 @@ export function ModelMenu({
   label?: string
 }) {
   const entry = roster.find((model) => model.id === value)
-  // The closed pill says the runtime a model launches, which its row in the
-  // list says with a use-case note instead — so the trigger states its own text
-  // rather than echoing the row. A `label` overrides it outright: the bulk
-  // control names what it acts on, there being no one value across every
-  // pending ticket.
-  const triggerText = label ?? (entry ? `${entry.id} · ${RUNTIME_LABEL[entry.runtime]}` : value || 'default model')
+  // The closed pill says the runtime a model launches, where the row in the
+  // list says the use-case note instead — so the trigger states its own text
+  // rather than echoing the row it points at. A `label` overrides it outright:
+  // the bulk control names what it acts on, there being no one value across
+  // every pending ticket.
+  const triggerText =
+    label ?? (entry ? `${entry.id} · ${RUNTIME_LABEL[entry.runtime]}` : value || 'default model')
+  // Named, not left to its own text: `combobox` takes no accessible name from
+  // its content, so a trigger holding only the current value would read out as
+  // an unnamed control.
+  const name = label ?? 'Ticket model'
 
   return (
     <Select value={value} onValueChange={onChange}>
-      {/* Named, not left to its own text: `combobox` takes no accessible name
-          from its content, so a trigger that only holds the current value reads
-          out as an unnamed control. */}
       <SelectTrigger
-        aria-label={label ?? 'Ticket model'}
+        aria-label={name}
         disabled={disabled}
         className="h-7 rounded-pill border border-hairline bg-transparent px-2 font-mono text-xs text-text-2 hover:border-hairline-strong hover:text-text disabled:opacity-40"
       >
         <SelectValue>{triggerText}</SelectValue>
       </SelectTrigger>
-      <SelectContent aria-label={label ?? 'Ticket model'} className="min-w-64 text-xs">
+      <SelectContent aria-label={name} className="min-w-64 text-xs">
         <SelectItem value="">default (project model)</SelectItem>
         {modelOptionGroups(roster).map((group) => (
           <SelectGroup key={group.runtime}>
