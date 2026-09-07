@@ -71,6 +71,14 @@ describe('Button', () => {
     expect(out).toContain('type="submit"')
   })
 
+  // HTML's missing-value default for `<button>` is `submit`, so a control that
+  // names no type asks the browser to submit as well as running the app's own
+  // `onClick`. The test above is the other half: a caller that wants a submit
+  // still gets one.
+  it('is a plain button, not the submit the browser would default it to', () => {
+    expect(render({})).toContain('type="button"')
+  })
+
   // `xs` is the row-height button the surfaces used to reach for as `btn-xs`.
   it('sizes to the control height by default and shrinks on `xs`', () => {
     expect(render({})).toContain('h-(--control-h)')
