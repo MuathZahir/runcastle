@@ -1,6 +1,7 @@
 import { Fragment } from 'react'
 import { stepModelKey, type ModelOptionGroup, type StepGroup, type StepRow } from '../../lib/settings'
 import { IconX } from '../../icons'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../ui/select'
 import { BARE_BUTTON } from './button'
 import type { SettingWrites } from './ModelsPage'
 import { ModelOptions, Refusal, RuntimeChip, SaveMark } from './RosterTable'
@@ -100,19 +101,25 @@ function StepModelRow({
           </small>
         </span>
         <div className="flex min-w-0 items-center gap-1.5">
-          <select
-            // The old per-step comboboxes had no accessible name at all
-            // (findings F17.7): eleven controls reading out as "combo box".
-            aria-label={`Model for ${row.label}`}
-            className={`h-(--control-h) min-w-0 flex-1 cursor-pointer rounded-sm border border-hairline bg-panel-inset px-2.5 text-sm hover:border-hairline-strong ${
-              set ? 'font-mono text-text' : 'text-text-3'
-            }`}
+          <Select
             value={row.value ?? ''}
-            onChange={(e) => writes.save(key, key, e.target.value === '' ? null : e.target.value)}
+            onValueChange={(next) => writes.save(key, key, next === '' ? null : next)}
           >
-            <option value="">Default ({defaultModel})</option>
-            <ModelOptions groups={groups} />
-          </select>
+            <SelectTrigger
+              // The old per-step comboboxes had no accessible name at all
+              // (findings F17.7): eleven controls reading out as "combo box".
+              aria-label={`Model for ${row.label}`}
+              className={`h-(--control-h) min-w-0 flex-1 rounded-sm border border-hairline bg-panel-inset px-2.5 text-sm hover:border-hairline-strong ${
+                set ? 'font-mono text-text' : 'text-text-3'
+              }`}
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent className="text-sm">
+              <SelectItem value="">Default ({defaultModel})</SelectItem>
+              <ModelOptions groups={groups} />
+            </SelectContent>
+          </Select>
           {writes.saved === key && <SaveMark />}
         </div>
         {/* What it will actually launch, which is a property of the model that

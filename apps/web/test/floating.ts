@@ -1,4 +1,4 @@
-import { fireEvent } from '@testing-library/react'
+import { fireEvent, screen } from '@testing-library/react'
 
 /**
  * Drop a `DropdownMenu` open.
@@ -11,4 +11,18 @@ import { fireEvent } from '@testing-library/react'
  */
 export function openMenu(trigger: HTMLElement): void {
   fireEvent.pointerDown(trigger, { button: 0, ctrlKey: false })
+}
+
+/**
+ * Pick a row out of a `Select`, by the text that row reads out.
+ *
+ * A `Select` is no longer a native `<select>`, so `fireEvent.change` on the
+ * trigger sets nothing: the rows live in a portal that only exists while the
+ * list is open. Every test that drives one goes through here. Unlike a menu, a
+ * select trigger *does* answer a click — Radix opens it on the pointer down
+ * only once it has seen a mouse.
+ */
+export function pickOption(trigger: HTMLElement, option: string | RegExp): void {
+  fireEvent.click(trigger)
+  fireEvent.click(screen.getByRole('option', { name: option }))
 }
