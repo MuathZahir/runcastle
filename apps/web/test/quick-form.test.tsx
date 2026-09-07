@@ -80,3 +80,51 @@ describe('Quick overlay modes', () => {
     expect(onSubmit).toHaveBeenCalledWith('Keep email out of scope.')
   })
 })
+
+/**
+ * Both modes are the same card — an intro, a stack of fields, a footer under a
+ * divider — so both keep the same vertical rhythm. Nothing here lays anything
+ * out (happy-dom gives every box 0×0), so what is asserted is the contract that
+ * produces the spacing: the steps are compared to each other, not to the
+ * literal numbers, which is the whole of what "even" means here.
+ */
+describe('the rhythm of the quick overlay card', () => {
+  afterEach(cleanup)
+
+  /** The numeric step of a spacing utility on `element` — `mt-6` → 6. */
+  const step = (element: Element, prefix: string): number => {
+    const name = [...element.classList].find((candidate) => candidate.startsWith(`${prefix}-`))
+    return Number(name?.slice(prefix.length + 1))
+  }
+
+  const card = (mode: 'change' | 'draft') => {
+    const { container } = render(mode === 'change' ? <QuickChangeMode
+      title="" duplicate={null} tickets={['']} writtenCount={0}
+      slug="" base="main" branches={['main']} detectedBranch="main"
+      busy={false} ready={false} rowRefs={{ current: [] }}
+      onTitleChange={() => {}} onTicketChange={() => {}} onAddTicket={() => {}}
+      onRemoveTicket={() => {}} onBasePick={() => {}} onSubmit={() => {}} onCancel={() => {}}
+    /> : <ParkDraftMode
+      title="" slug="" oneLiner="" notes="" duplicate={null} busy={false} ready={false}
+      onTitleChange={() => {}} onOneLinerChange={() => {}} onNotesChange={() => {}}
+      onSubmit={() => {}} onCancel={() => {}}
+    />)
+    return {
+      // The Title label's Field, and the stack that Field sits in.
+      fields: container.querySelector('label')!.parentElement!.parentElement!,
+      footer: container.querySelector('[class*="border-t"]')!,
+    }
+  }
+
+  for (const mode of ['change', 'draft'] as const) {
+    it(`opens the ${mode} fields on the step it puts between them`, () => {
+      const { fields } = card(mode)
+      expect(step(fields, 'mt')).toBe(step(fields, 'gap'))
+    })
+
+    it(`gives the ${mode} footer as much room under the divider as above it`, () => {
+      const { footer } = card(mode)
+      expect(step(footer, 'pt')).toBe(step(footer, 'mt'))
+    })
+  }
+})
