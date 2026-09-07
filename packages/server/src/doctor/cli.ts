@@ -1,14 +1,7 @@
-import { existsSync, readFileSync } from 'node:fs'
-import {
-  AGENT_RUNTIMES,
-  configuredRuntimes,
-  resolveSandboxImage,
-  type AgentRuntime,
-} from '@runcastle/core'
-import { envPath } from '@runcastle/core/paths'
+import { configuredRuntimes, resolveSandboxImage, type AgentRuntime } from '@runcastle/core'
 import { loadConfig } from '@runcastle/core/config-load'
-import { parseEnvFile } from '../workflows/ticket-burner'
-import { RUNTIME_SPECS, runDoctor, exitCodeFor, type DoctorEnv, type DoctorMode } from './doctor'
+import { envWithAfkCredentials } from './afk-env'
+import { runDoctor, exitCodeFor, type DoctorEnv, type DoctorMode } from './doctor'
 import { formatReport } from './report'
 import { createSystemExec } from './system-exec'
 
@@ -22,25 +15,6 @@ import { createSystemExec } from './system-exec'
 /** Pick the run mode from argv. Default `diagnostic`; `--gate`/`--boot` gate. */
 export function parseMode(argv: string[]): DoctorMode {
   return argv.includes('--gate') || argv.includes('--boot') ? 'gate' : 'diagnostic'
-}
-
-/** Merge every runtime's AFK credential from `~/.runcastle/.env` over `process.env`. */
-function envWithAfkCredentials(): Record<string, string | undefined> {
-  const merged: Record<string, string | undefined> = { ...process.env }
-  try {
-    const path = envPath()
-    if (existsSync(path)) {
-      const fromFile = parseEnvFile(readFileSync(path, 'utf8'))
-      for (const runtime of AGENT_RUNTIMES) {
-        const key = RUNTIME_SPECS[runtime].afkKey
-        const value = fromFile[key]
-        if (value && value.length > 0) merged[key] = value
-      }
-    }
-  } catch {
-    // A malformed/unreadable .env just means the key probes report it unset.
-  }
-  return merged
 }
 
 /** Assemble the production {@link DoctorEnv} from real config + host state. */

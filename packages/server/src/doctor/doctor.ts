@@ -370,8 +370,8 @@ async function runtimeAuthProbe(
 
 /**
  * The runtime's unattended credential — presence only (validity needs a live
- * call). Read from the injected env; the CLI merges `~/.runcastle/.env` in
- * before calling.
+ * call). Read from the injected env; both callers — the CLI and the tRPC doctor
+ * query the AFK card reads — merge `~/.runcastle/.env` in before calling.
  *
  * `undefined` for a runtime with no `ids.afkKey`: its burns borrow the human's
  * own login, which the `auth` check already reports, so a second row asking for
