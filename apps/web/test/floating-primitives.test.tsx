@@ -4,12 +4,6 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Dialog } from '../src/ui'
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '../src/ui/dropdown-menu'
-import {
   Combobox,
   ComboboxContent,
   ComboboxEmpty,
@@ -19,6 +13,12 @@ import {
   ComboboxList,
   ComboboxTrigger,
 } from '../src/ui/combobox'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '../src/ui/dropdown-menu'
 import { Popover, PopoverContent, PopoverTrigger } from '../src/ui/popover'
 import {
   Select,
@@ -351,7 +351,7 @@ describe('Combobox', () => {
       <div className="overflow-hidden">
         <Combobox>
           <ComboboxTrigger>landing on {value}</ComboboxTrigger>
-          <ComboboxContent label="Branches">
+          <ComboboxContent>
             <ComboboxInput placeholder="Find a branch…" />
             <ComboboxList label="Branches">
               <ComboboxEmpty>no branch matches</ComboboxEmpty>

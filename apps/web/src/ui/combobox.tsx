@@ -83,14 +83,11 @@ export const ComboboxTrigger = PopoverTrigger
  */
 export function ComboboxContent({
   className,
-  label,
   loop = true,
   onEscapeKeyDown,
   children,
   ...props
 }: ComponentPropsWithoutRef<typeof PopoverContent> & {
-  /** Names the list for assistive tech — cmdk's own `label`. */
-  label?: string
   /** Arrowing past the last row returns to the first. */
   loop?: boolean
 }) {
@@ -106,7 +103,7 @@ export function ComboboxContent({
       }}
       {...props}
     >
-      <Command label={label} loop={loop} className="flex min-h-0 flex-col">
+      <Command loop={loop} className="flex min-h-0 flex-col">
         {children}
       </Command>
     </PopoverContent>
@@ -146,6 +143,8 @@ export function ComboboxInput({
  * in the common case and the panel's measured available height is the backstop
  * in a short window — whichever is smaller bites, and the list scrolls inside
  * it either way.
+ *
+ * `label` is cmdk's, and it is what names the listbox — pass one.
  */
 export function ComboboxList({
   className,

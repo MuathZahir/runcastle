@@ -695,7 +695,7 @@ export function BranchMenu({
           ▾
         </span>
       </ComboboxTrigger>
-      <ComboboxContent align="end" label={label} className="font-mono text-sm">
+      <ComboboxContent align="end" className="font-mono text-sm">
         <ComboboxInput placeholder="Find a branch…" />
         <ComboboxList label={label}>
           <ComboboxEmpty>

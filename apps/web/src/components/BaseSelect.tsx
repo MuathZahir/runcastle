@@ -86,7 +86,7 @@ export function BaseSelect({
           </span>
           <IconChevronDown size={11} className="shrink-0 text-text-4" />
         </ComboboxTrigger>
-        <ComboboxContent label={label} className="font-mono text-sm">
+        <ComboboxContent className="font-mono text-sm">
           <ComboboxInput placeholder="Find a branch…" />
           <ComboboxList label={label}>
             <ComboboxEmpty>no branch matches</ComboboxEmpty>
