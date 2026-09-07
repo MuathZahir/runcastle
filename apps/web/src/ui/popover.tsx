@@ -15,9 +15,6 @@ import { FLOATING_SURFACE, cx } from './floating'
 
 export const Popover = PopoverPrimitive.Root
 export const PopoverTrigger = PopoverPrimitive.Trigger
-/** Positions the content against something other than the trigger. */
-export const PopoverAnchor = PopoverPrimitive.Anchor
-export const PopoverClose = PopoverPrimitive.Close
 
 /**
  * The panel. Portalled to `<body>`, so no ancestor's `overflow` can clip it,

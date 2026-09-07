@@ -28,7 +28,6 @@ export function DropdownMenu({
 }
 
 export const DropdownMenuTrigger = DropdownMenuPrimitive.Trigger
-export const DropdownMenuGroup = DropdownMenuPrimitive.Group
 
 /**
  * The menu surface. Portalled to `<body>`, so no ancestor's `overflow` can clip

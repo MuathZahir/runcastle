@@ -100,7 +100,7 @@ describe('DropdownMenu', () => {
     await waitFor(() => expect(document.activeElement).toBe(trigger))
   })
 
-  it('answers Escape without closing the dialog it was opened inside', () => {
+  it('answers Escape without closing the dialog it was opened inside', async () => {
     function InDialog() {
       const [open, setOpen] = useState(true)
       return (
@@ -116,11 +116,16 @@ describe('DropdownMenu', () => {
     }
 
     render(<InDialog />)
-    openMenu(screen.getByRole('button', { name: 'Actions' }))
+    const trigger = screen.getByRole('button', { name: 'Actions' })
+    openMenu(trigger)
     fireEvent.keyDown(document.activeElement ?? document.body, { key: 'Escape' })
 
     expect(screen.queryByRole('menu')).toBeNull()
+    // The dialog answers Escape only when the focus is inside it, and the menu
+    // takes the keystroke before it can travel that far — so the one press
+    // closes the menu and nothing else.
     expect(screen.getByRole('dialog')).toBeTruthy()
+    await waitFor(() => expect(document.activeElement).toBe(trigger))
   })
 })
 
