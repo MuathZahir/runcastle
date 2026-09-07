@@ -35,7 +35,12 @@ export function PipelineStepper({
     // Six pills and their connectors do not fit a narrow workspace column, and
     // a pill cannot shrink below the phase it names — so the row wraps onto a
     // second line rather than running off the right edge of the header.
-    <div className="mt-4 flex flex-wrap items-center gap-y-1.5">
+    //
+    // The row is pulled left by one pill's worth of padding so the first step
+    // begins on the header title's left edge rather than a nudge inside it.
+    // The padding stays on the pill — it is what the hover fill needs — and the
+    // pull is on the row so every wrapped line starts on that same edge.
+    <div className="mt-4 -ml-2.5 flex flex-wrap items-center gap-y-1.5">
       {steps.map((s, i) => (
         <Fragment key={s.phase}>
           <button
