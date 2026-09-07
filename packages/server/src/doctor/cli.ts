@@ -7,6 +7,7 @@ import {
 } from '@runcastle/core'
 import { envPath } from '@runcastle/core/paths'
 import { loadConfig } from '@runcastle/core/config-load'
+import { burnerDockerfilePath } from '../launcher/asset-paths'
 import { parseEnvFile } from '../workflows/ticket-burner'
 import { RUNTIME_SPECS, runDoctor, exitCodeFor, type DoctorEnv, type DoctorMode } from './doctor'
 import { formatReport } from './report'
@@ -63,6 +64,7 @@ export function resolveDoctorEnv(): DoctorEnv {
     env: envWithAfkCredentials(),
     platform: process.platform,
     cwd: process.cwd(),
+    burnerDockerfile: burnerDockerfilePath(),
     ...(imageName ? { imageName } : {}),
     ...(runtimes ? { runtimes } : {}),
   }

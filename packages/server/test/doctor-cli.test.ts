@@ -1,5 +1,7 @@
+import { existsSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
-import { parseMode, runCli } from '../src/doctor/cli'
+import { parseMode, resolveDoctorEnv, runCli } from '../src/doctor/cli'
+import { burnerDockerfilePath } from '../src/launcher/asset-paths'
 
 describe('parseMode', () => {
   it('defaults to diagnostic', () => {
@@ -10,6 +12,14 @@ describe('parseMode', () => {
   })
   it('selects gate mode with --boot', () => {
     expect(parseMode(['--boot'])).toBe('gate')
+  })
+})
+
+describe('resolveDoctorEnv', () => {
+  it('names the burner Dockerfile the current install actually ships', () => {
+    const { burnerDockerfile } = resolveDoctorEnv()
+    expect(burnerDockerfile).toBe(burnerDockerfilePath())
+    expect(existsSync(burnerDockerfile ?? '')).toBe(true)
   })
 })
 

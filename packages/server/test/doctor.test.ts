@@ -1,5 +1,7 @@
+import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 import {
   runDoctor,
   exitCodeFor,
@@ -7,6 +9,11 @@ import {
   type ExecOutcome,
   type ProbeResult,
 } from '../src/doctor/doctor'
+import {
+  ASSET_ENV,
+  applyInstalledAssetEnv,
+  sandcastleTemplateDir,
+} from '../src/launcher/asset-paths'
 
 /**
  * A canned exec: maps `"cmd arg arg"` to an outcome. Anything not in the map is
@@ -328,6 +335,59 @@ describe('runDoctor — codex login is decided by the credentials file', () => {
     })
     expect(looked).toContain(join('/custom/codex', 'auth.json'))
     expect(byId(report.results, 'codex-auth').status).toBe('unset')
+  })
+})
+
+/**
+ * The doctor used to stat a Dockerfile path hand-built from its own bundle dir
+ * (`../assets/sandcastle/Dockerfile`). That file is there in a contributor
+ * checkout and nowhere in a published install, where the template is vendored as
+ * `<pkgRoot>/sandcastle-template` — so `bun add -g runcastle` got an ENOENT out
+ * of the tRPC doctor query and a home page stuck on "loading projects…".
+ */
+describe('runDoctor — the burner Dockerfile it stats', () => {
+  const base = {
+    env: { CLAUDE_CODE_OAUTH_TOKEN: 'sk-oauth-xxx' },
+    platform: 'linux' as const,
+    imageName: 'sandcastle:runcastle',
+  }
+
+  afterEach(() => {
+    delete process.env[ASSET_ENV.sandcastleTemplate]
+  })
+
+  /** Run the probe set on a healthy host and report the path it read an mtime from. */
+  async function statted(): Promise<string> {
+    const seen: string[] = []
+    await runDoctor({
+      ...base,
+      exec: cannedExec(ALL_HEALTHY),
+      fileMtime: (path) => {
+        seen.push(path)
+        return new Date('2026-08-18T12:00:00Z')
+      },
+    })
+    const [first] = seen
+    if (!first) throw new Error('the image probe never read a Dockerfile mtime')
+    return first
+  }
+
+  it('defaults to the Dockerfile in the resolved template dir — a file really on disk', async () => {
+    const path = await statted()
+    expect(path).toBe(join(sandcastleTemplateDir(), 'Dockerfile'))
+    expect(existsSync(path)).toBe(true)
+  })
+
+  it('follows the template vendored beside the bin in a published install', async () => {
+    const pkgRoot = mkdtempSync(join(tmpdir(), 'runcastle-pkg-'))
+    const vendored = join(pkgRoot, 'sandcastle-template')
+    mkdirSync(vendored)
+    writeFileSync(join(vendored, 'Dockerfile'), 'FROM oven/bun\n')
+    applyInstalledAssetEnv(pkgRoot)
+
+    const path = await statted()
+    expect(path).toBe(join(vendored, 'Dockerfile'))
+    expect(existsSync(path)).toBe(true)
   })
 })
 

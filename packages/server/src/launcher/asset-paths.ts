@@ -1,5 +1,6 @@
 import { existsSync } from 'node:fs'
 import { join, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 /**
  * Runtime-asset resolution (issue #51, workstream G). A published `runcastle`
@@ -61,6 +62,29 @@ export function vendoredAssetPaths(pkgRoot: string): Record<string, string> {
     [ASSET_ENV.ptyHost]: join(pkgRoot, 'pty-host.cjs'),
     [ASSET_ENV.sandcastleTemplate]: join(pkgRoot, 'sandcastle-template'),
   }
+}
+
+/**
+ * The vetted burner-image template dir shipped as a package asset (real files
+ * under `src/`, so they ride the published tarball — where the build script
+ * renames them to `<pkgRoot>/sandcastle-template` and the bin points
+ * `RUNCASTLE_SANDCASTLE_TEMPLATE` at them).
+ */
+export function sandcastleTemplateDir(): string {
+  return resolveAsset(
+    ASSET_ENV.sandcastleTemplate,
+    fileURLToPath(new URL('../assets/sandcastle', import.meta.url)),
+  )
+}
+
+/**
+ * The burner Dockerfile inside the resolved template dir — the file the doctor
+ * stats to tell a stale sandcastle image from a current one. Derived from
+ * {@link sandcastleTemplateDir} so it names the dir that exists in *both*
+ * layouts; a path hand-built from the source tree ENOENTs in a published install.
+ */
+export function burnerDockerfilePath(): string {
+  return join(sandcastleTemplateDir(), 'Dockerfile')
 }
 
 /**

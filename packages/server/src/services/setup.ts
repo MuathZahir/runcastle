@@ -7,7 +7,7 @@ import type { ExecFn, ProbeResult } from '../doctor/doctor'
 import { RUNTIME_SPECS, gitIdentityProbe } from '../doctor/doctor'
 import type { AppCtx } from '../db/types'
 import { InvalidInputError, NotFoundError } from '../errors'
-import { ASSET_ENV, resolveAsset } from '../launcher/asset-paths'
+import { sandcastleTemplateDir } from '../launcher/asset-paths'
 import { updateSettings, type SettingsIO } from './settings'
 
 /**
@@ -348,16 +348,11 @@ export interface ScaffoldResult {
 }
 
 /**
- * The vetted burner-image template dir shipped as a package asset (real files
- * under `src/`, so they ride the published tarball). `RUNCASTLE_SANDCASTLE_TEMPLATE`
- * overrides it in a vendored install, exactly like the other #51 runtime assets.
+ * The template dir lives with the other #51 runtime-asset resolvers now that the
+ * doctor resolves it too; re-exported here so the scaffold callers keep reading
+ * it from the setup service.
  */
-export function sandcastleTemplateDir(): string {
-  return resolveAsset(
-    ASSET_ENV.sandcastleTemplate,
-    fileURLToPath(new URL('../assets/sandcastle', import.meta.url)),
-  )
-}
+export { sandcastleTemplateDir }
 
 /**
  * Copy the template into `<targetDir>/.sandcastle/` so `sandcastle build-image`

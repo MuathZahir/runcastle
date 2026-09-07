@@ -4,6 +4,7 @@ import * as z from 'zod'
 import { projects } from '../../db/schema'
 import { runDoctor } from '../../doctor/doctor'
 import { createSystemExec } from '../../doctor/system-exec'
+import { burnerDockerfilePath } from '../../launcher/asset-paths'
 import { ptyRegistry } from '../../pty/registry'
 import {
   fileAfkTokenIo,
@@ -42,6 +43,7 @@ export const setupRouter = router({
       .map((p) => p.model)
     return runDoctor({
       exec: createSystemExec(),
+      burnerDockerfile: burnerDockerfilePath(),
       runtimes: configuredRuntimes(ctx.config, projectModels),
       ...(ctx.config.sandboxImage ? { imageName: ctx.config.sandboxImage } : {}),
     })
