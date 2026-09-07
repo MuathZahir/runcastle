@@ -264,6 +264,22 @@ describe('Settings — This project', () => {
     expect(onClose).not.toHaveBeenCalled()
   })
 
+  it('opens a select over the dialog, and closes only the select on Escape', () => {
+    const onClose = vi.fn()
+    open(onClose)
+
+    const sandbox = screen.getByLabelText('Sandbox')
+    fireEvent.click(sandbox)
+    // One band above the dialog's own backdrop, or it would open behind it.
+    expect(screen.getByRole('listbox').className).toContain('z-[300]')
+
+    fireEvent.keyDown(document.activeElement ?? document.body, { key: 'Escape' })
+
+    expect(screen.queryByRole('listbox')).toBeNull()
+    expect(onClose).not.toHaveBeenCalled()
+    expect(screen.getByRole('dialog')).toBeTruthy()
+  })
+
   it('closes the evidence on a click outside it', () => {
     open()
 

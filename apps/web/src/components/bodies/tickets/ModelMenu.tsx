@@ -52,7 +52,7 @@ export function ModelMenu({
       >
         <SelectValue>{triggerText}</SelectValue>
       </SelectTrigger>
-      <SelectContent aria-label={label ?? 'Ticket model'} className="min-w-64">
+      <SelectContent aria-label={label ?? 'Ticket model'} className="min-w-64 text-xs">
         <SelectItem value="">default (project model)</SelectItem>
         {modelOptionGroups(roster).map((group) => (
           <SelectGroup key={group.runtime}>

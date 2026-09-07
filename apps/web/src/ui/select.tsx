@@ -99,6 +99,14 @@ export function SelectValue({
  * topmost layer on it, and letting the same keystroke carry on to `window`
  * would hand it to an enclosing `Dialog` — the settings dialog every one of
  * these opens inside.
+ *
+ * Mono, but no type size: the five places this drops from are not written at
+ * one scale (11px on a ticket row, 12px in settings), and a size stated here
+ * could not be overridden by the one a caller passes. Tailwind emits utilities
+ * in its own order, not the order of the class attribute, and `text-xs` happens
+ * to sort last — so a default here would silently beat every call site. The
+ * family is safe (`font-sans` does sort after `font-mono`); the size is the
+ * caller's.
  */
 export function SelectContent({
   className,
@@ -121,7 +129,7 @@ export function SelectContent({
         }}
         className={cx(
           FLOATING_SURFACE,
-          'max-h-(--radix-select-content-available-height) min-w-32 font-mono text-xs',
+          'max-h-(--radix-select-content-available-height) min-w-32 font-mono',
           className,
         )}
         {...props}
