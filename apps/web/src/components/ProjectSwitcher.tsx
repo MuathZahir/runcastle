@@ -40,9 +40,9 @@ const TRIGGER =
   'hover:border-hairline hover:bg-panel-3'
 
 /*
- * A project row reads at the app's 14px body scale — 11px is reserved for the
- * uppercase micro-labels (STYLE.md), and the menu that dropped at it read as a
- * different design system to the breadcrumb it hangs from.
+ * A project row reads at the app's 14px body scale. 11px is reserved for the
+ * uppercase micro-labels (STYLE.md), and a menu that drops at it reads as a
+ * different design system from the breadcrumb it hangs off.
  *
  * The size is stated here, on the row, rather than passed down to the menu
  * surface: the surface carries `DropdownMenuContent`'s own `text-xs` — the mono
