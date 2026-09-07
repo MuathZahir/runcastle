@@ -57,7 +57,13 @@ export function FeatureActionsMenu({
         </DropdownMenuTrigger>
         <DropdownMenuContent
           align="end"
-          className="font-sans text-sm"
+          // Family here, size on the items. Tailwind emits `text-xs` after
+          // every other size, so `DropdownMenuContent`'s mono default is the
+          // later declaration whatever the class attribute says, and a size
+          // passed here would be silently ignored — these items rendered at
+          // 11px next to a 14px sidebar. `font-sans` is safe: it sorts after
+          // `font-mono`.
+          className="font-sans"
           onCloseAutoFocus={(event) => {
             // An action can hand the focus straight on — Delete opens a dialog
             // that focuses its confirm input. Radix would pull it back to the
@@ -73,6 +79,7 @@ export function FeatureActionsMenu({
           {actions.map((a) => (
             <DropdownMenuItem
               key={a.key}
+              className="text-sm"
               tone={a.danger ? 'danger' : 'default'}
               onSelect={() => {
                 // The menu item disappears as this selection opens a dialog.
