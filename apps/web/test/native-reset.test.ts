@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs'
+import { readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
@@ -7,12 +7,12 @@ import { describe, expect, it } from 'vitest'
  *
  * `theme.css` imports Tailwind's theme and utilities layers but not its base
  * reset, because that reset would change the legacy sheet under it. The price is
- * that `<button>` and `<select>` keep the user agent's light chrome on a
- * near-black app, so the file hand-writes the slice of preflight that fixes
- * exactly that — and only that.
+ * that a `<button>` keeps the user agent's light chrome on a near-black app, so
+ * the file hand-writes the slice of preflight that fixes exactly that — and only
+ * that.
  *
  * Two things about it are load-bearing and neither is visible from a diff, which
- * is why they are asserted here: the reset is scoped to the two elements (widen
+ * is why they are asserted here: the reset is scoped to the one element (widen
  * it to `ol, ul` and the markdown bullets go, which is the whole reason
  * preflight is out), and it lives in `@layer base` so both the legacy sheet and
  * the utilities still beat it.
@@ -64,17 +64,21 @@ describe('native element reset', () => {
     expect(decls).toMatch(/padding:\s*0/)
   })
 
-  it('gives a bare select the theme instead of the platform listbox', () => {
-    const decls = baseLayerRules().get('select')
-    expect(decls).toBeDefined()
-    expect(decls).toMatch(/background-color:\s*var\(--color-panel-inset\)/)
-    expect(decls).toMatch(/border:\s*1px solid var\(--color-hairline\)/)
-    expect(decls).toMatch(/color:\s*inherit/)
-    // Not `appearance: none` — that takes the disclosure arrow with it.
-    expect(decls).not.toMatch(/appearance/)
+  it('resets nothing but that one element', () => {
+    expect([...baseLayerRules().keys()]).toEqual(['button'])
   })
 
-  it('resets nothing but those two elements', () => {
-    expect([...baseLayerRules().keys()]).toEqual(['button', 'select'])
+  it('has no select left to reset', () => {
+    // The `<select>` slice was retired with the last raw one in the app: every
+    // picker is a `Select` or a `Combobox` now, and both are a button plus a
+    // portalled list this app styles itself. A raw `<select>` reintroduced here
+    // would drop the platform's white listbox into a near-black app, so this
+    // fails on the markup rather than waiting for the rule to be missed.
+    const src = join(import.meta.dirname, '../src')
+    const rendered = readdirSync(src, { recursive: true, encoding: 'utf8' })
+      .filter((file) => file.endsWith('.tsx'))
+      .filter((file) => readFileSync(join(src, file), 'utf8').includes('<select'))
+
+    expect(rendered).toEqual([])
   })
 })

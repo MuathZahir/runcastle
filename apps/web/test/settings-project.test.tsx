@@ -2,6 +2,7 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ProjectFinding, SettingField, SettingsView } from '../src/lib/api'
+import { pickOption } from './floating'
 
 /**
  * "This project" (flow-redesign-settings, ticket 8). Tier 2: the whole point of
@@ -174,10 +175,15 @@ describe('Settings — This project', () => {
 
     // A text control ghosts through its placeholder…
     expect(screen.getByLabelText('Verify').getAttribute('placeholder')).toBe('bun run test')
-    // …and a select through a first option that states what it inherits.
-    const sandbox = screen.getByLabelText('Sandbox') as HTMLSelectElement
-    expect(sandbox.value).toBe('')
-    expect(sandbox.options[0]?.textContent).toBe('Use global (Docker container (isolated))')
+    // …and a select through a first row that states what it inherits, which is
+    // what the closed control reads out while nothing is picked.
+    const sandbox = screen.getByLabelText('Sandbox')
+    expect(sandbox.textContent).toBe('Use global (Docker container (isolated))')
+    fireEvent.click(sandbox)
+    expect(screen.getAllByRole('option')[0]?.textContent).toBe(
+      'Use global (Docker container (isolated))',
+    )
+    fireEvent.keyDown(document.activeElement ?? document.body, { key: 'Escape' })
     expect(screen.getByLabelText('Model').closest('div')?.textContent).toContain(
       'Use global (claude-opus-5[1m])',
     )
@@ -207,7 +213,7 @@ describe('Settings — This project', () => {
   it('writes a picked model against this project', () => {
     open()
 
-    fireEvent.change(screen.getByLabelText('Model'), { target: { value: 'claude-sonnet-5' } })
+    pickOption(screen.getByLabelText('Model'), 'claude-sonnet-5')
 
     expect(server.updates).toEqual([
       { projectId: 'proj_1', key: 'model', value: 'claude-sonnet-5' },
@@ -256,6 +262,22 @@ describe('Settings — This project', () => {
 
     expect(screen.queryByText(SETUP_EVIDENCE)).toBeNull()
     expect(onClose).not.toHaveBeenCalled()
+  })
+
+  it('opens a select over the dialog, and closes only the select on Escape', () => {
+    const onClose = vi.fn()
+    open(onClose)
+
+    const sandbox = screen.getByLabelText('Sandbox')
+    fireEvent.click(sandbox)
+    // One band above the dialog's own backdrop, or it would open behind it.
+    expect(screen.getByRole('listbox').className).toContain('z-[300]')
+
+    fireEvent.keyDown(document.activeElement ?? document.body, { key: 'Escape' })
+
+    expect(screen.queryByRole('listbox')).toBeNull()
+    expect(onClose).not.toHaveBeenCalled()
+    expect(screen.getByRole('dialog')).toBeTruthy()
   })
 
   it('closes the evidence on a click outside it', () => {

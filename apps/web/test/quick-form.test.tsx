@@ -62,7 +62,7 @@ describe('Quick overlay modes', () => {
     expect((screen.getByRole('button', { name: 'Create feature' }) as HTMLButtonElement).disabled).toBe(false)
 
     fireEvent.click(screen.getByRole('button', { name: /from main/ }))
-    fireEvent.mouseDown(screen.getByRole('option', { name: 'develop' }), { button: 0 })
+    fireEvent.click(screen.getByRole('option', { name: 'develop' }))
     expect(screen.getByRole('button', { name: /from develop/ })).toBeTruthy()
   })
 

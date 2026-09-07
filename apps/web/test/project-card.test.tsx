@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ProjectCard } from '../src/components/ProjectCard'
 import { ToastProvider } from '../src/lib/toast'
 import type { ProjectStats } from '../src/lib/projects'
+import { openMenu } from './floating'
 
 /**
  * A portfolio card (decision 7). Its two mutations are stubbed the way the open
@@ -60,7 +61,7 @@ function card(over: Partial<ProjectStats> = {}) {
 
 /** Open the card's ⋯ menu and choose one of its items. */
 function choose(label: string) {
-  fireEvent.click(screen.getByRole('button', { name: 'runcastle actions' }))
+  openMenu(screen.getByRole('button', { name: 'runcastle actions' }))
   fireEvent.click(screen.getByRole('menuitem', { name: label }))
 }
 
@@ -107,7 +108,7 @@ describe('ProjectCard', () => {
 
   it('offers Rename and Remove from list without being hovered', () => {
     card()
-    fireEvent.click(screen.getByRole('button', { name: 'runcastle actions' }))
+    openMenu(screen.getByRole('button', { name: 'runcastle actions' }))
 
     expect(screen.getAllByRole('menuitem').map((el) => el.textContent)).toEqual([
       'Rename',

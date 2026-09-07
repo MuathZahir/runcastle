@@ -11,6 +11,15 @@ import {
   type RosterRow,
 } from '../../lib/settings'
 import { Button } from '../../ui'
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectLabel,
+  SelectTrigger,
+  SelectValue,
+} from '../../ui/select'
 import { IconX } from '../../icons'
 import { BARE_BUTTON, PLAIN_BUTTON } from './button'
 import type { SettingWrites } from './ModelsPage'
@@ -278,19 +287,19 @@ function AddModelRow({
           onChange={(e) => setId(e.target.value)}
           onKeyDown={onEnter}
         />
-        <select
-          aria-label="Runtime (required)"
-          className={`${ADD_FIELD} cursor-pointer`}
-          value={runtime}
-          onChange={(e) => setRuntime(e.target.value)}
-        >
-          <option value="">Runs on…</option>
-          {AGENT_RUNTIMES.map((r) => (
-            <option key={r} value={r}>
-              {RUNTIME_LABEL[r]}
-            </option>
-          ))}
-        </select>
+        <Select value={runtime} onValueChange={setRuntime}>
+          <SelectTrigger aria-label="Runtime (required)" className={ADD_FIELD}>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent className="font-sans text-sm">
+            <SelectItem value="">Runs on…</SelectItem>
+            {AGENT_RUNTIMES.map((r) => (
+              <SelectItem key={r} value={r}>
+                {RUNTIME_LABEL[r]}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
         <input
           type="text"
           aria-label="New model note"
@@ -347,18 +356,19 @@ export function RuntimeChip({ runtime }: { runtime: AgentRuntime }) {
   )
 }
 
-/** The roster as `<optgroup>`s — the runtime a model launches is part of it. */
+/** The roster as `Select` groups — the runtime a model launches is part of it. */
 export function ModelOptions({ groups }: { groups: ModelOptionGroup[] }) {
   return (
     <>
       {groups.map((group) => (
-        <optgroup key={group.runtime} label={group.label}>
+        <SelectGroup key={group.runtime}>
+          <SelectLabel>{group.label}</SelectLabel>
           {group.entries.map((entry) => (
-            <option key={entry.id} value={entry.id} title={entry.note}>
+            <SelectItem key={entry.id} value={entry.id} title={entry.note}>
               {entry.note ? `${entry.id} — ${entry.note}` : entry.id}
-            </option>
+            </SelectItem>
           ))}
-        </optgroup>
+        </SelectGroup>
       ))}
     </>
   )
