@@ -9,6 +9,16 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '../src/ui/dropdown-menu'
+import {
+  Combobox,
+  ComboboxContent,
+  ComboboxEmpty,
+  ComboboxGroup,
+  ComboboxInput,
+  ComboboxItem,
+  ComboboxList,
+  ComboboxTrigger,
+} from '../src/ui/combobox'
 import { Popover, PopoverContent, PopoverTrigger } from '../src/ui/popover'
 import {
   Select,
@@ -323,6 +333,150 @@ describe('Select', () => {
     expect(screen.queryByRole('listbox')).toBeNull()
     // The dialog answers Escape only when the focus is inside it, and the list
     // takes the keystroke before it can travel that far.
+    expect(screen.getByRole('dialog')).toBeTruthy()
+    await waitFor(() => expect(document.activeElement).toBe(trigger))
+  })
+})
+
+describe('Combobox', () => {
+  afterEach(cleanup)
+
+  /** A repo with more branches than anyone reads — what search is here for. */
+  const branches = ['main', 'develop', ...Array.from({ length: 40 }, (_, i) => `feature/work-${i}`)]
+
+  function Harness({ value = 'main', onPick = () => {} }: { value?: string; onPick?: (b: string) => void }) {
+    return (
+      // The ancestor that used to clip the list: the page column the old branch
+      // menu drew itself inside, in normal flow and at full height.
+      <div className="overflow-hidden">
+        <Combobox>
+          <ComboboxTrigger>landing on {value}</ComboboxTrigger>
+          <ComboboxContent label="Branches">
+            <ComboboxInput placeholder="Find a branch…" />
+            <ComboboxList label="Branches">
+              <ComboboxEmpty>no branch matches</ComboboxEmpty>
+              <ComboboxGroup heading="Local branches">
+                {branches.map((branch) => (
+                  <ComboboxItem
+                    key={branch}
+                    value={branch}
+                    current={branch === value}
+                    onSelect={() => onPick(branch)}
+                  >
+                    {branch}
+                  </ComboboxItem>
+                ))}
+              </ComboboxGroup>
+            </ComboboxList>
+          </ComboboxContent>
+        </Combobox>
+      </div>
+    )
+  }
+
+  const open = (): HTMLElement => {
+    const trigger = screen.getByRole('button', { name: /landing on/ })
+    fireEvent.click(trigger)
+    return trigger
+  }
+
+  it('renders its list in a portal, outside the overflow ancestor it opened in', () => {
+    const { container } = render(<Harness />)
+    open()
+
+    const list = screen.getByRole('listbox', { name: 'Branches' })
+    expect(container.contains(list)).toBe(false)
+    expect(document.body.contains(list)).toBe(true)
+  })
+
+  it('holds a long branch list inside its own scroller instead of growing the page', () => {
+    render(<Harness />)
+    open()
+
+    const list = screen.getByRole('listbox', { name: 'Branches' })
+    // Every branch is rendered, and every one of them is inside the capped box.
+    expect(screen.getAllByRole('option')).toHaveLength(branches.length)
+    for (const option of screen.getAllByRole('option')) expect(list.contains(option)).toBe(true)
+    expect(list.className).toContain('max-h-64')
+    expect(list.className).toContain('overflow-y-auto')
+    // The panel around it is capped too, for a window too short for even that.
+    const panel = document.querySelector('[cmdk-root]')!.parentElement!
+    expect(panel.className).toContain('max-h-(--radix-popover-content-available-height)')
+  })
+
+  it('filters the list as the search is typed', () => {
+    render(<Harness />)
+    open()
+
+    fireEvent.change(screen.getByPlaceholderText('Find a branch…'), { target: { value: 'develop' } })
+
+    expect(screen.getAllByRole('option').map((o) => o.textContent)).toEqual(['develop'])
+  })
+
+  it('says so when the search matches nothing', () => {
+    render(<Harness />)
+    open()
+
+    fireEvent.change(screen.getByPlaceholderText('Find a branch…'), { target: { value: 'zzz' } })
+
+    expect(screen.queryAllByRole('option')).toHaveLength(0)
+    expect(screen.getByText('no branch matches')).toBeTruthy()
+  })
+
+  it('marks the branch it already holds, and reports a pick', () => {
+    const onPick = vi.fn()
+    render(<Harness value="develop" onPick={onPick} />)
+    open()
+
+    expect(screen.getByRole('option', { name: 'develop' }).getAttribute('aria-current')).toBe('true')
+    fireEvent.click(screen.getByRole('option', { name: 'main' }))
+
+    expect(onPick).toHaveBeenCalledTimes(1)
+    expect(onPick).toHaveBeenCalledWith('main')
+    expect(screen.queryByRole('listbox')).toBeNull()
+  })
+
+  it('walks the list with the arrows and commits with Enter', () => {
+    const onPick = vi.fn()
+    render(<Harness onPick={onPick} />)
+    open()
+
+    const search = screen.getByPlaceholderText('Find a branch…')
+    fireEvent.keyDown(search, { key: 'ArrowDown' })
+    fireEvent.keyDown(search, { key: 'Enter' })
+
+    expect(onPick).toHaveBeenCalledWith('develop')
+  })
+
+  it('closes on Escape without picking, and puts the focus back on its trigger', async () => {
+    const onPick = vi.fn()
+    render(<Harness onPick={onPick} />)
+    const trigger = open()
+
+    fireEvent.keyDown(document.activeElement ?? document.body, { key: 'Escape' })
+
+    expect(screen.queryByRole('listbox')).toBeNull()
+    expect(onPick).not.toHaveBeenCalled()
+    await waitFor(() => expect(document.activeElement).toBe(trigger))
+  })
+
+  it('layers over a dialog it opened inside, and Escape closes only itself', async () => {
+    function InDialog() {
+      const [dialogOpen, setDialogOpen] = useState(true)
+      return (
+        <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)} label="Quick">
+          <Harness />
+        </Dialog>
+      )
+    }
+
+    render(<InDialog />)
+    const trigger = open()
+    expect(screen.getByRole('listbox', { name: 'Branches' }).closest('.z-\\[300\\]')).toBeTruthy()
+
+    fireEvent.keyDown(document.activeElement ?? document.body, { key: 'Escape' })
+
+    expect(screen.queryByRole('listbox')).toBeNull()
     expect(screen.getByRole('dialog')).toBeTruthy()
     await waitFor(() => expect(document.activeElement).toBe(trigger))
   })
