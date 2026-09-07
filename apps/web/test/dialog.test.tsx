@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { Dialog } from '../src/ui'
 import { DeleteFeatureDialog } from '../src/components/DeleteFeatureDialog'
 import { FeatureActionsMenu } from '../src/components/FeatureActionsMenu'
+import { openMenu } from './floating'
 
 /**
  * The mechanics five overlays used to each own a copy of (apps/web/STYLE.md).
@@ -179,7 +180,7 @@ describe('Dialog', () => {
 
     render(<DeleteHarness />)
     const actions = screen.getByRole('button', { name: 'feature actions' })
-    fireEvent.click(actions)
+    openMenu(actions)
     fireEvent.click(screen.getByRole('menuitem', { name: 'Delete…' }))
 
     expect(document.activeElement).toBe(screen.getByPlaceholderText('draft-feature'))
