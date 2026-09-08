@@ -64,6 +64,15 @@ export const BURN_EXPLAINER =
  */
 export const NOTIFY_OFFER = 'Notify me when agents finish a run'
 
+/**
+ * Stop ticket and Cancel run, when the kill could not be confirmed. Both wait
+ * for the agent's process to be observed dead, so a mutation that resolves
+ * normally means it IS dead — this sentence is for the one case where the server
+ * could not prove it, and it is said in the same words wherever a stop is
+ * offered.
+ */
+export const STOP_TIMEOUT = 'stop timed out — the process may still be running'
+
 /** Inspector gate rail: why the pipeline is sitting still. */
 export const GATE_EXPLAINER =
   'Gates are the human approval points — runcastle stops at one and waits for you.'

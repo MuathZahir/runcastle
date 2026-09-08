@@ -16,7 +16,7 @@ import {
   runHeadline,
 } from '../../lib/feature-ui'
 import { fmtDuration, shortSha } from '../../lib/format'
-import { BURN_EXPLAINER } from '../../lib/vocabulary'
+import { BURN_EXPLAINER, STOP_TIMEOUT } from '../../lib/vocabulary'
 import { EmptyState } from '../../ui'
 import { IconTerminal } from '../../icons'
 import { ErrorBoundary } from '../ErrorBoundary'
@@ -48,14 +48,6 @@ import { RunTimeline } from '../run/RunTimeline'
  * ledger, which by then has moved on — every control is withheld, and nothing
  * polls, because a finished run has nothing left to say.
  */
-/**
- * What a stop says when it could not prove the agent died. Stop and Cancel run
- * both wait for the kill to be confirmed, so a resolved mutation normally means
- * dead — this is the one case where it does not, and saying nothing here is
- * exactly the silent lie the stop path used to tell.
- */
-const STOP_TIMEOUT = 'stop timed out — the process may still be running'
-
 export function RunBody({
   featureId,
   runId,
