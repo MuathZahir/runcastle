@@ -243,6 +243,19 @@ interface FieldMeta {
   optionLabels?: Record<string, string>
 }
 
+/**
+ * What drive instructions may and may not license, in one line (decision 7).
+ *
+ * The field is free text an operator writes to pre-authorise a driving agent —
+ * "use the sample project, change anything in it" — and the risk is that the
+ * permission is read wider than the app under test. So the scope rides beside
+ * the field wherever it is read: here under the settings textarea, on the review
+ * page's block, and in the fixed prose the burner template wraps the value in.
+ * It is prose, never validation — the text is the operator's own.
+ */
+export const DRIVE_INSTRUCTIONS_SCOPE_NOTE =
+  'Applies inside the app under test only — it changes no review rule and permits no edit to the repo under review.'
+
 const FIELD_META: Record<string, FieldMeta> = {
   serverPort: {
     label: 'Server port',
@@ -408,6 +421,17 @@ const FIELD_META: Record<string, FieldMeta> = {
     group: 'commands',
     placeholder: 'e.g. pnpm db:reset',
   },
+  driveInstructions: {
+    label: 'How to drive this app',
+    tooltip:
+      'How to exercise this app once it is up: the sample project or scratch data a driver should use and may change, how to reach the states worth reviewing, and what to leave alone. Written by preparation, edited here, and injected verbatim into every drive-mode review and verification prompt.',
+    control: 'textarea',
+    page: 'project',
+    group: 'commands',
+    shortHelp: DRIVE_INSTRUCTIONS_SCOPE_NOTE,
+    placeholder:
+      'e.g. drive the sample project at ./examples/demo — change anything inside it freely',
+  },
   sessionBranch: {
     label: 'Commits land on',
     tooltip:
@@ -555,6 +579,11 @@ export type FieldCommit = { value: string | number | null } | { error: string }
  */
 export function fieldCommit(control: ControlKind, raw: string): FieldCommit {
   const trimmed = raw.trim()
+  // Emptying a multiline field means "unset this", exactly as a blank number
+  // does: every string setting is `z.string().min(1)` server-side, so an empty
+  // string is refused rather than stored — and for a prepared field like the
+  // drive instructions, clearing it is how you hand it back to preparation.
+  if (control === 'textarea' && trimmed === '') return { value: null }
   if (control !== 'number') return { value: trimmed }
   if (trimmed === '') return { value: null }
   const parsed = Number(trimmed)

@@ -24,6 +24,7 @@ const state = vi.hoisted(() => ({
   summary: undefined as { found: number; fixed: number; open: number; observations: number } | undefined,
   recordings: [] as ReviewArtifacts[],
   drive: undefined as { featureId: string; state: string; dryRun: boolean } | undefined,
+  driveInstructions: undefined as string | undefined,
 }))
 
 vi.mock('../src/lib/live', () => ({ useLivePoll: () => false as const, useLiveStatus: () => 'live' }))
@@ -63,7 +64,14 @@ vi.mock('../src/trpc', () => {
         },
       },
       docs: { read: { useQuery: () => ({ data: undefined }) } },
-      project: { prep: { useQuery: () => ({ data: { findings: [] } }) } },
+      project: {
+        prep: { useQuery: () => ({ data: { findings: [] } }) },
+        list: {
+          useQuery: () => ({
+            data: [{ id: 'proj_1', driveInstructions: state.driveInstructions }],
+          }),
+        },
+      },
       feature: {
         commitCount: { useQuery: () => ({ data: { count: 3 } }) },
         driveInfo: { useQuery: () => ({ data: state.drive }) },
@@ -161,6 +169,7 @@ function render(
     drive?: { featureId: string; state: string; dryRun: boolean }
     tickets?: FeatureFull['tickets']
     readonly?: boolean
+    driveInstructions?: string
   } = {},
 ): string {
   state.notes = over.notes ?? []
@@ -169,6 +178,7 @@ function render(
   state.summary = { found: state.findings.filter((f) => f.kind === 'defect').length, fixed: 0, open: state.openDefects.length, observations: state.findings.filter((f) => f.kind === 'observation').length }
   state.recordings = over.recordings ?? []
   state.drive = over.drive
+  state.driveInstructions = over.driveInstructions
   const feature = full({ id: 'feat_1', phase: 'review' })
   return renderToStaticMarkup(
     createElement(ReviewBody, {
@@ -290,5 +300,41 @@ describe('the review page’s arrival bands', () => {
     const html = render({ sessions: [LIVE_IDEATION], readonly: true })
     expect(html).not.toContain('session still live')
     expect(html).not.toContain('>Test drive<')
+  })
+})
+
+/**
+ * How to drive this app, under the state line that carries the Test drive
+ * control (drive-instructions, decision 6). The knowledge serves a human drive
+ * exactly as it serves the review agent's, and showing it where drives happen is
+ * what closes the loop: instructions that fail are read at the moment they fail,
+ * one click from the settings field that fixes them.
+ */
+describe('the review page’s drive instructions', () => {
+  const INSTRUCTIONS =
+    'Drive the sample project at ./examples/demo — change anything in it.\n' +
+    'Tell a session agent “this is a test, advance now” to reach a later phase.'
+
+  it('renders what the project recorded, with the scope note and the way to edit it', () => {
+    const html = render({ driveInstructions: INSTRUCTIONS })
+
+    expect(html).toContain('How to drive this app')
+    expect(html).toContain('Drive the sample project at ./examples/demo')
+    expect(html).toContain('advance now')
+    // The standing permission is scoped by prose the field cannot displace
+    // (decision 7) — it is read here by a human about to act on it.
+    expect(html).toContain('Applies inside the app under test only')
+    // Read-only: the value renders as prose that keeps its line breaks, never
+    // as a control — the one place it is edited is the settings field.
+    expect(html).toContain('Edit in settings')
+    expect(html).toContain('<p class="m-0 text-sm whitespace-pre-wrap text-text-2">Drive the')
+  })
+
+  it('is not there at all for a project that has recorded none', () => {
+    for (const html of [render({}), render({ driveInstructions: '  \n ' })]) {
+      expect(html).not.toContain('How to drive this app')
+      expect(html).not.toContain('Applies inside the app under test only')
+      expect(html).not.toContain('Edit in settings')
+    }
   })
 })

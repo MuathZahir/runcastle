@@ -3,6 +3,7 @@ import {
   customModelCommit,
   customModelsFromView,
   describeField,
+  DRIVE_INSTRUCTIONS_SCOPE_NOTE,
   effectiveStepModel,
   fieldCommit,
   filterSettings,
@@ -381,6 +382,14 @@ describe('fieldCommit', () => {
       value: 'bun test\nbun run typecheck',
     })
   })
+
+  // Emptying a multiline field is how it is unset: every string setting is
+  // `z.string().min(1)` server-side, so '' would come back as a refusal rather
+  // than as the clear the human just made.
+  it('sends an emptied multiline field as an unset, not as an empty string', () => {
+    expect(fieldCommit('textarea', '')).toEqual({ value: null })
+    expect(fieldCommit('textarea', '  \n ')).toEqual({ value: null })
+  })
 })
 
 /**
@@ -431,6 +440,7 @@ const projectView = (over: Record<string, Partial<SettingField>> = {}): Settings
         { key: 'dbResetCommand', value: null, scope: 'project', source: 'default' },
         { key: 'driveSetupCommand', value: null, scope: 'project', source: 'default' },
         { key: 'driveStopCommand', value: null, scope: 'project', source: 'default' },
+        { key: 'driveInstructions', value: null, scope: 'project', source: 'default' },
       ] satisfies Partial<SettingField>[]
     ).map((f) => ({ ...f, ...over[f.key] })),
     'proj_1',
@@ -489,6 +499,7 @@ describe('pageRows — one page per task', () => {
       'driveSetupCommand',
       'driveStopCommand',
       'dbResetCommand',
+      'driveInstructions',
       'sessionBranch',
     ])
     expect(rows.map((r) => r.group)).toEqual([
@@ -501,8 +512,27 @@ describe('pageRows — one page per task', () => {
       'commands',
       'commands',
       'commands',
+      'commands',
       'chat',
     ])
+  })
+
+  /**
+   * How to drive this app is prose, not a command: a multiline control, and the
+   * one short line that says how far the operator's standing permission reaches
+   * — the field is read by an agent about to act on it (decision 7).
+   */
+  it('gives the drive instructions a textarea and the scope note under it', () => {
+    const row = pageRows(projectView(), 'project').find((r) => r.key === 'driveInstructions')
+    expect(row?.control).toBe('textarea')
+    expect(row?.shortHelp).toBe(DRIVE_INSTRUCTIONS_SCOPE_NOTE)
+    expect(DRIVE_INSTRUCTIONS_SCOPE_NOTE).toBe(
+      'Applies inside the app under test only — it changes no review rule and permits no edit to the repo under review.',
+    )
+    // Project-only: there is no machine-wide twin to inherit from, so no chip
+    // and no ghost — how to drive an app is a fact about one repo.
+    expect(row?.sourceChip).toBeUndefined()
+    expect(row?.ghostValue).toBeUndefined()
   })
 
   it('reads the project scope out of the global default model’s name', () => {
@@ -521,6 +551,7 @@ describe('pageRows — one page per task', () => {
     expect(placeholder('driveSetupCommand')).toBe('e.g. docker compose up -d && pnpm db:migrate')
     expect(placeholder('driveStopCommand')).toBe('e.g. docker compose down')
     expect(placeholder('dbResetCommand')).toBe('e.g. pnpm db:reset')
+    expect(placeholder('driveInstructions')).toContain('e.g. drive the sample project')
     expect(placeholder('sessionBranch')).toBe('main (detected)')
   })
 
