@@ -36,7 +36,7 @@ import {
   modelRoster,
   nextGate,
   nextPhase,
-  WITHHELD_FEATURE_DOCS,
+  withheldFeatureDocs,
 } from '@runcastle/core'
 import { featureDocsRel } from '@runcastle/core/paths'
 import { Hono } from 'hono'
@@ -54,6 +54,7 @@ import {
   list as listFeatures,
   quickChange,
 } from '../services/features'
+import { type CarriedDefect, carriedWork } from '../services/carried-work'
 import { emit, emitForSession, emitProject, latestEventTs } from '../services/events'
 import { isOverwritable, recordFinding } from '../services/findings'
 import { reportFinding } from '../services/review-findings'
@@ -260,8 +261,9 @@ export interface FeatureDocRef {
   bytes: number
   /**
    * Why it was left out, for the docs the contract withholds by name
-   * (`WITHHELD_FEATURE_DOCS`). Absent for an ordinary uncanonical doc — those
-   * are simply not part of the digest, which is not the same as discouraged.
+   * (`withheldFeatureDocs`). Absent for an ordinary uncanonical doc — those are
+   * simply not part of the digest, which is not the same as discouraged — and
+   * absent for `test-notes.md` while carried work makes its reason untrue.
    */
   withheld?: string
 }
@@ -300,6 +302,16 @@ export interface FeatureContext {
   moreDocs: FeatureDocRef[]
   /** Says, in the payload itself, that `moreDocs` is fetchable rather than gone. */
   docsNote: string
+  /**
+   * The defects this feature's review left open, each with the fields a session
+   * needs to act on it. They live only in the `review_findings` table — no doc
+   * renders them — so before this they reached a new lap through no channel at
+   * all, and a lap launched BECAUSE of them opened unable to name one.
+   *
+   * Empty for a feature with nothing open, which is every feature outside a
+   * review iteration.
+   */
+  openDefects: CarriedDefect[]
   tickets: FeatureContextTicket[]
   /**
    * The models the operator annotated with a use-case note, and the only ones a
@@ -342,6 +354,12 @@ const DOCS_NOTE =
 export function featureContext(ctx: AppCtx, reader: FeatureReader): FeatureContext {
   const feature = getFeatureRow(ctx, reader.featureId)
 
+  // The carry channel decides two things here: which defects the payload states
+  // outright, and whether `test-notes.md` may still claim to be already-triaged
+  // (it may not, once a note was carried rather than triaged).
+  const carried = carriedWork(ctx, feature.id)
+  const withheldDocs = withheldFeatureDocs({ carriedNotesOpen: carried.carriedNotes > 0 })
+
   const docs: { relPath: string; content: string }[] = []
   const moreDocs: FeatureDocRef[] = []
   for (const summary of listDocs(ctx, feature)) {
@@ -355,7 +373,7 @@ export function featureContext(ctx: AppCtx, reader: FeatureReader): FeatureConte
       docs.push({ relPath: summary.relPath, content })
       continue
     }
-    const withheld = WITHHELD_FEATURE_DOCS[summary.relPath.toLowerCase()]
+    const withheld = withheldDocs[summary.relPath.toLowerCase()]
     moreDocs.push({
       relPath: summary.relPath,
       title: summary.title,
@@ -372,6 +390,7 @@ export function featureContext(ctx: AppCtx, reader: FeatureReader): FeatureConte
     docs,
     moreDocs,
     docsNote: DOCS_NOTE,
+    openDefects: carried.openDefects,
     tickets: listByFeature(ctx, feature.id).map(stripDigest),
     annotatedModels: annotatedModels(ctx),
   }

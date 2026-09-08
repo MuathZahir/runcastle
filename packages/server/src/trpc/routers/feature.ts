@@ -9,6 +9,7 @@ import {
   workWaypoint,
 } from '../../launcher/launcher'
 import { lapKickoff } from '../../launcher/sessions'
+import { carriedWork } from '../../services/carried-work'
 import { emit, listAfter } from '../../services/events'
 import * as features from '../../services/features'
 import { overrideGate, undoGateOverride } from '../../services/gates'
@@ -137,7 +138,7 @@ export const featureRouter = router({
         launchSession(ctx, {
           featureId: input.featureId,
           kind: 'revisit',
-          kickoffLine: lapKickoff(feature.lap),
+          kickoffLine: lapKickoff(feature.lap, carriedWork(ctx, input.featureId)),
         }),
       ),
     ),

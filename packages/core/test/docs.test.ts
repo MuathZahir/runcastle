@@ -4,6 +4,7 @@ import {
   WITHHELD_FEATURE_DOCS,
   agentDigestDocOrder,
   isAgentDigestDoc,
+  withheldFeatureDocs,
 } from '../src/docs'
 
 /**
@@ -60,6 +61,17 @@ describe('WITHHELD_FEATURE_DOCS', () => {
     for (const name of Object.keys(WITHHELD_FEATURE_DOCS)) {
       expect(isAgentDigestDoc(name)).toBe(false)
     }
+  })
+
+  // "already triaged into this lap's tickets" is false of a note that was
+  // CARRIED rather than triaged, and a lap session that believed it never
+  // opened the file holding the work it was launched to address.
+  it('stops withholding test-notes.md while carried notes make its reason untrue', () => {
+    const withCarried = withheldFeatureDocs({ carriedNotesOpen: true })
+    expect(withCarried['test-notes.md']).toBeUndefined()
+    expect(withCarried['outcome.md']).toBe(WITHHELD_FEATURE_DOCS['outcome.md'])
+    expect(withCarried['findings.md']).toBe(WITHHELD_FEATURE_DOCS['findings.md'])
+    expect(withheldFeatureDocs({ carriedNotesOpen: false })).toEqual(WITHHELD_FEATURE_DOCS)
   })
 })
 
