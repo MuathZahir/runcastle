@@ -56,6 +56,7 @@ import {
 } from '../services/features'
 import { emit, emitForSession, emitProject, latestEventTs } from '../services/events'
 import { isOverwritable, recordFinding } from '../services/findings'
+import { checkGate } from '../services/gates'
 import { reportFinding } from '../services/review-findings'
 import * as git from '../services/git'
 import type { AdrDoc } from '../services/knowledge'
@@ -699,6 +700,20 @@ export function toolCompletePhase(
   // The feature parks at `tickets`, waiting on the human.
   const gate = nextGate(feature)
   if (gate?.id === 'G3') {
+    // The crossing waits for the human, but the gate's PRECONDITIONS are checked
+    // here — a session whose lap has no `kind: "review"` ticket has to hear that
+    // now, while it is still alive to emit one. Reporting "waiting on human
+    // burn" instead would park the lap on a Burn click that refuses it anyway,
+    // with the session long gone.
+    const result = checkGate(ctx, gate.check, feature)
+    if (!result.satisfied) {
+      const req = requirement(gate)
+      return {
+        ok: false,
+        reason: result.reason ?? `gate ${gate.id} not satisfied`,
+        ...(req ? { gate: req } : {}),
+      }
+    }
     const next = nextPhase(feature) ?? 'implementation'
     emit(ctx, feature.id, {
       type: 'tickets.awaiting_burn',

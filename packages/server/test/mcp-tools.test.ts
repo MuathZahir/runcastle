@@ -368,7 +368,7 @@ describe('mcp tools', () => {
     const project = seedProject(ctx, repoPath)
     const feat = seedFeature(ctx, project.id, { slug: 'burn-me', phase: 'tickets' })
     const s = createSessionRow(ctx, { featureId: feat.id, kind: 'ideation', worktreePath: repoPath })
-    storeTickets(ctx, feat.id, [ticket('only')])
+    storeTickets(ctx, feat.id, [ticket('only'), { ...ticket('Review it'), kind: 'review' }])
 
     const out = toolCompletePhase(ctx, s, { phase: 'tickets' })
     expect(out).toEqual({
@@ -384,6 +384,29 @@ describe('mcp tools', () => {
     // an "awaiting burn" note lands on the timeline
     const types = listAfter(ctx, feat.id, 0).map((e) => e.type)
     expect(types).toContain('tickets.awaiting_burn')
+  })
+
+  it('complete_phase(tickets) refuses a lap with no review ticket instead of parking it', () => {
+    // The session is the last actor that can still fix this: it is alive, it
+    // authored the tickets, and it can emit the missing one. Answering
+    // "waiting on human burn" would hand the lap to a Burn click that refuses.
+    const project = seedProject(ctx, repoPath)
+    const feat = seedFeature(ctx, project.id, { slug: 'no-review', phase: 'tickets' })
+    const s = createSessionRow(ctx, { featureId: feat.id, kind: 'ideation', worktreePath: repoPath })
+    storeTickets(ctx, feat.id, [ticket('build it')])
+
+    const out = toolCompletePhase(ctx, s, { phase: 'tickets' })
+    expect(out.ok).toBe(false)
+    if (!out.ok) {
+      expect(out.reason).toMatch(/no review ticket on this lap/)
+      expect(out.gate).toEqual({
+        id: 'G3',
+        description: expect.any(String),
+        check: 'tickets-approved',
+      })
+    }
+    expect(getFeatureRow(ctx, feat.id).phase).toBe('tickets')
+    expect(listAfter(ctx, feat.id, 0).map((e) => e.type)).not.toContain('tickets.awaiting_burn')
   })
 
   it('a review ticket emitted in a LATER call still satisfies G3 at complete_phase(tickets)', () => {
