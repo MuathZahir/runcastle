@@ -4,6 +4,19 @@ import type { NextStep } from './types'
 
 export function resolveTickets(input: ResolverInput): NextStep {
   const { full, live, lapTicketCount: count } = input
+  const { feature } = full
+  // Tickets land before the session is done with them: it emits placeholder
+  // contexts and enriches each afterwards, so the ledger on screen is not yet
+  // what a burn would run. The server refuses the click until
+  // `complete_phase(tickets)` stamps the lap — this only reflects that, and
+  // reflects its escape hatch too: with no session alive there is nothing left
+  // to race, so the button arms as it always did.
+  const ready = feature.ticketsReadyLap === feature.lap || !live
+  if (count > 0 && !ready) return step(
+    'WAITING',
+    'Finishing the tickets',
+    'The session is finishing the tickets — enriching them, then closing out the phase. Burn arms the moment it does.',
+  )
   if (count > 0) return {
     kick: 'NEXT STEP',
     title: 'Review the tickets, then burn',
