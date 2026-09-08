@@ -469,16 +469,36 @@ export function triagePreview(ctx: AppCtx, featureId: string) {
 }
 
 /**
+ * The line a carried note gets in the `## Carried, still open` section, which
+ * names the capture lap the section itself no longer implies.
+ */
+function carriedLine(note: TestNote): string {
+  return `- [→] ${note.text} (captured lap ${note.lap}, carried into lap ${note.carriedLap})${screenshotSuffix(note)}`
+}
+
+/**
  * Regenerate `docs/features/<slug>/test-notes.md` from the full row set. The
  * format — `## Lap N` sections ascending, one checkbox line per note in capture
  * order — is what the lap-session kickoff and the revisit skill already expect
  * to read, so it is a contract, not a presentation choice.
+ *
+ * `## Carried, still open` leads, above those sections, and is the pointer every
+ * lap briefing uses. It is keyed on STATUS: a note carried into lap 2 and then
+ * skipped there is still carried at lap 3, but its `carriedLap` still says 2, so
+ * a reader sent to "the lap 2 section" would never see it again. The capture-lap
+ * sections keep every note in the order it was written; this one answers the
+ * only question a new lap asks.
  */
 function renderTestNotes(ctx: AppCtx, feature: Feature): void {
   const notes = listByFeature(ctx, feature.id)
   const laps = [...new Set(notes.map((n) => n.lap))].sort((a, b) => a - b)
 
   const lines = ['# Test notes']
+  const carried = notes.filter((note) => note.status === 'carried')
+  if (carried.length) {
+    lines.push('', '## Carried, still open', '')
+    for (const note of carried) lines.push(carriedLine(note))
+  }
   for (const lap of laps) {
     lines.push('', `## Lap ${lap}`, '')
     for (const note of notes.filter((n) => n.lap === lap)) lines.push(noteLine(ctx, note))

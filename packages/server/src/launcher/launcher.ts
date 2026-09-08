@@ -23,6 +23,7 @@ import { runs } from '../db/schema'
 import { GateError, isNotImplemented } from '../errors'
 import { endSession } from '../pty/end-session'
 import { ptyRegistry } from '../pty/registry'
+import { carriedWork } from '../services/carried-work'
 import { startDocsWatch } from '../services/docs-watch'
 import { emit, emitForSession, emitProject } from '../services/events'
 import { checkGate, overrideGate, undoLastGateOverride } from '../services/gates'
@@ -377,6 +378,11 @@ export async function launchSession(
   // already this module's import, so "does lap N have tickets" costs nothing
   // extra and, unlike a kickoff string, it is still true tomorrow. See
   // `lapInFlight` for the stranding bug this closes.
+  //
+  // What the last lap handed this one rides along with it: the same counts brief
+  // the kickoff line and the injected prompt, so a lap opens knowing its agenda
+  // whichever door it came through.
+  const carried = carriedWork(ctx, feature.id)
   const plan = planKickoff({
     kind: input.kind,
     lap: feature.lap,
@@ -386,6 +392,7 @@ export async function launchSession(
       phase: feature.phase,
       ticketLaps: listTicketsByFeature(ctx, feature.id).map((t) => t.lap),
     }),
+    carried,
   })
 
   // A waypoint session claims its waypoint BEFORE spawning (SPEC §13.2). The
@@ -534,6 +541,7 @@ export async function launchSession(
     config: ctx.config,
     waypoint,
     lap: plan.lap,
+    carried: plan.lap === undefined ? undefined : carried,
     purpose: input.purpose,
     worktreePath,
     serverUrl: serverUrlFor(ctx.config),

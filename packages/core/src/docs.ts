@@ -50,6 +50,34 @@ export const WITHHELD_FEATURE_DOCS: Readonly<Record<string, string>> = {
   'findings.md': 'a finished findings report; read it only if a ticket points at it',
 }
 
+/** Feature state the withhold decision depends on — see {@link withheldFeatureDocs}. */
+export interface FeatureDocsState {
+  /**
+   * Does the feature have at least one note carried and not yet done, in any
+   * lap? Status-keyed rather than lap-keyed, because a note the next lap skips
+   * stays carried and must keep surfacing at the lap after that.
+   */
+  carriedNotesOpen: boolean
+}
+
+/**
+ * {@link WITHHELD_FEATURE_DOCS} narrowed to what is actually true of THIS
+ * feature right now.
+ *
+ * Only `test-notes.md` is conditional, and its stated reason is why: "already
+ * triaged into this lap's tickets" is a lie the moment a note was carried
+ * instead of triaged. A lap session that was handed that reason believed it and
+ * never opened the file that held the very notes it was launched to address, so
+ * when carried work exists the doc is not withheld at all.
+ *
+ * Pure: the caller looks the state up and passes it, so core stays IO-free.
+ */
+export function withheldFeatureDocs(state: FeatureDocsState): Readonly<Record<string, string>> {
+  if (!state.carriedNotesOpen) return WITHHELD_FEATURE_DOCS
+  const { 'test-notes.md': _carried, ...rest } = WITHHELD_FEATURE_DOCS
+  return rest
+}
+
 /**
  * True when `relPath` is one of the canonical docs an agent digest inlines.
  * Compared case-insensitively against the bare filename, so it is safe to call

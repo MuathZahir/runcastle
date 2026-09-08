@@ -13,6 +13,7 @@ import type {
 } from '@runcastle/core'
 import { DEFAULT_RUNTIME, DRIVE_LOOP_KEYS } from '@runcastle/core'
 import { featureDocsRel, sessionDir } from '@runcastle/core/paths'
+import { type CarriedWork, carriedWorkSummary } from '../services/carried-work'
 import type { DriveHookFailure } from '../services/drive-hooks'
 import type { BranchDelta } from '../services/git'
 import { ASSET_ENV, resolveAsset } from './asset-paths'
@@ -66,6 +67,12 @@ export interface WriteArtifactsInput {
    * `phase === 'review'` and by then the phase had moved).
    */
   lap?: number
+  /**
+   * What the previous lap carried into this one — stated in a lap briefing so
+   * the session opens knowing its agenda rather than being pointed at it. Read
+   * from the DB by the launcher; absent for every session that is not a lap.
+   */
+  carried?: CarriedWork
   /**
    * The runtime this session's agent runs on, which decides how the briefing
    * spells a skill invocation (see {@link skillRef}) — a Codex session told to
@@ -163,11 +170,12 @@ export function renderSystemPrompt(
   lap?: number,
   purpose?: SessionPurpose,
   runtime: AgentRuntime = DEFAULT_RUNTIME,
+  carried?: CarriedWork,
 ): string {
-  if (lap !== undefined) return renderRevisitPrompt(feature, lap, purpose, runtime)
+  if (lap !== undefined) return renderRevisitPrompt(feature, lap, purpose, runtime, carried)
   if (kind === 'waypoint') return renderWaypointPrompt(feature, waypoint, runtime)
   if (kind === 'converge') return renderConvergePrompt(feature, runtime)
-  if (kind === 'revisit') return renderRevisitPrompt(feature, lap, purpose, runtime)
+  if (kind === 'revisit') return renderRevisitPrompt(feature, lap, purpose, runtime, carried)
   if (kind === 'qa') return renderQaPrompt(feature, runtime)
 
   const docs = featureDocsRel(feature.slug) // docs/features/<slug>
@@ -389,6 +397,7 @@ export function renderRevisitPrompt(
   lap?: number,
   purpose?: SessionPurpose,
   runtime: AgentRuntime = DEFAULT_RUNTIME,
+  carried?: CarriedWork,
 ): string {
   // Mutually exclusive briefings: a lap says "complete_phase through ideation →
   // spec → tickets", a conflict resolution says "you DO write code here and the
@@ -404,18 +413,35 @@ export function renderRevisitPrompt(
     )
   }
   const docs = featureDocsRel(feature.slug)
+  const carriedSummary = carriedWorkSummary(carried)
   const lapIteration = lap
     ? [
-        // Per-session FACTS only — which lap, which sections carry its inputs,
-        // and the licence to advance. The lap procedure itself lives in
-        // `revisit/SKILL.md`, which is loaded before any of this is acted on; a
-        // second copy here is a second thing to keep true.
+        // Per-session FACTS only — which lap, which work it carries, where that
+        // work is written, and the licence to advance. The lap procedure itself
+        // lives in `revisit/SKILL.md`, which is loaded before any of this is
+        // acted on; a second copy here is a second thing to keep true.
         `## This is lap ${lap}`,
         `You are running **lap ${lap}** of this feature (ADR-0010): the human test-drove what`,
-        `lap ${lap - 1} burned and came back with what it taught them. Its inputs, both`,
-        'OPTIONAL — a missing one is normal, not an error:',
-        `- \`${docs}/test-notes.md\`, section \`## Lap ${lap - 1}\` — what the drive surfaced.`,
-        `- \`${docs}/spec.md\`, section \`## Later laps\` — scope parked by earlier laps.`,
+        `lap ${lap - 1} burned and came back with what it taught them.`,
+        ...(carriedSummary
+          ? [
+              // The counts before the pointers: a session that knows how much is
+              // waiting reads the sources for it, where one told its inputs "may
+              // not exist" reads them for reassurance and stops at the first miss.
+              `**${carriedSummary} — address them.** They are this lap's opening agenda:`,
+              `- \`${docs}/test-notes.md\`, section \`## Carried, still open\` — every note carried`,
+              '  and not yet done, whatever lap captured it. It exists; read it.',
+              '- `get_feature_context` → `openDefects` — each open defect with its title,',
+              '  location, detail and repro step.',
+              `- \`${docs}/spec.md\`, section \`## Later laps\` — scope parked by earlier laps,`,
+              '  OPTIONAL; a missing one is normal, not an error.',
+            ]
+          : [
+              'Its inputs, both OPTIONAL — a missing one is normal, not an error:',
+              `- \`${docs}/test-notes.md\`, section \`## Carried, still open\` — every note carried`,
+              '  and not yet done, whatever lap captured it.',
+              `- \`${docs}/spec.md\`, section \`## Later laps\` — scope parked by earlier laps.`,
+            ]),
         `New decisions go under a \`## Lap ${lap}\` heading in \`${docs}/decisions.md\`.`,
         '',
         'Unlike an ordinary revisit a lap MOVES the pipeline, and only this session will:',
@@ -1151,10 +1177,12 @@ export function renderRunMcpConfig(runId: string, config: RuncastleConfig): McpC
  * its home dir. Same prose, two destinations.
  */
 export function renderSessionPrompt(input: WriteArtifactsInput): string {
-  const { session, feature, waypoint, prepare, projectBrief, driveFix, lap, purpose, runtime } =
+  const { session, feature, waypoint, prepare, projectBrief, driveFix, lap, purpose, runtime, carried } =
     input
   if (driveFix) return renderDriveFixPrompt(driveFix)
-  if (feature) return renderSystemPrompt(feature, session.kind, waypoint, lap, purpose, runtime)
+  if (feature) {
+    return renderSystemPrompt(feature, session.kind, waypoint, lap, purpose, runtime, carried)
+  }
   if (prepare) return renderPreparePrompt(prepare)
   if (projectBrief) return renderProjectPrompt(projectBrief, runtime)
   throw new Error(`session ${session.id} has no feature and no project-session brief`)
