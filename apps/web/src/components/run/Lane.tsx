@@ -90,6 +90,7 @@ export function Lane({
   model,
   defectTitle,
   busy,
+  stopping,
   terminalBlocked,
   onRetry,
   onRetryFresh,
@@ -114,6 +115,12 @@ export function Lane({
   /** The defect this lane exists to fix, when it is one of a review-fix wave. */
   defectTitle?: string
   busy?: boolean
+  /**
+   * This lane's stop is in flight. It resolves only once the agent's process is
+   * confirmed dead, so the wait is the honest state to show: the button says
+   * what is happening rather than reading "stopped" over a process still alive.
+   */
+  stopping?: boolean
   terminalBlocked?: boolean
   onRetry?: () => void
   onRetryFresh?: () => void
@@ -289,7 +296,7 @@ export function Lane({
               title="stop this ticket's agent — other lanes keep burning; committed work is preserved for retry"
               onClick={onStop}
             >
-              Stop ticket
+              {stopping ? 'Stopping…' : 'Stop ticket'}
             </Button>
           )}
         </div>

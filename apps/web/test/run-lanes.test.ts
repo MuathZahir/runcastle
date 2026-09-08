@@ -175,6 +175,28 @@ describe('Lane', () => {
     expect(html).toContain('Stop ticket')
   })
 
+  /**
+   * A stop waits for the agent's process to be confirmed dead, which takes a
+   * beat. The button holds that beat rather than letting the lane read stopped
+   * over something still running.
+   */
+  it('says Stopping… on the lane whose stop is in flight', () => {
+    const html = laneHtml({
+      ticket: row({ seq: 1, status: 'burning' }),
+      onStop: () => {},
+      busy: true,
+      stopping: true,
+    })
+    expect(html).toContain('Stopping…')
+    expect(html).not.toContain('Stop ticket<')
+  })
+
+  it('leaves the other lanes reading Stop ticket while one of them is stopping', () => {
+    const html = laneHtml({ ticket: row({ seq: 2, status: 'burning' }), onStop: () => {}, busy: true })
+    expect(html).toContain('Stop ticket')
+    expect(html).not.toContain('Stopping…')
+  })
+
   it('chips the first commit of a done lane', () => {
     const html = laneHtml({
       ticket: row({ seq: 1, status: 'done', commits: ['0123456789abcdef', 'fedcba9876543210'] }),
@@ -279,6 +301,23 @@ describe('RunHeader', () => {
     expect(html).toContain('Burning 3 tickets · +2 fixes from review · 2 done · 1 stopped')
     expect(html).toContain('4m 10s')
     expect(html).toContain('Cancel run')
+  })
+
+  it('says Stopping… while the cancel waits for the run’s agents to die', () => {
+    const html = renderToStaticMarkup(
+      createElement(RunHeader, {
+        headline: 'Burning 3 tickets',
+        elapsed: '4m 10s',
+        burning: 3,
+        busy: true,
+        cancelling: true,
+        onCancelRun: () => {},
+      }),
+    )
+    expect(html).toContain('Stopping…')
+    // The confirmation dialog is closed by then, so the only "Cancel run" left
+    // would be the button itself.
+    expect(html).not.toContain('Cancel run')
   })
 
   it('drops the cancel control when nothing is running', () => {

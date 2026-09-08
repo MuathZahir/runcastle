@@ -48,6 +48,14 @@ import { RunTimeline } from '../run/RunTimeline'
  * ledger, which by then has moved on — every control is withheld, and nothing
  * polls, because a finished run has nothing left to say.
  */
+/**
+ * What a stop says when it could not prove the agent died. Stop and Cancel run
+ * both wait for the kill to be confirmed, so a resolved mutation normally means
+ * dead — this is the one case where it does not, and saying nothing here is
+ * exactly the silent lie the stop path used to tell.
+ */
+const STOP_TIMEOUT = 'stop timed out — the process may still be running'
+
 export function RunBody({
   featureId,
   runId,
@@ -190,6 +198,9 @@ export function RunBody({
           ticket.originFindingId ? defectTitles.get(ticket.originFindingId) : undefined
         }
         busy={busy}
+        // Every lane is `busy` while any mutation runs; only the one being
+        // stopped is stopping.
+        stopping={stop.isPending && stop.variables?.ticketId === ticket.id}
         terminalBlocked={terminalBlocked}
         onCopySha={copySha}
         onRetry={() =>
@@ -234,6 +245,10 @@ export function RunBody({
                   )
                 } else if (!r.stopped) {
                   toast.push('no live agent for this ticket (already finishing?)', 'info')
+                } else if (!r.confirmed) {
+                  // The kill ran out of time. The lane will still read stopped,
+                  // so this is the only place the human hears that it may not be.
+                  toast.push(STOP_TIMEOUT)
                 }
               },
             },
@@ -297,10 +312,19 @@ export function RunBody({
         status={run.data?.status}
         burning={burning}
         busy={busy}
+        cancelling={cancelRun.isPending}
         onCancelRun={
           frozen || !runId || run.data?.status !== 'running'
             ? undefined
-            : () => cancelRun.mutate({ runId })
+            : () =>
+                cancelRun.mutate(
+                  { runId },
+                  {
+                    onSuccess: (r) => {
+                      if (!r.confirmed) toast.push(STOP_TIMEOUT)
+                    },
+                  },
+                )
         }
         runs={runs.data ?? []}
         selectedRunId={shownRunId}
