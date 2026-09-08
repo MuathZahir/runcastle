@@ -520,6 +520,14 @@ export const Feature = z.object({
    * those stamps — there is no laps table.
    */
   lap: z.number(),
+  /**
+   * The lap whose tickets the talk session declared finished (via
+   * `complete_phase({phase:"tickets"})`). The first burn out of the `tickets`
+   * phase waits for this to equal {@link lap}, so a Burn click cannot land
+   * while the session is still emitting and enriching; null until a session
+   * completes a tickets phase, and stale-by-construction on the next lap.
+   */
+  ticketsReadyLap: z.number().nullable(),
   phase: Phase,
   branch: z.string(),
   /**

@@ -37,6 +37,7 @@ export function rowToFeature(row: FeatureSelect): Feature {
     brief: row.brief ?? undefined,
     mapped: row.mapped,
     lap: row.lap,
+    ticketsReadyLap: row.ticketsReadyLap,
     phase: row.phase,
     branch: row.branch,
     baseBranch: row.baseBranch ?? undefined,
