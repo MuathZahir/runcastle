@@ -257,6 +257,17 @@ export function Workspace({
     onSuccess: invalidate,
     onError: (e) => toast.push(e.message),
   })
+  // "Continue to review" (decision 11b): the honest exit from a burn whose lanes
+  // are all terminal and partly landed. It crosses the gate the phase is sitting
+  // behind, so — like every other phase-crossing mutation here — the view snaps
+  // back to live, or the human is left pinned on the phase they just left.
+  const advance = trpc.feature.advance.useMutation({
+    onSuccess: () => {
+      invalidate()
+      onViewPhase(null)
+    },
+    onError: (e) => toast.push(e.message),
+  })
   // Iterate is the review verb that starts the next lap (ADR-0010 §3; the
   // procedure keeps its `rethink` name so the timeline stays continuous): the
   // server bumps the lap, drops the feature back to ideation and opens the lap
@@ -456,6 +467,7 @@ export function Workspace({
     burn.isPending ||
     converge.isPending ||
     workWaypoint.isPending ||
+    advance.isPending ||
     rethink.isPending ||
     cancel.isPending ||
     testDrive.isPending ||
@@ -570,6 +582,9 @@ export function Workspace({
       case 'burn':
         burn.mutate({ featureId })
         break
+      case 'advance':
+        advance.mutate({ featureId })
+        break
       case 'cancelRun':
         if (run) cancel.mutate({ runId: run.id })
         break
@@ -634,6 +649,11 @@ export function Workspace({
       case 'resolveConflict':
         if (conflict) void resolveConflict.resolve(conflict, liveSession?.id)
         break
+      // A kind with no case above is a button that does nothing on click, and
+      // nothing says so — the bug this switch shipped with. `never` makes the
+      // omission a typecheck error instead of a dead button.
+      default:
+        kind satisfies never
     }
   }
 
