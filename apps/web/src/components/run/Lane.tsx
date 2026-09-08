@@ -91,6 +91,7 @@ export function Lane({
   defectTitle,
   busy,
   stopping,
+  waiving,
   terminalBlocked,
   onRetry,
   onRetryFresh,
@@ -121,6 +122,12 @@ export function Lane({
    * what is happening rather than reading "stopped" over a process still alive.
    */
   stopping?: boolean
+  /**
+   * This lane's waive is in flight. A ticket can read terminal while its agent
+   * carries on, so a waive kills first and only then sets the ticket aside — the
+   * wait is that kill, and the button says so instead of settling instantly.
+   */
+  waiving?: boolean
   terminalBlocked?: boolean
   onRetry?: () => void
   onRetryFresh?: () => void
@@ -284,7 +291,7 @@ export function Lane({
               title="set this ticket aside — it stops asking to be retried and is carried into review as explicitly unfinished work"
               onClick={onWaive}
             >
-              Waive
+              {waiving ? 'Waiving…' : 'Waive'}
             </Button>
           )}
           {/* One click, deliberately (decision #12c): this is the control reached

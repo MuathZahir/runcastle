@@ -191,6 +191,22 @@ describe('Lane', () => {
     expect(html).not.toContain('Stop ticket<')
   })
 
+  /**
+   * A waive kills a live agent before it sets the ticket aside, so it waits the
+   * same beat a stop does — a ticket can read `failed` with its process still
+   * burning, and that is exactly the ticket a human reaches to waive.
+   */
+  it('says Waiving… on the lane whose waive is in flight', () => {
+    const html = laneHtml({
+      ticket: row({ seq: 1, status: 'failed' }),
+      onWaive: () => {},
+      busy: true,
+      waiving: true,
+    })
+    expect(html).toContain('Waiving…')
+    expect(html).not.toContain('>Waive<')
+  })
+
   it('leaves the other lanes reading Stop ticket while one of them is stopping', () => {
     const html = laneHtml({ ticket: row({ seq: 2, status: 'burning' }), onStop: () => {}, busy: true })
     expect(html).toContain('Stop ticket')

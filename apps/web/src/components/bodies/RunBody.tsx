@@ -193,6 +193,7 @@ export function RunBody({
         // Every lane is `busy` while any mutation runs; only the one being
         // stopped is stopping.
         stopping={stop.isPending && stop.variables?.ticketId === ticket.id}
+        waiving={waive.isPending && waive.variables?.ticketId === ticket.id}
         terminalBlocked={terminalBlocked}
         onCopySha={copySha}
         onRetry={() =>
@@ -217,11 +218,16 @@ export function RunBody({
           waive.mutate(
             { ticketId: ticket.id, reason: 'waived from the run view' },
             {
-              onSuccess: () =>
+              onSuccess: (r) => {
                 toast.push(
                   `ticket #${ticket.seq} set aside — it stays visible as unfinished work at review`,
                   'info',
-                ),
+                )
+                // The waive killed a live agent and the kill ran out of time —
+                // the lane reads waived either way, so this is the only place
+                // the human hears that something of it may still be running.
+                if (!r.confirmed) toast.push(STOP_TIMEOUT)
+              },
             },
           )
         }
