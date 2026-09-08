@@ -205,6 +205,11 @@ describe('eventLevel', () => {
     expect(eventLevel(ev({ type: 'feature.created' }))).toBe('info')
   })
 
+  it('reads a stop that could not confirm a death as trouble, not as a note', () => {
+    expect(eventLevel(ev({ type: 'ticket.stop_timeout' }))).toBe('error')
+    expect(eventLevel(ev({ type: 'run.cancel_timeout' }))).toBe('error')
+  })
+
   it('keeps in-loop conflict resolution readable as progress', () => {
     expect(eventLevel(ev({ type: 'merge.conflict.resolving' }))).toBe('active')
     expect(eventLevel(ev({ type: 'merge.conflict.resolved' }))).toBe('ok')
