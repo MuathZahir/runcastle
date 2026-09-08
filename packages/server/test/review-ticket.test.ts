@@ -421,10 +421,18 @@ describe('what the review agent is handed', () => {
     expect(template).not.toContain('add_test_note')
     expect(template).not.toMatch(/summary note/i)
 
-    // What separates the two kinds, and which way to fall when unsure.
-    expect(template).toMatch(/`defect` is what a fix ticket can act on/i)
+    // What separates the two kinds: the outcome, not the acceptance criteria —
+    // and which way to fall when unsure.
+    expect(template).toMatch(/`defect` when the human's problem is not actually solved/i)
+    expect(template).toMatch(/even when every acceptance criterion passes/i)
     expect(template).toMatch(/`observation` is everything else/i)
-    expect(template).toMatch(/unsure → observation/i)
+    expect(template).toMatch(/unsure whether the human's problem is solved → defect/i)
+    expect(template).not.toMatch(/unsure → observation/i)
+    // The narrowed bucket still has its mandated paths: a drive that would not
+    // start, a gate that could not run, a half-built feature.
+    expect(template).toMatch(/report an observation saying the drive could not start/i)
+    expect(template).toMatch(/A gate you could not run at all is an observation/i)
+    expect(template).toMatch(/report that as an observation/i)
     // The severity scale, and that it never gates.
     expect(template).toMatch(/severity is `high` when an acceptance criterion is unmet/i)
     expect(template).toContain('"high" | "medium" | "low"')
