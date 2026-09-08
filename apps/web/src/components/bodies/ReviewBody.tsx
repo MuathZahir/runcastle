@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Phase } from '@runcastle/core'
 import { trpc } from '../../trpc'
-import type { FeatureFull, PrepView, Project } from '../../lib/api'
+import type { FeatureFull, PrepView } from '../../lib/api'
 import type { DriveState as BrowserDrive } from '../../lib/workspace'
 import { unverifiedDriveKeys } from '../../lib/prep-findings'
 import {
@@ -150,7 +150,7 @@ export function ReviewBody({
   // Test drive control. The project row is the shell's own list read — one query
   // key, so the page pays nothing for it.
   const projects = trpc.project.list.useQuery()
-  const project = (projects.data as Project[] | undefined)?.find((p) => p.id === feature.projectId)
+  const project = projects.data?.find((p) => p.id === feature.projectId)
   const startDrive = trpc.feature.testDrive.useMutation({
     onSuccess: () => {
       void utils.feature.driveInfo.invalidate()
