@@ -461,6 +461,27 @@ describe('what the review agent is handed', () => {
     expect(prompt).toContain('verification pass')
   })
 
+  /**
+   * Sandcastle matches the completion signal against the agent's accumulated
+   * stdout, so a marker written into DIGEST.md signals nothing: the iteration
+   * loop re-runs the same pass from the top — observed three times over, a full
+   * test suite and a re-report of every finding each time. The rule the
+   * implement and review templates carry has to be here too.
+   */
+  it('makes the verification pass signal completion in its message, never in the digest', () => {
+    const template = readFileSync(reviewTemplatePath({ passKind: 'verification' }), 'utf8')
+
+    expect(template).toMatch(
+      /\*\*Signal completion\.\*\* Print exactly `<promise>COMPLETE<\/promise>` as the last line of your final message/,
+    )
+    // Whichever way the pass ended — clean, with findings, or blocked.
+    expect(template).toMatch(/could not run it at all/i)
+    // Never the file: the old wording tacked the marker onto the digest-writing
+    // paragraph, where it read as "end the digest with it".
+    expect(template).not.toMatch(/End with `<promise>COMPLETE<\/promise>`/)
+    expect(template).toMatch(/no `<promise>` markers inside the digest/i)
+  })
+
   it('tells the agent where the recording is optional and where it is not', () => {
     const template = readFileSync(reviewTemplatePath(), 'utf8')
 
