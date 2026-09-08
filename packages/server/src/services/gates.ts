@@ -53,11 +53,11 @@ export function checkGate(ctx: AppCtx, check: GateCheckId, feature: Feature): Ga
       return docGate(ctx, feature, 'spec.md', 'write the spec (spec.md) before breaking into tickets')
 
     case 'tickets-approved': {
-      // G3: the human Burn click is the approval; the checkable precondition is
-      // that there is at least one burnable (non-cancelled) ticket IN THE
-      // CURRENT LAP (SPEC §15.1). Scoping matters from lap 2 on: an earlier
-      // lap's tickets are all terminal by construction, so counting them would
-      // open G3 for a lap that has emitted nothing to burn.
+      // G3: the human Burn click is the approval; the first checkable
+      // precondition is that there is at least one burnable (non-cancelled)
+      // ticket IN THE CURRENT LAP (SPEC §15.1). Scoping matters from lap 2 on:
+      // an earlier lap's tickets are all terminal by construction, so counting
+      // them would open G3 for a lap that has emitted nothing to burn.
       const burnable = listByFeature(ctx, feature.id).filter(
         (t) => t.lap === feature.lap && t.status !== 'cancelled',
       )
