@@ -1,0 +1,316 @@
+<title>Review Arrival</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+  /* runcastle theme tokens, copied from apps/web/src/theme.css — dark-only by design */
+  :root {
+    --bg: #090b10; --panel: #0e1117; --panel-2: #0b0e14; --panel-3: #12151d; --inset: #07080b;
+    --hairline: #1c2230; --hairline-soft: #151a26; --hairline-strong: #2a3242;
+    --text: #dde3ed; --text-2: #96a0b0; --text-3: #5f6a7a; --text-4: #3a4354;
+    --accent: #7c6cf6; --accent-hi: #a49bff; --accent-2: #8f80f8; --accent-ink: #0d0722;
+    --accent-soft: #161329; --accent-line: #3d3670;
+    --ph-ideation: #8b7cf8; --ph-review: #58a6ff;
+    --danger: #f4594e; --needs: #d7a94a; --ok: #3fb950; --drive: #58a6ff;
+    --sans: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --mono: "JetBrains Mono", "Cascadia Code", Consolas, ui-monospace, monospace;
+    --r-sm: 6px; --r-md: 8px; --r-lg: 12px;
+    color-scheme: dark;
+  }
+  body { background: var(--bg); color: var(--text); font-family: var(--sans); font-size: 14px; line-height: 1.5; margin: 0; }
+  button { appearance: none; background: none; border: 0; padding: 0; font: inherit; color: inherit; cursor: pointer; }
+  button:focus-visible, a:focus-visible, summary:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px rgba(124,108,246,.5); border-radius: var(--r-sm); }
+
+  /* ---- prototype chrome (not part of the design under review) ---- */
+  .proto-bar { position: sticky; top: 0; z-index: 5; display: flex; gap: 6px; align-items: center; flex-wrap: wrap; padding: 10px 16px; background: var(--panel); border-bottom: 1px solid var(--hairline); }
+  .proto-bar .lbl { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--text-3); margin-right: 6px; }
+  .proto-tab { padding: 5px 12px; border-radius: 999px; border: 1px solid var(--hairline); color: var(--text-2); font-size: 12px; }
+  .proto-tab:hover { border-color: var(--hairline-strong); color: var(--text); }
+  .proto-tab[aria-selected="true"] { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 600; }
+  .proto-note { padding: 8px 16px; font-size: 12px; color: var(--text-3); border-bottom: 1px solid var(--hairline-soft); background: var(--panel-2); }
+  .proto-note b { color: var(--text-2); font-weight: 600; }
+
+  /* ---- page frame ---- */
+  .page { max-width: 1060px; margin: 0 auto; padding: 20px 24px 120px; }
+  .feature-head { display: flex; align-items: baseline; gap: 10px; padding: 14px 0 12px; }
+  .feature-head h1 { font-size: 16px; font-weight: 600; margin: 0; }
+  .phase-chip { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--ph-review); font-weight: 600; }
+  .phase-chip::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--ph-review); }
+  .lap-tag { font-size: 12px; color: var(--text-3); font-family: var(--mono); }
+
+  .bands { display: flex; flex-direction: column; gap: 14px; }
+
+  /* ---- alerts band ---- */
+  .alert-line { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border: 1px solid var(--hairline); border-left: 2px solid var(--ph-ideation); border-radius: var(--r-sm); background: var(--panel-2); font-size: 13px; color: var(--text-2); }
+  .alert-line .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--ph-ideation); animation: pulse 2.2s ease-in-out infinite; flex: none; }
+  .alert-line .spacer { flex: 1; }
+  .alert-line .act { color: var(--accent-hi); font-size: 12px; font-weight: 500; padding: 2px 6px; }
+  .alert-line .act:hover { text-decoration: underline; }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .35; } }
+
+  /* ---- evidence stage (only when evidence exists) ---- */
+  .stage { border: 1px solid var(--hairline); border-radius: var(--r-lg); overflow: hidden; background: var(--inset); }
+  .stage-head { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--hairline-soft); background: var(--panel-2); font-size: 12px; color: var(--text-2); }
+  .stage-head .rec { color: var(--drive); font-weight: 600; }
+  .stage-head .len { margin-left: auto; font-family: var(--mono); color: var(--text-3); }
+  .stage-body { aspect-ratio: 16/6.5; display: grid; place-items: center; position: relative; background:
+    radial-gradient(ellipse at 30% 20%, rgba(88,166,255,.06), transparent 50%),
+    radial-gradient(ellipse at 70% 80%, rgba(124,108,246,.05), transparent 50%); }
+  .play { width: 52px; height: 52px; border-radius: 50%; background: rgba(14,17,23,.85); border: 1px solid var(--hairline-strong); display: grid; place-items: center; transition: border-color .12s; }
+  .play:hover { border-color: var(--drive); }
+  .play svg { display: block; margin-left: 3px; }
+  .chapters { display: flex; gap: 1px; padding: 0 1px 1px; background: var(--inset); }
+  .chapters span { height: 4px; flex: 1; background: var(--hairline); border-radius: 1px; }
+  .chapters span.seen { background: var(--drive); opacity: .55; }
+
+  /* ---- state line ---- */
+  .state-line { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .chip { display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 10px; border: 1px solid var(--hairline); border-radius: 999px; font-size: 12px; color: var(--text-2); background: var(--panel-2); }
+  .chip:hover { border-color: var(--hairline-strong); }
+  .chip .k { width: 7px; height: 7px; border-radius: 50%; flex: none; }
+  .k.ok { background: var(--ok); } .k.warn { background: var(--needs); } .k.drive { background: var(--drive); }
+  .chip b { color: var(--text); font-weight: 500; }
+  .state-line .grow { flex: 1; }
+  .btn-drive { display: inline-flex; align-items: center; gap: 7px; height: 30px; padding: 0 14px; border-radius: var(--r-sm); border: 1px solid var(--hairline-strong); color: var(--drive); font-size: 13px; font-weight: 500; background: var(--panel-2); transition: border-color .12s, background .12s; }
+  .btn-drive:hover { border-color: var(--drive); background: var(--panel-3); }
+
+  /* ---- lap account one-liner ---- */
+  .lap-account { font-size: 13px; color: var(--text-2); padding: 2px 2px; }
+  .lap-account b { color: var(--text); font-weight: 500; }
+  .lap-account .m { font-family: var(--mono); font-size: 12px; }
+
+  /* ---- attention list ---- */
+  .attention { border: 1px solid var(--hairline); border-radius: var(--r-md); background: var(--panel-2); overflow: hidden; }
+  .attention .hd { padding: 8px 12px; border-bottom: 1px solid var(--hairline-soft); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--text-3); }
+  .row { display: flex; gap: 10px; padding: 10px 12px 10px 10px; border-left: 2px solid transparent; }
+  .row + .row { border-top: 1px solid var(--hairline-soft); }
+  .row.defect { border-left-color: var(--danger); }
+  .row.note { border-left-color: var(--text-4); }
+  .row .tag { flex: none; font-size: 11px; letter-spacing: .06em; text-transform: uppercase; font-weight: 600; padding-top: 2px; width: 52px; }
+  .row.defect .tag { color: var(--danger); }
+  .row.note .tag { color: var(--text-3); }
+  .row .body { min-width: 0; }
+  .row .t { color: var(--text); }
+  .row .loc { font-family: var(--mono); font-size: 12px; color: var(--text-3); margin-top: 2px; overflow-x: auto; white-space: nowrap; }
+  .row .acts { margin-left: auto; flex: none; display: flex; gap: 4px; align-items: flex-start; padding-top: 1px; }
+  .row .acts button { font-size: 12px; color: var(--text-3); padding: 2px 7px; border-radius: var(--r-sm); }
+  .row .acts button:hover { color: var(--text); background: var(--panel-3); }
+  .empty-open { padding: 14px 12px; font-size: 13px; color: var(--text-3); display: flex; align-items: center; gap: 8px; }
+  .empty-open .k { width: 7px; height: 7px; border-radius: 50%; background: var(--ok); }
+
+  /* ---- composer ---- */
+  .composer { display: flex; gap: 8px; }
+  .composer input { flex: 1; height: 32px; padding: 0 12px; border-radius: var(--r-sm); border: 1px solid var(--hairline); background: var(--inset); color: var(--text); font: inherit; font-size: 13px; }
+  .composer input::placeholder { color: var(--text-4); }
+  .composer input:focus { outline: none; border-color: var(--accent-line); }
+  .composer button { height: 32px; padding: 0 14px; border-radius: var(--r-sm); border: 1px solid var(--hairline); color: var(--text-2); font-size: 13px; }
+  .composer button:hover { border-color: var(--hairline-strong); color: var(--text); }
+
+  /* ---- bottom disclosure ---- */
+  details.full { border: 1px solid var(--hairline-soft); border-radius: var(--r-md); background: transparent; }
+  details.full > summary { list-style: none; cursor: pointer; padding: 9px 12px; font-size: 12px; color: var(--text-3); display: flex; align-items: center; gap: 8px; }
+  details.full > summary::-webkit-details-marker { display: none; }
+  details.full > summary::before { content: "▸"; font-size: 10px; color: var(--text-4); transition: transform .12s; }
+  details.full[open] > summary::before { transform: rotate(90deg); }
+  details.full > summary:hover { color: var(--text-2); }
+  .full-body { padding: 4px 14px 14px; border-top: 1px solid var(--hairline-soft); font-size: 13px; color: var(--text-2); display: flex; flex-direction: column; gap: 12px; }
+  .full-body h4 { margin: 10px 0 4px; font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--text-3); font-weight: 600; }
+  .full-body p { margin: 0; max-width: 68ch; }
+  .full-body ul { margin: 0; padding-left: 18px; color: var(--text-3); }
+  .full-body li { margin: 3px 0; }
+
+  /* ---- next-step bar ---- */
+  .nextstep { position: fixed; left: 0; right: 0; bottom: 0; background: var(--panel); border-top: 1px solid var(--hairline); }
+  .nextstep .in { max-width: 1060px; margin: 0 auto; padding: 12px 24px; display: flex; align-items: center; gap: 14px; }
+  .count-line { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-2); }
+  .count-line .pill { display: inline-flex; align-items: center; gap: 6px; font-family: var(--mono); font-size: 12px; padding: 3px 9px; border-radius: 999px; border: 1px solid var(--hairline); }
+  .pill .k { width: 6px; height: 6px; border-radius: 50%; }
+  .pill.danger { color: var(--danger); border-color: rgba(244,89,78,.3); } .pill.danger .k { background: var(--danger); }
+  .pill.note { color: var(--text-2); } .pill.note .k { background: var(--text-4); }
+  .pill.clear { color: var(--ok); border-color: rgba(63,185,80,.3); } .pill.clear .k { background: var(--ok); }
+  .nextstep .grow { flex: 1; }
+  .btn-primary { height: 34px; padding: 0 18px; border-radius: var(--r-sm); background: var(--accent); color: var(--accent-ink); font-weight: 600; font-size: 13px; transition: background .12s; }
+  .btn-primary:hover { background: var(--accent-2); }
+  .btn-ghost { height: 34px; padding: 0 14px; border-radius: var(--r-sm); border: 1px solid var(--hairline); color: var(--text-3); font-size: 13px; }
+  .btn-ghost:hover { border-color: var(--hairline-strong); color: var(--text-2); }
+
+  .hidden { display: none !important; }
+</style>
+
+<div class="proto-bar" role="tablist" aria-label="Prototype states">
+  <span class="lbl">State</span>
+  <button class="proto-tab" role="tab" aria-selected="true" data-state="openwork">Open work</button>
+  <button class="proto-tab" role="tab" aria-selected="false" data-state="stale">Stale session</button>
+  <button class="proto-tab" role="tab" aria-selected="false" data-state="walkthrough">Walkthrough</button>
+  <button class="proto-tab" role="tab" aria-selected="false" data-state="clear">All clear</button>
+</div>
+<div class="proto-note" id="stateNote"><b>Open work, no walkthrough — the common arrival.</b> No stage, no placeholder: one state line, the lap one-liner, then the attention list. The bar states its reason; Iterate leads, Merge is the ghost.</div>
+
+<div class="page">
+  <div class="feature-head">
+    <span class="phase-chip">Review</span>
+    <h1>dlq-spill-retention</h1>
+    <span class="lap-tag">lap 1</span>
+  </div>
+
+  <div class="bands">
+
+    <!-- ALERTS — stale-session state only -->
+    <div class="alert-line hidden" data-band="alert-session">
+      <span class="dot"></span>
+      <span>Ideation session still live from lap 1</span>
+      <span class="spacer"></span>
+      <button class="act">Open</button>
+      <button class="act">End</button>
+    </div>
+
+    <!-- EVIDENCE STAGE — walkthrough state only -->
+    <div class="stage hidden" data-band="stage">
+      <div class="stage-head">
+        <span class="rec">● Walkthrough</span>
+        <span>recorded by the review agent · 6 chapters</span>
+        <span class="len">4:12</span>
+      </div>
+      <div class="stage-body">
+        <button class="play" aria-label="Play walkthrough">
+          <svg width="16" height="18" viewBox="0 0 16 18"><path d="M1 1.5v15l14-7.5z" fill="#dde3ed"/></svg>
+        </button>
+      </div>
+      <div class="chapters" aria-hidden="true">
+        <span class="seen"></span><span class="seen"></span><span></span><span></span><span></span><span></span>
+      </div>
+    </div>
+
+    <!-- STATE LINE -->
+    <div class="state-line" data-band="state">
+      <span class="chip"><span class="k ok"></span>checks <b>7/7</b></span>
+      <span class="chip" data-el="chip-unverified"><span class="k warn"></span><b>2 checks</b> unverified in drive</span>
+      <span class="chip"><span class="k drive"></span>tickets <b>5 landed</b></span>
+      <span class="grow"></span>
+      <button class="btn-drive" data-el="btn-drive">
+        <svg width="13" height="13" viewBox="0 0 13 13"><circle cx="6.5" cy="6.5" r="5.5" fill="none" stroke="#58a6ff" stroke-width="1.4"/><path d="M5 4.2v4.6l3.8-2.3z" fill="#58a6ff"/></svg>
+        Test drive
+      </button>
+    </div>
+
+    <!-- LAP ACCOUNT ONE-LINER -->
+    <div class="lap-account" data-band="account">
+      <b>Lap 1:</b> DLQ spill retention landed — capped table, trim scheduler, round-trip mapping · <span class="m">2 defects found, 1 fixed in-run</span>
+    </div>
+
+    <!-- ATTENTION LIST -->
+    <div class="attention" data-band="attention">
+      <div class="hd" data-el="attention-hd">Needs you — 2 defects · 1 note</div>
+      <div data-el="attention-rows">
+        <div class="row defect">
+          <span class="tag">Defect</span>
+          <div class="body">
+            <div class="t">The repaired read path is never called — <code style="font-family:var(--mono);font-size:12px">/api/dlq/entries</code> builds its own map, so the operator still sees husks</div>
+            <div class="loc">DLQController.java:88 · repro: GET /api/dlq/entries after a spill — callback_name absent</div>
+          </div>
+          <div class="acts"><button>Quick fix</button><button>Dismiss</button></div>
+        </div>
+        <div class="row defect">
+          <span class="tag">Defect</span>
+          <div class="body">
+            <div class="t">Trim scheduler shares the 4-thread pool with the 100ms flush hot path and blocks it on the DB</div>
+            <div class="loc">SpillScheduler.java:41 · repro: enqueue 10k entries, watch flush latency spike</div>
+          </div>
+          <div class="acts"><button>Quick fix</button><button>Dismiss</button></div>
+        </div>
+        <div class="row note">
+          <span class="tag">Note</span>
+          <div class="body">
+            <div class="t">The dashboard's "spilled at" column shows raw epoch millis — format it like the other timestamps</div>
+          </div>
+          <div class="acts"><button>Quick fix</button><button>Dismiss</button></div>
+        </div>
+      </div>
+      <div class="empty-open hidden" data-el="attention-empty">
+        <span class="k"></span> Nothing open — 2 defects fixed in-run, 1 note quick-fixed.
+      </div>
+    </div>
+
+    <!-- COMPOSER -->
+    <div class="composer" data-band="composer">
+      <input type="text" placeholder="Note something from your test drive…">
+      <button>Add note</button>
+    </div>
+
+    <!-- FULL ACCOUNT DISCLOSURE -->
+    <details class="full" data-band="full">
+      <summary>Full account — digest · carried · 6 observations</summary>
+      <div class="full-body">
+        <div>
+          <h4>Digest</h4>
+          <p>This lap landed the capped DLQ table with a trim scheduler and R2DBC mapping. The cap bounds rows for currently-registered callbacks; retired and synthetic ids are left to the age purge. The round-trip fix is correct at the DLQStore seam but the controller endpoint builds its own response map — surfaced as a defect above.</p>
+        </div>
+        <div>
+          <h4>Carried &amp; handled</h4>
+          <ul>
+            <li>[→] Consider a per-callback retention override (carried into lap 2)</li>
+            <li>[✓] Rename spill_ts → spilled_at (quick-fixed, ticket #14)</li>
+          </ul>
+        </div>
+        <div>
+          <h4>Observations (6)</h4>
+          <ul>
+            <li>The verify gate could not run: no local Maven — this repo's suite runs inside a Docker maven image</li>
+            <li>pendingSingles gauge drifts on actor restart; counter is per-actor ArrayDeque</li>
+            <li>No test executes the new SQL directly — trim queries asserted by reflection only</li>
+          </ul>
+        </div>
+      </div>
+    </details>
+
+  </div>
+</div>
+
+<!-- NEXT-STEP BAR -->
+<div class="nextstep">
+  <div class="in">
+    <div class="count-line" data-el="counts-open">
+      <span class="pill danger"><span class="k"></span>2 defects</span>
+      <span class="pill note"><span class="k"></span>1 note</span>
+      <span>open</span>
+    </div>
+    <div class="count-line hidden" data-el="counts-clear">
+      <span class="pill clear"><span class="k"></span>Nothing open</span>
+    </div>
+    <div class="grow"></div>
+    <button class="btn-ghost" data-el="btn-secondary">Merge &amp; ship</button>
+    <button class="btn-primary" data-el="btn-primary">Iterate</button>
+  </div>
+</div>
+
+<script>
+  const notes = {
+    openwork: '<b>Open work, no walkthrough — the common arrival.</b> No stage, no placeholder: one state line, the lap one-liner, then the attention list. The bar states its reason; Iterate leads, Merge is the ghost.',
+    stale: '<b>A lap-1 ideation session is still live.</b> One alert line replaces the old terminal band; the primary becomes the end-and-proceed compound. No disabled buttons anywhere.',
+    walkthrough: '<b>The agent recorded a walkthrough.</b> Only now does the evidence stage mount — a player, not a placeholder. Everything below is unchanged.',
+    clear: '<b>Nothing open.</b> The count flips, so the primary flips with it: Merge &amp; ship leads, Iterate is the ghost. The rule is the same rule you saw in the other states.'
+  };
+  const states = {
+    openwork:   { alert: false, stage: false, open: true,  primary: 'Iterate',                 secondary: 'Merge & ship' },
+    stale:      { alert: true,  stage: false, open: true,  primary: 'End session & iterate',   secondary: 'Merge & ship' },
+    walkthrough:{ alert: false, stage: true,  open: true,  primary: 'Iterate',                 secondary: 'Merge & ship' },
+    clear:      { alert: false, stage: false, open: false, primary: 'Merge & ship',            secondary: 'Iterate' }
+  };
+  const $ = s => document.querySelector(s);
+  function show(el, on) { el.hidden = !on; el.classList.toggle('hidden', !on); }
+  function setState(name) {
+    const st = states[name];
+    document.querySelectorAll('.proto-tab').forEach(t => t.setAttribute('aria-selected', String(t.dataset.state === name)));
+    $('#stateNote').innerHTML = notes[name];
+    show($('[data-band="alert-session"]'), st.alert);
+    show($('[data-band="stage"]'), st.stage);
+    show($('[data-el="attention-rows"]'), st.open);
+    show($('[data-el="attention-empty"]'), !st.open);
+    $('[data-el="attention-hd"]').textContent = st.open ? 'Needs you — 2 defects · 1 note' : 'Needs you';
+    show($('[data-el="counts-open"]'), st.open);
+    show($('[data-el="counts-clear"]'), !st.open);
+    show($('[data-el="chip-unverified"]'), st.open);
+    $('[data-el="btn-primary"]').textContent = st.primary;
+    $('[data-el="btn-secondary"]').textContent = st.secondary;
+  }
+  document.querySelectorAll('.proto-tab').forEach(t => t.addEventListener('click', () => setState(t.dataset.state)));
+  setState('openwork');
+</script>
