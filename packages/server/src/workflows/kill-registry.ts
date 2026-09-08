@@ -13,7 +13,9 @@ import { killProcessTree } from '../pty/kill-tree'
  * turns a handle into a dead process and waits to see it die.
  *
  * A lane is keyed by an opaque string — the ticket id for a ticket lane, the run
- * id for a run-scoped agent. The registry does not care which; callers pick.
+ * id for a run-scoped agent. The registry does not care which; callers pick. It
+ * does care which RUN owns a lane, because Cancel run kills every lane of one
+ * ({@link KillRegistry.killAllForRun}) and no key spelling makes them findable.
  *
  * The instance is pinned on `globalThis` under a symbol so a `bun --hot` reload
  * — which re-evaluates modules and would otherwise strand live handles behind a
@@ -22,9 +24,22 @@ import { killProcessTree } from '../pty/kill-tree'
  */
 
 /** What a lane is currently killable by: a container to remove, or a tree to reap. */
-type KillHandle =
+type KillTarget =
   | { readonly kind: 'container'; readonly containerName: string }
   | { readonly kind: 'host'; readonly pid: number }
+
+/**
+ * Which run a lane's agent belongs to. Cancelling a run has to kill every agent
+ * it started, and a run's lane keys are not derivable from its id — a ticket
+ * lane is keyed by ticket, a run-scoped one by run — so the owner is recorded
+ * with the handle and {@link KillRegistry.killAllForRun} reads it back.
+ */
+export interface LaneOwner {
+  readonly runId?: string
+}
+
+/** A registered lane: what to kill, plus who owns it. */
+type KillHandle = KillTarget & LaneOwner
 
 /** The outcome of a kill: whether the process was OBSERVED to be gone. */
 export interface KillOutcome {
@@ -139,16 +154,16 @@ class KillRegistry {
   constructor(private readonly deps: KillRegistryDeps = REAL_DEPS) {}
 
   /** The lane runs in a container of this name — `docker rm -f` is the kill. */
-  registerContainer(laneKey: string, containerName: string): void {
-    this.handles.set(laneKey, { kind: 'container', containerName })
+  registerContainer(laneKey: string, containerName: string, owner: LaneOwner = {}): void {
+    this.handles.set(laneKey, { kind: 'container', containerName, ...owner })
   }
 
   /**
    * The lane's newest host child. Overwrites: the host provider spawns a fresh
    * child per exec, so only the latest pid names a process still alive.
    */
-  registerHostPid(laneKey: string, pid: number): void {
-    this.handles.set(laneKey, { kind: 'host', pid })
+  registerHostPid(laneKey: string, pid: number, owner: LaneOwner = {}): void {
+    this.handles.set(laneKey, { kind: 'host', pid, ...owner })
   }
 
   /** Forget the lane — its run settled and there is nothing left to kill. */
@@ -182,6 +197,21 @@ class KillRegistry {
       } after ${Date.now() - started}ms`,
     )
     return { confirmed }
+  }
+
+  /**
+   * Kill every live lane a run owns — Cancel run, which stops the whole burn
+   * rather than one ticket. Lanes die concurrently, each under its own deadline,
+   * so a run of N lanes still resolves in one lane's worth of waiting, and the
+   * result is confirmed only when EVERY lane was seen to die. A run with nothing
+   * registered resolves confirmed: there is nothing left of it to kill.
+   */
+  async killAllForRun(runId: string, opts?: KillAndWaitOptions): Promise<KillOutcome> {
+    const lanes = [...this.handles]
+      .filter(([, handle]) => handle.runId === runId)
+      .map(([laneKey]) => laneKey)
+    const outcomes = await Promise.all(lanes.map((laneKey) => this.killAndWait(laneKey, opts)))
+    return { confirmed: outcomes.every((outcome) => outcome.confirmed) }
   }
 
   /** Registered lanes (diagnostics/tests). */

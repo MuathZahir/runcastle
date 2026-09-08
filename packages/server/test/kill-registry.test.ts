@@ -205,6 +205,52 @@ describe('the lane lifecycle', () => {
   })
 })
 
+describe('killAllForRun — Cancel run', () => {
+  it('kills every lane the run owns and leaves other runs alone', async () => {
+    const { registry, calls } = withDocker({})
+    registry.registerContainer('ticket_a', 'runcastle-run_1-t1', { runId: 'run_1' })
+    registry.registerContainer('ticket_b', 'runcastle-run_1-t2', { runId: 'run_1' })
+    registry.registerContainer('ticket_c', 'runcastle-run_2-t1', { runId: 'run_2' })
+
+    await expect(registry.killAllForRun('run_1')).resolves.toEqual({ confirmed: true })
+
+    const removed = calls.filter((call) => call[0] === 'rm').map((call) => call[2])
+    expect(removed.sort()).toEqual(['runcastle-run_1-t1', 'runcastle-run_1-t2'])
+    expect(registry.keys()).toEqual(['ticket_c'])
+  })
+
+  it('is unconfirmed when any one of the run lanes outlives the deadline', async () => {
+    // Honest reporting is the whole point: one container that will not die means
+    // the run is not confirmed stopped, however many of its siblings went.
+    const { registry } = withDocker({ immortal: true })
+    registry.registerContainer('ticket_a', 'runcastle-run_1-t1', { runId: 'run_1' })
+
+    await expect(registry.killAllForRun('run_1', { timeoutMs: 200 })).resolves.toEqual({
+      confirmed: false,
+    })
+  })
+
+  it('resolves confirmed for a run with nothing left registered', async () => {
+    const { registry, calls } = withDocker({})
+    registry.registerContainer('ticket_a', 'runcastle-run_1-t1', { runId: 'run_1' })
+
+    await expect(registry.killAllForRun('run_other')).resolves.toEqual({ confirmed: true })
+
+    expect(calls).toEqual([])
+  })
+
+  it('reaches a run-scoped host lane registered under the run id', async () => {
+    // The review/research agents run on the host with the run as their lane key
+    // — Cancel run must still find them, so ownership is recorded either way.
+    const { registry, killed } = withHost()
+    registry.registerHostPid('run_1', 4242, { runId: 'run_1' })
+
+    await expect(registry.killAllForRun('run_1')).resolves.toEqual({ confirmed: true })
+
+    expect(killed).toEqual([4242])
+  })
+})
+
 describe('killRegistry()', () => {
   it('is one process-wide instance, so a hot reload cannot strand a live handle', () => {
     expect(killRegistry()).toBe(killRegistry())
