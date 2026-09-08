@@ -1,6 +1,6 @@
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import type { Feature, Project } from '@runcastle/core'
+import type { Feature, Project, TicketInput } from '@runcastle/core'
 import { beforeEach, describe, expect, it } from 'vitest'
 import type { AppCtx } from '../src/db/types'
 import { checkGate, overrideGate, undoGateOverride } from '../src/services/gates'
@@ -19,6 +19,20 @@ function writeDoc(project: Project, feature: Feature, name: string): void {
   mkdirSync(dir, { recursive: true })
   writeFileSync(join(dir, name), '# doc\n', 'utf8')
 }
+
+function ticketInput(title: string): TicketInput {
+  return { title, goal: 'g', context: 'c', acceptanceCriteria: ['a'], seams: [], blockedBy: [] }
+}
+
+/** The `kind: "review"` ticket every batch closes with — what G3 now requires. */
+function reviewInput(): TicketInput {
+  return { ...ticketInput('Review the integrated change'), kind: 'review' }
+}
+
+/** The G3 refusal for a lap that forgot its review ticket, pinned verbatim. */
+const NO_REVIEW_REASON =
+  'no review ticket on this lap — every batch closes with one (kind: "review"); emit it, ' +
+  'fix the kind on a review-shaped ticket, or override this gate with a reason'
 
 describe('gates service', () => {
   let ctx: AppCtx
@@ -46,19 +60,56 @@ describe('gates service', () => {
   it('tickets-approved requires at least one ticket', () => {
     const feature = seedFeature(ctx, project.id, { slug: 'g3', phase: 'tickets' })
     expect(checkGate(ctx, 'tickets-approved', feature).satisfied).toBe(false)
-    storeTickets(ctx, feature.id, [
-      { title: 't', goal: 'g', context: 'c', acceptanceCriteria: ['a'], seams: [], blockedBy: [] },
-    ])
+    storeTickets(ctx, feature.id, [ticketInput('t'), reviewInput()])
     expect(checkGate(ctx, 'tickets-approved', feature).satisfied).toBe(true)
   })
 
   it('tickets-approved does not count cancelled tickets', () => {
     const feature = seedFeature(ctx, project.id, { slug: 'g3-cancel', phase: 'tickets' })
-    const [only] = storeTickets(ctx, feature.id, [
-      { title: 't', goal: 'g', context: 'c', acceptanceCriteria: ['a'], seams: [], blockedBy: [] },
-    ])
+    const [only] = storeTickets(ctx, feature.id, [ticketInput('t')])
     updateTicket(ctx, only.id, { status: 'cancelled' })
+    expect(checkGate(ctx, 'tickets-approved', feature)).toEqual({
+      satisfied: false,
+      reason: 'no tickets to burn',
+    })
+  })
+
+  it('tickets-approved refuses a lap that has no review ticket, naming the fix', () => {
+    const feature = seedFeature(ctx, project.id, { slug: 'g3-no-review', phase: 'tickets' })
+    storeTickets(ctx, feature.id, [ticketInput('build it')])
+
+    expect(checkGate(ctx, 'tickets-approved', feature)).toEqual({
+      satisfied: false,
+      reason: NO_REVIEW_REASON,
+    })
+
+    // The multi-call emission pattern: sessions split big batches to dodge the
+    // payload timeout, so the review ticket arriving in a LATER call is
+    // ordinary, not a repair — the gate judges the lap, never a single call.
+    storeTickets(ctx, feature.id, [reviewInput()])
+    expect(checkGate(ctx, 'tickets-approved', feature)).toEqual({ satisfied: true })
+  })
+
+  it('tickets-approved is not satisfied by a cancelled review ticket', () => {
+    // A cancelled review is exactly the silent degradation the rule guards
+    // against — the lap would reach review with nobody having looked at it.
+    const feature = seedFeature(ctx, project.id, { slug: 'g3-review-cancelled', phase: 'tickets' })
+    const [, review] = storeTickets(ctx, feature.id, [ticketInput('build it'), reviewInput()])
+    updateTicket(ctx, review.id, { status: 'cancelled' })
+
+    expect(checkGate(ctx, 'tickets-approved', feature).reason).toBe(NO_REVIEW_REASON)
+  })
+
+  it('overrideGate crosses a refusing G3, recording its reason', () => {
+    const feature = seedFeature(ctx, project.id, { slug: 'g3-override', phase: 'tickets' })
+    storeTickets(ctx, feature.id, [ticketInput('build it')])
     expect(checkGate(ctx, 'tickets-approved', feature).satisfied).toBe(false)
+
+    expect(overrideGate(ctx, feature.id, 'G3', 'reviewing this one by hand').phase).toBe(
+      'implementation',
+    )
+    const overridden = listAfter(ctx, feature.id).find((e) => e.type === 'gate.overridden')
+    expect(overridden?.message).toContain('reviewing this one by hand')
   })
 
   it('all-tickets-terminal is satisfied only when every ticket is done/failed/cancelled', () => {
