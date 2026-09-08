@@ -12,6 +12,14 @@ import { killProcessTree } from '../pty/kill-tree'
  * "the run settled", and {@link KillRegistry.killAndWait} is the one place that
  * turns a handle into a dead process and waits to see it die.
  *
+ * It is also where "not dead yet" is readable by someone other than the killer.
+ * A stop aborts the run first and waits second, and the abort is what makes the
+ * run reject — so the failure path that writes terminal state runs CONCURRENTLY
+ * with the kill it should be waiting on. {@link KillRegistry.whenKillSettled}
+ * (and {@link KillRegistry.whenRunKillsSettled} for a whole run) is the gate
+ * that path puts in front of its write, so nothing reads stopped before the
+ * process is gone.
+ *
  * A lane is keyed by an opaque string — the ticket id for a ticket lane, the run
  * id for a run-scoped agent. The registry does not care which; callers pick. It
  * does care which RUN owns a lane, because Cancel run kills every lane of one
@@ -40,6 +48,12 @@ export interface LaneOwner {
 
 /** A registered lane: what to kill, plus who owns it. */
 type KillHandle = KillTarget & LaneOwner
+
+/** A kill that has been ordered and has not yet seen its target die. */
+interface InFlightKill extends LaneOwner {
+  /** Resolves — never rejects — once the kill settled, confirmed or timed out. */
+  readonly settled: Promise<void>
+}
 
 /** The outcome of a kill: whether the process was OBSERVED to be gone. */
 export interface KillOutcome {
@@ -140,6 +154,9 @@ function withDeadline(body: Promise<boolean>, ms: number): Promise<boolean> {
   })
 }
 
+/** Discard whatever a settled kill produced — the gate waits, it does not read. */
+function forget(): void {}
+
 /** Sleep, without holding the process open on the timer. */
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => {
@@ -150,6 +167,8 @@ function delay(ms: number): Promise<void> {
 
 class KillRegistry {
   private readonly handles = new Map<string, KillHandle>()
+  /** Lanes whose kill has been ordered and is still waiting to see death. */
+  private readonly killsInFlight = new Map<string, InFlightKill>()
 
   constructor(private readonly deps: KillRegistryDeps = REAL_DEPS) {}
 
@@ -180,11 +199,50 @@ class KillRegistry {
    *
    * A confirmed kill releases the handle; an unconfirmed one keeps it, so a
    * retry kills again instead of reading as a lane that was never registered.
+   *
+   * Deliberately not `async`: the kill is recorded as in flight SYNCHRONOUSLY,
+   * in the same tick as the abort that preceded this call, so the abort's own
+   * continuation — the one that writes terminal state — cannot slip past
+   * {@link whenKillSettled} before there is anything there to wait for.
    */
-  async killAndWait(laneKey: string, opts?: KillAndWaitOptions): Promise<KillOutcome> {
+  killAndWait(laneKey: string, opts?: KillAndWaitOptions): Promise<KillOutcome> {
     const handle = this.handles.get(laneKey)
-    if (!handle) return { confirmed: true }
+    if (!handle) return Promise.resolve({ confirmed: true })
 
+    const kill = this.killLane(laneKey, handle, opts)
+    const entry: InFlightKill = { runId: handle.runId, settled: kill.then(forget, forget) }
+    this.killsInFlight.set(laneKey, entry)
+    void entry.settled.then(() => {
+      // Only if a later kill of the same lane has not replaced it since.
+      if (this.killsInFlight.get(laneKey) === entry) this.killsInFlight.delete(laneKey)
+    })
+    return kill
+  }
+
+  /**
+   * Wait for the kill ordered for this lane, if one is in flight — the gate a
+   * caller puts in front of writing terminal state. Resolves immediately when
+   * no kill is in flight, which is every ordinary finish.
+   */
+  async whenKillSettled(laneKey: string): Promise<void> {
+    await this.killsInFlight.get(laneKey)?.settled
+  }
+
+  /** {@link whenKillSettled} across every lane a run owns — what Cancel run kills. */
+  async whenRunKillsSettled(runId: string): Promise<void> {
+    await Promise.all(
+      [...this.killsInFlight.values()]
+        .filter((kill) => kill.runId === runId)
+        .map((kill) => kill.settled),
+    )
+  }
+
+  /** The kill itself, once {@link killAndWait} has found a handle for the lane. */
+  private async killLane(
+    laneKey: string,
+    handle: KillHandle,
+    opts?: KillAndWaitOptions,
+  ): Promise<KillOutcome> {
     const timeoutMs = opts?.timeoutMs ?? DEFAULT_TIMEOUT_MS
     const started = Date.now()
     const confirmed = await withDeadline(this.kill(handle, started + timeoutMs), timeoutMs)
