@@ -23,7 +23,7 @@ import {
   researchBranchName,
 } from '../services/git'
 import type { StreamThrottle, ThrottledEvent } from './ticket-burner'
-import { killRegistry } from './kill-registry'
+import { killRegistry, registerHostChildren } from './kill-registry'
 import { RUNTIME_AUTH_SETUP_HINT } from '../services/setup'
 import {
   AUTH_MISSING_EVENT,
@@ -284,7 +284,7 @@ async function realExecuteResearchRun(
     // so the key names exactly one agent. Host mode only: on the host the abort
     // leaves the spawned CLI alive, and the newest pid is the one to kill.
     sandbox: selectSandbox(config, codexAuthMount ? [codexAuthMount] : [], {}, {
-      onChildSpawn: (pid) => killRegistry().registerHostPid(ctx.runId, pid, { runId: ctx.runId }),
+      onChildSpawn: registerHostChildren(ctx.runId, { runId: ctx.runId }),
     }),
     cwd: project.repoPath,
     prompt,

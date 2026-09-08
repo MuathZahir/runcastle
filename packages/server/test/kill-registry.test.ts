@@ -1,5 +1,10 @@
 import { describe, expect, it, vi } from 'vitest'
-import { createKillRegistry, killRegistry, type KillRegistryDeps } from '../src/workflows/kill-registry'
+import {
+  createKillRegistry,
+  killRegistry,
+  registerHostChildren,
+  type KillRegistryDeps,
+} from '../src/workflows/kill-registry'
 
 /**
  * The kill-handle registry — the seam between "abort the run" and "the process
@@ -254,5 +259,24 @@ describe('killAllForRun — Cancel run', () => {
 describe('killRegistry()', () => {
   it('is one process-wide instance, so a hot reload cannot strand a live handle', () => {
     expect(killRegistry()).toBe(killRegistry())
+  })
+})
+
+describe('registerHostChildren — what a host agent hands sandcastle', () => {
+  // The callback has to land on the PROCESS-WIDE registry: a lane registered
+  // anywhere else is a lane `stopTicketRun` and `cancelRun` cannot find, which
+  // is precisely the silence this feature exists to end.
+  it('puts every child it is told about on the lane the stop looks up', () => {
+    const onChildSpawn = registerHostChildren('tkt_host', { runId: 'run_9' })
+
+    onChildSpawn(4242)
+    expect(killRegistry().keys()).toContain('tkt_host')
+
+    // A fresh child per exec — the lane stays one lane, holding the newest.
+    onChildSpawn(4243)
+    expect(killRegistry().keys().filter((key) => key === 'tkt_host')).toHaveLength(1)
+
+    killRegistry().release('tkt_host')
+    expect(killRegistry().keys()).not.toContain('tkt_host')
   })
 })

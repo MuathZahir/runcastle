@@ -9,7 +9,7 @@ import { renderRunMcpConfig } from '../launcher/artifacts'
 import { appendTranscript, beginTranscript, endTranscript } from '../services/agent-stream'
 import { releaseReviewDrive } from '../services/git'
 import { AUTO_FIX_CAP } from '../services/review-findings'
-import { killRegistry } from './kill-registry'
+import { killRegistry, registerHostChildren } from './kill-registry'
 import type { BurnAgentMcp, HarvestedDigest, TicketOutcome } from './ticket-burner'
 import {
   buildBurnAgent,
@@ -432,12 +432,9 @@ async function reviewTicketOutcome(
     }),
     // What a stop actually kills. The abort above only interrupts sandcastle's
     // fiber; the `claude.cmd` shim it spawned — and the node grandchild doing
-    // the work — keep running. The host provider spawns a fresh child per exec,
-    // so the newest pid is the one still alive and the registry overwrites:
-    // latest pid wins. Released in the `finally` below with the abort control.
-    sandbox: noSandbox({
-      onChildSpawn: (pid) => killRegistry().registerHostPid(ticket.id, pid, { runId: ctx.runId }),
-    }),
+    // the work — keep running. Released in the `finally` below, when there is
+    // nothing left to kill.
+    sandbox: noSandbox({ onChildSpawn: registerHostChildren(ticket.id, { runId: ctx.runId }) }),
     cwd: project.repoPath,
     prompt,
     // `head`: no worktree, no temp branch, no merge — sandcastle runs the agent

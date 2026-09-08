@@ -87,7 +87,7 @@ import {
 // it needs from here it takes from the exported pure units, and neither module
 // touches the other while it is being evaluated.
 import { executeReviewTicket } from './review-ticket'
-import { killRegistry } from './kill-registry'
+import { killRegistry, registerHostChildren } from './kill-registry'
 import { docker } from '@ai-hero/sandcastle/sandboxes/docker'
 import { podman } from '@ai-hero/sandcastle/sandboxes/podman'
 import { noSandbox } from '@ai-hero/sandcastle/sandboxes/no-sandbox'
@@ -3649,7 +3649,7 @@ async function burnTicket(
    */
   const killHandles = (containerName: string): KillHandleOptions => ({
     containerName,
-    onChildSpawn: (pid) => killRegistry().registerHostPid(ticket.id, pid, { runId: ctx.runId }),
+    onChildSpawn: registerHostChildren(ticket.id, { runId: ctx.runId }),
   })
 
   const maxAttempts = Math.max(1, config.burnAttempts)
