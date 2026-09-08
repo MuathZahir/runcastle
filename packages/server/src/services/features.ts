@@ -633,6 +633,27 @@ export function advance(ctx: AppCtx, featureId: string): Feature {
 }
 
 /**
+ * The other half of G3, and the only one a gate check cannot see: has the talk
+ * session finished the tickets phase? A batch satisfies `tickets-approved` the
+ * instant it is stored, but sessions emit placeholder contexts and enrich them
+ * afterwards, so a Burn click landing in that window burns agents on
+ * placeholders and fails the session's remaining `update_ticket` calls.
+ * `complete_phase({phase:"tickets"})` stamps the lap; this waits for the stamp.
+ *
+ * Unless nothing is alive to race: a session that died after emitting but
+ * before completing would otherwise leave the feature with no way forward, so
+ * a feature with no active session burns exactly as it did before.
+ */
+function assertTicketsReady(ctx: AppCtx, feature: Feature): void {
+  if (feature.ticketsReadyLap === feature.lap) return
+  if (activeSessionsForFeature(ctx, feature.id).length === 0) return
+  throw new GateError(
+    'the session is still finishing the tickets — it completes the tickets phase when the lap ' +
+      'is done, and the burn arms then',
+  )
+}
+
+/**
  * G3 burn — the human "Burn" click, the ONLY legitimate G3 crossing.
  *
  * From phase `tickets` (the normal case) this crosses G3: sets phase
@@ -703,6 +724,7 @@ export async function burn(
   if (feature.phase === 'tickets') {
     const gate = checkGate(ctx, 'tickets-approved', feature)
     if (!gate.satisfied) throw new GateError(gate.reason ?? 'gate G3 not satisfied')
+    assertTicketsReady(ctx, feature)
   }
 
   if (restarting) {

@@ -86,6 +86,16 @@ export function nextPhase(feature: { phase: Phase }): Phase | null {
 }
 
 /**
+ * True when the feature has already moved BEYOND `phase` in the pipeline order.
+ * Its caller is `complete_phase`, which has to tell "this phase's work is
+ * finished" apart from "this phase was crossed while you were closing out" —
+ * the second is a report, not a transition.
+ */
+export function isPastPhase(feature: { phase: Phase }, phase: Phase): boolean {
+  return ORDER.indexOf(feature.phase) > ORDER.indexOf(phase)
+}
+
+/**
  * The phase immediately before the feature's, or null at the first phase — the
  * inverse of {@link nextPhase}, for taking a forward step BACK. Its one caller
  * is undoing a gate override (findings F24): the override advanced the feature
