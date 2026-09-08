@@ -44,6 +44,11 @@ function ticketInput(title: string) {
   return { title, goal: 'g', context: 'c', acceptanceCriteria: ['a'], seams: ['s'], blockedBy: [] }
 }
 
+/** The `kind: "review"` ticket G3 requires of every lap it lets into a burn. */
+function reviewInput() {
+  return { ...ticketInput('Review the integrated change'), kind: 'review' as const }
+}
+
 /** Poll a predicate to let a backgrounded run finalize (startRun returns before `done`). */
 async function waitFor(fn: () => boolean, tries = 100): Promise<void> {
   for (let i = 0; i < tries; i++) {
@@ -136,7 +141,7 @@ describe('feature.burn — phase-appropriate refusals unchanged (regression)', (
 
   it('a fresh burn from tickets still crosses G3 into implementation', async () => {
     const featureId = seedFeature(ctx, seedProject(ctx).id, { phase: 'tickets' }).id
-    storeTickets(ctx, featureId, [ticketInput('one')])
+    storeTickets(ctx, featureId, [ticketInput('one'), reviewInput()])
 
     await caller.feature.burn({ featureId })
 

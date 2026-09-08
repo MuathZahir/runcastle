@@ -65,6 +65,16 @@ describe('review findings service', () => {
     })
   })
 
+  it('stores a fix ticket through a batch that closes with no review ticket', () => {
+    // The load-bearing placement constraint of the one-review-ticket seatbelt:
+    // it lives at G3 and at the `emit_tickets` tool surface, NEVER in
+    // `storeTickets`. The internal mints — this one, and the burner's mid-run
+    // verification pass — store review-less batches by design.
+    const [fix] = storeTickets(ctx, featureId, [buildFixTicket({ id: 'finding_1', ...defect() })])
+    expect(fix.kind).toBe('implementation')
+    expect(listTickets(ctx, featureId).map((t) => t.id)).toContain(fix.id)
+  })
+
   it('reports a defect and links a pending fix ticket both ways', () => {
     const result = reportFinding(ctx, { featureId, reviewTicket, input: defect() })
     expect(result.finding).toMatchObject({ lap: 3, status: 'open', fixTicketId: result.fixTicket?.id })

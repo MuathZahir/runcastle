@@ -614,8 +614,8 @@ export function advance(ctx: AppCtx, featureId: string): Feature {
   if (!gate) throw new GateError('feature is already at the final phase')
 
   // G3 (tickets → implementation) is the human "Burn" gate — the first click of
-  // CONTEXT.md's two-click covenant (#9). Even when its precondition
-  // (`tickets-approved`: ≥1 ticket) is met, a plain `advance` must NOT cross it;
+  // CONTEXT.md's two-click covenant (#9). Even when its `tickets-approved`
+  // preconditions are met, a plain `advance` must NOT cross it;
   // only `burn` (the human Burn click) or an explicit `overrideGate` may. This
   // keeps `feature.burn` the single legitimate G3 crossing.
   if (gate.id === 'G3') {
@@ -644,7 +644,9 @@ export function advance(ctx: AppCtx, featureId: string): Feature {
  * (no run is live, so nothing is behind it), then every `failed` ticket is
  * reset to `pending` (error cleared) so the re-burn actually retries it — this
  * is the retry path the burner's "resolve manually, then re-burn" messages
- * promise. Requires ≥1 non-cancelled ticket.
+ * promise. Requires ≥1 non-cancelled ticket; a fresh burn from `tickets`
+ * additionally has to satisfy `checkGate(ctx, 'tickets-approved', …)`, which is
+ * how the Burn click refuses a lap that forgot its `kind: "review"` ticket.
  *
  * It also accepts a feature at `review` with ≥1 pending (non-terminal) ticket
  * and no active run — the Iterate loop (CONTEXT.md, "Laps: iteration without a
@@ -690,6 +692,17 @@ export async function burn(
         ? 'no burnable tickets — every ticket is cancelled'
         : 'no tickets to burn',
     )
+  }
+  // The G3 crossing consults the gate service itself, so the Burn click refuses
+  // exactly what `complete_phase` and the launcher refuse — a lap missing its
+  // `kind: "review"` ticket most of all, which a count of burnable tickets
+  // cannot see. `restarting` and `iterating` skip it deliberately: both re-enter
+  // a burn on a feature that already crossed G3 (an override parks the feature
+  // at `implementation` without ever having satisfied the check), and re-testing
+  // it there would turn the escape hatch into a dead end.
+  if (feature.phase === 'tickets') {
+    const gate = checkGate(ctx, 'tickets-approved', feature)
+    if (!gate.satisfied) throw new GateError(gate.reason ?? 'gate G3 not satisfied')
   }
 
   if (restarting) {

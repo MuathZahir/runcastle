@@ -41,6 +41,11 @@ function ticketInput(title: string) {
   return { title, goal: 'g', context: 'c', acceptanceCriteria: ['a'], seams: ['s'], blockedBy: [] }
 }
 
+/** The `kind: "review"` ticket every batch closes with — what G3 requires. */
+function reviewInput() {
+  return { ...ticketInput('Review the integrated change'), kind: 'review' as const }
+}
+
 /**
  * Backdate a ticket to an earlier lap. `storeTickets` stamps the feature's
  * CURRENT lap, so a feature seeded straight onto lap 2 has no other way to
@@ -133,10 +138,17 @@ describe('G3 (tickets-approved) scopes to the current lap', () => {
     ctx = await makeTestCtx()
   })
 
-  it('a lap-1 done ticket does not satisfy G3 on lap 2 — a lap-2 ticket does', () => {
+  it('a lap-1 done batch does not satisfy G3 on lap 2 — a lap-2 batch does', () => {
     const featureId = seedFeature(ctx, seedProject(ctx).id, { phase: 'review' }).id
-    const [shipped] = storeTickets(ctx, featureId, [ticketInput('lap-1 work')])
+    // Lap 1 shipped a whole batch, review ticket included: an earlier lap's
+    // review is done work, so it must not open G3 for a lap whose own review
+    // was never written.
+    const [shipped, reviewed] = storeTickets(ctx, featureId, [
+      ticketInput('lap-1 work'),
+      reviewInput(),
+    ])
     updateTicket(ctx, shipped.id, { status: 'done', commits: ['abc'] })
+    updateTicket(ctx, reviewed.id, { status: 'done', commits: ['def'] })
 
     rethink(ctx, featureId)
     const onLap2 = getFeatureRow(ctx, featureId)
@@ -146,13 +158,18 @@ describe('G3 (tickets-approved) scopes to the current lap', () => {
     })
 
     storeTickets(ctx, featureId, [ticketInput('lap-2 work')])
+    expect(checkGate(ctx, 'tickets-approved', getFeatureRow(ctx, featureId)).reason).toMatch(
+      /no review ticket on this lap/,
+    )
+
+    storeTickets(ctx, featureId, [reviewInput()])
     expect(checkGate(ctx, 'tickets-approved', getFeatureRow(ctx, featureId)).satisfied).toBe(true)
   })
 
   it('still counts lap-1 tickets while the feature is on lap 1 (unchanged)', () => {
     const feature = seedFeature(ctx, seedProject(ctx).id, { phase: 'tickets' })
     expect(checkGate(ctx, 'tickets-approved', feature).satisfied).toBe(false)
-    storeTickets(ctx, feature.id, [ticketInput('one')])
+    storeTickets(ctx, feature.id, [ticketInput('one'), reviewInput()])
     expect(checkGate(ctx, 'tickets-approved', feature).satisfied).toBe(true)
   })
 

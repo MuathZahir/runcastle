@@ -4,6 +4,7 @@ import type { AppCtx } from '../src/db/types'
 import { GateError } from '../src/errors'
 import { listAfter } from '../src/services/events'
 import { burn } from '../src/services/features'
+import { overrideGate } from '../src/services/gates'
 import { listByFeature, storeTickets, updateTicket } from '../src/services/tickets'
 import { workflowRegistry } from '../src/workflows/registry'
 import { makeTestCtx } from './helpers/db'
@@ -27,6 +28,11 @@ const stubBurner: WorkflowDef = {
 
 function ticketInput(title: string) {
   return { title, goal: 'g', context: 'c', acceptanceCriteria: ['a'], seams: ['s'], blockedBy: [] }
+}
+
+/** The `kind: "review"` ticket every batch closes with — what G3 requires. */
+function reviewInput() {
+  return { ...ticketInput('Review the integrated change'), kind: 'review' as const }
 }
 
 describe('feature.burn — retry resets failed tickets', () => {
@@ -71,13 +77,47 @@ describe('feature.burn — retry resets failed tickets', () => {
 
   it('a fresh burn from the tickets phase crosses G3 without touching statuses', async () => {
     const featureId = seedFeature(ctx, seedProject(ctx).id, { phase: 'tickets' }).id
-    storeTickets(ctx, featureId, [ticketInput('one')])
+    storeTickets(ctx, featureId, [ticketInput('one'), reviewInput()])
 
     await burn(ctx, featureId)
 
     const types = listAfter(ctx, featureId, 0).map((e) => e.type)
     expect(types).toContain('burn.started')
     expect(types).not.toContain('burn.restarted')
+  })
+
+  it('refuses a fresh burn of a lap that has no review ticket', async () => {
+    // The incident this seatbelt exists for: the Burn click used to ask only
+    // for ≥1 non-cancelled ticket, so a lap whose review ticket lost its `kind`
+    // went into a sandbox that has no app, database or browser.
+    const featureId = seedFeature(ctx, seedProject(ctx).id, { phase: 'tickets' }).id
+    storeTickets(ctx, featureId, [ticketInput('build it')])
+
+    await expect(burn(ctx, featureId)).rejects.toThrow(GateError)
+    await expect(burn(ctx, featureId)).rejects.toThrow(/no review ticket on this lap/)
+    expect(listAfter(ctx, featureId, 0).map((e) => e.type)).not.toContain('burn.started')
+
+    // Emitting it (in a later call, as split batches do) opens the gate.
+    storeTickets(ctx, featureId, [reviewInput()])
+    await burn(ctx, featureId)
+    expect(listAfter(ctx, featureId, 0).map((e) => e.type)).toContain('burn.started')
+  })
+
+  it('a review-less lap burns once the human overrides G3 with a reason', async () => {
+    // The seatbelt, not the cage: override parks the feature at
+    // `implementation`, and the re-entry path there does not re-cross G3.
+    const featureId = seedFeature(ctx, seedProject(ctx).id, { phase: 'tickets' }).id
+    storeTickets(ctx, featureId, [ticketInput('build it')])
+
+    expect(overrideGate(ctx, featureId, 'G3', 'reviewing this one by hand').phase).toBe(
+      'implementation',
+    )
+    const { runId } = await burn(ctx, featureId)
+    expect(runId).toMatch(/^run/)
+
+    expect(
+      listAfter(ctx, featureId, 0).find((e) => e.type === 'gate.overridden')?.message,
+    ).toContain('reviewing this one by hand')
   })
 
   it('refuses when every ticket is cancelled', async () => {

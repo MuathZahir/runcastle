@@ -53,15 +53,35 @@ export function checkGate(ctx: AppCtx, check: GateCheckId, feature: Feature): Ga
       return docGate(ctx, feature, 'spec.md', 'write the spec (spec.md) before breaking into tickets')
 
     case 'tickets-approved': {
-      // G3: the human Burn click is the approval; the checkable precondition is
-      // that there is at least one burnable (non-cancelled) ticket IN THE
-      // CURRENT LAP (SPEC §15.1). Scoping matters from lap 2 on: an earlier
-      // lap's tickets are all terminal by construction, so counting them would
-      // open G3 for a lap that has emitted nothing to burn.
-      const count = listByFeature(ctx, feature.id).filter(
+      // G3: the human Burn click is the approval; the first checkable
+      // precondition is that there is at least one burnable (non-cancelled)
+      // ticket IN THE CURRENT LAP (SPEC §15.1). Scoping matters from lap 2 on:
+      // an earlier lap's tickets are all terminal by construction, so counting
+      // them would open G3 for a lap that has emitted nothing to burn.
+      const burnable = listByFeature(ctx, feature.id).filter(
         (t) => t.lap === feature.lap && t.status !== 'cancelled',
-      ).length
-      return count >= 1 ? { satisfied: true } : { satisfied: false, reason: 'no tickets to burn' }
+      )
+      if (burnable.length === 0) return { satisfied: false, reason: 'no tickets to burn' }
+      // The one-review-ticket rule, in machinery rather than prose (CONTEXT.md
+      // decision #8). The tickets skill says every batch closes with a
+      // `kind: "review"` ticket, and an emitter that drops the field ships a
+      // review into a burn sandbox that has no app, database or browser: the
+      // container is wasted, the review never runs, and the lap reaches review
+      // with nobody having looked at it — silently.
+      //
+      // At least one, never exactly one: the burner's verification pass mints a
+      // second review ticket mid-run, so "exactly one" would refuse a state the
+      // machinery itself creates. Ordering (`blockedBy`) stays a prose rule too
+      // — the dispatcher already handles it.
+      if (!burnable.some((t) => t.kind === 'review')) {
+        return {
+          satisfied: false,
+          reason:
+            'no review ticket on this lap — every batch closes with one (kind: "review"); emit it, ' +
+            'fix the kind on a review-shaped ticket, or override this gate with a reason',
+        }
+      }
+      return { satisfied: true }
     }
 
     case 'all-tickets-terminal': {

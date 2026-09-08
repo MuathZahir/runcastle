@@ -24,8 +24,10 @@ import {
   releaseReviewDrive,
   reviewDrive,
 } from '../src/services/git'
+import { checkGate } from '../src/services/gates'
 import { openProject } from '../src/services/projects'
 import { listAfter } from '../src/services/events'
+import { overrideGate } from '../src/services/gates'
 import { listByFeature, storeTickets } from '../src/services/tickets'
 import { AUTO_FIX_CAP } from '../src/services/review-findings'
 import { createCallerFactory } from '../src/trpc/context'
@@ -768,6 +770,10 @@ describe('a run containing a review ticket still lands the feature in review', (
     storeTickets(ctx, featureId, [{
       title: 'quick fix', goal: 'g', context: 'c', acceptanceCriteria: ['a'], seams: ['s'], blockedBy: [],
     }])
+    // A review-less lap only reaches the burner through the G3 override — which
+    // is exactly the state the verification mint exists to catch, so the human
+    // who waived the gate still gets the landed work looked at.
+    overrideGate(ctx, featureId, 'G3', 'shipping this fix without a review ticket')
 
     await caller.feature.burn({ featureId })
     for (let i = 0; i < 200 && getFeatureRow(ctx, featureId).phase !== 'review'; i++) {
@@ -784,6 +790,109 @@ describe('a run containing a review ticket still lands the feature in review', (
     const eventTypes = listAfter(ctx, featureId).map((event) => event.type)
     expect(eventTypes).toContain('ticket.verification_minted')
     expect(eventTypes.filter((type) => type === 'ticket.verification_minted')).toHaveLength(1)
+  })
+})
+
+// --- the verification mint vs. the one-review-ticket seatbelt ----------------
+
+/**
+ * The load-bearing placement constraint of the one-review-ticket seatbelt
+ * (decisions 2 and 4): it lives at G3 and at the `emit_tickets` tool surface,
+ * never in `storeTickets`, and it requires AT LEAST one review ticket rather
+ * than exactly one. The burner's mid-run verification pass is why: it mints a
+ * SECOND review ticket into a lap that already closed with one, straight through
+ * the service, so an "exactly one" rule — or a check in `storeTickets` — would
+ * refuse a state the machinery itself creates.
+ */
+describe('the burner mints its verification pass into a lap that already has a review', () => {
+  let ctx: AppCtx
+  let caller: ReturnType<ReturnType<typeof createCallerFactory<typeof appRouter>>>
+  let original: WorkflowDef | undefined
+
+  /**
+   * The real scheduler over a fake boundary, where the lap's own review reports
+   * one defect: it mints the fix ticket mid-run the way `report_finding` does,
+   * so an implementation ticket lands AFTER the review and the run owes a
+   * verification pass.
+   */
+  const burner: WorkflowDef = {
+    id: 'ticket-burner',
+    run: (wctx) =>
+      burnRun(
+        wctx,
+        deps(async (workflowCtx, t) => {
+          if (t.kind !== 'review') return { status: 'done', commits: ['sha'] }
+          if (t.passKind !== 'verification') {
+            // Unblocked: the ctx hook reads `blockedBy` as batch-relative, and
+            // the review this ticket answers is already terminal anyway.
+            workflowCtx.storeTickets?.([{
+              title: 'fix the defect',
+              goal: 'g',
+              context: 'c',
+              acceptanceCriteria: ['a'],
+              seams: ['s'],
+              blockedBy: [],
+            }])
+          }
+          return { status: 'done', commits: [] }
+        }, 1),
+      ),
+  }
+
+  beforeEach(async () => {
+    ctx = await makeTestCtx()
+    caller = createCallerFactory(appRouter)(ctx)
+    original = workflowRegistry.get('ticket-burner')
+    workflowRegistry.set('ticket-burner', burner)
+  })
+
+  afterEach(() => {
+    if (original) workflowRegistry.set('ticket-burner', original)
+    else workflowRegistry.delete('ticket-burner')
+  })
+
+  it('stores the second review ticket untouched, and G3 still reads satisfied', async () => {
+    const featureId = seedFeature(ctx, seedProject(ctx).id, { phase: 'tickets', lap: 2 }).id
+    storeTickets(ctx, featureId, [
+      { title: 'build it', goal: 'g', context: 'c', acceptanceCriteria: ['a'], seams: ['s'], blockedBy: [] },
+      {
+        title: 'Review: the integrated change',
+        goal: 'g',
+        context: 'c',
+        acceptanceCriteria: ['a'],
+        seams: ['s'],
+        blockedBy: [1],
+        kind: 'review',
+      },
+    ])
+
+    await caller.feature.burn({ featureId })
+    for (let i = 0; i < 200 && getFeatureRow(ctx, featureId).phase !== 'review'; i++) {
+      await new Promise((resolve) => setTimeout(resolve, 5))
+    }
+
+    const stored = listByFeature(ctx, featureId)
+    expect(stored.map((t) => t.title)).toEqual([
+      'build it',
+      'Review: the integrated change',
+      'fix the defect',
+      'Verify the fixes that landed',
+    ])
+    // Stored verbatim: the mint's batch is neither refused nor coerced, even
+    // though it never passes the tool surface that would otherwise see it.
+    expect(stored[3]).toMatchObject({
+      kind: 'review',
+      passKind: 'verification',
+      lap: 2,
+      status: 'done',
+      title: 'Verify the fixes that landed',
+    })
+    expect(stored[3].context).toContain('#3 fix the defect')
+    expect(stored.filter((t) => t.kind === 'review')).toHaveLength(2)
+    // Two review tickets on one lap is a state G3 must keep accepting.
+    expect(checkGate(ctx, 'tickets-approved', getFeatureRow(ctx, featureId))).toEqual({
+      satisfied: true,
+    })
   })
 })
 

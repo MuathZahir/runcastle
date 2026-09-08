@@ -30,6 +30,7 @@ import mcpApp, {
   toolsForAudience,
 } from '../src/mcp/server'
 import { listAfter } from '../src/services/events'
+import { checkGate } from '../src/services/gates'
 import { getFeatureRow } from '../src/services/repo'
 import { cancelTicket, listByFeature, storeTickets, updateTicket } from '../src/services/tickets'
 import { claim, getWaypoint, listByFeature as listWaypoints } from '../src/services/waypoints'
@@ -105,6 +106,47 @@ describe('mcp tools', () => {
       ['build it', 'implementation'],
       ['verify it', 'review'],
     ])
+  })
+
+  it('emit_tickets refuses a Review-titled ticket that is not kind: review', () => {
+    // The incident shape: a review-shaped ticket emitted with the `kind` field
+    // dropped, defaulted to `implementation`, and containerized into a sandbox
+    // with no app to drive. Caught at authoring time, while the session that
+    // wrote it can still fix and re-emit.
+    const batch = z
+      .array(TicketInputSchema)
+      .parse([ticket('build it'), ticket('Review: drive the flow end to end', [1])])
+
+    expect(() => toolEmitTickets(ctx, session, { tickets: batch })).toThrow(GateError)
+    expect(() => toolEmitTickets(ctx, session, { tickets: batch })).toThrow(
+      /kind: "review".*retitle/s,
+    )
+    // the WHOLE batch is refused — nothing was stored, not even the good ticket
+    expect(listByFeature(ctx, featureId)).toEqual([])
+  })
+
+  it('emit_tickets refuses the bare "Review " title form too, and never coerces the kind', () => {
+    expect(() =>
+      toolEmitTickets(ctx, session, { tickets: [ticket('review the integrated change')] }),
+    ).toThrow(GateError)
+
+    // Correctly kinded, the same title stores untouched: refusal is the only
+    // move — the session stays the author of its own tickets.
+    const out = toolEmitTickets(ctx, session, {
+      tickets: [{ ...ticket('Review the integrated change'), kind: 'review' }],
+    })
+    expect(out.stored).toBe(1)
+    expect(listByFeature(ctx, featureId).map((t) => t.kind)).toEqual(['review'])
+  })
+
+  it('emit_tickets leaves an ordinary title alone whatever its kind', () => {
+    // Only the review-shaped TITLE is the heuristic's business: "Reviewer
+    // dashboard" is not a review ticket, and a batch with no review ticket at
+    // all is G3's business, not this check's.
+    const out = toolEmitTickets(ctx, session, {
+      tickets: [ticket('Reviewer dashboard'), ticket('previewing a draft')],
+    })
+    expect(out.stored).toBe(2)
   })
 
   it('emit_tickets rejects an out-of-range blockedBy position', () => {
@@ -326,7 +368,7 @@ describe('mcp tools', () => {
     const project = seedProject(ctx, repoPath)
     const feat = seedFeature(ctx, project.id, { slug: 'burn-me', phase: 'tickets' })
     const s = createSessionRow(ctx, { featureId: feat.id, kind: 'ideation', worktreePath: repoPath })
-    storeTickets(ctx, feat.id, [ticket('only')])
+    storeTickets(ctx, feat.id, [ticket('only'), { ...ticket('Review the lap'), kind: 'review' }])
 
     const out = toolCompletePhase(ctx, s, { phase: 'tickets' })
     expect(out).toEqual({
@@ -342,6 +384,61 @@ describe('mcp tools', () => {
     // an "awaiting burn" note lands on the timeline
     const types = listAfter(ctx, feat.id, 0).map((e) => e.type)
     expect(types).toContain('tickets.awaiting_burn')
+  })
+
+  it('complete_phase(tickets) REFUSES a lap with no review ticket, naming G3 and the fix', () => {
+    // The other half of decision 6(a): the refusal has to reach the session
+    // through `complete_phase`, not only through a direct `checkGate` call.
+    // Parking at G3 must not swallow the check — a session told `ok: true` here
+    // walks away, and the lap only fails hours later at the human's Burn click,
+    // with the session that could still have emitted the ticket long gone.
+    const project = seedProject(ctx, repoPath)
+    const feat = seedFeature(ctx, project.id, { slug: 'no-review', phase: 'tickets' })
+    const s = createSessionRow(ctx, { featureId: feat.id, kind: 'ideation', worktreePath: repoPath })
+    storeTickets(ctx, feat.id, [ticket('build it'), ticket('build more', [1])])
+
+    const out = toolCompletePhase(ctx, s, { phase: 'tickets' })
+    expect(out.ok).toBe(false)
+    if (!out.ok) {
+      expect(out.reason).toMatch(/no review ticket on this lap/)
+      expect(out.reason).toMatch(/kind: "review"/)
+      expect(out.gate).toEqual({
+        id: 'G3',
+        description: expect.any(String),
+        check: 'tickets-approved',
+      })
+    }
+
+    // refused, so the lap is NOT recorded as ready: no awaiting-burn note
+    const types = listAfter(ctx, feat.id, 0).map((e) => e.type)
+    expect(types).not.toContain('tickets.awaiting_burn')
+    expect(getFeatureRow(ctx, feat.id).phase).toBe('tickets')
+  })
+
+  it('a review ticket emitted in a LATER call still satisfies G3 at complete_phase(tickets)', () => {
+    // Sessions split a big batch across several emit_tickets calls to dodge the
+    // payload timeout, so the review ticket routinely arrives last and alone.
+    // G3 judges the lap's accumulated tickets, never a single call.
+    const project = seedProject(ctx, repoPath)
+    const feat = seedFeature(ctx, project.id, { slug: 'split-batch', phase: 'tickets' })
+    const s = createSessionRow(ctx, { featureId: feat.id, kind: 'ideation', worktreePath: repoPath })
+
+    toolEmitTickets(ctx, s, { tickets: [ticket('one'), ticket('two')] })
+    expect(checkGate(ctx, 'tickets-approved', getFeatureRow(ctx, feat.id)).reason).toMatch(
+      /no review ticket on this lap/,
+    )
+    // mid-split the session hears the same refusal from the tool it actually
+    // calls, so it fixes the batch instead of ending the phase half-emitted
+    expect(toolCompletePhase(ctx, s, { phase: 'tickets' })).toMatchObject({ ok: false })
+
+    toolEmitTickets(ctx, s, {
+      tickets: [{ ...ticket('Review the integrated change'), kind: 'review' }],
+    })
+    expect(checkGate(ctx, 'tickets-approved', getFeatureRow(ctx, feat.id)).satisfied).toBe(true)
+    expect(toolCompletePhase(ctx, s, { phase: 'tickets' })).toMatchObject({
+      ok: true,
+      waitingOn: 'human burn',
+    })
   })
 })
 
