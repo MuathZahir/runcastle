@@ -27,7 +27,7 @@ export interface CarriedWork {
 
 /**
  * An open defect, in the fields a session needs to act on it — the same four
- * {@link buildFixTicket} serialises onto a fix ticket, minus the citation, which
+ * `buildFixTicket` serialises onto a fix ticket, minus the citation, which
  * points at the criterion the review argued from rather than at the problem.
  */
 export interface CarriedDefect {

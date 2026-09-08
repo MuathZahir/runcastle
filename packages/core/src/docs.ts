@@ -74,7 +74,7 @@ export interface FeatureDocsState {
  */
 export function withheldFeatureDocs(state: FeatureDocsState): Readonly<Record<string, string>> {
   if (!state.carriedNotesOpen) return WITHHELD_FEATURE_DOCS
-  const { 'test-notes.md': _carried, ...rest } = WITHHELD_FEATURE_DOCS
+  const { 'test-notes.md': _testNotes, ...rest } = WITHHELD_FEATURE_DOCS
   return rest
 }
 
