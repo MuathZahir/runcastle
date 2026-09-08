@@ -700,20 +700,23 @@ export function toolCompletePhase(
   // The feature parks at `tickets`, waiting on the human.
   const gate = nextGate(feature)
   if (gate?.id === 'G3') {
-    // The crossing waits for the human, but the gate's PRECONDITIONS are checked
-    // here — a session whose lap has no `kind: "review"` ticket has to hear that
-    // now, while it is still alive to emit one. Reporting "waiting on human
-    // burn" instead would park the lap on a Burn click that refuses it anyway,
-    // with the session long gone.
+    // Parking is not a bypass. G3 is not crossed here, but its preconditions are
+    // still checked here — SPEC §6 says `complete_phase` runs the gate check
+    // server-side, and the exception is only about the crossing. A lap that
+    // forgot its `kind: "review"` ticket has to hear the refusal at THIS moment,
+    // while the session that wrote the tickets is still alive to fix them;
+    // returning `ok: true` would send it away and leave the seatbelt to fire
+    // hours later at the human's Burn click.
     const result = checkGate(ctx, gate.check, feature)
     if (!result.satisfied) {
-      const req = requirement(gate)
+      const failed = requirement(gate)
       return {
         ok: false,
         reason: result.reason ?? `gate ${gate.id} not satisfied`,
-        ...(req ? { gate: req } : {}),
+        ...(failed ? { gate: failed } : {}),
       }
     }
+
     const next = nextPhase(feature) ?? 'implementation'
     emit(ctx, feature.id, {
       type: 'tickets.awaiting_burn',
