@@ -1,4 +1,5 @@
 import * as z from 'zod'
+import type { AppCtx } from '../../db/types'
 import { emit } from '../../services/events'
 import { retryTicket } from '../../services/features'
 import { hasActiveRun } from '../../services/repo'
@@ -27,8 +28,12 @@ import { publicProcedure, router } from '../context'
  *               up where it stopped. With no agent AND no live run it instead
  *               sweeps the orphaned lane to `failed`, which is the same rescue
  *               and the only way out of that state from the UI.
- * - `cancel`  — mark a pending/failed ticket cancelled (terminal; dependents
- *               treat it as satisfied). Same service the MCP tool uses.
+ * - `cancel`  — waive: mark a pending/failed ticket cancelled (terminal;
+ *               dependents treat it as satisfied). Same service the MCP tool
+ *               uses, preceded by the same kill as `stop` when the ticket still
+ *               has a live agent — a ticket can read `failed` while its process
+ *               carries on, and waiving one used to leave it running
+ *               (decisions.md #5). An idle ticket is the pure DB flip it was.
  * - `edit`    — rewrite a pending/failed ticket's content, or reassign the model
  *               it burns on, from the UI. The
  *               same `editTicket` service the MCP `update_ticket` tool calls,
@@ -40,6 +45,22 @@ import { publicProcedure, router } from '../context'
  * what lets the pre-burn bar say how long a burn has been taking here instead
  * of quoting a number someone hardcoded (decisions.md #16b).
  */
+/**
+ * The kill ran out its deadline with the process still there — said out loud,
+ * on the timeline, by both controls that kill (`stop` and `cancel`). Nothing
+ * else in the stack would ever mention it: the ticket still reads terminal, and
+ * this is exactly the state the old silent "stopped" was hiding. The response
+ * carries it too, but a toast is gone in seconds and the timeline is not.
+ */
+function noteStopTimeout(ctx: AppCtx, ticketId: string): void {
+  const ticket = getTicket(ctx, ticketId)
+  emit(ctx, ticket.featureId, {
+    type: 'ticket.stop_timeout',
+    message: `ticket #${ticket.seq}: stop timed out — the process may still be running`,
+    ticketId: ticket.id,
+  })
+}
+
 export const ticketRouter = router({
   retry: publicProcedure
     .input(z.object({ ticketId: z.string(), fresh: z.boolean().optional() }))
@@ -56,14 +77,7 @@ export const ticketRouter = router({
         // else in the stack would ever say so, and this is exactly the state the
         // old silent "stopped" was hiding — put it on the timeline as well as in
         // the response, so it survives the toast being dismissed.
-        if (!confirmed) {
-          const ticket = getTicket(ctx, input.ticketId)
-          emit(ctx, ticket.featureId, {
-            type: 'ticket.stop_timeout',
-            message: `ticket #${ticket.seq}: stop timed out — the process may still be running`,
-            ticketId: ticket.id,
-          })
-        }
+        if (!confirmed) noteStopTimeout(ctx, input.ticketId)
         return { stopped: true, swept: false, confirmed }
       }
       // No live agent HERE. If no run is live for the feature either, the ticket
@@ -80,7 +94,26 @@ export const ticketRouter = router({
 
   cancel: publicProcedure
     .input(z.object({ ticketId: z.string(), reason: z.string().optional() }))
-    .mutation(({ ctx, input }) => cancelTicket(ctx, input.ticketId, input.reason)),
+    .mutation(async ({ ctx, input }) => {
+      // Kill first, flip second. Waiving is how a human sets aside a ticket that
+      // is going nowhere, and the ticket going nowhere is often the one whose
+      // agent is still burning — so the process dies before the row says the
+      // work was set aside, never after. `stopped: false` means there was no
+      // agent, and this stays the pure flip it has always been.
+      //
+      // Except on a `burning` ticket, which the flip below refuses outright: a
+      // refused waive must not kill anything on its way to the error, and Stop
+      // is the control for a lane that is openly still running. What is left is
+      // the state this kill exists for — a ticket that READS terminal while its
+      // process carries on.
+      const { stopped, confirmed } =
+        getTicket(ctx, input.ticketId).status === 'burning'
+          ? { stopped: false, confirmed: true }
+          : await stopTicketRun(input.ticketId)
+      if (stopped && !confirmed) noteStopTimeout(ctx, input.ticketId)
+      const ticket = cancelTicket(ctx, input.ticketId, input.reason)
+      return { ticket, stopped, confirmed }
+    }),
 
   durationStats: publicProcedure
     .input(z.object({ projectId: z.string() }))
