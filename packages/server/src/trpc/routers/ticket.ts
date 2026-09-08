@@ -98,15 +98,13 @@ export const ticketRouter = router({
       // Kill first, flip second. Waiving is how a human sets aside a ticket that
       // is going nowhere, and the ticket going nowhere is often the one whose
       // agent is still burning — so the process dies before the row says the
-      // work was set aside, never after. `stopped: false` means there was no
-      // agent, and this stays the pure flip it has always been.
-      //
-      // Whatever the row says: a ticket that READS terminal while its process
-      // carries on, and one that openly reads `burning`, are the same live agent
-      // and get the same kill (decisions.md #5) — one click, not "Stop, then
-      // Waive". `agentStopped` is what lets the flip past a `burning` row it
-      // just killed; a `burning` ticket with nothing behind it is still refused,
-      // because that orphan is Stop's sweep to clear.
+      // work was set aside, never after. Whatever the row says: one that READS
+      // terminal over a process carrying on and one that openly reads `burning`
+      // are the same live agent, and get the same kill in one click rather than
+      // "Stop, then Waive" (decisions.md #5). `agentStopped` is what lets the
+      // flip past a `burning` row this call just killed; a `burning` ticket with
+      // nothing behind it is still refused, that orphan being Stop's sweep to
+      // clear. `stopped: false` on an idle ticket keeps the pure DB flip it was.
       const { stopped, confirmed } = await stopTicketRun(input.ticketId)
       if (stopped && !confirmed) noteStopTimeout(ctx, input.ticketId)
       const ticket = cancelTicket(ctx, input.ticketId, input.reason, { agentStopped: stopped })
