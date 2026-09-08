@@ -1,5 +1,18 @@
 import { BranchMenu, Button } from '../../ui'
-import type { ActionKind, NextAction, NextStep } from '../../lib/feature-ui'
+import type { ActionKind, CountPill, NextAction, NextStep } from '../../lib/feature-ui'
+
+// A tone is a whole literal class, never an interpolated colour name — the
+// content scanner cannot see `border-${tone}` (STYLE.md).
+const PILL_TONE: Record<CountPill['tone'], string> = {
+  danger: 'border-danger/30 text-danger',
+  note: 'border-hairline text-text-2',
+  clear: 'border-ok/30 text-ok',
+}
+const PILL_DOT: Record<CountPill['tone'], string> = {
+  danger: 'bg-danger',
+  note: 'bg-text-4',
+  clear: 'bg-ok',
+}
 
 export function NextStepBar({
   ns,
@@ -35,8 +48,25 @@ export function NextStepBar({
       {ns.busy && <span className="size-4 animate-spin rounded-pill border-2 border-hairline-strong border-t-accent" />}
       <div className="min-w-0 flex-1 basis-[26rem]">
         <div className="font-mono text-xs uppercase tracking-[0.12em] text-text-3">{ns.kick}</div>
-        <div className="mt-1 text-lg font-semibold text-text">{ns.title}</div>
-        {guidance && <div className="mt-1 max-w-[68ch] text-sm text-text-2">{ns.desc}</div>}
+        {ns.title && <div className="mt-1 text-lg font-semibold text-text">{ns.title}</div>}
+        {/* The count line is the ONE thing here that guidance cannot hide
+            (decision 3): the primary follows the count, so a bar that hid it
+            would be a button whose reason is nowhere on the page. */}
+        {ns.counts && (
+          <div className="mt-1 flex flex-wrap items-center gap-2 text-sm text-text-2">
+            {ns.counts.pills.map((pill) => (
+              <span
+                key={pill.label}
+                className={`inline-flex items-center gap-1.5 rounded-pill border px-2.5 py-0.5 font-mono text-sm ${PILL_TONE[pill.tone]}`}
+              >
+                <span className={`size-1.5 rounded-pill ${PILL_DOT[pill.tone]}`} />
+                {pill.label}
+              </span>
+            ))}
+            {ns.counts.trailing && <span>{ns.counts.trailing}</span>}
+          </div>
+        )}
+        {guidance && ns.desc && <div className="mt-1 max-w-[68ch] text-sm text-text-2">{ns.desc}</div>}
         {ns.note && <div className="mt-2 text-sm text-text-3" role="note">{ns.note}</div>}
         {/* A refusal with a way out of it (decision 20). The tooltip on the dead
             button says why; this says why WHERE THE EYE IS and puts the one

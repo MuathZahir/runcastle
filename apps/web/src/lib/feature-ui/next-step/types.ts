@@ -17,6 +17,7 @@ export type ActionKind =
   | 'resolveConflict' // launchSession { kind: 'revisit', kickoffLine: mergeConflictKickoff(…) }
   | 'rethink' // feature.rethink — start the next lap with nothing to triage first
   | 'iterate' // opens the triage step over the open notes and defects (decision 21)
+  | 'endSessionAndIterate' // feature.endSession, then the Iterate road above (decision 4)
   | 'unarchive' // feature.unarchive — restore an archived feature to its lane (next-step bar)
 
 /**
@@ -47,17 +48,45 @@ export interface NextAction {
   escape?: NextAction
 }
 
+/**
+ * One pill on the bar's count line. The tone is the pill's whole meaning —
+ * `danger` for defects, `note` for the human's own notes, `clear` for the
+ * all-clear — so the bar maps it to a literal class rather than interpolating a
+ * colour name (STYLE.md).
+ */
+export interface CountPill {
+  label: string
+  tone: 'danger' | 'note' | 'clear'
+}
+
+/**
+ * The bar's permanent one-liner: the counts the priority ladder is reading
+ * (decision 3). It renders unconditionally, NOT behind the guidance flag — the
+ * primary follows the count, and a count the human cannot see is a primary
+ * whose reason is invisible.
+ */
+export interface CountLine {
+  /** In render order — one pill per non-zero kind, or the single all-clear pill. */
+  pills: CountPill[]
+  /** The plain word after the pills ("open"); absent when a pill says it itself. */
+  trailing?: string
+}
+
 export interface NextStep {
   /** Small tracked kicker above the title (e.g. NEXT STEP / IN PROGRESS). */
   kick: string
-  title: string
-  desc: string
+  /** Absent where the count line says the state on its own (decision 3). */
+  title?: string
+  /** Absent where the count line replaces the prose (decision 3). */
+  desc?: string
   primary?: NextAction
   secondary: NextAction[]
   /** A run is actively burning — show a spinner in the bar. */
   busy: boolean
   /** Optional dim context line beneath the description. */
   note?: string
+  /** The open-work count line, on every bar of a phase that has one. */
+  counts?: CountLine
 }
 
 /**
