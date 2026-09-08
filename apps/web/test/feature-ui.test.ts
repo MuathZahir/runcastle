@@ -1105,16 +1105,23 @@ describe('nextStep at review', () => {
  * that stops every list on the page being a wall of prose.
  */
 describe('finding rendering', () => {
-  it('reads out found, fixed, open and observations in that order', () => {
+  it('reads out found, fixed and open in that order', () => {
     expect(findingCountsLine({ found: 9, fixed: 8, open: 1, observations: 3 })).toBe(
-      '9 defects found · 8 fixed automatically · 1 still open · 3 observations',
+      '9 defects found · 8 fixed automatically · 1 still open',
+    )
+  })
+
+  /**
+   * Decision 2: observations keep the line alive — a lap that saw only those
+   * still had a review — but they are never named on arrival.
+   */
+  it('counts observations without saying them', () => {
+    expect(findingCountsLine({ found: 0, fixed: 0, open: 0, observations: 1 })).toBe(
+      'no defects found',
     )
   })
 
   it('drops every clause whose count is zero', () => {
-    expect(findingCountsLine({ found: 0, fixed: 0, open: 0, observations: 1 })).toBe(
-      'no defects found · 1 observation',
-    )
     expect(findingCountsLine({ found: 1, fixed: 1, open: 0, observations: 0 })).toBe(
       '1 defect found · 1 fixed automatically',
     )

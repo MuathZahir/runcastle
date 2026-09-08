@@ -346,14 +346,20 @@ export interface FindingCounts {
 }
 
 /**
- * The line the human reads on arrival at review (decisions #7): "9 defects found
- * · 8 fixed automatically · 1 still open · 3 observations".
+ * What the lap did to its findings, in one line (decisions #7): "9 defects found
+ * · 8 fixed automatically · 1 still open".
  *
- * Every clause is dropped when its count is zero, so a clean lap says "no
- * defects found" and nothing else rather than parading three zeroes. Null when
- * the review reported nothing at all — there is no verdict to render, and a card
+ * The review page renders it where the digest's own one-liner would be
+ * (decision 8), so it is what a lap whose review wrote no digest says for
+ * itself. Every clause is dropped when its count is zero, so a clean lap says
+ * "no defects found" and nothing else rather than parading two zeroes. Null when
+ * the review reported nothing at all — there is no verdict to render, and a line
  * claiming "no defects found" over a review that never ran is the same green lie
  * the summary row is careful not to tell.
+ *
+ * Observations are counted here and NOT said (decision 2): a lap that saw only
+ * observations still had a review, so they keep the line alive — but naming them
+ * on arrival is the noise this feature demoted them out of.
  */
 export function findingCountsLine(summary?: FindingCounts): string | null {
   if (!summary || summary.found + summary.observations === 0) return null
@@ -364,9 +370,6 @@ export function findingCountsLine(summary?: FindingCounts): string | null {
   ]
   if (summary.fixed > 0) parts.push(`${summary.fixed} fixed automatically`)
   if (summary.open > 0) parts.push(`${summary.open} still open`)
-  if (summary.observations > 0) {
-    parts.push(`${summary.observations} observation${summary.observations === 1 ? '' : 's'}`)
-  }
   return parts.join(' · ')
 }
 
