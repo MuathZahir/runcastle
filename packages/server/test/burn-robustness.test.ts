@@ -187,8 +187,8 @@ describe('delayUnlessAborted', () => {
 })
 
 describe('stopTicketRun', () => {
-  it('returns false when the ticket has no live agent', () => {
-    expect(stopTicketRun('tkt_nope')).toBe(false)
+  it('reports no agent — and nothing left to kill — for a ticket that is not burning', async () => {
+    await expect(stopTicketRun('tkt_nope')).resolves.toEqual({ stopped: false, confirmed: true })
   })
 })
 

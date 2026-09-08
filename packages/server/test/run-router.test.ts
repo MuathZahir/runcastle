@@ -50,7 +50,9 @@ describe('run router — cancel', () => {
   it('cancels a live run', async () => {
     const { runId, done } = await startRun(ctx, featureId, cancellableDef.id)
 
-    expect(await caller.run.cancel({ runId })).toEqual({ ok: true })
+    // `confirmed` is the honest half of the answer: this run started no agent,
+    // so there was nothing left alive once its signal was aborted.
+    expect(await caller.run.cancel({ runId })).toEqual({ ok: true, confirmed: true })
     await done
 
     expect(await caller.run.get({ runId })).toMatchObject({ status: 'cancelled' })
@@ -61,6 +63,6 @@ describe('run router — cancel', () => {
     await caller.run.cancel({ runId })
     await done
 
-    expect(await caller.run.cancel({ runId })).toEqual({ ok: true })
+    expect(await caller.run.cancel({ runId })).toEqual({ ok: true, confirmed: true })
   })
 })

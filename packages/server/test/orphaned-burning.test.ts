@@ -121,7 +121,11 @@ describe('orphaned burning tickets', () => {
   it('ticket.stop sweeps an orphaned lane when no agent and no run are live', async () => {
     const { featureId, stuckId } = seedWedged()
 
-    expect(await caller.ticket.stop({ ticketId: stuckId })).toEqual({ stopped: false, swept: true })
+    expect(await caller.ticket.stop({ ticketId: stuckId })).toEqual({
+      stopped: false,
+      swept: true,
+      confirmed: true,
+    })
 
     const swept = getTicket(ctx, stuckId)
     expect(swept.status).toBe('failed')
@@ -146,7 +150,11 @@ describe('orphaned burning tickets', () => {
       })
       .run()
 
-    expect(await caller.ticket.stop({ ticketId: stuckId })).toEqual({ stopped: false, swept: false })
+    expect(await caller.ticket.stop({ ticketId: stuckId })).toEqual({
+      stopped: false,
+      swept: false,
+      confirmed: true,
+    })
     expect(getTicket(ctx, stuckId).status).toBe('burning')
   })
 

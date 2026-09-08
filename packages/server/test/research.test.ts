@@ -320,7 +320,7 @@ describe('research run through the runner (stubbed sandcastle)', () => {
     })
 
     const { runId, done } = await startRun(ctx, feature.id, 'research', { input: w, claimWaypointId: w.id })
-    cancelRun(runId)
+    await cancelRun(runId)
     releaseGate()
     await done
 

@@ -1111,9 +1111,11 @@ export async function deleteFeature(
   }
   const project = projectForFeature(ctx, feature)
 
-  // (1) Cancel any in-flight run — abort its signal before we tear the rest down.
+  // (1) Cancel any in-flight run — and wait for its agents to actually die
+  // before we tear the rest down: a container still holding the worktree open
+  // is exactly what makes step (4)'s removal fail on Windows.
   for (const run of listRunsByFeature(ctx, featureId)) {
-    if (run.status === 'running') cancelRun(run.id)
+    if (run.status === 'running') await cancelRun(run.id)
   }
 
   // (2) End a live session (the same PTY-killing teardown Archive uses).

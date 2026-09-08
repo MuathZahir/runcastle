@@ -12,6 +12,8 @@ import { getFeatureRow, projectForFeature, setPhase } from '../services/repo'
 import { listByFeature as listFindingsByFeature, markFixProgress } from '../services/review-findings'
 import { listByFeature, storeTickets, sweepOrphanedBurning, updateTicket } from '../services/tickets'
 import { claim as claimWaypoint, releaseForSession, resolve as resolveWaypoint } from '../services/waypoints'
+import type { KillOutcome } from './kill-registry'
+import { killRegistry } from './kill-registry'
 import { getWorkflow } from './registry'
 
 /**
@@ -182,9 +184,19 @@ export async function startRun(
   return { runId, done }
 }
 
-/** Cancel an in-flight run (aborts its signal); no-op if unknown/finished. */
-export function cancelRun(runId: string): void {
+/**
+ * Cancel an in-flight run: abort its signal, then kill every agent it has
+ * running and wait, bounded, for them to be gone. No-op if unknown/finished.
+ *
+ * The abort alone only interrupts sandcastle's fiber — the containers keep
+ * burning and keep streaming events — so the kill is what actually ends the
+ * run, and what makes each lane's `run()` reject into the failure path that
+ * writes its terminal state. `confirmed: false` means at least one agent
+ * outlived the kill's deadline and may still be running.
+ */
+export async function cancelRun(runId: string): Promise<KillOutcome> {
   controllers.get(runId)?.abort()
+  return await killRegistry().killAllForRun(runId)
 }
 
 async function executeRun(

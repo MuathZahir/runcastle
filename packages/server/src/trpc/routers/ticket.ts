@@ -1,4 +1,5 @@
 import * as z from 'zod'
+import { emit } from '../../services/events'
 import { retryTicket } from '../../services/features'
 import { hasActiveRun } from '../../services/repo'
 import {
@@ -19,11 +20,13 @@ import { publicProcedure, router } from '../context'
  * - `retry`   — reset ONE failed ticket (plus its failed blockers) to pending
  *               and start a burn. Continues from the ticket's preserved
  *               attempt commits; `fresh: true` discards them first.
- * - `stop`    — abort ONE burning ticket's agent, leaving the rest of the run
- *               alive. The ticket fails with its committed work preserved, so
- *               `retry` picks up where it stopped. With no agent AND no live
- *               run it instead sweeps the orphaned lane to `failed`, which is
- *               the same rescue and the only way out of that state from the UI.
+ * - `stop`    — kill ONE burning ticket's agent, leaving the rest of the run
+ *               alive, and resolve only once it is confirmed dead (`confirmed`
+ *               says whether that was observed or the deadline ran out). The
+ *               ticket fails with its committed work preserved, so `retry` picks
+ *               up where it stopped. With no agent AND no live run it instead
+ *               sweeps the orphaned lane to `failed`, which is the same rescue
+ *               and the only way out of that state from the UI.
  * - `cancel`  — mark a pending/failed ticket cancelled (terminal; dependents
  *               treat it as satisfied). Same service the MCP tool uses.
  * - `edit`    — rewrite a pending/failed ticket's content, or reassign the model
@@ -42,19 +45,38 @@ export const ticketRouter = router({
     .input(z.object({ ticketId: z.string(), fresh: z.boolean().optional() }))
     .mutation(({ ctx, input }) => retryTicket(ctx, input.ticketId, { fresh: input.fresh })),
 
-  stop: publicProcedure.input(z.object({ ticketId: z.string() })).mutation(({ ctx, input }) => {
-    if (stopTicketRun(input.ticketId)) return { stopped: true, swept: false }
-    // No live agent HERE. If no run is live for the feature either, the ticket
-    // is an orphan of a run that died mid-lane — sweep it to `failed` so retry
-    // and cancel accept it again, instead of leaving the button as the only
-    // affordance on a ticket nothing can move (`sweepOrphanedBurning`).
-    const ticket = getTicket(ctx, input.ticketId)
-    if (ticket.status === 'burning' && !hasActiveRun(ctx, ticket.featureId)) {
-      sweepOrphanedBurning(ctx, ticket.featureId, 'orphaned — the run that was burning it is gone')
-      return { stopped: false, swept: true }
-    }
-    return { stopped: false, swept: false }
-  }),
+  stop: publicProcedure
+    .input(z.object({ ticketId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      // Resolves only once the agent's process is confirmed dead — so the UI's
+      // pending state IS "stopping…", and what it settles into is the truth.
+      const { stopped, confirmed } = await stopTicketRun(input.ticketId)
+      if (stopped) {
+        // The kill ran out its deadline with the process still there. Nothing
+        // else in the stack would ever say so, and this is exactly the state the
+        // old silent "stopped" was hiding — put it on the timeline as well as in
+        // the response, so it survives the toast being dismissed.
+        if (!confirmed) {
+          const ticket = getTicket(ctx, input.ticketId)
+          emit(ctx, ticket.featureId, {
+            type: 'ticket.stop_timeout',
+            message: `ticket #${ticket.seq}: stop timed out — the process may still be running`,
+            ticketId: ticket.id,
+          })
+        }
+        return { stopped: true, swept: false, confirmed }
+      }
+      // No live agent HERE. If no run is live for the feature either, the ticket
+      // is an orphan of a run that died mid-lane — sweep it to `failed` so retry
+      // and cancel accept it again, instead of leaving the button as the only
+      // affordance on a ticket nothing can move (`sweepOrphanedBurning`).
+      const ticket = getTicket(ctx, input.ticketId)
+      if (ticket.status === 'burning' && !hasActiveRun(ctx, ticket.featureId)) {
+        sweepOrphanedBurning(ctx, ticket.featureId, 'orphaned — the run that was burning it is gone')
+        return { stopped: false, swept: true, confirmed }
+      }
+      return { stopped: false, swept: false, confirmed }
+    }),
 
   cancel: publicProcedure
     .input(z.object({ ticketId: z.string(), reason: z.string().optional() }))
