@@ -707,12 +707,12 @@ export function toolCompletePhase(
     // while the session that wrote the tickets is still alive to fix them;
     // returning `ok: true` would send it away and leave the seatbelt to fire
     // hours later at the human's Burn click.
-    const check = checkGate(ctx, gate.check, feature)
-    if (!check.satisfied) {
+    const result = checkGate(ctx, gate.check, feature)
+    if (!result.satisfied) {
       const failed = requirement(gate)
       return {
         ok: false,
-        reason: check.reason ?? `gate ${gate.id} is not satisfied`,
+        reason: result.reason ?? `gate ${gate.id} not satisfied`,
         ...(failed ? { gate: failed } : {}),
       }
     }
