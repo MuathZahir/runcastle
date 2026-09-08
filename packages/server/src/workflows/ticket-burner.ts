@@ -2210,10 +2210,11 @@ export interface StopTicketResult {
  * when the ticket has no live agent in this process.
  *
  * Two steps, in this order. The abort first, so sandcastle's iteration loop
- * cannot start another pass behind the kill; then the real kill, which is what
- * makes `run()` finally reject — and the ticket's own failure path, not this
- * one, writes the terminal state off that rejection. So a resolved stop always
- * follows a dead process, never precedes it.
+ * cannot start another pass behind the kill; then the real kill. The ticket's
+ * own failure path, not this one, writes the terminal state — and it waits on
+ * the registry's `whenKillSettled` before it does, because the abort alone is
+ * enough to reject `run()` and would otherwise let the row read stopped while
+ * the container was still being removed.
  */
 export async function stopTicketRun(ticketId: string): Promise<StopTicketResult> {
   const controller = activeTicketAborts.get(ticketId)
@@ -2605,6 +2606,13 @@ export async function burnTickets(
     // Snapshotted, not aliased: `digests` keeps growing as sibling lanes finish,
     // and a ticket's prompt must be built from what had landed when it started.
     const outcome = await execute(ctx, t, { digests: [...digests] }) // throws on abort — propagates
+    // A stop aborts this ticket's agent and waits for the kill second, and the
+    // abort is what produced the outcome above — so this line is reached while
+    // the container is still being removed. Nothing may write the row terminal
+    // until that kill has settled, or "stopped" precedes death exactly as it
+    // did before this feature. Resolves in a microtask when no kill is in
+    // flight, which is every ordinary finish.
+    await killRegistry().whenKillSettled(t.id)
     if (outcome.status === 'done') {
       status.set(seq, 'done')
       const reviewedCommit = isReviewTicket(t)
