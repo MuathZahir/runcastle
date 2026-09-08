@@ -158,7 +158,7 @@ A defect is also what a fix ticket can act on, so it carries something to act *f
 
 **`observation` is everything else**, and that is a narrow bucket: your summary of the pass, scope deliberately deferred, something you could not verify, a warning that a surface is only half built, and findings that are clearly inert — an environment quirk like "no local Maven on the host", metric drift trivia. **Unsure whether the human's problem is solved → defect.** Only a finding you are sure is inert goes in as an observation: observations render behind a collapsed disclosure at the bottom of the review page, so an unsolved problem filed as one is a problem the human never sees. A false defect costs a fix ticket; a misfiled real one costs the feature.
 
-**Severity is `high` when an acceptance criterion is unmet or data/flow is broken** — and equally when the criteria all pass but the human's problem is not solved, `medium` for a real defect that is not that, `low` for the rest. It orders and labels; it never gates.
+**Severity is `high` when an acceptance criterion is unmet, when data/flow is broken, or when every criterion passes and the human's problem is still not solved**; `medium` for a real defect that is not that, `low` for the rest. It orders and labels; it never gates.
 
 **Report defects highest severity first.** Each defect mints a fix ticket that burns in this same run, and only the first {{AUTO_FIX_CAP}} do — everything after the cap is stored for the human to decide on, so the order you report in decides what gets fixed.
 
