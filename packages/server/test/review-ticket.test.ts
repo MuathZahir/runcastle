@@ -498,9 +498,15 @@ describe('what the review agent is handed', () => {
     expect(template).toContain('Do not read the diff afterwards')
     // A refused drive falls back rather than sinking the review.
     expect(template).toContain('switch to Gates mode')
-    // The digest leads with the mode, so the human knows what kind of look the
-    // lap got before reading a word of the summary.
+    // The digest leads with one standalone line — mode, lap, what landed and
+    // the counts — because the review page renders that line alone as the lap
+    // account and keeps the rest behind a disclosure.
     expect(template).toContain('**Open with one short line naming the mode**')
+    expect(template).toContain(
+      'Lap <N>: <what landed, in the language of the product> · <X> defects found, <Y> fixed in-run · <Drive|Gates> mode',
+    )
+    expect(template).toMatch(/renders it alone as the lap account/)
+    expect(template).not.toMatch(/renders it verbatim as the first thing they read/)
     // The superseded contract — "code review always, drive additionally" — is
     // gone, not merely deprioritised.
     expect(template).not.toContain('A code review — always')
