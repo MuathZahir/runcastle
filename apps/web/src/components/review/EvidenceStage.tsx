@@ -2,9 +2,7 @@ import { useEffect, useState, type RefObject } from 'react'
 import { fmtClock, type DriveState, type TestNote } from '@runcastle/core'
 import { Button } from '../../ui'
 import { driveView, latestReview, type DriveFailure } from '../../lib/feature-ui'
-import type { DriveCapabilities } from '../../lib/prep-findings'
 import type { ReviewArtifacts } from '../../lib/reviews'
-import { testDriveExplainer, testDriveLead } from '../../lib/vocabulary'
 import { clusterMarkers } from '../../lib/walkthrough'
 import { WalkthroughPlayer, type WalkthroughHandle } from '../WalkthroughPlayer'
 import { SettingsLink } from '../settings/MessageWithSettingsLink'
@@ -22,10 +20,13 @@ import { DriveFooter, DriveSetupFailed, StopDrive } from './drive-parts'
  * with annotation tools in hand — and never happen at once, so they share one
  * canvas.
  *
- * The stage is never a dead card. With no recording yet it says so and offers
- * the drive; a drive problem that is about the stage (setup failed, a bare
- * checkout) renders IN the stage, where the video would be, because that is
- * where the eye already is.
+ * The stage is never a dead card — and since decision 6 it never mounts as one
+ * either: with no recording and no drive there is no stage at all, so its
+ * callers mount it only when there is something to put on it. A drive problem
+ * that is about the stage (setup failed, a bare checkout) renders IN the stage,
+ * where the video would be, because that is where the eye already is. Starting
+ * a drive is not offered here any more — that entry point is the Test drive
+ * control in the state line, beside the state it is about.
  *
  * Which of the two is on the stage, and what a drive that is not serving shows
  * instead, both come from the server's one drive-state value (decision 20) —
@@ -48,12 +49,12 @@ export interface StageDrive {
 }
 
 /**
- * What a read-only view says when the review reported without ever driving.
+ * What the shipped record says when the review reported without ever driving.
  *
- * Exported because the shipped body says it *instead of* mounting the stage: a
- * page where no drive can ever start has nothing to put in a 16:9 box, so the
- * sentence is the whole band there (and the stage still says it where a
- * read-only review view does mount).
+ * It says it *instead of* mounting the stage: a page where no drive can ever
+ * start has nothing to put in a 16:9 box, so the sentence is the whole band
+ * there. Review omits the band outright in that state (decision 6) — it has the
+ * open work to lead with, which a shipped record does not.
  */
 export const NO_WALKTHROUGH_RECORDED =
   'No walkthrough was recorded for this feature — the review reported without driving.'
@@ -105,9 +106,6 @@ export function EvidenceStage({
   drive,
   dryRun,
   failure,
-  caps,
-  starting,
-  onStartDrive,
   handleRef,
   onStageRecording,
   onMarkerClick,
@@ -126,14 +124,6 @@ export function EvidenceStage({
   /** A preparation dry run is holding the one drive slot (decision 9). */
   dryRun: boolean
   failure: DriveFailure | null
-  /**
-   * What a drive on THIS project actually does, read off its settings —
-   * `undefined` while they are still loading. The dev command is what Open app
-   * depends on; the whole set is what the stage's explainer describes.
-   */
-  caps: DriveCapabilities | undefined
-  starting: boolean
-  onStartDrive: () => void
   handleRef?: RefObject<WalkthroughHandle | null>
   /**
    * Which recording is playing right now, or null when the stage is the drive.
@@ -147,7 +137,6 @@ export function EvidenceStage({
   /** A note was just captured, so the list below can scroll to it. */
   onAnnotationSaved?: (noteId: string) => void
 }) {
-  const devConfigured = caps?.dev ?? false
   // Which recording is on the stage. Null means "the latest", so a verification
   // pass landing while the page is open puts the fresh recording up rather than
   // pinning whatever was latest at mount.
@@ -181,21 +170,21 @@ export function EvidenceStage({
     // never moves the playhead off screen (decision 25b).
     <section id="evidence-stage" className="flex flex-col gap-2">
       <header className="flex flex-wrap items-center gap-x-4 gap-y-2">
-        <span className="font-mono text-sm text-text-2">
-          {onStage ? (
-            <span
-              title={
-                onStage.passKind === 'verification'
-                  ? 'the fix count is derived from what landed between the two passes'
-                  : undefined
-              }
-            >
-              {stageIdentity(onStage, duration, fixes)}
-            </span>
-          ) : (
-            'No walkthrough yet'
-          )}
-        </span>
+        {/* Only a recording has an identity to state. With none, the stage is a
+            drive — it is mounted for no other reason (decision 6) — and the
+            drive says what it is doing in the card below. */}
+        {onStage && (
+          <span
+            className="font-mono text-sm text-text-2"
+            title={
+              onStage.passKind === 'verification'
+                ? 'the fix count is derived from what landed between the two passes'
+                : undefined
+            }
+          >
+            {stageIdentity(onStage, duration, fixes)}
+          </span>
+        )}
 
         {earlier.length > 0 && (
           <details className="relative">
@@ -218,21 +207,6 @@ export function EvidenceStage({
               ))}
             </ul>
           </details>
-        )}
-
-        <span className="flex-1" />
-
-        {!readonly && driveState === 'idle' && (
-          <span className="flex items-center gap-2">
-            <Button disabled={!devConfigured || starting} onClick={onStartDrive}>
-              Open app ▶
-            </Button>
-            {!devConfigured && (
-              <span className="font-mono text-xs text-text-3">
-                no dev command · set one in Settings
-              </span>
-            )}
-          </span>
         )}
       </header>
 
@@ -265,7 +239,6 @@ export function EvidenceStage({
             drive={drive}
             dryRun={dryRun}
             failure={failure}
-            devConfigured={devConfigured}
             hasRecording={!!onStage?.videoUrl}
             readonly={readonly}
           />
@@ -278,20 +251,6 @@ export function EvidenceStage({
         <DriveFooter branch={drive?.branch ?? branch} drive={drive} />
       )}
 
-      {/* Idle with a dev command: one line about what Open app will do, with
-          the full checkout/teardown account behind a disclosure. The stretched
-          explainer card that used to be its own band on the page is gone. */}
-      {!readonly && driveState === 'idle' && devConfigured && (
-        <div className="flex flex-col gap-2">
-          <p className="text-sm text-text-2">{testDriveLead(caps)}</p>
-          <details>
-            <summary className="cursor-pointer text-sm text-text-3">
-              What a test drive does
-            </summary>
-            <p className="mt-2 text-sm text-text-2">{testDriveExplainer(caps)}</p>
-          </details>
-        </div>
-      )}
     </section>
   )
 }
@@ -307,7 +266,6 @@ function DriveStage({
   drive,
   dryRun,
   failure,
-  devConfigured,
   hasRecording,
   readonly,
 }: {
@@ -317,7 +275,6 @@ function DriveStage({
   drive?: StageDrive
   dryRun: boolean
   failure: DriveFailure | null
-  devConfigured: boolean
   hasRecording: boolean
   readonly: boolean
 }) {
@@ -335,20 +292,13 @@ function DriveStage({
       // the player is one render away. Nothing to say beyond the branch.
       return <div className="font-mono text-sm text-text-3">{branch}</div>
     }
+    // Idle, no recording, and the stage is mounted anyway: a drive this browser
+    // started is on its way up and the server's state has not caught up yet
+    // (decision 6 mounts the stage for nothing else). The placeholder box that
+    // used to live here — a 16:9 card holding one apologetic sentence — is gone.
     return (
       <div className="text-sm text-text-2">
-        {readonly
-          ? NO_WALKTHROUGH_RECORDED
-          : 'No walkthrough yet — the review agent records one when it drives; you can open the app and take your own notes.'}
-        {!devConfigured && !readonly && (
-          <div className="mt-2 text-text-3">
-            This project has no dev command, so a drive checks the branch out and starts nothing ·{' '}
-            <SettingsLink location={{ page: 'project', field: 'devCommand' }}>
-              set one in Settings
-            </SettingsLink>
-            .
-          </div>
-        )}
+        Starting the test drive — the branch is being checked out.
       </div>
     )
   }

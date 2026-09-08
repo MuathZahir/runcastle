@@ -385,7 +385,8 @@ describe('renderSystemPrompt', () => {
     expect(p).toContain('ideation → spec → tickets')
     // its two optional inputs, and that missing ones are normal
     expect(p).toContain('test-notes.md')
-    expect(p).toContain('## Lap 1')
+    expect(p).toContain('## Carried, still open')
+    expect(p).not.toContain('## Lap 1')
     expect(p).toContain('## Later laps')
     expect(p).toMatch(/OPTIONAL/i)
     // the rule that used to contradict the briefing is inverted, not merely dropped

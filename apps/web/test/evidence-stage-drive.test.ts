@@ -64,9 +64,6 @@ const render = (props: Partial<Parameters<typeof EvidenceStage>[0]> = {}): strin
       driveState: 'idle' as DriveState,
       dryRun: false,
       failure: null,
-      caps: { setup: true, dev: true, teardown: true },
-      starting: false,
-      onStartDrive: () => undefined,
       ...props,
     }),
   )
@@ -198,22 +195,15 @@ describe('the stage at rest', () => {
     expect(render({ driveState: 'idle' })).toContain('walkthrough.webm')
   })
 
-  /** Decision 20: one line, and the full account behind a disclosure. */
-  it('leads with one line about what Open app will do', () => {
+  /**
+   * Decision 8 killed the lead sentence and the explainer with it: the page
+   * leads with state and one action, and what a drive does is learned by taking
+   * one rather than read about beforehand.
+   */
+  it('explains nothing about test drives — the copy is gone, not demoted', () => {
     const html = render({ driveState: 'idle' })
-    expect(html).toContain(
-      'A test drive checks this branch out, runs the setup command and starts the dev server.',
-    )
-    expect(html).toContain('What a test drive does')
-    expect(html).toContain('puts you back on the branch you were on')
-  })
-
-  it('says nothing about test drives on a project that has no dev command', () => {
-    const html = render({ caps: { setup: false, dev: false, teardown: false } })
+    expect(html).not.toContain('A test drive checks this branch out')
     expect(html).not.toContain('What a test drive does')
-  })
-
-  it('keeps the explainer off a readonly view — history instructs nobody', () => {
-    expect(render({ readonly: true })).not.toContain('What a test drive does')
+    expect(html).not.toContain('puts you back on the branch you were on')
   })
 })

@@ -68,6 +68,25 @@ export function lapAccount(
   return entries.length > 0 ? { source: 'tickets', entries } : null
 }
 
+/**
+ * The lap's account at ONE line (decision 8) — what the review page renders
+ * between its state line and the attention list.
+ *
+ * The review agent's digest is written to open with a standalone one-liner (its
+ * prompt, step 5: lap, what landed, the counts, the mode), so the line is lifted
+ * off the front of the prose rather than assembled here. Everything after it is
+ * the long account, which stays behind the page's Full account disclosure.
+ *
+ * The burners' fallback has no such line — several agents each saying what they
+ * did is not one sentence about the lap — so it says nothing here and the page
+ * falls back to the finding counts.
+ */
+export function lapAccountLine(account: LapAccount | null): string | null {
+  if (account?.source !== 'review') return null
+  const [first] = account.prose.trim().split('\n')
+  return first?.trim() || null
+}
+
 // --- the review agent's structured findings ---------------------------------
 
 /** The server-computed counts behind the review card's one-line verdict. */
@@ -219,20 +238,27 @@ export interface TriageExit {
  * the way down has nothing to discuss, so its tickets just burn. That one case
  * keeps the conversation reachable anyway, because "these are all quick fixes
  * AND I want to talk" is the human's call to make, not this function's.
+ *
+ * `live` is the one-terminal compound (decision 4): the lap road is the only
+ * exit a live session would be refused, so with one up it says it will end that
+ * session on its way rather than sitting there disabled. The burn road takes no
+ * session, so its label never changes.
  */
 export function triageExits(input: {
   quickFix: number
   carried: number
   nextLap: number
+  live?: boolean
 }): TriageExit[] {
-  const { quickFix, carried, nextLap } = input
+  const { quickFix, carried, nextLap, live } = input
+  const start = live ? `End session & start lap ${nextLap}` : `Start lap ${nextLap}`
   if (quickFix > 0 && carried === 0)
     return [
-      { label: `Start lap ${nextLap} anyway`, carry: true },
+      { label: `${start} anyway`, carry: true },
       { label: `Mint ${noun(quickFix, 'ticket')} and burn`, carry: false },
     ]
-  if (quickFix === 0) return [{ label: `Start lap ${nextLap}`, carry: true }]
-  return [{ label: `Mint ${quickFix} · carry ${carried} → Start lap ${nextLap}`, carry: true }]
+  if (quickFix === 0) return [{ label: start, carry: true }]
+  return [{ label: `Mint ${quickFix} · carry ${carried} → ${start}`, carry: true }]
 }
 
 export function burnLabel(

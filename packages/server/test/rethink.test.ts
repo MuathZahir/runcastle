@@ -312,10 +312,14 @@ describe('feature.rethink proc + the lap kickoff', () => {
     expect(lapKickoff(2)).toContain('/runcastle:revisit')
   })
 
-  it('lapKickoff points at the PREVIOUS lap`s notes and warns both sources may be absent', () => {
+  // The pointer is STATUS-keyed, never lap-keyed: a note carried into lap 2 and
+  // skipped there is still carried at lap 3, so "the `## Lap 2` section" would
+  // lose it for good.
+  it('lapKickoff points at the carried notes by status and warns the sources may be absent', () => {
     const line = lapKickoff(3)
     expect(line).toContain('test-notes.md')
-    expect(line).toContain('## Lap 2')
+    expect(line).toContain('## Carried, still open')
+    expect(line).not.toContain('## Lap 2')
     expect(line).toContain('## Later laps')
     expect(line).toContain('MAY NOT EXIST YET')
   })

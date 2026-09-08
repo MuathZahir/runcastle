@@ -24,7 +24,6 @@ import {
   mergeConflictKickoff,
   needsMe,
   nextStep,
-  ONE_TERMINAL_ITERATE,
   openApp,
   openAppWaitingLabel,
   parseMapSections,
@@ -511,25 +510,24 @@ describe('nextStep at review', () => {
     expect(ns.secondary).toContainEqual({ label: 'Iterate', kind: 'rethink' })
   })
 
-  // Shown with its reason rather than vanishing (findings F3). With nothing open
-  // to triage the click is only the conversation, and one terminal per feature
-  // is exactly why it cannot start — so that sentence is the button's.
-  it('disables Iterate while a session is live and nothing is open to triage', () => {
+  // Decision 4 — a live terminal used to leave this button dead with "end the
+  // live session first" and nowhere to do that. It never refuses now: the label
+  // states the end the click will perform on its way to the same road.
+  it('compounds Iterate with the end of a live session, never disabling it', () => {
     const ns = nextStep(reviewFull({ sessionLive: true }), { driving: false })
     expect(ns.primary?.label).toBe('Merge & ship')
-    expect(labels(ns.secondary)).toEqual(['Start test drive', 'Iterate'])
+    expect(labels(ns.secondary)).toEqual(['Start test drive', 'End session & iterate'])
     expect(ns.secondary).toContainEqual({
-      label: 'Iterate',
-      kind: 'rethink',
-      disabled: ONE_TERMINAL_ITERATE,
+      label: 'End session & iterate',
+      kind: 'endSessionAndIterate',
     })
   })
 
-  // ...but the door itself is not the conversation: its quick-fix road only
-  // writes ticket rows, so a live session cannot take it away.
-  it('keeps Iterate live-clickable when there is open work to triage', () => {
+  // The same compound with work to triage: one kind covers both roads, because
+  // the end lands first and the dispatcher picks the door off the counts.
+  it('keeps the compound when there is open work to triage', () => {
     const ns = nextStep(reviewFull({ sessionLive: true }), { driving: false, openNotes: 2 })
-    expect(ns.primary).toEqual({ label: 'Iterate', kind: 'iterate' })
+    expect(ns.primary).toEqual({ label: 'End session & iterate', kind: 'endSessionAndIterate' })
   })
 
   it('disables Iterate while the test drive holds the branch, with the reason', () => {
@@ -607,7 +605,11 @@ describe('nextStep at review', () => {
       { driving: false },
     )
     expect(ns.primary).toEqual({ label: 'Burn 1 ticket', kind: 'burn' })
-    expect(labels(ns.secondary)).toEqual(['Merge & ship', 'Start test drive', 'Iterate'])
+    expect(labels(ns.secondary)).toEqual([
+      'Merge & ship',
+      'Start test drive',
+      'End session & iterate',
+    ])
   })
 
   it('keeps the test-drive toggle and Merge & ship available while driving', () => {
@@ -704,8 +706,8 @@ describe('nextStep at review', () => {
         'Retry Merge & ship',
         'Burn 1 ticket',
         'Start test drive',
-        // Shown with the one-terminal reason rather than vanishing (findings F3).
-        'Iterate',
+        // The compound rather than a refusal (decision 4).
+        'End session & iterate',
       ])
     })
 
@@ -757,9 +759,9 @@ describe('nextStep at review', () => {
       expect(ns.note).toBeUndefined()
     })
 
-    // A caveat about a drive the human has not asked for must not displace the
-    // explanation of the button they are about to press.
-    it('lets the compound’s explanation outrank the unproven-drive caveat', () => {
+    // The bar's one line is the count (decision 3), so the compound's
+    // explanation is the only note left that can reach it.
+    it('carries the compound’s explanation and nothing else', () => {
       const ns = nextStep(reviewFull({ sessionLive: true }), {
         driving: false,
         conflict,
@@ -785,42 +787,34 @@ describe('nextStep at review', () => {
     const start = (ns: ReturnType<typeof nextStep>) =>
       ns.secondary.find((a) => a.kind === 'testDriveStart')
 
-    it('names exactly the unverified keys and points at preparation', () => {
-      const ns = nextStep(reviewFull({}), {
-        driving: false,
-        unverifiedDriveKeys: ['driveSetupCommand', 'driveStopCommand'],
-      })
-      expect(ns.note).toContain('Before a test drive')
-      expect(ns.note).toContain('After a test drive')
-      expect(ns.note).not.toContain('Dev server')
-      expect(ns.note).toContain('never proven by a dry run')
-      expect(ns.note).toContain('preparation')
-    })
-
-    it('never disables the drive — one click still starts it, warning and all', () => {
-      const ns = nextStep(reviewFull({}), { driving: false, unverifiedDriveKeys: ['devCommand'] })
-      expect(ns.note).toBeTruthy()
-      expect(start(ns)).toEqual({ label: 'Start test drive', kind: 'testDriveStart' })
-    })
-
-    it('stays silent when every participating key is stamped, and when none exist', () => {
-      expect(nextStep(reviewFull({}), { driving: false, unverifiedDriveKeys: [] }).note)
-        .toBeUndefined()
-      expect(nextStep(reviewFull({}), { driving: false }).note).toBeUndefined()
-    })
-
-    it('warns beside the fix-ticket burn and the merge conflict too', () => {
-      const ctx = { driving: false, unverifiedDriveKeys: ['devCommand'] }
+    /**
+     * Decision 3 — the caveat is not the bar's any more. It belongs beside the
+     * Test drive control it is about, as a chip in the state line, and the bar
+     * carries one line: the count. So the review bar says nothing about unproven
+     * keys, in any of its states.
+     */
+    it('says nothing about them on the bar — the caveat is the state line’s now', () => {
+      const keys = ['driveSetupCommand', 'driveStopCommand']
       const standing = { base: 'main', files: ['a.ts'], at: 1_000 }
-      expect(nextStep(reviewFull({ ticketStatuses: ['pending'] }), ctx).note).toBeTruthy()
-      expect(nextStep(reviewFull({}), { ...ctx, conflict: standing }).note).toBeTruthy()
+      for (const ctx of [
+        { driving: false, unverifiedDriveKeys: keys },
+        { driving: false, unverifiedDriveKeys: keys, openNotes: 2 },
+        { driving: true, unverifiedDriveKeys: keys },
+        { driving: false, unverifiedDriveKeys: keys, conflict: standing },
+      ]) {
+        expect(nextStep(reviewFull({}), ctx).note).toBeUndefined()
+      }
+      expect(
+        nextStep(reviewFull({ ticketStatuses: ['pending'] }), {
+          driving: false,
+          unverifiedDriveKeys: keys,
+        }).note,
+      ).toBeUndefined()
     })
 
-    // The warning is about the click that starts a drive; mid-drive the offer is
-    // Stop, and repeating the doubt there is noise the human cannot act on.
-    it('goes quiet once the drive is running', () => {
-      const ns = nextStep(reviewFull({}), { driving: true, unverifiedDriveKeys: ['devCommand'] })
-      expect(ns.note).toBeUndefined()
+    it('never disables the drive — one click still starts it', () => {
+      const ns = nextStep(reviewFull({}), { driving: false, unverifiedDriveKeys: ['devCommand'] })
+      expect(start(ns)).toEqual({ label: 'Start test drive', kind: 'testDriveStart' })
     })
 
     it('disables the start with the dry-run reason while one is up', () => {
@@ -832,15 +826,14 @@ describe('nextStep at review', () => {
       })
     })
 
-    // A refusal outranks a caveat: the drive cannot start at all, so the reason
-    // it cannot is the only thing worth saying.
-    it('drops the warning for the refusal when both apply', () => {
+    // The dry run holds the same singleton drive slot, so the refusal stands
+    // whatever else is true of the keys.
+    it('keeps the refusal when an unproven key applies too', () => {
       const ns = nextStep(reviewFull({}), {
         driving: false,
         dryRunActive: true,
         unverifiedDriveKeys: ['devCommand'],
       })
-      expect(ns.note).toBeUndefined()
       expect(start(ns)?.disabled).toBe('A preparation dry-run is in progress — stop it first')
     })
   })
@@ -894,16 +887,67 @@ describe('nextStep at review', () => {
 
     it('makes answering the open work the primary, with Merge one click below', () => {
       const ns = nextStep(reviewFull({}), { driving: false, openNotes: 2, openDefects: 3 })
-      expect(ns.title).toBe('Answer what is still open')
-      expect(ns.desc).toContain('3 defects the review found and 2 notes you wrote')
+      expect(ns.primary).toEqual({ label: 'Iterate', kind: 'iterate' })
       expect(labels(ns.secondary)).toEqual(['Merge & ship', 'Start test drive'])
       // Open work is information, never a block: the demoted merge is not nagged about.
       expect(ns.note).toBeUndefined()
     })
 
-    it('says one of each in the singular', () => {
-      const ns = nextStep(reviewFull({}), { driving: false, openDefects: 1 })
-      expect(ns.desc).toContain('1 defect the review found is still open')
+    /**
+     * Decision 3 — the human stared at Iterate-as-primary unable to see why, and
+     * the reason was said in a paragraph the guidance flag could hide. The bar
+     * states its input instead: the count, permanently, and the vague title and
+     * the explanation go.
+     */
+    it('states its reason as a count line rather than a title and a paragraph', () => {
+      const ns = nextStep(reviewFull({}), { driving: false, openNotes: 1, openDefects: 2 })
+      expect(ns.counts).toEqual({
+        pills: [
+          { label: '2 defects', tone: 'danger' },
+          { label: '1 note', tone: 'note' },
+        ],
+        trailing: 'open',
+      })
+      expect(ns.title).toBeUndefined()
+      expect(ns.desc).toBeUndefined()
+    })
+
+    it('names only the kinds that are actually open, in the singular when they are one', () => {
+      expect(nextStep(reviewFull({}), { driving: false, openDefects: 1 }).counts).toEqual({
+        pills: [{ label: '1 defect', tone: 'danger' }],
+        trailing: 'open',
+      })
+      expect(nextStep(reviewFull({}), { driving: false, openNotes: 1 }).counts).toEqual({
+        pills: [{ label: '1 note', tone: 'note' }],
+        trailing: 'open',
+      })
+    })
+
+    /**
+     * The count flips, so the primary flips with it — one rule the human learns
+     * once. With nothing open, Merge & ship leads and Iterate is the ghost.
+     */
+    it('says "Nothing open" and flips the primary back to Merge & ship', () => {
+      const ns = nextStep(reviewFull({}), { driving: false, openNotes: 0, openDefects: 0 })
+      expect(ns.counts).toEqual({ pills: [{ label: 'Nothing open', tone: 'clear' }] })
+      expect(ns.primary).toEqual({ label: 'Merge & ship', kind: 'merge' })
+      expect(labels(ns.secondary)).toContain('Iterate')
+    })
+
+    // Permanent means every state of the bar, not just the two it decides
+    // between: the count is true while a conflict stands and while a burn waits.
+    it('carries the count on every review bar', () => {
+      const standing = { base: 'main', files: ['a.ts'], at: 1_000 }
+      const withConflict = nextStep(reviewFull({}), {
+        driving: false,
+        openDefects: 2,
+        conflict: standing,
+      })
+      const withBurn = nextStep(reviewFull({ ticketStatuses: ['pending'] }), { driving: false })
+      const driving = nextStep(reviewFull({}), { driving: false, driveState: 'bare-checkout' })
+      expect(withConflict.counts?.pills).toEqual([{ label: '2 defects', tone: 'danger' }])
+      expect(withBurn.counts?.pills).toEqual([{ label: 'Nothing open', tone: 'clear' }])
+      expect(driving.counts?.pills).toEqual([{ label: 'Nothing open', tone: 'clear' }])
     })
 
     // A burn already queued must not lose its button to the door that queues more.
@@ -994,9 +1038,15 @@ describe('nextStep at review', () => {
       expect(labels(ns.secondary)).toEqual(['Merge & ship', 'Stop test drive'])
     })
 
-    it('leaves the bar alone while a session is live — there is nothing to launch', () => {
+    // Decision 4 — a live session used to suppress the flip entirely, because
+    // the launch it implies would have been refused. The launch is what the
+    // compound makes room for, so the flip stands and says so.
+    it('keeps the flip while a session is live, as the end-and-proceed compound', () => {
       const ns = nextStep(reviewFull({ sessionLive: true }), { driving: false, laterLaps })
-      expect(ns.primary).toEqual({ label: 'Merge & ship', kind: 'merge' })
+      expect(ns.primary).toEqual({
+        label: 'End session & start lap 2',
+        kind: 'endSessionAndIterate',
+      })
     })
 
     it('never outranks fix tickets still waiting to burn', () => {
@@ -1018,7 +1068,7 @@ describe('nextStep at review', () => {
     it('yields to open work — this lap is not answered yet', () => {
       const ns = nextStep(reviewFull({}), { driving: false, laterLaps, openNotes: 2 })
       expect(ns.primary).toEqual({ label: 'Iterate', kind: 'iterate' })
-      expect(ns.title).toBe('Answer what is still open')
+      expect(ns.counts?.trailing).toBe('open')
     })
   })
 
@@ -1055,16 +1105,23 @@ describe('nextStep at review', () => {
  * that stops every list on the page being a wall of prose.
  */
 describe('finding rendering', () => {
-  it('reads out found, fixed, open and observations in that order', () => {
+  it('reads out found, fixed and open in that order', () => {
     expect(findingCountsLine({ found: 9, fixed: 8, open: 1, observations: 3 })).toBe(
-      '9 defects found · 8 fixed automatically · 1 still open · 3 observations',
+      '9 defects found · 8 fixed automatically · 1 still open',
+    )
+  })
+
+  /**
+   * Decision 2: observations keep the line alive — a lap that saw only those
+   * still had a review — but they are never named on arrival.
+   */
+  it('counts observations without saying them', () => {
+    expect(findingCountsLine({ found: 0, fixed: 0, open: 0, observations: 1 })).toBe(
+      'no defects found',
     )
   })
 
   it('drops every clause whose count is zero', () => {
-    expect(findingCountsLine({ found: 0, fixed: 0, open: 0, observations: 1 })).toBe(
-      'no defects found · 1 observation',
-    )
     expect(findingCountsLine({ found: 1, fixed: 1, open: 0, observations: 0 })).toBe(
       '1 defect found · 1 fixed automatically',
     )

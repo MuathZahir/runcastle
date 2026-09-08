@@ -1,4 +1,5 @@
 import type { TicketKind } from '@runcastle/core'
+import { unverifiedWarning } from './internal'
 
 export type CheckTone = 'ok' | 'warn' | 'danger' | 'idle'
 
@@ -215,7 +216,13 @@ export function verificationState(
   return { state: 'running' }
 }
 
-export interface StatusChip { key: 'review' | 'checks' | 'lap' | 'drive' | 'run'; label: string; tone: CheckTone }
+export interface StatusChip {
+  key: 'review' | 'checks' | 'unverified' | 'lap' | 'drive' | 'run'
+  label: string
+  tone: CheckTone
+  /** What the chip opens on, where the whole caveat does not fit on one. */
+  detail?: string
+}
 export function statusChips(input: {
   artifact?: Pick<ReviewArtifactFigure, 'lap'> | null
   currentLap: number
@@ -230,10 +237,17 @@ export function statusChips(input: {
    * has the stage for that, the shipped record has only this (decision 33a).
    */
   driveLap?: number | null
+  /**
+   * The drive-loop keys a test drive is about to depend on that no dry run has
+   * ever proven (decision 8) — the caveat rides beside the Test drive control
+   * it is about, as a chip, and only when there is one.
+   */
+  unverifiedKeys?: readonly string[]
   /** The feature has shipped: the lap chip is a record, not a position. */
   shipped?: boolean
 }): StatusChip[] {
   const stamp = freshness(input.artifact, { landedSince: input.landedSince, lap: input.currentLap }, input.verification)
+  const unverified = input.unverifiedKeys ?? []
   const implementation = input.tickets.filter((t) => t.kind !== 'review' && (t.landedLap ?? t.lap) === input.currentLap)
   const landed = implementation.filter((t) => t.status === 'done').length
   const waived = implementation.filter((t) => t.status === 'cancelled').length
@@ -243,6 +257,16 @@ export function statusChips(input: {
   return [
     { key: 'review', label: stamp.text, tone: stamp.tone === 'fresh' ? 'ok' : stamp.tone === 'none' ? 'idle' : 'warn' },
     { key: 'checks', label: `${input.checks.passed}/${input.checks.total} checks passed`, tone: input.checks.total > 0 && input.checks.passed === input.checks.total ? 'ok' : 'warn' },
+    ...(unverified.length === 0
+      ? []
+      : [
+          {
+            key: 'unverified' as const,
+            label: `${unverified.length} check${unverified.length === 1 ? '' : 's'} unverified in drive`,
+            tone: 'warn' as const,
+            detail: unverifiedWarning([...unverified]),
+          },
+        ]),
     { key: 'lap', label: lapLabel, tone: waived ? 'warn' : 'idle' },
     ...(input.driveLap === undefined
       ? []
@@ -322,14 +346,20 @@ export interface FindingCounts {
 }
 
 /**
- * The line the human reads on arrival at review (decisions #7): "9 defects found
- * · 8 fixed automatically · 1 still open · 3 observations".
+ * What the lap did to its findings, in one line (decisions #7): "9 defects found
+ * · 8 fixed automatically · 1 still open".
  *
- * Every clause is dropped when its count is zero, so a clean lap says "no
- * defects found" and nothing else rather than parading three zeroes. Null when
- * the review reported nothing at all — there is no verdict to render, and a card
+ * The review page renders it where the digest's own one-liner would be
+ * (decision 8), so it is what a lap whose review wrote no digest says for
+ * itself. Every clause is dropped when its count is zero, so a clean lap says
+ * "no defects found" and nothing else rather than parading two zeroes. Null when
+ * the review reported nothing at all — there is no verdict to render, and a line
  * claiming "no defects found" over a review that never ran is the same green lie
  * the summary row is careful not to tell.
+ *
+ * Observations are counted here and NOT said (decision 2): a lap that saw only
+ * observations still had a review, so they keep the line alive — but naming them
+ * on arrival is the noise this feature demoted them out of.
  */
 export function findingCountsLine(summary?: FindingCounts): string | null {
   if (!summary || summary.found + summary.observations === 0) return null
@@ -340,9 +370,6 @@ export function findingCountsLine(summary?: FindingCounts): string | null {
   ]
   if (summary.fixed > 0) parts.push(`${summary.fixed} fixed automatically`)
   if (summary.open > 0) parts.push(`${summary.open} still open`)
-  if (summary.observations > 0) {
-    parts.push(`${summary.observations} observation${summary.observations === 1 ? '' : 's'}`)
-  }
   return parts.join(' · ')
 }
 

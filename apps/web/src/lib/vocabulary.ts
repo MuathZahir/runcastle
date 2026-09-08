@@ -13,7 +13,6 @@
 
 import { DEFAULT_RUNTIME } from '@runcastle/core'
 import type { AgentRuntime } from '@runcastle/core'
-import type { DriveCapabilities } from './prep-findings'
 
 /**
  * What to call the thing on the other side of a session (decision 11).
@@ -72,60 +71,6 @@ export const GATE_EXPLAINER =
 /** First-run wizard, on the step that configures them. */
 export const AFK_BURN_EXPLAINER =
   'An AFK burn is a burn you walk away from: runcastle runs the tickets in containers, unattended, and you read the result when you are back.'
-
-/**
- * Test drive, on the review page — the word whose meaning depends on the
- * project. An unprepared project gets a branch checkout and nothing else; a
- * prepared one gets its setup command run and its dev server booted, which is
- * where "each branch gets its own database" comes from.
- * A single sentence covering both would have to hedge, so the caller passes the
- * capabilities it read from settings and the sentence names only what will
- * really happen. `undefined` (settings still loading) gets the shared half
- * alone: true on every project, and promising nothing this one cannot do.
- */
-export function testDriveExplainer(caps: DriveCapabilities | undefined): string {
-  const checkout =
-    'A test drive checks out this feature’s branch in your working repo so you can click through the change yourself'
-  if (!caps) return `${checkout}.`
-
-  const restore = caps.teardown
-    ? ' Stopping runs the teardown command and puts you back on the branch you were on.'
-    : ' Stopping puts you back on the branch you were on.'
-
-  // Named in the order the drive performs them. No step carries a comma of its
-  // own — three of these joined into one sentence read as a list or not at all.
-  const steps = [
-    caps.setup && 'runs the test-drive setup command',
-    caps.dev && 'starts the dev server with an Open app link',
-  ].filter((s): s is string => typeof s === 'string')
-
-  if (steps.length === 0)
-    return (
-      `${checkout} — this project has no test-drive commands set, so the checkout is all it does. ` +
-      `Preparation is where you teach it to bring the app up too.${restore}`
-    )
-  return `${checkout}, then ${joinSteps(steps)}.${restore}`
-}
-
-/**
- * The same sentence at one line (decision 20). The evidence stage leads with
- * this and keeps {@link testDriveExplainer}'s full account behind a disclosure —
- * the stretched explainer card that used to take a band of the review page said
- * everything at once, to a reader who already knew.
- */
-export function testDriveLead(caps: DriveCapabilities | undefined): string {
-  if (!caps?.dev) return 'A test drive checks this branch out — nothing else starts.'
-  return caps.setup
-    ? 'A test drive checks this branch out, runs the setup command and starts the dev server.'
-    : 'A test drive checks this branch out and starts the dev server.'
-}
-
-/** "a", "a and b", "a, b and c" — read aloud, not comma-spliced. */
-function joinSteps(steps: string[]): string {
-  const last = steps[steps.length - 1] ?? ''
-  if (steps.length === 1) return last
-  return `${steps.slice(0, -1).join(', ')} and ${last}`
-}
 
 /**
  * Laps, wherever the number shows. The pipeline chip only appears past lap 1 (a

@@ -1,6 +1,7 @@
-import type { TicketKind } from '@runcastle/core'
+import type { ReactNode } from 'react'
+import type { ReviewFinding, TicketKind } from '@runcastle/core'
 import { SectionTitle } from '../../ui'
-import type { LapAccount } from '../../lib/feature-ui'
+import { headline, type LapAccount } from '../../lib/feature-ui'
 import { Markdown } from '../Markdown'
 
 /** A ticket as the accounts band reads it — its own words and whose they are. */
@@ -14,35 +15,57 @@ export interface AccountTicket {
 }
 
 /**
- * The prose band, collapsed (decision 18d).
+ * ONE collapsed disclosure at the bottom of the review page (decision 8).
  *
- * Everything an agent wrote about this feature in words — the review passes'
- * digests, every burner's own account of its ticket, and the lap summary derived
- * from them — lives behind one disclosure at the bottom of the page. It used to
- * OPEN the page: a wall of ~200-word digests above the evidence, which is the
- * "far too much text… confusing rather than informative" the human named. The
- * text is not deleted, it is demoted; evidence and state lead, prose follows.
+ * Everything written in words about this lap is behind it: the review pass's
+ * digest in full — the page lifts its first line out and renders that alone
+ * above as the lap account, and this is where the account it opens is read —
+ * every burner's own account of its ticket, the work already dealt with, and
+ * the observations. It used to OPEN the page: a wall of ~200-word
+ * digests above the evidence, which is the "far too much text… confusing rather
+ * than informative" the human named. The text is not deleted, it is demoted;
+ * state and the open work lead, prose follows.
  *
- * Renders nothing at all when no agent wrote anything — a disclosure that opens
- * on emptiness is worse than no disclosure.
+ * Observations land here and NOWHERE else — not even as a count on arrival
+ * (decision 2). With the defect boundary redrawn at the source (decision 1),
+ * what is left in that bucket is inert by construction, so a line of it on
+ * arrival costs the human a read and tells them nothing.
+ *
+ * Renders nothing at all when nobody wrote anything and nothing has been dealt
+ * with — a disclosure that opens on emptiness is worse than no disclosure.
  */
 export function FullAccounts({
   account,
   tickets,
+  observations = [],
+  carried,
 }: {
   /** What this lap landed, in prose (decisions #8), or null when nobody said. */
   account: LapAccount | null
   tickets: readonly AccountTicket[]
+  /** What the review saw that no fix ticket could act on (decision 2). */
+  observations?: readonly ReviewFinding[]
+  /** The rows already carried, quick-fixed or handled, or null when there are none. */
+  carried?: ReactNode
 }) {
   const digests = tickets
     .filter((ticket) => (ticket.digest ?? '').trim().length > 0)
     .sort((a, b) => a.seq - b.seq)
-  if (!account && digests.length === 0) return null
+  const hasDigest = !!account || digests.length > 0
+  if (!hasDigest && !carried && observations.length === 0) return null
+
+  const summary = [
+    hasDigest ? 'digest' : null,
+    carried ? 'carried' : null,
+    observations.length > 0
+      ? `${observations.length} observation${observations.length === 1 ? '' : 's'}`
+      : null,
+  ].filter((part): part is string => part !== null)
 
   return (
     <details id="full-accounts" className="rounded-lg border border-hairline bg-panel">
       <summary className="cursor-pointer list-none px-4 py-3 text-sm text-text-2">
-        Full accounts — the review passes’ digests and every burner’s own account
+        Full account — {summary.join(' · ')}
       </summary>
       <div className="flex flex-col gap-6 border-t border-hairline-soft px-4 py-4">
         {account && <LapAccountBlock account={account} />}
@@ -67,7 +90,42 @@ export function FullAccounts({
             </div>
           </section>
         )}
+
+        {carried && (
+          <section>
+            <SectionTitle>Carried, quick-fixed and handled</SectionTitle>
+            <div className="mt-3">{carried}</div>
+          </section>
+        )}
+
+        {observations.length > 0 && (
+          <section>
+            <SectionTitle>Observations ({observations.length})</SectionTitle>
+            <ul className="m-0 mt-3 flex list-none flex-col gap-1.5 p-0">
+              {observations.map((finding) => (
+                <li key={finding.id} className="flex flex-col">
+                  <span className="text-sm text-text-2">{finding.title}</span>
+                  <Observation detail={finding.detail} />
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
       </div>
+    </details>
+  )
+}
+
+/** What an observation says: its first line, and the rest only if there is one. */
+function Observation({ detail }: { detail: string }) {
+  const { head, rest } = headline(detail)
+  if (!rest) return <span className="text-sm text-text-3">{head}</span>
+  return (
+    <details className="min-w-0">
+      <summary className="cursor-pointer list-none text-sm text-text-3 underline decoration-dotted">
+        {head}
+      </summary>
+      <p className="m-0 mt-1.5 text-sm leading-relaxed text-pretty text-text-2">{rest}</p>
     </details>
   )
 }

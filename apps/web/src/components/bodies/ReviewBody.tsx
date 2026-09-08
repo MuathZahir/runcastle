@@ -1,17 +1,20 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import type { Phase } from '@runcastle/core'
 import { trpc } from '../../trpc'
-import type { FeatureFull, SettingsView } from '../../lib/api'
+import type { FeatureFull, PrepView } from '../../lib/api'
 import type { DriveState as BrowserDrive } from '../../lib/workspace'
-import { driveCapabilities } from '../../lib/prep-findings'
+import { unverifiedDriveKeys } from '../../lib/prep-findings'
 import {
-  activeSession,
   conflictResolveEnded,
   deferredScope,
   driveFailure,
+  findingCountsLine,
   lapAccount,
+  lapAccountLine,
   lapChip,
   latestReview,
   latestRun,
+  liveSessionLine,
   reviewChecks,
   specDocPath,
   verificationState,
@@ -22,26 +25,33 @@ import { useEventLog } from '../../lib/events'
 import { useReviewArtifacts } from '../../lib/reviews'
 import { useLivePoll } from '../../lib/live'
 import { useToast } from '../../lib/toast'
-import { SessionPanel } from '../SessionPanel'
 import { ConflictAlert } from '../review/ConflictCard'
 import { EvidenceStage } from '../review/EvidenceStage'
 import { FullAccounts } from '../review/FullAccounts'
 import { LapAbortAlert } from '../review/LapAbortAlert'
+import { LiveSessionAlert } from '../review/LiveSessionAlert'
 import { OpenWork } from '../review/OpenWork'
 import { StatusStrip } from '../review/StatusStrip'
+import { WorkList, partitionWork } from '../review/WorkList'
 import type { WalkthroughHandle } from '../WalkthroughPlayer'
 
 /**
- * The review phase, in five bands: evidence, alerts, state, open work, prose
- * (decisions 17 and 18). Evidence first, prose last — the page opens on the
- * walkthrough at stage size rather than on a wall of digests, and everything an
- * agent wrote in paragraphs is one disclosure at the bottom.
+ * The review phase, in six bands (decision 8): alerts only when something is
+ * really wrong, the evidence stage only when there is evidence, one state line,
+ * the lap's account at one line, the work that needs attention, and one
+ * collapsed disclosure holding every word an agent wrote.
+ *
+ * The order is what the page is FOR: state and one obvious action lead, prose
+ * follows. What is gone is as load-bearing as what is here — no terminal band
+ * (decision 5), no 16:9 box holding one apologetic sentence when nothing was
+ * recorded (decision 6), no test-drive explainer, and no observations on
+ * arrival (decision 2).
  *
  * This component is the orchestrator and nothing else: it reads the queries, runs
  * the derivations, and lays the bands out. Every band is its own file under
  * `components/review/` and takes its data as props, which is what makes them
- * testable without a tRPC provider and what keeps the five bands from growing
- * back into one 971-line file (decision 34).
+ * testable without a tRPC provider and what keeps the bands from growing back
+ * into one 971-line file (decision 34).
  *
  * `readonly` is passed down ONCE and every band answers it (decision 33a):
  * looking back at review on a shipped feature is history, so no live control
@@ -65,15 +75,21 @@ export function ReviewBody({
   lapAbort?: LapAbort | null
   /** Looking back at review on a shipped feature — history, not work. */
   readonly?: boolean
-  /** Go and look at another phase — how a defect reaches the lane fixing it. */
-  onViewPhase?: (phase: 'implementation') => void
+  /**
+   * Go and look at another phase — how a defect reaches the lane fixing it, and
+   * where the alert line's Open sends a session that is still up.
+   */
+  onViewPhase?: (phase: Phase) => void
   /** Take the Iterate door again — what the failed lap's Retry re-runs. */
   onIterate: () => void
 }) {
   const { feature, tickets, runs } = full
   const toast = useToast()
   const utils = trpc.useUtils()
-  const liveSession = activeSession(full.sessions)
+  // No terminal renders here any more (decision 5): a session that is still up
+  // is one line in the alerts band, whatever kind it is, and an ended one says
+  // nothing at all.
+  const live = liveSessionLine(full.sessions)
   const run = latestRun(runs)
   // The same query key the workspace shell reads, so the conflict card's state
   // and the bar's conflict branch come out of one fetch of one feed.
@@ -122,12 +138,13 @@ export function ReviewBody({
   // vouches for nothing, and ordering on completion is what makes "latest" mean
   // latest rather than highest-numbered.
   const stamped = latestReview(rows.filter((a) => a.completedAt !== null)) ?? null
-  // What a drive on THIS project does — a prepared one renders an environment,
-  // runs the setup command and boots a dev server; an unprepared one checks the
-  // branch out and stops. (`useQuery().data` infers to `{}` here — the same
-  // tRPC-in-component typing gap the settings overlay documents.)
-  const settings = trpc.settings.get.useQuery({ projectId: feature.projectId })
-  const caps = driveCapabilities(settings.data as SettingsView | undefined)
+  // What a test drive is about to depend on that no dry run has ever proven
+  // (decision 8) — the state line's amber chip. Same query key the next-step bar
+  // reads, so the chip and the bar come out of one fetch of the project's
+  // findings. (`useQuery().data` infers to `{}` here — the same tRPC-in-component
+  // typing gap the settings overlay documents.)
+  const prep = trpc.project.prep.useQuery({ projectId: feature.projectId })
+  const unverifiedKeys = unverifiedDriveKeys((prep.data as PrepView | undefined)?.findings ?? [])
   const startDrive = trpc.feature.testDrive.useMutation({
     onSuccess: () => {
       void utils.feature.driveInfo.invalidate()
@@ -164,48 +181,60 @@ export function ReviewBody({
     document.getElementById('evidence-stage')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }, [])
 
+  // A defect being fixed links to its lane, which lives in the run view one
+  // phase back (decision 18c). Both halves of the list offer it, so it is
+  // resolved once here.
+  const onViewLane = onViewPhase
+    ? (ticketId: string): void => {
+        onViewPhase('implementation')
+        // Best effort: the run body has to mount before its lanes exist, so the
+        // scroll waits a frame. Landing on the run view is the part that
+        // matters; the scroll is the courtesy on top.
+        requestAnimationFrame(() =>
+          document
+            .getElementById(`lane-${ticketId}`)
+            ?.scrollIntoView({ behavior: 'smooth', block: 'center' }),
+        )
+      }
+    : undefined
+
+  const driveState = ownDrive?.state ?? 'idle'
+  // A drive of this feature is up — the server says so, or this browser started
+  // one and the poll has not caught up yet.
+  const driveUp = driveState !== 'idle' || !!driving
+  // The stage mounts only when it has something to put on it (decision 6): a
+  // recording, or that drive. With neither there is no band at all, so nothing
+  // on the page is a bordered box holding one sentence.
+  const stageMounted = recordings.length > 0 || driveUp
+  // The one drive slot is taken by somebody else — another feature, or a
+  // preparation dry run (decision 9).
+  const driveSlotTaken = !!drive.data && drive.data.featureId !== feature.id
+  // One partition, two halves (decision 8): what needs attention is the middle
+  // of the page, what has been dealt with rides inside the bottom disclosure.
+  const { attention, settled } = partitionWork({
+    findings: findings.data?.findings ?? [],
+    notes: notes.data ?? [],
+    tickets,
+    openDefects: findings.data?.openDefects ?? [],
+  })
+  const observations = (findings.data?.findings ?? []).filter((f) => f.kind === 'observation')
+  const account = lapAccount(tickets, feature.lap)
+  // The lap at one line (decision 8): the review agent's digest is written to
+  // open with exactly this line. With no digest, the counts say what happened
+  // instead — the same figures the bar is holding.
+  const accountLine = lapAccountLine(account) ?? findingCountsLine(findings.data?.summary)
+
   return (
     <div className="flex flex-col gap-6">
-      {/* A retrospective view of review on a shipped feature must not offer to
-          reopen its conversation (findings F10.6). */}
-      <SessionPanel
-        featureId={feature.id}
-        sessions={full.sessions}
-        className="review-session"
-      />
-
-      <EvidenceStage
-        featureId={feature.id}
-        branch={feature.branch}
-        recordings={recordings}
-        notes={notes.data ?? []}
-        readonly={readonly}
-        driveState={ownDrive?.state ?? 'idle'}
-        drive={ownDrive}
-        dryRun={drive.data?.dryRun ?? false}
-        failure={driveFailure(ownDrive, { sessionLive: !!liveSession })}
-        caps={caps}
-        // The one drive slot is taken — by this feature, another one, or a
-        // preparation dry run — or this browser has a start in flight the server
-        // poll has not caught up with yet.
-        starting={startDrive.isPending || !!driving || !!drive.data}
-        onStartDrive={() => startDrive.mutate({ featureId: feature.id, action: 'start' })}
-        handleRef={walkthroughHandle}
-        onStageRecording={setStaged}
-        onMarkerClick={(noteIds) => setSpotlight({ ids: noteIds, scrollTo: null })}
-        onAnnotationSaved={(noteId) => setSpotlight({ ids: [noteId], scrollTo: noteId })}
-      />
-
-      {/* The alert slot (decision 18a): interruptions render between the stage
-          and the strip — the loudest thing on the page, but never above the
-          evidence. */}
+      {/* The alerts band (decision 8): nothing renders here unless something is
+          really wrong or really still running. */}
       {conflict && (
         <ConflictAlert
           featureId={feature.id}
           branch={feature.branch}
           conflict={conflict}
           readonly={readonly}
-          liveSessionId={liveSession?.id ?? null}
+          liveSessionId={live?.sessionId ?? null}
           resolveEnded={conflictResolveEnded(events, full.sessions)}
         />
       )}
@@ -218,6 +247,36 @@ export function ReviewBody({
           lap={feature.lap}
           readonly={readonly}
           onRetry={onIterate}
+        />
+      )}
+
+      {/* The terminal band's replacement (decision 5): one line for a session
+          that is still up, wherever it belongs, with the way to it and the way
+          out of it. */}
+      {live && (
+        <LiveSessionAlert
+          featureId={feature.id}
+          line={live}
+          readonly={readonly}
+          onOpen={onViewPhase}
+        />
+      )}
+
+      {stageMounted && (
+        <EvidenceStage
+          featureId={feature.id}
+          branch={feature.branch}
+          recordings={recordings}
+          notes={notes.data ?? []}
+          readonly={readonly}
+          driveState={driveState}
+          drive={ownDrive}
+          dryRun={drive.data?.dryRun ?? false}
+          failure={driveFailure(ownDrive, { sessionLive: !!live })}
+          handleRef={walkthroughHandle}
+          onStageRecording={setStaged}
+          onMarkerClick={(noteIds) => setSpotlight({ ids: noteIds, scrollTo: null })}
+          onAnnotationSaved={(noteId) => setSpotlight({ ids: [noteId], scrollTo: noteId })}
         />
       )}
 
@@ -242,39 +301,56 @@ export function ReviewBody({
         })}
         laterLaps={deferredScope(specQ.data?.content)}
         readonly={readonly}
+        unverifiedKeys={unverifiedKeys}
+        // A drive already at the wheel is the stage's to stop, and a history
+        // view starts nothing at all.
+        {...(readonly || driveUp
+          ? {}
+          : {
+              testDrive: {
+                onStart: () => startDrive.mutate({ featureId: feature.id, action: 'start' }),
+                ...(startDrive.isPending
+                  ? { blocked: 'starting…' }
+                  : driveSlotTaken
+                    ? { blocked: 'the one drive slot is taken — stop the other drive first' }
+                    : {}),
+              },
+            })}
       />
+
+      {accountLine && <p className="m-0 text-sm text-text-2">{accountLine}</p>}
 
       <OpenWork
         featureId={feature.id}
         lap={feature.lap}
-        tickets={tickets}
-        notes={notes.data ?? []}
-        findings={findings.data?.findings ?? []}
-        summary={findings.data?.summary}
-        openDefects={findings.data?.openDefects ?? []}
+        rows={attention}
         readonly={readonly}
-        onStage={staged}
+        // Nothing is on the stage when there is no stage, so a timestamp on a row
+        // is a plain figure rather than a jump into a player that is not there.
+        onStage={stageMounted ? staged : null}
         onSeek={jumpTo}
         highlight={spotlight.ids}
         scrollTo={spotlight.scrollTo}
-        onViewLane={
-          onViewPhase
-            ? (ticketId) => {
-                onViewPhase('implementation')
-                // Best effort: the run body has to mount before its lanes exist,
-                // so the scroll waits a frame. Landing on the run view is the
-                // part that matters; the scroll is the courtesy on top.
-                requestAnimationFrame(() =>
-                  document
-                    .getElementById(`lane-${ticketId}`)
-                    ?.scrollIntoView({ behavior: 'smooth', block: 'center' }),
-                )
-              }
-            : undefined
-        }
+        onViewLane={onViewLane}
       />
 
-      <FullAccounts account={lapAccount(tickets, feature.lap)} tickets={tickets} />
+      <FullAccounts
+        account={account}
+        tickets={tickets}
+        observations={observations}
+        carried={
+          settled.length > 0 ? (
+            <WorkList
+              featureId={feature.id}
+              rows={settled}
+              readonly={readonly}
+              onStage={stageMounted ? staged : null}
+              onSeek={jumpTo}
+              onViewLane={onViewLane}
+            />
+          ) : null
+        }
+      />
     </div>
   )
 }

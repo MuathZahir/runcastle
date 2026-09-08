@@ -21,6 +21,7 @@ import {
   resolveSessionBranch,
   type ProjectLandResult,
 } from '../services/git'
+import { type CarriedWork, carriedWorkSummary } from '../services/carried-work'
 import { promoteLastSession } from '../services/waypoints'
 import { getFeatureRow, getProjectById, rowToSession } from '../services/repo'
 import { runtimeAdapterFor } from './runtimes'
@@ -231,19 +232,32 @@ export const SESSION_READY_TIMEOUT_MS = 25_000
  * drive taught, amends the docs, emits the lap's tickets and advances itself
  * back to the human's Burn click (ADR-0010 §5).
  *
- * Both inputs it is told to read are genuinely optional and the line says so
- * out loud: `test-notes.md` is created lazily on the first note (a feature that
- * never captured one has no file at all), and `## Later laps` only exists when
- * the slicing conversation parked scope there. An agent that treats a missing
- * file as a broken environment stalls the lap on its first move.
+ * `carried` is what the last lap handed this one (see {@link CarriedWork}). When
+ * there is any, the line LEADS with the counts and an instruction to address
+ * them, and drops the hedging about the notes file: it demonstrably exists, and
+ * a session told its inputs "may not exist yet" goes looking half-heartedly for
+ * the very work it was launched to do. With nothing carried the hedge is honest
+ * and stays — `test-notes.md` is created lazily on the first note (a feature
+ * that never captured one has no file at all), and `## Later laps` only exists
+ * when the slicing conversation parked scope there. An agent that treats a
+ * missing file as a broken environment stalls the lap on its first move.
+ *
+ * The notes pointer is the `## Carried, still open` section, never a
+ * lap-numbered one, so a note lap N+1 skips is still named at lap N+2.
  */
-export function lapKickoff(lap: number): string {
+export function lapKickoff(lap: number, carried?: CarriedWork): string {
+  const summary = carriedWorkSummary(carried)
   return (
     `Proceed with your task: invoke the /runcastle:revisit skill for LAP ${lap} REVIEW ITERATION. ` +
-    `Call get_feature_context, then read this feature's test-notes.md (the "## Lap ${lap - 1}" ` +
-    'section — what the last drive surfaced) and the "## Later laps" section of its spec.md. ' +
-    'EITHER MAY NOT EXIST YET; that is normal, not an error — say so and carry on from what I ' +
-    'tell you. Interview me about what the test drive taught: what was wrong, what was missing, ' +
+    (summary ? `${summary} — address them. ` : '') +
+    `Call get_feature_context, then read this feature's test-notes.md (its "## Carried, still ` +
+    'open" section — every note carried and not yet done, whatever lap captured it), the open ' +
+    'defects in that payload\'s openDefects, and the "## Later laps" section of its spec.md. ' +
+    (summary
+      ? 'THE "## Later laps" SECTION MAY NOT EXIST; that is normal, not an error. '
+      : 'ANY OF THOSE MAY NOT EXIST YET; that is normal, not an error — say so and carry on from ' +
+        'what I tell you. ') +
+    'Interview me about what the test drive taught: what was wrong, what was missing, ' +
     'what I want next. Write what we settle on into decisions.md and amend spec.md for this lap ' +
     '(pruning anything you promote out of "## Later laps"), then call emit_tickets for this ' +
     `lap's work. Finish in THIS session: complete_phase through ideation → spec → tickets, then ` +
@@ -350,9 +364,11 @@ export function planKickoff(input: {
   kickoffLine?: string
   /** Is a lap in flight on this feature? Defaults false (no lap framing). */
   lapInFlight?: boolean
+  /** What the last lap handed this one — stated in the briefing this plans. */
+  carried?: CarriedWork
 }): KickoffPlan {
   const running = input.lapInFlight === true
-  const lapBriefing = input.lap > 1 ? lapKickoff(input.lap) : undefined
+  const lapBriefing = input.lap > 1 ? lapKickoff(input.lap, input.carried) : undefined
   const line = input.kickoffLine ?? (running ? lapBriefing : undefined)
   const lap = running ? input.lap : undefined
   if (!line) return { explicit: false, ...(lap !== undefined ? { lap } : {}) }

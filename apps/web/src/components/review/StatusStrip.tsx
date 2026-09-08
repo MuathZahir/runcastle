@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 import type { TicketKind } from '@runcastle/core'
-import { CheckLine } from '../../ui'
+import { Button, CheckLine } from '../../ui'
 import {
   statusChips,
   type CheckRow,
@@ -26,6 +26,12 @@ import { Markdown } from '../Markdown'
  * "No review ran this lap" is not a row in a card any more (decision 19b): it is
  * the amber limiting case of the review chip's stamp, which is where a human
  * looking for "can I trust what is on this page" already is.
+ *
+ * On review it is now the page's ONE state line (decision 8), so two things ride
+ * with the chips: the unverified-drive caveat, folded in as an amber chip only
+ * when it applies, and the Test drive control at the end of the line — the entry
+ * point the empty evidence box used to hold before decision 6 stopped mounting
+ * a stage with nothing on it.
  */
 const CHIP_TONE: Record<CheckTone, string> = {
   ok: 'border-ok/45 text-ok',
@@ -95,6 +101,8 @@ export function StatusStrip({
   laterLaps,
   readonly,
   driveLap,
+  unverifiedKeys,
+  testDrive,
   shipped = false,
 }: {
   /** The latest COMPLETED review pass, or null when none has finished. */
@@ -112,6 +120,18 @@ export function StatusStrip({
   readonly: boolean
   /** The lap the branch was last driven in; omit where the strip is not to say. */
   driveLap?: number | null
+  /** Drive-loop keys no dry run has ever proven — one amber chip when there are any. */
+  unverifiedKeys?: readonly string[]
+  /**
+   * Take your own test drive, beside the state it is about (decision 6) — this
+   * is the entry point the empty stage used to hold. Omitted wherever no drive
+   * can start from here: a history view, or a drive already at the wheel.
+   */
+  testDrive?: {
+    onStart: () => void
+    /** Why it cannot start right now, when something else holds the one slot. */
+    blocked?: string
+  }
   /**
    * The shipped record's own strip: the lap chip states what shipped rather than
    * where the feature stands, and the chips are statements — the open-work and
@@ -128,6 +148,7 @@ export function StatusStrip({
     runState,
     ...(verification ? { verification } : {}),
     ...(driveLap === undefined ? {} : { driveLap }),
+    ...(unverifiedKeys ? { unverifiedKeys } : {}),
     shipped,
   })
 
@@ -157,6 +178,15 @@ export function StatusStrip({
                 ))}
               </ChipDisclosure>
             )
+          // The caveat the next-step bar used to carry as a paragraph
+          // (decision 3): a chip beside the Test drive control it is about,
+          // with the whole sentence one click in.
+          case 'unverified':
+            return (
+              <ChipDisclosure key={chip.key} chip={chip}>
+                {chip.detail}
+              </ChipDisclosure>
+            )
           case 'lap':
             return (
               <ChipDisclosure key={chip.key} chip={chip}>
@@ -183,6 +213,21 @@ export function StatusStrip({
             )
         }
       })}
+
+      {testDrive && (
+        <>
+          <span className="flex-1" />
+          <Button
+            className="gap-2"
+            disabled={!!testDrive.blocked}
+            {...(testDrive.blocked ? { title: testDrive.blocked } : {})}
+            onClick={testDrive.onStart}
+          >
+            <span className="size-2 shrink-0 rounded-pill bg-drive" aria-hidden="true" />
+            Test drive
+          </Button>
+        </>
+      )}
     </div>
   )
 }

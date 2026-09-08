@@ -423,10 +423,18 @@ describe('what the review agent is handed', () => {
     expect(template).not.toContain('add_test_note')
     expect(template).not.toMatch(/summary note/i)
 
-    // What separates the two kinds, and which way to fall when unsure.
-    expect(template).toMatch(/`defect` is what a fix ticket can act on/i)
+    // What separates the two kinds: the outcome, not the acceptance criteria —
+    // and which way to fall when unsure.
+    expect(template).toMatch(/`defect` when the human's problem is not actually solved/i)
+    expect(template).toMatch(/even when every acceptance criterion passes/i)
     expect(template).toMatch(/`observation` is everything else/i)
-    expect(template).toMatch(/unsure → observation/i)
+    expect(template).toMatch(/unsure whether the human's problem is solved → defect/i)
+    expect(template).not.toMatch(/unsure → observation/i)
+    // The narrowed bucket still has its mandated paths: a drive that would not
+    // start, a gate that could not run, a half-built feature.
+    expect(template).toMatch(/report an observation saying the drive could not start/i)
+    expect(template).toMatch(/A gate you could not run at all is an observation/i)
+    expect(template).toMatch(/report that as an observation/i)
     // The severity scale, and that it never gates.
     expect(template).toMatch(/severity is `high` when an acceptance criterion is unmet/i)
     expect(template).toContain('"high" | "medium" | "low"')
@@ -492,9 +500,15 @@ describe('what the review agent is handed', () => {
     expect(template).toContain('Do not read the diff afterwards')
     // A refused drive falls back rather than sinking the review.
     expect(template).toContain('switch to Gates mode')
-    // The digest leads with the mode, so the human knows what kind of look the
-    // lap got before reading a word of the summary.
+    // The digest leads with one standalone line — mode, lap, what landed and
+    // the counts — because the review page renders that line alone as the lap
+    // account and keeps the rest behind a disclosure.
     expect(template).toContain('**Open with one short line naming the mode**')
+    expect(template).toContain(
+      'Lap <N>: <what landed, in the language of the product> · <X> defects found, <Y> fixed in-run · <Drive|Gates> mode',
+    )
+    expect(template).toMatch(/renders it alone as the lap account/)
+    expect(template).not.toMatch(/renders it verbatim as the first thing they read/)
     // The superseded contract — "code review always, drive additionally" — is
     // gone, not merely deprioritised.
     expect(template).not.toContain('A code review — always')

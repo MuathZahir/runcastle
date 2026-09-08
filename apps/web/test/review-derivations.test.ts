@@ -31,4 +31,23 @@ describe('status chips', () => {
     expect(chips.map((chip) => chip.key)).toEqual(['review', 'checks', 'lap', 'run'])
     expect(chips[2]?.label).toBe('Lap 2 · 1 of 2 tickets landed · 1 waived')
   })
+
+  /**
+   * Decision 8: the unverified-drive caveat is a chip in the state line, beside
+   * the Test drive control it is about — and only when there is something to
+   * caveat. It was a paragraph on the next-step bar until ticket 2 stopped it.
+   */
+  it('folds the unverified-drive caveat in as one chip, only when it applies', () => {
+    const input = { currentLap: 1, landedSince: 0, checks: { passed: 1, total: 1 }, runState: 'succeeded', tickets: [] }
+    expect(statusChips(input).map((chip) => chip.key)).not.toContain('unverified')
+    expect(statusChips({ ...input, unverifiedKeys: [] }).map((chip) => chip.key)).not.toContain('unverified')
+
+    const chips = statusChips({ ...input, unverifiedKeys: ['driveSetupCommand', 'devCommand'] })
+    const chip = chips.find((c) => c.key === 'unverified')
+    expect(chips.map((c) => c.key)).toEqual(['review', 'checks', 'unverified', 'lap', 'run'])
+    expect(chip).toMatchObject({ label: '2 checks unverified in drive', tone: 'warn' })
+    // The whole sentence is what the chip opens on — the label only counts.
+    expect(chip?.detail).toContain('never proven by a dry run')
+    expect(statusChips({ ...input, unverifiedKeys: ['devCommand'] }).find((c) => c.key === 'unverified')?.label).toBe('1 check unverified in drive')
+  })
 })
