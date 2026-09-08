@@ -1,24 +1,35 @@
-export type ActionKind =
-  | 'startDraft' // feature.start — cut the branch on a parked draft, then start ideation
-  | 'startGrill' // launchSession { kind: 'ideation' }
-  | 'converge' // feature.converge — crosses G1 on a mapped feature
-  | 'workNext' // feature.workWaypoint — work the next ready mapped waypoint
-  | 'resumeConverge' // feature.converge — resume a stranded converge session
-  | 'advance' // feature.advance (crosses non-human gates — "Continue to review", decision 11b)
-  | 'burn' // feature.burn (G3, and resume a parked run)
-  | 'cancelRun' // run.cancel
-  | 'testDriveStart' // feature.testDrive { action: 'start' }
-  | 'testDriveStop' // feature.testDrive { action: 'stop' }
-  | 'stopDriveAndIterate' // feature.testDrive { action: 'stop' }, then feature.rethink
-  | 'fixDrive' // feature.fixDrive — an agent repairs the environment a drive's setup died in
-  | 'merge' // feature.merge (G5)
-  | 'askQuestions' // launchSession { kind: 'qa' }
-  | 'revisit' // launchSession { kind: 'revisit' } — resume the old conversation, amend docs + tickets
-  | 'resolveConflict' // launchSession { kind: 'revisit', kickoffLine: mergeConflictKickoff(…) }
-  | 'rethink' // feature.rethink — start the next lap with nothing to triage first
-  | 'iterate' // opens the triage step over the open notes and defects (decision 21)
-  | 'endSessionAndIterate' // feature.endSession, then the Iterate road above (decision 4)
-  | 'unarchive' // feature.unarchive — restore an archived feature to its lane (next-step bar)
+/**
+ * Every action a resolver may put on the bar, as a runtime list rather than a
+ * bare union: the dispatcher that has to answer all of them lives in
+ * `Workspace.tsx`, and nothing checked the two against each other — "Continue to
+ * review" shipped with no case behind it and simply did nothing on click.
+ * `test/next-step-dispatch.test.ts` reads this list and names any kind the
+ * switch has no case for.
+ */
+export const ACTION_KINDS = [
+  'startDraft', // feature.start — cut the branch on a parked draft, then start ideation
+  'startGrill', // launchSession { kind: 'ideation' }
+  'converge', // feature.converge — crosses G1 on a mapped feature
+  'workNext', // feature.workWaypoint — work the next ready mapped waypoint
+  'resumeConverge', // feature.converge — resume a stranded converge session
+  'advance', // feature.advance (crosses non-human gates — "Continue to review", decision 11b)
+  'burn', // feature.burn (G3, and resume a parked run)
+  'cancelRun', // run.cancel
+  'testDriveStart', // feature.testDrive { action: 'start' }
+  'testDriveStop', // feature.testDrive { action: 'stop' }
+  'stopDriveAndIterate', // feature.testDrive { action: 'stop' }, then feature.rethink
+  'fixDrive', // feature.fixDrive — an agent repairs the environment a drive's setup died in
+  'merge', // feature.merge (G5)
+  'askQuestions', // launchSession { kind: 'qa' }
+  'revisit', // launchSession { kind: 'revisit' } — resume the old conversation, amend docs + tickets
+  'resolveConflict', // launchSession { kind: 'revisit', kickoffLine: mergeConflictKickoff(…) }
+  'rethink', // feature.rethink — start the next lap with nothing to triage first
+  'iterate', // opens the triage step over the open notes and defects (decision 21)
+  'endSessionAndIterate', // feature.endSession, then the Iterate road above (decision 4)
+  'unarchive', // feature.unarchive — restore an archived feature to its lane (next-step bar)
+] as const
+
+export type ActionKind = (typeof ACTION_KINDS)[number]
 
 /**
  * An action that can't fire on click: the bar expands inline to a free-text
