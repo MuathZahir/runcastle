@@ -73,7 +73,12 @@ var formatVolumeMount = (mount, selinuxLabel) => {
   const selinux = mount.volume !== void 0 ? void 0 : selinuxLabel || void 0;
 };
 var docker = (options) => {
+  const containerName = options?.containerName ?? \`sandcastle-\${randomUUID()}\`;
   const volumeMounts = allMounts.map((m) => ({ hostPath: m.hostPath, readonly: m.readonly, volume: m.volume }));
+};
+var noSandbox = (options) => {
+  const proc = spawn(shellCmd, shellArgs, {});
+  if (proc.pid !== void 0) options?.onChildSpawn?.(proc.pid);
 };
 `
 
