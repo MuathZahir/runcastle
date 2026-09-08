@@ -2,19 +2,55 @@ import { useState } from 'react'
 import { Button, SectionTitle } from '../../ui'
 import { trpc } from '../../trpc'
 import { openApp, openAppWaitingLabel, type DriveFailure } from '../../lib/feature-ui'
+import { DRIVE_INSTRUCTIONS_SCOPE_NOTE } from '../../lib/settings'
 import { useToast } from '../../lib/toast'
 import { ErrorBoundary } from '../ErrorBoundary'
+import { SettingsLink } from '../settings/MessageWithSettingsLink'
 import { TerminalView } from '../TerminalView'
 
 /**
- * The test drive's pieces that are not the app itself: the stop control, the
- * setup failure, and the footer strip under the stage (decision 20).
+ * The test drive's pieces that are not the app itself: the project's drive
+ * instructions, the stop control, the setup failure, and the footer strip under
+ * the stage (decision 20).
  *
  * They used to be cards stacked down the review page, each deriving what the
  * drive was doing for itself; they are now the contents of the evidence stage's
  * drive states, laid out from the server's one drive-state value. The app on the
  * stage is {@link DrivePanel}'s.
  */
+
+/**
+ * What this project says a driver needs to know, beside the control that starts
+ * a drive (decision 6) — the same text every drive-mode review and verification
+ * prompt is handed, so a human taking the wheel reads what the agent read.
+ *
+ * Read-only here and edited in settings, because that is the loop it exists to
+ * close: instructions that fail a drive fail it in front of somebody watching,
+ * and the fix is one click from where they saw it. Blank renders nothing at all
+ * — a bordered box saying a project has recorded nothing is worse than silence.
+ *
+ * The scope note is fixed prose the field itself cannot displace: the value is
+ * the operator pre-authorising a driving agent, and the risk being managed is
+ * that permission being read wider than the app under test.
+ */
+export function DriveInstructions({ text }: { text?: string | null }) {
+  const instructions = text?.trim()
+  if (!instructions) return null
+
+  return (
+    <section className="flex flex-col gap-1 rounded-md border border-hairline bg-panel px-3 py-2">
+      <div className="flex items-center gap-2">
+        <SectionTitle>How to drive this app</SectionTitle>
+        <span className="flex-1" />
+        <SettingsLink location={{ page: 'project', field: 'driveInstructions' }}>
+          Edit in settings
+        </SettingsLink>
+      </div>
+      <p className="m-0 text-sm whitespace-pre-wrap text-text-2">{instructions}</p>
+      <p className="m-0 text-xs text-text-3">{DRIVE_INSTRUCTIONS_SCOPE_NOTE}</p>
+    </section>
+  )
+}
 
 /**
  * Stop, wherever the stage needs to offer it: a bare checkout the human is done

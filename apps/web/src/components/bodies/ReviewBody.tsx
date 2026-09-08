@@ -26,6 +26,7 @@ import { useReviewArtifacts } from '../../lib/reviews'
 import { useLivePoll } from '../../lib/live'
 import { useToast } from '../../lib/toast'
 import { ConflictAlert } from '../review/ConflictCard'
+import { DriveInstructions } from '../review/drive-parts'
 import { EvidenceStage } from '../review/EvidenceStage'
 import { FullAccounts } from '../review/FullAccounts'
 import { LapAbortAlert } from '../review/LapAbortAlert'
@@ -145,6 +146,11 @@ export function ReviewBody({
   // typing gap the settings overlay documents.)
   const prep = trpc.project.prep.useQuery({ projectId: feature.projectId })
   const unverifiedKeys = unverifiedDriveKeys((prep.data as PrepView | undefined)?.findings ?? [])
+  // How this project says to drive it (decision 6), for the block beside the
+  // Test drive control. The project row is the shell's own list read — one query
+  // key, so the page pays nothing for it.
+  const projects = trpc.project.list.useQuery()
+  const project = projects.data?.find((p) => p.id === feature.projectId)
   const startDrive = trpc.feature.testDrive.useMutation({
     onSuccess: () => {
       void utils.feature.driveInfo.invalidate()
@@ -317,6 +323,11 @@ export function ReviewBody({
               },
             })}
       />
+
+      {/* What this project says a driver needs to know, under the state line
+          that carries the Test drive control (decision 6). Nothing at all when
+          the project has recorded nothing. */}
+      <DriveInstructions text={project?.driveInstructions} />
 
       {accountLine && <p className="m-0 text-sm text-text-2">{accountLine}</p>}
 

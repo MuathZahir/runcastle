@@ -26,6 +26,7 @@ export const PREPARED_LABEL: Record<string, string> = {
   dbResetCommand: 'Reset dev database',
   driveSetupCommand: 'Before a test drive',
   driveStopCommand: 'After a test drive',
+  driveInstructions: 'How to drive this app',
 }
 
 /**
