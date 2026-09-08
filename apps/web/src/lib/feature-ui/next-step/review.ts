@@ -90,8 +90,6 @@ export function resolveReview(input: ResolverInput): NextStep {
   // and its committed docs survive), so the click performs that end on its way
   // instead of dead-ending on "end the live session first". The label is the
   // consent, which is why it says so before the click.
-  const lapLabel = (lap: number): string =>
-    live ? `End session & start lap ${lap}` : `Start lap ${lap}`
   const iterateAction: NextAction = {
     label: live ? 'End session & iterate' : 'Iterate',
     // With nothing open the step is skipped entirely and the lap opens
@@ -229,7 +227,12 @@ export function resolveReview(input: ResolverInput): NextStep {
       kick: 'NEXT STEP',
       title: `Lap ${feature.lap} is done — the spec plans lap ${feature.lap + 1}`,
       desc: `This lap is reviewable, and the spec still lists scope it deliberately deferred. Start lap ${feature.lap + 1} to take it on — or ship what landed, if lap ${feature.lap} is enough.`,
-      primary: { ...iterateAction, label: lapLabel(feature.lap + 1) },
+      primary: {
+        ...iterateAction,
+        label: live
+          ? `End session & start lap ${feature.lap + 1}`
+          : `Start lap ${feature.lap + 1}`,
+      },
       secondary: [{ label: 'Merge & ship', kind: 'merge' }, testDriveAction],
       busy: false,
       counts,
