@@ -36,7 +36,7 @@ export function LiveSessionAlert({
 
   return (
     <div
-      className="flex items-center gap-2.5 rounded-md border border-hairline border-l-2 border-l-ph-ideation bg-panel-2 px-3 py-2 text-sm text-text-2"
+      className="flex items-center gap-2.5 rounded-md border border-hairline border-l-2 border-l-accent-line bg-panel-2 px-3 py-2 text-sm text-text-2"
       role="status"
     >
       <SessionStatusDot status="live" />

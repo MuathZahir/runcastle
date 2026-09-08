@@ -2,7 +2,6 @@ import { useEffect, useState, type RefObject } from 'react'
 import { fmtClock, type DriveState, type TestNote } from '@runcastle/core'
 import { Button } from '../../ui'
 import { driveView, latestReview, type DriveFailure } from '../../lib/feature-ui'
-import type { DriveCapabilities } from '../../lib/prep-findings'
 import type { ReviewArtifacts } from '../../lib/reviews'
 import { clusterMarkers } from '../../lib/walkthrough'
 import { WalkthroughPlayer, type WalkthroughHandle } from '../WalkthroughPlayer'
@@ -209,8 +208,6 @@ export function EvidenceStage({
             </ul>
           </details>
         )}
-
-        <span className="flex-1" />
       </header>
 
       {showing === 'player' && onStage?.videoUrl ? (

@@ -13,9 +13,9 @@ import { WorkList, type WorkRow } from './WorkList'
  * three cards away. One list, one row anatomy ({@link WorkList}), one lap
  * grouping.
  *
- * Only what is genuinely unaddressed is here: {@link partitionWork} files
- * everything already dealt with into the settled half, which the page renders
- * inside its Full account disclosure instead. Observations are not rows at all —
+ * Only what is genuinely unaddressed is here: the page's one partition (see
+ * `partitionWork`) files everything already dealt with into the settled half,
+ * which it renders inside the Full account disclosure instead. Observations are not rows at all —
  * after decision 1 redrew the defect boundary, what is left in that bucket is
  * inert by construction and lives in the same disclosure (decision 2).
  */

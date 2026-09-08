@@ -18,9 +18,10 @@ export interface AccountTicket {
  * ONE collapsed disclosure at the bottom of the review page (decision 8).
  *
  * Everything written in words about this lap is behind it: the review pass's
- * long account (its digest minus the one line the page renders above as the lap
- * account), every burner's own account of its ticket, the work already dealt
- * with, and the observations. It used to OPEN the page: a wall of ~200-word
+ * digest in full — the page lifts its first line out and renders that alone
+ * above as the lap account, and this is where the account it opens is read —
+ * every burner's own account of its ticket, the work already dealt with, and
+ * the observations. It used to OPEN the page: a wall of ~200-word
  * digests above the evidence, which is the "far too much text… confusing rather
  * than informative" the human named. The text is not deleted, it is demoted;
  * state and the open work lead, prose follows.
