@@ -42,6 +42,7 @@ import {
   inheritedReviewMode,
   renderReviewPrompt,
   reviewTemplatePath,
+  shouldStopAfterDigest,
 } from '../src/workflows/review-ticket'
 import type { BurnDeps, TicketOutcome } from '../src/workflows/ticket-burner'
 import { buildBurnAgent, buildLapDigestsBlock, burnRun } from '../src/workflows/ticket-burner'
@@ -655,6 +656,46 @@ describe('the agent-browser probe', () => {
     } finally {
       process.env.PATH = original
     }
+  })
+})
+
+describe('a pass that already delivered is not re-derived', () => {
+  let dir: string
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'rc-digest-'))
+  })
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true })
+  })
+
+  it('stops the loop from iteration 2 on, once the digest is on disk', () => {
+    // The signal the agent should have printed is missing, so sandcastle has
+    // started the same prompt over. The digest says it already finished.
+    expect(shouldStopAfterDigest(2, '/review/DIGEST.md', () => true)).toBe(true)
+    expect(shouldStopAfterDigest(5, '/review/DIGEST.md', () => true)).toBe(true)
+    // Nothing delivered yet: the iteration is the retry it is meant to be.
+    expect(shouldStopAfterDigest(2, '/review/DIGEST.md', () => false)).toBe(false)
+  })
+
+  it('never stops the first iteration, and does not go to disk to decide it', () => {
+    let looked = false
+    expect(
+      shouldStopAfterDigest(1, '/review/DIGEST.md', () => {
+        looked = true
+        return true
+      }),
+    ).toBe(false)
+    // Every text chunk of the pass that matters comes through here.
+    expect(looked).toBe(false)
+  })
+
+  it('reads a real digest off disk when nothing is injected', () => {
+    const digestPath = join(dir, 'DIGEST.md')
+
+    expect(shouldStopAfterDigest(2, digestPath)).toBe(false)
+    writeFileSync(digestPath, '# what the review found\n')
+    expect(shouldStopAfterDigest(2, digestPath)).toBe(true)
   })
 })
 
