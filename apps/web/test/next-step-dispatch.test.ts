@@ -10,9 +10,9 @@ import { ACTION_KINDS } from '../src/lib/feature-ui/next-step/types'
  * did nothing — for a whole flow, with nothing on screen or in the log to say
  * why.
  *
- * The switch's `never` default makes that a typecheck error now; this names the
- * missing kind in plain words when it happens, which a `never` mismatch buried
- * in a 900-line component does not.
+ * The switch's `never` default makes that a typecheck error now. This guards the
+ * guard: deleting that one line is a green diff, and the next kind added after
+ * it would die exactly the same silent death.
  */
 const SOURCE = readFileSync(join(import.meta.dirname, '../src/components/Workspace.tsx'), 'utf8')
 

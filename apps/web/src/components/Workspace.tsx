@@ -652,10 +652,8 @@ export function Workspace({
       // A kind with no case above is a button that does nothing on click, and
       // nothing says so — the bug this switch shipped with. `never` makes the
       // omission a typecheck error instead of a dead button.
-      default: {
-        const unhandled: never = kind
-        void unhandled
-      }
+      default:
+        kind satisfies never
     }
   }
 
