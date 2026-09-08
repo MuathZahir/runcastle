@@ -12,11 +12,7 @@ export function resolveTickets(input: ResolverInput): NextStep {
   // reflects its escape hatch too: with no session alive there is nothing left
   // to race, so the button arms as it always did.
   const ready = feature.ticketsReadyLap === feature.lap || !live
-  if (count > 0 && !ready) return step(
-    'WAITING',
-    'Finishing the tickets',
-    'The session is finishing the tickets — enriching them, then closing out the phase. Burn arms the moment it does.',
-  )
+  if (count > 0 && !ready) return step('WAITING', 'Finishing the tickets', 'The session is finishing the tickets — enriching them, then closing out the phase. Burn arms the moment it does.')
   if (count > 0) return {
     kick: 'NEXT STEP',
     title: 'Review the tickets, then burn',

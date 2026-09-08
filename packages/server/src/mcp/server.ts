@@ -2361,7 +2361,11 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
           'success it also returns `nextGate` — what the FOLLOWING gate requires — so the next ' +
           'step is not a guess. The tickets → implementation gate (G3) is the human "Burn" ' +
           'approval: completing the tickets phase records the work done and returns ' +
-          '{ ok: true, nextPhase: "implementation", waitingOn: "human burn" } WITHOUT advancing.',
+          '{ ok: true, nextPhase: "implementation", waitingOn: "human burn" } WITHOUT advancing. ' +
+          'That call is also what ARMS the Burn click — until it lands, the button waits on you ' +
+          'rather than burning tickets you are still writing, so make it the last thing you do ' +
+          'in the tickets phase. If the human burned while you were closing out, it comes back ' +
+          '{ ok: true, note } saying the phase was already crossed: nothing left to do.',
         inputSchema: {
           phase: CompletablePhase.describe(
             'The phase you are finishing — normally the feature’s current one. `shipped` is not ' +
