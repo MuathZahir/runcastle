@@ -107,15 +107,20 @@ export interface KillRegistryDeps {
 
 const REAL_DEPS: KillRegistryDeps = { runDocker: runDockerCommand, killTree: killProcessTree }
 
-/** Resolve `body`'s value, or `onTimeout()` if `ms` elapses first. Never rejects. */
-function withDeadline<T>(body: Promise<T>, ms: number, onTimeout: () => T): Promise<T> {
+/**
+ * Resolve whether `body` reported death, or false if `ms` elapses first — in
+ * which case the body keeps running, unobserved, and the caller proceeds anyway.
+ * Never rejects. Same shape, and same reasoning, as the PTY registry's deadline:
+ * a bound that covers one step is a bound the next step can escape.
+ */
+function withDeadline(body: Promise<boolean>, ms: number): Promise<boolean> {
   return new Promise((resolve) => {
-    const timer = setTimeout(() => resolve(onTimeout()), ms)
+    const timer = setTimeout(() => resolve(false), ms)
     void body
-      .catch(() => onTimeout())
-      .then((value) => {
+      .catch(() => false)
+      .then((confirmed) => {
         clearTimeout(timer)
-        resolve(value)
+        resolve(confirmed)
       })
   })
 }
@@ -167,7 +172,7 @@ class KillRegistry {
 
     const timeoutMs = opts?.timeoutMs ?? DEFAULT_TIMEOUT_MS
     const started = Date.now()
-    const confirmed = await withDeadline(this.kill(handle, started + timeoutMs), timeoutMs, () => false)
+    const confirmed = await withDeadline(this.kill(handle, started + timeoutMs), timeoutMs)
     if (confirmed) this.handles.delete(laneKey)
 
     const target = handle.kind === 'container' ? handle.containerName : `pid=${handle.pid}`
