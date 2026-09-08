@@ -44,11 +44,11 @@ function noteStopTimeout(ctx: AppCtx, ticketId: string): void {
  *               up where it stopped. With no agent AND no live run it instead
  *               sweeps the orphaned lane to `failed`, which is the same rescue
  *               and the only way out of that state from the UI.
- * - `cancel`  — waive: mark a pending/failed ticket cancelled (terminal;
- *               dependents treat it as satisfied). Same service the MCP tool
- *               uses, preceded by the same kill as `stop` when the ticket still
- *               has a live agent — a ticket can read `failed` while its process
- *               carries on, and waiving one used to leave it running
+ * - `cancel`  — waive: mark a ticket cancelled (terminal; dependents treat it as
+ *               satisfied). Same service the MCP tool uses, preceded by the same
+ *               kill as `stop` whenever the ticket still has a live agent —
+ *               whether it reads `burning` or already reads `failed` over a
+ *               process that carries on, waiving one used to leave it running
  *               (decisions.md #5). An idle ticket is the pure DB flip it was.
  * - `edit`    — rewrite a pending/failed ticket's content, or reassign the model
  *               it burns on, from the UI. The
@@ -101,17 +101,15 @@ export const ticketRouter = router({
       // work was set aside, never after. `stopped: false` means there was no
       // agent, and this stays the pure flip it has always been.
       //
-      // Except on a `burning` ticket, which the flip below refuses outright: a
-      // refused waive must not kill anything on its way to the error, and Stop
-      // is the control for a lane that is openly still running. What is left is
-      // the state this kill exists for — a ticket that READS terminal while its
-      // process carries on.
-      const { stopped, confirmed } =
-        getTicket(ctx, input.ticketId).status === 'burning'
-          ? { stopped: false, confirmed: true }
-          : await stopTicketRun(input.ticketId)
+      // Whatever the row says: a ticket that READS terminal while its process
+      // carries on, and one that openly reads `burning`, are the same live agent
+      // and get the same kill (decisions.md #5) — one click, not "Stop, then
+      // Waive". `agentStopped` is what lets the flip past a `burning` row it
+      // just killed; a `burning` ticket with nothing behind it is still refused,
+      // because that orphan is Stop's sweep to clear.
+      const { stopped, confirmed } = await stopTicketRun(input.ticketId)
       if (stopped && !confirmed) noteStopTimeout(ctx, input.ticketId)
-      const ticket = cancelTicket(ctx, input.ticketId, input.reason)
+      const ticket = cancelTicket(ctx, input.ticketId, input.reason, { agentStopped: stopped })
       return { ticket, stopped, confirmed }
     }),
 

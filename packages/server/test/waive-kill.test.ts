@@ -104,13 +104,39 @@ describe('waive kills a live agent before it flips the row', () => {
     expect(getTicket(ctx, ticketId).status).toBe('cancelled')
   })
 
-  it('refuses a burning ticket without killing anything — Stop is that control', async () => {
+  it('kills the agent of an openly burning ticket, then waives it', async () => {
+    // The most direct live-agent state there is: the row says `burning` and the
+    // agent behind it really is running. Decision #5 asks for one click here —
+    // kill, then flip — not "press Stop first, then Waive".
+    const killed: string[][] = []
+    const deps: KillRegistryDeps = {
+      runDocker: async (args) => {
+        killed.push(args)
+        // `inspect` failing is how the registry observes the container gone.
+        return args[0] !== 'inspect'
+      },
+      killTree: async () => {},
+    }
+    const registry = createKillRegistry(deps)
+    registry.registerContainer(ticketId, 'runcastle-run1-t1')
+    ;(globalThis as GlobalWithRegistry)[REGISTRY_KEY] = registry
     updateTicket(ctx, ticketId, { status: 'burning' })
     const controller = registerTicketAbort(ticketId)
 
+    const result = await caller.ticket.cancel({ ticketId, reason: 'abandoned' })
+
+    expect(controller.signal.aborted).toBe(true)
+    expect(killed).toContainEqual(['rm', '-f', 'runcastle-run1-t1'])
+    expect(result.stopped).toBe(true)
+    expect(result.confirmed).toBe(true)
+    expect(getTicket(ctx, ticketId).status).toBe('cancelled')
+  })
+
+  it('still refuses a burning ticket with no agent behind it — that is Stop’s sweep', async () => {
+    updateTicket(ctx, ticketId, { status: 'burning' })
+
     await expect(caller.ticket.cancel({ ticketId })).rejects.toThrow(/burning/)
 
-    expect(controller.signal.aborted).toBe(false)
     expect(getTicket(ctx, ticketId).status).toBe('burning')
   })
 })

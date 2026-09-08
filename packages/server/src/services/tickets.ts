@@ -224,14 +224,32 @@ export function editTicket(ctx: AppCtx, id: string, patch: TicketContentPatch): 
   return getTicket(ctx, id)
 }
 
+/** What the caller has established about a ticket the guard would otherwise refuse. */
+export interface CancelTicketOptions {
+  /**
+   * The caller has just killed this ticket's agent and waited for the death
+   * (`ticket.cancel`'s kill-and-wait). A `burning` row is then stale rather than
+   * live — only the burner's failure path has yet to catch up with it — and
+   * refusing the waive over it is what would send the human back to Stop first.
+   */
+  readonly agentStopped?: boolean
+}
+
 /**
  * Cancel a ticket — terminal, human/agent-initiated (never the burner). Only
- * `pending`/`failed` tickets can be cancelled. The scheduler skips cancelled
- * tickets and treats a cancelled blocker as satisfied, so dependents still burn.
+ * `pending`/`failed` tickets can be cancelled, plus a `burning` one whose agent
+ * the caller has already killed ({@link CancelTicketOptions.agentStopped}). The
+ * scheduler skips cancelled tickets and treats a cancelled blocker as satisfied,
+ * so dependents still burn.
  */
-export function cancelTicket(ctx: AppCtx, id: string, reason?: string): Ticket {
+export function cancelTicket(
+  ctx: AppCtx,
+  id: string,
+  reason?: string,
+  opts?: CancelTicketOptions,
+): Ticket {
   const current = getTicket(ctx, id)
-  assertMutable(current, 'cancel')
+  if (!(opts?.agentStopped && current.status === 'burning')) assertMutable(current, 'cancel')
 
   ctx.db
     .update(tickets)
