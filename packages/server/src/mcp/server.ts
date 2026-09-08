@@ -512,6 +512,35 @@ export interface StoredTicketRef {
   title: string
 }
 
+/** A title that reads as the batch's closing review ticket — `Review:` or `Review …`. */
+const REVIEW_TITLE = /^review[: ]/i
+
+/**
+ * The one-review-ticket rule's authoring-time half. A ticket TITLED like the
+ * batch's review but not KINDED like one is the incident shape: the `kind` field
+ * silently dropped, so the ticket defaults to `implementation`, is correctly
+ * containerized, and reports BLOCKED from a sandbox that by design has no app,
+ * database or browser. G3 catches a lap that forgot its review ticket, but it
+ * fires at gate time, often after the session has ended; this catches the same
+ * omission while the session that wrote it can still fix and re-emit.
+ *
+ * Refusal, never coercion — the session stays the author of its own tickets, and
+ * the retitle escape hatch covers the rare ticket that really is implementation
+ * work. It lives at the TOOL surface only, so the internal mints that
+ * legitimately store review-less batches (per-finding fix tickets, the burner's
+ * verification pass) never meet it.
+ */
+function refuseMisKindedReview(inputs: TicketInputT[]): void {
+  const misKinded = inputs.find((t) => REVIEW_TITLE.test(t.title) && t.kind !== 'review')
+  if (!misKinded) return
+  throw new GateError(
+    `ticket "${misKinded.title}" is titled like a review ticket but its kind is ` +
+      `"${misKinded.kind ?? 'implementation'}" — set kind: "review" if it is the batch-closing ` +
+      'review (almost certainly), or retitle it if it genuinely is an implementation ticket. ' +
+      'Nothing was stored; fix it and re-emit the batch.',
+  )
+}
+
 export function toolEmitTickets(
   ctx: AppCtx,
   session: SessionRow,
@@ -519,6 +548,7 @@ export function toolEmitTickets(
 ): { stored: number; tickets: StoredTicketRef[] } {
   const feature = getFeatureRow(ctx, requireFeatureId(session))
   refuseIfReadOnly(session, 'emitting tickets')
+  refuseMisKindedReview(input.tickets)
   // `storeTickets` is the mutation and emits the single `tickets.stored` event
   // (one mutation → one event). This tool used to emit an additional
   // `tickets.emitted` note, which double-logged the same action on the timeline.
