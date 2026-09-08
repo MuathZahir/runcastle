@@ -26,6 +26,7 @@ import {
 } from '../src/services/git'
 import { openProject } from '../src/services/projects'
 import { listAfter } from '../src/services/events'
+import { overrideGate } from '../src/services/gates'
 import { listByFeature, storeTickets } from '../src/services/tickets'
 import { AUTO_FIX_CAP } from '../src/services/review-findings'
 import { createCallerFactory } from '../src/trpc/context'
@@ -768,6 +769,10 @@ describe('a run containing a review ticket still lands the feature in review', (
     storeTickets(ctx, featureId, [{
       title: 'quick fix', goal: 'g', context: 'c', acceptanceCriteria: ['a'], seams: ['s'], blockedBy: [],
     }])
+    // A review-less lap only reaches the burner through the G3 override — which
+    // is exactly the state the verification mint exists to catch, so the human
+    // who waived the gate still gets the landed work looked at.
+    overrideGate(ctx, featureId, 'G3', 'shipping this fix without a review ticket')
 
     await caller.feature.burn({ featureId })
     for (let i = 0; i < 200 && getFeatureRow(ctx, featureId).phase !== 'review'; i++) {
