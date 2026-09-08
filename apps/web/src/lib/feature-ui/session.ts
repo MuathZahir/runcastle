@@ -1,4 +1,4 @@
-import type { EventRow } from '@runcastle/core'
+import type { EventRow, Phase, SessionKind } from '@runcastle/core'
 import type { FeatureFull } from '../api'
 import { activeSession } from './gates'
 import { isTerminal, type Waypoint } from './map'
@@ -109,6 +109,59 @@ export function shippedQaSessions(sessions: FeatureFull['sessions']): FeatureFul
 export function shippedAt(events: EventRow[]): number | null {
   const shipped = [...events].reverse().find((e) => e.type === 'feature.shipped')
   return shipped ? shipped.ts : null
+}
+
+/**
+ * The one line a still-live session gets on the review page (decision 5).
+ *
+ * Review renders no terminal at all any more: a session of any kind that is
+ * still up is honest state, not a workspace, so it is an alert line with two
+ * verbs — Open, which goes to the phase whose view actually holds it, and End.
+ * An ended session says nothing.
+ */
+export interface LiveSessionLine {
+  sessionId: string
+  /** "Ideation session still live from lap 1" — what it is and where it began. */
+  text: string
+  /** The phase view Open goes to, or null when no other phase's view holds it. */
+  phase: Phase | null
+}
+
+/**
+ * Which phase's view a session's terminal lives in, or null when none does —
+ * a Q&A, a drive fix or a project-scoped session has no earlier phase to send
+ * the human back to, so its line offers End alone rather than a trip to nowhere.
+ */
+function sessionHome(kind: SessionKind): Phase | null {
+  switch (kind) {
+    case 'ideation':
+    case 'waypoint':
+    case 'revisit':
+      return 'ideation'
+    case 'converge':
+      return 'spec'
+    case 'qa':
+    case 'drive-fix':
+    case 'prepare':
+    case 'project':
+      return null
+  }
+}
+
+export function liveSessionLine(sessions: FeatureFull['sessions']): LiveSessionLine | null {
+  const live = activeSession(sessions)
+  if (!live) return null
+  const name = sessionKindName(live)
+  return {
+    sessionId: live.id,
+    // A `revisit` past lap 1 is already named for its lap ("Lap 3"), so naming
+    // it again would read "Lap 3 session still live from lap 3".
+    text:
+      live.kind === 'revisit' && live.lap > 1
+        ? `${name} session still live`
+        : `${name} session still live from lap ${live.lap}`,
+    phase: sessionHome(live.kind),
+  }
 }
 
 /**

@@ -105,12 +105,6 @@ export function ShippedBody({ full }: { full: FeatureFull }) {
           driveState="idle"
           dryRun={false}
           failure={null}
-          // Nothing on this page drives, so the stage needs no drive
-          // capabilities — undefined reads as "no dev command", which is what a
-          // shipped record should offer.
-          caps={undefined}
-          starting={false}
-          onStartDrive={() => undefined}
         />
       )}
 

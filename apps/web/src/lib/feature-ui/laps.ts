@@ -68,6 +68,25 @@ export function lapAccount(
   return entries.length > 0 ? { source: 'tickets', entries } : null
 }
 
+/**
+ * The lap's account at ONE line (decision 8) — what the review page renders
+ * between its state line and the attention list.
+ *
+ * The review agent's digest is written to open with a standalone one-liner (its
+ * prompt, step 5: lap, what landed, the counts, the mode), so the line is lifted
+ * off the front of the prose rather than assembled here. Everything after it is
+ * the long account, which stays behind the page's Full account disclosure.
+ *
+ * The burners' fallback has no such line — several agents each saying what they
+ * did is not one sentence about the lap — so it says nothing here and the page
+ * falls back to the finding counts.
+ */
+export function lapAccountLine(account: LapAccount | null): string | null {
+  if (account?.source !== 'review') return null
+  const [first] = account.prose.trim().split('\n')
+  return first?.trim() || null
+}
+
 // --- the review agent's structured findings ---------------------------------
 
 /** The server-computed counts behind the review card's one-line verdict. */

@@ -492,7 +492,6 @@ button {
 /* the live emit-tickets and Iterate (revisit) sessions, above their cards */
 .tickets-session { margin-bottom: 18px; }
 .tickets-session .grill-term { height: clamp(300px, calc(100dvh - 420px), 1200px); }
-.review-session .grill-term { height: clamp(300px, calc(100dvh - 420px), 1200px); }
 .grill-live-label { font-size: 11.5px; color: var(--text-3); }
 
 /* ============================================================================

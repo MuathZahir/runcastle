@@ -49,8 +49,10 @@ const { ConflictAlert } = await import('../src/components/review/ConflictCard')
 const { LapAbortAlert } = await import('../src/components/review/LapAbortAlert')
 const { EvidenceStage } = await import('../src/components/review/EvidenceStage')
 const { FullAccounts } = await import('../src/components/review/FullAccounts')
+const { LiveSessionAlert } = await import('../src/components/review/LiveSessionAlert')
 const { OpenWork } = await import('../src/components/review/OpenWork')
 const { StatusStrip } = await import('../src/components/review/StatusStrip')
+const { WorkList, partitionWork } = await import('../src/components/review/WorkList')
 
 const RECORDING: ReviewArtifacts = {
   ticketId: 'tkt_1',
@@ -99,7 +101,20 @@ const DEFECT = {
 /** The bands, in the orchestrator's own order, with one `readonly` for all of them. */
 function bands(readonly: boolean): ReactNode[] {
   const tickets = [] as FeatureFull['tickets']
+  const { attention, settled } = partitionWork({
+    findings: [DEFECT],
+    notes: [NOTE, { ...NOTE, id: 'note_2', status: 'done', text: 'handled one' }],
+    tickets,
+    openDefects: [DEFECT],
+  })
   return [
+    createElement(LiveSessionAlert, {
+      key: 'session',
+      featureId: 'ftr_1',
+      line: { sessionId: 'ses_1', text: 'Ideation session still live from lap 1', phase: 'ideation' },
+      readonly,
+      onOpen: () => undefined,
+    }),
     createElement(EvidenceStage, {
       key: 'stage',
       featureId: 'ftr_1',
@@ -110,9 +125,6 @@ function bands(readonly: boolean): ReactNode[] {
       driveState: 'idle',
       dryRun: false,
       failure: null,
-      caps: { setup: true, dev: true, teardown: true },
-      starting: false,
-      onStartDrive: () => undefined,
     }),
     createElement(ConflictAlert, {
       key: 'conflict',
@@ -144,16 +156,15 @@ function bands(readonly: boolean): ReactNode[] {
       lap: lapChip([], { lap: 2, lapSessionRan: true }),
       laterLaps: 'A settings pane for the roster.',
       readonly,
+      // The one live control the state line carries — a history view is handed
+      // none, exactly as the orchestrator omits it there.
+      ...(readonly ? {} : { testDrive: { onStart: () => undefined } }),
     }),
     createElement(OpenWork, {
       key: 'work',
       featureId: 'ftr_1',
       lap: 2,
-      tickets,
-      notes: [NOTE],
-      findings: [DEFECT],
-      summary: { found: 1, fixed: 0, open: 1, observations: 0 },
-      openDefects: [DEFECT],
+      rows: attention,
       readonly,
       onStage: { ticketId: RECORDING.ticketId },
     }),
@@ -161,6 +172,12 @@ function bands(readonly: boolean): ReactNode[] {
       key: 'accounts',
       account: { source: 'review', prose: 'the lap landed the player rebuild' },
       tickets: [{ seq: 1, title: 'rebuild the player', lap: 2, digest: 'done' }],
+      carried: createElement(WorkList, {
+        featureId: 'ftr_1',
+        rows: settled,
+        readonly,
+        onStage: null,
+      }),
     }),
   ]
 }
@@ -172,7 +189,9 @@ const render = (readonly: boolean): string =>
 const LIVE_CONTROLS = [
   'Resolve with agent',
   'Annotate',
-  'Open app ▶',
+  'Test drive',
+  'End session',
+  'Open',
   'Dismiss',
   'Add',
   'Edit',
@@ -193,9 +212,6 @@ const drivingStage = (readonly: boolean, driveState: DriveState = 'setup-failed'
       drive: { branch: 'feature/x' },
       dryRun: false,
       failure: { command: 'bun setup', outcome: 'exited 3', output: 'boom', canFix: true },
-      caps: { setup: true, dev: true, teardown: true },
-      starting: false,
-      onStartDrive: () => undefined,
     }),
   )
 

@@ -53,9 +53,6 @@ const render = (props: Partial<Parameters<typeof EvidenceStage>[0]> = {}): strin
       driveState: 'idle',
       dryRun: false,
       failure: null,
-      caps: { setup: true, dev: true, teardown: true },
-      starting: false,
-      onStartDrive: () => undefined,
       ...props,
     }),
   )
@@ -117,19 +114,17 @@ describe('EvidenceStage', () => {
     expect(render()).not.toContain('Earlier recordings')
   })
 
-  /** Decision 17: the top of the page is never a dead card. */
-  it('offers the drive with an honest note when no walkthrough exists yet', () => {
+  /**
+   * Decision 6: the placeholder is gone, and so is the sentence that was in it.
+   * The stage is mounted only for a recording or a drive now, so with neither
+   * there is nothing here to apologise about — the page renders no stage at all.
+   */
+  it('says nothing about a missing walkthrough and offers no drive of its own', () => {
     const html = render({ recordings: [] })
-    expect(html).toContain('No walkthrough yet')
-    expect(html).toContain('the review agent records one when it drives')
-    expect(html).toContain('Open app ▶')
+    expect(html).not.toContain('No walkthrough yet')
+    expect(html).not.toContain('the review agent records one when it drives')
+    expect(html).not.toContain('Open app ▶')
     expect(html).not.toContain('<video')
-  })
-
-  it('disables Open app with its reason when the project has no dev command', () => {
-    const html = render({ recordings: [], caps: { setup: false, dev: false, teardown: false } })
-    expect(html).toMatch(/<button[^>]*disabled[^>]*>Open app ▶<\/button>/)
-    expect(html).toContain('no dev command · set one in Settings')
   })
 
   /** Decision 17: the drive takes the stage, and gives it back when it stops. */
@@ -161,10 +156,9 @@ describe('EvidenceStage', () => {
   })
 
   /** Decision 33a: history plays, it never acts. */
-  it('drops Annotate and Open app on a readonly view', () => {
+  it('drops Annotate on a readonly view', () => {
     const html = render({ readonly: true })
     expect(html).toContain('<video')
     expect(html).not.toContain('Annotate')
-    expect(html).not.toContain('Open app ▶')
   })
 })
