@@ -325,7 +325,7 @@ async function realExecuteResearchRun(
     //
     // The abort alone stops neither mode's agent — a host CLI keeps running, a
     // container keeps burning — so the lane is made killable in both, whichever
-    // provider the config selects (see {@link registerResearchKill}).
+    // provider the config selects (see `registerResearchKill` above).
     sandbox: selectSandbox(
       config,
       codexAuthMount ? [codexAuthMount] : [],
