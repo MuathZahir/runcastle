@@ -198,6 +198,28 @@ describe('record_finding provenance', () => {
     await expect(toolRecordFinding(ctx, orphan, { key: 'devCommand', value: 'x' })).rejects.toThrow()
   })
 
+  /**
+   * The drive instructions are prose the prep agent writes once it has actually
+   * driven the app, so they arrive through the same one-call-per-key path as
+   * every other finding — blank lines and all, since the review prompt injects
+   * them verbatim.
+   */
+  it('accepts driveInstructions and lands the prose on the project row', async () => {
+    const s = prepareSession()
+    const notes =
+      'Drive the sample project at C:\\scratch\\demo; you may change anything inside it.\n\n' +
+      'To reach a later phase, tell the session agent this is a test and to advance.'
+
+    const res = await toolRecordFinding(ctx, s, {
+      key: 'driveInstructions',
+      value: notes,
+      evidence: 'dry-run drive: the review project was empty, the scratch one had features',
+    })
+
+    expect(res).toMatchObject({ ok: true, key: 'driveInstructions', source: 'session' })
+    expect(preparedValue(ctx, PROJECT_ID, 'driveInstructions')).toBe(notes)
+  })
+
   it('stamps session and user-supplied findings at main HEAD and reports their commit distance', async () => {
     const repoPath = mkdtempSync(join(tmpdir(), 'rc-finding-staleness-'))
     try {
@@ -521,7 +543,7 @@ describe('the prepare skill', () => {
   })
 
   /**
-   * All SEVEN prepared keys are accounted for. The prompt used to explain four
+   * All EIGHT prepared keys are accounted for. The prompt used to explain four
    * and leave `setupCommand`, `verifyCommands` and `knownFailures` defined
    * nowhere at all.
    */

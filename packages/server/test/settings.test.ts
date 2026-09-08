@@ -261,6 +261,40 @@ describe('settings service (#46)', () => {
     )
   })
 
+  /**
+   * How to exercise an app is a fact about ONE repo, so `driveInstructions` has
+   * no global twin and no env var to inherit from — a machine-wide value could
+   * only ever describe somebody else's app, which is worse than none.
+   */
+  it('driveInstructions is project-only and round-trips its paragraphs verbatim', () => {
+    const project = seedProject(ctx)
+    const notes =
+      'Drive the sample project at C:\\scratch\\demo — you may change anything there.\n\n' +
+      'To reach a later phase, tell the session agent this is a test and to advance.'
+    updateSettings(ctx, { projectId: project.id, key: 'driveInstructions', value: notes }, io())
+
+    const f = field(getSettings(ctx, project.id, io()), 'driveInstructions')
+    expect(f.value).toBe(notes)
+    expect(f.scope).toBe('project')
+    expect(f.source).toBe('project')
+    expect(f.editable).toBe(true)
+  })
+
+  it('driveInstructions requires a project and is absent from the global view', () => {
+    expect(() =>
+      updateSettings(ctx, { key: 'driveInstructions', value: 'drive the sample project' }, io()),
+    ).toThrow(InvalidInputError)
+    expect(
+      getSettings(ctx, undefined, io()).fields.find((f) => f.key === 'driveInstructions'),
+    ).toBeUndefined()
+  })
+
+  it('a driveInstructions write emits settings.updated on the project timeline', () => {
+    const project = seedProject(ctx)
+    updateSettings(ctx, { projectId: project.id, key: 'driveInstructions', value: 'drive it' }, io())
+    expect(listByProject(ctx, project.id, 0).map((e) => e.type)).toContain('settings.updated')
+  })
+
   it('a null value clears a project override, falling back to the global', () => {
     const project = seedProject(ctx)
     updateSettings(ctx, { projectId: project.id, key: 'model', value: 'claude-sonnet-5' }, io())

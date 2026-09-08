@@ -160,6 +160,35 @@ describe('human provenance', () => {
     updateSettings(ctx, { projectId: PROJECT_ID, key: 'verifyCommands', value: null })
     expect(isOverwritable(ctx, PROJECT_ID, 'verifyCommands')).toBe(true)
   })
+
+  /**
+   * `driveInstructions` is the field an operator amends right after watching a
+   * review drive go wrong, so the whole lifecycle has to hold for it: the hand
+   * edit sticks against the next preparation run, and clearing it is what hands
+   * the key back — the same escape hatch, not a new one.
+   */
+  it('governs driveInstructions exactly as it governs the older prepared keys', () => {
+    recordFinding(ctx, PROJECT_ID, {
+      key: 'driveInstructions',
+      value: 'prep’s first draft',
+      source: 'prep',
+    })
+    expect(isOverwritable(ctx, PROJECT_ID, 'driveInstructions')).toBe(true)
+
+    updateSettings(ctx, {
+      projectId: PROJECT_ID,
+      key: 'driveInstructions',
+      value: 'use the sample project at C:\\scratch\\demo',
+    })
+    expect(preparedValue(ctx, PROJECT_ID, 'driveInstructions')).toBe(
+      'use the sample project at C:\\scratch\\demo',
+    )
+    expect(isOverwritable(ctx, PROJECT_ID, 'driveInstructions')).toBe(false)
+
+    updateSettings(ctx, { projectId: PROJECT_ID, key: 'driveInstructions', value: null })
+    expect(preparedValue(ctx, PROJECT_ID, 'driveInstructions')).toBeNull()
+    expect(isOverwritable(ctx, PROJECT_ID, 'driveInstructions')).toBe(true)
+  })
 })
 
 /**
@@ -290,7 +319,13 @@ describe('settings scope', () => {
   // red" a machine-wide answer — wrong the moment a second project is opened.
   it('exposes the prepared burn fields as project-overridable', () => {
     const view = getSettings(ctx, PROJECT_ID, { env: {} })
-    for (const key of ['setupCommand', 'verifyCommands', 'knownFailures', 'dbResetCommand']) {
+    for (const key of [
+      'setupCommand',
+      'verifyCommands',
+      'knownFailures',
+      'dbResetCommand',
+      'driveInstructions',
+    ]) {
       expect(view.fields.find((f) => f.key === key)?.scope).toBe('project')
     }
   })
