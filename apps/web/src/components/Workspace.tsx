@@ -20,7 +20,6 @@ import {
   mapDocPath,
   mergeSummary,
   nextStep,
-  ONE_TERMINAL_ITERATE,
   PHASE_LABELS,
   phaseFacts,
   phaseSummary,
@@ -270,6 +269,12 @@ export function Workspace({
     },
     onError: (e) => toast.push(e.message),
   })
+  // The end half of every end-and-proceed compound (decision 4). No surface
+  // refuses a click because a terminal is live any more: the label says the
+  // session will be closed, and this is the close it promised.
+  const endSession = trpc.feature.endSession.useMutation({
+    onError: (e) => toast.push(e.message),
+  })
   // The Iterate door's commit (decision 26): the whole triage in ONE mutation —
   // tickets minted, dismissals deleted, everything left carried into the next
   // lap — so the list is frozen once rather than per row, and the road out is
@@ -445,11 +450,6 @@ export function Workspace({
   // same event feed as the conflict — one poll for all of it. Handed to the
   // review body, which renders it in the alert slot beside the conflict card.
   const abortedLap = lapAbort(events)
-  // Why the triage step's lap road cannot fire. The quick-fix road only writes
-  // ticket rows, so nothing takes it away; the conversation needs the one
-  // terminal this feature gets, which is the reason the step states beside its
-  // primary rather than letting the server refuse it after the fact.
-  const iterateBlocked = liveSession ? ONE_TERMINAL_ITERATE : undefined
   const busy =
     start.isPending ||
     launch.isPending ||
@@ -464,6 +464,7 @@ export function Workspace({
     dismissDefect.isPending ||
     fixDrive.isPending ||
     unarchive.isPending ||
+    endSession.isPending ||
     resolveConflict.pending
 
   // One door forward (decision 21). With something open, Iterate opens the
@@ -480,6 +481,29 @@ export function Workspace({
     else rethink.mutate({ featureId })
   }
 
+  /**
+   * The end half of the compound (decision 4): end the live terminal, if there
+   * is one, and say whether the road on is clear. The order is enforced here
+   * rather than server-side — the launcher's `assertSpawnable` refuses a second
+   * live session outright, so the end has to have LANDED before the launch is
+   * attempted, and `endSession` marks the row ended synchronously, so awaiting
+   * it is enough (the same reasoning as `use-resolve-conflict`).
+   *
+   * A failed end aborts whatever was going to follow: its toast has already said
+   * why, and a launch fired into a session that is still live would only collect
+   * a second refusal.
+   */
+  const endLiveSession = async (): Promise<boolean> => {
+    if (!liveSession) return true
+    try {
+      await endSession.mutateAsync({ sessionId: liveSession.id })
+    } catch {
+      return false
+    }
+    invalidate()
+    return true
+  }
+
   // Commit the triage, then take the road it chose: everything quick-fixed burns
   // on the spot, anything carried opens lap N+1's conversation with those notes
   // in it. Dismissed defects go first — the notes mutation only knows notes —
@@ -494,8 +518,13 @@ export function Workspace({
       invalidate()
       void utils.notes.list.invalidate({ featureId })
       void utils.findings.listByFeature.invalidate({ featureId })
-      if (selection.carry) rethink.mutate({ featureId })
-      else burn.mutate({ featureId })
+      // The carry road opens lap N+1's conversation, which is the one thing a
+      // live terminal would refuse — so it ends that terminal on its way, which
+      // is what the exit's own label promised (decision 4). The burn road takes
+      // no session, so it takes nothing away.
+      if (selection.carry) {
+        if (await endLiveSession()) rethink.mutate({ featureId })
+      } else burn.mutate({ featureId })
     } catch (e) {
       toast.push(e instanceof Error ? e.message : String(e))
     }
@@ -522,6 +551,14 @@ export function Workspace({
       case 'rethink':
       case 'iterate':
         enterIterate()
+        break
+      // "End session & iterate" (decision 4): the live terminal the lap would be
+      // refused for is closed first, then the same door opens — the triage step
+      // with something open, the lap itself without.
+      case 'endSessionAndIterate':
+        void endLiveSession().then((ended) => {
+          if (ended) enterIterate()
+        })
         break
       case 'converge':
       case 'resumeConverge':
@@ -724,7 +761,7 @@ export function Workspace({
           openedAt={triaging}
           busy={busy}
           readonly={readonly}
-          iterateBlocked={iterateBlocked}
+          sessionLive={!!liveSession}
           onCommit={(selection) => void commitTriage(selection)}
           onClose={() => setTriaging(null)}
         />

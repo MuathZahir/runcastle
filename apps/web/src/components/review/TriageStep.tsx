@@ -77,8 +77,11 @@ interface TriageStepProps {
   busy: boolean
   /** History, not work: a shipped feature's review has no door out (decision 33a). */
   readonly: boolean
-  /** Why the lap conversation cannot be opened right now, if it cannot. */
-  iterateBlocked?: string
+  /**
+   * A terminal is live — so the lap road says it will end that session on its
+   * way out (decision 4), which the commit then does. Never a refusal.
+   */
+  sessionLive?: boolean
   onCommit: (selection: TriageSelection) => void
   onClose: () => void
 }
@@ -96,7 +99,7 @@ export function TriagePanel({
   standing,
   openedAt,
   busy,
-  iterateBlocked,
+  sessionLive,
   onCommit,
   onClose,
 }: TriageStepProps) {
@@ -129,7 +132,12 @@ export function TriagePanel({
   // left unticked simply stays open work for the pass that comes back.
   const carried = rows.filter((row) => row.item.kind === 'note' && !picked(row))
   const nextLap = lap + 1
-  const exits = triageExits({ quickFix: minted.length, carried: carried.length, nextLap })
+  const exits = triageExits({
+    quickFix: minted.length,
+    carried: carried.length,
+    nextLap,
+    live: !!sessionLive,
+  })
   const footer = triageFooter({
     quickFix: minted.length,
     carried: carried.length,
@@ -242,20 +250,19 @@ export function TriagePanel({
         )}
 
         {footer && <div className="font-mono text-xs text-text-2">{footer}</div>}
-        {iterateBlocked && <div className="font-mono text-xs text-warn">{iterateBlocked}</div>}
 
         <div className="flex items-center justify-end gap-2">
           <Button variant="ghost" disabled={busy} onClick={onClose}>
             Cancel
           </Button>
-          {/* In render order, the primary last; only the road that opens the
-              conversation can be refused, and it says why. */}
+          {/* In render order, the primary last. Nothing here is refused for a
+              live session any more (decision 4): the lap road's own label says
+              the session will be ended, and the commit ends it. */}
           {exits.map((exit) => (
             <Button
               key={exit.label}
               variant="solid"
-              disabled={busy || (exit.carry && !!iterateBlocked)}
-              title={exit.carry ? iterateBlocked : undefined}
+              disabled={busy}
               onClick={() => commit(exit.carry)}
             >
               {exit.label}

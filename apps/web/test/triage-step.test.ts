@@ -137,10 +137,15 @@ describe('the triage step', () => {
     )
   })
 
-  it('says why the lap conversation cannot open, and disables that road', () => {
-    const html = panel({ iterateBlocked: 'One terminal per feature — end the live session first.' })
-    expect(html).toContain('One terminal per feature')
-    expect(html).toContain('disabled=""')
+  // Decision 4 — the human clicked Iterate, reached this step and found the one
+  // road out disabled with "end the live session first" and no way to do that
+  // from where they stood. The road is never refused now: it states the end it
+  // will perform, and performing it is the commit's job.
+  it('never disables the lap road for a live session — it says it will end it', () => {
+    const html = panel({ sessionLive: true, notes: [note({ id: 'note_1' })], defects: [] })
+    expect(html).toContain('End session &amp; start lap 3')
+    expect(html).not.toContain('One terminal per feature')
+    expect(html).not.toContain('disabled=""')
   })
 
   it('skips itself when there is nothing open', () => {
@@ -198,6 +203,22 @@ describe('the ways out of triage', () => {
   it('mints and carries in one act when the list is mixed', () => {
     expect(triageExits({ quickFix: 2, carried: 4, nextLap: 3 })).toEqual([
       { label: 'Mint 2 · carry 4 → Start lap 3', carry: true },
+    ])
+  })
+
+  // Decision 4 — the lap road is the only exit a live terminal would be refused,
+  // so with one up it says it will end that session on its way. The burn road
+  // takes no session, so its label is untouched.
+  it('compounds the lap road with the end of a live session, in every case', () => {
+    expect(triageExits({ quickFix: 0, carried: 4, nextLap: 3, live: true })).toEqual([
+      { label: 'End session & start lap 3', carry: true },
+    ])
+    expect(triageExits({ quickFix: 2, carried: 0, nextLap: 3, live: true })).toEqual([
+      { label: 'End session & start lap 3 anyway', carry: true },
+      { label: 'Mint 2 tickets and burn', carry: false },
+    ])
+    expect(triageExits({ quickFix: 2, carried: 4, nextLap: 3, live: true })).toEqual([
+      { label: 'Mint 2 · carry 4 → End session & start lap 3', carry: true },
     ])
   })
 
