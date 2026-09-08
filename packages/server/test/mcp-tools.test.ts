@@ -368,7 +368,7 @@ describe('mcp tools', () => {
     const project = seedProject(ctx, repoPath)
     const feat = seedFeature(ctx, project.id, { slug: 'burn-me', phase: 'tickets' })
     const s = createSessionRow(ctx, { featureId: feat.id, kind: 'ideation', worktreePath: repoPath })
-    storeTickets(ctx, feat.id, [ticket('only')])
+    storeTickets(ctx, feat.id, [ticket('only'), { ...ticket('Review the lap'), kind: 'review' }])
 
     const out = toolCompletePhase(ctx, s, { phase: 'tickets' })
     expect(out).toEqual({
@@ -386,6 +386,34 @@ describe('mcp tools', () => {
     expect(types).toContain('tickets.awaiting_burn')
   })
 
+  it('complete_phase(tickets) REFUSES a lap with no review ticket, naming G3 and the fix', () => {
+    // The other half of decision 6(a): the refusal has to reach the session
+    // through `complete_phase`, not only through a direct `checkGate` call.
+    // Parking at G3 must not swallow the check — a session told `ok: true` here
+    // walks away, and the lap only fails hours later at the human's Burn click.
+    const project = seedProject(ctx, repoPath)
+    const feat = seedFeature(ctx, project.id, { slug: 'no-review', phase: 'tickets' })
+    const s = createSessionRow(ctx, { featureId: feat.id, kind: 'ideation', worktreePath: repoPath })
+    storeTickets(ctx, feat.id, [ticket('build it'), ticket('build more', [1])])
+
+    const out = toolCompletePhase(ctx, s, { phase: 'tickets' })
+    expect(out.ok).toBe(false)
+    if (!out.ok) {
+      expect(out.reason).toMatch(/no review ticket on this lap/)
+      expect(out.reason).toMatch(/kind: "review"/)
+      expect(out.gate).toEqual({
+        id: 'G3',
+        description: expect.any(String),
+        check: 'tickets-approved',
+      })
+    }
+
+    // refused, so the lap is NOT recorded as ready: no awaiting-burn note
+    const types = listAfter(ctx, feat.id, 0).map((e) => e.type)
+    expect(types).not.toContain('tickets.awaiting_burn')
+    expect(getFeatureRow(ctx, feat.id).phase).toBe('tickets')
+  })
+
   it('a review ticket emitted in a LATER call still satisfies G3 at complete_phase(tickets)', () => {
     // Sessions split a big batch across several emit_tickets calls to dodge the
     // payload timeout, so the review ticket routinely arrives last and alone.
@@ -398,6 +426,9 @@ describe('mcp tools', () => {
     expect(checkGate(ctx, 'tickets-approved', getFeatureRow(ctx, feat.id)).reason).toMatch(
       /no review ticket on this lap/,
     )
+    // mid-split the session hears the same refusal from the tool it actually
+    // calls, so it fixes the batch instead of ending the phase half-emitted
+    expect(toolCompletePhase(ctx, s, { phase: 'tickets' })).toMatchObject({ ok: false })
 
     toolEmitTickets(ctx, s, {
       tickets: [{ ...ticket('Review the integrated change'), kind: 'review' }],

@@ -56,6 +56,7 @@ import {
 } from '../services/features'
 import { emit, emitForSession, emitProject, latestEventTs } from '../services/events'
 import { isOverwritable, recordFinding } from '../services/findings'
+import { checkGate } from '../services/gates'
 import { reportFinding } from '../services/review-findings'
 import * as git from '../services/git'
 import type { AdrDoc } from '../services/knowledge'
@@ -699,6 +700,23 @@ export function toolCompletePhase(
   // The feature parks at `tickets`, waiting on the human.
   const gate = nextGate(feature)
   if (gate?.id === 'G3') {
+    // Parking is not a bypass. G3 is not crossed here, but its preconditions are
+    // still checked here — SPEC §6 says `complete_phase` runs the gate check
+    // server-side, and the exception is only about the crossing. A lap that
+    // forgot its `kind: "review"` ticket has to hear the refusal at THIS moment,
+    // while the session that wrote the tickets is still alive to fix them;
+    // returning `ok: true` would send it away and leave the seatbelt to fire
+    // hours later at the human's Burn click.
+    const check = checkGate(ctx, gate.check, feature)
+    if (!check.satisfied) {
+      const failed = requirement(gate)
+      return {
+        ok: false,
+        reason: check.reason ?? `gate ${gate.id} is not satisfied`,
+        ...(failed ? { gate: failed } : {}),
+      }
+    }
+
     const next = nextPhase(feature) ?? 'implementation'
     emit(ctx, feature.id, {
       type: 'tickets.awaiting_burn',
