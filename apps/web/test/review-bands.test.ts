@@ -247,10 +247,16 @@ describe('the review page’s arrival bands', () => {
 
   /** State 3: the agent recorded a walkthrough — only now is there a stage. */
   it('mounts the evidence stage for a recording, and for a live drive', () => {
-    expect(render({ recordings: [RECORDING] })).toContain('id="evidence-stage"')
-    expect(
-      render({ drive: { featureId: 'feat_1', state: 'serving', dryRun: false } }),
-    ).toContain('id="evidence-stage"')
+    const walkthrough = render({ recordings: [RECORDING] })
+    expect(walkthrough).toContain('id="evidence-stage"')
+    // The state line is the same line it is in every other state — a recording
+    // does not take the way to your own drive away.
+    expect(walkthrough).toContain('>Test drive<')
+
+    const driving = render({ drive: { featureId: 'feat_1', state: 'serving', dryRun: false } })
+    expect(driving).toContain('id="evidence-stage"')
+    // ...except while a drive is up, which the stage itself is there to stop.
+    expect(driving).not.toContain('>Test drive<')
     // A drive of some OTHER feature is not this page's evidence.
     expect(
       render({ drive: { featureId: 'feat_9', state: 'serving', dryRun: false } }),

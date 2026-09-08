@@ -199,13 +199,15 @@ export function ReviewBody({
     : undefined
 
   const driveState = ownDrive?.state ?? 'idle'
+  // A drive of this feature is up — the server says so, or this browser started
+  // one and the poll has not caught up yet.
+  const driveUp = driveState !== 'idle' || !!driving
   // The stage mounts only when it has something to put on it (decision 6): a
-  // recording, or a drive — the server's, or one this browser has just started
-  // and the poll has not caught up with yet. With neither there is no band at
-  // all, so nothing on the page is a bordered box holding one sentence.
-  const stageMounted = recordings.length > 0 || driveState !== 'idle' || !!driving
-  // The one drive slot is taken by somebody else — this feature's own drive is
-  // the stage's business, not the control's.
+  // recording, or that drive. With neither there is no band at all, so nothing
+  // on the page is a bordered box holding one sentence.
+  const stageMounted = recordings.length > 0 || driveUp
+  // The one drive slot is taken by somebody else — another feature, or a
+  // preparation dry run (decision 9).
   const driveSlotTaken = !!drive.data && drive.data.featureId !== feature.id
   // One partition, two halves (decision 8): what needs attention is the middle
   // of the page, what has been dealt with rides inside the bottom disclosure.
@@ -302,7 +304,7 @@ export function ReviewBody({
         unverifiedKeys={unverifiedKeys}
         // A drive already at the wheel is the stage's to stop, and a history
         // view starts nothing at all.
-        {...(readonly || stageMounted
+        {...(readonly || driveUp
           ? {}
           : {
               testDrive: {
