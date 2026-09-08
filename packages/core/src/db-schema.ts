@@ -60,6 +60,12 @@ export const projects = sqliteTable('projects', {
   verifyCommands: text('verify_commands'),
   knownFailures: text('known_failures'),
   dbResetCommand: text('db_reset_command'),
+  // How to EXERCISE this app once it is up — the sample project to drive, how to
+  // reach a deep state, what a driver may change inside the running app. Free
+  // text, injected verbatim into every drive-mode review prompt. Project-only
+  // for the same reason as `dbResetCommand`: a machine-wide default could only
+  // ever describe some other repo's app.
+  driveInstructions: text('drive_instructions'),
   // Test-drive hooks: opaque shell commands run before the dev pane starts and
   // after it stops. runcastle never parses them and holds no model of what a
   // "database" or a "service" is — bringing an environment up is exactly the

@@ -36,6 +36,7 @@ const VALUE_COLUMN = {
   driveSetupCommand: projects.driveSetupCommand,
   driveStopCommand: projects.driveStopCommand,
   dbResetCommand: projects.dbResetCommand,
+  driveInstructions: projects.driveInstructions,
 } as const satisfies Record<PreparedKey, unknown>
 
 /** Drizzle column NAME for a prepared key, for the `.set()` object literal. */
@@ -47,6 +48,7 @@ const COLUMN_NAME: Record<PreparedKey, string> = {
   driveSetupCommand: 'driveSetupCommand',
   driveStopCommand: 'driveStopCommand',
   dbResetCommand: 'dbResetCommand',
+  driveInstructions: 'driveInstructions',
 }
 
 const PREPARED_SET = new Set<string>(PREPARED_KEYS)

@@ -56,6 +56,7 @@ type ProjectColumn =
   | 'dbResetCommand'
   | 'driveSetupCommand'
   | 'driveStopCommand'
+  | 'driveInstructions'
 
 interface FieldDescriptor {
   key: string
@@ -247,6 +248,17 @@ const DESCRIPTORS: FieldDescriptor[] = [
     valueSchema: z.string().min(1),
     parseEnv: idEnv,
   },
+  // Project-only (no global twin, no env var): how to EXERCISE this app once it
+  // is up. Free text, injected verbatim into the drive-mode review prompts — how
+  // to drive an app is a fact about one repo, so a machine-wide value could only
+  // ever describe somebody else's.
+  {
+    key: 'driveInstructions',
+    projectColumn: 'driveInstructions',
+    restartRequired: false,
+    valueSchema: z.string().min(1),
+    parseEnv: idEnv,
+  },
 ]
 
 const DEFAULTS = RuncastleConfigSchema.parse({})
@@ -327,6 +339,7 @@ function projectOverrides(ctx: AppCtx, projectId: string): Record<ProjectColumn,
       dbResetCommand: projects.dbResetCommand,
       driveSetupCommand: projects.driveSetupCommand,
       driveStopCommand: projects.driveStopCommand,
+      driveInstructions: projects.driveInstructions,
     })
     .from(projects)
     .where(eq(projects.id, projectId))
@@ -342,6 +355,7 @@ function projectOverrides(ctx: AppCtx, projectId: string): Record<ProjectColumn,
     dbResetCommand: row?.dbResetCommand ?? null,
     driveSetupCommand: row?.driveSetupCommand ?? null,
     driveStopCommand: row?.driveStopCommand ?? null,
+    driveInstructions: row?.driveInstructions ?? null,
   }
 }
 

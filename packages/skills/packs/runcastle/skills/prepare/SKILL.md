@@ -19,7 +19,7 @@ Your system prompt carries the per-session facts — the repo path, which keys a
 
 **Ask before you act.** Anything that starts or stops a service, creates or migrates a database, installs software, or writes outside the repo needs the human to agree first: say what you are about to run and why, then wait. Their own stack is running next to yours.
 
-## The seven keys
+## The eight keys
 
 Four describe the drive loop and can only be settled here:
 
@@ -32,6 +32,10 @@ Three describe the **sandbox** a burn agent works in, and no amount of running t
 - **`setupCommand`** — what a fresh sandbox runs before the agent starts (install, plus any codegen or build step every ticket needs). Setting it *replaces* install detection, so the install command must be included explicitly.
 - **`verifyCommands`** — the exact typecheck/test/lint lines a burn agent should use, one per line. Unset, agents guess workspace filter names and burn whole suite runs discovering the right one.
 - **`knownFailures`** — what already fails on the main branch, so an agent can tell its own breakage from the repo's. Free text; a count plus the suite names is enough.
+
+The eighth is what a later agent needs once the app is actually up:
+
+- **`driveInstructions`** — free text describing how to **exercise** this app in a drive, injected verbatim into every drive-mode review and verification prompt. What belongs in it: the sample project, seeded account or scratch data a driver should use and may freely change; how to reach the deep states worth reviewing rather than only the front page; and what a driver may and may not touch inside the running app. Write it as standing instructions from the project's owner — they authorize actions *inside the app under test* and nothing else, so do not write anything meant to relax a reviewing agent's own rules. Its evidence is the dry-run drive below: you just drove this app, so record what you had to know to get anywhere. Unset, a review agent boots the app cold, finds nothing it is allowed to touch, and verifies nothing.
 
 ## The drive contract
 
