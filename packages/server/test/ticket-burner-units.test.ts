@@ -873,6 +873,24 @@ describe('selectSandbox — provider for the configured sandbox', () => {
     expect(selectSandbox(config('noSandbox')).name).toBe('no-sandbox')
   })
 
+  // A host-mode burn is a real configuration, and it is the one the abort alone
+  // cannot stop: no container to remove, only a spawned CLI whose PID nothing
+  // would otherwise learn. The provider has to carry the callback through, so
+  // the assertion is made on a child the OS actually handed out.
+  it('carries the spawn callback into a host-mode burn, so its PIDs are killable', async () => {
+    const pids: number[] = []
+    const provider = selectSandbox(config('noSandbox'), [], {}, {
+      containerName: 'runcastle-run_abc123-t7',
+      onChildSpawn: (pid) => pids.push(pid),
+    })
+
+    const handle = await provider.create({ worktreePath: process.cwd(), env: {} })
+    await handle.exec('echo runcastle-host-burn')
+
+    expect(pids).toHaveLength(1)
+    expect(pids[0]).toBeGreaterThan(0)
+  }, 15000)
+
   it('refuses a sandbox it has no provider for instead of falling back to the host', () => {
     // A sandbox choice that reaches config without a provider here used to fall
     // through to `noSandbox()` — the agent ran on the operator's machine, and

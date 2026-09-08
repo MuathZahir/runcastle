@@ -23,6 +23,7 @@ import {
   researchBranchName,
 } from '../services/git'
 import type { StreamThrottle, ThrottledEvent } from './ticket-burner'
+import { killRegistry } from './kill-registry'
 import { RUNTIME_AUTH_SETUP_HINT } from '../services/setup'
 import {
   AUTH_MISSING_EVENT,
@@ -277,7 +278,14 @@ async function realExecuteResearchRun(
     // Shared with the burner, never hand-rolled here: the local
     // `sandbox === 'docker' ? docker() : noSandbox()` this replaces is how a
     // `podman` config silently became "run the AFK agent on the host".
-    sandbox: selectSandbox(config, codexAuthMount ? [codexAuthMount] : []),
+    //
+    // A research waypoint has no ticket, so its lane is keyed by the run — which
+    // is what `cancelRun` reaps by, and a run researches one waypoint at a time,
+    // so the key names exactly one agent. Host mode only: on the host the abort
+    // leaves the spawned CLI alive, and the newest pid is the one to kill.
+    sandbox: selectSandbox(config, codexAuthMount ? [codexAuthMount] : [], {}, {
+      onChildSpawn: (pid) => killRegistry().registerHostPid(ctx.runId, pid, { runId: ctx.runId }),
+    }),
     cwd: project.repoPath,
     prompt,
     // Temp branch based on the feature branch tip — the feature branch itself
@@ -314,6 +322,10 @@ async function realExecuteResearchRun(
       message: `waypoint ${waypoint.seq}: agent finished but sandcastle could not remove its worktree (${errorHeadline(msg)})${removed ? ' — cleaned up' : ' — left on disk'}; landing the ${salvaged.length} commit(s) anyway`,
       data: { tempBranch, error: msg, cleanedUp: removed },
     })
+  } finally {
+    // The agent is over, however it ended: there is nothing left to kill, and a
+    // stale pid would make a later cancel of this run reach for a dead process.
+    killRegistry().release(ctx.runId)
   }
   throttle.flush()
 

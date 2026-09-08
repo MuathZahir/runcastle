@@ -3196,6 +3196,19 @@ function quoteArg(value: string): string {
 }
 
 /**
+ * What a launched agent will be killable BY — the two handles the sandcastle
+ * patch exposes, carried together because they answer the same question for
+ * different providers and a caller never knows which one `config.sandbox` will
+ * reach for.
+ */
+export interface KillHandleOptions {
+  /** `--name` for the container provider, so `docker rm -f <name>` needs no discovery. */
+  readonly containerName?: string
+  /** Called with the pid of every child the host provider spawns (latest wins). */
+  readonly onChildSpawn?: (pid: number) => void
+}
+
+/**
  * Pick the sandcastle sandbox provider for the configured `sandbox`. The two
  * container providers (docker/podman) take an explicit `imageName` — always
  * `resolveSandboxImage(config)`, never sandcastle's `sandcastle:<repo-dir-name>`
@@ -3214,26 +3227,28 @@ function quoteArg(value: string): string {
  * `--memory` (see the `burnCpus` config doc for why that is the right call
  * anyway). noSandbox ignores it: no container, nothing to constrain.
  *
- * `containerName` (patched into sandcastle's docker provider) is what a stop
- * kills by: aborting a run only interrupts a fiber, so the container has to be
- * removable by name from outside it. Omitted, the provider names itself as
- * before. noSandbox has no container to name — a host agent is killable by the
- * pid its spawn callback reports instead.
+ * `kill` is what a stop kills BY, one handle per provider kind (both patched
+ * into sandcastle): `containerName` makes the container removable by name from
+ * outside the fiber the abort interrupts, and `onChildSpawn` reports the pid of
+ * every host child, since noSandbox has no container to name. Each is passed to
+ * the provider that has one — a caller hands over both and the provider it did
+ * not select simply never sees its own. Omitted, nothing changes: the container
+ * providers name themselves as before and no pid is reported.
  */
 export function selectSandbox(
   config: RuncastleConfig,
   mounts: readonly CacheMount[] = [],
   env: Record<string, string> = {},
-  containerName?: string,
+  kill: KillHandleOptions = {},
 ) {
-  const imageOpts = buildSandboxOptions(config, mounts, env, containerName)
+  const imageOpts = buildSandboxOptions(config, mounts, env, kill.containerName)
   switch (config.sandbox) {
     case 'docker':
       return docker(imageOpts)
     case 'podman':
       return podman(imageOpts)
     case 'noSandbox':
-      return noSandbox()
+      return noSandbox(kill.onChildSpawn ? { onChildSpawn: kill.onChildSpawn } : {})
     default:
       // Only reachable when a sandbox choice gains a config value before it
       // gains a provider here. Refusing loudly is the point: the old `default:
@@ -3618,12 +3633,24 @@ async function burnTicket(
    *
    * Docker only: sandcastle's podman provider still names its own containers
    * (the patch covers docker, per decisions.md #3), and a host agent is killable
-   * by pid rather than by name.
+   * by pid rather than by name — which is what {@link killHandles} arranges.
    */
   const makeKillable = (containerName: string): void => {
     if (config.sandbox !== 'docker') return
     killRegistry().registerContainer(ticket.id, containerName, { runId: ctx.runId })
   }
+
+  /**
+   * The same lane, made killable in whichever mode it turns out to burn in. A
+   * `noSandbox` burn is a real configuration — the agent runs on the host with
+   * no container to name — so it registers pids instead, exactly as the review
+   * agent does. The provider that is not selected never calls its own handle,
+   * so both can be handed over unconditionally.
+   */
+  const killHandles = (containerName: string): KillHandleOptions => ({
+    containerName,
+    onChildSpawn: (pid) => killRegistry().registerHostPid(ticket.id, pid, { runId: ctx.runId }),
+  })
 
   const maxAttempts = Math.max(1, config.burnAttempts)
 
@@ -3746,7 +3773,7 @@ async function burnTicket(
       makeKillable(containerName)
       result = await run({
         agent: buildBurnAgent(config, token, model, agentOptions),
-        sandbox: selectSandbox(config, mounts, sandboxEnv, containerName),
+        sandbox: selectSandbox(config, mounts, sandboxEnv, killHandles(containerName)),
         cwd: project.repoPath,
         prompt,
         branchStrategy: { type: 'branch', branch: resolveBranch, baseBranch: input.branch },
@@ -3947,7 +3974,7 @@ async function burnTicket(
 
       const runOptions: RunOptions = {
         agent: buildBurnAgent(config, token, model, agentOptions),
-        sandbox: selectSandbox(config, mounts, sandboxEnv, containerName),
+        sandbox: selectSandbox(config, mounts, sandboxEnv, killHandles(containerName)),
         cwd: project.repoPath,
         prompt: retryNotes ? `${basePrompt}\n\n${retryNotes}` : basePrompt,
         // Temp branch off the chain tip (the feature branch, or the previous
