@@ -14,6 +14,22 @@ import { stopTicketRun } from '../../workflows/ticket-burner'
 import { publicProcedure, router } from '../context'
 
 /**
+ * The kill ran out its deadline with the process still there — said out loud,
+ * on the timeline, by both controls that kill (`stop` and `cancel`). Nothing
+ * else in the stack would ever mention it: the ticket still reads terminal, and
+ * this is exactly the state the old silent "stopped" was hiding. The response
+ * carries it too, but a toast is gone in seconds and the timeline is not.
+ */
+function noteStopTimeout(ctx: AppCtx, ticketId: string): void {
+  const ticket = getTicket(ctx, ticketId)
+  emit(ctx, ticket.featureId, {
+    type: 'ticket.stop_timeout',
+    message: `ticket #${ticket.seq}: stop timed out — the process may still be running`,
+    ticketId: ticket.id,
+  })
+}
+
+/**
  * Per-ticket burn controls (the burn-robustness pass). The whole-feature
  * actions stay on their existing routers (`feature.burn` re-burns everything,
  * `run.cancel` kills a run); these are the surgical tools:
@@ -45,22 +61,6 @@ import { publicProcedure, router } from '../context'
  * what lets the pre-burn bar say how long a burn has been taking here instead
  * of quoting a number someone hardcoded (decisions.md #16b).
  */
-/**
- * The kill ran out its deadline with the process still there — said out loud,
- * on the timeline, by both controls that kill (`stop` and `cancel`). Nothing
- * else in the stack would ever mention it: the ticket still reads terminal, and
- * this is exactly the state the old silent "stopped" was hiding. The response
- * carries it too, but a toast is gone in seconds and the timeline is not.
- */
-function noteStopTimeout(ctx: AppCtx, ticketId: string): void {
-  const ticket = getTicket(ctx, ticketId)
-  emit(ctx, ticket.featureId, {
-    type: 'ticket.stop_timeout',
-    message: `ticket #${ticket.seq}: stop timed out — the process may still be running`,
-    ticketId: ticket.id,
-  })
-}
-
 export const ticketRouter = router({
   retry: publicProcedure
     .input(z.object({ ticketId: z.string(), fresh: z.boolean().optional() }))
