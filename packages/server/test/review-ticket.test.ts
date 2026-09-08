@@ -378,6 +378,7 @@ describe('what the review agent is handed', () => {
       FEATURE_BRANCH: 'feature/demo',
       BASE_BRANCH: 'main',
       DRIVE_AVAILABILITY: buildDriveAvailability('/usr/bin/agent-browser', 'bun dev'),
+      DRIVE_INSTRUCTIONS: buildDriveInstructions('Drive the sample project at /tmp/sample.'),
       GATE_NOTES: buildGateNotes({ verifyCommands: 'bun run typecheck' }),
       DIGEST_PATH: '/data/reviews/tkt_3/DIGEST.md',
       BLOCKED_PATH: '/data/reviews/tkt_3/BLOCKED.md',
@@ -410,6 +411,8 @@ describe('what the review agent is handed', () => {
     expect(prompt).toContain('agent-browser record stop')
     // Gates mode runs the project's own commands rather than guessing at them.
     expect(prompt).toContain('bun run typecheck')
+    // And Drive mode is told how this particular app wants to be driven.
+    expect(prompt).toContain('Drive the sample project at /tmp/sample.')
   })
 
   /**
@@ -450,12 +453,14 @@ describe('what the review agent is handed', () => {
       TICKET_JSON: '{"seq":4}', FEATURE_BRIEF: 'Demo', DOCS_DIGEST: 'docs', LAP_DIGESTS: 'digests',
       FEATURE_BRANCH: 'feature/demo', BASE_BRANCH: 'main',
       DRIVE_AVAILABILITY: buildDriveAvailability('/browser', 'bun dev', 'drive'),
+      DRIVE_INSTRUCTIONS: buildDriveInstructions('Log in as demo@example.com.'),
       GATE_NOTES: buildGateNotes({ verifyCommands: 'bun test' }), DIGEST_PATH: '/digest',
       BLOCKED_PATH: '/blocked', WALKTHROUGH_PATH: '/walkthrough.webm',
       LANDED_FIXES: '#2 Fix save — repro: click Save', VERIFIES_PASS: '#1 · Drive mode',
       AUTO_FIX_CAP: String(AUTO_FIX_CAP),
     })
     expect(prompt).not.toContain('{{')
+    expect(prompt).toContain('Log in as demo@example.com.')
     expect(prompt).toContain('#2 Fix save — repro: click Save')
     expect(prompt).toContain('#1 · Drive mode')
     expect(prompt).toContain(`auto-fix cap is ${AUTO_FIX_CAP}`)
@@ -602,6 +607,30 @@ describe('the drive instructions the project hands the reviewer', () => {
     // Nothing of the framing prose leaks into the empty state — there is
     // nothing there to scope.
     expect(empty).not.toContain('authorize actions')
+  })
+
+  /**
+   * Both drive-consuming templates declare it, and each declares it inside its
+   * own Drive-mode material: a sample project's path is noise to a review that
+   * ran the gates and read a diff.
+   */
+  it('sits in the Drive-mode material of both templates, never the Gates-mode one', () => {
+    const review = readFileSync(reviewTemplatePath(), 'utf8')
+    const at = (haystack: string, needle: string): number => {
+      const index = haystack.indexOf(needle)
+      expect(index).toBeGreaterThan(-1)
+      return index
+    }
+
+    expect(at(review, '{{DRIVE_INSTRUCTIONS}}')).toBeGreaterThan(at(review, '### 2a. Drive mode'))
+    expect(at(review, '{{DRIVE_INSTRUCTIONS}}')).toBeLessThan(at(review, '### 2b. Gates mode'))
+    // Its own block: it neither replaces nor rides inside the other two.
+    expect(review).toContain('{{DRIVE_AVAILABILITY}}')
+    expect(review).toContain('{{GATE_NOTES}}')
+
+    const verify = readFileSync(reviewTemplatePath({ passKind: 'verification' }), 'utf8')
+    expect(at(verify, '{{DRIVE_INSTRUCTIONS}}')).toBeGreaterThan(at(verify, 'In **Drive mode**'))
+    expect(at(verify, '{{DRIVE_INSTRUCTIONS}}')).toBeLessThan(at(verify, 'In **Gates mode**'))
   })
 })
 

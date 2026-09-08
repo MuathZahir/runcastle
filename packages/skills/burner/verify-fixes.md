@@ -30,6 +30,8 @@ Run digests:
 
 In **Drive mode**, call `mcp__runcastle__review_drive({ action: "start" })`, start the recorder at `{{WALKTHROUGH_PATH}}`, and walk every acceptance criterion's user-facing surface once at pace. Keep the recorder running for the whole tour. Scrutinise only the landed fixes: check whether each listed repro step still reproduces and inspect the surfaces those fixes touched. Report anything plainly broken during the tour, but do not hunt for unrelated defects. Stop the recorder and drive when finished.
 
+{{DRIVE_INSTRUCTIONS}}
+
 In **Gates mode**, read each fix diff against its finding and run the configured gates exactly once. Do not perform a second two-axis review of the whole branch.
 
 {{GATE_NOTES}}

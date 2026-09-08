@@ -82,6 +82,8 @@ const PLACEHOLDERS = [
   'BASE_BRANCH',
   /** Whether Drive mode is open at all, decided host-side (see {@link buildDriveAvailability}). */
   'DRIVE_AVAILABILITY',
+  /** How to drive THIS app, in the project's own words (see {@link buildDriveInstructions}). */
+  'DRIVE_INSTRUCTIONS',
   /** Gates mode's commands and their known-failure baseline. */
   'GATE_NOTES',
   'DIGEST_PATH',
@@ -427,6 +429,7 @@ async function reviewTicketOutcome(
     // "could not review".
     BASE_BRANCH: feature.baseBranch,
     DRIVE_AVAILABILITY: buildDriveAvailability(findOnPath(AGENT_BROWSER_BIN), project.devCommand, inheritedMode),
+    DRIVE_INSTRUCTIONS: buildDriveInstructions(project.driveInstructions),
     GATE_NOTES: buildGateNotes(deps.config),
     DIGEST_PATH: artifacts.digestPath,
     BLOCKED_PATH: artifacts.blockedPath,
