@@ -42,6 +42,7 @@ import {
   inheritedReviewMode,
   renderReviewPrompt,
   reviewTemplatePath,
+  shouldStopAfterDigest,
 } from '../src/workflows/review-ticket'
 import type { BurnDeps, TicketOutcome } from '../src/workflows/ticket-burner'
 import { buildBurnAgent, buildLapDigestsBlock, burnRun } from '../src/workflows/ticket-burner'
@@ -461,6 +462,27 @@ describe('what the review agent is handed', () => {
     expect(prompt).toContain('verification pass')
   })
 
+  /**
+   * Sandcastle matches the completion signal against the agent's accumulated
+   * stdout, so a marker written into DIGEST.md signals nothing: the iteration
+   * loop re-runs the same pass from the top — observed three times over, a full
+   * test suite and a re-report of every finding each time. The rule the
+   * implement and review templates carry has to be here too.
+   */
+  it('makes the verification pass signal completion in its message, never in the digest', () => {
+    const template = readFileSync(reviewTemplatePath({ passKind: 'verification' }), 'utf8')
+
+    expect(template).toMatch(
+      /\*\*Signal completion\.\*\* Print exactly `<promise>COMPLETE<\/promise>` as the last line of your final message/,
+    )
+    // Whichever way the pass ended — clean, with findings, or blocked.
+    expect(template).toMatch(/could not run it at all/i)
+    // Never the file: the old wording tacked the marker onto the digest-writing
+    // paragraph, where it read as "end the digest with it".
+    expect(template).not.toMatch(/End with `<promise>COMPLETE<\/promise>`/)
+    expect(template).toMatch(/no `<promise>` markers inside the digest/i)
+  })
+
   it('tells the agent where the recording is optional and where it is not', () => {
     const template = readFileSync(reviewTemplatePath(), 'utf8')
 
@@ -634,6 +656,46 @@ describe('the agent-browser probe', () => {
     } finally {
       process.env.PATH = original
     }
+  })
+})
+
+describe('a pass that already delivered is not re-derived', () => {
+  let dir: string
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'rc-digest-'))
+  })
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true })
+  })
+
+  it('stops the loop from iteration 2 on, once the digest is on disk', () => {
+    // The signal the agent should have printed is missing, so sandcastle has
+    // started the same prompt over. The digest says it already finished.
+    expect(shouldStopAfterDigest(2, '/review/DIGEST.md', () => true)).toBe(true)
+    expect(shouldStopAfterDigest(5, '/review/DIGEST.md', () => true)).toBe(true)
+    // Nothing delivered yet: the iteration is the retry it is meant to be.
+    expect(shouldStopAfterDigest(2, '/review/DIGEST.md', () => false)).toBe(false)
+  })
+
+  it('never stops the first iteration, and does not go to disk to decide it', () => {
+    let looked = false
+    expect(
+      shouldStopAfterDigest(1, '/review/DIGEST.md', () => {
+        looked = true
+        return true
+      }),
+    ).toBe(false)
+    // Every text chunk of the pass that matters comes through here.
+    expect(looked).toBe(false)
+  })
+
+  it('reads a real digest off disk when nothing is injected', () => {
+    const digestPath = join(dir, 'DIGEST.md')
+
+    expect(shouldStopAfterDigest(2, digestPath)).toBe(false)
+    writeFileSync(digestPath, '# what the review found\n')
+    expect(shouldStopAfterDigest(2, digestPath)).toBe(true)
   })
 })
 

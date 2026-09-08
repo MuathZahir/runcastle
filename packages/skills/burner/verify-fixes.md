@@ -4,6 +4,12 @@ You are running a bounded verification pass on `{{FEATURE_BRANCH}}` against `{{B
 
 {{DRIVE_AVAILABILITY}}
 
+## How you run
+
+You run **non-interactively** — your agent CLI in print/exec mode, no terminal, no human. So:
+
+- **Signal completion.** Print exactly `<promise>COMPLETE</promise>` as the last line of your final message, whether the pass went well or you could not run it at all. It is the only completion signal there is, and it is read from your message — a marker written into a file is invisible, and without one in your message this same pass runs again from the top.
+
 ## What landed
 
 {{LANDED_FIXES}}
@@ -36,4 +42,4 @@ In **Gates mode**, read each fix diff against its finding and run the configured
 
 Report findings through `mcp__runcastle__report_finding` as usual. Verification findings remain open for the human and never mint fix tickets. The ordinary review auto-fix cap is {{AUTO_FIX_CAP}}.
 
-Write `{{DIGEST_PATH}}`. Its first line must name the inherited mode and say "verification pass" (for example, `Drive verification pass`). Summarise which fixes held, which did not, and anything plainly broken on the tour. If the pass cannot run at all, write `{{BLOCKED_PATH}}` with the precise reason instead. End with `<promise>COMPLETE</promise>`.
+Write `{{DIGEST_PATH}}`. Its first line must name the inherited mode and say "verification pass" (for example, `Drive verification pass`). Summarise which fixes held, which did not, and anything plainly broken on the tour. No `<promise>` markers inside the digest — the completion signal is a line in your message, never a line in this file. If the pass cannot run at all, write `{{BLOCKED_PATH}}` with the precise reason instead. Either way, the file you write is the last thing you do before signalling COMPLETE.

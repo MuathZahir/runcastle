@@ -290,6 +290,37 @@ function writeReviewArtifacts(
 }
 
 /**
+ * Whether a stream event means the pass has already delivered and is now
+ * re-deriving it. Sandcastle numbers iterations from 1, so an event tagged 2 or
+ * higher is a fresh `claude --print` against the same prompt, and a `DIGEST.md`
+ * on disk says the iteration before it finished the review.
+ *
+ * It exists because the completion signal is a marker the agent has to PRINT:
+ * one that writes it into its digest instead of its final message leaves
+ * sandcastle nothing to see, and the loop re-runs the whole pass up to
+ * `burnMaxIterations` times — observed as a verification re-deriving everything
+ * three times over, full test suite each time. The digest is the evidence
+ * sandcastle cannot read, so this path watches for it and fires the ticket's own
+ * abort; the harvest below then reads success off the file exactly as it would
+ * have, because it already treats what the agent LEFT as the outcome.
+ *
+ * Review-side only. On the implementation path a second iteration is the point —
+ * an implementer picks up its own half-done work — so nothing there may stop on
+ * a digest.
+ *
+ * The existence check is injected so the decision can be unit-tested; the caller
+ * passes nothing. Iteration is checked first, so iteration 1's every text chunk
+ * costs no filesystem call.
+ */
+export function shouldStopAfterDigest(
+  iteration: number,
+  digestPath: string,
+  fileExists: (path: string) => boolean = existsSync,
+): boolean {
+  return iteration >= 2 && fileExists(digestPath)
+}
+
+/**
  * Give the drive slot back, whatever happened. The agent is told to stop what it
  * started, but an agent that crashed — or that ended its turn holding the slot —
  * would otherwise leave the human's checkout parked on the feature branch with a
@@ -405,6 +436,7 @@ async function reviewTicketOutcome(
   mkdirSync(logsDir(), { recursive: true })
   const throttle = createStreamThrottle((e) => ctx.emitEvent({ ...e, ticketId: ticket.id }))
   beginTranscript(ticket.id)
+  const ticketAbort = registerTicketAbort(ticket.id)
   const onStreamEvent = (event: AgentStreamEvent): void => {
     throttle.onEvent(event)
     timer.onEvent(event)
@@ -417,9 +449,11 @@ async function reviewTicketOutcome(
         name: event.name,
       })
     }
+    if (!ticketAbort.signal.aborted && shouldStopAfterDigest(event.iteration, artifacts.digestPath)) {
+      ticketAbort.abort(new Error('the review already wrote its digest'))
+    }
   }
 
-  const ticketAbort = registerTicketAbort(ticket.id)
   const signal = AbortSignal.any([ctx.signal, ticketAbort.signal])
 
   const options: RunOptions = {
