@@ -40,7 +40,7 @@ import {
   withheldFeatureDocs,
 } from '@runcastle/core'
 import { featureDocsRel } from '@runcastle/core/paths'
-import { Hono } from 'hono'
+import { type Context, Hono } from 'hono'
 import * as z from 'zod'
 import type { AppCtx } from '../db/types'
 import { GateError, InvalidInputError, NotFoundError, isNotImplemented } from '../errors'
@@ -2424,7 +2424,73 @@ export async function resolveAudience(
   }
 }
 
+/**
+ * Drain a POST's body BEFORE anything else in this handler runs.
+ *
+ * `@hono/mcp` reads the body itself (`await ctx.req.json()`), but only after we
+ * have awaited a db round trip (`resolveAudience`) and synchronously assembled a
+ * whole `McpServer` with every tool's schema. Leaving the socket unread across
+ * all of that is the one structural risk this repo owns in the large-batch
+ * `emit_tickets` stall: a payload small enough to already sit in the socket's
+ * receive buffer is there whenever the transport gets round to asking, while one
+ * that takes several reads depends on the runtime buffering correctly while
+ * nobody is asking — size-dependent and silent, which is what sessions reported
+ * past ~10KB. Reading first removes the window.
+ *
+ * It costs nothing: Hono caches the body (`HonoRequest#json()` is
+ * `#cachedBody('text').then(JSON.parse)`), so the transport's own read is served
+ * from that cache rather than the stream, and `handleRequest(ctx, parsedBody)`
+ * is its documented way to be handed the value.
+ *
+ * Doing it here also gives the failure somewhere to be seen. A body that never
+ * finishes arriving is the only way an `/mcp` request dies with nothing to show
+ * for it — `@hono/mcp`'s json-response promise simply never settles — and
+ * silence was the defining symptom of the incident.
+ *
+ * Upstream, for traceability: no release indicts a specific bug — `@hono/mcp`
+ * 0.3.2, the only newer release, adds `onsessiondisconnected` and nothing else,
+ * and the payload/framing sweep recorded in `test/mcp-large-batch.test.ts` could
+ * not reproduce the stall on linux, so there is nothing to bump to. The nearest
+ * open upstream reports put the same symptom — a large tool-call argument that
+ * dies silently — one layer further out, in the MCP client rather than in any
+ * server:
+ *
+ *   • https://github.com/anthropics/claude-code/issues/86314 — a large
+ *     tool-input string argument stalls the client's own response stream for 80+
+ *     seconds with no error, before the call is ever dispatched over MCP;
+ *   • https://github.com/anthropics/claude-code/issues/72228 — parameters
+ *     emitted after a long parameter value are dropped client-side, so the
+ *     server sees a partial call and nothing surfaces the loss.
+ *
+ * Neither is confirmed as our cause (both are linux reports; the incident host is
+ * win32), so this stays a workaround at the layer we own rather than a version
+ * bump. If they are fixed upstream and sessions still stall, the remaining
+ * suspect is Bun's win32 socket read path — see the RESIDUAL GAP note in
+ * `test/mcp-large-batch.test.ts`.
+ */
+async function readMcpBody(c: Context): Promise<unknown> {
+  if (c.req.method !== 'POST') return undefined
+  let text: string
+  try {
+    text = await c.req.text()
+  } catch (e) {
+    console.error(
+      `[mcp] request body read failed after ${c.req.header('content-length') ?? 'unknown'} ` +
+        `declared bytes: ${e instanceof Error ? e.message : String(e)}`,
+    )
+    return undefined
+  }
+  try {
+    return JSON.parse(text)
+  } catch {
+    // Not ours to answer: handing back `undefined` lets the transport re-read
+    // (from Hono's cache) and reply with its own JSON-RPC parse error.
+    return undefined
+  }
+}
+
 mcp.all('*', async (c) => {
+  const body = await readMcpBody(c)
   const audience = await resolveAudience(
     c.req.header('X-Runcastle-Session'),
     c.req.header(RUN_HEADER),
@@ -2432,7 +2498,7 @@ mcp.all('*', async (c) => {
   const server = buildMcpServer(audience)
   const transport = new StreamableHTTPTransport({ enableJsonResponse: true })
   await server.connect(transport)
-  const res = await transport.handleRequest(c)
+  const res = await transport.handleRequest(c, body)
   return res ?? c.body(null, 202)
 })
 
