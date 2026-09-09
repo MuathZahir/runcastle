@@ -191,8 +191,10 @@ export async function startRun(
  * The abort alone only interrupts sandcastle's fiber — the containers keep
  * burning and keep streaming events — so the kill is what actually ends the
  * run, and what makes each lane's `run()` reject into the failure path that
- * writes its terminal state. `confirmed: false` means at least one agent
- * outlived the kill's deadline and may still be running.
+ * writes its terminal state. That path waits on the same kill before it writes
+ * anything (see `executeRun`), so the run row cannot read cancelled ahead of
+ * the agents dying. `confirmed: false` means at least one agent outlived the
+ * kill's deadline and may still be running.
  */
 export async function cancelRun(runId: string): Promise<KillOutcome> {
   controllers.get(runId)?.abort()
@@ -212,6 +214,10 @@ async function executeRun(
   let summary = 'run failed'
   // The workflow's long-form account of what this run produced, if it kept one.
   let digest: string | undefined
+  // Whether the workflow threw: its `run.error` breadcrumb waits behind the kill
+  // gate with the row it describes, rather than announcing a cancel that has not
+  // happened yet.
+  let threw = false
   try {
     const result = await runPromise
     status = result.status
@@ -225,10 +231,19 @@ async function executeRun(
       status = 'failed'
       summary = e instanceof Error ? e.message : 'run failed'
     }
-    emit(ctx, featureId, { type: 'run.error', message: summary, runId })
+    threw = true
   } finally {
     controllers.delete(runId)
   }
+
+  // `cancelRun` aborts the signal and waits for the kill second, and the abort
+  // alone is enough to reject the workflow — so this continuation is already
+  // running while the run's containers are still being removed. Nothing about
+  // the run reads finished until every kill it ordered has settled, confirmed
+  // or timed out. A run nobody cancelled has none in flight and passes straight
+  // through.
+  await killRegistry().whenRunKillsSettled(runId)
+  if (threw) emit(ctx, featureId, { type: 'run.error', message: summary, runId })
 
   ctx.db
     .update(runs)

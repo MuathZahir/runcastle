@@ -256,6 +256,103 @@ describe('killAllForRun — Cancel run', () => {
   })
 })
 
+describe('whenKillSettled — the gate a terminal write waits behind', () => {
+  /**
+   * A stop aborts the run and waits for the kill second, and the abort is what
+   * makes the run reject — so the failure path that writes "stopped" is running
+   * WHILE the container is still being removed. The registry is what that path
+   * asks "is it gone yet", and these cases pin the two answers it owes: pending
+   * for as long as the target is alive, resolved the moment it is not.
+   */
+
+  /** A registry whose container refuses to vanish until `letItDie()` is called. */
+  function withHeldContainer(): {
+    registry: ReturnType<typeof createKillRegistry>
+    letItDie: () => void
+  } {
+    let alive = true
+    const deps: KillRegistryDeps = {
+      runDocker: async (args) => (args[0] === 'inspect' ? alive : true),
+      killTree: async () => {},
+    }
+    return { registry: createKillRegistry(deps), letItDie: () => (alive = false) }
+  }
+
+  /** Yield the microtask queue, the way the burner's own continuations would. */
+  async function flush(): Promise<void> {
+    for (let i = 0; i < 20; i++) await Promise.resolve()
+  }
+
+  it('stays pending while the container is still there, and resolves when it goes', async () => {
+    const { registry, letItDie } = withHeldContainer()
+    registry.registerContainer('ticket_abc', 'runcastle-run_1-t3', { runId: 'run_1' })
+
+    const kill = registry.killAndWait('ticket_abc')
+    let gateOpened = false
+    void registry.whenKillSettled('ticket_abc').then(() => {
+      gateOpened = true
+    })
+
+    await flush()
+    expect(gateOpened).toBe(false)
+
+    letItDie()
+    await kill
+    await flush()
+    expect(gateOpened).toBe(true)
+  })
+
+  it('resolves at once for a lane with no kill in flight — every ordinary finish', async () => {
+    const { registry } = withHeldContainer()
+
+    await expect(registry.whenKillSettled('ticket_never_stopped')).resolves.toBeUndefined()
+  })
+
+  it('opens when an unkillable process runs out its deadline, not before', async () => {
+    // The gate must not wedge on a container that will never die: the deadline
+    // releases the write, and saying it timed out is then the caller's job.
+    const { registry } = withDocker({ immortal: true })
+    registry.registerContainer('ticket_abc', 'runcastle-run_1-t3')
+
+    const kill = registry.killAndWait('ticket_abc', { timeoutMs: 200 })
+    const started = Date.now()
+    await registry.whenKillSettled('ticket_abc')
+
+    expect(Date.now() - started).toBeGreaterThanOrEqual(150)
+    await expect(kill).resolves.toEqual({ confirmed: false })
+  })
+
+  it('waits for every lane of a run, so Cancel run finalizes behind all of them', async () => {
+    const { registry, letItDie } = withHeldContainer()
+    registry.registerContainer('ticket_a', 'runcastle-run_1-t1', { runId: 'run_1' })
+    registry.registerContainer('ticket_b', 'runcastle-run_1-t2', { runId: 'run_1' })
+
+    const kills = registry.killAllForRun('run_1')
+    let gateOpened = false
+    void registry.whenRunKillsSettled('run_1').then(() => {
+      gateOpened = true
+    })
+
+    await flush()
+    expect(gateOpened).toBe(false)
+
+    letItDie()
+    await kills
+    await flush()
+    expect(gateOpened).toBe(true)
+  })
+
+  it('does not hold one run behind another run’s kill', async () => {
+    const { registry } = withHeldContainer()
+    registry.registerContainer('ticket_a', 'runcastle-run_1-t1', { runId: 'run_1' })
+    const kill = registry.killAndWait('ticket_a', { timeoutMs: 100 })
+
+    await expect(registry.whenRunKillsSettled('run_other')).resolves.toBeUndefined()
+
+    await kill
+  })
+})
+
 describe('killRegistry()', () => {
   it('is one process-wide instance, so a hot reload cannot strand a live handle', () => {
     expect(killRegistry()).toBe(killRegistry())
