@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { WorkflowDef } from '@runcastle/core'
@@ -551,6 +551,17 @@ describe('retryTicket', () => {
       )
       // Refused before anything moved: no reset, no burn.
       expect(getTicket(ctx, review.id).status).toBe('done')
+    })
+
+    it('lands runcastle’s own docs first, so a stray brief never blocks it', async () => {
+      const { dir } = await initRepoWithFeature()
+      const { review } = seedDeniedReview(dir)
+      mkdirSync(join(dir, 'docs', 'features', 'demo'), { recursive: true })
+      writeFileSync(join(dir, 'docs', 'features', 'demo', 'brief.md'), '# brief\n')
+
+      const res = await retryTicket(ctx, review.id)
+      expect(res.retried).toEqual([review.seq])
+      expect(getTicket(ctx, review.id).status).toBe('pending')
     })
 
     it('refuses a done review ticket with no denial on record', async () => {
