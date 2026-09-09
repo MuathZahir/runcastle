@@ -243,7 +243,7 @@ function deniedStart(
 }
 
 /** The first few of a file list, for a message that must not run away. */
-function namedFiles(files: readonly string[]): string {
+function truncatedFileList(files: readonly string[]): string {
   return `${files.slice(0, 5).join(', ')}${files.length > 5 ? ', …' : ''}`
 }
 
@@ -2088,7 +2088,7 @@ export async function testDrive(
     if (carriedChanges.length > 0) {
       emit(ctx, feature.id, {
         type: 'testdrive.carried_changes',
-        message: `${carriedChanges.length} uncommitted file(s) came back with you onto ${previousBranch}: ${namedFiles(carriedChanges)}`,
+        message: `${carriedChanges.length} uncommitted file(s) came back with you onto ${previousBranch}: ${truncatedFileList(carriedChanges)}`,
         data: { branch: previousBranch, files: carriedChanges },
       })
     }
@@ -2117,7 +2117,7 @@ export async function testDrive(
     if (purpose === 'review') {
       emit(ctx, feature.id, {
         type: 'reviewdrive.denied',
-        message: `review drive denied — ${dirtyFiles.length} uncommitted file(s) in the working tree: ${namedFiles(dirtyFiles)}`,
+        message: `review drive denied — ${dirtyFiles.length} uncommitted file(s) in the working tree: ${truncatedFileList(dirtyFiles)}`,
         data: { code: 'dirty', dirtyFiles },
       })
     }

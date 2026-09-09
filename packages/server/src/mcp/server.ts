@@ -1773,7 +1773,7 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
           'preparation dry run — holds the machine-wide slot, which frees itself when they ' +
           'finish, so call `start` again about ten times roughly thirty seconds apart before you ' +
           'give up on it. `deniedCode: "dirty"` (`retriable: false`) is final — the uncommitted ' +
-          'files in `dirtyFiles` are the human\'s to clear and no wait will do it, so report it ' +
+          "files in `dirtyFiles` are the human's to clear and no wait will do it, so report it " +
           'and review without the app. Refused unless your call carries a live run identity.',
         inputSchema: {
           action: z
