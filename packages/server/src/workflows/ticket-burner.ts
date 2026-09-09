@@ -139,6 +139,115 @@ export function missingImageRuntimeMessage(runtime: AgentRuntime, image: string)
   return `${binary} is not installed in image ${image} — the image predates the burner Dockerfile. Rebuild it from Settings → Burns (Rebuild image).`
 }
 
+// ---------------------------------------------------------------------------
+// Pure unit — toolchain preflight (what the image must already carry)
+// ---------------------------------------------------------------------------
+
+/** Where a shell command's steps are separated — `&&`, `||`, `;`, `|`, newline. */
+const COMMAND_SEPARATORS = /&&|\|\||[;|\n]/
+
+/** `FOO=bar cmd` — an environment prefix, not the command itself. */
+const ASSIGNMENT_PREFIX = /^[A-Za-z_][A-Za-z0-9_]*=/
+
+/**
+ * Shell words that name no binary the image has to carry: builtins the shell
+ * resolves itself, and wrappers whose real command is buried in their arguments.
+ * A segment led by one of these is dropped WHOLE rather than walked past —
+ * `env -u GIT_ASKPASS bun run test` would otherwise "find" `GIT_ASKPASS` and
+ * abort a burn that works fine. Missing `bun` there is the cheap direction.
+ */
+const NON_COMMAND_WORDS = new Set([
+  'cd',
+  'export',
+  'set',
+  'unset',
+  'source',
+  '.',
+  'exec',
+  'env',
+  'eval',
+  'command',
+  'time',
+  'sudo',
+  'echo',
+  'true',
+  'false',
+])
+
+/** A name `command -v` can answer for: a bare binary, not a path or an expansion. */
+const PLAIN_COMMAND_NAME = /^[A-Za-z0-9][A-Za-z0-9._+-]*$/
+
+/**
+ * The binaries a shell command needs, by the modest heuristic decision 7 asks
+ * for: split on the separators, skip any `VAR=` prefixes, take the first real
+ * word of each segment, keep the plain names. Deliberately NOT a shell parser —
+ * `$TOOL`, `./gradlew` and a builtin-led segment all read as "nothing to check
+ * here", which is the right way to be wrong: a preflight that guesses a name
+ * aborts a burn that would have worked, while a name it misses still fails at
+ * runtime, where the classifier names it.
+ */
+export function extractCommandNames(command: string | undefined): string[] {
+  const names: string[] = []
+  for (const segment of (command ?? '').split(COMMAND_SEPARATORS)) {
+    const words = segment
+      .replace(/[(){}'"`]/g, ' ')
+      .split(/\s+/)
+      .filter(Boolean)
+    const word = words.find((w) => !ASSIGNMENT_PREFIX.test(w)) ?? ''
+    if (!PLAIN_COMMAND_NAME.test(word) || NON_COMMAND_WORDS.has(word)) continue
+    if (!names.includes(word)) names.push(word)
+  }
+  return names
+}
+
+/**
+ * Every binary this run's containers must already carry: the agent CLI, the
+ * setup hook's commands, and the ones the prompt tells the agent to verify with
+ * (never executed by the burner — this preflight is their only exec-adjacent
+ * check). Sorted, so the probe's memo key is the same whatever order they
+ * arrived in.
+ */
+export function preflightCommandNames(input: {
+  agentBinary: string
+  setupCommand?: string
+  verifyCommands?: string
+}): string[] {
+  return [
+    ...new Set([
+      input.agentBinary,
+      ...extractCommandNames(input.setupCommand),
+      ...extractCommandNames(input.verifyCommands),
+    ]),
+  ].sort()
+}
+
+/**
+ * One container for the whole list: `command -v` per name, printing the ones
+ * that are absent. The script always exits 0 so a missing tool arrives as a
+ * parsed answer rather than being indistinguishable from an image that cannot
+ * start a shell at all.
+ */
+export function buildToolchainProbeArgs(image: string, names: readonly string[]): string[] {
+  const script = `for c in ${names.join(' ')}; do command -v "$c" >/dev/null 2>&1 || echo "$c"; done`
+  return ['run', '--rm', '--entrypoint', 'sh', image, '-c', script]
+}
+
+/** The probed names the container reported absent, in the order they were asked. */
+export function parseMissingCommands(stdout: string, names: readonly string[]): string[] {
+  const absent = new Set(stdout.split('\n').map((line) => line.trim()))
+  return names.filter((name) => absent.has(name))
+}
+
+/**
+ * The operator action for a toolchain the image lacks. Unlike the agent binary
+ * (whose fix is rebuilding the stock image), a missing `mvn` is the project's
+ * own Dockerfile to fix — so the message points there.
+ */
+export function missingToolchainMessage(names: readonly string[], image: string): string {
+  const one = names.length === 1
+  return `${names.join(', ')} ${one ? 'is' : 'are'} not installed in image ${image} — add ${one ? 'it' : 'them'} to .runcastle/sandbox/Dockerfile and rebuild.`
+}
+
 /**
  * Whether a runtime can authenticate an unattended container burn. The two
  * runtimes answer it differently: Claude Code needs the long-lived token from
