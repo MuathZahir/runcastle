@@ -18,6 +18,7 @@ import {
 import {
   SANDBOX_WORKSPACE_PATH,
   SETUP_MARKER_FILE,
+  TOOLCHAIN_CACHE_SANDBOX_PATHS,
   buildBurnCacheMounts,
   buildSandboxOptions,
   buildSlotSetupCommand,
@@ -60,20 +61,51 @@ describe('what the burn container is handed, by cache mode', () => {
   it('mounts the project volume and points every store at it when the cache is on', () => {
     const opts = optionsFor(1)
 
-    expect(opts.mounts).toEqual([
-      { volume: `runcastle-${PROJECT_ID}`, sandboxPath: BURN_CACHE_MOUNT },
-    ])
+    expect(opts.mounts?.[0]).toEqual({
+      volume: `runcastle-${PROJECT_ID}`,
+      sandboxPath: BURN_CACHE_MOUNT,
+    })
     expect(opts.mounts?.[0]?.sandboxPath).toBe('/home/agent/cache')
     expect(opts.env).toEqual(burnCacheEnv('pnpm'))
     expect(opts.env?.pnpm_config_store_dir).toBe(`${BURN_CACHE_MOUNT}/store/pnpm`)
     expect(opts.env?.TMPDIR).toBe(`${BURN_CACHE_MOUNT}/tmp`)
-    // The volume mount is the ONLY mount: ADR-0004's per-manager bind mounts
-    // are what the volume replaces, not something it sits alongside. (pnpm has
-    // no bind mount anyway — npm does, and gets none either.)
+    // Every mount is the volume: ADR-0004's per-manager bind mounts are what
+    // the volume replaces, not something it sits alongside. (pnpm has no bind
+    // mount anyway — npm does, and gets none either.)
     expect(opts.mounts?.some((m) => 'hostPath' in m)).toBe(false)
-    expect(buildBurnCacheMounts(1, PROJECT_ID, 'docker', 'npm').mounts).toEqual([
+    expect(buildBurnCacheMounts(1, PROJECT_ID, 'docker', 'npm').mounts?.[0]).toEqual({
+      volume: `runcastle-${PROJECT_ID}`,
+      sandboxPath: BURN_CACHE_MOUNT,
+    })
+  })
+
+  // The JVM/Python/Rust half: those toolchains cache downloads under the agent
+  // home, not under the volume's mount point, so the same volume is attached
+  // again at each of their cache paths. Named volume only — ADR-0004 rules out
+  // a bind mount, and the pnpm store stays out of it.
+  it('attaches the same volume at the JVM, Python and Rust cache paths', () => {
+    const mounts = buildBurnCacheMounts(1, PROJECT_ID, 'docker', 'pnpm').mounts
+
+    expect(mounts).toEqual([
       { volume: `runcastle-${PROJECT_ID}`, sandboxPath: BURN_CACHE_MOUNT },
+      { volume: `runcastle-${PROJECT_ID}`, sandboxPath: '~/.m2' },
+      { volume: `runcastle-${PROJECT_ID}`, sandboxPath: '~/.gradle' },
+      { volume: `runcastle-${PROJECT_ID}`, sandboxPath: '~/.cache/pip' },
+      { volume: `runcastle-${PROJECT_ID}`, sandboxPath: '~/.cargo' },
     ])
+    expect(TOOLCHAIN_CACHE_SANDBOX_PATHS).not.toContain('~/.local/share/pnpm/store')
+
+    // They reach the provider intact, alongside the volume's own mount point.
+    const paths = optionsFor(1).mounts?.map((m) => m.sandboxPath)
+    expect(paths).toEqual([BURN_CACHE_MOUNT, ...TOOLCHAIN_CACHE_SANDBOX_PATHS])
+  })
+
+  // ADR-0004 byte-for-byte with the cache off means these are absent too: they
+  // exist only because there is a named volume to hang them on.
+  it('attaches no toolchain cache path with the cache off', () => {
+    const mounts = buildBurnCacheMounts(undefined, PROJECT_ID, 'docker', 'npm').mounts
+
+    expect(mounts).toEqual([{ hostPath: burnCacheDir('npm'), sandboxPath: '~/.npm' }])
   })
 
   // `'off'` must be byte-for-byte today's behaviour, env included — a provider
