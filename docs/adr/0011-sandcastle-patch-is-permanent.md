@@ -64,6 +64,12 @@ Alternatives considered and rejected:
      `index.js`/`index.d.ts` so `sandcastle-exec-failure.test.ts` can pin it;
    - `git diff --cached --full-index > patches/@ai-hero%2Fsandcastle@<ver>.patch`
      and update the `patchedDependencies` key to the new version;
+   - upstream ships every `dist/*.js` bundle with its `//# sourceMappingURL=`
+     comment twice, so the regenerated `chunk-NGBM7T3E.js` hunk — the one that
+     ends at EOF — picks both copies up as trailing context. Trim that hunk back
+     to one line of trailing context (dropping the `\ No newline at end of file`
+     marker with it) so the duplicate is not carried in our patch; it applies to
+     the same bytes and the patched bundle is unchanged;
    - a plain `bun install` does not always re-apply a changed patch:
      `rm -rf node_modules/.bun/@ai-hero+sandcastle@<ver> && bun install --force`;
    - `sandcastle-volume-mount.test.ts` and `sandcastle-exec-failure.test.ts` must

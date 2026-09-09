@@ -98,7 +98,7 @@ diff --git a/dist/chunk-NGBM7T3E.js b/dist/chunk-NGBM7T3E.js
 index c2b77a43fca309822bd882256dc4c593af75bac0..31ca930d815d816985487af6aae257b183455c3a 100644
 --- a/dist/chunk-NGBM7T3E.js
 +++ b/dist/chunk-NGBM7T3E.js
-@@ -71,6 +71,38 @@ var BoundedTail = class {
+@@ -71,5 +71,37 @@ var BoundedTail = class {
    }
  };
  
@@ -137,8 +137,6 @@ index c2b77a43fca309822bd882256dc4c593af75bac0..31ca930d815d816985487af6aae257b1
 +
 +export { BoundedTail, MAX_TAIL_CHARS, __commonJS, __export, __reExport, __require, __toESM, formatExecFailureMessage };
  //# sourceMappingURL=chunk-NGBM7T3E.js.map
- //# sourceMappingURL=chunk-NGBM7T3E.js.map
-\ No newline at end of file
 diff --git a/dist/chunk-VOG34SRF.js b/dist/chunk-VOG34SRF.js
 index 93f24d139b795c284915a10c34d82f2fa769eab0..2317d00d74747b4edaa89102230018788870548d 100644
 --- a/dist/chunk-VOG34SRF.js
