@@ -78,7 +78,7 @@ export const BUNDLED_DEPENDENCIES: Readonly<
   Record<string, { readonly why: string; readonly markers: readonly RegExp[] }>
 > = {
   '@ai-hero/sandcastle': {
-    why: 'patched to mount Docker/Podman named volumes and to expose the kill handles (container name, child PIDs) an aborted run has to kill by (patches/@ai-hero%2Fsandcastle@0.12.0.patch); the patch only applies inside this workspace',
+    why: 'patched to mount Docker/Podman named volumes, to expose the kill handles (container name, child PIDs) an aborted run has to kill by, and to render a failed setup command with its stdout instead of its base64 payload (patches/@ai-hero%2Fsandcastle@0.12.0.patch); the patch only applies inside this workspace',
     markers: [
       // resolveUserMounts: a `{ volume }` mount is carried through, not stat'ed.
       /if\s*\(\s*m\.volume\s*!==\s*(?:void 0|undefined)\s*\)/,
@@ -92,6 +92,9 @@ export const BUNDLED_DEPENDENCIES: Readonly<
       /\.containerName\s*\?\?/,
       // noSandbox: every spawned child's pid is reported to the caller.
       /\.onChildSpawn\?\.\(/,
+      // exec failure: the echoed command loses its base64 payload tokens. A
+      // regex literal, which no bundler rewrites, unlike the function it is in.
+      /\/\\S\{120,\}\/g/,
     ],
   },
 }
