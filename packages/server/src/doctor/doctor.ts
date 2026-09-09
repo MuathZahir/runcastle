@@ -22,6 +22,7 @@ import {
   inspectBuiltImage,
   projectDockerfilePath,
   projectImageTag,
+  type StoredProjectImage,
   unmanagedImage,
   unmanagedImageReason,
 } from '../services/sandbox-image'
@@ -126,15 +127,9 @@ export interface DoctorEnv {
  * `.runcastle/sandbox/Dockerfile` is built, current and adopted, without
  * reaching for the database itself.
  */
-export interface ProjectImageEnv {
-  /** Project id — what {@link projectImageTag} names its image after. */
-  id: string
+export interface ProjectImageEnv extends StoredProjectImage {
   /** The canonical checkout `.runcastle/sandbox/Dockerfile` would live in. */
   repoPath: string
-  /** The `sandboxImage` project column as stored, or null when unset. */
-  stored: string | null
-  /** Runcastle may rewrite that column — false once a human typed the value. */
-  overwritable: boolean
   /** Drop a machine-written column whose Dockerfile is gone (decision 8). */
   clearStored: () => void
 }
@@ -621,6 +616,13 @@ export async function sandcastleImageProbe(input: ImageProbeInput): Promise<Prob
 
   const projectHash = project ? dockerfileHash(projectDockerfilePath(project.repoPath)) : null
 
+  // Decision 5: a tag the human typed outranks the Dockerfile, because
+  // `adoptProjectImage` will not overwrite it — so a burn keeps resolving to the
+  // typed tag however current the project image is. Reporting on the project tag
+  // below would describe an image no burn runs in; the custom row answers for
+  // the image that is actually used, and leaves the Build button disarmed.
+  const handTyped = project ? unmanagedImage(project) : null
+
   // Decision 8: runcastle wrote the column when it built the image, so it takes
   // it back when the Dockerfile that justified it is gone. Resolution falls
   // straight back to the global image or the stock default; the orphaned local
@@ -635,15 +637,6 @@ export async function sandcastleImageProbe(input: ImageProbeInput): Promise<Prob
   const stock = await inspectBuiltImage(exec, runtime, DEFAULT_SANDBOX_IMAGE)
   // A hash we cannot read is no evidence of drift — say nothing rather than cry stale.
   const stockFresh = stock.present && (stockHash === null || stock.hash === stockHash)
-
-  // Decision 5: a tag the human typed outranks the Dockerfile, because
-  // `adoptProjectImage` will not overwrite it — so a burn keeps resolving to the
-  // typed tag however current the project image is. Reporting on the project tag
-  // here would describe an image no burn runs in; the custom row below answers
-  // for the image that is actually used, and leaves the Build button disarmed.
-  const handTyped = project
-    ? unmanagedImage({ id: project.id, stored, overwritable: project.overwritable })
-    : null
 
   if (project && handTyped === null && projectHash !== null) {
     const tag = projectImageTag(project.id)
@@ -687,11 +680,11 @@ export async function sandcastleImageProbe(input: ImageProbeInput): Promise<Prob
     // worth saying out loud: an operator's own image is `info` when it is there
     // and an `error` when it is not.
     const custom = await inspectBuiltImage(exec, runtime, imageName)
-    const detail = [
+    const clauses = [
       `${imageName} is a custom image, managed outside runcastle`,
-      // A Dockerfile the repo ships but this tag outranks does nothing until the
-      // setting is cleared, and a row that stayed silent about it would leave
-      // the human waiting on a build that is never coming.
+      // A Dockerfile this tag outranks does nothing until the setting is
+      // cleared, and a row that stayed silent about it would leave the human
+      // waiting on a build that is never coming.
       ...(projectHash === null ? [] : [`and outranks this repo's .runcastle/sandbox/Dockerfile`]),
       ...(custom.present ? [] : ['and is not built locally']),
     ]
@@ -699,7 +692,7 @@ export async function sandcastleImageProbe(input: ImageProbeInput): Promise<Prob
       ...IMAGE_ROW,
       status: 'custom',
       severity: custom.present ? 'info' : 'error',
-      detail: detail.join(' — '),
+      detail: clauses.join(' — '),
       fix: unmanagedImageReason(imageName, projectHash !== null),
     }
   }

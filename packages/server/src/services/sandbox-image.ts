@@ -201,6 +201,13 @@ export function stockBuildArgs(
   }
 }
 
+/** The `.runcastle/sandbox/Dockerfile` a project actually ships, or null. */
+function shippedDockerfile(project: BuildableProject | null): string | null {
+  if (!project) return null
+  const path = projectDockerfilePath(project.repoPath)
+  return existsSync(path) ? path : null
+}
+
 /**
  * Decide the build. A project carrying `.runcastle/sandbox/Dockerfile` gets the
  * chain — the stock image first when it is missing or hash-stale, because the
@@ -226,8 +233,7 @@ export function planImageBuild(input: PlanImageBuildInput): ImageBuildPlan {
     buildArgs,
   }
 
-  const candidate = project ? projectDockerfilePath(project.repoPath) : null
-  const projectDockerfile = candidate !== null && existsSync(candidate) ? candidate : null
+  const projectDockerfile = shippedDockerfile(project)
 
   const handTyped = project
     ? unmanagedImage({
