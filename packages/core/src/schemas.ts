@@ -372,7 +372,8 @@ export type TestNote = z.infer<typeof TestNote>
  * The repo facts a preparation run establishes, in the order the settings UI
  * and the prep prompt present them. Each maps 1:1 to a project column; the
  * first three also have a global config twin (`project ?? global`), while
- * `devCommand`, the two drive hooks and `dbResetCommand` are project-only.
+ * `devCommand`, the two drive hooks, `dbResetCommand` and `driveInstructions`
+ * are project-only.
  *
  * These are FINDINGS, not preferences: answering any of them honestly means
  * reading the repo's workspace layout and running its suite, which is why they
@@ -387,6 +388,7 @@ export const PREPARED_KEYS = [
   'driveSetupCommand',
   'driveStopCommand',
   'dbResetCommand',
+  'driveInstructions',
 ] as const
 export const PreparedKey = z.enum(PREPARED_KEYS)
 export type PreparedKey = z.infer<typeof PreparedKey>
@@ -398,9 +400,9 @@ export type PreparedKey = z.infer<typeof PreparedKey>
  * sniffed.
  *
  * Everything else is unverifiable by a host drive — `dbResetCommand` has no
- * drive slot to prove it in, and the sandbox keys are never touched by one — so
- * those keys carry no verification badge at all. That reads as "unverifiable",
- * not "failed".
+ * drive slot to prove it in, `driveInstructions` is prose no exit code can
+ * judge, and the sandbox keys are never touched by one — so those keys carry no
+ * verification badge at all. That reads as "unverifiable", not "failed".
  */
 export const DRIVE_LOOP_KEYS = [
   'devCommand',
@@ -458,6 +460,11 @@ export const Project = z.object({
   /** Shell run before / after a test drive's dev pane; opaque to runcastle. */
   driveSetupCommand: z.string().optional(),
   driveStopCommand: z.string().optional(),
+  /**
+   * Free-text project knowledge about how to exercise this app in a drive,
+   * injected verbatim into every drive-mode review and verification prompt.
+   */
+  driveInstructions: z.string().optional(),
   /**
    * When the project was closed (issue #43); unset while it is open. The column
    * drives `listProjects`, so the wire type has to carry it — a field the row

@@ -73,7 +73,12 @@ const field = (over: Partial<SettingField>): SettingField =>
 
 const view = (fields: SettingField[]): SettingsView => ({ fields }) as SettingsView
 
-/** The ten fields a project may set, as the scoped view reports them. */
+/** What this project's owner says a driver may do inside the running app. */
+const DRIVE_INSTRUCTIONS =
+  'Drive the sample project at ./examples/demo — change anything in it.\n' +
+  'To reach a deep phase, tell the session agent this is a test and to advance.'
+
+/** The eleven fields a project may set, as the scoped view reports them. */
 const projectFields: SettingField[] = [
   // Twins, unset: the global value is what the ghost shows.
   field({ key: 'model', value: 'claude-opus-5[1m]', source: 'file' }),
@@ -87,6 +92,7 @@ const projectFields: SettingField[] = [
   field({ key: 'driveSetupCommand', value: 'bun .runcastle/drive-setup.ts', source: 'project' }),
   field({ key: 'driveStopCommand', value: 'bun .runcastle/drive-stop.ts', source: 'project' }),
   field({ key: 'dbResetCommand', value: 'del runcastle.db', source: 'project' }),
+  field({ key: 'driveInstructions', value: DRIVE_INSTRUCTIONS, source: 'project' }),
   field({ key: 'sessionBranch', value: '', source: 'default' }),
 ]
 
@@ -135,7 +141,7 @@ describe('Settings — This project', () => {
   })
   afterEach(cleanup)
 
-  it('shows the ten fields in three groups, with example placeholders and no retired text', () => {
+  it('shows the eleven fields in three groups, with example placeholders and no retired text', () => {
     open()
 
     for (const title of ['Model & sandbox', 'Commands', 'Project chat']) {
@@ -151,6 +157,7 @@ describe('Settings — This project', () => {
       'Before a test drive',
       'After a test drive',
       'Reset dev database',
+      'How to drive this app',
       'Commits land on',
     ]
     for (const label of labels) expect(screen.getByLabelText(label)).toBeTruthy()
@@ -230,6 +237,39 @@ describe('Settings — This project', () => {
     // A human edit re-sources the finding and clears its dry-run stamp, so the
     // chip under the field has to be refetched with the value.
     expect(server.invalidated).toEqual(['settings.get', 'project.prep'])
+  })
+
+  /**
+   * The field an operator amends right after watching a drive go wrong: prose,
+   * so a multiline control; and clearing it is a real unset, which is also how
+   * the field is handed back to preparation to re-derive.
+   */
+  it('round-trips the drive instructions, and clears them to an unset', () => {
+    open()
+
+    const box = screen.getByLabelText('How to drive this app')
+    expect(box.tagName).toBe('TEXTAREA')
+    expect((box as HTMLTextAreaElement).value).toBe(DRIVE_INSTRUCTIONS)
+    // The scope contract sits beside the field being authored, not behind the ⓘ
+    // with the rest of the explanation.
+    expect(screen.getByText(/Applies inside the app under test only/)).toBeTruthy()
+
+    const amended = `${DRIVE_INSTRUCTIONS}\nThe seeded login is demo@example.com.`
+    fireEvent.change(box, { target: { value: amended } })
+    fireEvent.blur(box)
+
+    expect(server.updates).toEqual([
+      { projectId: 'proj_1', key: 'driveInstructions', value: amended },
+    ])
+
+    fireEvent.change(box, { target: { value: '' } })
+    fireEvent.blur(box)
+
+    expect(server.updates.at(-1)).toEqual({
+      projectId: 'proj_1',
+      key: 'driveInstructions',
+      value: null,
+    })
   })
 
   it('states who established each prepared value, in one chip', () => {

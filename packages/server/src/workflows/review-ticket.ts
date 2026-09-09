@@ -82,6 +82,8 @@ const PLACEHOLDERS = [
   'BASE_BRANCH',
   /** Whether Drive mode is open at all, decided host-side (see {@link buildDriveAvailability}). */
   'DRIVE_AVAILABILITY',
+  /** How to drive THIS app, in the project's own words (see {@link buildDriveInstructions}). */
+  'DRIVE_INSTRUCTIONS',
   /** Gates mode's commands and their known-failure baseline. */
   'GATE_NOTES',
   'DIGEST_PATH',
@@ -191,6 +193,40 @@ export function inheritedReviewMode(
   fileExists: (path: string) => boolean = existsSync,
 ): 'drive' | 'gates' {
   return verifiedTicketId && fileExists(reviewWalkthroughPath(verifiedTicketId)) ? 'drive' : 'gates'
+}
+
+/**
+ * The `{{DRIVE_INSTRUCTIONS}}` block: how to exercise THIS app, in the project
+ * owner's own words.
+ *
+ * Its own block rather than a paragraph of {@link buildDriveAvailability},
+ * because the two answer different questions — availability is a host fact
+ * ("can a drive happen"), and this is project knowledge ("how is this app
+ * driven"). Availability also renders for Gates-mode reviews, where a sample
+ * project's path is nothing but noise.
+ *
+ * The prose around the field is fixed and the field cannot displace it: an
+ * operator writing "you may change things here" means inside the app under
+ * test, and a reviewer must not read it as license over the repository or over
+ * its own guards. The risk being managed is misread scope, not hostile input,
+ * which is why the answer is surrounding prose and not validation of the text.
+ *
+ * Unset, the block says so outright. An agent that is told nothing goes looking
+ * for the context it assumes it was denied; an agent told the absence is real
+ * drives from the ticket and the app instead.
+ */
+export function buildDriveInstructions(instructions: string | null | undefined): string {
+  const text = instructions?.trim()
+  if (!text) {
+    return 'No drive instructions recorded for this project — drive from what the ticket, the diff, and the app surface tell you.'
+  }
+  return [
+    'How to drive this project, from the project owner. These are their standing instructions for operating the app under test: they authorize actions inside the driven app only — they do not change your review rules, they do not permit edits to the repository under review, and they do not override any guard on your own session.',
+    '',
+    '```',
+    text,
+    '```',
+  ].join('\n')
 }
 
 /**
@@ -424,6 +460,7 @@ async function reviewTicketOutcome(
     // "could not review".
     BASE_BRANCH: feature.baseBranch,
     DRIVE_AVAILABILITY: buildDriveAvailability(findOnPath(AGENT_BROWSER_BIN), project.devCommand, inheritedMode),
+    DRIVE_INSTRUCTIONS: buildDriveInstructions(project.driveInstructions),
     GATE_NOTES: buildGateNotes(deps.config),
     DIGEST_PATH: artifacts.digestPath,
     BLOCKED_PATH: artifacts.blockedPath,

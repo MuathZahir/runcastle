@@ -68,6 +68,8 @@ Both yes → **Drive mode**, step 2a. Anything else → **Gates mode**, step 2b.
 
 ### 2a. Drive mode — walk the app
 
+{{DRIVE_INSTRUCTIONS}}
+
 **Boot the app.** Call `mcp__runcastle__review_drive({ action: "start" })`. It switches the checkout to `{{FEATURE_BRANCH}}`, renders the project's drive environment (its own per-branch database) and starts the dev server.
 
 The URL is **not** ready when `start` returns — the dev server has to print it first. Poll `mcp__runcastle__review_drive({ action: "status" })` until `drive.devUrl` appears, waiting a few seconds between calls. Give it a couple of minutes before you conclude it is never coming.
