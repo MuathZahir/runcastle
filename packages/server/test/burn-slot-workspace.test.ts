@@ -16,8 +16,10 @@ import {
   slotStampPath,
 } from '../src/workflows/burn-cache'
 import {
+  type CacheMount,
   SANDBOX_WORKSPACE_PATH,
   SETUP_MARKER_FILE,
+  TOOLCHAIN_CACHE_SANDBOX_PATHS,
   buildBurnCacheMounts,
   buildSandboxOptions,
   buildSlotSetupCommand,
@@ -43,6 +45,15 @@ const PROJECT_ID = 'proj_MG5rF2sQ8kwd'
 const BRANCH = 'runcastle/ticket/cache-volume/2-Ab12Cd34'
 const STAMP = 'sandcastle:runcastle node=$(node --version 2>/dev/null) pm=pnpm@9'
 
+/**
+ * Whether these mounts would hide `path` as the image shipped it — a mount
+ * overlays its own mount point and everything beneath it, so anything the image
+ * put there is unreachable once the container starts.
+ */
+function hidesInImage(mounts: CacheMount[], path: string): boolean {
+  return mounts.some((m) => path === m.sandboxPath || path.startsWith(`${m.sandboxPath}/`))
+}
+
 function config(
   sandbox: RuncastleConfig['sandbox'],
   burnCache: RuncastleConfig['burnCache'] = 'volume',
@@ -60,20 +71,56 @@ describe('what the burn container is handed, by cache mode', () => {
   it('mounts the project volume and points every store at it when the cache is on', () => {
     const opts = optionsFor(1)
 
-    expect(opts.mounts).toEqual([
-      { volume: `runcastle-${PROJECT_ID}`, sandboxPath: BURN_CACHE_MOUNT },
-    ])
+    expect(opts.mounts?.[0]).toEqual({
+      volume: `runcastle-${PROJECT_ID}`,
+      sandboxPath: BURN_CACHE_MOUNT,
+    })
     expect(opts.mounts?.[0]?.sandboxPath).toBe('/home/agent/cache')
     expect(opts.env).toEqual(burnCacheEnv('pnpm'))
     expect(opts.env?.pnpm_config_store_dir).toBe(`${BURN_CACHE_MOUNT}/store/pnpm`)
     expect(opts.env?.TMPDIR).toBe(`${BURN_CACHE_MOUNT}/tmp`)
-    // The volume mount is the ONLY mount: ADR-0004's per-manager bind mounts
-    // are what the volume replaces, not something it sits alongside. (pnpm has
-    // no bind mount anyway — npm does, and gets none either.)
+    // Every mount is the volume: ADR-0004's per-manager bind mounts are what
+    // the volume replaces, not something it sits alongside. (pnpm has no bind
+    // mount anyway — npm does, and gets none either.)
     expect(opts.mounts?.some((m) => 'hostPath' in m)).toBe(false)
-    expect(buildBurnCacheMounts(1, PROJECT_ID, 'docker', 'npm').mounts).toEqual([
+    expect(buildBurnCacheMounts(1, PROJECT_ID, 'docker', 'npm').mounts?.[0]).toEqual({
+      volume: `runcastle-${PROJECT_ID}`,
+      sandboxPath: BURN_CACHE_MOUNT,
+    })
+  })
+
+  // The JVM/Python/Rust half: those toolchains cache downloads under the agent
+  // home, not under the volume's mount point, so the same volume is attached
+  // again at each of their cache paths. Named volume only — ADR-0004 rules out
+  // a bind mount, and the pnpm store stays out of it.
+  it('attaches the same volume at the JVM, Python and Rust cache paths', () => {
+    const mounts = buildBurnCacheMounts(1, PROJECT_ID, 'docker', 'pnpm').mounts
+
+    expect(mounts).toEqual([
       { volume: `runcastle-${PROJECT_ID}`, sandboxPath: BURN_CACHE_MOUNT },
+      { volume: `runcastle-${PROJECT_ID}`, sandboxPath: '~/.m2' },
+      { volume: `runcastle-${PROJECT_ID}`, sandboxPath: '~/.gradle' },
+      { volume: `runcastle-${PROJECT_ID}`, sandboxPath: '~/.cache/pip' },
+      { volume: `runcastle-${PROJECT_ID}`, sandboxPath: '~/.cargo/registry' },
     ])
+    expect(mounts.map((m) => m.sandboxPath)).not.toContain('~/.local/share/pnpm/store')
+
+    // They reach the provider intact, alongside the volume's own mount point.
+    const paths = optionsFor(1).mounts?.map((m) => m.sandboxPath)
+    expect(paths).toEqual([BURN_CACHE_MOUNT, ...TOOLCHAIN_CACHE_SANDBOX_PATHS])
+  })
+
+  // A mount hides whatever the image put at or under its mount point. Cargo is
+  // the one toolchain here that keeps its executable inside its home
+  // (`~/.cargo/bin/cargo`, where rustup puts it), so the cache has to attach
+  // below that home, not over it — a Rust burn that gained a warm registry and
+  // lost `cargo` is a worse burn than one with no cache at all.
+  it('caches the Cargo registry without mounting over the Cargo executable', () => {
+    const mounts = buildBurnCacheMounts(1, PROJECT_ID, 'docker', 'pnpm').mounts
+
+    expect(hidesInImage(mounts, '~/.cargo/bin/cargo')).toBe(false)
+    expect(hidesInImage(mounts, '~/.cargo/config.toml')).toBe(false)
+    expect(mounts.map((m) => m.sandboxPath)).toContain('~/.cargo/registry')
   })
 
   // `'off'` must be byte-for-byte today's behaviour, env included — a provider

@@ -946,6 +946,38 @@ export const PM_CACHE_SANDBOX_PATHS: Partial<Record<PackageManager, string>> = {
   npm: '~/.npm',
 }
 
+/**
+ * Where the JVM, Python and Rust toolchains keep their *download* caches inside
+ * the sandbox (`~` expands to the container agent home). Not keyed by a
+ * detected manager like {@link PM_CACHE_SANDBOX_PATHS}: nothing in the burn
+ * detects a Maven or a Cargo repo, a repo may be polyglot, and an unused cache
+ * path costs nothing but an empty directory.
+ *
+ * **These ride the burn cache volume, never a bind mount.** ADR-0004
+ * (`docs/adr/0004-burner-dependency-caching.md`) measured a bind-mounted store
+ * at 751s against a 109s cold install — a bind mount is always a different
+ * filesystem from the container's overlayfs, so anything that links out of its
+ * cache silently falls back to copying — and named the mechanism that does
+ * work: a Docker/Podman *named volume*, which is what these are attached to.
+ * The pnpm store is still absent for that same reason, re-raised and
+ * re-rejected twice in the ADR; do not add it here either.
+ *
+ * **Each path must hold nothing but cache.** A mount hides whatever the image
+ * shipped at and under its mount point, so a path that doubles as a toolchain's
+ * install location trades a warm cache for a missing tool. Cargo is the case
+ * that bites: rustup installs the executable *inside* the cargo home, at
+ * `~/.cargo/bin/cargo`, alongside the config the user set — so the mount goes
+ * one level down, on `~/.cargo/registry`, which holds only the downloaded crate
+ * index, archives and unpacked sources. Maven, Gradle and pip keep their
+ * binaries outside these directories, so those attach at the top.
+ */
+export const TOOLCHAIN_CACHE_SANDBOX_PATHS: readonly string[] = [
+  '~/.m2',
+  '~/.gradle',
+  '~/.cache/pip',
+  '~/.cargo/registry',
+]
+
 /** A host directory bind-mounted into the sandbox. */
 export interface HostPathMount {
   readonly hostPath: string
@@ -986,7 +1018,10 @@ export function cacheMountFor(pm: PackageManager, hostPath: string): HostPathMou
  * are alternatives, never a mixture:
  *
  * - **Cache volume on** (the burn holds a slot): the project's named volume,
- *   and every package manager's store pointed onto it (decision 10). None of
+ *   and every package manager's store pointed onto it (decision 10). The same
+ *   volume is attached again at each {@link TOOLCHAIN_CACHE_SANDBOX_PATHS}
+ *   entry, so a JVM, Python or Rust repo's downloads survive the container
+ *   rebuild too instead of being pre-warmed into a custom image layer. None of
  *   the ADR-0004 bind mounts is attached — the volume replaces them, and it is
  *   the only one of the two that shares a filesystem with the checkouts, which
  *   is the whole reason pnpm and bun can hardlink out of it.
@@ -1004,8 +1039,12 @@ export function buildBurnCacheMounts(
   pm: PackageManager | undefined,
 ): { mounts: CacheMount[]; env: Record<string, string> } {
   if (slot !== undefined) {
+    const volume = burnCacheVolumeName(projectId)
     return {
-      mounts: [{ volume: burnCacheVolumeName(projectId), sandboxPath: BURN_CACHE_MOUNT }],
+      mounts: [
+        { volume, sandboxPath: BURN_CACHE_MOUNT },
+        ...TOOLCHAIN_CACHE_SANDBOX_PATHS.map((sandboxPath) => ({ volume, sandboxPath })),
+      ],
       env: pm ? burnCacheEnv(pm) : {},
     }
   }
