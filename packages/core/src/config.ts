@@ -365,8 +365,9 @@ export const DEFAULT_SANDBOX_IMAGE = 'sandcastle:runcastle'
 
 /**
  * Whatever carries a project's own sandbox image — a `Project`, a raw row, or
- * nothing at all for the machine-wide callers (the `runcastle doctor` CLI, the
- * cache probe) that run outside any project.
+ * nothing at all for the callers that run outside any project: the `runcastle
+ * doctor` CLI, the burn cache probe, and the build-image/doctor flows, which
+ * are machine-wide today and resolve to the global image.
  */
 export type SandboxImageOwner = { sandboxImage?: string | null } | null | undefined
 
@@ -385,7 +386,9 @@ export type SandboxImageOwner = { sandboxImage?: string | null } | null | undefi
  *
  * Every consumer — the build flow, the doctor probe, the per-run image
  * precheck, the burn itself and the cache slot stamp — resolves here, so the
- * name they agree on can never drift apart.
+ * name they agree on can never drift apart. Which of them hands over a project
+ * is up to the caller: the burn and its containers do, and the machine-wide
+ * flows named on {@link SandboxImageOwner} do not.
  *
  * Empty strings are treated as unset, the way a cleared settings field arrives.
  */

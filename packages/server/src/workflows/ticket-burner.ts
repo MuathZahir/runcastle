@@ -3225,11 +3225,11 @@ export interface KillHandleOptions {
  * build-image/doctor built (SPEC §8; the "Image not found locally" mismatch)
  * and a project that carries its own image burns in it. podman keeps
  * sandcastle's rootless defaults (SELinux `:z` relabel + `keep-id` userns) —
- * runcastle passes no
- * volume-label/userns flags of its own. `mounts` (the burn cache volume, or
- * ADR-0004's package-manager cache dirs) and `env` (where each manager's store
- * lives on that volume — decision 10) apply to the container providers only:
- * noSandbox runs on the host, where the real caches are already in place.
+ * runcastle passes no volume-label/userns flags of its own. `mounts` (the burn
+ * cache volume, or ADR-0004's package-manager cache dirs) and `env` (where each
+ * manager's store lives on that volume — decision 10) apply to the container
+ * providers only: noSandbox runs on the host, where the real caches are already
+ * in place.
  *
  * `config.burnCpus`, when set, becomes `--cpus` on both container providers: at
  * width N every container otherwise sees the host's full core count and sizes
