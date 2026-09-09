@@ -263,6 +263,12 @@ async function main(): Promise<void> {
   })
   assert(init?.result?.serverInfo?.name === 'runcastle', 'MCP initialize → serverInfo.runcastle')
 
+  // One deliberately fat context (~115KB, built programmatically) so the batch
+  // goes over `/mcp` as one large call — the transport path a fully-enriched
+  // real batch takes. The goals stay trivial: only the context balloons.
+  const FILLER = 'This filler sentence proves a large emit_tickets payload survives the wire intact. '
+  const fatContext = `HEALTH.md was created by ticket 1 and currently contains the single line "ok". ${FILLER.repeat(1400)}`
+
   const emit = await mcpToolCall(sessionId, 'emit_tickets', {
     tickets: [
       {
@@ -276,7 +282,7 @@ async function main(): Promise<void> {
       {
         title: 'Append the line: checked',
         goal: 'Append a new line containing exactly the word "checked" to the existing HEALTH.md at the repository root. Keep the existing "ok" line intact.',
-        context: 'HEALTH.md was created by ticket 1 and currently contains the single line "ok".',
+        context: fatContext,
         acceptanceCriteria: ['HEALTH.md still contains the line "ok"', 'HEALTH.md has a new line "checked" appended'],
         seams: ['HEALTH.md'],
         blockedBy: [1],
@@ -290,7 +296,11 @@ async function main(): Promise<void> {
   assert(afterEmit.tickets.length === 2, '2 tickets in db')
   const t2 = afterEmit.tickets.find((t: any) => t.seq === 2)
   assert(JSON.stringify(t2?.blockedBy) === '[1]', `ticket seq2 blockedBy resolves to [1] (got ${JSON.stringify(t2?.blockedBy)})`)
-  record('MCP emit_tickets', `stored 2 tickets; seq2 blockedBy=[1]`)
+  assert(
+    t2?.context === fatContext,
+    `ticket seq2's ${fatContext.length}-char context round-tripped intact (got ${t2?.context?.length ?? 0} chars)`,
+  )
+  record('MCP emit_tickets', `stored 2 tickets (one ${Math.round(fatContext.length / 1024)}KB context); seq2 blockedBy=[1]`)
 
   const complete = await mcpToolCall(sessionId, 'complete_phase', { phase: 'ideation' })
   assert(!complete.isError, 'complete_phase not an error')
