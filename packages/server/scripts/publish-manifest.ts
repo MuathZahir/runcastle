@@ -92,9 +92,9 @@ export const BUNDLED_DEPENDENCIES: Readonly<
       /\.containerName\s*\?\?/,
       // noSandbox: every spawned child's pid is reported to the caller.
       /\.onChildSpawn\?\.\(/,
-      // exec failure: the echoed command loses its base64 payload tokens. A
+      // exec failure: the echoed command loses its base64 payload literals. A
       // regex literal, which no bundler rewrites, unlike the function it is in.
-      /\/\\S\{120,\}\/g/,
+      /\[A-Za-z0-9\+\\\/=\]\{120,\}/,
     ],
   },
 }
