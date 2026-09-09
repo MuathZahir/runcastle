@@ -22,6 +22,7 @@ import {
   inspectBuiltImage,
   projectDockerfilePath,
   projectImageTag,
+  unmanagedImage,
   unmanagedImageReason,
 } from '../services/sandbox-image'
 import type { Runtime } from '../services/setup'
@@ -635,7 +636,16 @@ export async function sandcastleImageProbe(input: ImageProbeInput): Promise<Prob
   // A hash we cannot read is no evidence of drift — say nothing rather than cry stale.
   const stockFresh = stock.present && (stockHash === null || stock.hash === stockHash)
 
-  if (project && projectHash !== null) {
+  // Decision 5: a tag the human typed outranks the Dockerfile, because
+  // `adoptProjectImage` will not overwrite it — so a burn keeps resolving to the
+  // typed tag however current the project image is. Reporting on the project tag
+  // here would describe an image no burn runs in; the custom row below answers
+  // for the image that is actually used, and leaves the Build button disarmed.
+  const handTyped = project
+    ? unmanagedImage({ id: project.id, stored, overwritable: project.overwritable })
+    : null
+
+  if (project && handTyped === null && projectHash !== null) {
     const tag = projectImageTag(project.id)
     const image = await inspectBuiltImage(exec, runtime, tag)
     // "Not built yet" covers both halves of the same gap: no image under the
@@ -677,14 +687,20 @@ export async function sandcastleImageProbe(input: ImageProbeInput): Promise<Prob
     // worth saying out loud: an operator's own image is `info` when it is there
     // and an `error` when it is not.
     const custom = await inspectBuiltImage(exec, runtime, imageName)
+    const detail = [
+      `${imageName} is a custom image, managed outside runcastle`,
+      // A Dockerfile the repo ships but this tag outranks does nothing until the
+      // setting is cleared, and a row that stayed silent about it would leave
+      // the human waiting on a build that is never coming.
+      ...(projectHash === null ? [] : [`and outranks this repo's .runcastle/sandbox/Dockerfile`]),
+      ...(custom.present ? [] : ['and is not built locally']),
+    ]
     return {
       ...IMAGE_ROW,
       status: 'custom',
       severity: custom.present ? 'info' : 'error',
-      detail: custom.present
-        ? `${imageName} is a custom image, managed outside runcastle`
-        : `${imageName} is a custom image, managed outside runcastle — and is not built locally`,
-      fix: unmanagedImageReason(imageName),
+      detail: detail.join(' — '),
+      fix: unmanagedImageReason(imageName, projectHash !== null),
     }
   }
   if (!stock.present) {

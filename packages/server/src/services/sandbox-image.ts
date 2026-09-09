@@ -117,15 +117,55 @@ export type ImageBuildPlan =
   | { kind: 'refused'; imageName: string; reason: string }
 
 /**
- * Why a hand-typed tag is nobody's to rebuild, and the two ways out of it — the
- * build route refuses with this and the doctor's image row says it (decision 5).
+ * Why a hand-typed tag is nobody's to rebuild, and the way out of it — the build
+ * route refuses with this and the doctor's image row says it (decision 5). When
+ * the repo already carries a Dockerfile, clearing the setting is the whole fix,
+ * so this stops telling the reader to write the file they have written.
  */
-export function unmanagedImageReason(imageName: string): string {
-  return `${imageName} is a custom image managed outside runcastle — clear the sandbox image setting to go back to ${DEFAULT_SANDBOX_IMAGE}, or commit a .runcastle/sandbox/Dockerfile for runcastle to build.`
+export function unmanagedImageReason(imageName: string, projectDockerfilePresent = false): string {
+  const route = projectDockerfilePresent
+    ? 'clear the sandbox image setting to let runcastle build the .runcastle/sandbox/Dockerfile this repo already ships'
+    : `clear the sandbox image setting to go back to ${DEFAULT_SANDBOX_IMAGE}, or commit a .runcastle/sandbox/Dockerfile for runcastle to build`
+  return `${imageName} is a custom image managed outside runcastle — ${route}.`
+}
+
+/** A project's stored `sandboxImage` column and whether runcastle may rewrite it. */
+export interface StoredProjectImage {
+  /** Project id — what {@link projectImageTag} names this project's image after. */
+  id: string
+  /** The `sandboxImage` project column as stored, or null when unset. */
+  stored: string | null
+  /** Runcastle may rewrite that column — false once a human typed the value. */
+  overwritable: boolean
+}
+
+/**
+ * The tag a human typed with nothing runcastle-managed behind it — neither the
+ * stock image nor this project's own — or null when the column is unset, machine
+ * written, or names an image runcastle builds.
+ *
+ * This is the one question the build route and the doctor's image row have to
+ * answer the same way (decision 5), because a human-typed value is never
+ * overwritten ({@link adoptProjectImage}). A project carrying BOTH a hand-typed
+ * tag and `.runcastle/sandbox/Dockerfile` would otherwise let the card build and
+ * report `sandcastle:runcastle-<projectId>` while every burn kept resolving to
+ * the typed tag — a row and a button describing an image no burn runs in.
+ */
+export function unmanagedImage(project: StoredProjectImage): string | null {
+  const { id, stored, overwritable } = project
+  if (overwritable || stored === null) return null
+  if (stored === DEFAULT_SANDBOX_IMAGE || stored === projectImageTag(id)) return null
+  return stored
 }
 
 /** The project fields a build plan reads. */
-export type BuildableProject = { id: string; repoPath: string; sandboxImage?: string | null }
+export type BuildableProject = {
+  id: string
+  repoPath: string
+  sandboxImage?: string | null
+  /** False once a human typed `sandboxImage`; see {@link unmanagedImage}. */
+  sandboxImageOverwritable: boolean
+}
 
 export interface PlanImageBuildInput {
   config: Pick<RuncastleConfig, 'sandboxImage'>
@@ -168,6 +208,10 @@ export function stockBuildArgs(
  * image alone, unless the resolved image is a tag runcastle does not manage, in
  * which case there is nothing safe to build.
  *
+ * A hand-typed `sandboxImage` outranks the Dockerfile ({@link unmanagedImage}):
+ * the build could produce the project image but never adopt it, so the button
+ * disarms rather than building a tag no burn would resolve to.
+ *
  * The project image's own build args are empty on purpose: the ARGs live in the
  * stock Dockerfile, which the project image inherits already applied, and
  * passing unconsumed args would print a build warning for nothing.
@@ -182,8 +226,25 @@ export function planImageBuild(input: PlanImageBuildInput): ImageBuildPlan {
     buildArgs,
   }
 
-  const projectDockerfile = project ? projectDockerfilePath(project.repoPath) : null
-  if (project && projectDockerfile && existsSync(projectDockerfile)) {
+  const candidate = project ? projectDockerfilePath(project.repoPath) : null
+  const projectDockerfile = candidate !== null && existsSync(candidate) ? candidate : null
+
+  const handTyped = project
+    ? unmanagedImage({
+        id: project.id,
+        stored: project.sandboxImage ?? null,
+        overwritable: project.sandboxImageOverwritable,
+      })
+    : null
+  if (handTyped !== null) {
+    return {
+      kind: 'refused',
+      imageName: handTyped,
+      reason: unmanagedImageReason(handTyped, projectDockerfile !== null),
+    }
+  }
+
+  if (project && projectDockerfile) {
     const projectTag = projectImageTag(project.id)
     return {
       kind: 'chain',

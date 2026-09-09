@@ -563,6 +563,36 @@ describe('runDoctor — a project that ships its own sandbox Dockerfile', () => 
     expect(row.detail).toBe('my-team/sandbox:latest is a custom image, managed outside runcastle')
   })
 
+  // Both at once: the human's tag is never overwritten, so a burn keeps
+  // resolving to it however current the project image is. A row about the
+  // project image would describe a container no burn runs in — and would arm a
+  // Build button for it.
+  it('answers for the hand-typed tag, not the project image, when the repo has both', async () => {
+    const looked: string[] = []
+    const table = cannedExec({
+      ...ALL_HEALTHY,
+      [inspectKey('docker', 'my-team/sandbox:latest')]: { stdout: '<no value>' },
+      [inspectKey('docker', TAG)]: { stdout: PROJECT_HASH },
+    })
+    const row = await imageRow({
+      ...base,
+      exec: (command, args) => {
+        looked.push([command, ...args].join(' '))
+        return table(command, args)
+      },
+      dockerfileHash: hashes({ ...shipped }),
+      projectImage: project({ stored: 'my-team/sandbox:latest', overwritable: false }),
+    })
+    expect(row.status).toBe('custom')
+    expect(row.detail).toBe(
+      "my-team/sandbox:latest is a custom image, managed outside runcastle — and outranks this repo's .runcastle/sandbox/Dockerfile",
+    )
+    // The Dockerfile is written already, so the way out is the setting alone.
+    expect(row.fix).toContain('clear the sandbox image setting')
+    expect(row.fix).not.toContain('commit a .runcastle/sandbox/Dockerfile')
+    expect(looked).not.toContain(inspectKey('docker', TAG))
+  })
+
   it('puts the project column above the env and config layers, as the resolver does', async () => {
     const row = await imageRow({
       ...base,

@@ -158,7 +158,7 @@ describe('the build the terminal runs', () => {
     const repo = repoWithDockerfile()
     const plan = planImageBuild({
       config: config(),
-      project: { id: 'proj_java', repoPath: repo },
+      project: { id: 'proj_java', repoPath: repo, sandboxImageOverwritable: true },
       stockContext: context,
       stockFresh: false,
       buildArgs: {},
@@ -184,7 +184,7 @@ describe('the build the terminal runs', () => {
     const repo = repoWithDockerfile()
     const plan = planImageBuild({
       config: config(),
-      project: { id: 'proj_java', repoPath: repo },
+      project: { id: 'proj_java', repoPath: repo, sandboxImageOverwritable: true },
       stockContext: stockContext(),
       stockFresh: true,
       buildArgs: {},
@@ -209,7 +209,7 @@ describe('the build the terminal runs', () => {
     const repo = repoWithDockerfile('with space')
     const plan = planImageBuild({
       config: config(),
-      project: { id: 'proj_java', repoPath: repo },
+      project: { id: 'proj_java', repoPath: repo, sandboxImageOverwritable: true },
       stockContext: stockContext(),
       stockFresh: false,
       buildArgs: {},
@@ -238,12 +238,38 @@ describe('the build the terminal runs', () => {
   it('refuses for a project whose own hand-typed tag has no Dockerfile behind it', () => {
     const plan = planImageBuild({
       config: config(),
-      project: { id: 'proj_1', repoPath: tmp('bare'), sandboxImage: 'acme/custom:v1' },
+      project: {
+        id: 'proj_1',
+        repoPath: tmp('bare'),
+        sandboxImage: 'acme/custom:v1',
+        sandboxImageOverwritable: false,
+      },
       stockContext: stockContext(),
       stockFresh: false,
       buildArgs: {},
     })
     expect(plan.kind).toBe('refused')
+  })
+
+  // The other half of the clobber fix: a hand-typed tag is never overwritten, so
+  // building the project image would leave the card reporting — and the button
+  // building — an image every burn ignores in favour of the typed one.
+  it('refuses when a hand-typed tag outranks the project’s own Dockerfile', () => {
+    const plan = planImageBuild({
+      config: config(),
+      project: {
+        id: 'proj_java',
+        repoPath: repoWithDockerfile(),
+        sandboxImage: 'acme/custom:v1',
+        sandboxImageOverwritable: false,
+      },
+      stockContext: stockContext(),
+      stockFresh: false,
+      buildArgs: {},
+    })
+    expect(plan).toMatchObject({ kind: 'refused', imageName: 'acme/custom:v1' })
+    // The Dockerfile is written already — clearing the setting is the whole fix.
+    expect(plan.kind === 'refused' && plan.reason).toContain('already ships')
   })
 
   // A project image whose Dockerfile was deleted still resolves to the tag
@@ -256,6 +282,7 @@ describe('the build the terminal runs', () => {
         id: 'proj_java',
         repoPath: tmp('bare'),
         sandboxImage: projectImageTag('proj_java'),
+        sandboxImageOverwritable: true,
       },
       stockContext: stockContext(),
       stockFresh: false,

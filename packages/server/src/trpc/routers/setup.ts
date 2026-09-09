@@ -204,7 +204,12 @@ async function buildImageTerminal(
   const stockHash = hashDockerfile(join(stockContext, 'Dockerfile'))
   const plan = planImageBuild({
     config: ctx.config,
-    project,
+    project: project && {
+      id: project.id,
+      repoPath: project.repoPath,
+      sandboxImage: project.sandboxImage,
+      sandboxImageOverwritable: isOverwritable(ctx, project.id, 'sandboxImage'),
+    },
     stockContext,
     stockFresh:
       stockHash !== null &&
