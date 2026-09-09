@@ -1,0 +1,3 @@
+# Setup-failure diagnostics: bounded stdout tail, no base64 echo
+
+The burn exec error helper appends only result.stderr to setup/verify failure messages. Maven, Gradle and most JVM build tools log their errors to stdout, so a failed setup surfaces as a blank 'exit 1' with no diagnostic. Append a bounded stdout tail as well, reusing the existing maxOutputTailChars cap (apply it to the combined tail so messages stay bounded). While in that helper: stop echoing the full base64-encoded setup script into the error message — it is noise that dwarfs the actual diagnostic. Add/extend unit tests: a failure with empty stderr but populated stdout must show the stdout tail; the base64 script body must not appear in the rendered error.
