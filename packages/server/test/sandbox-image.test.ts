@@ -157,7 +157,7 @@ describe('the build the terminal runs', () => {
     const spec = imageBuildTerminal('docker', buildable(plan), 'linux')
     // One watchable terminal, both builds: the human clicked once and sees the
     // whole chain in the row they clicked.
-    expect(spec.cmd).toBe('sh')
+    expect(spec.cmd).toBe('/bin/sh')
     expect(spec.args[0]).toBe('-c')
     const line = spec.args[1] as string
     expect(line).toContain(`docker build -t ${DEFAULT_SANDBOX_IMAGE} `)

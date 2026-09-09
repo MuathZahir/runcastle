@@ -183,8 +183,13 @@ export function planImageBuild(input: PlanImageBuildInput): ImageBuildPlan {
     }
   }
 
+  // A tag runcastle wrote itself stays buildable even with the Dockerfile now
+  // gone: the build falls back to the stock image the project will resolve to
+  // once the doctor clears the orphaned column.
   const imageName = resolveSandboxImage(config, project)
-  const managed = imageName === DEFAULT_SANDBOX_IMAGE || (project && imageName === projectImageTag(project.id))
+  const managed =
+    imageName === DEFAULT_SANDBOX_IMAGE ||
+    (project !== null && imageName === projectImageTag(project.id))
   if (!managed) {
     return {
       kind: 'refused',
@@ -196,7 +201,7 @@ export function planImageBuild(input: PlanImageBuildInput): ImageBuildPlan {
 }
 
 /** The argv (after the runtime binary) for one build step. */
-export function buildStepArgs(step: ImageBuildStep): string[] {
+function buildStepArgs(step: ImageBuildStep): string[] {
   return [
     'build',
     '-t',
@@ -253,7 +258,7 @@ export function imageBuildTerminal(
     .join(' && ')
   return platform === 'win32'
     ? { cmd: process.env.ComSpec ?? 'cmd.exe', args: ['/d', '/s', '/c', line], cwd }
-    : { cmd: 'sh', args: ['-c', line], cwd }
+    : { cmd: '/bin/sh', args: ['-c', line], cwd }
 }
 
 /**
