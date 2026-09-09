@@ -574,6 +574,24 @@ describe('runDoctor — a project that ships its own sandbox Dockerfile', () => 
     expect(row.status).toBe('ok')
     expect(row.detail).toContain(TAG)
   })
+
+  // The ordering is `resolveSandboxImage`'s to state and the probe's to obey, so
+  // the row inherits the resolver's reading of a blank column: a cleared value
+  // is unset and the layers below it answer, never an image named "  ".
+  it('treats a blank project column as unset, as the resolver does', async () => {
+    const row = await imageRow({
+      ...base,
+      imageName: 'from-the-config:latest',
+      exec: cannedExec({
+        ...ALL_HEALTHY,
+        [inspectKey('docker', 'from-the-config:latest')]: { stdout: '<no value>' },
+      }),
+      dockerfileHash: hashes({ ...stockOnly }),
+      projectImage: project({ stored: '  ', overwritable: false }),
+    })
+    expect(row.status).toBe('custom')
+    expect(row.detail).toBe('from-the-config:latest is a custom image, managed outside runcastle')
+  })
 })
 
 describe('runDoctor — the burner Dockerfile it hashes', () => {

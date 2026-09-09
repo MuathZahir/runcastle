@@ -14,7 +14,13 @@
  */
 
 import { existsSync } from 'node:fs'
-import { AGENT_RUNTIMES, DEFAULT_RUNTIME, DEFAULT_SANDBOX_IMAGE, type AgentRuntime } from '@runcastle/core'
+import {
+  AGENT_RUNTIMES,
+  DEFAULT_RUNTIME,
+  DEFAULT_SANDBOX_IMAGE,
+  resolveSandboxImage,
+  type AgentRuntime,
+} from '@runcastle/core'
 import { burnerDockerfilePath } from '../launcher/asset-paths'
 import { codexAuthFile } from '../services/codex-auth'
 import {
@@ -573,8 +579,9 @@ export interface ImageProbeInput {
   /**
    * The image a burn resolves to from the env var, the config file and the
    * stock default — i.e. every layer BELOW the project column, which
-   * {@link ProjectImageEnv.stored} supplies and which wins over it here exactly
-   * as it does in `resolveSandboxImage`.
+   * {@link ProjectImageEnv.stored} supplies and which wins over it. The probe
+   * does not order those two itself: it hands both to `resolveSandboxImage`,
+   * the one place that rule is written down.
    */
   imageName: string
   /** The stock burner Dockerfile the stock image must still match. */
@@ -667,7 +674,11 @@ export async function sandcastleImageProbe(input: ImageProbeInput): Promise<Prob
     }
   }
 
-  const imageName = stored ?? input.imageName
+  // The project column beats every layer below it — but that ordering is stated
+  // once, in `resolveSandboxImage`, and this probe is one of its five consumers
+  // rather than a second copy of the rule. `input.imageName` is already those
+  // lower layers folded into one value, so it stands in for the config here.
+  const imageName = resolveSandboxImage({ sandboxImage: input.imageName }, { sandboxImage: stored })
   if (imageName !== DEFAULT_SANDBOX_IMAGE) {
     // Decision 5: nothing here is runcastle's to build, so the row reports who
     // owns the image rather than offering a Rebuild that would build the stock
