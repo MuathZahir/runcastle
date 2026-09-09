@@ -37,6 +37,7 @@ export function rowToFeature(row: FeatureSelect): Feature {
     brief: row.brief ?? undefined,
     mapped: row.mapped,
     lap: row.lap,
+    ticketsReadyLap: row.ticketsReadyLap,
     phase: row.phase,
     branch: row.branch,
     baseBranch: row.baseBranch ?? undefined,
@@ -217,6 +218,31 @@ export function setPhase(
     data: { from: current.phase, to: toPhase },
   })
   return { ...current, phase: toPhase }
+}
+
+/**
+ * Record that the talk session has finished this lap's tickets — the moment the
+ * lap stops changing under the human's Burn click. Stamps the feature's CURRENT
+ * lap, so lap N+1 starts unready with nothing to clear, and emits the
+ * `tickets.awaiting_burn` milestone the readiness flip now coincides with.
+ *
+ * `nextPhase` is the phase the burn will cross into, carried on the event for
+ * the session that is being told what it is waiting for; nothing here moves the
+ * feature — G3 is still the human's to cross.
+ */
+export function markTicketsReady(ctx: AppCtx, featureId: string, nextPhase: Phase): Feature {
+  const current = getFeatureRow(ctx, featureId)
+  ctx.db
+    .update(features)
+    .set({ ticketsReadyLap: current.lap })
+    .where(eq(features.id, featureId))
+    .run()
+  emit(ctx, featureId, {
+    type: 'tickets.awaiting_burn',
+    message: 'tickets complete — waiting on the human Burn click (gate G3)',
+    data: { phase: current.phase, nextPhase, waitingOn: 'human burn' },
+  })
+  return { ...current, ticketsReadyLap: current.lap }
 }
 
 export function setFeatureStatus(

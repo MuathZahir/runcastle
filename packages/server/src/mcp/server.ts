@@ -32,6 +32,7 @@ import {
   WaypointInput,
   agentDigestDocOrder,
   isAgentDigestDoc,
+  isPastPhase,
   isProjectSessionKind,
   modelRoster,
   nextGate,
@@ -66,6 +67,7 @@ import {
   getFeatureRow,
   getProjectById,
   listRunsByFeature,
+  markTicketsReady,
   projectForFeature,
   tryGetRun,
 } from '../services/repo'
@@ -692,6 +694,12 @@ export type CompletePhaseResult =
        * final phase, which has no next gate.
        */
       nextGate?: GateRequirement
+      /**
+       * Why there was nothing left to do — set only when the phase named was
+       * already crossed while the session was closing out, so a healthy late
+       * call reads as the success it is instead of a refusal.
+       */
+      note?: string
     }
   | { ok: false; reason: string; gate?: GateRequirement }
 
@@ -711,6 +719,19 @@ export function toolCompletePhase(
     message: `session marked phase '${input.phase}' complete`,
     data: { phase: input.phase, currentPhase: feature.phase },
   })
+
+  // The human clicked Burn while this session was still closing out: the work
+  // being reported IS complete — the crossing happened without it. Falling
+  // through would run the gate AFTER the one asked about (G4) and answer "N
+  // tickets not yet terminal", which reads as a failure and sends a healthy
+  // close-out looking for something to fix.
+  if (input.phase === 'tickets' && isPastPhase(feature, 'tickets')) {
+    return {
+      ok: true,
+      nextPhase: feature.phase,
+      note: 'tickets phase already crossed — the burn has started; nothing left to complete',
+    }
+  }
 
   // G3 (tickets → implementation) is THE human approval gate — the "Burn" click
   // in CONTEXT.md's two-click covenant (#9). A session may mark the tickets
@@ -737,11 +758,10 @@ export function toolCompletePhase(
     }
 
     const next = nextPhase(feature) ?? 'implementation'
-    emit(ctx, feature.id, {
-      type: 'tickets.awaiting_burn',
-      message: 'tickets complete — waiting on the human Burn click (gate G3)',
-      data: { phase: feature.phase, nextPhase: next, waitingOn: 'human burn' },
-    })
+    // The lap stops changing here: this session is done emitting and enriching,
+    // so the Burn click can no longer land mid-batch. The burn service reads
+    // the stamp; the button only reflects it.
+    markTicketsReady(ctx, feature.id, next)
     // The gate past G3 is what the feature meets AFTER the burn — reported so
     // the session knows the shape of the rest of the lap, not so it acts now.
     const after = requirement(nextGate({ ...feature, phase: next }))
@@ -2341,7 +2361,11 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
           'success it also returns `nextGate` — what the FOLLOWING gate requires — so the next ' +
           'step is not a guess. The tickets → implementation gate (G3) is the human "Burn" ' +
           'approval: completing the tickets phase records the work done and returns ' +
-          '{ ok: true, nextPhase: "implementation", waitingOn: "human burn" } WITHOUT advancing.',
+          '{ ok: true, nextPhase: "implementation", waitingOn: "human burn" } WITHOUT advancing. ' +
+          'That call is also what ARMS the Burn click — until it lands, the button waits on you ' +
+          'rather than burning tickets you are still writing, so make it the last thing you do ' +
+          'in the tickets phase. If the human burned while you were closing out, it comes back ' +
+          '{ ok: true, note } saying the phase was already crossed: nothing left to do.',
         inputSchema: {
           phase: CompletablePhase.describe(
             'The phase you are finishing — normally the feature’s current one. `shipped` is not ' +

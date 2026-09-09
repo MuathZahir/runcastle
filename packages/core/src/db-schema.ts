@@ -130,6 +130,15 @@ export const features = sqliteTable('features', {
    * backfills.
    */
   lap: integer('lap').notNull().default(1),
+  /**
+   * The lap whose tickets the talk session declared finished — set by
+   * `complete_phase({phase:"tickets"})`, read by the first burn out of the
+   * `tickets` phase so a Burn click cannot land mid-batch. Lap-scoped rather
+   * than a boolean so lap N+1 starts unready with nothing to clear, matching
+   * how the `tickets-approved` check already scopes. Null on every row that
+   * has never completed a tickets phase.
+   */
+  ticketsReadyLap: integer('tickets_ready_lap'),
   phase: text('phase').notNull().$type<Phase>(),
   branch: text('branch').notNull(),
   /**

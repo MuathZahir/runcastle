@@ -348,12 +348,22 @@ describe('nextStep — live sessions go status-only', () => {
     satisfied?: boolean
     gateId?: string
     tickets?: number
+    /** The session has completed the tickets phase — what arms the Burn click. */
+    ticketsReady?: boolean
   }): FeatureFull =>
     ({
-      feature: { id: 'f1', phase: opts.phase ?? 'ideation', mapped: false, status: 'active' },
+      feature: {
+        id: 'f1',
+        phase: opts.phase ?? 'ideation',
+        mapped: false,
+        status: 'active',
+        lap: 1,
+        ticketsReadyLap: opts.ticketsReady ? 1 : null,
+      },
       tickets: Array.from({ length: opts.tickets ?? 0 }, (_, i) => ({
         id: `t${i}`,
         status: 'pending',
+        lap: 1,
         commits: [],
       })),
       sessions: opts.live
@@ -423,10 +433,11 @@ describe('nextStep — live sessions go status-only', () => {
     expect(ns.secondary).toEqual([])
   })
 
-  it('keeps Burn primary at tickets while live — emit_tickets lands one batch', () => {
-    const live = nextStep(auditFull({ phase: 'tickets', gateId: 'G3', live: true, tickets: 2 }), {
-      driving: false,
-    })
+  it('keeps Burn primary at tickets while live, once the session has finished them', () => {
+    const live = nextStep(
+      auditFull({ phase: 'tickets', gateId: 'G3', live: true, tickets: 2, ticketsReady: true }),
+      { driving: false },
+    )
     expect(live.primary).toEqual({ label: 'Burn 2 tickets', kind: 'burn' })
     expect(live.secondary).toEqual([])
 
@@ -435,6 +446,41 @@ describe('nextStep — live sessions go status-only', () => {
     })
     expect(idle.primary).toEqual({ label: 'Burn 2 tickets', kind: 'burn' })
     expect(idle.secondary).toEqual([{ label: 'Ask for changes', kind: 'revisit', hint: 'Open a session to change the tickets before burning' }])
+  })
+
+  /**
+   * The incident this exists for: tickets land before the session is done with
+   * them (placeholder contexts, enriched afterwards), so the Burn button used to
+   * arm mid-batch and a click burned agents on placeholders. The bar waits with
+   * the server now — and, like the server, only while a session is alive to race.
+   */
+  it('waits on the session that is still finishing the tickets, instead of arming Burn', () => {
+    const ns = nextStep(auditFull({ phase: 'tickets', gateId: 'G3', live: true, tickets: 2 }), {
+      driving: false,
+    })
+    expect(ns.kick).toBe('WAITING')
+    expect(ns.desc).toContain('The session is finishing the tickets')
+    expect(ns.primary).toBeUndefined()
+    expect(ns.secondary).toEqual([])
+  })
+
+  it('arms Burn with no session alive to race, readiness or not', () => {
+    const ns = nextStep(auditFull({ phase: 'tickets', gateId: 'G3', tickets: 2 }), {
+      driving: false,
+    })
+    expect(ns.primary).toEqual({ label: 'Burn 2 tickets', kind: 'burn' })
+  })
+
+  it('ignores a readiness stamped on an earlier lap', () => {
+    const stale = auditFull({ phase: 'tickets', gateId: 'G3', live: true, tickets: 2 })
+    const onLapTwo = {
+      ...stale,
+      feature: { ...stale.feature, lap: 2, ticketsReadyLap: 1 },
+      tickets: stale.tickets.map((ticket) => ({ ...ticket, lap: 2 })),
+    } as unknown as FeatureFull
+    const ns = nextStep(onLapTwo, { driving: false })
+    expect(ns.kick).toBe('WAITING')
+    expect(ns.primary).toBeUndefined()
   })
 
   it('waits status-only for the first tickets while the session is emitting them', () => {
