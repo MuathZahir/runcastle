@@ -436,8 +436,14 @@ export const DRIVE_LOOP_KEYS = [
  * a container". A value the human supplied or confirmed verbatim during that
  * same session is recorded as `human`, not `session`: the lock belongs to who
  * decided the value, not to which process wrote the row.
+ *
+ * `build` is runcastle's own machinery rather than any conversation: the image
+ * build writes `sandboxImage` when it builds a project's `.runcastle/sandbox/`
+ * Dockerfile. Like `session` it does not lock the key — clearing the value is
+ * still what hands it back — but it must not read as "prepared", because no
+ * preparation run ever measured it.
  */
-export const FindingSource = z.enum(['prep', 'human', 'session'])
+export const FindingSource = z.enum(['prep', 'human', 'session', 'build'])
 export type FindingSource = z.infer<typeof FindingSource>
 
 /**

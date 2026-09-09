@@ -659,7 +659,14 @@ function sourceChipFor(field: SettingField): SourceChip | undefined {
  * (decision 5), because it runs to thousands of words.
  */
 function provenanceChipFor(f: FindingLike): ProvenanceChip {
-  const who = f.source === 'human' ? 'You' : f.source === 'session' ? 'Set in a session' : 'Prepared'
+  const who =
+    f.source === 'human'
+      ? 'You'
+      : f.source === 'session'
+        ? 'Set in a session'
+        : f.source === 'build'
+          ? 'Built by runcastle'
+          : 'Prepared'
   const parts = [who, relativeAge(f.establishedAt)]
   // Distance from main is meaningless for a value the human owns — nothing
   // measured it, so nothing about it has rotted.

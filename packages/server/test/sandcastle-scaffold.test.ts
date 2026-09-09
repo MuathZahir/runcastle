@@ -101,7 +101,9 @@ describe('prepareSandboxBuildContext', () => {
     mkdirSync(existing, { recursive: true })
     writeFileSync(join(existing, 'Containerfile'), 'FROM stale\n')
 
-    expect(prepareSandboxBuildContext(template, target)).toBe(target)
+    // It returns the dir handed to `<runtime> build` as its context — the
+    // `.sandcastle/` holding the Dockerfile, not the dir enclosing it.
+    expect(prepareSandboxBuildContext(template, target)).toBe(existing)
     expect(readFileSync(join(existing, 'Containerfile'), 'utf8')).toBe('FROM current\n')
     expect(readFileSync(join(existing, 'Dockerfile'), 'utf8')).toBe('FROM current-docker\n')
   })

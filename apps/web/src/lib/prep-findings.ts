@@ -175,11 +175,13 @@ function provenanceNote(f: {
   // present, so the host-only caveat does not apply to it — that caveat exists
   // because a container cannot execute those keys, and this one can.
   const how =
-    f.source === 'session'
-      ? 'Established in a conversation on this machine'
-      : HOST_ONLY_PREPARED.has(f.key)
-        ? 'Proposed by preparation from config (not executed)'
-        : 'Established by preparation'
+    f.source === 'build'
+      ? 'Built by runcastle from the repo Dockerfile'
+      : f.source === 'session'
+        ? 'Established in a conversation on this machine'
+          : HOST_ONLY_PREPARED.has(f.key)
+            ? 'Proposed by preparation from config (not executed)'
+            : 'Established by preparation'
   const when = relativeAge(f.establishedAt)
 
   if (f.staleCommits === undefined) {
