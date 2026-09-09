@@ -46,9 +46,30 @@ import { hasActiveRun } from './repo'
  * router) — we do not widen the pinned signatures to inject `ctx`.
  */
 
+/**
+ * Which guard refused a drive `start`, as something a caller can branch on
+ * instead of matching the prose of `deniedReason`.
+ *
+ * `slot_held` covers both flavours of the singleton drive slot being taken — a
+ * feature drive (human's or another review's) and a preparation dry run —
+ * because they are the same fact to whoever was refused: somebody holds the
+ * machine-wide slot, and it frees itself when they are done.
+ */
+export type DriveDenialCode = 'dirty' | 'slot_held' | 'active_run'
+
 export interface TestDriveResult {
   ok: boolean
   deniedReason?: string
+  /** Which guard refused a `start`. Absent on `stop` denials and on success. */
+  deniedCode?: DriveDenialCode
+  /**
+   * Whether waiting could plausibly clear the denial — true for `slot_held`
+   * alone, since nothing else frees itself. It is what tells a review agent to
+   * poll `start` again rather than fall back to a repo-only review.
+   */
+  retriable?: boolean
+  /** The uncommitted paths behind a `dirty` denial, so the refusal names them. */
+  dirtyFiles?: string[]
   branch?: string
   /**
    * Uncommitted paths that travelled across the branch switch on `stop`. git
@@ -202,6 +223,29 @@ const DENY_NONE_ACTIVE = 'No test drive is active'
 const DENY_DRY_RUN_ACTIVE = 'A preparation dry-run is in progress — stop it first'
 const DENY_NO_DRY_RUN = 'No preparation dry-run is in progress'
 const DENY_NO_REVIEW_DRIVE = 'No review drive is in progress for this feature'
+
+/**
+ * A refused `start`, classified. `retriable` is derived here and never passed
+ * in, so the rule "only a held slot frees itself" lives in exactly one place.
+ */
+function deniedStart(
+  deniedReason: string,
+  deniedCode: DriveDenialCode,
+  dirtyFiles?: string[],
+): TestDriveResult {
+  return {
+    ok: false,
+    deniedReason,
+    deniedCode,
+    retriable: deniedCode === 'slot_held',
+    ...(dirtyFiles ? { dirtyFiles } : {}),
+  }
+}
+
+/** The first few of a file list, for a message that must not run away. */
+function namedFiles(files: readonly string[]): string {
+  return `${files.slice(0, 5).join(', ')}${files.length > 5 ? ', …' : ''}`
+}
 
 /** Branch name for a feature slug. */
 function featureBranch(slug: string): string {
@@ -2044,7 +2088,7 @@ export async function testDrive(
     if (carriedChanges.length > 0) {
       emit(ctx, feature.id, {
         type: 'testdrive.carried_changes',
-        message: `${carriedChanges.length} uncommitted file(s) came back with you onto ${previousBranch}: ${carriedChanges.slice(0, 5).join(', ')}${carriedChanges.length > 5 ? ', …' : ''}`,
+        message: `${carriedChanges.length} uncommitted file(s) came back with you onto ${previousBranch}: ${namedFiles(carriedChanges)}`,
         data: { branch: previousBranch, files: carriedChanges },
       })
     }
@@ -2063,12 +2107,27 @@ export async function testDrive(
   // Runcastle's own docs are landed first, never counted as the human's dirt.
   await commitPipelineDocs(project.repoPath)
   const porcelain = (await g.raw(['status', '--porcelain'])).trim()
-  if (porcelain !== '') return { ok: false, deniedReason: DENY_DIRTY }
-  if (testDriveState) {
-    return {
-      ok: false,
-      deniedReason: testDriveState.kind === 'dryRun' ? DENY_DRY_RUN_ACTIVE : DENY_ACTIVE,
+  if (porcelain !== '') {
+    const dirtyFiles = porcelainPaths(porcelain)
+    // The human is the only one who can clear this, and until now they heard
+    // about it from the review's digest long afterwards. A review-purpose
+    // denial says so on the timeline at the moment it happens, while they can
+    // still act on it. The human's own drive already reports its refusal inline
+    // where they clicked, so it needs no event.
+    if (purpose === 'review') {
+      emit(ctx, feature.id, {
+        type: 'reviewdrive.denied',
+        message: `review drive denied — ${dirtyFiles.length} uncommitted file(s) in the working tree: ${namedFiles(dirtyFiles)}`,
+        data: { code: 'dirty', dirtyFiles },
+      })
     }
+    return deniedStart(DENY_DIRTY, 'dirty', dirtyFiles)
+  }
+  if (testDriveState) {
+    return deniedStart(
+      testDriveState.kind === 'dryRun' ? DENY_DRY_RUN_ACTIVE : DENY_ACTIVE,
+      'slot_held',
+    )
   }
   // The review carve-out (improve-workflow decision 4): a review ticket burns at
   // the tail of its own run, once every implementation ticket is terminal and
@@ -2076,7 +2135,7 @@ export async function testDrive(
   // one that launched it. Nothing else is waived: the two checks above still
   // deny, and they deny immediately rather than waiting for the slot.
   if (purpose === 'human' && hasActiveRun(ctx, feature.id)) {
-    return { ok: false, deniedReason: DENY_ACTIVE_RUN }
+    return deniedStart(DENY_ACTIVE_RUN, 'active_run')
   }
 
   // Free the feature branch from EVERY worktree that currently holds it so the
@@ -2169,6 +2228,12 @@ export interface ReviewDriveResult {
   action: 'start' | 'status' | 'stop'
   /** Why the action was refused. `ok` is false exactly when this is set. */
   deniedReason?: string
+  /** How a refused `start` was classified (see {@link DriveDenialCode}). */
+  deniedCode?: DriveDenialCode
+  /** Whether that refusal is worth polling `start` again for — `slot_held` only. */
+  retriable?: boolean
+  /** The uncommitted paths behind a `dirty` refusal, so the agent can name them. */
+  dirtyFiles?: string[]
   /**
    * The live drive — branch, dev pane, and the `devUrl` sniffed from the dev
    * server's output — or null once it has stopped. The URL is what the agent
@@ -2192,8 +2257,9 @@ export interface ReviewDriveResult {
  * Three actions, because the drive outlives the call that starts it: `start`
  * brings the branch and its dev server up, `status` answers "is there a URL yet"
  * while the agent drives, and `stop` puts the checkout back. Contention is never
- * waited on — a review that cannot have the slot reports why and the ticket
- * fails, which is the advisory-and-best-effort bargain (decision 6).
+ * waited on HERE — the server queues nothing — but a refused start says which
+ * kind it is (`deniedCode`, `retriable`), so the agent can poll a held slot out
+ * itself instead of downgrading to a repo-only review.
  */
 export async function reviewDrive(
   ctx: AppCtx,
@@ -2269,6 +2335,9 @@ async function startReviewDrive(
     ok: start.ok,
     action: 'start',
     ...(start.deniedReason ? { deniedReason: start.deniedReason } : {}),
+    ...(start.deniedCode ? { deniedCode: start.deniedCode } : {}),
+    ...(start.retriable !== undefined ? { retriable: start.retriable } : {}),
+    ...(start.dirtyFiles ? { dirtyFiles: start.dirtyFiles } : {}),
     drive: activeDriveInfo(),
     ...(start.hookFailure ? { hookFailure: start.hookFailure } : {}),
   }
@@ -2685,19 +2754,25 @@ async function runDriveHookStep(
 /** Repo-relative paths with uncommitted changes (tracked or not), or `[]`. */
 async function dirtyPaths(g: SimpleGit): Promise<string[]> {
   try {
-    const out = (await g.raw(['status', '--porcelain'])).trim()
-    if (!out) return []
-    return out
-      .split('\n')
-      // Porcelain v1: two status chars, a space, then the path. A rename is
-      // `R  old -> new`; the destination is the file that actually exists now.
-      .map((line) => line.slice(3).trim())
-      .map((p) => (p.includes(' -> ') ? (p.split(' -> ').at(-1) ?? p) : p))
-      .map((p) => p.replace(/^"|"$/g, ''))
-      .filter(Boolean)
+    return porcelainPaths((await g.raw(['status', '--porcelain'])).trim())
   } catch {
     return []
   }
+}
+
+/** The paths in `git status --porcelain` output. Pure — the start path already
+ *  holds the output it denied on, and re-running git to name the files would
+ *  read a tree that may have moved since. */
+function porcelainPaths(out: string): string[] {
+  if (!out) return []
+  return out
+    .split('\n')
+    // Porcelain v1: two status chars, a space, then the path. A rename is
+    // `R  old -> new`; the destination is the file that actually exists now.
+    .map((line) => line.slice(3).trim())
+    .map((p) => (p.includes(' -> ') ? (p.split(' -> ').at(-1) ?? p) : p))
+    .map((p) => p.replace(/^"|"$/g, ''))
+    .filter(Boolean)
 }
 
 /**
