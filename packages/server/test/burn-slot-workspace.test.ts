@@ -15,8 +15,8 @@ import {
   slotRepoPath,
   slotStampPath,
 } from '../src/workflows/burn-cache'
-import type { CacheMount } from '../src/workflows/ticket-burner'
 import {
+  type CacheMount,
   SANDBOX_WORKSPACE_PATH,
   SETUP_MARKER_FILE,
   TOOLCHAIN_CACHE_SANDBOX_PATHS,
