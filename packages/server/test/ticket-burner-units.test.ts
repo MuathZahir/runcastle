@@ -65,6 +65,11 @@ import {
   buildGuardNotes,
   buildLapDigestsBlock,
   buildProjectStandards,
+  buildToolchainProbeArgs,
+  extractCommandNames,
+  missingToolchainMessage,
+  parseMissingCommands,
+  preflightCommandNames,
   readDocsDigest,
   trimMapDoc,
   verificationDue,
@@ -1525,6 +1530,98 @@ describe('setup-command detection (deps install before the agent starts)', () =>
 
   it('returns undefined for a repo with no JS toolchain and no override', () => {
     expect(resolveSetupCommand(tc({ hasPackageJson: false }))).toBeUndefined()
+  })
+})
+
+/**
+ * The toolchain preflight's pure half: which binaries a shell command claims to
+ * need. A Java project in a JS-only image used to discover this as a retried
+ * exit 127; the names extracted here are what the run-level probe asks the
+ * image about before it starts a single ticket container.
+ */
+describe('extractCommandNames — the heuristic behind the toolchain preflight', () => {
+  it('takes the first word of every && ; | chained segment, deduped', () => {
+    expect(extractCommandNames('mvn -q -DskipTests install && mvn -q test')).toEqual(['mvn'])
+    expect(extractCommandNames('npm ci; gradle build | tee out.log')).toEqual([
+      'npm',
+      'gradle',
+      'tee',
+    ])
+  })
+
+  it('reads a multi-line verify block as one command per line', () => {
+    expect(extractCommandNames('bun run typecheck\nvitest run\n')).toEqual(['bun', 'vitest'])
+  })
+
+  it('steps over VAR= prefixes to the command they wrap', () => {
+    expect(extractCommandNames('JAVA_HOME=/opt/jdk MAVEN_OPTS=-Xmx1g mvn verify')).toEqual(['mvn'])
+  })
+
+  it('drops a builtin-led segment whole rather than guessing at its arguments', () => {
+    // `env -u GIT_ASKPASS bun run test` is this repo's own verify command:
+    // walking past `env` would "find" GIT_ASKPASS and abort a working burn.
+    expect(extractCommandNames('env -u GIT_ASKPASS bun run test')).toEqual([])
+    expect(extractCommandNames('cd repo && export FOO=1 && mvn install')).toEqual(['mvn'])
+  })
+
+  it('ignores what `command -v` could not answer for anyway', () => {
+    // A path is resolved against a cwd the probe container does not have, and an
+    // expansion is not a name at all — both are false-abort risks.
+    expect(extractCommandNames('./gradlew build')).toEqual([])
+    expect(extractCommandNames('$TOOL --version')).toEqual([])
+    expect(extractCommandNames('')).toEqual([])
+    expect(extractCommandNames(undefined)).toEqual([])
+  })
+
+  it('unwraps the parenthesised fallback the setup resolver emits', () => {
+    expect(extractCommandNames(resolveSetupCommand({
+      hasPackageJson: true,
+      lockfiles: { bun: true, pnpm: false, yarn: false, npm: false },
+    }))).toEqual(['bun'])
+  })
+})
+
+describe('toolchain preflight — one container answers for every binary', () => {
+  it('asks about the agent binary, the setup command and the verify commands, sorted', () => {
+    expect(
+      preflightCommandNames({
+        agentBinary: 'claude',
+        setupCommand: 'mvn -q -DskipTests install',
+        verifyCommands: 'mvn -q test\nbun run typecheck',
+      }),
+    ).toEqual(['bun', 'claude', 'mvn'])
+  })
+
+  it('falls back to the agent binary alone when nothing else is configured', () => {
+    expect(preflightCommandNames({ agentBinary: 'codex' })).toEqual(['codex'])
+  })
+
+  it('builds one `command -v` sweep that always exits 0', () => {
+    expect(buildToolchainProbeArgs('sandcastle:runcastle-demo', ['claude', 'mvn'])).toEqual([
+      'run',
+      '--rm',
+      '--entrypoint',
+      'sh',
+      'sandcastle:runcastle-demo',
+      '-c',
+      'for c in claude mvn; do command -v "$c" >/dev/null 2>&1 || echo "$c"; done',
+    ])
+  })
+
+  it('reads the absent names back off stdout, ignoring anything else printed', () => {
+    expect(parseMissingCommands('mvn\n', ['claude', 'mvn'])).toEqual(['mvn'])
+    expect(parseMissingCommands('  mvn  \nclaude\n', ['claude', 'mvn'])).toEqual(['claude', 'mvn'])
+    expect(parseMissingCommands('', ['claude', 'mvn'])).toEqual([])
+    expect(parseMissingCommands('some unrelated noise\n', ['claude'])).toEqual([])
+  })
+
+  it('names the missing tools and points at the project Dockerfile', () => {
+    expect(missingToolchainMessage(['mvn'], 'sandcastle:runcastle-demo')).toBe(
+      'mvn is not installed in image sandcastle:runcastle-demo — add it to .runcastle/sandbox/Dockerfile and rebuild.',
+    )
+    expect(missingToolchainMessage(['gradle', 'mvn'], 'img')).toBe(
+      'gradle, mvn are not installed in image img — add them to .runcastle/sandbox/Dockerfile and rebuild.',
+    )
   })
 })
 

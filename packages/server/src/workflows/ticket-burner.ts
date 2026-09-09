@@ -140,6 +140,115 @@ export function missingImageRuntimeMessage(runtime: AgentRuntime, image: string)
   return `${binary} is not installed in image ${image} — the image predates the burner Dockerfile. Rebuild it from Settings → Burns (Rebuild image).`
 }
 
+// ---------------------------------------------------------------------------
+// Pure unit — toolchain preflight (what the image must already carry)
+// ---------------------------------------------------------------------------
+
+/** Where a shell command's steps are separated — `&&`, `||`, `;`, `|`, newline. */
+const COMMAND_SEPARATORS = /&&|\|\||[;|\n]/
+
+/** `FOO=bar cmd` — an environment prefix, not the command itself. */
+const ASSIGNMENT_PREFIX = /^[A-Za-z_][A-Za-z0-9_]*=/
+
+/**
+ * Shell words that name no binary the image has to carry: builtins the shell
+ * resolves itself, and wrappers whose real command is buried in their arguments.
+ * A segment led by one of these is dropped WHOLE rather than walked past —
+ * `env -u GIT_ASKPASS bun run test` would otherwise "find" `GIT_ASKPASS` and
+ * abort a burn that works fine. Missing `bun` there is the cheap direction.
+ */
+const NON_COMMAND_WORDS = new Set([
+  'cd',
+  'export',
+  'set',
+  'unset',
+  'source',
+  '.',
+  'exec',
+  'env',
+  'eval',
+  'command',
+  'time',
+  'sudo',
+  'echo',
+  'true',
+  'false',
+])
+
+/** A name `command -v` can answer for: a bare binary, not a path or an expansion. */
+const PLAIN_COMMAND_NAME = /^[A-Za-z0-9][A-Za-z0-9._+-]*$/
+
+/**
+ * The binaries a shell command needs, by the modest heuristic decision 7 asks
+ * for: split on the separators, skip any `VAR=` prefixes, take the first real
+ * word of each segment, keep the plain names. Deliberately NOT a shell parser —
+ * `$TOOL`, `./gradlew` and a builtin-led segment all read as "nothing to check
+ * here", which is the right way to be wrong: a preflight that guesses a name
+ * aborts a burn that would have worked, while a name it misses still fails at
+ * runtime, where the classifier names it.
+ */
+export function extractCommandNames(command: string | undefined): string[] {
+  const names: string[] = []
+  for (const segment of (command ?? '').split(COMMAND_SEPARATORS)) {
+    const words = segment
+      .replace(/[(){}'"`]/g, ' ')
+      .split(/\s+/)
+      .filter(Boolean)
+    const word = words.find((w) => !ASSIGNMENT_PREFIX.test(w)) ?? ''
+    if (!PLAIN_COMMAND_NAME.test(word) || NON_COMMAND_WORDS.has(word)) continue
+    if (!names.includes(word)) names.push(word)
+  }
+  return names
+}
+
+/**
+ * Every binary this run's containers must already carry: the agent CLI, the
+ * setup hook's commands, and the ones the prompt tells the agent to verify with
+ * (never executed by the burner — this preflight is their only exec-adjacent
+ * check). Sorted, so the probe's memo key is the same whatever order they
+ * arrived in.
+ */
+export function preflightCommandNames(input: {
+  agentBinary: string
+  setupCommand?: string
+  verifyCommands?: string
+}): string[] {
+  return [
+    ...new Set([
+      input.agentBinary,
+      ...extractCommandNames(input.setupCommand),
+      ...extractCommandNames(input.verifyCommands),
+    ]),
+  ].sort()
+}
+
+/**
+ * One container for the whole list: `command -v` per name, printing the ones
+ * that are absent. The script always exits 0 so a missing tool arrives as a
+ * parsed answer rather than being indistinguishable from an image that cannot
+ * start a shell at all.
+ */
+export function buildToolchainProbeArgs(image: string, names: readonly string[]): string[] {
+  const script = `for c in ${names.join(' ')}; do command -v "$c" >/dev/null 2>&1 || echo "$c"; done`
+  return ['run', '--rm', '--entrypoint', 'sh', image, '-c', script]
+}
+
+/** The probed names the container reported absent, in the order they were asked. */
+export function parseMissingCommands(stdout: string, names: readonly string[]): string[] {
+  const absent = new Set(stdout.split('\n').map((line) => line.trim()))
+  return names.filter((name) => absent.has(name))
+}
+
+/**
+ * The operator action for a toolchain the image lacks. Unlike the agent binary
+ * (whose fix is rebuilding the stock image), a missing `mvn` is the project's
+ * own Dockerfile to fix — so the message points there.
+ */
+export function missingToolchainMessage(names: readonly string[], image: string): string {
+  const one = names.length === 1
+  return `${names.join(', ')} ${one ? 'is' : 'are'} not installed in image ${image} — add ${one ? 'it' : 'them'} to .runcastle/sandbox/Dockerfile and rebuild.`
+}
+
 /**
  * Whether a runtime can authenticate an unattended container burn. The two
  * runtimes answer it differently: Claude Code needs the long-lived token from
@@ -2089,9 +2198,33 @@ const AGENT_BINARY: Record<AgentRuntime, string> = {
 }
 
 /**
+ * The shell saying it could not find `name`. The name must PRECEDE the wording
+ * so an unrelated missing file in the agent's output is not mistaken for a
+ * missing command.
+ */
+function missingCommandRegex(name: string): RegExp {
+  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  return new RegExp(
+    `\\b${escaped}\\b[^\\n]*(?:exited with code 127|command not found|not found|no such file or directory)`,
+    'i',
+  )
+}
+
+/**
+ * Exit 127 in any of the wordings a failing container hook reports it with —
+ * sandcastle's own `Command failed (exit 127): …` included. Fatal for every
+ * runtime: no attempt of ours installs a binary into the image, and blindly
+ * retrying exactly this is the worst behavior the burner has been observed in
+ * (a Java setup command in a JS-only image, three times over).
+ */
+const MISSING_COMMAND_PATTERNS: RegExp[] = [
+  /\bexit(?:ed with)?(?: code)? 127\b/i,
+  /command not found/i,
+]
+
+/**
  * Turn the shell's missing-command failure into the operator action that can
- * actually fix it. The binary must precede the shell wording so an unrelated
- * missing file in the agent's output is not mistaken for a stale image.
+ * actually fix it.
  */
 export function missingAgentBinaryMessage(
   err: unknown,
@@ -2100,12 +2233,26 @@ export function missingAgentBinaryMessage(
 ): string | undefined {
   const msg = err instanceof Error ? err.message : typeof err === 'string' ? err : String(err)
   const binary = AGENT_BINARY[runtime]
-  const missing = new RegExp(
-    `\\b${binary}\\b[^\\n]*(?:exited with code 127|command not found|not found|no such file or directory)`,
-    'i',
-  )
-  if (!missing.test(msg)) return undefined
+  if (!missingCommandRegex(binary).test(msg)) return undefined
   return `${binary} is not installed in image ${image} — the image predates the burner Dockerfile. Rebuild it from Settings → Burns (Rebuild image).`
+}
+
+/**
+ * The same fact for the setup hook's own binaries — the dependency install died
+ * because the image has no `mvn`. Named from the setup command rather than the
+ * error text alone, so the message says which tool and points at the project's
+ * Dockerfile instead of a stock-image rebuild the human does not need.
+ */
+export function missingSetupBinaryMessage(
+  err: unknown,
+  setupCommand: string | undefined,
+  image: string,
+): string | undefined {
+  const msg = err instanceof Error ? err.message : typeof err === 'string' ? err : String(err)
+  const missing = extractCommandNames(setupCommand).find((name) =>
+    missingCommandRegex(name).test(msg),
+  )
+  return missing ? missingToolchainMessage([missing], image) : undefined
 }
 
 /**
@@ -2118,10 +2265,15 @@ export function missingAgentBinaryMessage(
  * produced the message. Omitting it considers every runtime's, which is what a
  * caller with no model in hand wants: the strings do not collide, so the union
  * classifies correctly either way.
+ *
+ * `setupCommand` is the burn's resolved dependency-install command, so a hook
+ * that died on a missing tool is recognised by name. It is only the backstop:
+ * the run-level preflight catches the same fact before any container is built.
  */
 export function classifyTicketRunError(
   err: unknown,
   runtime?: AgentRuntime,
+  setupCommand?: string,
 ): 'retryable' | 'fatal' {
   const msg = err instanceof Error ? err.message : typeof err === 'string' ? err : String(err)
   const runtimes: AgentRuntime[] = runtime ? [runtime] : ['claude-code', 'codex']
@@ -2129,6 +2281,10 @@ export function classifyTicketRunError(
     runtimes.flatMap((r) => table[r])
 
   if (runtimes.some((r) => missingAgentBinaryMessage(msg, r, 'image'))) return 'fatal'
+  if (missingSetupBinaryMessage(msg, setupCommand, 'image')) return 'fatal'
+  // Before the retryable patterns, whose broad `exited with code N` entry would
+  // otherwise send a missing command around the retry loop.
+  if (MISSING_COMMAND_PATTERNS.some((p) => p.test(msg))) return 'fatal'
   if ([...FATAL_ERROR_PATTERNS, ...forRuntimes(RUNTIME_FATAL_ERROR_PATTERNS)].some((p) => p.test(msg)))
     return 'fatal'
   if (
@@ -2792,22 +2948,32 @@ export async function burnRun(
     return { status: 'failed', summary: 'burn aborted: auth token missing' }
   }
 
-  // Prove the selected image can launch this burn's agent before sandcastle
-  // creates a ticket container. The host CLI is the right one for noSandbox,
+  // Prove the selected image carries everything this burn will reach for — the
+  // agent CLI, the setup hook's commands and the verify commands the prompt
+  // hands the agent — before sandcastle creates a ticket container. One `sh`
+  // run answers for all of them. The host CLI is the right one for noSandbox,
   // so probing an image there would be both wasteful and misleading.
   if (deps.config.sandbox !== 'noSandbox' && deps.exec) {
     const image = resolveSandboxImage(deps.config, ctx.project)
     const binary = RUNTIME_BINARY[deps.runtime]
-    const probe = await deps.exec(deps.config.sandbox, [
-      'run',
-      '--rm',
-      '--entrypoint',
-      binary,
-      image,
-      '--version',
-    ])
-    if (!probe.ok || probe.code !== 0) {
-      const message = missingImageRuntimeMessage(deps.runtime, image)
+    const prepared = resolvePreparedSettings(deps.config, ctx.project)
+    const names = preflightCommandNames({
+      agentBinary: binary,
+      setupCommand: resolveSetupCommand(
+        readRepoToolchain(ctx.project.repoPath),
+        prepared.setupCommand,
+      ),
+      verifyCommands: prepared.verifyCommands,
+    })
+    const probe = await deps.exec(deps.config.sandbox, buildToolchainProbeArgs(image, names))
+    // A probe that could not even start a shell says nothing about which name is
+    // absent — that is the image itself, so it keeps the stale-image wording.
+    const missing =
+      probe.ok && probe.code === 0 ? parseMissingCommands(probe.stdout, names) : [binary]
+    if (missing.length > 0) {
+      const message = missing.includes(binary)
+        ? missingImageRuntimeMessage(deps.runtime, image)
+        : missingToolchainMessage(missing, image)
       ctx.emitEvent({ type: IMAGE_RUNTIME_MISSING_EVENT, message })
       return { status: 'failed', summary: message }
     }
@@ -4060,11 +4226,10 @@ async function burnTicket(
         await discardWorktree(tempBranch)
         if (ctx.signal.aborted) throw err // let the runner mark the run cancelled
         const msg = err instanceof Error ? err.message : String(err)
-        const missingBinary = missingAgentBinaryMessage(
-          err,
-          model.runtime,
-          resolveSandboxImage(config, project),
-        )
+        const sandboxImage = resolveSandboxImage(config, project)
+        const missingBinary =
+          missingAgentBinaryMessage(err, model.runtime, sandboxImage) ??
+          missingSetupBinaryMessage(err, setupCommand, sandboxImage)
         // Whatever the dead attempt committed survives on its temp branch —
         // chain the next attempt (or a later run) onto it.
         const salvaged = await branchCommitsAhead(project.repoPath, feature.branch, tempBranch)
@@ -4126,7 +4291,10 @@ async function burnTicket(
           if (salvaged.length > 0) preserveChain(tempBranch)
           return { status: 'failed', error: missingBinary }
         }
-        if (classifyTicketRunError(err, model.runtime) === 'retryable' && attempt < maxAttempts) {
+        if (
+          classifyTicketRunError(err, model.runtime, setupCommand) === 'retryable' &&
+          attempt < maxAttempts
+        ) {
           const headline = errorHeadline(msg)
           retryNotes = buildRetryNotes({ error: headline, commitCount: salvaged.length })
           ctx.emitEvent({
@@ -4255,7 +4423,11 @@ function resolveBurnDeps(ctx: WorkflowCtx): BurnDeps {
   const exec = createSystemExec({ cwd: ctx.project.repoPath })
   const imageProbeCache = new Map<string, Promise<ExecOutcome>>()
   const cachedExec: ExecFn = (command, args) => {
-    const key = `${resolveSandboxImage(config, ctx.project)}\0${model.runtime}`
+    // The probed command list rides in `args` (sorted, so it is stable), which
+    // is what keeps two different toolchains from sharing one answer.
+    const key = [resolveSandboxImage(config, ctx.project), model.runtime, command, ...args].join(
+      '\0',
+    )
     let result = imageProbeCache.get(key)
     if (!result) {
       result = exec(command, args)
