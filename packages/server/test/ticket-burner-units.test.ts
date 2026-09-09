@@ -1075,6 +1075,19 @@ describe('selectSandbox — provider for the configured sandbox', () => {
       expect('mounts' in buildSandboxOptions(config('docker'), null)).toBe(false)
     })
 
+    // The container a ticket burns in is the project's own image when it has
+    // one — this is the option object where that either happens or silently
+    // does not, and "silently does not" is a burn in an image with no toolchain.
+    it('hands the provider the project’s own image over the machine-wide one', () => {
+      const global = { ...config('docker'), sandboxImage: 'sandcastle:runcastle' }
+      expect(
+        buildSandboxOptions(global, { sandboxImage: 'sandcastle:runcastle-proj_1' }).imageName,
+      ).toBe('sandcastle:runcastle-proj_1')
+      expect(buildSandboxOptions(global, { sandboxImage: null }).imageName).toBe(
+        'sandcastle:runcastle',
+      )
+    })
+
     /**
      * What a stop kills by. Aborting a run leaves the container burning, so the
      * container has to be nameable from outside sandcastle — and the name has to
