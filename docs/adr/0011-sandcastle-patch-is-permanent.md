@@ -69,7 +69,9 @@ Alternatives considered and rejected:
      ends at EOF — picks both copies up as trailing context. Trim that hunk back
      to one line of trailing context (dropping the `\ No newline at end of file`
      marker with it) so the duplicate is not carried in our patch; it applies to
-     the same bytes and the patched bundle is unchanged;
+     the same bytes and the patched bundle is unchanged. `git apply` and bun's
+     own applier match that hunk exactly; GNU `patch` needs its default fuzz for
+     it, which is why the trim is written down rather than guessed at;
    - a plain `bun install` does not always re-apply a changed patch:
      `rm -rf node_modules/.bun/@ai-hero+sandcastle@<ver> && bun install --force`;
    - `sandcastle-volume-mount.test.ts` and `sandcastle-exec-failure.test.ts` must
