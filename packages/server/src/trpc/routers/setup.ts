@@ -11,7 +11,7 @@ import * as z from 'zod'
 import { projects } from '../../db/schema'
 import type { AppCtx } from '../../db/types'
 import { envWithAfkCredentials } from '../../doctor/afk-env'
-import { runDoctor, type ExecFn } from '../../doctor/doctor'
+import { runDoctor } from '../../doctor/doctor'
 import { createSystemExec } from '../../doctor/system-exec'
 import { InvalidInputError } from '../../errors'
 import { burnerDockerfilePath } from '../../launcher/asset-paths'
@@ -35,7 +35,6 @@ import {
   seedModelDefaults,
   terminalSpec,
   writeGitIdentity,
-  type Runtime,
 } from '../../services/setup'
 import { resolveSpawnTarget } from '../../util/resolve-executable'
 import { publicProcedure, router } from '../context'
@@ -125,14 +124,10 @@ export const setupRouter = router({
       }),
     )
     .mutation(async ({ ctx, input }) => {
-      const exec = createSystemExec()
-      const preferred = ctx.config.sandbox === 'podman' ? 'podman' : 'docker'
-      const runtime = await resolveRuntime(exec, preferred)
       const sessionId = newId('setup')
-
       const { spec, onExit } =
         input.kind === 'build-image'
-          ? await buildImageTerminal(ctx, exec, runtime, input.projectId)
+          ? await buildImageTerminal(ctx, input.projectId)
           : { spec: { ...terminalSpec(input.kind), cwd: process.cwd() }, onExit: undefined }
 
       // Resolve through PATHEXT like the launcher does for `claude` — a bare
@@ -165,10 +160,10 @@ export const setupRouter = router({
  */
 async function buildImageTerminal(
   ctx: AppCtx,
-  exec: ExecFn,
-  runtime: Runtime,
   projectId: string | undefined,
 ): Promise<{ spec: ImageBuildTerminal; onExit?: (info: { exitCode: number }) => void }> {
+  const exec = createSystemExec()
+  const runtime = await resolveRuntime(exec, ctx.config.sandbox === 'podman' ? 'podman' : 'docker')
   const project = projectId ? requireProjectById(ctx, projectId) : null
   const stockContext = prepareSandboxBuildContext()
   const stockHash = hashDockerfile(join(stockContext, 'Dockerfile'))

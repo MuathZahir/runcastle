@@ -162,6 +162,7 @@ export function EnableAfkCard({
               {...rowProps('sandcastle-image')}
               probe={image}
               runtimeOk={runtime?.status === 'ok'}
+              projectId={projectId}
               onDone={recheck}
             />
             {credentials.map((row) =>
@@ -394,9 +395,20 @@ function RuntimeRow({
 function ImageRow({
   probe,
   runtimeOk,
+  projectId,
   onDone,
   ...chrome
-}: RowChrome & { probe: Probe | undefined; runtimeOk: boolean; onDone: () => void }) {
+}: RowChrome & {
+  probe: Probe | undefined
+  runtimeOk: boolean
+  /**
+   * Whose image to build. With a project open the build is that project's — the
+   * chain, when its repo carries `.runcastle/sandbox/Dockerfile`. The wizard has
+   * no project yet, and builds the stock image alone.
+   */
+  projectId?: string
+  onDone: () => void
+}) {
   const [sessionId, setSessionId] = useState<string | null>(null)
   const toast = useToast()
   const start = trpc.setup.startTerminal.useMutation({
@@ -433,7 +445,7 @@ function ImageRow({
           probe={probe}
           runtimeOk={runtimeOk}
           pending={start.isPending}
-          onStart={() => start.mutate({ kind: 'build-image' })}
+          onStart={() => start.mutate({ kind: 'build-image', ...(projectId ? { projectId } : {}) })}
         />
       )}
     </ChecklistRow>

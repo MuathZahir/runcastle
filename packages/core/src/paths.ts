@@ -190,9 +190,9 @@ export function burnCacheDir(pm: string): string {
 /**
  * Runcastle-owned build context for the generic AFK burner image
  * (`~/.runcastle/sandbox-build/`). The Enable-AFK card scaffolds a vetted
- * `.sandcastle/` here on demand and runs `sandcastle <runtime> build-image` in
- * it — so a fresh install can build the image without a hand-made config and
- * before any project exists (issue #50).
+ * `.sandcastle/` here on demand and hands it to `<runtime> build` as the build
+ * context — so a fresh install can build the image without a hand-made config
+ * and before any project exists (issue #50).
  */
 export function sandboxBuildDir(): string {
   return join(dataDir(), 'sandbox-build')
