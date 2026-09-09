@@ -91,7 +91,7 @@ There is no in-session quiz — the human's review is the **Burn** gate in the r
 6. Does the batch close with exactly one `kind: "review"` ticket, blocked by every implementation ticket? It is not optional and there is no feature that skips it.
 
 Then:
-- `mcp__runcastle__emit_tickets({ tickets: [...] })` — **emit the array; do NOT write ticket files.** It returns `{ stored, ids }` and logs the timeline event itself; do not record one of your own.
+- `mcp__runcastle__emit_tickets({ tickets: [...] })` — **emit the array; do NOT write ticket files.** It returns `{ stored, ids }` and logs the timeline event itself; do not record one of your own. Emit the **whole batch, fully enriched, in one call** — large payloads are supported, so a batch of long `context` fields is fine. Never emit placeholder contexts ("Context follows via `update_ticket`.") to enrich ticket by ticket afterwards: a Burn landing mid-enrichment burns agents on the placeholders.
 - `mcp__runcastle__complete_phase({ phase: "tickets" })`. If the gate returns `ok: false`, fix what it names and retry.
 
 Return control to **the session skill that invoked you** — `/runcastle:ideate` for a linear feature, `/runcastle:converge` for a mapped one — and let it close out the session. Do **not** invoke a session skill yourself to hand back: you are already inside one, and loading another session's entry skill would drop a whole procedure this session is not running (a converge session in particular is forbidden to grill) into the window.
