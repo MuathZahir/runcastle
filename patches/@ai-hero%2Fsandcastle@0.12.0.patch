@@ -94,10 +94,73 @@ index 7d097321871cfee95a8ba7e6d12a7fe002190cc5..23a68bed8276ffdf481644e10b0822d4
        }));
        const imageName = configuredImageName ?? defaultImageName(createOptions.hostRepoPath);
        const containerUid = options?.containerUid ?? process.getuid?.() ?? 1e3;
+diff --git a/dist/chunk-NGBM7T3E.js b/dist/chunk-NGBM7T3E.js
+index c2b77a43fca309822bd882256dc4c593af75bac0..31ca930d815d816985487af6aae257b183455c3a 100644
+--- a/dist/chunk-NGBM7T3E.js
++++ b/dist/chunk-NGBM7T3E.js
+@@ -71,6 +71,38 @@ var BoundedTail = class {
+   }
+ };
+ 
+-export { BoundedTail, MAX_TAIL_CHARS, __commonJS, __export, __reExport, __require, __toESM };
++// runcastle patch — how a failed sandbox command reports itself.
++// See docs/adr/0011-sandcastle-patch-is-permanent.md.
++//
++// Upstream renders `Command failed (exit N): <command>\n<stderr>`, which loses a
++// setup failure twice over. Maven, Gradle and most JVM build tools write their
++// diagnostics to STDOUT, so a stderr-only message turns a failed dependency
++// install into a bare "exit 1" with nothing to read at all. And the burn's
++// onSandboxReady hook delivers its files as base64 payloads, so echoing the
++// command whole buries whatever diagnostic there is under kilobytes of noise.
++//
++// Lives here, next to MAX_TAIL_CHARS, because the combined tail is bounded by
++// the same budget `maxOutputTailChars` gives the streamed output it comes from.
++
++/**
++ * `command` with any run of 120+ non-whitespace characters replaced by an
++ * ellipsis — long enough that nothing hand-written trips it, short enough to
++ * catch a base64 payload.
++ */
++var elidePayloadTokens = (command) => command.replace(/\S{120,}/g, "…");
++
++/** The message a non-zero exit reports: what ran, how it exited, what it said. */
++var formatExecFailureMessage = (command, result) => {
++  const output = [result.stdout, result.stderr]
++    .map((stream) => (stream ?? "").trimEnd())
++    .filter((stream) => stream.length > 0)
++    .join("\n");
++  const tail = output.length > MAX_TAIL_CHARS ? output.slice(output.length - MAX_TAIL_CHARS) : output;
++  const headline = `Command failed (exit ${result.exitCode}): ${elidePayloadTokens(command)}`;
++  return tail ? `${headline}
++${tail}` : headline;
++};
++
++export { BoundedTail, MAX_TAIL_CHARS, __commonJS, __export, __reExport, __require, __toESM, formatExecFailureMessage };
+ //# sourceMappingURL=chunk-NGBM7T3E.js.map
+ //# sourceMappingURL=chunk-NGBM7T3E.js.map
+\ No newline at end of file
 diff --git a/dist/chunk-VOG34SRF.js b/dist/chunk-VOG34SRF.js
-index 93f24d139b795c284915a10c34d82f2fa769eab0..e8df2f56ddf9cd38cd2c31267c64c4ac5b947fa8 100644
+index 93f24d139b795c284915a10c34d82f2fa769eab0..2317d00d74747b4edaa89102230018788870548d 100644
 --- a/dist/chunk-VOG34SRF.js
 +++ b/dist/chunk-VOG34SRF.js
+@@ -1,5 +1,5 @@
+ import { createRequire } from 'node:module';
+-import { __export } from './chunk-NGBM7T3E.js';
++import { __export, formatExecFailureMessage } from './chunk-NGBM7T3E.js';
+ import * as clack from '@clack/prompts';
+ import { join as join$1, basename, dirname, resolve, posix, normalize, isAbsolute } from 'path';
+ import { styleText, promisify } from 'util';
+@@ -25824,8 +25824,8 @@ var execOk2 = (sandbox3, command, options) => Effect_exports.flatMap(
+     new ExecError({
+       command,
+       exitCode: result.exitCode,
+-      message: `Command failed (exit ${result.exitCode}): ${command}
+-${result.stderr}`
++      // runcastle patch — stdout as well as stderr, and no payload echo.
++      message: formatExecFailureMessage(command, result)
+     })
+   ) : Effect_exports.succeed(result)
+ );
 @@ -26821,6 +26821,21 @@ var resolveSandboxPath = (sandboxPath, sandboxHomedir) => {
    return isAbsolute(expanded) ? expanded : resolve(SANDBOX_REPO_DIR, expanded);
  };
@@ -134,6 +197,40 @@ index 93f24d139b795c284915a10c34d82f2fa769eab0..e8df2f56ddf9cd38cd2c31267c64c4ac
    return options ? `${base}:${options}` : base;
  };
  var processFileMountParents = (mounts, sandboxHomedir, statFn = statSync) => {
+diff --git a/dist/index.d.ts b/dist/index.d.ts
+index e451924caf673166b63daf652a056412e6025552..779ffc873a1b454783a1d604b54dfc66987ead31 100644
+--- a/dist/index.d.ts
++++ b/dist/index.d.ts
+@@ -1048,4 +1048,15 @@ interface CwdError extends Error {
+ /** The provided `cwd` path does not exist or is not a directory. */
+ declare const CwdError: CwdErrorConstructor;
+ 
++/**
++ * runcastle patch — the message a failed sandbox command reports.
++ * See docs/adr/0011-sandcastle-patch-is-permanent.md.
++ *
++ * Names the command with its base64 payloads elided, and appends stdout as well
++ * as stderr (bounded together) — a JVM toolchain writes its diagnostics to
++ * stdout, so stderr alone renders a failed setup as a bare "exit 1".
++ */
++declare const formatExecFailureMessage: (command: string, result: ExecResult) => string;
++export { formatExecFailureMessage };
++
+ export { type AgentCommandOptions, type AgentProvider, type AgentStreamEvent, AnySandboxProvider, BindMountSandboxHandle, BranchStrategy, type ClaudeCodeOptions, type CloseResult, type CodexOptions, type CopilotOptions, type CreateSandboxOptions, type CreateWorktreeOptions, type CursorOptions, CwdError, ExecResult, type HostSessionLookup, type InteractiveOptions, type InteractiveResult, type IterationResult, type IterationUsage, type LoggingOption, MergeToHeadBranchStrategy, NamedBranchStrategy, type OpenCodeOptions, Output, type OutputDefinition, type OutputObjectDefinition, type OutputStringDefinition, type PiOptions, type PrintCommand, type PromptArgs, type ResumeSandboxRunResultOptions, type RunOptions, type RunResult, type Sandbox, type SandboxExecOptions, type SandboxHooks, type SandboxInteractiveOptions, type SandboxInteractiveResult, SandboxProvider, type SandboxRunOptions, type SandboxRunResult, StructuredOutputError, type Timeouts, type Worktree, type WorktreeBranchStrategy, type WorktreeCreateSandboxOptions, type WorktreeInteractiveOptions, type WorktreeRunOptions, type WorktreeRunResult, claudeCode, claudeHostSessionPath, claudeSandboxSessionPath, codex, copilot, createSandbox, createWorktree, cursor, encodeProjectPath, findClaudeSessionOnHost, findCodexSessionOnHost, interactive, opencode, pi, run, transferClaudeSession, transferCodexSession };
+diff --git a/dist/index.js b/dist/index.js
+index 2a1d6d7e902e34620d64929418b34c715ab65d7d..b2927e71168cd6a25a61639769148df283aaa55a 100644
+--- a/dist/index.js
++++ b/dist/index.js
+@@ -4,6 +4,9 @@ import { Context_exports, CwdError, Effect_exports, resolveCwd, getCurrentBranch
+ export { createBindMountSandboxProvider, createIsolatedSandboxProvider } from './chunk-BIWNFKGV.js';
+ import { noSandbox } from './chunk-62WN33RK.js';
+ import './chunk-NGBM7T3E.js';
++// runcastle patch — the failure-message renderer, exported so its contract can
++// be pinned by a test. See docs/adr/0011-sandcastle-patch-is-permanent.md.
++export { formatExecFailureMessage } from './chunk-NGBM7T3E.js';
+ import { mkdirSync, appendFileSync } from 'fs';
+ import path, { join, posix, dirname, relative } from 'path';
+ import { styleText } from 'util';
 diff --git a/dist/sandboxes/docker.d.ts b/dist/sandboxes/docker.d.ts
 index c7cc9e78dd3f14021ae64061d70e715bb98f768f..683eae5626082d3d0ba1f2ea9391a6be6bd05476 100644
 --- a/dist/sandboxes/docker.d.ts
