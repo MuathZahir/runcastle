@@ -8,6 +8,7 @@ import {
   type ExecFn,
   type ExecOutcome,
   type ProbeResult,
+  type ProjectImageEnv,
 } from '../src/doctor/doctor'
 import {
   ASSET_ENV,
@@ -390,6 +391,169 @@ describe('runDoctor — codex login is decided by the credentials file', () => {
  * `<pkgRoot>/sandcastle-template` — so `bun add -g runcastle` got an ENOENT out
  * of the tRPC doctor query and a home page stuck on "loading projects…".
  */
+/**
+ * A repo whose toolchain is not JavaScript ships `.runcastle/sandbox/Dockerfile`
+ * and runcastle builds it `FROM` the stock image (decisions 5, 6, 8). The image
+ * row is then about a chain, and the two questions it has to keep apart are
+ * "which layer drifted" and "has this been built at all" — a runcastle upgrade
+ * changes the stock Dockerfile, and every image built on it is out of date the
+ * moment it does, however current its own label still is.
+ */
+describe('runDoctor — a project that ships its own sandbox Dockerfile', () => {
+  const REPO = join('/repos', 'java-service')
+  const PROJECT_DOCKERFILE = join(REPO, '.runcastle', 'sandbox', 'Dockerfile')
+  const BURNER_DOCKERFILE = join('/assets', 'sandcastle', 'Dockerfile')
+  const PROJECT_HASH = 'c'.repeat(64)
+  const TAG = 'sandcastle:runcastle-p1'
+
+  const base = {
+    env: { CLAUDE_CODE_OAUTH_TOKEN: 'sk-oauth-xxx' },
+    platform: 'linux' as const,
+    imageName: 'sandcastle:runcastle',
+    burnerDockerfile: BURNER_DOCKERFILE,
+  }
+
+  /** Hashes by path; a path this does not know is a file that is not there. */
+  const hashes =
+    (table: Record<string, string>) =>
+    (path: string): string | null =>
+      table[path] ?? null
+
+  /** The stock Dockerfile alone — the state before a repo ships one of its own. */
+  const stockOnly = { [BURNER_DOCKERFILE]: STOCK_HASH }
+  const shipped = { ...stockOnly, [PROJECT_DOCKERFILE]: PROJECT_HASH }
+
+  function project(over: Partial<ProjectImageEnv> = {}): ProjectImageEnv {
+    return {
+      id: 'p1',
+      repoPath: REPO,
+      stored: TAG,
+      overwritable: true,
+      clearStored: () => undefined,
+      ...over,
+    }
+  }
+
+  /** A host with both images built, each labelled with the hash given here. */
+  const built = (stock: string, projectImage?: string) =>
+    cannedExec({
+      ...ALL_HEALTHY,
+      [inspectKey('docker', 'sandcastle:runcastle')]: { stdout: stock },
+      ...(projectImage === undefined
+        ? {}
+        : { [inspectKey('docker', TAG)]: { stdout: projectImage } }),
+    })
+
+  const imageRow = async (env: Parameters<typeof runDoctor>[0]) =>
+    byId((await runDoctor(env)).results, 'sandcastle-image')
+
+  it('is ok when both layers still match the Dockerfiles they were built from', async () => {
+    const row = await imageRow({
+      ...base,
+      exec: built(STOCK_HASH, PROJECT_HASH),
+      dockerfileHash: hashes({ ...shipped }),
+      projectImage: project(),
+    })
+    expect(row.status).toBe('ok')
+    expect(row.detail).toBe(`${TAG} built from .runcastle/sandbox/Dockerfile`)
+  })
+
+  it('names the project Dockerfile as the layer that drifted', async () => {
+    const row = await imageRow({
+      ...base,
+      exec: built(STOCK_HASH, 'd'.repeat(64)),
+      dockerfileHash: hashes({ ...shipped }),
+      projectImage: project(),
+    })
+    expect(row.status).toBe('stale')
+    expect(row.detail).toBe(`${TAG} no longer matches .runcastle/sandbox/Dockerfile — rebuild`)
+    expect(row.fix).toBe('Open Settings → Burns (Rebuild image).')
+  })
+
+  // The silent hole a per-image label alone leaves: upgrade runcastle, and every
+  // derived image stays "fresh" by its own hash while its base has moved.
+  it('names the stock base as the layer that drifted', async () => {
+    const row = await imageRow({
+      ...base,
+      exec: built('d'.repeat(64), PROJECT_HASH),
+      dockerfileHash: hashes({ ...shipped }),
+      projectImage: project(),
+    })
+    expect(row.status).toBe('stale')
+    expect(row.detail).toBe(
+      `${TAG} is built on sandcastle:runcastle, which no longer matches the burner Dockerfile — rebuild`,
+    )
+  })
+
+  it('reports not-built-yet when the Dockerfile is there and the image is not', async () => {
+    const row = await imageRow({
+      ...base,
+      exec: built(STOCK_HASH),
+      dockerfileHash: hashes({ ...shipped }),
+      projectImage: project({ stored: null }),
+    })
+    expect(row.status).toBe('not-built-yet')
+    expect(row.detail).toBe(`.runcastle/sandbox/Dockerfile is not built — ${TAG} does not exist`)
+    expect(row.fix).toContain('Build image')
+  })
+
+  // An image nothing resolves to is not this project's image, however current
+  // it is: a burn would still run in the stock one. The same Build fixes it.
+  it('reports not-built-yet when the image exists but the project never adopted it', async () => {
+    const row = await imageRow({
+      ...base,
+      exec: built(STOCK_HASH, PROJECT_HASH),
+      dockerfileHash: hashes({ ...shipped }),
+      projectImage: project({ stored: null }),
+    })
+    expect(row.status).toBe('not-built-yet')
+    expect(row.detail).toBe(`${TAG} is built but is not this project's image yet`)
+  })
+
+  it('clears a machine-written image whose Dockerfile has been deleted, and falls back', async () => {
+    let cleared = 0
+    const row = await imageRow({
+      ...base,
+      exec: built(STOCK_HASH, PROJECT_HASH),
+      dockerfileHash: hashes({ ...stockOnly }), // the project Dockerfile is gone
+      projectImage: project({ clearStored: () => (cleared += 1) }),
+    })
+    expect(cleared).toBe(1)
+    // Resolution falls back to the layers below the column — here, the stock image.
+    expect(row.status).toBe('ok')
+    expect(row.detail).toBe('sandcastle:runcastle present')
+  })
+
+  it('never clears — or offers to rebuild — a tag the human typed', async () => {
+    let cleared = 0
+    const row = await imageRow({
+      ...base,
+      exec: built(STOCK_HASH),
+      dockerfileHash: hashes({ ...stockOnly }),
+      projectImage: project({
+        stored: 'my-team/sandbox:latest',
+        overwritable: false,
+        clearStored: () => (cleared += 1),
+      }),
+    })
+    expect(cleared).toBe(0)
+    expect(row.status).toBe('custom')
+    expect(row.detail).toBe('my-team/sandbox:latest is a custom image, managed outside runcastle')
+  })
+
+  it('puts the project column above the env and config layers, as the resolver does', async () => {
+    const row = await imageRow({
+      ...base,
+      imageName: 'from-the-config:latest',
+      exec: built(STOCK_HASH, PROJECT_HASH),
+      dockerfileHash: hashes({ ...shipped }),
+      projectImage: project(),
+    })
+    expect(row.status).toBe('ok')
+    expect(row.detail).toContain(TAG)
+  })
+})
+
 describe('runDoctor — the burner Dockerfile it hashes', () => {
   const base = {
     env: { CLAUDE_CODE_OAUTH_TOKEN: 'sk-oauth-xxx' },
