@@ -1,9 +1,7 @@
 import { spawn } from 'node:child_process'
-import { existsSync } from 'node:fs'
-import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
-import { resolveTool } from '../src/util/resolve-executable'
+import { resolveBun } from './helpers/bun'
 
 /**
  * The stop path under the runtime that actually broke (preparation-bug).
@@ -27,23 +25,6 @@ import { resolveTool } from '../src/util/resolve-executable'
  */
 
 const FIXTURE = fileURLToPath(new URL('./fixtures/dev-pane-stop-bun.ts', import.meta.url))
-
-/**
- * A `bun` to run the fixture with: `BUN_INSTALL` first (how bun's own installer
- * records where it put itself, and the one hint that survives a PATH the test
- * runner did not inherit), then a PATH scan.
- */
-function resolveBun(): string | null {
-  const isWin = process.platform === 'win32'
-  const bunInstall = process.env.BUN_INSTALL
-  if (bunInstall) {
-    const candidate = join(bunInstall, 'bin', isWin ? 'bun.exe' : 'bun')
-    if (existsSync(candidate)) return candidate
-  }
-  // resolveTool hands back the bare name when it found nothing real.
-  const resolved = resolveTool('bun', { exts: isWin ? ['.exe', ''] : [''] })
-  return resolved === 'bun' ? null : resolved
-}
 
 const BUN = resolveBun()
 const RUNNABLE = process.platform === 'win32' && BUN !== null
