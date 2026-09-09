@@ -185,8 +185,9 @@ function projectImageEnv(ctx: AppCtx, project: Project): ProjectImageEnv {
  * ask the built stock image whether it still matches its Dockerfile, and plan
  * the build from the project's own state — stock alone, the two-step chain when
  * the repo carries `.runcastle/sandbox/Dockerfile`, or nothing at all when the
- * resolved image is a tag runcastle does not manage (decision 5 — the button
- * must never build the stock template under someone's custom tag).
+ * image is a tag runcastle does not manage (decision 5 — the button must never
+ * build the stock template under someone's custom tag, and must not build a
+ * project image a hand-typed setting would keep every burn away from).
  *
  * A chain that exits 0 adopts its project image as the project's `sandboxImage`,
  * on the PTY's own exit: the build IS the event that makes the tag real, and
@@ -204,7 +205,14 @@ async function buildImageTerminal(
   const stockHash = hashDockerfile(join(stockContext, 'Dockerfile'))
   const plan = planImageBuild({
     config: ctx.config,
-    project,
+    project: project
+      ? {
+          id: project.id,
+          repoPath: project.repoPath,
+          sandboxImage: project.sandboxImage,
+          sandboxImageOverwritable: isOverwritable(ctx, project.id, 'sandboxImage'),
+        }
+      : null,
     stockContext,
     stockFresh:
       stockHash !== null &&
