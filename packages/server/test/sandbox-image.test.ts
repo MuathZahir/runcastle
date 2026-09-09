@@ -17,6 +17,7 @@ import {
   inspectBuiltImage,
   planImageBuild,
   projectImageTag,
+  releaseProjectImage,
   stockBuildArgs,
   type ImageBuildPlan,
 } from '../src/services/sandbox-image'
@@ -290,6 +291,25 @@ describe('adoptProjectImage', () => {
       source: 'human',
     })
     expect(adoptProjectImage(ctx, 'proj_1', 'sandcastle:runcastle-proj_1')).toBe(false)
+    expect(await stored()).toEqual({ image: 'acme/custom:v1', source: 'human' })
+  })
+
+  // Decision 8 — runcastle wrote the value when it built the image, so it gives
+  // it back when the Dockerfile that justified it is deleted. Clearing drops the
+  // provenance row with it, which is what hands the field to the next build.
+  it('releases a value it wrote itself, so resolution falls back', async () => {
+    adoptProjectImage(ctx, 'proj_1', 'sandcastle:runcastle-proj_1')
+    expect(releaseProjectImage(ctx, 'proj_1')).toBe(true)
+    expect(await stored()).toEqual({ image: undefined, source: undefined })
+  })
+
+  it('never releases a tag the human typed', async () => {
+    recordFinding(ctx, 'proj_1', {
+      key: 'sandboxImage',
+      value: 'acme/custom:v1',
+      source: 'human',
+    })
+    expect(releaseProjectImage(ctx, 'proj_1')).toBe(false)
     expect(await stored()).toEqual({ image: 'acme/custom:v1', source: 'human' })
   })
 })
