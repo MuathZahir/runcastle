@@ -243,7 +243,7 @@ function deniedStart(
 }
 
 /** The first few of a file list, for a message that must not run away. */
-function truncatedFileList(files: readonly string[]): string {
+export function truncatedFileList(files: readonly string[]): string {
   return `${files.slice(0, 5).join(', ')}${files.length > 5 ? ', …' : ''}`
 }
 
@@ -1810,6 +1810,23 @@ async function commitPipelineDocs(repoPath: string): Promise<void> {
   }
 }
 
+/**
+ * The uncommitted paths a drive `start` would refuse over, pipeline docs landed
+ * first so they are never counted as the human's dirt.
+ *
+ * The `start` guard below is the primary caller. It is exported for the review
+ * retry, which has to ask the same question BEFORE it burns an agent that would
+ * only be denied again on arrival — asking it here keeps "dirty enough to
+ * refuse a drive" a single definition rather than two git calls that drift.
+ *
+ * Unlike `dirtyPaths` this does not swallow a git failure: a tree we cannot
+ * read is not a tree we may declare clean.
+ */
+export async function driveBlockingPaths(repoPath: string): Promise<string[]> {
+  await commitPipelineDocs(repoPath)
+  return porcelainPaths((await git(repoPath).raw(['status', '--porcelain'])).trim())
+}
+
 // --- test drive -------------------------------------------------------------
 
 /** Module-level in-memory drive state (SPEC §7). At most one active, of either
@@ -2105,10 +2122,8 @@ export async function testDrive(
 
   // action === 'start' — deny checks in SPEC order: dirty | active | active-run.
   // Runcastle's own docs are landed first, never counted as the human's dirt.
-  await commitPipelineDocs(project.repoPath)
-  const porcelain = (await g.raw(['status', '--porcelain'])).trim()
-  if (porcelain !== '') {
-    const dirtyFiles = porcelainPaths(porcelain)
+  const dirtyFiles = await driveBlockingPaths(project.repoPath)
+  if (dirtyFiles.length > 0) {
     // The human is the only one who can clear this, and until now they heard
     // about it from the review's digest long afterwards. A review-purpose
     // denial says so on the timeline at the moment it happens, while they can
