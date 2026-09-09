@@ -8,6 +8,7 @@ import type {
   ModelConfig,
   ModelEntry,
   RuncastleConfig,
+  SandboxImageOwner,
   Ticket,
   TicketStatus,
   WorkflowCtx,
@@ -2795,7 +2796,7 @@ export async function burnRun(
   // creates a ticket container. The host CLI is the right one for noSandbox,
   // so probing an image there would be both wasteful and misleading.
   if (deps.config.sandbox !== 'noSandbox' && deps.exec) {
-    const image = resolveSandboxImage(deps.config)
+    const image = resolveSandboxImage(deps.config, ctx.project)
     const binary = RUNTIME_BINARY[deps.runtime]
     const probe = await deps.exec(deps.config.sandbox, [
       'run',
@@ -3219,10 +3220,12 @@ export interface KillHandleOptions {
 /**
  * Pick the sandcastle sandbox provider for the configured `sandbox`. The two
  * container providers (docker/podman) take an explicit `imageName` — always
- * `resolveSandboxImage(config)`, never sandcastle's `sandcastle:<repo-dir-name>`
- * fallback, so the tag matches what build-image/doctor built (SPEC §8; the
- * "Image not found locally" mismatch). podman keeps sandcastle's rootless
- * defaults (SELinux `:z` relabel + `keep-id` userns) — runcastle passes no
+ * `resolveSandboxImage(config, project)`, never sandcastle's
+ * `sandcastle:<repo-dir-name>` fallback, so the tag matches what
+ * build-image/doctor built (SPEC §8; the "Image not found locally" mismatch)
+ * and a project that carries its own image burns in it. podman keeps
+ * sandcastle's rootless defaults (SELinux `:z` relabel + `keep-id` userns) —
+ * runcastle passes no
  * volume-label/userns flags of its own. `mounts` (the burn cache volume, or
  * ADR-0004's package-manager cache dirs) and `env` (where each manager's store
  * lives on that volume — decision 10) apply to the container providers only:
@@ -3245,11 +3248,13 @@ export interface KillHandleOptions {
  */
 export function selectSandbox(
   config: RuncastleConfig,
+  /** The project whose image beats the global one; omitted, the global wins. */
+  project: SandboxImageOwner,
   mounts: readonly CacheMount[] = [],
   env: Record<string, string> = {},
   kill: KillHandleOptions = {},
 ) {
-  const imageOpts = buildSandboxOptions(config, mounts, env, kill.containerName)
+  const imageOpts = buildSandboxOptions(config, project, mounts, env, kill.containerName)
   switch (config.sandbox) {
     case 'docker':
       return docker(imageOpts)
@@ -3276,6 +3281,8 @@ export function selectSandbox(
  */
 export function buildSandboxOptions(
   config: Pick<RuncastleConfig, 'sandboxImage' | 'burnCpus'>,
+  /** The project whose image beats the global one; omitted, the global wins. */
+  project: SandboxImageOwner,
   mounts: readonly CacheMount[] = [],
   env: Record<string, string> = {},
   /** What to `--name` the container, so a stop has a handle to kill it by. */
@@ -3288,7 +3295,7 @@ export function buildSandboxOptions(
   containerName?: string
 } {
   return {
-    imageName: resolveSandboxImage(config),
+    imageName: resolveSandboxImage(config, project),
     ...(mounts.length > 0 ? { mounts } : {}),
     ...(config.burnCpus !== undefined ? { cpus: config.burnCpus } : {}),
     ...(Object.keys(env).length > 0 ? { env } : {}),
@@ -3560,7 +3567,10 @@ async function burnTicket(
   // persistent checkout, isolated mode clones a fresh one, mounted mode only
   // installs — and the resolver run below takes the same one, so it inherits
   // this ticket's slot rather than claiming a second.
-  const slotStamp = buildSlotStamp(resolveSandboxImage(config), toolchain.packageManagerField)
+  const slotStamp = buildSlotStamp(
+    resolveSandboxImage(config, project),
+    toolchain.packageManagerField,
+  )
   const setupHookFor = (branch: string): string | undefined =>
     withPrelude(
       slot !== undefined
@@ -3781,7 +3791,7 @@ async function burnTicket(
       makeKillable(containerName)
       result = await run({
         agent: buildBurnAgent(config, token, model, agentOptions),
-        sandbox: selectSandbox(config, mounts, sandboxEnv, killHandles(containerName)),
+        sandbox: selectSandbox(config, project, mounts, sandboxEnv, killHandles(containerName)),
         cwd: project.repoPath,
         prompt,
         branchStrategy: { type: 'branch', branch: resolveBranch, baseBranch: input.branch },
@@ -3982,7 +3992,7 @@ async function burnTicket(
 
       const runOptions: RunOptions = {
         agent: buildBurnAgent(config, token, model, agentOptions),
-        sandbox: selectSandbox(config, mounts, sandboxEnv, killHandles(containerName)),
+        sandbox: selectSandbox(config, project, mounts, sandboxEnv, killHandles(containerName)),
         cwd: project.repoPath,
         prompt: retryNotes ? `${basePrompt}\n\n${retryNotes}` : basePrompt,
         // Temp branch off the chain tip (the feature branch, or the previous
@@ -4053,7 +4063,7 @@ async function burnTicket(
         const missingBinary = missingAgentBinaryMessage(
           err,
           model.runtime,
-          resolveSandboxImage(config),
+          resolveSandboxImage(config, project),
         )
         // Whatever the dead attempt committed survives on its temp branch —
         // chain the next attempt (or a later run) onto it.
@@ -4245,7 +4255,7 @@ function resolveBurnDeps(ctx: WorkflowCtx): BurnDeps {
   const exec = createSystemExec({ cwd: ctx.project.repoPath })
   const imageProbeCache = new Map<string, Promise<ExecOutcome>>()
   const cachedExec: ExecFn = (command, args) => {
-    const key = `${resolveSandboxImage(config)}\0${model.runtime}`
+    const key = `${resolveSandboxImage(config, ctx.project)}\0${model.runtime}`
     let result = imageProbeCache.get(key)
     if (!result) {
       result = exec(command, args)
@@ -4268,7 +4278,7 @@ function resolveBurnDeps(ctx: WorkflowCtx): BurnDeps {
     const engine: BurnCacheEngine = config.sandbox === 'podman' ? 'podman' : 'docker'
     return (cacheVolumeReady ??= ensureBurnCacheVolume({
       engine,
-      imageName: resolveSandboxImage(config),
+      imageName: resolveSandboxImage(config, ctx.project),
       projectId: ctx.project.id,
       exec,
     }))

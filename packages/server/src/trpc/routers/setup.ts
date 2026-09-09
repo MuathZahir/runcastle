@@ -50,7 +50,9 @@ export const setupRouter = router({
       // saw only `process.env` would keep reporting it missing forever.
       env: envWithAfkCredentials(),
       runtimes: configuredRuntimes(ctx.config, projectModels),
-      ...(ctx.config.sandboxImage ? { imageName: ctx.config.sandboxImage } : {}),
+      // Through the one resolver every image consumer shares, rather than the
+      // raw config field — the probe must inspect the tag a burn would use.
+      imageName: resolveSandboxImage(ctx.config),
     })
   }),
 

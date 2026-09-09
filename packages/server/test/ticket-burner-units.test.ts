@@ -868,9 +868,9 @@ describe('selectSandbox — provider for the configured sandbox', () => {
   })
 
   it('maps each choice to its sandcastle provider', () => {
-    expect(selectSandbox(config('docker')).name).toBe('docker')
-    expect(selectSandbox(config('podman')).name).toBe('podman')
-    expect(selectSandbox(config('noSandbox')).name).toBe('no-sandbox')
+    expect(selectSandbox(config('docker'), null).name).toBe('docker')
+    expect(selectSandbox(config('podman'), null).name).toBe('podman')
+    expect(selectSandbox(config('noSandbox'), null).name).toBe('no-sandbox')
   })
 
   // A host-mode burn is a real configuration, and it is the one the abort alone
@@ -879,7 +879,7 @@ describe('selectSandbox — provider for the configured sandbox', () => {
   // the assertion is made on a child the OS actually handed out.
   it('carries the spawn callback into a host-mode burn, so its PIDs are killable', async () => {
     const pids: number[] = []
-    const provider = selectSandbox(config('noSandbox'), [], {}, {
+    const provider = selectSandbox(config('noSandbox'), null, [], {}, {
       containerName: 'runcastle-run_abc123-t7',
       onChildSpawn: (pid) => pids.push(pid),
     })
@@ -896,7 +896,7 @@ describe('selectSandbox — provider for the configured sandbox', () => {
     // through to `noSandbox()` — the agent ran on the operator's machine, and
     // nothing in the run said so.
     const unsupported = { ...config('docker'), sandbox: 'kata' } as unknown as RuncastleConfig
-    expect(() => selectSandbox(unsupported)).toThrow(/refusing to run the agent unsandboxed/)
+    expect(() => selectSandbox(unsupported, null)).toThrow(/refusing to run the agent unsandboxed/)
   })
 
   /**
@@ -1055,24 +1055,24 @@ describe('selectSandbox — provider for the configured sandbox', () => {
 
   describe('buildSandboxOptions — container resource wiring', () => {
     it('omits cpus entirely when burnCpus is unset (unconstrained default)', () => {
-      const opts = buildSandboxOptions(config('docker'))
+      const opts = buildSandboxOptions(config('docker'), null)
       expect('cpus' in opts).toBe(false)
       expect(opts.imageName).toBe(DEFAULT_SANDBOX_IMAGE)
     })
 
     it('passes burnCpus through as the provider --cpus ceiling', () => {
-      expect(buildSandboxOptions({ ...config('docker'), burnCpus: 2.5 }).cpus).toBe(2.5)
+      expect(buildSandboxOptions({ ...config('docker'), burnCpus: 2.5 }, null).cpus).toBe(2.5)
     })
 
     it('keeps cache mounts alongside the cpu ceiling', () => {
       const mount = { hostPath: '/host/cache', sandboxPath: '~/.npm' }
-      const opts = buildSandboxOptions({ ...config('docker'), burnCpus: 1 }, [mount])
+      const opts = buildSandboxOptions({ ...config('docker'), burnCpus: 1 }, null, [mount])
       expect(opts.mounts).toEqual([mount])
       expect(opts.cpus).toBe(1)
     })
 
     it('omits mounts when there are none, so the provider default applies', () => {
-      expect('mounts' in buildSandboxOptions(config('docker'))).toBe(false)
+      expect('mounts' in buildSandboxOptions(config('docker'), null)).toBe(false)
     })
 
     /**
@@ -1090,10 +1090,10 @@ describe('selectSandbox — provider for the configured sandbox', () => {
       })
 
       it('passes the name to the provider, and omits the key entirely without one', () => {
-        expect(buildSandboxOptions(config('docker'), [], {}, 'runcastle-run_1-t2').containerName).toBe(
-          'runcastle-run_1-t2',
-        )
-        expect('containerName' in buildSandboxOptions(config('docker'))).toBe(false)
+        expect(
+          buildSandboxOptions(config('docker'), null, [], {}, 'runcastle-run_1-t2').containerName,
+        ).toBe('runcastle-run_1-t2')
+        expect('containerName' in buildSandboxOptions(config('docker'), null)).toBe(false)
       })
     })
   })
@@ -1119,7 +1119,7 @@ describe('selectSandbox — provider for the configured sandbox', () => {
       })
       // podman borrows the same way — the mount follows the runtime, not the provider.
       expect(codexAuthMountFor('codex', 'podman', HOME_ENV, loggedIn)).toEqual(mount)
-      expect(buildSandboxOptions(config('docker'), [mount!]).mounts).toEqual([mount])
+      expect(buildSandboxOptions(config('docker'), null, [mount!]).mounts).toEqual([mount])
     })
 
     it('lends nothing to a noSandbox burn, which already runs in the real home', () => {

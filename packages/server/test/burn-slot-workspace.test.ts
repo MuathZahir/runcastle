@@ -54,7 +54,7 @@ describe('what the burn container is handed, by cache mode', () => {
   /** The burner's own composition: assemble the cache mounts, then the options. */
   const optionsFor = (slot: number | undefined, sandbox: RuncastleConfig['sandbox'] = 'docker') => {
     const cache = buildBurnCacheMounts(slot, PROJECT_ID, sandbox, 'pnpm')
-    return buildSandboxOptions(config(sandbox), cache.mounts, cache.env)
+    return buildSandboxOptions(config(sandbox), null, cache.mounts, cache.env)
   }
 
   it('mounts the project volume and points every store at it when the cache is on', () => {
@@ -84,7 +84,7 @@ describe('what the burn container is handed, by cache mode', () => {
     expect(npm.mounts).toEqual([{ hostPath: burnCacheDir('npm'), sandboxPath: '~/.npm' }])
     expect(npm.env).toEqual({})
 
-    const opts = buildSandboxOptions(config('docker', 'off'), npm.mounts, npm.env)
+    const opts = buildSandboxOptions(config('docker', 'off'), null, npm.mounts, npm.env)
     expect(opts.mounts).toEqual(npm.mounts)
     expect('env' in opts).toBe(false)
     expect(opts.imageName).toBe(DEFAULT_SANDBOX_IMAGE)
@@ -95,7 +95,7 @@ describe('what the burn container is handed, by cache mode', () => {
   })
 
   it('omits an empty env map so the provider default applies', () => {
-    expect('env' in buildSandboxOptions(config('docker'), [], {})).toBe(false)
+    expect('env' in buildSandboxOptions(config('docker'), null, [], {})).toBe(false)
   })
 })
 

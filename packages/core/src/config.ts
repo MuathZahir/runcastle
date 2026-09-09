@@ -362,11 +362,36 @@ export type RuncastleConfig = z.infer<typeof RuncastleConfig>
 export const DEFAULT_SANDBOX_IMAGE = 'sandcastle:runcastle'
 
 /**
- * The sandcastle image tag to build/probe/run: the project's explicit
- * `sandboxImage` when set, else {@link DEFAULT_SANDBOX_IMAGE}. Pure.
+ * Whatever carries a project's own sandbox image — a `Project`, a raw row, or
+ * nothing at all for the machine-wide callers (the `runcastle doctor` CLI, the
+ * cache probe) that run outside any project.
  */
-export function resolveSandboxImage(config: Pick<RuncastleConfig, 'sandboxImage'>): string {
-  return config.sandboxImage ?? DEFAULT_SANDBOX_IMAGE
+export type SandboxImageOwner = { sandboxImage?: string | null } | null | undefined
+
+/**
+ * The sandcastle image tag to build/probe/run, resolved in four layers:
+ * project column → `RUNCASTLE_SANDBOX_IMAGE` → global config file →
+ * {@link DEFAULT_SANDBOX_IMAGE}. Pure.
+ *
+ * The env layer is not a parameter here because it is already inside
+ * `config.sandboxImage`: `loadConfig` folds `RUNCASTLE_SANDBOX_IMAGE` over the
+ * config file, so the two middle layers arrive as one value with the env
+ * variable already winning between them. What this function adds on top is the
+ * project column, and it wins over both — the image a repo needs is a fact
+ * about that repo, exactly as its setup command is (see
+ * {@link resolvePreparedSettings}, which orders the same way).
+ *
+ * Every consumer — the build flow, the doctor probe, the per-run image
+ * precheck, the burn itself and the cache slot stamp — resolves here, so the
+ * name they agree on can never drift apart.
+ *
+ * Empty strings are treated as unset, the way a cleared settings field arrives.
+ */
+export function resolveSandboxImage(
+  config: Pick<RuncastleConfig, 'sandboxImage'>,
+  project?: SandboxImageOwner,
+): string {
+  return project?.sandboxImage?.trim() || config.sandboxImage?.trim() || DEFAULT_SANDBOX_IMAGE
 }
 
 /** The sandboxes whose engine can hold a named volume for the burn cache. */

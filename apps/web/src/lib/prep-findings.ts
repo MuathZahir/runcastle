@@ -14,9 +14,14 @@ import type { SettingsView } from './api'
  */
 
 /**
- * Human labels for prepared fields, used by the preparation card (which lists
- * findings by key, not by settings row). Kept in sync with the settings
+ * Human labels for provenanced fields, used by the preparation card (which
+ * lists findings by key, not by settings row). Kept in sync with the settings
  * `FIELD_META` labels — hand-maintained, since settings imports this module.
+ *
+ * `sandboxImage` is here for its findings alone: preparation never establishes
+ * it (it is not a prepared key), but a value the human typed or an image build
+ * wrote carries provenance the same way, and a finding with no label would
+ * render as its raw key.
  */
 export const PREPARED_LABEL: Record<string, string> = {
   setupCommand: 'Setup',
@@ -27,6 +32,7 @@ export const PREPARED_LABEL: Record<string, string> = {
   driveSetupCommand: 'Before a test drive',
   driveStopCommand: 'After a test drive',
   driveInstructions: 'How to drive this app',
+  sandboxImage: 'Sandbox image',
 }
 
 /**

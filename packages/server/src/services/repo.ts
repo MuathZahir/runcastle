@@ -54,6 +54,7 @@ export function rowToProject(row: ProjectSelect): Project {
     sessionBranch: row.sessionBranch ?? undefined,
     devCommand: row.devCommand ?? undefined,
     model: row.model ?? undefined,
+    sandboxImage: row.sandboxImage ?? undefined,
     setupCommand: row.setupCommand ?? undefined,
     verifyCommands: row.verifyCommands ?? undefined,
     knownFailures: row.knownFailures ?? undefined,

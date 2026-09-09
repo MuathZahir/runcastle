@@ -447,8 +447,8 @@ const FIELD_META: Record<string, FieldMeta> = {
 const FIELD_ORDER = Object.keys(FIELD_META)
 
 /**
- * How the two keys that appear on BOTH a global page and "This project" read in
- * project scope. Everything else keeps one placement and one wording.
+ * How the three keys that appear on BOTH a global page and "This project" read
+ * in project scope. Everything else keeps one placement and one wording.
  */
 const PROJECT_META: Record<string, Partial<FieldMeta>> = {
   model: {
@@ -459,14 +459,27 @@ const PROJECT_META: Record<string, Partial<FieldMeta>> = {
     group: 'model',
   },
   sandbox: { page: 'project', group: 'model' },
+  sandboxImage: {
+    tooltip:
+      'The Docker image THIS project’s sessions and burns are sandboxed in — where a repo needs a toolchain the stock image has none of. Blank inherits the machine-wide image.',
+    page: 'project',
+    group: 'model',
+  },
 }
 
 /**
- * The five keys a project can override that also have a global default. Only
+ * The six keys a project can override that also have a global default. Only
  * these carry a `Global` / `This project` chip; a project-only key has no twin
  * to inherit from, so a chip would be answering a question nobody asked.
  */
-const TWIN_KEYS = new Set(['model', 'sandbox', 'setupCommand', 'verifyCommands', 'knownFailures'])
+const TWIN_KEYS = new Set([
+  'model',
+  'sandbox',
+  'sandboxImage',
+  'setupCommand',
+  'verifyCommands',
+  'knownFailures',
+])
 
 /** Meta for a field, synthesising per-step model entries not in the static table. */
 function metaFor(key: string, scope: SettingField['scope'] = 'global'): FieldMeta {
