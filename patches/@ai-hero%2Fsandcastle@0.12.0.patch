@@ -212,7 +212,7 @@ index c2b77a43fca309822bd882256dc4c593af75bac0..180ebf37e3771fab096cadfa732db87e
  //# sourceMappingURL=chunk-NGBM7T3E.js.map
 \ No newline at end of file
 diff --git a/dist/chunk-VOG34SRF.js b/dist/chunk-VOG34SRF.js
-index 93f24d139b795c284915a10c34d82f2fa769eab0..4a05af302182a6f6da589ac13f1c671330c0071c 100644
+index 93f24d139b795c284915a10c34d82f2fa769eab0..b2277c273406bbdedbe95c67ddc4633db8968b05 100644
 --- a/dist/chunk-VOG34SRF.js
 +++ b/dist/chunk-VOG34SRF.js
 @@ -1,5 +1,5 @@
@@ -238,9 +238,9 @@ index 93f24d139b795c284915a10c34d82f2fa769eab0..4a05af302182a6f6da589ac13f1c6713
    );
  };
  var makeSandboxFromHandle = (handle) => ({
-+  // runcastle patch: the one funnel every provider's handle passes through, so
-+  // the configured output bound reaches execOk2's failure message here rather
-+  // than at five separate call sites. `undefined` leaves the default in place.
++  // runcastle patch: every provider's handle becomes a sandbox here, so this is
++  // the one place the configured output bound has to be carried across for
++  // execOk2's failure message to honour it. `undefined` leaves the default.
 +  maxOutputTailChars: handle.maxOutputTailChars,
    exec: (command, options) => Effect_exports.tryPromise({
      try: () => handle.exec(command, options),
