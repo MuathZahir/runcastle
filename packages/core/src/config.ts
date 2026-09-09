@@ -185,8 +185,10 @@ export const RuncastleConfig = z.preprocess(
      */
     sessionMcp: z.enum(['inherit', 'runcastleOnly']).default('inherit'),
     /**
-     * Docker image name for the sandcastle burner sandbox (B3 / SPEC §8). When
-     * unset, runcastle uses {@link DEFAULT_SANDBOX_IMAGE} everywhere — build,
+     * Machine-wide Docker image name for the sandcastle burner sandbox (B3 /
+     * SPEC §8) — the fallback under a project's own `sandboxImage`, which beats
+     * it (see {@link resolveSandboxImage} for the full order). When neither is
+     * set, runcastle uses {@link DEFAULT_SANDBOX_IMAGE} everywhere — build,
      * doctor probe, and burn — via {@link resolveSandboxImage}; it does NOT let
      * sandcastle fall back to its own `sandcastle:<repo-dir-name>` derivation,
      * which would look up a differently-named image than the one we built. The

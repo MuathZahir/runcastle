@@ -12,9 +12,11 @@ import { projectFindings, projects } from '../db/schema'
 import { commitsSince, detectMainBranch } from './git'
 
 /**
- * Prepared-field provenance (project preparation).
+ * Provenance for the project fields something establishes on the human's behalf
+ * — the prepared facts a preparation run measures, plus `sandboxImage`, which
+ * an image build writes (see `PROVENANCE_KEYS`).
  *
- * The VALUE of every prepared field lives in its own `projects` column, so the
+ * The VALUE of every such field lives in its own `projects` column, so the
  * settings resolver, the burner and the launcher all read it through the paths
  * they already used. This service owns the *other* half: who established it,
  * what justified it, and how far the repo has moved since — the half that makes
@@ -24,8 +26,8 @@ import { commitsSince, detectMainBranch } from './git'
  *
  * 1. **A human value is never auto-overwritten.** `recordHuman` stamps `human`
  *    on any manual settings write, and {@link isOverwritable} is what a prep run
- *    consults before writing. An operator who typed the right answer once should
- *    not have to re-type it after every re-prepare.
+ *    — or an image build — consults before writing. An operator who typed the
+ *    right answer once should not have to re-type it after every re-prepare.
  * 2. **Staleness is measured, not assumed.** Findings are pinned to the main-
  *    branch sha they were measured at. A stale test baseline is actively worse
  *    than an absent one — an agent trusts it and files its own breakage under

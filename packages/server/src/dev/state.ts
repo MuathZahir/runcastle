@@ -2,7 +2,7 @@ import { execFileSync } from 'node:child_process'
 import { rmSync } from 'node:fs'
 import { PREPARED_KEYS } from '@runcastle/core'
 import { projectWorktreesDir, sessionDir, worktreeDir } from '@runcastle/core/paths'
-import { eq } from 'drizzle-orm'
+import { and, eq, inArray } from 'drizzle-orm'
 import type { AppCtx } from '../db/types'
 import {
   events,
@@ -167,7 +167,18 @@ export async function removeProject(
  * thing that cannot otherwise be tested twice on one repo.
  */
 export function resetPrep(ctx: AppCtx, project: ProjectRow): number {
-  ctx.db.delete(projectFindings).where(eq(projectFindings.projectId, project.id)).run()
+  // Prepared keys only: `sandboxImage` also carries provenance, but it is the
+  // image build's finding, not preparation's — dropping its row here would
+  // leave the column set with nothing recording who owned it.
+  ctx.db
+    .delete(projectFindings)
+    .where(
+      and(
+        eq(projectFindings.projectId, project.id),
+        inArray(projectFindings.key, [...PREPARED_KEYS]),
+      ),
+    )
+    .run()
   ctx.db
     .update(projects)
     .set(Object.fromEntries(PREPARED_KEYS.map((k) => [k, null])))
