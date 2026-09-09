@@ -75,6 +75,20 @@ describe('sandcastle exec failure messages (patched)', () => {
     expect(message).toContain('| base64 -d > "$HOME/.claude/hooks/burn-guard.sh"')
   })
 
+  // Elision is for the payload, not for length: a long URL, a JSON argument or
+  // a generated id is often the very thing that explains the failure.
+  it('keeps a long argument that is not a quoted payload', () => {
+    const url = 'x'.repeat(120)
+
+    const message = formatExecFailureMessage(`tool --url ${url}`, {
+      exitCode: 1,
+      stdout: '',
+      stderr: 'failed',
+    })
+
+    expect(message).toContain(url)
+  })
+
   it('bounds the combined tail so a whole build log cannot become the message', () => {
     const headline = 'Command failed (exit 1): gradle build'
     const message = formatExecFailureMessage('gradle build', {

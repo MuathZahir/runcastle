@@ -98,7 +98,7 @@ diff --git a/dist/chunk-NGBM7T3E.js b/dist/chunk-NGBM7T3E.js
 index c2b77a43fca309822bd882256dc4c593af75bac0..31ca930d815d816985487af6aae257b183455c3a 100644
 --- a/dist/chunk-NGBM7T3E.js
 +++ b/dist/chunk-NGBM7T3E.js
-@@ -71,5 +71,37 @@ var BoundedTail = class {
+@@ -71,5 +71,40 @@ var BoundedTail = class {
    }
  };
  
@@ -117,11 +117,14 @@ index c2b77a43fca309822bd882256dc4c593af75bac0..31ca930d815d816985487af6aae257b1
 +// the same budget `maxOutputTailChars` gives the streamed output it comes from.
 +
 +/**
-+ * `command` with any run of 120+ non-whitespace characters replaced by an
-+ * ellipsis — long enough that nothing hand-written trips it, short enough to
-+ * catch a base64 payload.
++ * `command` with the body of each long single-quoted base64 literal replaced by
++ * an ellipsis — the `printf %s '<blob>' | base64 -d > <file>` shape the burn's
++ * guard install command writes its files with. Keying on the quotes and the
++ * base64 alphabet rather than on length alone is what keeps a long URL, JSON
++ * argument or generated id — any of which may BE the diagnostic — in the
++ * message.
 + */
-+var elidePayloadTokens = (command) => command.replace(/\S{120,}/g, "…");
++var elidePayloadTokens = (command) => command.replace(/'[A-Za-z0-9+\/=]{120,}'/g, "'…'");
 +
 +/** The message a non-zero exit reports: what ran, how it exited, what it said. */
 +var formatExecFailureMessage = (command, result) => {
