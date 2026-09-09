@@ -161,10 +161,10 @@ index 7d097321871cfee95a8ba7e6d12a7fe002190cc5..7b030e76d83e3ab07bca772230af8c61
            const effectiveCommand = opts?.sudo ? `sudo ${command}` : command;
            const args = ["exec"];
 diff --git a/dist/chunk-NGBM7T3E.js b/dist/chunk-NGBM7T3E.js
-index c2b77a43fca309822bd882256dc4c593af75bac0..180ebf37e3771fab096cadfa732db87e8e179d92 100644
+index c2b77a43fca309822bd882256dc4c593af75bac0..ec0ae4882d344d4baadc9755654651e739c3560f 100644
 --- a/dist/chunk-NGBM7T3E.js
 +++ b/dist/chunk-NGBM7T3E.js
-@@ -71,6 +71,44 @@ var BoundedTail = class {
+@@ -71,6 +71,47 @@ var BoundedTail = class {
    }
  };
  
@@ -183,11 +183,14 @@ index c2b77a43fca309822bd882256dc4c593af75bac0..180ebf37e3771fab096cadfa732db87e
 +// the same budget `maxOutputTailChars` gives the streamed output it comes from.
 +
 +/**
-+ * `command` with any run of 120+ non-whitespace characters replaced by an
-+ * ellipsis — long enough that nothing hand-written trips it, short enough to
-+ * catch a base64 payload.
++ * `command` with the body of each long single-quoted base64 literal replaced by
++ * an ellipsis — the `printf %s '<blob>' | base64 -d > <file>` shape the burn's
++ * guard install command writes its files with. Keying on the quotes and the
++ * base64 alphabet rather than on length alone is what keeps a long URL, JSON
++ * argument or generated id — any of which may BE the diagnostic — in the
++ * message.
 + */
-+var elidePayloadTokens = (command) => command.replace(/\S{120,}/g, "…");
++var elidePayloadTokens = (command) => command.replace(/'[A-Za-z0-9+\/=]{120,}'/g, "'…'");
 +
 +/**
 + * The message a non-zero exit reports: what ran, how it exited, what it said.
