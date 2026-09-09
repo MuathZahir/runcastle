@@ -1,5 +1,6 @@
 import { type ChildProcess, spawn } from 'node:child_process'
 import { mkdtempSync, readFileSync } from 'node:fs'
+import { connect } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createInterface } from 'node:readline'
@@ -84,6 +85,8 @@ interface BootLine {
 
 interface TcpServer extends BootLine {
   dbFile: string
+  /** Resolve once the server has written something matching `re` to stderr. */
+  waitForLog(re: RegExp, timeoutMs: number): Promise<string>
   stop(): Promise<void>
 }
 
@@ -95,9 +98,11 @@ async function startTcpServer(bun: string): Promise<TcpServer> {
     windowsHide: true,
   })
   let stderr = ''
+  const watchers = new Set<() => void>()
   child.stderr?.setEncoding('utf8')
   child.stderr?.on('data', (c: string) => {
     stderr += c
+    for (const notify of watchers) notify()
   })
 
   const boot = await new Promise<BootLine>((resolve, reject) => {
@@ -116,6 +121,21 @@ async function startTcpServer(bun: string): Promise<TcpServer> {
   return {
     ...boot,
     dbFile,
+    waitForLog: (re, timeoutMs) =>
+      new Promise<string>((resolve, reject) => {
+        const check = (): void => {
+          if (!re.test(stderr)) return
+          watchers.delete(check)
+          clearTimeout(timer)
+          resolve(stderr)
+        }
+        const timer = setTimeout(() => {
+          watchers.delete(check)
+          reject(new Error(`server never logged ${re}. stderr was:\n${stderr}`))
+        }, timeoutMs)
+        watchers.add(check)
+        check()
+      }),
     stop: () =>
       new Promise<void>((resolve) => {
         if (child.exitCode !== null || child.signalCode !== null) return resolve()
@@ -166,6 +186,43 @@ function enrichedBatch(): Record<string, unknown>[] {
     seams: [`seam/${i + 1}.ts`],
     blockedBy: i === 0 ? [] : [i],
   }))
+}
+
+/**
+ * Send a POST whose `Content-Length` promises far more than it delivers, then
+ * hang up — the wire shape of a body that stalls partway through. Needs a raw
+ * socket: `fetch` will not lie about its own content length.
+ */
+function postTruncatedBody(server: TcpServer): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const sock = connect(server.port, '127.0.0.1')
+    const timer = setTimeout(() => {
+      sock.destroy()
+      reject(new Error('the server never let go of a truncated request'))
+    }, CLIENT_TIMEOUT_MS)
+    const done = (): void => {
+      clearTimeout(timer)
+      sock.destroy()
+      resolve()
+    }
+    sock.on('close', done)
+    // ECONNRESET is a fine outcome: there is nobody left to answer.
+    sock.on('error', done)
+    sock.on('connect', () => {
+      sock.write(
+        `${[
+          'POST /mcp HTTP/1.1',
+          `Host: 127.0.0.1:${server.port}`,
+          'Content-Type: application/json',
+          'Accept: application/json, text/event-stream',
+          `X-Runcastle-Session: ${server.sessionId}`,
+          'Content-Length: 5000',
+          'Connection: close',
+        ].join('\r\n')}\r\n\r\n`,
+      )
+      sock.end('x'.repeat(100))
+    })
+  })
 }
 
 /**
@@ -232,6 +289,21 @@ describe.skipIf(BUN === null)('emit_tickets over a real TCP socket', () => {
     },
     // The call itself is bounded by CLIENT_TIMEOUT_MS; this budget only has to
     // cover spawning the bun child and migrating a fresh db.
+    60_000,
+  )
+
+  it(
+    'says so in the server log when a request dies mid-body-read',
+    async () => {
+      // The incident's defining symptom was silence: the call hung, and the
+      // server had nothing to say about it. A body that never finishes arriving
+      // is the only way an `/mcp` request can die that way, so it is the one
+      // thing the handler's pre-read is required to announce.
+      await postTruncatedBody(server)
+      expect(await server.waitForLog(/\[mcp] request body read failed/, CLIENT_TIMEOUT_MS)).toMatch(
+        /declared bytes/,
+      )
+    },
     60_000,
   )
 })
