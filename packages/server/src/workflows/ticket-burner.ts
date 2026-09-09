@@ -2900,22 +2900,32 @@ export async function burnRun(
     return { status: 'failed', summary: 'burn aborted: auth token missing' }
   }
 
-  // Prove the selected image can launch this burn's agent before sandcastle
-  // creates a ticket container. The host CLI is the right one for noSandbox,
+  // Prove the selected image carries everything this burn will reach for — the
+  // agent CLI, the setup hook's commands and the verify commands the prompt
+  // hands the agent — before sandcastle creates a ticket container. One `sh`
+  // run answers for all of them. The host CLI is the right one for noSandbox,
   // so probing an image there would be both wasteful and misleading.
   if (deps.config.sandbox !== 'noSandbox' && deps.exec) {
     const image = resolveSandboxImage(deps.config)
     const binary = RUNTIME_BINARY[deps.runtime]
-    const probe = await deps.exec(deps.config.sandbox, [
-      'run',
-      '--rm',
-      '--entrypoint',
-      binary,
-      image,
-      '--version',
-    ])
-    if (!probe.ok || probe.code !== 0) {
-      const message = missingImageRuntimeMessage(deps.runtime, image)
+    const prepared = resolvePreparedSettings(deps.config, ctx.project)
+    const names = preflightCommandNames({
+      agentBinary: binary,
+      setupCommand: resolveSetupCommand(
+        readRepoToolchain(ctx.project.repoPath),
+        prepared.setupCommand,
+      ),
+      verifyCommands: prepared.verifyCommands,
+    })
+    const probe = await deps.exec(deps.config.sandbox, buildToolchainProbeArgs(image, names))
+    // A probe that could not even start a shell says nothing about which name is
+    // absent — that is the image itself, so it keeps the stale-image wording.
+    const missing =
+      probe.ok && probe.code === 0 ? parseMissingCommands(probe.stdout, names) : [binary]
+    if (missing.length > 0) {
+      const message = missing.includes(binary)
+        ? missingImageRuntimeMessage(deps.runtime, image)
+        : missingToolchainMessage(missing, image)
       ctx.emitEvent({ type: IMAGE_RUNTIME_MISSING_EVENT, message })
       return { status: 'failed', summary: message }
     }
@@ -4354,7 +4364,9 @@ function resolveBurnDeps(ctx: WorkflowCtx): BurnDeps {
   const exec = createSystemExec({ cwd: ctx.project.repoPath })
   const imageProbeCache = new Map<string, Promise<ExecOutcome>>()
   const cachedExec: ExecFn = (command, args) => {
-    const key = `${resolveSandboxImage(config)}\0${model.runtime}`
+    // The probed command list rides in `args` (sorted, so it is stable), which
+    // is what keeps two different toolchains from sharing one answer.
+    const key = [resolveSandboxImage(config), model.runtime, command, ...args].join('\0')
     let result = imageProbeCache.get(key)
     if (!result) {
       result = exec(command, args)
