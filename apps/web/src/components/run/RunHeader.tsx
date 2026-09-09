@@ -26,6 +26,7 @@ export function RunHeader({
   status,
   burning,
   busy,
+  cancelling,
   onCancelRun,
   runs = [],
   selectedRunId = null,
@@ -39,6 +40,12 @@ export function RunHeader({
   /** Lanes with a live agent — the blast radius Cancel run states. */
   burning: number
   busy?: boolean
+  /**
+   * The cancel is in flight. It resolves only once every agent of the run is
+   * confirmed dead, so the button holds the wait instead of the run reading
+   * cancelled while its containers are still burning.
+   */
+  cancelling?: boolean
   /** Set only while the run can still be cancelled. */
   onCancelRun?: () => void
   /** The feature's runs, newest first — what the counter opens. */
@@ -68,7 +75,7 @@ export function RunHeader({
         {onBackToLatest && <Button onClick={onBackToLatest}>Back to latest</Button>}
         {onCancelRun && (
           <Button variant="danger" disabled={busy} onClick={() => setConfirming(true)}>
-            Cancel run
+            {cancelling ? 'Stopping…' : 'Cancel run'}
           </Button>
         )}
       </div>

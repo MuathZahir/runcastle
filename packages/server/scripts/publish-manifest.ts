@@ -78,7 +78,7 @@ export const BUNDLED_DEPENDENCIES: Readonly<
   Record<string, { readonly why: string; readonly markers: readonly RegExp[] }>
 > = {
   '@ai-hero/sandcastle': {
-    why: 'patched to mount Docker/Podman named volumes (patches/@ai-hero%2Fsandcastle@0.12.0.patch); the patch only applies inside this workspace',
+    why: 'patched to mount Docker/Podman named volumes and to expose the kill handles (container name, child PIDs) an aborted run has to kill by (patches/@ai-hero%2Fsandcastle@0.12.0.patch); the patch only applies inside this workspace',
     markers: [
       // resolveUserMounts: a `{ volume }` mount is carried through, not stat'ed.
       /if\s*\(\s*m\.volume\s*!==\s*(?:void 0|undefined)\s*\)/,
@@ -86,6 +86,12 @@ export const BUNDLED_DEPENDENCIES: Readonly<
       /mount\.volume\s*!==\s*(?:void 0|undefined)/,
       // docker sandbox: the marker survives the mount map.
       /volume:\s*m\.volume/,
+      // docker sandbox: the container runs under the caller's name when given.
+      // Keyed on the property, not the `options` binding, which the bundler may
+      // rename to avoid a collision.
+      /\.containerName\s*\?\?/,
+      // noSandbox: every spawned child's pid is reported to the caller.
+      /\.onChildSpawn\?\.\(/,
     ],
   },
 }

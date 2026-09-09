@@ -12,6 +12,8 @@ import { getFeatureRow, projectForFeature, setPhase } from '../services/repo'
 import { listByFeature as listFindingsByFeature, markFixProgress } from '../services/review-findings'
 import { listByFeature, storeTickets, sweepOrphanedBurning, updateTicket } from '../services/tickets'
 import { claim as claimWaypoint, releaseForSession, resolve as resolveWaypoint } from '../services/waypoints'
+import type { KillOutcome } from './kill-registry'
+import { killRegistry } from './kill-registry'
 import { getWorkflow } from './registry'
 
 /**
@@ -182,9 +184,21 @@ export async function startRun(
   return { runId, done }
 }
 
-/** Cancel an in-flight run (aborts its signal); no-op if unknown/finished. */
-export function cancelRun(runId: string): void {
+/**
+ * Cancel an in-flight run: abort its signal, then kill every agent it has
+ * running and wait, bounded, for them to be gone. No-op if unknown/finished.
+ *
+ * The abort alone only interrupts sandcastle's fiber — the containers keep
+ * burning and keep streaming events — so the kill is what actually ends the
+ * run, and what makes each lane's `run()` reject into the failure path that
+ * writes its terminal state. That path waits on the same kill before it writes
+ * anything (see `executeRun`), so the run row cannot read cancelled ahead of
+ * the agents dying. `confirmed: false` means at least one agent outlived the
+ * kill's deadline and may still be running.
+ */
+export async function cancelRun(runId: string): Promise<KillOutcome> {
   controllers.get(runId)?.abort()
+  return await killRegistry().killAllForRun(runId)
 }
 
 async function executeRun(
@@ -200,6 +214,10 @@ async function executeRun(
   let summary = 'run failed'
   // The workflow's long-form account of what this run produced, if it kept one.
   let digest: string | undefined
+  // Whether the workflow threw: its `run.error` breadcrumb waits behind the kill
+  // gate with the row it describes, rather than announcing a cancel that has not
+  // happened yet.
+  let threw = false
   try {
     const result = await runPromise
     status = result.status
@@ -213,10 +231,19 @@ async function executeRun(
       status = 'failed'
       summary = e instanceof Error ? e.message : 'run failed'
     }
-    emit(ctx, featureId, { type: 'run.error', message: summary, runId })
+    threw = true
   } finally {
     controllers.delete(runId)
   }
+
+  // `cancelRun` aborts the signal and waits for the kill second, and the abort
+  // alone is enough to reject the workflow — so this continuation is already
+  // running while the run's containers are still being removed. Nothing about
+  // the run reads finished until every kill it ordered has settled, confirmed
+  // or timed out. A run nobody cancelled has none in flight and passes straight
+  // through.
+  await killRegistry().whenRunKillsSettled(runId)
+  if (threw) emit(ctx, featureId, { type: 'run.error', message: summary, runId })
 
   ctx.db
     .update(runs)

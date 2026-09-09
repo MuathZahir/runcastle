@@ -4,6 +4,7 @@ import { trpc } from '../trpc'
 import { useEventLog } from '../lib/events'
 import { useLivePoll } from '../lib/live'
 import { useToast } from '../lib/toast'
+import { STOP_TIMEOUT } from '../lib/vocabulary'
 import { Button, DimLine } from '../ui'
 import type { FeatureFull, PrepView } from '../lib/api'
 import { unverifiedDriveKeys } from '../lib/prep-findings'
@@ -295,9 +296,13 @@ export function Workspace({
   // the notes mutation above only knows about notes.
   const dismissDefect = trpc.findings.dismiss.useMutation()
   const cancel = trpc.run.cancel.useMutation({
-    onSuccess: () => {
+    // It resolves once the run's agents are confirmed dead, so this says what
+    // happened rather than what was asked for — unless the kill could not be
+    // confirmed, which is the one thing the human has to hear.
+    onSuccess: (r) => {
       invalidate()
-      toast.push('cancel requested', 'info')
+      if (r.confirmed) toast.push('run cancelled — its agents are stopped', 'info')
+      else toast.push(STOP_TIMEOUT)
     },
     onError: (e) => toast.push(e.message),
   })

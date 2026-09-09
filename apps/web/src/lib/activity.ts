@@ -232,7 +232,9 @@ export function eventLevel(event: Pick<EventRow, 'type' | 'data'>): EventLevel {
   // "fail" and "cancel" but not "abort", so the one event saying the lap was
   // rolled back used to be the quietest line in the feed.
   if (type === 'lap.aborted') return 'error'
-  if (/(error|fail|conflict|cancel|stopped)/i.test(type)) return 'error'
+  // `timeout` is here for the kill that could not confirm a death: a stop the
+  // server is warning about must not read as an ordinary informational line.
+  if (/(error|fail|conflict|cancel|stopped|timeout)/i.test(type)) return 'error'
   if (/(done|succeed|finished|shipped|merged)/i.test(type)) return 'ok'
   if (/(start|burn|launch|advance|running|retry|resum)/i.test(type)) return 'active'
   return 'info'

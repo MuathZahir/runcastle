@@ -22,7 +22,8 @@ import {
   mergeTempBranch,
   researchBranchName,
 } from '../services/git'
-import type { StreamThrottle, ThrottledEvent } from './ticket-burner'
+import type { KillHandleOptions, StreamThrottle, ThrottledEvent } from './ticket-burner'
+import { killRegistry, registerHostChildren } from './kill-registry'
 import { RUNTIME_AUTH_SETUP_HINT } from '../services/setup'
 import {
   AUTH_MISSING_EVENT,
@@ -237,6 +238,50 @@ export function researchTemplatePath(): string {
 }
 
 /**
+ * The container ONE research waypoint burns in: `runcastle-<runId>-w<seq>` — a
+ * waypoint's counterpart to the burner's `t<seq>` ticket lanes, so a stray
+ * container names the run and the waypoint that left it behind.
+ *
+ * Deterministic for the same reason as the burner's `burnContainerName`
+ * (decisions.md #3): `docker rm -f <name>` then needs no discovery at stop time.
+ * The id parts are nanoid + digits, so every character is already legal in a
+ * docker name.
+ */
+export function researchContainerName(runId: string, seq: number): string {
+  return `runcastle-${runId}-w${seq}`
+}
+
+/**
+ * Make a research waypoint's agent killable, and hand back the handles the
+ * selected provider will use.
+ *
+ * A research waypoint has no ticket, so its lane is keyed by the run — which is
+ * what `cancelRun` reaps by, and a run researches one waypoint at a time, so the
+ * key names exactly one agent. The lane burns in whichever mode the project is
+ * configured for: a container research run outlives the abort exactly as a
+ * ticket burn does, so its name is registered here, BEFORE the container exists,
+ * because a lane registered nowhere is a container `cancelRun` cannot remove and
+ * cannot even see.
+ *
+ * Docker only, as in the burner: sandcastle's podman provider still names its
+ * own containers (the patch covers docker, per decisions.md #3), and a host
+ * agent is killable by pid instead — which the returned `onChildSpawn`
+ * arranges. The provider that is not selected never calls its own handle, so
+ * both can be handed over unconditionally.
+ */
+export function registerResearchKill(
+  config: RuncastleConfig,
+  runId: string,
+  seq: number,
+): KillHandleOptions {
+  const containerName = researchContainerName(runId, seq)
+  if (config.sandbox === 'docker') {
+    killRegistry().registerContainer(runId, containerName, { runId })
+  }
+  return { containerName, onChildSpawn: registerHostChildren(runId, { runId }) }
+}
+
+/**
  * Run one research waypoint through sandcastle. Renders the prompt, builds the
  * `run()` options (branch strategy targeting a per-run temp branch based on
  * `feature/<slug>`, throttled stream forwarding, abort wiring), interprets
@@ -277,7 +322,16 @@ async function realExecuteResearchRun(
     // Shared with the burner, never hand-rolled here: the local
     // `sandbox === 'docker' ? docker() : noSandbox()` this replaces is how a
     // `podman` config silently became "run the AFK agent on the host".
-    sandbox: selectSandbox(config, codexAuthMount ? [codexAuthMount] : []),
+    //
+    // The abort alone stops neither mode's agent — a host CLI keeps running, a
+    // container keeps burning — so the lane is made killable in both, whichever
+    // provider the config selects (see `registerResearchKill` above).
+    sandbox: selectSandbox(
+      config,
+      codexAuthMount ? [codexAuthMount] : [],
+      {},
+      registerResearchKill(config, ctx.runId, waypoint.seq),
+    ),
     cwd: project.repoPath,
     prompt,
     // Temp branch based on the feature branch tip — the feature branch itself
@@ -314,6 +368,10 @@ async function realExecuteResearchRun(
       message: `waypoint ${waypoint.seq}: agent finished but sandcastle could not remove its worktree (${errorHeadline(msg)})${removed ? ' — cleaned up' : ' — left on disk'}; landing the ${salvaged.length} commit(s) anyway`,
       data: { tempBranch, error: msg, cleanedUp: removed },
     })
+  } finally {
+    // The agent is over, however it ended: there is nothing left to kill, and a
+    // stale pid would make a later cancel of this run reach for a dead process.
+    killRegistry().release(ctx.runId)
   }
   throttle.flush()
 

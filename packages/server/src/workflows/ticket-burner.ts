@@ -87,6 +87,7 @@ import {
 // it needs from here it takes from the exported pure units, and neither module
 // touches the other while it is being evaluated.
 import { executeReviewTicket } from './review-ticket'
+import { killRegistry, registerHostChildren } from './kill-registry'
 import { docker } from '@ai-hero/sandcastle/sandboxes/docker'
 import { podman } from '@ai-hero/sandcastle/sandboxes/podman'
 import { noSandbox } from '@ai-hero/sandcastle/sandboxes/no-sandbox'
@@ -2190,17 +2191,37 @@ export function delayUnlessAborted(ms: number, signal: AbortSignal): Promise<voi
 
 const activeTicketAborts = new Map<string, AbortController>()
 
+/** What a stop achieved: whether there was an agent, and whether it is dead. */
+export interface StopTicketResult {
+  /** A live agent for this ticket was found in this process and stopped. */
+  readonly stopped: boolean
+  /**
+   * Whether the agent's process was OBSERVED to be gone. False means the kill
+   * did not confirm within its deadline — the caller must say so rather than
+   * report a clean stop, which is the lie this whole path exists to remove.
+   */
+  readonly confirmed: boolean
+}
+
 /**
  * Stop a single burning ticket's agent (UI "Stop ticket"). The ticket lands as
  * `failed` with its committed work preserved on its temp branch (retryable),
- * while every other lane in the run keeps burning. Returns false when the
- * ticket has no live agent in this process.
+ * while every other lane in the run keeps burning. Reports `stopped: false`
+ * when the ticket has no live agent in this process.
+ *
+ * Two steps, in this order. The abort first, so sandcastle's iteration loop
+ * cannot start another pass behind the kill; then the real kill. The ticket's
+ * own failure path, not this one, writes the terminal state — and it waits on
+ * the registry's `whenKillSettled` before it does, because the abort alone is
+ * enough to reject `run()` and would otherwise let the row read stopped while
+ * the container was still being removed.
  */
-export function stopTicketRun(ticketId: string): boolean {
+export async function stopTicketRun(ticketId: string): Promise<StopTicketResult> {
   const controller = activeTicketAborts.get(ticketId)
-  if (!controller) return false
+  if (!controller) return { stopped: false, confirmed: true }
   controller.abort(new Error('ticket stopped by user'))
-  return true
+  const { confirmed } = await killRegistry().killAndWait(ticketId)
+  return { stopped: true, confirmed }
 }
 
 /**
@@ -2585,6 +2606,13 @@ export async function burnTickets(
     // Snapshotted, not aliased: `digests` keeps growing as sibling lanes finish,
     // and a ticket's prompt must be built from what had landed when it started.
     const outcome = await execute(ctx, t, { digests: [...digests] }) // throws on abort — propagates
+    // A stop aborts this ticket's agent and waits for the kill second, and the
+    // abort is what produced the outcome above — so this line is reached while
+    // the container is still being removed. Nothing may write the row terminal
+    // until that kill has settled, or "stopped" precedes death exactly as it
+    // did before this feature. Resolves in a microtask when no kill is in
+    // flight, which is every ordinary finish.
+    await killRegistry().whenKillSettled(t.id)
     if (outcome.status === 'done') {
       status.set(seq, 'done')
       const reviewedCommit = isReviewTicket(t)
@@ -3176,6 +3204,19 @@ function quoteArg(value: string): string {
 }
 
 /**
+ * What a launched agent will be killable BY — the two handles the sandcastle
+ * patch exposes, carried together because they answer the same question for
+ * different providers and a caller never knows which one `config.sandbox` will
+ * reach for.
+ */
+export interface KillHandleOptions {
+  /** `--name` for the container provider, so `docker rm -f <name>` needs no discovery. */
+  readonly containerName?: string
+  /** Called with the pid of every child the host provider spawns (latest wins). */
+  readonly onChildSpawn?: (pid: number) => void
+}
+
+/**
  * Pick the sandcastle sandbox provider for the configured `sandbox`. The two
  * container providers (docker/podman) take an explicit `imageName` — always
  * `resolveSandboxImage(config)`, never sandcastle's `sandcastle:<repo-dir-name>`
@@ -3193,20 +3234,29 @@ function quoteArg(value: string): string {
  * is no memory equivalent — sandcastle's provider options do not expose
  * `--memory` (see the `burnCpus` config doc for why that is the right call
  * anyway). noSandbox ignores it: no container, nothing to constrain.
+ *
+ * `kill` is what a stop kills BY, one handle per provider kind (both patched
+ * into sandcastle): `containerName` makes the container removable by name from
+ * outside the fiber the abort interrupts, and `onChildSpawn` reports the pid of
+ * every host child, since noSandbox has no container to name. Each is passed to
+ * the provider that has one — a caller hands over both and the provider it did
+ * not select simply never sees its own. Omitted, nothing changes: the container
+ * providers name themselves as before and no pid is reported.
  */
 export function selectSandbox(
   config: RuncastleConfig,
   mounts: readonly CacheMount[] = [],
   env: Record<string, string> = {},
+  kill: KillHandleOptions = {},
 ) {
-  const imageOpts = buildSandboxOptions(config, mounts, env)
+  const imageOpts = buildSandboxOptions(config, mounts, env, kill.containerName)
   switch (config.sandbox) {
     case 'docker':
       return docker(imageOpts)
     case 'podman':
       return podman(imageOpts)
     case 'noSandbox':
-      return noSandbox()
+      return noSandbox(kill.onChildSpawn ? { onChildSpawn: kill.onChildSpawn } : {})
     default:
       // Only reachable when a sandbox choice gains a config value before it
       // gains a provider here. Refusing loudly is the point: the old `default:
@@ -3228,18 +3278,36 @@ export function buildSandboxOptions(
   config: Pick<RuncastleConfig, 'sandboxImage' | 'burnCpus'>,
   mounts: readonly CacheMount[] = [],
   env: Record<string, string> = {},
+  /** What to `--name` the container, so a stop has a handle to kill it by. */
+  containerName?: string,
 ): {
   imageName: string
   mounts?: readonly CacheMount[]
   cpus?: number
   env?: Record<string, string>
+  containerName?: string
 } {
   return {
     imageName: resolveSandboxImage(config),
     ...(mounts.length > 0 ? { mounts } : {}),
     ...(config.burnCpus !== undefined ? { cpus: config.burnCpus } : {}),
     ...(Object.keys(env).length > 0 ? { env } : {}),
+    ...(containerName !== undefined ? { containerName } : {}),
   }
+}
+
+/**
+ * The container ONE agent burns in: `runcastle-<runId>-t<seq>`, plus a lane
+ * suffix for the conflict resolver so an implementer and the resolver that
+ * follows it never ask docker for the same name.
+ *
+ * Deterministic on purpose (decisions.md #3): `docker rm -f <name>` then needs
+ * no discovery at stop time, and a stray container from a run this process no
+ * longer knows about is still identifiable by its name alone. The id parts are
+ * nanoid + digits, so every character is already legal in a docker name.
+ */
+export function burnContainerName(runId: string, seq: number, lane?: 'resolve'): string {
+  return `runcastle-${runId}-t${seq}${lane ? `-${lane}` : ''}`
 }
 
 /**
@@ -3565,6 +3633,33 @@ async function burnTicket(
   const ticketAbort = registerTicketAbort(ticket.id)
   const signal = AbortSignal.any([ctx.signal, ticketAbort.signal])
 
+  /**
+   * What a stop actually kills. The abort above only interrupts sandcastle's
+   * fiber — the container it started keeps burning — so the agent about to run
+   * is registered against this ticket's lane by the name it runs under, and
+   * released in the `finally` below when there is nothing left to kill.
+   *
+   * Docker only: sandcastle's podman provider still names its own containers
+   * (the patch covers docker, per decisions.md #3), and a host agent is killable
+   * by pid rather than by name — which is what {@link killHandles} arranges.
+   */
+  const makeKillable = (containerName: string): void => {
+    if (config.sandbox !== 'docker') return
+    killRegistry().registerContainer(ticket.id, containerName, { runId: ctx.runId })
+  }
+
+  /**
+   * The same lane, made killable in whichever mode it turns out to burn in. A
+   * `noSandbox` burn is a real configuration — the agent runs on the host with
+   * no container to name — so it registers pids instead, exactly as the review
+   * agent does. The provider that is not selected never calls its own handle,
+   * so both can be handed over unconditionally.
+   */
+  const killHandles = (containerName: string): KillHandleOptions => ({
+    containerName,
+    onChildSpawn: registerHostChildren(ticket.id, { runId: ctx.runId }),
+  })
+
   const maxAttempts = Math.max(1, config.burnAttempts)
 
   // Two different resumes, distinguished by `conflictFiles`:
@@ -3651,6 +3746,9 @@ async function burnTicket(
     maxAttempts: number
   }): Promise<ResolveAttemptResult> => {
     const resolveBranch = ticketBranchName(feature.slug, ticket.seq, newId('r').slice(2, 10))
+    // Its own container name: the resolver runs after the implementer on the
+    // same lane, and docker refuses to create a container whose name is taken.
+    const containerName = burnContainerName(ctx.runId, ticket.seq, 'resolve')
     const otherSide = await commitSummaries(project.repoPath, input.branch, feature.branch)
     const prompt = renderTemplate(readFileSync(resolverTemplatePath(), 'utf8'), {
       TICKET_JSON: ticketJson,
@@ -3680,9 +3778,10 @@ async function burnTicket(
     let result: RunResult | undefined
     try {
       beginSetupSpan(resolveBranch)
+      makeKillable(containerName)
       result = await run({
         agent: buildBurnAgent(config, token, model, agentOptions),
-        sandbox: selectSandbox(config, mounts, sandboxEnv),
+        sandbox: selectSandbox(config, mounts, sandboxEnv, killHandles(containerName)),
         cwd: project.repoPath,
         prompt,
         branchStrategy: { type: 'branch', branch: resolveBranch, baseBranch: input.branch },
@@ -3854,6 +3953,10 @@ async function burnTicket(
 
     let result: RunResult | undefined
     let tempBranch = ''
+    // One name for the ticket's implementer across attempts: attempts are
+    // strictly sequential and sandcastle removes a container before the next is
+    // created, so the name is free again each time round.
+    const containerName = burnContainerName(ctx.runId, ticket.seq)
     for (let attempt = 1; ; attempt++) {
       // Unique per attempt (nanoid alphabet is branch-name-safe) so an attempt
       // never reuses a stale sandcastle worktree or a conflict leftover.
@@ -3879,7 +3982,7 @@ async function burnTicket(
 
       const runOptions: RunOptions = {
         agent: buildBurnAgent(config, token, model, agentOptions),
-        sandbox: selectSandbox(config, mounts, sandboxEnv),
+        sandbox: selectSandbox(config, mounts, sandboxEnv, killHandles(containerName)),
         cwd: project.repoPath,
         prompt: retryNotes ? `${basePrompt}\n\n${retryNotes}` : basePrompt,
         // Temp branch off the chain tip (the feature branch, or the previous
@@ -3934,6 +4037,7 @@ async function burnTicket(
         // leave the line behind.
         await excludeAttachments()
         beginSetupSpan(tempBranch)
+        makeKillable(containerName)
         result = await run(runOptions)
         // Before anything lands: a preserved worktree must not keep the images.
         await clearAttachmentsFor(tempBranch)
@@ -4082,6 +4186,9 @@ async function burnTicket(
     return await landChain(tempBranch, outcome.commits)
   } finally {
     releaseTicketAbort(ticket.id)
+    // Nothing of this ticket is running any more — a handle left behind would
+    // have a later stop `docker rm -f` a name that belongs to nobody.
+    killRegistry().release(ticket.id)
     throttle.flush()
     endTranscript(ticket.id)
     // Emitted on EVERY exit path — a ticket that failed or was stopped is

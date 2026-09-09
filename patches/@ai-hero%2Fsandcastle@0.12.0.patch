@@ -39,11 +39,49 @@ index 9ad1fdd590d0b19998e2c55eb6a412dce165028c..cd43332576d0d4040b1ef7611a0147ac
 +type MountConfig = HostPathMountConfig | VolumeMountConfig;
  
  export type { MountConfig as M };
+diff --git a/dist/chunk-62WN33RK.js b/dist/chunk-62WN33RK.js
+index 014dcef940e6eec6b1334a0bef1ffa1fdbea9c84..4ff8560a5c3332d7289af6c80fd0240db273d81d 100644
+--- a/dist/chunk-62WN33RK.js
++++ b/dist/chunk-62WN33RK.js
+@@ -30,6 +30,11 @@ var noSandbox = (options) => ({
+             ],
+             windowsVerbatimArguments: isWindows
+           });
++          // runcastle patch: report the child so the caller has a handle to kill
++          // by when a run is aborted — nothing here keeps a reference otherwise,
++          // and a fresh child is spawned per exec. `pid` is undefined when the
++          // spawn itself failed, and there is nothing to kill then.
++          if (proc.pid !== void 0) options?.onChildSpawn?.(proc.pid);
+           if (opts?.stdin !== void 0) {
+             proc.stdin.write(opts.stdin);
+             proc.stdin.end();
+@@ -84,6 +89,8 @@ var noSandbox = (options) => ({
+             stdio: [opts.stdin, opts.stdout, opts.stderr],
+             shell: process.platform === "win32"
+           });
++          // runcastle patch — same handle, the interactive spawn.
++          if (proc.pid !== void 0) options?.onChildSpawn?.(proc.pid);
+           proc.on("error", (error) => {
+             reject(new Error(`exec failed: ${error.message}`));
+           });
 diff --git a/dist/chunk-CP3TYXZA.js b/dist/chunk-CP3TYXZA.js
-index 7d097321871cfee95a8ba7e6d12a7fe002190cc5..8ca697af90c70f98483e7d5e421764504e81a59a 100644
+index 7d097321871cfee95a8ba7e6d12a7fe002190cc5..23a68bed8276ffdf481644e10b0822d41082c969 100644
 --- a/dist/chunk-CP3TYXZA.js
 +++ b/dist/chunk-CP3TYXZA.js
-@@ -138,7 +138,11 @@ var docker = (options) => {
+@@ -130,7 +130,11 @@ var docker = (options) => {
+     env: options?.env,
+     sandboxHomedir,
+     create: async (createOptions) => {
+-      const containerName = `sandcastle-${randomUUID()}`;
++      // runcastle patch: a caller may name the container itself, so it has a
++      // handle to kill by (`docker rm -f <name>`) when a run is aborted —
++      // sandcastle's own abort never reaches the container. Omitted, the
++      // generated `sandcastle-<uuid>` name is used exactly as before.
++      const containerName = options?.containerName ?? `sandcastle-${randomUUID()}`;
+       const worktreePath = createOptions.mounts.find(
+         (m) => m.hostPath === createOptions.worktreePath
+       )?.sandboxPath ?? "/home/agent/workspace";
+@@ -138,7 +142,11 @@ var docker = (options) => {
        const volumeMounts = allMounts.map((m) => ({
          hostPath: m.hostPath,
          sandboxPath: m.sandboxPath,
@@ -97,10 +135,25 @@ index 93f24d139b795c284915a10c34d82f2fa769eab0..e8df2f56ddf9cd38cd2c31267c64c4ac
  };
  var processFileMountParents = (mounts, sandboxHomedir, statFn = statSync) => {
 diff --git a/dist/sandboxes/docker.d.ts b/dist/sandboxes/docker.d.ts
-index c7cc9e78dd3f14021ae64061d70e715bb98f768f..dc131407b07d81943c5b9f993ea4a76b96afcf33 100644
+index c7cc9e78dd3f14021ae64061d70e715bb98f768f..683eae5626082d3d0ba1f2ea9391a6be6bd05476 100644
 --- a/dist/sandboxes/docker.d.ts
 +++ b/dist/sandboxes/docker.d.ts
-@@ -36,10 +36,12 @@ interface DockerOptions {
+@@ -14,6 +14,14 @@ export { d as defaultImageName } from '../mountUtils-CCA-bbpK.js';
+ interface DockerOptions {
+     /** Docker image name (default: derived from repo directory name). */
+     readonly imageName?: string;
++    /**
++     * runcastle patch — the container's `--name`, chosen by the caller.
++     *
++     * A caller that names the container can kill it directly (`docker rm -f
++     * <name>`) without first discovering it. When omitted, sandcastle's own
++     * `sandcastle-<uuid>` name is used, exactly as before.
++     */
++    readonly containerName?: string;
+     /**
+      * The UID of the `agent` user inside the container image (default: host UID via `process.getuid()`, or 1000).
+      *
+@@ -36,10 +44,12 @@ interface DockerOptions {
       */
      readonly selinuxLabel?: SelinuxLabel;
      /**
@@ -116,6 +169,26 @@ index c7cc9e78dd3f14021ae64061d70e715bb98f768f..dc131407b07d81943c5b9f993ea4a76b
       */
      readonly mounts?: readonly MountConfig[];
      /** Environment variables injected by this provider. Merged at launch time with env resolver and agent provider env. */
+diff --git a/dist/sandboxes/no-sandbox.d.ts b/dist/sandboxes/no-sandbox.d.ts
+index 282726ed9d3f1310a4fc4a66985e8db2b917a045..67aa5809857f37ad437c39e37e56cd72b8cece25 100644
+--- a/dist/sandboxes/no-sandbox.d.ts
++++ b/dist/sandboxes/no-sandbox.d.ts
+@@ -16,6 +16,15 @@ import { N as NoSandboxProvider } from '../SandboxProvider-EkSMuBp8.js';
+ interface NoSandboxOptions {
+     /** Environment variables injected by this provider. Merged at launch time. */
+     readonly env?: Record<string, string>;
++    /**
++     * runcastle patch — called with the PID of every child this provider spawns.
++     *
++     * The host provider spawns a fresh shell per `exec`, so a callback is the
++     * only way a caller can learn what to kill when a run is aborted. Not called
++     * when the spawn itself failed and there is no PID. When omitted, nothing
++     * changes.
++     */
++    readonly onChildSpawn?: (pid: number) => void;
+     /**
+      * Maximum number of characters of streamed `exec` output retained per stream
+      * (stdout and stderr) when an `onLine` callback is supplied (default: 64KiB).
 diff --git a/dist/sandboxes/podman.d.ts b/dist/sandboxes/podman.d.ts
 index 61e7b4832b63d2859839f3d68ac2af3cbc5d16e0..9bb26af38fa173abe340479370e03620e41fda3c 100644
 --- a/dist/sandboxes/podman.d.ts

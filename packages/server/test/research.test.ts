@@ -11,11 +11,14 @@ import type { AgentStreamEvent } from '@ai-hero/sandcastle'
 import type { ResearchDeps, ResearchOutcome } from '../src/workflows/research'
 import {
   createResearchStreamThrottle,
+  registerResearchKill,
   research,
+  researchContainerName,
   researchDocRel,
   researchRun,
   waypointSlug,
 } from '../src/workflows/research'
+import { killRegistry } from '../src/workflows/kill-registry'
 import { workflowRegistry } from '../src/workflows/registry'
 import { cancelRun, startRun } from '../src/workflows/runner'
 import { makeTestCtx } from './helpers/db'
@@ -320,7 +323,7 @@ describe('research run through the runner (stubbed sandcastle)', () => {
     })
 
     const { runId, done } = await startRun(ctx, feature.id, 'research', { input: w, claimWaypointId: w.id })
-    cancelRun(runId)
+    await cancelRun(runId)
     releaseGate()
     await done
 
@@ -391,5 +394,49 @@ describe('workWaypoint routes research to a run', () => {
     await expect(
       workWaypoint(ctx, { featureId: feature.id, waypointId: blocked.id }),
     ).rejects.toThrow(GateError)
+  })
+})
+
+// --------------------------------------------------------------------------
+// What a stop kills a research agent by
+// --------------------------------------------------------------------------
+
+/**
+ * A research waypoint burns in whichever sandbox the project is configured for,
+ * so a docker research run leaves a container behind exactly as a ticket burn
+ * does — and `cancelRun` can only remove it if the lane was registered under a
+ * name. Registering the host callback alone (which a container provider never
+ * calls) is a run that reports itself cancelled while its agent keeps working.
+ */
+describe('what a stop kills a research agent by', () => {
+  const laneKey = 'run_research'
+
+  afterEach(() => {
+    killRegistry().release(laneKey)
+  })
+
+  it('names the container after the run and the waypoint, so no discovery is needed', () => {
+    expect(researchContainerName('run_abc123', 2)).toBe('runcastle-run_abc123-w2')
+  })
+
+  it('registers the container on the run lane, so Cancel run has a handle to remove it by', () => {
+    const handles = registerResearchKill(RuncastleConfig.parse({ sandbox: 'docker' }), laneKey, 2)
+
+    expect(handles.containerName).toBe('runcastle-run_research-w2')
+    expect(killRegistry().keys()).toContain(laneKey)
+  })
+
+  it('leaves a podman lane alone — sandcastle still names those containers itself', () => {
+    registerResearchKill(RuncastleConfig.parse({ sandbox: 'podman' }), laneKey, 2)
+
+    expect(killRegistry().keys()).not.toContain(laneKey)
+  })
+
+  it('registers pids instead in host mode, where there is no container to name', () => {
+    const handles = registerResearchKill(config, laneKey, 2)
+    expect(killRegistry().keys()).not.toContain(laneKey)
+
+    handles.onChildSpawn?.(4242)
+    expect(killRegistry().keys()).toContain(laneKey)
   })
 })

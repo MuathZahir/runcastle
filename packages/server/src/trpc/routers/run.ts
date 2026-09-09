@@ -1,5 +1,6 @@
 import * as z from 'zod'
 import { readTranscript } from '../../services/agent-stream'
+import { emit } from '../../services/events'
 import { getRunRow } from '../../services/repo'
 import { getRunWithTickets, listRunSummaries } from '../../services/runs'
 import { cancelRun } from '../../workflows/runner'
@@ -36,9 +37,21 @@ export const runRouter = router({
   // finished stays a no-op: it is genuinely already not running.
   cancel: publicProcedure
     .input(z.object({ runId: z.string() }))
-    .mutation(({ ctx, input }) => {
-      getRunRow(ctx, input.runId)
-      cancelRun(input.runId)
-      return { ok: true }
+    .mutation(async ({ ctx, input }) => {
+      const run = getRunRow(ctx, input.runId)
+      // Resolves only once every agent of the run is confirmed dead, so the
+      // button's pending state is an honest "stopping…".
+      const { confirmed } = await cancelRun(input.runId)
+      // An agent that outlived the kill's deadline: the run reads cancelled but
+      // something of it may still be burning, and the timeline has to hold that
+      // rather than the response alone (the toast is gone in seconds).
+      if (!confirmed) {
+        emit(ctx, run.featureId, {
+          type: 'run.cancel_timeout',
+          message: 'cancel timed out — an agent of this run may still be running',
+          runId: run.id,
+        })
+      }
+      return { ok: true, confirmed }
     }),
 })

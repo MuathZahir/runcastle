@@ -16,7 +16,7 @@ import {
   runHeadline,
 } from '../../lib/feature-ui'
 import { fmtDuration, shortSha } from '../../lib/format'
-import { BURN_EXPLAINER } from '../../lib/vocabulary'
+import { BURN_EXPLAINER, STOP_TIMEOUT } from '../../lib/vocabulary'
 import { EmptyState } from '../../ui'
 import { IconTerminal } from '../../icons'
 import { ErrorBoundary } from '../ErrorBoundary'
@@ -190,6 +190,10 @@ export function RunBody({
           ticket.originFindingId ? defectTitles.get(ticket.originFindingId) : undefined
         }
         busy={busy}
+        // Every lane is `busy` while any mutation runs; only the one being
+        // stopped is stopping.
+        stopping={stop.isPending && stop.variables?.ticketId === ticket.id}
+        waiving={waive.isPending && waive.variables?.ticketId === ticket.id}
         terminalBlocked={terminalBlocked}
         onCopySha={copySha}
         onRetry={() =>
@@ -214,11 +218,16 @@ export function RunBody({
           waive.mutate(
             { ticketId: ticket.id, reason: 'waived from the run view' },
             {
-              onSuccess: () =>
+              onSuccess: (r) => {
                 toast.push(
                   `ticket #${ticket.seq} set aside — it stays visible as unfinished work at review`,
                   'info',
-                ),
+                )
+                // The waive killed a live agent and the kill ran out of time —
+                // the lane reads waived either way, so this is the only place
+                // the human hears that something of it may still be running.
+                if (!r.confirmed) toast.push(STOP_TIMEOUT)
+              },
             },
           )
         }
@@ -234,6 +243,10 @@ export function RunBody({
                   )
                 } else if (!r.stopped) {
                   toast.push('no live agent for this ticket (already finishing?)', 'info')
+                } else if (!r.confirmed) {
+                  // The kill ran out of time. The lane will still read stopped,
+                  // so this is the only place the human hears that it may not be.
+                  toast.push(STOP_TIMEOUT)
                 }
               },
             },
@@ -297,10 +310,19 @@ export function RunBody({
         status={run.data?.status}
         burning={burning}
         busy={busy}
+        cancelling={cancelRun.isPending}
         onCancelRun={
           frozen || !runId || run.data?.status !== 'running'
             ? undefined
-            : () => cancelRun.mutate({ runId })
+            : () =>
+                cancelRun.mutate(
+                  { runId },
+                  {
+                    onSuccess: (r) => {
+                      if (!r.confirmed) toast.push(STOP_TIMEOUT)
+                    },
+                  },
+                )
         }
         runs={runs.data ?? []}
         selectedRunId={shownRunId}
