@@ -76,13 +76,15 @@ describe('sandcastle exec failure messages (patched)', () => {
   })
 
   it('bounds the combined tail so a whole build log cannot become the message', () => {
+    const headline = 'Command failed (exit 1): gradle build'
     const message = formatExecFailureMessage('gradle build', {
       exitCode: 1,
       stdout: 'x'.repeat(MAX_TAIL_CHARS * 2),
       stderr: 'FAILURE: Build failed with an exception.',
     })
 
-    expect(message.length).toBeLessThanOrEqual(MAX_TAIL_CHARS + 'Command failed (exit 1): gradle build\n'.length)
+    expect(message.startsWith(`${headline}\n`)).toBe(true)
+    expect(message.length - headline.length - 1).toBe(MAX_TAIL_CHARS)
     // The tail is kept, not the head — the last thing said is the diagnostic.
     expect(message).toContain('FAILURE: Build failed with an exception.')
   })
