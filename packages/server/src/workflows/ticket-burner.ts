@@ -2197,9 +2197,33 @@ const AGENT_BINARY: Record<AgentRuntime, string> = {
 }
 
 /**
+ * The shell saying it could not find `name`. The name must PRECEDE the wording
+ * so an unrelated missing file in the agent's output is not mistaken for a
+ * missing command.
+ */
+function missingCommandRegex(name: string): RegExp {
+  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  return new RegExp(
+    `\\b${escaped}\\b[^\\n]*(?:exited with code 127|command not found|not found|no such file or directory)`,
+    'i',
+  )
+}
+
+/**
+ * Exit 127 in any of the wordings a failing container hook reports it with —
+ * sandcastle's own `Command failed (exit 127): …` included. Fatal for every
+ * runtime: no attempt of ours installs a binary into the image, and blindly
+ * retrying exactly this is the worst behavior the burner has been observed in
+ * (a Java setup command in a JS-only image, three times over).
+ */
+const MISSING_COMMAND_PATTERNS: RegExp[] = [
+  /\bexit(?:ed with)?(?: code)? 127\b/i,
+  /command not found/i,
+]
+
+/**
  * Turn the shell's missing-command failure into the operator action that can
- * actually fix it. The binary must precede the shell wording so an unrelated
- * missing file in the agent's output is not mistaken for a stale image.
+ * actually fix it.
  */
 export function missingAgentBinaryMessage(
   err: unknown,
@@ -2208,12 +2232,26 @@ export function missingAgentBinaryMessage(
 ): string | undefined {
   const msg = err instanceof Error ? err.message : typeof err === 'string' ? err : String(err)
   const binary = AGENT_BINARY[runtime]
-  const missing = new RegExp(
-    `\\b${binary}\\b[^\\n]*(?:exited with code 127|command not found|not found|no such file or directory)`,
-    'i',
-  )
-  if (!missing.test(msg)) return undefined
+  if (!missingCommandRegex(binary).test(msg)) return undefined
   return `${binary} is not installed in image ${image} — the image predates the burner Dockerfile. Rebuild it from Settings → Burns (Rebuild image).`
+}
+
+/**
+ * The same fact for the setup hook's own binaries — the dependency install died
+ * because the image has no `mvn`. Named from the setup command rather than the
+ * error text alone, so the message says which tool and points at the project's
+ * Dockerfile instead of a stock-image rebuild the human does not need.
+ */
+export function missingSetupBinaryMessage(
+  err: unknown,
+  setupCommand: string | undefined,
+  image: string,
+): string | undefined {
+  const msg = err instanceof Error ? err.message : typeof err === 'string' ? err : String(err)
+  const missing = extractCommandNames(setupCommand).find((name) =>
+    missingCommandRegex(name).test(msg),
+  )
+  return missing ? missingToolchainMessage([missing], image) : undefined
 }
 
 /**
@@ -2226,10 +2264,15 @@ export function missingAgentBinaryMessage(
  * produced the message. Omitting it considers every runtime's, which is what a
  * caller with no model in hand wants: the strings do not collide, so the union
  * classifies correctly either way.
+ *
+ * `setupCommand` is the burn's resolved dependency-install command, so a hook
+ * that died on a missing tool is recognised by name. It is only the backstop:
+ * the run-level preflight catches the same fact before any container is built.
  */
 export function classifyTicketRunError(
   err: unknown,
   runtime?: AgentRuntime,
+  setupCommand?: string,
 ): 'retryable' | 'fatal' {
   const msg = err instanceof Error ? err.message : typeof err === 'string' ? err : String(err)
   const runtimes: AgentRuntime[] = runtime ? [runtime] : ['claude-code', 'codex']
@@ -2237,6 +2280,10 @@ export function classifyTicketRunError(
     runtimes.flatMap((r) => table[r])
 
   if (runtimes.some((r) => missingAgentBinaryMessage(msg, r, 'image'))) return 'fatal'
+  if (missingSetupBinaryMessage(msg, setupCommand, 'image')) return 'fatal'
+  // Before the retryable patterns, whose broad `exited with code N` entry would
+  // otherwise send a missing command around the retry loop.
+  if (MISSING_COMMAND_PATTERNS.some((p) => p.test(msg))) return 'fatal'
   if ([...FATAL_ERROR_PATTERNS, ...forRuntimes(RUNTIME_FATAL_ERROR_PATTERNS)].some((p) => p.test(msg)))
     return 'fatal'
   if (
@@ -4169,11 +4216,10 @@ async function burnTicket(
         await discardWorktree(tempBranch)
         if (ctx.signal.aborted) throw err // let the runner mark the run cancelled
         const msg = err instanceof Error ? err.message : String(err)
-        const missingBinary = missingAgentBinaryMessage(
-          err,
-          model.runtime,
-          resolveSandboxImage(config),
-        )
+        const sandboxImage = resolveSandboxImage(config)
+        const missingBinary =
+          missingAgentBinaryMessage(err, model.runtime, sandboxImage) ??
+          missingSetupBinaryMessage(err, setupCommand, sandboxImage)
         // Whatever the dead attempt committed survives on its temp branch —
         // chain the next attempt (or a later run) onto it.
         const salvaged = await branchCommitsAhead(project.repoPath, feature.branch, tempBranch)
@@ -4235,7 +4281,10 @@ async function burnTicket(
           if (salvaged.length > 0) preserveChain(tempBranch)
           return { status: 'failed', error: missingBinary }
         }
-        if (classifyTicketRunError(err, model.runtime) === 'retryable' && attempt < maxAttempts) {
+        if (
+          classifyTicketRunError(err, model.runtime, setupCommand) === 'retryable' &&
+          attempt < maxAttempts
+        ) {
           const headline = errorHeadline(msg)
           retryNotes = buildRetryNotes({ error: headline, commitCount: salvaged.length })
           ctx.emitEvent({
