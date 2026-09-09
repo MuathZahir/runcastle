@@ -198,7 +198,10 @@ describe('runDoctor — canned environments', () => {
     const report = await runDoctor({
       ...base,
       imageName: 'my-team/sandbox:latest',
-      exec: cannedExec(ALL_HEALTHY),
+      exec: cannedExec({
+        ...ALL_HEALTHY,
+        [inspectKey('docker', 'my-team/sandbox:latest')]: { stdout: '<no value>' },
+      }),
     })
     const image = byId(report.results, 'sandcastle-image')
     expect(image.status).toBe('custom')
@@ -206,8 +209,23 @@ describe('runDoctor — canned environments', () => {
     expect(image.detail).toBe('my-team/sandbox:latest is a custom image, managed outside runcastle')
     expect(image.fix).toContain('clear the sandbox image setting')
     expect(image.fix).toContain('.runcastle/sandbox/Dockerfile')
-    // `info` never fails a report: the operator's own image is not their bug.
+    // `info` never fails a report: the operator's own image is not their bug,
+    // and it carries no hash label runcastle could have judged it by anyway.
     expect(report.ok).toBe(true)
+  })
+
+  // Runcastle cannot build it, but it can still say a burn will not find it.
+  it('still calls a custom image out when it is not built at all', async () => {
+    const report = await runDoctor({
+      ...base,
+      imageName: 'my-team/sandbox:latest',
+      exec: cannedExec(ALL_HEALTHY),
+    })
+    const image = byId(report.results, 'sandcastle-image')
+    expect(image.status).toBe('custom')
+    expect(image.severity).toBe('error')
+    expect(image.detail).toContain('is not built locally')
+    expect(report.ok).toBe(false)
   })
 })
 
@@ -528,7 +546,11 @@ describe('runDoctor — a project that ships its own sandbox Dockerfile', () => 
     let cleared = 0
     const row = await imageRow({
       ...base,
-      exec: built(STOCK_HASH),
+      exec: cannedExec({
+        ...ALL_HEALTHY,
+        [inspectKey('docker', 'sandcastle:runcastle')]: { stdout: STOCK_HASH },
+        [inspectKey('docker', 'my-team/sandbox:latest')]: { stdout: '<no value>' },
+      }),
       dockerfileHash: hashes({ ...stockOnly }),
       projectImage: project({
         stored: 'my-team/sandbox:latest',

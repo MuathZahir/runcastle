@@ -335,6 +335,20 @@ describe('EnableAfkCard prerequisites checklist', () => {
     expect(screen.getByText('Ready for unattended burns')).toBeTruthy()
   })
 
+  // …but one that is not built is still in the way, even though runcastle
+  // cannot build it: the burn will not find an image at all.
+  it('still counts a custom image that is not built as a gap', () => {
+    server.results = readyReport().map((r) =>
+      r.id === 'sandcastle-image'
+        ? { ...r, status: 'custom', detail: 'acme/sandbox:v3 … is not built locally' }
+        : r,
+    )
+    open()
+
+    expect(screen.queryByText('Ready for unattended burns')).toBeNull()
+    expect(screen.getByText(/3 of 4/)).toBeTruthy()
+  })
+
   it('keeps "Set up later" for the first-run wizard, and drops it everywhere else', () => {
     open()
     expect(screen.queryByRole('button', { name: 'Set up later' })).toBeNull()

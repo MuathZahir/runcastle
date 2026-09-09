@@ -94,7 +94,11 @@ export interface DoctorEnv {
   platform?: NodeJS.Platform
   /** Directory to resolve git identity in (repo-local overrides honored). */
   cwd?: string
-  /** Sandcastle image tag to inspect (defaults to {@link DEFAULT_SANDBOX_IMAGE}). */
+  /**
+   * Sandcastle image tag to inspect (defaults to {@link DEFAULT_SANDBOX_IMAGE}),
+   * resolved from every layer BELOW a project's own column — see
+   * {@link ImageProbeInput.imageName}.
+   */
   imageName?: string
   /**
    * The runtimes some configured model resolves to (`configuredRuntimes` from
@@ -668,13 +672,18 @@ export async function sandcastleImageProbe(input: ImageProbeInput): Promise<Prob
     // Decision 5: nothing here is runcastle's to build, so the row reports who
     // owns the image rather than offering a Rebuild that would build the stock
     // template under someone's custom tag — the clobber this feature exists to
-    // remove. An image the operator manages themselves is not a defect in their
-    // setup, so it is reported and never counted against them.
+    // remove. Staleness is unanswerable (there is no Dockerfile runcastle knows
+    // about), but presence is not, and an image a burn will not find is still
+    // worth saying out loud: an operator's own image is `info` when it is there
+    // and an `error` when it is not.
+    const custom = await inspectBuiltImage(exec, runtime, imageName)
     return {
       ...IMAGE_ROW,
       status: 'custom',
-      severity: 'info',
-      detail: `${imageName} is a custom image, managed outside runcastle`,
+      severity: custom.present ? 'info' : 'error',
+      detail: custom.present
+        ? `${imageName} is a custom image, managed outside runcastle`
+        : `${imageName} is a custom image, managed outside runcastle — and is not built locally`,
       fix: unmanagedImageReason(imageName),
     }
   }

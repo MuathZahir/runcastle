@@ -199,12 +199,14 @@ export function EnableAfkCard({
 export type Probe = RouterOutputs['setup']['doctor']['results'][number]
 
 /**
- * Whether the image row lets a burn through. A `custom` image — one the operator
- * tagged themselves and manages outside runcastle — is not a gap in their setup:
- * the burn has an image, it is simply not one runcastle built or can rebuild.
+ * Whether the image row lets a burn through. A probe reported for context only
+ * (`info`) never does gate one — which is how a `custom` image the operator
+ * tagged themselves reads as ready: the burn has an image, it is simply not one
+ * runcastle built or can rebuild. A custom image that is not there is still an
+ * `error`, and still in the way.
  */
 function imageReady(probe: Probe): boolean {
-  return probe.status === 'ok' || probe.status === 'custom'
+  return probe.status === 'ok' || probe.severity === 'info'
 }
 
 /**
