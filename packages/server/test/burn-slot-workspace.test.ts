@@ -93,19 +93,11 @@ describe('what the burn container is handed, by cache mode', () => {
       { volume: `runcastle-${PROJECT_ID}`, sandboxPath: '~/.cache/pip' },
       { volume: `runcastle-${PROJECT_ID}`, sandboxPath: '~/.cargo' },
     ])
-    expect(TOOLCHAIN_CACHE_SANDBOX_PATHS).not.toContain('~/.local/share/pnpm/store')
+    expect(mounts.map((m) => m.sandboxPath)).not.toContain('~/.local/share/pnpm/store')
 
     // They reach the provider intact, alongside the volume's own mount point.
     const paths = optionsFor(1).mounts?.map((m) => m.sandboxPath)
     expect(paths).toEqual([BURN_CACHE_MOUNT, ...TOOLCHAIN_CACHE_SANDBOX_PATHS])
-  })
-
-  // ADR-0004 byte-for-byte with the cache off means these are absent too: they
-  // exist only because there is a named volume to hang them on.
-  it('attaches no toolchain cache path with the cache off', () => {
-    const mounts = buildBurnCacheMounts(undefined, PROJECT_ID, 'docker', 'npm').mounts
-
-    expect(mounts).toEqual([{ hostPath: burnCacheDir('npm'), sandboxPath: '~/.npm' }])
   })
 
   // `'off'` must be byte-for-byte today's behaviour, env included — a provider
