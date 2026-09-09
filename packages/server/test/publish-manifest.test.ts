@@ -80,6 +80,7 @@ var noSandbox = (options) => {
   const proc = spawn(shellCmd, shellArgs, {});
   if (proc.pid !== void 0) options?.onChildSpawn?.(proc.pid);
 };
+var elidePayloadTokens = (command) => command.replace(/'[A-Za-z0-9+\\/=]{120,}'/g, "'…'");
 `
 
 /** The same bundle built from the REGISTRY copy: v1.2.11's output. */

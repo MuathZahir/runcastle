@@ -212,7 +212,7 @@ Vite + React + @trpc/react-query + TanStack Query v5, plain CSS (one stylesheet,
 - Never touch files outside your assigned dirs (§3 ownership). NotImplementedError stubs are wave-B sockets — replace, don't redesign.
 - Windows paths: always `node:path` (`join`, `resolve`); never hand-concatenate; quote paths in shell commands.
 - Every service function that mutates emits an event (events are the UI's lifeblood).
-- Commit your own work when done: conventional message `feat(scope): ...` — repo is `runcastle/` itself.
+- Commit your own work when done: conventional message `feat(scope): ...` — repo is `runcastle/` itself. On burn branches the machinery owns the subject instead: burn agents commit `ticket(<seq>): <summary>` (§8) and the orchestrator's docs commits are `runcastle: <what>`.
 - When docs are needed, use `npx ctx7@latest library/docs` (≤3 calls per question) — do not trust training data for API shapes.
 
 ## 13. Mapped ideation (post-M1 — ADR-0001)

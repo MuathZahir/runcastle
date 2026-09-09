@@ -30,6 +30,13 @@ the correction in `docs/research/CORRECTIONS.md`.
   scale, the primitives, the two component-test tiers, and the rule that retires
   `styles.css` one flow at a time.
 - **Commit your own work when done**: conventional message `feat(scope): ...`.
+  Two subject forms are owned by the machinery and are the convention on burn
+  branches: a burn agent commits `ticket(<seq>): <summary>` (SPEC §8, rendered
+  into every prompt from `packages/skills/burner/implement-ticket.md`), and the
+  orchestrator's own docs commits are `runcastle: <what>` (scaffold, outcome,
+  MCP checkpoints — see `services/features.ts`, `services/outcome.ts`). Both
+  are correct where they appear; they are published to the integration branch
+  and to sibling ticket branches, so never reword them.
 - **For library/API shapes, use `npx ctx7@latest library|docs`** (≤3 calls per
   question) — don't trust training data for API shapes.
 - Ports: server **4512**, web **4513**. Data dir: `~/.runcastle/`.
