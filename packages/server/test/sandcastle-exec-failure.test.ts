@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { formatExecFailureMessage } from '@ai-hero/sandcastle'
+import { noSandbox } from '@ai-hero/sandcastle/sandboxes/no-sandbox'
 import { buildGuardInstallCommand } from '../src/workflows/burn-guard'
 
 /**
@@ -101,5 +102,49 @@ describe('sandcastle exec failure messages (patched)', () => {
     expect(message.length - headline.length - 1).toBe(MAX_TAIL_CHARS)
     // The tail is kept, not the head — the last thing said is the diagnostic.
     expect(message).toContain('FAILURE: Build failed with an exception.')
+  })
+
+  // A provider given a smaller `maxOutputTailChars` asked for messages that fit
+  // in it; the 64 KiB default is what it was overriding.
+  it('bounds the combined tail by a caller-configured cap, not the default', () => {
+    const headline = 'Command failed (exit 1): gradle build'
+    const message = formatExecFailureMessage(
+      'gradle build',
+      {
+        exitCode: 1,
+        stdout: 'x'.repeat(500),
+        stderr: 'FAILURE: Build failed with an exception.',
+      },
+      100,
+    )
+
+    expect(message.startsWith(`${headline}\n`)).toBe(true)
+    expect(message.length - headline.length - 1).toBe(100)
+    expect(message).toContain('FAILURE: Build failed with an exception.')
+  })
+})
+
+/**
+ * The other half of honouring that cap: the value is configured on a PROVIDER,
+ * and has to reach the formatter. Every provider publishes its resolved bound
+ * on the handle it creates, and `makeSandboxFromHandle` carries it to the
+ * `execOk2` that renders a failed setup/verify command.
+ *
+ * `noSandbox` is the provider that can be driven here — its `create` spawns
+ * nothing, so no container engine and no mock is needed to observe the handle.
+ */
+describe('sandcastle providers publish their configured output bound (patched)', () => {
+  const createOptions = { worktreePath: process.cwd(), env: {} }
+
+  it('carries a configured maxOutputTailChars onto the handle it creates', async () => {
+    const handle = await noSandbox({ maxOutputTailChars: 100 }).create(createOptions)
+
+    expect(handle.maxOutputTailChars).toBe(100)
+  })
+
+  it('publishes the default when the provider was configured without one', async () => {
+    const handle = await noSandbox().create(createOptions)
+
+    expect(handle.maxOutputTailChars).toBe(MAX_TAIL_CHARS)
   })
 })

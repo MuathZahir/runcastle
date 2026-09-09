@@ -39,11 +39,67 @@ index 9ad1fdd590d0b19998e2c55eb6a412dce165028c..cd43332576d0d4040b1ef7611a0147ac
 +type MountConfig = HostPathMountConfig | VolumeMountConfig;
  
  export type { MountConfig as M };
+diff --git a/dist/SandboxProvider-EkSMuBp8.d.ts b/dist/SandboxProvider-EkSMuBp8.d.ts
+index 5ebe75081651f603c90b5106c847d6291f0eb30a..6755f909381168f8f11e5bc9b88b9cbce977a555 100644
+--- a/dist/SandboxProvider-EkSMuBp8.d.ts
++++ b/dist/SandboxProvider-EkSMuBp8.d.ts
+@@ -21,6 +21,13 @@ interface InteractiveExecOptions {
+ interface BindMountSandboxHandle {
+     /** Absolute path to the worktree inside the sandbox. */
+     readonly worktreePath: string;
++    /**
++     * runcastle patch — the `maxOutputTailChars` this provider was configured
++     * with. It already bounds each streamed tail; publishing it holds the
++     * failure message of a non-zero exit to the same bound. Omitted, the 64 KiB
++     * default stands.
++     */
++    readonly maxOutputTailChars?: number;
+     /**
+      * Execute a command in the sandbox.
+      *
+@@ -89,6 +96,13 @@ interface BindMountSandboxProviderConfig {
+ interface IsolatedSandboxHandle {
+     /** Absolute path to the worktree inside the sandbox. */
+     readonly worktreePath: string;
++    /**
++     * runcastle patch — the `maxOutputTailChars` this provider was configured
++     * with. It already bounds each streamed tail; publishing it holds the
++     * failure message of a non-zero exit to the same bound. Omitted, the 64 KiB
++     * default stands.
++     */
++    readonly maxOutputTailChars?: number;
+     /**
+      * Execute a command in the sandbox.
+      *
+@@ -160,6 +174,13 @@ interface IsolatedSandboxProvider {
+ interface NoSandboxHandle {
+     /** Absolute path to the worktree on the host. */
+     readonly worktreePath: string;
++    /**
++     * runcastle patch — the `maxOutputTailChars` this provider was configured
++     * with. It already bounds each streamed tail; publishing it holds the
++     * failure message of a non-zero exit to the same bound. Omitted, the 64 KiB
++     * default stands.
++     */
++    readonly maxOutputTailChars?: number;
+     /**
+      * Execute a command on the host.
+      *
 diff --git a/dist/chunk-62WN33RK.js b/dist/chunk-62WN33RK.js
-index 014dcef940e6eec6b1334a0bef1ffa1fdbea9c84..4ff8560a5c3332d7289af6c80fd0240db273d81d 100644
+index 014dcef940e6eec6b1334a0bef1ffa1fdbea9c84..0200e93ec5d83aeea960edf9a3e0acdd493ff0e7 100644
 --- a/dist/chunk-62WN33RK.js
 +++ b/dist/chunk-62WN33RK.js
-@@ -30,6 +30,11 @@ var noSandbox = (options) => ({
+@@ -14,6 +14,9 @@ var noSandbox = (options) => ({
+     const maxOutputTailChars = options?.maxOutputTailChars ?? MAX_TAIL_CHARS;
+     const handle = {
+       worktreePath,
++      // runcastle patch: publish the resolved output bound so a failed
++      // setup/verify message is held to it too, not just the streamed tails.
++      maxOutputTailChars,
+       exec: (command, opts) => {
+         const cwd = opts?.cwd ?? worktreePath;
+         const isWindows = process.platform === "win32";
+@@ -30,6 +33,11 @@ var noSandbox = (options) => ({
              ],
              windowsVerbatimArguments: isWindows
            });
@@ -55,7 +111,7 @@ index 014dcef940e6eec6b1334a0bef1ffa1fdbea9c84..4ff8560a5c3332d7289af6c80fd0240d
            if (opts?.stdin !== void 0) {
              proc.stdin.write(opts.stdin);
              proc.stdin.end();
-@@ -84,6 +89,8 @@ var noSandbox = (options) => ({
+@@ -84,6 +92,8 @@ var noSandbox = (options) => ({
              stdio: [opts.stdin, opts.stdout, opts.stderr],
              shell: process.platform === "win32"
            });
@@ -65,7 +121,7 @@ index 014dcef940e6eec6b1334a0bef1ffa1fdbea9c84..4ff8560a5c3332d7289af6c80fd0240d
              reject(new Error(`exec failed: ${error.message}`));
            });
 diff --git a/dist/chunk-CP3TYXZA.js b/dist/chunk-CP3TYXZA.js
-index 7d097321871cfee95a8ba7e6d12a7fe002190cc5..23a68bed8276ffdf481644e10b0822d41082c969 100644
+index 7d097321871cfee95a8ba7e6d12a7fe002190cc5..7b030e76d83e3ab07bca772230af8c61bd886bea 100644
 --- a/dist/chunk-CP3TYXZA.js
 +++ b/dist/chunk-CP3TYXZA.js
 @@ -130,7 +130,11 @@ var docker = (options) => {
@@ -94,11 +150,21 @@ index 7d097321871cfee95a8ba7e6d12a7fe002190cc5..23a68bed8276ffdf481644e10b0822d4
        }));
        const imageName = configuredImageName ?? defaultImageName(createOptions.hostRepoPath);
        const containerUid = options?.containerUid ?? process.getuid?.() ?? 1e3;
+@@ -205,6 +213,9 @@ var docker = (options) => {
+       const unregisterShutdown = registerShutdown(removeContainerSync);
+       const handle = {
+         worktreePath,
++        // runcastle patch: publish the resolved output bound so a failed
++        // setup/verify message is held to it too, not just the streamed tails.
++        maxOutputTailChars,
+         exec: (command, opts) => {
+           const effectiveCommand = opts?.sudo ? `sudo ${command}` : command;
+           const args = ["exec"];
 diff --git a/dist/chunk-NGBM7T3E.js b/dist/chunk-NGBM7T3E.js
-index c2b77a43fca309822bd882256dc4c593af75bac0..31ca930d815d816985487af6aae257b183455c3a 100644
+index c2b77a43fca309822bd882256dc4c593af75bac0..ec0ae4882d344d4baadc9755654651e739c3560f 100644
 --- a/dist/chunk-NGBM7T3E.js
 +++ b/dist/chunk-NGBM7T3E.js
-@@ -71,5 +71,40 @@ var BoundedTail = class {
+@@ -71,5 +71,46 @@ var BoundedTail = class {
    }
  };
  
@@ -126,13 +192,19 @@ index c2b77a43fca309822bd882256dc4c593af75bac0..31ca930d815d816985487af6aae257b1
 + */
 +var elidePayloadTokens = (command) => command.replace(/'[A-Za-z0-9+\/=]{120,}'/g, "'…'");
 +
-+/** The message a non-zero exit reports: what ran, how it exited, what it said. */
-+var formatExecFailureMessage = (command, result) => {
++/**
++ * The message a non-zero exit reports: what ran, how it exited, what it said.
++ *
++ * `maxTailChars` bounds the COMBINED stdout+stderr tail, so a provider
++ * configured with a smaller `maxOutputTailChars` than the default gets a
++ * message inside the bound it asked for.
++ */
++var formatExecFailureMessage = (command, result, maxTailChars = MAX_TAIL_CHARS) => {
 +  const output = [result.stdout, result.stderr]
 +    .map((stream) => (stream ?? "").trimEnd())
 +    .filter((stream) => stream.length > 0)
 +    .join("\n");
-+  const tail = output.length > MAX_TAIL_CHARS ? output.slice(output.length - MAX_TAIL_CHARS) : output;
++  const tail = output.length > maxTailChars ? output.slice(output.length - maxTailChars) : output;
 +  const headline = `Command failed (exit ${result.exitCode}): ${elidePayloadTokens(command)}`;
 +  return tail ? `${headline}
 +${tail}` : headline;
@@ -141,7 +213,7 @@ index c2b77a43fca309822bd882256dc4c593af75bac0..31ca930d815d816985487af6aae257b1
 +export { BoundedTail, MAX_TAIL_CHARS, __commonJS, __export, __reExport, __require, __toESM, formatExecFailureMessage };
  //# sourceMappingURL=chunk-NGBM7T3E.js.map
 diff --git a/dist/chunk-VOG34SRF.js b/dist/chunk-VOG34SRF.js
-index 93f24d139b795c284915a10c34d82f2fa769eab0..2317d00d74747b4edaa89102230018788870548d 100644
+index 93f24d139b795c284915a10c34d82f2fa769eab0..b2277c273406bbdedbe95c67ddc4633db8968b05 100644
 --- a/dist/chunk-VOG34SRF.js
 +++ b/dist/chunk-VOG34SRF.js
 @@ -1,5 +1,5 @@
@@ -151,18 +223,30 @@ index 93f24d139b795c284915a10c34d82f2fa769eab0..2317d00d74747b4edaa8910223001878
  import * as clack from '@clack/prompts';
  import { join as join$1, basename, dirname, resolve, posix, normalize, isAbsolute } from 'path';
  import { styleText, promisify } from 'util';
-@@ -25824,8 +25824,8 @@ var execOk2 = (sandbox3, command, options) => Effect_exports.flatMap(
+@@ -25824,8 +25824,9 @@ var execOk2 = (sandbox3, command, options) => Effect_exports.flatMap(
      new ExecError({
        command,
        exitCode: result.exitCode,
 -      message: `Command failed (exit ${result.exitCode}): ${command}
 -${result.stderr}`
-+      // runcastle patch — stdout as well as stderr, and no payload echo.
-+      message: formatExecFailureMessage(command, result)
++      // runcastle patch — stdout as well as stderr, no payload echo, and the
++      // provider's own output bound rather than the 64 KiB default.
++      message: formatExecFailureMessage(command, result, sandbox3.maxOutputTailChars)
      })
    ) : Effect_exports.succeed(result)
  );
-@@ -26821,6 +26821,21 @@ var resolveSandboxPath = (sandboxPath, sandboxHomedir) => {
+@@ -26384,6 +26385,10 @@ var getCopyIn = (handle) => {
+   );
+ };
+ var makeSandboxFromHandle = (handle) => ({
++  // runcastle patch: every provider's handle becomes a sandbox here, so this is
++  // the one place the configured output bound has to be carried across for
++  // execOk2's failure message to honour it. `undefined` leaves the default.
++  maxOutputTailChars: handle.maxOutputTailChars,
+   exec: (command, options) => Effect_exports.tryPromise({
+     try: () => handle.exec(command, options),
+     catch: (e) => new ExecError({
+@@ -26821,6 +26826,21 @@ var resolveSandboxPath = (sandboxPath, sandboxHomedir) => {
    return isAbsolute(expanded) ? expanded : resolve(SANDBOX_REPO_DIR, expanded);
  };
  var resolveUserMounts = (mounts, sandboxHomedir) => mounts.map((m) => {
@@ -184,7 +268,7 @@ index 93f24d139b795c284915a10c34d82f2fa769eab0..2317d00d74747b4edaa8910223001878
    const resolvedHostPath = resolveHostPath(m.hostPath);
    if (!existsSync(resolvedHostPath)) {
      throw new Error(
-@@ -26937,7 +26952,12 @@ var patchGitMountsForWindows = (gitMounts, worktreeHostPath, sandboxRepoDir, rea
+@@ -26937,7 +26957,12 @@ var patchGitMountsForWindows = (gitMounts, worktreeHostPath, sandboxRepoDir, rea
  });
  var formatVolumeMount = (mount, selinuxLabel) => {
    const base = `${mount.hostPath}:${mount.sandboxPath}`;
@@ -199,10 +283,10 @@ index 93f24d139b795c284915a10c34d82f2fa769eab0..2317d00d74747b4edaa8910223001878
  };
  var processFileMountParents = (mounts, sandboxHomedir, statFn = statSync) => {
 diff --git a/dist/index.d.ts b/dist/index.d.ts
-index e451924caf673166b63daf652a056412e6025552..779ffc873a1b454783a1d604b54dfc66987ead31 100644
+index e451924caf673166b63daf652a056412e6025552..a76133784aea5dc76ea701e23a51c753b383e84b 100644
 --- a/dist/index.d.ts
 +++ b/dist/index.d.ts
-@@ -1048,4 +1048,15 @@ interface CwdError extends Error {
+@@ -1048,4 +1048,18 @@ interface CwdError extends Error {
  /** The provided `cwd` path does not exist or is not a directory. */
  declare const CwdError: CwdErrorConstructor;
  
@@ -213,8 +297,11 @@ index e451924caf673166b63daf652a056412e6025552..779ffc873a1b454783a1d604b54dfc66
 + * Names the command with its base64 payloads elided, and appends stdout as well
 + * as stderr (bounded together) — a JVM toolchain writes its diagnostics to
 + * stdout, so stderr alone renders a failed setup as a bare "exit 1".
++ *
++ * `maxTailChars` bounds the combined tail, and defaults to the same 64 KiB a
++ * provider's `maxOutputTailChars` defaults to.
 + */
-+declare const formatExecFailureMessage: (command: string, result: ExecResult) => string;
++declare const formatExecFailureMessage: (command: string, result: ExecResult, maxTailChars?: number) => string;
 +export { formatExecFailureMessage };
 +
  export { type AgentCommandOptions, type AgentProvider, type AgentStreamEvent, AnySandboxProvider, BindMountSandboxHandle, BranchStrategy, type ClaudeCodeOptions, type CloseResult, type CodexOptions, type CopilotOptions, type CreateSandboxOptions, type CreateWorktreeOptions, type CursorOptions, CwdError, ExecResult, type HostSessionLookup, type InteractiveOptions, type InteractiveResult, type IterationResult, type IterationUsage, type LoggingOption, MergeToHeadBranchStrategy, NamedBranchStrategy, type OpenCodeOptions, Output, type OutputDefinition, type OutputObjectDefinition, type OutputStringDefinition, type PiOptions, type PrintCommand, type PromptArgs, type ResumeSandboxRunResultOptions, type RunOptions, type RunResult, type Sandbox, type SandboxExecOptions, type SandboxHooks, type SandboxInteractiveOptions, type SandboxInteractiveResult, SandboxProvider, type SandboxRunOptions, type SandboxRunResult, StructuredOutputError, type Timeouts, type Worktree, type WorktreeBranchStrategy, type WorktreeCreateSandboxOptions, type WorktreeInteractiveOptions, type WorktreeRunOptions, type WorktreeRunResult, claudeCode, claudeHostSessionPath, claudeSandboxSessionPath, codex, copilot, createSandbox, createWorktree, cursor, encodeProjectPath, findClaudeSessionOnHost, findCodexSessionOnHost, interactive, opencode, pi, run, transferClaudeSession, transferCodexSession };
@@ -232,6 +319,20 @@ index 2a1d6d7e902e34620d64929418b34c715ab65d7d..b2927e71168cd6a25a61639769148df2
  import { mkdirSync, appendFileSync } from 'fs';
  import path, { join, posix, dirname, relative } from 'path';
  import { styleText } from 'util';
+diff --git a/dist/sandboxes/daytona.js b/dist/sandboxes/daytona.js
+index 0230713e13fb6782a77e0a5966624ebdef563ac3..5f9c371a498feac3b1e27ac4c28d98fd48b13f83 100644
+--- a/dist/sandboxes/daytona.js
++++ b/dist/sandboxes/daytona.js
+@@ -20,6 +20,9 @@ var daytona = (options) => createIsolatedSandboxProvider({
+     const worktreePath = await sandbox.getWorkDir() ?? await sandbox.getUserHomeDir() ?? "/home/daytona";
+     return {
+       worktreePath,
++      // runcastle patch: publish the resolved output bound so a failed
++      // setup/verify message is held to it too, not just the streamed tails.
++      maxOutputTailChars,
+       exec: async (command, opts) => {
+         const effectiveCommand = opts?.sudo ? `sudo ${command}` : command;
+         if (opts?.onLine) {
 diff --git a/dist/sandboxes/docker.d.ts b/dist/sandboxes/docker.d.ts
 index c7cc9e78dd3f14021ae64061d70e715bb98f768f..683eae5626082d3d0ba1f2ea9391a6be6bd05476 100644
 --- a/dist/sandboxes/docker.d.ts
@@ -307,3 +408,31 @@ index 61e7b4832b63d2859839f3d68ac2af3cbc5d16e0..9bb26af38fa173abe340479370e03620
       */
      readonly mounts?: readonly MountConfig[];
      /** Environment variables injected by this provider. Merged at launch time with env resolver and agent provider env. */
+diff --git a/dist/sandboxes/podman.js b/dist/sandboxes/podman.js
+index a867cc90803ada43cca660fe5cf671d3c1e2c7a2..9d720dfada46d0a6f79af82cab83bd5b4ab1fe9a 100644
+--- a/dist/sandboxes/podman.js
++++ b/dist/sandboxes/podman.js
+@@ -132,6 +132,9 @@ var podman = (options) => {
+       const unregisterShutdown = registerShutdown(removeContainerSync);
+       const handle = {
+         worktreePath,
++        // runcastle patch: publish the resolved output bound so a failed
++        // setup/verify message is held to it too, not just the streamed tails.
++        maxOutputTailChars,
+         exec: (command, opts) => {
+           const effectiveCommand = opts?.sudo ? `sudo ${command}` : command;
+           const args = ["exec"];
+diff --git a/dist/sandboxes/vercel.js b/dist/sandboxes/vercel.js
+index ba8d382368208fca03184874c06f16799563404a..9cb57066168704516873bc824cfc948bdff0388c 100644
+--- a/dist/sandboxes/vercel.js
++++ b/dist/sandboxes/vercel.js
+@@ -35,6 +35,9 @@ var vercel = (options) => createIsolatedSandboxProvider({
+     await sandbox.mkDir(VERCEL_REPO_PATH);
+     const handle = {
+       worktreePath: VERCEL_REPO_PATH,
++      // runcastle patch: publish the resolved output bound so a failed
++      // setup/verify message is held to it too, not just the streamed tails.
++      maxOutputTailChars,
+       exec: async (command, opts) => {
+         if (opts?.onLine) {
+           const onLine = opts.onLine;
