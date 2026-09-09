@@ -14,6 +14,7 @@ import {
   applyInstalledAssetEnv,
   sandcastleTemplateDir,
 } from '../src/launcher/asset-paths'
+import { DOCKERFILE_HASH_LABEL } from '../src/services/sandbox-image'
 
 /**
  * A canned exec: maps `"cmd arg arg"` to an outcome. Anything not in the map is
@@ -29,6 +30,14 @@ function cannedExec(table: Record<string, Partial<ExecOutcome>>): ExecFn {
   }
 }
 
+/** The sha256 of the stock burner Dockerfile, as the fake hash reader reports it. */
+const STOCK_HASH = 'a'.repeat(64)
+
+/** The canned-exec key for the label read the image probe makes (decision 4). */
+function inspectKey(runtime: 'docker' | 'podman', tag: string): string {
+  return `${runtime} image inspect --format {{index .Config.Labels "${DOCKERFILE_HASH_LABEL}"}} ${tag}`
+}
+
 const ALL_HEALTHY: Record<string, Partial<ExecOutcome>> = {
   'bun --version': { stdout: '1.3.14' },
   'node --version': { stdout: 'v22.0.0' },
@@ -39,9 +48,7 @@ const ALL_HEALTHY: Record<string, Partial<ExecOutcome>> = {
   'git config --get user.name': { stdout: 'Dev' },
   'docker --version': { stdout: 'Docker version 27.0.0' },
   'docker info': { stdout: 'Server: ...' },
-  'docker image inspect --format {{.Created}} sandcastle:runcastle': {
-    stdout: '2030-01-01T12:00:00Z',
-  },
+  [inspectKey('docker', 'sandcastle:runcastle')]: { stdout: STOCK_HASH },
 }
 
 function byId(results: ProbeResult[], id: string): ProbeResult {
@@ -55,7 +62,7 @@ describe('runDoctor — canned environments', () => {
     env: { CLAUDE_CODE_OAUTH_TOKEN: 'sk-oauth-xxx' },
     platform: 'linux' as const,
     imageName: 'sandcastle:runcastle',
-    fileMtime: () => new Date('2026-08-18T12:00:00Z'),
+    dockerfileHash: () => STOCK_HASH,
   }
 
   it('reports every probe healthy on a fully-provisioned host', async () => {
@@ -138,32 +145,68 @@ describe('runDoctor — canned environments', () => {
 
   it('reports a missing sandcastle image when inspect fails', async () => {
     const table = { ...ALL_HEALTHY }
-    delete table['docker image inspect --format {{.Created}} sandcastle:runcastle']
+    delete table[inspectKey('docker', 'sandcastle:runcastle')]
     const report = await runDoctor({ ...base, exec: cannedExec(table) })
     expect(byId(report.results, 'sandcastle-image').status).toBe('missing')
   })
 
-  it('reports a sandcastle image as stale when the burner Dockerfile is newer', async () => {
+  it('reports a sandcastle image as stale when its hash label is not the Dockerfile’s', async () => {
     const table = {
       ...ALL_HEALTHY,
-      'docker image inspect --format {{.Created}} sandcastle:runcastle': {
-        stdout: '2026-08-20T12:00:00Z',
-      },
+      [inspectKey('docker', 'sandcastle:runcastle')]: { stdout: 'b'.repeat(64) },
     }
-    const report = await runDoctor({
-      ...base,
-      exec: cannedExec(table),
-      fileMtime: () => new Date('2026-08-21T12:00:00Z'),
-    })
+    const report = await runDoctor({ ...base, exec: cannedExec(table) })
     const image = byId(report.results, 'sandcastle-image')
     expect(image.status).toBe('stale')
     expect(image.severity).toBe('error')
     expect(image.detail).toBe(
-      'sandcastle:runcastle built 2026-08-20, burner Dockerfile changed 2026-08-21 — rebuild',
+      'sandcastle:runcastle no longer matches the burner Dockerfile — rebuild',
     )
     // Names the settings page the web deep-links from (decision 9).
     expect(image.fix).toBe('Open Settings → Burns (Rebuild image).')
     expect(report.ok).toBe(false)
+  })
+
+  // BuildKit layer-cache reuse keeps the old `Created` on a freshly rebuilt
+  // image, which is what made the mtime comparison this replaces wrong in both
+  // directions. An image built before the label existed cannot vouch for its
+  // own content, so it reads as stale rather than as fine.
+  it('reads an image with no hash label at all as stale', async () => {
+    const table = {
+      ...ALL_HEALTHY,
+      // What both runtimes print for a label key the image does not carry.
+      [inspectKey('docker', 'sandcastle:runcastle')]: { stdout: '<no value>' },
+    }
+    const report = await runDoctor({ ...base, exec: cannedExec(table) })
+    expect(byId(report.results, 'sandcastle-image').status).toBe('stale')
+  })
+
+  it('never asks the image when it was built, only what it was built from', async () => {
+    const asked: string[][] = []
+    await runDoctor({
+      ...base,
+      exec: async (command, args) => {
+        asked.push([command, ...args])
+        return cannedExec(ALL_HEALTHY)(command, args)
+      },
+    })
+    expect(asked.some((call) => call.join(' ').includes('{{.Created}}'))).toBe(false)
+  })
+
+  it('reports an image runcastle does not manage as custom, not as a defect', async () => {
+    const report = await runDoctor({
+      ...base,
+      imageName: 'my-team/sandbox:latest',
+      exec: cannedExec(ALL_HEALTHY),
+    })
+    const image = byId(report.results, 'sandcastle-image')
+    expect(image.status).toBe('custom')
+    expect(image.severity).toBe('info')
+    expect(image.detail).toBe('my-team/sandbox:latest is a custom image, managed outside runcastle')
+    expect(image.fix).toContain('clear the sandbox image setting')
+    expect(image.fix).toContain('.runcastle/sandbox/Dockerfile')
+    // `info` never fails a report: the operator's own image is not their bug.
+    expect(report.ok).toBe(true)
   })
 })
 
@@ -178,6 +221,7 @@ describe('runDoctor — per-runtime readiness with conditional severity', () => 
     env: { CLAUDE_CODE_OAUTH_TOKEN: 'sk-oauth-xxx' },
     platform: 'linux' as const,
     imageName: 'sandcastle:runcastle',
+    dockerfileHash: () => STOCK_HASH,
     fileExists: () => false,
   }
 
@@ -281,6 +325,7 @@ describe('runDoctor — codex login is decided by the credentials file', () => {
     env: { CLAUDE_CODE_OAUTH_TOKEN: 'sk-oauth-xxx' },
     platform: 'linux' as const,
     imageName: 'sandcastle:runcastle',
+    dockerfileHash: () => STOCK_HASH,
     runtimes: ['codex'] as const,
   }
   const withStatus = (status: Partial<ExecOutcome>) =>
@@ -345,7 +390,7 @@ describe('runDoctor — codex login is decided by the credentials file', () => {
  * `<pkgRoot>/sandcastle-template` — so `bun add -g runcastle` got an ENOENT out
  * of the tRPC doctor query and a home page stuck on "loading projects…".
  */
-describe('runDoctor — the burner Dockerfile it stats', () => {
+describe('runDoctor — the burner Dockerfile it hashes', () => {
   const base = {
     env: { CLAUDE_CODE_OAUTH_TOKEN: 'sk-oauth-xxx' },
     platform: 'linux' as const,
@@ -356,19 +401,19 @@ describe('runDoctor — the burner Dockerfile it stats', () => {
     delete process.env[ASSET_ENV.sandcastleTemplate]
   })
 
-  /** Run the probe set on a healthy host and report the path it read an mtime from. */
+  /** Run the probe set on a healthy host and report the path it hashed. */
   async function statted(): Promise<string> {
     const seen: string[] = []
     await runDoctor({
       ...base,
       exec: cannedExec(ALL_HEALTHY),
-      fileMtime: (path) => {
+      dockerfileHash: (path) => {
         seen.push(path)
-        return new Date('2026-08-18T12:00:00Z')
+        return STOCK_HASH
       },
     })
     const [first] = seen
-    if (!first) throw new Error('the image probe never read a Dockerfile mtime')
+    if (!first) throw new Error('the image probe never hashed a Dockerfile')
     return first
   }
 
@@ -396,6 +441,7 @@ describe('exitCodeFor — gate vs diagnostic', () => {
     env: { CLAUDE_CODE_OAUTH_TOKEN: 'sk-oauth-xxx' },
     platform: 'linux' as const,
     imageName: 'sandcastle:runcastle',
+    dockerfileHash: () => STOCK_HASH,
   }
 
   it('gate mode passes when only Tier-2/warning checks fail', async () => {

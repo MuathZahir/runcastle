@@ -11,10 +11,10 @@ import { requireProjectById } from '../src/services/repo'
 import {
   DOCKERFILE_HASH_LABEL,
   adoptProjectImage,
-  builtDockerfileHash,
   hashDockerfile,
   hashDockerfileContents,
   imageBuildTerminal,
+  inspectBuiltImage,
   planImageBuild,
   projectImageTag,
   stockBuildArgs,
@@ -77,23 +77,32 @@ describe('hashDockerfile', () => {
   })
 })
 
-describe('builtDockerfileHash', () => {
+describe('inspectBuiltImage', () => {
   const inspecting = (out: Partial<ExecOutcome>): ExecFn =>
     async (): Promise<ExecOutcome> => ({ ok: true, code: 0, stdout: '', stderr: '', ...out })
 
   it('reads the hash label off a built image', async () => {
-    expect(await builtDockerfileHash(inspecting({ stdout: 'abc123\n' }), 'docker', 'img')).toBe('abc123')
+    expect(await inspectBuiltImage(inspecting({ stdout: 'abc123\n' }), 'docker', 'img')).toEqual({
+      present: true,
+      hash: 'abc123',
+    })
   })
 
-  it('reports null for an image that is not there', async () => {
+  it('reports an image that is not there as absent', async () => {
     const missing = inspecting({ ok: false, code: 1, stderr: 'No such image' })
-    expect(await builtDockerfileHash(missing, 'docker', 'img')).toBeNull()
+    expect(await inspectBuiltImage(missing, 'docker', 'img')).toEqual({
+      present: false,
+      hash: null,
+    })
   })
 
   // An image built before the label existed reads as stale, which is the safe
-  // direction: nothing vouches for what is inside it.
-  it('reports null for an image with no such label', async () => {
-    expect(await builtDockerfileHash(inspecting({ stdout: '<no value>\n' }), 'podman', 'img')).toBeNull()
+  // direction: nothing vouches for what is inside it. Present-but-unlabelled is
+  // its own answer, because the doctor tells that apart from "not built yet".
+  it('reports an image with no such label as present without a hash', async () => {
+    expect(await inspectBuiltImage(inspecting({ stdout: '<no value>\n' }), 'podman', 'img')).toEqual(
+      { present: true, hash: null },
+    )
   })
 })
 

@@ -62,16 +62,25 @@ export function hashDockerfile(path: string): string | null {
   }
 }
 
-/**
- * The hash label on a built image, or null when the image is absent or predates
- * the label (an unlabelled image reads as stale, which is the safe direction —
- * it was built by the retired shell-out, whose content we cannot vouch for).
- */
-export async function builtDockerfileHash(
+/** What one `image inspect` says about an image: is it there, and what was it built from? */
+export interface BuiltImage {
+  /** The tag resolves to a local image. */
+  present: boolean
+  /**
+   * Its {@link DOCKERFILE_HASH_LABEL}, or null when the image is absent or
+   * predates the label (an unlabelled image reads as stale, which is the safe
+   * direction — it was built by the retired shell-out, whose content we cannot
+   * vouch for).
+   */
+  hash: string | null
+}
+
+/** Ask a local image whether it is there and which Dockerfile it was built from. */
+export async function inspectBuiltImage(
   exec: ExecFn,
   runtime: Runtime,
   tag: string,
-): Promise<string | null> {
+): Promise<BuiltImage> {
   const out = await exec(runtime, [
     'image',
     'inspect',
@@ -79,10 +88,10 @@ export async function builtDockerfileHash(
     `{{index .Config.Labels "${DOCKERFILE_HASH_LABEL}"}}`,
     tag,
   ])
-  if (!(out.ok && out.code === 0)) return null
+  if (!(out.ok && out.code === 0)) return { present: false, hash: null }
   const value = out.stdout.trim()
   // Both runtimes print a placeholder rather than nothing for a missing key.
-  return value === '' || value === '<no value>' ? null : value
+  return { present: true, hash: value === '' || value === '<no value>' ? null : value }
 }
 
 /** One `<runtime> build` invocation: what to build, from where, under which hash. */
@@ -106,6 +115,14 @@ export type ImageBuildPlan =
   | { kind: 'stock'; steps: ImageBuildStep[] }
   | { kind: 'chain'; steps: ImageBuildStep[]; projectTag: string }
   | { kind: 'refused'; imageName: string; reason: string }
+
+/**
+ * Why a hand-typed tag is nobody's to rebuild, and the two ways out of it — the
+ * build route refuses with this and the doctor's image row says it (decision 5).
+ */
+export function unmanagedImageReason(imageName: string): string {
+  return `${imageName} is a custom image managed outside runcastle — clear the sandbox image setting to go back to ${DEFAULT_SANDBOX_IMAGE}, or commit a .runcastle/sandbox/Dockerfile for runcastle to build.`
+}
 
 /** The project fields a build plan reads. */
 export type BuildableProject = { id: string; repoPath: string; sandboxImage?: string | null }
@@ -190,13 +207,7 @@ export function planImageBuild(input: PlanImageBuildInput): ImageBuildPlan {
   const managed =
     imageName === DEFAULT_SANDBOX_IMAGE ||
     (project !== null && imageName === projectImageTag(project.id))
-  if (!managed) {
-    return {
-      kind: 'refused',
-      imageName,
-      reason: `${imageName} is a custom image managed outside runcastle — clear the sandbox image setting to go back to ${DEFAULT_SANDBOX_IMAGE}, or commit a .runcastle/sandbox/Dockerfile for runcastle to build.`,
-    }
-  }
+  if (!managed) return { kind: 'refused', imageName, reason: unmanagedImageReason(imageName) }
   return { kind: 'stock', steps: [stockStep] }
 }
 
@@ -280,6 +291,26 @@ export function adoptProjectImage(ctx: AppCtx, projectId: string, tag: string): 
     type: 'settings.updated',
     message: `sandboxImage set to ${tag} by the image build`,
     data: { key: 'sandboxImage', scope: 'project', value: tag },
+  })
+  return true
+}
+
+/**
+ * The mirror of {@link adoptProjectImage}: drop a project image runcastle wrote
+ * once its `.runcastle/sandbox/Dockerfile` is gone (decision 8), so resolution
+ * falls back to the global image or the stock default on the next burn.
+ * Runcastle wrote the value on build, so removing it when its justification
+ * disappears is symmetric — and a doctor warning asking the human to clear it
+ * by hand would nag about something with exactly one sensible resolution. A tag
+ * the human typed is theirs, and is left alone. Returns whether it cleared.
+ */
+export function releaseProjectImage(ctx: AppCtx, projectId: string): boolean {
+  if (!isOverwritable(ctx, projectId, 'sandboxImage')) return false
+  recordFinding(ctx, projectId, { key: 'sandboxImage', value: null, source: 'build' })
+  emitProject(ctx, projectId, {
+    type: 'settings.updated',
+    message: 'sandboxImage cleared — .runcastle/sandbox/Dockerfile is gone',
+    data: { key: 'sandboxImage', scope: 'project', value: null },
   })
   return true
 }

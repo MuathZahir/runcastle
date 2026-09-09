@@ -13,10 +13,18 @@
  * fixes.
  */
 
-import { existsSync, statSync } from 'node:fs'
+import { existsSync } from 'node:fs'
 import { AGENT_RUNTIMES, DEFAULT_RUNTIME, DEFAULT_SANDBOX_IMAGE, type AgentRuntime } from '@runcastle/core'
 import { burnerDockerfilePath } from '../launcher/asset-paths'
 import { codexAuthFile } from '../services/codex-auth'
+import {
+  hashDockerfile,
+  inspectBuiltImage,
+  projectDockerfilePath,
+  projectImageTag,
+  unmanagedImageReason,
+} from '../services/sandbox-image'
+import type { Runtime } from '../services/setup'
 
 /** Outcome of one injected command. `ok:false` = spawn failed (ENOENT / not on PATH). */
 export interface ExecOutcome {
@@ -38,8 +46,10 @@ export type ExecFn = (command: string, args: string[]) => Promise<ExecOutcome>
  */
 export type ProbeStatus =
   | 'ok'
-  | 'stale' // present, but built before the current burner Dockerfile
+  | 'stale' // present, but no longer matches the Dockerfile it was built from
   | 'missing' // presence check failed — not installed / not on PATH
+  | 'not-built-yet' // the repo asks for an image runcastle has not built yet
+  | 'custom' // a resource runcastle does not manage — nothing here to fix
   | 'daemon-dead' // container CLI present, daemon not responding (docker)
   | 'machine-stopped' // container CLI present, VM not initialized/started (podman)
   | 'unhealthy' // present but a generic health probe failed
@@ -94,10 +104,34 @@ export interface DoctorEnv {
   runtimes?: readonly AgentRuntime[]
   /** Injected file-existence check for the auth-file fallback; defaults to real fs. */
   fileExists?: (path: string) => boolean
-  /** Injected mtime read for the bundled burner Dockerfile; defaults to real fs. */
-  fileMtime?: (path: string) => Date
+  /**
+   * Injected Dockerfile hash read — null when the file is not there. Defaults to
+   * {@link hashDockerfile}, and is how tests drive every staleness state.
+   */
+  dockerfileHash?: (path: string) => string | null
   /** The bundled burner Dockerfile; defaults to {@link burnerDockerfilePath}. */
   burnerDockerfile?: string
+  /** The project whose image row this report drives; absent app-wide. */
+  projectImage?: ProjectImageEnv
+}
+
+/**
+ * The project half of the image question (decisions 5, 6 and 8), injected like
+ * everything else the doctor reads: the probe decides whether a repo's own
+ * `.runcastle/sandbox/Dockerfile` is built, current and adopted, without
+ * reaching for the database itself.
+ */
+export interface ProjectImageEnv {
+  /** Project id — what {@link projectImageTag} names its image after. */
+  id: string
+  /** The canonical checkout `.runcastle/sandbox/Dockerfile` would live in. */
+  repoPath: string
+  /** The `sandboxImage` project column as stored, or null when unset. */
+  stored: string | null
+  /** Runcastle may rewrite that column — false once a human typed the value. */
+  overwritable: boolean
+  /** Drop a machine-written column whose Dockerfile is gone (decision 8). */
+  clearStored: () => void
 }
 
 export interface DoctorReport {
@@ -529,64 +563,159 @@ export async function containerRuntimeProbe(exec: ExecFn): Promise<ProbeResult> 
   }
 }
 
+/** Everything the image probe reads, all of it injected. */
+export interface ImageProbeInput {
+  exec: ExecFn
+  /**
+   * The image a burn resolves to from the env var, the config file and the
+   * stock default — i.e. every layer BELOW the project column, which
+   * {@link ProjectImageEnv.stored} supplies and which wins over it here exactly
+   * as it does in `resolveSandboxImage`.
+   */
+  imageName: string
+  /** The stock burner Dockerfile the stock image must still match. */
+  burnerDockerfile: string
+  dockerfileHash: (path: string) => string | null
+  project?: ProjectImageEnv
+}
+
 /**
  * Sandcastle image — the first AFK burn fails on a fresh machine by construction
- * until it's built. Runcastle builds it for the user: the in-app "Enable AFK
- * burns" card scaffolds the build context and runs the bundled sandcastle CLI
- * (the user never invokes `sandcastle` themselves — its bin isn't on PATH in a
- * global install). AFK burns are opt-in, so a missing image is a warning, not a
+ * until it's built. Runcastle builds it for the user, from the "Enable AFK
+ * burns" card: the stock image `sandcastle:runcastle` from the template it
+ * ships, and — when the repo carries `.runcastle/sandbox/Dockerfile` — the
+ * project image `sandcastle:runcastle-<projectId>` chained on top of it, which
+ * is how a repo whose toolchain is not JavaScript gets a JDK or a Go compiler
+ * into its burns. AFK burns are opt-in, so a missing image is a warning, not a
  * block. Reuses whichever runtime is present.
+ *
+ * Staleness is a *content* question and nothing else (decision 4): every image
+ * runcastle builds carries the sha256 of its Dockerfile as a label, and this
+ * compares that label against the file on disk. The mtime-vs-`Created`
+ * comparison it replaces was wrong in both directions, because BuildKit layer
+ * caching keeps the old `Created` on a freshly rebuilt image. An image with no
+ * label at all reads as stale — it predates the label, so its content is
+ * unvouched for.
+ *
+ * A project image is stale when *either* hash mismatches, and the detail names
+ * which layer: a runcastle upgrade changes the stock Dockerfile, and every
+ * project image `FROM` it would otherwise stay "fresh" by its own label forever.
  */
-export async function sandcastleImageProbe(
-  exec: ExecFn,
-  imageName: string,
-  burnerDockerfile: string,
-  fileMtime: (path: string) => Date,
-): Promise<ProbeResult> {
-  const id = 'sandcastle-image'
-  const label = 'Sandcastle container image'
-  for (const runtime of ['docker', 'podman'] as const) {
-    const present = await exec(runtime, ['--version'])
-    if (!(present.ok && present.code === 0)) continue
-    const inspect = await exec(runtime, ['image', 'inspect', '--format', '{{.Created}}', imageName])
-    if (inspect.ok && inspect.code === 0) {
-      const created = new Date(inspect.stdout.trim())
-      const dockerfileChanged = fileMtime(burnerDockerfile)
-      if (dockerfileChanged > created) {
-        const date = (value: Date) => value.toISOString().slice(0, 10)
-        return {
-          id,
-          label,
-          tier: 2,
-          status: 'stale',
-          severity: 'error',
-          detail: `${imageName} built ${date(created)}, burner Dockerfile changed ${date(dockerfileChanged)} — rebuild`,
-          // The wording names the settings page the web turns into a link
-          // (flow-redesign-settings decision 9), so this fix lands the reader on
-          // the image row rather than telling them to go looking for it.
-          fix: 'Open Settings → Burns (Rebuild image).',
-        }
+export async function sandcastleImageProbe(input: ImageProbeInput): Promise<ProbeResult> {
+  const { exec, burnerDockerfile, dockerfileHash, project } = input
+  const runtime = await presentRuntime(exec)
+  if (!runtime) {
+    return {
+      ...IMAGE_ROW,
+      status: 'missing',
+      severity: 'error',
+      detail: 'no container runtime available to inspect the image',
+      fix: 'Install a container runtime (Docker or Podman) first, then build the image from the Enable AFK burns card in the app.',
+    }
+  }
+
+  const projectHash = project ? dockerfileHash(projectDockerfilePath(project.repoPath)) : null
+
+  // Decision 8: runcastle wrote the column when it built the image, so it takes
+  // it back when the Dockerfile that justified it is gone. Resolution falls
+  // straight back to the global image or the stock default; the orphaned local
+  // tag is the user's to prune. A hand-typed value is never touched.
+  let stored = project?.stored ?? null
+  if (project && stored !== null && projectHash === null && project.overwritable) {
+    project.clearStored()
+    stored = null
+  }
+
+  const stockHash = dockerfileHash(burnerDockerfile)
+  const stock = await inspectBuiltImage(exec, runtime, DEFAULT_SANDBOX_IMAGE)
+  // A hash we cannot read is no evidence of drift — say nothing rather than cry stale.
+  const stockFresh = stock.present && (stockHash === null || stock.hash === stockHash)
+
+  if (project && projectHash !== null) {
+    const tag = projectImageTag(project.id)
+    const image = await inspectBuiltImage(exec, runtime, tag)
+    // "Not built yet" covers both halves of the same gap: no image under the
+    // tag, or an image runcastle has not adopted as this project's — which is
+    // what a burn would actually have to resolve to. One Build does both.
+    if (!image.present || (project.overwritable && stored !== tag)) {
+      return {
+        ...IMAGE_ROW,
+        status: 'not-built-yet',
+        severity: 'error',
+        detail: image.present
+          ? `${tag} is built but is not this project's image yet`
+          : `.runcastle/sandbox/Dockerfile is not built — ${tag} does not exist`,
+        fix: 'Open Settings → Burns (Build image) — runcastle builds .runcastle/sandbox/Dockerfile for you.',
       }
-      return { id, label, tier: 2, status: 'ok', severity: 'error', detail: `${imageName} present` }
+    }
+    if (image.hash !== projectHash) {
+      return staleImage(`${tag} no longer matches .runcastle/sandbox/Dockerfile`)
+    }
+    if (!stockFresh) {
+      const base = stock.present ? 'no longer matches the burner Dockerfile' : 'is not built'
+      return staleImage(`${tag} is built on ${DEFAULT_SANDBOX_IMAGE}, which ${base}`)
     }
     return {
-      id,
-      label,
-      tier: 2,
+      ...IMAGE_ROW,
+      status: 'ok',
+      severity: 'error',
+      detail: `${tag} built from .runcastle/sandbox/Dockerfile`,
+    }
+  }
+
+  const imageName = stored ?? input.imageName
+  if (imageName !== DEFAULT_SANDBOX_IMAGE) {
+    // Decision 5: nothing here is runcastle's to build, so the row reports who
+    // owns the image rather than offering a Rebuild that would build the stock
+    // template under someone's custom tag — the clobber this feature exists to
+    // remove. An image the operator manages themselves is not a defect in their
+    // setup, so it is reported and never counted against them.
+    return {
+      ...IMAGE_ROW,
+      status: 'custom',
+      severity: 'info',
+      detail: `${imageName} is a custom image, managed outside runcastle`,
+      fix: unmanagedImageReason(imageName),
+    }
+  }
+  if (!stock.present) {
+    return {
+      ...IMAGE_ROW,
       status: 'missing',
       severity: 'error',
       detail: `image ${imageName} not found locally`,
       fix: 'Start runcastle and click "Build image" on the Enable AFK burns card — it builds this for you (one click). Only needed for AFK/sandboxed burns.',
     }
   }
+  if (!stockFresh) return staleImage(`${imageName} no longer matches the burner Dockerfile`)
+  return { ...IMAGE_ROW, status: 'ok', severity: 'error', detail: `${imageName} present` }
+}
+
+/** The image row's identity, shared by every verdict it can reach. */
+const IMAGE_ROW = { id: 'sandcastle-image', label: 'Sandcastle container image', tier: 2 } as const
+
+/** The first container runtime whose CLI answers, or null when neither does. */
+async function presentRuntime(exec: ExecFn): Promise<Runtime | null> {
+  for (const runtime of ['docker', 'podman'] as const) {
+    const present = await exec(runtime, ['--version'])
+    if (present.ok && present.code === 0) return runtime
+  }
+  return null
+}
+
+/**
+ * A stale verdict over whichever layer drifted. The fix names the settings page
+ * the web turns into a link (flow-redesign-settings decision 9), so it lands the
+ * reader on the image row rather than telling them to go looking for it — and
+ * one Rebuild heals the whole chain, whichever layer this is about.
+ */
+function staleImage(detail: string): ProbeResult {
   return {
-    id,
-    label,
-    tier: 2,
-    status: 'missing',
+    ...IMAGE_ROW,
+    status: 'stale',
     severity: 'error',
-    detail: 'no container runtime available to inspect the image',
-    fix: 'Install a container runtime (Docker or Podman) first, then build the image from the Enable AFK burns card in the app.',
+    detail: `${detail} — rebuild`,
+    fix: 'Open Settings → Burns (Rebuild image).',
   }
 }
 
@@ -604,7 +733,7 @@ export async function runDoctor(env: DoctorEnv): Promise<DoctorReport> {
   const processEnv = env.env ?? process.env
   const imageName = env.imageName ?? DEFAULT_SANDBOX_IMAGE
   const burnerDockerfile = env.burnerDockerfile ?? burnerDockerfilePath()
-  const fileMtime = env.fileMtime ?? ((path: string) => statSync(path).mtime)
+  const dockerfileHash = env.dockerfileHash ?? hashDockerfile
   const required = new Set(env.runtimes ?? [DEFAULT_RUNTIME])
 
   const results: ProbeResult[] = [
@@ -625,7 +754,13 @@ export async function runDoctor(env: DoctorEnv): Promise<DoctorReport> {
   results.push(
     await gitIdentityProbe(exec, env.cwd),
     await containerRuntimeProbe(exec),
-    await sandcastleImageProbe(exec, imageName, burnerDockerfile, fileMtime),
+    await sandcastleImageProbe({
+      exec,
+      imageName,
+      burnerDockerfile,
+      dockerfileHash,
+      ...(env.projectImage ? { project: env.projectImage } : {}),
+    }),
   )
 
   const counts = (r: ProbeResult) => r.severity === 'error'
