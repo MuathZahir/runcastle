@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createInterface } from 'node:readline'
 import { fileURLToPath } from 'node:url'
+import type { Ticket, TicketInput } from '@runcastle/core'
 import { RuncastleConfig } from '@runcastle/core'
 import { drizzle } from 'drizzle-orm/sql-js'
 import initSqlJs from 'sql.js'
@@ -148,8 +149,23 @@ async function startTcpServer(bun: string): Promise<TcpServer> {
   }
 }
 
+/** As much of an MCP reply as this test reads. */
+interface McpResponse {
+  result?: {
+    serverInfo?: { name?: string }
+    isError?: boolean
+    content?: { text: string }[]
+  }
+}
+
+/** What `emit_tickets` itself answers, inside the MCP envelope. */
+interface EmitTicketsResult {
+  stored: number
+  tickets: { id: string; seq: number; title: string }[]
+}
+
 /** One JSON-RPC round trip over the socket, with the hard client deadline. */
-async function rpc(server: TcpServer, body: unknown): Promise<Record<string, any>> {
+async function rpc(server: TcpServer, body: unknown): Promise<McpResponse> {
   const res = await fetch(`http://127.0.0.1:${server.port}/mcp`, {
     method: 'POST',
     headers: {
@@ -161,20 +177,22 @@ async function rpc(server: TcpServer, body: unknown): Promise<Record<string, any
     signal: AbortSignal.timeout(CLIENT_TIMEOUT_MS),
   })
   expect(res.status, 'MCP endpoint did not answer 200').toBe(200)
-  return (await res.json()) as Record<string, any>
+  return (await res.json()) as McpResponse
 }
 
 /** The `emit_tickets` tool's own JSON payload, unwrapped from the MCP envelope. */
-function toolResult(body: Record<string, any>): Record<string, any> {
+function emitResult(body: McpResponse): EmitTicketsResult {
   expect(body.result?.isError, `tool returned an error: ${JSON.stringify(body)}`).toBeFalsy()
-  return JSON.parse(body.result.content[0].text)
+  const text = body.result?.content?.[0]?.text
+  expect(text, `no tool content in ${JSON.stringify(body)}`).toBeTypeOf('string')
+  return JSON.parse(text as string) as EmitTicketsResult
 }
 
 /**
  * A batch shaped like a real fully-enriched one — long prose contexts, a
  * dependency chain — padded to roughly `TARGET_BYTES`.
  */
-function enrichedBatch(): Record<string, unknown>[] {
+function enrichedBatch(): TicketInput[] {
   const perTicket = Math.round(TARGET_BYTES / TICKET_COUNT)
   return Array.from({ length: TICKET_COUNT }, (_, i) => ({
     title: `Ticket ${i + 1} — a fully enriched one`,
@@ -230,7 +248,7 @@ function postTruncatedBody(server: TcpServer): Promise<void> {
  * the server wrote. sql.js takes the file's bytes (the fixture keeps the db in
  * DELETE journal mode so there is no `-wal` sidecar to miss).
  */
-async function readBackTickets(dbFile: string, featureId: string) {
+async function readBackTickets(dbFile: string, featureId: string): Promise<Ticket[]> {
   const SQL = await initSqlJs()
   const db = drizzle(new SQL.Database(readFileSync(dbFile)), { schema }) as unknown as Db
   const ctx: AppCtx = { db, config: RuncastleConfig.parse({}) }
@@ -268,7 +286,7 @@ describe.skipIf(BUN === null)('emit_tickets over a real TCP socket', () => {
       // payload would leave a green test that no longer tests anything.
       expect(payloadBytes).toBeGreaterThan(240 * 1024)
 
-      const emitted = toolResult(
+      const emitted = emitResult(
         await rpc(server, {
           jsonrpc: '2.0',
           id: 2,
