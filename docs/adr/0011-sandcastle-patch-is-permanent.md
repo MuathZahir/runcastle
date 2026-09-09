@@ -61,7 +61,15 @@ Alternatives considered and rejected:
      setup-diagnostics one: `formatExecFailureMessage` next to `MAX_TAIL_CHARS`
      in `chunk-NGBM7T3E.js`, rendering `execOk2`'s message with the command's
      base64 payloads elided and stdout appended to stderr, re-exported from
-     `index.js`/`index.d.ts` so `sandcastle-exec-failure.test.ts` can pin it;
+     `index.js`/`index.d.ts` so `sandcastle-exec-failure.test.ts` can pin it.
+     That formatter's tail is bounded by the cap the *provider* was configured
+     with, which takes a chain of small hunks: every provider (`noSandbox`,
+     `docker`, `podman`, `vercel`, `daytona`) publishes its resolved
+     `maxOutputTailChars` on the handle it creates, `makeSandboxFromHandle`
+     carries it onto the sandbox, `execOk2` passes it as the formatter's third
+     argument, and the three handle interfaces in
+     `SandboxProvider-EkSMuBp8.d.ts` declare the field. Drop any link and the
+     bound silently reverts to the 64 KiB default;
    - `git diff --cached --full-index > patches/@ai-hero%2Fsandcastle@<ver>.patch`
      and update the `patchedDependencies` key to the new version;
    - a plain `bun install` does not always re-apply a changed patch:
