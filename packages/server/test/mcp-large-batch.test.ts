@@ -59,7 +59,13 @@ import { resolveBun } from './helpers/bun'
  * win32-only fault in Bun's socket read path is the one hypothesis this sweep
  * cannot rule out, and no `@hono/mcp` / MCP-SDK release notes indict a large-body
  * bug (0.3.2, the only newer `@hono/mcp`, only adds `onsessiondisconnected`), so
- * no dependency bump was confirmed. The fix therefore landed at the one layer this
+ * no dependency bump was confirmed. The other standing hypothesis is the client,
+ * where the same symptom is reported open upstream — anthropics/claude-code
+ * https://github.com/anthropics/claude-code/issues/86314 (a large tool-input
+ * argument silently stalls the client's stream before the call is dispatched) and
+ * https://github.com/anthropics/claude-code/issues/72228 (parameters after a long
+ * one are dropped client-side); neither is reachable from this test, which drives
+ * the transport directly. The fix therefore landed at the one layer this
  * repo owns and the sweep showed was structurally at risk — see the body pre-read
  * in `src/mcp/server.ts`. This test stands as the 256KB guard regardless.
  */

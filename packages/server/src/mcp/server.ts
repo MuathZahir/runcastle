@@ -2447,10 +2447,26 @@ export async function resolveAudience(
  * for it — `@hono/mcp`'s json-response promise simply never settles — and
  * silence was the defining symptom of the incident.
  *
- * No upstream release indicts a specific bug: `@hono/mcp` 0.3.2, the only newer
- * release, adds `onsessiondisconnected` and nothing else, and the payload/framing
- * sweep recorded in `test/mcp-large-batch.test.ts` could not reproduce the stall
- * on linux. So the fix lands at the layer we own rather than as a version bump.
+ * Upstream, for traceability: no release indicts a specific bug — `@hono/mcp`
+ * 0.3.2, the only newer release, adds `onsessiondisconnected` and nothing else,
+ * and the payload/framing sweep recorded in `test/mcp-large-batch.test.ts` could
+ * not reproduce the stall on linux, so there is nothing to bump to. The nearest
+ * open upstream reports put the same symptom — a large tool-call argument that
+ * dies silently — one layer further out, in the MCP client rather than in any
+ * server:
+ *
+ *   • https://github.com/anthropics/claude-code/issues/86314 — a large
+ *     tool-input string argument stalls the client's own response stream for 80+
+ *     seconds with no error, before the call is ever dispatched over MCP;
+ *   • https://github.com/anthropics/claude-code/issues/72228 — parameters
+ *     emitted after a long parameter value are dropped client-side, so the
+ *     server sees a partial call and nothing surfaces the loss.
+ *
+ * Neither is confirmed as our cause (both are linux reports; the incident host is
+ * win32), so this stays a workaround at the layer we own rather than a version
+ * bump. If they are fixed upstream and sessions still stall, the remaining
+ * suspect is Bun's win32 socket read path — see the RESIDUAL GAP note in
+ * `test/mcp-large-batch.test.ts`.
  */
 async function readMcpBody(c: Context): Promise<unknown> {
   if (c.req.method !== 'POST') return undefined
