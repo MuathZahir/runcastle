@@ -961,12 +961,21 @@ export const PM_CACHE_SANDBOX_PATHS: Partial<Record<PackageManager, string>> = {
  * work: a Docker/Podman *named volume*, which is what these are attached to.
  * The pnpm store is still absent for that same reason, re-raised and
  * re-rejected twice in the ADR; do not add it here either.
+ *
+ * **Each path must hold nothing but cache.** A mount hides whatever the image
+ * shipped at and under its mount point, so a path that doubles as a toolchain's
+ * install location trades a warm cache for a missing tool. Cargo is the case
+ * that bites: rustup installs the executable *inside* the cargo home, at
+ * `~/.cargo/bin/cargo`, alongside the config the user set — so the mount goes
+ * one level down, on `~/.cargo/registry`, which holds only the downloaded crate
+ * index, archives and unpacked sources. Maven, Gradle and pip keep their
+ * binaries outside these directories, so those attach at the top.
  */
 export const TOOLCHAIN_CACHE_SANDBOX_PATHS: readonly string[] = [
   '~/.m2',
   '~/.gradle',
   '~/.cache/pip',
-  '~/.cargo',
+  '~/.cargo/registry',
 ]
 
 /** A host directory bind-mounted into the sandbox. */
