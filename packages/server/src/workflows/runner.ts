@@ -214,9 +214,10 @@ async function executeRun(
   let summary = 'run failed'
   // The workflow's long-form account of what this run produced, if it kept one.
   let digest: string | undefined
-  // Set when the workflow threw; the breadcrumb waits behind the kill gate with
-  // the row it describes, rather than announcing a cancel that has not happened.
-  let failure: string | undefined
+  // Whether the workflow threw: its `run.error` breadcrumb waits behind the kill
+  // gate with the row it describes, rather than announcing a cancel that has not
+  // happened yet.
+  let threw = false
   try {
     const result = await runPromise
     status = result.status
@@ -230,7 +231,7 @@ async function executeRun(
       status = 'failed'
       summary = e instanceof Error ? e.message : 'run failed'
     }
-    failure = summary
+    threw = true
   } finally {
     controllers.delete(runId)
   }
@@ -242,7 +243,7 @@ async function executeRun(
   // or timed out. A run nobody cancelled has none in flight and passes straight
   // through.
   await killRegistry().whenRunKillsSettled(runId)
-  if (failure !== undefined) emit(ctx, featureId, { type: 'run.error', message: failure, runId })
+  if (threw) emit(ctx, featureId, { type: 'run.error', message: summary, runId })
 
   ctx.db
     .update(runs)
