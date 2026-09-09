@@ -21,6 +21,8 @@ const server = vi.hoisted(() => ({
   /** The id `setup.startTerminal` hands back, and the terminal it mounted. */
   sessionId: 'build-image-1',
   terminal: null as { sessionId: string; onEnded?: () => void } | null,
+  /** What the card asked `setup.doctor` about — the image row is per-project. */
+  doctorInput: undefined as unknown,
 }))
 
 vi.mock('../src/trpc', () => {
@@ -41,14 +43,17 @@ vi.mock('../src/trpc', () => {
       }),
       setup: {
         doctor: {
-          useQuery: () => ({
-            data: server.error ? undefined : { results: server.results, ok: false, tier1Ok: true },
-            isLoading: false,
-            error: server.error,
-            refetch: () => {
-              server.refetches += 1
-            },
-          }),
+          useQuery: (input: unknown) => {
+            server.doctorInput = input
+            return {
+              data: server.error ? undefined : { results: server.results, ok: false, tier1Ok: true },
+              isLoading: false,
+              error: server.error,
+              refetch: () => {
+                server.refetches += 1
+              },
+            }
+          },
         },
         runtimeGuide: { useQuery: () => ({ data: undefined }) },
         startTerminal: {
@@ -87,22 +92,25 @@ const { BurnCacheRow, EnableAfkCard, ImageBuildAction } = await import(
   '../src/components/EnableAfkCard'
 )
 
+/** Every state the image row can be in, as the doctor reports them. */
+type ImageStatus = 'missing' | 'stale' | 'ok' | 'not-built-yet' | 'custom'
+
 /** Shaped like the real `sandcastle-image` probe: tier 2, AFK-only, an error. */
-const probe = (status: 'missing' | 'stale' | 'ok', fix?: string): Probe => ({
+const probe = (status: ImageStatus, fix?: string): Probe => ({
   id: 'sandcastle-image',
   label: 'Sandcastle image',
   tier: 2,
   status,
-  severity: 'error',
+  severity: status === 'custom' ? 'info' : 'error',
   detail: `${status} image detail`,
   ...(fix ? { fix } : {}),
 })
 
 describe('EnableAfkCard image action', () => {
-  const renderAction = (status: 'missing' | 'stale' | 'ok') =>
+  const renderAction = (status: ImageStatus, fix?: string) =>
     renderToStaticMarkup(
       createElement(ImageBuildAction, {
-        probe: probe(status),
+        probe: probe(status, fix),
         runtimeOk: true,
         pending: false,
         onStart: () => undefined,
@@ -120,6 +128,23 @@ describe('EnableAfkCard image action', () => {
   it('offers Rebuild image once an image is there', () => {
     expect(renderAction('stale')).toContain('Rebuild image')
     expect(renderAction('ok')).toContain('Rebuild image')
+  })
+
+  // The project ships `.runcastle/sandbox/Dockerfile` and nothing has built it
+  // yet: there is no image to *re*build, so the row reads like a first build.
+  it('offers Build image for a project Dockerfile that has never been built', () => {
+    const html = renderAction('not-built-yet')
+    expect(html).toContain('Build image')
+    expect(html).not.toContain('Rebuild image')
+  })
+
+  // Decision 5 — the whole point: a Rebuild here would build the stock template
+  // under the operator's own tag and destroy their image.
+  it('disarms the button for an image runcastle does not manage, and says why', () => {
+    const fix = 'clear the sandbox image setting, or commit a .runcastle/sandbox/Dockerfile'
+    const html = renderAction('custom', fix)
+    expect(html).not.toContain('<button')
+    expect(html).toContain(fix)
   })
 })
 
@@ -278,6 +303,36 @@ describe('EnableAfkCard prerequisites checklist', () => {
     })
     expect(server.cancels).toBe(1)
     expect(server.refetches).toBe(1)
+  })
+
+  // The image a burn runs in is a fact about the repo, so the row has to ask
+  // about the open project — the wizard, which may run before any project
+  // exists, asks the machine-wide question instead.
+  it('asks the doctor about the open project, and about no project in the wizard', () => {
+    render(createElement(EnableAfkCard, { projectId: 'proj_java' }))
+    expect(server.doctorInput).toEqual({ projectId: 'proj_java' })
+    cleanup()
+
+    open()
+    expect(server.doctorInput).toBeUndefined()
+  })
+
+  // An image the operator tagged and manages themselves is not a gap in their
+  // setup — a burn has an image, it is simply not one runcastle can rebuild.
+  it('counts an image managed outside runcastle as ready', () => {
+    server.results = readyReport().map((r) =>
+      r.id === 'sandcastle-image'
+        ? {
+            ...r,
+            status: 'custom',
+            severity: 'info',
+            detail: 'acme/sandbox:v3 is a custom image, managed outside runcastle',
+          }
+        : r,
+    )
+    open()
+
+    expect(screen.getByText('Ready for unattended burns')).toBeTruthy()
   })
 
   it('keeps "Set up later" for the first-run wizard, and drops it everywhere else', () => {
