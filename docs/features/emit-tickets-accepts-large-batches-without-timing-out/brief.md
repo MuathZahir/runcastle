@@ -1,0 +1,3 @@
+Deferred from burn-waits-for-the-tickets-session-to-close-out (2026-09-08). The ~10KB emit_tickets timeout forces sessions to emit tickets with placeholder contexts ("Context follows via update_ticket.") and enrich each afterwards — the pattern that opened most of the burn race window in the drive-instructions incident. The gating fix landed separately and is needed regardless (a close-out window exists even with instant emits), so this feature is purely the transport/payload root cause: investigate why large MCP batches time out and make emit_tickets accept a fully-enriched batch in one call.
+
+Must not swallow: the burn-readiness gating (shipped separately), the orphan-sweeping/retry machinery, or any redesign of the ticket schema — same tickets, one bigger call.
