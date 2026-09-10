@@ -1,4 +1,6 @@
 
+import type { EventRow } from '@runcastle/core'
+
 export interface OpenApp {
   url: string
   /**
@@ -91,6 +93,47 @@ const DRIVE_VIEWS: Record<DriveState, DriveView> = {
 export function driveView(state: DriveState, _info: object = {}): DriveView {
   return DRIVE_VIEWS[state]
 }
+
+/** A review drive refused over the human's own uncommitted files. */
+export interface ReviewDriveDenial {
+  /** When the drive guard refused. */
+  at: number
+  /** The files that were in the way, as the denial recorded them. */
+  dirtyFiles: string[]
+}
+
+/**
+ * The dirty-tree refusal the review panel is still asking the human to answer,
+ * or null when there is nothing outstanding.
+ *
+ * The drive guard emits `reviewdrive.denied` at the moment it refuses
+ * (`services/git.ts`), which is the record; this is the prompt on top of it, so
+ * it is the LATEST denial that counts and anything that answers one takes it
+ * back down — a retry burn starting (`ticket.retry`, then the burn's own
+ * `burn.started`, which is also how the feature leaves review) and the feature
+ * shipping. A later denial raises it again, exactly as {@link lapAbort}'s
+ * `lap.started` works in the other direction.
+ */
+export function reviewDriveDenial(events: readonly EventRow[]): ReviewDriveDenial | null {
+  let denial: ReviewDriveDenial | null = null
+  for (const event of events) {
+    if (event.type === 'reviewdrive.denied') {
+      const data = (event.data ?? {}) as { dirtyFiles?: unknown }
+      denial = {
+        at: event.ts,
+        dirtyFiles: Array.isArray(data.dirtyFiles)
+          ? data.dirtyFiles.filter((file): file is string => typeof file === 'string')
+          : [],
+      }
+    } else if (ANSWERED_BY.includes(event.type)) {
+      denial = null
+    }
+  }
+  return denial
+}
+
+/** What takes the banner down: the retry landing, or review being left behind. */
+const ANSWERED_BY = ['ticket.retry', 'burn.started', 'feature.shipped']
 
 // --- review honesty: the SUMMARY card and the merge confirmation -------------
 
