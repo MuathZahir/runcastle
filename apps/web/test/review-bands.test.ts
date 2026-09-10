@@ -1,7 +1,7 @@
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it, vi } from 'vitest'
-import type { ReviewFinding, TestNote } from '@runcastle/core'
+import type { EventRow, ReviewFinding, TestNote } from '@runcastle/core'
 import type { FeatureFull } from '../src/lib/api'
 import type { ReviewArtifacts } from '../src/lib/reviews'
 import { full } from './fixtures'
@@ -25,11 +25,12 @@ const state = vi.hoisted(() => ({
   recordings: [] as ReviewArtifacts[],
   drive: undefined as { featureId: string; state: string; dryRun: boolean } | undefined,
   driveInstructions: undefined as string | undefined,
+  events: [] as EventRow[],
 }))
 
 vi.mock('../src/lib/live', () => ({ useLivePoll: () => false as const, useLiveStatus: () => 'live' }))
 vi.mock('../src/lib/toast', () => ({ useToast: () => ({ push: vi.fn() }) }))
-vi.mock('../src/lib/events', () => ({ useEventLog: () => [] }))
+vi.mock('../src/lib/events', () => ({ useEventLog: () => state.events }))
 vi.mock('../src/lib/reviews', async (original) => ({
   ...(await original<typeof import('../src/lib/reviews')>()),
   useReviewArtifacts: () => ({ data: state.recordings }),
@@ -64,6 +65,7 @@ vi.mock('../src/trpc', () => {
         },
       },
       docs: { read: { useQuery: () => ({ data: undefined }) } },
+      ticket: { retry: { useMutation: mutation } },
       project: {
         prep: { useQuery: () => ({ data: { findings: [] } }) },
         list: {
@@ -170,6 +172,7 @@ function render(
     tickets?: FeatureFull['tickets']
     readonly?: boolean
     driveInstructions?: string
+    events?: EventRow[]
   } = {},
 ): string {
   state.notes = over.notes ?? []
@@ -179,6 +182,7 @@ function render(
   state.recordings = over.recordings ?? []
   state.drive = over.drive
   state.driveInstructions = over.driveInstructions
+  state.events = over.events ?? []
   const feature = full({ id: 'feat_1', phase: 'review' })
   return renderToStaticMarkup(
     createElement(ReviewBody, {
@@ -293,6 +297,45 @@ describe('the review page’s arrival bands', () => {
   // A disclosure that opens on emptiness is worse than no disclosure.
   it('renders no disclosure at all when nobody wrote anything', () => {
     expect(render({ tickets: [] as FeatureFull['tickets'] })).not.toContain('Full account')
+  })
+
+  /**
+   * Decision 5: a review drive refused over the human's own uncommitted files
+   * is a banner in the alert slot at the moment it happens — the digest that
+   * used to be the only account of it is read long afterwards.
+   */
+  describe('a review drive refused over a dirty tree', () => {
+    const DENIED: EventRow = {
+      id: 7,
+      projectId: 'proj_1',
+      featureId: 'feat_1',
+      ts: 1_760_000_000_000,
+      type: 'reviewdrive.denied',
+      message: 'review drive denied — 1 uncommitted file(s) in the working tree: src/App.tsx',
+      data: { code: 'dirty', dirtyFiles: ['src/App.tsx'] },
+    }
+
+    it('raises a banner naming the files, with the way to re-burn the review', () => {
+      const html = render({ events: [DENIED] })
+      expect(html).toContain('Review couldn’t drive')
+      expect(html).toContain('src/App.tsx')
+      expect(html).toContain('Retry review')
+    })
+
+    it('says nothing when no drive was ever refused', () => {
+      expect(openWork()).not.toContain('Review couldn’t drive')
+    })
+
+    /** Decision 7: the retry burn starting is what takes the prompt back down. */
+    it('comes down once the retry burn has started', () => {
+      const retried: EventRow = { ...DENIED, id: 8, type: 'ticket.retry', message: 'retrying ticket 4' }
+      expect(render({ events: [DENIED, retried] })).not.toContain('Review couldn’t drive')
+    })
+
+    /** Decision 33a: history has no live verbs, this banner's retry included. */
+    it('renders no banner at all on a readonly view', () => {
+      expect(render({ events: [DENIED], readonly: true })).not.toContain('Review couldn’t drive')
+    })
   })
 
   /** Decision 33a: history has no live verbs anywhere, the alert line included. */

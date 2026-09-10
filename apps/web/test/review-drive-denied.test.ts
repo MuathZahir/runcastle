@@ -1,0 +1,109 @@
+import { createElement } from 'react'
+import { renderToStaticMarkup } from 'react-dom/server'
+import { describe, expect, it } from 'vitest'
+import type { EventRow } from '@runcastle/core'
+import { ReviewDriveDeniedCard } from '../src/components/review/ReviewDriveDeniedCard'
+import { reviewDriveDenial } from '../src/lib/feature-ui'
+
+/**
+ * The banner a review drive's dirty-tree refusal raises, and the derivation
+ * that decides whether it is still standing. Tier 1: the banner's whole
+ * behaviour is the words and the controls it puts on the page, and the
+ * lifecycle behind it is a pure function over the feed.
+ */
+const event = (over: Partial<EventRow> = {}): EventRow => ({
+  id: 1,
+  projectId: 'proj_1',
+  featureId: 'feat_1',
+  ts: 1_760_000_000_000,
+  type: 'reviewdrive.denied',
+  message: 'review drive denied — 2 uncommitted file(s) in the working tree: a.ts, b.ts',
+  data: { code: 'dirty', dirtyFiles: ['a.ts', 'b.ts'] },
+  ...over,
+})
+
+describe('reviewDriveDenial', () => {
+  it('reads the dirty files and the moment off the denial', () => {
+    expect(reviewDriveDenial([event()])).toEqual({
+      at: 1_760_000_000_000,
+      dirtyFiles: ['a.ts', 'b.ts'],
+    })
+  })
+
+  it('is null when the feed holds no denial at all', () => {
+    expect(reviewDriveDenial([event({ type: 'testdrive.stopped' })])).toBeNull()
+  })
+
+  /** Decision 7: the banner is a prompt, not a record — the timeline is the record. */
+  it.each(['ticket.retry', 'burn.started', 'feature.shipped'])(
+    'comes down once %s says the denial has been answered',
+    (type) => {
+      expect(reviewDriveDenial([event(), event({ id: 2, type, ts: 1_760_000_001_000 })])).toBeNull()
+    },
+  )
+
+  it('comes back up when a later denial follows the burn that cleared it', () => {
+    const denials = [
+      event(),
+      event({ id: 2, type: 'ticket.retry', ts: 1_760_000_001_000 }),
+      event({ id: 3, ts: 1_760_000_002_000, data: { code: 'dirty', dirtyFiles: ['c.ts'] } }),
+    ]
+    expect(reviewDriveDenial(denials)).toEqual({ at: 1_760_000_002_000, dirtyFiles: ['c.ts'] })
+  })
+
+  /** An event whose payload did not survive still raises the banner. */
+  it('survives a denial carrying no file list', () => {
+    expect(reviewDriveDenial([event({ data: undefined })])).toEqual({
+      at: 1_760_000_000_000,
+      dirtyFiles: [],
+    })
+  })
+})
+
+const render = (props: Partial<Parameters<typeof ReviewDriveDeniedCard>[0]> = {}): string =>
+  renderToStaticMarkup(
+    createElement(ReviewDriveDeniedCard, {
+      denial: { at: 1_760_000_000_000, dirtyFiles: ['a.ts', 'b.ts'] },
+      readonly: false,
+      busy: false,
+      onRetry: () => undefined,
+      onDismiss: () => undefined,
+      ...props,
+    }),
+  )
+
+describe('ReviewDriveDeniedCard', () => {
+  it('says the drive was refused, names the files, and offers the retry', () => {
+    const html = render()
+    expect(html).toContain('Review couldn’t drive')
+    expect(html).toContain('a.ts')
+    expect(html).toContain('b.ts')
+    expect(html).toContain('Retry review')
+    expect(html).toContain('Dismiss')
+  })
+
+  /** A red panel with no date reads as "right now" (as ConflictCard's does). */
+  it('says when the drive was refused', () => {
+    expect(render()).toContain('denied ')
+  })
+
+  it('says what the review delivered instead, so the banner is not a failure report', () => {
+    expect(render()).toContain('repo-only')
+  })
+
+  /** Decision 33a: a history view offers no live control. */
+  it('renders nothing at all under readonly', () => {
+    expect(render({ readonly: true })).toBe('')
+  })
+
+  it('holds the retry shut while one is starting', () => {
+    expect(render({ busy: true })).toContain('disabled')
+  })
+
+  /** No `done` review ticket to re-burn: say so rather than offer a dead button. */
+  it('drops the retry button when there is no review to re-burn', () => {
+    const html = render({ onRetry: null })
+    expect(html).not.toContain('Retry review')
+    expect(html).toContain('Dismiss')
+  })
+})

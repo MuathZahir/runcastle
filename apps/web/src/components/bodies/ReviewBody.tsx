@@ -16,6 +16,7 @@ import {
   latestRun,
   liveSessionLine,
   reviewChecks,
+  reviewDriveDenial,
   specDocPath,
   verificationState,
   type LapAbort,
@@ -32,6 +33,7 @@ import { FullAccounts } from '../review/FullAccounts'
 import { LapAbortAlert } from '../review/LapAbortAlert'
 import { LiveSessionAlert } from '../review/LiveSessionAlert'
 import { OpenWork } from '../review/OpenWork'
+import { ReviewDriveDeniedAlert } from '../review/ReviewDriveDeniedCard'
 import { StatusStrip } from '../review/StatusStrip'
 import { WorkList, partitionWork } from '../review/WorkList'
 import type { WalkthroughHandle } from '../WalkthroughPlayer'
@@ -95,6 +97,17 @@ export function ReviewBody({
   // The same query key the workspace shell reads, so the conflict card's state
   // and the bar's conflict branch come out of one fetch of one feed.
   const events = useEventLog(feature.id)
+  // A review drive refused over the human's own uncommitted files (decision 5).
+  // The timeline event is the record; this is the prompt on top of it, and it
+  // is dismissed per denial so a later refusal raises the banner again.
+  const denial = reviewDriveDenial(events)
+  const [dismissedDenial, setDismissedDenial] = useState<number | null>(null)
+  // The review the retry re-burns. A denial never ends a review — it downgrades
+  // it to the repo-only pass — so the ticket that was refused is a `done` one,
+  // and the latest of those is this lap's review (as `reviewOutcome` reads it).
+  const deniedReview = latestReview(
+    tickets.filter((t) => t.kind === 'review' && t.status === 'done'),
+  )
 
   // Commits come from git, not from ticket commit rows (findings F23). Polled
   // slower than the 1.5s shell: a `rev-list --count` is cheap but this figure
@@ -253,6 +266,18 @@ export function ReviewBody({
           lap={feature.lap}
           readonly={readonly}
           onRetry={onIterate}
+        />
+      )}
+
+      {/* The refusal the human can still act on, at the moment they can act on
+          it — the digest that used to carry it is read long afterwards. */}
+      {denial && denial.at !== dismissedDenial && (
+        <ReviewDriveDeniedAlert
+          featureId={feature.id}
+          reviewTicketId={deniedReview?.id ?? null}
+          denial={denial}
+          readonly={readonly}
+          onDismiss={() => setDismissedDenial(denial.at)}
         />
       )}
 
