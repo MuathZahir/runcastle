@@ -219,10 +219,12 @@ describe('review findings service', () => {
       }).finding
       const dismissed = abandonedDefect('Waved away')
       dismiss(ctx, dismissed)
+      const fixed = abandonedDefect('Already fixed')
+      markFixed(ctx, fixed)
 
-      // A defect the run is still fixing, an observation, another feature's, and
-      // one the human already settled.
-      for (const id of [settled.id, observation.id, foreign.id, dismissed]) {
+      // A defect the run is still fixing, an observation, another feature's, one
+      // the human already settled, and one that landed.
+      for (const id of [settled.id, observation.id, foreign.id, dismissed, fixed]) {
         expect(() => carryFinding(ctx, featureId, id)).toThrow(InvalidInputError)
       }
     })
