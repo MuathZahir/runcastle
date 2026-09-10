@@ -18,14 +18,13 @@ import { InvalidInputError } from '../../errors'
 import { burnerDockerfilePath } from '../../launcher/asset-paths'
 import { ptyRegistry } from '../../pty/registry'
 import { isOverwritable } from '../../services/findings'
+import { adoptProjectImage, releaseProjectImage } from '../../services/project-image'
 import { requireProjectById } from '../../services/repo'
 import {
-  adoptProjectImage,
   hashDockerfile,
   imageBuildTerminal,
   inspectBuiltImage,
   planImageBuild,
-  releaseProjectImage,
   stockBuildArgs,
   type ImageBuildTerminal,
 } from '../../services/sandbox-image'

@@ -1,27 +1,20 @@
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { beforeEach, describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import { DEFAULT_SANDBOX_IMAGE, resolveSandboxImage, type RuncastleConfig } from '@runcastle/core'
 import type { ExecFn, ExecOutcome } from '../src/doctor/doctor'
-import { projects } from '../src/db/schema'
-import type { AppCtx } from '../src/db/types'
-import { listFindings, recordFinding } from '../src/services/findings'
-import { requireProjectById } from '../src/services/repo'
 import {
   DOCKERFILE_HASH_LABEL,
-  adoptProjectImage,
   hashDockerfile,
   hashDockerfileContents,
   imageBuildTerminal,
   inspectBuiltImage,
   planImageBuild,
   projectImageTag,
-  releaseProjectImage,
   stockBuildArgs,
   type ImageBuildPlan,
 } from '../src/services/sandbox-image'
-import { makeTestCtx } from './helpers/db'
 
 /** A plan the terminal can actually run — refusal is not one of them. */
 function buildable(plan: ImageBuildPlan): Exclude<ImageBuildPlan, { kind: 'refused' }> {
@@ -311,54 +304,5 @@ describe('the build the terminal runs', () => {
       buildArgs: {},
     })
     expect(plan.kind).toBe('stock')
-  })
-})
-
-describe('adoptProjectImage', () => {
-  let ctx: AppCtx
-
-  beforeEach(async () => {
-    ctx = await makeTestCtx()
-    ctx.db.insert(projects).values({ id: 'proj_1', name: 'acme', repoPath: '/repo' }).run()
-  })
-
-  const stored = async () => {
-    const project = requireProjectById(ctx, 'proj_1')
-    const finding = (await listFindings(ctx, project)).find((f) => f.key === 'sandboxImage')
-    return { image: project.sandboxImage, source: finding?.source }
-  }
-
-  it('writes the project column with machine provenance on a successful build', async () => {
-    expect(adoptProjectImage(ctx, 'proj_1', 'sandcastle:runcastle-proj_1')).toBe(true)
-    expect(await stored()).toEqual({ image: 'sandcastle:runcastle-proj_1', source: 'build' })
-  })
-
-  it('never overwrites a tag the human typed', async () => {
-    recordFinding(ctx, 'proj_1', {
-      key: 'sandboxImage',
-      value: 'acme/custom:v1',
-      source: 'human',
-    })
-    expect(adoptProjectImage(ctx, 'proj_1', 'sandcastle:runcastle-proj_1')).toBe(false)
-    expect(await stored()).toEqual({ image: 'acme/custom:v1', source: 'human' })
-  })
-
-  // Decision 8 — runcastle wrote the value when it built the image, so it gives
-  // it back when the Dockerfile that justified it is deleted. Clearing drops the
-  // provenance row with it, which is what hands the field to the next build.
-  it('releases a value it wrote itself, so resolution falls back', async () => {
-    adoptProjectImage(ctx, 'proj_1', 'sandcastle:runcastle-proj_1')
-    expect(releaseProjectImage(ctx, 'proj_1')).toBe(true)
-    expect(await stored()).toEqual({ image: undefined, source: undefined })
-  })
-
-  it('never releases a tag the human typed', async () => {
-    recordFinding(ctx, 'proj_1', {
-      key: 'sandboxImage',
-      value: 'acme/custom:v1',
-      source: 'human',
-    })
-    expect(releaseProjectImage(ctx, 'proj_1')).toBe(false)
-    expect(await stored()).toEqual({ image: 'acme/custom:v1', source: 'human' })
   })
 })

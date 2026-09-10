@@ -3,9 +3,6 @@ import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { DEFAULT_SANDBOX_IMAGE, resolveSandboxImage, type RuncastleConfig } from '@runcastle/core'
 import type { ExecFn } from '../doctor/doctor'
-import type { AppCtx } from '../db/types'
-import { emitProject } from './events'
-import { isOverwritable, recordFinding } from './findings'
 import type { Runtime } from './setup'
 
 /**
@@ -146,10 +143,11 @@ export interface StoredProjectImage {
  *
  * This is the one question the build route and the doctor's image row have to
  * answer the same way (decision 5), because a human-typed value is never
- * overwritten ({@link adoptProjectImage}). A project carrying BOTH a hand-typed
- * tag and `.runcastle/sandbox/Dockerfile` would otherwise let the card build and
- * report `sandcastle:runcastle-<projectId>` while every burn kept resolving to
- * the typed tag — a row and a button describing an image no burn runs in.
+ * overwritten (`adoptProjectImage`, in `project-image.ts`). A project carrying
+ * BOTH a hand-typed tag and `.runcastle/sandbox/Dockerfile` would otherwise let
+ * the card build and report `sandcastle:runcastle-<projectId>` while every burn
+ * kept resolving to the typed tag — a row and a button describing an image no
+ * burn runs in.
  *
  * The stored value is trimmed here, and a blank one is unset (decision 9): that
  * is what {@link resolveSandboxImage} already makes of it, so a whitespace
@@ -343,47 +341,4 @@ export function imageBuildTerminal(
   return platform === 'win32'
     ? { cmd: process.env.ComSpec ?? 'cmd.exe', args: ['/d', '/s', '/c', line], cwd }
     : { cmd: '/bin/sh', args: ['-c', line], cwd }
-}
-
-/**
- * Adopt a freshly built project image as the project's `sandboxImage`. Written
- * on a successful build and never at detect time (decision 6): the five image
- * consumers must never resolve to a tag no image answers to. A tag the human
- * typed is left exactly as it is — the build did not clobber their image, and it
- * does not clobber their setting either. Returns whether the column was written.
- */
-export function adoptProjectImage(ctx: AppCtx, projectId: string, tag: string): boolean {
-  if (!isOverwritable(ctx, projectId, 'sandboxImage')) return false
-  recordFinding(ctx, projectId, {
-    key: 'sandboxImage',
-    value: tag,
-    source: 'build',
-    evidence: `Built from .runcastle/sandbox/Dockerfile as ${tag}.`,
-  })
-  emitProject(ctx, projectId, {
-    type: 'settings.updated',
-    message: `sandboxImage set to ${tag} by the image build`,
-    data: { key: 'sandboxImage', scope: 'project', value: tag },
-  })
-  return true
-}
-
-/**
- * The mirror of {@link adoptProjectImage}: drop a project image runcastle wrote
- * once its `.runcastle/sandbox/Dockerfile` is gone (decision 8), so resolution
- * falls back to the global image or the stock default on the next burn.
- * Runcastle wrote the value on build, so removing it when its justification
- * disappears is symmetric — and a doctor warning asking the human to clear it
- * by hand would nag about something with exactly one sensible resolution. A tag
- * the human typed is theirs, and is left alone. Returns whether it cleared.
- */
-export function releaseProjectImage(ctx: AppCtx, projectId: string): boolean {
-  if (!isOverwritable(ctx, projectId, 'sandboxImage')) return false
-  recordFinding(ctx, projectId, { key: 'sandboxImage', value: null, source: 'build' })
-  emitProject(ctx, projectId, {
-    type: 'settings.updated',
-    message: 'sandboxImage cleared — .runcastle/sandbox/Dockerfile is gone',
-    data: { key: 'sandboxImage', scope: 'project', value: null },
-  })
-  return true
 }
