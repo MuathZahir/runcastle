@@ -31,3 +31,15 @@
 ## 8. Deleting the Dockerfile auto-clears the project column
 **Decision:** When the doctor's probe sees the `sandboxImage` project column set (machine provenance) but `.runcastle/sandbox/Dockerfile` gone, runcastle clears the column itself; resolution falls back to global/stock on the next burn. The orphaned local image tag is left for the user to prune. Corollary of decisions 2+6: prep writes the Dockerfile but never builds — its ending guidance points the human at the Build button.
 **Why:** Runcastle wrote the value on build, so removing it when its justification disappears is symmetric; a doctor warning asking the human to clear it would nag about something with exactly one sensible resolution. A hand-typed (`userSupplied`) value is never touched, consistent with decision 3.
+
+## Lap 2 (revisited 2026-09-10)
+
+Lap 1 landed whole; the test drive surfaced nothing new. Lap 2 closes the two review findings that were still open after the lap-1 fix tickets: one behavioral defect from the verification pass and one cohesion observation. No test-notes and no deferred `## Later laps` scope existed — this lap is exactly those two findings.
+
+## 9. A blank stored `sandboxImage` is unset everywhere — normalized inside the `unmanagedImage` seam
+**Decision:** `unmanagedImage` (the shared guard lap-1 ticket #8 introduced) trims the stored project value and treats an empty result as unset, before any custom-tag reasoning. With `stored: '  '` and a project Dockerfile present, the doctor takes the project-image branch and `planImageBuild` returns the chain — matching burn resolution, where `resolveSandboxImage` already trims (lap-1 ticket #7). The normalization lives inside the shared seam, not at its call sites. Corrects done work from ticket #8 (finding `finding_bQdNMvQbt-rd`).
+**Why:** Tickets #7 and #8 each normalized on their own side and disagreed: burns read a whitespace column as unset while the card/build path read it as a hand-typed custom image — the exact card-vs-burn divergence this feature exists to eliminate. One seam owning the normalization means the question "is this a user-managed image?" has one answer everywhere.
+
+## 10. Image mechanics and project persistence split into separate modules
+**Decision:** `sandbox-image.ts` keeps only the pure image mechanics — `hashDockerfile`, `inspectBuiltImage`, `planImageBuild`, `imageBuildTerminal` — and the persistence pair `adoptProjectImage`/`releaseProjectImage` (DB writes + `settings.updated` emission) moves out beside the other stateful services. The doctor imports only the mechanics module. Closes finding `finding_a9XxnwnZ5smC`.
+**Why:** The review flagged the Divergent Change smell: one module changing for build-planning reasons and for persistence/SSE reasons, with the doctor inheriting the persistence dependency graph it never uses. Splitting is cheap now and keeps the doctor's import surface honest.
