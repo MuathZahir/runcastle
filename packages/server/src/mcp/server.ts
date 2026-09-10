@@ -645,18 +645,16 @@ export function toolCancelTicket(
 }
 
 /**
- * The two dispositions a session can spend on a defect without carding work for
- * it. The third — LINK — needs no verb here: it rides `emit_tickets`, because a
+ * The two dispositions a session spends on a defect without carding work for it.
+ * The third — LINK — needs no verb here: it rides `emit_tickets`, because a
  * ticket carrying `originFindingId` already says everything a link means.
  */
-const FindingDisposition = z.enum(['carry', 'addressed'])
-
 const ResolveFindingShape = {
   findingId: z
     .string()
     .min(1)
     .describe('The finding id, from `get_feature_context`’s openDefects or carriedDefects.'),
-  disposition: FindingDisposition.describe(
+  disposition: z.enum(['carry', 'addressed']).describe(
     '`carry` parks it for a later lap — out of the open count, still visible, and the human can ' +
       'reopen it. `addressed` closes it because this lap’s work already answers it.',
   ),
@@ -684,11 +682,16 @@ const ResolveFindingInput = z.object(ResolveFindingShape).superRefine((input, re
   }
 })
 
-export type ResolveFindingInputT = z.infer<typeof ResolveFindingInput>
+export type ResolveFindingInputT = z.input<typeof ResolveFindingInput>
 
 /**
- * Disposition one earlier-lap defect (SPEC — the lap boundary triages open
- * findings the way it already triages test notes).
+ * Disposition one earlier-lap defect: park it for a later lap, or close it
+ * because this lap's work already answers it. The lap boundary triages open
+ * findings the way it already triages test notes.
+ *
+ * The refinement is applied HERE rather than at the registration, so this
+ * function is the one place an `addressed` with no attestation is refused —
+ * whether the caller is the MCP handler or a test at this seam.
  *
  * Reopening is deliberately absent: a session that carried a defect and then
  * un-carried it would be arguing with itself, and the human's review page holds
@@ -701,9 +704,9 @@ export function toolResolveFinding(
 ): { ok: true; finding: ReviewFinding } {
   const featureId = requireFeatureId(session)
   refuseIfReadOnly(session, 'resolving a finding')
-  const { findingId, note } = ResolveFindingInput.parse(input)
+  const { findingId, disposition, note } = ResolveFindingInput.parse(input)
   const finding =
-    input.disposition === 'carry'
+    disposition === 'carry'
       ? carryFinding(ctx, featureId, findingId, note)
       : closeAsAddressed(ctx, featureId, findingId, note ?? '')
   return { ok: true, finding }
@@ -2334,7 +2337,7 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
       async (args, extra) => {
         const rs = await resolveCtxSession(extra)
         if (!rs) return noSession()
-        return ok(toolResolveFinding(rs.ctx, rs.session, ResolveFindingInput.parse(args)))
+        return ok(toolResolveFinding(rs.ctx, rs.session, args))
       },
     )
   }
