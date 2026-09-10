@@ -9,8 +9,8 @@ import {
 } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
-import type { Feature, PreparedKey, Project } from '@runcastle/core'
-import { DRIVE_LOOP_KEYS } from '@runcastle/core'
+import type { DriveDenial, DriveDenialCode, Feature, PreparedKey, Project } from '@runcastle/core'
+import { DRIVE_LOOP_KEYS, driveDenialOf } from '@runcastle/core'
 import { PROJECT_WORKTREE_SLUG, worktreeDir } from '@runcastle/core/paths'
 import { simpleGit } from 'simple-git'
 import type { SimpleGit } from 'simple-git'
@@ -46,30 +46,9 @@ import { hasActiveRun } from './repo'
  * router) — we do not widen the pinned signatures to inject `ctx`.
  */
 
-/**
- * Which guard refused a drive `start`, as something a caller can branch on
- * instead of matching the prose of `deniedReason`.
- *
- * `slot_held` covers both flavours of the singleton drive slot being taken — a
- * feature drive (human's or another review's) and a preparation dry run —
- * because they are the same fact to whoever was refused: somebody holds the
- * machine-wide slot, and it frees itself when they are done.
- */
-export type DriveDenialCode = 'dirty' | 'slot_held' | 'active_run'
-
-export interface TestDriveResult {
+/** The refusal fields come whole from {@link DriveDenial} — core owns that shape. */
+export interface TestDriveResult extends DriveDenial {
   ok: boolean
-  deniedReason?: string
-  /** Which guard refused a `start`. Absent on `stop` denials and on success. */
-  deniedCode?: DriveDenialCode
-  /**
-   * Whether waiting could plausibly clear the denial — true for `slot_held`
-   * alone, since nothing else frees itself. It is what tells a review agent to
-   * poll `start` again rather than fall back to a repo-only review.
-   */
-  retriable?: boolean
-  /** The uncommitted paths behind a `dirty` denial, so the refusal names them. */
-  dirtyFiles?: string[]
   branch?: string
   /**
    * Uncommitted paths that travelled across the branch switch on `stop`. git
@@ -2237,18 +2216,14 @@ export async function testDrive(
 
 // --- review drive -----------------------------------------------------------
 
-/** What one `reviewDrive` action reports back to the review agent. */
-export interface ReviewDriveResult {
+/**
+ * What one `reviewDrive` action reports back to the review agent. The refusal
+ * fields are {@link DriveDenial}'s, carried across this boundary unchanged —
+ * `ok` is false exactly when `deniedReason` is set.
+ */
+export interface ReviewDriveResult extends DriveDenial {
   ok: boolean
   action: 'start' | 'status' | 'stop'
-  /** Why the action was refused. `ok` is false exactly when this is set. */
-  deniedReason?: string
-  /** How a refused `start` was classified (see {@link DriveDenialCode}). */
-  deniedCode?: DriveDenialCode
-  /** Whether that refusal is worth polling `start` again for — `slot_held` only. */
-  retriable?: boolean
-  /** The uncommitted paths behind a `dirty` refusal, so the agent can name them. */
-  dirtyFiles?: string[]
   /**
    * The live drive — branch, dev pane, and the `devUrl` sniffed from the dev
    * server's output — or null once it has stopped. The URL is what the agent
@@ -2297,7 +2272,7 @@ export async function reviewDrive(
   return {
     ok: stop.ok,
     action: 'stop',
-    ...(stop.deniedReason ? { deniedReason: stop.deniedReason } : {}),
+    ...driveDenialOf(stop),
     drive: activeDriveInfo(),
     ...(stop.hookFailure ? { hookFailure: stop.hookFailure } : {}),
   }
@@ -2349,10 +2324,7 @@ async function startReviewDrive(
   return {
     ok: start.ok,
     action: 'start',
-    ...(start.deniedReason ? { deniedReason: start.deniedReason } : {}),
-    ...(start.deniedCode ? { deniedCode: start.deniedCode } : {}),
-    ...(start.retriable !== undefined ? { retriable: start.retriable } : {}),
-    ...(start.dirtyFiles ? { dirtyFiles: start.dirtyFiles } : {}),
+    ...driveDenialOf(start),
     drive: activeDriveInfo(),
     ...(start.hookFailure ? { hookFailure: start.hookFailure } : {}),
   }
