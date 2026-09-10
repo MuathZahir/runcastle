@@ -42,6 +42,9 @@ const DEFECT: ReviewFinding = {
   openReason: 'over-cap',
   failureReason: null,
   fixTicketId: null,
+  carriedLap: null,
+  resolvedBy: null,
+  resolutionNote: null,
   createdAt: 1,
 }
 

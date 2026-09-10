@@ -4,6 +4,7 @@ import type {
   FeatureStatus,
   FindingKind,
   FindingOpenReason,
+  FindingResolvedBy,
   FindingSeverity,
   FindingStatus,
   FindingSource,
@@ -333,6 +334,10 @@ export const reviewFindings = sqliteTable('review_findings', {
   openReason: text('open_reason').$type<FindingOpenReason>(),
   failureReason: text('failure_reason'),
   fixTicketId: text('fix_ticket_id'),
+  /** The lap a `carried` finding was parked into (mirrors `test_notes`). */
+  carriedLap: integer('carried_lap'),
+  resolvedBy: text('resolved_by').$type<FindingResolvedBy>(),
+  resolutionNote: text('resolution_note'),
   createdAt: integer('created_at').notNull(),
 })
 

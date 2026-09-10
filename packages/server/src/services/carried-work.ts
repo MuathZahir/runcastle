@@ -1,7 +1,7 @@
 import { and, eq } from 'drizzle-orm'
 import type { AppCtx } from '../db/types'
 import { testNotes } from '../db/schema'
-import { viewByFeature } from './review-findings'
+import { openDefectsAcrossLaps } from './review-findings'
 
 /**
  * What a lap carries into the next one — the notes the human parked and the
@@ -49,7 +49,10 @@ export function carriedWork(ctx: AppCtx, featureId: string): CarriedWork {
 
   return {
     carriedNotes: carried.length,
-    openDefects: viewByFeature(ctx, featureId).openDefects.map((defect) => ({
+    // Across laps, for the same reason the note query is keyed on status: the
+    // defects a lap has to answer for are the ones EARLIER laps left open, and
+    // the review page's own view is scoped to the current lap.
+    openDefects: openDefectsAcrossLaps(ctx, featureId).map((defect) => ({
       title: defect.title,
       location: defect.location,
       detail: defect.detail,
