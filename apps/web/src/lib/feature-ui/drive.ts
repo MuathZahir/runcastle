@@ -1,4 +1,6 @@
 
+import type { EventRow } from '@runcastle/core'
+
 export interface OpenApp {
   url: string
   /**
@@ -66,6 +68,53 @@ export function driveFailure(
     outcome: f.timedOut ? 'timed out' : `exited ${f.exitCode ?? 'without a code'}`,
     output: f.output,
     canFix: !opts.sessionLive,
+  }
+}
+
+/** A review drive the server refused because the working tree was dirty. */
+export interface ReviewDriveDenial {
+  /**
+   * The event that recorded it. Dismissal is keyed on this, so the human waves
+   * away ONE denial — the next one is a different id and speaks up again.
+   */
+  eventId: number
+  /** The uncommitted paths that stood in the way, as the server named them. */
+  dirtyFiles: string[]
+  /** The server's own sentence, for a banner that never paraphrases it. */
+  message: string
+  at: number
+}
+
+/**
+ * The denied review drive still worth a banner, or null (decision 7).
+ *
+ * The rule is the server's own retry-eligibility rule, deliberately: a denial
+ * counts while it is the latest word on the latest run, so the banner is up
+ * exactly when `ticket.retry` would accept the review ticket it offers to
+ * re-burn. A retry burn therefore clears it by existing — its run starts after
+ * the denial — and so does any later burn, which superseded the denial without
+ * anybody needing to press anything.
+ *
+ * The phase and the readonly history view are the caller's to answer; this
+ * function only reads the record.
+ */
+export function reviewDriveDenial(
+  events: readonly EventRow[],
+  runs: readonly { startedAt: number }[],
+  dismissedEventId?: number | null,
+): ReviewDriveDenial | null {
+  const denied = events.filter((e) => e.type === 'reviewdrive.denied').at(-1)
+  if (!denied || denied.id === dismissedEventId) return null
+  const latestStart = Math.max(...runs.map((r) => r.startedAt), -Infinity)
+  if (denied.ts < latestStart) return null
+  const data = (denied.data ?? {}) as { dirtyFiles?: unknown }
+  return {
+    eventId: denied.id,
+    dirtyFiles: Array.isArray(data.dirtyFiles)
+      ? data.dirtyFiles.filter((f): f is string => typeof f === 'string')
+      : [],
+    message: denied.message,
+    at: denied.ts,
   }
 }
 
