@@ -2,7 +2,7 @@ import type { Feature, Project, Ticket, WorkflowDef } from '@runcastle/core'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { AppCtx } from '../src/db/types'
 import { getFeatureRow } from '../src/services/repo'
-import { markFailed, reportFinding } from '../src/services/review-findings'
+import { carryFinding, markFailed, reportFinding } from '../src/services/review-findings'
 import { listByFeature as listTickets, storeTickets, updateTicket } from '../src/services/tickets'
 import { createCallerFactory } from '../src/trpc/context'
 import { appRouter } from '../src/trpc/router'
@@ -135,6 +135,24 @@ describe('findings router', () => {
     expect(dismissed.status).toBe('dismissed')
     const view = await caller.findings.listByFeature({ featureId: feature.id })
     expect(view.summary).toEqual({ found: 1, fixed: 0, open: 0, observations: 0 })
+  })
+
+  it('reopens a carried finding, and refuses one that was never carried', async () => {
+    const parked = report('the toast never dismisses')
+    updateTicket(ctx, parked.fixTicket!.id, { status: 'failed' })
+    markFailed(ctx, parked.finding.id, 'could not land')
+    carryFinding(ctx, feature.id, parked.finding.id)
+    expect((await caller.findings.listByFeature({ featureId: feature.id })).summary.open).toBe(0)
+
+    const reopened = await caller.findings.reopen({ findingId: parked.finding.id })
+
+    expect(reopened).toMatchObject({ status: 'open', carriedLap: null })
+    const view = await caller.findings.listByFeature({ featureId: feature.id })
+    expect(view.summary.open).toBe(1)
+    expect(view.carriedFindings).toEqual([])
+    await expect(caller.findings.reopen({ findingId: parked.finding.id })).rejects.toThrow(
+      /only a carried finding/,
+    )
   })
 
   it('fixes every open defect in one call: a ticket each on this lap, then a burn', async () => {

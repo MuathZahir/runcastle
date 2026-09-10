@@ -1,19 +1,26 @@
 import type { Project, Ticket } from '@runcastle/core'
+import { eq } from 'drizzle-orm'
 import { beforeEach, describe, expect, it } from 'vitest'
 import type { AppCtx } from '../src/db/types'
+import { InvalidInputError } from '../src/errors'
 import { listAfter } from '../src/services/events'
 import {
   buildFixTicket,
+  carryFinding,
+  closeAsAddressed,
   dismiss,
   listByFeature,
   markFailed,
   markFixed,
   markFixing,
+  openDefectsAcrossLaps,
+  reopenFinding,
   reportFinding,
   viewByFeature,
 } from '../src/services/review-findings'
+import { triagePreview } from '../src/services/test-notes'
 import { listByFeature as listTickets, storeTickets, sweepOrphanedBurning, updateTicket } from '../src/services/tickets'
-import { reviewFindings } from '../src/db/schema'
+import { features, reviewFindings } from '../src/db/schema'
 import { makeTestCtx } from './helpers/db'
 import { seedFeature, seedProject } from './helpers/fixtures'
 
@@ -149,5 +156,140 @@ describe('review findings service', () => {
     const first = listByFeature(ctx, featureId).map((finding) => finding.id)
     expect(first).toEqual([...first].sort())
     expect(listByFeature(ctx, featureId).map((finding) => finding.id)).toEqual(first)
+  })
+
+  /**
+   * The lap boundary's half of the lifecycle: what a later lap does about a
+   * defect the review before it left open. Every case here starts from the one
+   * state that is genuinely the human's problem — a defect whose own fix ticket
+   * gave up — because that is precisely the set `viewByFeature` counts open.
+   */
+  describe('across a lap boundary', () => {
+    /** Move the feature on, as a Rethink does; the finding keeps its own lap. */
+    function nextLap(lap: number): void {
+      ctx.db.update(features).set({ lap }).where(eq(features.id, featureId)).run()
+    }
+
+    /** Report a defect on lap 3 and let its fix ticket fail, leaving it open. */
+    function abandonedDefect(title = 'Broken save'): string {
+      const { finding, fixTicket } = reportFinding(ctx, { featureId, reviewTicket, input: defect(title) })
+      updateTicket(ctx, fixTicket!.id, { status: 'failed' })
+      return finding.id
+    }
+
+    it('carries a defect into the lap doing the carrying, out of the open count', () => {
+      const findingId = abandonedDefect()
+      nextLap(4)
+
+      const carried = carryFinding(ctx, featureId, findingId, '  lap 4 is rewriting the save path  ')
+
+      expect(carried).toMatchObject({
+        status: 'carried',
+        carriedLap: 4,
+        resolutionNote: 'lap 4 is rewriting the save path',
+        resolvedBy: null,
+      })
+      expect(listAfter(ctx, featureId).filter((event) => event.type === 'finding.updated')).toHaveLength(1)
+      // Its own pile, at any lap, and never the open one — the state `defectState`
+      // must not read as open however the dead fix ticket beside it looks.
+      const view = viewByFeature(ctx, featureId)
+      expect(view.carriedFindings.map((finding) => finding.id)).toEqual([findingId])
+      expect(view.openDefects).toEqual([])
+      expect(openDefectsAcrossLaps(ctx, featureId)).toEqual([])
+    })
+
+    it('carries with no note at all', () => {
+      const findingId = abandonedDefect()
+      expect(carryFinding(ctx, featureId, findingId)).toMatchObject({ carriedLap: 3, resolutionNote: null })
+    })
+
+    it('refuses to carry anything that is not this feature\'s open or carried defect', () => {
+      const settled = reportFinding(ctx, { featureId, reviewTicket, input: defect('Being fixed') }).finding
+      const observation = reportFinding(ctx, {
+        featureId, reviewTicket,
+        input: { ...defect('Could not verify mobile'), kind: 'observation', reproStep: undefined },
+      }).finding
+      const elsewhere = seedFeature(ctx, project.id, { slug: 'other' })
+      const otherReview = storeTickets(ctx, elsewhere.id, [{
+        title: 'Review', goal: 'Review', context: '', acceptanceCriteria: [], seams: [],
+        blockedBy: [], kind: 'review',
+      }])[0]
+      const foreign = reportFinding(ctx, {
+        featureId: elsewhere.id, reviewTicket: otherReview, input: defect('Not ours'),
+      }).finding
+      const dismissed = abandonedDefect('Waved away')
+      dismiss(ctx, dismissed)
+      const fixed = abandonedDefect('Already fixed')
+      markFixed(ctx, fixed)
+
+      // A defect the run is still fixing, an observation, another feature's, one
+      // the human already settled, and one that landed.
+      for (const id of [settled.id, observation.id, foreign.id, dismissed, fixed]) {
+        expect(() => carryFinding(ctx, featureId, id)).toThrow(InvalidInputError)
+      }
+    })
+
+    it('closes a defect as addressed on the session\'s word, with the attestation kept', () => {
+      const findingId = abandonedDefect()
+      nextLap(4)
+
+      const closed = closeAsAddressed(ctx, featureId, findingId, 'addressed by lap 4 ticket 7')
+
+      expect(closed).toMatchObject({
+        status: 'fixed',
+        resolvedBy: 'session',
+        resolutionNote: 'addressed by lap 4 ticket 7',
+        carriedLap: null,
+      })
+      expect(openDefectsAcrossLaps(ctx, featureId)).toEqual([])
+    })
+
+    it('refuses to close as addressed without an attestation', () => {
+      const findingId = abandonedDefect()
+      expect(() => closeAsAddressed(ctx, featureId, findingId, '   ')).toThrow(InvalidInputError)
+      expect(listByFeature(ctx, featureId)[0].status).toBe('open')
+    })
+
+    it('lets a carried defect be closed later, and reopened by the human meanwhile', () => {
+      const findingId = abandonedDefect()
+      nextLap(4)
+      carryFinding(ctx, featureId, findingId)
+
+      // Carrying parks a defect, it does not freeze it.
+      expect(reopenFinding(ctx, findingId)).toMatchObject({ status: 'open', carriedLap: null })
+      expect(() => reopenFinding(ctx, findingId)).toThrow(InvalidInputError)
+      carryFinding(ctx, featureId, findingId)
+      expect(closeAsAddressed(ctx, featureId, findingId, 'lap 4 rewrote it').status).toBe('fixed')
+    })
+
+    it('stamps the burner\'s own fix with fix-ticket provenance, not the session\'s', () => {
+      const findingId = abandonedDefect()
+      expect(markFixed(ctx, findingId)).toMatchObject({ resolvedBy: 'fix-ticket', resolutionNote: null })
+    })
+
+    it('counts the summary from this lap alone, while the carry channel still sees the last one\'s', () => {
+      const stale = abandonedDefect('Lap 3 left this open')
+      reportFinding(ctx, {
+        featureId, reviewTicket,
+        input: { ...defect('Lap 3 never verified mobile'), kind: 'observation', reproStep: undefined },
+      })
+      nextLap(4)
+      const fresh = abandonedDefect('Lap 4 found this')
+
+      const view = viewByFeature(ctx, featureId)
+      expect(view.summary).toEqual({ found: 1, fixed: 0, open: 1, observations: 0 })
+      expect(view.openDefects.map((finding) => finding.id)).toEqual([fresh])
+      // Every finding is still listed; only the counts narrowed.
+      expect(view.findings).toHaveLength(3)
+      // The lap that has to answer for the stale one can still reach it.
+      expect(openDefectsAcrossLaps(ctx, featureId).map((finding) => finding.id)).toEqual([stale, fresh])
+    })
+
+    it('hands the boundary triage the same current-lap defect count', () => {
+      abandonedDefect('Lap 3 left this open')
+      expect(triagePreview(ctx, featureId).openDefects).toBe(1)
+      nextLap(4)
+      expect(triagePreview(ctx, featureId).openDefects).toBe(0)
+    })
   })
 })

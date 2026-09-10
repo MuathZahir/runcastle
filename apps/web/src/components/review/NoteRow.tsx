@@ -2,6 +2,7 @@ import type { ReactNode } from 'react'
 import { fmtClock, type ReviewFinding, type TestNote } from '@runcastle/core'
 import { FindingSeverityChip, NoteAuthorChip } from '../../ui'
 import { findingOpenReason, headline } from '../../lib/feature-ui'
+import { findingStanding, type FindingStanding } from '../../lib/feature-ui/review'
 import { timestampMode } from '../../lib/walkthrough'
 
 /**
@@ -74,6 +75,18 @@ function FindingDetail({ finding }: { finding: ReviewFinding }) {
   )
 }
 
+/**
+ * What a defect's standing is worth, in colour: a parked one is quiet, a
+ * session's attestation is amber because nothing verified it, and a landed fix
+ * ticket is the only green one. Whole classes in a lookup map, never
+ * interpolated — Tailwind's scanner cannot see a built class name (STYLE.md).
+ */
+const EVIDENCE_TONE: Record<FindingStanding['evidence'], string> = {
+  carried: 'text-text-3',
+  attested: 'text-warn',
+  verified: 'text-ok',
+}
+
 const LAP_BADGE =
   'inline-flex h-5 shrink-0 items-center rounded-pill border border-hairline px-2 font-mono text-xs text-text-3'
 
@@ -129,6 +142,10 @@ export function NoteRow({
     onStage,
   )
   const why = finding ? findingOpenReason(finding) : null
+  // The defect's half of the same statement: where a carried one was parked, or
+  // — for one that is closed — whether a fix ticket verified it or a lap session
+  // attested it. Part of the record too, so it survives `readonly`.
+  const disposition = finding ? findingStanding(finding) : null
   const fixing = item.kind === 'defect' ? item.fixTicket : undefined
 
   return (
@@ -194,6 +211,16 @@ export function NoteRow({
 
         {why && <div className="font-mono text-xs text-warn">{why}</div>}
         {standing && <div className="font-mono text-xs text-text-3">{standing}</div>}
+        {disposition && (
+          <div className="flex flex-col gap-1">
+            <div className={`font-mono text-xs ${EVIDENCE_TONE[disposition.evidence]}`}>
+              {disposition.text}
+            </div>
+            {disposition.note && (
+              <p className="m-0 text-sm text-pretty text-text-2">{disposition.note}</p>
+            )}
+          </div>
+        )}
 
         {fixing &&
           (readonly || !onViewLane ? (

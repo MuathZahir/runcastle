@@ -151,11 +151,26 @@ export type FindingKind = z.infer<typeof FindingKind>
 export const FindingSeverity = z.enum(['high', 'medium', 'low'])
 export type FindingSeverity = z.infer<typeof FindingSeverity>
 
-export const FindingStatus = z.enum(['open', 'fixing', 'fixed', 'failed', 'dismissed'])
+/**
+ * `carried` mirrors the test-note status of the same name: a defect a later lap
+ * looked at and deliberately parked. It is out of the open count and out of the
+ * lap's obligations, and only the human's reopen returns it to `open`.
+ */
+export const FindingStatus = z.enum(['open', 'fixing', 'fixed', 'failed', 'dismissed', 'carried'])
 export type FindingStatus = z.infer<typeof FindingStatus>
 
 export const FindingOpenReason = z.enum(['over-cap', 'fix-failed', 'verification'])
 export type FindingOpenReason = z.infer<typeof FindingOpenReason>
+
+/**
+ * How a `fixed` defect got there: its own fix ticket landed, or a later lap's
+ * session attested that the lap's work already addressed it. Both are fixed —
+ * the counts deliberately do not distinguish them — but a burner-verified fix
+ * and a session's word are different classes of evidence, so the row keeps
+ * which one it was and the UI can say so.
+ */
+export const FindingResolvedBy = z.enum(['fix-ticket', 'session'])
+export type FindingResolvedBy = z.infer<typeof FindingResolvedBy>
 
 /**
  * The subset of {@link FindingStatus} a defect's own fix ticket drives it
@@ -193,6 +208,11 @@ export const ReviewFinding = ReviewFindingInput.safeExtend({
   openReason: FindingOpenReason.nullable(),
   failureReason: z.string().nullable(),
   fixTicketId: z.string().nullable(),
+  /** The lap a `carried` defect was parked into; null for every other status. */
+  carriedLap: z.number().nullable(),
+  resolvedBy: FindingResolvedBy.nullable(),
+  /** A carry's rationale or a session attestation's evidence; null otherwise. */
+  resolutionNote: z.string().nullable(),
   createdAt: z.number(),
 })
 export type ReviewFinding = z.infer<typeof ReviewFinding>

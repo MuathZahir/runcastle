@@ -1,6 +1,6 @@
 import * as z from 'zod'
 import { burn } from '../../services/features'
-import { dismiss, promoteOpenDefects, viewByFeature } from '../../services/review-findings'
+import { dismiss, promoteOpenDefects, reopenFinding, viewByFeature } from '../../services/review-findings'
 import { publicProcedure, router } from '../context'
 
 /**
@@ -22,6 +22,13 @@ export const reviewFindingsRouter = router({
   dismiss: publicProcedure
     .input(z.object({ findingId: z.string() }))
     .mutation(({ ctx, input }) => dismiss(ctx, input.findingId)),
+
+  // The other half of carry, and the human's alone: a lap session may park a
+  // defect but never un-park one, so the carried pile only grows back into the
+  // open count when a person says so.
+  reopen: publicProcedure
+    .input(z.object({ findingId: z.string() }))
+    .mutation(({ ctx, input }) => reopenFinding(ctx, input.findingId)),
 
   // One click, no dialog (decisions #7): every open defect becomes a fix ticket
   // on this lap and the burn starts on the spot. Minting first means a burn that

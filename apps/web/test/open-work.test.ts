@@ -28,7 +28,7 @@ vi.mock('../src/trpc', () => {
         toggle: { useMutation: mutation },
         reopen: { useMutation: mutation },
       },
-      findings: { dismiss: { useMutation: mutation } },
+      findings: { dismiss: { useMutation: mutation }, reopen: { useMutation: mutation } },
     },
   }
 })
@@ -63,6 +63,9 @@ const finding = (over: Partial<ReviewFinding> & { id: string }): ReviewFinding =
   openReason: null,
   failureReason: null,
   fixTicketId: null,
+  carriedLap: null,
+  resolvedBy: null,
+  resolutionNote: null,
   createdAt: 20,
   ...over,
 })
@@ -184,6 +187,38 @@ describe('OpenWork', () => {
     expect(settled).toContain('line-through')
     // None of them is still asking for attention.
     expect(render(work)).toContain('Nothing needs attention')
+  })
+
+  /**
+   * A parked defect belongs to the carried band and to nothing else
+   * (decisions #5) — filed here as well it would render twice, and the tally it
+   * is deliberately outside of would count it.
+   */
+  it('leaves a carried defect to its own band, out of both halves of this list', () => {
+    const work = {
+      findings: [finding({ id: 'd1', status: 'carried', carriedLap: 3 })],
+      openDefects: [],
+    }
+    expect(render(work)).toContain('Nothing needs attention')
+    expect(renderSettled(work)).not.toContain('the save drops the edited value')
+  })
+
+  /**
+   * The lap scoping's own trap: the server counts open defects for the CURRENT
+   * lap only, so an earlier lap's leftover appears in no `openDefects` list at
+   * all — and it used to fall through to "being fixed", which hid the human's
+   * Dismiss behind a burn that was never running.
+   */
+  it('still calls an earlier lap’s leftover open, with the human’s Dismiss on it', () => {
+    const html = render({
+      lap: 2,
+      findings: [finding({ id: 'd1', lap: 1 })],
+      openDefects: [],
+    })
+    expect(html).toContain('the save drops the edited value')
+    expect(html).toContain('>Dismiss<')
+    expect(html).toContain('1 open')
+    expect(html).not.toContain('being fixed')
   })
 
   it('groups the open list by lap once the feature is past lap 1', () => {

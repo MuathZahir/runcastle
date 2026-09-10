@@ -25,6 +25,7 @@ import { useEventLog } from '../../lib/events'
 import { useReviewArtifacts } from '../../lib/reviews'
 import { useLivePoll } from '../../lib/live'
 import { useToast } from '../../lib/toast'
+import { CarriedFindings } from '../review/CarriedFindings'
 import { ConflictAlert } from '../review/ConflictCard'
 import { DriveInstructions } from '../review/drive-parts'
 import { EvidenceStage } from '../review/EvidenceStage'
@@ -225,10 +226,17 @@ export function ReviewBody({
   })
   const observations = (findings.data?.findings ?? []).filter((f) => f.kind === 'observation')
   const account = lapAccount(tickets, feature.lap)
+  // Every count on this page is the server's own, scoped to THIS lap
+  // (decisions #5) — the inflated all-laps figure is what sent the human back
+  // through Iterate over defects a later lap had already answered. So the review
+  // row's finding count is read off the summary rather than measured on the
+  // `findings` array, which spans every lap the feature has run.
+  const summary = findings.data?.summary
+  const lapFindings = summary ? summary.found + summary.observations : undefined
   // The lap at one line (decision 8): the review agent's digest is written to
   // open with exactly this line. With no digest, the counts say what happened
   // instead — the same figures the bar is holding.
-  const accountLine = lapAccountLine(account) ?? findingCountsLine(findings.data?.summary)
+  const accountLine = lapAccountLine(account) ?? findingCountsLine(summary)
 
   return (
     <div className="flex flex-col gap-6">
@@ -295,7 +303,7 @@ export function ReviewBody({
           tickets,
           run,
           commitCount: commits.data?.count,
-          findings: findings.data?.findings.length,
+          findings: lapFindings,
         })}
         runState={run?.status ?? 'no run recorded'}
         verification={verificationState(tickets)}
@@ -343,6 +351,15 @@ export function ReviewBody({
         highlight={spotlight.ids}
         scrollTo={spotlight.scrollTo}
         onViewLane={onViewLane}
+      />
+
+      {/* What earlier laps parked instead of answering (decisions #5) — beside
+          the open work and outside its count, since the server keeps carried
+          defects out of the summary the page leads with. */}
+      <CarriedFindings
+        featureId={feature.id}
+        findings={findings.data?.carriedFindings ?? []}
+        readonly={readonly}
       />
 
       <FullAccounts
