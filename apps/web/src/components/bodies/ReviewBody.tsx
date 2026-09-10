@@ -222,8 +222,9 @@ export function ReviewBody({
   // preparation dry run (decision 9).
   const driveSlotTaken = !!drive.data && drive.data.featureId !== feature.id
   // A review drive the human's own uncommitted files refused (decision 7). Only
-  // while this feature is actually AT review: the shipped view's look back is
-  // history, and a denial from a lap ago is not something to act on now.
+  // while the feature is actually AT review — this body also mounts to look back
+  // at review on a feature that has moved on, and a denial answered by a later
+  // phase is a record, not something to act on.
   const denial =
     feature.phase === 'review' ? reviewDriveDenial(events, runs, dismissedDenial) : null
   // The reviewer the banner offers to re-burn: this lap's last review pass. Its

@@ -386,9 +386,13 @@ describe('the review page’s denied-drive banner', () => {
     expect(render({ runs: [RUN(1_000)] })).not.toContain('Review drive denied')
   })
 
-  /** Looking back at a shipped feature is history — there is nothing to act on. */
+  /** The review body also mounts to LOOK BACK at review on a feature that has
+   *  moved on — history, where there is nothing left to act on (decision 33a). */
   it('does not render outside the review phase', () => {
-    const html = render({ events: [DENIED], phase: 'shipped', readonly: true })
-    expect(html).not.toContain('Review drive denied')
+    expect(render({ events: [DENIED], phase: 'shipped' })).not.toContain('Review drive denied')
+  })
+
+  it('does not render on a readonly look back at the review phase', () => {
+    expect(render({ events: [DENIED], readonly: true })).not.toContain('Review drive denied')
   })
 })
