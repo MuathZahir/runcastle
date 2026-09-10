@@ -593,6 +593,20 @@ describe('runDoctor — a project that ships its own sandbox Dockerfile', () => 
     expect(looked).not.toContain(inspectKey('docker', TAG))
   })
 
+  // Decision 9: a whitespace column is no image at all — `resolveSandboxImage`
+  // trims it, so a burn runs in the project image while a row calling it custom
+  // would disarm the Build button over a value the burn cannot see.
+  it('reads a blank stored image as unset, not as a tag the human typed', async () => {
+    const row = await imageRow({
+      ...base,
+      exec: built(STOCK_HASH),
+      dockerfileHash: hashes({ ...shipped }),
+      projectImage: project({ stored: '  ', overwritable: false }),
+    })
+    expect(row.status).toBe('not-built-yet')
+    expect(row.detail).toBe(`.runcastle/sandbox/Dockerfile is not built — ${TAG} does not exist`)
+  })
+
   it('puts the project column above the env and config layers, as the resolver does', async () => {
     const row = await imageRow({
       ...base,

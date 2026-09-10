@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { beforeEach, describe, expect, it } from 'vitest'
-import { DEFAULT_SANDBOX_IMAGE, type RuncastleConfig } from '@runcastle/core'
+import { DEFAULT_SANDBOX_IMAGE, resolveSandboxImage, type RuncastleConfig } from '@runcastle/core'
 import type { ExecFn, ExecOutcome } from '../src/doctor/doctor'
 import { projects } from '../src/db/schema'
 import type { AppCtx } from '../src/db/types'
@@ -270,6 +270,28 @@ describe('the build the terminal runs', () => {
     expect(plan).toMatchObject({ kind: 'refused', imageName: 'acme/custom:v1' })
     // The Dockerfile is written already — clearing the setting is the whole fix.
     expect(plan.kind === 'refused' && plan.reason).toContain('already ships')
+  })
+
+  // Decision 9: a blank column is unset everywhere. Burn resolution already
+  // trims it, so a card that read the same whitespace as a hand-typed tag would
+  // disarm the button over a value no burn can see.
+  it('builds the chain for a blank stored image, as burn resolution reads it', () => {
+    const repo = repoWithDockerfile()
+    const plan = planImageBuild({
+      config: config(),
+      project: {
+        id: 'proj_java',
+        repoPath: repo,
+        sandboxImage: '  ',
+        sandboxImageOverwritable: false,
+      },
+      stockContext: stockContext(),
+      stockFresh: true,
+      buildArgs: {},
+    })
+    expect(plan).toMatchObject({ kind: 'chain', projectTag: projectImageTag('proj_java') })
+    // The seam agrees with the resolver every burn goes through.
+    expect(resolveSandboxImage(config(), { sandboxImage: '  ' })).toBe(DEFAULT_SANDBOX_IMAGE)
   })
 
   // A project image whose Dockerfile was deleted still resolves to the tag

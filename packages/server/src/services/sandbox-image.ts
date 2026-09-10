@@ -150,10 +150,16 @@ export interface StoredProjectImage {
  * tag and `.runcastle/sandbox/Dockerfile` would otherwise let the card build and
  * report `sandcastle:runcastle-<projectId>` while every burn kept resolving to
  * the typed tag — a row and a button describing an image no burn runs in.
+ *
+ * The stored value is trimmed here, and a blank one is unset (decision 9): that
+ * is what {@link resolveSandboxImage} already makes of it, so a whitespace
+ * column that burns read as "no image typed" must not disarm the card as a
+ * custom one — the very card-vs-burn divergence this seam exists to prevent.
  */
 export function unmanagedImage(project: StoredProjectImage): string | null {
-  const { id, stored, overwritable } = project
-  if (overwritable || stored === null) return null
+  const { id, overwritable } = project
+  const stored = project.stored?.trim() ?? ''
+  if (stored === '' || overwritable) return null
   if (stored === DEFAULT_SANDBOX_IMAGE || stored === projectImageTag(id)) return null
   return stored
 }
