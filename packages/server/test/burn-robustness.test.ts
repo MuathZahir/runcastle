@@ -102,6 +102,19 @@ describe('classifyTicketRunError', () => {
     expect(classifyTicketRunError(new Error(msg))).toBe('run-fatal')
   })
 
+  /**
+   * A refusal halts the run only when it names something the ACCOUNT owns.
+   * `permission denied` is also how git and the filesystem report a read-only
+   * path, and halting a healthy run over one ticket's chmod is the expensive
+   * direction of the mistake — those stay ticket-fatal.
+   */
+  it.each([
+    'git checkout failed: permission denied',
+    "EACCES: permission denied, open '/home/agent/cache/slots/1/repo/out.txt'",
+  ])('fatal, not run-fatal, for a permission failure that is not the account: %s', (msg) => {
+    expect(classifyTicketRunError(new Error(msg), 'claude-code')).toBe('fatal')
+  })
+
   // The subscription cap matched no pattern before this feature and fell to
   // fatal-by-default — one exhausted plan, one wasted container per ticket.
   it('reads the Anthropic usage limit as the account fact it is', () => {
@@ -144,9 +157,15 @@ describe('classifyTicketRunError', () => {
 
     // A model this account cannot reach is one assignment's problem — another
     // ticket on another model burns fine, so the run carries on.
+    //
+    // A bare status number is the same kind of problem: 401 and 403 are how
+    // every HTTP call in the sandbox reports a closed door, and only the
+    // wording beside one says the door was the account's.
     it.each([
       'model_not_found: the model `gpt-5.6-sol` does not exist or you do not have access',
       'invalid_request_error: unsupported parameter',
+      'request failed with status 403',
+      'proxy returned 401 for the telemetry endpoint',
     ])('fatal, without halting the run: %s', (msg) => {
       expect(classifyTicketRunError(new Error(msg), 'codex')).toBe('fatal')
     })

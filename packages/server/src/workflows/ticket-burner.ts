@@ -2075,6 +2075,20 @@ export function isMergeConflictError(err: unknown): boolean {
 // ---------------------------------------------------------------------------
 
 /**
+ * What a refusal has to NAME for it to be the account's refusal rather than
+ * this ticket's. `permission denied` is equally how git and the filesystem
+ * report a read-only path, and a bare `401`/`403` is how any HTTP call in the
+ * sandbox reports a closed door — neither says whose door on its own, so the
+ * patterns built from this pair with it instead of standing alone. Missing a
+ * genuine auth wording costs one run the old behaviour; halting a healthy run
+ * over a chmod costs every ticket left in it.
+ */
+const CREDENTIAL_SUBJECT = String.raw`(?:api[ _-]?key|token|credential|login|auth|unauthorized|forbidden|account|organi[sz]ation|\borg\b)`
+
+/** `permission denied`, but only where what was denied is the account's. */
+const ACCOUNT_PERMISSION_DENIED = new RegExp(`permission denied[^\\n]*${CREDENTIAL_SUBJECT}`, 'i')
+
+/**
  * Errors that are facts about the ACCOUNT or the environment rather than about
  * the ticket: bad or lapsed credentials, an exhausted balance, a subscription
  * usage limit, an image with no agent binary in it. Every other ticket in the
@@ -2089,7 +2103,8 @@ export function isMergeConflictError(err: unknown): boolean {
  */
 const RUN_FATAL_ERROR_PATTERNS: RegExp[] = [
   /invalid (api key|x-api-key)/i,
-  /authentication|unauthorized|permission denied/i,
+  /authentication|unauthorized/i,
+  ACCOUNT_PERMISSION_DENIED,
   /credit balance|billing/i,
   /oauth token|setup-token/i,
   // The Anthropic subscription cap — "5-hour usage limit reached". It matched
@@ -2097,6 +2112,13 @@ const RUN_FATAL_ERROR_PATTERNS: RegExp[] = [
   // could spend a container per ticket rediscovering one exhausted plan.
   /usage limit/i,
 ]
+
+/**
+ * A `401`/`403` that says what it refused — an OpenAI auth failure arrives as a
+ * status code beside its `invalid_api_key` or `Unauthorized`, while an
+ * unrelated HTTP failure inside the sandbox arrives as the number alone.
+ */
+const REFUSED_CREDENTIAL_STATUS = new RegExp(`\\b(?:401|403)\\b[^\\n]*${CREDENTIAL_SUBJECT}`, 'i')
 
 /**
  * Per-runtime run-fatal wording. OpenAI reports auth as a 401 with an
@@ -2112,7 +2134,7 @@ const RUNTIME_RUN_FATAL_ERROR_PATTERNS: Record<AgentRuntime, RegExp[]> = {
   'claude-code': [],
   codex: [
     /invalid_api_key/i,
-    /\b401\b|\b403\b/,
+    REFUSED_CREDENTIAL_STATUS,
     /insufficient_quota|exceeded your current quota/i,
     /CODEX_API_KEY/,
     // "unauthorized" and "authentication …" are already run-fatal for every
