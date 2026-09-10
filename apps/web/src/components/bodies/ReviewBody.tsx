@@ -25,6 +25,7 @@ import { useEventLog } from '../../lib/events'
 import { useReviewArtifacts } from '../../lib/reviews'
 import { useLivePoll } from '../../lib/live'
 import { useToast } from '../../lib/toast'
+import { CarriedFindings } from '../review/CarriedFindings'
 import { ConflictAlert } from '../review/ConflictCard'
 import { DriveInstructions } from '../review/drive-parts'
 import { EvidenceStage } from '../review/EvidenceStage'
@@ -343,6 +344,15 @@ export function ReviewBody({
         highlight={spotlight.ids}
         scrollTo={spotlight.scrollTo}
         onViewLane={onViewLane}
+      />
+
+      {/* What earlier laps parked instead of answering (decisions #5) — beside
+          the open work and outside its count, since the server keeps carried
+          defects out of the summary the page leads with. */}
+      <CarriedFindings
+        featureId={feature.id}
+        findings={findings.data?.carriedFindings ?? []}
+        readonly={readonly}
       />
 
       <FullAccounts

@@ -21,6 +21,7 @@ const state = vi.hoisted(() => ({
   notes: [] as TestNote[],
   findings: [] as ReviewFinding[],
   openDefects: [] as ReviewFinding[],
+  carriedFindings: [] as ReviewFinding[],
   summary: undefined as { found: number; fixed: number; open: number; observations: number } | undefined,
   recordings: [] as ReviewArtifacts[],
   drive: undefined as { featureId: string; state: string; dryRun: boolean } | undefined,
@@ -53,11 +54,13 @@ vi.mock('../src/trpc', () => {
       },
       findings: {
         dismiss: { useMutation: mutation },
+        reopen: { useMutation: mutation },
         listByFeature: {
           useQuery: () => ({
             data: {
               findings: state.findings,
               openDefects: state.openDefects,
+              carriedFindings: state.carriedFindings,
               summary: state.summary,
             },
           }),
@@ -135,6 +138,16 @@ const OBSERVATION = {
   detail: 'this repo’s suite runs inside a Docker maven image',
 } as ReviewFinding
 
+/** What lap 1 parked instead of answering, as the lap-2 page has it. */
+const CARRIED = {
+  ...DEFECT,
+  id: 'find_3',
+  title: 'the husk rows keep their retired ids',
+  status: 'carried',
+  carriedLap: 2,
+  resolutionNote: 'lap 2 rewrites the purge, which decides these rows',
+} as ReviewFinding
+
 const DIGEST =
   'Lap 1: DLQ spill retention landed · 1 defect found, 0 fixed in-run · Drive mode\n\n' +
   'The cap bounds rows for currently-registered callbacks; retired ids are left to the age purge.'
@@ -165,6 +178,7 @@ function render(
     notes?: TestNote[]
     findings?: ReviewFinding[]
     openDefects?: ReviewFinding[]
+    carriedFindings?: ReviewFinding[]
     recordings?: ReviewArtifacts[]
     drive?: { featureId: string; state: string; dryRun: boolean }
     tickets?: FeatureFull['tickets']
@@ -175,6 +189,7 @@ function render(
   state.notes = over.notes ?? []
   state.findings = over.findings ?? []
   state.openDefects = over.openDefects ?? []
+  state.carriedFindings = over.carriedFindings ?? []
   state.summary = { found: state.findings.filter((f) => f.kind === 'defect').length, fixed: 0, open: state.openDefects.length, observations: state.findings.filter((f) => f.kind === 'observation').length }
   state.recordings = over.recordings ?? []
   state.drive = over.drive
@@ -288,6 +303,29 @@ describe('the review page’s arrival bands', () => {
     expect(html).toContain('Carried, quick-fixed and handled')
     expect(html.indexOf('already handled')).toBeGreaterThan(html.indexOf('Full account'))
     expect(html).toContain('Nothing needs attention')
+  })
+
+  /**
+   * Decisions #5: what a lap parked is a band of its own, between the open work
+   * and the disclosure — visible as the next lap's agenda, and out of the tally
+   * the human reads "is there anything left?" off.
+   */
+  it('gives what a lap carried its own band, outside the open count', () => {
+    const html = render({
+      findings: [DEFECT, CARRIED],
+      openDefects: [DEFECT],
+      carriedFindings: [CARRIED],
+    })
+    expect(html).toContain('Carried, still open')
+    expect(html).toContain('captured lap 1, carried into lap 2')
+    expect(html).toContain('lap 2 rewrites the purge, which decides these rows')
+    // The human's two verbs, and only the human's.
+    expect(html).toContain('>Reopen<')
+    // The attention band still counts one defect, not two.
+    expect(html).toContain('1 open')
+    const carriedAt = html.indexOf('Carried, still open')
+    expect(carriedAt).toBeGreaterThan(html.indexOf('What still needs attention'))
+    expect(carriedAt).toBeLessThan(html.indexOf('Full account'))
   })
 
   // A disclosure that opens on emptiness is worse than no disclosure.
