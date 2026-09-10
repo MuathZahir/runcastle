@@ -362,8 +362,13 @@ describe('the review page’s denied-drive banner', () => {
     message: 'review drive denied — 1 uncommitted file(s) in the working tree: src/App.tsx',
     data: { code: 'dirty', dirtyFiles: ['src/App.tsx'] },
   }
-  const RUN = (startedAt: number): FeatureFull['runs'][number] =>
-    ({ id: `run_${startedAt}`, featureId: 'feat_1', workflow: 'ticket-burner', status: 'done', startedAt }) as FeatureFull['runs'][number]
+  const RUN = (startedAt: number): FeatureFull['runs'][number] => ({
+    id: `run_${startedAt}`,
+    featureId: 'feat_1',
+    workflow: 'ticket-burner',
+    status: 'succeeded',
+    startedAt,
+  })
 
   it('names the dirty files and offers the review again', () => {
     const html = render({ events: [DENIED], runs: [RUN(1_000)] })
