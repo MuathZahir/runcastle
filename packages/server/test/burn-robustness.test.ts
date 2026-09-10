@@ -36,7 +36,9 @@ describe('classifyTicketRunError', () => {
     ['codex', 'codex exited with code 127', 'sandcastle:runcastle-demo'],
     ['claude-code', '/bin/sh: claude: command not found', 'sandcastle:claude-demo'],
   ] as const)('fails fast when the %s binary is absent from the image', (runtime, error, image) => {
-    expect(classifyTicketRunError(new Error(error), runtime)).toBe('fatal')
+    // Run-fatal, not ticket-fatal: every other container would be built from
+    // the same image, so there is nothing left for this run to try.
+    expect(classifyTicketRunError(new Error(error), runtime)).toBe('run-fatal')
     expect(missingAgentBinaryMessage(new Error(error), runtime, image)).toBe(
       `${runtime === 'claude-code' ? 'claude' : 'codex'} is not installed in image ${image} — the image predates the burner Dockerfile. Rebuild it from Settings → Burns (Rebuild image).`,
     )
@@ -46,7 +48,7 @@ describe('classifyTicketRunError', () => {
     ['codex', '/bin/sh: codex: not found'],
     ['claude-code', 'env: claude: No such file or directory'],
   ] as const)('recognizes the %s shell missing-command wording', (runtime, error) => {
-    expect(classifyTicketRunError(new Error(error), runtime)).toBe('fatal')
+    expect(classifyTicketRunError(new Error(error), runtime)).toBe('run-fatal')
   })
 
   it.each(['codex', 'claude-code'] as const)(
@@ -75,15 +77,37 @@ describe('classifyTicketRunError', () => {
   })
 
   it.each([
-    'claude-code exited with code 1:\nInvalid API key',
-    'authentication_error: unauthorized',
-    'Your credit balance is too low',
-    'run `claude setup-token` — OAuth token missing',
     'there is an issue with the selected model',
     'resumeSession "abc" not found under /home',
     'fatal: some completely unknown git explosion',
   ])('fatal: %s', (msg) => {
     expect(classifyTicketRunError(new Error(msg))).toBe('fatal')
+  })
+
+  /**
+   * The account, not the ticket: every remaining ticket would spend its own
+   * container to be told the same thing, so these end the run (decision 3).
+   */
+  it.each([
+    'claude-code exited with code 1:\nInvalid API key',
+    'authentication_error: unauthorized',
+    'Your credit balance is too low',
+    'run `claude setup-token` — OAuth token missing',
+    'Claude AI usage limit reached|1751500000',
+    '5-hour usage limit reached — resets at 3pm',
+  ])('run-fatal: %s', (msg) => {
+    expect(classifyTicketRunError(new Error(msg))).toBe('run-fatal')
+  })
+
+  // The subscription cap matched no pattern before this feature and fell to
+  // fatal-by-default — one exhausted plan, one wasted container per ticket.
+  it('reads the Anthropic usage limit as the account fact it is', () => {
+    expect(
+      classifyTicketRunError(
+        new Error('claude-code exited with code 1:\nClaude AI usage limit reached'),
+        'claude-code',
+      ),
+    ).toBe('run-fatal')
   })
 
   it('defaults unknown throws to fatal (never blind-retry)', () => {
@@ -110,9 +134,17 @@ describe('classifyTicketRunError', () => {
       'codex exited with code 1: 401 invalid_api_key',
       'Error code: 403 - permission denied for this org',
       'insufficient_quota: You exceeded your current quota',
-      'model_not_found: the model `gpt-5.6-sol` does not exist or you do not have access',
       'CODEX_API_KEY is not set',
-    ])('fatal: %s', (msg) => {
+    ])('run-fatal: %s', (msg) => {
+      expect(classifyTicketRunError(new Error(msg), 'codex')).toBe('run-fatal')
+    })
+
+    // A model this account cannot reach is one assignment's problem — another
+    // ticket on another model burns fine, so the run carries on.
+    it.each([
+      'model_not_found: the model `gpt-5.6-sol` does not exist or you do not have access',
+      'invalid_request_error: unsupported parameter',
+    ])('fatal, without halting the run: %s', (msg) => {
       expect(classifyTicketRunError(new Error(msg), 'codex')).toBe('fatal')
     })
 
@@ -125,24 +157,24 @@ describe('classifyTicketRunError', () => {
       'authentication failed for the ChatGPT account',
       'auth required: run codex login',
       'could not exchange refresh token',
-    ])('fatal, on a lapsed borrowed login: %s', (msg) => {
-      expect(classifyTicketRunError(new Error(msg), 'codex')).toBe('fatal')
+    ])('run-fatal, on a lapsed borrowed login: %s', (msg) => {
+      expect(classifyTicketRunError(new Error(msg), 'codex')).toBe('run-fatal')
     })
 
     // 429 means two different things to OpenAI: a rate limit worth waiting out,
     // and an exhausted account that no retry will fix. Quota wins.
-    it('reads an exhausted quota as fatal even though it arrives as a 429', () => {
+    it('reads an exhausted quota as run-fatal even though it arrives as a 429', () => {
       const msg = 'Error code: 429 - {"type":"insufficient_quota"}'
-      expect(classifyTicketRunError(new Error(msg), 'codex')).toBe('fatal')
+      expect(classifyTicketRunError(new Error(msg), 'codex')).toBe('run-fatal')
     })
 
-    it('leaves the Anthropic classification exactly as it was', () => {
+    it('keeps the Anthropic retry classification exactly as it was', () => {
       expect(classifyTicketRunError(new Error('overloaded_error: Overloaded'), 'claude-code')).toBe(
         'retryable',
       )
       expect(
         classifyTicketRunError(new Error('claude-code exited with code 1:\nInvalid API key'), 'claude-code'),
-      ).toBe('fatal')
+      ).toBe('run-fatal')
     })
   })
 })

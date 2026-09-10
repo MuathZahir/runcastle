@@ -185,6 +185,15 @@ export type TicketOutcome =
        * and harvested exactly like a done ticket's digest.
        */
       readonly digest?: string
+      /**
+       * Set when the failure is a fact about the account or the environment —
+       * lapsed auth, an exhausted balance, a subscription usage limit, an image
+       * with no agent binary (see {@link classifyTicketRunError}). The
+       * scheduler reads it as "no other ticket can succeed either" and halts
+       * the run (decision 3). The runtime is the one whose credentials or image
+       * failed: its in-flight lanes are doomed too, another runtime's are not.
+       */
+      readonly runFatal?: { readonly runtime: AgentRuntime }
     }
 
 /**
@@ -230,6 +239,14 @@ export interface BurnDeps {
    * from spending a container to discover it has no login.
    */
   ticketAuthMissing?: (ticket: Ticket) => AgentRuntime | undefined
+  /**
+   * The runtime one ticket would burn on. The scheduler needs it for exactly one
+   * decision: which in-flight lanes a run-fatal failure dooms (decision 4 — a
+   * dead Codex login must not abort a healthy Claude agent mid-work). Omitted
+   * where every lane shares the run's runtime, in which case a halt takes them
+   * all.
+   */
+  ticketRuntime?: (ticket: Ticket) => AgentRuntime
   /** Worker-pool width — how many tickets burn in parallel (`config.burnConcurrency`). */
   concurrency: number
   /** Runs one ticket to a terminal outcome. Real impl calls sandcastle `run()`. */
@@ -2046,9 +2063,11 @@ export function isMergeConflictError(err: unknown): boolean {
 // ---------------------------------------------------------------------------
 
 /**
- * Errors where a retry can only fail the same way — bad credentials, a model
- * the account cannot use, a broken resume. Checked BEFORE the retryable
- * patterns so "exited with code 1: Invalid API key" stays fatal.
+ * Errors that are facts about the ACCOUNT or the environment rather than about
+ * the ticket: bad or lapsed credentials, an exhausted balance, a subscription
+ * usage limit, an image with no agent binary in it. Every other ticket in the
+ * run would rediscover the same fact from its own container, so these halt the
+ * run instead of failing one ticket at a time (decision 3).
  *
  * Runtime-neutral entries plus each provider's own wording. The runtime-specific
  * lists are tagged rather than merged so it stays visible which provider a
@@ -2056,39 +2075,64 @@ export function isMergeConflictError(err: unknown): boolean {
  * `credit balance` are the same fact spelled two ways, and neither CLI emits
  * the other's string.
  */
-const FATAL_ERROR_PATTERNS: RegExp[] = [
+const RUN_FATAL_ERROR_PATTERNS: RegExp[] = [
   /invalid (api key|x-api-key)/i,
   /authentication|unauthorized|permission denied/i,
   /credit balance|billing/i,
   /oauth token|setup-token/i,
-  /issue with the selected model|model not found|unknown model/i,
-  /does not support resumeSession|resumeSession .* not found/i,
+  // The Anthropic subscription cap — "5-hour usage limit reached". It matched
+  // nothing before this feature and fell to fatal-by-default, so a whole burn
+  // could spend a container per ticket rediscovering one exhausted plan.
+  /usage limit/i,
 ]
 
 /**
- * Per-runtime fatal wording. OpenAI reports auth as a 401 with an
- * `invalid_api_key` code, an exhausted account as `insufficient_quota` (a
- * billing fact no retry fixes, despite arriving as a 429), and an unusable
- * model as `model_not_found`.
+ * Per-runtime run-fatal wording. OpenAI reports auth as a 401 with an
+ * `invalid_api_key` code and an exhausted account as `insufficient_quota` (a
+ * billing fact no retry fixes, despite arriving as a 429).
  *
  * A container burn runs on the operator's borrowed `codex login`, so the auth
  * wording it fails with is the CLI's own — "not logged in", a refused refresh
  * token — and none of it is worth a retry: the fix is `codex login` on the
  * host, which no attempt of ours can perform.
  */
-const RUNTIME_FATAL_ERROR_PATTERNS: Record<AgentRuntime, RegExp[]> = {
+const RUNTIME_RUN_FATAL_ERROR_PATTERNS: Record<AgentRuntime, RegExp[]> = {
   'claude-code': [],
   codex: [
-    /invalid_api_key|invalid_request_error/i,
+    /invalid_api_key/i,
     /\b401\b|\b403\b/,
     /insufficient_quota|exceeded your current quota/i,
-    /model_not_found|does not exist or you do not have access/i,
     /CODEX_API_KEY/,
-    // "unauthorized" and "authentication …" are already fatal for every runtime
-    // (see FATAL_ERROR_PATTERNS); these are the login wordings that are not.
+    // "unauthorized" and "authentication …" are already run-fatal for every
+    // runtime (see RUN_FATAL_ERROR_PATTERNS); these are the login wordings that
+    // are not.
     /not logged in/i,
     /\bauth (failed|required)\b/i,
     /refresh token/i,
+  ],
+}
+
+/**
+ * Errors where a retry can only fail the same way, but which say nothing about
+ * the rest of the run — a model this ticket cannot use, a broken resume.
+ * Checked BEFORE the retryable patterns so "exited with code 1: model not
+ * found" stays fatal.
+ */
+const FATAL_ERROR_PATTERNS: RegExp[] = [
+  /issue with the selected model|model not found|unknown model/i,
+  /does not support resumeSession|resumeSession .* not found/i,
+]
+
+/**
+ * Per-runtime fatal wording: OpenAI's unusable model is a `model_not_found`,
+ * and a malformed request is this ticket's problem alone — neither is a fact
+ * about the account, so neither halts the run.
+ */
+const RUNTIME_FATAL_ERROR_PATTERNS: Record<AgentRuntime, RegExp[]> = {
+  'claude-code': [],
+  codex: [
+    /invalid_request_error/i,
+    /model_not_found|does not exist or you do not have access/i,
   ],
 }
 
@@ -2146,11 +2190,17 @@ export function missingAgentBinaryMessage(
   return `${binary} is not installed in image ${image} — the image predates the burner Dockerfile. Rebuild it from Settings → Burns (Rebuild image).`
 }
 
+/** What a failed attempt means: retry it, fail the ticket, or halt the run. */
+export type TicketRunErrorClass = 'retryable' | 'fatal' | 'run-fatal'
+
 /**
- * Should a failed sandcastle attempt be retried? Fatal patterns win over
- * retryable ones; anything unrecognized is fatal — an unknown throw (git
+ * Should a failed sandcastle attempt be retried, and does it end more than this
+ * ticket? Run-fatal patterns win over fatal ones and fatal over retryable;
+ * anything unrecognized is ticket-level `fatal` — an unknown throw (git
  * worktree setup, sandbox creation) could compound if blindly retried, and the
- * manual per-ticket retry tools cover it.
+ * manual per-ticket retry tools cover it. Nothing unrecognized is ever
+ * `run-fatal`: the worst an unread wording costs is the behaviour this feature
+ * replaced, never a run halted for a reason that was only one ticket's.
  *
  * `runtime` narrows the provider-specific patterns to the CLI that actually
  * produced the message. Omitting it considers every runtime's, which is what a
@@ -2160,13 +2210,21 @@ export function missingAgentBinaryMessage(
 export function classifyTicketRunError(
   err: unknown,
   runtime?: AgentRuntime,
-): 'retryable' | 'fatal' {
+): TicketRunErrorClass {
   const msg = err instanceof Error ? err.message : typeof err === 'string' ? err : String(err)
   const runtimes: AgentRuntime[] = runtime ? [runtime] : ['claude-code', 'codex']
   const forRuntimes = (table: Record<AgentRuntime, RegExp[]>): RegExp[] =>
     runtimes.flatMap((r) => table[r])
 
-  if (runtimes.some((r) => missingAgentBinaryMessage(msg, r, 'image'))) return 'fatal'
+  // An image with no agent binary in it is the environment, not the ticket —
+  // every remaining container would be built from the same image.
+  if (runtimes.some((r) => missingAgentBinaryMessage(msg, r, 'image'))) return 'run-fatal'
+  if (
+    [...RUN_FATAL_ERROR_PATTERNS, ...forRuntimes(RUNTIME_RUN_FATAL_ERROR_PATTERNS)].some((p) =>
+      p.test(msg),
+    )
+  )
+    return 'run-fatal'
   if ([...FATAL_ERROR_PATTERNS, ...forRuntimes(RUNTIME_FATAL_ERROR_PATTERNS)].some((p) => p.test(msg)))
     return 'fatal'
   if (
@@ -2255,10 +2313,44 @@ export interface StopTicketResult {
  * enough to reject `run()` and would otherwise let the row read stopped while
  * the container was still being removed.
  */
-export async function stopTicketRun(ticketId: string): Promise<StopTicketResult> {
+export function stopTicketRun(ticketId: string): Promise<StopTicketResult> {
+  return abortTicketRun(ticketId, new Error('ticket stopped by user'))
+}
+
+/**
+ * The abort reason a run halt uses, distinguishable from the human's stop so
+ * the ticket's record says which of the two ended it (see
+ * {@link ticketStopReason}). Carries the headline of the error that halted the
+ * run — the fact the operator has to fix before retrying anything.
+ */
+export class RunHaltedAbort extends Error {
+  constructor(readonly headline: string) {
+    super(`ticket stopped: run halted (${headline})`)
+    this.name = 'RunHaltedAbort'
+  }
+}
+
+/**
+ * Stop one in-flight ticket because the RUN is over — its account is dead, so
+ * it cannot succeed however long it burns (decision 3). Identical to
+ * {@link stopTicketRun} down to the preserved commits; only the record differs.
+ */
+export function haltTicketRun(ticketId: string, headline: string): Promise<StopTicketResult> {
+  return abortTicketRun(ticketId, new RunHaltedAbort(headline))
+}
+
+/** How a stopped ticket's failure opens: the human's stop, or the run halt's. */
+export function ticketStopReason(reason: unknown): string {
+  return reason instanceof RunHaltedAbort
+    ? `stopped: run halted (${reason.headline})`
+    : 'stopped by user'
+}
+
+/** Abort first (so no further pass starts), then kill and wait — see above. */
+async function abortTicketRun(ticketId: string, reason: Error): Promise<StopTicketResult> {
   const controller = activeTicketAborts.get(ticketId)
   if (!controller) return { stopped: false, confirmed: true }
-  controller.abort(new Error('ticket stopped by user'))
+  controller.abort(reason)
   const { confirmed } = await killRegistry().killAndWait(ticketId)
   return { stopped: true, confirmed }
 }
@@ -2407,6 +2499,19 @@ export async function landWithResolve(branch: string, deps: LandDeps): Promise<L
 
 type ReadyState = 'ready' | 'wait' | { blockedBy: number; present: boolean }
 
+/**
+ * Why a run stopped scheduling: the account/environment fact one ticket hit,
+ * which every other ticket would have hit too (decision 3).
+ */
+export interface RunHalt {
+  /** The runtime whose credentials or image failed — its lanes are doomed. */
+  readonly runtime: AgentRuntime
+  /** The ticket that hit it; its own record carries the full error. */
+  readonly ticketSeq: number
+  /** The one line of that error worth putting in front of the operator. */
+  readonly headline: string
+}
+
 /** One ticket's harvested digest, tagged with what it is a digest OF. */
 export interface HarvestedDigest {
   readonly seq: number
@@ -2462,13 +2567,24 @@ function failedBlockerNote(seqs: readonly number[]): string {
  * holds pending tickets this run never saw. `admitNewTickets` folds them in and
  * the same run burns them (decision 1) — which is the human click this feature
  * exists to remove.
+ *
+ * One failure ends the schedule rather than one ticket: an outcome carrying
+ * `runFatal` is the account or the image saying no, and every remaining ticket
+ * would spend a container to hear it again. The run then halts (decision 3) —
+ * see {@link burnTickets}'s `halted` return.
  */
 export async function burnTickets(
   ctx: WorkflowCtx,
   tickets: Ticket[],
   execute: (ctx: WorkflowCtx, ticket: Ticket, run: TicketRunContext) => Promise<TicketOutcome>,
   concurrency = 1,
-): Promise<{ done: number; admitted: number; digests: HarvestedDigest[] }> {
+  ticketRuntime?: (ticket: Ticket) => AgentRuntime,
+): Promise<{
+  done: number
+  admitted: number
+  digests: HarvestedDigest[]
+  halted?: RunHalt
+}> {
   const width = Math.max(1, Math.floor(concurrency))
   // The scheduler's own view of the run, opened as a COPY of the caller's list
   // because `admitNewTickets` extends it mid-run; `ctx.tickets` stays the
@@ -2481,6 +2597,8 @@ export async function burnTickets(
   const digests: HarvestedDigest[] = []
   let admitted = 0
   let verificationChecked = false
+  /** Set once, by the first run-fatal outcome; every dispatch reads it after. */
+  let halted: RunHalt | undefined
 
   // A blocker is satisfied when `done` OR `cancelled` — a human cancelled it
   // because the work is unnecessary, so dependents proceed without it. For a
@@ -2630,6 +2748,36 @@ export async function burnTickets(
     if (extra) ctx.emitEvent({ ...extra, ticketId: t.id })
   }
 
+  /**
+   * Halt the run on the first run-fatal outcome: nothing else starts (the loop
+   * below reads `halted`), and the lanes that cannot possibly finish — the ones
+   * on the runtime whose account just died — are stopped through the same path
+   * "Stop ticket" uses, so their commits are preserved on their attempt chains.
+   * Lanes on the OTHER runtime are left alone to finish and land their work
+   * (decision 4). Pending tickets are not touched at all: they stay `pending`
+   * for the re-burn after the operator fixes the account (ADR-0006).
+   */
+  const haltRun = async (t: Ticket, outcome: { error: string; runtime: AgentRuntime }) => {
+    const halt: RunHalt = {
+      runtime: outcome.runtime,
+      ticketSeq: t.seq,
+      headline: errorHeadline(outcome.error),
+    }
+    halted = halt
+    ctx.emitEvent({
+      type: 'run.halted',
+      message: `run halted: ${halt.headline}`,
+      ticketId: t.id,
+      data: { runtime: halt.runtime, ticketSeq: halt.ticketSeq },
+    })
+    const doomed = [...inFlight.keys()]
+      .filter((other) => other !== t.seq)
+      .map((other) => bySeq.get(other))
+      .filter((x): x is Ticket => x !== undefined)
+      .filter((x) => ticketRuntime === undefined || ticketRuntime(x) === outcome.runtime)
+    await Promise.all(doomed.map((x) => haltTicketRun(x.id, halt.headline)))
+  }
+
   const runOne = async (seq: number): Promise<void> => {
     const t = bySeq.get(seq)
     if (!t) return
@@ -2688,6 +2836,11 @@ export async function burnTickets(
         ticketId: t.id,
         data: { error: outcome.error },
       })
+      // The ticket is recorded first: a halt is a fact about the run, not a
+      // reason to lose this ticket's own failure.
+      if (outcome.runFatal && !halted) {
+        await haltRun(t, { error: outcome.error, runtime: outcome.runFatal.runtime })
+      }
     }
     // Before this lane leaves the pool, so the loop's next condition check
     // already sees the fix tickets the review reported on its way through — a
@@ -2698,13 +2851,19 @@ export async function burnTickets(
   while (pending.size > 0 || inFlight.size > 0 || !verificationChecked) {
     ctx.signal.throwIfAborted()
 
-    if (pending.size === 0 && inFlight.size === 0) {
+    // A halted run does no more of anything — no cascade, no dispatch, no
+    // verification pass. It only drains the lanes still burning (the ones a
+    // healthy runtime owns; the doomed ones were already aborted) so their work
+    // lands, and leaves every pending ticket pending for the re-burn.
+    if (halted && inFlight.size === 0) break
+
+    if (!halted && pending.size === 0 && inFlight.size === 0) {
       appendVerificationIfDue()
       if (pending.size === 0) break
     }
 
     // 1) Cascade: fail every pending ticket blocked by a failed/missing blocker.
-    for (const seq of [...pending]) {
+    for (const seq of halted ? [] : [...pending]) {
       const st = readyState(seq)
       if (typeof st === 'object') {
         pending.delete(seq)
@@ -2725,7 +2884,7 @@ export async function burnTickets(
     }
 
     // 2) Fill the pool with ready tickets.
-    while (inFlight.size < width) {
+    while (!halted && inFlight.size < width) {
       const readySeq = [...pending].find((seq) => readyState(seq) === 'ready')
       if (readySeq === undefined) break
       pending.delete(readySeq)
@@ -2765,7 +2924,7 @@ export async function burnTickets(
 
   let done = 0
   for (const s of status.values()) if (s === 'done') done += 1
-  return { done, admitted, digests }
+  return { done, admitted, digests, ...(halted ? { halted } : {}) }
 }
 
 // ---------------------------------------------------------------------------
@@ -2865,23 +3024,33 @@ export async function burnRun(
     return { status: 'failed', summary: `dependency cycle: ${path}` }
   }
 
-  const { done, admitted, digests } = await burnTickets(
+  const { done, admitted, digests, halted } = await burnTickets(
     ctx,
     tickets,
     gateTicketAuth(deps),
     deps.concurrency,
+    deps.ticketRuntime,
   )
   // Fix tickets minted by the review joined the run after it opened, so the
   // denominator is what the run ended up burning, not what it started with.
   const total = burnable.length + admitted
-  const summary =
+  const counts =
     cancelled > 0 ? `${done}/${total} tickets done (${cancelled} cancelled)` : `${done}/${total} tickets done`
+  // A halted run's headline is the fact the operator has to fix; the counts
+  // ride behind it, because the tickets that never started are not a score.
+  const summary = halted
+    ? `run halted at ticket ${halted.ticketSeq}: ${halted.headline} — ${counts}`
+    : counts
   ctx.emitEvent({ type: 'burn.summary', message: summary, data: { done, total, cancelled } })
   // The one-liner `summary` stays the run's headline (lists, timelines); the
   // aggregate rides beside it for the run view. A partially-failed run still
   // carries the digests of the tickets that did land.
   const digest = composeRunDigest(digests)
-  return { status: done === total ? 'succeeded' : 'failed', summary, ...(digest ? { digest } : {}) }
+  return {
+    status: !halted && done === total ? 'succeeded' : 'failed',
+    summary,
+    ...(digest ? { digest } : {}),
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -3742,6 +3911,24 @@ async function burnTicket(
   }
 
   /**
+   * What an aborted attempt leaves behind: a failed ticket whose committed work
+   * is preserved for the retry. The reason is read off the abort itself, so the
+   * record names the human's stop or the run halt that killed this lane
+   * (decision 3) rather than assuming the former.
+   */
+  const stoppedOutcome = (salvaged: number): TicketOutcome => {
+    const reason = ticketStopReason(ticketAbort.signal.reason)
+    return {
+      status: 'failed',
+      error: `${reason}${salvaged > 0 ? ` — ${salvaged} commit(s) preserved; retry to continue from them` : ''}`,
+      event: {
+        type: 'ticket.stopped',
+        message: `ticket ${ticket.seq} ${reason}${salvaged > 0 ? ` — ${salvaged} commit(s) preserved for retry` : ''}`,
+      },
+    }
+  }
+
+  /**
    * Remove one agent branch's mounted sandcastle worktree, host-side.
    *
    * The post-commit sync hook is push-only, so the mounted checkout is always
@@ -4101,14 +4288,7 @@ async function burnTicket(
 
         if (ticketAbort.signal.aborted) {
           if (salvaged.length > 0) preserveChain(tempBranch)
-          return {
-            status: 'failed',
-            error: `stopped by user${salvaged.length > 0 ? ` — ${salvaged.length} commit(s) preserved; retry to continue from them` : ''}`,
-            event: {
-              type: 'ticket.stopped',
-              message: `ticket ${ticket.seq} stopped by user${salvaged.length > 0 ? ` — ${salvaged.length} commit(s) preserved for retry` : ''}`,
-            },
-          }
+          return stoppedOutcome(salvaged.length)
         }
         // Sandcastle's end-of-run worktree teardown failed (Windows: a handle
         // still open in the bind mount of the container it just removed). That
@@ -4153,9 +4333,12 @@ async function burnTicket(
         }
         if (missingBinary) {
           if (salvaged.length > 0) preserveChain(tempBranch)
-          return { status: 'failed', error: missingBinary }
+          // The image every other container would be built from, so the run
+          // halts here rather than proving it ticket by ticket.
+          return { status: 'failed', error: missingBinary, runFatal: { runtime: model.runtime } }
         }
-        if (classifyTicketRunError(err, model.runtime) === 'retryable' && attempt < maxAttempts) {
+        const verdict = classifyTicketRunError(err, model.runtime)
+        if (verdict === 'retryable' && attempt < maxAttempts) {
           const headline = errorHeadline(msg)
           retryNotes = buildRetryNotes({ error: headline, commitCount: salvaged.length })
           ctx.emitEvent({
@@ -4172,19 +4355,18 @@ async function burnTicket(
           ctx.signal.throwIfAborted() // run cancelled during backoff
           if (ticketAbort.signal.aborted) {
             if (salvaged.length > 0) preserveChain(tempBranch)
-            return {
-              status: 'failed',
-              error: `stopped by user${salvaged.length > 0 ? ` — ${salvaged.length} commit(s) preserved; retry to continue from them` : ''}`,
-              event: {
-                type: 'ticket.stopped',
-                message: `ticket ${ticket.seq} stopped by user${salvaged.length > 0 ? ` — ${salvaged.length} commit(s) preserved for retry` : ''}`,
-              },
-            }
+            return stoppedOutcome(salvaged.length)
           }
           continue
         }
         if (salvaged.length > 0) preserveChain(tempBranch)
-        return { status: 'failed', error: msg }
+        // Run-fatal never reaches the retry above (it is not `retryable`), and
+        // it leaves here with the fact the scheduler halts the run on.
+        return {
+          status: 'failed',
+          error: msg,
+          ...(verdict === 'run-fatal' ? { runFatal: { runtime: model.runtime } } : {}),
+        }
       }
     }
 
@@ -4355,6 +4537,7 @@ function resolveBurnDeps(ctx: WorkflowCtx): BurnDeps {
       const { model: ticketModel, token: ticketToken } = ticketCredentials(ticket)
       return burnAuthReady(ticketModel.runtime, ticketToken) ? undefined : ticketModel.runtime
     },
+    ticketRuntime: (ticket) => ticketCredentials(ticket).model.runtime,
     concurrency: config.burnConcurrency,
     executeTicketRun: (c, ticket, run) => {
       const { model: ticketModel, token: ticketToken } = ticketCredentials(ticket)
