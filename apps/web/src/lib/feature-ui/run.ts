@@ -12,7 +12,10 @@ export interface LaneTicketFigure {
 
 export type LaneState = 'pending' | 'burning' | 'done' | 'failed' | 'stopped' | 'launch-failed' | 'waived'
 
-const stopped = (ticket: LaneTicketFigure) => ticket.error?.toLowerCase().startsWith('stopped by user') || ticket.orphaned || ticket.error?.toLowerCase().includes('orphaned')
+// Both stops read as stopped, not failed: the human's, and the run halt that
+// aborts a doomed lane when the account dies mid-burn ("stopped: run halted").
+// Either way the lane's commits are preserved and the ticket is retryable.
+const stopped = (ticket: LaneTicketFigure) => ticket.error?.toLowerCase().startsWith('stopped') || ticket.orphaned || ticket.error?.toLowerCase().includes('orphaned')
 const launchError = (error = '') => /\b(?:git|docker|podman|mount|sandbox)\b/i.test(error)
 
 export function laneState(ticket: LaneTicketFigure): LaneState {

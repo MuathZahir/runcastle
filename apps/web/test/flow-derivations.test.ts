@@ -15,6 +15,8 @@ describe('drive view', () => {
 describe('run derivations', () => {
   it('separates stopped, launch failures, waived, and failures', () => {
     expect(laneState({ seq: 1, status: 'failed', error: 'stopped by user' })).toBe('stopped')
+    // The run halt stops a doomed lane the same way a human does.
+    expect(laneState({ seq: 1, status: 'failed', error: 'stopped: run halted (usage limit reached)' })).toBe('stopped')
     expect(laneState({ seq: 1, status: 'failed', error: 'docker mount failed', hadOutput: false })).toBe('launch-failed')
     expect(laneState({ seq: 1, status: 'cancelled' })).toBe('waived')
     expect(summaryCounts([{ seq: 1, status: 'failed', error: 'orphaned — run ended' }, { seq: 2, status: 'failed', error: 'boom' }])).toMatchObject({ stopped: 1, failed: 1 })
