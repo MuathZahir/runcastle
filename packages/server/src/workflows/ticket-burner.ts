@@ -2094,11 +2094,12 @@ const CREDENTIAL_SUBJECT = String.raw`(?:api[ _-]?key|token|credential|login|aut
  * halves must sit on one line, so a `403` never borrows the word `token` from
  * a stack frame ten lines below it.
  */
-const refusalNamingCredential = (refusal: string): RegExp =>
-  new RegExp(
+function refusalNamingCredential(refusal: string): RegExp {
+  return new RegExp(
     `(?:${refusal}[^\\n]*${CREDENTIAL_SUBJECT}|${CREDENTIAL_SUBJECT}[^\\n]*${refusal})`,
     'i',
   )
+}
 
 /** `permission denied`, but only where what was denied is the account's. */
 const ACCOUNT_PERMISSION_DENIED = refusalNamingCredential(String.raw`permission denied`)
