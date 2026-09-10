@@ -2509,7 +2509,14 @@ export async function landWithResolve(branch: string, deps: LandDeps): Promise<L
 // Scheduler — worker pool over the ready queue (width = deps.concurrency)
 // ---------------------------------------------------------------------------
 
-type ReadyState = 'ready' | 'wait' | { blockedBy: number; present: boolean }
+/**
+ * What the schedule can do with one pending ticket right now: start it
+ * (`ready`), come back to it (`wait`), leave it for the NEXT burn (`defer` —
+ * the review pass waiting on a failure only a human can clear, decision 2),
+ * cancel it as pointless (`collapsed` — a review with nothing landed to review,
+ * decision 6), or fail it because a blocker it can never get did (the object).
+ */
+type ReadyState = 'ready' | 'wait' | 'defer' | 'collapsed' | { blockedBy: number; present: boolean }
 
 /**
  * Why a run stopped scheduling: the account/environment fact one ticket hit,
@@ -2546,16 +2553,8 @@ export function errorHeadline(s: string): string {
   return causes.at(-1) ?? lines[0] ?? ''
 }
 
-/**
- * The line a review ticket's run-digest entry opens with when it reviewed a
- * feature some of whose implementation tickets failed (improve-workflow
- * decision 9) — the run digest's own record of what the review was up against,
- * independent of whether the agent's prose remembered to say so.
- */
-function failedBlockerNote(seqs: readonly number[]): string {
-  const list = [...seqs].sort((a, b) => a - b).join(', ')
-  return `> Reviewed with failed implementation ticket(s): ${list}.`
-}
+/** The reason a review ticket is cancelled when the run landed nothing at all. */
+const NOTHING_LANDED = 'nothing landed — every implementation ticket in the run was cancelled'
 
 /**
  * Drive tickets to terminal states honouring `blockedBy`. A ticket is ready when
@@ -2570,9 +2569,12 @@ function failedBlockerNote(seqs: readonly number[]): string {
  * One ticket kind schedules differently: a `review` ticket also waits for every
  * implementation ticket in the run to settle, whatever its declared edges say.
  * It exercises the integrated branch, so starting it beside a still-burning
- * ticket would review a half-landed feature. In exchange it is exempt from the
- * cascade — a blocker that failed still lets it start, and its run-digest entry
- * says which ones did (see {@link failedBlockerNote}).
+ * ticket would review a half-landed feature. Once they have settled it wants a
+ * WHOLE feature (decision 2): a run holding a failed implementation ticket
+ * leaves the review `pending` — deferred to the burn that follows the human's
+ * retry, never cascaded to failed — and a run where every implementation ticket
+ * was cancelled cancels the review too, because nothing landed to review
+ * (decision 6).
  *
  * It is also the one ticket that grows the schedule: every defect it reports
  * mints a fix ticket as it is reported, so when it goes terminal the feature
@@ -2596,6 +2598,10 @@ export async function burnTickets(
   admitted: number
   digests: HarvestedDigest[]
   halted?: RunHalt
+  /** Tickets left `pending` for the next burn rather than run (decision 2). */
+  deferred: number[]
+  /** Tickets this schedule cancelled because they had nothing left to do. */
+  collapsed: number[]
 }> {
   const width = Math.max(1, Math.floor(concurrency))
   // The scheduler's own view of the run, opened as a COPY of the caller's list
@@ -2607,20 +2613,20 @@ export async function burnTickets(
   const pending = new Set<number>(scheduled.filter((t) => t.status === 'pending').map((t) => t.seq))
   const inFlight = new Map<number, Promise<void>>()
   const digests: HarvestedDigest[] = []
+  const deferred: number[] = []
+  const collapsed: number[] = []
   let admitted = 0
   let verificationChecked = false
   /** Set once, by the first run-fatal outcome; every dispatch reads it after. */
   let halted: RunHalt | undefined
 
   // A blocker is satisfied when `done` OR `cancelled` — a human cancelled it
-  // because the work is unnecessary, so dependents proceed without it. For a
-  // review ticket `failed` counts too (improve-workflow decision 9): its
-  // blockers are every implementation ticket in the batch, so the generic
-  // cascade would let one flaky ticket cancel the whole review — and reviewing
-  // a partially-failed feature is the review's most valuable case, not its
-  // least. Implementation tickets keep the cascade untouched.
-  const satisfied = (t: Ticket, s: TicketStatus | undefined): boolean =>
-    s === 'done' || s === 'cancelled' || (isReviewTicket(t) && s === 'failed')
+  // because the work is unnecessary, so dependents proceed without it. Nothing
+  // else counts, for any kind: the carve-out that let a `failed` blocker satisfy
+  // a review ticket (improve-workflow decision 9) is retired, because a review
+  // of a partially-failed feature reports against work that never landed. The
+  // review now waits for the whole feature instead — see `reviewGate`.
+  const satisfied = (s: TicketStatus | undefined): boolean => s === 'done' || s === 'cancelled'
 
   /**
    * The review precondition, held defensively rather than trusted to the
@@ -2631,6 +2637,32 @@ export async function burnTickets(
    */
   const implementationsSettled = (): boolean =>
     scheduled.every((t) => isReviewTicket(t) || (!pending.has(t.seq) && !inFlight.has(t.seq)))
+
+  /** The run's implementation tickets that failed — what defers the review. */
+  const failedImplementations = (): number[] =>
+    scheduled
+      .filter((t) => !isReviewTicket(t) && status.get(t.seq) === 'failed')
+      .map((t) => t.seq)
+
+  /**
+   * What the run's implementation tickets say about the review pass (decisions
+   * 2 and 6), read off the run itself rather than the declared edges — for the
+   * same reason `implementationsSettled` is, since a session that emitted the
+   * review without edges still reviewed what those tickets did or did not land.
+   *
+   * A failure defers rather than cancels: the human retries or cancels it
+   * through the ADR-0006 per-ticket controls and the next burn finds the review
+   * still `pending`, which is the whole recovery ceremony.
+   */
+  const reviewGate = (): ReadyState => {
+    if (!implementationsSettled()) return 'wait'
+    if (failedImplementations().length > 0) return 'defer'
+    const implementations = scheduled.filter((t) => !isReviewTicket(t))
+    const landed = implementations.some((t) => status.get(t.seq) === 'done')
+    // No implementation tickets at all is a review of what earlier runs landed,
+    // not a collapse — only a run that HAD work and landed none of it collapses.
+    return implementations.length > 0 && !landed ? 'collapsed' : 'ready'
+  }
 
   /**
    * Fold in the tickets minted while this run was live — the fix tickets a
@@ -2716,33 +2748,20 @@ export async function burnTickets(
     for (const b of t.blockedBy) {
       const present = bySeq.has(b)
       const bs = present ? status.get(b) : undefined
-      // A blocker missing from the run is a malformed graph, not a failed
-      // ticket — that cascades whatever the kind; a failed one cascades only
-      // where it does not already satisfy this ticket.
-      if (!present || (bs === 'failed' && !satisfied(t, bs))) return { blockedBy: b, present }
+      // A blocker missing from the run is a malformed graph, not a ticket that
+      // tried and failed: no retry can produce it, so it cascades whatever the
+      // kind. A blocker that FAILED cascades to an implementation ticket; for a
+      // review it is `reviewGate`'s business, which defers instead.
+      if (!present) return { blockedBy: b, present }
+      if (bs === 'failed' && !isReviewTicket(t)) return { blockedBy: b, present }
     }
-    if (isReviewTicket(t) && !implementationsSettled()) return 'wait'
-    return t.blockedBy.every((b) => satisfied(t, status.get(b))) ? 'ready' : 'wait'
+    if (isReviewTicket(t)) return reviewGate()
+    return t.blockedBy.every((b) => satisfied(status.get(b))) ? 'ready' : 'wait'
   }
 
-  /**
-   * Keep a ticket's digest for the run aggregate. A review ticket that ran
-   * anyway because its blockers were merely terminal says which of them failed —
-   * the account of a partially-failed feature is worth nothing if the reader
-   * cannot tell it was one. Read off the run's own tickets rather than the
-   * declared edges, for the same reason `implementationsSettled` is: a session
-   * that emitted the review ticket without edges still reviewed what failed.
-   * Only the run digest is annotated; `ticket.digest` stays the agent's own
-   * words, because which sibling tickets failed is a fact about the run.
-   */
+  /** Keep a ticket's own account of its work for the run aggregate. */
   const harvestDigest = (t: Ticket, digest: string | undefined): void => {
-    const failed = isReviewTicket(t)
-      ? scheduled.filter((x) => !isReviewTicket(x) && status.get(x.seq) === 'failed').map((x) => x.seq)
-      : []
-    const body = [failed.length > 0 ? failedBlockerNote(failed) : undefined, digest]
-      .filter(Boolean)
-      .join('\n\n')
-    if (body) digests.push({ seq: t.seq, title: t.title, digest: body })
+    if (digest) digests.push({ seq: t.seq, title: t.title, digest })
   }
 
   const failTicket = (
@@ -2874,24 +2893,54 @@ export async function burnTickets(
       if (pending.size === 0) break
     }
 
-    // 1) Cascade: fail every pending ticket blocked by a failed/missing blocker.
+    // 1) Settle every pending ticket this run can no longer start: cascade the
+    //    ones a failed/missing blocker killed, defer the review waiting on a
+    //    failure only a human can clear, cancel the review with nothing to
+    //    review. All three leave the scheduler's `pending` set, so the loop
+    //    below never spins on a ticket that can never become ready.
     for (const seq of halted ? [] : [...pending]) {
       const st = readyState(seq)
-      if (typeof st === 'object') {
-        pending.delete(seq)
-        const t = bySeq.get(seq)
-        const reason = st.present
-          ? `blocked by failed ticket ${st.blockedBy}`
-          : `blocked by missing ticket ${st.blockedBy}`
-        failTicket(seq, reason)
+      if (st === 'ready' || st === 'wait') continue
+      pending.delete(seq)
+      const t = bySeq.get(seq)
+      if (st === 'defer') {
+        deferred.push(seq)
         if (t) {
+          const failed = failedImplementations().join(', ')
           ctx.emitEvent({
-            type: 'ticket.blocked',
-            message: `ticket ${t.seq} ${reason}`,
+            type: 'ticket.deferred',
+            message: `ticket ${t.seq} deferred to the next burn: implementation ticket(s) ${failed} failed — retry or cancel them, then burn again`,
             ticketId: t.id,
-            data: { reason, blockedBy: st.blockedBy },
+            data: { failed: failedImplementations() },
           })
         }
+        continue
+      }
+      if (st === 'collapsed') {
+        collapsed.push(seq)
+        status.set(seq, 'cancelled')
+        if (t) {
+          ctx.updateTicket(t.id, { status: 'cancelled', error: NOTHING_LANDED })
+          ctx.emitEvent({
+            type: 'ticket.cancelled',
+            message: `ticket ${t.seq} cancelled: ${NOTHING_LANDED}`,
+            ticketId: t.id,
+            data: { reason: NOTHING_LANDED },
+          })
+        }
+        continue
+      }
+      const reason = st.present
+        ? `blocked by failed ticket ${st.blockedBy}`
+        : `blocked by missing ticket ${st.blockedBy}`
+      failTicket(seq, reason)
+      if (t) {
+        ctx.emitEvent({
+          type: 'ticket.blocked',
+          message: `ticket ${t.seq} ${reason}`,
+          ticketId: t.id,
+          data: { reason, blockedBy: st.blockedBy },
+        })
       }
     }
 
@@ -2936,7 +2985,7 @@ export async function burnTickets(
 
   let done = 0
   for (const s of status.values()) if (s === 'done') done += 1
-  return { done, admitted, digests, ...(halted ? { halted } : {}) }
+  return { done, admitted, digests, deferred, collapsed, ...(halted ? { halted } : {}) }
 }
 
 // ---------------------------------------------------------------------------
@@ -3036,7 +3085,7 @@ export async function burnRun(
     return { status: 'failed', summary: `dependency cycle: ${path}` }
   }
 
-  const { done, admitted, digests, halted } = await burnTickets(
+  const { done, admitted, digests, halted, deferred, collapsed } = await burnTickets(
     ctx,
     tickets,
     gateTicketAuth(deps),
@@ -3044,16 +3093,28 @@ export async function burnRun(
     deps.ticketRuntime,
   )
   // Fix tickets minted by the review joined the run after it opened, so the
-  // denominator is what the run ended up burning, not what it started with.
-  const total = burnable.length + admitted
+  // denominator is what the run ended up burning, not what it started with —
+  // less whatever the schedule cancelled on the way, which is not work owed.
+  const total = burnable.length + admitted - collapsed.length
+  const cancelledCount = cancelled + collapsed.length
   const counts =
-    cancelled > 0 ? `${done}/${total} tickets done (${cancelled} cancelled)` : `${done}/${total} tickets done`
+    cancelledCount > 0
+      ? `${done}/${total} tickets done (${cancelledCount} cancelled)`
+      : `${done}/${total} tickets done`
   // A halted run's headline is the fact the operator has to fix; the counts
-  // ride behind it, because the tickets that never started are not a score.
+  // ride behind it, because the tickets that never started are not a score. A
+  // deferred review is the other fact worth the headline: the run failed, and
+  // the pass it owes is waiting rather than lost.
   const summary = halted
     ? `run halted at ticket ${halted.ticketSeq}: ${halted.headline} — ${counts}`
-    : counts
-  ctx.emitEvent({ type: 'burn.summary', message: summary, data: { done, total, cancelled } })
+    : deferred.length > 0
+      ? `${counts} — review deferred until the failed ticket(s) are retried or cancelled`
+      : counts
+  ctx.emitEvent({
+    type: 'burn.summary',
+    message: summary,
+    data: { done, total, cancelled: cancelledCount },
+  })
   // The one-liner `summary` stays the run's headline (lists, timelines); the
   // aggregate rides beside it for the run view. A partially-failed run still
   // carries the digests of the tickets that did land.
