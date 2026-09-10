@@ -16,7 +16,7 @@ import { useToast } from '../../lib/toast'
  *
  * `onRetry` is null when there is no `done` review ticket to re-burn — the
  * retry path takes a ticket, and a button that could only be refused is worse
- * than no button (as {@link ConflictCard} says of its own).
+ * than no button (as `ConflictCard` says of its own).
  *
  * Hook-free so its anatomy is testable without a tRPC provider, like its
  * neighbours in the slot; {@link ReviewDriveDeniedAlert} is the wired half.
@@ -55,7 +55,7 @@ export function ReviewDriveDeniedCard({
       {denial.dirtyFiles.length > 0 && (
         <ul className="mt-3 flex list-none flex-col gap-1 p-0">
           {denial.dirtyFiles.map((f) => (
-            <li key={f} className="rounded-sm bg-warn/9 px-2 py-0.5 font-mono text-xs text-warn">
+            <li key={f} className="rounded-sm bg-warn/8 px-2 py-0.5 font-mono text-xs text-warn">
               {f}
             </li>
           ))}

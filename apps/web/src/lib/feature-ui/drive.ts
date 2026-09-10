@@ -94,6 +94,9 @@ export function driveView(state: DriveState, _info: object = {}): DriveView {
   return DRIVE_VIEWS[state]
 }
 
+/** What takes the banner down: the retry landing, or review being left behind. */
+const ANSWERED_BY = ['ticket.retry', 'burn.started', 'feature.shipped']
+
 /** A review drive refused over the human's own uncommitted files. */
 export interface ReviewDriveDenial {
   /** When the drive guard refused. */
@@ -131,9 +134,6 @@ export function reviewDriveDenial(events: readonly EventRow[]): ReviewDriveDenia
   }
   return denial
 }
-
-/** What takes the banner down: the retry landing, or review being left behind. */
-const ANSWERED_BY = ['ticket.retry', 'burn.started', 'feature.shipped']
 
 // --- review honesty: the SUMMARY card and the merge confirmation -------------
 

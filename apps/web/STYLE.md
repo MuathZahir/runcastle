@@ -215,7 +215,7 @@ import a module directly, and removing the barrel is a later cleanup.
 | `pipeline.ts` | Phase vocabulary — order, glyphs, labels, tips — and the stepper's steps. |
 | `sidebar.ts` | Feature rows: needs-me, row chips, ticket progress, sort, triage lanes and their caps. |
 | `gates.ts` | Gates and what blocks them: merge/ticket conflict kickoffs, overrides, check-in and kickoff trouble, session activity. |
-| `drive.ts` | Test drive: the open-app URL and its wait state, drive failures, the drive wheel. |
+| `drive.ts` | Test drive: the open-app URL and its wait state, drive failures, the drive wheel, the review drive's dirty-tree denial. |
 | `review.ts` | Review figures — run/commit/review rows, `CheckRow`/`CheckTone`, outcome, finding counts and reasons. |
 | `laps.ts` | Lap grouping: lap accounts, `groupByLap`, ticket model chips, lap aborts. |
 | `summary.ts` | Docs and the merge confirmation: headline, spec path, deferred scope, `mergeSummary`. |
