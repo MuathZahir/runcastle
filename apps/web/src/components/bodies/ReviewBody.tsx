@@ -226,10 +226,17 @@ export function ReviewBody({
   })
   const observations = (findings.data?.findings ?? []).filter((f) => f.kind === 'observation')
   const account = lapAccount(tickets, feature.lap)
+  // Every count on this page is the server's own, scoped to THIS lap
+  // (decisions #5) — the inflated all-laps figure is what sent the human back
+  // through Iterate over defects a later lap had already answered. So the review
+  // row's finding count is read off the summary rather than measured on the
+  // `findings` array, which spans every lap the feature has run.
+  const summary = findings.data?.summary
+  const lapFindings = summary ? summary.found + summary.observations : undefined
   // The lap at one line (decision 8): the review agent's digest is written to
   // open with exactly this line. With no digest, the counts say what happened
   // instead — the same figures the bar is holding.
-  const accountLine = lapAccountLine(account) ?? findingCountsLine(findings.data?.summary)
+  const accountLine = lapAccountLine(account) ?? findingCountsLine(summary)
 
   return (
     <div className="flex flex-col gap-6">
@@ -296,7 +303,7 @@ export function ReviewBody({
           tickets,
           run,
           commitCount: commits.data?.count,
-          findings: findings.data?.findings.length,
+          findings: lapFindings,
         })}
         runState={run?.status ?? 'no run recorded'}
         verification={verificationState(tickets)}

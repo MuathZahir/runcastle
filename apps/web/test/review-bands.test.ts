@@ -181,6 +181,8 @@ function render(
     carriedFindings?: ReviewFinding[]
     recordings?: ReviewArtifacts[]
     drive?: { featureId: string; state: string; dryRun: boolean }
+    /** The server's own counts, where the point is that they are not the rows'. */
+    summary?: { found: number; fixed: number; open: number; observations: number }
     tickets?: FeatureFull['tickets']
     readonly?: boolean
     driveInstructions?: string
@@ -190,7 +192,7 @@ function render(
   state.findings = over.findings ?? []
   state.openDefects = over.openDefects ?? []
   state.carriedFindings = over.carriedFindings ?? []
-  state.summary = { found: state.findings.filter((f) => f.kind === 'defect').length, fixed: 0, open: state.openDefects.length, observations: state.findings.filter((f) => f.kind === 'observation').length }
+  state.summary = over.summary ?? { found: state.findings.filter((f) => f.kind === 'defect').length, fixed: 0, open: state.openDefects.length, observations: state.findings.filter((f) => f.kind === 'observation').length }
   state.recordings = over.recordings ?? []
   state.drive = over.drive
   state.driveInstructions = over.driveInstructions
@@ -303,6 +305,25 @@ describe('the review page’s arrival bands', () => {
     expect(html).toContain('Carried, quick-fixed and handled')
     expect(html.indexOf('already handled')).toBeGreaterThan(html.indexOf('Full account'))
     expect(html).toContain('Nothing needs attention')
+  })
+
+  /**
+   * Decisions #5: the figures on the page are the server's, scoped to this lap.
+   * Handed an earlier lap's finding among the rows, the review row and the
+   * counts line still report what THIS lap's pass found — the all-laps count is
+   * the inflated "N still open" that sent the human back through Iterate.
+   */
+  it('reports the counts the server sends for this lap, never the rows it holds', () => {
+    const html = render({
+      findings: [DEFECT, OBSERVATION, { ...DEFECT, id: 'find_9', lap: 0, title: 'from an earlier lap' }],
+      openDefects: [DEFECT],
+      summary: { found: 1, fixed: 0, open: 1, observations: 1 },
+      // No digest, so the counts line is what the lap says for itself.
+      tickets: [{ ...REVIEW_TICKET, digest: undefined }] as FeatureFull['tickets'],
+    })
+    expect(html).toContain('2 findings')
+    expect(html).not.toContain('3 findings')
+    expect(html).toContain('1 defect found · 1 still open')
   })
 
   /**
