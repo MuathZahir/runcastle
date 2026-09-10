@@ -27,3 +27,17 @@
 ## 7. Merge conflicts need no extra mechanism
 **Decision:** No conflict-specific scheduling change. A conflicted ticket is a failed ticket; under decision 2 the review defers until the human resolves the conflict via per-ticket retry, so the review never runs while work sits stranded on a temp branch.
 **Why:** Brief item 3 (review treats stranded work as nonexistent) was a symptom of partial review, which decision 2 removes; the ADR-0006 conflict-resolution flow already covers recovery.
+
+## Lap 2 (2026-09-10)
+
+### 8. Credential-context matching is order-insensitive
+**Decision:** The narrowed run-fatal patterns from lap-1 ticket #4 (`ACCOUNT_PERMISSION_DENIED`, `REFUSED_CREDENTIAL_STATUS` in `ticket-burner.ts`) required the credential subject to appear *after* the refusal wording. That order requirement is dropped: a refusal (`permission denied`, `401`/`403`, `forbidden`) is `run-fatal` when a credential subject (api key, token, credential, login, auth, account, org…) appears anywhere on the same line/message, before or after. `API token permission denied` and `forbidden response: status 403` become run-fatal. The narrowing itself survives: a bare `permission denied` or bare `403` with no credential subject anywhere stays ticket-level `fatal`, and unknown wordings still default to `fatal`. Fixes verification finding `finding_mc7vjDv9mYVh`.
+**Why:** Word order is an accident of each CLI's phrasing, not evidence about whose door was closed. The false positives lap 1 fixed had *no* credential subject at all — proximity of subject to refusal is the signal, not their order.
+
+### 9. Fix the pre-existing typecheck break so the gates are verifiable
+**Decision:** This lap cards a repo-health fix outside the feature's own diff: the two call sites passing `onChildSpawn` where `NoSandboxOptions` does not accept it (`packages/server/src/workflows/review-ticket.ts:508`, `packages/server/src/workflows/ticket-burner.ts:3298`), which leave `bun run typecheck` red on the branch (review observation `finding_lPOOU2AbOC3_`).
+**Why:** Every review and verification ticket of this feature asserts "typecheck is clean"; while the checkout fails typecheck for unrelated reasons that gate is unverifiable, and the reviewer must hand-sort our breakage from inherited breakage.
+
+### 10. Host/test-environment findings are noted, not carded
+**Decision:** Review observation `finding_Jkm0MWDrpGXE` — Bun 1.3.4 installed vs `>=1.3.14` required, `vi.stubEnv` unavailable, inherited `RUNCASTLE_*` asset env vars breaking full-suite runs — is a machine-setup fact, not code. No ticket; recorded here so a reviewer who hits partial test failures on this host knows they are inherited.
+**Why:** No code change can fix the operator's installed Bun or a talk session's inherited environment; carding it would hand a burner an unfixable ticket.
