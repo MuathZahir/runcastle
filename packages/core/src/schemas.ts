@@ -696,6 +696,52 @@ export const DriveState = z.enum([
 ])
 export type DriveState = z.infer<typeof DriveState>
 
+/**
+ * Which guard refused a drive `start`, as something a caller can branch on
+ * instead of matching the prose of `deniedReason`.
+ *
+ * `slot_held` covers both flavours of the singleton drive slot being taken — a
+ * feature drive (human's or another review's) and a preparation dry run —
+ * because they are the same fact to whoever was refused: somebody holds the
+ * machine-wide slot, and it frees itself when they are done.
+ */
+export type DriveDenialCode = 'dirty' | 'slot_held' | 'active_run'
+
+/**
+ * The refusal half of every drive result — the service's, the `review_drive`
+ * tool's, and anything downstream of them. It lives here rather than in the
+ * server because it is a wire type: it crosses the tool boundary to the review
+ * agent, which reads `retriable` to decide whether to poll or give up.
+ */
+export interface DriveDenial {
+  /** Why the action was refused, verbatim and human-facing. */
+  deniedReason?: string
+  /** Which guard refused a `start`. Absent on `stop` denials and on success. */
+  deniedCode?: DriveDenialCode
+  /**
+   * Whether waiting could plausibly clear the denial — true for `slot_held`
+   * alone, since nothing else frees itself. It is what tells a review agent to
+   * poll `start` again rather than fall back to a repo-only review.
+   */
+  retriable?: boolean
+  /** The uncommitted paths behind a `dirty` denial, so the refusal names them. */
+  dirtyFiles?: string[]
+}
+
+/**
+ * The denial half of a result, lifted out so a boundary can carry it whole
+ * instead of re-listing the fields — which is how one of them goes missing.
+ * Fields absent on the source stay absent on the copy.
+ */
+export function driveDenialOf(result: DriveDenial): DriveDenial {
+  return {
+    ...(result.deniedReason ? { deniedReason: result.deniedReason } : {}),
+    ...(result.deniedCode ? { deniedCode: result.deniedCode } : {}),
+    ...(result.retriable !== undefined ? { retriable: result.retriable } : {}),
+    ...(result.dirtyFiles ? { dirtyFiles: result.dirtyFiles } : {}),
+  }
+}
+
 export interface MergeConflictState {
   base: string
   files: string[]

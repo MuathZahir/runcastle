@@ -506,10 +506,29 @@ describe('what the review agent is handed', () => {
     // verify commands — never a worktree it built and installed for itself,
     // which was the most expensive single act observed in any review.
     expect(template).toContain('Never build your own environment')
-    expect(template).toContain('could not drive: <reason>')
+    expect(template).toContain('could not drive:')
     expect(template).toMatch(/[Dd]o not create a worktree/)
     expect(template).toMatch(/No worktrees, no dependency installs/)
     expect(template).toMatch(/verify commands/)
+  })
+
+  it('makes the agent wait out a held slot and give up on a dirty tree at once', () => {
+    const template = readFileSync(reviewTemplatePath(), 'utf8')
+
+    // Counted attempts, never a clock: an agent counts calls reliably and
+    // measures elapsed time badly (decision 4).
+    expect(template).toMatch(/about ten times, roughly thirty seconds apart/)
+    expect(template).toMatch(/count the attempts, do not watch the clock/)
+    expect(template).toContain('`retriable: true`')
+    // The refusal waiting cannot clear, and the rule that stops the agent
+    // spending five minutes proving it.
+    expect(template).toContain('`retriable: false`')
+    expect(template).toMatch(/Do not call `start` a second time/)
+    // Two outcomes the human must be able to tell apart in the digest.
+    expect(template).toContain('could not drive: slot never freed after ~5 minutes')
+    expect(template).toContain('could not drive: dirty tree (<files>)')
+    // The flat old rule, gone from the skill as it is from the tool description.
+    expect(template).not.toMatch(/A refusal is final/)
   })
 
   it('makes the agent pick one mode and forbids running both', () => {

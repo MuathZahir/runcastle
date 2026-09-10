@@ -1,6 +1,8 @@
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { Client } from '@modelcontextprotocol/sdk/client/index.js'
+import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js'
 import type { Feature, Project, Run, RunStatus, SessionRow } from '@runcastle/core'
 import { newId } from '@runcastle/core'
 import { simpleGit } from 'simple-git'
@@ -9,7 +11,12 @@ import { runs } from '../src/db/schema'
 import type { AppCtx } from '../src/db/types'
 import { GateError } from '../src/errors'
 import { createSessionRow } from '../src/launcher/sessions'
-import { toolAddTestNote, toolReportFinding, toolReviewDrive } from '../src/mcp/server'
+import {
+  buildMcpServer,
+  toolAddTestNote,
+  toolReportFinding,
+  toolReviewDrive,
+} from '../src/mcp/server'
 import { createNativePtySession } from '../src/pty/pty'
 import { listAfter } from '../src/services/events'
 import { recordFinding } from '../src/services/findings'
@@ -221,8 +228,48 @@ describe('the review agent wires', () => {
       deniedReason: 'Working tree has uncommitted changes — commit or stash first',
       drive: null,
     })
+    // Classified through the tool boundary: final, and it names what to clean up.
+    expect(start).toMatchObject({
+      deniedCode: 'dirty',
+      retriable: false,
+      dirtyFiles: ['scratch.txt'],
+    })
     expect(await currentBranch()).toBe('main')
     expect(activeDriveInfo()).toBeNull()
+  })
+
+  it('says so on the timeline the moment a dirty tree refuses the review drive', async () => {
+    writeFileSync(join(repo, 'scratch.txt'), 'uncommitted\n')
+
+    await drive('start')
+
+    // The human is the only one who can clear it, so they hear about it while
+    // they can still act — not from the digest half an hour later.
+    const denials = events().filter((e) => e.type === 'reviewdrive.denied')
+    expect(denials).toHaveLength(1)
+    expect(denials[0]).toMatchObject({
+      message: expect.stringContaining('scratch.txt'),
+      data: { code: 'dirty', dirtyFiles: ['scratch.txt'] },
+    })
+  })
+
+  it('tells a review agent that a held slot is worth waiting for, and emits nothing', async () => {
+    ctx.db.delete(runs).run()
+    expect((await testDrive(ctx, project, feature, 'start')).ok).toBe(true)
+
+    const start = await drive('start', seedRun('running').id)
+
+    expect(start).toMatchObject({
+      ok: false,
+      deniedReason: 'A test drive is already active — stop it first',
+      deniedCode: 'slot_held',
+      retriable: true,
+    })
+    // Ten poll refusals would spam a permanent timeline with a fallback that is
+    // working as designed — the wait is the agent's, and it is silent.
+    expect(events().filter((e) => e.type === 'reviewdrive.denied')).toEqual([])
+
+    await testDrive(ctx, project, feature, 'stop')
   })
 
   it('starts when the only dirt is a brief runcastle staged and never committed', async () => {
@@ -385,5 +432,40 @@ describe('the review agent wires', () => {
     })
     expect(listTickets(ctx, feature.id)).toHaveLength(1)
     expect(listNotes(ctx, feature.id).map((n) => n.author)).toEqual(['human', 'agent'])
+  })
+})
+
+/**
+ * The description is the only instruction a review agent reads before it acts on
+ * a refusal, so it is contract, not documentation — read here the way the agent
+ * reads it, off a `tools/list` from a run-audience server.
+ */
+describe('the review_drive tool description', () => {
+  async function reviewDriveDescription(): Promise<string> {
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair()
+    const client = new Client({ name: 'review-wires-test', version: '1' })
+    await Promise.all([
+      buildMcpServer('run').connect(serverTransport),
+      client.connect(clientTransport),
+    ])
+    const tool = (await client.listTools()).tools.find((t) => t.name === 'review_drive')
+    await client.close()
+    return tool?.description ?? ''
+  }
+
+  it('says a held slot is worth polling and a dirty tree is final', async () => {
+    const description = await reviewDriveDescription()
+
+    // The wait, in the attempt count the skill also uses.
+    expect(description).toMatch(/slot_held/)
+    expect(description).toMatch(/retriable: true/)
+    expect(description).toMatch(/ten times/)
+    // And the refusal no amount of waiting clears.
+    expect(description).toMatch(/dirty/)
+    expect(description).toMatch(/retriable: false/)
+    expect(description).toMatch(/final/)
+    // The flat old rule is what sent a review to a repo-only review over a slot
+    // that would have freed in ninety seconds.
+    expect(description).not.toMatch(/never worth retrying/)
   })
 })

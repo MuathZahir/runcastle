@@ -9,8 +9,8 @@ import {
 } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
-import type { Feature, PreparedKey, Project } from '@runcastle/core'
-import { DRIVE_LOOP_KEYS } from '@runcastle/core'
+import type { DriveDenial, DriveDenialCode, Feature, PreparedKey, Project } from '@runcastle/core'
+import { DRIVE_LOOP_KEYS, driveDenialOf } from '@runcastle/core'
 import { PROJECT_WORKTREE_SLUG, worktreeDir } from '@runcastle/core/paths'
 import { simpleGit } from 'simple-git'
 import type { SimpleGit } from 'simple-git'
@@ -46,9 +46,9 @@ import { hasActiveRun } from './repo'
  * router) — we do not widen the pinned signatures to inject `ctx`.
  */
 
-export interface TestDriveResult {
+/** The refusal fields come whole from {@link DriveDenial} — core owns that shape. */
+export interface TestDriveResult extends DriveDenial {
   ok: boolean
-  deniedReason?: string
   branch?: string
   /**
    * Uncommitted paths that travelled across the branch switch on `stop`. git
@@ -202,6 +202,29 @@ const DENY_NONE_ACTIVE = 'No test drive is active'
 const DENY_DRY_RUN_ACTIVE = 'A preparation dry-run is in progress — stop it first'
 const DENY_NO_DRY_RUN = 'No preparation dry-run is in progress'
 const DENY_NO_REVIEW_DRIVE = 'No review drive is in progress for this feature'
+
+/**
+ * A refused `start`, classified. `retriable` is derived here and never passed
+ * in, so the rule "only a held slot frees itself" lives in exactly one place.
+ */
+function deniedStart(
+  deniedReason: string,
+  deniedCode: DriveDenialCode,
+  dirtyFiles?: string[],
+): TestDriveResult {
+  return {
+    ok: false,
+    deniedReason,
+    deniedCode,
+    retriable: deniedCode === 'slot_held',
+    ...(dirtyFiles ? { dirtyFiles } : {}),
+  }
+}
+
+/** The first few of a file list, for a message that must not run away. */
+export function truncatedFileList(files: readonly string[]): string {
+  return `${files.slice(0, 5).join(', ')}${files.length > 5 ? ', …' : ''}`
+}
 
 /** Branch name for a feature slug. */
 function featureBranch(slug: string): string {
@@ -1766,6 +1789,23 @@ async function commitPipelineDocs(repoPath: string): Promise<void> {
   }
 }
 
+/**
+ * The uncommitted paths a drive `start` would refuse over, pipeline docs landed
+ * first so they are never counted as the human's dirt.
+ *
+ * The `start` guard below is the primary caller. It is exported for the review
+ * retry, which has to ask the same question BEFORE it burns an agent that would
+ * only be denied again on arrival — asking it here keeps "dirty enough to
+ * refuse a drive" a single definition rather than two git calls that drift.
+ *
+ * Unlike `dirtyPaths` this does not swallow a git failure: a tree we cannot
+ * read is not a tree we may declare clean.
+ */
+export async function driveBlockingPaths(repoPath: string): Promise<string[]> {
+  await commitPipelineDocs(repoPath)
+  return porcelainPaths((await git(repoPath).raw(['status', '--porcelain'])).trim())
+}
+
 // --- test drive -------------------------------------------------------------
 
 /** Module-level in-memory drive state (SPEC §7). At most one active, of either
@@ -2044,7 +2084,7 @@ export async function testDrive(
     if (carriedChanges.length > 0) {
       emit(ctx, feature.id, {
         type: 'testdrive.carried_changes',
-        message: `${carriedChanges.length} uncommitted file(s) came back with you onto ${previousBranch}: ${carriedChanges.slice(0, 5).join(', ')}${carriedChanges.length > 5 ? ', …' : ''}`,
+        message: `${carriedChanges.length} uncommitted file(s) came back with you onto ${previousBranch}: ${truncatedFileList(carriedChanges)}`,
         data: { branch: previousBranch, files: carriedChanges },
       })
     }
@@ -2061,14 +2101,27 @@ export async function testDrive(
 
   // action === 'start' — deny checks in SPEC order: dirty | active | active-run.
   // Runcastle's own docs are landed first, never counted as the human's dirt.
-  await commitPipelineDocs(project.repoPath)
-  const porcelain = (await g.raw(['status', '--porcelain'])).trim()
-  if (porcelain !== '') return { ok: false, deniedReason: DENY_DIRTY }
-  if (testDriveState) {
-    return {
-      ok: false,
-      deniedReason: testDriveState.kind === 'dryRun' ? DENY_DRY_RUN_ACTIVE : DENY_ACTIVE,
+  const dirtyFiles = await driveBlockingPaths(project.repoPath)
+  if (dirtyFiles.length > 0) {
+    // The human is the only one who can clear this, and until now they heard
+    // about it from the review's digest long afterwards. A review-purpose
+    // denial says so on the timeline at the moment it happens, while they can
+    // still act on it. The human's own drive already reports its refusal inline
+    // where they clicked, so it needs no event.
+    if (purpose === 'review') {
+      emit(ctx, feature.id, {
+        type: 'reviewdrive.denied',
+        message: `review drive denied — ${dirtyFiles.length} uncommitted file(s) in the working tree: ${truncatedFileList(dirtyFiles)}`,
+        data: { code: 'dirty', dirtyFiles },
+      })
     }
+    return deniedStart(DENY_DIRTY, 'dirty', dirtyFiles)
+  }
+  if (testDriveState) {
+    return deniedStart(
+      testDriveState.kind === 'dryRun' ? DENY_DRY_RUN_ACTIVE : DENY_ACTIVE,
+      'slot_held',
+    )
   }
   // The review carve-out (improve-workflow decision 4): a review ticket burns at
   // the tail of its own run, once every implementation ticket is terminal and
@@ -2076,7 +2129,7 @@ export async function testDrive(
   // one that launched it. Nothing else is waived: the two checks above still
   // deny, and they deny immediately rather than waiting for the slot.
   if (purpose === 'human' && hasActiveRun(ctx, feature.id)) {
-    return { ok: false, deniedReason: DENY_ACTIVE_RUN }
+    return deniedStart(DENY_ACTIVE_RUN, 'active_run')
   }
 
   // Free the feature branch from EVERY worktree that currently holds it so the
@@ -2163,12 +2216,14 @@ export async function testDrive(
 
 // --- review drive -----------------------------------------------------------
 
-/** What one `reviewDrive` action reports back to the review agent. */
-export interface ReviewDriveResult {
+/**
+ * What one `reviewDrive` action reports back to the review agent. The refusal
+ * fields are {@link DriveDenial}'s, carried across this boundary unchanged —
+ * `ok` is false exactly when `deniedReason` is set.
+ */
+export interface ReviewDriveResult extends DriveDenial {
   ok: boolean
   action: 'start' | 'status' | 'stop'
-  /** Why the action was refused. `ok` is false exactly when this is set. */
-  deniedReason?: string
   /**
    * The live drive — branch, dev pane, and the `devUrl` sniffed from the dev
    * server's output — or null once it has stopped. The URL is what the agent
@@ -2192,8 +2247,9 @@ export interface ReviewDriveResult {
  * Three actions, because the drive outlives the call that starts it: `start`
  * brings the branch and its dev server up, `status` answers "is there a URL yet"
  * while the agent drives, and `stop` puts the checkout back. Contention is never
- * waited on — a review that cannot have the slot reports why and the ticket
- * fails, which is the advisory-and-best-effort bargain (decision 6).
+ * waited on HERE — the server queues nothing — but a refused start says which
+ * kind it is (`deniedCode`, `retriable`), so the agent can poll a held slot out
+ * itself instead of downgrading to a repo-only review.
  */
 export async function reviewDrive(
   ctx: AppCtx,
@@ -2216,7 +2272,7 @@ export async function reviewDrive(
   return {
     ok: stop.ok,
     action: 'stop',
-    ...(stop.deniedReason ? { deniedReason: stop.deniedReason } : {}),
+    ...driveDenialOf(stop),
     drive: activeDriveInfo(),
     ...(stop.hookFailure ? { hookFailure: stop.hookFailure } : {}),
   }
@@ -2268,7 +2324,7 @@ async function startReviewDrive(
   return {
     ok: start.ok,
     action: 'start',
-    ...(start.deniedReason ? { deniedReason: start.deniedReason } : {}),
+    ...driveDenialOf(start),
     drive: activeDriveInfo(),
     ...(start.hookFailure ? { hookFailure: start.hookFailure } : {}),
   }
@@ -2685,19 +2741,25 @@ async function runDriveHookStep(
 /** Repo-relative paths with uncommitted changes (tracked or not), or `[]`. */
 async function dirtyPaths(g: SimpleGit): Promise<string[]> {
   try {
-    const out = (await g.raw(['status', '--porcelain'])).trim()
-    if (!out) return []
-    return out
-      .split('\n')
-      // Porcelain v1: two status chars, a space, then the path. A rename is
-      // `R  old -> new`; the destination is the file that actually exists now.
-      .map((line) => line.slice(3).trim())
-      .map((p) => (p.includes(' -> ') ? (p.split(' -> ').at(-1) ?? p) : p))
-      .map((p) => p.replace(/^"|"$/g, ''))
-      .filter(Boolean)
+    return porcelainPaths((await g.raw(['status', '--porcelain'])).trim())
   } catch {
     return []
   }
+}
+
+/** The paths in `git status --porcelain` output. Pure — the start path already
+ *  holds the output it denied on, and re-running git to name the files would
+ *  read a tree that may have moved since. */
+function porcelainPaths(out: string): string[] {
+  if (!out) return []
+  return out
+    .split('\n')
+    // Porcelain v1: two status chars, a space, then the path. A rename is
+    // `R  old -> new`; the destination is the file that actually exists now.
+    .map((line) => line.slice(3).trim())
+    .map((p) => (p.includes(' -> ') ? (p.split(' -> ').at(-1) ?? p) : p))
+    .map((p) => p.replace(/^"|"$/g, ''))
+    .filter(Boolean)
 }
 
 /**

@@ -1865,9 +1865,13 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
           "Boot the integrated feature branch on the human's checkout, under your run's " +
           'identity, so you can review it. ALWAYS stop what you started, including when the ' +
           'review goes wrong: the drive holds a machine-wide slot and the human cannot use their ' +
-          'own checkout until you release it. Refusals (a dirty tree, a drive the human is ' +
-          'already running) are final and never worth retrying — reporting one is the honest ' +
-          'outcome. Refused unless your call carries a live run identity.',
+          'own checkout until you release it. A refused `start` says which refusal it is: ' +
+          '`deniedCode: "slot_held"` (`retriable: true`) means somebody else — a drive or a ' +
+          'preparation dry run — holds the machine-wide slot, which frees itself when they ' +
+          'finish, so call `start` again about ten times roughly thirty seconds apart before you ' +
+          'give up on it. `deniedCode: "dirty"` (`retriable: false`) is final — the uncommitted ' +
+          "files in `dirtyFiles` are the human's to clear and no wait will do it, so report it " +
+          'and review without the app. Refused unless your call carries a live run identity.',
         inputSchema: {
           action: z
             .enum(['start', 'status', 'stop'])

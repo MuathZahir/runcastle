@@ -1,4 +1,6 @@
 
+import type { EventRow } from '@runcastle/core'
+
 export interface OpenApp {
   url: string
   /**
@@ -67,6 +69,67 @@ export function driveFailure(
     output: f.output,
     canFix: !opts.sessionLive,
   }
+}
+
+/** What takes the banner down: the retry landing, or review being left behind. */
+const ANSWERED_BY = ['ticket.retry', 'burn.started', 'feature.shipped']
+
+/** A review drive the server refused because the working tree was dirty. */
+export interface ReviewDriveDenial {
+  /**
+   * The event that recorded it. Dismissal is keyed on this, so the human waves
+   * away ONE denial — the next one is a different id and speaks up again.
+   */
+  eventId: number
+  /** The uncommitted paths that stood in the way, as the server named them. */
+  dirtyFiles: string[]
+  /** The server's own sentence, for a banner that never paraphrases it. */
+  message: string
+  /** When the drive guard refused. */
+  at: number
+}
+
+/**
+ * The dirty-tree refusal the review panel is still asking the human to answer,
+ * or null when there is nothing outstanding (decision 7).
+ *
+ * The drive guard emits `reviewdrive.denied` at the moment it refuses
+ * (`services/git.ts`), which is the record; this is the prompt on top of it, so
+ * it is the LATEST denial that counts and anything that answers one takes it
+ * back down. Two things answer one, and either is enough: an event that says
+ * the re-burn is under way — `ticket.retry`, the burn's own `burn.started`,
+ * which is also how the feature leaves review, and the feature shipping — or a
+ * run that started after the denial, which is the server's own
+ * retry-eligibility rule read from this side, and covers a burn whose events
+ * have not landed on this feed yet. A later denial raises it again, exactly as
+ * {@link lapAbort}'s `lap.started` works in the other direction.
+ *
+ * The phase and the readonly history view are the caller's to answer; this
+ * function only reads the record.
+ */
+export function reviewDriveDenial(
+  events: readonly EventRow[],
+  runs: readonly { startedAt: number }[] = [],
+  dismissedEventId?: number | null,
+): ReviewDriveDenial | null {
+  let denial: ReviewDriveDenial | null = null
+  for (const event of events) {
+    if (event.type === 'reviewdrive.denied') {
+      const data = (event.data ?? {}) as { dirtyFiles?: unknown }
+      denial = {
+        eventId: event.id,
+        dirtyFiles: Array.isArray(data.dirtyFiles)
+          ? data.dirtyFiles.filter((file): file is string => typeof file === 'string')
+          : [],
+        message: event.message,
+        at: event.ts,
+      }
+    } else if (ANSWERED_BY.includes(event.type)) {
+      denial = null
+    }
+  }
+  if (!denial || denial.eventId === dismissedEventId) return null
+  return denial.at < Math.max(...runs.map((r) => r.startedAt), -Infinity) ? null : denial
 }
 
 export type DriveState = 'idle' | 'starting' | 'serving' | 'bare-checkout' | 'setup-failed' | 'review-agent-driving'
