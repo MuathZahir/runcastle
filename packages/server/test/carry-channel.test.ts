@@ -10,7 +10,7 @@ import { clearRuntimeCtx, setRuntimeCtx } from '../src/launcher/runtime'
 import { createSessionRow, lapKickoff, markSessionLive } from '../src/launcher/sessions'
 import { toolGetFeatureContext } from '../src/mcp/server'
 import { carriedWork } from '../src/services/carried-work'
-import { reportFinding } from '../src/services/review-findings'
+import { carryFinding, openDefectsAcrossLaps, reportFinding } from '../src/services/review-findings'
 import { addNote, carryNotes, listByFeature as listNotes, reopenNote } from '../src/services/test-notes'
 import { storeTickets, updateTicket } from '../src/services/tickets'
 import { makeTestCtx } from './helpers/db'
@@ -112,11 +112,37 @@ describe('the carry channel into the next lap', () => {
     ).toMatch(/triaged/i)
   })
 
-  it('states each open defect with its title, location, detail and repro step', () => {
+  it('states each open defect with its id, title, location, detail and repro step', () => {
     openDefect()
+    const [defect] = openDefectsAcrossLaps(ctx, feature.id)
     expect(toolGetFeatureContext(ctx, session).openDefects).toEqual([
       {
+        // The id is the handle every disposition verb takes: a ticket's
+        // `originFindingId`, and `resolve_finding`'s `findingId`. Without it a
+        // session could read the defects and act on none of them.
+        id: defect.id,
         title: 'Deletes are never retried',
+        location: 'packages/server/src/dlq.ts:88',
+        detail: 'The retry lands at the seam but the endpoint never calls it.',
+        reproStep: 'Click Retry on a dead-lettered job and watch nothing change.',
+      },
+    ])
+  })
+
+  it('hands a lap the defects an earlier one parked, beside the ones still open', () => {
+    openDefect('Deletes are never retried')
+    openDefect('The toast never dismisses')
+    const [, parked] = openDefectsAcrossLaps(ctx, feature.id)
+    carryFinding(ctx, feature.id, parked.id)
+
+    const context = toolGetFeatureContext(ctx, session)
+    // Carried leaves the open pile and joins the agenda — the same move a
+    // carried note makes, and the reason the gate stops demanding an answer.
+    expect(context.openDefects.map((defect) => defect.title)).toEqual(['Deletes are never retried'])
+    expect(context.carriedDefects).toEqual([
+      {
+        id: parked.id,
+        title: 'The toast never dismisses',
         location: 'packages/server/src/dlq.ts:88',
         detail: 'The retry lands at the seam but the endpoint never calls it.',
         reproStep: 'Click Retry on a dead-lettered job and watch nothing change.',

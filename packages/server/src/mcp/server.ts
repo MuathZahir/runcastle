@@ -315,6 +315,13 @@ export interface FeatureContext {
    * review iteration.
    */
   openDefects: CarriedDefect[]
+  /**
+   * The defects an earlier lap parked rather than answered (decisions #5). This
+   * lap's AGENDA, not its obligation: `resolve_finding` will link or close one,
+   * and the tickets gate never demands a carried defect be carried again — the
+   * same sticky semantics a carried test note has.
+   */
+  carriedDefects: CarriedDefect[]
   tickets: FeatureContextTicket[]
   /**
    * The models the operator annotated with a use-case note, and the only ones a
@@ -394,6 +401,7 @@ export function featureContext(ctx: AppCtx, reader: FeatureReader): FeatureConte
     moreDocs,
     docsNote: DOCS_NOTE,
     openDefects: carried.openDefects,
+    carriedDefects: carried.carriedDefects,
     tickets: listByFeature(ctx, feature.id).map(stripDigest),
     annotatedModels: annotatedModels(ctx),
   }

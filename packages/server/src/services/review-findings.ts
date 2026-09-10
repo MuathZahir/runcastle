@@ -263,9 +263,8 @@ export function viewByFeature(ctx: AppCtx, featureId: string): FindingsView {
   const tickets = listTickets(ctx, featureId)
   const summary: FindingSummary = { found: 0, fixed: 0, open: 0, observations: 0 }
   const openDefects: ReviewFinding[] = []
-  const carriedFindings: ReviewFinding[] = []
+  const carriedFindings = findings.filter(isCarried)
   for (const finding of findings) {
-    if (finding.status === 'carried') carriedFindings.push(finding)
     if (finding.lap !== feature.lap) continue
     if (finding.kind === 'observation') {
       summary.observations += 1
@@ -296,6 +295,32 @@ export function openDefectsAcrossLaps(ctx: AppCtx, featureId: string): ReviewFin
     (finding) =>
       finding.kind === 'defect' && defectState(finding, fixTicketOf(finding, tickets)) === 'open',
   )
+}
+
+function isCarried(finding: ReviewFinding): boolean {
+  return finding.status === 'carried'
+}
+
+/**
+ * Every defect a lap parked, on any lap — the same pile {@link FindingsView}
+ * renders as its own section, read on its own for the callers that want the
+ * agenda without the rest of the view.
+ */
+export function carriedDefectsAcrossLaps(ctx: AppCtx, featureId: string): ReviewFinding[] {
+  return listByFeature(ctx, featureId).filter(isCarried)
+}
+
+/**
+ * The defects an EARLIER lap's review left open and this lap has not answered
+ * for — what the `complete_phase(tickets)` gate refuses on.
+ *
+ * The current lap is deliberately absent: its findings belong to the burner and
+ * the review loop, which are still working them. A lap-1 feature has no earlier
+ * lap, so this is always empty there and the gate passes trivially.
+ */
+export function undispositionedDefects(ctx: AppCtx, featureId: string): ReviewFinding[] {
+  const { lap } = getFeatureRow(ctx, featureId)
+  return openDefectsAcrossLaps(ctx, featureId).filter((finding) => finding.lap < lap)
 }
 
 function fixTicketOf(finding: ReviewFinding, tickets: Ticket[]): Ticket | undefined {
@@ -367,6 +392,43 @@ export function closeAsAddressed(
     resolvedBy: 'session',
     resolutionNote: attestation,
   })
+}
+
+/**
+ * Vet the finding ids a batch of tickets links to BEFORE anything is stored, so
+ * one bad id fails the whole batch rather than leaving half of it linked — the
+ * same all-or-nothing the model-id check gives `storeTickets`.
+ *
+ * Duplicates are refused for the reason {@link promoteOpenDefects} refuses them:
+ * a finding holds one `fixTicketId`, so a second ticket naming it would silently
+ * overwrite the first link and leave that ticket answering for nothing.
+ */
+export function requireLinkableFindings(
+  ctx: AppCtx,
+  featureId: string,
+  findingIds: readonly string[],
+): void {
+  if (new Set(findingIds).size !== findingIds.length) {
+    throw new InvalidInputError('two tickets in this batch link to the same finding')
+  }
+  for (const findingId of findingIds) requireDispositionable(ctx, featureId, findingId)
+}
+
+/**
+ * Link a defect to the ticket a lap emitted to answer it: stamp the fix ticket
+ * and flip the finding to `fixing`. Nothing else happens here — the shipped
+ * burner lifecycle (`markFixProgress`) drives the finding to `fixed`/`failed`
+ * when that ticket lands, exactly as it does for an in-run fix.
+ */
+export function linkFixTicket(
+  ctx: AppCtx,
+  featureId: string,
+  findingId: string,
+  fixTicketId: string,
+): ReviewFinding {
+  requireDispositionable(ctx, featureId, findingId)
+  ctx.db.update(reviewFindings).set({ fixTicketId }).where(eq(reviewFindings.id, findingId)).run()
+  return markFixing(ctx, findingId)
 }
 
 /** Return a carried finding to the open pile — the human's verb, never a session's. */
