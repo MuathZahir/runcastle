@@ -1,6 +1,8 @@
 import { Button, SectionTitle } from '../../ui'
+import { trpc } from '../../trpc'
 import type { ReviewDriveDenial } from '../../lib/feature-ui'
 import { fmtDateTime, relTimeAgo } from '../../lib/format'
+import { useToast } from '../../lib/toast'
 
 /**
  * The dirty-tree refusal, in the alert slot (decision 5).
@@ -68,5 +70,47 @@ export function ReviewDriveDeniedCard({
         <Button onClick={onDismiss}>Dismiss</Button>
       </div>
     </div>
+  )
+}
+
+/**
+ * {@link ReviewDriveDeniedCard} with the re-burn wired to it.
+ *
+ * The retry is the ordinary per-ticket one (`ticket.retry`), which the service
+ * loosened to accept a `done` review ticket whose drive was refused this way —
+ * so there is no second retry flow here, only the one door with the review's
+ * own ticket handed to it. The endpoint refuses while the tree is still dirty,
+ * naming what is still in the way; that refusal is a toast, because the human
+ * asked for it by clicking and the banner is already saying the rest.
+ */
+export function ReviewDriveDeniedAlert({
+  featureId,
+  reviewTicketId,
+  denial,
+  readonly,
+  onDismiss,
+}: {
+  featureId: string
+  /** The review ticket to re-burn, or null when this lap emitted none. */
+  reviewTicketId: string | null
+  denial: ReviewDriveDenial
+  readonly: boolean
+  onDismiss: () => void
+}) {
+  const toast = useToast()
+  const utils = trpc.useUtils()
+  const retry = trpc.ticket.retry.useMutation({
+    onSuccess: () => void utils.feature.get.invalidate({ id: featureId }),
+    onError: (e) => toast.push(e.message),
+  })
+
+  return (
+    <ReviewDriveDeniedCard
+      denial={denial}
+      readonly={readonly}
+      busy={retry.isPending}
+      onRetry={reviewTicketId ? () => retry.mutate({ ticketId: reviewTicketId }) : null}
+      onDismiss={onDismiss}
+    />
   )
 }
