@@ -2074,6 +2074,18 @@ export function isMergeConflictError(err: unknown): boolean {
 // Pure unit — transient-error classification + retry pacing
 // ---------------------------------------------------------------------------
 
+/** The HTTP refusals a closed door arrives as, in either spelling's company. */
+const REFUSAL_STATUS = String.raw`\b(?:401|403)\b`
+
+/**
+ * `forbidden` names an account only where the status it is the reason phrase
+ * for is not sitting right beside it. `forbidden response: status 403` is a
+ * CLI saying what was refused; `403 forbidden` is one refusal spelled twice,
+ * and the reason phrase adds nothing the bare number did not already say — so
+ * it may not stand in for the credential the pairing rule asks for.
+ */
+const DETACHED_FORBIDDEN = String.raw`(?<!${REFUSAL_STATUS}[\W_]*)forbidden(?![\W_]*${REFUSAL_STATUS})`
+
 /**
  * What a refusal has to NAME for it to be the account's refusal rather than
  * this ticket's. `permission denied` is equally how git and the filesystem
@@ -2084,7 +2096,7 @@ export function isMergeConflictError(err: unknown): boolean {
  * costs one run the old behaviour; halting a healthy run over a chmod costs
  * every ticket left in it.
  */
-const CREDENTIAL_SUBJECT = String.raw`(?:api[ _-]?key|token|credential|login|auth|unauthorized|forbidden|account|organi[sz]ation|\borg\b)`
+const CREDENTIAL_SUBJECT = String.raw`(?:api[ _-]?key|token|credential|login|auth|unauthorized|${DETACHED_FORBIDDEN}|account|organi[sz]ation|\borg\b)`
 
 /**
  * A refusal wording paired with the credential subject, in EITHER order: which
@@ -2134,9 +2146,10 @@ const RUN_FATAL_ERROR_PATTERNS: RegExp[] = [
  * OpenAI auth failure arrives as a status beside its `invalid_api_key` or
  * `Unauthorized`, on whichever side the CLI happens to put it (`401
  * invalid_api_key`, `forbidden response: status 403`), while an unrelated HTTP
- * failure inside the sandbox arrives as the number alone.
+ * failure inside the sandbox arrives as the number alone — or as the number
+ * beside its own reason phrase, `403 forbidden`, which names no more than it.
  */
-const REFUSED_CREDENTIAL_STATUS = refusalNamingCredential(String.raw`(?:\b(?:401|403)\b|forbidden)`)
+const REFUSED_CREDENTIAL_STATUS = refusalNamingCredential(String.raw`(?:${REFUSAL_STATUS}|forbidden)`)
 
 /**
  * Per-runtime run-fatal wording. OpenAI reports auth as a 401 with an

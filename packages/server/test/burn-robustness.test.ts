@@ -169,6 +169,9 @@ describe('classifyTicketRunError', () => {
       // same fact as `401 invalid_api_key`, phrased the other way round.
       'forbidden response: status 403',
       'api key rejected with 401',
+      // The reason phrase stops the status naming an account by itself, but it
+      // never gets in the way of a message that does name one.
+      '403 forbidden: invalid api key',
     ])('run-fatal: %s', (msg) => {
       expect(classifyTicketRunError(new Error(msg), 'codex')).toBe('run-fatal')
     })
@@ -178,12 +181,15 @@ describe('classifyTicketRunError', () => {
     //
     // A bare status number is the same kind of problem: 401 and 403 are how
     // every HTTP call in the sandbox reports a closed door, and only the
-    // wording beside one says the door was the account's.
+    // wording beside one says the door was the account's — a status's own
+    // reason phrase (`403 forbidden`) is that same number spelled twice.
     it.each([
       'model_not_found: the model `gpt-5.6-sol` does not exist or you do not have access',
       'invalid_request_error: unsupported parameter',
       'request failed with status 403',
       'proxy returned 401 for the telemetry endpoint',
+      '403 forbidden',
+      'Forbidden (403)',
     ])('fatal, without halting the run: %s', (msg) => {
       expect(classifyTicketRunError(new Error(msg), 'codex')).toBe('fatal')
     })
