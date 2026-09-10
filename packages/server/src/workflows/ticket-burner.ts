@@ -2906,12 +2906,12 @@ export async function burnTickets(
       if (st === 'defer') {
         deferred.push(seq)
         if (t) {
-          const failed = failedImplementations().join(', ')
+          const failed = failedImplementations()
           ctx.emitEvent({
             type: 'ticket.deferred',
-            message: `ticket ${t.seq} deferred to the next burn: implementation ticket(s) ${failed} failed — retry or cancel them, then burn again`,
+            message: `ticket ${t.seq} deferred to the next burn: implementation ticket(s) ${failed.join(', ')} failed — retry or cancel them, then burn again`,
             ticketId: t.id,
-            data: { failed: failedImplementations() },
+            data: { failed },
           })
         }
         continue
