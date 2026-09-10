@@ -116,6 +116,18 @@ describe('classifyTicketRunError', () => {
   })
 
   /**
+   * `author` is not `auth`. Ordinary prose about who wrote a commit sits
+   * beside plenty of refusals, and the subject the refusal has to name is the
+   * credential word itself — never a substring of an unrelated one.
+   */
+  it.each([
+    'git author permission denied',
+    'permission denied reading the authored patch',
+  ])('fatal, not run-fatal, when only an ordinary word spells "auth": %s', (msg) => {
+    expect(classifyTicketRunError(new Error(msg), 'claude-code')).toBe('fatal')
+  })
+
+  /**
    * Which side of the refusal the account word lands on is an accident of the
    * CLI's phrasing, not evidence about whose door was closed — `API token
    * permission denied` says exactly what `permission denied: invalid api key`

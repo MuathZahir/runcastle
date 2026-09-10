@@ -2095,8 +2095,12 @@ const DETACHED_FORBIDDEN = String.raw`(?<!${REFUSAL_STATUS}[\W_]*)forbidden(?![\
  * either order, instead of standing alone. Missing a genuine auth wording
  * costs one run the old behaviour; halting a healthy run over a chmod costs
  * every ticket left in it.
+ *
+ * `auth` is spelled out to its endings — `authentication`, `authorized`,
+ * `authn`/`authz` — rather than left as a loose substring, because `author`
+ * spells it too, and `git author permission denied` names no credential.
  */
-const CREDENTIAL_SUBJECT = String.raw`(?:api[ _-]?key|token|credential|login|auth|unauthorized|${DETACHED_FORBIDDEN}|account|organi[sz]ation|\borg\b)`
+const CREDENTIAL_SUBJECT = String.raw`(?:api[ _-]?key|token|credential|login|auth(?:entic\w*|ori[sz]\w*|[nz])?\b|unauthorized|${DETACHED_FORBIDDEN}|account|organi[sz]ation|\borg\b)`
 
 /**
  * A refusal wording paired with the credential subject, in EITHER order: which
