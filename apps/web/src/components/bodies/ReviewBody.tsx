@@ -16,6 +16,7 @@ import {
   latestRun,
   liveSessionLine,
   reviewChecks,
+  reviewDriveDenial,
   specDocPath,
   verificationState,
   type LapAbort,
@@ -26,6 +27,7 @@ import { useReviewArtifacts } from '../../lib/reviews'
 import { useLivePoll } from '../../lib/live'
 import { useToast } from '../../lib/toast'
 import { ConflictAlert } from '../review/ConflictCard'
+import { DeniedDriveAlert } from '../review/DeniedDriveCard'
 import { DriveInstructions } from '../review/drive-parts'
 import { EvidenceStage } from '../review/EvidenceStage'
 import { FullAccounts } from '../review/FullAccounts'
@@ -167,6 +169,10 @@ export function ReviewBody({
   // live jump only into its own recording (decision 22). The stage reports it
   // rather than the ref answering, because a ref does not re-render its readers.
   const [staged, setStaged] = useState<{ ticketId: string } | null>(null)
+  // Which denied review drive the human has waved away (decision 7). Keyed on
+  // the event id, so a NEW denial is a new id and the banner comes back; a
+  // dismissal is a gesture about one denial, not a preference to be persisted.
+  const [dismissedDenial, setDismissedDenial] = useState<number | null>(null)
   // The other direction of a jump (decision 25b): a marker click marks the notes
   // taken at that moment, and a fresh capture scrolls its new row into view.
   // Both fade after a beat — a permanent mark would read as a selection.
@@ -215,6 +221,18 @@ export function ReviewBody({
   // The one drive slot is taken by somebody else — another feature, or a
   // preparation dry run (decision 9).
   const driveSlotTaken = !!drive.data && drive.data.featureId !== feature.id
+  // A review drive the human's own uncommitted files refused (decision 7). Only
+  // while this feature is actually AT review: the shipped view's look back is
+  // history, and a denial from a lap ago is not something to act on now.
+  const denial =
+    feature.phase === 'review' ? reviewDriveDenial(events, runs, dismissedDenial) : null
+  // The reviewer the banner offers to re-burn: this lap's last review pass. Its
+  // absence is not a state to design for — a denial can only exist because one
+  // of these ran — so the banner simply waits for the tickets query with it.
+  const reviewTicket = tickets
+    .filter((t) => t.kind === 'review' && t.lap === feature.lap)
+    .sort((a, b) => a.seq - b.seq)
+    .at(-1)
   // One partition, two halves (decision 8): what needs attention is the middle
   // of the page, what has been dealt with rides inside the bottom disclosure.
   const { attention, settled } = partitionWork({
@@ -233,7 +251,22 @@ export function ReviewBody({
   return (
     <div className="flex flex-col gap-6">
       {/* The alerts band (decision 8): nothing renders here unless something is
-          really wrong or really still running. */}
+          really wrong or really still running. The denied drive leads it: it is
+          the one alert here that names something the human can fix in a minute,
+          and it was previously invisible until the digest. */}
+      {denial && reviewTicket && (
+        <DeniedDriveAlert
+          // A new denial is a new card, so a refusal answered about the old one
+          // cannot linger under it.
+          key={denial.eventId}
+          featureId={feature.id}
+          ticketId={reviewTicket.id}
+          denial={denial}
+          readonly={readonly}
+          onDismiss={() => setDismissedDenial(denial.eventId)}
+        />
+      )}
+
       {conflict && (
         <ConflictAlert
           featureId={feature.id}
