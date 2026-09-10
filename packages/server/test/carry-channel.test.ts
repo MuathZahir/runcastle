@@ -226,4 +226,26 @@ describe('the carry channel into the next lap', () => {
     expect(prompt).toContain('`openDefects`')
     expect(prompt).not.toMatch(/both OPTIONAL/)
   })
+
+  it('states the disposition obligation and names all three verbs', () => {
+    openDefect()
+
+    const prompt = renderSystemPrompt(
+      { ...feature, phase: 'ideation', lap: 2 },
+      'revisit',
+      undefined,
+      2,
+      undefined,
+      undefined,
+      carriedWork(ctx, feature.id),
+    )
+    // "Address them" was the old instruction and it left the finding rows
+    // untouched: a lap fixed the defects and nothing said so. The obligation is
+    // now stated with the verb that discharges it, and with the gate that checks.
+    expect(prompt).toContain('originFindingId')
+    expect(prompt).toContain('resolve_finding')
+    expect(prompt).toMatch(/carry/i)
+    expect(prompt).toMatch(/addressed/i)
+    expect(prompt).toContain('complete_phase')
+  })
 })
