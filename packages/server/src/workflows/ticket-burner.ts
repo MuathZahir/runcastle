@@ -2103,7 +2103,7 @@ const ACCOUNT_PERMISSION_DENIED = new RegExp(`permission denied[^\\n]*${CREDENTI
  */
 const RUN_FATAL_ERROR_PATTERNS: RegExp[] = [
   /invalid (api key|x-api-key)/i,
-  /authentication[ _](error|failed|required)|\bunauthorized\b/i,
+  /authentication|unauthorized/i,
   ACCOUNT_PERMISSION_DENIED,
   /credit balance|billing/i,
   /oauth token|setup-token/i,
