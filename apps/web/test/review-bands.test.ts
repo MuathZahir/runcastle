@@ -303,6 +303,71 @@ describe('the review page’s arrival bands', () => {
     expect(render({ tickets: [] as FeatureFull['tickets'] })).not.toContain('Full account')
   })
 
+  /**
+   * Decision 5: a review drive refused over the human's own uncommitted files
+   * is a banner in the alert slot at the moment it happens — the digest that
+   * used to be the only account of it is read long afterwards.
+   */
+  describe('a review drive refused over a dirty tree', () => {
+    const DENIED: EventRow = {
+      id: 7,
+      projectId: 'proj_1',
+      featureId: 'feat_1',
+      ts: 1_760_000_000_000,
+      type: 'reviewdrive.denied',
+      message: 'review drive denied — 1 uncommitted file(s) in the working tree: src/App.tsx',
+      data: { code: 'dirty', dirtyFiles: ['src/App.tsx'] },
+    }
+    const RUN = (startedAt: number): FeatureFull['runs'][number] => ({
+      id: `run_${startedAt}`,
+      featureId: 'feat_1',
+      workflow: 'ticket-burner',
+      status: 'succeeded',
+      startedAt,
+    })
+
+    it('raises a banner naming the files, with the way to re-burn the review', () => {
+      const html = render({ events: [DENIED] })
+      expect(html).toContain('Review couldn’t drive')
+      expect(html).toContain('src/App.tsx')
+      expect(html).toContain('Retry review')
+    })
+
+    it('says nothing when no drive was ever refused', () => {
+      expect(openWork()).not.toContain('Review couldn’t drive')
+    })
+
+    /** Decision 7: the retry burn starting is what takes the prompt back down. */
+    it('comes down once the retry burn has started', () => {
+      const retried: EventRow = { ...DENIED, id: 8, type: 'ticket.retry', message: 'retrying ticket 4' }
+      expect(render({ events: [DENIED, retried] })).not.toContain('Review couldn’t drive')
+    })
+
+    /** The other half of decision 7's clearing rule: a run that started after
+     *  the denial has answered it too, whether or not its events have landed on
+     *  this feed yet — the same read the server's retry eligibility makes. */
+    it('stands while the denial is the latest word on the latest run', () => {
+      const html = render({ events: [DENIED], runs: [RUN(DENIED.ts - 1_000)] })
+      expect(html).toContain('Review couldn’t drive')
+    })
+
+    it('comes down once a burn has started after the denial', () => {
+      const runs = [RUN(DENIED.ts - 1_000), RUN(DENIED.ts + 1_000)]
+      expect(render({ events: [DENIED], runs })).not.toContain('Review couldn’t drive')
+    })
+
+    /** The review body also mounts to LOOK BACK at review on a feature that has
+     *  moved on — history, where there is nothing left to act on (decision 7). */
+    it('does not render outside the review phase', () => {
+      expect(render({ events: [DENIED], phase: 'shipped' })).not.toContain('Review couldn’t drive')
+    })
+
+    /** Decision 33a: history has no live verbs, this banner's retry included. */
+    it('renders no banner at all on a readonly view', () => {
+      expect(render({ events: [DENIED], readonly: true })).not.toContain('Review couldn’t drive')
+    })
+  })
+
   /** Decision 33a: history has no live verbs anywhere, the alert line included. */
   it('offers no live control on a readonly view', () => {
     const html = render({ sessions: [LIVE_IDEATION], readonly: true })
@@ -344,55 +409,5 @@ describe('the review page’s drive instructions', () => {
       expect(html).not.toContain('Applies inside the app under test only')
       expect(html).not.toContain('Edit in settings')
     }
-  })
-})
-
-/**
- * The denied review drive, at the head of the alerts band (decision 7). The
- * denial used to reach the human only through the digest; here it is the first
- * thing on the page, while cleaning the tree up still helps.
- */
-describe('the review page’s denied-drive banner', () => {
-  const DENIED: EventRow = {
-    id: 7,
-    projectId: 'proj_1',
-    featureId: 'feat_1',
-    ts: 2_000,
-    type: 'reviewdrive.denied',
-    message: 'review drive denied — 1 uncommitted file(s) in the working tree: src/App.tsx',
-    data: { code: 'dirty', dirtyFiles: ['src/App.tsx'] },
-  }
-  const RUN = (startedAt: number): FeatureFull['runs'][number] => ({
-    id: `run_${startedAt}`,
-    featureId: 'feat_1',
-    workflow: 'ticket-burner',
-    status: 'succeeded',
-    startedAt,
-  })
-
-  it('names the dirty files and offers the review again', () => {
-    const html = render({ events: [DENIED], runs: [RUN(1_000)] })
-    expect(html).toContain('Review drive denied')
-    expect(html).toContain('src/App.tsx')
-    expect(html).toContain('Retry review')
-  })
-
-  it('is gone once the retry burn has started', () => {
-    const html = render({ events: [DENIED], runs: [RUN(1_000), RUN(3_000)] })
-    expect(html).not.toContain('Review drive denied')
-  })
-
-  it('is not there when nothing was denied', () => {
-    expect(render({ runs: [RUN(1_000)] })).not.toContain('Review drive denied')
-  })
-
-  /** The review body also mounts to LOOK BACK at review on a feature that has
-   *  moved on — history, where there is nothing left to act on (decision 33a). */
-  it('does not render outside the review phase', () => {
-    expect(render({ events: [DENIED], phase: 'shipped' })).not.toContain('Review drive denied')
-  })
-
-  it('does not render on a readonly look back at the review phase', () => {
-    expect(render({ events: [DENIED], readonly: true })).not.toContain('Review drive denied')
   })
 })

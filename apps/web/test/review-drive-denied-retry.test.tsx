@@ -38,7 +38,7 @@ vi.mock('../src/trpc', () => ({
   },
 }))
 
-const { DeniedDriveAlert } = await import('../src/components/review/DeniedDriveCard')
+const { ReviewDriveDeniedAlert } = await import('../src/components/review/ReviewDriveDeniedCard')
 
 const denial = {
   eventId: 7,
@@ -55,9 +55,9 @@ const onDismiss = vi.fn()
 
 const mount = () =>
   render(
-    <DeniedDriveAlert
+    <ReviewDriveDeniedAlert
       featureId="ftr_1"
-      ticketId="tkt_review_2"
+      reviewTicketId="tkt_review_2"
       denial={denial}
       readonly={false}
       onDismiss={onDismiss}

@@ -27,13 +27,13 @@ import { useReviewArtifacts } from '../../lib/reviews'
 import { useLivePoll } from '../../lib/live'
 import { useToast } from '../../lib/toast'
 import { ConflictAlert } from '../review/ConflictCard'
-import { DeniedDriveAlert } from '../review/DeniedDriveCard'
 import { DriveInstructions } from '../review/drive-parts'
 import { EvidenceStage } from '../review/EvidenceStage'
 import { FullAccounts } from '../review/FullAccounts'
 import { LapAbortAlert } from '../review/LapAbortAlert'
 import { LiveSessionAlert } from '../review/LiveSessionAlert'
 import { OpenWork } from '../review/OpenWork'
+import { ReviewDriveDeniedAlert } from '../review/ReviewDriveDeniedCard'
 import { StatusStrip } from '../review/StatusStrip'
 import { WorkList, partitionWork } from '../review/WorkList'
 import type { WalkthroughHandle } from '../WalkthroughPlayer'
@@ -97,6 +97,12 @@ export function ReviewBody({
   // The same query key the workspace shell reads, so the conflict card's state
   // and the bar's conflict branch come out of one fetch of one feed.
   const events = useEventLog(feature.id)
+  // The review the retry re-burns. A denial never ends a review — it downgrades
+  // it to the repo-only pass — so the ticket that was refused is a `done` one,
+  // and the latest of those is this lap's review (as `reviewOutcome` reads it).
+  const deniedReview = latestReview(
+    tickets.filter((t) => t.kind === 'review' && t.status === 'done'),
+  )
 
   // Commits come from git, not from ticket commit rows (findings F23). Polled
   // slower than the 1.5s shell: a `rev-list --count` is cheap but this figure
@@ -227,13 +233,6 @@ export function ReviewBody({
   // phase is a record, not something to act on.
   const denial =
     feature.phase === 'review' ? reviewDriveDenial(events, runs, dismissedDenial) : null
-  // The reviewer the banner offers to re-burn: this lap's last review pass. Its
-  // absence is not a state to design for — a denial can only exist because one
-  // of these ran — so the banner simply waits for the tickets query with it.
-  const reviewTicket = tickets
-    .filter((t) => t.kind === 'review' && t.lap === feature.lap)
-    .sort((a, b) => a.seq - b.seq)
-    .at(-1)
   // One partition, two halves (decision 8): what needs attention is the middle
   // of the page, what has been dealt with rides inside the bottom disclosure.
   const { attention, settled } = partitionWork({
@@ -252,22 +251,7 @@ export function ReviewBody({
   return (
     <div className="flex flex-col gap-6">
       {/* The alerts band (decision 8): nothing renders here unless something is
-          really wrong or really still running. The denied drive leads it: it is
-          the one alert here that names something the human can fix in a minute,
-          and it was previously invisible until the digest. */}
-      {denial && reviewTicket && (
-        <DeniedDriveAlert
-          // A new denial is a new card, so a refusal answered about the old one
-          // cannot linger under it.
-          key={denial.eventId}
-          featureId={feature.id}
-          ticketId={reviewTicket.id}
-          denial={denial}
-          readonly={readonly}
-          onDismiss={() => setDismissedDenial(denial.eventId)}
-        />
-      )}
-
+          really wrong or really still running. */}
       {conflict && (
         <ConflictAlert
           featureId={feature.id}
@@ -287,6 +271,21 @@ export function ReviewBody({
           lap={feature.lap}
           readonly={readonly}
           onRetry={onIterate}
+        />
+      )}
+
+      {/* The refusal the human can still act on, at the moment they can act on
+          it — the digest that used to carry it is read long afterwards. */}
+      {denial && (
+        <ReviewDriveDeniedAlert
+          // A new denial is a new card, so a refusal answered about the old one
+          // cannot linger under it.
+          key={denial.eventId}
+          featureId={feature.id}
+          reviewTicketId={deniedReview?.id ?? null}
+          denial={denial}
+          readonly={readonly}
+          onDismiss={() => setDismissedDenial(denial.eventId)}
         />
       )}
 
