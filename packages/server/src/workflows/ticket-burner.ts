@@ -2074,7 +2074,7 @@ export function isMergeConflictError(err: unknown): boolean {
 // Pure unit — transient-error classification + retry pacing
 // ---------------------------------------------------------------------------
 
-/** The HTTP refusals a closed door arrives as, in either spelling's company. */
+/** The status numbers a closed door arrives as, whatever wording sits beside them. */
 const REFUSAL_STATUS = String.raw`\b(?:401|403)\b`
 
 /**
