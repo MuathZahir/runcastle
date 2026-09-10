@@ -1,7 +1,8 @@
 import type { ReactNode } from 'react'
 import { fmtClock, type ReviewFinding, type TestNote } from '@runcastle/core'
 import { FindingSeverityChip, NoteAuthorChip } from '../../ui'
-import { findingOpenReason, findingStanding, headline, type FindingStanding } from '../../lib/feature-ui'
+import { findingOpenReason, headline } from '../../lib/feature-ui'
+import { findingStanding, type FindingStanding } from '../../lib/feature-ui/review'
 import { timestampMode } from '../../lib/walkthrough'
 
 /**
