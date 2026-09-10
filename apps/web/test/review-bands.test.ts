@@ -1,7 +1,7 @@
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it, vi } from 'vitest'
-import type { ReviewFinding, TestNote } from '@runcastle/core'
+import type { EventRow, ReviewFinding, TestNote } from '@runcastle/core'
 import type { FeatureFull } from '../src/lib/api'
 import type { ReviewArtifacts } from '../src/lib/reviews'
 import { full } from './fixtures'
@@ -25,11 +25,12 @@ const state = vi.hoisted(() => ({
   recordings: [] as ReviewArtifacts[],
   drive: undefined as { featureId: string; state: string; dryRun: boolean } | undefined,
   driveInstructions: undefined as string | undefined,
+  events: [] as EventRow[],
 }))
 
 vi.mock('../src/lib/live', () => ({ useLivePoll: () => false as const, useLiveStatus: () => 'live' }))
 vi.mock('../src/lib/toast', () => ({ useToast: () => ({ push: vi.fn() }) }))
-vi.mock('../src/lib/events', () => ({ useEventLog: () => [] }))
+vi.mock('../src/lib/events', () => ({ useEventLog: () => state.events }))
 vi.mock('../src/lib/reviews', async (original) => ({
   ...(await original<typeof import('../src/lib/reviews')>()),
   useReviewArtifacts: () => ({ data: state.recordings }),
@@ -42,7 +43,9 @@ vi.mock('../src/trpc', () => {
         notes: { list: { invalidate: vi.fn() } },
         findings: { listByFeature: { invalidate: vi.fn() } },
         feature: { get: { invalidate: vi.fn() }, list: { invalidate: vi.fn() }, driveInfo: { invalidate: vi.fn() } },
+        events: { invalidate: vi.fn() },
       }),
+      ticket: { retry: { useMutation: mutation } },
       notes: {
         add: { useMutation: mutation },
         edit: { useMutation: mutation },
@@ -170,6 +173,9 @@ function render(
     tickets?: FeatureFull['tickets']
     readonly?: boolean
     driveInstructions?: string
+    events?: EventRow[]
+    runs?: FeatureFull['runs']
+    phase?: FeatureFull['feature']['phase']
   } = {},
 ): string {
   state.notes = over.notes ?? []
@@ -179,7 +185,8 @@ function render(
   state.recordings = over.recordings ?? []
   state.drive = over.drive
   state.driveInstructions = over.driveInstructions
-  const feature = full({ id: 'feat_1', phase: 'review' })
+  state.events = over.events ?? []
+  const feature = full({ id: 'feat_1', phase: over.phase ?? 'review' })
   return renderToStaticMarkup(
     createElement(ReviewBody, {
       full: {
@@ -187,6 +194,7 @@ function render(
         feature: { ...feature.feature, lap: 1 },
         tickets: over.tickets ?? [REVIEW_TICKET],
         sessions: over.sessions ?? [],
+        runs: over.runs ?? [],
       },
       driving: null,
       conflict: null,
@@ -336,5 +344,46 @@ describe('the review page’s drive instructions', () => {
       expect(html).not.toContain('Applies inside the app under test only')
       expect(html).not.toContain('Edit in settings')
     }
+  })
+})
+
+/**
+ * The denied review drive, at the head of the alerts band (decision 7). The
+ * denial used to reach the human only through the digest; here it is the first
+ * thing on the page, while cleaning the tree up still helps.
+ */
+describe('the review page’s denied-drive banner', () => {
+  const DENIED: EventRow = {
+    id: 7,
+    projectId: 'proj_1',
+    featureId: 'feat_1',
+    ts: 2_000,
+    type: 'reviewdrive.denied',
+    message: 'review drive denied — 1 uncommitted file(s) in the working tree: src/App.tsx',
+    data: { code: 'dirty', dirtyFiles: ['src/App.tsx'] },
+  }
+  const RUN = (startedAt: number): FeatureFull['runs'][number] =>
+    ({ id: `run_${startedAt}`, featureId: 'feat_1', workflow: 'ticket-burner', status: 'done', startedAt }) as FeatureFull['runs'][number]
+
+  it('names the dirty files and offers the review again', () => {
+    const html = render({ events: [DENIED], runs: [RUN(1_000)] })
+    expect(html).toContain('Review drive denied')
+    expect(html).toContain('src/App.tsx')
+    expect(html).toContain('Retry review')
+  })
+
+  it('is gone once the retry burn has started', () => {
+    const html = render({ events: [DENIED], runs: [RUN(1_000), RUN(3_000)] })
+    expect(html).not.toContain('Review drive denied')
+  })
+
+  it('is not there when nothing was denied', () => {
+    expect(render({ runs: [RUN(1_000)] })).not.toContain('Review drive denied')
+  })
+
+  /** Looking back at a shipped feature is history — there is nothing to act on. */
+  it('does not render outside the review phase', () => {
+    const html = render({ events: [DENIED], phase: 'shipped', readonly: true })
+    expect(html).not.toContain('Review drive denied')
   })
 })
