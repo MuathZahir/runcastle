@@ -14,12 +14,15 @@ import { retryTicket } from '../src/services/features'
 import { findPreservedTicketBranch, listTicketAttemptBranches } from '../src/services/git'
 import { getTicket, listByFeature, storeTickets, updateTicket } from '../src/services/tickets'
 import {
+  RunHaltedAbort,
   buildRetryNotes,
   classifyTicketRunError,
   delayUnlessAborted,
+  haltTicketRun,
   missingAgentBinaryMessage,
   retryDelayMs,
   stopTicketRun,
+  ticketStopReason,
 } from '../src/workflows/ticket-burner'
 import { workflowRegistry } from '../src/workflows/registry'
 import { makeTestCtx } from './helpers/db'
@@ -221,6 +224,23 @@ describe('delayUnlessAborted', () => {
 describe('stopTicketRun', () => {
   it('reports no agent — and nothing left to kill — for a ticket that is not burning', async () => {
     await expect(stopTicketRun('tkt_nope')).resolves.toEqual({ stopped: false, confirmed: true })
+  })
+
+  it('reports the same for a halt that finds no burning agent', async () => {
+    await expect(haltTicketRun('tkt_nope', 'usage limit reached')).resolves.toEqual({
+      stopped: false,
+      confirmed: true,
+    })
+  })
+
+  // A stopped ticket's record has to say WHICH stop ended it: the operator's
+  // click is a decision, a run halt is an account they have to go fix.
+  it('names the run halt, not the human, when the halt is what aborted the lane', () => {
+    expect(ticketStopReason(new RunHaltedAbort('usage limit reached'))).toBe(
+      'stopped: run halted (usage limit reached)',
+    )
+    expect(ticketStopReason(new Error('ticket stopped by user'))).toBe('stopped by user')
+    expect(ticketStopReason(undefined)).toBe('stopped by user')
   })
 })
 
