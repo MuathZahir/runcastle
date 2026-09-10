@@ -29,8 +29,10 @@ export interface WorkRow {
 }
 
 /** Where a defect stands, keyed off the server's own open set so it cannot
- *  disagree with the count beside it — the only thing derived here is
- *  fixed-versus-fixing, which the join with the fix ticket decides. */
+ *  disagree with the count beside it. What is left to derive is what that set
+ *  cannot say: fixed-versus-fixing, which the join with the fix ticket decides,
+ *  and — since the set describes the CURRENT lap only — whether a defect it
+ *  leaves out was parked or is an earlier lap's leftover. */
 type DefectStanding = 'open' | 'fixing' | 'fixed' | 'dismissed' | 'carried'
 
 function defectStanding(
@@ -98,8 +100,8 @@ export function partitionWork(input: {
     const fix = ticketOf(finding.fixTicketId)
     const standing = defectStanding(finding, openIds, fix)
     // A parked defect is neither open work nor settled work: it has its own
-    // band, fed by the server's own carried pile ({@link CarriedFindings}), so
-    // filing it here as well would render it twice.
+    // band (`CarriedFindings`), fed by the server's own carried pile, so filing
+    // it here as well would render it twice.
     if (standing === 'carried') continue
     file(
       {
