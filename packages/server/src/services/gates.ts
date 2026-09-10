@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs'
-import type { Feature, GateCheckId, GateId, SessionKind } from '@runcastle/core'
+import type { Feature, GateCheckId, GateId, ReviewFinding, SessionKind } from '@runcastle/core'
 import { nextGate, nextPhase, previousPhase } from '@runcastle/core'
 import { and, desc, eq, inArray } from 'drizzle-orm'
 import type { AppCtx } from '../db/types'
@@ -8,6 +8,7 @@ import { GateError, InvalidInputError } from '../errors'
 import { emit } from './events'
 import { featureDocPath } from './feature-docs'
 import { getFeatureRow, projectForFeature, setPhase } from './repo'
+import { undispositionedDefects } from './review-findings'
 import { listByFeature } from './tickets'
 import { listByFeature as listWaypoints } from './waypoints'
 
@@ -81,6 +82,16 @@ export function checkGate(ctx: AppCtx, check: GateCheckId, feature: Feature): Ga
             'fix the kind on a review-shaped ticket, or override this gate with a reason',
         }
       }
+      // The lap boundary's own seatbelt. A defect an EARLIER lap's review left
+      // open is the observed failure this check exists for: lap N+1's work fixed
+      // it, nothing told the finding row, and lap N+1's review reported it open
+      // again — so the human clicked Iterate over a defect that no longer
+      // existed. A warning would recreate exactly that drift, so it is a refusal;
+      // the session holds every verb it demands, and the human can dismiss.
+      const undispositioned = undispositionedDefects(ctx, feature.id)
+      if (undispositioned.length > 0) {
+        return { satisfied: false, reason: undispositionedReason(undispositioned) }
+      }
       return { satisfied: true }
     }
 
@@ -104,6 +115,23 @@ export function checkGate(ctx: AppCtx, check: GateCheckId, feature: Feature): Ga
       // G5 is the Merge click, which bypasses via its own code path.
       return { satisfied: false, reason: 'use the Merge button to ship' }
   }
+}
+
+/**
+ * The G3 refusal for un-dispositioned defects. Titles, not a count: the session
+ * has to act on each one by name, and a bare number would send it back to
+ * `get_feature_context` to find out which. The three verbs are named because the
+ * session holds all three — this refusal has an exit, and says where it is.
+ */
+function undispositionedReason(defects: readonly ReviewFinding[]): string {
+  const titles = defects.map((defect) => `"${defect.title}"`).join(', ')
+  return (
+    `${defects.length} defect${defects.length === 1 ? '' : 's'} from an earlier lap ${
+      defects.length === 1 ? 'is' : 'are'
+    } still un-dispositioned: ${titles} — for each, either emit this lap's ticket for it with ` +
+    '`originFindingId` set (link), or call `resolve_finding` to carry it or close it as ' +
+    'addressed. The human can also dismiss it from the review page.'
+  )
 }
 
 /**

@@ -10,6 +10,7 @@ import type {
   Phase as PhaseT,
   PreparedKey as PreparedKeyT,
   Project,
+  ReviewFinding,
   ReviewFindingInput as ReviewFindingInputT,
   RunStatus as RunStatusT,
   ModelEntry,
@@ -59,7 +60,13 @@ import { type CarriedDefect, carriedWork } from '../services/carried-work'
 import { emit, emitForSession, emitProject, latestEventTs } from '../services/events'
 import { isOverwritable, recordFinding } from '../services/findings'
 import { checkGate } from '../services/gates'
-import { reportFinding } from '../services/review-findings'
+import {
+  carryFinding,
+  closeAsAddressed,
+  linkFixTicket,
+  reportFinding,
+  requireLinkableFindings,
+} from '../services/review-findings'
 import * as git from '../services/git'
 import type { AdrDoc } from '../services/knowledge'
 import { ADR_DIR_REL, listDocs, listLiveAdrs, readCharter, readDoc } from '../services/knowledge'
@@ -579,10 +586,20 @@ export function toolEmitTickets(
   const feature = getFeatureRow(ctx, requireFeatureId(session))
   refuseIfReadOnly(session, 'emitting tickets')
   refuseMisKindedReview(input.tickets)
+  // The LINK disposition: a lap ticket that names the defect it answers. Vetted
+  // here rather than in `storeTickets`, which is also the internal mint used by
+  // `reportFinding` and the burner's verification pass — those link findings the
+  // guard would refuse (a defect the review has only just opened), and the
+  // one-review-ticket seatbelt above sits at this surface for the same reason.
+  const linkedFindingIds = input.tickets.flatMap((t) => t.originFindingId ?? [])
+  requireLinkableFindings(ctx, feature.id, linkedFindingIds)
   // `storeTickets` is the mutation and emits the single `tickets.stored` event
   // (one mutation → one event). This tool used to emit an additional
   // `tickets.emitted` note, which double-logged the same action on the timeline.
   const stored = storeTickets(ctx, feature.id, input.tickets)
+  for (const ticket of stored) {
+    if (ticket.originFindingId) linkFixTicket(ctx, feature.id, ticket.originFindingId, ticket.id)
+  }
   // `seq` is the number the batch's own `blockedBy` speaks in and the number the
   // UI shows, and it is assigned HERE, by the store. Returning bare ids meant
   // the emitting session could not name what it had just written back to the
@@ -625,6 +642,71 @@ export function toolCancelTicket(
   requireOwnTicket(ctx, session, input.id)
   refuseIfReadOnly(session, 'cancelling a ticket')
   return { ok: true, ticket: cancelTicket(ctx, input.id, input.reason) }
+}
+
+/**
+ * The two dispositions a session can spend on a defect without carding work for
+ * it. The third — LINK — needs no verb here: it rides `emit_tickets`, because a
+ * ticket carrying `originFindingId` already says everything a link means.
+ */
+const FindingDisposition = z.enum(['carry', 'addressed'])
+
+const ResolveFindingShape = {
+  findingId: z
+    .string()
+    .min(1)
+    .describe('The finding id, from `get_feature_context`’s openDefects or carriedDefects.'),
+  disposition: FindingDisposition.describe(
+    '`carry` parks it for a later lap — out of the open count, still visible, and the human can ' +
+      'reopen it. `addressed` closes it because this lap’s work already answers it.',
+  ),
+  note: z
+    .string()
+    .optional()
+    .describe(
+      'REQUIRED for `addressed`: what addressed it, e.g. "lap 2’s ticket 7 rewrote the endpoint". ' +
+        'Optional for `carry`, where it records why it was parked.',
+    ),
+}
+
+/**
+ * Cross-field, so it cannot live in the raw shape MCP publishes: an `addressed`
+ * with no note is a closure with no evidence, which is the state this whole
+ * feature exists to stop a finding drifting into.
+ */
+const ResolveFindingInput = z.object(ResolveFindingShape).superRefine((input, refinement) => {
+  if (input.disposition === 'addressed' && !input.note?.trim()) {
+    refinement.addIssue({
+      code: 'custom',
+      path: ['note'],
+      message: 'closing a defect as addressed requires a note saying what addressed it',
+    })
+  }
+})
+
+export type ResolveFindingInputT = z.infer<typeof ResolveFindingInput>
+
+/**
+ * Disposition one earlier-lap defect (SPEC — the lap boundary triages open
+ * findings the way it already triages test notes).
+ *
+ * Reopening is deliberately absent: a session that carried a defect and then
+ * un-carried it would be arguing with itself, and the human's review page holds
+ * that verb.
+ */
+export function toolResolveFinding(
+  ctx: AppCtx,
+  session: SessionRow,
+  input: ResolveFindingInputT,
+): { ok: true; finding: ReviewFinding } {
+  const featureId = requireFeatureId(session)
+  refuseIfReadOnly(session, 'resolving a finding')
+  const { findingId, note } = ResolveFindingInput.parse(input)
+  const finding =
+    input.disposition === 'carry'
+      ? carryFinding(ctx, featureId, findingId, note)
+      : closeAsAddressed(ctx, featureId, findingId, note ?? '')
+  return { ok: true, finding }
 }
 
 export function toolEscalateToMap(
@@ -1615,6 +1697,10 @@ const TOOL_AUDIENCES: Record<string, readonly McpAudience[]> = {
   update_ticket: FEATURE_WRITE_KINDS,
   cancel_ticket: FEATURE_WRITE_KINDS,
   complete_phase: FEATURE_WRITE_KINDS,
+  // The same roster as `emit_tickets` on purpose: linking a defect to a ticket
+  // IS an emit, so any session that can shape a lap's work can also say what
+  // that work did to the defects it inherited.
+  resolve_finding: FEATURE_WRITE_KINDS,
   // Map moves stay open to `qa` on purpose: "any session may branch the map" is
   // the recursion (SPEC §13.3), and it is pinned by test as well as by prose.
   escalate_to_map: FEATURE_KINDS,
@@ -2228,6 +2314,27 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
         const result = toolCancelTicket(rs.ctx, rs.session, args)
         await commitDocsCheckpoint(rs.ctx, rs.session, `runcastle: ticket ${result.ticket.seq} cancelled`)
         return ok(result)
+      },
+    )
+  }
+
+  if (wants('resolve_finding')) {
+    server.registerTool(
+      'resolve_finding',
+      {
+        title: 'Resolve a review finding',
+        description:
+          'Say what this lap did about a defect an earlier lap’s review left open: `carry` it into ' +
+          'a later lap, or close it as `addressed` because this lap’s work already answers it. To ' +
+          'link it instead, emit the ticket that fixes it with `originFindingId` set — the burn ' +
+          'then closes the finding itself when that ticket lands. Every earlier-lap open defect ' +
+          'must be linked, carried or closed before `complete_phase("tickets")` will pass.',
+        inputSchema: ResolveFindingShape,
+      },
+      async (args, extra) => {
+        const rs = await resolveCtxSession(extra)
+        if (!rs) return noSession()
+        return ok(toolResolveFinding(rs.ctx, rs.session, ResolveFindingInput.parse(args)))
       },
     )
   }
