@@ -115,6 +115,20 @@ describe('classifyTicketRunError', () => {
     expect(classifyTicketRunError(new Error(msg), 'claude-code')).toBe('fatal')
   })
 
+  /**
+   * Which side of the refusal the account word lands on is an accident of the
+   * CLI's phrasing, not evidence about whose door was closed — `API token
+   * permission denied` says exactly what `permission denied: invalid api key`
+   * says (decision 8).
+   */
+  it.each([
+    'API token permission denied',
+    'credential rejected — permission denied',
+    'permission denied: invalid api key',
+  ])('run-fatal wherever the credential subject sits: %s', (msg) => {
+    expect(classifyTicketRunError(new Error(msg), 'claude-code')).toBe('run-fatal')
+  })
+
   // The subscription cap matched no pattern before this feature and fell to
   // fatal-by-default — one exhausted plan, one wasted container per ticket.
   it('reads the Anthropic usage limit as the account fact it is', () => {
@@ -151,6 +165,10 @@ describe('classifyTicketRunError', () => {
       'Error code: 403 - permission denied for this org',
       'insufficient_quota: You exceeded your current quota',
       'CODEX_API_KEY is not set',
+      // The status arrives after the word that names whose door it was — the
+      // same fact as `401 invalid_api_key`, phrased the other way round.
+      'forbidden response: status 403',
+      'api key rejected with 401',
     ])('run-fatal: %s', (msg) => {
       expect(classifyTicketRunError(new Error(msg), 'codex')).toBe('run-fatal')
     })

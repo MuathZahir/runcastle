@@ -2079,14 +2079,29 @@ export function isMergeConflictError(err: unknown): boolean {
  * this ticket's. `permission denied` is equally how git and the filesystem
  * report a read-only path, and a bare `401`/`403` is how any HTTP call in the
  * sandbox reports a closed door — neither says whose door on its own, so the
- * patterns built from this pair with it instead of standing alone. Missing a
- * genuine auth wording costs one run the old behaviour; halting a healthy run
- * over a chmod costs every ticket left in it.
+ * patterns built from this pair with it, anywhere on the same line and in
+ * either order, instead of standing alone. Missing a genuine auth wording
+ * costs one run the old behaviour; halting a healthy run over a chmod costs
+ * every ticket left in it.
  */
 const CREDENTIAL_SUBJECT = String.raw`(?:api[ _-]?key|token|credential|login|auth|unauthorized|forbidden|account|organi[sz]ation|\borg\b)`
 
+/**
+ * A refusal wording paired with the credential subject, in EITHER order: which
+ * side the account word lands on is an accident of each CLI's phrasing, not
+ * evidence about whose door was closed, so `API token permission denied` and
+ * `permission denied: invalid api key` are the same fact (decision 8). Both
+ * halves must sit on one line, so a `403` never borrows the word `token` from
+ * a stack frame ten lines below it.
+ */
+const refusalNamingCredential = (refusal: string): RegExp =>
+  new RegExp(
+    `(?:${refusal}[^\\n]*${CREDENTIAL_SUBJECT}|${CREDENTIAL_SUBJECT}[^\\n]*${refusal})`,
+    'i',
+  )
+
 /** `permission denied`, but only where what was denied is the account's. */
-const ACCOUNT_PERMISSION_DENIED = new RegExp(`permission denied[^\\n]*${CREDENTIAL_SUBJECT}`, 'i')
+const ACCOUNT_PERMISSION_DENIED = refusalNamingCredential(String.raw`permission denied`)
 
 /**
  * Errors that are facts about the ACCOUNT or the environment rather than about
@@ -2114,11 +2129,13 @@ const RUN_FATAL_ERROR_PATTERNS: RegExp[] = [
 ]
 
 /**
- * A `401`/`403` that says what it refused — an OpenAI auth failure arrives as a
- * status code beside its `invalid_api_key` or `Unauthorized`, while an
- * unrelated HTTP failure inside the sandbox arrives as the number alone.
+ * A `401`/`403` — or its word, `forbidden` — that says what it refused. An
+ * OpenAI auth failure arrives as a status beside its `invalid_api_key` or
+ * `Unauthorized`, on whichever side the CLI happens to put it (`401
+ * invalid_api_key`, `forbidden response: status 403`), while an unrelated HTTP
+ * failure inside the sandbox arrives as the number alone.
  */
-const REFUSED_CREDENTIAL_STATUS = new RegExp(`\\b(?:401|403)\\b[^\\n]*${CREDENTIAL_SUBJECT}`, 'i')
+const REFUSED_CREDENTIAL_STATUS = refusalNamingCredential(String.raw`(?:\b(?:401|403)\b|forbidden)`)
 
 /**
  * Per-runtime run-fatal wording. OpenAI reports auth as a 401 with an
