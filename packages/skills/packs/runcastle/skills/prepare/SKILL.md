@@ -15,7 +15,8 @@ Your system prompt carries the per-session facts — the repo path, which keys a
 1. Open by naming what is still open and what you need from the human for each. Do not survey the repo first; the prompt already told you the gap.
 2. Work the keys **one at a time**: propose, ask, run it if they agree, record it.
 3. If the open keys touch the drive loop, author the machinery (below) before you record the two hook commands — the settings are invocation lines for scripts that must exist.
-4. Close by proposing a dry-run drive (below). Values that have never been driven look exactly as trustworthy as values that run perfectly.
+4. If the repo builds with a toolchain the sandbox image does not carry, author its Dockerfile (below) — the sandbox keys are worth nothing in an image that cannot run them.
+5. Close by proposing a dry-run drive (below). Values that have never been driven look exactly as trustworthy as values that run perfectly.
 
 **Ask before you act.** Anything that starts or stops a service, creates or migrates a database, installs software, or writes outside the repo needs the human to agree first: say what you are about to run and why, then wait. Their own stack is running next to yours.
 
@@ -32,6 +33,8 @@ Three describe the **sandbox** a burn agent works in, and no amount of running t
 - **`setupCommand`** — what a fresh sandbox runs before the agent starts (install, plus any codegen or build step every ticket needs). Setting it *replaces* install detection, so the install command must be included explicitly.
 - **`verifyCommands`** — the exact typecheck/test/lint lines a burn agent should use, one per line. Unset, agents guess workspace filter names and burn whole suite runs discovering the right one.
 - **`knownFailures`** — what already fails on the main branch, so an agent can tell its own breakage from the repo's. Free text; a count plus the suite names is enough.
+
+The image those three run in is not a key: runcastle sets it itself. What can fall to you is authoring the Dockerfile it builds — see the sandbox image, below.
 
 The eighth is what a later agent needs once the app is actually up:
 
@@ -70,6 +73,37 @@ Then write the smallest script that brings THAT shape up. For worked shapes to a
 The overlay is process environment, which beats a `.env` file in dotenv, Prisma and Next by default. One pattern defeats it: a loader told to clobber what is already exported — `dotenv.config({ override: true })` and its equivalents — ignores everything the script computed and quietly keeps the app on the shared database. That is a drive that looks perfect while testing the wrong data. No machinery can detect it; you are the detector.
 
 Grep the app's entry points and config for env loading and decide, for each, which side wins. Where the process environment loses: get it fixed — you may not edit app code from this session, so propose the change (usually dropping `override`) and let the human make it — or, if it must stay, record the finding with `record_event` naming the file and what it breaks, so the first confusing drive is not a mystery.
+
+## The sandbox image
+
+Burn agents do not work on this host; they work in a container. The image runcastle builds carries a JavaScript toolchain and the agent CLIs — Node, Bun, git, curl — and nothing beyond that, so a repo that builds with a JDK, a Python, a Go compiler or a Rust toolchain cannot run its own `setupCommand` there: the burn dies on `mvn: not found`. The fix is a Dockerfile committed at **`.runcastle/sandbox/Dockerfile`**. Runcastle detects it, builds it as this project's image, and every burn runs in that image from then on.
+
+Deciding whether this project needs one is part of this session — you are in the real checkout, which is where the evidence is. Read the manifests at the root and in each workspace:
+
+- `pom.xml`, `mvnw` — a JDK and Maven
+- `build.gradle`, `build.gradle.kts`, `gradlew` — a JDK and Gradle
+- `pyproject.toml`, `requirements.txt` — Python and its installer (pip, or uv where the project uses it)
+- `go.mod` — Go
+- `Cargo.toml` — Rust
+- `Gemfile` — Ruby
+
+A mixed repo gets the union: a service in Go beside a Java client needs both. Anything else the project shells out to in its setup or verify commands and the stock image lacks belongs here too — a database client, a protobuf compiler — on the same evidence, that you saw it in the repo.
+
+**A JavaScript-only repo gets no Dockerfile.** The stock image already covers it, and an unnecessary project image is one more thing to build, rebuild and keep fresh in exchange for nothing. Do not write one to be helpful.
+
+When the project does need one, what you write:
+
+- **It starts `FROM sandcastle:runcastle`** and layers onto it. That base is what keeps the agent CLIs, git and Node present; a Dockerfile from any other base is not a runcastle sandbox, and burns in it fail on the agent binary before they ever reach the toolchain.
+- **Read the stock Dockerfile before you write a single install line**, rather than assuming its distro or package manager. It is the build context runcastle scaffolds at `~/.runcastle/sandbox-build/Dockerfile` once the image has been built on this machine, and it also ships inside the installed runcastle package as `sandcastle-template/Dockerfile`. Follow its idioms — the same package manager, the same flags, the same cleanup at the end of the layer. If you cannot find it, ask the human instead of guessing what you are layering onto.
+- **The toolchain only, never the project's dependencies.** Install the JDK and Maven; do not run `mvn install` or `go mod download` at build time. Dependencies are what `setupCommand` installs per burn, from the branch's own manifests — anything baked into the image is stale the first time a branch adds a package.
+- **No package caches in layers.** Do not prime `~/.m2`, `~/.gradle`, `~/.cache/pip` or the Go module cache in a `RUN` step. Download caches are mounted into the sandbox from the host, which is how they stay current across burns; a cache baked into a layer is weight the image carries and wrong the moment a lockfile moves.
+- **Keep it minimal** — one `RUN` block where the package manager allows it, versions pinned only where the project pins them, nothing added "while we're here". Every line is a line someone maintains.
+
+It is committed project machinery, exactly like the drive scripts, for the same reason: a branch that changes the toolchain amends its own Dockerfile, and burns on that branch get the amended image. Writing it falls under the same exception — `.runcastle/` and `.gitignore`, nothing else — and the same courtesy: show the human the file before you commit it.
+
+If `.runcastle/sandbox/Dockerfile` is already there, read it and **edit conservatively**. Someone chose those lines, and a customization you do not recognize is still a decision. Say what you probed and what you think is missing — "I see `pyproject.toml` but no Python in the image" — and let the human decide. An existing Dockerfile that covers what you found needs no edit at all.
+
+**You never build the image.** That is a watched terminal action the human takes: the Enable AFK burns card offers **Build image**, and on a successful build runcastle points this project at the image itself — there is no image setting for you to work out or record. So end on it. Tell them the Dockerfile is written (or already right), that the card now offers Build image, and that burns use the project image after that click; until then they keep running in whatever image they run in today.
 
 ## Recording what you establish
 

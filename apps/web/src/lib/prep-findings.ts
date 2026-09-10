@@ -14,9 +14,14 @@ import type { SettingsView } from './api'
  */
 
 /**
- * Human labels for prepared fields, used by the preparation card (which lists
- * findings by key, not by settings row). Kept in sync with the settings
+ * Human labels for provenanced fields, used by the preparation card (which
+ * lists findings by key, not by settings row). Kept in sync with the settings
  * `FIELD_META` labels — hand-maintained, since settings imports this module.
+ *
+ * `sandboxImage` is here for its findings alone: preparation never establishes
+ * it (it is not a prepared key), but a value the human typed or an image build
+ * wrote carries provenance the same way, and a finding with no label would
+ * render as its raw key.
  */
 export const PREPARED_LABEL: Record<string, string> = {
   setupCommand: 'Setup',
@@ -27,6 +32,7 @@ export const PREPARED_LABEL: Record<string, string> = {
   driveSetupCommand: 'Before a test drive',
   driveStopCommand: 'After a test drive',
   driveInstructions: 'How to drive this app',
+  sandboxImage: 'Sandbox image',
 }
 
 /**
@@ -169,11 +175,13 @@ function provenanceNote(f: {
   // present, so the host-only caveat does not apply to it — that caveat exists
   // because a container cannot execute those keys, and this one can.
   const how =
-    f.source === 'session'
-      ? 'Established in a conversation on this machine'
-      : HOST_ONLY_PREPARED.has(f.key)
-        ? 'Proposed by preparation from config (not executed)'
-        : 'Established by preparation'
+    f.source === 'build'
+      ? 'Built by runcastle from the repo Dockerfile'
+      : f.source === 'session'
+        ? 'Established in a conversation on this machine'
+          : HOST_ONLY_PREPARED.has(f.key)
+            ? 'Proposed by preparation from config (not executed)'
+            : 'Established by preparation'
   const when = relativeAge(f.establishedAt)
 
   if (f.staleCommits === undefined) {

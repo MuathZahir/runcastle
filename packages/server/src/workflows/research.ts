@@ -328,6 +328,7 @@ async function realExecuteResearchRun(
     // provider the config selects (see `registerResearchKill` above).
     sandbox: selectSandbox(
       config,
+      project,
       codexAuthMount ? [codexAuthMount] : [],
       {},
       registerResearchKill(config, ctx.runId, waypoint.seq),

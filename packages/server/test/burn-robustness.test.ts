@@ -18,6 +18,7 @@ import {
   classifyTicketRunError,
   delayUnlessAborted,
   missingAgentBinaryMessage,
+  missingSetupBinaryMessage,
   retryDelayMs,
   stopTicketRun,
 } from '../src/workflows/ticket-burner'
@@ -84,6 +85,59 @@ describe('classifyTicketRunError', () => {
     'fatal: some completely unknown git explosion',
   ])('fatal: %s', (msg) => {
     expect(classifyTicketRunError(new Error(msg))).toBe('fatal')
+  })
+
+  /**
+   * The backstop behind the run-level toolchain preflight: a setup hook that
+   * died on a missing tool. Sandcastle reports it as `Command failed (exit
+   * 127): <hook>` — which the broad `exited with code N` retryable entry used
+   * to swallow, so the burner rebuilt a container to fail identically, twice.
+   */
+  describe('a setup hook that hit a missing command', () => {
+    const setup = 'mvn -q -DskipTests install'
+    const hookFailure =
+      'Command failed (exit 127): cd /workspace/repo && mvn -q -DskipTests install\n/bin/sh: 1: mvn: not found'
+
+    it('is fatal, and names the tool and the project Dockerfile', () => {
+      expect(classifyTicketRunError(new Error(hookFailure), 'claude-code', setup)).toBe('fatal')
+      expect(missingSetupBinaryMessage(new Error(hookFailure), setup, 'sandcastle:runcastle-demo')).toBe(
+        'mvn is not installed in image sandcastle:runcastle-demo — add it to .runcastle/sandbox/Dockerfile and rebuild.',
+      )
+    })
+
+    it('is fatal even when nothing in the text can be named', () => {
+      expect(classifyTicketRunError(new Error('Command failed (exit 127): make deps'))).toBe('fatal')
+      expect(classifyTicketRunError(new Error('bash: line 1: gradle: command not found'))).toBe(
+        'fatal',
+      )
+      expect(
+        missingSetupBinaryMessage(new Error('Command failed (exit 127): make deps'), undefined, 'img'),
+      ).toBeUndefined()
+    })
+
+    it('names nothing when the wording is about something else entirely', () => {
+      // A tool the setup command never mentions, and a missing FILE rather than
+      // a missing command: neither is this image's toolchain.
+      expect(missingSetupBinaryMessage(new Error(hookFailure), 'npm ci', 'img')).toBeUndefined()
+      expect(
+        missingSetupBinaryMessage(new Error('mvn wrote no target/ directory'), setup, 'img'),
+      ).toBeUndefined()
+    })
+
+    it('leaves every other exit code retryable', () => {
+      // Passing the setup command must not make an ordinary failure that merely
+      // mentions one of its tools fatal.
+      expect(
+        classifyTicketRunError(
+          new Error('claude-code exited with code 1: mvn build failed'),
+          'claude-code',
+          setup,
+        ),
+      ).toBe('retryable')
+      expect(classifyTicketRunError(new Error('claude-code exited with code 137:\nkilled'))).toBe(
+        'retryable',
+      )
+    })
   })
 
   it('defaults unknown throws to fatal (never blind-retry)', () => {

@@ -65,6 +65,11 @@ import {
   buildGuardNotes,
   buildLapDigestsBlock,
   buildProjectStandards,
+  buildToolchainProbeArgs,
+  extractCommandNames,
+  missingToolchainMessage,
+  parseMissingCommands,
+  preflightCommandNames,
   readDocsDigest,
   trimMapDoc,
   verificationDue,
@@ -868,9 +873,9 @@ describe('selectSandbox — provider for the configured sandbox', () => {
   })
 
   it('maps each choice to its sandcastle provider', () => {
-    expect(selectSandbox(config('docker')).name).toBe('docker')
-    expect(selectSandbox(config('podman')).name).toBe('podman')
-    expect(selectSandbox(config('noSandbox')).name).toBe('no-sandbox')
+    expect(selectSandbox(config('docker'), null).name).toBe('docker')
+    expect(selectSandbox(config('podman'), null).name).toBe('podman')
+    expect(selectSandbox(config('noSandbox'), null).name).toBe('no-sandbox')
   })
 
   // A host-mode burn is a real configuration, and it is the one the abort alone
@@ -879,7 +884,7 @@ describe('selectSandbox — provider for the configured sandbox', () => {
   // the assertion is made on a child the OS actually handed out.
   it('carries the spawn callback into a host-mode burn, so its PIDs are killable', async () => {
     const pids: number[] = []
-    const provider = selectSandbox(config('noSandbox'), [], {}, {
+    const provider = selectSandbox(config('noSandbox'), null, [], {}, {
       containerName: 'runcastle-run_abc123-t7',
       onChildSpawn: (pid) => pids.push(pid),
     })
@@ -896,7 +901,7 @@ describe('selectSandbox — provider for the configured sandbox', () => {
     // through to `noSandbox()` — the agent ran on the operator's machine, and
     // nothing in the run said so.
     const unsupported = { ...config('docker'), sandbox: 'kata' } as unknown as RuncastleConfig
-    expect(() => selectSandbox(unsupported)).toThrow(/refusing to run the agent unsandboxed/)
+    expect(() => selectSandbox(unsupported, null)).toThrow(/refusing to run the agent unsandboxed/)
   })
 
   /**
@@ -1055,24 +1060,37 @@ describe('selectSandbox — provider for the configured sandbox', () => {
 
   describe('buildSandboxOptions — container resource wiring', () => {
     it('omits cpus entirely when burnCpus is unset (unconstrained default)', () => {
-      const opts = buildSandboxOptions(config('docker'))
+      const opts = buildSandboxOptions(config('docker'), null)
       expect('cpus' in opts).toBe(false)
       expect(opts.imageName).toBe(DEFAULT_SANDBOX_IMAGE)
     })
 
     it('passes burnCpus through as the provider --cpus ceiling', () => {
-      expect(buildSandboxOptions({ ...config('docker'), burnCpus: 2.5 }).cpus).toBe(2.5)
+      expect(buildSandboxOptions({ ...config('docker'), burnCpus: 2.5 }, null).cpus).toBe(2.5)
     })
 
     it('keeps cache mounts alongside the cpu ceiling', () => {
       const mount = { hostPath: '/host/cache', sandboxPath: '~/.npm' }
-      const opts = buildSandboxOptions({ ...config('docker'), burnCpus: 1 }, [mount])
+      const opts = buildSandboxOptions({ ...config('docker'), burnCpus: 1 }, null, [mount])
       expect(opts.mounts).toEqual([mount])
       expect(opts.cpus).toBe(1)
     })
 
     it('omits mounts when there are none, so the provider default applies', () => {
-      expect('mounts' in buildSandboxOptions(config('docker'))).toBe(false)
+      expect('mounts' in buildSandboxOptions(config('docker'), null)).toBe(false)
+    })
+
+    // The container a ticket burns in is the project's own image when it has
+    // one — this is the option object where that either happens or silently
+    // does not, and "silently does not" is a burn in an image with no toolchain.
+    it('hands the provider the project’s own image over the machine-wide one', () => {
+      const global = { ...config('docker'), sandboxImage: 'sandcastle:runcastle' }
+      expect(
+        buildSandboxOptions(global, { sandboxImage: 'sandcastle:runcastle-proj_1' }).imageName,
+      ).toBe('sandcastle:runcastle-proj_1')
+      expect(buildSandboxOptions(global, { sandboxImage: null }).imageName).toBe(
+        'sandcastle:runcastle',
+      )
     })
 
     /**
@@ -1090,10 +1108,10 @@ describe('selectSandbox — provider for the configured sandbox', () => {
       })
 
       it('passes the name to the provider, and omits the key entirely without one', () => {
-        expect(buildSandboxOptions(config('docker'), [], {}, 'runcastle-run_1-t2').containerName).toBe(
-          'runcastle-run_1-t2',
-        )
-        expect('containerName' in buildSandboxOptions(config('docker'))).toBe(false)
+        expect(
+          buildSandboxOptions(config('docker'), null, [], {}, 'runcastle-run_1-t2').containerName,
+        ).toBe('runcastle-run_1-t2')
+        expect('containerName' in buildSandboxOptions(config('docker'), null)).toBe(false)
       })
     })
   })
@@ -1119,7 +1137,7 @@ describe('selectSandbox — provider for the configured sandbox', () => {
       })
       // podman borrows the same way — the mount follows the runtime, not the provider.
       expect(codexAuthMountFor('codex', 'podman', HOME_ENV, loggedIn)).toEqual(mount)
-      expect(buildSandboxOptions(config('docker'), [mount!]).mounts).toEqual([mount])
+      expect(buildSandboxOptions(config('docker'), null, [mount!]).mounts).toEqual([mount])
     })
 
     it('lends nothing to a noSandbox burn, which already runs in the real home', () => {
@@ -1512,6 +1530,98 @@ describe('setup-command detection (deps install before the agent starts)', () =>
 
   it('returns undefined for a repo with no JS toolchain and no override', () => {
     expect(resolveSetupCommand(tc({ hasPackageJson: false }))).toBeUndefined()
+  })
+})
+
+/**
+ * The toolchain preflight's pure half: which binaries a shell command claims to
+ * need. A Java project in a JS-only image used to discover this as a retried
+ * exit 127; the names extracted here are what the run-level probe asks the
+ * image about before it starts a single ticket container.
+ */
+describe('extractCommandNames — the heuristic behind the toolchain preflight', () => {
+  it('takes the first word of every && ; | chained segment, deduped', () => {
+    expect(extractCommandNames('mvn -q -DskipTests install && mvn -q test')).toEqual(['mvn'])
+    expect(extractCommandNames('npm ci; gradle build | tee out.log')).toEqual([
+      'npm',
+      'gradle',
+      'tee',
+    ])
+  })
+
+  it('reads a multi-line verify block as one command per line', () => {
+    expect(extractCommandNames('bun run typecheck\nvitest run\n')).toEqual(['bun', 'vitest'])
+  })
+
+  it('steps over VAR= prefixes to the command they wrap', () => {
+    expect(extractCommandNames('JAVA_HOME=/opt/jdk MAVEN_OPTS=-Xmx1g mvn verify')).toEqual(['mvn'])
+  })
+
+  it('drops a builtin-led segment whole rather than guessing at its arguments', () => {
+    // `env -u GIT_ASKPASS bun run test` is this repo's own verify command:
+    // walking past `env` would "find" GIT_ASKPASS and abort a working burn.
+    expect(extractCommandNames('env -u GIT_ASKPASS bun run test')).toEqual([])
+    expect(extractCommandNames('cd repo && export FOO=1 && mvn install')).toEqual(['mvn'])
+  })
+
+  it('ignores what `command -v` could not answer for anyway', () => {
+    // A path is resolved against a cwd the probe container does not have, and an
+    // expansion is not a name at all — both are false-abort risks.
+    expect(extractCommandNames('./gradlew build')).toEqual([])
+    expect(extractCommandNames('$TOOL --version')).toEqual([])
+    expect(extractCommandNames('')).toEqual([])
+    expect(extractCommandNames(undefined)).toEqual([])
+  })
+
+  it('unwraps the parenthesised fallback the setup resolver emits', () => {
+    expect(extractCommandNames(resolveSetupCommand({
+      hasPackageJson: true,
+      lockfiles: { bun: true, pnpm: false, yarn: false, npm: false },
+    }))).toEqual(['bun'])
+  })
+})
+
+describe('toolchain preflight — one container answers for every binary', () => {
+  it('asks about the agent binary, the setup command and the verify commands, sorted', () => {
+    expect(
+      preflightCommandNames({
+        agentBinary: 'claude',
+        setupCommand: 'mvn -q -DskipTests install',
+        verifyCommands: 'mvn -q test\nbun run typecheck',
+      }),
+    ).toEqual(['bun', 'claude', 'mvn'])
+  })
+
+  it('falls back to the agent binary alone when nothing else is configured', () => {
+    expect(preflightCommandNames({ agentBinary: 'codex' })).toEqual(['codex'])
+  })
+
+  it('builds one `command -v` sweep that always exits 0', () => {
+    expect(buildToolchainProbeArgs('sandcastle:runcastle-demo', ['claude', 'mvn'])).toEqual([
+      'run',
+      '--rm',
+      '--entrypoint',
+      'sh',
+      'sandcastle:runcastle-demo',
+      '-c',
+      'for c in claude mvn; do command -v "$c" >/dev/null 2>&1 || echo "$c"; done',
+    ])
+  })
+
+  it('reads the absent names back off stdout, ignoring anything else printed', () => {
+    expect(parseMissingCommands('mvn\n', ['claude', 'mvn'])).toEqual(['mvn'])
+    expect(parseMissingCommands('  mvn  \nclaude\n', ['claude', 'mvn'])).toEqual(['claude', 'mvn'])
+    expect(parseMissingCommands('', ['claude', 'mvn'])).toEqual([])
+    expect(parseMissingCommands('some unrelated noise\n', ['claude'])).toEqual([])
+  })
+
+  it('names the missing tools and points at the project Dockerfile', () => {
+    expect(missingToolchainMessage(['mvn'], 'sandcastle:runcastle-demo')).toBe(
+      'mvn is not installed in image sandcastle:runcastle-demo — add it to .runcastle/sandbox/Dockerfile and rebuild.',
+    )
+    expect(missingToolchainMessage(['gradle', 'mvn'], 'img')).toBe(
+      'gradle, mvn are not installed in image img — add them to .runcastle/sandbox/Dockerfile and rebuild.',
+    )
   })
 })
 

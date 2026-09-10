@@ -1,6 +1,10 @@
-import { describe, expect, it } from 'vitest'
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import {
   CURATED_MODELS,
+  DEFAULT_SANDBOX_IMAGE,
   MODEL_STEPS,
   ModelStep,
   RUNTIME_DEFAULT_MODELS,
@@ -13,7 +17,9 @@ import {
   resolveDefaultBurnConcurrency,
   resolveModel,
   resolveModelEntry,
+  resolveSandboxImage,
 } from '../src/config'
+import { loadConfig } from '../src/config-load'
 
 describe('RuncastleConfig — model shape', () => {
   it('defaults to opus with a cheap smoke step override', () => {
@@ -256,6 +262,67 @@ describe('RuncastleConfig — burn iteration + setup knobs', () => {
     expect(RuncastleConfig.parse({}).burnCache).toBe('volume')
     expect(RuncastleConfig.parse({ burnCache: 'off' }).burnCache).toBe('off')
     expect(RuncastleConfig.safeParse({ burnCache: 'disabled' }).success).toBe(false)
+  })
+})
+
+/**
+ * The one seam every image consumer resolves through — the build flow, the
+ * doctor probe, the per-run image precheck, the burn and the cache slot stamp.
+ * Its whole job is the ORDER of the four layers, so each one is exercised here
+ * with the layers below it set to something different: an assertion that only
+ * shows the winner would pass just as well if the loser were never consulted.
+ *
+ * The env layer goes through `loadConfig`, because that is where it really
+ * lands: `RUNCASTLE_SANDBOX_IMAGE` is folded over the config file before the
+ * resolver ever sees a config, which is why the resolver takes no env of its
+ * own. Anything that folding gets wrong is invisible to a hand-built config.
+ */
+describe('resolveSandboxImage — project, env, global, default', () => {
+  let dataDir: string
+  let previousDataDir: string | undefined
+
+  beforeAll(() => {
+    dataDir = mkdtempSync(join(tmpdir(), 'runcastle-image-'))
+    previousDataDir = process.env.RUNCASTLE_DATA_DIR
+    process.env.RUNCASTLE_DATA_DIR = dataDir
+    writeFileSync(join(dataDir, 'config.json'), JSON.stringify({ sandboxImage: 'from:file' }))
+  })
+
+  afterAll(() => {
+    if (previousDataDir === undefined) delete process.env.RUNCASTLE_DATA_DIR
+    else process.env.RUNCASTLE_DATA_DIR = previousDataDir
+    rmSync(dataDir, { recursive: true, force: true })
+  })
+
+  it('falls back to the stock image when nobody has said anything', () => {
+    expect(resolveSandboxImage(RuncastleConfig.parse({}))).toBe(DEFAULT_SANDBOX_IMAGE)
+    expect(resolveSandboxImage(RuncastleConfig.parse({}), null)).toBe(DEFAULT_SANDBOX_IMAGE)
+  })
+
+  it('takes the global config file over the stock default', () => {
+    expect(resolveSandboxImage(loadConfig({}))).toBe('from:file')
+  })
+
+  it('takes the env var over the config file', () => {
+    const config = loadConfig({ RUNCASTLE_SANDBOX_IMAGE: 'from:env' })
+    expect(resolveSandboxImage(config)).toBe('from:env')
+  })
+
+  it('takes the project column over the env var and the config file alike', () => {
+    const project = { sandboxImage: 'sandcastle:runcastle-proj_1' }
+    expect(resolveSandboxImage(loadConfig({ RUNCASTLE_SANDBOX_IMAGE: 'from:env' }), project)).toBe(
+      'sandcastle:runcastle-proj_1',
+    )
+    expect(resolveSandboxImage(loadConfig({}), project)).toBe('sandcastle:runcastle-proj_1')
+  })
+
+  it('reads a null or blank project value as unset, the way a cleared field arrives', () => {
+    const config = RuncastleConfig.parse({ sandboxImage: 'from:file' })
+    expect(resolveSandboxImage(config, { sandboxImage: null })).toBe('from:file')
+    expect(resolveSandboxImage(config, { sandboxImage: '  ' })).toBe('from:file')
+    expect(resolveSandboxImage(RuncastleConfig.parse({}), { sandboxImage: '' })).toBe(
+      DEFAULT_SANDBOX_IMAGE,
+    )
   })
 })
 

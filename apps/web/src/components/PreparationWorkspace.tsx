@@ -374,31 +374,36 @@ function FindingRow({ finding: f, label }: { finding: ProjectFinding; label: str
     <li className="flex flex-col gap-1">
       <div className="flex items-baseline gap-[7px]">
         <span className="text-sm text-text">{label}</span>
-              {/* Three sources, and the distinction that matters is which ones a
-                  later conversation may replace. Only `yours` is locked;
-                  `verified` was established with you present but stays
-                  improvable. `proposed`/`measured` are the retired headless
-                  run's — kept because its rows outlive it, and a host-only key it
-                  never executed must not now read as if someone watched it run. */}
+              {/* The distinction that matters is which of these a later
+                  conversation may replace. Only `yours` is locked; `verified`
+                  was established with you present but stays improvable, and
+                  `built` is the image build's own write. `proposed`/`measured`
+                  are the retired headless run's — kept because its rows outlive
+                  it, and a host-only key it never executed must not now read as
+                  if someone watched it run. */}
               <span
                 className={`settings-badge${f.source === 'human' ? '' : ' is-override'}`}
                 title={
                   f.source === 'human'
                     ? 'You set this by hand — preparation will never overwrite it'
-                    : f.source === 'session'
-                      ? 'Established in a conversation on your own machine'
-                      : HOST_ONLY_PREPARED.has(f.key)
-                        ? 'Read from config by an older automatic run, not executed'
-                        : 'Measured by an older automatic run, in a sandbox'
+                    : f.source === 'build'
+                      ? "Built by runcastle from this repo's own Dockerfile"
+                      : f.source === 'session'
+                        ? 'Established in a conversation on your own machine'
+                        : HOST_ONLY_PREPARED.has(f.key)
+                          ? 'Read from config by an older automatic run, not executed'
+                          : 'Measured by an older automatic run, in a sandbox'
                 }
               >
                 {f.source === 'human'
                   ? 'yours'
-                  : f.source === 'session'
-                    ? 'verified'
-                    : HOST_ONLY_PREPARED.has(f.key)
-                      ? 'proposed'
-                      : 'measured'}
+                  : f.source === 'build'
+                    ? 'built'
+                    : f.source === 'session'
+                      ? 'verified'
+                      : HOST_ONLY_PREPARED.has(f.key)
+                        ? 'proposed'
+                        : 'measured'}
               </span>
               {/* The dry-run stamp, on the three keys a host drive can actually
                   prove (decision 10). Every other key shows nothing here —

@@ -48,6 +48,7 @@ const GLOBAL_EVENT_KEY = 'global'
 type ProjectColumn =
   | 'model'
   | 'sandbox'
+  | 'sandboxImage'
   | 'sessionBranch'
   | 'devCommand'
   | 'setupCommand'
@@ -112,10 +113,16 @@ const DESCRIPTORS: FieldDescriptor[] = [
     valueSchema: z.enum(['docker', 'podman', 'noSandbox']),
     parseEnv: idEnv,
   },
+  // Which image a repo's burns need is a fact about that repo — a JDK here, a
+  // Go toolchain there — so it takes a project override on top of its global
+  // twin, and the project value is the one runcastle writes when it builds an
+  // image for the project. A tag typed here instead is stamped `human` and no
+  // build overwrites it (see `isOverwritable`).
   {
     key: 'sandboxImage',
     configKey: 'sandboxImage',
     envVar: 'RUNCASTLE_SANDBOX_IMAGE',
+    projectColumn: 'sandboxImage',
     restartRequired: false,
     valueSchema: z.string().min(1),
     parseEnv: idEnv,
@@ -331,6 +338,7 @@ function projectOverrides(ctx: AppCtx, projectId: string): Record<ProjectColumn,
     .select({
       model: projects.model,
       sandbox: projects.sandbox,
+      sandboxImage: projects.sandboxImage,
       sessionBranch: projects.sessionBranch,
       devCommand: projects.devCommand,
       setupCommand: projects.setupCommand,
@@ -347,6 +355,7 @@ function projectOverrides(ctx: AppCtx, projectId: string): Record<ProjectColumn,
   return {
     model: row?.model ?? null,
     sandbox: row?.sandbox ?? null,
+    sandboxImage: row?.sandboxImage ?? null,
     sessionBranch: row?.sessionBranch ?? null,
     devCommand: row?.devCommand ?? null,
     setupCommand: row?.setupCommand ?? null,

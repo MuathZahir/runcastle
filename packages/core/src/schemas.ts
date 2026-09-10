@@ -414,6 +414,21 @@ export const PreparedKey = z.enum(PREPARED_KEYS)
 export type PreparedKey = z.infer<typeof PreparedKey>
 
 /**
+ * Every project field that carries provenance: the prepared facts, plus the
+ * ones runcastle's own machinery establishes without a preparation run.
+ *
+ * `sandboxImage` is the second kind and the reason this list exists apart from
+ * {@link PREPARED_KEYS}. It needs the provenance rails — a human who types an
+ * image tag must keep it, and `isOverwritable` is what protects it — but it is
+ * NOT something a preparation conversation should ask about or record: the
+ * value is written by the image build, and a key in `PREPARED_KEYS` would put
+ * it on the prep session's to-do list and in `record_finding`'s vocabulary.
+ */
+export const PROVENANCE_KEYS = [...PREPARED_KEYS, 'sandboxImage'] as const
+export const ProvenanceKey = z.enum(PROVENANCE_KEYS)
+export type ProvenanceKey = z.infer<typeof ProvenanceKey>
+
+/**
  * The prepared keys a preparation dry-run drive can actually prove, each by one
  * observable of the real drive machinery: `driveSetupCommand` and
  * `driveStopCommand` exit 0, `devCommand` spawns a pane AND gets a localhost URL
@@ -441,8 +456,14 @@ export const DRIVE_LOOP_KEYS = [
  * a container". A value the human supplied or confirmed verbatim during that
  * same session is recorded as `human`, not `session`: the lock belongs to who
  * decided the value, not to which process wrote the row.
+ *
+ * `build` is runcastle's own machinery rather than any conversation: the image
+ * build writes `sandboxImage` when it builds a project's `.runcastle/sandbox/`
+ * Dockerfile. Like `session` it does not lock the key — clearing the value is
+ * still what hands it back — but it must not read as "prepared", because no
+ * preparation run ever measured it.
  */
-export const FindingSource = z.enum(['prep', 'human', 'session'])
+export const FindingSource = z.enum(['prep', 'human', 'session', 'build'])
 export type FindingSource = z.infer<typeof FindingSource>
 
 /**
@@ -472,6 +493,8 @@ export const Project = z.object({
   devCommand: z.string().optional(),
   /** Per-project default-model override (issue #48); unset → inherit global. */
   model: z.string().optional(),
+  /** Per-project sandbox image; unset → inherit env / global / stock default. */
+  sandboxImage: z.string().optional(),
   /** Prepared repo facts (see {@link PREPARED_KEYS}); unset → inherit global. */
   setupCommand: z.string().optional(),
   verifyCommands: z.string().optional(),
@@ -510,7 +533,7 @@ export type Project = z.infer<typeof Project>
  * the stamp records what worked, not who chose it.
  */
 export const ProjectFinding = z.object({
-  key: PreparedKey,
+  key: ProvenanceKey,
   source: FindingSource,
   evidence: z.string().optional(),
   establishedAt: z.number(),

@@ -1,14 +1,22 @@
-import type { FindingSource, PreparedKey, Project, ProjectFinding } from '@runcastle/core'
-import { PREPARED_KEYS } from '@runcastle/core'
+import type {
+  FindingSource,
+  PreparedKey,
+  Project,
+  ProjectFinding,
+  ProvenanceKey,
+} from '@runcastle/core'
+import { PREPARED_KEYS, PROVENANCE_KEYS } from '@runcastle/core'
 import { and, eq } from 'drizzle-orm'
 import type { AppCtx } from '../db/types'
 import { projectFindings, projects } from '../db/schema'
 import { commitsSince, detectMainBranch } from './git'
 
 /**
- * Prepared-field provenance (project preparation).
+ * Provenance for the project fields something establishes on the human's behalf
+ * — the prepared facts a preparation run measures, plus `sandboxImage`, which
+ * an image build writes (see `PROVENANCE_KEYS`).
  *
- * The VALUE of every prepared field lives in its own `projects` column, so the
+ * The VALUE of every such field lives in its own `projects` column, so the
  * settings resolver, the burner and the launcher all read it through the paths
  * they already used. This service owns the *other* half: who established it,
  * what justified it, and how far the repo has moved since — the half that makes
@@ -18,8 +26,8 @@ import { commitsSince, detectMainBranch } from './git'
  *
  * 1. **A human value is never auto-overwritten.** `recordHuman` stamps `human`
  *    on any manual settings write, and {@link isOverwritable} is what a prep run
- *    consults before writing. An operator who typed the right answer once should
- *    not have to re-type it after every re-prepare.
+ *    — or an image build — consults before writing. An operator who typed the
+ *    right answer once should not have to re-type it after every re-prepare.
  * 2. **Staleness is measured, not assumed.** Findings are pinned to the main-
  *    branch sha they were measured at. A stale test baseline is actively worse
  *    than an absent one — an agent trusts it and files its own breakage under
@@ -27,7 +35,7 @@ import { commitsSince, detectMainBranch } from './git'
  *    and an uncomputable distance reports `undefined` (unknown), never zero.
  */
 
-/** Project columns holding prepared values, by key (mirrors `PREPARED_KEYS`). */
+/** Project columns holding provenanced values, by key (mirrors `PROVENANCE_KEYS`). */
 const VALUE_COLUMN = {
   setupCommand: projects.setupCommand,
   verifyCommands: projects.verifyCommands,
@@ -37,10 +45,11 @@ const VALUE_COLUMN = {
   driveStopCommand: projects.driveStopCommand,
   dbResetCommand: projects.dbResetCommand,
   driveInstructions: projects.driveInstructions,
-} as const satisfies Record<PreparedKey, unknown>
+  sandboxImage: projects.sandboxImage,
+} as const satisfies Record<ProvenanceKey, unknown>
 
-/** Drizzle column NAME for a prepared key, for the `.set()` object literal. */
-const COLUMN_NAME: Record<PreparedKey, string> = {
+/** Drizzle column NAME for a provenanced key, for the `.set()` object literal. */
+const COLUMN_NAME: Record<ProvenanceKey, string> = {
   setupCommand: 'setupCommand',
   verifyCommands: 'verifyCommands',
   knownFailures: 'knownFailures',
@@ -49,20 +58,30 @@ const COLUMN_NAME: Record<PreparedKey, string> = {
   driveStopCommand: 'driveStopCommand',
   dbResetCommand: 'dbResetCommand',
   driveInstructions: 'driveInstructions',
+  sandboxImage: 'sandboxImage',
 }
 
 const PREPARED_SET = new Set<string>(PREPARED_KEYS)
+const PROVENANCE_SET = new Set<string>(PROVENANCE_KEYS)
 
 /** Whether `key` names a prepared field (i.e. one preparation can establish). */
 export function isPreparedKey(key: string): key is PreparedKey {
   return PREPARED_SET.has(key)
 }
 
+/**
+ * Whether `key` names a field that carries provenance — every prepared key,
+ * plus the ones only runcastle's own machinery establishes (`sandboxImage`).
+ */
+export function isProvenanceKey(key: string): key is ProvenanceKey {
+  return PROVENANCE_SET.has(key)
+}
+
 /** The stored provenance row for one field, or `undefined`. */
 function findingRow(
   ctx: AppCtx,
   projectId: string,
-  key: PreparedKey,
+  key: ProvenanceKey,
 ): { source: FindingSource; evidence: string | null; establishedAt: number; establishedSha: string | null } | undefined {
   return ctx.db
     .select({
@@ -87,7 +106,7 @@ function findingRow(
  * the provenance row with the value, which makes the key writable again. That
  * keeps "let the agent redo this" an explicit, per-field, visible act.
  */
-export function isOverwritable(ctx: AppCtx, projectId: string, key: PreparedKey): boolean {
+export function isOverwritable(ctx: AppCtx, projectId: string, key: ProvenanceKey): boolean {
   return findingRow(ctx, projectId, key)?.source !== 'human'
 }
 
@@ -100,7 +119,7 @@ export function isOverwritable(ctx: AppCtx, projectId: string, key: PreparedKey)
 const UNVERIFIED = { verifiedAt: null, verifiedSha: null } as const
 
 export interface RecordFindingInput {
-  key: PreparedKey
+  key: ProvenanceKey
   /** The established value; `null` clears both the value and its provenance. */
   value: string | null
   source: FindingSource
@@ -155,9 +174,10 @@ export function recordFinding(ctx: AppCtx, projectId: string, input: RecordFindi
 
 /**
  * Stamp a manual settings write as human-established. Called from the settings
- * service for prepared keys only; a no-op for everything else. Clearing a field
- * (`value === null`) drops the provenance row too, which deliberately makes the
- * field prep-writable again — clearing is how you ask prep to re-derive it.
+ * service for provenanced keys only; a no-op for everything else. Clearing a
+ * field (`value === null`) drops the provenance row too, which deliberately
+ * makes the field auto-writable again — clearing is how you hand `sandboxImage`
+ * back to the image build, or a prepared field back to preparation.
  */
 export function recordHuman(
   ctx: AppCtx,
@@ -165,7 +185,7 @@ export function recordHuman(
   key: string,
   value: string | null,
 ): void {
-  if (!isPreparedKey(key)) return
+  if (!isProvenanceKey(key)) return
   const existing = findingRow(ctx, projectId, key)
   if (value === null) {
     if (existing) {
@@ -257,9 +277,9 @@ export async function listFindings(ctx: AppCtx, project: Project): Promise<Proje
     }
   }
 
-  const order = new Map<string, number>(PREPARED_KEYS.map((k, i) => [k, i]))
+  const order = new Map<string, number>(PROVENANCE_KEYS.map((k, i) => [k, i]))
   return rows
-    .filter((row): row is typeof row & { key: PreparedKey } => isPreparedKey(row.key))
+    .filter((row): row is typeof row & { key: ProvenanceKey } => isProvenanceKey(row.key))
     .sort((a, b) => (order.get(a.key) ?? 0) - (order.get(b.key) ?? 0))
     .map((row) => {
       const staleCommits = row.establishedSha ? distances.get(row.establishedSha) : undefined
@@ -284,8 +304,8 @@ export function unsetPreparedKeys(project: Project): PreparedKey[] {
   })
 }
 
-/** Test/inspection helper: the value currently stored for a prepared key. */
-export function preparedValue(ctx: AppCtx, projectId: string, key: PreparedKey): string | null {
+/** Test/inspection helper: the value currently stored for a provenanced key. */
+export function preparedValue(ctx: AppCtx, projectId: string, key: ProvenanceKey): string | null {
   const row = ctx.db
     .select({ value: VALUE_COLUMN[key] })
     .from(projects)
