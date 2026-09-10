@@ -1,11 +1,16 @@
-import type { Feature, Project, Ticket, WorkflowCtx } from '@runcastle/core'
+import type { AgentRuntime, Feature, Project, Ticket, WorkflowCtx } from '@runcastle/core'
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { execFileSync } from 'node:child_process'
 import { describe, expect, it } from 'vitest'
 import type { BurnDeps, TicketOutcome } from '../src/workflows/ticket-burner'
-import { burnRun } from '../src/workflows/ticket-burner'
+import {
+  burnRun,
+  registerTicketAbort,
+  releaseTicketAbort,
+  ticketStopReason,
+} from '../src/workflows/ticket-burner'
 
 /**
  * Workflow-level tests: the scheduler + summary logic driven through a FAKE
@@ -82,6 +87,15 @@ function makeCtx(tickets: Ticket[], signal?: AbortSignal) {
     signal: signal ?? new AbortController().signal,
   }
   return { ctx, events, patches }
+}
+
+/** A promise the test resolves by hand, to sequence concurrent fake lanes. */
+function deferred(): { promise: Promise<void>; resolve: () => void } {
+  let resolve = (): void => {}
+  const promise = new Promise<void>((r) => {
+    resolve = r
+  })
+  return { promise, resolve }
 }
 
 /** A fake boundary: canned outcome per seq; records the order of invocations. */
@@ -799,5 +813,140 @@ describe('burnRun — fix tickets minted while the run is live', () => {
       { id: 'find_b', progress: 'fixing' },
       { id: 'find_b', progress: 'fixed' },
     ])
+  })
+})
+
+/**
+ * The halt (decisions 3–4): a failure that is a fact about the ACCOUNT — a
+ * lapsed login, an exhausted plan, an image with no agent binary — ends the
+ * run's scheduling instead of being rediscovered one container at a time. What
+ * never started stays `pending` for the re-burn after the operator fixes it
+ * (ADR-0006); what is burning on a healthy runtime still lands.
+ */
+describe('burnRun — a run-fatal failure halts the run', () => {
+  const USAGE_LIMIT = 'Claude AI usage limit reached|1751500000'
+
+  const usageLimit = (): TicketOutcome => ({
+    status: 'failed',
+    error: USAGE_LIMIT,
+    runFatal: { runtime: 'claude-code' },
+  })
+
+  it('starts no further ticket, and leaves every unstarted one pending', async () => {
+    const tickets = [ticket(1), ticket(2), ticket(3, [2])]
+    const { ctx, patches } = makeCtx(tickets)
+    const calls: number[] = []
+    // Only ticket 1 has a canned outcome: the fake throws for anything else, so
+    // a dispatch that should not happen fails the run loudly.
+    const execute = fakeExecute({ 1: usageLimit() }, calls)
+
+    const res = await burnRun(ctx, deps(execute))
+
+    expect(calls).toEqual([1])
+    expect(tickets[1]).toMatchObject({ status: 'pending' })
+    expect(tickets[2]).toMatchObject({ status: 'pending' })
+    // Not failed, not cancelled — nothing at all was written for them.
+    expect(patches.filter((p) => p.id !== 'tkt_1')).toEqual([])
+    expect(res.status).toBe('failed')
+  })
+
+  it('emits exactly one run.halted and names the cause in the run summary', async () => {
+    const tickets = [ticket(1), ticket(2)]
+    const { ctx, events } = makeCtx(tickets)
+
+    const res = await burnRun(ctx, deps(fakeExecute({ 1: usageLimit() })))
+
+    expect(events.filter((e) => e.type === 'run.halted')).toEqual([
+      {
+        type: 'run.halted',
+        message: `run halted: ${USAGE_LIMIT}`,
+        ticketId: 'tkt_1',
+        data: { runtime: 'claude-code', ticketSeq: 1 },
+      },
+    ])
+    // The failing ticket still keeps its own record of what killed it.
+    expect(events).toContainEqual(
+      expect.objectContaining({ type: 'ticket.failed', ticketId: 'tkt_1' }),
+    )
+    expect(res).toEqual({
+      status: 'failed',
+      summary: `run halted at ticket 1: ${USAGE_LIMIT} — 0/2 tickets done`,
+    })
+  })
+
+  it('never starts the review ticket, and appends no verification pass', async () => {
+    const tickets = [ticket(1), { ...ticket(2, [1]), kind: 'review' as const }]
+    const { ctx, events } = makeCtx(tickets)
+    const stored: unknown[] = []
+    ctx.listTickets = () => tickets
+    ctx.storeTickets = (input) => {
+      stored.push(...input)
+      return []
+    }
+    const calls: number[] = []
+
+    await burnRun(ctx, deps(fakeExecute({ 1: usageLimit() }, calls)))
+
+    // Without the halt the review would start: its only blocker is terminal.
+    expect(calls).toEqual([1])
+    expect(tickets[1]).toMatchObject({ status: 'pending' })
+    expect(stored).toEqual([])
+    expect(events.map((e) => e.type)).not.toContain('ticket.verification_minted')
+  })
+
+  it('stops the in-flight lane on the failing runtime and lets the other runtime land', async () => {
+    const tickets = [ticket(1), ticket(2), ticket(3)]
+    const runtimeOf: Record<number, AgentRuntime> = { 1: 'codex', 2: 'codex', 3: 'claude-code' }
+    const { ctx, patches } = makeCtx(tickets)
+    const lapsedLogin = 'codex exited with code 1: not logged in'
+    const allBurning = deferred()
+    const doomedLaneStopped = deferred()
+    let started = 0
+    let healthyLaneAborted: boolean | undefined
+
+    const execute: BurnDeps['executeTicketRun'] = async (_c, t) => {
+      // What the real executor registers, and what a stop (or a halt) reaches
+      // a burning lane through.
+      const abort = registerTicketAbort(t.id)
+      started += 1
+      if (started === tickets.length) allBurning.resolve()
+      try {
+        await allBurning.promise
+        if (t.seq === 1) {
+          return { status: 'failed', error: lapsedLogin, runFatal: { runtime: 'codex' } }
+        }
+        if (t.seq === 2) {
+          // Burns on until something aborts it — the halt is what does.
+          await new Promise<void>((resolve) => {
+            abort.signal.addEventListener('abort', () => resolve(), { once: true })
+          })
+          doomedLaneStopped.resolve()
+          return { status: 'failed', error: ticketStopReason(abort.signal.reason) }
+        }
+        await doomedLaneStopped.promise
+        healthyLaneAborted = abort.signal.aborted
+        return { status: 'done', commits: ['sha-3'] }
+      } finally {
+        releaseTicketAbort(t.id)
+      }
+    }
+
+    const res = await burnRun(
+      ctx,
+      deps(execute, { concurrency: 3, ticketRuntime: (t) => runtimeOf[t.seq] }),
+    )
+
+    expect(patches).toContainEqual({
+      id: 'tkt_2',
+      patch: { status: 'failed', error: `stopped: run halted (${lapsedLogin})` },
+    })
+    // The claude lane knows nothing about a dead codex login: it finishes and
+    // its work lands.
+    expect(healthyLaneAborted).toBe(false)
+    expect(patches).toContainEqual({
+      id: 'tkt_3',
+      patch: { status: 'done', commits: ['sha-3'], digest: undefined },
+    })
+    expect(res.summary).toBe(`run halted at ticket 1: ${lapsedLogin} — 1/3 tickets done`)
   })
 })
