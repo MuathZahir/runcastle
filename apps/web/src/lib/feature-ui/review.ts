@@ -1,4 +1,4 @@
-import type { TicketKind } from '@runcastle/core'
+import type { FindingResolvedBy, FindingStatus, TicketKind } from '@runcastle/core'
 import { unverifiedWarning } from './internal'
 
 export type CheckTone = 'ok' | 'warn' | 'danger' | 'idle'
@@ -392,6 +392,60 @@ export function findingOpenReason(finding: OpenFindingFigure): string | null {
   }
   if (finding.openReason === 'verification') {
     return 'found by the verification pass — not auto-fixed'
+  }
+  return null
+}
+
+/** A finding as its standing line reads it — where it went, and on whose word. */
+interface FindingStandingFigure {
+  lap: number
+  status: FindingStatus
+  carriedLap: number | null
+  resolvedBy: FindingResolvedBy | null
+  resolutionNote: string | null
+}
+
+export interface FindingStanding {
+  /** What became of the defect, in the row's own vocabulary. */
+  text: string
+  /**
+   * What the claim rests on — a lap parked it, a session attested it was
+   * addressed, or a fix ticket landed and proved it.
+   */
+  evidence: 'carried' | 'attested' | 'verified'
+  /** The carry's rationale or the attestation's evidence, when there is one. */
+  note?: string
+}
+
+/**
+ * Where a defect that is no longer open ended up, as a statement rather than a
+ * control — the finding's half of the line a carried note gets.
+ *
+ * A session attestation and a landed fix ticket are the SAME status (`fixed`,
+ * decisions #2: addressed is fixed), so the row is the only place the difference
+ * can still be seen: one was verified by work that landed on the branch, the
+ * other is a session's word plus the note it wrote. Nothing to say about a
+ * defect still open or being fixed — the rest of the row already says it.
+ */
+export function findingStanding(finding: FindingStandingFigure): FindingStanding | null {
+  const note = finding.resolutionNote?.trim() || undefined
+  if (finding.status === 'carried') {
+    return {
+      text: `captured lap ${finding.lap}, carried into lap ${finding.carriedLap}`,
+      evidence: 'carried',
+      ...(note ? { note } : {}),
+    }
+  }
+  if (finding.status !== 'fixed') return null
+  if (finding.resolvedBy === 'session') {
+    return {
+      text: 'closed by a lap session as addressed — no fix ticket verified it',
+      evidence: 'attested',
+      ...(note ? { note } : {}),
+    }
+  }
+  if (finding.resolvedBy === 'fix-ticket') {
+    return { text: 'fixed by its fix ticket', evidence: 'verified' }
   }
   return null
 }

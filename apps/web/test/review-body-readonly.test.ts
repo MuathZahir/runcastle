@@ -33,7 +33,7 @@ vi.mock('../src/trpc', () => {
         toggle: { useMutation: mutation },
         reopen: { useMutation: mutation },
       },
-      findings: { dismiss: { useMutation: mutation } },
+      findings: { dismiss: { useMutation: mutation }, reopen: { useMutation: mutation } },
       feature: {
         testDrive: { useMutation: mutation },
         fixDrive: { useMutation: mutation },

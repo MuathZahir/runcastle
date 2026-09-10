@@ -8,6 +8,7 @@ export * from './feature-ui/run'
 export {
   findingCountsLine,
   findingOpenReason,
+  findingStanding,
   reviewChecks,
   latestReview,
   stampedReview,
@@ -21,6 +22,7 @@ export type {
   CheckRow,
   CheckTone,
   FindingCounts,
+  FindingStanding,
   ReviewOutcome,
   ReviewArtifactFigure,
   Freshness,
