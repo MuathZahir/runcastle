@@ -267,7 +267,15 @@ export function isReviewTicket(ticket: Pick<Ticket, 'kind'>): boolean {
   return ticket.kind === 'review'
 }
 
-/** Decide whether this run owes one final verification pass (decision 40a). */
+/**
+ * Decide whether this run owes one final verification pass (decision 40a).
+ *
+ * The pass is gated exactly as the review pass is (decision 5): a verification
+ * that runs beside a failed fix reports a verdict on a build that is about to
+ * change again. So a run holding ANY failed ticket owes no verification — the
+ * operator retries or cancels the failure through the ADR-0006 controls, and
+ * the re-burn appends the pass against the complete set.
+ */
 export function verificationDue(
   tickets: Ticket[],
   runTicketIds: Set<string>,
@@ -282,6 +290,10 @@ export function verificationDue(
 
   // A review that could not run is an amber human decision, not an automatic retry.
   if (lastReview?.status === 'failed') return { due: false, landed: [], verifies }
+
+  // A fix that failed leaves the run incomplete, whatever else landed.
+  const failed = inRun.some((ticket) => !isReviewTicket(ticket) && ticket.status === 'failed')
+  if (failed) return { due: false, landed: [], verifies }
 
   const cutoff = verifies?.completedAt ?? Number.NEGATIVE_INFINITY
   const landed = inRun.filter(
