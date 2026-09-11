@@ -1076,3 +1076,139 @@ describe('burnRun — a run-fatal failure halts the run', () => {
     expect(res.summary).toBe(`run halted at ticket 1: ${lapsedLogin} — 1/3 tickets done`)
   })
 })
+
+/**
+ * Reassignment mid-burn: the human changes a still-queued ticket's model (or
+ * its body) while the run is live, and the lane launches on the fresh row —
+ * executor and per-ticket auth precheck reading the same one. A launched lane
+ * is committed to what it started with, and a ctx with no store seam schedules
+ * exactly as it did before.
+ */
+describe('burnRun — the row a lane launches with', () => {
+  /** A ctx whose store is a set of rows apart from the run-start snapshot. */
+  function makeStoreCtx(snapshot: Ticket[]) {
+    const store = snapshot.map((t) => ({ ...t }))
+    const base = makeCtx(snapshot)
+    base.ctx.listTickets = () => store
+    return { ...base, store }
+  }
+
+  /**
+   * What `ticket.edit` does to a row while the run is live. Replaces the row
+   * rather than mutating it in place, the way a store that re-reads its rows
+   * hands back a fresh object every time.
+   */
+  function edit(store: Ticket[], seq: number, patch: Partial<Ticket>): void {
+    const at = store.findIndex((t) => t.seq === seq)
+    if (at >= 0) store[at] = { ...store[at], ...patch }
+  }
+
+  it('launches a still-queued ticket on the model it was reassigned to mid-run', async () => {
+    const { ctx, store } = makeStoreCtx([ticket(1), ticket(2)])
+    const launched: { seq: number; model?: string }[] = []
+    const execute: BurnDeps['executeTicketRun'] = async (_c, t) => {
+      launched.push({ seq: t.seq, model: t.model })
+      if (t.seq === 1) edit(store, 2, { model: 'gpt-5-codex' })
+      return { status: 'done', commits: ['sha'] }
+    }
+
+    const res = await burnRun(ctx, deps(execute))
+
+    expect(launched).toEqual([
+      { seq: 1, model: undefined },
+      { seq: 2, model: 'gpt-5-codex' },
+    ])
+    expect(res).toEqual({ status: 'succeeded', summary: '2/2 tickets done' })
+  })
+
+  it('launches a still-queued ticket with the body it was edited to', async () => {
+    const { ctx, store } = makeStoreCtx([ticket(1), ticket(2)])
+    const launched: Ticket[] = []
+    const execute: BurnDeps['executeTicketRun'] = async (_c, t) => {
+      launched.push(t)
+      if (t.seq === 1) {
+        edit(store, 2, {
+          goal: 'the goal the human rewrote',
+          context: 'the context the human rewrote',
+          acceptanceCriteria: ['the criterion the human added'],
+        })
+      }
+      return { status: 'done', commits: ['sha'] }
+    }
+
+    await burnRun(ctx, deps(execute))
+
+    expect(launched[1]).toMatchObject({
+      goal: 'the goal the human rewrote',
+      context: 'the context the human rewrote',
+      acceptanceCriteria: ['the criterion the human added'],
+    })
+  })
+
+  it('prechecks the reassigned runtime rather than the one the run opened with', async () => {
+    const { ctx, events, store } = makeStoreCtx([ticket(1), ticket(2)])
+    const prechecked: (string | undefined)[] = []
+    const calls: number[] = []
+    const execute: BurnDeps['executeTicketRun'] = async (_c, t) => {
+      calls.push(t.seq)
+      if (t.seq === 1) edit(store, 2, { model: 'gpt-5-codex' })
+      return { status: 'done', commits: ['sha'] }
+    }
+
+    const res = await burnRun(
+      ctx,
+      deps(execute, {
+        config: { serverPort: 4512, model: 'm', stepModels: {}, sandbox: 'docker', mainBranch: 'main' },
+        hasAuthToken: true,
+        ticketAuthMissing: (t) => {
+          prechecked.push(t.model)
+          return t.model === 'gpt-5-codex' ? 'codex' : undefined
+        },
+      }),
+    )
+
+    // The precheck saw the same fresh row the executor would have — and refused
+    // it, so ticket 2 never reached the executor at all.
+    expect(prechecked).toEqual([undefined, 'gpt-5-codex'])
+    expect(calls).toEqual([1])
+    expect(events).toContainEqual(
+      expect.objectContaining({ type: 'auth.missing', message: expect.stringContaining('codex login') }),
+    )
+    expect(res.status).toBe('failed')
+  })
+
+  it('launches the snapshot row when the ctx has no store to re-read', async () => {
+    const snapshot = [ticket(1), ticket(2)]
+    const store = snapshot.map((t) => ({ ...t }))
+    const { ctx } = makeCtx(snapshot) // no `listTickets`
+    const launched: { seq: number; model?: string }[] = []
+    const execute: BurnDeps['executeTicketRun'] = async (_c, t) => {
+      launched.push({ seq: t.seq, model: t.model })
+      if (t.seq === 1) edit(store, 2, { model: 'gpt-5-codex' })
+      return { status: 'done', commits: ['sha'] }
+    }
+
+    const res = await burnRun(ctx, deps(execute))
+
+    expect(launched).toEqual([
+      { seq: 1, model: undefined },
+      { seq: 2, model: undefined },
+    ])
+    expect(res).toEqual({ status: 'succeeded', summary: '2/2 tickets done' })
+  })
+
+  it('leaves a lane that already launched on the model it started with', async () => {
+    const { ctx, store } = makeStoreCtx([ticket(1)])
+    let modelAfterEdit: string | undefined = 'never read'
+    const execute: BurnDeps['executeTicketRun'] = async (_c, t) => {
+      edit(store, 1, { model: 'gpt-5-codex' })
+      modelAfterEdit = t.model
+      return { status: 'done', commits: ['sha'] }
+    }
+
+    const res = await burnRun(ctx, deps(execute))
+
+    expect(modelAfterEdit).toBeUndefined()
+    expect(res).toEqual({ status: 'succeeded', summary: '1/1 tickets done' })
+  })
+})

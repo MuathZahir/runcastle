@@ -1,6 +1,7 @@
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
+import type { ModelEntry } from '@runcastle/core'
 import { laneBands, laneFacts, soloRetrySeq, verdictStrip } from '../src/lib/feature-ui/run'
 import type { LaneBandTicket } from '../src/lib/feature-ui/run'
 import { RunHeader } from '../src/components/run/RunHeader'
@@ -253,6 +254,66 @@ describe('Lane', () => {
     })
     expect(html).not.toContain('Retry')
     expect(html).not.toContain('Waive')
+  })
+})
+
+/**
+ * Reassignment mid-burn: the lane carries the same model menu the tickets-phase
+ * ledger does, on the statuses `ticket.edit` accepts. Which lanes offer it, and
+ * with what, is markup — what a chosen model then reaches lives in
+ * `run-body-model.test.tsx`.
+ */
+describe('Lane model menu', () => {
+  const roster: ModelEntry[] = [
+    { id: 'claude-opus-5', runtime: 'claude-code' },
+    { id: 'gpt-5.6-sol', runtime: 'codex', note: 'backend' },
+  ]
+  const menuHtml = (over: Partial<RunTicket> & { seq: number }, props = {}) =>
+    laneHtml({ ticket: row(over), roster, onModel: () => {}, onRetry: () => {}, ...props })
+
+  it('offers reassignment on a pending lane, naming the model it is assigned', () => {
+    expect(menuHtml({ seq: 1, model: 'gpt-5.6-sol' })).toContain('Ticket model')
+    expect(menuHtml({ seq: 1, model: 'gpt-5.6-sol' })).toContain('gpt-5.6-sol · Codex')
+  })
+
+  it('offers it on a failed lane, a stopped one included', () => {
+    expect(menuHtml({ seq: 2, status: 'failed', error: 'boom' })).toContain('Ticket model')
+    expect(menuHtml({ seq: 2, status: 'failed', error: 'stopped by user' })).toContain('Ticket model')
+  })
+
+  /**
+   * A burning lane is committed to the model it launched with — stop is the
+   * human's separate first move (decision 2) — and done/waived are history.
+   */
+  it('withholds it from a burning, done or waived lane', () => {
+    expect(menuHtml({ seq: 3, status: 'burning' })).not.toContain('Ticket model')
+    expect(menuHtml({ seq: 3, status: 'done', commits: ['abc1234'] })).not.toContain('Ticket model')
+    expect(menuHtml({ seq: 3, status: 'cancelled' })).not.toContain('Ticket model')
+  })
+
+  it('withholds it from the read-only record, and where no roster is loaded', () => {
+    expect(menuHtml({ seq: 1 }, { readonly: true })).not.toContain('Ticket model')
+    expect(laneHtml({ ticket: row({ seq: 1 }), onModel: () => {} })).not.toContain('Ticket model')
+  })
+
+  /**
+   * `ticket.retry` is refused while a run is live (ADR-0006), so the gesture is
+   * offered only where the retry it composes would be accepted — mid-run, the
+   * reassignment menu alone is the control.
+   */
+  it('grows a retry-on-a-model gesture on a failed lane, never on a pending one', () => {
+    const failed = menuHtml({ seq: 2, status: 'failed', error: 'boom' }, { onRetryWithModel: () => {} })
+    expect(failed).toContain('Retry on…')
+    expect(failed).toContain('Ticket model')
+    expect(menuHtml({ seq: 1 }, { onRetryWithModel: () => {} })).not.toContain('Retry on…')
+  })
+
+  it('leaves a live run’s failed lane with the retry affordances it has today', () => {
+    const html = menuHtml({ seq: 2, status: 'failed', error: 'boom' }, { onRetryFresh: () => {}, onWaive: () => {} })
+    expect(html).not.toContain('Retry on…')
+    expect(html).toContain('>Retry<')
+    expect(html).toContain('Retry fresh')
+    expect(html).toContain('Waive')
   })
 })
 
