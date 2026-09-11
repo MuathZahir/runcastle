@@ -954,16 +954,6 @@ describe('burnRun — the row a lane launches with', () => {
     if (at >= 0) store[at] = { ...store[at], ...patch }
   }
 
-  const dockerDeps = (
-    execute: BurnDeps['executeTicketRun'],
-    over: Partial<Omit<BurnDeps, 'executeTicketRun'>> = {},
-  ): BurnDeps =>
-    deps(execute, {
-      config: { serverPort: 4512, model: 'm', stepModels: {}, sandbox: 'docker', mainBranch: 'main' },
-      hasAuthToken: true,
-      ...over,
-    })
-
   it('launches a still-queued ticket on the model it was reassigned to mid-run', async () => {
     const { ctx, store } = makeStoreCtx([ticket(1), ticket(2)])
     const launched: { seq: number; model?: string }[] = []
@@ -1018,7 +1008,9 @@ describe('burnRun — the row a lane launches with', () => {
 
     const res = await burnRun(
       ctx,
-      dockerDeps(execute, {
+      deps(execute, {
+        config: { serverPort: 4512, model: 'm', stepModels: {}, sandbox: 'docker', mainBranch: 'main' },
+        hasAuthToken: true,
         ticketAuthMissing: (t) => {
           prechecked.push(t.model)
           return t.model === 'gpt-5-codex' ? 'codex' : undefined
