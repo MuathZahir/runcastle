@@ -1,12 +1,13 @@
 import { useState } from 'react'
 import type { ReactNode } from 'react'
-import type { AgentRuntime, TicketKind, TicketStatus } from '@runcastle/core'
+import type { AgentRuntime, ModelEntry, TicketKind, TicketStatus } from '@runcastle/core'
 import { laneState, verdictStrip } from '../../lib/feature-ui/run'
 import type { LaneState } from '../../lib/feature-ui/run'
 import type { TicketModelChip } from '../../lib/feature-ui'
 import { shortSha } from '../../lib/format'
 import { Button, TicketKindChip } from '../../ui'
 import { IconChevronRight, IconClaude, IconCodex } from '../../icons'
+import { ModelMenu } from '../bodies/tickets/ModelMenu'
 import { MessageWithSettingsLink } from '../settings/MessageWithSettingsLink'
 import { ConfirmDialog } from './ConfirmDialog'
 
@@ -18,10 +19,20 @@ export interface LaneRow {
   kind: TicketKind
   passKind?: 'review' | 'verification'
   status: TicketStatus
+  /** The model this ticket is assigned to, unset while it burns on the default. */
+  model?: string
   error?: string
   conflictFiles?: string[]
   commits: readonly string[]
 }
+
+/**
+ * The statuses a model reassignment is offered on — the server's own editable
+ * set (`assertMutable`), so the lane offers exactly what `ticket.edit` accepts.
+ * A stopped lane is a failed row and is covered; a burning lane is committed to
+ * the model it launched with, and done/waived are history.
+ */
+const REASSIGNABLE: readonly TicketStatus[] = ['pending', 'failed']
 
 /**
  * One ticket lane — the spine of the run view (decision #10).
@@ -88,12 +99,15 @@ export function Lane({
   elapsed,
   duration,
   model,
+  roster,
   defectTitle,
   busy,
   stopping,
   waiving,
   terminalBlocked,
+  onModel,
   onRetry,
+  onRetryWithModel,
   onRetryFresh,
   onWaive,
   onStop,
@@ -113,6 +127,8 @@ export function Lane({
   /** How long the lane took, once it is done. */
   duration?: string
   model?: TicketModelChip | null
+  /** The configured models a reassignment picks from; absent withholds the menu. */
+  roster?: readonly ModelEntry[]
   /** The defect this lane exists to fix, when it is one of a review-fix wave. */
   defectTitle?: string
   busy?: boolean
@@ -129,7 +145,14 @@ export function Lane({
    */
   waiving?: boolean
   terminalBlocked?: boolean
+  /** Reassign this ticket's model — `''` clears it back to the project default. */
+  onModel?: (model: string) => void
   onRetry?: () => void
+  /**
+   * Retry on a model chosen in the same gesture. Absent while a run is live,
+   * where `ticket.retry` is refused (ADR-0006) and the menu alone is the control.
+   */
+  onRetryWithModel?: (model: string) => void
   onRetryFresh?: () => void
   onWaive?: () => void
   onStop?: () => void
@@ -147,6 +170,11 @@ export function Lane({
   const errorHeadline = ticket.error?.split('\n')[0]
   const bad = state === 'failed' || state === 'launch-failed'
   const retryable = bad || state === 'stopped'
+  // The mid-run control: a queued lane is launched from the live row, so a model
+  // chosen here takes effect in this same run.
+  const reassign = !readonly && roster && onModel && REASSIGNABLE.includes(ticket.status)
+    ? { roster, onChange: onModel }
+    : null
   const Runtime = model ? RUNTIME_ICON[model.runtime] : null
   const sha = state === 'done' ? ticket.commits[0] : undefined
 
@@ -244,8 +272,8 @@ export function Lane({
         </div>
       )}
 
-      {!readonly && (retryable || state === 'burning') && (
-        <div className="flex flex-wrap gap-2 px-3 pb-3">
+      {!readonly && (retryable || state === 'burning' || reassign) && (
+        <div className="flex flex-wrap items-center gap-2 px-3 pb-3">
           {retryable && onRetry && (
             <Button
               disabled={busy}
@@ -258,6 +286,11 @@ export function Lane({
             >
               {conflict ? 'Resolve with agent' : 'Retry'}
             </Button>
+          )}
+          {/* One gesture, two existing calls: the reassignment lands and the
+              burn it starts resolves the fresh row (decision 4). */}
+          {retryable && roster && onRetryWithModel && (
+            <ModelMenu value="" roster={roster} label="Retry on…" onChange={onRetryWithModel} />
           )}
           {conflict && onResolveInTerminal && (
             <Button
@@ -305,6 +338,13 @@ export function Lane({
             >
               {stopping ? 'Stopping…' : 'Stop ticket'}
             </Button>
+          )}
+          {reassign && (
+            <ModelMenu
+              value={ticket.model ?? ''}
+              roster={reassign.roster}
+              onChange={reassign.onChange}
+            />
           )}
         </div>
       )}
