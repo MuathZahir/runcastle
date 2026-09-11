@@ -609,11 +609,24 @@ describe('testDrive', () => {
     await createFeatureBranch(project, feature.slug, 'main')
   })
 
-  it('denies start when the main checkout is dirty', async () => {
+  it('denies start when the main checkout is dirty, naming the files', async () => {
     writeFileSync(join(project.repoPath, 'dirty.txt'), 'x')
     const res = await testDrive(ctx, project, feature, 'start')
     expect(res.ok).toBe(false)
     expect(res.deniedReason).toBe('Working tree has uncommitted changes — commit or stash first')
+    // Classified, because waiting out someone else's drive and waiting out the
+    // human's own uncommitted files are opposite decisions.
+    expect(res.deniedCode).toBe('dirty')
+    expect(res.retriable).toBe(false)
+    expect(res.dirtyFiles).toEqual(['dirty.txt'])
+  })
+
+  it('says nothing on the timeline when the human is the one refused a dirty tree', async () => {
+    writeFileSync(join(project.repoPath, 'dirty.txt'), 'x')
+    await testDrive(ctx, project, feature, 'start')
+    // The human clicked Test drive and reads the refusal where they clicked;
+    // the loud event belongs to the review agent nobody is watching.
+    expect(listAfter(ctx, feature.id, 0).map((e) => e.type)).not.toContain('reviewdrive.denied')
   })
 
   it('denies start when the feature has an active run', async () => {
@@ -621,15 +634,21 @@ describe('testDrive', () => {
     const res = await testDrive(ctx, project, feature, 'start')
     expect(res.ok).toBe(false)
     expect(res.deniedReason).toBe('Feature has an active run — wait for it to finish')
+    expect(res.deniedCode).toBe('active_run')
+    expect(res.retriable).toBe(false)
   })
 
-  it('denies a second start while a test drive is already active', async () => {
+  it('denies a second start while a test drive is already active, and says it is worth waiting for', async () => {
     const first = await testDrive(ctx, project, feature, 'start')
     expect(first.ok).toBe(true)
 
     const second = await testDrive(ctx, project, feature, 'start')
     expect(second.ok).toBe(false)
     expect(second.deniedReason).toBe('A test drive is already active — stop it first')
+    // The slot frees itself when whoever holds it is done — the one denial
+    // polling can clear.
+    expect(second.deniedCode).toBe('slot_held')
+    expect(second.retriable).toBe(true)
 
     await testDrive(ctx, project, feature, 'stop')
   })

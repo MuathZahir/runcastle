@@ -17,7 +17,7 @@ import { rmSync } from 'node:fs'
 import type { AppCtx } from '../db/types'
 import { events, features, gateOverrides, runs, sessions, tickets, waypoints } from '../db/schema'
 import { GateError, InvalidInputError, isNotImplemented } from '../errors'
-import { emit, emitProject, latestTsByFeature } from './events'
+import { emit, emitProject, latestEventTs, latestTsByFeature } from './events'
 import { checkGate } from './gates'
 import * as git from './git'
 import { listDocs, scaffoldDocs, scaffoldMapDoc } from './knowledge'
@@ -881,6 +881,28 @@ function errMsg(e: unknown): string {
 }
 
 /**
+ * Did the feature's most recent run record a review drive refused over a dirty
+ * working tree?
+ *
+ * The evidence is the `reviewdrive.denied` event the drive guard emits at the
+ * moment it refuses (services/git.ts) — no new ticket status and no new column
+ * (decisions §6): a denial never ends a review, it only downgrades it to a
+ * repo-only pass, so the ticket ends `done` like any other and the timeline is
+ * the only place the refusal is written down.
+ *
+ * Scoped to the latest run because the record has to be about the review the
+ * human is looking at: a denial from an earlier run has already been superseded
+ * by a burn that ran after it — including the retry this very check admits, so
+ * one denial buys one retry.
+ */
+function latestRunDeniedDirty(ctx: AppCtx, featureId: string): boolean {
+  const latestRun = listRunsByFeature(ctx, featureId)[0]
+  if (!latestRun) return false
+  const deniedAt = latestEventTs(ctx, featureId, 'reviewdrive.denied')
+  return deniedAt !== undefined && deniedAt >= latestRun.startedAt
+}
+
+/**
  * Retry ONE failed ticket (UI lane action). Resets the ticket — and every
  * failed ticket in its transitive `blockedBy` closure, since a dependent can
  * only burn once its blockers are redone — to `pending`, then starts a burn if
@@ -908,6 +930,13 @@ function errMsg(e: unknown): string {
  * Refused while a run is live: the running scheduler snapshotted its ticket
  * set at start and would never pick the reset ticket up, which would strand it
  * `pending` with no agent coming.
+ *
+ * ONE non-failed ticket is accepted (decisions §6): a `kind: "review"` ticket
+ * that is `done` because its drive was refused over a dirty working tree, which
+ * the latest run recorded as a `reviewdrive.denied` event. That retry is
+ * pre-checked against the tree it would drive and refused, naming the files,
+ * while they are still uncommitted. Everything else about it is the ordinary
+ * path — the reset, the preserved chain, `fresh`, the burn.
  */
 export async function retryTicket(
   ctx: AppCtx,
@@ -925,13 +954,32 @@ export async function retryTicket(
 }> {
   const ticket = getTicket(ctx, ticketId)
   const feature = getFeatureRow(ctx, ticket.featureId)
-  if (ticket.status !== 'failed') {
+  // The one non-failed ticket worth retrying: a review that could not drive
+  // because the human's own files were uncommitted. It succeeded — in the
+  // weaker Gates mode — so it is `done`, and "only failed tickets" would lock
+  // the human out of the retry the denial exists to offer.
+  const retryingDeniedReview =
+    ticket.kind === 'review' && ticket.status === 'done' && latestRunDeniedDirty(ctx, feature.id)
+  if (ticket.status !== 'failed' && !retryingDeniedReview) {
     throw new GateError(`only failed tickets can be retried — ticket ${ticket.seq} is ${ticket.status}`)
   }
   if (hasActiveRun(ctx, feature.id)) {
     throw new GateError('a run is live for this feature — retry after it finishes, or cancel it first')
   }
   const project = projectForFeature(ctx, feature)
+  // Still dirty means the drive would be refused again on arrival, an agent and
+  // its sandbox spent to reach the same denial — so ask git the question the
+  // drive guard asks (pipeline docs landed first, so runcastle's own writes
+  // never block a retry) and hand the human back what is still in the way.
+  if (retryingDeniedReview) {
+    const stillDirty = await git.driveBlockingPaths(project.repoPath)
+    if (stillDirty.length > 0) {
+      throw new GateError(
+        `the working tree is still dirty — the review drive would be denied again. Commit or ` +
+          `discard ${stillDirty.length} file(s) first: ${git.truncatedFileList(stillDirty)}`,
+      )
+    }
+  }
 
   const all = listByFeature(ctx, feature.id)
   const bySeq = new Map(all.map((t) => [t.seq, t]))

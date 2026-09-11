@@ -42,6 +42,9 @@ const DEFECT: ReviewFinding = {
   openReason: 'over-cap',
   failureReason: null,
   fixTicketId: null,
+  carriedLap: null,
+  resolvedBy: null,
+  resolutionNote: null,
   createdAt: 1,
 }
 
@@ -137,6 +140,57 @@ describe('NoteRow', () => {
     )
     expect(html).toContain('fixed in the burn by #9')
     expect(html).not.toContain('being fixed in the running burn')
+  })
+
+  it('says which lap parked a carried defect and which one it was parked into', () => {
+    const html = render({
+      kind: 'defect',
+      finding: {
+        ...DEFECT,
+        status: 'carried',
+        openReason: null,
+        carriedLap: 3,
+        resolutionNote: 'the merge rebuild in lap 3 covers this dialog',
+      },
+    })
+    expect(html).toContain('captured lap 2, carried into lap 3')
+    expect(html).toContain('the merge rebuild in lap 3 covers this dialog')
+  })
+
+  /**
+   * A session attestation and a landed fix ticket are the same `fixed` status
+   * (decisions #2), so the row is the only place the evidence classes can still
+   * be told apart: the session's word is amber and carries its attestation, the
+   * fix ticket's is green and needs no words.
+   */
+  it('distinguishes a defect a session closed from one a fix ticket verified', () => {
+    const attested = render({
+      kind: 'defect',
+      finding: {
+        ...DEFECT,
+        status: 'fixed',
+        openReason: null,
+        resolvedBy: 'session',
+        resolutionNote: 'addressed by lap 2’s ticket 7',
+      },
+    })
+    expect(attested).toContain('closed by a lap session as addressed')
+    expect(attested).toContain('addressed by lap 2’s ticket 7')
+    expect(attested).toContain('text-warn')
+
+    const verified = render({
+      kind: 'defect',
+      finding: { ...DEFECT, status: 'fixed', openReason: null, resolvedBy: 'fix-ticket' },
+    })
+    expect(verified).toContain('fixed by its fix ticket')
+    expect(verified).not.toContain('closed by a lap session')
+    expect(verified).toContain('text-ok')
+  })
+
+  it('says nothing about the standing of a defect that is still open', () => {
+    const html = render({ kind: 'defect', finding: DEFECT })
+    expect(html).not.toContain('carried into lap')
+    expect(html).not.toContain('fixed by its fix ticket')
   })
 
   it('keeps the evidence and drops the controls when the page is history', () => {

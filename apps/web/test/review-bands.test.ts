@@ -1,7 +1,7 @@
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it, vi } from 'vitest'
-import type { ReviewFinding, TestNote } from '@runcastle/core'
+import type { EventRow, ReviewFinding, TestNote } from '@runcastle/core'
 import type { FeatureFull } from '../src/lib/api'
 import type { ReviewArtifacts } from '../src/lib/reviews'
 import { full } from './fixtures'
@@ -21,15 +21,17 @@ const state = vi.hoisted(() => ({
   notes: [] as TestNote[],
   findings: [] as ReviewFinding[],
   openDefects: [] as ReviewFinding[],
+  carriedFindings: [] as ReviewFinding[],
   summary: undefined as { found: number; fixed: number; open: number; observations: number } | undefined,
   recordings: [] as ReviewArtifacts[],
   drive: undefined as { featureId: string; state: string; dryRun: boolean } | undefined,
   driveInstructions: undefined as string | undefined,
+  events: [] as EventRow[],
 }))
 
 vi.mock('../src/lib/live', () => ({ useLivePoll: () => false as const, useLiveStatus: () => 'live' }))
 vi.mock('../src/lib/toast', () => ({ useToast: () => ({ push: vi.fn() }) }))
-vi.mock('../src/lib/events', () => ({ useEventLog: () => [] }))
+vi.mock('../src/lib/events', () => ({ useEventLog: () => state.events }))
 vi.mock('../src/lib/reviews', async (original) => ({
   ...(await original<typeof import('../src/lib/reviews')>()),
   useReviewArtifacts: () => ({ data: state.recordings }),
@@ -42,7 +44,9 @@ vi.mock('../src/trpc', () => {
         notes: { list: { invalidate: vi.fn() } },
         findings: { listByFeature: { invalidate: vi.fn() } },
         feature: { get: { invalidate: vi.fn() }, list: { invalidate: vi.fn() }, driveInfo: { invalidate: vi.fn() } },
+        events: { invalidate: vi.fn() },
       }),
+      ticket: { retry: { useMutation: mutation } },
       notes: {
         add: { useMutation: mutation },
         edit: { useMutation: mutation },
@@ -53,11 +57,13 @@ vi.mock('../src/trpc', () => {
       },
       findings: {
         dismiss: { useMutation: mutation },
+        reopen: { useMutation: mutation },
         listByFeature: {
           useQuery: () => ({
             data: {
               findings: state.findings,
               openDefects: state.openDefects,
+              carriedFindings: state.carriedFindings,
               summary: state.summary,
             },
           }),
@@ -135,6 +141,16 @@ const OBSERVATION = {
   detail: 'this repo’s suite runs inside a Docker maven image',
 } as ReviewFinding
 
+/** What lap 1 parked instead of answering, as the lap-2 page has it. */
+const CARRIED = {
+  ...DEFECT,
+  id: 'find_3',
+  title: 'the husk rows keep their retired ids',
+  status: 'carried',
+  carriedLap: 2,
+  resolutionNote: 'lap 2 rewrites the purge, which decides these rows',
+} as ReviewFinding
+
 const DIGEST =
   'Lap 1: DLQ spill retention landed · 1 defect found, 0 fixed in-run · Drive mode\n\n' +
   'The cap bounds rows for currently-registered callbacks; retired ids are left to the age purge.'
@@ -165,21 +181,29 @@ function render(
     notes?: TestNote[]
     findings?: ReviewFinding[]
     openDefects?: ReviewFinding[]
+    carriedFindings?: ReviewFinding[]
     recordings?: ReviewArtifacts[]
     drive?: { featureId: string; state: string; dryRun: boolean }
+    /** The server's own counts, where the point is that they are not the rows'. */
+    summary?: { found: number; fixed: number; open: number; observations: number }
     tickets?: FeatureFull['tickets']
     readonly?: boolean
     driveInstructions?: string
+    events?: EventRow[]
+    runs?: FeatureFull['runs']
+    phase?: FeatureFull['feature']['phase']
   } = {},
 ): string {
   state.notes = over.notes ?? []
   state.findings = over.findings ?? []
   state.openDefects = over.openDefects ?? []
-  state.summary = { found: state.findings.filter((f) => f.kind === 'defect').length, fixed: 0, open: state.openDefects.length, observations: state.findings.filter((f) => f.kind === 'observation').length }
+  state.carriedFindings = over.carriedFindings ?? []
+  state.summary = over.summary ?? { found: state.findings.filter((f) => f.kind === 'defect').length, fixed: 0, open: state.openDefects.length, observations: state.findings.filter((f) => f.kind === 'observation').length }
   state.recordings = over.recordings ?? []
   state.drive = over.drive
   state.driveInstructions = over.driveInstructions
-  const feature = full({ id: 'feat_1', phase: 'review' })
+  state.events = over.events ?? []
+  const feature = full({ id: 'feat_1', phase: over.phase ?? 'review' })
   return renderToStaticMarkup(
     createElement(ReviewBody, {
       full: {
@@ -187,6 +211,7 @@ function render(
         feature: { ...feature.feature, lap: 1 },
         tickets: over.tickets ?? [REVIEW_TICKET],
         sessions: over.sessions ?? [],
+        runs: over.runs ?? [],
       },
       driving: null,
       conflict: null,
@@ -290,9 +315,116 @@ describe('the review page’s arrival bands', () => {
     expect(html).toContain('Nothing needs attention')
   })
 
+  /**
+   * Decisions #5: the figures on the page are the server's, scoped to this lap.
+   * Handed an earlier lap's finding among the rows, the review row and the
+   * counts line still report what THIS lap's pass found — the all-laps count is
+   * the inflated "N still open" that sent the human back through Iterate.
+   */
+  it('reports the counts the server sends for this lap, never the rows it holds', () => {
+    const html = render({
+      findings: [DEFECT, OBSERVATION, { ...DEFECT, id: 'find_9', lap: 0, title: 'from an earlier lap' }],
+      openDefects: [DEFECT],
+      summary: { found: 1, fixed: 0, open: 1, observations: 1 },
+      // No digest, so the counts line is what the lap says for itself.
+      tickets: [{ ...REVIEW_TICKET, digest: undefined }] as FeatureFull['tickets'],
+    })
+    expect(html).toContain('2 findings')
+    expect(html).not.toContain('3 findings')
+    expect(html).toContain('1 defect found · 1 still open')
+  })
+
+  /**
+   * Decisions #5: what a lap parked is a band of its own, between the open work
+   * and the disclosure — visible as the next lap's agenda, and out of the tally
+   * the human reads "is there anything left?" off.
+   */
+  it('gives what a lap carried its own band, outside the open count', () => {
+    const html = render({
+      findings: [DEFECT, CARRIED],
+      openDefects: [DEFECT],
+      carriedFindings: [CARRIED],
+    })
+    expect(html).toContain('Carried, still open')
+    expect(html).toContain('captured lap 1, carried into lap 2')
+    expect(html).toContain('lap 2 rewrites the purge, which decides these rows')
+    // The human's two verbs, and only the human's.
+    expect(html).toContain('>Reopen<')
+    // The attention band still counts one defect, not two.
+    expect(html).toContain('1 open')
+    const carriedAt = html.indexOf('Carried, still open')
+    expect(carriedAt).toBeGreaterThan(html.indexOf('What still needs attention'))
+    expect(carriedAt).toBeLessThan(html.indexOf('Full account'))
+  })
+
   // A disclosure that opens on emptiness is worse than no disclosure.
   it('renders no disclosure at all when nobody wrote anything', () => {
     expect(render({ tickets: [] as FeatureFull['tickets'] })).not.toContain('Full account')
+  })
+
+  /**
+   * Decision 5: a review drive refused over the human's own uncommitted files
+   * is a banner in the alert slot at the moment it happens — the digest that
+   * used to be the only account of it is read long afterwards.
+   */
+  describe('a review drive refused over a dirty tree', () => {
+    const DENIED: EventRow = {
+      id: 7,
+      projectId: 'proj_1',
+      featureId: 'feat_1',
+      ts: 1_760_000_000_000,
+      type: 'reviewdrive.denied',
+      message: 'review drive denied — 1 uncommitted file(s) in the working tree: src/App.tsx',
+      data: { code: 'dirty', dirtyFiles: ['src/App.tsx'] },
+    }
+    const RUN = (startedAt: number): FeatureFull['runs'][number] => ({
+      id: `run_${startedAt}`,
+      featureId: 'feat_1',
+      workflow: 'ticket-burner',
+      status: 'succeeded',
+      startedAt,
+    })
+
+    it('raises a banner naming the files, with the way to re-burn the review', () => {
+      const html = render({ events: [DENIED] })
+      expect(html).toContain('Review couldn’t drive')
+      expect(html).toContain('src/App.tsx')
+      expect(html).toContain('Retry review')
+    })
+
+    it('says nothing when no drive was ever refused', () => {
+      expect(openWork()).not.toContain('Review couldn’t drive')
+    })
+
+    /** Decision 7: the retry burn starting is what takes the prompt back down. */
+    it('comes down once the retry burn has started', () => {
+      const retried: EventRow = { ...DENIED, id: 8, type: 'ticket.retry', message: 'retrying ticket 4' }
+      expect(render({ events: [DENIED, retried] })).not.toContain('Review couldn’t drive')
+    })
+
+    /** The other half of decision 7's clearing rule: a run that started after
+     *  the denial has answered it too, whether or not its events have landed on
+     *  this feed yet — the same read the server's retry eligibility makes. */
+    it('stands while the denial is the latest word on the latest run', () => {
+      const html = render({ events: [DENIED], runs: [RUN(DENIED.ts - 1_000)] })
+      expect(html).toContain('Review couldn’t drive')
+    })
+
+    it('comes down once a burn has started after the denial', () => {
+      const runs = [RUN(DENIED.ts - 1_000), RUN(DENIED.ts + 1_000)]
+      expect(render({ events: [DENIED], runs })).not.toContain('Review couldn’t drive')
+    })
+
+    /** The review body also mounts to LOOK BACK at review on a feature that has
+     *  moved on — history, where there is nothing left to act on (decision 7). */
+    it('does not render outside the review phase', () => {
+      expect(render({ events: [DENIED], phase: 'shipped' })).not.toContain('Review couldn’t drive')
+    })
+
+    /** Decision 33a: history has no live verbs, this banner's retry included. */
+    it('renders no banner at all on a readonly view', () => {
+      expect(render({ events: [DENIED], readonly: true })).not.toContain('Review couldn’t drive')
+    })
   })
 
   /** Decision 33a: history has no live verbs anywhere, the alert line included. */

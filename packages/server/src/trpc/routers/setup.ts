@@ -1,17 +1,37 @@
-import { AgentRuntime, configuredRuntimes, newId, resolveSandboxImage } from '@runcastle/core'
+import { join } from 'node:path'
+import {
+  AgentRuntime,
+  DEFAULT_SANDBOX_IMAGE,
+  configuredRuntimes,
+  newId,
+  resolveSandboxImage,
+  type Project,
+} from '@runcastle/core'
 import { isNotNull } from 'drizzle-orm'
 import * as z from 'zod'
 import { projects } from '../../db/schema'
+import type { AppCtx } from '../../db/types'
 import { envWithAfkCredentials } from '../../doctor/afk-env'
-import { runDoctor } from '../../doctor/doctor'
+import { runDoctor, type ProjectImageEnv } from '../../doctor/doctor'
 import { createSystemExec } from '../../doctor/system-exec'
+import { InvalidInputError } from '../../errors'
 import { burnerDockerfilePath } from '../../launcher/asset-paths'
 import { ptyRegistry } from '../../pty/registry'
+import { isOverwritable } from '../../services/findings'
+import { adoptProjectImage, releaseProjectImage } from '../../services/project-image'
+import { requireProjectById } from '../../services/repo'
+import {
+  hashDockerfile,
+  imageBuildTerminal,
+  inspectBuiltImage,
+  planImageBuild,
+  stockBuildArgs,
+  type ImageBuildTerminal,
+} from '../../services/sandbox-image'
 import {
   fileAfkTokenIo,
   prepareSandboxBuildContext,
   resolveRuntime,
-  resolveSandcastleBin,
   runtimeInstallGuide,
   saveAfkCredential,
   seedModelDefaults,
@@ -31,28 +51,46 @@ import { publicProcedure, router } from '../context'
  */
 export const setupRouter = router({
   /** The full prerequisite report the wizard and AFK card read (per-runtime readiness, runtime, image, …). */
-  doctor: publicProcedure.query(({ ctx }) => {
-    // Which runtimes count as errors when they are missing: every one some
-    // configured model resolves to. Per-project overrides join the global
-    // default and the step matrix here; per-ticket assignments will too once
-    // tickets carry a model of their own.
-    const projectModels = ctx.db
-      .select({ model: projects.model })
-      .from(projects)
-      .where(isNotNull(projects.model))
-      .all()
-      .map((p) => p.model)
-    return runDoctor({
-      exec: createSystemExec(),
-      burnerDockerfile: burnerDockerfilePath(),
-      // Read the data-dir `.env` fresh on every query: the AFK card writes the
-      // token there through `afkToken` while the server runs, so a probe that
-      // saw only `process.env` would keep reporting it missing forever.
-      env: envWithAfkCredentials(),
-      runtimes: configuredRuntimes(ctx.config, projectModels),
-      ...(ctx.config.sandboxImage ? { imageName: ctx.config.sandboxImage } : {}),
-    })
-  }),
+  doctor: publicProcedure
+    .input(
+      z
+        .object({
+          /**
+           * Whose image row this report is about. Absent in the first-run
+           * wizard, which may run before any project exists — there the image
+           * question is the machine-wide one.
+           */
+          projectId: z.string().optional(),
+        })
+        .optional(),
+    )
+    .query(({ ctx, input }) => {
+      // Which runtimes count as errors when they are missing: every one some
+      // configured model resolves to. Per-project overrides join the global
+      // default and the step matrix here; per-ticket assignments will too once
+      // tickets carry a model of their own.
+      const projectModels = ctx.db
+        .select({ model: projects.model })
+        .from(projects)
+        .where(isNotNull(projects.model))
+        .all()
+        .map((p) => p.model)
+      const project = input?.projectId ? requireProjectById(ctx, input.projectId) : null
+      return runDoctor({
+        exec: createSystemExec(),
+        burnerDockerfile: burnerDockerfilePath(),
+        // Read the data-dir `.env` fresh on every query: the AFK card writes the
+        // token there through `afkToken` while the server runs, so a probe that
+        // saw only `process.env` would keep reporting it missing forever.
+        env: envWithAfkCredentials(),
+        runtimes: configuredRuntimes(ctx.config, projectModels),
+        // Deliberately WITHOUT the project: the probe layers the project column
+        // over this itself, so that clearing an orphaned column (decision 8)
+        // leaves it reporting on the image resolution falls back to.
+        imageName: resolveSandboxImage(ctx.config),
+        ...(project ? { projectImage: projectImageEnv(ctx, project) } : {}),
+      })
+    }),
 
   /** OS-specific guided-manual runtime install line + follow-up note. */
   runtimeGuide: publicProcedure.query(() => runtimeInstallGuide(process.platform)),
@@ -93,34 +131,102 @@ export const setupRouter = router({
    * flow (which self-heals its own host-login prompt on the way).
    */
   startTerminal: publicProcedure
-    .input(z.object({ kind: z.enum(['setup-token', 'build-image', 'claude-login', 'codex-login']) }))
+    .input(
+      z.object({
+        kind: z.enum(['setup-token', 'build-image', 'claude-login', 'codex-login']),
+        /**
+         * Whose image `build-image` builds. Absent in the first-run wizard,
+         * which may run before any project exists — that build is the stock one.
+         */
+        projectId: z.string().optional(),
+      }),
+    )
     .mutation(async ({ ctx, input }) => {
-      const exec = createSystemExec()
-      const preferred = ctx.config.sandbox === 'podman' ? 'podman' : 'docker'
-      const runtime = await resolveRuntime(exec, preferred)
-      const imageName = resolveSandboxImage(ctx.config)
-      // `build-image` runs the vendored sandcastle CLI, whose bin is never on the
-      // user's PATH in a global install — resolve its entrypoint so we can launch
-      // it under node instead of a bare (missing) `sandcastle`.
-      const sandcastleBin =
-        input.kind === 'build-image' ? (resolveSandcastleBin() ?? undefined) : undefined
-      const spec = terminalSpec(input.kind, { runtime, imageName, sandcastleBin })
       const sessionId = newId('setup')
-      // `build-image` runs `sandcastle <runtime> build-image`, which fails with
-      // "No .sandcastle/ found" unless its cwd holds a `.sandcastle/` build
-      // context. Scaffold a vetted one into a runcastle-owned dir first so a
-      // fresh install never dead-ends (issue #50) — create-only, both runtimes.
-      const cwd = input.kind === 'build-image' ? prepareSandboxBuildContext() : process.cwd()
+      const { spec, onExit } =
+        input.kind === 'build-image'
+          ? await buildImageTerminal(ctx, input.projectId)
+          : { spec: { ...terminalSpec(input.kind), cwd: process.cwd() }, onExit: undefined }
+
       // Resolve through PATHEXT like the launcher does for `claude` — a bare
-      // `spawn('sandcastle'|'claude')` misses a Windows `.cmd`/`.ps1` shim, and
+      // `spawn('docker'|'claude')` misses a Windows `.cmd`/`.ps1` shim, and
       // ConPTY can't exec any shim directly, so each goes via its interpreter.
       const { file, args } = resolveSpawnTarget(spec.cmd, spec.args)
       ptyRegistry().create({
         sessionId,
         cmd: file,
         args,
-        opts: { cwd, env: process.env },
+        opts: { cwd: spec.cwd, env: process.env },
+        ...(onExit ? { onExit } : {}),
       })
       return { sessionId }
     }),
 })
+
+/**
+ * The db half of the doctor's image row: what the project stores, whether
+ * runcastle may rewrite it, and how it lets go of a value whose Dockerfile has
+ * been deleted (decision 8). Kept here rather than in the probe so the doctor
+ * library stays injected and testable without a database.
+ */
+function projectImageEnv(ctx: AppCtx, project: Project): ProjectImageEnv {
+  return {
+    id: project.id,
+    repoPath: project.repoPath,
+    stored: project.sandboxImage ?? null,
+    overwritable: isOverwritable(ctx, project.id, 'sandboxImage'),
+    clearStored: () => releaseProjectImage(ctx, project.id),
+  }
+}
+
+/**
+ * The image build behind the AFK card's Build button: refresh the stock context,
+ * ask the built stock image whether it still matches its Dockerfile, and plan
+ * the build from the project's own state — stock alone, the two-step chain when
+ * the repo carries `.runcastle/sandbox/Dockerfile`, or nothing at all when the
+ * image is a tag runcastle does not manage (decision 5 — the button must never
+ * build the stock template under someone's custom tag, and must not build a
+ * project image a hand-typed setting would keep every burn away from).
+ *
+ * A chain that exits 0 adopts its project image as the project's `sandboxImage`,
+ * on the PTY's own exit: the build IS the event that makes the tag real, and
+ * writing the column any earlier would point every image consumer at a tag no
+ * image answers to.
+ */
+async function buildImageTerminal(
+  ctx: AppCtx,
+  projectId: string | undefined,
+): Promise<{ spec: ImageBuildTerminal; onExit?: (info: { exitCode: number }) => void }> {
+  const exec = createSystemExec()
+  const runtime = await resolveRuntime(exec, ctx.config.sandbox === 'podman' ? 'podman' : 'docker')
+  const project = projectId ? requireProjectById(ctx, projectId) : null
+  const stockContext = prepareSandboxBuildContext()
+  const stockHash = hashDockerfile(join(stockContext, 'Dockerfile'))
+  const plan = planImageBuild({
+    config: ctx.config,
+    project: project
+      ? {
+          id: project.id,
+          repoPath: project.repoPath,
+          sandboxImage: project.sandboxImage,
+          sandboxImageOverwritable: isOverwritable(ctx, project.id, 'sandboxImage'),
+        }
+      : null,
+    stockContext,
+    stockFresh:
+      stockHash !== null &&
+      (await inspectBuiltImage(exec, runtime, DEFAULT_SANDBOX_IMAGE)).hash === stockHash,
+    buildArgs: stockBuildArgs(runtime),
+  })
+  if (plan.kind === 'refused') throw new InvalidInputError(plan.reason)
+
+  const spec = imageBuildTerminal(runtime, plan)
+  if (plan.kind !== 'chain' || !project) return { spec }
+  const { projectTag } = plan
+  return {
+    spec,
+    onExit: ({ exitCode }) => {
+      if (exitCode === 0) adoptProjectImage(ctx, project.id, projectTag)
+    },
+  }
+}

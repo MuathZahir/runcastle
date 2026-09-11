@@ -1,7 +1,8 @@
+import type { ReviewFinding } from '@runcastle/core'
 import { and, eq } from 'drizzle-orm'
 import type { AppCtx } from '../db/types'
 import { testNotes } from '../db/schema'
-import { viewByFeature } from './review-findings'
+import { carriedDefectsAcrossLaps, openDefectsAcrossLaps } from './review-findings'
 
 /**
  * What a lap carries into the next one — the notes the human parked and the
@@ -23,14 +24,24 @@ export interface CarriedWork {
   carriedNotes: number
   /** The defects this feature's review left open, as the next lap meets them. */
   openDefects: CarriedDefect[]
+  /**
+   * The defects a lap has already parked — this lap's agenda rather than its
+   * obligation (decisions #5). They are out of {@link carriedWorkSummary}'s
+   * counts for exactly that reason: a lap may link or close one, and none is
+   * forced to re-carry what an earlier one parked.
+   */
+  carriedDefects: CarriedDefect[]
 }
 
 /**
- * An open defect, in the fields a session needs to act on it — the same four
+ * A defect in the fields a session needs to act on it — the same four
  * `buildFixTicket` serialises onto a fix ticket, minus the citation, which
- * points at the criterion the review argued from rather than at the problem.
+ * points at the criterion the review argued from rather than at the problem,
+ * plus the id every disposition verb names it by.
  */
 export interface CarriedDefect {
+  /** What a ticket's `originFindingId` and `resolve_finding`'s `findingId` take. */
+  id: string
   title: string
   location: string
   detail: string
@@ -49,12 +60,21 @@ export function carriedWork(ctx: AppCtx, featureId: string): CarriedWork {
 
   return {
     carriedNotes: carried.length,
-    openDefects: viewByFeature(ctx, featureId).openDefects.map((defect) => ({
-      title: defect.title,
-      location: defect.location,
-      detail: defect.detail,
-      reproStep: defect.reproStep,
-    })),
+    // Across laps, for the same reason the note query is keyed on status: the
+    // defects a lap has to answer for are the ones EARLIER laps left open, and
+    // the review page's own view is scoped to the current lap.
+    openDefects: openDefectsAcrossLaps(ctx, featureId).map(toCarriedDefect),
+    carriedDefects: carriedDefectsAcrossLaps(ctx, featureId).map(toCarriedDefect),
+  }
+}
+
+function toCarriedDefect(defect: ReviewFinding): CarriedDefect {
+  return {
+    id: defect.id,
+    title: defect.title,
+    location: defect.location,
+    detail: defect.detail,
+    reproStep: defect.reproStep,
   }
 }
 

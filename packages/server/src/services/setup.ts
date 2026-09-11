@@ -1,12 +1,11 @@
 import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
 import { DEFAULT_RUNTIME, RUNTIME_DEFAULT_MODELS, type AgentRuntime } from '@runcastle/core'
 import { envPath, sandboxBuildDir } from '@runcastle/core/paths'
 import type { ExecFn, ProbeResult } from '../doctor/doctor'
 import { RUNTIME_SPECS, gitIdentityProbe } from '../doctor/doctor'
 import type { AppCtx } from '../db/types'
-import { InvalidInputError, NotFoundError } from '../errors'
+import { InvalidInputError } from '../errors'
 import { sandcastleTemplateDir } from '../launcher/asset-paths'
 import { updateSettings, type SettingsIO } from './settings'
 
@@ -262,79 +261,20 @@ export interface TerminalSpec {
 }
 
 /**
- * Resolve the bundled sandcastle CLI's entrypoint (`@ai-hero/sandcastle`'s
- * `bin.sandcastle`, an absolute path) via module resolution, or null if it can't
- * be found. This is the fix for the "one-click build" failing on a real install:
- * sandcastle is a *transitive* dependency, so its bin is never on the user's PATH
- * in a `bun add -g runcastle` install — a bare `spawn('sandcastle')` ENOENTs, and
- * telling the user to type `sandcastle …` in their shell is a dead end. Resolving
- * the manifest works in both the contributor checkout and the published tarball
- * (sandcastle stays external, so it's a real installed dependency either way),
- * mirroring {@link resolvePtyRoot}'s `require.resolve('node-pty/package.json')`.
- */
-export function resolveSandcastleBin(): string | null {
-  try {
-    // `@ai-hero/sandcastle` is ESM-only with an `exports` map that neither
-    // carries a `require` condition nor exposes `./package.json`, so a CJS
-    // `require.resolve('…/package.json')` throws ERR_PACKAGE_PATH_NOT_EXPORTED.
-    // Resolve the exported main entry with the ESM resolver, then walk up to the
-    // package root to read `bin.sandcastle` — robust to hoisting and to the
-    // bundled published layout alike.
-    const mainUrl = import.meta.resolve('@ai-hero/sandcastle')
-    let dir = dirname(fileURLToPath(mainUrl))
-    for (let hops = 0; hops < 6; hops++) {
-      const manifestPath = join(dir, 'package.json')
-      if (existsSync(manifestPath)) {
-        const manifest = JSON.parse(readFileSync(manifestPath, 'utf8')) as {
-          name?: string
-          bin?: Record<string, string>
-        }
-        if (manifest.name === '@ai-hero/sandcastle' && manifest.bin?.sandcastle) {
-          return join(dir, manifest.bin.sandcastle)
-        }
-      }
-      const parent = dirname(dir)
-      if (parent === dir) break
-      dir = parent
-    }
-    return null
-  } catch {
-    return null
-  }
-}
-
-/**
- * The command each embedded-terminal / streaming flow runs. `setup-token` drives
+ * The command each interactive embedded-terminal flow runs. `setup-token` drives
  * the interactive `claude setup-token` login; `claude-login`/`codex-login` drive
- * each runtime's own interactive sign-in, which is what talk sessions run on;
- * `build-image` builds the sandcastle image with whichever runtime is present
- * (its output streams into the card).
+ * each runtime's own interactive sign-in, which is what talk sessions run on.
  *
- * `build-image` launches the resolved sandcastle CLI (`opts.sandcastleBin`) under
- * `node` — its shebang runtime and a Tier-1 prerequisite — rather than a bare
- * `sandcastle`, which is never on PATH in a global install (see
- * {@link resolveSandcastleBin}). `--image-name` is pinned explicitly so the built
- * tag matches `opts.imageName` exactly — the same name the doctor probe re-checks
- * after the build — instead of falling back to sandcastle's own cwd-derived
- * default, which would silently build an image the re-probe can never find.
+ * `build-image` is deliberately not here: it builds an image whose tag, context
+ * and Dockerfile hash are decided from the project's own state, so its command
+ * comes from `imageBuildTerminal` in `sandbox-image.ts` instead.
  */
-export function terminalSpec(
-  kind: TerminalKind,
-  opts: { runtime: Runtime; imageName: string; sandcastleBin?: string },
-): TerminalSpec {
+export function terminalSpec(kind: Exclude<TerminalKind, 'build-image'>): TerminalSpec {
   if (kind === 'setup-token') return { cmd: 'claude', args: ['setup-token'] }
   for (const spec of Object.values(RUNTIME_SPECS)) {
     if (kind === LOGIN_TERMINAL_KIND[spec.runtime]) return { cmd: spec.bin, args: spec.loginArgs }
   }
-  if (!opts.sandcastleBin) {
-    throw new NotFoundError(
-      'The bundled sandcastle CLI (@ai-hero/sandcastle) could not be located — reinstall runcastle.',
-    )
-  }
-  return {
-    cmd: 'node',
-    args: [opts.sandcastleBin, opts.runtime, 'build-image', '--image-name', opts.imageName],
-  }
+  throw new InvalidInputError(`no terminal command for ${kind}`)
 }
 
 // ---------------------------------------------------------------------------
@@ -355,9 +295,9 @@ export interface ScaffoldResult {
 export { sandcastleTemplateDir }
 
 /**
- * Copy the template into `<targetDir>/.sandcastle/` so `sandcastle build-image`
- * (which unconditionally requires a `.sandcastle/` at its cwd) has a context to
- * build. **Create-only**: an existing `.sandcastle/` — which may be hand-tuned —
+ * Copy the template into `<targetDir>/.sandcastle/`, the layout a sandcastle
+ * build context has. **Create-only**: an existing `.sandcastle/` — which may be
+ * hand-tuned —
  * is never touched, mirroring the knowledge-docs scaffold precedent. Idempotent.
  */
 export function scaffoldSandcastleConfig(templateDir: string, targetDir: string): ScaffoldResult {
@@ -381,19 +321,19 @@ export function refreshSandcastleConfig(templateDir: string, targetDir: string):
 }
 
 /**
- * Ensure the runcastle-owned build context exists and return its dir. The AFK
- * image is generic and app-global (not per-project — per-project deps install at
- * sandbox start), and the card is actionable during first-run before any project
- * exists, so the context lives under the data dir rather than in a project repo.
- * `build-image` runs here with the freshly-scaffolded `.sandcastle/`.
+ * Ensure the runcastle-owned stock build context exists, and return the dir the
+ * build is handed — the freshly-refreshed `.sandcastle/` that holds the
+ * Dockerfile. The AFK image is generic and app-global (not per-project —
+ * per-project deps install at sandbox start), and the card is actionable during
+ * first-run before any project exists, so the context lives under the data dir
+ * rather than in a project repo.
  */
 export function prepareSandboxBuildContext(
   templateDir = sandcastleTemplateDir(),
   target = sandboxBuildDir(),
 ): string {
   mkdirSync(target, { recursive: true })
-  refreshSandcastleConfig(templateDir, target)
-  return target
+  return refreshSandcastleConfig(templateDir, target)
 }
 
 // ---------------------------------------------------------------------------

@@ -8,7 +8,7 @@ import { SettingGroup } from './SettingRow'
 import type { SettingsPageProps } from './types'
 
 /**
- * This project: the ten fields a project may set for itself, grouped by task
+ * This project: the fields a project may set for itself, grouped by task
  * (flow-redesign-settings, decisions 5 and 7).
  *
  * The global/project split is expressed *inside* a field rather than by a second

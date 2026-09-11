@@ -176,7 +176,7 @@ describe('burnRun — scheduling and summary', () => {
         runtime: 'codex',
         exec: async (command, args) => {
           probes.push({ command, args })
-          return { ok: true, code: 0, stdout: 'codex 1.0', stderr: '' }
+          return { ok: true, code: 0, stdout: '', stderr: '' }
         },
       }),
     )
@@ -184,7 +184,15 @@ describe('burnRun — scheduling and summary', () => {
     expect(probes).toEqual([
       {
         command: 'docker',
-        args: ['run', '--rm', '--entrypoint', 'codex', 'sandcastle:test', '--version'],
+        args: [
+          'run',
+          '--rm',
+          '--entrypoint',
+          'sh',
+          'sandcastle:test',
+          '-c',
+          'for c in codex; do command -v "$c" >/dev/null 2>&1 || echo "$c"; done',
+        ],
       },
     ])
     expect(calls).toEqual([1, 2])
@@ -209,6 +217,124 @@ describe('burnRun — scheduling and summary', () => {
         },
         runtime: 'claude-code',
         exec: async () => ({ ok: true, code: 127, stdout: '', stderr: 'claude: not found' }),
+      }),
+    )
+
+    expect(calls).toEqual([])
+    expect(res.status).toBe('failed')
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: 'burn.image_runtime_missing',
+        message:
+          'claude is not installed in image sandcastle:runcastle-demo — the image predates the burner Dockerfile. Rebuild it from Settings → Burns (Rebuild image).',
+      }),
+    )
+  })
+
+  /**
+   * The incident this feature exists for: a Java project's `mvn` setup command
+   * in an image that has no JVM. It used to surface as an exit 127 the burner
+   * RETRIED; now the run never starts a ticket container.
+   */
+  it('aborts naming the setup/verify toolchain the image lacks', async () => {
+    const tickets = [ticket(1)]
+    const { ctx, events } = makeCtx(tickets)
+    const calls: number[] = []
+    const probes: Array<{ command: string; args: string[] }> = []
+
+    const res = await burnRun(
+      ctx,
+      deps(fakeExecute({}, calls), {
+        config: {
+          serverPort: 4512,
+          model: 'm',
+          stepModels: {},
+          sandbox: 'docker',
+          sandboxImage: 'sandcastle:runcastle-demo',
+          setupCommand: 'mvn -q -DskipTests install',
+          verifyCommands: 'mvn -q test',
+        },
+        runtime: 'claude-code',
+        exec: async (command, args) => {
+          probes.push({ command, args })
+          return { ok: true, code: 0, stdout: 'mvn\n', stderr: '' }
+        },
+      }),
+    )
+
+    expect(probes[0]?.args).toEqual([
+      'run',
+      '--rm',
+      '--entrypoint',
+      'sh',
+      'sandcastle:runcastle-demo',
+      '-c',
+      'for c in claude mvn; do command -v "$c" >/dev/null 2>&1 || echo "$c"; done',
+    ])
+    expect(calls).toEqual([])
+    expect(res.status).toBe('failed')
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: 'burn.image_runtime_missing',
+        message:
+          'mvn is not installed in image sandcastle:runcastle-demo — add it to .runcastle/sandbox/Dockerfile and rebuild.',
+      }),
+    )
+  })
+
+  /**
+   * A project's own prepared columns are what the burn actually runs, so they
+   * are what gets probed — the global config is only the fallback.
+   */
+  it('preflights the project’s own setup command over the global one', async () => {
+    const tickets = [ticket(1)]
+    const { ctx } = makeCtx(tickets)
+    ctx.project = { ...project, setupCommand: 'gradle assemble' }
+    const probes: Array<{ command: string; args: string[] }> = []
+
+    await burnRun(
+      ctx,
+      deps(fakeExecute({ 1: { status: 'done', commits: ['a'] } }), {
+        config: {
+          serverPort: 4512,
+          model: 'm',
+          stepModels: {},
+          sandbox: 'docker',
+          sandboxImage: 'sandcastle:test',
+          setupCommand: 'mvn install',
+        },
+        runtime: 'codex',
+        exec: async (command, args) => {
+          probes.push({ command, args })
+          return { ok: true, code: 0, stdout: '', stderr: '' }
+        },
+      }),
+    )
+
+    expect(probes[0]?.args.at(-1)).toBe(
+      'for c in codex gradle; do command -v "$c" >/dev/null 2>&1 || echo "$c"; done',
+    )
+  })
+
+  /** The agent binary keeps its own wording: that one is fixed by a rebuild. */
+  it('keeps the stale-image wording when the sweep reports the agent binary absent', async () => {
+    const tickets = [ticket(1)]
+    const { ctx, events } = makeCtx(tickets)
+    const calls: number[] = []
+
+    const res = await burnRun(
+      ctx,
+      deps(fakeExecute({}, calls), {
+        config: {
+          serverPort: 4512,
+          model: 'm',
+          stepModels: {},
+          sandbox: 'docker',
+          sandboxImage: 'sandcastle:runcastle-demo',
+          setupCommand: 'mvn install',
+        },
+        runtime: 'claude-code',
+        exec: async () => ({ ok: true, code: 0, stdout: 'claude\nmvn\n', stderr: '' }),
       }),
     )
 

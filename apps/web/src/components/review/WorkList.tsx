@@ -29,9 +29,11 @@ export interface WorkRow {
 }
 
 /** Where a defect stands, keyed off the server's own open set so it cannot
- *  disagree with the count beside it — the only thing derived here is
- *  fixed-versus-fixing, which the join with the fix ticket decides. */
-type DefectStanding = 'open' | 'fixing' | 'fixed' | 'dismissed'
+ *  disagree with the count beside it. What is left to derive is what that set
+ *  cannot say: fixed-versus-fixing, which the join with the fix ticket decides,
+ *  and — since the set describes the CURRENT lap only — whether a defect it
+ *  leaves out was parked or is an earlier lap's leftover. */
+type DefectStanding = 'open' | 'fixing' | 'fixed' | 'dismissed' | 'carried'
 
 function defectStanding(
   finding: ReviewFinding,
@@ -40,8 +42,19 @@ function defectStanding(
 ): DefectStanding {
   if (openIds.has(finding.id)) return 'open'
   if (finding.status === 'dismissed') return 'dismissed'
+  // Carried outranks the fix-ticket join, exactly as the server's own state does:
+  // a defect is only carriable once its fix attempt was given up on, so the dead
+  // ticket must not drag it back into a state the lap has already answered for.
+  if (finding.status === 'carried') return 'carried'
   if (finding.status === 'fixed' || fixTicket?.status === 'done') return 'fixed'
-  return 'fixing'
+  if (fixTicket && fixTicket.status !== 'failed' && fixTicket.status !== 'cancelled') {
+    return 'fixing'
+  }
+  // Outside this lap's open set with no live fix ticket behind it: an earlier
+  // lap's leftover, which the server counts on no lap but nobody has answered
+  // either — so the row keeps the human's Dismiss rather than claiming a burn
+  // is on it.
+  return finding.status === 'open' || finding.status === 'failed' ? 'open' : 'fixing'
 }
 
 /**
@@ -86,6 +99,10 @@ export function partitionWork(input: {
     if (finding.kind !== 'defect') continue
     const fix = ticketOf(finding.fixTicketId)
     const standing = defectStanding(finding, openIds, fix)
+    // A parked defect is neither open work nor settled work: it has its own
+    // band (`CarriedFindings`), fed by the server's own carried pile, so filing
+    // it here as well would render it twice.
+    if (standing === 'carried') continue
     file(
       {
         kind: 'defect',
@@ -150,12 +167,13 @@ export function WorkList({
 
   const onError = (e: { message: string }): void => toast.push(e.message)
   const refreshNotes = (): void => void utils.notes.list.invalidate({ featureId })
+  const refreshFindings = (): void => void utils.findings.listByFeature.invalidate({ featureId })
   // Dismissing is how the open count reaches zero without a burn — a defect the
   // human judged shippable is a decision, not a fix.
-  const dismiss = trpc.findings.dismiss.useMutation({
-    onSuccess: () => void utils.findings.listByFeature.invalidate({ featureId }),
-    onError,
-  })
+  const dismiss = trpc.findings.dismiss.useMutation({ onSuccess: refreshFindings, onError })
+  // The other half of carry, and the human's alone (decisions #3): a lap session
+  // parks a defect, only a person un-parks one.
+  const reopenFinding = trpc.findings.reopen.useMutation({ onSuccess: refreshFindings, onError })
   const toggle = trpc.notes.toggle.useMutation({ onSuccess: refreshNotes, onError })
   const reopen = trpc.notes.reopen.useMutation({ onSuccess: refreshNotes, onError })
   // One note mutation in flight at a time: the list is about to be refetched, so
@@ -198,14 +216,32 @@ export function WorkList({
   function controlsFor(row: WorkRow) {
     const { item } = row
     if (item.kind === 'defect') {
-      // Only a defect the server still calls open is the human's to wave away;
-      // one being fixed has not been given up on yet.
-      if (!row.open) return undefined
-      return (
-        <Button className="px-2" disabled={dismiss.isPending} onClick={() => dismiss.mutate({ findingId: item.finding.id })}>
+      const findingId = item.finding.id
+      const wave = (
+        <Button className="px-2" disabled={dismiss.isPending} onClick={() => dismiss.mutate({ findingId })}>
           Dismiss
         </Button>
       )
+      // A parked defect offers both of the human's verbs: back into the open
+      // pile, or waved away for good. Nothing about it is the burn's any more.
+      if (item.finding.status === 'carried') {
+        return (
+          <span className="flex items-center gap-2">
+            <Button
+              className="px-2"
+              disabled={reopenFinding.isPending}
+              onClick={() => reopenFinding.mutate({ findingId })}
+            >
+              Reopen
+            </Button>
+            {wave}
+          </span>
+        )
+      }
+      // Only a defect the server still calls open is the human's to wave away;
+      // one being fixed has not been given up on yet.
+      if (!row.open) return undefined
+      return wave
     }
 
     const note = item.note

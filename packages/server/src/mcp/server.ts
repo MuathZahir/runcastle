@@ -10,6 +10,7 @@ import type {
   Phase as PhaseT,
   PreparedKey as PreparedKeyT,
   Project,
+  ReviewFinding,
   ReviewFindingInput as ReviewFindingInputT,
   RunStatus as RunStatusT,
   ModelEntry,
@@ -40,7 +41,7 @@ import {
   withheldFeatureDocs,
 } from '@runcastle/core'
 import { featureDocsRel } from '@runcastle/core/paths'
-import { Hono } from 'hono'
+import { type Context, Hono } from 'hono'
 import * as z from 'zod'
 import type { AppCtx } from '../db/types'
 import { GateError, InvalidInputError, NotFoundError, isNotImplemented } from '../errors'
@@ -59,7 +60,13 @@ import { type CarriedDefect, carriedWork } from '../services/carried-work'
 import { emit, emitForSession, emitProject, latestEventTs } from '../services/events'
 import { isOverwritable, recordFinding } from '../services/findings'
 import { checkGate } from '../services/gates'
-import { reportFinding } from '../services/review-findings'
+import {
+  carryFinding,
+  closeAsAddressed,
+  linkFixTicket,
+  reportFinding,
+  requireLinkableFindings,
+} from '../services/review-findings'
 import * as git from '../services/git'
 import type { AdrDoc } from '../services/knowledge'
 import { ADR_DIR_REL, listDocs, listLiveAdrs, readCharter, readDoc } from '../services/knowledge'
@@ -315,6 +322,13 @@ export interface FeatureContext {
    * review iteration.
    */
   openDefects: CarriedDefect[]
+  /**
+   * The defects an earlier lap parked rather than answered (decisions #5). This
+   * lap's AGENDA, not its obligation: `resolve_finding` will link or close one,
+   * and the tickets gate never demands a carried defect be carried again — the
+   * same sticky semantics a carried test note has.
+   */
+  carriedDefects: CarriedDefect[]
   tickets: FeatureContextTicket[]
   /**
    * The models the operator annotated with a use-case note, and the only ones a
@@ -394,6 +408,7 @@ export function featureContext(ctx: AppCtx, reader: FeatureReader): FeatureConte
     moreDocs,
     docsNote: DOCS_NOTE,
     openDefects: carried.openDefects,
+    carriedDefects: carried.carriedDefects,
     tickets: listByFeature(ctx, feature.id).map(stripDigest),
     annotatedModels: annotatedModels(ctx),
   }
@@ -571,10 +586,20 @@ export function toolEmitTickets(
   const feature = getFeatureRow(ctx, requireFeatureId(session))
   refuseIfReadOnly(session, 'emitting tickets')
   refuseMisKindedReview(input.tickets)
+  // The LINK disposition: a lap ticket that names the defect it answers. Vetted
+  // here rather than in `storeTickets`, which is also the internal mint used by
+  // `reportFinding` and the burner's verification pass — those link findings the
+  // guard would refuse (a defect the review has only just opened), and the
+  // one-review-ticket seatbelt above sits at this surface for the same reason.
+  const linkedFindingIds = input.tickets.flatMap((t) => t.originFindingId ?? [])
+  requireLinkableFindings(ctx, feature.id, linkedFindingIds)
   // `storeTickets` is the mutation and emits the single `tickets.stored` event
   // (one mutation → one event). This tool used to emit an additional
   // `tickets.emitted` note, which double-logged the same action on the timeline.
   const stored = storeTickets(ctx, feature.id, input.tickets)
+  for (const ticket of stored) {
+    if (ticket.originFindingId) linkFixTicket(ctx, feature.id, ticket.originFindingId, ticket.id)
+  }
   // `seq` is the number the batch's own `blockedBy` speaks in and the number the
   // UI shows, and it is assigned HERE, by the store. Returning bare ids meant
   // the emitting session could not name what it had just written back to the
@@ -617,6 +642,74 @@ export function toolCancelTicket(
   requireOwnTicket(ctx, session, input.id)
   refuseIfReadOnly(session, 'cancelling a ticket')
   return { ok: true, ticket: cancelTicket(ctx, input.id, input.reason) }
+}
+
+/**
+ * The two dispositions a session spends on a defect without carding work for it.
+ * The third — LINK — needs no verb here: it rides `emit_tickets`, because a
+ * ticket carrying `originFindingId` already says everything a link means.
+ */
+const ResolveFindingShape = {
+  findingId: z
+    .string()
+    .min(1)
+    .describe('The finding id, from `get_feature_context`’s openDefects or carriedDefects.'),
+  disposition: z.enum(['carry', 'addressed']).describe(
+    '`carry` parks it for a later lap — out of the open count, still visible, and the human can ' +
+      'reopen it. `addressed` closes it because this lap’s work already answers it.',
+  ),
+  note: z
+    .string()
+    .optional()
+    .describe(
+      'REQUIRED for `addressed`: what addressed it, e.g. "lap 2’s ticket 7 rewrote the endpoint". ' +
+        'Optional for `carry`, where it records why it was parked.',
+    ),
+}
+
+/**
+ * Cross-field, so it cannot live in the raw shape MCP publishes: an `addressed`
+ * with no note is a closure with no evidence, which is the state this whole
+ * feature exists to stop a finding drifting into.
+ */
+const ResolveFindingInput = z.object(ResolveFindingShape).superRefine((input, refinement) => {
+  if (input.disposition === 'addressed' && !input.note?.trim()) {
+    refinement.addIssue({
+      code: 'custom',
+      path: ['note'],
+      message: 'closing a defect as addressed requires a note saying what addressed it',
+    })
+  }
+})
+
+export type ResolveFindingInputT = z.input<typeof ResolveFindingInput>
+
+/**
+ * Disposition one earlier-lap defect: park it for a later lap, or close it
+ * because this lap's work already answers it. The lap boundary triages open
+ * findings the way it already triages test notes.
+ *
+ * The refinement is applied HERE rather than at the registration, so this
+ * function is the one place an `addressed` with no attestation is refused —
+ * whether the caller is the MCP handler or a test at this seam.
+ *
+ * Reopening is deliberately absent: a session that carried a defect and then
+ * un-carried it would be arguing with itself, and the human's review page holds
+ * that verb.
+ */
+export function toolResolveFinding(
+  ctx: AppCtx,
+  session: SessionRow,
+  input: ResolveFindingInputT,
+): { ok: true; finding: ReviewFinding } {
+  const featureId = requireFeatureId(session)
+  refuseIfReadOnly(session, 'resolving a finding')
+  const { findingId, disposition, note } = ResolveFindingInput.parse(input)
+  const finding =
+    disposition === 'carry'
+      ? carryFinding(ctx, featureId, findingId, note)
+      : closeAsAddressed(ctx, featureId, findingId, note ?? '')
+  return { ok: true, finding }
 }
 
 export function toolEscalateToMap(
@@ -1607,6 +1700,10 @@ const TOOL_AUDIENCES: Record<string, readonly McpAudience[]> = {
   update_ticket: FEATURE_WRITE_KINDS,
   cancel_ticket: FEATURE_WRITE_KINDS,
   complete_phase: FEATURE_WRITE_KINDS,
+  // The same roster as `emit_tickets` on purpose: linking a defect to a ticket
+  // IS an emit, so any session that can shape a lap's work can also say what
+  // that work did to the defects it inherited.
+  resolve_finding: FEATURE_WRITE_KINDS,
   // Map moves stay open to `qa` on purpose: "any session may branch the map" is
   // the recursion (SPEC §13.3), and it is pinned by test as well as by prose.
   escalate_to_map: FEATURE_KINDS,
@@ -1768,9 +1865,13 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
           "Boot the integrated feature branch on the human's checkout, under your run's " +
           'identity, so you can review it. ALWAYS stop what you started, including when the ' +
           'review goes wrong: the drive holds a machine-wide slot and the human cannot use their ' +
-          'own checkout until you release it. Refusals (a dirty tree, a drive the human is ' +
-          'already running) are final and never worth retrying — reporting one is the honest ' +
-          'outcome. Refused unless your call carries a live run identity.',
+          'own checkout until you release it. A refused `start` says which refusal it is: ' +
+          '`deniedCode: "slot_held"` (`retriable: true`) means somebody else — a drive or a ' +
+          'preparation dry run — holds the machine-wide slot, which frees itself when they ' +
+          'finish, so call `start` again about ten times roughly thirty seconds apart before you ' +
+          'give up on it. `deniedCode: "dirty"` (`retriable: false`) is final — the uncommitted ' +
+          "files in `dirtyFiles` are the human's to clear and no wait will do it, so report it " +
+          'and review without the app. Refused unless your call carries a live run identity.',
         inputSchema: {
           action: z
             .enum(['start', 'status', 'stop'])
@@ -2224,6 +2325,27 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
     )
   }
 
+  if (wants('resolve_finding')) {
+    server.registerTool(
+      'resolve_finding',
+      {
+        title: 'Resolve a review finding',
+        description:
+          'Say what this lap did about a defect an earlier lap’s review left open: `carry` it into ' +
+          'a later lap, or close it as `addressed` because this lap’s work already answers it. To ' +
+          'link it instead, emit the ticket that fixes it with `originFindingId` set — the burn ' +
+          'then closes the finding itself when that ticket lands. Every earlier-lap open defect ' +
+          'must be linked, carried or closed before `complete_phase("tickets")` will pass.',
+        inputSchema: ResolveFindingShape,
+      },
+      async (args, extra) => {
+        const rs = await resolveCtxSession(extra)
+        if (!rs) return noSession()
+        return ok(toolResolveFinding(rs.ctx, rs.session, args))
+      },
+    )
+  }
+
   if (wants('escalate_to_map')) {
     server.registerTool(
       'escalate_to_map',
@@ -2424,7 +2546,73 @@ export async function resolveAudience(
   }
 }
 
+/**
+ * Drain a POST's body BEFORE anything else in this handler runs.
+ *
+ * `@hono/mcp` reads the body itself (`await ctx.req.json()`), but only after we
+ * have awaited a db round trip (`resolveAudience`) and synchronously assembled a
+ * whole `McpServer` with every tool's schema. Leaving the socket unread across
+ * all of that is the one structural risk this repo owns in the large-batch
+ * `emit_tickets` stall: a payload small enough to already sit in the socket's
+ * receive buffer is there whenever the transport gets round to asking, while one
+ * that takes several reads depends on the runtime buffering correctly while
+ * nobody is asking — size-dependent and silent, which is what sessions reported
+ * past ~10KB. Reading first removes the window.
+ *
+ * It costs nothing: Hono caches the body (`HonoRequest#json()` is
+ * `#cachedBody('text').then(JSON.parse)`), so the transport's own read is served
+ * from that cache rather than the stream, and `handleRequest(ctx, parsedBody)`
+ * is its documented way to be handed the value.
+ *
+ * Doing it here also gives the failure somewhere to be seen. A body that never
+ * finishes arriving is the only way an `/mcp` request dies with nothing to show
+ * for it — `@hono/mcp`'s json-response promise simply never settles — and
+ * silence was the defining symptom of the incident.
+ *
+ * Upstream, for traceability: no release indicts a specific bug — `@hono/mcp`
+ * 0.3.2, the only newer release, adds `onsessiondisconnected` and nothing else,
+ * and the payload/framing sweep recorded in `test/mcp-large-batch.test.ts` could
+ * not reproduce the stall on linux, so there is nothing to bump to. The nearest
+ * open upstream reports put the same symptom — a large tool-call argument that
+ * dies silently — one layer further out, in the MCP client rather than in any
+ * server:
+ *
+ *   • https://github.com/anthropics/claude-code/issues/86314 — a large
+ *     tool-input string argument stalls the client's own response stream for 80+
+ *     seconds with no error, before the call is ever dispatched over MCP;
+ *   • https://github.com/anthropics/claude-code/issues/72228 — parameters
+ *     emitted after a long parameter value are dropped client-side, so the
+ *     server sees a partial call and nothing surfaces the loss.
+ *
+ * Neither is confirmed as our cause (both are linux reports; the incident host is
+ * win32), so this stays a workaround at the layer we own rather than a version
+ * bump. If they are fixed upstream and sessions still stall, the remaining
+ * suspect is Bun's win32 socket read path — see the RESIDUAL GAP note in
+ * `test/mcp-large-batch.test.ts`.
+ */
+async function readMcpBody(c: Context): Promise<unknown> {
+  if (c.req.method !== 'POST') return undefined
+  let text: string
+  try {
+    text = await c.req.text()
+  } catch (e) {
+    console.error(
+      `[mcp] request body read failed after ${c.req.header('content-length') ?? 'unknown'} ` +
+        `declared bytes: ${e instanceof Error ? e.message : String(e)}`,
+    )
+    return undefined
+  }
+  try {
+    return JSON.parse(text)
+  } catch {
+    // Not ours to answer: handing back `undefined` lets the transport re-read
+    // (from Hono's cache) and reply with its own JSON-RPC parse error.
+    return undefined
+  }
+}
+
 mcp.all('*', async (c) => {
+  const body = await readMcpBody(c)
   const audience = await resolveAudience(
     c.req.header('X-Runcastle-Session'),
     c.req.header(RUN_HEADER),
@@ -2432,7 +2620,7 @@ mcp.all('*', async (c) => {
   const server = buildMcpServer(audience)
   const transport = new StreamableHTTPTransport({ enableJsonResponse: true })
   await server.connect(transport)
-  const res = await transport.handleRequest(c)
+  const res = await transport.handleRequest(c, body)
   return res ?? c.body(null, 202)
 })
 

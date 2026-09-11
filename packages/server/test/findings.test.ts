@@ -10,6 +10,7 @@ import { createSessionRow, markSessionEnded } from '../src/launcher/sessions'
 import {
   isOverwritable,
   isPreparedKey,
+  isProvenanceKey,
   listFindings,
   markVerified,
   preparedValue,
@@ -60,6 +61,25 @@ describe('isPreparedKey', () => {
     expect(isPreparedKey('dbResetCommand')).toBe(true)
     expect(isPreparedKey('model')).toBe(false)
     expect(isPreparedKey('burnConcurrency')).toBe(false)
+  })
+})
+
+/**
+ * The wider set: everything that carries provenance, prepared or not.
+ * `sandboxImage` is the field that made the distinction necessary — it needs
+ * the human-ownership lock, but a preparation conversation must never put it on
+ * its to-do list, because the value comes from an image build.
+ */
+describe('isProvenanceKey', () => {
+  it('covers sandboxImage, which is deliberately not a prepared key', () => {
+    expect(isProvenanceKey('sandboxImage')).toBe(true)
+    expect(isPreparedKey('sandboxImage')).toBe(false)
+  })
+
+  it('covers every prepared key, and still nothing else', () => {
+    for (const key of PREPARED_KEYS) expect(isProvenanceKey(key)).toBe(true)
+    expect(isProvenanceKey('model')).toBe(false)
+    expect(isProvenanceKey('burnConcurrency')).toBe(false)
   })
 })
 
@@ -189,6 +209,29 @@ describe('human provenance', () => {
     expect(preparedValue(ctx, PROJECT_ID, 'driveInstructions')).toBeNull()
     expect(isOverwritable(ctx, PROJECT_ID, 'driveInstructions')).toBe(true)
   })
+
+  /**
+   * `sandboxImage` gets the same lock without being a prepared key. This is
+   * what stops a later image build from overwriting a tag the operator typed by
+   * hand — the build has to ask `isOverwritable` first, and clearing the field
+   * is the one way to hand it back.
+   */
+  it('locks a hand-typed sandbox image against the machinery that writes it', () => {
+    recordFinding(ctx, PROJECT_ID, {
+      key: 'sandboxImage',
+      value: 'sandcastle:runcastle-proj_1',
+      source: 'session',
+    })
+    expect(isOverwritable(ctx, PROJECT_ID, 'sandboxImage')).toBe(true)
+
+    updateSettings(ctx, { projectId: PROJECT_ID, key: 'sandboxImage', value: 'acme/jdk21:local' })
+    expect(preparedValue(ctx, PROJECT_ID, 'sandboxImage')).toBe('acme/jdk21:local')
+    expect(isOverwritable(ctx, PROJECT_ID, 'sandboxImage')).toBe(false)
+
+    updateSettings(ctx, { projectId: PROJECT_ID, key: 'sandboxImage', value: null })
+    expect(preparedValue(ctx, PROJECT_ID, 'sandboxImage')).toBeNull()
+    expect(isOverwritable(ctx, PROJECT_ID, 'sandboxImage')).toBe(true)
+  })
 })
 
 /**
@@ -306,6 +349,14 @@ describe('keysToPrepare', () => {
     updateSettings(ctx, { projectId: PROJECT_ID, key: 'verifyCommands', value: 'mine' })
     expect(keysToPrepare(ctx, project({ verifyCommands: 'mine' }))).not.toContain('verifyCommands')
   })
+
+  // The reason `sandboxImage` stayed out of PREPARED_KEYS: an unset image is
+  // not an open question for the conversation, it is a project that burns in
+  // the stock image.
+  it('never asks the conversation for a sandbox image', () => {
+    expect(keysToPrepare(ctx, project())).not.toContain('sandboxImage')
+    expect(unsetPreparedKeys(project())).not.toContain('sandboxImage')
+  })
 })
 
 describe('unsetPreparedKeys', () => {
@@ -328,6 +379,23 @@ describe('settings scope', () => {
     ]) {
       expect(view.fields.find((f) => f.key === key)?.scope).toBe('project')
     }
+  })
+
+  // Which image a repo needs is as much a fact about that repo as its verify
+  // commands are, so it rides the same descriptor rails: project column, global
+  // twin, env var.
+  it('exposes sandboxImage as project-overridable, with the global as the fallback', () => {
+    const inherited = getSettings(ctx, PROJECT_ID, { env: {}, configFile: tmpConfig() })
+    const before = inherited.fields.find((f) => f.key === 'sandboxImage')
+    expect(before?.scope).toBe('project')
+    expect(before?.source).not.toBe('project')
+
+    updateSettings(ctx, { projectId: PROJECT_ID, key: 'sandboxImage', value: 'acme/jdk21:local' })
+    const field = getSettings(ctx, PROJECT_ID, { env: {}, configFile: tmpConfig() }).fields.find(
+      (f) => f.key === 'sandboxImage',
+    )
+    expect(field?.source).toBe('project')
+    expect(field?.value).toBe('acme/jdk21:local')
   })
 
   it('falls back to the global value until the project overrides it', () => {

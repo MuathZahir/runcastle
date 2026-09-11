@@ -626,7 +626,9 @@ async function probeOneContainer(opts: ProbeContainerOptions): Promise<ProbeRun>
   const cache = buildBurnCacheMounts(opts.slot, opts.projectId, opts.config.sandbox, opts.pm)
   const sandbox = await createSandbox({
     branch,
-    sandbox: selectSandbox(opts.config, cache.mounts, cache.env),
+    // No project: the probe measures the stock image against a scratch repo of
+    // its own, deliberately outside any project's settings.
+    sandbox: selectSandbox(opts.config, null, cache.mounts, cache.env),
     cwd: opts.scratch,
     hooks: {
       sandbox: {

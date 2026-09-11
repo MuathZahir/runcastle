@@ -16,6 +16,7 @@ import {
   latestRun,
   liveSessionLine,
   reviewChecks,
+  reviewDriveDenial,
   specDocPath,
   verificationState,
   type LapAbort,
@@ -25,6 +26,7 @@ import { useEventLog } from '../../lib/events'
 import { useReviewArtifacts } from '../../lib/reviews'
 import { useLivePoll } from '../../lib/live'
 import { useToast } from '../../lib/toast'
+import { CarriedFindings } from '../review/CarriedFindings'
 import { ConflictAlert } from '../review/ConflictCard'
 import { DriveInstructions } from '../review/drive-parts'
 import { EvidenceStage } from '../review/EvidenceStage'
@@ -32,6 +34,7 @@ import { FullAccounts } from '../review/FullAccounts'
 import { LapAbortAlert } from '../review/LapAbortAlert'
 import { LiveSessionAlert } from '../review/LiveSessionAlert'
 import { OpenWork } from '../review/OpenWork'
+import { ReviewDriveDeniedAlert } from '../review/ReviewDriveDeniedCard'
 import { StatusStrip } from '../review/StatusStrip'
 import { WorkList, partitionWork } from '../review/WorkList'
 import type { WalkthroughHandle } from '../WalkthroughPlayer'
@@ -95,6 +98,12 @@ export function ReviewBody({
   // The same query key the workspace shell reads, so the conflict card's state
   // and the bar's conflict branch come out of one fetch of one feed.
   const events = useEventLog(feature.id)
+  // The review the retry re-burns. A denial never ends a review — it downgrades
+  // it to the repo-only pass — so the ticket that was refused is a `done` one,
+  // and the latest of those is this lap's review (as `reviewOutcome` reads it).
+  const deniedReview = latestReview(
+    tickets.filter((t) => t.kind === 'review' && t.status === 'done'),
+  )
 
   // Commits come from git, not from ticket commit rows (findings F23). Polled
   // slower than the 1.5s shell: a `rev-list --count` is cheap but this figure
@@ -167,6 +176,10 @@ export function ReviewBody({
   // live jump only into its own recording (decision 22). The stage reports it
   // rather than the ref answering, because a ref does not re-render its readers.
   const [staged, setStaged] = useState<{ ticketId: string } | null>(null)
+  // Which denied review drive the human has waved away (decision 7). Keyed on
+  // the event id, so a NEW denial is a new id and the banner comes back; a
+  // dismissal is a gesture about one denial, not a preference to be persisted.
+  const [dismissedDenial, setDismissedDenial] = useState<number | null>(null)
   // The other direction of a jump (decision 25b): a marker click marks the notes
   // taken at that moment, and a fresh capture scrolls its new row into view.
   // Both fade after a beat — a permanent mark would read as a selection.
@@ -215,6 +228,12 @@ export function ReviewBody({
   // The one drive slot is taken by somebody else — another feature, or a
   // preparation dry run (decision 9).
   const driveSlotTaken = !!drive.data && drive.data.featureId !== feature.id
+  // A review drive the human's own uncommitted files refused (decision 7). Only
+  // while the feature is actually AT review — this body also mounts to look back
+  // at review on a feature that has moved on, and a denial answered by a later
+  // phase is a record, not something to act on.
+  const denial =
+    feature.phase === 'review' ? reviewDriveDenial(events, runs, dismissedDenial) : null
   // One partition, two halves (decision 8): what needs attention is the middle
   // of the page, what has been dealt with rides inside the bottom disclosure.
   const { attention, settled } = partitionWork({
@@ -225,10 +244,17 @@ export function ReviewBody({
   })
   const observations = (findings.data?.findings ?? []).filter((f) => f.kind === 'observation')
   const account = lapAccount(tickets, feature.lap)
+  // Every count on this page is the server's own, scoped to THIS lap
+  // (decisions #5) — the inflated all-laps figure is what sent the human back
+  // through Iterate over defects a later lap had already answered. So the review
+  // row's finding count is read off the summary rather than measured on the
+  // `findings` array, which spans every lap the feature has run.
+  const summary = findings.data?.summary
+  const lapFindings = summary ? summary.found + summary.observations : undefined
   // The lap at one line (decision 8): the review agent's digest is written to
   // open with exactly this line. With no digest, the counts say what happened
   // instead — the same figures the bar is holding.
-  const accountLine = lapAccountLine(account) ?? findingCountsLine(findings.data?.summary)
+  const accountLine = lapAccountLine(account) ?? findingCountsLine(summary)
 
   return (
     <div className="flex flex-col gap-6">
@@ -253,6 +279,21 @@ export function ReviewBody({
           lap={feature.lap}
           readonly={readonly}
           onRetry={onIterate}
+        />
+      )}
+
+      {/* The refusal the human can still act on, at the moment they can act on
+          it — the digest that used to carry it is read long afterwards. */}
+      {denial && (
+        <ReviewDriveDeniedAlert
+          // A new denial is a new card, so a refusal answered about the old one
+          // cannot linger under it.
+          key={denial.eventId}
+          featureId={feature.id}
+          reviewTicketId={deniedReview?.id ?? null}
+          denial={denial}
+          readonly={readonly}
+          onDismiss={() => setDismissedDenial(denial.eventId)}
         />
       )}
 
@@ -295,7 +336,7 @@ export function ReviewBody({
           tickets,
           run,
           commitCount: commits.data?.count,
-          findings: findings.data?.findings.length,
+          findings: lapFindings,
         })}
         runState={run?.status ?? 'no run recorded'}
         verification={verificationState(tickets)}
@@ -343,6 +384,15 @@ export function ReviewBody({
         highlight={spotlight.ids}
         scrollTo={spotlight.scrollTo}
         onViewLane={onViewLane}
+      />
+
+      {/* What earlier laps parked instead of answering (decisions #5) — beside
+          the open work and outside its count, since the server keeps carried
+          defects out of the summary the page leads with. */}
+      <CarriedFindings
+        featureId={feature.id}
+        findings={findings.data?.carriedFindings ?? []}
+        readonly={readonly}
       />
 
       <FullAccounts

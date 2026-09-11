@@ -432,6 +432,7 @@ const projectView = (over: Record<string, Partial<SettingField>> = {}): Settings
         { key: 'serverPort', value: 4512, scope: 'global' },
         { key: 'model', value: 'claude-opus-5', scope: 'project', source: 'file' },
         { key: 'sandbox', value: 'docker', scope: 'project', source: 'default' },
+        { key: 'sandboxImage', value: null, scope: 'project', source: 'default' },
         { key: 'setupCommand', value: 'bun install', scope: 'project', source: 'project' },
         { key: 'verifyCommands', value: 'bun test', scope: 'project', source: 'project' },
         { key: 'knownFailures', value: null, scope: 'project', source: 'default' },
@@ -492,6 +493,7 @@ describe('pageRows — one page per task', () => {
     expect(rows.map((r) => r.key)).toEqual([
       'model',
       'sandbox',
+      'sandboxImage',
       'setupCommand',
       'verifyCommands',
       'knownFailures',
@@ -503,6 +505,7 @@ describe('pageRows — one page per task', () => {
       'sessionBranch',
     ])
     expect(rows.map((r) => r.group)).toEqual([
+      'model',
       'model',
       'model',
       'commands',
@@ -602,6 +605,30 @@ describe('describeField — where a value came from', () => {
     const row = describeField(field({ key: 'sandbox', value: 'docker' }))
     expect(row.sourceChip).toBeUndefined()
     expect(row.ghostValue).toBeUndefined()
+  })
+
+  /**
+   * The sandbox image reads exactly like the setup command in project scope: a
+   * global twin behind a ghost, the chip that flips when the project sets its
+   * own, and the provenance of whoever established it. The value here may have
+   * come from an image build rather than a preparation run, which is why the
+   * chip matters — "you set this" is what stops a rebuild overwriting it.
+   */
+  it('gives the sandbox image the twin chip, the ghost and its provenance', () => {
+    const inherited = describeField(
+      field({ key: 'sandboxImage', value: 'sandcastle:runcastle', scope: 'project', source: 'file' }),
+    )
+    expect(inherited.sourceChip).toBe('global')
+    expect(inherited.ghostValue).toBe('sandcastle:runcastle')
+    expect(inherited.group).toBe('model')
+
+    const own = describeField(
+      field({ key: 'sandboxImage', value: 'acme/jdk21:local', scope: 'project', source: 'project' }),
+      { key: 'sandboxImage', source: 'human', establishedAt: Date.now() - 11 * DAY },
+    )
+    expect(own.sourceChip).toBe('project')
+    expect(own.ghostValue).toBeUndefined()
+    expect(own.provenanceChip).toEqual({ text: 'You · 11d ago', tone: 'ok' })
   })
 })
 

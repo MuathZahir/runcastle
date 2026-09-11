@@ -8,12 +8,14 @@ import {
   type ExecFn,
   type ExecOutcome,
   type ProbeResult,
+  type ProjectImageEnv,
 } from '../src/doctor/doctor'
 import {
   ASSET_ENV,
   applyInstalledAssetEnv,
   sandcastleTemplateDir,
 } from '../src/launcher/asset-paths'
+import { DOCKERFILE_HASH_LABEL } from '../src/services/sandbox-image'
 
 /**
  * A canned exec: maps `"cmd arg arg"` to an outcome. Anything not in the map is
@@ -29,6 +31,14 @@ function cannedExec(table: Record<string, Partial<ExecOutcome>>): ExecFn {
   }
 }
 
+/** The sha256 of the stock burner Dockerfile, as the fake hash reader reports it. */
+const STOCK_HASH = 'a'.repeat(64)
+
+/** The canned-exec key for the label read the image probe makes (decision 4). */
+function inspectKey(runtime: 'docker' | 'podman', tag: string): string {
+  return `${runtime} image inspect --format {{index .Config.Labels "${DOCKERFILE_HASH_LABEL}"}} ${tag}`
+}
+
 const ALL_HEALTHY: Record<string, Partial<ExecOutcome>> = {
   'bun --version': { stdout: '1.3.14' },
   'node --version': { stdout: 'v22.0.0' },
@@ -39,9 +49,7 @@ const ALL_HEALTHY: Record<string, Partial<ExecOutcome>> = {
   'git config --get user.name': { stdout: 'Dev' },
   'docker --version': { stdout: 'Docker version 27.0.0' },
   'docker info': { stdout: 'Server: ...' },
-  'docker image inspect --format {{.Created}} sandcastle:runcastle': {
-    stdout: '2030-01-01T12:00:00Z',
-  },
+  [inspectKey('docker', 'sandcastle:runcastle')]: { stdout: STOCK_HASH },
 }
 
 function byId(results: ProbeResult[], id: string): ProbeResult {
@@ -55,7 +63,7 @@ describe('runDoctor — canned environments', () => {
     env: { CLAUDE_CODE_OAUTH_TOKEN: 'sk-oauth-xxx' },
     platform: 'linux' as const,
     imageName: 'sandcastle:runcastle',
-    fileMtime: () => new Date('2026-08-18T12:00:00Z'),
+    dockerfileHash: () => STOCK_HASH,
   }
 
   it('reports every probe healthy on a fully-provisioned host', async () => {
@@ -138,31 +146,85 @@ describe('runDoctor — canned environments', () => {
 
   it('reports a missing sandcastle image when inspect fails', async () => {
     const table = { ...ALL_HEALTHY }
-    delete table['docker image inspect --format {{.Created}} sandcastle:runcastle']
+    delete table[inspectKey('docker', 'sandcastle:runcastle')]
     const report = await runDoctor({ ...base, exec: cannedExec(table) })
     expect(byId(report.results, 'sandcastle-image').status).toBe('missing')
   })
 
-  it('reports a sandcastle image as stale when the burner Dockerfile is newer', async () => {
+  it('reports a sandcastle image as stale when its hash label is not the Dockerfile’s', async () => {
     const table = {
       ...ALL_HEALTHY,
-      'docker image inspect --format {{.Created}} sandcastle:runcastle': {
-        stdout: '2026-08-20T12:00:00Z',
-      },
+      [inspectKey('docker', 'sandcastle:runcastle')]: { stdout: 'b'.repeat(64) },
     }
-    const report = await runDoctor({
-      ...base,
-      exec: cannedExec(table),
-      fileMtime: () => new Date('2026-08-21T12:00:00Z'),
-    })
+    const report = await runDoctor({ ...base, exec: cannedExec(table) })
     const image = byId(report.results, 'sandcastle-image')
     expect(image.status).toBe('stale')
     expect(image.severity).toBe('error')
     expect(image.detail).toBe(
-      'sandcastle:runcastle built 2026-08-20, burner Dockerfile changed 2026-08-21 — rebuild',
+      'sandcastle:runcastle no longer matches the burner Dockerfile — rebuild',
     )
     // Names the settings page the web deep-links from (decision 9).
     expect(image.fix).toBe('Open Settings → Burns (Rebuild image).')
+    expect(report.ok).toBe(false)
+  })
+
+  // BuildKit layer-cache reuse keeps the old `Created` on a freshly rebuilt
+  // image, which is what made the mtime comparison this replaces wrong in both
+  // directions. An image built before the label existed cannot vouch for its
+  // own content, so it reads as stale rather than as fine.
+  it('reads an image with no hash label at all as stale', async () => {
+    const table = {
+      ...ALL_HEALTHY,
+      // What both runtimes print for a label key the image does not carry.
+      [inspectKey('docker', 'sandcastle:runcastle')]: { stdout: '<no value>' },
+    }
+    const report = await runDoctor({ ...base, exec: cannedExec(table) })
+    expect(byId(report.results, 'sandcastle-image').status).toBe('stale')
+  })
+
+  it('never asks the image when it was built, only what it was built from', async () => {
+    const asked: string[][] = []
+    await runDoctor({
+      ...base,
+      exec: async (command, args) => {
+        asked.push([command, ...args])
+        return cannedExec(ALL_HEALTHY)(command, args)
+      },
+    })
+    expect(asked.some((call) => call.join(' ').includes('{{.Created}}'))).toBe(false)
+  })
+
+  it('reports an image runcastle does not manage as custom, not as a defect', async () => {
+    const report = await runDoctor({
+      ...base,
+      imageName: 'my-team/sandbox:latest',
+      exec: cannedExec({
+        ...ALL_HEALTHY,
+        [inspectKey('docker', 'my-team/sandbox:latest')]: { stdout: '<no value>' },
+      }),
+    })
+    const image = byId(report.results, 'sandcastle-image')
+    expect(image.status).toBe('custom')
+    expect(image.severity).toBe('info')
+    expect(image.detail).toBe('my-team/sandbox:latest is a custom image, managed outside runcastle')
+    expect(image.fix).toContain('clear the sandbox image setting')
+    expect(image.fix).toContain('.runcastle/sandbox/Dockerfile')
+    // `info` never fails a report: the operator's own image is not their bug,
+    // and it carries no hash label runcastle could have judged it by anyway.
+    expect(report.ok).toBe(true)
+  })
+
+  // Runcastle cannot build it, but it can still say a burn will not find it.
+  it('still calls a custom image out when it is not built at all', async () => {
+    const report = await runDoctor({
+      ...base,
+      imageName: 'my-team/sandbox:latest',
+      exec: cannedExec(ALL_HEALTHY),
+    })
+    const image = byId(report.results, 'sandcastle-image')
+    expect(image.status).toBe('custom')
+    expect(image.severity).toBe('error')
+    expect(image.detail).toContain('is not built locally')
     expect(report.ok).toBe(false)
   })
 })
@@ -178,6 +240,7 @@ describe('runDoctor — per-runtime readiness with conditional severity', () => 
     env: { CLAUDE_CODE_OAUTH_TOKEN: 'sk-oauth-xxx' },
     platform: 'linux' as const,
     imageName: 'sandcastle:runcastle',
+    dockerfileHash: () => STOCK_HASH,
     fileExists: () => false,
   }
 
@@ -281,6 +344,7 @@ describe('runDoctor — codex login is decided by the credentials file', () => {
     env: { CLAUDE_CODE_OAUTH_TOKEN: 'sk-oauth-xxx' },
     platform: 'linux' as const,
     imageName: 'sandcastle:runcastle',
+    dockerfileHash: () => STOCK_HASH,
     runtimes: ['codex'] as const,
   }
   const withStatus = (status: Partial<ExecOutcome>) =>
@@ -345,7 +409,236 @@ describe('runDoctor — codex login is decided by the credentials file', () => {
  * `<pkgRoot>/sandcastle-template` — so `bun add -g runcastle` got an ENOENT out
  * of the tRPC doctor query and a home page stuck on "loading projects…".
  */
-describe('runDoctor — the burner Dockerfile it stats', () => {
+/**
+ * A repo whose toolchain is not JavaScript ships `.runcastle/sandbox/Dockerfile`
+ * and runcastle builds it `FROM` the stock image (decisions 5, 6, 8). The image
+ * row is then about a chain, and the two questions it has to keep apart are
+ * "which layer drifted" and "has this been built at all" — a runcastle upgrade
+ * changes the stock Dockerfile, and every image built on it is out of date the
+ * moment it does, however current its own label still is.
+ */
+describe('runDoctor — a project that ships its own sandbox Dockerfile', () => {
+  const REPO = join('/repos', 'java-service')
+  const PROJECT_DOCKERFILE = join(REPO, '.runcastle', 'sandbox', 'Dockerfile')
+  const BURNER_DOCKERFILE = join('/assets', 'sandcastle', 'Dockerfile')
+  const PROJECT_HASH = 'c'.repeat(64)
+  const TAG = 'sandcastle:runcastle-p1'
+
+  const base = {
+    env: { CLAUDE_CODE_OAUTH_TOKEN: 'sk-oauth-xxx' },
+    platform: 'linux' as const,
+    imageName: 'sandcastle:runcastle',
+    burnerDockerfile: BURNER_DOCKERFILE,
+  }
+
+  /** Hashes by path; a path this does not know is a file that is not there. */
+  const hashes =
+    (table: Record<string, string>) =>
+    (path: string): string | null =>
+      table[path] ?? null
+
+  /** The stock Dockerfile alone — the state before a repo ships one of its own. */
+  const stockOnly = { [BURNER_DOCKERFILE]: STOCK_HASH }
+  const shipped = { ...stockOnly, [PROJECT_DOCKERFILE]: PROJECT_HASH }
+
+  function project(over: Partial<ProjectImageEnv> = {}): ProjectImageEnv {
+    return {
+      id: 'p1',
+      repoPath: REPO,
+      stored: TAG,
+      overwritable: true,
+      clearStored: () => undefined,
+      ...over,
+    }
+  }
+
+  /** A host with both images built, each labelled with the hash given here. */
+  const built = (stock: string, projectImage?: string) =>
+    cannedExec({
+      ...ALL_HEALTHY,
+      [inspectKey('docker', 'sandcastle:runcastle')]: { stdout: stock },
+      ...(projectImage === undefined
+        ? {}
+        : { [inspectKey('docker', TAG)]: { stdout: projectImage } }),
+    })
+
+  const imageRow = async (env: Parameters<typeof runDoctor>[0]) =>
+    byId((await runDoctor(env)).results, 'sandcastle-image')
+
+  it('is ok when both layers still match the Dockerfiles they were built from', async () => {
+    const row = await imageRow({
+      ...base,
+      exec: built(STOCK_HASH, PROJECT_HASH),
+      dockerfileHash: hashes({ ...shipped }),
+      projectImage: project(),
+    })
+    expect(row.status).toBe('ok')
+    expect(row.detail).toBe(`${TAG} built from .runcastle/sandbox/Dockerfile`)
+  })
+
+  it('names the project Dockerfile as the layer that drifted', async () => {
+    const row = await imageRow({
+      ...base,
+      exec: built(STOCK_HASH, 'd'.repeat(64)),
+      dockerfileHash: hashes({ ...shipped }),
+      projectImage: project(),
+    })
+    expect(row.status).toBe('stale')
+    expect(row.detail).toBe(`${TAG} no longer matches .runcastle/sandbox/Dockerfile — rebuild`)
+    expect(row.fix).toBe('Open Settings → Burns (Rebuild image).')
+  })
+
+  // The silent hole a per-image label alone leaves: upgrade runcastle, and every
+  // derived image stays "fresh" by its own hash while its base has moved.
+  it('names the stock base as the layer that drifted', async () => {
+    const row = await imageRow({
+      ...base,
+      exec: built('d'.repeat(64), PROJECT_HASH),
+      dockerfileHash: hashes({ ...shipped }),
+      projectImage: project(),
+    })
+    expect(row.status).toBe('stale')
+    expect(row.detail).toBe(
+      `${TAG} is built on sandcastle:runcastle, which no longer matches the burner Dockerfile — rebuild`,
+    )
+  })
+
+  it('reports not-built-yet when the Dockerfile is there and the image is not', async () => {
+    const row = await imageRow({
+      ...base,
+      exec: built(STOCK_HASH),
+      dockerfileHash: hashes({ ...shipped }),
+      projectImage: project({ stored: null }),
+    })
+    expect(row.status).toBe('not-built-yet')
+    expect(row.detail).toBe(`.runcastle/sandbox/Dockerfile is not built — ${TAG} does not exist`)
+    expect(row.fix).toContain('Build image')
+  })
+
+  // An image nothing resolves to is not this project's image, however current
+  // it is: a burn would still run in the stock one. The same Build fixes it.
+  it('reports not-built-yet when the image exists but the project never adopted it', async () => {
+    const row = await imageRow({
+      ...base,
+      exec: built(STOCK_HASH, PROJECT_HASH),
+      dockerfileHash: hashes({ ...shipped }),
+      projectImage: project({ stored: null }),
+    })
+    expect(row.status).toBe('not-built-yet')
+    expect(row.detail).toBe(`${TAG} is built but is not this project's image yet`)
+  })
+
+  it('clears a machine-written image whose Dockerfile has been deleted, and falls back', async () => {
+    let cleared = 0
+    const row = await imageRow({
+      ...base,
+      exec: built(STOCK_HASH, PROJECT_HASH),
+      dockerfileHash: hashes({ ...stockOnly }), // the project Dockerfile is gone
+      projectImage: project({ clearStored: () => (cleared += 1) }),
+    })
+    expect(cleared).toBe(1)
+    // Resolution falls back to the layers below the column — here, the stock image.
+    expect(row.status).toBe('ok')
+    expect(row.detail).toBe('sandcastle:runcastle present')
+  })
+
+  it('never clears — or offers to rebuild — a tag the human typed', async () => {
+    let cleared = 0
+    const row = await imageRow({
+      ...base,
+      exec: cannedExec({
+        ...ALL_HEALTHY,
+        [inspectKey('docker', 'sandcastle:runcastle')]: { stdout: STOCK_HASH },
+        [inspectKey('docker', 'my-team/sandbox:latest')]: { stdout: '<no value>' },
+      }),
+      dockerfileHash: hashes({ ...stockOnly }),
+      projectImage: project({
+        stored: 'my-team/sandbox:latest',
+        overwritable: false,
+        clearStored: () => (cleared += 1),
+      }),
+    })
+    expect(cleared).toBe(0)
+    expect(row.status).toBe('custom')
+    expect(row.detail).toBe('my-team/sandbox:latest is a custom image, managed outside runcastle')
+  })
+
+  // Both at once: the human's tag is never overwritten, so a burn keeps
+  // resolving to it however current the project image is. A row about the
+  // project image would describe a container no burn runs in — and would arm a
+  // Build button for it.
+  it('answers for the hand-typed tag, not the project image, when the repo has both', async () => {
+    const looked: string[] = []
+    const table = cannedExec({
+      ...ALL_HEALTHY,
+      [inspectKey('docker', 'my-team/sandbox:latest')]: { stdout: '<no value>' },
+      [inspectKey('docker', TAG)]: { stdout: PROJECT_HASH },
+    })
+    const row = await imageRow({
+      ...base,
+      exec: (command, args) => {
+        looked.push([command, ...args].join(' '))
+        return table(command, args)
+      },
+      dockerfileHash: hashes({ ...shipped }),
+      projectImage: project({ stored: 'my-team/sandbox:latest', overwritable: false }),
+    })
+    expect(row.status).toBe('custom')
+    expect(row.detail).toBe(
+      "my-team/sandbox:latest is a custom image, managed outside runcastle — and outranks this repo's .runcastle/sandbox/Dockerfile",
+    )
+    // The Dockerfile is written already, so the way out is the setting alone.
+    expect(row.fix).toContain('clear the sandbox image setting')
+    expect(row.fix).not.toContain('commit a .runcastle/sandbox/Dockerfile')
+    expect(looked).not.toContain(inspectKey('docker', TAG))
+  })
+
+  // Decision 9: a whitespace column is no image at all — `resolveSandboxImage`
+  // trims it, so a burn runs in the project image while a row calling it custom
+  // would disarm the Build button over a value the burn cannot see.
+  it('reads a blank stored image as unset, not as a tag the human typed', async () => {
+    const row = await imageRow({
+      ...base,
+      exec: built(STOCK_HASH),
+      dockerfileHash: hashes({ ...shipped }),
+      projectImage: project({ stored: '  ', overwritable: false }),
+    })
+    expect(row.status).toBe('not-built-yet')
+    expect(row.detail).toBe(`.runcastle/sandbox/Dockerfile is not built — ${TAG} does not exist`)
+  })
+
+  it('puts the project column above the env and config layers, as the resolver does', async () => {
+    const row = await imageRow({
+      ...base,
+      imageName: 'from-the-config:latest',
+      exec: built(STOCK_HASH, PROJECT_HASH),
+      dockerfileHash: hashes({ ...shipped }),
+      projectImage: project(),
+    })
+    expect(row.status).toBe('ok')
+    expect(row.detail).toContain(TAG)
+  })
+
+  // The ordering is `resolveSandboxImage`'s to state and the probe's to obey, so
+  // the row inherits the resolver's reading of a blank column: a cleared value
+  // is unset and the layers below it answer, never an image named "  ".
+  it('treats a blank project column as unset, as the resolver does', async () => {
+    const row = await imageRow({
+      ...base,
+      imageName: 'from-the-config:latest',
+      exec: cannedExec({
+        ...ALL_HEALTHY,
+        [inspectKey('docker', 'from-the-config:latest')]: { stdout: '<no value>' },
+      }),
+      dockerfileHash: hashes({ ...stockOnly }),
+      projectImage: project({ stored: '  ', overwritable: false }),
+    })
+    expect(row.status).toBe('custom')
+    expect(row.detail).toBe('from-the-config:latest is a custom image, managed outside runcastle')
+  })
+})
+
+describe('runDoctor — the burner Dockerfile it hashes', () => {
   const base = {
     env: { CLAUDE_CODE_OAUTH_TOKEN: 'sk-oauth-xxx' },
     platform: 'linux' as const,
@@ -356,19 +649,19 @@ describe('runDoctor — the burner Dockerfile it stats', () => {
     delete process.env[ASSET_ENV.sandcastleTemplate]
   })
 
-  /** Run the probe set on a healthy host and report the path it read an mtime from. */
+  /** Run the probe set on a healthy host and report the path it hashed. */
   async function statted(): Promise<string> {
     const seen: string[] = []
     await runDoctor({
       ...base,
       exec: cannedExec(ALL_HEALTHY),
-      fileMtime: (path) => {
+      dockerfileHash: (path) => {
         seen.push(path)
-        return new Date('2026-08-18T12:00:00Z')
+        return STOCK_HASH
       },
     })
     const [first] = seen
-    if (!first) throw new Error('the image probe never read a Dockerfile mtime')
+    if (!first) throw new Error('the image probe never hashed a Dockerfile')
     return first
   }
 
@@ -396,6 +689,7 @@ describe('exitCodeFor — gate vs diagnostic', () => {
     env: { CLAUDE_CODE_OAUTH_TOKEN: 'sk-oauth-xxx' },
     platform: 'linux' as const,
     imageName: 'sandcastle:runcastle',
+    dockerfileHash: () => STOCK_HASH,
   }
 
   it('gate mode passes when only Tier-2/warning checks fail', async () => {

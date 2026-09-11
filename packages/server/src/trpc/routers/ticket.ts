@@ -36,7 +36,9 @@ function noteStopTimeout(ctx: AppCtx, ticketId: string): void {
  *
  * - `retry`   — reset ONE failed ticket (plus its failed blockers) to pending
  *               and start a burn. Continues from the ticket's preserved
- *               attempt commits; `fresh: true` discards them first.
+ *               attempt commits; `fresh: true` discards them first. Also the
+ *               "Retry review" door: a `done` review ticket whose drive was
+ *               refused over a dirty tree, once the human has cleaned up.
  * - `stop`    — kill ONE burning ticket's agent, leaving the rest of the run
  *               alive, and resolve only once it is confirmed dead (`confirmed`
  *               says whether that was observed or the deadline ran out). The

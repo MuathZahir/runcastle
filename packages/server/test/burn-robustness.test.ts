@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { WorkflowDef } from '@runcastle/core'
@@ -9,7 +9,7 @@ import { afterAll, afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { AppCtx } from '../src/db/types'
 import { runs } from '../src/db/schema'
 import { GateError } from '../src/errors'
-import { listAfter } from '../src/services/events'
+import { emit, listAfter } from '../src/services/events'
 import { retryTicket } from '../src/services/features'
 import { findPreservedTicketBranch, listTicketAttemptBranches } from '../src/services/git'
 import { getTicket, listByFeature, storeTickets, updateTicket } from '../src/services/tickets'
@@ -20,6 +20,7 @@ import {
   delayUnlessAborted,
   haltTicketRun,
   missingAgentBinaryMessage,
+  missingSetupBinaryMessage,
   retryDelayMs,
   stopTicketRun,
   ticketStopReason,
@@ -150,6 +151,59 @@ describe('classifyTicketRunError', () => {
         'claude-code',
       ),
     ).toBe('run-fatal')
+  })
+
+  /**
+   * The backstop behind the run-level toolchain preflight: a setup hook that
+   * died on a missing tool. Sandcastle reports it as `Command failed (exit
+   * 127): <hook>` — which the broad `exited with code N` retryable entry used
+   * to swallow, so the burner rebuilt a container to fail identically, twice.
+   */
+  describe('a setup hook that hit a missing command', () => {
+    const setup = 'mvn -q -DskipTests install'
+    const hookFailure =
+      'Command failed (exit 127): cd /workspace/repo && mvn -q -DskipTests install\n/bin/sh: 1: mvn: not found'
+
+    it('is fatal, and names the tool and the project Dockerfile', () => {
+      expect(classifyTicketRunError(new Error(hookFailure), 'claude-code', setup)).toBe('fatal')
+      expect(missingSetupBinaryMessage(new Error(hookFailure), setup, 'sandcastle:runcastle-demo')).toBe(
+        'mvn is not installed in image sandcastle:runcastle-demo — add it to .runcastle/sandbox/Dockerfile and rebuild.',
+      )
+    })
+
+    it('is fatal even when nothing in the text can be named', () => {
+      expect(classifyTicketRunError(new Error('Command failed (exit 127): make deps'))).toBe('fatal')
+      expect(classifyTicketRunError(new Error('bash: line 1: gradle: command not found'))).toBe(
+        'fatal',
+      )
+      expect(
+        missingSetupBinaryMessage(new Error('Command failed (exit 127): make deps'), undefined, 'img'),
+      ).toBeUndefined()
+    })
+
+    it('names nothing when the wording is about something else entirely', () => {
+      // A tool the setup command never mentions, and a missing FILE rather than
+      // a missing command: neither is this image's toolchain.
+      expect(missingSetupBinaryMessage(new Error(hookFailure), 'npm ci', 'img')).toBeUndefined()
+      expect(
+        missingSetupBinaryMessage(new Error('mvn wrote no target/ directory'), setup, 'img'),
+      ).toBeUndefined()
+    })
+
+    it('leaves every other exit code retryable', () => {
+      // Passing the setup command must not make an ordinary failure that merely
+      // mentions one of its tools fatal.
+      expect(
+        classifyTicketRunError(
+          new Error('claude-code exited with code 1: mvn build failed'),
+          'claude-code',
+          setup,
+        ),
+      ).toBe('retryable')
+      expect(classifyTicketRunError(new Error('claude-code exited with code 137:\nkilled'))).toBe(
+        'retryable',
+      )
+    })
   })
 
   it('defaults unknown throws to fatal (never blind-retry)', () => {
@@ -577,5 +631,131 @@ describe('retryTicket', () => {
       .run()
 
     await expect(retryTicket(ctx, a.id)).rejects.toThrow(/run is live/)
+  })
+
+  // A review whose drive was refused over the human's uncommitted files still
+  // delivers its repo-only pass, so it lands `done` — the one non-failed ticket
+  // the retry accepts, and only once the human has cleaned up (decisions §6).
+  describe('a review whose drive was denied on a dirty tree', () => {
+    const ATTEMPT_BRANCH = 'runcastle/ticket/demo/1-rev1'
+
+    /** A feature at review, its finished run, and the denial that run recorded. */
+    function seedDeniedReview(dir: string, opts: { denied?: boolean } = {}) {
+      const featureId = seedFeature(ctx, seedProject(ctx, dir).id, {
+        phase: 'review',
+        slug: 'demo',
+      }).id
+      const [review] = storeTickets(ctx, featureId, [
+        { ...ticketInput('review the lap'), kind: 'review' },
+      ])
+      updateTicket(ctx, review.id, { status: 'done' })
+      ctx.db
+        .insert(runs)
+        .values({
+          id: newId('run'),
+          featureId,
+          workflow: 'ticket-burner',
+          status: 'succeeded',
+          startedAt: Date.now(),
+          endedAt: Date.now(),
+          summary: null,
+        })
+        .run()
+      if (opts.denied !== false) {
+        emit(ctx, featureId, {
+          type: 'reviewdrive.denied',
+          message: 'review drive denied — 1 uncommitted file(s) in the working tree: scratch.txt',
+          data: { code: 'dirty', dirtyFiles: ['scratch.txt'] },
+        })
+      }
+      return { featureId, review }
+    }
+
+    it('resets it and burns from its preserved chain once the tree is clean', async () => {
+      const { dir, g } = await initRepoWithFeature()
+      await seedAttemptBranch(dir, g, ATTEMPT_BRANCH, 'review.txt', '2026-08-01T00:00:00Z')
+      const { review } = seedDeniedReview(dir)
+      updateTicket(ctx, review.id, { attemptBranch: ATTEMPT_BRANCH })
+
+      const res = await retryTicket(ctx, review.id)
+      expect(res.runId).toMatch(/^run/)
+      expect(res.retried).toEqual([review.seq])
+      expect(res.resumedFrom).toBe(ATTEMPT_BRANCH)
+      expect(res.preservedCommits).toBe(1)
+
+      const after = getTicket(ctx, review.id)
+      expect(after.status).toBe('pending')
+      expect(after.attemptBranch).toBe(ATTEMPT_BRANCH)
+    })
+
+    it('still starts cold on fresh', async () => {
+      const { dir, g } = await initRepoWithFeature()
+      await seedAttemptBranch(dir, g, ATTEMPT_BRANCH, 'review.txt', '2026-08-01T00:00:00Z')
+      const { review } = seedDeniedReview(dir)
+      updateTicket(ctx, review.id, { attemptBranch: ATTEMPT_BRANCH })
+
+      const res = await retryTicket(ctx, review.id, { fresh: true })
+      expect(res.resumedFrom).toBeNull()
+      expect(getTicket(ctx, review.id).attemptBranch).toBeUndefined()
+      expect(await listTicketAttemptBranches(dir, 'demo', 1)).toEqual([])
+    })
+
+    it('refuses while the tree is still dirty, naming what is in the way', async () => {
+      const { dir } = await initRepoWithFeature()
+      const { review } = seedDeniedReview(dir)
+      writeFileSync(join(dir, 'notes.md'), 'wip\n')
+      writeFileSync(join(dir, 'scratch.txt'), 'wip\n')
+
+      await expect(retryTicket(ctx, review.id)).rejects.toThrow(GateError)
+      await expect(retryTicket(ctx, review.id)).rejects.toThrow(
+        /still dirty.*2 file\(s\) first: notes\.md, scratch\.txt/,
+      )
+      // Refused before anything moved: no reset, no burn.
+      expect(getTicket(ctx, review.id).status).toBe('done')
+    })
+
+    it('lands runcastle’s own docs first, so a stray brief never blocks it', async () => {
+      const { dir } = await initRepoWithFeature()
+      const { review } = seedDeniedReview(dir)
+      mkdirSync(join(dir, 'docs', 'features', 'demo'), { recursive: true })
+      writeFileSync(join(dir, 'docs', 'features', 'demo', 'brief.md'), '# brief\n')
+
+      const res = await retryTicket(ctx, review.id)
+      expect(res.retried).toEqual([review.seq])
+      expect(getTicket(ctx, review.id).status).toBe('pending')
+    })
+
+    it('refuses a done review ticket with no denial on record', async () => {
+      const { dir } = await initRepoWithFeature()
+      const { review } = seedDeniedReview(dir, { denied: false })
+      await expect(retryTicket(ctx, review.id)).rejects.toThrow(/only failed tickets/)
+    })
+
+    it('refuses a done implementation ticket of the same feature', async () => {
+      const { dir } = await initRepoWithFeature()
+      const { featureId } = seedDeniedReview(dir)
+      const [impl] = storeTickets(ctx, featureId, [ticketInput('impl')])
+      updateTicket(ctx, impl.id, { status: 'done' })
+      await expect(retryTicket(ctx, impl.id)).rejects.toThrow(/only failed tickets/)
+    })
+
+    it('refuses once a later run has superseded the denial', async () => {
+      const { dir } = await initRepoWithFeature()
+      const { featureId, review } = seedDeniedReview(dir)
+      ctx.db
+        .insert(runs)
+        .values({
+          id: newId('run'),
+          featureId,
+          workflow: 'ticket-burner',
+          status: 'succeeded',
+          startedAt: Date.now() + 60_000,
+          endedAt: Date.now() + 60_000,
+          summary: null,
+        })
+        .run()
+
+      await expect(retryTicket(ctx, review.id)).rejects.toThrow(/only failed tickets/)
+    })
   })
 })

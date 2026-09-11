@@ -55,7 +55,12 @@ export function EnableAfkCard({
   onDismiss?: () => void
 }) {
   const utils = trpc.useUtils()
-  const doctor = trpc.setup.doctor.useQuery(undefined, { refetchOnWindowFocus: false })
+  // With a project open the image row is about *that* project's image — the one
+  // its `.runcastle/sandbox/Dockerfile` builds, if it ships one. The wizard has
+  // no project and asks the machine-wide question.
+  const doctor = trpc.setup.doctor.useQuery(projectId ? { projectId } : undefined, {
+    refetchOnWindowFocus: false,
+  })
   const report = doctor.data
 
   const probe = (id: string) => report?.results.find((r) => r.id === id)
@@ -88,7 +93,7 @@ export function EnableAfkCard({
   // would report a machine as not ready when it is.
   const gates = [
     ...(runtime ? [{ field: 'container-runtime', ok: runtime.status === 'ok' }] : []),
-    ...(image ? [{ field: 'sandcastle-image', ok: image.status === 'ok' }] : []),
+    ...(image ? [{ field: 'sandcastle-image', ok: imageReady(image) }] : []),
     ...credentials.map((row) => ({
       field: afkCredentialField(row.runtime),
       ok: row.probe.status === 'ok',
@@ -162,6 +167,7 @@ export function EnableAfkCard({
               {...rowProps('sandcastle-image')}
               probe={image}
               runtimeOk={runtime?.status === 'ok'}
+              projectId={projectId}
               onDone={recheck}
             />
             {credentials.map((row) =>
@@ -191,6 +197,17 @@ export function EnableAfkCard({
 
 /** Exported for the same reason `ImageBuildAction` is: so a test can build one. */
 export type Probe = RouterOutputs['setup']['doctor']['results'][number]
+
+/**
+ * Whether the image row lets a burn through. A probe reported for context only
+ * (`info`) never does gate one — which is how a `custom` image the operator
+ * tagged themselves reads as ready: the burn has an image, it is simply not one
+ * runcastle built or can rebuild. A custom image that is not there is still an
+ * `error`, and still in the way.
+ */
+function imageReady(probe: Probe): boolean {
+  return probe.status === 'ok' || probe.severity === 'info'
+}
 
 /**
  * How long the checklist waits for `setup.doctor` before it admits the wait and
@@ -394,9 +411,20 @@ function RuntimeRow({
 function ImageRow({
   probe,
   runtimeOk,
+  projectId,
   onDone,
   ...chrome
-}: RowChrome & { probe: Probe | undefined; runtimeOk: boolean; onDone: () => void }) {
+}: RowChrome & {
+  probe: Probe | undefined
+  runtimeOk: boolean
+  /**
+   * Whose image to build. With a project open the build is that project's — the
+   * chain, when its repo carries `.runcastle/sandbox/Dockerfile`. The wizard has
+   * no project yet, and builds the stock image alone.
+   */
+  projectId?: string
+  onDone: () => void
+}) {
   const [sessionId, setSessionId] = useState<string | null>(null)
   const toast = useToast()
   const start = trpc.setup.startTerminal.useMutation({
@@ -409,7 +437,7 @@ function ImageRow({
     <ChecklistRow
       {...chrome}
       detail={probe.detail}
-      ok={probe.status === 'ok'}
+      ok={imageReady(probe)}
       below={
         sessionId && (
           <RowTerminal
@@ -433,7 +461,7 @@ function ImageRow({
           probe={probe}
           runtimeOk={runtimeOk}
           pending={start.isPending}
-          onStart={() => start.mutate({ kind: 'build-image' })}
+          onStart={() => start.mutate({ kind: 'build-image', ...(projectId ? { projectId } : {}) })}
         />
       )}
     </ChecklistRow>
@@ -452,6 +480,17 @@ export function ImageBuildAction({
   pending: boolean
   onStart: () => void
 }) {
+  // An image the operator manages themselves is not runcastle's to rebuild
+  // (decision 5): the button would have to build the stock template under their
+  // tag, which is the clobber this feature exists to remove. So the row offers
+  // the two ways back into runcastle's hands instead of a button that destroys
+  // their image.
+  if (probe.status === 'custom') {
+    return <span className="basis-full text-right text-xs text-text-3">{probe.fix}</span>
+  }
+  // "Build" while there is nothing to rebuild — an image runcastle has never
+  // built, whether that is the stock one or the project's own Dockerfile.
+  const first = probe.status === 'missing' || probe.status === 'not-built-yet'
   return (
     <Button
       variant="ghost"
@@ -459,7 +498,7 @@ export function ImageBuildAction({
       title={runtimeOk ? undefined : 'Install a container runtime first'}
       onClick={onStart}
     >
-      {pending ? 'Starting…' : probe.status === 'missing' ? 'Build image' : 'Rebuild image'}
+      {pending ? 'Starting…' : first ? 'Build image' : 'Rebuild image'}
     </Button>
   )
 }

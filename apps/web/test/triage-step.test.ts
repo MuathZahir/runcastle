@@ -43,6 +43,9 @@ const defect = (over: Partial<ReviewFinding> & { id: string }): ReviewFinding =>
   openReason: null,
   failureReason: null,
   fixTicketId: null,
+  carriedLap: null,
+  resolvedBy: null,
+  resolutionNote: null,
   createdAt: 100,
   ...over,
 })

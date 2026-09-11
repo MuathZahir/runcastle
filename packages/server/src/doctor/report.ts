@@ -10,6 +10,10 @@ const GLYPH: Record<ProbeStatus, string> = {
   ok: '✓',
   stale: '✗',
   missing: '✗',
+  'not-built-yet': '✗',
+  // Not a defect: an image the operator manages themselves is reported, never
+  // demanded — the same shape as a runtime nothing they configured resolves to.
+  custom: '·',
   'daemon-dead': '✗',
   'machine-stopped': '✗',
   unhealthy: '✗',

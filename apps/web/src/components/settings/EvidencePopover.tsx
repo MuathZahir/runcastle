@@ -20,6 +20,7 @@ const HOW_ESTABLISHED: Record<FindingSource, string> = {
   prep: 'established by preparation',
   session: 'established in a conversation on this machine',
   human: 'set by you',
+  build: "built by runcastle from this repo's own Dockerfile",
 }
 
 export function EvidencePopover({

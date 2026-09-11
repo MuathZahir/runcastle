@@ -151,11 +151,26 @@ export type FindingKind = z.infer<typeof FindingKind>
 export const FindingSeverity = z.enum(['high', 'medium', 'low'])
 export type FindingSeverity = z.infer<typeof FindingSeverity>
 
-export const FindingStatus = z.enum(['open', 'fixing', 'fixed', 'failed', 'dismissed'])
+/**
+ * `carried` mirrors the test-note status of the same name: a defect a later lap
+ * looked at and deliberately parked. It is out of the open count and out of the
+ * lap's obligations, and only the human's reopen returns it to `open`.
+ */
+export const FindingStatus = z.enum(['open', 'fixing', 'fixed', 'failed', 'dismissed', 'carried'])
 export type FindingStatus = z.infer<typeof FindingStatus>
 
 export const FindingOpenReason = z.enum(['over-cap', 'fix-failed', 'verification'])
 export type FindingOpenReason = z.infer<typeof FindingOpenReason>
+
+/**
+ * How a `fixed` defect got there: its own fix ticket landed, or a later lap's
+ * session attested that the lap's work already addressed it. Both are fixed —
+ * the counts deliberately do not distinguish them — but a burner-verified fix
+ * and a session's word are different classes of evidence, so the row keeps
+ * which one it was and the UI can say so.
+ */
+export const FindingResolvedBy = z.enum(['fix-ticket', 'session'])
+export type FindingResolvedBy = z.infer<typeof FindingResolvedBy>
 
 /**
  * The subset of {@link FindingStatus} a defect's own fix ticket drives it
@@ -193,6 +208,11 @@ export const ReviewFinding = ReviewFindingInput.safeExtend({
   openReason: FindingOpenReason.nullable(),
   failureReason: z.string().nullable(),
   fixTicketId: z.string().nullable(),
+  /** The lap a `carried` defect was parked into; null for every other status. */
+  carriedLap: z.number().nullable(),
+  resolvedBy: FindingResolvedBy.nullable(),
+  /** A carry's rationale or a session attestation's evidence; null otherwise. */
+  resolutionNote: z.string().nullable(),
   createdAt: z.number(),
 })
 export type ReviewFinding = z.infer<typeof ReviewFinding>
@@ -394,6 +414,21 @@ export const PreparedKey = z.enum(PREPARED_KEYS)
 export type PreparedKey = z.infer<typeof PreparedKey>
 
 /**
+ * Every project field that carries provenance: the prepared facts, plus the
+ * ones runcastle's own machinery establishes without a preparation run.
+ *
+ * `sandboxImage` is the second kind and the reason this list exists apart from
+ * {@link PREPARED_KEYS}. It needs the provenance rails — a human who types an
+ * image tag must keep it, and `isOverwritable` is what protects it — but it is
+ * NOT something a preparation conversation should ask about or record: the
+ * value is written by the image build, and a key in `PREPARED_KEYS` would put
+ * it on the prep session's to-do list and in `record_finding`'s vocabulary.
+ */
+export const PROVENANCE_KEYS = [...PREPARED_KEYS, 'sandboxImage'] as const
+export const ProvenanceKey = z.enum(PROVENANCE_KEYS)
+export type ProvenanceKey = z.infer<typeof ProvenanceKey>
+
+/**
  * The prepared keys a preparation dry-run drive can actually prove, each by one
  * observable of the real drive machinery: `driveSetupCommand` and
  * `driveStopCommand` exit 0, `devCommand` spawns a pane AND gets a localhost URL
@@ -421,8 +456,14 @@ export const DRIVE_LOOP_KEYS = [
  * a container". A value the human supplied or confirmed verbatim during that
  * same session is recorded as `human`, not `session`: the lock belongs to who
  * decided the value, not to which process wrote the row.
+ *
+ * `build` is runcastle's own machinery rather than any conversation: the image
+ * build writes `sandboxImage` when it builds a project's `.runcastle/sandbox/`
+ * Dockerfile. Like `session` it does not lock the key — clearing the value is
+ * still what hands it back — but it must not read as "prepared", because no
+ * preparation run ever measured it.
  */
-export const FindingSource = z.enum(['prep', 'human', 'session'])
+export const FindingSource = z.enum(['prep', 'human', 'session', 'build'])
 export type FindingSource = z.infer<typeof FindingSource>
 
 /**
@@ -452,6 +493,8 @@ export const Project = z.object({
   devCommand: z.string().optional(),
   /** Per-project default-model override (issue #48); unset → inherit global. */
   model: z.string().optional(),
+  /** Per-project sandbox image; unset → inherit env / global / stock default. */
+  sandboxImage: z.string().optional(),
   /** Prepared repo facts (see {@link PREPARED_KEYS}); unset → inherit global. */
   setupCommand: z.string().optional(),
   verifyCommands: z.string().optional(),
@@ -490,7 +533,7 @@ export type Project = z.infer<typeof Project>
  * the stamp records what worked, not who chose it.
  */
 export const ProjectFinding = z.object({
-  key: PreparedKey,
+  key: ProvenanceKey,
   source: FindingSource,
   evidence: z.string().optional(),
   establishedAt: z.number(),
@@ -675,6 +718,52 @@ export const DriveState = z.enum([
   'idle', 'starting', 'serving', 'bare-checkout', 'setup-failed', 'review-agent-driving',
 ])
 export type DriveState = z.infer<typeof DriveState>
+
+/**
+ * Which guard refused a drive `start`, as something a caller can branch on
+ * instead of matching the prose of `deniedReason`.
+ *
+ * `slot_held` covers both flavours of the singleton drive slot being taken — a
+ * feature drive (human's or another review's) and a preparation dry run —
+ * because they are the same fact to whoever was refused: somebody holds the
+ * machine-wide slot, and it frees itself when they are done.
+ */
+export type DriveDenialCode = 'dirty' | 'slot_held' | 'active_run'
+
+/**
+ * The refusal half of every drive result — the service's, the `review_drive`
+ * tool's, and anything downstream of them. It lives here rather than in the
+ * server because it is a wire type: it crosses the tool boundary to the review
+ * agent, which reads `retriable` to decide whether to poll or give up.
+ */
+export interface DriveDenial {
+  /** Why the action was refused, verbatim and human-facing. */
+  deniedReason?: string
+  /** Which guard refused a `start`. Absent on `stop` denials and on success. */
+  deniedCode?: DriveDenialCode
+  /**
+   * Whether waiting could plausibly clear the denial — true for `slot_held`
+   * alone, since nothing else frees itself. It is what tells a review agent to
+   * poll `start` again rather than fall back to a repo-only review.
+   */
+  retriable?: boolean
+  /** The uncommitted paths behind a `dirty` denial, so the refusal names them. */
+  dirtyFiles?: string[]
+}
+
+/**
+ * The denial half of a result, lifted out so a boundary can carry it whole
+ * instead of re-listing the fields — which is how one of them goes missing.
+ * Fields absent on the source stay absent on the copy.
+ */
+export function driveDenialOf(result: DriveDenial): DriveDenial {
+  return {
+    ...(result.deniedReason ? { deniedReason: result.deniedReason } : {}),
+    ...(result.deniedCode ? { deniedCode: result.deniedCode } : {}),
+    ...(result.retriable !== undefined ? { retriable: result.retriable } : {}),
+    ...(result.dirtyFiles ? { dirtyFiles: result.dirtyFiles } : {}),
+  }
+}
 
 export interface MergeConflictState {
   base: string

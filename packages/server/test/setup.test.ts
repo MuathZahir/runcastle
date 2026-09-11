@@ -1,4 +1,3 @@
-import { existsSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import type { ExecFn, ExecOutcome } from '../src/doctor/doctor'
 import {
@@ -8,7 +7,6 @@ import {
   RUNTIME_AUTH_SETUP_HINT,
   createCredentialVerifier,
   resolveRuntime,
-  resolveSandcastleBin,
   runtimeInstallGuide,
   saveAfkCredential,
   seedRuntimeFor,
@@ -301,47 +299,12 @@ describe('runtimeInstallGuide', () => {
 
 describe('terminalSpec', () => {
   it('runs `claude setup-token` for the token flow', () => {
-    expect(terminalSpec('setup-token', { runtime: 'docker', imageName: 'sandcastle:runcastle' })).toEqual({
-      cmd: 'claude',
-      args: ['setup-token'],
-    })
+    expect(terminalSpec('setup-token')).toEqual({ cmd: 'claude', args: ['setup-token'] })
   })
 
   it('runs each runtime own interactive login, the same way for both', () => {
-    const opts = { runtime: 'docker' as const, imageName: 'sandcastle:runcastle' }
-    expect(terminalSpec('claude-login', opts)).toEqual({ cmd: 'claude', args: ['auth', 'login'] })
-    expect(terminalSpec('codex-login', opts)).toEqual({ cmd: 'codex', args: ['login'] })
-  })
-
-  it('launches the resolved sandcastle CLI under node with a pinned image name', () => {
-    // The vendored CLI is a transitive dep never on PATH in a global install, so
-    // build-image runs `node <resolved-cli> <runtime> build-image …`, not a bare
-    // `sandcastle`.
-    const sandcastleBin = '/opt/rc/node_modules/@ai-hero/sandcastle/dist/main.js'
-    expect(
-      terminalSpec('build-image', { runtime: 'podman', imageName: 'sandcastle:runcastle', sandcastleBin }),
-    ).toEqual({
-      cmd: 'node',
-      args: [sandcastleBin, 'podman', 'build-image', '--image-name', 'sandcastle:runcastle'],
-    })
-  })
-
-  it('fails loudly when the bundled sandcastle CLI cannot be resolved', () => {
-    expect(() =>
-      terminalSpec('build-image', { runtime: 'docker', imageName: 'sandcastle:runcastle' }),
-    ).toThrow(/sandcastle CLI/)
-  })
-})
-
-describe('resolveSandcastleBin', () => {
-  it('resolves the bundled @ai-hero/sandcastle CLI to a real file via module resolution', () => {
-    // The regression this guards: sandcastle is a transitive dep, so its bin is
-    // never on PATH in a `bun add -g runcastle` install. Module resolution finds
-    // it regardless of hoisting — the same path the build-image flow launches.
-    const bin = resolveSandcastleBin()
-    expect(bin).not.toBeNull()
-    expect(bin).toMatch(/sandcastle/)
-    expect(existsSync(bin as string)).toBe(true)
+    expect(terminalSpec('claude-login')).toEqual({ cmd: 'claude', args: ['auth', 'login'] })
+    expect(terminalSpec('codex-login')).toEqual({ cmd: 'codex', args: ['login'] })
   })
 })
 
