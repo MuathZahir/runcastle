@@ -2787,9 +2787,32 @@ export async function burnTickets(
     if (extra) ctx.emitEvent({ ...extra, ticketId: t.id })
   }
 
+  /**
+   * The row a lane launches with, re-read from the store at the moment it
+   * starts rather than trusted from the run-start snapshot: a human who
+   * reassigns a still-queued ticket's model (or edits its body) while the run
+   * is live is honoured by this run, not the next one. The fresh row replaces
+   * its `bySeq` entry, so the launched payload, the per-ticket auth precheck,
+   * the `ctx.updateTicket` calls and digest harvesting all read the same row —
+   * which is why precheck and executor can never disagree about the assignment.
+   *
+   * Only the payload refreshes: the scheduler's own bookkeeping (the `status`
+   * map, `pending`, the blockedBy graph it already walked) stays on the
+   * snapshot, and a launched lane is never revisited — it finishes on what it
+   * started with. A ctx with no store seam (a test fake), or a row that has
+   * since vanished, keeps the snapshot row exactly as before.
+   */
+  const refreshedForLaunch = (t: Ticket): Ticket => {
+    const fresh = ctx.listTickets?.().find((row) => row.id === t.id)
+    if (!fresh) return t
+    bySeq.set(t.seq, fresh)
+    return fresh
+  }
+
   const runOne = async (seq: number): Promise<void> => {
-    const t = bySeq.get(seq)
-    if (!t) return
+    const snapshot = bySeq.get(seq)
+    if (!snapshot) return
+    const t = refreshedForLaunch(snapshot)
     status.set(seq, 'burning')
     ctx.updateTicket(t.id, { status: 'burning' })
     mirrorFinding(t, 'fixing')
