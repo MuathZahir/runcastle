@@ -90,12 +90,21 @@ export function RunBody({
     onError: (e: { message: string }) => toast.push(e.message),
   }
   const retry = trpc.ticket.retry.useMutation(onMutated)
+  // Reassignment's one door, the same the tickets-phase ledger uses. The
+  // scheduler launches each lane from the live row, so an edit here reaches
+  // every ticket this run has not started yet.
+  const edit = trpc.ticket.edit.useMutation(onMutated)
   const stop = trpc.ticket.stop.useMutation(onMutated)
   const waive = trpc.ticket.cancel.useMutation(onMutated)
   const launch = trpc.feature.launchSession.useMutation(onMutated)
   const cancelRun = trpc.run.cancel.useMutation(onMutated)
   const busy =
-    retry.isPending || stop.isPending || waive.isPending || launch.isPending || cancelRun.isPending
+    retry.isPending ||
+    edit.isPending ||
+    stop.isPending ||
+    waive.isPending ||
+    launch.isPending ||
+    cancelRun.isPending
 
   // A live run reads the feature's whole ledger — a ticket admitted mid-run (the
   // review's fix wave) must appear the moment it exists. A record reads the run,
@@ -149,6 +158,11 @@ export function RunBody({
   // launcher refuses while a run holds the feature branch or another terminal
   // is open — so the lane greys the button rather than offering a certain error.
   const terminalBlocked = live || run.data?.status === 'running'
+  // ADR-0006 refuses `ticket.retry` while a run is live, so the gesture that
+  // composes one appears only once the run is over — mid-run the model menu
+  // alone is the control. A run whose status has not arrived yet counts as
+  // live: offering a refused retry would land the reassignment and nothing else.
+  const runLive = run.data ? run.data.status === 'running' : !!shownRunId
 
   if (!runId && !live) {
     return (
@@ -170,6 +184,25 @@ export function RunBody({
     )
   }
 
+  // Retry's own toasts, shared by the plain retry and the one composed after a
+  // reassignment — the second is the same burn and says the same things.
+  const retryTicket = (ticket: Ticket) =>
+    retry.mutate(
+      { ticketId: ticket.id },
+      {
+        onSuccess: (r) => {
+          if (r.resolvingConflict) {
+            toast.push(`resolving ticket #${ticket.seq}'s conflict with an agent`, 'info')
+          } else if (r.resumedFrom) {
+            toast.push(
+              `resuming ticket #${ticket.seq} from ${r.preservedCommits} preserved commit(s)`,
+              'info',
+            )
+          }
+        },
+      },
+    )
+
   const lane = (ticket: Ticket) => {
     const fact = facts.get(ticket.id)
     const duration = durations.get(ticket.id)
@@ -186,6 +219,7 @@ export function RunBody({
         elapsed={fact ? fmtDuration(fact.startedAt, Date.now()) : undefined}
         duration={duration === undefined ? undefined : fmtDuration(0, duration)}
         model={laneModel(ticket)}
+        roster={roster}
         defectTitle={
           ticket.originFindingId ? defectTitles.get(ticket.originFindingId) : undefined
         }
@@ -196,22 +230,19 @@ export function RunBody({
         waiving={waive.isPending && waive.variables?.ticketId === ticket.id}
         terminalBlocked={terminalBlocked}
         onCopySha={copySha}
-        onRetry={() =>
-          retry.mutate(
-            { ticketId: ticket.id },
-            {
-              onSuccess: (r) => {
-                if (r.resolvingConflict) {
-                  toast.push(`resolving ticket #${ticket.seq}'s conflict with an agent`, 'info')
-                } else if (r.resumedFrom) {
-                  toast.push(
-                    `resuming ticket #${ticket.seq} from ${r.preservedCommits} preserved commit(s)`,
-                    'info',
-                  )
-                }
-              },
-            },
-          )
+        onModel={(model) => edit.mutate({ ticketId: ticket.id, model })}
+        onRetry={() => retryTicket(ticket)}
+        onRetryWithModel={
+          runLive
+            ? undefined
+            : (model) =>
+                // Two existing calls as one gesture (decision 4): the edit lands
+                // first, and the burn it starts resolves the fresh row — so the
+                // retry runs on the model just chosen.
+                edit.mutate(
+                  { ticketId: ticket.id, model },
+                  { onSuccess: () => retryTicket(ticket) },
+                )
         }
         onRetryFresh={() => retry.mutate({ ticketId: ticket.id, fresh: true })}
         onWaive={() =>
