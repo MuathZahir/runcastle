@@ -138,6 +138,18 @@ describe('verificationDue', () => {
     expect(verificationDue([done(1, 10), review(2, 20)], runIds(1, 2)).due).toBe(false)
   })
 
+  it('is not due while any ticket of the run is failed', () => {
+    // Decision 5: verify the whole thing or wait until it is whole — a fix that
+    // failed is a build about to change again.
+    const broken = ticket(3, [], { status: 'failed', completedAt: 30 })
+    expect(verificationDue([review(1, 10), done(2, 20), broken], runIds(1, 2, 3)).due).toBe(false)
+  })
+
+  it('ignores a failed ticket that belongs to another run', () => {
+    const broken = ticket(3, [], { status: 'failed', completedAt: 30 })
+    expect(verificationDue([review(1, 10), done(2, 20), broken], runIds(1, 2)).due).toBe(true)
+  })
+
   it('is not due when a verification already ran after the last landing', () => {
     const verification = review(3, 30, { passKind: 'verification' })
     expect(verificationDue([review(1, 10), done(2, 20), verification], runIds(1, 2, 3)).due).toBe(false)

@@ -1,6 +1,10 @@
 # ADR-0006: Burn robustness — attempt chaining, transient-error retry, per-ticket controls
 
 - **Status:** accepted (2026-07-22)
+- **Amended:** 2026-09-10 — decision 1 grows a third class, `run-fatal`: auth,
+  billing, usage-limit and missing-binary errors halt the run instead of
+  failing one ticket at a time (feature
+  failure-aware-scheduling-for-review-and-verification-passes)
 - **Extends:** ADR-0002 (burn concurrency) and ADR-0005 (isolated workspace),
   whose post-commit sync hook is what makes the core mechanism here — commits
   surviving a dead agent — hold in every workspace mode.
@@ -43,12 +47,27 @@ attempt's branch*, and the new agent is told to continue, not start over.**
 
 1. **Classify throws** (`classifyTicketRunError`): transient infrastructure
    deaths (nonzero CLI exit, idle timeout, connection/network errors,
-   overload/rate-limit/5xx, session-capture failure) are `retryable`; auth,
-   billing, and model errors are `fatal`, and fatal patterns win (an
-   `exited with code 1: Invalid API key` never retries). Unknown throws default
-   to fatal — blind retries of git/sandbox setup errors would compound.
-   Interpreted outcomes (zero commits, BLOCKED.md, landing conflicts) are agent
-   or human decisions, never auto-retried.
+   overload/rate-limit/5xx, session-capture failure) are `retryable`; a model
+   this ticket cannot use and a broken resume are `fatal`; and the failures
+   that are facts about the account or the image rather than the ticket —
+   auth/OAuth/API key, billing/credit/`insufficient_quota`, subscription usage
+   limit, an agent binary missing from the image — are `run-fatal`. The
+   stricter class wins (an `exited with code 1: Invalid API key` never
+   retries). Unknown throws default to ticket-level `fatal` — blind retries of
+   git/sandbox setup errors would compound, and an unrecognized wording must
+   never halt a run that was only one ticket's to lose. Interpreted outcomes
+   (zero commits, BLOCKED.md, landing conflicts) are agent or human decisions,
+   never auto-retried.
+
+   A `run-fatal` throw fails its own ticket *and* ends the run: no further
+   tickets start on any runtime, in-flight tickets on the runtime that produced
+   the error are stopped with their commits preserved, in-flight tickets on
+   other runtimes finish and land, un-started tickets stay `pending`, and the
+   run finalizes failed with a run-halted event naming the cause. Otherwise
+   every remaining ticket spends a container — and, for rate-limit-shaped
+   wordings, up to `burnAttempts` of them — rediscovering the same dead
+   account. Recovery is decision 5's per-ticket retry/cancel once the account
+   or image is fixed, then a re-burn.
 2. **Retry in-run** up to `burnAttempts` (new config, default 3, env
    `RUNCASTLE_BURN_ATTEMPTS`) with 5s/10s/20s backoff. Each attempt gets a
    unique temp branch; if the dead attempt left commits, the next attempt's

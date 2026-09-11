@@ -200,8 +200,8 @@ describe('a review ticket is scheduled behind every implementation ticket', () =
   })
 })
 
-describe('a review ticket survives a failed implementation ticket', () => {
-  it('starts once every blocker is terminal, failed ones included', async () => {
+describe('a review ticket waits for a whole feature', () => {
+  it('stays pending when an implementation ticket failed, and the run ends failed', async () => {
     const tickets = [ticket(1), ticket(2), review(3, { blockedBy: [1, 2] })]
     const { execute, started, release } = gatedExecute({ 1: { status: 'failed', error: 'boom' } })
 
@@ -209,16 +209,64 @@ describe('a review ticket survives a failed implementation ticket', () => {
     await Promise.resolve()
 
     expect(started).toEqual([1, 2])
-    // Ticket 1 failed — the generic cascade would cancel the review here. It
-    // waits instead, because ticket 2 is still burning.
     await release(1)
-    expect(started).toEqual([1, 2])
     await release(2)
-    expect(started).toEqual([1, 2, 3])
 
+    // Never started, never cascaded to failed: the next burn picks it up once
+    // the human has retried or cancelled ticket 1 (decision 2).
+    expect(started).toEqual([1, 2])
+    expect(tickets[2]).toMatchObject({ status: 'pending' })
+    const result = await run
+    expect(result.status).toBe('failed')
+    expect(result.summary).toContain('review deferred')
+  })
+
+  it('defers even when the review was emitted without the blocking edges', async () => {
+    // The gate is the burner's, read off the run's own tickets — a review with
+    // no `blockedBy` at all still waits for what failed.
+    const tickets = [ticket(1), review(2)]
+    const { execute, started, release } = gatedExecute({ 1: { status: 'failed', error: 'boom' } })
+
+    const run = burnRun(makeCtx(tickets), deps(execute))
+    await Promise.resolve()
+    await release(1)
+
+    expect(started).toEqual([1])
+    expect(tickets[1]).toMatchObject({ status: 'pending' })
+    expect((await run).status).toBe('failed')
+  })
+
+  it('runs beside a cancelled implementation ticket as long as one landed', async () => {
+    const tickets = [ticket(1), ticket(2, { status: 'cancelled' }), review(3, { blockedBy: [1, 2] })]
+    const { execute, started, release } = gatedExecute()
+
+    const run = burnRun(makeCtx(tickets), deps(execute))
+    await Promise.resolve()
+    await release(1)
+
+    expect(started).toEqual([1, 3])
     await release(3)
-    await run
-    expect(tickets[2]).toMatchObject({ status: 'done' })
+    expect((await run).status).toBe('succeeded')
+  })
+
+  it('is cancelled with a reason when every implementation ticket was cancelled', async () => {
+    // Nothing landed, so there is nothing to review — and nothing failed
+    // either, so the run is not a failure (decision 6).
+    const tickets = [
+      ticket(1, { status: 'cancelled' }),
+      ticket(2, { status: 'cancelled' }),
+      review(3, { blockedBy: [1, 2] }),
+    ]
+    const { execute, started } = gatedExecute()
+
+    const result = await burnRun(makeCtx(tickets), deps(execute))
+
+    expect(started).toEqual([])
+    expect(tickets[2]).toMatchObject({
+      status: 'cancelled',
+      error: 'nothing landed — every implementation ticket in the run was cancelled',
+    })
+    expect(result).toMatchObject({ status: 'succeeded' })
   })
 
   it('leaves the cascade alone for an implementation ticket with the same blocker', async () => {
@@ -229,18 +277,17 @@ describe('a review ticket survives a failed implementation ticket', () => {
     await Promise.resolve()
     await release(1)
 
-    // 2 never ran; 3 did.
-    expect(started).toEqual([1, 3])
+    // 2 cascades to failed; 3 defers, and neither of them ran.
+    expect(started).toEqual([1])
     expect(tickets[1]).toMatchObject({ status: 'failed', error: 'blocked by failed ticket 1' })
-
-    await release(3)
+    expect(tickets[2]).toMatchObject({ status: 'pending' })
     await run
-    expect(tickets[2]).toMatchObject({ status: 'done' })
   })
 
   it('still cascades on a blocker that is not in the run at all', async () => {
     // A missing blocker is a malformed graph, not a ticket that tried and
-    // failed — the carve-out does not cover it, whatever the kind.
+    // failed — that cascades whatever the kind, and there is no re-burn that
+    // could resolve it.
     const tickets = [review(2, { blockedBy: [9] })]
     const { execute, started } = gatedExecute()
 
@@ -265,35 +312,6 @@ describe("a review ticket's account reaches the run digest", () => {
     expect(result.status).toBe('succeeded')
     expect(result.digest).toContain('## ticket 2 — Review 2')
     expect(result.digest).toContain('walked the settings flow; 2 findings')
-  })
-
-  it('names the implementation tickets that failed under it', async () => {
-    const tickets = [ticket(1), ticket(2), review(3, { blockedBy: [1, 2] })]
-    const execute = async (_c: WorkflowCtx, t: Ticket): Promise<TicketOutcome> =>
-      t.seq === 1
-        ? { status: 'failed', error: 'boom' }
-        : { status: 'done', commits: [], digest: t.seq === 3 ? 'walked what shipped' : 'built it' }
-
-    const result = await burnRun(makeCtx(tickets), deps(execute))
-
-    expect(result.digest).toContain('Reviewed with failed implementation ticket(s): 1.')
-    expect(result.digest).toContain('walked what shipped')
-    // The annotation is the run's, not the agent's: the ticket keeps its words.
-    expect(tickets[2].digest).toBe('walked what shipped')
-  })
-
-  it('says so off the run itself, even for a review with no edges that could not report', async () => {
-    // Neither the declared edges nor the agent's own prose is the source: this
-    // review was emitted without `blockedBy` and never got as far as a digest.
-    const tickets = [ticket(1), review(2)]
-    const execute = async (_c: WorkflowCtx, t: Ticket): Promise<TicketOutcome> =>
-      t.seq === 1
-        ? { status: 'failed', error: 'boom' }
-        : { status: 'failed', error: 'ticket 2: Review could not run: the dev URL never appeared' }
-
-    const result = await burnRun(makeCtx(tickets), deps(execute))
-
-    expect(result.digest).toContain('Reviewed with failed implementation ticket(s): 1.')
   })
 
   it('carries the reason it could not run, and stores it on the ticket', async () => {
