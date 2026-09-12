@@ -213,8 +213,12 @@ describe('mcp tools', () => {
         { id: 'claude-opus-5', runtime: 'claude-code', note: 'UI/UX taste' },
         // …one of their own, annotated…
         { id: 'my-proxy-model', runtime: 'codex', note: 'cheap bulk edits' },
-        // …and one they added but never described.
+        // …one they added but never described…
         { id: 'unlabelled-model', runtime: 'codex' },
+        // …and one whose note they cleared to whitespace, which is no note at
+        // all: a blank cell is how the operator takes a model back off the
+        // per-ticket menu.
+        { id: 'blanked-model', runtime: 'codex', note: '   ' },
       ],
     }
     expect(toolGetFeatureContext(ctx, session).annotatedModels).toEqual([
