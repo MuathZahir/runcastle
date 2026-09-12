@@ -12,7 +12,7 @@ import type { SettingsLocation } from './settings'
  *
  * Only `selectedFeatureId`, an open preparation, the two rail-collapse flags and
  * the guidance toggle persist across reloads — the viewed phase, command palette,
- * and Quick overlay are ephemeral session state.
+ * and Draft overlay are ephemeral session state.
  */
 
 /** Client-tracked active test drive (at most one globally, server-enforced). */
@@ -82,7 +82,7 @@ export interface WorkspaceApi {
   projectSelected: boolean
   /** Pinned phase to view read-only, or null to follow the feature's live phase. */
   viewedPhase: Phase | null
-  /** Whether the Quick door's overlay owns the workspace (decisions.md #12). */
+  /** Whether the Draft door's overlay owns the workspace (decisions.md #12). */
   creating: boolean
   /**
    * Preparation was opened deliberately — from the rail's row or ⌘K. Kept apart
@@ -122,11 +122,11 @@ export interface WorkspaceApi {
   selectProject: () => void
   /** Pin a phase to view (null = follow live phase). */
   viewPhase: (phase: Phase | null) => void
-  /** Open the Quick door's overlay in the workspace. */
-  startQuickChange: () => void
+  /** Open the Draft door's overlay in the workspace. */
+  startDraft: () => void
   /** Give the workspace over to preparation. */
   startPreparation: () => void
-  /** Close the Quick overlay without creating anything. */
+  /** Close the Draft overlay without creating anything. */
   cancelCreate: () => void
   /** Leave a deliberately-opened preparation. */
   closePreparation: () => void
@@ -212,7 +212,7 @@ export function useWorkspace(projectId: string): WorkspaceApi {
   }, [])
 
   const viewPhase = useCallback((phase: Phase | null) => setViewedPhase(phase), [])
-  const startQuickChange = useCallback(() => {
+  const startDraft = useCallback(() => {
     setCreating(true)
     setPreparing(false)
     setProjectSelected(false)
@@ -256,7 +256,7 @@ export function useWorkspace(projectId: string): WorkspaceApi {
     select,
     selectProject,
     viewPhase,
-    startQuickChange,
+    startDraft,
     startPreparation,
     cancelCreate,
     closePreparation,

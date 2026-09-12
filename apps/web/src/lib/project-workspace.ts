@@ -81,7 +81,7 @@ export function sessionBranchState(
 export type WorkspaceView = 'create' | 'prepare' | 'project' | 'feature' | 'empty'
 
 /**
- * The workspace body's one selector. The Quick overlay owns the body outright;
+ * The workspace body's one selector. The Draft overlay owns the body outright;
  * then an explicitly opened preparation; then the pinned project row over the
  * selected feature. (The other creation door, New, is not a view at all any
  * more — it opens a fresh conversation in the project workspace.)

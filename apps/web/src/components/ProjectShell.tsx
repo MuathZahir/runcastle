@@ -116,7 +116,7 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
   //
   // Null in the two windows where the shell has no address to state: before the
   // landing above has run (an address written then would be corrected a render
-  // later, leaving a stray entry behind), and while the Quick form owns the body
+  // later, leaving a stray entry behind), and while the Draft form owns the body
   // — an overlay is not a place, and opening it clears the pinned project row
   // and any open preparation underneath it (decision 1).
   // The selected feature, read once: the URL wants its slug, the titlebar's
@@ -213,7 +213,7 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
           onSelect={ws.select}
           onSelectProject={ws.selectProject}
           onNewChat={newChat}
-          onQuickChange={ws.startQuickChange}
+          onDraft={ws.startDraft}
           onOpenPreparation={ws.startPreparation}
           onResize={sidebar.setWidth}
         />
@@ -264,7 +264,7 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
           </ErrorBoundary>
         ) : (
           <section className="workspace">
-            <EmptyWorkspace onNewChat={newChat} onQuickChange={ws.startQuickChange} />
+            <EmptyWorkspace onNewChat={newChat} onDraft={ws.startDraft} />
           </section>
         )}
 
@@ -316,13 +316,17 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
  * unprepared project with no features never sees it: `workspaceView` gives the
  * body to preparation instead, because there is exactly one thing to do first
  * and putting it beside these buttons is what made it invisible.
+ *
+ * Exported for the copy sweep alone (`intake-copy`), which reads the words this
+ * screen says about the two doors — the shell around it needs no mocking to
+ * render them.
  */
-function EmptyWorkspace({
+export function EmptyWorkspace({
   onNewChat,
-  onQuickChange,
+  onDraft,
 }: {
   onNewChat: () => void
-  onQuickChange: () => void
+  onDraft: () => void
 }) {
   return (
     <div className="ws-empty">
@@ -338,14 +342,14 @@ function EmptyWorkspace({
           <button className="btn btn-ghost" onClick={onNewChat}>
             New chat
           </button>
-          <button className="btn btn-ghost" onClick={onQuickChange}>
-            Quick
+          <button className="btn btn-ghost" onClick={onDraft}>
+            Draft
           </button>
         </div>
         <div className="ws-empty-hint">
-          New opens a conversation with the project — it knows what you have already built, and cuts
-          a lump of intent into features. Quick skips the conversation: a change to burn now, or a
-          draft to park.
+          New is the door for both features and quick changes: a conversation that can read a
+          screenshot, check what already shipped, and emit burn-ready tickets. Draft writes an idea
+          down now, to work out later.
         </div>
       </div>
     </div>

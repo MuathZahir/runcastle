@@ -241,7 +241,7 @@ export function resolveReview(input: ResolverInput): NextStep {
 
   // "Checks are in" is an all-clear, so it needs checks to have run: the audit
   // found it over a feature with no run recorded at all (findings F23), which
-  // is the state a quick-change or an overridden gate lands in.
+  // is the state a feature born with its tickets, or an overridden gate, lands in.
   // The merge invitation is the drive table's own sentence, so the one state it
   // is true of — `serving` — is the only state that can print it (decision 20).
   const desc = driving

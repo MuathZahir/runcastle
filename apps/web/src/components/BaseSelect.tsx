@@ -13,9 +13,9 @@ import {
 
 /**
  * The base-branch picker every surface that cuts a branch shows (decision 8).
- * The Quick door's quick-change mode had no control at all and chose its base
- * silently; a parked draft's Start had one of its own. One component now, so the
- * two forms cannot drift on what a base looks like or which branches are offered.
+ * It exists because the forms that cut branches each chose their base their own
+ * way — one silently, one with a control of its own — and drifted apart on what
+ * a base looks like and which branches are offered.
  *
  * The empty state is the point of it. There is a base to show for almost every
  * checkout; when there is not — a detached HEAD, or a test drive holding the

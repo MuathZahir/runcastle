@@ -128,13 +128,13 @@ describe('BranchMenu', () => {
     await waitFor(() => expect(document.activeElement).toBe(trigger))
   })
 
-  // The Quick footer and the draft bar put this menu inside a Dialog, and both
+  // A form that cuts a branch can put this menu inside a Dialog, and both
   // answer Escape. One key must not close two things.
   it('answers Escape without the dialog it sits in also closing', () => {
     function InDialog() {
       const [dialogOpen, setDialogOpen] = useState(true)
       return (
-        <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)} label="Quick">
+        <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)} label="Form">
           <BranchMenu prefix="from" value="main" branches={BRANCHES} onPick={() => {}} />
         </Dialog>
       )

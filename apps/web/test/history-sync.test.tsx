@@ -21,7 +21,7 @@ describe('useHistorySync', () => {
   /** A location, an overlay, and a place to say what popstate handed back. */
   function Harness({ start = null }: { start?: AppLocation | null }) {
     const [location, setLocation] = useState<AppLocation | null>(start)
-    // Stands in for the palette / Settings / DocPeek / Quick / the phase pin:
+    // Stands in for the palette / Settings / DocPeek / Draft / the phase pin:
     // real UI state that is deliberately not addressable.
     const [overlay, setOverlay] = useState(false)
     const [popped, setPopped] = useState<string>('—')
@@ -117,7 +117,7 @@ describe('useHistorySync', () => {
   })
 
   /**
-   * The Quick form is the awkward overlay: opening it clears the pinned project
+   * The Draft form is the awkward overlay: opening it clears the pinned project
    * row and any open preparation, so the location genuinely moves underneath it.
    * A caller passes `null` for the span the overlay owns the screen, and the
    * address is squared up with a replace when it comes back — one place, no

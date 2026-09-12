@@ -21,7 +21,7 @@ import { isStale } from '../lib/prep-findings'
 import { useLivePoll } from '../lib/live'
 import { clampSidebarWidth } from '../lib/sidebar-width'
 import type { ProjectTalkApi } from '../lib/use-project-talk'
-import { IconBolt, IconCheck, IconPlus, LogoMark } from '../icons'
+import { IconCheck, IconDoc, IconPlus, LogoMark } from '../icons'
 import { copyText } from './workspace/copy-text'
 import { FeatureActionsMenu, type FeatureAction } from './FeatureActionsMenu'
 import { DeleteFeatureDialog } from './DeleteFeatureDialog'
@@ -94,7 +94,7 @@ export function Sidebar({
   onSelect,
   onSelectProject,
   onNewChat,
-  onQuickChange,
+  onDraft,
   onOpenPreparation,
   onResize,
 }: {
@@ -108,8 +108,8 @@ export function Sidebar({
   onSelectProject: () => void
   /** New — open the project workspace on a fresh conversation. */
   onNewChat: () => void
-  /** Quick — open the two-mode overlay (a change to burn, or a draft to park). */
-  onQuickChange: () => void
+  /** Draft — open the overlay that parks an idea without cutting anything. */
+  onDraft: () => void
   onOpenPreparation: () => void
   /** A drag produced a new width; the shell clamps, applies and persists it. */
   onResize: (px: number) => void
@@ -228,22 +228,23 @@ export function Sidebar({
 
       <div className="flex items-center gap-2 px-4 pt-4 pb-3">
         <span className={`${CAPTION_CLASS} flex-1 text-text-3`}>Features</span>
-        {/* Two doors, side by side, split by how much thinking you want
-            (decisions.md #12): New talks it through, Quick types it in. */}
+        {/* Two doors, side by side, split by whether the work starts now
+            (decisions.md #12): New is where work is born, Draft is where an
+            idea is parked. */}
         <button
           className={DOOR_CLASS}
-          onClick={onQuickChange}
-          title="Quick — a change to burn now, or a draft to park. No conversation."
+          onClick={onDraft}
+          title="Draft — write an idea down now, work it out later"
         >
           <span className={DOOR_LABEL_CLASS}>
-            <IconBolt size={11} />
-            Quick
+            <IconDoc size={11} />
+            Draft
           </span>
         </button>
         <button
           className={DOOR_CLASS}
           onClick={onNewChat}
-          title="New — open a fresh conversation with the project, which turns intent into features"
+          title="New — a conversation with the project: features and quick changes alike, cut into burn-ready tickets"
         >
           <span className={DOOR_LABEL_CLASS}>
             <IconPlus size={11} />

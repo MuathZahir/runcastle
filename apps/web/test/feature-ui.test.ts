@@ -2236,8 +2236,8 @@ describe('draft derivations', () => {
 })
 
 /**
- * Feature-grouping ticket 2 — the quick-change door (decision 21) lands a
- * feature at `implementation` that has never run, which is the state the build
+ * Feature-grouping ticket 2 — a feature born with its tickets (decision 21)
+ * lands at `implementation` having never run, which is the state the build
  * phase's next-step bar had no wording for: it offered "Resume the burn" for a
  * burn that never started. A run that died still resumes.
  */
