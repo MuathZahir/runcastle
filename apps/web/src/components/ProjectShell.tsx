@@ -317,7 +317,7 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
  * body to preparation instead, because there is exactly one thing to do first
  * and putting it beside these buttons is what made it invisible.
  */
-function EmptyWorkspace({
+export function EmptyWorkspace({
   onNewChat,
   onQuickChange,
 }: {
@@ -339,13 +339,13 @@ function EmptyWorkspace({
             New chat
           </button>
           <button className="btn btn-ghost" onClick={onQuickChange}>
-            Quick
+            Draft
           </button>
         </div>
         <div className="ws-empty-hint">
-          New opens a conversation with the project — it knows what you have already built, and cuts
-          a lump of intent into features. Quick skips the conversation: a change to burn now, or a
-          draft to park.
+          New is the door for both features and quick changes: a conversation that can read a
+          screenshot, check what already shipped, and emit burn-ready tickets. Draft writes an idea
+          down now, to work out later.
         </div>
       </div>
     </div>

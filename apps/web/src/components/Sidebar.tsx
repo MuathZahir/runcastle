@@ -228,12 +228,13 @@ export function Sidebar({
 
       <div className="flex items-center gap-2 px-4 pt-4 pb-3">
         <span className={`${CAPTION_CLASS} flex-1 text-text-3`}>Features</span>
-        {/* Two doors, side by side, split by how much thinking you want
-            (decisions.md #12): New talks it through, Quick types it in. */}
+        {/* Two doors, side by side, split by whether the work starts now
+            (decisions.md #12): New is where work is born, Draft is where an
+            idea is parked. */}
         <button
           className={DOOR_CLASS}
           onClick={onQuickChange}
-          title="Quick — a change to burn now, or a draft to park. No conversation."
+          title="Draft — write an idea down now, work it out later"
         >
           <span className={DOOR_LABEL_CLASS}>
             <IconBolt size={11} />
@@ -243,7 +244,7 @@ export function Sidebar({
         <button
           className={DOOR_CLASS}
           onClick={onNewChat}
-          title="New — open a fresh conversation with the project, which turns intent into features"
+          title="New — a conversation with the project: features and quick changes alike, cut into burn-ready tickets"
         >
           <span className={DOOR_LABEL_CLASS}>
             <IconPlus size={11} />

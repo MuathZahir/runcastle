@@ -33,7 +33,7 @@ export function ParkDraftMode({
     <>
       <div className="mt-2 flex flex-col gap-2">
         <h2 className="m-0 text-xl font-semibold text-text">Park it for later</h2>
-        <p className="m-0 text-base text-text-2">A row and a title. Nothing is cut until you Start it.</p>
+        <p className="m-0 text-base text-text-2">Write it down now, work it out later. Nothing is cut until you Start it.</p>
       </div>
       <div className="mt-4 flex flex-col gap-4">
         <Field label="Title" error={duplicate}>
