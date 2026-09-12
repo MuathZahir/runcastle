@@ -14,7 +14,7 @@ describe('the Draft door', () => {
       onNotesChange={() => {}} onSubmit={onSubmit} onCancel={() => {}}
     />)
 
-    expect(screen.getByText('A row and a title. Nothing is cut until you Start it.')).toBeTruthy()
+    expect(screen.getByText('Write it down now, work it out later. Nothing is cut until you Start it.')).toBeTruthy()
     expect(screen.getByLabelText('Notes (optional — becomes the brief)')).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: 'Park draft' }))
     expect(onSubmit).toHaveBeenCalledWith('Keep email out of scope.')
