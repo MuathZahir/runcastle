@@ -50,7 +50,7 @@ export function ParkDraftMode({
         <span className="font-mono text-sm text-text-3">feature/{slug || '…'} · draft</span>
         <div className="ml-auto flex gap-2">
           <Button variant="ghost" onClick={onCancel} disabled={busy}>Cancel</Button>
-          <Button variant="solid" onClick={submit} disabled={!ready || busy}>{busy ? 'Parking…' : 'Park it'}</Button>
+          <Button variant="solid" onClick={submit} disabled={!ready || busy}>{busy ? 'Parking…' : 'Park draft'}</Button>
         </div>
       </div>
     </>
