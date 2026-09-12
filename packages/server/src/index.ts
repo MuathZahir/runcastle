@@ -12,7 +12,7 @@ import { createDb } from './db/client'
 import { runMigrations } from './db/migrate'
 import type { AppCtx } from './db/types'
 import { reconcileStaleSessions } from './launcher/reconcile'
-import { setRuntimeCtx } from './launcher/runtime'
+import { followConfigFile, setRuntimeCtx } from './launcher/runtime'
 import mcpApp from './mcp/server'
 import { ptyRegistry } from './pty/registry'
 import { terminalWebSocket, tryUpgradeTerminal } from './pty/ws'
@@ -96,6 +96,12 @@ export async function startServer(): Promise<void> {
 
   const ctx: AppCtx = { db, config }
   const app = buildApp(ctx)
+
+  // This context's config came from `~/.runcastle/config.json`, so let it follow
+  // that file: a change made outside this process — hand-edited, or written by
+  // another build — reaches sessions and launches without a restart, instead of
+  // showing up in the settings UI (which re-reads the file) and nowhere else.
+  followConfigFile(ctx)
 
   // Boot reconciliation: sessions left `launching`/`live` by a previous server
   // process are dead by definition (the PTY registry is in-memory) — end them
