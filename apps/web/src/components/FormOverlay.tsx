@@ -5,7 +5,7 @@ import { Dialog } from '../ui'
  * The shell around the Draft form — the app's last creation form, now that its
  * two siblings (New feature, Quick change) have become conversations.
  *
- * It exists because the two disagreed about what dismissal means (findings
+ * It exists because those two disagreed about what dismissal means (findings
  * F25.2): Escape threw away everything typed without a word, while clicking
  * outside the card did nothing at all — so the same intent, expressed two ways,
  * had two different outcomes and one of them was destructive. Here there is one
