@@ -316,6 +316,10 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
  * unprepared project with no features never sees it: `workspaceView` gives the
  * body to preparation instead, because there is exactly one thing to do first
  * and putting it beside these buttons is what made it invisible.
+ *
+ * Exported for the copy sweep alone (`intake-copy`), which reads the words this
+ * screen says about the two doors — the shell around it needs no mocking to
+ * render them.
  */
 export function EmptyWorkspace({
   onNewChat,
