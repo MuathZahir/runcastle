@@ -49,7 +49,7 @@ describe('Sidebar delete navigation', () => {
           onSelect={onSelect}
           onSelectProject={onSelectProject}
           onNewChat={() => {}}
-          onQuickChange={() => {}}
+          onDraft={() => {}}
           onOpenPreparation={() => {}}
           onResize={() => {}}
         />

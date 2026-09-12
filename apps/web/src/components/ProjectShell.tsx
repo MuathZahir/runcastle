@@ -116,7 +116,7 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
   //
   // Null in the two windows where the shell has no address to state: before the
   // landing above has run (an address written then would be corrected a render
-  // later, leaving a stray entry behind), and while the Quick form owns the body
+  // later, leaving a stray entry behind), and while the Draft form owns the body
   // — an overlay is not a place, and opening it clears the pinned project row
   // and any open preparation underneath it (decision 1).
   // The selected feature, read once: the URL wants its slug, the titlebar's
@@ -213,7 +213,7 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
           onSelect={ws.select}
           onSelectProject={ws.selectProject}
           onNewChat={newChat}
-          onQuickChange={ws.startQuickChange}
+          onDraft={ws.startDraft}
           onOpenPreparation={ws.startPreparation}
           onResize={sidebar.setWidth}
         />
@@ -264,7 +264,7 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
           </ErrorBoundary>
         ) : (
           <section className="workspace">
-            <EmptyWorkspace onNewChat={newChat} onQuickChange={ws.startQuickChange} />
+            <EmptyWorkspace onNewChat={newChat} onDraft={ws.startDraft} />
           </section>
         )}
 
@@ -319,10 +319,10 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
  */
 function EmptyWorkspace({
   onNewChat,
-  onQuickChange,
+  onDraft,
 }: {
   onNewChat: () => void
-  onQuickChange: () => void
+  onDraft: () => void
 }) {
   return (
     <div className="ws-empty">
@@ -338,8 +338,8 @@ function EmptyWorkspace({
           <button className="btn btn-ghost" onClick={onNewChat}>
             New chat
           </button>
-          <button className="btn btn-ghost" onClick={onQuickChange}>
-            Quick
+          <button className="btn btn-ghost" onClick={onDraft}>
+            Draft
           </button>
         </div>
         <div className="ws-empty-hint">
