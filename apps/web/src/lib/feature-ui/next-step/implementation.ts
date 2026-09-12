@@ -58,8 +58,8 @@ export function resolveImplementation(input: ResolverInput): NextStep {
       busy: false,
     }
   }
-  // Never burned at all — the feature was born here (the quick-change door,
-  // decision 21) or crossed G3 by an override. There is nothing to resume,
+  // Never burned at all — the feature was born here, tickets and all
+  // (decision 21), or crossed G3 by an override. There is nothing to resume,
   // so this is the plain first Burn, worded like the tickets phase's.
   if (!run) {
     return {

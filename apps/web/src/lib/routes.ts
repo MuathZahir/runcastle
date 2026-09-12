@@ -10,7 +10,7 @@
  * agreeing in both directions.
  *
  * This module is the pure half: format and parse, no DOM, no react. Transient
- * overlays — the ⌘K palette, Settings, DocPeek, the Quick form, the read-only
+ * overlays — the ⌘K palette, Settings, DocPeek, the Draft form, the read-only
  * phase pin — are deliberately *not* representable here. They stay out of the
  * URL and out of history, so Back never means "close the popup".
  */
@@ -109,7 +109,7 @@ export function insideProject(
 /**
  * Where the shell currently *is*, from the in-project navigation flags — the
  * same precedence `workspaceView` applies, minus the two cases that have no
- * address: the Quick overlay (transient, decision 1) and the automatic
+ * address: the Draft overlay (transient, decision 1) and the automatic
  * preparation a featureless unprepared project gets, which is that project's
  * home rather than somewhere you navigated to.
  */

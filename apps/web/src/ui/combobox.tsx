@@ -78,8 +78,8 @@ export const ComboboxTrigger = PopoverTrigger
  *
  * Escape stops here, as it does on `SelectContent` and `DropdownMenuContent`:
  * Radix closes the topmost layer on it, and letting the same keystroke carry on
- * to `window` would hand it to an enclosing `Dialog` — the Quick door's, which
- * one of the branch pickers opens inside.
+ * to `window` would hand it to an enclosing `Dialog`, closing the form a branch
+ * picker sits in instead of the list the human meant to dismiss.
  */
 export function ComboboxContent({
   className,

@@ -9,7 +9,7 @@ import { parsePath, pathFor, type AppLocation } from './routes'
  * navigates. Nothing else in the app calls `pushState` — which is what keeps
  * the URL from becoming a second source of truth, and what makes "overlays
  * never enter history" a property of the code rather than a convention: the
- * palette, Settings, DocPeek, the Quick form and the read-only phase pin are
+ * palette, Settings, DocPeek, the Draft form and the read-only phase pin are
  * not representable as an {@link AppLocation}, so they cannot reach here.
  */
 
@@ -42,7 +42,7 @@ export function replacePath(path: string): void {
  * nothing, and the next write once a location returns is a REPLACE — because
  * coming back from "not mine to say" is squaring the address up, not going
  * somewhere. That is what keeps an overlay out of history even when opening it
- * disturbs the navigation flags underneath it (the Quick form clears the pinned
+ * disturbs the navigation flags underneath it (the Draft form clears the pinned
  * project row and any open preparation).
  *
  * Every write after that first one is a push: by then the user has actually
