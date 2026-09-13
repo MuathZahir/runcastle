@@ -846,9 +846,10 @@ describe('codexRuntime.writeArtifacts', () => {
     })
     const projected = configToml('sess_codex_project')
     // decision 18: a project session runs against the whole repo checkout, which
-    // is why the Claude path is downgraded to `default` — `untrusted` is Codex's
-    // "always ask", so the same session on a Codex model asks too
-    expect(projected).toContain('approval_policy = "untrusted"')
+    // is why the Claude path is downgraded to `default` — `on-request` is the
+    // prompting policy config.toml still accepts, so the same session on a Codex
+    // model asks too. Not `untrusted`: the CLI now rejects it on config load.
+    expect(projected).toContain('approval_policy = "on-request"')
     // only the approval gate moves; the sandbox is the same one every kind runs in
     expect(projected).toContain('sandbox_mode = "workspace-write"')
 
