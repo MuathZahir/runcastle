@@ -10,6 +10,8 @@ import {
   hashDockerfileContents,
   imageBuildTerminal,
   inspectBuiltImage,
+  legacyGlobalImage,
+  legacyGlobalImageReason,
   planImageBuild,
   projectImageTag,
   stockBuildArgs,
@@ -304,5 +306,46 @@ describe('the build the terminal runs', () => {
       buildArgs: {},
     })
     expect(plan.kind).toBe('stock')
+  })
+})
+
+/**
+ * A machine-wide image an older runcastle left behind. It wears the tag prefix
+ * runcastle manages but names no project this install has, which is the whole of
+ * the classification — and every project without an image of its own inherits
+ * it, so the burns that fail are in repos nobody touched.
+ */
+describe('legacyGlobalImage', () => {
+  const KNOWN = ['proj_01', 'proj_02']
+
+  it('names a managed-prefix tag belonging to no known project', () => {
+    expect(legacyGlobalImage('sandcastle:runcastle-demo', KNOWN)).toBe('sandcastle:runcastle-demo')
+    expect(legacyGlobalImage('sandcastle:runcastle-bl', KNOWN)).toBe('sandcastle:runcastle-bl')
+  })
+
+  it('leaves the stock image, an unset value and a foreign tag alone', () => {
+    expect(legacyGlobalImage(DEFAULT_SANDBOX_IMAGE, KNOWN)).toBeNull()
+    expect(legacyGlobalImage('  ', KNOWN)).toBeNull()
+    expect(legacyGlobalImage(undefined, KNOWN)).toBeNull()
+    expect(legacyGlobalImage(null, KNOWN)).toBeNull()
+    // Someone's own registry image is custom, not residue.
+    expect(legacyGlobalImage('my-team/sandbox:latest', KNOWN)).toBeNull()
+  })
+
+  it('leaves a tag that is some live project’s own image alone', () => {
+    expect(legacyGlobalImage(projectImageTag('proj_02'), KNOWN)).toBeNull()
+  })
+
+  it('reads the value the way a burn does, trimming it first', () => {
+    expect(legacyGlobalImage('  sandcastle:runcastle-demo  ', KNOWN)).toBe(
+      'sandcastle:runcastle-demo',
+    )
+  })
+
+  it('prescribes the machine-wide clear, which is the one remedy that works', () => {
+    const reason = legacyGlobalImageReason('sandcastle:runcastle-demo')
+    expect(reason).toContain('sandcastle:runcastle-demo')
+    expect(reason).toContain('Clear the machine-wide sandbox image setting')
+    expect(reason).toContain(DEFAULT_SANDBOX_IMAGE)
   })
 })

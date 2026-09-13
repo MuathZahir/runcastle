@@ -20,6 +20,7 @@ import hooksApp from './routes/hooks'
 import reviewsApp from './routes/reviews'
 import streamApp from './routes/stream'
 import { mountWebAppIfBuilt } from './routes/web'
+import { warnLegacyGlobalImage } from './services/settings'
 import { getUpdateInfo } from './services/update-check'
 import { createShutdown } from './shutdown'
 import { appRouter } from './trpc/router'
@@ -102,6 +103,12 @@ export async function startServer(): Promise<void> {
   // another build — reaches sessions and launches without a restart, instead of
   // showing up in the settings UI (which re-reads the file) and nowhere else.
   followConfigFile(ctx)
+
+  // An older runcastle wrote a project's built image into the MACHINE-WIDE
+  // config, where every project without an image of its own inherits it. Boot is
+  // where that gets named — the alternative is learning it from a burn that dies
+  // inside a container built for somebody else's repo. Named, never deleted.
+  warnLegacyGlobalImage(ctx)
 
   // Boot reconciliation: sessions left `launching`/`live` by a previous server
   // process are dead by definition (the PTY registry is in-memory) — end them

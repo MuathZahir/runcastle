@@ -19,7 +19,7 @@ import { burnerDockerfilePath } from '../../launcher/asset-paths'
 import { ptyRegistry } from '../../pty/registry'
 import { isOverwritable } from '../../services/findings'
 import { adoptProjectImage, releaseProjectImage } from '../../services/project-image'
-import { requireProjectById } from '../../services/repo'
+import { allProjects, requireProjectById } from '../../services/repo'
 import {
   hashDockerfile,
   imageBuildTerminal,
@@ -88,6 +88,10 @@ export const setupRouter = router({
         // over this itself, so that clearing an orphaned column (decision 8)
         // leaves it reporting on the image resolution falls back to.
         imageName: resolveSandboxImage(ctx.config),
+        // Every project on this install, so the image row can tell a legacy
+        // machine-wide tag (named after a project runcastle no longer has, or
+        // never had) from an image someone chose on purpose.
+        knownProjectIds: allProjects(ctx).map((p) => p.id),
         ...(project ? { projectImage: projectImageEnv(ctx, project) } : {}),
       })
     }),

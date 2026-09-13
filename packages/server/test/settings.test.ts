@@ -6,7 +6,7 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import type { AppCtx } from '../src/db/types'
 import { InvalidInputError } from '../src/errors'
 import { listByProject } from '../src/services/events'
-import { getSettings, updateSettings } from '../src/services/settings'
+import { getSettings, updateSettings, warnLegacyGlobalImage } from '../src/services/settings'
 import { makeTestCtx } from './helpers/db'
 import { seedProject } from './helpers/fixtures'
 
@@ -371,6 +371,29 @@ describe('settings service (#46)', () => {
     expect(sandbox.value).toBe('podman')
     expect(sandbox.source).toBe('env')
     expect(sandbox.editable).toBe(false)
+  })
+
+  // Boot is where the poisoning gets named; the value itself is never deleted,
+  // because the same string could have been typed on purpose.
+  it('boot names a legacy machine-wide image on the global timeline, without removing it', () => {
+    seedProject(ctx)
+    ctx.config.sandboxImage = 'sandcastle:runcastle-demo'
+
+    expect(warnLegacyGlobalImage(ctx)).toBe('sandcastle:runcastle-demo')
+
+    const warning = listByProject(ctx, 'global', 0).find((e) => e.type === 'settings.legacyImage')
+    expect(warning?.message).toContain('sandcastle:runcastle-demo')
+    expect(warning?.message).toContain('Clear the machine-wide sandbox image setting')
+    expect(ctx.config.sandboxImage).toBe('sandcastle:runcastle-demo')
+  })
+
+  it('boot stays silent for the stock image, an unset one, and a live project’s own tag', () => {
+    const project = seedProject(ctx)
+    for (const image of [undefined, DEFAULT_SANDBOX_IMAGE, `${DEFAULT_SANDBOX_IMAGE}-${project.id}`]) {
+      ctx.config.sandboxImage = image
+      expect(warnLegacyGlobalImage(ctx)).toBeNull()
+    }
+    expect(listByProject(ctx, 'global', 0).map((e) => e.type)).not.toContain('settings.legacyImage')
   })
 
   it('a global settings mutation emits an event', () => {

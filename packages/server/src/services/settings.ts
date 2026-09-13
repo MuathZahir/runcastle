@@ -23,7 +23,8 @@ import { projects } from '../db/schema'
 import { InvalidInputError } from '../errors'
 import { emitProject } from './events'
 import { recordHuman } from './findings'
-import { requireProjectById } from './repo'
+import { allProjects, requireProjectById } from './repo'
+import { legacyGlobalImage, legacyGlobalImageReason } from './sandbox-image'
 
 /**
  * Settings backend (issue #46, SPEC §4). Two stores: global defaults in the
@@ -645,8 +646,36 @@ function writeStepModel(configFile: string, step: ModelStep, value: string | nul
   if (value === null) delete stepModels[step]
   else stepModels[step] = value
   raw.stepModels = stepModels
-  mkdirSync(dirname(configFile), { recursive: true })
-  writeFileSync(configFile, `${JSON.stringify(raw, null, 2)}\n`)
+  saveRawConfig(configFile, raw)
+}
+
+/**
+ * Name a machine-wide `sandboxImage` that is residue from an older runcastle
+ * (see {@link legacyGlobalImage}), once, at boot. Returns the offending tag, or
+ * null when there is nothing to say.
+ *
+ * Loud on purpose and destructive on purpose-not: the symptom this heals is a
+ * burn failing deep inside a container built for a different repo (`claude is
+ * not installed in image sandcastle:runcastle-demo`), which names the image but
+ * not the reason it was ever chosen. Boot is the one moment every install passes
+ * through, so it is where the reason gets said. The value itself stays — the
+ * human clears it from Settings, which is the fix text the doctor's image row
+ * prints too.
+ */
+export function warnLegacyGlobalImage(ctx: AppCtx): string | null {
+  const legacy = legacyGlobalImage(
+    ctx.config.sandboxImage,
+    allProjects(ctx).map((p) => p.id),
+  )
+  if (legacy === null) return null
+  const message = legacyGlobalImageReason(legacy)
+  console.warn(`runcastle: ${message}`)
+  emitProject(ctx, GLOBAL_EVENT_KEY, {
+    type: 'settings.legacyImage',
+    message,
+    data: { key: 'sandboxImage', scope: 'global', value: legacy },
+  })
+  return legacy
 }
 
 function field(view: SettingsView, key: string): SettingField {

@@ -29,6 +29,8 @@ import {
   projectDockerfilePath,
   projectImageTag,
   type StoredProjectImage,
+  legacyGlobalImage,
+  legacyGlobalImageReason,
   unmanagedImage,
   unmanagedImageReason,
 } from '../services/sandbox-image'
@@ -125,6 +127,13 @@ export interface DoctorEnv {
   burnerDockerfile?: string
   /** The project whose image row this report drives; absent app-wide. */
   projectImage?: ProjectImageEnv
+  /**
+   * Every project this install knows, by id — what {@link legacyGlobalImage}
+   * measures a machine-wide image against. Absent where the project list is
+   * unreachable (the `runcastle doctor` CLI has no database), and the row then
+   * says nothing about legacy residue rather than guessing at it.
+   */
+  knownProjectIds?: readonly string[]
 }
 
 /**
@@ -584,6 +593,8 @@ export interface ImageProbeInput {
   burnerDockerfile: string
   dockerfileHash: (path: string) => string | null
   project?: ProjectImageEnv
+  /** See {@link DoctorEnv.knownProjectIds}; absent means "do not classify". */
+  knownProjectIds?: readonly string[]
 }
 
 /**
@@ -691,8 +702,18 @@ export async function sandcastleImageProbe(input: ImageProbeInput): Promise<Prob
     // worth saying out loud: an operator's own image is `info` when it is there
     // and an `error` when it is not.
     const custom = await inspectBuiltImage(exec, runtime, imageName)
+    // An older runcastle wrote built project images into the machine-wide
+    // config, so a `sandcastle:runcastle-<name>` reaching here from below the
+    // project column is residue rather than anyone's custom image. Only the
+    // wording changes: the value stays, because a human may have typed it.
+    const legacy =
+      input.knownProjectIds === undefined || stored !== null
+        ? null
+        : legacyGlobalImage(imageName, input.knownProjectIds)
     const clauses = [
-      `${imageName} is a custom image, managed outside runcastle`,
+      legacy === null
+        ? `${imageName} is a custom image, managed outside runcastle`
+        : `${imageName} is a machine-wide image left over from an older runcastle`,
       // A Dockerfile this tag outranks does nothing until the setting is
       // cleared, and a row that stayed silent about it would leave the human
       // waiting on a build that is never coming.
@@ -702,9 +723,14 @@ export async function sandcastleImageProbe(input: ImageProbeInput): Promise<Prob
     return {
       ...IMAGE_ROW,
       status: 'custom',
-      severity: custom.present ? 'info' : 'error',
+      // Residue nobody chose is always worth acting on, however buildable the
+      // tag happens to be on this machine.
+      severity: custom.present && legacy === null ? 'info' : 'error',
       detail: clauses.join(' — '),
-      fix: unmanagedImageReason(imageName, projectHash !== null),
+      fix:
+        legacy === null
+          ? unmanagedImageReason(imageName, projectHash !== null)
+          : legacyGlobalImageReason(legacy),
     }
   }
   if (!stock.present) {
@@ -789,6 +815,7 @@ export async function runDoctor(env: DoctorEnv): Promise<DoctorReport> {
       burnerDockerfile,
       dockerfileHash,
       ...(env.projectImage ? { project: env.projectImage } : {}),
+      ...(env.knownProjectIds ? { knownProjectIds: env.knownProjectIds } : {}),
     }),
   )
 
