@@ -1,7 +1,7 @@
 import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { RuncastleConfig } from '@runcastle/core'
+import { DEFAULT_SANDBOX_IMAGE, RuncastleConfig, resolveSandboxImage } from '@runcastle/core'
 import { beforeEach, describe, expect, it } from 'vitest'
 import type { AppCtx } from '../src/db/types'
 import { InvalidInputError } from '../src/errors'
@@ -302,6 +302,55 @@ describe('settings service (#46)', () => {
     const model = field(getSettings(ctx, project.id, io()), 'model')
     expect(model.source).toBe('default')
     expect(model.value).toBe('claude-opus-5')
+  })
+
+  // A global `sandboxImage` written by an older runcastle poisons every project
+  // that has no column of its own, and clearing the PROJECT override only falls
+  // through to it again — so the global value has to be clearable too.
+  it('a null value clears the global sandboxImage out of the config file', () => {
+    writeFileSync(configFile, JSON.stringify({ sandboxImage: 'sandcastle:runcastle-demo' }))
+    ctx.config.sandboxImage = 'sandcastle:runcastle-demo'
+
+    const cleared = updateSettings(ctx, { key: 'sandboxImage', value: null }, io())
+
+    expect(cleared.value).toBeNull()
+    expect(cleared.source).toBe('default')
+    expect(JSON.parse(readFileSync(configFile, 'utf8'))).not.toHaveProperty('sandboxImage')
+    // The shared config object the launcher reads at each launch, not just disk.
+    expect(ctx.config.sandboxImage).toBeUndefined()
+    expect(resolveSandboxImage(ctx.config)).toBe(DEFAULT_SANDBOX_IMAGE)
+    expect(listByProject(ctx, 'global', 0).map((e) => e.type)).toContain('settings.updated')
+  })
+
+  it('clearing the global sandboxImage leaves the other config-file keys alone', () => {
+    writeFileSync(
+      configFile,
+      JSON.stringify({ sandboxImage: 'sandcastle:runcastle-demo', model: 'claude-sonnet-5' }),
+    )
+    updateSettings(ctx, { key: 'sandboxImage', value: null }, io())
+    expect(field(getSettings(ctx, undefined, io()), 'model').value).toBe('claude-sonnet-5')
+  })
+
+  it('a global key that is not sandboxImage still refuses to be cleared', () => {
+    expect(() => updateSettings(ctx, { key: 'model', value: null }, io())).toThrow(InvalidInputError)
+  })
+
+  it('a null value on a project still clears the column, not the global', () => {
+    const project = seedProject(ctx)
+    writeFileSync(configFile, JSON.stringify({ sandboxImage: 'sandcastle:runcastle-demo' }))
+    updateSettings(
+      ctx,
+      { projectId: project.id, key: 'sandboxImage', value: 'sandcastle:runcastle-p1' },
+      io(),
+    )
+    updateSettings(ctx, { projectId: project.id, key: 'sandboxImage', value: null }, io())
+
+    const image = field(getSettings(ctx, project.id, io()), 'sandboxImage')
+    expect(image.source).toBe('file')
+    expect(image.value).toBe('sandcastle:runcastle-demo')
+    expect(JSON.parse(readFileSync(configFile, 'utf8')).sandboxImage).toBe(
+      'sandcastle:runcastle-demo',
+    )
   })
 
   it('sandbox override accepts the three-way choice and rejects anything else', () => {
