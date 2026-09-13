@@ -558,6 +558,8 @@ export interface SettingRow {
   ghostValue?: string
   /** Where this value came from, as a chip. Absent when there is nothing to say. */
   sourceChip?: SourceChip
+  /** A machine-wide value that can be removed outright, back to the default. */
+  clearable: boolean
   /** Who established a prepared value, and the evidence behind the chip. */
   provenanceChip?: ProvenanceChip
   /** A `select` may also accept a free-text model id (the Default-model combobox). */
@@ -643,6 +645,25 @@ function ghostValueFor(field: SettingField): string | undefined {
   if (!TWIN_KEYS.has(field.key)) return undefined
   if (field.source !== 'file' && field.source !== 'default') return undefined
   return toDisplay(field.value) || undefined
+}
+
+/**
+ * The machine-wide keys a `Clear` link is offered for — the server's own
+ * `GLOBAL_CLEARABLE_KEYS`, which is `sandboxImage` alone. Blanking the control
+ * is not the same affordance: a text field commits `''`, which the server
+ * refuses, so without this the doctor's "clear the sandbox image setting" named
+ * a remedy nothing on this surface could perform.
+ */
+const GLOBAL_CLEARABLE_KEYS = new Set(['sandboxImage'])
+
+/**
+ * Whether this row offers a `Clear` link. Only at global scope, only for a value
+ * that is really SET (`file`): a schema default has nothing to remove, an
+ * env-locked field cannot be written at all, and a project-scope row clears
+ * through `Use global` instead.
+ */
+function isClearable(field: SettingField): boolean {
+  return field.scope === 'global' && field.source === 'file' && GLOBAL_CLEARABLE_KEYS.has(field.key)
 }
 
 /** Which of the three chips a row shows for where its value came from. */
@@ -736,6 +757,7 @@ export function describeField(
     note,
     ...(ghostValue ? { ghostValue } : {}),
     ...(sourceChip ? { sourceChip } : {}),
+    clearable: isClearable(field),
     ...(finding ? { provenanceChip: provenanceChipFor(finding) } : {}),
     ...(finding?.evidence ? { evidence: finding.evidence } : {}),
     stale: finding ? isStale(finding) : false,

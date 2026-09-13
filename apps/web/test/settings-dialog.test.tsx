@@ -272,6 +272,41 @@ describe('SettingsDialog', () => {
     expect(screen.getByText('Saved ✓')).toBeTruthy()
   })
 
+  // The doctor's image row prescribes "Clear the machine-wide sandbox image
+  // setting"; until there was a link to click, that named a remedy this surface
+  // could not perform — blanking the control commits '', which the server
+  // refuses, and the project page's "Use global" only falls back onto the
+  // poisoned machine-wide value again.
+  it('clears a machine-wide sandbox image outright', () => {
+    server.globals = view([
+      field({ key: 'sandboxImage', value: 'sandcastle:runcastle-demo', source: 'file' }),
+    ])
+    open()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Clear' }))
+
+    expect(server.updates).toEqual([{ key: 'sandboxImage', value: null }])
+  })
+
+  it('offers no Clear for a machine-wide image nobody has set', () => {
+    server.globals = view([field({ key: 'sandboxImage', value: '', source: 'default' })])
+    open()
+    expect(screen.queryByRole('button', { name: 'Clear' })).toBeNull()
+  })
+
+  it('offers no Clear for an env-locked image, which no write can touch', () => {
+    server.globals = view([
+      field({
+        key: 'sandboxImage',
+        value: 'sandcastle:runcastle-demo',
+        source: 'env',
+        editable: false,
+      }),
+    ])
+    open()
+    expect(screen.queryByRole('button', { name: 'Clear' })).toBeNull()
+  })
+
   it('shows the server’s refusal beside the field and snaps the draft back', () => {
     server.reject = 'sandboxImage must be a tag'
     open()

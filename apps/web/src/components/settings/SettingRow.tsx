@@ -203,10 +203,12 @@ export function SettingRow({
     write(commit.value)
   }
 
-  // "Use global" is the whole of the un-override affordance (decision 7): a null
-  // write drops this project's value, and the row goes back to showing the
-  // global one as a ghost. No Clear-override button, no OVERRIDDEN badge.
-  const useGlobal = () => write(null)
+  // One null write, two labels, because clearing is the same act in both scopes:
+  // at project scope it drops the override and the row goes back to showing the
+  // global as a ghost ("Use global", decision 7 — no OVERRIDDEN badge); at
+  // global scope it removes the machine-wide value and the field falls back to
+  // its default ("Clear").
+  const clear = () => write(null)
 
   // Scoped, because most keys appear in both the global and the project view.
   // Two controls sharing one id made every `htmlFor` resolve to the global one,
@@ -244,7 +246,7 @@ export function SettingRow({
           onDraft={edit}
           onCommit={save}
           onRevert={() => setDraft(committed)}
-          onUseGlobal={useGlobal}
+          onClear={clear}
           onOpenEvidence={onOpenEvidence}
           evidence={evidence}
         />
@@ -269,7 +271,7 @@ function RowControl({
   onDraft,
   onCommit,
   onRevert,
-  onUseGlobal,
+  onClear,
   onOpenEvidence,
   evidence,
 }: {
@@ -282,7 +284,7 @@ function RowControl({
   onDraft: (value: string) => void
   onCommit: (value: string) => void
   onRevert: () => void
-  onUseGlobal: () => void
+  onClear: () => void
   onOpenEvidence?: () => void
   evidence?: ReactNode
 }) {
@@ -391,11 +393,20 @@ function RowControl({
           >
             <SourceChip kind={row.sourceChip} envVar={FIELD_ENV_VAR[row.key]} />
             {row.sourceChip === 'project' && (
-              <button type="button" onClick={onUseGlobal} className={LINK}>
+              <button type="button" onClick={onClear} className={LINK}>
                 Use global
               </button>
             )}
           </div>
+        )}
+        {/* The machine-wide twin of "Use global": a set global value has no
+            chip to hang a link off, and blanking the control commits '' rather
+            than removing anything — so without this the way back to the default
+            was unreachable from the UI that recommends it. */}
+        {row.clearable && (
+          <button type="button" onClick={onClear} className={cx(LINK, 'shrink-0')}>
+            Clear
+          </button>
         )}
       </div>
       {row.provenanceChip && (
