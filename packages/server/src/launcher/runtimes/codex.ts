@@ -120,21 +120,35 @@ function approvalPolicyFor(permissionMode: string | undefined): 'never' | 'on-re
  * - `sandbox_mode = "workspace-write"` is the sandbox every kind runs in; the
  *   approval gate beside it is the `--permission-mode` analogue, mapped per
  *   session by {@link approvalPolicyFor}.
- * - `[features] hooks = true` turns hook discovery ON. It is the switch the
- *   whole Codex lifecycle hangs off: `list_hooks` returns nothing at all while
- *   the feature is off — "suppressing all hooks.json file discovery" — so the
- *   `hooks.json` beside this file is read by nobody, and the session gets no
- *   `live` row, no kickoff, no edit guard and no `awaiting-input`. `hooks` is
- *   the canonical feature key (`FeatureSpec { key: "hooks" }`) and a plain
- *   boolean in `[features]`, pinned against the live CLI because the config
- *   struct is `deny_unknown_fields`. Stated rather than inherited: the feature
- *   is `stable`/default-on as of `codex-cli` 0.150.1 (verified — `codex
+ * - `[features] hooks = true` turns hook discovery ON: `list_hooks` returns
+ *   nothing at all while the feature is off — "suppressing all hooks.json file
+ *   discovery" — so the `hooks.json` beside this file would be read by nobody.
+ *   `hooks` is the canonical feature key (`FeatureSpec { key: "hooks" }`) and a
+ *   plain boolean in `[features]`, pinned against the live CLI because the
+ *   config struct is `deny_unknown_fields`. Stated rather than inherited: the
+ *   feature is `stable`/default-on as of `codex-cli` 0.150.1 (verified — `codex
  *   features list` reports `hooks stable true` against a generated home with
  *   and without this line, and `hooks = false` stops SessionStart firing), so
  *   this is a pin against a default that moves and against a `--disable hooks`
  *   or user-config entry, not the thing that makes hooks work today. The flag
  *   that IS load-bearing is `--dangerously-bypass-hook-trust` in the argv
  *   ({@link buildCodexArgs}): without it no hook fires at all.
+ *
+ *   WHAT THIS DOES NOT FIX, verified end-to-end against codex-cli 0.150.1 in a
+ *   real PTY. An interactive Codex session still never goes `live` and still
+ *   never gets its kickoff, because Codex's TUI does not emit `SessionStart`
+ *   when the terminal opens — it emits it with the FIRST TURN, alongside that
+ *   turn's `UserPromptSubmit`. Sat idle at a settled Codex prompt for 30s with
+ *   hook discovery on, trust granted and the update prompt pre-dismissed, no
+ *   `SessionStart` fired; typing one prompt produced `SessionStart` and
+ *   `UserPromptSubmit` together. That deadlocks runcastle: `markSessionLive`
+ *   (SessionStart) is the only caller of `scheduleKickoff`, and the kickoff is
+ *   the thing that would submit that first prompt — so the terminal sits at the
+ *   prompt, `armSessionReadyWatchdog` fires `session.not_ready` at 25s, and the
+ *   briefing is never typed. When the human eventually types something the
+ *   session goes live and the kickoff is injected on top of a conversation
+ *   already in flight, which is where the clear-and-retype churn comes from.
+ *   Breaking that cycle is `native-first-message-delivery`, not this line.
  * - `[projects."<worktree>"] trust_level = "trusted"` answers the first-run
  *   "do you trust this folder?" prompt before it can block the session — a
  *   dialog fires BEFORE the SessionStart hook, so it would strand the terminal
