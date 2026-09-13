@@ -102,14 +102,16 @@ interface CodexConfigInput {
  * `acceptEdits`, the posture every worktree-scoped kind runs under, is `never`:
  * the agent writes inside its own checkout without stopping to ask. The project
  * session's `default` (decision 18 — whole-repo write access voids the
- * acceptEdits justification) is `untrusted`, whose rule is "always ask": that is
- * what Claude's `default` does, and asking is the entire point of the downgrade.
- * Not `on-request`, which asks only when the filesystem sandbox says so — the
- * human's prompt would then hang on state the launcher does not set, which is
- * the same silent divergence this mapping exists to close.
+ * acceptEdits justification) is `on-request`, the CLI's own default, where the
+ * model decides when to ask — the closest prompting analogue config.toml still
+ * accepts. Not `untrusted`, the stricter "always ask": current Codex demotes it
+ * to an internal policy for projects it marks untrusted (reached through
+ * `trust_level`, not through this key) and rejects it outright on config load —
+ * `approval_policy = "untrusted" is no longer supported; remove this setting` —
+ * which killed every interactive project session before it started.
  */
-function approvalPolicyFor(permissionMode: string | undefined): 'never' | 'untrusted' {
-  return permissionMode === undefined || permissionMode === 'acceptEdits' ? 'never' : 'untrusted'
+function approvalPolicyFor(permissionMode: string | undefined): 'never' | 'on-request' {
+  return permissionMode === undefined || permissionMode === 'acceptEdits' ? 'never' : 'on-request'
 }
 
 /**
