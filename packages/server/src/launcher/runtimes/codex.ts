@@ -127,8 +127,14 @@ function approvalPolicyFor(permissionMode: string | undefined): 'never' | 'on-re
  *   `live` row, no kickoff, no edit guard and no `awaiting-input`. `hooks` is
  *   the canonical feature key (`FeatureSpec { key: "hooks" }`) and a plain
  *   boolean in `[features]`, pinned against the live CLI because the config
- *   struct is `deny_unknown_fields`. Stated rather than left to the CLI's own
- *   default: every lifecycle event we own depends on it.
+ *   struct is `deny_unknown_fields`. Stated rather than inherited: the feature
+ *   is `stable`/default-on as of `codex-cli` 0.150.1 (verified — `codex
+ *   features list` reports `hooks stable true` against a generated home with
+ *   and without this line, and `hooks = false` stops SessionStart firing), so
+ *   this is a pin against a default that moves and against a `--disable hooks`
+ *   or user-config entry, not the thing that makes hooks work today. The flag
+ *   that IS load-bearing is `--dangerously-bypass-hook-trust` in the argv
+ *   ({@link buildCodexArgs}): without it no hook fires at all.
  * - `[projects."<worktree>"] trust_level = "trusted"` answers the first-run
  *   "do you trust this folder?" prompt before it can block the session — a
  *   dialog fires BEFORE the SessionStart hook, so it would strand the terminal
