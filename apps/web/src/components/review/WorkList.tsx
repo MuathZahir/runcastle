@@ -160,9 +160,10 @@ export function WorkList({
   /** A row to bring into view — the other direction of the same jump. */
   scrollTo?: string | null
   /**
-   * The box these rows scroll inside — the notes rail's own scroller. Omitted
-   * where the list is not in a scroller of its own (the settled half, inside the
-   * Full account disclosure), which is also the half nothing ever jumps to.
+   * The box these rows scroll inside — the notes rail's own scroller, and what a
+   * `scrollTo` moves. The settled half sits in no scroller of its own, inside
+   * the Full account disclosure, and is the half nothing ever jumps to: it
+   * passes neither.
    */
   scroller?: RefObject<HTMLElement | null>
 }) {
@@ -196,14 +197,10 @@ export function WorkList({
   // walks every scrollable ancestor: the whole point of the rail is that
   // reaching a note never moves the stage.
   useEffect(() => {
-    if (!scrollTo) return
+    const box = scroller?.current
+    if (!scrollTo || !box) return
     const row = document.getElementById(rowElementId(scrollTo))
     if (!row) return
-    const box = scroller?.current
-    if (!box) {
-      row.scrollIntoView({ behavior: 'smooth', block: 'center' })
-      return
-    }
     const rowBox = row.getBoundingClientRect()
     const boxBox = box.getBoundingClientRect()
     box.scrollBy({
