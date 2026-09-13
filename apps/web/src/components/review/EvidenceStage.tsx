@@ -76,12 +76,12 @@ function stageShows(state: DriveState, hasRecording: boolean): 'player' | 'drive
  * ratio and no clamp, because a box that kept either would leave the stage the
  * size it was and the expand would have bought nothing (decision 3).
  *
- * `fills` is the content that brings its own pixels — the app, the recording —
- * against the drive states that are prose where the video would be.
+ * A `screen` is content that brings its own pixels — the app, the recording —
+ * against the `prose` the drive states put where the video would be.
  */
-function stageFrame(expanded: boolean, fills: boolean): string {
+function stageFrame(expanded: boolean, content: 'screen' | 'prose'): string {
   const size = expanded ? 'min-h-0 flex-1' : 'aspect-video max-h-[calc(100vh-320px)]'
-  const skin = fills ? 'overflow-hidden bg-black' : 'overflow-auto bg-panel-2 p-4'
+  const skin = content === 'screen' ? 'overflow-hidden bg-black' : 'overflow-auto bg-panel-2 p-4'
   return `relative flex w-full flex-col rounded-md border border-hairline ${size} ${skin}`
 }
 
@@ -252,7 +252,7 @@ export function EvidenceStage({
             same thing from wherever the eye is. */}
         {expand && (
           <Button
-            className="ml-auto flex items-center gap-1.5 px-2"
+            className="ml-auto px-2"
             aria-pressed={expanded}
             onClick={() => expand.set(!expanded)}
           >
@@ -269,7 +269,7 @@ export function EvidenceStage({
           ticketId={onStage.ticketId}
           passKind={onStage.passKind}
           readonly={readonly}
-          frameClassName={stageFrame(expanded, true)}
+          frameClassName={stageFrame(expanded, 'screen')}
           expand={expand}
           markers={clusterMarkers(notes, onStage.ticketId)}
           onMarkerClick={onMarkerClick}
@@ -278,7 +278,7 @@ export function EvidenceStage({
           handleRef={handleRef}
         />
       ) : (
-        <div className={stageFrame(expanded, fills)}>
+        <div className={stageFrame(expanded, fills ? 'screen' : 'prose')}>
           <DriveStage
             featureId={featureId}
             branch={branch}
