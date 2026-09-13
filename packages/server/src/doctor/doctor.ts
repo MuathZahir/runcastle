@@ -26,11 +26,11 @@ import { codexAuthFile } from '../services/codex-auth'
 import {
   hashDockerfile,
   inspectBuiltImage,
+  legacyGlobalImage,
+  legacyGlobalImageReason,
   projectDockerfilePath,
   projectImageTag,
   type StoredProjectImage,
-  legacyGlobalImage,
-  legacyGlobalImageReason,
   unmanagedImage,
   unmanagedImageReason,
 } from '../services/sandbox-image'
