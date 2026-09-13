@@ -7,6 +7,7 @@ import { fmtBytes } from '../lib/format'
 import { useToast } from '../lib/toast'
 import { AnnotationOverlay } from './review/AnnotationOverlay'
 import { playableDuration, saveAnnotatedNote, seekTarget } from '../lib/walkthrough'
+import { isTyping, useStageExpandKeys, type StageExpand } from '../lib/stage-expand'
 
 /**
  * What the page outside this player can do to the recording on stage
@@ -49,12 +50,6 @@ function cycleSpeed(current: number, delta: number): number {
   return SPEEDS[(from + delta + SPEEDS.length) % SPEEDS.length]!
 }
 
-/** Whether a keystroke belongs to something being typed into rather than to us. */
-function isTyping(target: EventTarget | null): boolean {
-  const el = target as HTMLElement | null
-  return el?.tagName === 'INPUT' || el?.tagName === 'TEXTAREA' || el?.isContentEditable === true
-}
-
 /**
  * The walkthrough player (decisions 23–24).
  *
@@ -84,6 +79,8 @@ export function WalkthroughPlayer({
   ticketId,
   passKind,
   readonly,
+  frameClassName,
+  expand,
   markers = [],
   onMarkerClick,
   onAnnotationSaved,
@@ -98,6 +95,18 @@ export function WalkthroughPlayer({
   passKind: 'review' | 'verification'
   /** Looking back at a shipped feature — the recording plays, nothing is captured. */
   readonly: boolean
+  /**
+   * The box the frame sits in, sized by the stage above (collapsed 16:9, or the
+   * flex fill of the expanded overlay) — one class string for both sides of the
+   * swap, so the expanded sizing exists once rather than once per player.
+   */
+  frameClassName: string
+  /**
+   * The stage's expand, which this player's F key now toggles. Absent where the
+   * page has nowhere to expand into (the shipped record), and then F does
+   * nothing rather than something else.
+   */
+  expand?: StageExpand
   /** Clustered note moments for THIS recording ({@link clusterMarkers}). */
   markers?: readonly WalkthroughMarker[]
   onMarkerClick?: (noteIds: string[]) => void
@@ -116,7 +125,6 @@ export function WalkthroughPlayer({
   const utils = trpc.useUtils()
   const toast = useToast()
   const videoRef = useRef<HTMLVideoElement>(null)
-  const stageRef = useRef<HTMLDivElement>(null)
 
   const [playing, setPlaying] = useState(false)
   const [at, setAt] = useState(0)
@@ -223,12 +231,11 @@ export function WalkthroughPlayer({
     setAnnotating(true)
   }
 
-  const toggleFullscreen = useCallback((): void => {
-    const stage = stageRef.current
-    if (!stage) return
-    if (document.fullscreenElement) void document.exitFullscreen?.()
-    else void stage.requestFullscreen?.()
-  }, [])
+  // The stage's expand, on the same terms the transport has: F while the
+  // recording is what the stage is showing, silent while the overlay is drawing
+  // on it. The native fullscreen this key used to call is gone (decision 4) —
+  // it showed the frame alone, without the transport bar or the notes rail.
+  useStageExpandKeys(expand, !annotating)
 
   // Keyboard-first transport (decision 23a). On `window` rather than the stage
   // so the keys work while the eye is on the frame and the focus is wherever the
@@ -266,15 +273,11 @@ export function WalkthroughPlayer({
         case '>':
           handled()
           return applySpeed(cycleSpeed(speed, 1))
-        case 'f':
-        case 'F':
-          handled()
-          return toggleFullscreen()
       }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [annotating, togglePlay, jump, frameStep, applySpeed, speed, toggleFullscreen])
+  }, [annotating, togglePlay, jump, frameStep, applySpeed, speed])
 
   const retry = (): void => {
     setPhase('loading')
@@ -325,17 +328,17 @@ export function WalkthroughPlayer({
 
   return (
     // The frame and its bar are one unit that fits the viewport together
-    // (decision 23e): annotating never pushes the frame off the top of the page.
-    <div className="flex flex-col gap-2">
-      <div
-        ref={stageRef}
-        className="relative aspect-video max-h-[calc(100vh-320px)] w-full overflow-hidden rounded-md border border-hairline bg-black"
-      >
+    // (decision 23e): annotating never pushes the frame off the top of the page,
+    // and expanding grows the frame with the bar still under it. The unit takes
+    // the height the stage gives it, which is the whole overlay while expanded.
+    <div className="flex min-h-0 flex-1 flex-col gap-2">
+      <div className={frameClassName}>
         <video
           ref={videoRef}
           // Letterboxed inside the stage: black behind the frame reads as film
-          // rather than as a gap in the page.
-          className="block h-full w-full object-contain"
+          // rather than as a gap in the page. It takes the frame's height
+          // whether that height is a 16:9 box or the expanded overlay's fill.
+          className="min-h-0 w-full flex-1 object-contain"
           src={url}
           preload="metadata"
           aria-label={passKind === 'verification' ? 'verification walkthrough' : 'review walkthrough'}

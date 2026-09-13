@@ -64,6 +64,7 @@ const render = (props: Partial<Parameters<typeof EvidenceStage>[0]> = {}): strin
       driveState: 'idle' as DriveState,
       dryRun: false,
       failure: null,
+      expand: { expanded: false, set: () => undefined },
       ...props,
     }),
   )

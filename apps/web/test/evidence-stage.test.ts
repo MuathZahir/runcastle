@@ -53,9 +53,14 @@ const render = (props: Partial<Parameters<typeof EvidenceStage>[0]> = {}): strin
       driveState: 'idle',
       dryRun: false,
       failure: null,
+      expand: { expanded: false, set: () => undefined },
       ...props,
     }),
   )
+
+/** The same stage with the window to itself (decision 3). */
+const expanded = (props: Partial<Parameters<typeof EvidenceStage>[0]> = {}): string =>
+  render({ expand: { expanded: true, set: () => undefined }, ...props })
 
 describe('EvidenceStage', () => {
   it('plays the latest completed pass by default, under its identity header', () => {
@@ -160,5 +165,60 @@ describe('EvidenceStage', () => {
     const html = render({ readonly: true })
     expect(html).toContain('<video')
     expect(html).not.toContain('Annotate')
+  })
+})
+
+/**
+ * The stage's expand (decisions 3–4). What is asked here is the sizing and the
+ * control, both of which are in the markup: the overlay itself belongs to the
+ * page around the stage and is measured at that seam
+ * (`stage-expand.test.tsx`).
+ */
+describe('EvidenceStage expanded', () => {
+  const SERVING = {
+    driveState: 'serving' as const,
+    drive: { branch: 'feature/x', devPaneId: 'pane_1', devUrl: 'http://localhost:5173', devReady: true },
+  }
+
+  it('offers one expand control, naming the key that does the same thing', () => {
+    const html = render()
+    expect(html).toContain('>Expand <kbd')
+    expect(html).toContain('>F</kbd>')
+    expect(html).toContain('aria-pressed="false"')
+    // And the same single control while the drive is what is on the stage.
+    expect(render(SERVING).match(/>Expand <kbd/g)).toHaveLength(1)
+  })
+
+  it('says what the control now does, and that the stage is expanded', () => {
+    const html = expanded()
+    expect(html).toContain('>Collapse <kbd')
+    expect(html).toContain('aria-pressed="true"')
+    expect(html).not.toContain('>Expand <kbd')
+  })
+
+  /**
+   * The point of the expand: a frame that kept its aspect ratio or its viewport
+   * clamp would be the size it always was inside a bigger box.
+   */
+  it('drops the 16:9 clamp for the overlay’s fill, on both sides of the swap', () => {
+    for (const html of [expanded(), expanded(SERVING)]) {
+      expect.soft(html).toContain('min-h-0 flex-1')
+      expect.soft(html).not.toContain('aspect-video')
+      expect.soft(html).not.toContain('max-h-[calc(100vh-320px)]')
+    }
+  })
+
+  /** Collapsed, both sides wear the one 16:9 string the stage layer writes. */
+  it('sizes both sides from one collapsed frame, 16:9 and clamped', () => {
+    const frame = 'aspect-video max-h-[calc(100vh-320px)]'
+    expect(render()).toContain(frame)
+    expect(render(SERVING)).toContain(frame)
+  })
+
+  /** A page with nowhere to expand into (the shipped record) offers no expand. */
+  it('offers no expand at all when the page hands it none', () => {
+    const html = render({ expand: undefined })
+    expect(html).not.toContain('>Expand <kbd')
+    expect(html).toContain('aspect-video')
   })
 })
