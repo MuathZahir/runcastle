@@ -839,6 +839,24 @@ describe('codexRuntime.writeArtifacts', () => {
     expect(toml).toContain('http_headers = { "X-Runcastle-Session" = "sess_codex_ideation" }')
   })
 
+  it('turns hook discovery on — the flag the whole Codex lifecycle hangs off', async () => {
+    await launchSpec('ideation')
+    // Without it `list_hooks` returns nothing and the hooks.json written beside
+    // this config is read by nobody: no `live` row, no kickoff, no edit guard,
+    // no `awaiting-input`. `hooks` is the canonical feature key, spelled as a
+    // boolean in `[features]` — the config struct is `deny_unknown_fields`, so
+    // the spelling is the whole parse.
+    expect(configToml('sess_codex_ideation')).toContain('[features]\nhooks = true')
+
+    // every kind's lifecycle runs on those hooks, including the one whose
+    // approval posture differs
+    await launchSpec('project', {
+      permissionMode: 'default',
+      projectBrief: { project, branch: 'runcastle/project', worktreePath: worktree },
+    })
+    expect(configToml('sess_codex_project')).toContain('[features]\nhooks = true')
+  })
+
   it('maps the project session\'s `default` posture to an approval policy that asks', async () => {
     await launchSpec('project', {
       permissionMode: 'default',

@@ -120,6 +120,15 @@ function approvalPolicyFor(permissionMode: string | undefined): 'never' | 'on-re
  * - `sandbox_mode = "workspace-write"` is the sandbox every kind runs in; the
  *   approval gate beside it is the `--permission-mode` analogue, mapped per
  *   session by {@link approvalPolicyFor}.
+ * - `[features] hooks = true` turns hook discovery ON. It is the switch the
+ *   whole Codex lifecycle hangs off: `list_hooks` returns nothing at all while
+ *   the feature is off — "suppressing all hooks.json file discovery" — so the
+ *   `hooks.json` beside this file is read by nobody, and the session gets no
+ *   `live` row, no kickoff, no edit guard and no `awaiting-input`. `hooks` is
+ *   the canonical feature key (`FeatureSpec { key: "hooks" }`) and a plain
+ *   boolean in `[features]`, pinned against the live CLI because the config
+ *   struct is `deny_unknown_fields`. Stated rather than left to the CLI's own
+ *   default: every lifecycle event we own depends on it.
  * - `[projects."<worktree>"] trust_level = "trusted"` answers the first-run
  *   "do you trust this folder?" prompt before it can block the session — a
  *   dialog fires BEFORE the SessionStart hook, so it would strand the terminal
@@ -135,6 +144,9 @@ function renderCodexConfig(input: CodexConfigInput): string {
     `model = ${toml(model)}`,
     'sandbox_mode = "workspace-write"',
     `approval_policy = ${toml(approvalPolicyFor(permissionMode))}`,
+    '',
+    '[features]',
+    'hooks = true',
     '',
     `[projects.${toml(worktreePath)}]`,
     'trust_level = "trusted"',
