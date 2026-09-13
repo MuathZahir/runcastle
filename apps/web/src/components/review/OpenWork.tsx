@@ -1,11 +1,18 @@
+import { useRef } from 'react'
 import { EmptyState, SectionTitle } from '../../ui'
 import { NoteComposer } from './NoteComposer'
 import { WorkList, type WorkRow } from './WorkList'
 
 /**
  * "What still needs attention" — the review agent's defects and the human's
- * notes as ONE list (decision 18c), and the visual centre of arrival
- * (decision 8).
+ * notes as ONE list (decision 18c), and the content of the notes rail
+ * ({@link NotesRail}) that stands beside the stage at all times (decision 2).
+ *
+ * It is laid out as the rail is: a heading that stays put, a scroll region of
+ * its own holding the rows, and the composer pinned to the bottom. Writing a
+ * note therefore never moves the list, and reading the list never moves the
+ * stage — which is the whole point of the rail (revising decision 18's band
+ * order, where this sat below the fold).
  *
  * They were two lists with two designs and two vocabularies even though they
  * share their triage destinations, and the split is what let a defect being
@@ -51,39 +58,49 @@ export function OpenWork({
   const beingFixed = rows.filter((r) => r.item.kind === 'defect' && r.item.fixTicket).length
   const tally = [`${rows.length - beingFixed} open`]
   if (beingFixed > 0) tally.push(`${beingFixed} being fixed`)
+  // The rail's own scroller, handed to the list so a spotlit row is brought into
+  // view by scrolling THIS box — the page behind it no longer scrolls at all.
+  const scroller = useRef<HTMLDivElement>(null)
 
   return (
-    <section id="open-work" className="flex flex-col gap-4">
-      <div className="flex items-baseline gap-3">
+    <section id="open-work" className="flex min-h-0 flex-1 flex-col">
+      <div className="flex flex-none items-baseline gap-3 border-b border-hairline-soft px-4 py-3">
         <SectionTitle>What still needs attention</SectionTitle>
         <span className="font-mono text-xs text-text-3">{tally.join(' · ')}</span>
       </div>
 
-      {rows.length === 0 ? (
-        <EmptyState
-          compact
-          title="Nothing needs attention"
-          hint={
-            readonly
-              ? 'Nothing was left open when this feature shipped.'
-              : 'The review found nothing open and you have written no notes. Take a test drive and write what you see.'
-          }
-        />
-      ) : (
-        <WorkList
-          featureId={featureId}
-          rows={rows}
-          readonly={readonly}
-          currentLap={lap}
-          onStage={onStage}
-          onSeek={onSeek}
-          onViewLane={onViewLane}
-          highlight={highlight}
-          scrollTo={scrollTo}
-        />
-      )}
+      <div ref={scroller} className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
+        {rows.length === 0 ? (
+          <EmptyState
+            compact
+            title="Nothing needs attention"
+            hint={
+              readonly
+                ? 'Nothing was left open when this feature shipped.'
+                : 'The review found nothing open and you have written no notes. Take a test drive and write what you see.'
+            }
+          />
+        ) : (
+          <WorkList
+            featureId={featureId}
+            rows={rows}
+            readonly={readonly}
+            currentLap={lap}
+            onStage={onStage}
+            onSeek={onSeek}
+            onViewLane={onViewLane}
+            highlight={highlight}
+            scrollTo={scrollTo}
+            scroller={scroller}
+          />
+        )}
+      </div>
 
-      {!readonly && <NoteComposer featureId={featureId} />}
+      {!readonly && (
+        <div className="flex-none border-t border-hairline px-4 py-3">
+          <NoteComposer featureId={featureId} />
+        </div>
+      )}
     </section>
   )
 }

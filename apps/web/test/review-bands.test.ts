@@ -350,10 +350,12 @@ describe('the review page’s arrival bands', () => {
     expect(html).toContain('lap 2 rewrites the purge, which decides these rows')
     // The human's two verbs, and only the human's.
     expect(html).toContain('>Reopen<')
-    // The attention band still counts one defect, not two.
+    // The rail's tally still counts one defect, not two.
     expect(html).toContain('1 open')
+    // In the main column the band sits between the lap's account and the
+    // disclosure; the open work it used to follow is the rail now (decision 2).
     const carriedAt = html.indexOf('Carried, still open')
-    expect(carriedAt).toBeGreaterThan(html.indexOf('What still needs attention'))
+    expect(carriedAt).toBeGreaterThan(html.indexOf('Lap 1: DLQ spill'))
     expect(carriedAt).toBeLessThan(html.indexOf('Full account'))
   })
 

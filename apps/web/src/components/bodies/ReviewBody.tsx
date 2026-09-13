@@ -33,23 +33,32 @@ import { EvidenceStage } from '../review/EvidenceStage'
 import { FullAccounts } from '../review/FullAccounts'
 import { LapAbortAlert } from '../review/LapAbortAlert'
 import { LiveSessionAlert } from '../review/LiveSessionAlert'
-import { OpenWork } from '../review/OpenWork'
+import { NotesRail } from '../review/NotesRail'
 import { ReviewDriveDeniedAlert } from '../review/ReviewDriveDeniedCard'
 import { StatusStrip } from '../review/StatusStrip'
 import { WorkList, partitionWork } from '../review/WorkList'
 import type { WalkthroughHandle } from '../WalkthroughPlayer'
 
 /**
- * The review phase, in six bands (decision 8): alerts only when something is
- * really wrong, the evidence stage only when there is evidence, one state line,
- * the lap's account at one line, the work that needs attention, and one
- * collapsed disclosure holding every word an agent wrote.
+ * The review phase, in two panes: a main column of bands, and the notes rail
+ * beside it.
  *
- * The order is what the page is FOR: state and one obvious action lead, prose
- * follows. What is gone is as load-bearing as what is here — no terminal band
- * (decision 5), no 16:9 box holding one apologetic sentence when nothing was
- * recorded (decision 6), no test-drive explainer, and no observations on
- * arrival (decision 2).
+ * The main column keeps decision 8's order — alerts only when something is
+ * really wrong, the evidence stage only when there is evidence, one state line,
+ * the lap's account at one line, what an earlier lap carried, and one collapsed
+ * disclosure holding every word an agent wrote. The work that needs attention
+ * used to be a band down there too; it is the rail now (decision 2, revising
+ * decision 18), because a band below the stage is a band below the fold, and
+ * reaching it during a drive scrolled the stage away.
+ *
+ * Each pane scrolls itself — the page does not scroll at all — which is what
+ * lets the two be read at once.
+ *
+ * The order within the column is what the page is FOR: state and one obvious
+ * action lead, prose follows. What is gone is as load-bearing as what is here —
+ * no terminal band (decision 5), no 16:9 box holding one apologetic sentence
+ * when nothing was recorded (decision 6), no test-drive explainer, and no
+ * observations on arrival (decision 2).
  *
  * This component is the orchestrator and nothing else: it reads the queries, runs
  * the derivations, and lays the bands out. Every band is its own file under
@@ -196,7 +205,9 @@ export function ReviewBody({
   const jumpTo = useCallback((seconds: number): void => {
     walkthroughHandle.current?.seek(seconds)
     // The playhead must never move off screen — the walked jump seeked a player
-    // sitting above the fold and looked like nothing happened.
+    // sitting above the fold and looked like nothing happened. The stage is
+    // beside the rows now rather than above them, so this only ever nudges the
+    // main column, and never the rail the row was clicked in.
     document.getElementById('evidence-stage')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }, [])
 
@@ -257,122 +268,153 @@ export function ReviewBody({
   const accountLine = lapAccountLine(account) ?? findingCountsLine(summary)
 
   return (
-    <div className="flex flex-col gap-6">
-      {/* The alerts band (decision 8): nothing renders here unless something is
-          really wrong or really still running. */}
-      {conflict && (
-        <ConflictAlert
+    <div className="flex min-h-0 min-w-0 flex-1">
+      {/* The main column: every band but the open work, in decision 18's order,
+          scrolling itself so the rail beside it stays put. */}
+      <div className="flex min-w-0 flex-1 flex-col gap-6 overflow-y-auto px-7 pt-5 pb-8">
+        {/* The alerts band (decision 8): nothing renders here unless something
+            is really wrong or really still running. */}
+        {conflict && (
+          <ConflictAlert
+            featureId={feature.id}
+            branch={feature.branch}
+            conflict={conflict}
+            readonly={readonly}
+            liveSessionId={live?.sessionId ?? null}
+            resolveEnded={conflictResolveEnded(events, full.sessions)}
+          />
+        )}
+
+        {/* A lap that could not start rolls back in silence otherwise — the
+            walked page came back exactly as it was (decision 26g). */}
+        {lapAbort && (
+          <LapAbortAlert
+            abort={lapAbort}
+            lap={feature.lap}
+            readonly={readonly}
+            onRetry={onIterate}
+          />
+        )}
+
+        {/* The refusal the human can still act on, at the moment they can act on
+            it — the digest that used to carry it is read long afterwards. */}
+        {denial && (
+          <ReviewDriveDeniedAlert
+            // A new denial is a new card, so a refusal answered about the old
+            // one cannot linger under it.
+            key={denial.eventId}
+            featureId={feature.id}
+            reviewTicketId={deniedReview?.id ?? null}
+            denial={denial}
+            readonly={readonly}
+            onDismiss={() => setDismissedDenial(denial.eventId)}
+          />
+        )}
+
+        {/* The terminal band's replacement (decision 5): one line for a session
+            that is still up, wherever it belongs, with the way to it and the way
+            out of it. */}
+        {live && (
+          <LiveSessionAlert
+            featureId={feature.id}
+            line={live}
+            readonly={readonly}
+            onOpen={onViewPhase}
+          />
+        )}
+
+        {stageMounted && (
+          <EvidenceStage
+            featureId={feature.id}
+            branch={feature.branch}
+            recordings={recordings}
+            notes={notes.data ?? []}
+            readonly={readonly}
+            driveState={driveState}
+            drive={ownDrive}
+            dryRun={drive.data?.dryRun ?? false}
+            failure={driveFailure(ownDrive, { sessionLive: !!live })}
+            handleRef={walkthroughHandle}
+            onStageRecording={setStaged}
+            onMarkerClick={(noteIds) => setSpotlight({ ids: noteIds, scrollTo: null })}
+            onAnnotationSaved={(noteId) => setSpotlight({ ids: [noteId], scrollTo: noteId })}
+          />
+        )}
+
+        <StatusStrip
+          artifact={stamped}
+          currentLap={feature.lap}
+          landedSince={stamped?.landedSince ?? 0}
+          tickets={tickets}
+          checks={reviewChecks({
+            tickets,
+            run,
+            commitCount: commits.data?.count,
+            findings: lapFindings,
+          })}
+          runState={run?.status ?? 'no run recorded'}
+          verification={verificationState(tickets)}
+          lap={lapChip(tickets, {
+            lap: feature.lap,
+            // The lap's own session has run once it has emitted this lap's
+            // tickets — which is exactly what the past tense in its story claims.
+            lapSessionRan: tickets.some((t) => t.lap === feature.lap),
+          })}
+          laterLaps={deferredScope(specQ.data?.content)}
+          readonly={readonly}
+          unverifiedKeys={unverifiedKeys}
+          // A drive already at the wheel is the stage's to stop, and a history
+          // view starts nothing at all.
+          {...(readonly || driveUp
+            ? {}
+            : {
+                testDrive: {
+                  onStart: () => startDrive.mutate({ featureId: feature.id, action: 'start' }),
+                  ...(startDrive.isPending
+                    ? { blocked: 'starting…' }
+                    : driveSlotTaken
+                      ? { blocked: 'the one drive slot is taken — stop the other drive first' }
+                      : {}),
+                },
+              })}
+        />
+
+        {/* What this project says a driver needs to know, under the state line
+            that carries the Test drive control (decision 6). Nothing at all when
+            the project has recorded nothing. */}
+        <DriveInstructions text={project?.driveInstructions} />
+
+        {accountLine && <p className="m-0 text-sm text-text-2">{accountLine}</p>}
+
+        {/* What earlier laps parked instead of answering (decisions #5) —
+            outside the rail's count, since the server keeps carried defects out
+            of the summary the page leads with. */}
+        <CarriedFindings
           featureId={feature.id}
-          branch={feature.branch}
-          conflict={conflict}
+          findings={findings.data?.carriedFindings ?? []}
           readonly={readonly}
-          liveSessionId={live?.sessionId ?? null}
-          resolveEnded={conflictResolveEnded(events, full.sessions)}
         />
-      )}
 
-      {/* A lap that could not start rolls back in silence otherwise — the walked
-          page came back exactly as it was (decision 26g). */}
-      {lapAbort && (
-        <LapAbortAlert
-          abort={lapAbort}
-          lap={feature.lap}
-          readonly={readonly}
-          onRetry={onIterate}
+        <FullAccounts
+          account={account}
+          tickets={tickets}
+          observations={observations}
+          carried={
+            settled.length > 0 ? (
+              <WorkList
+                featureId={feature.id}
+                rows={settled}
+                readonly={readonly}
+                onStage={stageMounted ? staged : null}
+                onSeek={jumpTo}
+                onViewLane={onViewLane}
+              />
+            ) : null
+          }
         />
-      )}
+      </div>
 
-      {/* The refusal the human can still act on, at the moment they can act on
-          it — the digest that used to carry it is read long afterwards. */}
-      {denial && (
-        <ReviewDriveDeniedAlert
-          // A new denial is a new card, so a refusal answered about the old one
-          // cannot linger under it.
-          key={denial.eventId}
-          featureId={feature.id}
-          reviewTicketId={deniedReview?.id ?? null}
-          denial={denial}
-          readonly={readonly}
-          onDismiss={() => setDismissedDenial(denial.eventId)}
-        />
-      )}
-
-      {/* The terminal band's replacement (decision 5): one line for a session
-          that is still up, wherever it belongs, with the way to it and the way
-          out of it. */}
-      {live && (
-        <LiveSessionAlert
-          featureId={feature.id}
-          line={live}
-          readonly={readonly}
-          onOpen={onViewPhase}
-        />
-      )}
-
-      {stageMounted && (
-        <EvidenceStage
-          featureId={feature.id}
-          branch={feature.branch}
-          recordings={recordings}
-          notes={notes.data ?? []}
-          readonly={readonly}
-          driveState={driveState}
-          drive={ownDrive}
-          dryRun={drive.data?.dryRun ?? false}
-          failure={driveFailure(ownDrive, { sessionLive: !!live })}
-          handleRef={walkthroughHandle}
-          onStageRecording={setStaged}
-          onMarkerClick={(noteIds) => setSpotlight({ ids: noteIds, scrollTo: null })}
-          onAnnotationSaved={(noteId) => setSpotlight({ ids: [noteId], scrollTo: noteId })}
-        />
-      )}
-
-      <StatusStrip
-        artifact={stamped}
-        currentLap={feature.lap}
-        landedSince={stamped?.landedSince ?? 0}
-        tickets={tickets}
-        checks={reviewChecks({
-          tickets,
-          run,
-          commitCount: commits.data?.count,
-          findings: lapFindings,
-        })}
-        runState={run?.status ?? 'no run recorded'}
-        verification={verificationState(tickets)}
-        lap={lapChip(tickets, {
-          lap: feature.lap,
-          // The lap's own session has run once it has emitted this lap's tickets
-          // — which is exactly what the past tense in its story claims.
-          lapSessionRan: tickets.some((t) => t.lap === feature.lap),
-        })}
-        laterLaps={deferredScope(specQ.data?.content)}
-        readonly={readonly}
-        unverifiedKeys={unverifiedKeys}
-        // A drive already at the wheel is the stage's to stop, and a history
-        // view starts nothing at all.
-        {...(readonly || driveUp
-          ? {}
-          : {
-              testDrive: {
-                onStart: () => startDrive.mutate({ featureId: feature.id, action: 'start' }),
-                ...(startDrive.isPending
-                  ? { blocked: 'starting…' }
-                  : driveSlotTaken
-                    ? { blocked: 'the one drive slot is taken — stop the other drive first' }
-                    : {}),
-              },
-            })}
-      />
-
-      {/* What this project says a driver needs to know, under the state line
-          that carries the Test drive control (decision 6). Nothing at all when
-          the project has recorded nothing. */}
-      <DriveInstructions text={project?.driveInstructions} />
-
-      {accountLine && <p className="m-0 text-sm text-text-2">{accountLine}</p>}
-
-      <OpenWork
+      <NotesRail
         featureId={feature.id}
         lap={feature.lap}
         rows={attention}
@@ -384,33 +426,6 @@ export function ReviewBody({
         highlight={spotlight.ids}
         scrollTo={spotlight.scrollTo}
         onViewLane={onViewLane}
-      />
-
-      {/* What earlier laps parked instead of answering (decisions #5) — beside
-          the open work and outside its count, since the server keeps carried
-          defects out of the summary the page leads with. */}
-      <CarriedFindings
-        featureId={feature.id}
-        findings={findings.data?.carriedFindings ?? []}
-        readonly={readonly}
-      />
-
-      <FullAccounts
-        account={account}
-        tickets={tickets}
-        observations={observations}
-        carried={
-          settled.length > 0 ? (
-            <WorkList
-              featureId={feature.id}
-              rows={settled}
-              readonly={readonly}
-              onStage={stageMounted ? staged : null}
-              onSeek={jumpTo}
-              onViewLane={onViewLane}
-            />
-          ) : null
-        }
       />
     </div>
   )
