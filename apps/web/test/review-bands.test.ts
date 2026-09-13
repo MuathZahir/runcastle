@@ -438,6 +438,95 @@ describe('the review page’s arrival bands', () => {
 })
 
 /**
+ * The two panes (decision 2, revising decision 18's band order): a main column
+ * of bands, and the notes rail beside it at all times.
+ *
+ * The complaint the rail answers is a layout one — the open-work band sat below
+ * the fold, so annotating during a drive scrolled the stage out of view — and
+ * the seam that can answer it is this one: which pane each band renders into.
+ * Tier 1, for the same reason the matrix above is: what is measured is
+ * `ReviewBody`'s own composition rather than a second copy assembled here.
+ */
+describe('the review page’s two panes', () => {
+  /** The markup either side of the rail, which is the page's last element. */
+  function panes(html: string): { column: string; rail: string } {
+    const at = html.indexOf('<aside')
+    expect(at).toBeGreaterThan(-1)
+    return { column: html.slice(0, at), rail: html.slice(at) }
+  }
+
+  it('renders the open work and the note composer in the rail, not below the stage', () => {
+    const { column, rail } = panes(openWork())
+
+    expect(rail).toContain('id="open-work"')
+    expect(rail).toContain('What still needs attention')
+    expect(rail).toContain('the spilled-at column shows raw epoch millis')
+    expect(rail).toContain('the repaired read path is never called')
+    // The composer rides in the rail with the rows it writes.
+    expect(rail).toContain('what did you just see?')
+
+    // And none of it is left in the column.
+    expect(column).not.toContain('id="open-work"')
+    expect(column).not.toContain('What still needs attention')
+    expect(column).not.toContain('what did you just see?')
+  })
+
+  /** Decision 2: no collapse toggle and no breakpoints — the rail is always there. */
+  it('keeps the rail whatever the page is holding', () => {
+    const states = {
+      'nothing open': render({}),
+      'a walkthrough': render({ recordings: [RECORDING] }),
+      history: render({ readonly: true, notes: [NOTE] }),
+    }
+    for (const [state, html] of Object.entries(states)) {
+      expect.soft(panes(html).rail, state).toContain('id="open-work"')
+      expect.soft(panes(html).rail, state).toContain('w-(--notes-rail-w)')
+    }
+    // History still has no live control in it, the composer included (33a).
+    expect(states.history).not.toContain('what did you just see?')
+  })
+
+  /** The rail's width is one token, dragged through the machinery every rail uses. */
+  it('sizes the rail off --notes-rail-w, at the default until a drag says otherwise', () => {
+    const { rail } = panes(openWork())
+    expect(rail).toContain('w-(--notes-rail-w)')
+    expect(rail).toContain('--notes-rail-w:360px')
+    expect(rail).toContain('Resize the notes rail')
+  })
+
+  /** Neither pane may move the other — the whole point of the layout. */
+  it('gives each pane a scroller of its own', () => {
+    const { column, rail } = panes(openWork())
+    expect(column).toContain('overflow-y-auto')
+    expect(rail).toContain('overflow-y-auto')
+  })
+
+  /** Everything decision 18 put in the column is still in it, in its order. */
+  it('preserves the main column’s band order', () => {
+    const html = render({
+      sessions: [LIVE_IDEATION],
+      recordings: [RECORDING],
+      findings: [DEFECT, CARRIED],
+      openDefects: [DEFECT],
+      carriedFindings: [CARRIED],
+      driveInstructions: 'Drive the sample project at ./examples/demo.',
+    })
+    const bands = [
+      'Ideation session still live from lap 1',
+      'id="evidence-stage"',
+      'checks passed',
+      'How to drive this app',
+      'Lap 1: DLQ spill retention landed',
+      'Carried, still open',
+      'Full account',
+    ]
+    const at = bands.map((band) => panes(html).column.indexOf(band))
+    expect(at.filter((i) => i < 0)).toEqual([])
+    expect(at).toEqual([...at].sort((a, b) => a - b))
+  })
+})
+
+/**
  * How to drive this app, under the state line that carries the Test drive
  * control (drive-instructions, decision 6). The knowledge serves a human drive
  * exactly as it serves the review agent's, and showing it where drives happen is
