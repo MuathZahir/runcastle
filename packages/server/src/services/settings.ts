@@ -23,7 +23,8 @@ import { projects } from '../db/schema'
 import { InvalidInputError } from '../errors'
 import { emitProject } from './events'
 import { recordHuman } from './findings'
-import { requireProjectById } from './repo'
+import { allProjects, requireProjectById } from './repo'
+import { legacyGlobalImage, legacyGlobalImageReason } from './sandbox-image'
 
 /**
  * Settings backend (issue #46, SPEC §4). Two stores: global defaults in the
@@ -427,11 +428,28 @@ export function getSettings(ctx: AppCtx, projectId?: string, io: SettingsIO = {}
 }
 
 /**
+ * The global-scope keys a `null` write may remove from the config file.
+ *
+ * Deliberately `sandboxImage` alone rather than "every key with an optional
+ * schema default". It is the one key runcastle itself used to write machine-wide
+ * — older versions put a project's built image (then tagged by project NAME)
+ * into `~/.runcastle/config.json`, so every project without its own column
+ * inherits a foreign image and clearing the project override only falls through
+ * to it again. Clearing the global value is the documented way out
+ * (`unmanagedImageReason`), which is exactly why it has to be possible. The
+ * other config-file keys were all typed by a human on purpose; nothing asks to
+ * un-type them, so nothing here pretends they can be.
+ */
+const GLOBAL_CLEARABLE_KEYS = new Set(['sandboxImage'])
+
+/**
  * Write a setting. With `projectId` (and a project-overridable field) writes the
  * project override — a `null` value clears it; otherwise writes the global
- * default write-through (config file + in-place `ctx.config` refresh). Rejects
- * env-locked fields, unknown keys, and type-invalid values. Returns the resolved
- * field after the write.
+ * default write-through (config file + in-place `ctx.config` refresh). A `null`
+ * write at global scope removes the key from the config file, for the fields
+ * {@link GLOBAL_CLEARABLE_KEYS} allows it for. Rejects env-locked fields,
+ * unknown keys, and type-invalid values. Returns the resolved field after the
+ * write.
  */
 export function updateSettings(
   ctx: AppCtx,
@@ -463,7 +481,7 @@ export function updateSettings(
   const toProject = input.projectId !== undefined && desc.projectColumn !== undefined
 
   if (input.value === null) {
-    if (!toProject) throw new InvalidInputError(`${desc.key} cannot be cleared`)
+    if (!toProject) return clearGlobal(ctx, desc, input, configFile, io)
     const project = requireProjectById(ctx, input.projectId as string)
     ctx.db
       .update(projects)
@@ -521,6 +539,34 @@ export function updateSettings(
 }
 
 /**
+ * Remove a global default, so the field resolves to its schema default again.
+ *
+ * Write-through in both directions like every other global write: the key comes
+ * OUT of the config file and out of the shared `ctx.config` object, so the next
+ * launch resolves without it rather than keeping the value this call just
+ * deleted from disk.
+ */
+function clearGlobal(
+  ctx: AppCtx,
+  desc: FieldDescriptor,
+  input: SettingsUpdateInput,
+  configFile: string,
+  io: SettingsIO,
+): SettingField {
+  if (!desc.configKey || !GLOBAL_CLEARABLE_KEYS.has(desc.key)) {
+    throw new InvalidInputError(`${desc.key} cannot be cleared`)
+  }
+  removeGlobal(configFile, desc.configKey)
+  delete (ctx.config as Record<string, unknown>)[desc.configKey]
+  emitProject(ctx, GLOBAL_EVENT_KEY, {
+    type: 'settings.updated',
+    message: `${desc.key} cleared`,
+    data: { key: desc.key, scope: 'global', value: null },
+  })
+  return field(getSettings(ctx, input.projectId, io), desc.key)
+}
+
+/**
  * A written value as event-message text. Every field but the `models` roster is
  * a scalar `String()` renders fine; the roster is an array, which `String()`
  * would flatten to `[object Object]` — an event that says nothing about what
@@ -534,6 +580,17 @@ function describeValue(value: unknown): string {
 function writeGlobal(configFile: string, configKey: keyof RuncastleConfig, value: unknown): void {
   const raw = readRawConfig(configFile)
   raw[configKey] = value
+  saveRawConfig(configFile, raw)
+}
+
+/** Drop one key from the config file, preserving the rest. */
+function removeGlobal(configFile: string, configKey: keyof RuncastleConfig): void {
+  const raw = readRawConfig(configFile)
+  delete raw[configKey]
+  saveRawConfig(configFile, raw)
+}
+
+function saveRawConfig(configFile: string, raw: Record<string, unknown>): void {
   mkdirSync(dirname(configFile), { recursive: true })
   writeFileSync(configFile, `${JSON.stringify(raw, null, 2)}\n`)
 }
@@ -589,8 +646,36 @@ function writeStepModel(configFile: string, step: ModelStep, value: string | nul
   if (value === null) delete stepModels[step]
   else stepModels[step] = value
   raw.stepModels = stepModels
-  mkdirSync(dirname(configFile), { recursive: true })
-  writeFileSync(configFile, `${JSON.stringify(raw, null, 2)}\n`)
+  saveRawConfig(configFile, raw)
+}
+
+/**
+ * Name a machine-wide `sandboxImage` that is residue from an older runcastle
+ * (see {@link legacyGlobalImage}), once, at boot. Returns the offending tag, or
+ * null when there is nothing to say.
+ *
+ * Loud on purpose and destructive on purpose-not: the symptom this heals is a
+ * burn failing deep inside a container built for a different repo (`claude is
+ * not installed in image sandcastle:runcastle-demo`), which names the image but
+ * not the reason it was ever chosen. Boot is the one moment every install passes
+ * through, so it is where the reason gets said. The value itself stays — the
+ * human clears it from Settings, which is the fix text the doctor's image row
+ * prints too.
+ */
+export function warnLegacyGlobalImage(ctx: AppCtx): string | null {
+  const legacy = legacyGlobalImage(
+    ctx.config.sandboxImage,
+    allProjects(ctx).map((p) => p.id),
+  )
+  if (legacy === null) return null
+  const message = legacyGlobalImageReason(legacy)
+  console.warn(`runcastle: ${message}`)
+  emitProject(ctx, GLOBAL_EVENT_KEY, {
+    type: 'settings.legacyImage',
+    message,
+    data: { key: 'sandboxImage', scope: 'global', value: legacy },
+  })
+  return legacy
 }
 
 function field(view: SettingsView, key: string): SettingField {

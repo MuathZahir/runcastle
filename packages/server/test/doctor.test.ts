@@ -214,6 +214,63 @@ describe('runDoctor — canned environments', () => {
     expect(report.ok).toBe(true)
   })
 
+  // The poisoning this feature exists to name: an older runcastle wrote a built
+  // project image into the MACHINE-WIDE config under a project-NAME tag, so
+  // every project without an image of its own inherits it.
+  it('names a legacy machine-wide image as residue rather than as someone’s custom image', async () => {
+    const report = await runDoctor({
+      ...base,
+      imageName: 'sandcastle:runcastle-demo',
+      knownProjectIds: ['proj_01', 'proj_02'],
+      exec: cannedExec({
+        ...ALL_HEALTHY,
+        [inspectKey('docker', 'sandcastle:runcastle-demo')]: { stdout: '<no value>' },
+      }),
+    })
+    const image = byId(report.results, 'sandcastle-image')
+    expect(image.status).toBe('custom')
+    expect(image.detail).toBe(
+      'sandcastle:runcastle-demo is a machine-wide image left over from an older runcastle',
+    )
+    expect(image.fix).toContain('left over from an older runcastle')
+    // The remedy the settings UI now offers, named in the same words.
+    expect(image.fix).toContain('Clear the machine-wide sandbox image setting')
+    // Residue nobody chose is worth acting on even where the tag builds.
+    expect(image.severity).toBe('error')
+    expect(report.ok).toBe(false)
+  })
+
+  it('leaves a machine-wide image naming a live project as an ordinary custom image', async () => {
+    const report = await runDoctor({
+      ...base,
+      imageName: 'sandcastle:runcastle-proj_01',
+      knownProjectIds: ['proj_01'],
+      exec: cannedExec({
+        ...ALL_HEALTHY,
+        [inspectKey('docker', 'sandcastle:runcastle-proj_01')]: { stdout: '<no value>' },
+      }),
+    })
+    const image = byId(report.results, 'sandcastle-image')
+    expect(image.detail).toContain('is a custom image, managed outside runcastle')
+    expect(image.severity).toBe('info')
+  })
+
+  // The CLI has no database to ask, so it says nothing about residue rather
+  // than calling every `sandcastle:runcastle-<x>` it meets legacy.
+  it('says nothing about residue when the project list was not supplied', async () => {
+    const report = await runDoctor({
+      ...base,
+      imageName: 'sandcastle:runcastle-demo',
+      exec: cannedExec({
+        ...ALL_HEALTHY,
+        [inspectKey('docker', 'sandcastle:runcastle-demo')]: { stdout: '<no value>' },
+      }),
+    })
+    const image = byId(report.results, 'sandcastle-image')
+    expect(image.detail).toContain('is a custom image, managed outside runcastle')
+    expect(image.fix).not.toContain('older runcastle')
+  })
+
   // Runcastle cannot build it, but it can still say a burn will not find it.
   it('still calls a custom image out when it is not built at all', async () => {
     const report = await runDoctor({

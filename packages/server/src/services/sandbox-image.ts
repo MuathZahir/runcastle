@@ -126,6 +126,51 @@ export function unmanagedImageReason(imageName: string, projectDockerfilePresent
   return `${imageName} is a custom image managed outside runcastle — ${route}.`
 }
 
+/**
+ * A global `sandboxImage` that is residue from an older runcastle, or null.
+ *
+ * This is {@link unmanagedImage}'s question asked one layer down, of the
+ * machine-wide config file rather than of a project column — and with "this
+ * project" widened to *every* project, because a global value belongs to none of
+ * them. Older versions wrote a project's built image into
+ * `~/.runcastle/config.json` under a tag named after the PROJECT
+ * (`sandcastle:runcastle-demo`); current builds write the project column only,
+ * under {@link projectImageTag}. So a global value wearing the managed
+ * `sandcastle:runcastle-` prefix while naming no project runcastle knows about
+ * is a tag runcastle wrote and then stopped maintaining — and every project
+ * without a column of its own inherits it.
+ *
+ * Reported, never deleted: the same string could have been typed deliberately,
+ * and a value this app removes behind a human's back is worse than one it names.
+ */
+export function legacyGlobalImage(
+  imageName: string | null | undefined,
+  knownProjectIds: readonly string[],
+): string | null {
+  const image = imageName?.trim() ?? ''
+  if (image === '' || image === DEFAULT_SANDBOX_IMAGE) return null
+  if (!image.startsWith(`${DEFAULT_SANDBOX_IMAGE}-`)) return null
+  if (knownProjectIds.some((id) => image === projectImageTag(id))) return null
+  return image
+}
+
+/**
+ * Why a legacy global image is nobody's choice, and the way out of it — the
+ * boot warning and the doctor's image row say this instead of
+ * {@link unmanagedImageReason}, whose "custom image" framing credits the value
+ * to a human who never typed it. The remedy is the global clear
+ * (`updateSettings` with a null value and no `projectId`), so the wording names
+ * the machine-wide setting rather than the one on the project page.
+ */
+export function legacyGlobalImageReason(imageName: string): string {
+  return (
+    `${imageName} is left over from an older runcastle, which wrote a project's built image into ` +
+    `the machine-wide config — every project without an image of its own inherits it, and its ` +
+    `burns fail in a container built for someone else's repo. Clear the machine-wide sandbox ` +
+    `image setting to go back to ${DEFAULT_SANDBOX_IMAGE}.`
+  )
+}
+
 /** A project's stored `sandboxImage` column and whether runcastle may rewrite it. */
 export interface StoredProjectImage {
   /** Project id — what {@link projectImageTag} names this project's image after. */
