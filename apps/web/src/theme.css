@@ -120,6 +120,7 @@
   --inspector-w: 300px;
   --maprail-w: 300px;
   --artifact-w: 380px;
+  --notes-rail-w: 360px; /* the review page's notes rail; the rail overrides it as you drag */
   --content-max: 1060px; /* centered column for document-style phase bodies */
   --dur-1: 0.12s; /* micro (hover, color) */
   --dur-2: 0.19s; /* small (rows, chips) */

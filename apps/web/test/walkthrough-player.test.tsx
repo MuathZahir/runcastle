@@ -23,6 +23,7 @@ vi.mock('../src/lib/toast', () => ({ useToast: () => ({ push: vi.fn() }) }))
 vi.mock('../src/lib/reviews', () => ({ uploadScreenshot: vi.fn(async () => undefined) }))
 
 import { WalkthroughPlayer, type WalkthroughMarker } from '../src/components/WalkthroughPlayer'
+import type { StageExpand } from '../src/lib/stage-expand'
 
 const URL_ = '/api/reviews/ticket/tkt_9/walkthrough.webm'
 const DURATION = 120
@@ -100,6 +101,7 @@ function mount(
   props: {
     readonly?: boolean
     markers?: WalkthroughMarker[]
+    expand?: StageExpand
     onMarkerClick?: (noteIds: string[]) => void
     onAnnotationSaved?: (noteId: string) => void
   } = {},
@@ -111,6 +113,8 @@ function mount(
       ticketId="tkt_9"
       passKind="review"
       readonly={props.readonly ?? false}
+      frameClassName="relative flex w-full flex-col"
+      expand={props.expand}
       markers={props.markers}
       onMarkerClick={props.onMarkerClick}
       onAnnotationSaved={props.onAnnotationSaved}
@@ -192,10 +196,42 @@ describe('WalkthroughPlayer transport', () => {
     expect(screen.getByRole('button', { name: 'playback speed 1.25×' })).toBeTruthy()
   })
 
-  it('goes fullscreen on F', () => {
-    ready()
+  /**
+   * Decision 4: F asks the STAGE to expand — the overlay that keeps the notes
+   * rail and this transport bar — and the native fullscreen it used to call,
+   * which showed the video frame alone, is gone from the player entirely.
+   */
+  it('asks the stage to expand on F, and never the browser', () => {
+    const set = vi.fn()
+    ready({ expand: { expanded: false, set } })
+
     key('f')
-    expect(requestFullscreen).toHaveBeenCalledOnce()
+    expect(set).toHaveBeenCalledWith(true)
+    expect(requestFullscreen).not.toHaveBeenCalled()
+  })
+
+  it('collapses an expanded stage on F and on Escape', () => {
+    const set = vi.fn()
+    ready({ expand: { expanded: true, set } })
+
+    key('f')
+    expect(set).toHaveBeenLastCalledWith(false)
+
+    key('Escape')
+    expect(set).toHaveBeenLastCalledWith(false)
+    expect(set).toHaveBeenCalledTimes(2)
+  })
+
+  // Escape belongs to the drawing while there is one, and so does F: the same
+  // guard the transport keys have always had.
+  it('leaves the expand alone while the human is annotating', () => {
+    const set = vi.fn()
+    ready({ expand: { expanded: true, set } })
+    fireEvent.click(screen.getByRole('button', { name: 'Annotate' }))
+
+    key('f')
+    key('Escape')
+    expect(set).not.toHaveBeenCalled()
   })
 
   // The keys belong to the player only when the human is not typing somewhere.

@@ -1,8 +1,9 @@
 import { useEffect, useState, type RefObject } from 'react'
 import { fmtClock, type DriveState, type TestNote } from '@runcastle/core'
-import { Button } from '../../ui'
+import { Button, Kbd } from '../../ui'
 import { driveView, latestReview, type DriveFailure } from '../../lib/feature-ui'
 import type { ReviewArtifacts } from '../../lib/reviews'
+import { useStageExpandKeys, type StageExpand } from '../../lib/stage-expand'
 import { clusterMarkers } from '../../lib/walkthrough'
 import { WalkthroughPlayer, type WalkthroughHandle } from '../WalkthroughPlayer'
 import { SettingsLink } from '../settings/MessageWithSettingsLink'
@@ -65,6 +66,26 @@ function stageShows(state: DriveState, hasRecording: boolean): 'player' | 'drive
 }
 
 /**
+ * The box whatever is on the stage sits in — written here, once, for both sides
+ * of the swap: the walkthrough's frame used to spell the same 16:9 string out
+ * for itself, and a second copy is a second thing to forget when the sizing
+ * changes.
+ *
+ * Collapsed it is 16:9, clamped so the frame and its bar fit the viewport
+ * together (decision 23e). Expanded it is the overlay's fill instead — no aspect
+ * ratio and no clamp, because a box that kept either would leave the stage the
+ * size it was and the expand would have bought nothing (decision 3).
+ *
+ * A `screen` is content that brings its own pixels — the app, the recording —
+ * against the `prose` the drive states put where the video would be.
+ */
+function stageFrame(expanded: boolean, content: 'screen' | 'prose'): string {
+  const size = expanded ? 'min-h-0 flex-1' : 'aspect-video max-h-[calc(100vh-320px)]'
+  const skin = content === 'screen' ? 'overflow-hidden bg-black' : 'overflow-auto bg-panel-2 p-4'
+  return `relative flex w-full flex-col rounded-md border border-hairline ${size} ${skin}`
+}
+
+/**
  * The recording's identity line (decision 41b): what this is, how long, and
  * which build it describes.
  *
@@ -106,6 +127,7 @@ export function EvidenceStage({
   drive,
   dryRun,
   failure,
+  expand,
   handleRef,
   onStageRecording,
   onMarkerClick,
@@ -124,6 +146,14 @@ export function EvidenceStage({
   /** A preparation dry run is holding the one drive slot (decision 9). */
   dryRun: boolean
   failure: DriveFailure | null
+  /**
+   * The stage's expanded state, held by the page above so that switching drive ↔
+   * walkthrough while expanded stays expanded (decision 4) — and so the page can
+   * put its other bands away while the stage has the window. Absent on a page
+   * with nowhere to expand into (the shipped record), where the stage offers no
+   * expand at all.
+   */
+  expand?: StageExpand
   handleRef?: RefObject<WalkthroughHandle | null>
   /**
    * Which recording is playing right now, or null when the stage is the drive.
@@ -165,10 +195,18 @@ export function EvidenceStage({
     onStageRecording?.(playing ? { ticketId: playing } : null)
   }, [onStageRecording, playing])
 
+  // F and Escape belong to whatever is on the stage, so the drive side binds
+  // them here and the player binds them for itself — behind the guards that stop
+  // a keystroke meant for a drawing from resizing the page under it.
+  useStageExpandKeys(expand, showing !== 'player')
+  const expanded = expand?.expanded ?? false
+
   return (
     // `evidence-stage` is what a note's timestamp scrolls back to, so a jump
-    // never moves the playhead off screen (decision 25b).
-    <section id="evidence-stage" className="flex flex-col gap-2">
+    // never moves the playhead off screen (decision 25b). It fills the height it
+    // is given, which is the whole overlay while expanded and nothing in
+    // particular while the column is scrolling past it.
+    <section id="evidence-stage" className="flex min-h-0 flex-1 flex-col gap-2">
       <header className="flex flex-wrap items-center gap-x-4 gap-y-2">
         {/* Only a recording has an identity to state. With none, the stage is a
             drive — it is mounted for no other reason (decision 6) — and the
@@ -208,6 +246,19 @@ export function EvidenceStage({
             </ul>
           </details>
         )}
+
+        {/* The stage takes the window (decision 3), and gives it back. One
+            control for both sides of the swap, saying the key that does the
+            same thing from wherever the eye is. */}
+        {expand && (
+          <Button
+            className="ml-auto px-2"
+            aria-pressed={expanded}
+            onClick={() => expand.set(!expanded)}
+          >
+            {expanded ? 'Collapse' : 'Expand'} <Kbd>F</Kbd>
+          </Button>
+        )}
       </header>
 
       {showing === 'player' && onStage?.videoUrl ? (
@@ -218,6 +269,8 @@ export function EvidenceStage({
           ticketId={onStage.ticketId}
           passKind={onStage.passKind}
           readonly={readonly}
+          frameClassName={stageFrame(expanded, 'screen')}
+          expand={expand}
           markers={clusterMarkers(notes, onStage.ticketId)}
           onMarkerClick={onMarkerClick}
           onAnnotationSaved={onAnnotationSaved}
@@ -225,13 +278,7 @@ export function EvidenceStage({
           handleRef={handleRef}
         />
       ) : (
-        <div
-          className={
-            fills
-              ? 'flex aspect-video max-h-[calc(100vh-320px)] w-full flex-col overflow-hidden rounded-md border border-hairline bg-black'
-              : 'flex aspect-video max-h-[calc(100vh-320px)] w-full flex-col overflow-auto rounded-md border border-hairline bg-panel-2 p-4'
-          }
-        >
+        <div className={stageFrame(expanded, fills ? 'screen' : 'prose')}>
           <DriveStage
             featureId={featureId}
             branch={branch}

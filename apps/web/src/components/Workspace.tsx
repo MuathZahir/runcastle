@@ -425,7 +425,11 @@ export function Workspace({
   const effective = effectivePhase(feature, viewedPhase)
   const readonly = isReadonlyView(feature, effective)
   const twoPane =
-    !isDraft && (effective === 'ideation' || effective === 'spec' || effective === 'tickets')
+    !isDraft &&
+    (effective === 'ideation' ||
+      effective === 'spec' ||
+      effective === 'tickets' ||
+      effective === 'review')
   // What each finished phase produced (decision 10) — one derivation, read by
   // the stepper's done-step tooltips and by the read-only banner, so the two can
   // never tell a different story about the same phase.
@@ -792,9 +796,11 @@ export function Workspace({
         />
       )}
 
-      {/* Ideation, spec and tickets fill the body rather than scroll it
+      {/* Ideation, spec, tickets and review fill the body rather than scroll it
           (decisions 6, 11): each pane scrolls itself, so for them the body stops
-          being the scroll container and stops centering on --content-max. */}
+          being the scroll container and stops centering on --content-max.
+          Review joined them for its notes rail, which has to stay put while the
+          main column moves. */}
       <div className={twoPane ? 'flex min-h-0 flex-1 overflow-hidden' : 'ws-body'}>
         <div
           className={twoPane ? 'flex min-h-0 min-w-0 flex-1' : 'ws-body-inner'}

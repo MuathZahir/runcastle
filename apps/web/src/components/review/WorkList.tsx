@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type RefObject } from 'react'
 import type { ReviewFinding, TestNote } from '@runcastle/core'
 import { Button, LapSections } from '../../ui'
 import { trpc } from '../../trpc'
@@ -140,6 +140,7 @@ export function WorkList({
   onViewLane,
   highlight,
   scrollTo,
+  scroller,
 }: {
   featureId: string
   rows: readonly WorkRow[]
@@ -158,6 +159,13 @@ export function WorkList({
   highlight?: readonly string[]
   /** A row to bring into view — the other direction of the same jump. */
   scrollTo?: string | null
+  /**
+   * The box these rows scroll inside — the notes rail's own scroller, and what a
+   * `scrollTo` moves. The settled half sits in no scroller of its own, inside
+   * the Full account disclosure, and is the half nothing ever jumps to: it
+   * passes neither.
+   */
+  scroller?: RefObject<HTMLElement | null>
 }) {
   const utils = trpc.useUtils()
   const toast = useToast()
@@ -184,12 +192,22 @@ export function WorkList({
   // fresh annotation brings its row into view rather than changing the list off
   // screen. Re-runs as the list arrives, so a note saved a moment ago is scrolled
   // to when its query settles rather than being missed.
+  //
+  // The rail's scroller is moved by hand rather than by `scrollIntoView`, which
+  // walks every scrollable ancestor: the whole point of the rail is that
+  // reaching a note never moves the stage.
   useEffect(() => {
-    if (!scrollTo) return
-    document
-      .getElementById(rowElementId(scrollTo))
-      ?.scrollIntoView({ behavior: 'smooth', block: 'center' })
-  }, [scrollTo, rows])
+    const box = scroller?.current
+    if (!scrollTo || !box) return
+    const row = document.getElementById(rowElementId(scrollTo))
+    if (!row) return
+    const rowBox = row.getBoundingClientRect()
+    const boxBox = box.getBoundingClientRect()
+    box.scrollBy({
+      top: rowBox.top - boxBox.top - (boxBox.height - rowBox.height) / 2,
+      behavior: 'smooth',
+    })
+  }, [scrollTo, rows, scroller])
 
   const marked = new Set(highlight ?? [])
 

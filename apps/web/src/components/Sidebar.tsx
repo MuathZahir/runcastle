@@ -23,6 +23,7 @@ import { clampSidebarWidth } from '../lib/sidebar-width'
 import type { ProjectTalkApi } from '../lib/use-project-talk'
 import { IconCheck, IconDoc, IconPlus, LogoMark } from '../icons'
 import { copyText } from './workspace/copy-text'
+import { RailResizeHandle } from './RailResizeHandle'
 import { FeatureActionsMenu, type FeatureAction } from './FeatureActionsMenu'
 import { DeleteFeatureDialog } from './DeleteFeatureDialog'
 
@@ -360,15 +361,8 @@ export function Sidebar({
   )
 }
 
-/**
- * The rail's drag handle (decision 10). Straddles the rail's right edge so the
- * cursor finds it a pixel or two either side of the hairline.
- *
- * The drag is measured as a delta from where it started rather than from the
- * pointer's absolute position, so it never jumps when the grab lands off-centre.
- * Mouse only this lap. Text selection is suspended while dragging — without it,
- * sweeping across the rail selects every title on the way past.
- */
+/** The features rail's drag handle (decision 10) — its own clamp and label on
+ *  the handle every draggable rail shares. */
 export function SidebarResizeHandle({
   width,
   onResize,
@@ -376,40 +370,13 @@ export function SidebarResizeHandle({
   width: number
   onResize: (px: number) => void
 }) {
-  const [dragging, setDragging] = useState(false)
-  // The grab point and the width it started from; read by the move listener.
-  const origin = useRef({ x: 0, width })
-
-  useEffect(() => {
-    if (!dragging) return
-    const onMove = (e: MouseEvent) =>
-      onResize(clampSidebarWidth(origin.current.width + e.clientX - origin.current.x))
-    const onUp = () => setDragging(false)
-    const previousUserSelect = document.body.style.userSelect
-    document.body.style.userSelect = 'none'
-    document.addEventListener('mousemove', onMove)
-    document.addEventListener('mouseup', onUp)
-    return () => {
-      document.body.style.userSelect = previousUserSelect
-      document.removeEventListener('mousemove', onMove)
-      document.removeEventListener('mouseup', onUp)
-    }
-  }, [dragging, onResize])
-
   return (
-    <div
-      role="separator"
-      aria-orientation="vertical"
-      aria-label="Resize the features rail"
-      title="Drag to resize"
-      className={`absolute top-0 -right-[3px] z-10 h-full w-1.5 cursor-col-resize hover:bg-accent-line ${
-        dragging ? 'bg-accent-line' : ''
-      }`}
-      onMouseDown={(e) => {
-        e.preventDefault()
-        origin.current = { x: e.clientX, width }
-        setDragging(true)
-      }}
+    <RailResizeHandle
+      width={width}
+      side="left"
+      label="Resize the features rail"
+      clamp={clampSidebarWidth}
+      onResize={onResize}
     />
   )
 }
