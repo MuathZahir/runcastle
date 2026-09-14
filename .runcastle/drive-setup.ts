@@ -18,6 +18,7 @@
  * no-ops on an unchanged tree and the only thing standing between a feature
  * branch and a working drive when they are not.
  */
+import { Database } from 'bun:sqlite'
 import { spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { copyFileSync, existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
@@ -152,6 +153,35 @@ for (const file of ['.env', 'config.json']) {
   } else {
     console.warn(`[drive-setup] no ${file} at ${prodDir} — the drive will use defaults`)
   }
+}
+
+/**
+ * Snapshot the real database into the drive tree.
+ *
+ * `driveInstructions` sends every reviewer to the runcastle-demo project, whose
+ * features sit at every pipeline step — but only in the developer's live
+ * database. An empty drive tree would hand the reviewer a blank app and nothing
+ * to exercise. `VACUUM INTO` from a read-only connection is a consistent
+ * snapshot even while the live server is writing, and it produces one
+ * standalone file with no `-wal`/`-shm` to strand. The live database is only
+ * ever read. The drive's copy is rebuilt from scratch every run (VACUUM INTO
+ * refuses an existing target), so a feature a reviewer advanced last drive is
+ * back where it was; the checkout's migrations then apply to the copy at boot,
+ * which exercises a branch's migrations against real data.
+ */
+const prodDb = join(prodDir, 'runcastle.db')
+const driveDb = join(dataDir, 'runcastle.db')
+for (const suffix of ['', '-wal', '-shm']) rmSync(driveDb + suffix, { force: true })
+if (existsSync(prodDb)) {
+  const source = new Database(prodDb, { readonly: true })
+  try {
+    source.run('VACUUM INTO ?', [driveDb])
+  } finally {
+    source.close()
+  }
+  console.log(`[drive-setup] snapshotted ${prodDb}`)
+} else {
+  console.warn(`[drive-setup] no database at ${prodDb} — the drive starts empty`)
 }
 
 const port = await pickPort()
