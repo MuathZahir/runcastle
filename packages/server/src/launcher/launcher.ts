@@ -444,14 +444,12 @@ export async function launchSession(
       markSessionEnded(ctx, session.id)
       throw e
     }
-    {
-      const prior = mostRecentResumableSession(ctx, feature.id)
-      if (prior?.ccSessionId) {
-        resumedFrom = prior
-        resumeSessionId = prior.ccSessionId
-      } else {
-        resumeUnavailableFrom = 'revisit'
-      }
+    const prior = mostRecentResumableSession(ctx, feature.id)
+    if (prior?.ccSessionId) {
+      resumedFrom = prior
+      resumeSessionId = prior.ccSessionId
+    } else {
+      resumeUnavailableFrom = 'revisit'
     }
   }
 
