@@ -22,7 +22,6 @@ import {
   markSessionEnded,
   markSessionLive,
   mostRecentResumableSession,
-  resumeKickoffLine,
 } from '../src/launcher/sessions'
 import { listAfter } from '../src/services/events'
 import { createFeatureBranch } from '../src/services/git'
@@ -460,10 +459,7 @@ describe('relaunching a terminal resumes its own conversation', () => {
     markSessionLive(ctx, second, { ccSessionId: 'cc-grill-2' })
     vi.advanceTimersByTime(KICKOFF_DELAY_MS + KICKOFF_SUBMIT_DELAY_MS)
 
-    expect(written).toEqual([resumeKickoffLine('ideation'), '\r'])
-    // the resume framing wraps the per-kind line, it does not replace it
-    expect(written[0]).toContain(KICKOFF_LINES.ideation)
-    expect(written[0]).toContain('Do NOT start over')
+    expect(written).toEqual([])
   })
 })
 

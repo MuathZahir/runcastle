@@ -29,11 +29,13 @@ import {
 } from '../src/launcher/runtimes/claude'
 import {
   KICKOFF_LINES as CODEX_KICKOFF_LINES,
+  buildCodexArgs,
   codexHomeDir,
   codexRuntime,
   mcpServerTables,
   renderCodexHooks,
 } from '../src/launcher/runtimes/codex'
+import { MAX_KICKOFF_ARGV } from '../src/launcher/runtimes/types'
 import { resolvePluginDir } from '../src/launcher/skills-root'
 
 const config: RuncastleConfig = ConfigSchema.parse({})
@@ -580,6 +582,47 @@ describe('buildClaudeArgs', () => {
     const at = args.indexOf('--model')
     expect(at).toBeGreaterThan(-1)
     expect(args[at + 1]).toBe('claude-sonnet-5')
+  })
+
+  it('puts a fresh kickoff last verbatim and never adds one to a resume', () => {
+    const base = {
+      pluginDir: 'C:\\repo\\pack',
+      settingsPath: 'C:\\s\\settings.json',
+      mcpConfigPath: 'C:\\s\\mcp.json',
+      systemPromptPath: 'C:\\s\\system-prompt.md',
+      model: 'claude-sonnet-5',
+    }
+    const kickoffLine = `Invoke "the skill" and preserve the user's words.`
+    expect(buildClaudeArgs({ ...base, kickoffLine }).at(-1)).toBe(kickoffLine)
+    expect(buildClaudeArgs({ ...base, resumeSessionId: 'cc-42', kickoffLine })).not.toContain(
+      kickoffLine,
+    )
+  })
+
+  it('rejects a kickoff near the Windows command-line ceiling', () => {
+    expect(() =>
+      buildClaudeArgs({
+        pluginDir: 'p', settingsPath: 's', mcpConfigPath: 'm', systemPromptPath: 'x',
+        model: 'claude-sonnet-5', kickoffLine: 'x'.repeat(MAX_KICKOFF_ARGV + 1),
+      }),
+    ).toThrow(/maximum/)
+  })
+})
+
+describe('buildCodexArgs', () => {
+  it('keeps the trust flag and appends a fresh kickoff verbatim', () => {
+    const kickoffLine = `Invoke "the skill" and preserve the user's words.`
+    expect(buildCodexArgs({ kickoffLine })).toEqual([
+      '--dangerously-bypass-hook-trust',
+      kickoffLine,
+    ])
+  })
+
+  it('resumes without a positional prompt', () => {
+    const kickoffLine = 'must not be sent'
+    expect(buildCodexArgs({ resumeSessionId: 'thread-42', kickoffLine })).toEqual([
+      'resume', 'thread-42', '--dangerously-bypass-hook-trust',
+    ])
   })
 })
 

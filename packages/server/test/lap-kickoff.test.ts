@@ -175,8 +175,14 @@ describe('launchSession — an explicit briefing launches fresh', () => {
 
     expect(command).not.toContain('--resume')
     expect(command).not.toContain('cc-prior')
-    // and nothing claims a conversation was picked up
-    expect(listAfter(ctx, featureId, 0).map((e) => e.type)).not.toContain('session.resumed')
+    const events = listAfter(ctx, featureId, 0)
+    expect(events.map((e) => e.type)).not.toContain('session.resumed')
+    expect(events.map((e) => e.type)).toContain('session.resume_skipped')
+    expect(events.filter((e) => e.type === 'session.kickoff')).toHaveLength(1)
+    expect(events.find((e) => e.type === 'session.kickoff')?.data).toMatchObject({
+      mechanism: 'argv',
+      line: lapKickoff(2),
+    })
   })
 
   it('still resumes the last conversation for a launch with no briefing (unchanged)', async () => {
@@ -184,7 +190,9 @@ describe('launchSession — an explicit briefing launches fresh', () => {
     const { command } = await launchAndRead(featureId, { kind: 'revisit' })
 
     expect(command).toContain('--resume cc-prior')
-    expect(listAfter(ctx, featureId, 0).map((e) => e.type)).toContain('session.resumed')
+    const events = listAfter(ctx, featureId, 0)
+    expect(events.map((e) => e.type)).toContain('session.resumed')
+    expect(events.filter((e) => e.type === 'session.kickoff')).toHaveLength(0)
   })
 
   it('renders the lap framing into the prompt of a lap launch, not the revisit ban', async () => {
@@ -205,9 +213,7 @@ describe('launchSession — an explicit briefing launches fresh', () => {
     const { sessionId, command } = await launchAndRead(featureId, { kind: 'ideation' })
 
     expect(command).not.toContain('--resume')
-    // going live is what types the briefing; the delivery record is what it will type
-    markSessionLive(ctx, sessionId, { ccSessionId: 'cc-grill' })
-    expect(kickoffDeliveryFor(sessionId)?.line).toBe(lapKickoff(2))
+    expect(command).toContain('LAP 2 REVIEW ITERATION')
   })
 
   it('a lap-1 grill keeps the generic ideate line', () => {
@@ -231,7 +237,6 @@ describe('launchSession — an explicit briefing launches fresh', () => {
     expect(prompt).not.toMatch(/Do NOT call `complete_phase`/i)
     // fresh, so the dead lap's transcript cannot argue with the new briefing
     expect(command).not.toContain('--resume')
-    markSessionLive(ctx, sessionId, { ccSessionId: 'cc-reentry' })
-    expect(kickoffDeliveryFor(sessionId)?.line).toBe(lapKickoff(2))
+    expect(command).toContain('LAP 2 REVIEW ITERATION')
   })
 })

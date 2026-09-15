@@ -169,10 +169,7 @@ export function markSessionLive(
     .where(eq(sessions.id, id))
     .run()
   const firstTimeLive = existing.status !== 'live'
-  if (firstTimeLive) {
-    promoteLastSession(ctx, id)
-    scheduleKickoff(ctx, existing)
-  }
+  if (firstTimeLive) promoteLastSession(ctx, id)
   return getSessionRow(ctx, id)
 }
 
@@ -376,59 +373,9 @@ export function planKickoff(input: {
 }
 
 /**
- * Framing prepended to the kickoff line of a RESUMED session. `--resume` restores
- * the whole conversation, so typing the bare per-kind line ("invoke /runcastle:…
- * and drive the session") reads as an instruction to start over — the agent
- * re-runs its opening move on a conversation that is already mid-flight. This
- * prefix says what actually happened (the conversation survived, the terminal
- * did not) and asks for a short re-orientation before it carries on.
- *
- * It no longer claims a CAUSE. It used to open "runcastle restarted and closed
- * the terminal", which is one of several ways a session ends and flatly untrue
- * of the commonest: the human clicking Revisit on a conversation that closed
- * cleanly. A resumed agent that is told something false about the last five
- * minutes has no way to tell which other statements to trust.
- *
- * Only applied when the caller passed no explicit `kickoffLine`: a per-purpose
- * briefing (merge-conflict resolution, review iteration) IS the new opening move
- * and must not be reframed as "carry on with what you were doing".
- */
-export const RESUME_KICKOFF_PREFIX =
-  'We are picking this conversation back up — the terminal was closed, but this ' +
-  'conversation is intact. Do NOT start over: tell me in one or two lines where we ' +
-  'left off and what is next, then carry on. Your original instruction was: '
-
-/**
- * The kickoff line typed into a resumed session, quoting the ORIGINAL
- * instruction of the conversation being resumed (see
- * {@link RESUME_KICKOFF_PREFIX}).
- *
- * `resumedKind` is the kind of the session row whose transcript is coming back,
- * which is not always the kind of the row being created. A revisit resumes
- * `mostRecentResumableSession` with NO kind filter — deliberately, because
- * "revisit" means "pick up the last thing we talked about", whatever that was —
- * so quoting the revisit line told an ideation conversation that its original
- * instruction had been "invoke the /runcastle:revisit skill", which it
- * demonstrably was not, with the real opening turn visible directly above in the
- * restored transcript. Quote what was actually said; fall back to the new kind's
- * line only when the resumed row's kind is unknown.
- *
- * `runtime` is the runtime that conversation ran on — the skill invocation is
- * spelled per runtime, so the quote has to match the spelling it was given.
- */
-export function resumeKickoffLine(
-  kind: SessionKind,
-  resumedKind?: SessionKind,
-  runtime: AgentRuntime = DEFAULT_RUNTIME,
-): string {
-  return RESUME_KICKOFF_PREFIX + runtimeAdapterFor(runtime).kickoffLine(resumedKind ?? kind)
-}
-
-/**
  * Pending per-session kickoff overrides, keyed by session id. `launchSession`
- * stashes an override here BEFORE spawning; `scheduleKickoff` consumes it when
- * the session goes live (kickoff is scheduled from `markSessionLive`, decoupled
- * from launch by the SessionStart hook, so the override must survive the gap).
+ * stashes the resolved fresh-launch line before spawning. Ticket 2 removes the
+ * remaining legacy resend machinery that reads this record.
  *
  * An entry OUTLIVES its consumption — it is the durable record of what this
  * terminal was opened to say, which `resendKickoff` needs verbatim (F6) — and is

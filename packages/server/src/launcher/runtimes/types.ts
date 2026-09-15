@@ -45,8 +45,19 @@ export interface RuntimeLaunchInput extends WriteArtifactsInput {
   model: string
   /** The agent-side conversation id to resume; omitted → a fresh conversation. */
   resumeSessionId?: string
+  /** The native positional initial prompt; omitted for every resumed conversation. */
+  kickoffLine?: string
   /** Overrides the runtime's default permission posture (the project session's `default`). */
   permissionMode?: string
+}
+
+/** Keep comfortably below Windows' 32,767-character command-line ceiling. */
+export const MAX_KICKOFF_ARGV = 30_000
+
+export function assertKickoffArgv(line: string | undefined): void {
+  if (line !== undefined && line.length > MAX_KICKOFF_ARGV) {
+    throw new Error(`kickoff line is ${line.length} characters; maximum is ${MAX_KICKOFF_ARGV}`)
+  }
 }
 
 /** A launch, completely described and not yet spawned. */

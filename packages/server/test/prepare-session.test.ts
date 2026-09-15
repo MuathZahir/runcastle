@@ -10,7 +10,6 @@ import { events, projects, sessions } from '../src/db/schema'
 import type { AppCtx } from '../src/db/types'
 import {
   PREPARE_CONFIRM_KICKOFF,
-  RESUME_KICKOFF_PREFIX,
   activeProjectSession,
   activeSessionsForFeature,
   createSessionRow,
@@ -652,12 +651,7 @@ describe('launching a preparation, fresh or resumed', () => {
     expect(ctx.db.select().from(events).all().map((e) => e.type)).toContain('session.resumed')
   })
 
-  /**
-   * `RESUME_KICKOFF_PREFIX` was wired only into `launchSession`, so the kind
-   * most likely to be resumed got the COLD-START line ("Start by telling them
-   * which fields are still open") typed into a conversation already mid-flight.
-   */
-  it('reframes the kickoff of a resumed preparation instead of restarting it', async () => {
+  it('does not send a kickoff to a resumed preparation', async () => {
     endedConversation('cc-prep-1')
     const { sessionId } = await launchPrepareSession(
       ctx,
@@ -666,9 +660,7 @@ describe('launching a preparation, fresh or resumed', () => {
     )
     markSessionLive(ctx, sessionId, { ccSessionId: 'cc-prep-2' })
 
-    const line = kickoffDeliveryFor(sessionId)?.line ?? ''
-    expect(line).toContain(RESUME_KICKOFF_PREFIX)
-    expect(line).toMatch(/do not start over/i)
+    expect(kickoffDeliveryFor(sessionId)).toBeNull()
   })
 
   /**
@@ -685,9 +677,10 @@ describe('launching a preparation, fresh or resumed', () => {
       { projectId: PROJECT_ID },
       { spawn: false },
     )
-    markSessionLive(ctx, sessionId, { ccSessionId: 'cc-confirm' })
-
-    expect(kickoffDeliveryFor(sessionId)?.line).toBe(PREPARE_CONFIRM_KICKOFF)
+    const kickoff = ctx.db.select().from(events).all().find((event) => event.type === 'session.kickoff')
+    expect((kickoff?.data as { line?: string } | undefined)?.line).toBe(
+      PREPARE_CONFIRM_KICKOFF,
+    )
     expect(PREPARE_CONFIRM_KICKOFF).not.toContain('still open')
     expect(PREPARE_CONFIRM_KICKOFF).toMatch(/and stop/)
   })

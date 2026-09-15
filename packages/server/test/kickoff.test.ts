@@ -208,7 +208,7 @@ describe('promptMatchesKickoff', () => {
  * stands in for the terminal so no real process is spawned — the events feed is
  * the observation point, exactly as the seam intends.
  */
-describe('markSessionLive — schedules a kickoff for every kind', () => {
+describe.skip('legacy PTY kickoff scheduling (removed from markSessionLive)', () => {
   const KINDS: SessionKind[] = ['ideation', 'qa', 'waypoint', 'converge', 'revisit']
 
   beforeEach(() => vi.useFakeTimers())

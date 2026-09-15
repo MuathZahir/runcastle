@@ -23,6 +23,7 @@ import type {
   RuntimeLaunchSpec,
   RuntimeReadiness,
 } from './types'
+import { assertKickoffArgv } from './types'
 
 /**
  * The Codex adapter (decision 9) — the same session, driven by the other CLI.
@@ -385,10 +386,12 @@ function gitInfoDir(worktreePath: string): string | null {
  * every lifecycle event is silently skipped — no `live` row, no kickoff, no
  * edit guard.
  */
-function buildCodexArgs(input: { resumeSessionId?: string }): string[] {
+export function buildCodexArgs(input: { resumeSessionId?: string; kickoffLine?: string }): string[] {
+  assertKickoffArgv(input.kickoffLine)
   return [
     ...(input.resumeSessionId ? ['resume', input.resumeSessionId] : []),
     '--dangerously-bypass-hook-trust',
+    ...(!input.resumeSessionId && input.kickoffLine ? [input.kickoffLine] : []),
   ]
 }
 
@@ -494,6 +497,7 @@ export const codexRuntime: AgentRuntimeAdapter = {
       files,
       argv: buildCodexArgs({
         ...(input.resumeSessionId ? { resumeSessionId: input.resumeSessionId } : {}),
+        ...(input.kickoffLine ? { kickoffLine: input.kickoffLine } : {}),
       }),
       env: {
         CODEX_HOME: home,
