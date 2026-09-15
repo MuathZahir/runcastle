@@ -1,4 +1,4 @@
-import { ticketShapeWarningLine, ticketShapeWarnings } from '@runcastle/core'
+import { docsDigestSizeWarning, ticketShapeWarningLine, ticketShapeWarnings } from '@runcastle/core'
 import { burnLabel } from '../laps'
 import { burnExpectation } from '../run'
 import type { NextStep } from './types'
@@ -27,7 +27,17 @@ export function resolveImplementation(input: ResolverInput): NextStep {
   // the timeline; this is the same sentence, from the same function, beside a
   // Burn button that stays enabled — the coder gets the ticket's own text and
   // nothing else, and this is the last place anyone can read it first.
-  const shape = ticketShapeWarningLine(ticketShapeWarnings(pendingTickets))
+  // …and what the burn is about to hand EVERY one of them: the feature docs
+  // digest, when it is over budget. It was emitted onto the run timeline and
+  // nowhere else — appended to a single-line row that clips, inside a panel that
+  // starts collapsed — so the human deciding the burn never met the one warning
+  // whose whole point is that it is paid per ticket. Batch-level, so it leads
+  // the line: the per-ticket shapes below it are spelled three deep, then counted.
+  const digest = docsDigestSizeWarning(ctx.docsDigestBytes ?? 0)
+  const shape = ticketShapeWarningLine([
+    ...(digest ? [digest] : []),
+    ...ticketShapeWarnings(pendingTickets),
+  ])
   if (running) {
     return {
       kick: 'IN PROGRESS',
