@@ -2,6 +2,7 @@ import type { DriveState } from '@runcastle/core'
 import type { FeatureFull } from '../../api'
 import type { MergeConflictState } from '../gates'
 import type { BurnDurationStats } from '../run'
+import type { BurnInterruption } from '../run'
 import type { DraftBaseMissing } from './types'
 
 export interface NextStepContext {
@@ -24,6 +25,7 @@ export interface NextStepContext {
   openNotes?: number
   openDefects?: number
   laterLaps?: string | null
+  interruptedBurn?: BurnInterruption
 }
 
 export interface ResolverInput {

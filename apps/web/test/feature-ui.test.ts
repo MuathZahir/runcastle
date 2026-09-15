@@ -4,6 +4,7 @@ import type { EventRow, TicketStatus } from '@runcastle/core'
 import {
   activeSession,
   awaitingCheckIn,
+  burnInterruption,
   capLane,
   defaultBaseBranch,
   deferredScope,
@@ -254,6 +255,57 @@ describe('nextStep at implementation with no tickets', () => {
       label: 'Burn 1 ticket',
       kind: 'burn',
     })
+  })
+})
+
+describe('nextStep after a server restart interrupted a burn', () => {
+  const interrupted = (statuses: string[]) =>
+    ({
+      feature: { id: 'f1', phase: 'implementation', lap: 1, mapped: false, status: 'active' },
+      tickets: statuses.map((status, index) => ({ id: `t${index}`, lap: 1, status })),
+      sessions: [],
+      runs: [{ id: 'r1', status: 'failed', workflow: 'ticket-burner' }],
+      gate: { next: { id: 'G4' }, satisfied: false },
+    }) as unknown as FeatureFull
+
+  it('offers one Resume burn action with the persistent interruption alert', () => {
+    const ns = nextStep(interrupted(['done', 'failed']), {
+      driving: false,
+      interruptedBurn: { runId: 'r1', landedTickets: 1, pendingTickets: 1 },
+    })
+
+    expect(ns.title).toBe('A burn was interrupted by a server restart: 1 ticket landed, 1 pending')
+    expect(ns.primary).toEqual({ label: 'Resume burn', kind: 'burn' })
+    expect(ns.secondary).toEqual([])
+  })
+
+  it('does not offer Resume burn when the interruption left no pending tickets', () => {
+    const ns = nextStep(interrupted(['done']), {
+      driving: false,
+      interruptedBurn: { runId: 'r1', landedTickets: 1, pendingTickets: 0 },
+    })
+
+    expect(ns.primary?.kind).not.toBe('burn')
+  })
+})
+
+describe('burnInterruption', () => {
+  const event = {
+    type: 'run.reconciled',
+    runId: 'r1',
+    data: { workflow: 'ticket-burner', landedTickets: 2, pendingTickets: 3 },
+  }
+
+  it('keeps the restart alert attached to the reconciled run', () => {
+    expect(burnInterruption([event], 'r1')).toEqual({
+      runId: 'r1',
+      landedTickets: 2,
+      pendingTickets: 3,
+    })
+  })
+
+  it('retires the alert once a resumed burn becomes the latest run', () => {
+    expect(burnInterruption([event], 'r2')).toBeUndefined()
   })
 })
 

@@ -1,5 +1,30 @@
 import type { RunStatus } from '@runcastle/core'
 
+export interface BurnInterruption {
+  runId: string
+  landedTickets: number
+  pendingTickets: number
+}
+
+/** The restart alert applies only until a newer run supersedes the reconciled burn. */
+export function burnInterruption(
+  events: readonly { type: string; runId?: string | null; data?: unknown }[],
+  latestRunId?: string,
+): BurnInterruption | undefined {
+  if (!latestRunId) return undefined
+  const event = [...events]
+    .reverse()
+    .find((entry) => entry.type === 'run.reconciled' && entry.runId === latestRunId)
+  if (!event?.runId || typeof event.data !== 'object' || event.data === null) return undefined
+  const { workflow, landedTickets, pendingTickets } = event.data as Record<string, unknown>
+  if (
+    workflow !== 'ticket-burner' ||
+    typeof landedTickets !== 'number' ||
+    typeof pendingTickets !== 'number'
+  ) return undefined
+  return { runId: event.runId, landedTickets, pendingTickets }
+}
+
 export interface LaneTicketFigure {
   seq: number
   status: string
