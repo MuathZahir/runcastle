@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { Feature, Project, Ticket } from '@runcastle/core'
+import { reviewDir } from '@runcastle/core/paths'
 import { eq } from 'drizzle-orm'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { features } from '../src/db/schema'
@@ -225,6 +226,36 @@ describe('the carry channel into the next lap', () => {
     expect(prompt).toContain('It exists; read it.')
     expect(prompt).toContain('`openDefects`')
     expect(prompt).not.toMatch(/both OPTIONAL/)
+  })
+
+  /**
+   * The third thing a lap carries, and the one with no other channel at all: the
+   * previous lap's review evidence. `tickets` strips every `digest`, and the
+   * review agent reports through host scratch space outside the repo, so a lap
+   * session that is not handed the path cannot read the review of the build it is
+   * being asked to plan past.
+   */
+  it('names the previous lap’s review evidence in the context payload, by path', () => {
+    updateTicket(ctx, reviewTicket.id, { status: 'done' })
+    ctx.db.update(features).set({ lap: 2 }).where(eq(features.id, feature.id)).run()
+
+    expect(toolGetFeatureContext(ctx, session).reviewEvidence).toEqual([
+      {
+        ticketId: reviewTicket.id,
+        seq: reviewTicket.seq,
+        status: 'done',
+        lap: 1,
+        dir: reviewDir(reviewTicket.id),
+        digestPath: join(reviewDir(reviewTicket.id), 'DIGEST.md'),
+      },
+    ])
+  })
+
+  it('names none while the feature is still on the lap that review belongs to', () => {
+    updateTicket(ctx, reviewTicket.id, { status: 'done' })
+
+    // Lap 1's review is the CURRENT lap's review — the review loop still owns it.
+    expect(toolGetFeatureContext(ctx, session).reviewEvidence).toEqual([])
   })
 
   it('states the disposition obligation and names all three verbs', () => {
