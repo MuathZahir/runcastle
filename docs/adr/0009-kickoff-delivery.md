@@ -1,6 +1,11 @@
-# ADR-0009: A session's opening briefing is delivered and confirmed, never assumed
+# ADR-0009: A session's opening briefing rides the launch, never the keyboard
 
 - **Status:** accepted (2026-07-27)
+- **Amended:** 2026-09-15 — the briefing is handed to the CLI as its positional
+  initial prompt at spawn instead of typed into a live terminal; the delivery
+  receipt, the retry loop, the undelivered event and its one-click re-send are
+  retired along with the typing they existed to cover (feature
+  native-first-message-delivery-for-session-kickoffs)
 - **Relates to:** ADR-0007 (landing conflicts), whose two human escape hatches —
   "Resolve with agent" and "Resolve in terminal" — are briefed entirely through
   this mechanism.
@@ -8,14 +13,15 @@
 ## Context
 
 Every terminal runcastle opens is opened *for a reason*, and the reason is
-carried by one injected line: the per-kind kickoff (`/runcastle:ideate`,
+carried by one line: the per-kind kickoff (`/runcastle:ideate`,
 `/runcastle:converge`, …) or a per-purpose override — the review-iteration
 briefing, the merge-conflict resolution briefing (`mergeConflictKickoff`,
 `ticketConflictKickoff`). The agent has no other way to learn why it exists.
 
-Delivery was a blind timed write: 1.5s after the session reported live, type the
-text into the PTY, 350ms later type `\r`, emit `session.kickoff` ("kicked off
-automatically"), done. Two assumptions underneath it were both false.
+Delivery began as a blind timed write: 1.5s after the session reported live,
+type the text into the PTY, 350ms later type `\r`, emit `session.kickoff`
+("kicked off automatically"), done. Two assumptions underneath it were both
+false.
 
 1. **That the session reports live at all.** `markSessionLive` is only ever
    called by the `SessionStart` hook, and the generated `settings.json`
@@ -34,50 +40,76 @@ automatically"), done. Two assumptions underneath it were both false.
    update notice — and then the briefing is eaten, `session.kickoff` still claims
    success, and the terminal looks perfectly healthy while the agent sits idle.
 
+The first answer kept the typing and wrapped it in a receipt: the
+`UserPromptSubmit` hook echoing the injected line confirmed delivery, an
+unconfirmed line was cleared and re-typed up to three times, and running out of
+attempts raised a warning bar with a one-click re-send. That made the failure
+visible without making it rare — the writes still raced the TUI's startup
+redraw, *knowing* whether one had landed depended on the hook pipeline being
+healthy, and on Codex the retry loop was the suspected cause of a visible cursor
+glitch. Watched in use, it "doesn't always work reliably".
+
+Both CLIs take a first message as an argument of the launch itself: Claude Code
+and the Codex TUI each start their REPL with a positional prompt already
+submitted. Runcastle assembles that argv anyway.
+
 ## Decision
 
-**A written kickoff is an attempt; only Claude Code acknowledging it is a
-delivery.**
+**The briefing is part of the launch, not an act performed on a running
+session.**
 
 1. **`SessionStart` is registered for every source** (`startup`, `resume`,
    `clear`, `compact`, `fork`) — one matcher group each, since regex-vs-literal
    matching is undocumented. A resumed session is a started session. Repeat
    fires (after `/clear`, after a compaction) refresh `ccSessionId` /
-   `transcript_path` — the conversation a later `--resume` would target really
-   did change — without re-announcing a live session or re-injecting.
-2. **`UserPromptSubmit` is the delivery receipt.** The hook already ran for
-   context injection; it now also carries the submitted `prompt` back to
-   `noteKickoffPrompt`. A prompt matching the injected line (collapsed
-   whitespace, first 40 chars) confirms delivery and cancels the retries.
-3. **Unconfirmed within 12s → type it again**, clearing the input line first
-   (`Ctrl-U`, so a half-typed first attempt cannot become one doubled prompt),
-   up to 3 attempts. This is what carries a briefing across a dialog the human
-   dismisses ten seconds after the terminal opened.
-4. **Failure is announced, not swallowed.** Out of attempts emits
-   `session.kickoff_undelivered`; a terminal that never reported `SessionStart`
-   at all within 25s emits `session.not_ready`. Both surface as a warning bar in
-   the session strip with **Send briefing**, which re-types the exact stored line
-   on demand (`feature.resendKickoff`) and restarts the confirm-and-retry cycle.
-5. **A human who types first wins.** A non-matching prompt settles the delivery
-   as `superseded`: injecting a paragraph into a conversation someone is already
-   driving is worse than not briefing at all. The briefing stays one click away
-   in the same bar.
-6. **The watchdog never types blind.** When a session has not reported ready, we
-   report it rather than firing text and `\r` at an unseen dialog — a stray
-   Enter could answer a trust or permission question on the human's behalf.
+   `transcript_path` — the conversation a later resume would target really did
+   change — without re-announcing a live session.
+2. **A fresh launch carries its briefing in argv.** The line — the launch's
+   explicit briefing if it has one, else the runtime's per-kind default — is
+   resolved where the argv is built (`buildClaudeArgs` / `buildCodexArgs`) and
+   passed as the CLI's positional initial prompt. There is no window to race:
+   the process starts with the prompt already submitted.
+3. **A resumed launch sends nothing.** `--resume <id>` / `resume <id>` restores
+   the conversation the original briefing is already in, and the injected system
+   prompt carries the task regardless. Re-briefing a restored conversation is
+   noise, so there is no resume framing and no resume kickoff line.
+4. **An explicit briefing forces a fresh conversation.** A launch carrying a
+   per-purpose briefing (the Iterate lap briefing, a conflict-resolution brief)
+   skips the resume it could have had and starts fresh with that briefing in its
+   argv, announced as `session.resume_skipped`. Resume is reserved for launches
+   with nothing new to say; the docs carry the state, exactly as the re-entry cap
+   already assumes.
+5. **Nothing confirms delivery.** `session.kickoff` is emitted once, at spawn,
+   recording the briefing the session was opened with — no receipt, no retries,
+   no undelivered event, no re-send button. `UserPromptSubmit` keeps its other
+   duties and no longer feeds kickoff state.
+6. **Readiness is still watched — delivery is not.** A terminal that has not
+   reported `SessionStart` within 25s emits `session.not_ready` and renders a
+   warning bar in the session strip: the agent has not started on its briefing,
+   and something only the human can see (a trust prompt, a login, an update
+   notice) is holding it up. We report it rather than touching the terminal — a
+   stray Enter could answer that question on the human's behalf.
+7. **A briefing's size is asserted, not routed around.** Kickoff lines are
+   runcastle-generated and realistically 1–3KB, far below the Windows
+   command-line ceiling, so there is no file-based or size-gated delivery path.
+   `assertKickoffArgv` throws above `MAX_KICKOFF_ARGV` rather than letting a line
+   be silently truncated, and a test pins that a line carrying double quotes and
+   an apostrophe reaches the argv verbatim.
 
 ## Consequences
 
-- The worst case for a swallowed briefing drops from "silently never delivered"
-  to "delivered ~12s later, or visibly flagged with a one-click send".
-- Kickoff state is in-memory only, keyed by session id and dropped when the
-  session ends: the PTY it types into dies with the process, so a delivery can
-  never outlive the terminal it belongs to, and no pending retry can leak into
-  the next one.
-- `session.kickoff` now carries `attempt`, and a session can log more than one:
-  the timeline shows re-sends, which is the honest record of what was typed.
-- Confirmation matching is a prefix comparison, not equality — a briefing that
-  shares its first 40 characters with another would confirm the wrong one. The
-  briefings differ in their opening clause, and the cost of a false match (one
-  un-retried delivery, still visible in the terminal) is lower than the cost of
-  a false miss (re-typing over a working agent).
+- A swallowed briefing stops being a failure class: the CLI submits the prompt
+  itself, before any dialog or redraw can eat it, so the worst case that
+  motivated the retry loop cannot occur.
+- No kickoff state outlives argv construction. The in-memory delivery records,
+  their timers and their per-session cleanup are gone with the typing.
+- `session.kickoff` is at most one event per session, emitted at spawn instead of
+  per attempt; a resume emits none. The timeline reads "opened with this
+  briefing" or "resumed that conversation" — which is what happened.
+- Delivery no longer depends on the hook pipeline being healthy. Hooks stay
+  load-bearing for everything else: live status, `ccSessionId`, turn state, the
+  edit guard.
+- The accepted cost: if argv delivery ever failed silently, nothing would say so.
+  The symptom is a visibly idle terminal, the injected system prompt already
+  tells the agent its job, and one typed message from the human is the fix —
+  cheaper than standing machinery to watch for it.
