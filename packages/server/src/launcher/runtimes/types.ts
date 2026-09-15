@@ -45,6 +45,8 @@ export interface RuntimeLaunchInput extends WriteArtifactsInput {
   model: string
   /** The agent-side conversation id to resume; omitted → a fresh conversation. */
   resumeSessionId?: string
+  /** The prior runcastle row whose runtime-local persistence backs that conversation. */
+  resumeSourceSessionId?: string
   /** The native positional initial prompt; omitted for every resumed conversation. */
   kickoffLine?: string
   /** Overrides the runtime's default permission posture (the project session's `default`). */

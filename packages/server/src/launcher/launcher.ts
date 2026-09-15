@@ -546,6 +546,7 @@ export async function launchSession(
     serverUrl: serverUrlFor(ctx.config),
     model: model.id,
     resumeSessionId,
+    resumeSourceSessionId: resumedFrom?.id,
     kickoffLine,
   })
 
@@ -680,6 +681,7 @@ export async function launchPrepareSession(
     serverUrl: serverUrlFor(ctx.config),
     model: model.id,
     resumeSessionId,
+    resumeSourceSessionId: resumedFrom?.id,
     kickoffLine,
   })
 
@@ -822,6 +824,7 @@ export async function launchDriveFixSession(
     serverUrl: serverUrlFor(ctx.config),
     model: model.id,
     resumeSessionId,
+    resumeSourceSessionId: resumedFrom?.id,
     kickoffLine,
   })
 
@@ -960,6 +963,7 @@ export async function launchProjectSession(
     serverUrl: serverUrlFor(ctx.config),
     model: model.id,
     resumeSessionId,
+    resumeSourceSessionId: resumedFrom?.id,
     kickoffLine,
     // Decision 18: whole-repo write access voids the acceptEdits justification.
     permissionMode: 'default',

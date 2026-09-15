@@ -1,5 +1,6 @@
 import {
   copyFileSync,
+  cpSync,
   existsSync,
   mkdirSync,
   readFileSync,
@@ -54,6 +55,22 @@ const CODEX = RUNTIME_SPECS.codex
 /** The synthetic per-session `CODEX_HOME` (decision 9): config, hooks, prompt, auth. */
 export function codexHomeDir(sessionId: string): string {
   return join(sessionDir(sessionId), 'codex-home')
+}
+
+/**
+ * Seed a new synthetic home with the conversation store from the runcastle
+ * session being resumed. Codex discovers both `resume <id>` and the interactive
+ * `/resume` picker exclusively through `$CODEX_HOME/sessions`; previously every
+ * relaunch selected a new, empty home keyed by the new runcastle row, so the
+ * recorded id pointed at a rollout the process could not see and Codex started
+ * cold. Copying only `sessions/` preserves decision 9's per-launch config/hook
+ * isolation while making the rollout chain durable across relaunches.
+ */
+function carryResumeRollouts(resumeSourceSessionId: string | undefined, home: string): void {
+  if (!resumeSourceSessionId) return
+  const source = join(codexHomeDir(resumeSourceSessionId), 'sessions')
+  if (!existsSync(source)) return
+  cpSync(source, join(home, 'sessions'), { recursive: true })
 }
 
 /**
@@ -449,6 +466,7 @@ export const codexRuntime: AgentRuntimeAdapter = {
   async writeArtifacts(input: RuntimeLaunchInput): Promise<RuntimeLaunchSpec> {
     const home = codexHomeDir(input.session.id)
     mkdirSync(home, { recursive: true })
+    carryResumeRollouts(input.resumeSourceSessionId, home)
 
     const configPath = join(home, 'config.toml')
     const hooksPath = join(home, 'hooks.json')

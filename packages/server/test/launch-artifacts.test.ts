@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process'
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { sessionDir } from '@runcastle/core/paths'
@@ -1007,6 +1007,24 @@ describe('codexRuntime.writeArtifacts', () => {
   it('resumes the conversation the SessionStart hook recorded', async () => {
     const spec = await launchSpec('revisit', { resumeSessionId: 'codex-sess-42' })
     expect(spec.argv).toEqual(['resume', 'codex-sess-42', '--dangerously-bypass-hook-trust'])
+  })
+
+  it('carries the original rollout store into a resumed session home', async () => {
+    const originalId = 'sess_codex_original'
+    const rollout = join(codexHomeDir(originalId), 'sessions', '2026', '09', 'rollout.jsonl')
+    created.push(originalId)
+    mkdirSync(join(rollout, '..'), { recursive: true })
+    writeFileSync(rollout, '{"type":"session_meta","id":"codex-sess-42"}\n', 'utf8')
+
+    const spec = await launchSpec('revisit', {
+      resumeSessionId: 'codex-sess-42',
+      resumeSourceSessionId: originalId,
+    })
+
+    expect(spec.env.CODEX_HOME).toBe(codexHomeDir('sess_codex_revisit'))
+    expect(readFileSync(join(spec.env.CODEX_HOME, 'sessions', '2026', '09', 'rollout.jsonl'), 'utf8')).toBe(
+      '{"type":"session_meta","id":"codex-sess-42"}\n',
+    )
   })
 
   it('merges the human’s own MCP servers on `inherit`, and none on `runcastleOnly`', async () => {

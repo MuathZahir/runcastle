@@ -11,6 +11,7 @@ import { launchSession } from '../src/launcher/launcher'
 import type { AgentRuntimeAdapter, RuntimeReadiness } from '../src/launcher/runtimes'
 import { registerRuntimeAdapter, resetRuntimeAdapters } from '../src/launcher/runtimes'
 import { KICKOFF_LINES } from '../src/launcher/runtimes/claude'
+import { claudeRuntime } from '../src/launcher/runtimes/claude'
 import { codexHomeDir } from '../src/launcher/runtimes/codex'
 import {
   createSessionRow,
@@ -170,6 +171,38 @@ describe('runtime dispatch at launch', () => {
     expect(String((launched?.data as { command?: string }).command)).toContain(
       'codex resume codex-rollout-7',
     )
+  })
+
+  it('passes Claude exactly the conversation id recorded by SessionStart', async () => {
+    registerRuntimeAdapter({ ...claudeRuntime, checkReady: () => ({ ok: true }) })
+    useModel('claude-sonnet-5', 'claude-code')
+
+    const project = seedProject(ctx, repoPath)
+    const feature = seedFeature(ctx, project.id, { slug: 'claude-resume' })
+    await createFeatureBranch(project, 'claude-resume', 'main')
+    cleanup.push(worktreeDir(project.id, 'claude-resume'))
+
+    const first = await launchSession(
+      ctx,
+      { featureId: feature.id, kind: 'ideation' },
+      { spawn: false },
+    )
+    cleanup.push(sessionDir(first.sessionId))
+    markSessionLive(ctx, first.sessionId, { ccSessionId: 'hook-recorded-claude-id' })
+    markSessionEnded(ctx, first.sessionId)
+
+    const second = await launchSession(
+      ctx,
+      { featureId: feature.id, kind: 'ideation' },
+      { spawn: false },
+    )
+    cleanup.push(sessionDir(second.sessionId))
+
+    const launched = listAfter(ctx, feature.id, 0)
+      .filter((event) => event.type === 'session.launched')
+      .at(-1)
+    const command = String((launched?.data as { command?: string }).command)
+    expect(command).toContain('claude --resume hook-recorded-claude-id')
   })
 
   it('refuses a launch whose runtime is not ready, naming the doctor fix', async () => {
