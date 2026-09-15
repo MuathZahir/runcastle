@@ -9,8 +9,8 @@ import { carriedDefectsAcrossLaps, openDefectsAcrossLaps } from './review-findin
 import { listByFeature as listTickets } from './tickets'
 
 /**
- * What a lap carries into the next one — the notes the human parked and the
- * defects the review left open.
+ * What a lap carries into the next one — the notes the human parked, the defects
+ * the review left open, and where that review left its evidence on disk.
  *
  * This is the carry CHANNEL, read-only and computed on demand: the lap's
  * kickoff line, its injected system prompt and `get_feature_context` all state
@@ -118,7 +118,7 @@ export function carriedWork(ctx: AppCtx, featureId: string): CarriedWork {
  * has since changed. A pass still `pending` or `burning` wrote no digest, and a
  * `cancelled` one never ran; only {@link BURNED_REVIEW} left evidence behind.
  */
-export function previousLapReviewEvidence(ctx: AppCtx, featureId: string): ReviewEvidence[] {
+function previousLapReviewEvidence(ctx: AppCtx, featureId: string): ReviewEvidence[] {
   const { lap } = getFeatureRow(ctx, featureId)
   if (lap <= 1) return []
   return listTickets(ctx, featureId)

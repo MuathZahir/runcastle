@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Feature, SessionKind, Ticket, TicketStatus } from '@runcastle/core'
@@ -30,6 +31,7 @@ import {
   setKickoffOverride,
   writeKickoffSequence,
 } from '../src/launcher/sessions'
+import { resolvePluginDir } from '../src/launcher/skills-root'
 import { listAfter } from '../src/services/events'
 import { makeTestCtx } from './helpers/db'
 import { seedFeature, seedProject } from './helpers/fixtures'
@@ -276,6 +278,25 @@ describe('the lap briefing names the previous lap’s review evidence', () => {
     const feature = seedFeature(ctx, seedProject(ctx).id, { phase: 'ideation' })
 
     expect(carriedWork(ctx, feature.id).reviewEvidence).toEqual([])
+  })
+
+  /**
+   * The briefing states the per-lap facts; the skill the briefing names carries
+   * the procedure for them. Pinned together because a briefing that points at a
+   * rule the skill dropped is a session told to do something with no method.
+   */
+  it('the revisit skill carries the procedure for both rules', () => {
+    const skill = readFileSync(
+      join(resolvePluginDir(), 'skills', 'revisit', 'SKILL.md'),
+      'utf8',
+    )
+
+    expect(skill).toContain('reviewEvidence')
+    expect(skill).toContain('walkthrough.webm')
+    expect(skill).toContain('not demonstrable')
+    expect(skill).toContain('do not demo')
+    expect(skill).toContain('### Stand on the failure')
+    expect(skill).toMatch(/Unreproduced/)
   })
 })
 
