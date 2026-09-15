@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import type { TicketKind } from '../src/schemas'
 import {
   DEGENERATE_BATCH_TICKETS,
   DOCS_DIGEST_WARN_BYTES,
@@ -16,10 +17,14 @@ const thickContext =
   'existing `note` field on NextStep rather than inventing a second copy line, and leave the ' +
   'primary action alone — it must stay enabled.'
 
-const ticket = (seq: number, over: Partial<{ goal: string; context: string }> = {}) => ({
+const ticket = (
+  seq: number,
+  over: Partial<{ goal: string; context: string; kind: TicketKind }> = {},
+) => ({
   seq,
   goal: 'Warn about thin ticket contexts on the burn card.',
   context: thickContext,
+  kind: 'implementation' as TicketKind,
   ...over,
 })
 
@@ -111,6 +116,42 @@ describe('ticketShapeWarnings', () => {
 
   it('reads an empty context as the thinnest context there is, not as a repeat of an empty goal', () => {
     expect(codes([ticket(1, { context: '', goal: '' })])).toEqual(['thin-context'])
+  })
+
+  /**
+   * The review ticket is the pipeline's writing, not the human's, and the one
+   * place the door and the card used to disagree: the door dropped it by
+   * position and the card kept it, so a batch whose review ticket tripped a rule
+   * was warned about in one surface and not the other.
+   */
+  it('says nothing about the review ticket, whose context is nobody typing thinly', () => {
+    expect(codes([ticket(1), ticket(2, { kind: 'review', context: 'Review the lap.' })])).toEqual(
+      [],
+    )
+    expect(
+      codes([ticket(1), ticket(2, { kind: 'review', goal: 'Review it.', context: 'Review it.' })]),
+    ).toEqual([])
+  })
+
+  it('still reads every implementation ticket beside a thin review ticket', () => {
+    expect(
+      codes([
+        ticket(1, { context: 'It washes out.' }),
+        ticket(2, { kind: 'review', context: 'Review the lap.' }),
+      ]),
+    ).toEqual(['thin-context'])
+  })
+
+  it('leaves the review ticket out of the batch tally too', () => {
+    const batch = Array.from({ length: DEGENERATE_BATCH_TICKETS }, (_, i) =>
+      ticket(i + 1, { goal: `Change ${i + 1}.`, context: `Change ${i + 1}.` }),
+    )
+    const review = ticket(DEGENERATE_BATCH_TICKETS + 1, {
+      kind: 'review',
+      goal: 'Review it.',
+      context: 'Review it.',
+    })
+    expect(codes([...batch, review])).not.toContain('degenerate-batch')
   })
 })
 

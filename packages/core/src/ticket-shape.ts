@@ -15,7 +15,9 @@
  * it is about. Two surfaces render them from this one source of wording — the
  * quick door emits them onto the feature's timeline at creation, and the Burn
  * card shows them beside a Burn button that stays enabled — because a warning
- * the human meets twice in different words reads as two problems.
+ * the human meets twice in different words reads as two problems. They read the
+ * same SET of tickets here too ({@link shapeCheckedTickets}), for the same
+ * reason: a warning that only one of the two surfaces says reads as neither.
  */
 
 import type { Ticket } from './schemas'
@@ -61,7 +63,28 @@ export interface TicketShapeWarning {
  * and the card reads the rows themselves, so every warning can name its ticket
  * by the `#seq` the human sees on the ledger.
  */
-export type TicketShapeSubject = Pick<Ticket, 'seq' | 'goal' | 'context'>
+export type TicketShapeSubject = Pick<Ticket, 'seq' | 'goal' | 'context' | 'kind'>
+
+/**
+ * The tickets a shape check reads: the batch, minus its review ticket.
+ *
+ * A review ticket is the pipeline's own writing — the quick door generates one
+ * per batch, and the tickets skill tells a session it "is not a slice", needs no
+ * seams beyond the surface it exercises, and is a prose brief rather than a
+ * coder's scaffolding. So a warning about its shape names a ticket the human did
+ * not write and, on the quick-change path, cannot edit.
+ *
+ * Both surfaces read the set through here, and that is the point: the door used
+ * to drop the review ticket by position (`stored.slice(0, proses.length)`) while
+ * the card passed every pending row, so for any batch whose review ticket
+ * tripped a rule the timeline and the Burn card said different things about the
+ * same tickets.
+ */
+export function shapeCheckedTickets<T extends TicketShapeSubject>(
+  tickets: readonly T[],
+): T[] {
+  return tickets.filter((ticket) => ticket.kind !== 'review')
+}
 
 /**
  * Every shape worth warning about in one batch, batch-level warning first.
@@ -76,7 +99,8 @@ export function ticketShapeWarnings(
   tickets: readonly TicketShapeSubject[],
 ): TicketShapeWarning[] {
   const out: TicketShapeWarning[] = []
-  const degenerate = tickets.filter(goalRepeatsContext)
+  const checked = shapeCheckedTickets(tickets)
+  const degenerate = checked.filter(goalRepeatsContext)
   if (degenerate.length > DEGENERATE_BATCH_TICKETS) {
     out.push({
       code: 'degenerate-batch',
@@ -86,7 +110,7 @@ export function ticketShapeWarnings(
         `first: shape it into a feature with a spec, or cut the batch to ${DEGENERATE_BATCH_TICKETS} tickets or fewer.`,
     })
   }
-  for (const ticket of tickets) {
+  for (const ticket of checked) {
     const context = ticket.context.trim()
     if (goalRepeatsContext(ticket)) {
       out.push({

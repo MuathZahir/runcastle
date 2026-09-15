@@ -16,6 +16,7 @@ import {
   newId,
   nextGate,
   nextPhase,
+  shapeCheckedTickets,
   ticketShapeWarningLine,
   ticketShapeWarnings,
 } from '@runcastle/core'
@@ -461,7 +462,7 @@ export async function quickChange(ctx: AppCtx, input: QuickChangeInput): Promise
     data: { slug, ticketSeqs: stored.map((t) => t.seq), phase: 'implementation' },
   })
 
-  emitTicketShapeWarnings(ctx, feature.id, typed)
+  emitTicketShapeWarnings(ctx, feature.id, stored)
 
   return feature
 }
@@ -475,14 +476,19 @@ export async function quickChange(ctx: AppCtx, input: QuickChangeInput): Promise
  * feature being created or the Burn button working. The Burn card renders the
  * same warnings from the same function, so the sentence the human reads here is
  * the sentence they read again at the moment they decide.
+ *
+ * It is handed the WHOLE batch, review ticket and all, and `shapeCheckedTickets`
+ * drops what nobody typed — the card passes its whole batch too, so the one rule
+ * about which tickets get read lives in core with the rules about their shape.
  */
 function emitTicketShapeWarnings(ctx: AppCtx, featureId: string, stored: Ticket[]): void {
-  const warnings = ticketShapeWarnings(stored)
+  const checked = shapeCheckedTickets(stored)
+  const warnings = ticketShapeWarnings(checked)
   if (warnings.length === 0) return
   emit(ctx, featureId, {
     type: 'tickets.shape_warning',
     message: `${warnings.length} shape warning${warnings.length === 1 ? '' : 's'} — the burn is not blocked, but a coder reads what is here: ${ticketShapeWarningLine(warnings)}`,
-    data: { warnings, seqs: stored.map((t) => t.seq) },
+    data: { warnings, seqs: checked.map((t) => t.seq) },
   })
 }
 
