@@ -2438,15 +2438,25 @@ describe('nextStep at implementation', () => {
       context: `Change number ${i + 1} to something else.`,
     }))
 
+  const thin = (n: number) =>
+    Array.from({ length: n }, (_, i) => ({
+      goal: `Change number ${i + 1} to something else.`,
+      context: 'Somewhere in the app.',
+    }))
+
   it('keeps quiet about a batch a coder can read', () => {
     expect(nextStep(buildFull({}), { driving: false }).note).toBeUndefined()
   })
 
-  it('names the ticket and what to fix when a context is only its goal again', () => {
+  /**
+   * The other half of the quick door's always-on warning: the card renders from
+   * the same function, so the line the human read at creation was the line they
+   * read again here, on every quick change ever made. One ticket whose goal is
+   * its context is the door's construction and says nothing.
+   */
+  it('keeps quiet about a lone ticket whose context is its goal again', () => {
     const ns = nextStep(buildFull({ shapes: degenerate(1) }), { driving: false })
-    expect(ns.note).toContain('#1 repeats its goal as its context')
-    expect(ns.note).toContain('what it must not break')
-    // Never a refusal: the button is the same button.
+    expect(ns.note).toBeUndefined()
     expect(ns.primary).toEqual({ label: 'Burn 1 ticket', kind: 'burn' })
   })
 
@@ -2462,26 +2472,33 @@ describe('nextStep at implementation', () => {
     const ns = nextStep(buildFull({ shapes: degenerate(6) }), { driving: false })
     expect(ns.note).toContain('6 tickets (#1, #2, #3, #4, #5, #6) carry their goal as their context')
     expect(ns.note).toContain('cut the batch to 5 tickets or fewer')
-    // Spelled out three deep, then counted — the bar has one line.
-    expect(ns.note).toContain('(+4 more like this.)')
+    // The count is the whole line: no per-ticket restatement of it underneath.
+    expect(ns.note).not.toContain('more like this.')
     expect(ns.primary).toEqual({ label: 'Burn 6 tickets', kind: 'burn' })
+  })
+
+  it('spells out three thin contexts, then counts the rest — the bar has one line', () => {
+    const ns = nextStep(buildFull({ shapes: thin(6) }), { driving: false })
+    expect(ns.note).toContain('#1 has a 21-character context')
+    expect(ns.note).toContain('(+3 more like this.)')
+    expect(ns.note).not.toContain('#4 has a')
   })
 
   it('says it again on the resume road into the same burn', () => {
     const ns = nextStep(
-      buildFull({ shapes: degenerate(1), runs: [{ id: 'r1', status: 'failed', startedAt: 1 }] }),
+      buildFull({ shapes: thin(1), runs: [{ id: 'r1', status: 'failed', startedAt: 1 }] }),
       { driving: false },
     )
-    expect(ns.note).toContain('#1 repeats its goal as its context')
+    expect(ns.note).toContain('#1 has a 21-character context')
     expect(ns.primary).toEqual({ label: 'Resume burn', kind: 'burn' })
   })
 
   it('reads only the tickets that are about to burn, not the ones already done', () => {
     const ns = nextStep(
-      buildFull({ shapes: degenerate(2), ticketStatuses: ['done', 'pending'] }),
+      buildFull({ shapes: thin(2), ticketStatuses: ['done', 'pending'] }),
       { driving: false },
     )
-    expect(ns.note).toContain('#2 repeats its goal as its context')
+    expect(ns.note).toContain('#2 has a 21-character context')
     expect(ns.note).not.toContain('#1')
   })
 })

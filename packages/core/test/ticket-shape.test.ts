@@ -31,27 +31,26 @@ describe('ticketShapeWarnings', () => {
     expect(ticketShapeWarnings([ticket(1), ticket(2), ticket(3)])).toEqual([])
   })
 
-  it('flags a context that is only the goal said again, and names the ticket', () => {
-    const [warning, ...rest] = ticketShapeWarnings([
-      ticket(2, { goal: 'Ship the thing.', context: 'Ship the thing.' }),
-    ])
-    expect(rest).toEqual([])
-    expect(warning.code).toBe('goal-is-context')
-    expect(warning.message).toContain('#2')
-    expect(warning.message).toContain('repeats its goal as its context')
+  /**
+   * The quick door writes the one sentence the human typed into BOTH goal and
+   * context, so a per-ticket line for that shape fired on 100% of quick changes
+   * — a careful one-liner included — and told the human to edit a field their
+   * overlay does not have. Only the batch count says anything now.
+   */
+  it('says nothing about a lone ticket whose context is its goal again', () => {
+    expect(ticketShapeWarnings([ticket(2, { goal: 'Ship the thing.', context: 'Ship the thing.' })])).toEqual([])
   })
 
-  it('flags a thin context with its length, not as well as the degenerate one', () => {
+  it('flags a thin context with its length', () => {
     const thin = ticketShapeWarnings([ticket(1, { context: 'See the goal, plus some.' })])
     expect(thin.map((w) => w.code)).toEqual(['thin-context'])
     expect(thin[0].message).toContain('#1')
     expect(thin[0].message).toContain('24-character context')
     expect(thin[0].message).toContain(String(THIN_TICKET_CONTEXT_CHARS))
 
-    // The sharper diagnosis wins: a degenerate ticket is not also reported thin.
-    expect(codes([ticket(1, { goal: 'Do it.', context: 'Do it.' })])).toEqual([
-      'goal-is-context',
-    ])
+    // A ticket with no second field is not a ticket with a short one: the quick
+    // door's shape is not reported thin either.
+    expect(codes([ticket(1, { goal: 'Do it.', context: 'Do it.' })])).toEqual([])
   })
 
   it('takes a context just over the floor as thick enough', () => {
@@ -91,22 +90,21 @@ describe('ticketShapeWarnings', () => {
     expect(codes([ticket(5, { context: own })])).toEqual([])
   })
 
-  it('reports the degenerate import as a batch, before the per-ticket lines', () => {
+  it('reports the degenerate import as one batch line and nothing else', () => {
     const batch = Array.from({ length: DEGENERATE_BATCH_TICKETS + 1 }, (_, i) =>
       ticket(i + 1, { goal: `Change number ${i + 1}.`, context: `Change number ${i + 1}.` }),
     )
     const warnings = ticketShapeWarnings(batch)
-    expect(warnings[0].code).toBe('degenerate-batch')
+    expect(warnings.map((w) => w.code)).toEqual(['degenerate-batch'])
     expect(warnings[0].message).toContain(`${DEGENERATE_BATCH_TICKETS + 1} tickets`)
     expect(warnings[0].message).toContain('#1, #2')
-    expect(warnings.slice(1).map((w) => w.code)).toEqual(batch.map(() => 'goal-is-context'))
   })
 
-  it('leaves a batch at the budget to its per-ticket warnings alone', () => {
+  it('says nothing at all about a batch inside the door budget', () => {
     const batch = Array.from({ length: DEGENERATE_BATCH_TICKETS }, (_, i) =>
       ticket(i + 1, { goal: `Change ${i + 1}.`, context: `Change ${i + 1}.` }),
     )
-    expect(codes(batch)).not.toContain('degenerate-batch')
+    expect(codes(batch)).toEqual([])
   })
 
   it('reads an empty context as the thinnest context there is, not as a repeat of an empty goal', () => {
@@ -135,13 +133,12 @@ describe('ticketShapeWarningLine', () => {
 
   it('spells out the first few and counts the rest', () => {
     const batch = Array.from({ length: 8 }, (_, i) =>
-      ticket(i + 1, { goal: `Change ${i + 1}.`, context: `Change ${i + 1}.` }),
+      ticket(i + 1, { goal: `Change ${i + 1}.`, context: `Somewhere in the app.` }),
     )
     const line = ticketShapeWarningLine(ticketShapeWarnings(batch))
-    expect(line).toContain('8 tickets')
-    expect(line).toContain('#1 repeats its goal')
-    expect(line).toContain('#2 repeats its goal')
-    expect(line).toContain('(+6 more like this.)')
-    expect(line).not.toContain('#4 repeats its goal')
+    expect(line).toContain('#1 has a 21-character context')
+    expect(line).toContain('#3 has a 21-character context')
+    expect(line).toContain('(+5 more like this.)')
+    expect(line).not.toContain('#4 has a')
   })
 })
