@@ -1,7 +1,16 @@
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { SessionKind } from '@runcastle/core'
+import type { Feature, SessionKind, Ticket, TicketStatus } from '@runcastle/core'
+import { reviewDir } from '@runcastle/core/paths'
+import { eq } from 'drizzle-orm'
+import { features } from '../src/db/schema'
+import type { AppCtx } from '../src/db/types'
+import { renderSystemPrompt } from '../src/launcher/artifacts'
 import type { PtyEntry } from '../src/pty/registry'
 import { ptyRegistry } from '../src/pty/registry'
+import { carriedWork } from '../src/services/carried-work'
+import { storeTickets, updateTicket } from '../src/services/tickets'
 import { CONVERGE_KICKOFF_LINE, KICKOFF_LINES } from '../src/launcher/runtimes/claude'
 import { KICKOFF_LINES as CODEX_KICKOFF_LINES } from '../src/launcher/runtimes/codex'
 import {
@@ -22,6 +31,7 @@ import {
   setKickoffOverride,
   writeKickoffSequence,
 } from '../src/launcher/sessions'
+import { resolvePluginDir } from '../src/launcher/skills-root'
 import { listAfter } from '../src/services/events'
 import { makeTestCtx } from './helpers/db'
 import { seedFeature, seedProject } from './helpers/fixtures'
@@ -164,6 +174,129 @@ describe('kickoff registry + override', () => {
     expect(kickoffLineFor('revisit', override)).toBe(override)
     // an empty override is not a real override — the default still wins
     expect(kickoffLineFor('revisit', undefined)).toBe(KICKOFF_LINES.revisit)
+  })
+})
+
+/**
+ * What a lap ≥ 2 is told to READ before it plans.
+ *
+ * The postmortem this pins: a lap session asked "what are these tickets based
+ * on? did you test the app?" answered "No, I moved too quickly to Burn" — and it
+ * was right to, because nothing it was handed named the previous lap's review.
+ * The evidence lives in host scratch space outside the repo
+ * (`~/.runcastle/reviews/<reviewTicketId>/`) and every ticket's `digest` is
+ * stripped out of `get_feature_context`, so both renders — the kickoff line typed
+ * into the PTY and the injected system prompt — must name the paths themselves.
+ */
+describe('the lap briefing names the previous lap’s review evidence', () => {
+  /** A feature on lap 2 whose lap-1 review pass burned, and its review ticket. */
+  async function seedLapTwo(
+    reviewStatus: TicketStatus = 'done',
+  ): Promise<{ ctx: AppCtx; feature: Feature; review: Ticket }> {
+    const ctx = await makeTestCtx()
+    const feature = seedFeature(ctx, seedProject(ctx).id, { phase: 'ideation' })
+    // Stored at the feature's CURRENT lap (1), then the feature moves to lap 2 —
+    // the shape a Rethink leaves behind.
+    const [review] = storeTickets(ctx, feature.id, [
+      {
+        title: 'Review the burn',
+        goal: 'Exercise the integrated feature',
+        context: '',
+        acceptanceCriteria: [],
+        seams: [],
+        blockedBy: [],
+        kind: 'review',
+      },
+    ])
+    updateTicket(ctx, review.id, { status: reviewStatus })
+    ctx.db.update(features).set({ lap: 2 }).where(eq(features.id, feature.id)).run()
+    return { ctx, feature: { ...feature, lap: 2 }, review }
+  }
+
+  it('states the DIGEST.md, the screenshots directory and the pass outcome in the kickoff line', async () => {
+    const { ctx, feature, review } = await seedLapTwo()
+
+    const line = lapKickoff(2, carriedWork(ctx, feature.id))
+
+    expect(line).toContain(join(reviewDir(review.id), 'DIGEST.md'))
+    expect(line).toContain(reviewDir(review.id))
+    expect(line).toContain('walkthrough.webm')
+    expect(line).toContain('pass done')
+    // Still one PTY-safe line: a CR/LF here sits half-submitted in the input box.
+    expect(line).not.toMatch(/[\r\n]/)
+  })
+
+  it('states the same paths in the injected prompt, with the two rules a lap kept skipping', async () => {
+    const { ctx, feature, review } = await seedLapTwo()
+
+    const prompt = renderSystemPrompt(
+      feature,
+      'revisit',
+      undefined,
+      2,
+      undefined,
+      undefined,
+      carriedWork(ctx, feature.id),
+    )
+
+    expect(prompt).toContain(join(reviewDir(review.id), 'DIGEST.md'))
+    expect(prompt).toContain(reviewDir(review.id))
+    expect(prompt).toContain('walkthrough.webm')
+    expect(prompt).toContain("Ticket 1's review pass ended `done`")
+    // …and the two rules the same postmortem asked for, beside the paths.
+    expect(prompt).toContain('not demonstrable')
+    expect(prompt).toContain('do not demo')
+    expect(prompt).toContain('Stand on the failure')
+    expect(prompt).toContain('FIRST acceptance criterion')
+  })
+
+  it('names no evidence for a review pass that never burned, and says so', async () => {
+    const { ctx, feature } = await seedLapTwo('pending')
+
+    const line = lapKickoff(2, carriedWork(ctx, feature.id))
+    const prompt = renderSystemPrompt(
+      feature,
+      'revisit',
+      undefined,
+      2,
+      undefined,
+      undefined,
+      carriedWork(ctx, feature.id),
+    )
+
+    // A pending pass wrote no digest: promising one would send the session to a
+    // path that is not there and read as a broken environment.
+    expect(line).not.toContain('DIGEST.md')
+    expect(prompt).not.toContain('DIGEST.md')
+    expect(prompt).toContain('left NO review evidence on disk')
+    // The rules do not depend on the evidence existing.
+    expect(prompt).toContain('Stand on the failure')
+  })
+
+  it('offers a lap-1 feature no previous lap to read', async () => {
+    const ctx = await makeTestCtx()
+    const feature = seedFeature(ctx, seedProject(ctx).id, { phase: 'ideation' })
+
+    expect(carriedWork(ctx, feature.id).reviewEvidence).toEqual([])
+  })
+
+  /**
+   * The briefing states the per-lap facts; the skill the briefing names carries
+   * the procedure for them. Pinned together because a briefing that points at a
+   * rule the skill dropped is a session told to do something with no method.
+   */
+  it('the revisit skill carries the procedure for both rules', () => {
+    const skill = readFileSync(
+      join(resolvePluginDir(), 'skills', 'revisit', 'SKILL.md'),
+      'utf8',
+    )
+
+    expect(skill).toContain('reviewEvidence')
+    expect(skill).toContain('walkthrough.webm')
+    expect(skill).toContain('not demonstrable')
+    expect(skill).toContain('do not demo')
+    expect(skill).toContain('### Stand on the failure')
+    expect(skill).toMatch(/Unreproduced/)
   })
 })
 
