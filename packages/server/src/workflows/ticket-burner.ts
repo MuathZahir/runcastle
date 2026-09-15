@@ -1895,15 +1895,30 @@ const BASH_PATTERNS: ReadonlyArray<readonly [ToolCategory, RegExp]> = [
   ['file-edit', /<<\s*['"]?(PY|EOF|SH|JS|TS)\b|\bpython3?\s+-\s*<</],
 ]
 
-/** Non-Bash Claude Code tools, mapped to the same vocabulary. */
-const TOOL_NAME_CATEGORY: Readonly<Record<string, ToolCategory>> = {
-  Read: 'file-read',
-  NotebookRead: 'file-read',
-  Grep: 'search',
-  Glob: 'search',
-  Edit: 'file-edit',
-  Write: 'file-edit',
-  NotebookEdit: 'file-edit',
+/** Runtime-native tools, mapped to the same vocabulary. */
+const TOOL_NAME_CATEGORY: Readonly<Record<AgentRuntime, Readonly<Record<string, ToolCategory>>>> = {
+  'claude-code': {
+    Read: 'file-read',
+    NotebookRead: 'file-read',
+    Grep: 'search',
+    Glob: 'search',
+    Edit: 'file-edit',
+    Write: 'file-edit',
+    NotebookEdit: 'file-edit',
+  },
+  codex: {
+    apply_patch: 'file-edit',
+  },
+}
+
+/**
+ * Sandcastle 0.12.0 normalises Codex `command_execution` items to `Bash`.
+ * Keep this runtime-scoped: a provider's display name is part of its stream
+ * adapter, not a universal tool protocol.
+ */
+const SHELL_TOOL_NAMES: Readonly<Record<AgentRuntime, ReadonlySet<string>>> = {
+  'claude-code': new Set(['Bash']),
+  codex: new Set(['Bash']),
 }
 
 /**
@@ -1936,10 +1951,10 @@ export function normalizeCommandForClassification(command: string): string {
  * agents chain aggressively (`pnpm test > log 2>&1; grep -E ... log`), and the
  * suite is what that line costs, not the grep.
  */
-export function classifyToolCall(name: string, args: string): ToolCategory {
-  const byName = TOOL_NAME_CATEGORY[name]
+export function classifyToolCall(runtime: AgentRuntime, name: string, args: string): ToolCategory {
+  const byName = TOOL_NAME_CATEGORY[runtime][name]
   if (byName) return byName
-  if (name !== 'Bash') return 'other'
+  if (!SHELL_TOOL_NAMES[runtime].has(name)) return 'other'
   const normalized = normalizeCommandForClassification(args)
   for (const [category, pattern] of BASH_PATTERNS) {
     if (pattern.test(normalized)) return category
@@ -1983,7 +1998,7 @@ const MAX_ATTRIBUTABLE_GAP_MS = 20 * 60_000
  * opens the same span for the FIRST container of a `run()`, which has no
  * previous event to measure from.
  */
-export function createToolTimer(): {
+export function createToolTimer(runtime: AgentRuntime): {
   onEvent(event: AgentStreamEvent): void
   /**
    * Mark the start of a container's setup — call it immediately before each
@@ -2022,7 +2037,7 @@ export function createToolTimer(): {
     }
 
     if (event.type === 'toolCall') {
-      const category = classifyToolCall(event.name, event.formattedArgs ?? '')
+      const category = classifyToolCall(runtime, event.name, event.formattedArgs ?? '')
       const slot = (byCategory[category] ??= { calls: 0, ms: 0 })
       slot.calls += 1
       calls += 1
@@ -4124,7 +4139,7 @@ async function burnTicket(
   // went was to reconstruct it forensically from captured sessions. The
   // sandcastle stream already carries a timestamp on every event; this just
   // stops throwing it away.
-  const timer = createToolTimer()
+  const timer = createToolTimer(model.runtime)
 
   // Fourth consumer, slot mode only: the setup hook's own marker line. Sandcastle
   // discards a sandbox hook's stdout, so the script leaves the line in the

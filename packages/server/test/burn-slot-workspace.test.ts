@@ -572,7 +572,7 @@ describe('setup telemetry (decision 9)', () => {
   })
 
   it('charges the container rebuild between iterations to `setup`, not to the agent', () => {
-    const timer = createToolTimer()
+    const timer = createToolTimer('claude-code')
     const at = (ms: number) => new Date(1_700_000_000_000 + ms)
     timer.beginSetup(1_700_000_000_000)
     // 30s of container build + setup hook before the agent says anything.
@@ -599,7 +599,7 @@ describe('setup telemetry (decision 9)', () => {
   })
 
   it('leaves a single-iteration burn charged exactly as before, plus its setup', () => {
-    const timer = createToolTimer()
+    const timer = createToolTimer('claude-code')
     const at = (ms: number) => new Date(1_700_000_000_000 + ms)
     timer.beginSetup(1_700_000_000_000)
     timer.onEvent({ type: 'text', message: 'hi', iteration: 1, timestamp: at(1_000) })

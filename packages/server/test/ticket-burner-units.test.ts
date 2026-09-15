@@ -1250,14 +1250,47 @@ describe('selectSandbox — provider for the configured sandbox', () => {
 })
 
 describe('classifyToolCall — where a burn spends its wall-clock', () => {
-  const bash = (cmd: string) => classifyToolCall('Bash', cmd)
+  const bash = (cmd: string) => classifyToolCall('claude-code', 'Bash', cmd)
 
   it('maps the non-Bash file tools by name', () => {
-    expect(classifyToolCall('Read', 'src/a.ts')).toBe('file-read')
-    expect(classifyToolCall('Grep', 'pattern')).toBe('search')
-    expect(classifyToolCall('Edit', 'src/a.ts')).toBe('file-edit')
-    expect(classifyToolCall('Write', 'src/a.ts')).toBe('file-edit')
-    expect(classifyToolCall('Task', 'explore')).toBe('other')
+    expect(classifyToolCall('claude-code', 'Read', 'src/a.ts')).toBe('file-read')
+    expect(classifyToolCall('claude-code', 'Grep', 'pattern')).toBe('search')
+    expect(classifyToolCall('claude-code', 'Edit', 'src/a.ts')).toBe('file-edit')
+    expect(classifyToolCall('claude-code', 'Write', 'src/a.ts')).toBe('file-edit')
+    expect(classifyToolCall('claude-code', 'Task', 'explore')).toBe('other')
+  })
+
+  it('classifies a Codex-shaped tool sequence by its runtime', () => {
+    const t = createToolTimer('codex')
+    t.onEvent({
+      type: 'toolCall',
+      name: 'Bash',
+      formattedArgs: 'bun run test',
+      iteration: 1,
+      timestamp: new Date(0),
+    })
+    t.onEvent({
+      type: 'toolCall',
+      name: 'Bash',
+      formattedArgs: 'bun run typecheck',
+      iteration: 1,
+      timestamp: new Date(1_000),
+    })
+    t.onEvent({
+      type: 'toolCall',
+      name: 'apply_patch',
+      formattedArgs: '*** Begin Patch',
+      iteration: 1,
+      timestamp: new Date(2_000),
+    })
+    t.onEvent({ type: 'text', message: 'done', iteration: 1, timestamp: new Date(3_000) })
+
+    expect(t.summary().byCategory).toMatchObject({
+      tests: { calls: 1 },
+      typecheck: { calls: 1 },
+      'file-edit': { calls: 1 },
+    })
+    expect(t.summary().byCategory.other).toBeUndefined()
   })
 
   it('charges a chained command to its dominant cost, not its first word', () => {
@@ -1320,7 +1353,7 @@ describe('createToolTimer — category shares from the sandcastle stream', () =>
     ({ type: 'text', message: 'thinking', iteration, timestamp: at(ms) }) as const
 
   it('charges each gap to the event that opened it', () => {
-    const t = createToolTimer()
+    const t = createToolTimer('claude-code')
     t.onEvent(tool('Bash', 'pnpm test', 0)) // 10s of tests
     t.onEvent(text(10_000)) //  2s of model
     t.onEvent(tool('Bash', 'cat a.ts', 12_000)) //  1s of file-read
@@ -1334,7 +1367,7 @@ describe('createToolTimer — category shares from the sandcastle stream', () =>
   })
 
   it('drops the gap across an iteration boundary — that is a container rebuild', () => {
-    const t = createToolTimer()
+    const t = createToolTimer('claude-code')
     t.onEvent(tool('Bash', 'pnpm test', 0, 1))
     t.onEvent(tool('Bash', 'git log', 500_000, 2)) // new container, not 8min of tests
     expect(t.summary().byCategory.tests?.ms).toBe(0) // the call is counted, its 8min gap is not
@@ -1342,14 +1375,14 @@ describe('createToolTimer — category shares from the sandcastle stream', () =>
   })
 
   it('drops an implausibly long single gap rather than letting a stall swamp the shares', () => {
-    const t = createToolTimer()
+    const t = createToolTimer('claude-code')
     t.onEvent(tool('Bash', 'pnpm test', 0))
     t.onEvent(text(45 * 60_000))
     expect(t.summary().totalMs).toBe(0)
   })
 
   it('ignores raw lines and counts calls even when no time is attributable', () => {
-    const t = createToolTimer()
+    const t = createToolTimer('claude-code')
     t.onEvent({ type: 'raw', line: 'noise', iteration: 1, timestamp: at(0) })
     t.onEvent(tool('Bash', 'pnpm test', 0))
     const s = t.summary()
@@ -1358,7 +1391,7 @@ describe('createToolTimer — category shares from the sandcastle stream', () =>
   })
 
   it('formats a share digest ordered by cost', () => {
-    const t = createToolTimer()
+    const t = createToolTimer('claude-code')
     t.onEvent(tool('Bash', 'pnpm test', 0))
     t.onEvent(tool('Bash', 'cat a.ts', 60_000))
     t.onEvent(text(80_000))
