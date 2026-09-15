@@ -148,9 +148,8 @@ export interface MarkLiveInput {
  * Going live is the moment a session becomes RESUMABLE, so this is also where a
  * waypoint claim's `lastSessionId` is promoted (never at claim time — a resume
  * attempt that dies before this point must not clobber the previous good id).
- * Every session kind additionally gets its kickoff line injected into the PTY:
- * each kind has a defined opening move, so none should idle at the prompt waiting
- * for the human to type "Hi".
+ * Nothing is delivered here: a fresh session was opened with its kickoff already
+ * in the CLI's argv, and a resumed one is picking a conversation back up.
  */
 export function markSessionLive(
   ctx: AppCtx,
@@ -174,52 +173,12 @@ export function markSessionLive(
 }
 
 /**
- * Kickoff (every session kind). The session-start hook fires while the claude
- * TUI is still mounting, so writing immediately can race the input handler; a
- * short fixed delay after `live` is the pragmatic point where the prompt is
- * interactive (any trust/permission dialog blocks startup BEFORE the SessionStart
- * hook, so it cannot swallow this input). Best-effort by design: no PTY entry
- * (spawn:false smoke / tests) or an exited PTY is a silent no-op, and the worst
- * failure mode is the line sitting unsubmitted in the input box.
- *
- * Submission is a SEPARATE `\r` keystroke, written a beat after the text
- * (E2E regression: text+`\r` in ONE write left the line sitting unsubmitted in
- * the input box — claude's TUI treats a carriage return arriving in the same
- * chunk as pasted text, not as the Enter key; it must land as its own
- * keystroke after the text has settled).
- */
-export const KICKOFF_DELAY_MS = 1500
-export const KICKOFF_SUBMIT_DELAY_MS = 350
-
-/**
- * How long a written kickoff has to come back as a real `UserPromptSubmit` hook
- * before we assume the keystrokes were swallowed and type it again, and how many
- * times we are willing to type it in total.
- *
- * Writing into a PTY is fire-and-forget: whatever is on screen eats the text.
- * Claude Code can be showing a startup dialog when our timer fires — the
- * "resume from a summary?" chooser on `--resume`, a trust prompt, an update
- * notice — and then the briefing is simply gone, with the terminal looking
- * perfectly healthy. Confirmation closes that loop: the ONLY proof a kickoff
- * landed is Claude telling us it received the prompt.
- */
-export const KICKOFF_CONFIRM_MS = 12_000
-export const KICKOFF_MAX_ATTEMPTS = 3
-
-/**
- * `Ctrl-U` (kill-line), written before every retry. If the first attempt did
- * reach the input box but never submitted, re-typing on top of it would produce
- * one garbled double-length prompt; clearing first makes a retry idempotent.
- */
-export const CLEAR_INPUT = '\x15'
-
-/**
  * How long after spawning a terminal we wait for `SessionStart` before telling
  * the human something is wrong. The hook fires within a second or two of a
  * healthy launch, so silence past this means the session is blocked on
  * something only they can see (a dialog waiting for an answer, a login prompt),
- * or the hook itself is broken. Either way the kickoff cannot be delivered
- * blind — we surface it and offer the manual Send.
+ * or the hook itself is broken. Either way the agent inside has not started on
+ * the briefing it was launched with, so we say so.
  */
 export const SESSION_READY_TIMEOUT_MS = 25_000
 
@@ -373,13 +332,10 @@ export function planKickoff(input: {
 }
 
 /**
- * Pending per-session kickoff overrides, keyed by session id. `launchSession`
- * stashes the resolved fresh-launch line before spawning. Ticket 2 removes the
- * remaining legacy resend machinery that reads this record.
- *
- * An entry OUTLIVES its consumption — it is the durable record of what this
- * terminal was opened to say, which `resendKickoff` needs verbatim (F6) — and is
- * dropped when the session ends, so the map never grows unbounded.
+ * Per-session kickoff overrides, keyed by session id: the record of what this
+ * terminal was opened to say. `launchSession` stashes the resolved fresh-launch
+ * line before spawning, and the entry is dropped when the session ends, so the
+ * map never grows unbounded.
  */
 const pendingKickoffOverrides = new Map<string, string>()
 
@@ -388,309 +344,36 @@ export function setKickoffOverride(sessionId: string, line: string): void {
   pendingKickoffOverrides.set(sessionId, line)
 }
 
-/**
- * The two-write kickoff sequence (exported seam, unit-tested): write the prompt
- * TEXT alone, then — after `submitDelayMs` — write `\r` as its own keystroke.
- * `alive()` is consulted before each write so a PTY that exits between the two
- * never gets a stray carriage return; `onSubmitted` fires only after the `\r`
- * actually went out (the launcher emits `session.kickoff` there — the event
- * means "submitted", not "typed").
- */
-export function writeKickoffSequence(
-  line: string,
-  io: {
-    write: (data: string) => void
-    alive: () => boolean
-    onSubmitted?: () => void
-  },
-  submitDelayMs: number = KICKOFF_SUBMIT_DELAY_MS,
-): void {
-  if (!io.alive()) return
-  io.write(line)
-  const submit = setTimeout(() => {
-    try {
-      if (!io.alive()) return
-      io.write('\r')
-      io.onSubmitted?.()
-    } catch {
-      // best-effort — a PTY that died between the two writes just misses Enter
-    }
-  }, submitDelayMs)
-  // Never hold the process open for a kickoff (tests, shutdown).
-  submit.unref?.()
-}
-
-/**
- * In-flight kickoff delivery for one session. Held in memory only: the PTY it
- * types into dies with the process, so a delivery cannot outlive the server that
- * owns it. The `line` is kept after the delivery settles so "Send briefing"
- * (`resendKickoff`) can re-type the exact same text on demand.
- */
-interface KickoffDelivery {
-  line: string
-  attempts: number
-  confirmed: boolean
-  /**
-   * We have typed the briefing into the PTY at least once. Until then no
-   * submitted prompt can be a reaction to it — see {@link noteKickoffPrompt}.
-   */
-  written: boolean
-  /** No further automatic attempts: confirmed, superseded, or out of attempts. */
-  settled: boolean
-  timers: Set<ReturnType<typeof setTimeout>>
-}
-
-const deliveries = new Map<string, KickoffDelivery>()
-
-/** Public view of a session's kickoff delivery (tRPC/tests); null when unknown. */
-export function kickoffDeliveryFor(
-  sessionId: string,
-): { line: string; attempts: number; confirmed: boolean; settled: boolean } | null {
-  const d = deliveries.get(sessionId)
-  return d ? { line: d.line, attempts: d.attempts, confirmed: d.confirmed, settled: d.settled } : null
-}
-
-function stopTimers(d: KickoffDelivery): void {
-  for (const t of d.timers) clearTimeout(t)
-  d.timers.clear()
-}
-
-/** Drop all kickoff state for a session (session end — the PTY is gone). */
+/** Drop a session's kickoff override (session end — nothing will read it now). */
 export function forgetKickoff(sessionId: string): void {
-  const d = deliveries.get(sessionId)
-  if (d) stopTimers(d)
-  deliveries.delete(sessionId)
   pendingKickoffOverrides.delete(sessionId)
 }
 
-function ptyIo(sessionId: string): { write: (data: string) => void; alive: () => boolean } {
-  return {
-    write: (data) => ptyRegistry().get(sessionId)?.pty.write(data),
-    alive: () => {
-      const entry = ptyRegistry().get(sessionId)
-      return !!entry && !entry.exited
-    },
-  }
-}
-
-function track(d: KickoffDelivery, timer: ReturnType<typeof setTimeout>): void {
-  // Never hold the process open for a kickoff (tests, shutdown).
-  timer.unref?.()
-  d.timers.add(timer)
+/** Is this session's terminal still running? False once it has exited or gone. */
+function ptyAlive(sessionId: string): boolean {
+  const entry = ptyRegistry().get(sessionId)
+  return !!entry && !entry.exited
 }
 
 /**
- * Type the kickoff line into the PTY after `delayMs`, then wait for Claude Code
- * to confirm it via the `UserPromptSubmit` hook (`noteKickoffPrompt`). No
- * confirmation inside {@link KICKOFF_CONFIRM_MS} means the keystrokes went
- * somewhere else — a startup dialog, a TUI that was not accepting input yet — so
- * we clear the input line and type it again, up to {@link KICKOFF_MAX_ATTEMPTS}.
- * The last failure is announced (`session.kickoff_undelivered`) rather than
- * swallowed: an undelivered briefing is exactly the state that used to look like
- * a working terminal that inexplicably did nothing.
- */
-function attemptKickoff(
-  ctx: AppCtx,
-  session: SessionRow,
-  d: KickoffDelivery,
-  delayMs: number,
-  clearFirst = false,
-): void {
-  track(
-    d,
-    setTimeout(() => {
-      if (d.settled) return
-      const io = ptyIo(session.id)
-      // No PTY (spawn:false smoke, or the terminal already exited) — nothing to
-      // deliver into and nothing to report; the exit path owns that story.
-      if (!io.alive()) {
-        d.settled = true
-        return
-      }
-      d.attempts += 1
-      d.written = true
-      const attempt = d.attempts
-      try {
-        // Anything but the very first automatic write may be landing on top of a
-        // half-typed earlier attempt that never submitted; kill the line first so
-        // we never build one doubled prompt out of two good ones.
-        if (clearFirst) io.write(CLEAR_INPUT)
-        writeKickoffSequence(d.line, {
-          write: io.write,
-          alive: io.alive,
-          onSubmitted: () =>
-            emitForSession(ctx, session, {
-              type: 'session.kickoff',
-              message:
-                attempt === 1
-                  ? `${session.kind} session kicked off automatically`
-                  : `${session.kind} kickoff re-sent (attempt ${attempt}) — the first was never acknowledged`,
-              data: { sessionId: session.id, kind: session.kind, attempt },
-            }),
-        })
-      } catch {
-        // best-effort — a failed write still gets a confirmation window below
-      }
-      armConfirmation(ctx, session, d)
-    }, delayMs),
-  )
-}
-
-function armConfirmation(ctx: AppCtx, session: SessionRow, d: KickoffDelivery): void {
-  track(
-    d,
-    setTimeout(() => {
-      if (d.settled || d.confirmed) return
-      if (d.attempts < KICKOFF_MAX_ATTEMPTS && ptyIo(session.id).alive()) {
-        attemptKickoff(ctx, session, d, 0, true)
-        return
-      }
-      settleUndelivered(ctx, session, d, 'unacknowledged')
-    }, KICKOFF_CONFIRM_MS),
-  )
-}
-
-function settleUndelivered(
-  ctx: AppCtx,
-  session: SessionRow,
-  d: KickoffDelivery,
-  reason: 'unacknowledged' | 'superseded',
-): void {
-  d.settled = true
-  stopTimers(d)
-  emitForSession(ctx, session, {
-    type: 'session.kickoff_undelivered',
-    message:
-      reason === 'superseded'
-        ? `the ${session.kind} briefing was never delivered — you typed first, so runcastle stopped injecting it`
-        : `the ${session.kind} briefing was typed ${d.attempts}× but Claude Code never acknowledged it — send it again from the session strip`,
-    data: { sessionId: session.id, kind: session.kind, reason, attempts: d.attempts, line: d.line },
-  })
-}
-
-/**
- * A prompt was submitted in this session (`UserPromptSubmit` hook). If it is our
- * kickoff, the delivery is confirmed and retries stop. If it is anything else,
- * the human is already driving — stop injecting (typing into a conversation
- * mid-thought is worse than not briefing at all) and record the briefing as
- * undelivered so the UI can offer it as a one-click send.
- *
- * "Anything else" only counts once we have actually typed (`written`). A prompt
- * that arrives BEFORE our first write cannot be a human reacting to the briefing
- * — it is the session's own opening traffic (a resumed conversation replaying,
- * a queued prompt) — and treating it as "the human typed first" is how the
- * retry budget used to destroy itself: the briefing was swallowed by a startup
- * dialog, and attempts 2 and 3 were cancelled before the first even landed (F2).
- */
-export function noteKickoffPrompt(ctx: AppCtx, sessionId: string, prompt?: string): void {
-  const d = deliveries.get(sessionId)
-  if (!d || d.confirmed) return
-  const session = getSessionRow(ctx, sessionId)
-  if (!session) return
-  if (!d.written) return
-  if (promptMatchesKickoff(d.line, prompt)) {
-    d.confirmed = true
-    d.settled = true
-    stopTimers(d)
-    return
-  }
-  if (d.settled) return
-  settleUndelivered(ctx, session, d, 'superseded')
-}
-
-/**
- * Does a submitted prompt look like our kickoff line? Compared on collapsed
- * whitespace over the first {@link MATCH_PREFIX} characters: the TUI can wrap,
- * re-flow or trim what it echoes, and a startup dialog can eat a leading
- * fragment, so an exact equality check would report false failures and re-inject
- * a briefing the agent is already working on.
- */
-const MATCH_PREFIX = 40
-export function promptMatchesKickoff(line: string, prompt?: string): boolean {
-  if (!prompt) return false
-  const norm = (s: string): string => s.replace(/\s+/g, ' ').trim().toLowerCase()
-  const want = norm(line)
-  const got = norm(prompt)
-  if (!want || !got) return false
-  return got.includes(want.slice(0, MATCH_PREFIX))
-}
-
-/**
- * Re-send a session's kickoff line on demand (the "Send briefing" escape hatch).
- * Resets the retry budget, so a human who has just dismissed whatever dialog ate
- * the first attempt gets the same automatic confirm-and-retry behaviour.
- */
-export function resendKickoff(ctx: AppCtx, sessionId: string): { line: string } {
-  const session = getSessionRow(ctx, sessionId)
-  if (!session) throw new Error(`unknown session ${sessionId}`)
-  if (session.status === 'ended') throw new Error('that session has ended — open a new terminal')
-  if (!ptyIo(sessionId).alive()) throw new Error('the terminal for that session is no longer running')
-
-  const existing = deliveries.get(sessionId)
-  const d: KickoffDelivery = existing ?? {
-    // No delivery record yet (the session has not gone live, so the kickoff was
-    // never scheduled). The override outlives its consumption precisely for this
-    // moment: without it, "Send briefing" on a lap terminal silently downgraded
-    // the lap briefing to the generic per-kind line (F6).
-    line: kickoffLineFor(session.kind, pendingKickoffOverrides.get(sessionId), session.runtime),
-    attempts: 0,
-    confirmed: false,
-    written: false,
-    settled: false,
-    timers: new Set(),
-  }
-  stopTimers(d)
-  d.attempts = 0
-  d.confirmed = false
-  d.settled = false
-  deliveries.set(sessionId, d)
-  // Always clear first: a manual send is the human's answer to a terminal that
-  // may well have a stray fragment of the swallowed attempt sitting in its box.
-  attemptKickoff(ctx, session, d, 0, true)
-  return { line: d.line }
-}
-
-/**
- * Watchdog armed when a terminal spawns: if Claude Code has not reported
+ * Watchdog armed when a terminal spawns: if the agent has not reported
  * `SessionStart` by {@link SESSION_READY_TIMEOUT_MS}, the session is stuck on
- * something only the human can see (the `--resume` "start from a summary?"
- * chooser, a trust prompt, a login). We deliberately do NOT type into it blind —
- * answering an unseen dialog with a paragraph of prompt text is how briefings got
- * eaten in the first place, and a stray Enter could accept a permission
- * question. We say so instead, and the UI offers Send briefing once the human
- * has cleared whatever is on screen.
+ * something only the human can see (a trust prompt, a login, an update notice),
+ * and the briefing it was launched with is sitting behind that. We say so rather
+ * than touching the terminal: whatever is on screen is a question for them.
  */
 export function armSessionReadyWatchdog(ctx: AppCtx, session: SessionRow): void {
   const timer = setTimeout(() => {
     const row = getSessionRow(ctx, session.id)
     if (!row || row.status !== 'launching') return
-    if (!ptyIo(session.id).alive()) return
+    if (!ptyAlive(session.id)) return
     emitForSession(ctx, session, {
       type: 'session.not_ready',
-      message: `the ${session.kind} terminal is open but Claude Code has not reported ready — check it for a prompt or dialog waiting on you, then send the briefing`,
+      message: `the ${session.kind} terminal is open but the agent has not reported ready — check it for a prompt or dialog waiting on you`,
       data: { sessionId: session.id, kind: session.kind },
     })
   }, SESSION_READY_TIMEOUT_MS)
   timer.unref?.()
-}
-
-function scheduleKickoff(ctx: AppCtx, session: SessionRow): void {
-  // The override is NOT dropped here. It is the only record of what this
-  // terminal was opened to say, and `resendKickoff` needs it verbatim long
-  // after go-live; `forgetKickoff` clears it when the session ends (F6).
-  const line = kickoffLineFor(session.kind, pendingKickoffOverrides.get(session.id), session.runtime)
-  const existing = deliveries.get(session.id)
-  if (existing) stopTimers(existing)
-  const d: KickoffDelivery = {
-    line,
-    attempts: 0,
-    confirmed: false,
-    written: false,
-    settled: false,
-    timers: new Set(),
-  }
-  deliveries.set(session.id, d)
-  attemptKickoff(ctx, session, d, KICKOFF_DELAY_MS)
 }
 
 /**
@@ -827,8 +510,8 @@ export function reportProjectLanding(
 export function markSessionEnded(ctx: AppCtx, id: string): SessionRow | null {
   const existing = getSessionRow(ctx, id)
   if (!existing) return null
-  // Drop any un-consumed override and stop an in-flight delivery: the PTY it
-  // types into is gone, and a pending retry must never outlive its session.
+  // Drop the kickoff override: the terminal it was opened for is gone, and a
+  // stale entry must never outlive its session.
   forgetKickoff(id)
   // Same reasoning for the docs watcher, and one reason more: on Windows a live
   // watcher holds a lock on the directory, which would block the worktree

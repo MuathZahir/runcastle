@@ -9,7 +9,6 @@ import {
   markAwaitingInput,
   markSessionEnded,
   markSessionLive,
-  noteKickoffPrompt,
 } from '../launcher/sessions'
 import { emit, emitForSession } from '../services/events'
 import { isAncestor, mergeInProgressAt } from '../services/git'
@@ -71,16 +70,16 @@ hooks.post('/:event', async (c) => {
 
     // Project-scoped sessions (`prepare` and `project` — see
     // PROJECT_SESSION_KINDS) have no feature. They still need the full
-    // lifecycle — `markSessionLive` is what flips the row live and lets the
-    // kickoff be typed, so returning early here would leave the terminal open
-    // and permanently silent — but none of the feature briefing applies, and
-    // what they are told instead differs per kind.
+    // lifecycle — `markSessionLive` is what flips the row live and records the
+    // id a later resume needs, so returning early here would strand the
+    // conversation — but none of the feature briefing applies, and what they are
+    // told instead differs per kind.
     if (!session.featureId) {
       switch (event) {
         case 'session-start':
           return c.json(handleProjectScopedSessionStart(ctx, session, body.payload))
         case 'user-prompt':
-          return c.json(handleProjectScopedUserPrompt(ctx, session, body.payload))
+          return c.json(handleProjectScopedUserPrompt(session))
         case 'session-end':
           return c.json(handleProjectScopedSessionEnd(ctx, session))
         case 'pre-tool':
@@ -97,7 +96,7 @@ hooks.post('/:event', async (c) => {
       case 'session-start':
         return c.json(handleSessionStart(ctx, sessionId, feature, body.payload))
       case 'user-prompt':
-        return c.json(handleUserPrompt(ctx, sessionId, feature, body.payload))
+        return c.json(handleUserPrompt(ctx, feature))
       case 'session-end':
         return c.json(await handleSessionEnd(ctx, session, feature))
       case 'pre-tool':
@@ -186,13 +185,7 @@ function handleProjectScopedSessionStart(
   }
 }
 
-function handleProjectScopedUserPrompt(
-  ctx: AppCtx,
-  session: SessionRow,
-  payload: Record<string, unknown> | undefined,
-): unknown {
-  const prompt = typeof payload?.prompt === 'string' ? payload.prompt : undefined
-  noteKickoffPrompt(ctx, session.id, prompt)
+function handleProjectScopedUserPrompt(session: SessionRow): unknown {
   return {
     hookSpecificOutput: {
       hookEventName: 'UserPromptSubmit',
@@ -265,19 +258,11 @@ function projectScopedStartContext(ctx: AppCtx, session: SessionRow): string {
 }
 
 /**
- * `UserPromptSubmit` — the only proof a prompt actually reached Claude Code, so
- * it doubles as the kickoff delivery receipt (`noteKickoffPrompt`): our injected
- * briefing coming back here confirms it landed, and anything else means the
- * human typed first.
+ * `UserPromptSubmit` for a feature session: every turn is handed the feature's
+ * current shape as context. The turn-state bit is flipped by the caller, for
+ * every scope at once.
  */
-function handleUserPrompt(
-  ctx: AppCtx,
-  sessionId: string,
-  feature: Feature,
-  payload: Record<string, unknown> | undefined,
-): unknown {
-  const prompt = typeof payload?.prompt === 'string' ? payload.prompt : undefined
-  noteKickoffPrompt(ctx, sessionId, prompt)
+function handleUserPrompt(ctx: AppCtx, feature: Feature): unknown {
   const tickets = listByFeature(ctx, feature.id).length
   return {
     hookSpecificOutput: {

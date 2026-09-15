@@ -13,8 +13,6 @@ import {
   activeProjectSession,
   activeSessionsForFeature,
   createSessionRow,
-  kickoffDeliveryFor,
-  markSessionLive,
   mostRecentResumableProjectSession,
   mostRecentResumableSession,
 } from '../src/launcher/sessions'
@@ -653,14 +651,11 @@ describe('launching a preparation, fresh or resumed', () => {
 
   it('does not send a kickoff to a resumed preparation', async () => {
     endedConversation('cc-prep-1')
-    const { sessionId } = await launchPrepareSession(
-      ctx,
-      { projectId: PROJECT_ID },
-      { spawn: false },
-    )
-    markSessionLive(ctx, sessionId, { ccSessionId: 'cc-prep-2' })
 
-    expect(kickoffDeliveryFor(sessionId)).toBeNull()
+    await launchPrepareSession(ctx, { projectId: PROJECT_ID }, { spawn: false })
+
+    expect(launchCommand()).not.toContain('Proceed with your task')
+    expect(ctx.db.select().from(events).all().map((e) => e.type)).not.toContain('session.kickoff')
   })
 
   /**
