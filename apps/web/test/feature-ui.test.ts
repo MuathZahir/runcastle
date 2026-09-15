@@ -248,7 +248,7 @@ describe('nextStep at implementation with no tickets', () => {
   it('still offers the burn once there is a ticket to burn', () => {
     const withTicket = {
       ...buildFull(),
-      tickets: [{ id: 't1', status: 'pending' }],
+      tickets: [{ id: 't1', seq: 1, status: 'pending', goal: 'Burn it.', context: 'Somewhere.' }],
     } as unknown as FeatureFull
     expect(nextStep(withTicket, { driving: false }).primary).toEqual({
       label: 'Burn 1 ticket',
@@ -2242,16 +2242,37 @@ describe('draft derivations', () => {
  * burn that never started. A run that died still resumes.
  */
 describe('nextStep at implementation', () => {
+  /**
+   * A ticket a coder could actually burn: a context thick enough, and different
+   * enough from the goal, that the shape warnings have nothing to say about it
+   * (they have their own cases at the bottom of this describe).
+   */
+  const BURNABLE_CONTEXT =
+    'The bar lives in apps/web/src/lib/feature-ui/next-step/implementation.ts and the ledger ' +
+    'beneath it in components/bodies/tickets. Follow the resolver that is already there rather ' +
+    'than adding a second one, and pin the copy in apps/web/test/feature-ui.test.ts as the ' +
+    'neighbouring cases do. The warnings themselves belong to core, beside the rules, so the ' +
+    'card and the door that stores the tickets cannot word the same problem two ways.'
+
   const buildFull = (opts: {
     runs?: { id: string; status: string; startedAt: number }[]
     ticketStatuses?: TicketStatus[]
     sessionLive?: boolean
+    /** Per-ticket goal/context, for the shape cases; burnable by default. */
+    shapes?: { goal: string; context: string }[]
   }): FeatureFull =>
     ({
       feature: { id: 'f1', phase: 'implementation', mapped: false, lap: 1, status: 'active' },
-      tickets: (opts.ticketStatuses ?? ['pending']).map((status, i) => ({
+      tickets: (
+        opts.ticketStatuses ??
+        opts.shapes?.map(() => 'pending' as const) ?? ['pending']
+      ).map((status, i) => ({
         id: `t${i}`,
+        seq: i + 1,
         status,
+        goal: 'Put the shape warnings on the burn card.',
+        context: BURNABLE_CONTEXT,
+        ...(opts.shapes?.[i] ?? {}),
         lap: 1,
         commits: [],
       })),
@@ -2378,6 +2399,66 @@ describe('nextStep at implementation', () => {
       burnStats: { medianMs: 132_000, sampleSize: 9 },
     })
     expect(ns.desc).not.toContain('have been taking')
+  })
+
+  /**
+   * The shape of what is about to burn, on the card where the human decides
+   * (core's `ticket-shape.ts`). A 14-ticket quick change reached a burn with
+   * every ticket's goal, context and sole criterion being one pasted sentence;
+   * the card said nothing, and the coders had nothing to read. It warns now —
+   * and only warns: Burn is the primary action in every case below.
+   */
+  const degenerate = (n: number) =>
+    Array.from({ length: n }, (_, i) => ({
+      goal: `Change number ${i + 1} to something else.`,
+      context: `Change number ${i + 1} to something else.`,
+    }))
+
+  it('keeps quiet about a batch a coder can read', () => {
+    expect(nextStep(buildFull({}), { driving: false }).note).toBeUndefined()
+  })
+
+  it('names the ticket and what to fix when a context is only its goal again', () => {
+    const ns = nextStep(buildFull({ shapes: degenerate(1) }), { driving: false })
+    expect(ns.note).toContain('#1 repeats its goal as its context')
+    expect(ns.note).toContain('what it must not break')
+    // Never a refusal: the button is the same button.
+    expect(ns.primary).toEqual({ label: 'Burn 1 ticket', kind: 'burn' })
+  })
+
+  it('names a thin context with its length', () => {
+    const ns = nextStep(buildFull({ shapes: [{ goal: 'Darken the empty state.', context: 'It washes out.' }] }), {
+      driving: false,
+    })
+    expect(ns.note).toContain('#1 has a 14-character context')
+    expect(ns.primary?.kind).toBe('burn')
+  })
+
+  it('calls a batch too big for the quick door what it is, and still offers the burn', () => {
+    const ns = nextStep(buildFull({ shapes: degenerate(6) }), { driving: false })
+    expect(ns.note).toContain('6 tickets (#1, #2, #3, #4, #5, #6) carry their goal as their context')
+    expect(ns.note).toContain('cut the batch to 5 tickets or fewer')
+    // Spelled out three deep, then counted — the bar has one line.
+    expect(ns.note).toContain('(+4 more like this.)')
+    expect(ns.primary).toEqual({ label: 'Burn 6 tickets', kind: 'burn' })
+  })
+
+  it('says it again on the resume road into the same burn', () => {
+    const ns = nextStep(
+      buildFull({ shapes: degenerate(1), runs: [{ id: 'r1', status: 'failed', startedAt: 1 }] }),
+      { driving: false },
+    )
+    expect(ns.note).toContain('#1 repeats its goal as its context')
+    expect(ns.primary).toEqual({ label: 'Resume burn', kind: 'burn' })
+  })
+
+  it('reads only the tickets that are about to burn, not the ones already done', () => {
+    const ns = nextStep(
+      buildFull({ shapes: degenerate(2), ticketStatuses: ['done', 'pending'] }),
+      { driving: false },
+    )
+    expect(ns.note).toContain('#2 repeats its goal as its context')
+    expect(ns.note).not.toContain('#1')
   })
 })
 
