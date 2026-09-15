@@ -11,6 +11,7 @@ import { unverifiedDriveKeys } from '../lib/prep-findings'
 import type { DriveState } from '../lib/workspace'
 import {
   activeSession,
+  burnInterruption,
   defaultBaseBranch,
   deferredScope,
   effectivePhase,
@@ -448,6 +449,7 @@ export function Workspace({
     tickets: summaryOf('tickets'),
   })
   const run = latestRun(full.runs)
+  const interruptedBurn = burnInterruption(events, run?.id)
   // The beat is over the body only — the stepper and the bar tell the truth
   // about the phase throughout, and a human who is not on the run view (viewing
   // an earlier phase, or already past review) is never held.
@@ -470,6 +472,7 @@ export function Workspace({
     openNotes,
     openDefects,
     laterLaps,
+    interruptedBurn,
   })
   // The terminal the resolve compound has to close on its way in — one read, so
   // the bar's "End session & resolve" and the click that follows it can never be

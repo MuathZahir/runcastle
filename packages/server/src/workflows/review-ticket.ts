@@ -406,7 +406,7 @@ export async function executeReviewTicket(
   deps: ReviewDeps,
 ): Promise<TicketOutcome> {
   const startedAt = Date.now()
-  const timer = createToolTimer()
+  const timer = createToolTimer(deps.model.runtime)
   try {
     return await reviewTicketOutcome(ctx, ticket, deps, timer)
   } finally {

@@ -3,9 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { AppCtx } from '../src/db/types'
-import { KICKOFF_LINES } from '../src/launcher/runtimes/claude'
 import {
-  RESUME_KICKOFF_PREFIX,
   RESUME_MAX_REENTRIES,
   RESUME_MAX_TRANSCRIPT_BYTES,
   createSessionRow,
@@ -13,7 +11,6 @@ import {
   markSessionLive,
   reentryCount,
   resumeCapExceeded,
-  resumeKickoffLine,
   transcriptBytes,
 } from '../src/launcher/sessions'
 import { evaluateEditGuard, prototypesRel } from '../src/launcher/edit-guard'
@@ -24,41 +21,6 @@ import { seedFeature, seedProject } from './helpers/fixtures'
  * Three fixes that share one theme — a session being handed something about its
  * own past that is either false or ruinously expensive.
  */
-
-describe('resumeKickoffLine — quote the conversation that is coming back', () => {
-  /**
-   * A revisit resumes `mostRecentResumableSession` with NO kind filter, on
-   * purpose: "revisit" means "pick up the last thing we talked about", whatever
-   * kind that was. The framing quoted `KICKOFF_LINES[newKind]` regardless, so a
-   * revisit resuming an ideation conversation opened with "Your original
-   * instruction was: invoke the /runcastle:revisit skill" — which was never that
-   * conversation's instruction, with the real opening turn visible directly
-   * above in the restored transcript.
-   */
-  it('quotes the RESUMED row kind, not the new session kind', () => {
-    const line = resumeKickoffLine('revisit', 'ideation')
-    expect(line).toContain(KICKOFF_LINES.ideation)
-    expect(line).not.toContain(KICKOFF_LINES.revisit)
-    expect(line.startsWith(RESUME_KICKOFF_PREFIX)).toBe(true)
-  })
-
-  it('falls back to the new kind when the resumed row kind is unknown', () => {
-    expect(resumeKickoffLine('revisit')).toBe(RESUME_KICKOFF_PREFIX + KICKOFF_LINES.revisit)
-  })
-
-  /**
-   * It also stopped asserting a cause. "runcastle restarted and closed the
-   * terminal" is one of several ways a session ends and is flatly untrue of the
-   * commonest — the human clicking Revisit on a conversation that closed
-   * cleanly.
-   */
-  it('does not claim runcastle restarted', () => {
-    expect(RESUME_KICKOFF_PREFIX).not.toMatch(/runcastle restarted/i)
-    // it still says what DID happen, and asks for re-orientation rather than a restart
-    expect(RESUME_KICKOFF_PREFIX).toMatch(/terminal was closed/i)
-    expect(RESUME_KICKOFF_PREFIX).toMatch(/do not start over/i)
-  })
-})
 
 describe('the re-entry cap', () => {
   let dir: string

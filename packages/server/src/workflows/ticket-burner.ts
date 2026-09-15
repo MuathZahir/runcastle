@@ -76,6 +76,7 @@ import { GUARD_RULES, buildGuardInstallCommand } from './burn-guard'
 import type { BurnCacheEngine, SlotAllocator } from './burn-cache'
 import {
   BURN_CACHE_MOUNT,
+  burnCacheDirectories,
   BurnSlotsExhaustedError,
   burnCacheEnv,
   burnCacheVolumeName,
@@ -172,6 +173,7 @@ const NON_COMMAND_WORDS = new Set([
   'time',
   'sudo',
   'echo',
+  'alias',
   'true',
   'false',
 ])
@@ -202,6 +204,62 @@ export function extractCommandNames(command: string | undefined): string[] {
   return names
 }
 
+/** A package-manager argument reduced to the command name it installs/shims. */
+function providedPackageName(argument: string): string | undefined {
+  const unquoted = argument.replace(/^['"]|['"]$/g, '')
+  if (!unquoted || unquoted.startsWith('-')) return undefined
+  const withoutVersion = unquoted.startsWith('@')
+    ? unquoted.replace(/@[^@/]+$/, '')
+    : unquoted.split('@')[0]
+  const name = withoutVersion.split('/').at(-1) ?? ''
+  return PLAIN_COMMAND_NAME.test(name) ? name : undefined
+}
+
+/**
+ * Names that setup itself makes available. These cannot be required before the
+ * setup hook runs: probing them in the pristine image rejects the very setup
+ * command that would have provided them.
+ */
+export function setupProvidedCommandNames(command: string | undefined): string[] {
+  const provided = new Set<string>()
+  const source = command ?? ''
+
+  for (const segment of source.split(COMMAND_SEPARATORS)) {
+    const words = segment.replace(/[(){}'"`]/g, ' ').split(/\s+/).filter(Boolean)
+    const commandIndex = words.findIndex((word) => !ASSIGNMENT_PREFIX.test(word))
+    if (commandIndex < 0) continue
+    const [name, action, ...args] = words.slice(commandIndex)
+    const packages =
+      name === 'corepack' && (action === 'enable' || action === 'prepare')
+        ? args
+        : (name === 'npm' && (action === 'i' || action === 'install') && args.some((arg) => arg === '-g' || arg === '--global')) ||
+            (name === 'bun' && action === 'add' && args.some((arg) => arg === '-g' || arg === '--global'))
+          ? args
+          : []
+    for (const argument of packages) {
+      const packageName = providedPackageName(argument)
+      if (packageName) provided.add(packageName)
+    }
+  }
+
+  for (const match of source.matchAll(/\balias\s+([A-Za-z_][A-Za-z0-9_-]*)\s*=/g)) {
+    provided.add(match[1])
+  }
+  for (const match of source.matchAll(
+    /(?:^|[;&|]\s*)([A-Za-z_][A-Za-z0-9_-]*)\s*\(\s*\)\s*\{/g,
+  )) {
+    provided.add(match[1])
+  }
+  // Shell shims are commonly written or linked into a bin directory. The
+  // destination basename is the command setup provides; its source is not.
+  for (const match of source.matchAll(
+    /(?:>|\bln\s+(?:-[A-Za-z]+\s+)*\S+\s+)\s*["']?[^\s"']*[/\\]([A-Za-z0-9][A-Za-z0-9._+-]*)/g,
+  )) {
+    provided.add(match[1])
+  }
+  return [...provided]
+}
+
 /**
  * Every binary this run's containers must already carry: the agent CLI, the
  * setup hook's commands, and the ones the prompt tells the agent to verify with
@@ -214,11 +272,12 @@ export function preflightCommandNames(input: {
   setupCommand?: string
   verifyCommands?: string
 }): string[] {
+  const providedBySetup = new Set(setupProvidedCommandNames(input.setupCommand))
   return [
     ...new Set([
       input.agentBinary,
-      ...extractCommandNames(input.setupCommand),
-      ...extractCommandNames(input.verifyCommands),
+      ...extractCommandNames(input.setupCommand).filter((name) => !providedBySetup.has(name)),
+      ...extractCommandNames(input.verifyCommands).filter((name) => !providedBySetup.has(name)),
     ]),
   ].sort()
 }
@@ -1301,8 +1360,11 @@ export function resolveBurnWorkspaceMode(
  *    step 4 pushes the clone's commits back and `info/exclude` is not something
  *    a clone inherits.
  * 4. Install a `post-commit` hook in the clone that, on every commit, pushes
- *    `HEAD:<tempBranch>` back to the workspace — and stops there. Syncing needs
- *    no agent discipline at all, and the cost is one pack write; the hook does
+ *    `HEAD:<tempBranch>` back to the workspace with `--force-with-lease` — and
+ *    stops there. Each attempt branch is private to one ticket (ADR-0002), so
+ *    this safely permits an agent to amend its own commits while still refusing
+ *    to overwrite an unexpected concurrent update. Syncing needs no agent
+ *    discipline at all, and the cost is one pack write; the hook does
  *    NOT reset the mounted checkout, because nothing reads that working tree
  *    (commit collection, later iterations and landing all go through the ref)
  *    and the reset stats every tracked file across the bind mount, at 15–90s a
@@ -1392,7 +1454,7 @@ function buildRepoSetupSteps(
     // the LAST commit — the one that matters most — at risk. The branch is a
     // printf ARG, never interpolated into the format string, so no branch text
     // is ever shell-interpreted.
-    `printf '#!/bin/sh\\nunset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE\\ngit push --quiet origin HEAD:%s && exit 0\\nsleep 2\\ngit push --quiet origin HEAD:%s && exit 0\\necho "runcastle: commit sync failed (will retry on your next commit); do not re-commit" >&2\\nexit 0\\n' '${tempBranch}' '${tempBranch}' > ${hookFile}`,
+    `printf '#!/bin/sh\\nunset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE\\ngit push --quiet --force-with-lease origin HEAD:%s && exit 0\\nsleep 2\\ngit push --quiet --force-with-lease origin HEAD:%s && exit 0\\necho "runcastle: commit sync failed (will retry on your next commit); do not re-commit" >&2\\nexit 0\\n' '${tempBranch}' '${tempBranch}' > ${hookFile}`,
     `chmod +x ${hookFile}`,
   ]
   if (pm === 'pnpm' || pm === 'yarn') {
@@ -1526,7 +1588,7 @@ export function buildSlotSetupCommand(
     `RC_COLD=0`,
     `RC_STAMP="${stamp}"`,
     `RC_SYNC_START=$(date +%s%3N)`,
-    `mkdir -p ${slotDirPath(slot)}`,
+    `mkdir -p ${slotDirPath(slot)} ${burnCacheDirectories(pm).join(' ')}`,
     `rm -f ${repo}/.git/*.lock`,
     `if ! git -C ${repo} rev-parse --git-dir >/dev/null 2>&1; then rm -rf ${repo} && git clone ${SANDBOX_WORKSPACE_PATH} ${repo} && RC_COLD=1; else git -C ${repo} fetch ${SANDBOX_WORKSPACE_PATH} ${tempBranch} && git -C ${repo} reset --hard FETCH_HEAD && git -C ${repo} checkout -B ${tempBranch}; fi`,
     `git -C ${repo} clean -fd`,
@@ -1561,7 +1623,9 @@ export function buildWorkspaceNotes(
       '',
       'Write `DIGEST.md` at the root of that checkout, and leave it uncommitted — the host harvests it from disk.',
       '',
-      'If you are blocked and write `BLOCKED.md`, write it at the root of that checkout too. **These two paths are the only authoritative ones** — nothing later in this prompt overrides them.',
+      'Write `GATE_UNRUNNABLE.md` at the root of that checkout when the gate protocol requires it, and leave it uncommitted too.',
+      '',
+      'If you are blocked and write `BLOCKED.md`, write it at the root of that checkout too. **These paths are the only authoritative ones** — nothing later in this prompt overrides them.',
     ].join('\n')
   }
   return [
@@ -1572,6 +1636,8 @@ export function buildWorkspaceNotes(
     `If you are blocked and write \`BLOCKED.md\`, write it at \`${repoPath}/BLOCKED.md\` AND copy it to \`${SANDBOX_WORKSPACE_PATH}/BLOCKED.md\` so the orchestrator can see it.`,
     '',
     `Write \`DIGEST.md\` at \`${SANDBOX_WORKSPACE_PATH}/DIGEST.md\` — the mounted mirror, so the host can see it — and NOT inside \`${repoPath}\`, where it would be committed with your work.`,
+    '',
+    `Write \`GATE_UNRUNNABLE.md\` at \`${SANDBOX_WORKSPACE_PATH}/GATE_UNRUNNABLE.md\` for the same reason — the host must be able to harvest it.`,
     '',
     '**Those paths are the only authoritative ones** — nothing later in this prompt overrides them.',
   ].join('\n')
@@ -1895,15 +1961,30 @@ const BASH_PATTERNS: ReadonlyArray<readonly [ToolCategory, RegExp]> = [
   ['file-edit', /<<\s*['"]?(PY|EOF|SH|JS|TS)\b|\bpython3?\s+-\s*<</],
 ]
 
-/** Non-Bash Claude Code tools, mapped to the same vocabulary. */
-const TOOL_NAME_CATEGORY: Readonly<Record<string, ToolCategory>> = {
-  Read: 'file-read',
-  NotebookRead: 'file-read',
-  Grep: 'search',
-  Glob: 'search',
-  Edit: 'file-edit',
-  Write: 'file-edit',
-  NotebookEdit: 'file-edit',
+/** Runtime-native tools, mapped to the same vocabulary. */
+const TOOL_NAME_CATEGORY: Readonly<Record<AgentRuntime, Readonly<Record<string, ToolCategory>>>> = {
+  'claude-code': {
+    Read: 'file-read',
+    NotebookRead: 'file-read',
+    Grep: 'search',
+    Glob: 'search',
+    Edit: 'file-edit',
+    Write: 'file-edit',
+    NotebookEdit: 'file-edit',
+  },
+  codex: {
+    apply_patch: 'file-edit',
+  },
+}
+
+/**
+ * Sandcastle 0.12.0 normalises Codex `command_execution` items to `Bash`.
+ * Keep this runtime-scoped: a provider's display name is part of its stream
+ * adapter, not a universal tool protocol.
+ */
+const SHELL_TOOL_NAMES: Readonly<Record<AgentRuntime, ReadonlySet<string>>> = {
+  'claude-code': new Set(['Bash']),
+  codex: new Set(['Bash']),
 }
 
 /**
@@ -1936,10 +2017,10 @@ export function normalizeCommandForClassification(command: string): string {
  * agents chain aggressively (`pnpm test > log 2>&1; grep -E ... log`), and the
  * suite is what that line costs, not the grep.
  */
-export function classifyToolCall(name: string, args: string): ToolCategory {
-  const byName = TOOL_NAME_CATEGORY[name]
+export function classifyToolCall(runtime: AgentRuntime, name: string, args: string): ToolCategory {
+  const byName = TOOL_NAME_CATEGORY[runtime][name]
   if (byName) return byName
-  if (name !== 'Bash') return 'other'
+  if (!SHELL_TOOL_NAMES[runtime].has(name)) return 'other'
   const normalized = normalizeCommandForClassification(args)
   for (const [category, pattern] of BASH_PATTERNS) {
     if (pattern.test(normalized)) return category
@@ -1983,7 +2064,7 @@ const MAX_ATTRIBUTABLE_GAP_MS = 20 * 60_000
  * opens the same span for the FIRST container of a `run()`, which has no
  * previous event to measure from.
  */
-export function createToolTimer(): {
+export function createToolTimer(runtime: AgentRuntime): {
   onEvent(event: AgentStreamEvent): void
   /**
    * Mark the start of a container's setup — call it immediately before each
@@ -2022,7 +2103,7 @@ export function createToolTimer(): {
     }
 
     if (event.type === 'toolCall') {
-      const category = classifyToolCall(event.name, event.formattedArgs ?? '')
+      const category = classifyToolCall(runtime, event.name, event.formattedArgs ?? '')
       const slot = (byCategory[category] ??= { calls: 0, ms: 0 })
       slot.calls += 1
       calls += 1
@@ -2131,6 +2212,47 @@ export function interpretRunResult(
     return { status: 'failed', error: `agent reported BLOCKED:\n${blockedContent.trim()}` }
   }
   return { status: 'failed', error: 'agent made no commits' }
+}
+
+export interface UnrunnableGate {
+  command: string
+  error: string
+}
+
+/** Parse the agent-written protocol file without letting a malformed report fail a ticket. */
+export function parseUnrunnableGates(content: string | undefined): UnrunnableGate[] {
+  if (!content?.trim()) return []
+  try {
+    const decoded: unknown = JSON.parse(content)
+    const entries = Array.isArray(decoded) ? decoded : [decoded]
+    const byCommand = new Map<string, UnrunnableGate>()
+    for (const entry of entries) {
+      if (typeof entry !== 'object' || entry === null) continue
+      const { command, error } = entry as { command?: unknown; error?: unknown }
+      if (typeof command !== 'string' || typeof error !== 'string') continue
+      const gate = { command: command.trim(), error: error.trim() }
+      if (gate.command && gate.error && !byCommand.has(gate.command)) byCommand.set(gate.command, gate)
+    }
+    return [...byCommand.values()]
+  } catch {
+    return []
+  }
+}
+
+/** Surface an unavailable verification runtime without changing the ticket outcome. */
+export function emitUnrunnableGates(
+  ctx: WorkflowCtx,
+  ticket: Pick<Ticket, 'id' | 'seq'>,
+  content: string | undefined,
+): void {
+  for (const gate of parseUnrunnableGates(content)) {
+    ctx.emitEvent({
+      type: 'ticket.gate_unrunnable',
+      message: `ticket ${ticket.seq} could not run verification: ${gate.command}`,
+      ticketId: ticket.id,
+      data: gate,
+    })
+  }
 }
 
 /**
@@ -4128,7 +4250,7 @@ async function burnTicket(
   // went was to reconstruct it forensically from captured sessions. The
   // sandcastle stream already carries a timestamp on every event; this just
   // stops throwing it away.
-  const timer = createToolTimer()
+  const timer = createToolTimer(model.runtime)
 
   // Fourth consumer, slot mode only: the setup hook's own marker line. Sandcastle
   // discards a sandbox hook's stdout, so the script leaves the line in the
@@ -4715,6 +4837,7 @@ async function burnTicket(
     // its preserved chain stays on the ticket for the next retry.
     const agentFileDirs = [result.preservedWorktreePath, project.repoPath]
     const blocked = readAgentFile(agentFileDirs, 'BLOCKED.md')
+    emitUnrunnableGates(ctx, ticket, readAgentFile(agentFileDirs, 'GATE_UNRUNNABLE.md'))
     // Harvested before the landing, attached after it — see `harvestedDigest`.
     harvestedDigest = harvestDigest(agentFileDirs)
     // Both agent files are out of the preserved worktree now, and attachments

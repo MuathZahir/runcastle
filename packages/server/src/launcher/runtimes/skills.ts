@@ -30,8 +30,8 @@ export function skillRef(runtime: AgentRuntime, skill: string): string {
  * The per-kind kickoff line typed into a freshly-live session so no session
  * starts dead. Each line names the same opening skill its appended system prompt
  * does (`renderSystemPrompt` in artifacts.ts) so the injected line and the brief
- * agree on the first move. A per-purpose revisit briefing arrives via the
- * `launchSession` override (see `setKickoffOverride`), not this table.
+ * agree on the first move. A per-purpose revisit briefing arrives as
+ * `launchSession`'s own `kickoffLine`, not from this table.
  *
  * Built per runtime rather than written out once, because the only thing that
  * differs between two runtimes' tables is {@link skillRef}. Reached through each

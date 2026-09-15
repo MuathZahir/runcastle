@@ -39,6 +39,29 @@ export function resolveImplementation(input: ResolverInput): NextStep {
       busy: true,
     }
   }
+  const interruption = ctx.interruptedBurn
+  if (interruption && interruption.runId === run?.id) {
+    const landed = interruption.landedTickets
+    if (interruption.pendingTickets > 0) {
+      return {
+        alert: true,
+        kick: 'INTERRUPTED',
+        title: `A burn was interrupted by a server restart: ${landed} ticket${landed === 1 ? '' : 's'} landed, ${interruption.pendingTickets} pending`,
+        desc: 'Resume the burn to sweep orphaned work and continue the remaining tickets.',
+        primary: { label: 'Resume burn', kind: 'burn' },
+        secondary: [],
+        busy: false,
+      }
+    }
+    return {
+      kick: 'RECOVERED',
+      title: `A burn was interrupted by a server restart: ${landed} ticket${landed === 1 ? '' : 's'} landed, 0 pending`,
+      desc: 'All ticket work landed before the restart. Continue to review the result.',
+      primary: { label: 'Continue to review', kind: 'advance' },
+      secondary: [],
+      busy: false,
+    }
+  }
   // Nothing to burn. The bar used to offer an enabled "Burn 0 tickets" over
   // an empty ledger whose own copy said the opposite (findings F25.1) — the
   // tickets phase has always handled this state honestly, so this says the

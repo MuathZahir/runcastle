@@ -568,7 +568,10 @@ async function scaffoldDocsOnFeatureBranch(
 
   scaffoldDocs(ctx, feature, opts)
   try {
-    await git.commitDocs(worktreePath, `runcastle: scaffold ${feature.slug} docs`)
+    await git.commitDocs(
+      worktreePath,
+      git.docsCommitMessage(`scaffold ${feature.slug} docs`, project.docsCommitPrefix),
+    )
   } catch {
     // best-effort — the docs sit in the worktree; only the auto-commit is skipped
   }
@@ -1008,7 +1011,7 @@ export async function retryTicket(
   // drive guard asks (pipeline docs landed first, so runcastle's own writes
   // never block a retry) and hand the human back what is still in the way.
   if (retryingDeniedReview) {
-    const stillDirty = await git.driveBlockingPaths(project.repoPath)
+    const stillDirty = await git.driveBlockingPaths(project.repoPath, project.docsCommitPrefix)
     if (stillDirty.length > 0) {
       throw new GateError(
         `the working tree is still dirty — the review drive would be denied again. Commit or ` +

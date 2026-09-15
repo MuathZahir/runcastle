@@ -1,7 +1,8 @@
 import { execFileSync } from 'node:child_process'
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { sessionDir } from '@runcastle/core/paths'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Feature, Project, RuncastleConfig, SessionRow } from '@runcastle/core'
@@ -29,12 +30,15 @@ import {
 } from '../src/launcher/runtimes/claude'
 import {
   KICKOFF_LINES as CODEX_KICKOFF_LINES,
+  buildCodexArgs,
   codexHomeDir,
   codexRuntime,
   mcpServerTables,
   renderCodexHooks,
 } from '../src/launcher/runtimes/codex'
+import { MAX_KICKOFF_ARGV } from '../src/launcher/runtimes/types'
 import { resolvePluginDir } from '../src/launcher/skills-root'
+import { spawnTargetFor } from '../src/util/resolve-executable'
 
 const config: RuncastleConfig = ConfigSchema.parse({})
 
@@ -507,6 +511,82 @@ describe('renderSystemPrompt', () => {
   })
 })
 
+/**
+ * node-pty's own Win32 command-line builder — the real encoder, reached by deep
+ * import because the package exports only its terminal API. `WindowsPtyAgent`
+ * calls exactly this to flatten `(file, args)` into the single string ConPTY
+ * hands `CreateProcessW`, so a kickoff line that survives here is one the CLI
+ * really receives. (`createRequire` because it is CommonJS with no typings, the
+ * same way the launcher loads the addon — see `src/pty/pty.ts`.)
+ */
+const { argsToCommandLine } = createRequire(import.meta.url)(
+  'node-pty/lib/windowsPtyAgent.js',
+) as { argsToCommandLine: (file: string, args: string[]) => string }
+
+/**
+ * The receiving end: split a Win32 command line back into argv by the
+ * `CommandLineToArgvW` rules every CRT startup applies — quotes delimit, a
+ * backslash run is literal unless it precedes a quote, an even run yields half
+ * as many backslashes plus a delimiter, an odd run yields half plus a literal
+ * quote. Written out rather than reusing node-pty's encoder in reverse so the
+ * round-trip below is checked against the documented convention, not itself.
+ */
+function commandLineToArgv(commandLine: string): string[] {
+  const argv: string[] = []
+  let arg = ''
+  let started = false
+  let inQuotes = false
+  let i = 0
+  while (i < commandLine.length) {
+    const ch = commandLine[i]
+    if (!inQuotes && (ch === ' ' || ch === '\t')) {
+      if (started) argv.push(arg)
+      arg = ''
+      started = false
+      i++
+      continue
+    }
+    started = true
+    if (ch === '\\') {
+      let slashes = 0
+      while (commandLine[i] === '\\') {
+        slashes++
+        i++
+      }
+      if (commandLine[i] === '"') {
+        arg += '\\'.repeat(Math.floor(slashes / 2))
+        if (slashes % 2 === 1) arg += '"'
+        else inQuotes = !inQuotes
+        i++
+      } else {
+        arg += '\\'.repeat(slashes)
+      }
+      continue
+    }
+    if (ch === '"') {
+      inQuotes = !inQuotes
+      i++
+      continue
+    }
+    arg += ch
+    i++
+  }
+  if (started) argv.push(arg)
+  return argv
+}
+
+/**
+ * Everything a runtime's argv crosses between `buildXArgs` and the agent on
+ * Windows: {@link spawnTargetFor} picks the real program (a `.cmd`/`.ps1` shim
+ * is run through its interpreter, which pushes the argv further down the line),
+ * node-pty flattens the result, and the process on the other side splits it
+ * again. Whatever comes back is what the CLI actually parsed.
+ */
+function windowsSpawnRoundTrip(resolved: string, argv: string[]): string[] {
+  const target = spawnTargetFor(resolved, argv)
+  return commandLineToArgv(argsToCommandLine(target.file, target.args))
+}
+
 describe('buildClaudeArgs', () => {
   it('assembles the claude argv with the verified flags (embedded PTY spawn)', () => {
     const args = buildClaudeArgs({
@@ -580,6 +660,62 @@ describe('buildClaudeArgs', () => {
     const at = args.indexOf('--model')
     expect(at).toBeGreaterThan(-1)
     expect(args[at + 1]).toBe('claude-sonnet-5')
+  })
+
+  it('puts a fresh kickoff last verbatim and never adds one to a resume', () => {
+    const base = {
+      pluginDir: 'C:\\repo\\pack',
+      settingsPath: 'C:\\s\\settings.json',
+      mcpConfigPath: 'C:\\s\\mcp.json',
+      systemPromptPath: 'C:\\s\\system-prompt.md',
+      model: 'claude-sonnet-5',
+    }
+    const kickoffLine = `Invoke "the skill" and preserve the user's words.`
+    const args = buildClaudeArgs({ ...base, kickoffLine })
+    expect(args.at(-1)).toBe(kickoffLine)
+    expect(buildClaudeArgs({ ...base, resumeSessionId: 'cc-42', kickoffLine })).not.toContain(
+      kickoffLine,
+    )
+    // Verbatim in the array is only half the claim: the quotes and the
+    // apostrophe have to survive the Windows command line too, spawned
+    // directly...
+    expect(windowsSpawnRoundTrip('C:\\bin\\claude.exe', args)).toEqual([
+      'C:\\bin\\claude.exe',
+      ...args,
+    ])
+    // ...and through the npm shim, where the interpreter's own argv wraps it.
+    expect(windowsSpawnRoundTrip('C:\\npm\\claude.cmd', args).at(-1)).toBe(kickoffLine)
+  })
+
+  it('rejects a kickoff near the Windows command-line ceiling', () => {
+    expect(() =>
+      buildClaudeArgs({
+        pluginDir: 'p', settingsPath: 's', mcpConfigPath: 'm', systemPromptPath: 'x',
+        model: 'claude-sonnet-5', kickoffLine: 'x'.repeat(MAX_KICKOFF_ARGV + 1),
+      }),
+    ).toThrow(/maximum/)
+  })
+})
+
+describe('buildCodexArgs', () => {
+  it('keeps the trust flag and appends a fresh kickoff verbatim', () => {
+    const kickoffLine = `Invoke "the skill" and preserve the user's words.`
+    const args = buildCodexArgs({ kickoffLine })
+    expect(args).toEqual(['--dangerously-bypass-hook-trust', kickoffLine])
+    // ...and the same line still reads back intact once it has crossed the
+    // Windows command line, spawned directly and through the npm shim.
+    expect(windowsSpawnRoundTrip('C:\\bin\\codex.exe', args)).toEqual([
+      'C:\\bin\\codex.exe',
+      ...args,
+    ])
+    expect(windowsSpawnRoundTrip('C:\\npm\\codex.cmd', args).at(-1)).toBe(kickoffLine)
+  })
+
+  it('resumes without a positional prompt', () => {
+    const kickoffLine = 'must not be sent'
+    expect(buildCodexArgs({ resumeSessionId: 'thread-42', kickoffLine })).toEqual([
+      'resume', 'thread-42', '--dangerously-bypass-hook-trust',
+    ])
   })
 })
 
@@ -964,6 +1100,24 @@ describe('codexRuntime.writeArtifacts', () => {
   it('resumes the conversation the SessionStart hook recorded', async () => {
     const spec = await launchSpec('revisit', { resumeSessionId: 'codex-sess-42' })
     expect(spec.argv).toEqual(['resume', 'codex-sess-42', '--dangerously-bypass-hook-trust'])
+  })
+
+  it('carries the original rollout store into a resumed session home', async () => {
+    const originalId = 'sess_codex_original'
+    const rollout = join(codexHomeDir(originalId), 'sessions', '2026', '09', 'rollout.jsonl')
+    created.push(originalId)
+    mkdirSync(dirname(rollout), { recursive: true })
+    writeFileSync(rollout, '{"type":"session_meta","id":"codex-sess-42"}\n', 'utf8')
+
+    const spec = await launchSpec('revisit', {
+      resumeSessionId: 'codex-sess-42',
+      resumeSourceSessionId: originalId,
+    })
+
+    expect(spec.env.CODEX_HOME).toBe(codexHomeDir('sess_codex_revisit'))
+    expect(readFileSync(join(spec.env.CODEX_HOME, 'sessions', '2026', '09', 'rollout.jsonl'), 'utf8')).toBe(
+      '{"type":"session_meta","id":"codex-sess-42"}\n',
+    )
   })
 
   it('merges the human’s own MCP servers on `inherit`, and none on `runcastleOnly`', async () => {

@@ -10,12 +10,9 @@ import { events, projects, sessions } from '../src/db/schema'
 import type { AppCtx } from '../src/db/types'
 import {
   PREPARE_CONFIRM_KICKOFF,
-  RESUME_KICKOFF_PREFIX,
   activeProjectSession,
   activeSessionsForFeature,
   createSessionRow,
-  kickoffDeliveryFor,
-  markSessionLive,
   mostRecentResumableProjectSession,
   mostRecentResumableSession,
 } from '../src/launcher/sessions'
@@ -652,42 +649,26 @@ describe('launching a preparation, fresh or resumed', () => {
     expect(ctx.db.select().from(events).all().map((e) => e.type)).toContain('session.resumed')
   })
 
-  /**
-   * `RESUME_KICKOFF_PREFIX` was wired only into `launchSession`, so the kind
-   * most likely to be resumed got the COLD-START line ("Start by telling them
-   * which fields are still open") typed into a conversation already mid-flight.
-   */
-  it('reframes the kickoff of a resumed preparation instead of restarting it', async () => {
+  it('does not send a kickoff to a resumed preparation', async () => {
     endedConversation('cc-prep-1')
-    const { sessionId } = await launchPrepareSession(
-      ctx,
-      { projectId: PROJECT_ID },
-      { spawn: false },
-    )
-    markSessionLive(ctx, sessionId, { ccSessionId: 'cc-prep-2' })
 
-    const line = kickoffDeliveryFor(sessionId)?.line ?? ''
-    expect(line).toContain(RESUME_KICKOFF_PREFIX)
-    expect(line).toMatch(/do not start over/i)
+    await launchPrepareSession(ctx, { projectId: PROJECT_ID }, { spawn: false })
+
+    expect(launchCommand()).not.toContain('Proceed with your task')
   })
 
   /**
    * Item 7(c): with nothing open, the prompt, the task line and the kickoff must
    * all say confirm-and-stop. The kickoff used to say the opposite of the prompt
-   * it was typed on top of.
+   * it rode into the session with.
    */
   it('opens a nothing-open preparation with confirm-and-stop, not the agenda line', async () => {
     for (const key of PREPARED_KEYS) {
       recordFinding(ctx, PROJECT_ID, { key, value: `value for ${key}`, source: 'human' })
     }
-    const { sessionId } = await launchPrepareSession(
-      ctx,
-      { projectId: PROJECT_ID },
-      { spawn: false },
-    )
-    markSessionLive(ctx, sessionId, { ccSessionId: 'cc-confirm' })
+    await launchPrepareSession(ctx, { projectId: PROJECT_ID }, { spawn: false })
 
-    expect(kickoffDeliveryFor(sessionId)?.line).toBe(PREPARE_CONFIRM_KICKOFF)
+    expect(launchCommand()).toContain(PREPARE_CONFIRM_KICKOFF)
     expect(PREPARE_CONFIRM_KICKOFF).not.toContain('still open')
     expect(PREPARE_CONFIRM_KICKOFF).toMatch(/and stop/)
   })
