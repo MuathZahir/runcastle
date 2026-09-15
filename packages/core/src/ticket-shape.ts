@@ -18,6 +18,8 @@
  * the human meets twice in different words reads as two problems.
  */
 
+import type { Ticket } from './schemas'
+
 /** Below this, a context has nothing in it for a coder to test at. */
 export const THIN_TICKET_CONTEXT_CHARS = 300
 
@@ -65,6 +67,17 @@ export interface TicketShapeSubject {
 }
 
 /**
+ * A stored ticket as a shape subject. The only place a warning's name for a
+ * ticket is decided, so the door and the card cannot call the same ticket two
+ * different things.
+ */
+export function ticketShapeSubject(
+  ticket: Pick<Ticket, 'seq' | 'goal' | 'context'>,
+): TicketShapeSubject {
+  return { label: `#${ticket.seq}`, goal: ticket.goal, context: ticket.context }
+}
+
+/**
  * Every shape worth warning about in one batch, batch-level warning first.
  *
  * Deliberately not keyed on how the batch was created: the degenerate shape is
@@ -83,8 +96,8 @@ export function ticketShapeWarnings(
       code: 'degenerate-batch',
       message:
         `${degenerate.length} tickets (${degenerate.map((t) => t.label).join(', ')}) carry their goal as their context — ` +
-        'that is the quick-change door used as an importer. Work this size deserves a session: ' +
-        `grill it into a spec, or cut the batch to ${DEGENERATE_BATCH_TICKETS} tickets or fewer.`,
+        'that is the quick-change door used as an importer. Work this size deserves a session ' +
+        `first: shape it into a feature with a spec, or cut the batch to ${DEGENERATE_BATCH_TICKETS} tickets or fewer.`,
     })
   }
   for (const ticket of tickets) {
