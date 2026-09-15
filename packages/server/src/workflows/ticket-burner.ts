@@ -75,6 +75,7 @@ import { GUARD_RULES, buildGuardInstallCommand } from './burn-guard'
 import type { BurnCacheEngine, SlotAllocator } from './burn-cache'
 import {
   BURN_CACHE_MOUNT,
+  burnCacheDirectories,
   BurnSlotsExhaustedError,
   burnCacheEnv,
   burnCacheVolumeName,
@@ -1525,7 +1526,7 @@ export function buildSlotSetupCommand(
     `RC_COLD=0`,
     `RC_STAMP="${stamp}"`,
     `RC_SYNC_START=$(date +%s%3N)`,
-    `mkdir -p ${slotDirPath(slot)}`,
+    `mkdir -p ${slotDirPath(slot)} ${burnCacheDirectories(pm).join(' ')}`,
     `rm -f ${repo}/.git/*.lock`,
     `if ! git -C ${repo} rev-parse --git-dir >/dev/null 2>&1; then rm -rf ${repo} && git clone ${SANDBOX_WORKSPACE_PATH} ${repo} && RC_COLD=1; else git -C ${repo} fetch ${SANDBOX_WORKSPACE_PATH} ${tempBranch} && git -C ${repo} reset --hard FETCH_HEAD && git -C ${repo} checkout -B ${tempBranch}; fi`,
     `git -C ${repo} clean -fd`,

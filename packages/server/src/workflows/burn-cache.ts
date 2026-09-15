@@ -80,6 +80,16 @@ export function storePath(pm: PackageManager): string {
   return `${BURN_CACHE_MOUNT}/store/${pm}`
 }
 
+const BURN_CACHE_TMP_PATH = `${BURN_CACHE_MOUNT}/tmp`
+const BURN_CACHE_NODE_COMPILE_PATH = `${BURN_CACHE_MOUNT}/node-compile`
+
+/** Directories the sandbox must create before using {@link burnCacheEnv}. */
+export function burnCacheDirectories(pm?: PackageManager): string[] {
+  return pm
+    ? [BURN_CACHE_TMP_PATH, BURN_CACHE_NODE_COMPILE_PATH, storePath(pm)]
+    : [BURN_CACHE_TMP_PATH, BURN_CACHE_NODE_COMPILE_PATH]
+}
+
 /**
  * The environment every burn container gets when the cache is on, pointing each
  * package manager's store and Node's own caches at the volume (spec §Approach).
@@ -99,8 +109,8 @@ export function burnCacheEnv(pm: PackageManager): Record<string, string> {
     BUN_INSTALL_CACHE_DIR: store,
     npm_config_cache: store,
     YARN_GLOBAL_FOLDER: store,
-    TMPDIR: `${BURN_CACHE_MOUNT}/tmp`,
-    NODE_COMPILE_CACHE: `${BURN_CACHE_MOUNT}/node-compile`,
+    TMPDIR: BURN_CACHE_TMP_PATH,
+    NODE_COMPILE_CACHE: BURN_CACHE_NODE_COMPILE_PATH,
   }
 }
 

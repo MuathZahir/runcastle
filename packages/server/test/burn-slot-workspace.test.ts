@@ -10,8 +10,10 @@ import { simpleGit } from 'simple-git'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import {
   BURN_CACHE_MOUNT,
+  burnCacheDirectories,
   burnCacheEnv,
   createSlotAllocator,
+  slotDirPath,
   slotRepoPath,
   slotStampPath,
 } from '../src/workflows/burn-cache'
@@ -186,6 +188,21 @@ describe('buildSlotSetupCommand — the slot-sync script', () => {
   const script = (setupCommand?: string) =>
     buildSlotSetupCommand(2, BRANCH, setupCommand, 'pnpm', STAMP)
   const repo = slotRepoPath(2)
+
+  it.each([
+    ['with a package manager', 'pnpm' as const],
+    ['without a detected package manager', undefined],
+  ])('creates every cache directory %s before project setup', (_case, pm) => {
+    const setup = 'echo project-setup'
+    const cmd = buildSlotSetupCommand(2, BRANCH, setup, pm, STAMP)
+    const mkdir = `mkdir -p ${slotDirPath(2)} ${burnCacheDirectories(pm).join(' ')}`
+
+    expect(cmd).toContain(mkdir)
+    expect(cmd.indexOf(mkdir)).toBeLessThan(cmd.indexOf(setup))
+    if (pm) {
+      expect(new Set(burnCacheDirectories(pm))).toEqual(new Set(Object.values(burnCacheEnv(pm))))
+    }
+  })
 
   it('runs the sync steps in the order a killed container makes necessary', () => {
     const cmd = script('corepack pnpm install --frozen-lockfile')
