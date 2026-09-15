@@ -79,7 +79,6 @@ function pinned(
 /** Every door this flow removed from a pinned view (decision 10). */
 const LIVE_AFFORDANCES = [
   'End session',
-  'Send briefing',
   'Show terminal',
   'Hide terminal',
   'Resume session',
