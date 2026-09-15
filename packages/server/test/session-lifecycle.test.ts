@@ -444,13 +444,12 @@ describe('relaunching a terminal resumes its own conversation', () => {
 
     const second = await launch(f.id, 'ideation')
 
+    // the FIRST launch was fresh and carried its briefing in the argv; the
+    // resumed one carries only the conversation id
+    expect(commandFor(f.id, first)).toContain(KICKOFF_LINES.ideation)
     const command = commandFor(f.id, second)
     expect(command).toContain('--resume cc-grill')
     expect(command).not.toContain(KICKOFF_LINES.ideation)
-    // the FIRST launch was fresh and announced its kickoff; the resumed one has
-    // nothing to announce
-    const kickoffs = listAfter(ctx, f.id, 0).filter((e) => e.type === 'session.kickoff')
-    expect(kickoffs.map((e) => String(e.data?.sessionId))).toEqual([first])
   })
 })
 

@@ -655,27 +655,20 @@ describe('launching a preparation, fresh or resumed', () => {
     await launchPrepareSession(ctx, { projectId: PROJECT_ID }, { spawn: false })
 
     expect(launchCommand()).not.toContain('Proceed with your task')
-    expect(ctx.db.select().from(events).all().map((e) => e.type)).not.toContain('session.kickoff')
   })
 
   /**
    * Item 7(c): with nothing open, the prompt, the task line and the kickoff must
    * all say confirm-and-stop. The kickoff used to say the opposite of the prompt
-   * it was typed on top of.
+   * it rode into the session with.
    */
   it('opens a nothing-open preparation with confirm-and-stop, not the agenda line', async () => {
     for (const key of PREPARED_KEYS) {
       recordFinding(ctx, PROJECT_ID, { key, value: `value for ${key}`, source: 'human' })
     }
-    const { sessionId } = await launchPrepareSession(
-      ctx,
-      { projectId: PROJECT_ID },
-      { spawn: false },
-    )
-    const kickoff = ctx.db.select().from(events).all().find((event) => event.type === 'session.kickoff')
-    expect((kickoff?.data as { line?: string } | undefined)?.line).toBe(
-      PREPARE_CONFIRM_KICKOFF,
-    )
+    await launchPrepareSession(ctx, { projectId: PROJECT_ID }, { spawn: false })
+
+    expect(launchCommand()).toContain(PREPARE_CONFIRM_KICKOFF)
     expect(PREPARE_CONFIRM_KICKOFF).not.toContain('still open')
     expect(PREPARE_CONFIRM_KICKOFF).toMatch(/and stop/)
   })
