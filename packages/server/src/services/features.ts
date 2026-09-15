@@ -16,7 +16,6 @@ import {
   newId,
   nextGate,
   nextPhase,
-  ticketShapeSubject,
   ticketShapeWarningLine,
   ticketShapeWarnings,
 } from '@runcastle/core'
@@ -478,7 +477,7 @@ export async function quickChange(ctx: AppCtx, input: QuickChangeInput): Promise
  * the sentence they read again at the moment they decide.
  */
 function emitTicketShapeWarnings(ctx: AppCtx, featureId: string, stored: Ticket[]): void {
-  const warnings = ticketShapeWarnings(stored.map(ticketShapeSubject))
+  const warnings = ticketShapeWarnings(stored)
   if (warnings.length === 0) return
   emit(ctx, featureId, {
     type: 'tickets.shape_warning',

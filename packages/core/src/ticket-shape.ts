@@ -55,27 +55,13 @@ export interface TicketShapeWarning {
   message: string
 }
 
-/** The fields a shape check reads — a stored `Ticket` satisfies it. */
-export interface TicketShapeSubject {
-  /**
-   * How both surfaces name this ticket in a warning (`#3`). The caller supplies
-   * it because a batch that is not stored yet has no seq to name.
-   */
-  label: string
-  goal: string
-  context: string
-}
-
 /**
- * A stored ticket as a shape subject. The only place a warning's name for a
- * ticket is decided, so the door and the card cannot call the same ticket two
- * different things.
+ * The fields a shape check reads. A stored `Ticket` satisfies it, which is what
+ * both surfaces pass — the timeline event is written after the rows are stored,
+ * and the card reads the rows themselves, so every warning can name its ticket
+ * by the `#seq` the human sees on the ledger.
  */
-export function ticketShapeSubject(
-  ticket: Pick<Ticket, 'seq' | 'goal' | 'context'>,
-): TicketShapeSubject {
-  return { label: `#${ticket.seq}`, goal: ticket.goal, context: ticket.context }
-}
+export type TicketShapeSubject = Pick<Ticket, 'seq' | 'goal' | 'context'>
 
 /**
  * Every shape worth warning about in one batch, batch-level warning first.
@@ -95,7 +81,7 @@ export function ticketShapeWarnings(
     out.push({
       code: 'degenerate-batch',
       message:
-        `${degenerate.length} tickets (${degenerate.map((t) => t.label).join(', ')}) carry their goal as their context — ` +
+        `${degenerate.length} tickets (${degenerate.map(named).join(', ')}) carry their goal as their context — ` +
         'that is the quick-change door used as an importer. Work this size deserves a session ' +
         `first: shape it into a feature with a spec, or cut the batch to ${DEGENERATE_BATCH_TICKETS} tickets or fewer.`,
     })
@@ -106,14 +92,14 @@ export function ticketShapeWarnings(
       out.push({
         code: 'goal-is-context',
         message:
-          `${ticket.label} repeats its goal as its context — write a context that says where in ` +
+          `${named(ticket)} repeats its goal as its context — write a context that says where in ` +
           'the codebase the work is, which existing pattern to follow, and what it must not break.',
       })
     } else if (context.length < THIN_TICKET_CONTEXT_CHARS) {
       out.push({
         code: 'thin-context',
         message:
-          `${ticket.label} has a ${context.length}-character context — under ${THIN_TICKET_CONTEXT_CHARS} ` +
+          `${named(ticket)} has a ${context.length}-character context — under ${THIN_TICKET_CONTEXT_CHARS} ` +
           'there is nothing for a coder to read before it writes: name the files, the existing ' +
           'pattern to follow, and the evidence that proves it done.',
       })
@@ -122,7 +108,7 @@ export function ticketShapeWarnings(
       out.push({
         code: 'pasted-document',
         message:
-          `${ticket.label} has a ${context.length}-character context that reads like a pasted ` +
+          `${named(ticket)} has a ${context.length}-character context that reads like a pasted ` +
           "document — keep the ticket's own goal, context and acceptance criteria, and point at " +
           'the doc for the rest.',
       })
@@ -157,6 +143,11 @@ export function ticketShapeWarningLine(
   const shown = warnings.slice(0, spelledOut)
   const rest = warnings.length - shown.length
   return `${shown.map((w) => w.message).join(' ')}${rest > 0 ? ` (+${rest} more like this.)` : ''}`
+}
+
+/** How a warning names its ticket: the `#seq` the ledger and the events use. */
+function named(ticket: TicketShapeSubject): string {
+  return `#${ticket.seq}`
 }
 
 /** A context that is just the goal said again — the degenerate import's mark. */

@@ -1,4 +1,4 @@
-import { ticketShapeSubject, ticketShapeWarningLine, ticketShapeWarnings } from '@runcastle/core'
+import { ticketShapeWarningLine, ticketShapeWarnings } from '@runcastle/core'
 import { burnLabel } from '../laps'
 import { burnExpectation } from '../run'
 import type { NextStep } from './types'
@@ -27,7 +27,7 @@ export function resolveImplementation(input: ResolverInput): NextStep {
   // the timeline; this is the same sentence, from the same function, beside a
   // Burn button that stays enabled — the coder gets the ticket's own text and
   // nothing else, and this is the last place anyone can read it first.
-  const shape = ticketShapeWarningLine(ticketShapeWarnings(pendingTickets.map(ticketShapeSubject)))
+  const shape = ticketShapeWarningLine(ticketShapeWarnings(pendingTickets))
   if (running) {
     return {
       kick: 'IN PROGRESS',

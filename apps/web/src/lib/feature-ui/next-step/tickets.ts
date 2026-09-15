@@ -1,4 +1,4 @@
-import { ticketShapeSubject, ticketShapeWarningLine, ticketShapeWarnings } from '@runcastle/core'
+import { ticketShapeWarningLine, ticketShapeWarnings } from '@runcastle/core'
 import { hasResumable } from '../internal'
 import type { ResolverInput } from './resolver-input'
 import type { NextStep } from './types'
@@ -19,7 +19,7 @@ export function resolveTickets(input: ResolverInput): NextStep {
   // that left a ticket with nothing in its context is the same problem as a
   // quick change that arrived with nothing in any of them. A warning only: the
   // Burn below is unchanged, and "Ask for changes" is the road to fixing it.
-  const shape = ticketShapeWarningLine(ticketShapeWarnings(pendingTickets.map(ticketShapeSubject)))
+  const shape = ticketShapeWarningLine(ticketShapeWarnings(pendingTickets))
   if (count > 0) return {
     kick: 'NEXT STEP',
     title: 'Review the tickets, then burn',
