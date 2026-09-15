@@ -1,13 +1,14 @@
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
-import { runHeadline, transcriptBlocks } from '../src/lib/feature-ui/run'
+import { runHeadline, transcriptBlocks, unrunnableGates } from '../src/lib/feature-ui/run'
 import { Lane } from '../src/components/run/Lane'
 import type { LaneRow } from '../src/components/run/Lane'
 import { LaneDigest } from '../src/components/run/LaneDigest'
 import { RunHeader } from '../src/components/run/RunHeader'
 import { RunPicker } from '../src/components/run/RunPicker'
 import type { RunOption } from '../src/components/run/RunPicker'
+import { UnrunnableGates } from '../src/components/run/UnrunnableGates'
 
 /**
  * The run record (decision #15b) and the transcript hygiene that survives into
@@ -115,6 +116,23 @@ describe('RunHeader in record mode', () => {
     expect(runHeadline(tickets, { status: 'running' })).toBe(
       'Burning 2 tickets · 1 done · 1 failed',
     )
+  })
+})
+
+describe('unrunnable verification on a run card', () => {
+  it('shows each distinct command once with its exact error', () => {
+    const gates = unrunnableGates([
+      { type: 'ticket.gate_unrunnable', data: { command: 'bun run typecheck', error: 'python: not found' } },
+      { type: 'ticket.gate_unrunnable', data: { command: 'bun run typecheck', error: 'duplicate report' } },
+      { type: 'ticket.gate_unrunnable', data: { command: 'bun run test', error: 'java: not found' } },
+    ])
+    const html = renderToStaticMarkup(createElement(UnrunnableGates, { gates }))
+    expect(html).toContain('Verification unavailable')
+    expect(html.match(/bun run typecheck/g)).toHaveLength(1)
+    expect(html).toContain('python: not found')
+    expect(html).toContain('bun run test')
+    expect(html).toContain('java: not found')
+    expect(html).not.toContain('duplicate report')
   })
 })
 

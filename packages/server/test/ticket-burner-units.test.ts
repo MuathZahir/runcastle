@@ -35,6 +35,7 @@ import {
   formatTimingSummary,
   buildTicketTiming,
   emitTicketTiming,
+  emitUnrunnableGates,
   formatTicketTiming,
   createSerialQueue,
   createStreamThrottle,
@@ -69,6 +70,7 @@ import {
   extractCommandNames,
   missingToolchainMessage,
   parseMissingCommands,
+  parseUnrunnableGates,
   preflightCommandNames,
   readDocsDigest,
   trimMapDoc,
@@ -265,6 +267,14 @@ describe('renderTicketPrompt', () => {
     expect(out).toMatch(/before printing `<promise>COMPLETE<\/promise>`/)
     // The mode-specific location comes from the workspace notes.
     expect(out).toContain(`${SANDBOX_WORKSPACE_PATH}/DIGEST.md`)
+  })
+
+  it('tells an agent to report an unavailable gate and continue the rest', () => {
+    const out = renderTicketPrompt(readFileSync(burnerTemplatePath(), 'utf8'), promptValues())
+    expect(out).toContain('GATE_UNRUNNABLE.md')
+    expect(out).toContain('{"command":"<exact command>","error":"<exact error>"}')
+    expect(out).toMatch(/continue every other gate/i)
+    expect(out).toMatch(/never your ticket's failure/i)
   })
 
   it('gives BLOCKED.md exactly one authoritative location — the workspace notes', () => {
@@ -733,6 +743,47 @@ describe('interpretRunResult', () => {
       status: 'failed',
       error: 'agent made no commits',
     })
+  })
+})
+
+describe('GATE_UNRUNNABLE.md — unavailable verification is an event, not an outcome', () => {
+  it('emits exact command and error while a committed result remains done', () => {
+    const content = JSON.stringify({
+      command: 'bun run typecheck',
+      error: '/bin/sh: python: not found',
+    })
+    expect(parseUnrunnableGates(content)).toEqual([
+      { command: 'bun run typecheck', error: '/bin/sh: python: not found' },
+    ])
+
+    const events: { type: string; ticketId?: string; data?: unknown }[] = []
+    const ctx = { emitEvent: (event: (typeof events)[number]) => events.push(event) }
+    emitUnrunnableGates(
+      ctx as unknown as Parameters<typeof emitUnrunnableGates>[0],
+      { id: 'tk_2', seq: 2 },
+      content,
+    )
+    expect(events).toEqual([
+      expect.objectContaining({
+        type: 'ticket.gate_unrunnable',
+        ticketId: 'tk_2',
+        data: { command: 'bun run typecheck', error: '/bin/sh: python: not found' },
+      }),
+    ])
+    expect(interpretRunResult({ commits: [{ sha: 'abc' }] }, undefined).status).toBe('done')
+  })
+
+  it('ignores malformed reports and deduplicates commands within one marker', () => {
+    expect(parseUnrunnableGates('not json')).toEqual([])
+    expect(
+      parseUnrunnableGates(
+        JSON.stringify([
+          { command: 'pnpm test', error: 'pnpm: not found' },
+          { command: 'pnpm test', error: 'duplicate' },
+          { command: '', error: 'missing command' },
+        ]),
+      ),
+    ).toEqual([{ command: 'pnpm test', error: 'pnpm: not found' }])
   })
 })
 
@@ -1641,6 +1692,39 @@ describe('toolchain preflight — one container answers for every binary', () =>
     expect(preflightCommandNames({ agentBinary: 'codex' })).toEqual(['codex'])
   })
 
+  it('does not probe verify binaries that setup provides before verification runs', () => {
+    expect(
+      preflightCommandNames({
+        agentBinary: 'codex',
+        setupCommand:
+          'corepack enable pnpm && corepack prepare yarn@4.5.0 --activate && npm i -g turbo@2 && bun add --global biome && alias poetry="python -m poetry" && uv() { python -m uv "$@"; }',
+        verifyCommands:
+          'pnpm test\nyarn lint\nturbo build\nbiome check .\npoetry run pytest\nuv run ruff\nbun run typecheck',
+      }),
+    ).toEqual(['bun', 'codex', 'corepack', 'npm'])
+  })
+
+  it('keeps probing setup and verify commands that setup does not provide', () => {
+    expect(
+      preflightCommandNames({
+        agentBinary: 'claude',
+        setupCommand: 'corepack prepare pnpm@9 --activate && mvn install',
+        verifyCommands: 'pnpm test\npython scripts/check.py',
+      }),
+    ).toEqual(['claude', 'corepack', 'mvn', 'python'])
+  })
+
+  it('recognises commands supplied by setup aliases, functions, and bin shims', () => {
+    expect(
+      preflightCommandNames({
+        agentBinary: 'codex',
+        setupCommand:
+          'printf "#!/bin/sh" > "$HOME/.local/bin/pnpm" && ln -s /opt/ruff /usr/local/bin/ruff',
+        verifyCommands: 'pnpm test\nruff check .\npython scripts/check.py',
+      }),
+    ).toEqual(['codex', 'ln', 'printf', 'python'])
+  })
+
   it('builds one `command -v` sweep that always exits 0', () => {
     expect(buildToolchainProbeArgs('sandcastle:runcastle-demo', ['claude', 'mvn'])).toEqual([
       'run',
@@ -1838,6 +1922,13 @@ describe('buildWorkspaceNotes — the {{WORKSPACE_NOTES}} prompt block', () => {
     const notes = buildWorkspaceNotes('isolated')
     expect(notes).toContain(`${SANDBOX_WORKSPACE_PATH}/DIGEST.md`)
     expect(notes).not.toContain(`${ISOLATED_REPO_PATH}/DIGEST.md`)
+  })
+
+  it('puts the unrunnable-gate marker where the host can harvest it in either mode', () => {
+    expect(buildWorkspaceNotes('mounted')).toMatch(/GATE_UNRUNNABLE\.md.*root of that checkout/)
+    const isolated = buildWorkspaceNotes('isolated')
+    expect(isolated).toContain(`${SANDBOX_WORKSPACE_PATH}/GATE_UNRUNNABLE.md`)
+    expect(isolated).not.toContain(`${ISOLATED_REPO_PATH}/GATE_UNRUNNABLE.md`)
   })
 })
 

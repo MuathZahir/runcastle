@@ -48,6 +48,8 @@ If you catch yourself writing a heredoc to edit a file, stop and use `Edit`.
 
 Whatever the commands are, spend them well — a full suite on a monorepo is minutes of your budget, and in real burns re-running one was the largest single waste:
 
+- **Report a gate that cannot run.** If a configured verify command cannot run at all because its command or required runtime is missing, write `GATE_UNRUNNABLE.md` at the sandbox root as JSON with the exact strings `{"command":"<exact command>","error":"<exact error>"}` (or a JSON array of those objects for multiple gates). Continue every other gate you can run. This is an environment report, never your ticket's failure, and it does not replace `BLOCKED.md` or `DIGEST.md`.
+
 - **Capture, then read.** Redirect a full run to a file (`<command> > /tmp/test-run.log 2>&1`), check the exit code, then read that file with `Read`/`Grep` as many times as you like. Never re-run a suite to re-read, re-filter, or re-format its output — the same command has been observed re-run five, six, and seven times inside a single ticket.
 - **Run the whole thing rarely.** Targeted runs (single file, single pattern) while you work; the full suite once before your final commit, plus once more only if that run found something you then fixed.
 - **Never `git stash` to get a clean-tree comparison.** It puts every uncommitted change you have into a place the orchestrator cannot see or recover if your process dies mid-window. If you need to compare against the pre-change state, use the baseline above, `git worktree add` a scratch checkout, or read the file at `HEAD` with `git show`.

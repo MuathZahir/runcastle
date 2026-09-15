@@ -10,6 +10,31 @@ export interface LaneTicketFigure {
   reviewFix?: boolean
 }
 
+export interface UnrunnableGateFigure {
+  command: string
+  error: string
+}
+
+/** One report per command, even when every ticket encountered the same missing runtime. */
+export function unrunnableGates(
+  events: readonly { type: string; data?: unknown }[],
+): UnrunnableGateFigure[] {
+  const gates = new Map<string, UnrunnableGateFigure>()
+  for (const event of events) {
+    if (
+      event.type !== 'ticket.gate_unrunnable' ||
+      typeof event.data !== 'object' ||
+      event.data === null
+    ) continue
+    const { command, error } = event.data as { command?: unknown; error?: unknown }
+    if (typeof command !== 'string' || typeof error !== 'string') continue
+    if (command.trim() && error.trim() && !gates.has(command.trim())) {
+      gates.set(command.trim(), { command: command.trim(), error: error.trim() })
+    }
+  }
+  return [...gates.values()]
+}
+
 export type LaneState = 'pending' | 'burning' | 'done' | 'failed' | 'stopped' | 'launch-failed' | 'waived'
 
 // Both stops read as stopped, not failed: the human's, and the run halt that

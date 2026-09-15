@@ -14,6 +14,7 @@ import {
   ticketDurations,
   ticketModelChip,
   runHeadline,
+  unrunnableGates,
 } from '../../lib/feature-ui'
 import { fmtDuration, shortSha } from '../../lib/format'
 import { BURN_EXPLAINER, STOP_TIMEOUT } from '../../lib/vocabulary'
@@ -28,6 +29,7 @@ import { LaneTranscript } from '../run/LaneTranscript'
 import { RunHeader } from '../run/RunHeader'
 import { RunLanes } from '../run/RunLanes'
 import { RunTimeline } from '../run/RunTimeline'
+import { UnrunnableGates } from '../run/UnrunnableGates'
 
 /**
  * Run / implementation phase-body, lanes-first (decisions #10–#16).
@@ -118,6 +120,7 @@ export function RunBody({
   )
   const durations = useMemo(() => ticketDurations(runEvents), [runEvents])
   const facts = useMemo(() => laneFacts(runEvents), [runEvents])
+  const unavailableGates = useMemo(() => unrunnableGates(runEvents), [runEvents])
 
   // Untouched, the expansion follows the burn: the lane with a live agent is
   // the one being watched. A click takes it over from there.
@@ -361,6 +364,8 @@ export function RunBody({
         onPickRun={setPickedRunId}
         {...(record ? { onBackToLatest: () => setPickedRunId(null) } : {})}
       />
+
+      <UnrunnableGates gates={unavailableGates} />
 
       {tickets.length === 0 ? (
         <EmptyState
