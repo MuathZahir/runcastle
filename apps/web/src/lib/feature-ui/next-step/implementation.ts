@@ -36,6 +36,7 @@ export function resolveImplementation(input: ResolverInput): NextStep {
     const landed = interruption.landedTickets
     if (interruption.pendingTickets > 0) {
       return {
+        alert: true,
         kick: 'INTERRUPTED',
         title: `A burn was interrupted by a server restart: ${landed} ticket${landed === 1 ? '' : 's'} landed, ${interruption.pendingTickets} pending`,
         desc: 'Resume the burn to sweep orphaned work and continue the remaining tickets.',

@@ -275,6 +275,7 @@ describe('nextStep after a server restart interrupted a burn', () => {
     })
 
     expect(ns.title).toBe('A burn was interrupted by a server restart: 1 ticket landed, 1 pending')
+    expect(ns.alert).toBe(true)
     expect(ns.primary).toEqual({ label: 'Resume burn', kind: 'burn' })
     expect(ns.secondary).toEqual([])
   })
