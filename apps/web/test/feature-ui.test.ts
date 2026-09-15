@@ -66,6 +66,7 @@ import { full, listItem, wp } from './fixtures'
  * about them say nothing to warn about; the shape cases build their own.
  */
 const BURNABLE = {
+  kind: 'implementation',
   goal: 'Put the shape warnings on the burn card.',
   context:
     'The bar lives in apps/web/src/lib/feature-ui/next-step and the ledger beneath it in ' +
@@ -2283,8 +2284,8 @@ describe('nextStep at implementation', () => {
     runs?: { id: string; status: string; startedAt: number }[]
     ticketStatuses?: TicketStatus[]
     sessionLive?: boolean
-    /** Per-ticket goal/context, for the shape cases; burnable by default. */
-    shapes?: { goal: string; context: string }[]
+    /** Per-ticket goal/context/kind, for the shape cases; burnable by default. */
+    shapes?: { goal: string; context: string; kind?: 'implementation' | 'review' }[]
   }): FeatureFull =>
     ({
       feature: { id: 'f1', phase: 'implementation', mapped: false, lap: 1, status: 'active' },
@@ -2483,6 +2484,40 @@ describe('nextStep at implementation', () => {
     )
     expect(ns.note).toContain('#2 repeats its goal as its context')
     expect(ns.note).not.toContain('#1')
+  })
+
+  /**
+   * And not the review ticket, which the quick door writes and the human cannot
+   * edit there. The door has always skipped it; the card used to read it, so a
+   * batch whose review ticket tripped a rule was warned about here and nowhere
+   * else (core's `shapeCheckedTickets`).
+   */
+  it('says nothing about the review ticket the batch closes with', () => {
+    const ns = nextStep(
+      buildFull({
+        shapes: [
+          { goal: 'Darken the empty state.', context: BURNABLE.context },
+          { kind: 'review', goal: 'Review the lap.', context: 'Review the lap.' },
+        ],
+      }),
+      { driving: false },
+    )
+    expect(ns.note).toBeUndefined()
+    expect(ns.primary).toEqual({ label: 'Burn 2 tickets', kind: 'burn' })
+  })
+
+  it('still names a thin implementation ticket standing beside it', () => {
+    const ns = nextStep(
+      buildFull({
+        shapes: [
+          { goal: 'Darken the empty state.', context: 'It washes out.' },
+          { kind: 'review', goal: 'Review the lap.', context: 'Review the lap.' },
+        ],
+      }),
+      { driving: false },
+    )
+    expect(ns.note).toContain('#1 has a 14-character context')
+    expect(ns.note).not.toContain('#2')
   })
 })
 
