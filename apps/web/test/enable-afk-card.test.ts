@@ -56,6 +56,15 @@ vi.mock('../src/trpc', () => {
           },
         },
         runtimeGuide: { useQuery: () => ({ data: undefined }) },
+        imageBuildTarget: {
+          useQuery: () => ({
+            data: {
+              kind: 'stock',
+              dockerfile: '/opt/runcastle/assets/sandbox/Dockerfile',
+              tag: 'sandcastle:runcastle',
+            },
+          }),
+        },
         startTerminal: {
           useMutation: (opts?: { onSuccess?: (r: { sessionId: string }) => void }) => ({
             isPending: false,
@@ -107,10 +116,18 @@ const probe = (status: ImageStatus, fix?: string): Probe => ({
 })
 
 describe('EnableAfkCard image action', () => {
-  const renderAction = (status: ImageStatus, fix?: string) =>
+  const renderAction = (
+    status: ImageStatus,
+    fix?: string,
+    target = {
+      dockerfile: '/opt/runcastle/assets/sandbox/Dockerfile',
+      tag: 'sandcastle:runcastle',
+    },
+  ) =>
     renderToStaticMarkup(
       createElement(ImageBuildAction, {
         probe: probe(status, fix),
+        target,
         runtimeOk: true,
         pending: false,
         onStart: () => undefined,
@@ -127,15 +144,22 @@ describe('EnableAfkCard image action', () => {
 
   it('offers Rebuild image once an image is there', () => {
     expect(renderAction('stale')).toContain('Rebuild image')
+    expect(renderAction('stale')).toContain('/opt/runcastle/assets/sandbox/Dockerfile')
+    expect(renderAction('stale')).toContain('sandcastle:runcastle')
     expect(renderAction('ok')).toContain('Rebuild image')
   })
 
   // The project ships `.runcastle/sandbox/Dockerfile` and nothing has built it
   // yet: there is no image to *re*build, so the row reads like a first build.
   it('offers Build image for a project Dockerfile that has never been built', () => {
-    const html = renderAction('not-built-yet')
+    const html = renderAction('not-built-yet', undefined, {
+      dockerfile: '/work/acme/.runcastle/sandbox/Dockerfile',
+      tag: 'sandcastle:runcastle-proj_acme',
+    })
     expect(html).toContain('Build image')
     expect(html).not.toContain('Rebuild image')
+    expect(html).toContain('/work/acme/.runcastle/sandbox/Dockerfile')
+    expect(html).toContain('sandcastle:runcastle-proj_acme')
   })
 
   // Decision 5 — the whole point: a Rebuild here would build the stock template

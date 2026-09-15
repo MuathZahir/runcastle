@@ -343,6 +343,7 @@ export function Lane({
             <ModelMenu
               value={ticket.model ?? ''}
               roster={reassign.roster}
+              ticketKind={ticket.kind}
               onChange={reassign.onChange}
             />
           )}

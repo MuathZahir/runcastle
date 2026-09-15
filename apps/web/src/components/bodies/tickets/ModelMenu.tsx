@@ -1,4 +1,4 @@
-import type { ModelEntry } from '@runcastle/core'
+import type { ModelEntry, TicketKind } from '@runcastle/core'
 import { modelOptionGroups, RUNTIME_LABEL } from '../../../lib/settings'
 import {
   Select,
@@ -25,14 +25,18 @@ export function ModelMenu({
   onChange,
   disabled = false,
   label,
+  ticketKind,
 }: {
   value: string
   roster: readonly ModelEntry[]
   onChange: (id: string) => void
   disabled?: boolean
   label?: string
+  ticketKind?: TicketKind
 }) {
   const entry = roster.find((model) => model.id === value)
+  const reviewMismatch =
+    ticketKind === 'review' && /\bimplementer[- ]only\b/i.test(entry?.note ?? '')
   // The closed pill says the runtime a model launches, where the row in the
   // list says the use-case note instead — so the trigger states its own text
   // rather than echoing the row it points at. A `label` overrides it outright:
@@ -46,27 +50,34 @@ export function ModelMenu({
   const name = label ?? 'Ticket model'
 
   return (
-    <Select value={value} onValueChange={onChange}>
-      <SelectTrigger
-        aria-label={name}
-        disabled={disabled}
-        className="h-7 rounded-pill border border-hairline bg-transparent px-2 font-mono text-xs text-text-2 hover:border-hairline-strong hover:text-text disabled:opacity-40"
-      >
-        <SelectValue>{triggerText}</SelectValue>
-      </SelectTrigger>
-      <SelectContent aria-label={name} className="min-w-64 text-xs">
-        <SelectItem value="">default (project model)</SelectItem>
-        {modelOptionGroups(roster).map((group) => (
-          <SelectGroup key={group.runtime}>
-            <SelectLabel>{group.label}</SelectLabel>
-            {group.entries.map((model) => (
-              <SelectItem key={model.id} value={model.id}>
-                {model.note ? `${model.id} — ${model.note}` : model.id}
-              </SelectItem>
-            ))}
-          </SelectGroup>
-        ))}
-      </SelectContent>
-    </Select>
+    <div className="flex flex-col items-start gap-1">
+      <Select value={value} onValueChange={onChange}>
+        <SelectTrigger
+          aria-label={name}
+          disabled={disabled}
+          className="h-7 rounded-pill border border-hairline bg-transparent px-2 font-mono text-xs text-text-2 hover:border-hairline-strong hover:text-text disabled:opacity-40"
+        >
+          <SelectValue>{triggerText}</SelectValue>
+        </SelectTrigger>
+        <SelectContent aria-label={name} className="min-w-64 text-xs">
+          <SelectItem value="">default (project model)</SelectItem>
+          {modelOptionGroups(roster).map((group) => (
+            <SelectGroup key={group.runtime}>
+              <SelectLabel>{group.label}</SelectLabel>
+              {group.entries.map((model) => (
+                <SelectItem key={model.id} value={model.id}>
+                  {model.note ? `${model.id} — ${model.note}` : model.id}
+                </SelectItem>
+              ))}
+            </SelectGroup>
+          ))}
+        </SelectContent>
+      </Select>
+      {reviewMismatch && (
+        <span className="text-xs text-warn">
+          Implementer-only model — not recommended for review tickets
+        </span>
+      )}
+    </div>
   )
 }
