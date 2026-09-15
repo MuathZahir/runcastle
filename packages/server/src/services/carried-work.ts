@@ -1,8 +1,12 @@
-import type { ReviewFinding } from '@runcastle/core'
+import { join } from 'node:path'
+import type { ReviewFinding, TicketStatus } from '@runcastle/core'
+import { reviewDir } from '@runcastle/core/paths'
 import { and, eq } from 'drizzle-orm'
 import type { AppCtx } from '../db/types'
 import { testNotes } from '../db/schema'
+import { getFeatureRow } from './repo'
 import { carriedDefectsAcrossLaps, openDefectsAcrossLaps } from './review-findings'
+import { listByFeature as listTickets } from './tickets'
 
 /**
  * What a lap carries into the next one — the notes the human parked and the
@@ -31,7 +35,43 @@ export interface CarriedWork {
    * forced to re-carry what an earlier one parked.
    */
   carriedDefects: CarriedDefect[]
+  /**
+   * Where the previous lap's review passes left their evidence on disk — the
+   * third thing a lap carries, beside the notes and the defects.
+   */
+  reviewEvidence: ReviewEvidence[]
 }
+
+/**
+ * One review pass's evidence, as PATHS rather than content.
+ *
+ * A review agent works in host scratch space outside the repo
+ * ({@link reviewDir}), and `get_feature_context` strips every ticket's `digest`
+ * out of its payload — so a lap session that is not handed these paths has no
+ * channel to the review at all. That was the gap: a lap planned from the human's
+ * summary of a build whose own review nobody had read, which is how one lap
+ * answered "did you test the app?" with "No, I moved too quickly to Burn".
+ *
+ * Nothing here is stat'ed. The paths are stated and the session reads what is
+ * there, the same contract the notes and `## Later laps` pointers already have.
+ */
+export interface ReviewEvidence {
+  /** The review ticket whose pass produced it — {@link reviewDir} is keyed by this. */
+  ticketId: string
+  /** The ticket's seq, which is how the human and the cards refer to it. */
+  seq: number
+  /** How the pass itself ended — the review OUTCOME, `done` or `failed`. */
+  status: TicketStatus
+  /** The lap the pass ran on: the lap before the one reading this. */
+  lap: number
+  /** `~/.runcastle/reviews/<ticketId>/` — screenshots and `walkthrough.webm`. */
+  dir: string
+  /** `<dir>/DIGEST.md` — the review agent's own account of what it found. */
+  digestPath: string
+}
+
+/** A review pass that got far enough to leave something behind. */
+const BURNED_REVIEW: readonly TicketStatus[] = ['done', 'failed']
 
 /**
  * A defect in the fields a session needs to act on it — the same four
@@ -65,7 +105,40 @@ export function carriedWork(ctx: AppCtx, featureId: string): CarriedWork {
     // the review page's own view is scoped to the current lap.
     openDefects: openDefectsAcrossLaps(ctx, featureId).map(toCarriedDefect),
     carriedDefects: carriedDefectsAcrossLaps(ctx, featureId).map(toCarriedDefect),
+    reviewEvidence: previousLapReviewEvidence(ctx, featureId),
   }
+}
+
+/**
+ * The review passes of the lap BEFORE this one, as paths a session can read.
+ *
+ * Scoped to that one lap on purpose. The current lap's review has not run yet —
+ * a lap is in flight before implementation — and an older lap's evidence is two
+ * builds stale, so naming it would point a session at screenshots of a UI that
+ * has since changed. A pass still `pending` or `burning` wrote no digest, and a
+ * `cancelled` one never ran; only {@link BURNED_REVIEW} left evidence behind.
+ */
+export function previousLapReviewEvidence(ctx: AppCtx, featureId: string): ReviewEvidence[] {
+  const { lap } = getFeatureRow(ctx, featureId)
+  if (lap <= 1) return []
+  return listTickets(ctx, featureId)
+    .filter(
+      (ticket) =>
+        ticket.kind === 'review' &&
+        ticket.lap === lap - 1 &&
+        BURNED_REVIEW.includes(ticket.status),
+    )
+    .map((ticket) => {
+      const dir = reviewDir(ticket.id)
+      return {
+        ticketId: ticket.id,
+        seq: ticket.seq,
+        status: ticket.status,
+        lap: ticket.lap,
+        dir,
+        digestPath: join(dir, 'DIGEST.md'),
+      }
+    })
 }
 
 function toCarriedDefect(defect: ReviewFinding): CarriedDefect {
@@ -101,4 +174,29 @@ export function carriedWorkSummary(carried: CarriedWork | undefined): string | u
   const defects = carried.openDefects.length
   if (defects > 0) parts.push(`${defects} defect${defects === 1 ? '' : 's'} open`)
   return `${parts.join(' and ')} from earlier laps`
+}
+
+/**
+ * The clause a lap's kickoff line carries about the previous lap's review
+ * evidence — the paths, and the instruction to read them before planning.
+ * `undefined` when there is none (lap 1, or a review pass that never burned),
+ * which is the one case a lap may plan from the interview alone.
+ *
+ * One sentence, no newline: the kickoff is typed into a PTY as a single line.
+ */
+export function reviewEvidenceSentence(carried: CarriedWork | undefined): string | undefined {
+  const evidence = carried?.reviewEvidence ?? []
+  const first = evidence[0]
+  if (!first) return undefined
+  const where = evidence
+    .map(
+      (one) =>
+        `ticket ${one.seq} (pass ${one.status}) wrote ${one.digestPath}, and its screenshots ` +
+        `and walkthrough.webm sit beside it in ${one.dir}`,
+    )
+    .join('; ')
+  return (
+    `BEFORE you plan anything, read lap ${first.lap}'s review evidence — ${where}. That ` +
+    "DIGEST.md is the review agent's own account of the build I drove. "
+  )
 }

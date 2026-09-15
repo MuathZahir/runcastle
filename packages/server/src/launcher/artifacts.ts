@@ -364,6 +364,58 @@ export function renderConvergePrompt(
 }
 
 /**
+ * The lap block's evidence section: the three things a lap session was observed
+ * planning WITHOUT, in the order it needs them.
+ *
+ * The review evidence arrives as absolute paths because nothing else carries it.
+ * A review agent reports through host scratch space outside the repo
+ * (`~/.runcastle/reviews/<ticketId>/`), and `get_feature_context` strips every
+ * ticket's `digest` out of its payload — so the previous lap's review reached a
+ * lap session through no channel at all, and one planned a whole lap on "No, I
+ * moved too quickly to Burn".
+ *
+ * The other two are policy, stated here because they are per-lap facts about
+ * what this session owes the human before it plans: read out what the docs
+ * themselves mark as not demonstrable (a lap-1 build whose own plan said "no UI,
+ * nobody should demo this before ticket X" was handed over as a test drive), and
+ * stand on every reported failure rather than carding a fix for a bug nobody has
+ * reproduced. `revisit/SKILL.md` carries the procedure for both.
+ */
+function reviewEvidenceSection(lap: number, docs: string, carried?: CarriedWork): string[] {
+  const evidence = carried?.reviewEvidence ?? []
+  return [
+    '### Read the evidence before you plan',
+    ...(evidence.length > 0
+      ? [
+          `Lap ${lap - 1}'s review left this on disk — host scratch space, NOT the repo, and your`,
+          "ONLY channel to it: a ticket's `digest` is stripped out of `get_feature_context`.",
+          ...evidence.flatMap((one) => [
+            `- \`${one.digestPath}\` — the review agent's own account of what it found (ticket`,
+            `  ${one.seq}; that pass ended \`${one.status}\`, which is the review outcome).`,
+            `- \`${one.dir}\` — the screenshots and \`walkthrough.webm\` from the same pass.`,
+          ]),
+          'Read them BEFORE you interview the human. A lap planned from the interview alone is',
+          'planned against a build whose own review nobody read.',
+        ]
+      : [
+          `Lap ${lap - 1} left NO review evidence on disk — no review pass of that lap finished.`,
+          'Say that plainly rather than implying you read one, and plan from the interview.',
+        ]),
+    '',
+    `**Say what is not demonstrable.** Grep \`${docs}/spec.md\` and this feature's tickets for`,
+    '`not demonstrable`, `do not demo` and `later laps`, and tell the human what they say BEFORE',
+    'you offer a test drive — a drive of a build its own plan says nobody should demo teaches',
+    'nothing, and costs the human the time to find that out.',
+    '',
+    '**Stand on the failure.** For every bug the human reports, exactly one of three things:',
+    'reproduce it; or trace it to a file and line, and say which; or say plainly that you could',
+    'not reproduce it — and then make reproduction the FIRST acceptance criterion of the ticket',
+    'that fixes it. Never card a fix for a failure nobody has stood on.',
+    '',
+  ]
+}
+
+/**
  * The kind=revisit system prompt. A revisit reopens a finished conversation
  * (usually the grilling) because the human remembered something or changed
  * their mind. The session amends the docs to match the new reality, then does
@@ -446,6 +498,8 @@ export function renderRevisitPrompt(
               '  and not yet done, whatever lap captured it.',
               `- \`${docs}/spec.md\`, section \`## Later laps\` — scope parked by earlier laps.`,
             ]),
+        '',
+        ...reviewEvidenceSection(lap, docs, carried),
         `New decisions go under a \`## Lap ${lap}\` heading in \`${docs}/decisions.md\`.`,
         '',
         'Unlike an ordinary revisit a lap MOVES the pipeline, and only this session will:',
