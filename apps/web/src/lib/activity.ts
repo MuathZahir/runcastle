@@ -239,3 +239,19 @@ export function eventLevel(event: Pick<EventRow, 'type' | 'data'>): EventLevel {
   if (/(start|burn|launch|advance|running|retry|resum)/i.test(type)) return 'active'
   return 'info'
 }
+
+/**
+ * Whether an event carries a WARNING in its payload — something about the run
+ * the human has to read, rather than one more line of the record.
+ *
+ * Today that is the one flag the burner sets: `oversized`, on the docs-digest
+ * event, when the digest every ticket in the burn is handed has grown past its
+ * budget. It was written and never read anywhere, and the warning's own words
+ * were appended to the end of an already-long message in a timeline that clips
+ * every row to one line — so the part that got cut off was the part that
+ * mattered. A row this says yes to is rendered in full.
+ */
+export function eventWarns(event: Pick<EventRow, 'data'>): boolean {
+  if (typeof event.data !== 'object' || event.data === null) return false
+  return (event.data as Record<string, unknown>).oversized === true
+}

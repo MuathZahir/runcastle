@@ -501,6 +501,15 @@ describe('nextStep — live sessions go status-only', () => {
     expect(ns.primary).toEqual({ label: 'Burn 2 tickets', kind: 'burn' })
   })
 
+  it('names the docs digest this road will hand every ticket, too', () => {
+    const ns = nextStep(auditFull({ phase: 'tickets', gateId: 'G3', tickets: 2 }), {
+      driving: false,
+      docsDigestBytes: 97_000,
+    })
+    expect(ns.note).toContain('the docs digest is 97000 bytes')
+    expect(ns.primary).toEqual({ label: 'Burn 2 tickets', kind: 'burn' })
+  })
+
   it('arms Burn with no session alive to race, readiness or not', () => {
     const ns = nextStep(auditFull({ phase: 'tickets', gateId: 'G3', tickets: 2 }), {
       driving: false,
@@ -2500,6 +2509,43 @@ describe('nextStep at implementation', () => {
     )
     expect(ns.note).toContain('#2 has a 21-character context')
     expect(ns.note).not.toContain('#1')
+  })
+
+  /**
+   * The other half of the same batch's cost: the feature docs digest every
+   * ticket in the burn is handed. The threshold landed at the burner's seam and
+   * said so only on the run timeline — appended to a row that clips, in a panel
+   * that starts collapsed — so the human deciding the burn never met it.
+   */
+  it('says when every ticket in the burn will pay for an oversized docs digest', () => {
+    const ns = nextStep(buildFull({}), { driving: false, docsDigestBytes: 97_000 })
+    expect(ns.note).toContain('the docs digest is 97000 bytes')
+    expect(ns.note).toContain('over the 40000-byte budget')
+    expect(ns.note).toContain('trim the feature docs')
+    expect(ns.primary).toEqual({ label: 'Burn 1 ticket', kind: 'burn' })
+  })
+
+  it('keeps quiet about a digest inside the budget', () => {
+    const ns = nextStep(buildFull({}), { driving: false, docsDigestBytes: 40_000 })
+    expect(ns.note).toBeUndefined()
+  })
+
+  it('leads with the digest, which every ticket pays, ahead of the per-ticket shapes', () => {
+    const ns = nextStep(buildFull({ shapes: degenerate(4) }), {
+      driving: false,
+      docsDigestBytes: 97_000,
+    })
+    expect(ns.note).toMatch(/^the docs digest is 97000 bytes/)
+    expect(ns.note).toContain('#1 repeats its goal as its context')
+  })
+
+  it('says it again on the resume road into the same burn', () => {
+    const ns = nextStep(buildFull({ runs: [{ id: 'r1', status: 'failed', startedAt: 1 }] }), {
+      driving: false,
+      docsDigestBytes: 97_000,
+    })
+    expect(ns.note).toContain('the docs digest is 97000 bytes')
+    expect(ns.primary).toEqual({ label: 'Resume burn', kind: 'burn' })
   })
 })
 
