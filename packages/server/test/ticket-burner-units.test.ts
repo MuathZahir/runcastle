@@ -1608,6 +1608,28 @@ describe('toolchain preflight — one container answers for every binary', () =>
     expect(preflightCommandNames({ agentBinary: 'codex' })).toEqual(['codex'])
   })
 
+  it('does not probe verify binaries that setup provides before verification runs', () => {
+    expect(
+      preflightCommandNames({
+        agentBinary: 'codex',
+        setupCommand:
+          'corepack enable pnpm && corepack prepare yarn@4.5.0 --activate && npm i -g turbo@2 && bun add --global biome && alias poetry="python -m poetry" && uv() { python -m uv "$@"; }',
+        verifyCommands:
+          'pnpm test\nyarn lint\nturbo build\nbiome check .\npoetry run pytest\nuv run ruff\nbun run typecheck',
+      }),
+    ).toEqual(['bun', 'codex', 'corepack', 'npm'])
+  })
+
+  it('keeps probing setup and verify commands that setup does not provide', () => {
+    expect(
+      preflightCommandNames({
+        agentBinary: 'claude',
+        setupCommand: 'corepack prepare pnpm@9 --activate && mvn install',
+        verifyCommands: 'pnpm test\npython scripts/check.py',
+      }),
+    ).toEqual(['claude', 'corepack', 'mvn', 'python'])
+  })
+
   it('builds one `command -v` sweep that always exits 0', () => {
     expect(buildToolchainProbeArgs('sandcastle:runcastle-demo', ['claude', 'mvn'])).toEqual([
       'run',

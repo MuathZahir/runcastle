@@ -171,6 +171,7 @@ const NON_COMMAND_WORDS = new Set([
   'time',
   'sudo',
   'echo',
+  'alias',
   'true',
   'false',
 ])
@@ -201,6 +202,53 @@ export function extractCommandNames(command: string | undefined): string[] {
   return names
 }
 
+/** A package-manager argument reduced to the command name it installs/shims. */
+function providedPackageName(argument: string): string | undefined {
+  const unquoted = argument.replace(/^['"]|['"]$/g, '')
+  if (!unquoted || unquoted.startsWith('-')) return undefined
+  const withoutVersion = unquoted.startsWith('@')
+    ? unquoted.replace(/@[^@/]+$/, '')
+    : unquoted.split('@')[0]
+  const name = withoutVersion.split('/').at(-1) ?? ''
+  return PLAIN_COMMAND_NAME.test(name) ? name : undefined
+}
+
+/**
+ * Names that setup itself makes available. These cannot be required before the
+ * setup hook runs: probing them in the pristine image rejects the very setup
+ * command that would have provided them.
+ */
+export function setupProvidedCommandNames(command: string | undefined): string[] {
+  const provided = new Set<string>()
+  const source = command ?? ''
+
+  for (const segment of source.split(COMMAND_SEPARATORS)) {
+    const words = segment.replace(/[(){}'"`]/g, ' ').split(/\s+/).filter(Boolean)
+    const commandIndex = words.findIndex((word) => !ASSIGNMENT_PREFIX.test(word))
+    if (commandIndex < 0) continue
+    const [name, action, ...args] = words.slice(commandIndex)
+    const packages =
+      name === 'corepack' && (action === 'enable' || action === 'prepare')
+        ? args
+        : (name === 'npm' && (action === 'i' || action === 'install') && args.some((arg) => arg === '-g' || arg === '--global')) ||
+            (name === 'bun' && action === 'add' && args.some((arg) => arg === '-g' || arg === '--global'))
+          ? args
+          : []
+    for (const argument of packages) {
+      const packageName = providedPackageName(argument)
+      if (packageName) provided.add(packageName)
+    }
+  }
+
+  for (const match of source.matchAll(/\balias\s+([A-Za-z_][A-Za-z0-9_-]*)\s*=/g)) {
+    provided.add(match[1])
+  }
+  for (const match of source.matchAll(/(?:^|[;&|]\s*)([A-Za-z_][A-Za-z0-9_-]*)\s*\(\s*\)\s*\{/g)) {
+    provided.add(match[1])
+  }
+  return [...provided]
+}
+
 /**
  * Every binary this run's containers must already carry: the agent CLI, the
  * setup hook's commands, and the ones the prompt tells the agent to verify with
@@ -213,11 +261,12 @@ export function preflightCommandNames(input: {
   setupCommand?: string
   verifyCommands?: string
 }): string[] {
+  const providedBySetup = new Set(setupProvidedCommandNames(input.setupCommand))
   return [
     ...new Set([
       input.agentBinary,
-      ...extractCommandNames(input.setupCommand),
-      ...extractCommandNames(input.verifyCommands),
+      ...extractCommandNames(input.setupCommand).filter((name) => !providedBySetup.has(name)),
+      ...extractCommandNames(input.verifyCommands).filter((name) => !providedBySetup.has(name)),
     ]),
   ].sort()
 }
