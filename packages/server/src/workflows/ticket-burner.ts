@@ -1609,6 +1609,8 @@ export function buildWorkspaceNotes(
       '',
       'Write `DIGEST.md` at the root of that checkout, and leave it uncommitted — the host harvests it from disk.',
       '',
+      'Write `GATE_UNRUNNABLE.md` at the root of that checkout when the gate protocol requires it, and leave it uncommitted too.',
+      '',
       'If you are blocked and write `BLOCKED.md`, write it at the root of that checkout too. **These two paths are the only authoritative ones** — nothing later in this prompt overrides them.',
     ].join('\n')
   }
@@ -1620,6 +1622,8 @@ export function buildWorkspaceNotes(
     `If you are blocked and write \`BLOCKED.md\`, write it at \`${repoPath}/BLOCKED.md\` AND copy it to \`${SANDBOX_WORKSPACE_PATH}/BLOCKED.md\` so the orchestrator can see it.`,
     '',
     `Write \`DIGEST.md\` at \`${SANDBOX_WORKSPACE_PATH}/DIGEST.md\` — the mounted mirror, so the host can see it — and NOT inside \`${repoPath}\`, where it would be committed with your work.`,
+    '',
+    `Write \`GATE_UNRUNNABLE.md\` at \`${SANDBOX_WORKSPACE_PATH}/GATE_UNRUNNABLE.md\` for the same reason — the host must be able to harvest it.`,
     '',
     '**Those paths are the only authoritative ones** — nothing later in this prompt overrides them.',
   ].join('\n')
@@ -2179,6 +2183,47 @@ export function interpretRunResult(
     return { status: 'failed', error: `agent reported BLOCKED:\n${blockedContent.trim()}` }
   }
   return { status: 'failed', error: 'agent made no commits' }
+}
+
+export interface UnrunnableGate {
+  command: string
+  error: string
+}
+
+/** Parse the agent-written protocol file without letting a malformed report fail a ticket. */
+export function parseUnrunnableGates(content: string | undefined): UnrunnableGate[] {
+  if (!content?.trim()) return []
+  try {
+    const decoded: unknown = JSON.parse(content)
+    const entries = Array.isArray(decoded) ? decoded : [decoded]
+    const byCommand = new Map<string, UnrunnableGate>()
+    for (const entry of entries) {
+      if (typeof entry !== 'object' || entry === null) continue
+      const { command, error } = entry as { command?: unknown; error?: unknown }
+      if (typeof command !== 'string' || typeof error !== 'string') continue
+      const gate = { command: command.trim(), error: error.trim() }
+      if (gate.command && gate.error && !byCommand.has(gate.command)) byCommand.set(gate.command, gate)
+    }
+    return [...byCommand.values()]
+  } catch {
+    return []
+  }
+}
+
+/** Surface an unavailable verification runtime without changing the ticket outcome. */
+export function emitUnrunnableGates(
+  ctx: WorkflowCtx,
+  ticket: Pick<Ticket, 'id' | 'seq'>,
+  content: string | undefined,
+): void {
+  for (const gate of parseUnrunnableGates(content)) {
+    ctx.emitEvent({
+      type: 'ticket.gate_unrunnable',
+      message: `ticket ${ticket.seq} could not run verification: ${gate.command}`,
+      ticketId: ticket.id,
+      data: gate,
+    })
+  }
 }
 
 /**
@@ -4759,6 +4804,7 @@ async function burnTicket(
     // its preserved chain stays on the ticket for the next retry.
     const agentFileDirs = [result.preservedWorktreePath, project.repoPath]
     const blocked = readAgentFile(agentFileDirs, 'BLOCKED.md')
+    emitUnrunnableGates(ctx, ticket, readAgentFile(agentFileDirs, 'GATE_UNRUNNABLE.md'))
     // Harvested before the landing, attached after it — see `harvestedDigest`.
     harvestedDigest = harvestDigest(agentFileDirs)
     // Both agent files are out of the preserved worktree now, and attachments
