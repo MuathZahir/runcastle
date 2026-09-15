@@ -247,7 +247,7 @@ describe('buildSlotSetupCommand — the slot-sync script', () => {
     const hook = postCommitHookBody(script(), BRANCH)
     expect(hook).not.toContain('reset')
     expect(hook).not.toContain(SANDBOX_WORKSPACE_PATH)
-    const push = `git push --quiet origin HEAD:${BRANCH}`
+    const push = `git push --quiet --force-with-lease origin HEAD:${BRANCH}`
     expect(hook.split(push)).toHaveLength(3)
     expect(hook).toContain(`${push} && exit 0\nsleep 2\n${push}`)
     expect(hook).toContain(
@@ -450,6 +450,22 @@ describe.skipIf(process.platform === 'win32')('buildSlotSetupCommand — driven 
     // reset is the 15–90s-per-commit mount tax this hook no longer pays; the
     // worktree is left dirty on purpose and removed host-side after the run.
     expect(existsSync(join(workspace, 'WORK.md'))).toBe(false)
+  })
+
+  it('syncs an amended commit that rewrites the ticket branch', async () => {
+    await runSetup(1, BRANCH)
+    const repo = simpleGit(slotRepo(1))
+    await repo.addConfig('user.email', 'agent@runcastle.dev')
+    await repo.addConfig('user.name', 'Burn Agent')
+    writeFileSync(join(slotRepo(1), 'WORK.md'), 'first draft\n')
+    await repo.add('.')
+    await repo.commit('ticket(2): work')
+
+    writeFileSync(join(slotRepo(1), 'WORK.md'), 'amended work\n')
+    await repo.add('.')
+    await repo.commit('ticket(2): work', undefined, ['--amend'])
+
+    expect(await simpleGit(workspace).revparse(['HEAD'])).toBe(await repo.revparse(['HEAD']))
   })
 
   it('retries a failed push, then tells the agent once — without failing the commit', async () => {
