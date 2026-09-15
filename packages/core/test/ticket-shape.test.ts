@@ -74,9 +74,21 @@ describe('ticketShapeWarnings', () => {
     expect(codes([ticket(1, { context: own.trim() })])).toEqual([])
   })
 
-  it('flags a blob that simply stops mid-word', () => {
-    const truncated = `${'a sentence that keeps going and going and going. '.repeat(32)}and then it stop`
-    expect(codes([ticket(5, { context: truncated })])).toEqual(['pasted-document'])
+  it('takes a long context that lists the files it touches as the ticket own prose', () => {
+    const listed = `${'x'.repeat(1600)}\n\n- packages/core/src/ticket-shape.ts`
+    expect(codes([ticket(1, { context: listed })])).toEqual([])
+    expect(codes([ticket(1, { context: `${'x'.repeat(1600)}\n\n1. run the repro` })])).toEqual([])
+  })
+
+  it('takes a long context written as three paragraphs as the ticket own prose', () => {
+    const paragraphs = ['Location.', 'Citation.', 'x'.repeat(1600)].join('\n\n')
+    expect(codes([ticket(1, { context: paragraphs })])).toEqual([])
+  })
+
+  it('does not read a context that ends without a full stop as a blob stopped mid-word', () => {
+    const own = `${'a sentence that keeps going and going and going. '.repeat(32)}and then it stops`
+    expect(own.length).toBeGreaterThan(PASTED_DOCUMENT_CHARS)
+    expect(codes([ticket(5, { context: own })])).toEqual([])
   })
 
   it('reports the degenerate import as a batch, before the per-ticket lines', () => {

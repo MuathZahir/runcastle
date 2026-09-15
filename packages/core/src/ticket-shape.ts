@@ -157,17 +157,19 @@ function goalRepeatsContext(ticket: TicketShapeSubject): boolean {
 }
 
 /**
- * Text long enough, and structured enough, to be something pasted in rather
- * than written for this ticket: a heading, a list, several paragraphs, or a
- * blob that simply stops mid-word where whatever produced it was cut off.
+ * Text long enough, and sectioned like a document, to be something pasted in
+ * rather than written for this ticket: a markdown heading. A ticket's own
+ * context is prose about one piece of work and never needs sections.
+ *
+ * Only the heading, deliberately. This also used to fire on a single bullet, a
+ * single numbered line, three paragraphs, or a last character that happened to
+ * be a letter ("truncated mid-word") — but the tickets skill demands a context
+ * that names every file and pattern the ticket touches, which is exactly how a
+ * good context gets long, listed and paragraphed, and ending without a full
+ * stop is not truncation. Those four told a thorough session to cut the context
+ * it had just been told to write, so they are gone.
  */
 function looksLikePastedDocument(text: string): boolean {
   if (text.length <= PASTED_DOCUMENT_CHARS) return false
-  return (
-    /^\s{0,3}#{1,6}\s/m.test(text) || // ## a heading
-    /^\s*[-*+]\s+\S/m.test(text) || // - a bullet
-    /^\s*\d+[.)]\s+\S/m.test(text) || // 1. a numbered step
-    (text.match(/\n[ \t]*\n/g) ?? []).length >= 2 || // three or more paragraphs
-    /\w$/.test(text) // truncated mid-word
-  )
+  return /^\s{0,3}#{1,6}\s/m.test(text) // ## a heading
 }
