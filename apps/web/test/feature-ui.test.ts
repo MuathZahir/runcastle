@@ -60,6 +60,22 @@ import type { FeatureFull, FeatureListItem } from '../src/lib/api'
 import { full, listItem, wp } from './fixtures'
 
 /**
+ * A ticket a coder could read before it writes: a goal, and a context that is
+ * different from it and past the thin floor. Both roads into a burn now carry
+ * the shape warnings (core's `ticket-shape.ts`), so the fixtures that are NOT
+ * about them say nothing to warn about; the shape cases build their own.
+ */
+const BURNABLE = {
+  goal: 'Put the shape warnings on the burn card.',
+  context:
+    'The bar lives in apps/web/src/lib/feature-ui/next-step and the ledger beneath it in ' +
+    'components/bodies/tickets. Follow the resolver that is already there rather than adding a ' +
+    'second one, and pin the copy in apps/web/test/feature-ui.test.ts as the neighbouring cases ' +
+    'do. The warnings themselves belong to core, beside the rules, so the card and the door that ' +
+    'stores the tickets cannot word the same problem two ways.',
+}
+
+/**
  * Every cutting form prefills Branch-from with the branch the project is
  * currently checked out on, falling back to main when runcastle's own internal
  * branch is the checkout. Tested at the pure derivation, no DOM.
@@ -362,9 +378,11 @@ describe('nextStep — live sessions go status-only', () => {
       },
       tickets: Array.from({ length: opts.tickets ?? 0 }, (_, i) => ({
         id: `t${i}`,
+        seq: i + 1,
         status: 'pending',
         lap: 1,
         commits: [],
+        ...BURNABLE,
       })),
       sessions: opts.live
         ? [{ id: 's1', status: opts.sessionStatus ?? 'live', kind: 'ideation' }]
@@ -462,6 +480,25 @@ describe('nextStep — live sessions go status-only', () => {
     expect(ns.desc).toContain('The session is finishing the tickets')
     expect(ns.primary).toBeUndefined()
     expect(ns.secondary).toEqual([])
+  })
+
+  /**
+   * The same shape warning the build phase's bar carries, on the road a specced
+   * feature takes into its burn — a session that left a context empty is the
+   * same problem as a quick change that arrived with nothing in any of them.
+   */
+  it('reads the shape of the tickets it is about to burn, without disarming Burn', () => {
+    const base = auditFull({ phase: 'tickets', gateId: 'G3', tickets: 2 })
+    expect(nextStep(base, { driving: false }).note).toBeUndefined()
+
+    const thin = {
+      ...base,
+      tickets: base.tickets.map((ticket) => ({ ...ticket, context: 'Somewhere in the app.' })),
+    } as unknown as FeatureFull
+    const ns = nextStep(thin, { driving: false })
+    expect(ns.note).toContain('#1 has a 21-character context')
+    expect(ns.note).toContain('#2 has a 21-character context')
+    expect(ns.primary).toEqual({ label: 'Burn 2 tickets', kind: 'burn' })
   })
 
   it('arms Burn with no session alive to race, readiness or not', () => {
@@ -2242,18 +2279,6 @@ describe('draft derivations', () => {
  * burn that never started. A run that died still resumes.
  */
 describe('nextStep at implementation', () => {
-  /**
-   * A ticket a coder could actually burn: a context thick enough, and different
-   * enough from the goal, that the shape warnings have nothing to say about it
-   * (they have their own cases at the bottom of this describe).
-   */
-  const BURNABLE_CONTEXT =
-    'The bar lives in apps/web/src/lib/feature-ui/next-step/implementation.ts and the ledger ' +
-    'beneath it in components/bodies/tickets. Follow the resolver that is already there rather ' +
-    'than adding a second one, and pin the copy in apps/web/test/feature-ui.test.ts as the ' +
-    'neighbouring cases do. The warnings themselves belong to core, beside the rules, so the ' +
-    'card and the door that stores the tickets cannot word the same problem two ways.'
-
   const buildFull = (opts: {
     runs?: { id: string; status: string; startedAt: number }[]
     ticketStatuses?: TicketStatus[]
@@ -2270,8 +2295,7 @@ describe('nextStep at implementation', () => {
         id: `t${i}`,
         seq: i + 1,
         status,
-        goal: 'Put the shape warnings on the burn card.',
-        context: BURNABLE_CONTEXT,
+        ...BURNABLE,
         ...(opts.shapes?.[i] ?? {}),
         lap: 1,
         commits: [],
@@ -2628,7 +2652,13 @@ describe('nextStep — spec and tickets use one lap-scoped door', () => {
     ] as FeatureFull['tickets']
     expect(nextStep(feature, { driving: false }).title).toBe('Waiting for tickets')
     feature.tickets.push(
-      ...(['a', 'b', 'c'].map((id) => ({ id, lap: 2, status: 'pending' })) as FeatureFull['tickets']),
+      ...(['a', 'b', 'c'].map((id, i) => ({
+        id,
+        seq: i + 1,
+        lap: 2,
+        status: 'pending',
+        ...BURNABLE,
+      })) as FeatureFull['tickets']),
     )
     expect(nextStep(feature, { driving: false }).primary).toEqual({ label: 'Burn 3 tickets', kind: 'burn' })
   })
@@ -3309,7 +3339,7 @@ describe('nextStep — naming the runtime in the copy', () => {
   it('does not name a runtime for a ticket batch that may span both', () => {
     const full = {
       feature: { id: 'f1', phase: 'tickets', mapped: false, status: 'active' },
-      tickets: [{ id: 't1', seq: 1, status: 'todo' }],
+      tickets: [{ id: 't1', seq: 1, status: 'todo', ...BURNABLE }],
       sessions: [],
       runs: [],
       gate: { next: { id: 'G3' }, satisfied: false, reason: 'not burned' },
