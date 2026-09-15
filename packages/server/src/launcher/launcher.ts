@@ -63,7 +63,6 @@ import {
   reentryCount,
   reportProjectLanding,
   resumeCapExceeded,
-  setKickoffOverride,
   transcriptBytes,
   type ResumeCapVerdict,
 } from './sessions'
@@ -491,8 +490,6 @@ export async function launchSession(
   const kickoffLine = resumeSessionId
     ? undefined
     : kickoffLineFor(input.kind, plan.line, runtime.id)
-  if (kickoffLine) setKickoffOverride(session.id, kickoffLine)
-
   emit(ctx, feature.id, {
     type: 'session.launching',
     message: `launching ${input.kind} session`,
@@ -666,8 +663,6 @@ export async function launchPrepareSession(
         prepare.remainingKeys.length === 0 ? prepareConfirmKickoffFor(runtime.id) : undefined,
         runtime.id,
       )
-  if (kickoffLine) setKickoffOverride(session.id, kickoffLine)
-
   const spec = await runtime.writeArtifacts({
     session,
     project,
@@ -803,8 +798,6 @@ export async function launchDriveFixSession(
   const kickoffLine = resumeSessionId
     ? undefined
     : kickoffLineFor('drive-fix', undefined, runtime.id)
-  if (kickoffLine) setKickoffOverride(session.id, kickoffLine)
-
   const spec = await runtime.writeArtifacts({
     session,
     project,
@@ -948,8 +941,6 @@ export async function launchProjectSession(
   }
 
   const kickoffLine = resumeSessionId ? undefined : kickoffLineFor('project', undefined, runtime.id)
-  if (kickoffLine) setKickoffOverride(session.id, kickoffLine)
-
   const spec = await runtime.writeArtifacts({
     session,
     project,

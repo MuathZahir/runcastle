@@ -331,24 +331,6 @@ export function planKickoff(input: {
   return { line, explicit: true, ...(lap !== undefined ? { lap } : {}) }
 }
 
-/**
- * Per-session kickoff overrides, keyed by session id: the record of what this
- * terminal was opened to say. `launchSession` stashes the resolved fresh-launch
- * line before spawning, and the entry is dropped when the session ends, so the
- * map never grows unbounded.
- */
-const pendingKickoffOverrides = new Map<string, string>()
-
-/** Register a kickoff line that replaces the per-kind default for one session. */
-export function setKickoffOverride(sessionId: string, line: string): void {
-  pendingKickoffOverrides.set(sessionId, line)
-}
-
-/** Drop a session's kickoff override (session end — nothing will read it now). */
-export function forgetKickoff(sessionId: string): void {
-  pendingKickoffOverrides.delete(sessionId)
-}
-
 /** Is this session's terminal still running? False once it has exited or gone. */
 function ptyAlive(sessionId: string): boolean {
   const entry = ptyRegistry().get(sessionId)
@@ -510,13 +492,11 @@ export function reportProjectLanding(
 export function markSessionEnded(ctx: AppCtx, id: string): SessionRow | null {
   const existing = getSessionRow(ctx, id)
   if (!existing) return null
-  // Drop the kickoff override: the terminal it was opened for is gone, and a
-  // stale entry must never outlive its session.
-  forgetKickoff(id)
-  // Same reasoning for the docs watcher, and one reason more: on Windows a live
-  // watcher holds a lock on the directory, which would block the worktree
-  // removal that follows a merge. Every end path funnels here — PTY exit, the
-  // Stop hook, boot reconciliation — so this is the one place it must happen.
+  // Stop the docs watcher: the terminal it was watching for is gone, and on
+  // Windows a live watcher holds a lock on the directory, which would block the
+  // worktree removal that follows a merge. Every end path funnels here — PTY
+  // exit, the Stop hook, boot reconciliation — so this is the one place it must
+  // happen.
   if (existing.featureId) stopDocsWatch(existing.featureId)
   // The ending is timestamped here and nowhere else, so "ended 2h ago" is a
   // recorded fact rather than the row's age wearing an end-time label. Those
