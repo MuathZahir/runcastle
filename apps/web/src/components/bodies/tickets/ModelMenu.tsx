@@ -10,6 +10,10 @@ import {
   SelectValue,
 } from '../../../ui/select'
 
+function isImplementerOnly(model: ModelEntry | undefined): boolean {
+  return /\bimplementer[- ]only\b/i.test(model?.note ?? '')
+}
+
 /**
  * Which model a ticket burns on — per row, and once over the whole ledger for
  * every pending ticket at once. `''` is the project's own model, which is why
@@ -35,8 +39,7 @@ export function ModelMenu({
   ticketKind?: TicketKind
 }) {
   const entry = roster.find((model) => model.id === value)
-  const reviewMismatch =
-    ticketKind === 'review' && /\bimplementer[- ]only\b/i.test(entry?.note ?? '')
+  const reviewMismatch = ticketKind === 'review' && isImplementerOnly(entry)
   // The closed pill says the runtime a model launches, where the row in the
   // list says the use-case note instead — so the trigger states its own text
   // rather than echoing the row it points at. A `label` overrides it outright:
@@ -67,6 +70,9 @@ export function ModelMenu({
               {group.entries.map((model) => (
                 <SelectItem key={model.id} value={model.id}>
                   {model.note ? `${model.id} — ${model.note}` : model.id}
+                  {ticketKind === 'review' && isImplementerOnly(model)
+                    ? ' — not recommended for review'
+                    : ''}
                 </SelectItem>
               ))}
             </SelectGroup>
