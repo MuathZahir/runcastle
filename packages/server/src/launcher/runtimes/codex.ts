@@ -153,20 +153,16 @@ function approvalPolicyFor(permissionMode: string | undefined): 'never' | 'on-re
  *   ({@link buildCodexArgs}): without it no hook fires at all.
  *
  *   WHAT THIS DOES NOT FIX, verified end-to-end against codex-cli 0.150.1 in a
- *   real PTY. An interactive Codex session still never goes `live` and still
- *   never gets its kickoff, because Codex's TUI does not emit `SessionStart`
- *   when the terminal opens — it emits it with the FIRST TURN, alongside that
- *   turn's `UserPromptSubmit`. Sat idle at a settled Codex prompt for 30s with
- *   hook discovery on, trust granted and the update prompt pre-dismissed, no
- *   `SessionStart` fired; typing one prompt produced `SessionStart` and
- *   `UserPromptSubmit` together. That deadlocks runcastle: `markSessionLive`
- *   (SessionStart) is the only caller of `scheduleKickoff`, and the kickoff is
- *   the thing that would submit that first prompt — so the terminal sits at the
- *   prompt, `armSessionReadyWatchdog` fires `session.not_ready` at 25s, and the
- *   briefing is never typed. When the human eventually types something the
- *   session goes live and the kickoff is injected on top of a conversation
- *   already in flight, which is where the clear-and-retype churn comes from.
- *   Breaking that cycle is `native-first-message-delivery`, not this line.
+ *   real PTY. An interactive Codex session does not go `live` when its terminal
+ *   opens, because Codex's TUI does not emit `SessionStart` then — it emits it
+ *   with the FIRST TURN, alongside that turn's `UserPromptSubmit`. Sat idle at a
+ *   settled Codex prompt for 30s with hook discovery on, trust granted and the
+ *   update prompt pre-dismissed, no `SessionStart` fired; typing one prompt
+ *   produced `SessionStart` and `UserPromptSubmit` together. That used to
+ *   deadlock runcastle, back when going live was what delivered the kickoff that
+ *   would have submitted the first turn. The kickoff rides the argv at spawn
+ *   now ({@link buildCodexArgs}), so the first turn happens on its own and the
+ *   hooks follow it.
  * - `[projects."<worktree>"] trust_level = "trusted"` answers the first-run
  *   "do you trust this folder?" prompt before it can block the session — a
  *   dialog fires BEFORE the SessionStart hook, so it would strand the terminal

@@ -9,7 +9,6 @@ import { launchSession } from '../src/launcher/launcher'
 import { KICKOFF_LINES } from '../src/launcher/runtimes/claude'
 import {
   createSessionRow,
-  kickoffDeliveryFor,
   lapInFlight,
   lapKickoff,
   markSessionEnded,

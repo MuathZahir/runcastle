@@ -68,10 +68,6 @@ import {
   type ResumeCapVerdict,
 } from './sessions'
 
-// Re-exported for the `feature.resendKickoff` router: the launcher is the stable
-// import path for session-terminal behaviour (same arrangement as `endSession`).
-export { resendKickoff } from './sessions'
-
 // Re-exported so the `feature.endSession` router (W2) imports the real,
 // PTY-killing service from `../../launcher/launcher` per its coordination note —
 // the implementation lives in the PTY layer (`pty/end-session`).
