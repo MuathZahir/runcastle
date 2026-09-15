@@ -174,14 +174,10 @@ describe('launchSession — an explicit briefing launches fresh', () => {
 
     expect(command).not.toContain('--resume')
     expect(command).not.toContain('cc-prior')
+    expect(command).toContain(lapKickoff(2))
     const events = listAfter(ctx, featureId, 0)
     expect(events.map((e) => e.type)).not.toContain('session.resumed')
     expect(events.map((e) => e.type)).toContain('session.resume_skipped')
-    expect(events.filter((e) => e.type === 'session.kickoff')).toHaveLength(1)
-    expect(events.find((e) => e.type === 'session.kickoff')?.data).toMatchObject({
-      mechanism: 'argv',
-      line: lapKickoff(2),
-    })
   })
 
   it('still resumes the last conversation for a launch with no briefing (unchanged)', async () => {
@@ -189,9 +185,9 @@ describe('launchSession — an explicit briefing launches fresh', () => {
     const { command } = await launchAndRead(featureId, { kind: 'revisit' })
 
     expect(command).toContain('--resume cc-prior')
+    expect(command).not.toContain(KICKOFF_LINES.revisit)
     const events = listAfter(ctx, featureId, 0)
     expect(events.map((e) => e.type)).toContain('session.resumed')
-    expect(events.filter((e) => e.type === 'session.kickoff')).toHaveLength(0)
   })
 
   it('renders the lap framing into the prompt of a lap launch, not the revisit ban', async () => {

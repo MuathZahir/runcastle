@@ -546,14 +546,6 @@ export async function launchSession(
     kickoffLine,
   })
 
-  if (kickoffLine) {
-    emit(ctx, feature.id, {
-      type: 'session.kickoff',
-      message: `opening ${input.kind} session with its briefing`,
-      data: { sessionId: session.id, kind: input.kind, line: kickoffLine, mechanism: 'argv' },
-    })
-  }
-
   // spawn:false fabricates a session MINUS any process (SPEC §11 smoke driver).
   if (opts.spawn === false) {
     emit(ctx, feature.id, {
@@ -564,10 +556,17 @@ export async function launchSession(
     return { sessionId: session.id }
   }
 
-  spawnEmbeddedPty(ctx, feature, session, worktreePath, runtime, spec, {
+  const spawned = spawnEmbeddedPty(ctx, feature, session, worktreePath, runtime, spec, {
     waypoint,
     resumeSessionId,
   })
+  if (spawned && kickoffLine) {
+    emit(ctx, feature.id, {
+      type: 'session.kickoff',
+      message: `opening ${input.kind} session with its briefing`,
+      data: { sessionId: session.id, kind: input.kind, line: kickoffLine, mechanism: 'argv' },
+    })
+  }
   return { sessionId: session.id }
 }
 
@@ -681,14 +680,6 @@ export async function launchPrepareSession(
     kickoffLine,
   })
 
-  if (kickoffLine) {
-    emitProject(ctx, project.id, {
-      type: 'session.kickoff',
-      message: 'opening preparation session with its briefing',
-      data: { sessionId: session.id, kind: 'prepare', line: kickoffLine, mechanism: 'argv' },
-    })
-  }
-
   if (opts.spawn === false) {
     emitProject(ctx, project.id, {
       type: 'session.launched',
@@ -698,7 +689,16 @@ export async function launchPrepareSession(
     return { sessionId: session.id }
   }
 
-  spawnEmbeddedPty(ctx, undefined, session, project.repoPath, runtime, spec, { resumeSessionId })
+  const spawned = spawnEmbeddedPty(ctx, undefined, session, project.repoPath, runtime, spec, {
+    resumeSessionId,
+  })
+  if (spawned && kickoffLine) {
+    emitProject(ctx, project.id, {
+      type: 'session.kickoff',
+      message: 'opening preparation session with its briefing',
+      data: { sessionId: session.id, kind: 'prepare', line: kickoffLine, mechanism: 'argv' },
+    })
+  }
   return { sessionId: session.id }
 }
 
@@ -824,14 +824,6 @@ export async function launchDriveFixSession(
     kickoffLine,
   })
 
-  if (kickoffLine) {
-    emit(ctx, feature.id, {
-      type: 'session.kickoff',
-      message: 'opening drive-fix session with its briefing',
-      data: { sessionId: session.id, kind: 'drive-fix', line: kickoffLine, mechanism: 'argv' },
-    })
-  }
-
   if (opts.spawn === false) {
     emit(ctx, feature.id, {
       type: 'session.launched',
@@ -843,7 +835,16 @@ export async function launchDriveFixSession(
 
   // No docs watch (the `feature` argument): this session repairs the
   // environment and never writes the feature's docs.
-  spawnEmbeddedPty(ctx, undefined, session, project.repoPath, runtime, spec, { resumeSessionId })
+  const spawned = spawnEmbeddedPty(ctx, undefined, session, project.repoPath, runtime, spec, {
+    resumeSessionId,
+  })
+  if (spawned && kickoffLine) {
+    emit(ctx, feature.id, {
+      type: 'session.kickoff',
+      message: 'opening drive-fix session with its briefing',
+      data: { sessionId: session.id, kind: 'drive-fix', line: kickoffLine, mechanism: 'argv' },
+    })
+  }
   return { sessionId: session.id }
 }
 
@@ -965,14 +966,6 @@ export async function launchProjectSession(
     permissionMode: 'default',
   })
 
-  if (kickoffLine) {
-    emitProject(ctx, project.id, {
-      type: 'session.kickoff',
-      message: 'opening project session with its briefing',
-      data: { sessionId: session.id, kind: 'project', line: kickoffLine, mechanism: 'argv' },
-    })
-  }
-
   if (opts.spawn === false) {
     emitProject(ctx, project.id, {
       type: 'session.launched',
@@ -982,7 +975,16 @@ export async function launchProjectSession(
     return { sessionId: session.id }
   }
 
-  spawnEmbeddedPty(ctx, undefined, session, worktreePath, runtime, spec, { resumeSessionId })
+  const spawned = spawnEmbeddedPty(ctx, undefined, session, worktreePath, runtime, spec, {
+    resumeSessionId,
+  })
+  if (spawned && kickoffLine) {
+    emitProject(ctx, project.id, {
+      type: 'session.kickoff',
+      message: 'opening project session with its briefing',
+      data: { sessionId: session.id, kind: 'project', line: kickoffLine, mechanism: 'argv' },
+    })
+  }
   return { sessionId: session.id }
 }
 
@@ -1292,7 +1294,8 @@ export function handlePtyExit(
  *
  * The PTY is registered by session id and the WS endpoint streams it. On process
  * exit we mark the session ended and emit `session.pty_exited`. A spawn failure
- * is surfaced as an event, never thrown.
+ * is surfaced as an event, never thrown — it comes back as `false`, which is how
+ * callers know no CLI ever received the argv and so no kickoff was delivered.
  */
 function spawnEmbeddedPty(
   ctx: AppCtx,
@@ -1302,7 +1305,7 @@ function spawnEmbeddedPty(
   runtime: AgentRuntimeAdapter,
   spec: RuntimeLaunchSpec,
   meta: SpawnMeta = {},
-): void {
+): boolean {
   const { file, args } = spawnTargetFor(runtime.resolveBinary(), spec.argv)
   const env: Record<string, string | undefined> = { ...process.env, ...spec.env }
   for (const key of spec.envScrub) delete env[key]
@@ -1328,6 +1331,7 @@ function spawnEmbeddedPty(
     // a terminal that never reports ready must say so instead of sitting there
     // looking healthy.
     armSessionReadyWatchdog(ctx, session)
+    return true
   } catch (err) {
     // A session that never got a process must not linger `launching` — the
     // one-live-session guard reads session rows, so a leaked row would block
@@ -1339,5 +1343,6 @@ function spawnEmbeddedPty(
       message: `failed to spawn embedded terminal: ${err instanceof Error ? err.message : String(err)}`,
       data: { sessionId: session.id, mode: 'embedded' },
     })
+    return false
   }
 }
