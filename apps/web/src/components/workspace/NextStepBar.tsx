@@ -44,7 +44,10 @@ export function NextStepBar({
     // never shrink, and without a floor the kick/title/desc collapsed to one
     // word per line in the state that most needs reading. Wide bars are
     // unchanged; a crowded one wraps the actions to their own row instead.
-    <div className="flex min-h-24 flex-wrap items-center gap-6 border-b border-hairline bg-panel-2 px-6 py-4">
+    <div
+      className={`flex min-h-24 flex-wrap items-center gap-6 border-b bg-panel-2 px-6 py-4 ${ns.alert ? 'border-warn' : 'border-hairline'}`}
+      role={ns.alert ? 'alert' : undefined}
+    >
       {ns.busy && <span className="size-4 animate-spin rounded-pill border-2 border-hairline-strong border-t-accent" />}
       <div className="min-w-0 flex-1 basis-[26rem]">
         <div className="font-mono text-xs uppercase tracking-[0.12em] text-text-3">{ns.kick}</div>

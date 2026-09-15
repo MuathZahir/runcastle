@@ -84,6 +84,8 @@ export interface CountLine {
 }
 
 export interface NextStep {
+  /** Persistent warning semantics for a state that needs explicit human recovery. */
+  alert?: boolean
   /** Small tracked kicker above the title (e.g. NEXT STEP / IN PROGRESS). */
   kick: string
   /** Absent where the count line says the state on its own (decision 3). */
