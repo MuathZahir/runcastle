@@ -1844,7 +1844,7 @@ describe('buildIsolatedSetupCommand — clone + auto-sync wiring for the sandbox
 
   it('retries a failed push once, then says one calm line and exits 0', () => {
     const hook = postCommitHookBody(buildIsolatedSetupCommand(branch, 'npm ci'), branch)
-    const push = `git push --quiet origin HEAD:${branch}`
+    const push = `git push --quiet --force-with-lease origin HEAD:${branch}`
     // exactly two pushes: the first, and one retry after a pause
     expect(hook.split(push)).toHaveLength(3)
     expect(hook).toContain(`${push} && exit 0\nsleep 2\n${push}`)

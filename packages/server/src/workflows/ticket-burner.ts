@@ -1359,8 +1359,11 @@ export function resolveBurnWorkspaceMode(
  *    step 4 pushes the clone's commits back and `info/exclude` is not something
  *    a clone inherits.
  * 4. Install a `post-commit` hook in the clone that, on every commit, pushes
- *    `HEAD:<tempBranch>` back to the workspace — and stops there. Syncing needs
- *    no agent discipline at all, and the cost is one pack write; the hook does
+ *    `HEAD:<tempBranch>` back to the workspace with `--force-with-lease` — and
+ *    stops there. Each attempt branch is private to one ticket (ADR-0002), so
+ *    this safely permits an agent to amend its own commits while still refusing
+ *    to overwrite an unexpected concurrent update. Syncing needs no agent
+ *    discipline at all, and the cost is one pack write; the hook does
  *    NOT reset the mounted checkout, because nothing reads that working tree
  *    (commit collection, later iterations and landing all go through the ref)
  *    and the reset stats every tracked file across the bind mount, at 15–90s a
@@ -1450,7 +1453,7 @@ function buildRepoSetupSteps(
     // the LAST commit — the one that matters most — at risk. The branch is a
     // printf ARG, never interpolated into the format string, so no branch text
     // is ever shell-interpreted.
-    `printf '#!/bin/sh\\nunset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE\\ngit push --quiet origin HEAD:%s && exit 0\\nsleep 2\\ngit push --quiet origin HEAD:%s && exit 0\\necho "runcastle: commit sync failed (will retry on your next commit); do not re-commit" >&2\\nexit 0\\n' '${tempBranch}' '${tempBranch}' > ${hookFile}`,
+    `printf '#!/bin/sh\\nunset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE\\ngit push --quiet --force-with-lease origin HEAD:%s && exit 0\\nsleep 2\\ngit push --quiet --force-with-lease origin HEAD:%s && exit 0\\necho "runcastle: commit sync failed (will retry on your next commit); do not re-commit" >&2\\nexit 0\\n' '${tempBranch}' '${tempBranch}' > ${hookFile}`,
     `chmod +x ${hookFile}`,
   ]
   if (pm === 'pnpm' || pm === 'yarn') {
