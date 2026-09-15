@@ -10,6 +10,7 @@ import {
   hashDockerfileContents,
   imageBuildTerminal,
   inspectBuiltImage,
+  imageBuildTarget,
   legacyGlobalImage,
   legacyGlobalImageReason,
   planImageBuild,
@@ -116,6 +117,34 @@ describe('stockBuildArgs', () => {
 
   it('passes none where there is no uid to read (Windows)', () => {
     expect(stockBuildArgs('docker', { uid: undefined, gid: undefined })).toEqual({})
+  })
+})
+
+describe('imageBuildTarget', () => {
+  it('names the packaged Dockerfile and stock tag when the project has no Dockerfile', () => {
+    const dockerfile = '/opt/runcastle/assets/sandbox/Dockerfile'
+    expect(
+      imageBuildTarget({
+        config: config(),
+        project: { id: 'proj_web', repoPath: tmp('bare'), sandboxImageOverwritable: true },
+        stockDockerfile: dockerfile,
+      }),
+    ).toEqual({ kind: 'stock', dockerfile, tag: DEFAULT_SANDBOX_IMAGE })
+  })
+
+  it('names the repo Dockerfile and project tag when the project ships one', () => {
+    const repo = repoWithDockerfile()
+    expect(
+      imageBuildTarget({
+        config: config(),
+        project: { id: 'proj_java', repoPath: repo, sandboxImageOverwritable: true },
+        stockDockerfile: '/opt/runcastle/assets/sandbox/Dockerfile',
+      }),
+    ).toEqual({
+      kind: 'project',
+      dockerfile: join(repo, '.runcastle', 'sandbox', 'Dockerfile'),
+      tag: 'sandcastle:runcastle-proj_java',
+    })
   })
 })
 

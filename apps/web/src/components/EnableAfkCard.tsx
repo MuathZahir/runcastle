@@ -427,6 +427,7 @@ function ImageRow({
 }) {
   const [sessionId, setSessionId] = useState<string | null>(null)
   const toast = useToast()
+  const target = trpc.setup.imageBuildTarget.useQuery(projectId ? { projectId } : undefined)
   const start = trpc.setup.startTerminal.useMutation({
     onSuccess: ({ sessionId }) => setSessionId(sessionId),
     onError: (e) => toast.push(e.message),
@@ -459,6 +460,7 @@ function ImageRow({
       {!sessionId && (
         <ImageBuildAction
           probe={probe}
+          target={target.data?.kind === 'refused' ? undefined : target.data}
           runtimeOk={runtimeOk}
           pending={start.isPending}
           onStart={() => start.mutate({ kind: 'build-image', ...(projectId ? { projectId } : {}) })}
@@ -471,11 +473,13 @@ function ImageRow({
 /** Status-specific image action, split from the tRPC wrapper for component testing. */
 export function ImageBuildAction({
   probe,
+  target,
   runtimeOk,
   pending,
   onStart,
 }: {
   probe: Probe
+  target?: { dockerfile: string; tag: string }
   runtimeOk: boolean
   pending: boolean
   onStart: () => void
@@ -494,11 +498,20 @@ export function ImageBuildAction({
   return (
     <Button
       variant="ghost"
-      disabled={!runtimeOk || pending}
-      title={runtimeOk ? undefined : 'Install a container runtime first'}
+      aria-label={`${first ? 'Build' : 'Rebuild'} image`}
+      disabled={!runtimeOk || pending || !target}
+      title={
+        runtimeOk
+          ? target
+            ? `Dockerfile: ${target.dockerfile}\nImage: ${target.tag}`
+            : undefined
+          : 'Install a container runtime first'
+      }
       onClick={onStart}
     >
-      {pending ? 'Starting…' : first ? 'Build image' : 'Rebuild image'}
+      {pending
+        ? 'Starting…'
+        : `${first ? 'Build' : 'Rebuild'} image · ${target?.dockerfile ?? 'resolving Dockerfile'} → ${target?.tag ?? 'resolving tag'}`}
     </Button>
   )
 }
