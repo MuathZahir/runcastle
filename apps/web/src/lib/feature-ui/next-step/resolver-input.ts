@@ -16,6 +16,12 @@ export interface NextStepContext {
   driveState?: DriveState
   /** This project's own ticket history, for the pre-burn time expectation (#16b). */
   burnStats?: BurnDurationStats
+  /**
+   * Bytes of feature docs the next burn will hand EVERY ticket — the server's
+   * own `readDocsDigest`, so the card warns with the same number the run's
+   * timeline event reports rather than a second estimate of it.
+   */
+  docsDigestBytes?: number
   mapContent?: string
   conflict?: MergeConflictState | null
   unverifiedDriveKeys?: string[]

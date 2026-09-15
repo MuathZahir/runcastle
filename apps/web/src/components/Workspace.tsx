@@ -194,6 +194,14 @@ export function Workspace({
     { projectId: projectId ?? '' },
     { enabled: !!projectId },
   )
+  // What the next burn's docs digest will cost EVERY ticket in it, for the
+  // pre-burn bar's warning — the burner's own read of the same files, so the bar
+  // and the run timeline's event cannot report different sizes. Only on the two
+  // roads into a burn, where the bar has somewhere to put it, and it does not
+  // poll: a session writing the docs pushes, and the stream invalidates the
+  // whole `docs` router on the same signal that refreshes their text.
+  const preBurn = q.data?.feature.phase === 'tickets' || q.data?.feature.phase === 'implementation'
+  const digestQ = trpc.docs.digestSize.useQuery({ featureId }, { enabled: preBurn })
   // A parked draft picks its base at Start, not at creation (decision 3), so the
   // branch list is read HERE — Start fires from the next-step bar, and the base
   // has to be readable at that click, not buried in the body that shows the
@@ -459,6 +467,7 @@ export function Workspace({
     unverifiedDriveKeys: unverifiedDriveKeys((prepQ.data as PrepView | undefined)?.findings ?? []),
     dryRunActive: !!driveQ.data?.dryRun,
     ...(burnStatsQ.data ? { burnStats: burnStatsQ.data } : {}),
+    ...(digestQ.data ? { docsDigestBytes: digestQ.data.bytes } : {}),
     ...(draftBaseMissing ? { draftBaseMissing } : {}),
     openNotes,
     openDefects,

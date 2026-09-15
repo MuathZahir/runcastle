@@ -51,6 +51,22 @@ Your job is to make that choice obvious. Prescribe a walkthrough only when there
 The review agent never edits code, so its ticket needs no `seams` beyond the surface it exercises, and finding bugs is a *successful* review — the notes are the deliverable. Its digest is the other one: the agent writes the lap's "What landed this lap" prose summary there, and the review page renders it as the lead of the review card, so `goal` should ask for the verification, not for the summary — that part is the burner's standing contract.
 </review-ticket>
 
+<parallelism-budget>
+The other thing that is true of the batch as a whole: **budget the parallelism explicitly, before you emit.** The burn runs up to `burnConcurrency` tickets at once — the project's setting, served to you in `get_feature_context` as `burnConcurrency` — but a ticket cannot start until every ticket in its `blockedBy` has landed, so the lap's wall-clock is set by its **critical path**: the longest chain of blocking edges through the batch. A chain of N tickets is N sequential sandboxes however wide the pool is. Measured on a real project at `burnConcurrency: 3`, three consecutive laps whose tickets each chained end to end came in at **1.09x, 1.16x and 1.00x** — the width was there all three times and was never once spent.
+
+So, after slicing and before the self-check below, **say it out loud in the session**, in these terms:
+
+- the **critical path** — the longest chain of implementation tickets, named in order, and its length;
+- **how many tickets can run at once**, stated against this project's `burnConcurrency`;
+- whether that clears the bar: a batch of T implementation tickets at concurrency C wants a chain no longer than roughly **T / C**. Longer than that and the pool sits idle for most of the burn.
+
+**When it does not clear the bar, reslice.** The usual cause is habit rather than necessity — tickets sequenced because they *feel* ordered, or because one "sets up" the other. **A blocking edge is true only when the later ticket reads the earlier one's output**: a file it writes, a type or interface it defines, a schema it migrates, a stub it fills. "Related", "same area", "logical reading order", "easier to review in sequence" are not blocking edges — drop them and those tickets burn side by side. Where the edge is genuinely real, the fix runs the other way: merge the two into one ticket (the merge test above has usually already said so), or pull the shared foundation forward into the blocker so everything else goes wide behind it.
+
+Two things are not chain problems. The **review ticket** is blocked by every implementation ticket by definition and is always the tail: measure the critical path over the implementation tickets and add it. The **expand → migrate → contract** sequence below is the shape this rule is asking for — its migrate batch is the wide step.
+
+And width only counts if it lands: parallel tickets touching the same files collide on landing (the file-disjoint rule above), so a reslice that buys width by overlapping files has bought a re-burn instead.
+</parallelism-budget>
+
 <wide-refactor-exception>
 A **wide refactor** — one mechanical change (rename a column, retype a shared symbol) whose blast radius breaks thousands of call sites at once — cannot land green as a vertical slice. Sequence it **expand → migrate → contract** instead. Expand: add the new form beside the old so nothing breaks (one ticket). Migrate: move call sites over in batches sized by blast radius (per package/dir), each batch a ticket blocked by the expand, CI green throughout because the old form still exists. Contract: delete the old form once no caller remains, blocked by every migrate batch. If even the batches cannot stay green alone, let them share an integration branch that all block a final integrate-and-verify ticket — green is promised only there.
 </wide-refactor-exception>
@@ -86,7 +102,7 @@ There is no in-session quiz — the human's review is the **Burn** gate in the r
 1. **Can any two of these be one ticket?** Go pair by pair. Same files, shared type, sibling behaviours, or one whose blocker is the only thing it waits on and together they'd still land in one session → merge them. Do this first, because merging changes the rest.
 2. **Would any one of these overrun?** A criteria list longer than one agent can take red→green — with tests, self-review and commits still to come — costs a whole second container to finish. Split it where its files stop overlapping.
 3. Is each survivor a demoable vertical slice rather than a horizontal layer, and is it worth a session rather than rattling around in one?
-4. Are the blocking edges minimal and genuinely true gates? Where two are independent, do they touch different files — or will they collide on landing?
+4. Are the blocking edges minimal and genuinely true gates — each one a ticket that reads its blocker's output? State the critical path and the width it leaves against `burnConcurrency`, and reslice if the chain runs longer than roughly total / concurrency. Where two are independent, do they touch different files — or will they collide on landing?
 5. Is every `context` self-sufficient for an agent that cannot ask — covering every file and pattern the ticket touches?
 6. Does the batch close with exactly one `kind: "review"` ticket, blocked by every implementation ticket? It is not optional and there is no feature that skips it.
 

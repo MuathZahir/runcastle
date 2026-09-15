@@ -1,5 +1,6 @@
 import { burnLabel } from '../laps'
 import { burnExpectation } from '../run'
+import { burnWarningLine } from './burn-warnings'
 import type { NextStep } from './types'
 import type { ResolverInput } from './resolver-input'
 
@@ -21,6 +22,13 @@ export function resolveImplementation(input: ResolverInput): NextStep {
   // (decision #16b). Said on both roads into a burn — the first one and the
   // resume — because the human is answering the same question at both.
   const expectation = burnExpectation(ctx.burnStats)
+  // What the tickets about to burn are SHAPED like, and what the docs digest
+  // will cost every one of them (`burn-warnings.ts`), said where the human is
+  // deciding. The door that stored the tickets said the shapes once on the
+  // timeline; this is the same sentence, from the same function, beside a Burn
+  // button that stays enabled — the coder gets the ticket's own text and nothing
+  // else, and this is the last place anyone can read it first.
+  const shape = burnWarningLine(input)
   if (running) {
     return {
       kick: 'IN PROGRESS',
@@ -94,6 +102,7 @@ export function resolveImplementation(input: ResolverInput): NextStep {
       primary: { label: burnLabel(pendingTickets, full.feature.lap), kind: 'burn' },
       secondary: live ? [] : [{ label: 'Revisit', kind: 'revisit' }],
       busy: false,
+      ...(shape ? { note: shape } : {}),
     }
   }
   const why =
@@ -119,5 +128,6 @@ export function resolveImplementation(input: ResolverInput): NextStep {
       ...(live ? [] : [{ label: 'Revisit', kind: 'revisit' as const }]),
     ],
     busy: false,
+    ...(shape ? { note: shape } : {}),
   }
 }

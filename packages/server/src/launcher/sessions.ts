@@ -21,7 +21,11 @@ import {
   resolveSessionBranch,
   type ProjectLandResult,
 } from '../services/git'
-import { type CarriedWork, carriedWorkSummary } from '../services/carried-work'
+import {
+  type CarriedWork,
+  carriedWorkSummary,
+  reviewEvidenceSentence,
+} from '../services/carried-work'
 import { promoteLastSession } from '../services/waypoints'
 import { getFeatureRow, getProjectById, rowToSession } from '../services/repo'
 import { runtimeAdapterFor } from './runtimes'
@@ -200,9 +204,16 @@ export const SESSION_READY_TIMEOUT_MS = 25_000
  *
  * The notes pointer is the `## Carried, still open` section, never a
  * lap-numbered one, so a note lap N+1 skips is still named at lap N+2.
+ *
+ * It also names the previous lap's review evidence by absolute path (see
+ * {@link reviewEvidenceSentence}), states the two things a lap session has been
+ * observed skipping — the "not demonstrable" markers it must read out before
+ * offering a test drive, and standing on each reported failure — and leaves the
+ * procedure for those to `revisit/SKILL.md`.
  */
 export function lapKickoff(lap: number, carried?: CarriedWork): string {
   const summary = carriedWorkSummary(carried)
+  const evidence = reviewEvidenceSentence(carried)
   return (
     `Proceed with your task: invoke the /runcastle:revisit skill for LAP ${lap} REVIEW ITERATION. ` +
     (summary ? `${summary} — address them. ` : '') +
@@ -213,6 +224,11 @@ export function lapKickoff(lap: number, carried?: CarriedWork): string {
       ? 'THE "## Later laps" SECTION MAY NOT EXIST; that is normal, not an error. '
       : 'ANY OF THOSE MAY NOT EXIST YET; that is normal, not an error — say so and carry on from ' +
         'what I tell you. ') +
+    (evidence ?? '') +
+    'Before you offer me a test drive, grep spec.md and the tickets for "not demonstrable", ' +
+    '"do not demo" and "later laps" and tell me what they say. For every bug I report, stand on ' +
+    'the failure: reproduce it, or trace it to a file and line, or say plainly you could not — ' +
+    "and then make reproduction the fix ticket's first acceptance criterion. " +
     'Interview me about what the test drive taught: what was wrong, what was missing, ' +
     'what I want next. Write what we settle on into decisions.md and amend spec.md for this lap ' +
     '(pruning anything you promote out of "## Later laps"), then call emit_tickets for this ' +
