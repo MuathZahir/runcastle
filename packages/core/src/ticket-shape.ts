@@ -154,7 +154,11 @@ function named(ticket: TicketShapeSubject): string {
   return `#${ticket.seq}`
 }
 
-/** A context that is just the goal said again — the degenerate import's mark. */
+/**
+ * A ticket with one field where there should be two — the quick door's
+ * construction, and so the degenerate import's mark when enough of them arrive
+ * together. Counted, never warned about on its own; see above.
+ */
 function goalRepeatsContext(ticket: TicketShapeSubject): boolean {
   const context = ticket.context.trim()
   return context !== '' && context === ticket.goal.trim()
