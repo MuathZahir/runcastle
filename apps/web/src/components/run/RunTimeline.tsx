@@ -42,11 +42,7 @@ export function RunTimeline({ events }: { events: readonly EventRow[] }) {
                 carrying a warning, which wraps: it is the only kind whose text
                 is worth more than the density it costs. */}
             <span
-              className={
-                eventWarns(e)
-                  ? 'min-w-0 flex-1 break-words text-warn'
-                  : 'min-w-0 flex-1 truncate text-text-2'
-              }
+              className={`min-w-0 flex-1 ${eventWarns(e) ? 'break-words text-warn' : 'truncate text-text-2'}`}
             >
               {e.message}
             </span>
