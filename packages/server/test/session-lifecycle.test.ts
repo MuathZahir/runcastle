@@ -10,19 +10,14 @@ import type { AppCtx } from '../src/db/types'
 import { runs } from '../src/db/schema'
 import { handlePtyExit, launchSession, workWaypoint } from '../src/launcher/launcher'
 import { reconcileStaleSessions } from '../src/launcher/reconcile'
-import type { PtyEntry } from '../src/pty/registry'
-import { ptyRegistry } from '../src/pty/registry'
 import { KICKOFF_LINES } from '../src/launcher/runtimes/claude'
 import {
-  KICKOFF_DELAY_MS,
-  KICKOFF_SUBMIT_DELAY_MS,
   activeSessionsForFeature,
   createSessionRow,
   getSessionRow,
   markSessionEnded,
   markSessionLive,
   mostRecentResumableSession,
-  resumeKickoffLine,
 } from '../src/launcher/sessions'
 import { listAfter } from '../src/services/events'
 import { createFeatureBranch } from '../src/services/git'
@@ -441,29 +436,20 @@ describe('relaunching a terminal resumes its own conversation', () => {
     expect(commandFor(f.id, next)).not.toContain('--resume')
   })
 
-  it('types the RESUME kickoff into a resumed terminal, not the per-kind opener', async () => {
+  it('sends a resumed terminal no kickoff — its conversation already carries one', async () => {
     const f = await feature('kickoff')
     const first = await launch(f.id, 'ideation')
     markSessionLive(ctx, first, { ccSessionId: 'cc-grill' })
     reconcileStaleSessions(ctx)
+
     const second = await launch(f.id, 'ideation')
 
-    // fake PTY + timers only for the kickoff window (the launches above do real IO)
-    const written: string[] = []
-    const entry = {
-      exited: false,
-      pty: { write: (d: string) => written.push(d) },
-    } as unknown as PtyEntry
-    vi.spyOn(ptyRegistry(), 'get').mockReturnValue(entry)
-    vi.useFakeTimers()
-
-    markSessionLive(ctx, second, { ccSessionId: 'cc-grill-2' })
-    vi.advanceTimersByTime(KICKOFF_DELAY_MS + KICKOFF_SUBMIT_DELAY_MS)
-
-    expect(written).toEqual([resumeKickoffLine('ideation'), '\r'])
-    // the resume framing wraps the per-kind line, it does not replace it
-    expect(written[0]).toContain(KICKOFF_LINES.ideation)
-    expect(written[0]).toContain('Do NOT start over')
+    // the FIRST launch was fresh and carried its briefing in the argv; the
+    // resumed one carries only the conversation id
+    expect(commandFor(f.id, first)).toContain(KICKOFF_LINES.ideation)
+    const command = commandFor(f.id, second)
+    expect(command).toContain('--resume cc-grill')
+    expect(command).not.toContain(KICKOFF_LINES.ideation)
   })
 })
 
