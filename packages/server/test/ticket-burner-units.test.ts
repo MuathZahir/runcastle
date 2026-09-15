@@ -1681,6 +1681,17 @@ describe('toolchain preflight — one container answers for every binary', () =>
     ).toEqual(['claude', 'corepack', 'mvn', 'python'])
   })
 
+  it('recognises commands supplied by setup aliases, functions, and bin shims', () => {
+    expect(
+      preflightCommandNames({
+        agentBinary: 'codex',
+        setupCommand:
+          'printf "#!/bin/sh" > "$HOME/.local/bin/pnpm" && ln -s /opt/ruff /usr/local/bin/ruff',
+        verifyCommands: 'pnpm test\nruff check .\npython scripts/check.py',
+      }),
+    ).toEqual(['codex', 'ln', 'printf', 'python'])
+  })
+
   it('builds one `command -v` sweep that always exits 0', () => {
     expect(buildToolchainProbeArgs('sandcastle:runcastle-demo', ['claude', 'mvn'])).toEqual([
       'run',
