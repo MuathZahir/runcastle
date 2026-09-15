@@ -10,8 +10,7 @@ import { sessions } from '../src/db/schema'
 import { launchSession } from '../src/launcher/launcher'
 import type { AgentRuntimeAdapter, RuntimeReadiness } from '../src/launcher/runtimes'
 import { registerRuntimeAdapter, resetRuntimeAdapters } from '../src/launcher/runtimes'
-import { KICKOFF_LINES } from '../src/launcher/runtimes/claude'
-import { claudeRuntime } from '../src/launcher/runtimes/claude'
+import { KICKOFF_LINES, claudeRuntime } from '../src/launcher/runtimes/claude'
 import { codexHomeDir } from '../src/launcher/runtimes/codex'
 import {
   createSessionRow,

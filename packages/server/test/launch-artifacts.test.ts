@@ -1,7 +1,7 @@
 import { execFileSync } from 'node:child_process'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { sessionDir } from '@runcastle/core/paths'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Feature, Project, RuncastleConfig, SessionRow } from '@runcastle/core'
@@ -1013,7 +1013,7 @@ describe('codexRuntime.writeArtifacts', () => {
     const originalId = 'sess_codex_original'
     const rollout = join(codexHomeDir(originalId), 'sessions', '2026', '09', 'rollout.jsonl')
     created.push(originalId)
-    mkdirSync(join(rollout, '..'), { recursive: true })
+    mkdirSync(dirname(rollout), { recursive: true })
     writeFileSync(rollout, '{"type":"session_meta","id":"codex-sess-42"}\n', 'utf8')
 
     const spec = await launchSpec('revisit', {
