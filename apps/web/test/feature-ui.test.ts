@@ -501,6 +501,15 @@ describe('nextStep — live sessions go status-only', () => {
     expect(ns.primary).toEqual({ label: 'Burn 2 tickets', kind: 'burn' })
   })
 
+  it('names the docs digest this road will hand every ticket, too', () => {
+    const ns = nextStep(auditFull({ phase: 'tickets', gateId: 'G3', tickets: 2 }), {
+      driving: false,
+      docsDigestBytes: 97_000,
+    })
+    expect(ns.note).toContain('the docs digest is 97000 bytes')
+    expect(ns.primary).toEqual({ label: 'Burn 2 tickets', kind: 'burn' })
+  })
+
   it('arms Burn with no session alive to race, readiness or not', () => {
     const ns = nextStep(auditFull({ phase: 'tickets', gateId: 'G3', tickets: 2 }), {
       driving: false,
