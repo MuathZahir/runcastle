@@ -15,13 +15,17 @@ export interface UnrunnableGateFigure {
   error: string
 }
 
-/** One report per distinct command, even when every ticket encountered the same missing runtime. */
+/** One report per command, even when every ticket encountered the same missing runtime. */
 export function unrunnableGates(
   events: readonly { type: string; data?: unknown }[],
 ): UnrunnableGateFigure[] {
   const gates = new Map<string, UnrunnableGateFigure>()
   for (const event of events) {
-    if (event.type !== 'ticket.gate_unrunnable' || typeof event.data !== 'object' || event.data === null) continue
+    if (
+      event.type !== 'ticket.gate_unrunnable' ||
+      typeof event.data !== 'object' ||
+      event.data === null
+    ) continue
     const { command, error } = event.data as { command?: unknown; error?: unknown }
     if (typeof command !== 'string' || typeof error !== 'string') continue
     if (command.trim() && error.trim() && !gates.has(command.trim())) {

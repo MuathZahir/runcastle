@@ -243,12 +243,16 @@ export function setupProvidedCommandNames(command: string | undefined): string[]
   for (const match of source.matchAll(/\balias\s+([A-Za-z_][A-Za-z0-9_-]*)\s*=/g)) {
     provided.add(match[1])
   }
-  for (const match of source.matchAll(/(?:^|[;&|]\s*)([A-Za-z_][A-Za-z0-9_-]*)\s*\(\s*\)\s*\{/g)) {
+  for (const match of source.matchAll(
+    /(?:^|[;&|]\s*)([A-Za-z_][A-Za-z0-9_-]*)\s*\(\s*\)\s*\{/g,
+  )) {
     provided.add(match[1])
   }
   // Shell shims are commonly written or linked into a bin directory. The
   // destination basename is the command setup provides; its source is not.
-  for (const match of source.matchAll(/(?:>|\bln\s+(?:-[A-Za-z]+\s+)*\S+\s+)\s*["']?[^\s"']*[/\\]([A-Za-z0-9][A-Za-z0-9._+-]*)/g)) {
+  for (const match of source.matchAll(
+    /(?:>|\bln\s+(?:-[A-Za-z]+\s+)*\S+\s+)\s*["']?[^\s"']*[/\\]([A-Za-z0-9][A-Za-z0-9._+-]*)/g,
+  )) {
     provided.add(match[1])
   }
   return [...provided]
@@ -1616,7 +1620,7 @@ export function buildWorkspaceNotes(
       '',
       'Write `GATE_UNRUNNABLE.md` at the root of that checkout when the gate protocol requires it, and leave it uncommitted too.',
       '',
-      'If you are blocked and write `BLOCKED.md`, write it at the root of that checkout too. **These two paths are the only authoritative ones** — nothing later in this prompt overrides them.',
+      'If you are blocked and write `BLOCKED.md`, write it at the root of that checkout too. **These paths are the only authoritative ones** — nothing later in this prompt overrides them.',
     ].join('\n')
   }
   return [
