@@ -17,6 +17,7 @@ import type {
 import {
   WITHHELD_FEATURE_DOCS,
   agentDigestDocOrder,
+  docsDigestSizeWarning,
   fmtClock,
   isAgentDigestDoc,
   newId,
@@ -3523,10 +3524,14 @@ export function emitDocsDigestEvent(ctx: WorkflowCtx, docs: DocsDigestResult): v
     })
     return
   }
+  // Over the budget the line stops being a cost report and becomes a warning:
+  // the allowlist cut the 97 KB case, and this is what says so if the canonical
+  // four grow back to it. A warning only — no burn is ever refused for it.
+  const oversized = docsDigestSizeWarning(docs.bytes)
   ctx.emitEvent({
     type: 'burn.docs.digest',
-    message: `docs digest: ${docs.bytes} bytes to every ticket (${docs.included.join(', ')}${docs.withheld.length > 0 ? `; ${docs.withheld.length} named, not inlined` : ''})`,
-    data,
+    message: `docs digest: ${docs.bytes} bytes to every ticket (${docs.included.join(', ')}${docs.withheld.length > 0 ? `; ${docs.withheld.length} named, not inlined` : ''})${oversized ? ` — ${oversized.message}` : ''}`,
+    data: oversized ? { ...data, oversized: true } : data,
   })
 }
 
