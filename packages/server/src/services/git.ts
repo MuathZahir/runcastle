@@ -10,7 +10,7 @@ import {
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import type { DriveDenial, DriveDenialCode, Feature, PreparedKey, Project } from '@runcastle/core'
-import { DRIVE_LOOP_KEYS, driveDenialOf } from '@runcastle/core'
+import { DEFAULT_DOCS_COMMIT_PREFIX, DRIVE_LOOP_KEYS, driveDenialOf } from '@runcastle/core'
 import { PROJECT_WORKTREE_SLUG, worktreeDir } from '@runcastle/core/paths'
 import { simpleGit } from 'simple-git'
 import type { SimpleGit } from 'simple-git'
@@ -1727,8 +1727,6 @@ export async function deleteFeatureBranches(
 }
 
 // --- docs checkpoint --------------------------------------------------------
-
-export const DEFAULT_DOCS_COMMIT_PREFIX = 'runcastle:'
 
 /** Build every runcastle-owned docs subject through the project's one prefix. */
 export function docsCommitMessage(

@@ -10,6 +10,7 @@ import type {
 import {
   MODEL_STEPS,
   ModelEntry,
+  DEFAULT_DOCS_COMMIT_PREFIX,
   RuncastleConfig as RuncastleConfigSchema,
   foldLegacyModelConfig,
   resolveDefaultBurnConcurrency,
@@ -236,7 +237,7 @@ const DESCRIPTORS: FieldDescriptor[] = [
     restartRequired: false,
     valueSchema: z.string().min(1),
     parseEnv: idEnv,
-    defaultValue: 'runcastle:',
+    defaultValue: DEFAULT_DOCS_COMMIT_PREFIX,
   },
   // Project-only (no global twin): the command that rebuilds this repo's dev
   // database from its migrations. Test drive offers it after a drive whose

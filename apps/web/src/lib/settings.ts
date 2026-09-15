@@ -1,6 +1,7 @@
 import {
   AGENT_RUNTIMES,
   CURATED_MODELS,
+  DEFAULT_DOCS_COMMIT_PREFIX,
   MODEL_STEPS,
   ModelEntry,
   modelEntryFor,
@@ -439,7 +440,7 @@ const FIELD_META: Record<string, FieldMeta> = {
     control: 'text',
     page: 'project',
     group: 'chat',
-    placeholder: 'runcastle:',
+    placeholder: DEFAULT_DOCS_COMMIT_PREFIX,
   },
   sessionBranch: {
     label: 'Commits land on',
