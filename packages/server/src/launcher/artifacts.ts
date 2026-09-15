@@ -390,9 +390,10 @@ function reviewEvidenceSection(lap: number, docs: string, carried?: CarriedWork)
           `Lap ${lap - 1}'s review left this on disk — host scratch space, NOT the repo, and your`,
           "ONLY channel to it: a ticket's `digest` is stripped out of `get_feature_context`.",
           ...evidence.flatMap((one) => [
-            `- \`${one.digestPath}\` — the review agent's own account of what it found (ticket`,
-            `  ${one.seq}; that pass ended \`${one.status}\`, which is the review outcome).`,
-            `- \`${one.dir}\` — the screenshots and \`walkthrough.webm\` from the same pass.`,
+            `- Ticket ${one.seq}'s review pass ended \`${one.status}\` — that is the review`,
+            '  outcome. It left:',
+            `  - \`${one.digestPath}\` — the review agent's own account of what it found.`,
+            `  - \`${one.dir}\` — the screenshots and \`walkthrough.webm\`, beside it.`,
           ]),
           'Read them BEFORE you interview the human. A lap planned from the interview alone is',
           'planned against a build whose own review nobody read.',

@@ -242,7 +242,7 @@ describe('the lap briefing names the previous lap’s review evidence', () => {
     expect(prompt).toContain(join(reviewDir(review.id), 'DIGEST.md'))
     expect(prompt).toContain(reviewDir(review.id))
     expect(prompt).toContain('walkthrough.webm')
-    expect(prompt).toContain('`done`, which is the review outcome')
+    expect(prompt).toContain("Ticket 1's review pass ended `done`")
     // …and the two rules the same postmortem asked for, beside the paths.
     expect(prompt).toContain('not demonstrable')
     expect(prompt).toContain('do not demo')
