@@ -442,6 +442,7 @@ const projectView = (over: Record<string, Partial<SettingField>> = {}): Settings
         { key: 'driveSetupCommand', value: null, scope: 'project', source: 'default' },
         { key: 'driveStopCommand', value: null, scope: 'project', source: 'default' },
         { key: 'driveInstructions', value: null, scope: 'project', source: 'default' },
+        { key: 'docsCommitPrefix', value: 'runcastle:', scope: 'project', source: 'default' },
       ] satisfies Partial<SettingField>[]
     ).map((f) => ({ ...f, ...over[f.key] })),
     'proj_1',
@@ -502,6 +503,7 @@ describe('pageRows — one page per task', () => {
       'driveStopCommand',
       'dbResetCommand',
       'driveInstructions',
+      'docsCommitPrefix',
       'sessionBranch',
     ])
     expect(rows.map((r) => r.group)).toEqual([
@@ -516,6 +518,7 @@ describe('pageRows — one page per task', () => {
       'commands',
       'commands',
       'commands',
+      'chat',
       'chat',
     ])
   })

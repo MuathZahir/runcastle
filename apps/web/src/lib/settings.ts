@@ -432,6 +432,15 @@ const FIELD_META: Record<string, FieldMeta> = {
     placeholder:
       'e.g. drive the sample project at ./examples/demo — change anything inside it freely',
   },
+  docsCommitPrefix: {
+    label: 'Docs commit prefix',
+    tooltip:
+      'Prefix for checkpoint commits runcastle creates from feature docs. Use a form accepted by this repository’s commit message policy.',
+    control: 'text',
+    page: 'project',
+    group: 'chat',
+    placeholder: 'runcastle:',
+  },
   sessionBranch: {
     label: 'Commits land on',
     tooltip:

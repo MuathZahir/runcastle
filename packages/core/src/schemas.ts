@@ -508,6 +508,8 @@ export const Project = z.object({
    * injected verbatim into every drive-mode review and verification prompt.
    */
   driveInstructions: z.string().optional(),
+  /** Subject prefix for runcastle-owned docs checkpoint commits. */
+  docsCommitPrefix: z.string().optional(),
   /**
    * When the project was closed (issue #43); unset while it is open. The column
    * drives `listProjects`, so the wire type has to carry it — a field the row

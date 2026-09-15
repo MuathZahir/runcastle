@@ -1728,6 +1728,16 @@ export async function deleteFeatureBranches(
 
 // --- docs checkpoint --------------------------------------------------------
 
+export const DEFAULT_DOCS_COMMIT_PREFIX = 'runcastle:'
+
+/** Build every runcastle-owned docs subject through the project's one prefix. */
+export function docsCommitMessage(
+  summary: string,
+  prefix: string | undefined = DEFAULT_DOCS_COMMIT_PREFIX,
+): string {
+  return `${prefix} ${summary}`
+}
+
 /**
  * Stage ONLY `docs/features/**` within `worktreePath` and commit if anything is
  * staged there (no-op otherwise). Uses a pathspec commit so pre-staged changes
@@ -1746,7 +1756,7 @@ export async function commitDocs(worktreePath: string, message: string): Promise
   if (!docsStaged) return
 
   // Pathspec commit: only docs/features changes land, other staged paths stay put.
-  await g.commit(message, [DOCS_PATHSPEC])
+  await g.raw(['commit', '--no-verify', '-m', message, '--', DOCS_PATHSPEC])
 }
 
 /** Commit generated docs on a named branch in the main checkout, then restore its prior branch. */
@@ -1781,9 +1791,9 @@ export async function onBranch<T>(
  * other `commitDocs` caller: if it still cannot commit, the dirty check denies
  * exactly as before and the file it names is at least a visible one.
  */
-async function commitPipelineDocs(repoPath: string): Promise<void> {
+async function commitPipelineDocs(repoPath: string, docsCommitPrefix?: string): Promise<void> {
   try {
-    await commitDocs(repoPath, 'runcastle: docs the pipeline left uncommitted')
+    await commitDocs(repoPath, docsCommitMessage('docs the pipeline left uncommitted', docsCommitPrefix))
   } catch {
     // best-effort — the dirty check still denies, and now names a real edit
   }
@@ -1801,8 +1811,8 @@ async function commitPipelineDocs(repoPath: string): Promise<void> {
  * Unlike `dirtyPaths` this does not swallow a git failure: a tree we cannot
  * read is not a tree we may declare clean.
  */
-export async function driveBlockingPaths(repoPath: string): Promise<string[]> {
-  await commitPipelineDocs(repoPath)
+export async function driveBlockingPaths(repoPath: string, docsCommitPrefix?: string): Promise<string[]> {
+  await commitPipelineDocs(repoPath, docsCommitPrefix)
   return porcelainPaths((await git(repoPath).raw(['status', '--porcelain'])).trim())
 }
 
@@ -2101,7 +2111,7 @@ export async function testDrive(
 
   // action === 'start' — deny checks in SPEC order: dirty | active | active-run.
   // Runcastle's own docs are landed first, never counted as the human's dirt.
-  const dirtyFiles = await driveBlockingPaths(project.repoPath)
+  const dirtyFiles = await driveBlockingPaths(project.repoPath, project.docsCommitPrefix)
   if (dirtyFiles.length > 0) {
     // The human is the only one who can clear this, and until now they heard
     // about it from the review's digest long afterwards. A review-purpose
