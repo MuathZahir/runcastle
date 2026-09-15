@@ -502,6 +502,15 @@ describe('nextStep — live sessions go status-only', () => {
     expect(ns.primary).toEqual({ label: 'Burn 2 tickets', kind: 'burn' })
   })
 
+  it('names the docs digest this road will hand every ticket, too', () => {
+    const ns = nextStep(auditFull({ phase: 'tickets', gateId: 'G3', tickets: 2 }), {
+      driving: false,
+      docsDigestBytes: 97_000,
+    })
+    expect(ns.note).toContain('the docs digest is 97000 bytes')
+    expect(ns.primary).toEqual({ label: 'Burn 2 tickets', kind: 'burn' })
+  })
+
   it('arms Burn with no session alive to race, readiness or not', () => {
     const ns = nextStep(auditFull({ phase: 'tickets', gateId: 'G3', tickets: 2 }), {
       driving: false,
@@ -2439,15 +2448,25 @@ describe('nextStep at implementation', () => {
       context: `Change number ${i + 1} to something else.`,
     }))
 
+  const thin = (n: number) =>
+    Array.from({ length: n }, (_, i) => ({
+      goal: `Change number ${i + 1} to something else.`,
+      context: 'Somewhere in the app.',
+    }))
+
   it('keeps quiet about a batch a coder can read', () => {
     expect(nextStep(buildFull({}), { driving: false }).note).toBeUndefined()
   })
 
-  it('names the ticket and what to fix when a context is only its goal again', () => {
+  /**
+   * The other half of the quick door's always-on warning: the card renders from
+   * the same function, so the line the human read at creation was the line they
+   * read again here, on every quick change ever made. One ticket whose goal is
+   * its context is the door's construction and says nothing.
+   */
+  it('keeps quiet about a lone ticket whose context is its goal again', () => {
     const ns = nextStep(buildFull({ shapes: degenerate(1) }), { driving: false })
-    expect(ns.note).toContain('#1 repeats its goal as its context')
-    expect(ns.note).toContain('what it must not break')
-    // Never a refusal: the button is the same button.
+    expect(ns.note).toBeUndefined()
     expect(ns.primary).toEqual({ label: 'Burn 1 ticket', kind: 'burn' })
   })
 
@@ -2463,26 +2482,33 @@ describe('nextStep at implementation', () => {
     const ns = nextStep(buildFull({ shapes: degenerate(6) }), { driving: false })
     expect(ns.note).toContain('6 tickets (#1, #2, #3, #4, #5, #6) carry their goal as their context')
     expect(ns.note).toContain('cut the batch to 5 tickets or fewer')
-    // Spelled out three deep, then counted — the bar has one line.
-    expect(ns.note).toContain('(+4 more like this.)')
+    // The count is the whole line: no per-ticket restatement of it underneath.
+    expect(ns.note).not.toContain('more like this.')
     expect(ns.primary).toEqual({ label: 'Burn 6 tickets', kind: 'burn' })
+  })
+
+  it('spells out three thin contexts, then counts the rest — the bar has one line', () => {
+    const ns = nextStep(buildFull({ shapes: thin(6) }), { driving: false })
+    expect(ns.note).toContain('#1 has a 21-character context')
+    expect(ns.note).toContain('(+3 more like this.)')
+    expect(ns.note).not.toContain('#4 has a')
   })
 
   it('says it again on the resume road into the same burn', () => {
     const ns = nextStep(
-      buildFull({ shapes: degenerate(1), runs: [{ id: 'r1', status: 'failed', startedAt: 1 }] }),
+      buildFull({ shapes: thin(1), runs: [{ id: 'r1', status: 'failed', startedAt: 1 }] }),
       { driving: false },
     )
-    expect(ns.note).toContain('#1 repeats its goal as its context')
+    expect(ns.note).toContain('#1 has a 21-character context')
     expect(ns.primary).toEqual({ label: 'Resume burn', kind: 'burn' })
   })
 
   it('reads only the tickets that are about to burn, not the ones already done', () => {
     const ns = nextStep(
-      buildFull({ shapes: degenerate(2), ticketStatuses: ['done', 'pending'] }),
+      buildFull({ shapes: thin(2), ticketStatuses: ['done', 'pending'] }),
       { driving: false },
     )
-    expect(ns.note).toContain('#2 repeats its goal as its context')
+    expect(ns.note).toContain('#2 has a 21-character context')
     expect(ns.note).not.toContain('#1')
   })
 
@@ -2490,14 +2516,16 @@ describe('nextStep at implementation', () => {
    * And not the review ticket, which the quick door writes and the human cannot
    * edit there. The door has always skipped it; the card used to read it, so a
    * batch whose review ticket tripped a rule was warned about here and nowhere
-   * else (core's `shapeCheckedTickets`).
+   * else (core's `shapeCheckedTickets`). Its context is thin and its own — not
+   * its goal again, which no longer says anything at either surface — so the
+   * silence below is the SET being read, not the rule having gone quiet.
    */
   it('says nothing about the review ticket the batch closes with', () => {
     const ns = nextStep(
       buildFull({
         shapes: [
           { goal: 'Darken the empty state.', context: BURNABLE.context },
-          { kind: 'review', goal: 'Review the lap.', context: 'Review the lap.' },
+          { kind: 'review', goal: 'Review the lap.', context: 'Somewhere in the app.' },
         ],
       }),
       { driving: false },
@@ -2511,13 +2539,52 @@ describe('nextStep at implementation', () => {
       buildFull({
         shapes: [
           { goal: 'Darken the empty state.', context: 'It washes out.' },
-          { kind: 'review', goal: 'Review the lap.', context: 'Review the lap.' },
+          { kind: 'review', goal: 'Review the lap.', context: 'Somewhere in the app.' },
         ],
       }),
       { driving: false },
     )
     expect(ns.note).toContain('#1 has a 14-character context')
     expect(ns.note).not.toContain('#2')
+  })
+
+  /**
+   * The other half of the same batch's cost: the feature docs digest every
+   * ticket in the burn is handed. The threshold landed at the burner's seam and
+   * said so only on the run timeline — appended to a row that clips, in a panel
+   * that starts collapsed — so the human deciding the burn never met it.
+   */
+  it('says when every ticket in the burn will pay for an oversized docs digest', () => {
+    const ns = nextStep(buildFull({}), { driving: false, docsDigestBytes: 97_000 })
+    expect(ns.note).toContain('the docs digest is 97000 bytes')
+    expect(ns.note).toContain('over the 40000-byte budget')
+    expect(ns.note).toContain('trim the feature docs')
+    expect(ns.primary).toEqual({ label: 'Burn 1 ticket', kind: 'burn' })
+  })
+
+  it('keeps quiet about a digest inside the budget', () => {
+    const ns = nextStep(buildFull({}), { driving: false, docsDigestBytes: 40_000 })
+    expect(ns.note).toBeUndefined()
+  })
+
+  it('leads with the digest, which every ticket pays, ahead of the per-ticket shapes', () => {
+    // Thin contexts, not goal-as-context: the latter stopped being a per-ticket
+    // line of its own, so it is no longer a shape to come after anything.
+    const ns = nextStep(buildFull({ shapes: thin(4) }), {
+      driving: false,
+      docsDigestBytes: 97_000,
+    })
+    expect(ns.note).toMatch(/^the docs digest is 97000 bytes/)
+    expect(ns.note).toContain('#1 has a 21-character context')
+  })
+
+  it('says it again on the resume road into the same burn', () => {
+    const ns = nextStep(buildFull({ runs: [{ id: 'r1', status: 'failed', startedAt: 1 }] }), {
+      driving: false,
+      docsDigestBytes: 97_000,
+    })
+    expect(ns.note).toContain('the docs digest is 97000 bytes')
+    expect(ns.primary).toEqual({ label: 'Resume burn', kind: 'burn' })
   })
 })
 

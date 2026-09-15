@@ -44,7 +44,6 @@ export const DEGENERATE_BATCH_TICKETS = 5
 export const DOCS_DIGEST_WARN_BYTES = 40_000
 
 export type TicketShapeWarningCode =
-  | 'goal-is-context'
   | 'thin-context'
   | 'pasted-document'
   | 'degenerate-batch'
@@ -94,6 +93,15 @@ export function shapeCheckedTickets<T extends TicketShapeSubject>(
  * sentence as BOTH goal and context, by construction), so the same rules read
  * the same way at the door and on the card, with nothing inferred about
  * provenance in either place.
+ *
+ * Which is exactly why goal-repeats-context is counted per BATCH and never
+ * warned per ticket: because the quick door writes one sentence into both
+ * fields, a per-ticket line for it fired on every quick change ever made,
+ * including a careful one-sentence one — a warning that is always on is a fact
+ * about the door, not about what the human typed, and the edit it asked for
+ * ("write a context that…") names a field the quick-change overlay does not
+ * have. How MANY arrived at once is the part the human chose and can act on,
+ * so that is the only thing this says about the shape.
  */
 export function ticketShapeWarnings(
   tickets: readonly TicketShapeSubject[],
@@ -112,14 +120,10 @@ export function ticketShapeWarnings(
   }
   for (const ticket of checked) {
     const context = ticket.context.trim()
-    if (goalRepeatsContext(ticket)) {
-      out.push({
-        code: 'goal-is-context',
-        message:
-          `${named(ticket)} repeats its goal as its context — write a context that says where in ` +
-          'the codebase the work is, which existing pattern to follow, and what it must not break.',
-      })
-    } else if (context.length < THIN_TICKET_CONTEXT_CHARS) {
+    // A context that IS the goal is not a thin context — it is a ticket with no
+    // second field at all, which is the quick door's construction rather than a
+    // thing to fix. The batch line above is what that shape is worth saying.
+    if (!goalRepeatsContext(ticket) && context.length < THIN_TICKET_CONTEXT_CHARS) {
       out.push({
         code: 'thin-context',
         message:
@@ -174,7 +178,11 @@ function named(ticket: TicketShapeSubject): string {
   return `#${ticket.seq}`
 }
 
-/** A context that is just the goal said again — the degenerate import's mark. */
+/**
+ * A ticket with one field where there should be two — the quick door's
+ * construction, and so the degenerate import's mark when enough of them arrive
+ * together. Counted, never warned about on its own; see above.
+ */
 function goalRepeatsContext(ticket: TicketShapeSubject): boolean {
   const context = ticket.context.trim()
   return context !== '' && context === ticket.goal.trim()
