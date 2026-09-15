@@ -10,8 +10,10 @@ import { simpleGit } from 'simple-git'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import {
   BURN_CACHE_MOUNT,
+  burnCacheDirectories,
   burnCacheEnv,
   createSlotAllocator,
+  slotDirPath,
   slotRepoPath,
   slotStampPath,
 } from '../src/workflows/burn-cache'
@@ -187,6 +189,21 @@ describe('buildSlotSetupCommand — the slot-sync script', () => {
     buildSlotSetupCommand(2, BRANCH, setupCommand, 'pnpm', STAMP)
   const repo = slotRepoPath(2)
 
+  it.each([
+    ['with a package manager', 'pnpm' as const],
+    ['without a detected package manager', undefined],
+  ])('creates every cache directory %s before project setup', (_case, pm) => {
+    const setup = 'echo project-setup'
+    const cmd = buildSlotSetupCommand(2, BRANCH, setup, pm, STAMP)
+    const mkdir = `mkdir -p ${slotDirPath(2)} ${burnCacheDirectories(pm).join(' ')}`
+
+    expect(cmd).toContain(mkdir)
+    expect(cmd.indexOf(mkdir)).toBeLessThan(cmd.indexOf(setup))
+    if (pm) {
+      expect(new Set(burnCacheDirectories(pm))).toEqual(new Set(Object.values(burnCacheEnv(pm))))
+    }
+  })
+
   it('runs the sync steps in the order a killed container makes necessary', () => {
     const cmd = script('corepack pnpm install --frozen-lockfile')
     const at = (needle: string) => {
@@ -230,7 +247,7 @@ describe('buildSlotSetupCommand — the slot-sync script', () => {
     const hook = postCommitHookBody(script(), BRANCH)
     expect(hook).not.toContain('reset')
     expect(hook).not.toContain(SANDBOX_WORKSPACE_PATH)
-    const push = `git push --quiet origin HEAD:${BRANCH}`
+    const push = `git push --quiet --force-with-lease origin HEAD:${BRANCH}`
     expect(hook.split(push)).toHaveLength(3)
     expect(hook).toContain(`${push} && exit 0\nsleep 2\n${push}`)
     expect(hook).toContain(
@@ -435,6 +452,22 @@ describe.skipIf(process.platform === 'win32')('buildSlotSetupCommand — driven 
     expect(existsSync(join(workspace, 'WORK.md'))).toBe(false)
   })
 
+  it('syncs an amended commit that rewrites the ticket branch', async () => {
+    await runSetup(1, BRANCH)
+    const repo = simpleGit(slotRepo(1))
+    await repo.addConfig('user.email', 'agent@runcastle.dev')
+    await repo.addConfig('user.name', 'Burn Agent')
+    writeFileSync(join(slotRepo(1), 'WORK.md'), 'first draft\n')
+    await repo.add('.')
+    await repo.commit('ticket(2): work')
+
+    writeFileSync(join(slotRepo(1), 'WORK.md'), 'amended work\n')
+    await repo.add('.')
+    await repo.commit('ticket(2): work', undefined, ['--amend'])
+
+    expect(await simpleGit(workspace).revparse(['HEAD'])).toBe(await repo.revparse(['HEAD']))
+  })
+
   it('retries a failed push, then tells the agent once — without failing the commit', async () => {
     await runSetup(1, BRANCH)
     const repo = simpleGit(slotRepo(1))
@@ -555,7 +588,7 @@ describe('setup telemetry (decision 9)', () => {
   })
 
   it('charges the container rebuild between iterations to `setup`, not to the agent', () => {
-    const timer = createToolTimer()
+    const timer = createToolTimer('claude-code')
     const at = (ms: number) => new Date(1_700_000_000_000 + ms)
     timer.beginSetup(1_700_000_000_000)
     // 30s of container build + setup hook before the agent says anything.
@@ -582,7 +615,7 @@ describe('setup telemetry (decision 9)', () => {
   })
 
   it('leaves a single-iteration burn charged exactly as before, plus its setup', () => {
-    const timer = createToolTimer()
+    const timer = createToolTimer('claude-code')
     const at = (ms: number) => new Date(1_700_000_000_000 + ms)
     timer.beginSetup(1_700_000_000_000)
     timer.onEvent({ type: 'text', message: 'hi', iteration: 1, timestamp: at(1_000) })

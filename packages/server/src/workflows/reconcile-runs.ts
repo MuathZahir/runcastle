@@ -6,7 +6,7 @@ import { runs } from '../db/schema'
 import { emit } from '../services/events'
 import { cleanupTempBranches, reattachWorktree } from '../services/git'
 import { allProjects, getProjectById, rowToRun, tryGetFeature } from '../services/repo'
-import { sweepOrphanedBurning } from '../services/tickets'
+import { listByFeature, sweepOrphanedBurning } from '../services/tickets'
 import { releaseForSession } from '../services/waypoints'
 import { isRunActive, workflowClaimsFeatureBranch } from './runner'
 
@@ -72,15 +72,26 @@ export async function reconcileStaleRuns(ctx: AppCtx): Promise<Run[]> {
       }
     }
 
+    const burnTickets = run.workflow === 'ticket-burner' ? listByFeature(ctx, run.featureId) : []
+    const landedTickets = burnTickets.filter((ticket) => ticket.status === 'done').length
+    const pendingTickets = burnTickets.filter(
+      (ticket) => ticket.status !== 'done' && ticket.status !== 'cancelled',
+    ).length
+    const interruptionMessage = `A burn was interrupted by a server restart: ${landedTickets} ticket${landedTickets === 1 ? '' : 's'} landed, ${pendingTickets} pending`
+
     emit(ctx, run.featureId, {
       type: 'run.reconciled',
-      message: `run marked failed at boot — the server restarted while it was running (${run.workflow})`,
+      message:
+        run.workflow === 'ticket-burner'
+          ? interruptionMessage
+          : `run marked failed at boot — the server restarted while it was running (${run.workflow})`,
       runId: run.id,
       data: {
         runId: run.id,
         workflow: run.workflow,
         releasedWaypointIds: released.map((w) => w.id),
         sweptTicketSeqs: swept.map((t) => t.seq),
+        ...(run.workflow === 'ticket-burner' ? { landedTickets, pendingTickets } : {}),
       },
     })
     reconciled.push(run)

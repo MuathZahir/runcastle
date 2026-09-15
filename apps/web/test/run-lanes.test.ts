@@ -276,6 +276,19 @@ describe('Lane model menu', () => {
     expect(menuHtml({ seq: 1, model: 'gpt-5.6-sol' })).toContain('gpt-5.6-sol · Codex')
   })
 
+  it('warns when a review ticket is assigned an implementer-only model', () => {
+    const reviewRoster: ModelEntry[] = [
+      { id: 'fast-implementer', runtime: 'codex', note: 'Implementer-only model' },
+    ]
+    const html = laneHtml({
+      ticket: row({ seq: 7, kind: 'review', model: 'fast-implementer' }),
+      roster: reviewRoster,
+      onModel: () => {},
+      onRetry: () => {},
+    })
+    expect(html).toContain('not recommended for review tickets')
+  })
+
   it('offers it on a failed lane, a stopped one included', () => {
     expect(menuHtml({ seq: 2, status: 'failed', error: 'boom' })).toContain('Ticket model')
     expect(menuHtml({ seq: 2, status: 'failed', error: 'stopped by user' })).toContain('Ticket model')

@@ -1,5 +1,30 @@
 import type { RunStatus } from '@runcastle/core'
 
+export interface BurnInterruption {
+  runId: string
+  landedTickets: number
+  pendingTickets: number
+}
+
+/** The restart alert applies only until a newer run supersedes the reconciled burn. */
+export function burnInterruption(
+  events: readonly { type: string; runId?: string | null; data?: unknown }[],
+  latestRunId?: string,
+): BurnInterruption | undefined {
+  if (!latestRunId) return undefined
+  const event = [...events]
+    .reverse()
+    .find((entry) => entry.type === 'run.reconciled' && entry.runId === latestRunId)
+  if (!event?.runId || typeof event.data !== 'object' || event.data === null) return undefined
+  const { workflow, landedTickets, pendingTickets } = event.data as Record<string, unknown>
+  if (
+    workflow !== 'ticket-burner' ||
+    typeof landedTickets !== 'number' ||
+    typeof pendingTickets !== 'number'
+  ) return undefined
+  return { runId: event.runId, landedTickets, pendingTickets }
+}
+
 export interface LaneTicketFigure {
   seq: number
   status: string
@@ -8,6 +33,31 @@ export interface LaneTicketFigure {
   orphaned?: boolean
   kind?: string
   reviewFix?: boolean
+}
+
+export interface UnrunnableGateFigure {
+  command: string
+  error: string
+}
+
+/** One report per command, even when every ticket encountered the same missing runtime. */
+export function unrunnableGates(
+  events: readonly { type: string; data?: unknown }[],
+): UnrunnableGateFigure[] {
+  const gates = new Map<string, UnrunnableGateFigure>()
+  for (const event of events) {
+    if (
+      event.type !== 'ticket.gate_unrunnable' ||
+      typeof event.data !== 'object' ||
+      event.data === null
+    ) continue
+    const { command, error } = event.data as { command?: unknown; error?: unknown }
+    if (typeof command !== 'string' || typeof error !== 'string') continue
+    if (command.trim() && error.trim() && !gates.has(command.trim())) {
+      gates.set(command.trim(), { command: command.trim(), error: error.trim() })
+    }
+  }
+  return [...gates.values()]
 }
 
 export type LaneState = 'pending' | 'burning' | 'done' | 'failed' | 'stopped' | 'launch-failed' | 'waived'

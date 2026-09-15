@@ -35,6 +35,7 @@ import {
   formatTimingSummary,
   buildTicketTiming,
   emitTicketTiming,
+  emitUnrunnableGates,
   formatTicketTiming,
   createSerialQueue,
   createStreamThrottle,
@@ -69,6 +70,7 @@ import {
   extractCommandNames,
   missingToolchainMessage,
   parseMissingCommands,
+  parseUnrunnableGates,
   preflightCommandNames,
   readDocsDigest,
   trimMapDoc,
@@ -265,6 +267,14 @@ describe('renderTicketPrompt', () => {
     expect(out).toMatch(/before printing `<promise>COMPLETE<\/promise>`/)
     // The mode-specific location comes from the workspace notes.
     expect(out).toContain(`${SANDBOX_WORKSPACE_PATH}/DIGEST.md`)
+  })
+
+  it('tells an agent to report an unavailable gate and continue the rest', () => {
+    const out = renderTicketPrompt(readFileSync(burnerTemplatePath(), 'utf8'), promptValues())
+    expect(out).toContain('GATE_UNRUNNABLE.md')
+    expect(out).toContain('{"command":"<exact command>","error":"<exact error>"}')
+    expect(out).toMatch(/continue every other gate/i)
+    expect(out).toMatch(/never your ticket's failure/i)
   })
 
   it('gives BLOCKED.md exactly one authoritative location — the workspace notes', () => {
@@ -733,6 +743,47 @@ describe('interpretRunResult', () => {
       status: 'failed',
       error: 'agent made no commits',
     })
+  })
+})
+
+describe('GATE_UNRUNNABLE.md — unavailable verification is an event, not an outcome', () => {
+  it('emits exact command and error while a committed result remains done', () => {
+    const content = JSON.stringify({
+      command: 'bun run typecheck',
+      error: '/bin/sh: python: not found',
+    })
+    expect(parseUnrunnableGates(content)).toEqual([
+      { command: 'bun run typecheck', error: '/bin/sh: python: not found' },
+    ])
+
+    const events: { type: string; ticketId?: string; data?: unknown }[] = []
+    const ctx = { emitEvent: (event: (typeof events)[number]) => events.push(event) }
+    emitUnrunnableGates(
+      ctx as unknown as Parameters<typeof emitUnrunnableGates>[0],
+      { id: 'tk_2', seq: 2 },
+      content,
+    )
+    expect(events).toEqual([
+      expect.objectContaining({
+        type: 'ticket.gate_unrunnable',
+        ticketId: 'tk_2',
+        data: { command: 'bun run typecheck', error: '/bin/sh: python: not found' },
+      }),
+    ])
+    expect(interpretRunResult({ commits: [{ sha: 'abc' }] }, undefined).status).toBe('done')
+  })
+
+  it('ignores malformed reports and deduplicates commands within one marker', () => {
+    expect(parseUnrunnableGates('not json')).toEqual([])
+    expect(
+      parseUnrunnableGates(
+        JSON.stringify([
+          { command: 'pnpm test', error: 'pnpm: not found' },
+          { command: 'pnpm test', error: 'duplicate' },
+          { command: '', error: 'missing command' },
+        ]),
+      ),
+    ).toEqual([{ command: 'pnpm test', error: 'pnpm: not found' }])
   })
 })
 
@@ -1250,14 +1301,47 @@ describe('selectSandbox — provider for the configured sandbox', () => {
 })
 
 describe('classifyToolCall — where a burn spends its wall-clock', () => {
-  const bash = (cmd: string) => classifyToolCall('Bash', cmd)
+  const bash = (cmd: string) => classifyToolCall('claude-code', 'Bash', cmd)
 
   it('maps the non-Bash file tools by name', () => {
-    expect(classifyToolCall('Read', 'src/a.ts')).toBe('file-read')
-    expect(classifyToolCall('Grep', 'pattern')).toBe('search')
-    expect(classifyToolCall('Edit', 'src/a.ts')).toBe('file-edit')
-    expect(classifyToolCall('Write', 'src/a.ts')).toBe('file-edit')
-    expect(classifyToolCall('Task', 'explore')).toBe('other')
+    expect(classifyToolCall('claude-code', 'Read', 'src/a.ts')).toBe('file-read')
+    expect(classifyToolCall('claude-code', 'Grep', 'pattern')).toBe('search')
+    expect(classifyToolCall('claude-code', 'Edit', 'src/a.ts')).toBe('file-edit')
+    expect(classifyToolCall('claude-code', 'Write', 'src/a.ts')).toBe('file-edit')
+    expect(classifyToolCall('claude-code', 'Task', 'explore')).toBe('other')
+  })
+
+  it('classifies a Codex-shaped tool sequence by its runtime', () => {
+    const t = createToolTimer('codex')
+    t.onEvent({
+      type: 'toolCall',
+      name: 'Bash',
+      formattedArgs: 'bun run test',
+      iteration: 1,
+      timestamp: new Date(0),
+    })
+    t.onEvent({
+      type: 'toolCall',
+      name: 'Bash',
+      formattedArgs: 'bun run typecheck',
+      iteration: 1,
+      timestamp: new Date(1_000),
+    })
+    t.onEvent({
+      type: 'toolCall',
+      name: 'apply_patch',
+      formattedArgs: '*** Begin Patch',
+      iteration: 1,
+      timestamp: new Date(2_000),
+    })
+    t.onEvent({ type: 'text', message: 'done', iteration: 1, timestamp: new Date(3_000) })
+
+    expect(t.summary().byCategory).toMatchObject({
+      tests: { calls: 1 },
+      typecheck: { calls: 1 },
+      'file-edit': { calls: 1 },
+    })
+    expect(t.summary().byCategory.other).toBeUndefined()
   })
 
   it('charges a chained command to its dominant cost, not its first word', () => {
@@ -1320,7 +1404,7 @@ describe('createToolTimer — category shares from the sandcastle stream', () =>
     ({ type: 'text', message: 'thinking', iteration, timestamp: at(ms) }) as const
 
   it('charges each gap to the event that opened it', () => {
-    const t = createToolTimer()
+    const t = createToolTimer('claude-code')
     t.onEvent(tool('Bash', 'pnpm test', 0)) // 10s of tests
     t.onEvent(text(10_000)) //  2s of model
     t.onEvent(tool('Bash', 'cat a.ts', 12_000)) //  1s of file-read
@@ -1334,7 +1418,7 @@ describe('createToolTimer — category shares from the sandcastle stream', () =>
   })
 
   it('drops the gap across an iteration boundary — that is a container rebuild', () => {
-    const t = createToolTimer()
+    const t = createToolTimer('claude-code')
     t.onEvent(tool('Bash', 'pnpm test', 0, 1))
     t.onEvent(tool('Bash', 'git log', 500_000, 2)) // new container, not 8min of tests
     expect(t.summary().byCategory.tests?.ms).toBe(0) // the call is counted, its 8min gap is not
@@ -1342,14 +1426,14 @@ describe('createToolTimer — category shares from the sandcastle stream', () =>
   })
 
   it('drops an implausibly long single gap rather than letting a stall swamp the shares', () => {
-    const t = createToolTimer()
+    const t = createToolTimer('claude-code')
     t.onEvent(tool('Bash', 'pnpm test', 0))
     t.onEvent(text(45 * 60_000))
     expect(t.summary().totalMs).toBe(0)
   })
 
   it('ignores raw lines and counts calls even when no time is attributable', () => {
-    const t = createToolTimer()
+    const t = createToolTimer('claude-code')
     t.onEvent({ type: 'raw', line: 'noise', iteration: 1, timestamp: at(0) })
     t.onEvent(tool('Bash', 'pnpm test', 0))
     const s = t.summary()
@@ -1358,7 +1442,7 @@ describe('createToolTimer — category shares from the sandcastle stream', () =>
   })
 
   it('formats a share digest ordered by cost', () => {
-    const t = createToolTimer()
+    const t = createToolTimer('claude-code')
     t.onEvent(tool('Bash', 'pnpm test', 0))
     t.onEvent(tool('Bash', 'cat a.ts', 60_000))
     t.onEvent(text(80_000))
@@ -1608,6 +1692,39 @@ describe('toolchain preflight — one container answers for every binary', () =>
     expect(preflightCommandNames({ agentBinary: 'codex' })).toEqual(['codex'])
   })
 
+  it('does not probe verify binaries that setup provides before verification runs', () => {
+    expect(
+      preflightCommandNames({
+        agentBinary: 'codex',
+        setupCommand:
+          'corepack enable pnpm && corepack prepare yarn@4.5.0 --activate && npm i -g turbo@2 && bun add --global biome && alias poetry="python -m poetry" && uv() { python -m uv "$@"; }',
+        verifyCommands:
+          'pnpm test\nyarn lint\nturbo build\nbiome check .\npoetry run pytest\nuv run ruff\nbun run typecheck',
+      }),
+    ).toEqual(['bun', 'codex', 'corepack', 'npm'])
+  })
+
+  it('keeps probing setup and verify commands that setup does not provide', () => {
+    expect(
+      preflightCommandNames({
+        agentBinary: 'claude',
+        setupCommand: 'corepack prepare pnpm@9 --activate && mvn install',
+        verifyCommands: 'pnpm test\npython scripts/check.py',
+      }),
+    ).toEqual(['claude', 'corepack', 'mvn', 'python'])
+  })
+
+  it('recognises commands supplied by setup aliases, functions, and bin shims', () => {
+    expect(
+      preflightCommandNames({
+        agentBinary: 'codex',
+        setupCommand:
+          'printf "#!/bin/sh" > "$HOME/.local/bin/pnpm" && ln -s /opt/ruff /usr/local/bin/ruff',
+        verifyCommands: 'pnpm test\nruff check .\npython scripts/check.py',
+      }),
+    ).toEqual(['codex', 'ln', 'printf', 'python'])
+  })
+
   it('builds one `command -v` sweep that always exits 0', () => {
     expect(buildToolchainProbeArgs('sandcastle:runcastle-demo', ['claude', 'mvn'])).toEqual([
       'run',
@@ -1727,7 +1844,7 @@ describe('buildIsolatedSetupCommand — clone + auto-sync wiring for the sandbox
 
   it('retries a failed push once, then says one calm line and exits 0', () => {
     const hook = postCommitHookBody(buildIsolatedSetupCommand(branch, 'npm ci'), branch)
-    const push = `git push --quiet origin HEAD:${branch}`
+    const push = `git push --quiet --force-with-lease origin HEAD:${branch}`
     // exactly two pushes: the first, and one retry after a pause
     expect(hook.split(push)).toHaveLength(3)
     expect(hook).toContain(`${push} && exit 0\nsleep 2\n${push}`)
@@ -1805,6 +1922,13 @@ describe('buildWorkspaceNotes — the {{WORKSPACE_NOTES}} prompt block', () => {
     const notes = buildWorkspaceNotes('isolated')
     expect(notes).toContain(`${SANDBOX_WORKSPACE_PATH}/DIGEST.md`)
     expect(notes).not.toContain(`${ISOLATED_REPO_PATH}/DIGEST.md`)
+  })
+
+  it('puts the unrunnable-gate marker where the host can harvest it in either mode', () => {
+    expect(buildWorkspaceNotes('mounted')).toMatch(/GATE_UNRUNNABLE\.md.*root of that checkout/)
+    const isolated = buildWorkspaceNotes('isolated')
+    expect(isolated).toContain(`${SANDBOX_WORKSPACE_PATH}/GATE_UNRUNNABLE.md`)
+    expect(isolated).not.toContain(`${ISOLATED_REPO_PATH}/GATE_UNRUNNABLE.md`)
   })
 })
 
