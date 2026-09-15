@@ -14,7 +14,7 @@ import type { AppCtx } from '../db/types'
 import { sessions } from '../db/schema'
 import { ptyRegistry } from '../pty/registry'
 import { stopDocsWatch } from '../services/docs-watch'
-import { emit, emitForSession, emitProject } from '../services/events'
+import { emitForSession, emitProject } from '../services/events'
 import {
   landProjectBranch,
   PROJECT_BRANCH,
