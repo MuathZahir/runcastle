@@ -60,6 +60,22 @@ import type { FeatureFull, FeatureListItem } from '../src/lib/api'
 import { full, listItem, wp } from './fixtures'
 
 /**
+ * A ticket a coder could read before it writes: a goal, and a context that is
+ * different from it and past the thin floor. Both roads into a burn now carry
+ * the shape warnings (core's `ticket-shape.ts`), so the fixtures that are NOT
+ * about them say nothing to warn about; the shape cases build their own.
+ */
+const BURNABLE = {
+  goal: 'Put the shape warnings on the burn card.',
+  context:
+    'The bar lives in apps/web/src/lib/feature-ui/next-step and the ledger beneath it in ' +
+    'components/bodies/tickets. Follow the resolver that is already there rather than adding a ' +
+    'second one, and pin the copy in apps/web/test/feature-ui.test.ts as the neighbouring cases ' +
+    'do. The warnings themselves belong to core, beside the rules, so the card and the door that ' +
+    'stores the tickets cannot word the same problem two ways.',
+}
+
+/**
  * Every cutting form prefills Branch-from with the branch the project is
  * currently checked out on, falling back to main when runcastle's own internal
  * branch is the checkout. Tested at the pure derivation, no DOM.
@@ -248,7 +264,7 @@ describe('nextStep at implementation with no tickets', () => {
   it('still offers the burn once there is a ticket to burn', () => {
     const withTicket = {
       ...buildFull(),
-      tickets: [{ id: 't1', status: 'pending' }],
+      tickets: [{ id: 't1', seq: 1, status: 'pending', goal: 'Burn it.', context: 'Somewhere.' }],
     } as unknown as FeatureFull
     expect(nextStep(withTicket, { driving: false }).primary).toEqual({
       label: 'Burn 1 ticket',
@@ -362,9 +378,11 @@ describe('nextStep — live sessions go status-only', () => {
       },
       tickets: Array.from({ length: opts.tickets ?? 0 }, (_, i) => ({
         id: `t${i}`,
+        seq: i + 1,
         status: 'pending',
         lap: 1,
         commits: [],
+        ...BURNABLE,
       })),
       sessions: opts.live
         ? [{ id: 's1', status: opts.sessionStatus ?? 'live', kind: 'ideation' }]
@@ -462,6 +480,25 @@ describe('nextStep — live sessions go status-only', () => {
     expect(ns.desc).toContain('The session is finishing the tickets')
     expect(ns.primary).toBeUndefined()
     expect(ns.secondary).toEqual([])
+  })
+
+  /**
+   * The same shape warning the build phase's bar carries, on the road a specced
+   * feature takes into its burn — a session that left a context empty is the
+   * same problem as a quick change that arrived with nothing in any of them.
+   */
+  it('reads the shape of the tickets it is about to burn, without disarming Burn', () => {
+    const base = auditFull({ phase: 'tickets', gateId: 'G3', tickets: 2 })
+    expect(nextStep(base, { driving: false }).note).toBeUndefined()
+
+    const thin = {
+      ...base,
+      tickets: base.tickets.map((ticket) => ({ ...ticket, context: 'Somewhere in the app.' })),
+    } as unknown as FeatureFull
+    const ns = nextStep(thin, { driving: false })
+    expect(ns.note).toContain('#1 has a 21-character context')
+    expect(ns.note).toContain('#2 has a 21-character context')
+    expect(ns.primary).toEqual({ label: 'Burn 2 tickets', kind: 'burn' })
   })
 
   it('arms Burn with no session alive to race, readiness or not', () => {
@@ -2246,12 +2283,20 @@ describe('nextStep at implementation', () => {
     runs?: { id: string; status: string; startedAt: number }[]
     ticketStatuses?: TicketStatus[]
     sessionLive?: boolean
+    /** Per-ticket goal/context, for the shape cases; burnable by default. */
+    shapes?: { goal: string; context: string }[]
   }): FeatureFull =>
     ({
       feature: { id: 'f1', phase: 'implementation', mapped: false, lap: 1, status: 'active' },
-      tickets: (opts.ticketStatuses ?? ['pending']).map((status, i) => ({
+      tickets: (
+        opts.ticketStatuses ??
+        opts.shapes?.map(() => 'pending' as const) ?? ['pending']
+      ).map((status, i) => ({
         id: `t${i}`,
+        seq: i + 1,
         status,
+        ...BURNABLE,
+        ...(opts.shapes?.[i] ?? {}),
         lap: 1,
         commits: [],
       })),
@@ -2378,6 +2423,66 @@ describe('nextStep at implementation', () => {
       burnStats: { medianMs: 132_000, sampleSize: 9 },
     })
     expect(ns.desc).not.toContain('have been taking')
+  })
+
+  /**
+   * The shape of what is about to burn, on the card where the human decides
+   * (core's `ticket-shape.ts`). A 14-ticket quick change reached a burn with
+   * every ticket's goal, context and sole criterion being one pasted sentence;
+   * the card said nothing, and the coders had nothing to read. It warns now —
+   * and only warns: Burn is the primary action in every case below.
+   */
+  const degenerate = (n: number) =>
+    Array.from({ length: n }, (_, i) => ({
+      goal: `Change number ${i + 1} to something else.`,
+      context: `Change number ${i + 1} to something else.`,
+    }))
+
+  it('keeps quiet about a batch a coder can read', () => {
+    expect(nextStep(buildFull({}), { driving: false }).note).toBeUndefined()
+  })
+
+  it('names the ticket and what to fix when a context is only its goal again', () => {
+    const ns = nextStep(buildFull({ shapes: degenerate(1) }), { driving: false })
+    expect(ns.note).toContain('#1 repeats its goal as its context')
+    expect(ns.note).toContain('what it must not break')
+    // Never a refusal: the button is the same button.
+    expect(ns.primary).toEqual({ label: 'Burn 1 ticket', kind: 'burn' })
+  })
+
+  it('names a thin context with its length', () => {
+    const ns = nextStep(buildFull({ shapes: [{ goal: 'Darken the empty state.', context: 'It washes out.' }] }), {
+      driving: false,
+    })
+    expect(ns.note).toContain('#1 has a 14-character context')
+    expect(ns.primary?.kind).toBe('burn')
+  })
+
+  it('calls a batch too big for the quick door what it is, and still offers the burn', () => {
+    const ns = nextStep(buildFull({ shapes: degenerate(6) }), { driving: false })
+    expect(ns.note).toContain('6 tickets (#1, #2, #3, #4, #5, #6) carry their goal as their context')
+    expect(ns.note).toContain('cut the batch to 5 tickets or fewer')
+    // Spelled out three deep, then counted — the bar has one line.
+    expect(ns.note).toContain('(+4 more like this.)')
+    expect(ns.primary).toEqual({ label: 'Burn 6 tickets', kind: 'burn' })
+  })
+
+  it('says it again on the resume road into the same burn', () => {
+    const ns = nextStep(
+      buildFull({ shapes: degenerate(1), runs: [{ id: 'r1', status: 'failed', startedAt: 1 }] }),
+      { driving: false },
+    )
+    expect(ns.note).toContain('#1 repeats its goal as its context')
+    expect(ns.primary).toEqual({ label: 'Resume burn', kind: 'burn' })
+  })
+
+  it('reads only the tickets that are about to burn, not the ones already done', () => {
+    const ns = nextStep(
+      buildFull({ shapes: degenerate(2), ticketStatuses: ['done', 'pending'] }),
+      { driving: false },
+    )
+    expect(ns.note).toContain('#2 repeats its goal as its context')
+    expect(ns.note).not.toContain('#1')
   })
 })
 
@@ -2547,7 +2652,13 @@ describe('nextStep — spec and tickets use one lap-scoped door', () => {
     ] as FeatureFull['tickets']
     expect(nextStep(feature, { driving: false }).title).toBe('Waiting for tickets')
     feature.tickets.push(
-      ...(['a', 'b', 'c'].map((id) => ({ id, lap: 2, status: 'pending' })) as FeatureFull['tickets']),
+      ...(['a', 'b', 'c'].map((id, i) => ({
+        id,
+        seq: i + 1,
+        lap: 2,
+        status: 'pending',
+        ...BURNABLE,
+      })) as FeatureFull['tickets']),
     )
     expect(nextStep(feature, { driving: false }).primary).toEqual({ label: 'Burn 3 tickets', kind: 'burn' })
   })
@@ -3228,7 +3339,7 @@ describe('nextStep — naming the runtime in the copy', () => {
   it('does not name a runtime for a ticket batch that may span both', () => {
     const full = {
       feature: { id: 'f1', phase: 'tickets', mapped: false, status: 'active' },
-      tickets: [{ id: 't1', seq: 1, status: 'todo' }],
+      tickets: [{ id: 't1', seq: 1, status: 'todo', ...BURNABLE }],
       sessions: [],
       runs: [],
       gate: { next: { id: 'G3' }, satisfied: false, reason: 'not burned' },

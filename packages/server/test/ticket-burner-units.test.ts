@@ -34,6 +34,7 @@ import {
   createToolTimer,
   formatTimingSummary,
   buildTicketTiming,
+  emitDocsDigestEvent,
   emitTicketTiming,
   formatTicketTiming,
   createSerialQueue,
@@ -643,6 +644,52 @@ describe('readDocsDigest (the allowlist)', () => {
     expect(docs.missing).toBe('no-canonical-docs')
     // Still names what IS there.
     expect(docs.withheld.map((w) => w.name)).toEqual(['outcome.md'])
+  })
+})
+
+/**
+ * The digest's cost line. It already reported the bytes; what it did not do was
+ * say when the number is too big — which is the state the allowlist was written
+ * for, and which nothing would notice growing back.
+ */
+describe('emitDocsDigestEvent', () => {
+  const emitted = (docs: Parameters<typeof emitDocsDigestEvent>[1]) => {
+    const events: { type: string; message: string; data?: unknown }[] = []
+    emitDocsDigestEvent(
+      { emitEvent: (e: (typeof events)[number]) => events.push(e) } as unknown as Parameters<
+        typeof emitDocsDigestEvent
+      >[0],
+      docs,
+    )
+    return events
+  }
+
+  const digest = (bytes: number) => ({
+    text: 'x'.repeat(bytes),
+    bytes,
+    included: ['brief.md', 'spec.md'],
+    withheld: [],
+  })
+
+  it('reports an ordinary digest as the cost it is, with no warning', () => {
+    const events = emitted(digest(2_400))
+    expect(events).toHaveLength(1)
+    expect(events[0].message).toBe('docs digest: 2400 bytes to every ticket (brief.md, spec.md)')
+    expect(events[0].data).not.toMatchObject({ oversized: true })
+  })
+
+  it('says so when every ticket in the burn is about to pay for an oversized digest', () => {
+    const events = emitted(digest(97_000))
+    expect(events[0].message).toContain('97000 bytes to every ticket')
+    expect(events[0].message).toContain('over the 40000-byte budget')
+    expect(events[0].message).toContain('trim the feature docs')
+    expect(events[0].data).toMatchObject({ oversized: true, bytes: 97_000 })
+  })
+
+  it('still reports a spec-less burn as the absence it is, not as a size', () => {
+    const events = emitted({ ...digest(97_000), missing: 'no-worktree' })
+    expect(events[0].type).toBe('burn.docs.missing')
+    expect(events[0].message).toContain('burning with NO feature spec')
   })
 })
 

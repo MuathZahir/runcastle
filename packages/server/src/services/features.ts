@@ -10,7 +10,15 @@ import type {
   TicketInput,
   Waypoint,
 } from '@runcastle/core'
-import { RETHINK_LOOP_BACK, REVIEW_LOOP_BACK, newId, nextGate, nextPhase } from '@runcastle/core'
+import {
+  RETHINK_LOOP_BACK,
+  REVIEW_LOOP_BACK,
+  newId,
+  nextGate,
+  nextPhase,
+  ticketShapeWarningLine,
+  ticketShapeWarnings,
+} from '@runcastle/core'
 import { sessionDir, worktreeDir } from '@runcastle/core/paths'
 import { desc, eq } from 'drizzle-orm'
 import { rmSync } from 'node:fs'
@@ -453,7 +461,29 @@ export async function quickChange(ctx: AppCtx, input: QuickChangeInput): Promise
     data: { slug, ticketSeqs: stored.map((t) => t.seq), phase: 'implementation' },
   })
 
+  emitTicketShapeWarnings(ctx, feature.id, typed)
+
   return feature
+}
+
+/**
+ * What the quick door just let through, on the feature's timeline — the door
+ * the 14-ticket degenerate import came through, which had no validation at all.
+ *
+ * A warning, never a refusal (see `ticket-shape.ts`): the human typed these
+ * sentences and may burn them exactly as they are, so nothing here stops the
+ * feature being created or the Burn button working. The Burn card renders the
+ * same warnings from the same function, so the sentence the human reads here is
+ * the sentence they read again at the moment they decide.
+ */
+function emitTicketShapeWarnings(ctx: AppCtx, featureId: string, stored: Ticket[]): void {
+  const warnings = ticketShapeWarnings(stored)
+  if (warnings.length === 0) return
+  emit(ctx, featureId, {
+    type: 'tickets.shape_warning',
+    message: `${warnings.length} shape warning${warnings.length === 1 ? '' : 's'} — the burn is not blocked, but a coder reads what is here: ${ticketShapeWarningLine(warnings)}`,
+    data: { warnings, seqs: stored.map((t) => t.seq) },
+  })
 }
 
 /**

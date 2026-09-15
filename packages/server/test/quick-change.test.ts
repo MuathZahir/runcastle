@@ -360,6 +360,7 @@ describe('quickChange service — a one-ticket feature born at implementation', 
       'docs.scaffolded',
       'tickets.stored',
       'feature.quick_change',
+      'tickets.shape_warning',
     ])
     const quick = events.find((e) => e.type === 'feature.quick_change')
     expect(quick?.message).toContain('born at implementation on lap 1')
@@ -381,6 +382,60 @@ describe('quickChange service — a one-ticket feature born at implementation', 
     const quick = listAfter(ctx, feature.id, 0).find((e) => e.type === 'feature.quick_change')
     expect(quick?.message).toContain('3 tickets (#1, #2, #3) plus a review ticket (#4)')
     expect(quick?.data).toMatchObject({ ticketSeqs: [1, 2, 3, 4] })
+  })
+
+  /**
+   * The door the degenerate 14-ticket import came through, which had no
+   * validation at all. It still has no refusal — these cases pin that the shape
+   * is SAID, on the timeline, at the moment the rows are written.
+   */
+  it('warns on the timeline about the shape it just stored, naming the ticket', async () => {
+    const feature = await features.quickChange(ctx, {
+      projectId,
+      title: 'Darker empty state',
+      tickets: [PROSE],
+    })
+
+    const warning = listAfter(ctx, feature.id, 0).find((e) => e.type === 'tickets.shape_warning')
+    expect(warning?.message).toContain('the burn is not blocked')
+    expect(warning?.message).toContain('#1 repeats its goal as its context')
+    expect(warning?.data).toMatchObject({
+      warnings: [{ code: 'goal-is-context' }],
+      seqs: [1],
+    })
+    // …and the feature is created regardless: a warning is not a refusal.
+    expect(getFeatureRow(ctx, feature.id).phase).toBe('implementation')
+    expect(typedTickets(ctx, feature.id)).toHaveLength(1)
+  })
+
+  it('calls a batch too big for the door what it is, over and above the per-ticket lines', async () => {
+    const feature = await features.quickChange(ctx, {
+      projectId,
+      title: 'Fourteen small things',
+      tickets: Array.from({ length: 6 }, (_, i) => `Change number ${i + 1} to something else.`),
+    })
+
+    const warning = listAfter(ctx, feature.id, 0).find((e) => e.type === 'tickets.shape_warning')
+    expect(warning?.message).toContain('6 tickets (#1, #2, #3, #4, #5, #6) carry their goal as their context')
+    expect(warning?.message).toContain('cut the batch to 5 tickets or fewer')
+    // The review ticket is written by the pipeline and is not one of the six.
+    expect(warning?.data).toMatchObject({ seqs: [1, 2, 3, 4, 5, 6] })
+    expect(typedTickets(ctx, feature.id)).toHaveLength(6)
+  })
+
+  it('names a pasted document for what it is', async () => {
+    const pasted = `## Background\n\n${'the pasted wall of prose. '.repeat(70)}`
+    const feature = await features.quickChange(ctx, {
+      projectId,
+      title: 'Pasted in',
+      tickets: [pasted],
+    })
+
+    const warning = listAfter(ctx, feature.id, 0).find((e) => e.type === 'tickets.shape_warning')
+    expect(warning?.data).toMatchObject({
+      warnings: [{ code: 'goal-is-context' }, { code: 'pasted-document' }],
+    })
+    expect(warning?.message).toContain('reads like a pasted document')
   })
 
   it('leaves G1/G2 unevaluated and opens G3 on the single pending ticket', async () => {
