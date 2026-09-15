@@ -337,6 +337,14 @@ export interface FeatureContext {
    * then never assigns a model at all — today's behaviour, unchanged.
    */
   annotatedModels: AnnotatedModel[]
+  /**
+   * How many tickets this project burns at once (`config.burnConcurrency`). The
+   * tickets skill budgets the batch's parallelism against it — a lap whose
+   * tickets chain end to end is one sandbox at a time however wide the pool is
+   * — and before this the emitting session had no way to read the number at
+   * all, so the budget could only ever be guessed.
+   */
+  burnConcurrency: number
   /** Mapped features only (ADR-0001 §13.3): every waypoint on the map… */
   waypoints?: WaypointT[]
   /**
@@ -411,6 +419,7 @@ export function featureContext(ctx: AppCtx, reader: FeatureReader): FeatureConte
     carriedDefects: carried.carriedDefects,
     tickets: listByFeature(ctx, feature.id).map(stripDigest),
     annotatedModels: annotatedModels(ctx),
+    burnConcurrency: ctx.config.burnConcurrency,
   }
   // A mapped feature also exposes its map state so any session can read the
   // waypoints and pick up the frontier (claiming stays a server-only effect).
@@ -2164,7 +2173,8 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
           'session claimed one. Tickets carry their goal, context and acceptance criteria but ' +
           'not the burner’s post-hoc digest — ask `get_work_record` for that. `annotatedModels` ' +
           'lists the models the operator described a use case for — the only ones `emit_tickets` ' +
-          'may assign (empty when they annotated none).',
+          'may assign (empty when they annotated none). `burnConcurrency` is how many tickets ' +
+          'this project burns at once — budget a batch’s blocking edges against it.',
         inputSchema: {},
       },
       async (_args, extra) => {
