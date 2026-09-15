@@ -24,6 +24,10 @@
 **Decision:** Kickoff lines ride argv as-is, all sizes. No file-based or queue-based overflow path. Guard rails: a unit test pinning that a kickoff line containing double quotes/apostrophes survives the Windows argv encoding (node-pty command-line builder) intact, and a build-time sanity assert (`MAX_KICKOFF_ARGV`-style) that throws loudly if a line ever approaches the ~32K Windows command-line ceiling.
 **Why:** All kickoff lines — including `lapKickoff` with carried work — are runcastle-generated, single-line, realistically 1–3KB; the ceiling is not a practical risk, but silent quote-mangling and silent truncation would be, so both are pinned by test/assert instead of routed around with machinery.
 
+## 7. An explicit briefing forces a fresh launch
+**Decision:** When a launch carries an explicit per-purpose kickoff (the Iterate click's lap briefing, the conflict-resolve brief), the resume is skipped: the session starts fresh and the briefing rides argv. Resume remains reserved for launches with no explicit briefing, and it still sends nothing.
+**Why:** Surfaced during ticket-writing: today Iterate resumes the old revisit conversation AND types the new lap briefing into it — impossible once resumed sessions send nothing and the typing machinery is gone. Starting fresh keeps sessions self-starting after a click and leans on the doc-first design the resume cap already trusts ("the docs carry the state"); the lap briefing directs the agent at test-notes.md/spec.md, not at conversation memory.
+
 Verified facts (ctx7 /openai/codex, 2026-09-14):
 - Fresh Codex TUI accepts a positional initial prompt.
 - Interactive `codex resume <id>` takes NO prompt positional (only `codex exec resume` does) — resumed Codex needs `codex queue` or the PTY fallback.
