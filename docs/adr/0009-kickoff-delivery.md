@@ -101,8 +101,8 @@ session.**
 - A swallowed briefing stops being a failure class: the CLI submits the prompt
   itself, before any dialog or redraw can eat it, so the worst case that
   motivated the retry loop cannot occur.
-- No kickoff state outlives argv construction. The in-memory delivery records,
-  their timers and their per-session cleanup are gone with the typing.
+- No delivery state outlives the spawn. The in-memory delivery records and their
+  retry timers are gone with the typing they tracked.
 - `session.kickoff` is at most one event per session, emitted at spawn instead of
   per attempt; a resume emits none. The timeline reads "opened with this
   briefing" or "resumed that conversation" — which is what happened.
