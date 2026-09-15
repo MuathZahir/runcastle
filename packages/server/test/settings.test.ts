@@ -96,6 +96,24 @@ describe('settings service (#46)', () => {
     expect(field(view, 'serverPort').scope).toBe('global')
   })
 
+  it('docs commit prefix defaults per project and accepts an override', () => {
+    const project = seedProject(ctx)
+    const initial = field(getSettings(ctx, project.id, io()), 'docsCommitPrefix')
+    expect(initial).toMatchObject({ value: 'runcastle:', source: 'default', scope: 'project' })
+    expect(getSettings(ctx, undefined, io()).fields.find((f) => f.key === 'docsCommitPrefix')).toBeUndefined()
+
+    updateSettings(ctx, {
+      projectId: project.id,
+      key: 'docsCommitPrefix',
+      value: 'docs(runcastle):',
+    }, io())
+
+    expect(field(getSettings(ctx, project.id, io()), 'docsCommitPrefix')).toMatchObject({
+      value: 'docs(runcastle):',
+      source: 'project',
+    })
+  })
+
   it('env override wins, reports source env, and is not editable', () => {
     const view = getSettings(ctx, undefined, io({ RUNCASTLE_MODEL: 'claude-fable-5' }))
     const model = field(view, 'model')

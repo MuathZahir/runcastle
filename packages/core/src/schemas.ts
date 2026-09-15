@@ -475,6 +475,9 @@ export type FindingSource = z.infer<typeof FindingSource>
  */
 export const PROJECT_NAME_MAX = 80
 
+/** Default subject prefix for commits authored by runcastle's docs machinery. */
+export const DEFAULT_DOCS_COMMIT_PREFIX = 'runcastle:'
+
 /** A project name as `project.rename` accepts it — non-empty, capped. */
 export const ProjectName = z
   .string()
@@ -508,6 +511,8 @@ export const Project = z.object({
    * injected verbatim into every drive-mode review and verification prompt.
    */
   driveInstructions: z.string().optional(),
+  /** Subject prefix for runcastle-owned docs checkpoint commits. */
+  docsCommitPrefix: z.string().optional(),
   /**
    * When the project was closed (issue #43); unset while it is open. The column
    * drives `listProjects`, so the wire type has to carry it — a field the row

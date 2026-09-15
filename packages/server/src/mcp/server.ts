@@ -891,8 +891,10 @@ export function toolCompletePhase(
 async function commitDocsCheckpoint(
   ctx: AppCtx,
   session: SessionRow,
-  message: string,
+  summary: string,
 ): Promise<void> {
+  const project = projectForFeature(ctx, getFeatureRow(ctx, requireFeatureId(session)))
+  const message = git.docsCommitMessage(summary, project.docsCommitPrefix)
   try {
     await git.commitDocs(session.worktreePath, message)
   } catch (e) {
@@ -2249,7 +2251,7 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
         const rs = await resolveCtxSession(extra)
         if (!rs) return noSession()
         const result = toolEmitTickets(rs.ctx, rs.session, args)
-        await commitDocsCheckpoint(rs.ctx, rs.session, `runcastle: tickets emitted (${result.stored})`)
+        await commitDocsCheckpoint(rs.ctx, rs.session, `tickets emitted (${result.stored})`)
         return ok(result)
       },
     )
@@ -2292,7 +2294,7 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
         const rs = await resolveCtxSession(extra)
         if (!rs) return noSession()
         const result = toolUpdateTicket(rs.ctx, rs.session, args)
-        await commitDocsCheckpoint(rs.ctx, rs.session, `runcastle: ticket ${result.ticket.seq} updated`)
+        await commitDocsCheckpoint(rs.ctx, rs.session, `ticket ${result.ticket.seq} updated`)
         return ok(result)
       },
     )
@@ -2319,7 +2321,7 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
         const rs = await resolveCtxSession(extra)
         if (!rs) return noSession()
         const result = toolCancelTicket(rs.ctx, rs.session, args)
-        await commitDocsCheckpoint(rs.ctx, rs.session, `runcastle: ticket ${result.ticket.seq} cancelled`)
+        await commitDocsCheckpoint(rs.ctx, rs.session, `ticket ${result.ticket.seq} cancelled`)
         return ok(result)
       },
     )
@@ -2376,7 +2378,7 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
         // Checkpoint the freshly-scaffolded map.md; skip when the call was a no-op
         // warning (already mapped) so we don't churn an empty commit.
         if (!result.warning) {
-          await commitDocsCheckpoint(rs.ctx, rs.session, 'runcastle: escalate to map')
+          await commitDocsCheckpoint(rs.ctx, rs.session, 'escalate to map')
         }
         return ok(result)
       },
@@ -2439,7 +2441,7 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
         const rs = await resolveCtxSession(extra)
         if (!rs) return noSession()
         const result = toolResolveWaypoint(rs.ctx, rs.session, args)
-        await commitDocsCheckpoint(rs.ctx, rs.session, `runcastle: waypoint ${args.disposition}`)
+        await commitDocsCheckpoint(rs.ctx, rs.session, `waypoint ${args.disposition}`)
         return ok(result)
       },
     )
@@ -2500,7 +2502,7 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
         if (!rs) return noSession()
         const result = toolCompletePhase(rs.ctx, rs.session, args)
         if (result.ok) {
-          await commitDocsCheckpoint(rs.ctx, rs.session, `runcastle: phase '${args.phase}' complete`)
+          await commitDocsCheckpoint(rs.ctx, rs.session, `phase '${args.phase}' complete`)
         }
         return ok(result)
       },
