@@ -17,7 +17,7 @@ export type LapAccount =
   /** The review agent's own summary — it ran last and saw the result working. */
   | { source: 'review'; prose: string }
   /** No review summary: the burners' own accounts, one per ticket. */
-  | { source: 'planning'; entries: TicketAccount[] }
+  | { source: 'tickets'; entries: TicketAccount[] }
 
 /** A ticket as the "what landed" block reads it — its account and whose it is. */
 interface DigestTicketFigure {
@@ -65,7 +65,7 @@ export function lapAccount(
     const digest = t.kind === 'review' ? '' : (t.digest?.trim() ?? '')
     return digest ? [{ seq: t.seq, title: t.title, digest }] : []
   })
-  return entries.length > 0 ? { source: 'planning', entries } : null
+  return entries.length > 0 ? { source: 'tickets', entries } : null
 }
 
 /**

@@ -1615,28 +1615,28 @@ describe('reviewChecks', () => {
   const checks = (over: Parameters<typeof reviewChecks>[0] = {}) => reviewChecks(over)
 
   it('greys 0/0 tickets — nothing was ticketed, so nothing is all-clear', () => {
-    const t = row(checks({ tickets: [] }), 'planning')
-    expect(t).toEqual({ key: 'planning', value: '0/0 done', tone: 'idle' })
+    const t = row(checks({ tickets: [] }), 'tickets')
+    expect(t).toEqual({ key: 'tickets', value: '0/0 done', tone: 'idle' })
   })
 
   it('ambers 0-done tickets and never greens them', () => {
-    const t = row(checks({ tickets: [{ status: 'pending' }, { status: 'pending' }] }), 'planning')
+    const t = row(checks({ tickets: [{ status: 'pending' }, { status: 'pending' }] }), 'tickets')
     expect(t?.value).toBe('0/2 done')
     expect(t?.tone).toBe('warn')
   })
 
   it('ambers a partly-done set', () => {
-    expect(row(checks({ tickets: [{ status: 'done' }, { status: 'pending' }] }), 'planning')?.tone)
+    expect(row(checks({ tickets: [{ status: 'done' }, { status: 'pending' }] }), 'tickets')?.tone)
       .toBe('warn')
   })
 
   it('greens tickets only when every one of them is done', () => {
-    const t = row(checks({ tickets: [{ status: 'done' }, { status: 'done' }] }), 'planning')
-    expect(t).toEqual({ key: 'planning', value: '2/2 done', tone: 'ok' })
+    const t = row(checks({ tickets: [{ status: 'done' }, { status: 'done' }] }), 'tickets')
+    expect(t).toEqual({ key: 'tickets', value: '2/2 done', tone: 'ok' })
   })
 
   it('reds a set with a failed ticket, naming the count', () => {
-    const t = row(checks({ tickets: [{ status: 'done' }, { status: 'failed' }] }), 'planning')
+    const t = row(checks({ tickets: [{ status: 'done' }, { status: 'failed' }] }), 'tickets')
     expect(t?.tone).toBe('danger')
     expect(t?.value).toBe('1/2 done · 1 failed')
   })
@@ -1680,7 +1680,7 @@ describe('reviewChecks', () => {
   })
 
   it('keeps the card in one order: review agent, tickets, run, changes', () => {
-    expect(checks({}).map((r) => r.key)).toEqual(['review agent', 'planning', 'run', 'changes'])
+    expect(checks({}).map((r) => r.key)).toEqual(['review agent', 'tickets', 'run', 'changes'])
   })
 })
 
@@ -1798,7 +1798,7 @@ describe('reviewChecks — the review agent row', () => {
     const keys = reviewChecks({ tickets: reviewTicket({ status: 'done' }), findings: 0 }).map(
       (r) => r.key,
     )
-    expect(keys).toEqual(['review agent', 'planning', 'run', 'changes'])
+    expect(keys).toEqual(['review agent', 'tickets', 'run', 'changes'])
   })
 
   it('greens a review that found nothing — a clean pass is a positive signal', () => {
@@ -1873,7 +1873,7 @@ describe('lapAccount', () => {
 
   it('falls back to the burners’ own accounts when no review digest exists', () => {
     expect(lapAccount([impl(1, 'ledger grouping'), impl(2, 'lap banner'), review()])).toEqual({
-      source: 'planning',
+      source: 'tickets',
       entries: [
         { seq: 1, title: 'ticket 1', digest: 'ledger grouping' },
         { seq: 2, title: 'ticket 2', digest: 'lap banner' },
@@ -1882,13 +1882,13 @@ describe('lapAccount', () => {
   })
 
   it('treats a whitespace-only review digest as no summary at all', () => {
-    expect(lapAccount([impl(1, 'did a thing'), review('  \n ')])?.source).toBe('planning')
+    expect(lapAccount([impl(1, 'did a thing'), review('  \n ')])?.source).toBe('tickets')
   })
 
   it('drops tickets that wrote no digest — a done ticket without one is still done', () => {
     const account = lapAccount([impl(1), impl(2, 'the only account')])
     expect(account).toEqual({
-      source: 'planning',
+      source: 'tickets',
       entries: [{ seq: 2, title: 'ticket 2', digest: 'the only account' }],
     })
   })
@@ -1923,7 +1923,7 @@ describe('lapAccount', () => {
           2,
         ),
       ).toEqual({
-        source: 'planning',
+        source: 'tickets',
         entries: [{ seq: 2, title: 'ticket 2', digest: 'fixed the ledger' }],
       })
     })
