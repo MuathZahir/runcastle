@@ -16,7 +16,7 @@ The shape:
 - **Warnings** (decision 5): a server-computed burn-warnings list, exposed as a tRPC query in the same pattern as the merge delta, feeds a Burn confirm dialog shaped like the existing Merge dialog — summary of what will burn, warn-styled box, enabled primary button; friction is reading. The warning set: no review-kind ticket in the pending batch, earlier-lap open defects not linked/carried/closed, no spec doc on disk. Burn with zero pending tickets is simply not offered (a no-op, not a gate); the next-step bar hints "emit tickets". Merge during a live burn warns that later-landing work stays unshipped (decision 7).
 - **Override machinery dies whole** (decision 6): the override/undo service code, mutations, and the `gate_overrides` table — dropped in the same migration, historical rows included. With two unoverridable hard rules and everything else warning, there is nothing left to override.
 - **Migration** (decision 4): one irreversible value-mapping — `ideation`/`spec`/`tickets` → `planning`, `implementation` → `building`, `review`/`shipped` unchanged. No dual-enum period, no down-migration. Historical timeline events are left exactly as written. The migration itself un-wedges any feature stuck by Rethink.
-- **Web next-step resolvers** collapse six per-phase files to four per-state ones; the Planning resolver derives its hints from the artifact facts. The draft resolver stays (draft is a status, not a phase). The review page changes only what the state change forces: Rethink removed, Merge availability per the new rules.
+- **Web next-step resolvers** collapse six per-phase files to four per-state ones; the Planning resolver derives its hints from the artifact facts. The draft resolver stays (draft is a status, not a phase). The review page changes only what the state change forces: Rethink removed, Merge availability per the new rules. Lap 2 (decision 8): the deletion extends to the web's inert gate vocabulary — `GateCard.tsx`, the `GateState` type in `lib/api.ts`, `GATE_EXPLAINER` in `lib/vocabulary.ts`, and the story/tests that exist only to exercise them.
 - **Mapped ideation survives as a mode inside Planning** (settled in the project session): the map/waypoint machinery is untouched except that convergence lands the feature in the same Planning state instead of a distinct phase.
 
 ## Seams
@@ -44,4 +44,4 @@ None unresolved. The one judgment call flagged during grilling — zero-pending-
 
 ## Later laps
 
-None. Decision 1: the whole collapse ships as one lap; a half-collapsed enum is worse than either endpoint.
+None. Decision 1: the whole collapse ships as one lap; a half-collapsed enum is worse than either endpoint. Lap 2 is a closing lap (decision 8) — the web gate-vocabulary deletion — and nothing is parked beyond it.

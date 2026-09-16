@@ -27,3 +27,9 @@
 ## 7. Merge during a live burn warns; auto-advance no-ops on Shipped
 **Decision:** Clicking Merge while a burn is live (Building) is a warning, not a third refusal: "a burn is live — work landing after this merge stays unshipped on the branch." When that run finishes, the runner's Building → Review auto-advance becomes a no-op on a feature already Shipped; the run itself completes normally and its events still land on the timeline.
 **Why:** Git-wise the merge is safe — it takes what has landed; agents keep committing to the feature branch after it. The operator may want exactly the landed commits. The auto-advance guard is just "nothing moves backwards" applied to the one writer that could violate it.
+
+## Lap 2 (revisited 2026-09-16)
+
+### 8. Lap 2 is a closing lap: delete the web gate residue, ship
+**Decision:** No test drive happened before this rethink — the human assumed the lap-1 review's defects were still open. They are not: lap 1's own iterate burn (tickets 8–12, verified by ticket 13) fixed the merge auto-stop, the lap stamping, the dead burn warning, and the three stale comments; those four findings are closed as addressed. The one standing defect is the inert gate vocabulary in `apps/web` (`GateCard.tsx`, the `GateState` type in `lib/api.ts`, `GATE_EXPLAINER` in `lib/vocabulary.ts`, and their story/tests). Lap 2 is exactly that deletion — one ticket, nothing else — after which the feature is ready to merge.
+**Why:** Decision 6 deleted the override machinery precisely to avoid carrying dead vocabulary "for a story the events table already tells"; the web museum is the same residue and the same rationale applies. Everything else the drive could have tested was already verified by ticket 13, so inventing more scope would be decoration — the failure mode this feature exists to remove.
