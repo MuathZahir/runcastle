@@ -93,25 +93,22 @@ function reviveEarlierReport(
       finding.status !== 'carried' &&
       defectKey(finding) === key,
   )
-  const fix = prior ? fixTicketOf(prior, listTickets(ctx, featureId)) : undefined
-  if (!prior || !fix || (fix.status !== 'pending' && fix.status !== 'failed')) return null
+  if (!prior) return null
+  const fix = fixTicketOf(prior, listTickets(ctx, featureId))
+  if (!fix || (fix.status !== 'pending' && fix.status !== 'failed')) return null
 
   ctx.db
     .update(reviewFindings)
-    .set({
-      ...input,
-      reproStep: input.reproStep ?? '',
-      status: 'open',
-      openReason: null,
-      failureReason: null,
-      carriedLap: null,
-      resolvedBy: null,
-      resolutionNote: null,
-    })
+    .set({ ...input, reproStep: input.reproStep ?? '' })
     .where(eq(reviewFindings.id, prior.id))
     .run()
-
-  const finding = getFinding(ctx, prior.id)
+  // Through the transition, so the fresh report resets the whole of the
+  // finding's mutable state exactly as any other move does.
+  const finding = updateStatus(ctx, prior.id, {
+    status: 'open',
+    openReason: null,
+    failureReason: null,
+  })
   const { title, goal, context, acceptanceCriteria } = buildFixTicket(finding)
   const edited = editTicket(ctx, fix.id, { title, goal, context, acceptanceCriteria })
   return {
