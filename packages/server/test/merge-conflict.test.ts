@@ -192,6 +192,33 @@ describe('feature.merge — conflict surfacing (ticket 9)', () => {
     expect(listAfter(ctx, feature.id, 0).some((e) => e.type === 'merge.conflict')).toBe(false)
   })
 
+  /**
+   * Decision 3 — Merge is reachable from every state after creation. It dropped
+   * its phase precondition entirely, so the only things that can stop it are
+   * the git refusals: nothing about WHERE the feature sits denies the click.
+   */
+  it.each(['planning', 'building', 'review'] as const)(
+    'ships from %s — Merge has no phase precondition',
+    async (phase) => {
+      const slug = `ship-from-${phase}`
+      await createFeatureBranch(project, slug, 'main')
+      await g.checkout(`feature/${slug}`)
+      writeFileSync(join(project.repoPath, `${slug}.txt`), 'work\n')
+      await g.add([`${slug}.txt`])
+      await g.commit('feat: work')
+      await g.checkout('main')
+      const feature = seedFeature(ctx, project.id, { slug, phase })
+
+      const res = await caller.feature.merge({ featureId: feature.id })
+
+      expect(res.ok).toBe(true)
+      const row = getFeatureRow(ctx, feature.id)
+      expect(row.phase).toBe('shipped')
+      expect(row.status).toBe('shipped')
+    },
+    15_000,
+  )
+
   it('merge is denied while another feature is being test-driven (guard holds)', async () => {
     await createFeatureBranch(project, 'target', 'main')
     const target = seedFeature(ctx, project.id, { slug: 'target', phase: 'review' })

@@ -2,7 +2,7 @@ import type { WorkflowCtx, WorkflowDef } from '@runcastle/core'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { AppCtx } from '../src/db/types'
 import { listAfter } from '../src/services/events'
-import { getFeatureRow } from '../src/services/repo'
+import { getFeatureRow, setPhase } from '../src/services/repo'
 import { listByFeature, storeTickets, updateTicket } from '../src/services/tickets'
 import { createCallerFactory } from '../src/trpc/context'
 import { appRouter } from '../src/trpc/router'
@@ -168,5 +168,54 @@ describe('feature.burn — four-state lifecycle', () => {
     await caller.feature.burn({ featureId })
     await expect(caller.feature.burn({ featureId })).rejects.toThrow(/already burning/)
     finish()
+  })
+
+  /**
+   * The lap counter is derived, never managed (decision 4): it is the ordinal
+   * of the burn run the click is about to start, so nothing has to remember to
+   * bump it and nothing can leave it stale.
+   */
+  it('stamps the lap from the feature runs, so the second Burn click is lap 2', async () => {
+    const featureId = seedFeature(ctx, seedProject(ctx).id, { phase: 'planning' }).id
+    storeTickets(ctx, featureId, [ticketInput('one')])
+
+    await caller.feature.burn({ featureId })
+    expect(getFeatureRow(ctx, featureId).lap).toBe(1)
+
+    // The stub leaves its ticket pending, so the feature lands back at review
+    // with work still to do — the Iterate loop, and a second burn run.
+    await waitFor(() => getFeatureRow(ctx, featureId).phase === 'review')
+    await caller.feature.burn({ featureId })
+
+    expect(getFeatureRow(ctx, featureId).lap).toBe(2)
+  })
+
+  /**
+   * Decision 7 — Merge during a live burn warns rather than refuses, so a run
+   * can finish on a feature that has already shipped. Nothing moves backwards:
+   * the run finalizes normally and the auto-advance declines to un-ship it.
+   */
+  it('auto-advance no-ops on a feature that shipped while the burn was live', async () => {
+    let finish!: () => void
+    workflowRegistry.set('ticket-burner', {
+      id: 'ticket-burner',
+      async run() {
+        await new Promise<void>((resolve) => { finish = resolve })
+        return { status: 'succeeded', summary: 'done' }
+      },
+    })
+    const featureId = seedFeature(ctx, seedProject(ctx).id, { phase: 'planning' }).id
+    storeTickets(ctx, featureId, [ticketInput('one')])
+
+    await caller.feature.burn({ featureId })
+    expect(getFeatureRow(ctx, featureId).phase).toBe('building')
+
+    // The human clicks Merge mid-burn; the run then finishes as it always does.
+    setPhase(ctx, featureId, 'shipped', 'feature.shipped', 'merged to main')
+    finish()
+    await waitFor(() => listAfter(ctx, featureId, 0).some((e) => e.type === 'run.finished'))
+
+    expect(getFeatureRow(ctx, featureId).phase).toBe('shipped')
+    expect(listAfter(ctx, featureId, 0).some((e) => e.type === 'phase.advanced')).toBe(false)
   })
 })
