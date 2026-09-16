@@ -135,6 +135,17 @@ describe('burn warnings', () => {
     expect(burnWarnings(ctx, feature.id)).toEqual([expect.stringContaining('no spec.md')])
   })
 
+  it('stacks all three when all three hold — none of them shadows another', () => {
+    openDefectFromLapOne()
+    storeTickets(ctx, feature.id, [ticketInput('Lap 2 work')])
+
+    expect(burnWarnings(ctx, feature.id)).toEqual([
+      expect.stringContaining('no review ticket'),
+      expect.stringContaining('Deletes are never retried'),
+      expect.stringContaining('no spec.md'),
+    ])
+  })
+
   it('reaches the Burn dialog through the feature router, unchanged', async () => {
     storeTickets(ctx, feature.id, [ticketInput('Add the thing')])
     await expect(caller.feature.burnWarnings({ featureId: feature.id })).resolves.toEqual(
