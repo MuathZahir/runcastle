@@ -83,6 +83,7 @@ import {
   editTicket,
   getTicket,
   listByFeature,
+  pendingTickets,
   storeTickets,
   type TicketContentPatch,
 } from '../services/tickets'
@@ -821,11 +822,20 @@ export function toolCompletePhase(
     data: { phase: input.phase, currentPhase: feature.phase },
   })
 
+  // An iterate lap is the next lap being planned FROM Review. With `rethink`
+  // gone nothing moves a feature backwards, so the session that writes lap N+1's
+  // fix tickets does it while the feature stands at `review` — the same road
+  // `burn` already recognises (`iterating`, services/features.ts). That session
+  // is precisely the audience decisions §5 wrote the warnings for, so it falls
+  // through to the full answer below instead of being told there is nothing left
+  // to do for work it has just legitimately done.
+  const iterating = feature.phase === 'review' && pendingTickets(ctx, feature.id).length > 0
+
   // The human clicked Burn while this session was still closing out: the work
   // being reported IS complete — the feature moved on without it. Saying so is
   // what keeps a healthy late call from reading as a failure and sending the
   // session looking for something to fix.
-  if (isPastPhase(feature, 'planning')) {
+  if (isPastPhase(feature, 'planning') && !iterating) {
     return {
       ok: true,
       nextPhase: feature.phase,

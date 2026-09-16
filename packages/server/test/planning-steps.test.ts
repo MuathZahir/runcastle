@@ -159,4 +159,51 @@ describe('complete_phase records planning steps without moving the feature', () 
     // The report itself is still on the record.
     expect(eventsOfType('phase.complete_requested')).toBe(1)
   })
+
+  it('closes out a feature genuinely past planning even with tickets pending', () => {
+    writeDoc('decisions.md')
+    writeDoc('spec.md')
+    emitTickets()
+    setPhaseRow('shipped')
+
+    const out = toolCompletePhase(ctx, session, { phase: 'tickets' })
+
+    expect(out.note).toContain('already closed out')
+    expect(out.warnings).toBeUndefined()
+    expect(getFeatureRow(ctx, feature.id).ticketsReadyLap).toBeNull()
+  })
+
+  it('answers the iterate lap at review with its warnings, not with "already closed out"', () => {
+    writeDoc('decisions.md')
+    // Lap 1 has been reviewed and the next lap is being planned from there:
+    // with `rethink` gone nothing moves a feature back to Planning, so the
+    // session writing lap 2's fix tickets reports its steps from `review`.
+    setPhaseRow('review')
+    storeTickets(ctx, feature.id, [
+      {
+        title: 'Fix the thing the review found',
+        goal: 'g',
+        context: 'c',
+        acceptanceCriteria: ['a'],
+        seams: [],
+        blockedBy: [],
+      },
+    ])
+
+    const out = toolCompletePhase(ctx, session, { phase: 'tickets' })
+
+    expect(out.ok).toBe(true)
+    expect(out.note).toBeUndefined()
+    expect(out.nextPhase).toBe('review')
+    expect(out.waitingOn).toBe('human burn')
+    // The list the human will read at the Burn dialog, heard here instead —
+    // while the session that wrote the batch can still act on it (decisions §5).
+    expect(out.warnings).toEqual([
+      expect.stringContaining('no review ticket in this batch'),
+      expect.stringContaining('no spec.md on disk'),
+    ])
+    // Nothing moved; the readiness stamp lands on the lap this batch burns from.
+    expect(getFeatureRow(ctx, feature.id)).toMatchObject({ phase: 'review', ticketsReadyLap: 1 })
+    expect(eventsOfType('tickets.awaiting_burn')).toBe(1)
+  })
 })
