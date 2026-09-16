@@ -436,9 +436,10 @@ export function renderRevisitPrompt(
               '- `get_feature_context` → `openDefects` — each open defect with its `id`, title,',
               '  location, detail and repro step; and `carriedDefects`, the ones an earlier lap',
               '  parked (agenda, never an obligation to re-carry). Every open defect from an',
-              '  EARLIER lap needs one of three answers before `complete_phase("tickets")` will',
-              '  pass: **link** it (emit this lap\'s ticket for it with `originFindingId` set),',
-              '  **carry** it, or **close it as addressed** — the last two are `resolve_finding`.',
+              '  EARLIER lap wants one of three answers: **link** it (emit this lap\'s ticket for',
+              '  it with `originFindingId` set), **carry** it, or **close it as addressed** — the',
+              '  last two are `resolve_finding`. Nothing refuses over the ones you leave;',
+              '  `complete_phase("tickets")` warns you, and the human hears it again at Burn.',
               `- \`${docs}/spec.md\`, section \`## Later laps\` — scope parked by earlier laps,`,
               '  OPTIONAL; a missing one is normal, not an error.',
             ]

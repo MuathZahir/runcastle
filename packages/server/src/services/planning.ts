@@ -27,6 +27,14 @@ import { pendingTickets } from './tickets'
 export const PLANNING_STEP_EVENT = 'phase.complete_requested'
 
 /**
+ * Is one of a planning step's docs on disk? (`feature-docs` owns WHERE that is:
+ * the talk worktree when it has been cut, the main checkout otherwise.)
+ */
+export function hasPlanningDoc(ctx: AppCtx, feature: Feature, fileName: string): boolean {
+  return existsSync(featureDocPath(projectForFeature(ctx, feature), feature, fileName))
+}
+
+/**
  * The artifact facts Planning's progress is derived from.
  *
  * `hasTickets` asks for tickets a burn would still RUN rather than for any row
@@ -36,10 +44,9 @@ export const PLANNING_STEP_EVENT = 'phase.complete_requested'
  * still this feature's spec (decisions §2 reads the file, nothing more).
  */
 export function planningFacts(ctx: AppCtx, feature: Feature): PlanningArtifactFacts {
-  const project = projectForFeature(ctx, feature)
   return {
-    hasDecisions: existsSync(featureDocPath(project, feature, 'decisions.md')),
-    hasSpec: existsSync(featureDocPath(project, feature, 'spec.md')),
+    hasDecisions: hasPlanningDoc(ctx, feature, 'decisions.md'),
+    hasSpec: hasPlanningDoc(ctx, feature, 'spec.md'),
     hasTickets: pendingTickets(ctx, feature.id).length > 0,
   }
 }

@@ -1,6 +1,6 @@
 import type { ReviewFinding } from '@runcastle/core'
 import type { AppCtx } from '../db/types'
-import { planningFacts } from './planning'
+import { hasPlanningDoc } from './planning'
 import { getFeatureRow } from './repo'
 import { undispositionedDefects } from './review-findings'
 import { pendingTickets } from './tickets'
@@ -41,7 +41,7 @@ export function burnWarnings(ctx: AppCtx, featureId: string): string[] {
   const undispositioned = undispositionedDefects(ctx, featureId)
   if (undispositioned.length > 0) warnings.push(undispositionedWarning(undispositioned))
 
-  if (!planningFacts(ctx, feature).hasSpec) {
+  if (!hasPlanningDoc(ctx, feature, 'spec.md')) {
     warnings.push('no spec.md on disk — this lap will burn tickets that no written spec backs.')
   }
 

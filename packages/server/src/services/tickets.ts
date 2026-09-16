@@ -79,6 +79,16 @@ function normalizeModel(ctx: AppCtx, value: string | null | undefined): string |
   return id
 }
 
+export function listByFeature(ctx: AppCtx, featureId: string): Ticket[] {
+  return ctx.db
+    .select()
+    .from(tickets)
+    .where(eq(tickets.featureId, featureId))
+    .orderBy(asc(tickets.seq))
+    .all()
+    .map(rowToTicket)
+}
+
 /**
  * Is this a ticket the burner still has to run?
  *
@@ -95,16 +105,6 @@ export function isPendingTicket(ticket: Ticket): boolean {
 /** The tickets a burn of this feature would still run — see {@link isPendingTicket}. */
 export function pendingTickets(ctx: AppCtx, featureId: string): Ticket[] {
   return listByFeature(ctx, featureId).filter(isPendingTicket)
-}
-
-export function listByFeature(ctx: AppCtx, featureId: string): Ticket[] {
-  return ctx.db
-    .select()
-    .from(tickets)
-    .where(eq(tickets.featureId, featureId))
-    .orderBy(asc(tickets.seq))
-    .all()
-    .map(rowToTicket)
 }
 
 /**
