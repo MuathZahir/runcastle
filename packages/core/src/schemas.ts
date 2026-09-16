@@ -11,14 +11,7 @@ import { AgentRuntime, ModelEntry } from './config'
 
 // --- enums -----------------------------------------------------------------
 
-export const Phase = z.enum([
-  'ideation',
-  'spec',
-  'tickets',
-  'implementation',
-  'review',
-  'shipped',
-])
+export const Phase = z.enum(['planning', 'building', 'review', 'shipped'])
 export type Phase = z.infer<typeof Phase>
 
 /**

@@ -1,187 +1,40 @@
 import type { Phase } from './schemas'
 
-/**
- * The pipeline as data (CONTEXT.md decision #7). Phases are a linear order;
- * each transition is guarded by a gate. Gates are identifiers only — the
- * server implements the actual checks so core stays IO-free (SPEC §1).
- */
+/** The authoritative forward-only feature-state order. */
+export const PIPELINE = ['planning', 'building', 'review', 'shipped'] as const satisfies readonly Phase[]
 
-export type GateId = 'G1' | 'G2' | 'G3' | 'G4' | 'G5'
-
-export type GateCheckId =
-  | 'decisions-file-exists'
-  | 'all-waypoints-terminal'
-  | 'spec-file-exists'
-  | 'tickets-approved'
-  | 'all-tickets-terminal'
-  | 'human-merge'
-
-export interface GateDef {
-  id: GateId
-  description: string
-  check: GateCheckId
-}
-
-export interface PhaseDef {
-  phase: Phase
-  /** Gate guarding the transition INTO this phase from its predecessor. */
-  gateToEnter?: GateDef
-}
-
-/** Authoritative phase order + entry gates. */
-export const PIPELINE: PhaseDef[] = [
-  { phase: 'ideation' },
-  {
-    phase: 'spec',
-    gateToEnter: {
-      id: 'G1',
-      description: 'Decisions captured before writing a spec',
-      check: 'decisions-file-exists',
-    },
-  },
-  {
-    phase: 'tickets',
-    gateToEnter: {
-      id: 'G2',
-      description: 'Spec written before breaking into tickets',
-      check: 'spec-file-exists',
-    },
-  },
-  {
-    phase: 'implementation',
-    gateToEnter: {
-      id: 'G3',
-      description: 'Tickets approved by a human (the Burn click)',
-      check: 'tickets-approved',
-    },
-  },
-  {
-    phase: 'review',
-    gateToEnter: {
-      id: 'G4',
-      description: 'Every ticket reached a terminal state',
-      check: 'all-tickets-terminal',
-    },
-  },
-  {
-    phase: 'shipped',
-    gateToEnter: {
-      id: 'G5',
-      description: 'Human merged the feature branch (the Merge click)',
-      check: 'human-merge',
-    },
-  },
-]
-
-const ORDER: Phase[] = PIPELINE.map((p) => p.phase)
-
-/**
- * The next phase for a feature. Every feature runs the full linear order;
- * returns null when already at the terminal phase.
- */
+/** The next state in the forward-only feature lifecycle. */
 export function nextPhase(feature: { phase: Phase }): Phase | null {
-  const i = ORDER.indexOf(feature.phase)
-  if (i < 0 || i >= ORDER.length - 1) return null
-  return ORDER[i + 1]
+  const index = PIPELINE.indexOf(feature.phase)
+  return index >= 0 && index < PIPELINE.length - 1 ? PIPELINE[index + 1] : null
 }
 
-/**
- * True when the feature has already moved BEYOND `phase` in the pipeline order.
- * Its caller is `complete_phase`, which has to tell "this phase's work is
- * finished" apart from "this phase was crossed while you were closing out" —
- * the second is a report, not a transition.
- */
+/** True when a feature has moved beyond the supplied state. */
 export function isPastPhase(feature: { phase: Phase }, phase: Phase): boolean {
-  return ORDER.indexOf(feature.phase) > ORDER.indexOf(phase)
+  return PIPELINE.indexOf(feature.phase) > PIPELINE.indexOf(phase)
 }
 
-/**
- * The phase immediately before the feature's, or null at the first phase — the
- * inverse of {@link nextPhase}, for taking a forward step BACK. Its one caller
- * is undoing a gate override (findings F24): the override advanced the feature
- * one phase, and undoing has to name the phase it came from.
- *
- * Not a pipeline transition of its own — the two real backward moves
- * ({@link REVIEW_LOOP_BACK}, {@link RETHINK_LOOP_BACK}) are typed separately
- * because they jump, not step.
- */
-export function previousPhase(feature: { phase: Phase }): Phase | null {
-  const i = ORDER.indexOf(feature.phase)
-  if (i <= 0) return null
-  return ORDER[i - 1]
+export interface PlanningArtifactFacts {
+  hasDecisions: boolean
+  hasSpec: boolean
+  hasTickets: boolean
 }
 
-/**
- * The pipeline's one backward transition (CONTEXT.md decision #7). Burning fresh
- * (pending) tickets from `review` loops the feature back to `implementation` so
- * the run can execute them; the G4 auto-advance (`all-tickets-terminal`) then
- * returns it to `review` when they finish, so review → iterate → burn → review
- * repeats until the human merges. `nextPhase`/`nextGate` stay strictly forward —
- * this loop is the lone exception, kept as its own typed transition rather than
- * bent into the linear order.
- */
-export const REVIEW_LOOP_BACK = { from: 'review', to: 'implementation' } as const satisfies {
-  from: Phase
-  to: Phase
+export type PlanningStep = 'ideation' | 'spec' | 'tickets'
+
+/** Planning sub-steps are facts derived from durable artifacts, never stored state. */
+export function completedPlanningSteps(facts: PlanningArtifactFacts): PlanningStep[] {
+  const completed: PlanningStep[] = []
+  if (facts.hasDecisions) completed.push('ideation')
+  if (facts.hasSpec) completed.push('spec')
+  if (facts.hasTickets) completed.push('tickets')
+  return completed
 }
 
-/**
- * The phase a review-phase burn loops back to (`implementation`), or null from
- * any other phase — the pure model behind the server's burn-from-review guard.
- */
-export function loopBackPhase(feature: { phase: Phase }): Phase | null {
-  return feature.phase === REVIEW_LOOP_BACK.from ? REVIEW_LOOP_BACK.to : null
-}
-
-/**
- * The pipeline's second backward transition — Rethink (ADR-0010 §1 / SPEC §15.1).
- * Where `REVIEW_LOOP_BACK` is "the spec was right, the code wasn't" (Fix, same
- * lap), this one is "the code was right, the spec wasn't": the feature starts
- * lap N+1 back at `ideation`, where one session digests what the test drive
- * taught, amends the docs and emits the lap's tickets. It always lands in
- * ideation, however small the rethink — that conversation is the point of the
- * loop, so it always has a home. `nextPhase`/`nextGate` stay strictly forward;
- * like the Fix loop this is its own typed transition, never bent into the
- * linear order.
- */
-export const RETHINK_LOOP_BACK = { from: 'review', to: 'ideation' } as const satisfies {
-  from: Phase
-  to: Phase
-}
-
-/**
- * The phase a Rethink loops back to (`ideation`), or null from any other phase —
- * the pure model behind the server's `rethink` guard.
- */
-export function rethinkPhase(feature: { phase: Phase }): Phase | null {
-  return feature.phase === RETHINK_LOOP_BACK.from ? RETHINK_LOOP_BACK.to : null
-}
-
-/** G1 as it appears on a mapped feature (ADR-0001 / SPEC §13.1). */
-const MAPPED_G1: GateDef = {
-  id: 'G1',
-  description: 'Every waypoint resolved or dropped before converging',
-  check: 'all-waypoints-terminal',
-}
-
-/**
- * The gate guarding the transition OUT of the feature's current phase.
- *
- * This is the `gateToEnter` of the immediately-following phase in the full
- * order. Returns null at the terminal phase.
- *
- * G1 is conditional on `feature.mapped` (ADR-0001 / SPEC §13.1): a mapped
- * feature converges only once every waypoint is terminal, so its G1 check is
- * `all-waypoints-terminal` instead of `decisions-file-exists`. Every later gate
- * is identical in both modes — mapping only changes how ideation ends.
- */
-export function nextGate(feature: {
-  phase: Phase
-  mapped?: boolean
-}): GateDef | null {
-  const i = ORDER.indexOf(feature.phase)
-  if (i < 0 || i >= ORDER.length - 1) return null
-  const gate = PIPELINE[i + 1].gateToEnter ?? null
-  if (feature.mapped && gate?.id === 'G1') return MAPPED_G1
-  return gate
+/** The first planning artifact still missing, or null when the feature can burn. */
+export function nextPlanningStep(facts: PlanningArtifactFacts): PlanningStep | null {
+  if (!facts.hasDecisions) return 'ideation'
+  if (!facts.hasSpec) return 'spec'
+  if (!facts.hasTickets) return 'tickets'
+  return null
 }
