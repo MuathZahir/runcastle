@@ -38,7 +38,13 @@ export function burnWarnings(ctx: AppCtx, featureId: string): string[] {
   // The lap boundary's own seatbelt, downgraded from the refusal it was: lap
   // N+1 fixing a defect without telling the finding row is how the human ends
   // up clicking Iterate over a defect that no longer exists.
-  const undispositioned = undispositionedDefects(ctx, featureId)
+  //
+  // Scoped to the lap this click is about to start — `feature.lap + 1`, what
+  // `burn` stamps — and not to the lap the feature is standing on. The stamp
+  // lands after the dialog has asked for its warnings, so measuring the review's
+  // defects against their own lap number is how this box came back empty at the
+  // one moment it had something to say.
+  const undispositioned = undispositionedDefects(ctx, featureId, feature.lap + 1)
   if (undispositioned.length > 0) warnings.push(undispositionedWarning(undispositioned))
 
   if (!hasPlanningDoc(ctx, feature, 'spec.md')) {

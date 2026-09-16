@@ -1,6 +1,6 @@
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import type { Feature, Project, Ticket, TicketInput } from '@runcastle/core'
+import type { Feature, Project, ReviewFinding, Ticket, TicketInput } from '@runcastle/core'
 import { eq } from 'drizzle-orm'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { features } from '../src/db/schema'
@@ -73,10 +73,17 @@ describe('burn warnings', () => {
   }
 
   /**
-   * A defect lap 1's review left open: reported, its in-run fix ticket tried and
-   * failed, so the defect is the NEXT lap's to answer for.
+   * A defect lap 1's review reported, with its in-run fix ticket still live.
+   *
+   * The feature is left exactly where the flow leaves it — phase `review`, lap
+   * 1 — because the lap only moves when Burn is clicked, which is AFTER the
+   * warnings are read. A fixture that bumped the lap by hand was the reason the
+   * dead warning below looked alive.
    */
-  function openDefectFromLapOne(title = 'Deletes are never retried'): void {
+  function defectFromLapOne(title = 'Deletes are never retried'): {
+    finding: ReviewFinding
+    fixTicket: Ticket
+  } {
     const reviewTicket = storeTickets(ctx, feature.id, [
       { ...ticketInput('Lap 1 review'), kind: 'review' },
     ])[0]
@@ -94,10 +101,19 @@ describe('burn warnings', () => {
         reproStep: 'Click Retry on a dead-lettered job and watch nothing change.',
       },
     })
-    updateTicket(ctx, fixTicket!.id, { status: 'failed' })
+    ctx.db.update(features).set({ phase: 'review' }).where(eq(features.id, feature.id)).run()
+    feature = { ...feature, phase: 'review' }
+    return { finding, fixTicket: fixTicket! }
+  }
+
+  /**
+   * The same defect with its fix attempt given up on: nothing answers for it any
+   * more, so the next lap's Burn is the last moment to say so.
+   */
+  function openDefectFromLapOne(title = 'Deletes are never retried'): void {
+    const { finding, fixTicket } = defectFromLapOne(title)
+    updateTicket(ctx, fixTicket.id, { status: 'failed' })
     markFixProgress(ctx, finding.id, 'failed', 'the burner could not land it')
-    ctx.db.update(features).set({ lap: 2 }).where(eq(features.id, feature.id)).run()
-    feature = { ...feature, lap: 2 }
   }
 
   it('says nothing when the batch closes with a review ticket and the spec is on disk', () => {
@@ -120,7 +136,11 @@ describe('burn warnings', () => {
     expect(burnWarnings(ctx, feature.id)).toEqual([expect.stringContaining('no review ticket')])
   })
 
-  it('warns about an earlier lap’s open defect, naming it', () => {
+  // The lap the defect was stamped on and the lap the feature reads are the SAME
+  // one here — a review at lap 1, the burn about to start lap 2 — which is every
+  // real un-dispositioned defect there is, and was the state the warning used to
+  // stay silent in.
+  it('warns about the open defect the burn is about to leave behind, naming it', () => {
     openDefectFromLapOne()
     healthyBatch()
     writeSpec()
@@ -128,6 +148,13 @@ describe('burn warnings', () => {
     expect(rest).toEqual([])
     expect(warning).toContain('Deletes are never retried')
     expect(warning).toContain('resolve_finding')
+  })
+
+  it('says nothing about a defect whose fix ticket is still live — that one is answered for', () => {
+    defectFromLapOne()
+    healthyBatch()
+    writeSpec()
+    expect(burnWarnings(ctx, feature.id)).toEqual([])
   })
 
   it('warns when the lap has no spec.md to burn against', () => {
