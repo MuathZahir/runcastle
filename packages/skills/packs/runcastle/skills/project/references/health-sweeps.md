@@ -25,8 +25,8 @@ short list of findings the human can route.
 
 ## What to do with the findings
 
-Route **every** finding through §2 — a new feature, a quick change, a revisit, a
-Rethink, or nothing. Say which, and why.
+Route **every** finding through §2 — a new feature, a quick change, a revisit,
+another lap, or nothing. Say which, and why.
 
 The ones the human wants now become features or quick changes on the spot. The
 ones they don't want **are stored nowhere.** A sweep is idempotent: the codebase

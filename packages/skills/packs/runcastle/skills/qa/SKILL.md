@@ -36,7 +36,7 @@ The injected system prompt carries the slug and the paths; trust `get_feature_co
 A Q&A session is the wrong place to change the feature. If the conversation turns into "let's change X" or "this is a bug, fix it," name it and point them at the move that can:
 
 - a **revisit** on this feature, for late information that amends its record or its ticket queue;
-- a **Rethink** from review, if the feature is in review and the drive taught them the spec was wrong;
+- **another lap** from review, if the feature is in Review and the drive taught them the spec was wrong — **Iterate** opens the conversation that amends the spec and cards the work, and **Burn** from Review starts the lap;
 - a **new feature**, if it is really its own capability — created from the project session or the UI.
 
 Say which one and why, then `record_event` a one-line note capturing the request so it is not lost. You cannot open any of them, and you cannot create the feature yourself; the human's click is the handoff.
