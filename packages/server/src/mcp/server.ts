@@ -551,9 +551,10 @@ const REVIEW_TITLE = /^review[: ]/i
  * batch's review but not KINDED like one is the incident shape: the `kind` field
  * silently dropped, so the ticket defaults to `implementation`, is correctly
  * containerized, and reports BLOCKED from a sandbox that by design has no app,
- * database or browser. G3 catches a lap that forgot its review ticket, but it
- * fires at gate time, often after the session has ended; this catches the same
- * omission while the session that wrote it can still fix and re-emit.
+ * database or browser. The Burn click warns about a lap that forgot its review
+ * ticket, but it warns the human, often after the session has ended; this
+ * catches the same omission while the session that wrote it can still fix and
+ * re-emit.
  *
  * Refusal, never coercion — the session stays the author of its own tickets, and
  * the retitle escape hatch covers the rare ticket that really is implementation
@@ -2385,16 +2386,15 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
       {
         title: 'Complete phase',
         description:
-          'Mark the named phase complete. Runs the gate check server-side and advances the ' +
-          'feature, or returns { ok: false, reason, gate } naming what the gate wanted. On ' +
-          'success it also returns `nextGate` — what the FOLLOWING gate requires — so the next ' +
-          'step is not a guess. The tickets → implementation gate (G3) is the human "Burn" ' +
-          'approval: completing the tickets phase records the work done and returns ' +
-          '{ ok: true, nextPhase: "implementation", waitingOn: "human burn" } WITHOUT advancing. ' +
+          'Mark the named planning step complete. Ideation, spec and tickets are steps INSIDE ' +
+          'the single Planning state, so this never moves the feature: it records the ' +
+          'milestone on the timeline and comes back { ok: true, nextPhase } naming the state ' +
+          'the feature is still in. It never refuses. Completing the tickets step additionally ' +
+          'returns { waitingOn: "human burn", warnings } — `warnings` carries what the human ' +
+          'will be told at the Burn click, so you can still act on it while you are alive. ' +
           'That call is also what ARMS the Burn click — until it lands, the button waits on you ' +
           'rather than burning tickets you are still writing, so make it the last thing you do ' +
-          'in the tickets phase. If the human burned while you were closing out, it comes back ' +
-          '{ ok: true, note } saying the phase was already crossed: nothing left to do.',
+          'in the tickets step.',
         inputSchema: {
           phase: CompletablePhase.describe(
             'The phase you are finishing — normally the feature’s current one. `shipped` is not ' +

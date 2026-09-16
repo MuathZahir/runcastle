@@ -19,12 +19,13 @@ import { seedFeature, seedProject, tmpRepo } from './helpers/fixtures'
 
 /**
  * The quick-change door (decision 21): work too small to deserve a grill enters
- * as an ORDINARY feature born directly at `implementation` on lap 1, carrying
- * one ticket per sentence the human typed (decisions.md #4) — each ticket's
- * goal, and its sole acceptance criterion, being that sentence.
+ * as an ORDINARY feature born at `planning` on lap 1 with its tickets already
+ * written — one per sentence the human typed (decisions.md #4), each ticket's
+ * goal and sole acceptance criterion being that sentence — so the only thing
+ * left is the Burn click.
  *
  * Driven through the SERVICE and the tRPC proc (both are real seams here —
- * unlike `feature.rethink`, nothing in this path launches a terminal).
+ * nothing in this path launches a terminal).
  */
 
 /** A real git repo with a seed commit on `main` — branch creation needs one. */
@@ -79,7 +80,7 @@ afterEach(() => {
   rmSync(dataHome, { recursive: true, force: true })
 })
 
-describe('quickChange service — a one-ticket feature born at implementation', () => {
+describe('quickChange service — a one-ticket feature born ready to burn', () => {
   let ctx: AppCtx
   let repoPath: string
   let projectId: string
@@ -90,7 +91,7 @@ describe('quickChange service — a one-ticket feature born at implementation', 
     projectId = (await openProject(ctx, repoPath)).id
   })
 
-  it('creates an active lap-1 feature at implementation on a real feature branch', async () => {
+  it('creates an active lap-1 feature at planning on a real feature branch', async () => {
     const feature = await features.quickChange(ctx, {
       projectId,
       title: 'Darker empty state',
@@ -346,7 +347,7 @@ describe('quickChange service — a one-ticket feature born at implementation', 
     expect((await g.status()).isClean()).toBe(true)
   })
 
-  it('emits a timeline that spells out the born-at-implementation path', async () => {
+  it('emits a timeline that spells out the born-ready-to-burn path', async () => {
     const feature = await features.quickChange(ctx, {
       projectId,
       title: 'Darker empty state',
@@ -361,9 +362,9 @@ describe('quickChange service — a one-ticket feature born at implementation', 
       'feature.quick_change',
     ])
     const quick = events.find((e) => e.type === 'feature.quick_change')
-    expect(quick?.message).toContain('born at implementation on lap 1')
+    expect(quick?.message).toContain('born at planning on lap 1')
     expect(quick?.message).toContain('one ticket (#1)')
-    // Named apart from the tally: the review ticket is the pipeline's doing,
+    // Named apart from the tally: the review ticket is the machinery's doing,
     // not one of the sentences the human typed.
     expect(quick?.message).toContain('plus a review ticket (#2)')
     expect(quick?.message).toContain('no grill session, no spec.md')

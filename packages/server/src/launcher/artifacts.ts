@@ -190,17 +190,18 @@ export function renderSystemPrompt(
     `- Branch: \`${feature.branch}\``,
     `- Current phase: **${feature.phase}**`,
     '',
-    '## Pipeline',
-    'Features move ideation → spec → tickets → implementation → review → shipped.',
-    'Each transition is guarded by a gate; you cross a gate by calling the',
-    '`complete_phase` MCP tool, which runs the gate check server-side and advances',
-    'the feature.',
+    '## Lifecycle',
+    'A feature is in one of four states: planning → building → review → shipped,',
+    'and it only ever moves forward. Ideation, spec and tickets are steps INSIDE',
+    'planning: you report each one with the `complete_phase` MCP tool, which',
+    'records the milestone on the timeline and never moves the feature. Two human',
+    'clicks move it — Burn (planning → building) and Merge (→ shipped).',
     '',
     '## Knowledge (versioned in the target repo)',
     `Feature docs live at \`${docs}/\`:`,
     `- \`${docs}/brief.md\` — the seed brief (title + one-liner).`,
-    `- \`${docs}/decisions.md\` — decisions you capture while grilling (satisfies gate G1).`,
-    `- \`${docs}/spec.md\` — the spec (satisfies gate G2).`,
+    `- \`${docs}/decisions.md\` — decisions you capture while grilling (its existence is what marks ideation done).`,
+    `- \`${docs}/spec.md\` — the spec (its existence is what marks the spec step done).`,
     'Write these files in THIS working directory (the feature\'s talk worktree);',
     'they are committed to the feature branch automatically at phase boundaries.',
     '',
@@ -321,8 +322,9 @@ export function renderWaypointPrompt(
  * The kind=converge system prompt (ADR-0001 / SPEC §13.5). The converge session
  * closes a mapped feature: it reads ONLY the compressed knowledge — `map.md` +
  * `decisions.md` — never the waypoint transcripts, then runs `/runcastle:spec` →
- * `/runcastle:tickets` in one unbroken window. The feature has already crossed G1
- * into spec, so this rejoins the normal pipeline with no special-casing.
+ * `/runcastle:tickets` in one unbroken window. Convergence lands the feature in
+ * the same planning state every other feature is in, so this rejoins the normal
+ * lifecycle with no special-casing.
  */
 export function renderConvergePrompt(
   feature: Feature,

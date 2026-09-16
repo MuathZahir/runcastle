@@ -20,7 +20,7 @@ import { getWorkflow } from './registry'
  * a `WorkflowCtx` to live services (emitEvent→events, updateTicket→tickets,
  * signal from a per-run AbortController), invokes the registered `WorkflowDef`,
  * catches, and finalizes the run row + a `run.finished` event. On a succeeded
- * run it auto-advances the feature to `review` when gate G4 passes.
+ * run it auto-advances a `building` feature to `review`.
  *
  * The workflow itself runs in the background (AFK); `startRun` returns as soon
  * as the run row exists. `done` resolves when the run finalizes — the tRPC

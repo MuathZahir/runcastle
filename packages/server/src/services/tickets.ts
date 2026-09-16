@@ -275,8 +275,9 @@ export function cancelTicket(
  * will ever move them again.
  *
  * A stranded `burning` row is a dead end in every direction: it is non-terminal
- * so G4 never passes, the scheduler only picks up `pending` tickets so a
- * re-burn finishes instantly with the ticket still stuck (`8/9 tickets done`),
+ * so the run never finishes clean, the scheduler only picks up `pending`
+ * tickets so a re-burn finishes instantly with the ticket still stuck
+ * (`8/9 tickets done`),
  * `retry`/`cancel`/`edit` all refuse a non-`pending`/`failed` ticket, and "Stop
  * ticket" finds no live agent to abort. Marking them `failed` — keeping
  * `attemptBranch`/`conflictFiles`, so a retry resumes the committed work rather
