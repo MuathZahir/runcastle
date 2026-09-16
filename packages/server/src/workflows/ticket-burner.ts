@@ -2967,6 +2967,29 @@ export async function burnTickets(
   // review now waits for the whole feature instead — see `reviewGate`.
   const satisfied = (s: TicketStatus | undefined): boolean => s === 'done' || s === 'cancelled'
 
+  /** A fix ticket one review owns: it declares that review as its blocker. */
+  const mintedByReview = (t: Ticket, reviewSeq: number): boolean =>
+    !isReviewTicket(t) && t.blockedBy.includes(reviewSeq)
+
+  /**
+   * The implementation tickets one review ticket is answerable for: every
+   * non-review ticket in the run EXCEPT the fix tickets that review itself
+   * minted, which declare it as their blocker.
+   *
+   * Those are excluded because a review can never wait for its own children.
+   * They are blocked ON it, so they cannot settle until it is terminal — and
+   * once the review has failed and the operator retries it, treating them as
+   * implementations it must wait for is a circular wait the scheduler cannot
+   * break: the review defers behind its failed children, or (when they were
+   * retried alongside it) both sides wait and the defensive fallback fails
+   * everything with "unresolvable dependencies".
+   *
+   * `mintedByReview` is the other half of the partition, and what
+   * {@link readmitMintedChildren} gives its turn once the review lands.
+   */
+  const gatedImplementations = (reviewSeq: number): Ticket[] =>
+    scheduled.filter((t) => !isReviewTicket(t) && !mintedByReview(t, reviewSeq))
+
   /**
    * The review precondition, held defensively rather than trusted to the
    * emitting session's `blockedBy`: no implementation ticket is still waiting or
@@ -2974,13 +2997,13 @@ export async function burnTickets(
    * left `burning` by a dead earlier run — which this schedule will never move —
    * does not strand the review behind it forever.
    */
-  const implementationsSettled = (): boolean =>
-    scheduled.every((t) => isReviewTicket(t) || (!pending.has(t.seq) && !inFlight.has(t.seq)))
+  const implementationsSettled = (reviewSeq: number): boolean =>
+    gatedImplementations(reviewSeq).every((t) => !pending.has(t.seq) && !inFlight.has(t.seq))
 
   /** The run's implementation tickets that failed — what defers the review. */
-  const failedImplementations = (): number[] =>
-    scheduled
-      .filter((t) => !isReviewTicket(t) && status.get(t.seq) === 'failed')
+  const failedImplementations = (reviewSeq: number): number[] =>
+    gatedImplementations(reviewSeq)
+      .filter((t) => status.get(t.seq) === 'failed')
       .map((t) => t.seq)
 
   /**
@@ -2993,10 +3016,10 @@ export async function burnTickets(
    * through the ADR-0006 per-ticket controls and the next burn finds the review
    * still `pending`, which is the whole recovery ceremony.
    */
-  const reviewGate = (): ReadyState => {
-    if (!implementationsSettled()) return 'wait'
-    if (failedImplementations().length > 0) return 'defer'
-    const implementations = scheduled.filter((t) => !isReviewTicket(t))
+  const reviewGate = (reviewSeq: number): ReadyState => {
+    if (!implementationsSettled(reviewSeq)) return 'wait'
+    if (failedImplementations(reviewSeq).length > 0) return 'defer'
+    const implementations = gatedImplementations(reviewSeq)
     const landed = implementations.some((t) => status.get(t.seq) === 'done')
     // No implementation tickets at all is a review of what earlier runs landed,
     // not a collapse — only a run that HAD work and landed none of it collapses.
@@ -3031,6 +3054,40 @@ export async function burnTickets(
       type: 'burn.admitted',
       message: `${added.length} ticket(s) minted during this run joined it: ${added.join(', ')}`,
       data: { seqs: added },
+    })
+  }
+
+  /**
+   * Give a landed review's own fix tickets their turn, whatever an earlier
+   * attempt of that review left them in.
+   *
+   * A review's children are minted blocked ON it, so an attempt that died left
+   * them unrunnable: they cascaded to `failed` behind their dead blocker, or
+   * were failed by the deadlock this exclusion exists to break. That verdict
+   * belonged to the attempt, not to the work — the review has now re-run and
+   * landed, and the defect each child answers for was either re-reported into
+   * it (`reportFinding` revives the fix ticket it already minted rather than
+   * minting a duplicate) or is gone. Either way the run that just produced the
+   * review is the run that should burn them, exactly as it burns the children
+   * that review minted for the first time.
+   *
+   * A `cancelled` child is left alone: a human waived that fix, and reviving it
+   * would overturn their decision.
+   */
+  const readmitMintedChildren = (reviewSeq: number): void => {
+    const readmitted: number[] = []
+    for (const child of scheduled.filter((t) => mintedByReview(t, reviewSeq))) {
+      if (status.get(child.seq) !== 'failed') continue
+      ctx.updateTicket(child.id, { status: 'pending', error: null })
+      status.set(child.seq, 'pending')
+      pending.add(child.seq)
+      readmitted.push(child.seq)
+    }
+    if (readmitted.length === 0) return
+    ctx.emitEvent({
+      type: 'burn.readmitted',
+      message: `${readmitted.length} fix ticket(s) of review ${reviewSeq} rejoined the run: ${readmitted.join(', ')}`,
+      data: { seqs: readmitted, reviewSeq },
     })
   }
 
@@ -3094,7 +3151,7 @@ export async function burnTickets(
       if (!present) return { blockedBy: b, present }
       if (bs === 'failed' && !isReviewTicket(t)) return { blockedBy: b, present }
     }
-    if (isReviewTicket(t)) return reviewGate()
+    if (isReviewTicket(t)) return reviewGate(t.seq)
     return t.blockedBy.every((b) => satisfied(status.get(b))) ? 'ready' : 'wait'
   }
 
@@ -3237,8 +3294,12 @@ export async function burnTickets(
     }
     // Before this lane leaves the pool, so the loop's next condition check
     // already sees the fix tickets the review reported on its way through — a
-    // review that is the run's last ticket would otherwise end the loop.
-    if (isReviewTicket(t)) admitNewTickets()
+    // review that is the run's last ticket would otherwise end the loop. A
+    // review that LANDED also takes its earlier attempt's children with it.
+    if (isReviewTicket(t)) {
+      if (status.get(seq) === 'done') readmitMintedChildren(seq)
+      admitNewTickets()
+    }
   }
 
   while (pending.size > 0 || inFlight.size > 0 || !verificationChecked) {
@@ -3268,7 +3329,7 @@ export async function burnTickets(
       if (st === 'defer') {
         deferred.push(seq)
         if (t) {
-          const failed = failedImplementations()
+          const failed = failedImplementations(t.seq)
           ctx.emitEvent({
             type: 'ticket.deferred',
             message: `ticket ${t.seq} deferred to the next burn: implementation ticket(s) ${failed.join(', ')} failed — retry or cancel them, then burn again`,

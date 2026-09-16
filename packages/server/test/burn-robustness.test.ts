@@ -504,6 +504,30 @@ describe('retryTicket', () => {
     expect(after['unrelated'].status).toBe('failed')
   })
 
+  it('pulls a failed REVIEW blocker along too, so the review runs ahead of the fix ticket it minted', async () => {
+    // The blocker of a fix ticket is the review that minted it. It is reset
+    // like any other failed blocker: the scheduler no longer counts a review's
+    // own fix tickets against its gate, so the pair burns in order (review
+    // first, fix behind it) instead of deadlocking. Leaving the review failed
+    // would only cascade the fix ticket straight back to failed.
+    const featureId = seedFeature(ctx, seedProject(ctx).id, { phase: 'implementation' }).id
+    const [reviewPass, fix] = storeTickets(ctx, featureId, [
+      { ...ticketInput('review'), kind: 'review' as const },
+      ticketInput('fix', [1]),
+    ])
+    updateTicket(ctx, reviewPass.id, {
+      status: 'failed',
+      error: 'review agent died: claude-code exited with code 1',
+    })
+    updateTicket(ctx, fix.id, { status: 'failed', error: 'blocked by failed ticket 1' })
+
+    const { retried } = await retryTicket(ctx, fix.id)
+
+    expect(retried).toEqual([reviewPass.seq, fix.seq])
+    expect(getTicket(ctx, reviewPass.id).status).toBe('pending')
+    expect(getTicket(ctx, fix.id).status).toBe('pending')
+  })
+
   it('keeps attemptBranch on a plain retry (resume) and clears it on fresh', async () => {
     const featureId = seedFeature(ctx, seedProject(ctx).id, { phase: 'implementation' }).id
     const [a] = storeTickets(ctx, featureId, [ticketInput('a')])
