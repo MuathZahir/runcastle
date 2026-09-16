@@ -552,9 +552,6 @@ export function Workspace({
       case 'burn':
         burn.mutate({ featureId })
         break
-      case 'advance':
-        invalidate()
-        break
       case 'cancelRun':
         if (run) cancel.mutate({ runId: run.id })
         break

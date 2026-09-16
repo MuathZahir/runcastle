@@ -56,6 +56,13 @@ import type { FeatureFull, FeatureListItem } from '../src/lib/api'
 import { full, listItem, wp } from './fixtures'
 
 /**
+ * Merge is reachable from every state after creation (decisions §3), so every
+ * planning and building bar carries it as a secondary — never the primary,
+ * because enabled is not the same as recommended.
+ */
+const MERGE_ACTION: NextAction = { label: 'Merge & ship', kind: 'merge' }
+
+/**
  * Every cutting form prefills Branch-from with the branch the project is
  * currently checked out on, falling back to main when runcastle's own internal
  * branch is the checkout. Tested at the pure derivation, no DOM.
@@ -146,13 +153,18 @@ describe('duplicateTitleWarning', () => {
  * either way — only the wording tells the human which one they'll get.
  */
 describe('nextStep — Resume vs Start wording for the grill', () => {
-  const grillFull = (opts: { phase?: string; sessions?: unknown[]; tickets?: unknown[] }) =>
+  const grillFull = (opts: {
+    phase?: string
+    sessions?: unknown[]
+    tickets?: unknown[]
+    docs?: string[]
+  }) =>
     ({
       feature: { id: 'f1', phase: opts.phase ?? 'planning', mapped: false, status: 'active' },
       tickets: opts.tickets ?? [],
       sessions: opts.sessions ?? [],
       runs: [],
-      gate: { next: { id: 'G1' }, satisfied: false, reason: 'no decisions yet' },
+      docs: (opts.docs ?? []).map((relPath) => ({ relPath })),
     }) as unknown as FeatureFull
 
   const endedGrill = [{ id: 's1', status: 'ended', kind: 'ideation', ccSessionId: 'cc-1' }]
@@ -180,21 +192,15 @@ describe('nextStep — Resume vs Start wording for the grill', () => {
     expect(ns.primary?.label).toBe('Start session')
   })
 
-  it('carries the same wording into the spec and tickets phases', () => {
-    expect(nextStep(grillFull({ phase: 'planning' }), { driving: false }).primary?.label).toBe(
-      'Start session',
-    )
-    expect(
-      nextStep(grillFull({ phase: 'planning', sessions: endedGrill }), { driving: false }).primary
-        ?.label,
-    ).toBe('Resume session')
-    expect(nextStep(grillFull({ phase: 'planning' }), { driving: false }).primary?.label).toBe(
-      'Start session',
-    )
-    expect(
-      nextStep(grillFull({ phase: 'planning', sessions: endedGrill }), { driving: false }).primary
-        ?.label,
-    ).toBe('Resume session')
+  it('carries the same wording across every step inside planning', () => {
+    // Same session, further along: the artifacts on disk move the hint from
+    // ideation to spec to tickets, and the launch wording never changes.
+    for (const docs of [['decisions.md'], ['decisions.md', 'spec.md']]) {
+      expect(nextStep(grillFull({ docs }), { driving: false }).primary?.label).toBe('Start session')
+      expect(
+        nextStep(grillFull({ docs, sessions: endedGrill }), { driving: false }).primary?.label,
+      ).toBe('Resume session')
+    }
   })
 })
 
@@ -1260,30 +1266,28 @@ describe('groupByLap', () => {
  * so promoting there skips the whole lap and dead-ends at `tickets` with nothing
  * to burn. (The lap-scoped G1/G2 refuse it server-side; this is the copy.)
  */
-describe('nextStep at ideation on a later lap', () => {
-  const lapFull = (opts: {
-    lap: number
-    satisfied?: boolean
-    sessions?: unknown[]
-  }): FeatureFull =>
+describe('nextStep at planning on a later lap', () => {
+  const lapFull = (opts: { lap: number; sessions?: unknown[] }): FeatureFull =>
     ({
       feature: { id: 'f1', phase: 'planning', mapped: false, status: 'active', lap: opts.lap },
       tickets: [],
       sessions: opts.sessions ?? [],
       runs: [],
-      gate: { next: { id: 'G1' }, satisfied: opts.satisfied ?? true, reason: null },
+      // Lap 1's artifacts are still on disk, which is exactly why the lap road
+      // is not derived from them: they say nothing about lap N.
+      docs: [{ relPath: 'decisions.md' }, { relPath: 'spec.md' }],
     }) as unknown as FeatureFull
 
-  it('points at the lap session instead of promoting, even with G1 satisfied', () => {
+  it('points at the lap session rather than the artifacts lap 1 left behind', () => {
     const ns = nextStep(lapFull({ lap: 2 }), { driving: false })
     expect(ns.primary).toEqual({ label: 'Start lap 2 session', kind: 'revisit' })
-    expect(ns.secondary).toEqual([])
+    expect(ns.secondary).toEqual([MERGE_ACTION])
     expect(ns.title).toBe('Work lap 2')
     expect(ns.desc).toContain('test-drive notes')
   })
 
   it('starts lap 2 before considering a completed map', () => {
-    const full = lapFull({ lap: 2, satisfied: true })
+    const full = lapFull({ lap: 2 })
     full.feature.mapped = true
     expect(nextStep(full, { driving: false }).primary).toEqual({
       label: 'Start lap 2 session',
@@ -1306,13 +1310,14 @@ describe('nextStep at ideation on a later lap', () => {
     )
     expect(ns.title).toBe('Lap 2 in progress')
     expect(ns.primary).toBeUndefined()
-    expect(ns.secondary).toEqual([])
+    expect(ns.secondary).toEqual([MERGE_ACTION])
   })
 
-  it('leaves lap 1 exactly as it was — a satisfied G1 still offers the promotion', () => {
+  it('leaves lap 1 to the derived ladder — spec.md on disk asks for tickets', () => {
     const ns = nextStep(lapFull({ lap: 1 }), { driving: false })
     expect(ns.primary).toEqual({ label: 'Start session', kind: 'startGrill' })
-    expect(ns.secondary).toEqual([])
+    expect(ns.title).toBe('Emit the tickets')
+    expect(ns.secondary).toEqual([MERGE_ACTION])
   })
 })
 
@@ -2203,11 +2208,11 @@ describe.skip('draft derivations', () => {
 
 /**
  * Feature-grouping ticket 2 — a feature born with its tickets (decision 21)
- * lands at `implementation` having never run, which is the state the build
- * phase's next-step bar had no wording for: it offered "Resume the burn" for a
- * burn that never started. A run that died still resumes.
+ * lands at `building` having never run, which is the state the build state's
+ * next-step bar had no wording for: it offered "Resume the burn" for a burn
+ * that never started. A run that died still resumes.
  */
-describe('nextStep at implementation', () => {
+describe('nextStep at building', () => {
   const buildFull = (opts: {
     runs?: { id: string; status: string; startedAt: number }[]
     ticketStatuses?: TicketStatus[]
@@ -2265,19 +2270,19 @@ describe('nextStep at implementation', () => {
 
   it('hides Revisit while a session is live (one terminal per feature)', () => {
     const ns = nextStep(buildFull({ sessionLive: true }), { driving: false })
-    expect(ns.secondary).toEqual([])
+    expect(ns.secondary).toEqual([MERGE_ACTION])
     expect(nextStep(buildFull({}), { driving: false }).secondary).toEqual([
       { label: 'Revisit', kind: 'revisit' },
+      MERGE_ACTION,
     ])
   })
 
   /**
-   * Decision 11(b) — a permanently-failing ticket used to loop forever on
-   * Retry, with the only exit the gate's generic "Override with reason…". Once
-   * every lane is terminal and something landed, G4's own belief ("every ticket
-   * reached a terminal state") is offered by name, beside the resume.
+   * Nothing steps the pipeline by hand any more (decisions §3): `advance` is
+   * gone, the runner crosses building → review itself on a successful run, and
+   * a burn that stopped short is left with the burn's own verbs plus Merge.
    */
-  it('offers Continue to review once every lane is terminal and one landed', () => {
+  it('offers no hand-cranked advance once every lane is terminal', () => {
     const ns = nextStep(
       buildFull({
         runs: [{ id: 'r1', status: 'failed', startedAt: 1 }],
@@ -2286,30 +2291,20 @@ describe('nextStep at implementation', () => {
       { driving: false },
     )
     expect(ns.primary).toEqual({ label: 'Resume burn', kind: 'burn' })
-    expect(ns.secondary).toEqual([
-      { label: 'Continue to review', kind: 'advance' },
-      { label: 'Revisit', kind: 'revisit' },
-    ])
+    expect(ns.secondary).toEqual([{ label: 'Revisit', kind: 'revisit' }, MERGE_ACTION])
   })
 
-  it('withholds Continue to review while a lane is still to run, or nothing landed', () => {
-    const unfinished = nextStep(
-      buildFull({
-        runs: [{ id: 'r1', status: 'failed', startedAt: 1 }],
-        ticketStatuses: ['done', 'pending'],
-      }),
-      { driving: false },
-    )
-    const nothingLanded = nextStep(
-      buildFull({
-        runs: [{ id: 'r1', status: 'failed', startedAt: 1 }],
-        ticketStatuses: ['failed', 'cancelled'],
-      }),
-      { driving: false },
-    )
-    for (const ns of [unfinished, nothingLanded]) {
-      expect(ns.secondary.map((a) => a.kind)).not.toContain('advance')
-    }
+  /**
+   * Merge is reachable from building like everywhere else (decisions §7) — even
+   * mid-burn, where the dialog warns that work landing afterwards stays
+   * unshipped rather than refusing the click.
+   */
+  it('offers Merge & ship throughout, including while the burn runs', () => {
+    const running = nextStep(buildFull({ runs: [{ id: 'r1', status: 'running', startedAt: 1 }] }), {
+      driving: false,
+    })
+    expect(running.secondary).toEqual([MERGE_ACTION])
+    expect(running.primary).toEqual({ label: 'Cancel run', kind: 'cancelRun', danger: true })
   })
 
   /**
@@ -3152,13 +3147,13 @@ describe('ticketModelChip — what a card says about its burn model', () => {
  * print the historical default at a Codex-only human.
  */
 describe('nextStep — naming the runtime in the copy', () => {
-  const ideation = (sessions: unknown[]) =>
+  const planning = (sessions: unknown[]) =>
     ({
       feature: { id: 'f1', phase: 'planning', mapped: false, status: 'active' },
       tickets: [],
       sessions,
       runs: [],
-      gate: { next: { id: 'G1' }, satisfied: false, reason: 'no decisions yet' },
+      docs: [],
     }) as unknown as FeatureFull
 
   const liveGrill = (runtime: string | null) => [
@@ -3166,11 +3161,11 @@ describe('nextStep — naming the runtime in the copy', () => {
   ]
 
   it('names the runtime the live grill session is running on', () => {
-    expect(nextStep(ideation(liveGrill('codex')), { driving: false }).desc).toContain(
-      'Shape the idea with Codex',
+    expect(nextStep(planning(liveGrill('codex')), { driving: false }).desc).toContain(
+      'Shape the feature with Codex',
     )
-    expect(nextStep(ideation(liveGrill('claude-code')), { driving: false }).desc).toContain(
-      'Shape the idea with Claude',
+    expect(nextStep(planning(liveGrill('claude-code')), { driving: false }).desc).toContain(
+      'Shape the feature with Claude',
     )
   })
 
@@ -3178,13 +3173,13 @@ describe('nextStep — naming the runtime in the copy', () => {
   // default is the right READ there (the db schema says so), and it is what the
   // human was in fact talking to.
   it('reads a session with no recorded runtime as the historical default', () => {
-    expect(nextStep(ideation(liveGrill(null)), { driving: false }).desc).toContain(
-      'Shape the idea with Claude',
+    expect(nextStep(planning(liveGrill(null)), { driving: false }).desc).toContain(
+      'Shape the feature with Claude',
     )
   })
 
   it('says "the agent" when no session has resolved a runtime yet', () => {
-    const ns = nextStep(ideation([]), { driving: false })
+    const ns = nextStep(planning([]), { driving: false })
     expect(ns.title).toBe('Shape the idea with the agent')
     expect(ns.title).not.toMatch(/Claude|Codex/)
   })
@@ -3197,7 +3192,7 @@ describe('nextStep — naming the runtime in the copy', () => {
       tickets: [{ id: 't1', seq: 1, status: 'todo' }],
       sessions: [],
       runs: [],
-      gate: { next: { id: 'G3' }, satisfied: false, reason: 'not burned' },
+      docs: [],
     } as unknown as FeatureFull
     const ns = nextStep(full, { driving: false })
     expect(ns.desc).toContain('Each one runs as its own sandboxed agent')

@@ -2,12 +2,11 @@ import type { FeatureFull } from '../../api'
 import { activeSession } from '../gates'
 import { hasResumable } from '../internal'
 import { latestRun } from '../sidebar'
+import { resolveBuilding } from './building'
 import { resolveDraft } from './draft'
-import { resolveIdeation } from './ideation'
-import { resolveImplementation } from './implementation'
+import { resolvePlanning } from './planning'
 import { resolveReview } from './review'
 import { resolveShipped } from './shipped'
-import { resolveTickets } from './tickets'
 import type { NextStepContext, ResolverInput } from './resolver-input'
 import type { NextStep } from './types'
 
@@ -61,11 +60,14 @@ export function nextStep(full: FeatureFull, ctx: NextStepContext): NextStep {
     }
   }
 
+  // One resolver per state (decision 3): the six the pipeline used to need
+  // collapsed with it, and the three planning sub-steps are derived inside
+  // `resolvePlanning` from the artifacts rather than dispatched to from here.
   switch (feature.phase) {
     case 'planning':
-      return ticketCount > 0 ? resolveTickets(input) : resolveIdeation(input)
+      return resolvePlanning(input)
     case 'building':
-      return resolveImplementation(input)
+      return resolveBuilding(input)
     case 'review':
       return resolveReview(input)
     case 'shipped':
