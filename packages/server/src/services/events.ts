@@ -182,6 +182,30 @@ export function latestEventTs(ctx: AppCtx, featureId: string, type: string): num
 }
 
 /**
+ * A feature's events of one `type` on its CURRENT lap, oldest first.
+ *
+ * `EventRow` carries no lap — the column is stamped at insert and stays
+ * server-side — so "has this already happened on this lap" is unanswerable from
+ * `listAfter`, which is what the planning steps need: a step reported twice in
+ * one lap is a repeat, the same step reported on a later lap is fresh work.
+ */
+export function listByTypeThisLap(ctx: AppCtx, featureId: string, type: string): EventRow[] {
+  const rows = ctx.db
+    .select()
+    .from(events)
+    .where(
+      and(
+        eq(events.featureId, featureId),
+        eq(events.type, type),
+        eq(events.lap, lapForFeature(ctx, featureId)),
+      ),
+    )
+    .orderBy(asc(events.id))
+    .all()
+  return rows.map(rowToEvent)
+}
+
+/**
  * When each feature in a project last did anything, keyed by feature id.
  *
  * One grouped query for the whole project rather than a scan per feature:

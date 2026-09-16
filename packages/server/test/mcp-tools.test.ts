@@ -338,17 +338,21 @@ describe('mcp tools', () => {
   })
 
   it.each(['ideation', 'spec'] as const)('complete_phase(%s) records progress without moving state', (phase) => {
-    expect(toolCompletePhase(ctx, session, { phase })).toEqual({ ok: true, nextPhase: 'planning' })
+    // Nothing on disk in this fixture, so the derived hint points at the first
+    // artifact still missing.
+    expect(toolCompletePhase(ctx, session, { phase })).toEqual({
+      ok: true,
+      nextPhase: 'planning',
+      nextStep: 'ideation',
+    })
     expect(getFeatureRow(ctx, featureId).phase).toBe('planning')
   })
 
   it('complete_phase(tickets) remains wire-compatible and waits for Burn', () => {
-    expect(toolCompletePhase(ctx, session, { phase: 'tickets' })).toEqual({
-      ok: true,
-      nextPhase: 'planning',
-      waitingOn: 'human burn',
-      warnings: [],
-    })
+    const out = toolCompletePhase(ctx, session, { phase: 'tickets' })
+    expect(out.ok).toBe(true)
+    expect(out.nextPhase).toBe('planning')
+    expect(out.waitingOn).toBe('human burn')
     expect(getFeatureRow(ctx, featureId).phase).toBe('planning')
   })
 })

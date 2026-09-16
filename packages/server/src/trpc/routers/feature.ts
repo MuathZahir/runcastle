@@ -8,6 +8,7 @@ import {
   resendKickoff,
   workWaypoint,
 } from '../../launcher/launcher'
+import { burnWarnings } from '../../services/burn-warnings'
 import { emit, listAfter } from '../../services/events'
 import * as features from '../../services/features'
 import * as git from '../../services/git'
@@ -153,6 +154,14 @@ export const featureRouter = router({
     // cheap model here instead of the retired RUNCASTLE_MODEL env hack.
     .input(z.object({ featureId: z.string(), model: z.string().min(1).optional() }))
     .mutation(({ ctx, input }) => features.burn(ctx, input.featureId, { modelOverride: input.model })),
+
+  // What the Burn confirm dialog prints in its warn box (decisions §5), in the
+  // `mergeDelta` pattern: computed server-side so the UI never re-derives
+  // policy, and never a refusal — the primary button stays enabled. Empty is
+  // the common answer and means the dialog shows no box at all.
+  burnWarnings: publicProcedure
+    .input(z.object({ featureId: z.string() }))
+    .query(({ ctx, input }) => burnWarnings(ctx, input.featureId)),
 
   // B2 behavior — the git stub throws NotImplementedError('B2').
   testDrive: publicProcedure

@@ -7,6 +7,7 @@ import type {
   FeatureStatus as FeatureStatusT,
   FindingSource as FindingSourceT,
   Phase as PhaseT,
+  PlanningStep,
   PreparedKey as PreparedKeyT,
   Project,
   ReviewFinding,
@@ -32,8 +33,10 @@ import {
   WaypointInput,
   agentDigestDocOrder,
   isAgentDigestDoc,
+  isPastPhase,
   isProjectSessionKind,
   modelRoster,
+  nextPlanningStep,
   withheldFeatureDocs,
 } from '@runcastle/core'
 import { featureDocsRel } from '@runcastle/core/paths'
@@ -51,6 +54,7 @@ import {
   list as listFeatures,
   quickChange,
 } from '../services/features'
+import { burnWarnings } from '../services/burn-warnings'
 import { type CarriedDefect, carriedWork } from '../services/carried-work'
 import { emit, emitForSession, emitProject, latestEventTs } from '../services/events'
 import { isOverwritable, recordFinding } from '../services/findings'
@@ -64,6 +68,7 @@ import {
 import * as git from '../services/git'
 import type { AdrDoc } from '../services/knowledge'
 import { ADR_DIR_REL, listDocs, listLiveAdrs, readCharter, readDoc } from '../services/knowledge'
+import { PLANNING_STEP_EVENT, planningFacts, planningStepReported } from '../services/planning'
 import {
   getFeatureRow,
   getProjectById,
@@ -762,32 +767,90 @@ export function toolRecordEvent(
   return { ok: true }
 }
 
-/** The gate a phase transition has to satisfy, as an agent can act on it. */
+/** What a session hears back from a planning step it has just finished. */
 export interface CompletePhaseResult {
   ok: true
+  /**
+   * The state the feature is STILL in. Ideation, spec and tickets are steps
+   * inside Planning, so this tool moves nothing — the field stays for wire
+   * compatibility with the skills that read it, and now answers honestly.
+   */
   nextPhase: PhaseT
+  /**
+   * The next planning step still missing its artifact, derived rather than
+   * stored (decisions §2). Absent once all three are in — there is nothing left
+   * to do but burn.
+   */
+  nextStep?: PlanningStep
   waitingOn?: string
   warnings?: string[]
+  /**
+   * Why there was nothing left to do — set only when the step was already
+   * reported, or the feature has already left Planning, so a healthy late call
+   * reads as the success it is instead of a refusal.
+   */
+  note?: string
 }
 
+/**
+ * Report a planning step complete (SPEC: the `complete_phase` seam).
+ *
+ * Wire-compatible on purpose: the name and the `ideation | spec | tickets`
+ * argument are what `/runcastle:ideate`, `spec`, `tickets` and `converge`
+ * already call, and in-flight sessions must not have to relearn them. What
+ * changed underneath is that there is no gate and no transition left — the three
+ * steps live inside one Planning state, so this records the milestone on the
+ * timeline and answers with what is next. It never refuses: the review-ticket
+ * rule that used to park the tickets step comes back as a warning (decisions §5),
+ * said here because this is the moment the session that wrote the tickets is
+ * still alive to fix them.
+ */
 export function toolCompletePhase(
   ctx: AppCtx,
   session: SessionRow,
-  input: { phase: 'ideation' | 'spec' | 'tickets' },
+  input: { phase: PlanningStep },
 ): CompletePhaseResult {
   const feature = getFeatureRow(ctx, requireFeatureId(session))
   refuseIfReadOnly(session, 'completing a phase')
+  // Read before the emit below, which would otherwise count as this call's own
+  // earlier report.
+  const repeated = planningStepReported(ctx, feature, input.phase)
   emit(ctx, feature.id, {
-    type: 'phase.complete_requested',
-    message: `session marked phase '${input.phase}' complete`,
+    type: PLANNING_STEP_EVENT,
+    message: `session marked planning step '${input.phase}' complete`,
     data: { phase: input.phase, currentPhase: feature.phase },
   })
 
-  if (input.phase === 'tickets') markTicketsReady(ctx, feature.id, 'building')
+  // The human clicked Burn while this session was still closing out: the work
+  // being reported IS complete — the feature moved on without it. Saying so is
+  // what keeps a healthy late call from reading as a failure and sending the
+  // session looking for something to fix.
+  if (isPastPhase(feature, 'planning')) {
+    return {
+      ok: true,
+      nextPhase: feature.phase,
+      note: `planning is already closed out — the feature is ${feature.phase}; nothing left to complete`,
+    }
+  }
+
+  // The lap stops changing here: the session is done emitting and enriching, so
+  // the Burn click can no longer land mid-batch. A repeat would only re-emit the
+  // milestone the first call already stamped.
+  if (input.phase === 'tickets' && !repeated) markTicketsReady(ctx, feature.id, 'building')
+
+  const nextStep = nextPlanningStep(planningFacts(ctx, feature))
   return {
     ok: true,
     nextPhase: feature.phase,
-    ...(input.phase === 'tickets' ? { waitingOn: 'human burn', warnings: [] } : {}),
+    ...(nextStep ? { nextStep } : {}),
+    ...(input.phase === 'tickets'
+      ? { waitingOn: 'human burn', warnings: burnWarnings(ctx, feature.id) }
+      : {}),
+    ...(repeated
+      ? {
+          note: `the ${input.phase} step was already reported complete on lap ${feature.lap} — nothing further to do`,
+        }
+      : {}),
   }
 }
 
@@ -2242,8 +2305,9 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
           'Say what this lap did about a defect an earlier lap’s review left open: `carry` it into ' +
           'a later lap, or close it as `addressed` because this lap’s work already answers it. To ' +
           'link it instead, emit the ticket that fixes it with `originFindingId` set — the burn ' +
-          'then closes the finding itself when that ticket lands. Every earlier-lap open defect ' +
-          'must be linked, carried or closed before `complete_phase("tickets")` will pass.',
+          'then closes the finding itself when that ticket lands. An earlier-lap open defect you ' +
+          'leave un-dispositioned is not refused — it comes back as a warning from ' +
+          '`complete_phase("tickets")` and again at the human’s Burn click.',
         inputSchema: ResolveFindingShape,
       },
       async (args, extra) => {
@@ -2389,7 +2453,9 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
           'Mark the named planning step complete. Ideation, spec and tickets are steps INSIDE ' +
           'the single Planning state, so this never moves the feature: it records the ' +
           'milestone on the timeline and comes back { ok: true, nextPhase } naming the state ' +
-          'the feature is still in. It never refuses. Completing the tickets step additionally ' +
+          'the feature is still in, plus { nextStep } — the planning step whose artifact is ' +
+          'still missing, read off disk rather than stored. It never refuses; a step you ' +
+          'report twice comes back ok with a note. Completing the tickets step additionally ' +
           'returns { waitingOn: "human burn", warnings } — `warnings` carries what the human ' +
           'will be told at the Burn click, so you can still act on it while you are alive. ' +
           'That call is also what ARMS the Burn click — until it lands, the button waits on you ' +

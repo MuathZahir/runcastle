@@ -32,7 +32,14 @@ import {
 } from './repo'
 import { activeSessionsForFeature } from '../launcher/sessions'
 import { endSession } from '../pty/end-session'
-import { getTicket, listByFeature, storeTickets, sweepOrphanedBurning, updateTicket } from './tickets'
+import {
+  getTicket,
+  isPendingTicket,
+  listByFeature,
+  storeTickets,
+  sweepOrphanedBurning,
+  updateTicket,
+} from './tickets'
 import { frontier, listByFeature as listWaypoints } from './waypoints'
 import { cancelRun, startRun } from '../workflows/runner'
 
@@ -634,11 +641,9 @@ export async function burn(
   // (ADR-0002). Refusing first is what lets everything below assume no run.
   if (hasActiveRun(ctx, featureId)) throw new GateError('a run is already burning this feature')
   let tickets = listByFeature(ctx, featureId)
-  // A ticket the burner still has to run: not done/failed/cancelled (the
-  // terminal states). Fresh fix tickets from an Iterate session land as `pending`.
-  const pending = tickets.filter(
-    (t) => t.status !== 'done' && t.status !== 'failed' && t.status !== 'cancelled',
-  )
+  // A ticket the burner still has to run. Fresh fix tickets from an Iterate
+  // session land as `pending`.
+  const pending = tickets.filter(isPendingTicket)
   const restarting = feature.phase === 'building'
   const iterating = feature.phase === 'review' && pending.length >= 1
 

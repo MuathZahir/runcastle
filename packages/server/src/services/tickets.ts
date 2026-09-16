@@ -79,6 +79,24 @@ function normalizeModel(ctx: AppCtx, value: string | null | undefined): string |
   return id
 }
 
+/**
+ * Is this a ticket the burner still has to run?
+ *
+ * `done`, `failed` and `cancelled` are the terminal statuses; everything else —
+ * `pending`, `burning`, and any lane a run leaves mid-flight — is work a burn
+ * would still pick up. One definition, because three callers ask the same
+ * question for three reasons: the burn itself, the planning-progress model
+ * ("are there tickets to burn yet"), and the burn warnings.
+ */
+export function isPendingTicket(ticket: Ticket): boolean {
+  return ticket.status !== 'done' && ticket.status !== 'failed' && ticket.status !== 'cancelled'
+}
+
+/** The tickets a burn of this feature would still run — see {@link isPendingTicket}. */
+export function pendingTickets(ctx: AppCtx, featureId: string): Ticket[] {
+  return listByFeature(ctx, featureId).filter(isPendingTicket)
+}
+
 export function listByFeature(ctx: AppCtx, featureId: string): Ticket[] {
   return ctx.db
     .select()
