@@ -8,10 +8,16 @@
 //   <spikeDir>/hooks.log.
 import { appendFileSync, writeFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
-const require2 = createRequire(import.meta.url)
-const pty = require2('C:/Users/user/.bun/install/global/node_modules/node-pty')
+// node-pty is a native CommonJS addon, so it is loaded via `createRequire` —
+// anchored on the server package that declares it (the launcher's own copy,
+// `packages/server/src/pty/pty.ts`) rather than on any one machine's global
+// install, so this harness reruns from any checkout.
+const repoRoot = resolve(fileURLToPath(import.meta.url), '..', '..', '..', '..', '..')
+const require2 = createRequire(join(repoRoot, 'packages', 'server', 'package.json'))
+const pty = require2('node-pty')
 
 const spikeDir = process.argv[2]
 if (!spikeDir) throw new Error('usage: bun run drive.ts <spikeDir> [resumeSessionId]')
