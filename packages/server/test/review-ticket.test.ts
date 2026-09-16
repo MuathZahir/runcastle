@@ -24,10 +24,8 @@ import {
   releaseReviewDrive,
   reviewDrive,
 } from '../src/services/git'
-import { checkGate } from '../src/services/gates'
 import { openProject } from '../src/services/projects'
 import { listAfter } from '../src/services/events'
-import { overrideGate } from '../src/services/gates'
 import { listByFeature, storeTickets } from '../src/services/tickets'
 import { AUTO_FIX_CAP } from '../src/services/review-findings'
 import { createCallerFactory } from '../src/trpc/context'
@@ -950,7 +948,6 @@ describe('a run containing a review ticket still lands the feature in review', (
     // A review-less lap only reaches the burner through the G3 override — which
     // is exactly the state the verification mint exists to catch, so the human
     // who waived the gate still gets the landed work looked at.
-    overrideGate(ctx, featureId, 'G3', 'shipping this fix without a review ticket')
 
     await caller.feature.burn({ featureId })
     for (let i = 0; i < 200 && getFeatureRow(ctx, featureId).phase !== 'review'; i++) {
@@ -960,7 +957,7 @@ describe('a run containing a review ticket still lands the feature in review', (
     const stored = listByFeature(ctx, featureId)
     expect(stored).toHaveLength(2)
     expect(stored[1]).toMatchObject({
-      kind: 'review', passKind: 'verification', status: 'done', lap: 2,
+      kind: 'review', passKind: 'verification', status: 'done', lap: 1,
       title: 'Verify the fixes that landed',
     })
     expect(stored[1].context).toContain('#1 quick fix')
@@ -1060,16 +1057,12 @@ describe('the burner mints its verification pass into a lap that already has a r
     expect(stored[3]).toMatchObject({
       kind: 'review',
       passKind: 'verification',
-      lap: 2,
+      lap: 1,
       status: 'done',
       title: 'Verify the fixes that landed',
     })
     expect(stored[3].context).toContain('#3 fix the defect')
     expect(stored.filter((t) => t.kind === 'review')).toHaveLength(2)
-    // Two review tickets on one lap is a state G3 must keep accepting.
-    expect(checkGate(ctx, 'tickets-approved', getFeatureRow(ctx, featureId))).toEqual({
-      satisfied: true,
-    })
   })
 })
 

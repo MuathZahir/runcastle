@@ -171,7 +171,6 @@ function page(): { root: HTMLElement; rerender: () => void } {
       driving={null}
       conflict={null}
       onViewPhase={() => undefined}
-      onIterate={() => undefined}
     />
   )
   const view = render(body())

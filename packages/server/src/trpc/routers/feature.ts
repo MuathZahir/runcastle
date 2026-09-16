@@ -106,26 +106,15 @@ export const featureRouter = router({
     )
     .mutation(({ ctx, input }) => workWaypoint(ctx, input)),
 
-  // Converge a mapped feature (ADR-0001 §13.2): crosses G1 (all-waypoints-
-  // terminal) into spec and spawns a fresh kind=converge session that runs the
-  // existing spec → tickets skills over the compressed knowledge. `overrideReason`
-  // forces convergence past open/claimed waypoints (records a G1 override).
+  // Converge a mapped feature (ADR-0001 §13.2): spawns a fresh kind=converge
+  // session that runs the existing spec → tickets skills over the compressed
+  // knowledge. The feature remains in Planning throughout.
   converge: publicProcedure
     .input(z.object({ featureId: z.string(), overrideReason: z.string().min(1).optional() }))
     .mutation(({ ctx, input }) =>
       converge(ctx, { featureId: input.featureId, overrideReason: input.overrideReason }),
     ),
 
-  // Iterate — internally Rethink (ADR-0010 §1 / SPEC §15.2), the review verb that
-  // starts lap N+1. The service runs FIRST so the phase is back at ideation and
-  // the lap already bumped when the session row is created (it is stamped with the
-  // feature's current lap); the terminal then opens on the lap briefing instead of
-  // the generic revisit line: digest the drive, amend the docs, emit this lap's
-  // tickets, hand back to the Burn click. One click, one terminal.
-  //
-  // `rethinkAndLaunch` makes that ordering safe: a launch that throws rolls the
-  // flip back to review on the original lap (findings F3), so the click can just
-  // be retried once whatever blocked the terminal is cleared.
   // Re-type a live session's kickoff/briefing into its terminal ("Send briefing"
   // in the session strip). The escape hatch for a briefing the TUI swallowed —
   // a startup dialog eating the keystrokes leaves a terminal that looks fine and
@@ -207,12 +196,6 @@ export const featureRouter = router({
       const feature = getFeatureRow(ctx, input.featureId)
       features.requireNotDraft(feature)
       const project = projectForFeature(ctx, feature)
-      // A test drive of THIS feature holds the main checkout on the feature
-      // branch; stop it first (restores main) so the merge can proceed. This lets
-      // the Merge button work whether or not the branch is currently test-driven.
-      if (git.activeTestDriveFeatureId() === feature.id) {
-        await git.testDrive(ctx, project, feature, 'stop')
-      }
       const delta = await git.mergeDelta(project, feature)
       const standingConflict = unresolvedMergeConflict(listAfter(ctx, feature.id, 0))
       const res = await git.mergeFeature(project, feature)

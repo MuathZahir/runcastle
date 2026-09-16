@@ -7,7 +7,6 @@ import { resolveIdeation } from './ideation'
 import { resolveImplementation } from './implementation'
 import { resolveReview } from './review'
 import { resolveShipped } from './shipped'
-import { resolveSpec } from './spec'
 import { resolveTickets } from './tickets'
 import type { NextStepContext, ResolverInput } from './resolver-input'
 import type { NextStep } from './types'
@@ -15,7 +14,7 @@ import type { NextStep } from './types'
 export * from './types'
 
 export function nextStep(full: FeatureFull, ctx: NextStepContext): NextStep {
-  const { feature, tickets, sessions, runs, gate } = full
+  const { feature, tickets, sessions, runs } = full
   const live = activeSession(sessions)
   const resumableGrill = hasResumable(sessions, 'ideation')
   const lapTickets = tickets.filter((ticket) => ticket.lap === feature.lap)
@@ -63,13 +62,9 @@ export function nextStep(full: FeatureFull, ctx: NextStepContext): NextStep {
   }
 
   switch (feature.phase) {
-    case 'ideation':
-      return resolveIdeation(input)
-    case 'spec':
-      return resolveSpec(input)
-    case 'tickets':
-      return resolveTickets(input)
-    case 'implementation':
+    case 'planning':
+      return ticketCount > 0 ? resolveTickets(input) : resolveIdeation(input)
+    case 'building':
       return resolveImplementation(input)
     case 'review':
       return resolveReview(input)

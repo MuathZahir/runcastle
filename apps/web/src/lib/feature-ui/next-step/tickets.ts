@@ -22,7 +22,7 @@ export function resolveTickets(input: ResolverInput): NextStep {
     busy: false,
   }
   if (live) return step('WAITING', 'Emitting tickets', 'The session is breaking the spec into tickets. They appear below as they land; review them, then burn.')
-  const resumable = hasResumable(full.sessions, 'ideation') || hasResumable(full.sessions, 'converge')
+  const resumable = hasResumable(full.sessions, 'planning') || hasResumable(full.sessions, 'converge')
   return step('WAITING', 'Waiting for tickets', 'No tickets yet — a session breaks the spec into them.', { label: resumable ? 'Resume session' : 'Start session', kind: 'startGrill' })
 }
 

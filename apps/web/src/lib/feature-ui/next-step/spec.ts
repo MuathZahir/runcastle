@@ -7,7 +7,7 @@ export function resolveSpec(input: ResolverInput): NextStep {
   if (live) return step('SESSION LIVE', 'Writing the spec', 'The spec takes shape on the left as the session writes it. The session moves the feature on to tickets when it is done.')
   const hasSpec = (full.docs ?? []).some((doc) => doc.relPath.endsWith('spec.md'))
   if (full.feature.mapped && !hasSpec && lapTicketCount === 0) return step('NEXT STEP', 'Finish converging', 'The converge session ended before the spec and tickets were written. Resume it — it picks up from the map and the decisions.', { label: 'Resume converge', kind: 'resumeConverge' })
-  const resumable = hasResumable(full.sessions, 'ideation') || hasResumable(full.sessions, 'converge')
+  const resumable = hasResumable(full.sessions, 'planning') || hasResumable(full.sessions, 'converge')
   const door: NextStep['primary'] = { label: resumable ? 'Resume session' : 'Start session', kind: 'startGrill' }
   // The bar's description is the one place that says why the feature cannot
   // advance (decision 3), so it has to read the same disk the pane beside it

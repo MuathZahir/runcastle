@@ -23,7 +23,7 @@ function listItem(over: Partial<FeatureListItem> = {}): FeatureListItem {
     title: 'Flow redesign: project shell and navigation',
     oneLiner: '',
     mapped: false,
-    phase: 'tickets',
+    phase: 'planning',
     branch: 'feature/flow-redesign-project-shell',
     baseBranch: 'main',
     status: 'active',
@@ -98,14 +98,14 @@ describe('sidebar feature row', () => {
     expect(html).not.toContain('inset-ring')
   })
 
-  it('renders the six-segment pipeline map with the current phase marked', () => {
-    const html = render(listItem({ phase: 'tickets' }))
+  it('renders the four-state pipeline map with the current phase marked', () => {
+    const html = render(listItem({ phase: 'planning' }))
 
     const segments = html.match(/rounded-\[2px\] [a-z0-9- ]+"/g) ?? []
-    // done · done · current · upcoming · upcoming · upcoming — six flat marks
+    // current · upcoming · upcoming · upcoming — four flat marks
     // that differ only in colour, so no state renders a different shape.
-    expect(segments).toHaveLength(6)
-    expect(segments.filter((s) => s.endsWith('bg-text-4"'))).toHaveLength(2)
+    expect(segments).toHaveLength(4)
+    expect(segments.filter((s) => s.endsWith('bg-text-4"'))).toHaveLength(0)
     expect(segments.filter((s) => s.endsWith('bg-accent"'))).toHaveLength(1)
     expect(segments.filter((s) => s.endsWith('bg-hairline"'))).toHaveLength(3)
   })

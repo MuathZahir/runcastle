@@ -828,10 +828,8 @@ export function LapSections<T extends { lap: number }>({
 }
 
 const PHASE_FG: Record<Phase, string> = {
-  ideation: 'text-ph-ideation',
-  spec: 'text-ph-spec',
-  tickets: 'text-ph-tickets',
-  implementation: 'text-ph-implementation',
+  planning: 'text-ph-ideation',
+  building: 'text-ph-implementation',
   review: 'text-ph-review',
   shipped: 'text-ph-shipped',
 }
@@ -846,10 +844,8 @@ export function PhaseTag({ phase }: { phase: Phase }) {
 
 /** The phase dot's colour. A whole class per phase so Tailwind can see it. */
 const PHASE_DOT_BG: Record<Phase, string> = {
-  ideation: 'bg-ph-ideation',
-  spec: 'bg-ph-spec',
-  tickets: 'bg-ph-tickets',
-  implementation: 'bg-ph-implementation',
+  planning: 'bg-ph-ideation',
+  building: 'bg-ph-implementation',
   review: 'bg-ph-review',
   shipped: 'bg-ph-shipped',
 }

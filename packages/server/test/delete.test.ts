@@ -19,7 +19,6 @@ import type { AppCtx } from '../src/db/types'
 import {
   events,
   features,
-  gateOverrides,
   runs,
   sessions,
   tickets,
@@ -121,10 +120,6 @@ function seedAllRows(ctx: AppCtx, featureId: string): { sessionId: string } {
       summary: null,
     })
     .run()
-  ctx.db
-    .insert(gateOverrides)
-    .values({ featureId, gate: 'G1', reason: 'because', ts: Date.now() })
-    .run()
   return { sessionId }
 }
 
@@ -213,7 +208,7 @@ describe('feature delete', () => {
     expect((await g.branchLocal()).all).not.toContain('feature/del-me')
 
     // Every feature-keyed table emptied.
-    for (const table of [features, tickets, sessions, runs, waypoints, gateOverrides, events]) {
+    for (const table of [features, tickets, sessions, runs, waypoints, events]) {
       expect(rowCount(ctx, table, feature.id)).toBe(0)
     }
 

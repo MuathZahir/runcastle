@@ -217,7 +217,6 @@ function render(
       conflict: null,
       readonly: over.readonly ?? false,
       onViewPhase: () => undefined,
-      onIterate: () => undefined,
     }),
   )
 }

@@ -16,7 +16,6 @@ import {
   effectivePhase,
   freshness,
   isReadonlyView,
-  lapAbort,
   latestRun,
   mapDocPath,
   mergeSummary,
@@ -32,7 +31,6 @@ import {
   verificationState,
   type ActionKind,
   type DraftBaseMissing,
-  type LapAbort,
   type MergeConflictState,
 } from '../lib/feature-ui'
 import { useReviewArtifacts } from '../lib/reviews'
@@ -258,29 +256,6 @@ export function Workspace({
     onSuccess: invalidate,
     onError: (e) => toast.push(e.message),
   })
-  // "Continue to review" (decision 11b): the honest exit from a burn whose lanes
-  // are all terminal and partly landed. It crosses the gate the phase is sitting
-  // behind, so — like every other phase-crossing mutation here — the view snaps
-  // back to live, or the human is left pinned on the phase they just left.
-  const advance = trpc.feature.advance.useMutation({
-    onSuccess: () => {
-      invalidate()
-      onViewPhase(null)
-    },
-    onError: (e) => toast.push(e.message),
-  })
-  // Iterate is the review verb that starts the next lap (ADR-0010 §3; the
-  // procedure keeps its `rethink` name so the timeline stays continuous): the
-  // server bumps the lap, drops the feature back to ideation and opens the lap
-  // session in one call — or rolls all of it back — so the bar just snaps the
-  // view back to live.
-  const rethink = trpc.feature.rethink.useMutation({
-    onSuccess: () => {
-      invalidate()
-      onViewPhase(null)
-    },
-    onError: (e) => toast.push(e.message),
-  })
   // The end half of every end-and-proceed compound (decision 4). No surface
   // refuses a click because a terminal is live any more: the label says the
   // session will be closed, and this is the close it promised.
@@ -424,27 +399,18 @@ export function Workspace({
   }
   const effective = effectivePhase(feature, viewedPhase)
   const readonly = isReadonlyView(feature, effective)
-  const twoPane =
-    !isDraft &&
-    (effective === 'ideation' ||
-      effective === 'spec' ||
-      effective === 'tickets' ||
-      effective === 'review')
+  const twoPane = !isDraft && (effective === 'planning' || effective === 'review')
   // What each finished phase produced (decision 10) — one derivation, read by
   // the stepper's done-step tooltips and by the read-only banner, so the two can
   // never tell a different story about the same phase.
   const summaryOf = (phase: Phase) => phaseSummary({ phase, full, events, decisions })
-  const steps = pipelineSteps(feature, effective, {
-    ideation: summaryOf('ideation'),
-    spec: summaryOf('spec'),
-    tickets: summaryOf('tickets'),
-  })
+  const steps = pipelineSteps(feature, effective, { planning: summaryOf('planning') })
   const run = latestRun(full.runs)
   // The beat is over the body only — the stepper and the bar tell the truth
   // about the phase throughout, and a human who is not on the run view (viewing
   // an earlier phase, or already past review) is never held.
   const settling = !!settlingRunId && run?.id === settlingRunId && effective === 'review'
-  const bodyPhase = settling ? 'implementation' : effective
+  const bodyPhase = settling ? 'building' : effective
   const isDriving = driving?.featureId === feature.id
   const ns = nextStep(full, {
     driving: isDriving,
@@ -469,15 +435,12 @@ export function Workspace({
   // An Iterate whose lap session could not be opened (decision 26g), from the
   // same event feed as the conflict — one poll for all of it. Handed to the
   // review body, which renders it in the alert slot beside the conflict card.
-  const abortedLap = lapAbort(events)
   const busy =
     start.isPending ||
     launch.isPending ||
     burn.isPending ||
     converge.isPending ||
     workWaypoint.isPending ||
-    advance.isPending ||
-    rethink.isPending ||
     cancel.isPending ||
     testDrive.isPending ||
     merge.isPending ||
@@ -497,9 +460,8 @@ export function Workspace({
     // A second click while the first lap bump is in flight would bump two laps —
     // and this road is reachable from the bar, the drive escape and the failed
     // lap's Retry, so the guard lives here rather than on each button.
-    if (rethink.isPending) return
     if ((openNotes ?? 0) + (openDefects ?? 0) > 0) setTriaging(Date.now())
-    else rethink.mutate({ featureId })
+    else launch.mutate({ featureId, kind: 'revisit' })
   }
 
   /**
@@ -544,7 +506,7 @@ export function Workspace({
       // is what the exit's own label promised (decision 4). The burn road takes
       // no session, so it takes nothing away.
       if (selection.carry) {
-        if (await endLiveSession()) rethink.mutate({ featureId })
+        if (await endLiveSession()) launch.mutate({ featureId, kind: 'revisit' })
       } else burn.mutate({ featureId })
     } catch (e) {
       toast.push(e instanceof Error ? e.message : String(e))
@@ -569,7 +531,6 @@ export function Workspace({
       case 'revisit':
         launch.mutate({ featureId, kind: 'revisit' })
         break
-      case 'rethink':
       case 'iterate':
         enterIterate()
         break
@@ -592,7 +553,7 @@ export function Workspace({
         burn.mutate({ featureId })
         break
       case 'advance':
-        advance.mutate({ featureId })
+        invalidate()
         break
       case 'cancelRun':
         if (run) cancel.mutate({ runId: run.id })
@@ -818,13 +779,11 @@ export function Workspace({
               events={events}
               driving={driving}
               conflict={conflict}
-              abortedLap={abortedLap}
               runId={run?.id ?? null}
               readonly={readonly}
               mapRailCollapsed={mapRailCollapsed}
               onToggleMapRail={onToggleMapRail}
               onViewPhase={onViewPhase}
-              onIterate={enterIterate}
               artifactPaneCollapsed={artifactPaneCollapsed}
               onToggleArtifactPane={onToggleArtifactPane}
             />
@@ -841,13 +800,11 @@ function PhaseBody({
   events,
   driving,
   conflict,
-  abortedLap,
   runId,
   readonly,
   mapRailCollapsed,
   onToggleMapRail,
   onViewPhase,
-  onIterate,
   artifactPaneCollapsed,
   onToggleArtifactPane,
 }: {
@@ -856,19 +813,17 @@ function PhaseBody({
   events: readonly EventRow[]
   driving: DriveState | null
   conflict: MergeConflictState | null
-  abortedLap: LapAbort | null
   runId: string | null
   readonly: boolean
   mapRailCollapsed: boolean
   onToggleMapRail: () => void
   onViewPhase: (phase: Phase | null) => void
-  onIterate: () => void
   artifactPaneCollapsed: boolean
   onToggleArtifactPane: () => void
 }) {
   // A pinned phase this flow owns is a frozen record, not the live body with its
   // buttons hidden (decision 10) — a different body altogether.
-  if (readonly && (effective === 'ideation' || effective === 'spec' || effective === 'tickets')) {
+  if (readonly && effective === 'planning') {
     return (
       <PinnedBody
         full={full}
@@ -880,8 +835,7 @@ function PhaseBody({
     )
   }
   switch (effective) {
-    case 'ideation':
-    case 'spec':
+    case 'planning':
       return (
         <GrillBody
           full={full}
@@ -892,9 +846,7 @@ function PhaseBody({
           onToggleArtifactPane={onToggleArtifactPane}
         />
       )
-    case 'tickets':
-      return <TicketsBody featureId={full.feature.id} />
-    case 'implementation':
+    case 'building':
       // Before the first burn there is no run to narrate, so an empty run pane
       // is the wrong thing to show — the tickets about to burn are. This is the
       // resting state of a feature created with its tickets already written
@@ -911,13 +863,10 @@ function PhaseBody({
           full={full}
           driving={driving}
           conflict={conflict}
-          lapAbort={abortedLap}
           readonly={readonly}
           // A defect being fixed links to its lane, which lives in the run view
           // one phase back (decision 18c).
           onViewPhase={onViewPhase}
-          // The failed lap's Retry takes the same door the bar's Iterate takes.
-          onIterate={onIterate}
         />
       )
     case 'shipped':

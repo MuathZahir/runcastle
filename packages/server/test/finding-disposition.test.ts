@@ -7,7 +7,6 @@ import { GateError, InvalidInputError } from '../src/errors'
 import { clearRuntimeCtx, setRuntimeCtx } from '../src/launcher/runtime'
 import { createSessionRow, markSessionLive } from '../src/launcher/sessions'
 import { toolEmitTickets, toolResolveFinding, toolsForAudience } from '../src/mcp/server'
-import { checkGate } from '../src/services/gates'
 import {
   dismiss,
   listByFeature as listFindings,
@@ -246,62 +245,4 @@ describe('the lap session dispositions earlier laps’ defects', () => {
     })
   })
 
-  describe('the complete_phase(tickets) gate', () => {
-    /** Everything G3 wants apart from the disposition check. */
-    function emitLapBatch(): void {
-      toolEmitTickets(ctx, session, {
-        tickets: [ticketInput('Lap work'), { ...ticketInput('Review'), kind: 'review' }],
-      })
-    }
-
-    it('passes a lap-1 feature trivially, whatever its review left open', () => {
-      openDefect()
-      emitLapBatch()
-      expect(checkGate(ctx, 'tickets-approved', feature).satisfied).toBe(true)
-    })
-
-    it('refuses while an earlier lap’s defect is un-dispositioned, listing it by title', () => {
-      openDefect('Deletes are never retried')
-      openDefect('The toast never dismisses')
-      rethink(2)
-      emitLapBatch()
-
-      const result = checkGate(ctx, 'tickets-approved', feature)
-      expect(result.satisfied).toBe(false)
-      expect(result.reason).toContain('Deletes are never retried')
-      expect(result.reason).toContain('The toast never dismisses')
-      expect(result.reason).toContain('resolve_finding')
-    })
-
-    it('passes once every earlier defect is linked, carried, closed or dismissed', () => {
-      const linked = openDefect('Deletes are never retried')
-      const carried = openDefect('The toast never dismisses')
-      const closed = openDefect('The empty state is wrong')
-      const waved = openDefect('A nit about spacing')
-      rethink(2)
-
-      toolEmitTickets(ctx, session, {
-        tickets: [
-          { ...ticketInput('Call the retry endpoint'), originFindingId: linked },
-          { ...ticketInput('Review'), kind: 'review' },
-        ],
-      })
-      toolResolveFinding(ctx, session, { findingId: carried, disposition: 'carry' })
-      toolResolveFinding(ctx, session, {
-        findingId: closed,
-        disposition: 'addressed',
-        note: 'lap 2 rewrote the empty state',
-      })
-      dismiss(ctx, waved)
-
-      expect(checkGate(ctx, 'tickets-approved', feature).satisfied).toBe(true)
-    })
-
-    it('leaves the CURRENT lap’s defects to the burner and the review loop', () => {
-      rethink(2)
-      openDefect('Found by lap 2’s own review')
-      emitLapBatch()
-      expect(checkGate(ctx, 'tickets-approved', feature).satisfied).toBe(true)
-    })
-  })
 })

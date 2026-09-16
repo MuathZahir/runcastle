@@ -36,7 +36,7 @@ const feat = (over: Partial<FeatureListItem>): FeatureListItem =>
     title: 'x',
     oneLiner: '',
     mapped: false,
-    phase: 'ideation',
+    phase: 'planning',
     branch: 'feature/x',
     status: 'active',
     createdAt: 0,
@@ -294,7 +294,7 @@ describe('projectStats', () => {
 
   it('counts active runs and marks health working when a run is in flight', () => {
     const s = projectStats([
-      feat({ id: 'a', phase: 'implementation', activeRun: true }),
+      feat({ id: 'a', phase: 'building', activeRun: true }),
       feat({ id: 'b', phase: 'shipped', status: 'shipped' }),
     ])
     expect(s.activeRuns).toBe(1)
@@ -305,8 +305,8 @@ describe('projectStats', () => {
 
   it('counts needs-you features and prefers attention over working', () => {
     const s = projectStats([
-      feat({ id: 'a', phase: 'ideation' }), // needs grilling
-      feat({ id: 'b', phase: 'implementation', activeRun: true }),
+      feat({ id: 'a', phase: 'planning' }), // needs grilling
+      feat({ id: 'b', phase: 'building', activeRun: true }),
     ])
     expect(s.needsYou).toBe(1)
     expect(s.activeRuns).toBe(1)

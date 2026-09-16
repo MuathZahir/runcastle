@@ -61,7 +61,7 @@ export interface WriteArtifactsInput {
    * The lap this session was opened to run (a Rethink lap, or a lap-N grill).
    * Passed EXPLICITLY rather than read off `feature.lap`, because a lap is not
    * something the feature row can be asked about: an ordinary revisit on a
-   * lap-3 feature is not running a lap, and the rethink route bumps `lap` and
+   * lap-3 feature is not running a lap, and the next Burn bumps `lap` and
    * flips the phase back to `ideation` BEFORE launching — which is how the lap
    * framing used to be lost entirely (F2, `renderRevisitPrompt` keyed on
    * `phase === 'review'` and by then the phase had moved).

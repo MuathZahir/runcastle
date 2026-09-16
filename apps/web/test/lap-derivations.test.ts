@@ -35,7 +35,7 @@ describe('the lap account at one line', () => {
   // Several burners each saying what they did is not one sentence about the lap,
   // so the page falls back to the counts rather than quoting one of them.
   it('says nothing for the burners’ fallback, or for no account at all', () => {
-    expect(lapAccountLine({ source: 'tickets', entries: [{ seq: 1, title: 'x', digest: 'did a thing' }] })).toBeNull()
+    expect(lapAccountLine({ source: 'planning', entries: [{ seq: 1, title: 'x', digest: 'did a thing' }] })).toBeNull()
     expect(lapAccountLine(null)).toBeNull()
     expect(lapAccountLine({ source: 'review', prose: '   \n  ' })).toBeNull()
   })

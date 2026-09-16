@@ -96,7 +96,7 @@ export function resolveReview(input: ResolverInput): NextStep {
     // empty-handed (decision 21); with something open the click opens the door.
     // Live, one kind covers both roads: the end lands first and the dispatcher
     // picks the door off the same two counts.
-    kind: live ? 'endSessionAndIterate' : openWork > 0 ? 'iterate' : 'rethink',
+    kind: live ? 'endSessionAndIterate' : 'iterate',
     // The drive's refusal stands (findings F3 — the server will not open a lap
     // worktree on a branch the drive holds, and it refuses the triage commit for
     // the same reason), but it is no longer a dead end: one click stops the

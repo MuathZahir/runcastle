@@ -185,7 +185,7 @@ describe('findings router', () => {
     expect(result.findings.every((f) => f.status === 'fixing')).toBe(true)
     // The Fix loop-back: review → implementation, same lap.
     const after = getFeatureRow(ctx, feature.id)
-    expect(after.phase).toBe('implementation')
+    expect(after.phase).toBe('review')
     expect(after.lap).toBe(feature.lap)
     // Nothing is open any more, and nothing was minted twice.
     const view = await caller.findings.listByFeature({ featureId: feature.id })

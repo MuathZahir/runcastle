@@ -12,12 +12,10 @@ import { GateError } from '../src/errors'
 import { converge, launchSession, workWaypoint } from '../src/launcher/launcher'
 import { listAfter } from '../src/services/events'
 import {
-  advance,
   archiveFeature,
   burn,
   createFeature,
   deleteFeature,
-  rethink,
   startDraft,
 } from '../src/services/features'
 import { getFeatureRow } from '../src/services/repo'
@@ -98,7 +96,7 @@ describe('draft features', () => {
       expect(f.brief).toBe('the reasoning we worked out before deferring this')
       // The branch NAME is recorded even though nothing was cut (decision 2).
       expect(f.branch).toBe('feature/parked-idea')
-      expect(f.phase).toBe('ideation')
+      expect(f.phase).toBe('planning')
 
       const g = simpleGit(repoPath)
       expect((await g.branchLocal()).all).not.toContain('feature/parked-idea')
@@ -253,10 +251,7 @@ describe('draft features', () => {
     })
 
     it('refuses the synchronous service verbs', () => {
-      expect(() => advance(ctx, draft.id)).toThrow(DRAFT_REFUSAL)
-      expect(() => rethink(ctx, draft.id)).toThrow(DRAFT_REFUSAL)
       expect(() => archiveFeature(ctx, draft.id)).toThrow(DRAFT_REFUSAL)
-      expect(() => advance(ctx, draft.id)).toThrow(GateError)
     })
 
     it('refuses burn', async () => {

@@ -6,7 +6,7 @@ import type { NextStep } from './types'
 
 export function resolveIdeation(input: ResolverInput): NextStep {
   const { full, ctx, live } = input
-  const { feature, gate, sessions, waypoints, frontierIds } = full
+  const { feature, sessions, waypoints, frontierIds } = full
   if (feature.lap > 1 && live) return step('LAP LIVE', `Lap ${feature.lap} in progress`, 'The lap session digests the drive, amends the docs and emits this lap’s tickets.')
 
   const lapWorked = sessions.some((session) => session.lap === feature.lap && ['ideation', 'revisit', 'converge'].includes(session.kind))
@@ -14,7 +14,7 @@ export function resolveIdeation(input: ResolverInput): NextStep {
     const resumable = hasResumable(sessions, 'revisit')
     return step('NEXT STEP', `Work lap ${feature.lap}`, 'Your test-drive notes are waiting. The lap session reads them, amends the spec, and emits this lap’s tickets — then hands back to Burn.', { label: `${resumable ? 'Resume' : 'Start'} lap ${feature.lap} session`, kind: 'revisit' })
   }
-  if (feature.mapped && gate.satisfied) return step('MAP', 'The map is complete', 'Every waypoint is done. Converge to turn the map and its decisions into a spec and tickets in one session.', { label: 'Converge', kind: 'converge' })
+  if (feature.mapped && waypoints.length > 0 && waypoints.every(isTerminal)) return step('MAP', 'The map is complete', 'Every waypoint is done. Converge to turn the map and its decisions into a spec and tickets in one session.', { label: 'Converge', kind: 'converge' })
   if (feature.mapped && live) return liveStep(live)
 
   if (feature.mapped) {

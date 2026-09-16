@@ -181,9 +181,9 @@ describe('project-session MCP tools', () => {
       id: expect.any(String),
       slug: 'promotion-at-merge',
       branch: 'feature/promotion-at-merge',
-      phase: 'ideation',
+      phase: 'planning',
     })
-    expect(getFeatureRow(ctx, out.id).phase).toBe('ideation')
+    expect(getFeatureRow(ctx, out.id).phase).toBe('planning')
     expect(listByFeature(ctx, out.id)).toHaveLength(0)
 
     // On the FEATURE branch, which is what the grill worktree is cut from — the
@@ -223,7 +223,7 @@ describe('project-session MCP tools', () => {
       tickets: proses,
     })
 
-    expect(out.phase).toBe('implementation')
+    expect(out.phase).toBe('planning')
     const tickets = listByFeature(ctx, out.id)
     // Three prose tickets and ONE feature — the chat no longer has to call this
     // three times and get three features (decisions.md #4 + #2). Plus the review
@@ -256,7 +256,7 @@ describe('project-session MCP tools', () => {
       id: expect.any(String),
       slug: 'fork-door',
       branch: 'feature/fork-door',
-      phase: 'ideation',
+      phase: 'planning',
     })
     const row = getFeatureRow(ctx, out.id)
     expect(row.status).toBe('draft')
@@ -394,7 +394,7 @@ describe('project-session MCP tools', () => {
     // the pipeline position and the ticket counts. All of it is in SQLite and
     // true of the feature rather than of an unmerged branch.
     expect(out.featureIndex).toContain(
-      'promotion-at-merge — Promotion at merge [in flight: ideation, lap 1, 2 pending]',
+      'promotion-at-merge — Promotion at merge [in flight: planning, lap 1, 2 pending]',
     )
     // Decision 16 still holds where it was right: the one-liner and the docs
     // path live on the unmerged branch and stay withheld.

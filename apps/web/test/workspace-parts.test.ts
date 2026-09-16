@@ -9,7 +9,7 @@ import { PipelineStepper } from '../src/components/workspace/PipelineStepper'
 
 describe('workspace parts', () => {
   it('renders every pipeline phase and marks the current step', () => {
-    const current = 'tickets'
+    const current = 'planning'
     const steps: PipelineStep[] = PHASE_ORDER.map((phase) => ({
       phase,
       label: PHASE_LABELS[phase],

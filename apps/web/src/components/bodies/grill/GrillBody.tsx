@@ -23,10 +23,10 @@ export function GrillBody({ full, effective, mapRailCollapsed, onToggleMapRail, 
 }) {
   return (
     <div className="flex h-full min-h-0 min-w-0 flex-1 gap-4">
-      {full.feature.mapped && effective === 'ideation' ? (
+      {full.feature.mapped && effective === 'planning' ? (
         <MapRail full={full} relPath={mapDocPath(full)} collapsed={mapRailCollapsed} onToggle={onToggleMapRail} />
       ) : (
-        <ArtifactPane featureId={full.feature.id} kind={effective === 'spec' ? 'spec' : 'decisions'} docs={full.docs} collapsed={artifactPaneCollapsed} onToggle={onToggleArtifactPane} mapped={full.feature.mapped} />
+        <ArtifactPane featureId={full.feature.id} kind={effective === 'planning' ? 'planning' : 'decisions'} docs={full.docs} collapsed={artifactPaneCollapsed} onToggle={onToggleArtifactPane} mapped={full.feature.mapped} />
       )}
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         {full.sessions.length > 0 ? (

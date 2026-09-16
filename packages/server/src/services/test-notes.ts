@@ -442,7 +442,7 @@ export function reopenNote(ctx: AppCtx, noteId: string): TestNote {
 
 export interface TriageInput { quickFixIds: string[]; quickFixFindingIds: string[]; dismissIds: string[]; carry: boolean }
 
-/** Commit triage only; the caller subsequently invokes feature.burn or feature.rethink. */
+/** Commit triage only; the caller subsequently invokes Burn or opens a revisit session. */
 export function triageNotes(ctx: AppCtx, featureId: string, input: TriageInput): { minted: number; carried: number; dismissed: number } {
   const feature = getFeatureRow(ctx, featureId)
   for (const id of input.dismissIds) deleteNote(ctx, id)

@@ -27,7 +27,7 @@ function ticketRow(tickets: readonly { status: string }[]): CheckRow {
   // different thing from everything having passed.
   const tone: CheckTone =
     failed > 0 ? 'danger' : total === 0 ? 'idle' : done === total ? 'ok' : 'warn'
-  return { key: 'tickets', value, tone }
+  return { key: 'planning', value, tone }
 }
 
 export function runRow(run: RunFigure | undefined): CheckRow {

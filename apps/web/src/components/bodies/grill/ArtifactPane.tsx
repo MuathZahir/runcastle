@@ -14,7 +14,7 @@ import { Markdown } from '../../Markdown'
  */
 export type ArtifactPaneMode = 'live' | 'static'
 
-export function ArtifactPane({ featureId, kind, docs, collapsed = false, onToggle, mapped = false, mode = 'live', children }: { featureId: string; kind: 'decisions' | 'spec'; docs: FeatureFull['docs']; collapsed?: boolean; onToggle?: () => void; mapped?: boolean; mode?: ArtifactPaneMode; children?: ReactNode }) {
+export function ArtifactPane({ featureId, kind, docs, collapsed = false, onToggle, mapped = false, mode = 'live', children }: { featureId: string; kind: 'decisions' | 'planning'; docs: FeatureFull['docs']; collapsed?: boolean; onToggle?: () => void; mapped?: boolean; mode?: ArtifactPaneMode; children?: ReactNode }) {
   const defaultPath = docs.find((doc) => doc.relPath.endsWith(`${kind}.md`))?.relPath
   const [selectedPath, setSelectedPath] = useState(defaultPath)
   const [updating, setUpdating] = useState(false)
@@ -25,7 +25,7 @@ export function ArtifactPane({ featureId, kind, docs, collapsed = false, onToggl
   const content = doc.content ?? ''
   useEffect(() => {
     if (doc.content === undefined) return
-    if (previousContent.current !== undefined && previousContent.current !== content && kind === 'spec') {
+    if (previousContent.current !== undefined && previousContent.current !== content && kind === 'planning') {
       setUpdating(true)
       const timer = window.setTimeout(() => setUpdating(false), 3000)
       previousContent.current = content
@@ -34,17 +34,17 @@ export function ArtifactPane({ featureId, kind, docs, collapsed = false, onToggl
     previousContent.current = content
   }, [content, doc.content, kind])
   const count = countDecisions(content)
-  if (collapsed && onToggle) return <button type="button" className="flex w-10 flex-none items-center justify-center rounded-lg border border-hairline bg-panel-2 font-mono text-xs text-text-3 [writing-mode:vertical-rl]" title={`Expand the ${kind} pane`} onClick={onToggle}>{kind === 'decisions' ? count : 'spec'}</button>
+  if (collapsed && onToggle) return <button type="button" className="flex w-10 flex-none items-center justify-center rounded-lg border border-hairline bg-panel-2 font-mono text-xs text-text-3 [writing-mode:vertical-rl]" title={`Expand the ${kind} pane`} onClick={onToggle}>{kind === 'decisions' ? count : 'planning'}</button>
   // A frozen pane has no docs menu, so it always shows the phase's own document.
   const showingPrimary = frozen || selectedPath === defaultPath
-  const title = kind === 'spec' ? 'Spec' : frozen ? 'Decisions' : 'Decisions so far'
+  const title = kind === 'planning' ? 'Spec' : frozen ? 'Decisions' : 'Decisions so far'
   return (
     <aside className={`flex min-h-0 flex-col rounded-lg border border-hairline bg-panel-2 ${frozen ? 'min-w-0 flex-1' : 'w-(--artifact-w) flex-none'}`}>
       <div className="flex min-h-12 items-center gap-2 border-b border-hairline px-3">
         <SectionTitle>{showingPrimary ? title : selectedPath?.split(/[\\/]/).pop()}</SectionTitle>
         {frozen && <span className="font-mono text-xs text-text-3">{kind}.md{kind === 'decisions' ? ` · ${count}` : ''}</span>}
         {!frozen && showingPrimary && kind === 'decisions' && <span className="font-mono text-xs text-text-3">· {count}</span>}
-        {!frozen && showingPrimary && kind === 'spec' && updating && <span className="font-mono text-xs text-ok">updating</span>}
+        {!frozen && showingPrimary && kind === 'planning' && updating && <span className="font-mono text-xs text-ok">updating</span>}
         {!frozen && <DocsMenu docs={docs} value={selectedPath} onPick={setSelectedPath} />}
         {!frozen && onToggle && <button type="button" className="size-8 rounded-md text-text-3 hover:bg-panel-3 hover:text-text" title={`Collapse the ${kind} pane`} onClick={onToggle}>‹</button>}
       </div>
@@ -63,7 +63,7 @@ export function ArtifactPane({ featureId, kind, docs, collapsed = false, onToggl
  * (decisions 10 and 11). Neither ever tells the human to start a session — that
  * door is the next-step bar's alone.
  */
-function ArtifactEmpty({ kind, mapped, frozen }: { kind: 'decisions' | 'spec'; mapped: boolean; frozen: boolean }) {
+function ArtifactEmpty({ kind, mapped, frozen }: { kind: 'decisions' | 'planning'; mapped: boolean; frozen: boolean }) {
   const skipped = 'This feature was created as a quick change and skipped ideation.'
   if (frozen) return <EmptyState compact title={kind === 'decisions' ? 'No decisions were recorded' : 'No spec'} hint={skipped} />
   return <EmptyState compact title={kind === 'decisions' ? 'No decisions yet' : 'No spec yet'} hint={kind === 'decisions' ? 'They land here one by one as the session settles them.' : mapped ? 'The converge session writes it here from the map and the decisions.' : "The session is drafting the spec — it appears here as it's written."} />

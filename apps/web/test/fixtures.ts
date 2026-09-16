@@ -17,7 +17,7 @@ export function listItem(over: Partial<FeatureListItem> = {}): FeatureListItem {
     title: 'Demo',
     oneLiner: '',
     mapped: false,
-    phase: over.phase ?? 'tickets',
+    phase: over.phase ?? 'planning',
     branch: 'feature/demo',
     baseBranch: 'main',
     status: over.status ?? 'active',

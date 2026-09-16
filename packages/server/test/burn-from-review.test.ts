@@ -11,11 +11,9 @@ import { makeTestCtx } from './helpers/db'
 import { seedFeature, seedProject } from './helpers/fixtures'
 
 /**
- * Burn from review — the pipeline loops back to implementation (CONTEXT.md
- * decision #7), driven through the tRPC `feature.burn` seam. Fresh (pending)
- * tickets emitted during an Iterate session let the human re-burn from review:
- * the phase drops to implementation, the run executes, and the existing G4
- * auto-advance returns the feature to review — repeatable until merge.
+ * Burn from review is driven through the tRPC `feature.burn` seam. Fresh
+ * pending tickets let the human re-burn from review: Burn crosses to Building
+ * and the runner returns the feature to Review when it finishes.
  *
  * A stubbed ticket-burner keeps sandcastle out of the loop: `stubBurner` runs
  * without touching tickets (they stay pending, so the feature parks at
@@ -44,7 +42,6 @@ function ticketInput(title: string) {
   return { title, goal: 'g', context: 'c', acceptanceCriteria: ['a'], seams: ['s'], blockedBy: [] }
 }
 
-/** The `kind: "review"` ticket G3 requires of every lap it lets into a burn. */
 function reviewInput() {
   return { ...ticketInput('Review the integrated change'), kind: 'review' as const }
 }
@@ -58,7 +55,7 @@ async function waitFor(fn: () => boolean, tries = 100): Promise<void> {
   throw new Error('waitFor timed out')
 }
 
-describe('feature.burn from review (Iterate loop)', () => {
+describe('feature.burn from review', () => {
   let ctx: AppCtx
   let caller: ReturnType<ReturnType<typeof createCallerFactory<typeof appRouter>>>
   let original: WorkflowDef | undefined
@@ -75,7 +72,7 @@ describe('feature.burn from review (Iterate loop)', () => {
     else workflowRegistry.delete('ticket-burner')
   })
 
-  it('with a pending ticket + no run: starts a run and loops phase back to implementation', async () => {
+  it('with a pending ticket + no run: starts a run from review', async () => {
     const featureId = seedFeature(ctx, seedProject(ctx).id, { phase: 'review' }).id
     // A prior ticket is done (the first burn), plus a fresh fix ticket from Iterate.
     const [done, fresh] = storeTickets(ctx, featureId, [ticketInput('shipped'), ticketInput('fix-bug')])
@@ -83,16 +80,15 @@ describe('feature.burn from review (Iterate loop)', () => {
 
     const { runId } = await caller.feature.burn({ featureId })
     expect(runId).toMatch(/^run/)
-    // The stub leaves `fresh` pending, so G4 never fires and the feature parks
-    // at implementation — the loop-back the run executes from.
-    expect(getFeatureRow(ctx, featureId).phase).toBe('implementation')
+    // The stub finishes immediately, so the runner returns the feature to review.
+    expect(getFeatureRow(ctx, featureId).phase).toBe('review')
     expect(listByFeature(ctx, featureId).find((t) => t.id === fresh.id)?.status).toBe('pending')
 
     const ev = listAfter(ctx, featureId, 0).find(
       (e) => e.type === 'burn.started' && (e.data as { from?: string }).from === 'review',
     )
-    expect(ev?.message).toBe('burn from review — iterating')
-    expect(ev?.data).toMatchObject({ from: 'review', to: 'implementation' })
+    expect(ev?.message).toBe('burning tickets — lap 1')
+    expect(ev?.data).toMatchObject({ from: 'review', to: 'building' })
   })
 
   it('with zero pending tickets: refused with a clear error', async () => {
@@ -118,11 +114,11 @@ describe('feature.burn from review (Iterate loop)', () => {
 
     expect(listByFeature(ctx, featureId).every((t) => t.status === 'done')).toBe(true)
     const advanced = listAfter(ctx, featureId, 0).find((e) => e.type === 'phase.advanced')
-    expect(advanced?.data).toMatchObject({ from: 'implementation', to: 'review' })
+    expect(advanced?.data).toMatchObject({ from: 'building', to: 'review' })
   })
 })
 
-describe('feature.burn — phase-appropriate refusals unchanged (regression)', () => {
+describe('feature.burn — four-state lifecycle', () => {
   let ctx: AppCtx
   let caller: ReturnType<ReturnType<typeof createCallerFactory<typeof appRouter>>>
   let original: WorkflowDef | undefined
@@ -139,23 +135,38 @@ describe('feature.burn — phase-appropriate refusals unchanged (regression)', (
     else workflowRegistry.delete('ticket-burner')
   })
 
-  it('a fresh burn from tickets still crosses G3 into implementation', async () => {
-    const featureId = seedFeature(ctx, seedProject(ctx).id, { phase: 'tickets' }).id
+  it('a fresh burn crosses planning into building', async () => {
+    const featureId = seedFeature(ctx, seedProject(ctx).id, { phase: 'planning' }).id
     storeTickets(ctx, featureId, [ticketInput('one'), reviewInput()])
 
     await caller.feature.burn({ featureId })
 
-    expect(getFeatureRow(ctx, featureId).phase).toBe('implementation')
+    expect(getFeatureRow(ctx, featureId).phase).toBe('review')
     const types = listAfter(ctx, featureId, 0).map((e) => e.type)
     expect(types).toContain('burn.started')
   })
 
-  it('burn from an earlier phase is refused with the tickets-phase error', async () => {
-    const featureId = seedFeature(ctx, seedProject(ctx).id, { phase: 'ideation' }).id
+  it('burn from planning starts the build', async () => {
+    const featureId = seedFeature(ctx, seedProject(ctx).id, { phase: 'planning' }).id
     storeTickets(ctx, featureId, [ticketInput('one')])
 
-    await expect(caller.feature.burn({ featureId })).rejects.toThrow(
-      /must be in the tickets phase to burn \(currently ideation\)/,
-    )
+    await expect(caller.feature.burn({ featureId })).resolves.toEqual({ runId: expect.any(String) })
+  })
+
+  it('refuses a second burn while the first run is live', async () => {
+    let finish!: () => void
+    workflowRegistry.set('ticket-burner', {
+      id: 'ticket-burner',
+      async run() {
+        await new Promise<void>((resolve) => { finish = resolve })
+        return { status: 'succeeded', summary: 'done' }
+      },
+    })
+    const featureId = seedFeature(ctx, seedProject(ctx).id, { phase: 'planning' }).id
+    storeTickets(ctx, featureId, [ticketInput('one')])
+
+    await caller.feature.burn({ featureId })
+    await expect(caller.feature.burn({ featureId })).rejects.toThrow(/already burning/)
+    finish()
   })
 })

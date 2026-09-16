@@ -148,8 +148,8 @@ describe('EmptyState', () => {
 
 describe('CheckLine', () => {
   it('paints the dot from the row`s tone and shows key and value', () => {
-    const out = html(createElement(CheckLine, { row: { key: 'tickets', value: '4/4', tone: 'ok' } }))
-    expect(out).toContain('tickets')
+    const out = html(createElement(CheckLine, { row: { key: 'planning', value: '4/4', tone: 'ok' } }))
+    expect(out).toContain('planning')
     expect(out).toContain('4/4')
     expect(out).toContain('bg-ok')
   })
@@ -166,11 +166,16 @@ describe('CheckLine', () => {
 
 describe('PhaseTag', () => {
   it('colours each phase from its own token', () => {
-    const phases: Phase[] = ['ideation', 'spec', 'tickets', 'implementation', 'review', 'shipped']
-    for (const phase of phases) {
+    const phases: [Phase, string][] = [
+      ['planning', 'ideation'],
+      ['building', 'implementation'],
+      ['review', 'review'],
+      ['shipped', 'shipped'],
+    ]
+    for (const [phase, token] of phases) {
       const out = html(createElement(PhaseTag, { phase }))
       expect(out).toContain(phase)
-      expect(out).toContain(`text-ph-${phase}`)
+      expect(out).toContain(`text-ph-${token}`)
     }
   })
 })

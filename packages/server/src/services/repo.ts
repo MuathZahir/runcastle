@@ -202,8 +202,7 @@ export function hasActiveRun(ctx: AppCtx, featureId: string): boolean {
 
 // --- phase / status mutations (each emits an event) -------------------------
 
-/** Low-level phase setter used by `features.advance`, `gates.overrideGate`, the
- *  burn procedure and the runner's auto-advance. Emits one timeline event. */
+/** Low-level phase setter used by Burn and the runner's auto-advance. */
 export function setPhase(
   ctx: AppCtx,
   featureId: string,

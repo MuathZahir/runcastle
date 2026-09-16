@@ -1,6 +1,6 @@
 import type { Phase } from '@runcastle/core'
 
-export type ArtifactKind = 'map' | 'decisions' | 'spec'
+export type ArtifactKind = 'map' | 'decisions' | 'planning'
 
 export interface ArtifactDoc {
   relPath: string
@@ -15,9 +15,9 @@ export function artifactSelection({
   mapped: boolean
   docs: ArtifactDoc[]
 }): { kind: ArtifactKind; relPath?: string } {
-  if (phase === 'ideation' && mapped) return { kind: 'map' }
+  if (phase === 'planning' && mapped) return { kind: 'map' }
 
-  const kind = phase === 'spec' ? 'spec' : 'decisions'
+  const kind = phase === 'planning' ? 'planning' : 'decisions'
   const relPath = docs.find((doc) => doc.relPath.endsWith(`${kind}.md`))?.relPath
   return relPath ? { kind, relPath } : { kind }
 }

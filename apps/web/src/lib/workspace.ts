@@ -33,7 +33,7 @@ export function inspectorCollapsedForPhase(
   phase: Phase | undefined,
 ): boolean {
   if (preference !== null) return preference
-  return phase === 'ideation' || phase === 'spec' || phase === 'tickets'
+  return phase === 'planning'
 }
 
 /** Per-project selected-feature key so switching projects never restores a

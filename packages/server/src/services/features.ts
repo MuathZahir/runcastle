@@ -608,15 +608,6 @@ function liveSessionOf(ctx: AppCtx, featureId: string): LiveSessionState | null 
  * before completing would otherwise leave the feature with no way forward, so
  * a feature with no active session burns exactly as it did before.
  */
-function assertTicketsReady(ctx: AppCtx, feature: Feature): void {
-  if (feature.ticketsReadyLap === feature.lap) return
-  if (activeSessionsForFeature(ctx, feature.id).length === 0) return
-  throw new GateError(
-    'the session is still finishing the tickets — it completes the tickets phase when the lap ' +
-      'is done, and the burn arms then',
-  )
-}
-
 /**
  * G3 burn — the human "Burn" click, the ONLY legitimate G3 crossing.
  *
@@ -649,11 +640,8 @@ export async function burn(
   const feature = getFeatureRow(ctx, featureId)
   requireNotDraft(feature)
   const running = hasActiveRun(ctx, featureId)
+  if (running) throw new GateError('a run is already burning this feature')
   let tickets = listByFeature(ctx, featureId)
-  // G3 scopes to the CURRENT lap (SPEC §15.1) — an earlier lap's tickets are
-  // terminal by construction, so counting them would let a fresh lap burn
-  // nothing. `lapTickets` is that scope; the restarting path below deliberately
-  // ignores it.
   const lapTickets = tickets
   // A ticket the burner still has to run: not done/failed/cancelled (the
   // terminal states). Fresh fix tickets from an Iterate session land as `pending`.
@@ -678,18 +666,8 @@ export async function burn(
         : 'no tickets to burn',
     )
   }
-  // The G3 crossing consults the gate service itself, so the Burn click refuses
-  // exactly what `complete_phase` and the launcher refuse — a lap missing its
-  // `kind: "review"` ticket most of all, which a count of burnable tickets
-  // cannot see. `restarting` and `iterating` skip it deliberately: both re-enter
-  // a burn on a feature that already crossed G3 (an override parks the feature
-  // at `implementation` without ever having satisfied the check), and re-testing
-  // it there would turn the escape hatch into a dead end.
-  if (feature.phase === 'planning') {
-    assertTicketsReady(ctx, feature)
-  }
-
-  const lap = listRunsByFeature(ctx, featureId).filter((run) => run.workflow === 'ticket-burner').length + 1
+  const lap =
+    listRunsByFeature(ctx, featureId).filter((run) => run.workflow === 'ticket-burner').length + 1
   ctx.db.update(features).set({ lap }).where(eq(features.id, featureId)).run()
 
   if (restarting) {

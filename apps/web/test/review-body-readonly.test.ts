@@ -46,7 +46,6 @@ vi.mock('../src/trpc', () => {
 vi.mock('../src/lib/toast', () => ({ useToast: () => ({ push: vi.fn() }) }))
 
 const { ConflictAlert } = await import('../src/components/review/ConflictCard')
-const { LapAbortAlert } = await import('../src/components/review/LapAbortAlert')
 const { EvidenceStage } = await import('../src/components/review/EvidenceStage')
 const { FullAccounts } = await import('../src/components/review/FullAccounts')
 const { LiveSessionAlert } = await import('../src/components/review/LiveSessionAlert')
@@ -111,7 +110,7 @@ function bands(readonly: boolean): ReactNode[] {
     createElement(LiveSessionAlert, {
       key: 'session',
       featureId: 'ftr_1',
-      line: { sessionId: 'ses_1', text: 'Ideation session still live from lap 1', phase: 'ideation' },
+      line: { sessionId: 'ses_1', text: 'Ideation session still live from lap 1', phase: 'planning' },
       readonly,
       onOpen: () => undefined,
     }),
@@ -134,16 +133,6 @@ function bands(readonly: boolean): ReactNode[] {
       readonly,
       liveSessionId: null,
       resolveEnded: true,
-    }),
-    createElement(LapAbortAlert, {
-      key: 'abort',
-      abort: {
-        at: 1,
-        message: 'lap 3 aborted — its terminal could not be opened (fatal: bad ref)',
-      },
-      lap: 2,
-      readonly,
-      onRetry: () => undefined,
     }),
     createElement(StatusStrip, {
       key: 'strip',
@@ -196,7 +185,6 @@ const LIVE_CONTROLS = [
   'Add',
   'Edit',
   'Delete',
-  'Retry',
 ]
 
 /** The stage while a drive of this feature is up — its own set of controls. */
@@ -233,22 +221,6 @@ describe('the review bands under readonly', () => {
   it('renders no conflict card at all on a readonly view', () => {
     expect(render(true)).not.toContain('Merge conflict')
     expect(render(false)).toContain('Merge conflict')
-  })
-
-  /**
-   * Decision 26g — a lap that could not start rolls back whole, so the walked
-   * page came back looking exactly as it was, with the git error only in the
-   * Activity feed.
-   */
-  it('says which lap failed to start, with the error one click away', () => {
-    const html = render(false)
-    expect(html).toContain('Lap 3 couldn’t start')
-    expect(html).toContain('still on lap 2')
-    expect(html).toContain('What went wrong')
-    expect(html).toContain('fatal: bad ref')
-    // Nothing was lost, and nothing about a lap that never started belongs on a
-    // shipped feature's record.
-    expect(render(true)).not.toContain('couldn’t start')
   })
 
   it('still plays the recording and still shows the evidence it has', () => {

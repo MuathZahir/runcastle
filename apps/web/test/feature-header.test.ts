@@ -30,8 +30,8 @@ function feature(over: Partial<FeatureFull['feature']> = {}): FeatureFull['featu
 const STEPS: PipelineStep[] = PHASE_ORDER.map((phase) => ({
   phase,
   label: PHASE_LABELS[phase],
-  state: phase === 'tickets' ? 'current' : 'upcoming',
-  isViewed: phase === 'tickets',
+  state: phase === 'planning' ? 'current' : 'upcoming',
+  isViewed: phase === 'planning',
   clickable: false,
   tip: phase,
 }))
@@ -111,10 +111,10 @@ describe('the feature header', () => {
   it('states the pipeline for a started feature and not for a draft', () => {
     // The step's own tip, which only the stepper renders — the label alone
     // could as easily have come from the title beside it.
-    expect(header()).toContain('title="implementation"')
+    expect(header()).toContain('title="building"')
     // A draft is created at `ideation`, so a stepper here would claim work has
     // begun on a feature that has no branch yet.
-    expect(header({}, true)).not.toContain('title="implementation"')
+    expect(header({}, true)).not.toContain('title="building"')
   })
 })
 

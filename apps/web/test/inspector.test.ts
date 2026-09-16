@@ -28,7 +28,7 @@ const BLOCKED: GateState = {
 
 function gate(over: { gate?: GateState; phase?: Phase } = {}): string {
   return renderToStaticMarkup(
-    createElement(CurrentGate, { gate: BLOCKED, phase: 'ideation', ...over }),
+    createElement(CurrentGate, { gate: BLOCKED, phase: 'planning', ...over }),
   )
 }
 

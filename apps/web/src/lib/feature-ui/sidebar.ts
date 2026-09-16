@@ -44,9 +44,9 @@ export function needsMe(f: FeatureListItem): NeedsMe | null {
   }
   if (f.ticketCounts.failed > 0)
     return { kind: 'attention', label: 'run failed — needs attention' }
-  if (f.phase === 'ideation') return { kind: 'grill', label: 'needs grilling' }
-  if (f.phase === 'tickets' && f.ticketCounts.total > 0)
-    return { kind: 'burn', label: 'review & burn tickets' }
+  if (f.phase === 'planning') return f.ticketCounts.total > 0
+    ? { kind: 'burn', label: 'review & burn tickets' }
+    : { kind: 'grill', label: 'needs planning' }
   if (f.phase === 'review') return { kind: 'ship', label: 'test & merge' }
   return null
 }
