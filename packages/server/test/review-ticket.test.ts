@@ -319,6 +319,10 @@ describe('a failed review is retryable after it minted fix tickets', () => {
     expect(started).toEqual([3])
     await release(3)
     expect(tickets[2]).toMatchObject({ status: 'done' })
+    // And the children it left failed burn behind it, in this same run.
+    expect(started).toEqual([3, 4, 5])
+    await release(4)
+    await release(5)
     expect((await run).summary).not.toContain('review deferred')
   })
 
@@ -340,12 +344,79 @@ describe('a failed review is retryable after it minted fix tickets', () => {
 
     expect(started).toEqual([3])
     await release(3)
-    expect(started).toEqual([3, 4])
+    // 4 was already pending; 5 rejoins the run when the review lands.
+    expect(started).toEqual([3, 4, 5])
     await release(4)
+    await release(5)
 
     await run
     expect(tickets[2]).toMatchObject({ status: 'done' })
     expect(tickets[3]).toMatchObject({ status: 'done' })
+  })
+})
+
+describe("a landed review takes its dead attempt's fix tickets with it", () => {
+  it('puts the fix tickets it left failed back into the run it landed in', async () => {
+    // What the retry is for: the children failed because the attempt that
+    // minted them died, not because the fix was tried and lost. The review has
+    // now landed, so the run that produced it burns them — the same run the
+    // children of a first-time review are minted into.
+    const tickets = [
+      ticket(1, { status: 'done' }),
+      review(2),
+      ticket(3, { status: 'failed', error: 'blocked by failed ticket 2', blockedBy: [2] }),
+    ]
+    const { execute, started, release } = gatedExecute()
+
+    const run = burnRun(makeCtx(tickets), deps(execute))
+    await Promise.resolve()
+
+    expect(started).toEqual([2])
+    await release(2)
+    expect(started).toEqual([2, 3])
+    await release(3)
+
+    await run
+    expect(tickets[2]).toMatchObject({ status: 'done', error: null })
+  })
+
+  it('leaves a waived fix ticket cancelled', async () => {
+    // Cancelling every minted fix ticket by hand was the operator's workaround
+    // for the deadlock. Reviving one would overturn that decision.
+    const tickets = [
+      ticket(1, { status: 'done' }),
+      review(2),
+      ticket(3, { status: 'cancelled', blockedBy: [2] }),
+    ]
+    const { execute, started, release } = gatedExecute()
+
+    const run = burnRun(makeCtx(tickets), deps(execute))
+    await Promise.resolve()
+    await release(2)
+
+    expect(started).toEqual([2])
+    expect(tickets[2]).toMatchObject({ status: 'cancelled' })
+    await run
+  })
+
+  it('leaves them failed when the retried review fails again', async () => {
+    // Nothing about their verdict has changed: the review still has not landed.
+    const tickets = [
+      ticket(1, { status: 'done' }),
+      review(2),
+      ticket(3, { status: 'failed', error: 'the repro still reproduces', blockedBy: [2] }),
+    ]
+    const { execute, started, release } = gatedExecute({
+      2: { status: 'failed', error: 'review agent died' },
+    })
+
+    const run = burnRun(makeCtx(tickets), deps(execute))
+    await Promise.resolve()
+    await release(2)
+
+    expect(started).toEqual([2])
+    expect(tickets[2]).toMatchObject({ status: 'failed', error: 'the repro still reproduces' })
+    await run
   })
 })
 
